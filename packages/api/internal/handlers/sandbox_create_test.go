@@ -11,9 +11,9 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/clusters"
 	clustersmocks "github.com/e2b-dev/infra/packages/api/internal/clusters/mocks"
+	handlersmocks "github.com/e2b-dev/infra/packages/api/internal/handlers/mocks"
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 	"github.com/e2b-dev/infra/packages/db/queries"
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 )
@@ -239,13 +239,17 @@ func TestOrchestrator_convertVolumeMounts(t *testing.T) {
 	db := testutils.SetupDatabase(t)
 
 	testCases := map[string]struct {
-		input       []api.SandboxVolumeMount
-		database    []queries.CreateVolumeParams
-		volumeTypes []string
-		expected    []*orchestrator.SandboxVolumeMount
-		err         error
+		expectFeatureFlag bool
+		volumesEnabled    bool
+		input             []api.SandboxVolumeMount
+		database          []queries.CreateVolumeParams
+		volumeTypes       []string
+		expected          []*orchestrator.SandboxVolumeMount
+		err               error
 	}{
 		"missing volume reports correct error": {
+			expectFeatureFlag: true,
+			volumesEnabled:    true,
 			input: []api.SandboxVolumeMount{
 				{Name: "vol1"},
 			},
@@ -253,6 +257,8 @@ func TestOrchestrator_convertVolumeMounts(t *testing.T) {
 			err:         VolumesNotFoundError{[]string{"vol1"}},
 		},
 		"existing volumes are returned": {
+			expectFeatureFlag: true,
+			volumesEnabled:    true,
 			input: []api.SandboxVolumeMount{
 				{Name: "vol1", Path: "/vol1"},
 			},
@@ -265,6 +271,8 @@ func TestOrchestrator_convertVolumeMounts(t *testing.T) {
 			},
 		},
 		"partial success returns error": {
+			expectFeatureFlag: true,
+			volumesEnabled:    true,
 			input: []api.SandboxVolumeMount{
 				{Name: "vol1", Path: "/vol1"},
 				{Name: "vol2", Path: "/vol2"},
@@ -294,16 +302,16 @@ func TestOrchestrator_convertVolumeMounts(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			ffClient, err := featureflags.NewClient()
-			require.NoError(t, err)
-
-			resources := newMockResources(t, tc.volumeTypes)
-			a := APIStore{
-				sqlcDB:       db.SqlcClient,
-				featureFlags: ffClient,
+			ffClient := handlersmocks.NewMockFeatureFlagsClient(t)
+			if tc.expectFeatureFlag {
+				ffClient.EXPECT().
+					BoolFlag(mock.Anything, mock.Anything).
+					Return(tc.volumesEnabled)
 			}
 
-			actual, err := a.convertVolumeMounts(t.Context(), &clusters.Cluster{Resources: resources}, teamID, tc.input)
+			resources := newMockResources(t, tc.volumeTypes)
+
+			actual, err := convertVolumeMounts(t.Context(), db.SqlcClient, ffClient, &clusters.Cluster{Resources: resources}, teamID, tc.input)
 			assert.Equal(t, tc.err, err)
 			assert.Equal(t, tc.expected, actual)
 		})

@@ -1,3 +1,4 @@
+
 packages:
   github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem/filesystemconnect:
     interfaces:
@@ -49,3 +50,12 @@ packages:
           dir: packages/api/internal/clusters/mocks
           filename: mocks.go
           pkgname: clustersmocks
+
+  github.com/e2b-dev/infra/packages/api/internal/handlers:
+    interfaces:
+      featureFlagsClient:
+        config:
+          dir: packages/api/internal/handlers/mocks
+          filename: mockfeatureflagsclient.go
+          pkgname: handlersmocks
+          structname: MockFeatureFlagsClient

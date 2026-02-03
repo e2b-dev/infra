@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/net/idna"
@@ -24,6 +25,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
@@ -186,7 +188,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		}
 	}
 
-	sbxVolumeMounts, err := a.convertVolumeMounts(ctx, cluster, teamInfo.ID, volumeMounts)
+	sbxVolumeMounts, err := convertVolumeMounts(ctx, a.sqlcDB, a.featureFlags, cluster, teamInfo.ID, volumeMounts)
 	if err != nil {
 		if errors.Is(err, ErrVolumeMountsDisabled) {
 			a.sendAPIStoreError(c, http.StatusBadRequest, "Volume mounts are not enabled.")
@@ -264,12 +266,23 @@ func getUniqueSlice(items []api.SandboxVolumeMount, fn func(api.SandboxVolumeMou
 
 var ErrVolumeMountsDisabled = errors.New("volume mounts are not enabled")
 
-func (a *APIStore) convertVolumeMounts(ctx context.Context, cluster *clusters.Cluster, teamID uuid.UUID, volumeMounts []api.SandboxVolumeMount) ([]*orchestrator.SandboxVolumeMount, error) {
+type featureFlagsClient interface {
+	BoolFlag(ctx context.Context, flagName featureflags.BoolFlag, contexts ...ldcontext.Context) bool
+}
+
+func convertVolumeMounts(
+	ctx context.Context,
+	sqlClient *sqlcdb.Client,
+	featureFlags featureFlagsClient,
+	cluster *clusters.Cluster,
+	teamID uuid.UUID,
+	volumeMounts []api.SandboxVolumeMount,
+) ([]*orchestrator.SandboxVolumeMount, error) {
 	if len(volumeMounts) == 0 {
 		return []*orchestrator.SandboxVolumeMount{}, nil // only b/c you should never return (nil, nil)
 	}
 
-	if !a.featureFlags.BoolFlag(ctx, featureflags.PersistentVolumesFlag) {
+	if !featureFlags.BoolFlag(ctx, featureflags.PersistentVolumesFlag) {
 		return nil, ErrVolumeMountsDisabled
 	}
 
@@ -280,7 +293,7 @@ func (a *APIStore) convertVolumeMounts(ctx context.Context, cluster *clusters.Cl
 	}
 
 	// get volumes from the database
-	dbVolumesMap, err := a.getDBVolumesMap(ctx, teamID, volumeMounts, volumeTypesSet)
+	dbVolumesMap, err := getDBVolumesMap(ctx, sqlClient, teamID, volumeMounts, volumeTypesSet)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get db volumes map: %w", err)
 	}
@@ -337,8 +350,8 @@ func (e InvalidVolumeTypesError) Error() string {
 	return fmt.Sprintf("volumes are unsupported by cluster: %s", strings.Join(e.VolumeNames, ", "))
 }
 
-func (a *APIStore) getDBVolumesMap(ctx context.Context, teamID uuid.UUID, volumeMounts []api.SandboxVolumeMount, volumeTypesSet map[string]struct{}) (map[string]queries.Volume, error) {
-	dbVolumes, err := a.sqlcDB.GetVolumesByName(ctx, queries.GetVolumesByNameParams{
+func getDBVolumesMap(ctx context.Context, sqlcDB *sqlcdb.Client, teamID uuid.UUID, volumeMounts []api.SandboxVolumeMount, volumeTypesSet map[string]struct{}) (map[string]queries.Volume, error) {
+	dbVolumes, err := sqlcDB.GetVolumesByName(ctx, queries.GetVolumesByNameParams{
 		TeamID:      teamID,
 		VolumeNames: getUniqueSlice(volumeMounts, func(svm api.SandboxVolumeMount) string { return svm.Name }),
 	})
