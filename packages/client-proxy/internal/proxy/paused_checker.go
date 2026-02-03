@@ -3,7 +3,7 @@ package proxy
 import (
 	"context"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
+	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -14,7 +14,7 @@ type PausedSandboxChecker interface {
 
 type PausedInfo struct {
 	Paused           bool
-	AutoResumePolicy proxy.AutoResumePolicy
+	AutoResumePolicy proxygrpc.AutoResumePolicy
 }
 
 func logSleeping(ctx context.Context, sandboxId string) {
