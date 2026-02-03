@@ -109,15 +109,14 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 	if r.Body != nil {
 		// Read raw body so we can wipe it after parsing
 		body, err := io.ReadAll(r.Body)
+		// Ensure body is wiped after we're done
+		defer memguard.WipeBytes(body)
 		if err != nil {
 			logger.Error().Msgf("Failed to read request body: %v", err)
 			w.WriteHeader(http.StatusBadRequest)
 
 			return
 		}
-
-		// Ensure body is wiped after we're done, even on error paths
-		defer memguard.WipeBytes(body)
 
 		var initRequest PostInitJSONBody
 		if len(body) > 0 {
