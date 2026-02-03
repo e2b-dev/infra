@@ -1,7 +1,7 @@
 # E2B Lite
 
-**Version:** 2.0
-**Last Updated:** 2026-01-28
+**Version:** 2.1
+**Last Updated:** 2026-02-03
 **Status:** Working
 
 ## Overview
@@ -36,10 +36,16 @@ E2B Lite enables developers to run E2B sandboxes locally on bare metal Linux ser
 git clone https://github.com/e2b-dev/infra.git
 cd infra
 
-# Full setup (installs deps, builds binaries, starts infra, seeds DB)
+# Check if your system meets requirements
+./scripts/e2b-lite-setup.sh --check-req
+
+# Full setup with clean progress UI
 ./scripts/e2b-lite-setup.sh
 
-# Or skip dependency installation if already have Docker/Go/Node
+# Or with verbose output (shows all apt, build logs, etc.)
+./scripts/e2b-lite-setup.sh --verbose
+
+# Skip dependency installation if already have Docker/Go/Node
 ./scripts/e2b-lite-setup.sh --no-deps
 ```
 
@@ -149,13 +155,6 @@ files = sandbox.files.list("/tmp")
 sandbox.kill()
 ```
 
-### Environment Variables (Alternative)
-
-```bash
-export E2B_API_KEY="e2b_53ae1fed82754c17ad8077fbc8bcdd90"
-# Note: E2B_ENVD_API_URL does NOT work - must use sandbox_url parameter
-```
-
 ---
 
 ## Credentials
@@ -176,25 +175,26 @@ From `packages/local-dev/seed-local-database.go`:
 `scripts/e2b-lite-setup.sh` performs these steps:
 
 1. **Install dependencies** (Docker, Go, Node.js, build tools)
-2. **Load kernel modules** (NBD with nbds_max=128, TUN)
-3. **Allocate HugePages** (2048 pages = 4GB)
-4. **Download artifacts** (kernel vmlinux-6.1.158, Firecracker v1.12.1)
-5. **Build binaries** (envd, API, orchestrator, client-proxy)
-6. **Create envd symlink** (`bin/envd` → `bin/debug/envd`)
-7. **Install npm dependencies** (in `packages/shared/scripts`)
-8. **Start Docker infrastructure** (PostgreSQL, Redis, Loki, etc.)
-9. **Run database migrations**
-10. **Seed database** (creates user, team, API keys)
-11. **Build base template** (if kernel 6.8+)
-12. **Create service scripts** (`scripts/services/start-*.sh`)
+2. **Check prerequisites** (OS, kernel, KVM, Docker, Go)
+3. **Setup system** (load kernel modules, allocate HugePages, create directories)
+4. **Build binaries** (envd, API, orchestrator, client-proxy)
+5. **Install npm dependencies** (in `packages/shared/scripts`)
+6. **Start Docker infrastructure** (PostgreSQL, Redis, Loki, etc.)
+7. **Configure database** (run migrations, seed data)
+8. **Build base template** (if kernel 6.8+)
+9. **Create service scripts** (`scripts/services/start-*.sh`)
 
 ### Options
 
 ```bash
-./scripts/e2b-lite-setup.sh              # Full setup
+./scripts/e2b-lite-setup.sh              # Full setup with clean progress UI
+./scripts/e2b-lite-setup.sh --verbose    # Show detailed output (apt, build logs)
+./scripts/e2b-lite-setup.sh --check-req  # Only check if system meets requirements
 ./scripts/e2b-lite-setup.sh --no-deps    # Skip dependency installation
 ./scripts/e2b-lite-setup.sh --deps-only  # Only install dependencies
 ./scripts/e2b-lite-setup.sh --no-template # Skip template building
+./scripts/e2b-lite-setup.sh --prebuilt   # Download pre-built binaries (faster)
+./scripts/e2b-lite-setup.sh --prebuilt --version v1.0.0  # Specific version
 ```
 
 ---
@@ -259,68 +259,6 @@ go run packages/orchestrator/cmd/build-template/main.go \
   -vcpu 2 \
   -memory 512 \
   -disk 1024
-```
-
----
-
-## Troubleshooting
-
-### "The sandbox was not found" when running commands
-
-**Cause:** SDK can't reach envd via client-proxy.
-
-**Fix:** Ensure client-proxy is running and `sandbox_url` is set:
-```python
-sandbox = Sandbox.create(
-    ...
-    sandbox_url="http://localhost:3002",  # Required!
-)
-```
-
-### Connection refused on port 3000
-
-**Cause:** API listens on port 80, not 3000.
-
-**Fix:** Use `api_url="http://localhost:80"`
-
-### Sandbox created but commands timeout
-
-**Cause:** Client-proxy not running.
-
-**Fix:** Start client-proxy:
-```bash
-./scripts/services/start-client-proxy.sh
-```
-
-### Template build fails with "fsopen failed"
-
-**Cause:** Kernel < 6.8 doesn't support new overlayfs syscalls.
-
-**Fix:** Upgrade to kernel 6.8+ (Ubuntu 24.04) or use prebuilt template.
-
-### "Cannot allocate memory" or OOM
-
-**Cause:** Insufficient HugePages or RAM.
-
-**Fix:**
-```bash
-# Allocate more HugePages
-echo 2048 | sudo tee /proc/sys/vm/nr_hugepages
-
-# Check current allocation
-grep HugePages /proc/meminfo
-```
-
-### NBD module issues
-
-**Fix:**
-```bash
-# Unload and reload with more devices
-sudo rmmod nbd
-sudo modprobe nbd nbds_max=128
-
-# Verify
-ls /dev/nbd* | wc -l  # Should show 128+
 ```
 
 ---
@@ -390,6 +328,22 @@ curl -X DELETE http://localhost:80/sandboxes/{sandboxId} \
 | Templates | Cloud storage | Local filesystem |
 | Scaling | Multi-node | Single node |
 | Auth | Full team/user | Seeded credentials |
+
+---
+
+## Coming Soon
+
+Planned improvements for E2B Lite:
+
+- [ ] **Pre-built binaries** - Download binaries instead of compiling (faster install)
+- [ ] **Pre-built templates** - Common templates (Python, Node.js, Go) ready to use
+- [ ] **GitHub release workflow** - Auto-build binaries and templates with each release
+- [ ] **One-liner install** - `curl -fsSL https://e2b.dev/install-lite | bash`
+- [ ] **Auto-update** - Version check and update mechanism
+- [ ] **More package managers** - Support for dnf (Fedora/RHEL), pacman (Arch), zypper (openSUSE)
+- [ ] **macOS support** - Nested virtualization via Apple Hypervisor Framework
+- [ ] **Lite mode** - Strip unnecessary components, reduce metrics collection overhead
+- [ ] **Move to cloud** - Simple migration tool from local E2B Lite to E2B Cloud/Enterprise
 
 ---
 

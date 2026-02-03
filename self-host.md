@@ -1,8 +1,36 @@
-# Self-hosting E2B on Google Cloud
+# Self-hosting E2B
 
-## Prerequisites
+## E2B Lite (Local PC)
 
-**Tools**
+For local development or single-machine deployments, use **E2B Lite** - a streamlined setup that runs everything on your Linux machine.
+
+```bash
+git clone https://github.com/e2b-dev/infra.git
+cd infra
+
+# Check if your system meets requirements
+./scripts/e2b-lite-setup.sh --check-req
+
+# Full setup (installs Docker, Go, Node.js if needed)
+./scripts/e2b-lite-setup.sh
+
+# Or with verbose output
+./scripts/e2b-lite-setup.sh --verbose
+```
+
+**Requirements:** Linux with KVM support (Ubuntu 24.04 recommended), 4GB+ RAM, 20GB disk.
+
+The setup script installs all dependencies, builds binaries, starts Docker infrastructure, and creates a base template. See [E2B-LITE-DESIGN.md](E2B-LITE-DESIGN.md) for details.
+
+---
+
+## E2B on Google Cloud (Production)
+
+For production deployments with multi-node support, deploy E2B on GCP using Terraform and Nomad.
+
+### Prerequisites
+
+#### Tools
 
 - [Packer](https://developer.hashicorp.com/packer/tutorials/docker-get-started/get-started-install-cli#installing-packer)
   - Used for building the disk image of the orchestrator client and server
@@ -31,20 +59,20 @@
 - [Docker](https://docs.docker.com/engine/install/)
 
 
-**Accounts**
+#### Accounts
 
 - Cloudflare account
 - Domain on Cloudflare
 - GCP account + project
 - PostgreSQL database (Supabase's DB only supported for now)
 
-**Optional**
+#### Optional
 
 Recommended for monitoring and logging
 - Grafana Account & Stack (see Step 15 for detailed notes)
 - Posthog Account
 
-## Steps
+### Steps
 
 Check if you can use config for terraform state management
 
