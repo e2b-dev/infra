@@ -573,6 +573,7 @@ func (f *Factory) ResumeSandbox(
 		snapfile,
 		fcUffd.Ready(),
 		ips,
+		config.Envd.AccessToken,
 	)
 	if fcStartErr != nil {
 		return nil, fmt.Errorf("failed to start FC: %w", fcStartErr)

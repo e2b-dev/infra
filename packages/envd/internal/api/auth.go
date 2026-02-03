@@ -19,10 +19,12 @@ const (
 )
 
 // paths that are always allowed without general authentication
-var allowedPaths = []string{
+// POST/init is secured via MMDS hash validation instead
+var authExcludedPaths = []string{
 	"GET/health",
 	"GET/files",
 	"POST/files",
+	"POST/init",
 }
 
 func (a *API) WithAuthorization(handler http.Handler) http.Handler {
@@ -31,7 +33,7 @@ func (a *API) WithAuthorization(handler http.Handler) http.Handler {
 			authHeader := req.Header.Get(accessTokenHeader)
 
 			// check if this path is allowed without authentication (e.g., health check, endpoints supporting signing)
-			allowedPath := slices.Contains(allowedPaths, req.Method+req.URL.Path)
+			allowedPath := slices.Contains(authExcludedPaths, req.Method+req.URL.Path)
 
 			if authHeader != *a.accessToken && !allowedPath {
 				a.logger.Error().Msg("Trying to access secured envd without correct access token")
