@@ -12,12 +12,20 @@ message SandboxPausedInfoRequest {
   string sandbox_id = 1;
 }
 
+// AutoResumePolicy describes when a paused sandbox should auto-resume.
+enum AutoResumePolicy {
+  AUTO_RESUME_POLICY_UNSPECIFIED = 0;
+  AUTO_RESUME_POLICY_ANY = 1;
+  AUTO_RESUME_POLICY_AUTHED = 2;
+  AUTO_RESUME_POLICY_NULL = 3;
+}
+
 // Response describing whether a paused snapshot exists and its auto-resume policy.
 message SandboxPausedInfoResponse {
   // True when a paused snapshot exists for the sandbox.
   bool paused = 1;
-  // Auto-resume policy: "any", "authed", or "null".
-  string auto_resume_policy = 2;
+  // Auto-resume policy for the sandbox.
+  AutoResumePolicy auto_resume_policy = 2;
 }
 
 // Request to resume a paused sandbox.

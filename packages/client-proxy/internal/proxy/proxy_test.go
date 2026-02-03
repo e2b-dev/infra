@@ -9,6 +9,7 @@ import (
 
 	"google.golang.org/grpc/metadata"
 
+	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	sharedproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	catalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 )
@@ -94,7 +95,7 @@ func TestCatalogResolutionPaused_NoAutoResume(t *testing.T) {
 
 	ctx := context.Background()
 	c := &fakeCatalog{info: nil, failCount: 1}
-	paused := &fakePausedChecker{info: PausedInfo{Paused: true, AutoResumePolicy: "any"}}
+	paused := &fakePausedChecker{info: PausedInfo{Paused: true, AutoResumePolicy: proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_ANY}}
 
 	_, err := catalogResolution(ctx, "sbx-1", c, nil, paused, false, false)
 	if err == nil {
@@ -116,7 +117,7 @@ func TestCatalogResolutionPaused_AutoResumeSuccess(t *testing.T) {
 	ctx := context.Background()
 	info := &catalog.SandboxInfo{OrchestratorIP: "10.0.0.1"}
 	c := &fakeCatalog{info: info, failCount: 1}
-	paused := &fakePausedChecker{info: PausedInfo{Paused: true, AutoResumePolicy: "any"}}
+	paused := &fakePausedChecker{info: PausedInfo{Paused: true, AutoResumePolicy: proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_ANY}}
 
 	ip, err := catalogResolution(ctx, "sbx-2", c, nil, paused, true, false)
 	if err != nil {
@@ -136,7 +137,7 @@ func TestCatalogResolutionPaused_AutoResumeFails(t *testing.T) {
 	ctx := context.Background()
 	c := &fakeCatalog{info: nil, failCount: 10}
 	paused := &fakePausedChecker{
-		info:      PausedInfo{Paused: true, AutoResumePolicy: "any"},
+		info:      PausedInfo{Paused: true, AutoResumePolicy: proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_ANY},
 		resumeErr: errors.New("nope"),
 	}
 
@@ -157,19 +158,19 @@ func TestCatalogResolutionPaused_AutoResumeFails(t *testing.T) {
 func TestShouldAutoResumePolicy(t *testing.T) {
 	t.Parallel()
 
-	if !shouldAutoResume("any", true, false) {
+	if !shouldAutoResume(proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_ANY, true, false) {
 		t.Fatalf("expected any=true")
 	}
-	if shouldAutoResume("null", true, true) {
+	if shouldAutoResume(proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_NULL, true, true) {
 		t.Fatalf("expected null=false")
 	}
-	if shouldAutoResume("authed", true, false) {
+	if shouldAutoResume(proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_AUTHED, true, false) {
 		t.Fatalf("expected authed=false without token")
 	}
-	if !shouldAutoResume("authed", true, true) {
+	if !shouldAutoResume(proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_AUTHED, true, true) {
 		t.Fatalf("expected authed=true with token")
 	}
-	if shouldAutoResume("unknown", true, false) {
+	if shouldAutoResume(proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_UNSPECIFIED, true, false) {
 		t.Fatalf("expected default=false for unknown policy")
 	}
 }
@@ -179,16 +180,16 @@ func TestAutoResumePolicies(t *testing.T) {
 
 	cases := []struct {
 		name             string
-		policy           string
+		policy           proxygrpc.AutoResumePolicy
 		requestHasAuth   bool
 		expectAutoResume bool
 	}{
-		{name: "any-authed", policy: "any", requestHasAuth: true, expectAutoResume: true},
-		{name: "any-unauthed", policy: "any", requestHasAuth: false, expectAutoResume: true},
-		{name: "authed-authed", policy: "authed", requestHasAuth: true, expectAutoResume: true},
-		{name: "authed-unauthed", policy: "authed", requestHasAuth: false, expectAutoResume: false},
-		{name: "null-authed", policy: "null", requestHasAuth: true, expectAutoResume: false},
-		{name: "null-unauthed", policy: "null", requestHasAuth: false, expectAutoResume: false},
+		{name: "any-authed", policy: proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_ANY, requestHasAuth: true, expectAutoResume: true},
+		{name: "any-unauthed", policy: proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_ANY, requestHasAuth: false, expectAutoResume: true},
+		{name: "authed-authed", policy: proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_AUTHED, requestHasAuth: true, expectAutoResume: true},
+		{name: "authed-unauthed", policy: proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_AUTHED, requestHasAuth: false, expectAutoResume: false},
+		{name: "null-authed", policy: proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_NULL, requestHasAuth: true, expectAutoResume: false},
+		{name: "null-unauthed", policy: proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_NULL, requestHasAuth: false, expectAutoResume: false},
 	}
 
 	for _, tc := range cases {
@@ -209,7 +210,7 @@ func TestCatalogResolutionPaused_AutoResumePolicyAny(t *testing.T) {
 	ctx := context.Background()
 	info := &catalog.SandboxInfo{OrchestratorIP: "10.0.0.2"}
 	c := &fakeCatalog{info: info, failCount: 1}
-	paused := &fakePausedChecker{info: PausedInfo{Paused: true, AutoResumePolicy: "any"}}
+	paused := &fakePausedChecker{info: PausedInfo{Paused: true, AutoResumePolicy: proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_ANY}}
 
 	ip, err := catalogResolution(ctx, "sbx-any", c, nil, paused, true, false)
 	if err != nil {
@@ -226,7 +227,7 @@ func TestCatalogResolutionPaused_AutoResumePolicyAuthed(t *testing.T) {
 	ctx := context.Background()
 	info := &catalog.SandboxInfo{OrchestratorIP: "10.0.0.3"}
 	c := &fakeCatalog{info: info, failCount: 1}
-	paused := &fakePausedChecker{info: PausedInfo{Paused: true, AutoResumePolicy: "authed"}}
+	paused := &fakePausedChecker{info: PausedInfo{Paused: true, AutoResumePolicy: proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_AUTHED}}
 
 	_, err := catalogResolution(ctx, "sbx-authed-no-auth", c, nil, paused, true, false)
 	if err == nil {
@@ -289,7 +290,7 @@ func TestCatalogResolutionPaused_AutoResumePolicyNull(t *testing.T) {
 
 	ctx := context.Background()
 	c := &fakeCatalog{info: nil, failCount: 1}
-	paused := &fakePausedChecker{info: PausedInfo{Paused: true, AutoResumePolicy: "null"}}
+	paused := &fakePausedChecker{info: PausedInfo{Paused: true, AutoResumePolicy: proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_NULL}}
 
 	_, err := catalogResolution(ctx, "sbx-null", c, nil, paused, true, true)
 	if err == nil {

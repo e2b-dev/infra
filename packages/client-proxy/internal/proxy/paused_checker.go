@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -30,7 +31,7 @@ type apiPausedSandboxChecker struct {
 
 type PausedInfo struct {
 	Paused           bool
-	AutoResumePolicy string
+	AutoResumePolicy proxygrpc.AutoResumePolicy
 }
 
 func NewApiPausedSandboxChecker(baseURL, adminToken, apiKey string, autoResumeEnabled bool) (PausedSandboxChecker, error) {
@@ -95,7 +96,7 @@ func (c *apiPausedSandboxChecker) PausedInfo(ctx context.Context, sandboxId stri
 			AutoResumePolicy: getAutoResumePolicy(payload.Metadata),
 		}, nil
 	case http.StatusNotFound:
-		return PausedInfo{Paused: false, AutoResumePolicy: ""}, nil
+		return PausedInfo{Paused: false, AutoResumePolicy: proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_NULL}, nil
 	case http.StatusUnauthorized, http.StatusForbidden:
 		return PausedInfo{}, errors.New("api auth failed for paused lookup")
 	default:
@@ -150,15 +151,6 @@ func logSleeping(ctx context.Context, sandboxId string) {
 	logger.L().Info(ctx, "im sleeping", logger.WithSandboxID(sandboxId))
 }
 
-func getAutoResumePolicy(metadata map[string]string) string {
-	if metadata == nil {
-		return "null"
-	}
-
-	value := strings.TrimSpace(strings.ToLower(metadata["auto_resume"]))
-	if value == "" {
-		return "null"
-	}
-
-	return value
+func getAutoResumePolicy(metadata map[string]string) proxygrpc.AutoResumePolicy {
+	return proxygrpc.AutoResumePolicyFromMetadata(metadata)
 }

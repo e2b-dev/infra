@@ -14,6 +14,7 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
@@ -54,7 +55,7 @@ func catalogResolution(ctx context.Context, sandboxId string, c catalog.Sandboxe
 				} else {
 					pausedInfo = PausedInfo{
 						Paused:           true,
-						AutoResumePolicy: info.AutoResumePolicy,
+						AutoResumePolicy: proxygrpc.AutoResumePolicyFromString(info.AutoResumePolicy),
 					}
 					pausedFound = true
 				}
@@ -133,17 +134,17 @@ func waitForCatalog(ctx context.Context, sandboxId string, c catalog.SandboxesCa
 	}
 }
 
-func shouldAutoResume(policy string, autoResumeEnabled bool, requestHasAuth bool) bool {
+func shouldAutoResume(policy proxygrpc.AutoResumePolicy, autoResumeEnabled bool, requestHasAuth bool) bool {
 	if !autoResumeEnabled {
 		return false
 	}
 
 	switch policy {
-	case "any":
+	case proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_ANY:
 		return true
-	case "authed":
+	case proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_AUTHED:
 		return requestHasAuth
-	case "null":
+	case proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_NULL, proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_UNSPECIFIED:
 		return false
 	default:
 		return false

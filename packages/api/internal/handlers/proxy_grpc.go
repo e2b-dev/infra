@@ -47,7 +47,10 @@ func (s *SandboxService) GetPausedInfo(ctx context.Context, req *proxygrpc.Sandb
 	snap, err := s.api.sqlcDB.GetLastSnapshot(ctx, sandboxID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return &proxygrpc.SandboxPausedInfoResponse{Paused: false, AutoResumePolicy: "null"}, nil
+			return &proxygrpc.SandboxPausedInfoResponse{
+				Paused:           false,
+				AutoResumePolicy: proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_NULL,
+			}, nil
 		}
 
 		return nil, status.Errorf(codes.Internal, "failed to get snapshot: %v", err)
@@ -77,11 +80,11 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 	authTeam, authProvided, authErr := s.resolveAuthTeam(ctx, snap.Snapshot.TeamID)
 
 	switch policy {
-	case "authed":
+	case proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_AUTHED:
 		if !authProvided || authErr != nil {
 			return nil, status.Error(codes.PermissionDenied, "authorization required to resume")
 		}
-	case "any":
+	case proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_ANY:
 		if authErr != nil {
 			logger.L().Warn(ctx, "proxy resume auth failed, continuing for policy=any", zap.Error(authErr), logger.WithSandboxID(sandboxID))
 		}
@@ -260,17 +263,8 @@ func (s *SandboxService) resolveAuthTeam(ctx context.Context, snapshotTeamID uui
 	return nil, false, nil
 }
 
-func autoResumePolicyFromMetadata(metadata map[string]string) string {
-	if metadata == nil {
-		return "null"
-	}
-
-	value := strings.TrimSpace(strings.ToLower(metadata["auto_resume"]))
-	if value == "" {
-		return "null"
-	}
-
-	return value
+func autoResumePolicyFromMetadata(metadata map[string]string) proxygrpc.AutoResumePolicy {
+	return proxygrpc.AutoResumePolicyFromMetadata(metadata)
 }
 
 func firstMetadata(md metadata.MD, key string) string {
