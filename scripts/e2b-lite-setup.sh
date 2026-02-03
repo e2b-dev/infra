@@ -135,11 +135,12 @@ start_spinner() {
         return
     fi
 
-    # Save cursor position and print message
+    # Print initial message
     printf "  %s " "$msg"
 
-    # Start spinner in background
+    # Start spinner in background (don't disown so wait works)
     (
+        trap 'exit 0' TERM INT
         i=0
         while true; do
             printf "\r  %s ${SPINNER_CHARS:i++%${#SPINNER_CHARS}:1} " "$msg"
@@ -147,22 +148,28 @@ start_spinner() {
         done
     ) &
     SPINNER_PID=$!
-    disown $SPINNER_PID 2>/dev/null || true
+}
+
+# Helper to kill spinner cleanly
+kill_spinner() {
+    if [[ -n "$SPINNER_PID" ]]; then
+        kill $SPINNER_PID 2>/dev/null || true
+        wait $SPINNER_PID 2>/dev/null || true
+        SPINNER_PID=""
+        # Clear the entire line
+        printf "\r\033[2K"
+    fi
 }
 
 # Stop spinner with success
 stop_spinner_success() {
     local msg="${1:-}"
-    if [[ -n "$SPINNER_PID" ]]; then
-        kill $SPINNER_PID 2>/dev/null || true
-        wait $SPINNER_PID 2>/dev/null || true
-        SPINNER_PID=""
-    fi
+    kill_spinner
     if [[ "$VERBOSE" != "true" ]]; then
         if [[ -n "$msg" ]]; then
-            printf "\r  ${GREEN}✓${NC} %s\n" "$msg"
+            printf "  ${GREEN}✓${NC} %s\n" "$msg"
         else
-            printf "\r  ${GREEN}✓${NC}\n"
+            printf "  ${GREEN}✓${NC}\n"
         fi
     fi
 }
@@ -170,16 +177,12 @@ stop_spinner_success() {
 # Stop spinner with failure
 stop_spinner_fail() {
     local msg="${1:-}"
-    if [[ -n "$SPINNER_PID" ]]; then
-        kill $SPINNER_PID 2>/dev/null || true
-        wait $SPINNER_PID 2>/dev/null || true
-        SPINNER_PID=""
-    fi
+    kill_spinner
     if [[ "$VERBOSE" != "true" ]]; then
         if [[ -n "$msg" ]]; then
-            printf "\r  ${RED}✗${NC} %s\n" "$msg"
+            printf "  ${RED}✗${NC} %s\n" "$msg"
         else
-            printf "\r  ${RED}✗${NC}\n"
+            printf "  ${RED}✗${NC}\n"
         fi
     fi
 }
@@ -187,16 +190,12 @@ stop_spinner_fail() {
 # Stop spinner with warning
 stop_spinner_warn() {
     local msg="${1:-}"
-    if [[ -n "$SPINNER_PID" ]]; then
-        kill $SPINNER_PID 2>/dev/null || true
-        wait $SPINNER_PID 2>/dev/null || true
-        SPINNER_PID=""
-    fi
+    kill_spinner
     if [[ "$VERBOSE" != "true" ]]; then
         if [[ -n "$msg" ]]; then
-            printf "\r  ${YELLOW}!${NC} %s\n" "$msg"
+            printf "  ${YELLOW}!${NC} %s\n" "$msg"
         else
-            printf "\r  ${YELLOW}!${NC}\n"
+            printf "  ${YELLOW}!${NC}\n"
         fi
     fi
 }
@@ -251,6 +250,8 @@ print_err() {
 cleanup_spinner() {
     if [[ -n "$SPINNER_PID" ]]; then
         kill $SPINNER_PID 2>/dev/null || true
+        wait $SPINNER_PID 2>/dev/null || true
+        printf "\r\033[2K"
     fi
 }
 trap cleanup_spinner EXIT
@@ -298,10 +299,20 @@ install_dependencies() {
         exit 1
     fi
 
+    local installed_items=()
+
+    if [[ "$VERBOSE" != "true" ]]; then
+        start_spinner "Installing dependencies"
+    fi
+
     # Update package list
-    start_spinner "Updating package list"
+    if [[ "$VERBOSE" == "true" ]]; then
+        start_spinner "Updating package list"
+    fi
     if run_cmd sudo apt-get update -qq; then
-        stop_spinner_success "Package list updated"
+        if [[ "$VERBOSE" == "true" ]]; then
+            stop_spinner_success "Package list updated"
+        fi
     else
         stop_spinner_fail "Failed to update package list"
         exit 1
@@ -309,7 +320,9 @@ install_dependencies() {
 
     # Install Docker if not present
     if ! command -v docker &> /dev/null; then
-        start_spinner "Installing Docker"
+        if [[ "$VERBOSE" == "true" ]]; then
+            start_spinner "Installing Docker"
+        fi
         if run_cmd sudo install -m 0755 -d /etc/apt/keyrings && \
            run_cmd sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc && \
            run_cmd sudo chmod a+r /etc/apt/keyrings/docker.asc; then
@@ -322,7 +335,10 @@ Signed-By: /etc/apt/keyrings/docker.asc" | sudo tee /etc/apt/sources.list.d/dock
 
             if run_cmd sudo apt-get update -qq && \
                run_cmd sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin; then
-                stop_spinner_success "Docker installed"
+                if [[ "$VERBOSE" == "true" ]]; then
+                    stop_spinner_success "Docker installed"
+                fi
+                installed_items+=("Docker")
             else
                 stop_spinner_fail "Failed to install Docker"
                 exit 1
@@ -331,44 +347,62 @@ Signed-By: /etc/apt/keyrings/docker.asc" | sudo tee /etc/apt/sources.list.d/dock
             stop_spinner_fail "Failed to setup Docker repository"
             exit 1
         fi
-    else
-        print_ok "Docker already installed"
     fi
 
     # Install Go if not present
     if ! command -v go &> /dev/null; then
-        start_spinner "Installing Go"
+        if [[ "$VERBOSE" == "true" ]]; then
+            start_spinner "Installing Go"
+        fi
         if run_cmd sudo snap install --classic go; then
-            stop_spinner_success "Go installed"
+            if [[ "$VERBOSE" == "true" ]]; then
+                stop_spinner_success "Go installed"
+            fi
+            installed_items+=("Go")
         else
             stop_spinner_fail "Failed to install Go"
             exit 1
         fi
-    else
-        print_ok "Go already installed ($(go version | grep -oP '\d+\.\d+' | head -1))"
     fi
 
     # Install Node.js if not present (needed for template building)
     if ! command -v node &> /dev/null; then
-        start_spinner "Installing Node.js"
+        if [[ "$VERBOSE" == "true" ]]; then
+            start_spinner "Installing Node.js"
+        fi
         if curl -fsSL https://deb.nodesource.com/setup_22.x 2>/dev/null | sudo -E bash - > /dev/null 2>&1 && \
            run_cmd sudo apt-get install -y nodejs; then
-            stop_spinner_success "Node.js installed"
+            if [[ "$VERBOSE" == "true" ]]; then
+                stop_spinner_success "Node.js installed"
+            fi
+            installed_items+=("Node.js")
         else
             stop_spinner_fail "Failed to install Node.js"
             exit 1
         fi
-    else
-        print_ok "Node.js already installed ($(node --version))"
     fi
 
     # Install build tools and other dependencies
-    start_spinner "Installing build tools"
+    if [[ "$VERBOSE" == "true" ]]; then
+        start_spinner "Installing build tools"
+    fi
     if run_cmd sudo apt-get install -y build-essential make ca-certificates curl git net-tools; then
-        stop_spinner_success "Build tools installed"
+        if [[ "$VERBOSE" == "true" ]]; then
+            stop_spinner_success "Build tools installed"
+        fi
+        installed_items+=("build-tools")
     else
         stop_spinner_fail "Failed to install build tools"
         exit 1
+    fi
+
+    # Summary for non-verbose mode
+    if [[ "$VERBOSE" != "true" ]]; then
+        if [[ ${#installed_items[@]} -gt 0 ]]; then
+            stop_spinner_success "Installed: ${installed_items[*]}"
+        else
+            stop_spinner_success "All dependencies already installed"
+        fi
     fi
 }
 
@@ -378,82 +412,116 @@ Signed-By: /etc/apt/keyrings/docker.asc" | sudo tee /etc/apt/sources.list.d/dock
 check_prerequisites() {
     local has_errors=false
     local has_warnings=false
+    local warning_msg=""
 
     # Check OS
     if [[ "$OSTYPE" != "linux-gnu"* ]]; then
-        print_err "E2B Lite requires Linux. Detected: $OSTYPE"
+        if [[ "$VERBOSE" == "true" ]] || [[ "$CHECK_REQ_ONLY" == "true" ]]; then
+            print_err "E2B Lite requires Linux. Detected: $OSTYPE"
+        fi
         has_errors=true
     else
-        print_ok "Linux detected"
+        if [[ "$VERBOSE" == "true" ]] || [[ "$CHECK_REQ_ONLY" == "true" ]]; then
+            print_ok "Linux detected"
+        fi
     fi
 
     # Check kernel version
     KERNEL_MAJOR=$(uname -r | cut -d. -f1)
     KERNEL_MINOR=$(uname -r | cut -d. -f2)
     if [ "$KERNEL_MAJOR" -lt 5 ] || ([ "$KERNEL_MAJOR" -eq 5 ] && [ "$KERNEL_MINOR" -lt 10 ]); then
-        print_err "Kernel $(uname -r) is too old. Minimum required: 5.10"
+        if [[ "$VERBOSE" == "true" ]] || [[ "$CHECK_REQ_ONLY" == "true" ]]; then
+            print_err "Kernel $(uname -r) is too old. Minimum required: 5.10"
+        fi
         has_errors=true
     else
-        print_ok "Kernel $(uname -r)"
+        if [[ "$VERBOSE" == "true" ]] || [[ "$CHECK_REQ_ONLY" == "true" ]]; then
+            print_ok "Kernel $(uname -r)"
+        fi
     fi
 
     # Check for kernel 6.8+ (needed for building templates)
     if [ "$KERNEL_MAJOR" -lt 6 ] || ([ "$KERNEL_MAJOR" -eq 6 ] && [ "$KERNEL_MINOR" -lt 8 ]); then
-        print_warn "Kernel < 6.8: You can run sandboxes but cannot build custom templates"
+        if [[ "$VERBOSE" == "true" ]] || [[ "$CHECK_REQ_ONLY" == "true" ]]; then
+            print_warn "Kernel < 6.8: You can run sandboxes but cannot build custom templates"
+        fi
         BUILD_TEMPLATE=false
         has_warnings=true
+        warning_msg="kernel < 6.8"
     else
-        print_ok "Kernel 6.8+: Full support (running + building templates)"
+        if [[ "$VERBOSE" == "true" ]] || [[ "$CHECK_REQ_ONLY" == "true" ]]; then
+            print_ok "Kernel 6.8+: Full support (running + building templates)"
+        fi
     fi
 
     # Check KVM
     if [[ ! -e /dev/kvm ]]; then
-        print_err "/dev/kvm not found. KVM is required"
-        echo "       Enable KVM: sudo modprobe kvm_intel (or kvm_amd)"
+        if [[ "$VERBOSE" == "true" ]] || [[ "$CHECK_REQ_ONLY" == "true" ]]; then
+            print_err "/dev/kvm not found. KVM is required"
+            echo "       Enable KVM: sudo modprobe kvm_intel (or kvm_amd)"
+        fi
         has_errors=true
     elif [[ ! -r /dev/kvm ]] || [[ ! -w /dev/kvm ]]; then
-        print_warn "No read/write access to /dev/kvm"
-        echo "       Fix: sudo usermod -aG kvm \$USER && newgrp kvm"
+        if [[ "$VERBOSE" == "true" ]] || [[ "$CHECK_REQ_ONLY" == "true" ]]; then
+            print_warn "No read/write access to /dev/kvm"
+            echo "       Fix: sudo usermod -aG kvm \$USER && newgrp kvm"
+        fi
         has_warnings=true
     else
-        print_ok "KVM available"
+        if [[ "$VERBOSE" == "true" ]] || [[ "$CHECK_REQ_ONLY" == "true" ]]; then
+            print_ok "KVM available"
+        fi
     fi
 
     # Check Docker
     if ! command -v docker &> /dev/null; then
-        if [[ "$CHECK_REQ_ONLY" == "true" ]]; then
-            print_err "Docker not found"
-        else
-            print_err "Docker not found. Run with --deps-only first or install manually"
+        if [[ "$VERBOSE" == "true" ]] || [[ "$CHECK_REQ_ONLY" == "true" ]]; then
+            if [[ "$CHECK_REQ_ONLY" == "true" ]]; then
+                print_err "Docker not found"
+            else
+                print_err "Docker not found. Run with --deps-only first or install manually"
+            fi
         fi
         has_errors=true
     elif ! docker info &> /dev/null 2>&1; then
-        print_err "Docker daemon not running or no permission"
-        echo "       Start Docker: sudo systemctl start docker"
-        echo "       Or add to group: sudo usermod -aG docker \$USER && newgrp docker"
+        if [[ "$VERBOSE" == "true" ]] || [[ "$CHECK_REQ_ONLY" == "true" ]]; then
+            print_err "Docker daemon not running or no permission"
+            echo "       Start Docker: sudo systemctl start docker"
+            echo "       Or add to group: sudo usermod -aG docker \$USER && newgrp docker"
+        fi
         has_errors=true
     else
-        print_ok "Docker available"
+        if [[ "$VERBOSE" == "true" ]] || [[ "$CHECK_REQ_ONLY" == "true" ]]; then
+            print_ok "Docker available"
+        fi
     fi
 
     # Check Go
     if ! command -v go &> /dev/null; then
-        if [[ "$CHECK_REQ_ONLY" == "true" ]]; then
-            print_err "Go not found"
-        else
-            print_err "Go not found. Run with --deps-only first or install manually"
+        if [[ "$VERBOSE" == "true" ]] || [[ "$CHECK_REQ_ONLY" == "true" ]]; then
+            if [[ "$CHECK_REQ_ONLY" == "true" ]]; then
+                print_err "Go not found"
+            else
+                print_err "Go not found. Run with --deps-only first or install manually"
+            fi
         fi
         has_errors=true
     else
         GO_VERSION=$(go version | grep -oP '\d+\.\d+' | head -1)
-        print_ok "Go $GO_VERSION"
+        if [[ "$VERBOSE" == "true" ]] || [[ "$CHECK_REQ_ONLY" == "true" ]]; then
+            print_ok "Go $GO_VERSION"
+        fi
     fi
 
     # Check Node.js (optional, for template building)
     if command -v node &> /dev/null; then
-        print_ok "Node.js $(node --version)"
+        if [[ "$VERBOSE" == "true" ]] || [[ "$CHECK_REQ_ONLY" == "true" ]]; then
+            print_ok "Node.js $(node --version)"
+        fi
     else
-        print_warn "Node.js not found (needed for template building)"
+        if [[ "$VERBOSE" == "true" ]] || [[ "$CHECK_REQ_ONLY" == "true" ]]; then
+            print_warn "Node.js not found (needed for template building)"
+        fi
         has_warnings=true
     fi
 
@@ -473,6 +541,18 @@ check_prerequisites() {
         fi
     fi
 
+    # Summary for non-verbose mode
+    if [[ "$VERBOSE" != "true" ]]; then
+        if [[ "$has_errors" == "true" ]]; then
+            print_err "Prerequisites check failed"
+            exit 1
+        elif [[ "$has_warnings" == "true" ]]; then
+            print_warn "System ready ($warning_msg)"
+        else
+            print_ok "All prerequisites met"
+        fi
+    fi
+
     # For non-check-req mode, exit on errors
     if [[ "$has_errors" == "true" ]]; then
         exit 1
@@ -480,75 +560,93 @@ check_prerequisites() {
 }
 
 # -----------------------------------------------------------------------------
-# Setup kernel modules
+# Setup system (kernel modules, hugepages, directories)
 # -----------------------------------------------------------------------------
-setup_kernel_modules() {
+setup_system() {
+    local config_items=()
+
+    if [[ "$VERBOSE" != "true" ]]; then
+        start_spinner "Configuring system"
+    fi
+
     # NBD module with sufficient devices
     if ! lsmod | grep -q "^nbd "; then
-        start_spinner "Loading NBD module"
+        if [[ "$VERBOSE" == "true" ]]; then
+            start_spinner "Loading NBD module"
+        fi
         if sudo modprobe nbd nbds_max=128 2>/dev/null; then
-            stop_spinner_success "NBD module loaded (nbds_max=128)"
+            if [[ "$VERBOSE" == "true" ]]; then
+                stop_spinner_success "NBD module loaded (nbds_max=128)"
+            fi
+            config_items+=("NBD")
         else
-            stop_spinner_warn "Failed to load NBD module (may need to install)"
+            if [[ "$VERBOSE" == "true" ]]; then
+                stop_spinner_warn "Failed to load NBD module (may need to install)"
+            fi
         fi
     else
         # Check if we have enough NBD devices
         NBD_COUNT=$(ls -1 /dev/nbd* 2>/dev/null | wc -l)
         if [ "$NBD_COUNT" -lt 64 ]; then
-            start_spinner "Reloading NBD module with more devices"
+            if [[ "$VERBOSE" == "true" ]]; then
+                start_spinner "Reloading NBD module with more devices"
+            fi
             sudo rmmod nbd 2>/dev/null || true
             sudo modprobe nbd nbds_max=128
-            stop_spinner_success "NBD module reloaded"
-        else
-            print_ok "NBD module loaded"
+            if [[ "$VERBOSE" == "true" ]]; then
+                stop_spinner_success "NBD module reloaded"
+            fi
+            config_items+=("NBD")
         fi
     fi
 
     # TUN module
     if ! lsmod | grep -q "^tun "; then
-        start_spinner "Loading TUN module"
-        if sudo modprobe tun 2>/dev/null; then
-            stop_spinner_success "TUN module loaded"
-        else
-            stop_spinner_warn "Failed to load TUN module"
+        if [[ "$VERBOSE" == "true" ]]; then
+            start_spinner "Loading TUN module"
         fi
-    else
-        print_ok "TUN module loaded"
+        if sudo modprobe tun 2>/dev/null; then
+            if [[ "$VERBOSE" == "true" ]]; then
+                stop_spinner_success "TUN module loaded"
+            fi
+            config_items+=("TUN")
+        else
+            if [[ "$VERBOSE" == "true" ]]; then
+                stop_spinner_warn "Failed to load TUN module"
+            fi
+        fi
     fi
-}
 
-# -----------------------------------------------------------------------------
-# Setup HugePages
-# -----------------------------------------------------------------------------
-setup_hugepages() {
+    # HugePages
     HUGEPAGES_TOTAL=$(cat /proc/sys/vm/nr_hugepages 2>/dev/null || echo 0)
     HUGEPAGES_NEEDED=2048  # 2048 * 2MB = 4GB reserved for HugePages
 
     if [ "$HUGEPAGES_TOTAL" -lt "$HUGEPAGES_NEEDED" ]; then
-        start_spinner "Allocating HugePages (4GB)"
+        if [[ "$VERBOSE" == "true" ]]; then
+            start_spinner "Allocating HugePages (4GB)"
+        fi
         if echo "$HUGEPAGES_NEEDED" | sudo tee /proc/sys/vm/nr_hugepages > /dev/null 2>&1; then
-            # Make it persistent across reboots
             if ! grep -q "vm.nr_hugepages" /etc/sysctl.conf 2>/dev/null; then
                 echo "vm.nr_hugepages=$HUGEPAGES_NEEDED" | sudo tee -a /etc/sysctl.conf > /dev/null
-                stop_spinner_success "HugePages configured (persistent)"
             else
                 sudo sed -i "s/vm.nr_hugepages=.*/vm.nr_hugepages=$HUGEPAGES_NEEDED/" /etc/sysctl.conf
-                stop_spinner_success "HugePages allocated"
             fi
+            if [[ "$VERBOSE" == "true" ]]; then
+                stop_spinner_success "HugePages configured (persistent)"
+            fi
+            config_items+=("HugePages")
         else
-            stop_spinner_warn "Failed to allocate HugePages"
-            echo "       Manual fix: echo $HUGEPAGES_NEEDED | sudo tee /proc/sys/vm/nr_hugepages"
+            if [[ "$VERBOSE" == "true" ]]; then
+                stop_spinner_warn "Failed to allocate HugePages"
+                echo "       Manual fix: echo $HUGEPAGES_NEEDED | sudo tee /proc/sys/vm/nr_hugepages"
+            fi
         fi
-    else
-        print_ok "HugePages already configured ($HUGEPAGES_TOTAL pages)"
     fi
-}
 
-# -----------------------------------------------------------------------------
-# Create directory structure
-# -----------------------------------------------------------------------------
-create_directories() {
-    start_spinner "Creating directory structure"
+    # Create directories
+    if [[ "$VERBOSE" == "true" ]]; then
+        start_spinner "Creating directory structure"
+    fi
 
     mkdir -p "$FC_VERSIONS_DIR/$FC_VERSION"
     mkdir -p "$KERNELS_DIR/$KERNEL_VERSION"
@@ -565,7 +663,15 @@ create_directories() {
     mkdir -p "$ORCHESTRATOR_DIR/tmp/orchestrator/build"
     mkdir -p "$ORCHESTRATOR_DIR/tmp/orchestrator/build-templates"
 
-    stop_spinner_success "Directories created"
+    if [[ "$VERBOSE" == "true" ]]; then
+        stop_spinner_success "Directories created"
+    fi
+    config_items+=("directories")
+
+    # Summary for non-verbose mode
+    if [[ "$VERBOSE" != "true" ]]; then
+        stop_spinner_success "System configured (${config_items[*]})"
+    fi
 }
 
 # -----------------------------------------------------------------------------
@@ -726,16 +832,26 @@ download_prebuilt_binaries() {
 # Build all binaries
 # -----------------------------------------------------------------------------
 build_binaries() {
+    local built_items=()
+    local existing_items=()
+
+    if [[ "$VERBOSE" != "true" ]]; then
+        start_spinner "Building binaries"
+    fi
+
     # Build envd - MUST use regular build (not build-debug) for static linking
-    # The debug build uses CGO_ENABLED=1 which produces a dynamically linked binary
-    # that won't work inside the minimal Firecracker VM
     ENVD_PATH="$ENVD_DIR/bin/envd"
     if [[ -f "$ENVD_PATH" ]]; then
-        print_ok "envd already built"
+        existing_items+=("envd")
     else
-        start_spinner "Building envd"
+        if [[ "$VERBOSE" == "true" ]]; then
+            start_spinner "Building envd"
+        fi
         if run_cmd make -C "$ENVD_DIR" build; then
-            stop_spinner_success "envd built"
+            if [[ "$VERBOSE" == "true" ]]; then
+                stop_spinner_success "envd built"
+            fi
+            built_items+=("envd")
         else
             stop_spinner_fail "Failed to build envd"
             exit 1
@@ -745,11 +861,16 @@ build_binaries() {
     # Build API
     API_PATH="$API_DIR/bin/api"
     if [[ -f "$API_PATH" ]]; then
-        print_ok "API already built"
+        existing_items+=("API")
     else
-        start_spinner "Building API"
+        if [[ "$VERBOSE" == "true" ]]; then
+            start_spinner "Building API"
+        fi
         if run_cmd make -C "$API_DIR" build; then
-            stop_spinner_success "API built"
+            if [[ "$VERBOSE" == "true" ]]; then
+                stop_spinner_success "API built"
+            fi
+            built_items+=("API")
         else
             stop_spinner_fail "Failed to build API"
             exit 1
@@ -759,11 +880,16 @@ build_binaries() {
     # Build Orchestrator
     ORCH_PATH="$ORCHESTRATOR_DIR/bin/orchestrator"
     if [[ -f "$ORCH_PATH" ]]; then
-        print_ok "Orchestrator already built"
+        existing_items+=("Orchestrator")
     else
-        start_spinner "Building Orchestrator"
+        if [[ "$VERBOSE" == "true" ]]; then
+            start_spinner "Building Orchestrator"
+        fi
         if run_cmd make -C "$ORCHESTRATOR_DIR" build-debug; then
-            stop_spinner_success "Orchestrator built"
+            if [[ "$VERBOSE" == "true" ]]; then
+                stop_spinner_success "Orchestrator built"
+            fi
+            built_items+=("Orchestrator")
         else
             stop_spinner_fail "Failed to build Orchestrator"
             exit 1
@@ -773,14 +899,28 @@ build_binaries() {
     # Build Client-Proxy
     PROXY_PATH="$CLIENT_PROXY_DIR/bin/client-proxy"
     if [[ -f "$PROXY_PATH" ]]; then
-        print_ok "Client-Proxy already built"
+        existing_items+=("Client-Proxy")
     else
-        start_spinner "Building Client-Proxy"
+        if [[ "$VERBOSE" == "true" ]]; then
+            start_spinner "Building Client-Proxy"
+        fi
         if run_cmd make -C "$CLIENT_PROXY_DIR" build; then
-            stop_spinner_success "Client-Proxy built"
+            if [[ "$VERBOSE" == "true" ]]; then
+                stop_spinner_success "Client-Proxy built"
+            fi
+            built_items+=("Client-Proxy")
         else
             stop_spinner_fail "Failed to build Client-Proxy"
             exit 1
+        fi
+    fi
+
+    # Summary for non-verbose mode
+    if [[ "$VERBOSE" != "true" ]]; then
+        if [[ ${#built_items[@]} -gt 0 ]]; then
+            stop_spinner_success "Built: ${built_items[*]}"
+        else
+            stop_spinner_success "All binaries already built"
         fi
     fi
 }
@@ -790,7 +930,9 @@ build_binaries() {
 # -----------------------------------------------------------------------------
 setup_npm_dependencies() {
     if ! command -v npm &> /dev/null; then
-        print_warn "Skipping npm dependencies (npm not found)"
+        if [[ "$VERBOSE" == "true" ]]; then
+            print_warn "Skipping npm dependencies (npm not found)"
+        fi
         return
     fi
 
@@ -803,7 +945,11 @@ setup_npm_dependencies() {
                 stop_spinner_warn "Failed to install npm packages"
             fi
         else
-            print_ok "npm dependencies ready"
+            if [[ "$VERBOSE" == "true" ]]; then
+                print_ok "npm dependencies ready"
+            else
+                print_ok "npm dependencies ready"
+            fi
         fi
     fi
 }
@@ -812,7 +958,6 @@ setup_npm_dependencies() {
 # Start Docker infrastructure
 # -----------------------------------------------------------------------------
 start_infrastructure() {
-    # Use full docker-compose with all services
     COMPOSE_FILE="$LOCAL_DEV_DIR/docker-compose.yaml"
 
     if [[ ! -f "$COMPOSE_FILE" ]]; then
@@ -820,20 +965,18 @@ start_infrastructure() {
         exit 1
     fi
 
-    # Check if containers are already running
     if docker ps --format '{{.Names}}' | grep -q "local-dev-postgres"; then
         print_ok "Infrastructure already running"
     else
-        start_spinner "Starting Docker containers"
+        start_spinner "Starting Docker infrastructure"
         if run_cmd docker compose -f "$COMPOSE_FILE" up -d; then
-            # Wait for PostgreSQL to be ready
             for i in {1..30}; do
                 if docker exec local-dev-postgres-1 pg_isready -U postgres > /dev/null 2>&1; then
                     break
                 fi
                 sleep 1
             done
-            stop_spinner_success "Infrastructure started"
+            stop_spinner_success "Docker infrastructure started"
         else
             stop_spinner_fail "Failed to start infrastructure"
             exit 1
@@ -842,36 +985,61 @@ start_infrastructure() {
 }
 
 # -----------------------------------------------------------------------------
-# Run database migrations
+# Configure database (migrations + seeding)
 # -----------------------------------------------------------------------------
-run_migrations() {
+configure_database() {
     export POSTGRES_CONNECTION_STRING="postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"
 
-    start_spinner "Running database migrations"
-    if run_cmd make -C "$REPO_ROOT/packages/db" migrate-local; then
-        stop_spinner_success "Migrations applied"
-    else
-        stop_spinner_warn "Migrations may have failed or already applied"
+    local db_actions=()
+
+    if [[ "$VERBOSE" != "true" ]]; then
+        start_spinner "Configuring database"
     fi
-}
 
-# -----------------------------------------------------------------------------
-# Seed database
-# -----------------------------------------------------------------------------
-seed_database() {
-    export POSTGRES_CONNECTION_STRING="postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"
+    # Run migrations
+    if [[ "$VERBOSE" == "true" ]]; then
+        start_spinner "Running database migrations"
+    fi
+    if run_cmd make -C "$REPO_ROOT/packages/db" migrate-local; then
+        if [[ "$VERBOSE" == "true" ]]; then
+            stop_spinner_success "Migrations applied"
+        fi
+        db_actions+=("migrations")
+    else
+        if [[ "$VERBOSE" == "true" ]]; then
+            stop_spinner_warn "Migrations may have failed or already applied"
+        fi
+    fi
 
-    # Check if already seeded by looking for the team
+    # Check if already seeded
     TEAM_EXISTS=$(docker exec local-dev-postgres-1 psql -U postgres -tAc "SELECT COUNT(*) FROM teams WHERE id='0b8a3ded-4489-4722-afd1-1d82e64ec2d5';" 2>/dev/null || echo "0")
 
     if [[ "$TEAM_EXISTS" == "1" ]]; then
-        print_ok "Database already seeded"
+        if [[ "$VERBOSE" == "true" ]]; then
+            print_ok "Database already seeded"
+        fi
     else
-        start_spinner "Seeding database"
+        if [[ "$VERBOSE" == "true" ]]; then
+            start_spinner "Seeding database"
+        fi
         if (cd "$LOCAL_DEV_DIR" && run_cmd go run seed-local-database.go); then
-            stop_spinner_success "Database seeded"
+            if [[ "$VERBOSE" == "true" ]]; then
+                stop_spinner_success "Database seeded"
+            fi
+            db_actions+=("seeded")
         else
-            stop_spinner_warn "Seeding may have failed"
+            if [[ "$VERBOSE" == "true" ]]; then
+                stop_spinner_warn "Seeding may have failed"
+            fi
+        fi
+    fi
+
+    # Summary for non-verbose mode
+    if [[ "$VERBOSE" != "true" ]]; then
+        if [[ ${#db_actions[@]} -gt 0 ]]; then
+            stop_spinner_success "Database configured (${db_actions[*]})"
+        else
+            stop_spinner_success "Database already configured"
         fi
     fi
 }
@@ -1080,38 +1248,21 @@ SCRIPT
 # Start all E2B Lite services
 #
 # Usage:
-#   ./scripts/services/start-all.sh           # Start in foreground (Ctrl+C to stop)
-#   ./scripts/services/start-all.sh --bg      # Start in background
+#   ./scripts/services/start-all.sh           # Start in background (default)
+#   ./scripts/services/start-all.sh --fg      # Start in foreground (Ctrl+C to stop)
 #
 
 cd "$(dirname "$0")/../.." || exit 1
 REPO_ROOT="$(pwd)"
 
-BACKGROUND=false
-if [[ "$1" == "--bg" ]]; then
-    BACKGROUND=true
+FOREGROUND=false
+if [[ "$1" == "--fg" ]]; then
+    FOREGROUND=true
 fi
 
 echo "Starting E2B Lite services..."
 
-if [[ "$BACKGROUND" == "true" ]]; then
-    # Background mode
-    nohup "$REPO_ROOT/scripts/services/start-api.sh" > /tmp/e2b-api.log 2>&1 &
-    echo "  API started (PID: $!, log: /tmp/e2b-api.log)"
-
-    nohup "$REPO_ROOT/scripts/services/start-orchestrator.sh" > /tmp/e2b-orchestrator.log 2>&1 &
-    echo "  Orchestrator started (PID: $!, log: /tmp/e2b-orchestrator.log)"
-
-    sleep 2  # Wait for orchestrator to initialize
-
-    nohup "$REPO_ROOT/scripts/services/start-client-proxy.sh" > /tmp/e2b-client-proxy.log 2>&1 &
-    echo "  Client-Proxy started (PID: $!, log: /tmp/e2b-client-proxy.log)"
-
-    echo ""
-    echo "All services started in background."
-    echo "Check status: ps aux | grep -E 'api|orchestrator|client-proxy'"
-    echo "Stop all: pkill -f 'bin/(api|orchestrator|client-proxy)'"
-else
+if [[ "$FOREGROUND" == "true" ]]; then
     # Foreground mode with trap
     cleanup() {
         echo ""
@@ -1140,6 +1291,23 @@ else
     echo ""
     echo "All services running. Press Ctrl+C to stop."
     wait
+else
+    # Background mode (default)
+    nohup "$REPO_ROOT/scripts/services/start-api.sh" > /tmp/e2b-api.log 2>&1 &
+    echo "  API started (PID: $!, log: /tmp/e2b-api.log)"
+
+    nohup "$REPO_ROOT/scripts/services/start-orchestrator.sh" > /tmp/e2b-orchestrator.log 2>&1 &
+    echo "  Orchestrator started (PID: $!, log: /tmp/e2b-orchestrator.log)"
+
+    sleep 2  # Wait for orchestrator to initialize
+
+    nohup "$REPO_ROOT/scripts/services/start-client-proxy.sh" > /tmp/e2b-client-proxy.log 2>&1 &
+    echo "  Client-Proxy started (PID: $!, log: /tmp/e2b-client-proxy.log)"
+
+    echo ""
+    echo "All services started in background."
+    echo "Check status: ps aux | grep -E 'api|orchestrator|client-proxy'"
+    echo "Stop all: pkill -f 'bin/(api|orchestrator|client-proxy)'"
 fi
 SCRIPT
     chmod +x "$REPO_ROOT/scripts/services/start-all.sh"
@@ -1300,20 +1468,25 @@ print_summary() {
     echo -e "${BOLD}Next Steps:${NC}"
     echo ""
     echo "  1. Start all services:"
-    echo -e "     ${DIM}./scripts/services/start-all.sh${NC}"
+    echo "     ./scripts/services/start-all.sh"
     echo ""
     echo "  2. Test with Python SDK:"
-    echo -e "     ${DIM}pip install e2b${NC}"
-    echo -e "     ${DIM}python scripts/test-e2b-lite.py${NC}"
+    echo "     pip install e2b && python scripts/test-e2b-lite.py"
     echo ""
-    echo -e "${BOLD}Quick Reference:${NC}"
+    echo -e "${BOLD}Environment Variables (copy & paste):${NC}"
     echo ""
-    echo "  API URL:      http://localhost:80"
-    echo "  Sandbox URL:  http://localhost:3002"
-    echo "  API Key:      $API_KEY"
+    echo "export E2B_API_KEY=\"$API_KEY\""
+    echo "export E2B_API_URL=\"http://localhost:80\""
+    echo "export E2B_SANDBOX_URL=\"http://localhost:3002\""
+    echo "export E2B_ACCESS_TOKEN=\"$ACCESS_TOKEN\""
     if [[ -n "$TEMPLATE_ID" ]]; then
-        echo "  Template ID:  $TEMPLATE_ID"
+        echo "export E2B_TEMPLATE_ID=\"$TEMPLATE_ID\""
     fi
+    echo ""
+    echo -e "${BOLD}CLI Usage:${NC}"
+    echo ""
+    echo "  npx @e2b/cli template list"
+    echo "  npx @e2b/cli sandbox list"
     echo ""
     echo -e "${DIM}For detailed usage, see E2B-LITE-DESIGN.md${NC}"
     echo ""
@@ -1324,7 +1497,7 @@ print_summary() {
 # =============================================================================
 
 # Count total steps for progress display
-TOTAL_STEPS=10
+TOTAL_STEPS=8
 CURRENT_STEP=0
 
 next_step() {
@@ -1358,10 +1531,8 @@ fi
 next_step "Checking prerequisites"
 check_prerequisites
 
-next_step "Setting up system"
-setup_kernel_modules
-setup_hugepages
-create_directories
+next_step "Configuring system"
+setup_system
 download_artifacts
 
 next_step "Building binaries"
@@ -1371,15 +1542,12 @@ else
     build_binaries
 fi
 
-next_step "Setting up npm dependencies"
-setup_npm_dependencies
-
 next_step "Starting infrastructure"
 start_infrastructure
+setup_npm_dependencies
 
 next_step "Configuring database"
-run_migrations
-seed_database
+configure_database
 
 next_step "Building template"
 build_base_template

@@ -52,11 +52,11 @@ cd infra
 ### 2. Start Services
 
 ```bash
-# Start all services (foreground, Ctrl+C to stop)
+# Start all services in background (default)
 ./scripts/services/start-all.sh
 
-# Or start in background
-./scripts/services/start-all.sh --bg
+# Or start in foreground (Ctrl+C to stop)
+./scripts/services/start-all.sh --fg
 ```
 
 ### 3. Test
@@ -205,8 +205,8 @@ Created by setup script in `scripts/services/`:
 
 | Script | Description |
 |--------|-------------|
-| `start-all.sh` | Start all services (foreground) |
-| `start-all.sh --bg` | Start all services (background) |
+| `start-all.sh` | Start all services (background) |
+| `start-all.sh --fg` | Start all services (foreground) |
 | `start-api.sh` | Start API server only |
 | `start-orchestrator.sh` | Start orchestrator only |
 | `start-client-proxy.sh` | Start client-proxy only |
@@ -214,8 +214,8 @@ Created by setup script in `scripts/services/`:
 ### Manual Service Management
 
 ```bash
-# Start in background
-./scripts/services/start-all.sh --bg
+# Start in background (default)
+./scripts/services/start-all.sh
 
 # Check status
 ps aux | grep -E 'bin/(api|orchestrator|client-proxy)'
