@@ -39,12 +39,3 @@ func NormalizeAutoResumePolicy(policy AutoResumePolicy) AutoResumePolicy {
 
 	return policy
 }
-
-// AutoResumePolicyFromMetadata extracts and normalizes the auto_resume value.
-func AutoResumePolicyFromMetadata(metadata map[string]string) AutoResumePolicy {
-	if metadata == nil {
-		return AutoResumePolicy_AUTO_RESUME_POLICY_NULL
-	}
-
-	return AutoResumePolicyFromString(metadata["auto_resume"])
-}
