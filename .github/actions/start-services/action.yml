@@ -116,6 +116,7 @@ runs:
         bash ./scripts/start-service.sh "API" packages/api run ~/logs/api.log http://localhost:3000/health
 
         # Start client-proxy (needed for auto-resume tests)
+        AUTO_RESUME_FORCE=true \
         API_GRPC_ADDRESS=localhost:5009 \
         bash ./scripts/start-service.sh "ClientProxy" packages/client-proxy run ~/logs/client-proxy.log http://localhost:3003
       shell: bash

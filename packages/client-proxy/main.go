@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -146,6 +147,16 @@ func run() int {
 	if !config.AutoResumeEnabled {
 		autoResumeEnabled = false
 	}
+	if config.AutoResumeForce {
+		autoResumeEnabled = true
+	}
+	launchDarklyEnabled := strings.TrimSpace(os.Getenv("LAUNCH_DARKLY_API_KEY")) != ""
+	l.Info(ctx, "auto-resume configuration",
+		zap.Bool("auto_resume_enabled", autoResumeEnabled),
+		zap.Bool("auto_resume_env_enabled", config.AutoResumeEnabled),
+		zap.Bool("auto_resume_force", config.AutoResumeForce),
+		zap.Bool("launch_darkly_enabled", launchDarklyEnabled),
+	)
 
 	trafficProxy, err := e2bproxy.NewClientProxyWithPausedChecker(
 		tel.MeterProvider,

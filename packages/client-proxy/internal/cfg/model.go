@@ -12,6 +12,7 @@ type Config struct {
 
 	ApiGrpcAddress    string `env:"API_GRPC_ADDRESS"`
 	AutoResumeEnabled bool   `env:"AUTO_RESUME_ENABLED" envDefault:"true"`
+	AutoResumeForce   bool   `env:"AUTO_RESUME_FORCE" envDefault:"false"`
 }
 
 func Parse() (Config, error) {
