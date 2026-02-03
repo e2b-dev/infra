@@ -85,12 +85,12 @@ func (a *commonAuthenticator[T]) Authenticate(ctx context.Context, ginCtx *gin.C
 			attribute.String("error.message", a.errorMessage),
 		)
 
-		ginCtx.JSON(http.StatusUnauthorized, api.Error{
+		ginCtx.AbortWithStatusJSON(http.StatusUnauthorized, api.Error{
 			Code:    http.StatusUnauthorized,
 			Message: a.errorMessage,
 		})
 
-		return err
+		return nil
 	}
 
 	telemetry.ReportEvent(ctx, "api key extracted")
@@ -98,30 +98,28 @@ func (a *commonAuthenticator[T]) Authenticate(ctx context.Context, ginCtx *gin.C
 	// If the API key is valid, we will get a result back
 	result, validationError := a.validationFunction(ctx, ginCtx, headerKey)
 	if validationError != nil {
+		// Check for special error types that should return 403
+		statusCode := validationError.Code
+		var forbiddenError *db.TeamForbiddenError
+		var blockedError *db.TeamBlockedError
+		if errors.As(validationError.Err, &forbiddenError) || errors.As(validationError.Err, &blockedError) {
+			statusCode = http.StatusForbidden
+		}
+
 		telemetry.ReportError(ctx,
 			"validation error",
 			validationError.Err,
 			attribute.String("error.message", a.errorMessage),
-			attribute.Int("http.status_code", validationError.Code),
-			attribute.String("http.status_text", http.StatusText(validationError.Code)),
+			attribute.Int("http.status_code", statusCode),
+			attribute.String("http.status_text", http.StatusText(statusCode)),
 		)
 
-		ginCtx.JSON(validationError.Code, api.Error{
-			Code:    int32(validationError.Code),
+		ginCtx.AbortWithStatusJSON(statusCode, api.Error{
+			Code:    int32(statusCode),
 			Message: validationError.ClientMsg,
 		})
 
-		var forbiddenError *db.TeamForbiddenError
-		if errors.As(validationError.Err, &forbiddenError) {
-			return fmt.Errorf("forbidden: %w", validationError.Err)
-		}
-
-		var blockedError *db.TeamBlockedError
-		if errors.As(validationError.Err, &blockedError) {
-			return fmt.Errorf("blocked: %w", validationError.Err)
-		}
-
-		return fmt.Errorf("%s\n%s (%w)", a.errorMessage, validationError.ClientMsg, validationError.Err)
+		return nil
 	}
 
 	telemetry.ReportEvent(ctx, "api key validated")
