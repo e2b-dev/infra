@@ -111,7 +111,7 @@ func TestInitWithWrongTokenOnSecuredSandboxReturnsUnauthorized(t *testing.T) {
 	sandboxEnvdInitCall(t, ctx, envdInitCall{
 		sbx:                   sbx,
 		client:                envdClient,
-		body:                  envdapi.PostInitJSONRequestBody{AccessToken: &wrongToken},
+		body:                  envd.PostInitJSONRequestBody{AccessToken: &wrongToken},
 		expectedResErr:        nil,
 		expectedResHttpStatus: http.StatusUnauthorized,
 	})
