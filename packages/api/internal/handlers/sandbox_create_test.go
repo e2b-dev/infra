@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -240,6 +241,7 @@ func TestOrchestrator_convertVolumeMounts(t *testing.T) {
 
 	testCases := map[string]struct {
 		expectFeatureFlag bool
+		expectResources   bool
 		volumesEnabled    bool
 		input             []api.SandboxVolumeMount
 		database          []queries.CreateVolumeParams
@@ -249,6 +251,7 @@ func TestOrchestrator_convertVolumeMounts(t *testing.T) {
 	}{
 		"missing volume reports correct error": {
 			expectFeatureFlag: true,
+			expectResources:   true,
 			volumesEnabled:    true,
 			input: []api.SandboxVolumeMount{
 				{Name: "vol1"},
@@ -258,6 +261,7 @@ func TestOrchestrator_convertVolumeMounts(t *testing.T) {
 		},
 		"existing volumes are returned": {
 			expectFeatureFlag: true,
+			expectResources:   true,
 			volumesEnabled:    true,
 			input: []api.SandboxVolumeMount{
 				{Name: "vol1", Path: "/vol1"},
@@ -272,6 +276,7 @@ func TestOrchestrator_convertVolumeMounts(t *testing.T) {
 		},
 		"partial success returns error": {
 			expectFeatureFlag: true,
+			expectResources:   true,
 			volumesEnabled:    true,
 			input: []api.SandboxVolumeMount{
 				{Name: "vol1", Path: "/vol1"},
@@ -282,6 +287,41 @@ func TestOrchestrator_convertVolumeMounts(t *testing.T) {
 			},
 			volumeTypes: []string{"local"},
 			err:         VolumesNotFoundError{[]string{"vol2"}},
+		},
+		"empty volume mounts": {
+			input:    []api.SandboxVolumeMount{},
+			expected: []*orchestrator.SandboxVolumeMount{},
+		},
+		"feature flag disabled": {
+			expectFeatureFlag: true,
+			volumesEnabled:    false,
+			input: []api.SandboxVolumeMount{
+				{Name: "vol1", Path: "/vol1"},
+			},
+			err: ErrVolumeMountsDisabled,
+		},
+		"unsupported volume type": {
+			expectFeatureFlag: true,
+			expectResources:   true,
+			volumesEnabled:    true,
+			input: []api.SandboxVolumeMount{
+				{Name: "vol1", Path: "/vol1"},
+			},
+			database: []queries.CreateVolumeParams{
+				{Name: "vol1", VolumeType: "unsupported"},
+			},
+			volumeTypes: []string{"local"},
+			err:         fmt.Errorf("failed to get db volumes map: %w", InvalidVolumeTypesError{[]string{"vol1"}}),
+		},
+		"cluster error": {
+			expectFeatureFlag: true,
+			expectResources:   true,
+			volumesEnabled:    true,
+			input: []api.SandboxVolumeMount{
+				{Name: "vol1", Path: "/vol1"},
+			},
+			volumeTypes: nil, // This will trigger cluster error in my mock
+			err:         fmt.Errorf("failed to get supported volume types: %w", fmt.Errorf("failed to get volume types from cluster: %w", fmt.Errorf("cluster error"))),
 		},
 	}
 
@@ -309,7 +349,10 @@ func TestOrchestrator_convertVolumeMounts(t *testing.T) {
 					Return(tc.volumesEnabled)
 			}
 
-			resources := newMockResources(t, tc.volumeTypes)
+			var resources clusters.ClusterResource
+			if tc.expectResources {
+				resources = newMockResources(t, tc.volumeTypes)
+			}
 
 			actual, err := convertVolumeMounts(t.Context(), db.SqlcClient, ffClient, &clusters.Cluster{Resources: resources}, teamID, tc.input)
 			assert.Equal(t, tc.err, err)
@@ -327,6 +370,11 @@ func newMockResources(t *testing.T, volumeTypes []string) clusters.ClusterResour
 		mcr.EXPECT().
 			GetVolumeTypes(mock.Anything).
 			Return(volumeTypes, nil).
+			Once()
+	} else {
+		mcr.EXPECT().
+			GetVolumeTypes(mock.Anything).
+			Return(nil, fmt.Errorf("cluster error")).
 			Once()
 	}
 
