@@ -166,7 +166,6 @@ resource "nomad_job" "client_proxy" {
       image_name          = data.google_artifact_registry_docker_image.client_proxy_image.self_link
       domain_name         = var.domain_name
       api_grpc_port       = var.api_grpc_port
-      auto_resume_enabled = var.client_proxy_auto_resume_enabled
 
       otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
       logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"

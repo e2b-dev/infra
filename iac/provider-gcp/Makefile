@@ -45,7 +45,6 @@ tf_vars := \
 	$(call tfvar, CLICKHOUSE_RESOURCES_CPU_COUNT) \
 	$(call tfvar, CLICKHOUSE_RESOURCES_MEMORY_MB) \
 	$(call tfvar, CLIENT_PROXY_UPDATE_MAX_PARALLEL) \
-	$(call tfvar, CLIENT_PROXY_AUTO_RESUME_ENABLED) \
 	$(call tfvar, LOKI_RESOURCES_CPU_COUNT) \
 	$(call tfvar, LOKI_RESOURCES_MEMORY_MB) \
 	$(call tfvar, OTEL_TRACING_PRINT) \
