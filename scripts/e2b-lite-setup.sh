@@ -1467,6 +1467,8 @@ print_summary() {
     echo "     ./scripts/services/start-all.sh"
     echo ""
     echo "  2. Test with Python SDK:"
+    echo "     python3 -m venv e2b_lite_venv"
+    echo "     source e2b_lite_venv/bin/activate"
     echo "     pip install e2b && python scripts/test-e2b-lite.py"
     echo ""
     echo -e "${BOLD}Environment Variables (copy & paste):${NC}"
