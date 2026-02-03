@@ -43,37 +43,10 @@ func catalogResolution(ctx context.Context, sandboxId string, c catalog.Sandboxe
 	s, err := c.GetSandbox(ctx, sandboxId)
 	if err != nil {
 		if errors.Is(err, catalog.ErrSandboxNotFound) {
-			var pausedInfo PausedInfo
-			var pausedFound bool
-
-			if pausedChecker != nil {
-				info, pausedErr := pausedChecker.PausedInfo(ctx, sandboxId)
-				if pausedErr != nil {
-					logger.L().Warn(ctx, "paused lookup failed", zap.Error(pausedErr), logger.WithSandboxID(sandboxId))
-				} else if info.Paused {
-					pausedInfo = info
-					pausedFound = true
-				}
-			}
-
-			if pausedFound {
-				logSleeping(ctx, sandboxId)
-
-				canAutoResume := shouldAutoResume(pausedInfo.AutoResumePolicy, autoResumeEnabled, requestHasAuth) && pausedChecker != nil
-				if canAutoResume {
-					logger.L().Info(ctx, "auto-resuming sandbox", logger.WithSandboxID(sandboxId))
-					if err := pausedChecker.Resume(ctx, sandboxId, resumeTimeoutSeconds); err != nil {
-						logger.L().Warn(ctx, "auto-resume failed", zap.Error(err), logger.WithSandboxID(sandboxId))
-					} else {
-						nodeIP, waitErr := waitForCatalog(ctx, sandboxId, c)
-						if waitErr == nil {
-							return nodeIP, nil
-						}
-						logger.L().Warn(ctx, "auto-resume wait failed", zap.Error(waitErr), logger.WithSandboxID(sandboxId))
-					}
-				}
-
-				return "", reverseproxy.NewErrSandboxPaused(sandboxId, canAutoResume)
+			if nodeIP, pausedErr := handlePausedSandbox(ctx, sandboxId, c, pausedChecker, autoResumeEnabled, requestHasAuth); pausedErr != nil {
+				return "", pausedErr
+			} else if nodeIP != "" {
+				return nodeIP, nil
 			}
 
 			return "", ErrNodeNotFound
@@ -85,6 +58,59 @@ func catalogResolution(ctx context.Context, sandboxId string, c catalog.Sandboxe
 	// todo: when we will use edge for orchestrators discovery we can stop sending IP in the catalog
 	//  and just resolve node from pool to get the IP of the node
 	return s.OrchestratorIP, nil
+}
+
+func handlePausedSandbox(
+	ctx context.Context,
+	sandboxId string,
+	c catalog.SandboxesCatalog,
+	pausedChecker PausedSandboxChecker,
+	autoResumeEnabled bool,
+	requestHasAuth bool,
+) (string, error) {
+	// Centralizes paused-sandbox handling to keep catalog resolution linear and easier to test.
+	// Ask the paused catalog if the sandbox exists and is paused.
+	pausedInfo, pausedFound := getPausedInfo(ctx, sandboxId, pausedChecker)
+	if !pausedFound {
+		return "", nil
+	}
+
+	logSleeping(ctx, sandboxId)
+
+	// Decide if we are allowed to auto-resume for this request.
+	canAutoResume := shouldAutoResume(pausedInfo.AutoResumePolicy, autoResumeEnabled, requestHasAuth) && pausedChecker != nil
+	if canAutoResume {
+		logger.L().Info(ctx, "auto-resuming sandbox", logger.WithSandboxID(sandboxId))
+		if err := pausedChecker.Resume(ctx, sandboxId, resumeTimeoutSeconds); err != nil {
+			logger.L().Warn(ctx, "auto-resume failed", zap.Error(err), logger.WithSandboxID(sandboxId))
+		} else {
+			nodeIP, waitErr := waitForCatalog(ctx, sandboxId, c)
+			if waitErr == nil {
+				return nodeIP, nil
+			}
+			logger.L().Warn(ctx, "auto-resume wait failed", zap.Error(waitErr), logger.WithSandboxID(sandboxId))
+		}
+	}
+
+	return "", reverseproxy.NewErrSandboxPaused(sandboxId, canAutoResume)
+}
+
+func getPausedInfo(ctx context.Context, sandboxId string, pausedChecker PausedSandboxChecker) (PausedInfo, bool) {
+	// Isolates paused lookup and logging so catalogResolution doesn't need to care about error cases.
+	if pausedChecker == nil {
+		return PausedInfo{}, false
+	}
+
+	info, err := pausedChecker.PausedInfo(ctx, sandboxId)
+	if err != nil {
+		logger.L().Warn(ctx, "paused lookup failed", zap.Error(err), logger.WithSandboxID(sandboxId))
+		return PausedInfo{}, false
+	}
+	if !info.Paused {
+		return PausedInfo{}, false
+	}
+
+	return info, true
 }
 
 func waitForCatalog(ctx context.Context, sandboxId string, c catalog.SandboxesCatalog) (string, error) {
