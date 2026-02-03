@@ -50,8 +50,6 @@ paths:
                   type: string
                   description: Access token for secure access to envd service
                   x-go-type: SecureToken
-                  x-go-type-import:
-                    path: github.com/e2b-dev/infra/packages/envd/internal/api
                 timestamp:
                   type: string
                   format: date-time
