@@ -23,12 +23,12 @@ func (l *ConnectionLimiter) getCounter(sandboxID string) *atomic.Int64 {
 
 // TryAcquire attempts to acquire a connection slot for a sandbox.
 // Returns (current count after increment, true) if successful, or (current count, false) if limit exceeded.
-// If maxLimit is 0 or negative, no limit is enforced.
+// If maxLimit is negative, no limit is enforced. If maxLimit is 0, all connections are blocked.
 func (l *ConnectionLimiter) TryAcquire(sandboxID string, maxLimit int) (int64, bool) {
 	counter := l.getCounter(sandboxID)
 	for {
 		current := counter.Load()
-		if maxLimit > 0 && current >= int64(maxLimit) {
+		if maxLimit >= 0 && current >= int64(maxLimit) {
 			return current, false
 		}
 		if counter.CompareAndSwap(current, current+1) {

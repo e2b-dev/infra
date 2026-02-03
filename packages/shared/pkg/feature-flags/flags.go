@@ -147,8 +147,8 @@ var (
 	MemoryPrefetchMaxCopyWorkers = newIntFlag("memory-prefetch-max-copy-workers", 8)
 
 	// TCPFirewallMaxConnectionsPerSandbox is the maximum number of concurrent TCP firewall
-	// connections allowed per sandbox. 0 means no limit.
-	TCPFirewallMaxConnectionsPerSandbox = newIntFlag("tcpfirewall-max-connections-per-sandbox", 0)
+	// connections allowed per sandbox. Negative means no limit.
+	TCPFirewallMaxConnectionsPerSandbox = newIntFlag("tcpfirewall-max-connections-per-sandbox", -1)
 )
 
 type StringFlag struct {

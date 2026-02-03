@@ -40,15 +40,14 @@ func TestConnectionLimiter_TryAcquire(t *testing.T) {
 		assert.Equal(t, int64(5), count)
 	})
 
-	t.Run("zero limit means no limit", func(t *testing.T) {
+	t.Run("zero limit blocks all connections", func(t *testing.T) {
 		t.Parallel()
 		limiter := NewConnectionLimiter()
 
-		for range 100 {
-			_, ok := limiter.TryAcquire("sandbox1", 0)
-			assert.True(t, ok)
-		}
-		assert.Equal(t, int64(100), limiter.Count("sandbox1"))
+		count, ok := limiter.TryAcquire("sandbox1", 0)
+		assert.False(t, ok)
+		assert.Equal(t, int64(0), count)
+		assert.Equal(t, int64(0), limiter.Count("sandbox1"))
 	})
 
 	t.Run("negative limit means no limit", func(t *testing.T) {
