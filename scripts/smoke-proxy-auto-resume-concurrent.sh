@@ -43,7 +43,7 @@ create_body=$(jq -n \
   --arg template "${TEMPLATE_ID}" \
   --arg probe "${PROBE_ID}" \
   --argjson timeout "${TIMEOUT_SECONDS}" \
-  '{metadata:{auto_resume:$policy, probe_id:$probe}, templateID:$template, timeout:$timeout, autoPause:false}')
+  '{autoResume:$policy, metadata:{probe_id:$probe}, templateID:$template, timeout:$timeout, autoPause:false}')
 
 create_resp=$(curl -sS -X POST "${API_URL}/sandboxes" \
   -H "X-API-Key: ${API_KEY}" \

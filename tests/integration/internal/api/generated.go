@@ -401,7 +401,7 @@ type NewSandbox struct {
 	AutoPause *bool `json:"autoPause,omitempty"`
 
 	// AutoResume Auto-resume policy for paused sandboxes. Omit to disable auto-resume.
-	AutoResume *NewSandboxAutoResume `json:"auto_resume,omitempty"`
+	AutoResume *NewSandboxAutoResume `json:"autoResume,omitempty"`
 	EnvVars    *EnvVars              `json:"envVars,omitempty"`
 
 	// Mcp MCP configuration for the sandbox

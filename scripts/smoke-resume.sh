@@ -33,7 +33,7 @@ create_sandbox() {
       --arg policy "${auto_resume_policy}" \
       --arg template "base" \
       --argjson timeout "${TIMEOUT_SECONDS}" \
-      '{auto_resume:$policy, templateID:$template, timeout:$timeout, autoPause:false}')
+      '{autoResume:$policy, templateID:$template, timeout:$timeout, autoPause:false}')
   else
     body=$(jq -n \
       --arg template "base" \
