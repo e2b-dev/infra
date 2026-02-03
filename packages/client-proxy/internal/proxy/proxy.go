@@ -118,6 +118,7 @@ func getPausedInfo(ctx context.Context, sandboxId string, pausedChecker PausedSa
 	info, err := pausedChecker.PausedInfo(ctx, sandboxId)
 	if err != nil {
 		logger.L().Warn(ctx, "paused lookup failed", zap.Error(err), logger.WithSandboxID(sandboxId))
+
 		return PausedInfo{}, false
 	}
 	if !info.Paused {
@@ -290,7 +291,7 @@ func pausedFallbackHandler(
 		return nil
 	}
 
-	return func(w http.ResponseWriter, r *http.Request, err error) bool {
+	return func(w http.ResponseWriter, r *http.Request, _ error) bool {
 		ctx := withProxyAuthMetadata(context.WithoutCancel(r.Context()), r.Header)
 		pausedInfo, pausedFound := getPausedInfo(ctx, sandboxId, pausedChecker)
 		if !pausedFound {
