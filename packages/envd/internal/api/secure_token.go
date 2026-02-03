@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"errors"
 	"sync"
 
@@ -22,9 +23,10 @@ type SecureToken struct {
 
 // Set securely replaces the token, destroying the old one first.
 // The old token memory is zeroed before the new token is stored.
+// The input byte slice is wiped after copying to secure memory.
 // Returns ErrTokenEmpty if token is empty - use Destroy() to clear the token instead.
-func (s *SecureToken) Set(token string) error {
-	if token == "" {
+func (s *SecureToken) Set(token []byte) error {
+	if len(token) == 0 {
 		return ErrTokenEmpty
 	}
 
@@ -37,10 +39,78 @@ func (s *SecureToken) Set(token string) error {
 		s.buffer = nil
 	}
 
-	// Create new LockedBuffer from bytes (source is wiped automatically)
-	s.buffer = memguard.NewBufferFromBytes([]byte(token))
+	// Create new LockedBuffer from bytes (source slice is wiped by memguard)
+	s.buffer = memguard.NewBufferFromBytes(token)
 
 	return nil
+}
+
+// UnmarshalJSON implements json.Unmarshaler to securely parse a JSON string
+// directly into memguard, wiping the input bytes after copying.
+//
+// Access tokens are hex-encoded HMAC-SHA256 hashes (64 chars of [0-9a-f]),
+// so they never contain JSON escape sequences.
+func (s *SecureToken) UnmarshalJSON(data []byte) error {
+	// JSON strings are quoted, so minimum valid is `""` (2 bytes).
+	if len(data) < 2 || data[0] != '"' || data[len(data)-1] != '"' {
+		return errors.New("invalid secure token JSON string")
+	}
+
+	content := data[1 : len(data)-1]
+
+	// Access tokens are hex strings - reject if contains backslash
+	if bytes.ContainsRune(content, '\\') {
+		memguard.WipeBytes(data)
+
+		return errors.New("invalid secure token: unexpected escape sequence")
+	}
+
+	if len(content) == 0 {
+		memguard.WipeBytes(data)
+
+		return ErrTokenEmpty
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.buffer != nil {
+		s.buffer.Destroy()
+		s.buffer = nil
+	}
+
+	// Allocate secure buffer and copy directly into it
+	s.buffer = memguard.NewBuffer(len(content))
+	copy(s.buffer.Bytes(), content)
+
+	// Wipe the input data
+	memguard.WipeBytes(data)
+
+	return nil
+}
+
+// TakeFrom transfers the token from src to this SecureToken, destroying any
+// existing token. The source token is cleared after transfer.
+// This avoids copying the underlying bytes.
+func (s *SecureToken) TakeFrom(src *SecureToken) {
+	if src == nil {
+		return
+	}
+
+	src.mu.Lock()
+	defer src.mu.Unlock()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Destroy current buffer
+	if s.buffer != nil {
+		s.buffer.Destroy()
+	}
+
+	// Transfer ownership
+	s.buffer = src.buffer
+	src.buffer = nil
 }
 
 // Equals checks if token matches using constant-time comparison.
@@ -53,6 +123,29 @@ func (s *SecureToken) Equals(token string) bool {
 	}
 
 	return s.buffer.EqualTo([]byte(token))
+}
+
+// EqualsSecure compares this token with another SecureToken using constant-time comparison.
+func (s *SecureToken) EqualsSecure(other *SecureToken) bool {
+	if other == nil {
+		return false
+	}
+
+	other.mu.RLock()
+	defer other.mu.RUnlock()
+
+	if other.buffer == nil || !other.buffer.IsAlive() {
+		return false
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.buffer == nil || !s.buffer.IsAlive() {
+		return false
+	}
+
+	return s.buffer.EqualTo(other.buffer.Bytes())
 }
 
 // IsSet returns true if a token is stored.

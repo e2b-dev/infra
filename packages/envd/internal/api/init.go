@@ -11,6 +11,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/awnumar/memguard"
 	"github.com/rs/zerolog"
 	"github.com/txn2/txeh"
 	"golang.org/x/sys/unix"
@@ -36,9 +37,15 @@ const (
 // validateInitAccessToken validates the access token for /init requests.
 // Token is valid if it matches the existing token OR the MMDS hash.
 // If neither exists, first-time setup is allowed.
-func (a *API) validateInitAccessToken(ctx context.Context, requestToken *string) error {
+//
+// Returns:
+//   - ErrAccessTokenMismatch (401): invalid token provided
+//   - ErrAccessTokenResetNotAuthorized (409): trying to reset token without authorization
+func (a *API) validateInitAccessToken(ctx context.Context, requestToken *SecureToken) error {
+	requestTokenSet := requestToken != nil && requestToken.IsSet()
+
 	// Fast path: token matches existing
-	if a.accessToken.IsSet() && requestToken != nil && a.accessToken.Equals(*requestToken) {
+	if a.accessToken.IsSet() && requestTokenSet && a.accessToken.EqualsSecure(requestToken) {
 		return nil
 	}
 
@@ -50,7 +57,7 @@ func (a *API) validateInitAccessToken(ctx context.Context, requestToken *string)
 		return nil
 	case !a.accessToken.IsSet() && !mmdsExists:
 		return nil // first-time setup
-	case requestToken == nil:
+	case !requestTokenSet:
 		return ErrAccessTokenResetNotAuthorized
 	default:
 		return ErrAccessTokenMismatch
@@ -64,7 +71,7 @@ func (a *API) validateInitAccessToken(ctx context.Context, requestToken *string)
 //   - hash(token): requires this specific token
 //   - hash(""): explicitly allows nil token (token reset authorized)
 //   - "": MMDS not properly configured, no authorization granted
-func (a *API) checkMMDSHash(ctx context.Context, requestToken *string) (bool, bool) {
+func (a *API) checkMMDSHash(ctx context.Context, requestToken *SecureToken) (bool, bool) {
 	if a.isNotFC {
 		return false, false
 	}
@@ -78,11 +85,17 @@ func (a *API) checkMMDSHash(ctx context.Context, requestToken *string) (bool, bo
 		return false, false
 	}
 
-	if requestToken == nil {
+	if requestToken == nil || !requestToken.IsSet() {
 		return mmdsHash == keys.HashAccessToken(""), true
 	}
 
-	return keys.HashAccessToken(*requestToken) == mmdsHash, true
+	tokenBytes, err := requestToken.Bytes()
+	if err != nil {
+		return false, true
+	}
+	defer memguard.WipeBytes(tokenBytes)
+
+	return keys.HashAccessTokenBytes(tokenBytes) == mmdsHash, true
 }
 
 func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
@@ -94,14 +107,27 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 	logger := a.logger.With().Str(string(logs.OperationIDKey), operationID).Logger()
 
 	if r.Body != nil {
-		var initRequest PostInitJSONBody
-
-		err := json.NewDecoder(r.Body).Decode(&initRequest)
-		if err != nil && !errors.Is(err, io.EOF) {
-			logger.Error().Msgf("Failed to decode request: %v", err)
+		// Read raw body so we can wipe it after parsing
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			logger.Error().Msgf("Failed to read request body: %v", err)
 			w.WriteHeader(http.StatusBadRequest)
 
 			return
+		}
+
+		// Ensure body is wiped after we're done, even on error paths
+		defer memguard.WipeBytes(body)
+
+		var initRequest PostInitJSONBody
+		if len(body) > 0 {
+			err = json.Unmarshal(body, &initRequest)
+			if err != nil {
+				logger.Error().Msgf("Failed to decode request: %v", err)
+				w.WriteHeader(http.StatusBadRequest)
+
+				return
+			}
 		}
 
 		a.initLock.Lock()
@@ -169,13 +195,9 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 		}
 	}
 
-	if data.AccessToken != nil {
+	if data.AccessToken != nil && data.AccessToken.IsSet() {
 		logger.Debug().Msg("Setting access token")
-		if err := a.accessToken.Set(*data.AccessToken); err != nil {
-			logger.Error().Err(err).Msg("CRITICAL: Failed to set access token securely")
-
-			return fmt.Errorf("failed to set access token: %w", err)
-		}
+		a.accessToken.TakeFrom(data.AccessToken)
 	} else if a.accessToken.IsSet() {
 		logger.Debug().Msg("Clearing access token")
 		a.accessToken.Destroy()

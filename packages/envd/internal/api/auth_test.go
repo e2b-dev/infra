@@ -16,7 +16,7 @@ func TestKeyGenerationAlgorithmIsStable(t *testing.T) {
 	t.Parallel()
 	apiToken := "secret-access-token"
 	secureToken := &SecureToken{}
-	err := secureToken.Set(apiToken)
+	err := secureToken.Set([]byte(apiToken))
 	require.NoError(t, err)
 	api := &API{accessToken: secureToken}
 
@@ -41,7 +41,7 @@ func TestKeyGenerationAlgorithmWithoutExpirationIsStable(t *testing.T) {
 	t.Parallel()
 	apiToken := "secret-access-token"
 	secureToken := &SecureToken{}
-	err := secureToken.Set(apiToken)
+	err := secureToken.Set([]byte(apiToken))
 	require.NoError(t, err)
 	api := &API{accessToken: secureToken}
 

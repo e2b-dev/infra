@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
@@ -65,9 +66,9 @@ func (a *API) generateSignature(path string, username string, operation string, 
 	hasher := keys.NewSHA256Hashing()
 
 	if signatureExpiration == nil {
-		signature = fmt.Sprintf("%s:%s:%s:%s", path, operation, username, string(tokenBytes))
+		signature = strings.Join([]string{path, operation, username, string(tokenBytes)}, ":")
 	} else {
-		signature = fmt.Sprintf("%s:%s:%s:%s:%s", path, operation, username, string(tokenBytes), strconv.FormatInt(*signatureExpiration, 10))
+		signature = strings.Join([]string{path, operation, username, string(tokenBytes), strconv.FormatInt(*signatureExpiration, 10)}, ":")
 	}
 
 	return fmt.Sprintf("v1_%s", hasher.HashWithoutPrefix([]byte(signature))), nil

@@ -142,7 +142,7 @@ type PostFilesParams struct {
 // PostInitJSONBody defines parameters for PostInit.
 type PostInitJSONBody struct {
 	// AccessToken Access token for secure access to envd service
-	AccessToken *string `json:"accessToken,omitempty"`
+	AccessToken *SecureToken `json:"accessToken,omitempty"`
 
 	// DefaultUser The default user to use for operations
 	DefaultUser *string `json:"defaultUser,omitempty"`
