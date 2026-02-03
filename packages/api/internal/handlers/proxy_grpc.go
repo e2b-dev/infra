@@ -42,6 +42,8 @@ func NewSandboxService(api *APIStore) *SandboxService {
 }
 
 func (s *SandboxService) GetPausedInfo(ctx context.Context, req *proxygrpc.SandboxPausedInfoRequest) (*proxygrpc.SandboxPausedInfoResponse, error) {
+	// Called by client-proxy to decide whether a failed proxy route should trigger auto-resume.
+	// Uses snapshot data and a best-effort running check to distinguish paused vs running.
 	sandboxID := utils.ShortID(req.GetSandboxId())
 
 	snap, err := s.api.sqlcDB.GetLastSnapshot(ctx, sandboxID)

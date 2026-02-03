@@ -17,6 +17,8 @@ type grpcPausedSandboxChecker struct {
 }
 
 func NewGrpcPausedSandboxChecker(address string) (PausedSandboxChecker, error) {
+	// Client-proxy uses this gRPC client to ask the API whether a sandbox is paused
+	// and which auto-resume policy applies, plus to trigger ResumeSandbox when needed.
 	if strings.TrimSpace(address) == "" {
 		return nil, fmt.Errorf("api grpc address is required")
 	}
