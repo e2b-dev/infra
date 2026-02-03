@@ -374,9 +374,6 @@ components:
           description: Identifier of the client
         envdVersion:
           $ref: "#/components/schemas/EnvdVersion"
-        autoPause:
-          type: boolean
-          description: Automatically pauses the sandbox after the timeout
         envdAccessToken:
           type: string
           description: Access token used for envd communication
