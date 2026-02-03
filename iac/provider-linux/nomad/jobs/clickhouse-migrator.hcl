@@ -31,7 +31,7 @@ job "clickhouse-migrator" {
           set -e
           
           CLICKHOUSE_HOST="server-${i + 1}.clickhouse.service.consul"
-          CLICKHOUSE_PORT="${clickhouse_server_port}"
+          CLICKHOUSE_PORT="8123"
           CLICKHOUSE_USER="${username}"
           CLICKHOUSE_PASSWORD="${password}"
           DB_NAME="${clickhouse_database}"
@@ -41,7 +41,7 @@ job "clickhouse-migrator" {
           RETRY_COUNT=0
           
           while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-            if curl -s -u "$CLICKHOUSE_USER:$CLICKHOUSE_PASSWORD" \
+            if curl -sf -u "$CLICKHOUSE_USER:$CLICKHOUSE_PASSWORD" \
                 "http://$CLICKHOUSE_HOST:$CLICKHOUSE_PORT/ping" > /dev/null 2>&1; then
               echo "ClickHouse is ready!"
               break
@@ -58,11 +58,14 @@ job "clickhouse-migrator" {
           fi
           
           echo "Creating database '$DB_NAME'..."
-          curl -s -u "$CLICKHOUSE_USER:$CLICKHOUSE_PASSWORD" \
+          if curl -sf -u "$CLICKHOUSE_USER:$CLICKHOUSE_PASSWORD" \
             "http://$CLICKHOUSE_HOST:$CLICKHOUSE_PORT/" \
-            -d "CREATE DATABASE IF NOT EXISTS $DB_NAME"
-          
-          echo "Database created successfully!"
+            -d "CREATE DATABASE IF NOT EXISTS $DB_NAME" > /dev/null 2>&1; then
+            echo "Database created successfully!"
+          else
+            echo "Error: Failed to create database"
+            exit 1
+          fi
         EOF
         ]
       }
