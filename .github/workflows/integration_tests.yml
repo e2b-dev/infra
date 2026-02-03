@@ -14,16 +14,6 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Debug envdapi reference
-        run: |
-          echo "HEAD: $(git rev-parse HEAD)"
-          if command -v rg >/dev/null; then
-            rg -n "envdapi" tests/integration/internal/tests/envd || true
-          else
-            grep -R --line-number "envdapi" tests/integration/internal/tests/envd || true
-          fi
-          sed -n '105,125p' tests/integration/internal/tests/envd/auth_test.go
-
       - name: Build Packages
         uses: ./.github/actions/build-packages
 
