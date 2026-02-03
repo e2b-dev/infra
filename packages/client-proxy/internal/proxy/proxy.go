@@ -291,7 +291,7 @@ func pausedFallbackHandler(
 	}
 
 	return func(w http.ResponseWriter, r *http.Request, err error) bool {
-		ctx := context.WithoutCancel(r.Context())
+		ctx := withProxyAuthMetadata(context.WithoutCancel(r.Context()), r.Header)
 		pausedInfo, pausedFound := getPausedInfo(ctx, sandboxId, pausedChecker)
 		if !pausedFound {
 			return false
@@ -300,7 +300,7 @@ func pausedFallbackHandler(
 		canAutoResume := shouldAutoResume(pausedInfo.AutoResumePolicy, autoResumeEnabled, requestHasAuth)
 		if canAutoResume {
 			go func() {
-				resumeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
+				resumeCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 				defer cancel()
 
 				if resumeErr := pausedChecker.Resume(resumeCtx, sandboxId, resumeTimeoutSeconds); resumeErr != nil {
