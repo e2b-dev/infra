@@ -6,10 +6,12 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -30,16 +32,6 @@ func (a *APIStore) DeleteVolumesVolumeID(c *gin.Context, volumeID api.VolumeID) 
 		return
 	}
 
-	// from now on we don't want the operation to be canceled halfway through
-	ctx = context.WithoutCancel(ctx)
-
-	if err := cluster.DeleteVolume(ctx, volume); err != nil {
-		telemetry.ReportCriticalError(ctx, "error when deleting volume", err)
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when deleting volume")
-
-		return
-	}
-
 	if err := a.sqlcDB.DeleteVolume(ctx, queries.DeleteVolumeParams{
 		TeamID:   team.ID,
 		VolumeID: volume.ID,
@@ -49,6 +41,12 @@ func (a *APIStore) DeleteVolumesVolumeID(c *gin.Context, volumeID api.VolumeID) 
 
 		return
 	}
+
+	go func(ctx context.Context) {
+		if err := cluster.DeleteVolume(ctx, volume); err != nil {
+			logger.L().Error(ctx, "error when deleting volume", zap.Error(err))
+		}
+	}(context.WithoutCancel(ctx))
 
 	c.Status(http.StatusNoContent)
 }

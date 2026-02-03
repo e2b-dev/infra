@@ -28,8 +28,8 @@ func (v *VolumeService) Delete(_ context.Context, request *orchestrator.VolumeDe
 		return nil, status.Errorf(codes.NotFound, "volume type %s not found", request.GetVolumeType())
 	}
 
-	basePath := volPath
-	volumePath := filepath.Join(basePath, request.GetVolumeName())
+	volumePath := filepath.Join(volPath, request.GetVolumeName())
+	volumePath = filepath.Clean(volumePath)
 
 	if err := os.RemoveAll(volumePath); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to delete volume: %v", err)
