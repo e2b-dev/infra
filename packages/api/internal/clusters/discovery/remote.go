@@ -29,7 +29,7 @@ func (sd *RemoteServiceDiscovery) Query(ctx context.Context) ([]Item, error) {
 	ctx, span := tracer.Start(ctx, "query-remote-cluster-nodes", trace.WithAttributes(telemetry.WithClusterID(sd.clusterID)))
 	defer span.End()
 
-	res, err := sd.client.V2ServiceDiscoveryGetOrchestratorsWithResponse(ctx)
+	res, err := sd.client.V1ServiceDiscoveryWithResponse(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get cluster instances from service discovery: %w", err)
 	}

@@ -86,7 +86,7 @@ components:
         - orchestrator
         - template-builder
 
-    ClusterOrchestratorDiscovery:
+    ClusterServiceDiscovery:
       required:
         - orchestrators
       properties:
@@ -359,10 +359,10 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
-  /v2/service-discovery/nodes/orchestrators:
+  /v1/service-discovery:
     get:
-      operationId: V2ServiceDiscoveryGetOrchestrators
-      summary: Get the discovered orchestrators
+      operationId: v1ServiceDiscovery
+      summary: Get the service discovery information
       security:
         - ApiKeyAuth: []
       tags: [service-discovery]
@@ -372,7 +372,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ClusterOrchestratorDiscovery"
+                $ref: "#/components/schemas/ClusterServiceDiscovery"
         "401":
           $ref: "#/components/responses/401"
         "500":
