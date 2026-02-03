@@ -58,7 +58,7 @@ func (s *SandboxService) GetPausedInfo(ctx context.Context, req *proxygrpc.Sandb
 
 	policy := autoResumePolicyFromSnapshotResumesOn(snap.Snapshot.SandboxResumesOn)
 
-	running, runErr := s.api.orchestrator.GetSandbox(ctx, snap.Snapshot.TeamID, sandboxID)
+	_, runErr := s.api.orchestrator.GetSandbox(ctx, snap.Snapshot.TeamID, sandboxID)
 	if runErr == nil {
 		return &proxygrpc.SandboxPausedInfoResponse{
 			Paused:           false,
