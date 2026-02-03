@@ -549,6 +549,9 @@ type Sandbox struct {
 	// Alias Alias of the template
 	Alias *string `json:"alias,omitempty"`
 
+	// AutoPause Automatically pauses the sandbox after the timeout
+	AutoPause *bool `json:"autoPause,omitempty"`
+
 	// ClientID Identifier of the client
 	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	ClientID string `json:"clientID"`
@@ -576,6 +579,9 @@ type Sandbox struct {
 type SandboxDetail struct {
 	// Alias Alias of the template
 	Alias *string `json:"alias,omitempty"`
+
+	// AutoPause Automatically pauses the sandbox after the timeout
+	AutoPause *bool `json:"autoPause,omitempty"`
 
 	// ClientID Identifier of the client
 	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
@@ -1093,6 +1099,17 @@ type TemplateWithBuilds struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
+// UpdateSandboxLifecycle defines model for UpdateSandboxLifecycle.
+type UpdateSandboxLifecycle struct {
+	// AutoPause Automatically pause the sandbox after the timeout
+	AutoPause bool `json:"autoPause"`
+}
+
+// UpdateSandboxMetadata defines model for UpdateSandboxMetadata.
+type UpdateSandboxMetadata struct {
+	Metadata SandboxMetadata `json:"metadata"`
+}
+
 // UpdateTeamAPIKey defines model for UpdateTeamAPIKey.
 type UpdateTeamAPIKey struct {
 	// Name New name for the API key
@@ -1280,6 +1297,12 @@ type PostSandboxesJSONRequestBody = NewSandbox
 
 // PostSandboxesSandboxIDConnectJSONRequestBody defines body for PostSandboxesSandboxIDConnect for application/json ContentType.
 type PostSandboxesSandboxIDConnectJSONRequestBody = ConnectSandbox
+
+// PatchSandboxesSandboxIDLifecycleJSONRequestBody defines body for PatchSandboxesSandboxIDLifecycle for application/json ContentType.
+type PatchSandboxesSandboxIDLifecycleJSONRequestBody = UpdateSandboxLifecycle
+
+// PatchSandboxesSandboxIDMetadataJSONRequestBody defines body for PatchSandboxesSandboxIDMetadata for application/json ContentType.
+type PatchSandboxesSandboxIDMetadataJSONRequestBody = UpdateSandboxMetadata
 
 // PostSandboxesSandboxIDRefreshesJSONRequestBody defines body for PostSandboxesSandboxIDRefreshes for application/json ContentType.
 type PostSandboxesSandboxIDRefreshesJSONRequestBody PostSandboxesSandboxIDRefreshesJSONBody
