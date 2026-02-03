@@ -40,6 +40,12 @@ var (
 )
 
 func catalogResolution(ctx context.Context, sandboxId string, c catalog.SandboxesCatalog, pausedChecker PausedSandboxChecker, autoResumeEnabled bool, requestHasAuth bool) (string, error) {
+	// Check paused state first to avoid routing to a sandbox that has already been paused
+	// but still exists in the routing catalog due to eventual consistency.
+	if pausedInfo, pausedFound := getPausedInfo(ctx, sandboxId, pausedChecker); pausedFound {
+		return handlePausedSandboxWithInfo(ctx, sandboxId, c, pausedChecker, autoResumeEnabled, requestHasAuth, pausedInfo)
+	}
+
 	s, err := c.GetSandbox(ctx, sandboxId)
 	if err != nil {
 		if errors.Is(err, catalog.ErrSandboxNotFound) {
@@ -75,6 +81,19 @@ func handlePausedSandbox(
 		return "", nil
 	}
 
+	return handlePausedSandboxWithInfo(ctx, sandboxId, c, pausedChecker, autoResumeEnabled, requestHasAuth, pausedInfo)
+}
+
+func handlePausedSandboxWithInfo(
+	ctx context.Context,
+	sandboxId string,
+	c catalog.SandboxesCatalog,
+	pausedChecker PausedSandboxChecker,
+	autoResumeEnabled bool,
+	requestHasAuth bool,
+	pausedInfo PausedInfo,
+) (string, error) {
+	// Shared implementation so callers can reuse pre-fetched paused info.
 	logSleeping(ctx, sandboxId)
 
 	// Decide if we are allowed to auto-resume for this request.
