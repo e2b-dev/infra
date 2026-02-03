@@ -41,10 +41,16 @@ const (
 	LogLevelWarn  LogLevel = "warn"
 )
 
+// Defines values for V1SandboxLogsParamsDirection.
+const (
+	V1SandboxLogsParamsDirectionBackward V1SandboxLogsParamsDirection = "backward"
+	V1SandboxLogsParamsDirectionForward  V1SandboxLogsParamsDirection = "forward"
+)
+
 // Defines values for V1TemplateBuildLogsParamsDirection.
 const (
-	Backward V1TemplateBuildLogsParamsDirection = "backward"
-	Forward  V1TemplateBuildLogsParamsDirection = "forward"
+	V1TemplateBuildLogsParamsDirectionBackward V1TemplateBuildLogsParamsDirection = "backward"
+	V1TemplateBuildLogsParamsDirectionForward  V1TemplateBuildLogsParamsDirection = "forward"
 )
 
 // BuildLogEntry defines model for BuildLogEntry.
@@ -226,9 +232,18 @@ type V1SandboxLogsParams struct {
 	// Start Starting timestamp of the logs that should be returned in milliseconds
 	Start *int64 `form:"start,omitempty" json:"start,omitempty"`
 
+	// End Ending timestamp of the logs that should be returned in milliseconds
+	End *int64 `form:"end,omitempty" json:"end,omitempty"`
+
 	// Limit Maximum number of logs that should be returned
 	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Direction Direction of the logs that should be returned. Defaults to forward
+	Direction *V1SandboxLogsParamsDirection `form:"direction,omitempty" json:"direction,omitempty"`
 }
+
+// V1SandboxLogsParamsDirection defines parameters for V1SandboxLogs.
+type V1SandboxLogsParamsDirection string
 
 // V1SandboxMetricsParams defines parameters for V1SandboxMetrics.
 type V1SandboxMetricsParams struct {
@@ -669,9 +684,41 @@ func NewV1SandboxLogsRequest(server string, sandboxID string, params *V1SandboxL
 
 		}
 
+		if params.End != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "end", runtime.ParamLocationQuery, *params.End); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
 		if params.Limit != nil {
 
 			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Direction != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "direction", runtime.ParamLocationQuery, *params.Direction); err != nil {
 				return nil, err
 			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
 				return nil, err
