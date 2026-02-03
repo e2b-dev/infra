@@ -18,7 +18,7 @@ type grpcPausedSandboxChecker struct {
 
 func NewGrpcPausedSandboxChecker(address string) (PausedSandboxChecker, error) {
 	if strings.TrimSpace(address) == "" {
-		return nil, nil
+		return nil, fmt.Errorf("api grpc address is required")
 	}
 
 	conn, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
