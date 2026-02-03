@@ -15,7 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process"
 	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
-	envdapi "github.com/e2b-dev/infra/tests/integration/internal/envd/api"
+	"github.com/e2b-dev/infra/tests/integration/internal/envd"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 )
@@ -87,7 +87,7 @@ func TestRunUnauthorizedInitWithAlreadySecuredEnvd(t *testing.T) {
 	sandboxEnvdInitCall(t, ctx, envdInitCall{
 		sbx:                   sbx,
 		client:                envdClient,
-		body:                  envdapi.PostInitJSONRequestBody{},
+		body:                  envd.PostInitJSONRequestBody{},
 		expectedResErr:        nil,
 		expectedResHttpStatus: http.StatusUnauthorized,
 	})
@@ -110,7 +110,7 @@ func TestChangeAccessAuthorizedToken(t *testing.T) {
 		sbx:                   sbx,
 		client:                envdClient,
 		authToken:             envdAuthTokenA, // this is the old token used currently by envd
-		body:                  envdapi.PostInitJSONRequestBody{AccessToken: &envdAuthTokenB},
+		body:                  envd.PostInitJSONRequestBody{AccessToken: &envdAuthTokenB},
 		expectedResErr:        nil,
 		expectedResHttpStatus: http.StatusConflict,
 	})
@@ -161,7 +161,7 @@ func TestAccessAuthorizedPathWithResumedSandboxWithValidAccessToken(t *testing.T
 	// try to get the file with the valid access token
 	fileResponse, err := envdClient.HTTPClient.GetFilesWithResponse(
 		ctx,
-		&envdapi.GetFilesParams{Path: &filePath, Username: sharedUtils.ToPtr("user")},
+		&envd.GetFilesParams{Path: &filePath, Username: sharedUtils.ToPtr("user")},
 		setup.WithSandbox(sbx.JSON201.SandboxID),
 		setup.WithEnvdAccessToken(*sbxMeta.EnvdAccessToken),
 	)
@@ -218,7 +218,7 @@ func TestAccessAuthorizedPathWithResumedSandboxWithoutAccessToken(t *testing.T) 
 	// try to get the file with the without access token
 	fileResponse, err := envdClient.HTTPClient.GetFilesWithResponse(
 		ctx,
-		&envdapi.GetFilesParams{Path: &filePath, Username: sharedUtils.ToPtr("user")},
+		&envd.GetFilesParams{Path: &filePath, Username: sharedUtils.ToPtr("user")},
 		setup.WithSandbox(sbx.JSON201.SandboxID),
 	)
 	if err != nil {
@@ -231,7 +231,7 @@ func TestAccessAuthorizedPathWithResumedSandboxWithoutAccessToken(t *testing.T) 
 type envdInitCall struct {
 	sbx                   *api.PostSandboxesResponse
 	client                *setup.EnvdClient
-	body                  envdapi.PostInitJSONRequestBody
+	body                  envd.PostInitJSONRequestBody
 	authToken             *string
 	expectedResErr        *error
 	expectedResHttpStatus int
@@ -240,7 +240,7 @@ type envdInitCall struct {
 func sandboxEnvdInitCall(t *testing.T, ctx context.Context, req envdInitCall) {
 	t.Helper()
 
-	envdReqSetup := []envdapi.RequestEditorFn{setup.WithSandbox(req.sbx.JSON201.SandboxID)}
+	envdReqSetup := []envd.RequestEditorFn{setup.WithSandbox(req.sbx.JSON201.SandboxID)}
 	if req.authToken != nil {
 		envdReqSetup = append(envdReqSetup, setup.WithEnvdAccessToken(*req.authToken))
 	}
