@@ -26,7 +26,26 @@ func TestRequireRowLevelSecurity(t *testing.T) {
 		}
 
 		checked++
-		assert.Truef(t, item.RowLevelSecurity, "row level security not enabled for %s.%s [%s]", item.NamespaceName, item.TableName, item.TableType)
+
+		var isSecure bool
+		if item.Kind == "v" {
+			isSecure = isSecurityInvoker(item.Options)
+		} else {
+			isSecure = item.RowLevelSecurity
+		}
+
+		assert.Truef(t, isSecure, "database object %s.%s is not secure [%s] (%v)", item.NamespaceName, item.TableName, item.Kind, item.Options)
 	}
 	assert.NotEmpty(t, checked)
+}
+
+func isSecurityInvoker(options []string) bool {
+	for _, option := range options {
+		switch option {
+		case "security_invoker=1", "security_invoker=true", "security_invoker=on":
+			return true
+		}
+	}
+
+	return false
 }
