@@ -72,8 +72,8 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 	clusterID := utils.WithClusterFallback(team.ClusterID)
 	cluster, ok := a.clusters.GetClusterById(clusterID)
 	if !ok {
-		telemetry.ReportCriticalError(ctx, fmt.Sprintf("cluster with ID '%s' not found", team.ClusterID), nil)
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("cluster with id %s not found", team.ClusterID))
+		telemetry.ReportCriticalError(ctx, fmt.Sprintf("cluster with ID '%s' not found", clusterID), nil)
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("cluster with id %s not found", clusterID))
 
 		return
 	}
