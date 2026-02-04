@@ -334,6 +334,18 @@ func TestSecureTokenTakeFrom(t *testing.T) {
 
 		assert.False(t, dst.IsSet(), "destination should be cleared when source is empty")
 	})
+
+	t.Run("self-transfer is no-op and does not deadlock", func(t *testing.T) {
+		t.Parallel()
+		st := &SecureToken{}
+		err := st.Set([]byte("token"))
+		require.NoError(t, err)
+
+		st.TakeFrom(st)
+
+		assert.True(t, st.IsSet(), "token should remain set after self-transfer")
+		assert.True(t, st.Equals("token"), "token value should be unchanged")
+	})
 }
 
 func TestSecureTokenEqualsSecure(t *testing.T) {
@@ -395,5 +407,21 @@ func TestSecureTokenEqualsSecure(t *testing.T) {
 		require.NoError(t, err)
 
 		assert.False(t, st1.EqualsSecure(st2))
+	})
+
+	t.Run("self-comparison returns true when set", func(t *testing.T) {
+		t.Parallel()
+		st := &SecureToken{}
+		err := st.Set([]byte("token"))
+		require.NoError(t, err)
+
+		assert.True(t, st.EqualsSecure(st), "self-comparison should return true and not deadlock")
+	})
+
+	t.Run("self-comparison returns false when not set", func(t *testing.T) {
+		t.Parallel()
+		st := &SecureToken{}
+
+		assert.False(t, st.EqualsSecure(st), "self-comparison on unset token should return false")
 	})
 }

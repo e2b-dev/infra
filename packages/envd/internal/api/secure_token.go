@@ -95,7 +95,7 @@ func (s *SecureToken) UnmarshalJSON(data []byte) error {
 // existing token. The source token is cleared after transfer.
 // This avoids copying the underlying bytes.
 func (s *SecureToken) TakeFrom(src *SecureToken) {
-	if src == nil {
+	if src == nil || s == src {
 		return
 	}
 
@@ -137,6 +137,10 @@ func (s *SecureToken) Equals(token string) bool {
 func (s *SecureToken) EqualsSecure(other *SecureToken) bool {
 	if s == nil || other == nil {
 		return false
+	}
+
+	if s == other {
+		return s.IsSet()
 	}
 
 	other.mu.RLock()
