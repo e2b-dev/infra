@@ -137,7 +137,7 @@ func run() int {
 
 	var pausedChecker e2bproxy.PausedSandboxChecker
 	if strings.TrimSpace(config.ApiGrpcAddress) != "" {
-		pausedChecker, err = e2bproxy.NewGrpcPausedSandboxChecker(config.ApiGrpcAddress)
+		pausedChecker, err = e2bproxy.NewGrpcPausedSandboxResumer(config.ApiGrpcAddress)
 		if err != nil {
 			l.Error(ctx, "Failed to create paused sandbox checker", zap.Error(err))
 
@@ -149,9 +149,6 @@ func run() int {
 
 	// Proxy sandbox http traffic to orchestrator nodes
 	autoResumeEnabled := featureFlagsClient.BoolFlag(ctx, featureflags.SandboxAutoResumeFlag, featureflags.ServiceContext(serviceName))
-	if !config.AutoResumeEnabled {
-		autoResumeEnabled = false
-	}
 
 	trafficProxy, err := e2bproxy.NewClientProxyWithPausedChecker(
 		tel.MeterProvider,

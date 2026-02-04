@@ -11,12 +11,12 @@ import (
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 )
 
-type grpcPausedSandboxChecker struct {
+type grpcPausedSandboxResumer struct {
 	conn   *grpc.ClientConn
 	client proxygrpc.SandboxServiceClient
 }
 
-func NewGrpcPausedSandboxChecker(address string) (PausedSandboxChecker, error) {
+func NewGrpcPausedSandboxResumer(address string) (PausedSandboxChecker, error) {
 	// Client-proxy uses this gRPC client to trigger ResumeSandbox when needed.
 	if strings.TrimSpace(address) == "" {
 		return nil, fmt.Errorf("api grpc address is required")
@@ -27,17 +27,17 @@ func NewGrpcPausedSandboxChecker(address string) (PausedSandboxChecker, error) {
 		return nil, fmt.Errorf("create grpc client: %w", err)
 	}
 
-	return &grpcPausedSandboxChecker{
+	return &grpcPausedSandboxResumer{
 		conn:   conn,
 		client: proxygrpc.NewSandboxServiceClient(conn),
 	}, nil
 }
 
-func (c *grpcPausedSandboxChecker) Close(_ context.Context) error {
+func (c *grpcPausedSandboxResumer) Close(_ context.Context) error {
 	return c.conn.Close()
 }
 
-func (c *grpcPausedSandboxChecker) Resume(ctx context.Context, sandboxId string, timeoutSeconds int32) error {
+func (c *grpcPausedSandboxResumer) Resume(ctx context.Context, sandboxId string, timeoutSeconds int32) error {
 	_, err := c.client.ResumeSandbox(ctx, &proxygrpc.SandboxResumeRequest{
 		SandboxId:      sandboxId,
 		TimeoutSeconds: timeoutSeconds,
