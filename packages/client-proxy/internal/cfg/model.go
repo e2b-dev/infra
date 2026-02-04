@@ -10,8 +10,7 @@ type Config struct {
 	RedisClusterURL  string `env:"REDIS_CLUSTER_URL"`
 	RedisTLSCABase64 string `env:"REDIS_TLS_CA_BASE64"`
 
-	ApiGrpcAddress    string `env:"API_GRPC_ADDRESS"`
-	AutoResumeEnabled bool   `env:"AUTO_RESUME_ENABLED" envDefault:"true"`
+	ApiGrpcAddress string `env:"API_GRPC_ADDRESS"`
 }
 
 func Parse() (Config, error) {
