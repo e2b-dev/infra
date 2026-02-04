@@ -234,6 +234,7 @@ func (o *Orchestrator) CreateSandbox(
 			AllowInternetAccess: allowInternetAccess,
 			Network:             sbxNetwork,
 			TotalDiskSizeMb:     ut.FromPtr(build.TotalDiskSizeMb),
+			SandboxResumesOn:    sandboxResumesOn,
 		},
 		StartTime: timestamppb.New(startTime),
 		EndTime:   timestamppb.New(endTime),

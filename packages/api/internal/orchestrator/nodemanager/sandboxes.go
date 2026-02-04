@@ -86,7 +86,7 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
 				teamID,
 				buildID,
 				config.GetMetadata(),
-				nil,
+				config.SandboxResumesOn, //nolint:protogetter // we need the nil check too
 				time.Duration(config.GetMaxSandboxLength())*time.Hour,
 				sbx.GetStartTime().AsTime(),
 				sbx.GetEndTime().AsTime(),

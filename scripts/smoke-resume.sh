@@ -28,7 +28,7 @@ API_URL="https://api.${DOMAIN}"
 create_sandbox() {
   local auto_resume_policy="${1:-}"
   local body
-  if [ -n "${auto_resume_policy}" ]; then
+  if [ -n "${auto_resume_policy}" ] && [ "${auto_resume_policy}" != "null" ] && [ "${auto_resume_policy}" != "none" ]; then
     body=$(jq -n \
       --arg policy "${auto_resume_policy}" \
       --arg template "base" \
