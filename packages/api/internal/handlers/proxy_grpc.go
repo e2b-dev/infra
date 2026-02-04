@@ -163,6 +163,7 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		&headers,
 		true,
 		nodeID,
+		snap.Snapshot.EnvID,
 		snap.Snapshot.BaseEnvID,
 		autoPause,
 		envdAccessToken,
