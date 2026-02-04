@@ -72,14 +72,6 @@ func (c *DecompressMMapChunker) ReadAt(ctx context.Context, b []byte, off int64,
 func (c *DecompressMMapChunker) Slice(ctx context.Context, off, length int64, ft *storage.FrameTable) ([]byte, error) {
 	timer := c.metrics.SlicesTimerFactory.Begin()
 
-	// Clamp length to available data (U space)
-	if off+length > c.virtSize {
-		length = c.virtSize - off
-	}
-	if length <= 0 {
-		return []byte{}, nil
-	}
-
 	b, err := c.cache.Slice(off, length)
 	if err == nil {
 		timer.Success(ctx, length, attribute.String(pullType, pullTypeLocal))

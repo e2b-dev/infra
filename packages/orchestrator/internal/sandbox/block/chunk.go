@@ -99,14 +99,6 @@ func (c *UncompressedMMapChunker) ReadAt(ctx context.Context, b []byte, off int6
 func (c *UncompressedMMapChunker) Slice(ctx context.Context, off, length int64, _ *storage.FrameTable) ([]byte, error) {
 	timer := c.metrics.SlicesTimerFactory.Begin()
 
-	// Clamp length to available data
-	if off+length > c.size {
-		length = c.size - off
-	}
-	if length <= 0 {
-		return []byte{}, nil
-	}
-
 	b, err := c.cache.Slice(off, length)
 	if err == nil {
 		timer.Success(ctx, length,
