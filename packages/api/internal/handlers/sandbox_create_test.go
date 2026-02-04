@@ -240,6 +240,15 @@ func TestOrchestrator_convertVolumeMounts(t *testing.T) {
 
 	db := testutils.SetupDatabase(t)
 
+	t.Run("InvalidVolumeMountsError.Error() returns expected string", func(t *testing.T) {
+		err := InvalidVolumeMountsError{[]InvalidMount{
+			{0, "reason1"},
+			{2, "reason2"},
+		}}
+		expected := "invalid mounts:\n\t- volume mount #0: reason1\n\t- volume mount #2: reason2"
+		assert.Equal(t, expected, err.Error())
+	})
+
 	testCases := map[string]struct {
 		expectFeatureFlag bool
 		expectResources   bool
@@ -323,6 +332,82 @@ func TestOrchestrator_convertVolumeMounts(t *testing.T) {
 			},
 			volumeTypes: nil, // This will trigger cluster error in my mock
 			err:         fmt.Errorf("failed to get supported volume types: %w", fmt.Errorf("failed to get volume types from cluster: %w", fmt.Errorf("cluster error"))),
+		},
+		"empty path reports error": {
+			expectFeatureFlag: true,
+			expectResources:   true,
+			volumesEnabled:    true,
+			input: []api.SandboxVolumeMount{
+				{Name: "vol1", Path: ""},
+			},
+			database: []queries.CreateVolumeParams{
+				{Name: "vol1", VolumeType: "local"},
+			},
+			volumeTypes: []string{"local"},
+			err:         InvalidVolumeMountsError{[]InvalidMount{{0, "path cannot be empty"}}},
+		},
+		"non-absolute path reports error": {
+			expectFeatureFlag: true,
+			expectResources:   true,
+			volumesEnabled:    true,
+			input: []api.SandboxVolumeMount{
+				{Name: "vol1", Path: "relative/path"},
+			},
+			database: []queries.CreateVolumeParams{
+				{Name: "vol1", VolumeType: "local"},
+			},
+			volumeTypes: []string{"local"},
+			err:         InvalidVolumeMountsError{[]InvalidMount{{0, "path must be absolute"}}},
+		},
+		"non-clean path reports error": {
+			expectFeatureFlag: true,
+			expectResources:   true,
+			volumesEnabled:    true,
+			input: []api.SandboxVolumeMount{
+				{Name: "vol1", Path: "/path/./to/somewhere"},
+			},
+			database: []queries.CreateVolumeParams{
+				{Name: "vol1", VolumeType: "local"},
+			},
+			volumeTypes: []string{"local"},
+			err:         InvalidVolumeMountsError{[]InvalidMount{{0, "path must not contain any '.' or '..' components"}}},
+		},
+		"duplicate paths report error": {
+			expectFeatureFlag: true,
+			expectResources:   true,
+			volumesEnabled:    true,
+			input: []api.SandboxVolumeMount{
+				{Name: "vol1", Path: "/path"},
+				{Name: "vol2", Path: "/path"},
+			},
+			database: []queries.CreateVolumeParams{
+				{Name: "vol1", VolumeType: "local"},
+				{Name: "vol2", VolumeType: "local"},
+			},
+			volumeTypes: []string{"local"},
+			err:         InvalidVolumeMountsError{[]InvalidMount{{1, "path '/path' is already used"}}},
+		},
+		"multiple invalid mounts report all errors": {
+			expectFeatureFlag: true,
+			expectResources:   true,
+			volumesEnabled:    true,
+			input: []api.SandboxVolumeMount{
+				{Name: "missing", Path: "/path1"},
+				{Name: "vol1", Path: "relative"},
+				{Name: "vol2", Path: "/path2"},
+				{Name: "vol3", Path: "/path2"},
+			},
+			database: []queries.CreateVolumeParams{
+				{Name: "vol1", VolumeType: "local"},
+				{Name: "vol2", VolumeType: "local"},
+				{Name: "vol3", VolumeType: "local"},
+			},
+			volumeTypes: []string{"local"},
+			err: InvalidVolumeMountsError{[]InvalidMount{
+				{0, "volume 'missing' not found"},
+				{1, "path must be absolute"},
+				{3, "path '/path2' is already used"},
+			}},
 		},
 	}
 
