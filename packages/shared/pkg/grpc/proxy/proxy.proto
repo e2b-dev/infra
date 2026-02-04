@@ -14,10 +14,9 @@ message SandboxPausedInfoRequest {
 
 // AutoResumePolicy describes when a paused sandbox should auto-resume.
 enum AutoResumePolicy {
-  AUTO_RESUME_POLICY_UNSPECIFIED = 0;
+  AUTO_RESUME_POLICY_NULL = 0;
   AUTO_RESUME_POLICY_ANY = 1;
   AUTO_RESUME_POLICY_AUTHED = 2;
-  AUTO_RESUME_POLICY_NULL = 3;
 }
 
 // Response describing whether a paused snapshot exists and its auto-resume policy.

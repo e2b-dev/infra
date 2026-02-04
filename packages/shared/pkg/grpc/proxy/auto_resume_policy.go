@@ -33,9 +33,12 @@ func AutoResumePolicyToString(policy AutoResumePolicy) string {
 
 // NormalizeAutoResumePolicy folds unspecified policies into null.
 func NormalizeAutoResumePolicy(policy AutoResumePolicy) AutoResumePolicy {
-	if policy == AutoResumePolicy_AUTO_RESUME_POLICY_UNSPECIFIED {
+	switch policy {
+	case AutoResumePolicy_AUTO_RESUME_POLICY_ANY,
+		AutoResumePolicy_AUTO_RESUME_POLICY_AUTHED,
+		AutoResumePolicy_AUTO_RESUME_POLICY_NULL:
+		return policy
+	default:
 		return AutoResumePolicy_AUTO_RESUME_POLICY_NULL
 	}
-
-	return policy
 }

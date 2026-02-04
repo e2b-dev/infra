@@ -140,7 +140,7 @@ func TestShouldAutoResumePolicy(t *testing.T) {
 	if !shouldAutoResume(proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_AUTHED, true, true) {
 		t.Fatalf("expected authed=true with token")
 	}
-	if shouldAutoResume(proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_UNSPECIFIED, true, false) {
+	if shouldAutoResume(proxygrpc.AutoResumePolicy(99), true, false) {
 		t.Fatalf("expected default=false for unknown policy")
 	}
 }
