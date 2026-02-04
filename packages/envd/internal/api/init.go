@@ -11,6 +11,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/awnumar/memguard"
 	"github.com/rs/zerolog"
 	"github.com/txn2/txeh"
 	"golang.org/x/sys/unix"
@@ -36,9 +37,11 @@ const (
 // validateInitAccessToken validates the access token for /init requests.
 // Token is valid if it matches the existing token OR the MMDS hash.
 // If neither exists, first-time setup is allowed.
-func (a *API) validateInitAccessToken(ctx context.Context, requestToken *string) error {
+func (a *API) validateInitAccessToken(ctx context.Context, requestToken *SecureToken) error {
+	requestTokenSet := requestToken.IsSet()
+
 	// Fast path: token matches existing
-	if a.accessToken != nil && requestToken != nil && *requestToken == *a.accessToken {
+	if a.accessToken.IsSet() && requestTokenSet && a.accessToken.EqualsSecure(requestToken) {
 		return nil
 	}
 
@@ -48,9 +51,9 @@ func (a *API) validateInitAccessToken(ctx context.Context, requestToken *string)
 	switch {
 	case matchesMMDS:
 		return nil
-	case a.accessToken == nil && !mmdsExists:
+	case !a.accessToken.IsSet() && !mmdsExists:
 		return nil // first-time setup
-	case requestToken == nil:
+	case !requestTokenSet:
 		return ErrAccessTokenResetNotAuthorized
 	default:
 		return ErrAccessTokenMismatch
@@ -64,7 +67,7 @@ func (a *API) validateInitAccessToken(ctx context.Context, requestToken *string)
 //   - hash(token): requires this specific token
 //   - hash(""): explicitly allows nil token (token reset authorized)
 //   - "": MMDS not properly configured, no authorization granted
-func (a *API) checkMMDSHash(ctx context.Context, requestToken *string) (bool, bool) {
+func (a *API) checkMMDSHash(ctx context.Context, requestToken *SecureToken) (bool, bool) {
 	if a.isNotFC {
 		return false, false
 	}
@@ -78,11 +81,17 @@ func (a *API) checkMMDSHash(ctx context.Context, requestToken *string) (bool, bo
 		return false, false
 	}
 
-	if requestToken == nil {
+	if !requestToken.IsSet() {
 		return mmdsHash == keys.HashAccessToken(""), true
 	}
 
-	return keys.HashAccessToken(*requestToken) == mmdsHash, true
+	tokenBytes, err := requestToken.Bytes()
+	if err != nil {
+		return false, true
+	}
+	defer memguard.WipeBytes(tokenBytes)
+
+	return keys.HashAccessTokenBytes(tokenBytes) == mmdsHash, true
 }
 
 func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
@@ -94,15 +103,32 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 	logger := a.logger.With().Str(string(logs.OperationIDKey), operationID).Logger()
 
 	if r.Body != nil {
-		var initRequest PostInitJSONBody
-
-		err := json.NewDecoder(r.Body).Decode(&initRequest)
-		if err != nil && !errors.Is(err, io.EOF) {
-			logger.Error().Msgf("Failed to decode request: %v", err)
+		// Read raw body so we can wipe it after parsing
+		body, err := io.ReadAll(r.Body)
+		// Ensure body is wiped after we're done
+		defer memguard.WipeBytes(body)
+		if err != nil {
+			logger.Error().Msgf("Failed to read request body: %v", err)
 			w.WriteHeader(http.StatusBadRequest)
 
 			return
 		}
+
+		var initRequest PostInitJSONBody
+		if len(body) > 0 {
+			err = json.Unmarshal(body, &initRequest)
+			if err != nil {
+				logger.Error().Msgf("Failed to decode request: %v", err)
+				w.WriteHeader(http.StatusBadRequest)
+
+				return
+			}
+		}
+
+		// Ensure request token is destroyed if not transferred via TakeFrom.
+		// This handles: validation failures, timestamp-based skips, and any early returns.
+		// Safe because Destroy() is nil-safe and TakeFrom clears the source.
+		defer initRequest.AccessToken.Destroy()
 
 		a.initLock.Lock()
 		defer a.initLock.Unlock()
@@ -169,12 +195,13 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 		}
 	}
 
-	if data.AccessToken != nil {
+	if data.AccessToken.IsSet() {
 		logger.Debug().Msg("Setting access token")
-	} else {
+		a.accessToken.TakeFrom(data.AccessToken)
+	} else if a.accessToken.IsSet() {
 		logger.Debug().Msg("Clearing access token")
+		a.accessToken.Destroy()
 	}
-	a.accessToken = data.AccessToken
 
 	if data.HyperloopIP != nil {
 		go a.SetupHyperloop(*data.HyperloopIP)

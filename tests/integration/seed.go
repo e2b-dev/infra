@@ -184,16 +184,15 @@ VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
 
 	oldBuildTime := time.Now().Add(-time.Hour)
 	// Important: Insert builds in chronological order (oldest first, newest last)
-	// because the trigger on env_builds creates env_build_assignments with CURRENT_TIMESTAMP.
 	// The query uses ORDER BY eba.created_at DESC to get the latest build,
-	// so the last inserted build will be selected.
+	// so the last inserted build assignment will be selected.
 	builds := []buildData{
 		// An older build, so we have multiple builds - inserted FIRST
 		{
 			id:        uuid.New(),
 			createdAt: &oldBuildTime,
 		},
-		// Primary build - inserted LAST so it has the latest trigger-created timestamp
+		// Primary build - inserted LAST so it has the latest assignment timestamp
 		{
 			id:        data.BuildID,
 			createdAt: nil,
@@ -204,26 +203,47 @@ VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
 		if build.createdAt != nil {
 			err = db.TestsRawSQL(ctx, `
 INSERT INTO env_builds (
-	id, env_id, dockerfile, status, vcpu, ram_mb, free_disk_size_mb,
+	id, dockerfile, status, vcpu, ram_mb, free_disk_size_mb,
 	total_disk_size_mb, kernel_version, firecracker_version, envd_version,
 	cluster_node_id, version, created_at, updated_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, CURRENT_TIMESTAMP)
-`, build.id, data.EnvID, "FROM e2bdev/base:latest", dbtypes.BuildStatusUploaded,
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, CURRENT_TIMESTAMP)
+`, build.id, "FROM e2bdev/base:latest", dbtypes.BuildStatusUploaded,
 				2, 512, 512, 1982, "vmlinux-6.1.102", "v1.12.1_d990331", "0.2.4",
 				"integration-test-node", templates.TemplateV1Version, build.createdAt)
 		} else {
 			err = db.TestsRawSQL(ctx, `
 INSERT INTO env_builds (
-	id, env_id, dockerfile, status, vcpu, ram_mb, free_disk_size_mb,
+	id, dockerfile, status, vcpu, ram_mb, free_disk_size_mb,
 	total_disk_size_mb, kernel_version, firecracker_version, envd_version,
 	cluster_node_id, version, updated_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, CURRENT_TIMESTAMP)
-`, build.id, data.EnvID, "FROM e2bdev/base:latest", dbtypes.BuildStatusUploaded,
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_TIMESTAMP)
+`, build.id, "FROM e2bdev/base:latest", dbtypes.BuildStatusUploaded,
 				2, 512, 512, 1982, "vmlinux-6.1.102", "v1.12.1_d990331", "0.2.4",
 				"integration-test-node", templates.TemplateV1Version)
 		}
 		if err != nil {
 			return fmt.Errorf("failed to create env build: %w", err)
+		}
+
+		// Create the build assignment (trigger will backfill env_id for backward compat)
+		var assignmentCreatedAt *time.Time
+		if build.createdAt != nil {
+			assignmentCreatedAt = build.createdAt
+		}
+
+		if assignmentCreatedAt != nil {
+			err = db.TestsRawSQL(ctx, `
+INSERT INTO env_build_assignments (env_id, build_id, tag, created_at)
+VALUES ($1, $2, 'default', $3)
+`, data.EnvID, build.id, assignmentCreatedAt)
+		} else {
+			err = db.TestsRawSQL(ctx, `
+INSERT INTO env_build_assignments (env_id, build_id, tag)
+VALUES ($1, $2, 'default')
+`, data.EnvID, build.id)
+		}
+		if err != nil {
+			return fmt.Errorf("failed to create env build assignment: %w", err)
 		}
 	}
 
