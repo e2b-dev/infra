@@ -154,11 +154,20 @@ func TestCatalogResolutionPaused_AutoResumeDenied(t *testing.T) {
 func TestShouldAutoResume(t *testing.T) {
 	t.Parallel()
 
-	if shouldAutoResume(proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_NULL, false, false) {
+	if shouldAutoResume(proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_ANY, false, true) {
 		t.Fatalf("expected autoResume=false when disabled")
 	}
-	if !shouldAutoResume(proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_NULL, true, false) {
-		t.Fatalf("expected autoResume=true when enabled")
+	if shouldAutoResume(proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_NULL, true, true) {
+		t.Fatalf("expected autoResume=false for null policy")
+	}
+	if shouldAutoResume(proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_AUTHED, true, false) {
+		t.Fatalf("expected autoResume=false for authed policy without auth")
+	}
+	if !shouldAutoResume(proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_AUTHED, true, true) {
+		t.Fatalf("expected autoResume=true for authed policy with auth")
+	}
+	if !shouldAutoResume(proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_ANY, true, false) {
+		t.Fatalf("expected autoResume=true for any policy")
 	}
 }
 
@@ -203,4 +212,3 @@ func TestWithProxyAuthMetadata(t *testing.T) {
 		t.Fatalf("unexpected api key metadata: %v", got)
 	}
 }
-

@@ -179,8 +179,20 @@ func waitForCatalog(ctx context.Context, sandboxId string, c catalog.SandboxesCa
 	}
 }
 
-func shouldAutoResume(_ proxygrpc.AutoResumePolicy, autoResumeEnabled bool, _ bool) bool {
-	return autoResumeEnabled
+func shouldAutoResume(policy proxygrpc.AutoResumePolicy, autoResumeEnabled bool, requestHasAuth bool) bool {
+	if !autoResumeEnabled {
+		return false
+	}
+
+	policy = proxygrpc.NormalizeAutoResumePolicy(policy)
+	switch policy {
+	case proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_ANY:
+		return true
+	case proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_AUTHED:
+		return requestHasAuth
+	default:
+		return false
+	}
 }
 
 func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog catalog.SandboxesCatalog) (*reverseproxy.Proxy, error) {
