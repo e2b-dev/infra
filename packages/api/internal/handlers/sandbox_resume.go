@@ -134,7 +134,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 
 	sbxlogger.E(&sbxlogger.SandboxMetadata{
 		SandboxID:  sandboxID,
-		TemplateID: build.EnvID,
+		TemplateID: snap.EnvID,
 		TeamID:     teamID.String(),
 	}).Debug(ctx, "Started resuming sandbox")
 
@@ -142,7 +142,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	if snap.EnvSecure {
 		accessToken, tokenErr := a.getEnvdAccessToken(build.EnvdVersion, sandboxID)
 		if tokenErr != nil {
-			logger.L().Error(ctx, "Secure envd access token error", zap.Error(tokenErr.Err), logger.WithTemplateID(build.EnvID), logger.WithBuildID(build.ID.String()), logger.WithSandboxID(sandboxID))
+			logger.L().Error(ctx, "Secure envd access token error", zap.Error(tokenErr.Err), logger.WithTemplateID(snap.EnvID), logger.WithBuildID(build.ID.String()), logger.WithSandboxID(sandboxID))
 			a.sendAPIStoreError(c, tokenErr.Code, tokenErr.ClientMsg)
 
 			return
@@ -168,6 +168,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		&c.Request.Header,
 		true,
 		nodeID,
+		snap.EnvID,
 		snap.BaseEnvID,
 		autoPause,
 		envdAccessToken,

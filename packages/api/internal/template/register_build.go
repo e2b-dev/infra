@@ -197,7 +197,6 @@ func RegisterBuild(
 	// Insert the new build
 	err = client.CreateTemplateBuild(ctx, queries.CreateTemplateBuildParams{
 		BuildID:            buildID,
-		TemplateID:         data.TemplateID,
 		RamMb:              ramMB,
 		Vcpu:               cpuCount,
 		KernelVersion:      data.KernelVersion,
@@ -314,24 +313,6 @@ func RegisterBuild(
 		}
 
 		telemetry.ReportEvent(ctx, "inserted alias", attribute.String("env.alias", alias))
-	}
-
-	if len(data.Tags) != 0 {
-		// TODO: Remove this once the migration is deployed [ENG-3268](https://linear.app/e2b/issue/ENG-3268)
-		err = client.DeleteTriggerTemplateBuildAssignment(ctx, queries.DeleteTriggerTemplateBuildAssignmentParams{
-			TemplateID: data.TemplateID,
-			BuildID:    buildID,
-			Tag:        id.DefaultTag,
-		})
-		if err != nil {
-			telemetry.ReportCriticalError(ctx, "error when deleting tag assignment", err, attribute.String("tag", id.DefaultTag))
-
-			return nil, &api.APIError{
-				Err:       err,
-				ClientMsg: fmt.Sprintf("Error when deleting tag assignment: %s", err),
-				Code:      http.StatusInternalServerError,
-			}
-		}
 	}
 
 	for _, tag := range tags {
