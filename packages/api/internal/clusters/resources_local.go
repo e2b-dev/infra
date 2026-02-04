@@ -23,9 +23,10 @@ type LocalClusterResourceProvider struct {
 }
 
 const (
-	sandboxLogsOldestLimit = 168 * time.Hour // 7 days
-	defaultLogsLimit       = 1000
-	defaultDirection       = logproto.FORWARD
+	SandboxLogsOldestLimit = 7 * 24 * time.Hour // 7 days
+
+	defaultLogsLimit = 1000
+	defaultDirection = logproto.FORWARD
 )
 
 func newLocalClusterResourceProvider(
@@ -115,28 +116,28 @@ func (l *LocalClusterResourceProvider) GetSandboxesMetrics(ctx context.Context, 
 	return metrics, nil
 }
 
-func (l *LocalClusterResourceProvider) GetSandboxLogs(ctx context.Context, teamID string, sandboxID string, qStart *int64, qLimit *int32, qDirection *api.LogsDirection) (api.SandboxLogs, *api.APIError) {
-	end := time.Now()
-	var start time.Time
-
+func (l *LocalClusterResourceProvider) GetSandboxLogs(ctx context.Context, teamID string, sandboxID string, qStart *int64, qEnd *int64, qLimit *int32, qDirection *api.LogsDirection) (api.SandboxLogs, *api.APIError) {
+	start, end := time.Now().Add(-SandboxLogsOldestLimit), time.Now()
 	if qStart != nil {
 		start = time.UnixMilli(*qStart)
-	} else {
-		start = end.Add(-sandboxLogsOldestLimit)
 	}
 
-	limit := defaultLogsLimit
-	if qLimit != nil {
-		limit = int(*qLimit)
+	if qEnd != nil {
+		end = time.UnixMilli(*qEnd)
 	}
 
-	direction := loki.DefaultDirection
+	direction := defaultDirection
 	if qDirection != nil {
 		if *qDirection == api.LogsDirectionBackward {
 			direction = logproto.BACKWARD
 		} else {
 			direction = logproto.FORWARD
 		}
+	}
+
+	limit := defaultLogsLimit
+	if qLimit != nil {
+		limit = int(*qLimit)
 	}
 
 	raw, err := l.queryLogsProvider.QuerySandboxLogs(ctx, teamID, sandboxID, start, end, limit, direction)
