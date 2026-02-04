@@ -141,7 +141,7 @@ type FileStorer interface {
 }
 
 type Blobber interface {
-	GetBlob(ctx context.Context, objectPath string, userBuffer []byte) ([]byte, error)
+	GetBlob(ctx context.Context, objectPath string) ([]byte, error)
 	CopyBlob(ctx context.Context, objectPath string, dst io.Writer) (n int64, err error)
 	StoreBlob(ctx context.Context, objectPath string, in io.Reader) error
 }
@@ -350,7 +350,7 @@ func (s *Storage) GetFrame(ctx context.Context, objectPath string, offset int64,
 	return Range{Start: frameStart.C, Length: n}, err
 }
 
-func (s *Storage) GetBlob(ctx context.Context, path string, userBuffer []byte) ([]byte, error) {
+func (s *Storage) GetBlob(ctx context.Context, path string) ([]byte, error) {
 	// TODO LEV metrics
 
 	r, err := s.StartDownload(ctx, path)
@@ -359,28 +359,15 @@ func (s *Storage) GetBlob(ctx context.Context, path string, userBuffer []byte) (
 	}
 	defer r.Close()
 
-	return readAll(r, userBuffer)
+	return readAll(r)
 }
 
-func readAll(r io.Reader, userBuffer []byte) ([]byte, error) {
-	if userBuffer != nil {
-		n, err := io.ReadFull(r, userBuffer)
-		if err != nil {
-			return nil, fmt.Errorf("reading blob into user buffer: %w", err)
-		}
+func readAll(r io.Reader) ([]byte, error) {
+	const initialBufferSize = 2 * megabyte
+	buf := bytes.NewBuffer(make([]byte, 0, initialBufferSize))
+	_, err := io.Copy(buf, r)
 
-		return userBuffer[:n], nil
-	}
-
-	// This is semi-arbitrary. this code path is called for files that tend to be less than 1 MB (headers, metadata, etc),
-	// so 2 MB allows us to read the file without needing to allocate more memory, with some room for growth. If the
-	// file is larger than 2 MB, the buffer will grow, it just won't be as efficient WRT memory allocations.
-	const writeToInitialBufferSize = 2 * megabyte
-
-	receiveBuf := bytes.NewBuffer(make([]byte, 0, writeToInitialBufferSize))
-	_, err := io.Copy(receiveBuf, r)
-
-	return receiveBuf.Bytes(), err
+	return buf.Bytes(), err
 }
 
 func (s *Storage) CopyBlob(ctx context.Context, path string, dst io.Writer) (n int64, err error) {

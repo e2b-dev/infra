@@ -81,7 +81,7 @@ func NewHeaderFromObject(ctx context.Context, bucketName string, headerPath stri
 		return nil, fmt.Errorf("failed to create GCS bucket storage provider: %w", err)
 	}
 
-	data, err := s.GetBlob(ctx, headerPath, nil)
+	data, err := s.GetBlob(ctx, headerPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open object: %w", err)
 	}

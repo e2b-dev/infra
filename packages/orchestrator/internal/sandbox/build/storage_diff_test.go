@@ -77,7 +77,6 @@ func setupMockProvider(t *testing.T, buildId string, diffType DiffType, frames m
 	provider.EXPECT().GetBlob(
 		mock.Anything,
 		headerPath,
-		mock.Anything,
 	).Return(headerData, nil).Maybe()
 
 	// Setup GetFrame to return compressed data and decompress when requested

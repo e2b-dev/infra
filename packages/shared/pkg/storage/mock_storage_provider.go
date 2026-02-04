@@ -169,8 +169,8 @@ func (_c *MockStorageProvider_DeleteWithPrefix_Call) RunAndReturn(run func(ctx c
 }
 
 // GetBlob provides a mock function for the type MockStorageProvider
-func (_mock *MockStorageProvider) GetBlob(ctx context.Context, objectPath string, userBuffer []byte) ([]byte, error) {
-	ret := _mock.Called(ctx, objectPath, userBuffer)
+func (_mock *MockStorageProvider) GetBlob(ctx context.Context, objectPath string) ([]byte, error) {
+	ret := _mock.Called(ctx, objectPath)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetBlob")
@@ -178,18 +178,18 @@ func (_mock *MockStorageProvider) GetBlob(ctx context.Context, objectPath string
 
 	var r0 []byte
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []byte) ([]byte, error)); ok {
-		return returnFunc(ctx, objectPath, userBuffer)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) ([]byte, error)); ok {
+		return returnFunc(ctx, objectPath)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []byte) []byte); ok {
-		r0 = returnFunc(ctx, objectPath, userBuffer)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) []byte); ok {
+		r0 = returnFunc(ctx, objectPath)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]byte)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, []byte) error); ok {
-		r1 = returnFunc(ctx, objectPath, userBuffer)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, objectPath)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -204,12 +204,11 @@ type MockStorageProvider_GetBlob_Call struct {
 // GetBlob is a helper method to define mock.On call
 //   - ctx context.Context
 //   - objectPath string
-//   - userBuffer []byte
-func (_e *MockStorageProvider_Expecter) GetBlob(ctx interface{}, objectPath interface{}, userBuffer interface{}) *MockStorageProvider_GetBlob_Call {
-	return &MockStorageProvider_GetBlob_Call{Call: _e.mock.On("GetBlob", ctx, objectPath, userBuffer)}
+func (_e *MockStorageProvider_Expecter) GetBlob(ctx interface{}, objectPath interface{}) *MockStorageProvider_GetBlob_Call {
+	return &MockStorageProvider_GetBlob_Call{Call: _e.mock.On("GetBlob", ctx, objectPath)}
 }
 
-func (_c *MockStorageProvider_GetBlob_Call) Run(run func(ctx context.Context, objectPath string, userBuffer []byte)) *MockStorageProvider_GetBlob_Call {
+func (_c *MockStorageProvider_GetBlob_Call) Run(run func(ctx context.Context, objectPath string)) *MockStorageProvider_GetBlob_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -219,14 +218,9 @@ func (_c *MockStorageProvider_GetBlob_Call) Run(run func(ctx context.Context, ob
 		if args[1] != nil {
 			arg1 = args[1].(string)
 		}
-		var arg2 []byte
-		if args[2] != nil {
-			arg2 = args[2].([]byte)
-		}
 		run(
 			arg0,
 			arg1,
-			arg2,
 		)
 	})
 	return _c
@@ -237,7 +231,7 @@ func (_c *MockStorageProvider_GetBlob_Call) Return(bytes []byte, err error) *Moc
 	return _c
 }
 
-func (_c *MockStorageProvider_GetBlob_Call) RunAndReturn(run func(ctx context.Context, objectPath string, userBuffer []byte) ([]byte, error)) *MockStorageProvider_GetBlob_Call {
+func (_c *MockStorageProvider_GetBlob_Call) RunAndReturn(run func(ctx context.Context, objectPath string) ([]byte, error)) *MockStorageProvider_GetBlob_Call {
 	_c.Call.Return(run)
 	return _c
 }

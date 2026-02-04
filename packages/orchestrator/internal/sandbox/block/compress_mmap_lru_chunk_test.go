@@ -42,8 +42,8 @@ func TestCompressMMapLRUChunker_BasicReadAt(t *testing.T) {
 		mockGetter,
 		"test/path",
 		frameTable,
-		10,
 		cachePath,
+		10,
 		testMetrics(t),
 	)
 	require.NoError(t, err)
@@ -95,8 +95,8 @@ func TestCompressMMapLRUChunker_TwoLevelCache(t *testing.T) {
 		mockGetter,
 		"test/path",
 		frameTable,
-		1, // Small LRU to force evictions
 		cachePath,
+		1, // Small LRU to force evictions
 		testMetrics(t),
 	)
 	require.NoError(t, err)
@@ -160,8 +160,8 @@ func TestCompressMMapLRUChunker_MultipleFrames(t *testing.T) {
 		mockGetter,
 		"test/path",
 		frameTable,
-		10,
 		cachePath,
+		10,
 		testMetrics(t),
 	)
 	require.NoError(t, err)
@@ -233,8 +233,8 @@ func TestCompressMMapLRUChunker_SliceAcrossFrames(t *testing.T) {
 		mockGetter,
 		"test/path",
 		frameTable,
-		10,
 		cachePath,
+		10,
 		testMetrics(t),
 	)
 	require.NoError(t, err)
@@ -287,8 +287,8 @@ func TestCompressMMapLRUChunker_ConcurrentReads(t *testing.T) {
 		mockGetter,
 		"test/path",
 		frameTable,
-		10,
 		cachePath,
+		10,
 		testMetrics(t),
 	)
 	require.NoError(t, err)
@@ -359,8 +359,8 @@ func TestCompressMMapLRUChunker_LRUEvictionUsesLocalMmap(t *testing.T) {
 		mockGetter,
 		"test/path",
 		frameTable,
-		1, // LRU of 1 forces eviction
 		cachePath,
+		1, // LRU of 1 forces eviction
 		testMetrics(t),
 	)
 	require.NoError(t, err)
@@ -426,8 +426,8 @@ func TestCompressMMapLRUChunker_EmptySlice(t *testing.T) {
 		mockGetter,
 		"test/path",
 		frameTable,
-		10,
 		cachePath,
+		10,
 		testMetrics(t),
 	)
 	require.NoError(t, err)
@@ -462,8 +462,8 @@ func TestCompressMMapLRUChunker_Close(t *testing.T) {
 		mockGetter,
 		"test/path",
 		frameTable,
-		10,
 		cachePath,
+		10,
 		testMetrics(t),
 	)
 	require.NoError(t, err)
@@ -504,8 +504,8 @@ func TestCompressMMapLRUChunker_FileSize(t *testing.T) {
 		mockGetter,
 		"test/path",
 		frameTable,
-		10,
 		cachePath,
+		10,
 		testMetrics(t),
 	)
 	require.NoError(t, err)

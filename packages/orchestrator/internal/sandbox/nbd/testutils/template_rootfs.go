@@ -30,7 +30,7 @@ func TemplateRootfs(ctx context.Context, buildID string) (*BuildDevice, *Cleaner
 		return nil, &cleaner, fmt.Errorf("failed to get storage provider: %w", err)
 	}
 
-	headerData, err := storage.GetBlob(ctx, files.StorageRootfsHeaderPath(), nil)
+	headerData, err := storage.GetBlob(ctx, files.StorageRootfsHeaderPath())
 	if err != nil {
 		return nil, &cleaner, fmt.Errorf("failed to get header data: %w", err)
 	}

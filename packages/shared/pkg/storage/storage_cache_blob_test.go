@@ -56,7 +56,7 @@ func TestCachedStorage_Blobber(t *testing.T) {
 		// prevent the storage provider from falling back to cache
 		c.inner = nil
 
-		gotData, wg, err := c.getBlob(t.Context(), "test-item", nil)
+		gotData, wg, err := c.getBlob(t.Context(), "test-item")
 		require.NoError(t, err)
 		assert.Equal(t, data, gotData)
 
@@ -68,8 +68,8 @@ func TestCachedStorage_Blobber(t *testing.T) {
 
 		inner := NewMockStorageProvider(t)
 		inner.EXPECT().
-			GetBlob(mock.Anything, mock.Anything, mock.Anything).
-			RunAndReturn(func(_ context.Context, _ string, _ []byte) ([]byte, error) {
+			GetBlob(mock.Anything, mock.Anything).
+			RunAndReturn(func(_ context.Context, _ string) ([]byte, error) {
 				shadow := make([]byte, len(data))
 				copy(shadow, data)
 
@@ -133,7 +133,7 @@ func TestCachedStorage_Blobber(t *testing.T) {
 			tracer:    noopTracer,
 		}
 
-		data, wg, err := c.getBlob(t.Context(), "test-item", nil)
+		data, wg, err := c.getBlob(t.Context(), "test-item")
 		require.NoError(t, err)
 		assert.Len(t, data, len(actualData))
 		assert.Equal(t, actualData, data)
@@ -142,7 +142,7 @@ func TestCachedStorage_Blobber(t *testing.T) {
 
 		c.inner = nil
 
-		data, wg, err = c.getBlob(t.Context(), "test-item", nil)
+		data, wg, err = c.getBlob(t.Context(), "test-item")
 		require.NoError(t, err)
 		assert.Equal(t, actualData, data)
 

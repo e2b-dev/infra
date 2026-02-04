@@ -61,7 +61,7 @@ func NewStorage(
 			return nil, build.UnknownDiffTypeError{DiffType: fileType}
 		}
 
-		headerData, err := persistence.GetBlob(ctx, headerObjectPath, nil)
+		headerData, err := persistence.GetBlob(ctx, headerObjectPath)
 		if err != nil {
 			return nil, err
 		}

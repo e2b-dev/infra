@@ -14,13 +14,13 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-func (c Cache) GetBlob(ctx context.Context, objectPath string, userBuffer []byte) (blob []byte, e error) {
-	blob, _, e = c.getBlob(ctx, objectPath, userBuffer)
+func (c Cache) GetBlob(ctx context.Context, objectPath string) (blob []byte, e error) {
+	blob, _, e = c.getBlob(ctx, objectPath)
 
 	return blob, e
 }
 
-func (c Cache) getBlob(ctx context.Context, objectPath string, userBuffer []byte) (blob []byte, wg *sync.WaitGroup, e error) {
+func (c Cache) getBlob(ctx context.Context, objectPath string) (blob []byte, wg *sync.WaitGroup, e error) {
 	wg = &sync.WaitGroup{}
 	ctx, span := c.tracer.Start(ctx, "read object into writer")
 	defer func() {
@@ -32,7 +32,7 @@ func (c Cache) getBlob(ctx context.Context, objectPath string, userBuffer []byte
 	if err == nil {
 		defer f.Close()
 
-		b, err := readAll(f, userBuffer)
+		b, err := readAll(f)
 		if err == nil {
 			recordCacheRead(ctx, true, int64(len(b)), cacheTypeObject, cacheOpWriteTo)
 
@@ -81,7 +81,7 @@ func (c Cache) copyBlob(ctx context.Context, objectPath string, dst io.Writer) (
 
 func (c Cache) readBlobCacheMiss(ctx context.Context, objectPath string) (data []byte, wg *sync.WaitGroup, err error) {
 	wg = &sync.WaitGroup{}
-	if data, err = c.inner.GetBlob(ctx, objectPath, nil); err != nil {
+	if data, err = c.inner.GetBlob(ctx, objectPath); err != nil {
 		return data, wg, err
 	}
 
