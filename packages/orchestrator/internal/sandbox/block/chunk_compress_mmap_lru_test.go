@@ -55,6 +55,7 @@ func TestCompressMMapLRUChunker_BasicReadAt(t *testing.T) {
 		if e != nil {
 			return 0, e
 		}
+
 		return copy(buf, s), nil
 	}()
 	require.NoError(t, err)
@@ -70,6 +71,7 @@ func TestCompressMMapLRUChunker_BasicReadAt(t *testing.T) {
 		if e != nil {
 			return 0, e
 		}
+
 		return copy(buf, s), nil
 	}()
 	require.NoError(t, err)
@@ -119,6 +121,7 @@ func TestCompressMMapLRUChunker_TwoLevelCache(t *testing.T) {
 		if e != nil {
 			return 0, e
 		}
+
 		return copy(buf, s), nil
 	}()
 	require.NoError(t, err)
@@ -134,6 +137,7 @@ func TestCompressMMapLRUChunker_TwoLevelCache(t *testing.T) {
 		if e != nil {
 			return 0, e
 		}
+
 		return copy(buf, s), nil
 	}()
 	require.NoError(t, err)
@@ -195,6 +199,7 @@ func TestCompressMMapLRUChunker_MultipleFrames(t *testing.T) {
 		if e != nil {
 			return 0, e
 		}
+
 		return copy(buf, s), nil
 	}()
 	require.NoError(t, err)
@@ -206,6 +211,7 @@ func TestCompressMMapLRUChunker_MultipleFrames(t *testing.T) {
 		if e != nil {
 			return 0, e
 		}
+
 		return copy(buf, s), nil
 	}()
 	require.NoError(t, err)
@@ -339,6 +345,7 @@ func TestCompressMMapLRUChunker_ConcurrentReads(t *testing.T) {
 				if e != nil {
 					return 0, e
 				}
+
 				return copy(buf, s), nil
 			}()
 			assert.NoError(t, err)
@@ -410,6 +417,7 @@ func TestCompressMMapLRUChunker_LRUEvictionUsesLocalMmap(t *testing.T) {
 		if e != nil {
 			return 0, e
 		}
+
 		return copy(buf, s), nil
 	}()
 	require.NoError(t, err)
@@ -422,6 +430,7 @@ func TestCompressMMapLRUChunker_LRUEvictionUsesLocalMmap(t *testing.T) {
 		if e != nil {
 			return 0, e
 		}
+
 		return copy(buf, s), nil
 	}()
 	require.NoError(t, err)
@@ -434,6 +443,7 @@ func TestCompressMMapLRUChunker_LRUEvictionUsesLocalMmap(t *testing.T) {
 		if e != nil {
 			return 0, e
 		}
+
 		return copy(buf, s), nil
 	}()
 	require.NoError(t, err)
@@ -446,6 +456,7 @@ func TestCompressMMapLRUChunker_LRUEvictionUsesLocalMmap(t *testing.T) {
 		if e != nil {
 			return 0, e
 		}
+
 		return copy(buf, s), nil
 	}()
 	require.NoError(t, err)
@@ -459,6 +470,7 @@ func TestCompressMMapLRUChunker_LRUEvictionUsesLocalMmap(t *testing.T) {
 		if e != nil {
 			return 0, e
 		}
+
 		return copy(buf, s), nil
 	}()
 	require.NoError(t, err)

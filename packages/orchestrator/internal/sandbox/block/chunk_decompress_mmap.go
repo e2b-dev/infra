@@ -4,20 +4,25 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
+	"golang.org/x/sync/singleflight"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-// DecompressMMapChunker reads compressed frames from storage, decompresses them,
-// and caches the decompressed data in a memory-mapped file.
-// Address spaces: U=uncompressed (mmap), C=compressed (GCS storage)
+// DecompressMMapChunker fetches compressed frames from storage, decompresses them
+// immediately, and stores the UNCOMPRESSED data in a memory-mapped cache file.
+// This is essentially the same as UncompressedMMapChunker but handles compressed
+// source data. Both use Cache for block-aligned dirty tracking since the cached
+// data is always uncompressed and block-aligned.
+//
+// Address spaces: U=uncompressed (mmap cache), C=compressed (remote storage)
 type DecompressMMapChunker struct {
 	storage    storage.FrameGetter
 	objectPath string
@@ -28,13 +33,13 @@ type DecompressMMapChunker struct {
 	virtSize int64 // U space size (uncompressed)
 	rawSize  int64 // C space size (compressed on storage)
 
-	fetchers *utils.WaitMap
+	fetchGroup singleflight.Group
 }
 
 var _ Chunker = (*DecompressMMapChunker)(nil)
 
 // NewDecompressMMapChunker creates a chunker for compressed data.
-// virtSize = U space size, rawSize = C space size
+// virtSize = U space size (uncompressed), rawSize = C space size (compressed)
 func NewDecompressMMapChunker(
 	virtSize, rawSize, blockSize int64,
 	s storage.FrameGetter,
@@ -45,7 +50,7 @@ func NewDecompressMMapChunker(
 	// mmap holds decompressed data, so size it to virtSize (U space)
 	cache, err := NewCache(virtSize, blockSize, cachePath, false)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create file cache: %w", err)
+		return nil, fmt.Errorf("failed to create cache: %w", err)
 	}
 
 	return &DecompressMMapChunker{
@@ -54,7 +59,6 @@ func NewDecompressMMapChunker(
 		storage:    s,
 		objectPath: objectPath,
 		cache:      cache,
-		fetchers:   utils.NewWaitMap(),
 		metrics:    metrics,
 	}, nil
 }
@@ -119,6 +123,7 @@ func (c *DecompressMMapChunker) fetchToCache(ctx context.Context, off, length in
 	currentOff := framesToFetch.StartAt.U
 	for _, f := range framesToFetch.Frames {
 		fetchOff := currentOff
+		frameSize := f.U
 		currentOff += int64(f.U)
 
 		eg.Go(func() (err error) {
@@ -128,16 +133,18 @@ func (c *DecompressMMapChunker) fetchToCache(ctx context.Context, off, length in
 					err = fmt.Errorf("recovered from panic in the fetch handler: %v", r)
 				}
 			}()
-			err = c.fetchers.Wait(fetchOff, func() error {
+
+			key := strconv.FormatInt(fetchOff, 10)
+			_, err, _ = c.fetchGroup.Do(key, func() (any, error) {
 				select {
 				case <-ctx.Done():
-					return fmt.Errorf("error fetching range %d-%d: %w", fetchOff, fetchOff+int64(f.U), ctx.Err())
+					return nil, fmt.Errorf("error fetching range %d-%d: %w", fetchOff, fetchOff+int64(frameSize), ctx.Err())
 				default:
 				}
 
-				b, releaseCacheCloseLock, err := c.cache.addressBytes(fetchOff, int64(f.U))
+				b, releaseCacheCloseLock, err := c.cache.addressBytes(fetchOff, int64(frameSize))
 				if err != nil {
-					return err
+					return nil, err
 				}
 				defer releaseCacheCloseLock()
 
@@ -148,13 +155,13 @@ func (c *DecompressMMapChunker) fetchToCache(ctx context.Context, off, length in
 					fetchSW.Failure(ctx, int64(len(b)),
 						attribute.String(failureReason, failureTypeRemoteRead))
 
-					return fmt.Errorf("failed to read frame from base %d: %w", fetchOff, err)
+					return nil, fmt.Errorf("failed to read frame from base %d: %w", fetchOff, err)
 				}
 
-				c.cache.setIsCached(fetchOff, int64(f.U))
+				c.cache.setIsCached(fetchOff, int64(frameSize))
 				fetchSW.Success(ctx, int64(len(b)))
 
-				return nil
+				return nil, nil
 			})
 
 			return err

@@ -111,6 +111,7 @@ func TestCompressedChunker_BasicReadAt(t *testing.T) {
 		if e != nil {
 			return 0, e
 		}
+
 		return copy(buf, s), nil
 	}()
 	require.NoError(t, err)
@@ -126,6 +127,7 @@ func TestCompressedChunker_BasicReadAt(t *testing.T) {
 		if e != nil {
 			return 0, e
 		}
+
 		return copy(buf, s), nil
 	}()
 	require.NoError(t, err)
@@ -173,6 +175,7 @@ func TestCompressedChunker_LRUPopulation(t *testing.T) {
 		if e != nil {
 			return 0, e
 		}
+
 		return copy(buf, s), nil
 	}()
 	require.NoError(t, err)
@@ -187,6 +190,7 @@ func TestCompressedChunker_LRUPopulation(t *testing.T) {
 		if e != nil {
 			return 0, e
 		}
+
 		return copy(buf, s), nil
 	}()
 	require.NoError(t, err)
@@ -232,6 +236,7 @@ func TestCompressedChunker_LRUEvictionRefetch(t *testing.T) {
 		if e != nil {
 			return 0, e
 		}
+
 		return copy(buf, s), nil
 	}()
 	require.NoError(t, err)
@@ -250,6 +255,7 @@ func TestCompressedChunker_LRUEvictionRefetch(t *testing.T) {
 		if e != nil {
 			return 0, e
 		}
+
 		return copy(buf, s), nil
 	}()
 	require.NoError(t, err)
@@ -349,6 +355,7 @@ func TestCompressedChunker_MultipleFrames(t *testing.T) {
 		if e != nil {
 			return 0, e
 		}
+
 		return copy(buf, s), nil
 	}()
 	require.NoError(t, err)
@@ -360,6 +367,7 @@ func TestCompressedChunker_MultipleFrames(t *testing.T) {
 		if e != nil {
 			return 0, e
 		}
+
 		return copy(buf, s), nil
 	}()
 	require.NoError(t, err)
@@ -487,6 +495,7 @@ func TestCompressedChunker_ConcurrentReads(t *testing.T) {
 				if e != nil {
 					return 0, e
 				}
+
 				return copy(buf, s), nil
 			}()
 			assert.NoError(t, err)

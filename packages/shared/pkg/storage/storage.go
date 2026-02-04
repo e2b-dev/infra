@@ -29,11 +29,20 @@ const (
 	defaultUploadPartSize         = 50 * megabyte
 )
 
+type ChunkerType byte
+
+const (
+	UncompressedMMapChunker ChunkerType = iota
+	DecompressMMapChunker
+	CompressLRUChunker
+	CompressMMapLRUChunker
+)
+
 // Global flags for compression behavior. These will become feature flags later.
 var (
 	// EnableGCSCompression controls whether files are compressed when uploading to GCS.
 	// When false, files are uploaded uncompressed even if compression options are provided.
-	EnableGCSCompression = false
+	EnableGCSCompression = true
 
 	// EnableNFSCompressedCache controls whether the NFS cache stores compressed frames.
 	// When true (default): Cache stores compressed frames, decompresses on read.
@@ -43,6 +52,9 @@ var (
 	// EnableCompressedChunker controls whether to use the compressed chunker implementation.
 	// When true, uses DecompressMMapChunker (decompress once into mmap cache).
 	EnableCompressedChunker = true
+
+	UncompressedChunkerType = DecompressMMapChunker
+	CompressedChunkerType   = DecompressMMapChunker
 )
 
 const (
@@ -179,8 +191,8 @@ func GetBuildCacheStorageProvider(ctx context.Context, limiter *limit.Limiter) (
 	return getStorageForEnvironment(ctx, limiter, "LOCAL_BUILD_CACHE_STORAGE_BASE_PATH", "/tmp/build-cache", "BUILD_CACHE_BUCKET_NAME", "Bucket for storing build cache files")
 }
 
-// NewLocalStorage creates a Storage backed by local filesystem at basePath.
-func NewLocalStorage(basePath string) *Storage {
+// NewFileSystemStorage creates a Storage backed by local filesystem at basePath.
+func NewFileSystemStorage(basePath string) *Storage {
 	return &Storage{Backend: NewFS(basePath)}
 }
 

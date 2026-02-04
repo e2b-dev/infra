@@ -91,17 +91,17 @@ func TestDecompressMMapChunker_BasicSlice(t *testing.T) {
 	require.NoError(t, err)
 	defer chunker.Close()
 
-	// Read the first 1024 bytes
+	// Read the first 1024 bytes (block-aligned offset)
 	slice, err := chunker.Slice(ctx, 0, 1024, frameTable)
 	require.NoError(t, err)
 	assert.Len(t, slice, 1024)
 	assert.Equal(t, uncompressedData[:1024], slice)
 
-	// Read from the middle
-	slice, err = chunker.Slice(ctx, 1000, 500, frameTable)
+	// Read more from same block (cache hit, block-aligned offset)
+	slice, err = chunker.Slice(ctx, 0, 2048, frameTable)
 	require.NoError(t, err)
-	assert.Len(t, slice, 500)
-	assert.Equal(t, uncompressedData[1000:1500], slice)
+	assert.Len(t, slice, 2048)
+	assert.Equal(t, uncompressedData[:2048], slice)
 }
 
 func TestDecompressMMapChunker_ReadAt(t *testing.T) {
@@ -141,17 +141,19 @@ func TestDecompressMMapChunker_ReadAt(t *testing.T) {
 	require.NoError(t, err)
 	defer chunker.Close()
 
+	// Use block-aligned offset (NBD always sends aligned requests)
 	buf := make([]byte, 2048)
 	n, err := func() (int, error) {
-		s, e := chunker.Slice(ctx, 100, int64(len(buf)), frameTable)
+		s, e := chunker.Slice(ctx, 0, int64(len(buf)), frameTable)
 		if e != nil {
 			return 0, e
 		}
+
 		return copy(buf, s), nil
 	}()
 	require.NoError(t, err)
 	assert.Equal(t, 2048, n)
-	assert.Equal(t, uncompressedData[100:2148], buf)
+	assert.Equal(t, uncompressedData[0:2048], buf)
 }
 
 func TestDecompressMMapChunker_CachePersists(t *testing.T) {

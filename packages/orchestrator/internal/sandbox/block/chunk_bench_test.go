@@ -56,7 +56,7 @@ func generateSemiRandomData(size int, seed int64) []byte {
 
 func setupCompressedStorage(b *testing.B, baseDir string) (*storage.Storage, string, *storage.FrameTable, int64) {
 	b.Helper()
-	st := storage.NewLocalStorage(baseDir)
+	st := storage.NewFileSystemStorage(baseDir)
 	origData := generateSemiRandomData(benchTotalDataSize, 42)
 	inputFile := filepath.Join(baseDir, "input.dat")
 	require.NoError(b, os.WriteFile(inputFile, origData, 0o644))
@@ -73,7 +73,7 @@ func setupCompressedStorage(b *testing.B, baseDir string) (*storage.Storage, str
 
 func setupUncompressedStorage(b *testing.B, baseDir string) (*storage.Storage, string) {
 	b.Helper()
-	st := storage.NewLocalStorage(baseDir)
+	st := storage.NewFileSystemStorage(baseDir)
 	origData := generateSemiRandomData(benchTotalDataSize, 42)
 	objectPath := "uncompressed.raw"
 	require.NoError(b, os.WriteFile(filepath.Join(baseDir, objectPath), origData, 0o644))

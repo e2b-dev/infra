@@ -13,7 +13,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 // CompressMMapLRUChunker is a two-level cache chunker:
@@ -33,13 +32,13 @@ type CompressMMapLRUChunker struct {
 	objectPath string
 
 	// Level 1: Decompressed frame LRU (same as CompressLRU)
-	frameLRU   *FrameLRU
-	fetchGroup singleflight.Group
+	frameLRU        *FrameLRU
+	decompressGroup singleflight.Group // dedup concurrent decompression requests
 
 	// Level 2: Compressed frame mmap cache
 	compressedCache *Cache
-	frameCached     sync.Map       // map[int64]struct{} - tracks which frames are in mmap (keyed by compressed offset)
-	fetchers        *utils.WaitMap // dedup concurrent fetches to storage
+	frameCached     sync.Map           // map[int64]struct{} - tracks which frames are in mmap (keyed by compressed offset)
+	fetchGroup      singleflight.Group // dedup concurrent fetches to storage
 
 	virtSize int64 // uncompressed size - used to cap requests
 	rawSize  int64 // compressed file size - used for mmap sizing
@@ -87,7 +86,6 @@ func NewCompressMMapLRUChunker(
 		objectPath:      objectPath,
 		frameLRU:        frameLRU,
 		compressedCache: compressedCache,
-		fetchers:        utils.NewWaitMap(),
 		virtSize:        virtSize,
 		rawSize:         rawSize,
 		metrics:         m,
@@ -196,7 +194,7 @@ func (c *CompressMMapLRUChunker) getOrFetchFrame(ctx context.Context, frameStart
 
 	// Dedup concurrent requests for same frame
 	key := strconv.FormatInt(frameStarts.U, 10)
-	dataI, err, _ := c.fetchGroup.Do(key, func() (any, error) {
+	dataI, err, _ := c.decompressGroup.Do(key, func() (any, error) {
 		// Double-check LRU
 		if frame, ok := c.frameLRU.get(frameStarts.U); ok {
 			return frame.data, nil
@@ -256,10 +254,11 @@ func (c *CompressMMapLRUChunker) ensureCompressedInMmap(ctx context.Context, fra
 	}
 
 	// Not in mmap - fetch from storage (dedup concurrent fetches)
-	err := c.fetchers.Wait(frameStarts.C, func() error {
+	key := strconv.FormatInt(frameStarts.C, 10)
+	_, err, _ := c.fetchGroup.Do(key, func() (any, error) {
 		// Double-check after acquiring fetch slot
 		if _, cached := c.frameCached.Load(frameStarts.C); cached {
-			return nil
+			return nil, nil
 		}
 
 		fetchTimer := c.metrics.RemoteReadsTimerFactory.Begin()
@@ -270,7 +269,7 @@ func (c *CompressMMapLRUChunker) ensureCompressedInMmap(ctx context.Context, fra
 			fetchTimer.Failure(ctx, int64(frameSize.C),
 				attribute.String(failureReason, "mmap_address_failed"))
 
-			return fmt.Errorf("failed to get mmap address: %w", err)
+			return nil, fmt.Errorf("failed to get mmap address: %w", err)
 		}
 		defer unlock()
 
@@ -280,7 +279,7 @@ func (c *CompressMMapLRUChunker) ensureCompressedInMmap(ctx context.Context, fra
 			fetchTimer.Failure(ctx, int64(frameSize.C),
 				attribute.String(failureReason, failureTypeRemoteRead))
 
-			return fmt.Errorf("failed to fetch compressed frame at %#x: %w", frameStarts.C, err)
+			return nil, fmt.Errorf("failed to fetch compressed frame at %#x: %w", frameStarts.C, err)
 		}
 
 		fetchTimer.Success(ctx, int64(frameSize.C))
@@ -291,7 +290,7 @@ func (c *CompressMMapLRUChunker) ensureCompressedInMmap(ctx context.Context, fra
 		c.compressedCache.setIsCached(frameStarts.C, int64(frameSize.C))
 		c.frameCached.Store(frameStarts.C, struct{}{})
 
-		return nil
+		return nil, nil
 	})
 	if err != nil {
 		return nil, err

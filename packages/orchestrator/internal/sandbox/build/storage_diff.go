@@ -95,23 +95,30 @@ func (b *StorageDiff) getChunker(ctx context.Context, ft *storage.FrameTable) (b
 }
 
 // createChunker creates the appropriate chunker based on the frame table.
-// Address spaces: virtSize=U (uncompressed), rawSize=C (compressed file size on storage)
 func (b *StorageDiff) createChunker(ctx context.Context, ft *storage.FrameTable) (block.Chunker, error) {
 	// Get both sizes from storage backend:
-	// - virtSize: uncompressed/logical size (U space)
+	// - uSize: uncompressed/logical size (U space)
 	// - rawSize: actual file size on storage (C space for compressed, same as U for uncompressed)
-	virtSize, rawSize, err := b.persistence.Size(ctx, b.objectPath)
+	uSize, rawSize, err := b.persistence.Size(ctx, b.objectPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get object sizes for %s: %w", b.objectPath, err)
 	}
 
 	isCompressed := storage.IsCompressed(ft)
-
 	if isCompressed {
-		return block.NewCompressMMapLRUChunker(virtSize, rawSize, b.persistence, b.objectPath, b.cachePath, 4, b.metrics)
+		switch storage.CompressedChunkerType {
+		case storage.DecompressMMapChunker:
+			return block.NewDecompressMMapChunker(uSize, rawSize, b.blockSize, b.persistence, b.objectPath, b.cachePath, b.metrics)
+		case storage.CompressLRUChunker:
+			return block.NewCompressLRUChunker(uSize, b.persistence, b.objectPath, 4, b.metrics)
+		case storage.CompressMMapLRUChunker:
+			return block.NewCompressMMapLRUChunker(uSize, rawSize, b.persistence, b.objectPath, b.cachePath, 4, b.metrics)
+		default:
+			return nil, fmt.Errorf("unsupported chunker type for object %s", b.objectPath)
+		}
 	}
 
-	return block.NewUncompressedMMapChunker(virtSize, b.blockSize, b.persistence, b.objectPath, b.cachePath, b.metrics)
+	return block.NewUncompressedMMapChunker(uSize, b.blockSize, b.persistence, b.objectPath, b.cachePath, b.metrics)
 }
 
 func (b *StorageDiff) Close() error {
