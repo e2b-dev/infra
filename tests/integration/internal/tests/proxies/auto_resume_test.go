@@ -105,6 +105,7 @@ func TestProxyAutoResumeConcurrent(t *testing.T) {
 	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoResume(api.NewSandboxAutoResume("authed")))
 
 	ensureSandboxPaused(t, c, sbx.SandboxID)
+	waitForSandboxStateWithin(t, c, sbx.SandboxID, api.Paused, 5*time.Second)
 
 	headers := http.Header{"X-API-Key": []string{setup.APIKey}}
 	group := errgroup.Group{}
@@ -147,6 +148,7 @@ func TestProxyAutoResumeSmoke(t *testing.T) {
 	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoResume(api.NewSandboxAutoResume("authed")))
 
 	ensureSandboxPaused(t, c, sbx.SandboxID)
+	waitForSandboxStateWithin(t, c, sbx.SandboxID, api.Paused, 5*time.Second)
 
 	headers := http.Header{"X-API-Key": []string{setup.APIKey}}
 	resp := proxyRequest(t, client, sbx, proxyURL, headers)
@@ -245,17 +247,23 @@ func ensureSandboxPaused(t *testing.T, c *api.ClientWithResponses, sandboxID str
 func waitForSandboxState(t *testing.T, c *api.ClientWithResponses, sandboxID string, expected api.SandboxState) {
 	t.Helper()
 
-	deadline := time.Now().Add(60 * time.Second)
+	waitForSandboxStateWithin(t, c, sandboxID, expected, 60*time.Second)
+}
+
+func waitForSandboxStateWithin(t *testing.T, c *api.ClientWithResponses, sandboxID string, expected api.SandboxState, timeout time.Duration) {
+	t.Helper()
+
+	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		state := getSandboxState(t, c, sandboxID)
 		if state == expected {
 			return
 		}
 
-		time.Sleep(1 * time.Second)
+		time.Sleep(250 * time.Millisecond)
 	}
 
-	require.Failf(t, "sandbox state mismatch", "sandbox %s did not reach %s", sandboxID, expected)
+	require.Failf(t, "sandbox state mismatch", "sandbox %s did not reach %s in %s", sandboxID, expected, timeout)
 }
 
 func getSandboxState(t *testing.T, c *api.ClientWithResponses, sandboxID string) api.SandboxState {
