@@ -258,7 +258,7 @@ func TestOrchestrator_convertVolumeMounts(t *testing.T) {
 				{Name: "vol1"},
 			},
 			volumeTypes: []string{},
-			err:         VolumesNotFoundError{[]string{"vol1"}},
+			err:         InvalidVolumeMountsError{[]InvalidMount{{0, "volume 'vol1' not found"}}},
 		},
 		"existing volumes are returned": {
 			expectFeatureFlag: true,
@@ -287,7 +287,7 @@ func TestOrchestrator_convertVolumeMounts(t *testing.T) {
 				{Name: "vol1", VolumeType: "local"},
 			},
 			volumeTypes: []string{"local"},
-			err:         VolumesNotFoundError{[]string{"vol2"}},
+			err:         InvalidVolumeMountsError{[]InvalidMount{{1, "volume 'vol2' not found"}}},
 		},
 		"empty volume mounts": {
 			input:    []api.SandboxVolumeMount{},
@@ -355,7 +355,7 @@ func TestOrchestrator_convertVolumeMounts(t *testing.T) {
 				resources = newMockResources(t, tc.volumeTypes)
 			}
 
-			actual, err := convertVolumeMounts(
+			actual, err := createOrchestratorVolumeMounts(
 				t.Context(), db.SqlcClient, ffClient,
 				clusters.NewCluster(uuid.UUID{}, nil, nil, nil, resources),
 				teamID, tc.input,
