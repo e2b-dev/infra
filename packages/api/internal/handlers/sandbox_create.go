@@ -202,6 +202,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		false,
 		nil,
 		env.TemplateID,
+		env.TemplateID,
 		autoPause,
 		envdAccessToken,
 		allowInternetAccess,
