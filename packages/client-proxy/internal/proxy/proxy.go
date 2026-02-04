@@ -78,18 +78,6 @@ func handlePausedSandbox(
 		return "", nil
 	}
 
-	return handlePausedSandboxWithInfo(ctx, sandboxId, c, pausedChecker, autoResumeEnabled, requestHasAuth, pausedInfo)
-}
-
-func handlePausedSandboxWithInfo(
-	ctx context.Context,
-	sandboxId string,
-	c catalog.SandboxesCatalog,
-	pausedChecker PausedSandboxChecker,
-	autoResumeEnabled bool,
-	requestHasAuth bool,
-	pausedInfo PausedInfo,
-) (string, error) {
 	logSandboxAppearsPaused(ctx, sandboxId)
 
 	// Decide if we are allowed to auto-resume for this request.
