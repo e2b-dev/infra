@@ -160,7 +160,7 @@ type Storage struct {
 
 var _ StorageProvider = (*Storage)(nil)
 
-func ForGCPBucket(ctx context.Context, bucketName string, limiter *limit.Limiter) (*Storage, error) {
+func NewGCPBucket(ctx context.Context, bucketName string, limiter *limit.Limiter) (*Storage, error) {
 	backend, err := NewGCP(ctx, bucketName, limiter)
 	if err != nil {
 		return nil, err
