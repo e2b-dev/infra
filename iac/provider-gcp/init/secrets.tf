@@ -5,6 +5,7 @@ resource "google_secret_manager_secret" "postgres_connection_string" {
     auto {}
   }
 }
+
 resource "google_secret_manager_secret" "supabase_jwt_secrets" {
   secret_id = "${var.prefix}supabase-jwt-secrets"
 
