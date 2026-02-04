@@ -125,6 +125,13 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		// Ensure any allocated LockedBuffer is destroyed if not transferred
+		defer func() {
+			if initRequest.AccessToken != nil {
+				initRequest.AccessToken.Destroy()
+			}
+		}()
+
 		a.initLock.Lock()
 		defer a.initLock.Unlock()
 
