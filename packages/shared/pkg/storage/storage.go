@@ -33,7 +33,7 @@ const (
 var (
 	// EnableGCSCompression controls whether files are compressed when uploading to GCS.
 	// When false, files are uploaded uncompressed even if compression options are provided.
-	EnableGCSCompression = true
+	EnableGCSCompression = false
 
 	// EnableNFSCompressedCache controls whether the NFS cache stores compressed frames.
 	// When true (default): Cache stores compressed frames, decompresses on read.
@@ -309,7 +309,7 @@ func (s *Storage) GetFrame(ctx context.Context, objectPath string, offset int64,
 
 	// Validate buffer size - caller must provide a buffer for the full frame
 	expectedSize := int(frameSize.C)
-	if decompress && frameTable.IsCompressed() {
+	if decompress && IsCompressed(frameTable) {
 		expectedSize = int(frameSize.U)
 	}
 	if len(buf) < expectedSize {
@@ -326,7 +326,7 @@ func (s *Storage) GetFrame(ctx context.Context, objectPath string, offset int64,
 	var from io.Reader = respBody
 	readSize := int(frameSize.C) // Default to compressed size
 
-	if decompress && frameTable.IsCompressed() {
+	if decompress && IsCompressed(frameTable) {
 		// When decompressing, we read the uncompressed size from the decoder
 		readSize = int(frameSize.U)
 

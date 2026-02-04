@@ -105,7 +105,7 @@ func (b *StorageDiff) createChunker(ctx context.Context, ft *storage.FrameTable)
 		return nil, fmt.Errorf("failed to get object sizes for %s: %w", b.objectPath, err)
 	}
 
-	isCompressed := ft != nil && ft.IsCompressed()
+	isCompressed := storage.IsCompressed(ft)
 
 	if isCompressed {
 		return block.NewCompressMMapLRUChunker(virtSize, rawSize, b.persistence, b.objectPath, b.cachePath, 4, b.metrics)

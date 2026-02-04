@@ -134,7 +134,9 @@ func (ft *FrameTable) GetFetchRange(rangeU Range) (Range, error) {
 	return fetchRange, nil
 }
 
-func (ft *FrameTable) IsCompressed() bool {
+// IsCompressed returns true if the frame table represents compressed data.
+// Safe to call with nil - returns false.
+func IsCompressed(ft *FrameTable) bool {
 	return ft != nil && ft.CompressionType != CompressionNone
 }
 

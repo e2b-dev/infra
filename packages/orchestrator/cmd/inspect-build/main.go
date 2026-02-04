@@ -322,7 +322,7 @@ func validateMapping(ctx context.Context, storagePath, artifactName string, h *h
 	}
 
 	// Check if mapping has frame table (compressed)
-	if mapping.FrameTable == nil || !mapping.FrameTable.IsCompressed() {
+	if !storage.IsCompressed(mapping.FrameTable) {
 		// Uncompressed mapping - just verify we can read the data
 		reader, _, _, err := cmdutil.OpenDataFile(ctx, storagePath, mapping.BuildId.String(), artifactName)
 		if err != nil {

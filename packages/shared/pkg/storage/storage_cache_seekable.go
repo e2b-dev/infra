@@ -55,7 +55,7 @@ func (c Cache) GetFrame(ctx context.Context, path string, offU int64, frameTable
 		return Range{}, err
 	}
 
-	if frameTable.IsCompressed() {
+	if IsCompressed(frameTable) {
 		compressedRange, _, err := c.getCompressedFrame(ctx, path, offU, frameTable, decompress, buf)
 		if err != nil {
 			return Range{}, err
@@ -509,7 +509,7 @@ func (c Cache) validateGetFrameParams(off int64, length int, frameTable *FrameTa
 		if off%c.chunkSize != 0 {
 			return fmt.Errorf("offset %#x is not aligned to chunk size %#x, %w", off, c.chunkSize, ErrOffsetUnaligned)
 		}
-		if !frameTable.IsCompressed() {
+		if !IsCompressed(frameTable) {
 			if length > int(c.chunkSize) {
 				return ErrBufferTooLarge
 			}
