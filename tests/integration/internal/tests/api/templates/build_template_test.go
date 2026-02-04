@@ -927,18 +927,6 @@ func TestTemplateBuildFuseConfiguration(t *testing.T) {
 			{
 				Type: "RUN",
 				Args: utils.ToPtr([]string{
-					"echo '=== All fuse udev rules ===' && cat /lib/udev/rules.d/*fuse* /etc/udev/rules.d/*fuse* 2>/dev/null || true",
-				}),
-			},
-			{
-				Type: "RUN",
-				Args: utils.ToPtr([]string{
-					"echo 'FUSE device permissions:' && ls -l /dev/fuse",
-				}),
-			},
-			{
-				Type: "RUN",
-				Args: utils.ToPtr([]string{
 					"ls -l /dev/fuse | grep -q 'crw-rw-rw-'",
 				}),
 			},
