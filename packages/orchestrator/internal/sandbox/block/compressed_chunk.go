@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strconv"
-	"time"
 
 	"github.com/klauspost/compress/zstd"
 	"go.opentelemetry.io/otel/attribute"
@@ -30,7 +29,6 @@ type CompressLRUChunker struct {
 	fetchGroup singleflight.Group
 	virtSize   int64 // uncompressed size - used to cap requests
 	metrics    metrics.Metrics
-	stats      ChunkerStats
 }
 
 // NewCompressLRUChunker creates a new CompressLRUChunker.
@@ -59,8 +57,6 @@ func NewCompressLRUChunker(
 		return nil, fmt.Errorf("failed to create frame LRU: %w", err)
 	}
 
-	globalCompressLRUCnt.Add(1)
-
 	return &CompressLRUChunker{
 		storage:    s,
 		objectPath: objectPath,
@@ -86,11 +82,7 @@ func (c *CompressLRUChunker) ReadAt(ctx context.Context, b []byte, off int64, ft
 // The returned slice references internal LRU data and MUST NOT be modified.
 // ft is the frame table subset for the specific mapping being read.
 func (c *CompressLRUChunker) Slice(ctx context.Context, off, length int64, ft *storage.FrameTable) ([]byte, error) {
-	start := time.Now()
 	timer := c.metrics.SlicesTimerFactory.Begin()
-
-	c.stats.sliceCalls.Add(1)
-	c.stats.bytesRead.Add(length)
 
 	// Clamp length to available data
 	if off+length > c.virtSize {
@@ -115,8 +107,7 @@ func (c *CompressLRUChunker) Slice(ctx context.Context, off, length int64, ft *s
 
 	// Fast path: entire read fits in one frame (common case for 4KB page faults in 4MB frames)
 	if endInFrame <= int64(frameSize.U) {
-		fetchStart := time.Now()
-		data, cacheHit, err := c.getOrFetchFrame(ctx, frameStarts.U, frameSize, ft)
+		data, _, err := c.getOrFetchFrame(ctx, frameStarts.U, frameSize, ft)
 		if err != nil {
 			timer.Failure(ctx, length,
 				attribute.String(pullType, pullTypeRemote),
@@ -125,14 +116,6 @@ func (c *CompressLRUChunker) Slice(ctx context.Context, off, length int64, ft *s
 			return nil, err
 		}
 
-		if cacheHit {
-			c.stats.sliceCacheHits.Add(1)
-		} else {
-			c.stats.fetchCalls.Add(1)
-			c.stats.fetchTotalNs.Add(time.Since(fetchStart).Nanoseconds())
-		}
-
-		c.stats.sliceTotalNs.Add(time.Since(start).Nanoseconds())
 		timer.Success(ctx, length, attribute.String(pullType, pullTypeRemote))
 		// Return direct slice - no copy needed
 		return data[startInFrame:endInFrame], nil
@@ -163,16 +146,9 @@ func (c *CompressLRUChunker) Slice(ctx context.Context, off, length int64, ft *s
 		copied += toCopy
 
 		eg.Go(func() error {
-			fetchStart := time.Now()
-			data, cacheHit, err := c.getOrFetchFrame(ctx, frameStarts.U, frameSize, ft)
+			data, _, err := c.getOrFetchFrame(ctx, frameStarts.U, frameSize, ft)
 			if err != nil {
 				return err
-			}
-			if cacheHit {
-				c.stats.sliceCacheHits.Add(1)
-			} else {
-				c.stats.fetchCalls.Add(1)
-				c.stats.fetchTotalNs.Add(time.Since(fetchStart).Nanoseconds())
 			}
 			copy(result[resultOff:], data[startInFrame:startInFrame+int64(toCopy)])
 
@@ -188,7 +164,6 @@ func (c *CompressLRUChunker) Slice(ctx context.Context, off, length int64, ft *s
 		return nil, err
 	}
 
-	c.stats.sliceTotalNs.Add(time.Since(start).Nanoseconds())
 	timer.Success(ctx, length, attribute.String(pullType, pullTypeRemote))
 
 	return result, nil

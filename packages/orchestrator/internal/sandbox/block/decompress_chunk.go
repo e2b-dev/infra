@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
@@ -31,7 +30,6 @@ type DecompressMMapChunker struct {
 	rawSize  int64 // C space size (compressed on storage)
 
 	fetchers *utils.WaitMap
-	stats    ChunkerStats
 }
 
 var _ Chunker = (*DecompressMMapChunker)(nil)
@@ -56,8 +54,6 @@ func NewDecompressMMapChunker(
 		return nil, fmt.Errorf("failed to create file cache: %w", err)
 	}
 
-	globalDecompressMMapCnt.Add(1)
-
 	return &DecompressMMapChunker{
 		virtSize:   virtSize,
 		rawSize:    rawSize,
@@ -81,11 +77,7 @@ func (c *DecompressMMapChunker) ReadAt(ctx context.Context, b []byte, off int64,
 
 // Slice reads data at U offset. Bounds check uses virtSize (U space).
 func (c *DecompressMMapChunker) Slice(ctx context.Context, off, length int64, ft *storage.FrameTable) ([]byte, error) {
-	start := time.Now()
 	timer := c.metrics.SlicesTimerFactory.Begin()
-
-	c.stats.sliceCalls.Add(1)
-	c.stats.bytesRead.Add(length)
 
 	// Clamp length to available data (U space)
 	if off+length > c.virtSize {
@@ -97,8 +89,6 @@ func (c *DecompressMMapChunker) Slice(ctx context.Context, off, length int64, ft
 
 	b, err := c.cache.Slice(off, length)
 	if err == nil {
-		c.stats.sliceCacheHits.Add(1)
-		c.stats.sliceTotalNs.Add(time.Since(start).Nanoseconds())
 		timer.Success(ctx, length, attribute.String(pullType, pullTypeLocal))
 
 		return b, nil
@@ -112,11 +102,7 @@ func (c *DecompressMMapChunker) Slice(ctx context.Context, off, length int64, ft
 		return nil, fmt.Errorf("failed read from cache at offset %d: %w", off, err)
 	}
 
-	fetchStart := time.Now()
 	chunkErr := c.fetchToCache(ctx, off, length, ft)
-	c.stats.fetchCalls.Add(1)
-	c.stats.fetchTotalNs.Add(time.Since(fetchStart).Nanoseconds())
-
 	if chunkErr != nil {
 		timer.Failure(ctx, length,
 			attribute.String(pullType, pullTypeRemote),
@@ -134,7 +120,6 @@ func (c *DecompressMMapChunker) Slice(ctx context.Context, off, length int64, ft
 		return nil, fmt.Errorf("failed to read from cache after ensuring data at %d-%d: %w", off, off+length, cacheErr)
 	}
 
-	c.stats.sliceTotalNs.Add(time.Since(start).Nanoseconds())
 	timer.Success(ctx, length, attribute.String(pullType, pullTypeRemote))
 
 	return b, nil
