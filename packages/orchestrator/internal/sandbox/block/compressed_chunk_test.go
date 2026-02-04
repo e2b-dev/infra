@@ -106,7 +106,13 @@ func TestCompressedChunker_BasicReadAt(t *testing.T) {
 
 	// Read the first 1024 bytes
 	buf := make([]byte, 1024)
-	n, err := chunker.ReadAt(ctx, buf, 0, frameTable)
+	n, err := func() (int, error) {
+		s, e := chunker.Slice(ctx, 0, int64(len(buf)), frameTable)
+		if e != nil {
+			return 0, e
+		}
+		return copy(buf, s), nil
+	}()
 	require.NoError(t, err)
 	assert.Equal(t, 1024, n)
 	assert.Equal(t, uncompressedData[:1024], buf)
@@ -115,7 +121,13 @@ func TestCompressedChunker_BasicReadAt(t *testing.T) {
 	mockGetter.AssertNumberOfCalls(t, "GetFrame", 1)
 
 	// Read again from LRU - should not call getter again
-	n, err = chunker.ReadAt(ctx, buf, 0, frameTable)
+	n, err = func() (int, error) {
+		s, e := chunker.Slice(ctx, 0, int64(len(buf)), frameTable)
+		if e != nil {
+			return 0, e
+		}
+		return copy(buf, s), nil
+	}()
 	require.NoError(t, err)
 	assert.Equal(t, 1024, n)
 	mockGetter.AssertNumberOfCalls(t, "GetFrame", 1)
@@ -156,7 +168,13 @@ func TestCompressedChunker_LRUPopulation(t *testing.T) {
 
 	// Read from the frame
 	buf := make([]byte, 100)
-	_, err = chunker.ReadAt(ctx, buf, 0, frameTable)
+	_, err = func() (int, error) {
+		s, e := chunker.Slice(ctx, 0, int64(len(buf)), frameTable)
+		if e != nil {
+			return 0, e
+		}
+		return copy(buf, s), nil
+	}()
 	require.NoError(t, err)
 
 	// One frame should be in LRU
@@ -164,7 +182,13 @@ func TestCompressedChunker_LRUPopulation(t *testing.T) {
 	assert.Equal(t, 1, lruCount)
 
 	// Reading from another part of the same frame should not trigger another fetch
-	_, err = chunker.ReadAt(ctx, buf, storage.MemoryChunkSize, frameTable)
+	_, err = func() (int, error) {
+		s, e := chunker.Slice(ctx, storage.MemoryChunkSize, int64(len(buf)), frameTable)
+		if e != nil {
+			return 0, e
+		}
+		return copy(buf, s), nil
+	}()
 	require.NoError(t, err)
 	mockGetter.AssertNumberOfCalls(t, "GetFrame", 1)
 }
@@ -203,7 +227,13 @@ func TestCompressedChunker_LRUEvictionRefetch(t *testing.T) {
 
 	// First read - fetches from storage
 	buf := make([]byte, 100)
-	_, err = chunker.ReadAt(ctx, buf, 0, frameTable)
+	_, err = func() (int, error) {
+		s, e := chunker.Slice(ctx, 0, int64(len(buf)), frameTable)
+		if e != nil {
+			return 0, e
+		}
+		return copy(buf, s), nil
+	}()
 	require.NoError(t, err)
 	mockGetter.AssertNumberOfCalls(t, "GetFrame", 1)
 
@@ -215,7 +245,13 @@ func TestCompressedChunker_LRUEvictionRefetch(t *testing.T) {
 	chunker.frameLRU.Purge()
 
 	// Read again - must re-fetch from storage (NFS cache would handle file caching in production)
-	_, err = chunker.ReadAt(ctx, buf, 0, frameTable)
+	_, err = func() (int, error) {
+		s, e := chunker.Slice(ctx, 0, int64(len(buf)), frameTable)
+		if e != nil {
+			return 0, e
+		}
+		return copy(buf, s), nil
+	}()
 	require.NoError(t, err)
 	mockGetter.AssertNumberOfCalls(t, "GetFrame", 2) // Re-fetched after LRU eviction
 }
@@ -308,12 +344,24 @@ func TestCompressedChunker_MultipleFrames(t *testing.T) {
 
 	// Read from first frame
 	buf := make([]byte, 100)
-	_, err = chunker.ReadAt(ctx, buf, 0, frameTable)
+	_, err = func() (int, error) {
+		s, e := chunker.Slice(ctx, 0, int64(len(buf)), frameTable)
+		if e != nil {
+			return 0, e
+		}
+		return copy(buf, s), nil
+	}()
 	require.NoError(t, err)
 	assert.Equal(t, data1[:100], buf)
 
 	// Read from second frame
-	_, err = chunker.ReadAt(ctx, buf, frameSizeU, frameTable)
+	_, err = func() (int, error) {
+		s, e := chunker.Slice(ctx, frameSizeU, int64(len(buf)), frameTable)
+		if e != nil {
+			return 0, e
+		}
+		return copy(buf, s), nil
+	}()
 	require.NoError(t, err)
 	assert.Equal(t, data2[:100], buf)
 
@@ -434,7 +482,13 @@ func TestCompressedChunker_ConcurrentReads(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			buf := make([]byte, 100)
-			_, err := chunker.ReadAt(ctx, buf, 0, frameTable)
+			_, err := func() (int, error) {
+				s, e := chunker.Slice(ctx, 0, int64(len(buf)), frameTable)
+				if e != nil {
+					return 0, e
+				}
+				return copy(buf, s), nil
+			}()
 			assert.NoError(t, err)
 		}()
 	}

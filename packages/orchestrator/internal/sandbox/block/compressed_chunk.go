@@ -63,17 +63,6 @@ func NewCompressLRUChunker(
 	}, nil
 }
 
-// ReadAt reads len(b) bytes from the chunker starting at offset off.
-// ft is the frame table subset for the specific mapping being read.
-func (c *CompressLRUChunker) ReadAt(ctx context.Context, b []byte, off int64, ft *storage.FrameTable) (int, error) {
-	slice, err := c.Slice(ctx, off, int64(len(b)), ft)
-	if err != nil {
-		return 0, fmt.Errorf("failed to slice at %d-%d: %w", off, off+int64(len(b)), err)
-	}
-
-	return copy(b, slice), nil
-}
-
 // Slice returns a slice of the data at the given offset and length.
 // The returned slice references internal LRU data and MUST NOT be modified.
 // ft is the frame table subset for the specific mapping being read.

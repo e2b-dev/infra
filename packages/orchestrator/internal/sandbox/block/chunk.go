@@ -28,7 +28,6 @@ import (
 //   - The returned slice is valid until Close() is called or (for LRU-based chunkers) the
 //     underlying frame is evicted. UFFD handlers should copy to the faulting page immediately.
 type Chunker interface {
-	ReadAt(ctx context.Context, b []byte, off int64, ft *storage.FrameTable) (int, error)
 	// Slice returns a view into the data at [off, off+length).
 	// The returned slice references internal storage and MUST NOT be modified by the caller.
 	// For UFFD: use the slice immediately to copy into the faulting page.
@@ -85,15 +84,6 @@ func NewUncompressedMMapChunker(
 	}
 
 	return chunker, nil
-}
-
-func (c *UncompressedMMapChunker) ReadAt(ctx context.Context, b []byte, off int64, ft *storage.FrameTable) (int, error) {
-	slice, err := c.Slice(ctx, off, int64(len(b)), ft)
-	if err != nil {
-		return 0, fmt.Errorf("failed to slice cache at %d-%d: %w", off, off+int64(len(b)), err)
-	}
-
-	return copy(b, slice), nil
 }
 
 func (c *UncompressedMMapChunker) Slice(ctx context.Context, off, length int64, _ *storage.FrameTable) ([]byte, error) {

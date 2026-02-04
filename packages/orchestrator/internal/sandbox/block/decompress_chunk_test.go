@@ -142,7 +142,13 @@ func TestDecompressMMapChunker_ReadAt(t *testing.T) {
 	defer chunker.Close()
 
 	buf := make([]byte, 2048)
-	n, err := chunker.ReadAt(ctx, buf, 100, frameTable)
+	n, err := func() (int, error) {
+		s, e := chunker.Slice(ctx, 100, int64(len(buf)), frameTable)
+		if e != nil {
+			return 0, e
+		}
+		return copy(buf, s), nil
+	}()
 	require.NoError(t, err)
 	assert.Equal(t, 2048, n)
 	assert.Equal(t, uncompressedData[100:2148], buf)

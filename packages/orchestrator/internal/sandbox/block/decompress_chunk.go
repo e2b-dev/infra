@@ -59,15 +59,6 @@ func NewDecompressMMapChunker(
 	}, nil
 }
 
-func (c *DecompressMMapChunker) ReadAt(ctx context.Context, b []byte, off int64, ft *storage.FrameTable) (int, error) {
-	slice, err := c.Slice(ctx, off, int64(len(b)), ft)
-	if err != nil {
-		return 0, fmt.Errorf("failed to slice cache at %d-%d: %w", off, off+int64(len(b)), err)
-	}
-
-	return copy(b, slice), nil
-}
-
 // Slice reads data at U offset. Bounds check uses virtSize (U space).
 func (c *DecompressMMapChunker) Slice(ctx context.Context, off, length int64, ft *storage.FrameTable) ([]byte, error) {
 	timer := c.metrics.SlicesTimerFactory.Begin()

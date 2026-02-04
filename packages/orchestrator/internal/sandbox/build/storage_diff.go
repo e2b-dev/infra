@@ -128,7 +128,12 @@ func (b *StorageDiff) ReadAt(ctx context.Context, p []byte, off int64, ft *stora
 		return 0, err
 	}
 
-	return chunker.ReadAt(ctx, p, off, ft)
+	slice, err := chunker.Slice(ctx, off, int64(len(p)), ft)
+	if err != nil {
+		return 0, err
+	}
+
+	return copy(p, slice), nil
 }
 
 // Slice reads data at offset (in U space) with given length.

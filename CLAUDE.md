@@ -218,6 +218,17 @@ These commands have high memory usage and long execution times that blow up loca
 - `make fmt` - Code formatting
 - `make generate` / `make generate-mocks` - Code generation
 
+### Pre-Commit Checklist
+Before every commit, ALWAYS run:
+1. `make test` - Run all unit tests
+2. `make lint` - Run linter
+
+Expected test failures that are OK to ignore:
+- UFFD tests (`uffd/userfaultfd/*`) - require sudo
+- NBD tests (`TestPathDirect_*`) - require sudo
+- Integration tests (`tests/...`) - run separately with `make test-integration`
+- Environment-specific tests (e.g., `TestIsPathOnNetworkMount_FuseMount`)
+
 ### Working on Feature Branches
 When working on a feature branch, always assume that `main` works correctly:
 - Only make changes that are necessary for the feature

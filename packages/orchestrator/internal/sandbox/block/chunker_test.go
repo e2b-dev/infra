@@ -48,22 +48,24 @@ func TestChunker_Interface_CompressLRU(t *testing.T) {
 	require.NoError(t, err)
 	defer chunker.Close()
 
-	// Test ReadAt
+	// Test Slice with copy (replaces ReadAt)
 	buf := make([]byte, 1024)
-	n, err := chunker.ReadAt(ctx, buf, 0, frameTable)
+	slice, err := chunker.Slice(ctx, 0, 1024, frameTable)
 	require.NoError(t, err)
+	n := copy(buf, slice)
 	assert.Equal(t, 1024, n)
 	assert.Equal(t, uncompressedData[:1024], buf)
 
-	// Test ReadAt at different offset
+	// Test Slice at different offset with copy
 	buf = make([]byte, 500)
-	n, err = chunker.ReadAt(ctx, buf, 1000, frameTable)
+	slice, err = chunker.Slice(ctx, 1000, 500, frameTable)
 	require.NoError(t, err)
+	n = copy(buf, slice)
 	assert.Equal(t, 500, n)
 	assert.Equal(t, uncompressedData[1000:1500], buf)
 
 	// Test Slice
-	slice, err := chunker.Slice(ctx, 0, 1024, frameTable)
+	slice, err = chunker.Slice(ctx, 0, 1024, frameTable)
 	require.NoError(t, err)
 	assert.Len(t, slice, 1024)
 	assert.Equal(t, uncompressedData[:1024], slice)
