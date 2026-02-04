@@ -11,8 +11,32 @@ import (
 	gcsstorage "cloud.google.com/go/storage"
 )
 
+// IsGCSPath checks if the path is a GCS path (gs:// or gs:).
+func IsGCSPath(path string) bool {
+	return strings.HasPrefix(path, "gs://") || strings.HasPrefix(path, "gs:")
+}
+
+// NormalizeGCSPath ensures the path has gs:// prefix.
+func NormalizeGCSPath(path string) string {
+	if strings.HasPrefix(path, "gs://") {
+		return path
+	}
+	if bucket, found := strings.CutPrefix(path, "gs:"); found {
+		return "gs://" + bucket
+	}
+
+	return path
+}
+
+// ExtractBucketName extracts the bucket name from a GCS path.
+func ExtractBucketName(path string) string {
+	normalized := NormalizeGCSPath(path)
+
+	return strings.TrimPrefix(normalized, "gs://")
+}
+
 // SetupStorage configures storage environment variables based on the storage path.
-// If path starts with "gs://", configures GCS storage.
+// If path starts with "gs://" or "gs:", configures GCS storage.
 // Otherwise, configures local storage.
 func SetupStorage(storagePath string) error {
 	absPath := func(p string) string {
@@ -24,9 +48,9 @@ func SetupStorage(storagePath string) error {
 		return abs
 	}
 
-	if strings.HasPrefix(storagePath, "gs://") {
+	if IsGCSPath(storagePath) {
 		os.Setenv("STORAGE_PROVIDER", "GCPBucket")
-		os.Setenv("TEMPLATE_BUCKET_NAME", strings.TrimPrefix(storagePath, "gs://"))
+		os.Setenv("TEMPLATE_BUCKET_NAME", ExtractBucketName(storagePath))
 	} else {
 		os.Setenv("STORAGE_PROVIDER", "Local")
 		os.Setenv("LOCAL_TEMPLATE_STORAGE_BASE_PATH", absPath(filepath.Join(storagePath, "templates")))
@@ -38,8 +62,8 @@ func SetupStorage(storagePath string) error {
 // ReadFile reads a file from local storage or GCS.
 // Returns the file content, source path, and any error.
 func ReadFile(ctx context.Context, storagePath, buildID, filename string) ([]byte, string, error) {
-	if strings.HasPrefix(storagePath, "gs://") {
-		gcsPath := storagePath + "/" + buildID + "/" + filename
+	if IsGCSPath(storagePath) {
+		gcsPath := NormalizeGCSPath(storagePath) + "/" + buildID + "/" + filename
 
 		return ReadFromGCS(ctx, gcsPath)
 	}
@@ -53,8 +77,8 @@ func ReadFile(ctx context.Context, storagePath, buildID, filename string) ([]byt
 // ReadHeader reads a header file from local storage or GCS.
 // The headerPath should be relative (e.g., "buildID/memfile.header").
 func ReadHeader(ctx context.Context, storagePath, headerPath string) ([]byte, string, error) {
-	if strings.HasPrefix(storagePath, "gs://") {
-		return ReadFromGCS(ctx, storagePath+"/"+headerPath)
+	if IsGCSPath(storagePath) {
+		return ReadFromGCS(ctx, NormalizeGCSPath(storagePath)+"/"+headerPath)
 	}
 
 	localPath := filepath.Join(storagePath, "templates", headerPath)
@@ -136,8 +160,8 @@ func (r *gcsReader) Close() error {
 // OpenDataFile opens a data file for reading with ReadAt capability.
 // Returns a DataReader, file size, source path, and any error.
 func OpenDataFile(ctx context.Context, storagePath, buildID, filename string) (DataReader, int64, string, error) {
-	if strings.HasPrefix(storagePath, "gs://") {
-		gcsPath := storagePath + "/" + buildID + "/" + filename
+	if IsGCSPath(storagePath) {
+		gcsPath := NormalizeGCSPath(storagePath) + "/" + buildID + "/" + filename
 
 		return openGCS(ctx, gcsPath)
 	}
