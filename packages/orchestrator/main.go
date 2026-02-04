@@ -30,7 +30,7 @@ import (
 	e2bhealthcheck "github.com/e2b-dev/infra/packages/orchestrator/internal/healthcheck"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/hyperloopserver"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/metrics"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfs"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/portmap"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
@@ -454,35 +454,11 @@ func run(config cfg.Config) (success bool) {
 
 	// nfs proxy server
 	if len(config.PersistentVolumeMounts) > 0 {
-		// portmapper server
-		var pmConfig net.ListenConfig
-		pmLis, err := pmConfig.Listen(ctx, "tcp", fmt.Sprintf(":%d", config.NetworkConfig.PortmapperPort))
+		nfsClosers, err := startNFSProxy(ctx, config, startService, sandboxes)
 		if err != nil {
-			logger.L().Fatal(ctx, "failed to listen on portmapper port", zap.Error(err))
+			logger.L().Fatal(ctx, "failed to start nfs proxy", zap.Error(err))
 		}
-		pm := portmap.NewPortMap(ctx)
-		pm.RegisterPort(ctx, 2049)
-		startService("portmapper server", func() error {
-			return pm.Serve(ctx, pmLis)
-		})
-		closers = append(closers, closer{"portmapper server", func(_ context.Context) error { return pmLis.Close() }})
-
-		// nfs server
-		var nfsConfig net.ListenConfig
-		lis, err := nfsConfig.Listen(ctx, "tcp", fmt.Sprintf(":%d", config.NetworkConfig.NFSProxyPort))
-		if err != nil {
-			logger.L().Fatal(ctx, "failed to listen on nfs port", zap.Error(err))
-		}
-
-		nfsServer := nfs.NewProxy(ctx, sandboxes, config)
-		startService("nfs proxy", func() error {
-			return nfsServer.Serve(lis)
-		})
-		closers = append(closers, closer{
-			"nfs proxy server", func(_ context.Context) error {
-				return lis.Close()
-			},
-		})
+		closers = append(closers, nfsClosers...)
 	}
 
 	// hyperloop server
@@ -649,6 +625,50 @@ func run(config cfg.Config) (success bool) {
 	}
 
 	return success
+}
+
+func startNFSProxy(
+	ctx context.Context,
+	config cfg.Config,
+	startService func(name string, f func() error),
+	sandboxes *sandbox.Map,
+) ([]closer, error) {
+	var closers []closer
+
+	// portmapper listener
+	var pmConfig net.ListenConfig
+	pmLis, err := pmConfig.Listen(ctx, "tcp", fmt.Sprintf(":%d", config.NetworkConfig.PortmapperPort))
+	if err != nil {
+		return nil, fmt.Errorf("failed to listen on portmapper port: %w", err)
+	}
+
+	// portmapper implementation
+	pm := portmap.NewPortMap(ctx)
+	pm.RegisterPort(ctx, 2049)
+	startService("portmapper server", func() error {
+		return pm.Serve(ctx, pmLis)
+	})
+	closers = append(closers, closer{"portmapper server", func(_ context.Context) error { return pmLis.Close() }})
+
+	// nfs proxy listener
+	var nfsConfig net.ListenConfig
+	lis, err := nfsConfig.Listen(ctx, "tcp", fmt.Sprintf(":%d", config.NetworkConfig.NFSProxyPort))
+	if err != nil {
+		return nil, fmt.Errorf("failed to listen on nfs port: %w", err)
+	}
+
+	// nfs proxy implementation
+	nfsServer := nfsproxy.NewProxy(ctx, sandboxes, config)
+	startService("nfs proxy", func() error {
+		return nfsServer.Serve(lis)
+	})
+	closers = append(closers, closer{
+		"nfs proxy server", func(_ context.Context) error {
+			return lis.Close()
+		},
+	})
+
+	return closers, nil
 }
 
 type serviceDoneError struct {

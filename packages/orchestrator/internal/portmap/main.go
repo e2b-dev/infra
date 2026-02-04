@@ -41,21 +41,27 @@ func (h *handlers) PMAPPROC_UNSET(_ portmap.Mapping) portmap.Xbool {
 	return false
 }
 
-func (h *handlers) PMAPPROC_GETPORT(mapping portmap.Mapping) portmap.Uint32 {
+func (h *handlers) getPortByKey(k key) (portmap.Uint32, bool) {
 	h.lock.RLock()
 	defer h.lock.RUnlock()
 
+	port, ok := h.maps[k]
+
+	return port, ok
+}
+
+func (h *handlers) PMAPPROC_GETPORT(mapping portmap.Mapping) portmap.Uint32 {
 	logger.L().Debug(h.ctx, "[portmap handler] searching for a map",
 		zap.Int("len", len(h.maps)),
 		zap.Uint32("prog", mapping.Prog),
 		zap.Uint32("vers", mapping.Vers),
 		zap.Uint32("prot", mapping.Prot))
 
-	port, ok := h.maps[key{
+	port, ok := h.getPortByKey(key{
 		Prog: mapping.Prog,
 		Vers: mapping.Vers,
 		Prot: mapping.Prot,
-	}]
+	})
 	if !ok {
 		logger.L().Warn(h.ctx, "[portmap handler] port not found")
 

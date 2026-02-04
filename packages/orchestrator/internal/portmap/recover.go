@@ -17,7 +17,7 @@ type recovery struct {
 
 var _ rfc1057.PMAP_PROG_PMAP_VERS_handler = (*recovery)(nil)
 
-func newRecovery(ctx context.Context, h rfc1057.PMAP_PROG_PMAP_VERS_handler) *recovery {
+func wrapWithRecovery(ctx context.Context, h rfc1057.PMAP_PROG_PMAP_VERS_handler) *recovery {
 	return &recovery{ctx: ctx, inner: h}
 }
 

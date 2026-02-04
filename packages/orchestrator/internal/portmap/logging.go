@@ -16,7 +16,7 @@ type loggable struct {
 
 var _ rfc1057.PMAP_PROG_PMAP_VERS_handler = (*loggable)(nil)
 
-func newLoggedHandler(ctx context.Context, h rfc1057.PMAP_PROG_PMAP_VERS_handler) *loggable {
+func wrapWithLogging(ctx context.Context, h rfc1057.PMAP_PROG_PMAP_VERS_handler) *loggable {
 	return &loggable{ctx: ctx, inner: h}
 }
 

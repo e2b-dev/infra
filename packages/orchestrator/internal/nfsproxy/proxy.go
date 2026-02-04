@@ -1,4 +1,4 @@
-package nfs
+package nfsproxy
 
 import (
 	"context"
@@ -13,12 +13,10 @@ import (
 	"github.com/willscott/go-nfs/helpers"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfs/jailed"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfs/logged"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfs/oschange"
-	// "github.com/e2b-dev/infra/packages/orchestrator/internal/nfs/jailed"
-	// "github.com/e2b-dev/infra/packages/orchestrator/internal/nfs/logged"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfs/recovery"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy/jailed"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy/logged"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy/oschange"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy/recovery"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 )
 

@@ -31,8 +31,8 @@ func NewPortMap(ctx context.Context) *Server {
 
 	var handler rfc1057.PMAP_PROG_PMAP_VERS_handler
 	handler = h
-	handler = newRecovery(ctx, handler)
-	handler = newLoggedHandler(ctx, handler)
+	handler = wrapWithRecovery(ctx, handler)
+	handler = wrapWithLogging(ctx, handler)
 
 	regs := rfc1057.PMAP_PROG_PMAP_VERS_regs(handler)
 	s.RegisterMany(regs)

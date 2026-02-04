@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/willscott/go-nfs"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfs/oschange"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy/oschange"
 )
 
 func mkdir(t *testing.T, fs billy.Filesystem, path string, perm os.FileMode) {
