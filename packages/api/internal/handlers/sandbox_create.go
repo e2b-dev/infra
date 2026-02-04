@@ -75,7 +75,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	aliasInfo, err := a.templateCache.ResolveAlias(ctx, identifier, teamInfo.Team.Slug)
 	if err != nil {
 		apiErr := templatecache.ErrorToAPIError(err, identifier)
-		telemetry.ReportCriticalError(ctx, "error when resolving template alias", apiErr.Err, attribute.String("identifier", identifier))
+		apiErr.Report(ctx, "error when resolving template alias", attribute.String("identifier", identifier))
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return
@@ -84,7 +84,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	env, build, err := a.templateCache.Get(ctx, aliasInfo.TemplateID, tag, teamInfo.Team.ID, clusterID)
 	if err != nil {
 		apiErr := templatecache.ErrorToAPIError(err, aliasInfo.TemplateID)
-		telemetry.ReportCriticalError(ctx, "error when getting template", apiErr.Err, telemetry.WithTemplateID(aliasInfo.TemplateID))
+		apiErr.Report(ctx, "error when getting template", telemetry.WithTemplateID(aliasInfo.TemplateID))
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return

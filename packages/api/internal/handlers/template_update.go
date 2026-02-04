@@ -26,11 +26,7 @@ func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID ap
 
 	_, _, apiErr := a.updateTemplate(ctx, c, aliasOrTemplateID, true)
 	if apiErr != nil {
-		if apiErr.Code < http.StatusInternalServerError {
-			telemetry.ReportError(ctx, apiErr.ClientMsg, apiErr.Err, telemetry.WithTemplateID(aliasOrTemplateID))
-		} else {
-			telemetry.ReportCriticalError(ctx, apiErr.ClientMsg, apiErr.Err, telemetry.WithTemplateID(aliasOrTemplateID))
-		}
+		apiErr.Report(ctx, apiErr.ClientMsg, telemetry.WithTemplateID(aliasOrTemplateID))
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return
@@ -45,11 +41,7 @@ func (a *APIStore) PatchV2TemplatesTemplateID(c *gin.Context, aliasOrTemplateID 
 
 	team, aliasInfo, apiErr := a.updateTemplate(ctx, c, aliasOrTemplateID, false)
 	if apiErr != nil {
-		if apiErr.Code < http.StatusInternalServerError {
-			telemetry.ReportError(ctx, apiErr.ClientMsg, apiErr.Err, telemetry.WithTemplateID(aliasOrTemplateID))
-		} else {
-			telemetry.ReportCriticalError(ctx, apiErr.ClientMsg, apiErr.Err, telemetry.WithTemplateID(aliasOrTemplateID))
-		}
+		apiErr.Report(ctx, apiErr.ClientMsg, telemetry.WithTemplateID(aliasOrTemplateID))
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return
