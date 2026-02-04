@@ -250,39 +250,3 @@ resource "google_artifact_registry_repository_iam_member" "orchestration_reposit
 
   depends_on = [time_sleep.artifact_registry_api_wait_90_seconds]
 }
-
-resource "google_secret_manager_secret" "notification_email" {
-  secret_id = "${var.prefix}security-notification-email"
-
-  replication {
-    auto {}
-  }
-
-  depends_on = [time_sleep.secrets_api_wait_60_seconds]
-}
-
-resource "google_secret_manager_secret_version" "notification_email_value" {
-  secret = google_secret_manager_secret.notification_email.id
-
-  secret_data = "placeholder@example.com"
-}
-
-
-resource "google_secret_manager_secret" "redis_tls_ca_base64" {
-  secret_id = "${var.prefix}redis-tls-ca-base64"
-
-  replication {
-    auto {}
-  }
-
-  depends_on = [time_sleep.secrets_api_wait_60_seconds]
-}
-
-resource "google_secret_manager_secret_version" "redis_tls_ca_base64" {
-  secret      = google_secret_manager_secret.redis_tls_ca_base64.name
-  secret_data = " "
-
-  lifecycle {
-    ignore_changes = [secret_data]
-  }
-}

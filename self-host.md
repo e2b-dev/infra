@@ -54,7 +54,7 @@ Check if you can use config for terraform state management
     > Get Postgres database connection string from your database, e.g. [from Supabase](https://supabase.com/docs/guides/database/connecting-to-postgres#direct-connection): Create a new project in Supabase and go to your project in Supabase -> Settings -> Database -> Connection Strings -> Postgres -> Direct
     
     > Your Postgres database needs to have enabled IPv4 access. You can do that in Connect screen
-3. Run `make switch-env ENV={prod,staging,dev}` to start using your env
+3. Run `make set-env ENV={prod,staging,dev}` to start using your env
 4. Run `make provider-login` to login to `gcloud`
 5. Run `make init`. If this errors, run it a second time--it's due to a race condition on Terraform enabling API access for the various GCP services; this can take several seconds. A full list of services that will be enabled for API access:
    - [Secret Manager API](https://console.cloud.google.com/apis/library/secretmanager.googleapis.com)
@@ -70,14 +70,13 @@ Check if you can use config for terraform state management
 8. Terraform creates empty secret containers in GCP Secrets Manager. You need to add a **secret version** with the actual value for each secret. Go to [GCP Secrets Manager](https://console.cloud.google.com/security/secret-manager), click on the secret, then click "New Version" to add the value. Add versions for the following secrets:
   - e2b-cloudflare-api-token
       > Get Cloudflare API Token: go to the [Cloudflare dashboard](https://dash.cloudflare.com/) -> Manage Account -> Account API Tokens -> Create Token -> Edit Zone DNS -> in "Zone Resources" select your domain and generate the token
-  - e2b-posthog-api-key (optional, for monitoring)
-9. Run `make plan-without-jobs` and then `make apply`
-10. Add secret versions for the following secrets in [GCP Secrets Manager](https://console.cloud.google.com/security/secret-manager) (click on each secret, then "New Version"):
   - e2b-postgres-connection-string (**required** - this secret does not have a placeholder version, so you must add one before step 11)
   - e2b-supabase-jwt-secrets (optional / required to self-host the [E2B dashboard](https://github.com/e2b-dev/dashboard))
       > Get Supabase JWT Secret: go to the [Supabase dashboard](https://supabase.com/dashboard) -> Select your Project -> Project Settings -> Data API -> JWT Settings
-11. Run `make plan` and then `make apply`. Note: This will work after the TLS certificates was issued. It can take some time; you can check the status in the Google Cloud Console
-12. Setup data in the cluster by running `make prep-cluster` in `packages/shared` to create an initial user, team, and build a base template.
+  - e2b-posthog-api-key (optional, for monitoring)
+9. Run `make plan-without-jobs` and then `make apply`
+10. Run `make plan` and then `make apply`. Note: This will work after the TLS certificates was issued. It can take some time; you can check the status in the Google Cloud Console
+11. Setup data in the cluster by running `make prep-cluster` in `packages/shared` to create an initial user, team, and build a base template.
   - You can also run `make seed-db` in `packages/db` to create more users and teams.
 
 
