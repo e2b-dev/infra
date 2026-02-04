@@ -1275,7 +1275,9 @@ type GetV2SandboxesSandboxIDLogsParams struct {
 	Cursor *int64 `form:"cursor,omitempty" json:"cursor,omitempty"`
 
 	// Limit Maximum number of logs that should be returned
-	Limit     *int32         `form:"limit,omitempty" json:"limit,omitempty"`
+	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Direction Direction of the logs that should be returned
 	Direction *LogsDirection `form:"direction,omitempty" json:"direction,omitempty"`
 }
 

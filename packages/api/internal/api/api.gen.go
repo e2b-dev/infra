@@ -1280,7 +1280,9 @@ type GetV2SandboxesSandboxIDLogsParams struct {
 	Cursor *int64 `form:"cursor,omitempty" json:"cursor,omitempty"`
 
 	// Limit Maximum number of logs that should be returned
-	Limit     *int32         `form:"limit,omitempty" json:"limit,omitempty"`
+	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Direction Direction of the logs that should be returned
 	Direction *LogsDirection `form:"direction,omitempty" json:"direction,omitempty"`
 }
 
@@ -10413,10 +10415,10 @@ var swaggerSpec = []string{
 	"yyY/EP1huO3aTHFrHOhIkfRanOeF3fSyG6yKtvttScWyP9UmTUmRxxmNSMzSa2tVoxzrqhGFccpS58DS",
 	"FehvY3W8T2UZtwcyII+rc6mHHevpbJWNG+XsfP04pK/gcomQ77p/uni5XQLXhaX1j7poucbED+AU2Pqx",
 	"cXM8DMcj9eY4+7L/I6eMbAnDT3qx1UKvViRLgWScJBnX6UYREqNSskkt19d7r30ujSBollQTcoWVlJRM",
-	"/Z7s9i/5NZ/yYUtv3pdRaSi6TB8Oi/hOM8N8lyaMIa36yYwYW0pB82V/vdv9T52M5ma/Hqm8+djSL/tP",
-	"EV36Zf+5e1kMJH62jLwe1bQ7nKW/aEu/Q9qhux/bJf0oi+hmpC8+701Q94Dvcaqn0UvsT+drfGQejxCZ",
-	"xOGfl6vzEbnpmy5xvqbwfvMkwvvNUwlvswDL/+xCXuR4P+XhPPzGcpaCx6Ystni3u0tztgP7Vzs0zwNn",
-	"hG/Vk7Xqxda3Rvb6+o/4vM79u1Yn1v1gC3o5v+G091/v/zcAAP//Ia3QndD8AAA=",
+	"/Z7s9i/5NZ/yYUtv3pdRaSi6TB8Oi/hOM8N8lyaMIa16b+qaS0PEGMh2LPnhJpAtJbD5sr+ebeCnTmVz",
+	"s1+Pc958ZOqX/aeITf2y/9x9NAYSP1s+X49i2x0M01/ypd+d7dDdj+3QfpRFdDPSF4/5Jqh7wHM51U/p",
+	"Jfan81Q+Mo9HiEzi8M/LUfqI3PRNlzhfU3i/eRLh/eaphLdZgOV/diEvcryf8nAefmM5S8FjU1RbvNvd",
+	"pTnbgf2rHZrngTPCt+rBW/Xe61sj9339R3yc5/5dqzLrfrDlwJzfcNr7r/f/GwAA//91CUzJDv0AAA==",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file
