@@ -40,7 +40,7 @@ func TestOpenObject_Upload_Size_Download(t *testing.T) {
 	require.NoError(t, err)
 
 	// check Size
-	size, err := p.Size(ctx, testPath)
+	_, size, err := p.Size(ctx, testPath)
 	require.NoError(t, err)
 	require.Equal(t, int64(len(contents)), size)
 

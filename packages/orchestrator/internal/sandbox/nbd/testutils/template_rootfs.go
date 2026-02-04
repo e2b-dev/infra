@@ -42,7 +42,7 @@ func TemplateRootfs(ctx context.Context, buildID string) (*BuildDevice, *Cleaner
 			return nil, &cleaner, fmt.Errorf("failed to parse build id: %w", err)
 		}
 
-		size, err := storage.Size(ctx, files.StorageRootfsPath())
+		size, _, err := storage.Size(ctx, files.StorageRootfsPath())
 		if err != nil {
 			return nil, &cleaner, fmt.Errorf("failed to get object size: %w", err)
 		}

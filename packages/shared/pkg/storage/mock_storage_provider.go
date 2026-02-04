@@ -398,74 +398,8 @@ func (_c *MockStorageProvider_PublicUploadURL_Call) RunAndReturn(run func(ctx co
 	return _c
 }
 
-// RawSize provides a mock function for the type MockStorageProvider
-func (_mock *MockStorageProvider) RawSize(ctx context.Context, objectPath string) (int64, error) {
-	ret := _mock.Called(ctx, objectPath)
-
-	if len(ret) == 0 {
-		panic("no return value specified for RawSize")
-	}
-
-	var r0 int64
-	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (int64, error)); ok {
-		return returnFunc(ctx, objectPath)
-	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) int64); ok {
-		r0 = returnFunc(ctx, objectPath)
-	} else {
-		r0 = ret.Get(0).(int64)
-	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
-		r1 = returnFunc(ctx, objectPath)
-	} else {
-		r1 = ret.Error(1)
-	}
-	return r0, r1
-}
-
-// MockStorageProvider_RawSize_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RawSize'
-type MockStorageProvider_RawSize_Call struct {
-	*mock.Call
-}
-
-// RawSize is a helper method to define mock.On call
-//   - ctx context.Context
-//   - objectPath string
-func (_e *MockStorageProvider_Expecter) RawSize(ctx interface{}, objectPath interface{}) *MockStorageProvider_RawSize_Call {
-	return &MockStorageProvider_RawSize_Call{Call: _e.mock.On("RawSize", ctx, objectPath)}
-}
-
-func (_c *MockStorageProvider_RawSize_Call) Run(run func(ctx context.Context, objectPath string)) *MockStorageProvider_RawSize_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		var arg1 string
-		if args[1] != nil {
-			arg1 = args[1].(string)
-		}
-		run(
-			arg0,
-			arg1,
-		)
-	})
-	return _c
-}
-
-func (_c *MockStorageProvider_RawSize_Call) Return(n int64, err error) *MockStorageProvider_RawSize_Call {
-	_c.Call.Return(n, err)
-	return _c
-}
-
-func (_c *MockStorageProvider_RawSize_Call) RunAndReturn(run func(ctx context.Context, objectPath string) (int64, error)) *MockStorageProvider_RawSize_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // Size provides a mock function for the type MockStorageProvider
-func (_mock *MockStorageProvider) Size(ctx context.Context, objectPath string) (int64, error) {
+func (_mock *MockStorageProvider) Size(ctx context.Context, objectPath string) (int64, int64, error) {
 	ret := _mock.Called(ctx, objectPath)
 
 	if len(ret) == 0 {
@@ -473,8 +407,9 @@ func (_mock *MockStorageProvider) Size(ctx context.Context, objectPath string) (
 	}
 
 	var r0 int64
-	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (int64, error)); ok {
+	var r1 int64
+	var r2 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (int64, int64, error)); ok {
 		return returnFunc(ctx, objectPath)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, string) int64); ok {
@@ -482,12 +417,17 @@ func (_mock *MockStorageProvider) Size(ctx context.Context, objectPath string) (
 	} else {
 		r0 = ret.Get(0).(int64)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) int64); ok {
 		r1 = returnFunc(ctx, objectPath)
 	} else {
-		r1 = ret.Error(1)
+		r1 = ret.Get(1).(int64)
 	}
-	return r0, r1
+	if returnFunc, ok := ret.Get(2).(func(context.Context, string) error); ok {
+		r2 = returnFunc(ctx, objectPath)
+	} else {
+		r2 = ret.Error(2)
+	}
+	return r0, r1, r2
 }
 
 // MockStorageProvider_Size_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Size'
@@ -520,84 +460,12 @@ func (_c *MockStorageProvider_Size_Call) Run(run func(ctx context.Context, objec
 	return _c
 }
 
-func (_c *MockStorageProvider_Size_Call) Return(n int64, err error) *MockStorageProvider_Size_Call {
-	_c.Call.Return(n, err)
-	return _c
-}
-
-func (_c *MockStorageProvider_Size_Call) RunAndReturn(run func(ctx context.Context, objectPath string) (int64, error)) *MockStorageProvider_Size_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// Sizes provides a mock function for the type MockStorageProvider
-func (_mock *MockStorageProvider) Sizes(ctx context.Context, objectPath string) (int64, int64, error) {
-	ret := _mock.Called(ctx, objectPath)
-
-	if len(ret) == 0 {
-		panic("no return value specified for Sizes")
-	}
-
-	var r0 int64
-	var r1 int64
-	var r2 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (int64, int64, error)); ok {
-		return returnFunc(ctx, objectPath)
-	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) int64); ok {
-		r0 = returnFunc(ctx, objectPath)
-	} else {
-		r0 = ret.Get(0).(int64)
-	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string) int64); ok {
-		r1 = returnFunc(ctx, objectPath)
-	} else {
-		r1 = ret.Get(1).(int64)
-	}
-	if returnFunc, ok := ret.Get(2).(func(context.Context, string) error); ok {
-		r2 = returnFunc(ctx, objectPath)
-	} else {
-		r2 = ret.Error(2)
-	}
-	return r0, r1, r2
-}
-
-// MockStorageProvider_Sizes_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Sizes'
-type MockStorageProvider_Sizes_Call struct {
-	*mock.Call
-}
-
-// Sizes is a helper method to define mock.On call
-//   - ctx context.Context
-//   - objectPath string
-func (_e *MockStorageProvider_Expecter) Sizes(ctx interface{}, objectPath interface{}) *MockStorageProvider_Sizes_Call {
-	return &MockStorageProvider_Sizes_Call{Call: _e.mock.On("Sizes", ctx, objectPath)}
-}
-
-func (_c *MockStorageProvider_Sizes_Call) Run(run func(ctx context.Context, objectPath string)) *MockStorageProvider_Sizes_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		var arg1 string
-		if args[1] != nil {
-			arg1 = args[1].(string)
-		}
-		run(
-			arg0,
-			arg1,
-		)
-	})
-	return _c
-}
-
-func (_c *MockStorageProvider_Sizes_Call) Return(virtSize int64, rawSize int64, err error) *MockStorageProvider_Sizes_Call {
+func (_c *MockStorageProvider_Size_Call) Return(virtSize int64, rawSize int64, err error) *MockStorageProvider_Size_Call {
 	_c.Call.Return(virtSize, rawSize, err)
 	return _c
 }
 
-func (_c *MockStorageProvider_Sizes_Call) RunAndReturn(run func(ctx context.Context, objectPath string) (int64, int64, error)) *MockStorageProvider_Sizes_Call {
+func (_c *MockStorageProvider_Size_Call) RunAndReturn(run func(ctx context.Context, objectPath string) (int64, int64, error)) *MockStorageProvider_Size_Call {
 	_c.Call.Return(run)
 	return _c
 }

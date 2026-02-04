@@ -115,16 +115,13 @@ func setupMockProvider(t *testing.T, buildId string, diffType DiffType, frames m
 		return storage.Range{Start: offsetU, Length: n}, nil
 	}).Maybe()
 
-	// Size is used for uncompressed data and for chunker size capping
-	provider.EXPECT().Size(mock.Anything, mock.Anything).Return(dataSize, nil).Maybe()
-
-	// Sizes returns (virtSize, rawSize) - virtSize is uncompressed, rawSize is compressed
+	// Size returns (virtSize, rawSize) - virtSize is uncompressed, rawSize is compressed
 	// Calculate rawSize from the compressed frames
 	var rawSize int64
 	for _, data := range frames {
 		rawSize += int64(len(data))
 	}
-	provider.EXPECT().Sizes(mock.Anything, mock.Anything).Return(dataSize, rawSize, nil).Maybe()
+	provider.EXPECT().Size(mock.Anything, mock.Anything).Return(dataSize, rawSize, nil).Maybe()
 
 	return provider
 }

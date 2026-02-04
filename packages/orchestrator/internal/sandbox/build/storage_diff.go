@@ -100,7 +100,7 @@ func (b *StorageDiff) createChunker(ctx context.Context, ft *storage.FrameTable)
 	// Get both sizes from storage backend:
 	// - virtSize: uncompressed/logical size (U space)
 	// - rawSize: actual file size on storage (C space for compressed, same as U for uncompressed)
-	virtSize, rawSize, err := b.persistence.Sizes(ctx, b.objectPath)
+	virtSize, rawSize, err := b.persistence.Size(ctx, b.objectPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get object sizes for %s: %w", b.objectPath, err)
 	}

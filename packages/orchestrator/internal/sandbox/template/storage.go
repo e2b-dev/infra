@@ -86,7 +86,7 @@ func NewStorage(
 			return nil, build.UnknownDiffTypeError{DiffType: fileType}
 		}
 
-		size, err := persistence.Size(ctx, objectPath)
+		size, _, err := persistence.Size(ctx, objectPath)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get object size: %w", err)
 		}

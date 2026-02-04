@@ -232,40 +232,7 @@ func ignoreNotExists(err error) error {
 	return err
 }
 
-func (p *AWS) Size(ctx context.Context, path string) (int64, error) {
-	ctx, cancel := context.WithTimeout(ctx, awsOperationTimeout)
-	defer cancel()
-
-	resp, err := p.client.HeadObject(ctx, &s3.HeadObjectInput{
-		Bucket: aws.String(p.bucketName),
-		Key:    aws.String(path),
-	})
-	if err != nil {
-		var nsk *types.NoSuchKey
-		if errors.As(err, &nsk) {
-			return 0, ErrObjectNotExist
-		}
-
-		return 0, fmt.Errorf("failed to get S3 object (%q) metadata: %w", path, err)
-	}
-
-	// Check for uncompressed size in metadata (set during compressed upload).
-	if resp.Metadata != nil {
-		if uncompressedStr, ok := resp.Metadata[MetadataKeyUncompressedSize]; ok {
-			var uncompressedSize int64
-			if _, err := fmt.Sscanf(uncompressedStr, "%d", &uncompressedSize); err == nil {
-				return uncompressedSize, nil
-			}
-		}
-	}
-
-	// No metadata means uncompressed file - raw size IS the virtual size.
-	// Note: compressed files MUST have metadata set; missing metadata on a
-	// compressed file would return the wrong (compressed) size here.
-	return *resp.ContentLength, nil
-}
-
-func (p *AWS) Sizes(ctx context.Context, path string) (virtSize, rawSize int64, err error) {
+func (p *AWS) Size(ctx context.Context, path string) (virtSize, rawSize int64, err error) {
 	ctx, cancel := context.WithTimeout(ctx, awsOperationTimeout)
 	defer cancel()
 

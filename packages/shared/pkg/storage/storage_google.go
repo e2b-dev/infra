@@ -249,35 +249,7 @@ func (g *GCP) RangeGet(ctx context.Context, path string, offset int64, length in
 	return withCancelCloser{ReadCloser: rc, cancelFunc: cancel}, nil
 }
 
-func (g *GCP) Size(ctx context.Context, path string) (int64, error) {
-	ctx, cancel := context.WithTimeout(ctx, googleOperationTimeout)
-	defer cancel()
-
-	h := g.handle(path)
-	attrs, err := h.Attrs(ctx)
-	if err != nil {
-		if errors.Is(err, storage.ErrObjectNotExist) {
-			return 0, fmt.Errorf("failed to get GCS object (%q) attributes: %w", path, ErrObjectNotExist)
-		}
-
-		return 0, fmt.Errorf("failed to get GCS object (%q) attributes: %w", path, err)
-	}
-
-	// Check for uncompressed size in metadata (set during compressed upload).
-	if attrs.Metadata != nil {
-		if uncompressedStr, ok := attrs.Metadata[MetadataKeyUncompressedSize]; ok {
-			var uncompressedSize int64
-			if _, err := fmt.Sscanf(uncompressedStr, "%d", &uncompressedSize); err == nil {
-				return uncompressedSize, nil
-			}
-		}
-	}
-
-	return attrs.Size, nil
-}
-
-// Sizes returns both virtual (U) and raw (C) sizes for an object.
-func (g *GCP) Sizes(ctx context.Context, path string) (virtSize, rawSize int64, err error) {
+func (g *GCP) Size(ctx context.Context, path string) (virtSize, rawSize int64, err error) {
 	ctx, cancel := context.WithTimeout(ctx, googleOperationTimeout)
 	defer cancel()
 

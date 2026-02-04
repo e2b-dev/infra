@@ -231,52 +231,25 @@ func (c Cache) getUncompressedChunk(ctx context.Context, path string, offset int
 	return frameRange.Length, wg, err
 }
 
-func (c Cache) Size(ctx context.Context, objectPath string) (n int64, e error) {
-	ctx, span := c.tracer.Start(ctx, "get size of object")
+func (c Cache) Size(ctx context.Context, objectPath string) (virtSize, rawSize int64, e error) {
+	ctx, span := c.tracer.Start(ctx, "get sizes of object")
 	defer func() {
 		recordError(span, e)
 		span.End()
 	}()
 
-	size, _, err := c.readLocalSizes(ctx, objectPath)
+	// Try local cache first
+	virtSize, rawSize, err := c.readLocalSizes(ctx, objectPath)
 	if err == nil {
 		recordCacheRead(ctx, true, 16, cacheTypeSeekable, cacheOpSize)
 
-		return size, nil
+		return virtSize, rawSize, nil
 	}
 
 	recordCacheReadError(ctx, cacheTypeSeekable, cacheOpSize, err)
 
-	return c.fetchAndCacheSizes(ctx, objectPath, true)
-}
-
-func (c Cache) RawSize(ctx context.Context, objectPath string) (n int64, e error) {
-	ctx, span := c.tracer.Start(ctx, "get raw size of object")
-	defer func() {
-		recordError(span, e)
-		span.End()
-	}()
-
-	_, rawSize, err := c.readLocalSizes(ctx, objectPath)
-	if err == nil {
-		recordCacheRead(ctx, true, 16, cacheTypeSeekable, cacheOpSize)
-
-		return rawSize, nil
-	}
-
-	recordCacheReadError(ctx, cacheTypeSeekable, cacheOpSize, err)
-
-	return c.fetchAndCacheSizes(ctx, objectPath, false)
-}
-
-func (c Cache) Sizes(ctx context.Context, objectPath string) (virtSize, rawSize int64, e error) {
-	// Just delegate to inner - sizes are only needed once at chunker creation, no caching needed.
-	return c.inner.Sizes(ctx, objectPath)
-}
-
-// fetchAndCacheSizesBoth fetches both sizes from inner storage, caches them, and returns both.
-func (c Cache) fetchAndCacheSizesBoth(ctx context.Context, objectPath string) (virtSize, rawSize int64, err error) {
-	virtSize, rawSize, err = c.inner.Sizes(ctx, objectPath)
+	// Cache miss - fetch from inner and cache asynchronously
+	virtSize, rawSize, err = c.inner.Size(ctx, objectPath)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -297,19 +270,21 @@ func (c Cache) fetchAndCacheSizesBoth(ctx context.Context, objectPath string) (v
 	return virtSize, rawSize, nil
 }
 
-// fetchAndCacheSizes fetches both sizes from inner storage, caches them, and
-// returns the requested one (size if wantSize is true, rawSize otherwise).
-func (c Cache) fetchAndCacheSizes(ctx context.Context, objectPath string, wantSize bool) (int64, error) {
-	virtSize, rawSize, err := c.fetchAndCacheSizesBoth(ctx, objectPath)
+// readLocalSizes reads both virtual size and raw size from the cache file.
+// Format: "virtualSize rawSize" (space-separated integers).
+func (c Cache) readLocalSizes(_ context.Context, path string) (size, rawSize int64, err error) {
+	filename := c.sizeFilename(path)
+	content, err := os.ReadFile(filename)
 	if err != nil {
-		return 0, err
+		return 0, 0, fmt.Errorf("failed to read cached sizes: %w", err)
 	}
 
-	if wantSize {
-		return virtSize, nil
+	n, err := fmt.Sscanf(string(content), "%d %d", &size, &rawSize)
+	if err != nil || n != 2 {
+		return 0, 0, fmt.Errorf("failed to parse cached sizes: %w", err)
 	}
 
-	return rawSize, nil
+	return size, rawSize, nil
 }
 
 func (c Cache) storeCompressed(ctx context.Context, inFilePath, objectPath string, opts *FramedUploadOptions) (ft *FrameTable, wg *sync.WaitGroup, err error) {
@@ -524,23 +499,6 @@ func (c Cache) decompressFromCache(ctx context.Context, chunkPath string, compre
 
 func (c Cache) sizeFilename(path string) string {
 	return filepath.Join(c.cachePath(path), "size.txt")
-}
-
-// readLocalSizes reads both virtual size and raw size from the cache file.
-// Format: "virtualSize rawSize" (space-separated integers).
-func (c Cache) readLocalSizes(_ context.Context, path string) (size, rawSize int64, err error) {
-	filename := c.sizeFilename(path)
-	content, err := os.ReadFile(filename)
-	if err != nil {
-		return 0, 0, fmt.Errorf("failed to read cached sizes: %w", err)
-	}
-
-	n, err := fmt.Sscanf(string(content), "%d %d", &size, &rawSize)
-	if err != nil || n != 2 {
-		return 0, 0, fmt.Errorf("failed to parse cached sizes: %w", err)
-	}
-
-	return size, rawSize, nil
 }
 
 func (c Cache) validateGetFrameParams(off int64, length int, frameTable *FrameTable, decompress bool) error {

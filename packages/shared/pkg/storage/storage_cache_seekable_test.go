@@ -355,84 +355,74 @@ func TestDecompressStream_UnsupportedCompression(t *testing.T) {
 // Size Caching Tests
 // =============================================================================
 
-func TestCache_RawSize_CacheMiss(t *testing.T) {
+func TestCache_Size_CacheMiss(t *testing.T) {
 	t.Parallel()
 
 	inner := NewMockStorageProvider(t)
-	// fetchAndCacheSizesBoth calls Sizes which returns (virtSize, rawSize, err)
-	inner.EXPECT().Sizes(mock.Anything, "obj").Return(int64(12345), int64(12345), nil).Once()
+	inner.EXPECT().Size(mock.Anything, "obj").Return(int64(12345), int64(12345), nil).Once()
 
 	c := newTestCache(t, inner, 1024)
 
-	size, err := c.RawSize(t.Context(), "obj")
+	virtSize, rawSize, err := c.Size(t.Context(), "obj")
 
 	require.NoError(t, err)
-	assert.Equal(t, int64(12345), size)
+	assert.Equal(t, int64(12345), virtSize)
+	assert.Equal(t, int64(12345), rawSize)
 
 	// Verify size was cached
 	waitForCacheFile(t, c.sizeFilename("obj"))
 
-	// Second call should hit cache (mock not called again)
-	c.inner = nil // would panic if called
-	size, err = c.RawSize(t.Context(), "obj")
+	// Second call should hit cache (mock not called again since .Once())
+	virtSize, rawSize, err = c.Size(t.Context(), "obj")
 	require.NoError(t, err)
-	assert.Equal(t, int64(12345), size)
+	assert.Equal(t, int64(12345), virtSize)
+	assert.Equal(t, int64(12345), rawSize)
 }
 
-func TestCache_RawSize_CacheHit(t *testing.T) {
+func TestCache_Size_CacheHit(t *testing.T) {
 	t.Parallel()
 
 	c := newTestCache(t, nil, 1024) // nil inner - should not be called
 
-	// Pre-populate cache with "size rawSize" format
+	// Pre-populate cache with "virtSize rawSize" format
 	sizeFile := c.sizeFilename("obj")
-	writeToCache(t, sizeFile, []byte("9876 9876"))
+	writeToCache(t, sizeFile, []byte("9876 5432"))
 
-	size, err := c.RawSize(t.Context(), "obj")
+	virtSize, rawSize, err := c.Size(t.Context(), "obj")
 
 	require.NoError(t, err)
-	assert.Equal(t, int64(9876), size)
+	assert.Equal(t, int64(9876), virtSize)
+	assert.Equal(t, int64(5432), rawSize)
 }
 
-func TestCache_RawSize_InnerError(t *testing.T) {
+func TestCache_Size_CompressedFile(t *testing.T) {
+	t.Parallel()
+
+	inner := NewMockStorageProvider(t)
+	// Compressed file: virtSize (100000) > rawSize (50000)
+	inner.EXPECT().Size(mock.Anything, "obj").Return(int64(100000), int64(50000), nil).Once()
+
+	c := newTestCache(t, inner, 1024)
+
+	virtSize, rawSize, err := c.Size(t.Context(), "obj")
+
+	require.NoError(t, err)
+	assert.Equal(t, int64(100000), virtSize)
+	assert.Equal(t, int64(50000), rawSize)
+}
+
+func TestCache_Size_InnerError(t *testing.T) {
 	t.Parallel()
 
 	expectedErr := errors.New("storage unavailable")
 	inner := NewMockStorageProvider(t)
-	// Sizes is called in fetchAndCacheSizesBoth
-	inner.EXPECT().Sizes(mock.Anything, "obj").Return(int64(0), int64(0), expectedErr)
+	inner.EXPECT().Size(mock.Anything, "obj").Return(int64(0), int64(0), expectedErr)
 
 	c := newTestCache(t, inner, 1024)
 
-	_, err := c.RawSize(t.Context(), "obj")
+	_, _, err := c.Size(t.Context(), "obj")
 
 	require.ErrorIs(t, err, expectedErr)
-}
-
-func TestCache_RawSize_CorruptedCache(t *testing.T) {
-	t.Parallel()
-
-	inner := NewMockStorageProvider(t)
-	// fetchAndCacheSizesBoth calls Sizes
-	inner.EXPECT().Sizes(mock.Anything, "obj").Return(int64(5555), int64(5555), nil).Once()
-
-	c := newTestCache(t, inner, 1024)
-
-	// Pre-populate with corrupted data
-	sizeFile := c.sizeFilename("obj")
-	writeToCache(t, sizeFile, []byte("not-a-number"))
-
-	// Should fall back to inner and re-cache
-	size, err := c.RawSize(t.Context(), "obj")
-
-	require.NoError(t, err)
-	assert.Equal(t, int64(5555), size)
-
-	// Wait for async cache write to complete before test cleanup.
-	// Since the file already exists with corrupted data, the async write
-	// will fail (hard link can't overwrite), but we still need to wait
-	// for the goroutine to finish so it cleans up lock/temp files.
-	waitForAsyncCacheOps(t, filepath.Dir(sizeFile))
 }
 
 // waitForAsyncCacheOps waits until no .lock or temp files exist in the given directory.

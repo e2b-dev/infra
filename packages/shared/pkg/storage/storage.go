@@ -394,7 +394,7 @@ func (s *Storage) StoreBlob(ctx context.Context, path string, in io.Reader) erro
 }
 
 func Exists(ctx context.Context, s StorageProvider, path string) (bool, error) {
-	_, err := s.Size(ctx, path)
+	_, _, err := s.Size(ctx, path)
 
 	return err == nil, ignoreNotExists(err)
 }
