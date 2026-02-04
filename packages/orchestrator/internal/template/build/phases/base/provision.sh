@@ -47,10 +47,10 @@ else
     echo "user_allow_other" > /etc/fuse.conf
 fi
 
-# Set /dev/fuse permissions to 666 for non-root access
-if [ -e /dev/fuse ]; then
-    chmod 666 /dev/fuse
-fi
+# Set /dev/fuse permissions to 666 for non-root access via udev rule
+# (devtmpfs is mounted fresh on each VM boot, so chmod won't persist)
+mkdir -p /etc/udev/rules.d
+echo 'KERNEL=="fuse", MODE="0666"' > /etc/udev/rules.d/99-fuse.rules
 
 echo "Setting up shell"
 echo "export SHELL='/bin/bash'" >/etc/profile.d/shell.sh
