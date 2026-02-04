@@ -41,7 +41,7 @@ func main() {
 	if *memfile {
 		artifactName = "memfile"
 	} else {
-		artifactName = "rootfs"
+		artifactName = "rootfs.ext4"
 	}
 
 	ctx := context.Background()
