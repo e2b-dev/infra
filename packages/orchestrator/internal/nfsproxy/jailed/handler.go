@@ -13,7 +13,7 @@ import (
 
 var ErrInvalidSandbox = errors.New("invalid sandbox")
 
-type GetPrefix func(context.Context, net.Conn, nfs.MountRequest) (billy.Filesystem, string, error)
+type GetPrefix func(context.Context, net.Addr, nfs.MountRequest) (billy.Filesystem, string, error)
 
 type GetChange func(billy.Filesystem) billy.Change
 
@@ -33,7 +33,7 @@ func NewNFSHandler(prefix GetPrefix, getChange GetChange) Handler {
 }
 
 func (h Handler) Mount(ctx context.Context, conn net.Conn, request nfs.MountRequest) (nfs.MountStatus, billy.Filesystem, []nfs.AuthFlavor) {
-	fs, prefix, err := h.getPrefix(ctx, conn, request)
+	fs, prefix, err := h.getPrefix(ctx, conn.RemoteAddr(), request)
 	if err != nil {
 		slog.Warn("failed to get prefix", "error", err)
 

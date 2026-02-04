@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"strconv"
 	"testing"
 	"time"
@@ -44,6 +45,10 @@ func (t testLogConsumer) Accept(l testcontainers.Log) {
 
 func getListener(t *testing.T, port int32) net.Listener {
 	t.Helper()
+
+	if port < 1024 && os.Geteuid() != 0 {
+		t.Skip("skipping test because it requires root privileges")
+	}
 
 	nfsConfig := net.ListenConfig{}
 	listener, err := nfsConfig.Listen(t.Context(), "tcp", fmt.Sprintf(":%d", port))
