@@ -26,14 +26,6 @@ jobs:
       - name: Start Services
         uses: ./.github/actions/start-services
 
-      - name: Debug Service Config
-        run: |
-          echo "=== Client-Proxy Auto-Resume Config ==="
-          grep -i "auto.resume" ~/logs/client-proxy.log || echo "No auto-resume config found in logs"
-          echo ""
-          echo "=== Checking service ports ==="
-          netstat -tlnp 2>/dev/null | grep -E '3002|5009' || ss -tlnp | grep -E '3002|5009' || echo "Port check failed"
-
       - name: Run Integration Tests
         env:
           TESTS_API_SERVER_URL: "http://localhost:3000"
