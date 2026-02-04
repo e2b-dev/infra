@@ -109,10 +109,6 @@ func ReportError(ctx context.Context, message string, err error, attrs ...attrib
 }
 
 func ReportErrorByCode(ctx context.Context, code int, message string, err error, attrs ...attribute.KeyValue) {
-	if err == nil {
-		return
-	}
-
 	if code >= http.StatusInternalServerError {
 		ReportCriticalError(ctx, message, err, attrs...)
 	} else {
