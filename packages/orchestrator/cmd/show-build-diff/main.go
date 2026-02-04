@@ -39,23 +39,34 @@ func main() {
 		log.Fatal("specify either -memfile or -rootfs, not both")
 	}
 
-	var artifactName string
-	if *memfile {
-		artifactName = storage.MemfileName
-	} else {
-		artifactName = storage.RootfsName
+	baseTemplate := storage.TemplateFiles{
+		BuildID: *fromBuild,
 	}
-	headerFile := artifactName + storage.HeaderSuffix
+
+	diffTemplate := storage.TemplateFiles{
+		BuildID: *toBuild,
+	}
+
+	var baseHeaderFile string
+	var diffHeaderFile string
+
+	if *memfile {
+		baseHeaderFile = baseTemplate.StorageMemfileHeaderPath()
+		diffHeaderFile = diffTemplate.StorageMemfileHeaderPath()
+	} else {
+		baseHeaderFile = baseTemplate.StorageRootfsHeaderPath()
+		diffHeaderFile = diffTemplate.StorageRootfsHeaderPath()
+	}
 
 	ctx := context.Background()
 
-	// Read headers
-	baseData, baseSource, err := cmdutil.ReadFile(ctx, *storagePath, *fromBuild, headerFile)
+	// Read headers directly
+	baseData, baseSource, err := cmdutil.ReadHeader(ctx, *storagePath, baseHeaderFile)
 	if err != nil {
 		log.Fatalf("failed to read base header: %s", err)
 	}
 
-	diffData, diffSource, err := cmdutil.ReadFile(ctx, *storagePath, *toBuild, headerFile)
+	diffData, diffSource, err := cmdutil.ReadHeader(ctx, *storagePath, diffHeaderFile)
 	if err != nil {
 		log.Fatalf("failed to read diff header: %s", err)
 	}
