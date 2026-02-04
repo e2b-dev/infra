@@ -42,7 +42,6 @@ func TestChunker_Interface_CompressLRU(t *testing.T) {
 		int64(dataSize), // virtSize (uncompressed)
 		mockStorage,
 		"test/path",
-		frameTable,
 		10,
 		testMetrics(t),
 	)

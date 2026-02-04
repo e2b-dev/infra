@@ -31,7 +31,6 @@ import (
 type CompressMMapLRUChunker struct {
 	storage    storage.FrameGetter
 	objectPath string
-	frameTable *storage.FrameTable
 
 	// Level 1: Decompressed frame LRU (same as CompressLRU)
 	frameLRU   *FrameLRU
@@ -56,7 +55,6 @@ var _ Chunker = (*CompressMMapLRUChunker)(nil)
 //   - rawSize: total compressed file size (used to size the mmap)
 //   - s: storage provider to fetch compressed frames from
 //   - objectPath: path to object in storage
-//   - frameTable: frame table describing compressed frames
 //   - cachePath: path for compressed frame mmap file
 //   - lruSize: number of decompressed frames to keep in LRU (0 for default)
 //   - m: metrics collector
@@ -64,7 +62,6 @@ func NewCompressMMapLRUChunker(
 	virtSize, rawSize int64,
 	s storage.FrameGetter,
 	objectPath string,
-	frameTable *storage.FrameTable,
 	cachePath string,
 	lruSize int,
 	m metrics.Metrics,
@@ -88,7 +85,6 @@ func NewCompressMMapLRUChunker(
 	return &CompressMMapLRUChunker{
 		storage:         s,
 		objectPath:      objectPath,
-		frameTable:      frameTable,
 		frameLRU:        frameLRU,
 		compressedCache: compressedCache,
 		fetchers:        utils.NewWaitMap(),

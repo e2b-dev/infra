@@ -21,7 +21,6 @@ import (
 type DecompressMMapChunker struct {
 	storage    storage.FrameGetter
 	objectPath string
-	frameTable *storage.FrameTable
 
 	cache   *Cache
 	metrics metrics.Metrics
@@ -40,14 +39,9 @@ func NewDecompressMMapChunker(
 	virtSize, rawSize, blockSize int64,
 	s storage.FrameGetter,
 	objectPath string,
-	frameTable *storage.FrameTable,
 	cachePath string,
 	metrics metrics.Metrics,
 ) (*DecompressMMapChunker, error) {
-	if frameTable == nil || !frameTable.IsCompressed() {
-		return nil, fmt.Errorf("DecompressMMapChunker requires compressed frame table")
-	}
-
 	// mmap holds decompressed data, so size it to virtSize (U space)
 	cache, err := NewCache(virtSize, blockSize, cachePath, false)
 	if err != nil {
@@ -59,7 +53,6 @@ func NewDecompressMMapChunker(
 		rawSize:    rawSize,
 		storage:    s,
 		objectPath: objectPath,
-		frameTable: frameTable,
 		cache:      cache,
 		fetchers:   utils.NewWaitMap(),
 		metrics:    metrics,

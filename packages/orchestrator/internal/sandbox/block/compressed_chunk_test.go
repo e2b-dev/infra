@@ -98,7 +98,6 @@ func TestCompressedChunker_BasicReadAt(t *testing.T) {
 		frameSizeU, // virtSize
 		mockGetter,
 		"test/path",
-		frameTable,
 		10,
 		testMetrics(t),
 	)
@@ -149,7 +148,6 @@ func TestCompressedChunker_LRUPopulation(t *testing.T) {
 		frameSizeU,
 		mockGetter,
 		"test/path",
-		frameTable,
 		10,
 		testMetrics(t),
 	)
@@ -197,7 +195,6 @@ func TestCompressedChunker_LRUEvictionRefetch(t *testing.T) {
 		frameSizeU,
 		mockGetter,
 		"test/path",
-		frameTable,
 		1, // Small LRU
 		testMetrics(t),
 	)
@@ -250,7 +247,6 @@ func TestCompressedChunker_SliceAcrossChunks(t *testing.T) {
 		frameSizeU,
 		mockGetter,
 		"test/path",
-		frameTable,
 		10,
 		testMetrics(t),
 	)
@@ -304,7 +300,6 @@ func TestCompressedChunker_MultipleFrames(t *testing.T) {
 		totalSize,
 		mockGetter,
 		"test/path",
-		frameTable,
 		10,
 		testMetrics(t),
 	)
@@ -374,7 +369,6 @@ func TestCompressedChunker_SliceAcrossFrames(t *testing.T) {
 		totalSize,
 		mockGetter,
 		"test/path",
-		frameTable,
 		10,
 		testMetrics(t),
 	)
@@ -425,7 +419,6 @@ func TestCompressedChunker_ConcurrentReads(t *testing.T) {
 		frameSizeU,
 		mockGetter,
 		"test/path",
-		frameTable,
 		10,
 		testMetrics(t),
 	)
@@ -475,7 +468,6 @@ func TestCompressedChunker_EmptySlice(t *testing.T) {
 		frameSizeU,
 		mockGetter,
 		"test/path",
-		frameTable,
 		10,
 		testMetrics(t),
 	)
@@ -494,21 +486,12 @@ func TestCompressedChunker_Close(t *testing.T) {
 	frameSizeU := int64(4 * 1024 * 1024)
 	compressedData := compressData(t, make([]byte, frameSizeU))
 
-	frameTable := &storage.FrameTable{
-		CompressionType: storage.CompressionZstd,
-		StartAt:         storage.FrameOffset{U: 0, C: 0},
-		Frames: []storage.FrameSize{
-			{U: int32(frameSizeU), C: int32(len(compressedData))},
-		},
-	}
-
 	mockGetter := setupMockStorage(t, map[int64][]byte{0: compressedData})
 
 	chunker, err := NewCompressLRUChunker(
 		frameSizeU,
 		mockGetter,
 		"test/path",
-		frameTable,
 		10,
 		testMetrics(t),
 	)

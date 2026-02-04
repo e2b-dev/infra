@@ -61,20 +61,14 @@ type UncompressedMMapChunker struct {
 }
 
 // NewUncompressedMMapChunker creates a legacy mmap-based chunker for uncompressed data.
-// Returns an error if frameTable indicates compressed data.
 // For uncompressed data, virtSize == rawSize, but both are accepted for API consistency.
 func NewUncompressedMMapChunker(
 	size, blockSize int64,
 	s storage.FrameGetter,
 	objectPath string,
-	frameTable *storage.FrameTable,
 	cachePath string,
 	metrics metrics.Metrics,
 ) (*UncompressedMMapChunker, error) {
-	if frameTable != nil && frameTable.IsCompressed() {
-		return nil, fmt.Errorf("UncompressedMMapChunker does not support compressed data")
-	}
-
 	// For uncompressed data, virtSize == rawSize, use virtSize for mmap
 	cache, err := NewCache(size, blockSize, cachePath, false)
 	if err != nil {

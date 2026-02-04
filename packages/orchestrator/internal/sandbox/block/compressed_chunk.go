@@ -24,7 +24,6 @@ import (
 type CompressLRUChunker struct {
 	storage    storage.FrameGetter
 	objectPath string
-	frameTable *storage.FrameTable
 	frameLRU   *FrameLRU
 	fetchGroup singleflight.Group
 	virtSize   int64 // uncompressed size - used to cap requests
@@ -37,14 +36,12 @@ type CompressLRUChunker struct {
 //   - virtSize: total uncompressed size of the data (used to cap requests)
 //   - s: storage provider to fetch frames from (should be wrapped with local cache)
 //   - objectPath: path to the object in storage
-//   - frameTable: frame table describing the compressed frames
 //   - lruSize: number of decompressed frames to keep in memory (0 for default)
 //   - m: metrics collector
 func NewCompressLRUChunker(
 	virtSize int64,
 	s storage.FrameGetter,
 	objectPath string,
-	frameTable *storage.FrameTable,
 	lruSize int,
 	m metrics.Metrics,
 ) (*CompressLRUChunker, error) {
@@ -60,7 +57,6 @@ func NewCompressLRUChunker(
 	return &CompressLRUChunker{
 		storage:    s,
 		objectPath: objectPath,
-		frameTable: frameTable,
 		frameLRU:   frameLRU,
 		virtSize:   virtSize,
 		metrics:    m,

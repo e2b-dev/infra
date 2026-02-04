@@ -85,7 +85,6 @@ func TestDecompressMMapChunker_BasicSlice(t *testing.T) {
 		storage.MemoryChunkSize,
 		mockStorage,
 		"test/path",
-		frameTable,
 		cachePath,
 		testMetrics(t),
 	)
@@ -136,7 +135,6 @@ func TestDecompressMMapChunker_ReadAt(t *testing.T) {
 		storage.MemoryChunkSize,
 		mockStorage,
 		"test/path",
-		frameTable,
 		cachePath,
 		testMetrics(t),
 	)
@@ -181,7 +179,6 @@ func TestDecompressMMapChunker_CachePersists(t *testing.T) {
 		storage.MemoryChunkSize,
 		mockStorage,
 		"test/path",
-		frameTable,
 		cachePath,
 		testMetrics(t),
 	)
@@ -209,55 +206,6 @@ func TestDecompressMMapChunker_CachePersists(t *testing.T) {
 	// Cache file is cleaned up on Close
 	_, err = os.Stat(cachePath)
 	require.Error(t, err, "cache file should be removed after Close")
-}
-
-func TestDecompressMMapChunker_RejectsUncompressed(t *testing.T) {
-	t.Parallel()
-
-	tmpDir := t.TempDir()
-	cachePath := filepath.Join(tmpDir, "cache")
-
-	// Uncompressed frame table
-	frameTable := &storage.FrameTable{
-		CompressionType: storage.CompressionNone,
-		StartAt:         storage.FrameOffset{U: 0, C: 0},
-		Frames: []storage.FrameSize{
-			{U: 4096, C: 4096},
-		},
-	}
-
-	_, err := NewDecompressMMapChunker(
-		4096,
-		4096,
-		4096,
-		nil,
-		"test/path",
-		frameTable,
-		cachePath,
-		testMetrics(t),
-	)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "compressed")
-}
-
-func TestDecompressMMapChunker_RejectsNilFrameTable(t *testing.T) {
-	t.Parallel()
-
-	tmpDir := t.TempDir()
-	cachePath := filepath.Join(tmpDir, "cache")
-
-	_, err := NewDecompressMMapChunker(
-		4096,
-		4096,
-		4096,
-		nil,
-		"test/path",
-		nil,
-		cachePath,
-		testMetrics(t),
-	)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "compressed")
 }
 
 func TestDecompressMMapChunker_FileSize(t *testing.T) {
@@ -291,7 +239,6 @@ func TestDecompressMMapChunker_FileSize(t *testing.T) {
 		storage.MemoryChunkSize,
 		mockStorage,
 		"test/path",
-		frameTable,
 		cachePath,
 		testMetrics(t),
 	)

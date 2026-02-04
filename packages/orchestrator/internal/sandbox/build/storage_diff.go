@@ -108,10 +108,10 @@ func (b *StorageDiff) createChunker(ctx context.Context, ft *storage.FrameTable)
 	isCompressed := ft != nil && ft.IsCompressed()
 
 	if isCompressed {
-		return block.NewCompressMMapLRUChunker(virtSize, rawSize, b.persistence, b.objectPath, ft, b.cachePath, 4, b.metrics)
+		return block.NewCompressMMapLRUChunker(virtSize, rawSize, b.persistence, b.objectPath, b.cachePath, 4, b.metrics)
 	}
 
-	return block.NewUncompressedMMapChunker(virtSize, b.blockSize, b.persistence, b.objectPath, ft, b.cachePath, b.metrics)
+	return block.NewUncompressedMMapChunker(virtSize, b.blockSize, b.persistence, b.objectPath, b.cachePath, b.metrics)
 }
 
 func (b *StorageDiff) Close() error {

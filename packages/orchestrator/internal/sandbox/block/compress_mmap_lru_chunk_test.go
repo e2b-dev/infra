@@ -41,7 +41,6 @@ func TestCompressMMapLRUChunker_BasicReadAt(t *testing.T) {
 		int64(len(compressedData)),
 		mockGetter,
 		"test/path",
-		frameTable,
 		cachePath,
 		10,
 		testMetrics(t),
@@ -94,7 +93,6 @@ func TestCompressMMapLRUChunker_TwoLevelCache(t *testing.T) {
 		int64(len(compressedData)),
 		mockGetter,
 		"test/path",
-		frameTable,
 		cachePath,
 		1, // Small LRU to force evictions
 		testMetrics(t),
@@ -159,7 +157,6 @@ func TestCompressMMapLRUChunker_MultipleFrames(t *testing.T) {
 		int64(len(compressed1)+len(compressed2)),
 		mockGetter,
 		"test/path",
-		frameTable,
 		cachePath,
 		10,
 		testMetrics(t),
@@ -232,7 +229,6 @@ func TestCompressMMapLRUChunker_SliceAcrossFrames(t *testing.T) {
 		int64(len(compressed1)+len(compressed2)+len(compressed3)),
 		mockGetter,
 		"test/path",
-		frameTable,
 		cachePath,
 		10,
 		testMetrics(t),
@@ -286,7 +282,6 @@ func TestCompressMMapLRUChunker_ConcurrentReads(t *testing.T) {
 		int64(len(compressedData)),
 		mockGetter,
 		"test/path",
-		frameTable,
 		cachePath,
 		10,
 		testMetrics(t),
@@ -358,7 +353,6 @@ func TestCompressMMapLRUChunker_LRUEvictionUsesLocalMmap(t *testing.T) {
 		int64(len(compressed1)+len(compressed2)+len(compressed3)),
 		mockGetter,
 		"test/path",
-		frameTable,
 		cachePath,
 		1, // LRU of 1 forces eviction
 		testMetrics(t),
@@ -425,7 +419,6 @@ func TestCompressMMapLRUChunker_EmptySlice(t *testing.T) {
 		int64(len(compressedData)),
 		mockGetter,
 		"test/path",
-		frameTable,
 		cachePath,
 		10,
 		testMetrics(t),
@@ -445,14 +438,6 @@ func TestCompressMMapLRUChunker_Close(t *testing.T) {
 	frameSizeU := int64(4 * 1024 * 1024)
 	compressedData := compressData(t, make([]byte, frameSizeU))
 
-	frameTable := &storage.FrameTable{
-		CompressionType: storage.CompressionZstd,
-		StartAt:         storage.FrameOffset{U: 0, C: 0},
-		Frames: []storage.FrameSize{
-			{U: int32(frameSizeU), C: int32(len(compressedData))},
-		},
-	}
-
 	mockGetter := setupMockStorage(t, map[int64][]byte{0: compressedData})
 	cachePath := filepath.Join(t.TempDir(), "compressed_cache")
 
@@ -461,7 +446,6 @@ func TestCompressMMapLRUChunker_Close(t *testing.T) {
 		int64(len(compressedData)),
 		mockGetter,
 		"test/path",
-		frameTable,
 		cachePath,
 		10,
 		testMetrics(t),
@@ -503,7 +487,6 @@ func TestCompressMMapLRUChunker_FileSize(t *testing.T) {
 		int64(len(compressedData)),
 		mockGetter,
 		"test/path",
-		frameTable,
 		cachePath,
 		10,
 		testMetrics(t),
