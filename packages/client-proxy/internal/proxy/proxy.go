@@ -16,7 +16,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
@@ -177,26 +176,6 @@ func waitForCatalog(ctx context.Context, sandboxId string, c catalog.SandboxesCa
 		case <-timer.C:
 		}
 	}
-}
-
-func shouldAutoResume(policy proxygrpc.AutoResumePolicy, autoResumeEnabled bool, requestHasAuth bool) bool {
-	if !autoResumeEnabled {
-		return false
-	}
-
-	policy = proxygrpc.NormalizeAutoResumePolicy(policy)
-	switch policy {
-	case proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_ANY:
-		return true
-	case proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_AUTHED:
-		return requestHasAuth
-	default:
-		return false
-	}
-}
-
-func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog catalog.SandboxesCatalog) (*reverseproxy.Proxy, error) {
-	return NewClientProxyWithPausedChecker(meterProvider, serviceName, port, catalog, nil, true)
 }
 
 func NewClientProxyWithPausedChecker(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog catalog.SandboxesCatalog, pausedChecker PausedSandboxChecker, autoResumeEnabled bool) (*reverseproxy.Proxy, error) {

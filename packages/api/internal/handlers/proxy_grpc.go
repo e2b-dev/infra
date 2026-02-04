@@ -41,50 +41,6 @@ func NewSandboxService(api *APIStore) *SandboxService {
 	return &SandboxService{api: api}
 }
 
-func (s *SandboxService) GetPausedInfo(ctx context.Context, req *proxygrpc.SandboxPausedInfoRequest) (*proxygrpc.SandboxPausedInfoResponse, error) {
-	// Called by client-proxy to decide whether a failed proxy route should trigger auto-resume.
-	// Uses snapshot data and a best-effort running check to distinguish paused vs running.
-	sandboxID := utils.ShortID(req.GetSandboxId())
-
-	snap, err := s.api.sqlcDB.GetLastSnapshot(ctx, sandboxID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return &proxygrpc.SandboxPausedInfoResponse{
-				Paused:           false,
-				AutoResumePolicy: proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_NULL,
-			}, nil
-		}
-
-		return nil, status.Errorf(codes.Internal, "failed to get snapshot: %v", err)
-	}
-
-	policy := autoResumePolicyFromSnapshotResumesOn(snap.Snapshot.SandboxResumesOn)
-
-	running, runErr := s.api.orchestrator.GetSandbox(ctx, snap.Snapshot.TeamID, sandboxID)
-	if runErr == nil {
-		if running.State == sandbox.StatePausing {
-			return &proxygrpc.SandboxPausedInfoResponse{
-				Paused:           true,
-				AutoResumePolicy: policy,
-			}, nil
-		}
-
-		return &proxygrpc.SandboxPausedInfoResponse{
-			Paused:           false,
-			AutoResumePolicy: policy,
-		}, nil
-	}
-	var notFoundErr *sandbox.NotFoundError
-	if runErr != nil && !errors.As(runErr, &notFoundErr) {
-		return nil, status.Errorf(codes.Internal, "failed to check running sandbox: %v", runErr)
-	}
-
-	return &proxygrpc.SandboxPausedInfoResponse{
-		Paused:           true,
-		AutoResumePolicy: policy,
-	}, nil
-}
-
 func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.SandboxResumeRequest) (*emptypb.Empty, error) {
 	sandboxID := utils.ShortID(req.GetSandboxId())
 

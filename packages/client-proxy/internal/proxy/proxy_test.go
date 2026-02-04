@@ -11,7 +11,6 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	sharedproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	catalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 )
@@ -44,16 +43,8 @@ func (f *fakeCatalog) Close(_ context.Context) error {
 }
 
 type fakePausedChecker struct {
-	info            PausedInfo
-	resumeErr       error
-	resumeCalls     int
-	pausedInfoCalls int
-}
-
-func (f *fakePausedChecker) PausedInfo(_ context.Context, _ string) (PausedInfo, error) {
-	f.pausedInfoCalls++
-
-	return f.info, nil
+	resumeErr   error
+	resumeCalls int
 }
 
 func (f *fakePausedChecker) Resume(_ context.Context, _ string, _ int32) error {
@@ -67,7 +58,7 @@ func TestCatalogResolutionPaused_NoAutoResume(t *testing.T) {
 
 	ctx := context.Background()
 	c := &fakeCatalog{info: nil, failCount: 1}
-	paused := &fakePausedChecker{info: PausedInfo{Paused: true, AutoResumePolicy: proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_ANY}}
+	paused := &fakePausedChecker{}
 
 	// With optimistic resume, when autoResumeEnabled=false we don't attempt resume
 	// and just return "not found" instead of checking pause status
@@ -86,7 +77,7 @@ func TestCatalogResolutionPaused_AutoResumeSuccess(t *testing.T) {
 	ctx := context.Background()
 	info := &catalog.SandboxInfo{OrchestratorIP: "10.0.0.1"}
 	c := &fakeCatalog{info: info, failCount: 1}
-	paused := &fakePausedChecker{info: PausedInfo{Paused: true, AutoResumePolicy: proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_ANY}}
+	paused := &fakePausedChecker{}
 
 	ip, err := catalogResolution(ctx, "sbx-2", c, paused, true, false)
 	if err != nil {
@@ -106,7 +97,6 @@ func TestCatalogResolutionPaused_AutoResumeFails(t *testing.T) {
 	ctx := context.Background()
 	c := &fakeCatalog{info: nil, failCount: 10}
 	paused := &fakePausedChecker{
-		info:      PausedInfo{Paused: true, AutoResumePolicy: proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_ANY},
 		resumeErr: errors.New("nope"),
 	}
 
@@ -130,7 +120,6 @@ func TestCatalogResolutionPaused_AutoResumeDenied(t *testing.T) {
 	ctx := context.Background()
 	c := &fakeCatalog{info: nil, failCount: 10}
 	paused := &fakePausedChecker{
-		info:      PausedInfo{Paused: true, AutoResumePolicy: proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_NULL},
 		resumeErr: status.Error(codes.FailedPrecondition, "auto-resume disabled"),
 	}
 
@@ -173,26 +162,6 @@ func TestCatalogResolution_NoPausedChecker_NotFound(t *testing.T) {
 	_, err := catalogResolution(ctx, "sbx-missing", c, nil, true, false)
 	if !errors.Is(err, ErrNodeNotFound) {
 		t.Fatalf("expected ErrNodeNotFound, got %v", err)
-	}
-}
-
-func TestShouldAutoResume(t *testing.T) {
-	t.Parallel()
-
-	if shouldAutoResume(proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_ANY, false, true) {
-		t.Fatalf("expected autoResume=false when disabled")
-	}
-	if shouldAutoResume(proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_NULL, true, true) {
-		t.Fatalf("expected autoResume=false for null policy")
-	}
-	if shouldAutoResume(proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_AUTHED, true, false) {
-		t.Fatalf("expected autoResume=false for authed policy without auth")
-	}
-	if !shouldAutoResume(proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_AUTHED, true, true) {
-		t.Fatalf("expected autoResume=true for authed policy with auth")
-	}
-	if !shouldAutoResume(proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_ANY, true, false) {
-		t.Fatalf("expected autoResume=true for any policy")
 	}
 }
 

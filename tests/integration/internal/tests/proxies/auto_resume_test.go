@@ -1,7 +1,6 @@
 package api
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -11,7 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 
-	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
@@ -156,50 +154,6 @@ func TestProxyAutoResumeSmoke(t *testing.T) {
 
 	require.NotEqual(t, http.StatusConflict, resp.StatusCode)
 	waitForSandboxState(t, c, sbx.SandboxID, api.Running)
-}
-
-func TestProxyAutoResumeChain(t *testing.T) {
-	t.Parallel()
-
-	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
-	defer cancel()
-
-	c := setup.GetAPIClient()
-	grpcClient := setup.GetProxyGrpcClient(t, ctx)
-
-	proxyURL, err := url.Parse(setup.ClientProxy)
-	require.NoError(t, err)
-
-	client := &http.Client{Timeout: 60 * time.Second}
-
-	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoResume(api.NewSandboxAutoResume("authed")))
-
-	waitForSandboxState(t, c, sbx.SandboxID, api.Running)
-	info, err := grpcClient.GetPausedInfo(ctx, &proxygrpc.SandboxPausedInfoRequest{SandboxId: sbx.SandboxID})
-	require.NoError(t, err)
-	require.False(t, info.GetPaused())
-
-	ensureSandboxPaused(t, c, sbx.SandboxID)
-	waitForSandboxState(t, c, sbx.SandboxID, api.Paused)
-
-	info, err = grpcClient.GetPausedInfo(ctx, &proxygrpc.SandboxPausedInfoRequest{SandboxId: sbx.SandboxID})
-	require.NoError(t, err)
-	require.True(t, info.GetPaused())
-	require.Equal(t, proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_AUTHED, info.GetAutoResumePolicy())
-
-	headers := http.Header{"X-API-Key": []string{setup.APIKey}}
-	resp := proxyRequest(t, client, sbx, proxyURL, headers)
-	require.NoError(t, resp.Body.Close())
-
-	require.NotEqual(t, http.StatusConflict, resp.StatusCode)
-	if resp.StatusCode >= http.StatusInternalServerError {
-		require.Equal(t, http.StatusBadGateway, resp.StatusCode)
-	}
-
-	waitForSandboxState(t, c, sbx.SandboxID, api.Running)
-	info, err = grpcClient.GetPausedInfo(ctx, &proxygrpc.SandboxPausedInfoRequest{SandboxId: sbx.SandboxID})
-	require.NoError(t, err)
-	require.False(t, info.GetPaused())
 }
 
 func shouldExpectResume(policy string, authValid bool) bool {

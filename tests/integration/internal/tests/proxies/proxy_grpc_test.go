@@ -16,54 +16,6 @@ import (
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 )
 
-func TestGetPausedInfoRunning(t *testing.T) {
-	t.Parallel()
-
-	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
-	defer cancel()
-
-	c := setup.GetAPIClient()
-	grpcClient := setup.GetProxyGrpcClient(t, ctx)
-
-	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoResume(api.NewSandboxAutoResume("any")))
-
-	info, err := grpcClient.GetPausedInfo(ctx, &proxygrpc.SandboxPausedInfoRequest{SandboxId: sbx.SandboxID})
-	require.NoError(t, err)
-	require.False(t, info.GetPaused())
-}
-
-func TestGetPausedInfoPaused(t *testing.T) {
-	t.Parallel()
-
-	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
-	defer cancel()
-
-	c := setup.GetAPIClient()
-	grpcClient := setup.GetProxyGrpcClient(t, ctx)
-
-	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoResume(api.NewSandboxAutoResume("authed")))
-	ensureSandboxPaused(t, c, sbx.SandboxID)
-
-	info, err := grpcClient.GetPausedInfo(ctx, &proxygrpc.SandboxPausedInfoRequest{SandboxId: sbx.SandboxID})
-	require.NoError(t, err)
-	require.True(t, info.GetPaused())
-	require.Equal(t, proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_AUTHED, info.GetAutoResumePolicy())
-}
-
-func TestGetPausedInfoNotFound(t *testing.T) {
-	t.Parallel()
-
-	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
-	defer cancel()
-
-	grpcClient := setup.GetProxyGrpcClient(t, ctx)
-
-	info, err := grpcClient.GetPausedInfo(ctx, &proxygrpc.SandboxPausedInfoRequest{SandboxId: "missing-sandbox"})
-	require.NoError(t, err)
-	require.False(t, info.GetPaused())
-	require.Equal(t, proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_NULL, info.GetAutoResumePolicy())
-}
-
 func TestResumeSandboxWithAPIKey(t *testing.T) {
 	t.Parallel()
 

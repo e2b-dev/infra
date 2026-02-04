@@ -23,7 +23,6 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type SandboxServiceClient interface {
-	GetPausedInfo(ctx context.Context, in *SandboxPausedInfoRequest, opts ...grpc.CallOption) (*SandboxPausedInfoResponse, error)
 	ResumeSandbox(ctx context.Context, in *SandboxResumeRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
@@ -33,15 +32,6 @@ type sandboxServiceClient struct {
 
 func NewSandboxServiceClient(cc grpc.ClientConnInterface) SandboxServiceClient {
 	return &sandboxServiceClient{cc}
-}
-
-func (c *sandboxServiceClient) GetPausedInfo(ctx context.Context, in *SandboxPausedInfoRequest, opts ...grpc.CallOption) (*SandboxPausedInfoResponse, error) {
-	out := new(SandboxPausedInfoResponse)
-	err := c.cc.Invoke(ctx, "/proxy.SandboxService/GetPausedInfo", in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
 }
 
 func (c *sandboxServiceClient) ResumeSandbox(ctx context.Context, in *SandboxResumeRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
@@ -57,7 +47,6 @@ func (c *sandboxServiceClient) ResumeSandbox(ctx context.Context, in *SandboxRes
 // All implementations must embed UnimplementedSandboxServiceServer
 // for forward compatibility
 type SandboxServiceServer interface {
-	GetPausedInfo(context.Context, *SandboxPausedInfoRequest) (*SandboxPausedInfoResponse, error)
 	ResumeSandbox(context.Context, *SandboxResumeRequest) (*emptypb.Empty, error)
 	mustEmbedUnimplementedSandboxServiceServer()
 }
@@ -66,9 +55,6 @@ type SandboxServiceServer interface {
 type UnimplementedSandboxServiceServer struct {
 }
 
-func (UnimplementedSandboxServiceServer) GetPausedInfo(context.Context, *SandboxPausedInfoRequest) (*SandboxPausedInfoResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetPausedInfo not implemented")
-}
 func (UnimplementedSandboxServiceServer) ResumeSandbox(context.Context, *SandboxResumeRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ResumeSandbox not implemented")
 }
@@ -83,24 +69,6 @@ type UnsafeSandboxServiceServer interface {
 
 func RegisterSandboxServiceServer(s grpc.ServiceRegistrar, srv SandboxServiceServer) {
 	s.RegisterService(&SandboxService_ServiceDesc, srv)
-}
-
-func _SandboxService_GetPausedInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(SandboxPausedInfoRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(SandboxServiceServer).GetPausedInfo(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/proxy.SandboxService/GetPausedInfo",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SandboxServiceServer).GetPausedInfo(ctx, req.(*SandboxPausedInfoRequest))
-	}
-	return interceptor(ctx, in, info, handler)
 }
 
 func _SandboxService_ResumeSandbox_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -128,10 +96,6 @@ var SandboxService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "proxy.SandboxService",
 	HandlerType: (*SandboxServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
-		{
-			MethodName: "GetPausedInfo",
-			Handler:    _SandboxService_GetPausedInfo_Handler,
-		},
 		{
 			MethodName: "ResumeSandbox",
 			Handler:    _SandboxService_ResumeSandbox_Handler,

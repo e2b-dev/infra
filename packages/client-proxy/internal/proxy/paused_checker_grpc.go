@@ -17,8 +17,7 @@ type grpcPausedSandboxChecker struct {
 }
 
 func NewGrpcPausedSandboxChecker(address string) (PausedSandboxChecker, error) {
-	// Client-proxy uses this gRPC client to ask the API whether a sandbox is paused
-	// and which auto-resume policy applies, plus to trigger ResumeSandbox when needed.
+	// Client-proxy uses this gRPC client to trigger ResumeSandbox when needed.
 	if strings.TrimSpace(address) == "" {
 		return nil, fmt.Errorf("api grpc address is required")
 	}
@@ -36,20 +35,6 @@ func NewGrpcPausedSandboxChecker(address string) (PausedSandboxChecker, error) {
 
 func (c *grpcPausedSandboxChecker) Close(_ context.Context) error {
 	return c.conn.Close()
-}
-
-func (c *grpcPausedSandboxChecker) PausedInfo(ctx context.Context, sandboxId string) (PausedInfo, error) {
-	resp, err := c.client.GetPausedInfo(ctx, &proxygrpc.SandboxPausedInfoRequest{
-		SandboxId: sandboxId,
-	})
-	if err != nil {
-		return PausedInfo{}, fmt.Errorf("grpc paused info: %w", err)
-	}
-
-	return PausedInfo{
-		Paused:           resp.GetPaused(),
-		AutoResumePolicy: resp.GetAutoResumePolicy(),
-	}, nil
 }
 
 func (c *grpcPausedSandboxChecker) Resume(ctx context.Context, sandboxId string, timeoutSeconds int32) error {

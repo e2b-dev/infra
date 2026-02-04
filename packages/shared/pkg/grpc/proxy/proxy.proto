@@ -6,25 +6,11 @@ import "google/protobuf/empty.proto";
 
 option go_package = "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy;proxygrpc";
 
-// Request paused snapshot info for a sandbox.
-message SandboxPausedInfoRequest {
-  // Sandbox ID, as used by the client-proxy.
-  string sandbox_id = 1;
-}
-
 // AutoResumePolicy describes when a paused sandbox should auto-resume.
 enum AutoResumePolicy {
   AUTO_RESUME_POLICY_NULL = 0;
   AUTO_RESUME_POLICY_ANY = 1;
   AUTO_RESUME_POLICY_AUTHED = 2;
-}
-
-// Response describing whether a paused snapshot exists and its auto-resume policy.
-message SandboxPausedInfoResponse {
-  // True when a paused snapshot exists for the sandbox.
-  bool paused = 1;
-  // Auto-resume policy for the sandbox.
-  AutoResumePolicy auto_resume_policy = 2;
 }
 
 // Request to resume a paused sandbox.
@@ -35,10 +21,9 @@ message SandboxResumeRequest {
   int32 timeout_seconds = 2;
 }
 
-// SandboxService is used by the client-proxy to check paused state
-// and resume sandboxes. Authorization/X-API-Key headers are forwarded
-// via gRPC metadata for authed resumes.
+// SandboxService is used by the client-proxy to resume sandboxes.
+// Authorization/X-API-Key headers are forwarded via gRPC metadata
+// for authed resumes.
 service SandboxService {
-  rpc GetPausedInfo(SandboxPausedInfoRequest) returns (SandboxPausedInfoResponse);
   rpc ResumeSandbox(SandboxResumeRequest) returns (google.protobuf.Empty);
 }
