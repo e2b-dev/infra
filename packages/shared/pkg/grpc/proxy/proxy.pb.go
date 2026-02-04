@@ -77,7 +77,7 @@ type SandboxPausedInfoRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// Sandbox ID (short or full), as used by the client-proxy.
+	// Sandbox ID, as used by the client-proxy.
 	SandboxId string `protobuf:"bytes,1,opt,name=sandbox_id,json=sandboxId,proto3" json:"sandbox_id,omitempty"`
 }
 

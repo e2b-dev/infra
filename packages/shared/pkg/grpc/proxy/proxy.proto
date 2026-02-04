@@ -8,7 +8,7 @@ option go_package = "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy;pro
 
 // Request paused snapshot info for a sandbox.
 message SandboxPausedInfoRequest {
-  // Sandbox ID (short or full), as used by the client-proxy.
+  // Sandbox ID, as used by the client-proxy.
   string sandbox_id = 1;
 }
 
