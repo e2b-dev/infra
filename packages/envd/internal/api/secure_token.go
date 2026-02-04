@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"sync"
+	"unsafe"
 
 	"github.com/awnumar/memguard"
 )
@@ -12,6 +13,12 @@ var (
 	ErrTokenNotSet = errors.New("access token not set")
 	ErrTokenEmpty  = errors.New("empty token not allowed")
 )
+
+// unsafePointer converts a pointer to unsafe.Pointer for address comparison.
+// This is used to establish a consistent lock ordering to prevent deadlocks.
+func unsafePointer(p *SecureToken) unsafe.Pointer {
+	return unsafe.Pointer(p)
+}
 
 // SecureToken wraps memguard for secure token storage.
 // It uses LockedBuffer which provides memory locking, guard pages,
@@ -99,11 +106,17 @@ func (s *SecureToken) TakeFrom(src *SecureToken) {
 		return
 	}
 
-	src.mu.Lock()
-	defer src.mu.Unlock()
+	// Lock in consistent order by pointer address to prevent deadlock
+	first, second := s, src
+	if uintptr(unsafePointer(src)) < uintptr(unsafePointer(s)) {
+		first, second = src, s
+	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	first.mu.Lock()
+	defer first.mu.Unlock()
+
+	second.mu.Lock()
+	defer second.mu.Unlock()
 
 	// Destroy current buffer
 	if s.buffer != nil {
@@ -143,17 +156,23 @@ func (s *SecureToken) EqualsSecure(other *SecureToken) bool {
 		return s.IsSet()
 	}
 
-	other.mu.RLock()
-	defer other.mu.RUnlock()
+	// Lock in consistent order by pointer address to prevent deadlock
+	first, second := s, other
+	if uintptr(unsafePointer(other)) < uintptr(unsafePointer(s)) {
+		first, second = other, s
+	}
 
-	if other.buffer == nil || !other.buffer.IsAlive() {
+	first.mu.RLock()
+	defer first.mu.RUnlock()
+
+	if first.buffer == nil || !first.buffer.IsAlive() {
 		return false
 	}
 
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	second.mu.RLock()
+	defer second.mu.RUnlock()
 
-	if s.buffer == nil || !s.buffer.IsAlive() {
+	if second.buffer == nil || !second.buffer.IsAlive() {
 		return false
 	}
 
