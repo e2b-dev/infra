@@ -121,7 +121,7 @@ func isAuthResumeError(err error) bool {
 	}
 
 	switch grpcStatus.GRPCStatus().Code() {
-	case codes.Unauthenticated, codes.PermissionDenied, codes.InvalidArgument:
+	case codes.Unauthenticated, codes.PermissionDenied, codes.InvalidArgument, codes.FailedPrecondition:
 		return true
 	default:
 		return false
@@ -179,21 +179,8 @@ func waitForCatalog(ctx context.Context, sandboxId string, c catalog.SandboxesCa
 	}
 }
 
-func shouldAutoResume(policy proxygrpc.AutoResumePolicy, autoResumeEnabled bool, requestHasAuth bool) bool {
-	if !autoResumeEnabled {
-		return false
-	}
-
-	switch proxygrpc.NormalizeAutoResumePolicy(policy) {
-	case proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_ANY:
-		return true
-	case proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_AUTHED:
-		return requestHasAuth
-	case proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_NULL:
-		return false
-	default:
-		return false
-	}
+func shouldAutoResume(_ proxygrpc.AutoResumePolicy, autoResumeEnabled bool, _ bool) bool {
+	return autoResumeEnabled
 }
 
 func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog catalog.SandboxesCatalog) (*reverseproxy.Proxy, error) {

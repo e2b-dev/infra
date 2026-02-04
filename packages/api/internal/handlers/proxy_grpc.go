@@ -27,8 +27,7 @@ import (
 )
 
 const (
-	proxyResumeLockTTL     = 2 * time.Minute
-	proxyResumeWaitTimeout = 30 * time.Second
+	proxyResumeLockTTL = 2 * time.Minute
 )
 
 type SandboxService struct {
@@ -135,10 +134,6 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 	if lockErr != nil {
 		logger.L().Warn(ctx, "Failed to acquire proxy resume lock, proceeding without lock", zap.Error(lockErr), logger.WithSandboxID(sandboxID))
 	} else if !lockAcquired {
-		if waitErr := s.api.orchestrator.WaitForSandboxInRoutingCatalog(ctx, sandboxID, proxyResumeWaitTimeout); waitErr != nil {
-			logger.L().Warn(ctx, "Timed out waiting for sandbox to resume", zap.Error(waitErr), logger.WithSandboxID(sandboxID))
-		}
-
 		return &emptypb.Empty{}, nil
 	}
 	if lock != nil {
