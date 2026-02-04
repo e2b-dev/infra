@@ -927,6 +927,12 @@ func TestTemplateBuildFuseConfiguration(t *testing.T) {
 			{
 				Type: "RUN",
 				Args: utils.ToPtr([]string{
+					"echo 'FUSE device permissions:' && ls -l /dev/fuse",
+				}),
+			},
+			{
+				Type: "RUN",
+				Args: utils.ToPtr([]string{
 					"ls -l /dev/fuse | grep -q 'crw-rw-rw-'",
 				}),
 			},
