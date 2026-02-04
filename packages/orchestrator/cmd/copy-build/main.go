@@ -94,7 +94,7 @@ func NewHeaderFromObject(ctx context.Context, bucketName string, headerPath stri
 	return h, nil
 }
 
-func NewHeaderFromPath(from, headerPath string) (*header.Header, error) {
+func NewHeaderFromPath(_ context.Context, from, headerPath string) (*header.Header, error) {
 	data, err := os.ReadFile(path.Join(from, headerPath))
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file: %w", err)
@@ -208,7 +208,7 @@ func main() {
 
 		memfileHeader = h
 	} else {
-		h, err := NewHeaderFromPath(*from, buildMemfileHeaderPath)
+		h, err := NewHeaderFromPath(ctx, *from, buildMemfileHeaderPath)
 		if err != nil {
 			log.Fatalf("failed to create header from path: %s", err)
 		}
@@ -237,7 +237,7 @@ func main() {
 
 		rootfsHeader = h
 	} else {
-		h, err := NewHeaderFromPath(*from, buildRootfsHeaderPath)
+		h, err := NewHeaderFromPath(ctx, *from, buildRootfsHeaderPath)
 		if err != nil {
 			log.Fatalf("failed to create header from path: %s", err)
 		}
