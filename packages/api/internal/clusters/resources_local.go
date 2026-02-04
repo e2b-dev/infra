@@ -158,7 +158,7 @@ func (l *LocalClusterResourceProvider) GetSandboxLogs(ctx context.Context, teamI
 	for i, row := range raw {
 		le[i] = api.SandboxLogEntry{
 			Timestamp: row.Timestamp,
-			Level:     api.LogLevel(row.Level),
+			Level:     api.LogLevel(logs.LevelToString(row.Level)),
 			Message:   row.Message,
 			Fields:    row.Fields,
 		}
