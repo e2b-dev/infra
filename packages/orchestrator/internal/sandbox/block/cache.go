@@ -246,12 +246,8 @@ func (c *Cache) Slice(off, length int64) ([]byte, error) {
 }
 
 func (c *Cache) isCached(off, length int64) bool {
-	// Calculate which blocks are needed for this range
-	startBlock := off / c.blockSize
-	endBlock := (off + length + c.blockSize - 1) / c.blockSize
-
-	for block := startBlock; block < endBlock; block++ {
-		_, dirty := c.dirty.Load(block * c.blockSize)
+	for _, blockOff := range header.BlocksOffsets(length, c.blockSize) {
+		_, dirty := c.dirty.Load(off + blockOff)
 		if !dirty {
 			return false
 		}
@@ -261,12 +257,8 @@ func (c *Cache) isCached(off, length int64) bool {
 }
 
 func (c *Cache) setIsCached(off, length int64) {
-	// Mark all blocks touched by this range as cached
-	startBlock := off / c.blockSize
-	endBlock := (off + length + c.blockSize - 1) / c.blockSize
-
-	for block := startBlock; block < endBlock; block++ {
-		c.dirty.Store(block*c.blockSize, struct{}{})
+	for _, blockOff := range header.BlocksOffsets(length, c.blockSize) {
+		c.dirty.Store(off+blockOff, struct{}{})
 	}
 }
 
@@ -489,7 +481,9 @@ func (c *Cache) copyProcessMemory(
 				return fmt.Errorf("failed to read memory: expected %d bytes, got %d", segmentSize, n)
 			}
 
-			c.setIsCached(offset, segmentSize)
+			for _, blockOff := range header.BlocksOffsets(segmentSize, c.blockSize) {
+				c.dirty.Store(offset+blockOff, struct{}{})
+			}
 
 			offset += segmentSize
 

@@ -218,6 +218,14 @@ These commands have high memory usage and long execution times that blow up loca
 - `make fmt` - Code formatting
 - `make generate` / `make generate-mocks` - Code generation
 
+### Working on Feature Branches
+When working on a feature branch, always assume that `main` works correctly:
+- Only make changes that are necessary for the feature
+- Do NOT fix unrelated bugs you discover along the way - report them instead
+- If you find a bug in main, inform the user so they can decide whether to spin up a separate fix
+- Keep PRs focused and reviewable by avoiding opportunistic refactoring
+- Unnecessary changes can have unintended consequences and make review harder
+
 ## Important Development Notes
 
 ### Working with Proto/gRPC
