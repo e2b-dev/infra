@@ -160,8 +160,8 @@ type Storage struct {
 
 var _ StorageProvider = (*Storage)(nil)
 
-func NewGCPBucket(ctx context.Context, bucketName string, limiter *limit.Limiter) (*Storage, error) {
-	backend, err := NewGCP(ctx, bucketName, limiter)
+func NewGCP(ctx context.Context, bucketName string, limiter *limit.Limiter) (*Storage, error) {
+	backend, err := newGCPBackend(ctx, bucketName, limiter)
 	if err != nil {
 		return nil, err
 	}
@@ -209,9 +209,9 @@ func newCloudBackendForEnvironment(ctx context.Context, providerName ProviderNam
 	switch providerName {
 	// cloud bucket-based storage
 	case AWSStorageProvider:
-		return NewAWS(ctx, bucketName)
+		return newAWSBackend(ctx, bucketName)
 	case GCPStorageProvider:
-		return NewGCP(ctx, bucketName, limiter)
+		return newGCPBackend(ctx, bucketName, limiter)
 	default:
 		return nil, fmt.Errorf("unknown storage backend: %s", providerName)
 	}

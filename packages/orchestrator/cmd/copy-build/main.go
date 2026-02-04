@@ -76,7 +76,7 @@ func NewDestinationFromPath(prefix, file string) (*Destination, error) {
 }
 
 func NewHeaderFromObject(ctx context.Context, bucketName string, headerPath string) (*header.Header, error) {
-	s, err := storage.NewGCPBucket(ctx, bucketName, nil)
+	s, err := storage.NewGCP(ctx, bucketName, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GCS bucket storage provider: %w", err)
 	}

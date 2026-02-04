@@ -55,7 +55,7 @@ type GCP struct {
 	baseUploadURL string // for testing
 }
 
-func NewGCP(ctx context.Context, bucketName string, limiter *limit.Limiter) (*Backend, error) {
+func newGCPBackend(ctx context.Context, bucketName string, limiter *limit.Limiter) (*Backend, error) {
 	client, err := storage.NewGRPCClient(ctx,
 		option.WithGRPCConnectionPool(4),
 		option.WithGRPCDialOption(grpc.WithInitialConnWindowSize(32*megabyte)),

@@ -34,7 +34,7 @@ var (
 	_ PublicUploader = (*AWS)(nil)
 )
 
-func NewAWS(ctx context.Context, bucketName string) (*Backend, error) {
+func newAWSBackend(ctx context.Context, bucketName string) (*Backend, error) {
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
 		return nil, err
