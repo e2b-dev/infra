@@ -99,6 +99,10 @@ func (s *SecureToken) TakeFrom(src *SecureToken) {
 		return
 	}
 
+	if s == src {
+		return
+	}
+
 	src.mu.Lock()
 	defer src.mu.Unlock()
 
