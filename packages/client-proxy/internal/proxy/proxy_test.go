@@ -151,6 +151,34 @@ func TestCatalogResolutionPaused_AutoResumeDenied(t *testing.T) {
 	}
 }
 
+func TestCatalogResolution_NoPausedChecker(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	info := &catalog.SandboxInfo{OrchestratorIP: "10.0.0.2"}
+	c := &fakeCatalog{info: info, failCount: 0}
+
+	ip, err := catalogResolution(ctx, "sbx-nil", c, nil, true, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ip != "10.0.0.2" {
+		t.Fatalf("expected ip 10.0.0.2, got %s", ip)
+	}
+}
+
+func TestCatalogResolution_NoPausedChecker_NotFound(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	c := &fakeCatalog{info: nil, failCount: 1}
+
+	_, err := catalogResolution(ctx, "sbx-missing", c, nil, true, false)
+	if !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("expected ErrNodeNotFound, got %v", err)
+	}
+}
+
 func TestShouldAutoResume(t *testing.T) {
 	t.Parallel()
 

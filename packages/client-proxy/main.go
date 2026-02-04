@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -134,11 +135,16 @@ func run() int {
 	info := &internal.ServiceInfo{}
 	info.SetStatus(ctx, internal.Healthy)
 
-	pausedChecker, err := e2bproxy.NewGrpcPausedSandboxChecker(config.ApiGrpcAddress)
-	if err != nil {
-		l.Error(ctx, "Failed to create paused sandbox checker", zap.Error(err))
+	var pausedChecker e2bproxy.PausedSandboxChecker
+	if strings.TrimSpace(config.ApiGrpcAddress) != "" {
+		pausedChecker, err = e2bproxy.NewGrpcPausedSandboxChecker(config.ApiGrpcAddress)
+		if err != nil {
+			l.Error(ctx, "Failed to create paused sandbox checker", zap.Error(err))
 
-		return 1
+			return 1
+		}
+	} else {
+		l.Warn(ctx, "API gRPC address not set; paused sandbox checks disabled")
 	}
 
 	// Proxy sandbox http traffic to orchestrator nodes
