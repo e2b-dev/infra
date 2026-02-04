@@ -335,6 +335,8 @@ func createOrchestratorVolumeMounts(
 
 		if _, ok := usedPaths[v.Path]; ok {
 			invalidVolumeMounts = append(invalidVolumeMounts, InvalidMount{Index: index, Reason: fmt.Sprintf("path '%s' is already used", v.Path)})
+
+			continue
 		}
 		usedPaths[v.Path] = struct{}{}
 
