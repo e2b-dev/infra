@@ -20,7 +20,6 @@ type LokiQueryProvider struct {
 }
 
 const (
-	DefaultLogsLimit = 1000
 	DefaultDirection = logproto.FORWARD
 )
 
