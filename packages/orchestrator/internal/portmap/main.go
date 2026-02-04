@@ -2,6 +2,7 @@ package portmap
 
 import (
 	"context"
+	"sync"
 
 	portmap "github.com/zeldovich/go-rpcgen/rfc1057"
 	"go.uber.org/zap"
@@ -12,6 +13,7 @@ import (
 type handlers struct {
 	ctx  context.Context //nolint:containedctx // can't change the API, still need it
 	maps map[key]portmap.Uint32
+	lock sync.RWMutex
 }
 
 func newHandlers() *handlers {
@@ -23,6 +25,9 @@ var _ portmap.PMAP_PROG_PMAP_VERS_handler = (*handlers)(nil)
 func (h *handlers) PMAPPROC_NULL() {}
 
 func (h *handlers) PMAPPROC_SET(mapping portmap.Mapping) portmap.Xbool {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+
 	h.maps[key{
 		Prog: mapping.Prog,
 		Vers: mapping.Vers,
@@ -37,6 +42,9 @@ func (h *handlers) PMAPPROC_UNSET(_ portmap.Mapping) portmap.Xbool {
 }
 
 func (h *handlers) PMAPPROC_GETPORT(mapping portmap.Mapping) portmap.Uint32 {
+	h.lock.RLock()
+	defer h.lock.RUnlock()
+
 	logger.L().Debug(h.ctx, "[portmap handler] searching for a map",
 		zap.Int("len", len(h.maps)),
 		zap.Uint32("prog", mapping.Prog),
@@ -65,6 +73,9 @@ func (h *handlers) PMAPPROC_GETPORT(mapping portmap.Mapping) portmap.Uint32 {
 }
 
 func (h *handlers) PMAPPROC_DUMP() portmap.Pmaplist {
+	h.lock.RLock()
+	defer h.lock.RUnlock()
+
 	var head portmap.Pmaplist
 
 	current := &head

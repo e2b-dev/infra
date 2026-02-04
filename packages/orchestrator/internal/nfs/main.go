@@ -98,11 +98,11 @@ func findFilesystem(mounts map[string]billy.Filesystem, mount sandbox.VolumeMoun
 }
 
 func getChangeFromFilesystem(fs billy.Filesystem) billy.Change {
-	for {
-		if ch, ok := fs.(billy.Chroot); ok {
-			return oschange.NewChange(ch.Root())
-		}
+	if ch, ok := fs.(billy.Chroot); ok {
+		return oschange.NewChange(ch.Root())
 	}
+
+	panic(fmt.Sprintf("unexpected filesystem type: %v", fs))
 }
 
 func NewProxy(ctx context.Context, sandboxes *sandbox.Map, config cfg.Config) *Proxy {

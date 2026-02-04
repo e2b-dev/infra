@@ -73,14 +73,6 @@ func (j jailedFS) Join(elem ...string) string {
 	// prevent directory traversal
 	path = filepath.ToSlash(path)
 	path = filepath.Clean(path)
-	for {
-		trimmed, ok := strings.CutPrefix(path, ".."+string(filepath.Separator))
-		if !ok {
-			break
-		}
-
-		path = trimmed
-	}
 
 	if len(elem) > 0 {
 		if !strings.HasPrefix(elem[0], j.prefix+"/") {
