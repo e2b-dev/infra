@@ -163,8 +163,8 @@ resource "nomad_job" "client_proxy" {
       redis_cluster_url   = local.redis_cluster_url
       redis_tls_ca_base64 = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
 
-      image_name    = data.google_artifact_registry_docker_image.client_proxy_image.self_link
-      api_grpc_port = var.api_grpc_port
+      image_name       = data.google_artifact_registry_docker_image.client_proxy_image.self_link
+      api_grpc_address = "api-grpc.service.consul:${var.api_grpc_port}"
 
       otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
       logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
