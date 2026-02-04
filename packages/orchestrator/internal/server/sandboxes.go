@@ -151,7 +151,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 				FirecrackerVersion: req.GetSandbox().GetFirecrackerVersion(),
 			},
 
-			VolumeMounts: convertVolumeMounts(req.GetSandbox().GetVolumeMounts()),
+			VolumeMounts: createVolumeMountModelsFromAPI(req.GetSandbox().GetVolumeMounts()),
 		},
 		sandbox.RuntimeMetadata{
 			TemplateID:  req.GetSandbox().GetTemplateId(),
@@ -236,7 +236,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	}, nil
 }
 
-func convertVolumeMounts(volumeMounts []*orchestrator.SandboxVolumeMount) []sandbox.VolumeMountConfig {
+func createVolumeMountModelsFromAPI(volumeMounts []*orchestrator.SandboxVolumeMount) []sandbox.VolumeMountConfig {
 	results := make([]sandbox.VolumeMountConfig, 0, len(volumeMounts))
 
 	for _, v := range volumeMounts {

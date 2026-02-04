@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -124,7 +125,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	envVars := sharedUtils.DerefOrDefault(body.EnvVars, nil)
 	mcp := sharedUtils.DerefOrDefault(body.Mcp, nil)
 	metadata := sharedUtils.DerefOrDefault(body.Metadata, nil)
-	volumeMounts := sharedUtils.DerefOrDefault(body.VolumeMounts, nil)
+	apiVolumeMounts := sharedUtils.DerefOrDefault(body.VolumeMounts, nil)
 
 	timeout := sandbox.SandboxTimeoutDefault
 	if body.Timeout != nil {
@@ -180,7 +181,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		}
 
 		// Make sure envd seucre access is enforced when public access is disabled,
-		// this is requirement forcing users using newer features to secure sandboxes properly.
+		// This requirement forces users using newer features to secure sandboxes properly.
 		if !sharedUtils.DerefOrDefault(network.Ingress.AllowPublicAccess, types.AllowPublicAccessDefault) && envdAccessToken == nil {
 			a.sendAPIStoreError(c, http.StatusBadRequest, "You cannot create a sandbox without public access unless you enable secure envd access via 'secure' flag.")
 
@@ -188,17 +189,19 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		}
 	}
 
-	sbxVolumeMounts, err := convertVolumeMounts(ctx, a.sqlcDB, a.featureFlags, cluster, teamInfo.ID, volumeMounts)
+	sbxVolumeMounts, err := createOrchestratorVolumeMounts(
+		ctx, a.sqlcDB, a.featureFlags, cluster, teamInfo.ID, apiVolumeMounts,
+	)
 	if err != nil {
 		if errors.Is(err, ErrVolumeMountsDisabled) {
-			a.sendAPIStoreError(c, http.StatusBadRequest, "Volume mounts are not enabled.")
+			a.sendAPIStoreError(c, http.StatusForbidden, "Volume mounts are not enabled.")
 
 			return
 		}
 
-		var vne VolumesNotFoundError
+		var vne InvalidVolumeMountsError
 		if errors.As(err, &vne) {
-			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Volume(s) not found: %s", strings.Join(vne.VolumeNames, ", ")))
+			a.sendAPIStoreError(c, http.StatusBadRequest, vne.Error())
 
 			return
 		}
@@ -244,17 +247,11 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	c.JSON(http.StatusCreated, &sbx)
 }
 
-func toSet[TItem any, TKey comparable](items []TItem, fn func(TItem) TKey) map[TKey]struct{} {
-	result := make(map[TKey]struct{}, len(items))
+func dedupeVolumeNames(items []api.SandboxVolumeMount) []string {
+	itemsSet := make(map[string]struct{}, len(items))
 	for _, item := range items {
-		result[fn(item)] = struct{}{}
+		itemsSet[item.Name] = struct{}{}
 	}
-
-	return result
-}
-
-func getUniqueSlice(items []api.SandboxVolumeMount, fn func(api.SandboxVolumeMount) string) []string {
-	itemsSet := toSet(items, fn)
 
 	results := make([]string, 0, len(itemsSet))
 	for name := range itemsSet {
@@ -270,7 +267,26 @@ type featureFlagsClient interface {
 	BoolFlag(ctx context.Context, flagName featureflags.BoolFlag, contexts ...ldcontext.Context) bool
 }
 
-func convertVolumeMounts(
+type InvalidMount struct {
+	Index  int
+	Reason string
+}
+
+type InvalidVolumeMountsError struct {
+	InvalidMounts []InvalidMount
+}
+
+func (im InvalidVolumeMountsError) Error() string {
+	var errs []string
+
+	for _, mount := range im.InvalidMounts {
+		errs = append(errs, fmt.Sprintf("\t- volume mount #%d: %s", mount.Index, mount.Reason))
+	}
+
+	return fmt.Sprintf("invalid mounts:\n%s", strings.Join(errs, "\n"))
+}
+
+func createOrchestratorVolumeMounts(
 	ctx context.Context,
 	sqlClient *sqlcdb.Client,
 	featureFlags featureFlagsClient,
@@ -298,16 +314,31 @@ func convertVolumeMounts(
 		return nil, fmt.Errorf("failed to get db volumes map: %w", err)
 	}
 
-	var missingVolumeNames []string
+	invalidVolumeMounts := make([]InvalidMount, 0)
 	results := make([]*orchestrator.SandboxVolumeMount, 0, len(volumeMounts))
 
-	for _, v := range volumeMounts {
+	usedPaths := make(map[string]struct{})
+
+	for index, v := range volumeMounts {
 		actualVolume, ok := dbVolumesMap[v.Name]
 		if !ok {
-			missingVolumeNames = append(missingVolumeNames, v.Name)
+			invalidVolumeMounts = append(invalidVolumeMounts, InvalidMount{Index: index, Reason: fmt.Sprintf("volume '%s' not found", v.Name)})
 
 			continue
 		}
+
+		if reason, ok := isValidMountPath(v.Path); !ok {
+			invalidVolumeMounts = append(invalidVolumeMounts, InvalidMount{Index: index, Reason: reason})
+
+			continue
+		}
+
+		if _, ok := usedPaths[v.Path]; ok {
+			invalidVolumeMounts = append(invalidVolumeMounts, InvalidMount{Index: index, Reason: fmt.Sprintf("path '%s' is already used", v.Path)})
+
+			continue
+		}
+		usedPaths[v.Path] = struct{}{}
 
 		results = append(results, &orchestrator.SandboxVolumeMount{
 			Name: v.Name,
@@ -316,11 +347,27 @@ func convertVolumeMounts(
 		})
 	}
 
-	if len(missingVolumeNames) > 0 {
-		return nil, VolumesNotFoundError{VolumeNames: missingVolumeNames}
+	if len(invalidVolumeMounts) > 0 {
+		return nil, InvalidVolumeMountsError{InvalidMounts: invalidVolumeMounts}
 	}
 
 	return results, nil
+}
+
+func isValidMountPath(path string) (string, bool) {
+	if path == "" {
+		return "path cannot be empty", false
+	}
+
+	if !filepath.IsAbs(path) {
+		return "path must be absolute", false
+	}
+
+	if filepath.Clean(path) != path {
+		return "path must not contain any '.' or '..' components", false
+	}
+
+	return "", true
 }
 
 func getSupportedVolumeTypes(ctx context.Context, cluster *clusters.Cluster) (map[string]struct{}, error) {
@@ -329,17 +376,12 @@ func getSupportedVolumeTypes(ctx context.Context, cluster *clusters.Cluster) (ma
 		return nil, fmt.Errorf("failed to get volume types from cluster: %w", err)
 	}
 
-	volumeTypesSet := toSet(volumeTypesSlice, func(vt string) string { return vt })
+	volumeTypesSet := make(map[string]struct{}, len(volumeTypesSlice))
+	for _, vt := range volumeTypesSlice {
+		volumeTypesSet[vt] = struct{}{}
+	}
 
 	return volumeTypesSet, nil
-}
-
-type VolumesNotFoundError struct {
-	VolumeNames []string
-}
-
-func (e VolumesNotFoundError) Error() string {
-	return fmt.Sprintf("volumes not found: %s", strings.Join(e.VolumeNames, ", "))
 }
 
 type InvalidVolumeTypesError struct {
@@ -353,7 +395,7 @@ func (e InvalidVolumeTypesError) Error() string {
 func getDBVolumesMap(ctx context.Context, sqlcDB *sqlcdb.Client, teamID uuid.UUID, volumeMounts []api.SandboxVolumeMount, volumeTypesSet map[string]struct{}) (map[string]queries.Volume, error) {
 	dbVolumes, err := sqlcDB.GetVolumesByName(ctx, queries.GetVolumesByNameParams{
 		TeamID:      teamID,
-		VolumeNames: getUniqueSlice(volumeMounts, func(svm api.SandboxVolumeMount) string { return svm.Name }),
+		VolumeNames: dedupeVolumeNames(volumeMounts),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get volumes from db: %w", err)

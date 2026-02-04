@@ -208,7 +208,7 @@ func (c *Cluster) GetByServiceInstanceID(serviceInstanceID string) (*Instance, b
 	return nil, false
 }
 
-func (c *Cluster) getRandomInstance(isMatch func(*Instance) bool) (*Instance, bool) {
+func (c *Cluster) getRandomInstance(isMatch func(InstanceInfo, machineinfo.MachineInfo) bool) (*Instance, bool) {
 	var instances []*Instance
 	for _, instance := range c.instances.Items() {
 		instances = append(instances, instance)
@@ -218,7 +218,7 @@ func (c *Cluster) getRandomInstance(isMatch func(*Instance) bool) (*Instance, bo
 	rand.Shuffle(len(instances), func(i, j int) { instances[i], instances[j] = instances[j], instances[i] })
 
 	for _, instance := range instances {
-		if isMatch(instance) {
+		if isMatch(instance.GetInfo(), instance.GetMachineInfo()) {
 			return instance, true
 		}
 	}
@@ -231,14 +231,14 @@ func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context, expectedInfo 
 	span.SetAttributes(telemetry.WithClusterID(c.ID))
 	defer span.End()
 
-	instance, ok := c.getRandomInstance(func(instance *Instance) bool {
+	instance, ok := c.getRandomInstance(func(info InstanceInfo, machineInfo machineinfo.MachineInfo) bool {
 		// Check availability and builder role
-		if info := instance.GetInfo(); info.Status != infogrpc.ServiceInfoStatus_Healthy || !info.IsBuilder {
+		if info.Status != infogrpc.ServiceInfoStatus_Healthy || !info.IsBuilder {
 			return false
 		}
 
 		// Check machine compatibility
-		if machineInfo := instance.GetMachineInfo(); expectedInfo.CPUModel != "" && !expectedInfo.IsCompatibleWith(machineInfo) {
+		if expectedInfo.CPUModel != "" && !expectedInfo.IsCompatibleWith(machineInfo) {
 			return false
 		}
 
@@ -269,8 +269,8 @@ func (c *Cluster) GetResources() ClusterResource {
 var ErrNoOrchestratorFound = errors.New("no orchestrator found")
 
 func (c *Cluster) DeleteVolume(ctx context.Context, volume queries.Volume) error {
-	instance, ok := c.getRandomInstance(func(instance *Instance) bool {
-		return instance.isOrchestrator
+	instance, ok := c.getRandomInstance(func(instance InstanceInfo, _ machineinfo.MachineInfo) bool {
+		return instance.IsOrchestrator
 	})
 
 	if !ok {

@@ -53,6 +53,7 @@ paths:
                 accessToken:
                   type: string
                   description: Access token for secure access to envd service
+                  x-go-type: SecureToken
                 timestamp:
                   type: string
                   format: date-time
