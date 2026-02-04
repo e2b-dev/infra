@@ -130,7 +130,7 @@ func (l *LocalClusterResourceProvider) GetSandboxLogs(ctx context.Context, teamI
 		limit = int(*qLimit)
 	}
 
-	raw, err := l.queryLogsProvider.QuerySandboxLogs(ctx, teamID, sandboxID, start, end, limit)
+	raw, err := l.queryLogsProvider.QuerySandboxLogs(ctx, teamID, sandboxID, start, end, limit, loki.DefaultDirection)
 	if err != nil {
 		return api.SandboxLogs{}, &api.APIError{
 			Err:       fmt.Errorf("error when fetching sandbox logs: %w", err),
