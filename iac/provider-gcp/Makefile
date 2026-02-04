@@ -4,6 +4,8 @@ ENV_FILE := ../../.env.${ENV}
 -include ${ENV_FILE}
 
 TF := $(shell which terraform)
+TF_VAR_FILE := ./.terraform.${ENV}.tfvars
+TF_VAR_FILE_ARG := $(if $(wildcard $(TF_VAR_FILE)),-var-file=$(TF_VAR_FILE))
 TERRAFORM_STATE_BUCKET ?= $(GCP_PROJECT_ID)-terraform-state
 TEMPLATE_BUCKET_LOCATION ?= $(GCP_REGION)
 
@@ -13,7 +15,8 @@ define tfvar
 $(if $(value $(strip $(1))), TF_VAR_$(shell echo $(strip $(1)) | tr A-Z a-z)=$($(strip $(1))))
 endef
 
-tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
+tf_vars := \
+	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	$(call tfvar, BUILD_CLUSTERS_CONFIG) \
 	$(call tfvar, CLIENT_CLUSTERS_CONFIG) \
 	$(call tfvar, API_MACHINE_TYPE) \
@@ -59,48 +62,49 @@ tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	$(call tfvar, REMOTE_REPOSITORY_ENABLED) \
 	$(call tfvar, API_BOOT_DISK_TYPE) \
 	$(call tfvar, SERVER_BOOT_DISK_TYPE) \
+	$(call tfvar, SERVER_BOOT_DISK_SIZE_GB) \
 	$(call tfvar, CLICKHOUSE_BOOT_DISK_TYPE) \
 	$(call tfvar, LOKI_BOOT_DISK_TYPE)
 
 .PHONY: init
 init:
 	@ printf "Initializing Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	gcloud storage buckets create gs://$(TERRAFORM_STATE_BUCKET) --location $(GCP_REGION) --project $(GCP_PROJECT_ID) --default-storage-class STANDARD  --uniform-bucket-level-access > /dev/null 2>&1 || true
+	@ gcloud storage buckets create gs://$(TERRAFORM_STATE_BUCKET) --location $(GCP_REGION) --project $(GCP_PROJECT_ID) --default-storage-class STANDARD  --uniform-bucket-level-access > /dev/null 2>&1 || true
 
 	# Enable object versioning (keeps deleted/replaced objects as older versions)
-	gcloud storage buckets update gs://$(TERRAFORM_STATE_BUCKET) --versioning --soft-delete-duration=30d
+	@ gcloud storage buckets update gs://$(TERRAFORM_STATE_BUCKET) --versioning --soft-delete-duration=30d
 
 	# Create a temporary file for lifecycle rules
 	$(eval LIFECYCLE_FILE := $(shell mktemp))
 
 	# Set lifecycle rules to delete non-live objects after 30 days or more than 50 newer versions
 	echo '{"rule":[{"action":{"type":"Delete"},"condition":{"isLive":false,"age":30}},{"action":{"type":"Delete"},"condition":{"numNewerVersions":50}}]}' > $(LIFECYCLE_FILE)
-	gcloud storage buckets update gs://$(TERRAFORM_STATE_BUCKET) --lifecycle-file=$(LIFECYCLE_FILE)
+	@ gcloud storage buckets update gs://$(TERRAFORM_STATE_BUCKET) --lifecycle-file=$(LIFECYCLE_FILE)
 
 	# Remove the temporary lifecycle file
 	@ rm -f $(LIFECYCLE_FILE)
 
-	$(TF) init -input=false -reconfigure -backend-config=bucket=$(TERRAFORM_STATE_BUCKET)
-	$(tf_vars) $(TF) apply -target=module.init -auto-approve -input=false -compact-warnings
+	@ $(TF) init -input=false -reconfigure -backend-config=bucket=$(TERRAFORM_STATE_BUCKET)
+	@ $(tf_vars) $(TF) apply -target=module.init -auto-approve -input=false -compact-warnings
 
-	TERRAFORM_STATE_BUCKET="$(TERRAFORM_STATE_BUCKET)" $(MAKE) -C nomad-cluster-disk-image init build
-	gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
+	@ TERRAFORM_STATE_BUCKET="$(TERRAFORM_STATE_BUCKET)" $(MAKE) -C nomad-cluster-disk-image init build
+	@ gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
 
 .PHONY: switch
 switch:
 	@ printf "Switching Terraform backend for different env ${ENV}\n"
-	$(TF) init -input=false -upgrade -reconfigure -backend-config=bucket=$(TERRAFORM_STATE_BUCKET)
+	@ $(TF) init -input=false -upgrade -reconfigure -backend-config=bucket=$(TERRAFORM_STATE_BUCKET)
 
 .PHONY: destroy
 destroy:
 	@ printf "Destroying Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	@ $(tf_vars) $(TF) destroy
+	@ $(tf_vars) $(TF) destroy $(TF_VAR_FILE_ARG)
 
 .PHONY: plan
 plan:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	@ $(TF) fmt -recursive
-	@ $(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings
+	@ $(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -compact-warnings
 
 .PHONY: terraform
 terraform:
@@ -113,7 +117,7 @@ terraform:
 plan-only-jobs:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(TF) fmt -recursive
-	@ $(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -target=module.nomad
+	@ $(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -compact-warnings -target=module.nomad
 
 # Deploy a specific job name in Nomad
 # When job name is specified, all '-' are replaced with '_' in the job name
@@ -121,14 +125,15 @@ plan-only-jobs:
 plan-only-jobs/%:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(TF) fmt -recursive
-	@ $(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -target=module.nomad.nomad_job.$$(echo "$(notdir $@)" | tr '-' '_');
+	@ $(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -compact-warnings -target=module.nomad.nomad_job.$$(echo "$(notdir $@)" | tr '-' '_');
 
 .PHONY: plan-without-jobs
 plan-without-jobs:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(eval TARGET := $(shell cat main.tf | grep "^module" | awk '{print $$2}' | tr ' ' '\n' | grep -v -e "nomad" | awk '{print "-target=module." $$0 ""}' | xargs))
-	$(tf_vars) \
+	@ $(tf_vars) \
 	$(TF) plan \
+	$(TF_VAR_FILE_ARG) \
 	-out=.tfplan.$(ENV) \
 	-input=false \
 	-compact-warnings \
@@ -138,8 +143,7 @@ plan-without-jobs:
 .PHONY: apply
 apply:
 	@ printf "Applying Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	$(tf_vars) \
-	$(TF) apply \
+	@ $(TF) apply \
 	-auto-approve \
 	-input=false \
 	-compact-warnings \
@@ -151,7 +155,7 @@ apply:
 .PHONY: import
 import:
 	@ printf "Importing resources for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	$(tf_vars) $(TF) import "$(TARGET)" "$(ID)" -no-color
+	@ $(tf_vars) $(TF) import $(TF_VAR_FILE_ARG) "$(TARGET)" "$(ID)" -no-color
 
 # Login for Packer and Docker (uses gcloud user creds)
 # Login for Terraform (uses application default creds)
@@ -161,17 +165,3 @@ provider-login:
 	gcloud config set project "$(GCP_PROJECT_ID)"
 	gcloud --quiet auth configure-docker "$(GCP_REGION)-docker.pkg.dev"
 	gcloud --quiet auth application-default login
-
-# TODO 2025-12-29: [ENG-3410] - Remove after migration period (14 days)
-.PHONY: migrate-clusters-terraform
-migrate-clusters-terraform:
-	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	@ $(TF) fmt -recursive
-	@ $(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings \
-		 -target="module.cluster.module.build_cluster" \
-		 -target="module.cluster.module.client_cluster" \
-		 -target="module.cluster.google_compute_health_check.client_nomad_check" \
-		 -target="module.cluster.google_compute_instance_template.client" \
-		 -target="module.cluster.google_compute_region_instance_group_manager.client_pool" \
-		 -target="module.cluster.google_compute_region_autoscaler.client"
-

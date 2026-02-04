@@ -1,7 +1,6 @@
 package cache
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -63,19 +62,18 @@ func (h *HashIndex) LayerMetaFromHash(ctx context.Context, hash string) (LayerMe
 	ctx, span := tracer.Start(ctx, "get layer_metadata")
 	defer span.End()
 
-	obj, err := h.indexStorage.OpenObject(ctx, paths.HashToPath(h.cacheScope, hash), storage.LayerMetadataObjectType)
+	obj, err := h.indexStorage.OpenBlob(ctx, paths.HashToPath(h.cacheScope, hash), storage.LayerMetadataObjectType)
 	if err != nil {
 		return LayerMetadata{}, fmt.Errorf("error opening object for layer metadata: %w", err)
 	}
 
-	var buf bytes.Buffer
-	_, err = obj.WriteTo(ctx, &buf)
+	data, err := storage.GetBlob(ctx, obj)
 	if err != nil {
 		return LayerMetadata{}, fmt.Errorf("error reading layer metadata from object: %w", err)
 	}
 
 	var layerMetadata LayerMetadata
-	err = json.Unmarshal(buf.Bytes(), &layerMetadata)
+	err = json.Unmarshal(data, &layerMetadata)
 	if err != nil {
 		return LayerMetadata{}, fmt.Errorf("error unmarshaling layer metadata: %w", err)
 	}
@@ -91,7 +89,7 @@ func (h *HashIndex) SaveLayerMeta(ctx context.Context, hash string, template Lay
 	ctx, span := tracer.Start(ctx, "save layer_metadata")
 	defer span.End()
 
-	obj, err := h.indexStorage.OpenObject(ctx, paths.HashToPath(h.cacheScope, hash), storage.LayerMetadataObjectType)
+	obj, err := h.indexStorage.OpenBlob(ctx, paths.HashToPath(h.cacheScope, hash), storage.LayerMetadataObjectType)
 	if err != nil {
 		return fmt.Errorf("error creating object for saving UUID: %w", err)
 	}
@@ -101,7 +99,7 @@ func (h *HashIndex) SaveLayerMeta(ctx context.Context, hash string, template Lay
 		return fmt.Errorf("error marshalling layer metadata: %w", err)
 	}
 
-	_, err = obj.Write(ctx, marshaled)
+	err = obj.Put(ctx, marshaled)
 	if err != nil {
 		return fmt.Errorf("error writing layer metadata to object: %w", err)
 	}

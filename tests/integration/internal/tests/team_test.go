@@ -18,6 +18,7 @@ type ForbiddenErrorResponse struct {
 }
 
 func TestBannedTeam(t *testing.T) {
+	t.Parallel()
 	ctx := t.Context()
 	db := setup.GetTestDBClient(t)
 	c := setup.GetAPIClient()
@@ -26,7 +27,7 @@ func TestBannedTeam(t *testing.T) {
 	teamID := utils.CreateTeamWithUser(t, db, teamName, setup.UserID)
 	apiKey := utils.CreateAPIKey(t, ctx, c, setup.UserID, teamID)
 
-	err := db.TestsRawSQL(ctx, `
+	err := db.AuthDb.TestsRawSQL(ctx, `
 UPDATE teams SET is_banned = $1 WHERE id = $2
 `, true, teamID)
 	require.NoError(t, err)
@@ -44,6 +45,7 @@ UPDATE teams SET is_banned = $1 WHERE id = $2
 }
 
 func TestBlockedTeam(t *testing.T) {
+	t.Parallel()
 	ctx := t.Context()
 	db := setup.GetTestDBClient(t)
 	c := setup.GetAPIClient()
@@ -54,7 +56,7 @@ func TestBlockedTeam(t *testing.T) {
 	teamID := utils.CreateTeamWithUser(t, db, teamName, setup.UserID)
 	apiKey := utils.CreateAPIKey(t, ctx, c, setup.UserID, teamID)
 
-	err := db.TestsRawSQL(ctx, `
+	err := db.AuthDb.TestsRawSQL(ctx, `
 UPDATE teams SET is_blocked = $1, blocked_reason = $2 WHERE id = $3
 `, true, blockReason, teamID)
 	require.NoError(t, err)

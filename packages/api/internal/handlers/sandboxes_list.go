@@ -18,8 +18,8 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
-	dbtypes "github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -85,7 +85,14 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 		return
 	}
 
-	sandboxes := a.orchestrator.GetSandboxes(ctx, team.ID, []sandbox.State{sandbox.StateRunning})
+	sandboxes, err := a.orchestrator.GetSandboxes(ctx, team.ID, []sandbox.State{sandbox.StateRunning})
+	if err != nil {
+		logger.L().Error(ctx, "Error getting sandboxes", zap.Error(err))
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting sandboxes")
+
+		return
+	}
+
 	runningSandboxes := getRunningSandboxes(sandboxes, metadataFilter)
 
 	// Sort sandboxes by start time descending
@@ -143,7 +150,14 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 	// Get sandboxes with pagination
 	sandboxes := make([]utils.PaginatedSandbox, 0)
 
-	allSandboxes := a.orchestrator.GetSandboxes(ctx, team.ID, []sandbox.State{sandbox.StateRunning, sandbox.StatePausing})
+	allSandboxes, err := a.orchestrator.GetSandboxes(ctx, team.ID, []sandbox.State{sandbox.StateRunning, sandbox.StatePausing})
+	if err != nil {
+		logger.L().Error(ctx, "Error getting sandboxes", zap.Error(err))
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting sandboxes")
+
+		return
+	}
+
 	runningSandboxes := sharedUtils.Filter(allSandboxes, func(sbx sandbox.Sandbox) bool {
 		return sbx.State == sandbox.StateRunning
 	})

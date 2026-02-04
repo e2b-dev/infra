@@ -6,6 +6,7 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"net/url"
 	"os"
@@ -27,6 +28,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/tcpfirewall"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build"
 	buildconfig "github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/metrics"
@@ -54,8 +56,8 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	const (
 		testType        = onlyStart
 		baseImage       = "e2bdev/base"
-		kernelVersion   = "vmlinux-6.1.102"
-		fcVersion       = "v1.10.1_1fcdaec08"
+		kernelVersion   = "vmlinux-6.1.158"
+		fcVersion       = featureflags.DefaultFirecrackerVersion
 		templateID      = "fcb33d09-3141-42c4-8d3b-c2df411681db"
 		buildID         = "ba6aae36-74f7-487a-b6f7-74fd7c94e479"
 		useHugePages    = false
@@ -65,7 +67,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	sbxNetwork := &orchestrator.SandboxNetworkConfig{}
 
 	// cache paths, to speed up test runs. these paths aren't wiped between tests
-	persistenceDir := filepath.Join(os.TempDir(), "e2b-orchestrator-benchmark")
+	persistenceDir := getPersistenceDir()
 	kernelsDir := filepath.Join(persistenceDir, "kernels")
 	sandboxDir := filepath.Join(persistenceDir, "sandbox")
 	err := os.MkdirAll(kernelsDir, 0o755)
@@ -83,10 +85,12 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		spanExporter, err := telemetry.NewSpanExporter(b.Context(),
 			otlptracegrpc.WithEndpoint(endpoint),
 		)
-		defer func() {
-			err := spanExporter.Shutdown(b.Context())
+		b.Cleanup(func() {
+			ctx := context.WithoutCancel(b.Context())
+			err := spanExporter.Shutdown(ctx)
 			assert.NoError(b, err)
-		}()
+		})
+
 		require.NoError(b, err)
 		resource, err := telemetry.GetResource(b.Context(), "node-id", "BenchmarkBaseImageLaunch", "service-commit", "service-version", "service-instance-id")
 		require.NoError(b, err)
@@ -135,10 +139,11 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		networkPool.Populate(b.Context())
 		l.Info(b.Context(), "network pool populated")
 	}()
-	defer func() {
-		err := networkPool.Close(b.Context())
+	b.Cleanup(func() {
+		ctx := context.WithoutCancel(b.Context())
+		err := networkPool.Close(ctx)
 		assert.NoError(b, err)
-	}()
+	})
 
 	devicePool, err := nbd.NewDevicePool()
 	require.NoError(b, err, "do you have the nbd kernel module installed?")
@@ -146,17 +151,19 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		devicePool.Populate(b.Context())
 		l.Info(b.Context(), "device pool populated")
 	}()
-	defer func() {
-		err := devicePool.Close(b.Context())
+	b.Cleanup(func() {
+		ctx := context.WithoutCancel(b.Context())
+		err := devicePool.Close(ctx)
 		assert.NoError(b, err)
-	}()
+	})
 
 	featureFlags, err := featureflags.NewClient()
 	require.NoError(b, err)
-	defer func() {
-		err := featureFlags.Close(b.Context())
+	b.Cleanup(func() {
+		ctx := context.WithoutCancel(b.Context())
+		err := featureFlags.Close(ctx)
 		assert.NoError(b, err)
-	}()
+	})
 
 	limiter, err := limit.New(b.Context(), featureFlags)
 	require.NoError(b, err)
@@ -181,10 +188,10 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 
 	dockerhubRepository, err := dockerhub.GetRemoteRepository(b.Context())
 	require.NoError(b, err)
-	defer func() {
+	b.Cleanup(func() {
 		err := dockerhubRepository.Close()
 		assert.NoError(b, err)
-	}()
+	})
 
 	accessToken := "access-token"
 	sandboxConfig := sandbox.Config{
@@ -225,16 +232,34 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 
 	sandboxes := sandbox.NewSandboxesMap()
 
+	tcpFirewall := tcpfirewall.New(
+		l,
+		config.NetworkConfig,
+		sandboxes,
+		noop.NewMeterProvider(),
+		featureFlags,
+	)
+	go func() {
+		err := tcpFirewall.Start(b.Context())
+		assert.NoError(b, err)
+	}()
+	b.Cleanup(func() {
+		ctx := context.WithoutCancel(b.Context())
+		err := tcpFirewall.Close(ctx)
+		assert.NoError(b, err)
+	})
+
 	sandboxProxy, err := proxy.NewSandboxProxy(noop.MeterProvider{}, proxyPort, sandboxes)
 	require.NoError(b, err)
 	go func() {
 		err := sandboxProxy.Start(b.Context())
 		assert.ErrorIs(b, http.ErrServerClosed, err)
 	}()
-	defer func() {
-		err := sandboxProxy.Close(b.Context())
+	b.Cleanup(func() {
+		ctx := context.WithoutCancel(b.Context())
+		err := sandboxProxy.Close(ctx)
 		assert.NoError(b, err)
-	}()
+	})
 
 	buildMetrics, err := metrics.NewBuildMetrics(noop.MeterProvider{})
 	require.NoError(b, err)
@@ -265,7 +290,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 			Force:              &force,
 			VCpuCount:          sandboxConfig.Vcpu,
 			MemoryMB:           sandboxConfig.RamMB,
-			StartCmd:           "echo 'start cmd debug' && sleep 10 && echo 'done starting command debug'",
+			StartCmd:           "echo 'start cmd debug' && sleep .1 && echo 'done starting command debug'",
 			DiskSizeMB:         sandboxConfig.TotalDiskSizeMB,
 			HugePages:          sandboxConfig.HugePages,
 			KernelVersion:      kernelVersion,
@@ -299,6 +324,15 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	for b.Loop() {
 		tc.testOneItem(b, buildID, kernelVersion, fcVersion)
 	}
+}
+
+func getPersistenceDir() string {
+	home := os.Getenv("HOME")
+	if home != "" {
+		return filepath.Join(home, ".cache", "e2b-orchestrator-benchmark")
+	}
+
+	return filepath.Join(os.TempDir(), "e2b-orchestrator-benchmark")
 }
 
 type testCycle string

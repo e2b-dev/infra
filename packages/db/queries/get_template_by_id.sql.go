@@ -42,10 +42,12 @@ func (q *Queries) GetTemplateByID(ctx context.Context, id string) (Env, error) {
 }
 
 const getTemplateByIDWithAliases = `-- name: GetTemplateByIDWithAliases :one
-SELECT e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count, e.last_spawned_at, e.team_id, e.created_by, e.cluster_id, al.aliases
+SELECT e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count, e.last_spawned_at, e.team_id, e.created_by, e.cluster_id, al.aliases, al.names
 FROM "public"."envs" e
 CROSS JOIN LATERAL (
-    SELECT array_agg(alias)::text[] AS aliases
+    SELECT 
+        COALESCE(array_agg(alias), '{}')::text[] AS aliases,
+        COALESCE(array_agg(CASE WHEN namespace IS NOT NULL THEN namespace || '/' || alias ELSE alias END), '{}')::text[] AS names
     FROM public.env_aliases
     WHERE env_id = e.id
 ) AS al
@@ -69,6 +71,7 @@ type GetTemplateByIDWithAliasesRow struct {
 	CreatedBy     *uuid.UUID
 	ClusterID     *uuid.UUID
 	Aliases       []string
+	Names         []string
 }
 
 func (q *Queries) GetTemplateByIDWithAliases(ctx context.Context, id string) (GetTemplateByIDWithAliasesRow, error) {
@@ -86,6 +89,7 @@ func (q *Queries) GetTemplateByIDWithAliases(ctx context.Context, id string) (Ge
 		&i.CreatedBy,
 		&i.ClusterID,
 		&i.Aliases,
+		&i.Names,
 	)
 	return i, err
 }

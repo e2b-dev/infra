@@ -13,6 +13,7 @@
     "packages/fc-kernels/linux/**": true,
     "packages/fc-versions/firecracker/**": true,
     "packages/fc-versions/builds/**": true,
+    "packages/orchestrator/.local-build/**": true
   },
   "files.watcherExclude": {
     "**/.git": true,
@@ -26,6 +27,7 @@
     "packages/fc-kernels/linux/**": true,
     "packages/fc-versions/firecracker/**": true,
     "packages/fc-versions/builds/**": true,
+    "packages/orchestrator/.local-build/**": true
   },
   "editor.quickSuggestions": {
     "strings": true

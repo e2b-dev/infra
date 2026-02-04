@@ -3,6 +3,8 @@ package sandbox
 import (
 	"context"
 	"fmt"
+	"io"
+	"os"
 
 	"golang.org/x/sync/errgroup"
 
@@ -38,7 +40,7 @@ func (t *TemplateBuild) Remove(ctx context.Context) error {
 }
 
 func (t *TemplateBuild) uploadMemfileHeader(ctx context.Context, h *headers.Header) error {
-	object, err := t.persistence.OpenObject(ctx, t.files.StorageMemfileHeaderPath(), storage.MemfileHeaderObjectType)
+	object, err := t.persistence.OpenBlob(ctx, t.files.StorageMemfileHeaderPath(), storage.MemfileHeaderObjectType)
 	if err != nil {
 		return err
 	}
@@ -48,7 +50,7 @@ func (t *TemplateBuild) uploadMemfileHeader(ctx context.Context, h *headers.Head
 		return fmt.Errorf("error when serializing memfile header: %w", err)
 	}
 
-	_, err = object.Write(ctx, serialized)
+	err = object.Put(ctx, serialized)
 	if err != nil {
 		return fmt.Errorf("error when uploading memfile header: %w", err)
 	}
@@ -57,12 +59,12 @@ func (t *TemplateBuild) uploadMemfileHeader(ctx context.Context, h *headers.Head
 }
 
 func (t *TemplateBuild) uploadMemfile(ctx context.Context, memfilePath string) error {
-	object, err := t.persistence.OpenSeekableObject(ctx, t.files.StorageMemfilePath(), storage.MemfileObjectType)
+	object, err := t.persistence.OpenSeekable(ctx, t.files.StorageMemfilePath(), storage.MemfileObjectType)
 	if err != nil {
 		return err
 	}
 
-	err = object.WriteFromFileSystem(ctx, memfilePath)
+	err = object.StoreFile(ctx, memfilePath)
 	if err != nil {
 		return fmt.Errorf("error when uploading memfile: %w", err)
 	}
@@ -71,7 +73,7 @@ func (t *TemplateBuild) uploadMemfile(ctx context.Context, memfilePath string) e
 }
 
 func (t *TemplateBuild) uploadRootfsHeader(ctx context.Context, h *headers.Header) error {
-	object, err := t.persistence.OpenObject(ctx, t.files.StorageRootfsHeaderPath(), storage.RootFSHeaderObjectType)
+	object, err := t.persistence.OpenBlob(ctx, t.files.StorageRootfsHeaderPath(), storage.RootFSHeaderObjectType)
 	if err != nil {
 		return err
 	}
@@ -81,7 +83,7 @@ func (t *TemplateBuild) uploadRootfsHeader(ctx context.Context, h *headers.Heade
 		return fmt.Errorf("error when serializing memfile header: %w", err)
 	}
 
-	_, err = object.Write(ctx, serialized)
+	err = object.Put(ctx, serialized)
 	if err != nil {
 		return fmt.Errorf("error when uploading memfile header: %w", err)
 	}
@@ -90,12 +92,12 @@ func (t *TemplateBuild) uploadRootfsHeader(ctx context.Context, h *headers.Heade
 }
 
 func (t *TemplateBuild) uploadRootfs(ctx context.Context, rootfsPath string) error {
-	object, err := t.persistence.OpenSeekableObject(ctx, t.files.StorageRootfsPath(), storage.RootFSObjectType)
+	object, err := t.persistence.OpenSeekable(ctx, t.files.StorageRootfsPath(), storage.RootFSObjectType)
 	if err != nil {
 		return err
 	}
 
-	err = object.WriteFromFileSystem(ctx, rootfsPath)
+	err = object.StoreFile(ctx, rootfsPath)
 	if err != nil {
 		return fmt.Errorf("error when uploading rootfs: %w", err)
 	}
@@ -105,12 +107,12 @@ func (t *TemplateBuild) uploadRootfs(ctx context.Context, rootfsPath string) err
 
 // Snap-file is small enough so we don't use composite upload.
 func (t *TemplateBuild) uploadSnapfile(ctx context.Context, path string) error {
-	object, err := t.persistence.OpenObject(ctx, t.files.StorageSnapfilePath(), storage.SnapfileObjectType)
+	object, err := t.persistence.OpenBlob(ctx, t.files.StorageSnapfilePath(), storage.SnapfileObjectType)
 	if err != nil {
 		return err
 	}
 
-	if err = object.WriteFromFileSystem(ctx, path); err != nil {
+	if err = uploadFileAsBlob(ctx, object, path); err != nil {
 		return fmt.Errorf("error when uploading snapfile: %w", err)
 	}
 
@@ -119,13 +121,33 @@ func (t *TemplateBuild) uploadSnapfile(ctx context.Context, path string) error {
 
 // Metadata is small enough so we don't use composite upload.
 func (t *TemplateBuild) uploadMetadata(ctx context.Context, path string) error {
-	object, err := t.persistence.OpenObject(ctx, t.files.StorageMetadataPath(), storage.MetadataObjectType)
+	object, err := t.persistence.OpenBlob(ctx, t.files.StorageMetadataPath(), storage.MetadataObjectType)
 	if err != nil {
 		return err
 	}
 
-	if err := object.WriteFromFileSystem(ctx, path); err != nil {
+	if err := uploadFileAsBlob(ctx, object, path); err != nil {
 		return fmt.Errorf("error when uploading metadata: %w", err)
+	}
+
+	return nil
+}
+
+func uploadFileAsBlob(ctx context.Context, b storage.Blob, path string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("failed to open file %s: %w", path, err)
+	}
+	defer f.Close()
+
+	data, err := io.ReadAll(f)
+	if err != nil {
+		return fmt.Errorf("failed to read file %s: %w", path, err)
+	}
+
+	err = b.Put(ctx, data)
+	if err != nil {
+		return fmt.Errorf("failed to write data to object: %w", err)
 	}
 
 	return nil

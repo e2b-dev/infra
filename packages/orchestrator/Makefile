@@ -7,19 +7,12 @@ AWS_BUCKET_PREFIX ?= $(PREFIX)$(AWS_ACCOUNT_ID)-
 init:
 	brew install protobuf
 
-openapi := ../../spec/openapi-hyperloop.yml
-codegen := go tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
-
 .PHONY: generate
 generate:
 	@echo "Generating..."
 	docker build -t proto-gen -f generate.Dockerfile .
 	docker run --rm -v .:/workspace -v ./../shared/pkg/grpc:/shared/pkg/grpc proto-gen
-	@echo "Generating hyperloop api..."
-	$(codegen) -old-config-style -generate gin --package api $(openapi) > ../shared/pkg/http/hyperloop/api.gen.go
-	$(codegen) -old-config-style -generate types --package api $(openapi) > ../shared/pkg/http/hyperloop/types.gen.go
-	$(codegen) -old-config-style -generate spec --package api $(openapi) > ../shared/pkg/http/hyperloop/spec.gen.go
-	@echo "Done"
+	go generate ./...
 
 .PHONY: build
 build:
@@ -98,13 +91,6 @@ build-and-upload/orchestrator: build upload/orchestrator
 .PHONY: build-and-upload/template-manager
 build-and-upload/template-manager: build upload/template-manager
 
-.PHONY: mock
-mock:
-	sudo TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) CONSUL_TOKEN=$(CONSUL_TOKEN) NODE_ID="testclient" go run cmd/mock-sandbox/mock.go -template 5wzg6c91u51yaebviysf -build "f0370054-b669-eeee-b33b-573d5287c6ef" -alive 1 -count 2
-
-.PHONY: mock-snapshot
-mock-snapshot:
-	sudo TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) CONSUL_TOKEN=$(CONSUL_TOKEN) NODE_ID="testclient" go run cmd/mock-snapshot/mock.go  -template 5wzg6c91u51yaebviysf -build "f0370054-b669-4d7e-b33b-573d5287c6ef" -alive 1 -count 1
 
 .PHONY: test
 test:
@@ -124,16 +110,16 @@ test-docker:
 
 .PHONY: build-template
 build-template:
-	sudo -E TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) \
+	TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) \
 	GOOGLE_SERVICE_ACCOUNT_BASE64=$(GOOGLE_SERVICE_ACCOUNT_BASE64) \
 	DOCKER_AUTH_BASE64=$(DOCKER_AUTH_BASE64) \
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) \
 	GCP_DOCKER_REPOSITORY_NAME=$(GCP_DOCKER_REPOSITORY_NAME) \
 	GCP_REGION=$(GCP_REGION) \
 	ENVIRONMENT=local \
-	go run cmd/build-template/main.go \
+	go run cmd/create-build/main.go \
 	-template $(TEMPLATE_ID) \
-	-build $(BUILD_ID) \
+	-to-build $(BUILD_ID) \
 	-kernel $(KERNEL_VERSION) \
 	-firecracker $(FIRECRACKER_VERSION)
 

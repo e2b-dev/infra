@@ -55,8 +55,14 @@ type Config struct {
 	HyperloopProxyPort       uint16 `env:"SANDBOX_HYPERLOOP_PROXY_PORT" envDefault:"5010"`
 	UseLocalNamespaceStorage bool   `env:"USE_LOCAL_NAMESPACE_STORAGE"`
 
-	// SandboxTCPFirewallPort is the port to redirect TCP traffic to for egress filtering
-	SandboxTCPFirewallPort uint16 `env:"SANDBOX_TCP_FIREWALL_PORT" envDefault:"5016"`
+	// TCP firewall ports - separate ports for different traffic types to avoid
+	// protocol detection blocking on server-first protocols like SSH.
+	// - HTTP port: for traffic destined to port 80 (HTTP Host header inspection)
+	// - TLS port: for traffic destined to port 443 (TLS SNI inspection)
+	// - Other port: for all other traffic (CIDR-only check, no protocol inspection)
+	SandboxTCPFirewallHTTPPort  uint16 `env:"SANDBOX_TCP_FIREWALL_HTTP_PORT"  envDefault:"5016"`
+	SandboxTCPFirewallTLSPort   uint16 `env:"SANDBOX_TCP_FIREWALL_TLS_PORT"   envDefault:"5017"`
+	SandboxTCPFirewallOtherPort uint16 `env:"SANDBOX_TCP_FIREWALL_OTHER_PORT" envDefault:"5018"`
 }
 
 func ParseConfig() (Config, error) {

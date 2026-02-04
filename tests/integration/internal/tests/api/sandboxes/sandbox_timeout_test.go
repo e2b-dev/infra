@@ -16,6 +16,7 @@ import (
 )
 
 func TestSandboxTimeout(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 	testCases := []struct {
 		name   string
@@ -40,6 +41,7 @@ func TestSandboxTimeout(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithTimeout(tc.initialDuration))
 
 			// Get initial sandbox details
@@ -70,6 +72,7 @@ func TestSandboxTimeout(t *testing.T) {
 }
 
 func TestSandboxTimeout_NotFound(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 
 	timeoutResp, err := c.PostSandboxesSandboxIDTimeoutWithResponse(t.Context(), "nonexistent-sandbox-id", api.PostSandboxesSandboxIDTimeoutJSONRequestBody{
@@ -80,9 +83,11 @@ func TestSandboxTimeout_NotFound(t *testing.T) {
 }
 
 func TestSandboxSetTimeoutPausingSandbox(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 
 	t.Run("test set timeout while pausing", func(t *testing.T) {
+		t.Parallel()
 		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(true))
 		sbxId := sbx.SandboxID
 
@@ -126,6 +131,7 @@ func TestSandboxSetTimeoutPausingSandbox(t *testing.T) {
 }
 
 func TestSandboxTimeout_CrossTeamAccess(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 	db := setup.GetTestDBClient(t)
 

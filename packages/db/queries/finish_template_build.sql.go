@@ -20,22 +20,15 @@ SET
     envd_version = $2
 WHERE
     id = $3
-  AND env_id = $4
 `
 
 type FinishTemplateBuildParams struct {
 	TotalDiskSizeMb *int64
 	EnvdVersion     *string
 	BuildID         uuid.UUID
-	EnvID           string
 }
 
 func (q *Queries) FinishTemplateBuild(ctx context.Context, arg FinishTemplateBuildParams) error {
-	_, err := q.db.Exec(ctx, finishTemplateBuild,
-		arg.TotalDiskSizeMb,
-		arg.EnvdVersion,
-		arg.BuildID,
-		arg.EnvID,
-	)
+	_, err := q.db.Exec(ctx, finishTemplateBuild, arg.TotalDiskSizeMb, arg.EnvdVersion, arg.BuildID)
 	return err
 }

@@ -37,6 +37,10 @@ job "filestore-cleanup" {
                     "--disk-usage-target-percent=${max_disk_usage_target}",
                     "--files-per-loop=${files_per_loop}",
                     "--deletions-per-loop=${deletions_per_loop}",
+                    "--max-concurrent-stat=${max_concurrent_stat}",
+                    "--max-concurrent-scan=${max_concurrent_scan}",
+                    "--max-concurrent-delete=${max_concurrent_delete}",
+                    "--max-retries=${max_retries}",
                     "--otel-collector-endpoint=${otel_collector_grpc_endpoint}",
                     "${nfs_cache_mount_path}",
                 ]

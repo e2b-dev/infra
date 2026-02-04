@@ -7,7 +7,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 
-	"github.com/e2b-dev/infra/packages/db/types"
+	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	templatemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
@@ -22,11 +22,11 @@ type fakeTemplateManagerClient struct {
 	getStatusErr      error
 }
 
-func (f fakeTemplateManagerClient) SetStatus(context.Context, string, uuid.UUID, types.BuildStatus, *templatemanagergrpc.TemplateBuildStatusReason) error {
+func (f fakeTemplateManagerClient) SetStatus(context.Context, uuid.UUID, types.BuildStatus, *templatemanagergrpc.TemplateBuildStatusReason) error {
 	return f.setStatusError
 }
 
-func (f fakeTemplateManagerClient) SetFinished(context.Context, string, uuid.UUID, int64, string) error {
+func (f fakeTemplateManagerClient) SetFinished(context.Context, uuid.UUID, int64, string) error {
 	return f.setFinishedError
 }
 
@@ -35,6 +35,7 @@ func (f fakeTemplateManagerClient) GetStatus(context.Context, uuid.UUID, string,
 }
 
 func TestPollBuildStatus_setStatus(t *testing.T) {
+	t.Parallel()
 	type fields struct {
 		buildID               uuid.UUID
 		templateManagerClient templateManagerClient
@@ -98,6 +99,7 @@ func TestPollBuildStatus_setStatus(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			c := &PollBuildStatus{
 				client: tt.fields.templateManagerClient,
 				logger: logger.NewNopLogger(),
@@ -121,6 +123,7 @@ func TestPollBuildStatus_setStatus(t *testing.T) {
 }
 
 func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
+	t.Parallel()
 	type fields struct {
 		templateManagerClient templateManagerClient
 	}
@@ -269,6 +272,7 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			c := &PollBuildStatus{
 				client: tt.fields.templateManagerClient,
 				logger: logger.NewNopLogger(),

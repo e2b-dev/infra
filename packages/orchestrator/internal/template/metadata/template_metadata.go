@@ -10,6 +10,7 @@ import (
 
 	"go.opentelemetry.io/otel"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/shared/pkg/ioutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
@@ -21,6 +22,22 @@ const (
 )
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata")
+
+// AccessType is a compact representation of block access type for JSON serialization.
+type AccessType string
+
+const (
+	AccessRead     AccessType = "r"
+	AccessWrite    AccessType = "w"
+	AccessPrefetch AccessType = "p"
+)
+
+// blockToAccessType maps block.AccessType to metadata.AccessType.
+var blockToAccessType = map[block.AccessType]AccessType{
+	block.Read:     AccessRead,
+	block.Write:    AccessWrite,
+	block.Prefetch: AccessPrefetch,
+}
 
 type Version struct {
 	Version any `json:"version"`
@@ -55,6 +72,35 @@ type TemplateMetadata struct {
 	FirecrackerVersion string `json:"firecracker_version"`
 }
 
+// MemoryPrefetchMapping stores block offsets that should be prefetched when starting a sandbox.
+// This is used to speed up sandbox starts by proactively fetching blocks that are likely to be needed.
+type MemoryPrefetchMapping struct {
+	// Indices is an ordered array of block indices to prefetch, preserving the order in which blocks were accessed
+	Indices []uint64 `json:"indices"`
+	// AccessTypes stores the access type ("r"/"w"/"p") for each block, aligned with Indices
+	AccessTypes []AccessType `json:"access_types"`
+	// BlockSize is the size of each block in bytes
+	BlockSize int64 `json:"block_size"`
+}
+
+// AccessTypeFromBlock converts a block.AccessType to metadata.AccessType.
+func AccessTypeFromBlock(at block.AccessType) AccessType {
+	return blockToAccessType[at]
+}
+
+// Count returns the number of blocks to prefetch.
+func (p *MemoryPrefetchMapping) Count() int {
+	if p == nil {
+		return 0
+	}
+
+	return len(p.Indices)
+}
+
+type Prefetch struct {
+	Memory *MemoryPrefetchMapping `json:"memory"`
+}
+
 type Template struct {
 	Version      uint64           `json:"version"`
 	Template     TemplateMetadata `json:"template"`
@@ -62,6 +108,7 @@ type Template struct {
 	Start        *Start           `json:"start,omitempty"`
 	FromImage    *string          `json:"from_image,omitempty"`
 	FromTemplate *FromTemplate    `json:"from_template,omitempty"`
+	Prefetch     *Prefetch        `json:"prefetch,omitempty"`
 }
 
 func V1TemplateVersion() Template {
@@ -105,6 +152,19 @@ func (t Template) SameVersionTemplate(metadata TemplateMetadata) Template {
 	}
 }
 
+// WithPrefetch returns a copy of the template with the given prefetch mapping.
+func (t Template) WithPrefetch(prefetch *Prefetch) Template {
+	return Template{
+		Version:      t.Version,
+		Template:     t.Template,
+		Context:      t.Context,
+		Start:        t.Start,
+		FromTemplate: t.FromTemplate,
+		FromImage:    t.FromImage,
+		Prefetch:     prefetch,
+	}
+}
+
 func (t Template) ToFile(path string) error {
 	mr, err := serialize(t)
 	if err != nil {
@@ -144,18 +204,17 @@ func fromTemplate(ctx context.Context, s storage.StorageProvider, files storage.
 	ctx, span := tracer.Start(ctx, "from template")
 	defer span.End()
 
-	obj, err := s.OpenObject(ctx, files.StorageMetadataPath(), storage.MetadataObjectType)
+	obj, err := s.OpenBlob(ctx, files.StorageMetadataPath(), storage.MetadataObjectType)
 	if err != nil {
 		return Template{}, fmt.Errorf("error opening object for template metadata: %w", err)
 	}
 
-	var buf bytes.Buffer
-	_, err = obj.WriteTo(ctx, &buf)
+	data, err := storage.GetBlob(ctx, obj)
 	if err != nil {
 		return Template{}, fmt.Errorf("error reading template metadata from object: %w", err)
 	}
 
-	templateMetadata, err := deserialize(&buf)
+	templateMetadata, err := deserialize(bytes.NewReader(data))
 	if err != nil {
 		return Template{}, err
 	}
@@ -191,6 +250,7 @@ func deserialize(reader io.Reader) (Template, error) {
 	return templateMetadata, nil
 }
 
+// serialize serializes a template to a reader for uploading.
 func serialize(template Template) (io.Reader, error) {
 	marshaled, err := json.Marshal(template)
 	if err != nil {

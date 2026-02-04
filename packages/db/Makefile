@@ -48,7 +48,19 @@ generate:
 	rm -rf queries/*.go
 	go tool sqlc generate
 
+.PHONY: build-tools
+build-tools:
+	@go tool goose --version > /dev/null
+
+.PHONY: test
+test: build-tools
+	go test -v ./tests/...
 
 .PHONY: build-and-upload
 build-and-upload:
 	@docker build --platform linux/amd64 --tag $(IMAGE_REGISTRY) --push -f ./Dockerfile ..
+
+.PHONY: seed-db
+seed-db:
+	@echo "Seeding database..."
+	@POSTGRES_CONNECTION_STRING=$(POSTGRES_CONNECTION_STRING) go run ./scripts/seed/postgres/seed-db.go

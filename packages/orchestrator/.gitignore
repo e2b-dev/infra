@@ -7,3 +7,4 @@ bin
 .clickhouse
 .shared
 /tmp
+.local-build

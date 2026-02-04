@@ -19,13 +19,13 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/db/pkg/builds"
+	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
-	"github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	feature_flags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	ut "github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -108,11 +108,9 @@ func (o *Orchestrator) CreateSandbox(
 	totalConcurrentInstances := team.Limits.SandboxConcurrency
 
 	// Check if team has reached max instances
-	finishStart, waitForStart, err := o.sandboxStore.Reserve(ctx, team.Team.ID.String(), sandboxID, int(totalConcurrentInstances))
+	finishStart, waitForStart, err := o.sandboxStore.Reserve(ctx, team.Team.ID, sandboxID, int(totalConcurrentInstances))
 	if err != nil {
 		var limitErr *sandbox.LimitExceededError
-
-		telemetry.ReportCriticalError(ctx, "failed to reserve sandbox for team", err)
 
 		switch {
 		case errors.As(err, &limitErr):
@@ -255,10 +253,8 @@ func (o *Orchestrator) CreateSandbox(
 	nodeClusterID := utils.WithClusterFallback(team.ClusterID)
 	clusterNodes := o.GetClusterNodes(nodeClusterID)
 
-	node, err = placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, machineinfo.FromDB(build))
+	node, err = placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, builds.ToMachineInfo(build))
 	if err != nil {
-		telemetry.ReportError(ctx, "failed to place sandbox", err)
-
 		return sandbox.Sandbox{}, &api.APIError{
 			Code:      http.StatusInternalServerError,
 			ClientMsg: "Failed to place sandbox",

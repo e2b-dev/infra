@@ -15,6 +15,7 @@ import (
 // before previous Wait has returned, which should panic with:
 // "sync: WaitGroup is reused before previous Wait has returned"
 func TestHTTPWriterWaitGroupReuse(t *testing.T) {
+	t.Parallel()
 	// Create a mock HTTP server that responds slowly to increase chance of race
 	requestCount := atomic.Int32{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -107,6 +108,7 @@ func TestHTTPWriterWaitGroupReuse(t *testing.T) {
 // TestHTTPWriterConcurrentWriteSync tests heavy concurrent usage
 // This is a more aggressive test that tries to trigger the race condition
 func TestHTTPWriterConcurrentWriteSync(t *testing.T) {
+	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -191,6 +193,7 @@ func TestHTTPWriterConcurrentWriteSync(t *testing.T) {
 
 // TestHTTPWriterSequentialWrites tests basic sequential write and sync
 func TestHTTPWriterSequentialWrites(t *testing.T) {
+	t.Parallel()
 	var requestCount atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		requestCount.Add(1)

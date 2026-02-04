@@ -11,9 +11,8 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
-	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/e2b-dev/infra/packages/db/types"
+	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
@@ -107,7 +106,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 		return
 	}
 
-	cluster, ok := a.clustersPool.GetClusterById(utils.WithClusterFallback(team.ClusterID))
+	cluster, ok := a.clusters.GetClusterById(utils.WithClusterFallback(team.ClusterID))
 	if !ok {
 		telemetry.ReportError(ctx, "error when getting cluster", fmt.Errorf("cluster with ID '%s' not found", team.ClusterID))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting cluster")
@@ -120,7 +119,14 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 		limit = *params.Limit
 	}
 
-	logs := template_manager.GetBuildLogs(ctx, cluster, buildInfo.NodeID, templateID, buildID, offset, limit, apiToLogLevel(params.Level), nil, api.LogsDirectionForward, nil)
+	logs, apiErr := cluster.GetResources().GetBuildLogs(ctx, buildInfo.NodeID, templateID, buildID, offset, limit, apiToLogLevel(params.Level), nil, api.LogsDirectionForward, nil)
+	if apiErr != nil {
+		telemetry.ReportCriticalError(ctx, "error when getting build logs", apiErr.Err, telemetry.WithTemplateID(templateID), telemetry.WithBuildID(buildID))
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+
+		return
+	}
+
 	for _, entry := range logs {
 		if legacyLogs {
 			lgs = append(lgs, fmt.Sprintf("[%s] %s\n", entry.Timestamp.Format(time.RFC3339), entry.Message))

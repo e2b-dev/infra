@@ -7,6 +7,7 @@ import (
 )
 
 func TestSHA256Hashing(t *testing.T) {
+	t.Parallel()
 	hasher := NewSHA256Hashing()
 
 	hashed := hasher.Hash([]byte("test"))

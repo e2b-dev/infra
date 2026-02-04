@@ -13,7 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/template"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/e2b-dev/infra/packages/db/dberrors"
+	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -67,6 +67,7 @@ func (a *APIStore) PostTemplates(c *gin.Context) {
 		TemplateID: template.TemplateID,
 		BuildID:    template.BuildID,
 		Aliases:    template.Aliases,
+		Names:      template.Names,
 		Public:     false,
 	})
 }
@@ -85,13 +86,15 @@ func (a *APIStore) PostTemplatesTemplateID(c *gin.Context, rawTemplateID api.Tem
 		return
 	}
 
-	templateID, err := id.CleanTemplateID(rawTemplateID)
+	identifier, _, err := id.ParseName(rawTemplateID)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid template ID: %s", rawTemplateID))
 		telemetry.ReportCriticalError(c.Request.Context(), "invalid template ID", err)
 
 		return
 	}
+	// For old templates, this should be always the templateID
+	templateID := identifier
 	span.SetAttributes(telemetry.WithTemplateID(templateID))
 
 	team, apiErr := a.GetTeam(ctx, c, body.TeamID)
@@ -143,6 +146,7 @@ func (a *APIStore) PostTemplatesTemplateID(c *gin.Context, rawTemplateID api.Tem
 		TemplateID: template.TemplateID,
 		BuildID:    template.BuildID,
 		Aliases:    template.Aliases,
+		Names:      template.Names,
 		Public:     templateDB.Public,
 	})
 }
@@ -156,6 +160,33 @@ func (a *APIStore) buildTemplate(
 ) (*template.RegisterBuildResponse, *api.APIError) {
 	firecrackerVersion := a.featureFlags.StringFlag(ctx, featureflags.BuildFirecrackerVersion)
 
+	var alias *string
+	var tags []string
+
+	if body.Alias != nil {
+		aliasIdentifier, aliasTag, err := id.ParseName(*body.Alias)
+		if err != nil {
+			return nil, &api.APIError{
+				Code:      http.StatusBadRequest,
+				ClientMsg: fmt.Sprintf("Invalid alias: %s", err),
+				Err:       err,
+			}
+		}
+
+		aliasValue := id.ExtractAlias(aliasIdentifier)
+		alias = &aliasValue
+		if aliasTag != nil {
+			tags, err = id.ValidateAndDeduplicateTags([]string{*aliasTag})
+			if err != nil {
+				return nil, &api.APIError{
+					Code:      http.StatusBadRequest,
+					ClientMsg: fmt.Sprintf("Invalid tag: %s", err),
+					Err:       err,
+				}
+			}
+		}
+	}
+
 	// Create the build
 	data := template.RegisterBuildData{
 		ClusterID:          utils.WithClusterFallback(team.ClusterID),
@@ -163,7 +194,8 @@ func (a *APIStore) buildTemplate(
 		UserID:             &userID,
 		Team:               team,
 		Dockerfile:         body.Dockerfile,
-		Alias:              body.Alias,
+		Alias:              alias,
+		Tags:               tags,
 		StartCmd:           body.StartCmd,
 		ReadyCmd:           body.ReadyCmd,
 		CpuCount:           body.CpuCount,
@@ -173,5 +205,5 @@ func (a *APIStore) buildTemplate(
 		FirecrackerVersion: firecrackerVersion,
 	}
 
-	return template.RegisterBuild(ctx, a.templateBuildsCache, a.sqlcDB, data)
+	return template.RegisterBuild(ctx, a.templateBuildsCache, a.templateCache, a.sqlcDB, data)
 }

@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/go-retryablehttp"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.uber.org/zap"
 	"golang.org/x/oauth2/google"
 	"golang.org/x/sync/errgroup"
@@ -79,6 +80,10 @@ func createRetryableClient(ctx context.Context, config RetryConfig) *retryableht
 
 		return backoff
 	}
+
+	// add otel instrumentation
+	originalTransport := client.HTTPClient.Transport
+	client.HTTPClient.Transport = otelhttp.NewTransport(originalTransport)
 
 	// Use zap logger
 	client.Logger = &leveledLogger{
@@ -157,10 +162,10 @@ func NewMultipartUploaderWithRetryConfig(ctx context.Context, bucketName, object
 	}, nil
 }
 
-func (m *MultipartUploader) InitiateUpload() (string, error) {
+func (m *MultipartUploader) initiateUpload(ctx context.Context) (string, error) {
 	url := fmt.Sprintf("%s/%s?uploads", m.baseURL, m.objectName)
 
-	req, err := retryablehttp.NewRequest("POST", url, nil)
+	req, err := retryablehttp.NewRequestWithContext(ctx, "POST", url, nil)
 	if err != nil {
 		return "", err
 	}
@@ -189,7 +194,7 @@ func (m *MultipartUploader) InitiateUpload() (string, error) {
 	return result.UploadID, nil
 }
 
-func (m *MultipartUploader) UploadPart(uploadID string, partNumber int, data []byte) (string, error) {
+func (m *MultipartUploader) uploadPart(ctx context.Context, uploadID string, partNumber int, data []byte) (string, error) {
 	// Calculate MD5 for data integrity
 	hasher := md5.New()
 	hasher.Write(data)
@@ -198,7 +203,7 @@ func (m *MultipartUploader) UploadPart(uploadID string, partNumber int, data []b
 	url := fmt.Sprintf("%s/%s?partNumber=%d&uploadId=%s",
 		m.baseURL, m.objectName, partNumber, uploadID)
 
-	req, err := retryablehttp.NewRequest("PUT", url, bytes.NewReader(data))
+	req, err := retryablehttp.NewRequestWithContext(ctx, "PUT", url, bytes.NewReader(data))
 	if err != nil {
 		return "", err
 	}
@@ -227,7 +232,7 @@ func (m *MultipartUploader) UploadPart(uploadID string, partNumber int, data []b
 	return etag, nil
 }
 
-func (m *MultipartUploader) CompleteUpload(uploadID string, parts []Part) error {
+func (m *MultipartUploader) completeUpload(ctx context.Context, uploadID string, parts []Part) error {
 	// Sort parts by part number
 	sort.Slice(parts, func(i, j int) bool {
 		return parts[i].PartNumber < parts[j].PartNumber
@@ -242,9 +247,9 @@ func (m *MultipartUploader) CompleteUpload(uploadID string, parts []Part) error 
 	url := fmt.Sprintf("%s/%s?uploadId=%s",
 		m.baseURL, m.objectName, uploadID)
 
-	req, err := retryablehttp.NewRequest("POST", url, bytes.NewReader(xmlData))
+	req, err := retryablehttp.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(xmlData))
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create complete request: %w", err)
 	}
 
 	req.Header.Set("Authorization", "Bearer "+m.token)
@@ -253,7 +258,7 @@ func (m *MultipartUploader) CompleteUpload(uploadID string, parts []Part) error 
 
 	resp, err := m.client.Do(req)
 	if err != nil {
-		return err
+		return fmt.Errorf("http request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -266,18 +271,18 @@ func (m *MultipartUploader) CompleteUpload(uploadID string, parts []Part) error 
 	return nil
 }
 
-func (m *MultipartUploader) UploadFileInParallel(ctx context.Context, filePath string, maxConcurrency int) error {
+func (m *MultipartUploader) UploadFileInParallel(ctx context.Context, filePath string, maxConcurrency int) (int64, error) {
 	// Open file
 	file, err := os.Open(filePath)
 	if err != nil {
-		return fmt.Errorf("failed to open file: %w", err)
+		return 0, fmt.Errorf("failed to open file: %w", err)
 	}
 	defer file.Close()
 
 	// Get file size
 	fileInfo, err := file.Stat()
 	if err != nil {
-		return fmt.Errorf("failed to get file info: %w", err)
+		return 0, fmt.Errorf("failed to get file info: %w", err)
 	}
 	fileSize := fileInfo.Size()
 
@@ -288,13 +293,26 @@ func (m *MultipartUploader) UploadFileInParallel(ctx context.Context, filePath s
 	}
 
 	// Initiate multipart upload
-	uploadID, err := m.InitiateUpload()
+	uploadID, err := m.initiateUpload(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to initiate upload: %w", err)
+		return 0, fmt.Errorf("failed to initiate upload: %w", err)
 	}
 
-	g, ctx := errgroup.WithContext(ctx)
-	g.SetLimit(maxConcurrency) // Limit concurrent goroutines
+	parts, err := m.uploadParts(ctx, maxConcurrency, numParts, fileSize, file, uploadID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to upload parts: %w", err)
+	}
+
+	if err := m.completeUpload(ctx, uploadID, parts); err != nil {
+		return 0, fmt.Errorf("failed to complete upload: %w", err)
+	}
+
+	return fileSize, nil
+}
+
+func (m *MultipartUploader) uploadParts(ctx context.Context, maxConcurrency int, numParts int, fileSize int64, file *os.File, uploadID string) ([]Part, error) {
+	g, ctx := errgroup.WithContext(ctx) // Context ONLY for waitgroup goroutines; canceled after errgroup finishes
+	g.SetLimit(maxConcurrency)          // Limit concurrent goroutines
 
 	// Thread-safe map to collect parts
 	var partsMu sync.Mutex
@@ -306,7 +324,7 @@ func (m *MultipartUploader) UploadFileInParallel(ctx context.Context, filePath s
 			// Check if context was cancelled
 			select {
 			case <-ctx.Done():
-				return ctx.Err()
+				return fmt.Errorf("part %d failed: %w", partNumber, ctx.Err())
 			default:
 			}
 
@@ -324,7 +342,7 @@ func (m *MultipartUploader) UploadFileInParallel(ctx context.Context, filePath s
 			}
 
 			// Upload part
-			etag, err := m.UploadPart(uploadID, partNumber, chunk)
+			etag, err := m.uploadPart(ctx, uploadID, partNumber, chunk)
 			if err != nil {
 				return fmt.Errorf("failed to upload part %d: %w", partNumber, err)
 			}
@@ -343,12 +361,8 @@ func (m *MultipartUploader) UploadFileInParallel(ctx context.Context, filePath s
 
 	// Wait for all parts to complete or first error
 	if err := g.Wait(); err != nil {
-		return fmt.Errorf("upload failed: %w", err)
+		return nil, fmt.Errorf("upload failed: %w", err)
 	}
 
-	if err := m.CompleteUpload(uploadID, parts); err != nil {
-		return fmt.Errorf("failed to complete upload: %w", err)
-	}
-
-	return nil
+	return parts, nil
 }

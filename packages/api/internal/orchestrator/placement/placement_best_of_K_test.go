@@ -12,6 +12,7 @@ import (
 )
 
 func TestBestOfK_Score(t *testing.T) {
+	t.Parallel()
 	config := DefaultBestOfKConfig()
 	algo := NewBestOfK(config).(*BestOfK)
 
@@ -38,6 +39,7 @@ func TestBestOfK_Score(t *testing.T) {
 }
 
 func TestBestOfK_Score_PreferBiggerNode(t *testing.T) {
+	t.Parallel()
 	config := DefaultBestOfKConfig()
 	algo := NewBestOfK(config).(*BestOfK)
 
@@ -64,6 +66,7 @@ func TestBestOfK_Score_PreferBiggerNode(t *testing.T) {
 }
 
 func TestBestOfK_CanFit(t *testing.T) {
+	t.Parallel()
 	config := DefaultBestOfKConfig()
 	algo := NewBestOfK(config).(*BestOfK)
 
@@ -90,6 +93,7 @@ func TestBestOfK_CanFit(t *testing.T) {
 }
 
 func TestBestOfK_ChooseNode(t *testing.T) {
+	t.Parallel()
 	ctx := t.Context()
 	config := BestOfKConfig{
 		R:     10, // Higher overcommit ratio to ensure nodes can fit
@@ -118,6 +122,7 @@ func TestBestOfK_ChooseNode(t *testing.T) {
 }
 
 func TestBestOfK_ChooseNode_WithExclusions(t *testing.T) {
+	t.Parallel()
 	ctx := t.Context()
 	config := BestOfKConfig{
 		R:     10,
@@ -151,6 +156,7 @@ func TestBestOfK_ChooseNode_WithExclusions(t *testing.T) {
 }
 
 func TestBestOfK_ChooseNode_NoAvailableNodes(t *testing.T) {
+	t.Parallel()
 	ctx := t.Context()
 	config := DefaultBestOfKConfig()
 	algo := NewBestOfK(config).(*BestOfK)
@@ -173,6 +179,7 @@ func TestBestOfK_ChooseNode_NoAvailableNodes(t *testing.T) {
 }
 
 func TestBestOfK_Sample(t *testing.T) {
+	t.Parallel()
 	config := DefaultBestOfKConfig()
 	algo := NewBestOfK(config).(*BestOfK)
 
@@ -212,6 +219,7 @@ func TestBestOfK_Sample(t *testing.T) {
 }
 
 func TestBestOfK_PowerOfKChoices(t *testing.T) {
+	t.Parallel()
 	ctx := t.Context()
 	config := BestOfKConfig{
 		R:     10,

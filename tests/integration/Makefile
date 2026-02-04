@@ -1,20 +1,9 @@
 ENV := $(shell cat ../../.last_used_env || echo "not-set")
 -include ../../.env.${ENV}
 
-openapi_api := ../../spec/openapi.yml
-openapi_envd := ../../packages/envd/spec/envd.yaml
-codegen := go tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
-
-
 .PHONY: generate
 generate:
-	$(codegen) -old-config-style -generate client --package api $(openapi_api) > internal/api/client.gen.go
-	$(codegen) -old-config-style -generate models --package api $(openapi_api) > internal/api/models.gen.go
-
-	# Create envd HTTP client
-	mkdir -p internal/envd/api/
-	$(codegen) -generate client --package api $(openapi_envd) > internal/envd/api/client.gen.go
-	$(codegen) -generate models --package api $(openapi_envd) > internal/envd/api/models.gen.go
+	go generate ./...
 
 .PHONY: build-debug
 build-debug:

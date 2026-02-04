@@ -30,13 +30,13 @@ func ensureNetworkTestTemplate(t *testing.T) string {
 		t.Log("Building custom template for network egress tests...")
 
 		template := utils.BuildTemplate(t, utils.TemplateBuildOptions{
-			Alias: "network-egress-test",
+			Name: "network-egress-test",
 			BuildData: api.TemplateBuildStartV2{
 				FromImage: sharedutils.ToPtr("ubuntu:22.04"),
 				Steps: sharedutils.ToPtr([]api.TemplateStep{
 					{
 						Type: "RUN",
-						Args: sharedutils.ToPtr([]string{"sudo apt-get update && sudo apt-get install -y curl iputils-ping dnsutils && sudo rm -rf /var/lib/apt/lists/*"}),
+						Args: sharedutils.ToPtr([]string{"sudo apt-get update && sudo apt-get install -y curl iputils-ping dnsutils openssh-client gnupg && sudo rm -rf /var/lib/apt/lists/*"}),
 					},
 				}),
 			},
@@ -105,6 +105,8 @@ func assertHTTPResponseFromServer(t *testing.T, ctx context.Context, sbx *api.Sa
 
 // TestEgressFirewallAllowSpecificIP tests that only allowed IPs can be accessed
 func TestEgressFirewallAllowSpecificIP(t *testing.T) {
+	t.Parallel()
+
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
@@ -129,6 +131,8 @@ func TestEgressFirewallAllowSpecificIP(t *testing.T) {
 
 // TestEgressFirewallBlockSpecificIP tests that blocked IPs cannot be accessed
 func TestEgressFirewallBlockSpecificIP(t *testing.T) {
+	t.Parallel()
+
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
@@ -152,6 +156,8 @@ func TestEgressFirewallBlockSpecificIP(t *testing.T) {
 
 // TestEgressFirewallAllowCIDRRange tests that CIDR ranges work for allowing IPs
 func TestEgressFirewallAllowCIDRRange(t *testing.T) {
+	t.Parallel()
+
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
@@ -176,6 +182,7 @@ func TestEgressFirewallAllowCIDRRange(t *testing.T) {
 
 // TestEgressFirewallBlockCIDRRange tests that CIDR ranges work for blocking IPs
 func TestEgressFirewallBlockCIDRRange(t *testing.T) {
+	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
@@ -200,6 +207,7 @@ func TestEgressFirewallBlockCIDRRange(t *testing.T) {
 
 // TestEgressFirewallAllowAndBlockCombination tests that allowOut takes precedence over blockOut
 func TestEgressFirewallAllowAndBlockCombination(t *testing.T) {
+	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
@@ -225,6 +233,7 @@ func TestEgressFirewallAllowAndBlockCombination(t *testing.T) {
 
 // TestEgressFirewallPersistsAfterResume tests that network config persists after pause/resume
 func TestEgressFirewallPersistsAfterResume(t *testing.T) {
+	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	sbxTimeout := int32(60)
@@ -267,6 +276,7 @@ func TestEgressFirewallPersistsAfterResume(t *testing.T) {
 
 // TestEgressFirewallEmptyConfig tests that empty allowOut list is treated as no restriction
 func TestEgressFirewallEmptyConfig(t *testing.T) {
+	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
@@ -289,6 +299,7 @@ func TestEgressFirewallEmptyConfig(t *testing.T) {
 
 // TestEgressFirewallAllowAll tests that 0.0.0.0/0 allows all traffic
 func TestEgressFirewallAllowAll(t *testing.T) {
+	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
@@ -313,6 +324,7 @@ func TestEgressFirewallAllowAll(t *testing.T) {
 
 // TestEgressFirewallAllowOverridesBlock tests that allowOut takes precedence over blockOut
 func TestEgressFirewallAllowOverridesBlock(t *testing.T) {
+	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
@@ -338,6 +350,7 @@ func TestEgressFirewallAllowOverridesBlock(t *testing.T) {
 
 // TestEgressFirewallMultipleAllowedIPs tests multiple allowed IPs
 func TestEgressFirewallMultipleAllowedIPs(t *testing.T) {
+	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
@@ -364,6 +377,7 @@ func TestEgressFirewallMultipleAllowedIPs(t *testing.T) {
 
 // TestEgressFirewallWithInternetAccessFalse tests that network config takes precedence over allow_internet_access
 func TestEgressFirewallWithInternetAccessFalse(t *testing.T) {
+	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
@@ -392,6 +406,7 @@ func TestEgressFirewallWithInternetAccessFalse(t *testing.T) {
 // by the orchestrator for security reasons. Attempting to specify them in allowOut should result in
 // a sandbox creation failure.
 func TestEgressFirewallPrivateIPRangesAlwaysBlocked(t *testing.T) {
+	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)
 	client := setup.GetAPIClient()
 	timeout := int32(60)
@@ -430,6 +445,7 @@ func TestEgressFirewallPrivateIPRangesAlwaysBlocked(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			ctx := t.Context()
 			// Try to create a sandbox with a private IP range in allowOut
 			allowedIPs := []string{tc.allowedIP}
@@ -451,6 +467,7 @@ func TestEgressFirewallPrivateIPRangesAlwaysBlocked(t *testing.T) {
 
 // TestEgressFirewallAllowAllDuplicate tests that adding 0.0.0.0/0 twice works correctly
 func TestEgressFirewallAllowAllDuplicate(t *testing.T) {
+	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
@@ -475,6 +492,7 @@ func TestEgressFirewallAllowAllDuplicate(t *testing.T) {
 
 // TestEgressFirewallRegularIPThenAllowAll tests that adding a regular IP and then 0.0.0.0/0 works correctly
 func TestEgressFirewallRegularIPThenAllowAll(t *testing.T) {
+	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
@@ -500,6 +518,7 @@ func TestEgressFirewallRegularIPThenAllowAll(t *testing.T) {
 // TestEgressFirewallAllowDomainThroughBlockedInternet tests that a specific domain can be allowed
 // when all internet traffic is blocked via 0.0.0.0/0
 func TestEgressFirewallAllowDomainThroughBlockedInternet(t *testing.T) {
+	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
@@ -525,6 +544,7 @@ func TestEgressFirewallAllowDomainThroughBlockedInternet(t *testing.T) {
 
 // TestEgressFirewallAllowWildcardDomainThroughBlockedInternet tests that wildcard domain patterns work
 func TestEgressFirewallAllowWildcardDomainThroughBlockedInternet(t *testing.T) {
+	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
@@ -551,6 +571,7 @@ func TestEgressFirewallAllowWildcardDomainThroughBlockedInternet(t *testing.T) {
 
 // TestEgressFirewallExactDomainMatchVsSubdomain tests that exact domain match does not include subdomains
 func TestEgressFirewallExactDomainMatchVsSubdomain(t *testing.T) {
+	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
@@ -576,6 +597,7 @@ func TestEgressFirewallExactDomainMatchVsSubdomain(t *testing.T) {
 
 // TestEgressFirewallAllowAllDomainsWildcard tests that "*" wildcard allows all domains
 func TestEgressFirewallAllowAllDomainsWildcard(t *testing.T) {
+	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
@@ -602,6 +624,7 @@ func TestEgressFirewallAllowAllDomainsWildcard(t *testing.T) {
 
 // TestEgressFirewallDomainCaseInsensitive tests that domain matching is case-insensitive
 func TestEgressFirewallDomainCaseInsensitive(t *testing.T) {
+	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
@@ -627,6 +650,7 @@ func TestEgressFirewallDomainCaseInsensitive(t *testing.T) {
 
 // TestEgressFirewallAllowDomainAndIP tests mixed domain and IP allowlist
 func TestEgressFirewallAllowDomainAndIP(t *testing.T) {
+	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
@@ -655,6 +679,7 @@ func TestEgressFirewallAllowDomainAndIP(t *testing.T) {
 // TestEgressFirewallHTTPSByIPNoHostname tests that HTTPS requests by IP (no SNI hostname)
 // fall back to CIDR rules when domain filtering is configured
 func TestEgressFirewallHTTPSByIPNoHostname(t *testing.T) {
+	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
@@ -681,6 +706,7 @@ func TestEgressFirewallHTTPSByIPNoHostname(t *testing.T) {
 
 // TestEgressFirewallDomainPersistsAfterResume tests that domain-based network config persists after pause/resume
 func TestEgressFirewallDomainPersistsAfterResume(t *testing.T) {
+	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	sbxTimeout := int32(60)
@@ -728,6 +754,7 @@ func TestEgressFirewallDomainPersistsAfterResume(t *testing.T) {
 
 // TestEgressFirewallHTTPDomainFiltering tests that HTTP (non-HTTPS) traffic is filtered by Host header
 func TestEgressFirewallHTTPDomainFiltering(t *testing.T) {
+	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
@@ -757,6 +784,7 @@ func TestEgressFirewallHTTPDomainFiltering(t *testing.T) {
 
 // TestEgressFirewallUDPAllowedIP tests that UDP traffic (DNS) to allowed IPs works
 func TestEgressFirewallUDPAllowedIP(t *testing.T) {
+	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
@@ -782,6 +810,7 @@ func TestEgressFirewallUDPAllowedIP(t *testing.T) {
 
 // TestEgressFirewallUDPAllowedCIDR tests that UDP traffic to allowed CIDR range works
 func TestEgressFirewallUDPAllowedCIDR(t *testing.T) {
+	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
@@ -813,6 +842,7 @@ func TestEgressFirewallUDPAllowedCIDR(t *testing.T) {
 // 4. The firewall IGNORES the spoofed IP and resolves google.com itself, redirecting to the real Google IP
 // 5. The connection SUCCEEDS to the real Google server (not to 1.1.1.1)
 func TestEgressFirewallDNSSpoofingNeutralized(t *testing.T) {
+	t.Parallel()
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
@@ -857,4 +887,150 @@ func TestEgressFirewallDNSSpoofingNeutralized(t *testing.T) {
 	t.Log("  - /etc/hosts was modified to make google.com resolve to 1.1.1.1 (Cloudflare)")
 	t.Log("  - Firewall resolved google.com itself and redirected to a real Google IP")
 	t.Log("  - Response came from Google (server: gws), NOT Cloudflare - spoofing was bypassed!")
+}
+
+// TestNoNetworkConfig_SSHWorks tests that SSH connections work when no network config is set.
+// This is a regression test for the issue where the TCP firewall redirect rule would
+// break SSH connections even when no egress filtering was configured.
+// Expected: SSH connection to GitHub should succeed (TCP handshake completes),
+// though we'll get "Permission denied (publickey)" since we don't have valid credentials.
+func TestNoNetworkConfig_SSHWorks(t *testing.T) {
+	t.Parallel()
+
+	templateID := ensureNetworkTestTemplate(t)
+	ctx := t.Context()
+	client := setup.GetAPIClient()
+
+	// Create sandbox WITHOUT any network configuration
+	// This tests the default behavior - all traffic should be allowed
+	sbx := utils.SetupSandboxWithCleanup(t, client,
+		utils.WithTemplateID(templateID),
+		utils.WithTimeout(60),
+		// No network config - this is the key part of the test
+	)
+
+	envdClient := setup.GetEnvdClient(t, ctx)
+
+	// Test SSH connection to GitHub
+	// Expected output: "git@github.com: Permission denied (publickey)."
+	// This shows the TCP connection succeeded (SSH handshake completed),
+	// even though we don't have valid credentials for authentication.
+	t.Log("Testing SSH connection to github.com (port 22)...")
+	output, err := utils.ExecCommandWithOutput(t, ctx, sbx, envdClient, nil, "user",
+		"ssh", "-T", "-o", "StrictHostKeyChecking=accept-new",
+		"-o", "ConnectTimeout=5", "git@github.com")
+	require.Error(t, err, "Expected SSH command to exit with non-zero status due to lack of credentials")
+	require.Contains(t, output, "Permission denied (publickey)")
+}
+
+// TestWithNetworkConfig_SSHWorks tests that SSH connections work when network config IS defined.
+// This tests that SSH traffic (which is non-HTTP/HTTPS) is correctly handled by the firewall
+// when IP-based filtering is enabled. SSH doesn't use SNI or Host headers, so we must allow
+// by IP address rather than domain name.
+// Expected: SSH connection to GitHub should succeed (TCP handshake completes),
+// though we'll get "Permission denied (publickey)" since we don't have valid credentials.
+func TestWithNetworkConfig_SSHWorks(t *testing.T) {
+	t.Parallel()
+
+	templateID := ensureNetworkTestTemplate(t)
+	ctx := t.Context()
+	client := setup.GetAPIClient()
+
+	// Create sandbox WITH network configuration that allows all IPs
+	// SSH is a plain TCP protocol without hostname information (no SNI/Host header),
+	// so domain-based filtering won't work for SSH - we need IP-based rules.
+	// Using 0.0.0.0/0 in allowOut to allow all traffic, but with denyOut set to prove
+	// network config is being processed (not just bypassed).
+	sbx := utils.SetupSandboxWithCleanup(t, client,
+		utils.WithTemplateID(templateID),
+		utils.WithTimeout(60),
+		utils.WithNetwork(&api.SandboxNetworkConfig{
+			AllowOut: &[]string{sandbox_network.AllInternetTrafficCIDR}, // Allow all IPs
+			DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR}, // Would block all, but allowOut takes precedence
+		}),
+	)
+
+	envdClient := setup.GetEnvdClient(t, ctx)
+
+	// Test SSH connection to GitHub
+	// Expected output: "git@github.com: Permission denied (publickey)."
+	// This shows the TCP connection succeeded (SSH handshake completed),
+	// even though we don't have valid credentials for authentication.
+	t.Log("Testing SSH connection to github.com (port 22) with network config defined...")
+	output, err := utils.ExecCommandWithOutput(t, ctx, sbx, envdClient, nil, "user",
+		"ssh", "-T", "-o", "StrictHostKeyChecking=accept-new",
+		"-o", "ConnectTimeout=5", "git@github.com")
+	require.Error(t, err, "Expected SSH command to exit with non-zero status due to lack of credentials")
+	require.Contains(t, output, "Permission denied (publickey)",
+		"Expected 'Permission denied (publickey)' indicating SSH handshake succeeded but auth failed")
+}
+
+// TestGPGKeyserverWorks tests that GPG keyserver connections work correctly.
+// GPG keyservers use the HKP protocol (HTTP Keyserver Protocol) typically on port 11371.
+// This test is important for verifying TCP half-close handling in the firewall proxy.
+// GPG's HKP client may half-close the connection after sending the request (FIN from client),
+// while still waiting for the server's response. If the proxy doesn't handle half-close correctly,
+// the connection would freeze waiting indefinitely and the key retrieval would fail.
+// Expected: GPG should successfully receive the key from the keyserver.
+func TestGPGKeyserverWorks(t *testing.T) {
+	t.Parallel()
+
+	templateID := ensureNetworkTestTemplate(t)
+	client := setup.GetAPIClient()
+
+	t.Run("without network config", func(t *testing.T) {
+		t.Parallel()
+		ctx := t.Context()
+
+		// Create sandbox WITHOUT any network configuration
+		// This tests the default behavior - all traffic should be allowed
+		sbx := utils.SetupSandboxWithCleanup(t, client,
+			utils.WithTemplateID(templateID),
+			utils.WithTimeout(60),
+			// No network config - this is the key part of the test
+		)
+
+		envdClient := setup.GetEnvdClient(t, ctx)
+
+		// Test GPG keyserver connection to Ubuntu's keyserver
+		// This tests that:
+		// 1. Non-standard TCP ports (11371) work correctly through the firewall
+		// 2. TCP half-close is properly handled (GPG may FIN after request but expects response)
+		t.Log("Testing GPG keyserver connection to hkp://keyserver.ubuntu.com...")
+		output, err := utils.ExecCommandWithOutput(t, ctx, sbx, envdClient, nil, "user",
+			"gpg", "--keyserver", "hkp://keyserver.ubuntu.com",
+			"--recv-key", "95C0FAF38DB3CCAD0C080A7BDC78B2DDEABC47B7")
+		require.NoError(t, err, "Expected GPG keyserver command to succeed, got error: %v, output: %s", err, output)
+		t.Logf("GPG keyserver output: %s", output)
+	})
+
+	t.Run("with network config", func(t *testing.T) {
+		t.Parallel()
+		ctx := t.Context()
+
+		// Create sandbox WITH network configuration that allows all IPs
+		// Using 0.0.0.0/0 in allowOut to allow all traffic, but with denyOut set to prove
+		// network config is being processed (not just bypassed).
+		sbx := utils.SetupSandboxWithCleanup(t, client,
+			utils.WithTemplateID(templateID),
+			utils.WithTimeout(60),
+			utils.WithNetwork(&api.SandboxNetworkConfig{
+				AllowOut: &[]string{sandbox_network.AllInternetTrafficCIDR}, // Allow all IPs
+				DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR}, // Would block all, but allowOut takes precedence
+			}),
+		)
+
+		envdClient := setup.GetEnvdClient(t, ctx)
+
+		// Test GPG keyserver connection to Ubuntu's keyserver
+		// This tests that:
+		// 1. Non-standard TCP ports (11371) work correctly through the firewall when network config is active
+		// 2. TCP half-close is properly handled (GPG may FIN after request but expects response)
+		t.Log("Testing GPG keyserver connection to hkp://keyserver.ubuntu.com with network config defined...")
+		output, err := utils.ExecCommandWithOutput(t, ctx, sbx, envdClient, nil, "user",
+			"gpg", "--keyserver", "hkp://keyserver.ubuntu.com",
+			"--recv-key", "95C0FAF38DB3CCAD0C080A7BDC78B2DDEABC47B7")
+		require.NoError(t, err, "Expected GPG keyserver command to succeed, got error: %v, output: %s", err, output)
+		t.Logf("GPG keyserver output: %s", output)
+	})
 }

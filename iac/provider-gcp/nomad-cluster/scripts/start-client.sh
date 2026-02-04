@@ -85,6 +85,14 @@ sysctl vm.vfs_cache_pressure=50
 
 # TODO: Optimize the mount more according to https://cloud.google.com/filestore/docs/mounting-fileshares
 %{ if USE_FILESTORE_CACHE }
+# Configure NFS read ahead
+cat <<'EOH' >/etc/udev/rules.d/99-nfs.rules
+# set read_ahead_kb to 4096 (chunk size), from https://archive.is/3vAU7 (aka: https://support.vastdata.com/s/document-item?bundleId=z-kb-articles-publications-prod&topicId=6147145742.html&_LANG=enus)
+
+SUBSYSTEM=="bdi", ACTION=="add", PROGRAM="/bin/awk -v bdi=$kernel 'BEGIN{ret=1} {if ($4 == bdi) {ret=0}} END{exit ret}' /proc/fs/nfsfs/volumes", ATTR{read_ahead_kb}="4096"
+EOH
+udevadm control --reload
+
 # Mount NFS
 mkdir -p "${NFS_MOUNT_PATH}"
 echo "${NFS_IP_ADDRESS}:/store ${NFS_MOUNT_PATH} nfs ${NFS_MOUNT_OPTS} 0 0" | tee -a /etc/fstab
@@ -327,7 +335,45 @@ done
 echo "- Flushing DNS caches"
 resolvectl flush-caches
 
+%{ if SET_ORCHESTRATOR_VERSION_METADATA == "true" }
+# Fetch orchestrator version from Nomad variable via HTTP API (before starting Nomad client)
+# This is required - the node cannot start without knowing the orchestrator version
+FETCH_TIMEOUT_SECONDS=600
+FETCH_INTERVAL_SECONDS=5
+FETCH_MAX_ATTEMPTS=$((FETCH_TIMEOUT_SECONDS / FETCH_INTERVAL_SECONDS + 1))
+
+echo "[Fetching orchestrator version from Nomad servers (timeout: $${FETCH_TIMEOUT_SECONDS}s)]"
+ORCHESTRATOR_VERSION=""
+for i in $(seq 1 $FETCH_MAX_ATTEMPTS); do
+  ELAPSED=$(((i - 1) * FETCH_INTERVAL_SECONDS))
+  NOMAD_SERVER=$(dig +short nomad.service.consul | head -1)
+  if [ -z "$NOMAD_SERVER" ]; then
+    echo "- Waiting for Consul DNS (nomad.service.consul)... ($${ELAPSED}s / $${FETCH_TIMEOUT_SECONDS}s)"
+  else
+    API_RESPONSE=$(curl -s --connect-timeout 5 --max-time 10 -H "X-Nomad-Token: ${NOMAD_TOKEN}" \
+      "http://$NOMAD_SERVER:4646/v1/var/nomad/jobs" 2>/dev/null)
+    if echo "$API_RESPONSE" | jq -e '.Items.latest_orchestrator_job_id' >/dev/null 2>&1; then
+      ORCHESTRATOR_VERSION=$(echo "$API_RESPONSE" | jq -r '.Items.latest_orchestrator_job_id')
+      echo "- Fetched orchestrator version: $ORCHESTRATOR_VERSION"
+      break
+    elif [ -n "$API_RESPONSE" ]; then
+      echo "- Invalid response from Nomad API, retrying... ($${ELAPSED}s / $${FETCH_TIMEOUT_SECONDS}s)"
+    else
+      echo "- No response from Nomad API at $${NOMAD_SERVER}, retrying... ($${ELAPSED}s / $${FETCH_TIMEOUT_SECONDS}s)"
+    fi
+  fi
+  if [ $i -eq $FETCH_MAX_ATTEMPTS ]; then
+    echo "- ERROR: Could not fetch orchestrator version from Nomad servers after $${FETCH_TIMEOUT_SECONDS}s"
+    echo "- The node cannot start without the orchestrator version. Exiting..."
+    exit 1
+  fi
+  sleep $FETCH_INTERVAL_SECONDS
+done
+
+/opt/nomad/bin/run-nomad.sh --client --consul-token "${CONSUL_TOKEN}" --node-pool "${NODE_POOL}" --orchestrator-job-version "$ORCHESTRATOR_VERSION" &
+%{ else }
 /opt/nomad/bin/run-nomad.sh --client --consul-token "${CONSUL_TOKEN}" --node-pool "${NODE_POOL}" &
+%{ endif }
 
 # Add alias for ssh-ing to sbx
 echo '_sbx_ssh() {

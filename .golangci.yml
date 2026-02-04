@@ -21,7 +21,6 @@ linters:
     - dupl
     - dupword
     - errcheck
-    - errchkjson
     - exhaustive
     - exhaustruct
     - funcorder
@@ -45,7 +44,6 @@ linters:
     - noinlineerr
     - nonamedreturns
     - nosprintfhostport
-    - paralleltest
     - perfsprint
     - prealloc
     - predeclared
@@ -91,6 +89,11 @@ linters:
         - pattern: 'zap\.NewNop$'
           pkg: '^go\.uber\.org/zap$'
           msg: "Use github.com/e2b-dev/infra/packages/shared/pkg/logger.NewNopLogger() instead of zap.NewNop()"
+
+        # prefer methods that take a context to those that don't
+        - pattern: '^retryablehttp\.NewRequest$'
+          pkg: ^github\.com/hashicorp/go-retryablehttp$
+          msg: "Use github.com/hashicorp/go-retryablehttp.NewRequestWithContext instead of retryablehttp.NewRequest"
       analyze-types: true
 
     gocritic:

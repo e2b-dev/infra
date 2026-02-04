@@ -2,12 +2,10 @@ package phases
 
 import "strconv"
 
-func phaseToStepString(phase BuilderPhase) string {
-	m := phase.Metadata()
-
-	step := m.StepType
-	if m.StepNumber != nil {
-		step = strconv.Itoa(*m.StepNumber)
+func stepString(phaseMetadata PhaseMeta) string {
+	step := phaseMetadata.StepType
+	if phaseMetadata.StepNumber != nil {
+		step = strconv.Itoa(*phaseMetadata.StepNumber)
 	}
 
 	return step

@@ -9,12 +9,14 @@ import (
 )
 
 func TestAtomicMax_NewAtomicMax(t *testing.T) {
+	t.Parallel()
 	am := NewAtomicMax()
 	require.NotNil(t, am)
 	require.Equal(t, int64(0), am.val)
 }
 
 func TestAtomicMax_SetToGreater_InitialValue(t *testing.T) {
+	t.Parallel()
 	am := NewAtomicMax()
 
 	// Should succeed when newValue > current
@@ -23,6 +25,7 @@ func TestAtomicMax_SetToGreater_InitialValue(t *testing.T) {
 }
 
 func TestAtomicMax_SetToGreater_EqualValue(t *testing.T) {
+	t.Parallel()
 	am := NewAtomicMax()
 	am.val = 10
 
@@ -32,6 +35,7 @@ func TestAtomicMax_SetToGreater_EqualValue(t *testing.T) {
 }
 
 func TestAtomicMax_SetToGreater_GreaterValue(t *testing.T) {
+	t.Parallel()
 	am := NewAtomicMax()
 	am.val = 10
 
@@ -41,6 +45,7 @@ func TestAtomicMax_SetToGreater_GreaterValue(t *testing.T) {
 }
 
 func TestAtomicMax_SetToGreater_NegativeValues(t *testing.T) {
+	t.Parallel()
 	am := NewAtomicMax()
 	am.val = -5
 
@@ -49,6 +54,7 @@ func TestAtomicMax_SetToGreater_NegativeValues(t *testing.T) {
 }
 
 func TestAtomicMax_SetToGreater_Concurrent(t *testing.T) {
+	t.Parallel()
 	am := NewAtomicMax()
 	var wg sync.WaitGroup
 

@@ -17,6 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/builderrors"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/commands"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/envd"
@@ -25,11 +26,11 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases/base"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases/finalize"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases/optimize"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases/steps"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases/user"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
-	buildcache "github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
@@ -116,7 +117,7 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, cfg
 	defer childSpan.End()
 
 	// setup launch darkly context
-	ctx = featureflags.SetContext(
+	ctx = featureflags.AddToContext(
 		ctx,
 		featureflags.TemplateContext(cfg.TemplateID),
 		featureflags.TeamContext(cfg.TeamID),
@@ -130,11 +131,17 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, cfg
 		b.metrics.RecordBuildDuration(ctx, duration, success)
 
 		if success {
-			b.metrics.RecordBuildResult(ctx, cfg.TeamID, true)
+			b.metrics.RecordBuildResult(ctx, cfg.TeamID, metrics.BuildResultSuccess)
 			b.metrics.RecordRootfsSize(ctx, r.RootfsSizeMB<<constants.ToMBShift)
-		} else if !errors.Is(e, context.Canceled) {
-			// Skip reporting failure metrics only on explicit cancellation
-			b.metrics.RecordBuildResult(ctx, cfg.TeamID, false)
+		} else {
+			// Determine if the error is a user error or internal error
+			var resultType metrics.BuildResultType
+			if builderrors.IsUserError(e) {
+				resultType = metrics.BuildResultUserError
+			} else {
+				resultType = metrics.BuildResultInternalError
+			}
+			b.metrics.RecordBuildResult(ctx, cfg.TeamID, resultType)
 		}
 	}()
 
@@ -148,10 +155,8 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, cfg
 	l := logger.NewTracedLoggerFromCore(logsCore)
 	defer func(ctx context.Context) {
 		switch {
-		case errors.Is(ctx.Err(), context.Canceled):
-			l.Error(ctx, fmt.Sprintf("Build failed: %s", buildcache.CanceledBuildReason))
 		case e != nil:
-			l.Error(ctx, fmt.Sprintf("Build failed: %v", e))
+			l.Error(ctx, fmt.Sprintf("Build failed: %v", builderrors.UnwrapUserError(e).GetMessage()))
 		default:
 			l.Info(ctx, fmt.Sprintf("Build finished, took %s",
 				time.Since(startTime).Truncate(time.Second).String()))
@@ -163,6 +168,14 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, cfg
 			telemetry.ReportCriticalError(ctx, "recovered from panic in template build", nil, attribute.String("panic", fmt.Sprintf("%v", r)), telemetry.WithTemplateID(cfg.TemplateID), telemetry.WithBuildID(template.BuildID))
 			e = errors.New("fatal error occurred during template build, please contact us")
 		}
+	}()
+
+	// Wrap context as a user error if no user error already exists
+	defer func() {
+		if ctx.Err() != nil {
+			e = errors.Join(e, ctx.Err())
+		}
+		e = builderrors.WrapContextAsUserError(e)
 	}()
 
 	if isV1Build {
@@ -213,13 +226,38 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, cfg
 	return runBuild(ctx, l, buildContext, b)
 }
 
+func (b *Builder) useNFSCache(ctx context.Context) (string, bool) {
+	flag := b.featureFlags.BoolFlag(ctx, featureflags.UseNFSCacheForBuildingTemplatesFlag)
+
+	if flag && b.config.SharedChunkCacheDir == "" {
+		logger.L().Warn(ctx, "NFSCache feature flag is enabled but cache path is not set")
+
+		return "", false
+	}
+
+	return b.config.SharedChunkCacheDir, flag
+}
+
 func runBuild(
 	ctx context.Context,
 	userLogger logger.Logger,
 	bc buildcontext.BuildContext,
 	builder *Builder,
 ) (*Result, error) {
-	index := cache.NewHashIndex(bc.CacheScope, builder.buildStorage, builder.templateStorage)
+	ctx, span := tracer.Start(ctx, "run build")
+	defer span.End()
+
+	templateStorage := builder.templateStorage
+	if path, ok := builder.useNFSCache(ctx); ok {
+		templateStorage = storage.WrapInNFSCache(ctx, path, templateStorage, builder.featureFlags)
+		span.SetAttributes(attribute.Bool("use_cache", true))
+	} else {
+		span.SetAttributes(attribute.Bool("use_cache", false))
+	}
+
+	index := cache.NewHashIndex(bc.CacheScope, builder.buildStorage, templateStorage)
+
+	uploadTracker := layer.NewUploadTracker()
 
 	layerExecutor := layer.NewLayerExecutor(
 		bc,
@@ -227,9 +265,10 @@ func runBuild(
 		builder.templateCache,
 		builder.proxy,
 		builder.sandboxes,
-		builder.templateStorage,
+		templateStorage,
 		builder.buildStorage,
 		index,
+		uploadTracker,
 	)
 
 	baseBuilder := base.New(
@@ -237,7 +276,7 @@ func runBuild(
 		builder.featureFlags,
 		builder.logger,
 		builder.proxy,
-		builder.templateStorage,
+		templateStorage,
 		builder.artifactRegistry,
 		builder.dockerhubRepository,
 		layerExecutor,
@@ -280,10 +319,21 @@ func runBuild(
 	postProcessingBuilder := finalize.New(
 		bc,
 		builder.sandboxFactory,
-		builder.templateStorage,
+		templateStorage,
 		builder.proxy,
 		layerExecutor,
 		builder.featureFlags,
+		builder.logger,
+	)
+
+	optimizeBuilder := optimize.New(
+		bc,
+		builder.sandboxFactory,
+		builder.templateStorage,
+		builder.templateCache,
+		builder.proxy,
+		layerExecutor,
+		builder.sandboxes,
 		builder.logger,
 	)
 
@@ -301,6 +351,7 @@ func runBuild(
 	}
 	builders = append(builders, stepBuilders...)
 	builders = append(builders, postProcessingBuilder)
+	builders = append(builders, optimizeBuilder)
 
 	lastLayerResult, err := phases.Run(ctx, builder.logger, userLogger, bc, builder.metrics, builders)
 	if err != nil {
@@ -353,7 +404,7 @@ func getRootfsSize(
 	s storage.StorageProvider,
 	metadata storage.TemplateFiles,
 ) (uint64, error) {
-	obj, err := s.OpenObject(ctx, metadata.StorageRootfsHeaderPath(), storage.RootFSHeaderObjectType)
+	obj, err := s.OpenBlob(ctx, metadata.StorageRootfsHeaderPath(), storage.RootFSHeaderObjectType)
 	if err != nil {
 		return 0, fmt.Errorf("error opening rootfs header object: %w", err)
 	}

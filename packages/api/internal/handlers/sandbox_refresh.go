@@ -44,7 +44,7 @@ func (a *APIStore) PostSandboxesSandboxIDRefreshes(
 		duration = sandbox.SandboxTimeoutDefault
 	}
 
-	sandboxData, err := a.orchestrator.GetSandbox(ctx, sandboxID)
+	sandboxData, err := a.orchestrator.GetSandbox(ctx, team.ID, sandboxID)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusNotFound, "Sandbox not found")
 
@@ -57,7 +57,7 @@ func (a *APIStore) PostSandboxesSandboxIDRefreshes(
 		return
 	}
 
-	apiErr := a.orchestrator.KeepAliveFor(ctx, sandboxID, duration, false)
+	apiErr := a.orchestrator.KeepAliveFor(ctx, team.ID, sandboxID, duration, false)
 	if apiErr != nil {
 		telemetry.ReportError(ctx, "error when refreshing sandbox", apiErr.Err)
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)

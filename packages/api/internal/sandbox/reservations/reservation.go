@@ -3,6 +3,7 @@ package reservations
 import (
 	"context"
 
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
@@ -35,12 +36,13 @@ func NewReservationStorage() *ReservationStorage {
 	}
 }
 
-func (s *ReservationStorage) Reserve(ctx context.Context, teamID, sandboxID string, limit int) (finishStart func(sandbox.Sandbox, error), waitForStart func(ctx context.Context) (sandbox.Sandbox, error), err error) {
+func (s *ReservationStorage) Reserve(ctx context.Context, teamID uuid.UUID, sandboxID string, limit int) (finishStart func(sandbox.Sandbox, error), waitForStart func(ctx context.Context) (sandbox.Sandbox, error), err error) {
 	alreadyPresent := false
 	limitExceeded := false
 	var startResult *utils.SetOnce[sandbox.Sandbox]
 
-	s.reservations.Upsert(teamID, nil, func(exist bool, teamSandboxes, _ TeamSandboxes) TeamSandboxes {
+	teamIDStr := teamID.String()
+	s.reservations.Upsert(teamIDStr, nil, func(exist bool, teamSandboxes, _ TeamSandboxes) TeamSandboxes {
 		if !exist {
 			teamSandboxes = make(map[string]*sandboxReservation)
 		}
@@ -85,8 +87,9 @@ func (s *ReservationStorage) Reserve(ctx context.Context, teamID, sandboxID stri
 	}, nil, nil
 }
 
-func (s *ReservationStorage) Release(_ context.Context, teamID, sandboxID string) error {
-	s.reservations.RemoveCb(teamID, func(_ string, ts TeamSandboxes, exists bool) bool {
+func (s *ReservationStorage) Release(_ context.Context, teamID uuid.UUID, sandboxID string) error {
+	teamIDStr := teamID.String()
+	s.reservations.RemoveCb(teamIDStr, func(_ string, ts TeamSandboxes, exists bool) bool {
 		if !exists {
 			return true
 		}

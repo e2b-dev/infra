@@ -5,7 +5,7 @@ import (
 
 	"google.golang.org/grpc/metadata"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/api/internal/clusters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/edge"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
@@ -33,44 +33,47 @@ func (n *Node) Metadata() NodeMetadata {
 	return n.meta
 }
 
-// Generates Metadata with the current service instance ID
-// to ensure we always use the latest ID (e.g. after orchestrator restarts)
-func (n *Node) getClientMetadata() metadata.MD {
-	return metadata.New(map[string]string{consts.EdgeRpcServiceInstanceIDHeader: n.Metadata().ServiceInstanceID})
-}
+func (n *Node) GetSandboxCreateCtx(ctx context.Context, req *orchestrator.SandboxCreateRequest) (*clusters.GRPCClient, context.Context) {
+	md := metadata.MD{}
 
-func (n *Node) GetSandboxCreateCtx(ctx context.Context, req *orchestrator.SandboxCreateRequest) context.Context {
-	// Skip local cluster. It should be okay to send it here, but we don't want to do it until we explicitly support it.
-	if n.IsNomadManaged() {
-		return ctx
+	if !n.IsNomadManaged() {
+		md = edge.SerializeSandboxCatalogCreateEvent(
+			edge.SandboxCatalogCreateEvent{
+				SandboxID:               req.GetSandbox().GetSandboxId(),
+				SandboxMaxLengthInHours: req.GetSandbox().GetMaxSandboxLength(),
+				SandboxStartTime:        req.GetStartTime().AsTime(),
+
+				ExecutionID:    req.GetSandbox().GetExecutionId(),
+				OrchestratorID: n.Metadata().ServiceInstanceID,
+			},
+		)
 	}
 
-	md := edge.SerializeSandboxCatalogCreateEvent(
-		edge.SandboxCatalogCreateEvent{
-			SandboxID:               req.GetSandbox().GetSandboxId(),
-			SandboxMaxLengthInHours: req.GetSandbox().GetMaxSandboxLength(),
-			SandboxStartTime:        req.GetStartTime().AsTime(),
-
-			ExecutionID:    req.GetSandbox().GetExecutionId(),
-			OrchestratorID: n.Metadata().ServiceInstanceID,
-		},
-	)
-
-	return metadata.NewOutgoingContext(ctx, metadata.Join(n.getClientMetadata(), md))
+	// Merge medata from client (auth, routing with service instance id) and event metadata.
+	return n.client, appendMetadataCtx(ctx, md)
 }
 
-func (n *Node) GetSandboxDeleteCtx(ctx context.Context, sandboxID string, executionID string) context.Context {
-	// Skip local cluster. It should be okay to send it here, but we don't want to do it until we explicitly support it.
-	if n.IsNomadManaged() {
-		return ctx
+func (n *Node) GetSandboxDeleteCtx(ctx context.Context, sandboxID string, executionID string) (*clusters.GRPCClient, context.Context) {
+	md := metadata.MD{}
+
+	if !n.IsNomadManaged() {
+		md = edge.SerializeSandboxCatalogDeleteEvent(
+			edge.SandboxCatalogDeleteEvent{
+				SandboxID:   sandboxID,
+				ExecutionID: executionID,
+			},
+		)
 	}
 
-	md := edge.SerializeSandboxCatalogDeleteEvent(
-		edge.SandboxCatalogDeleteEvent{
-			SandboxID:   sandboxID,
-			ExecutionID: executionID,
-		},
-	)
+	// Merge medata from client (auth, routing with service instance id) and event metadata.
+	return n.client, appendMetadataCtx(ctx, md)
+}
 
-	return metadata.NewOutgoingContext(ctx, metadata.Join(n.getClientMetadata(), md))
+func appendMetadataCtx(ctx context.Context, md metadata.MD) context.Context {
+	args := make([]string, 0, len(md)*2)
+	for k, v := range md {
+		args = append(args, k, v[0])
+	}
+
+	return metadata.AppendToOutgoingContext(ctx, args...)
 }

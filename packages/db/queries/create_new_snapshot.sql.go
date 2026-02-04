@@ -8,7 +8,7 @@ package queries
 import (
 	"context"
 
-	"github.com/e2b-dev/infra/packages/db/types"
+	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -16,11 +16,11 @@ import (
 const upsertSnapshot = `-- name: UpsertSnapshot :one
 WITH new_template AS (
     INSERT INTO "public"."envs" (id, public, created_by, team_id, updated_at)
-    SELECT $15, FALSE, NULL, $16, now()
+    SELECT $1, FALSE, NULL, $2, now()
     WHERE NOT EXISTS (
         SELECT id
         FROM "public"."snapshots" s
-        WHERE s.sandbox_id = $17
+        WHERE s.sandbox_id = $3
     ) RETURNING id
 ),
 
@@ -39,18 +39,18 @@ snapshot as (
        config
     )
     VALUES (
-            $17,
-            $18,
-            $16,
+            $3,
+            $4,
+            $2,
             -- If snapshot already exists, new_template id will be null, env_id can't be null, so use placeholder ''
             COALESCE((SELECT id FROM new_template), ''),
-            $19,
-            $20,
-            $21,
-            $22,
+            $5,
+            $6,
+            $7,
             $8,
-            $23,
-            $24
+            $9,
+            $10,
+            $11
    )
     ON CONFLICT (sandbox_id) DO UPDATE SET
         metadata = excluded.metadata,
@@ -59,60 +59,60 @@ snapshot as (
         auto_pause = excluded.auto_pause,
         config = excluded.config
     RETURNING env_id as template_id
+),
+
+new_build as (
+    INSERT INTO "public"."env_builds" (
+        env_id,
+        vcpu,
+        ram_mb,
+        free_disk_size_mb,
+        kernel_version,
+        firecracker_version,
+        envd_version,
+        status,
+        cluster_node_id,
+        total_disk_size_mb,
+        updated_at,
+        cpu_architecture,
+        cpu_family,
+        cpu_model,
+        cpu_model_name,
+        cpu_flags
+    ) VALUES (
+        (SELECT template_id FROM snapshot),
+        $12,
+        $13,
+        $14,
+        $15,
+        $16,
+        $17,
+        $18,
+        $9,
+        $19,
+        now(),
+        $20,
+        $21,
+        $22,
+        $23,
+        $24
+    ) RETURNING id as build_id, env_id as template_id
+),
+
+build_assignment as (
+    INSERT INTO "public"."env_build_assignments" (env_id, build_id, tag)
+    VALUES (
+        (SELECT template_id FROM new_build),
+        (SELECT build_id FROM new_build),
+        'default'
+    )
+    RETURNING build_id, env_id as template_id
 )
 
-INSERT INTO "public"."env_builds" (
-    env_id,
-    vcpu,
-    ram_mb,
-    free_disk_size_mb,
-    kernel_version,
-    firecracker_version,
-    envd_version,
-    status,
-    cluster_node_id,
-    total_disk_size_mb,
-    updated_at,
-    cpu_architecture,
-    cpu_family,
-    cpu_model,
-    cpu_model_name,
-    cpu_flags
-) VALUES (
-    (SELECT template_id FROM snapshot),
-    $1,
-    $2,
-    $3,
-    $4,
-    $5,
-    $6,
-    $7,
-    $8,
-    $9,
-    now(),
-    $10,
-    $11,
-    $12,
-    $13,
-    $14
-) RETURNING id as build_id, env_id as template_id
+SELECT build_id, template_id FROM new_build
 `
 
 type UpsertSnapshotParams struct {
-	Vcpu                int64
-	RamMb               int64
-	FreeDiskSizeMb      int64
-	KernelVersion       string
-	FirecrackerVersion  string
-	EnvdVersion         *string
-	Status              string
-	OriginNodeID        *string
-	TotalDiskSizeMb     *int64
-	CpuArchitecture     *string
-	CpuFamily           *string
-	CpuModel            *string
-	CpuModelName        *string
-	CpuFlags            []string
 	TemplateID          string
 	TeamID              uuid.UUID
 	SandboxID           string
@@ -121,8 +121,22 @@ type UpsertSnapshotParams struct {
 	StartedAt           pgtype.Timestamptz
 	Secure              bool
 	AllowInternetAccess *bool
+	OriginNodeID        string
 	AutoPause           bool
 	Config              *types.PausedSandboxConfig
+	Vcpu                int64
+	RamMb               int64
+	FreeDiskSizeMb      int64
+	KernelVersion       string
+	FirecrackerVersion  string
+	EnvdVersion         *string
+	Status              string
+	TotalDiskSizeMb     *int64
+	CpuArchitecture     *string
+	CpuFamily           *string
+	CpuModel            *string
+	CpuModelName        *string
+	CpuFlags            []string
 }
 
 type UpsertSnapshotRow struct {
@@ -132,22 +146,9 @@ type UpsertSnapshotRow struct {
 
 // Create a new snapshot or update an existing one
 // Create a new build for the snapshot
+// Create the build assignment edge (explicit, not relying on trigger)
 func (q *Queries) UpsertSnapshot(ctx context.Context, arg UpsertSnapshotParams) (UpsertSnapshotRow, error) {
 	row := q.db.QueryRow(ctx, upsertSnapshot,
-		arg.Vcpu,
-		arg.RamMb,
-		arg.FreeDiskSizeMb,
-		arg.KernelVersion,
-		arg.FirecrackerVersion,
-		arg.EnvdVersion,
-		arg.Status,
-		arg.OriginNodeID,
-		arg.TotalDiskSizeMb,
-		arg.CpuArchitecture,
-		arg.CpuFamily,
-		arg.CpuModel,
-		arg.CpuModelName,
-		arg.CpuFlags,
 		arg.TemplateID,
 		arg.TeamID,
 		arg.SandboxID,
@@ -156,8 +157,22 @@ func (q *Queries) UpsertSnapshot(ctx context.Context, arg UpsertSnapshotParams) 
 		arg.StartedAt,
 		arg.Secure,
 		arg.AllowInternetAccess,
+		arg.OriginNodeID,
 		arg.AutoPause,
 		arg.Config,
+		arg.Vcpu,
+		arg.RamMb,
+		arg.FreeDiskSizeMb,
+		arg.KernelVersion,
+		arg.FirecrackerVersion,
+		arg.EnvdVersion,
+		arg.Status,
+		arg.TotalDiskSizeMb,
+		arg.CpuArchitecture,
+		arg.CpuFamily,
+		arg.CpuModel,
+		arg.CpuModelName,
+		arg.CpuFlags,
 	)
 	var i UpsertSnapshotRow
 	err := row.Scan(&i.BuildID, &i.TemplateID)

@@ -14,6 +14,7 @@ import (
 )
 
 func TestDeleteTemplate(t *testing.T) {
+	t.Parallel()
 	alias := "test-to-delete"
 	res := buildTemplate(t, alias, api.TemplateBuildStartV2{
 		Force:     utils.ToPtr(ForceBaseBuild),
@@ -40,25 +41,16 @@ func TestDeleteTemplate(t *testing.T) {
 }
 
 func TestDeleteTemplateWithAccessToken(t *testing.T) {
-	alias := "test-to-delete-access-token"
-	res := buildTemplate(t, alias, api.TemplateBuildStartV2{
-		Force:     utils.ToPtr(ForceBaseBuild),
-		FromImage: utils.ToPtr("ubuntu:22.04"),
-		Steps: utils.ToPtr([]api.TemplateStep{
-			{
-				Type:  "RUN",
-				Force: utils.ToPtr(true),
-				Args:  utils.ToPtr([]string{"echo 'Hello, World!'"}),
-			},
-		}),
-	}, defaultBuildLogHandler(t))
+	t.Parallel()
 
-	require.True(t, res)
+	// Build template and get the template ID
+	template := testutils.BuildSimpleTemplate(t, "test-to-delete-access-token", setup.WithAPIKey())
 
 	c := setup.GetAPIClient()
+	// Access token auth requires template ID (not alias)
 	deleteRes, err := c.DeleteTemplatesTemplateIDWithResponse(
 		t.Context(),
-		alias,
+		template.TemplateID,
 		setup.WithAccessToken(),
 	)
 	require.NoError(t, err)
@@ -66,29 +58,20 @@ func TestDeleteTemplateWithAccessToken(t *testing.T) {
 }
 
 func TestDeleteTemplateFromAnotherTeamAccessToken(t *testing.T) {
-	alias := "test-to-delete-another-team-access-token"
+	t.Parallel()
 
 	db := setup.GetTestDBClient(t)
 	userID := testutils.CreateUser(t, db)
 	accessToken := testutils.CreateAccessToken(t, db, userID)
 
-	res := buildTemplate(t, alias, api.TemplateBuildStartV2{
-		Force:     utils.ToPtr(ForceBaseBuild),
-		FromImage: utils.ToPtr("ubuntu:22.04"),
-		Steps: utils.ToPtr([]api.TemplateStep{
-			{
-				Type:  "RUN",
-				Force: utils.ToPtr(true),
-				Args:  utils.ToPtr([]string{"echo 'Hello, World!'"}),
-			},
-		}),
-	}, defaultBuildLogHandler(t))
-	require.True(t, res)
+	// Build template with default API key (belongs to default team)
+	template := testutils.BuildSimpleTemplate(t, "test-to-delete-another-team-access-token", setup.WithAPIKey())
 
 	c := setup.GetAPIClient()
+	// Access token auth requires template ID; this user has no teams so should get 403
 	deleteRes, err := c.DeleteTemplatesTemplateIDWithResponse(
 		t.Context(),
-		alias,
+		template.TemplateID,
 		setup.WithCustomAccessToken(accessToken),
 	)
 	require.NoError(t, err)
@@ -96,6 +79,7 @@ func TestDeleteTemplateFromAnotherTeamAccessToken(t *testing.T) {
 }
 
 func TestDeleteTemplateFromAnotherTeamAPIKey(t *testing.T) {
+	t.Parallel()
 	alias := "test-to-delete-another-team-api-key"
 
 	db := setup.GetTestDBClient(t)
@@ -123,5 +107,7 @@ func TestDeleteTemplateFromAnotherTeamAPIKey(t *testing.T) {
 		setup.WithAPIKey(apiKey),
 	)
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusForbidden, deleteRes.StatusCode())
+	// With namespace-scoped templates, the foreign team's lookup searches in their own namespace
+	// and doesn't find the template (which exists in the original team's namespace), so 404 is returned.
+	assert.Equal(t, http.StatusNotFound, deleteRes.StatusCode())
 }

@@ -59,7 +59,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	)
 
 	// setup launch darkly
-	ctx = featureflags.SetContext(
+	ctx = featureflags.AddToContext(
 		ctx,
 		ldcontext.NewBuilder(req.GetSandbox().GetSandboxId()).
 			Kind(featureflags.SandboxKind).
@@ -83,14 +83,9 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 
 	// Check if we've reached the max number of starting instances on this node
 	if req.GetSandbox().GetSnapshot() {
-		acquireCtx, acquireCancel := context.WithTimeout(ctx, acquireTimeout)
-		defer acquireCancel()
-
-		err := s.startingSandboxes.Acquire(acquireCtx, 1)
+		err := s.waitForAcquire(ctx)
 		if err != nil {
-			telemetry.ReportEvent(ctx, "too many resuming sandboxes on node")
-
-			return nil, status.Errorf(codes.ResourceExhausted, "too many sandboxes resuming on this node, please retry")
+			return nil, err
 		}
 	} else {
 		acquired := s.startingSandboxes.TryAcquire(1)
@@ -381,7 +376,7 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	defer childSpan.End()
 
 	// setup launch darkly
-	ctx = featureflags.SetContext(
+	ctx = featureflags.AddToContext(
 		ctx,
 		ldcontext.NewBuilder(in.GetSandboxId()).
 			Kind(featureflags.SandboxKind).

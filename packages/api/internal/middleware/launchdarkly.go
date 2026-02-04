@@ -22,7 +22,7 @@ func InitLaunchDarklyContext(c *gin.Context) {
 
 	// store the context in ctx
 	ctx := c.Request.Context()
-	ctx = featureflags.SetContext(ctx, contexts...)
+	ctx = featureflags.AddToContext(ctx, contexts...)
 	c.Request = c.Request.WithContext(ctx)
 
 	// we're done, move on

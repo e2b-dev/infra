@@ -25,7 +25,8 @@ type BuildLogHandler func(alias string, entry api.BuildLogEntry)
 
 // TemplateBuildOptions contains options for building a template
 type TemplateBuildOptions struct {
-	Alias       string
+	Name        string
+	Tags        *[]string
 	CPUCount    *int32
 	MemoryMB    *int32
 	BuildData   api.TemplateBuildStartV2
@@ -75,13 +76,13 @@ func BuildTemplate(tb testing.TB, opts TemplateBuildOptions) *api.TemplateReques
 	reqEditors := append(opts.ReqEditors, setup.WithTestsUserAgent())
 
 	// Request build
-	template := requestTemplateBuild(tb, opts.Alias, opts.CPUCount, opts.MemoryMB, reqEditors...)
+	template := requestTemplateBuild(tb, opts.Name, opts.CPUCount, opts.MemoryMB, opts.Tags, reqEditors...)
 
 	// Start build
 	startTemplateBuild(tb, template.TemplateID, template.BuildID, opts.BuildData, reqEditors...)
 
 	// Wait for build to complete
-	WaitForBuildCompletion(tb, ctx, template.TemplateID, template.BuildID, opts.Alias, opts.LogHandler, opts.EnableDebug, reqEditors...)
+	WaitForBuildCompletion(tb, ctx, template.TemplateID, template.BuildID, opts.Name, opts.LogHandler, opts.EnableDebug, reqEditors...)
 
 	return template
 }
@@ -92,7 +93,7 @@ func WaitForBuildCompletion(
 	ctx context.Context,
 	templateID string,
 	buildID string,
-	alias string,
+	name string,
 	logHandler BuildLogHandler,
 	enableDebug bool,
 	reqEditors ...api.RequestEditorFn,
@@ -133,7 +134,7 @@ func WaitForBuildCompletion(
 
 		offset += len(statusResp.JSON200.LogEntries)
 		for _, entry := range statusResp.JSON200.LogEntries {
-			logHandler(alias, entry)
+			logHandler(name, entry)
 		}
 
 		switch statusResp.JSON200.Status {
@@ -154,8 +155,9 @@ func WaitForBuildCompletion(
 // requestTemplateBuild requests a template build without waiting for completion
 func requestTemplateBuild(
 	tb testing.TB,
-	alias string,
+	name string,
 	cpuCount, memoryMB *int32,
+	tags *[]string,
 	reqEditors ...api.RequestEditorFn,
 ) *api.TemplateRequestResponseV3 {
 	tb.Helper()
@@ -170,11 +172,14 @@ func requestTemplateBuild(
 		memoryMB = utils.ToPtr(DefaultMemoryMB)
 	}
 
-	resp, err := c.PostV3TemplatesWithResponse(ctx, api.TemplateBuildRequestV3{
-		Alias:    alias,
+	req := api.TemplateBuildRequestV3{
+		Name:     utils.ToPtr(name),
+		Tags:     tags,
 		CpuCount: cpuCount,
 		MemoryMB: memoryMB,
-	}, reqEditors...)
+	}
+
+	resp, err := c.PostV3TemplatesWithResponse(ctx, req, reqEditors...)
 	require.NoError(tb, err)
 	require.Equal(tb, http.StatusAccepted, resp.StatusCode())
 	require.NotNil(tb, resp.JSON202)
@@ -217,11 +222,11 @@ func safeValue[T any](item *T) T {
 }
 
 // BuildSimpleTemplate builds a simple template with Ubuntu 22.04 base image
-func BuildSimpleTemplate(tb testing.TB, alias string, reqEditors ...api.RequestEditorFn) *api.TemplateRequestResponseV3 {
+func BuildSimpleTemplate(tb testing.TB, name string, reqEditors ...api.RequestEditorFn) *api.TemplateRequestResponseV3 {
 	tb.Helper()
 
 	opts := TemplateBuildOptions{
-		Alias: alias,
+		Name: name,
 		BuildData: api.TemplateBuildStartV2{
 			FromImage: utils.ToPtr("ubuntu:22.04"),
 		},

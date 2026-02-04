@@ -15,6 +15,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/envd"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -44,13 +45,13 @@ func doRequestWithInfiniteRetries(
 	for {
 		now := time.Now()
 
-		jsonBody := &PostInitJSONBody{
-			EnvVars:        &envVars,
-			HyperloopIP:    &hyperloopIP,
-			AccessToken:    accessToken,
-			Timestamp:      &now,
-			DefaultUser:    defaultUser,
-			DefaultWorkdir: defaultWorkdir,
+		jsonBody := &envd.PostInitJSONBody{
+			EnvVars:        envVars,
+			HyperloopIP:    hyperloopIP,
+			AccessToken:    utils.DerefOrDefault(accessToken, ""),
+			Timestamp:      now,
+			DefaultUser:    utils.DerefOrDefault(defaultUser, ""),
+			DefaultWorkdir: utils.DerefOrDefault(defaultWorkdir, ""),
 		}
 
 		body, err := json.Marshal(jsonBody)
@@ -80,7 +81,7 @@ func doRequestWithInfiniteRetries(
 			return response, requestCount, nil
 		}
 
-		logger.L().Warn(ctx, "failed to do request to envd, retrying", logger.WithSandboxID(sandboxID), logger.WithEnvdVersion(envdVersion), zap.Int64("timeout_ms", envdInitRequestTimeout.Milliseconds()), zap.Error(err))
+		logger.L().Debug(ctx, "failed to do request to envd, retrying", logger.WithSandboxID(sandboxID), logger.WithEnvdVersion(envdVersion), zap.Int64("timeout_ms", envdInitRequestTimeout.Milliseconds()), zap.Error(err))
 
 		select {
 		case <-ctx.Done():
@@ -88,15 +89,6 @@ func doRequestWithInfiniteRetries(
 		case <-time.After(loopDelay):
 		}
 	}
-}
-
-type PostInitJSONBody struct {
-	EnvVars        *map[string]string `json:"envVars"`
-	AccessToken    *string            `json:"accessToken,omitempty"`
-	HyperloopIP    *string            `json:"hyperloopIP,omitempty"`
-	Timestamp      *time.Time         `json:"timestamp,omitempty"`
-	DefaultUser    *string            `json:"defaultUser,omitempty"`
-	DefaultWorkdir *string            `json:"defaultWorkdir,omitempty"`
 }
 
 func (s *Sandbox) initEnvd(ctx context.Context) (e error) {

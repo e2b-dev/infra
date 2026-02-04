@@ -27,6 +27,7 @@ func newTestCore(buf *bytes.Buffer) zapcore.Core {
 }
 
 func TestPostProcessor_Start(t *testing.T) {
+	t.Parallel()
 	ctx := t.Context()
 	var buf bytes.Buffer
 	core := newTestCore(&buf)

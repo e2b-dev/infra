@@ -8,6 +8,7 @@ use (
 	./packages/docker-reverse-proxy
 	./packages/envd
 	./packages/local-dev
+	./packages/nomad-nodepool-apm
 	./packages/orchestrator
 	./packages/shared
 

@@ -2,6 +2,7 @@ package oci
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -13,6 +14,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/name"
 	containerregistry "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
+	"github.com/google/go-containerregistry/pkg/v1/remote/transport"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
@@ -39,13 +41,39 @@ var DefaultPlatform = containerregistry.Platform{
 	Architecture: "amd64",
 }
 
+// wrapImagePullError converts technical Docker registry errors into user-friendly messages.
+func wrapImagePullError(err error, imageRef string) error {
+	if err == nil {
+		return nil
+	}
+
+	// Check for transport errors with specific error codes from the registry API
+	var transportErr *transport.Error
+	if errors.As(err, &transportErr) {
+		for _, e := range transportErr.Errors {
+			switch e.Code {
+			case transport.ManifestUnknownErrorCode:
+				return fmt.Errorf("image '%s' not found: the image or tag does not exist in the registry", imageRef)
+			case transport.NameUnknownErrorCode:
+				return fmt.Errorf("repository '%s' not found: verify the image name is correct", imageRef)
+			case transport.UnauthorizedErrorCode:
+				return fmt.Errorf("access denied to '%s': authentication required or insufficient permissions", imageRef)
+			case transport.DeniedErrorCode:
+				return fmt.Errorf("access denied to '%s': you don't have permission to pull this image", imageRef)
+			}
+		}
+	}
+
+	return fmt.Errorf("failed to pull image '%s': %w", imageRef, err)
+}
+
 func GetPublicImage(ctx context.Context, dockerhubRepository dockerhub.RemoteRepository, tag string, authProvider auth.RegistryAuthProvider) (containerregistry.Image, error) {
 	ctx, span := tracer.Start(ctx, "pull-public-docker-image")
 	defer span.End()
 
 	ref, err := name.ParseReference(tag)
 	if err != nil {
-		return nil, fmt.Errorf("invalid image reference: %w", err)
+		return nil, fmt.Errorf("invalid image reference '%s': %w", tag, err)
 	}
 
 	platform := DefaultPlatform
@@ -55,7 +83,7 @@ func GetPublicImage(ctx context.Context, dockerhubRepository dockerhub.RemoteRep
 	if authProvider == nil && ref.Context().RegistryStr() == name.DefaultRegistry {
 		img, err := dockerhubRepository.GetImage(ctx, tag, platform)
 		if err != nil {
-			return nil, fmt.Errorf("error getting image: %w", err)
+			return nil, wrapImagePullError(err, tag)
 		}
 
 		telemetry.ReportEvent(ctx, "pulled public image through docker remote repository proxy")
@@ -84,7 +112,7 @@ func GetPublicImage(ctx context.Context, dockerhubRepository dockerhub.RemoteRep
 
 	img, err := remote.Image(ref, opts...)
 	if err != nil {
-		return nil, fmt.Errorf("error pulling image: %w", err)
+		return nil, wrapImagePullError(err, tag)
 	}
 
 	telemetry.ReportEvent(ctx, "pulled public image")

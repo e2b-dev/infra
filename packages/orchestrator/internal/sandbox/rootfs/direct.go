@@ -32,7 +32,7 @@ type DirectProvider struct {
 	mmap *mmap.MMap
 }
 
-func NewDirectProvider(rootfs block.ReadonlyDevice, path string) (Provider, error) {
+func NewDirectProvider(ctx context.Context, rootfs block.ReadonlyDevice, path string) (Provider, error) {
 	blockSize := rootfs.BlockSize()
 
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o644)
@@ -41,7 +41,7 @@ func NewDirectProvider(rootfs block.ReadonlyDevice, path string) (Provider, erro
 	}
 	defer f.Close()
 
-	size, err := rootfs.Size()
+	size, err := rootfs.Size(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error getting size: %w", err)
 	}

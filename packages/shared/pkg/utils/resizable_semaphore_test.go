@@ -17,6 +17,7 @@ import (
 // -----------------------------------------------------------------------------
 
 func TestBasicAcquireTryRelease(t *testing.T) {
+	t.Parallel()
 	s, err := NewAdjustableSemaphore(2)
 	require.NoError(t, err)
 
@@ -35,6 +36,7 @@ func TestBasicAcquireTryRelease(t *testing.T) {
 // Acquire with limit changes
 // -----------------------------------------------------------------------------
 func TestAcquireWithLimitIncrease(t *testing.T) {
+	t.Parallel()
 	s, err := NewAdjustableSemaphore(2)
 	require.NoError(t, err)
 
@@ -64,6 +66,7 @@ func TestAcquireWithLimitIncrease(t *testing.T) {
 }
 
 func TestAcquireWithLimitDecrease(t *testing.T) {
+	t.Parallel()
 	s, err := NewAdjustableSemaphore(3)
 	require.NoError(t, err)
 
@@ -103,6 +106,7 @@ func TestAcquireWithLimitDecrease(t *testing.T) {
 // error handling
 // -----------------------------------------------------------------------------
 func TestAcquireErrorsOnNegativeN(t *testing.T) {
+	t.Parallel()
 	s, err := NewAdjustableSemaphore(2)
 	require.NoError(t, err)
 
@@ -113,6 +117,7 @@ func TestAcquireErrorsOnNegativeN(t *testing.T) {
 }
 
 func TestAcquireErrorsOnZeroN(t *testing.T) {
+	t.Parallel()
 	s, err := NewAdjustableSemaphore(2)
 	require.NoError(t, err)
 
@@ -123,6 +128,7 @@ func TestAcquireErrorsOnZeroN(t *testing.T) {
 }
 
 func TestReleaseErrorsOnNegativeN(t *testing.T) {
+	t.Parallel()
 	s, err := NewAdjustableSemaphore(2)
 	require.NoError(t, err)
 
@@ -132,6 +138,7 @@ func TestReleaseErrorsOnNegativeN(t *testing.T) {
 }
 
 func TestReleaseMoreThanAcquired(t *testing.T) {
+	t.Parallel()
 	s, err := NewAdjustableSemaphore(2)
 	require.NoError(t, err)
 
@@ -142,6 +149,7 @@ func TestReleaseMoreThanAcquired(t *testing.T) {
 }
 
 func TestReleaseErrorsOnZero(t *testing.T) {
+	t.Parallel()
 	s, err := NewAdjustableSemaphore(2)
 	require.NoError(t, err)
 
@@ -151,6 +159,7 @@ func TestReleaseErrorsOnZero(t *testing.T) {
 }
 
 func TestSetLimitErrorsOnNegativeLimit(t *testing.T) {
+	t.Parallel()
 	s, err := NewAdjustableSemaphore(2)
 	require.NoError(t, err)
 
@@ -159,6 +168,7 @@ func TestSetLimitErrorsOnNegativeLimit(t *testing.T) {
 }
 
 func TestSetLimitErrorsOnZeroLimit(t *testing.T) {
+	t.Parallel()
 	s, err := NewAdjustableSemaphore(2)
 	require.NoError(t, err)
 
@@ -167,11 +177,13 @@ func TestSetLimitErrorsOnZeroLimit(t *testing.T) {
 }
 
 func TestNewAdjustableSemaphoreErrorsOnNegativeLimit(t *testing.T) {
+	t.Parallel()
 	_, err := NewAdjustableSemaphore(-1)
 	assert.Error(t, err, "NewAdjustableSemaphore should return an error for negative limit")
 }
 
 func TestNewAdjustableSemaphoreErrorsOnZeroLimit(t *testing.T) {
+	t.Parallel()
 	_, err := NewAdjustableSemaphore(0)
 	assert.Error(t, err, "NewAdjustableSemaphore should return an error for zero limit")
 }
@@ -181,6 +193,7 @@ func TestNewAdjustableSemaphoreErrorsOnZeroLimit(t *testing.T) {
 // -----------------------------------------------------------------------------
 
 func TestAcquireBlocksUntilRelease(t *testing.T) {
+	t.Parallel()
 	s, err := NewAdjustableSemaphore(1)
 	require.NoError(t, err)
 
@@ -210,6 +223,7 @@ func TestAcquireBlocksUntilRelease(t *testing.T) {
 }
 
 func TestAcquireUnblocksOnSetLimit(t *testing.T) {
+	t.Parallel()
 	s, err := NewAdjustableSemaphore(1)
 	require.NoError(t, err)
 	if err := s.Acquire(t.Context(), 1); err != nil {
@@ -237,6 +251,7 @@ func TestAcquireUnblocksOnSetLimit(t *testing.T) {
 // -----------------------------------------------------------------------------
 
 func TestAcquireRespectsContextCancel(t *testing.T) {
+	t.Parallel()
 	s, err := NewAdjustableSemaphore(1)
 	require.NoError(t, err)
 
@@ -264,6 +279,7 @@ func TestAcquireRespectsContextCancel(t *testing.T) {
 // -----------------------------------------------------------------------------
 
 func TestConcurrentStressNoDeadlockOrRace(t *testing.T) {
+	t.Parallel()
 	const (
 		gor        = 20
 		iterations = 1_000

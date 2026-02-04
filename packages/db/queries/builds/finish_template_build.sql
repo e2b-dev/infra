@@ -6,5 +6,4 @@ SET
     status = 'uploaded',
     envd_version = @envd_version
 WHERE
-    id = @build_id
-  AND env_id = @env_id;
+    id = @build_id;

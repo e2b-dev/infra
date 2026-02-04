@@ -6,12 +6,16 @@ SET updated_at  = NOW(),
     build_count = envs.build_count + 1;
 
 -- name: InvalidateUnstartedTemplateBuilds :exec
-UPDATE "public"."env_builds"
-SET status  = 'failed',
+UPDATE "public"."env_builds" eb
+SET status = 'failed',
     reason = @reason,
     updated_at = NOW(),
     finished_at = NOW()
-WHERE env_id = @template_id AND status = 'waiting';
+FROM "public"."env_build_assignments" eba
+WHERE eba.build_id = eb.id
+    AND eba.env_id = @template_id
+    AND eba.tag = ANY(@tags::text[])
+    AND eb.status = 'waiting';
 
 -- name: CreateTemplateBuild :exec
 INSERT INTO "public"."env_builds" (

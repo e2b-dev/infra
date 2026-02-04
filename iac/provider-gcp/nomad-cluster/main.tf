@@ -117,11 +117,11 @@ module "network" {
   domain_name               = var.domain_name
   additional_domains        = var.additional_domains
 
-  client_proxy_port        = var.edge_proxy_port
-  client_proxy_health_port = var.edge_api_port
+  client_proxy_port        = var.client_proxy_port
+  client_proxy_health_port = var.client_proxy_health_port
 
   api_instance_group    = google_compute_instance_group_manager.api_pool.instance_group
-  server_instance_group = google_compute_instance_group_manager.server_pool.instance_group
+  server_instance_group = google_compute_region_instance_group_manager.server_pool.instance_group
 
   nomad_port = var.nomad_port
 
@@ -154,11 +154,8 @@ module "filestore" {
 
 
 module "build_cluster" {
-  for_each = {
-    for k, v in var.build_clusters_config :
-    k => v
-  }
-  source = "./worker-cluster"
+  for_each = var.build_clusters_config
+  source   = "./worker-cluster"
 
   gcp_region                   = var.gcp_region
   gcp_zone                     = var.gcp_zone
@@ -172,10 +169,11 @@ module "build_cluster" {
   boot_disk        = each.value.boot_disk
   autoscaler       = each.value.autoscaler
 
-  cluster_name              = "${var.prefix}${var.build_cluster_name}-${split("-", each.value.machine.type)[0]}"
+  cluster_name              = "${var.prefix}${var.build_cluster_name}-${each.key}"
   image_family              = var.build_image_family
   network_name              = var.network_name
   base_hugepages_percentage = coalesce((each.value.hugepages_percentage), local.build_base_hugepages_percentage)
+  network_interface_type    = each.value.network_interface_type
 
   cluster_tag_name                         = var.cluster_tag_name
   node_pool                                = var.build_node_pool
@@ -203,6 +201,8 @@ module "build_cluster" {
 
   file_hash = local.file_hash
 
+  set_orchestrator_version_metadata = false
+
   depends_on = [
     google_storage_bucket_object.setup_config_objects["scripts/run-nomad.sh"],
     google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"]
@@ -210,11 +210,8 @@ module "build_cluster" {
 }
 
 module "client_cluster" {
-  for_each = {
-    for k, v in var.client_clusters_config :
-    k => v
-  }
-  source = "./worker-cluster"
+  for_each = var.client_clusters_config
+  source   = "./worker-cluster"
 
   gcp_region                   = var.gcp_region
   gcp_zone                     = var.gcp_zone
@@ -229,10 +226,11 @@ module "client_cluster" {
   autoscaler       = each.value.autoscaler
 
   // This is here for backwards compatibility
-  cluster_name              = each.key == "0" ? "${var.prefix}${var.client_cluster_name}" : "${var.prefix}${var.client_cluster_name}-${split("-", each.value.machine.type)[0]}"
+  cluster_name              = each.key == "default" ? "${var.prefix}${var.client_cluster_name}" : "${var.prefix}${var.client_cluster_name}-${each.key}"
   image_family              = var.client_image_family
   network_name              = var.network_name
   base_hugepages_percentage = coalesce((each.value.hugepages_percentage), local.client_base_hugepages_percentage)
+  network_interface_type    = each.value.network_interface_type
 
   cluster_tag_name                         = var.cluster_tag_name
   node_pool                                = var.orchestrator_node_pool
@@ -259,6 +257,8 @@ module "client_cluster" {
   labels      = var.labels
 
   file_hash = local.file_hash
+
+  set_orchestrator_version_metadata = true
 
   depends_on = [
     google_storage_bucket_object.setup_config_objects["scripts/run-nomad.sh"],

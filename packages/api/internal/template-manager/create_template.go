@@ -6,15 +6,18 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
-	"google.golang.org/grpc/metadata"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/e2b-dev/infra/packages/db/types"
+	"github.com/e2b-dev/infra/packages/db/pkg/types"
+	"github.com/e2b-dev/infra/packages/db/queries"
 	templatemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	ut "github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -36,6 +39,7 @@ func (e *FromTemplateError) Unwrap() error {
 func (tm *TemplateManager) CreateTemplate(
 	ctx context.Context,
 	teamID uuid.UUID,
+	teamSlug string,
 	templateID string,
 	buildID uuid.UUID,
 	kernelVersion,
@@ -66,11 +70,10 @@ func (tm *TemplateManager) CreateTemplate(
 			return
 		}
 
-		// Report build failur status on any error while creating the template
+		// Report build failure status on any error while creating the template
 		telemetry.ReportCriticalError(ctx, "build failed", e, telemetry.WithTemplateID(templateID))
 		err := tm.SetStatus(
 			ctx,
-			templateID,
 			buildID,
 			types.BuildStatusFailed,
 			&templatemanagergrpc.TemplateBuildStatusReason{
@@ -87,7 +90,7 @@ func (tm *TemplateManager) CreateTemplate(
 		return fmt.Errorf("failed to get features for firecracker version '%s': %w", firecrackerVersion, err)
 	}
 
-	cli, err := tm.GetClusterBuildClient(clusterID, nodeID)
+	client, err := tm.GetClusterBuildClient(clusterID, nodeID)
 	if err != nil {
 		return fmt.Errorf("failed to get builder: %w", err)
 	}
@@ -123,7 +126,7 @@ func (tm *TemplateManager) CreateTemplate(
 		FromImageRegistry:  imageRegistry,
 	}
 
-	err = setTemplateSource(ctx, tm, teamID, template, fromImage, fromTemplate)
+	err = setTemplateSource(ctx, tm, teamID, teamSlug, template, fromImage, fromTemplate)
 	if err != nil {
 		// If the error is related to fromTemplate, set the build status to failed with the appropriate message
 		// This is to unify the error handling with fromImage errors
@@ -134,7 +137,6 @@ func (tm *TemplateManager) CreateTemplate(
 
 		err = tm.SetStatus(
 			ctx,
-			templateID,
 			buildID,
 			types.BuildStatusFailed,
 			&templatemanagergrpc.TemplateBuildStatusReason{
@@ -149,9 +151,8 @@ func (tm *TemplateManager) CreateTemplate(
 		return nil
 	}
 
-	reqCtx := metadata.NewOutgoingContext(ctx, cli.GRPC.Metadata)
-	_, err = cli.GRPC.Client.Template.TemplateCreate(
-		reqCtx, &templatemanagergrpc.TemplateCreateRequest{
+	_, err = client.Template.TemplateCreate(
+		ctx, &templatemanagergrpc.TemplateCreateRequest{
 			Template:   template,
 			CacheScope: ut.ToPtr(teamID.String()),
 			Version:    &version,
@@ -168,7 +169,6 @@ func (tm *TemplateManager) CreateTemplate(
 	// it's possible build status job will be triggered before build cache on template manager is created and build will fail
 	err = tm.SetStatus(
 		ctx,
-		templateID,
 		buildID,
 		types.BuildStatusBuilding,
 		nil,
@@ -183,13 +183,19 @@ func (tm *TemplateManager) CreateTemplate(
 		ctx, span := tracer.Start(ctx, "template-background-build-env")
 		defer span.End()
 
+		l := logger.L().With(logger.WithBuildID(buildID.String()), logger.WithTemplateID(templateID))
+
 		err := tm.BuildStatusSync(ctx, buildID, templateID, clusterID, &nodeID)
 		if err != nil {
-			logger.L().Error(ctx, "error syncing build status", zap.Error(err))
+			l.Error(ctx, "error syncing build status", zap.Error(err))
 		}
 
+		telemetry.ReportEvent(ctx, "build status sync completed")
+
 		// Invalidate the cache
-		tm.templateCache.Invalidate(templateID)
+		invalidatedKeys := tm.templateCache.InvalidateAllTags(templateID)
+
+		telemetry.ReportEvent(ctx, "invalidated template cache", attribute.StringSlice("invalidated_keys", invalidatedKeys))
 	}(context.WithoutCancel(ctx))
 
 	return nil
@@ -278,7 +284,7 @@ func convertImageRegistry(registry *api.FromImageRegistry) (*templatemanagergrpc
 }
 
 // setTemplateSource sets the source (either fromImage or fromTemplate)
-func setTemplateSource(ctx context.Context, tm *TemplateManager, teamID uuid.UUID, template *templatemanagergrpc.TemplateConfig, fromImage *string, fromTemplate *string) error {
+func setTemplateSource(ctx context.Context, tm *TemplateManager, teamID uuid.UUID, teamSlug string, template *templatemanagergrpc.TemplateConfig, fromImage *string, fromTemplate *string) error {
 	// hasImage can be empty for v1 template builds
 	hasImage := fromImage != nil
 	hasTemplate := fromTemplate != nil && *fromTemplate != ""
@@ -290,19 +296,44 @@ func setTemplateSource(ctx context.Context, tm *TemplateManager, teamID uuid.UUI
 	case !hasImage && !hasTemplate:
 		return fmt.Errorf("must specify either fromImage or fromTemplate")
 	case hasTemplate:
-		// Look up the base template by alias to get its metadata
-		baseTemplate, err := tm.sqlcDB.GetTemplateWithBuild(ctx, *fromTemplate)
+		identifier, tag, err := id.ParseName(*fromTemplate)
+		if err != nil {
+			return &FromTemplateError{
+				err:     err,
+				message: fmt.Sprintf("invalid template reference: %s", err),
+			}
+		}
+
+		// Step 1: Resolve alias to template ID (using cache with fallback for promoted templates)
+		aliasInfo, err := tm.templateCache.ResolveAlias(ctx, identifier, teamSlug)
+		if err != nil {
+			msg := fmt.Sprintf("error resolving base template '%s'", *fromTemplate)
+			if errors.Is(err, templatecache.ErrTemplateNotFound) {
+				msg = fmt.Sprintf("base template '%s' not found", *fromTemplate)
+			}
+
+			return &FromTemplateError{
+				err:     err,
+				message: msg,
+			}
+		}
+
+		if !aliasInfo.Public && aliasInfo.TeamID != teamID {
+			return &FromTemplateError{
+				err:     nil,
+				message: fmt.Sprintf("you have no access to use '%s' as a base template", *fromTemplate),
+			}
+		}
+
+		// Step 2: Get template with build by ID
+		baseTemplate, err := tm.sqlcDB.GetTemplateWithBuildByTag(ctx, queries.GetTemplateWithBuildByTagParams{
+			TemplateID: aliasInfo.TemplateID,
+			Tag:        tag,
+		})
 		if err != nil {
 			return &FromTemplateError{
 				err:     err,
 				message: fmt.Sprintf("base template '%s' not found", *fromTemplate),
-			}
-		}
-
-		if !baseTemplate.Env.Public && baseTemplate.Env.TeamID != teamID {
-			return &FromTemplateError{
-				err:     nil,
-				message: fmt.Sprintf("you have no access to use '%s' as a base template", *fromTemplate),
 			}
 		}
 

@@ -67,7 +67,8 @@ const (
 	WaitForEnvdDurationHistogramName HistogramType = "orchestrator.sandbox.envd.init.duration"
 
 	// TCP Firewall histograms
-	TCPFirewallConnectionDurationHistogramName HistogramType = "orchestrator.tcpfirewall.connection.duration"
+	TCPFirewallConnectionDurationHistogramName    HistogramType = "orchestrator.tcpfirewall.connection.duration"
+	TCPFirewallConnectionsPerSandboxHistogramName HistogramType = "orchestrator.tcpfirewall.connections.per_sandbox"
 )
 
 const (
@@ -265,16 +266,18 @@ var histogramDesc = map[HistogramType]string{
 	BuildRootfsSizeHistogramName:     "Size of the built template rootfs in bytes",
 	WaitForEnvdDurationHistogramName: "Time taken for Envd to initialize successfully",
 
-	TCPFirewallConnectionDurationHistogramName: "Duration of TCP firewall proxied connections",
+	TCPFirewallConnectionDurationHistogramName:    "Duration of TCP firewall proxied connections",
+	TCPFirewallConnectionsPerSandboxHistogramName: "Number of active TCP firewall connections per sandbox",
 }
 
 var histogramUnits = map[HistogramType]string{
-	BuildDurationHistogramName:                 "ms",
-	BuildPhaseDurationHistogramName:            "ms",
-	BuildStepDurationHistogramName:             "ms",
-	BuildRootfsSizeHistogramName:               "{By}",
-	WaitForEnvdDurationHistogramName:           "ms",
-	TCPFirewallConnectionDurationHistogramName: "ms",
+	BuildDurationHistogramName:                    "ms",
+	BuildPhaseDurationHistogramName:               "ms",
+	BuildStepDurationHistogramName:                "ms",
+	BuildRootfsSizeHistogramName:                  "{By}",
+	WaitForEnvdDurationHistogramName:              "ms",
+	TCPFirewallConnectionDurationHistogramName:    "ms",
+	TCPFirewallConnectionsPerSandboxHistogramName: "{connection}",
 }
 
 func GetHistogram(meter metric.Meter, name HistogramType) (metric.Int64Histogram, error) {
@@ -291,15 +294,6 @@ type TimerFactory struct {
 	duration metric.Int64Histogram
 	bytes    metric.Int64Counter
 	count    metric.Int64Counter
-}
-
-func (f *TimerFactory) Begin() *Stopwatch {
-	return &Stopwatch{
-		histogram: f.duration,
-		sum:       f.bytes,
-		count:     f.count,
-		start:     time.Now(),
-	}
 }
 
 func NewTimerFactory(
@@ -332,13 +326,41 @@ func NewTimerFactory(
 	return TimerFactory{duration, bytes, count}, nil
 }
 
+func (f *TimerFactory) Begin(kv ...attribute.KeyValue) *Stopwatch {
+	return &Stopwatch{
+		histogram: f.duration,
+		sum:       f.bytes,
+		count:     f.count,
+		start:     time.Now(),
+		kv:        kv,
+	}
+}
+
 type Stopwatch struct {
 	histogram  metric.Int64Histogram
 	sum, count metric.Int64Counter
 	start      time.Time
+	kv         []attribute.KeyValue
 }
 
-func (t Stopwatch) End(ctx context.Context, total int64, kv ...attribute.KeyValue) {
+const (
+	resultAttr        = "result"
+	resultTypeSuccess = "success"
+	resultTypeFailure = "failure"
+)
+
+func (t Stopwatch) Success(ctx context.Context, total int64, kv ...attribute.KeyValue) {
+	t.end(ctx, resultTypeSuccess, total, kv...)
+}
+
+func (t Stopwatch) Failure(ctx context.Context, total int64, kv ...attribute.KeyValue) {
+	t.end(ctx, resultTypeFailure, total, kv...)
+}
+
+func (t Stopwatch) end(ctx context.Context, result string, total int64, kv ...attribute.KeyValue) {
+	kv = append(kv, attribute.KeyValue{Key: resultAttr, Value: attribute.StringValue(result)})
+	kv = append(t.kv, kv...)
+
 	amount := time.Since(t.start).Milliseconds()
 	t.histogram.Record(ctx, amount, metric.WithAttributes(kv...))
 	t.sum.Add(ctx, total, metric.WithAttributes(kv...))

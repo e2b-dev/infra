@@ -12,6 +12,7 @@ import (
 )
 
 func TestStartScriptBuilder_Build(t *testing.T) {
+	t.Parallel()
 	config, err := cfg.ParseBuilder()
 	require.NoError(t, err)
 
@@ -101,6 +102,7 @@ func TestStartScriptBuilder_Build(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			builder := NewStartScriptBuilder(config)
 
 			// Call Build function directly with the four parameters

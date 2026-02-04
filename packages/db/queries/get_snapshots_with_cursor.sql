@@ -1,18 +1,22 @@
 -- name: GetSnapshotsWithCursor :many
-SELECT COALESCE(ea.aliases, ARRAY[]::text[])::text[] AS aliases, sqlc.embed(s), sqlc.embed(eb)
+SELECT COALESCE(ea.aliases, ARRAY[]::text[])::text[] AS aliases, COALESCE(ea.names, ARRAY[]::text[])::text[] AS names, sqlc.embed(s), sqlc.embed(eb)
 FROM "public"."snapshots" s
 LEFT JOIN LATERAL (
-    SELECT ARRAY_AGG(alias ORDER BY alias) AS aliases
+    SELECT 
+        ARRAY_AGG(alias ORDER BY alias) AS aliases,
+        ARRAY_AGG(CASE WHEN namespace IS NOT NULL THEN namespace || '/' || alias ELSE alias END ORDER BY alias) AS names
     FROM "public"."env_aliases"
     WHERE env_id = s.base_env_id
 ) ea ON TRUE
 JOIN LATERAL (
     SELECT eb.*
-    FROM "public"."env_builds" eb
+    FROM "public"."env_build_assignments" eba
+    JOIN "public"."env_builds" eb ON eb.id = eba.build_id
     WHERE
-        eb.env_id = s.env_id
+        eba.env_id = s.env_id
+        AND eba.tag = 'default'
         AND eb.status = 'success'
-    ORDER BY eb.created_at DESC
+    ORDER BY eba.created_at DESC
     LIMIT 1
 ) eb ON TRUE
 WHERE

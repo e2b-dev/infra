@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -15,9 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildlogger"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/oci/auth"
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
@@ -38,12 +35,6 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		attribute.Int64("env.vcpu_count", int64(cfg.GetVCpuCount())),
 		attribute.Bool("env.huge_pages", cfg.GetHugePages()),
 	)
-
-	if s.info.GetStatus() != orchestrator.ServiceInfoStatus_Healthy {
-		s.logger.Error(ctx, "Requesting template creation while server not healthy is not possible", logger.WithTemplateID(cfg.GetTemplateID()))
-
-		return nil, fmt.Errorf("server is draining")
-	}
 
 	metadata := storage.TemplateFiles{
 		BuildID: cfg.GetBuildID(),
@@ -105,8 +96,10 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	)
 
 	s.wg.Add(1)
+	s.activeBuilds.Add(1)
 	go func(ctx context.Context) {
 		defer s.wg.Done()
+		defer s.activeBuilds.Add(-1)
 
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
@@ -121,7 +114,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		defer func() {
 			if r := recover(); r != nil {
 				telemetry.ReportCriticalError(ctx, "recovered from panic in template build handler", nil, attribute.String("panic", fmt.Sprintf("%v", r)), telemetry.WithTemplateID(cfg.GetTemplateID()), telemetry.WithBuildID(cfg.GetBuildID()))
-				buildInfo.SetFail(builderrors.UnwrapUserError(errors.New("fatal error occurred, please contact us")))
+				buildInfo.SetFail(builderrors.UnwrapUserError(nil))
 			}
 		}()
 
@@ -143,9 +136,19 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		res, err := s.builder.Build(ctx, metadata, template, core)
 		_ = core.Sync()
 		if err != nil {
-			telemetry.ReportCriticalError(ctx, "error while building template", err, telemetry.WithTemplateID(cfg.GetTemplateID()), telemetry.WithBuildID(cfg.GetBuildID()))
+			userError := builderrors.UnwrapUserError(err)
 
-			buildInfo.SetFail(builderrors.UnwrapUserError(err))
+			attrs := []attribute.KeyValue{
+				telemetry.WithTemplateID(cfg.GetTemplateID()),
+				telemetry.WithBuildID(cfg.GetBuildID()),
+			}
+			if userError.GetMessage() == builderrors.InternalErrorMessage {
+				telemetry.ReportCriticalError(ctx, "error while building template", err, attrs...)
+			} else {
+				telemetry.ReportError(ctx, "error while building template", err, attrs...)
+			}
+
+			buildInfo.SetFail(userError)
 		} else {
 			buildInfo.SetSuccess(&templatemanager.TemplateBuildMetadata{
 				RootfsSizeKey:  int32(res.RootfsSizeMB),

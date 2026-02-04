@@ -15,8 +15,9 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	apiutils "github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
-	"github.com/e2b-dev/infra/packages/db/types"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
@@ -91,6 +92,9 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		telemetry.WithTemplateID(templateID),
 	)
 
+	// setup launch darkly context
+	ctx = featureflags.AddToContext(ctx, featureflags.TemplateContext(templateID))
+
 	// Check and cancel concurrent builds
 	if err := a.CheckAndCancelConcurrentBuilds(ctx, templateID, buildUUID, apiutils.WithClusterFallback(team.ClusterID)); err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error during template build request")
@@ -161,6 +165,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 	err = a.templateManager.CreateTemplate(
 		ctx,
 		team.ID,
+		team.Slug,
 		templateID,
 		buildUUID,
 		build.KernelVersion,

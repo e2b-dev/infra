@@ -4,7 +4,7 @@ on: [workflow_call]
 
 jobs:
   integration_tests:
-    runs-on: infra-integration-tests
+    runs-on: infra-tests
     timeout-minutes: 30
     permissions:
       contents: read
@@ -34,6 +34,35 @@ jobs:
         run: |
           # Run the integration tests
           make test-integration
+
+      - name: Check for Data Races in Service Logs
+        if: always()
+        run: |
+          echo "Checking service logs for data races..."
+          RACE_FOUND=0
+
+          for log_file in ~/logs/*.log; do
+            if [ -f "$log_file" ]; then
+              if grep -q "WARNING: DATA RACE" "$log_file"; then
+                echo "::error::Data race detected in $(basename "$log_file")"
+                echo "=========================================="
+                echo "DATA RACES IN: $log_file"
+                echo "=========================================="
+                # Extract and print all data race blocks
+                grep -A 30 "WARNING: DATA RACE" "$log_file" | head -200
+                echo ""
+                RACE_FOUND=1
+              fi
+            fi
+          done
+
+          if [ "$RACE_FOUND" -eq 1 ]; then
+            echo "::error::Data races were detected in service logs. See above for details."
+            exit 1
+          else
+            echo "No data races detected in service logs."
+          fi
+        shell: bash
 
       - name: Upload Test Results
         if: always()

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -12,18 +13,18 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 	"golang.org/x/net/idna"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
+	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	typesteam "github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/e2b-dev/infra/packages/db/types"
+	"github.com/e2b-dev/infra/packages/db/pkg/types"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -38,15 +39,6 @@ const (
 	// Network validation error messages
 	ErrMsgDomainsRequireBlockAll = "When specifying allowed domains in allow out, you must include 'ALL_TRAFFIC' in deny out to block all other traffic."
 )
-
-// mostUsedTemplates is a map of the most used template aliases.
-// It is used for monitoring and to reduce metric cardinality.
-var mostUsedTemplates = map[string]struct{}{
-	"base":                  {},
-	"code-interpreter-v1":   {},
-	"code-interpreter-beta": {},
-	"desktop":               {},
-}
 
 func (a *APIStore) PostSandboxes(c *gin.Context) {
 	ctx := c.Request.Context()
@@ -71,35 +63,37 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 	telemetry.ReportEvent(ctx, "Parsed body")
 
-	cleanedAliasOrEnvID, err := id.CleanTemplateID(body.TemplateID)
+	identifier, tag, err := id.ParseName(body.TemplateID)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid environment ID: %s", err))
-
-		telemetry.ReportCriticalError(ctx, "error when cleaning env ID", err)
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid template reference: %s", err))
+		telemetry.ReportError(ctx, "invalid template reference", err)
 
 		return
 	}
 
-	telemetry.ReportEvent(ctx, "Cleaned template ID")
-
-	_, templateSpan := tracer.Start(ctx, "get-template")
-	defer templateSpan.End()
-
-	// Check if team has access to the environment
 	clusterID := utils.WithClusterFallback(teamInfo.Team.ClusterID)
-	env, build, checkErr := a.templateCache.Get(ctx, cleanedAliasOrEnvID, teamInfo.Team.ID, clusterID, true)
-	if checkErr != nil {
-		telemetry.ReportCriticalError(ctx, "error when getting template", checkErr.Err)
-		a.sendAPIStoreError(c, checkErr.Code, checkErr.ClientMsg)
+	aliasInfo, err := a.templateCache.ResolveAlias(ctx, identifier, teamInfo.Team.Slug)
+	if err != nil {
+		apiErr := templatecache.ErrorToAPIError(err, identifier)
+		telemetry.ReportCriticalError(ctx, "error when resolving template alias", apiErr.Err, attribute.String("identifier", identifier))
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return
 	}
-	templateSpan.End()
+
+	env, build, err := a.templateCache.Get(ctx, aliasInfo.TemplateID, tag, teamInfo.Team.ID, clusterID)
+	if err != nil {
+		apiErr := templatecache.ErrorToAPIError(err, aliasInfo.TemplateID)
+		telemetry.ReportCriticalError(ctx, "error when getting template", apiErr.Err, telemetry.WithTemplateID(aliasInfo.TemplateID))
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+
+		return
+	}
 
 	telemetry.ReportEvent(ctx, "Checked team access")
 
 	c.Set("envID", env.TemplateID)
-	setTemplateNameMetric(c, env.Aliases)
+	setTemplateNameMetric(ctx, c, a.featureFlags, env.TemplateID, env.Names)
 
 	sandboxID := InstanceIDPrefix + id.Generate()
 
@@ -215,7 +209,6 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		mcp,
 	)
 	if createErr != nil {
-		logger.L().Error(ctx, "Failed to create sandbox", zap.Error(createErr.Err))
 		a.sendAPIStoreError(c, createErr.Code, createErr.ClientMsg)
 
 		return
@@ -262,16 +255,26 @@ func (a *APIStore) getEnvdAccessToken(envdVersion *string, sandboxID string) (st
 	return key, nil
 }
 
-func setTemplateNameMetric(c *gin.Context, aliases []string) {
-	for _, alias := range aliases {
-		if _, exists := mostUsedTemplates[alias]; exists {
-			c.Set(metricTemplateAlias, alias)
+func setTemplateNameMetric(ctx context.Context, c *gin.Context, ff *featureflags.Client, templateID string, names []string) {
+	trackedTemplates := featureflags.GetTrackedTemplatesSet(ctx, ff)
+
+	// Check template ID first
+	if _, exists := trackedTemplates[templateID]; exists {
+		c.Set(metricTemplateAlias, templateID)
+
+		return
+	}
+
+	// Then check names (namespace/alias format when namespaced)
+	for _, name := range names {
+		if _, exists := trackedTemplates[name]; exists {
+			c.Set(metricTemplateAlias, name)
 
 			return
 		}
 	}
 
-	// Fallback to 'other' if no match of mostUsedTemplates found
+	// Fallback to 'other' if no match of tracked templates found
 	c.Set(metricTemplateAlias, "other")
 }
 

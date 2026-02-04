@@ -4,33 +4,22 @@ description: |
   necessary for each job.
 
 inputs:
-  job_key:
-    description: A unique key that describes your job.
+  cache-dependency-paths:
+    description: Paths to the package directory
     required: true
+    default: |
+      go.work
+      packages/*/go.mod
+      packages/*/go.sum
+      tests/integration/go.mod
+      tests/integration/go.sum
 
 runs:
   using: "composite"
   steps:
-    - name: Go Build Cache
-      uses: actions/cache@v4
-      id: go-build-cache
-      with:
-        fail-on-cache-miss: false
-        path: /home/runner/.cache/go-build
-        key: |
-          ${{ runner.os }}-go-build-${{ inputs.job_key }}-${{ hashFiles(
-            'go.work',
-            'packages/*/go.mod',
-            'packages/*/go.mod.sum',
-            'tests/*/go.mod',
-            'tests/*/go.mod.sum'
-          ) }}
-        restore-keys: |
-          ${{ runner.os }}-go-build-${{ inputs.job_key }}-
-          ${{ runner.os }}-go-build-
-
     - name: Set up Go
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v6
       with:
-        cache: false
         go-version-file: go.work
+        cache-dependency-path: |
+          ${{ inputs.cache-dependency-paths }}

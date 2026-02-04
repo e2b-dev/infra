@@ -313,12 +313,47 @@ func (c *Cache) FileSize() (int64, error) {
 	return stat.Blocks * fsStat.Bsize, nil
 }
 
-func (c *Cache) address(off int64) *byte {
+func (c *Cache) address(off int64) (*byte, error) {
 	if c.mmap == nil {
-		return nil
+		return nil, nil
 	}
 
-	return &(*c.mmap)[off]
+	if off >= c.size {
+		return nil, fmt.Errorf("offset %d is out of bounds", off)
+	}
+
+	return &(*c.mmap)[off], nil
+}
+
+// addressBytes returns a slice of the mmap and a function to release the read lock which blocks the cache from being closed.
+func (c *Cache) addressBytes(off, length int64) ([]byte, func(), error) {
+	c.mu.RLock()
+
+	if c.mmap == nil {
+		c.mu.RUnlock()
+
+		return nil, func() {}, nil
+	}
+
+	if c.isClosed() {
+		c.mu.RUnlock()
+
+		return nil, func() {}, NewErrCacheClosed(c.filePath)
+	}
+
+	if off >= c.size {
+		c.mu.RUnlock()
+
+		return nil, func() {}, fmt.Errorf("offset %d is out of bounds", off)
+	}
+
+	releaseCacheCloseLock := func() {
+		c.mu.RUnlock()
+	}
+
+	end := min(off+length, c.size)
+
+	return (*c.mmap)[off:end], releaseCacheCloseLock, nil
 }
 
 func (c *Cache) BlockSize() int64 {
@@ -360,8 +395,12 @@ func (c *Cache) copyProcessMemory(
 	pid int,
 	rs []Range,
 ) error {
+	// We need to align the maximum read/write count to the block size, so we can use mark the offsets as dirty correctly.
+	// Because the MAX_RW_COUNT is not aligned to arbitrary block sizes, we need to align it to the block size we use for the cache.
+	alignedRwCount := getAlignedMaxRwCount(c.blockSize)
+
 	// We need to split the ranges because the Kernel does not support reading/writing more than MAX_RW_COUNT bytes in a single operation.
-	ranges := splitOversizedRanges(rs, MAX_RW_COUNT)
+	ranges := splitOversizedRanges(rs, alignedRwCount)
 
 	var offset int64
 	var rangeIdx int64
@@ -380,7 +419,7 @@ func (c *Cache) copyProcessMemory(
 				break
 			}
 
-			if segmentSize+r.Size > MAX_RW_COUNT {
+			if segmentSize+r.Size > alignedRwCount {
 				break
 			}
 
@@ -396,9 +435,14 @@ func (c *Cache) copyProcessMemory(
 			break
 		}
 
+		address, err := c.address(offset)
+		if err != nil {
+			return fmt.Errorf("failed to get address: %w", err)
+		}
+
 		local := []unix.Iovec{
 			{
-				Base: c.address(offset),
+				Base: address,
 				// We could keep this as full cache length, but we might as well be exact here.
 				Len: uint64(segmentSize),
 			},

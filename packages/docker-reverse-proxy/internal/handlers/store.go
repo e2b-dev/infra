@@ -10,19 +10,30 @@ import (
 	"net/url"
 
 	"github.com/e2b-dev/infra/packages/db/client"
+	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
+	"github.com/e2b-dev/infra/packages/db/pkg/pool"
 	"github.com/e2b-dev/infra/packages/docker-reverse-proxy/internal/cache"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type APIStore struct {
 	db        *client.Client
+	authDb    *authdb.Client
 	AuthCache *cache.AuthCache
 	proxy     *httputil.ReverseProxy
 }
 
 func NewStore(ctx context.Context) *APIStore {
 	authCache := cache.New()
-	database, err := client.NewClient(ctx, client.WithMaxConnections(3))
+
+	databaseURL := utils.RequiredEnv("POSTGRES_CONNECTION_STRING", "Postgres connection string")
+
+	database, err := client.NewClient(ctx, databaseURL, pool.WithMaxConnections(3))
+	if err != nil {
+		log.Fatal(err)
+	}
+	authDatabase, err := authdb.NewClient(ctx, databaseURL, databaseURL, pool.WithMaxConnections(3))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -47,6 +58,7 @@ func NewStore(ctx context.Context) *APIStore {
 
 	return &APIStore{
 		db:        database,
+		authDb:    authDatabase,
 		AuthCache: authCache,
 		proxy:     proxy,
 	}

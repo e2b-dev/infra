@@ -36,6 +36,7 @@ function print_usage {
   echo -e "  --use-sudo\t\tIf set, run the Nomad agent with sudo. By default, sudo is only used if --client is set."
   echo -e "  --skip-nomad-config\tIf this flag is set, don't generate a Nomad configuration file. Optional. Default is false."
   echo -e "  --api\t\tIf set, run the Nomad agent dedicated to API. Optional. Default is false."
+  echo -e "  --orchestrator-job-version\tThe orchestrator job version to set as node metadata. Optional."
   echo
   echo "Example:"
   echo
@@ -166,6 +167,7 @@ function generate_nomad_config {
   local -r user="$5"
   local -r consul_token="$6"
   local -r node_pool="$7"
+  local -r orchestrator_job_version="$8"
   local -r config_path="$config_dir/$NOMAD_CONFIG_FILE"
 
   local instance_name=""
@@ -203,6 +205,7 @@ client {
   meta {
     "node_pool" = "$node_pool"
     ${job_constraint:+"\"job_constraint\"" = "\"$job_constraint\""}
+    ${orchestrator_job_version:+"\"orchestrator_job_version\"" = "\"$orchestrator_job_version\""}
   }
   max_kill_timeout = "24h"
 }
@@ -387,6 +390,10 @@ function run {
       node_pool="$2"
       shift
       ;;
+    --orchestrator-job-version)
+      orchestrator_job_version="$2"
+      shift
+      ;;
     --cluster-tag-value)
       assert_not_empty "$key" "$2"
       cluster_tag_value="$2"
@@ -435,7 +442,7 @@ function run {
 
   user=$(get_owner_of_path "$config_dir")
 
-  generate_nomad_config "$server" "$client" "$num_servers" "$config_dir" "$user" "$consul_token" "$node_pool"
+  generate_nomad_config "$server" "$client" "$num_servers" "$config_dir" "$user" "$consul_token" "$node_pool" "$orchestrator_job_version"
   generate_supervisor_config "$SUPERVISOR_CONFIG_PATH" "$config_dir" "$data_dir" "$bin_dir" "$log_dir" "$user" "$use_sudo"
   start_nomad
 

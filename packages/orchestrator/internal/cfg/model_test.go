@@ -8,7 +8,7 @@ import (
 )
 
 func TestParse(t *testing.T) {
-	t.Run("embedded structs get defaults", func(t *testing.T) {
+	t.Run("embedded structs get defaults", func(t *testing.T) { //nolint:paralleltest // siblings set env, which may cause issues
 		config, err := Parse()
 		require.NoError(t, err)
 
@@ -24,7 +24,7 @@ func TestParse(t *testing.T) {
 		assert.Equal(t, "/fc-vm2", config.SandboxDir)
 	})
 
-	t.Run("network config local flag defaults to false", func(t *testing.T) {
+	t.Run("network config local flag defaults to false", func(t *testing.T) { //nolint:paralleltest // siblings set env, which may cause issues
 		config, err := Parse()
 		require.NoError(t, err)
 
@@ -49,7 +49,7 @@ func TestParse(t *testing.T) {
 		assert.Equal(t, []string{"service1", "service2"}, config.Services)
 	})
 
-	t.Run("env defaults get defaults before expansion", func(t *testing.T) {
+	t.Run("env defaults get defaults before expansion", func(t *testing.T) { //nolint:paralleltest // siblings set env, which may cause issues
 		config, err := Parse()
 		require.NoError(t, err)
 		assert.Equal(t, "/orchestrator/build", config.DefaultCacheDir)
@@ -60,5 +60,6 @@ func TestParse(t *testing.T) {
 		config, err := Parse()
 		require.NoError(t, err)
 		assert.Equal(t, "/a/b/c/build", config.DefaultCacheDir)
+		assert.Equal(t, "/a/b/c/sandbox", config.StorageConfig.SandboxCacheDir)
 	})
 }

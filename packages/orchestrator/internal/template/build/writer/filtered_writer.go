@@ -43,7 +43,7 @@ func (w *PrefixFilteredWriter) writeLine(line []byte) (remaining []byte) {
 	if w.buff.Len() == 0 {
 		w.log(line)
 
-		return
+		return remaining
 	}
 
 	w.buff.Write(line)

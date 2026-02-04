@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/deepmap/oapi-codegen/HEAD/configuration-schema.json
+
+package: envd
+output: envd.gen.go
+generate:
+  models: true
+  chi-server: false
+  client: false
+output-options:
+  prefer-skip-optional-pointer: true
+  prefer-skip-optional-pointer-on-container-types: true

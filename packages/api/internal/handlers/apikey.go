@@ -14,7 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/team"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -43,7 +43,7 @@ func (a *APIStore) PatchApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 	teamID := a.GetTeamInfo(c).Team.ID
 
 	now := time.Now()
-	_, err = a.sqlcDB.UpdateTeamApiKey(ctx, queries.UpdateTeamApiKeyParams{
+	_, err = a.authDB.Write.UpdateTeamApiKey(ctx, authqueries.UpdateTeamApiKeyParams{
 		Name:      body.Name,
 		UpdatedAt: &now,
 		ID:        apiKeyIDParsed,
@@ -69,7 +69,7 @@ func (a *APIStore) GetApiKeys(c *gin.Context) {
 
 	teamID := a.GetTeamInfo(c).Team.ID
 
-	apiKeysDB, err := a.sqlcDB.GetTeamAPIKeysWithCreator(ctx, teamID)
+	apiKeysDB, err := a.authDB.Read.GetTeamAPIKeysWithCreator(ctx, teamID)
 	if err != nil {
 		logger.L().Warn(ctx, "error when getting team API keys", zap.Error(err))
 		c.String(http.StatusInternalServerError, "Error when getting team API keys")
@@ -118,7 +118,7 @@ func (a *APIStore) DeleteApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 
 	teamID := a.GetTeamInfo(c).Team.ID
 
-	ids, err := a.sqlcDB.DeleteTeamAPIKey(ctx, queries.DeleteTeamAPIKeyParams{
+	ids, err := a.authDB.Write.DeleteTeamAPIKey(ctx, authqueries.DeleteTeamAPIKeyParams{
 		ID:     apiKeyIDParsed,
 		TeamID: teamID,
 	})
@@ -153,7 +153,7 @@ func (a *APIStore) PostApiKeys(c *gin.Context) {
 		return
 	}
 
-	apiKey, err := team.CreateAPIKey(ctx, a.sqlcDB, teamID, userID, body.Name)
+	apiKey, err := team.CreateAPIKey(ctx, a.authDB, teamID, userID, body.Name)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when creating team API key: %s", err))
 
@@ -162,7 +162,7 @@ func (a *APIStore) PostApiKeys(c *gin.Context) {
 		return
 	}
 
-	user, err := a.sqlcDB.GetUser(ctx, userID)
+	user, err := a.authDB.Read.GetUser(ctx, userID)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting user: %s", err))
 

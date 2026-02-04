@@ -57,7 +57,7 @@ variable "build_image_family" {
   default = "e2b-orch"
 }
 
-variable "edge_api_port" {
+variable "client_proxy_health_port" {
   type = object({
     name = string
     port = number
@@ -65,7 +65,7 @@ variable "edge_api_port" {
   })
 }
 
-variable "edge_proxy_port" {
+variable "client_proxy_port" {
   type = object({
     name = string
     port = number
@@ -107,8 +107,8 @@ variable "client_cluster_name" {
 }
 
 variable "client_clusters_config" {
-  description = "List of client cluster configuration object"
-  type = list(object({
+  description = "Client cluster configurations"
+  type = map(object({
     cluster_size = number
     autoscaler = optional(object({
       size_max      = optional(number)
@@ -128,7 +128,8 @@ variable "client_clusters_config" {
       size_gb   = number
       count     = number
     })
-    hugepages_percentage = optional(number)
+    hugepages_percentage   = optional(number)
+    network_interface_type = optional(string)
   }))
 }
 
@@ -138,8 +139,8 @@ variable "build_cluster_name" {
 }
 
 variable "build_clusters_config" {
-  description = "Build cluster configuration object"
-  type = list(object({
+  description = "Build cluster configurations"
+  type = map(object({
     cluster_size = number
     autoscaler = optional(object({
       size_max      = optional(number)
@@ -159,7 +160,8 @@ variable "build_clusters_config" {
       size_gb   = number
       count     = number
     })
-    hugepages_percentage = optional(number)
+    hugepages_percentage   = optional(number)
+    network_interface_type = optional(string)
   }))
 }
 
@@ -345,6 +347,11 @@ variable "api_boot_disk_type" {
 variable "server_boot_disk_type" {
   description = "The GCE boot disk type for the control server machines."
   type        = string
+}
+
+variable "server_boot_disk_size_gb" {
+  description = "The GCE boot disk size in GB for the control server machines."
+  type        = number
 }
 
 variable "clickhouse_boot_disk_type" {

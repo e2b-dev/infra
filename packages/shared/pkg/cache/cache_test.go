@@ -14,6 +14,7 @@ import (
 )
 
 func TestNewCache(t *testing.T) {
+	t.Parallel()
 	config := Config[string, string]{
 		TTL:             5 * time.Minute,
 		RefreshInterval: 1 * time.Minute,
@@ -28,6 +29,7 @@ func TestNewCache(t *testing.T) {
 }
 
 func TestNewCache_DefaultRefreshTimeout(t *testing.T) {
+	t.Parallel()
 	config := Config[string, string]{
 		TTL:             5 * time.Minute,
 		RefreshInterval: 1 * time.Minute,
@@ -39,6 +41,7 @@ func TestNewCache_DefaultRefreshTimeout(t *testing.T) {
 }
 
 func TestCache_SetAndGet(t *testing.T) {
+	t.Parallel()
 	config := Config[string, string]{
 		TTL:             5 * time.Minute,
 		RefreshInterval: 1 * time.Minute,
@@ -46,6 +49,7 @@ func TestCache_SetAndGet(t *testing.T) {
 	cache := NewCache[string, string](config)
 
 	t.Run("set and get value", func(t *testing.T) {
+		t.Parallel()
 		cache.Set("key1", "value1")
 		value, found := cache.Get("key1")
 		assert.True(t, found)
@@ -53,12 +57,14 @@ func TestCache_SetAndGet(t *testing.T) {
 	})
 
 	t.Run("get non-existent key", func(t *testing.T) {
+		t.Parallel()
 		value, found := cache.Get("non-existent")
 		assert.False(t, found)
 		assert.Empty(t, value) // zero value for string
 	})
 
 	t.Run("overwrite existing value", func(t *testing.T) {
+		t.Parallel()
 		cache.Set("key2", "original")
 		cache.Set("key2", "updated")
 		value, found := cache.Get("key2")
@@ -68,6 +74,7 @@ func TestCache_SetAndGet(t *testing.T) {
 }
 
 func TestCache_SetWithTTL(t *testing.T) {
+	t.Parallel()
 	config := Config[string, string]{
 		TTL: 100 * time.Millisecond,
 	}
@@ -89,6 +96,7 @@ func TestCache_SetWithTTL(t *testing.T) {
 }
 
 func TestCache_Delete(t *testing.T) {
+	t.Parallel()
 	config := Config[string, string]{
 		TTL:             5 * time.Minute,
 		RefreshInterval: 1 * time.Minute,
@@ -111,6 +119,7 @@ func TestCache_Delete(t *testing.T) {
 }
 
 func TestCache_GetOrSet_CacheMiss(t *testing.T) {
+	t.Parallel()
 	config := Config[string, string]{
 		TTL:             5 * time.Minute,
 		RefreshInterval: 1 * time.Minute,
@@ -137,6 +146,7 @@ func TestCache_GetOrSet_CacheMiss(t *testing.T) {
 }
 
 func TestCache_GetOrSet_CacheHit(t *testing.T) {
+	t.Parallel()
 	config := Config[string, string]{
 		TTL:             5 * time.Minute,
 		RefreshInterval: 0, // No refresh
@@ -164,6 +174,7 @@ func TestCache_GetOrSet_CacheHit(t *testing.T) {
 }
 
 func TestCache_GetOrSet_CallbackError(t *testing.T) {
+	t.Parallel()
 	config := Config[string, string]{
 		TTL:             5 * time.Minute,
 		RefreshInterval: 1 * time.Minute,
@@ -186,6 +197,7 @@ func TestCache_GetOrSet_CallbackError(t *testing.T) {
 }
 
 func TestCache_GetOrSet_WithRefreshInterval(t *testing.T) {
+	t.Parallel()
 	config := Config[string, int]{
 		TTL:             5 * time.Second,
 		RefreshInterval: 50 * time.Millisecond,
@@ -231,6 +243,7 @@ func TestCache_GetOrSet_WithRefreshInterval(t *testing.T) {
 }
 
 func TestCache_GetOrSet_RefreshOnlyOnce(t *testing.T) {
+	t.Parallel()
 	config := Config[string, int]{
 		TTL:             5 * time.Second,
 		RefreshInterval: 50 * time.Millisecond,
@@ -285,6 +298,7 @@ func TestCache_GetOrSet_RefreshOnlyOnce(t *testing.T) {
 }
 
 func TestCache_Refresh_DeletesOnError(t *testing.T) {
+	t.Parallel()
 	config := Config[string, string]{
 		TTL:             5 * time.Second,
 		RefreshInterval: 50 * time.Millisecond,
@@ -331,6 +345,7 @@ func TestCache_Refresh_DeletesOnError(t *testing.T) {
 }
 
 func TestCache_ContextCancellation(t *testing.T) {
+	t.Parallel()
 	config := Config[string, string]{
 		TTL:             5 * time.Minute,
 		RefreshInterval: 1 * time.Minute,
@@ -355,12 +370,14 @@ func TestCache_ContextCancellation(t *testing.T) {
 }
 
 func TestCache_ExtractKeyFunc(t *testing.T) {
+	t.Parallel()
 	type User struct {
 		ID   string
 		Name string
 	}
 
 	t.Run("extract key from value on cache miss", func(t *testing.T) {
+		t.Parallel()
 		config := Config[string, User]{
 			TTL:             5 * time.Minute,
 			RefreshInterval: 0,
@@ -391,6 +408,7 @@ func TestCache_ExtractKeyFunc(t *testing.T) {
 	})
 
 	t.Run("extract key without ExtractKeyFunc", func(t *testing.T) {
+		t.Parallel()
 		config := Config[string, User]{
 			TTL:             5 * time.Minute,
 			RefreshInterval: 0,

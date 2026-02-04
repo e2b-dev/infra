@@ -13,6 +13,7 @@ import (
 )
 
 func TestTeamMetricsMaxConcurrentSandboxes(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 
 	// Create multiple sandboxes to generate team metrics
@@ -53,6 +54,7 @@ func TestTeamMetricsMaxConcurrentSandboxes(t *testing.T) {
 }
 
 func TestTeamMetricsMaxSandboxStartRate(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 
 	// Create sandboxes to generate start rate metrics
@@ -93,6 +95,7 @@ func TestTeamMetricsMaxSandboxStartRate(t *testing.T) {
 }
 
 func TestTeamMetricsMaxEmpty(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 
 	db := setup.GetTestDBClient(t)
@@ -112,6 +115,7 @@ func TestTeamMetricsMaxEmpty(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(string(test.metric), func(t *testing.T) {
+			t.Parallel()
 			// Test getting metrics for a time range where no sandboxes existed
 			response, err := c.GetTeamsTeamIDMetricsMaxWithResponse(
 				t.Context(),

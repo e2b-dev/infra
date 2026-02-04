@@ -1,16 +1,49 @@
-job "template-manager-system" {
-  type = "system"
+job "template-manager" {
+  type = "service"
   node_pool  = "${node_pool}"
-  priority = 70
-
-# https://developer.hashicorp.com/nomad/docs/job-specification/update
-%{ if update_stanza }
-  update {
-    max_parallel      = 1    # Update only 1 node at a time
-  }
-%{ endif }
+  priority = 75
 
   group "template-manager" {
+    # Count is fetched from current Nomad state to preserve autoscaler-managed value
+    count = ${current_count}
+
+    # Ensure one allocation per node (like a system job)
+    constraint {
+      operator = "distinct_hosts"
+      value    = "true"
+    }
+
+%{ if update_stanza }
+    # Scaling policy to match node count in the pool
+    # Uses the nomad-nodepool APM plugin
+    scaling {
+      enabled = true
+      min     = 2
+      max     = 10000  # Effectively unlimited
+
+      policy {
+        evaluation_interval = "10s"
+        cooldown            = "2m"
+
+        check "match_node_count" {
+          source = "nomad-nodepool-apm"
+          query  = "${node_pool}"
+
+          strategy "pass-through" {}
+        }
+      }
+    }
+
+    # Rolling update configuration for service jobs
+    # https://developer.hashicorp.com/nomad/docs/job-specification/update
+    update {
+      max_parallel      = 1
+      min_healthy_time  = "10s"
+      healthy_deadline  = "2m"
+      progress_deadline = "80m"  # Must be > healthy_deadline and > kill_timeout
+      auto_revert       = false
+    }
+%{ endif }
 
     // Try to restart the task indefinitely
     // Tries to restart every 5 seconds
@@ -21,6 +54,8 @@ job "template-manager-system" {
       mode             = "delay"
     }
 
+    // For future as we can remove static and allow multiple instances on one machine if needed.
+    // Also network allocation is used by Nomad service discovery on API and edge API to find jobs and register them.
     network {
       port "template-manager" {
         static = "${port}"
@@ -67,6 +102,7 @@ job "template-manager-system" {
         API_SECRET                    = "${api_secret}"
         OTEL_TRACING_PRINT            = "${otel_tracing_print}"
         ENVIRONMENT                   = "${environment}"
+        DOMAIN_NAME                   = "${domain_name}"
         TEMPLATE_BUCKET_NAME          = "${template_bucket_name}"
         BUILD_CACHE_BUCKET_NAME       = "${build_cache_bucket_name}"
         OTEL_COLLECTOR_GRPC_ENDPOINT  = "${otel_collector_grpc_endpoint}"

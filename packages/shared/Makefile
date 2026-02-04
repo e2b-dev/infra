@@ -1,12 +1,9 @@
 ENV := $(shell cat ../../.last_used_env || echo "not-set")
 -include ../../.env.${ENV}
 
-.PHONY: generate-fc
-generate-fc:
-	cd pkg/fc && go tool swagger generate client -f firecracker.yml -A firecracker
-
 .PHONE: generate
-generate: generate-fc
+generate:
+	go generate ./...
 
 .PHONY: build-base-template
 build-base-template:
@@ -21,14 +18,9 @@ build-base-template:
     	npx tsx build.prod.ts
 	@echo "Done"
 
-.PHONY: seed-db
-seed-db:
-	@echo "Seeding database..."
-	@POSTGRES_CONNECTION_STRING=$(POSTGRES_CONNECTION_STRING) go run ./scripts/seed/postgres/seed-db.go
-
 .PHONY: prep-cluster
 prep-cluster:
-	$(MAKE) seed-db
+	$(MAKE) -C ../db seed-db
 	$(MAKE) build-base-template
 
 .PHONY: test

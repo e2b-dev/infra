@@ -25,13 +25,6 @@ func NewTracker(blockSize int64) *Tracker {
 	}
 }
 
-func NewTrackerFromBitset(b *bitset.BitSet, blockSize int64) *Tracker {
-	return &Tracker{
-		b:         b,
-		blockSize: blockSize,
-	}
-}
-
 func (t *Tracker) Has(off int64) bool {
 	t.mu.RLock()
 	defer t.mu.RUnlock()

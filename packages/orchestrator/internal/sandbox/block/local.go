@@ -64,7 +64,7 @@ func (d *Local) ReadAt(ctx context.Context, p []byte, off int64) (int, error) {
 	return copy(p, slice), nil
 }
 
-func (d *Local) Size() (int64, error) {
+func (d *Local) Size(_ context.Context) (int64, error) {
 	return int64(d.header.Metadata.Size), nil
 }
 

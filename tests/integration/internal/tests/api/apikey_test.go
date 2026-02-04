@@ -19,6 +19,7 @@ import (
 )
 
 func TestCreateAPIKey(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
@@ -37,6 +38,7 @@ func TestCreateAPIKey(t *testing.T) {
 }
 
 func TestCreateAPIKeyForeignTeam(t *testing.T) {
+	t.Parallel()
 	ctx := t.Context()
 
 	db := setup.GetTestDBClient(t)
@@ -54,6 +56,7 @@ func TestCreateAPIKeyForeignTeam(t *testing.T) {
 }
 
 func TestCreateAPIKeyForeignTeamWithCache(t *testing.T) {
+	t.Parallel()
 	ctx := t.Context()
 
 	db := setup.GetTestDBClient(t)
@@ -75,12 +78,14 @@ func TestCreateAPIKeyForeignTeamWithCache(t *testing.T) {
 }
 
 func TestDeleteAPIKey(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
+	t.Cleanup(cancel)
 
 	c := setup.GetAPIClient()
 
 	t.Run("succeeds", func(t *testing.T) {
+		t.Parallel()
 		// Create the API key
 		respC, err := c.PostApiKeysWithResponse(ctx, api.PostApiKeysJSONRequestBody{
 			Name: "test",
@@ -99,6 +104,7 @@ func TestDeleteAPIKey(t *testing.T) {
 	})
 
 	t.Run("id does not exist", func(t *testing.T) {
+		t.Parallel()
 		respD, err := c.DeleteApiKeysApiKeyIDWithResponse(ctx, uuid.New().String(), setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t))
 		if err != nil {
 			t.Fatal(err)
@@ -107,6 +113,7 @@ func TestDeleteAPIKey(t *testing.T) {
 	})
 
 	t.Run("cant delete other teams api key", func(t *testing.T) {
+		t.Parallel()
 		ctx := t.Context()
 		db := setup.GetTestDBClient(t)
 		c := setup.GetAPIClient()
@@ -168,6 +175,7 @@ func TestDeleteAPIKey(t *testing.T) {
 }
 
 func TestListAPIKeys(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
@@ -183,8 +191,9 @@ func TestListAPIKeys(t *testing.T) {
 }
 
 func TestPatchAPIKey(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
+	t.Cleanup(cancel)
 
 	c := setup.GetAPIClient()
 
@@ -210,6 +219,7 @@ func TestPatchAPIKey(t *testing.T) {
 	assert.Contains(t, apiKeyNames, "test-patch-1")
 
 	t.Run("succeeds", func(t *testing.T) {
+		t.Parallel()
 		// Rename the API key
 		respP, err := c.PatchApiKeysApiKeyIDWithResponse(ctx, respC.JSON201.Id.String(), api.PatchApiKeysApiKeyIDJSONRequestBody{
 			Name: "test-patch-2",
@@ -235,6 +245,7 @@ func TestPatchAPIKey(t *testing.T) {
 	})
 
 	t.Run("id does not exist", func(t *testing.T) {
+		t.Parallel()
 		respP, err := c.PatchApiKeysApiKeyIDWithResponse(ctx, uuid.New().String(), api.PatchApiKeysApiKeyIDJSONRequestBody{
 			Name: "test-patch-3",
 		}, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t))
@@ -245,6 +256,7 @@ func TestPatchAPIKey(t *testing.T) {
 	})
 
 	t.Run("cant patch other teams api keys", func(t *testing.T) {
+		t.Parallel()
 		ctx := t.Context()
 		db := setup.GetTestDBClient(t)
 		c := setup.GetAPIClient()
@@ -304,6 +316,7 @@ func TestPatchAPIKey(t *testing.T) {
 }
 
 func TestAPIKeyLastUsedUpdated(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 
 	// The last used is updated only once a minute

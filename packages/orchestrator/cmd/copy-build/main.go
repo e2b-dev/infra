@@ -45,7 +45,8 @@ func NewDestinationFromObject(ctx context.Context, o *googleStorage.ObjectHandle
 }
 
 func NewDestinationFromPath(prefix, file string) (*Destination, error) {
-	p := path.Join(prefix, file)
+	// Local storage uses templates subdirectory
+	p := path.Join(prefix, "templates", file)
 
 	if _, err := os.Stat(p); err == nil {
 		f, err := os.Open(p)
@@ -75,12 +76,12 @@ func NewDestinationFromPath(prefix, file string) (*Destination, error) {
 }
 
 func NewHeaderFromObject(ctx context.Context, bucketName string, headerPath string, objectType storage.ObjectType) (*header.Header, error) {
-	b, err := storage.NewGCPBucketStorageProvider(ctx, bucketName, nil)
+	b, err := storage.NewGCP(ctx, bucketName, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GCS bucket storage provider: %w", err)
 	}
 
-	obj, err := b.OpenObject(ctx, headerPath, objectType)
+	obj, err := b.OpenBlob(ctx, headerPath, objectType)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open object: %w", err)
 	}
@@ -93,22 +94,31 @@ func NewHeaderFromObject(ctx context.Context, bucketName string, headerPath stri
 	return h, nil
 }
 
-type osFileWriterToCtx struct {
+type osFileBlob struct {
 	f *os.File
 }
 
-func (o *osFileWriterToCtx) WriteTo(_ context.Context, w io.Writer) (int64, error) {
+func (o *osFileBlob) WriteTo(_ context.Context, w io.Writer) (int64, error) {
 	return io.Copy(w, o.f)
 }
 
+func (o *osFileBlob) Exists(_ context.Context) (bool, error) {
+	return true, nil
+}
+
+func (o *osFileBlob) Put(_ context.Context, _ []byte) error {
+	return fmt.Errorf("not implemented")
+}
+
 func NewHeaderFromPath(ctx context.Context, from, headerPath string) (*header.Header, error) {
-	f, err := os.Open(path.Join(from, headerPath))
+	// Local storage uses templates subdirectory
+	f, err := os.Open(path.Join(from, "templates", headerPath))
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file: %w", err)
 	}
 	defer f.Close()
 
-	h, err := header.Deserialize(ctx, &osFileWriterToCtx{f: f})
+	h, err := header.Deserialize(ctx, &osFileBlob{f: f})
 	if err != nil {
 		return nil, fmt.Errorf("failed to deserialize header: %w", err)
 	}

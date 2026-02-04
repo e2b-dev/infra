@@ -12,6 +12,9 @@ type FdExit struct {
 	r    *os.File
 	w    *os.File
 	exit func() error
+
+	closeOnce sync.Once
+	closeErr  error
 }
 
 func New() (*FdExit, error) {
@@ -42,6 +45,11 @@ func (e *FdExit) Reader() int32 {
 	return int32(e.r.Fd())
 }
 
+// Close closes the pipe file descriptors. It is safe to call multiple times.
 func (e *FdExit) Close() error {
-	return errors.Join(e.SignalExit(), e.r.Close(), e.w.Close())
+	e.closeOnce.Do(func() {
+		e.closeErr = errors.Join(e.SignalExit(), e.r.Close(), e.w.Close())
+	})
+
+	return e.closeErr
 }

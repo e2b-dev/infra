@@ -65,19 +65,19 @@ func Serialize(metadata *Metadata, mappings []*BuildMap) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func Deserialize(ctx context.Context, in storage.WriterToCtx) (*Header, error) {
-	var buf bytes.Buffer
-
-	_, err := in.WriteTo(ctx, &buf)
+func Deserialize(ctx context.Context, in storage.Blob) (*Header, error) {
+	data, err := storage.GetBlob(ctx, in)
 	if err != nil {
 		return nil, fmt.Errorf("failed to write to buffer: %w", err)
 	}
 
-	reader := bytes.NewReader(buf.Bytes())
+	return DeserializeBytes(data)
+}
 
+func DeserializeBytes(data []byte) (*Header, error) {
+	reader := bytes.NewReader(data)
 	var metadata Metadata
-
-	err = binary.Read(reader, binary.LittleEndian, &metadata)
+	err := binary.Read(reader, binary.LittleEndian, &metadata)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read metadata: %w", err)
 	}

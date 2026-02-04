@@ -7,6 +7,7 @@ import (
 )
 
 func TestAddressStringToCIDR(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		name     string
 		input    string
@@ -35,6 +36,7 @@ func TestAddressStringToCIDR(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			result := AddressStringToCIDR(tc.input)
 			require.Equal(t, tc.expected, result, tc.desc)
 		})

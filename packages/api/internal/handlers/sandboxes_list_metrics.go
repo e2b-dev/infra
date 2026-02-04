@@ -14,7 +14,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/db/types"
-	"github.com/e2b-dev/infra/packages/api/internal/edge"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -26,7 +25,7 @@ const maxSandboxMetricsCount = 100
 func (a *APIStore) getSandboxesMetrics(
 	ctx context.Context,
 	teamID uuid.UUID,
-	clusterID *uuid.UUID,
+	clusterID uuid.UUID,
 	sandboxIDs []string,
 ) (map[string]api.SandboxMetric, *api.APIError) {
 	ctx, span := tracer.Start(ctx, "fetch-sandboxes-metrics")
@@ -41,9 +40,8 @@ func (a *APIStore) getSandboxesMetrics(
 		attribute.Int("sandboxes.count", len(sandboxIDs)),
 	)
 
-	metricsReadFlag := a.featureFlags.BoolFlag(ctx, featureflags.MetricsReadFlagName)
-
 	// Get metrics for all sandboxes
+	metricsReadFlag := a.featureFlags.BoolFlag(ctx, featureflags.MetricsReadFlag)
 	if !metricsReadFlag {
 		logger.L().Debug(ctx, "sandbox metrics read feature flag is disabled")
 		// If we are not reading from ClickHouse, we can return an empty map
@@ -51,60 +49,21 @@ func (a *APIStore) getSandboxesMetrics(
 		return make(map[string]api.SandboxMetric), nil
 	}
 
-	// TODO: Remove in [ENG-3377], once edge is migrated
-	edgeProvidedMetrics := a.featureFlags.BoolFlag(ctx, featureflags.EdgeProvidedSandboxMetricsFlagName)
-
-	var metrics map[string]api.SandboxMetric
-	var apiErr *api.APIError
-	if edgeProvidedMetrics {
-		metrics, apiErr = edge.GetClusterSandboxListMetrics(
-			ctx,
-			a.clustersPool,
-			teamID.String(),
-			utils.WithClusterFallback(clusterID),
-			sandboxIDs,
-		)
-	} else {
-		metrics, apiErr = a.getApiProvidedSandboxListMetrics(ctx, teamID.String(), sandboxIDs)
+	cluster, found := a.clusters.GetClusterById(clusterID)
+	if !found {
+		return nil, &api.APIError{
+			Code:      http.StatusInternalServerError,
+			ClientMsg: "cluster not found for sandbox metrics",
+			Err:       fmt.Errorf("cluster not found for sandbox metrics, cluster id: %s", clusterID.String()),
+		}
 	}
+
+	metrics, apiErr := cluster.GetResources().GetSandboxesMetrics(ctx, teamID.String(), sandboxIDs)
 	if apiErr != nil {
 		return nil, apiErr
 	}
 
 	return metrics, nil
-}
-
-// TODO: Remove in [ENG-3377], once edge is migrated
-func (a *APIStore) getApiProvidedSandboxListMetrics(ctx context.Context, teamID string, sandboxIDs []string) (map[string]api.SandboxMetric, *api.APIError) {
-	metrics, err := a.clickhouseStore.QueryLatestMetrics(ctx, sandboxIDs, teamID)
-	if err != nil {
-		logger.L().Error(ctx, "Error fetching sandbox metrics from ClickHouse",
-			logger.WithTeamID(teamID),
-			zap.Error(err),
-		)
-
-		return nil, &api.APIError{
-			Code:      http.StatusInternalServerError,
-			ClientMsg: "Error fetching sandbox metrics",
-			Err:       err,
-		}
-	}
-
-	apiMetrics := make(map[string]api.SandboxMetric)
-	for _, m := range metrics {
-		apiMetrics[m.SandboxID] = api.SandboxMetric{
-			Timestamp:     m.Timestamp,
-			TimestampUnix: m.Timestamp.Unix(),
-			CpuUsedPct:    float32(m.CPUUsedPercent),
-			CpuCount:      int32(m.CPUCount),
-			MemTotal:      int64(m.MemTotal),
-			MemUsed:       int64(m.MemUsed),
-			DiskTotal:     int64(m.DiskTotal),
-			DiskUsed:      int64(m.DiskUsed),
-		}
-	}
-
-	return apiMetrics, nil
 }
 
 func (a *APIStore) GetSandboxesMetrics(c *gin.Context, params api.GetSandboxesMetricsParams) {
@@ -126,16 +85,16 @@ func (a *APIStore) GetSandboxesMetrics(c *gin.Context, params api.GetSandboxesMe
 	a.posthog.CreateAnalyticsTeamEvent(ctx, team.ID.String(), "listed running instances with metrics", properties)
 
 	// Build the context for feature flags
-	ctx = featureflags.SetContext(
+	ctx = featureflags.AddToContext(
 		ctx,
 		ldcontext.NewBuilder(team.ID.String()).
 			Kind(featureflags.TeamKind).
 			Build(),
 	)
 
-	sandboxesWithMetrics, apiErr := a.getSandboxesMetrics(ctx, team.ID, team.ClusterID, params.SandboxIds)
+	sandboxesWithMetrics, apiErr := a.getSandboxesMetrics(ctx, team.ID, utils.WithClusterFallback(team.ClusterID), params.SandboxIds)
 	if apiErr != nil {
-		logger.L().Error(ctx, "error getting sandbox metrics", zap.Error(apiErr.Err))
+		telemetry.ReportCriticalError(ctx, "error fetching sandboxes metrics", apiErr.Err)
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return

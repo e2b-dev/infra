@@ -14,9 +14,11 @@ import (
 )
 
 func TestSandboxPause(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 
 	t.Run("regular pause", func(t *testing.T) {
+		t.Parallel()
 		// Create a sandbox with auto-pause disabled
 		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false))
 		sbxId := sbx.SandboxID
@@ -41,6 +43,7 @@ func TestSandboxPause(t *testing.T) {
 	})
 
 	t.Run("test concurrent pauses", func(t *testing.T) {
+		t.Parallel()
 		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(true))
 		sbxId := sbx.SandboxID
 
@@ -67,6 +70,7 @@ func TestSandboxPause(t *testing.T) {
 	})
 
 	t.Run("pause killed sandbox", func(t *testing.T) {
+		t.Parallel()
 		// Create a sandbox with auto-pause disabled
 		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(true))
 		sbxId := sbx.SandboxID
@@ -82,6 +86,7 @@ func TestSandboxPause(t *testing.T) {
 	})
 
 	t.Run("pause already paused sandbox", func(t *testing.T) {
+		t.Parallel()
 		sbx := utils.SetupSandboxWithCleanup(t, c)
 		sbxId := sbx.SandboxID
 

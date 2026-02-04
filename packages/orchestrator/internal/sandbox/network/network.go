@@ -227,16 +227,11 @@ func (s *Slot) CreateNetwork(ctx context.Context) error {
 		return fmt.Errorf("error creating HTTP redirect rule to sandbox hyperloop proxy server: %w", err)
 	}
 
-	// Redirect unmarked TCP traffic to the egress proxy.
-	// Allowed traffic is marked by nftables and bypasses this rule.
+	// Redirect TCP traffic to appropriate egress proxy ports based on destination port.
 	// This preserves the original destination IP for SO_ORIGINAL_DST.
-	err = tables.Append(
-		"nat", "PREROUTING", "-i", s.VethName(),
-		"-p", "tcp", "-m", "mark", "!", "--mark", fmt.Sprintf("0x%x", allowedMark),
-		"-j", "REDIRECT", "--to-port", s.tcpFirewallPort,
-	)
+	err = s.tcpProxyConfig().append(tables)
 	if err != nil {
-		return fmt.Errorf("error creating redirect rule to egress proxy: %w", err)
+		return err
 	}
 
 	return nil
@@ -281,15 +276,8 @@ func (s *Slot) RemoveNetwork() error {
 			errs = append(errs, fmt.Errorf("error deleting sandbox hyperloop proxy redirect rule: %w", err))
 		}
 
-		// Delete egress proxy redirect rule
-		err = tables.Delete(
-			"nat", "PREROUTING", "-i", s.VethName(),
-			"-p", "tcp", "-m", "mark", "!", "--mark", fmt.Sprintf("0x%x", allowedMark),
-			"-j", "REDIRECT", "--to-port", s.tcpFirewallPort,
-		)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("error deleting egress proxy redirect rule: %w", err))
-		}
+		// Delete egress proxy redirect rules
+		errs = append(errs, s.tcpProxyConfig().delete(tables)...)
 	}
 
 	// Delete routing from host to FC namespace

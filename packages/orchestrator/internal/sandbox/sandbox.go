@@ -25,6 +25,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/prefetch"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -141,11 +142,6 @@ func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
 	}
 }
 
-type networkSlotRes struct {
-	slot *network.Slot
-	err  error
-}
-
 type Factory struct {
 	config       cfg.BuilderConfig
 	networkPool  *network.Pool
@@ -197,11 +193,7 @@ func (f *Factory) CreateSandbox(
 		}
 	}()
 
-	ipsCh := getNetworkSlotAsync(ctx, f.networkPool, cleanup, config.Network)
-	defer func() {
-		// Ensure the slot is received from chan so the slot is cleaned up properly in cleanup
-		<-ipsCh
-	}()
+	ipsPromise := getNetworkSlot(ctx, f.networkPool, cleanup, config.Network)
 
 	sandboxFiles := template.Files().NewSandboxFiles(runtime.SandboxID)
 	cleanup.Add(ctx, cleanupFiles(f.config, sandboxFiles))
@@ -214,12 +206,15 @@ func (f *Factory) CreateSandbox(
 	var rootfsProvider rootfs.Provider
 	if rootfsCachePath == "" {
 		rootfsProvider, err = rootfs.NewNBDProvider(
+			ctx,
 			rootFS,
-			sandboxFiles.SandboxCacheRootfsPath(f.config),
+			sandboxFiles.SandboxCacheRootfsPath(f.config.StorageConfig),
 			f.devicePool,
+			f.featureFlags,
 		)
 	} else {
 		rootfsProvider, err = rootfs.NewDirectProvider(
+			ctx,
 			rootFS,
 			// Populate direct cache directly from the source file
 			// This is needed for marking all blocks as dirty and being able to read them directly
@@ -242,29 +237,25 @@ func (f *Factory) CreateSandbox(
 		return nil, fmt.Errorf("failed to get memfile: %w", err)
 	}
 
-	memfileSize, err := memfile.Size()
+	memfileSize, err := memfile.Size(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get memfile size: %w", err)
 	}
 
 	// / ==== END of resources initialization ====
-	rootfsPath, err := rootfsProvider.Path()
+	ips, err := ipsPromise.Wait(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get rootfs path: %w", err)
-	}
-	ips := <-ipsCh
-	if ips.err != nil {
-		return nil, fmt.Errorf("failed to get network slot: %w", ips.err)
+		return nil, err
 	}
 
 	fcHandle, err := fc.NewProcess(
 		ctx,
 		execCtx,
 		f.config,
-		ips.slot,
+		ips,
 		sandboxFiles,
 		config.FirecrackerConfig,
-		rootfsPath,
+		rootfsProvider,
 		fc.ConstantRootfsPaths,
 	)
 	if err != nil {
@@ -291,7 +282,7 @@ func (f *Factory) CreateSandbox(
 	telemetry.ReportEvent(ctx, "created fc process")
 
 	resources := &Resources{
-		Slot:   ips.slot,
+		Slot:   ips,
 		rootfs: rootfsProvider,
 		memory: uffd.NewNoopMemory(memfileSize, memfile.BlockSize(), fcHandle.MemoryInfo),
 	}
@@ -383,110 +374,166 @@ func (f *Factory) ResumeSandbox(
 		}
 	}()
 
-	ipsCh := getNetworkSlotAsync(ctx, f.networkPool, cleanup, config.Network)
-	defer func() {
-		// Ensure the slot is received from chan before ResumeSandbox returns so the slot is cleaned up properly in cleanup
-		<-ipsCh
-	}()
-
 	sandboxFiles := t.Files().NewSandboxFiles(runtime.SandboxID)
 	cleanup.Add(ctx, cleanupFiles(f.config, sandboxFiles))
 
 	telemetry.ReportEvent(ctx, "created sandbox files")
 
-	readonlyRootfs, err := t.Rootfs()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get rootfs: %w", err)
-	}
+	// Uffd initialization
+	fcUffdPath := sandboxFiles.SandboxUffdSocketPath()
+	uffdPromise := utils.NewPromise(func() (*uffd.Uffd, error) {
+		memfile, err := t.Memfile(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get memfile: %w", err)
+		}
 
-	telemetry.ReportEvent(ctx, "got template rootfs")
+		telemetry.ReportEvent(ctx, "got template memfile")
 
-	rootfsOverlay, err := rootfs.NewNBDProvider(
-		readonlyRootfs,
-		sandboxFiles.SandboxCacheRootfsPath(f.config),
-		f.devicePool,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create rootfs overlay: %w", err)
-	}
+		return uffd.New(memfile, fcUffdPath), nil
+	})
 
-	cleanup.Add(ctx, rootfsOverlay.Close)
-
-	telemetry.ReportEvent(ctx, "created rootfs overlay")
-
+	// Prefetching
 	go func() {
-		runErr := rootfsOverlay.Start(execCtx)
-		if runErr != nil {
-			logger.L().Error(ctx, "rootfs overlay error", zap.Error(runErr))
+		memfile, err := t.Memfile(ctx)
+		if err != nil {
+			return
+		}
+
+		meta, err := t.Metadata()
+		if err != nil {
+			return
+		}
+
+		telemetry.ReportEvent(ctx, "got metadata")
+
+		// Start background prefetcher as early as possible if prefetch mapping exists
+		// Fetching from source starts immediately; copying waits for uffd to be ready
+		if meta.Prefetch != nil && meta.Prefetch.Memory != nil {
+			fcUffd, err := uffdPromise.Wait(ctx)
+			if err != nil {
+				return
+			}
+
+			telemetry.ReportEvent(ctx, "starting prefetcher")
+			l := logger.L().With(logger.WithSandboxID(runtime.SandboxID), logger.WithTemplateID(runtime.TemplateID), logger.WithTeamID(runtime.TeamID))
+
+			go func() {
+				p := prefetch.New(
+					l,
+					memfile,
+					fcUffd,
+					meta.Prefetch.Memory,
+					f.featureFlags,
+				)
+				err := p.Start(execCtx)
+				if err != nil {
+					l.Error(ctx, "failed to start prefetcher", zap.Error(err))
+				}
+			}()
 		}
 	}()
 
-	memfile, err := t.Memfile(ctx)
+	// Slot initialization
+	ipsPromise := getNetworkSlot(ctx, f.networkPool, cleanup, config.Network)
+
+	// Rootfs initialization
+	overlayPromise := utils.NewPromise(func() (rootfs.Provider, error) {
+		readonlyRootfs, err := t.Rootfs()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get rootfs: %w", err)
+		}
+
+		telemetry.ReportEvent(ctx, "got template rootfs")
+
+		overlay, err := rootfs.NewNBDProvider(
+			ctx,
+			readonlyRootfs,
+			sandboxFiles.SandboxCacheRootfsPath(f.config.StorageConfig),
+			f.devicePool,
+			f.featureFlags,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create rootfs overlay: %w", err)
+		}
+
+		cleanup.Add(ctx, overlay.Close)
+
+		telemetry.ReportEvent(ctx, "created rootfs overlay")
+
+		go func() {
+			runErr := overlay.Start(execCtx)
+			if runErr != nil {
+				logger.L().Error(ctx, "rootfs overlay error", zap.Error(runErr))
+			}
+		}()
+
+		return overlay, nil
+	})
+
+	// Memory initialization
+	memoryPromise := utils.NewPromise(func() (struct{}, error) {
+		fcUffd, err := uffdPromise.Wait(ctx)
+		if err != nil {
+			return struct{}{}, err
+		}
+
+		err = serveMemory(
+			execCtx,
+			cleanup,
+			fcUffd,
+			runtime.SandboxID,
+		)
+		if err != nil {
+			return struct{}{}, fmt.Errorf("failed to serve memory: %w", err)
+		}
+
+		telemetry.ReportEvent(ctx, "started serving memory")
+
+		return struct{}{}, nil
+	})
+
+	// Wait for all resources to be initialized
+	ips, err := ipsPromise.Wait(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get memfile: %w", err)
-	}
-
-	telemetry.ReportEvent(ctx, "got template memfile")
-
-	fcUffdPath := sandboxFiles.SandboxUffdSocketPath()
-
-	fcUffd, err := serveMemory(
-		execCtx,
-		cleanup,
-		memfile,
-		fcUffdPath,
-		runtime.SandboxID,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to serve memory: %w", err)
-	}
-
-	telemetry.ReportEvent(ctx, "started serving memory")
-
-	// ==== END of resources initialization ====
-	uffdStartCtx, cancelUffdStartCtx := context.WithCancelCause(ctx)
-	defer cancelUffdStartCtx(fmt.Errorf("uffd finished starting"))
-
-	go func() {
-		uffdWaitErr := fcUffd.Exit().Wait()
-
-		cancelUffdStartCtx(fmt.Errorf("uffd process exited: %w", errors.Join(uffdWaitErr, context.Cause(uffdStartCtx))))
-	}()
-
-	rootfsPath, err := rootfsOverlay.Path()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get rootfs path: %w", err)
-	}
-
-	telemetry.ReportEvent(ctx, "got rootfs path")
-
-	ips := <-ipsCh
-	if ips.err != nil {
-		return nil, fmt.Errorf("failed to get network slot: %w", ips.err)
+		return nil, fmt.Errorf("failed to get network slot: %w", err)
 	}
 
 	telemetry.ReportEvent(ctx, "got network slot")
+
+	overlay, err := overlayPromise.Wait(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = memoryPromise.Wait(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// ==== END of resources initialization ====
+
+	rootfs, err := t.Rootfs()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get rootfs overlay: %w", err)
+	}
 
 	meta, err := t.Metadata()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get metadata: %w", err)
 	}
 
-	telemetry.ReportEvent(ctx, "got metadata")
-
 	fcHandle, fcErr := fc.NewProcess(
 		ctx,
 		execCtx,
 		f.config,
-		ips.slot,
+		ips,
 		sandboxFiles,
 		// The versions need to base exactly the same as the paused sandbox template because of the FC compatibility.
 		config.FirecrackerConfig,
-		rootfsPath,
+		overlay,
 		fc.RootfsPaths{
 			TemplateVersion: meta.Version,
 			TemplateID:      config.BaseTemplateID,
-			BuildID:         readonlyRootfs.Header().Metadata.BaseBuildId.String(),
+			BuildID:         rootfs.Header().Metadata.BaseBuildId.String(),
 		},
 	)
 	if fcErr != nil {
@@ -503,6 +550,18 @@ func (f *Factory) ResumeSandbox(
 
 	telemetry.ReportEvent(ctx, "got snapfile")
 
+	fcUffd, err := uffdPromise.Wait(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get uffd: %w", err)
+	}
+
+	uffdStartCtx, cancelUffdStartCtx := context.WithCancelCause(ctx)
+	defer cancelUffdStartCtx(fmt.Errorf("uffd finished starting"))
+	go func() {
+		uffdWaitErr := fcUffd.Exit().Wait()
+
+		cancelUffdStartCtx(fmt.Errorf("uffd process exited: %w", errors.Join(uffdWaitErr, context.Cause(uffdStartCtx))))
+	}()
 	fcStartErr := fcHandle.Resume(
 		uffdStartCtx,
 		sbxlogger.SandboxMetadata{
@@ -513,7 +572,8 @@ func (f *Factory) ResumeSandbox(
 		fcUffdPath,
 		snapfile,
 		fcUffd.Ready(),
-		ips.slot,
+		ips,
+		config.Envd.AccessToken,
 	)
 	if fcStartErr != nil {
 		return nil, fmt.Errorf("failed to start FC: %w", fcStartErr)
@@ -522,8 +582,8 @@ func (f *Factory) ResumeSandbox(
 	telemetry.ReportEvent(ctx, "initialized FC")
 
 	resources := &Resources{
-		Slot:   ips.slot,
-		rootfs: rootfsOverlay,
+		Slot:   ips,
+		rootfs: overlay,
 		memory: fcUffd,
 	}
 
@@ -555,7 +615,7 @@ func (f *Factory) ResumeSandbox(
 		exit: exit,
 	}
 
-	useClickhouseMetrics := f.featureFlags.BoolFlag(ctx, featureflags.MetricsWriteFlagName)
+	useClickhouseMetrics := f.featureFlags.BoolFlag(ctx, featureflags.MetricsWriteFlag)
 
 	// Part of the sandbox as we need to stop Checks before pausing the sandbox
 	// This is to prevent race condition of reporting unhealthy sandbox
@@ -677,7 +737,7 @@ func (s *Sandbox) Shutdown(ctx context.Context) error {
 	// This is required because the FC API doesn't support passing /dev/null
 	tf, err := storage.TemplateFiles{
 		BuildID: uuid.New().String(),
-	}.CacheFiles(s.config)
+	}.CacheFiles(s.config.StorageConfig)
 	if err != nil {
 		return fmt.Errorf("failed to create template files: %w", err)
 	}
@@ -728,7 +788,7 @@ func (s *Sandbox) Pause(
 		}
 	}()
 
-	snapshotTemplateFiles, err := storage.TemplateFiles{BuildID: m.Template.BuildID}.CacheFiles(s.config)
+	snapshotTemplateFiles, err := storage.TemplateFiles{BuildID: m.Template.BuildID}.CacheFiles(s.config.StorageConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get template files: %w", err)
 	}
@@ -820,6 +880,16 @@ func (s *Sandbox) Pause(
 	}, nil
 }
 
+// MemoryPrefetchData returns the ordered page fault data for prefetch mapping.
+func (s *Sandbox) MemoryPrefetchData(ctx context.Context) (block.PrefetchData, error) {
+	prefetchData, err := s.Resources.memory.PrefetchData(ctx)
+	if err != nil {
+		return block.PrefetchData{}, fmt.Errorf("failed to get prefetch data: %w", err)
+	}
+
+	return prefetchData, nil
+}
+
 func pauseProcessMemory(
 	ctx context.Context,
 	buildID uuid.UUID,
@@ -899,34 +969,28 @@ func pauseProcessRootfs(
 	return rootfsDiff, rootfsHeader, nil
 }
 
-func getNetworkSlotAsync(
+func getNetworkSlot(
 	ctx context.Context,
 	networkPool *network.Pool,
 	cleanup *Cleanup,
-	network *orchestrator.SandboxNetworkConfig,
-) chan networkSlotRes {
-	ctx, span := tracer.Start(ctx, "get-network-slot")
-	defer span.End()
+	networkConfig *orchestrator.SandboxNetworkConfig,
+) *utils.Promise[*network.Slot] {
+	return utils.NewPromise(func() (*network.Slot, error) {
+		ctx, span := tracer.Start(ctx, "get network-slot")
+		defer span.End()
 
-	r := make(chan networkSlotRes, 1)
-
-	go func() {
-		defer close(r)
-
-		ips, err := networkPool.Get(ctx, network)
+		slot, err := networkPool.Get(ctx, networkConfig)
 		if err != nil {
-			r <- networkSlotRes{nil, fmt.Errorf("failed to get network slot: %w", err)}
-
-			return
+			return nil, fmt.Errorf("failed to get network slot: %w", err)
 		}
 
 		cleanup.Add(ctx, func(ctx context.Context) error {
-			ctx, span := tracer.Start(ctx, "network-slot-clean")
+			ctx, span := tracer.Start(ctx, "clean network-slot")
 			defer span.End()
 
 			// We can run this cleanup asynchronously, as it is not important for the sandbox lifecycle
 			go func(ctx context.Context) {
-				returnErr := networkPool.Return(ctx, ips)
+				returnErr := networkPool.Return(ctx, slot)
 				if returnErr != nil {
 					logger.L().Error(ctx, "failed to return network slot", zap.Error(returnErr))
 				}
@@ -935,30 +999,23 @@ func getNetworkSlotAsync(
 			return nil
 		})
 
-		r <- networkSlotRes{ips, nil}
-	}()
-
-	return r
+		return slot, nil
+	})
 }
 
 func serveMemory(
 	ctx context.Context,
 	cleanup *Cleanup,
-	memfile block.ReadonlyDevice,
-	socketPath, sandboxID string,
-) (uffd.MemoryBackend, error) {
+	fcUffd *uffd.Uffd,
+	sandboxID string,
+) error {
 	ctx, span := tracer.Start(ctx, "serve-memory")
 	defer span.End()
 
-	fcUffd, err := uffd.New(memfile, socketPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create uffd: %w", err)
-	}
-
 	telemetry.ReportEvent(ctx, "created uffd")
 
-	if err = fcUffd.Start(ctx, sandboxID); err != nil {
-		return nil, fmt.Errorf("failed to start uffd: %w", err)
+	if err := fcUffd.Start(ctx, sandboxID); err != nil {
+		return fmt.Errorf("failed to start uffd: %w", err)
 	}
 
 	telemetry.ReportEvent(ctx, "started uffd")
@@ -974,7 +1031,7 @@ func serveMemory(
 		return nil
 	})
 
-	return fcUffd, nil
+	return nil
 }
 
 func (s *Sandbox) WaitForExit(ctx context.Context) error {

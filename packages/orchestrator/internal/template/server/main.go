@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"go.opentelemetry.io/otel/metric"
@@ -14,7 +15,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
@@ -43,8 +43,8 @@ type ServerStore struct {
 	templateStorage   storage.StorageProvider
 	buildStorage      storage.StorageProvider
 
-	wg   *sync.WaitGroup // wait group for running builds
-	info *service.ServiceInfo
+	wg           *sync.WaitGroup // wait group for running builds
+	activeBuilds atomic.Int64    // counter for active builds (for debugging)
 
 	closers []closeable
 }
@@ -62,7 +62,6 @@ func New(
 	templateCache *sbxtemplate.Cache,
 	templatePersistence storage.StorageProvider,
 	limiter *limit.Limiter,
-	info *service.ServiceInfo,
 ) (s *ServerStore, e error) {
 	logger.Info(ctx, "Initializing template manager")
 
@@ -79,7 +78,7 @@ func New(
 		}
 	}()
 
-	artifactsregistry, err := artifactsregistry.GetArtifactsRegistryProvider(ctx)
+	artifactsRegistry, err := artifactsregistry.GetArtifactsRegistryProvider(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error getting artifacts registry provider: %w", err)
 	}
@@ -90,7 +89,7 @@ func New(
 	}
 	closers = append(closers, dockerhubRepository)
 
-	buildPersistance, err := storage.GetBuildCacheStorageProvider(ctx, limiter)
+	buildPersistence, err := storage.GetBuildCacheStorageProvider(ctx, limiter)
 	if err != nil {
 		return nil, fmt.Errorf("error getting build cache storage provider: %w", err)
 	}
@@ -107,8 +106,8 @@ func New(
 		featureFlags,
 		sandboxFactory,
 		templatePersistence,
-		buildPersistance,
-		artifactsregistry,
+		buildPersistence,
+		artifactsRegistry,
 		dockerhubRepository,
 		proxy,
 		sandboxes,
@@ -121,10 +120,9 @@ func New(
 		builder:           builder,
 		buildCache:        buildCache,
 		buildLogger:       buildLogger,
-		artifactsregistry: artifactsregistry,
+		artifactsregistry: artifactsRegistry,
 		templateStorage:   templatePersistence,
-		buildStorage:      buildPersistance,
-		info:              info,
+		buildStorage:      buildPersistence,
 		wg:                &sync.WaitGroup{},
 		closers:           closers,
 	}
@@ -157,7 +155,7 @@ func (s *ServerStore) Wait(ctx context.Context) error {
 	case <-ctx.Done():
 		return errors.New("force exit, not waiting for builds to finish")
 	default:
-		s.logger.Info(ctx, "Waiting for all build jobs to finish")
+		s.logger.Info(ctx, "Waiting for all build jobs to finish", zap.Int64("active_builds", s.activeBuilds.Load()))
 		s.wg.Wait()
 
 		if !env.IsLocal() {

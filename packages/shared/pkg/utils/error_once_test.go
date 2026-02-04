@@ -9,6 +9,7 @@ import (
 )
 
 func TestErrorOnce(t *testing.T) {
+	t.Parallel()
 	errorOnce := NewErrorOnce()
 
 	// Test setting error
@@ -32,6 +33,7 @@ func TestErrorOnce(t *testing.T) {
 }
 
 func TestErrorOnceSetSuccess(t *testing.T) {
+	t.Parallel()
 	errorOnce := NewErrorOnce()
 
 	// Test setting success (nil error)

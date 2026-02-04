@@ -14,13 +14,19 @@ type Config struct {
 
 	ClickhouseConnectionString string `env:"CLICKHOUSE_CONNECTION_STRING"`
 
-	LocalClusterEndpoint string `env:"LOCAL_CLUSTER_ENDPOINT"`
-	LocalClusterToken    string `env:"LOCAL_CLUSTER_TOKEN"`
+	LokiPassword string `env:"LOKI_PASSWORD"`
+	LokiURL      string `env:"LOKI_URL,required"`
+	LokiUser     string `env:"LOKI_USER"`
 
 	NomadAddress string `env:"NOMAD_ADDRESS" envDefault:"http://localhost:4646"`
 	NomadToken   string `env:"NOMAD_TOKEN"`
 
 	PostgresConnectionString string `env:"POSTGRES_CONNECTION_STRING,required,notEmpty"`
+
+	AuthDBConnectionString            string `env:"AUTH_DB_CONNECTION_STRING"`
+	AuthDBReadReplicaConnectionString string `env:"AUTH_DB_READ_REPLICA_CONNECTION_STRING"`
+	AuthDBMinIdleConnections          int32  `env:"AUTH_DB_MIN_IDLE_CONNECTIONS"           envDefault:"5"`
+	AuthDBMaxOpenConnections          int32  `env:"AUTH_DB_MAX_OPEN_CONNECTIONS"           envDefault:"20"`
 
 	PosthogAPIKey string `env:"POSTHOG_API_KEY"`
 
@@ -44,6 +50,10 @@ func Parse() (Config, error) {
 
 	if config.DefaultKernelVersion == "" {
 		config.DefaultKernelVersion = DefaultKernelVersion
+	}
+
+	if config.AuthDBConnectionString == "" {
+		config.AuthDBConnectionString = config.PostgresConnectionString
 	}
 
 	return config, err

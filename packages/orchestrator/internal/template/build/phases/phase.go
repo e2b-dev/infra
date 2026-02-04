@@ -80,7 +80,7 @@ func Run(
 			zap.String("phase", string(meta.Phase)),
 			zap.String("step_type", meta.StepType),
 			zap.Intp("step_number", meta.StepNumber),
-			zap.String("step", phaseToStepString(builder)),
+			zap.String("step", stepString(meta)),
 		}
 
 		logger.Debug(ctx, "running builder phase", loggerFields...)

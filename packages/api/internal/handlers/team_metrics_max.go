@@ -32,7 +32,7 @@ func (a *APIStore) GetTeamsTeamIDMetricsMax(c *gin.Context, teamID string, param
 		return
 	}
 
-	metricsReadFlag := a.featureFlags.BoolFlag(ctx, featureflags.MetricsReadFlagName)
+	metricsReadFlag := a.featureFlags.BoolFlag(ctx, featureflags.MetricsReadFlag)
 
 	if !metricsReadFlag {
 		logger.L().Debug(ctx, "sandbox metrics read feature flag is disabled")

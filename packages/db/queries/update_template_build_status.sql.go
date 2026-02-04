@@ -9,7 +9,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/db/types"
+	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/google/uuid"
 )
 
@@ -19,7 +19,7 @@ SET status = $1,
     finished_at = $2,
     reason = $3,
     version = $4
-WHERE id = $5 AND env_id = $6
+WHERE id = $5
 `
 
 type UpdateEnvBuildStatusParams struct {
@@ -28,7 +28,6 @@ type UpdateEnvBuildStatusParams struct {
 	Reason     types.BuildReason
 	Version    *string
 	BuildID    uuid.UUID
-	TemplateID string
 }
 
 func (q *Queries) UpdateEnvBuildStatus(ctx context.Context, arg UpdateEnvBuildStatusParams) error {
@@ -38,7 +37,6 @@ func (q *Queries) UpdateEnvBuildStatus(ctx context.Context, arg UpdateEnvBuildSt
 		arg.Reason,
 		arg.Version,
 		arg.BuildID,
-		arg.TemplateID,
 	)
 	return err
 }

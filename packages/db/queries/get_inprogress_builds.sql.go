@@ -10,12 +10,13 @@ import (
 )
 
 const getInProgressTemplateBuilds = `-- name: GetInProgressTemplateBuilds :many
-SELECT t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t.blocked_reason, t.cluster_id, e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count, e.last_spawned_at, e.team_id, e.created_by, e.cluster_id, b.id, b.created_at, b.updated_at, b.finished_at, b.status, b.dockerfile, b.start_cmd, b.vcpu, b.ram_mb, b.free_disk_size_mb, b.total_disk_size_mb, b.kernel_version, b.firecracker_version, b.env_id, b.envd_version, b.ready_cmd, b.cluster_node_id, b.reason, b.version, b.cpu_architecture, b.cpu_family, b.cpu_model, b.cpu_model_name, b.cpu_flags
+SELECT DISTINCT ON (b.id) t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t.blocked_reason, t.cluster_id, t.slug, e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count, e.last_spawned_at, e.team_id, e.created_by, e.cluster_id, b.id, b.created_at, b.updated_at, b.finished_at, b.status, b.dockerfile, b.start_cmd, b.vcpu, b.ram_mb, b.free_disk_size_mb, b.total_disk_size_mb, b.kernel_version, b.firecracker_version, b.env_id, b.envd_version, b.ready_cmd, b.cluster_node_id, b.reason, b.version, b.cpu_architecture, b.cpu_family, b.cpu_model, b.cpu_model_name, b.cpu_flags
 FROM public.env_builds b
-JOIN public.envs e ON e.id = b.env_id
+JOIN public.env_build_assignments eba ON eba.build_id = b.id
+JOIN public.envs e ON e.id = eba.env_id
 JOIN public.teams t ON e.team_id = t.id
 WHERE b.status = 'waiting' OR b.status = 'building'
-ORDER BY b.created_at DESC
+ORDER BY b.id, b.created_at DESC
 `
 
 type GetInProgressTemplateBuildsRow struct {
@@ -43,6 +44,7 @@ func (q *Queries) GetInProgressTemplateBuilds(ctx context.Context) ([]GetInProgr
 			&i.Team.IsBanned,
 			&i.Team.BlockedReason,
 			&i.Team.ClusterID,
+			&i.Team.Slug,
 			&i.Env.ID,
 			&i.Env.CreatedAt,
 			&i.Env.UpdatedAt,

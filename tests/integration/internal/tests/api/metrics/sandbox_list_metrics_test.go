@@ -14,6 +14,7 @@ import (
 )
 
 func TestSandboxListMetrics(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 
 	// Create a sandbox for testing

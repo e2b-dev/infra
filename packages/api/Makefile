@@ -1,8 +1,6 @@
 ENV := $(shell cat ../../.last_used_env || echo "not-set")
 -include ../../.env.${ENV}
 
-openapi := ../../spec/openapi.yml
-codegen := go tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
 expectedMigration := $(shell ./../../scripts/get-latest-migration.sh)
 
 ifeq ($(PROVIDER),aws)
@@ -13,9 +11,7 @@ endif
 
 .PHONY: generate
 generate:
-	$(codegen) -old-config-style -generate gin --package api $(openapi) > internal/api/api.gen.go
-	$(codegen) -old-config-style -generate types --package api $(openapi) > internal/api/types.gen.go
-	$(codegen) -old-config-style -generate spec --package api $(openapi) > internal/api/spec.gen.go
+	go generate ./...
 
 .PHONY: build
 build:
@@ -42,8 +38,7 @@ run:
 	ENVIRONMENT=$(ENVIRONMENT) \
 	ORCHESTRATOR_PORT=5008 \
 	NODE_ID=integration-tests \
-	LOCAL_CLUSTER_ENDPOINT=localhost:3001 \
-	LOCAL_CLUSTER_TOKEN=$(EDGE_TOKEN) \
+	LOKI_URL=unset \
 	./bin/api --port 3000
 
 define setup_local_env

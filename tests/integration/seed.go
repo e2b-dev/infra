@@ -12,8 +12,9 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/db/client"
-	"github.com/e2b-dev/infra/packages/db/queries"
-	dbtypes "github.com/e2b-dev/infra/packages/db/types"
+	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
+	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
+	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
 )
@@ -47,13 +48,20 @@ func run(ctx context.Context) int {
 		return 1
 	}
 
-	db, err := client.NewClient(ctx)
+	db, err := client.NewClient(ctx, connectionString)
 	if err != nil {
 		log.Printf("Failed to connect to database: %v", err)
 
 		return 1
 	}
 	defer db.Close()
+	authDb, err := authdb.NewClient(ctx, connectionString, connectionString)
+	if err != nil {
+		log.Printf("Failed to connect to database: %v", err)
+
+		return 1
+	}
+	defer authDb.Close()
 
 	data := SeedData{
 		AccessToken: os.Getenv("TESTS_E2B_ACCESS_TOKEN"),
@@ -64,7 +72,7 @@ func run(ctx context.Context) int {
 		UserID:      uuid.MustParse(os.Getenv("TESTS_SANDBOX_USER_ID")),
 	}
 
-	err = seed(ctx, db, data)
+	err = seed(ctx, db, authDb, data)
 	if err != nil {
 		log.Printf("Failed to execute seed: %v", err)
 
@@ -76,11 +84,11 @@ func run(ctx context.Context) int {
 	return 0
 }
 
-func seed(ctx context.Context, db *client.Client, data SeedData) error {
+func seed(ctx context.Context, db *client.Client, authdb *authdb.Client, data SeedData) error {
 	hasher := keys.NewSHA256Hashing()
 
 	// User
-	err := db.TestsRawSQL(ctx, `
+	err := authdb.TestsRawSQL(ctx, `
 INSERT INTO auth.users (id, email)
 VALUES ($1, $2)
 `, data.UserID, "user-test-integration@e2b.dev")
@@ -102,7 +110,7 @@ VALUES ($1, $2)
 		return fmt.Errorf("failed to mask access token: %w", err)
 	}
 
-	_, err = db.CreateAccessToken(ctx, queries.CreateAccessTokenParams{
+	_, err = authdb.Write.CreateAccessToken(ctx, authqueries.CreateAccessTokenParams{
 		ID:                    uuid.New(),
 		UserID:                data.UserID,
 		AccessTokenHash:       accessTokenHash,
@@ -117,16 +125,16 @@ VALUES ($1, $2)
 	}
 
 	// Team
-	err = db.TestsRawSQL(ctx, `
-INSERT INTO teams (id, email, name, tier, is_blocked)
-VALUES ($1, $2, $3, $4, $5)
-`, data.TeamID, "test-integration@e2b.dev", "E2B", "base_v1", false)
+	err = authdb.TestsRawSQL(ctx, `
+INSERT INTO teams (id, email, name, tier, is_blocked, slug)
+VALUES ($1, $2, $3, $4, $5, $6)
+`, data.TeamID, "test-integration@e2b.dev", "E2B", "base_v1", false, "e2b-integration")
 	if err != nil {
 		return fmt.Errorf("failed to create team: %w", err)
 	}
 
 	// User-Team
-	err = db.TestsRawSQL(ctx, `
+	err = authdb.TestsRawSQL(ctx, `
 INSERT INTO users_teams (user_id, team_id, is_default)
 VALUES ($1, $2, $3)
 `, data.UserID, data.TeamID, true)
@@ -145,7 +153,7 @@ VALUES ($1, $2, $3)
 	if err != nil {
 		return fmt.Errorf("failed to mask api key: %w", err)
 	}
-	_, err = db.CreateTeamAPIKey(ctx, queries.CreateTeamAPIKeyParams{
+	_, err = authdb.Write.CreateTeamAPIKey(ctx, authqueries.CreateTeamAPIKeyParams{
 		TeamID:           data.TeamID,
 		CreatedBy:        &data.UserID,
 		ApiKeyHash:       apiKeyHash,
@@ -174,15 +182,20 @@ VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
 	}
 
 	oldBuildTime := time.Now().Add(-time.Hour)
+	// Important: Insert builds in chronological order (oldest first, newest last)
+	// because the trigger on env_builds creates env_build_assignments with CURRENT_TIMESTAMP.
+	// The query uses ORDER BY eba.created_at DESC to get the latest build,
+	// so the last inserted build will be selected.
 	builds := []buildData{
-		{
-			id:        data.BuildID,
-			createdAt: nil,
-		},
-		// An older build, so we have multiple builds
+		// An older build, so we have multiple builds - inserted FIRST
 		{
 			id:        uuid.New(),
 			createdAt: &oldBuildTime,
+		},
+		// Primary build - inserted LAST so it has the latest trigger-created timestamp
+		{
+			id:        data.BuildID,
+			createdAt: nil,
 		},
 	}
 

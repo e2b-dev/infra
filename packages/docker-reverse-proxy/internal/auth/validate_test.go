@@ -9,13 +9,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	db "github.com/e2b-dev/infra/packages/db/client"
-	"github.com/e2b-dev/infra/packages/db/queries"
-	"github.com/e2b-dev/infra/packages/db/testutils"
+	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
+	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 )
 
 func TestValidate(t *testing.T) {
+	t.Parallel()
+
 	// Generate a valid access token
 	accessToken, err := keys.GenerateKey(keys.AccessTokenPrefix)
 	require.NoError(t, err)
@@ -89,46 +90,48 @@ func TestValidate(t *testing.T) {
 		},
 	}
 	for _, tc := range testcases {
-		t.Run(tc.name, func(tb *testing.T) {
-			dbClient := testutils.SetupDatabase(tb)
-			setupValidateTest(tb, dbClient, userID, teamID, accessToken, tc.createdEnvId, tc.createdEnvStatus)
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-			valid, err := Validate(tb.Context(), dbClient, tc.accessTokenUsed, tc.validateEnvId)
+			dbClient := testutils.SetupDatabase(t)
+			setupValidateTest(t, dbClient, userID, teamID, accessToken, tc.createdEnvId, tc.createdEnvStatus)
+
+			valid, err := Validate(t.Context(), dbClient.SqlcClient, tc.accessTokenUsed, tc.validateEnvId)
 			if tc.error {
-				require.Error(tb, err)
+				require.Error(t, err)
 			} else {
-				require.NoError(tb, err)
+				require.NoError(t, err)
 			}
-			assert.Equal(tb, tc.valid, valid)
+			assert.Equal(t, tc.valid, valid)
 		})
 	}
 }
 
-func setupValidateTest(tb testing.TB, db *db.Client, userID, teamID uuid.UUID, accessToken keys.Key, envID, createdEnvStatus string) {
+func setupValidateTest(tb testing.TB, db *testutils.Database, userID, teamID uuid.UUID, accessToken keys.Key, envID, createdEnvStatus string) {
 	tb.Helper()
 
 	// Create team
-	err := db.TestsRawSQL(tb.Context(), `
+	err := db.AuthDb.TestsRawSQL(tb.Context(), `
 		INSERT INTO "auth"."users" (id, email)
 		VALUES ($1, 'test@e2b.dev')
 	`, userID)
 	require.NoError(tb, err)
 
-	err = db.TestsRawSQL(tb.Context(), `
-		INSERT INTO teams (id, name, email, tier)
-		VALUES ($1, 'test-team', 'test@e2b.dev', 'base_v1')
+	err = db.AuthDb.TestsRawSQL(tb.Context(), `
+		INSERT INTO teams (id, name, email, tier, slug)
+		VALUES ($1, 'test-team', 'test@e2b.dev', 'base_v1', 'test-team-slug')
 	`, teamID)
 	require.NoError(tb, err)
 
 	// Link user to team
-	err = db.TestsRawSQL(tb.Context(), `
+	err = db.AuthDb.TestsRawSQL(tb.Context(), `
 		INSERT INTO users_teams (user_id, team_id, is_default)
 		VALUES ($1, $2, true)
 	`, userID, teamID)
 	require.NoError(tb, err)
 
 	// Create access token
-	_, err = db.CreateAccessToken(tb.Context(), queries.CreateAccessTokenParams{
+	_, err = db.AuthDb.Write.CreateAccessToken(tb.Context(), authqueries.CreateAccessTokenParams{
 		ID:                    uuid.New(),
 		UserID:                userID,
 		AccessTokenHash:       accessToken.HashedValue,
@@ -141,7 +144,7 @@ func setupValidateTest(tb testing.TB, db *db.Client, userID, teamID uuid.UUID, a
 	require.NoError(tb, err)
 
 	// Create env
-	err = db.TestsRawSQL(tb.Context(), `
+	err = db.SqlcClient.TestsRawSQL(tb.Context(), `
 		INSERT INTO envs (id, team_id, updated_at)
 		VALUES ($1, $2, NOW())
 	`, envID, teamID)
@@ -154,7 +157,7 @@ func setupValidateTest(tb testing.TB, db *db.Client, userID, teamID uuid.UUID, a
 		now := time.Now().Format(time.RFC3339)
 		finishedAt = &now
 	}
-	err = db.TestsRawSQL(tb.Context(), `
+	err = db.SqlcClient.TestsRawSQL(tb.Context(), `
 		INSERT INTO env_builds (id, env_id, status, finished_at, dockerfile, updated_at, vcpu, ram_mb, free_disk_size_mb, firecracker_version, kernel_version, cluster_node_id)
 		VALUES ($1, $2, $3, $4, 'FROM ubuntu', NOW(), 1, 1024, 1024, '0.0.0', '0.0.0', 'abc')
 	`, buildID, envID, createdEnvStatus, finishedAt)

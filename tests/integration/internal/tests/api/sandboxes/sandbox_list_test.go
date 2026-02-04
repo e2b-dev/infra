@@ -28,6 +28,7 @@ func pauseSandbox(t *testing.T, c *api.ClientWithResponses, sandboxID string) {
 }
 
 func TestSandboxList(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 
 	// Create a sandbox for testing
@@ -53,6 +54,7 @@ func TestSandboxList(t *testing.T) {
 }
 
 func TestSandboxListWithFilter(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 
 	// standard sandbox
@@ -76,6 +78,7 @@ func TestSandboxListWithFilter(t *testing.T) {
 }
 
 func TestSandboxListRunning(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 
 	uniqueString := id.Generate()
@@ -106,6 +109,7 @@ func TestSandboxListRunning(t *testing.T) {
 }
 
 func TestSandboxListRunning_NoMetadata(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 
 	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithoutAnyMetadata())
@@ -124,6 +128,7 @@ func TestSandboxListRunning_NoMetadata(t *testing.T) {
 }
 
 func TestSandboxListPaused(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 
 	metadataKey := "uniqueIdentifier"
@@ -158,6 +163,7 @@ func TestSandboxListPaused(t *testing.T) {
 }
 
 func TestSandboxListPausing(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 
 	metadataKey := "uniqueIdentifier"
@@ -213,6 +219,7 @@ func TestSandboxListPausing(t *testing.T) {
 }
 
 func TestSandboxListPaused_NoMetadata(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 
 	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithoutAnyMetadata())
@@ -234,6 +241,7 @@ func TestSandboxListPaused_NoMetadata(t *testing.T) {
 }
 
 func TestSandboxListPaginationRunning(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 
 	metadataKey := "uniqueIdentifier"
@@ -303,7 +311,7 @@ func TestSandboxListPaginationRunning(t *testing.T) {
 	assert.Empty(t, nextToken)
 }
 
-func TestSandboxListPaginationRunningLargerLimit(t *testing.T) {
+func TestSandboxListPaginationRunningLargerLimit(t *testing.T) { //nolint:tparallel // uses counts of a shared resource
 	c := setup.GetAPIClient()
 
 	metadataKey := "uniqueIdentifier"
@@ -320,6 +328,7 @@ func TestSandboxListPaginationRunningLargerLimit(t *testing.T) {
 	}
 
 	t.Run("check all sandboxes list", func(t *testing.T) {
+		t.Parallel()
 		listResponse, err := c.GetV2SandboxesWithResponse(t.Context(), &api.GetV2SandboxesParams{
 			Limit:    sharedUtils.ToPtr(int32(sbxsCount)),
 			State:    &[]api.SandboxState{api.Running},
@@ -334,6 +343,7 @@ func TestSandboxListPaginationRunningLargerLimit(t *testing.T) {
 	})
 
 	t.Run("check paginated list", func(t *testing.T) {
+		t.Parallel()
 		// Test pagination with limit
 		limit := 2
 
@@ -369,6 +379,7 @@ func TestSandboxListPaginationRunningLargerLimit(t *testing.T) {
 }
 
 func TestSandboxListPaginationPaused(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 
 	metadataKey := "uniqueIdentifier"
@@ -418,6 +429,7 @@ func TestSandboxListPaginationPaused(t *testing.T) {
 }
 
 func TestSandboxListPaginationRunningAndPaused(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 
 	metadataKey := "uniqueIdentifier"
@@ -469,6 +481,8 @@ func TestSandboxListPaginationRunningAndPaused(t *testing.T) {
 
 // legacy tests
 func TestSandboxListRunningV1(t *testing.T) {
+	t.Parallel()
+
 	c := setup.GetAPIClient()
 
 	metadataKey := "uniqueIdentifier"
@@ -499,6 +513,7 @@ func TestSandboxListRunningV1(t *testing.T) {
 }
 
 func TestSandboxListWithFilterV1(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 
 	metadataKey := "uniqueIdentifier"
@@ -518,6 +533,7 @@ func TestSandboxListWithFilterV1(t *testing.T) {
 }
 
 func TestSandboxListSortedV1(t *testing.T) {
+	t.Parallel()
 	c := setup.GetAPIClient()
 
 	// Create three sandboxes

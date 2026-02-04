@@ -1,17 +1,22 @@
 package machineinfo
 
 import (
-	"github.com/e2b-dev/infra/packages/db/queries"
+	"context"
+	"encoding/json"
+
+	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
+	"go.uber.org/zap"
+
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 type MachineInfo struct {
-	CPUArchitecture string
-	CPUFamily       string
-	CPUModel        string
-	CPUModelName    string
-	CPUFlags        []string
+	CPUArchitecture string   `json:"cpu_architecture"`
+	CPUFamily       string   `json:"cpu_family"`
+	CPUModel        string   `json:"cpu_model"`
+	CPUModelName    string   `json:"cpu_model_name"`
+	CPUFlags        []string `json:"cpu_flags"`
 }
 
 func (m MachineInfo) IsCompatibleWith(other MachineInfo) bool {
@@ -32,12 +37,14 @@ func FromGRPCInfo(info *infogrpc.MachineInfo) MachineInfo {
 	}
 }
 
-func FromDB(build queries.EnvBuild) MachineInfo {
-	return MachineInfo{
-		CPUArchitecture: utils.FromPtr(build.CpuArchitecture),
-		CPUFamily:       utils.FromPtr(build.CpuFamily),
-		CPUModel:        utils.FromPtr(build.CpuModel),
-		CPUModelName:    utils.FromPtr(build.CpuModelName),
-		CPUFlags:        build.CpuFlags,
+func FromLDValue(ctx context.Context, value ldvalue.Value) MachineInfo {
+	var info MachineInfo
+	err := json.Unmarshal([]byte(value.JSONString()), &info)
+	if err != nil {
+		logger.L().Error(ctx, "failed to unmarshal machine info", zap.Error(err))
+
+		return MachineInfo{}
 	}
+
+	return info
 }

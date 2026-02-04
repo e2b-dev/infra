@@ -51,15 +51,20 @@ job "api" {
     # An update stanza to enable rolling updates of the service
     update {
       # The number of extra instances to run during the update
-      max_parallel     = 1
+      max_parallel      = 1
       # Allows to spawn new version of the service before killing the old one
-      canary           = 1
+      canary            = 1
       # Time to wait for the canary to be healthy
-      min_healthy_time = "10s"
+      min_healthy_time  = "10s"
       # Time to wait for the canary to be healthy, if not it will be marked as failed
-      healthy_deadline = "300s"
+      healthy_deadline  = "900s"
+      # Time to wait for the overall update to complete. Otherwise, the deployment is marked as failed and rolled back
+      # This is on purpose very tight, we want to fail immediately if the deployment is marked as unhealthy
+      progress_deadline = "901s"
       # Whether to promote the canary if the rest of the group is not healthy
-      auto_promote     = true
+      auto_promote      = true
+      # Whether to automatically rollback if the update fails
+      auto_revert       = true
     }
 %{ endif }
 
@@ -77,27 +82,31 @@ job "api" {
       }
 
       env {
-        NODE_ID                        = "$${node.unique.id}"
-        ORCHESTRATOR_PORT              = "${orchestrator_port}"
-        POSTGRES_CONNECTION_STRING     = "${postgres_connection_string}"
-        SUPABASE_JWT_SECRETS           = "${supabase_jwt_secrets}"
-        CLICKHOUSE_CONNECTION_STRING   = "${clickhouse_connection_string}"
         ENVIRONMENT                    = "${environment}"
+        NODE_ID                        = "$${node.unique.id}"
+        NOMAD_TOKEN                    = "${nomad_acl_token}"
+        ORCHESTRATOR_PORT              = "${orchestrator_port}"
+        ADMIN_TOKEN                    = "${admin_token}"
+        SANDBOX_ACCESS_TOKEN_HASH_SEED = "${sandbox_access_token_hash_seed}"
+
+        POSTGRES_CONNECTION_STRING              = "${postgres_connection_string}"
+        AUTH_DB_CONNECTION_STRING               = "${postgres_connection_string}"
+        AUTH_DB_READ_REPLICA_CONNECTION_STRING  = "${postgres_read_replica_connection_string}"
+        SUPABASE_JWT_SECRETS                    = "${supabase_jwt_secrets}"
+
+        LOKI_URL                      = "${loki_url}"
+        CLICKHOUSE_CONNECTION_STRING  = "${clickhouse_connection_string}"
+
         POSTHOG_API_KEY                = "${posthog_api_key}"
         ANALYTICS_COLLECTOR_HOST       = "${analytics_collector_host}"
         ANALYTICS_COLLECTOR_API_TOKEN  = "${analytics_collector_api_token}"
         OTEL_TRACING_PRINT             = "${otel_tracing_print}"
         LOGS_COLLECTOR_ADDRESS         = "${logs_collector_address}"
-        NOMAD_TOKEN                    = "${nomad_acl_token}"
         OTEL_COLLECTOR_GRPC_ENDPOINT   = "${otel_collector_grpc_endpoint}"
-        ADMIN_TOKEN                    = "${admin_token}"
+
         REDIS_URL                      = "${redis_url}"
         REDIS_CLUSTER_URL              = "${redis_cluster_url}"
         REDIS_TLS_CA_BASE64            = "${redis_tls_ca_base64}"
-        SANDBOX_ACCESS_TOKEN_HASH_SEED = "${sandbox_access_token_hash_seed}"
-
-        LOCAL_CLUSTER_ENDPOINT = "${local_cluster_endpoint}"
-        LOCAL_CLUSTER_TOKEN    = "${local_cluster_token}"
 
 %{ if launch_darkly_api_key != "" }
         LAUNCH_DARKLY_API_KEY         = "${launch_darkly_api_key}"

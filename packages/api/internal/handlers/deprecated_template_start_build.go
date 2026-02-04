@@ -16,8 +16,9 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	templatemanager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	apiutils "github.com/e2b-dev/infra/packages/api/internal/utils"
+	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
-	dbtypes "github.com/e2b-dev/infra/packages/db/types"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -85,7 +86,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 
 	userID := a.GetUserID(c)
 
-	teams, err := dbapi.GetTeamsByUser(ctx, a.sqlcDB, userID)
+	teams, err := dbapi.GetTeamsByUser(ctx, a.authDB, userID)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting default team: %s", err))
 
@@ -132,6 +133,9 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		telemetry.WithTeamID(team.ID.String()),
 		telemetry.WithTemplateID(templateID),
 	)
+
+	// setup launch darkly context
+	ctx = featureflags.AddToContext(ctx, featureflags.TemplateContext(templateID))
 
 	// Check and cancel concurrent builds
 	if err := a.CheckAndCancelConcurrentBuilds(ctx, templateID, buildUUID, apiutils.WithClusterFallback(team.ClusterID)); err != nil {
@@ -185,6 +189,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 	err = a.templateManager.CreateTemplate(
 		ctx,
 		team.ID,
+		team.Slug,
 		templateID,
 		buildUUID,
 		build.KernelVersion,

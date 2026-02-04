@@ -14,7 +14,7 @@ import (
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
-	"github.com/e2b-dev/infra/packages/api/internal/edge"
+	"github.com/e2b-dev/infra/packages/api/internal/clusters"
 	"github.com/e2b-dev/infra/packages/api/internal/metrics"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/evictor"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
@@ -49,7 +49,7 @@ type Orchestrator struct {
 	routingCatalog          e2bcatalog.SandboxesCatalog
 	sqlcDB                  *sqlcdb.Client
 	tel                     *telemetry.Client
-	clusters                *edge.Pool
+	clusters                *clusters.Pool
 	metricsRegistration     metric.Registration
 	createdSandboxesCounter metric.Int64Counter
 	teamMetricsObserver     *metrics.TeamObserver
@@ -66,7 +66,7 @@ func New(
 	posthogClient *analyticscollector.PosthogClient,
 	redisClient redis.UniversalClient,
 	sqlcDB *sqlcdb.Client,
-	clusters *edge.Pool,
+	clusters *clusters.Pool,
 	featureFlags *featureflags.Client,
 	accessTokenGenerator *sandbox.AccessTokenGenerator,
 ) (*Orchestrator, error) {
@@ -210,7 +210,6 @@ func (o *Orchestrator) startStatusLogging(ctx context.Context) {
 			}
 
 			logger.L().Info(ctx, "API internal status",
-				zap.Int("sandboxes_count", len(o.sandboxStore.Items(nil, []sandbox.State{sandbox.StateRunning}))),
 				zap.Int("nodes_count", o.nodes.Count()),
 				zap.Any("nodes", connectedNodes),
 			)
@@ -278,9 +277,9 @@ func getBestOfKConfig(ctx context.Context, featureFlagsClient *featureflags.Clie
 
 	alphaPercent := featureFlagsClient.IntFlag(ctx, featureflags.BestOfKAlpha)
 
-	canFit := featureFlagsClient.BoolFlag(ctx, featureflags.BestOfKCanFit)
+	canFit := featureFlagsClient.BoolFlag(ctx, featureflags.BestOfKCanFitFlag)
 
-	tooManyStarting := featureFlagsClient.BoolFlag(ctx, featureflags.BestOfKTooManyStarting)
+	tooManyStarting := featureFlagsClient.BoolFlag(ctx, featureflags.BestOfKTooManyStartingFlag)
 
 	// Convert percentage to decimal
 	alpha := float64(alphaPercent) / 100.0

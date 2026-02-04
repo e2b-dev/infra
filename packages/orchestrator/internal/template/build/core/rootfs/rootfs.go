@@ -18,6 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/filesystem"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/oci"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/systeminit"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
@@ -78,6 +79,7 @@ func New(
 func (r *Rootfs) CreateExt4Filesystem(
 	ctx context.Context,
 	l logger.Logger,
+	phaseMetadata phases.PhaseMeta,
 	rootfsPath string,
 	provisionScript string,
 	provisionLogPrefix string,
@@ -104,7 +106,7 @@ func (r *Rootfs) CreateExt4Filesystem(
 		img, err = oci.GetImage(childCtx, r.artifactRegistry, template.TemplateID, r.buildContext.Template.BuildID)
 	}
 	if err != nil {
-		return containerregistry.Config{}, fmt.Errorf("error requesting docker image: %w", err)
+		return containerregistry.Config{}, phases.NewPhaseBuildError(phaseMetadata, err)
 	}
 
 	imageSize, err := oci.GetImageSize(img)

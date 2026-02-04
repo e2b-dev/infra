@@ -30,6 +30,11 @@ variable "boot_disk" {
   })
 }
 
+variable "network_interface_type" {
+  type     = string
+  nullable = true
+}
+
 variable "cache_disks" {
   type = object({
     disk_type = string
@@ -167,7 +172,7 @@ variable "fc_versions_bucket_name" {
 # NFS CONFIGURATION
 
 variable "filestore_cache_enabled" {
-  description = "Whether Filestore-based shared cache is enabled"
+  description = "Whether Filestore-based shared NFS cache is enabled"
   type        = bool
 }
 
@@ -217,4 +222,9 @@ variable "labels" {
 variable "file_hash" {
   description = "Map of setup script file paths to their content hashes for versioning"
   type        = map(string)
+}
+
+variable "set_orchestrator_version_metadata" {
+  description = "Whether to set orchestrator_version node metadata from Nomad variable on startup"
+  type        = bool
 }

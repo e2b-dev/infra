@@ -10,6 +10,7 @@ import (
 )
 
 func TestHMACSha256Hashing_ValidHash(t *testing.T) {
+	t.Parallel()
 	key := []byte("test-key")
 	hasher := NewHMACSHA256Hashing(key)
 	content := []byte("hello world")
@@ -23,6 +24,7 @@ func TestHMACSha256Hashing_ValidHash(t *testing.T) {
 }
 
 func TestHMACSha256Hashing_EmptyContent(t *testing.T) {
+	t.Parallel()
 	key := []byte("test-key")
 	hasher := NewHMACSHA256Hashing(key)
 	content := []byte("")
@@ -36,6 +38,7 @@ func TestHMACSha256Hashing_EmptyContent(t *testing.T) {
 }
 
 func TestHMACSha256Hashing_DifferentKey(t *testing.T) {
+	t.Parallel()
 	key := []byte("test-key")
 	hasher := NewHMACSHA256Hashing(key)
 	differentKeyHasher := NewHMACSHA256Hashing([]byte("different-key"))
@@ -53,6 +56,7 @@ func TestHMACSha256Hashing_DifferentKey(t *testing.T) {
 }
 
 func TestHMACSha256Hashing_IdenticalResult(t *testing.T) {
+	t.Parallel()
 	key := []byte("placeholder-hashing-key")
 	content := []byte("test content for hashing")
 

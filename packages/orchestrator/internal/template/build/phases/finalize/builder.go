@@ -243,7 +243,7 @@ func (ppb *PostProcessingBuilder) postProcessingFn(userLogger logger.Logger) lay
 			sbx.Runtime.SandboxID,
 		)
 		if err != nil {
-			return metadata.Template{}, phases.NewPhaseBuildError(ppb, fmt.Errorf("configuration script failed: %w", err))
+			return metadata.Template{}, phases.NewPhaseBuildError(ppb.Metadata(), fmt.Errorf("configuration script failed: %w", err))
 		}
 
 		if meta.Start == nil {
@@ -302,13 +302,13 @@ func (ppb *PostProcessingBuilder) postProcessingFn(userLogger logger.Logger) lay
 			meta.Start.Context,
 		)
 		if err != nil {
-			return metadata.Template{}, phases.NewPhaseBuildError(ppb, fmt.Errorf("ready command failed: %w", err))
+			return metadata.Template{}, phases.NewPhaseBuildError(ppb.Metadata(), fmt.Errorf("ready command failed: %w", err))
 		}
 
 		// Wait for the start command to start executing.
 		select {
 		case <-ctx.Done():
-			return metadata.Template{}, phases.NewPhaseBuildError(ppb, fmt.Errorf("waiting for start command failed: %w", commandsCtx.Err()))
+			return metadata.Template{}, phases.NewPhaseBuildError(ppb.Metadata(), fmt.Errorf("waiting for start command failed: %w", commandsCtx.Err()))
 		case <-startCmdConfirm:
 		}
 		// Cancel the start command context (it's running in the background anyway).
@@ -316,7 +316,7 @@ func (ppb *PostProcessingBuilder) postProcessingFn(userLogger logger.Logger) lay
 		commandsCancel()
 		err = startCmdRun.Wait()
 		if err != nil {
-			return metadata.Template{}, phases.NewPhaseBuildError(ppb, fmt.Errorf("start command failed: %w", err))
+			return metadata.Template{}, phases.NewPhaseBuildError(ppb.Metadata(), fmt.Errorf("start command failed: %w", err))
 		}
 
 		return meta, nil

@@ -6,17 +6,33 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/db/client"
+	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-func GetTestDBClient(tb testing.TB) *client.Client {
+type Database struct {
+	Db     *client.Client
+	AuthDb *authdb.Client
+}
+
+func GetTestDBClient(tb testing.TB) *Database {
 	tb.Helper()
 
-	db, err := client.NewClient(tb.Context())
+	databaseURL := utils.RequiredEnv("POSTGRES_CONNECTION_STRING", "Postgres connection string")
+
+	db, err := client.NewClient(tb.Context(), databaseURL)
+	require.NoError(tb, err)
+
+	authDb, err := authdb.NewClient(tb.Context(), databaseURL, databaseURL)
 	require.NoError(tb, err)
 
 	tb.Cleanup(func() {
 		db.Close()
+		authDb.Close()
 	})
 
-	return db
+	return &Database{
+		Db:     db,
+		AuthDb: authDb,
+	}
 }

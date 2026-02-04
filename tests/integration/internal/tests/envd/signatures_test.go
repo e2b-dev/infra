@@ -13,12 +13,13 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
-	envdapi "github.com/e2b-dev/infra/tests/integration/internal/envd/api"
+	"github.com/e2b-dev/infra/tests/integration/internal/envd"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 )
 
 func TestDownloadFileWhenAuthIsDisabled(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
@@ -31,7 +32,7 @@ func TestDownloadFileWhenAuthIsDisabled(t *testing.T) {
 
 	writeRes, err := envdClient.HTTPClient.PostFilesWithBodyWithResponse(
 		ctx,
-		&envdapi.PostFilesParams{
+		&envd.PostFilesParams{
 			Path:     &filePath,
 			Username: sharedUtils.ToPtr("user"),
 		},
@@ -45,7 +46,7 @@ func TestDownloadFileWhenAuthIsDisabled(t *testing.T) {
 
 	getRes, err := envdClient.HTTPClient.GetFilesWithResponse(
 		ctx,
-		&envdapi.GetFilesParams{Path: &filePath, Username: sharedUtils.ToPtr("user")},
+		&envd.GetFilesParams{Path: &filePath, Username: sharedUtils.ToPtr("user")},
 		setup.WithSandbox(sbx.JSON201.SandboxID),
 	)
 
@@ -54,6 +55,7 @@ func TestDownloadFileWhenAuthIsDisabled(t *testing.T) {
 }
 
 func TestDownloadFileWithoutSigningWhenAuthIsEnabled(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
@@ -71,7 +73,7 @@ func TestDownloadFileWithoutSigningWhenAuthIsEnabled(t *testing.T) {
 	writeFileSigning := generateSignature(filePath, "user", "write", nil, *envdToken)
 	writeRes, err := envdClient.HTTPClient.PostFilesWithBodyWithResponse(
 		ctx,
-		&envdapi.PostFilesParams{
+		&envd.PostFilesParams{
 			Path:      &filePath,
 			Username:  sharedUtils.ToPtr("user"),
 			Signature: &writeFileSigning,
@@ -87,7 +89,7 @@ func TestDownloadFileWithoutSigningWhenAuthIsEnabled(t *testing.T) {
 
 	readRes, readErr := envdClient.HTTPClient.GetFiles(
 		ctx,
-		&envdapi.GetFilesParams{Path: &filePath, Username: sharedUtils.ToPtr("user")},
+		&envd.GetFilesParams{Path: &filePath, Username: sharedUtils.ToPtr("user")},
 		setup.WithSandbox(sbx.JSON201.SandboxID),
 	)
 	require.NoError(t, readErr)
@@ -96,6 +98,7 @@ func TestDownloadFileWithoutSigningWhenAuthIsEnabled(t *testing.T) {
 }
 
 func TestDownloadFileWithSigningWhenAuthIsEnabled(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
@@ -114,7 +117,7 @@ func TestDownloadFileWithSigningWhenAuthIsEnabled(t *testing.T) {
 
 	writeRes, err := envdClient.HTTPClient.PostFilesWithBodyWithResponse(
 		ctx,
-		&envdapi.PostFilesParams{
+		&envd.PostFilesParams{
 			Path:      &filePath,
 			Username:  sharedUtils.ToPtr("user"),
 			Signature: &writeFileSigning,
@@ -129,7 +132,7 @@ func TestDownloadFileWithSigningWhenAuthIsEnabled(t *testing.T) {
 
 	readRes, readErr := envdClient.HTTPClient.GetFilesWithResponse(
 		ctx,
-		&envdapi.GetFilesParams{Path: &filePath, Username: sharedUtils.ToPtr("user"), Signature: &readFileSigning},
+		&envd.GetFilesParams{Path: &filePath, Username: sharedUtils.ToPtr("user"), Signature: &readFileSigning},
 		setup.WithSandbox(sbx.JSON201.SandboxID),
 	)
 
@@ -139,6 +142,7 @@ func TestDownloadFileWithSigningWhenAuthIsEnabled(t *testing.T) {
 }
 
 func TestDownloadWithAlreadyExpiredToken(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
@@ -157,7 +161,7 @@ func TestDownloadWithAlreadyExpiredToken(t *testing.T) {
 	readExpiration := int(signatureExpiration)
 	readRes, readErr := envdClient.HTTPClient.GetFilesWithResponse(
 		ctx,
-		&envdapi.GetFilesParams{
+		&envd.GetFilesParams{
 			Path:                &filePath,
 			Username:            sharedUtils.ToPtr("user"),
 			Signature:           &signatureForRead,
@@ -172,6 +176,7 @@ func TestDownloadWithAlreadyExpiredToken(t *testing.T) {
 }
 
 func TestDownloadWithHealthyToken(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
@@ -190,7 +195,7 @@ func TestDownloadWithHealthyToken(t *testing.T) {
 	readExpiration := int(signatureExpiration)
 	readRes, readErr := envdClient.HTTPClient.GetFilesWithResponse(
 		ctx,
-		&envdapi.GetFilesParams{
+		&envd.GetFilesParams{
 			Path:                &filePath,
 			Username:            sharedUtils.ToPtr("user"),
 			Signature:           &signatureForRead,
@@ -205,6 +210,7 @@ func TestDownloadWithHealthyToken(t *testing.T) {
 }
 
 func TestAccessWithNotCorrespondingSignatureAndSignatureExpiration(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
@@ -223,7 +229,7 @@ func TestAccessWithNotCorrespondingSignatureAndSignatureExpiration(t *testing.T)
 	readExpiration := int(signatureExpiration)
 	readRes, readErr := envdClient.HTTPClient.GetFilesWithResponse(
 		ctx,
-		&envdapi.GetFilesParams{
+		&envd.GetFilesParams{
 			Path:                &filePath,
 			Username:            sharedUtils.ToPtr("user"),
 			Signature:           &signatureForRead,

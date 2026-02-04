@@ -10,16 +10,17 @@ import (
 )
 
 const createTemplateAlias = `-- name: CreateTemplateAlias :exec
-INSERT INTO "public"."env_aliases" (alias, env_id, is_renamable)
-VALUES ($1, $2, TRUE)
+INSERT INTO "public"."env_aliases" (alias, env_id, is_renamable, namespace)
+VALUES ($1, $2, TRUE, $3)
 `
 
 type CreateTemplateAliasParams struct {
 	Alias      string
 	TemplateID string
+	Namespace  *string
 }
 
 func (q *Queries) CreateTemplateAlias(ctx context.Context, arg CreateTemplateAliasParams) error {
-	_, err := q.db.Exec(ctx, createTemplateAlias, arg.Alias, arg.TemplateID)
+	_, err := q.db.Exec(ctx, createTemplateAlias, arg.Alias, arg.TemplateID, arg.Namespace)
 	return err
 }

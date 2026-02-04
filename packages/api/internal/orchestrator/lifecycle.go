@@ -15,20 +15,28 @@ func (o *Orchestrator) addSandboxToRoutingTable(ctx context.Context, sandbox san
 	node := o.GetNode(sandbox.ClusterID, sandbox.NodeID)
 	if node == nil {
 		logger.L().Error(ctx, "failed to get node", logger.WithNodeID(sandbox.NodeID))
-	} else {
-		info := e2bcatalog.SandboxInfo{
-			OrchestratorID: node.Metadata().ServiceInstanceID,
-			OrchestratorIP: node.IPAddress,
-			ExecutionID:    sandbox.ExecutionID,
 
-			SandboxStartedAt:        sandbox.StartTime,
-			SandboxMaxLengthInHours: int64(sandbox.MaxInstanceLength / time.Hour),
-		}
+		return
+	}
 
-		lifetime := time.Duration(info.SandboxMaxLengthInHours) * time.Hour
-		err := o.routingCatalog.StoreSandbox(ctx, sandbox.SandboxID, &info, lifetime)
-		if err != nil {
-			logger.L().Error(ctx, "error adding routing record to catalog", zap.Error(err), logger.WithSandboxID(sandbox.SandboxID))
-		}
+	// Only add to routing table if the node is managed by Nomad
+	// For remote cluster nodes we are using gPRC metadata for routing registration instead
+	if !node.IsNomadManaged() {
+		return
+	}
+
+	info := e2bcatalog.SandboxInfo{
+		OrchestratorID: node.Metadata().ServiceInstanceID,
+		OrchestratorIP: node.IPAddress,
+
+		ExecutionID:      sandbox.ExecutionID,
+		StartedAt:        sandbox.StartTime,
+		MaxLengthInHours: int64(sandbox.MaxInstanceLength / time.Hour),
+	}
+
+	lifetime := time.Duration(info.MaxLengthInHours) * time.Hour
+	err := o.routingCatalog.StoreSandbox(ctx, sandbox.SandboxID, &info, lifetime)
+	if err != nil {
+		logger.L().Error(ctx, "error adding routing record to catalog", zap.Error(err), logger.WithSandboxID(sandbox.SandboxID))
 	}
 }

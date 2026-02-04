@@ -8,22 +8,31 @@ permissions:
 jobs:
   run-tests:
     name: Run tests for ${{ matrix.package }}
-    runs-on: ubuntu-24.04
+    runs-on: infra-tests
     strategy:
       matrix:
         include:
           - package: packages/api
             test_path: ./...
+            sudo: false
           - package: packages/client-proxy
             test_path: ./...
+            sudo: false
+          - package: packages/db
+            test_path: ./...
+            sudo: false
           - package: packages/docker-reverse-proxy
             test_path: ./...
+            sudo: false
           - package: packages/envd
             test_path: ./...
+            sudo: true
           - package: packages/orchestrator
             test_path: ./...
+            sudo: true
           - package: packages/shared
             test_path: ./pkg/...
+            sudo: false
       fail-fast: false
     steps:
       - name: Checkout repository
@@ -34,31 +43,48 @@ jobs:
       - name: Setup Go
         uses: ./.github/actions/go-setup-cache
         with:
-          job_key: unit-tests-${{ matrix.package }}
+          cache-dependency-paths: |
+            go.work
+            ${{ matrix.package }}/go.mod
+            ${{ matrix.package }}/go.sum
 
-      - name: Enable unprivileged uffd mode
+      - name: Setup envd tests
         run: |
+          # Install bindfs for FUSE mount tests
+          sudo apt-get update && sudo apt-get install -y bindfs
+        if: matrix.package == 'packages/envd'
+
+      - name: Setup orchestrator tests
+        run: |
+          # Enable unprivileged uffd mode
           echo 1 | sudo tee /proc/sys/vm/unprivileged_userfaultfd
 
-      - name: Enable hugepages
-        run: |
+          # Enable hugepages
           sudo mkdir -p /mnt/hugepages
           sudo mount -t hugetlbfs none /mnt/hugepages
-          echo 128 | sudo tee /proc/sys/vm/nr_hugepages
+          echo 2000 | sudo tee /proc/sys/vm/nr_hugepages
 
-      - name: Enable NBD
-        run: |
+          # Enable NBD
           sudo modprobe nbd nbds_max=256
 
-      - name: Disable inotify watching of change events for NBD devices
-        run: |
+          # Disable inotify watching of change events for NBD devices
           echo 'ACTION=="add|change", KERNEL=="nbd*", OPTIONS:="nowatch"' | sudo tee /etc/udev/rules.d/97-nbd-device.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger
 
+        if: matrix.package == 'packages/orchestrator'
+
+      - name: Run tests that require sudo
+        working-directory: ${{ matrix.package }}
+        run: |
+          # Run tests. The '-E' flag is required to allow root to use the correct cache path.
+          sudo -E `which go` test -v ${{ matrix.test_path }}
+        if: matrix.sudo == true
+
       - name: Run tests
         working-directory: ${{ matrix.package }}
-        run: sudo go test -v ${{ matrix.test_path }}
+        run: go test -v ${{ matrix.test_path }}
+        if: matrix.sudo == false
 
   validate-iac:
     name: Validate terraform

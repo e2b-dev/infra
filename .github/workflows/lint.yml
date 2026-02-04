@@ -27,7 +27,10 @@ jobs:
       - name: Setup Go
         uses: ./.github/actions/go-setup-cache
         with:
-          job_key: lint-${{ matrix.modules }}
+          cache-dependency-paths: |
+            go.work
+            ${{ matrix.modules }}/go.mod
+            ${{ matrix.modules }}/go.sum
 
       - name: Parse .tool-versions
         uses: wistia/parse-tool-versions@v2.1.1

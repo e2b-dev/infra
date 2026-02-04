@@ -7,13 +7,14 @@ import (
 	"time"
 
 	"github.com/gogo/status"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"google.golang.org/grpc/codes"
 
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
-	"github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -54,7 +55,7 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 			Version: types.PausedSandboxConfigVersion,
 			Network: sbx.Network,
 		},
-		OriginNodeID:    utils.ToPtr(node.ID),
+		OriginNodeID:    node.ID,
 		Status:          string(types.BuildStatusSnapshotting),
 		CpuArchitecture: utils.ToPtr(machineInfo.CPUArchitecture),
 		CpuFamily:       utils.ToPtr(machineInfo.CPUFamily),
@@ -70,7 +71,7 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 		return err
 	}
 
-	err = snapshotInstance(ctx, o, node, sbx, result.TemplateID, result.BuildID.String())
+	err = snapshotInstance(ctx, node, sbx, result.TemplateID, result.BuildID.String())
 	if errors.Is(err, PauseQueueExhaustedError{}) {
 		telemetry.ReportCriticalError(ctx, "pause queue exhausted", err)
 
@@ -89,7 +90,6 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 		FinishedAt: &now,
 		Reason:     types.BuildReason{},
 		BuildID:    result.BuildID,
-		TemplateID: result.TemplateID,
 	})
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error pausing sandbox", err)
@@ -100,18 +100,13 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 	return nil
 }
 
-func snapshotInstance(ctx context.Context, orch *Orchestrator, node *nodemanager.Node, sbx sandbox.Sandbox, templateID, buildID string) error {
+func snapshotInstance(ctx context.Context, node *nodemanager.Node, sbx sandbox.Sandbox, templateID, buildID string) error {
 	childCtx, childSpan := tracer.Start(ctx, "snapshot-instance")
 	defer childSpan.End()
 
-	client, childCtx, err := orch.GetClient(childCtx, sbx.ClusterID, sbx.NodeID)
-	if err != nil {
-		return fmt.Errorf("failed to get client '%s': %w", sbx.NodeID, err)
-	}
-
-	_, err = client.Sandbox.Pause(
-		node.GetSandboxDeleteCtx(childCtx, sbx.SandboxID, sbx.ExecutionID),
-		&orchestrator.SandboxPauseRequest{
+	client, childCtx := node.GetSandboxDeleteCtx(childCtx, sbx.SandboxID, sbx.ExecutionID)
+	_, err := client.Sandbox.Pause(
+		childCtx, &orchestrator.SandboxPauseRequest{
 			SandboxId:  sbx.SandboxID,
 			TemplateId: templateID,
 			BuildId:    buildID,
@@ -136,6 +131,6 @@ func snapshotInstance(ctx context.Context, orch *Orchestrator, node *nodemanager
 	return fmt.Errorf("failed to pause sandbox '%s': %w", sbx.SandboxID, err)
 }
 
-func (o *Orchestrator) WaitForStateChange(ctx context.Context, sandboxID string) error {
-	return o.sandboxStore.WaitForStateChange(ctx, sandboxID)
+func (o *Orchestrator) WaitForStateChange(ctx context.Context, teamID uuid.UUID, sandboxID string) error {
+	return o.sandboxStore.WaitForStateChange(ctx, teamID, sandboxID)
 }

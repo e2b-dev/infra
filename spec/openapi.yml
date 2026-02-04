@@ -75,6 +75,13 @@ components:
       required: true
       schema:
         type: string
+    tag:
+      name: tag
+      in: path
+      required: true
+      schema:
+        type: string
+        description: Tag name
     paginationLimit:
       name: limit
       in: query
@@ -171,6 +178,16 @@ components:
         public:
           type: boolean
           description: Whether the template is public or only accessible by the team
+
+    TemplateUpdateResponse:
+      required:
+        - names
+      properties:
+        names:
+          type: array
+          description: Names of the template (namespace/alias format when namespaced)
+          items:
+            type: string
 
     CPUCount:
       type: integer
@@ -610,6 +627,7 @@ components:
         - buildCount
         - envdVersion
         - aliases
+        - names
         - buildStatus
       properties:
         templateID:
@@ -630,6 +648,12 @@ components:
         aliases:
           type: array
           description: Aliases of the template
+          deprecated: true
+          items:
+            type: string
+        names:
+          type: array
+          description: Names of the template (namespace/alias format when namespaced)
           items:
             type: string
         createdAt:
@@ -668,6 +692,8 @@ components:
         - buildID
         - public
         - aliases
+        - names
+        - tags
       properties:
         templateID:
           type: string
@@ -678,9 +704,20 @@ components:
         public:
           type: boolean
           description: Whether the template is public or only accessible by the team
+        names:
+          type: array
+          description: Names of the template
+          items:
+            type: string
+        tags:
+          type: array
+          description: Tags assigned to the template build
+          items:
+            type: string
         aliases:
           type: array
           description: Aliases of the template
+          deprecated: true
           items:
             type: string
 
@@ -790,6 +827,7 @@ components:
         - templateID
         - public
         - aliases
+        - names
         - createdAt
         - updatedAt
         - lastSpawnedAt
@@ -805,6 +843,12 @@ components:
         aliases:
           type: array
           description: Aliases of the template
+          deprecated: true
+          items:
+            type: string
+        names:
+          type: array
+          description: Names of the template (namespace/alias format when namespaced)
           items:
             type: string
         createdAt:
@@ -829,6 +873,18 @@ components:
           description: List of builds for the template
           items:
             $ref: "#/components/schemas/TemplateBuild"
+
+    TemplateAliasResponse:
+      required:
+        - templateID
+        - public
+      properties:
+        templateID:
+          type: string
+          description: Identifier of the template
+        public:
+          type: boolean
+          description: Whether the template is public or only accessible by the team
 
     TemplateBuildRequest:
       required:
@@ -877,13 +933,21 @@ components:
           description: Whether the step should be forced to run regardless of the cache
 
     TemplateBuildRequestV3:
-      required:
-        - alias
       properties:
-        alias:
-          description: Alias of the template
+        name:
+          description: Name of the template. Can include a tag with colon separator (e.g. "my-template" or "my-template:v1"). If tag is included, it will be treated as if the tag was provided in the tags array.
           type: string
+        tags:
+          type: array
+          description: Tags to assign to the template build
+          items:
+            type: string
+        alias:
+          description: Alias of the template. Deprecated, use name instead.
+          type: string
+          deprecated: true
         teamID:
+          deprecated: true
           type: string
           description: Identifier of the team
         cpuCount:
@@ -899,6 +963,7 @@ components:
           description: Alias of the template
           type: string
         teamID:
+          deprecated: true
           type: string
           description: Identifier of the team
         cpuCount:
@@ -1469,6 +1534,49 @@ components:
           type: string
           description: New name for the API key
 
+    AssignedTemplateTags:
+      required:
+        - tags
+        - buildID
+      properties:
+        tags:
+          type: array
+          items:
+            type: string
+          description: Assigned tags of the template
+        buildID:
+          type: string
+          format: uuid
+          description: Identifier of the build associated with these tags
+
+    AssignTemplateTagsRequest:
+      required:
+        - target
+        - tags
+      properties:
+        target:
+          type: string
+          description: Target template in "name:tag" format
+        tags:
+          description: Tags to assign to the template
+          type: array
+          items:
+            type: string
+
+    DeleteTemplateTagsRequest:
+      required:
+        - name
+        - tags
+      properties:
+        name:
+          type: string
+          description: Name of the template
+        tags:
+          description: Tags to delete
+          type: array
+          items:
+            type: string
+
     Error:
       required:
         - code
@@ -1508,6 +1616,7 @@ tags:
   - name: auth
   - name: access-tokens
   - name: api-keys
+  - name: tags
 
 paths:
   /health:
@@ -2054,6 +2163,7 @@ paths:
       security:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       requestBody:
         required: true
         content:
@@ -2083,6 +2193,7 @@ paths:
       security:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       requestBody:
         required: true
         content:
@@ -2112,6 +2223,7 @@ paths:
         - AccessTokenAuth: []
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - in: path
@@ -2145,6 +2257,7 @@ paths:
         - ApiKeyAuth: []
         - AccessTokenAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - in: query
           required: false
@@ -2173,6 +2286,7 @@ paths:
       security:
         - AccessTokenAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       requestBody:
         required: true
         content:
@@ -2224,6 +2338,7 @@ paths:
       security:
         - AccessTokenAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
       requestBody:
@@ -2251,6 +2366,7 @@ paths:
         - ApiKeyAuth: []
         - AccessTokenAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
       responses:
@@ -2262,11 +2378,13 @@ paths:
           $ref: "#/components/responses/500"
     patch:
       description: Update template
+      deprecated: true
       tags: [templates]
       security:
         - ApiKeyAuth: []
         - AccessTokenAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
       requestBody:
@@ -2293,6 +2411,7 @@ paths:
       security:
         - AccessTokenAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - $ref: "#/components/parameters/buildID"
@@ -2311,6 +2430,7 @@ paths:
       security:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - $ref: "#/components/parameters/buildID"
@@ -2328,6 +2448,37 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
+  /v2/templates/{templateID}:
+    patch:
+      description: Update template
+      tags: [templates]
+      security:
+        - ApiKeyAuth: []
+        - AccessTokenAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/templateID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TemplateUpdateRequest"
+      responses:
+        "200":
+          description: The template was updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemplateUpdateResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
   /templates/{templateID}/builds/{buildID}/status:
     get:
       description: Get template build info
@@ -2336,6 +2487,7 @@ paths:
         - AccessTokenAuth: []
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - $ref: "#/components/parameters/buildID"
@@ -2382,6 +2534,7 @@ paths:
         - AccessTokenAuth: []
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - $ref: "#/components/parameters/buildID"
@@ -2423,6 +2576,91 @@ paths:
                 $ref: "#/components/schemas/TemplateBuildLogsResponse"
         "401":
           $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /templates/tags:
+    post:
+      description: Assign tag(s) to a template build
+      tags: [tags]
+      security:
+        - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssignTemplateTagsRequest"
+      responses:
+        "201":
+          description: Tag assigned successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssignedTemplateTags"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+    delete:
+      description: Delete multiple tags from templates
+      tags: [tags]
+      security:
+        - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeleteTemplateTagsRequest"
+      responses:
+        "204":
+          description: Tags deleted successfully
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /templates/aliases/{alias}:
+    get:
+      description: Check if template with given alias exists
+      tags: [templates]
+      security:
+        - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+      parameters:
+        - name: alias
+          in: path
+          required: true
+          schema:
+            type: string
+            description: Template alias
+      responses:
+        "200":
+          description: Successfully queried template by alias
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemplateAliasResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "403":
+          $ref: "#/components/responses/403"
         "404":
           $ref: "#/components/responses/404"
         "500":

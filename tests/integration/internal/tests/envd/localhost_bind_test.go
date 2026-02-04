@@ -17,6 +17,7 @@ import (
 )
 
 func TestBindLocalhost(t *testing.T) {
+	t.Parallel()
 	ctx := t.Context()
 
 	client := setup.GetAPIClient()
@@ -55,6 +56,7 @@ func TestBindLocalhost(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			sbx := utils.SetupSandboxWithCleanup(t, client, utils.WithTimeout(300)) //nolint:contextcheck // TODO: fix this later
 			envdClient := setup.GetEnvdClient(t, ctx)
 

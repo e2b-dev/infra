@@ -5,6 +5,7 @@ import (
 	"maps"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -97,28 +98,40 @@ func SetupSandboxWithCleanup(t *testing.T, c *api.ClientWithResponses, options .
 		templateID = setup.SandboxTemplateID
 	}
 
-	createSandboxResponse, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
-		TemplateID:          templateID,
-		Timeout:             &config.timeout,
-		Metadata:            &config.metadata,
-		AutoPause:           &config.autoPause,
-		Network:             config.network,
-		AllowInternetAccess: config.allowInternetAccess,
-		Secure:              config.secure,
-	}, setup.WithAPIKey())
+	for range 10 { // retry up to 10 times, but only in case of 429
+		createSandboxResponse, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
+			TemplateID:          templateID,
+			Timeout:             &config.timeout,
+			Metadata:            &config.metadata,
+			AutoPause:           &config.autoPause,
+			Network:             config.network,
+			AllowInternetAccess: config.allowInternetAccess,
+			Secure:              config.secure,
+		}, setup.WithAPIKey())
+		require.NoError(t, err)
 
-	require.NoError(t, err)
-	assert.Equal(t, http.StatusCreated, createSandboxResponse.StatusCode())
-	require.NotNil(t, createSandboxResponse.JSON201)
+		if createSandboxResponse.StatusCode() == http.StatusTooManyRequests {
+			t.Logf("Sandbox creation failed with status code %d, retrying...", createSandboxResponse.StatusCode())
+			time.Sleep(time.Second * 5)
 
-	t.Cleanup(func() {
-		if t.Failed() {
-			t.Logf("Response: %s", string(createSandboxResponse.Body))
+			continue
 		}
-		TeardownSandbox(t, c, createSandboxResponse.JSON201.SandboxID)
-	})
 
-	return createSandboxResponse.JSON201
+		require.Equal(t, http.StatusCreated, createSandboxResponse.StatusCode())
+		sbx := createSandboxResponse.JSON201
+		require.NotNil(t, sbx)
+
+		t.Cleanup(func() {
+			TeardownSandbox(t, c, sbx.SandboxID)
+		})
+
+		return sbx
+	}
+
+	t.Logf("Sandbox creation failed after 10 retries")
+	t.FailNow()
+
+	return nil
 }
 
 // TeardownSandbox kills the sandbox with the given ID

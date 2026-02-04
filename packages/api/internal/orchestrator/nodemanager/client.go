@@ -2,15 +2,17 @@ package nodemanager
 
 import (
 	"fmt"
+	"time"
 
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/keepalive"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
+	"github.com/e2b-dev/infra/packages/api/internal/clusters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 )
@@ -21,7 +23,7 @@ var OrchestratorToApiNodeStateMapper = map[orchestratorinfo.ServiceInfoStatus]ap
 	orchestratorinfo.ServiceInfoStatus_Unhealthy: api.NodeStatusUnhealthy,
 }
 
-func NewClient(tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider, host string) (*grpclient.GRPCClient, error) {
+func NewClient(tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider, host string) (*clusters.GRPCClient, error) {
 	conn, err := grpc.NewClient(host,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithStatsHandler(
@@ -29,6 +31,13 @@ func NewClient(tracerProvider trace.TracerProvider, meterProvider metric.MeterPr
 				otelgrpc.WithTracerProvider(tracerProvider),
 				otelgrpc.WithMeterProvider(meterProvider),
 			),
+		),
+		grpc.WithKeepaliveParams(
+			keepalive.ClientParameters{
+				Time:                30 * time.Second, // Send ping every 30s
+				Timeout:             5 * time.Second,  // Wait 5s for response
+				PermitWithoutStream: true,             // Allow pings even without active streams
+			},
 		),
 	)
 	if err != nil {
@@ -38,5 +47,5 @@ func NewClient(tracerProvider trace.TracerProvider, meterProvider metric.MeterPr
 	sandboxClient := orchestrator.NewSandboxServiceClient(conn)
 	infoClient := orchestratorinfo.NewInfoServiceClient(conn)
 
-	return &grpclient.GRPCClient{Sandbox: sandboxClient, Info: infoClient, Connection: conn}, nil
+	return &clusters.GRPCClient{Sandbox: sandboxClient, Info: infoClient, Connection: conn}, nil
 }

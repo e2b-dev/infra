@@ -101,11 +101,11 @@ func (ct *CallbackTracker) GetCalls(name string) []sandbox.Sandbox {
 // NoOpReservationStorage is a no-op implementation for testing
 type NoOpReservationStorage struct{}
 
-func (n *NoOpReservationStorage) Reserve(_ context.Context, _, _ string, _ int) (func(sandbox.Sandbox, error), func(ctx context.Context) (sandbox.Sandbox, error), error) {
+func (n *NoOpReservationStorage) Reserve(_ context.Context, _ uuid.UUID, _ string, _ int) (func(sandbox.Sandbox, error), func(ctx context.Context) (sandbox.Sandbox, error), error) {
 	return nil, nil, nil
 }
 
-func (n *NoOpReservationStorage) Release(_ context.Context, _, _ string) error {
+func (n *NoOpReservationStorage) Release(_ context.Context, _ uuid.UUID, _ string) error {
 	return nil
 }
 
@@ -180,7 +180,9 @@ func createTestSandbox() sandbox.Sandbox {
 // =============================================================================
 
 func TestAdd_NewSandbox(t *testing.T) {
+	t.Parallel()
 	t.Run("success - all callbacks called", func(t *testing.T) {
+		t.Parallel()
 		ctx := t.Context()
 
 		// Setup
@@ -212,14 +214,16 @@ func TestAdd_NewSandbox(t *testing.T) {
 		tracker.AssertCallCount(t, "AsyncNewlyCreatedSandbox", 1)
 
 		// Verify sandbox in storage
-		stored, err := storage.Get(ctx, sbx.SandboxID)
+		stored, err := storage.Get(ctx, sbx.TeamID, sbx.SandboxID)
 		require.NoError(t, err)
 		assert.Equal(t, sbx.SandboxID, stored.SandboxID)
 	})
 }
 
 func TestAdd_AlreadyInCache(t *testing.T) {
+	t.Parallel()
 	t.Run("newlyCreated=true - AsyncSandboxCounter NOT called when already in cache", func(t *testing.T) {
+		t.Parallel()
 		ctx := t.Context()
 
 		storage := memory.NewStorage()
@@ -259,6 +263,7 @@ func TestAdd_AlreadyInCache(t *testing.T) {
 	})
 
 	t.Run("newlyCreated=false - only AddSandboxToRoutingTable called when already in cache", func(t *testing.T) {
+		t.Parallel()
 		ctx := t.Context()
 
 		storage := memory.NewStorage()
@@ -301,7 +306,9 @@ func TestAdd_AlreadyInCache(t *testing.T) {
 }
 
 func TestAdd_NotNewlyCreated(t *testing.T) {
+	t.Parallel()
 	t.Run("not in cache - AddSandboxToRoutingTable and AsyncSandboxCounter called", func(t *testing.T) {
+		t.Parallel()
 		ctx := t.Context()
 
 		storage := memory.NewStorage()
@@ -327,6 +334,7 @@ func TestAdd_NotNewlyCreated(t *testing.T) {
 	})
 
 	t.Run("already in cache - only AddSandboxToRoutingTable called", func(t *testing.T) {
+		t.Parallel()
 		ctx := t.Context()
 
 		storage := memory.NewStorage()
@@ -368,7 +376,9 @@ func TestAdd_NotNewlyCreated(t *testing.T) {
 }
 
 func TestAdd_StorageErrors(t *testing.T) {
+	t.Parallel()
 	t.Run("storage returns non-ErrAlreadyExists error", func(t *testing.T) {
+		t.Parallel()
 		ctx := t.Context()
 
 		storage := memory.NewStorage()
@@ -405,7 +415,9 @@ func TestAdd_StorageErrors(t *testing.T) {
 }
 
 func TestAdd_ConcurrentCalls(t *testing.T) {
+	t.Parallel()
 	t.Run("concurrent adds for different sandboxes", func(t *testing.T) {
+		t.Parallel()
 		ctx := t.Context()
 
 		storage := memory.NewStorage()
@@ -459,12 +471,13 @@ func TestAdd_ConcurrentCalls(t *testing.T) {
 		// Verify all sandboxes are in storage
 		for i := range numGoroutines {
 			sandboxID := fmt.Sprintf("concurrent-sandbox-%d", i)
-			_, err := storage.Get(ctx, sandboxID)
+			_, err := storage.Get(ctx, uuid.UUID{}, sandboxID)
 			assert.NoError(t, err, "expected sandbox %s to be in storage", sandboxID)
 		}
 	})
 
 	t.Run("concurrent adds for same sandbox", func(t *testing.T) {
+		t.Parallel()
 		ctx := t.Context()
 
 		storage := memory.NewStorage()
@@ -512,7 +525,7 @@ func TestAdd_ConcurrentCalls(t *testing.T) {
 		tracker.AssertCallCount(t, "AsyncNewlyCreatedSandbox", numGoroutines) // All calls have newlyCreated=true
 
 		// Verify sandbox exists in storage
-		stored, err := storage.Get(ctx, sbx.SandboxID)
+		stored, err := storage.Get(ctx, sbx.TeamID, sbx.SandboxID)
 		require.NoError(t, err)
 		assert.Equal(t, sbx.SandboxID, stored.SandboxID)
 	})

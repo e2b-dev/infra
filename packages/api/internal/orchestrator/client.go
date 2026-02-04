@@ -9,8 +9,7 @@ import (
 	nomadapi "github.com/hashicorp/nomad/api"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/api/internal/edge"
-	grpclient "github.com/e2b-dev/infra/packages/api/internal/grpc"
+	"github.com/e2b-dev/infra/packages/api/internal/clusters"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -33,11 +32,8 @@ func (o *Orchestrator) connectToNode(ctx context.Context, discovered nodemanager
 	return nil
 }
 
-func (o *Orchestrator) connectToClusterNode(ctx context.Context, cluster *edge.Cluster, i *edge.ClusterInstance) {
-	// this way we don't need to worry about multiple clusters with the same node ID in shared pool
-	clusterGRPC := cluster.GetGRPC(i.ServiceInstanceID)
-
-	orchestratorNode, err := nodemanager.NewClusterNode(ctx, clusterGRPC.Client, cluster.ID, cluster.SandboxDomain, i)
+func (o *Orchestrator) connectToClusterNode(ctx context.Context, cluster *clusters.Cluster, i *clusters.Instance) {
+	orchestratorNode, err := nodemanager.NewClusterNode(ctx, i.GetClient(), cluster.ID, cluster.SandboxDomain, i)
 	if err != nil {
 		logger.L().Error(ctx, "Failed to create node", zap.Error(err))
 
@@ -66,17 +62,6 @@ func (o *Orchestrator) scopedNodeID(clusterID uuid.UUID, nodeID string) string {
 	return fmt.Sprintf("%s-%s", clusterID.String(), nodeID)
 }
 
-func (o *Orchestrator) GetClient(ctx context.Context, clusterID uuid.UUID, nodeID string) (*grpclient.GRPCClient, context.Context, error) {
-	n := o.GetNode(clusterID, nodeID)
-	if n == nil {
-		return nil, nil, fmt.Errorf("node '%s' not found in cluster '%s'", nodeID, clusterID)
-	}
-
-	client, ctx := n.GetClient(ctx)
-
-	return client, ctx, nil
-}
-
 func (o *Orchestrator) listNomadNodes(ctx context.Context) ([]nodemanager.NomadServiceDiscovery, error) {
 	_, listSpan := tracer.Start(ctx, "list-nomad-nodes")
 	defer listSpan.End()
@@ -94,7 +79,7 @@ func (o *Orchestrator) listNomadNodes(ctx context.Context) ([]nodemanager.NomadS
 	for _, n := range nomadNodes {
 		result = append(result, nodemanager.NomadServiceDiscovery{
 			NomadNodeShortID:    n.ID[:consts.NodeIDLength],
-			OrchestratorAddress: fmt.Sprintf("%s:%s", n.Address, consts.OrchestratorPort),
+			OrchestratorAddress: fmt.Sprintf("%s:%d", n.Address, consts.OrchestratorAPIPort),
 			IPAddress:           n.Address,
 		})
 	}
