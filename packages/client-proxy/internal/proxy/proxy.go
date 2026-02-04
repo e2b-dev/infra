@@ -90,8 +90,7 @@ func handlePausedSandboxWithInfo(
 	requestHasAuth bool,
 	pausedInfo PausedInfo,
 ) (string, error) {
-	// Shared implementation so callers can reuse pre-fetched paused info.
-	logSleeping(ctx, sandboxId)
+	logSandboxAppearsPaused(ctx, sandboxId)
 
 	// Decide if we are allowed to auto-resume for this request.
 	canAutoResume := shouldAutoResume(pausedInfo.AutoResumePolicy, autoResumeEnabled, requestHasAuth) && pausedChecker != nil

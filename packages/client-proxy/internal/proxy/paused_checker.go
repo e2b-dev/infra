@@ -17,6 +17,6 @@ type PausedInfo struct {
 	AutoResumePolicy proxygrpc.AutoResumePolicy
 }
 
-func logSleeping(ctx context.Context, sandboxId string) {
-	logger.L().Info(ctx, "im sleeping", logger.WithSandboxID(sandboxId))
+func logSandboxAppearsPaused(ctx context.Context, sandboxId string) {
+	logger.L().Info(ctx, "sandbox appears paused", logger.WithSandboxID(sandboxId))
 }
