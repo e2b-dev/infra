@@ -4,6 +4,8 @@ resource "google_secret_manager_secret" "postgres_connection_string" {
   replication {
     auto {}
   }
+
+  depends_on = [time_sleep.secrets_api_wait_60_seconds]
 }
 
 resource "google_secret_manager_secret" "supabase_jwt_secrets" {
@@ -12,6 +14,8 @@ resource "google_secret_manager_secret" "supabase_jwt_secrets" {
   replication {
     auto {}
   }
+
+  depends_on = [time_sleep.secrets_api_wait_60_seconds]
 }
 
 resource "google_secret_manager_secret_version" "supabase_jwt_secrets" {
@@ -30,6 +34,8 @@ resource "google_secret_manager_secret" "posthog_api_key" {
   replication {
     auto {}
   }
+
+  depends_on = [time_sleep.secrets_api_wait_60_seconds]
 }
 
 resource "google_secret_manager_secret_version" "posthog_api_key" {
@@ -48,6 +54,8 @@ resource "google_secret_manager_secret" "redis_cluster_url" {
   replication {
     auto {}
   }
+
+  depends_on = [time_sleep.secrets_api_wait_60_seconds]
 }
 
 resource "google_secret_manager_secret_version" "redis_cluster_url" {
