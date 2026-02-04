@@ -242,3 +242,21 @@ func TestSetContext(t *testing.T) {
 		assert.Equal(t, "Second Team", embedded.Name().String())
 	})
 }
+
+func TestAddToContext(t *testing.T) {
+	t.Parallel()
+
+	t.Run("skip empty, keep good", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+
+		// good and bad context
+		badContext := TeamContext("")
+		goodContext := SandboxContext("sandbox-123")
+		ctx = AddToContext(ctx, goodContext, badContext)
+		lctx, ok := getContext(ctx)
+		assert.True(t, ok)
+		assert.Equal(t, goodContext, lctx)
+	})
+}
