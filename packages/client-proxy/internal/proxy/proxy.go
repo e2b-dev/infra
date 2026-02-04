@@ -87,6 +87,7 @@ func handlePausedSandbox(
 		// Check if auto-resume is disabled or auth is required
 		if isAuthResumeError(err) {
 			logger.L().Debug(ctx, "auto-resume not allowed", zap.Error(err), logger.WithSandboxID(sandboxId))
+
 			return "", reverseproxy.NewErrSandboxPaused(sandboxId, false)
 		}
 
@@ -98,10 +99,12 @@ func handlePausedSandbox(
 				return nodeIP, nil
 			}
 			// Catalog still doesn't have it - something's wrong
+
 			return "", nil
 		}
 
 		logger.L().Warn(ctx, "auto-resume failed", zap.Error(err), logger.WithSandboxID(sandboxId))
+
 		return "", reverseproxy.NewErrSandboxPaused(sandboxId, true)
 	}
 
@@ -111,6 +114,7 @@ func handlePausedSandbox(
 		return nodeIP, nil
 	}
 	logger.L().Warn(ctx, "auto-resume wait failed", zap.Error(waitErr), logger.WithSandboxID(sandboxId))
+
 	return "", reverseproxy.NewErrSandboxPaused(sandboxId, true)
 }
 
@@ -289,7 +293,7 @@ func pausedFallbackHandler(
 		return nil
 	}
 
-	return func(w http.ResponseWriter, r *http.Request, _ error) bool {
+	return func(_ http.ResponseWriter, r *http.Request, _ error) bool {
 		ctx := withProxyAuthMetadata(context.WithoutCancel(r.Context()), r.Header)
 
 		// Optimistic resume: try to resume in background without checking pause status
