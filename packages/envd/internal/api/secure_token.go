@@ -99,20 +99,19 @@ func (s *SecureToken) TakeFrom(src *SecureToken) {
 		return
 	}
 
+	// Extract buffer from source
 	src.mu.Lock()
-	defer src.mu.Unlock()
+	buffer := src.buffer
+	src.buffer = nil
+	src.mu.Unlock()
 
+	// Install buffer in destination
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	// Destroy current buffer
 	if s.buffer != nil {
 		s.buffer.Destroy()
 	}
-
-	// Transfer ownership
-	s.buffer = src.buffer
-	src.buffer = nil
+	s.buffer = buffer
+	s.mu.Unlock()
 }
 
 // Equals checks if token matches using constant-time comparison.
@@ -143,12 +142,12 @@ func (s *SecureToken) EqualsSecure(other *SecureToken) bool {
 		return s.IsSet()
 	}
 
-	other.mu.RLock()
-	defer other.mu.RUnlock()
-
-	if other.buffer == nil || !other.buffer.IsAlive() {
+	// Get a copy of other's bytes (avoids holding two locks simultaneously)
+	otherBytes, err := other.Bytes()
+	if err != nil {
 		return false
 	}
+	defer memguard.WipeBytes(otherBytes)
 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -157,7 +156,7 @@ func (s *SecureToken) EqualsSecure(other *SecureToken) bool {
 		return false
 	}
 
-	return s.buffer.EqualTo(other.buffer.Bytes())
+	return s.buffer.EqualTo(otherBytes)
 }
 
 // IsSet returns true if a token is stored.

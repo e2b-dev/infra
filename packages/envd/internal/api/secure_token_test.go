@@ -365,6 +365,40 @@ func TestSecureTokenEqualsSecure(t *testing.T) {
 		assert.True(t, st2.EqualsSecure(st1))
 	})
 
+	t.Run("concurrent TakeFrom and EqualsSecure do not deadlock", func(t *testing.T) {
+		t.Parallel()
+		// This test verifies the fix for the lock ordering deadlock bug.
+
+		const iterations = 100
+
+		for range iterations {
+			a := &SecureToken{}
+			err := a.Set([]byte("token-a"))
+			require.NoError(t, err)
+
+			b := &SecureToken{}
+			err = b.Set([]byte("token-b"))
+			require.NoError(t, err)
+
+			var wg sync.WaitGroup
+			wg.Add(2)
+
+			// Goroutine 1: a.TakeFrom(b)
+			go func() {
+				defer wg.Done()
+				a.TakeFrom(b)
+			}()
+
+			// Goroutine 2: b.EqualsSecure(a)
+			go func() {
+				defer wg.Done()
+				b.EqualsSecure(a)
+			}()
+
+			wg.Wait()
+		}
+	})
+
 	t.Run("returns false for different tokens", func(t *testing.T) {
 		t.Parallel()
 		st1 := &SecureToken{}
