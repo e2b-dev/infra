@@ -125,6 +125,11 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		// Ensure request token is destroyed if not transferred via TakeFrom.
+		// This handles: validation failures, timestamp-based skips, and any early returns.
+		// Safe because Destroy() is nil-safe and TakeFrom clears the source.
+		defer initRequest.AccessToken.Destroy()
+
 		a.initLock.Lock()
 		defer a.initLock.Unlock()
 
