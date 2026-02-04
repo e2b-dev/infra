@@ -225,16 +225,11 @@ INSERT INTO env_builds (
 		}
 
 		// Create the build assignment (trigger will backfill env_id for backward compat)
-		var assignmentCreatedAt *time.Time
 		if build.createdAt != nil {
-			assignmentCreatedAt = build.createdAt
-		}
-
-		if assignmentCreatedAt != nil {
 			err = db.TestsRawSQL(ctx, `
 INSERT INTO env_build_assignments (env_id, build_id, tag, created_at)
 VALUES ($1, $2, 'default', $3)
-`, data.EnvID, build.id, assignmentCreatedAt)
+`, data.EnvID, build.id, build.createdAt)
 		} else {
 			err = db.TestsRawSQL(ctx, `
 INSERT INTO env_build_assignments (env_id, build_id, tag)
