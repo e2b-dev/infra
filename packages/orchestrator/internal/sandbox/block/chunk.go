@@ -139,42 +139,17 @@ func (c *UncompressedMMapChunker) Slice(ctx context.Context, off, length int64, 
 	return b, nil
 }
 
-// fetchToCache fetches uncompressed data from storage into the mmap cache.
-// Always fetches full MemoryChunkSize (4MB) chunks for deduplication consistency.
+// fetchToCache ensures that the data at the given offset and length is available in the cache.
 func (c *UncompressedMMapChunker) fetchToCache(ctx context.Context, off, length int64) error {
 	var eg errgroup.Group
 
-	// Calculate chunk-aligned fetch range
+	chunks := header.BlocksOffsets(length, storage.MemoryChunkSize)
+
 	startingChunk := header.BlockIdx(off, storage.MemoryChunkSize)
 	startingChunkOffset := header.BlockOffset(startingChunk, storage.MemoryChunkSize)
 
-	endOffset := off + length
-	endChunk := header.BlockIdx(endOffset+storage.MemoryChunkSize-1, storage.MemoryChunkSize)
-	nChunks := endChunk - startingChunk
-
-	// Build a synthetic frame table for uncompressed reads
-	framesToFetch := &storage.FrameTable{
-		CompressionType: storage.CompressionNone,
-		StartAt: storage.FrameOffset{
-			U: startingChunkOffset,
-			C: startingChunkOffset,
-		},
-	}
-
-	currentOffset := startingChunkOffset
-	for i := int64(0); i < nChunks && currentOffset < c.size; i++ {
-		frameSize := min(int64(storage.MemoryChunkSize), c.size-currentOffset)
-		framesToFetch.Frames = append(framesToFetch.Frames, storage.FrameSize{
-			U: int32(frameSize),
-			C: int32(frameSize),
-		})
-		currentOffset += frameSize
-	}
-
-	currentOff := framesToFetch.StartAt.U
-	for _, f := range framesToFetch.Frames {
-		fetchOff := currentOff
-		currentOff += int64(f.U)
+	for _, chunkOff := range chunks {
+		fetchOff := startingChunkOffset + chunkOff
 
 		eg.Go(func() (err error) {
 			defer func() {
@@ -183,6 +158,7 @@ func (c *UncompressedMMapChunker) fetchToCache(ctx context.Context, off, length 
 					err = fmt.Errorf("recovered from panic in the fetch handler: %v", r)
 				}
 			}()
+
 			err = c.fetchers.Wait(fetchOff, func() error {
 				select {
 				case <-ctx.Done():
@@ -190,7 +166,7 @@ func (c *UncompressedMMapChunker) fetchToCache(ctx context.Context, off, length 
 				default:
 				}
 
-				b, releaseCacheCloseLock, err := c.cache.addressBytes(fetchOff, int64(f.U))
+				b, releaseCacheCloseLock, err := c.cache.addressBytes(fetchOff, storage.MemoryChunkSize)
 				if err != nil {
 					return err
 				}
@@ -198,8 +174,7 @@ func (c *UncompressedMMapChunker) fetchToCache(ctx context.Context, off, length 
 
 				fetchSW := c.metrics.RemoteReadsTimerFactory.Begin()
 
-				_, err = c.storage.GetFrame(ctx,
-					c.objectPath, fetchOff, framesToFetch, false, b)
+				_, err = c.storage.GetFrame(ctx, c.objectPath, fetchOff, nil, false, b)
 				if err != nil {
 					fetchSW.Failure(ctx, int64(len(b)),
 						attribute.String(failureReason, failureTypeRemoteRead),
@@ -208,7 +183,7 @@ func (c *UncompressedMMapChunker) fetchToCache(ctx context.Context, off, length 
 					return fmt.Errorf("failed to read from storage at %d: %w", fetchOff, err)
 				}
 
-				c.cache.setIsCached(fetchOff, int64(f.U))
+				c.cache.setIsCached(fetchOff, int64(len(b)))
 
 				fetchSW.Success(ctx, int64(len(b)))
 
