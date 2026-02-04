@@ -25,7 +25,7 @@ func TestProxyAutoResumePolicies(t *testing.T) {
 
 	foreignUserID := utils.CreateUser(t, db)
 	foreignTeamID := utils.CreateTeamWithUser(t, db, "proxy-auto-resume-foreign", foreignUserID.String())
-	foreignAPIKey := utils.CreateAPIKeyInDB(t, db, foreignUserID, foreignTeamID)
+	foreignAPIKey := utils.CreateAPIKey(t, t.Context(), c, foreignUserID.String(), foreignTeamID)
 	foreignAccessToken := utils.CreateAccessToken(t, db, foreignUserID)
 
 	proxyURL, err := url.Parse(setup.ClientProxy)

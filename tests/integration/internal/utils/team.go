@@ -8,8 +8,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
-	"github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
-	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 )
@@ -87,32 +85,4 @@ func CreateAPIKey(t *testing.T, ctx context.Context, c *api.ClientWithResponses,
 	})
 
 	return apiKey.JSON201.Key
-}
-
-func CreateAPIKeyInDB(t *testing.T, db *setup.Database, userID uuid.UUID, teamID uuid.UUID) string {
-	t.Helper()
-
-	apiKey, err := keys.GenerateKey(keys.ApiKeyPrefix)
-	require.NoError(t, err)
-
-	row, err := db.AuthDb.Write.CreateTeamAPIKey(t.Context(), authqueries.CreateTeamAPIKeyParams{
-		TeamID:           teamID,
-		CreatedBy:        &userID,
-		ApiKeyHash:       apiKey.HashedValue,
-		ApiKeyPrefix:     apiKey.Masked.Prefix,
-		ApiKeyLength:     int32(apiKey.Masked.ValueLength),
-		ApiKeyMaskPrefix: apiKey.Masked.MaskedValuePrefix,
-		ApiKeyMaskSuffix: apiKey.Masked.MaskedValueSuffix,
-		Name:             "Integration Tests API Key",
-	})
-	require.NoError(t, err)
-
-	t.Cleanup(func() {
-		_, _ = db.AuthDb.Write.DeleteTeamAPIKey(t.Context(), authqueries.DeleteTeamAPIKeyParams{
-			ID:     row.ID,
-			TeamID: teamID,
-		})
-	})
-
-	return apiKey.PrefixedRawValue
 }
