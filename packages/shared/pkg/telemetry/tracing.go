@@ -3,6 +3,7 @@ package telemetry
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -105,6 +106,18 @@ func ReportError(ctx context.Context, message string, err error, attrs ...attrib
 			attrs...,
 		),
 	)
+}
+
+func ReportErrorByCode(ctx context.Context, code int, message string, err error, attrs ...attribute.KeyValue) {
+	if err == nil {
+		return
+	}
+
+	if code >= http.StatusInternalServerError {
+		ReportCriticalError(ctx, message, err, attrs...)
+	} else {
+		ReportError(ctx, message, err, attrs...)
+	}
 }
 
 func attributesToZapFields(attrs ...attribute.KeyValue) []zap.Field {
