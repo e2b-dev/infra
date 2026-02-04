@@ -317,6 +317,8 @@ func createOrchestratorVolumeMounts(
 	invalidVolumeMounts := make([]InvalidMount, 0)
 	results := make([]*orchestrator.SandboxVolumeMount, 0, len(volumeMounts))
 
+	usedPaths := make(map[string]struct{})
+
 	for index, v := range volumeMounts {
 		actualVolume, ok := dbVolumesMap[v.Name]
 		if !ok {
@@ -330,6 +332,11 @@ func createOrchestratorVolumeMounts(
 
 			continue
 		}
+
+		if _, ok := usedPaths[v.Path]; ok {
+			invalidVolumeMounts = append(invalidVolumeMounts, InvalidMount{Index: index, Reason: fmt.Sprintf("path '%s' is already used", v.Path)})
+		}
+		usedPaths[v.Path] = struct{}{}
 
 		results = append(results, &orchestrator.SandboxVolumeMount{
 			Name: v.Name,
