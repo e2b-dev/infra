@@ -50,10 +50,9 @@ snapshot as (
     RETURNING env_id as template_id
 ),
 
--- Create a new build for the snapshot
+-- Create a new build for the snapshot (env_id populated by trigger from assignment)
 new_build as (
     INSERT INTO "public"."env_builds" (
-        env_id,
         vcpu,
         ram_mb,
         free_disk_size_mb,
@@ -70,7 +69,6 @@ new_build as (
         cpu_model_name,
         cpu_flags
     ) VALUES (
-        (SELECT template_id FROM snapshot),
         @vcpu,
         @ram_mb,
         @free_disk_size_mb,
@@ -86,18 +84,18 @@ new_build as (
         @cpu_model,
         @cpu_model_name,
         @cpu_flags
-    ) RETURNING id as build_id, env_id as template_id
+    ) RETURNING id as build_id
 ),
 
 -- Create the build assignment edge (explicit, not relying on trigger)
 build_assignment as (
     INSERT INTO "public"."env_build_assignments" (env_id, build_id, tag)
     VALUES (
-        (SELECT template_id FROM new_build),
+        (SELECT template_id FROM snapshot),
         (SELECT build_id FROM new_build),
         'default'
     )
     RETURNING build_id, env_id as template_id
 )
 
-SELECT build_id, template_id FROM new_build;
+SELECT build_id, template_id FROM build_assignment;
