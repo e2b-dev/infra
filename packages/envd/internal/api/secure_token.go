@@ -139,6 +139,10 @@ func (s *SecureToken) EqualsSecure(other *SecureToken) bool {
 		return false
 	}
 
+	if s == other {
+		return s.IsSet()
+	}
+
 	other.mu.RLock()
 	defer other.mu.RUnlock()
 

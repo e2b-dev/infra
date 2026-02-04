@@ -396,4 +396,20 @@ func TestSecureTokenEqualsSecure(t *testing.T) {
 
 		assert.False(t, st1.EqualsSecure(st2))
 	})
+
+	t.Run("self-comparison returns true when set", func(t *testing.T) {
+		t.Parallel()
+		st := &SecureToken{}
+		err := st.Set([]byte("token"))
+		require.NoError(t, err)
+
+		assert.True(t, st.EqualsSecure(st), "self-comparison should return true and not deadlock")
+	})
+
+	t.Run("self-comparison returns false when not set", func(t *testing.T) {
+		t.Parallel()
+		st := &SecureToken{}
+
+		assert.False(t, st.EqualsSecure(st), "self-comparison on unset token should return false")
+	})
 }
