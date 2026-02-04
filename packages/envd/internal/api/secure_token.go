@@ -139,6 +139,11 @@ func (s *SecureToken) EqualsSecure(other *SecureToken) bool {
 		return false
 	}
 
+	// Prevent deadlock: if comparing with self, return true
+	if s == other {
+		return true
+	}
+
 	other.mu.RLock()
 	defer other.mu.RUnlock()
 
