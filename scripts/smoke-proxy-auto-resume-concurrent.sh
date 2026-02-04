@@ -69,7 +69,18 @@ trap cleanup EXIT
 echo "Sandbox: ${sandbox_id} (probe_id=${PROBE_ID})"
 
 curl -sS -X POST "${API_URL}/sandboxes/${sandbox_id}/pause" -H "X-API-Key: ${API_KEY}" >/dev/null
-sleep "${PAUSE_WAIT}"
+state=""
+for _ in $(seq 1 "${PAUSE_WAIT}"); do
+  state=$(curl -sS -H "X-API-Key: ${API_KEY}" "${API_URL}/sandboxes/${sandbox_id}" | jq -r '.state')
+  if [ "${state}" = "paused" ]; then
+    break
+  fi
+  sleep 1
+done
+if [ "${state}" != "paused" ]; then
+  echo "Sandbox did not reach paused state within ${PAUSE_WAIT}s (state=${state})" >&2
+  exit 1
+fi
 
 metadata_filter=$(printf 'probe_id=%s' "${PROBE_ID}" | jq -sRr @uri)
 count_before=$(curl -sS -H "X-API-Key: ${API_KEY}" "${API_URL}/sandboxes?metadata=${metadata_filter}" | jq 'length')
