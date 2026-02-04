@@ -81,21 +81,11 @@ func mergeSameKind(first ldcontext.Context, second ldcontext.Context) ldcontext.
 	return builder.Build()
 }
 
-func shouldInclude(item ldcontext.Context, fns []func(ldcontext.Context) bool) bool {
-	for _, fn := range fns {
-		if !fn(item) {
-			return false
-		}
-	}
-
-	return true
-}
-
-func filterContexts(contexts []ldcontext.Context, fns ...func(ldcontext.Context) bool) []ldcontext.Context {
+func removeUndefined(contexts []ldcontext.Context) []ldcontext.Context {
 	var result []ldcontext.Context
 
 	for _, item := range contexts {
-		if !shouldInclude(item, fns) {
+		if !item.IsDefined() {
 			continue
 		}
 
@@ -113,10 +103,7 @@ func mergeContexts(ctx context.Context, contexts []ldcontext.Context) ldcontext.
 
 	contexts = flattenContexts(contexts)
 
-	contexts = filterContexts(contexts,
-		func(l ldcontext.Context) bool { return l.IsDefined() },
-		func(l ldcontext.Context) bool { return l.Err() == nil },
-	)
+	contexts = removeUndefined(contexts)
 
 	if len(contexts) == 0 {
 		return ldcontext.NewWithKind("none", "none")
