@@ -1163,7 +1163,8 @@ func TestTemplateBuildFuseConfiguration(t *testing.T) {
 
 	// Test that FUSE is configured to allow non-root users:
 	// /etc/fuse.conf contains user_allow_other
-	// /dev/fuse has permissions 666 (crw-rw-rw-)
+	// /etc/udev/rules.d/99-fuse.rules sets /dev/fuse to mode 0666
+	// Note: The udev rule is applied when systemd starts udevd, not during provisioning
 	buildConfig := api.TemplateBuildStartV2{
 		Force:     utils.ToPtr(ForceBaseBuild),
 		FromImage: utils.ToPtr("ubuntu:22.04"),
@@ -1177,7 +1178,7 @@ func TestTemplateBuildFuseConfiguration(t *testing.T) {
 			{
 				Type: "RUN",
 				Args: utils.ToPtr([]string{
-					"ls -l /dev/fuse | grep -q 'crw-rw-rw-'",
+					"grep -q 'KERNEL==\"fuse\", MODE=\"0666\"' /etc/udev/rules.d/99-fuse.rules",
 				}),
 			},
 		}),
