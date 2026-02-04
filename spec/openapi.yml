@@ -1655,15 +1655,6 @@ components:
       required:
         - name
 
-    UpdateVolume:
-      type: object
-      properties:
-        name:
-          type: string
-          description: Name of the volume
-      required:
-        - name
-
 tags:
   - name: templates
   - name: sandboxes
@@ -3009,24 +3000,15 @@ paths:
           $ref: "#/components/responses/404"
         "500":
           $ref: "#/components/responses/500"
-    patch:
-      description: Update team volume info
+
+    delete:
+      description: Delete a team volume
       tags: [volumes]
       parameters:
         - $ref: "#/components/parameters/volumeID"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UpdateVolume"
       responses:
-        "200":
-          description: Successfully updated a team volume
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Volume"
+        "204":
+          description: Successfully deleted a team volume
         "401":
           $ref: "#/components/responses/401"
         "404":

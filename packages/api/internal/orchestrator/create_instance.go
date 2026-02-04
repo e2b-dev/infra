@@ -5,11 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/Masterminds/semver/v3"
-	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
@@ -102,7 +100,7 @@ func (o *Orchestrator) CreateSandbox(
 	envdAuthToken *string,
 	allowInternetAccess *bool,
 	network *types.SandboxNetworkConfig,
-	volumeMounts []api.SandboxVolumeMount,
+	sbxVolumeMounts []*orchestrator.SandboxVolumeMount,
 ) (sbx sandbox.Sandbox, apiErr *api.APIError) {
 	ctx, childSpan := tracer.Start(ctx, "create-sandbox")
 	defer childSpan.End()
@@ -209,24 +207,6 @@ func (o *Orchestrator) CreateSandbox(
 		}
 
 		trafficAccessToken = &accessToken
-	}
-
-	sbxVolumeMounts, err := o.convertVolumeMounts(ctx, team.ID, volumeMounts)
-	if err != nil {
-		var vne VolumesNotFoundError
-		if errors.As(err, &vne) {
-			return sandbox.Sandbox{}, &api.APIError{
-				Code:      http.StatusBadRequest,
-				ClientMsg: "Volume(s) not found",
-				Err:       fmt.Errorf("volume(s) not found: %q", strings.Join(vne.VolumeNames, ", ")),
-			}
-		}
-
-		return sandbox.Sandbox{}, &api.APIError{
-			Code:      http.StatusInternalServerError,
-			ClientMsg: "Failed to convert volume mounts",
-			Err:       fmt.Errorf("failed to convert volume mounts: %w", err),
-		}
 	}
 
 	sbxNetwork := buildNetworkConfig(network, allowInternetAccess, trafficAccessToken)
@@ -354,71 +334,4 @@ func (o *Orchestrator) CreateSandbox(
 	}
 
 	return sbx, nil
-}
-
-type VolumesNotFoundError struct {
-	VolumeNames []string
-}
-
-func (e VolumesNotFoundError) Error() string {
-	volumes := strings.Join(e.VolumeNames, ", ")
-
-	return fmt.Sprintf("volumes not found: %s", volumes)
-}
-
-func (o *Orchestrator) convertVolumeMounts(
-	ctx context.Context,
-	teamID uuid.UUID,
-	volumeMounts []api.SandboxVolumeMount,
-) ([]*orchestrator.SandboxVolumeMount, error) {
-	// dedupe mounted volumes
-	uniqueVolumeNames := make(map[string]struct{}, len(volumeMounts))
-	for _, v := range volumeMounts {
-		uniqueVolumeNames[v.Name] = struct{}{}
-	}
-
-	// make a slice
-	volumeNames := make([]string, 0, len(uniqueVolumeNames))
-	for name := range uniqueVolumeNames {
-		volumeNames = append(volumeNames, name)
-	}
-
-	// get volumes from db
-	dbVolumes, err := o.sqlcDB.GetVolumesByName(ctx, queries.GetVolumesByNameParams{
-		TeamID:      teamID,
-		VolumeNames: volumeNames,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get volumes: %w", err)
-	}
-
-	// populate the map
-	dbVolumesMap := make(map[string]queries.Volume, len(dbVolumes))
-	for _, v := range dbVolumes {
-		dbVolumesMap[v.Name] = v
-	}
-
-	results := make([]*orchestrator.SandboxVolumeMount, 0, len(volumeMounts))
-
-	var missingVolumes []string
-	for _, v := range volumeMounts {
-		actualVolume, ok := dbVolumesMap[v.Name]
-		if !ok {
-			missingVolumes = append(missingVolumes, v.Name)
-
-			continue
-		}
-
-		results = append(results, &orchestrator.SandboxVolumeMount{
-			Name: v.Name,
-			Path: v.Path,
-			Type: actualVolume.VolumeType,
-		})
-	}
-
-	if len(missingVolumes) > 0 {
-		return nil, VolumesNotFoundError{missingVolumes}
-	}
-
-	return results, nil
 }

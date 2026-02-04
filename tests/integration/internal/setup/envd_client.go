@@ -8,11 +8,11 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/filesystem/filesystemconnect"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process/processconnect"
-	"github.com/e2b-dev/infra/tests/integration/internal/envd/api"
+	"github.com/e2b-dev/infra/tests/integration/internal/envd"
 )
 
 type EnvdClient struct {
-	HTTPClient       *api.ClientWithResponses
+	HTTPClient       *envd.ClientWithResponses
 	FilesystemClient filesystemconnect.FilesystemClient
 	ProcessClient    processconnect.ProcessClient
 }
@@ -24,7 +24,7 @@ func GetEnvdClient(tb testing.TB, _ context.Context) *EnvdClient {
 		Timeout: envdTimeout,
 	}
 
-	httpC, err := api.NewClientWithResponses(EnvdProxy, api.WithHTTPClient(&hc))
+	httpC, err := envd.NewClientWithResponses(EnvdProxy, envd.WithHTTPClient(&hc))
 	if err != nil {
 		panic(err)
 	}

@@ -68,23 +68,5 @@ func TestQueries_Volumes(t *testing.T) {
 		require.NoError(t, err)
 		assert.Len(t, volumesByName, 1)
 		assert.Contains(t, volumesByName, volume)
-
-		// update volume = success
-		updatedVolume, err := db.UpdateVolume(ctx, queries.UpdateVolumeParams{
-			TeamID:   teamID,
-			VolumeID: volume.ID,
-			Name:     "new-volume-name",
-		})
-		require.NoError(t, err)
-		assert.Equal(t, volume.ID, updatedVolume.ID)
-		assert.Equal(t, "new-volume-name", updatedVolume.Name)
-
-		// get updated volume = success
-		gotUpdatedVolume, err := db.GetVolume(ctx, queries.GetVolumeParams{
-			VolumeID: volume.ID,
-			TeamID:   teamID,
-		})
-		require.NoError(t, err)
-		assert.Equal(t, updatedVolume, gotUpdatedVolume)
 	})
 }

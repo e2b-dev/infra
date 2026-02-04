@@ -13,7 +13,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/clusters"
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 )
 
@@ -44,8 +43,5 @@ func NewClient(tracerProvider trace.TracerProvider, meterProvider metric.MeterPr
 		return nil, fmt.Errorf("failed to establish GRPC connection: %w", err)
 	}
 
-	sandboxClient := orchestrator.NewSandboxServiceClient(conn)
-	infoClient := orchestratorinfo.NewInfoServiceClient(conn)
-
-	return &clusters.GRPCClient{Sandbox: sandboxClient, Info: infoClient, Connection: conn}, nil
+	return clusters.NewGRPCClient(conn), nil
 }

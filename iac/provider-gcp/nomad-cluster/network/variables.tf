@@ -98,10 +98,6 @@ variable "server_instance_group" {
   type = string
 }
 
-variable "server_regional_instance_group" {
-  type = string
-}
-
 variable "labels" {
   description = "The labels to attach to resources created by this module"
   type        = map(string)

@@ -1,10 +1,22 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"testing"
 
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
+
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/clusters"
+	clustersmocks "github.com/e2b-dev/infra/packages/api/internal/clusters/mocks"
+	handlersmocks "github.com/e2b-dev/infra/packages/api/internal/handlers/mocks"
+	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
+	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 )
 
@@ -221,4 +233,155 @@ func TestValidateNetworkConfig(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestOrchestrator_convertVolumeMounts(t *testing.T) {
+	t.Parallel()
+
+	db := testutils.SetupDatabase(t)
+
+	testCases := map[string]struct {
+		expectFeatureFlag bool
+		expectResources   bool
+		volumesEnabled    bool
+		input             []api.SandboxVolumeMount
+		database          []queries.CreateVolumeParams
+		volumeTypes       []string
+		expected          []*orchestrator.SandboxVolumeMount
+		err               error
+	}{
+		"missing volume reports correct error": {
+			expectFeatureFlag: true,
+			expectResources:   true,
+			volumesEnabled:    true,
+			input: []api.SandboxVolumeMount{
+				{Name: "vol1"},
+			},
+			volumeTypes: []string{},
+			err:         VolumesNotFoundError{[]string{"vol1"}},
+		},
+		"existing volumes are returned": {
+			expectFeatureFlag: true,
+			expectResources:   true,
+			volumesEnabled:    true,
+			input: []api.SandboxVolumeMount{
+				{Name: "vol1", Path: "/vol1"},
+			},
+			database: []queries.CreateVolumeParams{
+				{Name: "vol1", VolumeType: "local"},
+			},
+			volumeTypes: []string{"local"},
+			expected: []*orchestrator.SandboxVolumeMount{
+				{Name: "vol1", Path: "/vol1", Type: "local"},
+			},
+		},
+		"partial success returns error": {
+			expectFeatureFlag: true,
+			expectResources:   true,
+			volumesEnabled:    true,
+			input: []api.SandboxVolumeMount{
+				{Name: "vol1", Path: "/vol1"},
+				{Name: "vol2", Path: "/vol2"},
+			},
+			database: []queries.CreateVolumeParams{
+				{Name: "vol1", VolumeType: "local"},
+			},
+			volumeTypes: []string{"local"},
+			err:         VolumesNotFoundError{[]string{"vol2"}},
+		},
+		"empty volume mounts": {
+			input:    []api.SandboxVolumeMount{},
+			expected: []*orchestrator.SandboxVolumeMount{},
+		},
+		"feature flag disabled": {
+			expectFeatureFlag: true,
+			volumesEnabled:    false,
+			input: []api.SandboxVolumeMount{
+				{Name: "vol1", Path: "/vol1"},
+			},
+			err: ErrVolumeMountsDisabled,
+		},
+		"unsupported volume type": {
+			expectFeatureFlag: true,
+			expectResources:   true,
+			volumesEnabled:    true,
+			input: []api.SandboxVolumeMount{
+				{Name: "vol1", Path: "/vol1"},
+			},
+			database: []queries.CreateVolumeParams{
+				{Name: "vol1", VolumeType: "unsupported"},
+			},
+			volumeTypes: []string{"local"},
+			err:         fmt.Errorf("failed to get db volumes map: %w", InvalidVolumeTypesError{[]string{"vol1"}}),
+		},
+		"cluster error": {
+			expectFeatureFlag: true,
+			expectResources:   true,
+			volumesEnabled:    true,
+			input: []api.SandboxVolumeMount{
+				{Name: "vol1", Path: "/vol1"},
+			},
+			volumeTypes: nil, // This will trigger cluster error in my mock
+			err:         fmt.Errorf("failed to get supported volume types: %w", fmt.Errorf("failed to get volume types from cluster: %w", fmt.Errorf("cluster error"))),
+		},
+	}
+
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			teamID := testutils.CreateTestTeam(t, db)
+
+			for _, v := range tc.database {
+				_, err := db.SqlcClient.CreateVolume(t.Context(),
+					queries.CreateVolumeParams{
+						Name:       v.Name,
+						TeamID:     teamID,
+						VolumeType: v.VolumeType,
+					},
+				)
+				require.NoError(t, err)
+			}
+
+			ffClient := handlersmocks.NewMockFeatureFlagsClient(t)
+			if tc.expectFeatureFlag {
+				ffClient.EXPECT().
+					BoolFlag(mock.Anything, mock.Anything).
+					Return(tc.volumesEnabled)
+			}
+
+			var resources clusters.ClusterResource
+			if tc.expectResources {
+				resources = newMockResources(t, tc.volumeTypes)
+			}
+
+			actual, err := convertVolumeMounts(
+				t.Context(), db.SqlcClient, ffClient,
+				clusters.NewCluster(uuid.UUID{}, nil, nil, nil, resources),
+				teamID, tc.input,
+			)
+			assert.Equal(t, tc.err, err)
+			assert.Equal(t, tc.expected, actual)
+		})
+	}
+}
+
+func newMockResources(t *testing.T, volumeTypes []string) clusters.ClusterResource {
+	t.Helper()
+
+	mcr := clustersmocks.NewMockClusterResource(t)
+
+	if volumeTypes != nil {
+		mcr.EXPECT().
+			GetVolumeTypes(mock.Anything).
+			Return(volumeTypes, nil).
+			Once()
+	} else {
+		mcr.EXPECT().
+			GetVolumeTypes(mock.Anything).
+			Return(nil, fmt.Errorf("cluster error")).
+			Once()
+	}
+
+	return mcr
 }

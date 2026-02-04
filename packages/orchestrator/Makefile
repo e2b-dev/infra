@@ -7,19 +7,12 @@ AWS_BUCKET_PREFIX ?= $(PREFIX)$(AWS_ACCOUNT_ID)-
 init:
 	brew install protobuf
 
-openapi := ../../spec/openapi-hyperloop.yml
-codegen := go tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
-
 .PHONY: generate
 generate:
 	@echo "Generating..."
 	docker build -t proto-gen -f generate.Dockerfile .
 	docker run --rm -v .:/workspace -v ./../shared/pkg/grpc:/shared/pkg/grpc proto-gen
-	@echo "Generating hyperloop api..."
-	$(codegen) -old-config-style -generate gin --package api $(openapi) > ../shared/pkg/http/hyperloop/api.gen.go
-	$(codegen) -old-config-style -generate types --package api $(openapi) > ../shared/pkg/http/hyperloop/types.gen.go
-	$(codegen) -old-config-style -generate spec --package api $(openapi) > ../shared/pkg/http/hyperloop/spec.gen.go
-	@echo "Done"
+	go generate ./...
 
 .PHONY: build
 build:
