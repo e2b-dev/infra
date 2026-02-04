@@ -20,7 +20,7 @@ func newFd(flags uintptr) (Fd, error) {
 }
 
 // Used for testing
-// features: UFFD_FEATURE_MISSING_HUGETLBFS
+// features: UFFD_FEATURE_MISSING_HUGETLBFS, UFFD_FEATURE_EVENT_REMOVE
 // This is already called by the FC
 func configureApi(f Fd, pagesize uint64) error {
 	var features CULong
@@ -29,6 +29,9 @@ func configureApi(f Fd, pagesize uint64) error {
 	if pagesize == header.HugepageSize {
 		features |= UFFD_FEATURE_MISSING_HUGETLBFS
 	}
+
+	// Enable EVENT_REMOVE to receive notifications about MADV_DONTNEED/MADV_REMOVE
+	features |= UFFD_FEATURE_EVENT_REMOVE
 
 	api := newUffdioAPI(UFFD_API, features)
 	ret, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(f), UFFDIO_API, uintptr(unsafe.Pointer(&api)))

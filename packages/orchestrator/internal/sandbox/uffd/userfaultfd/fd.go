@@ -16,6 +16,11 @@ struct uffd_pagefault {
 	__u64	address;
 	__u32 ptid;
 };
+
+struct uffd_remove {
+	__u64 start;
+	__u64 end;
+};
 */
 import "C"
 
@@ -30,16 +35,19 @@ const (
 
 	UFFD_API             = C.UFFD_API
 	UFFD_EVENT_PAGEFAULT = C.UFFD_EVENT_PAGEFAULT
+	UFFD_EVENT_REMOVE    = C.UFFD_EVENT_REMOVE
 
 	UFFDIO_REGISTER_MODE_MISSING = C.UFFDIO_REGISTER_MODE_MISSING
 
-	UFFDIO_API      = C.UFFDIO_API
-	UFFDIO_REGISTER = C.UFFDIO_REGISTER
-	UFFDIO_COPY     = C.UFFDIO_COPY
+	UFFDIO_API        = C.UFFDIO_API
+	UFFDIO_REGISTER   = C.UFFDIO_REGISTER
+	UFFDIO_COPY       = C.UFFDIO_COPY
+	UFFDIO_UNREGISTER = C.UFFDIO_UNREGISTER
 
 	UFFD_PAGEFAULT_FLAG_WRITE = C.UFFD_PAGEFAULT_FLAG_WRITE
 
 	UFFD_FEATURE_MISSING_HUGETLBFS = C.UFFD_FEATURE_MISSING_HUGETLBFS
+	UFFD_FEATURE_EVENT_REMOVE      = C.UFFD_FEATURE_EVENT_REMOVE
 )
 
 type (
@@ -49,6 +57,7 @@ type (
 
 	UffdMsg       = C.struct_uffd_msg
 	UffdPagefault = C.struct_uffd_pagefault
+	UffdRemove    = C.struct_uffd_remove
 
 	UffdioAPI          = C.struct_uffdio_api
 	UffdioRegister     = C.struct_uffdio_register
@@ -122,4 +131,23 @@ func (f Fd) copy(addr, pagesize uintptr, data []byte, mode CULong) error {
 
 func (f Fd) close() error {
 	return syscall.Close(int(f))
+}
+
+func getRemoveStart(remove *UffdRemove) uintptr {
+	return uintptr(remove.start)
+}
+
+func getRemoveEnd(remove *UffdRemove) uintptr {
+	return uintptr(remove.end)
+}
+
+func (u Fd) unregister(addr uintptr, size uint64) error {
+	r := newUffdioRange(CULong(addr), CULong(size))
+
+	ret, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(u), UFFDIO_UNREGISTER, uintptr(unsafe.Pointer(&r)))
+	if errno != 0 {
+		return fmt.Errorf("UFFDIO_UNREGISTER ioctl failed: %w (ret=%d)", errno, ret)
+	}
+
+	return nil
 }

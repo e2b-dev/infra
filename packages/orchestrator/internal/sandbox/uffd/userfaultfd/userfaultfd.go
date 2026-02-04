@@ -207,14 +207,26 @@ outerLoop:
 		}
 
 		msg := *(*UffdMsg)(unsafe.Pointer(&buf[0]))
+		msgEvent := getMsgEvent(&msg)
+		arg := getMsgArg(&msg)
 
-		if msgEvent := getMsgEvent(&msg); msgEvent != UFFD_EVENT_PAGEFAULT {
-			u.logger.Error(ctx, "UFFD serve unexpected event type", zap.Any("event_type", msgEvent))
+		// Handle UFFD_EVENT_REMOVE - sent when MADV_DONTNEED or MADV_REMOVE is called
+		if msgEvent == UFFD_EVENT_REMOVE {
+			// The memory has been freed/removed. Continue polling.
+			u.logger.Debug(ctx, "UFFD received remove event")
 
-			return ErrUnexpectedEventType
+			remove := (*(*UffdRemove)(unsafe.Pointer(&arg[0])))
+
+			err := u.fd.unregister(getRemoveStart(&remove), getRemoveEnd(&remove))
+			if err != nil {
+				u.logger.Error(ctx, "UFFD serve unregister error", zap.Error(err))
+
+				return fmt.Errorf("failed to unregister: %w", err)
+			}
+
+			continue
 		}
 
-		arg := getMsgArg(&msg)
 		pagefault := (*(*UffdPagefault)(unsafe.Pointer(&arg[0])))
 		flags := pagefault.flags
 
