@@ -114,7 +114,12 @@ func (s *SecureToken) TakeFrom(src *SecureToken) {
 }
 
 // Equals checks if token matches using constant-time comparison.
+// Returns false if the receiver is nil.
 func (s *SecureToken) Equals(token string) bool {
+	if s == nil {
+		return false
+	}
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -126,8 +131,9 @@ func (s *SecureToken) Equals(token string) bool {
 }
 
 // EqualsSecure compares this token with another SecureToken using constant-time comparison.
+// Returns false if either receiver or other is nil.
 func (s *SecureToken) EqualsSecure(other *SecureToken) bool {
-	if other == nil {
+	if s == nil || other == nil {
 		return false
 	}
 
@@ -149,7 +155,12 @@ func (s *SecureToken) EqualsSecure(other *SecureToken) bool {
 }
 
 // IsSet returns true if a token is stored.
+// Returns false if the receiver is nil.
 func (s *SecureToken) IsSet() bool {
+	if s == nil {
+		return false
+	}
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -158,7 +169,12 @@ func (s *SecureToken) IsSet() bool {
 
 // Bytes returns a copy of the token bytes (for signature generation).
 // The caller should zero the returned slice after use.
+// Returns ErrTokenNotSet if the receiver is nil.
 func (s *SecureToken) Bytes() ([]byte, error) {
+	if s == nil {
+		return nil, ErrTokenNotSet
+	}
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -175,7 +191,12 @@ func (s *SecureToken) Bytes() ([]byte, error) {
 }
 
 // Destroy securely wipes the token from memory.
+// No-op if the receiver is nil.
 func (s *SecureToken) Destroy() {
+	if s == nil {
+		return
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

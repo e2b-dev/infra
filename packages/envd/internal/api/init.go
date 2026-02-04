@@ -38,7 +38,7 @@ const (
 // Token is valid if it matches the existing token OR the MMDS hash.
 // If neither exists, first-time setup is allowed.
 func (a *API) validateInitAccessToken(ctx context.Context, requestToken *SecureToken) error {
-	requestTokenSet := requestToken != nil && requestToken.IsSet()
+	requestTokenSet := requestToken.IsSet()
 
 	// Fast path: token matches existing
 	if a.accessToken.IsSet() && requestTokenSet && a.accessToken.EqualsSecure(requestToken) {
@@ -81,7 +81,7 @@ func (a *API) checkMMDSHash(ctx context.Context, requestToken *SecureToken) (boo
 		return false, false
 	}
 
-	if requestToken == nil || !requestToken.IsSet() {
+	if !requestToken.IsSet() {
 		return mmdsHash == keys.HashAccessToken(""), true
 	}
 
@@ -190,7 +190,7 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 		}
 	}
 
-	if data.AccessToken != nil && data.AccessToken.IsSet() {
+	if data.AccessToken.IsSet() {
 		logger.Debug().Msg("Setting access token")
 		a.accessToken.TakeFrom(data.AccessToken)
 	} else if a.accessToken.IsSet() {

@@ -61,6 +61,16 @@ func TestSecureTokenDestroy(t *testing.T) {
 	// Destroy on already destroyed should be safe
 	st.Destroy()
 	assert.False(t, st.IsSet())
+
+	// Nil receiver should be safe
+	var nilToken *SecureToken
+	assert.False(t, nilToken.IsSet(), "nil receiver should return false for IsSet()")
+	assert.False(t, nilToken.Equals("anything"), "nil receiver should return false for Equals()")
+	assert.False(t, nilToken.EqualsSecure(st), "nil receiver should return false for EqualsSecure()")
+	nilToken.Destroy() // should not panic
+
+	_, err = nilToken.Bytes()
+	require.ErrorIs(t, err, ErrTokenNotSet, "nil receiver should return ErrTokenNotSet for Bytes()")
 }
 
 func TestSecureTokenBytes(t *testing.T) {
