@@ -69,17 +69,14 @@ func TestCatalogResolutionPaused_NoAutoResume(t *testing.T) {
 	c := &fakeCatalog{info: nil, failCount: 1}
 	paused := &fakePausedChecker{info: PausedInfo{Paused: true, AutoResumePolicy: proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_ANY}}
 
+	// With optimistic resume, when autoResumeEnabled=false we don't attempt resume
+	// and just return "not found" instead of checking pause status
 	_, err := catalogResolution(ctx, "sbx-1", c, paused, false, false)
-	if err == nil {
-		t.Fatalf("expected error")
+	if !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("expected ErrNodeNotFound, got %v", err)
 	}
-
-	var pausedErr *sharedproxy.SandboxPausedError
-	if !errors.As(err, &pausedErr) {
-		t.Fatalf("expected SandboxPausedError, got %T", err)
-	}
-	if pausedErr.CanAutoResume {
-		t.Fatalf("expected canAutoResume=false")
+	if paused.resumeCalls != 0 {
+		t.Fatalf("expected no resume calls when autoResumeEnabled=false, got %d", paused.resumeCalls)
 	}
 }
 
