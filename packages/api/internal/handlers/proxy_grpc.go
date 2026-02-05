@@ -80,9 +80,17 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		}
 	}
 
-	timeout := sandbox.SandboxTimeoutDefault
+	var timeoutSecondsPtr *int32
 	if req.GetTimeoutSeconds() > 0 {
-		timeout = time.Duration(req.GetTimeoutSeconds()) * time.Second
+		timeoutSeconds := req.GetTimeoutSeconds()
+		timeoutSecondsPtr = &timeoutSeconds
+	} else {
+		timeoutSecondsPtr = sandboxTimeoutSecondsFromConfig(snap.Snapshot.Config)
+	}
+
+	timeout := sandbox.SandboxTimeoutDefault
+	if timeoutSecondsPtr != nil {
+		timeout = time.Duration(*timeoutSecondsPtr) * time.Second
 	}
 	if timeout > time.Duration(team.Limits.MaxLengthHours)*time.Hour {
 		return nil, status.Error(codes.InvalidArgument, "timeout exceeds team limit")
@@ -155,6 +163,7 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		ctx,
 		snap.Snapshot.SandboxID,
 		timeout,
+		timeoutSecondsPtr,
 		nil,
 		snap.Snapshot.Metadata,
 		resumesOn,
@@ -279,6 +288,21 @@ func sandboxResumesOnFromConfig(config *dbtypes.PausedSandboxConfig) *string {
 	}
 
 	return config.SandboxResumesOn
+}
+
+func sandboxTimeoutSecondsFromConfig(config *dbtypes.PausedSandboxConfig) *int32 {
+	if config == nil {
+		return nil
+	}
+
+	if config.SandboxPausedSeconds != nil {
+		return config.SandboxPausedSeconds
+	}
+	if config.SandboxTimeoutSeconds != nil {
+		return config.SandboxTimeoutSeconds
+	}
+
+	return config.SandboxTimeoutSecondsSnake
 }
 
 func firstMetadata(md metadata.MD, key string) string {

@@ -135,8 +135,10 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	}
 
 	timeout := sandbox.SandboxTimeoutDefault
+	var timeoutSecondsPtr *int32
 	if body.Timeout != nil {
 		timeout = time.Duration(*body.Timeout) * time.Second
+		timeoutSecondsPtr = body.Timeout
 
 		if timeout > time.Duration(teamInfo.Limits.MaxLengthHours)*time.Hour {
 			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Timeout cannot be greater than %d hours", teamInfo.Limits.MaxLengthHours))
@@ -198,6 +200,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		ctx,
 		sandboxID,
 		timeout,
+		timeoutSecondsPtr,
 		envVars,
 		metadata,
 		sandboxResumesOn,

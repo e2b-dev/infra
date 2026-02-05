@@ -20,6 +20,7 @@ func NewSandbox(
 	buildID uuid.UUID,
 	metadata map[string]string,
 	sandboxResumesOn *string,
+	sandboxTimeoutSeconds *int32,
 	maxInstanceLength time.Duration,
 	startTime time.Time,
 	endTime time.Time,
@@ -46,29 +47,30 @@ func NewSandbox(
 		Alias:      alias,
 		Domain:     domain,
 
-		ExecutionID:         executionID,
-		TeamID:              teamID,
-		BuildID:             buildID,
-		Metadata:            metadata,
-		SandboxResumesOn:    sandboxResumesOn,
-		MaxInstanceLength:   maxInstanceLength,
-		StartTime:           startTime,
-		EndTime:             endTime,
-		VCpu:                vcpu,
-		TotalDiskSizeMB:     totalDiskSizeMB,
-		RamMB:               ramMB,
-		KernelVersion:       kernelVersion,
-		FirecrackerVersion:  firecrackerVersion,
-		EnvdVersion:         envdVersion,
-		EnvdAccessToken:     envdAccessToken,
-		TrafficAccessToken:  trafficAccessToken,
-		AllowInternetAccess: allowInternetAccess,
-		NodeID:              nodeID,
-		ClusterID:           clusterID,
-		AutoPause:           autoPause,
-		State:               StateRunning,
-		BaseTemplateID:      baseTemplateID,
-		Network:             network,
+		ExecutionID:           executionID,
+		TeamID:                teamID,
+		BuildID:               buildID,
+		Metadata:              metadata,
+		SandboxResumesOn:      sandboxResumesOn,
+		SandboxTimeoutSeconds: sandboxTimeoutSeconds,
+		MaxInstanceLength:     maxInstanceLength,
+		StartTime:             startTime,
+		EndTime:               endTime,
+		VCpu:                  vcpu,
+		TotalDiskSizeMB:       totalDiskSizeMB,
+		RamMB:                 ramMB,
+		KernelVersion:         kernelVersion,
+		FirecrackerVersion:    firecrackerVersion,
+		EnvdVersion:           envdVersion,
+		EnvdAccessToken:       envdAccessToken,
+		TrafficAccessToken:    trafficAccessToken,
+		AllowInternetAccess:   allowInternetAccess,
+		NodeID:                nodeID,
+		ClusterID:             clusterID,
+		AutoPause:             autoPause,
+		State:                 StateRunning,
+		BaseTemplateID:        baseTemplateID,
+		Network:               network,
 	}
 }
 
@@ -79,28 +81,29 @@ type Sandbox struct {
 	Alias      *string `json:"alias,omitempty"`
 	Domain     *string `json:"domain,omitempty"`
 
-	ExecutionID         string                      `json:"executionID"`
-	TeamID              uuid.UUID                   `json:"teamID"`
-	BuildID             uuid.UUID                   `json:"buildID"`
-	BaseTemplateID      string                      `json:"baseTemplateID"`
-	Metadata            map[string]string           `json:"metadata"`
-	SandboxResumesOn    *string                     `json:"sandboxResumesOn"`
-	MaxInstanceLength   time.Duration               `json:"maxInstanceLength"`
-	StartTime           time.Time                   `json:"startTime"`
-	EndTime             time.Time                   `json:"endTime"`
-	VCpu                int64                       `json:"vCpu"`
-	TotalDiskSizeMB     int64                       `json:"totalDiskSizeMB"`
-	RamMB               int64                       `json:"ramMB"`
-	KernelVersion       string                      `json:"kernelVersion"`
-	FirecrackerVersion  string                      `json:"firecrackerVersion"`
-	EnvdVersion         string                      `json:"envdVersion"`
-	EnvdAccessToken     *string                     `json:"envdAccessToken,omitempty"`
-	TrafficAccessToken  *string                     `json:"trafficAccessToken"`
-	AllowInternetAccess *bool                       `json:"allowInternetAccess,omitempty"`
-	NodeID              string                      `json:"nodeID"`
-	ClusterID           uuid.UUID                   `json:"clusterID"`
-	AutoPause           bool                        `json:"autoPause"`
-	Network             *types.SandboxNetworkConfig `json:"network"`
+	ExecutionID           string                      `json:"executionID"`
+	TeamID                uuid.UUID                   `json:"teamID"`
+	BuildID               uuid.UUID                   `json:"buildID"`
+	BaseTemplateID        string                      `json:"baseTemplateID"`
+	Metadata              map[string]string           `json:"metadata"`
+	SandboxResumesOn      *string                     `json:"sandboxResumesOn"`
+	SandboxTimeoutSeconds *int32                      `json:"sandboxTimeoutSeconds,omitempty"`
+	MaxInstanceLength     time.Duration               `json:"maxInstanceLength"`
+	StartTime             time.Time                   `json:"startTime"`
+	EndTime               time.Time                   `json:"endTime"`
+	VCpu                  int64                       `json:"vCpu"`
+	TotalDiskSizeMB       int64                       `json:"totalDiskSizeMB"`
+	RamMB                 int64                       `json:"ramMB"`
+	KernelVersion         string                      `json:"kernelVersion"`
+	FirecrackerVersion    string                      `json:"firecrackerVersion"`
+	EnvdVersion           string                      `json:"envdVersion"`
+	EnvdAccessToken       *string                     `json:"envdAccessToken,omitempty"`
+	TrafficAccessToken    *string                     `json:"trafficAccessToken"`
+	AllowInternetAccess   *bool                       `json:"allowInternetAccess,omitempty"`
+	NodeID                string                      `json:"nodeID"`
+	ClusterID             uuid.UUID                   `json:"clusterID"`
+	AutoPause             bool                        `json:"autoPause"`
+	Network               *types.SandboxNetworkConfig `json:"network"`
 
 	State State `json:"state"`
 }

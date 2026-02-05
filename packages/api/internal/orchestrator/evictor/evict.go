@@ -39,15 +39,19 @@ func (e *Evictor) Start(ctx context.Context) {
 			}
 
 			for _, item := range sbxs {
+				sbx := item
 				go func() {
 					stateAction := sandbox.StateActionKill
-					if item.AutoPause {
+					if sbx.AutoPause {
 						stateAction = sandbox.StateActionPause
+						if sbx.IsExpired() {
+							sbx.SandboxResumesOn = nil
+						}
 					}
 
-					logger.L().Debug(ctx, "Evicting sandbox", logger.WithSandboxID(item.SandboxID), zap.String("state_action", string(stateAction)))
-					if err := e.removeSandbox(ctx, item, stateAction); err != nil {
-						logger.L().Debug(ctx, "Evicting sandbox failed", zap.Error(err), logger.WithSandboxID(item.SandboxID))
+					logger.L().Debug(ctx, "Evicting sandbox", logger.WithSandboxID(sbx.SandboxID), zap.String("state_action", string(stateAction)))
+					if err := e.removeSandbox(ctx, sbx, stateAction); err != nil {
+						logger.L().Debug(ctx, "Evicting sandbox failed", zap.Error(err), logger.WithSandboxID(sbx.SandboxID))
 					}
 				}()
 			}

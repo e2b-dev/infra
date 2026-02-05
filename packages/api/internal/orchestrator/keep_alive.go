@@ -17,7 +17,7 @@ import (
 
 var errMaxInstanceLengthExceeded = fmt.Errorf("max instance length exceeded")
 
-func (o *Orchestrator) KeepAliveFor(ctx context.Context, teamID uuid.UUID, sandboxID string, duration time.Duration, allowShorter bool) *api.APIError {
+func (o *Orchestrator) KeepAliveFor(ctx context.Context, teamID uuid.UUID, sandboxID string, duration time.Duration, allowShorter bool, persistTimeout bool) *api.APIError {
 	now := time.Now()
 
 	updateFunc := func(sbx sandbox.Sandbox) (sandbox.Sandbox, error) {
@@ -39,6 +39,10 @@ func (o *Orchestrator) KeepAliveFor(ctx context.Context, teamID uuid.UUID, sandb
 
 		logger.L().Debug(ctx, "sandbox ttl updated", logger.WithSandboxID(sbx.SandboxID), zap.Time("end_time", endTime))
 		sbx.EndTime = endTime
+		if persistTimeout {
+			timeoutSeconds := int32(ttl.Seconds())
+			sbx.SandboxTimeoutSeconds = &timeoutSeconds
+		}
 
 		return sbx, nil
 	}

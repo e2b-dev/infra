@@ -155,6 +155,7 @@ func createTestSandbox() sandbox.Sandbox {
 		uuid.New(),
 		map[string]string{"test": "metadata"},
 		nil,                       // sandboxResumesOn
+		nil,                       // sandboxTimeoutSeconds
 		time.Hour,                 // maxInstanceLength
 		time.Now(),                // startTime
 		time.Now().Add(time.Hour), // endTime

@@ -81,7 +81,7 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 				zap.String("node_id", sandboxData.NodeID),
 			)
 
-			apiErr := a.orchestrator.KeepAliveFor(ctx, teamID, sandboxID, timeout, false)
+			apiErr := a.orchestrator.KeepAliveFor(ctx, teamID, sandboxID, timeout, false, false)
 			if apiErr != nil {
 				logger.L().Error(ctx, "Error when resuming sandbox", zap.Error(apiErr.Err))
 				a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
@@ -161,6 +161,7 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 		ctx,
 		snap.SandboxID,
 		timeout,
+		sandboxTimeoutSecondsFromConfig(snap.Config),
 		nil,
 		snap.Metadata,
 		sandboxResumesOnFromConfig(snap.Config),

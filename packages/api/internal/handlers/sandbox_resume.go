@@ -43,16 +43,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		return
 	}
 
-	timeout := sandbox.SandboxTimeoutDefault
-	if body.Timeout != nil {
-		timeout = time.Duration(*body.Timeout) * time.Second
-
-		if timeout > time.Duration(teamInfo.Limits.MaxLengthHours)*time.Hour {
-			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Timeout cannot be greater than %d hours", teamInfo.Limits.MaxLengthHours))
-
-			return
-		}
-	}
+	timeoutSecondsPtr := body.Timeout
 
 	teamID := teamInfo.Team.ID
 	sandboxID = utils.ShortID(sandboxID)
@@ -118,6 +109,20 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		return
 	}
 
+	if timeoutSecondsPtr == nil {
+		timeoutSecondsPtr = sandboxTimeoutSecondsFromConfig(lastSnapshot.Snapshot.Config)
+	}
+
+	timeout := sandbox.SandboxTimeoutDefault
+	if timeoutSecondsPtr != nil {
+		timeout = time.Duration(*timeoutSecondsPtr) * time.Second
+		if timeout > time.Duration(teamInfo.Limits.MaxLengthHours)*time.Hour {
+			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Timeout cannot be greater than %d hours", teamInfo.Limits.MaxLengthHours))
+
+			return
+		}
+	}
+
 	autoPause := lastSnapshot.Snapshot.AutoPause
 	if body.AutoPause != nil {
 		autoPause = *body.AutoPause
@@ -160,6 +165,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		ctx,
 		snap.SandboxID,
 		timeout,
+		timeoutSecondsPtr,
 		nil,
 		snap.Metadata,
 		sandboxResumesOnFromConfig(snap.Config),
