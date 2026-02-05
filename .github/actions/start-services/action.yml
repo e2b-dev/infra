@@ -112,7 +112,7 @@ runs:
         IFS=',' read -ra pairs <<< "$PERSISTENT_VOLUME_MOUNTS"
         for pair in "${pairs[@]}"; do
             value="${pair#*:}"
-            echo "$value"
+            mkdir -p "$value"
         done
         
         # Start otel-collector

@@ -90,7 +90,19 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 		return
 	}
 
-	volume, err := a.sqlcDB.CreateVolume(ctx, queries.CreateVolumeParams{
+	client, tx, err := a.sqlcDB.WithTx(ctx)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to create transaction")
+		telemetry.ReportCriticalError(ctx, "Failed to create transaction", err)
+	}
+	defer func(ctx context.Context) {
+		err := tx.Rollback(ctx)
+		if err != nil {
+			telemetry.ReportError(ctx, "Failed to rollback transaction", err)
+		}
+	}(context.WithoutCancel(ctx))
+
+	volume, err := client.CreateVolume(ctx, queries.CreateVolumeParams{
 		TeamID:     team.ID,
 		Name:       body.Name,
 		VolumeType: volumeType,
@@ -111,18 +123,17 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 	}
 
 	if err := cluster.CreateVolume(ctx, volume); err != nil {
-		// clean up can be async
-		go func(ctx context.Context) {
-			if err := a.sqlcDB.DeleteVolume(ctx, queries.DeleteVolumeParams{
-				VolumeID: volume.ID,
-				TeamID:   team.ID,
-			}); err != nil {
-				telemetry.ReportError(ctx, "error deleting volume when directory failed to create", err)
-			}
-		}(context.WithoutCancel(ctx))
-
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when creating directory")
 		telemetry.ReportCriticalError(ctx, "error when creating directory", err)
+
+		return
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to commit transaction")
+		telemetry.ReportCriticalError(ctx, "failed to commit transaction", err)
+
+		return
 	}
 
 	result := api.Volume{
