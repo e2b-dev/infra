@@ -106,8 +106,17 @@ func (c *CompressMMapLRUChunker) Slice(ctx context.Context, off, length int64, f
 		return []byte{}, nil
 	}
 
+	// CompressMMapLRUChunker requires a FrameTable - it only handles compressed data
+	if ft == nil {
+		timer.Failure(ctx, length,
+			attribute.String(pullType, pullTypeLocal),
+			attribute.String(failureReason, "nil_frame_table"))
+
+		return nil, fmt.Errorf("CompressMMapLRUChunker requires FrameTable for compressed data at offset %d", off)
+	}
+
 	// Find the frame containing the start offset using the passed frame table subset
-	frameStarts, frameSize, err := ft.FrameFor(storage.Range{Start: off, Length: 1})
+	frameStarts, frameSize, err := ft.FrameFor(off)
 	if err != nil {
 		timer.Failure(ctx, length,
 			attribute.String(pullType, pullTypeLocal),
@@ -132,6 +141,11 @@ func (c *CompressMMapLRUChunker) Slice(ctx context.Context, off, length int64, f
 
 		timer.Success(ctx, length, attribute.String(pullType, pullTypeRemote))
 
+		// Cap endInFrame to actual decompressed data length (last frame may be smaller)
+		if endInFrame > int64(len(data)) {
+			endInFrame = int64(len(data))
+		}
+
 		return data[startInFrame:endInFrame], nil
 	}
 
@@ -143,7 +157,7 @@ func (c *CompressMMapLRUChunker) Slice(ctx context.Context, off, length int64, f
 	for copied < int(length) {
 		currentOff := off + int64(copied)
 
-		frameStarts, frameSize, err := ft.FrameFor(storage.Range{Start: currentOff, Length: 1})
+		frameStarts, frameSize, err := ft.FrameFor(currentOff)
 		if err != nil {
 			timer.Failure(ctx, length,
 				attribute.String(pullType, pullTypeLocal),
@@ -164,7 +178,9 @@ func (c *CompressMMapLRUChunker) Slice(ctx context.Context, off, length int64, f
 			if err != nil {
 				return err
 			}
-			copy(result[resultOff:], data[startInFrame:startInFrame+int64(toCopy)])
+			// Cap to actual decompressed data length (last frame may be smaller)
+			endInData := min(startInFrame+int64(toCopy), int64(len(data)))
+			copy(result[resultOff:], data[startInFrame:endInData])
 
 			return nil
 		})

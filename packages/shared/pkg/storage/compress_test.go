@@ -157,15 +157,12 @@ func TestStoreFile_Compressed(t *testing.T) {
 	}
 
 	for range 10 {
-		r := Range{
-			Start:  int64(seeded.Intn(len(origData) - 1)),
-			Length: 1,
-		}
+		offset := int64(seeded.Intn(len(origData) - 1))
 
-		t.Logf("requesting frames for range %v\n", r)
+		t.Logf("requesting frame for offset %#x\n", offset)
 
 		// Get frame info to know the uncompressed size
-		frameStart, frameSize, err := frameTable.FrameFor(r)
+		frameStart, frameSize, err := frameTable.FrameFor(offset)
 		require.NoError(t, err)
 
 		// Buffer must be large enough for UNCOMPRESSED frame data.
@@ -179,9 +176,9 @@ func TestStoreFile_Compressed(t *testing.T) {
 		require.Equal(t, int(frameSize.U), rr.Length, "should read full uncompressed frame")
 
 		// Verify the specific byte at the original offset is correct
-		offsetInFrame := int(r.Start - frameStart.U)
-		require.Equal(t, origData[r.Start], buf[offsetInFrame],
-			"byte at offset %d should match original data", r.Start)
+		offsetInFrame := int(offset - frameStart.U)
+		require.Equal(t, origData[offset], buf[offsetInFrame],
+			"byte at offset %d should match original data", offset)
 	}
 }
 
@@ -597,11 +594,8 @@ func TestStoreFile_Compressed_FS_RoundTrip(t *testing.T) {
 	for _, offset := range testOffsets {
 		t.Run(fmt.Sprintf("offset_%d", offset), func(t *testing.T) {
 			t.Parallel()
-			// Get the frame containing this offset
-			rangeU := Range{Start: offset, Length: 100}
-
 			// Get frame info to know the uncompressed size
-			frameStart, frameSize, err := frameTable.FrameFor(rangeU)
+			frameStart, frameSize, err := frameTable.FrameFor(offset)
 			require.NoError(t, err)
 
 			// Create buffer large enough for UNCOMPRESSED data

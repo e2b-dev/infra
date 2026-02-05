@@ -14,6 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 // DecompressMMapChunker fetches compressed frames from storage, decompresses them
@@ -65,6 +66,14 @@ func NewDecompressMMapChunker(
 
 // Slice reads data at U offset. Bounds check uses virtSize (U space).
 func (c *DecompressMMapChunker) Slice(ctx context.Context, off, length int64, ft *storage.FrameTable) ([]byte, error) {
+	// Validate bounds
+	if off < 0 || length < 0 {
+		return nil, fmt.Errorf("invalid slice params: off=%d length=%d", off, length)
+	}
+	if off+length > c.virtSize {
+		return nil, fmt.Errorf("slice out of bounds: off=%#x length=%d virtSize=%d", off, length, c.virtSize)
+	}
+
 	timer := c.metrics.SlicesTimerFactory.Begin()
 
 	b, err := c.cache.Slice(off, length)
@@ -105,9 +114,22 @@ func (c *DecompressMMapChunker) Slice(ctx context.Context, off, length int64, ft
 	return b, nil
 }
 
-// fetchToCache fetches compressed frames and decompresses into mmap.
-// off/length are in U space, frame table maps U->C for fetching.
+// fetchToCache fetches data and stores into mmap.
+// When ft is non-nil, fetches compressed frames and decompresses.
+// When ft is nil, fetches uncompressed data directly.
+// off/length are in U space.
 func (c *DecompressMMapChunker) fetchToCache(ctx context.Context, off, length int64, ft *storage.FrameTable) error {
+	// When ft is nil, data is uncompressed - fetch directly
+	if ft == nil {
+		return c.fetchUncompressedToCache(ctx, off, length)
+	}
+
+	// Compressed path - use frame table
+	return c.fetchDecompressToCache(ctx, off, length, ft)
+}
+
+// fetchDecompressToCache fetches compressed frames and decompresses into mmap.
+func (c *DecompressMMapChunker) fetchDecompressToCache(ctx context.Context, off, length int64, ft *storage.FrameTable) error {
 	var eg errgroup.Group
 
 	fetchRange := storage.Range{Start: off, Length: int(length)}
@@ -170,6 +192,66 @@ func (c *DecompressMMapChunker) fetchToCache(ctx context.Context, off, length in
 
 	if err = eg.Wait(); err != nil {
 		return fmt.Errorf("failed to ensure data at %s: %w", fetchRange, err)
+	}
+
+	return nil
+}
+
+// fetchUncompressedToCache fetches uncompressed data directly from storage.
+func (c *DecompressMMapChunker) fetchUncompressedToCache(ctx context.Context, off, length int64) error {
+	var eg errgroup.Group
+
+	chunks := header.BlocksOffsets(length, storage.MemoryChunkSize)
+	startingChunk := header.BlockIdx(off, storage.MemoryChunkSize)
+	startingChunkOffset := header.BlockOffset(startingChunk, storage.MemoryChunkSize)
+
+	for _, chunkOff := range chunks {
+		fetchOff := startingChunkOffset + chunkOff
+
+		eg.Go(func() (err error) {
+			defer func() {
+				if r := recover(); r != nil {
+					logger.L().Error(ctx, "recovered from panic in the fetch handler", zap.Any("error", r))
+					err = fmt.Errorf("recovered from panic in the fetch handler: %v", r)
+				}
+			}()
+
+			key := strconv.FormatInt(fetchOff, 10)
+			_, err, _ = c.fetchGroup.Do(key, func() (any, error) {
+				select {
+				case <-ctx.Done():
+					return nil, fmt.Errorf("error fetching range %d-%d: %w", fetchOff, fetchOff+storage.MemoryChunkSize, ctx.Err())
+				default:
+				}
+
+				b, releaseCacheCloseLock, err := c.cache.addressBytes(fetchOff, storage.MemoryChunkSize)
+				if err != nil {
+					return nil, err
+				}
+				defer releaseCacheCloseLock()
+
+				fetchSW := c.metrics.RemoteReadsTimerFactory.Begin()
+
+				_, err = c.storage.GetFrame(ctx, c.objectPath, fetchOff, nil, false, b)
+				if err != nil {
+					fetchSW.Failure(ctx, int64(len(b)),
+						attribute.String(failureReason, failureTypeRemoteRead))
+
+					return nil, fmt.Errorf("failed to read uncompressed data at %d: %w", fetchOff, err)
+				}
+
+				c.cache.setIsCached(fetchOff, int64(len(b)))
+				fetchSW.Success(ctx, int64(len(b)))
+
+				return nil, nil
+			})
+
+			return err
+		})
+	}
+
+	if err := eg.Wait(); err != nil {
+		return fmt.Errorf("failed to fetch uncompressed data at %d-%d: %w", off, off+length, err)
 	}
 
 	return nil

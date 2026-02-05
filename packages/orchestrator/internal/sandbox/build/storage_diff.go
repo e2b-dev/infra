@@ -14,8 +14,6 @@ func storagePath(buildId string, diffType DiffType) string {
 	return fmt.Sprintf("%s/%s", buildId, diffType)
 }
 
-// StorageDiff represents a build's file (memfile or rootfs) backed by cloud storage.
-// The chunker is lazily initialized on first read using the frame table from the mapping.
 type StorageDiff struct {
 	// chunker is lazily initialized via chunkerOnce on first ReadAt/Slice call.
 	chunker     block.Chunker
@@ -109,16 +107,28 @@ func (b *StorageDiff) createChunker(ctx context.Context, ft *storage.FrameTable)
 		switch storage.CompressedChunkerType {
 		case storage.DecompressMMapChunker:
 			return block.NewDecompressMMapChunker(uSize, rawSize, b.blockSize, b.persistence, b.objectPath, b.cachePath, b.metrics)
+
 		case storage.CompressLRUChunker:
 			return block.NewCompressLRUChunker(uSize, b.persistence, b.objectPath, 4, b.metrics)
+
 		case storage.CompressMMapLRUChunker:
 			return block.NewCompressMMapLRUChunker(uSize, rawSize, b.persistence, b.objectPath, b.cachePath, 4, b.metrics)
+
+		default:
+			return nil, fmt.Errorf("unsupported chunker type for object %s", b.objectPath)
+		}
+	} else {
+		switch storage.UncompressedChunkerType {
+		case storage.DecompressMMapChunker:
+			return block.NewDecompressMMapChunker(uSize, rawSize, b.blockSize, b.persistence, b.objectPath, b.cachePath, b.metrics)
+
+		case storage.UncompressedMMapChunker:
+			return block.NewUncompressedMMapChunker(uSize, b.blockSize, b.persistence, b.objectPath, b.cachePath, b.metrics)
+
 		default:
 			return nil, fmt.Errorf("unsupported chunker type for object %s", b.objectPath)
 		}
 	}
-
-	return block.NewUncompressedMMapChunker(uSize, b.blockSize, b.persistence, b.objectPath, b.cachePath, b.metrics)
 }
 
 func (b *StorageDiff) Close() error {
@@ -140,7 +150,9 @@ func (b *StorageDiff) ReadAt(ctx context.Context, p []byte, off int64, ft *stora
 		return 0, err
 	}
 
-	return copy(p, slice), nil
+	n := copy(p, slice)
+
+	return n, nil
 }
 
 // Slice reads data at offset (in U space) with given length.
@@ -150,7 +162,12 @@ func (b *StorageDiff) Slice(ctx context.Context, off, length int64, ft *storage.
 		return nil, err
 	}
 
-	return chunker.Slice(ctx, off, length, ft)
+	data, err := chunker.Slice(ctx, off, length, ft)
+	if err != nil {
+		return nil, err
+	}
+
+	return data, nil
 }
 
 func (b *StorageDiff) CachePath() (string, error) {

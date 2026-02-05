@@ -3,6 +3,7 @@ package storage
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -53,8 +54,8 @@ var (
 	// When true, uses DecompressMMapChunker (decompress once into mmap cache).
 	EnableCompressedChunker = true
 
+	CompressedChunkerType   = CompressMMapLRUChunker
 	UncompressedChunkerType = DecompressMMapChunker
-	CompressedChunkerType   = DecompressMMapChunker
 )
 
 const (
@@ -310,13 +311,17 @@ func (s *Storage) StoreFile(ctx context.Context, inFilePath, objectPath string, 
 // GetFrame reads a single frame from storage into buf. The caller MUST provide
 // a buffer sized for the full uncompressed frame (use frameTable.FrameFor to
 // get the frame size). Returns the compressed range that was fetched.
+// When frameTable is nil (uncompressed data), reads directly without frame translation.
 func (s *Storage) GetFrame(ctx context.Context, objectPath string, offset int64, frameTable *FrameTable, decompress bool, buf []byte) (Range, error) {
-	rangeU := Range{Start: offset, Length: len(buf)}
+	// Handle uncompressed data (nil frameTable) - read directly without frame translation
+	if !IsCompressed(frameTable) {
+		return s.getFrameUncompressed(ctx, objectPath, offset, buf)
+	}
 
 	// Get the frame info: translate U offset -> C offset for fetching
-	frameStart, frameSize, err := frameTable.FrameFor(rangeU)
+	frameStart, frameSize, err := frameTable.FrameFor(offset)
 	if err != nil {
-		return Range{}, fmt.Errorf("get frame for range %v, object %s: %w", rangeU, objectPath, err)
+		return Range{}, fmt.Errorf("get frame for offset %#x, object %s: %w", offset, objectPath, err)
 	}
 
 	// Validate buffer size - caller must provide a buffer for the full frame
@@ -360,6 +365,22 @@ func (s *Storage) GetFrame(ctx context.Context, objectPath string, offset int64,
 	n, err := io.ReadFull(from, buf[:readSize])
 
 	return Range{Start: frameStart.C, Length: n}, err
+}
+
+// getFrameUncompressed reads uncompressed data directly from storage without frame translation.
+func (s *Storage) getFrameUncompressed(ctx context.Context, objectPath string, offset int64, buf []byte) (Range, error) {
+	respBody, err := s.Backend.RangeGet(ctx, objectPath, offset, len(buf))
+	if err != nil {
+		return Range{}, fmt.Errorf("getting uncompressed data at %#x from %s in %s: %w", offset, objectPath, s.Backend.String(), err)
+	}
+	defer respBody.Close()
+
+	n, err := io.ReadFull(respBody, buf)
+	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, io.EOF) {
+		return Range{}, fmt.Errorf("reading uncompressed data from %s: %w", objectPath, err)
+	}
+
+	return Range{Start: offset, Length: n}, nil
 }
 
 func (s *Storage) GetBlob(ctx context.Context, path string) ([]byte, error) {

@@ -97,33 +97,39 @@ func (ft *FrameTable) Subset(r Range) (*FrameTable, error) {
 	return newFrameTable, nil
 }
 
-func (ft *FrameTable) FrameFor(r Range) (starts FrameOffset, size FrameSize, err error) {
+// FrameFor finds the frame containing the given offset and returns its start position and full size.
+// Returns an error if ft is nil (caller should check IsCompressed first) or if offset is out of range.
+func (ft *FrameTable) FrameFor(offset int64) (starts FrameOffset, size FrameSize, err error) {
 	if ft == nil {
-		// For nil frameTable (raw uncompressed data), return the requested range as-is.
-		// U == C since there's no compression.
-		return FrameOffset{U: r.Start, C: r.Start}, FrameSize{U: int32(r.Length), C: int32(r.Length)}, nil
-	}
-	subset, err := ft.Subset(r)
-	if err != nil {
-		return FrameOffset{}, FrameSize{}, err
+		return FrameOffset{}, FrameSize{}, fmt.Errorf("FrameFor called with nil frame table - data is not compressed")
 	}
 
-	if subset == nil || len(subset.Frames) == 0 {
-		return FrameOffset{}, FrameSize{}, fmt.Errorf("no frames found for range %s", r)
-	}
-	if len(subset.Frames) > 1 {
-		return FrameOffset{}, FrameSize{}, fmt.Errorf("range %s spans multiple frames", r)
+	// Find the frame containing this offset
+	currentOffset := ft.StartAt
+	for _, frame := range ft.Frames {
+		frameEnd := currentOffset.U + int64(frame.U)
+		if offset >= currentOffset.U && offset < frameEnd {
+			// Found the frame containing the offset
+			return currentOffset, frame, nil
+		}
+		currentOffset.Add(frame)
 	}
 
-	return subset.StartAt, subset.Frames[0], nil
+	return FrameOffset{}, FrameSize{}, fmt.Errorf("offset %#x is beyond the end of the frame table", offset)
 }
 
 func (ft *FrameTable) GetFetchRange(rangeU Range) (Range, error) {
 	fetchRange := rangeU
 	if ft != nil && ft.CompressionType != CompressionNone {
-		start, size, err := ft.FrameFor(rangeU)
+		start, size, err := ft.FrameFor(rangeU.Start)
 		if err != nil {
-			return Range{}, fmt.Errorf("getting frame for range %v: %w", rangeU, err)
+			return Range{}, fmt.Errorf("getting frame for offset %#x: %w", rangeU.Start, err)
+		}
+		// Validate that the requested range fits within the frame
+		endOffset := rangeU.Start + int64(rangeU.Length)
+		frameEnd := start.U + int64(size.U)
+		if endOffset > frameEnd {
+			return Range{}, fmt.Errorf("range %v spans beyond frame ending at %#x", rangeU, frameEnd)
 		}
 		fetchRange = Range{
 			Start:  start.C,

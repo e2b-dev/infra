@@ -2,7 +2,6 @@ package header
 
 import (
 	"bytes"
-	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -196,34 +195,4 @@ MAPPINGS:
 	}
 
 	return header, nil
-}
-
-func StoreFileAndHeader(ctx context.Context, s storage.StorageProvider, filepath *string, objectPath string, h *Header, headerObjectPath string) (err error) {
-	var frameTable *storage.FrameTable
-
-	if filepath != nil {
-		frameTable, err = s.StoreFile(ctx, *filepath, objectPath, storage.DefaultCompressionOptions)
-		if err != nil {
-			return err
-		}
-	}
-
-	if h != nil {
-		// TODO LEV: make a copy of the header?
-		if err := h.AddFrames(frameTable); err != nil {
-			return fmt.Errorf("failed to assign rootfs frame tables: %w", err)
-		}
-
-		serialized, err := Serialize(h.Metadata, h.Mapping)
-		if err != nil {
-			return fmt.Errorf("error when serializing header: %w", err)
-		}
-
-		err = s.StoreBlob(ctx, headerObjectPath, bytes.NewReader(serialized))
-		if err != nil {
-			return fmt.Errorf("error when uploading header: %w", err)
-		}
-	}
-
-	return nil
 }

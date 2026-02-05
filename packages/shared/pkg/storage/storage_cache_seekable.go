@@ -102,10 +102,15 @@ func (c Cache) getCompressedFrameInternal(ctx context.Context, objectPath string
 		span.End()
 	}()
 
-	requestedRangeU := Range{Start: offU, Length: len(buf)}
-	frameStarts, frameSize, err := frameTable.FrameFor(requestedRangeU)
+	frameStarts, frameSize, err := frameTable.FrameFor(offU)
 	if err != nil {
-		return Range{}, wg, fmt.Errorf("failed to get frame for range: %w", err)
+		return Range{}, wg, fmt.Errorf("failed to get frame for offset %#x: %w", offU, err)
+	}
+	// Validate that the requested range fits within the frame
+	requestEnd := offU + int64(len(buf))
+	frameEnd := frameStarts.U + int64(frameSize.U)
+	if requestEnd > frameEnd {
+		return Range{}, wg, fmt.Errorf("requested range [%#x, %#x) extends beyond frame [%#x, %#x)", offU, requestEnd, frameStarts.U, frameEnd)
 	}
 
 	// try to read from cache first
@@ -136,7 +141,7 @@ func (c Cache) getCompressedFrameInternal(ctx context.Context, objectPath string
 
 	logger.L().Debug(ctx, "failed to read cached compressed frame, falling back to remote read",
 		zap.String("chunk_path", chunkPath),
-		zap.Int64("offset", requestedRangeU.Start),
+		zap.Int64("offset", offU),
 		zap.Error(err))
 
 	// read from remote file, compressed
@@ -324,6 +329,7 @@ func (c Cache) StoreFile(ctx context.Context, inFilePath, objectPath string, opt
 		// but EnableGCSCompression=false), fall back to the input file size for both.
 		goCtx(ctx, wg, func(ctx context.Context) {
 			var size, rawSize int64
+
 			if ft != nil {
 				size = ft.TotalUncompressedSize()
 				rawSize = ft.TotalCompressedSize()
