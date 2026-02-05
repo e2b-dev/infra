@@ -77,6 +77,7 @@ func TestSandboxCreateTimeoutMatchesStartEnd(t *testing.T) {
 
 	for _, timeout := range []int32{5, 15, 30} {
 		t.Run(fmt.Sprintf("timeout_%d", timeout), func(t *testing.T) {
+			t.Parallel()
 			sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithTimeout(timeout))
 
 			detailResp, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), sbx.SandboxID, setup.WithAPIKey())
