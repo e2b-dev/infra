@@ -92,8 +92,8 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 	if lockErr != nil {
 		logger.L().Warn(ctx, "Failed to acquire proxy resume lock, proceeding without lock", zap.Error(lockErr), logger.WithSandboxID(sandboxID))
 	} else if !lockAcquired {
-		if waitErr := s.api.orchestrator.WaitForSandboxInRoutingCatalog(ctx, sandboxID, proxyResumeWaitTimeout); waitErr != nil {
-			return nil, status.Error(codes.Internal, "error waiting for sandbox to resume")
+		if waitErr := s.waitForResumeLock(ctx, sandboxID); waitErr != nil {
+			return nil, status.Error(codes.Internal, "error waiting for proxy resume lock")
 		}
 
 		return &emptypb.Empty{}, nil
@@ -196,6 +196,30 @@ func (s *SandboxService) tryAcquireResumeLock(ctx context.Context, sandboxID str
 	}
 
 	return nil, false, err
+}
+
+func (s *SandboxService) waitForResumeLock(ctx context.Context, sandboxID string) error {
+	if s.api.redisClient == nil {
+		return nil
+	}
+
+	waitCtx, cancel := context.WithTimeout(ctx, proxyResumeWaitTimeout)
+	defer cancel()
+
+	lockService := redislock.New(s.api.redisClient)
+	lock, err := lockService.Obtain(waitCtx, "proxy-resume:"+sandboxID, proxyResumeLockTTL, &redislock.Options{
+		RetryStrategy: redislock.ExponentialBackoff(100*time.Millisecond, 2*time.Second),
+	})
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if releaseErr := lock.Release(context.WithoutCancel(ctx)); releaseErr != nil {
+			logger.L().Warn(ctx, "Failed to release proxy resume lock after wait", zap.Error(releaseErr), logger.WithSandboxID(sandboxID))
+		}
+	}()
+
+	return nil
 }
 
 func (s *SandboxService) resolveAuthTeam(ctx context.Context, snapshotTeamID uuid.UUID) (*teamtypes.Team, bool, error) {
