@@ -108,17 +108,25 @@ func (l *LokiQueryProvider) QuerySandboxLogs(
 // sanitizeLokiLabel sanitizes input strings for use in Loki LogQL queries
 // by removing special characters that could enable query injection
 func sanitizeLokiLabel(input string) string {
-	// Remove backticks which are used to delimit label values
-	sanitized := strings.ReplaceAll(input, "`", "")
+	// Remove characters that have special meaning in LogQL
+	sanitized := input
+	dangerousChars := []string{
+		"`",  // Backticks used to delimit label values
+		"\\", // Backslashes used for escaping
+		"{",  // Braces used for label matchers
+		"}",
+		"\"", // Quotes used for string literals
+		"'",
+		"|", // Pipe used for query operators
+		"=", // Equals used for label matching
+		"!", // Negation operator
+		"~", // Regex operator
+		",", // Comma used for multiple matchers
+	}
 
-	// Remove backslashes to prevent escaping
-	sanitized = strings.ReplaceAll(sanitized, "\\", "")
-
-	// Remove other potentially dangerous characters
-	sanitized = strings.ReplaceAll(sanitized, "{", "")
-	sanitized = strings.ReplaceAll(sanitized, "}", "")
-	sanitized = strings.ReplaceAll(sanitized, "\"", "")
-	sanitized = strings.ReplaceAll(sanitized, "'", "")
+	for _, char := range dangerousChars {
+		sanitized = strings.ReplaceAll(sanitized, char, "")
+	}
 
 	return sanitized
 }
