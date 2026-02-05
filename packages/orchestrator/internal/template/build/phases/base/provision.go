@@ -48,8 +48,9 @@ const (
 )
 
 type ProvisionScriptParams struct {
-	BusyBox    string
-	ResultPath string
+	BusyBox           string
+	ResultPath        string
+	MirrorSetupScript string
 }
 
 func getProvisionScript(

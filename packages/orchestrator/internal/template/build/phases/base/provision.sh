@@ -9,6 +9,9 @@ echo "Starting provisioning script"
 echo "Making configuration immutable"
 $BUSYBOX chattr +i /etc/resolv.conf
 
+# Cloud-provider-specific APT mirror optimization (if configured)
+{{ if .MirrorSetupScript }}{{ .MirrorSetupScript }}{{ else }}echo "No cloud mirror optimization configured"{{ end }}
+
 # Helper function to check if a package is installed
 is_package_installed() {
     dpkg-query -W -f='${Status}' "$1" 2>/dev/null | grep -q "install ok installed"
