@@ -338,6 +338,20 @@ make connect-orchestrator
 - Local: Docker logs in `make local-infra`
 - Production: Grafana Loki or Nomad UI
 
+### Downloading Logs for Investigation
+When investigating issues against the dev cluster, **always download local copies** of logs to `/tmp` so you can work with them locally without re-fetching:
+```bash
+# Download orchestrator logs
+nomad alloc logs -job orchestrator > /tmp/orchestrator.log 2>&1
+
+# Download template-manager logs
+nomad alloc logs -job template-manager > /tmp/template-manager.log 2>&1
+
+# Then grep/search locally
+grep -E "ERROR|WARN" /tmp/orchestrator.log
+```
+This avoids repeated network calls and allows efficient local analysis with grep, less, etc.
+
 ## Integration Test Configuration
 
 ### ForceBaseBuild Flag
