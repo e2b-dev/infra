@@ -107,7 +107,7 @@ runs:
       run: |
         mkdir -p $SHARED_CHUNK_CACHE_PATH
         mkdir -p ~/logs
-        mkdir -p /mnt/test-volumes
+        mkdir -p ./.e2b-test-volumes
 
         # Start otel-collector
         ./scripts/start-service.sh "OtelCollector" packages/otel-collector run ~/logs/otel-collector.log http://localhost:13133/healthz
