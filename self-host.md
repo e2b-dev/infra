@@ -87,7 +87,7 @@ When using SDK pass domain when creating new `Sandbox` in JS/TS SDK
 ```js
 import { Sandbox } from "@e2b/sdk";
 
-const sandbox = new Sandbox({
+const sandbox = new Sandbox.create({
   domain: "<your-domain>",
 });
 ```
@@ -97,7 +97,7 @@ or in Python SDK
 ```python
 from e2b import Sandbox
 
-sandbox = Sandbox(domain="<your-domain>")
+sandbox = Sandbox.create(domain="<your-domain>")
 ```
 
 #### CLI
