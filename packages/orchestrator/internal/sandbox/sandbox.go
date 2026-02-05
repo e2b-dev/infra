@@ -284,7 +284,7 @@ func (f *Factory) CreateSandbox(
 	resources := &Resources{
 		Slot:   ips,
 		rootfs: rootfsProvider,
-		memory: uffd.NewNoopMemory(memfileSize, memfile.BlockSize(), fcHandle.MemoryInfo),
+		memory: uffd.NewNoopMemory(memfileSize, memfile.BlockSize(), fcHandle.InitialMemoryMetadata),
 	}
 
 	metadata := &Metadata{
@@ -826,17 +826,11 @@ func (s *Sandbox) Pause(
 		return nil, fmt.Errorf("failed to get original rootfs: %w", err)
 	}
 
-	memfileDiffMetadata, err := s.Resources.memory.DiffMetadata(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get memfile metadata: %w", err)
-	}
-
 	// Start POSTPROCESSING
 	memfileDiff, memfileDiffHeader, err := pauseProcessMemory(
 		ctx,
 		buildID,
 		originalMemfile.Header(),
-		memfileDiffMetadata,
 		s.config.DefaultCacheDir,
 		s.process,
 	)
@@ -894,28 +888,25 @@ func pauseProcessMemory(
 	ctx context.Context,
 	buildID uuid.UUID,
 	originalHeader *header.Header,
-	diffMetadata *header.DiffMetadata,
 	cacheDir string,
 	fc *fc.Process,
 ) (d build.Diff, h *header.Header, e error) {
 	ctx, span := tracer.Start(ctx, "process-memory")
 	defer span.End()
 
-	header, err := diffMetadata.ToDiffHeader(ctx, originalHeader, buildID)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create memfile header: %w", err)
-	}
-
 	memfileDiffPath := build.GenerateDiffCachePath(cacheDir, buildID.String(), build.Memfile)
 
-	cache, err := fc.ExportMemory(
+	cache, diffMetadata, err := fc.ExportMemory(
 		ctx,
-		diffMetadata.Dirty,
 		memfileDiffPath,
-		diffMetadata.BlockSize,
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to export memory: %w", err)
+	}
+
+	header, err := diffMetadata.ToDiffHeader(ctx, originalHeader, buildID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create memfile header: %w", errors.Join(err, cache.Close()))
 	}
 
 	diff, err := build.NewLocalDiffFromCache(

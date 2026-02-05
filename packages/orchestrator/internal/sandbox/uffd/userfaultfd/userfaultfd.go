@@ -55,10 +55,13 @@ type Userfaultfd struct {
 func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logger logger.Logger) (*Userfaultfd, error) {
 	blockSize := src.BlockSize()
 
-	for _, region := range m.Regions {
-		if region.PageSize != uintptr(blockSize) {
-			return nil, fmt.Errorf("block size mismatch: %d != %d for region %d", region.PageSize, blockSize, region.BaseHostVirtAddr)
-		}
+	pageSize, err := m.PageSize()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get block size: %w", err)
+	}
+
+	if pageSize != blockSize {
+		return nil, fmt.Errorf("block size mismatch: %d != %d", pageSize, blockSize)
 	}
 
 	u := &Userfaultfd{

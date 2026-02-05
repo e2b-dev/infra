@@ -343,6 +343,14 @@ func (p *Process) Create(
 	}
 	telemetry.ReportEvent(ctx, "set fc entropy config")
 
+	err = p.client.enableFreePageReporting(ctx)
+	if err != nil {
+		fcStopErr := p.Stop(ctx)
+
+		return errors.Join(fmt.Errorf("error enabling free page reporting: %w", err), fcStopErr)
+	}
+	telemetry.ReportEvent(ctx, "enabled free page reporting")
+
 	err = p.client.startVM(ctx)
 	if err != nil {
 		fcStopErr := p.Stop(ctx)
