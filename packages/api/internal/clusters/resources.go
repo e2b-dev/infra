@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/grafana/loki/pkg/logproto"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -25,21 +26,40 @@ type ClusterResource interface {
 }
 
 const (
-	maxTimeRangeDuration = 7 * 24 * time.Hour
+	logsOldestLimit = 7 * 24 * time.Hour // 7 days
+
+	defaultLogsLimit = 1000
 )
 
-func logQueryWindow(cursor *time.Time, direction api.LogsDirection) (time.Time, time.Time) {
-	start, end := time.Now().Add(-maxTimeRangeDuration), time.Now()
-	if cursor == nil {
-		return start, end
+func LogQueryWindow(cursor *time.Time, direction api.LogsDirection) (time.Time, time.Time) {
+	now := time.Now()
+	oldestAllowedStart := now.Add(-logsOldestLimit)
+	start, end := oldestAllowedStart, now
+
+	if cursor != nil {
+		if direction == api.LogsDirectionForward {
+			start = *cursor
+			end = start.Add(logsOldestLimit)
+		} else {
+			end = *cursor
+			start = end.Add(-logsOldestLimit)
+		}
 	}
 
-	if direction == api.LogsDirectionForward {
-		start = *cursor
-		end = start.Add(maxTimeRangeDuration)
-	} else {
-		end = *cursor
-		start = end.Add(-maxTimeRangeDuration)
+	// Ensure start time respects the log retention limit
+	if start.Before(oldestAllowedStart) {
+		start = oldestAllowedStart
+	}
+
+	// Ensure end time respects the log retention limit
+	// (can happen if cursor is very old and results in end < oldestAllowed)
+	if end.Before(oldestAllowedStart) {
+		end = oldestAllowedStart
+	}
+
+	// Ensure start is never after end
+	if start.After(end) {
+		start = end
 	}
 
 	return start, end
@@ -142,7 +162,7 @@ func getBuildLogsWithSources(
 	ctx, span := tracer.Start(ctx, "get build-logs")
 	defer span.End()
 
-	start, end := logQueryWindow(cursor, direction)
+	start, end := LogQueryWindow(cursor, direction)
 
 	var sources []logSourceFunc
 

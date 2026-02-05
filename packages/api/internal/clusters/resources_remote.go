@@ -154,7 +154,7 @@ func (r *ClusterResourceProviderImpl) GetBuildLogs(
 	source *api.LogsSource,
 ) ([]logs.LogEntry, *api.APIError) {
 	// Use shared implementation with Edge API as the persistent log backend
-	start, end := logQueryWindow(cursor, direction)
+	start, end := LogQueryWindow(cursor, direction)
 	persistentFetcher := r.getBuildLogsFromEdge(ctx, templateID, buildID, offset, limit, level, start, end, direction)
 
 	return getBuildLogsWithSources(ctx, r.instances, nodeID, templateID, buildID, offset, limit, level, cursor, direction, source, persistentFetcher)

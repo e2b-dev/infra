@@ -22,13 +22,6 @@ type LocalClusterResourceProvider struct {
 	instances                   *smap.Map[*Instance]
 }
 
-const (
-	SandboxLogsOldestLimit = 7 * 24 * time.Hour // 7 days
-
-	defaultLogsLimit = 1000
-	defaultDirection = logproto.FORWARD
-)
-
 func newLocalClusterResourceProvider(
 	querySandboxMetricsProvider clickhouse.SandboxQueriesProvider,
 	queryLogsProvider *loki.LokiQueryProvider,
@@ -117,7 +110,7 @@ func (l *LocalClusterResourceProvider) GetSandboxesMetrics(ctx context.Context, 
 }
 
 func (l *LocalClusterResourceProvider) GetSandboxLogs(ctx context.Context, teamID string, sandboxID string, qStart *int64, qEnd *int64, qLimit *int32, qDirection *api.LogsDirection) (api.SandboxLogs, *api.APIError) {
-	start, end := time.Now().Add(-SandboxLogsOldestLimit), time.Now()
+	start, end := time.Now().Add(-logsOldestLimit), time.Now()
 	if qStart != nil {
 		start = time.UnixMilli(*qStart)
 	}

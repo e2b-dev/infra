@@ -55,17 +55,13 @@ func (a *APIStore) GetV2SandboxesSandboxIDLogs(c *gin.Context, sandboxID api.San
 		direction = *params.Direction
 	}
 
-	start, end := time.Now().Add(-clusters.SandboxLogsOldestLimit), time.Now()
+	var cursor *time.Time
 	if params.Cursor != nil {
-		cursor := time.UnixMilli(*params.Cursor)
-		if direction == api.LogsDirectionForward {
-			start = cursor
-			end = cursor.Add(clusters.SandboxLogsOldestLimit)
-		} else {
-			end = cursor
-			start = cursor.Add(-clusters.SandboxLogsOldestLimit)
-		}
+		c := time.UnixMilli(*params.Cursor)
+		cursor = &c
 	}
+
+	start, end := clusters.LogQueryWindow(cursor, direction)
 
 	startMs := start.UnixMilli()
 	endMs := end.UnixMilli()
