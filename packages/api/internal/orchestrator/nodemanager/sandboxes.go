@@ -77,9 +77,9 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
 
 		startTime := sbx.GetStartTime().AsTime()
 		endTime := sbx.GetEndTime().AsTime()
-		timeoutSeconds := sbx.SandboxTimeoutSeconds //nolint:protogetter // we need the nil check too
+		timeoutSeconds := sbx.SandboxTimeoutSeconds
 		if timeoutSeconds == nil {
-			timeoutSeconds = config.SandboxTimeoutSeconds //nolint:protogetter // we need the nil check too
+			timeoutSeconds = config.SandboxTimeoutSeconds
 		}
 		if timeoutSeconds == nil && !startTime.IsZero() && !endTime.IsZero() && endTime.After(startTime) {
 			ttlSeconds := int32(endTime.Sub(startTime).Seconds())

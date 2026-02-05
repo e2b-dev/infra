@@ -252,7 +252,7 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 
 	sbx.EndAt = req.GetEndTime().AsTime()
 	if req.SandboxTimeoutSeconds != nil && sbx.Metadata != nil {
-		value := *req.SandboxTimeoutSeconds
+		value := req.GetSandboxTimeoutSeconds()
 		sbx.Metadata.TimeoutSeconds = &value
 	}
 

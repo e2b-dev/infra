@@ -291,7 +291,7 @@ func (f *Factory) CreateSandbox(
 
 	var timeoutSeconds *int32
 	if apiConfigToStore != nil && apiConfigToStore.SandboxTimeoutSeconds != nil {
-		value := *apiConfigToStore.SandboxTimeoutSeconds
+		value := apiConfigToStore.GetSandboxTimeoutSeconds()
 		timeoutSeconds = &value
 	}
 
@@ -598,7 +598,7 @@ func (f *Factory) ResumeSandbox(
 
 	var timeoutSeconds *int32
 	if apiConfigToStore != nil && apiConfigToStore.SandboxTimeoutSeconds != nil {
-		value := *apiConfigToStore.SandboxTimeoutSeconds
+		value := apiConfigToStore.GetSandboxTimeoutSeconds()
 		timeoutSeconds = &value
 	}
 
