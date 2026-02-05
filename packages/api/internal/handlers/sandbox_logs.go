@@ -31,7 +31,7 @@ func (a *APIStore) GetSandboxesSandboxIDLogs(c *gin.Context, sandboxID string, p
 	logs, apiErr := a.getSandboxLogs(ctx, team, sandboxID, params.Start, nil, params.Limit, nil)
 	if apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
-		telemetry.ReportCriticalError(ctx, "error when returning logs for sandbox", apiErr.Err)
+		telemetry.ReportErrorByCode(ctx, apiErr.Code, "error when returning logs for sandbox", apiErr.Err)
 
 		return
 	}
@@ -73,7 +73,7 @@ func (a *APIStore) GetV2SandboxesSandboxIDLogs(c *gin.Context, sandboxID api.San
 	logs, apiErr := a.getSandboxLogs(ctx, team, sandboxID, &startMs, &endMs, params.Limit, &direction)
 	if apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
-		telemetry.ReportCriticalError(ctx, "error when returning logs for sandbox", apiErr.Err)
+		telemetry.ReportErrorByCode(ctx, apiErr.Code, "error when returning logs for sandbox", apiErr.Err)
 
 		return
 	}
