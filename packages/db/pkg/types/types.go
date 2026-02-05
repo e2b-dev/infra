@@ -30,8 +30,9 @@ type SandboxNetworkConfig struct {
 }
 
 type PausedSandboxConfig struct {
-	Version string                `json:"version"`
-	Network *SandboxNetworkConfig `json:"network,omitempty"`
+	Version          string                `json:"version"`
+	Network          *SandboxNetworkConfig `json:"network,omitempty"`
+	SandboxResumesOn *string               `json:"sandboxResumesOn,omitempty"`
 }
 
 // Status defines the type for the "status" enum field.

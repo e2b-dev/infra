@@ -17,7 +17,6 @@ snapshot as (
        team_id,
        env_id,
        metadata,
-       sandbox_resumes_on,
        sandbox_started_at,
        env_secure,
        allow_internet_access,
@@ -32,7 +31,6 @@ snapshot as (
             -- If snapshot already exists, new_template id will be null, env_id can't be null, so use placeholder ''
             COALESCE((SELECT id FROM new_template), ''),
             @metadata,
-            @sandbox_resumes_on,
             @started_at,
             @secure,
             @allow_internet_access,
@@ -42,7 +40,6 @@ snapshot as (
    )
     ON CONFLICT (sandbox_id) DO UPDATE SET
         metadata = excluded.metadata,
-        sandbox_resumes_on = excluded.sandbox_resumes_on,
         sandbox_started_at = excluded.sandbox_started_at,
         origin_node_id = excluded.origin_node_id,
         auto_pause = excluded.auto_pause,

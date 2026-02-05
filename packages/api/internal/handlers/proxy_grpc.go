@@ -53,7 +53,8 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		return nil, status.Errorf(codes.Internal, "failed to get snapshot: %v", err)
 	}
 
-	policy := autoResumePolicyFromSnapshotResumesOn(snap.Snapshot.SandboxResumesOn)
+	resumesOn := sandboxResumesOnFromConfig(snap.Snapshot.Config)
+	policy := autoResumePolicyFromSnapshotResumesOn(resumesOn)
 	authTeam, authProvided, authErr := s.resolveAuthTeam(ctx, snap.Snapshot.TeamID)
 
 	switch policy {
@@ -156,7 +157,7 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		timeout,
 		nil,
 		snap.Snapshot.Metadata,
-		snap.Snapshot.SandboxResumesOn,
+		resumesOn,
 		alias,
 		team,
 		snap.EnvBuild,
@@ -246,6 +247,14 @@ func autoResumePolicyFromSnapshotResumesOn(resumesOn *string) proxygrpc.AutoResu
 	}
 
 	return proxygrpc.AutoResumePolicyFromString(*resumesOn)
+}
+
+func sandboxResumesOnFromConfig(config *dbtypes.PausedSandboxConfig) *string {
+	if config == nil {
+		return nil
+	}
+
+	return config.SandboxResumesOn
 }
 
 func firstMetadata(md metadata.MD, key string) string {

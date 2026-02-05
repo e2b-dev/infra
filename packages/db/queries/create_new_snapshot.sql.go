@@ -31,7 +31,6 @@ snapshot as (
        team_id,
        env_id,
        metadata,
-       sandbox_resumes_on,
        sandbox_started_at,
        env_secure,
        allow_internet_access,
@@ -51,12 +50,10 @@ snapshot as (
             $8,
             $9,
             $10,
-            $11,
-            $12
+            $11
    )
     ON CONFLICT (sandbox_id) DO UPDATE SET
         metadata = excluded.metadata,
-        sandbox_resumes_on = excluded.sandbox_resumes_on,
         sandbox_started_at = excluded.sandbox_started_at,
         origin_node_id = excluded.origin_node_id,
         auto_pause = excluded.auto_pause,
@@ -82,21 +79,21 @@ new_build as (
         cpu_model_name,
         cpu_flags
     ) VALUES (
+        $12,
         $13,
         $14,
         $15,
         $16,
         $17,
         $18,
+        $9,
         $19,
-        $10,
-        $20,
         now(),
+        $20,
         $21,
         $22,
         $23,
-        $24,
-        $25
+        $24
     ) RETURNING id as build_id
 ),
 
@@ -119,7 +116,6 @@ type UpsertSnapshotParams struct {
 	SandboxID           string
 	BaseTemplateID      string
 	Metadata            types.JSONBStringMap
-	SandboxResumesOn    *string
 	StartedAt           pgtype.Timestamptz
 	Secure              bool
 	AllowInternetAccess *bool
@@ -156,7 +152,6 @@ func (q *Queries) UpsertSnapshot(ctx context.Context, arg UpsertSnapshotParams) 
 		arg.SandboxID,
 		arg.BaseTemplateID,
 		arg.Metadata,
-		arg.SandboxResumesOn,
 		arg.StartedAt,
 		arg.Secure,
 		arg.AllowInternetAccess,
