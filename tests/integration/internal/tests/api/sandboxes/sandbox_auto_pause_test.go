@@ -230,18 +230,18 @@ func TestSandboxTimeoutPersistsAcrossPauseResume(t *testing.T) {
 	}
 
 	// Short TTL: allow auto-pause to happen naturally, resume, TTL should stay short.
-		waitForPaused(30 * time.Second)
-		if snap, err := db.Db.GetLastSnapshot(t.Context(), sbxId); err == nil && snap.Snapshot.Config != nil {
-			t.Logf("snapshot config after pause: %+v", *snap.Snapshot.Config)
-		}
-		resumeAndAssertTTL(shortTTL)
+	waitForPaused(30 * time.Second)
+	if snap, err := db.Db.GetLastSnapshot(t.Context(), sbxId); err == nil && snap.Snapshot.Config != nil {
+		t.Logf("snapshot config after pause: %+v", *snap.Snapshot.Config)
+	}
+	resumeAndAssertTTL(shortTTL)
 
 	// Short TTL again: allow auto-pause again and ensure it still resumes with short TTL.
-		waitForPaused(30 * time.Second)
-		if snap, err := db.Db.GetLastSnapshot(t.Context(), sbxId); err == nil && snap.Snapshot.Config != nil {
-			t.Logf("snapshot config after pause: %+v", *snap.Snapshot.Config)
-		}
-		resumeAndAssertTTL(shortTTL)
+	waitForPaused(30 * time.Second)
+	if snap, err := db.Db.GetLastSnapshot(t.Context(), sbxId); err == nil && snap.Snapshot.Config != nil {
+		t.Logf("snapshot config after pause: %+v", *snap.Snapshot.Config)
+	}
+	resumeAndAssertTTL(shortTTL)
 
 	// Long TTL: set a longer timeout, manually pause, resume, TTL should stay long.
 	setTimeoutResp, err := c.PostSandboxesSandboxIDTimeoutWithResponse(t.Context(), sbxId, api.PostSandboxesSandboxIDTimeoutJSONRequestBody{
@@ -254,9 +254,9 @@ func TestSandboxTimeoutPersistsAcrossPauseResume(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, http.StatusNoContent, pauseResp.StatusCode())
 
-		waitForPaused(30 * time.Second)
-		if snap, err := db.Db.GetLastSnapshot(t.Context(), sbxId); err == nil && snap.Snapshot.Config != nil {
-			t.Logf("snapshot config after pause: %+v", *snap.Snapshot.Config)
-		}
-		resumeAndAssertTTL(longTTL)
+	waitForPaused(30 * time.Second)
+	if snap, err := db.Db.GetLastSnapshot(t.Context(), sbxId); err == nil && snap.Snapshot.Config != nil {
+		t.Logf("snapshot config after pause: %+v", *snap.Snapshot.Config)
+	}
+	resumeAndAssertTTL(longTTL)
 }
