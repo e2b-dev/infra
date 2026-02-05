@@ -85,7 +85,7 @@ Check if you can use config for terraform state management
 #### SDK
 When using SDK pass domain when creating new `Sandbox` in JS/TS SDK
 ```js
-import { Sandbox } from "@e2b/sdk";
+import { Sandbox } from "e2b";
 
 const sandbox = await Sandbox.create({
   domain: "<your-domain>",
