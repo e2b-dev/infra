@@ -7,6 +7,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 )
@@ -21,13 +22,23 @@ func (o *Orchestrator) addSandboxToRoutingTable(ctx context.Context, sandbox san
 
 	// Only add to routing table if the node is managed by Nomad
 	// For remote cluster nodes we are using gPRC metadata for routing registration instead
-	if !node.IsNomadManaged() {
+	if !node.IsNomadManaged() && !env.IsLocal() {
+		return
+	}
+
+	nodeIP := node.IPAddress
+	if nodeIP == "" && env.IsLocal() {
+		nodeIP = env.GetEnv("TESTS_ORCH_INSTANCE_HOST", "localhost")
+	}
+	if nodeIP == "" {
+		logger.L().Warn(ctx, "Skipping routing table update: node IP missing", logger.WithNodeID(node.ID), logger.WithSandboxID(sandbox.SandboxID))
+
 		return
 	}
 
 	info := e2bcatalog.SandboxInfo{
 		OrchestratorID: node.Metadata().ServiceInstanceID,
-		OrchestratorIP: node.IPAddress,
+		OrchestratorIP: nodeIP,
 
 		ExecutionID:      sandbox.ExecutionID,
 		StartedAt:        sandbox.StartTime,
