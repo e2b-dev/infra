@@ -94,6 +94,8 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to create transaction")
 		telemetry.ReportCriticalError(ctx, "Failed to create transaction", err)
+
+		return
 	}
 	defer func(ctx context.Context) {
 		err := tx.Rollback(ctx)
