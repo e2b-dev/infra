@@ -80,32 +80,12 @@ func handlePausedSandbox(
 		logger.L().Debug(ctx, "auto-resume not allowed", zap.Error(err), logger.WithSandboxID(sandboxId))
 
 		return "", reverseproxy.NewErrSandboxPaused(sandboxId, false)
-	case resumeAlreadyRunning:
-		logger.L().Debug(ctx, "sandbox already running, checking catalog", logger.WithSandboxID(sandboxId))
-		nodeIP, catalogErr := getCatalogIP(ctx, sandboxId, c)
-		if catalogErr == nil {
-			return nodeIP, nil
-		}
-		if errors.Is(catalogErr, catalog.ErrSandboxNotFound) {
-			return "", nil
-		}
-
-		logger.L().Warn(ctx, "catalog lookup after resume returned error", zap.Error(catalogErr), logger.WithSandboxID(sandboxId))
-
-		return "", reverseproxy.NewErrSandboxPaused(sandboxId, true)
 	case resumeFailed:
 		logger.L().Warn(ctx, "auto-resume failed", zap.Error(err), logger.WithSandboxID(sandboxId))
 
 		return "", reverseproxy.NewErrSandboxPaused(sandboxId, true)
-	case resumeSucceeded:
-		// Resume succeeded, catalog should be ready.
-		nodeIP, catalogErr := getCatalogIP(ctx, sandboxId, c)
-		if catalogErr == nil {
-			return nodeIP, nil
-		}
-		logger.L().Warn(ctx, "auto-resume catalog lookup failed", zap.Error(catalogErr), logger.WithSandboxID(sandboxId))
-
-		return "", reverseproxy.NewErrSandboxPaused(sandboxId, true)
+	case resumeAlreadyRunning, resumeSucceeded:
+		return resolveAfterResume(ctx, sandboxId, c)
 	default:
 		return "", reverseproxy.NewErrSandboxPaused(sandboxId, true)
 	}
@@ -169,6 +149,17 @@ func resumeOptimistically(ctx context.Context, sandboxId string, pausedChecker P
 	}
 
 	return resumeFailed, err
+}
+
+func resolveAfterResume(ctx context.Context, sandboxId string, c catalog.SandboxesCatalog) (string, error) {
+	nodeIP, err := getCatalogIP(ctx, sandboxId, c)
+	if err == nil {
+		return nodeIP, nil
+	}
+
+	logger.L().Warn(ctx, "catalog lookup after resume failed", zap.Error(err), logger.WithSandboxID(sandboxId))
+
+	return "", reverseproxy.NewErrSandboxPaused(sandboxId, true)
 }
 
 func getCatalogIP(ctx context.Context, sandboxId string, c catalog.SandboxesCatalog) (string, error) {

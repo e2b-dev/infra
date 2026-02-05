@@ -137,6 +137,29 @@ func TestCatalogResolutionPaused_AutoResumeDenied(t *testing.T) {
 	}
 }
 
+func TestCatalogResolutionPaused_AlreadyRunningCatalogMissing(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	c := &fakeCatalog{info: nil, failCount: 10}
+	paused := &fakePausedChecker{
+		resumeErr: status.Error(codes.AlreadyExists, "already running"),
+	}
+
+	_, err := catalogResolution(ctx, "sbx-running-missing", c, paused, true)
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+
+	var pausedErr *sharedproxy.SandboxPausedError
+	if !errors.As(err, &pausedErr) {
+		t.Fatalf("expected SandboxPausedError, got %T", err)
+	}
+	if !pausedErr.CanAutoResume {
+		t.Fatalf("expected canAutoResume=true")
+	}
+}
+
 func TestCatalogResolution_NoPausedChecker(t *testing.T) {
 	t.Parallel()
 
