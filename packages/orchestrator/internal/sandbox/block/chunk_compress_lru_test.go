@@ -71,7 +71,7 @@ func setupMockStorage(t *testing.T, frames map[int64][]byte) *storage.MockStorag
 	return mockStorage
 }
 
-func TestCompressedChunker_BasicReadAt(t *testing.T) {
+func TestCompressLRUChunker_BasicReadAt(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -135,7 +135,7 @@ func TestCompressedChunker_BasicReadAt(t *testing.T) {
 	mockGetter.AssertNumberOfCalls(t, "GetFrame", 1)
 }
 
-func TestCompressedChunker_LRUPopulation(t *testing.T) {
+func TestCompressLRUChunker_LRUPopulation(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -197,7 +197,7 @@ func TestCompressedChunker_LRUPopulation(t *testing.T) {
 	mockGetter.AssertNumberOfCalls(t, "GetFrame", 1)
 }
 
-func TestCompressedChunker_LRUEvictionRefetch(t *testing.T) {
+func TestCompressLRUChunker_LRUEvictionRefetch(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -262,7 +262,7 @@ func TestCompressedChunker_LRUEvictionRefetch(t *testing.T) {
 	mockGetter.AssertNumberOfCalls(t, "GetFrame", 2) // Re-fetched after LRU eviction
 }
 
-func TestCompressedChunker_SliceAcrossChunks(t *testing.T) {
+func TestCompressLRUChunker_SliceAcrossChunks(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -305,7 +305,7 @@ func TestCompressedChunker_SliceAcrossChunks(t *testing.T) {
 	assert.Equal(t, uncompressedData[offset:offset+length], slice)
 }
 
-func TestCompressedChunker_MultipleFrames(t *testing.T) {
+func TestCompressLRUChunker_MultipleFrames(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -377,7 +377,7 @@ func TestCompressedChunker_MultipleFrames(t *testing.T) {
 	mockGetter.AssertNumberOfCalls(t, "GetFrame", 2)
 }
 
-func TestCompressedChunker_SliceAcrossFrames(t *testing.T) {
+func TestCompressLRUChunker_SliceAcrossFrames(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -449,7 +449,7 @@ func TestCompressedChunker_SliceAcrossFrames(t *testing.T) {
 	mockGetter.AssertNumberOfCalls(t, "GetFrame", 3)
 }
 
-func TestCompressedChunker_ConcurrentReads(t *testing.T) {
+func TestCompressLRUChunker_ConcurrentReads(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -508,7 +508,7 @@ func TestCompressedChunker_ConcurrentReads(t *testing.T) {
 	mockGetter.AssertNumberOfCalls(t, "GetFrame", 1)
 }
 
-func TestCompressedChunker_EmptySlice(t *testing.T) {
+func TestCompressLRUChunker_EmptySlice(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -543,7 +543,7 @@ func TestCompressedChunker_EmptySlice(t *testing.T) {
 	assert.Empty(t, slice)
 }
 
-func TestCompressedChunker_Close(t *testing.T) {
+func TestCompressLRUChunker_Close(t *testing.T) {
 	t.Parallel()
 
 	frameSizeU := int64(4 * 1024 * 1024)
