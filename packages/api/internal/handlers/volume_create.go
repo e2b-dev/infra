@@ -102,9 +102,13 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 	case dberrors.IsUniqueConstraintViolation(err):
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Volume with name '%s' already exists", body.Name))
 		telemetry.ReportError(ctx, "volume already exists", err)
+
+		return
 	case err != nil:
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when creating volume")
 		telemetry.ReportCriticalError(ctx, "error when creating volume", err)
+
+		return
 	default:
 	}
 
