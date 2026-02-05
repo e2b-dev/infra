@@ -8,14 +8,12 @@ import (
 	"slices"
 
 	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	feature_flags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -112,11 +110,20 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 	default:
 	}
 
-	go func(ctx context.Context) {
-		if err := cluster.CreateVolume(ctx, volume); err != nil {
-			logger.L().Error(ctx, "error when creating volume", zap.Error(err))
-		}
-	}(context.WithoutCancel(ctx))
+	if err := cluster.CreateVolume(ctx, volume); err != nil {
+		// clean up can be async
+		go func(ctx context.Context) {
+			if err := a.sqlcDB.DeleteVolume(ctx, queries.DeleteVolumeParams{
+				VolumeID: volume.ID,
+				TeamID:   team.ID,
+			}); err != nil {
+				telemetry.ReportError(ctx, "error deleting volume when directory failed to create", err)
+			}
+		}(context.WithoutCancel(ctx))
+
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when creating directory")
+		telemetry.ReportCriticalError(ctx, "error when creating directory", err)
+	}
 
 	result := api.Volume{
 		Id:   volume.ID.String(),
