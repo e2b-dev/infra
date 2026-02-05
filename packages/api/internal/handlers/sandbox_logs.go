@@ -15,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	sharedutils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 func (a *APIStore) GetSandboxesSandboxIDLogs(c *gin.Context, sandboxID string, params api.GetSandboxesSandboxIDLogsParams) {
@@ -57,8 +58,7 @@ func (a *APIStore) GetV2SandboxesSandboxIDLogs(c *gin.Context, sandboxID api.San
 
 	var cursor *time.Time
 	if params.Cursor != nil {
-		c := time.UnixMilli(*params.Cursor)
-		cursor = &c
+		cursor = sharedutils.ToPtr(time.UnixMilli(*params.Cursor))
 	}
 
 	start, end := clusters.LogQueryWindow(cursor, direction)
