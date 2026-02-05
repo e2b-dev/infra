@@ -241,6 +241,8 @@ func TestOrchestrator_convertVolumeMounts(t *testing.T) {
 	db := testutils.SetupDatabase(t)
 
 	t.Run("InvalidVolumeMountsError.Error() returns expected string", func(t *testing.T) {
+		t.Parallel()
+
 		err := InvalidVolumeMountsError{[]InvalidMount{
 			{0, "reason1"},
 			{2, "reason2"},
@@ -268,21 +270,6 @@ func TestOrchestrator_convertVolumeMounts(t *testing.T) {
 			},
 			volumeTypes: []string{},
 			err:         InvalidVolumeMountsError{[]InvalidMount{{0, "volume 'vol1' not found"}}},
-		},
-		"existing volumes are returned": {
-			expectFeatureFlag: true,
-			expectResources:   true,
-			volumesEnabled:    true,
-			input: []api.SandboxVolumeMount{
-				{Name: "vol1", Path: "/vol1"},
-			},
-			database: []queries.CreateVolumeParams{
-				{Name: "vol1", VolumeType: "local"},
-			},
-			volumeTypes: []string{"local"},
-			expected: []*orchestrator.SandboxVolumeMount{
-				{Name: "vol1", Path: "/vol1", Type: "local"},
-			},
 		},
 		"partial success returns error": {
 			expectFeatureFlag: true,
@@ -449,6 +436,40 @@ func TestOrchestrator_convertVolumeMounts(t *testing.T) {
 			assert.Equal(t, tc.expected, actual)
 		})
 	}
+
+	t.Run("existing volumes are returned", func(t *testing.T) {
+		t.Parallel()
+
+		teamID := testutils.CreateTestTeam(t, db)
+
+		dbVolume, err := db.SqlcClient.CreateVolume(t.Context(),
+			queries.CreateVolumeParams{
+				Name:       "vol1",
+				TeamID:     teamID,
+				VolumeType: "local",
+			},
+		)
+		require.NoError(t, err)
+
+		ffClient := handlersmocks.NewMockFeatureFlagsClient(t)
+		ffClient.EXPECT().
+			BoolFlag(mock.Anything, mock.Anything).
+			Return(true)
+
+		resources := newMockResources(t, []string{"local"})
+
+		actual, err := createOrchestratorVolumeMounts(
+			t.Context(), db.SqlcClient, ffClient,
+			clusters.NewCluster(uuid.UUID{}, nil, nil, nil, resources),
+			teamID, []api.SandboxVolumeMount{
+				{Name: "vol1", Path: "/vol1"},
+			},
+		)
+		require.NoError(t, err)
+		assert.Equal(t, []*orchestrator.SandboxVolumeMount{
+			{Id: dbVolume.ID.String(), Path: "/vol1", Type: "local"},
+		}, actual)
+	})
 }
 
 func newMockResources(t *testing.T, volumeTypes []string) clusters.ClusterResource {

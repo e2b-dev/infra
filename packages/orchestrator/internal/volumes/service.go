@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"google.golang.org/grpc/codes"
@@ -27,19 +26,7 @@ func New(config cfg.Config) *VolumeService {
 	return &VolumeService{config: config}
 }
 
-// validVolumeNameRegex matches volume names that can be used as directory names on Linux.
-// This is also part of the strategy to prevent path traversal attacks.
-var validVolumeNameRegex = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
-
-func isValidVolumeName(name string) bool {
-	return validVolumeNameRegex.MatchString(name)
-}
-
-func (v *VolumeService) buildVolumePath(volumeType, teamId, volumeName string) (string, error) {
-	if !isValidVolumeName(volumeName) {
-		return "", status.Errorf(codes.InvalidArgument, "invalid volume name: %s", volumeName)
-	}
-
+func (v *VolumeService) buildVolumePath(volumeType, teamId, volumeID string) (string, error) {
 	if teamId == "" {
 		return "", status.Errorf(codes.InvalidArgument, "team ID is required")
 	}
@@ -53,7 +40,7 @@ func (v *VolumeService) buildVolumePath(volumeType, teamId, volumeName string) (
 		return "", status.Errorf(codes.NotFound, "volume type %s not found", volumeType)
 	}
 
-	volumePath := filepath.Join(volPath, teamId, volumeName)
+	volumePath := filepath.Join(volPath, teamId, volumeID)
 	if !strings.HasPrefix(volumePath, volPath) {
 		return "", status.Errorf(codes.PermissionDenied, "volume path %s is not under %s", volumePath, volPath)
 	}
@@ -62,7 +49,7 @@ func (v *VolumeService) buildVolumePath(volumeType, teamId, volumeName string) (
 }
 
 func (v *VolumeService) Create(_ context.Context, request *orchestrator.VolumeCreateRequest) (*orchestrator.VolumeCreateResponse, error) {
-	volumePath, err := v.buildVolumePath(request.GetVolumeType(), request.GetTeamId(), request.GetVolumeName())
+	volumePath, err := v.buildVolumePath(request.GetVolumeType(), request.GetTeamId(), request.GetVolumeId())
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "failed to build volume path: %v", err)
 	}
@@ -78,7 +65,7 @@ func (v *VolumeService) Delete(
 	_ context.Context,
 	request *orchestrator.VolumeDeleteRequest,
 ) (*orchestrator.VolumeDeleteResponse, error) {
-	volumePath, err := v.buildVolumePath(request.GetVolumeType(), request.GetTeamId(), request.GetVolumeName())
+	volumePath, err := v.buildVolumePath(request.GetVolumeType(), request.GetTeamId(), request.GetVolumeId())
 	if err != nil {
 		return nil, fmt.Errorf("failed to build volume path: %w", err)
 	}

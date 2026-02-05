@@ -280,7 +280,6 @@ func (c *Cluster) DeleteVolume(ctx context.Context, volume queries.Volume) error
 	if _, err := instance.client.Volumes.Delete(ctx, &orchestrator.VolumeDeleteRequest{
 		VolumeId:   volume.ID.String(),
 		VolumeType: volume.VolumeType,
-		VolumeName: volume.Name,
 		TeamId:     volume.TeamID.String(),
 	}); err != nil {
 		return fmt.Errorf("failed to delete volume: %w", err)
@@ -300,7 +299,6 @@ func (c *Cluster) CreateVolume(ctx context.Context, volume queries.Volume) error
 	if _, err := instance.client.Volumes.Create(ctx, &orchestrator.VolumeCreateRequest{
 		VolumeId:   volume.ID.String(),
 		VolumeType: volume.VolumeType,
-		VolumeName: volume.Name,
 		TeamId:     volume.TeamID.String(),
 	}); err != nil {
 		return fmt.Errorf("failed to create volume: %w", err)

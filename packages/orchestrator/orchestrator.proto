@@ -51,7 +51,7 @@ message SandboxConfig {
 }
 
 message SandboxVolumeMount {
-  string name = 1;
+  string id = 1;
   string path = 2;
   string type = 3;
 }
@@ -134,8 +134,7 @@ service SandboxService {
 message VolumeCreateRequest {
   string volume_id = 1;
   string volume_type = 2;
-  string volume_name = 3;
-  string team_id = 4;
+  string team_id = 3;
 }
 
 message VolumeCreateResponse {}
@@ -143,8 +142,7 @@ message VolumeCreateResponse {}
 message VolumeDeleteRequest {
   string volume_id = 1;
   string volume_type = 2;
-  string volume_name = 3;
-  string team_id = 4;
+  string team_id = 3;
 }
 
 message VolumeDeleteResponse {}

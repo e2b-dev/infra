@@ -342,7 +342,7 @@ func createOrchestratorVolumeMounts(
 		usedPaths[v.Path] = struct{}{}
 
 		results = append(results, &orchestrator.SandboxVolumeMount{
-			Name: v.Name,
+			Id:   actualVolume.ID.String(),
 			Path: v.Path,
 			Type: actualVolume.VolumeType,
 		})

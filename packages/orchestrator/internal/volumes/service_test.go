@@ -19,7 +19,7 @@ func TestCannotTraverse(t *testing.T) {
 	t.Parallel()
 
 	testCases := map[string]struct {
-		volumeName string
+		volumeID string
 	}{
 		"prefix":        {"../canary.txt"},
 		"rename-volume": {"a/b/../../canary.txt"},
@@ -44,9 +44,9 @@ func TestCannotTraverse(t *testing.T) {
 			s := New(config)
 
 			_, err := s.Delete(t.Context(), &orchestrator.VolumeDeleteRequest{
-				VolumeId:   "c",
+				VolumeId:   tc.volumeID,
 				VolumeType: "vol1",
-				VolumeName: tc.volumeName,
+				TeamId:     "team1",
 			})
 			require.Error(t, err)
 			deleteStatus, ok := status.FromError(err)
