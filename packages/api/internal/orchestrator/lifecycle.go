@@ -36,7 +36,7 @@ func (o *Orchestrator) addSandboxToRoutingTable(ctx context.Context, sandbox san
 	// 	return
 	// }
 
-	//Log the IP address for the github action so we can debug any issues
+	// Log the IP address for the github action so we can debug any issues
 	logger.L().Info(ctx, "!!!!! Adding sandbox to routing table", zap.String("node_ip", nodeIP), logger.WithNodeID(node.ID), logger.WithSandboxID(sandbox.SandboxID))
 
 	info := e2bcatalog.SandboxInfo{
