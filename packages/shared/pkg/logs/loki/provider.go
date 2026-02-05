@@ -49,7 +49,7 @@ func (l *LokiQueryProvider) QueryBuildLogs(
 	buildIDSanitized := sanitizeLokiLabel(buildID)
 
 	// todo: service name is different here (because new merged orchestrator)
-	query := fmt.Sprintf("{service=\"template-manager\", buildID=\"%s\", envID=`%s`}", buildIDSanitized, templateIDSanitized)
+	query := fmt.Sprintf("{service=\"template-manager\", buildID=`%s`, envID=`%s`}", buildIDSanitized, templateIDSanitized)
 
 	res, err := l.client.QueryRange(query, limit, start, end, direction, time.Duration(0), time.Duration(0), true)
 	if err != nil {
