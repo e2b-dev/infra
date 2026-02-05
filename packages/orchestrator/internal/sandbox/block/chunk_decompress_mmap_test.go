@@ -53,57 +53,6 @@ func setupMockStorageDecompress(t *testing.T, frames map[int64][]byte) *storage.
 	return mockStorage
 }
 
-func TestDecompressMMapChunker_BasicSlice(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-
-	// Create test data - one frame of 4MB uncompressed
-	frameSizeU := int64(4 * 1024 * 1024)
-	uncompressedData := make([]byte, frameSizeU)
-	for i := range uncompressedData {
-		uncompressedData[i] = byte(i % 256)
-	}
-	compressedData := compressData(t, uncompressedData)
-
-	frameTable := &storage.FrameTable{
-		CompressionType: storage.CompressionZstd,
-		StartAt:         storage.FrameOffset{U: 0, C: 0},
-		Frames: []storage.FrameSize{
-			{U: int32(frameSizeU), C: int32(len(compressedData))},
-		},
-	}
-
-	mockStorage := setupMockStorageDecompress(t, map[int64][]byte{0: compressedData})
-
-	tmpDir := t.TempDir()
-	cachePath := filepath.Join(tmpDir, "cache")
-
-	chunker, err := NewDecompressMMapChunker(
-		frameSizeU,
-		int64(len(compressedData)),
-		storage.MemoryChunkSize,
-		mockStorage,
-		"test/path",
-		cachePath,
-		testMetrics(t),
-	)
-	require.NoError(t, err)
-	defer chunker.Close()
-
-	// Read the first 1024 bytes (block-aligned offset)
-	slice, err := chunker.Slice(ctx, 0, 1024, frameTable)
-	require.NoError(t, err)
-	assert.Len(t, slice, 1024)
-	assert.Equal(t, uncompressedData[:1024], slice)
-
-	// Read more from same block (cache hit, block-aligned offset)
-	slice, err = chunker.Slice(ctx, 0, 2048, frameTable)
-	require.NoError(t, err)
-	assert.Len(t, slice, 2048)
-	assert.Equal(t, uncompressedData[:2048], slice)
-}
-
 func TestDecompressMMapChunker_ReadAt(t *testing.T) {
 	t.Parallel()
 
@@ -214,56 +163,4 @@ func TestDecompressMMapChunker_CachePersists(t *testing.T) {
 	// Cache file is cleaned up on Close
 	_, err = os.Stat(cachePath)
 	require.Error(t, err, "cache file should be removed after Close")
-}
-
-func TestDecompressMMapChunker_FileSize(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-
-	frameSizeU := int64(4 * 1024 * 1024)
-	uncompressedData := make([]byte, frameSizeU)
-	for i := range uncompressedData {
-		uncompressedData[i] = byte(i % 256)
-	}
-	compressedData := compressData(t, uncompressedData)
-
-	frameTable := &storage.FrameTable{
-		CompressionType: storage.CompressionZstd,
-		StartAt:         storage.FrameOffset{U: 0, C: 0},
-		Frames: []storage.FrameSize{
-			{U: int32(frameSizeU), C: int32(len(compressedData))},
-		},
-	}
-
-	mockStorage := setupMockStorageDecompress(t, map[int64][]byte{0: compressedData})
-
-	tmpDir := t.TempDir()
-	cachePath := filepath.Join(tmpDir, "cache")
-
-	chunker, err := NewDecompressMMapChunker(
-		frameSizeU,
-		int64(len(compressedData)),
-		storage.MemoryChunkSize,
-		mockStorage,
-		"test/path",
-		cachePath,
-		testMetrics(t),
-	)
-	require.NoError(t, err)
-	defer chunker.Close()
-
-	// FileSize returns on-disk sparse file size (0 before fetching data)
-	size, err := chunker.FileSize()
-	require.NoError(t, err)
-	assert.Equal(t, int64(0), size, "sparse file should have 0 on-disk size before data is fetched")
-
-	// Fetch some data to populate the cache
-	_, err = chunker.Slice(ctx, 0, 4096, frameTable)
-	require.NoError(t, err)
-
-	// After fetching, FileSize should be non-zero (but may vary by filesystem)
-	size, err = chunker.FileSize()
-	require.NoError(t, err)
-	assert.Positive(t, size, "on-disk size should be non-zero after fetching data")
 }

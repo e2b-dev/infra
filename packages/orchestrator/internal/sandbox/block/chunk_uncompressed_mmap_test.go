@@ -27,10 +27,7 @@ func setupMockStorageUncompressed(t *testing.T, data []byte) *storage.MockStorag
 			assert.False(t, decompress, "UncompressedMMapChunker should pass decompress=false")
 
 			// Return data from the requested offset
-			end := offset + int64(len(buf))
-			if end > int64(len(data)) {
-				end = int64(len(data))
-			}
+			end := min(offset+int64(len(buf)), int64(len(data)))
 			if offset >= int64(len(data)) {
 				return storage.Range{Start: offset, Length: 0}, nil
 			}
@@ -41,47 +38,6 @@ func setupMockStorageUncompressed(t *testing.T, data []byte) *storage.MockStorag
 		}).Maybe()
 
 	return mockStorage
-}
-
-func TestUncompressedMMapChunker_BasicSlice(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-
-	// Create test data - 4MB uncompressed
-	dataSize := int64(4 * 1024 * 1024)
-	testData := make([]byte, dataSize)
-	for i := range testData {
-		testData[i] = byte(i % 256)
-	}
-
-	mockStorage := setupMockStorageUncompressed(t, testData)
-
-	tmpDir := t.TempDir()
-	cachePath := filepath.Join(tmpDir, "cache")
-
-	chunker, err := NewUncompressedMMapChunker(
-		dataSize,
-		storage.MemoryChunkSize,
-		mockStorage,
-		"test/path",
-		cachePath,
-		testMetrics(t),
-	)
-	require.NoError(t, err)
-	defer chunker.Close()
-
-	// Test basic slice at offset 0
-	slice, err := chunker.Slice(ctx, 0, 1024, nil)
-	require.NoError(t, err)
-	assert.Len(t, slice, 1024)
-	assert.Equal(t, testData[:1024], slice)
-
-	// Test larger slice from same block (cache hit)
-	slice, err = chunker.Slice(ctx, 0, 2048, nil)
-	require.NoError(t, err)
-	assert.Len(t, slice, 2048)
-	assert.Equal(t, testData[:2048], slice)
 }
 
 func TestUncompressedMMapChunker_CachePersists(t *testing.T) {
@@ -129,76 +85,4 @@ func TestUncompressedMMapChunker_CachePersists(t *testing.T) {
 	// Cache file is cleaned up on Close (same behavior as DecompressMMapChunker)
 	_, err = os.Stat(cachePath)
 	require.Error(t, err, "cache file should be removed after Close")
-}
-
-func TestUncompressedMMapChunker_FileSize(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-
-	dataSize := int64(4 * 1024 * 1024)
-	testData := make([]byte, dataSize)
-	for i := range testData {
-		testData[i] = byte(i % 256)
-	}
-
-	mockStorage := setupMockStorageUncompressed(t, testData)
-
-	tmpDir := t.TempDir()
-	cachePath := filepath.Join(tmpDir, "cache")
-
-	chunker, err := NewUncompressedMMapChunker(
-		dataSize,
-		storage.MemoryChunkSize,
-		mockStorage,
-		"test/path",
-		cachePath,
-		testMetrics(t),
-	)
-	require.NoError(t, err)
-	defer chunker.Close()
-
-	// FileSize returns on-disk sparse file size (0 before fetching data)
-	size, err := chunker.FileSize()
-	require.NoError(t, err)
-	assert.Equal(t, int64(0), size, "sparse file should have 0 on-disk size before data is fetched")
-
-	// Fetch some data to populate the cache
-	_, err = chunker.Slice(ctx, 0, 4096, nil)
-	require.NoError(t, err)
-
-	// After fetching, FileSize should be non-zero (but may vary by filesystem)
-	size, err = chunker.FileSize()
-	require.NoError(t, err)
-	assert.Positive(t, size, "on-disk size should be non-zero after fetching data")
-}
-
-func TestUncompressedMMapChunker_EmptySlice(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-
-	dataSize := int64(4 * 1024 * 1024)
-	testData := make([]byte, dataSize)
-
-	mockStorage := setupMockStorageUncompressed(t, testData)
-
-	tmpDir := t.TempDir()
-	cachePath := filepath.Join(tmpDir, "cache")
-
-	chunker, err := NewUncompressedMMapChunker(
-		dataSize,
-		storage.MemoryChunkSize,
-		mockStorage,
-		"test/path",
-		cachePath,
-		testMetrics(t),
-	)
-	require.NoError(t, err)
-	defer chunker.Close()
-
-	// Request zero-length slice
-	slice, err := chunker.Slice(ctx, 0, 0, nil)
-	require.NoError(t, err)
-	assert.Empty(t, slice)
 }

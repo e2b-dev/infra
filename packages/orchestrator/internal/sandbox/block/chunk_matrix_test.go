@@ -30,6 +30,7 @@ func makeTestData(size int64) []byte {
 	for i := range data {
 		data[i] = byte(i % 256)
 	}
+
 	return data
 }
 
@@ -268,8 +269,8 @@ func compressMMapLRUMultiFrameFactory(t *testing.T, dataSize int64) *ChunkerTest
 // Common Test Functions
 // =============================================================================
 
-func testMatrixBasicSlice(t *testing.T, factory ChunkerFactory) {
-	t.Parallel()
+func runMatrixBasicSlice(t *testing.T, factory ChunkerFactory) {
+	t.Helper()
 	ctx := context.Background()
 
 	tc := factory(t, 4*1024*1024) // 4MB
@@ -288,8 +289,8 @@ func testMatrixBasicSlice(t *testing.T, factory ChunkerFactory) {
 	assert.Equal(t, tc.Data[:2048], slice)
 }
 
-func testMatrixEmptySlice(t *testing.T, factory ChunkerFactory) {
-	t.Parallel()
+func runMatrixEmptySlice(t *testing.T, factory ChunkerFactory) {
+	t.Helper()
 	ctx := context.Background()
 
 	tc := factory(t, 4*1024*1024)
@@ -300,8 +301,8 @@ func testMatrixEmptySlice(t *testing.T, factory ChunkerFactory) {
 	assert.Empty(t, slice)
 }
 
-func testMatrixConcurrentReads(t *testing.T, factory ChunkerFactory) {
-	t.Parallel()
+func runMatrixConcurrentReads(t *testing.T, factory ChunkerFactory) {
+	t.Helper()
 	ctx := context.Background()
 
 	tc := factory(t, 4*1024*1024)
@@ -310,19 +311,18 @@ func testMatrixConcurrentReads(t *testing.T, factory ChunkerFactory) {
 	var wg sync.WaitGroup
 	errors := make(chan error, 10)
 
-	for i := 0; i < 10; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 10 {
+		wg.Go(func() {
 			slice, err := tc.Chunker.Slice(ctx, 0, 1024, tc.FrameTable)
 			if err != nil {
 				errors <- err
+
 				return
 			}
 			if len(slice) != 1024 {
 				errors <- assert.AnError
 			}
-		}()
+		})
 	}
 
 	wg.Wait()
@@ -333,8 +333,8 @@ func testMatrixConcurrentReads(t *testing.T, factory ChunkerFactory) {
 	}
 }
 
-func testMatrixLargeRequestPartialCacheMiss(t *testing.T, factory ChunkerFactory) {
-	t.Parallel()
+func runMatrixLargeRequestPartialCacheMiss(t *testing.T, factory ChunkerFactory) {
+	t.Helper()
 	ctx := context.Background()
 
 	// Use multi-frame factory for compressed chunkers to test cross-frame partial cache
@@ -366,8 +366,8 @@ func testMatrixLargeRequestPartialCacheMiss(t *testing.T, factory ChunkerFactory
 // Mmap-specific tests
 // =============================================================================
 
-func testMatrixFileSize(t *testing.T, factory ChunkerFactory) {
-	t.Parallel()
+func runMatrixFileSize(t *testing.T, factory ChunkerFactory) {
+	t.Helper()
 	ctx := context.Background()
 
 	tc := factory(t, 4*1024*1024)
@@ -392,8 +392,8 @@ func testMatrixFileSize(t *testing.T, factory ChunkerFactory) {
 // Compressed chunker tests (require FrameTable, can span frames)
 // =============================================================================
 
-func testMatrixSliceAcrossFrames(t *testing.T, factory ChunkerFactory) {
-	t.Parallel()
+func runMatrixSliceAcrossFrames(t *testing.T, factory ChunkerFactory) {
+	t.Helper()
 	ctx := context.Background()
 
 	tc := factory(t, 8*1024*1024) // 8MB = 2 frames
@@ -418,6 +418,8 @@ func testMatrixSliceAcrossFrames(t *testing.T, factory ChunkerFactory) {
 // =============================================================================
 
 func TestChunkerMatrix_AllChunkers(t *testing.T) {
+	t.Parallel()
+
 	factories := map[string]ChunkerFactory{
 		"CompressLRU":      compressLRUFactory,
 		"CompressMMapLRU":  compressMMapLRUFactory,
@@ -429,14 +431,15 @@ func TestChunkerMatrix_AllChunkers(t *testing.T) {
 		name string
 		test func(t *testing.T, factory ChunkerFactory)
 	}{
-		{"BasicSlice", testMatrixBasicSlice},
-		{"EmptySlice", testMatrixEmptySlice},
-		{"ConcurrentReads", testMatrixConcurrentReads},
+		{"BasicSlice", runMatrixBasicSlice},
+		{"EmptySlice", runMatrixEmptySlice},
+		{"ConcurrentReads", runMatrixConcurrentReads},
 	}
 
 	for factoryName, factory := range factories {
 		for _, tc := range tests {
 			t.Run(factoryName+"/"+tc.name, func(t *testing.T) {
+				t.Parallel()
 				tc.test(t, factory)
 			})
 		}
@@ -444,6 +447,8 @@ func TestChunkerMatrix_AllChunkers(t *testing.T) {
 }
 
 func TestChunkerMatrix_MmapChunkers(t *testing.T) {
+	t.Parallel()
+
 	factories := map[string]ChunkerFactory{
 		"CompressMMapLRU":  compressMMapLRUFactory,
 		"DecompressMMap":   decompressMMapFactory,
@@ -454,12 +459,13 @@ func TestChunkerMatrix_MmapChunkers(t *testing.T) {
 		name string
 		test func(t *testing.T, factory ChunkerFactory)
 	}{
-		{"FileSize", testMatrixFileSize},
+		{"FileSize", runMatrixFileSize},
 	}
 
 	for factoryName, factory := range factories {
 		for _, tc := range tests {
 			t.Run(factoryName+"/"+tc.name, func(t *testing.T) {
+				t.Parallel()
 				tc.test(t, factory)
 			})
 		}
@@ -467,6 +473,8 @@ func TestChunkerMatrix_MmapChunkers(t *testing.T) {
 }
 
 func TestChunkerMatrix_CompressedChunkers(t *testing.T) {
+	t.Parallel()
+
 	// Use multi-frame factories for cross-frame tests
 	factories := map[string]ChunkerFactory{
 		"CompressLRU":     compressLRUMultiFrameFactory,
@@ -477,13 +485,14 @@ func TestChunkerMatrix_CompressedChunkers(t *testing.T) {
 		name string
 		test func(t *testing.T, factory ChunkerFactory)
 	}{
-		{"SliceAcrossFrames", testMatrixSliceAcrossFrames},
-		{"LargeRequestPartialCacheMiss", testMatrixLargeRequestPartialCacheMiss},
+		{"SliceAcrossFrames", runMatrixSliceAcrossFrames},
+		{"LargeRequestPartialCacheMiss", runMatrixLargeRequestPartialCacheMiss},
 	}
 
 	for factoryName, factory := range factories {
 		for _, tc := range tests {
 			t.Run(factoryName+"/"+tc.name, func(t *testing.T) {
+				t.Parallel()
 				tc.test(t, factory)
 			})
 		}
@@ -495,6 +504,8 @@ func TestChunkerMatrix_CompressedChunkers(t *testing.T) {
 // where dirty tracking uses absolute offsets, so non-block-aligned reads after caching
 // don't work correctly. Only LRU-based chunkers support this pattern.
 func TestChunkerMatrix_PartialCacheMiss_SingleFrame(t *testing.T) {
+	t.Parallel()
+
 	// Only LRU-based chunkers support partial cache miss with non-aligned reads
 	factories := map[string]ChunkerFactory{
 		"CompressLRU":     compressLRUFactory,
@@ -503,7 +514,8 @@ func TestChunkerMatrix_PartialCacheMiss_SingleFrame(t *testing.T) {
 
 	for factoryName, factory := range factories {
 		t.Run(factoryName+"/LargeRequestPartialCacheMiss", func(t *testing.T) {
-			testMatrixLargeRequestPartialCacheMiss(t, factory)
+			t.Parallel()
+			runMatrixLargeRequestPartialCacheMiss(t, factory)
 		})
 	}
 }
