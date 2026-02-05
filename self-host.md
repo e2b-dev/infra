@@ -30,6 +30,7 @@
 
 - [Docker](https://docs.docker.com/engine/install/)
 
+- [NPM](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
 
 **Accounts**
 
