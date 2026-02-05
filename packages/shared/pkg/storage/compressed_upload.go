@@ -7,29 +7,10 @@ import (
 	"fmt"
 	"io"
 	"sync"
-	"sync/atomic"
-	"time"
 
 	"github.com/klauspost/compress/zstd"
 	"golang.org/x/sync/errgroup"
 )
-
-// uploadStats tracks timing statistics for upload pipelining analysis
-type uploadStats struct {
-	startTime         time.Time
-	totalReadTime     atomic.Int64 // nanoseconds spent reading chunks
-	totalCompressTime atomic.Int64 // nanoseconds spent compressing
-	totalFlushTime    atomic.Int64 // nanoseconds spent in flushFrame
-	totalUploadTime   atomic.Int64 // nanoseconds spent uploading parts
-	totalUploadWait   atomic.Int64 // nanoseconds spent waiting for uploads to finish
-	chunksRead        atomic.Int64 // number of chunks read
-	framesCompressed  atomic.Int64 // number of frames compressed
-	partsUploaded     atomic.Int64 // number of parts uploaded
-	bytesRead         atomic.Int64 // total bytes read
-	bytesCompressed   atomic.Int64 // total compressed bytes
-	maxPendingUploads atomic.Int64 // max concurrent uploads observed
-	pendingUploads    atomic.Int64 // current pending uploads
-}
 
 func (c CompressionType) String() string {
 	switch c {
@@ -60,9 +41,6 @@ type encoder struct {
 	partIndex      int
 	partLen        int64
 	uploader       MultipartUploader
-
-	// Timing stats for debugging
-	stats *uploadStats
 }
 
 type frame struct {
@@ -94,7 +72,6 @@ func newFrameEncoder(opts *FramedUploadOptions, u MultipartUploader, targetPartS
 		frameTable: &FrameTable{
 			CompressionType: opts.CompressionType,
 		},
-		stats: &uploadStats{startTime: time.Now()},
 	}
 }
 
@@ -115,7 +92,7 @@ func (e *encoder) uploadFramed(ctx context.Context, in io.Reader) (*FrameTable, 
 	// Buffer 8 chunks to allow read-ahead and better pipelining.
 	chunkCh := make(chan []byte, 8)
 	readErrorCh := make(chan error, 1)
-	go e.readFileWithStats(ctx, in, e.opts.ChunkSize, chunkCh, readErrorCh)
+	go e.readFile(ctx, in, e.opts.ChunkSize, chunkCh, readErrorCh)
 
 	for {
 		select {
@@ -147,49 +124,34 @@ func (e *encoder) uploadFramed(ctx context.Context, in io.Reader) (*FrameTable, 
 			e.mu.Unlock()
 
 			if flush != nil {
-				flushStart := time.Now()
 				if err = e.flushFrame(uploadEG, uploadCtx, flush, !haveData); err != nil {
 					return nil, fmt.Errorf("failed to flush frame: %w", err)
 				}
-				e.stats.totalFlushTime.Add(time.Since(flushStart).Nanoseconds())
-				e.stats.framesCompressed.Add(1)
 			}
 
 			// If we have data, write it to the current frame and continue
 			if haveData {
-				compressStart := time.Now()
 				if err = e.writeChunk(frame, chunk); err != nil {
 					return nil, fmt.Errorf("failed to encode to frame: %w", err)
 				}
-				e.stats.totalCompressTime.Add(time.Since(compressStart).Nanoseconds())
 
 				continue
 			}
 
 			// No more data to process; wait for the uploads to complete and done!
-			waitStart := time.Now()
 			if err = uploadEG.Wait(); err != nil {
 				return nil, fmt.Errorf("failed to upload frames: %w", err)
 			}
-			e.stats.totalUploadWait.Add(time.Since(waitStart).Nanoseconds())
 
-			if err == nil && e.uploader != nil {
-				err = e.uploader.Complete(ctx)
-				if err != nil {
+			if e.uploader != nil {
+				if err = e.uploader.Complete(ctx); err != nil {
 					return nil, fmt.Errorf("failed to finish uploading frames: %w", err)
 				}
 			}
 
-			// Log timing stats
-			e.logStats()
-
 			return e.frameTable, nil
 		}
 	}
-}
-
-func (e *encoder) logStats() {
-	// Stats logging disabled - enable for debugging upload performance
 }
 
 func (e *encoder) flushFrame(eg *errgroup.Group, uploadCtx context.Context, f *frame, last bool) error {
@@ -205,7 +167,6 @@ func (e *encoder) flushFrame(eg *errgroup.Group, uploadCtx context.Context, f *f
 	e.frameTable.Frames = append(e.frameTable.Frames, ft)
 
 	data := f.compressedBuffer.Bytes()
-	e.stats.bytesCompressed.Add(int64(len(data)))
 
 	// Notify callback if provided (e.g., for cache write-through)
 	if e.opts.OnFrameReady != nil {
@@ -228,22 +189,8 @@ func (e *encoder) flushFrame(eg *errgroup.Group, uploadCtx context.Context, f *f
 		e.partLen = 0
 		e.readyFrames = e.readyFrames[:0]
 
-		// Track pending uploads
-		pending := e.stats.pendingUploads.Add(1)
-		for {
-			currentMax := e.stats.maxPendingUploads.Load()
-			if pending <= currentMax || e.stats.maxPendingUploads.CompareAndSwap(currentMax, pending) {
-				break
-			}
-		}
-
 		eg.Go(func() error {
-			uploadStart := time.Now()
 			err := e.uploader.UploadPart(uploadCtx, i, frameData...)
-			e.stats.totalUploadTime.Add(time.Since(uploadStart).Nanoseconds())
-			e.stats.partsUploaded.Add(1)
-			e.stats.pendingUploads.Add(-1)
-
 			if err != nil {
 				return fmt.Errorf("failed to upload part %d: %w", i, err)
 			}
@@ -255,16 +202,11 @@ func (e *encoder) flushFrame(eg *errgroup.Group, uploadCtx context.Context, f *f
 	return nil
 }
 
-func (e *encoder) readFileWithStats(ctx context.Context, in io.Reader, chunkSize int, chunkCh chan<- []byte, errorCh chan<- error) {
+func (e *encoder) readFile(ctx context.Context, in io.Reader, chunkSize int, chunkCh chan<- []byte, errorCh chan<- error) {
 	var err error
 	for i := 0; err == nil; i++ {
-		readStart := time.Now()
 		var chunk []byte
 		chunk, err = readChunk(in, chunkSize)
-		readTime := time.Since(readStart)
-		e.stats.totalReadTime.Add(readTime.Nanoseconds())
-		e.stats.chunksRead.Add(1)
-		e.stats.bytesRead.Add(int64(len(chunk)))
 
 		if err == nil {
 			err = ctx.Err()
