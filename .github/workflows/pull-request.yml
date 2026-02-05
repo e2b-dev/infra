@@ -14,13 +14,13 @@ on:
 jobs:
   lint:
     uses: ./.github/workflows/lint.yml
-  # generated-code-check:
-  #   uses: ./.github/workflows/pr-no-generated-changes.yml
-  #   with:
-  #     commit: true
-  #   secrets:
-  #     app_id: ${{ vars.AUTOFIXER_APP_ID }}
-  #     app_secret: ${{ secrets.AUTOFIXER_APP_SECRET }}
+  generated-code-check:
+    uses: ./.github/workflows/pr-no-generated-changes.yml
+    with:
+      commit: true
+    secrets:
+      app_id: ${{ vars.AUTOFIXER_APP_ID }}
+      app_secret: ${{ secrets.AUTOFIXER_APP_SECRET }}
   out-of-order-migrations:
     uses: ./.github/workflows/out-of-order-migrations.yml
   unit-tests:
