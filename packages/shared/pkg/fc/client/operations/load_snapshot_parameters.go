@@ -65,7 +65,7 @@ type LoadSnapshotParams struct {
 
 	/* Body.
 
-	   The configuration used for loading a snaphot.
+	   The configuration used for loading a snapshot.
 	*/
 	Body *models.SnapshotLoadParams
 

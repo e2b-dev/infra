@@ -20,6 +20,9 @@ import (
 // swagger:model MmdsConfig
 type MmdsConfig struct {
 
+	// MMDS operates compatibly with EC2 IMDS (i.e. responds "text/plain" content regardless of Accept header in requests).
+	ImdsCompat *bool `json:"imds_compat,omitempty"`
+
 	// A valid IPv4 link-local address.
 	IPV4Address *string `json:"ipv4_address,omitempty"`
 

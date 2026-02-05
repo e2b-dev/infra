@@ -7,19 +7,53 @@ package models
 
 import (
 	"context"
+	"strconv"
 
 	"github.com/go-openapi/errors"
 	"github.com/go-openapi/strfmt"
+	"github.com/go-openapi/swag"
 )
 
 // CPUConfig The CPU configuration template defines a set of bit maps as modifiers of flags accessed by register to be disabled/enabled for the microvm.
 //
 // swagger:model CpuConfig
-type CPUConfig string
+type CPUConfig struct {
+
+	// A collection of CPUID leaf modifiers (x86_64 only)
+	CpuidModifiers []*CpuidLeafModifier `json:"cpuid_modifiers"`
+
+	// A collection of KVM capabilities to be added or removed (both x86_64 and aarch64)
+	KvmCapabilities []string `json:"kvm_capabilities"`
+
+	// A collection of model specific register modifiers (x86_64 only)
+	MsrModifiers []*MsrModifier `json:"msr_modifiers"`
+
+	// A collection of register modifiers (aarch64 only)
+	RegModifiers []*ArmRegisterModifier `json:"reg_modifiers"`
+
+	// A collection of vCPU features to be modified (aarch64 only)
+	VcpuFeatures []*VcpuFeatures `json:"vcpu_features"`
+}
 
 // Validate validates this Cpu config
-func (m CPUConfig) Validate(formats strfmt.Registry) error {
+func (m *CPUConfig) Validate(formats strfmt.Registry) error {
 	var res []error
+
+	if err := m.validateCpuidModifiers(formats); err != nil {
+		res = append(res, err)
+	}
+
+	if err := m.validateMsrModifiers(formats); err != nil {
+		res = append(res, err)
+	}
+
+	if err := m.validateRegModifiers(formats); err != nil {
+		res = append(res, err)
+	}
+
+	if err := m.validateVcpuFeatures(formats); err != nil {
+		res = append(res, err)
+	}
 
 	if len(res) > 0 {
 		return errors.CompositeValidationError(res...)
@@ -27,7 +61,250 @@ func (m CPUConfig) Validate(formats strfmt.Registry) error {
 	return nil
 }
 
-// ContextValidate validates this Cpu config based on context it is used
-func (m CPUConfig) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
+func (m *CPUConfig) validateCpuidModifiers(formats strfmt.Registry) error {
+	if swag.IsZero(m.CpuidModifiers) { // not required
+		return nil
+	}
+
+	for i := 0; i < len(m.CpuidModifiers); i++ {
+		if swag.IsZero(m.CpuidModifiers[i]) { // not required
+			continue
+		}
+
+		if m.CpuidModifiers[i] != nil {
+			if err := m.CpuidModifiers[i].Validate(formats); err != nil {
+				if ve, ok := err.(*errors.Validation); ok {
+					return ve.ValidateName("cpuid_modifiers" + "." + strconv.Itoa(i))
+				} else if ce, ok := err.(*errors.CompositeError); ok {
+					return ce.ValidateName("cpuid_modifiers" + "." + strconv.Itoa(i))
+				}
+				return err
+			}
+		}
+
+	}
+
+	return nil
+}
+
+func (m *CPUConfig) validateMsrModifiers(formats strfmt.Registry) error {
+	if swag.IsZero(m.MsrModifiers) { // not required
+		return nil
+	}
+
+	for i := 0; i < len(m.MsrModifiers); i++ {
+		if swag.IsZero(m.MsrModifiers[i]) { // not required
+			continue
+		}
+
+		if m.MsrModifiers[i] != nil {
+			if err := m.MsrModifiers[i].Validate(formats); err != nil {
+				if ve, ok := err.(*errors.Validation); ok {
+					return ve.ValidateName("msr_modifiers" + "." + strconv.Itoa(i))
+				} else if ce, ok := err.(*errors.CompositeError); ok {
+					return ce.ValidateName("msr_modifiers" + "." + strconv.Itoa(i))
+				}
+				return err
+			}
+		}
+
+	}
+
+	return nil
+}
+
+func (m *CPUConfig) validateRegModifiers(formats strfmt.Registry) error {
+	if swag.IsZero(m.RegModifiers) { // not required
+		return nil
+	}
+
+	for i := 0; i < len(m.RegModifiers); i++ {
+		if swag.IsZero(m.RegModifiers[i]) { // not required
+			continue
+		}
+
+		if m.RegModifiers[i] != nil {
+			if err := m.RegModifiers[i].Validate(formats); err != nil {
+				if ve, ok := err.(*errors.Validation); ok {
+					return ve.ValidateName("reg_modifiers" + "." + strconv.Itoa(i))
+				} else if ce, ok := err.(*errors.CompositeError); ok {
+					return ce.ValidateName("reg_modifiers" + "." + strconv.Itoa(i))
+				}
+				return err
+			}
+		}
+
+	}
+
+	return nil
+}
+
+func (m *CPUConfig) validateVcpuFeatures(formats strfmt.Registry) error {
+	if swag.IsZero(m.VcpuFeatures) { // not required
+		return nil
+	}
+
+	for i := 0; i < len(m.VcpuFeatures); i++ {
+		if swag.IsZero(m.VcpuFeatures[i]) { // not required
+			continue
+		}
+
+		if m.VcpuFeatures[i] != nil {
+			if err := m.VcpuFeatures[i].Validate(formats); err != nil {
+				if ve, ok := err.(*errors.Validation); ok {
+					return ve.ValidateName("vcpu_features" + "." + strconv.Itoa(i))
+				} else if ce, ok := err.(*errors.CompositeError); ok {
+					return ce.ValidateName("vcpu_features" + "." + strconv.Itoa(i))
+				}
+				return err
+			}
+		}
+
+	}
+
+	return nil
+}
+
+// ContextValidate validate this Cpu config based on the context it is used
+func (m *CPUConfig) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
+	var res []error
+
+	if err := m.contextValidateCpuidModifiers(ctx, formats); err != nil {
+		res = append(res, err)
+	}
+
+	if err := m.contextValidateMsrModifiers(ctx, formats); err != nil {
+		res = append(res, err)
+	}
+
+	if err := m.contextValidateRegModifiers(ctx, formats); err != nil {
+		res = append(res, err)
+	}
+
+	if err := m.contextValidateVcpuFeatures(ctx, formats); err != nil {
+		res = append(res, err)
+	}
+
+	if len(res) > 0 {
+		return errors.CompositeValidationError(res...)
+	}
+	return nil
+}
+
+func (m *CPUConfig) contextValidateCpuidModifiers(ctx context.Context, formats strfmt.Registry) error {
+
+	for i := 0; i < len(m.CpuidModifiers); i++ {
+
+		if m.CpuidModifiers[i] != nil {
+
+			if swag.IsZero(m.CpuidModifiers[i]) { // not required
+				return nil
+			}
+
+			if err := m.CpuidModifiers[i].ContextValidate(ctx, formats); err != nil {
+				if ve, ok := err.(*errors.Validation); ok {
+					return ve.ValidateName("cpuid_modifiers" + "." + strconv.Itoa(i))
+				} else if ce, ok := err.(*errors.CompositeError); ok {
+					return ce.ValidateName("cpuid_modifiers" + "." + strconv.Itoa(i))
+				}
+				return err
+			}
+		}
+
+	}
+
+	return nil
+}
+
+func (m *CPUConfig) contextValidateMsrModifiers(ctx context.Context, formats strfmt.Registry) error {
+
+	for i := 0; i < len(m.MsrModifiers); i++ {
+
+		if m.MsrModifiers[i] != nil {
+
+			if swag.IsZero(m.MsrModifiers[i]) { // not required
+				return nil
+			}
+
+			if err := m.MsrModifiers[i].ContextValidate(ctx, formats); err != nil {
+				if ve, ok := err.(*errors.Validation); ok {
+					return ve.ValidateName("msr_modifiers" + "." + strconv.Itoa(i))
+				} else if ce, ok := err.(*errors.CompositeError); ok {
+					return ce.ValidateName("msr_modifiers" + "." + strconv.Itoa(i))
+				}
+				return err
+			}
+		}
+
+	}
+
+	return nil
+}
+
+func (m *CPUConfig) contextValidateRegModifiers(ctx context.Context, formats strfmt.Registry) error {
+
+	for i := 0; i < len(m.RegModifiers); i++ {
+
+		if m.RegModifiers[i] != nil {
+
+			if swag.IsZero(m.RegModifiers[i]) { // not required
+				return nil
+			}
+
+			if err := m.RegModifiers[i].ContextValidate(ctx, formats); err != nil {
+				if ve, ok := err.(*errors.Validation); ok {
+					return ve.ValidateName("reg_modifiers" + "." + strconv.Itoa(i))
+				} else if ce, ok := err.(*errors.CompositeError); ok {
+					return ce.ValidateName("reg_modifiers" + "." + strconv.Itoa(i))
+				}
+				return err
+			}
+		}
+
+	}
+
+	return nil
+}
+
+func (m *CPUConfig) contextValidateVcpuFeatures(ctx context.Context, formats strfmt.Registry) error {
+
+	for i := 0; i < len(m.VcpuFeatures); i++ {
+
+		if m.VcpuFeatures[i] != nil {
+
+			if swag.IsZero(m.VcpuFeatures[i]) { // not required
+				return nil
+			}
+
+			if err := m.VcpuFeatures[i].ContextValidate(ctx, formats); err != nil {
+				if ve, ok := err.(*errors.Validation); ok {
+					return ve.ValidateName("vcpu_features" + "." + strconv.Itoa(i))
+				} else if ce, ok := err.(*errors.CompositeError); ok {
+					return ce.ValidateName("vcpu_features" + "." + strconv.Itoa(i))
+				}
+				return err
+			}
+		}
+
+	}
+
+	return nil
+}
+
+// MarshalBinary interface implementation
+func (m *CPUConfig) MarshalBinary() ([]byte, error) {
+	if m == nil {
+		return nil, nil
+	}
+	return swag.WriteJSON(m)
+}
+
+// UnmarshalBinary interface implementation
+func (m *CPUConfig) UnmarshalBinary(b []byte) error {
+	var res CPUConfig
+	if err := swag.ReadJSON(b, &res); err != nil {
+		return err
+	}
+	*m = res
 	return nil
 }

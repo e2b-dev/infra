@@ -7,6 +7,7 @@ package models
 
 import (
 	"context"
+	"strconv"
 
 	"github.com/go-openapi/errors"
 	"github.com/go-openapi/strfmt"
@@ -19,7 +20,7 @@ import (
 // swagger:model SnapshotLoadParams
 type SnapshotLoadParams struct {
 
-	// Enable support for incremental (diff) snapshots by tracking dirty guest pages.
+	// (Deprecated) Enable dirty page tracking to improve space efficiency of diff snapshots
 	EnableDiffSnapshots bool `json:"enable_diff_snapshots,omitempty"`
 
 	// Configuration for the backend that handles memory load. If this field is specified, `mem_file_path` is forbidden. Either `mem_backend` or `mem_file_path` must be present at a time.
@@ -28,12 +29,18 @@ type SnapshotLoadParams struct {
 	// Path to the file that contains the guest memory to be loaded. It is only allowed if `mem_backend` is not present. This parameter has been deprecated and it will be removed in future Firecracker release.
 	MemFilePath string `json:"mem_file_path,omitempty"`
 
+	// Network host device names to override
+	NetworkOverrides []*NetworkOverride `json:"network_overrides"`
+
 	// When set to true, the vm is also resumed if the snapshot load is successful.
 	ResumeVM bool `json:"resume_vm,omitempty"`
 
 	// Path to the file that contains the microVM state to be loaded.
 	// Required: true
 	SnapshotPath *string `json:"snapshot_path"`
+
+	// Enable dirty page tracking to improve space efficiency of diff snapshots
+	TrackDirtyPages bool `json:"track_dirty_pages,omitempty"`
 }
 
 // Validate validates this snapshot load params
@@ -41,6 +48,10 @@ func (m *SnapshotLoadParams) Validate(formats strfmt.Registry) error {
 	var res []error
 
 	if err := m.validateMemBackend(formats); err != nil {
+		res = append(res, err)
+	}
+
+	if err := m.validateNetworkOverrides(formats); err != nil {
 		res = append(res, err)
 	}
 
@@ -73,6 +84,32 @@ func (m *SnapshotLoadParams) validateMemBackend(formats strfmt.Registry) error {
 	return nil
 }
 
+func (m *SnapshotLoadParams) validateNetworkOverrides(formats strfmt.Registry) error {
+	if swag.IsZero(m.NetworkOverrides) { // not required
+		return nil
+	}
+
+	for i := 0; i < len(m.NetworkOverrides); i++ {
+		if swag.IsZero(m.NetworkOverrides[i]) { // not required
+			continue
+		}
+
+		if m.NetworkOverrides[i] != nil {
+			if err := m.NetworkOverrides[i].Validate(formats); err != nil {
+				if ve, ok := err.(*errors.Validation); ok {
+					return ve.ValidateName("network_overrides" + "." + strconv.Itoa(i))
+				} else if ce, ok := err.(*errors.CompositeError); ok {
+					return ce.ValidateName("network_overrides" + "." + strconv.Itoa(i))
+				}
+				return err
+			}
+		}
+
+	}
+
+	return nil
+}
+
 func (m *SnapshotLoadParams) validateSnapshotPath(formats strfmt.Registry) error {
 
 	if err := validate.Required("snapshot_path", "body", m.SnapshotPath); err != nil {
@@ -87,6 +124,10 @@ func (m *SnapshotLoadParams) ContextValidate(ctx context.Context, formats strfmt
 	var res []error
 
 	if err := m.contextValidateMemBackend(ctx, formats); err != nil {
+		res = append(res, err)
+	}
+
+	if err := m.contextValidateNetworkOverrides(ctx, formats); err != nil {
 		res = append(res, err)
 	}
 
@@ -112,6 +153,31 @@ func (m *SnapshotLoadParams) contextValidateMemBackend(ctx context.Context, form
 			}
 			return err
 		}
+	}
+
+	return nil
+}
+
+func (m *SnapshotLoadParams) contextValidateNetworkOverrides(ctx context.Context, formats strfmt.Registry) error {
+
+	for i := 0; i < len(m.NetworkOverrides); i++ {
+
+		if m.NetworkOverrides[i] != nil {
+
+			if swag.IsZero(m.NetworkOverrides[i]) { // not required
+				return nil
+			}
+
+			if err := m.NetworkOverrides[i].ContextValidate(ctx, formats); err != nil {
+				if ve, ok := err.(*errors.Validation); ok {
+					return ve.ValidateName("network_overrides" + "." + strconv.Itoa(i))
+				} else if ce, ok := err.(*errors.CompositeError); ok {
+					return ce.ValidateName("network_overrides" + "." + strconv.Itoa(i))
+				}
+				return err
+			}
+		}
+
 	}
 
 	return nil
