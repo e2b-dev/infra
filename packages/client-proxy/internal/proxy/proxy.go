@@ -34,9 +34,7 @@ const (
 
 var ErrNodeNotFound = errors.New("node not found")
 
-var (
-	resumeTimeoutSeconds int32 = 600
-)
+var resumeTimeoutSeconds int32 = 600
 
 func catalogResolution(ctx context.Context, sandboxId string, c catalog.SandboxesCatalog, pausedChecker PausedSandboxChecker, autoResumeEnabled bool, requestHasAuth bool) (string, error) {
 	s, err := c.GetSandbox(ctx, sandboxId)
