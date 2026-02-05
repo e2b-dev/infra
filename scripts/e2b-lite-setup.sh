@@ -1133,7 +1133,7 @@ register_template() {
     # Note: total_disk_size_mb and envd_version are required by the API
     docker exec local-dev-postgres-1 psql -U postgres -c "
         INSERT INTO public.env_builds (id, env_id, status, vcpu, ram_mb, free_disk_size_mb, total_disk_size_mb, kernel_version, firecracker_version, envd_version, cluster_node_id, created_at, updated_at, finished_at)
-        VALUES ('$BUILD_ID', '$TEMPLATE_ID', 'uploaded', 2, 512, 1024, 512, '$KERNEL_VERSION', '$FC_VERSION', '0.2.0', 'local', NOW(), NOW(), NOW())
+        VALUES ('$BUILD_ID', '$TEMPLATE_ID', 'uploaded', 2, 512, 1024, 1024, '$KERNEL_VERSION', '$FC_VERSION', '0.2.0', 'local', NOW(), NOW(), NOW())
         ON CONFLICT (id) DO NOTHING;
     " > /dev/null 2>&1
 
