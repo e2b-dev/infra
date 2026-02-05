@@ -98,10 +98,7 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 		return
 	}
 	defer func(ctx context.Context) {
-		err := tx.Rollback(ctx)
-		if err != nil {
-			telemetry.ReportError(ctx, "Failed to rollback transaction", err)
-		}
+		_ = tx.Rollback(ctx)
 	}(context.WithoutCancel(ctx))
 
 	volume, err := client.CreateVolume(ctx, queries.CreateVolumeParams{
@@ -132,6 +129,12 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 	}
 
 	if err := tx.Commit(ctx); err != nil {
+		go func(ctx context.Context) {
+			if err := cluster.DeleteVolume(ctx, volume); err != nil {
+				telemetry.ReportCriticalError(ctx, "failed to clean up volume after failing to commit transaction", err)
+			}
+		}(context.WithoutCancel(ctx))
+
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to commit transaction")
 		telemetry.ReportCriticalError(ctx, "failed to commit transaction", err)
 
