@@ -2,7 +2,7 @@ job "orchestrator-${latest_orchestrator_job_id}" {
   type = "system"
   node_pool = "${node_pool}"
 
-  priority = 90
+  priority = 91
 
   group "client-orchestrator" {
     // For future as we can remove static and allow multiple instances on one machine if needed.
@@ -15,6 +15,11 @@ job "orchestrator-${latest_orchestrator_job_id}" {
       port "orchestrator-proxy" {
         static = "${proxy_port}"
       }
+    }
+
+    constraint {
+      attribute = "$${meta.orchestrator_job_version}"
+      value     = "${latest_orchestrator_job_id}"
     }
 
     service {
@@ -43,35 +48,6 @@ job "orchestrator-${latest_orchestrator_job_id}" {
         name     = "health"
         interval = "30s"
         timeout  = "1s"
-      }
-    }
-
-    task "check-placement" {
-      driver = "raw_exec"
-
-      lifecycle {
-        hook = "prestart"
-        sidecar = false
-      }
-
-      restart {
-        attempts = 0
-      }
-
-      template {
-        destination = "local/check-placement.sh"
-        data = <<EOT
-#!/bin/bash
-
-if [ "{{with nomadVar "nomad/jobs" }}{{ .latest_orchestrator_job_id }}{{ end }}" != "${latest_orchestrator_job_id}" ]; then
-  echo "This orchestrator is not the latest version, exiting"
-  exit 1
-fi
-EOT
-      }
-
-      config {
-        command = "local/check-placement.sh"
       }
     }
 

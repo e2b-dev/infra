@@ -14,9 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildlogger"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/oci/auth"
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
@@ -37,12 +35,6 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		attribute.Int64("env.vcpu_count", int64(cfg.GetVCpuCount())),
 		attribute.Bool("env.huge_pages", cfg.GetHugePages()),
 	)
-
-	if s.info.GetStatus() != orchestrator.ServiceInfoStatus_Healthy {
-		s.logger.Error(ctx, "Requesting template creation while server not healthy is not possible", logger.WithTemplateID(cfg.GetTemplateID()))
-
-		return nil, fmt.Errorf("server is draining")
-	}
 
 	metadata := storage.TemplateFiles{
 		BuildID: cfg.GetBuildID(),
@@ -104,8 +96,10 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	)
 
 	s.wg.Add(1)
+	s.activeBuilds.Add(1)
 	go func(ctx context.Context) {
 		defer s.wg.Done()
+		defer s.activeBuilds.Add(-1)
 
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()

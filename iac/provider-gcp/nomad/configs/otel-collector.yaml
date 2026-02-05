@@ -39,7 +39,7 @@ receivers:
           system.cpu.physical.count:
             enabled: true
           system.cpu.utilization: # percentage utilized in the moment
-            enabled: false
+            enabled: true
 
       # entirely disabled, so we omit the module
       #disk:
@@ -201,12 +201,6 @@ processors:
     timeout: 5s
     send_batch_size: 50000
 
-  attributes/host_metrics_node:
-    actions:
-      - key: node.id
-        value: $${NODE_ID}
-        action: insert
-
   # keep only metrics that are used
   filter/otlp:
     # https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/processor/filterprocessor
@@ -221,7 +215,11 @@ processors:
           - "vault.*"
           - "client_proxy.*"
           - "Click*"
-          - "otelcol.*"
+          - "otelcol.exporter.queue.capacity"
+          - "otelcol.exporter.queue.size"
+          - "otelcol.exporter.send.*"
+          - "otelcol.exporter.sent.*"
+          - "otelcol.receiver.refused.*"
           - "pgxpool.*"
 
   filter/only_client_allocs:
@@ -249,9 +247,41 @@ processors:
         operations:
           - action: aggregate_labels
             label_set:
-              - node.id
+              - service.instance.id
               - state
+              - deployment.environment
             aggregation_type: sum
+
+      - include: "system.cpu.utilization"
+        match_type: strict
+        action: update
+        operations:
+          - action: aggregate_labels
+            label_set:
+              - service.instance.id
+              - state
+              - deployment.environment
+            aggregation_type: sum
+          - action: aggregate_label_values
+            label: state
+            aggregated_values: [user, system, nice]
+            new_value: work
+            aggregation_type: sum
+
+          # irq = interrupt + softirq
+          - action: aggregate_label_values
+            label: state
+            aggregated_values: [interrupt, softirq]
+            new_value: irq
+            aggregation_type: sum
+
+          # blocked = wait (iowait)
+          - action: aggregate_label_values
+            label: state
+            aggregated_values: [wait]
+            new_value: blocked
+            aggregation_type: sum
+
 
   resourcedetection:
     # https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/processor/resourcedetectionprocessor
@@ -414,10 +444,9 @@ service:
       receivers:
         - hostmetrics
       processors:
-        - attributes/host_metrics_node
-        - metricstransform/single_cpu
         - resourcedetection
         - transform/set-name
+        - metricstransform/single_cpu
         - batch
       exporters:
         - otlphttp/grafana_cloud

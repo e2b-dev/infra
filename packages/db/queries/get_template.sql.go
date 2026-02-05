@@ -7,32 +7,56 @@ package queries
 
 import (
 	"context"
+
+	"github.com/google/uuid"
 )
 
-const getTemplateByIdOrAlias = `-- name: GetTemplateByIdOrAlias :one
-SELECT e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count, e.last_spawned_at, e.team_id, e.created_by, e.cluster_id FROM "public"."envs" e
-WHERE e.id IN (
-    SELECT e.id FROM "public"."envs" e
-    LEFT JOIN "public"."env_aliases" ea ON ea.env_id = e.id
-    WHERE e.id = $1
-    OR ea.alias = $1
-)
+const getTemplateByAlias = `-- name: GetTemplateByAlias :one
+SELECT e.id, e.team_id, e.public
+FROM public.env_aliases AS ea
+JOIN public.envs AS e ON e.id = ea.env_id
+WHERE ea.alias = $1
+  AND ea.namespace IS NOT DISTINCT FROM $2::text
 `
 
-func (q *Queries) GetTemplateByIdOrAlias(ctx context.Context, templateIDOrAlias string) (Env, error) {
-	row := q.db.QueryRow(ctx, getTemplateByIdOrAlias, templateIDOrAlias)
-	var i Env
-	err := row.Scan(
-		&i.ID,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.Public,
-		&i.BuildCount,
-		&i.SpawnCount,
-		&i.LastSpawnedAt,
-		&i.TeamID,
-		&i.CreatedBy,
-		&i.ClusterID,
-	)
+type GetTemplateByAliasParams struct {
+	Alias     string
+	Namespace *string
+}
+
+type GetTemplateByAliasRow struct {
+	ID     string
+	TeamID uuid.UUID
+	Public bool
+}
+
+// Resolves a template by alias and namespace
+// @alias: the alias to look up
+// @namespace: the namespace to scope the lookup (NULL for promoted templates)
+func (q *Queries) GetTemplateByAlias(ctx context.Context, arg GetTemplateByAliasParams) (GetTemplateByAliasRow, error) {
+	row := q.db.QueryRow(ctx, getTemplateByAlias, arg.Alias, arg.Namespace)
+	var i GetTemplateByAliasRow
+	err := row.Scan(&i.ID, &i.TeamID, &i.Public)
+	return i, err
+}
+
+const getTemplateById = `-- name: GetTemplateById :one
+SELECT e.id, e.team_id, e.public
+FROM public.envs AS e
+WHERE e.id = $1
+`
+
+type GetTemplateByIdRow struct {
+	ID     string
+	TeamID uuid.UUID
+	Public bool
+}
+
+// Looks up a template by its ID directly
+// @template_id: the template ID to look up
+func (q *Queries) GetTemplateById(ctx context.Context, templateID string) (GetTemplateByIdRow, error) {
+	row := q.db.QueryRow(ctx, getTemplateById, templateID)
+	var i GetTemplateByIdRow
+	err := row.Scan(&i.ID, &i.TeamID, &i.Public)
 	return i, err
 }

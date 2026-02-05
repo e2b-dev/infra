@@ -15,8 +15,8 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	typesteam "github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/middleware/otel/tracing"
+	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
-	"github.com/e2b-dev/infra/packages/db/types"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -35,6 +35,7 @@ func (a *APIStore) startSandbox(
 	requestHeader *http.Header,
 	isResume bool,
 	nodeID *string,
+	templateID string,
 	baseTemplateID string,
 	autoPause bool,
 	envdAccessToken *string,
@@ -61,6 +62,7 @@ func (a *APIStore) startSandbox(
 		timeout,
 		isResume,
 		nodeID,
+		templateID,
 		baseTemplateID,
 		autoPause,
 		envdAccessToken,
@@ -79,7 +81,7 @@ func (a *APIStore) startSandbox(
 	a.posthog.IdentifyAnalyticsTeam(ctx, team.ID.String(), team.Name)
 	properties := a.posthog.GetPackageToPosthogProperties(requestHeader)
 	props := properties.
-		Set("environment", build.EnvID).
+		Set("environment", sandbox.TemplateID).
 		Set("instance_id", sandbox.SandboxID).
 		Set("alias", alias).
 		Set("resume", isResume).
@@ -115,7 +117,7 @@ func (a *APIStore) startSandbox(
 
 	sbxlogger.E(&sbxlogger.SandboxMetadata{
 		SandboxID:  sandbox.SandboxID,
-		TemplateID: build.EnvID,
+		TemplateID: sandbox.TemplateID,
 		TeamID:     team.ID.String(),
 	}).Info(ctx, "Sandbox created", zap.String("end_time", endTime.Format("2006-01-02 15:04:05 -07:00")))
 

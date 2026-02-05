@@ -6,8 +6,10 @@ import (
 	"time"
 
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
+	"github.com/launchdarkly/go-sdk-common/v3/ldlog"
 	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
 	ldclient "github.com/launchdarkly/go-server-sdk/v7"
+	"github.com/launchdarkly/go-server-sdk/v7/ldcomponents"
 	"github.com/launchdarkly/go-server-sdk/v7/testhelpers/ldtestdata"
 	"go.uber.org/zap"
 
@@ -41,14 +43,36 @@ func NewClientWithDatasource(source *ldtestdata.TestDataSource) (*Client, error)
 }
 
 func NewClient() (*Client, error) {
-	var ldClient *ldclient.LDClient
-	var err error
-
 	if launchDarklyApiKey == "" {
 		return NewClientWithDatasource(launchDarklyOfflineStore)
 	}
 
-	ldClient, err = ldclient.MakeClient(launchDarklyApiKey, waitForInit)
+	ldClient, err := ldclient.MakeClient(launchDarklyApiKey, waitForInit)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Client{ld: ldClient}, nil
+}
+
+// NewClientWithLogLevel creates a client with a specific log level.
+// Use ldlog.Error to suppress INFO/WARN logs in CLI tools.
+func NewClientWithLogLevel(logLevel ldlog.LogLevel) (*Client, error) {
+	cfg := ldclient.Config{
+		Logging: ldcomponents.Logging().MinLevel(logLevel),
+	}
+
+	if launchDarklyApiKey == "" {
+		cfg.DataSource = launchDarklyOfflineStore
+		ldClient, err := ldclient.MakeCustomClient("", cfg, 0)
+		if err != nil {
+			return nil, err
+		}
+
+		return &Client{ld: ldClient}, nil
+	}
+
+	ldClient, err := ldclient.MakeCustomClient(launchDarklyApiKey, cfg, waitForInit)
 	if err != nil {
 		return nil, err
 	}

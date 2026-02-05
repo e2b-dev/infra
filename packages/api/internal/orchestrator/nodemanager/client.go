@@ -2,12 +2,14 @@ package nodemanager
 
 import (
 	"fmt"
+	"time"
 
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/keepalive"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/clusters"
@@ -29,6 +31,13 @@ func NewClient(tracerProvider trace.TracerProvider, meterProvider metric.MeterPr
 				otelgrpc.WithTracerProvider(tracerProvider),
 				otelgrpc.WithMeterProvider(meterProvider),
 			),
+		),
+		grpc.WithKeepaliveParams(
+			keepalive.ClientParameters{
+				Time:                30 * time.Second, // Send ping every 30s
+				Timeout:             5 * time.Second,  // Wait 5s for response
+				PermitWithoutStream: true,             // Allow pings even without active streams
+			},
 		),
 	)
 	if err != nil {

@@ -117,11 +117,11 @@ module "network" {
   domain_name               = var.domain_name
   additional_domains        = var.additional_domains
 
-  client_proxy_port        = var.edge_proxy_port
-  client_proxy_health_port = var.edge_api_port
+  client_proxy_port        = var.client_proxy_port
+  client_proxy_health_port = var.client_proxy_health_port
 
   api_instance_group    = google_compute_instance_group_manager.api_pool.instance_group
-  server_instance_group = google_compute_instance_group_manager.server_pool.instance_group
+  server_instance_group = google_compute_region_instance_group_manager.server_pool.instance_group
 
   nomad_port = var.nomad_port
 
@@ -201,6 +201,8 @@ module "build_cluster" {
 
   file_hash = local.file_hash
 
+  set_orchestrator_version_metadata = false
+
   depends_on = [
     google_storage_bucket_object.setup_config_objects["scripts/run-nomad.sh"],
     google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"]
@@ -255,6 +257,8 @@ module "client_cluster" {
   labels      = var.labels
 
   file_hash = local.file_hash
+
+  set_orchestrator_version_metadata = true
 
   depends_on = [
     google_storage_bucket_object.setup_config_objects["scripts/run-nomad.sh"],

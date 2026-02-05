@@ -25,9 +25,19 @@ resource "google_compute_health_check" "server_nomad_check" {
   }
 }
 
-resource "google_compute_instance_group_manager" "server_pool" {
-  name               = "${local.server_pool_name}-ig"
+data "google_compute_zones" "region_zones" {
+  region = var.gcp_region
+}
+
+resource "google_compute_region_instance_group_manager" "server_pool" {
+  region             = var.gcp_region
+  name               = "${local.server_pool_name}-rig"
   base_instance_name = local.server_pool_name
+
+
+  target_pools                     = []
+  target_size                      = var.server_cluster_size
+  distribution_policy_target_shape = "EVEN"
 
   version {
     instance_template = google_compute_instance_template.server.id
@@ -38,28 +48,18 @@ resource "google_compute_instance_group_manager" "server_pool" {
     port = var.nomad_port
   }
 
-  named_port {
-    name = "consul"
-    port = 8500
-  }
-
   # Server is a stateful cluster, so the update strategy used to roll out a new GCE Instance Template must be
   # a rolling update.
   update_policy {
-    type                    = "PROACTIVE"
-    minimal_action          = "REPLACE"
-    max_surge_fixed         = null
-    max_surge_percent       = null
-    max_unavailable_fixed   = 1
-    max_unavailable_percent = null
+    type           = "PROACTIVE"
+    minimal_action = "REPLACE"
+
+    // We want to keep the instance distribution even
+    instance_redistribution_type = "PROACTIVE"
+    max_unavailable_fixed        = 0
+    // The number has to be a multiple of the number of zones in the region
+    max_surge_fixed = length(data.google_compute_zones.region_zones.names)
   }
-
-  target_pools = []
-  target_size  = var.server_cluster_size
-
-  depends_on = [
-    google_compute_instance_template.server,
-  ]
 
   auto_healing_policies {
     health_check      = google_compute_health_check.server_nomad_check.id
@@ -69,6 +69,10 @@ resource "google_compute_instance_group_manager" "server_pool" {
   lifecycle {
     create_before_destroy = false
   }
+
+  depends_on = [
+    google_compute_instance_template.server,
+  ]
 }
 
 data "google_compute_image" "server_source_image" {
@@ -102,7 +106,7 @@ resource "google_compute_instance_template" "server" {
   disk {
     boot         = true
     source_image = data.google_compute_image.server_source_image.self_link
-    disk_size_gb = 20
+    disk_size_gb = var.server_boot_disk_size_gb
     disk_type    = var.server_boot_disk_type
   }
 

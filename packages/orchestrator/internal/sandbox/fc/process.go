@@ -23,6 +23,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/socket"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -361,6 +362,7 @@ func (p *Process) Resume(
 	snapfile template.File,
 	uffdReady chan struct{},
 	slot *network.Slot,
+	accessToken *string,
 ) error {
 	ctx, span := tracer.Start(ctx, "resume-fc")
 	defer span.End()
@@ -449,6 +451,12 @@ func (p *Process) Resume(
 		LogsCollectorAddress: fmt.Sprintf("http://%s/logs", slot.HyperloopIPString()),
 	}
 
+	if accessToken != nil && *accessToken != "" {
+		meta.AccessTokenHash = keys.HashAccessToken(*accessToken)
+	} else {
+		meta.AccessTokenHash = keys.HashAccessToken("")
+	}
+
 	err = p.client.setMmds(ctx, meta)
 	if err != nil {
 		fcStopErr := p.Stop(ctx)
@@ -491,10 +499,13 @@ func (p *Process) Stop(ctx context.Context) error {
 		return fmt.Errorf("fc process not started")
 	}
 
-	if hasProcessExited(p.cmd) {
+	// Check if process has already exited.
+	select {
+	case <-p.Exit.Done():
 		logger.L().Info(ctx, "fc process already exited", logger.WithSandboxID(p.files.SandboxID))
 
 		return nil
+	default:
 	}
 
 	// this function should never fail b/c a previous context was canceled.
@@ -543,10 +554,6 @@ func (p *Process) Stop(ctx context.Context) error {
 	}()
 
 	return nil
-}
-
-func hasProcessExited(cmd *exec.Cmd) bool {
-	return cmd == nil || cmd.ProcessState != nil
 }
 
 func (p *Process) Pause(ctx context.Context) error {

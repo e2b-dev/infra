@@ -1,5 +1,6 @@
 ENV := $(shell cat .last_used_env || echo "not-set")
 ENV_FILE := $(PWD)/.env.${ENV}
+PROVIDER ?= gcp
 
 -include ${ENV_FILE}
 
@@ -12,7 +13,7 @@ provider-login:
 .PHONY: init
 init:
 	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
-	$(MAKE) -C iac/provider-gcp init
+	$(MAKE) -C iac/provider-$(PROVIDER) init
 
 # Setup production environment variables, this is used only for E2B.dev production
 # Uses Infisical CLI to read secrets from Infisical Vault
@@ -24,33 +25,33 @@ download-prod-env:
 
 .PHONY: plan
 plan:
-	$(MAKE) -C iac/provider-gcp plan
+	$(MAKE) -C iac/provider-$(PROVIDER) plan
 
 # Deploy all jobs in Nomad
 .PHONY: plan-only-jobs
 plan-only-jobs:
-	$(MAKE) -C iac/provider-gcp plan-only-jobs
+	$(MAKE) -C iac/provider-$(PROVIDER) plan-only-jobs
 
 # Deploy a specific job name in Nomad
 # When job name is specified, all '-' are replaced with '_' in the job name
 .PHONY: plan-only-jobs/%
 plan-only-jobs/%:
-	$(MAKE) -C iac/provider-gcp plan-only-jobs/$(subst -,_,$(notdir $@))
+	$(MAKE) -C iac/provider-$(PROVIDER) plan-only-jobs/$(subst -,_,$(notdir $@))
 
 .PHONY: plan-without-jobs
 plan-without-jobs:
-	$(MAKE) -C iac/provider-gcp plan-without-jobs
+	$(MAKE) -C iac/provider-$(PROVIDER) plan-without-jobs
 
 .PHONY: apply
 apply:
 	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
-	$(MAKE) -C iac/provider-gcp apply
+	$(MAKE) -C iac/provider-$(PROVIDER) apply
 
 # Shortcut to importing resources into Terraform state (e.g. after creating resources manually or switching between different branches for the same environment)
 .PHONY: import
 import:
 	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
-	$(MAKE) -C iac/provider-gcp import
+	$(MAKE) -C iac/provider-$(PROVIDER) import
 
 .PHONY: version
 version:
@@ -111,6 +112,12 @@ download-public-kernels:
 	mkdir -p ./packages/fc-kernels
 	gsutil cp -r gs://e2b-prod-public-builds/kernels/* ./packages/fc-kernels/
 
+.PHONY: download-public-firecrackers
+download-public-firecrackers:
+	mkdir -p ./packages/fc-versions/builds/
+	gsutil -m cp -r gs://e2b-prod-public-builds/firecrackers/* ./packages/fc-versions/builds/
+	find ./packages/fc-versions/builds/ -name firecracker -exec chmod +x {} \;
+
 .PHONY: generate
 generate: generate/api generate/orchestrator generate/client-proxy generate/envd generate/db generate/shared generate-tests generate-mocks
 generate/%:
@@ -139,7 +146,7 @@ set-env:
 switch-env:
 	@ printf "Switching from `tput setaf 1``tput bold`$(shell cat .last_used_env)`tput sgr0` to `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(MAKE) set-env ENV=$(ENV)
-	make -C iac/provider-gcp switch
+	make -C iac/provider-$(PROVIDER) switch
 
 .PHONY: setup-ssh
 setup-ssh:
@@ -182,24 +189,3 @@ tidy:
 .PHONY: local-infra
 local-infra:
 	docker compose --file ./packages/local-dev/docker-compose.yaml up --abort-on-container-failure
-
-
-# Migration: Detach old template-manager-system job from Terraform state
-# TODO: Remove after template-manager migration is complete
-.PHONY: migrate-template-manager-detach
-migrate-template-manager-detach:
-	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
-	$(MAKE) -C iac/provider-gcp migrate-template-manager-detach
-
-# TODO 2025-12-29: [ENG-3410] - Remove after migration period (14 days)
-define env_var_or_default
-$(if $(value $(strip $(1))),$($(strip $(1))),$(2))
-endef
-
-.PHONY: migrate-clusters-terraform
-migrate-clusters-terraform:
-	$(eval CLIENT_CLUSTER_SIZE := $(call env_var_or_default,CLIENT_CLUSTER_SIZE,1))
-
-	@echo "\nBUILD_CLUSTERS_CONFIG='{\"default\":{\"cluster_size\": $(call env_var_or_default,BUILD_CLUSTER_SIZE,1), \"machine\":{\"type\":\"$(BUILD_MACHINE_TYPE)\",\"min_cpu_platform\":\"$(call env_var_or_default,MIN_CPU_PLATFORM,"Intel Skylake")\"}, \"boot_disk\":{\"disk_type\":\"$(call env_var_or_default,BUILD_BOOT_DISK_TYPE,"pd-ssd")\",\"size_gb\":$(call env_var_or_default,BUILD_CLUSTER_ROOT_DISK_SIZE_GB,200)}, \"cache_disks\":{\"disk_type\":\"$(call env_var_or_default,BUILD_CLUSTER_CACHE_DISK_TYPE,"local-ssd")\",\"size_gb\":$(call env_var_or_default,BUILD_CLUSTER_CACHE_DISK_SIZE_GB,375),\"count\":$(call env_var_or_default,BUILD_CLUSTER_CACHE_DISK_COUNT,3)}}}'" >> ${ENV_FILE}
-	@echo "CLIENT_CLUSTERS_CONFIG='{\"default\":{\"cluster_size\": $(CLIENT_CLUSTER_SIZE), \"autoscaler\": {\"size_max\": $(call env_var_or_default,CLIENT_CLUSTER_SIZE_MAX,$(CLIENT_CLUSTER_SIZE)), \"memory_target\": $(call env_var_or_default,CLIENT_CLUSTER_AUTOSCALING_MEMORY_TARGET,85), \"cpu_target\": $(call env_var_or_default,CLIENT_CLUSTER_AUTOSCALING_CPU_TARGET,0.6) }, \"machine\":{\"type\":\"$(CLIENT_MACHINE_TYPE)\",\"min_cpu_platform\":\"$(call env_var_or_default,MIN_CPU_PLATFORM,"Intel Skylake")\"}, \"boot_disk\":{\"disk_type\":\"$(call env_var_or_default,CLIENT_BOOT_DISK_TYPE,"pd-ssd")\",\"size_gb\":$(call env_var_or_default,CLIENT_CLUSTER_ROOT_DISK_SIZE_GB,300)}, \"cache_disks\":{\"disk_type\":\"$(call env_var_or_default,CLIENT_CLUSTER_CACHE_DISK_TYPE,"local-ssd")\",\"size_gb\":$(call env_var_or_default,CLIENT_CLUSTER_CACHE_DISK_SIZE_GB,375),\"count\":$(call env_var_or_default,CLIENT_CLUSTER_CACHE_DISK_COUNT,3)}}}'" >> ${ENV_FILE}
-	$(MAKE) -C iac/provider-gcp migrate-clusters-terraform

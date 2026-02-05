@@ -7,10 +7,8 @@ import (
 	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/db/queries"
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type MachineInfo struct {
@@ -36,16 +34,6 @@ func FromGRPCInfo(info *infogrpc.MachineInfo) MachineInfo {
 		CPUModel:        info.GetCpuModel(),
 		CPUModelName:    info.GetCpuModelName(),
 		CPUFlags:        info.GetCpuFlags(),
-	}
-}
-
-func FromDB(build queries.EnvBuild) MachineInfo {
-	return MachineInfo{
-		CPUArchitecture: utils.FromPtr(build.CpuArchitecture),
-		CPUFamily:       utils.FromPtr(build.CpuFamily),
-		CPUModel:        utils.FromPtr(build.CpuModel),
-		CPUModelName:    utils.FromPtr(build.CpuModelName),
-		CPUFlags:        build.CpuFlags,
 	}
 }
 

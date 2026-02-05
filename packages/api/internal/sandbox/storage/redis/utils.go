@@ -2,9 +2,43 @@ package redis
 
 import (
 	"fmt"
+	"strings"
 )
 
-// Helper functions
-func getSandboxKey(sandboxID string) string {
-	return fmt.Sprintf("%s%s", sandboxKeyPrefix, sandboxID)
+const (
+	separator           = ":"
+	sandboxKeyPrefix    = "sandbox:storage"
+	transitionKeyPrefix = "transition:"
+	sandboxesKey        = "sandboxes"
+	indexKey            = "index"
+)
+
+func createKey(keyParts ...string) string {
+	return strings.Join(keyParts, separator)
+}
+
+// sameSlot forces Redis to use the same slot for all keys
+// this is needed e.g. to use MGet and transactions
+func sameSlot(key string) string {
+	return fmt.Sprintf("{%s}", key)
+}
+
+func getTeamPrefix(teamID string) string {
+	return createKey(sandboxKeyPrefix, sameSlot(teamID))
+}
+
+func getSandboxKey(teamID, sandboxID string) string {
+	return createKey(getTeamPrefix(teamID), sandboxesKey, sandboxID)
+}
+
+func getTeamIndexKey(teamID string) string {
+	return createKey(getTeamPrefix(teamID), indexKey)
+}
+
+func getTransitionKey(teamID, sandboxID string) string {
+	return createKey(getTeamPrefix(teamID), transitionKeyPrefix, sandboxID)
+}
+
+func getTransitionResultKey(teamID, sandboxID, transitionID string) string {
+	return createKey(getTransitionKey(teamID, sandboxID), transitionID)
 }

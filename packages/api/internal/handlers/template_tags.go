@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"fmt"
-	"maps"
 	"net/http"
 	"slices"
 
@@ -10,13 +9,13 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/e2b-dev/infra/packages/db/dberrors"
+	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 // PostTemplatesTags assigns tags to a template build
@@ -24,26 +23,53 @@ import (
 func (a *APIStore) PostTemplatesTags(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	body, err := utils.ParseBody[api.AssignTemplateTagRequest](ctx, c)
+	body, err := utils.ParseBody[api.AssignTemplateTagsRequest](ctx, c)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid request body: %s", err))
 
 		return
 	}
 
-	// Parse the target template (alias:tag format)
-	targetAlias, targetTag, err := id.ParseTemplateIDOrAliasWithTag(body.Target)
+	// Validate tags early
+	if len(body.Tags) == 0 {
+		a.sendAPIStoreError(c, http.StatusBadRequest, "At least one tag is required")
+		telemetry.ReportError(ctx, "at least one tag is required", nil)
+
+		return
+	}
+
+	team, apiErr := a.GetTeam(ctx, c, nil)
+	if apiErr != nil {
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+		telemetry.ReportCriticalError(ctx, "error when getting team", apiErr.Err)
+
+		return
+	}
+
+	identifier, tag, err := id.ParseName(body.Target)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid target template format: %s", body.Target))
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid target template format: %s", err))
 		telemetry.ReportError(ctx, "invalid target template format", err)
 
 		return
 	}
 
-	// Validate names
-	if len(body.Names) == 0 {
-		a.sendAPIStoreError(c, http.StatusBadRequest, "At least one name is required")
-		telemetry.ReportError(ctx, "at least one name is required", nil)
+	if err := id.ValidateNamespaceMatchesTeam(identifier, team.Slug); err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, err.Error())
+
+		return
+	}
+
+	targetTagValue := id.DefaultTag
+	if tag != nil {
+		targetTagValue = *tag
+	}
+
+	aliasInfo, err := a.templateCache.ResolveAlias(ctx, identifier, team.Slug)
+	if err != nil {
+		apiErr := templatecache.ErrorToAPIError(err, identifier)
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+		telemetry.ReportError(ctx, "template not found", apiErr.Err, telemetry.WithTemplateID(identifier))
 
 		return
 	}
@@ -57,16 +83,15 @@ func (a *APIStore) PostTemplatesTags(c *gin.Context) {
 	}
 	defer tx.Rollback(ctx)
 
-	// Get template and build from the target tag
-	targetTagValue := sharedUtils.DerefOrDefault(targetTag, id.DefaultTag)
+	// Step 2: Get template with build by ID and tag
 	result, err := client.GetTemplateWithBuildByTag(ctx, queries.GetTemplateWithBuildByTagParams{
-		AliasOrEnvID: targetAlias,
-		Tag:          &targetTagValue,
+		TemplateID: aliasInfo.TemplateID,
+		Tag:        &targetTagValue,
 	})
 	if err != nil {
 		if dberrors.IsNotFoundError(err) {
-			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Template '%s' not found", body.Target))
-			telemetry.ReportError(ctx, "template or target tag not found", err, telemetry.WithTemplateID(targetAlias))
+			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Template '%s' with tag '%s' not found", body.Target, targetTagValue))
+			telemetry.ReportError(ctx, "template tag not found", err, telemetry.WithTemplateID(aliasInfo.TemplateID))
 
 			return
 		}
@@ -78,17 +103,7 @@ func (a *APIStore) PostTemplatesTags(c *gin.Context) {
 	}
 
 	template := result.Env
-	aliases := slices.Concat(result.Aliases, []string{template.ID})
 	buildID := result.EnvBuild.ID
-
-	// Get and verify team access
-	team, apiErr := a.GetTeam(ctx, c, sharedUtils.ToPtr(template.TeamID.String()))
-	if apiErr != nil {
-		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
-		telemetry.ReportCriticalError(ctx, "error when getting team", apiErr.Err)
-
-		return
-	}
 
 	telemetry.SetAttributes(ctx,
 		attribute.String("env.team.id", team.ID.String()),
@@ -96,46 +111,23 @@ func (a *APIStore) PostTemplatesTags(c *gin.Context) {
 		telemetry.WithTemplateID(template.ID),
 	)
 
-	if template.TeamID != team.ID {
-		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox template '%s'", targetAlias))
+	if aliasInfo.TeamID != team.ID {
+		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox template '%s'", identifier))
 		telemetry.ReportError(ctx, "no access to the template", nil, telemetry.WithTemplateID(template.ID))
 
 		return
 	}
 
-	// Parse tags from body
-	tags := make(map[string]bool)
-	for _, name := range body.Names {
-		alias, tagPtr, err := id.ParseTemplateIDOrAliasWithTag(name)
-		if err != nil {
-			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid name: %s", name))
-			telemetry.ReportCriticalError(ctx, "invalid name", err)
+	tags, err := id.ValidateAndDeduplicateTags(body.Tags)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid tag: %s", err))
+		telemetry.ReportCriticalError(ctx, "invalid tag", err)
 
-			return
-		}
-
-		if !slices.Contains(aliases, alias) {
-			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Template alias '%s' does not match the target template", alias))
-			telemetry.ReportCriticalError(ctx, "template alias not matching the template", nil)
-
-			return
-		}
-
-		tag := sharedUtils.DerefOrDefault(tagPtr, id.DefaultTag)
-
-		err = id.ValidateCreateTag(tag)
-		if err != nil {
-			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid tag: %s", err))
-			telemetry.ReportCriticalError(ctx, "invalid tag", err)
-
-			return
-		}
-
-		tags[tag] = true
+		return
 	}
 
 	// Create the tag assignments
-	for tag := range tags {
+	for _, tag := range tags {
 		err = client.CreateTemplateBuildAssignment(ctx, queries.CreateTemplateBuildAssignmentParams{
 			TemplateID: template.ID,
 			BuildID:    buildID,
@@ -157,8 +149,7 @@ func (a *APIStore) PostTemplatesTags(c *gin.Context) {
 		return
 	}
 
-	// Invalidate the template cache for the new tags
-	for tag := range tags {
+	for _, tag := range tags {
 		a.templateCache.Invalidate(template.ID, &tag)
 	}
 
@@ -169,7 +160,7 @@ func (a *APIStore) PostTemplatesTags(c *gin.Context) {
 	a.posthog.CreateAnalyticsTeamEvent(ctx, team.ID.String(), "assigned template tag",
 		properties.
 			Set("environment", template.ID).
-			Set("tags", slices.Collect(maps.Keys(tags))),
+			Set("tags", tags),
 	)
 
 	logger.L().Info(ctx, "Assigned template tag",
@@ -177,54 +168,48 @@ func (a *APIStore) PostTemplatesTags(c *gin.Context) {
 		logger.WithTeamID(team.ID.String()),
 	)
 
-	c.JSON(http.StatusCreated, api.TemplateTag{
-		Tags:    slices.Collect(maps.Keys(tags)),
+	c.JSON(http.StatusCreated, api.AssignedTemplateTags{
+		Tags:    tags,
 		BuildID: buildID,
 	})
 }
 
-// DeleteTemplatesTagsName deletes a tag from a template
-// The {name} path parameter is the template:tag to delete (e.g., "web-server:production")
-func (a *APIStore) DeleteTemplatesTagsName(c *gin.Context, name string) {
+// DeleteTemplatesTags deletes multiple tags from a template
+func (a *APIStore) DeleteTemplatesTags(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	// Parse the name (alias:tag format)
-	alias, tagPtr, err := id.ParseTemplateIDOrAliasWithTag(name)
+	body, err := utils.ParseBody[api.DeleteTemplateTagsRequest](ctx, c)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid name format: %s", name))
-		telemetry.ReportError(ctx, "invalid name format", err)
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid request body: %s", err))
 
 		return
 	}
 
-	tag := sharedUtils.DerefOrDefault(tagPtr, id.DefaultTag)
+	// Validate and normalize tags early
+	tags, err := id.ValidateAndDeduplicateTags(body.Tags)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid tag: %s", err))
+		telemetry.ReportError(ctx, "invalid tag", err)
 
-	// Prevent deleting the default tag
-	if tag == id.DefaultTag {
+		return
+	}
+
+	if len(tags) == 0 {
+		a.sendAPIStoreError(c, http.StatusBadRequest, "At least one tag is required")
+		telemetry.ReportError(ctx, "at least one tag is required", nil)
+
+		return
+	}
+
+	// Validate that no tag is the default tag
+	if slices.Contains(tags, id.DefaultTag) {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Cannot delete the '%s' tag", id.DefaultTag))
 		telemetry.ReportError(ctx, "cannot delete default tag", nil)
 
 		return
 	}
 
-	// Get the template to verify ownership
-	template, err := a.sqlcDB.GetTemplateByIdOrAlias(ctx, alias)
-	if err != nil {
-		if dberrors.IsNotFoundError(err) {
-			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Template '%s' not found", alias))
-			telemetry.ReportError(ctx, "template not found", err, telemetry.WithTemplateID(alias))
-
-			return
-		}
-
-		telemetry.ReportError(ctx, "error when getting template", err)
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error getting template")
-
-		return
-	}
-
-	// Get and verify team access
-	team, apiErr := a.GetTeam(ctx, c, sharedUtils.ToPtr(template.TeamID.String()))
+	team, apiErr := a.GetTeam(ctx, c, nil)
 	if apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 		telemetry.ReportCriticalError(ctx, "error when getting team", apiErr.Err)
@@ -232,42 +217,73 @@ func (a *APIStore) DeleteTemplatesTagsName(c *gin.Context, name string) {
 		return
 	}
 
+	identifier, tag, err := id.ParseName(body.Name)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid template name format: %s", err))
+		telemetry.ReportError(ctx, "invalid template name format", err)
+
+		return
+	}
+
+	if err := id.ValidateNamespaceMatchesTeam(identifier, team.Slug); err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, err.Error())
+
+		return
+	}
+
+	if tag != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, "Template name should not contain a tag, use the 'tags' field instead")
+		telemetry.ReportError(ctx, "template name contains tag", nil)
+
+		return
+	}
+
+	aliasInfo, err := a.templateCache.ResolveAlias(ctx, identifier, team.Slug)
+	if err != nil {
+		apiErr := templatecache.ErrorToAPIError(err, identifier)
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+		telemetry.ReportError(ctx, "template not found", apiErr.Err, telemetry.WithTemplateID(identifier))
+
+		return
+	}
+
+	if aliasInfo.TeamID != team.ID {
+		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox template '%s'", identifier))
+		telemetry.ReportError(ctx, "no access to the template", nil, telemetry.WithTemplateID(aliasInfo.TemplateID))
+
+		return
+	}
+
 	telemetry.SetAttributes(ctx,
 		attribute.String("env.team.id", team.ID.String()),
 		attribute.String("env.team.name", team.Name),
-		telemetry.WithTemplateID(template.ID),
+		telemetry.WithTemplateID(aliasInfo.TemplateID),
 	)
 
-	if template.TeamID != team.ID {
-		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox template '%s'", alias))
-		telemetry.ReportError(ctx, "no access to the template", nil, telemetry.WithTemplateID(template.ID))
-
-		return
-	}
-
-	// Delete the tag assignment
-	err = a.sqlcDB.DeleteTemplateTag(ctx, queries.DeleteTemplateTagParams{
-		TemplateID: template.ID,
-		Tag:        tag,
+	// Delete the tag assignments
+	err = a.sqlcDB.DeleteTemplateTags(ctx, queries.DeleteTemplateTagsParams{
+		TemplateID: aliasInfo.TemplateID,
+		Tags:       tags,
 	})
 	if err != nil {
-		telemetry.ReportCriticalError(ctx, "error when deleting tag assignment", err)
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error deleting tag assignment")
+		telemetry.ReportCriticalError(ctx, "error when deleting tag assignments", err)
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error deleting tag assignments")
 
 		return
 	}
 
-	// Invalidate the template cache for the deleted tag
-	a.templateCache.Invalidate(template.ID, &tag)
+	for _, tag := range tags {
+		a.templateCache.Invalidate(aliasInfo.TemplateID, &tag)
+	}
 
-	telemetry.ReportEvent(ctx, "deleted template tag")
+	telemetry.ReportEvent(ctx, "deleted template tags")
 
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
 	a.posthog.IdentifyAnalyticsTeam(ctx, team.ID.String(), team.Name)
-	a.posthog.CreateAnalyticsTeamEvent(ctx, team.ID.String(), "deleted template tag", properties.Set("environment", template.ID).Set("tag", tag))
+	a.posthog.CreateAnalyticsTeamEvent(ctx, team.ID.String(), "deleted template tags", properties.Set("environment", aliasInfo.TemplateID).Set("tags", tags))
 
-	logger.L().Info(ctx, "Deleted template tag",
-		logger.WithTemplateID(template.ID),
+	logger.L().Info(ctx, "Deleted template tags",
+		logger.WithTemplateID(aliasInfo.TemplateID),
 		logger.WithTeamID(team.ID.String()),
 	)
 

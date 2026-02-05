@@ -24,20 +24,11 @@ build-and-upload:
 	@docker buildx install # sets up the buildx as default docker builder (otherwise the command below won't work)
 	@docker build --platform linux/amd64 --tag $(IMAGE_REGISTRY) --push --build-arg COMMIT_SHA="$(COMMIT_SHA)" -f ./Dockerfile ..
 
-openapi := ../../spec/openapi-edge.yml
-codegen := go tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
-
 .PHONY: run
 run:
 	make build-debug
-	EDGE_PORT=3001 \
-	EDGE_SECRET=$(EDGE_TOKEN) \
 	NODE_ID=integration-tests \
 	NODE_IP=127.0.0.1 \
-	SD_ORCHESTRATOR_PROVIDER=STATIC \
-	SD_ORCHESTRATOR_STATIC=127.0.0.1 \
-	SKIP_ORCHESTRATOR_READINESS_CHECK=true \
-	LOKI_URL=unset \
 	./bin/client-proxy
 
 define setup_local_env
@@ -53,10 +44,7 @@ run-local:
 
 .PHONY: generate
 generate:
-	$(codegen) -old-config-style -generate gin --package api $(openapi) > ../shared/pkg/http/edge/api.gen.go
-	$(codegen) -old-config-style -generate types --package api $(openapi) > ../shared/pkg/http/edge/types.gen.go
-	$(codegen) -old-config-style -generate spec --package api $(openapi) > ../shared/pkg/http/edge/spec.gen.go
-	$(codegen) -old-config-style -generate client --package api $(openapi) > ../shared/pkg/http/edge/client.gen.go
+	go generate ./...
 
 .PHONY: test
 test:

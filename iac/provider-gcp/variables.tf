@@ -142,20 +142,20 @@ variable "client_proxy_update_max_parallel" {
   default     = 1
 }
 
-variable "edge_api_port" {
+variable "client_proxy_health_port" {
   type = object({
     name = string
     port = number
     path = string
   })
   default = {
-    name = "edge-api"
+    name = "client-proxy"
     port = 3001
-    path = "/health/traffic"
+    path = "/health"
   }
 }
 
-variable "edge_proxy_port" {
+variable "client_proxy_port" {
   type = object({
     name = string
     port = number
@@ -411,6 +411,30 @@ variable "filestore_cache_cleanup_deletions_per_loop" {
   default = 900
 }
 
+variable "filestore_cache_cleanup_max_concurrent_stat" {
+  type        = number
+  description = "Number of concurrent stat goroutines"
+  default     = 16
+}
+
+variable "filestore_cache_cleanup_max_concurrent_scan" {
+  type        = number
+  description = "Number of concurrent scanner goroutines"
+  default     = 16
+}
+
+variable "filestore_cache_cleanup_max_concurrent_delete" {
+  type        = number
+  description = "Number of concurrent deleter goroutines"
+  default     = 4
+}
+
+variable "filestore_cache_cleanup_max_retries" {
+  type        = number
+  description = "Maximum number of continuous error or miss retries before giving up"
+  default     = 10000
+}
+
 variable "remote_repository_enabled" {
   type        = bool
   description = "Set to true to enable remote repository cache. Can be set via TF_VAR_remote_repository_enabled or REMOTE_REPOSITORY_ENABLED env var."
@@ -546,6 +570,12 @@ variable "server_boot_disk_type" {
   description = "The GCE boot disk type for the control server machines."
   type        = string
   default     = "pd-ssd"
+}
+
+variable "server_boot_disk_size_gb" {
+  description = "The GCE boot disk size (in GB) for the control server machines."
+  type        = number
+  default     = 20
 }
 
 variable "clickhouse_boot_disk_type" {

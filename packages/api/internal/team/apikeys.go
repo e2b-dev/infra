@@ -6,19 +6,19 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/e2b-dev/infra/packages/db/client"
-	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/db/pkg/auth"
+	"github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 type CreateAPIKeyResponse struct {
-	*queries.TeamApiKey
+	*authqueries.TeamApiKey
 
 	RawAPIKey string
 }
 
-func CreateAPIKey(ctx context.Context, sqlcDB *client.Client, teamID uuid.UUID, userID uuid.UUID, name string) (CreateAPIKeyResponse, error) {
+func CreateAPIKey(ctx context.Context, authDB *authdb.Client, teamID uuid.UUID, userID uuid.UUID, name string) (CreateAPIKeyResponse, error) {
 	teamApiKey, err := keys.GenerateKey(keys.ApiKeyPrefix)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when generating team API key", err)
@@ -26,7 +26,7 @@ func CreateAPIKey(ctx context.Context, sqlcDB *client.Client, teamID uuid.UUID, 
 		return CreateAPIKeyResponse{}, fmt.Errorf("error when generating team API key: %w", err)
 	}
 
-	apiKey, err := sqlcDB.CreateTeamAPIKey(ctx, queries.CreateTeamAPIKeyParams{
+	apiKey, err := authDB.Write.CreateTeamAPIKey(ctx, authqueries.CreateTeamAPIKeyParams{
 		TeamID:           teamID,
 		CreatedBy:        &userID,
 		ApiKeyHash:       teamApiKey.HashedValue,

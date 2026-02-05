@@ -48,6 +48,12 @@ jobs:
             ${{ matrix.package }}/go.mod
             ${{ matrix.package }}/go.sum
 
+      - name: Setup envd tests
+        run: |
+          # Install bindfs for FUSE mount tests
+          sudo apt-get update && sudo apt-get install -y bindfs
+        if: matrix.package == 'packages/envd'
+
       - name: Setup orchestrator tests
         run: |
           # Enable unprivileged uffd mode

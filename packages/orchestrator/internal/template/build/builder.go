@@ -257,6 +257,8 @@ func runBuild(
 
 	index := cache.NewHashIndex(bc.CacheScope, builder.buildStorage, templateStorage)
 
+	uploadTracker := layer.NewUploadTracker()
+
 	layerExecutor := layer.NewLayerExecutor(
 		bc,
 		builder.logger,
@@ -266,6 +268,7 @@ func runBuild(
 		templateStorage,
 		builder.buildStorage,
 		index,
+		uploadTracker,
 	)
 
 	baseBuilder := base.New(

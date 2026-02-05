@@ -33,6 +33,7 @@ type LayerExecutor struct {
 	templateStorage storage.StorageProvider
 	buildStorage    storage.StorageProvider
 	index           cache.Index
+	uploadTracker   *UploadTracker
 }
 
 func NewLayerExecutor(
@@ -44,6 +45,7 @@ func NewLayerExecutor(
 	templateStorage storage.StorageProvider,
 	buildStorage storage.StorageProvider,
 	index cache.Index,
+	uploadTracker *UploadTracker,
 ) *LayerExecutor {
 	return &LayerExecutor{
 		BuildContext: buildContext,
@@ -56,6 +58,7 @@ func NewLayerExecutor(
 		templateStorage: templateStorage,
 		buildStorage:    buildStorage,
 		index:           index,
+		uploadTracker:   uploadTracker,
 	}
 }
 
@@ -276,10 +279,19 @@ func (lb *LayerExecutor) PauseAndUpload(
 
 	// Upload snapshot async, it's added to the template cache immediately
 	userLogger.Debug(ctx, fmt.Sprintf("Saving: %s", meta.Template.BuildID))
+
+	// Register this upload and get functions to signal completion and wait for previous uploads
+	completeUpload, waitForPreviousUploads := lb.uploadTracker.StartUpload()
+
 	lb.UploadErrGroup.Go(func() error {
 		ctx := context.WithoutCancel(ctx)
 		ctx, span := tracer.Start(ctx, "upload snapshot")
 		defer span.End()
+
+		// Always signal completion to unblock waiting goroutines, even on error.
+		// This prevents deadlocks when an earlier layer fails - later layers can
+		// still unblock and the errgroup can properly collect all errors.
+		defer completeUpload()
 
 		err := snapshot.Upload(
 			ctx,
@@ -288,6 +300,14 @@ func (lb *LayerExecutor) PauseAndUpload(
 		)
 		if err != nil {
 			return fmt.Errorf("error uploading snapshot: %w", err)
+		}
+
+		// Wait for all previous layer uploads to complete before saving the cache entry.
+		// This prevents race conditions where another build hits this cache entry
+		// before its dependencies (previous layers) are available in storage.
+		err = waitForPreviousUploads(ctx)
+		if err != nil {
+			return fmt.Errorf("error waiting for previous uploads: %w", err)
 		}
 
 		err = lb.index.SaveLayerMeta(ctx, hash, cache.LayerMetadata{

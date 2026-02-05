@@ -17,11 +17,12 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
+	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	typesteam "github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/e2b-dev/infra/packages/db/types"
+	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -62,24 +63,29 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 	telemetry.ReportEvent(ctx, "Parsed body")
 
-	// Parse template ID and optional tag in the format "templateID:tag"
-	cleanedAliasOrEnvID, tag, err := id.ParseTemplateIDOrAliasWithTag(body.TemplateID)
+	identifier, tag, err := id.ParseName(body.TemplateID)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid template ID: %s", err))
-
-		telemetry.ReportCriticalError(ctx, "error when parsing template ID", err)
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid template reference: %s", err))
+		telemetry.ReportError(ctx, "invalid template reference", err)
 
 		return
 	}
 
-	telemetry.ReportEvent(ctx, "Parsed template ID and tag")
-
-	// Check if team has access to the environment
 	clusterID := utils.WithClusterFallback(teamInfo.Team.ClusterID)
-	env, build, checkErr := a.templateCache.Get(ctx, cleanedAliasOrEnvID, tag, teamInfo.Team.ID, clusterID, true)
-	if checkErr != nil {
-		telemetry.ReportCriticalError(ctx, "error when getting template", checkErr.Err)
-		a.sendAPIStoreError(c, checkErr.Code, checkErr.ClientMsg)
+	aliasInfo, err := a.templateCache.ResolveAlias(ctx, identifier, teamInfo.Team.Slug)
+	if err != nil {
+		apiErr := templatecache.ErrorToAPIError(err, identifier)
+		telemetry.ReportErrorByCode(ctx, apiErr.Code, "error when resolving template alias", apiErr.Err, attribute.String("identifier", identifier))
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+
+		return
+	}
+
+	env, build, err := a.templateCache.Get(ctx, aliasInfo.TemplateID, tag, teamInfo.Team.ID, clusterID)
+	if err != nil {
+		apiErr := templatecache.ErrorToAPIError(err, aliasInfo.TemplateID)
+		telemetry.ReportErrorByCode(ctx, apiErr.Code, "error when getting template", apiErr.Err, telemetry.WithTemplateID(aliasInfo.TemplateID))
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return
 	}
@@ -87,7 +93,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	telemetry.ReportEvent(ctx, "Checked team access")
 
 	c.Set("envID", env.TemplateID)
-	setTemplateNameMetric(ctx, c, a.featureFlags, env.TemplateID, env.Aliases)
+	setTemplateNameMetric(ctx, c, a.featureFlags, env.TemplateID, env.Names)
 
 	sandboxID := InstanceIDPrefix + id.Generate()
 
@@ -196,6 +202,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		false,
 		nil,
 		env.TemplateID,
+		env.TemplateID,
 		autoPause,
 		envdAccessToken,
 		allowInternetAccess,
@@ -249,7 +256,7 @@ func (a *APIStore) getEnvdAccessToken(envdVersion *string, sandboxID string) (st
 	return key, nil
 }
 
-func setTemplateNameMetric(ctx context.Context, c *gin.Context, ff *featureflags.Client, templateID string, aliases []string) {
+func setTemplateNameMetric(ctx context.Context, c *gin.Context, ff *featureflags.Client, templateID string, names []string) {
 	trackedTemplates := featureflags.GetTrackedTemplatesSet(ctx, ff)
 
 	// Check template ID first
@@ -259,10 +266,10 @@ func setTemplateNameMetric(ctx context.Context, c *gin.Context, ff *featureflags
 		return
 	}
 
-	// Then check aliases
-	for _, alias := range aliases {
-		if _, exists := trackedTemplates[alias]; exists {
-			c.Set(metricTemplateAlias, alias)
+	// Then check names (namespace/alias format when namespaced)
+	for _, name := range names {
+		if _, exists := trackedTemplates[name]; exists {
+			c.Set(metricTemplateAlias, name)
 
 			return
 		}

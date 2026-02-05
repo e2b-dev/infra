@@ -8,7 +8,7 @@ package queries
 import (
 	"context"
 
-	"github.com/e2b-dev/infra/packages/db/types"
+	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/google/uuid"
 )
 
@@ -41,7 +41,6 @@ const createTemplateBuild = `-- name: CreateTemplateBuild :exec
 INSERT INTO "public"."env_builds" (
     id,
     updated_at,
-    env_id,
     status,
     ram_mb,
     vcpu,
@@ -55,8 +54,8 @@ INSERT INTO "public"."env_builds" (
 ) VALUES (
     $1,
     NOW(),
-    $2,
     'waiting',
+    $2,
     $3,
     $4,
     $5,
@@ -64,14 +63,12 @@ INSERT INTO "public"."env_builds" (
     $7,
     $8,
     $9,
-    $10,
-    $11
+    $10
 )
 `
 
 type CreateTemplateBuildParams struct {
 	BuildID            uuid.UUID
-	TemplateID         string
 	RamMb              int64
 	Vcpu               int64
 	KernelVersion      string
@@ -86,7 +83,6 @@ type CreateTemplateBuildParams struct {
 func (q *Queries) CreateTemplateBuild(ctx context.Context, arg CreateTemplateBuildParams) error {
 	_, err := q.db.Exec(ctx, createTemplateBuild,
 		arg.BuildID,
-		arg.TemplateID,
 		arg.RamMb,
 		arg.Vcpu,
 		arg.KernelVersion,

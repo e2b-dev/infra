@@ -7,6 +7,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -17,7 +18,7 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, sbx sandbox.Sandbox, s
 	defer span.End()
 
 	sandboxID := sbx.SandboxID
-	alreadyDone, finish, err := o.sandboxStore.StartRemoving(ctx, sandboxID, stateAction)
+	alreadyDone, finish, err := o.sandboxStore.StartRemoving(ctx, sbx.TeamID, sandboxID, stateAction)
 	if err != nil {
 		switch stateAction {
 		case sandbox.StateActionKill:
@@ -60,7 +61,7 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, sbx sandbox.Sandbox, s
 
 	defer func() { go o.countersRemove(context.WithoutCancel(ctx), sbx, stateAction) }()
 	defer func() { go o.analyticsRemove(context.WithoutCancel(ctx), sbx, stateAction) }()
-	defer o.sandboxStore.Remove(ctx, sbx.TeamID.String(), sbx.SandboxID)
+	defer o.sandboxStore.Remove(ctx, sbx.TeamID, sbx.SandboxID)
 	err = o.removeSandboxFromNode(ctx, sbx, stateAction)
 	if err != nil {
 		logger.L().Error(ctx, "Error pausing sandbox", zap.Error(err), logger.WithSandboxID(sbx.SandboxID))
@@ -82,10 +83,14 @@ func (o *Orchestrator) removeSandboxFromNode(ctx context.Context, sbx sandbox.Sa
 		return fmt.Errorf("node '%s' not found", sbx.NodeID)
 	}
 
-	// Remove the sandbox resources after the sandbox is deleted
-	err := o.routingCatalog.DeleteSandbox(ctx, sbx.SandboxID, sbx.ExecutionID)
-	if err != nil {
-		logger.L().Error(ctx, "error removing routing record from catalog", zap.Error(err), logger.WithSandboxID(sbx.SandboxID))
+	// Only remove from routing table if the node is managed by Nomad
+	// For remote cluster nodes we are using gPRC metadata for routing registration instead
+	if node.IsNomadManaged() || env.IsLocal() {
+		// Remove the sandbox resources after the sandbox is deleted
+		err := o.routingCatalog.DeleteSandbox(ctx, sbx.SandboxID, sbx.ExecutionID)
+		if err != nil {
+			logger.L().Error(ctx, "error removing routing record from catalog", zap.Error(err), logger.WithSandboxID(sbx.SandboxID))
+		}
 	}
 
 	sbxlogger.I(sbx).Debug(ctx, "Removing sandbox",

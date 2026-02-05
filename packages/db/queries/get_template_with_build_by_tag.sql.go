@@ -10,17 +10,8 @@ import (
 )
 
 const getTemplateWithBuildByTag = `-- name: GetTemplateWithBuildByTag :one
-WITH s AS NOT MATERIALIZED (
-    SELECT ea.env_id as env_id
-    FROM public.env_aliases as ea
-    WHERE ea.alias = $2
-    UNION
-    SELECT $2 as env_id
-)
-
-SELECT e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count, e.last_spawned_at, e.team_id, e.created_by, e.cluster_id, eb.id, eb.created_at, eb.updated_at, eb.finished_at, eb.status, eb.dockerfile, eb.start_cmd, eb.vcpu, eb.ram_mb, eb.free_disk_size_mb, eb.total_disk_size_mb, eb.kernel_version, eb.firecracker_version, eb.env_id, eb.envd_version, eb.ready_cmd, eb.cluster_node_id, eb.reason, eb.version, eb.cpu_architecture, eb.cpu_family, eb.cpu_model, eb.cpu_model_name, eb.cpu_flags, aliases
-FROM s
-JOIN public.envs AS e ON e.id = s.env_id
+SELECT e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count, e.last_spawned_at, e.team_id, e.created_by, e.cluster_id, eb.id, eb.created_at, eb.updated_at, eb.finished_at, eb.status, eb.dockerfile, eb.start_cmd, eb.vcpu, eb.ram_mb, eb.free_disk_size_mb, eb.total_disk_size_mb, eb.kernel_version, eb.firecracker_version, eb.env_id, eb.envd_version, eb.ready_cmd, eb.cluster_node_id, eb.reason, eb.version, eb.cpu_architecture, eb.cpu_family, eb.cpu_model, eb.cpu_model_name, eb.cpu_flags, aliases, names
+FROM public.envs AS e
 JOIN public.env_build_assignments AS eba ON eba.env_id = e.id
     AND (
         -- Match by tag
@@ -32,31 +23,34 @@ JOIN public.env_build_assignments AS eba ON eba.env_id = e.id
 JOIN public.env_builds AS eb ON eb.id = eba.build_id
     AND eb.status = 'uploaded'
 CROSS JOIN LATERAL (
-    SELECT array_agg(alias)::text[] AS aliases
+    SELECT 
+        array_agg(alias)::text[] AS aliases,
+        array_agg(CASE WHEN namespace IS NOT NULL THEN namespace || '/' || alias ELSE alias END)::text[] AS names
     FROM public.env_aliases
     WHERE env_id = e.id
 ) AS al
+WHERE e.id = $2
 ORDER BY eba.created_at DESC
 LIMIT 1
 `
 
 type GetTemplateWithBuildByTagParams struct {
-	Tag          *string
-	AliasOrEnvID string
+	Tag        *string
+	TemplateID string
 }
 
 type GetTemplateWithBuildByTagRow struct {
 	Env      Env
 	EnvBuild EnvBuild
 	Aliases  []string
+	Names    []string
 }
 
-// get the env_id when querying by alias; if not, @alias_or_env_id should be env_id
-// @tag defaults to 'default' if not provided
-// Join through env_build_assignments to support tags or direct build_id
-// Get the most recent assignment for this tag (or the direct build_id match)
+// Fetches a template with its build by template ID and tag.
+// @template_id: the template ID to look up
+// @tag: defaults to 'default' if not provided
 func (q *Queries) GetTemplateWithBuildByTag(ctx context.Context, arg GetTemplateWithBuildByTagParams) (GetTemplateWithBuildByTagRow, error) {
-	row := q.db.QueryRow(ctx, getTemplateWithBuildByTag, arg.Tag, arg.AliasOrEnvID)
+	row := q.db.QueryRow(ctx, getTemplateWithBuildByTag, arg.Tag, arg.TemplateID)
 	var i GetTemplateWithBuildByTagRow
 	err := row.Scan(
 		&i.Env.ID,
@@ -94,6 +88,7 @@ func (q *Queries) GetTemplateWithBuildByTag(ctx context.Context, arg GetTemplate
 		&i.EnvBuild.CpuModelName,
 		&i.EnvBuild.CpuFlags,
 		&i.Aliases,
+		&i.Names,
 	)
 	return i, err
 }

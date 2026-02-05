@@ -7,7 +7,7 @@ Daemon that runs inside a sandbox that allows interacting with the sandbox via c
 Run the following command to (re)build the envd daemon and start a Docker container with envd running inside:
 
 ```bash
-make build && make start-docker
+make start-docker
 ```
 
 You can use E2B SDKs with env var `E2B_DEBUG=true` or with a debug parameter set to `true` when creating or connecting to a sandbox, to connect to the envd started with this command.

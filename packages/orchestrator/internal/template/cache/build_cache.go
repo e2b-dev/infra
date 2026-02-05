@@ -90,9 +90,24 @@ func NewBuildCache(ctx context.Context, meterProvider metric.MeterProvider) *Bui
 		// Group by teamID
 		teamCounts := make(map[string]int)
 		for _, item := range items {
-			// Filter only running builds
-			if item != nil && item.Value() != nil && item.Value().IsRunning() {
-				teamID := item.Value().TeamID
+			if item == nil {
+				continue
+			}
+			build := item.Value()
+			if build == nil {
+				continue
+			}
+
+			teamID := build.TeamID
+
+			// Include 0 too to reset the counter if the team has no builds anymore
+			_, ok := teamCounts[teamID]
+			if !ok {
+				teamCounts[teamID] = 0
+			}
+
+			// Count running builds
+			if build.IsRunning() {
 				teamCounts[teamID]++
 			}
 		}

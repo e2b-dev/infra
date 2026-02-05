@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/e2b-dev/infra/packages/db/client"
+	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 )
@@ -29,13 +30,13 @@ func Validate(ctx context.Context, sqlcDB *client.Client, token, envID string) (
 	return exists, nil
 }
 
-func ValidateAccessToken(ctx context.Context, db *client.Client, accessToken string) bool {
+func ValidateAccessToken(ctx context.Context, db *authdb.Client, accessToken string) bool {
 	hashedToken, err := keys.VerifyKey(keys.AccessTokenPrefix, accessToken)
 	if err != nil {
 		return false
 	}
 
-	_, err = db.GetUserIDFromAccessToken(ctx, hashedToken)
+	_, err = db.Read.GetUserIDFromAccessToken(ctx, hashedToken)
 	if err != nil {
 		log.Printf("Error while checking access token: %s\n", err.Error())
 

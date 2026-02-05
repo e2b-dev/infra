@@ -38,7 +38,7 @@ func (a *APIStore) GetToken(w http.ResponseWriter, r *http.Request) error {
 		return fmt.Errorf("error while extracting access token: %w", err)
 	}
 
-	if !auth.ValidateAccessToken(ctx, a.db, accessToken) {
+	if !auth.ValidateAccessToken(ctx, a.authDb, accessToken) {
 		log.Printf("Invalid access token: '%s'\n", accessToken)
 
 		w.WriteHeader(http.StatusForbidden)

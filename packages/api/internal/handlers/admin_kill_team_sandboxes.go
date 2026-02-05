@@ -22,7 +22,13 @@ func (a *APIStore) PostAdminTeamsTeamIDSandboxesKill(c *gin.Context, teamID uuid
 	logger.L().Info(ctx, "Admin killing all sandboxes for team", logger.WithTeamID(teamID.String()))
 
 	// Get all running sandboxes for the team
-	sandboxes := a.orchestrator.GetSandboxes(ctx, teamID, []sandbox.State{sandbox.StateRunning})
+	sandboxes, err := a.orchestrator.GetSandboxes(ctx, teamID, []sandbox.State{sandbox.StateRunning})
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to get sandboxes")
+
+		return
+	}
+
 	logger.L().Info(ctx, "Found sandboxes to kill",
 		logger.WithTeamID(teamID.String()),
 		zap.Int("count", len(sandboxes)),
@@ -55,7 +61,7 @@ func (a *APIStore) PostAdminTeamsTeamIDSandboxesKill(c *gin.Context, teamID uuid
 		})
 	}
 
-	err := wg.Wait()
+	err = wg.Wait()
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to kill sandboxes")
 

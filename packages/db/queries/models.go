@@ -7,7 +7,7 @@ package queries
 import (
 	"time"
 
-	"github.com/e2b-dev/infra/packages/db/types"
+	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -73,6 +73,8 @@ type EnvAlias struct {
 	Alias       string
 	IsRenamable bool
 	EnvID       string
+	Namespace   *string
+	ID          uuid.UUID
 }
 
 type EnvBuild struct {
@@ -89,7 +91,7 @@ type EnvBuild struct {
 	TotalDiskSizeMb    *int64
 	KernelVersion      string
 	FirecrackerVersion string
-	EnvID              string
+	EnvID              *string
 	EnvdVersion        *string
 	ReadyCmd           *string
 	ClusterNodeID      *string
@@ -137,6 +139,7 @@ type Team struct {
 	IsBanned      bool
 	BlockedReason *string
 	ClusterID     *uuid.UUID
+	Slug          string
 }
 
 type TeamApiKey struct {

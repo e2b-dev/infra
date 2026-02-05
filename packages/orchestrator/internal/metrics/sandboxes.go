@@ -274,6 +274,8 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 	return unregister, nil
 }
 
+const meterExporterShutdownTimeout = 10 * time.Second
+
 func (so *SandboxObserver) Close(ctx context.Context) error {
 	if so.meterExporter == nil {
 		return nil
@@ -287,7 +289,11 @@ func (so *SandboxObserver) Close(ctx context.Context) error {
 		}
 	}
 
-	if err := so.meterExporter.Shutdown(ctx); err != nil {
+	// Use a timeout to prevent hanging on meter exporter shutdown
+	shutdownCtx, cancel := context.WithTimeout(ctx, meterExporterShutdownTimeout)
+	defer cancel()
+
+	if err := so.meterExporter.Shutdown(shutdownCtx); err != nil {
 		errs = append(errs, fmt.Errorf("failed to shutdown sandbox observer meter provider: %w", err))
 	}
 

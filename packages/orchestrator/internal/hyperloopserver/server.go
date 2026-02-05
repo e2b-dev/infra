@@ -10,10 +10,10 @@ import (
 	"github.com/gin-gonic/gin"
 	middleware "github.com/oapi-codegen/gin-middleware"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/hyperloopserver/contracts"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/hyperloopserver/handlers"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	api "github.com/e2b-dev/infra/packages/shared/pkg/http/hyperloop"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -22,7 +22,7 @@ const maxUploadLimit = 1 << 28 // 256 MiB
 func NewHyperloopServer(ctx context.Context, port uint16, logger logger.Logger, sandboxes *sandbox.Map) (*http.Server, error) {
 	sandboxCollectorAddr := env.LogsCollectorAddress()
 	store := handlers.NewHyperloopStore(logger, sandboxes, sandboxCollectorAddr)
-	swagger, err := api.GetSwagger()
+	swagger, err := contracts.GetSwagger()
 	if err != nil {
 		return nil, fmt.Errorf("error getting swagger spec: %w", err)
 	}
@@ -41,7 +41,7 @@ func NewHyperloopServer(ctx context.Context, port uint16, logger logger.Logger, 
 		BaseContext: func(net.Listener) context.Context { return ctx },
 	}
 
-	api.RegisterHandlersWithOptions(engine, store, api.GinServerOptions{})
+	contracts.RegisterHandlersWithOptions(engine, store, contracts.GinServerOptions{})
 
 	return server, nil
 }

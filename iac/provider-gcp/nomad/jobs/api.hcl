@@ -82,25 +82,31 @@ job "api" {
       }
 
       env {
-        NODE_ID                        = "$${node.unique.id}"
-        ORCHESTRATOR_PORT              = "${orchestrator_port}"
-        POSTGRES_CONNECTION_STRING     = "${postgres_connection_string}"
-        SUPABASE_JWT_SECRETS           = "${supabase_jwt_secrets}"
-        LOKI_URL                       = "${loki_url}"
-        CLICKHOUSE_CONNECTION_STRING   = "${clickhouse_connection_string}"
         ENVIRONMENT                    = "${environment}"
+        NODE_ID                        = "$${node.unique.id}"
+        NOMAD_TOKEN                    = "${nomad_acl_token}"
+        ORCHESTRATOR_PORT              = "${orchestrator_port}"
+        ADMIN_TOKEN                    = "${admin_token}"
+        SANDBOX_ACCESS_TOKEN_HASH_SEED = "${sandbox_access_token_hash_seed}"
+
+        POSTGRES_CONNECTION_STRING              = "${postgres_connection_string}"
+        AUTH_DB_CONNECTION_STRING               = "${postgres_connection_string}"
+        AUTH_DB_READ_REPLICA_CONNECTION_STRING  = "${postgres_read_replica_connection_string}"
+        SUPABASE_JWT_SECRETS                    = "${supabase_jwt_secrets}"
+
+        LOKI_URL                      = "${loki_url}"
+        CLICKHOUSE_CONNECTION_STRING  = "${clickhouse_connection_string}"
+
         POSTHOG_API_KEY                = "${posthog_api_key}"
         ANALYTICS_COLLECTOR_HOST       = "${analytics_collector_host}"
         ANALYTICS_COLLECTOR_API_TOKEN  = "${analytics_collector_api_token}"
         OTEL_TRACING_PRINT             = "${otel_tracing_print}"
         LOGS_COLLECTOR_ADDRESS         = "${logs_collector_address}"
-        NOMAD_TOKEN                    = "${nomad_acl_token}"
         OTEL_COLLECTOR_GRPC_ENDPOINT   = "${otel_collector_grpc_endpoint}"
-        ADMIN_TOKEN                    = "${admin_token}"
+
         REDIS_URL                      = "${redis_url}"
         REDIS_CLUSTER_URL              = "${redis_cluster_url}"
         REDIS_TLS_CA_BASE64            = "${redis_tls_ca_base64}"
-        SANDBOX_ACCESS_TOKEN_HASH_SEED = "${sandbox_access_token_hash_seed}"
 
 %{ if launch_darkly_api_key != "" }
         LAUNCH_DARKLY_API_KEY         = "${launch_darkly_api_key}"

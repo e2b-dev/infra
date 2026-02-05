@@ -1,5 +1,21 @@
 name: Ensure generated files are up-to-date
-on: [workflow_call]
+
+on:
+  workflow_call:
+    inputs:
+      commit:
+        type: boolean
+        description: 'Whether to commit and push changes automatically'
+        required: false
+        default: false
+    secrets:
+      app_id:
+        description: 'GitHub App ID for pushing commits that trigger workflows'
+        required: false
+      app_secret:
+        description: 'GitHub PAT for pushing commits that trigger workflows'
+        required: false
+
 permissions:
   contents: read
 
@@ -7,8 +23,24 @@ jobs:
   run-check:
     runs-on: ubuntu-24.04
     steps:
+      - name: Generate GitHub App installation token
+        id: app-token
+        if: ${{ inputs.commit == true }}
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.app_id }}
+          private-key: ${{ secrets.app_secret }}
+
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+        if: ${{ inputs.commit == true }}
+        with:
+          ref: ${{ github.head_ref }}
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        if: ${{ inputs.commit == false }}
 
       - name: Parse .tool-versions
         uses: wistia/parse-tool-versions@v2.1.1
@@ -38,13 +70,30 @@ jobs:
       - name: Format code
         run: make fmt
 
-      - name: Check for uncommitted changes
+      - name: Commit generated changes if any
         run: |
-          if [[ -n $(git status --porcelain) ]]; then
-            echo "❌ Generated files are not up to date:"
-            git status --short
-            git diff
-            exit 1
-          else
+          if [[ -z $(git status --porcelain) ]]; then
             echo "✅ No changes detected."
+            exit 0
           fi
+
+          if [[ "${{ inputs.commit }}" != "true" ]]; then
+            echo "❌ Generated files are not up to date. Please run 'make generate' and commit the changes."
+            git status --short
+            exit 1
+          fi
+          
+          echo "📝 Generated files are not up to date. Committing changes..."
+          git status --short
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add -A
+          git commit -m "chore: auto-commit generated changes"
+          git push origin HEAD:${{ github.head_ref }}
+
+          echo "✅ Changes committed and pushed successfully."
+
+          # There were changes, exit with an error code so that the workflow fails.
+          exit 1

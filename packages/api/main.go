@@ -45,11 +45,13 @@ import (
 const (
 	serviceVersion     = "1.0.0"
 	serviceName        = "orchestration-api"
-	maxMultipartMemory = 1 << 27 // 128 MiB
-	maxUploadLimit     = 1 << 28 // 256 MiB
+	maxMultipartMemory = 1 << 23 // 8 MiB
+	maxUploadLimit     = 1 << 24 // 16 MiB
 
-	maxReadTimeout  = 75 * time.Second
-	maxWriteTimeout = 75 * time.Second
+	maxReadHeaderTimeout = 5 * time.Second
+	maxReadTimeout       = 10 * time.Second
+	maxWriteTimeout      = 75 * time.Second
+
 	// This timeout should be > 600 (GCP LB upstream idle timeout) to prevent race condition
 	// https://cloud.google.com/load-balancing/docs/https#timeouts_and_retries%23:~:text=The%20load%20balancer%27s%20backend%20keepalive,is%20greater%20than%20600%20seconds
 	idleTimeout = 620 * time.Second
@@ -83,6 +85,7 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 			"/sandboxes",
 			"/sandboxes/:sandboxID",
 			"/sandboxes/:sandboxID/pause",
+			"/sandboxes/:sandboxID/connect",
 			"/sandboxes/:sandboxID/resume",
 		),
 		gin.Recovery(),
@@ -133,7 +136,11 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 		limits.RequestSizeLimiter(maxUploadLimit),
 		middleware.OapiRequestValidatorWithOptions(swagger,
 			&middleware.Options{
-				ErrorHandler:      utils.ErrorHandler,
+				ErrorHandler: func(c *gin.Context, message string, fallbackStatusCode int) {
+					// Override the status code provided by the oapi-codegen/gin-middleware as that is always set to 400 or 404.
+					statusCode := max(c.Writer.Status(), fallbackStatusCode)
+					utils.ErrorHandler(c, message, statusCode)
+				},
 				MultiErrorHandler: utils.MultiErrorHandler,
 				Options: openapi3filter.Options{
 					AuthenticationFunc: AuthenticationFunc,
@@ -188,11 +195,16 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 	s := &http.Server{
 		Handler: r,
 		Addr:    fmt.Sprintf("0.0.0.0:%d", port),
+
+		// Configure request timeouts.
+		ReadHeaderTimeout: maxReadHeaderTimeout,
+		ReadTimeout:       maxReadTimeout,
+		WriteTimeout:      maxWriteTimeout,
+
 		// Configure timeouts to be greater than the proxy timeouts.
-		ReadTimeout:  maxReadTimeout,
-		WriteTimeout: maxWriteTimeout,
-		IdleTimeout:  idleTimeout,
-		BaseContext:  func(net.Listener) context.Context { return ctx },
+		IdleTimeout: idleTimeout,
+
+		BaseContext: func(net.Listener) context.Context { return ctx },
 	}
 
 	return s

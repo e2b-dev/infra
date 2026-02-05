@@ -30,6 +30,7 @@
 
 - [Docker](https://docs.docker.com/engine/install/)
 
+- [NPM](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
 
 **Accounts**
 
@@ -41,7 +42,7 @@
 **Optional**
 
 Recommended for monitoring and logging
-- Grafana Account & Stack (see Step 15 for detailed notes)
+- Grafana Account & Stack
 - Posthog Account
 
 ## Steps
@@ -51,11 +52,10 @@ Check if you can use config for terraform state management
 1. Go to `console.cloud.google.com` and create a new GCP project
     > Make sure your Quota allows you to have at least 2500G for `Persistent Disk SSD (GB)` and at least 24 for `CPUs`
 2. Create `.env.prod`, `.env.staging`, or `.env.dev` from [`.env.template`](.env.template). You can pick any of them. Make sure to fill in the values. All are required if not specified otherwise.
-    > Get Postgres database connection string from your database, e.g. [from Supabase](https://supabase.com/docs/guides/database/connecting-to-postgres#direct-connection): Create a new project in Supabase and go to your project in Supabase -> Settings -> Database -> Connection Strings -> Postgres -> Direct
-    
-    > Your Postgres database needs to have enabled IPv4 access. You can do that in Connect screen
+    > Get Postgres database connection string from your database, e.g. [from Supabase](https://supabase.com/docs/guides/database/connecting-to-postgres#direct-connection): Create a new project in Supabase and go to your project in Supabase -> Settings -> Database -> Connection Strings -> Postgres -> Direct or Shared
+    > The variant needs to be IPv4 compatible. You can either use Shared or use the IPv4 add-on in Connect screen
 3. Run `make set-env ENV={prod,staging,dev}` to start using your env
-4. Run `make login-gcloud` to login to `gcloud`
+4. Run `make provider-login` to login to `gcloud`
 5. Run `make init`. If this errors, run it a second time--it's due to a race condition on Terraform enabling API access for the various GCP services; this can take several seconds. A full list of services that will be enabled for API access:
    - [Secret Manager API](https://console.cloud.google.com/apis/library/secretmanager.googleapis.com)
    - [Certificate Manager API](https://console.cloud.google.com/apis/library/certificatemanager.googleapis.com)
@@ -64,20 +64,20 @@ Check if you can use config for terraform state management
    - [OS Config API](https://console.cloud.google.com/apis/library/osconfig.googleapis.com)
    - [Stackdriver Monitoring API](https://console.cloud.google.com/apis/library/monitoring.googleapis.com)
    - [Stackdriver Logging API](https://console.cloud.google.com/apis/library/logging.googleapis.com)
+   - [Filestore API](https://console.cloud.google.com/apis/library/file.googleapis.com)
 6. Run `make build-and-upload`
 7. Run `make copy-public-builds`. This will copy kernel and rootfs builds for Firecracker to your bucket. You can [build your own](#building-firecracker-and-uffd-from-source) kernel and Firecracker roots.
-8. Secrets are created and stored in GCP Secrets Manager. Once created, that is the source of truth--you will need to update values there to make changes. Create a secret value for the following secrets:
+8. For following secrets terraform creates only an empty secret containers in GCP Secrets Manager. You need to add a **secret version** with the actual value. Go to [GCP Secrets Manager](https://console.cloud.google.com/security/secret-manager), click on the secret, then click "New Version" to add the value for the following secrets:
   - e2b-cloudflare-api-token
       > Get Cloudflare API Token: go to the [Cloudflare dashboard](https://dash.cloudflare.com/) -> Manage Account -> Account API Tokens -> Create Token -> Edit Zone DNS -> in "Zone Resources" select your domain and generate the token
-  - Posthog API keys for monitoring (optional)
-9. Run `make plan-without-jobs` and then `make apply`
-10. Fill out the following secret in the GCP Secrets Manager:
-  - e2b-postgres-connection-string
+  - e2b-postgres-connection-string (**required**)
   - e2b-supabase-jwt-secrets (optional / required to self-host the [E2B dashboard](https://github.com/e2b-dev/dashboard))
       > Get Supabase JWT Secret: go to the [Supabase dashboard](https://supabase.com/dashboard) -> Select your Project -> Project Settings -> Data API -> JWT Settings
-11. Run `make plan` and then `make apply`. Note: This will work after the TLS certificates was issued. It can take some time; you can check the status in the Google Cloud Console
-12. Setup data in the cluster by running `make prep-cluster` in `packages/shared` to create an initial user, team, and build a base template.
-  - You can also run `make seed-db` to create more users and teams.
+  - e2b-posthog-api-key (optional, for monitoring)
+9. Run `make plan-without-jobs` and then `make apply`
+10. Run `make plan` and then `make apply`. Note: This will work after the TLS certificates was issued. It can take some time; you can check the status in the Google Cloud Console
+11. Setup data in the cluster by running `make prep-cluster` in `packages/shared` to create an initial user, team, and build a base template.
+  - You can also run `make seed-db` in `packages/db` to create more users and teams.
 
 
 ### Interacting with the cluster
@@ -85,9 +85,9 @@ Check if you can use config for terraform state management
 #### SDK
 When using SDK pass domain when creating new `Sandbox` in JS/TS SDK
 ```js
-import { Sandbox } from "@e2b/sdk";
+import { Sandbox } from "e2b";
 
-const sandbox = new Sandbox({
+const sandbox = await Sandbox.create({
   domain: "<your-domain>",
 });
 ```
@@ -97,7 +97,7 @@ or in Python SDK
 ```python
 from e2b import Sandbox
 
-sandbox = Sandbox(domain="<your-domain>")
+sandbox = Sandbox.create(domain="<your-domain>")
 ```
 
 #### CLI
@@ -110,7 +110,7 @@ E2B_DOMAIN=<your-domain> e2b <command>
 
 To access the nomad web UI, go to https://nomad.<your-domain.com>. Go to sign in, and when prompted for an API token, you can find this in GCP Secrets Manager. From here, you can see nomad jobs and tasks for both client and server, including logging.
 
-To update jobs running in the cluster look inside packages/nomad for config files. This can be useful for setting your logging and monitoring agents.
+To update jobs running in the cluster look inside `iac/provider-gcp/nomad/jobs/` for config files. This can be useful for setting your logging and monitoring agents.
 
 ### Troubleshooting
 

@@ -8,11 +8,14 @@ SELECT sqlc.embed(e),
        COALESCE(eb.firecracker_version, 'N/A') as build_firecracker_version,
        COALESCE(latest_build.status, 'waiting') as build_status,
        u.id as creator_id, u.email as creator_email,
-       COALESCE(ea.aliases, ARRAY[]::text[])::text[] AS aliases
+       COALESCE(ea.aliases, ARRAY[]::text[])::text[] AS aliases,
+       COALESCE(ea.names, ARRAY[]::text[])::text[] AS names
 FROM public.envs AS e
 LEFT JOIN auth.users AS u ON u.id = e.created_by
 LEFT JOIN LATERAL (
-    SELECT ARRAY_AGG(alias ORDER BY alias) AS aliases
+    SELECT 
+        ARRAY_AGG(alias ORDER BY alias) AS aliases,
+        ARRAY_AGG(CASE WHEN namespace IS NOT NULL THEN namespace || '/' || alias ELSE alias END ORDER BY alias) AS names
     FROM public.env_aliases
     WHERE env_id = e.id
 ) ea ON TRUE

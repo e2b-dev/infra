@@ -29,6 +29,8 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
+	"github.com/e2b-dev/infra/packages/db/pkg/auth"
+	"github.com/e2b-dev/infra/packages/db/pkg/pool"
 	"github.com/e2b-dev/infra/packages/shared/pkg/factories"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
@@ -51,6 +53,7 @@ type APIStore struct {
 	orchestrator         *orchestrator.Orchestrator
 	templateManager      *template_manager.TemplateManager
 	sqlcDB               *sqlcdb.Client
+	authDB               *authdb.Client
 	redisClient          redis.UniversalClient
 	templateCache        *templatecache.TemplateCache
 	templateBuildsCache  *templatecache.TemplatesBuildCache
@@ -65,9 +68,20 @@ type APIStore struct {
 func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) *APIStore {
 	logger.L().Info(ctx, "Initializing API store and services")
 
-	sqlcDB, err := sqlcdb.NewClient(ctx, sqlcdb.WithMaxConnections(40), sqlcdb.WithMinIdle(5))
+	sqlcDB, err := sqlcdb.NewClient(ctx, config.PostgresConnectionString, pool.WithMaxConnections(40), pool.WithMinIdle(5))
 	if err != nil {
 		logger.L().Fatal(ctx, "Initializing SQLC client", zap.Error(err))
+	}
+
+	authDB, err := authdb.NewClient(
+		ctx,
+		config.AuthDBConnectionString,
+		config.AuthDBReadReplicaConnectionString,
+		pool.WithMaxConnections(config.AuthDBMaxOpenConnections),
+		pool.WithMinIdle(config.AuthDBMinIdleConnections),
+	)
+	if err != nil {
+		logger.L().Fatal(ctx, "Initializing auth DB client", zap.Error(err))
 	}
 
 	logger.L().Info(ctx, "Created database client")
@@ -154,6 +168,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 		orchestrator:         orch,
 		templateManager:      templateManager,
 		sqlcDB:               sqlcDB,
+		authDB:               authDB,
 		Telemetry:            tel,
 		posthog:              posthogClient,
 		templateCache:        templateCache,
@@ -214,6 +229,10 @@ func (a *APIStore) Close(ctx context.Context) error {
 
 	a.clusters.Close(ctx)
 
+	if err := a.authDB.Close(); err != nil {
+		errs = append(errs, fmt.Errorf("closing auth database client: %w", err))
+	}
+
 	if err := a.sqlcDB.Close(); err != nil {
 		errs = append(errs, fmt.Errorf("closing sqlc database client: %w", err))
 	}
@@ -263,7 +282,7 @@ func (a *APIStore) GetTeamFromAPIKey(ctx context.Context, _ *gin.Context, apiKey
 	}
 
 	team, err := a.authCache.GetOrSet(ctx, hashedApiKey, func(ctx context.Context, key string) (*types.Team, error) {
-		return dbapi.GetTeamAuth(ctx, a.sqlcDB, key)
+		return dbapi.GetTeamAuth(ctx, a.authDB, key)
 	})
 	if err != nil {
 		var usageErr *dbapi.TeamForbiddenError
@@ -307,7 +326,7 @@ func (a *APIStore) GetUserFromAccessToken(ctx context.Context, _ *gin.Context, a
 		}
 	}
 
-	userID, err := a.sqlcDB.GetUserIDFromAccessToken(ctx, hashedToken)
+	userID, err := a.authDB.Read.GetUserIDFromAccessToken(ctx, hashedToken)
 	if err != nil {
 		return uuid.UUID{}, &api.APIError{
 			Err:       fmt.Errorf("failed to get the user from db for an access token: %w", err),
@@ -408,7 +427,7 @@ func (a *APIStore) GetTeamFromSupabaseToken(ctx context.Context, ginCtx *gin.Con
 
 	cacheKey := fmt.Sprintf("%s-%s", userID.String(), teamID)
 	team, err := a.authCache.GetOrSet(ctx, cacheKey, func(ctx context.Context, _ string) (*types.Team, error) {
-		return dbapi.GetTeamByIDAndUserIDAuth(ctx, a.sqlcDB, teamID, userID)
+		return dbapi.GetTeamByIDAndUserIDAuth(ctx, a.authDB, teamID, userID)
 	})
 	if err != nil {
 		var usageErr *dbapi.TeamForbiddenError

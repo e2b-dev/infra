@@ -52,7 +52,7 @@ func newJSONFlag(name string, fallback ldvalue.Value) JSONFlag {
 	return flag
 }
 
-var CleanNFSCacheExperimental = newJSONFlag("clean-nfs-cache-experimental", ldvalue.Null())
+var CleanNFSCache = newJSONFlag("clean-nfs-cache", ldvalue.Null())
 
 type BoolFlag struct {
 	name     string
@@ -145,6 +145,10 @@ var (
 	// MemoryPrefetchMaxCopyWorkers is the maximum number of parallel copy workers per sandbox for memory prefetching.
 	// Copy uses uffd syscalls, so we limit parallelism to avoid overwhelming the system.
 	MemoryPrefetchMaxCopyWorkers = newIntFlag("memory-prefetch-max-copy-workers", 8)
+
+	// TCPFirewallMaxConnectionsPerSandbox is the maximum number of concurrent TCP firewall
+	// connections allowed per sandbox. Negative means no limit.
+	TCPFirewallMaxConnectionsPerSandbox = newIntFlag("tcpfirewall-max-connections-per-sandbox", -1)
 )
 
 type StringFlag struct {

@@ -24,15 +24,29 @@ func (q *Queries) CheckAliasConflictsWithTemplateID(ctx context.Context, alias s
 	return exists, err
 }
 
-const checkAliasExists = `-- name: CheckAliasExists :one
-SELECT alias, is_renamable, env_id
+const checkAliasExistsInNamespace = `-- name: CheckAliasExistsInNamespace :one
+SELECT alias, is_renamable, env_id, namespace, id
 FROM "public"."env_aliases"
 WHERE alias = $1
+  AND namespace IS NOT DISTINCT FROM $2::text
 `
 
-func (q *Queries) CheckAliasExists(ctx context.Context, alias string) (EnvAlias, error) {
-	row := q.db.QueryRow(ctx, checkAliasExists, alias)
+type CheckAliasExistsInNamespaceParams struct {
+	Alias     string
+	Namespace *string
+}
+
+// Check if alias exists within a specific namespace.
+// Used for namespace-aware lookups. Returns the alias if found.
+func (q *Queries) CheckAliasExistsInNamespace(ctx context.Context, arg CheckAliasExistsInNamespaceParams) (EnvAlias, error) {
+	row := q.db.QueryRow(ctx, checkAliasExistsInNamespace, arg.Alias, arg.Namespace)
 	var i EnvAlias
-	err := row.Scan(&i.Alias, &i.IsRenamable, &i.EnvID)
+	err := row.Scan(
+		&i.Alias,
+		&i.IsRenamable,
+		&i.EnvID,
+		&i.Namespace,
+		&i.ID,
+	)
 	return i, err
 }

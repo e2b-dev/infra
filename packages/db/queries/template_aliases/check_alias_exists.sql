@@ -5,7 +5,10 @@ SELECT EXISTS(
     WHERE id = @alias
 );
 
--- name: CheckAliasExists :one
+-- name: CheckAliasExistsInNamespace :one
+-- Check if alias exists within a specific namespace.
+-- Used for namespace-aware lookups. Returns the alias if found.
 SELECT *
 FROM "public"."env_aliases"
-WHERE alias = @alias;
+WHERE alias = @alias
+  AND namespace IS NOT DISTINCT FROM sqlc.narg(namespace)::text;

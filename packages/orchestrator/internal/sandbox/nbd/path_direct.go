@@ -98,14 +98,23 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 			// Create the socket pairs
 			sockPair, err := syscall.Socketpair(syscall.AF_UNIX, syscall.SOCK_STREAM, 0)
 			if err != nil {
-				return math.MaxUint32, err
+				closeErr := closeSocketPairs(d.socksClient, d.socksServer)
+				releaseErr := d.devicePool.ReleaseDevice(ctx, deviceIndex)
+
+				return math.MaxUint32, errors.Join(err, closeErr, releaseErr)
 			}
 
 			client := os.NewFile(uintptr(sockPair[0]), "client")
 			server := os.NewFile(uintptr(sockPair[1]), "server")
 			serverc, err := net.FileConn(server)
 			if err != nil {
-				return math.MaxUint32, err
+				// Close the current iteration's FDs (not yet added to d.socksClient/d.socksServer)
+				client.Close()
+				server.Close()
+				closeErr := closeSocketPairs(d.socksClient, d.socksServer)
+				releaseErr := d.devicePool.ReleaseDevice(ctx, deviceIndex)
+
+				return math.MaxUint32, errors.Join(err, closeErr, releaseErr)
 			}
 			server.Close()
 
@@ -133,8 +142,8 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 
 		serverFlags := nbdnl.FlagHasFlags | nbdnl.FlagCanMulticonn
 
-		idx, err := nbdnl.Connect(deviceIndex, d.socksClient, uint64(size), 0, serverFlags, opts...)
-		if err == nil {
+		idx, connectErr := nbdnl.Connect(deviceIndex, d.socksClient, uint64(size), 0, serverFlags, opts...)
+		if connectErr == nil {
 			// The idx should be the same as deviceIndex, because we are connecting to it,
 			// but we will use the one returned by nbdnl
 			deviceIndex = idx
@@ -142,29 +151,28 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 			break
 		}
 
-		logger.L().Error(ctx, "error opening NBD, retrying", zap.Error(err), zap.Uint32("device_index", deviceIndex))
+		logger.L().Error(ctx, "error opening NBD, retrying", zap.Error(connectErr), zap.Uint32("device_index", deviceIndex))
 
 		// Sometimes (rare), there seems to be a BADF error here. Lets just retry for now...
 		// Close things down and try again...
-		for _, sock := range d.socksClient {
-			sock.Close()
-		}
-		for _, sock := range d.socksServer {
-			sock.Close()
-		}
-		// Release the device back to the pool
-		releaseErr := d.devicePool.ReleaseDevice(ctx, deviceIndex)
-		if releaseErr != nil {
-			logger.L().Error(ctx, "error opening NBD, error releasing device", zap.Error(releaseErr), zap.Uint32("device_index", deviceIndex))
+		err := closeSocketPairs(d.socksClient, d.socksServer)
+		if err != nil {
+			logger.L().Error(ctx, "error closing socket pairs on error opening NBD", zap.Error(err))
 		}
 
-		if strings.Contains(err.Error(), "invalid argument") {
-			return math.MaxUint32, err
+		// Release the device back to the pool
+		err = d.devicePool.ReleaseDevice(ctx, deviceIndex)
+		if err != nil {
+			logger.L().Error(ctx, "error opening NBD, error releasing device", zap.Error(err), zap.Uint32("device_index", deviceIndex))
+		}
+
+		if strings.Contains(connectErr.Error(), "invalid argument") {
+			return math.MaxUint32, connectErr
 		}
 
 		select {
 		case <-ctx.Done():
-			return math.MaxUint32, errors.Join(err, ctx.Err())
+			return math.MaxUint32, errors.Join(connectErr, ctx.Err())
 		case <-time.After(25 * time.Millisecond):
 		}
 	}
@@ -281,4 +289,20 @@ func disconnectNBDWithTimeout(ctx context.Context, deviceIndex uint32, timeout t
 	}
 
 	return nil
+}
+
+func closeSocketPairs(socksClient []*os.File, socksServer []io.Closer) error {
+	var errs []error
+	for _, sock := range socksClient {
+		if sock != nil {
+			errs = append(errs, sock.Close())
+		}
+	}
+	for _, sock := range socksServer {
+		if sock != nil {
+			errs = append(errs, sock.Close())
+		}
+	}
+
+	return errors.Join(errs...)
 }

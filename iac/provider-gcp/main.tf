@@ -93,9 +93,10 @@ module "cluster" {
   api_nat_ips              = var.api_nat_ips
   api_nat_min_ports_per_vm = var.api_nat_min_ports_per_vm
 
+  client_proxy_port        = var.client_proxy_port
+  client_proxy_health_port = var.client_proxy_health_port
+
   ingress_port                 = var.ingress_port
-  edge_api_port                = var.edge_api_port
-  edge_proxy_port              = var.edge_proxy_port
   api_port                     = var.api_port
   docker_reverse_proxy_port    = var.docker_reverse_proxy_port
   nomad_port                   = var.nomad_port
@@ -126,9 +127,10 @@ module "cluster" {
   labels = var.labels
   prefix = var.prefix
 
-  # Boot disk types
+  # Boot disks
   api_boot_disk_type        = var.api_boot_disk_type
   server_boot_disk_type     = var.server_boot_disk_type
+  server_boot_disk_size_gb  = var.server_boot_disk_size_gb
   clickhouse_boot_disk_type = var.clickhouse_boot_disk_type
   loki_boot_disk_type       = var.loki_boot_disk_type
 }
@@ -162,24 +164,25 @@ module "nomad" {
   ingress_count = var.ingress_count
 
   # API
-  api_resources_cpu_count                   = var.api_resources_cpu_count
-  api_resources_memory_mb                   = var.api_resources_memory_mb
-  api_machine_count                         = var.api_cluster_size
-  api_node_pool                             = var.api_node_pool
-  api_port                                  = var.api_port
-  environment                               = var.environment
-  google_service_account_key                = module.init.google_service_account_key
-  api_secret                                = random_password.api_secret.result
-  custom_envs_repository_name               = google_artifact_registry_repository.custom_environments_repository.name
-  postgres_connection_string_secret_name    = google_secret_manager_secret.postgres_connection_string.name
-  supabase_jwt_secrets_secret_name          = google_secret_manager_secret.supabase_jwt_secrets.name
-  posthog_api_key_secret_name               = google_secret_manager_secret.posthog_api_key.name
-  analytics_collector_host_secret_name      = module.init.analytics_collector_host_secret_name
-  analytics_collector_api_token_secret_name = module.init.analytics_collector_api_token_secret_name
-  api_admin_token                           = random_password.api_admin_secret.result
-  redis_cluster_url_secret_version          = google_secret_manager_secret_version.redis_cluster_url
-  redis_tls_ca_base64_secret_version        = module.init.redis_tls_ca_base64_secret_version
-  sandbox_access_token_hash_seed            = random_password.sandbox_access_token_hash_seed.result
+  api_resources_cpu_count                                = var.api_resources_cpu_count
+  api_resources_memory_mb                                = var.api_resources_memory_mb
+  api_machine_count                                      = var.api_cluster_size
+  api_node_pool                                          = var.api_node_pool
+  api_port                                               = var.api_port
+  environment                                            = var.environment
+  google_service_account_key                             = module.init.google_service_account_key
+  api_secret                                             = random_password.api_secret.result
+  custom_envs_repository_name                            = google_artifact_registry_repository.custom_environments_repository.name
+  postgres_connection_string_secret_name                 = module.init.postgres_connection_string_secret_name
+  postgres_read_replica_connection_string_secret_version = google_secret_manager_secret_version.postgres_read_replica_connection_string
+  supabase_jwt_secrets_secret_name                       = module.init.supabase_jwt_secret_name
+  posthog_api_key_secret_name                            = module.init.posthog_api_key_secret_name
+  analytics_collector_host_secret_name                   = module.init.analytics_collector_host_secret_name
+  analytics_collector_api_token_secret_name              = module.init.analytics_collector_api_token_secret_name
+  api_admin_token                                        = random_password.api_admin_secret.result
+  redis_cluster_url_secret_version                       = module.init.redis_cluster_url_secret_version
+  redis_tls_ca_base64_secret_version                     = module.init.redis_tls_ca_base64_secret_version
+  sandbox_access_token_hash_seed                         = random_password.sandbox_access_token_hash_seed.result
 
   # Click Proxy
   client_proxy_count               = var.client_proxy_count
@@ -187,9 +190,8 @@ module "nomad" {
   client_proxy_resources_memory_mb = var.client_proxy_resources_memory_mb
   client_proxy_update_max_parallel = var.client_proxy_update_max_parallel
 
-  edge_proxy_port = var.edge_proxy_port
-  edge_api_port   = var.edge_api_port
-  edge_api_secret = random_password.edge_api_secret.result
+  client_proxy_session_port = var.client_proxy_port.port
+  client_proxy_health_port  = var.client_proxy_health_port.port
 
   domain_name = var.domain_name
 
@@ -233,11 +235,15 @@ module "nomad" {
   launch_darkly_api_key_secret_name = module.init.launch_darkly_api_key_secret_version.secret
 
   # Filestore
-  shared_chunk_cache_path                    = module.cluster.shared_chunk_cache_path
-  filestore_cache_cleanup_disk_usage_target  = var.filestore_cache_cleanup_disk_usage_target
-  filestore_cache_cleanup_dry_run            = var.filestore_cache_cleanup_dry_run
-  filestore_cache_cleanup_deletions_per_loop = var.filestore_cache_cleanup_deletions_per_loop
-  filestore_cache_cleanup_files_per_loop     = var.filestore_cache_cleanup_files_per_loop
+  shared_chunk_cache_path                       = module.cluster.shared_chunk_cache_path
+  filestore_cache_cleanup_disk_usage_target     = var.filestore_cache_cleanup_disk_usage_target
+  filestore_cache_cleanup_dry_run               = var.filestore_cache_cleanup_dry_run
+  filestore_cache_cleanup_deletions_per_loop    = var.filestore_cache_cleanup_deletions_per_loop
+  filestore_cache_cleanup_files_per_loop        = var.filestore_cache_cleanup_files_per_loop
+  filestore_cache_cleanup_max_concurrent_stat   = var.filestore_cache_cleanup_max_concurrent_stat
+  filestore_cache_cleanup_max_concurrent_scan   = var.filestore_cache_cleanup_max_concurrent_scan
+  filestore_cache_cleanup_max_concurrent_delete = var.filestore_cache_cleanup_max_concurrent_delete
+  filestore_cache_cleanup_max_retries           = var.filestore_cache_cleanup_max_retries
 }
 
 module "redis" {
@@ -248,7 +254,7 @@ module "redis" {
   gcp_region     = var.gcp_region
   gcp_zone       = var.gcp_zone
 
-  redis_cluster_url_secret_version   = google_secret_manager_secret_version.redis_cluster_url
+  redis_cluster_url_secret_version   = module.init.redis_cluster_url_secret_version
   redis_tls_ca_base64_secret_version = module.init.redis_tls_ca_base64_secret_version
 
   prefix = var.prefix

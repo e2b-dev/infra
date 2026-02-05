@@ -16,12 +16,12 @@ import (
 func TestUpdateTemplateVisibilityToPublicWithAPIKey(t *testing.T) {
 	t.Parallel()
 	// Create a test template
-	template := testutils.BuildSimpleTemplate(t, []string{"test-update-public-api-key"}, setup.WithAPIKey())
+	template := testutils.BuildSimpleTemplate(t, "test-update-public-api-key", setup.WithAPIKey())
 
 	c := setup.GetAPIClient()
 
 	// Update template to public
-	updateResp, err := c.PatchTemplatesTemplateIDWithResponse(
+	updateResp, err := c.PatchV2TemplatesTemplateIDWithResponse(
 		t.Context(),
 		template.TemplateID,
 		api.TemplateUpdateRequest{
@@ -55,12 +55,12 @@ func TestUpdateTemplateVisibilityToPublicWithAPIKey(t *testing.T) {
 func TestUpdateTemplateVisibilityToPrivateWithAPIKey(t *testing.T) {
 	t.Parallel()
 	// Create a test template
-	template := testutils.BuildSimpleTemplate(t, []string{"test-update-private-api-key"}, setup.WithAPIKey())
+	template := testutils.BuildSimpleTemplate(t, "test-update-private-api-key", setup.WithAPIKey())
 
 	c := setup.GetAPIClient()
 
 	// First make it public
-	_, err := c.PatchTemplatesTemplateIDWithResponse(
+	_, err := c.PatchV2TemplatesTemplateIDWithResponse(
 		t.Context(),
 		template.TemplateID,
 		api.TemplateUpdateRequest{
@@ -71,7 +71,7 @@ func TestUpdateTemplateVisibilityToPrivateWithAPIKey(t *testing.T) {
 	require.NoError(t, err)
 
 	// Then update template back to private
-	updateResp, err := c.PatchTemplatesTemplateIDWithResponse(
+	updateResp, err := c.PatchV2TemplatesTemplateIDWithResponse(
 		t.Context(),
 		template.TemplateID,
 		api.TemplateUpdateRequest{
@@ -105,12 +105,12 @@ func TestUpdateTemplateVisibilityToPrivateWithAPIKey(t *testing.T) {
 func TestUpdateTemplateWithInvalidAPIKey(t *testing.T) {
 	t.Parallel()
 	// Create a test template with valid API key
-	template := testutils.BuildSimpleTemplate(t, []string{"test-update-invalid-key"}, setup.WithAPIKey())
+	template := testutils.BuildSimpleTemplate(t, "test-update-invalid-key", setup.WithAPIKey())
 
 	c := setup.GetAPIClient()
 
 	// Try to update with invalid API key
-	updateResp, err := c.PatchTemplatesTemplateIDWithResponse(
+	updateResp, err := c.PatchV2TemplatesTemplateIDWithResponse(
 		t.Context(),
 		template.TemplateID,
 		api.TemplateUpdateRequest{
@@ -130,7 +130,7 @@ func TestUpdateNonExistentTemplateWithAPIKey(t *testing.T) {
 
 	// Try to update a non-existent template
 	nonExistentTemplateID := "non-existent-template-id"
-	updateResp, err := c.PatchTemplatesTemplateIDWithResponse(
+	updateResp, err := c.PatchV2TemplatesTemplateIDWithResponse(
 		t.Context(),
 		nonExistentTemplateID,
 		api.TemplateUpdateRequest{
@@ -146,12 +146,12 @@ func TestUpdateNonExistentTemplateWithAPIKey(t *testing.T) {
 func TestUpdateTemplateWithSupabaseToken(t *testing.T) {
 	t.Parallel()
 	// Create a test template with API key first
-	template := testutils.BuildSimpleTemplate(t, []string{"test-update-supabase-token"}, setup.WithAPIKey())
+	template := testutils.BuildSimpleTemplate(t, "test-update-supabase-token", setup.WithAPIKey())
 
 	c := setup.GetAPIClient()
 
 	// Update template using Supabase token
-	updateResp, err := c.PatchTemplatesTemplateIDWithResponse(
+	updateResp, err := c.PatchV2TemplatesTemplateIDWithResponse(
 		t.Context(),
 		template.TemplateID,
 		api.TemplateUpdateRequest{
@@ -203,11 +203,11 @@ func TestUpdateTemplateNotOwnedByTeam(t *testing.T) {
 	team2APIKey := testutils.CreateAPIKey(t, ctx, c, user1ID.String(), team2ID)
 
 	// Create a template
-	template := testutils.BuildSimpleTemplate(t, []string{"test-update-template-cross-team"}, setup.WithAPIKey())
+	template := testutils.BuildSimpleTemplate(t, "test-update-template-cross-team", setup.WithAPIKey())
 	team1TemplateID := template.TemplateID
 
 	// Try to update team1's template using team2's API key - should fail
-	updateResp, err := c.PatchTemplatesTemplateIDWithResponse(
+	updateResp, err := c.PatchV2TemplatesTemplateIDWithResponse(
 		ctx,
 		team1TemplateID,
 		api.TemplateUpdateRequest{
@@ -221,7 +221,7 @@ func TestUpdateTemplateNotOwnedByTeam(t *testing.T) {
 		"Expected 403 when trying to update another team's template, got %d", updateResp.StatusCode())
 
 	// Verify that team1 can still update their own template
-	updateResp2, err := c.PatchTemplatesTemplateIDWithResponse(
+	updateResp2, err := c.PatchV2TemplatesTemplateIDWithResponse(
 		ctx,
 		team1TemplateID,
 		api.TemplateUpdateRequest{

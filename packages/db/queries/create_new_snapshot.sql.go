@@ -8,7 +8,7 @@ package queries
 import (
 	"context"
 
-	"github.com/e2b-dev/infra/packages/db/types"
+	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -63,7 +63,6 @@ snapshot as (
 
 new_build as (
     INSERT INTO "public"."env_builds" (
-        env_id,
         vcpu,
         ram_mb,
         free_disk_size_mb,
@@ -80,7 +79,6 @@ new_build as (
         cpu_model_name,
         cpu_flags
     ) VALUES (
-        (SELECT template_id FROM snapshot),
         $12,
         $13,
         $14,
@@ -96,20 +94,20 @@ new_build as (
         $22,
         $23,
         $24
-    ) RETURNING id as build_id, env_id as template_id
+    ) RETURNING id as build_id
 ),
 
 build_assignment as (
     INSERT INTO "public"."env_build_assignments" (env_id, build_id, tag)
     VALUES (
-        (SELECT template_id FROM new_build),
+        (SELECT template_id FROM snapshot),
         (SELECT build_id FROM new_build),
         'default'
     )
     RETURNING build_id, env_id as template_id
 )
 
-SELECT build_id, template_id FROM new_build
+SELECT build_id, template_id FROM build_assignment
 `
 
 type UpsertSnapshotParams struct {
@@ -145,7 +143,7 @@ type UpsertSnapshotRow struct {
 }
 
 // Create a new snapshot or update an existing one
-// Create a new build for the snapshot
+// Create a new build for the snapshot (env_id populated by trigger from assignment)
 // Create the build assignment edge (explicit, not relying on trigger)
 func (q *Queries) UpsertSnapshot(ctx context.Context, arg UpsertSnapshotParams) (UpsertSnapshotRow, error) {
 	row := q.db.QueryRow(ctx, upsertSnapshot,

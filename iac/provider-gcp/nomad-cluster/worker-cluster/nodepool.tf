@@ -1,29 +1,30 @@
 locals {
   has_local_ssd = var.cache_disks.disk_type == "local-ssd"
   startup_script = templatefile("${path.module}/../scripts/start-client.sh", {
-    CLUSTER_TAG_NAME             = var.cluster_tag_name
-    SCRIPTS_BUCKET               = var.cluster_setup_bucket_name
-    FC_KERNELS_BUCKET_NAME       = var.fc_kernels_bucket_name
-    FC_VERSIONS_BUCKET_NAME      = var.fc_versions_bucket_name
-    FC_ENV_PIPELINE_BUCKET_NAME  = var.fc_env_pipeline_bucket_name
-    DOCKER_CONTEXTS_BUCKET_NAME  = var.docker_contexts_bucket_name
-    GCP_REGION                   = var.gcp_region
-    GOOGLE_SERVICE_ACCOUNT_KEY   = var.google_service_account_key
-    NOMAD_TOKEN                  = var.nomad_acl_token_secret
-    CONSUL_TOKEN                 = var.consul_acl_token_secret
-    RUN_CONSUL_FILE_HASH         = var.file_hash["scripts/run-consul.sh"]
-    RUN_NOMAD_FILE_HASH          = var.file_hash["scripts/run-nomad.sh"]
-    CONSUL_GOSSIP_ENCRYPTION_KEY = var.consul_gossip_encryption_key_secret_data
-    CONSUL_DNS_REQUEST_TOKEN     = var.consul_dns_request_token_secret_data
-    NFS_IP_ADDRESS               = var.filestore_cache_enabled ? join(",", var.nfs_ip_addresses) : ""
-    NFS_MOUNT_PATH               = var.nfs_mount_path
-    NFS_MOUNT_SUBDIR             = var.nfs_mount_subdir
-    NFS_MOUNT_OPTS               = var.nfs_mount_opts
-    USE_FILESTORE_CACHE          = var.filestore_cache_enabled
-    NODE_POOL                    = var.node_pool
-    BASE_HUGEPAGES_PERCENTAGE    = var.base_hugepages_percentage
-    CACHE_DISK_COUNT             = var.cache_disks.count
-    LOCAL_SSD                    = local.has_local_ssd ? "true" : "false"
+    CLUSTER_TAG_NAME                  = var.cluster_tag_name
+    SCRIPTS_BUCKET                    = var.cluster_setup_bucket_name
+    FC_KERNELS_BUCKET_NAME            = var.fc_kernels_bucket_name
+    FC_VERSIONS_BUCKET_NAME           = var.fc_versions_bucket_name
+    FC_ENV_PIPELINE_BUCKET_NAME       = var.fc_env_pipeline_bucket_name
+    DOCKER_CONTEXTS_BUCKET_NAME       = var.docker_contexts_bucket_name
+    GCP_REGION                        = var.gcp_region
+    GOOGLE_SERVICE_ACCOUNT_KEY        = var.google_service_account_key
+    NOMAD_TOKEN                       = var.nomad_acl_token_secret
+    CONSUL_TOKEN                      = var.consul_acl_token_secret
+    RUN_CONSUL_FILE_HASH              = var.file_hash["scripts/run-consul.sh"]
+    RUN_NOMAD_FILE_HASH               = var.file_hash["scripts/run-nomad.sh"]
+    CONSUL_GOSSIP_ENCRYPTION_KEY      = var.consul_gossip_encryption_key_secret_data
+    CONSUL_DNS_REQUEST_TOKEN          = var.consul_dns_request_token_secret_data
+    NFS_IP_ADDRESS                    = var.filestore_cache_enabled ? join(",", var.nfs_ip_addresses) : ""
+    NFS_MOUNT_PATH                    = var.nfs_mount_path
+    NFS_MOUNT_SUBDIR                  = var.nfs_mount_subdir
+    NFS_MOUNT_OPTS                    = var.nfs_mount_opts
+    USE_FILESTORE_CACHE               = var.filestore_cache_enabled
+    NODE_POOL                         = var.node_pool
+    BASE_HUGEPAGES_PERCENTAGE         = var.base_hugepages_percentage
+    CACHE_DISK_COUNT                  = var.cache_disks.count
+    LOCAL_SSD                         = local.has_local_ssd ? "true" : "false"
+    SET_ORCHESTRATOR_VERSION_METADATA = var.set_orchestrator_version_metadata ? "true" : "false"
   })
 }
 

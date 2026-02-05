@@ -14,9 +14,9 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/team"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
-	"github.com/e2b-dev/infra/packages/db/dberrors"
+	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
+	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
-	dbtypes "github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -47,11 +47,14 @@ type RegisterBuildResponse struct {
 	TemplateID string
 	BuildID    string
 	Aliases    []string
+	Names      []string
+	Tags       []string
 }
 
 func RegisterBuild(
 	ctx context.Context,
 	templateBuildsCache *templatecache.TemplatesBuildCache,
+	templateCache *templatecache.TemplateCache,
 	db *sqlcdb.Client,
 	data RegisterBuildData,
 ) (*RegisterBuildResponse, *api.APIError) {
@@ -194,7 +197,6 @@ func RegisterBuild(
 	// Insert the new build
 	err = client.CreateTemplateBuild(ctx, queries.CreateTemplateBuildParams{
 		BuildID:            buildID,
-		TemplateID:         data.TemplateID,
 		RamMb:              ramMB,
 		Vcpu:               cpuCount,
 		KernelVersion:      data.KernelVersion,
@@ -217,10 +219,13 @@ func RegisterBuild(
 	telemetry.ReportEvent(ctx, "inserted new build")
 
 	// Check if the alias is available and claim it
-	var aliases []string
+	var aliases, names []string
 	if data.Alias != nil {
-		alias := *data.Alias
+		// Extract just the alias portion (without namespace) for storage
+		// The identifier may be "namespace/alias" or just "alias"
+		alias := id.ExtractAlias(*data.Alias)
 		aliases = append(aliases, alias)
+		names = append(names, id.WithNamespace(data.Team.Slug, alias))
 
 		exists, err := client.CheckAliasConflictsWithTemplateID(ctx, alias)
 		if err != nil {
@@ -245,7 +250,10 @@ func RegisterBuild(
 			}
 		}
 
-		aliasDB, err := client.CheckAliasExists(ctx, alias)
+		aliasDB, err := client.CheckAliasExistsInNamespace(ctx, queries.CheckAliasExistsInNamespaceParams{
+			Alias:     alias,
+			Namespace: &data.Team.Slug,
+		})
 		if err != nil {
 			if !dberrors.IsNotFoundError(err) {
 				telemetry.ReportCriticalError(ctx, "error when checking alias", err, attribute.String("alias", alias))
@@ -277,6 +285,7 @@ func RegisterBuild(
 				CreateTemplateAlias(ctx, queries.CreateTemplateAliasParams{
 					Alias:      alias,
 					TemplateID: data.TemplateID,
+					Namespace:  &data.Team.Slug,
 				})
 			if err != nil {
 				telemetry.ReportCriticalError(ctx, "error when inserting alias", err, attribute.String("alias", alias))
@@ -287,6 +296,10 @@ func RegisterBuild(
 					Code:      http.StatusInternalServerError,
 				}
 			}
+
+			// Invalidate any cached tombstone for this alias
+			templateCache.InvalidateAlias(&data.Team.Slug, alias)
+
 			telemetry.ReportEvent(ctx, "created new alias", attribute.String("env.alias", alias))
 		} else if aliasDB.EnvID != data.TemplateID {
 			err := fmt.Errorf("alias '%s' already used", alias)
@@ -300,24 +313,6 @@ func RegisterBuild(
 		}
 
 		telemetry.ReportEvent(ctx, "inserted alias", attribute.String("env.alias", alias))
-	}
-
-	if len(data.Tags) != 0 {
-		// TODO: Remove this once the migration is deployed [ENG-3268](https://linear.app/e2b/issue/ENG-3268)
-		err = client.DeleteTriggerTemplateBuildAssignment(ctx, queries.DeleteTriggerTemplateBuildAssignmentParams{
-			TemplateID: data.TemplateID,
-			BuildID:    buildID,
-			Tag:        id.DefaultTag,
-		})
-		if err != nil {
-			telemetry.ReportCriticalError(ctx, "error when deleting tag assignment", err, attribute.String("tag", id.DefaultTag))
-
-			return nil, &api.APIError{
-				Err:       err,
-				ClientMsg: fmt.Sprintf("Error when deleting tag assignment: %s", err),
-				Code:      http.StatusInternalServerError,
-			}
-		}
 	}
 
 	for _, tag := range tags {
@@ -362,5 +357,7 @@ func RegisterBuild(
 		TemplateID: data.TemplateID,
 		BuildID:    buildID.String(),
 		Aliases:    aliases,
+		Names:      names,
+		Tags:       tags,
 	}, nil
 }

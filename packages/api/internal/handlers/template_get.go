@@ -10,7 +10,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/e2b-dev/infra/packages/db/dberrors"
+	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -97,6 +97,7 @@ func (a *APIStore) GetTemplatesTemplateID(c *gin.Context, templateID api.Templat
 		TemplateID:    template.ID,
 		Public:        template.Public,
 		Aliases:       template.Aliases,
+		Names:         template.Names,
 		CreatedAt:     template.CreatedAt,
 		UpdatedAt:     template.UpdatedAt,
 		LastSpawnedAt: template.LastSpawnedAt,

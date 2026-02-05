@@ -23,9 +23,8 @@ WORKDIR /build
 
 COPY ./shared/pkg ./shared/pkg
 COPY ./db/client ./db/client
-COPY ./db/dberrors ./db/dberrors
 COPY ./db/queries ./db/queries
-COPY ./db/types ./db/types
+COPY ./db/pkg ./db/pkg
 
 COPY ./docker-reverse-proxy/internal ./docker-reverse-proxy/internal
 COPY ./docker-reverse-proxy/main.go ./docker-reverse-proxy/main.go

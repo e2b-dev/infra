@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"sync"
@@ -12,14 +13,27 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
 )
 
+// MMDSClient provides access to MMDS metadata.
+type MMDSClient interface {
+	GetAccessTokenHash(ctx context.Context) (string, error)
+}
+
+// DefaultMMDSClient is the production implementation that calls the real MMDS endpoint.
+type DefaultMMDSClient struct{}
+
+func (c *DefaultMMDSClient) GetAccessTokenHash(ctx context.Context) (string, error) {
+	return host.GetAccessTokenHashFromMMDS(ctx)
+}
+
 type API struct {
 	isNotFC     bool
 	logger      *zerolog.Logger
-	accessToken *string
+	accessToken *SecureToken
 	defaults    *execcontext.Defaults
 
 	mmdsChan      chan *host.MMDSOpts
 	hyperloopLock sync.Mutex
+	mmdsClient    MMDSClient
 
 	lastSetTime *utils.AtomicMax
 	initLock    sync.Mutex
@@ -31,7 +45,9 @@ func New(l *zerolog.Logger, defaults *execcontext.Defaults, mmdsChan chan *host.
 		defaults:    defaults,
 		mmdsChan:    mmdsChan,
 		isNotFC:     isNotFC,
+		mmdsClient:  &DefaultMMDSClient{},
 		lastSetTime: utils.NewAtomicMax(),
+		accessToken: &SecureToken{},
 	}
 }
 
@@ -63,5 +79,7 @@ func (a *API) GetMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(metrics)
+	if err := json.NewEncoder(w).Encode(metrics); err != nil {
+		a.logger.Error().Err(err).Msg("Failed to encode metrics")
+	}
 }

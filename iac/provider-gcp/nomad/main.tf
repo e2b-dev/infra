@@ -10,6 +10,10 @@ data "google_secret_manager_secret_version" "postgres_connection_string" {
   secret = var.postgres_connection_string_secret_name
 }
 
+data "google_secret_manager_secret_version" "postgres_read_replica_connection_string" {
+  secret = var.postgres_read_replica_connection_string_secret_version.secret
+}
+
 data "google_secret_manager_secret_version" "supabase_jwt_secrets" {
   secret = var.supabase_jwt_secrets_secret_name
 }
@@ -79,30 +83,31 @@ resource "nomad_job" "api" {
     memory_mb = var.api_resources_memory_mb
     cpu_count = var.api_resources_cpu_count
 
-    orchestrator_port              = var.orchestrator_port
-    otel_collector_grpc_endpoint   = "localhost:${var.otel_collector_grpc_port}"
-    logs_collector_address         = "http://localhost:${var.logs_proxy_port.port}"
-    gcp_zone                       = var.gcp_zone
-    port_name                      = var.api_port.name
-    port_number                    = var.api_port.port
-    api_docker_image               = data.google_artifact_registry_docker_image.api_image.self_link
-    postgres_connection_string     = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
-    supabase_jwt_secrets           = trimspace(data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data)
-    posthog_api_key                = trimspace(data.google_secret_manager_secret_version.posthog_api_key.secret_data)
-    environment                    = var.environment
-    analytics_collector_host       = trimspace(data.google_secret_manager_secret_version.analytics_collector_host.secret_data)
-    analytics_collector_api_token  = trimspace(data.google_secret_manager_secret_version.analytics_collector_api_token.secret_data)
-    otel_tracing_print             = var.otel_tracing_print
-    nomad_acl_token                = var.nomad_acl_token_secret
-    admin_token                    = var.api_admin_token
-    redis_url                      = local.redis_url
-    redis_cluster_url              = local.redis_cluster_url
-    redis_tls_ca_base64            = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
-    clickhouse_connection_string   = local.clickhouse_connection_string
-    loki_url                       = local.loki_url
-    sandbox_access_token_hash_seed = var.sandbox_access_token_hash_seed
-    db_migrator_docker_image       = data.google_artifact_registry_docker_image.db_migrator_image.self_link
-    launch_darkly_api_key          = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
+    orchestrator_port                       = var.orchestrator_port
+    otel_collector_grpc_endpoint            = "localhost:${var.otel_collector_grpc_port}"
+    logs_collector_address                  = "http://localhost:${var.logs_proxy_port.port}"
+    gcp_zone                                = var.gcp_zone
+    port_name                               = var.api_port.name
+    port_number                             = var.api_port.port
+    api_docker_image                        = data.google_artifact_registry_docker_image.api_image.self_link
+    postgres_connection_string              = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
+    postgres_read_replica_connection_string = trimspace(data.google_secret_manager_secret_version.postgres_read_replica_connection_string.secret_data)
+    supabase_jwt_secrets                    = trimspace(data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data)
+    posthog_api_key                         = trimspace(data.google_secret_manager_secret_version.posthog_api_key.secret_data)
+    environment                             = var.environment
+    analytics_collector_host                = trimspace(data.google_secret_manager_secret_version.analytics_collector_host.secret_data)
+    analytics_collector_api_token           = trimspace(data.google_secret_manager_secret_version.analytics_collector_api_token.secret_data)
+    otel_tracing_print                      = var.otel_tracing_print
+    nomad_acl_token                         = var.nomad_acl_token_secret
+    admin_token                             = var.api_admin_token
+    redis_url                               = local.redis_url
+    redis_cluster_url                       = local.redis_cluster_url
+    redis_tls_ca_base64                     = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
+    clickhouse_connection_string            = local.clickhouse_connection_string
+    loki_url                                = local.loki_url
+    sandbox_access_token_hash_seed          = var.sandbox_access_token_hash_seed
+    db_migrator_docker_image                = data.google_artifact_registry_docker_image.db_migrator_image.self_link
+    launch_darkly_api_key                   = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
   })
 }
 
@@ -139,7 +144,7 @@ resource "nomad_job" "docker_reverse_proxy" {
 }
 
 resource "nomad_job" "client_proxy" {
-  jobspec = templatefile("${path.module}/jobs/edge.hcl",
+  jobspec = templatefile("${path.module}/jobs/client-proxy.hcl",
     {
       update_stanza       = var.api_machine_count > 1
       count               = var.client_proxy_count
@@ -147,30 +152,17 @@ resource "nomad_job" "client_proxy" {
       memory_mb           = var.client_proxy_resources_memory_mb
       update_max_parallel = var.client_proxy_update_max_parallel
 
-      node_pool = var.api_node_pool
-
-      gcp_zone    = var.gcp_zone
+      node_pool   = var.api_node_pool
       environment = var.environment
+
+      proxy_port  = var.client_proxy_session_port
+      health_port = var.client_proxy_health_port
 
       redis_url           = local.redis_url
       redis_cluster_url   = local.redis_cluster_url
       redis_tls_ca_base64 = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
 
-      loki_url                     = local.loki_url
-      clickhouse_connection_string = local.clickhouse_connection_string
-
-      proxy_port_name   = var.edge_proxy_port.name
-      proxy_port        = var.edge_proxy_port.port
-      api_port_name     = var.edge_api_port.name
-      api_port          = var.edge_api_port.port
-      api_secret        = var.edge_api_secret
-      orchestrator_port = var.orchestrator_port
-
-      environment = var.environment
-      image_name  = data.google_artifact_registry_docker_image.client_proxy_image.self_link
-
-      nomad_endpoint = "http://localhost:4646"
-      nomad_token    = var.nomad_acl_token_secret
+      image_name = data.google_artifact_registry_docker_image.client_proxy_image.self_link
 
       otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
       logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
@@ -185,7 +177,6 @@ resource "google_secret_manager_secret" "grafana_otlp_url" {
   replication {
     auto {}
   }
-
 }
 
 resource "google_secret_manager_secret_version" "grafana_otlp_url" {
@@ -273,6 +264,18 @@ resource "nomad_job" "otel_collector" {
       clickhouse_port     = var.clickhouse_server_port.port
       clickhouse_host     = "clickhouse.service.consul"
       clickhouse_database = var.clickhouse_database
+    })
+  })
+}
+
+resource "nomad_job" "otel_collector_nomad_server" {
+  jobspec = templatefile("${path.module}/jobs/otel-collector-nomad-server.hcl", {
+    node_pool = var.api_node_pool
+
+    otel_collector_config = templatefile("${path.module}/configs/otel-collector-nomad-server.yaml", {
+      grafana_otel_collector_token = data.google_secret_manager_secret_version.grafana_otel_collector_token.secret_data
+      grafana_otlp_url             = data.google_secret_manager_secret_version.grafana_otlp_url.secret_data
+      grafana_username             = data.google_secret_manager_secret_version.grafana_username.secret_data
     })
   })
 }

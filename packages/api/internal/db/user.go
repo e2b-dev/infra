@@ -7,11 +7,11 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/api/internal/db/types"
-	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
-	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/db/pkg/auth"
+	"github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 )
 
-func GetTeamByIDAndUserIDAuth(ctx context.Context, db *sqlcdb.Client, teamID string, userID uuid.UUID) (*types.Team, error) {
+func GetTeamByIDAndUserIDAuth(ctx context.Context, db *authdb.Client, teamID string, userID uuid.UUID) (*types.Team, error) {
 	ctx, span := tracer.Start(ctx, "get team by id and user id auth")
 	defer span.End()
 
@@ -22,7 +22,7 @@ func GetTeamByIDAndUserIDAuth(ctx context.Context, db *sqlcdb.Client, teamID str
 		return nil, errMsg
 	}
 
-	result, err := db.GetTeamWithTierByTeamAndUser(ctx, queries.GetTeamWithTierByTeamAndUserParams{
+	result, err := db.Read.GetTeamWithTierByTeamAndUser(ctx, authqueries.GetTeamWithTierByTeamAndUserParams{
 		ID:     teamIDParsed,
 		UserID: userID,
 	})
