@@ -76,6 +76,42 @@ func logDirectionToTemplateManagerDirection(direction api.LogsDirection) templat
 	}
 }
 
+func apiLogDirectionToLokiProtoDirection(direction *api.LogsDirection) logproto.Direction {
+	if direction == nil {
+		return logproto.FORWARD
+	}
+
+	if *direction == api.LogsDirectionBackward {
+		return logproto.BACKWARD
+	}
+
+	return logproto.FORWARD
+}
+
+func apiLogDirectionToEdgeSandboxLogsDirection(direction *api.LogsDirection) *edgeapi.V1SandboxLogsParamsDirection {
+	if direction == nil {
+		return nil
+	}
+
+	if *direction == api.LogsDirectionBackward {
+		return utils.ToPtr(edgeapi.V1SandboxLogsParamsDirectionBackward)
+	}
+
+	return utils.ToPtr(edgeapi.V1SandboxLogsParamsDirectionForward)
+}
+
+func apiLogDirectionToEdgeBuildLogsDirection(direction *api.LogsDirection) *edgeapi.V1TemplateBuildLogsParamsDirection {
+	if direction == nil {
+		return nil
+	}
+
+	if *direction == api.LogsDirectionBackward {
+		return utils.ToPtr(edgeapi.V1TemplateBuildLogsParamsDirectionBackward)
+	}
+
+	return utils.ToPtr(edgeapi.V1TemplateBuildLogsParamsDirectionForward)
+}
+
 func logToEdgeLevel(level *logs.LogLevel) *edgeapi.LogLevel {
 	if level == nil {
 		return nil

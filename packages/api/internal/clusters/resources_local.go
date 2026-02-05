@@ -119,21 +119,12 @@ func (l *LocalClusterResourceProvider) GetSandboxLogs(ctx context.Context, teamI
 		end = time.UnixMilli(*qEnd)
 	}
 
-	direction := defaultDirection
-	if qDirection != nil {
-		if *qDirection == api.LogsDirectionBackward {
-			direction = logproto.BACKWARD
-		} else {
-			direction = logproto.FORWARD
-		}
-	}
-
 	limit := defaultLogsLimit
 	if qLimit != nil {
 		limit = int(*qLimit)
 	}
 
-	raw, err := l.queryLogsProvider.QuerySandboxLogs(ctx, teamID, sandboxID, start, end, limit, direction)
+	raw, err := l.queryLogsProvider.QuerySandboxLogs(ctx, teamID, sandboxID, start, end, limit, apiLogDirectionToLokiProtoDirection(qDirection))
 	if err != nil {
 		return api.SandboxLogs{}, &api.APIError{
 			Err:       fmt.Errorf("error when fetching sandbox logs: %w", err),
@@ -173,14 +164,8 @@ func (l *LocalClusterResourceProvider) GetBuildLogs(
 	source *api.LogsSource,
 ) ([]logs.LogEntry, *api.APIError) {
 	// Use shared implementation with Loki as the persistent log backend
-	start, end := logQueryWindow(cursor, direction)
-
-	lokiDirection := defaultDirection
-	if direction == api.LogsDirectionBackward {
-		lokiDirection = logproto.BACKWARD
-	}
-
-	persistentFetcher := l.logsFromLocalLoki(ctx, templateID, buildID, start, end, int(limit), offset, level, lokiDirection)
+	start, end := LogQueryWindow(cursor, direction)
+	persistentFetcher := l.logsFromLocalLoki(ctx, templateID, buildID, start, end, int(limit), offset, level, apiLogDirectionToLokiProtoDirection(&direction))
 
 	return getBuildLogsWithSources(ctx, l.instances, nodeID, templateID, buildID, offset, limit, level, cursor, direction, source, persistentFetcher)
 }

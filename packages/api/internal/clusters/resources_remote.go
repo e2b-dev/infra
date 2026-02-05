@@ -96,15 +96,7 @@ func (r *ClusterResourceProviderImpl) GetSandboxesMetrics(ctx context.Context, t
 }
 
 func (r *ClusterResourceProviderImpl) GetSandboxLogs(ctx context.Context, teamID string, sandboxID string, start *int64, end *int64, limit *int32, dr *api.LogsDirection) (api.SandboxLogs, *api.APIError) {
-	var direction *edgeapi.V1SandboxLogsParamsDirection
-	if dr != nil {
-		if *dr == api.LogsDirectionBackward {
-			direction = utils.ToPtr(edgeapi.V1SandboxLogsParamsDirectionBackward)
-		} else {
-			direction = utils.ToPtr(edgeapi.V1SandboxLogsParamsDirectionForward)
-		}
-	}
-
+	direction := apiLogDirectionToEdgeSandboxLogsDirection(dr)
 	params := &edgeapi.V1SandboxLogsParams{TeamID: teamID, Start: start, End: end, Limit: limit, Direction: direction}
 	res, err := r.client.V1SandboxLogsWithResponse(ctx, sandboxID, params)
 	if err != nil {
@@ -160,19 +152,21 @@ func (r *ClusterResourceProviderImpl) GetBuildLogs(
 	return getBuildLogsWithSources(ctx, r.instances, nodeID, templateID, buildID, offset, limit, level, cursor, direction, source, persistentFetcher)
 }
 
-func (r *ClusterResourceProviderImpl) getBuildLogsFromEdge(ctx context.Context, templateID string, buildID string, offset int32, limit int32, level *logs.LogLevel, start time.Time, end time.Time, direction api.LogsDirection) logSourceFunc {
+func (r *ClusterResourceProviderImpl) getBuildLogsFromEdge(ctx context.Context, templateID string, buildID string, offset int32, limit int32, level *logs.LogLevel, start time.Time, end time.Time, dr api.LogsDirection) logSourceFunc {
 	return func() ([]logs.LogEntry, *api.APIError) {
+		direction := apiLogDirectionToEdgeBuildLogsDirection(&dr)
 		res, err := r.client.V1TemplateBuildLogsWithResponse(
 			ctx, buildID, &edgeapi.V1TemplateBuildLogsParams{
 				TemplateID: templateID,
 				Offset:     &offset,
 				Limit:      &limit,
 				Level:      logToEdgeLevel(level),
+				Start:      utils.ToPtr(start.UnixMilli()),
+				End:        utils.ToPtr(end.UnixMilli()),
+				Direction:  direction,
+
 				// TODO: remove this once the API spec is not required to have orchestratorID (https://linear.app/e2b/issue/ENG-3352)
 				OrchestratorID: utils.ToPtr("unused"),
-				Start:          utils.ToPtr(start.UnixMilli()),
-				End:            utils.ToPtr(end.UnixMilli()),
-				Direction:      utils.ToPtr(edgeapi.V1TemplateBuildLogsParamsDirection(direction)),
 			},
 		)
 		if err != nil {
