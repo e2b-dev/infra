@@ -4,11 +4,12 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/e2b-dev/infra/tests/integration/internal/api"
-	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/e2b-dev/infra/tests/integration/internal/api"
+	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 )
 
 func TestVolumeRoundTrip(t *testing.T) {
@@ -67,5 +68,5 @@ func TestVolumeRoundTrip(t *testing.T) {
 	// verify volume cannot be deleted again
 	deleteVolume, err = client.DeleteVolumesVolumeIDWithResponse(t.Context(), volumeID)
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusNotFound, getVolume.StatusCode())
+	assert.Equal(t, http.StatusNotFound, deleteVolume.StatusCode())
 }

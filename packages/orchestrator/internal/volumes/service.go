@@ -67,7 +67,7 @@ func (v *VolumeService) Create(_ context.Context, request *orchestrator.VolumeCr
 		return nil, status.Errorf(codes.InvalidArgument, "failed to build volume path: %v", err)
 	}
 
-	if err = os.MkdirAll(volumePath, 0700); err != nil {
+	if err = os.MkdirAll(volumePath, 0o700); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to create volume: %v", err)
 	}
 
@@ -80,7 +80,7 @@ func (v *VolumeService) Delete(
 ) (*orchestrator.VolumeDeleteResponse, error) {
 	volumePath, err := v.buildVolumePath(request.GetVolumeType(), request.GetTeamId(), request.GetVolumeName())
 	if err != nil {
-		return nil, fmt.Errorf("failed to build volume path: %v", err)
+		return nil, fmt.Errorf("failed to build volume path: %w", err)
 	}
 
 	if err := os.RemoveAll(volumePath); err != nil {

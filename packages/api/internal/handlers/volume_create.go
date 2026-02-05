@@ -7,7 +7,6 @@ import (
 	"regexp"
 	"slices"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
@@ -16,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	feature_flags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
