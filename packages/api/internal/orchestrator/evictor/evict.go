@@ -44,9 +44,6 @@ func (e *Evictor) Start(ctx context.Context) {
 					stateAction := sandbox.StateActionKill
 					if sbx.AutoPause {
 						stateAction = sandbox.StateActionPause
-						if sbx.IsExpired() {
-							sbx.SandboxResumesOn = nil
-						}
 					}
 
 					logger.L().Debug(ctx, "Evicting sandbox", logger.WithSandboxID(sbx.SandboxID), zap.String("state_action", string(stateAction)))

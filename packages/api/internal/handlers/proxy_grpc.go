@@ -295,14 +295,7 @@ func sandboxTimeoutSecondsFromConfig(config *dbtypes.PausedSandboxConfig) *int32
 		return nil
 	}
 
-	if config.SandboxPausedSeconds != nil {
-		return config.SandboxPausedSeconds
-	}
-	if config.SandboxTimeoutSeconds != nil {
-		return config.SandboxTimeoutSeconds
-	}
-
-	return config.SandboxTimeoutSecondsSnake
+	return config.SandboxTimeoutSeconds
 }
 
 func firstMetadata(md metadata.MD, key string) string {

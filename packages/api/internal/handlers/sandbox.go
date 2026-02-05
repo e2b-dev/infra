@@ -47,6 +47,10 @@ func (a *APIStore) startSandbox(
 ) (*api.Sandbox, *api.APIError) {
 	startTime := time.Now()
 	endTime := startTime.Add(timeout)
+	if sandboxTimeoutSeconds == nil {
+		timeoutSeconds := int32(timeout.Seconds())
+		sandboxTimeoutSeconds = &timeoutSeconds
+	}
 
 	// Unique ID for the execution (from start/resume to stop/pause)
 	executionID := uuid.New().String()
