@@ -195,8 +195,10 @@ func RegisterBuild(
 	telemetry.ReportEvent(ctx, "marked previous builds as failed")
 
 	// Insert the new build
+	// TODO: Switch to dbtypes.BuildStatusPending once all consumers are migrated to use Is*() helpers.
 	err = client.CreateTemplateBuild(ctx, queries.CreateTemplateBuildParams{
 		BuildID:            buildID,
+		Status:             string(dbtypes.BuildStatusWaiting),
 		RamMb:              ramMB,
 		Vcpu:               cpuCount,
 		KernelVersion:      data.KernelVersion,
