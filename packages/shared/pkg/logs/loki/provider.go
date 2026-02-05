@@ -19,10 +19,6 @@ type LokiQueryProvider struct {
 	client *loki.DefaultClient
 }
 
-const (
-	DefaultDirection = logproto.FORWARD
-)
-
 func NewLokiQueryProvider(lokiURL string, lokiUser string, lokiPassword string) (*LokiQueryProvider, error) {
 	lokiClient := &loki.DefaultClient{
 		Address:  lokiURL,
