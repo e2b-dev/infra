@@ -1,0 +1,7 @@
+version: v2
+plugins:
+  - local: protoc-gen-connect-openapi
+    out: .
+    opt:
+      - base=envd.yaml
+      - with-streaming
