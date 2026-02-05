@@ -120,8 +120,11 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	}
 	var sandboxResumesOn *string
 	if body.AutoResume != nil {
-		value := string(*body.AutoResume)
-		sandboxResumesOn = &value
+		value := strings.TrimSpace(strings.ToLower(string(*body.AutoResume)))
+		// adding "off" as an alias for "null" to make it more intuitive for users to disable auto-resume
+		if value != "off" {
+			sandboxResumesOn = &value
+		}
 	}
 
 	var envVars map[string]string

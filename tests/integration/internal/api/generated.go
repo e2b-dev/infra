@@ -65,6 +65,7 @@ const (
 // Defines values for NewSandboxAutoResume.
 const (
 	Any NewSandboxAutoResume = "any"
+	Off NewSandboxAutoResume = "off"
 )
 
 // Defines values for NodeStatus.
@@ -399,7 +400,7 @@ type NewSandbox struct {
 	// AutoPause Automatically pauses the sandbox after the timeout
 	AutoPause *bool `json:"autoPause,omitempty"`
 
-	// AutoResume Auto-resume policy for paused sandboxes. Omit to disable auto-resume.
+	// AutoResume Auto-resume policy for paused sandboxes. Omit or set to off to disable auto-resume.
 	AutoResume *NewSandboxAutoResume `json:"autoResume,omitempty"`
 	EnvVars    *EnvVars              `json:"envVars,omitempty"`
 
@@ -418,7 +419,7 @@ type NewSandbox struct {
 	Timeout *int32 `json:"timeout,omitempty"`
 }
 
-// NewSandboxAutoResume Auto-resume policy for paused sandboxes. Omit to disable auto-resume.
+// NewSandboxAutoResume Auto-resume policy for paused sandboxes. Omit or set to off to disable auto-resume.
 type NewSandboxAutoResume string
 
 // NewTeamAPIKey defines model for NewTeamAPIKey.

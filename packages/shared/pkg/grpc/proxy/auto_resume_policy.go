@@ -1,6 +1,12 @@
 package proxygrpc
 
-import "strings"
+import (
+	context "context"
+	"strings"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"go.uber.org/zap"
+)
 
 // AutoResumePolicyFromString normalizes the metadata value to an enum.
 func AutoResumePolicyFromString(value string) AutoResumePolicy {
@@ -8,9 +14,10 @@ func AutoResumePolicyFromString(value string) AutoResumePolicy {
 	switch value {
 	case "any":
 		return AutoResumePolicy_AUTO_RESUME_POLICY_ANY
-	case "null", "":
+	case "null", "", "off":
 		return AutoResumePolicy_AUTO_RESUME_POLICY_NULL
 	default:
+		logger.L().Warn(context.Background(), "Received unrecognized auto-resume policy value, defaulting to null", zap.String("value", value))
 		return AutoResumePolicy_AUTO_RESUME_POLICY_NULL
 	}
 }
@@ -23,6 +30,7 @@ func AutoResumePolicyToString(policy AutoResumePolicy) string {
 	case AutoResumePolicy_AUTO_RESUME_POLICY_NULL:
 		return "null"
 	default:
+		logger.L().Warn(context.Background(), "Received unrecognized auto-resume policy enum value, defaulting to null", zap.Int32("value", int32(policy)))
 		return "null"
 	}
 }
@@ -34,6 +42,7 @@ func NormalizeAutoResumePolicy(policy AutoResumePolicy) AutoResumePolicy {
 		AutoResumePolicy_AUTO_RESUME_POLICY_NULL:
 		return policy
 	default:
+		logger.L().Warn(context.Background(), "Received unrecognized auto-resume policy enum value, defaulting to null", zap.Int32("value", int32(policy)))
 		return AutoResumePolicy_AUTO_RESUME_POLICY_NULL
 	}
 }
