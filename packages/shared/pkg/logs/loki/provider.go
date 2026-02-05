@@ -55,7 +55,7 @@ func (l *LokiQueryProvider) QueryBuildLogs(
 		return make([]logs.LogEntry, 0), nil
 	}
 
-	lm, err := ResponseMapper(ctx, res, offset, level)
+	lm, err := ResponseMapper(ctx, res, offset, level, direction)
 	if err != nil {
 		telemetry.ReportError(ctx, "error when mapping build logs", err)
 		logger.L().Error(ctx, "error when mapping logs for template build", zap.Error(err), logger.WithBuildID(buildID))
@@ -89,7 +89,7 @@ func (l *LokiQueryProvider) QuerySandboxLogs(
 		return make([]logs.LogEntry, 0), nil
 	}
 
-	lm, err := ResponseMapper(ctx, res, 0, nil)
+	lm, err := ResponseMapper(ctx, res, 0, nil, direction)
 	if err != nil {
 		telemetry.ReportError(ctx, "error when mapping sandbox logs", err)
 		logger.L().Error(ctx, "error when mapping logs for sandbox", zap.Error(err), logger.WithSandboxID(sandboxID))

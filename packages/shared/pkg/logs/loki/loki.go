@@ -6,13 +6,14 @@ import (
 	"slices"
 
 	"github.com/grafana/loki/pkg/loghttp"
+	"github.com/grafana/loki/pkg/logproto"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 )
 
-func ResponseMapper(ctx context.Context, res *loghttp.QueryResponse, offset int32, level *logs.LogLevel) ([]logs.LogEntry, error) {
+func ResponseMapper(ctx context.Context, res *loghttp.QueryResponse, offset int32, level *logs.LogLevel, direction logproto.Direction) ([]logs.LogEntry, error) {
 	logsCrawled := int32(0)
 	logEntries := make([]logs.LogEntry, 0)
 
@@ -64,7 +65,13 @@ func ResponseMapper(ctx context.Context, res *loghttp.QueryResponse, offset int3
 	}
 
 	// Sort logs by timestamp (they are returned by the time they arrived in Loki)
-	slices.SortFunc(logEntries, func(a, b logs.LogEntry) int { return a.Timestamp.Compare(b.Timestamp) })
+	slices.SortFunc(logEntries, func(a, b logs.LogEntry) int {
+		if direction == logproto.BACKWARD {
+			return b.Timestamp.Compare(a.Timestamp)
+		}
+
+		return a.Timestamp.Compare(b.Timestamp)
+	})
 
 	return logEntries, nil
 }
