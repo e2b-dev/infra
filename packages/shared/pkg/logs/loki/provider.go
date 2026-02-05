@@ -45,8 +45,8 @@ func (l *LokiQueryProvider) QueryBuildLogs(
 	direction logproto.Direction,
 ) ([]logs.LogEntry, error) {
 	// https://grafana.com/blog/2021/01/05/how-to-escape-special-characters-with-lokis-logql/
-	templateIDSanitized := strings.ReplaceAll(templateID, "`", "")
-	buildIDSanitized := strings.ReplaceAll(buildID, "`", "")
+	templateIDSanitized := sanitizeLokiLabel(templateID)
+	buildIDSanitized := sanitizeLokiLabel(buildID)
 
 	// todo: service name is different here (because new merged orchestrator)
 	query := fmt.Sprintf("{service=\"template-manager\", buildID=\"%s\", envID=`%s`}", buildIDSanitized, templateIDSanitized)
@@ -80,8 +80,9 @@ func (l *LokiQueryProvider) QuerySandboxLogs(
 	direction logproto.Direction,
 ) ([]logs.LogEntry, error) {
 	// https://grafana.com/blog/2021/01/05/how-to-escape-special-characters-with-lokis-logql/
-	sandboxIdSanitized := strings.ReplaceAll(sandboxID, "`", "")
-	teamIdSanitized := strings.ReplaceAll(teamID, "`", "")
+	// Sanitize inputs by removing backticks and escaping backslashes
+	sandboxIdSanitized := sanitizeLokiLabel(sandboxID)
+	teamIdSanitized := sanitizeLokiLabel(teamID)
 
 	query := fmt.Sprintf("{teamID=`%s`, sandboxID=`%s`, category!=\"metrics\"}", teamIdSanitized, sandboxIdSanitized)
 
@@ -102,4 +103,22 @@ func (l *LokiQueryProvider) QuerySandboxLogs(
 	}
 
 	return lm, nil
+}
+
+// sanitizeLokiLabel sanitizes input strings for use in Loki LogQL queries
+// by removing special characters that could enable query injection
+func sanitizeLokiLabel(input string) string {
+	// Remove backticks which are used to delimit label values
+	sanitized := strings.ReplaceAll(input, "`", "")
+
+	// Remove backslashes to prevent escaping
+	sanitized = strings.ReplaceAll(sanitized, "\\", "")
+
+	// Remove other potentially dangerous characters
+	sanitized = strings.ReplaceAll(sanitized, "{", "")
+	sanitized = strings.ReplaceAll(sanitized, "}", "")
+	sanitized = strings.ReplaceAll(sanitized, "\"", "")
+	sanitized = strings.ReplaceAll(sanitized, "'", "")
+
+	return sanitized
 }
