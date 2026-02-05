@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"github.com/go-git/go-billy/v5"
@@ -34,8 +33,6 @@ var (
 	ErrVolumeNotFound         = errors.New("volume not found")
 	ErrMustMountAbsolutePath  = errors.New("must mount absolute path")
 )
-
-var onlyGoodChars = regexp.MustCompile(`[\\/.]*(.*)[\\/.]*`)
 
 func getPrefixFromSandbox(sandboxes *sandbox.Map, filesystemsByType map[string]billy.Filesystem) jailed.GetPrefix {
 	return func(_ context.Context, remoteAddr net.Addr, request nfs.MountRequest) (billy.Filesystem, string, error) {
