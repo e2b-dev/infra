@@ -101,6 +101,75 @@ func TestSandboxTimeout_NotFound(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, timeoutResp.StatusCode())
 }
 
+func TestSandboxTimeoutEndAtRunningAndAfterPause(t *testing.T) {
+	t.Parallel()
+	c := setup.GetAPIClient()
+
+	const initialTimeout int32 = 15
+	const updatedTimeout int32 = 30
+
+	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithTimeout(initialTimeout), utils.WithAutoPause(false))
+
+	beforeSet := time.Now()
+	timeoutResp, err := c.PostSandboxesSandboxIDTimeoutWithResponse(t.Context(), sbx.SandboxID, api.PostSandboxesSandboxIDTimeoutJSONRequestBody{
+		Timeout: updatedTimeout,
+	}, setup.WithAPIKey())
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusNoContent, timeoutResp.StatusCode())
+
+	detailResp, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), sbx.SandboxID, setup.WithAPIKey())
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, detailResp.StatusCode())
+	require.NotNil(t, detailResp.JSON200)
+
+	afterSet := time.Now()
+	minEnd := beforeSet.Add(time.Duration(updatedTimeout-2) * time.Second)
+	maxEnd := afterSet.Add(time.Duration(updatedTimeout+2) * time.Second)
+	endAt := detailResp.JSON200.EndAt
+	assert.True(t, endAt.After(minEnd) && endAt.Before(maxEnd), "end_at should be duration from timeout call")
+
+	pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbx.SandboxID, setup.WithAPIKey())
+	require.NoError(t, err)
+	require.Equal(t, http.StatusNoContent, pauseResp.StatusCode())
+
+	require.Eventually(t, func() bool {
+		res, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), sbx.SandboxID, setup.WithAPIKey())
+		require.NoError(t, err)
+		if res.StatusCode() == http.StatusNotFound {
+			return false
+		}
+		require.Equal(t, http.StatusOK, res.StatusCode())
+		require.NotNil(t, res.JSON200)
+
+		return res.JSON200.State == api.Paused
+	}, 30*time.Second, 20*time.Millisecond, "Sandbox is not paused")
+
+	require.Eventually(t, func() bool {
+		resp, err := c.PostSandboxesSandboxIDResumeWithResponse(
+			t.Context(),
+			sbx.SandboxID,
+			api.PostSandboxesSandboxIDResumeJSONRequestBody{},
+			setup.WithAPIKey(),
+		)
+		require.NoError(t, err)
+		if resp.StatusCode() == http.StatusNotFound {
+			return false
+		}
+		require.Equal(t, http.StatusCreated, resp.StatusCode())
+		require.NotNil(t, resp.JSON201)
+
+		return true
+	}, 20*time.Second, 50*time.Millisecond, "sandbox did not resume")
+
+	resumedDetail, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), sbx.SandboxID, setup.WithAPIKey())
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resumedDetail.StatusCode())
+	require.NotNil(t, resumedDetail.JSON200)
+
+	actual := int32(resumedDetail.JSON200.EndAt.Sub(resumedDetail.JSON200.StartedAt).Seconds())
+	assert.InDelta(t, updatedTimeout, actual, 2, "sandbox TTL should persist across pause/resume after set timeout")
+}
+
 func TestSandboxSetTimeoutPausingSandbox(t *testing.T) {
 	t.Parallel()
 	c := setup.GetAPIClient()
