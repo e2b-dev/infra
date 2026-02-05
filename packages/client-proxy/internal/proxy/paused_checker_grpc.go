@@ -16,7 +16,7 @@ type grpcPausedSandboxResumer struct {
 	client proxygrpc.SandboxServiceClient
 }
 
-func NewGrpcPausedSandboxResumer(address string) (PausedSandboxChecker, error) {
+func NewGrpcPausedSandboxResumer(address string) (PausedSandboxResumer, error) {
 	// Client-proxy uses this gRPC client to trigger ResumeSandbox when needed.
 	if strings.TrimSpace(address) == "" {
 		return nil, fmt.Errorf("api grpc address is required")

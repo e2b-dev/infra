@@ -135,7 +135,7 @@ func run() int {
 	info := &internal.ServiceInfo{}
 	info.SetStatus(ctx, internal.Healthy)
 
-	var pausedChecker e2bproxy.PausedSandboxChecker
+	var pausedChecker e2bproxy.PausedSandboxResumer
 	if strings.TrimSpace(config.ApiGrpcAddress) != "" {
 		pausedChecker, err = e2bproxy.NewGrpcPausedSandboxResumer(config.ApiGrpcAddress)
 		if err != nil {
