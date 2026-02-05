@@ -107,8 +107,14 @@ runs:
       run: |
         mkdir -p $SHARED_CHUNK_CACHE_PATH
         mkdir -p ~/logs
-        mkdir -p ./.e2b-test-volumes
-
+        
+        echo "creating persistent volume mounts"
+        IFS=',' read -ra pairs <<< "$PERSISTENT_VOLUME_MOUNTS"
+        for pair in "${pairs[@]}"; do
+            value="${pair#*=}"
+            echo "$value"
+        done
+        
         # Start otel-collector
         ./scripts/start-service.sh "OtelCollector" packages/otel-collector run ~/logs/otel-collector.log http://localhost:13133/healthz
 
