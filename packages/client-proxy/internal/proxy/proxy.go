@@ -35,8 +35,6 @@ const (
 var ErrNodeNotFound = errors.New("node not found")
 
 var (
-	resumeWaitInterval         = 200 * time.Millisecond
-	resumeWaitTimeout          = 30 * time.Second
 	resumeTimeoutSeconds int32 = 600
 )
 
@@ -94,13 +92,17 @@ func handlePausedSandbox(
 		// Already running - try catalog again
 		if isAlreadyRunningError(err) {
 			logger.L().Debug(ctx, "sandbox already running, checking catalog", logger.WithSandboxID(sandboxId))
-			nodeIP, waitErr := waitForCatalog(ctx, sandboxId, c)
-			if waitErr == nil {
+			nodeIP, catalogErr := getCatalogIP(ctx, sandboxId, c)
+			if catalogErr == nil {
 				return nodeIP, nil
 			}
-			// Catalog still doesn't have it - something's wrong
+			if errors.Is(catalogErr, catalog.ErrSandboxNotFound) {
+				return "", nil
+			}
 
-			return "", nil
+			logger.L().Warn(ctx, "catalog lookup after resume returned error", zap.Error(catalogErr), logger.WithSandboxID(sandboxId))
+
+			return "", reverseproxy.NewErrSandboxPaused(sandboxId, true)
 		}
 
 		logger.L().Warn(ctx, "auto-resume failed", zap.Error(err), logger.WithSandboxID(sandboxId))
@@ -108,12 +110,12 @@ func handlePausedSandbox(
 		return "", reverseproxy.NewErrSandboxPaused(sandboxId, true)
 	}
 
-	// Resume succeeded, wait for sandbox to appear in catalog
-	nodeIP, waitErr := waitForCatalog(ctx, sandboxId, c)
-	if waitErr == nil {
+	// Resume succeeded, catalog should be ready.
+	nodeIP, catalogErr := getCatalogIP(ctx, sandboxId, c)
+	if catalogErr == nil {
 		return nodeIP, nil
 	}
-	logger.L().Warn(ctx, "auto-resume wait failed", zap.Error(waitErr), logger.WithSandboxID(sandboxId))
+	logger.L().Warn(ctx, "auto-resume catalog lookup failed", zap.Error(catalogErr), logger.WithSandboxID(sandboxId))
 
 	return "", reverseproxy.NewErrSandboxPaused(sandboxId, true)
 }
@@ -150,36 +152,13 @@ func isAlreadyRunningError(err error) bool {
 	return grpcStatus.GRPCStatus().Code() == codes.AlreadyExists
 }
 
-func waitForCatalog(ctx context.Context, sandboxId string, c catalog.SandboxesCatalog) (string, error) {
-	deadline := time.Now().Add(resumeWaitTimeout)
-	for {
-		if err := ctx.Err(); err != nil {
-			return "", err
-		}
-
-		if time.Now().After(deadline) {
-			return "", fmt.Errorf("timeout waiting for sandbox to resume")
-		}
-
-		s, err := c.GetSandbox(ctx, sandboxId)
-		if err == nil {
-			return s.OrchestratorIP, nil
-		}
-
-		if !errors.Is(err, catalog.ErrSandboxNotFound) {
-			return "", fmt.Errorf("failed to get sandbox from catalog during resume: %w", err)
-		}
-
-		wait := min(time.Until(deadline), resumeWaitInterval)
-		timer := time.NewTimer(wait)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-
-			return "", ctx.Err()
-		case <-timer.C:
-		}
+func getCatalogIP(ctx context.Context, sandboxId string, c catalog.SandboxesCatalog) (string, error) {
+	s, err := c.GetSandbox(ctx, sandboxId)
+	if err != nil {
+		return "", err
 	}
+
+	return s.OrchestratorIP, nil
 }
 
 func NewClientProxyWithPausedChecker(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog catalog.SandboxesCatalog, pausedChecker PausedSandboxChecker, autoResumeEnabled bool) (*reverseproxy.Proxy, error) {
