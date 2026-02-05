@@ -9,8 +9,7 @@ CREATE TABLE IF NOT EXISTS volumes (
 
     CONSTRAINT fk_volumes_teams
         FOREIGN KEY (team_id)
-        REFERENCES teams(id)
-        ON DELETE CASCADE,
+        REFERENCES teams(id),
 
     CONSTRAINT volumes_teams_uq
         UNIQUE (team_id, name)
