@@ -39,7 +39,7 @@ func (a *APIStore) CheckAndCancelConcurrentBuilds(ctx context.Context, templateI
 	// make sure there is no other build in progress for the same template
 	if len(concurrentBuilds) > 0 {
 		concurrentRunningBuilds := utils.Filter(concurrentBuilds, func(b queries.EnvBuild) bool {
-			return b.Status == string(dbtypes.BuildStatusBuilding)
+			return dbtypes.BuildStatus(b.Status).IsInProgress()
 		})
 		buildIDs := make([]templatemanager.DeleteBuild, 0, len(concurrentRunningBuilds))
 		for _, b := range concurrentRunningBuilds {
@@ -148,7 +148,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 	build := templateBuildDB.EnvBuild
 
 	// only waiting builds can be triggered
-	if build.Status != string(dbtypes.BuildStatusWaiting) {
+	if !dbtypes.BuildStatus(build.Status).IsPending() {
 		a.sendAPIStoreError(c, http.StatusBadRequest, "build is not in waiting state")
 		telemetry.ReportCriticalError(ctx, "build is not in waiting state", fmt.Errorf("build is not in waiting state: %s", build.Status), telemetry.WithTemplateID(templateID))
 

@@ -30,7 +30,7 @@ JOIN LATERAL (
     WHERE
         eba.env_id = s.env_id
         AND eba.tag = 'default'
-        AND eb.status = 'success'
+        AND eb.status IN ('success', 'uploaded', 'ready')
     ORDER BY eba.created_at DESC
     LIMIT 1
 ) eb ON TRUE

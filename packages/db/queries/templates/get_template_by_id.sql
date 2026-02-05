@@ -2,11 +2,7 @@
 SELECT t.*
 FROM "public"."envs" t
 WHERE t.id = $1
-  AND NOT EXISTS (
-    SELECT 1
-    FROM public.snapshots AS s
-    WHERE s.env_id = t.id
-  );
+  AND t.source = 'template';
 
 -- name: GetTemplateByIDWithAliases :one
 SELECT e.*, al.aliases, al.names
@@ -19,8 +15,4 @@ CROSS JOIN LATERAL (
     WHERE env_id = e.id
 ) AS al
 WHERE e.id = $1
-  AND NOT EXISTS (
-    SELECT 1
-    FROM public.snapshots AS s
-    WHERE s.env_id = e.id
-  );
+  AND e.source = 'template';

@@ -22,7 +22,7 @@ LEFT JOIN LATERAL (
     FROM "public"."env_aliases"
     WHERE env_id = s.base_env_id
 ) ea ON TRUE
-WHERE s.sandbox_id = $1 AND eb.status = 'success'
+WHERE s.sandbox_id = $1 AND eb.status IN ('success', 'uploaded', 'ready')
 ORDER BY eba.created_at DESC
 LIMIT 1
 `

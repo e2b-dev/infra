@@ -18,6 +18,7 @@ WHERE id IN (
     SELECT e.id FROM "public"."envs" e
     LEFT JOIN "public"."env_aliases" ea ON ea.env_id = e.id
     WHERE e.team_id = $2
+    AND e.source = 'template'
     AND (e.id = $3 OR ea.alias = $3)
 )
 RETURNING e.id

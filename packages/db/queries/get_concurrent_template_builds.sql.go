@@ -16,7 +16,7 @@ SELECT eb.id, eb.created_at, eb.updated_at, eb.finished_at, eb.status, eb.docker
 JOIN env_builds eb ON eb.id = eba.build_id
 WHERE
     eba.env_id = $1
-    AND eb.status in ('waiting', 'building')
+    AND eb.status IN ('waiting', 'building', 'snapshotting', 'pending', 'in_progress')
     AND eb.id != $2
 `
 

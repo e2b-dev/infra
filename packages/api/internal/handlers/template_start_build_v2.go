@@ -106,7 +106,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 	build := templateBuildDB.EnvBuild
 
 	// only waiting builds can be triggered
-	if build.Status != string(types.BuildStatusWaiting) {
+	if !types.BuildStatus(build.Status).IsPending() {
 		a.sendAPIStoreError(c, http.StatusBadRequest, "build is not in waiting state")
 		telemetry.ReportCriticalError(ctx, "build is not in waiting state", fmt.Errorf("build is not in waiting state: %s", build.Status), telemetry.WithTemplateID(templateID))
 

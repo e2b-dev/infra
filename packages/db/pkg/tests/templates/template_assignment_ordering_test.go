@@ -78,7 +78,7 @@ func TestGetTemplateWithBuildByTag_AssignmentOrderSameAsBuildOrder(t *testing.T)
 }
 
 // TestGetTemplateWithBuildByTag_OnlyReturnsUploadedBuilds verifies that only builds
-// with status='uploaded' are returned, even if a non-uploaded build has a more recent assignment.
+// with status IN ('success', 'uploaded') are returned, even if a non-ready build has a more recent assignment.
 func TestGetTemplateWithBuildByTag_OnlyReturnsUploadedBuilds(t *testing.T) {
 	t.Parallel()
 	db := testutils.SetupDatabase(t)
@@ -106,7 +106,7 @@ func TestGetTemplateWithBuildByTag_OnlyReturnsUploadedBuilds(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, uploadedBuildID, result.EnvBuild.ID,
-		"GetTemplateWithBuildByTag should only return builds with status='uploaded'")
+		"GetTemplateWithBuildByTag should only return builds with status IN ('success', 'uploaded')")
 }
 
 // TestGetTemplateWithBuildByTag_SpecificTag verifies that the query returns

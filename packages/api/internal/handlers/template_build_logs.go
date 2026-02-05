@@ -12,7 +12,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -60,7 +59,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDLogs(c *gin.Context, templ
 	}
 
 	// early return if still waiting for build start
-	if buildInfo.BuildStatus == types.BuildStatusWaiting {
+	if buildInfo.BuildStatus.IsPending() {
 		c.JSON(http.StatusOK, api.TemplateBuildLogsResponse{
 			Logs: []api.BuildLogEntry{},
 		})

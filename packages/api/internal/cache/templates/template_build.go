@@ -133,7 +133,7 @@ func (c *TemplatesBuildCache) GetRunningBuildsForTeam(teamID uuid.UUID) []Templa
 	var builds []TemplateBuildInfo
 	for _, item := range c.cache.Items() {
 		value := item.Value()
-		isRunning := value.BuildStatus == types.BuildStatusBuilding || value.BuildStatus == types.BuildStatusWaiting
+		isRunning := value.BuildStatus.IsInProgress() || value.BuildStatus.IsPending()
 		if value.TeamID == teamID && isRunning {
 			builds = append(builds, value)
 		}

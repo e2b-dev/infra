@@ -51,7 +51,7 @@ func TestGetLastSnapshot_ReturnsLatestAssignment(t *testing.T) {
 }
 
 // TestGetLastSnapshot_OnlyReturnsSuccessBuilds verifies that GetLastSnapshot only
-// returns builds with status='success'.
+// returns builds with status IN ('success', 'uploaded').
 func TestGetLastSnapshot_OnlyReturnsSuccessBuilds(t *testing.T) {
 	t.Parallel()
 	db := testutils.SetupDatabase(t)
@@ -78,7 +78,7 @@ func TestGetLastSnapshot_OnlyReturnsSuccessBuilds(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, successBuildID, snapshot.EnvBuild.ID,
-		"GetLastSnapshot should only return builds with status='success'")
+		"GetLastSnapshot should only return builds with status IN ('success', 'uploaded')")
 }
 
 // TestGetSnapshotsWithCursor_ReturnsLatestAssignment verifies that GetSnapshotsWithCursor

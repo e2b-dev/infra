@@ -8,5 +8,5 @@ SELECT EXISTS (
              JOIN env_builds eb ON eb.id = eba.build_id
     WHERE at.access_token_hash = @access_token_hash
       AND e.id = @template_id
-      AND eb.status = 'waiting'
+      AND eb.status IN ('waiting', 'pending')
 ) AS valid;
