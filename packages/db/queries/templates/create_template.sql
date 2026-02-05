@@ -21,7 +21,6 @@ WHERE eba.build_id = eb.id
 INSERT INTO "public"."env_builds" (
     id,
     updated_at,
-    env_id,
     status,
     ram_mb,
     vcpu,
@@ -35,7 +34,6 @@ INSERT INTO "public"."env_builds" (
 ) VALUES (
     @build_id,
     NOW(),
-    @template_id,
     'waiting',
     @ram_mb,
     @vcpu,

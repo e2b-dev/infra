@@ -15,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/execcontext"
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
+	utilsShared "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 func TestSimpleCases(t *testing.T) {
@@ -120,8 +121,11 @@ func TestShouldSetSystemTime(t *testing.T) {
 	}
 }
 
-func ptr(s string) *string {
-	return &s
+func secureTokenPtr(s string) *SecureToken {
+	token := &SecureToken{}
+	_ = token.Set([]byte(s))
+
+	return token
 }
 
 type mockMMDSClient struct {
@@ -133,13 +137,15 @@ func (m *mockMMDSClient) GetAccessTokenHash(_ context.Context) (string, error) {
 	return m.hash, m.err
 }
 
-func newTestAPI(accessToken *string, mmdsClient MMDSClient) *API {
+func newTestAPI(accessToken *SecureToken, mmdsClient MMDSClient) *API {
 	logger := zerolog.Nop()
 	defaults := &execcontext.Defaults{
 		EnvVars: utils.NewMap[string, string](),
 	}
 	api := New(&logger, defaults, nil, false)
-	api.accessToken = accessToken
+	if accessToken != nil {
+		api.accessToken.TakeFrom(accessToken)
+	}
 	api.mmdsClient = mmdsClient
 
 	return api
@@ -151,24 +157,24 @@ func TestValidateInitAccessToken(t *testing.T) {
 
 	tests := []struct {
 		name         string
-		accessToken  *string
-		requestToken *string
+		accessToken  *SecureToken
+		requestToken *SecureToken
 		mmdsHash     string
 		mmdsErr      error
 		wantErr      error
 	}{
 		{
 			name:         "fast path: token matches existing",
-			accessToken:  ptr("secret-token"),
-			requestToken: ptr("secret-token"),
+			accessToken:  secureTokenPtr("secret-token"),
+			requestToken: secureTokenPtr("secret-token"),
 			mmdsHash:     "",
 			mmdsErr:      nil,
 			wantErr:      nil,
 		},
 		{
 			name:         "MMDS match: token hash matches MMDS hash",
-			accessToken:  ptr("old-token"),
-			requestToken: ptr("new-token"),
+			accessToken:  secureTokenPtr("old-token"),
+			requestToken: secureTokenPtr("new-token"),
 			mmdsHash:     keys.HashAccessToken("new-token"),
 			mmdsErr:      nil,
 			wantErr:      nil,
@@ -176,7 +182,7 @@ func TestValidateInitAccessToken(t *testing.T) {
 		{
 			name:         "first-time setup: no existing token, MMDS error",
 			accessToken:  nil,
-			requestToken: ptr("new-token"),
+			requestToken: secureTokenPtr("new-token"),
 			mmdsHash:     "",
 			mmdsErr:      assert.AnError,
 			wantErr:      nil,
@@ -184,7 +190,7 @@ func TestValidateInitAccessToken(t *testing.T) {
 		{
 			name:         "first-time setup: no existing token, empty MMDS hash",
 			accessToken:  nil,
-			requestToken: ptr("new-token"),
+			requestToken: secureTokenPtr("new-token"),
 			mmdsHash:     "",
 			mmdsErr:      nil,
 			wantErr:      nil,
@@ -199,23 +205,23 @@ func TestValidateInitAccessToken(t *testing.T) {
 		},
 		{
 			name:         "mismatch: existing token differs from request, no MMDS",
-			accessToken:  ptr("existing-token"),
-			requestToken: ptr("wrong-token"),
+			accessToken:  secureTokenPtr("existing-token"),
+			requestToken: secureTokenPtr("wrong-token"),
 			mmdsHash:     "",
 			mmdsErr:      assert.AnError,
 			wantErr:      ErrAccessTokenMismatch,
 		},
 		{
 			name:         "mismatch: existing token differs from request, MMDS hash mismatch",
-			accessToken:  ptr("existing-token"),
-			requestToken: ptr("wrong-token"),
+			accessToken:  secureTokenPtr("existing-token"),
+			requestToken: secureTokenPtr("wrong-token"),
 			mmdsHash:     keys.HashAccessToken("different-token"),
 			mmdsErr:      nil,
 			wantErr:      ErrAccessTokenMismatch,
 		},
 		{
 			name:         "conflict: existing token, nil request, MMDS exists",
-			accessToken:  ptr("existing-token"),
+			accessToken:  secureTokenPtr("existing-token"),
 			requestToken: nil,
 			mmdsHash:     keys.HashAccessToken("some-token"),
 			mmdsErr:      nil,
@@ -223,7 +229,7 @@ func TestValidateInitAccessToken(t *testing.T) {
 		},
 		{
 			name:         "conflict: existing token, nil request, no MMDS",
-			accessToken:  ptr("existing-token"),
+			accessToken:  secureTokenPtr("existing-token"),
 			requestToken: nil,
 			mmdsHash:     "",
 			mmdsErr:      assert.AnError,
@@ -259,7 +265,7 @@ func TestCheckMMDSHash(t *testing.T) {
 		mmdsClient := &mockMMDSClient{hash: keys.HashAccessToken(token), err: nil}
 		api := newTestAPI(nil, mmdsClient)
 
-		matches, exists := api.checkMMDSHash(ctx, ptr(token))
+		matches, exists := api.checkMMDSHash(ctx, secureTokenPtr(token))
 
 		assert.True(t, matches)
 		assert.True(t, exists)
@@ -270,7 +276,7 @@ func TestCheckMMDSHash(t *testing.T) {
 		mmdsClient := &mockMMDSClient{hash: keys.HashAccessToken("different-token"), err: nil}
 		api := newTestAPI(nil, mmdsClient)
 
-		matches, exists := api.checkMMDSHash(ctx, ptr("my-token"))
+		matches, exists := api.checkMMDSHash(ctx, secureTokenPtr("my-token"))
 
 		assert.False(t, matches)
 		assert.True(t, exists)
@@ -292,7 +298,7 @@ func TestCheckMMDSHash(t *testing.T) {
 		mmdsClient := &mockMMDSClient{hash: "", err: assert.AnError}
 		api := newTestAPI(nil, mmdsClient)
 
-		matches, exists := api.checkMMDSHash(ctx, ptr("any-token"))
+		matches, exists := api.checkMMDSHash(ctx, secureTokenPtr("any-token"))
 
 		assert.False(t, matches)
 		assert.False(t, exists)
@@ -303,7 +309,7 @@ func TestCheckMMDSHash(t *testing.T) {
 		mmdsClient := &mockMMDSClient{hash: "", err: nil}
 		api := newTestAPI(nil, mmdsClient)
 
-		matches, exists := api.checkMMDSHash(ctx, ptr("any-token"))
+		matches, exists := api.checkMMDSHash(ctx, secureTokenPtr("any-token"))
 
 		assert.False(t, matches)
 		assert.False(t, exists)
@@ -342,21 +348,21 @@ func TestSetData(t *testing.T) {
 
 		tests := []struct {
 			name           string
-			existingToken  *string
-			requestToken   *string
+			existingToken  *SecureToken
+			requestToken   *SecureToken
 			mmdsHash       string
 			mmdsErr        error
 			wantErr        error
-			wantFinalToken *string
+			wantFinalToken *SecureToken
 		}{
 			{
 				name:           "first-time setup: sets initial token",
 				existingToken:  nil,
-				requestToken:   ptr("initial-token"),
+				requestToken:   secureTokenPtr("initial-token"),
 				mmdsHash:       "",
 				mmdsErr:        assert.AnError,
 				wantErr:        nil,
-				wantFinalToken: ptr("initial-token"),
+				wantFinalToken: secureTokenPtr("initial-token"),
 			},
 			{
 				name:           "first-time setup: nil request token leaves token unset",
@@ -369,70 +375,70 @@ func TestSetData(t *testing.T) {
 			},
 			{
 				name:           "re-init with same token: token unchanged",
-				existingToken:  ptr("same-token"),
-				requestToken:   ptr("same-token"),
+				existingToken:  secureTokenPtr("same-token"),
+				requestToken:   secureTokenPtr("same-token"),
 				mmdsHash:       "",
 				mmdsErr:        assert.AnError,
 				wantErr:        nil,
-				wantFinalToken: ptr("same-token"),
+				wantFinalToken: secureTokenPtr("same-token"),
 			},
 			{
 				name:           "resume with MMDS: updates token when hash matches",
-				existingToken:  ptr("old-token"),
-				requestToken:   ptr("new-token"),
+				existingToken:  secureTokenPtr("old-token"),
+				requestToken:   secureTokenPtr("new-token"),
 				mmdsHash:       keys.HashAccessToken("new-token"),
 				mmdsErr:        nil,
 				wantErr:        nil,
-				wantFinalToken: ptr("new-token"),
+				wantFinalToken: secureTokenPtr("new-token"),
 			},
 			{
 				name:           "resume with MMDS: fails when hash doesn't match",
-				existingToken:  ptr("old-token"),
-				requestToken:   ptr("new-token"),
+				existingToken:  secureTokenPtr("old-token"),
+				requestToken:   secureTokenPtr("new-token"),
 				mmdsHash:       keys.HashAccessToken("different-token"),
 				mmdsErr:        nil,
 				wantErr:        ErrAccessTokenMismatch,
-				wantFinalToken: ptr("old-token"),
+				wantFinalToken: secureTokenPtr("old-token"),
 			},
 			{
 				name:           "fails when existing token and request token mismatch without MMDS",
-				existingToken:  ptr("existing-token"),
-				requestToken:   ptr("wrong-token"),
+				existingToken:  secureTokenPtr("existing-token"),
+				requestToken:   secureTokenPtr("wrong-token"),
 				mmdsHash:       "",
 				mmdsErr:        assert.AnError,
 				wantErr:        ErrAccessTokenMismatch,
-				wantFinalToken: ptr("existing-token"),
+				wantFinalToken: secureTokenPtr("existing-token"),
 			},
 			{
 				name:           "conflict when existing token but nil request token",
-				existingToken:  ptr("existing-token"),
+				existingToken:  secureTokenPtr("existing-token"),
 				requestToken:   nil,
 				mmdsHash:       "",
 				mmdsErr:        assert.AnError,
 				wantErr:        ErrAccessTokenResetNotAuthorized,
-				wantFinalToken: ptr("existing-token"),
+				wantFinalToken: secureTokenPtr("existing-token"),
 			},
 			{
 				name:           "conflict when existing token but nil request with MMDS present",
-				existingToken:  ptr("existing-token"),
+				existingToken:  secureTokenPtr("existing-token"),
 				requestToken:   nil,
 				mmdsHash:       keys.HashAccessToken("some-token"),
 				mmdsErr:        nil,
 				wantErr:        ErrAccessTokenResetNotAuthorized,
-				wantFinalToken: ptr("existing-token"),
+				wantFinalToken: secureTokenPtr("existing-token"),
 			},
 			{
 				name:           "conflict when MMDS returns empty hash and request is nil (prevents unauthorized reset)",
-				existingToken:  ptr("existing-token"),
+				existingToken:  secureTokenPtr("existing-token"),
 				requestToken:   nil,
 				mmdsHash:       "",
 				mmdsErr:        nil,
 				wantErr:        ErrAccessTokenResetNotAuthorized,
-				wantFinalToken: ptr("existing-token"),
+				wantFinalToken: secureTokenPtr("existing-token"),
 			},
 			{
 				name:           "resets token when MMDS returns hash of empty string and request is nil (explicit reset)",
-				existingToken:  ptr("existing-token"),
+				existingToken:  secureTokenPtr("existing-token"),
 				requestToken:   nil,
 				mmdsHash:       keys.HashAccessToken(""),
 				mmdsErr:        nil,
@@ -460,10 +466,10 @@ func TestSetData(t *testing.T) {
 				}
 
 				if tt.wantFinalToken == nil {
-					assert.Nil(t, api.accessToken)
+					assert.False(t, api.accessToken.IsSet(), "expected token to not be set")
 				} else {
-					require.NotNil(t, api.accessToken)
-					assert.Equal(t, *tt.wantFinalToken, *api.accessToken)
+					require.True(t, api.accessToken.IsSet(), "expected token to be set")
+					assert.True(t, api.accessToken.EqualsSecure(tt.wantFinalToken), "expected token to match")
 				}
 			})
 		}
@@ -496,7 +502,7 @@ func TestSetData(t *testing.T) {
 		api := newTestAPI(nil, mmdsClient)
 
 		data := PostInitJSONBody{
-			DefaultUser: ptr("testuser"),
+			DefaultUser: utilsShared.ToPtr("testuser"),
 		}
 
 		err := api.SetData(ctx, logger, data)
@@ -512,7 +518,7 @@ func TestSetData(t *testing.T) {
 		api.defaults.User = "original"
 
 		data := PostInitJSONBody{
-			DefaultUser: ptr(""),
+			DefaultUser: utilsShared.ToPtr(""),
 		}
 
 		err := api.SetData(ctx, logger, data)
@@ -527,7 +533,7 @@ func TestSetData(t *testing.T) {
 		api := newTestAPI(nil, mmdsClient)
 
 		data := PostInitJSONBody{
-			DefaultWorkdir: ptr("/home/user"),
+			DefaultWorkdir: utilsShared.ToPtr("/home/user"),
 		}
 
 		err := api.SetData(ctx, logger, data)
@@ -545,7 +551,7 @@ func TestSetData(t *testing.T) {
 		api.defaults.Workdir = &originalWorkdir
 
 		data := PostInitJSONBody{
-			DefaultWorkdir: ptr(""),
+			DefaultWorkdir: utilsShared.ToPtr(""),
 		}
 
 		err := api.SetData(ctx, logger, data)
@@ -562,16 +568,16 @@ func TestSetData(t *testing.T) {
 
 		envVars := EnvVars{"KEY": "value"}
 		data := PostInitJSONBody{
-			AccessToken:    ptr("token"),
-			DefaultUser:    ptr("user"),
-			DefaultWorkdir: ptr("/workdir"),
+			AccessToken:    secureTokenPtr("token"),
+			DefaultUser:    utilsShared.ToPtr("user"),
+			DefaultWorkdir: utilsShared.ToPtr("/workdir"),
 			EnvVars:        &envVars,
 		}
 
 		err := api.SetData(ctx, logger, data)
 
 		require.NoError(t, err)
-		assert.Equal(t, "token", *api.accessToken)
+		assert.True(t, api.accessToken.Equals("token"), "expected token to match")
 		assert.Equal(t, "user", api.defaults.User)
 		assert.Equal(t, "/workdir", *api.defaults.Workdir)
 		val, ok := api.defaults.EnvVars.Load("KEY")

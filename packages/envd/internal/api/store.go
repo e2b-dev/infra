@@ -28,7 +28,7 @@ func (c *DefaultMMDSClient) GetAccessTokenHash(ctx context.Context) (string, err
 type API struct {
 	isNotFC     bool
 	logger      *zerolog.Logger
-	accessToken *string
+	accessToken *SecureToken
 	defaults    *execcontext.Defaults
 
 	mmdsChan      chan *host.MMDSOpts
@@ -47,6 +47,7 @@ func New(l *zerolog.Logger, defaults *execcontext.Defaults, mmdsChan chan *host.
 		isNotFC:     isNotFC,
 		mmdsClient:  &DefaultMMDSClient{},
 		lastSetTime: utils.NewAtomicMax(),
+		accessToken: &SecureToken{},
 	}
 }
 
