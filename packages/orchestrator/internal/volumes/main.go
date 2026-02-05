@@ -46,7 +46,6 @@ func (v *VolumeService) Delete(
 	}
 
 	volumePath := filepath.Join(volPath, request.GetVolumeName())
-	volumePath = filepath.Clean(volumePath)
 	if !strings.HasPrefix(volumePath, volPath) {
 		return nil, status.Errorf(codes.PermissionDenied, "volume path %s is not under %s", volumePath, volPath)
 	}

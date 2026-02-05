@@ -96,6 +96,8 @@ func Parse() (Config, error) {
 
 	if config.PersistentVolumeMounts != nil {
 		for name, path := range config.PersistentVolumeMounts {
+			path = filepath.Clean(path)
+
 			info, err := os.Stat(path)
 			if err != nil {
 				return config, fmt.Errorf("failed to stat persistent volume mount %q (%q): %w", name, path, err)
@@ -104,6 +106,8 @@ func Parse() (Config, error) {
 			if !info.IsDir() {
 				return config, fmt.Errorf("persistent volume mount %q (%q) is not a directory", name, path)
 			}
+
+			config.PersistentVolumeMounts[name] = path // store the cleaned path
 		}
 	}
 
