@@ -46,8 +46,24 @@ output "notification_email_secret_version" {
   value = google_secret_manager_secret_version.notification_email_value
 }
 
+output "redis_cluster_url_secret_version" {
+  value = google_secret_manager_secret_version.redis_cluster_url
+}
+
 output "redis_tls_ca_base64_secret_version" {
   value = google_secret_manager_secret_version.redis_tls_ca_base64
+}
+
+output "posthog_api_key_secret_name" {
+  value = google_secret_manager_secret_version.posthog_api_key.secret
+}
+
+output "supabase_jwt_secret_name" {
+  value = google_secret_manager_secret_version.supabase_jwt_secrets.secret
+}
+
+output "postgres_connection_string_secret_name" {
+  value = google_secret_manager_secret.postgres_connection_string.name
 }
 
 output "loki_bucket_name" {
