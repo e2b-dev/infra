@@ -527,7 +527,6 @@ components:
           type: string
           enum:
             - any
-            - authed
           description: Auto-resume policy for paused sandboxes. Omit to disable auto-resume.
         network:
           $ref: "#/components/schemas/SandboxNetworkConfig"

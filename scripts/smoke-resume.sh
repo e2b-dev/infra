@@ -118,27 +118,15 @@ run_policy_case() {
 }
 
 echo ""
-echo "policy any: unauthed -> expect resume"
+echo "policy any: no api key header -> expect resume"
 for i in $(seq 1 "${COUNT}"); do
   run_policy_case "any" "false" "expect-resume"
 done
 
 echo ""
-echo "policy any: authed -> expect resume"
+echo "policy any: with api key header -> expect resume"
 for i in $(seq 1 "${COUNT}"); do
   run_policy_case "any" "true" "expect-resume"
-done
-
-echo ""
-echo "policy authed: unauthed -> expect paused"
-for i in $(seq 1 "${COUNT}"); do
-  run_policy_case "authed" "false" "expect-paused"
-done
-
-echo ""
-echo "policy authed: authed -> expect resume"
-for i in $(seq 1 "${COUNT}"); do
-  run_policy_case "authed" "true" "expect-resume"
 done
 
 echo ""
@@ -148,7 +136,7 @@ for i in $(seq 1 "${COUNT}"); do
 done
 
 echo ""
-echo "policy null: authed -> expect paused"
+echo "policy null: with api key header -> expect paused"
 for i in $(seq 1 "${COUNT}"); do
   run_policy_case "null" "true" "expect-paused"
 done

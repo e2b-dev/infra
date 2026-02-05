@@ -64,8 +64,7 @@ const (
 
 // Defines values for NewSandboxAutoResume.
 const (
-	Any    NewSandboxAutoResume = "any"
-	Authed NewSandboxAutoResume = "authed"
+	Any NewSandboxAutoResume = "any"
 )
 
 // Defines values for NodeStatus.

@@ -39,7 +39,7 @@ fi
 API_URL=${API_URL:-"https://api.${DOMAIN}"}
 
 create_body=$(jq -n \
-  --arg policy "authed" \
+  --arg policy "any" \
   --arg template "${TEMPLATE_ID}" \
   --arg probe "${PROBE_ID}" \
   --argjson timeout "${TIMEOUT_SECONDS}" \

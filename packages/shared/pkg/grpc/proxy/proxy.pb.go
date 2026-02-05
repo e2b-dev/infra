@@ -27,7 +27,6 @@ type AutoResumePolicy int32
 const (
 	AutoResumePolicy_AUTO_RESUME_POLICY_NULL   AutoResumePolicy = 0
 	AutoResumePolicy_AUTO_RESUME_POLICY_ANY    AutoResumePolicy = 1
-	AutoResumePolicy_AUTO_RESUME_POLICY_AUTHED AutoResumePolicy = 2
 )
 
 // Enum value maps for AutoResumePolicy.
@@ -35,12 +34,10 @@ var (
 	AutoResumePolicy_name = map[int32]string{
 		0: "AUTO_RESUME_POLICY_NULL",
 		1: "AUTO_RESUME_POLICY_ANY",
-		2: "AUTO_RESUME_POLICY_AUTHED",
 	}
 	AutoResumePolicy_value = map[string]int32{
 		"AUTO_RESUME_POLICY_NULL":   0,
 		"AUTO_RESUME_POLICY_ANY":    1,
-		"AUTO_RESUME_POLICY_AUTHED": 2,
 	}
 )
 

@@ -19,12 +19,6 @@ func TestProxyAutoResumePolicies(t *testing.T) {
 	t.Parallel()
 
 	c := setup.GetAPIClient()
-	db := setup.GetTestDBClient(t)
-
-	foreignUserID := utils.CreateUser(t, db)
-	foreignTeamID := utils.CreateTeamWithUser(t, db, "proxy-auto-resume-foreign", foreignUserID.String())
-	foreignAPIKey := utils.CreateAPIKey(t, t.Context(), c, foreignUserID.String(), foreignTeamID)
-	foreignAccessToken := utils.CreateAccessToken(t, db, foreignUserID)
 
 	proxyURL, err := url.Parse(setup.ClientProxy)
 	require.NoError(t, err)
@@ -34,13 +28,10 @@ func TestProxyAutoResumePolicies(t *testing.T) {
 	authCases := []struct {
 		name    string
 		headers http.Header
-		valid   bool
 	}{
 		{name: "unauthed"},
-		{name: "api-key-valid", headers: http.Header{"X-API-Key": []string{setup.APIKey}}, valid: true},
-		{name: "api-key-foreign", headers: http.Header{"X-API-Key": []string{foreignAPIKey}}},
-		{name: "access-token-valid", headers: http.Header{"Authorization": []string{fmt.Sprintf("Bearer %s", setup.AccessToken)}}, valid: true},
-		{name: "access-token-foreign", headers: http.Header{"Authorization": []string{fmt.Sprintf("Bearer %s", foreignAccessToken)}}},
+		{name: "api-key", headers: http.Header{"X-API-Key": []string{setup.APIKey}}},
+		{name: "access-token", headers: http.Header{"Authorization": []string{fmt.Sprintf("Bearer %s", setup.AccessToken)}}},
 	}
 
 	policies := []struct {
@@ -48,7 +39,6 @@ func TestProxyAutoResumePolicies(t *testing.T) {
 		policy string
 	}{
 		{name: "any", policy: "any"},
-		{name: "authed", policy: "authed"},
 		{name: "null", policy: "null"},
 	}
 
@@ -71,8 +61,7 @@ func TestProxyAutoResumePolicies(t *testing.T) {
 					resp := proxyRequest(t, client, sbx, proxyURL, authCase.headers)
 					require.NoError(t, resp.Body.Close())
 
-					expectResume := shouldExpectResume(policy.policy, authCase.valid)
-					if expectResume {
+					if policy.policy == "any" {
 						require.NotEqual(t, http.StatusConflict, resp.StatusCode)
 						if resp.StatusCode >= http.StatusInternalServerError {
 							require.Equal(t, http.StatusBadGateway, resp.StatusCode)
@@ -100,7 +89,7 @@ func TestProxyAutoResumeConcurrent(t *testing.T) {
 
 	client := &http.Client{Timeout: 60 * time.Second}
 
-	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoResume(api.NewSandboxAutoResume("authed")))
+	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoResume(api.NewSandboxAutoResume("any")))
 
 	ensureSandboxPaused(t, c, sbx.SandboxID)
 	waitForSandboxStateWithin(t, c, sbx.SandboxID, api.Paused, 5*time.Second)
@@ -143,7 +132,7 @@ func TestProxyAutoResumeSmoke(t *testing.T) {
 
 	client := &http.Client{Timeout: 60 * time.Second}
 
-	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoResume(api.NewSandboxAutoResume("authed")))
+	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoResume(api.NewSandboxAutoResume("any")))
 
 	ensureSandboxPaused(t, c, sbx.SandboxID)
 	waitForSandboxStateWithin(t, c, sbx.SandboxID, api.Paused, 5*time.Second)
@@ -154,17 +143,6 @@ func TestProxyAutoResumeSmoke(t *testing.T) {
 
 	require.NotEqual(t, http.StatusConflict, resp.StatusCode)
 	waitForSandboxState(t, c, sbx.SandboxID, api.Running)
-}
-
-func shouldExpectResume(policy string, authValid bool) bool {
-	switch policy {
-	case "any":
-		return true
-	case "authed":
-		return authValid
-	default:
-		return false
-	}
 }
 
 func proxyRequest(t *testing.T, client *http.Client, sbx *api.Sandbox, proxyURL *url.URL, headers http.Header) *http.Response {

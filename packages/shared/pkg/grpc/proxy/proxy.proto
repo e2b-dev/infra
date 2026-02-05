@@ -10,7 +10,6 @@ option go_package = "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy;pro
 enum AutoResumePolicy {
   AUTO_RESUME_POLICY_NULL = 0;
   AUTO_RESUME_POLICY_ANY = 1;
-  AUTO_RESUME_POLICY_AUTHED = 2;
 }
 
 // Request to resume a paused sandbox.
@@ -22,8 +21,6 @@ message SandboxResumeRequest {
 }
 
 // SandboxService is used by the client-proxy to resume sandboxes.
-// Authorization/X-API-Key headers are forwarded via gRPC metadata
-// for authed resumes.
 service SandboxService {
   rpc ResumeSandbox(SandboxResumeRequest) returns (google.protobuf.Empty);
 }

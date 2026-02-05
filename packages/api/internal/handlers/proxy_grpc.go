@@ -5,24 +5,19 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/bsm/redislock"
-	"github.com/google/uuid"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	dbapi "github.com/e2b-dev/infra/packages/api/internal/db"
-	teamtypes "github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
-	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -55,29 +50,16 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 
 	resumesOn := sandboxResumesOnFromConfig(snap.Snapshot.Config)
 	policy := autoResumePolicyFromSnapshotResumesOn(resumesOn)
-	authTeam, authProvided, authErr := s.resolveAuthTeam(ctx, snap.Snapshot.TeamID)
 
 	switch policy {
-	case proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_AUTHED:
-		if !authProvided || authErr != nil {
-			return nil, status.Error(codes.PermissionDenied, "authorization required to resume")
-		}
 	case proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_ANY:
-		if authErr != nil {
-			logger.L().Warn(ctx, "proxy resume auth failed, continuing for policy=any", zap.Error(authErr), logger.WithSandboxID(sandboxID))
-		}
 	default:
 		return nil, status.Error(codes.FailedPrecondition, "auto-resume disabled")
 	}
 
-	var team *teamtypes.Team
-	if authTeam != nil {
-		team = authTeam
-	} else {
-		team, err = dbapi.GetTeamByID(ctx, s.api.authDB, snap.Snapshot.TeamID)
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to load team: %v", err)
-		}
+	team, err := dbapi.GetTeamByID(ctx, s.api.authDB, snap.Snapshot.TeamID)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to load team: %v", err)
 	}
 
 	var timeoutSecondsPtr *int32
@@ -231,49 +213,6 @@ func (s *SandboxService) waitForResumeLock(ctx context.Context, sandboxID string
 	return nil
 }
 
-func (s *SandboxService) resolveAuthTeam(ctx context.Context, snapshotTeamID uuid.UUID) (*teamtypes.Team, bool, error) {
-	md, _ := metadata.FromIncomingContext(ctx)
-
-	if apiKey := firstMetadata(md, "x-api-key"); apiKey != "" {
-		apiKey = strings.TrimSpace(apiKey)
-		if !strings.HasPrefix(apiKey, keys.ApiKeyPrefix) {
-			return nil, true, errors.New("invalid api key format")
-		}
-
-		team, apiErr := s.api.GetTeamFromAPIKey(ctx, nil, apiKey)
-		if apiErr != nil {
-			return nil, true, apiErr.Err
-		}
-
-		if team.Team.ID != snapshotTeamID {
-			return nil, true, errors.New("api key team mismatch")
-		}
-
-		return team, true, nil
-	}
-
-	if authHeader := firstMetadata(md, "authorization"); authHeader != "" {
-		accessToken := strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
-		if !strings.HasPrefix(accessToken, keys.AccessTokenPrefix) {
-			return nil, true, errors.New("invalid access token format")
-		}
-
-		userID, apiErr := s.api.GetUserFromAccessToken(ctx, nil, accessToken)
-		if apiErr != nil {
-			return nil, true, apiErr.Err
-		}
-
-		team, err := dbapi.GetTeamByIDAndUserIDAuth(ctx, s.api.authDB, snapshotTeamID.String(), userID)
-		if err != nil {
-			return nil, true, err
-		}
-
-		return team, true, nil
-	}
-
-	return nil, false, nil
-}
-
 func autoResumePolicyFromSnapshotResumesOn(resumesOn *string) proxygrpc.AutoResumePolicy {
 	if resumesOn == nil {
 		return proxygrpc.AutoResumePolicy_AUTO_RESUME_POLICY_NULL
@@ -296,15 +235,6 @@ func sandboxTimeoutSecondsFromConfig(config *dbtypes.PausedSandboxConfig) *int32
 	}
 
 	return config.SandboxTimeoutSeconds
-}
-
-func firstMetadata(md metadata.MD, key string) string {
-	values := md.Get(key)
-	if len(values) == 0 {
-		return ""
-	}
-
-	return values[0]
 }
 
 func grpcCodeFromHTTPStatus(statusCode int) codes.Code {
