@@ -62,7 +62,7 @@ func TestCatalogResolutionPaused_NoAutoResume(t *testing.T) {
 
 	// With optimistic resume, when autoResumeEnabled=false we don't attempt resume
 	// and just return "not found" instead of checking pause status
-	_, err := catalogResolution(ctx, "sbx-1", c, paused, false, false)
+	_, err := catalogResolution(ctx, "sbx-1", c, paused, false)
 	if !errors.Is(err, ErrNodeNotFound) {
 		t.Fatalf("expected ErrNodeNotFound, got %v", err)
 	}
@@ -79,7 +79,7 @@ func TestCatalogResolutionPaused_AutoResumeSuccess(t *testing.T) {
 	c := &fakeCatalog{info: info, failCount: 1}
 	paused := &fakePausedChecker{}
 
-	ip, err := catalogResolution(ctx, "sbx-2", c, paused, true, false)
+	ip, err := catalogResolution(ctx, "sbx-2", c, paused, true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -100,7 +100,7 @@ func TestCatalogResolutionPaused_AutoResumeFails(t *testing.T) {
 		resumeErr: errors.New("nope"),
 	}
 
-	_, err := catalogResolution(ctx, "sbx-3", c, paused, true, false)
+	_, err := catalogResolution(ctx, "sbx-3", c, paused, true)
 	if err == nil {
 		t.Fatalf("expected error")
 	}
@@ -123,7 +123,7 @@ func TestCatalogResolutionPaused_AutoResumeDenied(t *testing.T) {
 		resumeErr: status.Error(codes.FailedPrecondition, "auto-resume disabled"),
 	}
 
-	_, err := catalogResolution(ctx, "sbx-denied", c, paused, true, true)
+	_, err := catalogResolution(ctx, "sbx-denied", c, paused, true)
 	if err == nil {
 		t.Fatalf("expected error")
 	}
@@ -144,7 +144,7 @@ func TestCatalogResolution_NoPausedChecker(t *testing.T) {
 	info := &catalog.SandboxInfo{OrchestratorIP: "10.0.0.2"}
 	c := &fakeCatalog{info: info, failCount: 0}
 
-	ip, err := catalogResolution(ctx, "sbx-nil", c, nil, true, false)
+	ip, err := catalogResolution(ctx, "sbx-nil", c, nil, true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -159,29 +159,9 @@ func TestCatalogResolution_NoPausedChecker_NotFound(t *testing.T) {
 	ctx := context.Background()
 	c := &fakeCatalog{info: nil, failCount: 1}
 
-	_, err := catalogResolution(ctx, "sbx-missing", c, nil, true, false)
+	_, err := catalogResolution(ctx, "sbx-missing", c, nil, true)
 	if !errors.Is(err, ErrNodeNotFound) {
 		t.Fatalf("expected ErrNodeNotFound, got %v", err)
-	}
-}
-
-func TestHasProxyAuth(t *testing.T) {
-	t.Parallel()
-
-	if hasProxyAuth(http.Header{}) {
-		t.Fatalf("expected no auth headers")
-	}
-
-	header := http.Header{}
-	header.Set("Authorization", "Bearer sk_e2b_test")
-	if !hasProxyAuth(header) {
-		t.Fatalf("expected auth header to be detected")
-	}
-
-	header = http.Header{}
-	header.Set("X-API-Key", "e2b_test")
-	if !hasProxyAuth(header) {
-		t.Fatalf("expected api key header to be detected")
 	}
 }
 

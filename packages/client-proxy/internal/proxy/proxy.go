@@ -37,11 +37,11 @@ var ErrNodeNotFound = errors.New("node not found")
 // 0 means "use the stored sandbox timeout" in the resume API.
 const resumeTimeoutSeconds int32 = 0
 
-func catalogResolution(ctx context.Context, sandboxId string, c catalog.SandboxesCatalog, pausedChecker PausedSandboxChecker, autoResumeEnabled bool, requestHasAuth bool) (string, error) {
+func catalogResolution(ctx context.Context, sandboxId string, c catalog.SandboxesCatalog, pausedChecker PausedSandboxChecker, autoResumeEnabled bool) (string, error) {
 	s, err := c.GetSandbox(ctx, sandboxId)
 	if err != nil {
 		if errors.Is(err, catalog.ErrSandboxNotFound) {
-			if nodeIP, pausedErr := handlePausedSandbox(ctx, sandboxId, c, pausedChecker, autoResumeEnabled, requestHasAuth); pausedErr != nil {
+			if nodeIP, pausedErr := handlePausedSandbox(ctx, sandboxId, c, pausedChecker, autoResumeEnabled); pausedErr != nil {
 				return "", pausedErr
 			} else if nodeIP != "" {
 				return nodeIP, nil
@@ -64,59 +64,51 @@ func handlePausedSandbox(
 	c catalog.SandboxesCatalog,
 	pausedChecker PausedSandboxChecker,
 	autoResumeEnabled bool,
-	requestHasAuth bool,
 ) (string, error) {
 	// Optimistic resume: try to resume directly without checking pause status first.
 	// The server will return appropriate error codes based on sandbox state and policy.
-	_ = requestHasAuth // auth is now validated server-side
 	if pausedChecker == nil || !autoResumeEnabled {
 		return "", nil
 	}
 
 	logger.L().Info(ctx, "attempting optimistic resume", logger.WithSandboxID(sandboxId))
-	err := pausedChecker.Resume(ctx, sandboxId, resumeTimeoutSeconds)
-	if err != nil {
-		// Check if this is a "not paused" or "no snapshot" case - sandbox doesn't exist as paused
-		if isNotPausedError(err) {
+	outcome, err := resumeOptimistically(ctx, sandboxId, pausedChecker)
+	switch outcome {
+	case resumeNotPaused:
+		return "", nil
+	case resumeAuthDenied:
+		logger.L().Debug(ctx, "auto-resume not allowed", zap.Error(err), logger.WithSandboxID(sandboxId))
+
+		return "", reverseproxy.NewErrSandboxPaused(sandboxId, false)
+	case resumeAlreadyRunning:
+		logger.L().Debug(ctx, "sandbox already running, checking catalog", logger.WithSandboxID(sandboxId))
+		nodeIP, catalogErr := getCatalogIP(ctx, sandboxId, c)
+		if catalogErr == nil {
+			return nodeIP, nil
+		}
+		if errors.Is(catalogErr, catalog.ErrSandboxNotFound) {
 			return "", nil
 		}
 
-		// Check if auto-resume is disabled or auth is required
-		if isAuthResumeError(err) {
-			logger.L().Debug(ctx, "auto-resume not allowed", zap.Error(err), logger.WithSandboxID(sandboxId))
+		logger.L().Warn(ctx, "catalog lookup after resume returned error", zap.Error(catalogErr), logger.WithSandboxID(sandboxId))
 
-			return "", reverseproxy.NewErrSandboxPaused(sandboxId, false)
-		}
-
-		// Already running - try catalog again
-		if isAlreadyRunningError(err) {
-			logger.L().Debug(ctx, "sandbox already running, checking catalog", logger.WithSandboxID(sandboxId))
-			nodeIP, catalogErr := getCatalogIP(ctx, sandboxId, c)
-			if catalogErr == nil {
-				return nodeIP, nil
-			}
-			if errors.Is(catalogErr, catalog.ErrSandboxNotFound) {
-				return "", nil
-			}
-
-			logger.L().Warn(ctx, "catalog lookup after resume returned error", zap.Error(catalogErr), logger.WithSandboxID(sandboxId))
-
-			return "", reverseproxy.NewErrSandboxPaused(sandboxId, true)
-		}
-
+		return "", reverseproxy.NewErrSandboxPaused(sandboxId, true)
+	case resumeFailed:
 		logger.L().Warn(ctx, "auto-resume failed", zap.Error(err), logger.WithSandboxID(sandboxId))
 
 		return "", reverseproxy.NewErrSandboxPaused(sandboxId, true)
-	}
+	case resumeSucceeded:
+		// Resume succeeded, catalog should be ready.
+		nodeIP, catalogErr := getCatalogIP(ctx, sandboxId, c)
+		if catalogErr == nil {
+			return nodeIP, nil
+		}
+		logger.L().Warn(ctx, "auto-resume catalog lookup failed", zap.Error(catalogErr), logger.WithSandboxID(sandboxId))
 
-	// Resume succeeded, catalog should be ready.
-	nodeIP, catalogErr := getCatalogIP(ctx, sandboxId, c)
-	if catalogErr == nil {
-		return nodeIP, nil
+		return "", reverseproxy.NewErrSandboxPaused(sandboxId, true)
+	default:
+		return "", reverseproxy.NewErrSandboxPaused(sandboxId, true)
 	}
-	logger.L().Warn(ctx, "auto-resume catalog lookup failed", zap.Error(catalogErr), logger.WithSandboxID(sandboxId))
-
-	return "", reverseproxy.NewErrSandboxPaused(sandboxId, true)
 }
 
 func isAuthResumeError(err error) bool {
@@ -149,6 +141,34 @@ func isAlreadyRunningError(err error) bool {
 	}
 
 	return grpcStatus.GRPCStatus().Code() == codes.AlreadyExists
+}
+
+type resumeOutcome int
+
+const (
+	resumeSucceeded resumeOutcome = iota
+	resumeNotPaused
+	resumeAlreadyRunning
+	resumeAuthDenied
+	resumeFailed
+)
+
+func resumeOptimistically(ctx context.Context, sandboxId string, pausedChecker PausedSandboxChecker) (resumeOutcome, error) {
+	err := pausedChecker.Resume(ctx, sandboxId, resumeTimeoutSeconds)
+	if err == nil {
+		return resumeSucceeded, nil
+	}
+	if isNotPausedError(err) {
+		return resumeNotPaused, err
+	}
+	if isAlreadyRunningError(err) {
+		return resumeAlreadyRunning, err
+	}
+	if isAuthResumeError(err) {
+		return resumeAuthDenied, err
+	}
+
+	return resumeFailed, err
 }
 
 func getCatalogIP(ctx context.Context, sandboxId string, c catalog.SandboxesCatalog) (string, error) {
@@ -186,9 +206,8 @@ func NewClientProxyWithPausedChecker(meterProvider metric.MeterProvider, service
 				zap.Int64("content_length", r.ContentLength),
 			)
 
-			requestHasAuth := hasProxyAuth(r.Header)
 			ctx = withProxyAuthMetadata(ctx, r.Header)
-			nodeIP, err := catalogResolution(ctx, sandboxId, catalog, pausedChecker, autoResumeEnabled, requestHasAuth)
+			nodeIP, err := catalogResolution(ctx, sandboxId, catalog, pausedChecker, autoResumeEnabled)
 			if err != nil {
 				if errors.Is(err, ErrNodeNotFound) {
 					return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)
@@ -217,7 +236,7 @@ func NewClientProxyWithPausedChecker(meterProvider metric.MeterProvider, service
 				SandboxPort:   port,
 				ConnectionKey: pool.ClientProxyConnectionKey,
 				Url:           url,
-				OnProxyError:  pausedFallbackHandler(sandboxId, pausedChecker, autoResumeEnabled, requestHasAuth),
+				OnProxyError:  pausedFallbackHandler(sandboxId, pausedChecker, autoResumeEnabled),
 			}, nil
 		},
 		false,
@@ -264,9 +283,7 @@ func pausedFallbackHandler(
 	sandboxId string,
 	pausedChecker PausedSandboxChecker,
 	autoResumeEnabled bool,
-	requestHasAuth bool,
 ) pool.ProxyErrorHandler {
-	_ = requestHasAuth // auth is now validated server-side
 	if pausedChecker == nil || !autoResumeEnabled {
 		return nil
 	}
@@ -279,27 +296,17 @@ func pausedFallbackHandler(
 			resumeCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 			defer cancel()
 
-			if resumeErr := pausedChecker.Resume(resumeCtx, sandboxId, resumeTimeoutSeconds); resumeErr != nil {
-				// Only log if it's not a "not paused" or "already running" case
-				if !isNotPausedError(resumeErr) && !isAlreadyRunningError(resumeErr) {
-					logger.L().Warn(resumeCtx, "auto-resume failed after proxy error", zap.Error(resumeErr), logger.WithSandboxID(sandboxId))
-				}
+			outcome, resumeErr := resumeOptimistically(resumeCtx, sandboxId, pausedChecker)
+			switch outcome {
+			case resumeFailed:
+				logger.L().Warn(resumeCtx, "auto-resume failed after proxy error", zap.Error(resumeErr), logger.WithSandboxID(sandboxId))
+			case resumeAuthDenied:
+				logger.L().Debug(resumeCtx, "auto-resume not allowed after proxy error", zap.Error(resumeErr), logger.WithSandboxID(sandboxId))
 			}
 		}()
 
 		return false
 	}
-}
-
-func hasProxyAuth(header http.Header) bool {
-	if strings.TrimSpace(header.Get("Authorization")) != "" {
-		return true
-	}
-	if strings.TrimSpace(header.Get("X-API-Key")) != "" {
-		return true
-	}
-
-	return false
 }
 
 func withProxyAuthMetadata(ctx context.Context, header http.Header) context.Context {
