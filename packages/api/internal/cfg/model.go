@@ -49,7 +49,7 @@ type Config struct {
 	DefaultKernelVersion string `env:"DEFAULT_KERNEL_VERSION"`
 
 	DefaultPersistentVolumeType string            `env:"DEFAULT_PERSISTENT_VOLUME_TYPE"`
-	PersistentVolumeTypes       map[string]string `env:"PERSISTENT_VOLUME_TYPES"`
+	PersistentVolumeMounts      map[string]string `env:"PERSISTENT_VOLUME_MOUNTS"`
 }
 
 func Parse() (Config, error) {
@@ -64,8 +64,8 @@ func Parse() (Config, error) {
 		config.AuthDBConnectionString = config.PostgresConnectionString
 	}
 
-	if config.PersistentVolumeTypes != nil {
-		for name, path := range config.PersistentVolumeTypes {
+	if config.PersistentVolumeMounts != nil {
+		for name, path := range config.PersistentVolumeMounts {
 			info, err := os.Stat(path)
 			if err != nil {
 				return config, fmt.Errorf("failed to stat persistent volume mount %q (%q): %w", name, path, err)
@@ -78,7 +78,7 @@ func Parse() (Config, error) {
 	}
 
 	if config.DefaultPersistentVolumeType != "" {
-		if _, ok := config.PersistentVolumeTypes[config.DefaultPersistentVolumeType]; !ok {
+		if _, ok := config.PersistentVolumeMounts[config.DefaultPersistentVolumeType]; !ok {
 			return config, fmt.Errorf("default persistent volume type %q is not defined", config.DefaultPersistentVolumeType)
 		}
 	}

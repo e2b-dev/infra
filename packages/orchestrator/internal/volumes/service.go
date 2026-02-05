@@ -2,11 +2,11 @@ package volumes
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -40,12 +40,26 @@ func (v *VolumeService) buildVolumePath(volumeType, teamId, volumeID string) (st
 		return "", status.Errorf(codes.NotFound, "volume type %s not found", volumeType)
 	}
 
+	if !tryParseUUID(teamId) {
+		return "", status.Errorf(codes.InvalidArgument, "invalid team ID %s", teamId)
+	}
+
+	if !tryParseUUID(volumeID) {
+		return "", status.Errorf(codes.InvalidArgument, "invalid volume ID %s", volumeID)
+	}
+
 	volumePath := filepath.Join(volPath, teamId, volumeID)
 	if !strings.HasPrefix(volumePath, volPath) {
 		return "", status.Errorf(codes.PermissionDenied, "volume path %s is not under %s", volumePath, volPath)
 	}
 
 	return volumePath, nil
+}
+
+func tryParseUUID(id string) bool {
+	_, err := uuid.Parse(id)
+
+	return err == nil
 }
 
 func (v *VolumeService) Create(_ context.Context, request *orchestrator.VolumeCreateRequest) (*orchestrator.VolumeCreateResponse, error) {
@@ -67,11 +81,11 @@ func (v *VolumeService) Delete(
 ) (*orchestrator.VolumeDeleteResponse, error) {
 	volumePath, err := v.buildVolumePath(request.GetVolumeType(), request.GetTeamId(), request.GetVolumeId())
 	if err != nil {
-		return nil, fmt.Errorf("failed to build volume path: %w", err)
+		return nil, status.Errorf(codes.Internal, "failed to build volume path: %s", err.Error())
 	}
 
 	if err := os.RemoveAll(volumePath); err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to delete volume: %v", err)
+		return nil, status.Errorf(codes.Internal, "failed to delete volume: %s", err.Error())
 	}
 
 	return &orchestrator.VolumeDeleteResponse{}, nil

@@ -43,7 +43,7 @@ func TestParse(t *testing.T) {
 		config, err := Parse()
 		require.NoError(t, err, "no default is acceptable")
 		assert.Empty(t, config.DefaultPersistentVolumeType)
-		assert.Equal(t, map[string]string{"valid": dir1, "other": dir2}, config.PersistentVolumeTypes)
+		assert.Equal(t, map[string]string{"valid": dir1, "other": dir2}, config.PersistentVolumeMounts)
 
 		t.Setenv("DEFAULT_PERSISTENT_VOLUME_TYPE", "invalid")
 		_, err = Parse()
@@ -53,7 +53,7 @@ func TestParse(t *testing.T) {
 		config, err = Parse()
 		require.NoError(t, err, "valid default is acceptable")
 		assert.Equal(t, "valid", config.DefaultPersistentVolumeType)
-		assert.Equal(t, map[string]string{"valid": dir1, "other": dir2}, config.PersistentVolumeTypes)
+		assert.Equal(t, map[string]string{"valid": dir1, "other": dir2}, config.PersistentVolumeMounts)
 	})
 }
 

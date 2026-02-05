@@ -47,7 +47,7 @@ func newLocalClusterResourceProvider(
 func (l *LocalClusterResourceProvider) GetVolumeTypes(_ context.Context) ([]string, error) {
 	var volumeTypes []string
 
-	for volumeType := range l.config.PersistentVolumeTypes {
+	for volumeType := range l.config.PersistentVolumeMounts {
 		volumeTypes = append(volumeTypes, volumeType)
 	}
 
