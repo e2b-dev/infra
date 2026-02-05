@@ -1,6 +1,7 @@
 package nfsproxy
 
 import (
+	"fmt"
 	"io"
 	"net"
 	"os"
@@ -268,7 +269,7 @@ func TestGetPrefixFromSandbox(t *testing.T) {
 	}
 	happyDirPath := "/good-volume"
 	happyFS := memfs.New()
-	happyPrefix := "good-volume"
+	happyPrefix := filepath.Join("team-id", "good-volume")
 	happyVolumeName := "good-volume"
 	happyVolumeType := "good-volume-type"
 
@@ -279,6 +280,9 @@ func TestGetPrefixFromSandbox(t *testing.T) {
 				VolumeMounts: []sandbox.VolumeMountConfig{
 					{Name: happyVolumeName, Path: "/volume", Type: happyVolumeType},
 				},
+			},
+			Runtime: sandbox.RuntimeMetadata{
+				TeamID: "team-id",
 			},
 		},
 		Resources: &sandbox.Resources{
@@ -329,6 +333,15 @@ func TestGetPrefixFromSandbox(t *testing.T) {
 				err:    ErrMustMountAbsolutePath,
 			},
 		},
+		"cannot mount relative path": {
+			remoteAddr: happyAddr,
+			dirpath:    "good-volume",
+			expected: expectations{
+				fs:     nil,
+				prefix: "",
+				err:    ErrMustMountAbsolutePath,
+			},
+		},
 		"cannot mount root": {
 			remoteAddr: happyAddr,
 			dirpath:    "/",
@@ -344,7 +357,110 @@ func TestGetPrefixFromSandbox(t *testing.T) {
 			expected: expectations{
 				fs:     nil,
 				prefix: "",
-				err:    ErrVolumeNotFound,
+				err:    fmt.Errorf("failed to mount %q: %w", "nonexistent-volume", ErrVolumeNotFound),
+			},
+		},
+		"sandbox not found": {
+			remoteAddr: &net.TCPAddr{IP: net.IPv4(1, 2, 3, 4), Port: 12345},
+			dirpath:    happyDirPath,
+			expected: expectations{
+				fs:     nil,
+				prefix: "",
+				err:    fmt.Errorf("sandbox with address 1.2.3.4:12345 not found"),
+			},
+		},
+		"volume type not supported": {
+			remoteAddr: happyAddr,
+			dirpath:    happyDirPath,
+			expected: expectations{
+				fs:     nil,
+				prefix: "",
+				err:    fmt.Errorf("failed to mount %q (%s): %w", happyVolumeName, happyVolumeType, ErrVolumeTypeNotSupported),
+			},
+		},
+		"volume name is empty (trailing slash)": {
+			remoteAddr: happyAddr,
+			dirpath:    "//",
+			expected: expectations{
+				fs:     nil,
+				prefix: "",
+				err:    ErrCannotMountRoot,
+			},
+		},
+		"multiple path segments": {
+			remoteAddr: happyAddr,
+			dirpath:    filepath.Join(happyDirPath, "sub1", "sub2"),
+			expected: expectations{
+				fs:     happyFS,
+				prefix: filepath.Join(happyPrefix, "sub1", "sub2"),
+			},
+		},
+		"path with trailing slash": {
+			remoteAddr: happyAddr,
+			dirpath:    happyDirPath + "/",
+			expected: expectations{
+				fs:     happyFS,
+				prefix: happyPrefix,
+			},
+		},
+		"path with multiple leading slashes": {
+			remoteAddr: happyAddr,
+			dirpath:    "///" + happyDirPath,
+			expected: expectations{
+				fs:     happyFS,
+				prefix: happyPrefix,
+			},
+		},
+		"chroot escape attempt: ..happy": {
+			remoteAddr: happyAddr,
+			dirpath:    "/../" + happyDirPath,
+			expected: expectations{
+				fs:     happyFS,
+				prefix: happyPrefix,
+			},
+		},
+		"chroot escape attempt: ....happy": {
+			remoteAddr: happyAddr,
+			dirpath:    "/../../" + happyDirPath,
+			expected: expectations{
+				fs:     happyFS,
+				prefix: happyPrefix,
+			},
+		},
+		"chroot escape attempt: ..": {
+			remoteAddr: happyAddr,
+			dirpath:    happyDirPath + "/..",
+			expected: expectations{
+				fs:     nil,
+				prefix: "",
+				err:    ErrCannotMountRoot,
+			},
+		},
+		"chroot escape attempt: .. with trailing slash": {
+			remoteAddr: happyAddr,
+			dirpath:    happyDirPath + "/../",
+			expected: expectations{
+				fs:     nil,
+				prefix: "",
+				err:    ErrCannotMountRoot,
+			},
+		},
+		"chroot escape attempt: ....": {
+			remoteAddr: happyAddr,
+			dirpath:    happyDirPath + "/../..",
+			expected: expectations{
+				fs:     nil,
+				prefix: "",
+				err:    ErrCannotMountRoot,
+			},
+		},
+		"chroot escape attempt: .... with trailing": {
+			remoteAddr: happyAddr,
+			dirpath:    happyDirPath + "/../../",
+			expected: expectations{
+				fs:     nil,
+				prefix: "",
+				err:    ErrCannotMountRoot,
 			},
 		},
 	}
@@ -357,12 +473,21 @@ func TestGetPrefixFromSandbox(t *testing.T) {
 				Dirpath: []byte(tc.dirpath),
 			}
 
-			handler := getPrefixFromSandbox(sandboxes, filesystemsByType)
+			fsByType := filesystemsByType
+			if name == "volume type not supported" {
+				fsByType = nil
+			}
+
+			handler := getPrefixFromSandbox(sandboxes, fsByType)
 
 			fs, prefix, err := handler(t.Context(), tc.remoteAddr, request)
 			assert.Equal(t, tc.expected.fs, fs)
 			assert.Equal(t, tc.expected.prefix, prefix)
-			assert.ErrorIs(t, err, tc.expected.err)
+			if tc.expected.err != nil {
+				assert.EqualError(t, err, tc.expected.err.Error())
+			} else {
+				assert.NoError(t, err)
+			}
 		})
 	}
 }

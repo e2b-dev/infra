@@ -48,7 +48,7 @@ func TestJailedFS(t *testing.T) {
 	write(t, fs, "good_folder/more_dir/other_file", 0o644, "more content")
 
 	// Setup jailed handler
-	getPrefix := func(_ context.Context, _ net.Conn, _ nfs.MountRequest) (billy.Filesystem, string, error) {
+	getPrefix := func(_ context.Context, _ net.Addr, _ nfs.MountRequest) (billy.Filesystem, string, error) {
 		return fs, "good_folder", nil
 	}
 
@@ -58,7 +58,8 @@ func TestJailedFS(t *testing.T) {
 
 	// Simulate mount
 	ctx := context.Background()
-	status, jfs, _ := handler.Mount(ctx, nil, nfs.MountRequest{Dirpath: []byte("/")})
+	conn := &net.TCPConn{}
+	status, jfs, _ := handler.Mount(ctx, conn, nfs.MountRequest{Dirpath: []byte("/")})
 	require.Equal(t, nfs.MountStatusOk, status)
 
 	t.Run("access good file", func(t *testing.T) {

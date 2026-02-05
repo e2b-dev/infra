@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/go-git/go-billy/v5"
@@ -27,10 +28,14 @@ type Proxy struct {
 	server *nfs.Server
 }
 
-var ErrCannotMountRoot = errors.New("cannot mount root")
-var ErrVolumeTypeNotSupported = errors.New("volume type not supported")
-var ErrVolumeNotFound = errors.New("volume not found")
-var ErrMustMountAbsolutePath = errors.New("must mount absolute path")
+var (
+	ErrCannotMountRoot        = errors.New("cannot mount root")
+	ErrVolumeTypeNotSupported = errors.New("volume type not supported")
+	ErrVolumeNotFound         = errors.New("volume not found")
+	ErrMustMountAbsolutePath  = errors.New("must mount absolute path")
+)
+
+var onlyGoodChars = regexp.MustCompile(`[\\/.]*(.*)[\\/.]*`)
 
 func getPrefixFromSandbox(sandboxes *sandbox.Map, filesystemsByType map[string]billy.Filesystem) jailed.GetPrefix {
 	return func(_ context.Context, remoteAddr net.Addr, request nfs.MountRequest) (billy.Filesystem, string, error) {
@@ -41,22 +46,20 @@ func getPrefixFromSandbox(sandboxes *sandbox.Map, filesystemsByType map[string]b
 
 		// normalize the mount path
 		requestedPath := string(request.Dirpath)
+		requestedPath = filepath.Clean(requestedPath)
+
+		// at this point it must have at least a slash
 		if !filepath.IsAbs(requestedPath) {
 			return nil, "", ErrMustMountAbsolutePath
 		}
-		requestedPath = strings.TrimPrefix(requestedPath, "/")
-		requestedPath = strings.TrimSuffix(requestedPath, "/")
 
 		// get the mount name from the path
-		if requestedPath == "" || requestedPath == "." || requestedPath == "/" {
+		if requestedPath == "/" {
 			return nil, "", ErrCannotMountRoot
 		}
 
 		requestedPathParts := strings.Split(requestedPath, "/")
-		if len(requestedPathParts) == 0 {
-			return nil, "", ErrCannotMountRoot
-		}
-		volumeName := requestedPathParts[0]
+		volumeName := requestedPathParts[1]
 		if volumeName == "" {
 			return nil, "", ErrCannotMountRoot
 		}
@@ -66,6 +69,7 @@ func getPrefixFromSandbox(sandboxes *sandbox.Map, filesystemsByType map[string]b
 		for _, sbxVolumeMount := range sbx.Config.VolumeMounts {
 			if sbxVolumeMount.Name == volumeName {
 				volumeMount = &sbxVolumeMount
+
 				break
 			}
 		}
@@ -80,22 +84,12 @@ func getPrefixFromSandbox(sandboxes *sandbox.Map, filesystemsByType map[string]b
 		}
 
 		prefixParts := []string{sbx.Metadata.Runtime.TeamID, volumeName}
-		if len(requestedPathParts) > 1 {
-			prefixParts = append(prefixParts, requestedPathParts[1:]...)
+		if len(requestedPathParts) > 2 {
+			prefixParts = append(prefixParts, requestedPathParts[2:]...)
 		}
 
 		return fileSystem, filepath.Join(prefixParts...), nil
 	}
-}
-
-func buildFilesystems(mounts map[string]string) map[string]billy.Filesystem {
-	results := make(map[string]billy.Filesystem)
-
-	for name, path := range mounts {
-		results[name] = osfs.New(path)
-	}
-
-	return results
 }
 
 func getChangeFromFilesystem(fs billy.Filesystem) billy.Change {
@@ -107,7 +101,11 @@ func getChangeFromFilesystem(fs billy.Filesystem) billy.Change {
 }
 
 func NewProxy(ctx context.Context, sandboxes *sandbox.Map, config cfg.Config) *Proxy {
-	filesystemsByType := buildFilesystems(config.PersistentVolumeMounts)
+	filesystemsByType := make(map[string]billy.Filesystem)
+
+	for name, path := range config.PersistentVolumeMounts {
+		filesystemsByType[name] = osfs.New(path)
+	}
 
 	var handler nfs.Handler
 	handler = jailed.NewNFSHandler(
