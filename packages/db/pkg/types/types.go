@@ -30,10 +30,10 @@ type SandboxNetworkConfig struct {
 }
 
 type PausedSandboxConfig struct {
-	Version               string                `json:"version"`
-	Network               *SandboxNetworkConfig `json:"network,omitempty"`
-	SandboxResumesOn      *string               `json:"sandboxResumesOn,omitempty"`
-	SandboxPausedSeconds  *int32                `json:"sandboxPausedSeconds,omitempty"`
+	Version              string                `json:"version"`
+	Network              *SandboxNetworkConfig `json:"network,omitempty"`
+	SandboxResumesOn     *string               `json:"sandboxResumesOn,omitempty"`
+	SandboxPausedSeconds *int32                `json:"sandboxPausedSeconds,omitempty"`
 	// Deprecated: keep for backward-compatible reads of existing snapshots.
 	SandboxTimeoutSeconds *int32 `json:"sandboxTimeoutSeconds,omitempty"`
 	// Deprecated: old snake_case key used in earlier snapshots.
