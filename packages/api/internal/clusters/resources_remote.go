@@ -96,7 +96,7 @@ func (r *ClusterResourceProviderImpl) GetSandboxesMetrics(ctx context.Context, t
 }
 
 func (r *ClusterResourceProviderImpl) GetSandboxLogs(ctx context.Context, teamID string, sandboxID string, start *int64, end *int64, limit *int32, dr *api.LogsDirection) (api.SandboxLogs, *api.APIError) {
-	var direction *edgeapi.V1SandboxLogsParamsDirection = nil
+	var direction *edgeapi.V1SandboxLogsParamsDirection
 	if dr != nil {
 		if *dr == api.LogsDirectionBackward {
 			direction = utils.ToPtr(edgeapi.V1SandboxLogsParamsDirectionBackward)
