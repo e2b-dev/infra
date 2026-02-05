@@ -13,8 +13,8 @@ import (
 )
 
 const createOrUpdateTemplate = `-- name: CreateOrUpdateTemplate :exec
-INSERT INTO "public"."envs"(id, team_id, created_by, updated_at, public, cluster_id)
-VALUES ($1, $2, $3, NOW(),FALSE, $4)
+INSERT INTO "public"."envs"(id, team_id, created_by, updated_at, public, cluster_id, source)
+VALUES ($1, $2, $3, NOW(), FALSE, $4, 'template')
 ON CONFLICT (id) DO UPDATE
 SET updated_at  = NOW(),
     build_count = envs.build_count + 1
@@ -54,7 +54,6 @@ INSERT INTO "public"."env_builds" (
 ) VALUES (
     $1,
     NOW(),
-    'waiting',
     $2,
     $3,
     $4,
@@ -63,12 +62,14 @@ INSERT INTO "public"."env_builds" (
     $7,
     $8,
     $9,
-    $10
+    $10,
+    $11
 )
 `
 
 type CreateTemplateBuildParams struct {
 	BuildID            uuid.UUID
+	Status             string
 	RamMb              int64
 	Vcpu               int64
 	KernelVersion      string
@@ -83,6 +84,7 @@ type CreateTemplateBuildParams struct {
 func (q *Queries) CreateTemplateBuild(ctx context.Context, arg CreateTemplateBuildParams) error {
 	_, err := q.db.Exec(ctx, createTemplateBuild,
 		arg.BuildID,
+		arg.Status,
 		arg.RamMb,
 		arg.Vcpu,
 		arg.KernelVersion,
@@ -106,7 +108,7 @@ FROM "public"."env_build_assignments" eba
 WHERE eba.build_id = eb.id
     AND eba.env_id = $2
     AND eba.tag = ANY($3::text[])
-    AND eb.status = 'waiting'
+    AND eb.status IN ('waiting', 'pending')
 `
 
 type InvalidateUnstartedTemplateBuildsParams struct {

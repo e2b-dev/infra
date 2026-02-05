@@ -31,15 +31,11 @@ LEFT JOIN LATERAL (
     SELECT b.*
     FROM public.env_build_assignments AS ba
     JOIN public.env_builds AS b ON b.id = ba.build_id
-    WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status = 'uploaded'
+    WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status IN ('success', 'uploaded', 'ready')
     ORDER BY ba.created_at DESC
     LIMIT 1
 ) eb ON TRUE
 WHERE
   e.team_id = $1
-  AND NOT EXISTS (
-    SELECT 1
-    FROM public.snapshots AS s
-    WHERE s.env_id = e.id
-  )
+  AND e.source = 'template'
 ORDER BY e.created_at ASC;
