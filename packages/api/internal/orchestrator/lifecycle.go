@@ -27,18 +27,15 @@ func (o *Orchestrator) addSandboxToRoutingTable(ctx context.Context, sandbox san
 	}
 
 	nodeIP := node.IPAddress
-	// if nodeIP == "" && env.IsLocal() {
-	// 	nodeIP = env.GetEnv("TESTS_ORCH_INSTANCE_HOST", "localhost")
-	// }
-	// if nodeIP == "" {
-	// 	logger.L().Warn(ctx, "Skipping routing table update: node IP missing", logger.WithNodeID(node.ID), logger.WithSandboxID(sandbox.SandboxID))
+	if nodeIP == "" && env.IsLocal() {
+		nodeIP = env.GetEnv("TESTS_ORCH_INSTANCE_HOST", "localhost")
+	}
+	if nodeIP == "" {
+		logger.L().Warn(ctx, "Skipping routing table update: node IP missing", logger.WithNodeID(node.ID), logger.WithSandboxID(sandbox.SandboxID))
 
-	// 	return
-	// }
-
-	// Log the IP address for the github action so we can debug any issues
-	logger.L().Info(ctx, "!!!!! Adding sandbox to routing table", zap.String("node_ip", nodeIP), logger.WithNodeID(node.ID), logger.WithSandboxID(sandbox.SandboxID))
-
+		return
+	}
+	
 	info := e2bcatalog.SandboxInfo{
 		OrchestratorID: node.Metadata().ServiceInstanceID,
 		OrchestratorIP: nodeIP,
