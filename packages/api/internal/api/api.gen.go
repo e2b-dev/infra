@@ -10527,6 +10527,14 @@ func (siw *ServerInterfaceWrapper) PostV3Templates(c *gin.Context) {
 // GetVolumes operation middleware
 func (siw *ServerInterfaceWrapper) GetVolumes(c *gin.Context) {
 
+	c.Set(AccessTokenAuthScopes, []string{})
+
+	c.Set(ApiKeyAuthScopes, []string{})
+
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -10539,6 +10547,14 @@ func (siw *ServerInterfaceWrapper) GetVolumes(c *gin.Context) {
 
 // PostVolumes operation middleware
 func (siw *ServerInterfaceWrapper) PostVolumes(c *gin.Context) {
+
+	c.Set(AccessTokenAuthScopes, []string{})
+
+	c.Set(ApiKeyAuthScopes, []string{})
+
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -10564,6 +10580,14 @@ func (siw *ServerInterfaceWrapper) DeleteVolumesVolumeID(c *gin.Context) {
 		return
 	}
 
+	c.Set(AccessTokenAuthScopes, []string{})
+
+	c.Set(ApiKeyAuthScopes, []string{})
+
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -10587,6 +10611,14 @@ func (siw *ServerInterfaceWrapper) GetVolumesVolumeID(c *gin.Context) {
 		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter volumeID: %w", err), http.StatusBadRequest)
 		return
 	}
+
+	c.Set(AccessTokenAuthScopes, []string{})
+
+	c.Set(ApiKeyAuthScopes, []string{})
+
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -10812,10 +10844,10 @@ var swaggerSpec = []string{
 	"FNj5sVkejMn82Jmk7MvB95zzsSEMP6nFlgu9XaE0IShlKE6ZyhcKkBiUU00oub7ee+2p0IKgXsqNixWU",
 	"QpIy9Vuy278myHzOhy3Lg2qM4uajyr4cPEdc2ZeDl25f1ZD40ZJpOoRSuyO7u95CtyvKorvv2xm1lUW0",
 	"G0hevV2boO4er8NYH4OT2J/Py7BlHg8QGcXhX5aTY4vc9F2bOF9TeL97FuH97rmEt16A4X9mIa9yvJ/y",
-	"oMTu0Jp1prXrall82v6zTV2JeOwdIoI7SHM328SjgbuZa0yxuaL8seOAW9DeSk57A+LdBp3as3Yg0qSz",
-	"b8LqpRzfJtqtwzb5qv4xqppcCzGoRpocvuhhRysNZj0DYz4ryDDxnriJiBdgu3Odvw4nVrGBVg/WNkG9",
-	"v+uDZN7PfjvYU7KRLQ20cxbpKuz8cDLBGd0jB7d7OMs8S+p9LR9Ylu8Lv9aKJVR/hMeg9t+VssT2B1M/",
-	"zvoNprX+LgTNzeP/BgAA//9juOotPgEBAA==",
+	"oMTu0Jp1prXrall82v6zTV2JeOwdIoI7SHM3z+0m3SB6zZbG1LQrqiw7+IiF1K2kzjeY3G1sqz1rB72Y",
+	"rPlNWH1Lr0q2Ql0W65h8Vf8YVRuvheZUI011X/Swo1Ugs56BEawVnJvoVdzE949nibS5SYfnr4BTq9tv",
+	"mxjd3zVbMI+OX4mkzhRgcrY0SM1ZpCvk88PJBGd0jxzc7uEs86z+X8vHr+Xbz6+1QhbVH+Ghrv13pWS0",
+	"/cHU9rN+g2mtvwsl4ObxfwMAAP//hWT219oCAQA=",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

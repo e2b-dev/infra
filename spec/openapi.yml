@@ -2944,6 +2944,11 @@ paths:
     get:
       description: List all team volumes
       tags: [volumes]
+      security:
+        - AccessTokenAuth: []
+        - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       responses:
         "200":
           description: Successfully listed all team volumes
@@ -2961,6 +2966,11 @@ paths:
     post:
       description: Create a new team volume
       tags: [volumes]
+      security:
+        - AccessTokenAuth: []
+        - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       requestBody:
         required: true
         content:
@@ -2985,6 +2995,11 @@ paths:
     get:
       description: Get team volume info
       tags: [volumes]
+      security:
+        - AccessTokenAuth: []
+        - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/volumeID"
       responses:
@@ -3004,6 +3019,11 @@ paths:
     delete:
       description: Delete a team volume
       tags: [volumes]
+      security:
+        - AccessTokenAuth: []
+        - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/volumeID"
       responses:

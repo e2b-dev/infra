@@ -102,7 +102,6 @@ runs:
         OTEL_COLLECTOR_GRPC_ENDPOINT: "localhost:4317"
         MAX_PARALLEL_MEMFILE_SNAPSHOTTING: "2"
         SHARED_CHUNK_CACHE_PATH: "./.e2b-chunk-cache"
-        PERSISTENT_VOLUME_MOUNTS: "test-volume-type:${{ env.RUNNER_TEMP }}/.e2b-test-volumes"
         DEFAULT_PERSISTENT_VOLUME_TYPE: "test-volume-type"
       run: |
         mkdir -p $SHARED_CHUNK_CACHE_PATH
