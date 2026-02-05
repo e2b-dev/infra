@@ -150,7 +150,7 @@ func run() int {
 	// Proxy sandbox http traffic to orchestrator nodes
 	autoResumeEnabled := featureFlagsClient.BoolFlag(ctx, featureflags.SandboxAutoResumeFlag, featureflags.ServiceContext(serviceName))
 
-	trafficProxy, err := e2bproxy.NewClientProxyWithPausedChecker(
+	trafficProxy, err := e2bproxy.NewClientProxy(
 		tel.MeterProvider,
 		serviceName,
 		config.ProxyPort,

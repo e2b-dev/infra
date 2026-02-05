@@ -171,7 +171,7 @@ func getCatalogIP(ctx context.Context, sandboxId string, c catalog.SandboxesCata
 	return s.OrchestratorIP, nil
 }
 
-func NewClientProxyWithPausedChecker(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog catalog.SandboxesCatalog, pausedChecker PausedSandboxResumer, autoResumeEnabled bool) (*reverseproxy.Proxy, error) {
+func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog catalog.SandboxesCatalog, pausedChecker PausedSandboxResumer, autoResumeEnabled bool) (*reverseproxy.Proxy, error) {
 	getTargetFromRequest := reverseproxy.GetTargetFromRequest(env.IsLocal())
 
 	proxy := reverseproxy.New(
