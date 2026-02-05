@@ -109,9 +109,10 @@ runs:
         mkdir -p ~/logs
         
         echo "creating persistent volume mounts"
-        IFS=',' read -ra pairs <<< "$PERSISTENT_VOLUME_MOUNTS"
+        IFS=',' read -r pairs <<< "$PERSISTENT_VOLUME_MOUNTS"
         for pair in "${pairs[@]}"; do
             value="${pair#*:}"
+            echo "creating mount point: $value"
             mkdir -p "$value"
         done
         
