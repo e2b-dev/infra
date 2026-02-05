@@ -4,13 +4,8 @@ import (
 	"sync"
 )
 
-// WaitMap allows you to wait for functions with given keys and execute them only once.
-//
-// TODO: Add a test that verifies the fetchers deduplication behavior:
-// - First caller starts fetching, all others wait
-// - All callers get the exact same result (e.g., same slice pointer)
-// - Only one caller actually updates the cache
-// - Verify proper behavior when the underlying cache is invalidated/cleared
+// WaitMap allows you to wait for functions with given keys and execute them
+// only once. Consider replacing with singleflight if appropriate.
 type WaitMap struct {
 	mu sync.Mutex
 	m  map[int64]func() error
