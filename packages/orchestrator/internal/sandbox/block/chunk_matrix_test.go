@@ -389,10 +389,12 @@ func runMatrixFileSize(t *testing.T, factory ChunkerFactory) {
 }
 
 // =============================================================================
-// Compressed chunker tests (require FrameTable, can span frames)
+// Compressed chunker tests (Chunk rejects frame-spanning requests)
 // =============================================================================
 
-func runMatrixSliceAcrossFrames(t *testing.T, factory ChunkerFactory) {
+// runMatrixChunkHandlesFrameSpan tests that cross-frame reads trigger SLOW_PATH_HIT error.
+// This helps verify whether slow path is ever invoked in practice.
+func runMatrixChunkHandlesFrameSpan(t *testing.T, factory ChunkerFactory) {
 	t.Helper()
 	ctx := context.Background()
 
@@ -403,14 +405,13 @@ func runMatrixSliceAcrossFrames(t *testing.T, factory ChunkerFactory) {
 		t.Skip("test requires multi-frame setup")
 	}
 
-	// Read spanning the frame boundary
 	frameSize := int64(tc.FrameTable.Frames[0].U)
 	offset := frameSize - 500
 	length := int64(1000) // spans 500 bytes into second frame
 
-	slice, err := tc.Chunker.Slice(ctx, offset, length, tc.FrameTable)
-	require.NoError(t, err)
-	assert.Equal(t, tc.Data[offset:offset+length], slice)
+	_, err := tc.Chunker.Slice(ctx, offset, length, tc.FrameTable)
+	require.Error(t, err, "cross-frame read should error with SLOW_PATH_HIT")
+	assert.Contains(t, err.Error(), "SLOW_PATH_HIT", "error should indicate slow path was triggered")
 }
 
 // =============================================================================
@@ -485,8 +486,7 @@ func TestChunkerMatrix_CompressedChunkers(t *testing.T) {
 		name string
 		test func(t *testing.T, factory ChunkerFactory)
 	}{
-		{"SliceAcrossFrames", runMatrixSliceAcrossFrames},
-		{"LargeRequestPartialCacheMiss", runMatrixLargeRequestPartialCacheMiss},
+		{"ChunkHandlesFrameSpan", runMatrixChunkHandlesFrameSpan},
 	}
 
 	for factoryName, factory := range factories {

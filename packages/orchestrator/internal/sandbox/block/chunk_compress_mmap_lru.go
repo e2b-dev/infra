@@ -8,7 +8,6 @@ import (
 
 	"github.com/klauspost/compress/zstd"
 	"go.opentelemetry.io/otel/attribute"
-	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/singleflight"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
@@ -149,54 +148,13 @@ func (c *CompressMMapLRUChunker) Slice(ctx context.Context, off, length int64, f
 		return data[startInFrame:endInFrame], nil
 	}
 
-	// Slow path: read spans multiple frames
-	result := make([]byte, length)
-	var eg errgroup.Group
+	// Slow path: read spans multiple frames - LOG AND ERROR to verify if this ever happens
+	timer.Failure(ctx, length,
+		attribute.String(pullType, pullTypeLocal),
+		attribute.String(failureReason, "cross_frame_span"))
 
-	copied := 0
-	for copied < int(length) {
-		currentOff := off + int64(copied)
-
-		frameStarts, frameSize, err := ft.FrameFor(currentOff)
-		if err != nil {
-			timer.Failure(ctx, length,
-				attribute.String(pullType, pullTypeLocal),
-				attribute.String(failureReason, "frame_lookup_failed"))
-
-			return nil, fmt.Errorf("failed to get frame for offset %d: %w", currentOff, err)
-		}
-
-		startInFrame := currentOff - frameStarts.U
-		remaining := int(length) - copied
-		available := int(frameSize.U) - int(startInFrame)
-		toCopy := min(remaining, available)
-		resultOff := copied
-		copied += toCopy
-
-		eg.Go(func() error {
-			data, _, err := c.getOrFetchFrame(ctx, frameStarts, frameSize, ft)
-			if err != nil {
-				return err
-			}
-			// Cap to actual decompressed data length (last frame may be smaller)
-			endInData := min(startInFrame+int64(toCopy), int64(len(data)))
-			copy(result[resultOff:], data[startInFrame:endInData])
-
-			return nil
-		})
-	}
-
-	if err := eg.Wait(); err != nil {
-		timer.Failure(ctx, length,
-			attribute.String(pullType, pullTypeRemote),
-			attribute.String(failureReason, failureTypeCacheFetch))
-
-		return nil, err
-	}
-
-	timer.Success(ctx, length, attribute.String(pullType, pullTypeRemote))
-
-	return result, nil
+	return nil, fmt.Errorf("SLOW_PATH_HIT: read spans frame boundary - off=%#x length=%d startInFrame=%d endInFrame=%d frameSize=%d frameStartsU=%#x",
+		off, length, startInFrame, endInFrame, frameSize.U, frameStarts.U)
 }
 
 // getOrFetchFrame returns decompressed frame data, checking LRU then mmap then storage.

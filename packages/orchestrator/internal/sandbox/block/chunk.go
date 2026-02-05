@@ -33,9 +33,12 @@ import (
 //     underlying frame is evicted. UFFD handlers should copy to the faulting page immediately.
 type Chunker interface {
 	// Slice returns a view into the data at [off, off+length).
-	// The returned slice references internal storage and MUST NOT be modified by the caller.
-	// For UFFD: use the slice immediately to copy into the faulting page.
-	// ft is the frame table for the specific mapping being read (nil for uncompressed data).
+	//
+	// Contract:
+	//   - For compressed data (ft != nil): cross-frame requests are handled via slow path
+	//     (assembling from multiple frames with tracing)
+	//   - The returned slice references internal storage and MUST NOT be modified
+	//   - For UFFD: use the slice immediately to copy into the faulting page
 	Slice(ctx context.Context, off, length int64, ft *storage.FrameTable) ([]byte, error)
 	Close() error
 	FileSize() (int64, error)

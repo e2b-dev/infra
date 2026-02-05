@@ -25,7 +25,7 @@ const (
 	// requests do not cross compression frame boundaries.
 	defaultChunkSizeU             = MemoryChunkSize
 	defaultTargetFrameSizeC       = 4 * megabyte      // target compressed frame size
-	defaultZstdCompressionLevel   = zstd.SpeedDefault // level 3, balanced speed/compression
+	defaultZstdCompressionLevel   = zstd.SpeedDefault // default compression level for zstd encoder
 	defaultCompressionConcurrency = 0                 // use default compression concurrency settings
 	defaultUploadPartSize         = 50 * megabyte
 )
@@ -50,12 +50,8 @@ var (
 	// When false: Cache stores uncompressed chunks (inner decompresses, cache stores raw data).
 	EnableNFSCompressedCache = false
 
-	// EnableCompressedChunker controls whether to use the compressed chunker implementation.
-	// When true, uses DecompressMMapChunker (decompress once into mmap cache).
-	EnableCompressedChunker = true
-
 	CompressedChunkerType   = CompressMMapLRUChunker
-	UncompressedChunkerType = DecompressMMapChunker
+	UncompressedChunkerType = UncompressedMMapChunker
 )
 
 const (

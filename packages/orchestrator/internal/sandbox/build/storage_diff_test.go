@@ -79,7 +79,7 @@ func setupMockProvider(t *testing.T, buildId string, diffType DiffType, frames m
 		headerPath,
 	).Return(headerData, nil).Maybe()
 
-	// Setup GetFrame to return compressed data and decompress when requested
+	// Setup GetFrame to return data, decompressing only if data is actually compressed
 	provider.EXPECT().GetFrame(
 		mock.Anything,
 		mock.Anything,
@@ -87,13 +87,15 @@ func setupMockProvider(t *testing.T, buildId string, diffType DiffType, frames m
 		mock.Anything,
 		mock.Anything,
 		mock.Anything,
-	).RunAndReturn(func(_ context.Context, _ string, offsetU int64, _ *storage.FrameTable, decompress bool, buf []byte) (storage.Range, error) {
+	).RunAndReturn(func(_ context.Context, _ string, offsetU int64, ft *storage.FrameTable, decompress bool, buf []byte) (storage.Range, error) {
 		data, ok := frames[offsetU]
 		if !ok {
 			return storage.Range{}, nil
 		}
 
-		if decompress {
+		// Only decompress if the data is actually compressed (check frame table)
+		isCompressed := ft != nil && ft.CompressionType == storage.CompressionZstd
+		if decompress && isCompressed {
 			dec, err := zstd.NewReader(nil)
 			if err != nil {
 				return storage.Range{}, err
@@ -526,8 +528,8 @@ func TestStorageDiff_CompressedChunker_ConcurrentReads(t *testing.T) {
 	}
 }
 
-// TestStorageDiff_CompressedChunker_MultipleFrames verifies reading across multiple frames
-// with the compressed chunker
+// TestStorageDiff_CompressedChunker_MultipleFrames verifies reading from multiple frames
+// with the compressed chunker. Cross-frame reads are now rejected by the Chunk interface.
 func TestStorageDiff_CompressedChunker_MultipleFrames(t *testing.T) {
 	t.Parallel()
 
@@ -587,13 +589,13 @@ func TestStorageDiff_CompressedChunker_MultipleFrames(t *testing.T) {
 	assert.Equal(t, 100, n)
 	assert.Equal(t, fullData[frameSizeU+1000:frameSizeU+1100], buf)
 
-	// Read across frame boundary
+	// Read across frame boundary - should trigger SLOW_PATH_HIT error
+	// This verifies whether cross-frame reads ever happen in practice
 	boundaryOffset := frameSizeU - 50
 	buf = make([]byte, 100)
-	n, err = sd.ReadAt(ctx, buf, boundaryOffset, frameTable)
-	require.NoError(t, err)
-	assert.Equal(t, 100, n)
-	assert.Equal(t, fullData[boundaryOffset:boundaryOffset+100], buf)
+	_, err = sd.ReadAt(ctx, buf, boundaryOffset, frameTable)
+	require.Error(t, err, "cross-frame reads should trigger SLOW_PATH_HIT error")
+	assert.Contains(t, err.Error(), "SLOW_PATH_HIT", "error should indicate slow path was triggered")
 
 	// Verify FileSize after chunker is initialized
 	size, err := sd.FileSize()
