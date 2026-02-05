@@ -7,7 +7,9 @@ import (
 	"regexp"
 	"slices"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
@@ -104,13 +106,20 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when creating volume")
 		telemetry.ReportCriticalError(ctx, "error when creating volume", err)
 	default:
-		result := api.Volume{
-			Id:   volume.ID.String(),
-			Name: volume.Name,
-		}
-
-		c.JSON(http.StatusCreated, result)
 	}
+
+	go func(ctx context.Context) {
+		if err := cluster.CreateVolume(ctx, volume); err != nil {
+			logger.L().Error(ctx, "error when creating volume", zap.Error(err))
+		}
+	}(context.WithoutCancel(ctx))
+
+	result := api.Volume{
+		Id:   volume.ID.String(),
+		Name: volume.Name,
+	}
+
+	c.JSON(http.StatusCreated, result)
 }
 
 func (a *APIStore) getVolumeType(ctx context.Context) string {

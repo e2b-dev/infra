@@ -131,14 +131,25 @@ service SandboxService {
   rpc ListCachedBuilds(google.protobuf.Empty) returns (SandboxListCachedBuildsResponse);
 }
 
+message VolumeCreateRequest {
+  string volume_id = 1;
+  string volume_type = 2;
+  string volume_name = 3;
+  string team_id = 4;
+}
+
+message VolumeCreateResponse {}
+
 message VolumeDeleteRequest {
   string volume_id = 1;
   string volume_type = 2;
   string volume_name = 3;
+  string team_id = 4;
 }
 
 message VolumeDeleteResponse {}
 
 service VolumeService {
+  rpc Create(VolumeCreateRequest) returns (VolumeCreateResponse);
   rpc Delete(VolumeDeleteRequest) returns (VolumeDeleteResponse);
 }

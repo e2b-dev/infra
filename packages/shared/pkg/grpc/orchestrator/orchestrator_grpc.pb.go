@@ -289,6 +289,7 @@ var SandboxService_ServiceDesc = grpc.ServiceDesc{
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type VolumeServiceClient interface {
+	Create(ctx context.Context, in *VolumeCreateRequest, opts ...grpc.CallOption) (*VolumeCreateResponse, error)
 	Delete(ctx context.Context, in *VolumeDeleteRequest, opts ...grpc.CallOption) (*VolumeDeleteResponse, error)
 }
 
@@ -298,6 +299,15 @@ type volumeServiceClient struct {
 
 func NewVolumeServiceClient(cc grpc.ClientConnInterface) VolumeServiceClient {
 	return &volumeServiceClient{cc}
+}
+
+func (c *volumeServiceClient) Create(ctx context.Context, in *VolumeCreateRequest, opts ...grpc.CallOption) (*VolumeCreateResponse, error) {
+	out := new(VolumeCreateResponse)
+	err := c.cc.Invoke(ctx, "/VolumeService/Create", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *volumeServiceClient) Delete(ctx context.Context, in *VolumeDeleteRequest, opts ...grpc.CallOption) (*VolumeDeleteResponse, error) {
@@ -313,6 +323,7 @@ func (c *volumeServiceClient) Delete(ctx context.Context, in *VolumeDeleteReques
 // All implementations must embed UnimplementedVolumeServiceServer
 // for forward compatibility
 type VolumeServiceServer interface {
+	Create(context.Context, *VolumeCreateRequest) (*VolumeCreateResponse, error)
 	Delete(context.Context, *VolumeDeleteRequest) (*VolumeDeleteResponse, error)
 	mustEmbedUnimplementedVolumeServiceServer()
 }
@@ -321,6 +332,9 @@ type VolumeServiceServer interface {
 type UnimplementedVolumeServiceServer struct {
 }
 
+func (UnimplementedVolumeServiceServer) Create(context.Context, *VolumeCreateRequest) (*VolumeCreateResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Create not implemented")
+}
 func (UnimplementedVolumeServiceServer) Delete(context.Context, *VolumeDeleteRequest) (*VolumeDeleteResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Delete not implemented")
 }
@@ -335,6 +349,24 @@ type UnsafeVolumeServiceServer interface {
 
 func RegisterVolumeServiceServer(s grpc.ServiceRegistrar, srv VolumeServiceServer) {
 	s.RegisterService(&VolumeService_ServiceDesc, srv)
+}
+
+func _VolumeService_Create_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(VolumeCreateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(VolumeServiceServer).Create(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/VolumeService/Create",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(VolumeServiceServer).Create(ctx, req.(*VolumeCreateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _VolumeService_Delete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -362,6 +394,10 @@ var VolumeService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "VolumeService",
 	HandlerType: (*VolumeServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Create",
+			Handler:    _VolumeService_Create_Handler,
+		},
 		{
 			MethodName: "Delete",
 			Handler:    _VolumeService_Delete_Handler,
