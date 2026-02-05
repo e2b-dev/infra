@@ -21,6 +21,7 @@ func (o *Orchestrator) UpdateSandbox(
 	ctx context.Context,
 	sandboxID string,
 	endTime time.Time,
+	timeoutSeconds *int32,
 	clusterID uuid.UUID,
 	nodeID string,
 ) error {
@@ -34,8 +35,9 @@ func (o *Orchestrator) UpdateSandbox(
 	client, ctx := o.GetNode(clusterID, nodeID).GetClient(ctx)
 	_, err := client.Sandbox.Update(
 		ctx, &orchestrator.SandboxUpdateRequest{
-			SandboxId: sandboxID,
-			EndTime:   timestamppb.New(endTime),
+			SandboxId:             sandboxID,
+			EndTime:               timestamppb.New(endTime),
+			SandboxTimeoutSeconds: timeoutSeconds,
 		},
 	)
 	if err != nil {

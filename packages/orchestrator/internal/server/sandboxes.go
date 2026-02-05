@@ -251,6 +251,10 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 	}
 
 	sbx.EndAt = req.GetEndTime().AsTime()
+	if req.SandboxTimeoutSeconds != nil && sbx.Metadata != nil {
+		value := *req.SandboxTimeoutSeconds
+		sbx.Metadata.TimeoutSeconds = &value
+	}
 
 	teamID, buildId, eventData := s.prepareSandboxEventData(ctx, sbx)
 	eventData["set_timeout"] = req.GetEndTime().AsTime().Format(time.RFC3339)
@@ -295,10 +299,11 @@ func (s *Server) List(ctx context.Context, _ *emptypb.Empty) (*orchestrator.Sand
 		}
 
 		sandboxes = append(sandboxes, &orchestrator.RunningSandbox{
-			Config:    sbx.APIStoredConfig,
-			ClientId:  s.info.ClientId,
-			StartTime: timestamppb.New(sbx.StartedAt),
-			EndTime:   timestamppb.New(sbx.EndAt),
+			Config:                sbx.APIStoredConfig,
+			ClientId:              s.info.ClientId,
+			StartTime:             timestamppb.New(sbx.StartedAt),
+			EndTime:               timestamppb.New(sbx.EndAt),
+			SandboxTimeoutSeconds: sbx.Metadata.TimeoutSeconds,
 		})
 	}
 

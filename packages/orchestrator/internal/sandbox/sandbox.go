@@ -109,6 +109,8 @@ type Metadata struct {
 
 	StartedAt time.Time
 	EndAt     time.Time
+	// Original TTL configured by the API.
+	TimeoutSeconds *int32
 }
 
 type Sandbox struct {
@@ -287,6 +289,12 @@ func (f *Factory) CreateSandbox(
 		memory: uffd.NewNoopMemory(memfileSize, memfile.BlockSize(), fcHandle.MemoryInfo),
 	}
 
+	var timeoutSeconds *int32
+	if apiConfigToStore != nil && apiConfigToStore.SandboxTimeoutSeconds != nil {
+		value := *apiConfigToStore.SandboxTimeoutSeconds
+		timeoutSeconds = &value
+	}
+
 	metadata := &Metadata{
 		internalConfig: internalConfig{
 			EnvdInitRequestTimeout: f.GetEnvdInitRequestTimeout(ctx),
@@ -295,8 +303,9 @@ func (f *Factory) CreateSandbox(
 		Config:  config,
 		Runtime: runtime,
 
-		StartedAt: time.Now(),
-		EndAt:     time.Now().Add(sandboxTimeout),
+		StartedAt:      time.Now(),
+		EndAt:          time.Now().Add(sandboxTimeout),
+		TimeoutSeconds: timeoutSeconds,
 	}
 
 	sbx := &Sandbox{
@@ -587,6 +596,12 @@ func (f *Factory) ResumeSandbox(
 		memory: fcUffd,
 	}
 
+	var timeoutSeconds *int32
+	if apiConfigToStore != nil && apiConfigToStore.SandboxTimeoutSeconds != nil {
+		value := *apiConfigToStore.SandboxTimeoutSeconds
+		timeoutSeconds = &value
+	}
+
 	metadata := &Metadata{
 		internalConfig: internalConfig{
 			EnvdInitRequestTimeout: f.GetEnvdInitRequestTimeout(ctx),
@@ -595,8 +610,9 @@ func (f *Factory) ResumeSandbox(
 		Config:  config,
 		Runtime: runtime,
 
-		StartedAt: startedAt,
-		EndAt:     endAt,
+		StartedAt:      startedAt,
+		EndAt:          endAt,
+		TimeoutSeconds: timeoutSeconds,
 	}
 
 	sbx := &Sandbox{

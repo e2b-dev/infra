@@ -71,6 +71,25 @@ func TestSandboxTimeout(t *testing.T) {
 	}
 }
 
+func TestSandboxCreateTimeoutMatchesStartEnd(t *testing.T) {
+	t.Parallel()
+	c := setup.GetAPIClient()
+
+	for _, timeout := range []int32{5, 15, 30} {
+		t.Run(fmt.Sprintf("timeout_%d", timeout), func(t *testing.T) {
+			sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithTimeout(timeout))
+
+			detailResp, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), sbx.SandboxID, setup.WithAPIKey())
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, detailResp.StatusCode())
+			require.NotNil(t, detailResp.JSON200)
+
+			actual := int32(detailResp.JSON200.EndAt.Sub(detailResp.JSON200.StartedAt).Seconds())
+			assert.InDelta(t, timeout, actual, 2, "sandbox TTL should match create timeout")
+		})
+	}
+}
+
 func TestSandboxTimeout_NotFound(t *testing.T) {
 	t.Parallel()
 	c := setup.GetAPIClient()

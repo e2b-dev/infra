@@ -62,7 +62,11 @@ func (o *Orchestrator) KeepAliveFor(ctx context.Context, teamID uuid.UUID, sandb
 			return &api.APIError{Code: http.StatusInternalServerError, ClientMsg: "Error when setting sandbox timeout", Err: err}
 		}
 	}
-	err = o.UpdateSandbox(ctx, sandboxID, sbx.EndTime, sbx.ClusterID, sbx.NodeID)
+	var timeoutSecondsToPersist *int32
+	if persistTimeout {
+		timeoutSecondsToPersist = sbx.SandboxTimeoutSeconds
+	}
+	err = o.UpdateSandbox(ctx, sandboxID, sbx.EndTime, timeoutSecondsToPersist, sbx.ClusterID, sbx.NodeID)
 	if err != nil {
 		if errors.Is(err, ErrSandboxNotFound) {
 			return &api.APIError{Code: http.StatusNotFound, ClientMsg: "Sandbox not found", Err: err}

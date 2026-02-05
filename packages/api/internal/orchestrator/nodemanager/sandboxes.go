@@ -75,6 +75,17 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
 			}
 		}
 
+		startTime := sbx.GetStartTime().AsTime()
+		endTime := sbx.GetEndTime().AsTime()
+		timeoutSeconds := sbx.SandboxTimeoutSeconds //nolint:protogetter // we need the nil check too
+		if timeoutSeconds == nil {
+			timeoutSeconds = config.SandboxTimeoutSeconds //nolint:protogetter // we need the nil check too
+		}
+		if timeoutSeconds == nil && !startTime.IsZero() && !endTime.IsZero() && endTime.After(startTime) {
+			ttlSeconds := int32(endTime.Sub(startTime).Seconds())
+			timeoutSeconds = &ttlSeconds
+		}
+
 		sandboxesInfo = append(
 			sandboxesInfo,
 			sandbox.NewSandbox(
@@ -87,10 +98,10 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
 				buildID,
 				config.GetMetadata(),
 				config.SandboxResumesOn, //nolint:protogetter // we need the nil check too
-				nil,
+				timeoutSeconds,
 				time.Duration(config.GetMaxSandboxLength())*time.Hour,
-				sbx.GetStartTime().AsTime(),
-				sbx.GetEndTime().AsTime(),
+				startTime,
+				endTime,
 				config.GetVcpu(),
 				config.GetTotalDiskSizeMb(),
 				config.GetRamMb(),

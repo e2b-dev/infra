@@ -48,6 +48,8 @@ message SandboxConfig {
   optional SandboxNetworkConfig network = 22;
   // Auto-resume policy for paused sandboxes (stored in API snapshots).
   optional string sandbox_resumes_on = 23;
+  // TTL in seconds as originally configured by the API.
+  optional int32 sandbox_timeout_seconds = 24;
 }
 
 message SandboxNetworkConfig {
@@ -82,6 +84,8 @@ message SandboxUpdateRequest {
   string sandbox_id = 1;
 
   google.protobuf.Timestamp end_time = 2;
+  // Persisted TTL in seconds; optional to avoid overwriting when unset.
+  optional int32 sandbox_timeout_seconds = 3;
 }
 
 message SandboxDeleteRequest {
@@ -100,6 +104,9 @@ message RunningSandbox {
 
   google.protobuf.Timestamp start_time = 3;
   google.protobuf.Timestamp end_time = 4;
+
+  // TTL in seconds as originally configured by the API.
+  optional int32 sandbox_timeout_seconds = 5;
 }
 
 message SandboxListResponse {
