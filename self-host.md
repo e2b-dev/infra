@@ -87,7 +87,7 @@ When using SDK pass domain when creating new `Sandbox` in JS/TS SDK
 ```js
 import { Sandbox } from "@e2b/sdk";
 
-const sandbox = new Sandbox.create({
+const sandbox = await Sandbox.create({
   domain: "<your-domain>",
 });
 ```
