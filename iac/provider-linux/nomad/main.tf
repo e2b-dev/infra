@@ -102,11 +102,11 @@ resource "nomad_job" "client_proxy" {
   count = var.enable_nomad_jobs ? 1 : 0
   jobspec = templatefile("${path.module}/jobs/edge.hcl",
     {
-      update_stanza       = var.api_machine_count > 1
-      count               = 1
+      update_stanza       = var.client_proxy_count > 1
+      count               = var.client_proxy_count
       cpu_count           = var.api_resources_cpu_count
       memory_mb           = var.api_resources_memory_mb
-      update_max_parallel = 1
+      update_max_parallel = var.client_proxy_count > 1 ? 1 : 0
 
       node_pool = var.api_node_pool
 

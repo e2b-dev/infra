@@ -36,6 +36,7 @@ tf_vars := \
 	$(call tfvar, API_NODE_POOL) \
 	$(call tfvar, INGRESS_COUNT) \
 	$(call tfvar, API_MACHINE_COUNT) \
+	$(call tfvar, CLIENT_PROXY_COUNT) \
 	$(call tfvar, API_RESOURCES_CPU_COUNT) \
 	$(call tfvar, API_RESOURCES_MEMORY_MB) \
 	$(call tfvar, API_PORT) \

@@ -71,6 +71,7 @@ module "nomad" {
   api_node_pool           = var.api_node_pool
   ingress_count           = var.ingress_count
   api_machine_count       = var.api_machine_count
+  client_proxy_count      = var.client_proxy_count
   api_resources_cpu_count = var.api_resources_cpu_count
   api_resources_memory_mb = var.api_resources_memory_mb
 

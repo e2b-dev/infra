@@ -1,6 +1,7 @@
 variable "api_node_pool" { type = string }
 variable "ingress_count" { type = number }
 variable "api_machine_count" { type = number }
+variable "client_proxy_count" { type = number }
 variable "api_resources_cpu_count" { type = number }
 variable "api_resources_memory_mb" { type = number }
 
