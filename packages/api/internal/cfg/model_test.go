@@ -38,7 +38,7 @@ func TestParse(t *testing.T) {
 	t.Run("default persistent volume type must be in types", func(t *testing.T) {
 		dir1 := t.TempDir()
 		dir2 := t.TempDir()
-		t.Setenv("PERSISTENT_VOLUME_TYPES", fmt.Sprintf("valid:%s,other:%s", dir1, dir2))
+		t.Setenv("PERSISTENT_VOLUME_MOUNTS", fmt.Sprintf("valid:%s,other:%s", dir1, dir2))
 
 		config, err := Parse()
 		require.NoError(t, err, "no default is acceptable")
