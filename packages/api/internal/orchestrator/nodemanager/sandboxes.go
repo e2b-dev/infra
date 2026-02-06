@@ -75,9 +75,10 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
 			}
 		}
 
-		autoResume := ut.CastPtr(config.GetAutoResume(), func(v string) types.SandboxAutoResumePolicy {
-			return types.SandboxAutoResumePolicy(v)
-		})
+		var autoResume *types.SandboxAutoResumePolicy
+		if autoResumeValue := config.GetAutoResume(); autoResumeValue != "" {
+			autoResume = ut.ToPtr(types.SandboxAutoResumePolicy(autoResumeValue))
+		}
 
 		sandboxesInfo = append(
 			sandboxesInfo,
