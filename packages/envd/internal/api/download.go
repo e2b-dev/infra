@@ -3,9 +3,11 @@ package api
 import (
 	"errors"
 	"fmt"
+	"mime"
 	"net/http"
 	"os"
 	"os/user"
+	"path/filepath"
 	"time"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/execcontext"
@@ -111,5 +113,6 @@ func (a *API) GetFiles(w http.ResponseWriter, r *http.Request, params GetFilesPa
 	}
 	defer file.Close()
 
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("inline", map[string]string{"filename": filepath.Base(resolvedPath)}))
 	http.ServeContent(w, r, path, time.Now(), file)
 }
