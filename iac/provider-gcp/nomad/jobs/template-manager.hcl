@@ -122,8 +122,7 @@ job "template-manager" {
       }
 
       config {
-        command = "/bin/bash"
-        args    = ["-c", " chmod +x local/template-manager && local/template-manager"]
+        command = "local/template-manager"
       }
 
       artifact {

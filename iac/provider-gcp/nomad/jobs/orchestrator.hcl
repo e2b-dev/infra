@@ -84,8 +84,7 @@ job "orchestrator-${latest_orchestrator_job_id}" {
       }
 
       config {
-        command = "/bin/bash"
-        args    = ["-c", " chmod +x local/orchestrator && local/orchestrator"]
+        command = "local/orchestrator"
       }
 
       artifact {
