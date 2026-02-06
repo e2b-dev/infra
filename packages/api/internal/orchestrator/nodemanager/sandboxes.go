@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/golang/protobuf/ptypes/empty"
@@ -75,9 +76,13 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
 			}
 		}
 
-		var autoResume *types.SandboxAutoResumePolicy
-		if autoResumeCfg := config.GetAutoResume(); autoResumeCfg != nil && autoResumeCfg.GetPolicy() != "" {
-			autoResume = ut.ToPtr(types.SandboxAutoResumePolicy(autoResumeCfg.GetPolicy()))
+		var autoResume *types.SandboxAutoResumeConfig
+		if autoResumeCfg := config.GetAutoResume(); autoResumeCfg != nil {
+			autoResume = &types.SandboxAutoResumeConfig{}
+			if p := strings.TrimSpace(autoResumeCfg.GetPolicy()); p != "" {
+				policy := types.SandboxAutoResumePolicy(p)
+				autoResume.Policy = &policy
+			}
 		}
 
 		sandboxesInfo = append(

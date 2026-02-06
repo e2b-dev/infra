@@ -19,7 +19,7 @@ type SandboxConfig struct {
 	metadata            api.SandboxMetadata
 	timeout             int32
 	autoPause           bool
-	autoResume          *api.SandboxAutoResumePolicy
+	autoResume          *api.SandboxAutoResumeConfig
 	network             *api.SandboxNetworkConfig
 	allowInternetAccess *bool
 	secure              *bool
@@ -53,7 +53,7 @@ func WithAutoPause(autoPause bool) SandboxOption {
 
 func WithAutoResume(policy api.SandboxAutoResumePolicy) SandboxOption {
 	return func(config *SandboxConfig) {
-		config.autoResume = &policy
+		config.autoResume = &api.SandboxAutoResumeConfig{Policy: &policy}
 	}
 }
 
@@ -123,6 +123,13 @@ func SetupSandboxWithCleanup(t *testing.T, c *api.ClientWithResponses, options .
 			time.Sleep(time.Second * 5)
 
 			continue
+		}
+
+		if createSandboxResponse.StatusCode() != http.StatusCreated {
+			t.Logf("Sandbox creation failed status=%d body=%s", createSandboxResponse.StatusCode(), string(createSandboxResponse.Body))
+			if createSandboxResponse.JSON400 != nil {
+				t.Logf("Sandbox creation JSON400=%+v", *createSandboxResponse.JSON400)
+			}
 		}
 
 		require.Equal(t, http.StatusCreated, createSandboxResponse.StatusCode())

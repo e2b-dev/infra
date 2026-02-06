@@ -145,16 +145,19 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		autoPause = *body.AutoPause
 	}
 
-	var autoResume *types.SandboxAutoResumePolicy
+	var autoResume *types.SandboxAutoResumeConfig
 	if body.AutoResume != nil {
-		policy := types.SandboxAutoResumePolicy(*body.AutoResume)
-		switch policy {
-		case types.SandboxAutoResumeAny, types.SandboxAutoResumeOff:
-			autoResume = &policy
-		default:
-			a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid autoResume policy")
+		autoResume = &types.SandboxAutoResumeConfig{}
+		if body.AutoResume.Policy != nil {
+			policy := types.SandboxAutoResumePolicy(*body.AutoResume.Policy)
+			switch policy {
+			case types.SandboxAutoResumeAny, types.SandboxAutoResumeOff:
+				autoResume.Policy = &policy
+			default:
+				a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid autoResume policy")
 
-			return
+				return
+			}
 		}
 	}
 

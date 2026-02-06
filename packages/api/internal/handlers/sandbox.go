@@ -38,7 +38,7 @@ func (a *APIStore) startSandbox(
 	templateID string,
 	baseTemplateID string,
 	autoPause bool,
-	autoResume *types.SandboxAutoResumePolicy,
+	autoResume *types.SandboxAutoResumeConfig,
 	envdAccessToken *string,
 	allowInternetAccess *bool,
 	network *types.SandboxNetworkConfig,

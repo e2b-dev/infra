@@ -400,8 +400,8 @@ type NewSandbox struct {
 	// AutoPause Automatically pauses the sandbox after the timeout
 	AutoPause *bool `json:"autoPause,omitempty"`
 
-	// AutoResume Auto-resume policy for paused sandboxes. Default is off.
-	AutoResume *SandboxAutoResumePolicy `json:"autoResume,omitempty"`
+	// AutoResume Auto-resume configuration for paused sandboxes. Default is off.
+	AutoResume *SandboxAutoResumeConfig `json:"autoResume,omitempty"`
 	EnvVars    *EnvVars                 `json:"envVars,omitempty"`
 
 	// Mcp MCP configuration for the sandbox
@@ -579,6 +579,12 @@ type Sandbox struct {
 
 	// TrafficAccessToken Token required for accessing sandbox via proxy.
 	TrafficAccessToken *string `json:"trafficAccessToken"`
+}
+
+// SandboxAutoResumeConfig Auto-resume configuration for paused sandboxes. Default is off.
+type SandboxAutoResumeConfig struct {
+	// Policy Auto-resume policy for paused sandboxes. Default is off.
+	Policy *SandboxAutoResumePolicy `json:"policy,omitempty"`
 }
 
 // SandboxAutoResumePolicy Auto-resume policy for paused sandboxes. Default is off.

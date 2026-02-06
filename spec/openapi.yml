@@ -263,6 +263,13 @@ components:
         - any
         - off
 
+    SandboxAutoResumeConfig:
+      type: object
+      description: Auto-resume configuration for paused sandboxes. Default is off.
+      properties:
+        policy:
+          $ref: "#/components/schemas/SandboxAutoResumePolicy"
+
     SandboxLog:
       description: Log entry with timestamp and line
       required:
@@ -532,7 +539,7 @@ components:
           default: false
           description: Automatically pauses the sandbox after the timeout
         autoResume:
-          $ref: "#/components/schemas/SandboxAutoResumePolicy"
+          $ref: "#/components/schemas/SandboxAutoResumeConfig"
         secure:
           type: boolean
           description: Secure all system communication with sandbox

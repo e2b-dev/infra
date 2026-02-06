@@ -31,7 +31,7 @@ func NewSandbox(
 	nodeID string,
 	clusterID uuid.UUID,
 	autoPause bool,
-	autoResume *types.SandboxAutoResumePolicy,
+	autoResume *types.SandboxAutoResumeConfig,
 	envdAccessToken *string,
 	allowInternetAccess *bool,
 	baseTemplateID string,
@@ -99,7 +99,7 @@ type Sandbox struct {
 	NodeID              string                         `json:"nodeID"`
 	ClusterID           uuid.UUID                      `json:"clusterID"`
 	AutoPause           bool                           `json:"autoPause"`
-	AutoResume          *types.SandboxAutoResumePolicy `json:"autoResume,omitempty"`
+	AutoResume          *types.SandboxAutoResumeConfig `json:"autoResume,omitempty"`
 	Network             *types.SandboxNetworkConfig    `json:"network"`
 
 	State State `json:"state"`

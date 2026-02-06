@@ -62,11 +62,11 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		}
 	}
 
-	var autoResume *dbtypes.SandboxAutoResumePolicy
+	var autoResume *dbtypes.SandboxAutoResumeConfig
 	if snap.Snapshot.Config != nil {
 		autoResume = snap.Snapshot.Config.AutoResume
 	}
-	if !dbtypes.IsAutoResumeAny(autoResume) {
+	if autoResume == nil || autoResume.Policy == nil || *autoResume.Policy != dbtypes.SandboxAutoResumeAny {
 		return nil, status.Error(codes.NotFound, "sandbox auto-resume disabled")
 	}
 

@@ -98,7 +98,7 @@ func (o *Orchestrator) CreateSandbox(
 	templateID string,
 	baseTemplateID string,
 	autoPause bool,
-	autoResume *types.SandboxAutoResumePolicy,
+	autoResume *types.SandboxAutoResumeConfig,
 	envdAuthToken *string,
 	allowInternetAccess *bool,
 	network *types.SandboxNetworkConfig,
@@ -214,7 +214,10 @@ func (o *Orchestrator) CreateSandbox(
 
 	var orchAutoResume *orchestrator.SandboxAutoResumeConfig
 	if autoResume != nil {
-		orchAutoResume = &orchestrator.SandboxAutoResumeConfig{Policy: ut.ToPtr(string(*autoResume))}
+		orchAutoResume = &orchestrator.SandboxAutoResumeConfig{}
+		if autoResume.Policy != nil {
+			orchAutoResume.Policy = ut.ToPtr(string(*autoResume.Policy))
+		}
 	}
 
 	sbxRequest := &orchestrator.SandboxCreateRequest{

@@ -36,14 +36,15 @@ const (
 	SandboxAutoResumeOff SandboxAutoResumePolicy = "off"
 )
 
-func IsAutoResumeAny(policy *SandboxAutoResumePolicy) bool {
-	return policy != nil && *policy == SandboxAutoResumeAny
+type SandboxAutoResumeConfig struct {
+	// Policy is optional; unset means "off".
+	Policy *SandboxAutoResumePolicy `json:"policy,omitempty"`
 }
 
 type PausedSandboxConfig struct {
 	Version    string                   `json:"version"`
 	Network    *SandboxNetworkConfig    `json:"network,omitempty"`
-	AutoResume *SandboxAutoResumePolicy `json:"autoResume,omitempty"`
+	AutoResume *SandboxAutoResumeConfig `json:"autoResume,omitempty"`
 }
 
 // Status defines the type for the "status" enum field.

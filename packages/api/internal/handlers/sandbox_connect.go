@@ -156,7 +156,7 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 	if snap.Config != nil {
 		network = snap.Config.Network
 	}
-	var autoResume *types.SandboxAutoResumePolicy
+	var autoResume *types.SandboxAutoResumeConfig
 	if snap.Config != nil {
 		autoResume = snap.Config.AutoResume
 	}
