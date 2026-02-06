@@ -47,10 +47,10 @@ else
     echo "user_allow_other" > /etc/fuse.conf
 fi
 
-# Set /dev/fuse permissions to 666 for non-root access via udev rule
-# The rule will be applied when systemd starts udevd on subsequent boots
-mkdir -p /etc/udev/rules.d
-echo 'KERNEL=="fuse", MODE="0666"' > /etc/udev/rules.d/99-fuse.rules
+# Set /dev/fuse permissions to 666 for non-root access
+# Use systemd-tmpfiles to set permissions at boot
+mkdir -p /etc/tmpfiles.d
+echo 'z /dev/fuse 0666 root root -' > /etc/tmpfiles.d/fuse.conf
 
 echo "Setting up shell"
 echo "export SHELL='/bin/bash'" >/etc/profile.d/shell.sh
