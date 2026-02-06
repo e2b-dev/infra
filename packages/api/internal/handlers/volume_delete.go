@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
@@ -37,7 +38,9 @@ func (a *APIStore) DeleteVolumesVolumeID(c *gin.Context, volumeID api.VolumeID) 
 		return
 	}
 
-	defer tx.Rollback(ctx)
+	defer func(ctx context.Context) {
+		_ = tx.Rollback(ctx)
+	}(context.WithoutCancel(ctx))
 
 	if err := client.DeleteVolume(ctx, queries.DeleteVolumeParams{
 		TeamID:   team.ID,

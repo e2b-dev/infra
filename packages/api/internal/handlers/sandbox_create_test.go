@@ -5,14 +5,11 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/clusters"
-	clustersmocks "github.com/e2b-dev/infra/packages/api/internal/clusters/mocks"
 	handlersmocks "github.com/e2b-dev/infra/packages/api/internal/handlers/mocks"
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 	"github.com/e2b-dev/infra/packages/db/queries"
@@ -422,14 +419,8 @@ func TestOrchestrator_convertVolumeMounts(t *testing.T) {
 					Return(tc.volumesEnabled)
 			}
 
-			var resources clusters.ClusterResource
-			if tc.expectResources {
-				resources = newMockResources(t, tc.volumeTypes)
-			}
-
 			actual, err := createOrchestratorVolumeMounts(
 				t.Context(), db.SqlcClient, ffClient,
-				clusters.NewCluster(uuid.UUID{}, nil, nil, nil, resources),
 				teamID, tc.input,
 			)
 			assert.Equal(t, tc.err, err)
@@ -456,11 +447,8 @@ func TestOrchestrator_convertVolumeMounts(t *testing.T) {
 			BoolFlag(mock.Anything, mock.Anything).
 			Return(true)
 
-		resources := newMockResources(t, []string{"local"})
-
 		actual, err := createOrchestratorVolumeMounts(
 			t.Context(), db.SqlcClient, ffClient,
-			clusters.NewCluster(uuid.UUID{}, nil, nil, nil, resources),
 			teamID, []api.SandboxVolumeMount{
 				{Name: "vol1", Path: "/vol1"},
 			},
@@ -470,24 +458,4 @@ func TestOrchestrator_convertVolumeMounts(t *testing.T) {
 			{Id: dbVolume.ID.String(), Path: "/vol1", Type: "local"},
 		}, actual)
 	})
-}
-
-func newMockResources(t *testing.T, volumeTypes []string) clusters.ClusterResource {
-	t.Helper()
-
-	mcr := clustersmocks.NewMockClusterResource(t)
-
-	if volumeTypes != nil {
-		mcr.EXPECT().
-			GetVolumeTypes(mock.Anything).
-			Return(volumeTypes, nil).
-			Once()
-	} else {
-		mcr.EXPECT().
-			GetVolumeTypes(mock.Anything).
-			Return(nil, fmt.Errorf("cluster error")).
-			Once()
-	}
-
-	return mcr
 }

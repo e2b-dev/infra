@@ -21,7 +21,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
-	"github.com/e2b-dev/infra/packages/api/internal/clusters"
 	typesteam "github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
@@ -138,13 +137,6 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		}
 	}
 
-	cluster, ok := a.clusters.GetClusterById(clusterID)
-	if !ok {
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Cluster with ID %s not found", clusterID))
-
-		return
-	}
-
 	var envdAccessToken *string = nil
 	if body.Secure != nil && *body.Secure == true {
 		accessToken, tokenErr := a.getEnvdAccessToken(build.EnvdVersion, sandboxID)
@@ -190,7 +182,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	}
 
 	sbxVolumeMounts, err := createOrchestratorVolumeMounts(
-		ctx, a.sqlcDB, a.featureFlags, cluster, teamInfo.ID, apiVolumeMounts,
+		ctx, a.sqlcDB, a.featureFlags, teamInfo.ID, apiVolumeMounts,
 	)
 	if err != nil {
 		if errors.Is(err, ErrVolumeMountsDisabled) {
@@ -291,7 +283,6 @@ func createOrchestratorVolumeMounts(
 	ctx context.Context,
 	sqlClient *sqlcdb.Client,
 	featureFlags featureFlagsClient,
-	cluster *clusters.Cluster,
 	teamID uuid.UUID,
 	volumeMounts []api.SandboxVolumeMount,
 ) ([]*orchestrator.SandboxVolumeMount, error) {
@@ -303,14 +294,8 @@ func createOrchestratorVolumeMounts(
 		return nil, ErrVolumeMountsDisabled
 	}
 
-	// get volume types from the cluster
-	volumeTypesSet, err := getSupportedVolumeTypes(ctx, cluster)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get supported volume types: %w", err)
-	}
-
 	// get volumes from the database
-	dbVolumesMap, err := getDBVolumesMap(ctx, sqlClient, teamID, volumeMounts, volumeTypesSet)
+	dbVolumesMap, err := getDBVolumesMap(ctx, sqlClient, teamID, volumeMounts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get db volumes map: %w", err)
 	}
@@ -371,20 +356,6 @@ func isValidMountPath(path string) (string, bool) {
 	return "", true
 }
 
-func getSupportedVolumeTypes(ctx context.Context, cluster *clusters.Cluster) (map[string]struct{}, error) {
-	volumeTypesSlice, err := cluster.GetResources().GetVolumeTypes(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get volume types from cluster: %w", err)
-	}
-
-	volumeTypesSet := make(map[string]struct{}, len(volumeTypesSlice))
-	for _, vt := range volumeTypesSlice {
-		volumeTypesSet[vt] = struct{}{}
-	}
-
-	return volumeTypesSet, nil
-}
-
 type InvalidVolumeTypesError struct {
 	VolumeNames []string
 }
@@ -393,7 +364,7 @@ func (e InvalidVolumeTypesError) Error() string {
 	return fmt.Sprintf("volumes are unsupported by cluster: %s", strings.Join(e.VolumeNames, ", "))
 }
 
-func getDBVolumesMap(ctx context.Context, sqlcDB *sqlcdb.Client, teamID uuid.UUID, volumeMounts []api.SandboxVolumeMount, volumeTypesSet map[string]struct{}) (map[string]queries.Volume, error) {
+func getDBVolumesMap(ctx context.Context, sqlcDB *sqlcdb.Client, teamID uuid.UUID, volumeMounts []api.SandboxVolumeMount) (map[string]queries.Volume, error) {
 	dbVolumes, err := sqlcDB.GetVolumesByName(ctx, queries.GetVolumesByNameParams{
 		TeamID:      teamID,
 		VolumeNames: dedupeVolumeNames(volumeMounts),
@@ -405,12 +376,6 @@ func getDBVolumesMap(ctx context.Context, sqlcDB *sqlcdb.Client, teamID uuid.UUI
 	dbVolumesMap := make(map[string]queries.Volume, len(dbVolumes))
 	var invalidVolumeNames []string
 	for _, v := range dbVolumes {
-		if _, ok := volumeTypesSet[v.VolumeType]; !ok {
-			invalidVolumeNames = append(invalidVolumeNames, v.Name)
-
-			continue
-		}
-
 		dbVolumesMap[v.Name] = v
 	}
 

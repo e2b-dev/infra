@@ -38,16 +38,6 @@ func newLocalClusterResourceProvider(
 	}
 }
 
-func (l *LocalClusterResourceProvider) GetVolumeTypes(_ context.Context) ([]string, error) {
-	var volumeTypes []string
-
-	for volumeType := range l.config.PersistentVolumeMounts {
-		volumeTypes = append(volumeTypes, volumeType)
-	}
-
-	return volumeTypes, nil
-}
-
 func (l *LocalClusterResourceProvider) GetSandboxMetrics(ctx context.Context, teamID string, sandboxID string, qStart *int64, qEnd *int64) ([]api.SandboxMetric, *api.APIError) {
 	start, end, err := clickhouseutils.GetSandboxStartEndTime(ctx, l.querySandboxMetricsProvider, teamID, sandboxID, qStart, qEnd)
 	if err != nil {
