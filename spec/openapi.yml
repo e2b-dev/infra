@@ -258,7 +258,7 @@ components:
     SandboxAutoResumePolicy:
       type: string
       description: Auto-resume policy for paused sandboxes. Default is off.
-      default: off
+      default: "off"
       enum:
         - any
         - off
