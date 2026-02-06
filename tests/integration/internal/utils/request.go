@@ -22,7 +22,16 @@ func NewRequest(sbx *api.Sandbox, url *url.URL, port int, extraHeaders *http.Hea
 	if url.Hostname() == "localhost" {
 		host = fmt.Sprintf("%d-%s-%s.%s", port, sbx.SandboxID, sbx.ClientID, "localhost")
 	} else {
-		routingDomain := routingDomainFromProxyHost(url.Hostname())
+		proxyHost := url.Hostname()
+		labels := strings.Split(proxyHost, ".")
+		// Expected proxy host shape is something like: "<proxy>.<routing-domain>".
+		routingDomain := strings.Join(labels[1:], ".")
+
+		// Just in case it's something crazy
+		if routingDomain == "" {
+			routingDomain = proxyHost
+		}
+
 		portSuffix := ""
 		if proxyPort := url.Port(); proxyPort != "" {
 			portSuffix = ":" + proxyPort
