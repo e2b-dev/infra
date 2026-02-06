@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
 	"fmt"
 	"net/http"
@@ -134,7 +135,7 @@ func (a *commonAuthenticator[T]) SecuritySchemeName() string {
 
 func adminValidationFunction(adminToken string) func(ctx context.Context, ginCtx *gin.Context, token string) (struct{}, *api.APIError) {
 	return func(_ context.Context, _ *gin.Context, token string) (struct{}, *api.APIError) {
-		if token != adminToken {
+		if subtle.ConstantTimeCompare([]byte(token), []byte(adminToken)) != 1 {
 			return struct{}{}, &api.APIError{
 				Code:      http.StatusUnauthorized,
 				Err:       errors.New("invalid access token"),
