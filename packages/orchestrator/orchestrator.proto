@@ -48,7 +48,7 @@ message SandboxConfig {
   optional SandboxNetworkConfig network = 22;
 
   // Auto-resume policy for paused sandboxes.
-  optional string auto_resume = 23;
+  optional SandboxAutoResumeConfig auto_resume = 23;
 }
 
 message SandboxNetworkConfig {
