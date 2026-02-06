@@ -89,6 +89,11 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		}
 	}
 
+	team, err := dbapi.GetTeamByID(ctx, s.api.authDB, teamID)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get team: %v", err)
+	}
+
 	autoPause := snap.Snapshot.AutoPause
 	nodeID := &snap.Snapshot.OriginNodeID
 
@@ -112,11 +117,6 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 	var network *dbtypes.SandboxNetworkConfig
 	if snap.Snapshot.Config != nil {
 		network = snap.Snapshot.Config.Network
-	}
-
-	team, err := dbapi.GetTeamByID(ctx, s.api.authDB, teamID)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to get team: %v", err)
 	}
 
 	headers := http.Header{}
