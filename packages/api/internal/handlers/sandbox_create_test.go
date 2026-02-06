@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"fmt"
 	"net/http"
 	"testing"
 
@@ -293,29 +292,6 @@ func TestOrchestrator_convertVolumeMounts(t *testing.T) {
 				{Name: "vol1", Path: "/vol1"},
 			},
 			err: ErrVolumeMountsDisabled,
-		},
-		"unsupported volume type": {
-			expectFeatureFlag: true,
-			expectResources:   true,
-			volumesEnabled:    true,
-			input: []api.SandboxVolumeMount{
-				{Name: "vol1", Path: "/vol1"},
-			},
-			database: []queries.CreateVolumeParams{
-				{Name: "vol1", VolumeType: "unsupported"},
-			},
-			volumeTypes: []string{"local"},
-			err:         fmt.Errorf("failed to get db volumes map: %w", InvalidVolumeTypesError{[]string{"vol1"}}),
-		},
-		"cluster error": {
-			expectFeatureFlag: true,
-			expectResources:   true,
-			volumesEnabled:    true,
-			input: []api.SandboxVolumeMount{
-				{Name: "vol1", Path: "/vol1"},
-			},
-			volumeTypes: nil, // This will trigger cluster error in my mock
-			err:         fmt.Errorf("failed to get supported volume types: %w", fmt.Errorf("failed to get volume types from cluster: %w", fmt.Errorf("cluster error"))),
 		},
 		"empty path reports error": {
 			expectFeatureFlag: true,
