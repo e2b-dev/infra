@@ -67,6 +67,14 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		}
 	}
 
+	var autoResume *dbtypes.SandboxAutoResumePolicy
+	if snap.Snapshot.Config != nil {
+		autoResume = snap.Snapshot.Config.AutoResume
+	}
+	if !dbtypes.IsAutoResumeAny(autoResume) {
+		return nil, status.Error(codes.NotFound, "sandbox auto-resume disabled")
+	}
+
 	lock, lockAcquired, lockErr := s.tryAcquireResumeLock(ctx, sandboxID)
 	if lockErr != nil {
 		logger.L().Warn(ctx, "Failed to acquire proxy resume lock, proceeding without lock", zap.Error(lockErr), logger.WithSandboxID(sandboxID))
@@ -160,6 +168,7 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		snap.Snapshot.EnvID,
 		snap.Snapshot.BaseEnvID,
 		autoPause,
+		autoResume,
 		envdAccessToken,
 		snap.Snapshot.AllowInternetAccess,
 		network,

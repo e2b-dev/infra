@@ -70,6 +70,12 @@ const (
 	NodeStatusUnhealthy  NodeStatus = "unhealthy"
 )
 
+// Defines values for SandboxAutoResumePolicy.
+const (
+	Any SandboxAutoResumePolicy = "any"
+	Off SandboxAutoResumePolicy = "off"
+)
+
 // Defines values for SandboxState.
 const (
 	Paused  SandboxState = "paused"
@@ -392,8 +398,11 @@ type NewSandbox struct {
 	AllowInternetAccess *bool `json:"allow_internet_access,omitempty"`
 
 	// AutoPause Automatically pauses the sandbox after the timeout
-	AutoPause *bool    `json:"autoPause,omitempty"`
-	EnvVars   *EnvVars `json:"envVars,omitempty"`
+	AutoPause *bool `json:"autoPause,omitempty"`
+
+	// AutoResume Auto-resume policy for paused sandboxes. Default is off.
+	AutoResume *SandboxAutoResumePolicy `json:"autoResume,omitempty"`
+	EnvVars    *EnvVars                 `json:"envVars,omitempty"`
 
 	// Mcp MCP configuration for the sandbox
 	Mcp      *Mcp                  `json:"mcp"`
@@ -571,6 +580,9 @@ type Sandbox struct {
 	// TrafficAccessToken Token required for accessing sandbox via proxy.
 	TrafficAccessToken *string `json:"trafficAccessToken"`
 }
+
+// SandboxAutoResumePolicy Auto-resume policy for paused sandboxes. Default is off.
+type SandboxAutoResumePolicy string
 
 // SandboxDetail defines model for SandboxDetail.
 type SandboxDetail struct {

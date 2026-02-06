@@ -145,6 +145,19 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		autoPause = *body.AutoPause
 	}
 
+	var autoResume *types.SandboxAutoResumePolicy
+	if body.AutoResume != nil {
+		policy := types.SandboxAutoResumePolicy(*body.AutoResume)
+		switch policy {
+		case types.SandboxAutoResumeAny, types.SandboxAutoResumeOff:
+			autoResume = &policy
+		default:
+			a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid autoResume policy")
+
+			return
+		}
+	}
+
 	var envdAccessToken *string = nil
 	if body.Secure != nil && *body.Secure == true {
 		accessToken, tokenErr := a.getEnvdAccessToken(build.EnvdVersion, sandboxID)
@@ -204,6 +217,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		env.TemplateID,
 		env.TemplateID,
 		autoPause,
+		autoResume,
 		envdAccessToken,
 		allowInternetAccess,
 		network,

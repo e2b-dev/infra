@@ -156,6 +156,10 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 	if snap.Config != nil {
 		network = snap.Config.Network
 	}
+	var autoResume *types.SandboxAutoResumePolicy
+	if snap.Config != nil {
+		autoResume = snap.Config.AutoResume
+	}
 
 	sbx, createErr := a.startSandbox(
 		ctx,
@@ -172,6 +176,7 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 		snap.EnvID,
 		snap.BaseEnvID,
 		autoPause,
+		autoResume,
 		envdAccessToken,
 		snap.AllowInternetAccess,
 		network,

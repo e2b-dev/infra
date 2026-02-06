@@ -29,9 +29,21 @@ type SandboxNetworkConfig struct {
 	Ingress *SandboxNetworkIngressConfig `json:"ingress,omitempty"`
 }
 
+type SandboxAutoResumePolicy string
+
+const (
+	SandboxAutoResumeAny SandboxAutoResumePolicy = "any"
+	SandboxAutoResumeOff SandboxAutoResumePolicy = "off"
+)
+
+func IsAutoResumeAny(policy *SandboxAutoResumePolicy) bool {
+	return policy != nil && *policy == SandboxAutoResumeAny
+}
+
 type PausedSandboxConfig struct {
-	Version string                `json:"version"`
-	Network *SandboxNetworkConfig `json:"network,omitempty"`
+	Version    string                   `json:"version"`
+	Network    *SandboxNetworkConfig    `json:"network,omitempty"`
+	AutoResume *SandboxAutoResumePolicy `json:"autoResume,omitempty"`
 }
 
 // Status defines the type for the "status" enum field.

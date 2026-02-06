@@ -20,7 +20,7 @@ func TestSandboxAutoResumeViaProxy(t *testing.T) {
 	c := setup.GetAPIClient()
 	ctx := t.Context()
 
-	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(true))
+	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(true), utils.WithAutoResume(api.Any))
 
 	pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
 	require.NoError(t, err)

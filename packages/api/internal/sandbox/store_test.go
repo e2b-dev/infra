@@ -166,6 +166,7 @@ func createTestSandbox() sandbox.Sandbox {
 		"node-1",
 		uuid.New(),
 		false, // autoPause
+		nil,   // autoResume
 		nil,   // envdAccessToken
 		nil,   // allowInternetAccess
 		"base-template",
