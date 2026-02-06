@@ -378,11 +378,6 @@ func run() int {
 		))),
 	)
 	proxygrpc.RegisterSandboxServiceServer(grpcServer, handlers.NewSandboxService(apiStore))
-	cleanupFns = append(cleanupFns, func(context.Context) error {
-		grpcServer.GracefulStop()
-
-		return nil
-	})
 
 	// pass the signal context so that handlers know when shutdown is happening.
 	s := NewGinServer(ctx, config, tel, l, apiStore, swagger, port)
@@ -435,7 +430,7 @@ func run() int {
 
 		l.Info(ctx, "gRPC service starting", zap.Uint16("port", config.APIGrpcPort))
 		err := grpcServer.Serve(grpcListener)
-		if err != nil && !errors.Is(err, net.ErrClosed) {
+		if err != nil && !errors.Is(err, net.ErrClosed) && !errors.Is(err, grpc.ErrServerStopped) {
 			exitCode.Add(1)
 			l.Error(ctx, "gRPC service encountered error", zap.Error(err))
 		}
