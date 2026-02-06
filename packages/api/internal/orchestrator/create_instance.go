@@ -216,7 +216,7 @@ func (o *Orchestrator) CreateSandbox(
 	if autoResume != nil {
 		orchAutoResume = &orchestrator.SandboxAutoResumeConfig{}
 		if autoResume.Policy != nil {
-			orchAutoResume.Policy = ut.ToPtr(string(*autoResume.Policy))
+			orchAutoResume.Policy = string(*autoResume.Policy)
 		}
 	}
 

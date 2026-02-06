@@ -22,6 +22,14 @@ func NewGRPCServer(tel *telemetry.Client) *grpc.Server {
 		logging.WithFieldsFromContext(logging.ExtractFields),
 	}
 
+	// Keep this in sync with orchestrator's gRPC server factory to avoid drift.
+	ignoredLoggingRoutes := logger.WithoutRoutes(
+		logger.HealthCheckRoute,
+		"/TemplateService/TemplateBuildStatus",
+		"/TemplateService/HealthStatus",
+		"/InfoService/ServiceInfo",
+	)
+
 	return grpc.NewServer(
 		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
 			MinTime:             5 * time.Second, // Minimum time between pings from client
@@ -39,13 +47,13 @@ func NewGRPCServer(tel *telemetry.Client) *grpc.Server {
 			recovery.UnaryServerInterceptor(),
 			selector.UnaryServerInterceptor(
 				logging.UnaryServerInterceptor(logger.GRPCLogger(logger.L()), loggingOpts...),
-				logger.WithoutHealthCheck(),
+				ignoredLoggingRoutes,
 			),
 		),
 		grpc.ChainStreamInterceptor(
 			selector.StreamServerInterceptor(
 				logging.StreamServerInterceptor(logger.GRPCLogger(logger.L()), loggingOpts...),
-				logger.WithoutHealthCheck(),
+				ignoredLoggingRoutes,
 			),
 		),
 	)

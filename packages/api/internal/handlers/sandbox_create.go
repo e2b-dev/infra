@@ -148,8 +148,8 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	var autoResume *types.SandboxAutoResumeConfig
 	if body.AutoResume != nil {
 		autoResume = &types.SandboxAutoResumeConfig{}
-		if body.AutoResume.Policy != nil {
-			policy := types.SandboxAutoResumePolicy(*body.AutoResume.Policy)
+		if body.AutoResume.Policy != "" {
+			policy := types.SandboxAutoResumePolicy(body.AutoResume.Policy)
 			switch policy {
 			case types.SandboxAutoResumeAny, types.SandboxAutoResumeOff:
 				autoResume.Policy = &policy
