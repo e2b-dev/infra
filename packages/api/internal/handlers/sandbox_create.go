@@ -198,13 +198,6 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 			return
 		}
 
-		var fns InvalidVolumeTypesError
-		if errors.As(err, &fns) {
-			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Volume(s) not supported by cluster: %s", strings.Join(fns.VolumeNames, ", ")))
-
-			return
-		}
-
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Errorf("failed to convert volume mounts: %w", err).Error())
 
 		return
@@ -356,14 +349,6 @@ func isValidMountPath(path string) (string, bool) {
 	return "", true
 }
 
-type InvalidVolumeTypesError struct {
-	VolumeNames []string
-}
-
-func (e InvalidVolumeTypesError) Error() string {
-	return fmt.Sprintf("volumes are unsupported by cluster: %s", strings.Join(e.VolumeNames, ", "))
-}
-
 func getDBVolumesMap(ctx context.Context, sqlcDB *sqlcdb.Client, teamID uuid.UUID, volumeMounts []api.SandboxVolumeMount) (map[string]queries.Volume, error) {
 	dbVolumes, err := sqlcDB.GetVolumesByName(ctx, queries.GetVolumesByNameParams{
 		TeamID:      teamID,
@@ -374,13 +359,8 @@ func getDBVolumesMap(ctx context.Context, sqlcDB *sqlcdb.Client, teamID uuid.UUI
 	}
 
 	dbVolumesMap := make(map[string]queries.Volume, len(dbVolumes))
-	var invalidVolumeNames []string
 	for _, v := range dbVolumes {
 		dbVolumesMap[v.Name] = v
-	}
-
-	if len(invalidVolumeNames) > 0 {
-		return nil, InvalidVolumeTypesError{VolumeNames: invalidVolumeNames}
 	}
 
 	return dbVolumesMap, nil
