@@ -42,6 +42,11 @@ type Config struct {
 	SupabaseJWTSecrets []string `env:"SUPABASE_JWT_SECRETS"`
 
 	DefaultKernelVersion string `env:"DEFAULT_KERNEL_VERSION"`
+
+	// CORSAllowedOrigins is a comma-separated list of allowed CORS origins.
+	// If empty, no origins are allowed (CORS requests are rejected).
+	// Set to "*" to allow all origins (not recommended for production).
+	CORSAllowedOrigins []string `env:"CORS_ALLOWED_ORIGINS" envSeparator:","`
 }
 
 func Parse() (Config, error) {

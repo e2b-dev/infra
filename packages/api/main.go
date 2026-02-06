@@ -92,8 +92,11 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 	)
 
 	corsConfig := cors.DefaultConfig()
-	// Allow all origins
-	corsConfig.AllowAllOrigins = true
+	if len(config.CORSAllowedOrigins) == 1 && config.CORSAllowedOrigins[0] == "*" {
+		corsConfig.AllowAllOrigins = true
+	} else if len(config.CORSAllowedOrigins) > 0 {
+		corsConfig.AllowOrigins = config.CORSAllowedOrigins
+	}
 	corsConfig.AllowHeaders = []string{
 		// Default headers
 		"Origin",
