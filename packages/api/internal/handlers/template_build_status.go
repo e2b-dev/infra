@@ -137,8 +137,21 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 	result.Logs = lgs
 	result.LogEntries = logEntries
 
+	// When build fails with an error step, fetch error logs specifically for that step
+	// This ensures we get the error logs even if offset has moved past them during polling
 	if result.Reason != nil && result.Reason.Step != nil {
-		result.Reason.LogEntries = sharedUtils.ToPtr(filterStepLogs(logEntries, *result.Reason.Step, api.LogLevelWarn))
+		// First try to filter from already fetched logs
+		errorLogs := filterStepLogs(logEntries, *result.Reason.Step, api.LogLevelWarn)
+		
+		// If no error logs found in current batch (likely due to offset pagination),
+		// fetch logs from the beginning specifically for the error step
+		if len(errorLogs) == 0 && result.Status == api.TemplateBuildStatusError {
+			// Fetch all logs from the beginning to capture error context
+			allLogs := cli.GetLogs(ctx, templateID, buildID, 0, nil)
+			errorLogs = filterStepLogs(convertToAPILogEntries(allLogs), *result.Reason.Step, api.LogLevelWarn)
+		}
+		
+		result.Reason.LogEntries = sharedUtils.ToPtr(errorLogs)
 	}
 
 	c.JSON(http.StatusOK, result)
@@ -173,6 +186,14 @@ func filterStepLogs(logEntries []api.BuildLogEntry, step string, minLevel api.Lo
 	return sharedUtils.Filter(logEntries, func(line api.BuildLogEntry) bool {
 		return logs.CompareLevels(string(line.Level), string(minLevel)) >= 0 && line.Step != nil && *line.Step == step
 	})
+}
+
+func convertToAPILogEntries(entries []logs.LogEntry) []api.BuildLogEntry {
+	result := make([]api.BuildLogEntry, 0, len(entries))
+	for _, entry := range entries {
+		result = append(result, getAPILogEntry(entry))
+	}
+	return result
 }
 
 func getAPILogEntry(entry logs.LogEntry) api.BuildLogEntry {
