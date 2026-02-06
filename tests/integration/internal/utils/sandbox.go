@@ -127,9 +127,7 @@ func SetupSandboxWithCleanup(t *testing.T, c *api.ClientWithResponses, options .
 
 		if createSandboxResponse.StatusCode() != http.StatusCreated {
 			t.Logf("Sandbox creation failed status=%d body=%s", createSandboxResponse.StatusCode(), string(createSandboxResponse.Body))
-			if createSandboxResponse.JSON400 != nil {
-				t.Logf("Sandbox creation JSON400=%+v", *createSandboxResponse.JSON400)
-			}
+			t.Logf("Sandbox creation=%+v", *createSandboxResponse)
 		}
 
 		require.Equal(t, http.StatusCreated, createSandboxResponse.StatusCode())
