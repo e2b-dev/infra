@@ -39,7 +39,7 @@ func createTestBaseEnv(t *testing.T, db *testutils.Database, teamID uuid.UUID) s
 
 	// Insert a base env directly into the database
 	err := db.SqlcClient.TestsRawSQL(t.Context(),
-		"INSERT INTO public.envs (id, team_id, public, updated_at) VALUES ($1, $2, $3, NOW())",
+		"INSERT INTO public.envs (id, team_id, public, updated_at, source) VALUES ($1, $2, $3, NOW(), 'template')",
 		envID, teamID, true,
 	)
 	require.NoError(t, err, "Failed to create test base env")
@@ -110,7 +110,7 @@ func createTestEnvBuild(t *testing.T, db *testutils.Database, envID string) uuid
 		`INSERT INTO public.env_builds
 		(id, status, vcpu, ram_mb, free_disk_size_mb, total_disk_size_mb, kernel_version, firecracker_version, envd_version, cluster_node_id, created_at, updated_at, version)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW(), 1)`,
-		buildID, "uploaded", vcpu, ramMb, freeDisk, totalDisk, "6.1.0", "1.4.0", "v1.0.0", "test-node",
+		buildID, "ready", vcpu, ramMb, freeDisk, totalDisk, "6.1.0", "1.4.0", "v1.0.0", "test-node",
 	)
 	require.NoError(t, err, "Failed to create test env build")
 
