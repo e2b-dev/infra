@@ -124,15 +124,11 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 
 			nodeIP, err := catalogResolution(ctx, sandboxId, catalog, pausedSandboxResumer, featureFlags)
 			if err != nil {
-				if errors.Is(err, ErrNodeNotFound) {
-					return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)
-				}
-
 				if !errors.Is(err, ErrNodeNotFound) {
 					l.Warn(ctx, "failed to resolve node ip with Redis resolution", zap.Error(err))
 				}
 
-				return nil, err
+				return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)
 			}
 
 			url := &url.URL{
