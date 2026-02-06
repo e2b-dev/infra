@@ -464,10 +464,6 @@ func run() int {
 		}
 
 		grpcServer.GracefulStop()
-		if err := grpcListener.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
-			exitCode.Add(1)
-			l.Error(ctx, "gRPC service shutdown error", zap.Error(err))
-		}
 	})
 
 	// wait for the HTTP service to complete shutting down first
