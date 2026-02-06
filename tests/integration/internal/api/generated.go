@@ -584,7 +584,7 @@ type Sandbox struct {
 // SandboxAutoResumeConfig Auto-resume configuration for paused sandboxes. Default is off.
 type SandboxAutoResumeConfig struct {
 	// Policy Auto-resume policy for paused sandboxes. Default is off.
-	Policy *SandboxAutoResumePolicy `json:"policy,omitempty"`
+	Policy SandboxAutoResumePolicy `json:"policy"`
 }
 
 // SandboxAutoResumePolicy Auto-resume policy for paused sandboxes. Default is off.
