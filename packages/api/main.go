@@ -23,8 +23,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	middleware "github.com/oapi-codegen/gin-middleware"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"google.golang.org/grpc"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
@@ -36,6 +38,8 @@ import (
 	tracingMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware/otel/tracing"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
+	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -361,6 +365,25 @@ func run() int {
 	apiStore := handlers.NewAPIStore(ctx, tel, config)
 	cleanupFns = append(cleanupFns, apiStore.Close)
 
+	grpcAddr := fmt.Sprintf("0.0.0.0:%d", config.APIGrpcPort)
+	grpcListener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", grpcAddr)
+	if err != nil {
+		l.Fatal(ctx, "failed to create proxy grpc listener", zap.Error(err))
+	}
+
+	grpcServer := grpc.NewServer(
+		grpc.StatsHandler(e2bgrpc.NewStatsWrapper(otelgrpc.NewServerHandler(
+			otelgrpc.WithTracerProvider(tel.TracerProvider),
+			otelgrpc.WithMeterProvider(tel.MeterProvider),
+		))),
+	)
+	proxygrpc.RegisterSandboxServiceServer(grpcServer, handlers.NewSandboxService(apiStore))
+	cleanupFns = append(cleanupFns, func(context.Context) error {
+		grpcServer.GracefulStop()
+
+		return nil
+	})
+
 	// pass the signal context so that handlers know when shutdown is happening.
 	s := NewGinServer(ctx, config, tel, l, apiStore, swagger, port)
 
@@ -408,6 +431,17 @@ func run() int {
 	})
 
 	wg.Go(func() {
+		defer cancel()
+
+		l.Info(ctx, "gRPC service starting", zap.Uint16("port", config.APIGrpcPort))
+		err := grpcServer.Serve(grpcListener)
+		if err != nil && !errors.Is(err, net.ErrClosed) {
+			exitCode.Add(1)
+			l.Error(ctx, "gRPC service encountered error", zap.Error(err))
+		}
+	})
+
+	wg.Go(func() {
 		<-signalCtx.Done()
 
 		// Start returning 503s for health checks
@@ -432,6 +466,12 @@ func run() int {
 		if err := s.Shutdown(ctx); err != nil {
 			exitCode.Add(1)
 			l.Error(ctx, "Http service shutdown error", zap.Int("port", port), zap.Error(err))
+		}
+
+		grpcServer.GracefulStop()
+		if err := grpcListener.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+			exitCode.Add(1)
+			l.Error(ctx, "gRPC service shutdown error", zap.Error(err))
 		}
 	})
 

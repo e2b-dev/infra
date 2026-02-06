@@ -10,6 +10,8 @@ import (
 
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -30,10 +32,19 @@ const (
 
 var ErrNodeNotFound = errors.New("node not found")
 
-func catalogResolution(ctx context.Context, sandboxId string, c catalog.SandboxesCatalog) (string, error) {
+// 0 means "use the stored sandbox timeout" in the resume API.
+const resumeTimeoutSeconds int32 = 0
+
+func catalogResolution(ctx context.Context, sandboxId string, c catalog.SandboxesCatalog, pausedChecker PausedSandboxResumer) (string, error) {
 	s, err := c.GetSandbox(ctx, sandboxId)
 	if err != nil {
 		if errors.Is(err, catalog.ErrSandboxNotFound) {
+			if nodeIP, pausedErr := handlePausedSandbox(ctx, sandboxId, pausedChecker); pausedErr != nil {
+				return "", pausedErr
+			} else if nodeIP != "" {
+				return nodeIP, nil
+			}
+
 			return "", ErrNodeNotFound
 		}
 
@@ -45,7 +56,39 @@ func catalogResolution(ctx context.Context, sandboxId string, c catalog.Sandboxe
 	return s.OrchestratorIP, nil
 }
 
-func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog catalog.SandboxesCatalog) (*reverseproxy.Proxy, error) {
+func handlePausedSandbox(
+	ctx context.Context,
+	sandboxId string,
+	pausedChecker PausedSandboxResumer,
+) (string, error) {
+	if pausedChecker == nil {
+		return "", nil
+	}
+
+	logger.L().Info(ctx, "catalog miss, attempting resume via api", logger.WithSandboxID(sandboxId))
+	nodeIP, err := pausedChecker.Resume(ctx, sandboxId, resumeTimeoutSeconds)
+	if err == nil {
+		return nodeIP, nil
+	}
+
+	if isNotPausedError(err) {
+		// API says it can't resume (no snapshot / not resumable).
+		return "", nil
+	}
+
+	return "", err
+}
+
+func isNotPausedError(err error) bool {
+	var grpcStatus interface{ GRPCStatus() *status.Status }
+	if !errors.As(err, &grpcStatus) {
+		return false
+	}
+
+	return grpcStatus.GRPCStatus().Code() == codes.NotFound
+}
+
+func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog catalog.SandboxesCatalog, pausedSandboxResumer PausedSandboxResumer) (*reverseproxy.Proxy, error) {
 	getTargetFromRequest := reverseproxy.GetTargetFromRequest(env.IsLocal())
 
 	proxy := reverseproxy.New(
@@ -71,13 +114,17 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 				zap.Int64("content_length", r.ContentLength),
 			)
 
-			nodeIP, err := catalogResolution(r.Context(), sandboxId, catalog)
+			nodeIP, err := catalogResolution(ctx, sandboxId, catalog, pausedSandboxResumer)
 			if err != nil {
+				if errors.Is(err, ErrNodeNotFound) {
+					return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)
+				}
+
 				if !errors.Is(err, ErrNodeNotFound) {
 					l.Warn(ctx, "failed to resolve node ip with Redis resolution", zap.Error(err))
 				}
 
-				return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)
+				return nil, err
 			}
 
 			url := &url.URL{

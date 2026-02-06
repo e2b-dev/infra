@@ -18,6 +18,10 @@ job "api" {
         static = "${port_number}"
       }
 
+      port "grpc" {
+        static = "${api_grpc_port}"
+      }
+
       %{ if prevent_colocation }
       port "scheduling-block" {
         // This port is used to block scheduling of jobs with the same block on the same node.
@@ -44,6 +48,20 @@ job "api" {
         interval = "3s"
         timeout  = "3s"
         port     = "${port_number}"
+      }
+    }
+
+    service {
+      name = "api-grpc"
+      port = "grpc"
+      task = "start"
+
+      check {
+        type     = "tcp"
+        name     = "grpc"
+        interval = "3s"
+        timeout  = "3s"
+        port     = "grpc"
       }
     }
 
@@ -86,6 +104,7 @@ job "api" {
         NODE_ID                        = "$${node.unique.id}"
         NOMAD_TOKEN                    = "${nomad_acl_token}"
         ORCHESTRATOR_PORT              = "${orchestrator_port}"
+        API_GRPC_PORT                  = "${api_grpc_port}"
         ADMIN_TOKEN                    = "${admin_token}"
         SANDBOX_ACCESS_TOKEN_HASH_SEED = "${sandbox_access_token_hash_seed}"
 

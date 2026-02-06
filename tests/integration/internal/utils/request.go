@@ -6,6 +6,7 @@ import (
 	"maps"
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -21,9 +22,12 @@ func NewRequest(sbx *api.Sandbox, url *url.URL, port int, extraHeaders *http.Hea
 	if url.Hostname() == "localhost" {
 		host = fmt.Sprintf("%d-%s-%s.%s", port, sbx.SandboxID, sbx.ClientID, "localhost")
 	} else {
-		// Extract top level domain from EnvdProxy
-		eTLD, _ := publicsuffix.EffectiveTLDPlusOne(url.Hostname())
-		host = fmt.Sprintf("%d-%s-%s.%s:%s", port, sbx.SandboxID, sbx.ClientID, eTLD, url.Port())
+		routingDomain := routingDomainFromProxyHost(url.Hostname())
+		portSuffix := ""
+		if proxyPort := url.Port(); proxyPort != "" {
+			portSuffix = ":" + proxyPort
+		}
+		host = fmt.Sprintf("%d-%s-%s.%s%s", port, sbx.SandboxID, sbx.ClientID, routingDomain, portSuffix)
 	}
 
 	header := http.Header{
@@ -44,6 +48,22 @@ func NewRequest(sbx *api.Sandbox, url *url.URL, port int, extraHeaders *http.Hea
 		Host:   host,
 		Header: header,
 	}
+}
+
+func routingDomainFromProxyHost(proxyHost string) string {
+	labels := strings.Split(proxyHost, ".")
+	if len(labels) > 1 {
+		switch labels[0] {
+		case "client", "session":
+			return strings.Join(labels[1:], ".")
+		}
+	}
+
+	if eTLD, err := publicsuffix.EffectiveTLDPlusOne(proxyHost); err == nil && eTLD != "" {
+		return eTLD
+	}
+
+	return proxyHost
 }
 
 func WaitForStatus(tb testing.TB, client *http.Client, sbx *api.Sandbox, url *url.URL, port int, headers *http.Header, expectedStatus int) *http.Response {

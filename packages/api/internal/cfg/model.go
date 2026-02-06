@@ -34,6 +34,8 @@ type Config struct {
 	RedisClusterURL  string `env:"REDIS_CLUSTER_URL"`
 	RedisTLSCABase64 string `env:"REDIS_TLS_CA_BASE64"`
 
+	APIGrpcPort uint16 `env:"API_GRPC_PORT" envDefault:"5009"`
+
 	SandboxAccessTokenHashSeed string `env:"SANDBOX_ACCESS_TOKEN_HASH_SEED"`
 
 	// SupabaseJWTSecrets is a list of secrets used to verify the Supabase JWT.

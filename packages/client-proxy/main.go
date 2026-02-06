@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -23,7 +24,6 @@ import (
 	e2bproxy "github.com/e2b-dev/infra/packages/proxy/internal/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/factories"
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -98,13 +98,6 @@ func run() int {
 
 	l.Info(ctx, "Starting client proxy", zap.String("commit", commitSHA), zap.String("instance_id", instanceID))
 
-	featureFlagsClient, err := featureflags.NewClient()
-	if err != nil {
-		l.Error(ctx, "Failed to create feature flags client", zap.Error(err))
-
-		return 1
-	}
-
 	var catalog e2bcatalog.SandboxesCatalog
 
 	redisClient, err := factories.NewRedisClient(ctx, factories.RedisConfig{
@@ -134,12 +127,25 @@ func run() int {
 	info := &internal.ServiceInfo{}
 	info.SetStatus(ctx, internal.Healthy)
 
+	var pausedSandboxResumer e2bproxy.PausedSandboxResumer
+	if strings.TrimSpace(config.ApiGrpcAddress) != "" {
+		pausedSandboxResumer, err = e2bproxy.NewGrpcPausedSandboxResumer(config.ApiGrpcAddress)
+		if err != nil {
+			l.Error(ctx, "Failed to create paused sandbox checker", zap.Error(err))
+
+			return 1
+		}
+	} else {
+		l.Warn(ctx, "API gRPC address not set; paused sandbox checks disabled")
+	}
+
 	// Proxy sandbox http traffic to orchestrator nodes
 	trafficProxy, err := e2bproxy.NewClientProxy(
 		tel.MeterProvider,
 		serviceName,
 		config.ProxyPort,
 		catalog,
+		pausedSandboxResumer,
 	)
 	if err != nil {
 		l.Error(ctx, "Failed to create client proxy", zap.Error(err))
@@ -167,7 +173,10 @@ func run() int {
 	}
 
 	var closers []Closeable
-	closers = append(closers, featureFlagsClient, catalog)
+	closers = append(closers, catalog)
+	if closeable, ok := pausedSandboxResumer.(Closeable); ok {
+		closers = append(closers, closeable)
+	}
 
 	wg.Go(func() {
 		// make sure to cancel the parent context before this
