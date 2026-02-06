@@ -21,6 +21,8 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
 )
 
+const maxFileUploadSize = 512 * 1024 * 1024 // 512 MiB per file
+
 var ErrNoDiskSpace = fmt.Errorf("not enough disk space available")
 
 func processFile(r *http.Request, path string, part io.Reader, uid, gid int, logger zerolog.Logger) (int, error) {
@@ -88,7 +90,8 @@ func processFile(r *http.Request, path string, part io.Reader, uid, gid int, log
 		}
 	}
 
-	_, err = file.ReadFrom(part)
+	limitedReader := io.LimitReader(part, maxFileUploadSize+1)
+	written, err := file.ReadFrom(limitedReader)
 	if err != nil {
 		if errors.Is(err, syscall.ENOSPC) {
 			err = ErrNoDiskSpace
@@ -102,6 +105,12 @@ func processFile(r *http.Request, path string, part io.Reader, uid, gid int, log
 		err = fmt.Errorf("error writing file: %w", err)
 
 		return http.StatusInternalServerError, err
+	}
+
+	if written > maxFileUploadSize {
+		_ = os.Remove(path)
+
+		return http.StatusRequestEntityTooLarge, fmt.Errorf("file exceeds maximum upload size of %d bytes", maxFileUploadSize)
 	}
 
 	return http.StatusNoContent, nil
