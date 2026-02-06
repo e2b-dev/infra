@@ -15,6 +15,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
@@ -794,11 +795,6 @@ func (s *Sandbox) Pause(
 	}
 	cleanup.AddNoContext(ctx, snapshotTemplateFiles.Close)
 
-	buildID, err := uuid.Parse(snapshotTemplateFiles.BuildID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse build id: %w", err)
-	}
-
 	// Stop the health check before pausing the VM
 	s.Checks.Stop()
 
@@ -815,50 +811,82 @@ func (s *Sandbox) Pause(
 		return nil, fmt.Errorf("error creating snapshot: %w", err)
 	}
 
-	// Gather data for postprocessing
-	originalMemfile, err := s.Template.Memfile(ctx)
+	buildID, err := uuid.Parse(snapshotTemplateFiles.BuildID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get original memfile: %w", err)
+		return nil, fmt.Errorf("failed to parse build id: %w", err)
 	}
 
-	originalRootfs, err := s.Template.Rootfs()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get original rootfs: %w", err)
-	}
+	eg, egCtx := errgroup.WithContext(ctx)
 
-	memfileDiffMetadata, err := s.Resources.memory.DiffMetadata(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get memfile metadata: %w", err)
-	}
+	var memfileDiff build.Diff
+	var memfileDiffHeader *header.Header
 
-	// Start POSTPROCESSING
-	memfileDiff, memfileDiffHeader, err := pauseProcessMemory(
-		ctx,
-		buildID,
-		originalMemfile.Header(),
-		memfileDiffMetadata,
-		s.config.DefaultCacheDir,
-		s.process,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("error while post processing: %w", err)
-	}
-	cleanup.AddNoContext(ctx, memfileDiff.Close)
+	eg.Go(func() error {
+		originalMemfile, err := s.Template.Memfile(egCtx)
+		if err != nil {
+			return fmt.Errorf("failed to get original memfile: %w", err)
+		}
 
-	rootfsDiff, rootfsDiffHeader, err := pauseProcessRootfs(
-		ctx,
-		buildID,
-		originalRootfs.Header(),
-		&RootfsDiffCreator{
-			rootfs:    s.rootfs,
-			closeHook: s.Close,
-		},
-		s.config.DefaultCacheDir,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("error while post processing: %w", err)
+		diffMetadata, err := s.Resources.memory.DiffMetadata(egCtx)
+		if err != nil {
+			return fmt.Errorf("failed to get memfile metadata: %w", err)
+		}
+
+		diff, header, memfileErr := pauseProcessMemory(
+			egCtx,
+			buildID,
+			originalMemfile.Header(),
+			diffMetadata,
+			s.config.DefaultCacheDir,
+			s.process,
+		)
+		if memfileErr != nil {
+			return fmt.Errorf("error while post processing memory: %w", memfileErr)
+		}
+
+		memfileDiff = diff
+		memfileDiffHeader = header
+
+		cleanup.AddNoContext(egCtx, memfileDiff.Close)
+
+		return nil
+	})
+
+	var rootfsDiff build.Diff
+	var rootfsDiffHeader *header.Header
+
+	eg.Go(func() error {
+		originalRootfs, err := s.Template.Rootfs()
+		if err != nil {
+			return fmt.Errorf("failed to get original rootfs: %w", err)
+		}
+
+		diff, header, rootfsErr := pauseProcessRootfs(
+			egCtx,
+			buildID,
+			originalRootfs.Header(),
+			&RootfsDiffCreator{
+				rootfs:    s.rootfs,
+				closeHook: s.Close,
+			},
+			s.config.DefaultCacheDir,
+		)
+		if rootfsErr != nil {
+			return fmt.Errorf("error while post processing rootfs: %w", rootfsErr)
+		}
+
+		rootfsDiff = diff
+		rootfsDiffHeader = header
+
+		cleanup.AddNoContext(egCtx, rootfsDiff.Close)
+
+		return nil
+	})
+
+	waitErr := eg.Wait()
+	if waitErr != nil {
+		return nil, fmt.Errorf("error while post processing: %w", waitErr)
 	}
-	cleanup.AddNoContext(ctx, rootfsDiff.Close)
 
 	metadataFileLink := template.NewLocalFileLink(snapshotTemplateFiles.CacheMetadataPath())
 	cleanup.AddNoContext(ctx, metadataFileLink.Close)
