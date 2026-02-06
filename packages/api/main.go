@@ -430,7 +430,7 @@ func run() int {
 
 		l.Info(ctx, "gRPC service starting", zap.Uint16("port", config.APIGrpcPort))
 		err := grpcServer.Serve(grpcListener)
-		if err != nil && !errors.Is(err, net.ErrClosed) && !errors.Is(err, grpc.ErrServerStopped) {
+		if err != nil {
 			exitCode.Add(1)
 			l.Error(ctx, "gRPC service encountered error", zap.Error(err))
 		}
