@@ -34,7 +34,7 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 	)
 
 	if !a.featureFlags.BoolFlag(ctx, feature_flags.PersistentVolumesFlag) {
-		a.sendAPIStoreError(c, http.StatusBadRequest, "use of volumes is not enabled")
+		a.sendAPIStoreError(c, http.StatusForbidden, "use of volumes is not enabled")
 
 		return
 	}
