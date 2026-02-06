@@ -31,7 +31,7 @@ build-debug:
 	go mod download
 	go vet ./...
 
-.PHONE: create-migration
+.PHONY: create-migration
 create-migration:
 ifeq ($(origin NAME), undefined)
 	@echo "The expected syntax is: make create-migration NAME=your-migration-name"
@@ -39,7 +39,7 @@ ifeq ($(origin NAME), undefined)
 endif
 	@$(goose) create $(NAME) sql
 
-.PHONE: status
+.PHONY: status
 status:
 	@$(goose) status
 
