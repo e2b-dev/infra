@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"golang.org/x/net/publicsuffix"
 
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 )
