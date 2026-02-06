@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"golang.org/x/net/publicsuffix"
 
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 )
@@ -22,7 +21,16 @@ func NewRequest(sbx *api.Sandbox, url *url.URL, port int, extraHeaders *http.Hea
 	if url.Hostname() == "localhost" {
 		host = fmt.Sprintf("%d-%s-%s.%s", port, sbx.SandboxID, sbx.ClientID, "localhost")
 	} else {
-		routingDomain := routingDomainFromProxyHost(url.Hostname())
+		proxyHost := url.Hostname()
+		labels := strings.Split(proxyHost, ".")
+		// Expected proxy host shape is something like: "<proxy>.<routing-domain>".
+		routingDomain := strings.Join(labels[1:], ".")
+
+		// Just in case it's something crazy
+		if routingDomain == "" {
+			routingDomain = proxyHost
+		}
+
 		portSuffix := ""
 		if proxyPort := url.Port(); proxyPort != "" {
 			portSuffix = ":" + proxyPort
@@ -48,22 +56,6 @@ func NewRequest(sbx *api.Sandbox, url *url.URL, port int, extraHeaders *http.Hea
 		Host:   host,
 		Header: header,
 	}
-}
-
-func routingDomainFromProxyHost(proxyHost string) string {
-	labels := strings.Split(proxyHost, ".")
-	if len(labels) > 1 {
-		switch labels[0] {
-		case "client", "session":
-			return strings.Join(labels[1:], ".")
-		}
-	}
-
-	if eTLD, err := publicsuffix.EffectiveTLDPlusOne(proxyHost); err == nil && eTLD != "" {
-		return eTLD
-	}
-
-	return proxyHost
 }
 
 func WaitForStatus(tb testing.TB, client *http.Client, sbx *api.Sandbox, url *url.URL, port int, headers *http.Header, expectedStatus int) *http.Response {
