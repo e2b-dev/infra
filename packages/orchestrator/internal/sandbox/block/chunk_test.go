@@ -1074,7 +1074,7 @@ func runMatrixFileSize(t *testing.T, factory ChunkerFactory) {
 	assert.Positive(t, size)
 }
 
-// runMatrixChunkHandlesFrameSpan tests that cross-frame reads trigger SLOW_PATH_HIT error.
+// runMatrixChunkHandlesFrameSpan tests that cross-frame reads trigger read spans frame boundary error.
 // This helps verify whether slow path is ever invoked in practice.
 func runMatrixChunkHandlesFrameSpan(t *testing.T, factory ChunkerFactory) {
 	t.Helper()
@@ -1092,8 +1092,8 @@ func runMatrixChunkHandlesFrameSpan(t *testing.T, factory ChunkerFactory) {
 	length := int64(1000) // spans 500 bytes into second frame
 
 	_, err := tc.Chunker.Slice(ctx, offset, length, tc.FrameTable)
-	require.Error(t, err, "cross-frame read should error with SLOW_PATH_HIT")
-	assert.Contains(t, err.Error(), "SLOW_PATH_HIT", "error should indicate slow path was triggered")
+	require.Error(t, err, "cross-frame read should error with read spans frame boundary")
+	assert.Contains(t, err.Error(), "read spans frame boundary", "error should indicate slow path was triggered")
 }
 
 // --- Matrix test runners ---

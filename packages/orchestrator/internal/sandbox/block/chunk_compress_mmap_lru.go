@@ -151,12 +151,12 @@ func (c *CompressMMapLRUChunker) sliceWithStats(ctx context.Context, off, length
 		return data[startInFrame:endInFrame], wasHit, nil
 	}
 
-	// Slow path: read spans multiple frames - LOG AND ERROR to verify if this ever happens
+	// Slow path: read spans multiple frames
 	timer.Failure(ctx, length,
 		attribute.String(pullType, pullTypeLocal),
 		attribute.String(failureReason, "cross_frame_span"))
 
-	return nil, false, fmt.Errorf("SLOW_PATH_HIT: read spans frame boundary - off=%#x length=%d startInFrame=%d endInFrame=%d frameSize=%d frameStartsU=%#x",
+	return nil, false, fmt.Errorf("read spans frame boundary - off=%#x length=%d startInFrame=%d endInFrame=%d frameSize=%d frameStartsU=%#x",
 		off, length, startInFrame, endInFrame, frameSize.U, frameStarts.U)
 }
 

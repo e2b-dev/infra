@@ -332,6 +332,7 @@ func (u *Userfaultfd) faultPage(
 	}()
 
 	b, dataErr := source.Slice(ctx, offset, int64(pagesize))
+
 	if len(b) == 0 && dataErr == nil {
 		u.logger.Error(ctx, "UFFD got empty slice without error",
 			zap.Int64("offset", offset),

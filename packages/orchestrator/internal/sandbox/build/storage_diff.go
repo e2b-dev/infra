@@ -103,16 +103,24 @@ func (b *StorageDiff) createChunker(ctx context.Context, ft *storage.FrameTable)
 	}
 
 	isCompressed := storage.IsCompressed(ft)
+
 	if isCompressed {
+		// Size LRU to hold ~half the decompressed data so repeated access doesn't thrash.
+		// ft.Frames is a per-mapping subset, not the full file, so estimate from uSize.
+		// Frames average ~16MB decompressed; budget = uSize/2 worth of frames.
+		const estimatedFrameU = 16 * 1024 * 1024
+		estimatedFrames := max(1, int(uSize/estimatedFrameU))
+		lruSize := max(4, estimatedFrames/2)
+
 		switch storage.CompressedChunkerType {
 		case storage.DecompressMMapChunker:
 			return block.NewDecompressMMapChunker(uSize, rawSize, b.blockSize, b.persistence, b.objectPath, b.cachePath, b.metrics)
 
 		case storage.CompressLRUChunker:
-			return block.NewCompressLRUChunker(uSize, b.persistence, b.objectPath, 4, b.metrics)
+			return block.NewCompressLRUChunker(uSize, b.persistence, b.objectPath, lruSize, b.metrics)
 
 		case storage.CompressMMapLRUChunker:
-			return block.NewCompressMMapLRUChunker(uSize, rawSize, b.persistence, b.objectPath, b.cachePath, 4, b.metrics)
+			return block.NewCompressMMapLRUChunker(uSize, rawSize, b.persistence, b.objectPath, b.cachePath, lruSize, b.metrics)
 
 		default:
 			return nil, fmt.Errorf("unsupported chunker type for object %s", b.objectPath)

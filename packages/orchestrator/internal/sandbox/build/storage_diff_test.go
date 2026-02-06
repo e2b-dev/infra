@@ -589,13 +589,13 @@ func TestStorageDiff_CompressedChunker_MultipleFrames(t *testing.T) {
 	assert.Equal(t, 100, n)
 	assert.Equal(t, fullData[frameSizeU+1000:frameSizeU+1100], buf)
 
-	// Read across frame boundary - should trigger SLOW_PATH_HIT error
+	// Read across frame boundary - should trigger read spans frame boundary error
 	// This verifies whether cross-frame reads ever happen in practice
 	boundaryOffset := frameSizeU - 50
 	buf = make([]byte, 100)
 	_, err = sd.ReadAt(ctx, buf, boundaryOffset, frameTable)
-	require.Error(t, err, "cross-frame reads should trigger SLOW_PATH_HIT error")
-	assert.Contains(t, err.Error(), "SLOW_PATH_HIT", "error should indicate slow path was triggered")
+	require.Error(t, err, "cross-frame reads should trigger read spans frame boundary error")
+	assert.Contains(t, err.Error(), "read spans frame boundary", "error should indicate slow path was triggered")
 
 	// Verify FileSize after chunker is initialized
 	size, err := sd.FileSize()
