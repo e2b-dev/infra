@@ -96,7 +96,7 @@ func isNotPausedError(err error) bool {
 	return grpcStatus.GRPCStatus().Code() == codes.NotFound
 }
 
-func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog catalog.SandboxesCatalog, pausedSandboxResumer PausedSandboxResumer, featureFlags *featureflags.Client) (*reverseproxy.Proxy, error) {
+func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog catalog.SandboxesCatalog, pausedSandboxResumer PausedSandboxResumer, featureFlagsClient *featureflags.Client) (*reverseproxy.Proxy, error) {
 	getTargetFromRequest := reverseproxy.GetTargetFromRequest(env.IsLocal())
 
 	proxy := reverseproxy.New(
@@ -122,7 +122,7 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 				zap.Int64("content_length", r.ContentLength),
 			)
 
-			nodeIP, err := catalogResolution(ctx, sandboxId, catalog, pausedSandboxResumer, featureFlags)
+			nodeIP, err := catalogResolution(ctx, sandboxId, catalog, pausedSandboxResumer, featureFlagsClient)
 			if err != nil {
 				if !errors.Is(err, ErrNodeNotFound) {
 					l.Warn(ctx, "failed to resolve node ip with Redis resolution", zap.Error(err))

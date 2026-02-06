@@ -99,7 +99,7 @@ func run() int {
 
 	l.Info(ctx, "Starting client proxy", zap.String("commit", commitSHA), zap.String("instance_id", instanceID))
 
-	featureFlags, err := featureflags.NewClient()
+	featureFlagsClient, err := featureflags.NewClient()
 	if err != nil {
 		l.Error(ctx, "Failed to create feature flags client", zap.Error(err))
 
@@ -154,7 +154,7 @@ func run() int {
 		config.ProxyPort,
 		catalog,
 		pausedSandboxResumer,
-		featureFlags,
+		featureFlagsClient,
 	)
 	if err != nil {
 		l.Error(ctx, "Failed to create client proxy", zap.Error(err))
@@ -182,8 +182,7 @@ func run() int {
 	}
 
 	var closers []Closeable
-	closers = append(closers, catalog)
-	closers = append(closers, featureFlags)
+	closers = append(closers, featureFlagsClient, catalog)
 	if closeable, ok := pausedSandboxResumer.(Closeable); ok {
 		closers = append(closers, closeable)
 	}
