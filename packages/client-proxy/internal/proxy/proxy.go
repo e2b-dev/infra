@@ -33,9 +33,6 @@ const (
 
 var ErrNodeNotFound = errors.New("node not found")
 
-// use 5 minutes for now; will allow settings for this later
-const resumeTimeoutSeconds int32 = 300
-
 func catalogResolution(ctx context.Context, sandboxId string, c catalog.SandboxesCatalog, pausedChecker PausedSandboxResumer, featureFlags *featureflags.Client) (string, error) {
 	s, err := c.GetSandbox(ctx, sandboxId)
 	if err != nil {
@@ -74,7 +71,7 @@ func handlePausedSandbox(
 	}
 
 	logger.L().Info(ctx, "catalog miss, attempting resume via api", logger.WithSandboxID(sandboxId))
-	nodeIP, err := pausedChecker.Resume(ctx, sandboxId, resumeTimeoutSeconds)
+	nodeIP, err := pausedChecker.Resume(ctx, sandboxId)
 	if err != nil {
 		if isNotPausedError(err) {
 			// API says it can't resume (no snapshot / not resumable).

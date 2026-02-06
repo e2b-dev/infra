@@ -37,10 +37,9 @@ func (c *grpcPausedSandboxResumer) Close(_ context.Context) error {
 	return c.conn.Close()
 }
 
-func (c *grpcPausedSandboxResumer) Resume(ctx context.Context, sandboxId string, timeoutSeconds int32) (string, error) {
+func (c *grpcPausedSandboxResumer) Resume(ctx context.Context, sandboxId string) (string, error) {
 	resp, err := c.client.ResumeSandbox(ctx, &proxygrpc.SandboxResumeRequest{
-		SandboxId:      sandboxId,
-		TimeoutSeconds: timeoutSeconds,
+		SandboxId: sandboxId,
 	})
 	if err != nil {
 		return "", fmt.Errorf("grpc resume: %w", err)

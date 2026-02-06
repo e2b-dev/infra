@@ -43,12 +43,9 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 
 	teamID := snap.Snapshot.TeamID
 
-	// We should better define what we mean by timeout; https://linear.app/e2b/issue/ENG-3473/codify-what-timeout-should-be
-	timeoutSeconds := req.GetTimeoutSeconds()
-	if timeoutSeconds <= 0 {
-		timeoutSeconds = 300 // default to 5 minutes if not set or invalid
-	}
-	timeout := time.Duration(timeoutSeconds) * time.Second
+	// Fixed 5 minutes for client-proxy initiated resume.
+	// This intentionally does not allow callers to override timeouts via gRPC.
+	timeout := 300 * time.Second
 
 	// Fast path: if already running, return routing info immediately.
 	if running, runErr := s.api.orchestrator.GetSandbox(ctx, teamID, sandboxID); runErr == nil {

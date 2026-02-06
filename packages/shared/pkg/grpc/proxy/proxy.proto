@@ -8,8 +8,8 @@ option go_package = "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy;pro
 message SandboxResumeRequest {
   // Sandbox ID to resume.
   string sandbox_id = 1;
-  // Optional timeout override in seconds (must be within team limits).
-  int32 timeout_seconds = 2;
+  reserved 2;
+  reserved "timeout_seconds";
 }
 
 // Response with routing info for the resumed/running sandbox.
