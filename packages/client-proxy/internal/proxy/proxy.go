@@ -67,7 +67,7 @@ func handlePausedSandbox(
 		return "", nil
 	}
 
-	if featureFlags != nil && !featureFlags.BoolFlag(ctx, featureflags.SandboxAutoResumeFlag, featureflags.SandboxContext(sandboxId)) {
+	if !featureFlags.BoolFlag(ctx, featureflags.SandboxAutoResumeFlag, featureflags.SandboxContext(sandboxId)) {
 		logger.L().Debug(ctx, "sandbox auto-resume disabled; skipping api resume", logger.WithSandboxID(sandboxId))
 
 		return "", nil
