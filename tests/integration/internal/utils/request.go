@@ -58,22 +58,6 @@ func NewRequest(sbx *api.Sandbox, url *url.URL, port int, extraHeaders *http.Hea
 	}
 }
 
-func routingDomainFromProxyHost(proxyHost string) string {
-	labels := strings.Split(proxyHost, ".")
-	if len(labels) > 1 {
-		switch labels[0] {
-		case "client", "session":
-			return strings.Join(labels[1:], ".")
-		}
-	}
-
-	if eTLD, err := publicsuffix.EffectiveTLDPlusOne(proxyHost); err == nil && eTLD != "" {
-		return eTLD
-	}
-
-	return proxyHost
-}
-
 func WaitForStatus(tb testing.TB, client *http.Client, sbx *api.Sandbox, url *url.URL, port int, headers *http.Header, expectedStatus int) *http.Response {
 	tb.Helper()
 
