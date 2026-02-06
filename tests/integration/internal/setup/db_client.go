@@ -31,15 +31,17 @@ func GetTestDBClient(tb testing.TB) *Database {
 	sharedDBOnce.Do(func() {
 		databaseURL := utils.RequiredEnv("POSTGRES_CONNECTION_STRING", "Postgres connection string")
 
-		// Shared pool across all tests - limit total connections
-		db, err := client.NewClient(context.Background(), databaseURL, pool.WithMaxConnections(4))
+		// Shared pool across all tests - keep connection count low to avoid
+		// exhausting Supabase session-mode pooler limits.
+		// authdb creates 2 pools (write+read) so total = 1 + 2 = 3 connections.
+		db, err := client.NewClient(context.Background(), databaseURL, pool.WithMaxConnections(1))
 		if err != nil {
 			errSharedDB = err
 
 			return
 		}
 
-		authDb, err := authdb.NewClient(context.Background(), databaseURL, databaseURL, pool.WithMaxConnections(4))
+		authDb, err := authdb.NewClient(context.Background(), databaseURL, databaseURL, pool.WithMaxConnections(1))
 		if err != nil {
 			db.Close()
 			errSharedDB = err
