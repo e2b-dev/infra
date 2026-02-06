@@ -120,7 +120,7 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 	}
 
 	headers := http.Header{}
-	_, apiErr := s.api.startSandbox(
+	sbx, apiErr := s.api.startSandboxInternal(
 		ctx,
 		snap.Snapshot.SandboxID,
 		timeout,
@@ -145,14 +145,9 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		return nil, status.Errorf(grpcCodeFromHTTPStatus(apiErr.Code), "resume failed: %s", apiErr.ClientMsg)
 	}
 
-	// Return routing info so the proxy can send the request immediately (no catalog polling required).
-	running, runErr = s.api.orchestrator.GetSandbox(ctx, teamID, sandboxID)
-	if runErr != nil {
-		return nil, status.Error(codes.Internal, "sandbox resumed but routing info is not available yet")
-	}
-	node := s.api.orchestrator.GetNode(running.ClusterID, running.NodeID)
+	node := s.api.orchestrator.GetNode(sbx.ClusterID, sbx.NodeID)
 	if node == nil || node.IPAddress == "" {
-		return nil, status.Error(codes.Internal, "sandbox resumed but node is not available")
+		return nil, status.Error(codes.Internal, "sandbox resumed but routing info is not available yet")
 	}
 
 	return &proxygrpc.SandboxResumeResponse{OrchestratorIp: node.IPAddress}, nil

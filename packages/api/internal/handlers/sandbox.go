@@ -15,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	typesteam "github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/middleware/otel/tracing"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -44,12 +45,62 @@ func (a *APIStore) startSandbox(
 	network *types.SandboxNetworkConfig,
 	mcp api.Mcp,
 ) (*api.Sandbox, *api.APIError) {
+	sbx, apiErr := a.startSandboxInternal(
+		ctx,
+		sandboxID,
+		timeout,
+		envVars,
+		metadata,
+		alias,
+		team,
+		build,
+		requestHeader,
+		isResume,
+		nodeID,
+		templateID,
+		baseTemplateID,
+		autoPause,
+		autoResume,
+		envdAccessToken,
+		allowInternetAccess,
+		network,
+		mcp,
+	)
+	if apiErr != nil {
+		return nil, apiErr
+	}
+
+	return sbx.ToAPISandbox(), nil
+}
+
+// startSandboxInternal starts the sandbox and returns the internal sandbox model (includes routing info).
+func (a *APIStore) startSandboxInternal(
+	ctx context.Context,
+	sandboxID string,
+	timeout time.Duration,
+	envVars map[string]string,
+	metadata map[string]string,
+	alias string,
+	team *typesteam.Team,
+	build queries.EnvBuild,
+	requestHeader *http.Header,
+	isResume bool,
+	nodeID *string,
+	templateID string,
+	baseTemplateID string,
+	autoPause bool,
+	autoResume *types.SandboxAutoResumeConfig,
+	envdAccessToken *string,
+	allowInternetAccess *bool,
+	network *types.SandboxNetworkConfig,
+	mcp api.Mcp,
+) (sandbox.Sandbox, *api.APIError) {
 	startTime := time.Now()
 	endTime := startTime.Add(timeout)
 
 	// Unique ID for the execution (from start/resume to stop/pause)
 	executionID := uuid.New().String()
-	sandbox, instanceErr := a.orchestrator.CreateSandbox(
+	sbx, instanceErr := a.orchestrator.CreateSandbox(
 		ctx,
 		sandboxID,
 		executionID,
@@ -74,7 +125,7 @@ func (a *APIStore) startSandbox(
 	if instanceErr != nil {
 		telemetry.ReportError(ctx, "error when creating instance", instanceErr.Err)
 
-		return nil, instanceErr
+		return sandbox.Sandbox{}, instanceErr
 	}
 
 	telemetry.ReportEvent(ctx, "Created sandbox")
@@ -83,16 +134,16 @@ func (a *APIStore) startSandbox(
 	a.posthog.IdentifyAnalyticsTeam(ctx, team.ID.String(), team.Name)
 	properties := a.posthog.GetPackageToPosthogProperties(requestHeader)
 	props := properties.
-		Set("environment", sandbox.TemplateID).
-		Set("instance_id", sandbox.SandboxID).
+		Set("environment", sbx.TemplateID).
+		Set("instance_id", sbx.SandboxID).
 		Set("alias", alias).
 		Set("resume", isResume).
-		Set("build_id", sandbox.BuildID).
+		Set("build_id", sbx.BuildID).
 		Set("envd_version", build.EnvdVersion).
-		Set("node_id", sandbox.NodeID).
-		Set("vcpu", sandbox.VCpu).
-		Set("ram_mb", sandbox.RamMB).
-		Set("total_disk_size_mb", sandbox.TotalDiskSizeMB).
+		Set("node_id", sbx.NodeID).
+		Set("vcpu", sbx.VCpu).
+		Set("ram_mb", sbx.RamMB).
+		Set("total_disk_size_mb", sbx.TotalDiskSizeMB).
 		Set("auto_pause", autoPause)
 
 	// Calculate the time it took for the sandbox to start from request receipt
@@ -114,14 +165,14 @@ func (a *APIStore) startSandbox(
 	}()
 
 	telemetry.SetAttributes(ctx,
-		attribute.String("instance.id", sandbox.SandboxID),
+		attribute.String("instance.id", sbx.SandboxID),
 	)
 
 	sbxlogger.E(&sbxlogger.SandboxMetadata{
-		SandboxID:  sandbox.SandboxID,
-		TemplateID: sandbox.TemplateID,
+		SandboxID:  sbx.SandboxID,
+		TemplateID: sbx.TemplateID,
 		TeamID:     team.ID.String(),
 	}).Info(ctx, "Sandbox created", zap.String("end_time", endTime.Format("2006-01-02 15:04:05 -07:00")))
 
-	return sandbox.ToAPISandbox(), nil
+	return sbx, nil
 }
