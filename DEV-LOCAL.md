@@ -2,18 +2,34 @@
 
 > Note: Linux is required for developing on bare metal. This is a work in progress. Not everything will function as expected.
 
+## System prep
 1. `sudo modprobe nbd nbds_max=64`
 2. `sudo sysctl -w vm.nr_hugepages=2048` enable huge pages
-3. `make download-public-kernels` download linux kernels 
-4. `make local-infra` runs clickhouse, grafana, loki, memcached, mimir, otel, postgres, redis, tempo
-5. `cd packages/db && make migrate-local` initialize the database
-6. `cd packages/envd && make build-debug` create the envd that will be embedded in templates
-7. `make download-public-firecrackers` download firecracker versions
-8. `cd packages/local-dev && go run seed-local-database.go` generate user, team, and token for local development 
-9. `cd packages/api && make run-local` run the api locally 
-10. `cd packages/orchestrator && make run-local` run the orchestrator and template-manager locally.
-11. `cd packages/client-proxy && make run-local` run the client-proxy locally.
-12. `cd packages/shared/script && make local-build-base-template` instructs orchestrator to create the 'base' template
+
+## Download prebuilt artifacts (customized firecrackers and linux kernels)
+
+1. `make download-public-kernels` download linux kernels 
+2. `make download-public-firecrackers` download firecracker versions
+
+## Run the local infrastructure
+1. `make local-infra` runs clickhouse, grafana, loki, memcached, mimir, otel, postgres, redis, tempo
+
+## Prepare local environment
+
+1. `make -C packages/db migrate-local` initialize the database
+2. `make -C packages/envd build-debug` create the envd that will be embedded in templates
+3. `make -C packages/local-dev seed-database` generate user, team, and token for local development
+
+## Run the application locally
+
+These commands will launch each service in the foreground, and will need multiple terminal windows.
+
+- `make -C packages/api run-local` run the api locally 
+- `make -C packages/orchestrator build-debug && sudo make -C packages/orchestrator run-local` run the orchestrator and template-manager locally.
+- `make -C packages/client-proxy run-local` run the client-proxy locally.
+
+## Build the base template
+- `make -C packages/shared/scripts local-build-base-template` instructs orchestrator to create the 'base' template
 
 # Services
 - grafana: http://localhost:53000

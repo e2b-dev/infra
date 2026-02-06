@@ -1,5 +1,6 @@
 ENV := $(shell cat .last_used_env || echo "not-set")
 ENV_FILE := $(PWD)/.env.${ENV}
+PROVIDER ?= gcp
 
 -include ${ENV_FILE}
 
@@ -12,7 +13,7 @@ provider-login:
 .PHONY: init
 init:
 	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
-	$(MAKE) -C iac/provider-gcp init
+	$(MAKE) -C iac/provider-$(PROVIDER) init
 
 # Setup production environment variables, this is used only for E2B.dev production
 # Uses Infisical CLI to read secrets from Infisical Vault
@@ -24,33 +25,33 @@ download-prod-env:
 
 .PHONY: plan
 plan:
-	$(MAKE) -C iac/provider-gcp plan
+	$(MAKE) -C iac/provider-$(PROVIDER) plan
 
 # Deploy all jobs in Nomad
 .PHONY: plan-only-jobs
 plan-only-jobs:
-	$(MAKE) -C iac/provider-gcp plan-only-jobs
+	$(MAKE) -C iac/provider-$(PROVIDER) plan-only-jobs
 
 # Deploy a specific job name in Nomad
 # When job name is specified, all '-' are replaced with '_' in the job name
 .PHONY: plan-only-jobs/%
 plan-only-jobs/%:
-	$(MAKE) -C iac/provider-gcp plan-only-jobs/$(subst -,_,$(notdir $@))
+	$(MAKE) -C iac/provider-$(PROVIDER) plan-only-jobs/$(subst -,_,$(notdir $@))
 
 .PHONY: plan-without-jobs
 plan-without-jobs:
-	$(MAKE) -C iac/provider-gcp plan-without-jobs
+	$(MAKE) -C iac/provider-$(PROVIDER) plan-without-jobs
 
 .PHONY: apply
 apply:
 	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
-	$(MAKE) -C iac/provider-gcp apply
+	$(MAKE) -C iac/provider-$(PROVIDER) apply
 
 # Shortcut to importing resources into Terraform state (e.g. after creating resources manually or switching between different branches for the same environment)
 .PHONY: import
 import:
 	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
-	$(MAKE) -C iac/provider-gcp import
+	$(MAKE) -C iac/provider-$(PROVIDER) import
 
 .PHONY: version
 version:
@@ -145,7 +146,7 @@ set-env:
 switch-env:
 	@ printf "Switching from `tput setaf 1``tput bold`$(shell cat .last_used_env)`tput sgr0` to `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(MAKE) set-env ENV=$(ENV)
-	make -C iac/provider-gcp switch
+	make -C iac/provider-$(PROVIDER) switch
 
 .PHONY: setup-ssh
 setup-ssh:
