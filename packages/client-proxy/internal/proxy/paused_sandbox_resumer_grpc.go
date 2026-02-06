@@ -22,8 +22,7 @@ func NewGrpcPausedSandboxResumer(address string) (PausedSandboxResumer, error) {
 		return nil, fmt.Errorf("api grpc address is required")
 	}
 
-	// Note: use Dial (not grpc.NewClient) to stay compatible with the grpc-go version used in this repo.
-	conn, err := grpc.Dial(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, fmt.Errorf("create grpc client: %w", err)
 	}
