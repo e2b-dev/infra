@@ -589,3 +589,14 @@ variable "loki_boot_disk_type" {
   type        = string
   default     = "pd-ssd"
 }
+
+variable "loki_use_v13_schema_from" {
+  type        = string
+  description = "This should be a date soon after you deploy. Format = YYYY-MM-DD"
+  default     = ""
+
+  validation {
+    condition     = var.loki_use_v13_schema_from == "" || can(regex("\\d{4}-\\d{2}-\\d{2}", var.loki_use_v13_schema_from))
+    error_message = "must be YYYY-MM-DD"
+  }
+}

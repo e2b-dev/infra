@@ -108,6 +108,11 @@ variable "api_node_pool" {
   type = string
 }
 
+variable "loki_use_v13_schema_from" {
+  type    = string
+  default = ""
+}
+
 variable "loki_machine_count" {
   type = number
 }
