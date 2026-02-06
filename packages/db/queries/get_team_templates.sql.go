@@ -8,6 +8,7 @@ package queries
 import (
 	"context"
 
+	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/google/uuid"
 )
 
@@ -62,7 +63,7 @@ type GetTeamTemplatesRow struct {
 	BuildTotalDiskSizeMb    *int64
 	BuildEnvdVersion        *string
 	BuildFirecrackerVersion string
-	BuildStatus             string
+	BuildStatus             types.BuildStatus
 	CreatorID               *uuid.UUID
 	CreatorEmail            *string
 	Aliases                 []string

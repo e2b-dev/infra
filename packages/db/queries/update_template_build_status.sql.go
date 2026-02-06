@@ -23,7 +23,7 @@ WHERE id = $5
 `
 
 type UpdateEnvBuildStatusParams struct {
-	Status     string
+	Status     types.BuildStatus
 	FinishedAt *time.Time
 	Reason     types.BuildReason
 	Version    *string

@@ -11,7 +11,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
-	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -109,7 +108,7 @@ func (a *APIStore) GetTemplatesTemplateID(c *gin.Context, templateID api.Templat
 	for _, item := range builds {
 		res.Builds = append(res.Builds, api.TemplateBuild{
 			BuildID:     item.ID,
-			Status:      getCorrespondingTemplateBuildStatus(ctx, types.BuildStatus(item.Status)),
+			Status:      getCorrespondingTemplateBuildStatus(ctx, item.Status),
 			CreatedAt:   item.CreatedAt,
 			UpdatedAt:   item.UpdatedAt,
 			FinishedAt:  item.FinishedAt,

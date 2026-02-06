@@ -128,7 +128,7 @@ type UpsertSnapshotParams struct {
 	KernelVersion       string
 	FirecrackerVersion  string
 	EnvdVersion         *string
-	Status              string
+	Status              types.BuildStatus
 	TotalDiskSizeMb     *int64
 	CpuArchitecture     *string
 	CpuFamily           *string

@@ -83,7 +83,7 @@ type EnvBuild struct {
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
 	FinishedAt         *time.Time
-	Status             string
+	Status             types.BuildStatus
 	Dockerfile         *string
 	StartCmd           *string
 	Vcpu               int64
