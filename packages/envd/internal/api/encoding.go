@@ -9,8 +9,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-
-	"github.com/e2b-dev/infra/packages/shared/pkg/ioutils"
 )
 
 // EncodingGzip is the gzip content encoding.
@@ -158,8 +156,8 @@ func parseAcceptEncoding(r *http.Request) (string, error) {
 // getDecompressedBody returns a reader that decompresses the request body based on
 // Content-Encoding header. Returns the original body if no encoding is specified.
 // Returns an error if an unsupported encoding is specified.
-// The caller is responsible for closing the returned ReadCloser, which will also
-// close the underlying request body.
+// The caller is responsible for closing both the returned ReadCloser and the
+// original request body (r.Body) separately.
 func getDecompressedBody(r *http.Request) (io.ReadCloser, error) {
 	encoding, err := parseContentEncoding(r)
 	if err != nil {
@@ -177,7 +175,7 @@ func getDecompressedBody(r *http.Request) (io.ReadCloser, error) {
 			return nil, fmt.Errorf("failed to create gzip reader: %w", err)
 		}
 
-		return ioutils.NewMultiCloser(gzReader, gzReader, r.Body), nil
+		return gzReader, nil
 	default:
 		// This shouldn't happen if isSupportedEncoding is correct
 		return nil, fmt.Errorf("encoding %s is supported but not implemented", encoding)

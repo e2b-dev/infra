@@ -149,7 +149,9 @@ func resolvePath(part *multipart.Part, paths *UploadSuccess, u *user.User, defau
 }
 
 func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFilesParams) {
-	defer r.Body.Close()
+	// Capture original body to ensure it's always closed
+	originalBody := r.Body
+	defer originalBody.Close()
 
 	var errorCode int
 	var errMsg error
