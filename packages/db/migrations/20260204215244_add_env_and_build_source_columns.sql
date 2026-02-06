@@ -20,20 +20,39 @@ DROP TRIGGER IF EXISTS trg_sync_env_source_on_snapshot ON "public"."snapshots";
 CREATE TRIGGER trg_sync_env_source_on_snapshot
 AFTER INSERT ON "public"."snapshots"
 FOR EACH ROW EXECUTE FUNCTION sync_env_source_on_snapshot_insert();
-
--- Then backfill existing snapshot envs
-UPDATE "public"."envs" SET source = 'snapshot'
-WHERE id IN (SELECT env_id FROM "public"."snapshots");
 -- +goose StatementEnd
 
--- Create index (using CONCURRENTLY requires NO TRANSACTION)
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_envs_source
-    ON "public"."envs" (source);
+-- Backfill existing snapshot envs in batches of 10k to avoid long-held locks
+-- +goose StatementBegin
+CREATE OR REPLACE PROCEDURE backfill_env_source() AS $$
+DECLARE
+    affected INT;
+BEGIN
+    LOOP
+        UPDATE "public"."envs" e
+        SET source = 'snapshot'
+        FROM (
+            SELECT e2.id
+            FROM "public"."envs" e2
+            JOIN "public"."snapshots" s ON s.env_id = e2.id
+            WHERE e2.source != 'snapshot'
+            LIMIT 10000
+        ) sub
+        WHERE e.id = sub.id;
+
+        GET DIAGNOSTICS affected = ROW_COUNT;
+        COMMIT;
+        EXIT WHEN affected = 0;
+    END LOOP;
+END;
+$$ LANGUAGE plpgsql;
+-- +goose StatementEnd
+
+CALL backfill_env_source();
+DROP PROCEDURE backfill_env_source();
 
 -- +goose Down
 -- +goose NO TRANSACTION
-
-DROP INDEX CONCURRENTLY IF EXISTS idx_envs_source;
 
 -- +goose StatementBegin
 DROP TRIGGER IF EXISTS trg_sync_env_source_on_snapshot ON "public"."snapshots";
