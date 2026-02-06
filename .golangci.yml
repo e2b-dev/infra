@@ -34,7 +34,6 @@ linters:
     - godox
     - gomoddirectives
     - gomodguard
-    - gosec
     - ireturn
     - lll
     - maintidx
