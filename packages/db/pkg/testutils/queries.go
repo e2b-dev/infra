@@ -40,7 +40,7 @@ func CreateTestTemplate(t *testing.T, db *Database, teamID uuid.UUID) string {
 	// Insert a base env directly into the database
 	// After the env_builds migration, envs table only has: id, team_id, public, updated_at, build_count, spawn_count, last_spawned_at
 	err := db.SqlcClient.TestsRawSQL(t.Context(),
-		"INSERT INTO public.envs (id, team_id, public, updated_at) VALUES ($1, $2, $3, NOW())",
+		"INSERT INTO public.envs (id, team_id, public, updated_at, source) VALUES ($1, $2, $3, NOW(), 'template')",
 		envID, teamID, true,
 	)
 	require.NoError(t, err, "Failed to create test base env")

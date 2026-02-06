@@ -145,8 +145,8 @@ func setupValidateTest(tb testing.TB, db *testutils.Database, userID, teamID uui
 
 	// Create env
 	err = db.SqlcClient.TestsRawSQL(tb.Context(), `
-		INSERT INTO envs (id, team_id, updated_at)
-		VALUES ($1, $2, NOW())
+		INSERT INTO envs (id, team_id, updated_at, source)
+		VALUES ($1, $2, NOW(), 'template')
 	`, envID, teamID)
 	require.NoError(tb, err)
 
