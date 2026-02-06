@@ -15,12 +15,17 @@ migrate:
 	@echo "Applying Postgres migration *$(notdir $@)* for ${ENV}"
 	@$(goose) up
 	@echo "Done"
+
+.PHONY: migrate-local
 migrate-local:
 	@echo "Applying Postgres migration *$(notdir $@)* for ${ENV}"
 	@$(goose-local) up
 	@echo "Done"
 
+.PHONY: migrate/up
 migrate/up: migrate
+
+.PHONY: migrate/down
 migrate/down:
 	@echo "Reverting Postgres migration *$(notdir $@)* for ${ENV}"
 	@$(goose) down
