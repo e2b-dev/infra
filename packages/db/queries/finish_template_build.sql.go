@@ -8,6 +8,7 @@ package queries
 import (
 	"context"
 
+	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/google/uuid"
 )
 
@@ -24,7 +25,7 @@ WHERE
 
 type FinishTemplateBuildParams struct {
 	TotalDiskSizeMb *int64
-	Status          string
+	Status          types.BuildStatus
 	EnvdVersion     *string
 	BuildID         uuid.UUID
 }

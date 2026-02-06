@@ -110,7 +110,7 @@ func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templa
 			TemplateBuildInfo{
 				TeamID:      result.Env.TeamID,
 				TemplateID:  result.Env.ID,
-				BuildStatus: types.BuildStatus(result.EnvBuild.Status),
+				BuildStatus: result.EnvBuild.Status,
 				Reason:      result.EnvBuild.Reason,
 				Version:     result.EnvBuild.Version,
 

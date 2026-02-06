@@ -69,7 +69,7 @@ INSERT INTO "public"."env_builds" (
 
 type CreateTemplateBuildParams struct {
 	BuildID            uuid.UUID
-	Status             string
+	Status             types.BuildStatus
 	RamMb              int64
 	Vcpu               int64
 	KernelVersion      string

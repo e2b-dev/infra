@@ -12,6 +12,8 @@ sql:
         out: "queries/"
         sql_package: "pgx/v5"
         overrides:
+          - column: "public.env_builds.status"
+            go_type: "github.com/e2b-dev/infra/packages/db/pkg/types.BuildStatus"
           - column: "public.env_builds.reason"
             go_type: "github.com/e2b-dev/infra/packages/db/pkg/types.BuildReason"
           - column: "public.snapshots.config"

@@ -196,11 +196,11 @@ func CreateSnapshotRecord(t *testing.T, ctx context.Context, db *Database, templ
 func UpsertTestSnapshot(t *testing.T, ctx context.Context, db *Database, templateID, sandboxID string, teamID uuid.UUID, baseTemplateID string) queries.UpsertSnapshotRow {
 	t.Helper()
 
-	return UpsertTestSnapshotWithStatus(t, ctx, db, templateID, sandboxID, teamID, baseTemplateID, "success")
+	return UpsertTestSnapshotWithStatus(t, ctx, db, templateID, sandboxID, teamID, baseTemplateID, types.BuildStatusSuccess)
 }
 
 // UpsertTestSnapshotWithStatus creates/updates a snapshot with a specific status
-func UpsertTestSnapshotWithStatus(t *testing.T, ctx context.Context, db *Database, templateID, sandboxID string, teamID uuid.UUID, baseTemplateID string, status string) queries.UpsertSnapshotRow {
+func UpsertTestSnapshotWithStatus(t *testing.T, ctx context.Context, db *Database, templateID, sandboxID string, teamID uuid.UUID, baseTemplateID string, status types.BuildStatus) queries.UpsertSnapshotRow {
 	t.Helper()
 
 	totalDiskSize := int64(1024)
