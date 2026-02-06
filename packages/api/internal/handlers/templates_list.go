@@ -6,7 +6,6 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -83,7 +82,7 @@ func (a *APIStore) GetTemplates(c *gin.Context, params api.GetTemplatesParams) {
 			LastSpawnedAt: item.Env.LastSpawnedAt,
 			SpawnCount:    item.Env.SpawnCount,
 			BuildCount:    item.Env.BuildCount,
-			BuildStatus:   getCorrespondingTemplateBuildStatus(ctx, types.BuildStatus(item.BuildStatus)),
+			BuildStatus:   getCorrespondingTemplateBuildStatus(ctx, item.BuildStatus),
 			CreatedBy:     createdBy,
 			EnvdVersion:   envdVersion,
 		})
