@@ -75,16 +75,16 @@ func handlePausedSandbox(
 
 	logger.L().Info(ctx, "catalog miss, attempting resume via api", logger.WithSandboxID(sandboxId))
 	nodeIP, err := pausedChecker.Resume(ctx, sandboxId, resumeTimeoutSeconds)
-	if err == nil {
-		return nodeIP, nil
+	if err != nil {
+		if isNotPausedError(err) {
+			// API says it can't resume (no snapshot / not resumable).
+			return "", nil
+		}
+
+		return "", err
 	}
 
-	if isNotPausedError(err) {
-		// API says it can't resume (no snapshot / not resumable).
-		return "", nil
-	}
-
-	return "", err
+	return nodeIP, nil
 }
 
 func isNotPausedError(err error) bool {
