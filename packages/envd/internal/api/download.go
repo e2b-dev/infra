@@ -117,18 +117,15 @@ func (a *API) GetFiles(w http.ResponseWriter, r *http.Request, params GetFilesPa
 	// Tell caches to store separate variants for different Accept-Encoding values
 	w.Header().Set("Vary", "Accept-Encoding")
 
-	// Reject compression for Range or conditional requests - these require http.ServeContent
-	// for proper 206 Partial Content and 304 Not Modified responses
+	// Fall back to identity for Range or conditional requests to preserve http.ServeContent
+	// behavior (206 Partial Content, 304 Not Modified). Accept-Encoding is advisory per HTTP
+	// spec, so the server can always choose to ignore it.
 	hasRangeOrConditional := r.Header.Get("Range") != "" ||
 		r.Header.Get("If-Modified-Since") != "" ||
 		r.Header.Get("If-None-Match") != "" ||
 		r.Header.Get("If-Range") != ""
-	if hasRangeOrConditional && encoding != "" {
-		errMsg = fmt.Errorf("compression not supported with Range or conditional requests")
-		errorCode = http.StatusBadRequest
-		jsonError(w, errorCode, errMsg)
-
-		return
+	if hasRangeOrConditional {
+		encoding = ""
 	}
 
 	file, err := os.Open(resolvedPath)
