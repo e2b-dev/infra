@@ -128,9 +128,9 @@ generate/%:
 .PHONY: generate-tests
 generate-tests: generate-tests/integration
 generate-tests/%:
-		@echo "Generating code for *$(notdir $@)*"
-		$(MAKE) -C tests/$(notdir $@) generate
-		@printf "\n\n"
+	@echo "Generating code for *$(notdir $@)*"
+	$(MAKE) -C tests/$(notdir $@) generate
+	@printf "\n\n"
 
 .PHONY: migrate
 migrate:
