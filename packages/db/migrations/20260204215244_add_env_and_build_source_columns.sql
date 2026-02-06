@@ -3,7 +3,7 @@
 
 -- +goose StatementBegin
 -- Add source column to envs table to track where the env came from
--- 'template' = built from Dockerfile (default)
+-- 'template' = built (default)
 -- 'snapshot' = created from pause/resume
 ALTER TABLE "public"."envs"
     ADD COLUMN IF NOT EXISTS "source" text NOT NULL DEFAULT 'template';

@@ -284,7 +284,7 @@ func (tm *TemplateManager) SetStatus(ctx context.Context, buildID uuid.UUID, sta
 
 func (tm *TemplateManager) SetFinished(ctx context.Context, buildID uuid.UUID, rootfsSize int64, envdVersion string) error {
 	// first do database update to prevent race condition while calling status
-	// TODO: Switch to types.BuildStatusReady once all consumers are migrated to use Is*() helpers.
+	// TODO(ENG-3469): Switch to types.BuildStatusReady once all consumers are migrated to use Is*() helpers.
 	err := tm.sqlcDB.FinishTemplateBuild(ctx, queries.FinishTemplateBuildParams{
 		TotalDiskSizeMb: &rootfsSize,
 		Status:          string(types.BuildStatusUploaded),

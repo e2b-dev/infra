@@ -15,7 +15,6 @@ const deleteTemplate = `-- name: DeleteTemplate :exec
 DELETE FROM "public"."envs"
 WHERE id = $1
 AND team_id = $2
-AND source = 'template'
 `
 
 type DeleteTemplateParams struct {
