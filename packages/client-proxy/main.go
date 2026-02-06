@@ -24,6 +24,7 @@ import (
 	e2bproxy "github.com/e2b-dev/infra/packages/proxy/internal/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/factories"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -98,6 +99,13 @@ func run() int {
 
 	l.Info(ctx, "Starting client proxy", zap.String("commit", commitSHA), zap.String("instance_id", instanceID))
 
+	featureFlags, err := featureflags.NewClient()
+	if err != nil {
+		l.Error(ctx, "Failed to create feature flags client", zap.Error(err))
+
+		return 1
+	}
+
 	var catalog e2bcatalog.SandboxesCatalog
 
 	redisClient, err := factories.NewRedisClient(ctx, factories.RedisConfig{
@@ -146,6 +154,7 @@ func run() int {
 		config.ProxyPort,
 		catalog,
 		pausedSandboxResumer,
+		featureFlags,
 	)
 	if err != nil {
 		l.Error(ctx, "Failed to create client proxy", zap.Error(err))
@@ -174,6 +183,7 @@ func run() int {
 
 	var closers []Closeable
 	closers = append(closers, catalog)
+	closers = append(closers, featureFlags)
 	if closeable, ok := pausedSandboxResumer.(Closeable); ok {
 		closers = append(closers, closeable)
 	}
