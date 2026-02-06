@@ -51,10 +51,11 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 
 	teamID := snap.Snapshot.TeamID
 
-	timeout := req.GetTimeoutSeconds()
-	if timeout <= 0 {
-		timeout = 300 // default to 5 minutes if not set or invalid
+	timeoutSeconds := req.GetTimeoutSeconds()
+	if timeoutSeconds <= 0 {
+		timeoutSeconds = 300 // default to 5 minutes if not set or invalid
 	}
+	timeout := time.Duration(timeoutSeconds) * time.Second
 
 	// Fast path: if already running, return routing info immediately.
 	if running, runErr := s.api.orchestrator.GetSandbox(ctx, teamID, sandboxID); runErr == nil {
