@@ -126,13 +126,13 @@ func TestParseEncoding(t *testing.T) {
 func TestParseContentEncoding(t *testing.T) {
 	t.Parallel()
 
-	t.Run("returns empty string when no header", func(t *testing.T) {
+	t.Run("returns identity when no header", func(t *testing.T) {
 		t.Parallel()
 		req, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, "/test", nil)
 
 		encoding, err := parseContentEncoding(req)
 		require.NoError(t, err)
-		assert.Empty(t, encoding)
+		assert.Equal(t, EncodingIdentity, encoding)
 	})
 
 	t.Run("returns gzip when Content-Encoding is gzip", func(t *testing.T) {
@@ -165,14 +165,14 @@ func TestParseContentEncoding(t *testing.T) {
 		assert.Equal(t, "gzip", encoding)
 	})
 
-	t.Run("returns empty string for identity encoding", func(t *testing.T) {
+	t.Run("returns identity for identity encoding", func(t *testing.T) {
 		t.Parallel()
 		req, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, "/test", nil)
 		req.Header.Set("Content-Encoding", "identity")
 
 		encoding, err := parseContentEncoding(req)
 		require.NoError(t, err)
-		assert.Empty(t, encoding)
+		assert.Equal(t, EncodingIdentity, encoding)
 	})
 
 	t.Run("returns error for unsupported encoding", func(t *testing.T) {
@@ -200,13 +200,13 @@ func TestParseContentEncoding(t *testing.T) {
 func TestParseAcceptEncoding(t *testing.T) {
 	t.Parallel()
 
-	t.Run("returns empty string when no header", func(t *testing.T) {
+	t.Run("returns identity when no header", func(t *testing.T) {
 		t.Parallel()
 		req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 
 		encoding, err := parseAcceptEncoding(req)
 		require.NoError(t, err)
-		assert.Empty(t, encoding)
+		assert.Equal(t, EncodingIdentity, encoding)
 	})
 
 	t.Run("returns gzip when Accept-Encoding is gzip", func(t *testing.T) {
@@ -249,24 +249,24 @@ func TestParseAcceptEncoding(t *testing.T) {
 		assert.Equal(t, "gzip", encoding)
 	})
 
-	t.Run("returns empty string for identity encoding", func(t *testing.T) {
+	t.Run("returns identity for identity encoding", func(t *testing.T) {
 		t.Parallel()
 		req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 		req.Header.Set("Accept-Encoding", "identity")
 
 		encoding, err := parseAcceptEncoding(req)
 		require.NoError(t, err)
-		assert.Empty(t, encoding)
+		assert.Equal(t, EncodingIdentity, encoding)
 	})
 
-	t.Run("returns empty string for wildcard encoding", func(t *testing.T) {
+	t.Run("returns identity for wildcard encoding", func(t *testing.T) {
 		t.Parallel()
 		req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 		req.Header.Set("Accept-Encoding", "*")
 
 		encoding, err := parseAcceptEncoding(req)
 		require.NoError(t, err)
-		assert.Empty(t, encoding)
+		assert.Equal(t, EncodingIdentity, encoding)
 	})
 
 	t.Run("falls back to identity for unsupported encoding only", func(t *testing.T) {
@@ -276,7 +276,7 @@ func TestParseAcceptEncoding(t *testing.T) {
 
 		encoding, err := parseAcceptEncoding(req)
 		require.NoError(t, err)
-		assert.Empty(t, encoding) // falls back to identity per RFC 7231
+		assert.Equal(t, EncodingIdentity, encoding)
 	})
 
 	t.Run("falls back to identity when only unsupported encodings", func(t *testing.T) {
@@ -286,7 +286,7 @@ func TestParseAcceptEncoding(t *testing.T) {
 
 		encoding, err := parseAcceptEncoding(req)
 		require.NoError(t, err)
-		assert.Empty(t, encoding) // falls back to identity per RFC 7231
+		assert.Equal(t, EncodingIdentity, encoding)
 	})
 
 	t.Run("selects gzip when it has highest quality", func(t *testing.T) {
@@ -316,7 +316,7 @@ func TestParseAcceptEncoding(t *testing.T) {
 
 		encoding, err := parseAcceptEncoding(req)
 		require.NoError(t, err)
-		assert.Empty(t, encoding) // identity means no compression
+		assert.Equal(t, EncodingIdentity, encoding)
 	})
 
 	t.Run("skips encoding with q=0", func(t *testing.T) {
@@ -326,7 +326,7 @@ func TestParseAcceptEncoding(t *testing.T) {
 
 		encoding, err := parseAcceptEncoding(req)
 		require.NoError(t, err)
-		assert.Empty(t, encoding) // gzip rejected, identity accepted
+		assert.Equal(t, EncodingIdentity, encoding)
 	})
 
 	t.Run("falls back to identity when gzip rejected and no other supported", func(t *testing.T) {
@@ -336,7 +336,7 @@ func TestParseAcceptEncoding(t *testing.T) {
 
 		encoding, err := parseAcceptEncoding(req)
 		require.NoError(t, err)
-		assert.Empty(t, encoding) // identity implicitly acceptable per RFC 7231
+		assert.Equal(t, EncodingIdentity, encoding)
 	})
 
 	t.Run("returns error when identity explicitly rejected and no supported encoding", func(t *testing.T) {

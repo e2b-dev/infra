@@ -125,7 +125,7 @@ func (a *API) GetFiles(w http.ResponseWriter, r *http.Request, params GetFilesPa
 		r.Header.Get("If-None-Match") != "" ||
 		r.Header.Get("If-Range") != ""
 	if hasRangeOrConditional {
-		encoding = ""
+		encoding = EncodingIdentity
 	}
 
 	file, err := os.Open(resolvedPath)

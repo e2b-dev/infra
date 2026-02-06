@@ -11,8 +11,14 @@ import (
 	"strings"
 )
 
-// EncodingGzip is the gzip content encoding.
-const EncodingGzip = "gzip"
+const (
+	// EncodingGzip is the gzip content encoding.
+	EncodingGzip = "gzip"
+	// EncodingIdentity means no encoding (passthrough).
+	EncodingIdentity = "identity"
+	// EncodingWildcard means any encoding is acceptable.
+	EncodingWildcard = "*"
+)
 
 // SupportedEncodings lists the content encodings supported for file transfer.
 // The order matters - encodings are checked in order of preference.
@@ -69,14 +75,13 @@ func parseEncoding(value string) string {
 func parseContentEncoding(r *http.Request) (string, error) {
 	header := r.Header.Get("Content-Encoding")
 	if header == "" {
-		return "", nil
+		return EncodingIdentity, nil
 	}
 
 	encoding := parseEncoding(header)
 
-	// "identity" means no encoding
-	if encoding == "identity" {
-		return "", nil
+	if encoding == EncodingIdentity {
+		return EncodingIdentity, nil
 	}
 
 	if !isSupportedEncoding(encoding) {
@@ -93,7 +98,7 @@ func parseContentEncoding(r *http.Request) (string, error) {
 func parseAcceptEncoding(r *http.Request) (string, error) {
 	header := r.Header.Get("Accept-Encoding")
 	if header == "" {
-		return "", nil
+		return EncodingIdentity, nil
 	}
 
 	// Parse all encodings with their quality values
@@ -111,7 +116,7 @@ func parseAcceptEncoding(r *http.Request) (string, error) {
 	// Check if identity is explicitly rejected
 	identityRejected := false
 	for _, eq := range encodings {
-		if eq.encoding == "identity" && eq.quality == 0 {
+		if eq.encoding == EncodingIdentity && eq.quality == 0 {
 			identityRejected = true
 
 			break
@@ -125,18 +130,17 @@ func parseAcceptEncoding(r *http.Request) (string, error) {
 			continue
 		}
 
-		// "identity" means no encoding
-		if eq.encoding == "identity" {
-			return "", nil
+		if eq.encoding == EncodingIdentity {
+			return EncodingIdentity, nil
 		}
 
-		// "*" means any encoding is acceptable - return a supported encoding if identity is rejected
-		if eq.encoding == "*" {
+		// Wildcard means any encoding is acceptable - return a supported encoding if identity is rejected
+		if eq.encoding == EncodingWildcard {
 			if identityRejected && len(SupportedEncodings) > 0 {
 				return SupportedEncodings[0], nil
 			}
 
-			return "", nil
+			return EncodingIdentity, nil
 		}
 
 		if isSupportedEncoding(eq.encoding) {
@@ -146,7 +150,7 @@ func parseAcceptEncoding(r *http.Request) (string, error) {
 
 	// Per RFC 7231, identity is implicitly acceptable unless rejected
 	if !identityRejected {
-		return "", nil
+		return EncodingIdentity, nil
 	}
 
 	// Identity rejected and no supported encodings found
@@ -164,7 +168,7 @@ func getDecompressedBody(r *http.Request) (io.ReadCloser, error) {
 		return nil, err
 	}
 
-	if encoding == "" {
+	if encoding == EncodingIdentity {
 		return r.Body, nil
 	}
 
