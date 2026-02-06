@@ -24,12 +24,6 @@ type LocalClusterResourceProvider struct {
 	instances                   *smap.Map[*Instance]
 }
 
-const (
-	sandboxLogsOldestLimit = 168 * time.Hour // 7 days
-	defaultLogsLimit       = 1000
-	defaultDirection       = logproto.FORWARD
-)
-
 func newLocalClusterResourceProvider(
 	querySandboxMetricsProvider clickhouse.SandboxQueriesProvider,
 	queryLogsProvider *loki.LokiQueryProvider,
@@ -129,14 +123,14 @@ func (l *LocalClusterResourceProvider) GetSandboxesMetrics(ctx context.Context, 
 	return metrics, nil
 }
 
-func (l *LocalClusterResourceProvider) GetSandboxLogs(ctx context.Context, teamID string, sandboxID string, qStart *int64, qLimit *int32) (api.SandboxLogs, *api.APIError) {
-	end := time.Now()
-	var start time.Time
-
+func (l *LocalClusterResourceProvider) GetSandboxLogs(ctx context.Context, teamID string, sandboxID string, qStart *int64, qEnd *int64, qLimit *int32, qDirection *api.LogsDirection) (api.SandboxLogs, *api.APIError) {
+	start, end := time.Now().Add(-logsOldestLimit), time.Now()
 	if qStart != nil {
 		start = time.UnixMilli(*qStart)
-	} else {
-		start = end.Add(-sandboxLogsOldestLimit)
+	}
+
+	if qEnd != nil {
+		end = time.UnixMilli(*qEnd)
 	}
 
 	limit := defaultLogsLimit
@@ -144,7 +138,7 @@ func (l *LocalClusterResourceProvider) GetSandboxLogs(ctx context.Context, teamI
 		limit = int(*qLimit)
 	}
 
-	raw, err := l.queryLogsProvider.QuerySandboxLogs(ctx, teamID, sandboxID, start, end, limit)
+	raw, err := l.queryLogsProvider.QuerySandboxLogs(ctx, teamID, sandboxID, start, end, limit, apiLogDirectionToLokiProtoDirection(qDirection))
 	if err != nil {
 		return api.SandboxLogs{}, &api.APIError{
 			Err:       fmt.Errorf("error when fetching sandbox logs: %w", err),
@@ -162,7 +156,7 @@ func (l *LocalClusterResourceProvider) GetSandboxLogs(ctx context.Context, teamI
 	for i, row := range raw {
 		le[i] = api.SandboxLogEntry{
 			Timestamp: row.Timestamp,
-			Level:     api.LogLevel(row.Level),
+			Level:     api.LogLevel(logs.LevelToString(row.Level)),
 			Message:   row.Message,
 			Fields:    row.Fields,
 		}
@@ -184,14 +178,8 @@ func (l *LocalClusterResourceProvider) GetBuildLogs(
 	source *api.LogsSource,
 ) ([]logs.LogEntry, *api.APIError) {
 	// Use shared implementation with Loki as the persistent log backend
-	start, end := logQueryWindow(cursor, direction)
-
-	lokiDirection := defaultDirection
-	if direction == api.LogsDirectionBackward {
-		lokiDirection = logproto.BACKWARD
-	}
-
-	persistentFetcher := l.logsFromLocalLoki(ctx, templateID, buildID, start, end, int(limit), offset, level, lokiDirection)
+	start, end := LogQueryWindow(cursor, direction)
+	persistentFetcher := l.logsFromLocalLoki(ctx, templateID, buildID, start, end, int(limit), offset, level, apiLogDirectionToLokiProtoDirection(&direction))
 
 	return getBuildLogsWithSources(ctx, l.instances, nodeID, templateID, buildID, offset, limit, level, cursor, direction, source, persistentFetcher)
 }
