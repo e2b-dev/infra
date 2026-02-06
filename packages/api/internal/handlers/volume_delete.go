@@ -29,14 +29,17 @@ func (a *APIStore) DeleteVolumesVolumeID(c *gin.Context, volumeID api.VolumeID) 
 		return
 	}
 
-	if err := cluster.DeleteVolume(ctx, volume); err != nil {
-		telemetry.ReportCriticalError(ctx, fmt.Sprintf("failed to delete data for volume %q", volume.ID.String()), err)
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("failed to delete data for volume %q", volume.ID.String()))
+	client, tx, err := a.sqlcDB.WithTx(ctx)
+	if err != nil {
+		telemetry.ReportCriticalError(ctx, "error when beginning transaction", err)
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error beginning transaction")
 
 		return
 	}
 
-	if err := a.sqlcDB.DeleteVolume(ctx, queries.DeleteVolumeParams{
+	defer tx.Rollback(ctx)
+
+	if err := client.DeleteVolume(ctx, queries.DeleteVolumeParams{
 		TeamID:   team.ID,
 		VolumeID: volume.ID,
 	}); err != nil {
@@ -46,5 +49,18 @@ func (a *APIStore) DeleteVolumesVolumeID(c *gin.Context, volumeID api.VolumeID) 
 		return
 	}
 
+	if err := cluster.DeleteVolume(ctx, volume); err != nil {
+		telemetry.ReportCriticalError(ctx, fmt.Sprintf("failed to delete data for volume %q", volume.ID.String()), err)
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("failed to delete data for volume %q", volume.ID.String()))
+
+		return
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		telemetry.ReportCriticalError(ctx, "error when committing transaction", err)
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error committing transaction")
+
+		return
+	}
 	c.Status(http.StatusNoContent)
 }
