@@ -12,7 +12,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	dbapi "github.com/e2b-dev/infra/packages/api/internal/db"
-	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
@@ -47,43 +46,12 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 	// This intentionally does not allow callers to override timeouts via gRPC.
 	timeout := 300 * time.Second
 
-	// Fast path: if already running, return routing info immediately.
-	if running, runErr := s.api.orchestrator.GetSandbox(ctx, teamID, sandboxID); runErr == nil {
-		if running.State == sandbox.StateRunning {
-			node := s.api.orchestrator.GetNode(running.ClusterID, running.NodeID)
-			if node == nil || node.IPAddress == "" {
-				return nil, status.Error(codes.Internal, "node not found for running sandbox")
-			}
-
-			return &proxygrpc.SandboxResumeResponse{OrchestratorIp: node.IPAddress}, nil
-		}
-	}
-
 	var autoResume *dbtypes.SandboxAutoResumeConfig
 	if snap.Snapshot.Config != nil {
 		autoResume = snap.Snapshot.Config.AutoResume
 	}
 	if autoResume == nil || autoResume.Policy == nil || *autoResume.Policy != dbtypes.SandboxAutoResumeAny {
 		return nil, status.Error(codes.NotFound, "sandbox auto-resume disabled")
-	}
-
-	running, runErr := s.api.orchestrator.GetSandbox(ctx, teamID, sandboxID)
-	if runErr == nil {
-		switch running.State {
-		case sandbox.StatePausing:
-			logger.L().Debug(ctx, "Waiting for sandbox to pause", logger.WithSandboxID(sandboxID))
-			if err := s.api.orchestrator.WaitForStateChange(ctx, teamID, sandboxID); err != nil {
-				return nil, status.Error(codes.Internal, "error waiting for sandbox to pause")
-			}
-		case sandbox.StateKilling:
-			return nil, status.Error(codes.NotFound, "sandbox can't be resumed, no snapshot found")
-		case sandbox.StateRunning:
-			// Keep going and return routing info below.
-		default:
-			logger.L().Error(ctx, "Sandbox is in an unknown state", logger.WithSandboxID(sandboxID), zap.String("state", string(running.State)))
-
-			return nil, status.Error(codes.Internal, "sandbox is in an unknown state")
-		}
 	}
 
 	team, err := dbapi.GetTeamByID(ctx, s.api.authDB, teamID)
