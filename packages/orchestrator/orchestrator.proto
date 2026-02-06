@@ -51,6 +51,12 @@ message SandboxConfig {
   optional SandboxAutoResumeConfig auto_resume = 23;
 }
 
+message SandboxAutoResumeConfig {
+  // Policy values are owned by the API layer today (e.g. "off", "any").
+  // Empty / unset means "off".
+  optional string policy = 1;
+}
+
 message SandboxNetworkConfig {
   optional SandboxNetworkEgressConfig egress = 1;
   optional SandboxNetworkIngressConfig ingress = 2;
