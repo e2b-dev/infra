@@ -43,7 +43,7 @@ const (
 var (
 	// EnableGCSCompression controls whether files are compressed when uploading to GCS.
 	// When false, files are uploaded uncompressed even if compression options are provided.
-	EnableGCSCompression = false
+	EnableGCSCompression = true
 
 	// EnableNFSCompressedCache controls whether the NFS cache stores compressed frames.
 	// When true (default): Cache stores compressed frames, decompresses on read.
