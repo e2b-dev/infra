@@ -10,7 +10,7 @@ build-debug:
 	go mod download
 	go vet ./internal/...
 
-@.PHONY: seed
+.PHONY: seed
 seed:
 	@echo "Applying seeds"
 	@POSTGRES_CONNECTION_STRING=$(POSTGRES_CONNECTION_STRING) \
