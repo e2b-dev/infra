@@ -51,8 +51,8 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 
 	teamID := snap.Snapshot.TeamID
 
-	// Prototype: always resume for a short fixed TTL to validate the request flow.
-	// We'll revisit per-team limits/policies later.
+	// Fot initial version, we resume for 5 minutes.
+	// We don't have a well definied flow for the lifecycle here yet so will iterate on this later.
 	timeout := 5 * time.Minute
 
 	// Fast path: if already running, return routing info immediately.
