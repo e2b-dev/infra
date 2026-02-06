@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/bsm/redislock"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -18,13 +17,6 @@ import (
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-)
-
-const (
-	// Prevent resume storms. This is a prototype: keep it long enough that a resume attempt
-	// is effectively de-duplicated for a short window.
-	proxyResumeLockTTL     = 5 * time.Minute
-	proxyResumeWaitTimeout = 30 * time.Second
 )
 
 type SandboxService struct {
@@ -76,34 +68,6 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 	}
 	if !dbtypes.IsAutoResumeAny(autoResume) {
 		return nil, status.Error(codes.NotFound, "sandbox auto-resume disabled")
-	}
-
-	lock, lockAcquired, lockErr := s.tryAcquireResumeLock(ctx, sandboxID)
-	if lockErr != nil {
-		logger.L().Warn(ctx, "Failed to acquire proxy resume lock, proceeding without lock", zap.Error(lockErr), logger.WithSandboxID(sandboxID))
-	} else if !lockAcquired {
-		if waitErr := s.waitForResumeLock(ctx, sandboxID); waitErr != nil {
-			return nil, status.Error(codes.Internal, "error waiting for proxy resume lock")
-		}
-
-		// Another request likely resumed it. Try to return routing info.
-		running, runErr := s.api.orchestrator.GetSandbox(ctx, teamID, sandboxID)
-		if runErr != nil {
-			return nil, status.Error(codes.Unavailable, "sandbox resume in progress")
-		}
-		node := s.api.orchestrator.GetNode(running.ClusterID, running.NodeID)
-		if node == nil || node.IPAddress == "" {
-			return nil, status.Error(codes.Unavailable, "sandbox resume in progress")
-		}
-
-		return &proxygrpc.SandboxResumeResponse{OrchestratorIp: node.IPAddress}, nil
-	}
-	if lock != nil {
-		defer func() {
-			if releaseErr := lock.Release(context.WithoutCancel(ctx)); releaseErr != nil {
-				logger.L().Warn(ctx, "Failed to release proxy resume lock", zap.Error(releaseErr), logger.WithSandboxID(sandboxID))
-			}
-		}()
 	}
 
 	running, runErr := s.api.orchestrator.GetSandbox(ctx, teamID, sandboxID)
@@ -192,49 +156,6 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 	}
 
 	return &proxygrpc.SandboxResumeResponse{OrchestratorIp: node.IPAddress}, nil
-}
-
-func (s *SandboxService) tryAcquireResumeLock(ctx context.Context, sandboxID string) (*redislock.Lock, bool, error) {
-	if s.api.redisClient == nil {
-		return nil, true, nil
-	}
-
-	lockService := redislock.New(s.api.redisClient)
-	lock, err := lockService.Obtain(ctx, "proxy-resume:"+sandboxID, proxyResumeLockTTL, &redislock.Options{
-		RetryStrategy: redislock.NoRetry(),
-	})
-	if err == nil {
-		return lock, true, nil
-	}
-	if errors.Is(err, redislock.ErrNotObtained) {
-		return nil, false, nil
-	}
-
-	return nil, false, err
-}
-
-func (s *SandboxService) waitForResumeLock(ctx context.Context, sandboxID string) error {
-	if s.api.redisClient == nil {
-		return nil
-	}
-
-	waitCtx, cancel := context.WithTimeout(ctx, proxyResumeWaitTimeout)
-	defer cancel()
-
-	lockService := redislock.New(s.api.redisClient)
-	lock, err := lockService.Obtain(waitCtx, "proxy-resume:"+sandboxID, proxyResumeLockTTL, &redislock.Options{
-		RetryStrategy: redislock.ExponentialBackoff(100*time.Millisecond, 2*time.Second),
-	})
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if releaseErr := lock.Release(context.WithoutCancel(ctx)); releaseErr != nil {
-			logger.L().Warn(ctx, "Failed to release proxy resume lock after wait", zap.Error(releaseErr), logger.WithSandboxID(sandboxID))
-		}
-	}()
-
-	return nil
 }
 
 func grpcCodeFromHTTPStatus(statusCode int) codes.Code {
