@@ -51,9 +51,13 @@ var (
 type Config struct {
 	// Using reserver IPv4 in range that is used for experiments and documentation
 	// https://en.wikipedia.org/wiki/Reserved_IP_addresses
-	HyperloopIPAddress       string `env:"SANDBOX_HYPERLOOP_IP"         envDefault:"192.0.2.1"`
-	HyperloopProxyPort       uint16 `env:"SANDBOX_HYPERLOOP_PROXY_PORT" envDefault:"5010"`
-	UseLocalNamespaceStorage bool   `env:"USE_LOCAL_NAMESPACE_STORAGE"`
+	OrchestratorInSandboxIPAddress string `env:"SANDBOX_ORCHESTRATOR_IP" envDefault:"192.0.2.1"`
+
+	HyperloopProxyPort uint16 `env:"SANDBOX_HYPERLOOP_PROXY_PORT" envDefault:"5010"`
+	NFSProxyPort       uint16 `env:"SANDBOX_NFS_PROXY_PORT"       envDefault:"5011"`
+	PortmapperPort     uint16 `env:"SANDBOX_PORTMAPPER_PORT"      envDefault:"5012"`
+
+	UseLocalNamespaceStorage bool `env:"USE_LOCAL_NAMESPACE_STORAGE"`
 
 	// TCP firewall ports - separate ports for different traffic types to avoid
 	// protocol detection blocking on server-first protocols like SSH.

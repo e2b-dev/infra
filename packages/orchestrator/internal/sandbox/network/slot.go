@@ -73,7 +73,7 @@ type Slot struct {
 
 	// HostIP is IP address for the sandbox from the host machine.
 	// You can use it to make requests to the sandbox.
-	hostIp   net.IP
+	HostIP   net.IP
 	hostNet  *net.IPNet
 	hostCIDR string
 
@@ -134,11 +134,11 @@ func NewSlot(key string, idx int, config Config) (*Slot, error) {
 		tapIp:   tapIp,
 		tapMask: tapNet.Mask,
 
-		hostIp:   hostIp,
+		HostIP:   hostIp,
 		hostNet:  hostNet,
 		hostCIDR: hostCIDR,
 
-		hyperloopIP:   config.HyperloopIPAddress,
+		hyperloopIP:   config.OrchestratorInSandboxIPAddress,
 		hyperloopPort: strconv.FormatUint(uint64(config.HyperloopProxyPort), 10),
 
 		tcpFirewallHTTPPort:  strconv.FormatUint(uint64(config.SandboxTCPFirewallHTTPPort), 10),
@@ -169,12 +169,8 @@ func (s *Slot) VrtMask() net.IPMask {
 	return s.vrtMask
 }
 
-func (s *Slot) HostIP() net.IP {
-	return s.hostIp
-}
-
 func (s *Slot) HostIPString() string {
-	return s.HostIP().String()
+	return s.HostIP.String()
 }
 
 func (s *Slot) HyperloopIPString() string {
