@@ -46,8 +46,9 @@ func NewFirewall(tapIf string, hyperloopIP string) (*Firewall, error) {
 	})
 
 	// Filter chain in PREROUTING
-	// This handles: allow/deny decisions for traffic from the tap interface
-	policy := nftables.ChainPolicyAccept
+	// This handles: allow/deny decisions for traffic from the tap interface.
+	// Default policy is DROP: only explicitly allowed traffic passes through.
+	policy := nftables.ChainPolicyDrop
 	filterChain := conn.AddChain(&nftables.Chain{
 		Name:     "PREROUTE_FILTER",
 		Table:    table,
@@ -180,13 +181,16 @@ func (fw *Firewall) addNonTCPSetFilterRule(ipSet *nftables.Set, drop bool) {
 func (fw *Firewall) installRules() error {
 	// ============================================================
 	// FILTER CHAIN (PREROUTING, priority -150)
+	// Default policy: DROP (deny by default)
 	// Order:
 	//   1. ESTABLISHED/RELATED → accept (allow responses even from denied ranges)
 	//   2. predefinedAllowSet → accept (all protocols)
 	//   3. predefinedDenySet → DROP (all protocols, hard block)
 	//   4. Non-TCP: userAllowSet → accept
 	//   5. Non-TCP: userDenySet → DROP
-	//   6. Default: ACCEPT (TCP handled by iptables REDIRECT)
+	//   6. TCP from tap → accept (iptables REDIRECT handles routing to proxy)
+	//   7. Non-tap traffic → accept (host traffic should not be filtered)
+	//   8. Default: DROP (non-TCP from tap not in any set is dropped)
 	//
 	// ============================================================
 
@@ -229,9 +233,42 @@ func (fw *Firewall) installRules() error {
 	// Only non-TCP traffic is affected; TCP goes to proxy
 	fw.addNonTCPSetFilterRule(fw.userDenySet.Set(), true)
 
-	// Default policy: ACCEPT
-	// - Non-TCP not in user sets: allowed (default policy)
-	// - TCP: iptables REDIRECT handles TCP traffic to proxy
+	// Rule 6: Accept all TCP from tap interface → let iptables REDIRECT handle it
+	fw.conn.AddRule(&nftables.Rule{
+		Table: fw.table,
+		Chain: fw.filterChain,
+		Exprs: append(append(fw.tapIfaceMatch(),
+			&expr.Meta{Key: expr.MetaKeyL4PROTO, Register: 1},
+			&expr.Cmp{
+				Op:       expr.CmpOpEq,
+				Register: 1,
+				Data:     []byte{unix.IPPROTO_TCP},
+			}),
+			accept()...,
+		),
+	})
+
+	// Rule 7: Accept traffic NOT from the tap interface (host traffic should not be filtered)
+	fw.conn.AddRule(&nftables.Rule{
+		Table: fw.table,
+		Chain: fw.filterChain,
+		Exprs: append(
+			[]expr.Any{
+				&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
+				&expr.Cmp{
+					Register: 1,
+					Op:       expr.CmpOpNeq,
+					Data:     append([]byte(fw.tapInterface), 0),
+				},
+			},
+			accept()...,
+		),
+	})
+
+	// Default policy: DROP
+	// - Non-TCP from tap not in any set: dropped (prevents unfiltered UDP/ICMP egress)
+	// - TCP from tap: accepted above, iptables REDIRECT handles routing to proxy
+	// - Non-tap traffic: accepted above (host traffic unaffected)
 
 	if err := fw.conn.Flush(); err != nil {
 		return fmt.Errorf("flush nftables changes: %w", err)
