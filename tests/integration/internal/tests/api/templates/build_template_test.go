@@ -216,6 +216,139 @@ func TestTemplateBuildENV(t *testing.T) {
 				}),
 			},
 		},
+		{
+			name:         "ENV with PEM-style dashes",
+			templateName: "test-ubuntu-env-pem-dashes",
+			buildConfig: api.TemplateBuildStartV2{
+				Force:     utils.ToPtr(ForceBaseBuild),
+				FromImage: utils.ToPtr("ubuntu:22.04"),
+				Steps: utils.ToPtr([]api.TemplateStep{
+					{
+						Type:  "ENV",
+						Force: utils.ToPtr(true),
+						Args:  utils.ToPtr([]string{"PEM_HEADER", "-----BEGIN DATA-----"}),
+					},
+					{
+						Type: "RUN",
+						Args: utils.ToPtr([]string{"[[ \"$PEM_HEADER\" == \"-----BEGIN DATA-----\" ]] || exit 1"}),
+					},
+				}),
+			},
+		},
+		{
+			name:         "ENV with double quotes",
+			templateName: "test-ubuntu-env-quotes",
+			buildConfig: api.TemplateBuildStartV2{
+				Force:     utils.ToPtr(ForceBaseBuild),
+				FromImage: utils.ToPtr("ubuntu:22.04"),
+				Steps: utils.ToPtr([]api.TemplateStep{
+					{
+						Type:  "ENV",
+						Force: utils.ToPtr(true),
+						Args:  utils.ToPtr([]string{"QUOTED_VAR", `say "hello"`}),
+					},
+					{
+						Type: "RUN",
+						Args: utils.ToPtr([]string{`[[ "$QUOTED_VAR" == 'say "hello"' ]] || exit 1`}),
+					},
+				}),
+			},
+		},
+		{
+			name:         "ENV with single quotes",
+			templateName: "test-ubuntu-env-single-quotes",
+			buildConfig: api.TemplateBuildStartV2{
+				Force:     utils.ToPtr(ForceBaseBuild),
+				FromImage: utils.ToPtr("ubuntu:22.04"),
+				Steps: utils.ToPtr([]api.TemplateStep{
+					{
+						Type:  "ENV",
+						Force: utils.ToPtr(true),
+						Args:  utils.ToPtr([]string{"SINGLE_QUOTED", "it's working"}),
+					},
+					{
+						Type: "RUN",
+						Args: utils.ToPtr([]string{`[[ "$SINGLE_QUOTED" == "it's working" ]] || exit 1`}),
+					},
+				}),
+			},
+		},
+		{
+			name:         "ENV with backslashes",
+			templateName: "test-ubuntu-env-backslash",
+			buildConfig: api.TemplateBuildStartV2{
+				Force:     utils.ToPtr(ForceBaseBuild),
+				FromImage: utils.ToPtr("ubuntu:22.04"),
+				Steps: utils.ToPtr([]api.TemplateStep{
+					{
+						Type:  "ENV",
+						Force: utils.ToPtr(true),
+						Args:  utils.ToPtr([]string{"PATH_VAR", `path\to\file`}),
+					},
+					{
+						Type: "RUN",
+						Args: utils.ToPtr([]string{`[[ "$PATH_VAR" == 'path\to\file' ]] || exit 1`}),
+					},
+				}),
+			},
+		},
+		{
+			name:         "ENV with multiline value",
+			templateName: "test-ubuntu-env-multiline",
+			buildConfig: api.TemplateBuildStartV2{
+				Force:     utils.ToPtr(ForceBaseBuild),
+				FromImage: utils.ToPtr("ubuntu:22.04"),
+				Steps: utils.ToPtr([]api.TemplateStep{
+					{
+						Type:  "ENV",
+						Force: utils.ToPtr(true),
+						Args:  utils.ToPtr([]string{"MULTILINE", "line1\nline2\nline3"}),
+					},
+					{
+						Type: "RUN",
+						Args: utils.ToPtr([]string{`[[ $(echo "$MULTILINE" | wc -l) -eq 3 ]] || exit 1`}),
+					},
+				}),
+			},
+		},
+		{
+			name:         "ENV blocks command substitution with backticks",
+			templateName: "test-ubuntu-env-backticks",
+			buildConfig: api.TemplateBuildStartV2{
+				Force:     utils.ToPtr(ForceBaseBuild),
+				FromImage: utils.ToPtr("ubuntu:22.04"),
+				Steps: utils.ToPtr([]api.TemplateStep{
+					{
+						Type:  "ENV",
+						Force: utils.ToPtr(true),
+						Args:  utils.ToPtr([]string{"LITERAL_CMD", "`echo pwned`"}),
+					},
+					{
+						Type: "RUN",
+						Args: utils.ToPtr([]string{`[[ "$LITERAL_CMD" == '` + "`echo pwned`" + `' ]] || exit 1`}),
+					},
+				}),
+			},
+		},
+		{
+			name:         "ENV blocks command substitution with dollar paren",
+			templateName: "test-ubuntu-env-dollarparen",
+			buildConfig: api.TemplateBuildStartV2{
+				Force:     utils.ToPtr(ForceBaseBuild),
+				FromImage: utils.ToPtr("ubuntu:22.04"),
+				Steps: utils.ToPtr([]api.TemplateStep{
+					{
+						Type:  "ENV",
+						Force: utils.ToPtr(true),
+						Args:  utils.ToPtr([]string{"LITERAL_CMD2", "$(echo pwned)"}),
+					},
+					{
+						Type: "RUN",
+						Args: utils.ToPtr([]string{`[[ "$LITERAL_CMD2" == '$(echo pwned)' ]] || exit 1`}),
+					},
+				}),
+			},
+		},
 	}
 
 	for _, tc := range testCases {
@@ -886,7 +1019,9 @@ func TestTemplateBuildInstalledPackagesAvailable(t *testing.T) {
 		"curl",
 		"ca-certificates",
 		"fuse3",
+		"iptables",
 		"git",
+		"gettext-base",
 	}
 
 	steps := make([]api.TemplateStep, 0, len(packages))

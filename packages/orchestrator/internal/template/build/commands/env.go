@@ -56,17 +56,32 @@ func (e *Env) Execute(
 	return cmdMetadata, nil
 }
 
+// shellEscape escapes a string for safe use in shell single quotes.
+// Single-quoted strings in bash don't interpret any special characters,
+// so we only need to handle the single quote itself.
+func shellEscape(s string) string {
+	if s == "" {
+		return "''"
+	}
+
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
 func evaluateValue(
 	ctx context.Context,
 	proxy *proxy.SandboxProxy,
 	sandboxID string,
 	envValue string,
 ) (string, error) {
+	// Use printf with single-quote escaping for safe input,
+	// then pipe through envsubst to expand environment variables.
+	cmd := fmt.Sprintf("printf '%%s' %s | envsubst", shellEscape(envValue))
+
 	err := sandboxtools.RunCommandWithOutput(
 		ctx,
 		proxy,
 		sandboxID,
-		fmt.Sprintf(`printf "%s"`, envValue),
+		cmd,
 		metadata.Context{
 			User: "root",
 		},
