@@ -266,6 +266,8 @@ components:
     SandboxAutoResumeConfig:
       type: object
       description: Auto-resume configuration for paused sandboxes. Default is off.
+      required:
+        - policy
       properties:
         policy:
           $ref: "#/components/schemas/SandboxAutoResumePolicy"
