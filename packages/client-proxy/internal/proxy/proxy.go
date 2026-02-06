@@ -33,8 +33,8 @@ const (
 
 var ErrNodeNotFound = errors.New("node not found")
 
-// 0 means "use the stored sandbox timeout" in the resume API. For now we hardcode to 5 minutes though.
-const resumeTimeoutSeconds int32 = 0
+// use 5 minutes for now; will allow settings for this later
+const resumeTimeoutSeconds int32 = 300
 
 func catalogResolution(ctx context.Context, sandboxId string, c catalog.SandboxesCatalog, pausedChecker PausedSandboxResumer, featureFlags *featureflags.Client) (string, error) {
 	s, err := c.GetSandbox(ctx, sandboxId)
