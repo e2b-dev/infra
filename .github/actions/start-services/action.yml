@@ -116,6 +116,7 @@ runs:
         echo "Start otel-collector"
         ./scripts/start-service.sh "OtelCollector" packages/otel-collector run ~/logs/otel-collector.log http://localhost:13133/healthz
 
+
         echo "Start orchestrator"
         ./scripts/start-service.sh "Orchestrator" packages/orchestrator run-debug ~/logs/orchestrator.log http://localhost:5008/health
 
