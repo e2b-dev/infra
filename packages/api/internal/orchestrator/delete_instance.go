@@ -7,6 +7,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -84,7 +85,7 @@ func (o *Orchestrator) removeSandboxFromNode(ctx context.Context, sbx sandbox.Sa
 
 	// Only remove from routing table if the node is managed by Nomad
 	// For remote cluster nodes we are using gPRC metadata for routing registration instead
-	if node.IsNomadManaged() {
+	if node.IsNomadManaged() || env.IsLocal() {
 		// Remove the sandbox resources after the sandbox is deleted
 		err := o.routingCatalog.DeleteSandbox(ctx, sbx.SandboxID, sbx.ExecutionID)
 		if err != nil {

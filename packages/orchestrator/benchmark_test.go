@@ -237,6 +237,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		config.NetworkConfig,
 		sandboxes,
 		noop.NewMeterProvider(),
+		featureFlags,
 	)
 	go func() {
 		err := tcpFirewall.Start(b.Context())

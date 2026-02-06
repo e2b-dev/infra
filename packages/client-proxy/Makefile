@@ -24,9 +24,6 @@ build-and-upload:
 	@docker buildx install # sets up the buildx as default docker builder (otherwise the command below won't work)
 	@docker build --platform linux/amd64 --tag $(IMAGE_REGISTRY) --push --build-arg COMMIT_SHA="$(COMMIT_SHA)" -f ./Dockerfile ..
 
-openapi := ../../spec/openapi-edge.yml
-codegen := go tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
-
 .PHONY: run
 run:
 	make build-debug
@@ -47,8 +44,7 @@ run-local:
 
 .PHONY: generate
 generate:
-	$(codegen) -old-config-style -generate types --package api $(openapi) > ../shared/pkg/http/edge/types.gen.go
-	$(codegen) -old-config-style -generate client --package api $(openapi) > ../shared/pkg/http/edge/client.gen.go
+	go generate ./...
 
 .PHONY: test
 test:

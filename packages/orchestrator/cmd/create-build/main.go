@@ -218,6 +218,12 @@ func doBuild(
 
 	l.Info(ctx, "building template", logger.WithTemplateID(templateID), logger.WithBuildID(buildID))
 
+	logLevel := ldlog.Error
+	if verbose {
+		logLevel = ldlog.Info
+	}
+	featureFlags, _ := featureflags.NewClientWithLogLevel(logLevel)
+
 	sandboxes := sandbox.NewSandboxesMap()
 
 	sandboxProxy, err := proxy.NewSandboxProxy(noop.MeterProvider{}, proxyPort, sandboxes)
@@ -231,7 +237,7 @@ func doBuild(
 	}()
 	defer sandboxProxy.Close(parentCtx)
 
-	tcpFirewall := tcpfirewall.New(l, networkConfig, sandboxes, noop.NewMeterProvider())
+	tcpFirewall := tcpfirewall.New(l, networkConfig, sandboxes, noop.NewMeterProvider(), featureFlags)
 	go tcpFirewall.Start(ctx)
 	defer tcpFirewall.Close(parentCtx)
 
@@ -271,11 +277,6 @@ func doBuild(
 	defer dockerhubRepo.Close()
 
 	blockMetrics, _ := blockmetrics.NewMetrics(noop.NewMeterProvider())
-	logLevel := ldlog.Error
-	if verbose {
-		logLevel = ldlog.Info
-	}
-	featureFlags, _ := featureflags.NewClientWithLogLevel(logLevel)
 
 	c, err := cfg.Parse()
 	if err != nil {

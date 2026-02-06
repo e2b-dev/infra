@@ -71,41 +71,6 @@ components:
         serviceStatus:
           $ref: "#/components/schemas/ClusterNodeStatus"
 
-    ClusterNode:
-      required:
-        - nodeID
-        - serviceInstanceID
-        - serviceVersion
-        - serviceVersionCommit
-        - serviceStartedAt
-        - serviceType
-        - serviceStatus
-        - serviceHost
-      properties:
-        nodeID:
-          type: string
-          description: Node ID
-        serviceInstanceID:
-          type: string
-          description: Service instance ID
-        serviceVersion:
-          type: string
-          description: Version of the service
-        serviceVersionCommit:
-          type: string
-          description: Source code version of the service
-        serviceStartedAt:
-          type: string
-          format: date-time
-          description: Time when the node was registered
-        serviceType:
-          $ref: "#/components/schemas/ClusterNodeType"
-        serviceStatus:
-          $ref: "#/components/schemas/ClusterNodeStatus"
-        serviceHost:
-          type: string
-          description: Node private host address and service port
-
     ClusterNodeStatus:
       type: string
       description: State of the cluster node
@@ -114,18 +79,21 @@ components:
         - draining
         - unhealthy
 
-    ClusterNodeType:
-      type: string
-      description: Cluster node type
-      enum:
-        - orchestrator
-
     ClusterOrchestratorRole:
       type: string
       description: Capability of the orchestrator
       enum:
         - orchestrator
         - template-builder
+
+    ClusterServiceDiscovery:
+      required:
+        - orchestrators
+      properties:
+        orchestrators:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClusterOrchestratorNode"
 
     ClusterOrchestratorNode:
       required:
@@ -272,18 +240,6 @@ components:
           items:
             $ref: "#/components/schemas/SandboxLogEntry"
 
-    ServiceDiscoveryNodeStatusRequest:
-      type: object
-      required:
-        - serviceType
-        - serviceInstanceID
-      properties:
-        serviceType:
-          $ref: "#/components/schemas/ClusterNodeType"
-        serviceInstanceID:
-          type: string
-          description: Service instance ID that should be handled by the request
-
     Timestamp:
       type: string
       format: date-time
@@ -343,7 +299,6 @@ components:
           description: Map of sandbox IDs to their latest metrics
           additionalProperties:
             $ref: "#/components/schemas/SandboxMetric"
-
 tags:
   - name: service-discovery
   - name: sandboxes
@@ -353,14 +308,6 @@ paths:
     get:
       operationId: healthCheck
       description: Health check
-      responses:
-        "200":
-          description: Request was successful
-
-  /health/traffic:
-    get:
-      operationId: healthCheckTraffic
-      description: Health check for traffic proxy
       responses:
         "200":
           description: Request was successful
@@ -389,82 +336,12 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
-  /v1/service-discovery/nodes:
-    get:
-      operationId: v1ServiceDiscoveryNodes
-      description: Get the service discovery information
-      security:
-        - ApiKeyAuth: []
-      tags: [service-discovery]
-      responses:
-        "200":
-          description: Successfully returned all cluster nodes
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  allOf:
-                    - $ref: "#/components/schemas/ClusterNode"
-        "401":
-          $ref: "#/components/responses/401"
-        "500":
-          $ref: "#/components/responses/500"
-
-  /v1/service-discovery/nodes/drain:
-    post:
-      operationId: v1ServiceDiscoveryNodeDrain
-      description: Mark service places on node as draining
-      security:
-        - ApiKeyAuth: []
-      tags: [service-discovery]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ServiceDiscoveryNodeStatusRequest"
-      responses:
-        "200":
-          description: Successfully start of node draining
-        "400":
-          $ref: "#/components/responses/400"
-        "401":
-          $ref: "#/components/responses/401"
-        "404":
-          $ref: "#/components/responses/404"
-        "500":
-          $ref: "#/components/responses/500"
-
-  /v1/service-discovery/nodes/kill:
-    post:
-      operationId: v1ServiceDiscoveryNodeKill
-      description: Kill the node
-      security:
-        - ApiKeyAuth: []
-      tags: [service-discovery]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ServiceDiscoveryNodeStatusRequest"
-      responses:
-        "200":
-          description: Successfully start of node kill
-        "400":
-          $ref: "#/components/responses/400"
-        "401":
-          $ref: "#/components/responses/401"
-        "404":
-          $ref: "#/components/responses/404"
-        "500":
-          $ref: "#/components/responses/500"
-
+  # todo: remove deprecated endpoint when all APIs are redeployed (https://linear.app/e2b/issue/ENG-3464)
   /v1/service-discovery/nodes/orchestrators:
     get:
       operationId: v1ServiceDiscoveryGetOrchestrators
-      summary: Get the orchestrators
+      description: Deprecated way how to get the orchestrators, use v2 endpoint instead.
+      deprecated: true
       security:
         - ApiKeyAuth: []
       tags: [service-discovery]
@@ -477,6 +354,25 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/ClusterOrchestratorNode"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /v1/service-discovery:
+    get:
+      operationId: v1ServiceDiscovery
+      summary: Get the service discovery information
+      security:
+        - ApiKeyAuth: []
+      tags: [service-discovery]
+      responses:
+        "200":
+          description: Successfully returned all orchestrators
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClusterServiceDiscovery"
         "401":
           $ref: "#/components/responses/401"
         "500":
@@ -508,6 +404,13 @@ paths:
             minimum: 0
           description: Starting timestamp of the logs that should be returned in milliseconds
         - in: query
+          name: end
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+          description: Ending timestamp of the logs that should be returned in milliseconds
+        - in: query
           name: limit
           schema:
             default: 1000
@@ -515,6 +418,14 @@ paths:
             minimum: 0
             type: integer
           description: Maximum number of logs that should be returned
+        - in: query
+          name: direction
+          schema:
+            type: string
+            enum:
+              - forward
+              - backward
+          description: Direction of the logs that should be returned. Defaults to forward
       responses:
         "200":
           description: Successfully returned the sandbox logs

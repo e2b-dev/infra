@@ -375,6 +375,7 @@ func run(config cfg.Config) (success bool) {
 		config.NetworkConfig,
 		sandboxes,
 		tel.MeterProvider,
+		featureFlags,
 	)
 	startService("tcp egress firewall", func() error {
 		return tcpFirewall.Start(ctx)

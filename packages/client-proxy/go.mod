@@ -2,8 +2,6 @@ module github.com/e2b-dev/infra/packages/proxy
 
 go 1.25.4
 
-replace github.com/ugorji/go v1.1.4 => github.com/ugorji/go/codec v1.2.12
-
 // https://github.com/grafana/loki/issues/2826
 replace github.com/hashicorp/consul => github.com/hashicorp/consul v1.14.5
 
