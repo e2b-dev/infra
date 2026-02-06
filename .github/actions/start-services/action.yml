@@ -110,14 +110,14 @@ runs:
         mkdir -p ~/logs
 
         # Start otel-collector
-        bash ./scripts/start-service.sh "OtelCollector" packages/otel-collector run ~/logs/otel-collector.log http://localhost:13133/healthz
+        ./scripts/start-service.sh "OtelCollector" packages/otel-collector run ~/logs/otel-collector.log http://localhost:13133/healthz
 
         # Start orchestrator
-        bash ./scripts/start-service.sh "Orchestrator" packages/orchestrator run-debug ~/logs/orchestrator.log http://localhost:5008/health
+        ./scripts/start-service.sh "Orchestrator" packages/orchestrator run-debug ~/logs/orchestrator.log http://localhost:5008/health
 
         # Start API
-        bash ./scripts/start-service.sh "API" packages/api run ~/logs/api.log http://localhost:3000/health
+        ./scripts/start-service.sh "API" packages/api run ~/logs/api.log http://localhost:3000/health
 
         # Start client-proxy (needed for auto-resume tests)
-        bash ./scripts/start-service.sh "ClientProxy" packages/client-proxy run ~/logs/client-proxy.log http://localhost:3003
+        ./scripts/start-service.sh "ClientProxy" packages/client-proxy run ~/logs/client-proxy.log http://localhost:3003
       shell: bash
