@@ -53,7 +53,7 @@ func WithAutoPause(autoPause bool) SandboxOption {
 
 func WithAutoResume(policy api.SandboxAutoResumePolicy) SandboxOption {
 	return func(config *SandboxConfig) {
-		config.autoResume = &api.SandboxAutoResumeConfig{Policy: &policy}
+		config.autoResume = &api.SandboxAutoResumeConfig{Policy: policy}
 	}
 }
 
