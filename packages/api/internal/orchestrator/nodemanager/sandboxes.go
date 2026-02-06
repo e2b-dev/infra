@@ -75,7 +75,7 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
 			}
 		}
 
-		var autoResume *types.Sanconfig.GetAutoResume()icy
+		var autoResume *types.SandboxAutoResumePolicy
 		if autoResumeValue := config.GetAutoResume(); autoResumeValue != "" {
 			autoResume = ut.ToPtr(types.SandboxAutoResumePolicy(autoResumeValue))
 		}
@@ -83,7 +83,10 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
 		sandboxesInfo = append(
 			sandboxesInfo,
 			sandbox.NewSandbox(
-				config.GetSandboxId(config.GetAlias()g.Alias, //nolint:protogetter // we need the nil check too
+				config.GetSandboxId(),
+				config.GetTemplateId(),
+				consts.ClientID,
+				config.Alias, //nolint:protogetter // we need the nil check too
 				config.GetExecutionId(),
 				teamID,
 				buildID,
@@ -98,7 +101,10 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
 				config.GetFirecrackerVersion(),
 				config.GetEnvdVersion(),
 				n.ID,
-				n.Clconfig.GetEnvdAccessToken()tAutoPn,     //nolint:protogetter // we need the nil check too
+				n.ClusterID,
+				config.GetAutoPause(),
+				autoResume,
+				config.EnvdAccessToken,     //nolint:protogetter // we need the nil check too
 				config.AllowInternetAccess, //nolint:protogetter // we need the nil check too
 				config.GetBaseTemplateId(),
 				n.SandboxDomain,
