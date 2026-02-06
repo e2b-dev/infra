@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strconv"
-	"sync"
 
 	"github.com/klauspost/compress/zstd"
 	"go.opentelemetry.io/otel/attribute"
@@ -35,9 +34,7 @@ type CompressMMapLRUChunker struct {
 	decompressGroup singleflight.Group // dedup concurrent decompression requests
 
 	// Level 2: Compressed frame mmap cache
-	compressedCache *Cache
-	frameCached     sync.Map           // map[int64]struct{} - tracks which frames are in mmap (keyed by compressed offset)
-	fetchGroup      singleflight.Group // dedup concurrent fetches to storage
+	compressedCache *MMapFrameCache
 
 	virtSize int64 // uncompressed size - used to cap requests
 	rawSize  int64 // compressed file size - used for mmap sizing
@@ -75,7 +72,7 @@ func NewCompressMMapLRUChunker(
 	}
 
 	// Level 2: Compressed frame mmap cache - sized to rawSize (compressed file size)
-	compressedCache, err := NewCache(rawSize, storage.MemoryChunkSize, cachePath, false)
+	compressedCache, err := NewFrameCache(rawSize, cachePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create compressed cache: %w", err)
 	}
@@ -95,6 +92,12 @@ func NewCompressMMapLRUChunker(
 // The returned slice references internal LRU data and MUST NOT be modified.
 // ft is the frame table subset for the specific mapping being read.
 func (c *CompressMMapLRUChunker) Slice(ctx context.Context, off, length int64, ft *storage.FrameTable) ([]byte, error) {
+	data, _, err := c.sliceWithStats(ctx, off, length, ft)
+
+	return data, err
+}
+
+func (c *CompressMMapLRUChunker) sliceWithStats(ctx context.Context, off, length int64, ft *storage.FrameTable) ([]byte, bool, error) {
 	timer := c.metrics.SlicesTimerFactory.Begin()
 
 	// Clamp length to available data
@@ -102,7 +105,7 @@ func (c *CompressMMapLRUChunker) Slice(ctx context.Context, off, length int64, f
 		length = c.virtSize - off
 	}
 	if length <= 0 {
-		return []byte{}, nil
+		return []byte{}, true, nil
 	}
 
 	// CompressMMapLRUChunker requires a FrameTable - it only handles compressed data
@@ -111,7 +114,7 @@ func (c *CompressMMapLRUChunker) Slice(ctx context.Context, off, length int64, f
 			attribute.String(pullType, pullTypeLocal),
 			attribute.String(failureReason, "nil_frame_table"))
 
-		return nil, fmt.Errorf("CompressMMapLRUChunker requires FrameTable for compressed data at offset %d", off)
+		return nil, false, fmt.Errorf("CompressMMapLRUChunker requires FrameTable for compressed data at offset %d", off)
 	}
 
 	// Find the frame containing the start offset using the passed frame table subset
@@ -121,7 +124,7 @@ func (c *CompressMMapLRUChunker) Slice(ctx context.Context, off, length int64, f
 			attribute.String(pullType, pullTypeLocal),
 			attribute.String(failureReason, "frame_lookup_failed"))
 
-		return nil, fmt.Errorf("failed to get frame for offset %d: %w", off, err)
+		return nil, false, fmt.Errorf("failed to get frame for offset %d: %w", off, err)
 	}
 
 	startInFrame := off - frameStarts.U
@@ -129,13 +132,13 @@ func (c *CompressMMapLRUChunker) Slice(ctx context.Context, off, length int64, f
 
 	// Fast path: entire read fits in one frame
 	if endInFrame <= int64(frameSize.U) {
-		data, _, err := c.getOrFetchFrame(ctx, frameStarts, frameSize, ft)
+		data, wasHit, err := c.getOrFetchFrame(ctx, frameStarts, frameSize, ft)
 		if err != nil {
 			timer.Failure(ctx, length,
 				attribute.String(pullType, pullTypeRemote),
 				attribute.String(failureReason, failureTypeCacheFetch))
 
-			return nil, err
+			return nil, false, err
 		}
 
 		timer.Success(ctx, length, attribute.String(pullType, pullTypeRemote))
@@ -145,7 +148,7 @@ func (c *CompressMMapLRUChunker) Slice(ctx context.Context, off, length int64, f
 			endInFrame = int64(len(data))
 		}
 
-		return data[startInFrame:endInFrame], nil
+		return data[startInFrame:endInFrame], wasHit, nil
 	}
 
 	// Slow path: read spans multiple frames - LOG AND ERROR to verify if this ever happens
@@ -153,7 +156,7 @@ func (c *CompressMMapLRUChunker) Slice(ctx context.Context, off, length int64, f
 		attribute.String(pullType, pullTypeLocal),
 		attribute.String(failureReason, "cross_frame_span"))
 
-	return nil, fmt.Errorf("SLOW_PATH_HIT: read spans frame boundary - off=%#x length=%d startInFrame=%d endInFrame=%d frameSize=%d frameStartsU=%#x",
+	return nil, false, fmt.Errorf("SLOW_PATH_HIT: read spans frame boundary - off=%#x length=%d startInFrame=%d endInFrame=%d frameSize=%d frameStartsU=%#x",
 		off, length, startInFrame, endInFrame, frameSize.U, frameStarts.U)
 }
 
@@ -187,7 +190,7 @@ func (c *CompressMMapLRUChunker) getOrFetchFrame(ctx context.Context, frameStart
 // ft is the frame table subset for the specific mapping being read.
 func (c *CompressMMapLRUChunker) fetchDecompressAndCache(ctx context.Context, frameStarts storage.FrameOffset, frameSize storage.FrameSize, ft *storage.FrameTable) ([]byte, error) {
 	// Level 2: Ensure compressed frame is in mmap cache
-	compressedData, err := c.ensureCompressedInMmap(ctx, frameStarts, frameSize, ft)
+	compressedData, _, err := c.ensureCompressedInMmap(ctx, frameStarts, frameSize, ft)
 	if err != nil {
 		return nil, err
 	}
@@ -216,67 +219,22 @@ func (c *CompressMMapLRUChunker) fetchDecompressAndCache(ctx context.Context, fr
 
 // ensureCompressedInMmap returns compressed frame data from mmap, fetching from storage if needed.
 // ft is the frame table subset for the specific mapping being read.
-func (c *CompressMMapLRUChunker) ensureCompressedInMmap(ctx context.Context, frameStarts storage.FrameOffset, frameSize storage.FrameSize, ft *storage.FrameTable) ([]byte, error) {
-	// Check if already cached in mmap (fast O(1) lookup)
-	if _, cached := c.frameCached.Load(frameStarts.C); cached {
-		slice, err := c.compressedCache.Slice(frameStarts.C, int64(frameSize.C))
-		if err != nil {
-			return nil, fmt.Errorf("failed to slice compressed cache: %w", err)
-		}
-
-		return slice, nil
-	}
-
-	// Not in mmap - fetch from storage (dedup concurrent fetches)
-	key := strconv.FormatInt(frameStarts.C, 10)
-	_, err, _ := c.fetchGroup.Do(key, func() (any, error) {
-		// Double-check after acquiring fetch slot
-		if _, cached := c.frameCached.Load(frameStarts.C); cached {
-			return nil, nil
-		}
-
+func (c *CompressMMapLRUChunker) ensureCompressedInMmap(ctx context.Context, frameStarts storage.FrameOffset, frameSize storage.FrameSize, ft *storage.FrameTable) ([]byte, bool, error) {
+	return c.compressedCache.GetOrFetch(frameStarts.C, int64(frameSize.C), func(buf []byte) error {
 		fetchTimer := c.metrics.RemoteReadsTimerFactory.Begin()
 
-		// Get writable slice in mmap
-		buf, unlock, err := c.compressedCache.addressBytes(frameStarts.C, int64(frameSize.C))
-		if err != nil {
-			fetchTimer.Failure(ctx, int64(frameSize.C),
-				attribute.String(failureReason, "mmap_address_failed"))
-
-			return nil, fmt.Errorf("failed to get mmap address: %w", err)
-		}
-		defer unlock()
-
-		// Fetch compressed frame from storage (decompress=false)
-		_, err = c.storage.GetFrame(ctx, c.objectPath, frameStarts.U, ft, false, buf)
+		_, err := c.storage.GetFrame(ctx, c.objectPath, frameStarts.U, ft, false, buf)
 		if err != nil {
 			fetchTimer.Failure(ctx, int64(frameSize.C),
 				attribute.String(failureReason, failureTypeRemoteRead))
 
-			return nil, fmt.Errorf("failed to fetch compressed frame at %#x: %w", frameStarts.C, err)
+			return fmt.Errorf("failed to fetch compressed frame at %#x: %w", frameStarts.C, err)
 		}
 
 		fetchTimer.Success(ctx, int64(frameSize.C))
 
-		// Mark frame as cached:
-		// - compressedCache.setIsCached: needed for Cache.Slice() to work
-		// - frameCached: O(1) lookup for our fast path check
-		c.compressedCache.setIsCached(frameStarts.C, int64(frameSize.C))
-		c.frameCached.Store(frameStarts.C, struct{}{})
-
-		return nil, nil
+		return nil
 	})
-	if err != nil {
-		return nil, err
-	}
-
-	// Now read from mmap
-	slice, err := c.compressedCache.Slice(frameStarts.C, int64(frameSize.C))
-	if err != nil {
-		return nil, fmt.Errorf("failed to slice compressed cache after fetch: %w", err)
-	}
-
-	return slice, nil
 }
 
 // Close releases all resources.

@@ -23,7 +23,7 @@ type UncompressedMMapChunker struct {
 	storage    storage.FrameGetter
 	objectPath string
 
-	cache   *Cache
+	cache   *MMapCache
 	metrics metrics.Metrics
 
 	size int64 // uncompressed size - for uncompressed data, virtSize == rawSize
@@ -58,7 +58,13 @@ func NewUncompressedMMapChunker(
 	return chunker, nil
 }
 
-func (c *UncompressedMMapChunker) Slice(ctx context.Context, off, length int64, _ *storage.FrameTable) ([]byte, error) {
+func (c *UncompressedMMapChunker) Slice(ctx context.Context, off, length int64, ft *storage.FrameTable) ([]byte, error) {
+	data, _, err := c.sliceWithStats(ctx, off, length, ft)
+
+	return data, err
+}
+
+func (c *UncompressedMMapChunker) sliceWithStats(ctx context.Context, off, length int64, _ *storage.FrameTable) ([]byte, bool, error) {
 	timer := c.metrics.SlicesTimerFactory.Begin()
 
 	b, err := c.cache.Slice(off, length)
@@ -66,7 +72,7 @@ func (c *UncompressedMMapChunker) Slice(ctx context.Context, off, length int64, 
 		timer.Success(ctx, length,
 			attribute.String(pullType, pullTypeLocal))
 
-		return b, nil
+		return b, true, nil
 	}
 
 	if !errors.As(err, &BytesNotAvailableError{}) {
@@ -74,7 +80,7 @@ func (c *UncompressedMMapChunker) Slice(ctx context.Context, off, length int64, 
 			attribute.String(pullType, pullTypeLocal),
 			attribute.String(failureReason, failureTypeLocalRead))
 
-		return nil, fmt.Errorf("failed read from cache at offset %d: %w", off, err)
+		return nil, false, fmt.Errorf("failed read from cache at offset %d: %w", off, err)
 	}
 
 	chunkErr := c.fetchToCache(ctx, off, length)
@@ -83,7 +89,7 @@ func (c *UncompressedMMapChunker) Slice(ctx context.Context, off, length int64, 
 			attribute.String(pullType, pullTypeRemote),
 			attribute.String(failureReason, failureTypeCacheFetch))
 
-		return nil, fmt.Errorf("failed to ensure data at %d-%d: %w", off, off+length, chunkErr)
+		return nil, false, fmt.Errorf("failed to ensure data at %d-%d: %w", off, off+length, chunkErr)
 	}
 
 	b, cacheErr := c.cache.Slice(off, length)
@@ -92,13 +98,13 @@ func (c *UncompressedMMapChunker) Slice(ctx context.Context, off, length int64, 
 			attribute.String(pullType, pullTypeLocal),
 			attribute.String(failureReason, failureTypeLocalReadAgain))
 
-		return nil, fmt.Errorf("failed to read from cache after ensuring data at %d-%d: %w", off, off+length, cacheErr)
+		return nil, false, fmt.Errorf("failed to read from cache after ensuring data at %d-%d: %w", off, off+length, cacheErr)
 	}
 
 	timer.Success(ctx, length,
 		attribute.String(pullType, pullTypeRemote))
 
-	return b, nil
+	return b, false, nil
 }
 
 // fetchToCache ensures that the data at the given offset and length is available in the cache.

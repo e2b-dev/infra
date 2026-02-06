@@ -226,8 +226,7 @@ func newCloudBackendForEnvironment(ctx context.Context, providerName ProviderNam
 	}
 }
 
-// StoreFile compresses the given file and uploads it using multipart upload. If
-// the compression type is unset, the file is uploaded in its entirety.
+// StoreFile opens inFilePath and uploads it via StoreReader.
 //
 // TODO LEV If we use fixed-size chunks, we can optimize by reading/compressing
 // in parallel; we can also split the file and still use variable-sized frames.
@@ -237,16 +236,6 @@ func (s *Storage) StoreFile(ctx context.Context, inFilePath, objectPath string, 
 		recordError(span, e)
 		span.End()
 	}()
-
-	if err := ValidateCompressionOptions(opts); err != nil {
-		return nil, err
-	}
-
-	noCompression := !EnableGCSCompression || opts == nil || opts.CompressionType == CompressionNone
-	partSize := defaultUploadPartSize
-	if opts != nil && opts.TargetPartSize > 0 {
-		partSize = opts.TargetPartSize
-	}
 
 	in, err := os.Open(inFilePath)
 	if err != nil {
@@ -259,11 +248,27 @@ func (s *Storage) StoreFile(ctx context.Context, inFilePath, objectPath string, 
 		return nil, fmt.Errorf("failed to stat input file: %w", err)
 	}
 
-	sizeU := stat.Size()
+	return s.StoreReader(ctx, in, stat.Size(), objectPath, opts)
+}
 
+// StoreReader uploads data from an io.ReaderAt. If compression options are set,
+// data is compressed into frames and a FrameTable is returned; otherwise data is
+// uploaded directly. sizeU is the total uncompressed size.
+func (s *Storage) StoreReader(ctx context.Context, in io.ReaderAt, sizeU int64, objectPath string, opts *FramedUploadOptions) (*FrameTable, error) {
+	if err := ValidateCompressionOptions(opts); err != nil {
+		return nil, err
+	}
+
+	noCompression := !EnableGCSCompression || opts == nil || opts.CompressionType == CompressionNone
+
+	partSize := defaultUploadPartSize
+	if opts != nil && opts.TargetPartSize > 0 {
+		partSize = opts.TargetPartSize
+	}
+
+	// Simple upload for small uncompressed data or when multipart is unavailable.
 	if noCompression && (s.Backend.MultipartUploaderFactory == nil || sizeU <= int64(partSize)) {
-		// If not using multipart or compressed upload, fall through to simple put.
-		_, err = s.Backend.Upload(ctx, objectPath, in)
+		_, err := s.Backend.Upload(ctx, objectPath, io.NewSectionReader(in, 0, sizeU))
 
 		return nil, err
 	}
@@ -271,7 +276,6 @@ func (s *Storage) StoreFile(ctx context.Context, inFilePath, objectPath string, 
 	timer := googleWriteTimerFactory.Begin(
 		attribute.String(gcsOperationAttr, gcsOperationAttrStore))
 
-	// For compressed uploads, include the uncompressed size as metadata.
 	var metadata map[string]string
 	if !noCompression {
 		metadata = map[string]string{
@@ -287,10 +291,13 @@ func (s *Storage) StoreFile(ctx context.Context, inFilePath, objectPath string, 
 		return nil, fmt.Errorf("failed to initiate upload: %w", err)
 	}
 
+	var ft *FrameTable
+
 	if noCompression {
 		err = uploadFileInParallel(ctx, in, sizeU, partUploader, partSize, maxConcurrency)
 	} else {
-		ft, err = newFrameEncoder(opts, partUploader, int64(partSize), maxConcurrency).uploadFramed(ctx, in)
+		ft, err = newFrameEncoder(opts, partUploader, int64(partSize), maxConcurrency).
+			uploadFramed(ctx, io.NewSectionReader(in, 0, sizeU))
 	}
 
 	if err != nil {

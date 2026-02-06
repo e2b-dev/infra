@@ -11,14 +11,14 @@ import (
 
 type Overlay struct {
 	device       ReadonlyDevice
-	cache        *Cache
+	cache        *MMapCache
 	cacheEjected atomic.Bool
 	blockSize    int64
 }
 
 var _ Device = (*Overlay)(nil)
 
-func NewOverlay(device ReadonlyDevice, cache *Cache) *Overlay {
+func NewOverlay(device ReadonlyDevice, cache *MMapCache) *Overlay {
 	blockSize := device.BlockSize()
 
 	return &Overlay{
@@ -50,7 +50,7 @@ func (o *Overlay) ReadAt(ctx context.Context, p []byte, off int64) (int, error) 
 	return len(p), nil
 }
 
-func (o *Overlay) EjectCache() (*Cache, error) {
+func (o *Overlay) EjectCache() (*MMapCache, error) {
 	if !o.cacheEjected.CompareAndSwap(false, true) {
 		return nil, fmt.Errorf("cache already ejected")
 	}

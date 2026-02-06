@@ -28,7 +28,7 @@ type DecompressMMapChunker struct {
 	storage    storage.FrameGetter
 	objectPath string
 
-	cache   *Cache
+	cache   *MMapCache
 	metrics metrics.Metrics
 
 	virtSize int64 // U space size (uncompressed)
@@ -66,12 +66,18 @@ func NewDecompressMMapChunker(
 
 // Slice reads data at U offset. Bounds check uses virtSize (U space).
 func (c *DecompressMMapChunker) Slice(ctx context.Context, off, length int64, ft *storage.FrameTable) ([]byte, error) {
+	data, _, err := c.sliceWithStats(ctx, off, length, ft)
+
+	return data, err
+}
+
+func (c *DecompressMMapChunker) sliceWithStats(ctx context.Context, off, length int64, ft *storage.FrameTable) ([]byte, bool, error) {
 	// Validate bounds
 	if off < 0 || length < 0 {
-		return nil, fmt.Errorf("invalid slice params: off=%d length=%d", off, length)
+		return nil, false, fmt.Errorf("invalid slice params: off=%d length=%d", off, length)
 	}
 	if off+length > c.virtSize {
-		return nil, fmt.Errorf("slice out of bounds: off=%#x length=%d virtSize=%d", off, length, c.virtSize)
+		return nil, false, fmt.Errorf("slice out of bounds: off=%#x length=%d virtSize=%d", off, length, c.virtSize)
 	}
 
 	timer := c.metrics.SlicesTimerFactory.Begin()
@@ -80,7 +86,7 @@ func (c *DecompressMMapChunker) Slice(ctx context.Context, off, length int64, ft
 	if err == nil {
 		timer.Success(ctx, length, attribute.String(pullType, pullTypeLocal))
 
-		return b, nil
+		return b, true, nil
 	}
 
 	if !errors.As(err, &BytesNotAvailableError{}) {
@@ -88,7 +94,7 @@ func (c *DecompressMMapChunker) Slice(ctx context.Context, off, length int64, ft
 			attribute.String(pullType, pullTypeLocal),
 			attribute.String(failureReason, failureTypeLocalRead))
 
-		return nil, fmt.Errorf("failed read from cache at offset %d: %w", off, err)
+		return nil, false, fmt.Errorf("failed read from cache at offset %d: %w", off, err)
 	}
 
 	chunkErr := c.fetchToCache(ctx, off, length, ft)
@@ -97,7 +103,7 @@ func (c *DecompressMMapChunker) Slice(ctx context.Context, off, length int64, ft
 			attribute.String(pullType, pullTypeRemote),
 			attribute.String(failureReason, failureTypeCacheFetch))
 
-		return nil, fmt.Errorf("failed to ensure data at %d-%d: %w", off, off+length, chunkErr)
+		return nil, false, fmt.Errorf("failed to ensure data at %d-%d: %w", off, off+length, chunkErr)
 	}
 
 	b, cacheErr := c.cache.Slice(off, length)
@@ -106,12 +112,12 @@ func (c *DecompressMMapChunker) Slice(ctx context.Context, off, length int64, ft
 			attribute.String(pullType, pullTypeLocal),
 			attribute.String(failureReason, failureTypeLocalReadAgain))
 
-		return nil, fmt.Errorf("failed to read from cache after ensuring data at %d-%d: %w", off, off+length, cacheErr)
+		return nil, false, fmt.Errorf("failed to read from cache after ensuring data at %d-%d: %w", off, off+length, cacheErr)
 	}
 
 	timer.Success(ctx, length, attribute.String(pullType, pullTypeRemote))
 
-	return b, nil
+	return b, false, nil
 }
 
 // fetchToCache fetches data and stores into mmap.

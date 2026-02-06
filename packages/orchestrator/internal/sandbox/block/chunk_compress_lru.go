@@ -66,6 +66,12 @@ func NewCompressLRUChunker(
 // The returned slice references internal LRU data and MUST NOT be modified.
 // ft is the frame table subset for the specific mapping being read.
 func (c *CompressLRUChunker) Slice(ctx context.Context, off, length int64, ft *storage.FrameTable) ([]byte, error) {
+	data, _, err := c.sliceWithStats(ctx, off, length, ft)
+
+	return data, err
+}
+
+func (c *CompressLRUChunker) sliceWithStats(ctx context.Context, off, length int64, ft *storage.FrameTable) ([]byte, bool, error) {
 	timer := c.metrics.SlicesTimerFactory.Begin()
 
 	// Clamp length to available data
@@ -73,7 +79,7 @@ func (c *CompressLRUChunker) Slice(ctx context.Context, off, length int64, ft *s
 		length = c.virtSize - off
 	}
 	if length <= 0 {
-		return []byte{}, nil
+		return []byte{}, true, nil
 	}
 
 	// CompressLRUChunker requires a FrameTable - it only handles compressed data
@@ -82,7 +88,7 @@ func (c *CompressLRUChunker) Slice(ctx context.Context, off, length int64, ft *s
 			attribute.String(pullType, pullTypeLocal),
 			attribute.String(failureReason, "nil_frame_table"))
 
-		return nil, fmt.Errorf("CompressLRUChunker requires FrameTable for compressed data at offset %d", off)
+		return nil, false, fmt.Errorf("CompressLRUChunker requires FrameTable for compressed data at offset %d", off)
 	}
 
 	// Find the frame containing the start offset using the passed frame table subset
@@ -92,7 +98,7 @@ func (c *CompressLRUChunker) Slice(ctx context.Context, off, length int64, ft *s
 			attribute.String(pullType, pullTypeLocal),
 			attribute.String(failureReason, "frame_lookup_failed"))
 
-		return nil, fmt.Errorf("failed to get frame for offset %d: %w", off, err)
+		return nil, false, fmt.Errorf("failed to get frame for offset %d: %w", off, err)
 	}
 
 	startInFrame := off - frameStarts.U
@@ -100,13 +106,13 @@ func (c *CompressLRUChunker) Slice(ctx context.Context, off, length int64, ft *s
 
 	// Fast path: entire read fits in one frame (common case for 4KB page faults in 4MB frames)
 	if endInFrame <= int64(frameSize.U) {
-		data, _, err := c.getOrFetchFrame(ctx, frameStarts.U, frameSize, ft)
+		data, wasHit, err := c.getOrFetchFrame(ctx, frameStarts.U, frameSize, ft)
 		if err != nil {
 			timer.Failure(ctx, length,
 				attribute.String(pullType, pullTypeRemote),
 				attribute.String(failureReason, failureTypeCacheFetch))
 
-			return nil, err
+			return nil, false, err
 		}
 
 		timer.Success(ctx, length, attribute.String(pullType, pullTypeRemote))
@@ -115,7 +121,7 @@ func (c *CompressLRUChunker) Slice(ctx context.Context, off, length int64, ft *s
 			endInFrame = int64(len(data))
 		}
 		// Return direct slice - no copy needed
-		return data[startInFrame:endInFrame], nil
+		return data[startInFrame:endInFrame], wasHit, nil
 	}
 
 	// Slow path: read spans multiple frames - LOG AND ERROR to verify if this ever happens
@@ -123,7 +129,7 @@ func (c *CompressLRUChunker) Slice(ctx context.Context, off, length int64, ft *s
 		attribute.String(pullType, pullTypeLocal),
 		attribute.String(failureReason, "cross_frame_span"))
 
-	return nil, fmt.Errorf("SLOW_PATH_HIT: read spans frame boundary - off=%#x length=%d startInFrame=%d endInFrame=%d frameSize=%d frameStartsU=%#x",
+	return nil, false, fmt.Errorf("SLOW_PATH_HIT: read spans frame boundary - off=%#x length=%d startInFrame=%d endInFrame=%d frameSize=%d frameStartsU=%#x",
 		off, length, startInFrame, endInFrame, frameSize.U, frameStarts.U)
 }
 

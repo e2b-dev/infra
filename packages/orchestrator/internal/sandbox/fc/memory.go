@@ -22,7 +22,7 @@ func (p *Process) ExportMemory(
 	include *bitset.BitSet,
 	cachePath string,
 	blockSize int64,
-) (*block.Cache, error) {
+) (*block.MMapCache, error) {
 	m, err := p.client.memoryMapping(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get memory mappings: %w", err)
