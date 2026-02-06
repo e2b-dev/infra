@@ -31,8 +31,10 @@ import (
 
 const (
 	// Downstream timeout should be greater than upstream (in orchestrator proxy).
-	idleTimeout = 640 * time.Second
-	maxAge      = 2 * time.Hour
+	idleTimeout  = 640 * time.Second
+	readTimeout  = 30 * time.Second
+	writeTimeout = 5 * time.Minute
+	maxAge       = 2 * time.Hour
 
 	defaultPort = 49983
 
@@ -197,10 +199,9 @@ func main() {
 				middleware.Wrap(handler),
 			),
 		),
-		Addr: fmt.Sprintf("0.0.0.0:%d", port),
-		// We remove the timeouts as the connection is terminated by closing of the sandbox and keepalive close.
-		ReadTimeout:  0,
-		WriteTimeout: 0,
+		Addr:         fmt.Sprintf("0.0.0.0:%d", port),
+		ReadTimeout:  readTimeout,
+		WriteTimeout: writeTimeout,
 		IdleTimeout:  idleTimeout,
 	}
 
