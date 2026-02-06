@@ -13,10 +13,13 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/ioutils"
 )
 
+// EncodingGzip is the gzip content encoding.
+const EncodingGzip = "gzip"
+
 // SupportedEncodings lists the content encodings supported for file transfer.
 // The order matters - encodings are checked in order of preference.
 var SupportedEncodings = []string{
-	"gzip",
+	EncodingGzip,
 }
 
 // encodingWithQuality holds an encoding name and its quality value.
@@ -85,9 +88,10 @@ func parseContentEncoding(r *http.Request) (string, error) {
 	return encoding, nil
 }
 
-// parseAcceptEncoding parses the Accept-Encoding header and returns the requested
-// encoding based on quality values. Returns an error if only unsupported encodings
-// are requested. If no Accept-Encoding header is present, returns empty string.
+// parseAcceptEncoding parses the Accept-Encoding header and returns the best
+// supported encoding based on quality values. Per RFC 7231 section 5.3.4,
+// identity is always implicitly acceptable unless explicitly rejected with q=0.
+// If no Accept-Encoding header is present, returns empty string (identity).
 func parseAcceptEncoding(r *http.Request) (string, error) {
 	header := r.Header.Get("Accept-Encoding")
 	if header == "" {
@@ -106,6 +110,16 @@ func parseAcceptEncoding(r *http.Request) (string, error) {
 		return encodings[i].quality > encodings[j].quality
 	})
 
+	// Check if identity is explicitly rejected
+	identityRejected := false
+	for _, eq := range encodings {
+		if eq.encoding == "identity" && eq.quality == 0 {
+			identityRejected = true
+
+			break
+		}
+	}
+
 	// Find the best supported encoding
 	for _, eq := range encodings {
 		// Skip encodings with q=0 (explicitly rejected)
@@ -113,8 +127,17 @@ func parseAcceptEncoding(r *http.Request) (string, error) {
 			continue
 		}
 
-		// "identity" means no encoding, "*" means any encoding is acceptable
-		if eq.encoding == "identity" || eq.encoding == "*" {
+		// "identity" means no encoding
+		if eq.encoding == "identity" {
+			return "", nil
+		}
+
+		// "*" means any encoding is acceptable - return a supported encoding if identity is rejected
+		if eq.encoding == "*" {
+			if identityRejected && len(SupportedEncodings) > 0 {
+				return SupportedEncodings[0], nil
+			}
+
 			return "", nil
 		}
 
@@ -123,7 +146,13 @@ func parseAcceptEncoding(r *http.Request) (string, error) {
 		}
 	}
 
-	return "", fmt.Errorf("unsupported Accept-Encoding: %s, supported: %v", header, SupportedEncodings)
+	// Per RFC 7231, identity is implicitly acceptable unless rejected
+	if !identityRejected {
+		return "", nil
+	}
+
+	// Identity rejected and no supported encodings found
+	return "", fmt.Errorf("no acceptable encoding found, supported: %v", SupportedEncodings)
 }
 
 // getDecompressedBody returns a reader that decompresses the request body based on
@@ -142,7 +171,7 @@ func getDecompressedBody(r *http.Request) (io.ReadCloser, error) {
 	}
 
 	switch encoding {
-	case "gzip":
+	case EncodingGzip:
 		gzReader, err := gzip.NewReader(r.Body)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create gzip reader: %w", err)

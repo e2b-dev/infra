@@ -269,25 +269,24 @@ func TestParseAcceptEncoding(t *testing.T) {
 		assert.Empty(t, encoding)
 	})
 
-	t.Run("returns error for unsupported encoding only", func(t *testing.T) {
+	t.Run("falls back to identity for unsupported encoding only", func(t *testing.T) {
 		t.Parallel()
 		req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 		req.Header.Set("Accept-Encoding", "br")
 
-		_, err := parseAcceptEncoding(req)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "unsupported Accept-Encoding")
-		assert.Contains(t, err.Error(), "supported: [gzip]")
+		encoding, err := parseAcceptEncoding(req)
+		require.NoError(t, err)
+		assert.Empty(t, encoding) // falls back to identity per RFC 7231
 	})
 
-	t.Run("returns error when only unsupported encodings", func(t *testing.T) {
+	t.Run("falls back to identity when only unsupported encodings", func(t *testing.T) {
 		t.Parallel()
 		req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 		req.Header.Set("Accept-Encoding", "deflate, br")
 
-		_, err := parseAcceptEncoding(req)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "unsupported Accept-Encoding")
+		encoding, err := parseAcceptEncoding(req)
+		require.NoError(t, err)
+		assert.Empty(t, encoding) // falls back to identity per RFC 7231
 	})
 
 	t.Run("selects gzip when it has highest quality", func(t *testing.T) {
@@ -330,14 +329,34 @@ func TestParseAcceptEncoding(t *testing.T) {
 		assert.Empty(t, encoding) // gzip rejected, identity accepted
 	})
 
-	t.Run("returns error when gzip explicitly rejected and no other supported", func(t *testing.T) {
+	t.Run("falls back to identity when gzip rejected and no other supported", func(t *testing.T) {
 		t.Parallel()
 		req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 		req.Header.Set("Accept-Encoding", "gzip;q=0, br")
 
+		encoding, err := parseAcceptEncoding(req)
+		require.NoError(t, err)
+		assert.Empty(t, encoding) // identity implicitly acceptable per RFC 7231
+	})
+
+	t.Run("returns error when identity explicitly rejected and no supported encoding", func(t *testing.T) {
+		t.Parallel()
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
+		req.Header.Set("Accept-Encoding", "br, identity;q=0")
+
 		_, err := parseAcceptEncoding(req)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "unsupported Accept-Encoding")
+		assert.Contains(t, err.Error(), "no acceptable encoding found")
+	})
+
+	t.Run("returns gzip for wildcard when identity rejected", func(t *testing.T) {
+		t.Parallel()
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
+		req.Header.Set("Accept-Encoding", "*, identity;q=0")
+
+		encoding, err := parseAcceptEncoding(req)
+		require.NoError(t, err)
+		assert.Equal(t, "gzip", encoding) // wildcard with identity rejected returns supported encoding
 	})
 }
 

@@ -107,7 +107,7 @@ func (a *API) GetFiles(w http.ResponseWriter, r *http.Request, params GetFilesPa
 	// Validate Accept-Encoding header
 	encoding, err := parseAcceptEncoding(r)
 	if err != nil {
-		errMsg = err
+		errMsg = fmt.Errorf("error parsing Accept-Encoding: %w", err)
 		errorCode = http.StatusBadRequest
 		jsonError(w, errorCode, errMsg)
 
@@ -117,14 +117,18 @@ func (a *API) GetFiles(w http.ResponseWriter, r *http.Request, params GetFilesPa
 	// Tell caches to store separate variants for different Accept-Encoding values
 	w.Header().Set("Vary", "Accept-Encoding")
 
-	// Disable gzip for Range or conditional requests to preserve http.ServeContent behavior
-	// (206 Partial Content, 304 Not Modified)
+	// Reject compression for Range or conditional requests - these require http.ServeContent
+	// for proper 206 Partial Content and 304 Not Modified responses
 	hasRangeOrConditional := r.Header.Get("Range") != "" ||
 		r.Header.Get("If-Modified-Since") != "" ||
 		r.Header.Get("If-None-Match") != "" ||
 		r.Header.Get("If-Range") != ""
-	if hasRangeOrConditional {
-		encoding = ""
+	if hasRangeOrConditional && encoding != "" {
+		errMsg = fmt.Errorf("compression not supported with Range or conditional requests")
+		errorCode = http.StatusBadRequest
+		jsonError(w, errorCode, errMsg)
+
+		return
 	}
 
 	file, err := os.Open(resolvedPath)
@@ -137,12 +141,12 @@ func (a *API) GetFiles(w http.ResponseWriter, r *http.Request, params GetFilesPa
 	}
 	defer file.Close()
 
-	// Serve with gzip encoding if requested and no Range/conditional headers.
+	// Serve with gzip encoding if requested.
 	// Note: If io.Copy fails after headers are sent, the client receives a truncated
 	// gzip stream with HTTP 200. Buffering the entire response would fix this but
 	// has memory implications for large files. Clients should validate gzip integrity.
-	if encoding == "gzip" {
-		w.Header().Set("Content-Encoding", "gzip")
+	if encoding == EncodingGzip {
+		w.Header().Set("Content-Encoding", EncodingGzip)
 
 		// Set Content-Type based on file extension, preserving the original type
 		contentType := mime.TypeByExtension(filepath.Ext(path))
