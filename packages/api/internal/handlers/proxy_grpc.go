@@ -16,6 +16,7 @@ import (
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	sharedutils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type SandboxService struct {
@@ -107,7 +108,7 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		nil, // mcp
 	)
 	if apiErr != nil {
-		return nil, status.Errorf(grpcCodeFromHTTPStatus(apiErr.Code), "resume failed: %s", apiErr.ClientMsg)
+		return nil, status.Errorf(sharedutils.GRPCCodeFromHTTPStatus(apiErr.Code), "resume failed: %s", apiErr.ClientMsg)
 	}
 
 	node := s.api.orchestrator.GetNode(sbx.ClusterID, sbx.NodeID)
@@ -116,38 +117,4 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 	}
 
 	return &proxygrpc.SandboxResumeResponse{OrchestratorIp: node.IPAddress}, nil
-}
-
-func grpcCodeFromHTTPStatus(statusCode int) codes.Code {
-	switch statusCode {
-	case http.StatusBadRequest, http.StatusUnprocessableEntity:
-		return codes.InvalidArgument
-	case http.StatusUnauthorized:
-		return codes.Unauthenticated
-	case http.StatusForbidden:
-		return codes.PermissionDenied
-	case http.StatusNotFound:
-		return codes.NotFound
-	case http.StatusConflict:
-		return codes.AlreadyExists
-	case http.StatusTooManyRequests:
-		return codes.ResourceExhausted
-	case http.StatusPreconditionFailed:
-		return codes.FailedPrecondition
-	case http.StatusRequestTimeout, http.StatusGatewayTimeout:
-		return codes.DeadlineExceeded
-	case http.StatusNotImplemented:
-		return codes.Unimplemented
-	case http.StatusBadGateway, http.StatusServiceUnavailable:
-		return codes.Unavailable
-	default:
-		if statusCode >= http.StatusInternalServerError {
-			return codes.Internal
-		}
-		if statusCode >= http.StatusBadRequest {
-			return codes.InvalidArgument
-		}
-
-		return codes.Internal
-	}
 }
