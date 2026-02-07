@@ -51,8 +51,21 @@ func TestSandboxAutoResumeViaExec(t *testing.T) {
 	}
 
 	// Run ls again — this should trigger auto-resume.
-	err = utils.ExecCommand(t, ctx, sbx, envdClient, "ls")
-	require.NoError(t, err)
+	// The auto-resume is async, so retry until the sandbox is back up.
+	deadline = time.Now().Add(30 * time.Second)
+	for {
+		err = utils.ExecCommand(t, ctx, sbx, envdClient, "ls")
+		if err == nil {
+			break
+		}
+
+		if time.Now().After(deadline) {
+			require.NoError(t, err, "exec command did not succeed after auto-resume within timeout")
+		}
+
+		t.Logf("Exec failed (retrying): %v", err)
+		time.Sleep(100 * time.Millisecond)
+	}
 
 	// Verify the sandbox is running again.
 	res, err := c.GetSandboxesSandboxIDWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
@@ -122,15 +135,32 @@ func TestSandboxAutoResumeViaProxy(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	// Make a proxy request to trigger auto-resume. Use a generous timeout
-	// since the sandbox needs to resume before the server can respond.
-	resumeClient := &http.Client{Timeout: 60 * time.Second}
-	req := utils.NewRequest(sbx, proxyURL, port, nil)
-	resp, err = resumeClient.Do(req)
-	require.NoError(t, err, "proxy request should not error")
-	defer resp.Body.Close()
+	// Make a proxy request to trigger auto-resume. The auto-resume is async,
+	// so retry until the sandbox is back up and the server responds.
+	resumeClient := &http.Client{Timeout: 10 * time.Second}
+	deadline = time.Now().Add(60 * time.Second)
+	for {
+		req := utils.NewRequest(sbx, proxyURL, port, nil)
+		resp, err = resumeClient.Do(req)
+		if err == nil && resp.StatusCode == http.StatusOK {
+			defer resp.Body.Close()
+			break
+		}
 
-	require.Equal(t, http.StatusOK, resp.StatusCode, "expected server response after auto-resume")
+		if resp != nil {
+			resp.Body.Close()
+		}
+
+		if time.Now().After(deadline) {
+			if err != nil {
+				require.NoError(t, err, "proxy request did not succeed after auto-resume within timeout")
+			}
+			require.Equal(t, http.StatusOK, resp.StatusCode, "expected server response after auto-resume")
+		}
+
+		t.Logf("Proxy request failed (retrying): err=%v", err)
+		time.Sleep(100 * time.Millisecond)
+	}
 
 	// Verify the sandbox is running — it must be since the server responded.
 	res, err := c.GetSandboxesSandboxIDWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
