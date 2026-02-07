@@ -143,7 +143,6 @@ func TestSandboxAutoResumeViaProxy(t *testing.T) {
 		req := utils.NewRequest(sbx, proxyURL, port, nil)
 		resp, err = resumeClient.Do(req)
 		if err == nil && resp.StatusCode == http.StatusOK {
-			defer resp.Body.Close()
 			break
 		}
 
@@ -161,6 +160,8 @@ func TestSandboxAutoResumeViaProxy(t *testing.T) {
 		t.Logf("Proxy request failed (retrying): err=%v", err)
 		time.Sleep(100 * time.Millisecond)
 	}
+
+	defer resp.Body.Close()
 
 	// Verify the sandbox is running — it must be since the server responded.
 	res, err := c.GetSandboxesSandboxIDWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
