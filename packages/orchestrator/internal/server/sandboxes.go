@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -19,6 +21,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/events"
@@ -175,35 +178,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		return nil, status.Errorf(codes.Internal, "failed to create sandbox: %s", err)
 	}
 
-	s.sandboxes.Insert(sbx)
-	go func() {
-		ctx, childSpan := tracer.Start(context.WithoutCancel(ctx), "sandbox-create-stop", trace.WithNewRoot())
-		defer childSpan.End()
-
-		waitErr := sbx.Wait(ctx)
-		if waitErr != nil {
-			sbxlogger.I(sbx).Error(ctx, "failed to wait for sandbox, cleaning up", zap.Error(waitErr))
-		}
-
-		cleanupErr := sbx.Close(ctx)
-		if cleanupErr != nil {
-			sbxlogger.I(sbx).Error(ctx, "failed to cleanup sandbox, will remove from cache", zap.Error(cleanupErr))
-		}
-
-		// Remove the sandbox from cache only if the cleanup IDs match.
-		// This prevents us from accidentally removing started sandbox (via resume) from the cache if cleanup is taking longer than the request timeout.
-		// This could have caused the "invisible" sandboxes that are not in orchestrator or API, but are still on client.
-		s.sandboxes.RemoveByExecutionID(req.GetSandbox().GetSandboxId(), sbx.Runtime.ExecutionID)
-
-		// Remove the proxies assigned to the sandbox from the pool to prevent them from being reused.
-		closeErr := s.proxy.RemoveFromPool(sbx.Runtime.ExecutionID)
-		if closeErr != nil {
-			// Errors here will be from forcefully closing the connections, so we can ignore them—they will at worst timeout on their own.
-			sbxlogger.I(sbx).Warn(ctx, "errors when manually closing connections to sandbox", zap.Error(closeErr))
-		}
-
-		sbxlogger.E(sbx).Info(ctx, "Sandbox stopped")
-	}()
+	s.setupSandboxLifecycle(ctx, sbx)
 
 	eventType := events.SandboxCreatedEventPair
 	if req.GetSandbox().GetSnapshot() {
@@ -375,7 +350,6 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	ctx, childSpan := tracer.Start(ctx, "sandbox-pause")
 	defer childSpan.End()
 
-	// setup launch darkly
 	ctx = featureflags.AddToContext(
 		ctx,
 		ldcontext.NewBuilder(in.GetSandboxId()).
@@ -384,112 +358,120 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 			Build(),
 	)
 
-	s.pauseMu.Lock()
-
-	sbx, ok := s.sandboxes.Get(in.GetSandboxId())
-	if !ok {
-		s.pauseMu.Unlock()
-
-		telemetry.ReportCriticalError(ctx, "sandbox not found", nil)
-
-		return nil, status.Error(codes.NotFound, "sandbox not found")
+	sbx, err := s.acquireSandboxForSnapshot(ctx, in.GetSandboxId())
+	if err != nil {
+		return nil, err
 	}
 
 	sbxlogger.E(sbx).Info(ctx, "Pausing sandbox")
 
-	s.sandboxes.Remove(in.GetSandboxId())
+	// Stop the old sandbox in background after we're done
+	defer s.stopSandboxAsync(context.WithoutCancel(ctx), sbx)
 
-	s.pauseMu.Unlock()
-
-	defer func(ctx context.Context) {
-		// sbx.Stop sometimes blocks for several seconds,
-		// so we don't want to block the request and do the cleanup in a goroutine after we already removed sandbox from cache and proxy.
-		go func() {
-			ctx, childSpan := tracer.Start(ctx, "sandbox-pause-stop", trace.WithNewRoot())
-			defer childSpan.End()
-
-			err := sbx.Stop(ctx)
-			if err != nil {
-				sbxlogger.I(sbx).Error(ctx, "error stopping sandbox after snapshot", logger.WithSandboxID(in.GetSandboxId()), zap.Error(err))
-			}
-		}()
-	}(context.WithoutCancel(ctx))
-
-	meta, err := sbx.Template.Metadata()
-	if err != nil {
-		return nil, fmt.Errorf("no metadata found in template: %w", err)
-	}
-
-	meta = meta.SameVersionTemplate(metadata.TemplateMetadata{
-		BuildID:            in.GetBuildId(),
-		KernelVersion:      sbx.Config.FirecrackerConfig.KernelVersion,
-		FirecrackerVersion: sbx.Config.FirecrackerConfig.FirecrackerVersion,
-	})
-	snapshot, err := sbx.Pause(ctx, meta)
+	// Fire and forget - don't wait for upload to complete
+	_, _, err = s.snapshotAndCacheSandbox(ctx, sbx, in.GetBuildId())
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error snapshotting sandbox", err, telemetry.WithSandboxID(in.GetSandboxId()))
 
 		return nil, status.Errorf(codes.Internal, "error snapshotting sandbox '%s': %s", in.GetSandboxId(), err)
 	}
 
-	err = s.templateCache.AddSnapshot(
-		ctx,
-		meta.Template.BuildID,
-		snapshot.MemfileDiffHeader,
-		snapshot.RootfsDiffHeader,
-		snapshot.Snapfile,
-		snapshot.Metafile,
-		snapshot.MemfileDiff,
-		snapshot.RootfsDiff,
-	)
-	if err != nil {
-		telemetry.ReportCriticalError(ctx, "error adding snapshot to template cache", err)
-
-		return nil, status.Errorf(codes.Internal, "error adding snapshot to template cache: %s", err)
-	}
-
-	telemetry.ReportEvent(ctx, "added snapshot to template cache")
-
-	go func(ctx context.Context) {
-		err := snapshot.Upload(ctx, s.persistence, storage.TemplateFiles{BuildID: meta.Template.BuildID})
-		if err != nil {
-			sbxlogger.I(sbx).Error(ctx, "error uploading sandbox snapshot", zap.Error(err))
-
-			return
-		}
-
-		logger.L().Info(ctx, "Sandbox snapshot uploaded successfully", logger.WithSandboxID(in.GetSandboxId()))
-	}(context.WithoutCancel(ctx))
-
-	teamID, buildId, eventData := s.prepareSandboxEventData(ctx, sbx)
-
-	eventType := events.SandboxPausedEventPair
-	go s.sbxEventsService.Publish(
-		context.WithoutCancel(ctx),
-		teamID,
-		events.SandboxEvent{
-			Version:   events.StructureVersionV2,
-			ID:        uuid.New(),
-			Type:      eventType.Type,
-			Timestamp: time.Now().UTC(),
-
-			EventData:          eventData,
-			SandboxID:          sbx.Runtime.SandboxID,
-			SandboxExecutionID: sbx.Runtime.ExecutionID,
-			SandboxTemplateID:  sbx.Config.BaseTemplateID,
-			SandboxBuildID:     buildId,
-			SandboxTeamID:      teamID,
-		},
-	)
+	s.publishSandboxEvent(ctx, sbx, events.SandboxPausedEventPair.Type)
 
 	return &emptypb.Empty{}, nil
+}
+
+func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpointRequest) (*orchestrator.SandboxCheckpointResponse, error) {
+	ctx, childSpan := tracer.Start(ctx, "sandbox-checkpoint")
+	defer childSpan.End()
+
+	ctx = featureflags.AddToContext(
+		ctx,
+		ldcontext.NewBuilder(in.GetSandboxId()).
+			Kind(featureflags.SandboxKind).
+			Build(),
+	)
+
+	sbx, err := s.acquireSandboxForSnapshot(ctx, in.GetSandboxId())
+	if err != nil {
+		return nil, err
+	}
+
+	sbxlogger.E(sbx).Info(ctx, "Checkpointing sandbox")
+
+	// Start snapshot and upload async - we'll wait for upload at the end
+	meta, waitForUpload, err := s.snapshotAndCacheSandbox(ctx, sbx, in.GetBuildId())
+	if err != nil {
+		telemetry.ReportCriticalError(ctx, "error snapshotting sandbox for checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
+
+		return nil, status.Errorf(codes.Internal, "error snapshotting sandbox '%s': %s", in.GetSandboxId(), err)
+	}
+
+	// Get the template for resume
+	template, err := s.templateCache.GetTemplate(ctx, in.GetBuildId(), true, false)
+	if err != nil {
+		telemetry.ReportCriticalError(ctx, "error getting template for resume after checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
+
+		return nil, status.Errorf(codes.Internal, "error getting template for resume: %s", err)
+	}
+
+	// Resume the sandbox with the same config
+	resumedSbx, err := s.sandboxFactory.ResumeSandbox(
+		ctx,
+		template,
+		sbx.Config,
+		sandbox.RuntimeMetadata{
+			TemplateID:  sbx.Runtime.TemplateID,
+			SandboxID:   sbx.Runtime.SandboxID,
+			ExecutionID: sbx.Runtime.ExecutionID,
+			TeamID:      sbx.Runtime.TeamID,
+		},
+		sbx.StartedAt,
+		sbx.EndAt,
+		sbx.APIStoredConfig,
+	)
+	if err != nil {
+		telemetry.ReportCriticalError(ctx, "error resuming sandbox after checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
+
+		return nil, status.Errorf(codes.Internal, "error resuming sandbox after checkpoint: %s", err)
+	}
+
+	// Collect prefetch data immediately after resume while it's most accurate
+	prefetchData, prefetchErr := resumedSbx.MemoryPrefetchData(ctx)
+	if prefetchErr != nil {
+		sbxlogger.I(resumedSbx).Warn(ctx, "failed to get prefetch data for checkpoint", zap.Error(prefetchErr))
+	}
+
+	// Setup lifecycle for the resumed sandbox
+	s.setupSandboxLifecycle(ctx, resumedSbx)
+
+	// Stop the old sandbox in background
+	s.stopSandboxAsync(context.WithoutCancel(ctx), sbx)
+
+	// Upload prefetch mapping in background
+	if prefetchErr == nil {
+		s.uploadPrefetchMappingAsync(ctx, resumedSbx, meta, prefetchData)
+	}
+
+	s.publishSandboxEvent(ctx, resumedSbx, "sandbox.checkpointed")
+
+	// Wait for snapshot upload to complete before returning
+	if err := waitForUpload(); err != nil {
+		telemetry.ReportCriticalError(ctx, "error uploading snapshot for checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
+
+		return nil, status.Errorf(codes.Internal, "error uploading snapshot for checkpoint '%s': %s", in.GetSandboxId(), err)
+	}
+
+	telemetry.ReportEvent(ctx, "Checkpoint completed")
+
+	return &orchestrator.SandboxCheckpointResponse{}, nil
 }
 
 // Extracts common data needed for sandbox events
 func (s *Server) prepareSandboxEventData(ctx context.Context, sbx *sandbox.Sandbox) (uuid.UUID, string, map[string]any) {
 	teamID, err := uuid.Parse(sbx.Runtime.TeamID)
 	if err != nil {
-		sbxlogger.I(sbx).Error(ctx, "error parsing team ID", zap.String("team_id", sbx.Runtime.TeamID), zap.Error(err))
+		sbxlogger.I(sbx).Error(ctx, "error parsing team ID", logger.WithSandboxID(sbx.Runtime.SandboxID), zap.Error(err))
 	}
 
 	buildId := ""
@@ -503,4 +485,188 @@ func (s *Server) prepareSandboxEventData(ctx context.Context, sbx *sandbox.Sandb
 	}
 
 	return teamID, buildId, eventData
+}
+
+// snapshotAndCacheSandbox creates a snapshot of a sandbox, adds it to cache, and starts uploading async.
+// Returns the metadata and a wait function. Call the wait function to block until upload completes.
+// If you don't need to wait for the upload, simply don't call the wait function (fire and forget).
+func (s *Server) snapshotAndCacheSandbox(
+	ctx context.Context,
+	sbx *sandbox.Sandbox,
+	buildID string,
+) (metadata.Template, func() error, error) {
+	meta, err := sbx.Template.Metadata()
+	if err != nil {
+		return metadata.Template{}, nil, fmt.Errorf("no metadata found in template: %w", err)
+	}
+
+	meta = meta.SameVersionTemplate(metadata.TemplateMetadata{
+		BuildID:            buildID,
+		KernelVersion:      sbx.Config.FirecrackerConfig.KernelVersion,
+		FirecrackerVersion: sbx.Config.FirecrackerConfig.FirecrackerVersion,
+	})
+
+	snapshot, err := sbx.Pause(ctx, meta)
+	if err != nil {
+		return metadata.Template{}, nil, fmt.Errorf("error snapshotting sandbox: %w", err)
+	}
+
+	err = s.templateCache.AddSnapshot(
+		ctx,
+		meta.Template.BuildID,
+		snapshot.MemfileDiffHeader,
+		snapshot.RootfsDiffHeader,
+		snapshot.Snapfile,
+		snapshot.Metafile,
+		snapshot.MemfileDiff,
+		snapshot.RootfsDiff,
+	)
+	if err != nil {
+		return metadata.Template{}, nil, fmt.Errorf("error adding snapshot to template cache: %w", err)
+	}
+
+	telemetry.ReportEvent(ctx, "added snapshot to template cache")
+
+	// Start upload in background, return a wait function
+	uploadCtx := context.WithoutCancel(ctx)
+	errCh := make(chan error, 1)
+
+	go func() {
+		err := snapshot.Upload(uploadCtx, s.persistence, storage.TemplateFiles{BuildID: meta.Template.BuildID})
+		if err != nil {
+			sbxlogger.I(sbx).Error(uploadCtx, "error uploading snapshot", zap.Error(err))
+			errCh <- err
+
+			return
+		}
+
+		logger.L().Info(uploadCtx, "Snapshot uploaded successfully", logger.WithSandboxID(sbx.Runtime.SandboxID))
+		errCh <- nil
+	}()
+
+	waitForUpload := func() error {
+		return <-errCh
+	}
+
+	return meta, waitForUpload, nil
+}
+
+// setupSandboxLifecycle adds the sandbox to the map and sets up the cleanup goroutine.
+func (s *Server) setupSandboxLifecycle(ctx context.Context, sbx *sandbox.Sandbox) {
+	ctx, span := tracer.Start(ctx, "setup sandbox-lifecycle")
+	defer span.End()
+
+	s.sandboxes.Insert(sbx)
+
+	go func() {
+		ctx, childSpan := tracer.Start(context.WithoutCancel(ctx), "stop sandbox-lifecycle", trace.WithNewRoot())
+		defer childSpan.End()
+
+		waitErr := sbx.Wait(ctx)
+		if waitErr != nil {
+			sbxlogger.I(sbx).Error(ctx, "failed to wait for sandbox, cleaning up", zap.Error(waitErr))
+		}
+
+		cleanupErr := sbx.Close(ctx)
+		if cleanupErr != nil {
+			sbxlogger.I(sbx).Error(ctx, "failed to cleanup sandbox, will remove from cache", zap.Error(cleanupErr))
+		}
+
+		s.sandboxes.RemoveByExecutionID(sbx.Runtime.SandboxID, sbx.Runtime.ExecutionID)
+
+		closeErr := s.proxy.RemoveFromPool(sbx.Runtime.ExecutionID)
+		if closeErr != nil {
+			sbxlogger.I(sbx).Warn(ctx, "errors when manually closing connections to sandbox", zap.Error(closeErr))
+		}
+
+		sbxlogger.E(sbx).Info(ctx, "Sandbox stopped")
+	}()
+}
+
+// acquireSandboxForSnapshot locks the pause mutex, retrieves the sandbox, removes it from the map,
+// and unlocks. Returns the sandbox for snapshotting or an error if not found.
+func (s *Server) acquireSandboxForSnapshot(ctx context.Context, sandboxID string) (*sandbox.Sandbox, error) {
+	s.pauseMu.Lock()
+
+	sbx, ok := s.sandboxes.Get(sandboxID)
+	if !ok {
+		s.pauseMu.Unlock()
+
+		telemetry.ReportCriticalError(ctx, "sandbox not found", nil)
+
+		return nil, status.Error(codes.NotFound, "sandbox not found")
+	}
+
+	s.sandboxes.Remove(sandboxID)
+
+	s.pauseMu.Unlock()
+
+	return sbx, nil
+}
+
+// stopSandboxAsync stops the sandbox in a background goroutine.
+func (s *Server) stopSandboxAsync(ctx context.Context, sbx *sandbox.Sandbox) {
+	go func() {
+		ctx, childSpan := tracer.Start(context.WithoutCancel(ctx), "stop sandbox-async", trace.WithNewRoot())
+		defer childSpan.End()
+
+		err := sbx.Stop(ctx)
+		if err != nil {
+			sbxlogger.I(sbx).Error(ctx, "error stopping sandbox", zap.Error(err))
+		}
+	}()
+}
+
+// publishSandboxEvent publishes a sandbox event in the background.
+func (s *Server) publishSandboxEvent(ctx context.Context, sbx *sandbox.Sandbox, eventType string) {
+	teamID, buildId, eventData := s.prepareSandboxEventData(ctx, sbx)
+
+	go s.sbxEventsService.Publish(
+		context.WithoutCancel(ctx),
+		teamID,
+		events.SandboxEvent{
+			Version:   events.StructureVersionV2,
+			ID:        uuid.New(),
+			Type:      eventType,
+			Timestamp: time.Now().UTC(),
+
+			EventData:          eventData,
+			SandboxID:          sbx.Runtime.SandboxID,
+			SandboxExecutionID: sbx.Runtime.ExecutionID,
+			SandboxTemplateID:  sbx.Config.BaseTemplateID,
+			SandboxBuildID:     buildId,
+			SandboxTeamID:      teamID,
+		},
+	)
+}
+
+// uploadPrefetchMappingAsync uploads prefetch mapping to metadata in background.
+func (s *Server) uploadPrefetchMappingAsync(ctx context.Context, sbx *sandbox.Sandbox, meta metadata.Template, prefetchData block.PrefetchData) {
+	go func(ctx context.Context) {
+		ctx, childSpan := tracer.Start(ctx, "upload-prefetch-mapping", trace.WithNewRoot())
+		defer childSpan.End()
+
+		prefetchMapping := metadata.PrefetchEntriesToMapping(slices.Collect(maps.Values(prefetchData.BlockEntries)), prefetchData.BlockSize)
+		if prefetchMapping == nil {
+			sbxlogger.I(sbx).Debug(ctx, "no prefetch mapping collected")
+
+			return
+		}
+
+		updatedMeta := meta.WithPrefetch(&metadata.Prefetch{
+			Memory: prefetchMapping,
+		})
+
+		err := metadata.UploadMetadata(ctx, s.persistence, updatedMeta)
+		if err != nil {
+			sbxlogger.I(sbx).Warn(ctx, "failed to upload prefetch metadata", zap.Error(err))
+
+			return
+		}
+
+		s.templateCache.Invalidate(meta.Template.BuildID)
+
+		sbxlogger.I(sbx).Info(ctx, "prefetch mapping uploaded",
+			zap.Int("block_count", prefetchMapping.Count()))
+	}(context.WithoutCancel(ctx))
 }

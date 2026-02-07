@@ -70,6 +70,11 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 	swagger.Servers = nil
 
 	r := gin.New()
+	// Use the raw (percent-encoded) URL path for route matching so that encoded slashes (%2F)
+	// in path params are treated as part of the segment, not as path separators.
+	// This is needed for template IDs that contain namespace/alias (e.g. "team-slug/my-template").
+	// Param values are still unescaped before reaching handlers (UnescapePathValues defaults to true).
+	r.UseRawPath = true
 
 	r.Use(
 		// We use custom otel gin middleware because we want to log 4xx errors in the otel

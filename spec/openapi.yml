@@ -75,6 +75,13 @@ components:
       required: true
       schema:
         type: string
+    snapshotID:
+      name: snapshotID
+      in: path
+      required: true
+      schema:
+        type: string
+        description: Identifier of the snapshot (template ID)
     tag:
       name: tag
       in: path
@@ -222,6 +229,19 @@ components:
       enum:
         - running
         - paused
+
+    SnapshotInfo:
+      type: object
+      required:
+        - snapshotID
+        - name
+      properties:
+        snapshotID:
+          type: string
+          description: Identifier of the snapshot template
+        name:
+          type: string
+          description: Full name of the snapshot template including team namespace and tag (e.g. team-slug/my-snapshot:v2)
 
     EnvVars:
       additionalProperties:
@@ -2155,6 +2175,73 @@ paths:
           $ref: "#/components/responses/401"
         "404":
           $ref: "#/components/responses/404"
+
+  /sandboxes/{sandboxID}/snapshots:
+    post:
+      description: Create a persistent snapshot from the sandbox's current state. Snapshots can be used to create new sandboxes and persist beyond the original sandbox's lifetime.
+      tags: [sandboxes]
+      security:
+        - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/sandboxID"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: Optional name for the snapshot template. If a snapshot template with this name already exists, a new build will be assigned to the existing template instead of creating a new one.
+      responses:
+        "201":
+          description: Snapshot created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SnapshotInfo"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /snapshots:
+    get:
+      description: List all snapshots for the team
+      tags: [snapshots]
+      security:
+        - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+      parameters:
+        - name: sandboxID
+          in: query
+          required: false
+          schema:
+            type: string
+            description: Filter snapshots by source sandbox ID
+        - $ref: "#/components/parameters/paginationLimit"
+        - $ref: "#/components/parameters/paginationNextToken"
+      responses:
+        "200":
+          description: Successfully returned snapshots
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SnapshotInfo"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
 
   /v3/templates:
     post:

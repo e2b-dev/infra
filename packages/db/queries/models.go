@@ -130,6 +130,12 @@ type Snapshot struct {
 	Config              *types.PausedSandboxConfig
 }
 
+type SnapshotTemplate struct {
+	EnvID     string
+	SandboxID string
+	CreatedAt pgtype.Timestamptz
+}
+
 type Team struct {
 	ID            uuid.UUID
 	CreatedAt     time.Time
