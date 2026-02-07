@@ -62,11 +62,21 @@ func evaluateValue(
 	sandboxID string,
 	envValue string,
 ) (string, error) {
+	// Escape characters that would break parsing or cause command execution.
+	// $VAR expansion is preserved for environment variable interpolation.
+	escaped := envValue
+	escaped = strings.ReplaceAll(escaped, `\`, `\\`)
+	escaped = strings.ReplaceAll(escaped, `"`, `\"`)
+	escaped = strings.ReplaceAll(escaped, "`", "\\`")
+	escaped = strings.ReplaceAll(escaped, "$(", "\\$(")
+
+	cmd := fmt.Sprintf(`printf "%%s" "%s"`, escaped)
+
 	err := sandboxtools.RunCommandWithOutput(
 		ctx,
 		proxy,
 		sandboxID,
-		fmt.Sprintf(`printf "%s"`, envValue),
+		cmd,
 		metadata.Context{
 			User: "root",
 		},
