@@ -20,7 +20,7 @@ import (
 // swagger:model SnapshotCreateParams
 type SnapshotCreateParams struct {
 
-	// Path to the file that will contain the guest memory.
+	// Path to the file that will contain the guest memory. It is optional. In case that a user doesn't provide a path, they are responsible to ensure they store the microVM's memory state via external means.
 	MemFilePath string `json:"mem_file_path,omitempty"`
 
 	// Path to the file that will contain the microVM state.

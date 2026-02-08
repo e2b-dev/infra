@@ -104,3 +104,18 @@ func (m *Mapping) GetHostVirtAddr(off int64) (uintptr, uintptr, error) {
 
 	return region.shiftedHostVirtAddr(off), region.PageSize, nil
 }
+
+func (m *Mapping) PageSize() (int64, error) {
+	if len(m.Regions) == 0 {
+		return 0, fmt.Errorf("no regions found")
+	}
+
+	blockSize := int64(m.Regions[0].PageSize)
+	for _, r := range m.Regions[1:] {
+		if int64(r.PageSize) != blockSize {
+			return 0, fmt.Errorf("block sizes differ: %d and %d", blockSize, int64(r.PageSize))
+		}
+	}
+
+	return blockSize, nil
+}

@@ -295,6 +295,34 @@ func (c *apiClient) startVM(ctx context.Context) error {
 	return nil
 }
 
+// enableFreePageReporting configures the balloon device with free page reporting.
+// This must be called pre-boot (before starting the VM).
+// Free page reporting allows the guest to continuously report unused memory ranges,
+// which Firecracker will madvise with MADV_DONTNEED to reduce RSS.
+func (c *apiClient) enableFreePageReporting(ctx context.Context) error {
+	ctx, span := tracer.Start(ctx, "enable-free-page-reporting")
+	defer span.End()
+
+	amountMib := int64(0)
+	deflateOnOom := false
+
+	balloonConfig := operations.PutBalloonParams{
+		Context: ctx,
+		Body: &models.Balloon{
+			AmountMib:         &amountMib,
+			DeflateOnOom:      &deflateOnOom,
+			FreePageReporting: true,
+		},
+	}
+
+	_, err := c.client.Operations.PutBalloon(&balloonConfig)
+	if err != nil {
+		return fmt.Errorf("error setting balloon config: %w", err)
+	}
+
+	return nil
+}
+
 func (c *apiClient) memoryMapping(ctx context.Context) (*memory.Mapping, error) {
 	params := operations.GetMemoryMappingsParams{
 		Context: ctx,
@@ -308,7 +336,10 @@ func (c *apiClient) memoryMapping(ctx context.Context) (*memory.Mapping, error) 
 	return memory.NewMappingFromFc(res.Payload.Mappings)
 }
 
-func (c *apiClient) memoryInfo(ctx context.Context, blockSize int64) (*header.DiffMetadata, error) {
+// Info about the initial memory of the sandbox.
+// This should be only called after the first Firecracker start, before any resumes.
+// If the sandbox is resumed, use the dirtyMemory instead.
+func (c *apiClient) initialMemory(ctx context.Context, blockSize int64) (*header.DiffMetadata, error) {
 	params := operations.GetMemoryParams{
 		Context: ctx,
 	}
@@ -321,6 +352,24 @@ func (c *apiClient) memoryInfo(ctx context.Context, blockSize int64) (*header.Di
 	return &header.DiffMetadata{
 		Dirty:     bitset.From(res.Payload.Resident),
 		Empty:     bitset.From(res.Payload.Empty),
+		BlockSize: blockSize,
+	}, nil
+}
+
+// Info about the dirty memory of the sandbox.
+func (c *apiClient) dirtyMemory(ctx context.Context, blockSize int64) (*header.DiffMetadata, error) {
+	params := operations.GetDirtyMemoryParams{
+		Context: ctx,
+	}
+
+	res, err := c.client.Operations.GetDirtyMemory(&params)
+	if err != nil {
+		return nil, fmt.Errorf("error getting memory: %w", err)
+	}
+
+	return &header.DiffMetadata{
+		Dirty:     bitset.From(res.Payload.Bitmap),
+		Empty:     bitset.New(0),
 		BlockSize: blockSize,
 	}, nil
 }

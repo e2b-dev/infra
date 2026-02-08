@@ -27,6 +27,12 @@ type Balloon struct {
 	// Required: true
 	DeflateOnOom *bool `json:"deflate_on_oom"`
 
+	// Whether the free page hinting feature is enabled.
+	FreePageHinting bool `json:"free_page_hinting,omitempty"`
+
+	// Whether the free page reporting feature is enabled.
+	FreePageReporting bool `json:"free_page_reporting,omitempty"`
+
 	// Interval in seconds between refreshing statistics. A non-zero value will enable the statistics. Defaults to 0.
 	StatsPollingIntervals int64 `json:"stats_polling_interval_s,omitempty"`
 }
