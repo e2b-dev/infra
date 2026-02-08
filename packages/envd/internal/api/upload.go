@@ -148,6 +148,34 @@ func resolvePath(part *multipart.Part, paths *UploadSuccess, u *user.User, defau
 	return filePath, nil
 }
 
+func (a *API) handleFilePart(r *http.Request, part *multipart.Part, paths *UploadSuccess, u *user.User, uid, gid int, operationID string, params PostFilesParams) (int, error) {
+	defer part.Close()
+
+	filePath, err := resolvePath(part, paths, u, a.defaults.Workdir, params)
+	if err != nil {
+		return http.StatusBadRequest, err
+	}
+
+	logger := a.logger.
+		With().
+		Str(string(logs.OperationIDKey), operationID).
+		Str("event_type", "file_processing").
+		Logger()
+
+	status, err := processFile(r, filePath, part, uid, gid, logger)
+	if err != nil {
+		return status, err
+	}
+
+	*paths = append(*paths, EntryInfo{
+		Path: filePath,
+		Name: filepath.Base(filePath),
+		Type: File,
+	})
+
+	return http.StatusOK, nil
+}
+
 func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFilesParams) {
 	defer r.Body.Close()
 
@@ -238,21 +266,7 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 		}
 
 		if part.FormName() == "file" {
-			filePath, err := resolvePath(part, &paths, u, a.defaults.Workdir, params)
-			if err != nil {
-				errorCode = http.StatusBadRequest
-				errMsg = err
-				jsonError(w, errorCode, errMsg)
-
-				return
-			}
-
-			logger := a.logger.
-				With().
-				Str(string(logs.OperationIDKey), operationID).
-				Str("event_type", "file_processing").
-				Logger()
-			status, err := processFile(r, filePath, part, uid, gid, logger)
+			status, err := a.handleFilePart(r, part, &paths, u, uid, gid, operationID, params)
 			if err != nil {
 				errorCode = status
 				errMsg = err
@@ -260,15 +274,9 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 
 				return
 			}
-
-			paths = append(paths, EntryInfo{
-				Path: filePath,
-				Name: filepath.Base(filePath),
-				Type: File,
-			})
+		} else {
+			part.Close()
 		}
-
-		part.Close()
 	}
 
 	data, err := json.Marshal(paths)
