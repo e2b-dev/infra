@@ -1,8 +1,11 @@
 package utils
 
-import "sync"
+import (
+	"sync"
+)
 
-// WaitMap allows you to wait for functions with given keys and execute them only once.
+// WaitMap allows you to wait for functions with given keys and execute them
+// only once. Consider replacing with singleflight if appropriate.
 type WaitMap struct {
 	mu sync.Mutex
 	m  map[int64]func() error

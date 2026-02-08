@@ -56,17 +56,17 @@ func NewStorage(
 ) (*Storage, error) {
 	if h == nil {
 		headerObjectPath := buildId + "/" + string(fileType) + storage.HeaderSuffix
-		headerObjectType, ok := storageHeaderObjectType(fileType)
+		_, ok := storageHeaderObjectType(fileType)
 		if !ok {
 			return nil, build.UnknownDiffTypeError{DiffType: fileType}
 		}
 
-		headerObject, err := persistence.OpenBlob(ctx, headerObjectPath, headerObjectType)
+		headerData, err := persistence.GetBlob(ctx, headerObjectPath)
 		if err != nil {
 			return nil, err
 		}
 
-		diffHeader, err := header.Deserialize(ctx, headerObject)
+		diffHeader, err := header.Deserialize(headerData)
 
 		// If we can't find the diff header in storage, we switch to templates without a headers
 		if err != nil && !errors.Is(err, storage.ErrObjectNotExist) {
@@ -81,16 +81,12 @@ func NewStorage(
 	// If we can't find the diff header in storage, we try to find the "old" style template without a header as a fallback.
 	if h == nil {
 		objectPath := buildId + "/" + string(fileType)
-		objectType, ok := objectType(fileType)
+		_, ok := objectType(fileType)
 		if !ok {
 			return nil, build.UnknownDiffTypeError{DiffType: fileType}
 		}
-		object, err := persistence.OpenSeekable(ctx, objectPath, objectType)
-		if err != nil {
-			return nil, err
-		}
 
-		size, err := object.Size(ctx)
+		size, _, err := persistence.Size(ctx, objectPath)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get object size: %w", err)
 		}

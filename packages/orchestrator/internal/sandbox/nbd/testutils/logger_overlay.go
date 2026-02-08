@@ -65,7 +65,7 @@ func (l *LoggerOverlay) Close() error {
 	return l.overlay.Close()
 }
 
-func (l *LoggerOverlay) EjectCache() (*block.Cache, error) {
+func (l *LoggerOverlay) EjectCache() (*block.MMapCache, error) {
 	return l.overlay.EjectCache()
 }
 

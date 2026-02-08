@@ -20,7 +20,7 @@ type Slicer interface {
 }
 
 type ReadonlyDevice interface {
-	storage.SeekableReader
+	storage.ReaderAt
 	io.Closer
 	Slicer
 	BlockSize() int64

@@ -332,6 +332,17 @@ func (u *Userfaultfd) faultPage(
 	}()
 
 	b, dataErr := source.Slice(ctx, offset, int64(pagesize))
+
+	if len(b) == 0 && dataErr == nil {
+		u.logger.Error(ctx, "UFFD got empty slice without error",
+			zap.Int64("offset", offset),
+			zap.Uintptr("pagesize", pagesize),
+			zap.Int("slice_len", len(b)),
+			zap.Int64("blockSize", source.BlockSize()))
+
+		return fmt.Errorf("UFFD got empty slice without error at offset %#x pagesize %d blockSize %d",
+			offset, pagesize, source.BlockSize())
+	}
 	if dataErr != nil {
 		var signalErr error
 		if onFailure != nil {
@@ -341,9 +352,17 @@ func (u *Userfaultfd) faultPage(
 		joinedErr := errors.Join(dataErr, signalErr)
 
 		span.RecordError(joinedErr)
-		u.logger.Error(ctx, "UFFD serve data fetch error", zap.Error(joinedErr))
+		u.logger.Error(ctx, "UFFD serve data fetch error",
+			zap.Error(joinedErr),
+			zap.Int64("offset", offset),
+			zap.String("offsetHex", fmt.Sprintf("%#x", offset)),
+			zap.Uintptr("pagesize", pagesize),
+			zap.Int64("blockSize", source.BlockSize()),
+			zap.String("accessType", string(accessType)),
+			zap.Uintptr("addr", addr))
 
-		return fmt.Errorf("failed to read from source: %w", joinedErr)
+		return fmt.Errorf("UFFD fault at offset %#x pagesize %d blockSize %d: %w",
+			offset, pagesize, source.BlockSize(), joinedErr)
 	}
 
 	var copyMode CULong

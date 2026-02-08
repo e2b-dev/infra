@@ -18,7 +18,8 @@ func IsDevelopment() bool {
 }
 
 func IsDebug() bool {
-	return GetEnv("E2B_DEBUG", "false") == "true"
+	// Auto-enable debug logging in dev/local environments
+	return IsDevelopment() || GetEnv("E2B_DEBUG", "false") == "true"
 }
 
 func GetEnv(key, defaultValue string) string {

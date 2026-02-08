@@ -14,6 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/client"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
+	"github.com/e2b-dev/infra/packages/db/pkg/pool"
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
@@ -48,14 +49,14 @@ func run(ctx context.Context) int {
 		return 1
 	}
 
-	db, err := client.NewClient(ctx, connectionString)
+	db, err := client.NewClient(ctx, connectionString, pool.WithMaxConnections(1))
 	if err != nil {
 		log.Printf("Failed to connect to database: %v", err)
 
 		return 1
 	}
 	defer db.Close()
-	authDb, err := authdb.NewClient(ctx, connectionString, connectionString)
+	authDb, err := authdb.NewClient(ctx, connectionString, connectionString, pool.WithMaxConnections(1))
 	if err != nil {
 		log.Printf("Failed to connect to database: %v", err)
 

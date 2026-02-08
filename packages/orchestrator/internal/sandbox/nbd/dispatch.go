@@ -17,7 +17,7 @@ import (
 var ErrShuttingDown = errors.New("shutting down. Cannot serve any new requests")
 
 type Provider interface {
-	storage.SeekableReader
+	storage.ReaderAt
 	io.WriterAt
 }
 

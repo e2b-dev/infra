@@ -22,11 +22,11 @@ type AtomicImmutableFile struct {
 	closeOnce sync.Once
 }
 
-func (f *AtomicImmutableFile) Write(p []byte) (n int, err error) {
-	return f.tempFile.Write(p)
+func (f *AtomicImmutableFile) WriteAt(p []byte, offset int64) (n int, err error) {
+	return f.tempFile.WriteAt(p, offset)
 }
 
-var _ io.Writer = (*AtomicImmutableFile)(nil)
+var _ io.WriterAt = (*AtomicImmutableFile)(nil)
 
 func OpenFile(ctx context.Context, filename string) (*AtomicImmutableFile, error) {
 	lockFile, err := TryAcquireLock(ctx, filename)

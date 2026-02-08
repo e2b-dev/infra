@@ -366,10 +366,8 @@ func printArtifactSizes(ctx context.Context, persistence storage.StorageProvider
 		printLocalFileSizes(basePath, buildID)
 	} else {
 		// For remote storage, get sizes from storage provider
-		if memfile, err := persistence.OpenSeekable(ctx, files.StorageMemfilePath(), storage.MemfileObjectType); err == nil {
-			if size, err := memfile.Size(ctx); err == nil {
-				fmt.Printf("   Memfile: %d MB\n", size>>20)
-			}
+		if size, _, err := persistence.Size(ctx, files.StorageMemfilePath()); err == nil {
+			fmt.Printf("   Memfile: %d MB\n", size>>20)
 		}
 	}
 }

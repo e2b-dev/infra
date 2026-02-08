@@ -201,6 +201,42 @@ go test -race -v ./internal/handlers
 go test -race -v -run TestCreateSandbox ./internal/handlers
 ```
 
+## Claude Code Behavior
+
+### Commands to Leave for User
+Do NOT run these commands - let the user run them manually:
+- `make build-and-upload` / `make build-and-upload/*` - Builds and uploads to GCP
+- `make plan` / `make plan-only-jobs` / `make plan-without-jobs` - Terraform planning
+- `make apply` - Terraform apply / deployment
+- `make test-integration` - Integration tests (long-running)
+
+These commands have high memory usage and long execution times that blow up local machine memory utilization.
+
+### Commands Safe to Run
+- `make lint` - Always run before completing code changes
+- `make test` - Unit tests (fast)
+- `make fmt` - Code formatting
+- `make generate` / `make generate-mocks` - Code generation
+
+### Pre-Commit Checklist
+Before every commit, ALWAYS run:
+1. `make test` - Run all unit tests
+2. `make lint` - Run linter
+
+Expected test failures that are OK to ignore:
+- UFFD tests (`uffd/userfaultfd/*`) - require sudo
+- NBD tests (`TestPathDirect_*`) - require sudo
+- Integration tests (`tests/...`) - run separately with `make test-integration`
+- Environment-specific tests (e.g., `TestIsPathOnNetworkMount_FuseMount`)
+
+### Working on Feature Branches
+When working on a feature branch, always assume that `main` works correctly:
+- Only make changes that are necessary for the feature
+- Do NOT fix unrelated bugs you discover along the way - report them instead
+- If you find a bug in main, inform the user so they can decide whether to spin up a separate fix
+- Keep PRs focused and reviewable by avoiding opportunistic refactoring
+- Unnecessary changes can have unintended consequences and make review harder
+
 ## Important Development Notes
 
 ### Working with Proto/gRPC
@@ -272,6 +308,18 @@ Key steps:
 
 ## Debugging
 
+### Service Responsibilities (Build vs Runtime)
+
+| Service | Responsibility | When to check logs |
+|---------|---------------|-------------------|
+| **template-manager** | Template BUILDS (all phases: base, user, steps, finalize, optimize) | Build failures, RCU stalls during optimize phase |
+| **orchestrator** | Sandbox RUNTIME (create, resume, pause running sandboxes) | Sandbox creation failures AFTER build succeeds |
+
+**CRITICAL**: Template build failures (including optimize phase RCU stalls) happen on **template-manager**, NOT orchestrator!
+- The optimize phase resumes the VM from snapshot to collect prefetch data
+- Check `nomad alloc logs -job template-manager` for build issues
+- Only check orchestrator logs for sandbox runtime issues
+
 ### Remote Development (VSCode)
 - See `DEV.md` for remote SSH setup via GCP
 - Supports Go debugger attachment to remote instances
@@ -289,3 +337,49 @@ make connect-orchestrator
 ### Logs
 - Local: Docker logs in `make local-infra`
 - Production: Grafana Loki or Nomad UI
+
+### Downloading Logs for Investigation
+When investigating issues against the dev cluster, **always download local copies** of logs to `/tmp` so you can work with them locally without re-fetching:
+```bash
+# Download orchestrator logs
+nomad alloc logs -job orchestrator > /tmp/orchestrator.log 2>&1
+
+# Download template-manager logs
+nomad alloc logs -job template-manager > /tmp/template-manager.log 2>&1
+
+# Then grep/search locally
+grep -E "ERROR|WARN" /tmp/orchestrator.log
+```
+This avoids repeated network calls and allows efficient local analysis with grep, less, etc.
+
+## Integration Test Configuration
+
+### ForceBaseBuild Flag
+Location: `tests/integration/internal/tests/api/templates/build_template_test.go:21`
+
+```go
+const ForceBaseBuild = false  // Keep OFF unless explicitly asked to enable
+```
+
+**IMPORTANT**: Keep `ForceBaseBuild = false` until explicitly asked to turn it on. When enabled, it forces rebuilding base templates from scratch which is slow and unnecessary for most test runs.
+
+### Debugging Template/Sandbox Issues
+
+#### Template Build Flow
+1. **template-manager** handles template building (NOT orchestrator)
+2. Template builds create TWO VMs:
+   - First VM: Fresh boot → runs provisioning → pause → snapshot
+   - Second VM: Fresh boot (or restore) → verify envd responds → done
+3. envd must respond on port 49983 for builds to succeed
+
+#### Debug Commands
+```bash
+# Get template-manager logs
+nomad alloc logs -job template-manager 2>/dev/null | grep -E "(envd|boot|kernel|Firecracker)" -i | head -50
+
+# Get orchestrator logs (for sandbox creation, NOT build)
+nomad alloc logs -job orchestrator 2>/dev/null | grep -E "(UFFD|slice|CHUNKER|BUILD_SLICE)" -i | head -50
+
+# Inspect a build's header/data
+go run packages/orchestrator/cmd/inspect-build/main.go -build <buildId> -storage gs:<bucket>
+```

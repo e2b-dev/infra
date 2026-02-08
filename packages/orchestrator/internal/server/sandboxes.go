@@ -451,7 +451,7 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	telemetry.ReportEvent(ctx, "added snapshot to template cache")
 
 	go func(ctx context.Context) {
-		err := snapshot.Upload(ctx, s.persistence, storage.TemplateFiles{BuildID: meta.Template.BuildID})
+		err := snapshot.UploadSingleLayer(ctx, s.persistence, storage.TemplateFiles{BuildID: meta.Template.BuildID})
 		if err != nil {
 			sbxlogger.I(sbx).Error(ctx, "error uploading sandbox snapshot", zap.Error(err))
 

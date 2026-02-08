@@ -6,16 +6,24 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"path/filepath"
+	"sync"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"unsafe"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/testutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
+
+// =============================================================================
+// MMapCache Tests
+// =============================================================================
 
 func allocateTestMemory(t *testing.T, size uint64, pageSize uint64) (addr uint64, expectedData []byte) {
 	t.Helper()
@@ -28,6 +36,17 @@ func allocateTestMemory(t *testing.T, size uint64, pageSize uint64) (addr uint64
 	require.Equal(t, len(mem), n)
 
 	return uint64(memoryStart), mem
+}
+
+func compareData(readBytes []byte, expectedBytes []byte) error {
+	// The bytes.Equal is the first place in this flow that actually touches the uffd managed memory and triggers the pagefault, so any deadlocks will manifest here.
+	if !bytes.Equal(readBytes, expectedBytes) {
+		idx, want, got := testutils.FirstDifferentByte(readBytes, expectedBytes)
+
+		return fmt.Errorf("content mismatch: want '%x, got %x at index %d", want, got, idx)
+	}
+
+	return nil
 }
 
 func TestCopyFromProcess_FullRange(t *testing.T) {
@@ -216,17 +235,6 @@ func TestEmptyRanges(t *testing.T) {
 	t.Cleanup(func() {
 		c.Close()
 	})
-}
-
-func compareData(readBytes []byte, expectedBytes []byte) error {
-	// The bytes.Equal is the first place in this flow that actually touches the uffd managed memory and triggers the pagefault, so any deadlocks will manifest here.
-	if !bytes.Equal(readBytes, expectedBytes) {
-		idx, want, got := testutils.FirstDifferentByte(readBytes, expectedBytes)
-
-		return fmt.Errorf("content mismatch: want '%x, got %x at index %d", want, got, idx)
-	}
-
-	return nil
 }
 
 func TestSplitOversizedRanges(t *testing.T) {
@@ -514,4 +522,185 @@ func BenchmarkCopyFromHugepagesFile(b *testing.B) {
 
 		b.SetBytes(GetSize(ranges))
 	}
+}
+
+// =============================================================================
+// MMapFrameCache Tests
+// =============================================================================
+
+func TestMMapFrameCache_BasicGetOrFetch(t *testing.T) {
+	t.Parallel()
+
+	size := int64(4096)
+	fc, err := NewFrameCache(size, filepath.Join(t.TempDir(), "cache"))
+	require.NoError(t, err)
+	defer fc.Close()
+
+	expected := []byte("hello world!")
+	frameLen := int64(len(expected))
+
+	data, hit, err := fc.GetOrFetch(0, frameLen, func(buf []byte) error {
+		copy(buf, expected)
+
+		return nil
+	})
+	require.NoError(t, err)
+	assert.False(t, hit, "first fetch should be a miss")
+	assert.Equal(t, expected, data)
+}
+
+func TestMMapFrameCache_CacheHitOnSecondCall(t *testing.T) {
+	t.Parallel()
+
+	size := int64(4096)
+	fc, err := NewFrameCache(size, filepath.Join(t.TempDir(), "cache"))
+	require.NoError(t, err)
+	defer fc.Close()
+
+	expected := []byte("cached data")
+	frameLen := int64(len(expected))
+
+	var fetchCount atomic.Int32
+
+	fetchFn := func(buf []byte) error {
+		fetchCount.Add(1)
+		copy(buf, expected)
+
+		return nil
+	}
+
+	// First call - miss
+	data1, hit1, err := fc.GetOrFetch(0, frameLen, fetchFn)
+	require.NoError(t, err)
+	assert.False(t, hit1)
+	assert.Equal(t, expected, data1)
+
+	// Second call - hit
+	data2, hit2, err := fc.GetOrFetch(0, frameLen, fetchFn)
+	require.NoError(t, err)
+	assert.True(t, hit2, "second fetch should be a cache hit")
+	assert.Equal(t, expected, data2)
+
+	assert.Equal(t, int32(1), fetchCount.Load(), "fetchFn should be called exactly once")
+}
+
+func TestMMapFrameCache_ConcurrentDedup(t *testing.T) {
+	t.Parallel()
+
+	size := int64(4096)
+	fc, err := NewFrameCache(size, filepath.Join(t.TempDir(), "cache"))
+	require.NoError(t, err)
+	defer fc.Close()
+
+	expected := []byte("concurrent data")
+	frameLen := int64(len(expected))
+
+	var fetchCount atomic.Int32
+
+	fetchFn := func(buf []byte) error {
+		fetchCount.Add(1)
+		copy(buf, expected)
+
+		return nil
+	}
+
+	// Launch 10 concurrent fetches for the same offset
+	var wg sync.WaitGroup
+	for range 10 {
+		wg.Go(func() {
+			data, _, err := fc.GetOrFetch(0, frameLen, fetchFn)
+			require.NoError(t, err)
+			assert.Equal(t, expected, data)
+		})
+	}
+	wg.Wait()
+
+	assert.Equal(t, int32(1), fetchCount.Load(), "fetchFn should be called exactly once despite 10 concurrent requests")
+}
+
+func TestMMapFrameCache_MultipleFrames(t *testing.T) {
+	t.Parallel()
+
+	size := int64(8192)
+	fc, err := NewFrameCache(size, filepath.Join(t.TempDir(), "cache"))
+	require.NoError(t, err)
+	defer fc.Close()
+
+	frame1 := []byte("frame at offset 0")
+	frame2 := []byte("frame at offset 4096")
+
+	// Store frame at offset 0
+	data1, hit1, err := fc.GetOrFetch(0, int64(len(frame1)), func(buf []byte) error {
+		copy(buf, frame1)
+
+		return nil
+	})
+	require.NoError(t, err)
+	assert.False(t, hit1)
+	assert.Equal(t, frame1, data1)
+
+	// Store frame at offset 4096
+	data2, hit2, err := fc.GetOrFetch(4096, int64(len(frame2)), func(buf []byte) error {
+		copy(buf, frame2)
+
+		return nil
+	})
+	require.NoError(t, err)
+	assert.False(t, hit2)
+	assert.Equal(t, frame2, data2)
+
+	// Both should be cached now
+	data1Again, hit1Again, err := fc.GetOrFetch(0, int64(len(frame1)), func(_ []byte) error {
+		t.Fatal("should not be called")
+
+		return nil
+	})
+	require.NoError(t, err)
+	assert.True(t, hit1Again)
+	assert.Equal(t, frame1, data1Again)
+
+	data2Again, hit2Again, err := fc.GetOrFetch(4096, int64(len(frame2)), func(_ []byte) error {
+		t.Fatal("should not be called")
+
+		return nil
+	})
+	require.NoError(t, err)
+	assert.True(t, hit2Again)
+	assert.Equal(t, frame2, data2Again)
+}
+
+func TestMMapFrameCache_ClosePreventsAccess(t *testing.T) {
+	t.Parallel()
+
+	size := int64(4096)
+	fc, err := NewFrameCache(size, filepath.Join(t.TempDir(), "cache"))
+	require.NoError(t, err)
+
+	// Close the cache
+	err = fc.Close()
+	require.NoError(t, err)
+
+	// Subsequent GetOrFetch should fail
+	_, _, err = fc.GetOrFetch(0, 100, func(_ []byte) error {
+		return nil
+	})
+	require.Error(t, err)
+	var target *CacheClosedError
+	assert.ErrorAs(t, err, &target)
+}
+
+func TestMMapFrameCache_ZeroSize(t *testing.T) {
+	t.Parallel()
+
+	fc, err := NewFrameCache(0, filepath.Join(t.TempDir(), "cache"))
+	require.NoError(t, err)
+	defer fc.Close()
+
+	// GetOrFetch on zero-size cache should return nil data (no mmap)
+	data, hit, err := fc.GetOrFetch(0, 0, func(_ []byte) error {
+		return nil
+	})
+	require.NoError(t, err)
+	assert.False(t, hit)
+	assert.Nil(t, data)
 }
