@@ -15,8 +15,8 @@ import (
 
 const upsertSnapshot = `-- name: UpsertSnapshot :one
 WITH new_template AS (
-    INSERT INTO "public"."envs" (id, public, created_by, team_id, updated_at)
-    SELECT $1, FALSE, NULL, $2, now()
+    INSERT INTO "public"."envs" (id, public, created_by, team_id, updated_at, source)
+    SELECT $1, FALSE, NULL, $2, now(), 'snapshot'
     WHERE NOT EXISTS (
         SELECT id
         FROM "public"."snapshots" s
@@ -128,7 +128,7 @@ type UpsertSnapshotParams struct {
 	KernelVersion       string
 	FirecrackerVersion  string
 	EnvdVersion         *string
-	Status              string
+	Status              types.BuildStatus
 	TotalDiskSizeMb     *int64
 	CpuArchitecture     *string
 	CpuFamily           *string
@@ -143,7 +143,7 @@ type UpsertSnapshotRow struct {
 }
 
 // Create a new snapshot or update an existing one
-// Create a new build for the snapshot (env_id populated by trigger from assignment)
+// Create a new build for the snapshot
 // Create the build assignment edge (explicit, not relying on trigger)
 func (q *Queries) UpsertSnapshot(ctx context.Context, arg UpsertSnapshotParams) (UpsertSnapshotRow, error) {
 	row := q.db.QueryRow(ctx, upsertSnapshot,

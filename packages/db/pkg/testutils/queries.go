@@ -40,7 +40,7 @@ func CreateTestTemplate(t *testing.T, db *Database, teamID uuid.UUID) string {
 	// Insert a base env directly into the database
 	// After the env_builds migration, envs table only has: id, team_id, public, updated_at, build_count, spawn_count, last_spawned_at
 	err := db.SqlcClient.TestsRawSQL(t.Context(),
-		"INSERT INTO public.envs (id, team_id, public, updated_at) VALUES ($1, $2, $3, NOW())",
+		"INSERT INTO public.envs (id, team_id, public, updated_at, source) VALUES ($1, $2, $3, NOW(), 'template')",
 		envID, teamID, true,
 	)
 	require.NoError(t, err, "Failed to create test base env")
@@ -196,11 +196,11 @@ func CreateSnapshotRecord(t *testing.T, ctx context.Context, db *Database, templ
 func UpsertTestSnapshot(t *testing.T, ctx context.Context, db *Database, templateID, sandboxID string, teamID uuid.UUID, baseTemplateID string) queries.UpsertSnapshotRow {
 	t.Helper()
 
-	return UpsertTestSnapshotWithStatus(t, ctx, db, templateID, sandboxID, teamID, baseTemplateID, "success")
+	return UpsertTestSnapshotWithStatus(t, ctx, db, templateID, sandboxID, teamID, baseTemplateID, types.BuildStatusSuccess)
 }
 
 // UpsertTestSnapshotWithStatus creates/updates a snapshot with a specific status
-func UpsertTestSnapshotWithStatus(t *testing.T, ctx context.Context, db *Database, templateID, sandboxID string, teamID uuid.UUID, baseTemplateID string, status string) queries.UpsertSnapshotRow {
+func UpsertTestSnapshotWithStatus(t *testing.T, ctx context.Context, db *Database, templateID, sandboxID string, teamID uuid.UUID, baseTemplateID string, status types.BuildStatus) queries.UpsertSnapshotRow {
 	t.Helper()
 
 	totalDiskSize := int64(1024)

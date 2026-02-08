@@ -8,6 +8,7 @@ package queries
 import (
 	"context"
 
+	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/google/uuid"
 )
 
@@ -16,19 +17,25 @@ UPDATE "public"."env_builds"
 SET
     finished_at = NOW(),
     total_disk_size_mb = $1,
-    status = 'uploaded',
-    envd_version = $2
+    status = $2,
+    envd_version = $3
 WHERE
-    id = $3
+    id = $4
 `
 
 type FinishTemplateBuildParams struct {
 	TotalDiskSizeMb *int64
+	Status          types.BuildStatus
 	EnvdVersion     *string
 	BuildID         uuid.UUID
 }
 
 func (q *Queries) FinishTemplateBuild(ctx context.Context, arg FinishTemplateBuildParams) error {
-	_, err := q.db.Exec(ctx, finishTemplateBuild, arg.TotalDiskSizeMb, arg.EnvdVersion, arg.BuildID)
+	_, err := q.db.Exec(ctx, finishTemplateBuild,
+		arg.TotalDiskSizeMb,
+		arg.Status,
+		arg.EnvdVersion,
+		arg.BuildID,
+	)
 	return err
 }

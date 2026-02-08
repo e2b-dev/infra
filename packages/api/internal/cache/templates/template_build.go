@@ -110,7 +110,7 @@ func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templa
 			TemplateBuildInfo{
 				TeamID:      result.Env.TeamID,
 				TemplateID:  result.Env.ID,
-				BuildStatus: types.BuildStatus(result.EnvBuild.Status),
+				BuildStatus: result.EnvBuild.Status,
 				Reason:      result.EnvBuild.Reason,
 				Version:     result.EnvBuild.Version,
 
@@ -133,7 +133,7 @@ func (c *TemplatesBuildCache) GetRunningBuildsForTeam(teamID uuid.UUID) []Templa
 	var builds []TemplateBuildInfo
 	for _, item := range c.cache.Items() {
 		value := item.Value()
-		isRunning := value.BuildStatus == types.BuildStatusBuilding || value.BuildStatus == types.BuildStatusWaiting
+		isRunning := value.BuildStatus.IsInProgress() || value.BuildStatus.IsPending()
 		if value.TeamID == teamID && isRunning {
 			builds = append(builds, value)
 		}

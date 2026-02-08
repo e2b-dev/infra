@@ -13,7 +13,7 @@ JOIN public.env_build_assignments AS eba ON eba.env_id = e.id
         eba.build_id = try_cast_uuid(sqlc.narg(tag))
     )
 JOIN public.env_builds AS eb ON eb.id = eba.build_id
-    AND eb.status = 'uploaded'
+    AND eb.status IN ('success', 'uploaded', 'ready')
 CROSS JOIN LATERAL (
     SELECT 
         array_agg(alias)::text[] AS aliases,
@@ -22,5 +22,6 @@ CROSS JOIN LATERAL (
     WHERE env_id = e.id
 ) AS al
 WHERE e.id = @template_id
+  AND e.source = 'template'
 ORDER BY eba.created_at DESC
 LIMIT 1;

@@ -108,7 +108,7 @@ func (a *APIStore) GetTemplatesTemplateID(c *gin.Context, templateID api.Templat
 	for _, item := range builds {
 		res.Builds = append(res.Builds, api.TemplateBuild{
 			BuildID:     item.ID,
-			Status:      api.TemplateBuildStatus(item.Status),
+			Status:      getCorrespondingTemplateBuildStatus(ctx, item.Status),
 			CreatedAt:   item.CreatedAt,
 			UpdatedAt:   item.UpdatedAt,
 			FinishedAt:  item.FinishedAt,

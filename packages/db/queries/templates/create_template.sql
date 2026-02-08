@@ -1,6 +1,6 @@
 -- name: CreateOrUpdateTemplate :exec
-INSERT INTO "public"."envs"(id, team_id, created_by, updated_at, public, cluster_id)
-VALUES (@template_id, @team_id, @created_by, NOW(),FALSE, @cluster_id)
+INSERT INTO "public"."envs"(id, team_id, created_by, updated_at, public, cluster_id, source)
+VALUES (@template_id, @team_id, @created_by, NOW(), FALSE, @cluster_id, 'template')
 ON CONFLICT (id) DO UPDATE
 SET updated_at  = NOW(),
     build_count = envs.build_count + 1;
@@ -15,7 +15,7 @@ FROM "public"."env_build_assignments" eba
 WHERE eba.build_id = eb.id
     AND eba.env_id = @template_id
     AND eba.tag = ANY(@tags::text[])
-    AND eb.status = 'waiting';
+    AND eb.status IN ('waiting', 'pending');
 
 -- name: CreateTemplateBuild :exec
 INSERT INTO "public"."env_builds" (
@@ -34,7 +34,7 @@ INSERT INTO "public"."env_builds" (
 ) VALUES (
     @build_id,
     NOW(),
-    'waiting',
+    @status,
     @ram_mb,
     @vcpu,
     @kernel_version,

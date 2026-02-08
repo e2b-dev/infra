@@ -67,6 +67,7 @@ type Env struct {
 	TeamID        uuid.UUID
 	CreatedBy     *uuid.UUID
 	ClusterID     *uuid.UUID
+	Source        string
 }
 
 type EnvAlias struct {
@@ -82,7 +83,7 @@ type EnvBuild struct {
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
 	FinishedAt         *time.Time
-	Status             string
+	Status             types.BuildStatus
 	Dockerfile         *string
 	StartCmd           *string
 	Vcpu               int64
