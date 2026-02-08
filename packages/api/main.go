@@ -30,12 +30,14 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/api/internal/db/types"
+	"github.com/e2b-dev/infra/packages/api/internal/factories"
 	"github.com/e2b-dev/infra/packages/api/internal/handlers"
 	customMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware"
 	metricsMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics"
 	tracingMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware/otel/tracing"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -361,6 +363,15 @@ func run() int {
 	apiStore := handlers.NewAPIStore(ctx, tel, config)
 	cleanupFns = append(cleanupFns, apiStore.Close)
 
+	grpcAddr := fmt.Sprintf("0.0.0.0:%d", config.APIGrpcPort)
+	grpcListener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", grpcAddr)
+	if err != nil {
+		l.Fatal(ctx, "failed to create proxy grpc listener", zap.Error(err))
+	}
+
+	grpcServer := factories.NewGRPCServer(tel)
+	proxygrpc.RegisterSandboxServiceServer(grpcServer, handlers.NewSandboxService(apiStore))
+
 	// pass the signal context so that handlers know when shutdown is happening.
 	s := NewGinServer(ctx, config, tel, l, apiStore, swagger, port)
 
@@ -408,6 +419,17 @@ func run() int {
 	})
 
 	wg.Go(func() {
+		defer cancel()
+
+		l.Info(ctx, "gRPC service starting", zap.Uint16("port", config.APIGrpcPort))
+		err := grpcServer.Serve(grpcListener)
+		if err != nil {
+			exitCode.Add(1)
+			l.Error(ctx, "gRPC service encountered error", zap.Error(err))
+		}
+	})
+
+	wg.Go(func() {
 		<-signalCtx.Done()
 
 		// Start returning 503s for health checks
@@ -433,6 +455,8 @@ func run() int {
 			exitCode.Add(1)
 			l.Error(ctx, "Http service shutdown error", zap.Int("port", port), zap.Error(err))
 		}
+
+		grpcServer.GracefulStop()
 	})
 
 	// wait for the HTTP service to complete shutting down first

@@ -87,7 +87,7 @@ runs:
 
         while [ "$(docker inspect -f '{{.State.Health.Status}}' redis 2>/dev/null)" != "healthy" ]; do echo "Waiting for Redis to be healthy..."; sleep 2; done
         echo "Redis is healthy!"
-        
+
         echo "REDIS_URL=localhost:6379" >> .env.test
       shell: bash
 
@@ -102,6 +102,9 @@ runs:
         OTEL_COLLECTOR_GRPC_ENDPOINT: "localhost:4317"
         MAX_PARALLEL_MEMFILE_SNAPSHOTTING: "2"
         SHARED_CHUNK_CACHE_PATH: "./.e2b-chunk-cache"
+        REDIS_URL: "localhost:6379"
+        # Client-proxy config
+        API_GRPC_ADDRESS: "localhost:5009"
       run: |
         mkdir -p $SHARED_CHUNK_CACHE_PATH
         mkdir -p ~/logs
@@ -114,4 +117,7 @@ runs:
 
         # Start API
         ./scripts/start-service.sh "API" packages/api run ~/logs/api.log http://localhost:3000/health
+
+        # Start client-proxy (needed for auto-resume tests)
+        ./scripts/start-service.sh "ClientProxy" packages/client-proxy run ~/logs/client-proxy.log http://localhost:3003
       shell: bash

@@ -29,8 +29,10 @@ jobs:
       - name: Run Integration Tests
         env:
           TESTS_API_SERVER_URL: "http://localhost:3000"
+          TESTS_API_GRPC_ADDRESS: "localhost:5009"
           TESTS_ORCHESTRATOR_HOST: "localhost:5008"
-          TESTS_ENVD_PROXY: "http://localhost:5007"
+          TESTS_ENVD_PROXY: "http://localhost:3002"
+          TESTS_CLIENT_PROXY: "http://localhost:3002"
         run: |
           # Run the integration tests
           make test-integration

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/golang/protobuf/ptypes/empty"
@@ -75,6 +76,15 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
 			}
 		}
 
+		var autoResume *types.SandboxAutoResumeConfig
+		if autoResumeCfg := config.GetAutoResume(); autoResumeCfg != nil {
+			autoResume = &types.SandboxAutoResumeConfig{}
+			if p := strings.TrimSpace(autoResumeCfg.GetPolicy()); p != "" {
+				policy := types.SandboxAutoResumePolicy(p)
+				autoResume.Policy = &policy
+			}
+		}
+
 		sandboxesInfo = append(
 			sandboxesInfo,
 			sandbox.NewSandbox(
@@ -98,6 +108,7 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
 				n.ID,
 				n.ClusterID,
 				config.GetAutoPause(),
+				autoResume,
 				config.EnvdAccessToken,     //nolint:protogetter // we need the nil check too
 				config.AllowInternetAccess, //nolint:protogetter // we need the nil check too
 				config.GetBaseTemplateId(),

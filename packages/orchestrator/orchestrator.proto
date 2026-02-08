@@ -46,6 +46,14 @@ message SandboxConfig {
   optional bool allow_internet_access = 21;
 
   optional SandboxNetworkConfig network = 22;
+
+  // Auto-resume policy for paused sandboxes.
+  optional SandboxAutoResumeConfig auto_resume = 23;
+}
+
+message SandboxAutoResumeConfig {
+  // Policy values are owned by the API layer today (e.g. "off", "any").
+  string policy = 1;
 }
 
 message SandboxNetworkConfig {

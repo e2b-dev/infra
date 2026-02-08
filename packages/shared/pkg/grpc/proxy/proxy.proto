@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package proxy;
+
+option go_package = "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy;proxygrpc";
+
+// Request to resume a paused sandbox.
+message SandboxResumeRequest {
+  // Sandbox ID to resume.
+  string sandbox_id = 1;
+  reserved 2;
+  reserved "timeout_seconds";
+}
+
+// Response with routing info for the resumed/running sandbox.
+message SandboxResumeResponse {
+  // Orchestrator node IP that can receive traffic for this sandbox.
+  string orchestrator_ip = 1;
+}
+
+// SandboxService is used by the client-proxy to resume sandboxes.
+service SandboxService {
+  rpc ResumeSandbox(SandboxResumeRequest) returns (SandboxResumeResponse);
+}
