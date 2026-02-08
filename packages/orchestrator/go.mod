@@ -69,6 +69,7 @@ require (
 	go.uber.org/zap v1.27.0
 	golang.org/x/sync v0.18.0
 	golang.org/x/sys v0.38.0
+	google.golang.org/api v0.214.0
 	google.golang.org/grpc v1.75.1
 	google.golang.org/protobuf v1.36.9
 	k8s.io/utils v0.0.0-20230726121419-3b25d923346b
@@ -274,7 +275,6 @@ require (
 	golang.org/x/text v0.31.0 // indirect
 	golang.org/x/time v0.11.0 // indirect
 	golang.org/x/tools v0.38.0 // indirect
-	google.golang.org/api v0.214.0 // indirect
 	google.golang.org/genproto v0.0.0-20241118233622-e639e219e697 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250908214217-97024824d090 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250908214217-97024824d090 // indirect
