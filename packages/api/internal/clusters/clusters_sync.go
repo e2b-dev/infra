@@ -9,6 +9,7 @@ import (
 	nomadapi "github.com/hashicorp/nomad/api"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/queries"
@@ -48,6 +49,7 @@ func NewPool(
 	nomad *nomadapi.Client,
 	queryMetricsProvider clickhouse.Clickhouse,
 	queryLogsProvider *loki.LokiQueryProvider,
+	config cfg.Config,
 ) (*Pool, error) {
 	clusters := smap.New[*Cluster]()
 
@@ -64,6 +66,7 @@ func NewPool(
 			"clusters-pool",
 			"Clusters pool",
 			clustersSyncStore{
+				config:               config,
 				db:                   db,
 				tel:                  tel,
 				clusters:             clusters,
@@ -114,6 +117,7 @@ type clustersSyncStore struct {
 	nomad                *nomadapi.Client
 	queryMetricsProvider clickhouse.Clickhouse
 	queryLogsProvider    *loki.LokiQueryProvider
+	config               cfg.Config
 }
 
 func (d clustersSyncStore) SourceList(ctx context.Context) ([]queries.Cluster, error) {
@@ -170,7 +174,7 @@ func (d clustersSyncStore) PoolInsert(ctx context.Context, cluster queries.Clust
 
 	// Local cluster
 	if cluster.ID == consts.LocalClusterID {
-		c, err = newLocalCluster(context.WithoutCancel(ctx), d.tel, d.nomad, d.queryMetricsProvider, d.queryLogsProvider)
+		c, err = newLocalCluster(context.WithoutCancel(ctx), d.tel, d.nomad, d.queryMetricsProvider, d.queryLogsProvider, d.config)
 		if err != nil {
 			logger.L().Error(ctx, "Initializing local cluster failed", zap.Error(err), logger.WithClusterID(cluster.ID))
 

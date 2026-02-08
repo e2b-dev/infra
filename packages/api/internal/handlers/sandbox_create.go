@@ -6,11 +6,14 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/net/idna"
@@ -22,8 +25,11 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
+	"github.com/e2b-dev/infra/packages/db/queries"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
@@ -114,20 +120,11 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		attribute.String("env.firecracker.version", build.FirecrackerVersion),
 	)
 
-	var metadata map[string]string
-	if body.Metadata != nil {
-		metadata = *body.Metadata
-	}
-
-	var envVars map[string]string
-	if body.EnvVars != nil {
-		envVars = *body.EnvVars
-	}
-
-	var mcp api.Mcp
-	if body.Mcp != nil {
-		mcp = *body.Mcp
-	}
+	autoPause := sharedUtils.DerefOrDefault(body.AutoPause, sandbox.AutoPauseDefault)
+	envVars := sharedUtils.DerefOrDefault(body.EnvVars, nil)
+	mcp := sharedUtils.DerefOrDefault(body.Mcp, nil)
+	metadata := sharedUtils.DerefOrDefault(body.Metadata, nil)
+	apiVolumeMounts := sharedUtils.DerefOrDefault(body.VolumeMounts, nil)
 
 	timeout := sandbox.SandboxTimeoutDefault
 	if body.Timeout != nil {
@@ -138,11 +135,6 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 			return
 		}
-	}
-
-	autoPause := sandbox.AutoPauseDefault
-	if body.AutoPause != nil {
-		autoPause = *body.AutoPause
 	}
 
 	var envdAccessToken *string = nil
@@ -181,12 +173,34 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		}
 
 		// Make sure envd seucre access is enforced when public access is disabled,
-		// this is requirement forcing users using newer features to secure sandboxes properly.
+		// This requirement forces users using newer features to secure sandboxes properly.
 		if !sharedUtils.DerefOrDefault(network.Ingress.AllowPublicAccess, types.AllowPublicAccessDefault) && envdAccessToken == nil {
 			a.sendAPIStoreError(c, http.StatusBadRequest, "You cannot create a sandbox without public access unless you enable secure envd access via 'secure' flag.")
 
 			return
 		}
+	}
+
+	sbxVolumeMounts, err := createOrchestratorVolumeMounts(
+		ctx, a.sqlcDB, a.featureFlags, teamInfo.ID, apiVolumeMounts,
+	)
+	if err != nil {
+		if errors.Is(err, ErrVolumeMountsDisabled) {
+			a.sendAPIStoreError(c, http.StatusForbidden, "Volume mounts are not enabled.")
+
+			return
+		}
+
+		var vne InvalidVolumeMountsError
+		if errors.As(err, &vne) {
+			a.sendAPIStoreError(c, http.StatusBadRequest, vne.Error())
+
+			return
+		}
+
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Errorf("failed to convert volume mounts: %w", err).Error())
+
+		return
 	}
 
 	sbx, createErr := a.startSandbox(
@@ -208,6 +222,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		allowInternetAccess,
 		network,
 		mcp,
+		sbxVolumeMounts,
 	)
 	if createErr != nil {
 		a.sendAPIStoreError(c, createErr.Code, createErr.ClientMsg)
@@ -216,6 +231,139 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, &sbx)
+}
+
+func dedupeVolumeNames(items []api.SandboxVolumeMount) []string {
+	itemsSet := make(map[string]struct{}, len(items))
+	for _, item := range items {
+		itemsSet[item.Name] = struct{}{}
+	}
+
+	results := make([]string, 0, len(itemsSet))
+	for name := range itemsSet {
+		results = append(results, name)
+	}
+
+	return results
+}
+
+var ErrVolumeMountsDisabled = errors.New("volume mounts are not enabled")
+
+type featureFlagsClient interface {
+	BoolFlag(ctx context.Context, flagName featureflags.BoolFlag, contexts ...ldcontext.Context) bool
+}
+
+type InvalidMount struct {
+	Index  int
+	Reason string
+}
+
+type InvalidVolumeMountsError struct {
+	InvalidMounts []InvalidMount
+}
+
+func (im InvalidVolumeMountsError) Error() string {
+	var errs []string
+
+	for _, mount := range im.InvalidMounts {
+		errs = append(errs, fmt.Sprintf("\t- volume mount #%d: %s", mount.Index, mount.Reason))
+	}
+
+	return fmt.Sprintf("invalid mounts:\n%s", strings.Join(errs, "\n"))
+}
+
+func createOrchestratorVolumeMounts(
+	ctx context.Context,
+	sqlClient *sqlcdb.Client,
+	featureFlags featureFlagsClient,
+	teamID uuid.UUID,
+	volumeMounts []api.SandboxVolumeMount,
+) ([]*orchestrator.SandboxVolumeMount, error) {
+	if len(volumeMounts) == 0 {
+		return []*orchestrator.SandboxVolumeMount{}, nil // only b/c you should never return (nil, nil)
+	}
+
+	if !featureFlags.BoolFlag(ctx, featureflags.PersistentVolumesFlag) {
+		return nil, ErrVolumeMountsDisabled
+	}
+
+	// get volumes from the database
+	dbVolumesMap, err := getDBVolumesMap(ctx, sqlClient, teamID, volumeMounts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get db volumes map: %w", err)
+	}
+
+	invalidVolumeMounts := make([]InvalidMount, 0)
+	results := make([]*orchestrator.SandboxVolumeMount, 0, len(volumeMounts))
+
+	usedPaths := make(map[string]struct{})
+
+	for index, v := range volumeMounts {
+		actualVolume, ok := dbVolumesMap[v.Name]
+		if !ok {
+			invalidVolumeMounts = append(invalidVolumeMounts, InvalidMount{Index: index, Reason: fmt.Sprintf("volume '%s' not found", v.Name)})
+
+			continue
+		}
+
+		if reason, ok := isValidMountPath(v.Path); !ok {
+			invalidVolumeMounts = append(invalidVolumeMounts, InvalidMount{Index: index, Reason: reason})
+
+			continue
+		}
+
+		if _, ok := usedPaths[v.Path]; ok {
+			invalidVolumeMounts = append(invalidVolumeMounts, InvalidMount{Index: index, Reason: fmt.Sprintf("path '%s' is already used", v.Path)})
+
+			continue
+		}
+		usedPaths[v.Path] = struct{}{}
+
+		results = append(results, &orchestrator.SandboxVolumeMount{
+			Id:   actualVolume.ID.String(),
+			Path: v.Path,
+			Type: actualVolume.VolumeType,
+		})
+	}
+
+	if len(invalidVolumeMounts) > 0 {
+		return nil, InvalidVolumeMountsError{InvalidMounts: invalidVolumeMounts}
+	}
+
+	return results, nil
+}
+
+func isValidMountPath(path string) (string, bool) {
+	if path == "" {
+		return "path cannot be empty", false
+	}
+
+	if !filepath.IsAbs(path) {
+		return "path must be absolute", false
+	}
+
+	if filepath.Clean(path) != path {
+		return "path must not contain any '.' or '..' components", false
+	}
+
+	return "", true
+}
+
+func getDBVolumesMap(ctx context.Context, sqlcDB *sqlcdb.Client, teamID uuid.UUID, volumeMounts []api.SandboxVolumeMount) (map[string]queries.Volume, error) {
+	dbVolumes, err := sqlcDB.GetVolumesByName(ctx, queries.GetVolumesByNameParams{
+		TeamID:      teamID,
+		VolumeNames: dedupeVolumeNames(volumeMounts),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get volumes from db: %w", err)
+	}
+
+	dbVolumesMap := make(map[string]queries.Volume, len(dbVolumes))
+	for _, v := range dbVolumes {
+		dbVolumesMap[v.Name] = v
+	}
+
+	return dbVolumesMap, nil
 }
 
 func (a *APIStore) getEnvdAccessToken(envdVersion *string, sandboxID string) (string, *api.APIError) {

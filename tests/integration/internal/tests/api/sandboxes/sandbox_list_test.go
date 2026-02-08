@@ -119,7 +119,7 @@ func TestSandboxListRunning_NoMetadata(t *testing.T) {
 		State: &[]api.SandboxState{api.Running},
 	}, setup.WithAPIKey())
 	require.NoError(t, err)
-	require.Equal(t, http.StatusOK, listResponse.StatusCode())
+	require.Equal(t, http.StatusOK, listResponse.StatusCode(), string(listResponse.Body))
 
 	sandboxIds := sharedUtils.Map(*listResponse.JSON200, func(s api.ListedSandbox) string {
 		return s.SandboxID

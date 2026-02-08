@@ -4,7 +4,15 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
+
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	handlersmocks "github.com/e2b-dev/infra/packages/api/internal/handlers/mocks"
+	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
+	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 )
 
@@ -221,4 +229,209 @@ func TestValidateNetworkConfig(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestOrchestrator_convertVolumeMounts(t *testing.T) {
+	t.Parallel()
+
+	db := testutils.SetupDatabase(t)
+
+	t.Run("InvalidVolumeMountsError.Error() returns expected string", func(t *testing.T) {
+		t.Parallel()
+
+		err := InvalidVolumeMountsError{[]InvalidMount{
+			{0, "reason1"},
+			{2, "reason2"},
+		}}
+		expected := "invalid mounts:\n\t- volume mount #0: reason1\n\t- volume mount #2: reason2"
+		assert.Equal(t, expected, err.Error())
+	})
+
+	testCases := map[string]struct {
+		expectFeatureFlag bool
+		expectResources   bool
+		volumesEnabled    bool
+		input             []api.SandboxVolumeMount
+		database          []queries.CreateVolumeParams
+		volumeTypes       []string
+		expected          []*orchestrator.SandboxVolumeMount
+		err               error
+	}{
+		"missing volume reports correct error": {
+			expectFeatureFlag: true,
+			expectResources:   true,
+			volumesEnabled:    true,
+			input: []api.SandboxVolumeMount{
+				{Name: "vol1"},
+			},
+			volumeTypes: []string{},
+			err:         InvalidVolumeMountsError{[]InvalidMount{{0, "volume 'vol1' not found"}}},
+		},
+		"partial success returns error": {
+			expectFeatureFlag: true,
+			expectResources:   true,
+			volumesEnabled:    true,
+			input: []api.SandboxVolumeMount{
+				{Name: "vol1", Path: "/vol1"},
+				{Name: "vol2", Path: "/vol2"},
+			},
+			database: []queries.CreateVolumeParams{
+				{Name: "vol1", VolumeType: "local"},
+			},
+			volumeTypes: []string{"local"},
+			err:         InvalidVolumeMountsError{[]InvalidMount{{1, "volume 'vol2' not found"}}},
+		},
+		"empty volume mounts": {
+			input:    []api.SandboxVolumeMount{},
+			expected: []*orchestrator.SandboxVolumeMount{},
+		},
+		"feature flag disabled": {
+			expectFeatureFlag: true,
+			volumesEnabled:    false,
+			input: []api.SandboxVolumeMount{
+				{Name: "vol1", Path: "/vol1"},
+			},
+			err: ErrVolumeMountsDisabled,
+		},
+		"empty path reports error": {
+			expectFeatureFlag: true,
+			expectResources:   true,
+			volumesEnabled:    true,
+			input: []api.SandboxVolumeMount{
+				{Name: "vol1", Path: ""},
+			},
+			database: []queries.CreateVolumeParams{
+				{Name: "vol1", VolumeType: "local"},
+			},
+			volumeTypes: []string{"local"},
+			err:         InvalidVolumeMountsError{[]InvalidMount{{0, "path cannot be empty"}}},
+		},
+		"non-absolute path reports error": {
+			expectFeatureFlag: true,
+			expectResources:   true,
+			volumesEnabled:    true,
+			input: []api.SandboxVolumeMount{
+				{Name: "vol1", Path: "relative/path"},
+			},
+			database: []queries.CreateVolumeParams{
+				{Name: "vol1", VolumeType: "local"},
+			},
+			volumeTypes: []string{"local"},
+			err:         InvalidVolumeMountsError{[]InvalidMount{{0, "path must be absolute"}}},
+		},
+		"non-clean path reports error": {
+			expectFeatureFlag: true,
+			expectResources:   true,
+			volumesEnabled:    true,
+			input: []api.SandboxVolumeMount{
+				{Name: "vol1", Path: "/path/./to/somewhere"},
+			},
+			database: []queries.CreateVolumeParams{
+				{Name: "vol1", VolumeType: "local"},
+			},
+			volumeTypes: []string{"local"},
+			err:         InvalidVolumeMountsError{[]InvalidMount{{0, "path must not contain any '.' or '..' components"}}},
+		},
+		"duplicate paths report error": {
+			expectFeatureFlag: true,
+			expectResources:   true,
+			volumesEnabled:    true,
+			input: []api.SandboxVolumeMount{
+				{Name: "vol1", Path: "/path"},
+				{Name: "vol2", Path: "/path"},
+			},
+			database: []queries.CreateVolumeParams{
+				{Name: "vol1", VolumeType: "local"},
+				{Name: "vol2", VolumeType: "local"},
+			},
+			volumeTypes: []string{"local"},
+			err:         InvalidVolumeMountsError{[]InvalidMount{{1, "path '/path' is already used"}}},
+		},
+		"multiple invalid mounts report all errors": {
+			expectFeatureFlag: true,
+			expectResources:   true,
+			volumesEnabled:    true,
+			input: []api.SandboxVolumeMount{
+				{Name: "missing", Path: "/path1"},
+				{Name: "vol1", Path: "relative"},
+				{Name: "vol2", Path: "/path2"},
+				{Name: "vol3", Path: "/path2"},
+			},
+			database: []queries.CreateVolumeParams{
+				{Name: "vol1", VolumeType: "local"},
+				{Name: "vol2", VolumeType: "local"},
+				{Name: "vol3", VolumeType: "local"},
+			},
+			volumeTypes: []string{"local"},
+			err: InvalidVolumeMountsError{[]InvalidMount{
+				{0, "volume 'missing' not found"},
+				{1, "path must be absolute"},
+				{3, "path '/path2' is already used"},
+			}},
+		},
+	}
+
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			teamID := testutils.CreateTestTeam(t, db)
+
+			for _, v := range tc.database {
+				_, err := db.SqlcClient.CreateVolume(t.Context(),
+					queries.CreateVolumeParams{
+						Name:       v.Name,
+						TeamID:     teamID,
+						VolumeType: v.VolumeType,
+					},
+				)
+				require.NoError(t, err)
+			}
+
+			ffClient := handlersmocks.NewMockFeatureFlagsClient(t)
+			if tc.expectFeatureFlag {
+				ffClient.EXPECT().
+					BoolFlag(mock.Anything, mock.Anything).
+					Return(tc.volumesEnabled)
+			}
+
+			actual, err := createOrchestratorVolumeMounts(
+				t.Context(), db.SqlcClient, ffClient,
+				teamID, tc.input,
+			)
+			assert.Equal(t, tc.err, err)
+			assert.Equal(t, tc.expected, actual)
+		})
+	}
+
+	t.Run("existing volumes are returned", func(t *testing.T) {
+		t.Parallel()
+
+		teamID := testutils.CreateTestTeam(t, db)
+
+		dbVolume, err := db.SqlcClient.CreateVolume(t.Context(),
+			queries.CreateVolumeParams{
+				Name:       "vol1",
+				TeamID:     teamID,
+				VolumeType: "local",
+			},
+		)
+		require.NoError(t, err)
+
+		ffClient := handlersmocks.NewMockFeatureFlagsClient(t)
+		ffClient.EXPECT().
+			BoolFlag(mock.Anything, mock.Anything).
+			Return(true)
+
+		actual, err := createOrchestratorVolumeMounts(
+			t.Context(), db.SqlcClient, ffClient,
+			teamID, []api.SandboxVolumeMount{
+				{Name: "vol1", Path: "/vol1"},
+			},
+		)
+		require.NoError(t, err)
+		assert.Equal(t, []*orchestrator.SandboxVolumeMount{
+			{Id: dbVolume.ID.String(), Path: "/vol1", Type: "local"},
+		}, actual)
+	})
 }

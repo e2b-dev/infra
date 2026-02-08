@@ -102,16 +102,24 @@ runs:
         OTEL_COLLECTOR_GRPC_ENDPOINT: "localhost:4317"
         MAX_PARALLEL_MEMFILE_SNAPSHOTTING: "2"
         SHARED_CHUNK_CACHE_PATH: "./.e2b-chunk-cache"
+        DEFAULT_PERSISTENT_VOLUME_TYPE: "test-volume-type"
       run: |
         mkdir -p $SHARED_CHUNK_CACHE_PATH
         mkdir -p ~/logs
-
-        # Start otel-collector
+        
+        echo "creating persistent volume mounts"
+        test_volume_dir="$(realpath ${RUNNER_TEMP}/.e2b-test-volumes)"
+        mkdir -p $test_volume_dir
+        PERSISTENT_VOLUME_MOUNTS="test-volume-type:${test_volume_dir}"
+        export PERSISTENT_VOLUME_MOUNTS
+        
+        echo "Start otel-collector"
         ./scripts/start-service.sh "OtelCollector" packages/otel-collector run ~/logs/otel-collector.log http://localhost:13133/healthz
 
-        # Start orchestrator
+
+        echo "Start orchestrator"
         ./scripts/start-service.sh "Orchestrator" packages/orchestrator run-debug ~/logs/orchestrator.log http://localhost:5008/health
 
-        # Start API
+        echo "Start API"
         ./scripts/start-service.sh "API" packages/api run ~/logs/api.log http://localhost:3000/health
       shell: bash

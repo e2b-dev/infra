@@ -73,6 +73,14 @@ type Config struct {
 	Envd EnvdMetadata
 
 	FirecrackerConfig fc.Config
+
+	VolumeMounts []VolumeMountConfig
+}
+
+type VolumeMountConfig struct {
+	ID   string
+	Path string
+	Type string
 }
 
 type EnvdMetadata struct {

@@ -46,6 +46,14 @@ message SandboxConfig {
   optional bool allow_internet_access = 21;
 
   optional SandboxNetworkConfig network = 22;
+
+  repeated SandboxVolumeMount volumeMounts = 23;
+}
+
+message SandboxVolumeMount {
+  string id = 1;
+  string path = 2;
+  string type = 3;
 }
 
 message SandboxNetworkConfig {
@@ -56,7 +64,7 @@ message SandboxNetworkConfig {
 message SandboxNetworkEgressConfig {
   repeated string allowed_cidrs = 1;
   repeated string denied_cidrs = 2;
-  
+
   repeated string allowed_domains = 3;
 }
 
@@ -121,4 +129,25 @@ service SandboxService {
   rpc Pause(SandboxPauseRequest) returns (google.protobuf.Empty);
 
   rpc ListCachedBuilds(google.protobuf.Empty) returns (SandboxListCachedBuildsResponse);
+}
+
+message VolumeCreateRequest {
+  string volume_id = 1;
+  string volume_type = 2;
+  string team_id = 3;
+}
+
+message VolumeCreateResponse {}
+
+message VolumeDeleteRequest {
+  string volume_id = 1;
+  string volume_type = 2;
+  string team_id = 3;
+}
+
+message VolumeDeleteResponse {}
+
+service VolumeService {
+  rpc Create(VolumeCreateRequest) returns (VolumeCreateResponse);
+  rpc Delete(VolumeDeleteRequest) returns (VolumeDeleteResponse);
 }

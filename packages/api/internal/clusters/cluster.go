@@ -14,9 +14,12 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/api/internal/clusters/discovery"
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
+	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -48,12 +51,29 @@ var (
 	ErrAvailableTemplateBuilderNotFound = errors.New("available template builder not found")
 )
 
+func NewCluster(
+	clusterID uuid.UUID,
+	domain *string,
+	sandboxes *smap.Map[*Instance],
+	synchronization *synchronization.Synchronize[discovery.Item, *Instance],
+	resources ClusterResource,
+) *Cluster {
+	return &Cluster{
+		ID:              clusterID,
+		SandboxDomain:   domain,
+		instances:       sandboxes,
+		synchronization: synchronization,
+		resources:       resources,
+	}
+}
+
 func newLocalCluster(
 	ctx context.Context,
 	tel *telemetry.Client,
 	nomad *nomadapi.Client,
 	clickhouse clickhouse.Clickhouse,
 	queryLogsProvider *loki.LokiQueryProvider,
+	config cfg.Config,
 ) (*Cluster, error) {
 	clusterID := consts.LocalClusterID
 
@@ -66,14 +86,13 @@ func newLocalCluster(
 	storeDiscovery := discovery.NewLocalDiscovery(clusterID, nomad)
 	store := instancesSyncStore{clusterID: clusterID, instances: instances, discovery: storeDiscovery, instanceCreation: instanceCreation}
 
-	c := &Cluster{
-		ID:            clusterID,
-		SandboxDomain: nil,
-
-		instances:       instances,
-		resources:       newLocalClusterResourceProvider(clickhouse, queryLogsProvider, instances),
-		synchronization: synchronization.NewSynchronize("cluster-instances", "Cluster instances", store),
-	}
+	c := NewCluster(
+		clusterID,
+		nil,
+		instances,
+		synchronization.NewSynchronize("cluster-instances", "Cluster instances", store),
+		newLocalClusterResourceProvider(clickhouse, queryLogsProvider, instances, config),
+	)
 
 	// Periodically sync cluster instances
 	go c.synchronization.Start(ctx, instancesSyncInterval, instancesSyncTimeout, true)
@@ -127,14 +146,13 @@ func newRemoteCluster(
 	storeDiscovery := discovery.NewRemoteServiceDiscovery(clusterID, httpClient)
 	store := instancesSyncStore{clusterID: clusterID, instances: instances, instanceCreation: instanceCreation, discovery: storeDiscovery}
 
-	c := &Cluster{
-		ID:            clusterID,
-		SandboxDomain: sandboxDomain,
-
-		instances:       instances,
-		resources:       newRemoteClusterResourceProvider(instances, httpClient),
-		synchronization: synchronization.NewSynchronize("cluster-instances", "Cluster instances", store),
-	}
+	c := NewCluster(
+		clusterID,
+		sandboxDomain,
+		instances,
+		synchronization.NewSynchronize("cluster-instances", "Cluster instances", store),
+		newRemoteClusterResourceProvider(instances, httpClient),
+	)
 
 	// Periodically sync cluster instances
 	go c.synchronization.Start(ctx, instancesSyncInterval, instancesSyncTimeout, true)
@@ -190,11 +208,7 @@ func (c *Cluster) GetByServiceInstanceID(serviceInstanceID string) (*Instance, b
 	return nil, false
 }
 
-func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context, expectedInfo machineinfo.MachineInfo) (*Instance, error) {
-	_, span := tracer.Start(ctx, "template-builder-get-available-instance")
-	span.SetAttributes(telemetry.WithClusterID(c.ID))
-	defer span.End()
-
+func (c *Cluster) getRandomInstance(isMatch func(InstanceInfo, machineinfo.MachineInfo) bool) (*Instance, bool) {
 	var instances []*Instance
 	for _, instance := range c.instances.Items() {
 		instances = append(instances, instance)
@@ -204,20 +218,37 @@ func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context, expectedInfo 
 	rand.Shuffle(len(instances), func(i, j int) { instances[i], instances[j] = instances[j], instances[i] })
 
 	for _, instance := range instances {
+		if isMatch(instance.GetInfo(), instance.GetMachineInfo()) {
+			return instance, true
+		}
+	}
+
+	return nil, false
+}
+
+func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context, expectedInfo machineinfo.MachineInfo) (*Instance, error) {
+	_, span := tracer.Start(ctx, "template-builder-get-available-instance")
+	span.SetAttributes(telemetry.WithClusterID(c.ID))
+	defer span.End()
+
+	instance, ok := c.getRandomInstance(func(info InstanceInfo, machineInfo machineinfo.MachineInfo) bool {
 		// Check availability and builder role
-		if info := instance.GetInfo(); info.Status != infogrpc.ServiceInfoStatus_Healthy || !info.IsBuilder {
-			continue
+		if info.Status != infogrpc.ServiceInfoStatus_Healthy || !info.IsBuilder {
+			return false
 		}
 
 		// Check machine compatibility
-		if machineInfo := instance.GetMachineInfo(); expectedInfo.CPUModel != "" && !expectedInfo.IsCompatibleWith(machineInfo) {
-			continue
+		if expectedInfo.CPUModel != "" && !expectedInfo.IsCompatibleWith(machineInfo) {
+			return false
 		}
 
-		return instance, nil
+		return true
+	})
+	if !ok {
+		return nil, ErrAvailableTemplateBuilderNotFound
 	}
 
-	return nil, ErrAvailableTemplateBuilderNotFound
+	return instance, nil
 }
 
 func (c *Cluster) GetOrchestrators() []*Instance {
@@ -233,4 +264,45 @@ func (c *Cluster) GetOrchestrators() []*Instance {
 
 func (c *Cluster) GetResources() ClusterResource {
 	return c.resources
+}
+
+var ErrNoOrchestratorFound = errors.New("no orchestrator found")
+
+func (c *Cluster) DeleteVolume(ctx context.Context, volume queries.Volume) error {
+	instance, ok := c.getRandomInstance(func(instance InstanceInfo, _ machineinfo.MachineInfo) bool {
+		return instance.IsOrchestrator
+	})
+
+	if !ok {
+		return ErrNoOrchestratorFound
+	}
+
+	if _, err := instance.client.Volumes.Delete(ctx, &orchestrator.VolumeDeleteRequest{
+		VolumeId:   volume.ID.String(),
+		VolumeType: volume.VolumeType,
+		TeamId:     volume.TeamID.String(),
+	}); err != nil {
+		return fmt.Errorf("failed to delete volume: %w", err)
+	}
+
+	return nil
+}
+
+func (c *Cluster) CreateVolume(ctx context.Context, volume queries.Volume) error {
+	instance, ok := c.getRandomInstance(func(instance InstanceInfo, _ machineinfo.MachineInfo) bool {
+		return instance.IsOrchestrator
+	})
+	if !ok {
+		return ErrNoOrchestratorFound
+	}
+
+	if _, err := instance.client.Volumes.Create(ctx, &orchestrator.VolumeCreateRequest{
+		VolumeId:   volume.ID.String(),
+		VolumeType: volume.VolumeType,
+		TeamId:     volume.TeamID.String(),
+	}); err != nil {
+		return fmt.Errorf("failed to create volume: %w", err)
+	}
+
+	return nil
 }
