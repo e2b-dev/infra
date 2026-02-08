@@ -228,6 +228,7 @@ func (d *DevicePool) getMaybeEmptySlot(start DeviceSlot) (DeviceSlot, func(), bo
 // Get a free device slot.
 func (d *DevicePool) getFreeDeviceSlot() (*DeviceSlot, error) {
 	start := uint32(0)
+	wrapped := false
 
 	for {
 		slot, cleanup, ok := d.getMaybeEmptySlot(start)
@@ -235,7 +236,15 @@ func (d *DevicePool) getFreeDeviceSlot() (*DeviceSlot, error) {
 		if !ok {
 			cleanup()
 
-			return nil, NoFreeSlotsError{}
+			// Already wrapped around once, no free slots in the entire range
+			if wrapped {
+				return nil, NoFreeSlotsError{}
+			}
+
+			// Reached the end for the first time, wrap around and scan from the beginning
+			wrapped = true
+			start = 0
+			continue
 		}
 
 		free, err := d.isDeviceFree(slot)
