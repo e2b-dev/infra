@@ -89,3 +89,19 @@ func (s *Service) streamInputHandler(ctx context.Context, stream *connect.Client
 
 	return connect.NewResponse(&rpc.StreamInputResponse{}), nil
 }
+
+func (s *Service) CloseStdin(
+	_ context.Context,
+	req *connect.Request[rpc.CloseStdinRequest],
+) (*connect.Response[rpc.CloseStdinResponse], error) {
+	handler, err := s.getProcess(req.Msg.GetProcess())
+	if err != nil {
+		return nil, err
+	}
+
+	if err := handler.CloseStdin(); err != nil {
+		return nil, connect.NewError(connect.CodeUnknown, fmt.Errorf("error closing stdin: %w", err))
+	}
+
+	return connect.NewResponse(&rpc.CloseStdinResponse{}), nil
+}

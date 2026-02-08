@@ -47,6 +47,8 @@ const (
 	ProcessSendInputProcedure = "/process.Process/SendInput"
 	// ProcessSendSignalProcedure is the fully-qualified name of the Process's SendSignal RPC.
 	ProcessSendSignalProcedure = "/process.Process/SendSignal"
+	// ProcessCloseStdinProcedure is the fully-qualified name of the Process's CloseStdin RPC.
+	ProcessCloseStdinProcedure = "/process.Process/CloseStdin"
 )
 
 // ProcessClient is a client for the process.Process service.
@@ -59,6 +61,9 @@ type ProcessClient interface {
 	StreamInput(context.Context) *connect.ClientStreamForClient[process.StreamInputRequest, process.StreamInputResponse]
 	SendInput(context.Context, *connect.Request[process.SendInputRequest]) (*connect.Response[process.SendInputResponse], error)
 	SendSignal(context.Context, *connect.Request[process.SendSignalRequest]) (*connect.Response[process.SendSignalResponse], error)
+	// Close stdin to signal EOF to the process.
+	// Only works for non-PTY processes. For PTY, send Ctrl+D (0x04) instead.
+	CloseStdin(context.Context, *connect.Request[process.CloseStdinRequest]) (*connect.Response[process.CloseStdinResponse], error)
 }
 
 // NewProcessClient constructs a client for the process.Process service. By default, it uses the
@@ -114,6 +119,12 @@ func NewProcessClient(httpClient connect.HTTPClient, baseURL string, opts ...con
 			connect.WithSchema(processMethods.ByName("SendSignal")),
 			connect.WithClientOptions(opts...),
 		),
+		closeStdin: connect.NewClient[process.CloseStdinRequest, process.CloseStdinResponse](
+			httpClient,
+			baseURL+ProcessCloseStdinProcedure,
+			connect.WithSchema(processMethods.ByName("CloseStdin")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -126,6 +137,7 @@ type processClient struct {
 	streamInput *connect.Client[process.StreamInputRequest, process.StreamInputResponse]
 	sendInput   *connect.Client[process.SendInputRequest, process.SendInputResponse]
 	sendSignal  *connect.Client[process.SendSignalRequest, process.SendSignalResponse]
+	closeStdin  *connect.Client[process.CloseStdinRequest, process.CloseStdinResponse]
 }
 
 // List calls process.Process.List.
@@ -163,6 +175,11 @@ func (c *processClient) SendSignal(ctx context.Context, req *connect.Request[pro
 	return c.sendSignal.CallUnary(ctx, req)
 }
 
+// CloseStdin calls process.Process.CloseStdin.
+func (c *processClient) CloseStdin(ctx context.Context, req *connect.Request[process.CloseStdinRequest]) (*connect.Response[process.CloseStdinResponse], error) {
+	return c.closeStdin.CallUnary(ctx, req)
+}
+
 // ProcessHandler is an implementation of the process.Process service.
 type ProcessHandler interface {
 	List(context.Context, *connect.Request[process.ListRequest]) (*connect.Response[process.ListResponse], error)
@@ -173,6 +190,9 @@ type ProcessHandler interface {
 	StreamInput(context.Context, *connect.ClientStream[process.StreamInputRequest]) (*connect.Response[process.StreamInputResponse], error)
 	SendInput(context.Context, *connect.Request[process.SendInputRequest]) (*connect.Response[process.SendInputResponse], error)
 	SendSignal(context.Context, *connect.Request[process.SendSignalRequest]) (*connect.Response[process.SendSignalResponse], error)
+	// Close stdin to signal EOF to the process.
+	// Only works for non-PTY processes. For PTY, send Ctrl+D (0x04) instead.
+	CloseStdin(context.Context, *connect.Request[process.CloseStdinRequest]) (*connect.Response[process.CloseStdinResponse], error)
 }
 
 // NewProcessHandler builds an HTTP handler from the service implementation. It returns the path on
@@ -224,6 +244,12 @@ func NewProcessHandler(svc ProcessHandler, opts ...connect.HandlerOption) (strin
 		connect.WithSchema(processMethods.ByName("SendSignal")),
 		connect.WithHandlerOptions(opts...),
 	)
+	processCloseStdinHandler := connect.NewUnaryHandler(
+		ProcessCloseStdinProcedure,
+		svc.CloseStdin,
+		connect.WithSchema(processMethods.ByName("CloseStdin")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/process.Process/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case ProcessListProcedure:
@@ -240,6 +266,8 @@ func NewProcessHandler(svc ProcessHandler, opts ...connect.HandlerOption) (strin
 			processSendInputHandler.ServeHTTP(w, r)
 		case ProcessSendSignalProcedure:
 			processSendSignalHandler.ServeHTTP(w, r)
+		case ProcessCloseStdinProcedure:
+			processCloseStdinHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -275,4 +303,8 @@ func (UnimplementedProcessHandler) SendInput(context.Context, *connect.Request[p
 
 func (UnimplementedProcessHandler) SendSignal(context.Context, *connect.Request[process.SendSignalRequest]) (*connect.Response[process.SendSignalResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("process.Process.SendSignal is not implemented"))
+}
+
+func (UnimplementedProcessHandler) CloseStdin(context.Context, *connect.Request[process.CloseStdinRequest]) (*connect.Response[process.CloseStdinResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("process.Process.CloseStdin is not implemented"))
 }
