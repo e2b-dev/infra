@@ -90,3 +90,11 @@ sql:
           - db_type: "jsonb"
             go_type: "github.com/e2b-dev/infra/packages/db/pkg/types.JSONBStringMap"
             nullable: true
+
+  - engine: "postgresql"
+    queries: "pkg/testutils/*.sql"
+    gen:
+      go:
+        package: "queries"
+        out: "pkg/testutils/queries"
+        sql_package: "pgx/v5"

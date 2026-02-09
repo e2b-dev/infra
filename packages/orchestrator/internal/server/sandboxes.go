@@ -83,14 +83,9 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 
 	// Check if we've reached the max number of starting instances on this node
 	if req.GetSandbox().GetSnapshot() {
-		acquireCtx, acquireCancel := context.WithTimeout(ctx, acquireTimeout)
-		defer acquireCancel()
-
-		err := s.startingSandboxes.Acquire(acquireCtx, 1)
+		err := s.waitForAcquire(ctx)
 		if err != nil {
-			telemetry.ReportEvent(ctx, "too many resuming sandboxes on node")
-
-			return nil, status.Errorf(codes.ResourceExhausted, "too many sandboxes resuming on this node, please retry")
+			return nil, err
 		}
 	} else {
 		acquired := s.startingSandboxes.TryAcquire(1)
@@ -255,7 +250,7 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 		return nil, status.Error(codes.NotFound, "sandbox not found")
 	}
 
-	sbx.EndAt = req.GetEndTime().AsTime()
+	sbx.SetEndAt(req.GetEndTime().AsTime())
 
 	teamID, buildId, eventData := s.prepareSandboxEventData(ctx, sbx)
 	eventData["set_timeout"] = req.GetEndTime().AsTime().Format(time.RFC3339)
@@ -303,7 +298,7 @@ func (s *Server) List(ctx context.Context, _ *emptypb.Empty) (*orchestrator.Sand
 			Config:    sbx.APIStoredConfig,
 			ClientId:  s.info.ClientId,
 			StartTime: timestamppb.New(sbx.StartedAt),
-			EndTime:   timestamppb.New(sbx.EndAt),
+			EndTime:   timestamppb.New(sbx.GetEndAt()),
 		})
 	}
 

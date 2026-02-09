@@ -10,7 +10,7 @@ import (
 
 	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
-	envdapi "github.com/e2b-dev/infra/tests/integration/internal/envd/api"
+	"github.com/e2b-dev/infra/tests/integration/internal/envd"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 )
@@ -90,7 +90,7 @@ func TestSandboxAutoPauseResumePersisted(t *testing.T) {
 	// Check if the file is still there after resuming
 	fileResponse, err := envdClient.HTTPClient.GetFilesWithResponse(
 		t.Context(),
-		&envdapi.GetFilesParams{
+		&envd.GetFilesParams{
 			Path:     &path,
 			Username: sharedUtils.ToPtr("user"),
 		},
@@ -130,7 +130,7 @@ func TestSandboxAutoPauseResumePersisted(t *testing.T) {
 	// Check if the file is still there after resuming
 	fileResponse, err = envdClient.HTTPClient.GetFilesWithResponse(
 		t.Context(),
-		&envdapi.GetFilesParams{
+		&envd.GetFilesParams{
 			Path:     &path,
 			Username: sharedUtils.ToPtr("user"),
 		},

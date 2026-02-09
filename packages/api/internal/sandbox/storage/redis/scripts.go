@@ -22,4 +22,20 @@ var (
 		redis.call('SREM', KEYS[2], ARGV[1])
 		return 1
 	`)
+
+	// startTransitionScript atomically updates sandbox and sets transition key with UUID.
+	// This is called AFTER Go code has validated the transition and prepared the new sandbox data.
+	// KEYS[1] = sandbox key
+	// KEYS[2] = transition key
+	// KEYS[3] = transition result key
+	// ARGV[1] = new sandbox JSON data
+	// ARGV[2] = transition ID (UUID)
+	// ARGV[3] = transition key TTL in seconds
+	// ARGV[4] = result key TTL in seconds
+	startTransitionScript = redis.NewScript(`
+		redis.call('SET', KEYS[1], ARGV[1])
+		redis.call('SET', KEYS[2], ARGV[2], 'EX', ARGV[3])
+		redis.call('SET', KEYS[3], '', 'EX', ARGV[4])
+		return 1
+	`)
 )

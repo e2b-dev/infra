@@ -15,3 +15,4 @@ go.work.sum
 .infisical.json
 .vscode/mise-tools
 /packages/fc-kernels
+/packages/fc-versions

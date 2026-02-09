@@ -10,8 +10,10 @@ import (
 )
 
 const (
-	lockTimeout   = time.Minute
-	retryInterval = 20 * time.Millisecond
+	lockTimeout            = time.Minute
+	transitionKeyTTL       = 70 * time.Second // Should be longer than the longest expected state transition time
+	transitionResultKeyTTL = 30 * time.Second
+	retryInterval          = 20 * time.Millisecond
 )
 
 var _ sandbox.Storage = (*Storage)(nil)

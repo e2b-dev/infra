@@ -10,14 +10,6 @@ resource "google_artifact_registry_repository_iam_member" "custom_environments_r
   member     = "serviceAccount:${module.init.service_account_email}"
 }
 
-resource "google_secret_manager_secret" "postgres_connection_string" {
-  secret_id = "${var.prefix}postgres-connection-string"
-
-  replication {
-    auto {}
-  }
-}
-
 resource "google_secret_manager_secret" "postgres_read_replica_connection_string" {
   secret_id = "${var.prefix}postgres-read-replica-connection-string"
 
@@ -28,57 +20,6 @@ resource "google_secret_manager_secret" "postgres_read_replica_connection_string
 
 resource "google_secret_manager_secret_version" "postgres_read_replica_connection_string" {
   secret      = google_secret_manager_secret.postgres_read_replica_connection_string.name
-  secret_data = " "
-
-  lifecycle {
-    ignore_changes = [secret_data]
-  }
-}
-
-resource "google_secret_manager_secret" "supabase_jwt_secrets" {
-  secret_id = "${var.prefix}supabase-jwt-secrets"
-
-  replication {
-    auto {}
-  }
-}
-
-resource "google_secret_manager_secret_version" "supabase_jwt_secrets" {
-  secret      = google_secret_manager_secret.supabase_jwt_secrets.name
-  secret_data = " "
-
-  lifecycle {
-    ignore_changes = [secret_data]
-  }
-}
-
-resource "google_secret_manager_secret" "redis_cluster_url" {
-  secret_id = "${var.prefix}redis-cluster-url"
-
-  replication {
-    auto {}
-  }
-}
-
-resource "google_secret_manager_secret_version" "redis_cluster_url" {
-  secret      = google_secret_manager_secret.redis_cluster_url.name
-  secret_data = " "
-
-  lifecycle {
-    ignore_changes = [secret_data]
-  }
-}
-
-resource "google_secret_manager_secret" "posthog_api_key" {
-  secret_id = "${var.prefix}posthog-api-key"
-
-  replication {
-    auto {}
-  }
-}
-
-resource "google_secret_manager_secret_version" "posthog_api_key" {
-  secret      = google_secret_manager_secret.posthog_api_key.name
   secret_data = " "
 
   lifecycle {
