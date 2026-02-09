@@ -169,7 +169,7 @@ func TestPathLargeRead(t *testing.T) {
 	require.NoError(t, err, "failed to execute dd command")
 }
 
-func setupNBDDevice(t *testing.T, featureFlags *featureflags.Client, size, blockSize int64, flags int) *os.File {
+func setupNBDDevice(t *testing.T, featureFlags *featureflags.Client, size, blockSize int64, flags int) *os.File { //nolint:unparam // want to be clear about block size, as we have many
 	t.Helper()
 
 	require.Equal(t, 0, os.Geteuid(), "the nbd requires root privileges to run")

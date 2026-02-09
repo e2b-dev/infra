@@ -54,7 +54,7 @@ func newLocalCluster(
 	nomad *nomadapi.Client,
 	clickhouse clickhouse.Clickhouse,
 	queryLogsProvider *loki.LokiQueryProvider,
-) (*Cluster, error) {
+) *Cluster {
 	clusterID := consts.LocalClusterID
 
 	instances := smap.New[*Instance]()
@@ -78,7 +78,7 @@ func newLocalCluster(
 	// Periodically sync cluster instances
 	go c.synchronization.Start(ctx, instancesSyncInterval, instancesSyncTimeout, true)
 
-	return c, nil
+	return c
 }
 
 func newRemoteCluster(

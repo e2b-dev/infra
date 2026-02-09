@@ -31,7 +31,7 @@ const (
 	blockSize = int64(1024)
 )
 
-func newDiff(t *testing.T, cachePath, buildId string, diffType DiffType, blockSize int64) Diff {
+func newDiff(t *testing.T, cachePath, buildId string, diffType DiffType, blockSize int64) Diff { //nolint:unparam // can have many diffTypes, want to be clear for future expansion
 	t.Helper()
 
 	localDiff, err := NewLocalDiffFile(cachePath, buildId, diffType)
