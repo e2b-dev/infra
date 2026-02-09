@@ -330,13 +330,14 @@ func (p *Handler) WriteStdin(data []byte) error {
 	}
 
 	p.stdinMu.Lock()
-	defer p.stdinMu.Unlock()
+	stdin := p.stdin
+	p.stdinMu.Unlock()
 
-	if p.stdin == nil {
+	if stdin == nil {
 		return fmt.Errorf("stdin not enabled or closed")
 	}
 
-	_, err := p.stdin.Write(data)
+	_, err := stdin.Write(data)
 	if err != nil {
 		return fmt.Errorf("error writing to stdin of process '%d': %w", p.cmd.Process.Pid, err)
 	}
@@ -352,18 +353,16 @@ func (p *Handler) CloseStdin() error {
 	}
 
 	p.stdinMu.Lock()
-	defer p.stdinMu.Unlock()
+	stdin := p.stdin
+	// Set to nil while holding the lock so future writes fail fast.
+	p.stdin = nil
+	p.stdinMu.Unlock()
 
-	if p.stdin == nil {
+	if stdin == nil {
 		return nil
 	}
 
-	err := p.stdin.Close()
-	// We still set the stdin to nil even on error as there are no errors,
-	// for which it is really safe to retry close across all distributions.
-	p.stdin = nil
-
-	return err
+	return stdin.Close()
 }
 
 func (p *Handler) WriteTty(data []byte) error {
