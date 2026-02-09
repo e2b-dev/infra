@@ -188,7 +188,7 @@ func TestIntegrationTest(t *testing.T) {
 		exec.WithEnv([]string{
 			"NFS_HOST=" + defaultDockerHost,
 			"NFS_PORT=" + nfsListenPortStr,
-			"NFS_VOLUME=" + volumeName,
+			"NFS_PATH=/" + volumeName,
 		}),
 	)
 	require.NoError(t, err)

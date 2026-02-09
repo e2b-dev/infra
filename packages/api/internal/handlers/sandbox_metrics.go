@@ -56,12 +56,7 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string
 
 	metrics, apiErr := cluster.GetResources().GetSandboxMetrics(ctx, team.ID.String(), sandboxID, params.Start, params.End)
 	if apiErr != nil {
-		if apiErr.Code >= 500 {
-			telemetry.ReportCriticalError(ctx, "error getting sandbox metrics", apiErr.Err)
-		} else {
-			telemetry.ReportError(ctx, "error getting sandbox metrics", apiErr.Err)
-		}
-
+		telemetry.ReportErrorByCode(ctx, apiErr.Code, "error getting sandbox metrics", apiErr.Err)
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return

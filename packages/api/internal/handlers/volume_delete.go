@@ -6,12 +6,10 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -43,8 +41,9 @@ func (a *APIStore) DeleteVolumesVolumeID(c *gin.Context, volumeID api.VolumeID) 
 	}
 
 	go func(ctx context.Context) {
+		// if this fails, we can clean it up later
 		if err := cluster.DeleteVolume(ctx, volume); err != nil {
-			logger.L().Error(ctx, "error when deleting volume", zap.Error(err))
+			telemetry.ReportCriticalError(ctx, fmt.Sprintf("failed to delete data for volume %q", volume.ID.String()), err)
 		}
 	}(context.WithoutCancel(ctx))
 

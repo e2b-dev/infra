@@ -99,8 +99,10 @@ func (r *ClusterResourceProviderImpl) GetSandboxesMetrics(ctx context.Context, t
 	return items, nil
 }
 
-func (r *ClusterResourceProviderImpl) GetSandboxLogs(ctx context.Context, teamID string, sandboxID string, start *int64, limit *int32) (api.SandboxLogs, *api.APIError) {
-	res, err := r.client.V1SandboxLogsWithResponse(ctx, sandboxID, &edgeapi.V1SandboxLogsParams{TeamID: teamID, Start: start, Limit: limit})
+func (r *ClusterResourceProviderImpl) GetSandboxLogs(ctx context.Context, teamID string, sandboxID string, start *int64, end *int64, limit *int32, dr *api.LogsDirection) (api.SandboxLogs, *api.APIError) {
+	direction := apiLogDirectionToEdgeSandboxLogsDirection(dr)
+	params := &edgeapi.V1SandboxLogsParams{TeamID: teamID, Start: start, End: end, Limit: limit, Direction: direction}
+	res, err := r.client.V1SandboxLogsWithResponse(ctx, sandboxID, params)
 	if err != nil {
 		return api.SandboxLogs{}, &api.APIError{
 			Err:       err,
@@ -148,25 +150,27 @@ func (r *ClusterResourceProviderImpl) GetBuildLogs(
 	source *api.LogsSource,
 ) ([]logs.LogEntry, *api.APIError) {
 	// Use shared implementation with Edge API as the persistent log backend
-	start, end := logQueryWindow(cursor, direction)
+	start, end := LogQueryWindow(cursor, direction)
 	persistentFetcher := r.getBuildLogsFromEdge(ctx, templateID, buildID, offset, limit, level, start, end, direction)
 
 	return getBuildLogsWithSources(ctx, r.instances, nodeID, templateID, buildID, offset, limit, level, cursor, direction, source, persistentFetcher)
 }
 
-func (r *ClusterResourceProviderImpl) getBuildLogsFromEdge(ctx context.Context, templateID string, buildID string, offset int32, limit int32, level *logs.LogLevel, start time.Time, end time.Time, direction api.LogsDirection) logSourceFunc {
+func (r *ClusterResourceProviderImpl) getBuildLogsFromEdge(ctx context.Context, templateID string, buildID string, offset int32, limit int32, level *logs.LogLevel, start time.Time, end time.Time, dr api.LogsDirection) logSourceFunc {
 	return func() ([]logs.LogEntry, *api.APIError) {
+		direction := apiLogDirectionToEdgeBuildLogsDirection(&dr)
 		res, err := r.client.V1TemplateBuildLogsWithResponse(
 			ctx, buildID, &edgeapi.V1TemplateBuildLogsParams{
 				TemplateID: templateID,
 				Offset:     &offset,
 				Limit:      &limit,
 				Level:      logToEdgeLevel(level),
+				Start:      utils.ToPtr(start.UnixMilli()),
+				End:        utils.ToPtr(end.UnixMilli()),
+				Direction:  direction,
+
 				// TODO: remove this once the API spec is not required to have orchestratorID (https://linear.app/e2b/issue/ENG-3352)
 				OrchestratorID: utils.ToPtr("unused"),
-				Start:          utils.ToPtr(start.UnixMilli()),
-				End:            utils.ToPtr(end.UnixMilli()),
-				Direction:      utils.ToPtr(edgeapi.V1TemplateBuildLogsParamsDirection(direction)),
 			},
 		)
 		if err != nil {

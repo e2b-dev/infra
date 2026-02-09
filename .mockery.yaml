@@ -1,4 +1,3 @@
-
 packages:
   github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem/filesystemconnect:
     interfaces:
@@ -42,14 +41,6 @@ packages:
           dir: packages/shared/pkg/utils
           filename: mocks_test.go
           pkgname: utils
-
-  github.com/e2b-dev/infra/packages/api/internal/clusters:
-    interfaces:
-      ClusterResource:
-        config:
-          dir: packages/api/internal/clusters/mocks
-          filename: mocks.go
-          pkgname: clustersmocks
 
   github.com/e2b-dev/infra/packages/api/internal/handlers:
     interfaces:

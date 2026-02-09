@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
-	"slices"
 
 	"github.com/gin-gonic/gin"
 
@@ -34,7 +33,7 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 	)
 
 	if !a.featureFlags.BoolFlag(ctx, feature_flags.PersistentVolumesFlag) {
-		a.sendAPIStoreError(c, http.StatusBadRequest, "use of volumes is not enabled")
+		a.sendAPIStoreError(c, http.StatusForbidden, "use of volumes is not enabled")
 
 		return
 	}
@@ -78,19 +77,18 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 		return
 	}
 
-	if volumeTypes, err := cluster.GetResources().GetVolumeTypes(ctx); err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "failed to get volume types for cluster")
-		telemetry.ReportCriticalError(ctx, "failed to get volume types for cluster", err)
-
-		return
-	} else if !slices.Contains(volumeTypes, volumeType) {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "volume type is not supported by cluster")
-		telemetry.ReportCriticalError(ctx, "volume type is not supported by cluster", nil)
+	client, tx, err := a.sqlcDB.WithTx(ctx)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to create transaction")
+		telemetry.ReportCriticalError(ctx, "Failed to create transaction", err)
 
 		return
 	}
+	defer func(ctx context.Context) {
+		_ = tx.Rollback(ctx)
+	}(context.WithoutCancel(ctx))
 
-	volume, err := a.sqlcDB.CreateVolume(ctx, queries.CreateVolumeParams{
+	volume, err := client.CreateVolume(ctx, queries.CreateVolumeParams{
 		TeamID:     team.ID,
 		Name:       body.Name,
 		VolumeType: volumeType,
@@ -100,17 +98,42 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 	case dberrors.IsUniqueConstraintViolation(err):
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Volume with name '%s' already exists", body.Name))
 		telemetry.ReportError(ctx, "volume already exists", err)
+
+		return
 	case err != nil:
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when creating volume")
 		telemetry.ReportCriticalError(ctx, "error when creating volume", err)
-	default:
-		result := api.Volume{
-			Id:   volume.ID.String(),
-			Name: volume.Name,
-		}
 
-		c.JSON(http.StatusCreated, result)
+		return
+	default:
 	}
+
+	if err := cluster.CreateVolume(ctx, volume); err != nil {
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when creating directory")
+		telemetry.ReportCriticalError(ctx, "error when creating directory", err)
+
+		return
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		go func(ctx context.Context) {
+			if err := cluster.DeleteVolume(ctx, volume); err != nil {
+				telemetry.ReportCriticalError(ctx, "failed to clean up volume after failing to commit transaction", err)
+			}
+		}(context.WithoutCancel(ctx))
+
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to commit transaction")
+		telemetry.ReportCriticalError(ctx, "failed to commit transaction", err)
+
+		return
+	}
+
+	result := api.Volume{
+		Id:   volume.ID.String(),
+		Name: volume.Name,
+	}
+
+	c.JSON(http.StatusCreated, result)
 }
 
 func (a *APIStore) getVolumeType(ctx context.Context) string {
