@@ -30,13 +30,13 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/api/internal/db/types"
-	"github.com/e2b-dev/infra/packages/api/internal/factories"
 	"github.com/e2b-dev/infra/packages/api/internal/handlers"
 	customMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware"
 	metricsMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics"
 	tracingMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware/otel/tracing"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -369,7 +369,7 @@ func run() int {
 		l.Fatal(ctx, "failed to create proxy grpc listener", zap.Error(err))
 	}
 
-	grpcServer := factories.NewGRPCServer(tel)
+	grpcServer := e2bgrpc.NewGRPCServer(tel)
 	proxygrpc.RegisterSandboxServiceServer(grpcServer, handlers.NewSandboxService(apiStore))
 
 	// pass the signal context so that handlers know when shutdown is happening.
