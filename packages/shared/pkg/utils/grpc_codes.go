@@ -31,6 +31,9 @@ func GRPCCodeFromHTTPStatus(statusCode int) codes.Code {
 	case http.StatusBadGateway, http.StatusServiceUnavailable:
 		return codes.Unavailable
 	default:
+		if statusCode >= 200 && statusCode < 300 {
+			return codes.OK
+		}
 		if statusCode >= http.StatusInternalServerError {
 			return codes.Internal
 		}
