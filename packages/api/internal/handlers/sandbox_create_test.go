@@ -431,7 +431,7 @@ func TestOrchestrator_convertVolumeMounts(t *testing.T) {
 		)
 		require.NoError(t, err)
 		assert.Equal(t, []*orchestrator.SandboxVolumeMount{
-			{Id: dbVolume.ID.String(), Path: "/vol1", Type: "local"},
+			{Id: dbVolume.ID.String(), Name: "vol1", Path: "/vol1", Type: "local"},
 		}, actual)
 	})
 }

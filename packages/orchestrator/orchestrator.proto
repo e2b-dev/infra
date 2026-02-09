@@ -54,6 +54,7 @@ message SandboxVolumeMount {
   string id = 1;
   string path = 2;
   string type = 3;
+  string name = 4;
 }
 
 message SandboxNetworkConfig {

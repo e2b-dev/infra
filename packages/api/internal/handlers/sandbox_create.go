@@ -323,6 +323,7 @@ func createOrchestratorVolumeMounts(
 			Id:   actualVolume.ID.String(),
 			Path: v.Path,
 			Type: actualVolume.VolumeType,
+			Name: actualVolume.Name,
 		})
 	}
 
