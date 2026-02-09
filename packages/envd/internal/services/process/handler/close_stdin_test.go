@@ -13,7 +13,8 @@ type blockingWriteCloser struct {
 	unblockWrite chan struct{}
 	closeCalled  chan struct{}
 
-	once sync.Once
+	writeOnce sync.Once
+	closeOnce sync.Once
 }
 
 func newBlockingWriteCloser() *blockingWriteCloser {
@@ -25,19 +26,16 @@ func newBlockingWriteCloser() *blockingWriteCloser {
 }
 
 func (b *blockingWriteCloser) Write(p []byte) (int, error) {
-	b.once.Do(func() { close(b.writeStarted) })
+	b.writeOnce.Do(func() { close(b.writeStarted) })
 	<-b.unblockWrite
 	return len(p), nil
 }
 
 func (b *blockingWriteCloser) Close() error {
-	select {
-	case <-b.closeCalled:
-		// already closed
-	default:
+	b.closeOnce.Do(func() {
 		close(b.closeCalled)
 		close(b.unblockWrite)
-	}
+	})
 	return nil
 }
 
