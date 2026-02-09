@@ -36,24 +36,17 @@ if command -v ufw >/dev/null 2>&1; then
   if command -v iptables >/dev/null 2>&1; then
     iptables -F 2>/dev/null || true
     iptables -X 2>/dev/null || true
-    iptables -t nat -F 2>/dev/null || true
-    iptables -t nat -X 2>/dev/null || true
-    iptables -t mangle -F 2>/dev/null || true
-    iptables -t mangle -X 2>/dev/null || true
   fi
   
   if command -v ip6tables >/dev/null 2>&1; then
     ip6tables -F 2>/dev/null || true
     ip6tables -X 2>/dev/null || true
-    ip6tables -t nat -F 2>/dev/null || true
-    ip6tables -t nat -X 2>/dev/null || true
-    ip6tables -t mangle -F 2>/dev/null || true
-    ip6tables -t mangle -X 2>/dev/null || true
   fi
   
-  # 设置 UFW 默认策略（先拒绝入站，允许出站）
+  # 设置 UFW 默认策略（先拒绝入站，允许出站，允许路由转发以支持 Docker）
   ufw default deny incoming
   ufw default allow outgoing
+  ufw default allow routed
   
   # 应用端口规则
   for p in "$${PORTS[@]}"; do
