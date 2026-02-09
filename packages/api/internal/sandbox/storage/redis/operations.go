@@ -194,15 +194,3 @@ func (s *Storage) AllItems(_ context.Context, _ []sandbox.State, _ ...sandbox.It
 	// TODO: Implement later (ENG-3451)
 	return nil, nil
 }
-
-// StartRemoving initiates the removal process for a sandbox
-func (s *Storage) StartRemoving(_ context.Context, _ uuid.UUID, _ string, _ sandbox.StateAction) (alreadyDone bool, callback func(context.Context, error), err error) {
-	// TODO: Implement later (ENG-3285)
-	return false, nil, nil
-}
-
-// WaitForStateChange waits for a sandbox state to change
-func (s *Storage) WaitForStateChange(_ context.Context, _ uuid.UUID, _ string) error {
-	// TODO: Implement later (ENG-3285)
-	return nil
-}

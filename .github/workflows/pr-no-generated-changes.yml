@@ -59,7 +59,7 @@ jobs:
         run: ./scripts/fix-tracers.sh
 
       - name: Generate all code
-        run: make --jobs=4 generate
+        run: make generate  # cannot do this in parallel, as there are some race conditions
 
       - name: Install golangci-lint
         uses: golangci/golangci-lint-action@v9
