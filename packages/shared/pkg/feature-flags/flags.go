@@ -82,6 +82,7 @@ func newBoolFlag(name string, fallback bool) BoolFlag {
 var (
 	MetricsWriteFlag                    = newBoolFlag("sandbox-metrics-write", env.IsDevelopment())
 	MetricsReadFlag                     = newBoolFlag("sandbox-metrics-read", env.IsDevelopment())
+	HostStatsEnabled                    = newBoolFlag("host-stats-enabled", false)
 	SnapshotFeatureFlag                 = newBoolFlag("use-nfs-for-snapshots", env.IsDevelopment())
 	TemplateFeatureFlag                 = newBoolFlag("use-nfs-for-templates", env.IsDevelopment())
 	EnableWriteThroughCacheFlag         = newBoolFlag("write-to-cache-on-writes", false)

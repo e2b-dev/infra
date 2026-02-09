@@ -23,6 +23,7 @@ import (
 
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	clickhouseevents "github.com/e2b-dev/infra/packages/clickhouse/pkg/events"
+	clickhousehoststats "github.com/e2b-dev/infra/packages/clickhouse/pkg/hoststats"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/events"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/factories"
@@ -310,6 +311,8 @@ func run(config cfg.Config) (success bool) {
 
 	sbxEventsDeliveryTargets := make([]event.Delivery[event.SandboxEvent], 0)
 
+	var hostStatsDelivery clickhousehoststats.Delivery
+
 	// Clickhouse sandbox events delivery target
 	if config.ClickhouseConnectionString != "" {
 		clickhouseConn, err := clickhouse.NewDriver(config.ClickhouseConnectionString)
@@ -324,6 +327,19 @@ func run(config cfg.Config) (success bool) {
 
 		sbxEventsDeliveryTargets = append(sbxEventsDeliveryTargets, sbxEventsDeliveryClickhouse)
 		closers = append(closers, closer{"sandbox events delivery for clickhouse", sbxEventsDeliveryClickhouse.Close})
+
+		// Clickhouse sandbox host stats delivery
+		hostStatsDeliveryClickhouse, err := clickhousehoststats.NewDefaultClickhouseHostStatsDelivery(
+			ctx,
+			clickhouseConn,
+			featureFlags,
+		)
+		if err != nil {
+			logger.L().Fatal(ctx, "failed to create clickhouse host stats delivery", zap.Error(err))
+		}
+
+		hostStatsDelivery = hostStatsDeliveryClickhouse
+		closers = append(closers, closer{"sandbox host stats delivery", hostStatsDeliveryClickhouse.Close})
 	}
 
 	// redis
@@ -408,7 +424,7 @@ func run(config cfg.Config) (success bool) {
 	closers = append(closers, closer{"network pool", networkPool.Close})
 
 	// sandbox factory
-	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags)
+	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags, hostStatsDelivery)
 
 	orchestratorService := server.New(ctx, server.ServiceConfig{
 		Config:           config,

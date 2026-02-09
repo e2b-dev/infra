@@ -17,6 +17,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/clickhouse/pkg/hoststats"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
@@ -144,6 +145,8 @@ type Sandbox struct {
 
 	Checks *Checks
 
+	hostStatsCollector *HostStatsCollector
+
 	// Deprecated: to be removed in the future
 	// It was used to store the config to allow API restarts
 	APIStoredConfig *orchestrator.SandboxConfig
@@ -162,10 +165,11 @@ func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
 }
 
 type Factory struct {
-	config       cfg.BuilderConfig
-	networkPool  *network.Pool
-	devicePool   *nbd.DevicePool
-	featureFlags *featureflags.Client
+	config            cfg.BuilderConfig
+	networkPool       *network.Pool
+	devicePool        *nbd.DevicePool
+	featureFlags      *featureflags.Client
+	hostStatsDelivery hoststats.Delivery
 }
 
 func NewFactory(
@@ -173,12 +177,14 @@ func NewFactory(
 	networkPool *network.Pool,
 	devicePool *nbd.DevicePool,
 	featureFlags *featureflags.Client,
+	hostStatsDelivery hoststats.Delivery,
 ) *Factory {
 	return &Factory{
-		config:       config,
-		networkPool:  networkPool,
-		devicePool:   devicePool,
-		featureFlags: featureFlags,
+		config:            config,
+		networkPool:       networkPool,
+		devicePool:        devicePool,
+		featureFlags:      featureFlags,
+		hostStatsDelivery: hostStatsDelivery,
 	}
 }
 
@@ -657,6 +663,45 @@ func (f *Factory) ResumeSandbox(
 
 	telemetry.ReportEvent(execCtx, "envd initialized")
 
+	// Initialize host stats collector if enabled
+	hostStatsEnabled := f.featureFlags.BoolFlag(ctx, featureflags.HostStatsEnabled)
+	if hostStatsEnabled && f.hostStatsDelivery != nil {
+		firecrackerPID, err := fcHandle.Pid()
+		if err != nil {
+			logger.L().Error(ctx, "failed to get firecracker PID for host stats",
+				zap.String("sandbox_id", runtime.SandboxID),
+				zap.Error(err))
+		} else {
+			collector, err := NewHostStatsCollector(
+				HostStatsMetadata{
+					SandboxID:   runtime.SandboxID,
+					ExecutionID: runtime.ExecutionID,
+					TeamID:      runtime.TeamID,
+				},
+				int32(firecrackerPID),
+				f.hostStatsDelivery,
+			)
+			if err != nil {
+				logger.L().Error(ctx, "failed to create host stats collector",
+					zap.String("sandbox_id", runtime.SandboxID),
+					zap.Error(err))
+			} else {
+				sbx.hostStatsCollector = collector
+
+				// Take first sample immediately after envd initialization
+				err = collector.CollectSample(ctx)
+				if err != nil {
+					logger.L().Error(ctx, "failed to collect initial host stats",
+						zap.String("sandbox_id", runtime.SandboxID),
+						zap.Error(err))
+				}
+
+				// Start periodic sampling in background
+				collector.Start(execCtx)
+			}
+		}
+	}
+
 	go sbx.Checks.Start(execCtx)
 
 	go func() {
@@ -721,6 +766,11 @@ func (s *Sandbox) doStop(ctx context.Context) error {
 	defer span.End()
 
 	var errs []error
+
+	// Stop host stats collector and collect final sample
+	if s.hostStatsCollector != nil {
+		s.hostStatsCollector.Stop(ctx)
+	}
 
 	// Stop the health checks before stopping the sandbox
 	s.Checks.Stop()
