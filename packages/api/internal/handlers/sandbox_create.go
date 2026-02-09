@@ -231,21 +231,19 @@ func buildAutoResumeConfig(autoResume *api.SandboxAutoResumeConfig) (*types.Sand
 		return nil, nil
 	}
 
-	cfg := &types.SandboxAutoResumeConfig{}
-
-	// Generated OpenAPI types use plain strings for enum fields. If the field is omitted
-	// from JSON (or an empty object is sent), it decodes as "" and should be treated as
-	// "unset" (which means "off" for auto-resume).
-	if autoResume.Policy == "" {
-		return cfg, nil
+	p := string(autoResume.Policy)
+	if p == "" {
+		return nil, &api.APIError{
+			Code:      http.StatusBadRequest,
+			ClientMsg: "Invalid autoResume policy",
+			Err:       fmt.Errorf("autoResume policy is required"),
+		}
 	}
 
-	policy := types.SandboxAutoResumePolicy(autoResume.Policy)
+	policy := types.SandboxAutoResumePolicy(p)
 	switch policy {
 	case types.SandboxAutoResumeAny, types.SandboxAutoResumeOff:
-		cfg.Policy = &policy
-
-		return cfg, nil
+		return &types.SandboxAutoResumeConfig{Policy: policy}, nil
 	default:
 		return nil, &api.APIError{
 			Code:      http.StatusBadRequest,

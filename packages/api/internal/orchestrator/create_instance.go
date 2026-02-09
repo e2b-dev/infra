@@ -214,9 +214,15 @@ func (o *Orchestrator) CreateSandbox(
 
 	var orchAutoResume *orchestrator.SandboxAutoResumeConfig
 	if autoResume != nil {
-		orchAutoResume = &orchestrator.SandboxAutoResumeConfig{}
-		if autoResume.Policy != nil {
-			orchAutoResume.Policy = string(*autoResume.Policy)
+		policy := string(autoResume.Policy)
+		if policy == "" {
+			// this shouldn't happen because the API should default it to off, but just in case, we will default it to off
+			logger.L().Warn(ctx, "AutoResume policy is not set, defaulting to 'off'")
+			policy = string(types.SandboxAutoResumeOff)
+		}
+
+		orchAutoResume = &orchestrator.SandboxAutoResumeConfig{
+			Policy: policy,
 		}
 	}
 

@@ -16,7 +16,7 @@ func TestBuildAutoResumeConfig(t *testing.T) {
 		name          string
 		in            *api.SandboxAutoResumeConfig
 		wantNil       bool
-		wantPolicy    *dbtypes.SandboxAutoResumePolicy
+		wantPolicy    dbtypes.SandboxAutoResumePolicy
 		wantErr       bool
 		wantErrCode   int
 		wantErrClient string
@@ -27,10 +27,11 @@ func TestBuildAutoResumeConfig(t *testing.T) {
 			wantNil: true,
 		},
 		{
-			name:       "empty policy is treated as unset/off (no error)",
+			name:        "empty policy is rejected",
 			in:         &api.SandboxAutoResumeConfig{},
-			wantNil:    false,
-			wantPolicy: nil,
+			wantErr:    true,
+			wantErrCode:   http.StatusBadRequest,
+			wantErrClient: "Invalid autoResume policy",
 		},
 		{
 			name: "policy any is accepted",
@@ -38,11 +39,7 @@ func TestBuildAutoResumeConfig(t *testing.T) {
 				Policy: api.Any,
 			},
 			wantNil: false,
-			wantPolicy: func() *dbtypes.SandboxAutoResumePolicy {
-				p := dbtypes.SandboxAutoResumeAny
-
-				return &p
-			}(),
+			wantPolicy: dbtypes.SandboxAutoResumeAny,
 		},
 		{
 			name: "policy off is accepted",
@@ -50,11 +47,7 @@ func TestBuildAutoResumeConfig(t *testing.T) {
 				Policy: api.Off,
 			},
 			wantNil: false,
-			wantPolicy: func() *dbtypes.SandboxAutoResumePolicy {
-				p := dbtypes.SandboxAutoResumeOff
-
-				return &p
-			}(),
+			wantPolicy: dbtypes.SandboxAutoResumeOff,
 		},
 		{
 			name: "invalid policy is rejected",
@@ -66,12 +59,13 @@ func TestBuildAutoResumeConfig(t *testing.T) {
 			wantErrClient: "Invalid autoResume policy",
 		},
 		{
-			name: "explicit empty string policy is treated as unset/off (no error)",
+			name: "explicit empty string policy is rejected",
 			in: &api.SandboxAutoResumeConfig{
 				Policy: api.SandboxAutoResumePolicy(""),
 			},
-			wantNil:    false,
-			wantPolicy: nil,
+			wantErr:       true,
+			wantErrCode:   http.StatusBadRequest,
+			wantErrClient: "Invalid autoResume policy",
 		},
 	}
 
@@ -111,17 +105,8 @@ func TestBuildAutoResumeConfig(t *testing.T) {
 				t.Fatalf("buildAutoResumeConfig() = nil, want non-nil config")
 			}
 
-			if tt.wantPolicy == nil {
-				if got.Policy != nil {
-					t.Fatalf("buildAutoResumeConfig().Policy = %v, want nil", *got.Policy)
-				}
-			} else {
-				if got.Policy == nil {
-					t.Fatalf("buildAutoResumeConfig().Policy = nil, want %v", *tt.wantPolicy)
-				}
-				if *got.Policy != *tt.wantPolicy {
-					t.Fatalf("buildAutoResumeConfig().Policy = %v, want %v", *got.Policy, *tt.wantPolicy)
-				}
+			if got.Policy != tt.wantPolicy {
+				t.Fatalf("buildAutoResumeConfig().Policy = %v, want %v", got.Policy, tt.wantPolicy)
 			}
 		})
 	}

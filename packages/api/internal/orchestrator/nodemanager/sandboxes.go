@@ -78,10 +78,18 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
 
 		var autoResume *types.SandboxAutoResumeConfig
 		if autoResumeCfg := config.GetAutoResume(); autoResumeCfg != nil {
-			autoResume = &types.SandboxAutoResumeConfig{}
-			if p := strings.TrimSpace(autoResumeCfg.GetPolicy()); p != "" {
-				policy := types.SandboxAutoResumePolicy(p)
-				autoResume.Policy = &policy
+			p := strings.TrimSpace(autoResumeCfg.GetPolicy())
+			if p == "" {
+				p = string(types.SandboxAutoResumeOff)
+			}
+
+			policy := types.SandboxAutoResumePolicy(p)
+			switch policy {
+			case types.SandboxAutoResumeAny, types.SandboxAutoResumeOff:
+				autoResume = &types.SandboxAutoResumeConfig{Policy: policy}
+			default:
+				// Be defensive: unknown policy values should behave like "off".
+				autoResume = &types.SandboxAutoResumeConfig{Policy: types.SandboxAutoResumeOff}
 			}
 		}
 

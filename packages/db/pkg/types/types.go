@@ -37,8 +37,8 @@ const (
 )
 
 type SandboxAutoResumeConfig struct {
-	// Policy is optional; unset means "off".
-	Policy *SandboxAutoResumePolicy `json:"policy,omitempty"`
+	// Policy defaults to "off". Empty/unknown values should be treated as "off".
+	Policy SandboxAutoResumePolicy `json:"policy"`
 }
 
 type PausedSandboxConfig struct {
