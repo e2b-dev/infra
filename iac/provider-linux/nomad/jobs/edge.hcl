@@ -97,7 +97,8 @@ job "client-proxy" {
       max_parallel     = ${update_max_parallel}
       canary           = ${update_max_parallel}
       min_healthy_time = "10s"
-      healthy_deadline = "30s"
+      # Increased to 2m to account for DNS resolution delays during initial startup
+      healthy_deadline = "2m"
       auto_promote     = true
       progress_deadline = "24h"
     }
