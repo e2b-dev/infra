@@ -84,9 +84,9 @@ func TestCloseStdinDoesNotDeadlockWithConcurrentWrite(t *testing.T) {
 
 	select {
 	case err := <-writeDone:
-		if err != nil {
-			t.Fatalf("WriteStdin returned error: %v", err)
-		}
+		// A concurrent close may cause the in-flight write to fail; either outcome is fine as
+		// long as it doesn't deadlock.
+		_ = err
 	case <-time.After(1 * time.Second):
 		t.Fatal("timed out waiting for WriteStdin to return after CloseStdin")
 	}

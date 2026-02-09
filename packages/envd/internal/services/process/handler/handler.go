@@ -339,6 +339,15 @@ func (p *Handler) WriteStdin(data []byte) error {
 
 	_, err := stdin.Write(data)
 	if err != nil {
+		// CloseStdin can race with an in-flight write; in that case, the write may fail with a
+		// low-level "bad file descriptor"/"broken pipe" style error.
+		p.stdinMu.Lock()
+		closed := p.stdin == nil
+		p.stdinMu.Unlock()
+		if closed {
+			return fmt.Errorf("stdin closed or closing: %w", err)
+		}
+
 		return fmt.Errorf("error writing to stdin of process '%d': %w", p.cmd.Process.Pid, err)
 	}
 
