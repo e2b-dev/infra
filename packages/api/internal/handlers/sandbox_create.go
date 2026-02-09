@@ -145,12 +145,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		autoPause = *body.AutoPause
 	}
 
-	autoResume, autoResumeErr := buildAutoResumeConfig(body.AutoResume)
-	if autoResumeErr != nil {
-		a.sendAPIStoreError(c, autoResumeErr.Code, autoResumeErr.ClientMsg)
-
-		return
-	}
+	autoResume := buildAutoResumeConfig(body.AutoResume)
 
 	var envdAccessToken *string = nil
 	if body.Secure != nil && *body.Secure == true {
@@ -226,29 +221,13 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	c.JSON(http.StatusCreated, &sbx)
 }
 
-func buildAutoResumeConfig(autoResume *api.SandboxAutoResumeConfig) (*types.SandboxAutoResumeConfig, *api.APIError) {
+func buildAutoResumeConfig(autoResume *api.SandboxAutoResumeConfig) *types.SandboxAutoResumeConfig {
 	if autoResume == nil {
-		return nil, nil
+		return nil
 	}
 
-	p := string(autoResume.Policy)
-	if p == "" {
-		return nil, &api.APIError{
-			Code:      http.StatusBadRequest,
-			ClientMsg: "Invalid autoResume policy",
-			Err:       fmt.Errorf("autoResume policy is required"),
-		}
-	}
-
-	policy := types.SandboxAutoResumePolicy(p)
-	if policy == types.SandboxAutoResumeAny || policy == types.SandboxAutoResumeOff {
-		return &types.SandboxAutoResumeConfig{Policy: policy}, nil
-	}
-
-	return nil, &api.APIError{
-		Code:      http.StatusBadRequest,
-		ClientMsg: "Invalid autoResume policy",
-		Err:       fmt.Errorf("invalid autoResume policy %q", autoResume.Policy),
+	return &types.SandboxAutoResumeConfig{
+		Policy: types.SandboxAutoResumePolicy(autoResume.Policy),
 	}
 }
 

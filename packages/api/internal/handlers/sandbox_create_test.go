@@ -13,13 +13,10 @@ func TestBuildAutoResumeConfig(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name          string
-		in            *api.SandboxAutoResumeConfig
-		wantNil       bool
-		wantPolicy    dbtypes.SandboxAutoResumePolicy
-		wantErr       bool
-		wantErrCode   int
-		wantErrClient string
+		name       string
+		in         *api.SandboxAutoResumeConfig
+		wantNil    bool
+		wantPolicy dbtypes.SandboxAutoResumePolicy
 	}{
 		{
 			name:    "nil config returns nil",
@@ -27,18 +24,10 @@ func TestBuildAutoResumeConfig(t *testing.T) {
 			wantNil: true,
 		},
 		{
-			name:          "empty policy is rejected",
-			in:            &api.SandboxAutoResumeConfig{},
-			wantErr:       true,
-			wantErrCode:   http.StatusBadRequest,
-			wantErrClient: "Invalid autoResume policy",
-		},
-		{
 			name: "policy any is accepted",
 			in: &api.SandboxAutoResumeConfig{
 				Policy: api.Any,
 			},
-			wantNil:    false,
 			wantPolicy: dbtypes.SandboxAutoResumeAny,
 		},
 		{
@@ -46,26 +35,7 @@ func TestBuildAutoResumeConfig(t *testing.T) {
 			in: &api.SandboxAutoResumeConfig{
 				Policy: api.Off,
 			},
-			wantNil:    false,
 			wantPolicy: dbtypes.SandboxAutoResumeOff,
-		},
-		{
-			name: "invalid policy is rejected",
-			in: &api.SandboxAutoResumeConfig{
-				Policy: api.SandboxAutoResumePolicy("nope"),
-			},
-			wantErr:       true,
-			wantErrCode:   http.StatusBadRequest,
-			wantErrClient: "Invalid autoResume policy",
-		},
-		{
-			name: "explicit empty string policy is rejected",
-			in: &api.SandboxAutoResumeConfig{
-				Policy: api.SandboxAutoResumePolicy(""),
-			},
-			wantErr:       true,
-			wantErrCode:   http.StatusBadRequest,
-			wantErrClient: "Invalid autoResume policy",
 		},
 	}
 
@@ -73,25 +43,7 @@ func TestBuildAutoResumeConfig(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := buildAutoResumeConfig(tt.in)
-
-			if tt.wantErr {
-				if err == nil {
-					t.Fatalf("buildAutoResumeConfig() expected error, got nil")
-				}
-				if err.Code != tt.wantErrCode {
-					t.Fatalf("buildAutoResumeConfig() error code = %d, want %d", err.Code, tt.wantErrCode)
-				}
-				if err.ClientMsg != tt.wantErrClient {
-					t.Fatalf("buildAutoResumeConfig() client message = %q, want %q", err.ClientMsg, tt.wantErrClient)
-				}
-
-				return
-			}
-
-			if err != nil {
-				t.Fatalf("buildAutoResumeConfig() unexpected error: %v", err)
-			}
+			got := buildAutoResumeConfig(tt.in)
 
 			if tt.wantNil {
 				if got != nil {
