@@ -26,24 +26,24 @@ func New(config cfg.Config) *VolumeService {
 	return &VolumeService{config: config}
 }
 
-func (v *VolumeService) buildVolumePath(volumeType, teamID, volumeID string) (string, error) {
+func (v *VolumeService) buildVolumePath(volumeType, teamID, volumeID string) (string, *status.Status) {
 	volPath, ok := v.config.PersistentVolumeMounts[volumeType]
 	if !ok {
-		return "", status.Errorf(codes.NotFound, "volume type %q not found", volumeType)
+		return "", status.Newf(codes.NotFound, "volume type %q not found", volumeType)
 	}
 
 	if !tryParseUUID(teamID) {
-		return "", status.Errorf(codes.InvalidArgument, "invalid team ID %q", teamID)
+		return "", status.Newf(codes.InvalidArgument, "invalid team ID %q", teamID)
 	}
 
 	if !tryParseUUID(volumeID) {
-		return "", status.Errorf(codes.InvalidArgument, "invalid volume ID %q", volumeID)
+		return "", status.Newf(codes.InvalidArgument, "invalid volume ID %q", volumeID)
 	}
 
 	volumePath := filepath.Join(volPath, teamID, volumeID)
 	rel, err := filepath.Rel(volPath, volumePath)
 	if err != nil || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || rel == ".." {
-		return "", status.Errorf(codes.PermissionDenied, "volume path %s is not under %s", volumePath, volPath)
+		return "", status.Newf(codes.PermissionDenied, "volume path %s is not under %s", volumePath, volPath)
 	}
 
 	return volumePath, nil
@@ -56,12 +56,12 @@ func tryParseUUID(id string) bool {
 }
 
 func (v *VolumeService) Create(_ context.Context, request *orchestrator.VolumeCreateRequest) (*orchestrator.VolumeCreateResponse, error) {
-	volumePath, err := v.buildVolumePath(request.GetVolumeType(), request.GetTeamId(), request.GetVolumeId())
-	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "failed to build volume path: %v", err)
+	volumePath, statusErr := v.buildVolumePath(request.GetVolumeType(), request.GetTeamId(), request.GetVolumeId())
+	if statusErr != nil {
+		return nil, statusErr.Err()
 	}
 
-	if err = os.MkdirAll(volumePath, 0o700); err != nil {
+	if err := os.MkdirAll(volumePath, 0o700); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to create volume: %v", err)
 	}
 
@@ -72,9 +72,9 @@ func (v *VolumeService) Delete(
 	_ context.Context,
 	request *orchestrator.VolumeDeleteRequest,
 ) (*orchestrator.VolumeDeleteResponse, error) {
-	volumePath, err := v.buildVolumePath(request.GetVolumeType(), request.GetTeamId(), request.GetVolumeId())
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to build volume path: %s", err.Error())
+	volumePath, statusErr := v.buildVolumePath(request.GetVolumeType(), request.GetTeamId(), request.GetVolumeId())
+	if statusErr != nil {
+		return nil, statusErr.Err()
 	}
 
 	if err := os.RemoveAll(volumePath); err != nil {

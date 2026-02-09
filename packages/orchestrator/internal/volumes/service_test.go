@@ -6,7 +6,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -14,6 +13,8 @@ import (
 )
 
 func TestBuildVolumePath(t *testing.T) {
+	t.Parallel()
+
 	const goodVolumeName = "good-vol"
 	const goodVolumePath = "/mnt/shared"
 
@@ -34,7 +35,7 @@ func TestBuildVolumePath(t *testing.T) {
 		teamID     string
 		volumeID   string
 
-		err      error
+		status   *status.Status
 		expected string
 	}{
 		"valid": {
@@ -47,35 +48,35 @@ func TestBuildVolumePath(t *testing.T) {
 			volumeType: goodVolumeName,
 			teamID:     "invalid",
 			volumeID:   volumeID,
-			err:        status.Error(codes.InvalidArgument, `invalid team ID "invalid"`),
+			status:     status.New(codes.InvalidArgument, `invalid team ID "invalid"`),
 		},
 		"invalid volume ID": {
 			volumeType: goodVolumeName,
 			teamID:     teamID,
 			volumeID:   "invalid",
-			err:        status.Error(codes.InvalidArgument, `invalid volume ID "invalid"`),
+			status:     status.New(codes.InvalidArgument, `invalid volume ID "invalid"`),
 		},
 		"missing team ID": {
 			volumeType: goodVolumeName,
 			volumeID:   volumeID,
-			err:        status.Error(codes.InvalidArgument, `invalid team ID ""`),
+			status:     status.New(codes.InvalidArgument, `invalid team ID ""`),
 		},
 		"missing volume type": {
 			teamID:   teamID,
 			volumeID: volumeID,
-			err:      status.Error(codes.NotFound, `volume type "" not found`),
+			status:   status.New(codes.NotFound, `volume type "" not found`),
 		},
 		"volume type not found": {
 			volumeType: "non-existent",
 			teamID:     teamID,
 			volumeID:   volumeID,
-			err:        status.Error(codes.NotFound, `volume type "non-existent" not found`),
+			status:     status.New(codes.NotFound, `volume type "non-existent" not found`),
 		},
 		"prefix attack": {
 			volumeType: "attacker",
 			teamID:     "1/../../path1/23f2e6e1-76f6-4cbb-a936-0dcd9190dd84",
 			volumeID:   volumeID,
-			err:        status.Errorf(codes.InvalidArgument, `invalid team ID "1/../../path1/23f2e6e1-76f6-4cbb-a936-0dcd9190dd84"`),
+			status:     status.New(codes.InvalidArgument, `invalid team ID "1/../../path1/23f2e6e1-76f6-4cbb-a936-0dcd9190dd84"`),
 		},
 	}
 
@@ -83,9 +84,9 @@ func TestBuildVolumePath(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			actual, err := v.buildVolumePath(tc.volumeType, tc.teamID, tc.volumeID)
-			require.ErrorIs(t, err, tc.err)
-			assert.Equal(t, tc.expected, actual)
+			actualPath, actualStatus := v.buildVolumePath(tc.volumeType, tc.teamID, tc.volumeID)
+			assert.Equal(t, tc.status, actualStatus)
+			assert.Equal(t, tc.expected, actualPath)
 		})
 	}
 }
