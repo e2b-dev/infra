@@ -47,7 +47,7 @@ job "loki" {
 
       config {
         network_mode = "host"
-        image = "grafana/loki:2.9.8"
+        image = "grafana/loki:2.9.17"
 
         args = [
           "-config.file",

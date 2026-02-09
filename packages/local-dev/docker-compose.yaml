@@ -15,7 +15,7 @@ services:
   grafana:
     image: grafana/grafana:12.0.0
     volumes:
-      - ./grafana-datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
+      - ./grafana-datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml:z
     environment:
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
@@ -50,12 +50,12 @@ services:
     image: grafana/mimir:2.17.1
     command: -config.file=/etc/mimir/mimir.yaml
     volumes:
-      - ./mimir.yaml:/etc/mimir/mimir.yaml
+      - ./mimir.yaml:/etc/mimir/mimir.yaml:z
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.135.0
     volumes:
-      - ./otel-collector.yaml:/etc/otelcol-contrib/config.yaml
+      - ./otel-collector.yaml:/etc/otelcol-contrib/config.yaml:z
     ports:
       - "4317:4317" # OTLP gRPC receiver
       - "4318:4318" # OTLP HTTP receiver"
@@ -81,7 +81,7 @@ services:
     image: grafana/tempo:2.8.2
     command: [ "-config.file=/etc/tempo.yaml" ]
     volumes:
-      - ./tempo.yaml:/etc/tempo.yaml
+      - ./tempo.yaml:/etc/tempo.yaml:z
       - tempo:/var/tempo
     ports:
       - "3200"
@@ -111,7 +111,7 @@ services:
     ports:
       - "30006:30006"
     volumes:
-      - ./vector.toml:/etc/vector.toml
+      - ./vector.toml:/etc/vector.toml:z
 
 
 volumes:

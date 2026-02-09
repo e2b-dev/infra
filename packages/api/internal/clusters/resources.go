@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/grafana/loki/pkg/logproto"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -20,26 +21,45 @@ import (
 type ClusterResource interface {
 	GetSandboxMetrics(ctx context.Context, teamID string, sandboxID string, qStart *int64, qEnd *int64) ([]api.SandboxMetric, *api.APIError)
 	GetSandboxesMetrics(ctx context.Context, teamID string, sandboxIDs []string) (map[string]api.SandboxMetric, *api.APIError)
-	GetSandboxLogs(ctx context.Context, teamID string, sandboxID string, start *int64, limit *int32) (api.SandboxLogs, *api.APIError)
+	GetSandboxLogs(ctx context.Context, teamID string, sandboxID string, start *int64, end *int64, limit *int32, direction *api.LogsDirection) (api.SandboxLogs, *api.APIError)
 	GetBuildLogs(ctx context.Context, nodeID *string, templateID string, buildID string, offset int32, limit int32, level *logs.LogLevel, cursor *time.Time, direction api.LogsDirection, source *api.LogsSource) ([]logs.LogEntry, *api.APIError)
 }
 
 const (
-	maxTimeRangeDuration = 7 * 24 * time.Hour
+	logsOldestLimit = 7 * 24 * time.Hour // 7 days
+
+	defaultLogsLimit = 1000
 )
 
-func logQueryWindow(cursor *time.Time, direction api.LogsDirection) (time.Time, time.Time) {
-	start, end := time.Now().Add(-maxTimeRangeDuration), time.Now()
-	if cursor == nil {
-		return start, end
+func LogQueryWindow(cursor *time.Time, direction api.LogsDirection) (time.Time, time.Time) {
+	now := time.Now()
+	oldestAllowedStart := now.Add(-logsOldestLimit)
+	start, end := oldestAllowedStart, now
+
+	if cursor != nil {
+		if direction == api.LogsDirectionForward {
+			start = *cursor
+			end = start.Add(logsOldestLimit)
+		} else {
+			end = *cursor
+			start = end.Add(-logsOldestLimit)
+		}
 	}
 
-	if direction == api.LogsDirectionForward {
-		start = *cursor
-		end = start.Add(maxTimeRangeDuration)
-	} else {
-		end = *cursor
-		start = end.Add(-maxTimeRangeDuration)
+	// Ensure start time respects the log retention limit
+	if start.Before(oldestAllowedStart) {
+		start = oldestAllowedStart
+	}
+
+	// Ensure end time respects the log retention limit
+	// (can happen if cursor is very old and results in end < oldestAllowed)
+	if end.Before(oldestAllowedStart) {
+		end = oldestAllowedStart
+	}
+
+	// Ensure start is never after end
+	if start.After(end) {
+		start = end
 	}
 
 	return start, end
@@ -54,6 +74,42 @@ func logDirectionToTemplateManagerDirection(direction api.LogsDirection) templat
 	default:
 		return templatemanagergrpc.LogsDirection_Forward
 	}
+}
+
+func apiLogDirectionToLokiProtoDirection(direction *api.LogsDirection) logproto.Direction {
+	if direction == nil {
+		return logproto.FORWARD
+	}
+
+	if *direction == api.LogsDirectionBackward {
+		return logproto.BACKWARD
+	}
+
+	return logproto.FORWARD
+}
+
+func apiLogDirectionToEdgeSandboxLogsDirection(direction *api.LogsDirection) *edgeapi.V1SandboxLogsParamsDirection {
+	if direction == nil {
+		return nil
+	}
+
+	if *direction == api.LogsDirectionBackward {
+		return utils.ToPtr(edgeapi.V1SandboxLogsParamsDirectionBackward)
+	}
+
+	return utils.ToPtr(edgeapi.V1SandboxLogsParamsDirectionForward)
+}
+
+func apiLogDirectionToEdgeBuildLogsDirection(direction *api.LogsDirection) *edgeapi.V1TemplateBuildLogsParamsDirection {
+	if direction == nil {
+		return nil
+	}
+
+	if *direction == api.LogsDirectionBackward {
+		return utils.ToPtr(edgeapi.V1TemplateBuildLogsParamsDirectionBackward)
+	}
+
+	return utils.ToPtr(edgeapi.V1TemplateBuildLogsParamsDirectionForward)
 }
 
 func logToEdgeLevel(level *logs.LogLevel) *edgeapi.LogLevel {
@@ -142,7 +198,7 @@ func getBuildLogsWithSources(
 	ctx, span := tracer.Start(ctx, "get build-logs")
 	defer span.End()
 
-	start, end := logQueryWindow(cursor, direction)
+	start, end := LogQueryWindow(cursor, direction)
 
 	var sources []logSourceFunc
 

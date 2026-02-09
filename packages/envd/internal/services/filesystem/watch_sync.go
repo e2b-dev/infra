@@ -164,6 +164,15 @@ func (s Service) CreateWatcher(ctx context.Context, req *connect.Request[rpc.Cre
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("path %s not a directory: %w", watchPath, err))
 	}
 
+	// Check if path is on a network filesystem mount
+	isNetworkMount, err := IsPathOnNetworkMount(watchPath)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error checking mount status: %w", err))
+	}
+	if isNetworkMount {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("cannot watch path on network filesystem: %s", watchPath))
+	}
+
 	watcherId := "w" + id.Generate()
 
 	w, err := CreateFileWatcher(ctx, watchPath, req.Msg.GetRecursive(), watcherId, s.logger)

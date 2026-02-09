@@ -23,6 +23,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/socket"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -361,6 +362,7 @@ func (p *Process) Resume(
 	snapfile template.File,
 	uffdReady chan struct{},
 	slot *network.Slot,
+	accessToken *string,
 ) error {
 	ctx, span := tracer.Start(ctx, "resume-fc")
 	defer span.End()
@@ -447,6 +449,12 @@ func (p *Process) Resume(
 		SandboxID:            sbxMetadata.SandboxID,
 		TemplateID:           sbxMetadata.TemplateID,
 		LogsCollectorAddress: fmt.Sprintf("http://%s/logs", slot.HyperloopIPString()),
+	}
+
+	if accessToken != nil && *accessToken != "" {
+		meta.AccessTokenHash = keys.HashAccessToken(*accessToken)
+	} else {
+		meta.AccessTokenHash = keys.HashAccessToken("")
 	}
 
 	err = p.client.setMmds(ctx, meta)

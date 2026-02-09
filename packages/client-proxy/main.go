@@ -184,7 +184,7 @@ func run() int {
 		// Add different handling for the error
 		switch {
 		case errors.Is(err, http.ErrServerClosed):
-			proxyRunLogger.Info(ctx, "Http proxy shutdown successfully")
+			proxyRunLogger.Info(ctx, "Http proxy closed successfully")
 		case err != nil:
 			exitCode.Add(1)
 			proxyRunLogger.Error(ctx, "Http proxy encountered error", zap.Error(err))
@@ -203,7 +203,7 @@ func run() int {
 		err := healthServer.ListenAndServe()
 		switch {
 		case errors.Is(err, http.ErrServerClosed):
-			healthLogger.Info(ctx, "Health server shutdown successfully")
+			healthLogger.Info(ctx, "Health server closed successfully")
 		case err != nil:
 			exitCode.Add(1)
 			healthLogger.Error(ctx, "Health server encountered error", zap.Error(err))

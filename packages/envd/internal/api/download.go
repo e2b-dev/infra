@@ -138,6 +138,8 @@ func (a *API) GetFiles(w http.ResponseWriter, r *http.Request, params GetFilesPa
 	}
 	defer file.Close()
 
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("inline", map[string]string{"filename": filepath.Base(resolvedPath)}))
+
 	// Serve with gzip encoding if requested.
 	// Note: If io.Copy fails after headers are sent, the client receives a truncated
 	// gzip stream with HTTP 200. Buffering the entire response would fix this but
