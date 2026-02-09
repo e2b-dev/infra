@@ -52,7 +52,6 @@ module "machines" {
   enable_nodes_uninstall      = var.enable_nodes_uninstall
   uninstall_version           = var.uninstall_version
   uninstall_confirm_phrase    = var.uninstall_confirm_phrase
-  firewall_tools_version      = "v1"
   enable_network_policy       = var.enable_network_policy
   network_open_ports          = var.network_open_ports
   use_nfs_share_storage       = var.use_nfs_share_storage
