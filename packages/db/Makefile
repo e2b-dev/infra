@@ -15,12 +15,17 @@ migrate:
 	@echo "Applying Postgres migration *$(notdir $@)* for ${ENV}"
 	@$(goose) up
 	@echo "Done"
+
+.PHONY: migrate-local
 migrate-local:
 	@echo "Applying Postgres migration *$(notdir $@)* for ${ENV}"
 	@$(goose-local) up
 	@echo "Done"
 
+.PHONY: migrate/up
 migrate/up: migrate
+
+.PHONY: migrate/down
 migrate/down:
 	@echo "Reverting Postgres migration *$(notdir $@)* for ${ENV}"
 	@$(goose) down
@@ -31,7 +36,7 @@ build-debug:
 	go mod download
 	go vet ./...
 
-.PHONE: create-migration
+.PHONY: create-migration
 create-migration:
 ifeq ($(origin NAME), undefined)
 	@echo "The expected syntax is: make create-migration NAME=your-migration-name"
@@ -39,7 +44,7 @@ ifeq ($(origin NAME), undefined)
 endif
 	@$(goose) create $(NAME) sql
 
-.PHONE: status
+.PHONY: status
 status:
 	@$(goose) status
 
