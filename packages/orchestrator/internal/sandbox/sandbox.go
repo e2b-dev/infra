@@ -672,10 +672,19 @@ func (f *Factory) ResumeSandbox(
 				zap.String("sandbox_id", runtime.SandboxID),
 				zap.Error(err))
 		} else {
+			// Get template metadata for BuildID
+			meta, metaErr := t.Metadata()
+			buildID := ""
+			if metaErr == nil {
+				buildID = meta.Template.BuildID
+			}
+
 			collector, err := NewHostStatsCollector(
 				HostStatsMetadata{
 					SandboxID:   runtime.SandboxID,
 					ExecutionID: runtime.ExecutionID,
+					TemplateID:  runtime.TemplateID,
+					BuildID:     buildID,
 					TeamID:      runtime.TeamID,
 				},
 				int32(firecrackerPID),

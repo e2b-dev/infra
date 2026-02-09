@@ -29,6 +29,8 @@ type HostStatsCollector struct {
 type HostStatsMetadata struct {
 	SandboxID   string
 	ExecutionID string
+	TemplateID  string
+	BuildID     string
 	TeamID      string
 }
 
@@ -72,9 +74,14 @@ func (h *HostStatsCollector) CollectSample(ctx context.Context) error {
 	}
 
 	stat := hoststats.SandboxHostStat{
+		ID:                       uuid.New(),
+		Version:                  "1",
+		Type:                     "host_stats",
 		Timestamp:                time.Now(),
 		SandboxID:                h.metadata.SandboxID,
 		SandboxExecutionID:       h.metadata.ExecutionID,
+		SandboxTemplateID:        h.metadata.TemplateID,
+		SandboxBuildID:           h.metadata.BuildID,
 		SandboxTeamID:            teamID,
 		FirecrackerCPUUserTime:   times.User,   // seconds
 		FirecrackerCPUSystemTime: times.System, // seconds
