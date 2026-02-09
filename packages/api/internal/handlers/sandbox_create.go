@@ -145,20 +145,11 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		autoPause = *body.AutoPause
 	}
 
-	var autoResume *types.SandboxAutoResumeConfig
-	if body.AutoResume != nil {
-		autoResume = &types.SandboxAutoResumeConfig{}
-		if body.AutoResume.Policy != "" {
-			policy := types.SandboxAutoResumePolicy(body.AutoResume.Policy)
-			switch policy {
-			case types.SandboxAutoResumeAny, types.SandboxAutoResumeOff:
-				autoResume.Policy = &policy
-			default:
-				a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid autoResume policy")
+	autoResume, autoResumeErr := buildAutoResumeConfig(body.AutoResume)
+	if autoResumeErr != nil {
+		a.sendAPIStoreError(c, autoResumeErr.Code, autoResumeErr.ClientMsg)
 
-				return
-			}
-		}
+		return
 	}
 
 	var envdAccessToken *string = nil
@@ -233,6 +224,34 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, &sbx)
+}
+
+func buildAutoResumeConfig(autoResume *api.SandboxAutoResumeConfig) (*types.SandboxAutoResumeConfig, *api.APIError) {
+	if autoResume == nil {
+		return nil, nil
+	}
+
+	cfg := &types.SandboxAutoResumeConfig{}
+
+	// Generated OpenAPI types use plain strings for enum fields. If the field is omitted
+	// from JSON (or an empty object is sent), it decodes as "" and should be treated as
+	// "unset" (which means "off" for auto-resume).
+	if autoResume.Policy == "" {
+		return cfg, nil
+	}
+
+	policy := types.SandboxAutoResumePolicy(autoResume.Policy)
+	switch policy {
+	case types.SandboxAutoResumeAny, types.SandboxAutoResumeOff:
+		cfg.Policy = &policy
+		return cfg, nil
+	default:
+		return nil, &api.APIError{
+			Code:      http.StatusBadRequest,
+			ClientMsg: "Invalid autoResume policy",
+			Err:       fmt.Errorf("invalid autoResume policy %q", autoResume.Policy),
+		}
+	}
 }
 
 func (a *APIStore) getEnvdAccessToken(envdVersion *string, sandboxID string) (string, *api.APIError) {

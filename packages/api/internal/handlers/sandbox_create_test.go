@@ -5,8 +5,123 @@ import (
 	"testing"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 )
+
+func TestBuildAutoResumeConfig(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		in            *api.SandboxAutoResumeConfig
+		wantNil       bool
+		wantPolicy    *dbtypes.SandboxAutoResumePolicy
+		wantErr       bool
+		wantErrCode   int
+		wantErrClient string
+	}{
+		{
+			name:    "nil config returns nil",
+			in:      nil,
+			wantNil: true,
+		},
+		{
+			name:       "empty policy is treated as unset/off (no error)",
+			in:         &api.SandboxAutoResumeConfig{},
+			wantNil:    false,
+			wantPolicy: nil,
+		},
+		{
+			name: "policy any is accepted",
+			in: &api.SandboxAutoResumeConfig{
+				Policy: api.Any,
+			},
+			wantNil: false,
+			wantPolicy: func() *dbtypes.SandboxAutoResumePolicy {
+				p := dbtypes.SandboxAutoResumeAny
+				return &p
+			}(),
+		},
+		{
+			name: "policy off is accepted",
+			in: &api.SandboxAutoResumeConfig{
+				Policy: api.Off,
+			},
+			wantNil: false,
+			wantPolicy: func() *dbtypes.SandboxAutoResumePolicy {
+				p := dbtypes.SandboxAutoResumeOff
+				return &p
+			}(),
+		},
+		{
+			name: "invalid policy is rejected",
+			in: &api.SandboxAutoResumeConfig{
+				Policy: api.SandboxAutoResumePolicy("nope"),
+			},
+			wantErr:       true,
+			wantErrCode:   http.StatusBadRequest,
+			wantErrClient: "Invalid autoResume policy",
+		},
+		{
+			name: "explicit empty string policy is treated as unset/off (no error)",
+			in: &api.SandboxAutoResumeConfig{
+				Policy: api.SandboxAutoResumePolicy(""),
+			},
+			wantNil:    false,
+			wantPolicy: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := buildAutoResumeConfig(tt.in)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("buildAutoResumeConfig() expected error, got nil")
+				}
+				if err.Code != tt.wantErrCode {
+					t.Fatalf("buildAutoResumeConfig() error code = %d, want %d", err.Code, tt.wantErrCode)
+				}
+				if err.ClientMsg != tt.wantErrClient {
+					t.Fatalf("buildAutoResumeConfig() client message = %q, want %q", err.ClientMsg, tt.wantErrClient)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("buildAutoResumeConfig() unexpected error: %v", err)
+			}
+
+			if tt.wantNil {
+				if got != nil {
+					t.Fatalf("buildAutoResumeConfig() = %#v, want nil", got)
+				}
+				return
+			}
+
+			if got == nil {
+				t.Fatalf("buildAutoResumeConfig() = nil, want non-nil config")
+			}
+
+			if tt.wantPolicy == nil {
+				if got.Policy != nil {
+					t.Fatalf("buildAutoResumeConfig().Policy = %v, want nil", *got.Policy)
+				}
+			} else {
+				if got.Policy == nil {
+					t.Fatalf("buildAutoResumeConfig().Policy = nil, want %v", *tt.wantPolicy)
+				}
+				if *got.Policy != *tt.wantPolicy {
+					t.Fatalf("buildAutoResumeConfig().Policy = %v, want %v", *got.Policy, *tt.wantPolicy)
+				}
+			}
+		})
+	}
+}
 
 func TestValidateNetworkConfig(t *testing.T) {
 	t.Parallel()
