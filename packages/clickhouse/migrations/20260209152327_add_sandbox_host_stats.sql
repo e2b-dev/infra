@@ -1,9 +1,6 @@
 -- +goose Up
 -- +goose StatementBegin
 CREATE TABLE sandbox_host_stats_local (
-    id UUID CODEC (ZSTD(1)),
-    version String CODEC (ZSTD(1)),
-    type LowCardinality(String) CODEC (ZSTD(1)),
     timestamp DateTime64(9) CODEC (Delta, ZSTD(1)),
     sandbox_id String CODEC (ZSTD(1)),
     sandbox_execution_id String CODEC (ZSTD(1)),

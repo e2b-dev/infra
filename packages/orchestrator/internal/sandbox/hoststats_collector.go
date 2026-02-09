@@ -74,9 +74,6 @@ func (h *HostStatsCollector) CollectSample(ctx context.Context) error {
 	}
 
 	stat := hoststats.SandboxHostStat{
-		ID:                       uuid.New(),
-		Version:                  "1",
-		Type:                     "host_stats",
 		Timestamp:                time.Now(),
 		SandboxID:                h.metadata.SandboxID,
 		SandboxExecutionID:       h.metadata.ExecutionID,
