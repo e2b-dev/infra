@@ -27,9 +27,9 @@ func TestBuildAutoResumeConfig(t *testing.T) {
 			wantNil: true,
 		},
 		{
-			name:        "empty policy is rejected",
-			in:         &api.SandboxAutoResumeConfig{},
-			wantErr:    true,
+			name:          "empty policy is rejected",
+			in:            &api.SandboxAutoResumeConfig{},
+			wantErr:       true,
 			wantErrCode:   http.StatusBadRequest,
 			wantErrClient: "Invalid autoResume policy",
 		},
@@ -38,7 +38,7 @@ func TestBuildAutoResumeConfig(t *testing.T) {
 			in: &api.SandboxAutoResumeConfig{
 				Policy: api.Any,
 			},
-			wantNil: false,
+			wantNil:    false,
 			wantPolicy: dbtypes.SandboxAutoResumeAny,
 		},
 		{
@@ -46,7 +46,7 @@ func TestBuildAutoResumeConfig(t *testing.T) {
 			in: &api.SandboxAutoResumeConfig{
 				Policy: api.Off,
 			},
-			wantNil: false,
+			wantNil:    false,
 			wantPolicy: dbtypes.SandboxAutoResumeOff,
 		},
 		{
