@@ -33,11 +33,11 @@ const (
 
 var ErrNodeNotFound = errors.New("node not found")
 
-func catalogResolution(ctx context.Context, sandboxId string, c catalog.SandboxesCatalog, pausedChecker PausedSandboxResumer, featureFlags *featureflags.Client) (string, error) {
+func catalogResolution(ctx context.Context, sandboxId string, c catalog.SandboxesCatalog, pausedChecker PausedSandboxResumer, featureFlags *featureflags.Client, negCache *negativeResumeCache) (string, error) {
 	s, err := c.GetSandbox(ctx, sandboxId)
 	if err != nil {
 		if errors.Is(err, catalog.ErrSandboxNotFound) {
-			if nodeIP, pausedErr := handlePausedSandbox(ctx, sandboxId, pausedChecker, featureFlags); pausedErr != nil {
+			if nodeIP, pausedErr := handlePausedSandbox(ctx, sandboxId, pausedChecker, featureFlags, negCache); pausedErr != nil {
 				return "", pausedErr
 			} else if nodeIP != "" {
 				return nodeIP, nil
@@ -59,8 +59,17 @@ func handlePausedSandbox(
 	sandboxId string,
 	pausedChecker PausedSandboxResumer,
 	featureFlags *featureflags.Client,
+	negCache *negativeResumeCache,
 ) (string, error) {
 	if pausedChecker == nil {
+		return "", nil
+	}
+
+	// Catalog misses can happen repeatedly while a sandbox is paused or non-resumable.
+	// Cache the stable negative case (API returns NotFound) to avoid hammering the API/DB.
+	if negCache.isBlocked(sandboxId, time.Now()) {
+		logger.L().Debug(ctx, "recent resume NotFound; skipping api resume", logger.WithSandboxID(sandboxId))
+
 		return "", nil
 	}
 
@@ -73,8 +82,10 @@ func handlePausedSandbox(
 	logger.L().Info(ctx, "catalog miss, attempting resume via api", logger.WithSandboxID(sandboxId))
 	nodeIP, err := pausedChecker.Resume(ctx, sandboxId)
 	if err != nil {
-		if isNotPausedError(err) {
+		if isNotResumableError(err) {
 			// API says it can't resume (no snapshot / not resumable).
+			negCache.block(sandboxId, time.Now())
+
 			return "", nil
 		}
 
@@ -84,7 +95,7 @@ func handlePausedSandbox(
 	return nodeIP, nil
 }
 
-func isNotPausedError(err error) bool {
+func isNotResumableError(err error) bool {
 	var grpcStatus interface{ GRPCStatus() *status.Status }
 	if !errors.As(err, &grpcStatus) {
 		return false
@@ -95,6 +106,7 @@ func isNotPausedError(err error) bool {
 
 func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog catalog.SandboxesCatalog, pausedSandboxResumer PausedSandboxResumer, featureFlagsClient *featureflags.Client) (*reverseproxy.Proxy, error) {
 	getTargetFromRequest := reverseproxy.GetTargetFromRequest(env.IsLocal())
+	negResumeCache := newNegativeResumeCache()
 
 	proxy := reverseproxy.New(
 		port,
@@ -119,7 +131,7 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 				zap.Int64("content_length", r.ContentLength),
 			)
 
-			nodeIP, err := catalogResolution(ctx, sandboxId, catalog, pausedSandboxResumer, featureFlagsClient)
+			nodeIP, err := catalogResolution(ctx, sandboxId, catalog, pausedSandboxResumer, featureFlagsClient, negResumeCache)
 			if err != nil {
 				if !errors.Is(err, ErrNodeNotFound) {
 					l.Warn(ctx, "failed to resolve node ip with Redis resolution", zap.Error(err))
