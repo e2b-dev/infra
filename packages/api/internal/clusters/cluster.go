@@ -208,19 +208,25 @@ func (c *Cluster) GetByServiceInstanceID(serviceInstanceID string) (*Instance, b
 	return nil, false
 }
 
-func (c *Cluster) getRandomInstance(isMatch func(InstanceInfo, machineinfo.MachineInfo) bool) (*Instance, bool) {
+func (c *Cluster) getRandomHealthyInstance(isMatch func(InstanceInfo, machineinfo.MachineInfo) bool) (*Instance, bool) {
 	var instances []*Instance
 	for _, instance := range c.instances.Items() {
 		instances = append(instances, instance)
 	}
 
-	// Make sure we will always iterate in different order and when there is bigger amount of builders, we will not always pick the same one
+	// Make sure we will always iterate in different order and when there is large number of builders, we will not always pick the same one
 	rand.Shuffle(len(instances), func(i, j int) { instances[i], instances[j] = instances[j], instances[i] })
 
 	for _, instance := range instances {
-		if isMatch(instance.GetInfo(), instance.GetMachineInfo()) {
-			return instance, true
+		if instance.status != infogrpc.ServiceInfoStatus_Healthy {
+			continue
 		}
+
+		if isMatch != nil && !isMatch(instance.GetInfo(), instance.GetMachineInfo()) {
+			continue
+		}
+
+		return instance, true
 	}
 
 	return nil, false
@@ -231,9 +237,9 @@ func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context, expectedInfo 
 	span.SetAttributes(telemetry.WithClusterID(c.ID))
 	defer span.End()
 
-	instance, ok := c.getRandomInstance(func(info InstanceInfo, machineInfo machineinfo.MachineInfo) bool {
-		// Check availability and builder role
-		if info.Status != infogrpc.ServiceInfoStatus_Healthy || !info.IsBuilder {
+	instance, ok := c.getRandomHealthyInstance(func(info InstanceInfo, machineInfo machineinfo.MachineInfo) bool {
+		// Check builder role
+		if !info.IsBuilder {
 			return false
 		}
 
@@ -269,7 +275,7 @@ func (c *Cluster) GetResources() ClusterResource {
 var ErrNoOrchestratorFound = errors.New("no orchestrator found")
 
 func (c *Cluster) DeleteVolume(ctx context.Context, volume queries.Volume) error {
-	instance, ok := c.getRandomInstance(func(instance InstanceInfo, _ machineinfo.MachineInfo) bool {
+	instance, ok := c.getRandomHealthyInstance(func(instance InstanceInfo, _ machineinfo.MachineInfo) bool {
 		return instance.IsOrchestrator
 	})
 
@@ -289,7 +295,7 @@ func (c *Cluster) DeleteVolume(ctx context.Context, volume queries.Volume) error
 }
 
 func (c *Cluster) CreateVolume(ctx context.Context, volume queries.Volume) error {
-	instance, ok := c.getRandomInstance(func(instance InstanceInfo, _ machineinfo.MachineInfo) bool {
+	instance, ok := c.getRandomHealthyInstance(func(instance InstanceInfo, _ machineinfo.MachineInfo) bool {
 		return instance.IsOrchestrator
 	})
 	if !ok {
