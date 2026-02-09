@@ -28,6 +28,7 @@ func newBlockingWriteCloser() *blockingWriteCloser {
 func (b *blockingWriteCloser) Write(p []byte) (int, error) {
 	b.writeOnce.Do(func() { close(b.writeStarted) })
 	<-b.unblockWrite
+
 	return len(p), nil
 }
 
@@ -36,10 +37,13 @@ func (b *blockingWriteCloser) Close() error {
 		close(b.closeCalled)
 		close(b.unblockWrite)
 	})
+
 	return nil
 }
 
 func TestCloseStdinDoesNotDeadlockWithConcurrentWrite(t *testing.T) {
+	t.Parallel()
+
 	bw := newBlockingWriteCloser()
 
 	h := &Handler{
