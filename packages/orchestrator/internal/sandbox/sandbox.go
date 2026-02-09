@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -108,7 +109,25 @@ type Metadata struct {
 	Runtime        RuntimeMetadata
 
 	StartedAt time.Time
-	EndAt     time.Time
+
+	endAtMu sync.RWMutex // protects endAt
+	endAt   time.Time
+}
+
+// GetEndAt returns the sandbox end time in a thread-safe manner.
+func (m *Metadata) GetEndAt() time.Time {
+	m.endAtMu.RLock()
+	defer m.endAtMu.RUnlock()
+
+	return m.endAt
+}
+
+// SetEndAt sets the sandbox end time in a thread-safe manner.
+func (m *Metadata) SetEndAt(t time.Time) {
+	m.endAtMu.Lock()
+	defer m.endAtMu.Unlock()
+
+	m.endAt = t
 }
 
 type Sandbox struct {
@@ -296,7 +315,7 @@ func (f *Factory) CreateSandbox(
 		Runtime: runtime,
 
 		StartedAt: time.Now(),
-		EndAt:     time.Now().Add(sandboxTimeout),
+		endAt:     time.Now().Add(sandboxTimeout),
 	}
 
 	sbx := &Sandbox{
@@ -596,7 +615,7 @@ func (f *Factory) ResumeSandbox(
 		Runtime: runtime,
 
 		StartedAt: startedAt,
-		EndAt:     endAt,
+		endAt:     endAt,
 	}
 
 	sbx := &Sandbox{
@@ -1038,7 +1057,7 @@ func (s *Sandbox) WaitForExit(ctx context.Context) error {
 	ctx, span := tracer.Start(ctx, "sandbox-wait-for-exit")
 	defer span.End()
 
-	timeout := time.Until(s.EndAt)
+	timeout := time.Until(s.GetEndAt())
 
 	select {
 	case <-time.After(timeout):
