@@ -30,6 +30,7 @@ func Test_server_List(t *testing.T) {
 		want    *orchestrator.SandboxListResponse
 		wantErr bool
 		data    []*sandbox.Sandbox
+		endAt   time.Time
 	}{
 		{
 			name: "should return all sandboxes",
@@ -48,10 +49,10 @@ func Test_server_List(t *testing.T) {
 						},
 
 						StartedAt: startTime,
-						EndAt:     endTime,
 					},
 				},
 			},
+			endAt: endTime,
 			want: &orchestrator.SandboxListResponse{
 				Sandboxes: []*orchestrator.RunningSandbox{
 					{
@@ -68,6 +69,11 @@ func Test_server_List(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
+			for _, sbx := range tt.data {
+				sbx.SetEndAt(tt.endAt)
+			}
+
 			s := &Server{
 				sandboxes: sandbox.NewSandboxesMap(),
 				info:      &service.ServiceInfo{},
