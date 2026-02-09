@@ -40,6 +40,7 @@ func TestBuildAutoResumeConfig(t *testing.T) {
 			wantNil: false,
 			wantPolicy: func() *dbtypes.SandboxAutoResumePolicy {
 				p := dbtypes.SandboxAutoResumeAny
+
 				return &p
 			}(),
 		},
@@ -51,6 +52,7 @@ func TestBuildAutoResumeConfig(t *testing.T) {
 			wantNil: false,
 			wantPolicy: func() *dbtypes.SandboxAutoResumePolicy {
 				p := dbtypes.SandboxAutoResumeOff
+
 				return &p
 			}(),
 		},
@@ -89,6 +91,7 @@ func TestBuildAutoResumeConfig(t *testing.T) {
 				if err.ClientMsg != tt.wantErrClient {
 					t.Fatalf("buildAutoResumeConfig() client message = %q, want %q", err.ClientMsg, tt.wantErrClient)
 				}
+
 				return
 			}
 
@@ -100,6 +103,7 @@ func TestBuildAutoResumeConfig(t *testing.T) {
 				if got != nil {
 					t.Fatalf("buildAutoResumeConfig() = %#v, want nil", got)
 				}
+
 				return
 			}
 

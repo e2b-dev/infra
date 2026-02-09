@@ -244,6 +244,7 @@ func buildAutoResumeConfig(autoResume *api.SandboxAutoResumeConfig) (*types.Sand
 	switch policy {
 	case types.SandboxAutoResumeAny, types.SandboxAutoResumeOff:
 		cfg.Policy = &policy
+
 		return cfg, nil
 	default:
 		return nil, &api.APIError{
