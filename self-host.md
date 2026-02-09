@@ -173,6 +173,8 @@ Now, you should see the right quota options in `All Quotas` and be able to reque
   - Ubuntu/Debian-based distributions with `systemd`
 - Docker
   - Terraform will install Docker if missing
+- Make
+  - Used for running automation commands
 
 ### Accounts and Secrets
 
@@ -191,8 +193,16 @@ Now, you should see the right quota options in `All Quotas` and be able to reque
      - `SERVERS_JSON='[{"host":"10.0.0.10","ssh_user":"ubuntu","ssh_private_key_path":"/home/me/.ssh/id_rsa","node_pool":"servers"}]'`
      - `CLIENTS_JSON='[{"host":"10.0.0.20","ssh_user":"ubuntu","ssh_private_key_path":"/home/me/.ssh/id_rsa","node_pool":"api"}]'`
    - Fill port objects (JSON), images, artifacts and application secrets per the template comments
+   - **Network Security**:
+     - Set `ENABLE_NETWORK_POLICY=true` to enable UFW firewall management.
+     - Configure `NETWORK_OPEN_PORTS` (JSON list) for allowed ports (e.g., `["22/tcp", "80/tcp", "4646/tcp", "8500/tcp"]`).
+   - **Storage**:
+     - Set `USE_NFS_SHARE_STORAGE=true` and `NFS_SERVER_IP` to use NFS for shared storage.
+
 2. Run `make switch-env ENV={prod,staging,dev}`
+
 3. Run `make init`
+
 4. Build and upload images and artifacts
    - Set a Docker registry prefix (optional, enables auto image names)
      ```sh
@@ -201,35 +211,54 @@ Now, you should see the right quota options in `All Quotas` and be able to reque
      # in .env.dev
      DOCKER_IMAGE_PREFIX=192.168.3.4:5000/e2b-orchestration
      ```
-   - 使用全局 Makefile 构建并推送镜像与二进制
+   - Build and push images and binaries using the global Makefile
      ```sh
      make build-and-upload-linux
      ```
    - Upload orchestrator/template-manager binaries for HTTP artifact URLs
-     ```sh
-     # Ensure in .env.dev you set:
-     # ARTIFACT_SCP_HOST, ARTIFACT_SCP_USER, ARTIFACT_SCP_DIR, ARTIFACT_SCP_SSH_KEY, ARTIFACT_SCP_PORT
-     # And artifact URLs consumed by Nomad jobs:
-     # ORCHESTRATOR_ARTIFACT_URL=http://<host>:<port>/orchestrator
-     # TEMPLATE_MANAGER_ARTIFACT_URL=http://<host>:<port>/template-manager
+     - Ensure in your `.env` you set:
+       - `ARTIFACT_SCP_HOST`, `ARTIFACT_SCP_USER`, `ARTIFACT_SCP_DIR`, `ARTIFACT_SCP_SSH_KEY`, `ARTIFACT_SCP_PORT`
+     - The `make build-and-upload-linux` command handles the upload via `scp` to the server specified in `ARTIFACT_SCP_HOST`.
+     - The Terraform script (`null_resource.artifact_scp_server`) can configure an Nginx server to serve these artifacts if `ENABLE_ARTIFACT_SCP_SERVER=true`.
 
-     # 已包含于 make build-and-upload-linux
-     ```
-   - Notes
-     - The upload scripts auto-select backend:
-       - `PROVIDER=gcp` → uploads to GCS via `gsutil`
-      - `PROVIDER=linux` → uploads via `scp` to `ARTIFACT_SCP_*` location
-     - Serve artifacts over HTTP (e.g., nginx/caddy) to match the URLs used by Nomad jobs
-4. Plan/apply base resources (without Nomad jobs)
+5. Plan/apply base resources (without Nomad jobs)
    - `make plan-without-jobs`
    - `make apply`
-5. Plan/apply Nomad jobs
+
+6. **Firewall Configuration (Optional but Recommended)**
+   - If `ENABLE_NETWORK_POLICY=true`, you can manage firewall rules:
+     - `make plan-firewall` - Plan firewall changes
+     - `make apply-firewall` - Apply firewall changes (installs/configures UFW)
+     - `make taint-firewall` - Force recreation of firewall resources if needed
+
+7. Plan/apply Nomad jobs
    - `make plan-only-jobs`
    - `make apply`
-6. Verify services
+
+8. Verify services
    - Nomad UI: `http://<server_ip>:4646` (Nomad bound to `0.0.0.0`)
    - Consul UI: `http://<server_ip>:8500` (if UI enabled)
    - Consul DNS: system resolver is configured to use `127.0.0.1:8600`
+
+### Firewall Management
+
+The Linux provider includes built-in support for managing `ufw` firewall rules on the nodes.
+- **Enable**: Set `ENABLE_NETWORK_POLICY=true` in your `.env` file.
+- **Configure**: List allowed ports in `NETWORK_OPEN_PORTS` (e.g., `["22/tcp", "80/tcp", "4646/tcp", "8500/tcp"]`).
+- **Commands**:
+  - `make plan-firewall`: Preview changes.
+  - `make apply-firewall`: Apply changes.
+  - `make taint-firewall [node]`: Taint firewall resource for all nodes or a specific node.
+
+### Uninstalling
+
+To uninstall the Linux provider resources:
+1. The uninstall process requires a confirmation phrase (current timestamp) for safety.
+2. Run the uninstall command:
+   ```sh
+   make uninstall UNINSTALL_CONFIRM_PHRASE=$(date +%Y%m%d%H%M)
+   ```
+   Note: This will remove Nomad jobs first to avoid connection errors, then destroy the infrastructure.
 
 ### What Terraform does on bare metal
 
@@ -238,18 +267,22 @@ Now, you should see the right quota options in `All Quotas` and be able to reque
 - Optionally enables Consul ACL if `CONSUL_ACL_TOKEN` is set
 - Configures `systemd-resolved` to resolve via Consul DNS (`127.0.0.1:8600`)
 - Provisions Nomad jobs for API, ingress, orchestrator, template-manager, Loki, and Otel Collector
+- **Firewall**: Installs and configures `ufw` if enabled.
+- **NFS**: Configures NFS server if enabled.
+- **Artifact Server**: Optionally configures Nginx to serve artifacts.
 
 ### Variables to pay attention to
 
 - Node pools: `API_NODE_POOL`, `ORCHESTRATOR_NODE_POOL`, `BUILDER_NODE_POOL`
 - Ports (JSON strings): `API_PORT`, `INGRESS_PORT`, `EDGE_API_PORT`, `EDGE_PROXY_PORT`, `LOGS_PROXY_PORT`, `LOKI_SERVICE_PORT`, `LOGS_HEALTH_PROXY_PORT`
-- Artifacts: `ORCHESTRATOR_ARTIFACT_URL`, `TEMPLATE_MANAGER_ARTIFACT_URL`
+- Artifacts: `ORCHESTRATOR_ARTIFACT_URL`, `TEMPLATE_MANAGER_ARTIFACT_URL`, `ARTIFACT_SCP_*`
 - Observability: `OTEL_COLLECTOR_GRPC_PORT`, `OTEL_COLLECTOR_RESOURCES_*`, `LOKI_RESOURCES_*`
 - Secrets/config: `API_SECRET`, `EDGE_API_SECRET`, `API_ADMIN_TOKEN`, `SUPABASE_JWT_SECRETS`, `POSTHOG_API_KEY`, `LAUNCH_DARKLY_API_KEY`
 - Redis: `REDIS_URL`, `REDIS_SECURE_CLUSTER_URL`, `REDIS_TLS_CA_BASE64`
 - Buckets/cache: `TEMPLATE_BUCKET_NAME`, `BUILD_CACHE_BUCKET_NAME`, `SHARED_CHUNK_CACHE_PATH`
-- Sandbox/networking: `ENVD_TIMEOUT`, `ALLOW_SANDBOX_INTERNET`
-- ClickHouse (optional): set `CLICKHOUSE_*` variables; enable via Terraform by setting `clickhouse_server_count > 0`
+- Sandbox/networking: `ENVD_TIMEOUT`, `ALLOW_SANDBOX_INTERNET`, `ENABLE_NETWORK_POLICY`, `NETWORK_OPEN_PORTS`
+- Storage: `USE_NFS_SHARE_STORAGE`, `NFS_SERVER_IP`
+- ClickHouse: `CLICKHOUSE_*` variables
 
 ### Troubleshooting (Linux)
 
@@ -257,3 +290,4 @@ Now, you should see the right quota options in `All Quotas` and be able to reque
 - Consul/Nomad not starting: check `/var/log/syslog` and `systemctl status {consul,nomad}`
 - DNS resolution: ensure `/etc/systemd/resolved.conf.d/consul.conf` exists and `systemd-resolved` is running
 - Jobs not visible: check Nomad ACL token (`NOMAD_ACL_TOKEN`) and Nomad address in `.env`
+
