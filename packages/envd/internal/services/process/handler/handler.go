@@ -50,7 +50,7 @@ type Handler struct {
 	outCtx    context.Context //nolint:containedctx // todo: refactor so this can be removed
 	outCancel context.CancelFunc
 
-	stdinMu sync.Mutex
+	stdinMu sync.RWMutex
 	stdin   io.WriteCloser
 
 	DataEvent *MultiplexedChannel[rpc.ProcessEvent_Data]
@@ -329,9 +329,9 @@ func (p *Handler) WriteStdin(data []byte) error {
 		return fmt.Errorf("tty assigned to process — input should be written to the pty, not the stdin")
 	}
 
-	p.stdinMu.Lock()
+	p.stdinMu.RLock()
 	stdin := p.stdin
-	p.stdinMu.Unlock()
+	p.stdinMu.RUnlock()
 
 	if stdin == nil {
 		return fmt.Errorf("stdin not enabled or closed")
@@ -341,9 +341,9 @@ func (p *Handler) WriteStdin(data []byte) error {
 	if err != nil {
 		// CloseStdin can race with an in-flight write; in that case, the write may fail with a
 		// low-level "bad file descriptor"/"broken pipe" style error.
-		p.stdinMu.Lock()
+		p.stdinMu.RLock()
 		closed := p.stdin == nil
-		p.stdinMu.Unlock()
+		p.stdinMu.RUnlock()
 		if closed {
 			return fmt.Errorf("stdin closed or closing: %w", err)
 		}
