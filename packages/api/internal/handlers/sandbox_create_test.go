@@ -16,12 +16,25 @@ func TestBuildAutoResumeConfig(t *testing.T) {
 		name       string
 		in         *api.SandboxAutoResumeConfig
 		wantNil    bool
+		wantErr    bool
 		wantPolicy dbtypes.SandboxAutoResumePolicy
 	}{
 		{
 			name:    "nil config returns nil",
 			in:      nil,
 			wantNil: true,
+		},
+		{
+			name:    "empty policy is rejected",
+			in:      &api.SandboxAutoResumeConfig{},
+			wantErr: true,
+		},
+		{
+			name: "unknown policy is rejected",
+			in: &api.SandboxAutoResumeConfig{
+				Policy: api.SandboxAutoResumePolicy("garbage"),
+			},
+			wantErr: true,
 		},
 		{
 			name: "policy any is accepted",
@@ -43,7 +56,19 @@ func TestBuildAutoResumeConfig(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := buildAutoResumeConfig(tt.in)
+			got, err := buildAutoResumeConfig(tt.in)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("buildAutoResumeConfig() error = nil, want non-nil error")
+				}
+
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("buildAutoResumeConfig() error = %v, want nil", err)
+			}
 
 			if tt.wantNil {
 				if got != nil {
