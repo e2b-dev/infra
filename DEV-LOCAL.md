@@ -49,5 +49,5 @@ These commands will launch each service in the foreground, and will need multipl
 E2B_API_KEY=e2b_53ae1fed82754c17ad8077fbc8bcdd90
 E2B_ACCESS_TOKEN=sk_e2b_89215020937a4c989cde33d7bc647715
 E2B_API_URL=http://localhost:3000
-E2B_ENVD_API_URL=http://localhost:3002
+E2B_SANDBOX_URL=http://localhost:3002
 ```
