@@ -26,30 +26,23 @@ func New(config cfg.Config) *VolumeService {
 	return &VolumeService{config: config}
 }
 
-func (v *VolumeService) buildVolumePath(volumeType, teamId, volumeID string) (string, error) {
-	if teamId == "" {
-		return "", status.Errorf(codes.InvalidArgument, "team ID is required")
-	}
-
-	if volumeType == "" {
-		return "", status.Errorf(codes.InvalidArgument, "volume type is required")
-	}
-
+func (v *VolumeService) buildVolumePath(volumeType, teamID, volumeID string) (string, error) {
 	volPath, ok := v.config.PersistentVolumeMounts[volumeType]
 	if !ok {
-		return "", status.Errorf(codes.NotFound, "volume type %s not found", volumeType)
+		return "", status.Errorf(codes.NotFound, "volume type %q not found", volumeType)
 	}
 
-	if !tryParseUUID(teamId) {
-		return "", status.Errorf(codes.InvalidArgument, "invalid team ID %s", teamId)
+	if !tryParseUUID(teamID) {
+		return "", status.Errorf(codes.InvalidArgument, "invalid team ID %q", teamID)
 	}
 
 	if !tryParseUUID(volumeID) {
-		return "", status.Errorf(codes.InvalidArgument, "invalid volume ID %s", volumeID)
+		return "", status.Errorf(codes.InvalidArgument, "invalid volume ID %q", volumeID)
 	}
 
-	volumePath := filepath.Join(volPath, teamId, volumeID)
-	if !strings.HasPrefix(volumePath, volPath) {
+	volumePath := filepath.Join(volPath, teamID, volumeID)
+	rel, err := filepath.Rel(volPath, volumePath)
+	if err != nil || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || rel == ".." {
 		return "", status.Errorf(codes.PermissionDenied, "volume path %s is not under %s", volumePath, volPath)
 	}
 
