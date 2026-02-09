@@ -241,15 +241,14 @@ func buildAutoResumeConfig(autoResume *api.SandboxAutoResumeConfig) (*types.Sand
 	}
 
 	policy := types.SandboxAutoResumePolicy(p)
-	switch policy {
-	case types.SandboxAutoResumeAny, types.SandboxAutoResumeOff:
+	if policy == types.SandboxAutoResumeAny || policy == types.SandboxAutoResumeOff {
 		return &types.SandboxAutoResumeConfig{Policy: policy}, nil
-	default:
-		return nil, &api.APIError{
-			Code:      http.StatusBadRequest,
-			ClientMsg: "Invalid autoResume policy",
-			Err:       fmt.Errorf("invalid autoResume policy %q", autoResume.Policy),
-		}
+	}
+
+	return nil, &api.APIError{
+		Code:      http.StatusBadRequest,
+		ClientMsg: "Invalid autoResume policy",
+		Err:       fmt.Errorf("invalid autoResume policy %q", autoResume.Policy),
 	}
 }
 
