@@ -179,6 +179,42 @@ Flags:
 
 ---
 
+## Architecture (ARM64) Support
+
+The orchestrator supports both `amd64` (x86_64) and `arm64` (aarch64) architectures. Architecture is detected automatically via `runtime.GOARCH` at compile time.
+
+### Architecture naming convention
+
+This project uses **Go/Docker/Debian naming** (`amd64`/`arm64`) for architecture directories in binary paths and GCS buckets:
+
+| Convention | x86_64 name | ARM64 name | Used by |
+|------------|-------------|------------|---------|
+| **Go/Docker/Debian** | `amd64` | `arm64` | This repo, Docker, `dpkg --print-architecture` |
+| Linux/GNU | `x86_64` | `aarch64` | `uname -m`, kernel Makefiles |
+
+Binary paths follow the `{version}/{arch}/` layout:
+
+```
+# Firecracker (GCS bucket or FIRECRACKER_VERSIONS_DIR)
+fc-versions/v1.12.1_717921c/amd64/firecracker
+fc-versions/v1.12.1_717921c/arm64/firecracker
+
+# Kernels (GCS bucket or HOST_KERNELS_DIR)
+kernels/vmlinux-6.1.102/amd64/vmlinux.bin
+kernels/vmlinux-6.1.102/arm64/vmlinux.bin
+```
+
+> **Note:** The [fc-kernels](https://github.com/e2b-dev/fc-kernels) repo currently uses `x86_64` instead of `amd64` for its directory names. This will be aligned in a follow-up change.
+
+### ARM64-specific behavior
+
+- **SMT** is disabled (ARM processors don't support simultaneous multi-threading)
+- **CPU detection** uses fallback values since `gopsutil` doesn't populate Family/Model on ARM64
+- **OCI platform** is set to `runtime.GOARCH` instead of hardcoded `amd64`
+- **Busybox binary** must be swapped before building: `make fetch-busybox`
+
+---
+
 ## Environment Variables
 
 Automatically set in local mode. Set before running to override:
