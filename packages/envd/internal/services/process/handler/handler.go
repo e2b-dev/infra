@@ -80,7 +80,9 @@ func New(
 	}
 
 	groups := []uint32{gid}
-	if gids, err := user.GroupIds(); err == nil {
+	if gids, err := user.GroupIds(); err != nil {
+		logger.Warn().Err(err).Str("user", user.Username).Msg("failed to get supplementary groups")
+	} else {
 		for _, g := range gids {
 			if parsed, err := strconv.ParseUint(g, 10, 32); err == nil {
 				groups = append(groups, uint32(parsed))
