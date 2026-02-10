@@ -95,6 +95,14 @@ func (h *HostStatsCollector) CollectSample(ctx context.Context) error {
 func (h *HostStatsCollector) Start(ctx context.Context) {
 	defer close(h.stoppedCh)
 
+	// Collect initial sample before starting periodic collection
+	if err := h.CollectSample(ctx); err != nil {
+		// Log error but continue with periodic sampling - don't kill the sandbox
+		logger.L().Error(ctx, "failed to collect initial host stats sample",
+			zap.String("sandbox_id", h.metadata.SandboxID),
+			zap.Error(err))
+	}
+
 	ticker := time.NewTicker(hostStatsSamplingInterval)
 	defer ticker.Stop()
 

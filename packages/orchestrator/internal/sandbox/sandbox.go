@@ -427,13 +427,6 @@ func (f *Factory) initializeHostStatsCollector(
 
 	sbx.hostStatsCollector = collector
 
-	err = collector.CollectSample(ctx)
-	if err != nil {
-		logger.L().Error(ctx, "failed to collect initial host stats",
-			zap.String("sandbox_id", runtime.SandboxID),
-			zap.Error(err))
-	}
-
 	go collector.Start(ctx)
 }
 
