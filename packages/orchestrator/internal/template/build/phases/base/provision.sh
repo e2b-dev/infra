@@ -7,7 +7,7 @@ RESULT_PATH="{{ .ResultPath }}"
 echo "Starting provisioning script"
 
 echo "Making configuration immutable"
-$BUSYBOX chattr +i /etc/resolv.conf
+$BUSYBOX chattr +i /etc/resolv.conf 2>/dev/null || true
 
 # Helper function to check if a package is installed
 is_package_installed() {
@@ -95,7 +95,7 @@ echo "Linking systemd to init"
 ln -sf /lib/systemd/systemd /usr/sbin/init
 
 echo "Unlocking immutable configuration"
-$BUSYBOX chattr -i /etc/resolv.conf
+$BUSYBOX chattr -i /etc/resolv.conf 2>/dev/null || true
 
 echo "Finished provisioning script"
 
