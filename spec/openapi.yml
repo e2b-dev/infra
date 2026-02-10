@@ -482,6 +482,7 @@ components:
         - endAt
         - state
         - envdVersion
+        - volumeMounts
       properties:
         templateID:
           type: string
@@ -516,6 +517,10 @@ components:
           $ref: "#/components/schemas/SandboxState"
         envdVersion:
           $ref: "#/components/schemas/EnvdVersion"
+        volumeMounts:
+          type: array
+          items:
+            $ref: "#/components/schemas/SandboxVolumeMount"
 
     SandboxesWithMetrics:
       required:
@@ -1647,14 +1652,14 @@ components:
     Volume:
       type: object
       properties:
-        id:
+        volumeID:
           type: string
           description: ID of the volume
         name:
           type: string
           description: Name of the volume
       required:
-        - id
+        - volumeID
         - name
 
     NewVolume:

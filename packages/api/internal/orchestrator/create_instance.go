@@ -311,6 +311,7 @@ func (o *Orchestrator) CreateSandbox(
 		sbxDomain,
 		network,
 		trafficAccessToken,
+		sbxVolumeMounts,
 	)
 
 	err = o.sandboxStore.Add(ctx, sbx, true)

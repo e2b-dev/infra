@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -31,7 +32,15 @@ const (
 	sandboxesMaxLimit     = int32(100)
 )
 
-func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, runningSandboxesIDs []string, metadataFilter *map[string]string, queryLimit int32, cursorTime time.Time, cursorID string) ([]utils.PaginatedSandbox, error) {
+func (a *APIStore) getPausedSandboxes(
+	ctx context.Context,
+	teamID uuid.UUID,
+	runningSandboxesIDs []string,
+	metadataFilter *map[string]string,
+	queryLimit int32,
+	cursorTime time.Time,
+	cursorID string,
+) ([]utils.PaginatedSandbox, error) {
 	queryMetadata := dbtypes.JSONBStringMap{}
 	if metadataFilter != nil {
 		queryMetadata = *metadataFilter
@@ -284,17 +293,18 @@ func instanceInfoToPaginatedSandboxes(runningSandboxes []sandbox.Sandbox) []util
 
 		sandbox := utils.PaginatedSandbox{
 			ListedSandbox: api.ListedSandbox{
-				ClientID:    info.ClientID,
-				TemplateID:  info.BaseTemplateID,
-				Alias:       info.Alias,
-				SandboxID:   info.SandboxID,
-				StartedAt:   info.StartTime,
-				CpuCount:    api.CPUCount(info.VCpu),
-				MemoryMB:    api.MemoryMB(info.RamMB),
-				DiskSizeMB:  api.DiskSizeMB(info.TotalDiskSizeMB),
-				EndAt:       info.EndTime,
-				State:       state,
-				EnvdVersion: info.EnvdVersion,
+				ClientID:     info.ClientID,
+				TemplateID:   info.BaseTemplateID,
+				Alias:        info.Alias,
+				SandboxID:    info.SandboxID,
+				StartedAt:    info.StartTime,
+				CpuCount:     api.CPUCount(info.VCpu),
+				MemoryMB:     api.MemoryMB(info.RamMB),
+				DiskSizeMB:   api.DiskSizeMB(info.TotalDiskSizeMB),
+				EndAt:        info.EndTime,
+				State:        state,
+				EnvdVersion:  info.EnvdVersion,
+				VolumeMounts: convertToAPIVolumeMounts(info.VolumeMounts),
 			},
 			PaginationTimestamp: info.StartTime,
 		}
@@ -308,4 +318,17 @@ func instanceInfoToPaginatedSandboxes(runningSandboxes []sandbox.Sandbox) []util
 	}
 
 	return sandboxes
+}
+
+func convertToAPIVolumeMounts(mounts []*orchestrator.SandboxVolumeMount) []api.SandboxVolumeMount {
+	var results []api.SandboxVolumeMount
+
+	for _, item := range mounts {
+		results = append(results, api.SandboxVolumeMount{
+			Name: item.Name,
+			Path: item.Path,
+		})
+	}
+
+	return results
 }

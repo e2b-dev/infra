@@ -15,8 +15,8 @@ func (a *APIStore) GetVolumesVolumeID(c *gin.Context, volumeID api.VolumeID) {
 	}
 
 	result := api.Volume{
-		Id:   volume.ID.String(),
-		Name: volume.Name,
+		VolumeID: volume.ID.String(),
+		Name:     volume.Name,
 	}
 
 	c.JSON(http.StatusOK, result)
