@@ -71,15 +71,19 @@ func handlePausedSandbox(
 	}
 
 	logger.L().Info(ctx, "catalog miss, attempting resume via api", logger.WithSandboxID(sandboxId))
+	start := time.Now()
 	nodeIP, err := pausedChecker.Resume(ctx, sandboxId)
 	if err != nil {
 		if isNotResumableError(err) {
+			logger.L().Debug(ctx, "sandbox not resumable", logger.WithSandboxID(sandboxId), zap.Error(err))
 			return "", nil
 		}
 
+		logger.L().Error(ctx, "auto-resume failed", logger.WithSandboxID(sandboxId), zap.Error(err), zap.Duration("duration", time.Since(start)))
 		return "", err
 	}
 
+	logger.L().Info(ctx, "auto-resume succeeded", logger.WithSandboxID(sandboxId), zap.String("node_ip", nodeIP), zap.Duration("duration", time.Since(start)))
 	return nodeIP, nil
 }
 
