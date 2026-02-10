@@ -403,7 +403,9 @@ func printLocalFileSizes(basePath, buildID string) {
 }
 
 func setupKernel(ctx context.Context, dir, version string) error {
+	arch := utils.TargetArch()
 	dstPath := filepath.Join(dir, version, "vmlinux.bin")
+
 	if err := os.MkdirAll(filepath.Dir(dstPath), 0o755); err != nil {
 		return fmt.Errorf("mkdir kernel dir: %w", err)
 	}
@@ -414,28 +416,29 @@ func setupKernel(ctx context.Context, dir, version string) error {
 		return nil
 	}
 
-	// On arm64, try arch-specific URL first (e.g. .../vmlinux-6.1.102/arm64/vmlinux.bin)
-	if utils.TargetArch() == "arm64" {
-		archURL, err := url.JoinPath("https://storage.googleapis.com/e2b-prod-public-builds/kernels/", version, "arm64", "vmlinux.bin")
-		if err != nil {
-			return fmt.Errorf("invalid kernel URL for arm64: %w", err)
-		}
-		fmt.Printf("⬇ Downloading kernel %s (arm64)...\n", version)
-		if err := download(ctx, archURL, dstPath, 0o644); err == nil {
-			return nil
-		} else if !errors.Is(err, errNotFound) {
-			return fmt.Errorf("failed to download arm64 kernel: %w", err)
-		}
-		fmt.Printf("  arm64 kernel not found, trying generic URL...\n")
-	}
-
-	kernelURL, err := url.JoinPath("https://storage.googleapis.com/e2b-prod-public-builds/kernels/", version, "vmlinux.bin")
+	// Try arch-specific URL first: {version}/{arch}/vmlinux.bin
+	archURL, err := url.JoinPath("https://storage.googleapis.com/e2b-prod-public-builds/kernels/", version, arch, "vmlinux.bin")
 	if err != nil {
 		return fmt.Errorf("invalid kernel URL: %w", err)
 	}
-	fmt.Printf("⬇ Downloading kernel %s...\n", version)
 
-	return download(ctx, kernelURL, dstPath, 0o644)
+	fmt.Printf("⬇ Downloading kernel %s (%s)...\n", version, arch)
+
+	if err := download(ctx, archURL, dstPath, 0o644); err == nil {
+		return nil
+	} else if !errors.Is(err, errNotFound) {
+		return fmt.Errorf("failed to download kernel: %w", err)
+	}
+
+	// Fallback to legacy path without arch directory
+	legacyURL, err := url.JoinPath("https://storage.googleapis.com/e2b-prod-public-builds/kernels/", version, "vmlinux.bin")
+	if err != nil {
+		return fmt.Errorf("invalid kernel legacy URL: %w", err)
+	}
+
+	fmt.Printf("  %s path not found, trying legacy URL...\n", arch)
+
+	return download(ctx, legacyURL, dstPath, 0o644)
 }
 
 func setupFC(ctx context.Context, dir, version string) error {
