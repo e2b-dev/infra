@@ -152,26 +152,11 @@ func (a *API) GetFiles(w http.ResponseWriter, r *http.Request, params GetFilesPa
 		w.Header().Set("Content-Type", contentType)
 
 		gw := gzip.NewWriter(w)
+		defer gw.Close()
 
 		_, err = io.Copy(gw, file)
 		if err != nil {
-			// Close without flushing to avoid writing gzip framing to the response,
-			// which would trigger an implicit 200 status.
-			gw.Reset(io.Discard)
-			gw.Close()
-
 			a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error writing gzip response")
-
-			errMsg = fmt.Errorf("error reading file")
-			errorCode = http.StatusInternalServerError
-			jsonError(w, errorCode, errMsg)
-
-			return
-		}
-
-		// Close flushes the gzip footer to the response
-		if err = gw.Close(); err != nil {
-			a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error closing gzip writer")
 		}
 
 		return
