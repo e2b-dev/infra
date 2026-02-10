@@ -93,28 +93,26 @@ func (h *HostStatsCollector) CollectSample(ctx context.Context) error {
 
 // Start begins periodic collection of host statistics
 func (h *HostStatsCollector) Start(ctx context.Context) {
-	go func() {
-		defer close(h.stoppedCh)
+	defer close(h.stoppedCh)
 
-		ticker := time.NewTicker(hostStatsSamplingInterval)
-		defer ticker.Stop()
+	ticker := time.NewTicker(hostStatsSamplingInterval)
+	defer ticker.Stop()
 
-		for {
-			select {
-			case <-ticker.C:
-				if err := h.CollectSample(ctx); err != nil {
-					// Log error but continue sampling - don't kill the sandbox
-					logger.L().Error(ctx, "failed to collect host stats sample",
-						zap.String("sandbox_id", h.metadata.SandboxID),
-						zap.Error(err))
-				}
-			case <-h.stopCh:
-				return
-			case <-ctx.Done():
-				return
+	for {
+		select {
+		case <-ticker.C:
+			if err := h.CollectSample(ctx); err != nil {
+				// Log error but continue sampling - don't kill the sandbox
+				logger.L().Error(ctx, "failed to collect host stats sample",
+					zap.String("sandbox_id", h.metadata.SandboxID),
+					zap.Error(err))
 			}
+		case <-h.stopCh:
+			return
+		case <-ctx.Done():
+			return
 		}
-	}()
+	}
 }
 
 // Stop halts periodic collection and takes a final sample

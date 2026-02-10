@@ -434,7 +434,7 @@ func (f *Factory) initializeHostStatsCollector(
 			zap.Error(err))
 	}
 
-	collector.Start(ctx)
+	go collector.Start(ctx)
 }
 
 // ResumeSandbox resumes the sandbox from already saved template or snapshot.
