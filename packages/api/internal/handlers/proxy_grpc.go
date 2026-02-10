@@ -116,8 +116,8 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 	}
 
 	node := s.api.orchestrator.GetNode(sbx.ClusterID, sbx.NodeID)
-	if node == nil || node.IPAddress == "" {
-		logger.L().Error(ctx, "auto-resume succeeded but no routing info", logger.WithSandboxID(sandboxID), zap.Stringer("cluster_id", sbx.ClusterID), zap.String("node_id", sbx.NodeID), zap.Duration("duration", time.Since(start)))
+	if node == nil {
+		logger.L().Error(ctx, "auto-resume succeeded but node not found", logger.WithSandboxID(sandboxID), zap.Stringer("cluster_id", sbx.ClusterID), zap.String("node_id", sbx.NodeID), zap.Duration("duration", time.Since(start)))
 
 		return nil, status.Error(codes.Internal, "sandbox resumed but routing info is not available yet")
 	}
