@@ -7,11 +7,22 @@ import (
 	"strings"
 )
 
-// TargetArch returns the target architecture for builds and binary paths.
-// If TARGET_ARCH is set, it is used; otherwise falls back to runtime.GOARCH.
-// This allows cross-architecture deployment (e.g. deploying x86_64 from an ARM64 host).
+// validArchitectures lists accepted TARGET_ARCH values (Go/Docker/Debian naming convention).
+var validArchitectures = map[string]bool{
+	"amd64": true,
+	"arm64": true,
+}
+
+// TargetArch returns the target architecture for binary paths and OCI platform.
+// If TARGET_ARCH is set to a valid value ("amd64" or "arm64"), it is used;
+// otherwise falls back to runtime.GOARCH.
+// Panics on invalid TARGET_ARCH values to prevent silent path misresolution.
 func TargetArch() string {
 	if arch := os.Getenv("TARGET_ARCH"); arch != "" {
+		if !validArchitectures[arch] {
+			panic(fmt.Sprintf("Invalid TARGET_ARCH=%q: must be one of \"amd64\", \"arm64\"", arch))
+		}
+
 		return arch
 	}
 
