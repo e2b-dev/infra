@@ -108,7 +108,7 @@ func (a *API) GetFiles(w http.ResponseWriter, r *http.Request, params GetFilesPa
 	encoding, err := parseAcceptEncoding(r)
 	if err != nil {
 		errMsg = fmt.Errorf("error parsing Accept-Encoding: %w", err)
-		errorCode = http.StatusBadRequest
+		errorCode = http.StatusNotAcceptable
 		jsonError(w, errorCode, errMsg)
 
 		return
