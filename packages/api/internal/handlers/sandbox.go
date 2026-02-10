@@ -67,6 +67,7 @@ func (a *APIStore) startSandbox(
 		allowInternetAccess,
 		network,
 		mcp,
+		volumeMounts
 	)
 	if apiErr != nil {
 		return nil, apiErr
@@ -96,6 +97,7 @@ func (a *APIStore) startSandboxInternal(
 	allowInternetAccess *bool,
 	network *types.SandboxNetworkConfig,
 	mcp api.Mcp,
+	volumeMounts []*orchestrator.SandboxVolumeMount,
 ) (sandbox.Sandbox, *api.APIError) {
 	startTime := time.Now()
 	endTime := startTime.Add(timeout)

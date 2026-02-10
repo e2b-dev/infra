@@ -138,11 +138,6 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		}
 	}
 
-	autoPause := sandbox.AutoPauseDefault
-	if body.AutoPause != nil {
-		autoPause = *body.AutoPause
-	}
-
 	autoResume, autoResumeErr := buildAutoResumeConfig(body.AutoResume)
 	if autoResumeErr != nil {
 		a.sendAPIStoreError(c, autoResumeErr.Code, autoResumeErr.ClientMsg)
