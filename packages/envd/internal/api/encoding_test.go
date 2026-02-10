@@ -358,6 +358,36 @@ func TestParseAcceptEncoding(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "gzip", encoding) // wildcard with identity rejected returns supported encoding
 	})
+
+	t.Run("returns error when wildcard rejected and no explicit identity", func(t *testing.T) {
+		t.Parallel()
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
+		req.Header.Set("Accept-Encoding", "*;q=0")
+
+		_, err := parseAcceptEncoding(req)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "no acceptable encoding found")
+	})
+
+	t.Run("returns identity when wildcard rejected but identity explicitly accepted", func(t *testing.T) {
+		t.Parallel()
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
+		req.Header.Set("Accept-Encoding", "*;q=0, identity")
+
+		encoding, err := parseAcceptEncoding(req)
+		require.NoError(t, err)
+		assert.Equal(t, EncodingIdentity, encoding)
+	})
+
+	t.Run("returns gzip when wildcard rejected but gzip explicitly accepted", func(t *testing.T) {
+		t.Parallel()
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
+		req.Header.Set("Accept-Encoding", "*;q=0, gzip")
+
+		encoding, err := parseAcceptEncoding(req)
+		require.NoError(t, err)
+		assert.Equal(t, EncodingGzip, encoding)
+	})
 }
 
 func TestGetDecompressedBody(t *testing.T) {
