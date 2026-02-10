@@ -681,7 +681,7 @@ func (f *Factory) ResumeSandbox(
 
 			teamID, err := uuid.Parse(runtime.TeamID)
 			if err != nil {
-				logger.L().Error(ctx, "error parsing team ID", zap.String("team_id", runtime.TeamID), zap.Error(err))
+				logger.L().Error(ctx, "error parsing team ID", logger.WithTeamID(runtime.TeamID), zap.Error(err))
 			}
 
 			collector, err := NewHostStatsCollector(
