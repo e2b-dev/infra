@@ -1,0 +1,70 @@
+name: ARM64 tests on PRs
+
+on: [workflow_call]
+
+permissions:
+  contents: read
+
+jobs:
+  cross-compile:
+    name: Cross-compile all packages for ARM64
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: ./.github/actions/go-setup-cache
+
+      - name: Install ARM64 cross-compiler
+        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: Build and vet packages (pure Go)
+        run: |
+          for pkg in api client-proxy envd shared db docker-reverse-proxy; do
+            echo "::group::packages/$pkg"
+            pushd "packages/$pkg" > /dev/null
+            GOARCH=arm64 go build ./...
+            GOARCH=arm64 go vet ./...
+            popd > /dev/null
+            echo "::endgroup::"
+          done
+
+      - name: Build and vet orchestrator (CGO)
+        run: |
+          CGO_ENABLED=1 CC=aarch64-linux-gnu-gcc GOARCH=arm64 go build ./...
+          CGO_ENABLED=1 CC=aarch64-linux-gnu-gcc GOARCH=arm64 go vet ./...
+        working-directory: packages/orchestrator
+
+  arm64-unit-tests:
+    name: ARM64 tests for ${{ matrix.package }}
+    runs-on: ubuntu-24.04-arm
+    strategy:
+      matrix:
+        include:
+          - package: packages/api
+            test_path: ./...
+          - package: packages/client-proxy
+            test_path: ./...
+          - package: packages/db
+            test_path: ./...
+          - package: packages/docker-reverse-proxy
+            test_path: ./...
+          - package: packages/shared
+            test_path: ./pkg/...
+      fail-fast: false
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: ./.github/actions/go-setup-cache
+        with:
+          cache-dependency-paths: |
+            go.work
+            ${{ matrix.package }}/go.mod
+            ${{ matrix.package }}/go.sum
+
+      - name: Run tests
+        working-directory: ${{ matrix.package }}
+        run: go test -v ${{ matrix.test_path }}
