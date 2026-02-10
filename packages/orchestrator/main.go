@@ -313,12 +313,15 @@ func run(config cfg.Config) (success bool) {
 
 	var hostStatsDelivery clickhousehoststats.Delivery
 
-	// Clickhouse sandbox events delivery target
+	// Clickhouse sandbox events and host stats delivery
 	if config.ClickhouseConnectionString != "" {
 		clickhouseConn, err := clickhouse.NewDriver(config.ClickhouseConnectionString)
 		if err != nil {
 			logger.L().Fatal(ctx, "failed to create clickhouse driver", zap.Error(err))
 		}
+		closers = append(closers, closer{"clickhouse connection", func(context.Context) error {
+			return clickhouseConn.Close()
+		}})
 
 		sbxEventsDeliveryClickhouse, err := clickhouseevents.NewDefaultClickhouseSandboxEventsDelivery(ctx, clickhouseConn, featureFlags)
 		if err != nil {
@@ -328,17 +331,7 @@ func run(config cfg.Config) (success bool) {
 		sbxEventsDeliveryTargets = append(sbxEventsDeliveryTargets, sbxEventsDeliveryClickhouse)
 		closers = append(closers, closer{"sandbox events delivery for clickhouse", sbxEventsDeliveryClickhouse.Close})
 
-		// Clickhouse sandbox host stats delivery
-		clickhouseConnHostStats, err := clickhouse.NewDriver(config.ClickhouseConnectionString)
-		if err != nil {
-			logger.L().Fatal(ctx, "failed to create clickhouse driver for host stats", zap.Error(err))
-		}
-
-		hostStatsDeliveryClickhouse, err := clickhousehoststats.NewDefaultClickhouseHostStatsDelivery(
-			ctx,
-			clickhouseConnHostStats,
-			featureFlags,
-		)
+		hostStatsDeliveryClickhouse, err := clickhousehoststats.NewDefaultClickhouseHostStatsDelivery(ctx, clickhouseConn, featureFlags)
 		if err != nil {
 			logger.L().Fatal(ctx, "failed to create clickhouse host stats delivery", zap.Error(err))
 		}

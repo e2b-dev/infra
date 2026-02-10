@@ -90,8 +90,6 @@ func (c *ClickhouseDelivery) Push(stat SandboxHostStat) error {
 }
 
 func (c *ClickhouseDelivery) Close(context.Context) error {
-	defer c.conn.Close()
-
 	return c.batcher.Stop()
 }
 
