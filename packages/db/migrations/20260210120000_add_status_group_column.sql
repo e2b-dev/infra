@@ -6,6 +6,7 @@ ALTER TABLE public.env_builds
       WHEN status IN ('in_progress', 'building', 'snapshotting') THEN 'in_progress'
       WHEN status IN ('ready', 'uploaded', 'success') THEN 'ready'
       WHEN status = 'failed' THEN 'failed'
+      ELSE 'failed'
     END
   ) STORED;
 
