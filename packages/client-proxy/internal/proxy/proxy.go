@@ -76,14 +76,17 @@ func handlePausedSandbox(
 	if err != nil {
 		if isNotResumableError(err) {
 			logger.L().Debug(ctx, "sandbox not resumable", logger.WithSandboxID(sandboxId), zap.Error(err))
+
 			return "", nil
 		}
 
 		logger.L().Error(ctx, "auto-resume failed", logger.WithSandboxID(sandboxId), zap.Error(err), zap.Duration("duration", time.Since(start)))
+
 		return "", err
 	}
 
 	logger.L().Info(ctx, "auto-resume succeeded", logger.WithSandboxID(sandboxId), zap.String("node_ip", nodeIP), zap.Duration("duration", time.Since(start)))
+
 	return nodeIP, nil
 }
 

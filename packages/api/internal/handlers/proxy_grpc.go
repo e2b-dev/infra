@@ -111,15 +111,18 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 	)
 	if apiErr != nil {
 		logger.L().Error(ctx, "auto-resume startSandboxInternal failed", logger.WithSandboxID(sandboxID), zap.String("client_msg", apiErr.ClientMsg), zap.Int("code", apiErr.Code), zap.Duration("duration", time.Since(start)))
+
 		return nil, status.Errorf(sharedutils.GRPCCodeFromHTTPStatus(apiErr.Code), "resume failed: %s", apiErr.ClientMsg)
 	}
 
 	node := s.api.orchestrator.GetNode(sbx.ClusterID, sbx.NodeID)
 	if node == nil || node.IPAddress == "" {
 		logger.L().Error(ctx, "auto-resume succeeded but no routing info", logger.WithSandboxID(sandboxID), zap.Stringer("cluster_id", sbx.ClusterID), zap.String("node_id", sbx.NodeID), zap.Duration("duration", time.Since(start)))
+
 		return nil, status.Error(codes.Internal, "sandbox resumed but routing info is not available yet")
 	}
 
 	logger.L().Info(ctx, "auto-resume completed", logger.WithSandboxID(sandboxID), zap.String("node_ip", node.IPAddress), zap.Duration("duration", time.Since(start)))
+
 	return &proxygrpc.SandboxResumeResponse{OrchestratorIp: node.IPAddress}, nil
 }

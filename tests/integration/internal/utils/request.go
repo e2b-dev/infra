@@ -61,7 +61,20 @@ func NewRequest(sbx *api.Sandbox, url *url.URL, port int, extraHeaders *http.Hea
 func WaitForStatus(tb testing.TB, client *http.Client, sbx *api.Sandbox, url *url.URL, port int, headers *http.Header, expectedStatus int) *http.Response {
 	tb.Helper()
 
-	for range 10 {
+	return WaitForStatusWithRetries(tb, client, sbx, url, port, headers, expectedStatus, 10, 500*time.Millisecond)
+}
+
+func WaitForStatusWithRetries(tb testing.TB, client *http.Client, sbx *api.Sandbox, url *url.URL, port int, headers *http.Header, expectedStatus int, attempts int, delay time.Duration) *http.Response {
+	tb.Helper()
+
+	if attempts <= 0 {
+		attempts = 1
+	}
+	if delay < 0 {
+		delay = 0
+	}
+
+	for range attempts {
 		req := NewRequest(sbx, url, port, headers)
 		resp, err := client.Do(req)
 		if err != nil {
@@ -82,7 +95,7 @@ func WaitForStatus(tb testing.TB, client *http.Client, sbx *api.Sandbox, url *ur
 		}
 		require.NoError(tb, resp.Body.Close())
 
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(delay)
 	}
 
 	tb.Fail()
