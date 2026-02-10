@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel/metric"
@@ -33,25 +34,46 @@ const (
 
 var ErrNodeNotFound = errors.New("node not found")
 
-func catalogResolution(ctx context.Context, sandboxId string, c catalog.SandboxesCatalog, pausedChecker PausedSandboxResumer, featureFlags *featureflags.Client) (string, error) {
+type autoResumeResult uint8
+
+const (
+	autoResumeNone autoResumeResult = iota
+	autoResumeSucceeded
+	autoResumeNotAllowed
+	autoResumeErrored
+)
+
+func normalizeNodeIP(nodeIP string) string {
+	// In single-host setups, the control-plane may treat an empty orchestrator IP as "localhost".
+	// Returning a usable hostname avoids turning a successful resume into a 502 due to ":5007".
+	if strings.TrimSpace(nodeIP) == "" {
+		return "localhost"
+	}
+
+	return nodeIP
+}
+
+func catalogResolution(ctx context.Context, sandboxId string, c catalog.SandboxesCatalog, pausedChecker PausedSandboxResumer, featureFlags *featureflags.Client) (string, autoResumeResult, error) {
 	s, err := c.GetSandbox(ctx, sandboxId)
 	if err != nil {
 		if errors.Is(err, catalog.ErrSandboxNotFound) {
-			if nodeIP, pausedErr := handlePausedSandbox(ctx, sandboxId, pausedChecker, featureFlags); pausedErr != nil {
-				return "", pausedErr
-			} else if nodeIP != "" {
-				return nodeIP, nil
+			nodeIP, res, pausedErr := handlePausedSandbox(ctx, sandboxId, pausedChecker, featureFlags)
+			if pausedErr != nil {
+				return "", res, pausedErr
+			}
+			if res == autoResumeSucceeded {
+				return normalizeNodeIP(nodeIP), res, nil
 			}
 
-			return "", ErrNodeNotFound
+			return "", res, ErrNodeNotFound
 		}
 
-		return "", fmt.Errorf("failed to get sandbox from catalog: %w", err)
+		return "", autoResumeErrored, fmt.Errorf("failed to get sandbox from catalog: %w", err)
 	}
 
 	// todo: when we will use edge for orchestrators discovery we can stop sending IP in the catalog
 	//  and just resolve node from pool to get the IP of the node
-	return s.OrchestratorIP, nil
+	return normalizeNodeIP(s.OrchestratorIP), autoResumeNone, nil
 }
 
 func handlePausedSandbox(
@@ -59,28 +81,28 @@ func handlePausedSandbox(
 	sandboxId string,
 	pausedChecker PausedSandboxResumer,
 	featureFlags *featureflags.Client,
-) (string, error) {
+) (string, autoResumeResult, error) {
 	if pausedChecker == nil {
-		return "", nil
+		return "", autoResumeNone, nil
 	}
 
 	if !featureFlags.BoolFlag(ctx, featureflags.SandboxAutoResumeFlag, featureflags.SandboxContext(sandboxId)) {
 		logger.L().Debug(ctx, "sandbox auto-resume disabled; skipping api resume", logger.WithSandboxID(sandboxId))
 
-		return "", nil
+		return "", autoResumeNotAllowed, nil
 	}
 
 	logger.L().Info(ctx, "catalog miss, attempting resume via api", logger.WithSandboxID(sandboxId))
 	nodeIP, err := pausedChecker.Resume(ctx, sandboxId)
 	if err != nil {
 		if isNotResumableError(err) {
-			return "", nil
+			return "", autoResumeNotAllowed, nil
 		}
 
-		return "", err
+		return "", autoResumeErrored, err
 	}
 
-	return nodeIP, nil
+	return nodeIP, autoResumeSucceeded, nil
 }
 
 func isNotResumableError(err error) bool {
@@ -117,7 +139,7 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 				zap.Int64("content_length", r.ContentLength),
 			)
 
-			nodeIP, err := catalogResolution(ctx, sandboxId, catalog, pausedSandboxResumer, featureFlagsClient)
+			nodeIP, _, err := catalogResolution(ctx, sandboxId, catalog, pausedSandboxResumer, featureFlagsClient)
 			if err != nil {
 				if !errors.Is(err, ErrNodeNotFound) {
 					l.Warn(ctx, "failed to resolve node ip with Redis resolution", zap.Error(err))
