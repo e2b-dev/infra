@@ -21,7 +21,7 @@ CREATE TRIGGER trg_compute_status_group
   FOR EACH ROW EXECUTE FUNCTION compute_status_group();
 
 -- +goose StatementBegin
-DO $$
+CREATE OR REPLACE PROCEDURE backfill_status_group() AS $$
 DECLARE
   batch_size INT := 50000;
   rows_updated INT;
@@ -40,11 +40,15 @@ BEGIN
       LIMIT batch_size
     );
     GET DIAGNOSTICS rows_updated = ROW_COUNT;
+    COMMIT;
     EXIT WHEN rows_updated = 0;
-    PERFORM pg_sleep(0.1);
   END LOOP;
-END $$;
+END;
+$$ LANGUAGE plpgsql;
 -- +goose StatementEnd
+
+CALL backfill_status_group();
+DROP PROCEDURE backfill_status_group();
 
 ALTER TABLE public.env_builds
   ADD CONSTRAINT chk_status_group_not_null
