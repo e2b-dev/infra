@@ -25,14 +25,6 @@ func getDebugID(ctx context.Context) *string {
 	return &value
 }
 
-func debugFormat(debugID *string, msg string) string {
-	if debugID == nil {
-		return msg
-	}
-
-	return fmt.Sprintf("[%s] %s", *debugID, msg)
-}
-
 func SetAttributes(ctx context.Context, attrs ...attribute.KeyValue) {
 	span := trace.SpanFromContext(ctx)
 	span.SetAttributes(attrs...)
