@@ -9,7 +9,6 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	clickhouseutils "github.com/e2b-dev/infra/packages/clickhouse/pkg/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
@@ -18,7 +17,6 @@ import (
 )
 
 type LocalClusterResourceProvider struct {
-	config                      cfg.Config
 	querySandboxMetricsProvider clickhouse.SandboxQueriesProvider
 	queryLogsProvider           *loki.LokiQueryProvider
 	instances                   *smap.Map[*Instance]
@@ -28,10 +26,8 @@ func newLocalClusterResourceProvider(
 	querySandboxMetricsProvider clickhouse.SandboxQueriesProvider,
 	queryLogsProvider *loki.LokiQueryProvider,
 	instances *smap.Map[*Instance],
-	config cfg.Config,
 ) ClusterResource {
 	return &LocalClusterResourceProvider{
-		config:                      config,
 		querySandboxMetricsProvider: querySandboxMetricsProvider,
 		queryLogsProvider:           queryLogsProvider,
 		instances:                   instances,
