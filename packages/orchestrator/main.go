@@ -413,7 +413,7 @@ func run(config cfg.Config) (success bool) {
 
 	volumeService := volumes.New(config)
 
-	orchestratorService := server.New(ctx, server.ServiceConfig{
+	orchestratorService, err := server.New(ctx, server.ServiceConfig{
 		Config:           config,
 		SandboxFactory:   sandboxFactory,
 		Tel:              tel,
@@ -427,6 +427,9 @@ func run(config cfg.Config) (success bool) {
 		FeatureFlags:     featureFlags,
 		SbxEventsService: events.NewEventsService(sbxEventsDeliveryTargets),
 	})
+	if err != nil {
+		logger.L().Fatal(ctx, "Error creating orchestrator service", zap.Error(err))
+	}
 
 	// template manager sandbox logger
 	tmplSbxLoggerExternal := sbxlogger.NewLogger(
