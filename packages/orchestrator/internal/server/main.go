@@ -57,11 +57,11 @@ type ServiceConfig struct {
 	SbxEventsService *events.EventsService
 }
 
-func New(ctx context.Context, cfg ServiceConfig) (*Server, error) {
+func New(cfg ServiceConfig) (*Server, error) {
 	meter := cfg.Tel.MeterProvider.Meter("orchestrator.sandbox")
 	sandboxCreateHistogram, err := telemetry.GetHistogram(meter, telemetry.OrchestratorSandboxCreateDurationHistogramName)
 	if err != nil {
-		return nil, fmt.Errorf("Error registering sandbox create duration histogram: %v", err)
+		return nil, fmt.Errorf("error registering sandbox create duration histogram: %w", err)
 	}
 
 	server := &Server{
@@ -87,7 +87,7 @@ func New(ctx context.Context, cfg ServiceConfig) (*Server, error) {
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("Error registering sandbox count metric: %v", err)
+		return nil, fmt.Errorf("error registering sandbox count metric: %v", err)
 	}
 
 	return server, nil

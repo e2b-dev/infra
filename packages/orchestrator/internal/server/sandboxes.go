@@ -62,7 +62,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 			operationType = operationResume
 		}
 
-		s.sandboxCreateHistogram.Record(ctx, durationMs, metric.WithAttributes(
+		s.sandboxCreateHistogram.Record(context.WithoutCancel(ctx), durationMs, metric.WithAttributes(
 			attribute.String("operation", operationType),
 		))
 	}()
