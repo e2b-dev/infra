@@ -3,9 +3,6 @@ ENV := $(shell cat ../../.last_used_env || echo "not-set")
 
 AWS_BUCKET_PREFIX ?= $(PREFIX)$(AWS_ACCOUNT_ID)-
 
-# TARGET_ARCH overrides the build architecture (e.g. TARGET_ARCH=amd64 on arm64 host)
-BUILD_ARCH ?= $(or $(TARGET_ARCH),$(shell go env GOARCH))
-
 .PHONY: init
 init:
 	brew install protobuf
@@ -20,18 +17,18 @@ generate:
 .PHONY: build
 build:
 	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
-	@docker build --platform linux/$(BUILD_ARCH) --output=bin --build-arg COMMIT_SHA="$(COMMIT_SHA)" -f ./Dockerfile ..
+	@docker build --platform linux/$(shell go env GOARCH) --output=bin --build-arg COMMIT_SHA="$(COMMIT_SHA)" -f ./Dockerfile ..
 
 .PHONY: build-local
 build-local: fetch-busybox
 	# Allow for passing commit sha directly for docker builds
 	$(eval COMMIT_SHA ?= $(shell git rev-parse --short HEAD))
-	CGO_ENABLED=1 GOOS=linux GOARCH=$(BUILD_ARCH) go build -o bin/orchestrator -ldflags "-X=main.commitSHA=$(COMMIT_SHA)" .
-	CGO_ENABLED=1 GOOS=linux GOARCH=$(BUILD_ARCH) go build -o bin/clean-nfs-cache -ldflags "-X=main.commitSHA=$(COMMIT_SHA)" ./cmd/clean-nfs-cache
+	CGO_ENABLED=1 GOOS=linux GOARCH=$(shell go env GOARCH) go build -o bin/orchestrator -ldflags "-X=main.commitSHA=$(COMMIT_SHA)" .
+	CGO_ENABLED=1 GOOS=linux GOARCH=$(shell go env GOARCH) go build -o bin/clean-nfs-cache -ldflags "-X=main.commitSHA=$(COMMIT_SHA)" ./cmd/clean-nfs-cache
 
 .PHONY: build-debug
 build-debug:
-	CGO_ENABLED=1 GOOS=linux GOARCH=$(BUILD_ARCH) go build -race -gcflags=all="-N -l" -o bin/orchestrator .
+	CGO_ENABLED=1 GOOS=linux GOARCH=$(shell go env GOARCH) go build -race -gcflags=all="-N -l" -o bin/orchestrator .
 
 .PHONY: run-debug
 run-debug:
@@ -106,7 +103,7 @@ test-docker:
 	@cp -r ../shared .shared/
 	@rm -rf .clickhouse/
 	@cp -r ../clickhouse .clickhouse/
-	@docker build --platform linux/$(BUILD_ARCH) -f test.Dockerfile --no-cache-filter runner --progress=plain -t orchestrator-test .
+	@docker build --platform linux/$(shell go env GOARCH) -f test.Dockerfile --no-cache-filter runner --progress=plain -t orchestrator-test .
 	@rm -rf .shared/
 	@rm -rf .clickhouse/
 	@echo "Done"

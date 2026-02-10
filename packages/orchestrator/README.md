@@ -215,24 +215,23 @@ kernels/vmlinux-6.1.102/arm64/vmlinux.bin
 
 ### Cross-architecture deployment
 
-Set `TARGET_ARCH` to deploy for a different architecture than the build host:
+`TARGET_ARCH` is a **runtime** environment variable that overrides the architecture used for path resolution and OCI image pulls. When unset, defaults to the host architecture (`runtime.GOARCH`).
 
 ```bash
-# Build on ARM64 Mac, deploy x86_64 sandboxes
-TARGET_ARCH=amd64 make build-local
+# Run orchestrator targeting amd64 paths from an arm64 host
+TARGET_ARCH=amd64 ./bin/orchestrator
 
-# Or in .env file
+# Or in .env file (read at runtime)
 echo "TARGET_ARCH=amd64" >> .env.local
 ```
 
-When `TARGET_ARCH` is not set, the host architecture (`runtime.GOARCH`) is used automatically.
-
 `TARGET_ARCH` affects:
-- Firecracker and kernel binary paths (`{version}/{arch}/...`)
+- Firecracker and kernel binary path resolution (`{version}/{arch}/...`)
 - OCI image platform for container pulls
-- Makefile `GOARCH` for cross-compilation
 
-It does **not** affect hardware-dependent runtime behavior (SMT detection, CPU info) which always uses the actual host architecture.
+It does **not** affect:
+- Makefile compilation — use `GOARCH` directly for cross-compilation: `GOARCH=amd64 make build-local`
+- Hardware-dependent runtime behavior (SMT detection, CPU info) which always uses the actual host architecture
 
 ---
 
