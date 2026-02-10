@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/golang/protobuf/ptypes/empty"
@@ -78,19 +77,13 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
 
 		var autoResume *types.SandboxAutoResumeConfig
 		if autoResumeCfg := config.GetAutoResume(); autoResumeCfg != nil {
-			p := strings.TrimSpace(autoResumeCfg.GetPolicy())
+			p := autoResumeCfg.GetPolicy()
 			if p == "" {
 				p = string(types.SandboxAutoResumeOff)
 			}
 
 			policy := types.SandboxAutoResumePolicy(p)
-			switch policy {
-			case types.SandboxAutoResumeAny, types.SandboxAutoResumeOff:
-				autoResume = &types.SandboxAutoResumeConfig{Policy: policy}
-			default:
-				// Be defensive: unknown policy values should behave like "off".
-				autoResume = &types.SandboxAutoResumeConfig{Policy: types.SandboxAutoResumeOff}
-			}
+			autoResume = &types.SandboxAutoResumeConfig{Policy: policy}
 		}
 
 		sandboxesInfo = append(
