@@ -44,9 +44,9 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 	if envBuild.StatusGroup == types.BuildStatusGroupPending {
 		// if waiting for too long, fail the build
 		if time.Since(envBuild.CreatedAt) > syncWaitingStateDeadline {
-		err = tm.SetStatus(ctx, buildID, types.BuildStatusGroupFailed, &templatemanagergrpc.TemplateBuildStatusReason{
-			Message: "build is in waiting state for too long",
-		})
+			err = tm.SetStatus(ctx, buildID, types.BuildStatusGroupFailed, &templatemanagergrpc.TemplateBuildStatusReason{
+				Message: "build is in waiting state for too long",
+			})
 
 			return fmt.Errorf("build is in waiting state for too long, failing it: %w", err)
 		}
