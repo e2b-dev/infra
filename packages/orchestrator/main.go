@@ -329,9 +329,14 @@ func run(config cfg.Config) (success bool) {
 		closers = append(closers, closer{"sandbox events delivery for clickhouse", sbxEventsDeliveryClickhouse.Close})
 
 		// Clickhouse sandbox host stats delivery
+		clickhouseConnHostStats, err := clickhouse.NewDriver(config.ClickhouseConnectionString)
+		if err != nil {
+			logger.L().Fatal(ctx, "failed to create clickhouse driver for host stats", zap.Error(err))
+		}
+
 		hostStatsDeliveryClickhouse, err := clickhousehoststats.NewDefaultClickhouseHostStatsDelivery(
 			ctx,
-			clickhouseConn,
+			clickhouseConnHostStats,
 			featureFlags,
 		)
 		if err != nil {
