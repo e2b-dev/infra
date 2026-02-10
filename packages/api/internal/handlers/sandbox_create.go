@@ -181,7 +181,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		}
 	}
 
-	sbxVolumeMounts, err := createOrchestratorVolumeMounts(
+	sbxVolumeMounts, err := convertAPIVolumesToOrchestratorVolumes(
 		ctx, a.sqlcDB, a.featureFlags, teamInfo.ID, apiVolumeMounts,
 	)
 	if err != nil {
@@ -272,7 +272,7 @@ func (im InvalidVolumeMountsError) Error() string {
 	return fmt.Sprintf("invalid mounts:\n%s", strings.Join(errs, "\n"))
 }
 
-func createOrchestratorVolumeMounts(
+func convertAPIVolumesToOrchestratorVolumes(
 	ctx context.Context,
 	sqlClient *sqlcdb.Client,
 	featureFlags featureFlagsClient,
