@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -417,29 +418,70 @@ func setupKernel(ctx context.Context, dir, version string) error {
 		return nil
 	}
 
-	kernelURL, _ := url.JoinPath("https://storage.googleapis.com/e2b-prod-public-builds/kernels/", version, "vmlinux.bin")
+	// On arm64, try arch-specific URL first (e.g. .../vmlinux-6.1.102/arm64/vmlinux.bin)
+	if runtime.GOARCH == "arm64" {
+		archURL, err := url.JoinPath("https://storage.googleapis.com/e2b-prod-public-builds/kernels/", version, "arm64", "vmlinux.bin")
+		if err != nil {
+			return fmt.Errorf("invalid kernel URL for arm64: %w", err)
+		}
+		fmt.Printf("⬇ Downloading kernel %s (arm64)...\n", version)
+		if err := download(ctx, archURL, dstPath, 0o644); err == nil {
+			return nil
+		} else if !errors.Is(err, errNotFound) {
+			return fmt.Errorf("failed to download arm64 kernel: %w", err)
+		}
+		fmt.Printf("  arm64 kernel not found, trying generic URL...\n")
+	}
+
+	kernelURL, err := url.JoinPath("https://storage.googleapis.com/e2b-prod-public-builds/kernels/", version, "vmlinux.bin")
+	if err != nil {
+		return fmt.Errorf("invalid kernel URL: %w", err)
+	}
 	fmt.Printf("⬇ Downloading kernel %s...\n", version)
 
 	return download(ctx, kernelURL, dstPath, 0o644)
 }
 
 func setupFC(ctx context.Context, dir, version string) error {
-	dstPath := filepath.Join(dir, version, "firecracker")
+	arch := runtime.GOARCH
+	dstPath := filepath.Join(dir, version, arch, "firecracker")
+
 	if err := os.MkdirAll(filepath.Dir(dstPath), 0o755); err != nil {
 		return fmt.Errorf("mkdir firecracker dir: %w", err)
 	}
 
 	if _, err := os.Stat(dstPath); err == nil {
-		fmt.Printf("✓ Firecracker %s exists\n", version)
+		fmt.Printf("✓ Firecracker %s (%s) exists\n", version, arch)
 
 		return nil
 	}
 
-	fcURL := fmt.Sprintf("https://github.com/e2b-dev/fc-versions/releases/download/%s/firecracker", version)
-	fmt.Printf("⬇ Downloading Firecracker %s...\n", version)
+	// Download from GCS bucket with {version}/{arch}/firecracker path
+	fcURL, err := url.JoinPath("https://storage.googleapis.com/e2b-prod-public-builds/fc-versions/", version, arch, "firecracker")
+	if err != nil {
+		return fmt.Errorf("invalid Firecracker URL: %w", err)
+	}
 
-	return download(ctx, fcURL, dstPath, 0o755)
+	fmt.Printf("⬇ Downloading Firecracker %s (%s)...\n", version, arch)
+
+	if err := download(ctx, fcURL, dstPath, 0o755); err == nil {
+		return nil
+	} else if !errors.Is(err, errNotFound) {
+		return fmt.Errorf("failed to download Firecracker: %w", err)
+	}
+
+	// Fallback to legacy path without arch directory
+	legacyURL, err := url.JoinPath("https://storage.googleapis.com/e2b-prod-public-builds/fc-versions/", version, "firecracker")
+	if err != nil {
+		return fmt.Errorf("invalid Firecracker legacy URL: %w", err)
+	}
+
+	fmt.Printf("  %s path not found, trying legacy URL...\n", arch)
+
+	return download(ctx, legacyURL, dstPath, 0o755)
 }
+
+var errNotFound = errors.New("not found")
 
 func download(ctx context.Context, url, path string, perm os.FileMode) error {
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -449,6 +491,9 @@ func download(ctx context.Context, url, path string, perm os.FileMode) error {
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == http.StatusNotFound {
+		return fmt.Errorf("%w: %s", errNotFound, url)
+	}
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, url)
 	}
