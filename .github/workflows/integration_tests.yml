@@ -1,7 +1,12 @@
 name: Integration Tests
 
-on: [workflow_call]
-
+on:
+  workflow_call:
+    inputs:
+      publish:
+        type: boolean
+        description: "Whether to publish the results"
+        required: true
 jobs:
   integration_tests:
     runs-on: infra-tests
