@@ -233,6 +233,9 @@ func (c *apiClient) setMachineConfig(
 	memoryMB int64,
 	hugePages bool,
 ) error {
+	// SMT depends on the physical host CPU, not TARGET_ARCH. ARM processors
+	// don't support simultaneous multi-threading. runtime.GOARCH is correct
+	// here because the binary always runs on the same arch as Firecracker.
 	smt := runtime.GOARCH != "arm64"
 	trackDirtyPages := false
 	machineConfig := &models.MachineConfiguration{
