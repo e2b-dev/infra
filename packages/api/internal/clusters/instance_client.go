@@ -13,9 +13,6 @@ import (
 	"google.golang.org/grpc/keepalive"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
-	orchestratorgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
-	templatemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 

@@ -3,7 +3,6 @@ package handlers
 import (
 	"context"
 	"errors"
-	"fmt"
 	"math/rand"
 	"net/http"
 
@@ -66,8 +65,6 @@ var ErrClusterNotFound = errors.New("cluster not found")
 
 var ErrNoHealthyOrchestratorFound = errors.New("no healthy orchestrator found")
 
-const randomOrchestratorMaxAttempts = 10
-
 func (a *APIStore) executeOnOrchestrator(
 	ctx context.Context,
 	clusterID uuid.UUID,
@@ -79,9 +76,9 @@ func (a *APIStore) executeOnOrchestrator(
 		return ErrClusterNotFound
 	}
 
-	for range randomOrchestratorMaxAttempts {
-		index := rand.Intn(len(nodes))
-		node := nodes[index]
+	rand.Shuffle(len(nodes), func(i, j int) { nodes[i], nodes[j] = nodes[j], nodes[i] })
+
+	for _, node := range nodes {
 		if node.Status() != api.NodeStatusReady {
 			continue
 		}
@@ -93,6 +90,5 @@ func (a *APIStore) executeOnOrchestrator(
 		return fn(ctx, c)
 	}
 
-	return fmt.Errorf("failed to connect to orchestrator after %d attempts: %w",
-		randomOrchestratorMaxAttempts, ErrNoHealthyOrchestratorFound)
+	return ErrNoHealthyOrchestratorFound
 }

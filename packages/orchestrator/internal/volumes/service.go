@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
@@ -41,10 +40,6 @@ func (v *VolumeService) buildVolumePath(volumeType, teamID, volumeID string) (st
 	}
 
 	volumePath := filepath.Join(volPath, teamID, volumeID)
-	rel, err := filepath.Rel(volPath, volumePath)
-	if err != nil || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || rel == ".." {
-		return "", status.Newf(codes.PermissionDenied, "volume path %s is not under %s", volumePath, volPath)
-	}
 
 	return volumePath, nil
 }
