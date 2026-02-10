@@ -390,12 +390,14 @@ func (f *Factory) initializeHostStatsCollector(
 		logger.L().Error(ctx, "failed to get firecracker PID for host stats",
 			zap.String("sandbox_id", runtime.SandboxID),
 			zap.Error(err))
+
 		return
 	}
 
 	teamID, err := uuid.Parse(runtime.TeamID)
 	if err != nil {
 		logger.L().Error(ctx, "error parsing team ID", logger.WithTeamID(runtime.TeamID), zap.Error(err))
+
 		return
 	}
 
@@ -416,6 +418,7 @@ func (f *Factory) initializeHostStatsCollector(
 		logger.L().Error(ctx, "failed to create host stats collector",
 			zap.String("sandbox_id", runtime.SandboxID),
 			zap.Error(err))
+
 		return
 	}
 
