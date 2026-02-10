@@ -125,7 +125,7 @@ build-template:
 
 .PHONY: fetch-busybox
 fetch-busybox:
-	@ARCH=$$(dpkg --print-architecture 2>/dev/null || echo "amd64"); \
+	@ARCH=$${TARGET_ARCH:-$$(dpkg --print-architecture 2>/dev/null || echo "amd64")}; \
 	if [ "$$ARCH" = "arm64" ]; then \
 		echo "Fetching arm64 busybox via apt..."; \
 		TMPDIR=$$(mktemp -d); \
