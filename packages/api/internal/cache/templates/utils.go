@@ -24,11 +24,35 @@ const (
 	redisBuildCacheTTL = 5 * time.Minute
 
 	// redisBuildCacheTimeout is the timeout for Redis operations.
-	redisBuildCacheTimeout = 1 * time.Second
+	redisBuildCacheTimeout = 5 * time.Second
 
 	// Key prefix for build cache.
 	buildCacheKeyPrefix = "template:build"
 )
+
+// Lua script to atomically update build status.
+// Keys: [buildKey]
+// Args: [newStatus, newReasonJSON]
+// Returns: updated JSON or nil if key doesn't exist
+var updateStatusScript = redis.NewScript(`
+local buildKey = KEYS[1]
+local newStatus = ARGV[1]
+local newReasonJSON = ARGV[2]
+
+local data = redis.call('GET', buildKey)
+if not data then
+    return nil
+end
+
+local build = cjson.decode(data)
+build.build_status = newStatus
+build.reason = cjson.decode(newReasonJSON)
+
+local encoded = cjson.encode(build)
+redis.call('SET', buildKey, encoded, 'KEEPTTL')
+
+return encoded
+`)
 
 // getBuildKey returns the Redis key for a build.
 // Format: template:build:{buildID}
@@ -95,38 +119,22 @@ func (c *TemplatesBuildCache) fetchFromDB(ctx context.Context, buildID uuid.UUID
 	}, nil
 }
 
-// updateStatusInRedis updates the build status in Redis using GET + SET with KEEPTTL.
+// updateStatusInRedis atomically updates the build status in Redis using a Lua script.
 func (c *TemplatesBuildCache) updateStatusInRedis(ctx context.Context, buildID uuid.UUID, status types.BuildStatus, reason types.BuildReason) error {
 	ctx, cancel := context.WithTimeout(ctx, redisBuildCacheTimeout)
 	defer cancel()
 
+	reasonJSON, err := json.Marshal(reason)
+	if err != nil {
+		return fmt.Errorf("failed to marshal reason: %w", err)
+	}
+
 	buildKey := getBuildKey(buildID.String())
 
-	// Get current data
-	data, err := c.redisClient.Get(ctx, buildKey).Bytes()
-	if err != nil {
-		if errors.Is(err, redis.Nil) {
-			// Build not in Redis, nothing to update
-			return nil
-		}
-
-		return fmt.Errorf("failed to get build from Redis: %w", err)
+	_, err = updateStatusScript.Run(ctx, c.redisClient, []string{buildKey}, string(status), string(reasonJSON)).Result()
+	if err != nil && !errors.Is(err, redis.Nil) {
+		return fmt.Errorf("failed to update status in Redis: %w", err)
 	}
 
-	var info TemplateBuildInfo
-	if err := json.Unmarshal(data, &info); err != nil {
-		return fmt.Errorf("failed to unmarshal build info: %w", err)
-	}
-
-	// Update status and reason
-	info.BuildStatus = status
-	info.Reason = reason
-
-	// Store back with KEEPTTL
-	updatedJSON, err := json.Marshal(info)
-	if err != nil {
-		return fmt.Errorf("failed to marshal updated build info: %w", err)
-	}
-
-	return c.redisClient.Set(ctx, buildKey, updatedJSON, redis.KeepTTL).Err()
+	return nil
 }

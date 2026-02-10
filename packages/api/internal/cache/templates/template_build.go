@@ -12,7 +12,6 @@ import (
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 // TemplateBuildInfo holds cached template build information.
@@ -54,24 +53,6 @@ func NewTemplateBuildCache(db *sqlcdb.Client, redisClient redis.UniversalClient)
 }
 
 func (c *TemplatesBuildCache) SetStatus(ctx context.Context, buildID uuid.UUID, status types.BuildStatus, reason types.BuildReason) {
-	// Get existing build info for logging (optional)
-	var fromStatus string
-	var version *string
-	if item := c.l1Cache.Get(buildID); item != nil {
-		existingInfo := item.Value()
-		fromStatus = string(existingInfo.BuildStatus)
-		version = existingInfo.Version
-	}
-
-	logger.L().Info(ctx, "Setting template build status",
-		logger.WithBuildID(buildID.String()),
-		zap.String("to_status", string(status)),
-		zap.String("from_status", fromStatus),
-		zap.String("reason", reason.Message),
-		zap.String("step", sharedUtils.Sprintp(reason.Step)),
-		zap.String("version", sharedUtils.Sprintp(version)),
-	)
-
 	// Update in Redis
 	if err := c.updateStatusInRedis(ctx, buildID, status, reason); err != nil {
 		logger.L().Warn(ctx, "Failed to update build status in Redis",
