@@ -51,10 +51,6 @@ variable "otel_collector_resources_cpu_count" {
   type = number
 }
 
-variable "otel_tracing_print" {
-  type = bool
-}
-
 # API
 variable "api_port" {
   type = object({

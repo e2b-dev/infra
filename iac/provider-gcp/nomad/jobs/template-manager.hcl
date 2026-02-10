@@ -100,7 +100,6 @@ job "template-manager" {
         GCP_REGION                    = "${gcp_region}"
         GCP_DOCKER_REPOSITORY_NAME    = "${docker_registry}"
         API_SECRET                    = "${api_secret}"
-        OTEL_TRACING_PRINT            = "${otel_tracing_print}"
         ENVIRONMENT                   = "${environment}"
         DOMAIN_NAME                   = "${domain_name}"
         TEMPLATE_BUCKET_NAME          = "${template_bucket_name}"
