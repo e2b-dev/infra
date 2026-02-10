@@ -108,7 +108,7 @@ FROM "public"."env_build_assignments" eba
 WHERE eba.build_id = eb.id
     AND eba.env_id = $2
     AND eba.tag = ANY($3::text[])
-    AND eb.status IN ('waiting', 'pending')
+    AND eb.status_group = 'pending'
 `
 
 type InvalidateUnstartedTemplateBuildsParams struct {
