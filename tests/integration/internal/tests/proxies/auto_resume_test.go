@@ -40,14 +40,8 @@ func TestSandboxAutoResumeViaExec(t *testing.T) {
 	require.NotNil(t, res.JSON200, "expected 200 response, got status %d", res.StatusCode())
 	require.Equal(t, api.Paused, res.JSON200.State)
 	// Run ls again — this should trigger auto-resume.
-	require.Eventually(t, func() bool {
-		err = utils.ExecCommand(t, ctx, sbx, envdClient, "ls")
-		if err != nil {
-			t.Logf("exec after pause failed (retrying): %v", err)
-		}
-
-		return err == nil
-	}, 30*time.Second, 500*time.Millisecond, "expected exec to succeed after auto-resume")
+	err = utils.ExecCommand(t, ctx, sbx, envdClient, "ls")
+	require.NoError(t, err)
 
 	// Verify the sandbox is running again.
 	res, err = c.GetSandboxesSandboxIDWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
@@ -109,10 +103,12 @@ func TestSandboxAutoResumeViaProxy(t *testing.T) {
 	require.Equal(t, api.Paused, res.JSON200.State)
 
 	// Make a proxy request to trigger auto-resume.
-	resumeClient := &http.Client{Timeout: 3 * time.Second}
-	resp = utils.WaitForStatusWithRetries(t, resumeClient, sbx, proxyURL, port, nil, http.StatusOK, 60, 500*time.Millisecond)
-	require.NotNil(t, resp)
-	require.NoError(t, resp.Body.Close())
+	resumeClient := &http.Client{Timeout: 10 * time.Second}
+	req := utils.NewRequest(sbx, proxyURL, port, nil)
+	resp, err = resumeClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode, "expected server response after auto-resume")
 
 	// Verify the sandbox is running — it must be since the server responded.
 	res, err = c.GetSandboxesSandboxIDWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
