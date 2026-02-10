@@ -96,7 +96,7 @@ func (q *Queries) GetInProgressTemplateBuilds(ctx context.Context) ([]GetInProgr
 }
 
 const getInProgressTemplateBuildsByTeam = `-- name: GetInProgressTemplateBuildsByTeam :many
-SELECT DISTINCT b.id as template_id
+SELECT DISTINCT ON (b.id) e.id as template_id
 FROM public.env_builds b
 JOIN public.env_build_assignments eba ON eba.build_id = b.id
 JOIN public.envs e ON e.id = eba.env_id
@@ -104,15 +104,15 @@ WHERE e.team_id = $1 AND (b.status = 'waiting' OR b.status = 'building')
 ORDER BY b.id, b.created_at DESC
 `
 
-func (q *Queries) GetInProgressTemplateBuildsByTeam(ctx context.Context, teamID uuid.UUID) ([]uuid.UUID, error) {
+func (q *Queries) GetInProgressTemplateBuildsByTeam(ctx context.Context, teamID uuid.UUID) ([]string, error) {
 	rows, err := q.db.Query(ctx, getInProgressTemplateBuildsByTeam, teamID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []uuid.UUID
+	var items []string
 	for rows.Next() {
-		var template_id uuid.UUID
+		var template_id string
 		if err := rows.Scan(&template_id); err != nil {
 			return nil, err
 		}
