@@ -40,7 +40,7 @@ func NewDefaultClickhouseHostStatsDelivery(
 ) (*ClickhouseDelivery, error) {
 	maxBatchSize := featureFlags.IntFlag(ctx, flags.ClickhouseBatcherMaxBatchSize)
 	maxDelay := time.Duration(featureFlags.IntFlag(ctx, flags.ClickhouseBatcherMaxDelay)) * time.Millisecond
-	batcherQueueSize := featureFlags.IntFlag(ctx, flags.ClickhouseBatcherQueueSize, flags.SandboxContext("clickhouse-host-stats-batcher"))
+	batcherQueueSize := featureFlags.IntFlag(ctx, flags.ClickhouseBatcherQueueSize)
 
 	return NewClickhouseHostStatsDelivery(
 		ctx, conn, batcher.BatcherOptions{
