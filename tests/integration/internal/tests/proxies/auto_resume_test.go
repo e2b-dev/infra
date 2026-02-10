@@ -40,21 +40,8 @@ func TestSandboxAutoResumeViaExec(t *testing.T) {
 	require.NotNil(t, res.JSON200, "expected 200 response, got status %d", res.StatusCode())
 	require.Equal(res.JSON200.State, api.Paused)
 	// Run ls again — this should trigger auto-resume.
-	// The auto-resume is async, so retry until the sandbox is back up.
-	deadline = time.Now().Add(30 * time.Second)
-	for {
-		err = utils.ExecCommand(t, ctx, sbx, envdClient, "ls")
-		if err == nil {
-			break
-		}
-
-		if time.Now().After(deadline) {
-			require.NoError(t, err, "exec command did not succeed after auto-resume within timeout")
-		}
-
-		t.Logf("Exec failed (retrying): %v", err)
-		time.Sleep(100 * time.Millisecond)
-	}
+	err = utils.ExecCommand(t, ctx, sbx, envdClient, "ls")
+	require.NoError(t, err)
 
 	// Verify the sandbox is running again.
 	res, err := c.GetSandboxesSandboxIDWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
