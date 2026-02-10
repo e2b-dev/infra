@@ -187,7 +187,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	)
 	if err != nil {
 		if errors.Is(err, ErrVolumeMountsDisabled) {
-			a.sendAPIStoreError(c, http.StatusForbidden, "Volume mounts are not enabled.")
+			a.sendAPIStoreError(c, http.StatusBadRequest, "Volume mounts are not enabled.")
 
 			return
 		}
@@ -199,7 +199,8 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 			return
 		}
 
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Errorf("failed to convert volume mounts: %w", err).Error())
+		telemetry.ReportError(ctx, "failed to convert volume mounts", err, telemetry.WithSandboxID(sandboxID))
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "failed to convert volume mounts")
 
 		return
 	}
