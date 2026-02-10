@@ -424,7 +424,7 @@ func verifyImagePlatform(img containerregistry.Image, platform containerregistry
 		return fmt.Errorf("error getting image config file: %w", err)
 	}
 	if config.Architecture != platform.Architecture {
-		return fmt.Errorf("image is not %s", platform.Architecture)
+		return fmt.Errorf("image architecture %q does not match expected %q", config.Architecture, platform.Architecture)
 	}
 
 	return nil

@@ -31,9 +31,9 @@ Flags:
 - `-storage <path>` - Local path or `gs://bucket` (enables local mode with auto-download of kernel/FC)
 - `-kernel <version>` - Kernel version (default: `vmlinux-6.1.102`)
 - `-firecracker <version>` - Firecracker version (default: `v1.12.1_717921c`)
-- `-vcpu <n>` - vCPUs (default: `1`)
-- `-memory <mb>` - Memory in MB (default: `512`)
-- `-disk <mb>` - Disk in MB (default: `1000`)
+- `-vcpu <n>` - vCPUs (default: `2`)
+- `-memory <mb>` - Memory in MB (default: `1024`)
+- `-disk <mb>` - Disk in MB (default: `1024`)
 - `-hugepages` - Use 2MB huge pages (default: `true`, set `false` for 4KB pages)
 - `-start-cmd <cmd>` - Start command
 - `-ready-cmd <cmd>` - Ready check command

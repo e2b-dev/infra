@@ -404,14 +404,14 @@ func printLocalFileSizes(basePath, buildID string) {
 
 func setupKernel(ctx context.Context, dir, version string) error {
 	arch := utils.TargetArch()
-	dstPath := filepath.Join(dir, version, "vmlinux.bin")
+	dstPath := filepath.Join(dir, version, arch, "vmlinux.bin")
 
 	if err := os.MkdirAll(filepath.Dir(dstPath), 0o755); err != nil {
 		return fmt.Errorf("mkdir kernel dir: %w", err)
 	}
 
 	if _, err := os.Stat(dstPath); err == nil {
-		fmt.Printf("✓ Kernel %s exists\n", version)
+		fmt.Printf("✓ Kernel %s (%s) exists\n", version, arch)
 
 		return nil
 	}
@@ -482,8 +482,12 @@ func setupFC(ctx context.Context, dir, version string) error {
 
 var errNotFound = errors.New("not found")
 
-func download(ctx context.Context, url, path string, perm os.FileMode) error {
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+func download(ctx context.Context, rawURL, path string, perm os.FileMode) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return fmt.Errorf("invalid download URL %s: %w", rawURL, err)
+	}
+
 	resp, err := (&http.Client{Timeout: 5 * time.Minute}).Do(req)
 	if err != nil {
 		return err
@@ -491,22 +495,41 @@ func download(ctx context.Context, url, path string, perm os.FileMode) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotFound {
-		return fmt.Errorf("%w: %s", errNotFound, url)
+		return fmt.Errorf("%w: %s", errNotFound, rawURL)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, url)
+		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, rawURL)
 	}
 
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, perm)
+	// Write to a temporary file and rename atomically to avoid partial files
+	// on network errors or disk-full conditions.
+	tmpPath := path + ".tmp"
+
+	f, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, perm)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
 
-	_, err = io.Copy(f, resp.Body)
-	if err == nil {
-		fmt.Printf("✓ Downloaded %s\n", filepath.Base(path))
+	if _, err := io.Copy(f, resp.Body); err != nil {
+		f.Close()
+		os.Remove(tmpPath)
+
+		return err
 	}
 
-	return err
+	if err := f.Close(); err != nil {
+		os.Remove(tmpPath)
+
+		return err
+	}
+
+	if err := os.Rename(tmpPath, path); err != nil {
+		os.Remove(tmpPath)
+
+		return err
+	}
+
+	fmt.Printf("✓ Downloaded %s\n", filepath.Base(path))
+
+	return nil
 }

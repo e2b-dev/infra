@@ -67,4 +67,4 @@ jobs:
 
       - name: Run tests
         working-directory: ${{ matrix.package }}
-        run: go test -v ${{ matrix.test_path }}
+        run: go test -race -v ${{ matrix.test_path }}
