@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -22,6 +21,7 @@ import (
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -325,8 +325,8 @@ func convertToAPIVolumeMounts(mounts []*orchestrator.SandboxVolumeMount) []api.S
 
 	for _, item := range mounts {
 		results = append(results, api.SandboxVolumeMount{
-			Name: item.Name,
-			Path: item.Path,
+			Name: item.GetName(),
+			Path: item.GetPath(),
 		})
 	}
 
