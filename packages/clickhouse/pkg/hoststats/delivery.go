@@ -21,12 +21,14 @@ const InsertSandboxHostStatQuery = `INSERT INTO sandbox_host_stats
     sandbox_template_id,
     sandbox_build_id,
     sandbox_team_id,
+    sandbox_vcpu_count,
+    sandbox_memory_mb,
     firecracker_cpu_user_time,
     firecracker_cpu_system_time,
     firecracker_memory_rss,
     firecracker_memory_vms
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 type ClickhouseDelivery struct {
 	batcher *batcher.Batcher[SandboxHostStat]
@@ -107,6 +109,8 @@ func (c *ClickhouseDelivery) batchInserter(ctx context.Context, stats []SandboxH
 			stat.SandboxTemplateID,
 			stat.SandboxBuildID,
 			stat.SandboxTeamID,
+			stat.SandboxVCPUCount,
+			stat.SandboxMemoryMB,
 			stat.FirecrackerCPUUserTime,
 			stat.FirecrackerCPUSystemTime,
 			stat.FirecrackerMemoryRSS,

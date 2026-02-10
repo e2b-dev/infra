@@ -7,6 +7,8 @@ CREATE TABLE sandbox_host_stats_local (
     sandbox_template_id String CODEC (ZSTD(1)),
     sandbox_build_id String CODEC (ZSTD(1)),
     sandbox_team_id UUID CODEC (ZSTD(1)),
+    sandbox_vcpu_count Int64 CODEC (ZSTD(1)),
+    sandbox_memory_mb Int64 CODEC (ZSTD(1)),
     firecracker_cpu_user_time Float64 CODEC (ZSTD(1)),
     firecracker_cpu_system_time Float64 CODEC (ZSTD(1)),
     firecracker_memory_rss UInt64 CODEC (ZSTD(1)),

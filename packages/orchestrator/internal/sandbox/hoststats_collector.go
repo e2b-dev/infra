@@ -32,6 +32,8 @@ type HostStatsMetadata struct {
 	TemplateID  string
 	BuildID     string
 	TeamID      uuid.UUID
+	VCPUCount   int64
+	MemoryMB    int64
 }
 
 func NewHostStatsCollector(
@@ -74,6 +76,8 @@ func (h *HostStatsCollector) CollectSample(ctx context.Context) error {
 		SandboxTemplateID:        h.metadata.TemplateID,
 		SandboxBuildID:           h.metadata.BuildID,
 		SandboxTeamID:            h.metadata.TeamID,
+		SandboxVCPUCount:         h.metadata.VCPUCount,
+		SandboxMemoryMB:          h.metadata.MemoryMB,
 		FirecrackerCPUUserTime:   times.User,   // seconds
 		FirecrackerCPUSystemTime: times.System, // seconds
 		FirecrackerMemoryRSS:     memInfo.RSS,  // bytes

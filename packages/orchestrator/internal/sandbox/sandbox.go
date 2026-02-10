@@ -691,6 +691,8 @@ func (f *Factory) ResumeSandbox(
 					TemplateID:  runtime.TemplateID,
 					BuildID:     buildID,
 					TeamID:      teamID,
+					VCPUCount:   config.Vcpu,
+					MemoryMB:    config.RamMB,
 				},
 				int32(firecrackerPID),
 				f.hostStatsDelivery,
