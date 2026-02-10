@@ -9,8 +9,8 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
-	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -93,7 +93,7 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		buildIds = append(buildIds, template_manager.DeleteBuild{
 			BuildID:    build.BuildID,
 			TemplateID: templateID,
-			ClusterID:  utils.WithClusterFallback(team.ClusterID),
+			ClusterID:  clusters.WithClusterFallback(team.ClusterID),
 			NodeID:     *build.ClusterNodeID,
 		})
 	}

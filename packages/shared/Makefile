@@ -1,7 +1,7 @@
 ENV := $(shell cat ../../.last_used_env || echo "not-set")
 -include ../../.env.${ENV}
 
-.PHONE: generate
+.PHONY: generate
 generate:
 	go generate ./...
 

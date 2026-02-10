@@ -243,7 +243,7 @@ func TestAccessWithNotCorrespondingSignatureAndSignatureExpiration(t *testing.T)
 	assert.JSONEq(t, "{\"code\":401,\"message\":\"invalid signature\"}\n", string(readRes.Body))
 }
 
-func generateSignature(path string, username string, operation string, signatureExpiration *int64, accessToken string) string {
+func generateSignature(path, username, operation string, signatureExpiration *int64, accessToken string) string { //nolint:unparam // "username" will likely change soon
 	var signature string
 	hasher := keys.NewSHA256Hashing()
 

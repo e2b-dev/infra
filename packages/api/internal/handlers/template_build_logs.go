@@ -11,8 +11,8 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
-	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
+	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -68,7 +68,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDLogs(c *gin.Context, templ
 		return
 	}
 
-	cluster, ok := a.clusters.GetClusterById(utils.WithClusterFallback(team.ClusterID))
+	cluster, ok := a.clusters.GetClusterById(clusters.WithClusterFallback(team.ClusterID))
 	if !ok {
 		telemetry.ReportError(ctx, "error when getting cluster", fmt.Errorf("cluster with ID '%s' not found", team.ClusterID))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting cluster")

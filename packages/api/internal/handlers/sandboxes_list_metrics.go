@@ -15,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -92,7 +93,7 @@ func (a *APIStore) GetSandboxesMetrics(c *gin.Context, params api.GetSandboxesMe
 			Build(),
 	)
 
-	sandboxesWithMetrics, apiErr := a.getSandboxesMetrics(ctx, team.ID, utils.WithClusterFallback(team.ClusterID), params.SandboxIds)
+	sandboxesWithMetrics, apiErr := a.getSandboxesMetrics(ctx, team.ID, clusters.WithClusterFallback(team.ClusterID), params.SandboxIds)
 	if apiErr != nil {
 		telemetry.ReportCriticalError(ctx, "error fetching sandboxes metrics", apiErr.Err)
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)

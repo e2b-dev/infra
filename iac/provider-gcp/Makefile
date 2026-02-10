@@ -47,7 +47,6 @@ tf_vars := \
 	$(call tfvar, CLIENT_PROXY_UPDATE_MAX_PARALLEL) \
 	$(call tfvar, LOKI_RESOURCES_CPU_COUNT) \
 	$(call tfvar, LOKI_RESOURCES_MEMORY_MB) \
-	$(call tfvar, OTEL_TRACING_PRINT) \
 	$(call tfvar, OTEL_COLLECTOR_RESOURCES_CPU_COUNT) \
 	$(call tfvar, OTEL_COLLECTOR_RESOURCES_MEMORY_MB) \
 	$(call tfvar, TEMPLATE_BUCKET_NAME) \
