@@ -55,7 +55,7 @@ func TestCatalogResolution_CatalogHit(t *testing.T) {
 	require.Equal(t, autoResumeNone, res)
 }
 
-func TestCatalogResolution_CatalogHit_EmptyIPNormalizesToLocalhost(t *testing.T) {
+func TestCatalogResolution_CatalogHit_EmptyIPReturnsEmpty(t *testing.T) {
 	t.Parallel()
 
 	c := catalog.NewMemorySandboxesCatalog()
@@ -70,7 +70,7 @@ func TestCatalogResolution_CatalogHit_EmptyIPNormalizesToLocalhost(t *testing.T)
 
 	nodeIP, res, err := catalogResolution(context.Background(), "sbx", c, stubResumer{}, ff)
 	require.NoError(t, err)
-	require.Equal(t, "localhost", nodeIP)
+	require.Empty(t, nodeIP)
 	require.Equal(t, autoResumeNone, res)
 }
 
@@ -130,7 +130,7 @@ func TestCatalogResolution_CatalogMiss_AutoResumeSucceeded(t *testing.T) {
 	require.Equal(t, autoResumeSucceeded, res)
 }
 
-func TestCatalogResolution_CatalogMiss_AutoResumeSucceeded_EmptyIPNormalizesToLocalhost(t *testing.T) {
+func TestCatalogResolution_CatalogMiss_AutoResumeSucceeded_EmptyIPReturnsEmpty(t *testing.T) {
 	t.Parallel()
 
 	c := catalog.NewMemorySandboxesCatalog()
@@ -138,6 +138,6 @@ func TestCatalogResolution_CatalogMiss_AutoResumeSucceeded_EmptyIPNormalizesToLo
 
 	nodeIP, res, err := catalogResolution(context.Background(), "sbx", c, stubResumer{nodeIP: ""}, ff)
 	require.NoError(t, err)
-	require.Equal(t, "localhost", nodeIP)
+	require.Empty(t, nodeIP)
 	require.Equal(t, autoResumeSucceeded, res)
 }

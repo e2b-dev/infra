@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel/metric"
@@ -43,16 +42,6 @@ const (
 	autoResumeErrored
 )
 
-func normalizeNodeIP(nodeIP string) string {
-	// In single-host setups, the control-plane may treat an empty orchestrator IP as "localhost".
-	// Returning a usable hostname avoids turning a successful resume into a 502 due to ":5007".
-	if strings.TrimSpace(nodeIP) == "" {
-		return "localhost"
-	}
-
-	return nodeIP
-}
-
 func catalogResolution(ctx context.Context, sandboxId string, c catalog.SandboxesCatalog, pausedChecker PausedSandboxResumer, featureFlags *featureflags.Client) (string, autoResumeResult, error) {
 	s, err := c.GetSandbox(ctx, sandboxId)
 	if err != nil {
@@ -62,7 +51,7 @@ func catalogResolution(ctx context.Context, sandboxId string, c catalog.Sandboxe
 				return "", res, pausedErr
 			}
 			if res == autoResumeSucceeded {
-				return normalizeNodeIP(nodeIP), res, nil
+				return nodeIP, res, nil
 			}
 
 			return "", res, ErrNodeNotFound
@@ -73,7 +62,7 @@ func catalogResolution(ctx context.Context, sandboxId string, c catalog.Sandboxe
 
 	// todo: when we will use edge for orchestrators discovery we can stop sending IP in the catalog
 	//  and just resolve node from pool to get the IP of the node
-	return normalizeNodeIP(s.OrchestratorIP), autoResumeNone, nil
+	return s.OrchestratorIP, autoResumeNone, nil
 }
 
 func handlePausedSandbox(
