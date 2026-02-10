@@ -11,10 +11,10 @@ import (
 	"github.com/jellydator/ttlcache/v3"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -114,7 +114,7 @@ func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templa
 				Reason:      result.EnvBuild.Reason,
 				Version:     result.EnvBuild.Version,
 
-				ClusterID: utils.WithClusterFallback(result.Env.ClusterID),
+				ClusterID: clusters.WithClusterFallback(result.Env.ClusterID),
 				NodeID:    result.EnvBuild.ClusterNodeID,
 			},
 			templateInfoExpiration,
