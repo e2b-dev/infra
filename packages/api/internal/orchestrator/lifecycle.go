@@ -28,6 +28,14 @@ func (o *Orchestrator) addSandboxToRoutingTable(ctx context.Context, sandbox san
 
 	nodeIP := node.IPAddress
 
+	logger.L().Info(ctx, "[RESUME] addSandboxToRoutingTable storing",
+		logger.WithSandboxID(sandbox.SandboxID),
+		logger.WithNodeID(sandbox.NodeID),
+		zap.String("node_ip", nodeIP),
+		zap.Bool("is_nomad_managed", node.IsNomadManaged()),
+		zap.String("orchestrator_id", node.Metadata().ServiceInstanceID),
+	)
+
 	info := e2bcatalog.SandboxInfo{
 		OrchestratorID: node.Metadata().ServiceInstanceID,
 		OrchestratorIP: nodeIP,
@@ -40,6 +48,6 @@ func (o *Orchestrator) addSandboxToRoutingTable(ctx context.Context, sandbox san
 	lifetime := time.Duration(info.MaxLengthInHours) * time.Hour
 	err := o.routingCatalog.StoreSandbox(ctx, sandbox.SandboxID, &info, lifetime)
 	if err != nil {
-		logger.L().Error(ctx, "error adding routing record to catalog", zap.Error(err), logger.WithSandboxID(sandbox.SandboxID))
+		logger.L().Error(ctx, "[RESUME] error adding routing record to catalog", zap.Error(err), logger.WithSandboxID(sandbox.SandboxID))
 	}
 }
