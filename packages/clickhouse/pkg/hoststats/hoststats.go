@@ -26,6 +26,6 @@ type SandboxHostStat struct {
 // Delivery is the interface for delivering host stats to storage backend
 // This allows the orchestrator to depend on the interface rather than concrete implementation
 type Delivery interface {
-	Push(stat SandboxHostStat) (bool, error)
+	Push(stat SandboxHostStat) error
 	Close(ctx context.Context) error
 }

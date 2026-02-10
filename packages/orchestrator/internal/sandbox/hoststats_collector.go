@@ -80,14 +80,8 @@ func (h *HostStatsCollector) CollectSample(ctx context.Context) error {
 		FirecrackerMemoryVMS:     memInfo.VMS,  // bytes
 	}
 
-	ok, err := h.delivery.Push(stat)
-	if err != nil {
+	if err := h.delivery.Push(stat); err != nil {
 		return fmt.Errorf("failed to push stat to delivery: %w", err)
-	}
-	if !ok {
-		// Queue full - log warning but don't fail
-		logger.L().Warn(ctx, "host stats delivery queue full, dropping sample",
-			zap.String("sandbox_id", h.metadata.SandboxID))
 	}
 
 	return nil

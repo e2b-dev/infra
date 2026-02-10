@@ -74,17 +74,17 @@ func NewClickhouseHostStatsDelivery(
 	return delivery, nil
 }
 
-func (c *ClickhouseDelivery) Push(stat SandboxHostStat) (bool, error) {
+func (c *ClickhouseDelivery) Push(stat SandboxHostStat) error {
 	ok, err := c.batcher.Push(stat)
 	if err != nil {
-		return false, err
+		return err
 	}
 
 	if !ok {
-		return false, batcher.ErrBatcherQueueFull
+		return batcher.ErrBatcherQueueFull
 	}
 
-	return true, nil
+	return nil
 }
 
 func (c *ClickhouseDelivery) Close(context.Context) error {
