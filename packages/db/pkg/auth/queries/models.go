@@ -103,6 +103,7 @@ type EnvBuild struct {
 	CpuModel           *string
 	CpuModelName       *string
 	CpuFlags           []string
+	StatusGroup        *string
 }
 
 type EnvBuildAssignment struct {

@@ -41,7 +41,7 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 	envBuild := result.EnvBuild
 	// waiting for build to start, local docker build and push can take some time
 	// so just check if it's not too long
-	if envBuild.Status.IsPending() {
+	if envBuild.StatusGroup == types.BuildStatusGroupPending {
 		// if waiting for too long, fail the build
 		if time.Since(envBuild.CreatedAt) > syncWaitingStateDeadline {
 			err = tm.SetStatus(ctx, buildID, types.BuildStatusFailed, &templatemanagergrpc.TemplateBuildStatusReason{
@@ -271,35 +271,52 @@ func (tm *TemplateManager) SetStatus(ctx context.Context, buildID uuid.UUID, sta
 	now := time.Now()
 	// first do database update to prevent race condition while calling status
 	err := tm.sqlcDB.UpdateEnvBuildStatus(ctx, queries.UpdateEnvBuildStatusParams{
-		Status:     status,
+		RawStatus:  status,
 		FinishedAt: &now,
 		Reason:     buildReason,
 		BuildID:    buildID,
 	})
 
-	tm.buildCache.SetStatus(ctx, buildID, status, buildReason)
+	tm.buildCache.SetStatus(ctx, buildID, statusGroup(status), buildReason)
 
 	return err
 }
 
 func (tm *TemplateManager) SetFinished(ctx context.Context, buildID uuid.UUID, rootfsSize int64, envdVersion string) error {
 	// first do database update to prevent race condition while calling status
-	// TODO(ENG-3469): Switch to types.BuildStatusReady once all consumers are migrated to use Is*() helpers.
+	// TODO(ENG-3469): Switch to types.BuildStatusReady once all consumers are migrated.
 	err := tm.sqlcDB.FinishTemplateBuild(ctx, queries.FinishTemplateBuildParams{
 		TotalDiskSizeMb: &rootfsSize,
-		Status:          types.BuildStatusUploaded,
+		RawStatus:       types.BuildStatusUploaded,
 		EnvdVersion:     &envdVersion,
 		BuildID:         buildID,
 	})
 	if err != nil {
-		tm.buildCache.SetStatus(ctx, buildID, types.BuildStatusFailed, types.BuildReason{
+		tm.buildCache.SetStatus(ctx, buildID, types.BuildStatusGroupFailed, types.BuildReason{
 			Message: fmt.Sprintf("error when finishing build: %s", err.Error()),
 		})
 
 		return err
 	}
 
-	tm.buildCache.SetStatus(ctx, buildID, types.BuildStatusUploaded, types.BuildReason{})
+	tm.buildCache.SetStatus(ctx, buildID, types.BuildStatusGroupReady, types.BuildReason{})
 
 	return nil
+}
+
+// statusGroup maps a raw/legacy build status to its unified group value,
+// mirroring the status_group computed column in the database.
+func statusGroup(s types.BuildStatus) types.BuildStatusGroup {
+	switch s {
+	case types.BuildStatusPending, types.BuildStatusWaiting:
+		return types.BuildStatusGroupPending
+	case types.BuildStatusBuilding, types.BuildStatusSnapshotting:
+		return types.BuildStatusGroupInProgress
+	case types.BuildStatusUploaded, types.BuildStatusSuccess:
+		return types.BuildStatusGroupReady
+	case types.BuildStatusFailed:
+		return types.BuildStatusGroupFailed
+	default:
+		return types.BuildStatusGroup(s)
+	}
 }

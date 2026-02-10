@@ -128,7 +128,7 @@ type UpsertSnapshotParams struct {
 	KernelVersion       string
 	FirecrackerVersion  string
 	EnvdVersion         *string
-	Status              types.BuildStatus
+	RawStatus           types.BuildStatus
 	TotalDiskSizeMb     *int64
 	CpuArchitecture     *string
 	CpuFamily           *string
@@ -164,7 +164,7 @@ func (q *Queries) UpsertSnapshot(ctx context.Context, arg UpsertSnapshotParams) 
 		arg.KernelVersion,
 		arg.FirecrackerVersion,
 		arg.EnvdVersion,
-		arg.Status,
+		arg.RawStatus,
 		arg.TotalDiskSizeMb,
 		arg.CpuArchitecture,
 		arg.CpuFamily,

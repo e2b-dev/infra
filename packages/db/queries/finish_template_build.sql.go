@@ -25,7 +25,7 @@ WHERE
 
 type FinishTemplateBuildParams struct {
 	TotalDiskSizeMb *int64
-	Status          types.BuildStatus
+	RawStatus       types.BuildStatus
 	EnvdVersion     *string
 	BuildID         uuid.UUID
 }
@@ -33,7 +33,7 @@ type FinishTemplateBuildParams struct {
 func (q *Queries) FinishTemplateBuild(ctx context.Context, arg FinishTemplateBuildParams) error {
 	_, err := q.db.Exec(ctx, finishTemplateBuild,
 		arg.TotalDiskSizeMb,
-		arg.Status,
+		arg.RawStatus,
 		arg.EnvdVersion,
 		arg.BuildID,
 	)

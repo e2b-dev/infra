@@ -68,7 +68,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 	}
 
 	// early return if still waiting for build start
-	if buildInfo.BuildStatus.IsPending() {
+	if buildInfo.BuildStatus == types.BuildStatusGroupPending {
 		result := api.TemplateBuildInfo{
 			LogEntries: make([]api.BuildLogEntry, 0),
 			Logs:       make([]string, 0),
@@ -147,15 +147,15 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 	c.JSON(http.StatusOK, result)
 }
 
-func getCorrespondingTemplateBuildStatus(ctx context.Context, s types.BuildStatus) api.TemplateBuildStatus {
-	switch {
-	case s.IsPending():
+func getCorrespondingTemplateBuildStatus(ctx context.Context, s types.BuildStatusGroup) api.TemplateBuildStatus {
+	switch s {
+	case types.BuildStatusGroupPending:
 		return api.TemplateBuildStatusWaiting
-	case s.IsInProgress():
+	case types.BuildStatusGroupInProgress:
 		return api.TemplateBuildStatusBuilding
-	case s.IsReady():
+	case types.BuildStatusGroupReady:
 		return api.TemplateBuildStatusReady
-	case s.IsFailed():
+	case types.BuildStatusGroupFailed:
 		return api.TemplateBuildStatusError
 	default:
 		logger.L().Warn(ctx, "unknown build status, defaulting to building", zap.String("status", string(s)))

@@ -23,7 +23,7 @@ WHERE id = $5
 `
 
 type UpdateEnvBuildStatusParams struct {
-	Status     types.BuildStatus
+	RawStatus  types.BuildStatus
 	FinishedAt *time.Time
 	Reason     types.BuildReason
 	Version    *string
@@ -32,7 +32,7 @@ type UpdateEnvBuildStatusParams struct {
 
 func (q *Queries) UpdateEnvBuildStatus(ctx context.Context, arg UpdateEnvBuildStatusParams) error {
 	_, err := q.db.Exec(ctx, updateEnvBuildStatus,
-		arg.Status,
+		arg.RawStatus,
 		arg.FinishedAt,
 		arg.Reason,
 		arg.Version,

@@ -15,7 +15,7 @@ FROM "public"."env_build_assignments" eba
 WHERE eba.build_id = eb.id
     AND eba.env_id = @template_id
     AND eba.tag = ANY(@tags::text[])
-    AND eb.status IN ('waiting', 'pending');
+    AND eb.status_group = 'pending';
 
 -- name: CreateTemplateBuild :exec
 INSERT INTO "public"."env_builds" (

@@ -69,7 +69,7 @@ INSERT INTO "public"."env_builds" (
 
 type CreateTemplateBuildParams struct {
 	BuildID            uuid.UUID
-	Status             types.BuildStatus
+	RawStatus          types.BuildStatus
 	RamMb              int64
 	Vcpu               int64
 	KernelVersion      string
@@ -84,7 +84,7 @@ type CreateTemplateBuildParams struct {
 func (q *Queries) CreateTemplateBuild(ctx context.Context, arg CreateTemplateBuildParams) error {
 	_, err := q.db.Exec(ctx, createTemplateBuild,
 		arg.BuildID,
-		arg.Status,
+		arg.RawStatus,
 		arg.RamMb,
 		arg.Vcpu,
 		arg.KernelVersion,
@@ -108,7 +108,7 @@ FROM "public"."env_build_assignments" eba
 WHERE eba.build_id = eb.id
     AND eba.env_id = $2
     AND eba.tag = ANY($3::text[])
-    AND eb.status IN ('waiting', 'pending')
+    AND eb.status_group = 'pending'
 `
 
 type InvalidateUnstartedTemplateBuildsParams struct {

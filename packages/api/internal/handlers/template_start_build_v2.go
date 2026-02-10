@@ -15,6 +15,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	apiutils "github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
@@ -106,9 +107,9 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 	build := templateBuildDB.EnvBuild
 
 	// only waiting builds can be triggered
-	if !build.Status.IsPending() {
+	if build.StatusGroup != types.BuildStatusGroupPending {
 		a.sendAPIStoreError(c, http.StatusBadRequest, "build is not in waiting state")
-		telemetry.ReportCriticalError(ctx, "build is not in waiting state", fmt.Errorf("build is not in waiting state: %s", build.Status), telemetry.WithTemplateID(templateID))
+		telemetry.ReportCriticalError(ctx, "build is not in waiting state", fmt.Errorf("build is not in waiting state: %s", build.StatusGroup), telemetry.WithTemplateID(templateID))
 
 		return
 	}

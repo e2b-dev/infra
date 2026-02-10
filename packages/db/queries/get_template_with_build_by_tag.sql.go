@@ -10,7 +10,7 @@ import (
 )
 
 const getTemplateWithBuildByTag = `-- name: GetTemplateWithBuildByTag :one
-SELECT e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count, e.last_spawned_at, e.team_id, e.created_by, e.cluster_id, e.source, eb.id, eb.created_at, eb.updated_at, eb.finished_at, eb.status, eb.dockerfile, eb.start_cmd, eb.vcpu, eb.ram_mb, eb.free_disk_size_mb, eb.total_disk_size_mb, eb.kernel_version, eb.firecracker_version, eb.env_id, eb.envd_version, eb.ready_cmd, eb.cluster_node_id, eb.reason, eb.version, eb.cpu_architecture, eb.cpu_family, eb.cpu_model, eb.cpu_model_name, eb.cpu_flags, aliases, names
+SELECT e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count, e.last_spawned_at, e.team_id, e.created_by, e.cluster_id, e.source, eb.id, eb.created_at, eb.updated_at, eb.finished_at, eb.status, eb.dockerfile, eb.start_cmd, eb.vcpu, eb.ram_mb, eb.free_disk_size_mb, eb.total_disk_size_mb, eb.kernel_version, eb.firecracker_version, eb.env_id, eb.envd_version, eb.ready_cmd, eb.cluster_node_id, eb.reason, eb.version, eb.cpu_architecture, eb.cpu_family, eb.cpu_model, eb.cpu_model_name, eb.cpu_flags, eb.status_group, aliases, names
 FROM public.envs AS e
 JOIN public.env_build_assignments AS eba ON eba.env_id = e.id
     AND (
@@ -21,7 +21,7 @@ JOIN public.env_build_assignments AS eba ON eba.env_id = e.id
         eba.build_id = try_cast_uuid($1)
     )
 JOIN public.env_builds AS eb ON eb.id = eba.build_id
-    AND eb.status IN ('success', 'uploaded', 'ready')
+    AND eb.status_group = 'ready'
 CROSS JOIN LATERAL (
     SELECT 
         array_agg(alias)::text[] AS aliases,
@@ -69,7 +69,7 @@ func (q *Queries) GetTemplateWithBuildByTag(ctx context.Context, arg GetTemplate
 		&i.EnvBuild.CreatedAt,
 		&i.EnvBuild.UpdatedAt,
 		&i.EnvBuild.FinishedAt,
-		&i.EnvBuild.Status,
+		&i.EnvBuild.RawStatus,
 		&i.EnvBuild.Dockerfile,
 		&i.EnvBuild.StartCmd,
 		&i.EnvBuild.Vcpu,
@@ -89,6 +89,7 @@ func (q *Queries) GetTemplateWithBuildByTag(ctx context.Context, arg GetTemplate
 		&i.EnvBuild.CpuModel,
 		&i.EnvBuild.CpuModelName,
 		&i.EnvBuild.CpuFlags,
+		&i.EnvBuild.StatusGroup,
 		&i.Aliases,
 		&i.Names,
 	)

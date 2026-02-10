@@ -56,7 +56,7 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 			Network: sbx.Network,
 		},
 		OriginNodeID:    node.ID,
-		Status:          types.BuildStatusSnapshotting,
+		RawStatus:       types.BuildStatusSnapshotting,
 		CpuArchitecture: utils.ToPtr(machineInfo.CPUArchitecture),
 		CpuFamily:       utils.ToPtr(machineInfo.CPUFamily),
 		CpuModel:        utils.ToPtr(machineInfo.CPUModel),
@@ -86,7 +86,7 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 
 	now := time.Now()
 	err = o.sqlcDB.UpdateEnvBuildStatus(ctx, queries.UpdateEnvBuildStatusParams{
-		Status:     types.BuildStatusSuccess,
+		RawStatus:  types.BuildStatusSuccess,
 		FinishedAt: &now,
 		Reason:     types.BuildReason{},
 		BuildID:    result.BuildID,

@@ -224,7 +224,7 @@ func UpsertTestSnapshotWithStatus(t *testing.T, ctx context.Context, db *Databas
 		AllowInternetAccess: &allowInternet,
 		AutoPause:           true,
 		OriginNodeID:        "test-node",
-		Status:              status,
+		RawStatus:           status,
 	})
 	require.NoError(t, err, "Failed to upsert test snapshot")
 

@@ -61,7 +61,7 @@ func TestUpsertSnapshot_NewSnapshot(t *testing.T) {
 			},
 		},
 		OriginNodeID: originNodeID,
-		Status:       "snapshotting",
+		RawStatus:    "snapshotting",
 	}
 
 	// Execute UpsertSnapshot for a new snapshot
@@ -140,7 +140,7 @@ func TestUpsertSnapshot_ExistingSnapshot(t *testing.T) {
 			Version: types.PausedSandboxConfigVersion,
 		},
 		OriginNodeID: originNodeID,
-		Status:       "snapshotting",
+		RawStatus:    "snapshotting",
 	}
 
 	// Create the initial snapshot
@@ -197,7 +197,7 @@ func TestUpsertSnapshot_ExistingSnapshot(t *testing.T) {
 		AutoPause:           true,                // Updated from false
 		Config:              updatedConfig,       // Updated config
 		OriginNodeID:        updatedOriginNodeID, // Updated from node-1
-		Status:              "snapshotting",
+		RawStatus:           "snapshotting",
 	}
 
 	// Execute UpsertSnapshot for the existing snapshot (same sandbox_id)
@@ -254,7 +254,7 @@ func TestUpsertSnapshot_ExistingSnapshot(t *testing.T) {
 		AutoPause:           true,
 		Config:              updatedConfig,
 		OriginNodeID:        "node-3",
-		Status:              "snapshotting",
+		RawStatus:           "snapshotting",
 	}
 
 	thirdResult, err := client.SqlcClient.UpsertSnapshot(ctx, thirdParams)
