@@ -18,17 +18,17 @@ else
 endif
 
 build:
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o bin/envd ${LDFLAGS}
+	CGO_ENABLED=0 GOOS=linux GOARCH=$(shell go env GOARCH) go build -a -o bin/envd ${LDFLAGS}
 
 build-debug:
 	CGO_ENABLED=1 go build -race -gcflags=all="-N -l" -o bin/debug/envd ${LDFLAGS}
 
 start-docker:
 	make build
-	DOCKER_BUILDKIT=1 docker build --platform linux/amd64 -t envd-debug . -f debug.Dockerfile
+	DOCKER_BUILDKIT=1 docker build --platform linux/$(shell go env GOARCH) -t envd-debug . -f debug.Dockerfile
 	docker run \
 	--name envd \
-	--platform linux/amd64 \
+	--platform linux/$(shell go env GOARCH) \
 	-p 49983:49983 \
 	-p 2345:2345 \
 	-p 9999:9999 \

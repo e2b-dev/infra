@@ -17,18 +17,18 @@ generate:
 .PHONY: build
 build:
 	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
-	@docker build --platform linux/amd64 --output=bin --build-arg COMMIT_SHA="$(COMMIT_SHA)" -f ./Dockerfile ..
+	@docker build --platform linux/$(shell go env GOARCH) --output=bin --build-arg COMMIT_SHA="$(COMMIT_SHA)" -f ./Dockerfile ..
 
 .PHONY: build-local
 build-local:
 	# Allow for passing commit sha directly for docker builds
 	$(eval COMMIT_SHA ?= $(shell git rev-parse --short HEAD))
-	CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -o bin/orchestrator -ldflags "-X=main.commitSHA=$(COMMIT_SHA)" .
-	CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -o bin/clean-nfs-cache -ldflags "-X=main.commitSHA=$(COMMIT_SHA)" ./cmd/clean-nfs-cache
+	CGO_ENABLED=1 GOOS=linux GOARCH=$(shell go env GOARCH) go build -o bin/orchestrator -ldflags "-X=main.commitSHA=$(COMMIT_SHA)" .
+	CGO_ENABLED=1 GOOS=linux GOARCH=$(shell go env GOARCH) go build -o bin/clean-nfs-cache -ldflags "-X=main.commitSHA=$(COMMIT_SHA)" ./cmd/clean-nfs-cache
 
 .PHONY: build-debug
 build-debug:
-	CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -race -gcflags=all="-N -l" -o bin/orchestrator .
+	CGO_ENABLED=1 GOOS=linux GOARCH=$(shell go env GOARCH) go build -race -gcflags=all="-N -l" -o bin/orchestrator .
 
 .PHONY: run-debug
 run-debug:
@@ -103,7 +103,7 @@ test-docker:
 	@cp -r ../shared .shared/
 	@rm -rf .clickhouse/
 	@cp -r ../clickhouse .clickhouse/
-	@docker build --platform linux/amd64 -f test.Dockerfile --no-cache-filter runner --progress=plain -t orchestrator-test .
+	@docker build --platform linux/$(shell go env GOARCH) -f test.Dockerfile --no-cache-filter runner --progress=plain -t orchestrator-test .
 	@rm -rf .shared/
 	@rm -rf .clickhouse/
 	@echo "Done"
