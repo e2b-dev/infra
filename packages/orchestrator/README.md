@@ -210,8 +210,29 @@ kernels/vmlinux-6.1.102/arm64/vmlinux.bin
 
 - **SMT** is disabled (ARM processors don't support simultaneous multi-threading)
 - **CPU detection** uses fallback values since `gopsutil` doesn't populate Family/Model on ARM64
-- **OCI platform** is set to `runtime.GOARCH` instead of hardcoded `amd64`
+- **OCI platform** is set to the target architecture instead of hardcoded `amd64`
 - **Busybox binary** must be swapped before building: `make fetch-busybox`
+
+### Cross-architecture deployment
+
+Set `TARGET_ARCH` to deploy for a different architecture than the build host:
+
+```bash
+# Build on ARM64 Mac, deploy x86_64 sandboxes
+TARGET_ARCH=amd64 make build-local
+
+# Or in .env file
+echo "TARGET_ARCH=amd64" >> .env.local
+```
+
+When `TARGET_ARCH` is not set, the host architecture (`runtime.GOARCH`) is used automatically.
+
+`TARGET_ARCH` affects:
+- Firecracker and kernel binary paths (`{version}/{arch}/...`)
+- OCI image platform for container pulls
+- Makefile `GOARCH` for cross-compilation
+
+It does **not** affect hardware-dependent runtime behavior (SMT detection, CPU info) which always uses the actual host architecture.
 
 ---
 
@@ -219,6 +240,7 @@ kernels/vmlinux-6.1.102/arm64/vmlinux.bin
 
 Automatically set in local mode. Set before running to override:
 
+- `TARGET_ARCH` - Target architecture override (`amd64` or `arm64`; default: host architecture)
 - `HOST_ENVD_PATH` - Envd binary path (default: `../envd/bin/envd`)
 - `HOST_KERNELS_DIR` - Kernel versions dir (local: `{storage}/kernels`, prod: `/fc-kernels`)
 - `FIRECRACKER_VERSIONS_DIR` - Firecracker versions dir (local: `{storage}/fc-versions`, prod: `/fc-versions`)

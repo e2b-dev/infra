@@ -3,8 +3,20 @@ package utils
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 )
+
+// TargetArch returns the target architecture for builds and binary paths.
+// If TARGET_ARCH is set, it is used; otherwise falls back to runtime.GOARCH.
+// This allows cross-architecture deployment (e.g. deploying x86_64 from an ARM64 host).
+func TargetArch() string {
+	if arch := os.Getenv("TARGET_ARCH"); arch != "" {
+		return arch
+	}
+
+	return runtime.GOARCH
+}
 
 // RequiredEnv returns the value of the environment variable for key if it is set, non-empty and not only whitespace.
 // It panics otherwise.

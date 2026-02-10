@@ -11,7 +11,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 
@@ -419,7 +418,7 @@ func setupKernel(ctx context.Context, dir, version string) error {
 	}
 
 	// On arm64, try arch-specific URL first (e.g. .../vmlinux-6.1.102/arm64/vmlinux.bin)
-	if runtime.GOARCH == "arm64" {
+	if utils.TargetArch() == "arm64" {
 		archURL, err := url.JoinPath("https://storage.googleapis.com/e2b-prod-public-builds/kernels/", version, "arm64", "vmlinux.bin")
 		if err != nil {
 			return fmt.Errorf("invalid kernel URL for arm64: %w", err)
@@ -443,7 +442,7 @@ func setupKernel(ctx context.Context, dir, version string) error {
 }
 
 func setupFC(ctx context.Context, dir, version string) error {
-	arch := runtime.GOARCH
+	arch := utils.TargetArch()
 	dstPath := filepath.Join(dir, version, arch, "firecracker")
 
 	if err := os.MkdirAll(filepath.Dir(dstPath), 0o755); err != nil {

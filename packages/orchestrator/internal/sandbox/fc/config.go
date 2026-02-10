@@ -2,9 +2,9 @@ package fc
 
 import (
 	"path/filepath"
-	"runtime"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -36,7 +36,7 @@ func (t Config) HostKernelPath(config cfg.BuilderConfig) string {
 }
 
 func (t Config) FirecrackerPath(config cfg.BuilderConfig) string {
-	return filepath.Join(config.FirecrackerVersionsDir, t.FirecrackerVersion, runtime.GOARCH, FirecrackerBinaryName)
+	return filepath.Join(config.FirecrackerVersionsDir, t.FirecrackerVersion, utils.TargetArch(), FirecrackerBinaryName)
 }
 
 type RootfsPaths struct {
