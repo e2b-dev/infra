@@ -12,20 +12,11 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
-
-// SuppressOTELLogs disables OTEL tracing debug prints (-> and Attrs set: messages).
-// This should always be called in CLI commands, even in verbose mode.
-func SuppressOTELLogs() {
-	telemetry.OTELTracingPrint = false
-	os.Setenv("OTEL_TRACING_PRINT", "false")
-}
 
 // SuppressNoisyLogs disables verbose output from OTEL tracing, LaunchDarkly, and standard log.
 // Only ERROR level and above will be logged.
 func SuppressNoisyLogs() {
-	SuppressOTELLogs()
 	// Silence standard log package
 	log.SetOutput(io.Discard)
 	// Replace global zap logger with error-only logger
@@ -34,7 +25,6 @@ func SuppressNoisyLogs() {
 
 // SuppressNoisyLogsKeepStdLog disables verbose output but keeps standard log enabled.
 func SuppressNoisyLogsKeepStdLog() {
-	SuppressOTELLogs()
 	setErrorOnlyLogger()
 }
 
