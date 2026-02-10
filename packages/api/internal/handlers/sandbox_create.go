@@ -232,13 +232,6 @@ func buildAutoResumeConfig(autoResume *api.SandboxAutoResumeConfig) (*types.Sand
 	}
 
 	policy := api.SandboxAutoResumePolicy(strings.TrimSpace(string(autoResume.Policy)))
-	if policy == "" {
-		return nil, &api.APIError{
-			Code:      http.StatusBadRequest,
-			ClientMsg: "autoResume.policy is required",
-			Err:       errors.New("autoResume.policy is required"),
-		}
-	}
 
 	switch policy {
 	case api.Any, api.Off:
