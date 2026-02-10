@@ -8,12 +8,9 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
-	"go.opentelemetry.io/otel/log"
-	noopLogs "go.opentelemetry.io/otel/log/noop"
 	"go.opentelemetry.io/otel/metric"
 	noopMetric "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/propagation"
-	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
@@ -28,8 +25,7 @@ type Client struct {
 	SpanExporter    sdktrace.SpanExporter
 	TracerProvider  trace.TracerProvider
 	TracePropagator propagation.TextMapPropagator
-	LogsExporter    sdklog.Exporter
-	LogsProvider    log.LoggerProvider
+	LogsProvider    LogProvider
 }
 
 func New(ctx context.Context, nodeID, serviceName, serviceCommit, serviceVersion, serviceInstanceID string) (*Client, error) {
@@ -66,12 +62,10 @@ func New(ctx context.Context, nodeID, serviceName, serviceCommit, serviceVersion
 	otel.SetMeterProvider(meterProvider)
 
 	// Setup logging
-	logsExporter, err := NewLogExporter(ctx)
+	logProvider, err := NewLogProvider(ctx, res)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create logs exporter: %w", err)
+		return nil, fmt.Errorf("failed to create log provider: %w", err)
 	}
-
-	logsProvider := NewLogProvider(logsExporter, res)
 
 	// Setup tracing
 	spanExporter, err := NewSpanExporter(ctx)
@@ -92,8 +86,7 @@ func New(ctx context.Context, nodeID, serviceName, serviceCommit, serviceVersion
 		SpanExporter:    spanExporter,
 		TracerProvider:  tracerProvider,
 		TracePropagator: propagator,
-		LogsExporter:    logsExporter,
-		LogsProvider:    logsProvider,
+		LogsProvider:    logProvider,
 	}, nil
 }
 
@@ -109,8 +102,8 @@ func (t *Client) Shutdown(ctx context.Context) error {
 			errs = append(errs, err)
 		}
 	}
-	if t.LogsExporter != nil {
-		if err := t.LogsExporter.Shutdown(ctx); err != nil {
+	if t.LogsProvider != nil {
+		if err := t.LogsProvider.Shutdown(ctx); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -125,7 +118,6 @@ func NewNoopClient() *Client {
 		SpanExporter:    &noopSpanExporter{},
 		TracerProvider:  noopTrace.NewTracerProvider(),
 		TracePropagator: propagation.NewCompositeTextMapPropagator(),
-		LogsExporter:    &noopLogExporter{},
-		LogsProvider:    noopLogs.NewLoggerProvider(),
+		LogsProvider:    NewNoopLogProvider(),
 	}
 }
