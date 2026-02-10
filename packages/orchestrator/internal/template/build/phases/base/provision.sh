@@ -7,7 +7,11 @@ RESULT_PATH="{{ .ResultPath }}"
 echo "Starting provisioning script"
 
 echo "Making configuration immutable"
-$BUSYBOX chattr +i /etc/resolv.conf 2>/dev/null || true
+if $BUSYBOX chattr +i /etc/resolv.conf 2>/tmp/chattr_err; then
+    echo "chattr +i /etc/resolv.conf: ok"
+else
+    echo "chattr +i /etc/resolv.conf failed (non-fatal): $(cat /tmp/chattr_err 2>/dev/null)"
+fi
 
 # Helper function to check if a package is installed
 is_package_installed() {
@@ -95,7 +99,11 @@ echo "Linking systemd to init"
 ln -sf /lib/systemd/systemd /usr/sbin/init
 
 echo "Unlocking immutable configuration"
-$BUSYBOX chattr -i /etc/resolv.conf 2>/dev/null || true
+if $BUSYBOX chattr -i /etc/resolv.conf 2>/tmp/chattr_err; then
+    echo "chattr -i /etc/resolv.conf: ok"
+else
+    echo "chattr -i /etc/resolv.conf failed (non-fatal): $(cat /tmp/chattr_err 2>/dev/null)"
+fi
 
 echo "Finished provisioning script"
 
