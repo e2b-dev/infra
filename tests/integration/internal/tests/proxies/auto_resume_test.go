@@ -116,3 +116,38 @@ func TestSandboxAutoResumeViaProxy(t *testing.T) {
 	require.NotNil(t, res.JSON200, "expected 200 response, got status %d", res.StatusCode())
 	require.Equal(t, api.Running, res.JSON200.State, "sandbox should be running after auto-resume")
 }
+
+func TestSandboxNoAutoResumeWithoutFlag(t *testing.T) {
+	t.Parallel()
+
+	c := setup.GetAPIClient()
+	ctx := t.Context()
+
+	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(true))
+	envdClient := setup.GetEnvdClient(t, ctx)
+
+	// Run ls before pausing.
+	err := utils.ExecCommand(t, ctx, sbx, envdClient, "ls")
+	require.NoError(t, err)
+
+	// Pause the sandbox.
+	pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
+	require.NoError(t, err)
+	require.Equal(t, http.StatusNoContent, pauseResp.StatusCode())
+
+	// Verify sandbox is paused.
+	res, err := c.GetSandboxesSandboxIDWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
+	require.NoError(t, err)
+	require.NotNil(t, res.JSON200, "expected 200 response, got status %d", res.StatusCode())
+	require.Equal(t, api.Paused, res.JSON200.State)
+
+	// Attempt to exec — should fail since auto-resume is not enabled.
+	err = utils.ExecCommand(t, ctx, sbx, envdClient, "ls")
+	require.Error(t, err)
+
+	// Verify the sandbox is still paused.
+	res, err = c.GetSandboxesSandboxIDWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
+	require.NoError(t, err)
+	require.NotNil(t, res.JSON200, "expected 200 response, got status %d", res.StatusCode())
+	require.Equal(t, api.Paused, res.JSON200.State, "sandbox should still be paused without auto-resume")
+}
