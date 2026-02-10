@@ -48,7 +48,7 @@ func main() {
 	defer func() {
 		if err != nil {
 			log.Error(ctx, "NFS cache cleaner failed", zap.Error(err))
-			os.Exit(1)
+			defer os.Exit(1)
 		}
 		log.Sync()
 		lp.Shutdown(ctx)
