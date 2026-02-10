@@ -123,6 +123,22 @@ build-template:
 	-kernel $(KERNEL_VERSION) \
 	-firecracker $(FIRECRACKER_VERSION)
 
+.PHONY: fetch-busybox
+fetch-busybox:
+	@ARCH=$$(dpkg --print-architecture 2>/dev/null || echo "amd64"); \
+	if [ "$$ARCH" = "arm64" ]; then \
+		echo "Fetching arm64 busybox via apt..."; \
+		TMPDIR=$$(mktemp -d); \
+		apt-get download busybox-static 2>/dev/null && \
+			dpkg-deb -x busybox-static_*.deb "$$TMPDIR" && \
+			cp "$$TMPDIR/bin/busybox" ./internal/template/build/core/systeminit/busybox_1.36.1-2 && \
+			rm -rf "$$TMPDIR" busybox-static_*.deb && \
+			echo "✓ Replaced embedded busybox with arm64 binary (from busybox-static package)" || \
+			{ rm -rf "$$TMPDIR" busybox-static_*.deb; echo "⚠ Failed to fetch busybox-static — install it: apt install busybox-static"; exit 1; }; \
+	else \
+		echo "✓ Using bundled amd64 busybox"; \
+	fi
+
 .PHONY: migrate
 migrate:
 	./scripts/upload-envs.sh /mnt/disks/fc-envs/v1 $(TEMPLATE_BUCKET_NAME)
