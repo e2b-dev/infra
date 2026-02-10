@@ -67,7 +67,7 @@ func (a *APIStore) startSandbox(
 		allowInternetAccess,
 		network,
 		mcp,
-		volumeMounts
+		volumeMounts,
 	)
 	if apiErr != nil {
 		return nil, apiErr

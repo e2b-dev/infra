@@ -106,6 +106,7 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		snap.Snapshot.AllowInternetAccess,
 		network,
 		nil, // mcp
+		nil, // volumeMounts
 	)
 	if apiErr != nil {
 		return nil, status.Errorf(sharedutils.GRPCCodeFromHTTPStatus(apiErr.Code), "resume failed: %s", apiErr.ClientMsg)
