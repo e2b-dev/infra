@@ -27,7 +27,7 @@ type DiffMetadata struct {
 func (d *DiffMetadata) toDiffMapping(
 	ctx context.Context,
 	buildID uuid.UUID,
-) (mapping []*BuildMap, e error) {
+) (mapping []*BuildMap) {
 	dirtyMappings := CreateMapping(
 		&buildID,
 		d.Dirty,
@@ -46,7 +46,7 @@ func (d *DiffMetadata) toDiffMapping(
 	mappings := MergeMappings(dirtyMappings, emptyMappings)
 	telemetry.ReportEvent(ctx, "merge mappings")
 
-	return mappings, nil
+	return mappings
 }
 
 func (d *DiffMetadata) ToDiffHeader(
@@ -63,10 +63,7 @@ func (d *DiffMetadata) ToDiffHeader(
 		}
 	}()
 
-	diffMapping, err := d.toDiffMapping(ctx, buildID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create mapping: %w", err)
-	}
+	diffMapping := d.toDiffMapping(ctx, buildID)
 
 	m := MergeMappings(
 		originalHeader.Mapping,

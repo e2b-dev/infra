@@ -12,6 +12,7 @@ import (
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/template"
 	apiutils "github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -116,7 +117,7 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 
 	firecrackerVersion := a.featureFlags.StringFlag(ctx, featureflags.BuildFirecrackerVersion)
 	buildReq := template.RegisterBuildData{
-		ClusterID:          apiutils.WithClusterFallback(team.ClusterID),
+		ClusterID:          clusters.WithClusterFallback(team.ClusterID),
 		TemplateID:         templateID,
 		UserID:             nil,
 		Team:               team,
