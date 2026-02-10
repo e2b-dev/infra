@@ -17,6 +17,7 @@ import (
 	apiutils "github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -96,7 +97,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 	ctx = featureflags.AddToContext(ctx, featureflags.TemplateContext(templateID))
 
 	// Check and cancel concurrent builds
-	if err := a.CheckAndCancelConcurrentBuilds(ctx, templateID, buildUUID, apiutils.WithClusterFallback(team.ClusterID)); err != nil {
+	if err := a.CheckAndCancelConcurrentBuilds(ctx, templateID, buildUUID, clusters.WithClusterFallback(team.ClusterID)); err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error during template build request")
 
 		return
@@ -133,7 +134,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		return
 	}
 
-	builderNode, err := a.templateManager.GetAvailableBuildClient(ctx, apiutils.WithClusterFallback(team.ClusterID))
+	builderNode, err := a.templateManager.GetAvailableBuildClient(ctx, clusters.WithClusterFallback(team.ClusterID))
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusServiceUnavailable, "Error when getting available build client")
 		telemetry.ReportCriticalError(ctx, "error when getting available build client", err, telemetry.WithTemplateID(templateID))
@@ -180,7 +181,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		body.FromImageRegistry,
 		body.Force,
 		body.Steps,
-		apiutils.WithClusterFallback(team.ClusterID),
+		clusters.WithClusterFallback(team.ClusterID),
 		builderNode.NodeID,
 		version,
 	)

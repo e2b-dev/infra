@@ -70,9 +70,6 @@ func main() {
 		log.Fatal("-to-build required")
 	}
 
-	// Always suppress OTEL tracing logs
-	cmdutil.SuppressOTELLogs()
-
 	// Suppress other noisy output unless verbose, but keep std log for fatal errors
 	if !*verbose {
 		cmdutil.SuppressNoisyLogsKeepStdLog()

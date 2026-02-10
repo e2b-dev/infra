@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"os"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -14,63 +13,13 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-var OTELTracingPrint = os.Getenv("OTEL_TRACING_PRINT") != "false"
-
-const DebugID = "debug_id"
-
-func getDebugID(ctx context.Context) *string {
-	if ctx.Value(DebugID) == nil {
-		return nil
-	}
-
-	value := ctx.Value(DebugID).(string)
-
-	return &value
-}
-
-func debugFormat(debugID *string, msg string) string {
-	if debugID == nil {
-		return msg
-	}
-
-	return fmt.Sprintf("[%s] %s", *debugID, msg)
-}
-
 func SetAttributes(ctx context.Context, attrs ...attribute.KeyValue) {
 	span := trace.SpanFromContext(ctx)
-
-	if OTELTracingPrint {
-		var msg string
-
-		if len(attrs) == 0 {
-			msg = "No attrs set"
-		} else {
-			msg = fmt.Sprintf("Attrs set: %#v\n", attrs)
-		}
-
-		debugID := getDebugID(ctx)
-		fmt.Print(debugFormat(debugID, msg))
-	}
-
 	span.SetAttributes(attrs...)
 }
 
 func ReportEvent(ctx context.Context, name string, attrs ...attribute.KeyValue) {
 	span := trace.SpanFromContext(ctx)
-
-	if OTELTracingPrint {
-		var msg string
-
-		if len(attrs) == 0 {
-			msg = fmt.Sprintf("-> %s\n", name)
-		} else {
-			msg = fmt.Sprintf("-> %s - %#v\n", name, attrs)
-		}
-
-		debugID := getDebugID(ctx)
-		fmt.Print(debugFormat(debugID, msg))
-	}
-
 	span.AddEvent(name,
 		trace.WithAttributes(attrs...),
 	)
@@ -79,8 +28,7 @@ func ReportEvent(ctx context.Context, name string, attrs ...attribute.KeyValue) 
 func ReportCriticalError(ctx context.Context, message string, err error, attrs ...attribute.KeyValue) {
 	span := trace.SpanFromContext(ctx)
 
-	debugID := getDebugID(ctx)
-	logger.L().With(attributesToZapFields(attrs...)...).Error(ctx, message, zap.Stringp("debug_id", debugID), zap.Error(err))
+	logger.L().With(attributesToZapFields(attrs...)...).Error(ctx, message, zap.Error(err))
 
 	errorAttrs := append(attrs, attribute.String("error.message", message))
 
@@ -97,8 +45,7 @@ func ReportCriticalError(ctx context.Context, message string, err error, attrs .
 func ReportError(ctx context.Context, message string, err error, attrs ...attribute.KeyValue) {
 	span := trace.SpanFromContext(ctx)
 
-	debugID := getDebugID(ctx)
-	logger.L().With(attributesToZapFields(attrs...)...).Warn(ctx, message, zap.Stringp("debug_id", debugID), zap.Error(err))
+	logger.L().With(attributesToZapFields(attrs...)...).Warn(ctx, message, zap.Error(err))
 
 	span.RecordError(fmt.Errorf("%s: %w", message, err),
 		trace.WithStackTrace(true),

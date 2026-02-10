@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"strconv"
 	"sync"
 	"syscall"
 
@@ -78,16 +79,26 @@ func New(
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 
+	groups := []uint32{gid}
+	if gids, err := user.GroupIds(); err != nil {
+		logger.Warn().Err(err).Str("user", user.Username).Msg("failed to get supplementary groups")
+	} else {
+		for _, g := range gids {
+			if parsed, err := strconv.ParseUint(g, 10, 32); err == nil {
+				groups = append(groups, uint32(parsed))
+			}
+		}
+	}
+
 	cgroupFD, ok := cgroupManager.GetFileDescriptor(getProcType(req))
 
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		UseCgroupFD: ok,
 		CgroupFD:    cgroupFD,
 		Credential: &syscall.Credential{
-			Uid:         uid,
-			Gid:         gid,
-			Groups:      []uint32{gid},
-			NoSetGroups: true,
+			Uid:    uid,
+			Gid:    gid,
+			Groups: groups,
 		},
 	}
 

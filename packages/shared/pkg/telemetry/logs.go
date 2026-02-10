@@ -6,44 +6,42 @@ import (
 
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
 	"go.opentelemetry.io/otel/log"
+	nooplog "go.opentelemetry.io/otel/log/noop"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	"go.opentelemetry.io/otel/sdk/resource"
 	"google.golang.org/grpc/encoding/gzip"
 )
 
-type noopLogExporter struct{}
+// LogProvider extends log.LoggerProvider with a Shutdown method
+// so the batch processor and exporter are properly flushed on exit.
+type LogProvider interface {
+	log.LoggerProvider
+	Shutdown(ctx context.Context) error
+}
 
-func (noopLogExporter) Export(context.Context, []sdklog.Record) error { return nil }
+type noopLogProvider struct{ nooplog.LoggerProvider }
 
-func (noopLogExporter) Shutdown(context.Context) error { return nil }
+func (noopLogProvider) Shutdown(context.Context) error { return nil }
 
-func (noopLogExporter) ForceFlush(context.Context) error { return nil }
+func NewNoopLogProvider() LogProvider { return noopLogProvider{} }
 
-func NewLogExporter(ctx context.Context, extraOption ...otlploggrpc.Option) (sdklog.Exporter, error) {
+func NewLogProvider(ctx context.Context, res *resource.Resource, extraOpts ...otlploggrpc.Option) (LogProvider, error) {
 	opts := []otlploggrpc.Option{
 		otlploggrpc.WithInsecure(),
 		otlploggrpc.WithEndpoint(otelCollectorGRPCEndpoint),
 		otlploggrpc.WithCompressor(gzip.Name),
 	}
-	opts = append(opts, extraOption...)
+	opts = append(opts, extraOpts...)
 
-	logsExporter, err := otlploggrpc.New(
-		ctx,
-		opts...,
-	)
+	exporter, err := otlploggrpc.New(ctx, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create logs exporter: %w", err)
 	}
 
-	return logsExporter, nil
-}
-
-func NewLogProvider(logsExporter sdklog.Exporter, res *resource.Resource) log.LoggerProvider {
-	logsProcessor := sdklog.NewBatchProcessor(logsExporter)
-	logsProvider := sdklog.NewLoggerProvider(
+	p := sdklog.NewLoggerProvider(
 		sdklog.WithResource(res),
-		sdklog.WithProcessor(logsProcessor),
+		sdklog.WithProcessor(sdklog.NewBatchProcessor(exporter)),
 	)
 
-	return logsProvider
+	return p, nil
 }

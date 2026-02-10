@@ -8,7 +8,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -41,7 +41,7 @@ func (a *APIStore) GetTemplatesTemplateIDFilesHash(c *gin.Context, templateID ap
 		return
 	}
 
-	node, err := a.templateManager.GetAvailableBuildClient(ctx, utils.WithClusterFallback(templateDB.ClusterID))
+	node, err := a.templateManager.GetAvailableBuildClient(ctx, clusters.WithClusterFallback(templateDB.ClusterID))
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when getting available build client", err, telemetry.WithTemplateID(templateID))
 		a.sendAPIStoreError(c, http.StatusServiceUnavailable, "Error when getting available build client")
@@ -49,7 +49,7 @@ func (a *APIStore) GetTemplatesTemplateIDFilesHash(c *gin.Context, templateID ap
 		return
 	}
 
-	resp, err := a.templateManager.InitLayerFileUpload(ctx, utils.WithClusterFallback(templateDB.ClusterID), node.NodeID, team.ID, templateID, hash)
+	resp, err := a.templateManager.InitLayerFileUpload(ctx, clusters.WithClusterFallback(templateDB.ClusterID), node.NodeID, team.ID, templateID, hash)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when requesting layer files upload", err, telemetry.WithTemplateID(templateID), attribute.String("hash", hash))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when requesting layer files upload")

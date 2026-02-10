@@ -18,10 +18,10 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
-	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/pkg/builds"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	feature_flags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -244,14 +244,14 @@ func (o *Orchestrator) CreateSandbox(
 	if isResume && nodeID != nil {
 		telemetry.ReportEvent(ctx, "Placing sandbox on the node where the snapshot was taken")
 
-		clusterID := utils.WithClusterFallback(team.ClusterID)
+		clusterID := clusters.WithClusterFallback(team.ClusterID)
 		node = o.GetNode(clusterID, *nodeID)
 		if node != nil && node.Status() != api.NodeStatusReady {
 			node = nil
 		}
 	}
 
-	nodeClusterID := utils.WithClusterFallback(team.ClusterID)
+	nodeClusterID := clusters.WithClusterFallback(team.ClusterID)
 	clusterNodes := o.GetClusterNodes(nodeClusterID)
 
 	node, err = placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, builds.ToMachineInfo(build))
