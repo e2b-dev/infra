@@ -84,12 +84,12 @@ func handlePausedSandbox(
 }
 
 func isNotResumableError(err error) bool {
-	var grpcStatus interface{ GRPCStatus() *status.Status }
-	if !errors.As(err, &grpcStatus) {
+	st, ok := status.FromError(err)
+	if !ok {
 		return false
 	}
 
-	return grpcStatus.GRPCStatus().Code() == codes.NotFound
+	return st.Code() == codes.NotFound
 }
 
 func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog catalog.SandboxesCatalog, pausedSandboxResumer PausedSandboxResumer, featureFlagsClient *featureflags.Client) (*reverseproxy.Proxy, error) {
