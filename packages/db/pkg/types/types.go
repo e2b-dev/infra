@@ -37,7 +37,6 @@ const (
 )
 
 type SandboxAutoResumeConfig struct {
-	// Policy defaults to "off". Empty/unknown values should be treated as "off".
 	Policy SandboxAutoResumePolicy `json:"policy"`
 }
 
