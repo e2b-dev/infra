@@ -133,9 +133,8 @@ func NewClusterNode(ctx context.Context, client *clusters.GRPCClient, clusterID 
 		NomadNodeShortID: UnknownNomadNodeShortID,
 		ClusterID:        clusterID,
 		ID:               i.NodeID,
-		// For remote clusters (edge gRPC proxy) we can't connect directly to the node.
-		// For local/dev/CI "local cluster" discovery, we have a routable address.
-		IPAddress:     i.GetLocalIPAddress(),
+		// We can't connect directly to the node in the cluster
+		IPAddress:     "",
 		SandboxDomain: sandboxDomain,
 		PlacementMetrics: PlacementMetrics{
 			sandboxesInProgress: smap.New[SandboxResources](),

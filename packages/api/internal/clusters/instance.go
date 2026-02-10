@@ -35,10 +35,6 @@ type Instance struct {
 	ClusterID uuid.UUID
 	NodeID    string
 
-	// localIPAddress is set only for instances discovered via local service discovery
-	// (including local/dev/CI setups). It can be used as a routable target for proxying.
-	localIPAddress string
-
 	serviceInstanceID    string
 	serviceVersion       string
 	serviceVersionCommit string
@@ -89,7 +85,6 @@ func newInstance(
 		serviceInstanceID: sd.InstanceID,
 		NodeID:            sd.NodeID,
 		ClusterID:         clusterID,
-		localIPAddress:    sd.LocalIPAddress,
 
 		client: client,
 		mutex:  sync.RWMutex{},
@@ -112,12 +107,6 @@ func newInstance(
 	}
 
 	return i, nil
-}
-
-// GetLocalIPAddress returns the routable IP/hostname for locally-discovered instances.
-// For remote clusters (edge gRPC proxy) this will be empty.
-func (i *Instance) GetLocalIPAddress() string {
-	return i.localIPAddress
 }
 
 // Sync function can be called on freshly initialized instance to populate its data

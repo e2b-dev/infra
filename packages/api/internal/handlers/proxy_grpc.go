@@ -86,11 +86,6 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 	}
 
 	headers := http.Header{}
-	logger.L().Info(ctx, "[RESUME] ResumeSandbox starting startSandboxInternal",
-		logger.WithSandboxID(sandboxID),
-		zap.String("origin_node_id", *nodeID),
-	)
-	start := time.Now()
 	sbx, apiErr := s.api.startSandboxInternal(
 		ctx,
 		snap.Snapshot.SandboxID,
@@ -113,39 +108,13 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		nil, // mcp
 	)
 	if apiErr != nil {
-		logger.L().Error(ctx, "[RESUME] ResumeSandbox startSandboxInternal failed",
-			logger.WithSandboxID(sandboxID),
-			zap.String("client_msg", apiErr.ClientMsg),
-			zap.Int("code", apiErr.Code),
-			zap.Duration("duration", time.Since(start)),
-		)
 		return nil, status.Errorf(sharedutils.GRPCCodeFromHTTPStatus(apiErr.Code), "resume failed: %s", apiErr.ClientMsg)
 	}
 
-	logger.L().Info(ctx, "[RESUME] ResumeSandbox startSandboxInternal succeeded",
-		logger.WithSandboxID(sandboxID),
-		zap.Stringer("cluster_id", sbx.ClusterID),
-		zap.String("node_id", sbx.NodeID),
-		zap.Duration("duration", time.Since(start)),
-	)
-
 	node := s.api.orchestrator.GetNode(sbx.ClusterID, sbx.NodeID)
 	if node == nil {
-		logger.L().Error(ctx, "[RESUME] ResumeSandbox node not found after successful start",
-			logger.WithSandboxID(sandboxID),
-			zap.Stringer("cluster_id", sbx.ClusterID),
-			zap.String("node_id", sbx.NodeID),
-			zap.Duration("duration", time.Since(start)),
-		)
 		return nil, status.Error(codes.Internal, "sandbox resumed but routing info is not available yet")
 	}
 
-	logger.L().Info(ctx, "[RESUME] ResumeSandbox returning IP to client-proxy",
-		logger.WithSandboxID(sandboxID),
-		zap.String("node_ip", node.IPAddress),
-		zap.String("node_id", node.ID),
-		zap.Bool("is_nomad_managed", node.IsNomadManaged()),
-		zap.Duration("duration", time.Since(start)),
-	)
 	return &proxygrpc.SandboxResumeResponse{OrchestratorIp: node.IPAddress}, nil
 }
