@@ -291,12 +291,6 @@ variable "clickhouse_resources_cpu_count" {
   default = 4
 }
 
-variable "otel_tracing_print" {
-  description = "Whether to print OTEL traces to stdout"
-  type        = bool
-  default     = false
-}
-
 variable "domain_name" {
   type        = string
   description = "The domain name where e2b will run"
