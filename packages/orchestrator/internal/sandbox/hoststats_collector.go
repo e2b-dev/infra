@@ -31,7 +31,7 @@ type HostStatsMetadata struct {
 	ExecutionID string
 	TemplateID  string
 	BuildID     string
-	TeamID      string
+	TeamID      uuid.UUID
 }
 
 func NewHostStatsCollector(
@@ -67,19 +67,13 @@ func (h *HostStatsCollector) CollectSample(ctx context.Context) error {
 		return fmt.Errorf("failed to get memory info: %w", err)
 	}
 
-	// Parse team ID as UUID
-	teamID, err := parseTeamID(h.metadata.TeamID)
-	if err != nil {
-		return fmt.Errorf("failed to parse team ID: %w", err)
-	}
-
 	stat := hoststats.SandboxHostStat{
 		Timestamp:                time.Now(),
 		SandboxID:                h.metadata.SandboxID,
 		SandboxExecutionID:       h.metadata.ExecutionID,
 		SandboxTemplateID:        h.metadata.TemplateID,
 		SandboxBuildID:           h.metadata.BuildID,
-		SandboxTeamID:            teamID,
+		SandboxTeamID:            h.metadata.TeamID,
 		FirecrackerCPUUserTime:   times.User,   // seconds
 		FirecrackerCPUSystemTime: times.System, // seconds
 		FirecrackerMemoryRSS:     memInfo.RSS,  // bytes
@@ -139,12 +133,4 @@ func (h *HostStatsCollector) Stop(ctx context.Context) {
 				zap.Error(err))
 		}
 	})
-}
-
-// Helper function to parse team ID as UUID
-func parseTeamID(teamID string) (uuid.UUID, error) {
-	if teamID == "" {
-		return uuid.Nil, nil
-	}
-	return uuid.Parse(teamID)
 }

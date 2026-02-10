@@ -679,13 +679,18 @@ func (f *Factory) ResumeSandbox(
 				buildID = meta.Template.BuildID
 			}
 
+			teamID, err := uuid.Parse(runtime.TeamID)
+			if err != nil {
+				logger.L().Error(ctx, "error parsing team ID", zap.String("team_id", runtime.TeamID), zap.Error(err))
+			}
+
 			collector, err := NewHostStatsCollector(
 				HostStatsMetadata{
 					SandboxID:   runtime.SandboxID,
 					ExecutionID: runtime.ExecutionID,
 					TemplateID:  runtime.TemplateID,
 					BuildID:     buildID,
-					TeamID:      runtime.TeamID,
+					TeamID:      teamID,
 				},
 				int32(firecrackerPID),
 				f.hostStatsDelivery,
