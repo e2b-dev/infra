@@ -11,7 +11,7 @@ ORDER BY b.id, b.created_at DESC;
 -- name: GetInProgressTemplateBuildsByTeam :many
 SELECT DISTINCT b.id as template_id
 FROM public.env_builds b
-         JOIN public.env_build_assignments eba ON eba.build_id = b.id
-         JOIN public.envs e ON e.id = eba.env_id
+JOIN public.env_build_assignments eba ON eba.build_id = b.id
+JOIN public.envs e ON e.id = eba.env_id
 WHERE e.team_id = $1 AND (b.status = 'waiting' OR b.status = 'building')
 ORDER BY b.id, b.created_at DESC;
