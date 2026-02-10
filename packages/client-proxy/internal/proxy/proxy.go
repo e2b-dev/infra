@@ -36,33 +36,32 @@ var ErrNodeNotFound = errors.New("node not found")
 type autoResumeResult uint8
 
 const (
-	autoResumeNone autoResumeResult = iota
-	autoResumeSucceeded
+	autoResumeSucceeded autoResumeResult = iota
 	autoResumeNotAllowed
 	autoResumeErrored
 )
 
-func catalogResolution(ctx context.Context, sandboxId string, c catalog.SandboxesCatalog, pausedChecker PausedSandboxResumer, featureFlags *featureflags.Client) (string, autoResumeResult, error) {
+func catalogResolution(ctx context.Context, sandboxId string, c catalog.SandboxesCatalog, pausedChecker PausedSandboxResumer, featureFlags *featureflags.Client) (string, error) {
 	s, err := c.GetSandbox(ctx, sandboxId)
 	if err != nil {
 		if errors.Is(err, catalog.ErrSandboxNotFound) {
 			nodeIP, res, pausedErr := handlePausedSandbox(ctx, sandboxId, pausedChecker, featureFlags)
 			if pausedErr != nil {
-				return "", res, pausedErr
+				return "", pausedErr
 			}
 			if res == autoResumeSucceeded {
-				return nodeIP, res, nil
+				return nodeIP, nil
 			}
 
-			return "", res, ErrNodeNotFound
+			return "", ErrNodeNotFound
 		}
 
-		return "", autoResumeErrored, fmt.Errorf("failed to get sandbox from catalog: %w", err)
+		return "", fmt.Errorf("failed to get sandbox from catalog: %w", err)
 	}
 
 	// todo: when we will use edge for orchestrators discovery we can stop sending IP in the catalog
 	//  and just resolve node from pool to get the IP of the node
-	return s.OrchestratorIP, autoResumeNone, nil
+	return s.OrchestratorIP, nil
 }
 
 func handlePausedSandbox(
@@ -72,7 +71,7 @@ func handlePausedSandbox(
 	featureFlags *featureflags.Client,
 ) (string, autoResumeResult, error) {
 	if pausedChecker == nil {
-		return "", autoResumeNone, nil
+		return "", autoResumeNotAllowed, nil
 	}
 
 	if !featureFlags.BoolFlag(ctx, featureflags.SandboxAutoResumeFlag, featureflags.SandboxContext(sandboxId)) {
@@ -128,7 +127,7 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 				zap.Int64("content_length", r.ContentLength),
 			)
 
-			nodeIP, _, err := catalogResolution(ctx, sandboxId, catalog, pausedSandboxResumer, featureFlagsClient)
+			nodeIP, err := catalogResolution(ctx, sandboxId, catalog, pausedSandboxResumer, featureFlagsClient)
 			if err != nil {
 				if !errors.Is(err, ErrNodeNotFound) {
 					l.Warn(ctx, "failed to resolve node ip with Redis resolution", zap.Error(err))

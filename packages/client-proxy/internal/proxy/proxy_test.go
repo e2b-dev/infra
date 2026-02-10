@@ -49,10 +49,9 @@ func TestCatalogResolution_CatalogHit(t *testing.T) {
 	}, time.Minute)
 	require.NoError(t, err)
 
-	nodeIP, res, err := catalogResolution(context.Background(), "sbx", c, stubResumer{}, ff)
+	nodeIP, err := catalogResolution(context.Background(), "sbx", c, stubResumer{}, ff)
 	require.NoError(t, err)
 	require.Equal(t, "10.0.0.1", nodeIP)
-	require.Equal(t, autoResumeNone, res)
 }
 
 func TestCatalogResolution_CatalogHit_EmptyIPReturnsEmpty(t *testing.T) {
@@ -68,10 +67,9 @@ func TestCatalogResolution_CatalogHit_EmptyIPReturnsEmpty(t *testing.T) {
 	}, time.Minute)
 	require.NoError(t, err)
 
-	nodeIP, res, err := catalogResolution(context.Background(), "sbx", c, stubResumer{}, ff)
+	nodeIP, err := catalogResolution(context.Background(), "sbx", c, stubResumer{}, ff)
 	require.NoError(t, err)
 	require.Empty(t, nodeIP)
-	require.Equal(t, autoResumeNone, res)
 }
 
 func TestCatalogResolution_CatalogMiss_NoResumer(t *testing.T) {
@@ -80,9 +78,8 @@ func TestCatalogResolution_CatalogMiss_NoResumer(t *testing.T) {
 	c := catalog.NewMemorySandboxesCatalog()
 	ff := newFF(t, true)
 
-	_, res, err := catalogResolution(context.Background(), "sbx", c, nil, ff)
+	_, err := catalogResolution(context.Background(), "sbx", c, nil, ff)
 	require.ErrorIs(t, err, ErrNodeNotFound)
-	require.Equal(t, autoResumeNone, res)
 }
 
 func TestCatalogResolution_CatalogMiss_AutoResumeNotAllowed_FlagDisabled(t *testing.T) {
@@ -91,9 +88,8 @@ func TestCatalogResolution_CatalogMiss_AutoResumeNotAllowed_FlagDisabled(t *test
 	c := catalog.NewMemorySandboxesCatalog()
 	ff := newFF(t, false)
 
-	_, res, err := catalogResolution(context.Background(), "sbx", c, stubResumer{nodeIP: "10.0.0.1"}, ff)
+	_, err := catalogResolution(context.Background(), "sbx", c, stubResumer{nodeIP: "10.0.0.1"}, ff)
 	require.ErrorIs(t, err, ErrNodeNotFound)
-	require.Equal(t, autoResumeNotAllowed, res)
 }
 
 func TestCatalogResolution_CatalogMiss_AutoResumeNotAllowed_NotFound(t *testing.T) {
@@ -102,9 +98,8 @@ func TestCatalogResolution_CatalogMiss_AutoResumeNotAllowed_NotFound(t *testing.
 	c := catalog.NewMemorySandboxesCatalog()
 	ff := newFF(t, true)
 
-	_, res, err := catalogResolution(context.Background(), "sbx", c, stubResumer{err: status.Error(codes.NotFound, "not allowed")}, ff)
+	_, err := catalogResolution(context.Background(), "sbx", c, stubResumer{err: status.Error(codes.NotFound, "not allowed")}, ff)
 	require.ErrorIs(t, err, ErrNodeNotFound)
-	require.Equal(t, autoResumeNotAllowed, res)
 }
 
 func TestCatalogResolution_CatalogMiss_AutoResumeErrored(t *testing.T) {
@@ -113,9 +108,8 @@ func TestCatalogResolution_CatalogMiss_AutoResumeErrored(t *testing.T) {
 	c := catalog.NewMemorySandboxesCatalog()
 	ff := newFF(t, true)
 
-	_, res, err := catalogResolution(context.Background(), "sbx", c, stubResumer{err: status.Error(codes.Unavailable, "boom")}, ff)
+	_, err := catalogResolution(context.Background(), "sbx", c, stubResumer{err: status.Error(codes.Unavailable, "boom")}, ff)
 	require.Error(t, err)
-	require.Equal(t, autoResumeErrored, res)
 }
 
 func TestCatalogResolution_CatalogMiss_AutoResumeSucceeded(t *testing.T) {
@@ -124,10 +118,9 @@ func TestCatalogResolution_CatalogMiss_AutoResumeSucceeded(t *testing.T) {
 	c := catalog.NewMemorySandboxesCatalog()
 	ff := newFF(t, true)
 
-	nodeIP, res, err := catalogResolution(context.Background(), "sbx", c, stubResumer{nodeIP: "10.0.0.1"}, ff)
+	nodeIP, err := catalogResolution(context.Background(), "sbx", c, stubResumer{nodeIP: "10.0.0.1"}, ff)
 	require.NoError(t, err)
 	require.Equal(t, "10.0.0.1", nodeIP)
-	require.Equal(t, autoResumeSucceeded, res)
 }
 
 func TestCatalogResolution_CatalogMiss_AutoResumeSucceeded_EmptyIPReturnsEmpty(t *testing.T) {
@@ -136,8 +129,7 @@ func TestCatalogResolution_CatalogMiss_AutoResumeSucceeded_EmptyIPReturnsEmpty(t
 	c := catalog.NewMemorySandboxesCatalog()
 	ff := newFF(t, true)
 
-	nodeIP, res, err := catalogResolution(context.Background(), "sbx", c, stubResumer{nodeIP: ""}, ff)
+	nodeIP, err := catalogResolution(context.Background(), "sbx", c, stubResumer{nodeIP: ""}, ff)
 	require.NoError(t, err)
 	require.Empty(t, nodeIP)
-	require.Equal(t, autoResumeSucceeded, res)
 }
