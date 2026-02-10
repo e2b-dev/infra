@@ -87,7 +87,7 @@ func New(cfg ServiceConfig) (*Server, error) {
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("error registering sandbox count metric: %v", err)
+		return nil, fmt.Errorf("error registering sandbox count metric: %w", err)
 	}
 
 	return server, nil
