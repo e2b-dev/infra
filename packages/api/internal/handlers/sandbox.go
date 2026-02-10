@@ -18,6 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -95,8 +96,25 @@ func (a *APIStore) startSandboxInternal(
 	network *types.SandboxNetworkConfig,
 	mcp api.Mcp,
 ) (sandbox.Sandbox, *api.APIError) {
-	startTime := time.Now()
+	t0 := time.Now()
+	startTime := t0
 	endTime := startTime.Add(timeout)
+
+	l := logger.L().With(
+		logger.WithSandboxID(sandboxID),
+		zap.Bool("is_resume", isResume),
+		zap.String("template_id", templateID),
+		zap.String("base_template_id", baseTemplateID),
+		zap.Bool("node_affinity_requested", nodeID != nil),
+	)
+	if nodeID != nil {
+		l = l.With(zap.String("requested_node_id", *nodeID))
+	}
+	if isResume {
+		l.Info(ctx, "startSandboxInternal starting", zap.Duration("timeout", timeout))
+	} else {
+		l.Debug(ctx, "startSandboxInternal starting", zap.Duration("timeout", timeout))
+	}
 
 	// Unique ID for the execution (from start/resume to stop/pause)
 	executionID := uuid.New().String()
@@ -123,9 +141,38 @@ func (a *APIStore) startSandboxInternal(
 		network,
 	)
 	if instanceErr != nil {
+		l.Error(
+			ctx,
+			"startSandboxInternal failed",
+			zap.Int("code", instanceErr.Code),
+			zap.String("client_msg", instanceErr.ClientMsg),
+			zap.Duration("duration", time.Since(t0)),
+			zap.Error(instanceErr.Err),
+		)
 		telemetry.ReportError(ctx, "error when creating instance", instanceErr.Err)
 
 		return sandbox.Sandbox{}, instanceErr
+	}
+
+	// Avoid logging request headers or tokens here; just log routing-relevant identifiers.
+	if isResume {
+		l.Info(
+			ctx,
+			"startSandboxInternal created sandbox",
+			zap.Stringer("cluster_id", sbx.ClusterID),
+			zap.String("node_id", sbx.NodeID),
+			zap.String("execution_id", sbx.ExecutionID),
+			zap.Duration("duration", time.Since(t0)),
+		)
+	} else {
+		l.Debug(
+			ctx,
+			"startSandboxInternal created sandbox",
+			zap.Stringer("cluster_id", sbx.ClusterID),
+			zap.String("node_id", sbx.NodeID),
+			zap.String("execution_id", sbx.ExecutionID),
+			zap.Duration("duration", time.Since(t0)),
+		)
 	}
 
 	telemetry.ReportEvent(ctx, "Created sandbox")
