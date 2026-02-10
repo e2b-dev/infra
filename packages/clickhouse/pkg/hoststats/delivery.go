@@ -87,7 +87,7 @@ func (c *ClickhouseDelivery) Push(stat SandboxHostStat) (bool, error) {
 	return true, nil
 }
 
-func (c *ClickhouseDelivery) Close(ctx context.Context) error {
+func (c *ClickhouseDelivery) Close(context.Context) error {
 	defer c.conn.Close()
 
 	return c.batcher.Stop()
