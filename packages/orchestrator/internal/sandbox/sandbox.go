@@ -376,7 +376,7 @@ func (f *Factory) initializeHostStatsCollector(
 	ctx context.Context,
 	sbx *Sandbox,
 	fcHandle *fc.Process,
-	t template.Template,
+	buildID string,
 	runtime RuntimeMetadata,
 	config Config,
 ) {
@@ -391,12 +391,6 @@ func (f *Factory) initializeHostStatsCollector(
 			zap.String("sandbox_id", runtime.SandboxID),
 			zap.Error(err))
 		return
-	}
-
-	meta, metaErr := t.Metadata()
-	buildID := ""
-	if metaErr == nil {
-		buildID = meta.Template.BuildID
 	}
 
 	teamID, err := uuid.Parse(runtime.TeamID)
@@ -723,7 +717,7 @@ func (f *Factory) ResumeSandbox(
 
 	telemetry.ReportEvent(execCtx, "envd initialized")
 
-	f.initializeHostStatsCollector(ctx, sbx, fcHandle, t, runtime, config)
+	f.initializeHostStatsCollector(ctx, sbx, fcHandle, meta.Template.BuildID, runtime, config)
 
 	go sbx.Checks.Start(execCtx)
 
