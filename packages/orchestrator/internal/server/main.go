@@ -39,6 +39,8 @@ type Server struct {
 	featureFlags      *featureflags.Client
 	sbxEventsService  *events.EventsService
 	startingSandboxes *semaphore.Weighted
+
+	sandboxCreateHistogram metric.Int64Histogram
 }
 
 type ServiceConfig struct {
@@ -57,6 +59,12 @@ type ServiceConfig struct {
 }
 
 func New(ctx context.Context, cfg ServiceConfig) *Server {
+	meter := cfg.Tel.MeterProvider.Meter("orchestrator.sandbox")
+	sandboxCreateHistogram, err := telemetry.GetHistogram(meter, telemetry.OrchestratorSandboxCreateDurationHistogramName)
+	if err != nil {
+		logger.L().Error(ctx, "Error registering sandbox create histogram", zap.String("metric_name", string(telemetry.OrchestratorSandboxCreateDurationHistogramName)), zap.Error(err))
+	}
+
 	server := &Server{
 		config:            cfg.Config,
 		sandboxFactory:    cfg.SandboxFactory,
@@ -70,10 +78,11 @@ func New(ctx context.Context, cfg ServiceConfig) *Server {
 		featureFlags:      cfg.FeatureFlags,
 		sbxEventsService:  cfg.SbxEventsService,
 		startingSandboxes: semaphore.NewWeighted(maxStartingInstancesPerNode),
+
+		sandboxCreateHistogram: sandboxCreateHistogram,
 	}
 
-	meter := cfg.Tel.MeterProvider.Meter("orchestrator.sandbox")
-	_, err := telemetry.GetObservableUpDownCounter(meter, telemetry.OrchestratorSandboxCountMeterName, func(_ context.Context, observer metric.Int64Observer) error {
+	_, err = telemetry.GetObservableUpDownCounter(meter, telemetry.OrchestratorSandboxCountMeterName, func(_ context.Context, observer metric.Int64Observer) error {
 		observer.Observe(int64(server.sandboxes.Count()))
 
 		return nil

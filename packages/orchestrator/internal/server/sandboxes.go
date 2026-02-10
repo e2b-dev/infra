@@ -10,6 +10,7 @@ import (
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
@@ -41,7 +42,31 @@ const (
 	maxStartingInstancesPerNode = 3
 )
 
-func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequest) (*orchestrator.SandboxCreateResponse, error) {
+const (
+	operationCreate = "create"
+	operationResume = "resume"
+)
+
+func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequest) (resp *orchestrator.SandboxCreateResponse, err error) {
+	// Track duration for histogram
+	createStart := time.Now()
+	defer func() {
+		if err != nil {
+			return
+		}
+
+		durationMs := time.Since(createStart).Milliseconds()
+		// Determine operation type
+		operationType := operationCreate
+		if req.GetSandbox().GetSnapshot() {
+			operationType = operationResume
+		}
+
+		s.sandboxCreateHistogram.Record(ctx, durationMs, metric.WithAttributes(
+			attribute.String("operation", operationType),
+		))
+	}()
+
 	// set max request timeout for this request
 	ctx, cancel := context.WithTimeoutCause(ctx, requestTimeout, fmt.Errorf("request timed out"))
 	defer cancel()
