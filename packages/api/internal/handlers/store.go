@@ -118,11 +118,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 		RedisTLSCABase64: config.RedisTLSCABase64,
 	})
 	if err != nil {
-		if errors.Is(err, factories.ErrRedisDisabled) {
-			logger.L().Warn(ctx, "REDIS_URL not set, using local caches")
-		} else {
-			logger.L().Fatal(ctx, "Initializing Redis client", zap.Error(err))
-		}
+		logger.L().Fatal(ctx, "Initializing Redis client", zap.Error(err))
 	}
 
 	queryLogsProvider, err := loki.NewLokiQueryProvider(config.LokiURL, config.LokiUser, config.LokiPassword)
