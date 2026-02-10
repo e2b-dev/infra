@@ -41,6 +41,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/tcpfirewall"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	tmplserver "github.com/e2b-dev/infra/packages/orchestrator/internal/template/server"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/volumes"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	event "github.com/e2b-dev/infra/packages/shared/pkg/events"
 	sharedFactories "github.com/e2b-dev/infra/packages/shared/pkg/factories"
@@ -411,6 +412,8 @@ func run(config cfg.Config) (success bool) {
 	// sandbox factory
 	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags)
 
+	volumeService := volumes.New(config)
+
 	orchestratorService := server.New(ctx, server.ServiceConfig{
 		Config:           config,
 		SandboxFactory:   sandboxFactory,
@@ -464,6 +467,7 @@ func run(config cfg.Config) (success bool) {
 
 	grpcServer := e2bgrpc.NewGRPCServer(tel)
 	orchestrator.RegisterSandboxServiceServer(grpcServer, orchestratorService)
+	orchestrator.RegisterVolumeServiceServer(grpcServer, volumeService)
 
 	// template manager
 	var tmpl *tmplserver.ServerStore

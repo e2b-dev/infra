@@ -74,6 +74,12 @@ type Metrics struct {
 	Ts *int64 `json:"ts,omitempty"`
 }
 
+// VolumeMount Volume
+type VolumeMount struct {
+	NfsTarget string `json:"nfs_target"`
+	Path      string `json:"path"`
+}
+
 // FilePath defines model for FilePath.
 type FilePath = string
 
@@ -157,7 +163,8 @@ type PostInitJSONBody struct {
 	HyperloopIP *string `json:"hyperloopIP,omitempty"`
 
 	// Timestamp The current timestamp in RFC3339 format
-	Timestamp *time.Time `json:"timestamp,omitempty"`
+	Timestamp    *time.Time     `json:"timestamp,omitempty"`
+	VolumeMounts *[]VolumeMount `json:"volumeMounts,omitempty"`
 }
 
 // PostFilesMultipartRequestBody defines body for PostFiles for multipart/form-data ContentType.

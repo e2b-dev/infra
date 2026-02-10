@@ -18,6 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -44,6 +45,7 @@ func (a *APIStore) startSandbox(
 	allowInternetAccess *bool,
 	network *types.SandboxNetworkConfig,
 	mcp api.Mcp,
+	volumeMounts []*orchestrator.SandboxVolumeMount,
 ) (*api.Sandbox, *api.APIError) {
 	sbx, apiErr := a.startSandboxInternal(
 		ctx,
@@ -121,6 +123,7 @@ func (a *APIStore) startSandboxInternal(
 		envdAccessToken,
 		allowInternetAccess,
 		network,
+		volumeMounts,
 	)
 	if instanceErr != nil {
 		telemetry.ReportError(ctx, "error when creating instance", instanceErr.Err)

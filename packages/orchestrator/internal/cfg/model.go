@@ -2,6 +2,7 @@ package cfg
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -67,16 +68,17 @@ func makePathsAbsolute(c *BuilderConfig) error {
 type Config struct {
 	BuilderConfig
 
-	ClickhouseConnectionString string   `env:"CLICKHOUSE_CONNECTION_STRING"`
-	ForceStop                  bool     `env:"FORCE_STOP"`
-	GRPCPort                   uint16   `env:"GRPC_PORT"                    envDefault:"5008"`
-	LaunchDarklyAPIKey         string   `env:"LAUNCH_DARKLY_API_KEY"`
-	OrchestratorLockPath       string   `env:"ORCHESTRATOR_LOCK_PATH"       envDefault:"/orchestrator.lock"`
-	ProxyPort                  uint16   `env:"PROXY_PORT"                   envDefault:"5007"`
-	RedisClusterURL            string   `env:"REDIS_CLUSTER_URL"`
-	RedisTLSCABase64           string   `env:"REDIS_TLS_CA_BASE64"`
-	RedisURL                   string   `env:"REDIS_URL"`
-	Services                   []string `env:"ORCHESTRATOR_SERVICES"        envDefault:"orchestrator"`
+	ClickhouseConnectionString string            `env:"CLICKHOUSE_CONNECTION_STRING"`
+	ForceStop                  bool              `env:"FORCE_STOP"`
+	GRPCPort                   uint16            `env:"GRPC_PORT"                    envDefault:"5008"`
+	LaunchDarklyAPIKey         string            `env:"LAUNCH_DARKLY_API_KEY"`
+	OrchestratorLockPath       string            `env:"ORCHESTRATOR_LOCK_PATH"       envDefault:"/orchestrator.lock"`
+	ProxyPort                  uint16            `env:"PROXY_PORT"                   envDefault:"5007"`
+	RedisClusterURL            string            `env:"REDIS_CLUSTER_URL"`
+	RedisTLSCABase64           string            `env:"REDIS_TLS_CA_BASE64"`
+	RedisURL                   string            `env:"REDIS_URL"`
+	Services                   []string          `env:"ORCHESTRATOR_SERVICES"        envDefault:"orchestrator"`
+	PersistentVolumeMounts     map[string]string `env:"PERSISTENT_VOLUME_MOUNTS"`
 }
 
 func Parse() (Config, error) {
@@ -91,6 +93,22 @@ func Parse() (Config, error) {
 	}
 
 	config.BuilderConfig = bc
+
+	if config.PersistentVolumeMounts != nil {
+		for name, path := range config.PersistentVolumeMounts {
+			path = filepath.Clean(path)
+			path, err = filepath.Abs(path)
+			if err != nil {
+				return config, fmt.Errorf("failed to make persistent volume mount %q an absolute path: %w", name, err)
+			}
+
+			if _, err := os.Stat(path); err != nil {
+				return config, fmt.Errorf("failed to access persistent volume mount %q (%q): %w", name, path, err)
+			}
+
+			config.PersistentVolumeMounts[name] = path // store the cleaned path
+		}
+	}
 
 	return config, nil
 }

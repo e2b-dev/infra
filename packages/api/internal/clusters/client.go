@@ -13,9 +13,20 @@ import (
 type GRPCClient struct {
 	Info     infogrpc.InfoServiceClient
 	Sandbox  orchestratorgrpc.SandboxServiceClient
+	Volumes  orchestratorgrpc.VolumeServiceClient
 	Template templatemanagergrpc.TemplateServiceClient
 
 	Connection *grpc.ClientConn
+}
+
+func NewGRPCClient(conn *grpc.ClientConn) *GRPCClient {
+	return &GRPCClient{
+		Connection: conn,
+		Info:       infogrpc.NewInfoServiceClient(conn),
+		Sandbox:    orchestratorgrpc.NewSandboxServiceClient(conn),
+		Volumes:    orchestratorgrpc.NewVolumeServiceClient(conn),
+		Template:   templatemanagergrpc.NewTemplateServiceClient(conn),
+	}
 }
 
 func (a *GRPCClient) Close() error {

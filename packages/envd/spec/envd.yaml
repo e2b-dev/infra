@@ -41,6 +41,10 @@ paths:
             schema:
               type: object
               properties:
+                volumeMounts:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/VolumeMount"
                 hyperloopIP:
                   type: string
                   description: IP address of the hyperloop server to connect to
@@ -285,3 +289,15 @@ components:
         disk_total:
           type: integer
           description: Total disk space in bytes
+    VolumeMount:
+      type: object
+      description: Volume
+      additionalProperties: false
+      properties:
+        nfs_target:
+          type: string
+        path:
+          type: string
+      required:
+        - nfs_target
+        - path
