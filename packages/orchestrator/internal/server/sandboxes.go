@@ -65,7 +65,6 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		s.sandboxCreateHistogram.Record(ctx, durationMs, metric.WithAttributes(
 			attribute.String("operation", operationType),
 		))
-
 	}()
 
 	// set max request timeout for this request
