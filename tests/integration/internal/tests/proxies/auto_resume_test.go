@@ -35,21 +35,10 @@ func TestSandboxAutoResumeViaExec(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, http.StatusNoContent, pauseResp.StatusCode())
 
-	// Wait for sandbox to be paused.
-	deadline := time.Now().Add(30 * time.Second)
-	for {
-		res, err := c.GetSandboxesSandboxIDWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
-		require.NoError(t, err)
-		require.NotNil(t, res.JSON200, "expected 200 response, got status %d", res.StatusCode())
-
-		if res.JSON200.State == api.Paused {
-			break
-		}
-
-		require.True(t, time.Now().Before(deadline), "sandbox did not pause in time, state: %s", res.JSON200.State)
-		time.Sleep(100 * time.Millisecond)
-	}
-
+	res, err := c.GetSandboxesSandboxIDWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
+	require.NoError(t, err)
+	require.NotNil(t, res.JSON200, "expected 200 response, got status %d", res.StatusCode())
+	require.Equal(res.JSON200.State, api.Paused)
 	// Run ls again — this should trigger auto-resume.
 	// The auto-resume is async, so retry until the sandbox is back up.
 	deadline = time.Now().Add(30 * time.Second)
