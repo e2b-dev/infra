@@ -38,7 +38,7 @@ func TestSandboxAutoResumeViaExec(t *testing.T) {
 	res, err := c.GetSandboxesSandboxIDWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
 	require.NoError(t, err)
 	require.NotNil(t, res.JSON200, "expected 200 response, got status %d", res.StatusCode())
-	require.Equal(res.JSON200.State, api.Paused)
+	require.Equal(t, api.Paused, res.JSON200.State)
 	// Run ls again — this should trigger auto-resume.
 	err = utils.ExecCommand(t, ctx, sbx, envdClient, "ls")
 	require.NoError(t, err)
