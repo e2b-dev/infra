@@ -53,7 +53,6 @@ type RegisterBuildResponse struct {
 
 func RegisterBuild(
 	ctx context.Context,
-	templateBuildsCache *templatecache.TemplatesBuildCache,
 	templateCache *templatecache.TemplateCache,
 	db *sqlcdb.Client,
 	data RegisterBuildData,
@@ -62,11 +61,18 @@ func RegisterBuild(
 	defer span.End()
 
 	// Limit concurrent template builds
-	teamBuilds := templateBuildsCache.GetRunningBuildsForTeam(data.Team.ID)
+	templateIDs, err := db.GetInProgressTemplateBuildsByTeam(ctx, data.Team.ID)
+	if err != nil {
+		return nil, &api.APIError{
+			Err:       err,
+			ClientMsg: fmt.Sprintf("Error when checking concurrent builds: %s", err),
+			Code:      http.StatusInternalServerError,
+		}
+	}
 
 	// Exclude the current build if it's a rebuild (it will be cancelled)
-	teamBuildsExcludingCurrent := gutils.Filter(teamBuilds, func(item templatecache.TemplateBuildInfo) bool {
-		return item.TemplateID != data.TemplateID
+	teamBuildsExcludingCurrent := gutils.Filter(templateIDs, func(templateID string) bool {
+		return templateID != data.TemplateID
 	})
 
 	totalConcurrentTemplateBuilds := data.Team.Limits.BuildConcurrency

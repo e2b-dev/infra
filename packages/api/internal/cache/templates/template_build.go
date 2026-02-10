@@ -2,32 +2,29 @@ package templatecache
 
 import (
 	"context"
-	"database/sql"
 	"errors"
-	"fmt"
-	"sync"
 
 	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
-	"github.com/e2b-dev/infra/packages/db/queries"
-	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
+// TemplateBuildInfo holds cached template build information.
 type TemplateBuildInfo struct {
-	TeamID      uuid.UUID
-	TemplateID  string
-	BuildStatus types.BuildStatusGroup
-	Reason      types.BuildReason
-	Version     *string
+	TeamID      uuid.UUID         `json:"team_id"`
+	TemplateID  string            `json:"template_id"`
+	BuildStatus types.BuildStatusGroup `json:"build_status"`
+	Reason      types.BuildReason `json:"reason"`
+	Version     *string           `json:"version,omitempty"`
 
-	ClusterID uuid.UUID
-	NodeID    *string
+	ClusterID uuid.UUID `json:"cluster_id"`
+	NodeID    *string   `json:"node_id,omitempty"`
 }
 
 type TemplateBuildInfoNotFoundError struct{}
@@ -37,107 +34,93 @@ func (TemplateBuildInfoNotFoundError) Error() string {
 }
 
 type TemplatesBuildCache struct {
-	cache *ttlcache.Cache[uuid.UUID, TemplateBuildInfo]
-	db    *sqlcdb.Client
-	mx    sync.Mutex
+	l1Cache     *ttlcache.Cache[uuid.UUID, TemplateBuildInfo]
+	redisClient redis.UniversalClient
+	db          *sqlcdb.Client
 }
 
-func NewTemplateBuildCache(db *sqlcdb.Client) *TemplatesBuildCache {
-	cache := ttlcache.New(ttlcache.WithTTL[uuid.UUID, TemplateBuildInfo](templateInfoExpiration))
-	go cache.Start()
+func NewTemplateBuildCache(db *sqlcdb.Client, redisClient redis.UniversalClient) *TemplatesBuildCache {
+	l1Cache := ttlcache.New(
+		ttlcache.WithTTL[uuid.UUID, TemplateBuildInfo](l1CacheTTL),
+		ttlcache.WithDisableTouchOnHit[uuid.UUID, TemplateBuildInfo](),
+	)
+	go l1Cache.Start()
 
 	return &TemplatesBuildCache{
-		cache: cache,
-		db:    db,
+		l1Cache:     l1Cache,
+		redisClient: redisClient,
+		db:          db,
 	}
 }
 
-func (c *TemplatesBuildCache) SetStatus(ctx context.Context, buildID uuid.UUID, status types.BuildStatusGroup, reason types.BuildReason) {
-	c.mx.Lock()
-	defer c.mx.Unlock()
-
-	cacheItem := c.cache.Get(buildID)
-	if cacheItem == nil {
-		return
+func (c *TemplatesBuildCache) SetStatus(ctx context.Context, buildID uuid.UUID, status types.BuildStatus, reason types.BuildReason) {
+	// Get existing build info for logging (optional)
+	var fromStatus string
+	var version *string
+	if item := c.l1Cache.Get(buildID); item != nil {
+		existingInfo := item.Value()
+		fromStatus = string(existingInfo.BuildStatus)
+		version = existingInfo.Version
 	}
-
-	item := cacheItem.Value()
 
 	logger.L().Info(ctx, "Setting template build status",
 		logger.WithBuildID(buildID.String()),
 		zap.String("to_status", string(status)),
-		zap.String("from_status", string(item.BuildStatus)),
+		zap.String("from_status", fromStatus),
 		zap.String("reason", reason.Message),
 		zap.String("step", sharedUtils.Sprintp(reason.Step)),
-		zap.String("version", sharedUtils.Sprintp(item.Version)),
+		zap.String("version", sharedUtils.Sprintp(version)),
 	)
 
-	_ = c.cache.Set(
-		buildID,
-		TemplateBuildInfo{
-			TeamID:      item.TeamID,
-			TemplateID:  item.TemplateID,
-			BuildStatus: status,
-			Reason:      reason,
-			Version:     item.Version,
+	// Update in Redis
+	if err := c.updateStatusInRedis(ctx, buildID, status, reason); err != nil {
+		logger.L().Warn(ctx, "Failed to update build status in Redis",
+			logger.WithBuildID(buildID.String()),
+			zap.Error(err))
+	}
 
-			ClusterID: item.ClusterID,
-			NodeID:    item.NodeID,
-		},
-		templateInfoExpiration,
-	)
+	// Invalidate L1 cache entry to force re-fetch from Redis on next read
+	c.l1Cache.Delete(buildID)
 }
 
 func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templateID string) (TemplateBuildInfo, error) {
-	item := c.cache.Get(buildID)
-	if item == nil {
-		logger.L().Debug(ctx, "Template build info not found in cache, fetching from DB", logger.WithBuildID(buildID.String()))
-
-		result, err := c.db.GetTemplateBuildWithTemplate(ctx, queries.GetTemplateBuildWithTemplateParams{
-			TemplateID: templateID,
-			BuildID:    buildID,
-		})
-		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return TemplateBuildInfo{}, TemplateBuildInfoNotFoundError{}
-			}
-
-			return TemplateBuildInfo{}, fmt.Errorf("failed to get template build '%s': %w", buildID, err)
-		}
-
-		item = c.cache.Set(
-			buildID,
-			TemplateBuildInfo{
-				TeamID:      result.Env.TeamID,
-				TemplateID:  result.Env.ID,
-				BuildStatus: result.EnvBuild.StatusGroup,
-				Reason:      result.EnvBuild.Reason,
-				Version:     result.EnvBuild.Version,
-
-				ClusterID: clusters.WithClusterFallback(result.Env.ClusterID),
-				NodeID:    result.EnvBuild.ClusterNodeID,
-			},
-			templateInfoExpiration,
-		)
-
+	// Step 1: Check L1 cache
+	if item := c.l1Cache.Get(buildID); item != nil {
 		return item.Value(), nil
 	}
 
-	return item.Value(), nil
-}
+	// Step 2: Check L2 (Redis)
+	info, err := c.getFromRedis(ctx, buildID)
+	if err == nil {
+		// Store in L1 cache
+		c.l1Cache.Set(buildID, info, l1CacheTTL)
 
-// GetRunningBuildsForTeam returns all running builds for the given teamID
-// This is a simple implementation of concurrency limit
-// It does not guarantee that the limit is not exceeded, but it should be good enough for now (considering overall low number of total builds)
-func (c *TemplatesBuildCache) GetRunningBuildsForTeam(teamID uuid.UUID) []TemplateBuildInfo {
-	var builds []TemplateBuildInfo
-	for _, item := range c.cache.Items() {
-		value := item.Value()
-		isRunning := value.BuildStatus == types.BuildStatusGroupInProgress || value.BuildStatus == types.BuildStatusGroupPending
-		if value.TeamID == teamID && isRunning {
-			builds = append(builds, value)
-		}
+		return info, nil
 	}
 
-	return builds
+	// If Redis error is not "not found", log it but continue to DB
+	if !errors.Is(err, redis.Nil) {
+		logger.L().Warn(ctx, "Redis error while getting build, falling back to DB",
+			logger.WithBuildID(buildID.String()),
+			zap.Error(err))
+	}
+
+	// Step 3: Fetch from DB
+	logger.L().Debug(ctx, "Template build info not found in cache, fetching from DB",
+		logger.WithBuildID(buildID.String()))
+
+	info, err = c.fetchFromDB(ctx, buildID, templateID)
+	if err != nil {
+		return TemplateBuildInfo{}, err
+	}
+
+	// Store in both L1 and L2 (Redis)
+	c.l1Cache.Set(buildID, info, l1CacheTTL)
+	if storeErr := c.storeInRedis(ctx, buildID, info); storeErr != nil {
+		logger.L().Warn(ctx, "Failed to store build info in Redis",
+			logger.WithBuildID(buildID.String()),
+			zap.Error(storeErr))
+	}
+
+	return info, nil
 }
