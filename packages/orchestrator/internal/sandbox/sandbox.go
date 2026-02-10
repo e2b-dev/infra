@@ -717,7 +717,7 @@ func (f *Factory) ResumeSandbox(
 
 	telemetry.ReportEvent(execCtx, "envd initialized")
 
-	f.initializeHostStatsCollector(ctx, sbx, fcHandle, meta.Template.BuildID, runtime, config)
+	f.initializeHostStatsCollector(execCtx, sbx, fcHandle, meta.Template.BuildID, runtime, config)
 
 	go sbx.Checks.Start(execCtx)
 
