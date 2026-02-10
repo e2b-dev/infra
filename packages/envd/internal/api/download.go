@@ -141,9 +141,6 @@ func (a *API) GetFiles(w http.ResponseWriter, r *http.Request, params GetFilesPa
 	w.Header().Set("Content-Disposition", mime.FormatMediaType("inline", map[string]string{"filename": filepath.Base(resolvedPath)}))
 
 	// Serve with gzip encoding if requested.
-	// Note: If io.Copy fails after headers are sent, the client receives a truncated
-	// gzip stream with HTTP 200. Buffering the entire response would fix this but
-	// has memory implications for large files. Clients should validate gzip integrity.
 	if encoding == EncodingGzip {
 		w.Header().Set("Content-Encoding", EncodingGzip)
 
@@ -155,12 +152,24 @@ func (a *API) GetFiles(w http.ResponseWriter, r *http.Request, params GetFilesPa
 		w.Header().Set("Content-Type", contentType)
 
 		gw := gzip.NewWriter(w)
-		defer gw.Close()
 
 		_, err = io.Copy(gw, file)
 		if err != nil {
-			// Headers already sent, can only log the error. Client will receive truncated response.
-			a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error writing gzip response")
+			// Close without flushing to avoid writing gzip framing to the response,
+			// which would trigger an implicit 200 status.
+			gw.Reset(io.Discard)
+			gw.Close()
+
+			errMsg = fmt.Errorf("error writing gzip response: %w", err)
+			errorCode = http.StatusInternalServerError
+			jsonError(w, errorCode, errMsg)
+
+			return
+		}
+
+		// Close flushes the gzip footer to the response
+		if err = gw.Close(); err != nil {
+			a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error closing gzip writer")
 		}
 
 		return
