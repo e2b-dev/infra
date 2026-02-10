@@ -160,7 +160,9 @@ func (a *API) GetFiles(w http.ResponseWriter, r *http.Request, params GetFilesPa
 			gw.Reset(io.Discard)
 			gw.Close()
 
-			errMsg = fmt.Errorf("error writing gzip response: %w", err)
+			a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error writing gzip response")
+
+			errMsg = fmt.Errorf("error reading file")
 			errorCode = http.StatusInternalServerError
 			jsonError(w, errorCode, errMsg)
 
