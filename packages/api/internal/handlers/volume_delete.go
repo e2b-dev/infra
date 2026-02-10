@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/e2b-dev/infra/packages/api/internal/clusters"
+	clustershared "github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/clusters"
-	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -24,7 +24,7 @@ func (a *APIStore) DeleteVolumesVolumeID(c *gin.Context, volumeID api.VolumeID) 
 		return
 	}
 
-	clusterID := utils.WithClusterFallback(team.ClusterID)
+	clusterID := clustershared.WithClusterFallback(team.ClusterID)
 
 	if err := a.sqlcDB.DeleteVolume(ctx, queries.DeleteVolumeParams{
 		TeamID:   team.ID,

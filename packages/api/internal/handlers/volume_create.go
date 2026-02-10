@@ -14,6 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	clustershared "github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	feature_flags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -71,7 +72,7 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 		return
 	}
 
-	clusterID := utils.WithClusterFallback(team.ClusterID)
+	clusterID := clustershared.WithClusterFallback(team.ClusterID)
 
 	client, tx, err := a.sqlcDB.WithTx(ctx)
 	if err != nil {

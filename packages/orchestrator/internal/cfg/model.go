@@ -97,8 +97,9 @@ func Parse() (Config, error) {
 	if config.PersistentVolumeMounts != nil {
 		for name, path := range config.PersistentVolumeMounts {
 			path = filepath.Clean(path)
-			if !filepath.IsAbs(path) {
-				return config, fmt.Errorf("persistent volume mount %q must be an absolute path", name)
+			path, err = filepath.Abs(path)
+			if err != nil {
+				return config, fmt.Errorf("failed to make persistent volume mount %q an absolute path: %w", name, err)
 			}
 
 			if _, err := os.Stat(path); err != nil {
