@@ -1,11 +1,17 @@
 package handlers
 
 import (
+	"context"
+	"errors"
+	"fmt"
+	"math/rand"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/clusters"
 	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/db/queries"
@@ -54,4 +60,39 @@ func (a *APIStore) getVolume(c *gin.Context, volumeID string) (queries.Volume, *
 	default:
 		return volume, team, true
 	}
+}
+
+var ErrClusterNotFound = errors.New("cluster not found")
+
+var ErrNoHealthyOrchestratorFound = errors.New("no healthy orchestrator found")
+
+const randomOrchestratorMaxAttempts = 10
+
+func (a *APIStore) executeOnOrchestrator(
+	ctx context.Context,
+	clusterID uuid.UUID,
+	fn func(context.Context, *clusters.GRPCClient) error,
+) error {
+	nodes := a.orchestrator.GetClusterNodes(clusterID)
+
+	if len(nodes) == 0 {
+		return ErrClusterNotFound
+	}
+
+	for range randomOrchestratorMaxAttempts {
+		index := rand.Intn(len(nodes))
+		node := nodes[index]
+		if node.Status() != api.NodeStatusReady {
+			continue
+		}
+
+		c, ctx := node.GetClient(ctx)
+
+		// todo: retry on transient errors such as "failed to connect" or "read timeout", etc.
+
+		return fn(ctx, c)
+	}
+
+	return fmt.Errorf("failed to connect to orchestrator after %d attempts: %w",
+		randomOrchestratorMaxAttempts, ErrNoHealthyOrchestratorFound)
 }

@@ -6,10 +6,13 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/clusters"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -22,13 +25,6 @@ func (a *APIStore) DeleteVolumesVolumeID(c *gin.Context, volumeID api.VolumeID) 
 	}
 
 	clusterID := utils.WithClusterFallback(team.ClusterID)
-	cluster, ok := a.clusters.GetClusterById(clusterID)
-	if !ok {
-		telemetry.ReportCriticalError(ctx, fmt.Sprintf("cluster with ID '%s' not found", clusterID), nil)
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("cluster with id %s not found", clusterID))
-
-		return
-	}
 
 	if err := a.sqlcDB.DeleteVolume(ctx, queries.DeleteVolumeParams{
 		TeamID:   team.ID,
@@ -42,10 +38,22 @@ func (a *APIStore) DeleteVolumesVolumeID(c *gin.Context, volumeID api.VolumeID) 
 
 	go func(ctx context.Context) {
 		// if this fails, we can clean it up later
-		if err := cluster.DeleteVolume(ctx, volume); err != nil {
-			telemetry.ReportCriticalError(ctx, fmt.Sprintf("failed to delete data for volume %q", volume.ID.String()), err)
+		if err := a.deleteVolume(ctx, clusterID, volume); err != nil {
+			telemetry.ReportCriticalError(ctx, fmt.Sprintf("failed to delete data in volume %q", volume.ID.String()), err)
 		}
 	}(context.WithoutCancel(ctx))
 
 	c.Status(http.StatusNoContent)
+}
+
+func (a *APIStore) deleteVolume(ctx context.Context, clusterID uuid.UUID, volume queries.Volume) error {
+	return a.executeOnOrchestrator(ctx, clusterID, func(ctx context.Context, client *clusters.GRPCClient) error {
+		_, err := client.Volumes.Delete(ctx, &orchestrator.VolumeDeleteRequest{
+			VolumeId:   volume.ID.String(),
+			VolumeType: volume.VolumeType,
+			TeamId:     volume.TeamID.String(),
+		})
+
+		return err
+	})
 }
