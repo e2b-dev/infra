@@ -3,6 +3,7 @@ package fc
 import (
 	"context"
 	"fmt"
+	"runtime"
 
 	"github.com/bits-and-blooms/bitset"
 	"github.com/firecracker-microvm/firecracker-go-sdk"
@@ -232,7 +233,7 @@ func (c *apiClient) setMachineConfig(
 	memoryMB int64,
 	hugePages bool,
 ) error {
-	smt := true
+	smt := runtime.GOARCH != "arm64"
 	trackDirtyPages := false
 	machineConfig := &models.MachineConfiguration{
 		VcpuCount:       &vCPUCount,

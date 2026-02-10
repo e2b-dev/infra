@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/containers/storage/pkg/archive"
@@ -38,7 +39,7 @@ const (
 
 var DefaultPlatform = containerregistry.Platform{
 	OS:           "linux",
-	Architecture: "amd64",
+	Architecture: runtime.GOARCH,
 }
 
 // wrapImagePullError converts technical Docker registry errors into user-friendly messages.
