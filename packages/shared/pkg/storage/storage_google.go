@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"sync/atomic"
 	"time"
 
 	"cloud.google.com/go/storage"
@@ -75,6 +76,10 @@ type gcpObject struct {
 	handle  *storage.ObjectHandle
 
 	limiter *limit.Limiter
+
+	// discoveredSize caches the total object size learned from range-read
+	// responses (Content-Range header), avoiding a separate Attrs() call.
+	discoveredSize atomic.Int64
 }
 
 var (
@@ -209,6 +214,10 @@ func (o *gcpObject) Exists(ctx context.Context) (bool, error) {
 }
 
 func (o *gcpObject) Size(ctx context.Context) (int64, error) {
+	if s := o.discoveredSize.Load(); s > 0 {
+		return s, nil
+	}
+
 	ctx, cancel := context.WithTimeout(ctx, googleOperationTimeout)
 	defer cancel()
 
@@ -233,6 +242,10 @@ func (o *gcpObject) OpenRangeReader(ctx context.Context, off, length int64) (io.
 		cancel()
 
 		return nil, fmt.Errorf("failed to create GCS range reader for %q at %d+%d: %w", o.path, off, length, err)
+	}
+
+	if s := reader.Attrs.Size; s > 0 {
+		o.discoveredSize.Store(s)
 	}
 
 	return &cancelOnCloseReader{ReadCloser: reader, cancel: cancel}, nil
@@ -267,6 +280,10 @@ func (o *gcpObject) ReadAt(ctx context.Context, buff []byte, off int64) (n int, 
 	}
 
 	defer reader.Close()
+
+	if s := reader.Attrs.Size; s > 0 {
+		o.discoveredSize.Store(s)
+	}
 
 	for reader.Remain() > 0 {
 		nr, err := reader.Read(buff[n:])

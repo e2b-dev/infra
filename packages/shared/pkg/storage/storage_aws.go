@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -38,6 +40,10 @@ type awsObject struct {
 	client     *s3.Client
 	path       string
 	bucketName string
+
+	// discoveredSize caches the total object size learned from range-read
+	// responses (Content-Range header), avoiding a separate HeadObject call.
+	discoveredSize atomic.Int64
 }
 
 var (
@@ -227,6 +233,12 @@ func (o *awsObject) OpenRangeReader(ctx context.Context, off, length int64) (io.
 		return nil, fmt.Errorf("failed to create S3 range reader for %q: %w", o.path, err)
 	}
 
+	if resp.ContentRange != nil {
+		if total := parseContentRangeTotal(*resp.ContentRange); total > 0 {
+			o.discoveredSize.Store(total)
+		}
+	}
+
 	return resp.Body, nil
 }
 
@@ -251,6 +263,12 @@ func (o *awsObject) ReadAt(ctx context.Context, buff []byte, off int64) (n int, 
 
 	defer resp.Body.Close()
 
+	if resp.ContentRange != nil {
+		if total := parseContentRangeTotal(*resp.ContentRange); total > 0 {
+			o.discoveredSize.Store(total)
+		}
+	}
+
 	// When the object is smaller than requested range there will be unexpected EOF,
 	// but backend expects to return EOF in this case.
 	n, err = io.ReadFull(resp.Body, buff)
@@ -262,6 +280,10 @@ func (o *awsObject) ReadAt(ctx context.Context, buff []byte, off int64) (n int, 
 }
 
 func (o *awsObject) Size(ctx context.Context) (int64, error) {
+	if s := o.discoveredSize.Load(); s > 0 {
+		return s, nil
+	}
+
 	ctx, cancel := context.WithTimeout(ctx, awsOperationTimeout)
 	defer cancel()
 
@@ -276,6 +298,22 @@ func (o *awsObject) Size(ctx context.Context) (int64, error) {
 	}
 
 	return *resp.ContentLength, nil
+}
+
+// parseContentRangeTotal extracts the total size from a Content-Range header
+// value like "bytes 0-99/12345". Returns 0 if the format is unexpected.
+func parseContentRangeTotal(cr string) int64 {
+	idx := strings.LastIndex(cr, "/")
+	if idx < 0 || idx+1 >= len(cr) {
+		return 0
+	}
+
+	total, err := strconv.ParseInt(cr[idx+1:], 10, 64)
+	if err != nil {
+		return 0
+	}
+
+	return total
 }
 
 func (o *awsObject) Exists(ctx context.Context) (bool, error) {

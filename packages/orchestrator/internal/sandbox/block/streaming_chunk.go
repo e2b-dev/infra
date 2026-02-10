@@ -8,6 +8,7 @@ import (
 	"io"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -39,9 +40,9 @@ const (
 
 type fetchSession struct {
 	mu       sync.Mutex
+	chunker  *StreamingChunker
 	chunkOff int64
 	chunkLen int64
-	cache    *Cache
 	waiters  []*rangeWaiter // sorted by endByte ascending
 	state    int
 	fetchErr error
@@ -57,27 +58,26 @@ type fetchSession struct {
 // is cached or the context is cancelled. Returns nil if the range was already
 // cached before registering.
 func (s *fetchSession) registerAndWait(ctx context.Context, off, length int64) error {
-	blockSize := s.cache.BlockSize()
 	// endByte is the byte offset (relative to chunkOff) past which all blocks
 	// covering [off, off+length) are fully cached.
+	blockSize := s.chunker.blockSize
 	lastBlockIdx := (off + length - 1 - s.chunkOff) / blockSize
 	endByte := (lastBlockIdx + 1) * blockSize
 
-	s.mu.Lock()
-
 	// Fast path: already cached (handles pre-existing cache from prior sessions).
-	if s.cache.isCached(off, length) {
-		s.mu.Unlock()
-
+	// No lock needed — atomic load + sync.Map lookup are both thread-safe.
+	if cache := s.chunker.cache.Load(); cache != nil && cache.isCached(off, length) {
 		return nil
 	}
+
+	s.mu.Lock()
 
 	// Session already done — all data that will ever be fetched is in cache.
 	// Unlock first: once state is Done no goroutine mutates the dirty map for
 	// this chunk, so isCached is safe to call without the session lock.
 	if s.state == fetchStateDone {
 		s.mu.Unlock()
-		if s.cache.isCached(off, length) {
+		if cache := s.chunker.cache.Load(); cache != nil && cache.isCached(off, length) {
 			return nil
 		}
 
@@ -88,7 +88,7 @@ func (s *fetchSession) registerAndWait(ctx context.Context, off, length int64) e
 	if s.state == fetchStateErrored {
 		fetchErr := s.fetchErr
 		s.mu.Unlock()
-		if s.cache.isCached(off, length) {
+		if cache := s.chunker.cache.Load(); cache != nil && cache.isCached(off, length) {
 			return nil
 		}
 
@@ -150,35 +150,72 @@ func (s *fetchSession) notifyWaiters(sendErr error) {
 
 type StreamingChunker struct {
 	upstream     storage.StreamingReader
-	cache        *Cache
+	cache        atomic.Pointer[Cache] // nil until ensureInitialized succeeds
 	metrics      metrics.Metrics
 	fetchTimeout time.Duration
 
-	size int64
+	size      atomic.Int64 // 0 until ensureInitialized succeeds
+	blockSize int64
 
 	fetchMu  sync.Mutex
 	fetchMap map[int64]*fetchSession
+
+	initOnce sync.Once
+	initErr  error
+	// Fields used only by ensureInitialized (immutable after construction).
+	cachePath string
+	sizeFunc  func(context.Context) (int64, error)
 }
 
+// NewStreamingChunker creates a streaming chunker that defers cache creation
+// until the first range read discovers the object size. The sizeFunc should be
+// the storage object's Size method, which returns the cached value after the
+// first OpenRangeReader call populates it.
 func NewStreamingChunker(
-	size, blockSize int64,
+	blockSize int64,
 	upstream storage.StreamingReader,
+	sizeFunc func(context.Context) (int64, error),
 	cachePath string,
 	metrics metrics.Metrics,
-) (*StreamingChunker, error) {
-	cache, err := NewCache(size, blockSize, cachePath, false)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create file cache: %w", err)
-	}
-
+) *StreamingChunker {
 	return &StreamingChunker{
-		size:         size,
+		blockSize:    blockSize,
 		upstream:     upstream,
-		cache:        cache,
 		metrics:      metrics,
 		fetchTimeout: defaultFetchTimeout,
 		fetchMap:     make(map[int64]*fetchSession),
-	}, nil
+		cachePath:    cachePath,
+		sizeFunc:     sizeFunc,
+	}
+}
+
+// ensureInitialized creates the mmap-backed cache on first call.
+// The caller must have already triggered a range read so that sizeFunc
+// returns the cached value without a network call.
+// Safe to call from multiple goroutines; sync.Once serializes.
+func (c *StreamingChunker) ensureInitialized(ctx context.Context) error {
+	c.initOnce.Do(func() {
+		size, err := c.sizeFunc(ctx)
+		if err != nil {
+			c.initErr = fmt.Errorf("failed to get object size: %w", err)
+
+			return
+		}
+
+		cache, err := NewCache(size, c.blockSize, c.cachePath, false)
+		if err != nil {
+			c.initErr = fmt.Errorf("failed to create file cache: %w", err)
+
+			return
+		}
+
+		// Store size before cache: any goroutine that sees cache != nil
+		// is guaranteed to see the size (atomic sequential consistency).
+		c.size.Store(size)
+		c.cache.Store(cache)
+	})
+
+	return c.initErr
 }
 
 func (c *StreamingChunker) ReadAt(ctx context.Context, b []byte, off int64) (int, error) {
@@ -192,8 +229,9 @@ func (c *StreamingChunker) ReadAt(ctx context.Context, b []byte, off int64) (int
 
 func (c *StreamingChunker) WriteTo(ctx context.Context, w io.Writer) (int64, error) {
 	chunk := make([]byte, storage.MemoryChunkSize)
+	size := c.size.Load()
 
-	for i := int64(0); i < c.size; i += storage.MemoryChunkSize {
+	for i := int64(0); i < size; i += storage.MemoryChunkSize {
 		n, err := c.ReadAt(ctx, chunk, i)
 		if err != nil {
 			return 0, fmt.Errorf("failed to slice cache at %d-%d: %w", i, i+storage.MemoryChunkSize, err)
@@ -205,27 +243,29 @@ func (c *StreamingChunker) WriteTo(ctx context.Context, w io.Writer) (int64, err
 		}
 	}
 
-	return c.size, nil
+	return size, nil
 }
 
 func (c *StreamingChunker) Slice(ctx context.Context, off, length int64) ([]byte, error) {
 	timer := c.metrics.SlicesTimerFactory.Begin()
 
-	// Fast path: already cached
-	b, err := c.cache.Slice(off, length)
-	if err == nil {
-		timer.Success(ctx, length,
-			attribute.String(pullType, pullTypeLocal))
+	// Fast path: already cached. Skip if cache hasn't been created yet (lazy init).
+	if cache := c.cache.Load(); cache != nil {
+		b, err := cache.Slice(off, length)
+		if err == nil {
+			timer.Success(ctx, length,
+				attribute.String(pullType, pullTypeLocal))
 
-		return b, nil
-	}
+			return b, nil
+		}
 
-	if !errors.As(err, &BytesNotAvailableError{}) {
-		timer.Failure(ctx, length,
-			attribute.String(pullType, pullTypeLocal),
-			attribute.String(failureReason, failureTypeLocalRead))
+		if !errors.As(err, &BytesNotAvailableError{}) {
+			timer.Failure(ctx, length,
+				attribute.String(pullType, pullTypeLocal),
+				attribute.String(failureReason, failureTypeLocalRead))
 
-		return nil, fmt.Errorf("failed read from cache at offset %d: %w", off, err)
+			return nil, fmt.Errorf("failed read from cache at offset %d: %w", off, err)
+		}
 	}
 
 	// Compute which 4MB chunks overlap with the requested range
@@ -236,10 +276,15 @@ func (c *StreamingChunker) Slice(ctx context.Context, off, length int64) ([]byte
 
 	for fetchOff := firstChunkOff; fetchOff <= lastChunkOff; fetchOff += storage.MemoryChunkSize {
 		eg.Go(func() error {
-			// Clip request to this chunk's boundaries
+			// Clip request to this chunk's boundaries.
 			chunkEnd := fetchOff + storage.MemoryChunkSize
 			clippedOff := max(off, fetchOff)
-			clippedEnd := min(off+length, chunkEnd, c.size)
+			clippedEnd := min(off+length, chunkEnd)
+			// Clip to known size if initialized; before init, size is
+			// unknown so we let the fetch discover it.
+			if s := c.size.Load(); s > 0 {
+				clippedEnd = min(clippedEnd, s)
+			}
 			clippedLen := clippedEnd - clippedOff
 
 			if clippedLen <= 0 {
@@ -260,7 +305,7 @@ func (c *StreamingChunker) Slice(ctx context.Context, off, length int64) ([]byte
 		return nil, fmt.Errorf("failed to ensure data at %d-%d: %w", off, off+length, err)
 	}
 
-	b, cacheErr := c.cache.Slice(off, length)
+	b, cacheErr := c.cache.Load().Slice(off, length)
 	if cacheErr != nil {
 		timer.Failure(ctx, length,
 			attribute.String(pullType, pullTypeLocal),
@@ -276,10 +321,18 @@ func (c *StreamingChunker) Slice(ctx context.Context, off, length int64) ([]byte
 }
 
 func (c *StreamingChunker) getOrCreateSession(ctx context.Context, fetchOff int64) *fetchSession {
+	chunkLen := int64(storage.MemoryChunkSize)
+
+	// Before init, use the full chunk size as default;
+	// runFetch will correct it after ensureInitialized.
+	if s := c.size.Load(); s > 0 {
+		chunkLen = min(chunkLen, s-fetchOff)
+	}
+
 	s := &fetchSession{
+		chunker:  c,
 		chunkOff: fetchOff,
-		chunkLen: min(int64(storage.MemoryChunkSize), c.size-fetchOff),
-		cache:    c.cache,
+		chunkLen: chunkLen,
 		state:    fetchStateRunning,
 	}
 
@@ -326,7 +379,41 @@ func (c *StreamingChunker) runFetch(ctx context.Context, s *fetchSession) {
 		}
 	}()
 
-	mmapSlice, releaseLock, err := c.cache.addressBytes(s.chunkOff, s.chunkLen)
+	// Open range reader first — for lazy init, this triggers size discovery
+	// on the storage object before we need the cache.
+	reader, err := c.upstream.OpenRangeReader(ctx, s.chunkOff, s.chunkLen)
+	if err != nil {
+		err = fmt.Errorf("failed to open range reader at %d: %w", s.chunkOff, err)
+		s.mu.Lock()
+		s.state = fetchStateErrored
+		s.fetchErr = err
+		s.notifyWaiters(err)
+		s.mu.Unlock()
+
+		return
+	}
+	defer reader.Close()
+
+	// For lazy init: now that OpenRangeReader has cached the object size,
+	// create the mmap-backed cache.
+	if err := c.ensureInitialized(ctx); err != nil {
+		s.mu.Lock()
+		s.state = fetchStateErrored
+		s.fetchErr = err
+		s.notifyWaiters(err)
+		s.mu.Unlock()
+
+		return
+	}
+
+	// Correct chunkLen now that we know the real file size.
+	// Only the runFetch goroutine writes s.chunkLen; no lock needed.
+	size := c.size.Load()
+	if s.chunkLen > size-s.chunkOff {
+		s.chunkLen = size - s.chunkOff
+	}
+
+	mmapSlice, releaseLock, err := c.cache.Load().addressBytes(s.chunkOff, s.chunkLen)
 	if err != nil {
 		s.mu.Lock()
 		s.state = fetchStateErrored
@@ -340,7 +427,7 @@ func (c *StreamingChunker) runFetch(ctx context.Context, s *fetchSession) {
 
 	fetchTimer := c.metrics.RemoteReadsTimerFactory.Begin()
 
-	err = c.progressiveRead(ctx, s, mmapSlice)
+	err = c.progressiveRead(ctx, s, mmapSlice, reader)
 	if err != nil {
 		fetchTimer.Failure(ctx, s.chunkLen,
 			attribute.String(failureReason, failureTypeRemoteRead))
@@ -362,14 +449,8 @@ func (c *StreamingChunker) runFetch(ctx context.Context, s *fetchSession) {
 	s.mu.Unlock()
 }
 
-func (c *StreamingChunker) progressiveRead(ctx context.Context, s *fetchSession, mmapSlice []byte) error {
-	reader, err := c.upstream.OpenRangeReader(ctx, s.chunkOff, s.chunkLen)
-	if err != nil {
-		return fmt.Errorf("failed to open range reader at %d: %w", s.chunkOff, err)
-	}
-	defer reader.Close()
-
-	blockSize := c.cache.BlockSize()
+func (c *StreamingChunker) progressiveRead(_ context.Context, s *fetchSession, mmapSlice []byte, reader io.Reader) error {
+	blockSize := c.blockSize
 	var totalRead int64
 	var prevCompleted int64
 
@@ -383,7 +464,7 @@ func (c *StreamingChunker) progressiveRead(ctx context.Context, s *fetchSession,
 		completedBlocks := totalRead / blockSize
 		if completedBlocks > prevCompleted {
 			newBytes := (completedBlocks - prevCompleted) * blockSize
-			c.cache.setIsCached(s.chunkOff+prevCompleted*blockSize, newBytes)
+			c.cache.Load().setIsCached(s.chunkOff+prevCompleted*blockSize, newBytes)
 			prevCompleted = completedBlocks
 
 			s.mu.Lock()
@@ -395,7 +476,7 @@ func (c *StreamingChunker) progressiveRead(ctx context.Context, s *fetchSession,
 		if errors.Is(readErr, io.EOF) {
 			// Mark final partial block if any
 			if totalRead > prevCompleted*blockSize {
-				c.cache.setIsCached(s.chunkOff+prevCompleted*blockSize, totalRead-prevCompleted*blockSize)
+				c.cache.Load().setIsCached(s.chunkOff+prevCompleted*blockSize, totalRead-prevCompleted*blockSize)
 			}
 			// Remaining waiters are notified in runFetch via the Done state.
 			break
@@ -410,9 +491,17 @@ func (c *StreamingChunker) progressiveRead(ctx context.Context, s *fetchSession,
 }
 
 func (c *StreamingChunker) Close() error {
-	return c.cache.Close()
+	if cache := c.cache.Load(); cache != nil {
+		return cache.Close()
+	}
+
+	return nil
 }
 
 func (c *StreamingChunker) FileSize() (int64, error) {
-	return c.cache.FileSize()
+	if cache := c.cache.Load(); cache != nil {
+		return cache.FileSize()
+	}
+
+	return 0, nil
 }

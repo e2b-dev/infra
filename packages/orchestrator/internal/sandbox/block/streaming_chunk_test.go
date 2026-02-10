@@ -170,12 +170,12 @@ func TestStreamingChunker_BasicSlice(t *testing.T) {
 	data := makeTestData(t, storage.MemoryChunkSize)
 	upstream := &fastUpstream{data: data, blockSize: testBlockSize}
 
-	chunker, err := NewStreamingChunker(
-		int64(len(data)), testBlockSize,
-		upstream, t.TempDir()+"/cache",
+	chunker := NewStreamingChunker(
+		testBlockSize,
+		upstream, upstream.Size,
+		t.TempDir()+"/cache",
 		newTestMetrics(t),
 	)
-	require.NoError(t, err)
 	defer chunker.Close()
 
 	// Read first page
@@ -195,16 +195,16 @@ func TestStreamingChunker_CacheHit(t *testing.T) {
 		readCount: &readCount,
 	}
 
-	chunker, err := NewStreamingChunker(
-		int64(len(data)), testBlockSize,
-		upstream, t.TempDir()+"/cache",
+	chunker := NewStreamingChunker(
+		testBlockSize,
+		upstream, upstream.Size,
+		t.TempDir()+"/cache",
 		newTestMetrics(t),
 	)
-	require.NoError(t, err)
 	defer chunker.Close()
 
 	// First read: triggers fetch
-	_, err = chunker.Slice(t.Context(), 0, testBlockSize)
+	_, err := chunker.Slice(t.Context(), 0, testBlockSize)
 	require.NoError(t, err)
 
 	// Wait for the full chunk to be fetched
@@ -259,12 +259,12 @@ func TestStreamingChunker_ConcurrentSameChunk(t *testing.T) {
 		delay:     50 * time.Microsecond,
 	}
 
-	chunker, err := NewStreamingChunker(
-		int64(len(data)), testBlockSize,
-		upstream, t.TempDir()+"/cache",
+	chunker := NewStreamingChunker(
+		testBlockSize,
+		upstream, upstream.Size,
+		t.TempDir()+"/cache",
 		newTestMetrics(t),
 	)
-	require.NoError(t, err)
 	defer chunker.Close()
 
 	numGoroutines := 10
@@ -308,27 +308,27 @@ func TestStreamingChunker_EarlyReturn(t *testing.T) {
 		delay:     100 * time.Microsecond,
 	}
 
-	chunker, err := NewStreamingChunker(
-		int64(len(data)), testBlockSize,
-		upstream, t.TempDir()+"/cache",
+	chunker := NewStreamingChunker(
+		testBlockSize,
+		upstream, upstream.Size,
+		t.TempDir()+"/cache",
 		newTestMetrics(t),
 	)
-	require.NoError(t, err)
 	defer chunker.Close()
 
 	// Time how long it takes to get the first block
 	start := time.Now()
-	_, err = chunker.Slice(t.Context(), 0, testBlockSize)
+	_, err := chunker.Slice(t.Context(), 0, testBlockSize)
 	earlyLatency := time.Since(start)
 	require.NoError(t, err)
 
 	// Time how long it takes to get the last block (on a fresh chunker)
-	chunker2, err := NewStreamingChunker(
-		int64(len(data)), testBlockSize,
-		upstream, t.TempDir()+"/cache2",
+	chunker2 := NewStreamingChunker(
+		testBlockSize,
+		upstream, upstream.Size,
+		t.TempDir()+"/cache2",
 		newTestMetrics(t),
 	)
-	require.NoError(t, err)
 	defer chunker2.Close()
 
 	lastOff := int64(len(data)) - testBlockSize
@@ -356,17 +356,18 @@ func TestStreamingChunker_ErrorKeepsPartialData(t *testing.T) {
 		blockSize: testBlockSize,
 	}
 
-	chunker, err := NewStreamingChunker(
-		int64(len(data)), testBlockSize,
-		upstream, t.TempDir()+"/cache",
+	size := int64(len(data))
+	chunker := NewStreamingChunker(
+		testBlockSize,
+		upstream, func(_ context.Context) (int64, error) { return size, nil },
+		t.TempDir()+"/cache",
 		newTestMetrics(t),
 	)
-	require.NoError(t, err)
 	defer chunker.Close()
 
 	// Request the last page — this should fail because upstream dies at 2MB
 	lastOff := int64(chunkSize) - testBlockSize
-	_, err = chunker.Slice(t.Context(), lastOff, testBlockSize)
+	_, err := chunker.Slice(t.Context(), lastOff, testBlockSize)
 	require.Error(t, err)
 
 	// But first page (within first 2MB) should still be cached and servable
@@ -385,12 +386,12 @@ func TestStreamingChunker_ContextCancellation(t *testing.T) {
 		delay:     1 * time.Millisecond,
 	}
 
-	chunker, err := NewStreamingChunker(
-		int64(len(data)), testBlockSize,
-		upstream, t.TempDir()+"/cache",
+	chunker := NewStreamingChunker(
+		testBlockSize,
+		upstream, upstream.Size,
+		t.TempDir()+"/cache",
 		newTestMetrics(t),
 	)
-	require.NoError(t, err)
 	defer chunker.Close()
 
 	// Request with a context that we'll cancel quickly
@@ -398,7 +399,7 @@ func TestStreamingChunker_ContextCancellation(t *testing.T) {
 	defer cancel()
 
 	lastOff := int64(storage.MemoryChunkSize) - testBlockSize
-	_, err = chunker.Slice(ctx, lastOff, testBlockSize)
+	_, err := chunker.Slice(ctx, lastOff, testBlockSize)
 	// This should fail with context cancellation
 	require.Error(t, err)
 
@@ -418,12 +419,12 @@ func TestStreamingChunker_LastBlockPartial(t *testing.T) {
 	data := makeTestData(t, size)
 	upstream := &fastUpstream{data: data, blockSize: testBlockSize}
 
-	chunker, err := NewStreamingChunker(
-		int64(len(data)), testBlockSize,
-		upstream, t.TempDir()+"/cache",
+	chunker := NewStreamingChunker(
+		testBlockSize,
+		upstream, upstream.Size,
+		t.TempDir()+"/cache",
 		newTestMetrics(t),
 	)
-	require.NoError(t, err)
 	defer chunker.Close()
 
 	// Read the last partial block
@@ -443,12 +444,12 @@ func TestStreamingChunker_MultiChunkSlice(t *testing.T) {
 	data := makeTestData(t, size)
 	upstream := &fastUpstream{data: data, blockSize: testBlockSize}
 
-	chunker, err := NewStreamingChunker(
-		int64(len(data)), testBlockSize,
-		upstream, t.TempDir()+"/cache",
+	chunker := NewStreamingChunker(
+		testBlockSize,
+		upstream, upstream.Size,
+		t.TempDir()+"/cache",
 		newTestMetrics(t),
 	)
-	require.NoError(t, err)
 	defer chunker.Close()
 
 	// Request spanning two chunks: last page of chunk 0 + first page of chunk 1
@@ -518,17 +519,18 @@ func TestStreamingChunker_PanicRecovery(t *testing.T) {
 		panicAfter: panicAt,
 	}
 
-	chunker, err := NewStreamingChunker(
-		int64(len(data)), testBlockSize,
-		upstream, t.TempDir()+"/cache",
+	size := int64(len(data))
+	chunker := NewStreamingChunker(
+		testBlockSize,
+		upstream, func(_ context.Context) (int64, error) { return size, nil },
+		t.TempDir()+"/cache",
 		newTestMetrics(t),
 	)
-	require.NoError(t, err)
 	defer chunker.Close()
 
 	// Request data past the panic point — should get an error, not hang or crash
 	lastOff := int64(storage.MemoryChunkSize) - testBlockSize
-	_, err = chunker.Slice(t.Context(), lastOff, testBlockSize)
+	_, err := chunker.Slice(t.Context(), lastOff, testBlockSize)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "panicked")
 
@@ -688,10 +690,8 @@ func BenchmarkRandomAccess(b *testing.B) {
 			name: "StreamingChunker",
 			newChunker: func(b *testing.B, m metrics.Metrics, upstream *realisticUpstream) benchChunker {
 				b.Helper()
-				c, err := NewStreamingChunker(size, testBlockSize, upstream, b.TempDir()+"/cache", m)
-				require.NoError(b, err)
 
-				return c
+				return NewStreamingChunker(testBlockSize, upstream, upstream.Size, b.TempDir()+"/cache", m)
 			},
 		},
 		{

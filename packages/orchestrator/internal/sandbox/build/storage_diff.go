@@ -90,26 +90,28 @@ func (b *StorageDiff) Init(ctx context.Context) error {
 		return err
 	}
 
-	size, err := obj.Size(ctx)
-	if err != nil {
-		errMsg := fmt.Errorf("failed to get object size: %w", err)
-		b.chunker.SetError(errMsg)
-
-		return errMsg
-	}
-
 	var c block.Chunker
 	if b.featureFlags != nil && b.featureFlags.BoolFlag(ctx, featureflags.UseStreamingChunkerFlag) {
-		c, err = block.NewStreamingChunker(size, b.blockSize, obj, b.cachePath, b.metrics)
+		// Lazy init: the object size is discovered from the first
+		// OpenRangeReader response (free from Content-Range), eliminating
+		// the need for a separate Size()/Attrs()/HeadObject call.
+		c = block.NewStreamingChunker(b.blockSize, obj, obj.Size, b.cachePath, b.metrics)
 	} else {
+		size, err := obj.Size(ctx)
+		if err != nil {
+			errMsg := fmt.Errorf("failed to get object size: %w", err)
+			b.chunker.SetError(errMsg)
+
+			return errMsg
+		}
+
 		c, err = block.NewFullFetchChunker(size, b.blockSize, obj, b.cachePath, b.metrics)
-	}
+		if err != nil {
+			errMsg := fmt.Errorf("failed to create chunker: %w", err)
+			b.chunker.SetError(errMsg)
 
-	if err != nil {
-		errMsg := fmt.Errorf("failed to create chunker: %w", err)
-		b.chunker.SetError(errMsg)
-
-		return errMsg
+			return errMsg
+		}
 	}
 
 	return b.chunker.SetValue(c)
