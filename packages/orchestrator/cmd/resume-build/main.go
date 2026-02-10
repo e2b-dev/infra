@@ -821,9 +821,6 @@ func (r *runner) benchmark(ctx context.Context, n int) error {
 }
 
 func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefetch, verbose bool, pauseOpts pauseOptions, runOpts runOptions) error {
-	// Always suppress OTEL tracing logs
-	cmdutil.SuppressOTELLogs()
-
 	// Silence other loggers unless verbose mode
 	var l logger.Logger
 	if !verbose {

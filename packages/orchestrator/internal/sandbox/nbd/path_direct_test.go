@@ -27,7 +27,7 @@ func TestPathDirect_Direct4MBWrite(t *testing.T) {
 	require.NoError(t, err)
 	size := int64(10 * 1024 * 1024)
 
-	deviceFile := setupNBDDevice(t, featureFlags, size, header.RootfsBlockSize, unix.O_DIRECT|unix.O_RDWR)
+	deviceFile := setupNBDDevice(t, featureFlags, size, unix.O_DIRECT|unix.O_RDWR)
 
 	const bs = 4 * 1024 * 1024
 	buf, err := unix.Mmap(-1, 0, bs, unix.PROT_READ|unix.PROT_WRITE, unix.MAP_SHARED|unix.MAP_ANON)
@@ -58,7 +58,7 @@ func TestPathDirect_Direct32MBWrite(t *testing.T) {
 	require.NoError(t, err)
 	size := int64(256 * 1024 * 1024)
 
-	deviceFile := setupNBDDevice(t, featureFlags, size, header.RootfsBlockSize, unix.O_DIRECT|unix.O_RDWR)
+	deviceFile := setupNBDDevice(t, featureFlags, size, unix.O_DIRECT|unix.O_RDWR)
 
 	const bs = 32 * 1024 * 1024
 	buf, err := unix.Mmap(-1, 0, bs, unix.PROT_READ|unix.PROT_WRITE, unix.MAP_SHARED|unix.MAP_ANON)
@@ -87,7 +87,7 @@ func TestPathDirect_Write(t *testing.T) {
 
 	size := int64(5 * 1024 * 1024)
 
-	deviceFile := setupNBDDevice(t, featureFlags, size, header.RootfsBlockSize, os.O_RDWR)
+	deviceFile := setupNBDDevice(t, featureFlags, size, os.O_RDWR)
 
 	const writeSize = 1024 * 1024
 	testData := make([]byte, writeSize)
@@ -112,7 +112,7 @@ func TestPathDirect_WriteAtOffset(t *testing.T) {
 	require.NoError(t, err)
 	size := int64(5 * 1024 * 1024)
 
-	deviceFile := setupNBDDevice(t, featureFlags, size, header.RootfsBlockSize, os.O_RDWR)
+	deviceFile := setupNBDDevice(t, featureFlags, size, os.O_RDWR)
 
 	const writeSize = 512 * 1024
 	const writeOffset = 512 * 1024
@@ -139,7 +139,7 @@ func TestPathDirect_LargeWrite(t *testing.T) {
 
 	size := int64(1200 * 1024 * 1024)
 
-	deviceFile := setupNBDDevice(t, featureFlags, size, header.RootfsBlockSize, os.O_RDWR)
+	deviceFile := setupNBDDevice(t, featureFlags, size, os.O_RDWR)
 
 	time.Sleep(1 * time.Second)
 	cmd := exec.CommandContext(t.Context(), "dd", "if=/dev/zero", "of="+deviceFile.Name(), "bs=1G", "count=1")
@@ -158,7 +158,7 @@ func TestPathLargeRead(t *testing.T) {
 
 	size := int64(1200 * 1024 * 1024)
 
-	deviceFile := setupNBDDevice(t, featureFlags, size, header.RootfsBlockSize, os.O_RDONLY)
+	deviceFile := setupNBDDevice(t, featureFlags, size, os.O_RDONLY)
 	time.Sleep(1 * time.Second)
 
 	cmd := exec.CommandContext(t.Context(), "dd", "if="+deviceFile.Name(), "of=/dev/null", "bs=1G", "count=1")
@@ -169,8 +169,10 @@ func TestPathLargeRead(t *testing.T) {
 	require.NoError(t, err, "failed to execute dd command")
 }
 
-func setupNBDDevice(t *testing.T, featureFlags *featureflags.Client, size, blockSize int64, flags int) *os.File {
+func setupNBDDevice(t *testing.T, featureFlags *featureflags.Client, size int64, flags int) *os.File {
 	t.Helper()
+
+	const blockSize = header.RootfsBlockSize
 
 	require.Equal(t, 0, os.Geteuid(), "the nbd requires root privileges to run")
 

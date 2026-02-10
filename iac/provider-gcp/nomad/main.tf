@@ -97,7 +97,6 @@ resource "nomad_job" "api" {
     environment                             = var.environment
     analytics_collector_host                = trimspace(data.google_secret_manager_secret_version.analytics_collector_host.secret_data)
     analytics_collector_api_token           = trimspace(data.google_secret_manager_secret_version.analytics_collector_api_token.secret_data)
-    otel_tracing_print                      = var.otel_tracing_print
     nomad_acl_token                         = var.nomad_acl_token_secret
     admin_token                             = var.api_admin_token
     redis_url                               = local.redis_url
@@ -396,7 +395,6 @@ locals {
     bucket_name                  = var.fc_env_pipeline_bucket_name
     orchestrator_checksum        = data.external.orchestrator_checksum.result.hex
     logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
-    otel_tracing_print           = var.otel_tracing_print
     template_bucket_name         = var.template_bucket_name
     otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
     allow_sandbox_internet       = var.allow_sandbox_internet
@@ -498,7 +496,6 @@ resource "nomad_job" "template_manager" {
     docker_registry                 = var.custom_envs_repository_name
     google_service_account_key      = var.google_service_account_key
     template_manager_checksum       = data.external.template_manager.result.hex
-    otel_tracing_print              = var.otel_tracing_print
     template_bucket_name            = var.template_bucket_name
     build_cache_bucket_name         = var.build_cache_bucket_name
     otel_collector_grpc_endpoint    = "localhost:${var.otel_collector_grpc_port}"

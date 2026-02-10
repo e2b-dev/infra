@@ -31,10 +31,10 @@ const (
 	blockSize = int64(1024)
 )
 
-func newDiff(t *testing.T, cachePath, buildId string, diffType DiffType, blockSize int64) Diff {
+func newRootFSDiff(t *testing.T, cachePath, buildId string) Diff {
 	t.Helper()
 
-	localDiff, err := NewLocalDiffFile(cachePath, buildId, diffType)
+	localDiff, err := NewLocalDiffFile(cachePath, buildId, Rootfs)
 	require.NoError(t, err)
 
 	// Write 100 bytes to the file
@@ -115,7 +115,7 @@ func TestDiffStoreTTLEviction(t *testing.T) {
 	t.Cleanup(store.Close)
 
 	// Add an item to the cache
-	diff := newDiff(t, cachePath, "build-test-id", Rootfs, blockSize)
+	diff := newRootFSDiff(t, cachePath, "build-test-id")
 
 	// Add an item to the cache
 	store.Add(diff)
@@ -148,7 +148,7 @@ func TestDiffStoreRefreshTTLEviction(t *testing.T) {
 	require.NoError(t, err)
 
 	// Add an item to the cache
-	diff := newDiff(t, cachePath, "build-test-id", Rootfs, blockSize)
+	diff := newRootFSDiff(t, cachePath, "build-test-id")
 
 	// Add an item to the cache
 	store.Add(diff)
@@ -189,7 +189,7 @@ func TestDiffStoreDelayEviction(t *testing.T) { //nolint:paralleltest // very ti
 	t.Cleanup(store.Close)
 
 	// Add an item to the cache
-	diff := newDiff(t, cachePath, "build-test-id", Rootfs, blockSize)
+	diff := newRootFSDiff(t, cachePath, "build-test-id")
 
 	// Add an item to the cache
 	store.Add(diff)
@@ -235,7 +235,7 @@ func TestDiffStoreDelayEvictionAbort(t *testing.T) { //nolint:paralleltest // ve
 	t.Cleanup(store.Close)
 
 	// Add an item to the cache
-	diff := newDiff(t, cachePath, "build-test-id", Rootfs, blockSize)
+	diff := newRootFSDiff(t, cachePath, "build-test-id")
 
 	// Add an item to the cache
 	store.Add(diff)
@@ -286,9 +286,9 @@ func TestDiffStoreOldestFromCache(t *testing.T) {
 	require.NoError(t, err)
 
 	// Add items to the cache
-	diff := newDiff(t, cachePath, "build-test-id", Rootfs, blockSize)
+	diff := newRootFSDiff(t, cachePath, "build-test-id")
 	store.Add(diff)
-	diff2 := newDiff(t, cachePath, "build-test-id-2", Rootfs, blockSize)
+	diff2 := newRootFSDiff(t, cachePath, "build-test-id-2")
 	store.Add(diff2)
 
 	found := store.Has(diff)
@@ -310,7 +310,7 @@ func TestDiffStoreOldestFromCache(t *testing.T) {
 	assert.True(t, found)
 
 	// Add another item to the cache
-	diff3 := newDiff(t, cachePath, "build-test-id-3", Rootfs, blockSize)
+	diff3 := newRootFSDiff(t, cachePath, "build-test-id-3")
 	store.Add(diff3)
 
 	// Delete oldest item

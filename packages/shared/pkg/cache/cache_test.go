@@ -252,7 +252,7 @@ func TestCache_GetOrSet_RefreshOnlyOnce(t *testing.T) {
 	cache := NewCache[string, int](config)
 
 	var callCount atomic.Int32
-	callback := func(_ context.Context, _ string) (int, error) {
+	callback := func(_ context.Context, _ string) (int, error) { //nolint:unparam // we don't control the interface
 		time.Sleep(100 * time.Millisecond) // Simulate slow callback
 		count := int(callCount.Add(1))
 

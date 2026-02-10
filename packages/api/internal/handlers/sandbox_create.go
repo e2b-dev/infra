@@ -28,6 +28,7 @@ import (
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
@@ -77,7 +78,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		return
 	}
 
-	clusterID := utils.WithClusterFallback(teamInfo.Team.ClusterID)
+	clusterID := clusters.WithClusterFallback(teamInfo.Team.ClusterID)
 	aliasInfo, err := a.templateCache.ResolveAlias(ctx, identifier, teamInfo.Team.Slug)
 	if err != nil {
 		apiErr := templatecache.ErrorToAPIError(err, identifier)
