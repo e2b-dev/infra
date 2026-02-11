@@ -27,16 +27,11 @@ func TestVolumeRoundTrip(t *testing.T) {
 
 	client := setup.GetAPIClient()
 
-	auth := []api.RequestEditorFn{
-		setup.WithAccessToken(),
-		setup.WithAPIKey(),
-	}
-
 	// create volume
 	createVolume, err := client.PostVolumesWithResponse(
 		t.Context(),
 		api.PostVolumesJSONRequestBody{Name: volumeName},
-		auth...,
+		setup.WithAPIKey(),
 	)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusCreated, createVolume.StatusCode(), string(createVolume.Body))
@@ -48,19 +43,19 @@ func TestVolumeRoundTrip(t *testing.T) {
 	createVolumeFailure, err := client.PostVolumesWithResponse(
 		t.Context(),
 		api.PostVolumesJSONRequestBody{Name: volumeName},
-		auth...,
+		setup.WithAPIKey(),
 	)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, createVolumeFailure.StatusCode(), string(createVolumeFailure.Body))
 
 	// retrieve volume
-	getVolume, err := client.GetVolumesVolumeIDWithResponse(t.Context(), volume.VolumeID, auth...)
+	getVolume, err := client.GetVolumesVolumeIDWithResponse(t.Context(), volume.VolumeID, setup.WithAPIKey())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, getVolume.StatusCode(), string(getVolume.Body))
 	assert.Equal(t, *volume, *getVolume.JSON200)
 
 	// list volumes
-	listVolumes, err := client.GetVolumesWithResponse(t.Context(), auth...)
+	listVolumes, err := client.GetVolumesWithResponse(t.Context(), setup.WithAPIKey())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, listVolumes.StatusCode(), string(listVolumes.Body))
 	assert.Contains(t, *listVolumes.JSON200, *getVolume.JSON200)
@@ -84,7 +79,7 @@ func TestVolumeRoundTrip(t *testing.T) {
 				Path: volumeMountPath,
 			}},
 		},
-		auth...,
+		setup.WithAPIKey(),
 	)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusCreated, createSandbox.StatusCode(), string(createSandbox.Body))
@@ -146,7 +141,7 @@ func TestVolumeRoundTrip(t *testing.T) {
 				Path: volumeMountPath,
 			}},
 		},
-		auth...,
+		setup.WithAPIKey(),
 	)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusCreated, createSandbox2.StatusCode(), string(createSandbox2.Body))
@@ -205,23 +200,23 @@ func TestVolumeRoundTrip(t *testing.T) {
 	utils.TeardownSandbox(t, client, sbx2.SandboxID)
 
 	// delete volume
-	deleteVolume, err := client.DeleteVolumesVolumeIDWithResponse(t.Context(), volume.VolumeID, auth...)
+	deleteVolume, err := client.DeleteVolumesVolumeIDWithResponse(t.Context(), volume.VolumeID, setup.WithAPIKey())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusNoContent, deleteVolume.StatusCode(), string(deleteVolume.Body))
 
 	// verify volume is deleted
-	getVolumeFailed, err := client.GetVolumesVolumeIDWithResponse(t.Context(), volume.VolumeID, auth...)
+	getVolumeFailed, err := client.GetVolumesVolumeIDWithResponse(t.Context(), volume.VolumeID, setup.WithAPIKey())
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusNotFound, getVolumeFailed.StatusCode(), string(getVolumeFailed.Body))
 
 	// verify volume is not in list
-	listVolumes, err = client.GetVolumesWithResponse(t.Context(), auth...)
+	listVolumes, err = client.GetVolumesWithResponse(t.Context(), setup.WithAPIKey())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, listVolumes.StatusCode(), string(listVolumes.Body))
 	assert.NotContains(t, *listVolumes.JSON200, *getVolume.JSON200)
 
 	// verify volume cannot be deleted again
-	deleteVolume, err = client.DeleteVolumesVolumeIDWithResponse(t.Context(), volume.VolumeID, auth...)
+	deleteVolume, err = client.DeleteVolumesVolumeIDWithResponse(t.Context(), volume.VolumeID, setup.WithAPIKey())
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusNotFound, deleteVolume.StatusCode(), string(deleteVolume.Body))
 }
