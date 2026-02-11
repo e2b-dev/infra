@@ -335,7 +335,9 @@ processors:
         match_type: regexp
         # Include info about grpc server endpoint durations - used for monitoring request times
         metric_names:
+          # TODO: Remove rpc.server.duration.* after the migration is completed
           - "rpc.server.duration.*"
+          - "rpc.server.call.duration.*"
 
   resource/remove_instance:
     attributes:
