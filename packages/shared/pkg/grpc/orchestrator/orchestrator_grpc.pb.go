@@ -291,6 +291,12 @@ var SandboxService_ServiceDesc = grpc.ServiceDesc{
 type VolumeServiceClient interface {
 	Create(ctx context.Context, in *VolumeCreateRequest, opts ...grpc.CallOption) (*VolumeCreateResponse, error)
 	Delete(ctx context.Context, in *VolumeDeleteRequest, opts ...grpc.CallOption) (*VolumeDeleteResponse, error)
+	ListDir(ctx context.Context, in *VolumeListDirRequest, opts ...grpc.CallOption) (*VolumeListDirResponse, error)
+	CreateDir(ctx context.Context, in *VolumeCreateDirRequest, opts ...grpc.CallOption) (*VolumeCreateDirResponse, error)
+	DeleteDir(ctx context.Context, in *VolumeDeleteDirRequest, opts ...grpc.CallOption) (*VolumeDeleteDirResponse, error)
+	GetFile(ctx context.Context, in *VolumeFileGetRequest, opts ...grpc.CallOption) (*VolumeFileGetResponse, error)
+	CreateFile(ctx context.Context, in *VolumeFileCreateRequest, opts ...grpc.CallOption) (*VolumeFileCreateResponse, error)
+	DeleteFile(ctx context.Context, in *VolumeFileDeleteRequest, opts ...grpc.CallOption) (*VolumeFileDeleteResponse, error)
 }
 
 type volumeServiceClient struct {
@@ -319,12 +325,72 @@ func (c *volumeServiceClient) Delete(ctx context.Context, in *VolumeDeleteReques
 	return out, nil
 }
 
+func (c *volumeServiceClient) ListDir(ctx context.Context, in *VolumeListDirRequest, opts ...grpc.CallOption) (*VolumeListDirResponse, error) {
+	out := new(VolumeListDirResponse)
+	err := c.cc.Invoke(ctx, "/VolumeService/ListDir", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *volumeServiceClient) CreateDir(ctx context.Context, in *VolumeCreateDirRequest, opts ...grpc.CallOption) (*VolumeCreateDirResponse, error) {
+	out := new(VolumeCreateDirResponse)
+	err := c.cc.Invoke(ctx, "/VolumeService/CreateDir", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *volumeServiceClient) DeleteDir(ctx context.Context, in *VolumeDeleteDirRequest, opts ...grpc.CallOption) (*VolumeDeleteDirResponse, error) {
+	out := new(VolumeDeleteDirResponse)
+	err := c.cc.Invoke(ctx, "/VolumeService/DeleteDir", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *volumeServiceClient) GetFile(ctx context.Context, in *VolumeFileGetRequest, opts ...grpc.CallOption) (*VolumeFileGetResponse, error) {
+	out := new(VolumeFileGetResponse)
+	err := c.cc.Invoke(ctx, "/VolumeService/GetFile", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *volumeServiceClient) CreateFile(ctx context.Context, in *VolumeFileCreateRequest, opts ...grpc.CallOption) (*VolumeFileCreateResponse, error) {
+	out := new(VolumeFileCreateResponse)
+	err := c.cc.Invoke(ctx, "/VolumeService/CreateFile", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *volumeServiceClient) DeleteFile(ctx context.Context, in *VolumeFileDeleteRequest, opts ...grpc.CallOption) (*VolumeFileDeleteResponse, error) {
+	out := new(VolumeFileDeleteResponse)
+	err := c.cc.Invoke(ctx, "/VolumeService/DeleteFile", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // VolumeServiceServer is the server API for VolumeService service.
 // All implementations must embed UnimplementedVolumeServiceServer
 // for forward compatibility
 type VolumeServiceServer interface {
 	Create(context.Context, *VolumeCreateRequest) (*VolumeCreateResponse, error)
 	Delete(context.Context, *VolumeDeleteRequest) (*VolumeDeleteResponse, error)
+	ListDir(context.Context, *VolumeListDirRequest) (*VolumeListDirResponse, error)
+	CreateDir(context.Context, *VolumeCreateDirRequest) (*VolumeCreateDirResponse, error)
+	DeleteDir(context.Context, *VolumeDeleteDirRequest) (*VolumeDeleteDirResponse, error)
+	GetFile(context.Context, *VolumeFileGetRequest) (*VolumeFileGetResponse, error)
+	CreateFile(context.Context, *VolumeFileCreateRequest) (*VolumeFileCreateResponse, error)
+	DeleteFile(context.Context, *VolumeFileDeleteRequest) (*VolumeFileDeleteResponse, error)
 	mustEmbedUnimplementedVolumeServiceServer()
 }
 
@@ -337,6 +403,24 @@ func (UnimplementedVolumeServiceServer) Create(context.Context, *VolumeCreateReq
 }
 func (UnimplementedVolumeServiceServer) Delete(context.Context, *VolumeDeleteRequest) (*VolumeDeleteResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Delete not implemented")
+}
+func (UnimplementedVolumeServiceServer) ListDir(context.Context, *VolumeListDirRequest) (*VolumeListDirResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListDir not implemented")
+}
+func (UnimplementedVolumeServiceServer) CreateDir(context.Context, *VolumeCreateDirRequest) (*VolumeCreateDirResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateDir not implemented")
+}
+func (UnimplementedVolumeServiceServer) DeleteDir(context.Context, *VolumeDeleteDirRequest) (*VolumeDeleteDirResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteDir not implemented")
+}
+func (UnimplementedVolumeServiceServer) GetFile(context.Context, *VolumeFileGetRequest) (*VolumeFileGetResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetFile not implemented")
+}
+func (UnimplementedVolumeServiceServer) CreateFile(context.Context, *VolumeFileCreateRequest) (*VolumeFileCreateResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateFile not implemented")
+}
+func (UnimplementedVolumeServiceServer) DeleteFile(context.Context, *VolumeFileDeleteRequest) (*VolumeFileDeleteResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteFile not implemented")
 }
 func (UnimplementedVolumeServiceServer) mustEmbedUnimplementedVolumeServiceServer() {}
 
@@ -387,6 +471,114 @@ func _VolumeService_Delete_Handler(srv interface{}, ctx context.Context, dec fun
 	return interceptor(ctx, in, info, handler)
 }
 
+func _VolumeService_ListDir_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(VolumeListDirRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(VolumeServiceServer).ListDir(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/VolumeService/ListDir",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(VolumeServiceServer).ListDir(ctx, req.(*VolumeListDirRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _VolumeService_CreateDir_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(VolumeCreateDirRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(VolumeServiceServer).CreateDir(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/VolumeService/CreateDir",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(VolumeServiceServer).CreateDir(ctx, req.(*VolumeCreateDirRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _VolumeService_DeleteDir_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(VolumeDeleteDirRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(VolumeServiceServer).DeleteDir(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/VolumeService/DeleteDir",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(VolumeServiceServer).DeleteDir(ctx, req.(*VolumeDeleteDirRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _VolumeService_GetFile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(VolumeFileGetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(VolumeServiceServer).GetFile(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/VolumeService/GetFile",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(VolumeServiceServer).GetFile(ctx, req.(*VolumeFileGetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _VolumeService_CreateFile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(VolumeFileCreateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(VolumeServiceServer).CreateFile(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/VolumeService/CreateFile",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(VolumeServiceServer).CreateFile(ctx, req.(*VolumeFileCreateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _VolumeService_DeleteFile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(VolumeFileDeleteRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(VolumeServiceServer).DeleteFile(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/VolumeService/DeleteFile",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(VolumeServiceServer).DeleteFile(ctx, req.(*VolumeFileDeleteRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // VolumeService_ServiceDesc is the grpc.ServiceDesc for VolumeService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -401,6 +593,30 @@ var VolumeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Delete",
 			Handler:    _VolumeService_Delete_Handler,
+		},
+		{
+			MethodName: "ListDir",
+			Handler:    _VolumeService_ListDir_Handler,
+		},
+		{
+			MethodName: "CreateDir",
+			Handler:    _VolumeService_CreateDir_Handler,
+		},
+		{
+			MethodName: "DeleteDir",
+			Handler:    _VolumeService_DeleteDir_Handler,
+		},
+		{
+			MethodName: "GetFile",
+			Handler:    _VolumeService_GetFile_Handler,
+		},
+		{
+			MethodName: "CreateFile",
+			Handler:    _VolumeService_CreateFile_Handler,
+		},
+		{
+			MethodName: "DeleteFile",
+			Handler:    _VolumeService_DeleteFile_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

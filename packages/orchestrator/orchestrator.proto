@@ -156,7 +156,71 @@ message VolumeDeleteRequest {
 
 message VolumeDeleteResponse {}
 
+message VolumeDirectoryItem {
+  string name = 1;
+  bool is_directory = 2;
+  int64 mode = 3;
+  int64 size = 4;
+  google.protobuf.Timestamp ctime = 5;
+  google.protobuf.Timestamp mtime = 6;
+}
+
+message VolumeListDirRequest {
+  string volume_id = 1;
+  string path = 2;
+}
+
+message VolumeListDirResponse {
+  repeated VolumeDirectoryItem files = 1;
+}
+
+message VolumeCreateDirRequest {
+  string volume_id = 1;
+  string path = 2;
+}
+
+message VolumeCreateDirResponse {}
+
+message VolumeDeleteDirRequest {
+  string volume_id = 1;
+  string path = 2;
+}
+
+message VolumeDeleteDirResponse {}
+
+message VolumeFileGetRequest {
+  string volume_id = 1;
+  string path = 2;
+}
+
+message VolumeFileGetResponse {
+  bytes content = 1;
+}
+
+message VolumeFileCreateRequest {
+  string volume_id = 1;
+  string path = 2;
+  bytes content = 3;
+}
+
+message VolumeFileCreateResponse {}
+
+message VolumeFileDeleteRequest {
+  string volume_id = 1;
+  string path = 2;
+}
+
+message VolumeFileDeleteResponse {}
+
 service VolumeService {
   rpc Create(VolumeCreateRequest) returns (VolumeCreateResponse);
   rpc Delete(VolumeDeleteRequest) returns (VolumeDeleteResponse);
+
+  rpc ListDir(VolumeListDirRequest) returns (VolumeListDirResponse);
+  rpc CreateDir(VolumeCreateDirRequest) returns (VolumeCreateDirResponse);
+  rpc DeleteDir(VolumeDeleteDirRequest) returns (VolumeDeleteDirResponse);
+
+  rpc GetFile(VolumeFileGetRequest) returns (VolumeFileGetResponse);
+  rpc CreateFile(VolumeFileCreateRequest) returns (VolumeFileCreateResponse);
+  rpc DeleteFile(VolumeFileDeleteRequest) returns (VolumeFileDeleteResponse);
 }
