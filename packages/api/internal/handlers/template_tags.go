@@ -209,9 +209,7 @@ func (a *APIStore) GetTemplatesTemplateIDTags(c *gin.Context, templateID api.Tem
 		return
 	}
 
-	tags, err := a.sqlcDB.GetTemplateTags(ctx, queries.GetTemplateTagsParams{
-		TemplateID: aliasInfo.TemplateID,
-	})
+	tags, err := a.sqlcDB.GetTemplateTags(ctx, aliasInfo.TemplateID)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when getting template tags", err)
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error getting template tags")
