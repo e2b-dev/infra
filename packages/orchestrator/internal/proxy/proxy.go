@@ -15,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
@@ -30,12 +31,17 @@ const (
 	trafficAccessTokenHeader = "e2b-traffic-access-token"
 )
 
+var _ sandbox.MapSubscriber = (*SandboxProxy)(nil)
+
 type SandboxProxy struct {
-	proxy *reverseproxy.Proxy
+	proxy        *reverseproxy.Proxy
+	limiter      *ConnectionLimiter
+	featureFlags *featureflags.Client
 }
 
-func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes *sandbox.Map) (*SandboxProxy, error) {
+func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes *sandbox.Map, featureFlags *featureflags.Client) (*SandboxProxy, error) {
 	getTargetFromRequest := reverseproxy.GetTargetFromRequest(env.IsLocal())
+	limiter := NewConnectionLimiter()
 
 	proxy := reverseproxy.New(
 		port,
@@ -115,6 +121,33 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 		true,
 	)
 
+	// Wrap the proxy handler with connection limiting
+	originalHandler := proxy.Handler
+	proxy.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Extract sandbox ID from request to check limit
+		sandboxId, _, err := getTargetFromRequest(r)
+		if err != nil {
+			// Let the original handler deal with the error
+			originalHandler.ServeHTTP(w, r)
+			return
+		}
+
+		// Check per-sandbox connection limit
+		maxLimit := featureFlags.IntFlag(r.Context(), featureflags.HTTPProxyMaxConnectionsPerSandbox)
+		count, acquired := limiter.TryAcquire(sandboxId, maxLimit)
+		if !acquired {
+			logger.L().Warn(r.Context(), "HTTP proxy connection limit exceeded for sandbox",
+				logger.WithSandboxID(sandboxId),
+				zap.Int64("current_connections", count),
+				zap.Int("max_limit", maxLimit))
+			http.Error(w, "Too many concurrent connections to sandbox", http.StatusTooManyRequests)
+			return
+		}
+		defer limiter.Release(sandboxId)
+
+		originalHandler.ServeHTTP(w, r)
+	})
+
 	meter := meterProvider.Meter("orchestrator.proxy.sandbox")
 	_, err := telemetry.GetObservableUpDownCounter(meter, telemetry.OrchestratorProxyServerConnectionsMeterCounterName, func(_ context.Context, observer metric.Int64Observer) error {
 		observer.Observe(proxy.CurrentServerConnections())
@@ -143,7 +176,16 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 		return nil, fmt.Errorf("error registering orchestrator proxy pool size metric (%s): %w", telemetry.OrchestratorProxyPoolSizeMeterCounterName, err)
 	}
 
-	return &SandboxProxy{proxy}, nil
+	sandboxProxy := &SandboxProxy{
+		proxy:        proxy,
+		limiter:      limiter,
+		featureFlags: featureFlags,
+	}
+
+	// Subscribe to sandbox events for cleanup
+	sandboxes.Subscribe(sandboxProxy)
+
+	return sandboxProxy, nil
 }
 
 func (p *SandboxProxy) Start(ctx context.Context) error {
@@ -171,4 +213,13 @@ func (p *SandboxProxy) RemoveFromPool(connectionKey string) error {
 
 func (p *SandboxProxy) GetAddr() string {
 	return p.proxy.Addr
+}
+
+// OnInsert is called when a sandbox is inserted into the map.
+func (p *SandboxProxy) OnInsert(_ *sandbox.Sandbox) {}
+
+// OnRemove is called when a sandbox is removed from the map.
+// It cleans up the connection limiter entry for the sandbox.
+func (p *SandboxProxy) OnRemove(sandboxID string) {
+	p.limiter.Remove(sandboxID)
 }
