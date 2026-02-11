@@ -507,7 +507,6 @@ type ProcessEvent struct {
 	unknownFields protoimpl.UnknownFields
 
 	// Types that are assignable to Event:
-	//
 	//	*ProcessEvent_Start
 	//	*ProcessEvent_Data
 	//	*ProcessEvent_End
@@ -803,7 +802,6 @@ type ProcessInput struct {
 	unknownFields protoimpl.UnknownFields
 
 	// Types that are assignable to Input:
-	//
 	//	*ProcessInput_Stdin
 	//	*ProcessInput_Pty
 	Input isProcessInput_Input `protobuf_oneof:"input"`
@@ -884,7 +882,6 @@ type StreamInputRequest struct {
 	unknownFields protoimpl.UnknownFields
 
 	// Types that are assignable to Event:
-	//
 	//	*StreamInputRequest_Start
 	//	*StreamInputRequest_Data
 	//	*StreamInputRequest_Keepalive
@@ -1242,7 +1239,6 @@ type ProcessSelector struct {
 	unknownFields protoimpl.UnknownFields
 
 	// Types that are assignable to Selector:
-	//
 	//	*ProcessSelector_Pid
 	//	*ProcessSelector_Tag
 	Selector isProcessSelector_Selector `protobuf_oneof:"selector"`
@@ -1425,7 +1421,6 @@ type ProcessEvent_DataEvent struct {
 	unknownFields protoimpl.UnknownFields
 
 	// Types that are assignable to Output:
-	//
 	//	*ProcessEvent_DataEvent_Stdout
 	//	*ProcessEvent_DataEvent_Stderr
 	//	*ProcessEvent_DataEvent_Pty
