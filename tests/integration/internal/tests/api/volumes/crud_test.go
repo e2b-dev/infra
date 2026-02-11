@@ -4,18 +4,17 @@ import (
 	"net/http"
 	"testing"
 
+	"connectrpc.com/connect"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	sharedfs "github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/filesystem"
+	sharedutils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/envd"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
-
-	"connectrpc.com/connect"
-	sharedfs "github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/filesystem"
-	sharedutils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 func TestVolumeRoundTrip(t *testing.T) {
