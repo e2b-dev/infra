@@ -606,7 +606,6 @@ func (f *Factory) ResumeSandbox(
 		fcUffdPath,
 		snapfile,
 		fcUffd.Ready(),
-		ips,
 		config.Envd.AccessToken,
 	)
 	if fcStartErr != nil {

@@ -3,7 +3,9 @@ package volumes
 import (
 	"net/http"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"connectrpc.com/connect"
 	"github.com/google/uuid"
@@ -91,9 +93,16 @@ func TestVolumeRoundTrip(t *testing.T) {
 
 	// verify that path is mounted
 	envdClient := setup.GetEnvdClient(t, t.Context())
-	output, err := utils.ExecCommandAsRootWithOutput(t, t.Context(), sbx, envdClient, "mount")
-	require.NoError(t, err)
-	require.Equal(t, volumeMountPath, output)
+	require.Eventually(t, func() bool {
+		output, err := utils.ExecCommandAsRootWithOutput(t, t.Context(), sbx, envdClient, "mount")
+		if err != nil {
+			t.Logf("error running mount command: %v", err)
+
+			return false
+		}
+
+		return strings.Contains(output, volumeMountPath)
+	}, 10*time.Second, 1*time.Second)
 
 	// write a file
 	{
@@ -143,6 +152,20 @@ func TestVolumeRoundTrip(t *testing.T) {
 	require.Equal(t, http.StatusCreated, createSandbox2.StatusCode(), string(createSandbox2.Body))
 	require.NotNil(t, createSandbox2.JSON201)
 	sbx2 := createSandbox2.JSON201
+
+	// verify that path is mounted
+	require.Eventually(t, func() bool {
+		ctx := t.Context()
+		envdClient := setup.GetEnvdClient(t, ctx)
+		output, err := utils.ExecCommandAsRootWithOutput(t, ctx, sbx2, envdClient, "mount")
+		if err != nil {
+			t.Logf("error running mount command: %v", err)
+
+			return false
+		}
+
+		return strings.Contains(output, volumeMountPath)
+	}, 10*time.Second, 1*time.Second)
 
 	// read the file
 	{
