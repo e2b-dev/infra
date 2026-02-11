@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -8,11 +9,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
@@ -65,7 +68,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 	}
 
 	// early return if still waiting for build start
-	if buildInfo.BuildStatus == types.BuildStatusWaiting {
+	if buildInfo.BuildStatus == types.BuildStatusGroupPending {
 		result := api.TemplateBuildInfo{
 			LogEntries: make([]api.BuildLogEntry, 0),
 			Logs:       make([]string, 0),
@@ -85,7 +88,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 		Logs:       nil,
 		TemplateID: templateID,
 		BuildID:    buildID,
-		Status:     getCorrespondingTemplateBuildStatus(buildInfo.BuildStatus),
+		Status:     getCorrespondingTemplateBuildStatus(ctx, buildInfo.BuildStatus),
 		Reason:     getAPIReason(buildInfo.Reason),
 	}
 
@@ -144,15 +147,19 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 	c.JSON(http.StatusOK, result)
 }
 
-func getCorrespondingTemplateBuildStatus(s types.BuildStatus) api.TemplateBuildStatus {
+func getCorrespondingTemplateBuildStatus(ctx context.Context, s types.BuildStatusGroup) api.TemplateBuildStatus {
 	switch s {
-	case types.BuildStatusWaiting:
+	case types.BuildStatusGroupPending:
 		return api.TemplateBuildStatusWaiting
-	case types.BuildStatusFailed:
-		return api.TemplateBuildStatusError
-	case types.BuildStatusUploaded:
+	case types.BuildStatusGroupInProgress:
+		return api.TemplateBuildStatusBuilding
+	case types.BuildStatusGroupReady:
 		return api.TemplateBuildStatusReady
+	case types.BuildStatusGroupFailed:
+		return api.TemplateBuildStatusError
 	default:
+		logger.L().Warn(ctx, "unknown build status, defaulting to building", zap.String("status", string(s)))
+
 		return api.TemplateBuildStatusBuilding
 	}
 }

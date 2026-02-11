@@ -98,9 +98,11 @@ func (o *Orchestrator) CreateSandbox(
 	templateID string,
 	baseTemplateID string,
 	autoPause bool,
+	autoResume *types.SandboxAutoResumeConfig,
 	envdAuthToken *string,
 	allowInternetAccess *bool,
 	network *types.SandboxNetworkConfig,
+	sbxVolumeMounts []*orchestrator.SandboxVolumeMount,
 ) (sbx sandbox.Sandbox, apiErr *api.APIError) {
 	ctx, childSpan := tracer.Start(ctx, "create-sandbox")
 	defer childSpan.End()
@@ -210,6 +212,15 @@ func (o *Orchestrator) CreateSandbox(
 	}
 
 	sbxNetwork := buildNetworkConfig(network, allowInternetAccess, trafficAccessToken)
+
+	var orchAutoResume *orchestrator.SandboxAutoResumeConfig
+	if autoResume != nil {
+		policy := string(autoResume.Policy)
+		orchAutoResume = &orchestrator.SandboxAutoResumeConfig{
+			Policy: policy,
+		}
+	}
+
 	sbxRequest := &orchestrator.SandboxCreateRequest{
 		Sandbox: &orchestrator.SandboxConfig{
 			BaseTemplateId:      baseTemplateID,
@@ -231,9 +242,11 @@ func (o *Orchestrator) CreateSandbox(
 			Vcpu:                build.Vcpu,
 			Snapshot:            isResume,
 			AutoPause:           autoPause,
+			AutoResume:          orchAutoResume,
 			AllowInternetAccess: allowInternetAccess,
 			Network:             sbxNetwork,
 			TotalDiskSizeMb:     ut.FromPtr(build.TotalDiskSizeMb),
+			VolumeMounts:        sbxVolumeMounts,
 		},
 		StartTime: timestamppb.New(startTime),
 		EndTime:   timestamppb.New(endTime),
@@ -303,6 +316,7 @@ func (o *Orchestrator) CreateSandbox(
 		node.ID,
 		node.ClusterID,
 		autoPause,
+		autoResume,
 		envdAuthToken,
 		allowInternetAccess,
 		baseTemplateID,

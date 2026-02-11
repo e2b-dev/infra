@@ -49,7 +49,6 @@ linters:
     - predeclared
     - tagliatelle
     - testpackage
-    - unparam
     - varnamelen
     - wrapcheck
 

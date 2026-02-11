@@ -284,3 +284,125 @@ var SandboxService_ServiceDesc = grpc.ServiceDesc{
 	Streams:  []grpc.StreamDesc{},
 	Metadata: "orchestrator.proto",
 }
+
+// VolumeServiceClient is the client API for VolumeService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type VolumeServiceClient interface {
+	Create(ctx context.Context, in *VolumeCreateRequest, opts ...grpc.CallOption) (*VolumeCreateResponse, error)
+	Delete(ctx context.Context, in *VolumeDeleteRequest, opts ...grpc.CallOption) (*VolumeDeleteResponse, error)
+}
+
+type volumeServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewVolumeServiceClient(cc grpc.ClientConnInterface) VolumeServiceClient {
+	return &volumeServiceClient{cc}
+}
+
+func (c *volumeServiceClient) Create(ctx context.Context, in *VolumeCreateRequest, opts ...grpc.CallOption) (*VolumeCreateResponse, error) {
+	out := new(VolumeCreateResponse)
+	err := c.cc.Invoke(ctx, "/VolumeService/Create", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *volumeServiceClient) Delete(ctx context.Context, in *VolumeDeleteRequest, opts ...grpc.CallOption) (*VolumeDeleteResponse, error) {
+	out := new(VolumeDeleteResponse)
+	err := c.cc.Invoke(ctx, "/VolumeService/Delete", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// VolumeServiceServer is the server API for VolumeService service.
+// All implementations must embed UnimplementedVolumeServiceServer
+// for forward compatibility
+type VolumeServiceServer interface {
+	Create(context.Context, *VolumeCreateRequest) (*VolumeCreateResponse, error)
+	Delete(context.Context, *VolumeDeleteRequest) (*VolumeDeleteResponse, error)
+	mustEmbedUnimplementedVolumeServiceServer()
+}
+
+// UnimplementedVolumeServiceServer must be embedded to have forward compatible implementations.
+type UnimplementedVolumeServiceServer struct {
+}
+
+func (UnimplementedVolumeServiceServer) Create(context.Context, *VolumeCreateRequest) (*VolumeCreateResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Create not implemented")
+}
+func (UnimplementedVolumeServiceServer) Delete(context.Context, *VolumeDeleteRequest) (*VolumeDeleteResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Delete not implemented")
+}
+func (UnimplementedVolumeServiceServer) mustEmbedUnimplementedVolumeServiceServer() {}
+
+// UnsafeVolumeServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to VolumeServiceServer will
+// result in compilation errors.
+type UnsafeVolumeServiceServer interface {
+	mustEmbedUnimplementedVolumeServiceServer()
+}
+
+func RegisterVolumeServiceServer(s grpc.ServiceRegistrar, srv VolumeServiceServer) {
+	s.RegisterService(&VolumeService_ServiceDesc, srv)
+}
+
+func _VolumeService_Create_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(VolumeCreateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(VolumeServiceServer).Create(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/VolumeService/Create",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(VolumeServiceServer).Create(ctx, req.(*VolumeCreateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _VolumeService_Delete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(VolumeDeleteRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(VolumeServiceServer).Delete(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/VolumeService/Delete",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(VolumeServiceServer).Delete(ctx, req.(*VolumeDeleteRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// VolumeService_ServiceDesc is the grpc.ServiceDesc for VolumeService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var VolumeService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "VolumeService",
+	HandlerType: (*VolumeServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Create",
+			Handler:    _VolumeService_Create_Handler,
+		},
+		{
+			MethodName: "Delete",
+			Handler:    _VolumeService_Delete_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "orchestrator.proto",
+}

@@ -10,6 +10,15 @@ import (
 	"github.com/e2b-dev/infra/packages/db/pkg/auth"
 )
 
+func GetTeamByID(ctx context.Context, db *authdb.Client, teamID uuid.UUID) (*types.Team, error) {
+	result, err := db.Read.GetTeamWithTierByTeamID(ctx, teamID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get team by ID: %w", err)
+	}
+
+	return types.NewTeam(&result.Team, &result.TeamLimit), nil
+}
+
 func GetTeamsByUser(ctx context.Context, db *authdb.Client, userID uuid.UUID) ([]*types.TeamWithDefault, error) {
 	teams, err := db.Read.GetTeamsWithUsersTeamsWithTier(ctx, userID)
 	if err != nil {

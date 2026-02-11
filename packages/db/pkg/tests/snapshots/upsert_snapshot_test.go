@@ -73,7 +73,7 @@ func TestUpsertSnapshot_NewSnapshot(t *testing.T) {
 	assert.Equal(t, templateID, result.TemplateID, "TemplateID should match the input for a new snapshot")
 
 	// Verify we can retrieve the snapshot using the sandboxID
-	// Note: GetLastSnapshot requires status='success', so we can't use it here
+	// Note: GetLastSnapshot requires status IN ('success', 'uploaded'), so we can't use it here
 	// Instead, we verify the returned IDs are valid
 	assert.NotEmpty(t, result.TemplateID, "TemplateID should not be empty")
 	assert.NotEqual(t, uuid.Nil, result.BuildID, "BuildID should not be nil")

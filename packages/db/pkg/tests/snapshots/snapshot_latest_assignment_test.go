@@ -51,7 +51,7 @@ func TestGetLastSnapshot_ReturnsLatestAssignment(t *testing.T) {
 }
 
 // TestGetLastSnapshot_OnlyReturnsSuccessBuilds verifies that GetLastSnapshot only
-// returns builds with status='success'.
+// returns builds with status IN ('success', 'uploaded').
 func TestGetLastSnapshot_OnlyReturnsSuccessBuilds(t *testing.T) {
 	t.Parallel()
 	db := testutils.SetupDatabase(t)
@@ -71,14 +71,14 @@ func TestGetLastSnapshot_OnlyReturnsSuccessBuilds(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Create second snapshot with snapshotting status (not success)
-	testutils.UpsertTestSnapshotWithStatus(t, ctx, db, snapshotTemplateID, sandboxID, teamID, baseTemplateID, "snapshotting")
+	testutils.UpsertTestSnapshotWithStatus(t, ctx, db, snapshotTemplateID, sandboxID, teamID, baseTemplateID, types.BuildStatusSnapshotting)
 
 	// GetLastSnapshot should return the success build, not the snapshotting one
 	snapshot, err := db.SqlcClient.GetLastSnapshot(ctx, sandboxID)
 	require.NoError(t, err)
 
 	assert.Equal(t, successBuildID, snapshot.EnvBuild.ID,
-		"GetLastSnapshot should only return builds with status='success'")
+		"GetLastSnapshot should only return builds with status IN ('success', 'uploaded')")
 }
 
 // TestGetSnapshotsWithCursor_ReturnsLatestAssignment verifies that GetSnapshotsWithCursor

@@ -6,11 +6,13 @@ SELECT e.id, e.team_id, e.public
 FROM public.env_aliases AS ea
 JOIN public.envs AS e ON e.id = ea.env_id
 WHERE ea.alias = @alias
-  AND ea.namespace IS NOT DISTINCT FROM sqlc.narg(namespace)::text;
+  AND ea.namespace IS NOT DISTINCT FROM sqlc.narg(namespace)::text
+  AND e.source = 'template';
 
 -- name: GetTemplateById :one
 -- Looks up a template by its ID directly
 -- @template_id: the template ID to look up
 SELECT e.id, e.team_id, e.public
 FROM public.envs AS e
-WHERE e.id = @template_id;
+WHERE e.id = @template_id
+  AND e.source = 'template';

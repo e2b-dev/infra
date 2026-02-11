@@ -41,3 +41,12 @@ packages:
           dir: packages/shared/pkg/utils
           filename: mocks_test.go
           pkgname: utils
+
+  github.com/e2b-dev/infra/packages/api/internal/handlers:
+    interfaces:
+      featureFlagsClient:
+        config:
+          dir: packages/api/internal/handlers/mocks
+          filename: mockfeatureflagsclient.go
+          pkgname: handlersmocks
+          structname: MockFeatureFlagsClient
