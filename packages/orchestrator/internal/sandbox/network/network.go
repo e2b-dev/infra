@@ -325,7 +325,7 @@ func (s *Slot) RemoveNetwork() error {
 	}
 
 	// Delete NFS proxy redirect rule
-	err = tables.Append("nat", "PREROUTING",
+	err = tables.Delete("nat", "PREROUTING",
 		"--in-interface", s.VethName(), "--protocol", "tcp",
 		"--destination", s.config.OrchestratorInSandboxIPAddress, "--dport", "2049",
 		"--jump", "REDIRECT", "--to-port", strconv.Itoa(int(s.config.NFSProxyPort)),
@@ -335,7 +335,7 @@ func (s *Slot) RemoveNetwork() error {
 	}
 
 	// Delete portmapper redirect rule
-	err = tables.Append("nat", "PREROUTING",
+	err = tables.Delete("nat", "PREROUTING",
 		"--in-interface", s.VethName(), "--protocol", "tcp",
 		"--destination", s.config.OrchestratorInSandboxIPAddress, "--dport", "111",
 		"--jump", "REDIRECT", "--to-port", strconv.Itoa(int(s.config.PortmapperPort)),
