@@ -98,7 +98,7 @@ func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templa
 		logger.WithBuildID(buildID.String()))
 
 	// Use GetOrSet to prevent cache stampede for concurrent requests for the same buildID
-	return c.l1Cache.GetOrSet(ctx, buildID, func(ctx context.Context, key uuid.UUID) (TemplateBuildInfo, error) {
+	return c.l1Cache.GetOrSet(ctx, buildID, func(ctx context.Context, _ uuid.UUID) (TemplateBuildInfo, error) {
 		info, err = c.fetchFromDB(ctx, buildID, templateID)
 		if err != nil {
 			return TemplateBuildInfo{}, err

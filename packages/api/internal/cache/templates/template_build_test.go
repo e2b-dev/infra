@@ -31,7 +31,7 @@ func TestRedisTemplatesBuildCache_Get_L1Hit(t *testing.T) {
 	}
 
 	// Store directly in L1 cache
-	cache.l1Cache.Set(buildID, info, l1CacheTTL)
+	cache.l1Cache.Set(buildID, info)
 
 	// Get should return from L1 without hitting Redis or DB
 	result, err := cache.Get(ctx, buildID, "test-template")
@@ -128,7 +128,7 @@ func TestRedisTemplatesBuildCache_SetStatus_UpdatesAndInvalidatesL1(t *testing.T
 	}
 
 	// Store in L1 and Redis
-	cache.l1Cache.Set(buildID, info, l1CacheTTL)
+	cache.l1Cache.Set(buildID, info)
 	buildJSON, err := json.Marshal(info)
 	require.NoError(t, err)
 
@@ -141,7 +141,8 @@ func TestRedisTemplatesBuildCache_SetStatus_UpdatesAndInvalidatesL1(t *testing.T
 	cache.SetStatus(ctx, buildID, types.BuildStatusGroupReady, newReason)
 
 	// L1 should be invalidated
-	l1Item := cache.l1Cache.Get(buildID)
+	l1Item, ok := cache.l1Cache.Get(buildID)
+	assert.False(t, ok)
 	assert.Nil(t, l1Item, "L1 cache should be invalidated after SetStatus")
 
 	// Redis should be updated
@@ -151,6 +152,6 @@ func TestRedisTemplatesBuildCache_SetStatus_UpdatesAndInvalidatesL1(t *testing.T
 	var updatedInfo TemplateBuildInfo
 	err = json.Unmarshal(data, &updatedInfo)
 	require.NoError(t, err)
-	assert.Equal(t, types.BuildStatusUploaded, updatedInfo.BuildStatus)
+	assert.Equal(t, types.BuildStatusGroupReady, updatedInfo.BuildStatus)
 	assert.Equal(t, "Build completed successfully", updatedInfo.Reason.Message)
 }
