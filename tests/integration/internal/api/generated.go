@@ -1176,6 +1176,21 @@ type VolumeDirectoryListing struct {
 	Files *[]VolumeDirectoryItem `json:"files,omitempty"`
 }
 
+// VolumeStat defines model for VolumeStat.
+type VolumeStat struct {
+	Ctime       time.Time `json:"ctime"`
+	Group       float32   `json:"group"`
+	Mode        float32   `json:"mode"`
+	Mtime       time.Time `json:"mtime"`
+	Name        string    `json:"name"`
+	Owner       float32   `json:"owner"`
+	Path        string    `json:"path"`
+	Permissions float32   `json:"permissions"`
+	Size        float32   `json:"size"`
+	Target      *string   `json:"target,omitempty"`
+	Type        string    `json:"type"`
+}
+
 // AccessTokenID defines model for accessTokenID.
 type AccessTokenID = string
 
@@ -1385,6 +1400,11 @@ type GetVolumesVolumeIDFileParams struct {
 
 // PostVolumesVolumeIDFileParams defines parameters for PostVolumesVolumeIDFile.
 type PostVolumesVolumeIDFileParams struct {
+	Path Path `form:"path" json:"path"`
+}
+
+// GetVolumesVolumeIDStatParams defines parameters for GetVolumesVolumeIDStat.
+type GetVolumesVolumeIDStatParams struct {
 	Path Path `form:"path" json:"path"`
 }
 
@@ -1839,6 +1859,9 @@ type ClientInterface interface {
 
 	// PostVolumesVolumeIDFileWithBody request with any body
 	PostVolumesVolumeIDFileWithBody(ctx context.Context, volumeID VolumeID, params *PostVolumesVolumeIDFileParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetVolumesVolumeIDStat request
+	GetVolumesVolumeIDStat(ctx context.Context, volumeID VolumeID, params *GetVolumesVolumeIDStatParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
 func (c *Client) PostAccessTokensWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -2719,6 +2742,18 @@ func (c *Client) GetVolumesVolumeIDFile(ctx context.Context, volumeID VolumeID, 
 
 func (c *Client) PostVolumesVolumeIDFileWithBody(ctx context.Context, volumeID VolumeID, params *PostVolumesVolumeIDFileParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPostVolumesVolumeIDFileRequestWithBody(c.Server, volumeID, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetVolumesVolumeIDStat(ctx context.Context, volumeID VolumeID, params *GetVolumesVolumeIDStatParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetVolumesVolumeIDStatRequest(c.Server, volumeID, params)
 	if err != nil {
 		return nil, err
 	}
@@ -5415,6 +5450,58 @@ func NewPostVolumesVolumeIDFileRequestWithBody(server string, volumeID VolumeID,
 	return req, nil
 }
 
+// NewGetVolumesVolumeIDStatRequest generates requests for GetVolumesVolumeIDStat
+func NewGetVolumesVolumeIDStatRequest(server string, volumeID VolumeID, params *GetVolumesVolumeIDStatParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "volumeID", runtime.ParamLocationPath, volumeID)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/volumes/%s/stat", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "path", runtime.ParamLocationQuery, params.Path); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 func (c *Client) applyEditors(ctx context.Context, req *http.Request, additionalEditors []RequestEditorFn) error {
 	for _, r := range c.RequestEditors {
 		if err := r(ctx, req); err != nil {
@@ -5660,6 +5747,9 @@ type ClientWithResponsesInterface interface {
 
 	// PostVolumesVolumeIDFileWithBodyWithResponse request with any body
 	PostVolumesVolumeIDFileWithBodyWithResponse(ctx context.Context, volumeID VolumeID, params *PostVolumesVolumeIDFileParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostVolumesVolumeIDFileResponse, error)
+
+	// GetVolumesVolumeIDStatWithResponse request
+	GetVolumesVolumeIDStatWithResponse(ctx context.Context, volumeID VolumeID, params *GetVolumesVolumeIDStatParams, reqEditors ...RequestEditorFn) (*GetVolumesVolumeIDStatResponse, error)
 }
 
 type PostAccessTokensResponse struct {
@@ -7001,6 +7091,29 @@ func (r PostVolumesVolumeIDFileResponse) StatusCode() int {
 	return 0
 }
 
+type GetVolumesVolumeIDStatResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *VolumeStat
+	JSON404      *N404
+}
+
+// Status returns HTTPResponse.Status
+func (r GetVolumesVolumeIDStatResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetVolumesVolumeIDStatResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 // PostAccessTokensWithBodyWithResponse request with arbitrary body returning *PostAccessTokensResponse
 func (c *ClientWithResponses) PostAccessTokensWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostAccessTokensResponse, error) {
 	rsp, err := c.PostAccessTokensWithBody(ctx, contentType, body, reqEditors...)
@@ -7646,6 +7759,15 @@ func (c *ClientWithResponses) PostVolumesVolumeIDFileWithBodyWithResponse(ctx co
 		return nil, err
 	}
 	return ParsePostVolumesVolumeIDFileResponse(rsp)
+}
+
+// GetVolumesVolumeIDStatWithResponse request returning *GetVolumesVolumeIDStatResponse
+func (c *ClientWithResponses) GetVolumesVolumeIDStatWithResponse(ctx context.Context, volumeID VolumeID, params *GetVolumesVolumeIDStatParams, reqEditors ...RequestEditorFn) (*GetVolumesVolumeIDStatResponse, error) {
+	rsp, err := c.GetVolumesVolumeIDStat(ctx, volumeID, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetVolumesVolumeIDStatResponse(rsp)
 }
 
 // ParsePostAccessTokensResponse parses an HTTP response from a PostAccessTokensWithResponse call
@@ -9975,6 +10097,39 @@ func ParsePostVolumesVolumeIDFileResponse(rsp *http.Response) (*PostVolumesVolum
 			return nil, err
 		}
 		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetVolumesVolumeIDStatResponse parses an HTTP response from a GetVolumesVolumeIDStatWithResponse call
+func ParseGetVolumesVolumeIDStatResponse(rsp *http.Response) (*GetVolumesVolumeIDStatResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetVolumesVolumeIDStatResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest VolumeStat
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	}
 

@@ -1726,6 +1726,45 @@ components:
           format: date-time
           description: Last modification time of the file or directory
 
+    VolumeStat:
+      type: object
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+        path:
+          type: string
+        size:
+          type: number
+        mode:
+          type: number
+        permissions:
+          type: number
+        owner:
+          type: number
+        group:
+          type: number
+        mtime:
+          type: string
+          format: date-time
+        ctime:
+          type: string
+          format: date-time
+        target:
+          type: string
+      required:
+        - name
+        - type
+        - path
+        - size
+        - mode
+        - permissions
+        - owner
+        - group
+        - mtime
+        - ctime
+
     VolumeDirectoryListing:
       type: object
       properties:
@@ -3160,6 +3199,28 @@ paths:
           $ref: "#/components/responses/404"
         "500":
           $ref: "#/components/responses/500"
+
+  /volumes/{volumeID}/stat:
+    get:
+      description: Get path information
+      tags: [volumes]
+      security:
+        - AccessTokenAuth: []
+        - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/volumeID"
+        - $ref: "#/components/parameters/path"
+      responses:
+        "200":
+          description: Successfully retrieved path information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VolumeStat"
+        "404":
+          $ref: "#/components/responses/404"
 
   /volumes/{volumeID}/dir:
     get:
