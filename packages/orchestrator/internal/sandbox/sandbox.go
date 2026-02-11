@@ -672,7 +672,8 @@ func (f *Factory) ResumeSandbox(
 	telemetry.ReportEvent(execCtx, "envd initialized")
 
 	if f.featureFlags.BoolFlag(execCtx, featureflags.HostStatsEnabled) {
-		initializeHostStatsCollector(execCtx, sbx, fcHandle, meta.Template.BuildID, runtime, config, f.hostStatsDelivery)
+		samplingInterval := time.Duration(f.featureFlags.IntFlag(execCtx, featureflags.HostStatsSamplingInterval)) * time.Millisecond
+		initializeHostStatsCollector(execCtx, sbx, fcHandle, meta.Template.BuildID, runtime, config, f.hostStatsDelivery, samplingInterval)
 	}
 
 	go sbx.Checks.Start(execCtx)

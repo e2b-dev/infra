@@ -43,6 +43,7 @@ const (
 	gcsOperationAttrWriteFromFileSystem        = "WriteFromFileSystem"
 	gcsOperationAttrWriteFromFileSystemOneShot = "WriteFromFileSystemOneShot"
 	gcsOperationAttrWriteTo                    = "WriteTo"
+	gcsOperationAttrSize                       = "Size"
 )
 
 var (
@@ -208,11 +209,15 @@ func (o *gcpObject) Exists(ctx context.Context) (bool, error) {
 }
 
 func (o *gcpObject) Size(ctx context.Context) (int64, error) {
+	timer := googleReadTimerFactory.Begin(attribute.String(gcsOperationAttr, gcsOperationAttrSize))
+
 	ctx, cancel := context.WithTimeout(ctx, googleOperationTimeout)
 	defer cancel()
 
 	attrs, err := o.handle.Attrs(ctx)
 	if err != nil {
+		timer.Failure(ctx, 0)
+
 		if errors.Is(err, storage.ErrObjectNotExist) {
 			// use ours instead of theirs
 			return 0, fmt.Errorf("failed to get GCS object (%q) attributes: %w", o.path, ErrObjectNotExist)
@@ -220,6 +225,8 @@ func (o *gcpObject) Size(ctx context.Context) (int64, error) {
 
 		return 0, fmt.Errorf("failed to get GCS object (%q) attributes: %w", o.path, err)
 	}
+
+	timer.Success(ctx, 0)
 
 	return attrs.Size, nil
 }
