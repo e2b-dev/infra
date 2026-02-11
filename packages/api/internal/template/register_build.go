@@ -96,7 +96,7 @@ func RegisterBuild(
 	}
 
 	// Always include default tag so template is resolvable by bare name
-	tags := data.Tags
+	tags := slices.Clone(data.Tags)
 	if !slices.Contains(tags, id.DefaultTag) {
 		tags = append(tags, id.DefaultTag)
 	}
