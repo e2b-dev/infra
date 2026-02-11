@@ -321,7 +321,7 @@ func instanceInfoToPaginatedSandboxes(runningSandboxes []sandbox.Sandbox) []util
 }
 
 func convertToAPIVolumeMounts(mounts []*dbtypes.SandboxVolumeMountConfig) []api.SandboxVolumeMount {
-	var results []api.SandboxVolumeMount
+	results := make([]api.SandboxVolumeMount, 0, len(mounts))
 
 	for _, item := range mounts {
 		results = append(results, api.SandboxVolumeMount{

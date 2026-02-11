@@ -149,30 +149,30 @@ func createTestSandbox() sandbox.Sandbox {
 		"test-sandbox-"+uuid.New().String()[:8],
 		"test-template",
 		consts.ClientID,
-		nil,
-		"",
+		nil, // alias
+		"",  // executionID
 		uuid.New(),
 		uuid.New(),
 		map[string]string{"test": "metadata"},
-		time.Hour,
-		time.Now(),
-		time.Now().Add(time.Hour),
-		2,
-		1024,
-		512,
-		"5.10",
-		"1.0",
-		"1.0",
+		time.Hour,                 // maxInstanceLength
+		time.Now(),                // startTime
+		time.Now().Add(time.Hour), // endTime
+		2,                         // vcpu
+		1024,                      // diskMB
+		512,                       // ramMB
+		"5.10",                    // kernel
+		"1.0",                     // firecracker
+		"1.0",                     // envd
 		"node-1",
 		uuid.New(),
-		false,
-		nil,
-		nil,
+		false, // autoPause
+		nil,   // envdAccessToken
+		nil,   // allowInternetAccess
 		"base-template",
-		nil,
-		nil,
-		nil,
-		nil,
+		nil, // domain
+		nil, // network
+		nil, // trafficAccessToken
+		nil, // volumes
 	)
 }
 

@@ -339,7 +339,7 @@ func (o *Orchestrator) CreateSandbox(
 }
 
 func buildVolumeMounts(mounts []*orchestrator.SandboxVolumeMount) []*types.SandboxVolumeMountConfig {
-	var results []*types.SandboxVolumeMountConfig
+	results := make([]*types.SandboxVolumeMountConfig, 0, len(mounts))
 
 	for _, item := range mounts {
 		results = append(results, &types.SandboxVolumeMountConfig{
