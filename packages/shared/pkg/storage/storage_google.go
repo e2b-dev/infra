@@ -226,7 +226,7 @@ func (o *gcpObject) Size(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("failed to get GCS object (%q) attributes: %w", o.path, err)
 	}
 
-	timer.Success(ctx, attrs.Size)
+	timer.Success(ctx, 0)
 
 	return attrs.Size, nil
 }
