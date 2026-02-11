@@ -35,22 +35,24 @@ func main() {
 	var err error
 	var opts cleaner.Options
 
+	var lp telemetry.LogProvider
+	opts, log, lp, err = preRun(ctx)
+	if err != nil {
+		fmt.Println("NFS cache cleaner failed:", err)
+		if lp != nil {
+			lp.Shutdown(ctx)
+		}
+		os.Exit(1)
+	}
+
 	defer func() {
 		if err != nil {
-			if log != nil {
-				log.Error(ctx, "NFS cache cleaner failed", zap.Error(err))
-			} else {
-				fmt.Println("NFS cache cleaner failed:", err)
-			}
-			os.Exit(1)
+			log.Error(ctx, "NFS cache cleaner failed", zap.Error(err))
+			defer os.Exit(1)
 		}
+		log.Sync()
+		lp.Shutdown(ctx)
 	}()
-
-	opts, log, err = preRun(ctx)
-	if err != nil {
-		return
-	}
-	defer log.Sync()
 
 	start := time.Now()
 	log.Info(ctx, "starting",
@@ -102,7 +104,7 @@ func main() {
 		zap.Duration("std_deviation", sd.Round(time.Second)))
 }
 
-func preRun(ctx context.Context) (cleaner.Options, logger.Logger, error) {
+func preRun(ctx context.Context) (cleaner.Options, logger.Logger, telemetry.LogProvider, error) {
 	var opts cleaner.Options
 	var featureFlagPresent bool
 
@@ -121,18 +123,18 @@ func preRun(ctx context.Context) (cleaner.Options, logger.Logger, error) {
 
 	args := os.Args[1:] // skip the command name
 	if err := flags.Parse(args); err != nil {
-		return opts, nil, fmt.Errorf("could not parse flags: %w", err)
+		return opts, nil, nil, fmt.Errorf("could not parse flags: %w", err)
 	}
 
 	args = flags.Args()
 	if len(args) != 1 {
-		return opts, nil, ErrUsage
+		return opts, nil, nil, ErrUsage
 	}
 	opts.Path = args[0]
 
 	ffc, err := featureflags.NewClient()
 	if err != nil {
-		return opts, nil, err
+		return opts, nil, nil, err
 	}
 	defer ffc.Close(ctx)
 
@@ -161,10 +163,13 @@ func preRun(ctx context.Context) (cleaner.Options, logger.Logger, error) {
 	}
 
 	var cores []zapcore.Core
+	logProvider := telemetry.NewNoopLogProvider()
 	if opts.OtelCollectorEndpoint != "" {
-		otelCore, err := newOtelCore(ctx, opts.OtelCollectorEndpoint)
+		var otelCore zapcore.Core
+		var err error
+		otelCore, logProvider, err = newOtelCore(ctx, opts.OtelCollectorEndpoint)
 		if err != nil {
-			return opts, nil, fmt.Errorf("failed to create otel logger: %w", err)
+			return opts, nil, nil, fmt.Errorf("failed to create otel logger: %w", err)
 		}
 		cores = append(cores, otelCore)
 	}
@@ -188,7 +193,11 @@ func preRun(ctx context.Context) (cleaner.Options, logger.Logger, error) {
 			diskInfo, err = cleaner.GetDiskInfo(ctx, opts.Path)
 		})
 		if err != nil {
-			return opts, nil, fmt.Errorf("could not get disk info: %w", err)
+			if logProvider != nil {
+				logProvider.Shutdown(ctx)
+			}
+
+			return opts, nil, nil, fmt.Errorf("could not get disk info: %w", err)
 		}
 		targetDiskUsage := uint64(opts.TargetDiskUsagePercent / 100 * float64(diskInfo.Total))
 		if uint64(diskInfo.Used) > targetDiskUsage {
@@ -196,29 +205,25 @@ func preRun(ctx context.Context) (cleaner.Options, logger.Logger, error) {
 		}
 	}
 
-	return opts, l, nil
+	return opts, l, logProvider, nil
 }
 
-func newOtelCore(ctx context.Context, endpoint string) (zapcore.Core, error) {
+func newOtelCore(ctx context.Context, endpoint string) (zapcore.Core, telemetry.LogProvider, error) {
 	nodeID := env.GetNodeID()
 	serviceInstanceID := uuid.NewString()
 
 	resource, err := telemetry.GetResource(ctx, nodeID, serviceName, commitSHA, serviceVersion, serviceInstanceID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create resource: %w", err)
+		return nil, nil, fmt.Errorf("failed to create resource: %w", err)
 	}
 
-	logsExporter, err := telemetry.NewLogExporter(ctx,
-		otlploggrpc.WithEndpoint(endpoint),
-	)
+	logProvider, err := telemetry.NewLogProvider(ctx, resource, otlploggrpc.WithEndpoint(endpoint))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create logs exporter: %w", err)
+		return nil, nil, err
 	}
+	otelCore := logger.GetOTELCore(logProvider, serviceName)
 
-	loggerProvider := telemetry.NewLogProvider(logsExporter, resource)
-	otelCore := logger.GetOTELCore(loggerProvider, serviceName)
-
-	return otelCore, nil
+	return otelCore, logProvider, nil
 }
 
 func standardDeviation(accessed []time.Duration) (mean, stddev time.Duration) {

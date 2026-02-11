@@ -22,7 +22,7 @@ type fakeTemplateManagerClient struct {
 	getStatusErr      error
 }
 
-func (f fakeTemplateManagerClient) SetStatus(context.Context, uuid.UUID, types.BuildStatus, *templatemanagergrpc.TemplateBuildStatusReason) error {
+func (f fakeTemplateManagerClient) SetStatus(context.Context, uuid.UUID, types.BuildStatusGroup, *templatemanagergrpc.TemplateBuildStatusReason) error {
 	return f.setStatusError
 }
 
