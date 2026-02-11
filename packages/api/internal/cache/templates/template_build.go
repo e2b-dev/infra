@@ -97,18 +97,19 @@ func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templa
 	logger.L().Debug(ctx, "Template build info not found in cache, fetching from DB",
 		logger.WithBuildID(buildID.String()))
 
-	info, err = c.fetchFromDB(ctx, buildID, templateID)
-	if err != nil {
-		return TemplateBuildInfo{}, err
-	}
+	// Use GetOrSet to prevent cache stampede for concurrent requests for the same buildID
+	return c.l1Cache.GetOrSet(ctx, buildID, func(ctx context.Context, key uuid.UUID) (TemplateBuildInfo, error) {
+		info, err = c.fetchFromDB(ctx, buildID, templateID)
+		if err != nil {
+			return TemplateBuildInfo{}, err
+		}
 
-	// Store in both L1 and L2 (Redis)
-	c.l1Cache.Set(buildID, info)
-	if storeErr := c.storeInRedis(ctx, buildID, info); storeErr != nil {
-		logger.L().Warn(ctx, "Failed to store build info in Redis",
-			logger.WithBuildID(buildID.String()),
-			zap.Error(storeErr))
-	}
+		if storeErr := c.storeInRedis(ctx, buildID, info); storeErr != nil {
+			logger.L().Warn(ctx, "Failed to store build info in Redis",
+				logger.WithBuildID(buildID.String()),
+				zap.Error(storeErr))
+		}
 
-	return info, nil
+		return info, nil
+	})
 }
