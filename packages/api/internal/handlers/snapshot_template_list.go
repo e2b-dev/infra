@@ -51,9 +51,16 @@ func (a *APIStore) GetSnapshots(c *gin.Context, params api.GetSnapshotsParams) {
 		return
 	}
 
+	// Shorten the sandbox ID to match the format stored in the DB
+	sandboxID := params.SandboxID
+	if sandboxID != nil {
+		shortened := utils.ShortID(*sandboxID)
+		sandboxID = &shortened
+	}
+
 	snapshots, err := a.sqlcDB.ListTeamSnapshotTemplates(ctx, queries.ListTeamSnapshotTemplatesParams{
 		TeamID:     teamID,
-		SandboxID:  params.SandboxID,
+		SandboxID:  sandboxID,
 		CursorTime: pagination.CursorTime(),
 		CursorID:   pagination.CursorID(),
 		PageLimit:  pagination.QueryLimit(),

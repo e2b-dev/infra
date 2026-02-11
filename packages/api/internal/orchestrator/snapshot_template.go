@@ -53,7 +53,12 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 		return SnapshotTemplateResult{}, fmt.Errorf("failed to start snapshotting: %w", err)
 	}
 
+	// Track whether we created a new snapshot template env for cleanup on failure
+	var createdNewSnapshotTemplate bool
+	var snapshotTemplateEnvID string
+
 	// Ensure we transition back to running when done (success or failure)
+	// Also cleanup DB records if the operation failed after creating them
 	defer func() {
 		_, updateErr := o.sandboxStore.Update(ctx, sbx.TeamID, sbx.SandboxID, func(s sandbox.Sandbox) (sandbox.Sandbox, error) {
 			if s.State == sandbox.StateSnapshotting {
@@ -63,6 +68,18 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 			return s, nil
 		})
 		e = errors.Join(e, updateErr)
+
+		// If there was an error and we created a new snapshot template env, delete it
+		// This deletes the env, which cascades to delete snapshot_template and env_build_assignment records
+		if e != nil && createdNewSnapshotTemplate && snapshotTemplateEnvID != "" {
+			cleanupErr := o.sqlcDB.DeleteTemplate(ctx, queries.DeleteTemplateParams{
+				TemplateID: snapshotTemplateEnvID,
+				TeamID:     teamID,
+			})
+			if cleanupErr != nil {
+				telemetry.ReportError(ctx, "failed to cleanup snapshot template on error", cleanupErr)
+			}
+		}
 	}()
 
 	node := o.GetNode(sbx.ClusterID, sbx.NodeID)
@@ -77,10 +94,12 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 	}
 
 	// Step 2: Resolve or create the snapshot template env
-	snapshotTemplateEnvID, err := o.resolveOrCreateSnapshotTemplate(ctx, sandboxID, teamID, upsertResult.BuildID, opts)
+	snapshotTemplateEnvID, err = o.resolveOrCreateSnapshotTemplate(ctx, sandboxID, teamID, upsertResult.BuildID, opts)
 	if err != nil {
 		return SnapshotTemplateResult{}, err
 	}
+	// Track if we created a new snapshot template for cleanup on failure
+	createdNewSnapshotTemplate = opts.ExistingTemplateID == nil
 
 	// Step 3: Call the node's Checkpoint gRPC - this pauses and resumes atomically
 	client, childCtx := node.GetClient(ctx)

@@ -474,10 +474,11 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 	s.publishSandboxEvent(ctx, resumedSbx, "sandbox.checkpointed")
 
 	// Wait for snapshot upload to complete before returning
+	// If upload fails at this point, we log the error but don't fail the checkpoint
+	// since the sandbox has already been resumed successfully
 	if err := waitForUpload(); err != nil {
 		telemetry.ReportCriticalError(ctx, "error uploading snapshot for checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
-
-		return nil, status.Errorf(codes.Internal, "error uploading snapshot for checkpoint '%s': %s", in.GetSandboxId(), err)
+		sbxlogger.I(resumedSbx).Error(ctx, "snapshot upload failed after successful resume, checkpoint completed but snapshot may not be persisted", zap.Error(err))
 	}
 
 	telemetry.ReportEvent(ctx, "Checkpoint completed")

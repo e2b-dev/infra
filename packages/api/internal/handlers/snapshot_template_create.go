@@ -124,7 +124,7 @@ func (a *APIStore) PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID api
 	}
 
 	// Build names from aliases + tag
-	var names []string
+	names := []string{}
 	if opts.Alias != nil && opts.Namespace != nil {
 		name := id.WithNamespace(*opts.Namespace, *opts.Alias)
 		if opts.Tag != id.DefaultTag {
