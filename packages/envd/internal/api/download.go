@@ -119,21 +119,12 @@ func (a *API) GetFiles(w http.ResponseWriter, r *http.Request, params GetFilesPa
 
 	// Fall back to identity for Range or conditional requests to preserve http.ServeContent
 	// behavior (206 Partial Content, 304 Not Modified). Accept-Encoding is advisory per HTTP
-	// spec, so the server can always choose to ignore it — unless the client explicitly
-	// forbade identity encoding, in which case we must respond 406.
+	// spec, so the server can always choose to ignore it.
 	hasRangeOrConditional := r.Header.Get("Range") != "" ||
 		r.Header.Get("If-Modified-Since") != "" ||
 		r.Header.Get("If-None-Match") != "" ||
 		r.Header.Get("If-Range") != ""
-	if hasRangeOrConditional && encoding != EncodingIdentity {
-		if !isIdentityAcceptable(r) {
-			errMsg = fmt.Errorf("identity encoding not acceptable and required for range/conditional requests")
-			errorCode = http.StatusNotAcceptable
-			jsonError(w, errorCode, errMsg)
-
-			return
-		}
-
+	if hasRangeOrConditional {
 		encoding = EncodingIdentity
 	}
 

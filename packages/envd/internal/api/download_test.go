@@ -170,11 +170,14 @@ func TestGetFiles_GzipEncoding_ExplicitIdentityOffWithRange(t *testing.T) {
 	currentUser, err := user.Current()
 	require.NoError(t, err)
 
+	// Create a temp directory with a test file
 	tempDir := t.TempDir()
-	tempFile := filepath.Join(tempDir, "test.txt")
+	filename := "document.pdf"
+	tempFile := filepath.Join(tempDir, filename)
 	err = os.WriteFile(tempFile, []byte("test content"), 0o644)
 	require.NoError(t, err)
 
+	// Create test API
 	logger := zerolog.Nop()
 	defaults := &execcontext.Defaults{
 		EnvVars: utils.NewMap[string, string](),
@@ -182,17 +185,20 @@ func TestGetFiles_GzipEncoding_ExplicitIdentityOffWithRange(t *testing.T) {
 	}
 	api := New(&logger, defaults, nil, false)
 
+	// Create request and response recorder
 	req := httptest.NewRequest(http.MethodGet, "/files?path="+url.QueryEscape(tempFile), nil)
-	req.Header.Set("Accept-Encoding", "gzip;q=1, *;q=0")
-	req.Header.Set("Range", "bytes=0-5")
+	req.Header.Set("Accept-Encoding", "gzip; q=1,*; q=0")
+	req.Header.Set("Range", "bytes=0-4") // Request first 5 bytes
 	w := httptest.NewRecorder()
 
+	// Call the handler
 	params := GetFilesParams{
 		Path:     &tempFile,
 		Username: &currentUser.Username,
 	}
 	api.GetFiles(w, req, params)
 
+	// Check response
 	resp := w.Result()
 	defer resp.Body.Close()
 
