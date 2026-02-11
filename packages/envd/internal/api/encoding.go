@@ -91,6 +91,51 @@ func parseContentEncoding(r *http.Request) (string, error) {
 	return encoding, nil
 }
 
+// isIdentityAcceptable checks if identity encoding is acceptable based on the
+// Accept-Encoding header. Per RFC 7231 section 5.3.4, identity is always
+// implicitly acceptable unless explicitly rejected with q=0.
+func isIdentityAcceptable(r *http.Request) bool {
+	header := r.Header.Get("Accept-Encoding")
+	if header == "" {
+		return true
+	}
+
+	// Parse all encodings with their quality values
+	var encodings []encodingWithQuality
+	for value := range strings.SplitSeq(header, ",") {
+		eq := parseEncodingWithQuality(value)
+		encodings = append(encodings, eq)
+	}
+
+	// Check if identity is rejected per RFC 7231 Section 5.3.4:
+	// identity is acceptable unless excluded by "identity;q=0" or "*;q=0"
+	// without a more specific entry for identity with q>0.
+	identityRejected := false
+	identityExplicitlyAccepted := false
+	wildcardRejected := false
+
+	for _, eq := range encodings {
+		switch eq.encoding {
+		case EncodingIdentity:
+			if eq.quality == 0 {
+				identityRejected = true
+			} else {
+				identityExplicitlyAccepted = true
+			}
+		case EncodingWildcard:
+			if eq.quality == 0 {
+				wildcardRejected = true
+			}
+		}
+	}
+
+	if wildcardRejected && !identityExplicitlyAccepted {
+		identityRejected = true
+	}
+
+	return !identityRejected
+}
+
 // parseAcceptEncoding parses the Accept-Encoding header and returns the best
 // supported encoding based on quality values. Per RFC 7231 section 5.3.4,
 // identity is always implicitly acceptable unless explicitly rejected with q=0.
