@@ -142,6 +142,7 @@ func parseAcceptEncodingHeader(header string) ([]encodingWithQuality, bool) {
 func isIdentityAcceptable(r *http.Request) bool {
 	header := r.Header.Get("Accept-Encoding")
 	_, identityRejected := parseAcceptEncodingHeader(header)
+
 	return !identityRejected
 }
 
