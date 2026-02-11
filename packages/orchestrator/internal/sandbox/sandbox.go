@@ -397,8 +397,6 @@ func (f *Factory) initializeHostStatsCollector(
 	teamID, err := uuid.Parse(runtime.TeamID)
 	if err != nil {
 		logger.L().Error(ctx, "error parsing team ID", logger.WithTeamID(runtime.TeamID), zap.Error(err))
-
-		return
 	}
 
 	collector, err := NewHostStatsCollector(
