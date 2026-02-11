@@ -21,7 +21,6 @@ import (
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -254,17 +253,18 @@ func snapshotsToPaginatedSandboxes(ctx context.Context, snapshots []queries.GetS
 
 		sandbox := utils.PaginatedSandbox{
 			ListedSandbox: api.ListedSandbox{
-				ClientID:    consts.ClientID, // for backwards compatibility we need to return a client id
-				Alias:       alias,
-				TemplateID:  snapshot.BaseEnvID,
-				SandboxID:   snapshot.SandboxID,
-				StartedAt:   snapshot.SandboxStartedAt.Time,
-				CpuCount:    int32(build.Vcpu),
-				MemoryMB:    int32(build.RamMb),
-				DiskSizeMB:  diskSize,
-				EndAt:       snapshot.CreatedAt.Time,
-				State:       api.Paused,
-				EnvdVersion: envdVersion,
+				ClientID:     consts.ClientID, // for backwards compatibility we need to return a client id
+				Alias:        alias,
+				TemplateID:   snapshot.BaseEnvID,
+				SandboxID:    snapshot.SandboxID,
+				StartedAt:    snapshot.SandboxStartedAt.Time,
+				CpuCount:     int32(build.Vcpu),
+				MemoryMB:     int32(build.RamMb),
+				DiskSizeMB:   diskSize,
+				EndAt:        snapshot.CreatedAt.Time,
+				State:        api.Paused,
+				EnvdVersion:  envdVersion,
+				VolumeMounts: convertToAPIVolumeMounts(snapshot.Config.VolumeMounts),
 			},
 			PaginationTimestamp: snapshot.SandboxStartedAt.Time,
 		}
@@ -286,7 +286,7 @@ func instanceInfoToPaginatedSandboxes(runningSandboxes []sandbox.Sandbox) []util
 	// Add running sandboxes to results
 	for _, info := range runningSandboxes {
 		state := api.Running
-		// If the sandbox is pausing, for the user it behaves the like a paused sandbox - it can be resumed, etc.
+		// If the sandbox is pausing, for the user it behaves like a paused sandbox - it can be resumed, etc.
 		if info.State == sandbox.StatePausing {
 			state = api.Paused
 		}
@@ -320,13 +320,13 @@ func instanceInfoToPaginatedSandboxes(runningSandboxes []sandbox.Sandbox) []util
 	return sandboxes
 }
 
-func convertToAPIVolumeMounts(mounts []*orchestrator.SandboxVolumeMount) []api.SandboxVolumeMount {
+func convertToAPIVolumeMounts(mounts []*dbtypes.SandboxVolumeMountConfig) []api.SandboxVolumeMount {
 	var results []api.SandboxVolumeMount
 
 	for _, item := range mounts {
 		results = append(results, api.SandboxVolumeMount{
-			Name: item.GetName(),
-			Path: item.GetPath(),
+			Name: item.Name,
+			Path: item.Path,
 		})
 	}
 

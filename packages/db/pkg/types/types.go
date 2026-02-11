@@ -29,9 +29,15 @@ type SandboxNetworkConfig struct {
 	Ingress *SandboxNetworkIngressConfig `json:"ingress,omitempty"`
 }
 
+type SandboxVolumeMountConfig struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+}
+
 type PausedSandboxConfig struct {
-	Version string                `json:"version"`
-	Network *SandboxNetworkConfig `json:"network,omitempty"`
+	Version      string                      `json:"version"`
+	Network      *SandboxNetworkConfig       `json:"network,omitempty"`
+	VolumeMounts []*SandboxVolumeMountConfig `json:"volumes,omitempty"`
 }
 
 // Status defines the type for the "status" enum field.

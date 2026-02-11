@@ -13,6 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	ut "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -75,6 +76,8 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
 			}
 		}
 
+		volumeMounts := convertToVolumeMounts(config.GetVolumeMounts())
+
 		sandboxesInfo = append(
 			sandboxesInfo,
 			sandbox.NewSandbox(
@@ -104,10 +107,23 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
 				n.SandboxDomain,
 				network,
 				networkTrafficAccessToken,
-				config.GetVolumeMounts(),
+				volumeMounts,
 			),
 		)
 	}
 
 	return sandboxesInfo, nil
+}
+
+func convertToVolumeMounts(mounts []*orchestrator.SandboxVolumeMount) []*types.SandboxVolumeMountConfig {
+	var results []*types.SandboxVolumeMountConfig
+
+	for _, item := range mounts {
+		results = append(results, &types.SandboxVolumeMountConfig{
+			Name: item.GetName(),
+			Path: item.GetPath(),
+		})
+	}
+
+	return results
 }
