@@ -95,7 +95,7 @@ func GetTemplateStorageProvider(ctx context.Context, limiter *limit.Limiter) (St
 	if provider == LocalStorageProvider {
 		basePath := env.GetEnv("LOCAL_TEMPLATE_STORAGE_BASE_PATH", "/tmp/templates")
 
-		return newFileSystemStorage(basePath)
+		return newFileSystemStorage(basePath), nil
 	}
 
 	bucketName := utils.RequiredEnv("TEMPLATE_BUCKET_NAME", "Bucket for storing template files")
@@ -117,7 +117,7 @@ func GetBuildCacheStorageProvider(ctx context.Context, limiter *limit.Limiter) (
 	if provider == LocalStorageProvider {
 		basePath := env.GetEnv("LOCAL_BUILD_CACHE_STORAGE_BASE_PATH", "/tmp/build-cache")
 
-		return newFileSystemStorage(basePath)
+		return newFileSystemStorage(basePath), nil
 	}
 
 	bucketName := utils.RequiredEnv("BUILD_CACHE_BUCKET_NAME", "Bucket for storing template files")

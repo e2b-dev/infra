@@ -11,11 +11,11 @@ import (
 	"go.opentelemetry.io/otel"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/cache"
+	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -140,7 +140,7 @@ func (c *TemplateCache) fetchTemplateWithBuild(ctx context.Context, templateID s
 
 	build := &result.EnvBuild
 	template := result.Env
-	clusterID := utils.WithClusterFallback(template.ClusterID)
+	clusterID := clusters.WithClusterFallback(template.ClusterID)
 
 	tagValue := sharedUtils.DerefOrDefault(tag, id.DefaultTag)
 

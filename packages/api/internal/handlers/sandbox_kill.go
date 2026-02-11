@@ -18,6 +18,7 @@ import (
 	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -50,7 +51,7 @@ func (a *APIStore) deleteSnapshot(ctx context.Context, sandboxID string, teamID 
 				template_manager.DeleteBuild{
 					BuildID:    build.BuildID,
 					TemplateID: snapshot.TemplateID,
-					ClusterID:  utils.WithClusterFallback(teamClusterID),
+					ClusterID:  clusters.WithClusterFallback(teamClusterID),
 					NodeID:     build.ClusterNodeID,
 				},
 			)

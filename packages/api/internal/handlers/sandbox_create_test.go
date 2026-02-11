@@ -395,7 +395,7 @@ func TestOrchestrator_convertVolumeMounts(t *testing.T) {
 					Return(tc.volumesEnabled)
 			}
 
-			actual, err := createOrchestratorVolumeMounts(
+			actual, err := convertAPIVolumesToOrchestratorVolumes(
 				t.Context(), db.SqlcClient, ffClient,
 				teamID, tc.input,
 			)
@@ -423,7 +423,7 @@ func TestOrchestrator_convertVolumeMounts(t *testing.T) {
 			BoolFlag(mock.Anything, mock.Anything).
 			Return(true)
 
-		actual, err := createOrchestratorVolumeMounts(
+		actual, err := convertAPIVolumesToOrchestratorVolumes(
 			t.Context(), db.SqlcClient, ffClient,
 			teamID, []api.SandboxVolumeMount{
 				{Name: "vol1", Path: "/vol1"},

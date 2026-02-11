@@ -1,7 +1,12 @@
 name: Integration Tests
 
-on: [workflow_call]
-
+on:
+  workflow_call:
+    inputs:
+      publish:
+        type: boolean
+        description: "Whether to publish the results"
+        required: true
 jobs:
   integration_tests:
     runs-on: infra-tests
@@ -65,14 +70,14 @@ jobs:
         shell: bash
 
       - name: Upload Test Results
-        if: always()
+        if: always() && ${{ inputs.publish == true }}
         uses: actions/upload-artifact@v4
         with:
           name: Integration Tests Results
           path: ./tests/integration/test-results.xml
 
       - name: Upload Service Logs
-        if: always()
+        if: always() && ${{ inputs.publish == true }}
         uses: actions/upload-artifact@v4
         with:
           name: Service Logs

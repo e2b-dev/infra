@@ -28,6 +28,7 @@ import (
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
@@ -77,7 +78,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		return
 	}
 
-	clusterID := utils.WithClusterFallback(teamInfo.Team.ClusterID)
+	clusterID := clusters.WithClusterFallback(teamInfo.Team.ClusterID)
 	aliasInfo, err := a.templateCache.ResolveAlias(ctx, identifier, teamInfo.Team.Slug)
 	if err != nil {
 		apiErr := templatecache.ErrorToAPIError(err, identifier)
@@ -181,12 +182,12 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		}
 	}
 
-	sbxVolumeMounts, err := createOrchestratorVolumeMounts(
+	sbxVolumeMounts, err := convertAPIVolumesToOrchestratorVolumes(
 		ctx, a.sqlcDB, a.featureFlags, teamInfo.ID, apiVolumeMounts,
 	)
 	if err != nil {
 		if errors.Is(err, ErrVolumeMountsDisabled) {
-			a.sendAPIStoreError(c, http.StatusForbidden, "Volume mounts are not enabled.")
+			a.sendAPIStoreError(c, http.StatusBadRequest, "Volume mounts are not enabled.")
 
 			return
 		}
@@ -198,7 +199,8 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 			return
 		}
 
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Errorf("failed to convert volume mounts: %w", err).Error())
+		telemetry.ReportError(ctx, "failed to convert volume mounts", err, telemetry.WithSandboxID(sandboxID))
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "failed to convert volume mounts")
 
 		return
 	}
@@ -272,7 +274,7 @@ func (im InvalidVolumeMountsError) Error() string {
 	return fmt.Sprintf("invalid mounts:\n%s", strings.Join(errs, "\n"))
 }
 
-func createOrchestratorVolumeMounts(
+func convertAPIVolumesToOrchestratorVolumes(
 	ctx context.Context,
 	sqlClient *sqlcdb.Client,
 	featureFlags featureFlagsClient,

@@ -9,12 +9,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	"github.com/google/uuid"
 	nomadapi "github.com/hashicorp/nomad/api"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/api/internal/clusters/discovery"
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/db/queries"
@@ -74,7 +74,7 @@ func newLocalCluster(
 	clickhouse clickhouse.Clickhouse,
 	queryLogsProvider *loki.LokiQueryProvider,
 	config cfg.Config,
-) (*Cluster, error) {
+) *Cluster {
 	clusterID := consts.LocalClusterID
 
 	instances := smap.New[*Instance]()
@@ -97,7 +97,7 @@ func newLocalCluster(
 	// Periodically sync cluster instances
 	go c.synchronization.Start(ctx, instancesSyncInterval, instancesSyncTimeout, true)
 
-	return c, nil
+	return c
 }
 
 func newRemoteCluster(

@@ -10,6 +10,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -45,7 +46,7 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string
 		return
 	}
 
-	clusterID := utils.WithClusterFallback(team.ClusterID)
+	clusterID := clusters.WithClusterFallback(team.ClusterID)
 	cluster, found := a.clusters.GetClusterById(clusterID)
 	if !found {
 		logger.L().Error(ctx, "cluster not found for sandbox metrics", logger.WithClusterID(clusterID))

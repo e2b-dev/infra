@@ -26,11 +26,11 @@ var (
 	_ Blob     = (*fsObject)(nil)
 )
 
-func newFileSystemStorage(basePath string) (*fsStorage, error) {
+func newFileSystemStorage(basePath string) *fsStorage {
 	return &fsStorage{
 		basePath: basePath,
 		opened:   make(map[string]*os.File),
-	}, nil
+	}
 }
 
 func (s *fsStorage) DeleteObjectsWithPrefix(_ context.Context, prefix string) error {

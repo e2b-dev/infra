@@ -20,18 +20,6 @@ CREATE TABLE IF NOT EXISTS volumes (
 ALTER TABLE "public"."volumes" ENABLE ROW LEVEL SECURITY;
 -- +goose StatementEnd
 
--- +goose StatementBegin
-CREATE POLICY "Allow selection for users that are in the team"
-    ON "public"."volumes"
-    AS PERMISSIVE
-    FOR SELECT
-    TO authenticated
-    USING ((auth.uid() IN ( SELECT users_teams.user_id
-                            FROM users_teams
-                            WHERE (users_teams.team_id = volumes.team_id))));
-
--- +goose StatementEnd
-
 -- +goose Down
 -- +goose StatementBegin
 DROP TABLE IF EXISTS volumes;

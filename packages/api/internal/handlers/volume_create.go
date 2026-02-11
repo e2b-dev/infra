@@ -7,12 +7,16 @@ import (
 	"regexp"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/clusters"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	clustershared "github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	feature_flags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -68,14 +72,7 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 		return
 	}
 
-	clusterID := utils.WithClusterFallback(team.ClusterID)
-	cluster, ok := a.clusters.GetClusterById(clusterID)
-	if !ok {
-		telemetry.ReportCriticalError(ctx, fmt.Sprintf("cluster with ID '%s' not found", clusterID), nil)
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("cluster with id %s not found", clusterID))
-
-		return
-	}
+	clusterID := clustershared.WithClusterFallback(team.ClusterID)
 
 	client, tx, err := a.sqlcDB.WithTx(ctx)
 	if err != nil {
@@ -108,7 +105,7 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 	default:
 	}
 
-	if err := cluster.CreateVolume(ctx, volume); err != nil {
+	if err := a.createVolume(ctx, clusterID, volume); err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when creating directory")
 		telemetry.ReportCriticalError(ctx, "error when creating directory", err)
 
@@ -117,7 +114,7 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 
 	if err := tx.Commit(ctx); err != nil {
 		go func(ctx context.Context) {
-			if err := cluster.DeleteVolume(ctx, volume); err != nil {
+			if err := a.deleteVolume(ctx, clusterID, volume); err != nil {
 				telemetry.ReportCriticalError(ctx, "failed to clean up volume after failing to commit transaction", err)
 			}
 		}(context.WithoutCancel(ctx))
@@ -149,4 +146,16 @@ var validVolumeNameRegex = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 
 func isValidVolumeName(name string) bool {
 	return validVolumeNameRegex.MatchString(name)
+}
+
+func (a *APIStore) createVolume(ctx context.Context, clusterID uuid.UUID, volume queries.Volume) error {
+	return a.executeOnOrchestrator(ctx, clusterID, func(ctx context.Context, client *clusters.GRPCClient) error {
+		_, err := client.Volumes.Create(ctx, &orchestrator.VolumeCreateRequest{
+			VolumeId:   volume.ID.String(),
+			VolumeType: volume.VolumeType,
+			TeamId:     volume.TeamID.String(),
+		})
+
+		return err
+	})
 }

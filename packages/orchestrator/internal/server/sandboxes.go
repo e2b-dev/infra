@@ -242,7 +242,6 @@ func createVolumeMountModelsFromAPI(volumeMounts []*orchestrator.SandboxVolumeMo
 	for _, v := range volumeMounts {
 		results = append(results, sandbox.VolumeMountConfig{
 			ID:   v.GetId(),
-			Name: v.GetName(),
 			Path: v.GetPath(),
 			Type: v.GetType(),
 		})
@@ -267,7 +266,7 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 		return nil, status.Error(codes.NotFound, "sandbox not found")
 	}
 
-	sbx.EndAt = req.GetEndTime().AsTime()
+	sbx.SetEndAt(req.GetEndTime().AsTime())
 
 	teamID, buildId, eventData := s.prepareSandboxEventData(ctx, sbx)
 	eventData["set_timeout"] = req.GetEndTime().AsTime().Format(time.RFC3339)
@@ -315,7 +314,7 @@ func (s *Server) List(ctx context.Context, _ *emptypb.Empty) (*orchestrator.Sand
 			Config:    sbx.APIStoredConfig,
 			ClientId:  s.info.ClientId,
 			StartTime: timestamppb.New(sbx.StartedAt),
-			EndTime:   timestamppb.New(sbx.EndAt),
+			EndTime:   timestamppb.New(sbx.GetEndAt()),
 		})
 	}
 

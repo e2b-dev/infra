@@ -34,15 +34,27 @@ type PausedSandboxConfig struct {
 	Network *SandboxNetworkConfig `json:"network,omitempty"`
 }
 
-// Status defines the type for the "status" enum field.
+// BuildStatus represents the raw status value written to the env_builds table.
+// Use BuildStatusGroup for read-side comparisons.
 type BuildStatus string
 
-// Status values.
 const (
+	BuildStatusPending      BuildStatus = "pending"
 	BuildStatusWaiting      BuildStatus = "waiting"
 	BuildStatusBuilding     BuildStatus = "building"
 	BuildStatusSnapshotting BuildStatus = "snapshotting"
-	BuildStatusFailed       BuildStatus = "failed"
-	BuildStatusSuccess      BuildStatus = "success"
 	BuildStatusUploaded     BuildStatus = "uploaded"
+	BuildStatusSuccess      BuildStatus = "success"
+	BuildStatusFailed       BuildStatus = "failed"
+)
+
+// BuildStatusGroup represents the normalized status from the status_group
+// computed column. Use this type for all read-side comparisons.
+type BuildStatusGroup string
+
+const (
+	BuildStatusGroupPending    BuildStatusGroup = "pending"
+	BuildStatusGroupInProgress BuildStatusGroup = "in_progress"
+	BuildStatusGroupReady      BuildStatusGroup = "ready"
+	BuildStatusGroupFailed     BuildStatusGroup = "failed"
 )

@@ -14,6 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/clusters"
 	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	clustersshared "github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	sharedutils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -86,7 +87,7 @@ func (a *APIStore) getSandboxLogs(
 	limit *int32,
 	direction *api.LogsDirection,
 ) (api.SandboxLogs, *api.APIError) {
-	clusterID := utils.WithClusterFallback(team.ClusterID)
+	clusterID := clustersshared.WithClusterFallback(team.ClusterID)
 	cluster, ok := a.clusters.GetClusterById(clusterID)
 	if !ok {
 		return api.SandboxLogs{}, &api.APIError{

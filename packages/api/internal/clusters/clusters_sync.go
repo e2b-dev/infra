@@ -34,12 +34,12 @@ type Pool struct {
 	synchronization *synchronization.Synchronize[queries.Cluster, *Cluster]
 }
 
-func localClusterConfig() (*queries.Cluster, error) {
+func localClusterConfig() *queries.Cluster {
 	return &queries.Cluster{
 		ID:                 consts.LocalClusterID,
 		EndpointTls:        false,
 		SandboxProxyDomain: nil,
-	}, nil
+	}
 }
 
 func NewPool(
@@ -53,10 +53,7 @@ func NewPool(
 ) (*Pool, error) {
 	clusters := smap.New[*Cluster]()
 
-	localCluster, err := localClusterConfig()
-	if err != nil {
-		return nil, err
-	}
+	localCluster := localClusterConfig()
 
 	p := &Pool{
 		db:       db,
@@ -174,13 +171,7 @@ func (d clustersSyncStore) PoolInsert(ctx context.Context, cluster queries.Clust
 
 	// Local cluster
 	if cluster.ID == consts.LocalClusterID {
-		c, err = newLocalCluster(context.WithoutCancel(ctx), d.tel, d.nomad, d.queryMetricsProvider, d.queryLogsProvider, d.config)
-		if err != nil {
-			logger.L().Error(ctx, "Initializing local cluster failed", zap.Error(err), logger.WithClusterID(cluster.ID))
-
-			return
-		}
-
+		c = newLocalCluster(context.WithoutCancel(ctx), d.tel, d.nomad, d.queryMetricsProvider, d.queryLogsProvider, d.config)
 		d.clusters.Insert(clusterID, c)
 		logger.L().Info(ctx, "Local cluster initialized successfully", logger.WithClusterID(cluster.ID))
 

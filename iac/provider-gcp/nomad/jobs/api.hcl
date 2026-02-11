@@ -100,7 +100,6 @@ job "api" {
         POSTHOG_API_KEY                = "${posthog_api_key}"
         ANALYTICS_COLLECTOR_HOST       = "${analytics_collector_host}"
         ANALYTICS_COLLECTOR_API_TOKEN  = "${analytics_collector_api_token}"
-        OTEL_TRACING_PRINT             = "${otel_tracing_print}"
         LOGS_COLLECTOR_ADDRESS         = "${logs_collector_address}"
         OTEL_COLLECTOR_GRPC_ENDPOINT   = "${otel_collector_grpc_endpoint}"
 

@@ -10,7 +10,7 @@ import (
 )
 
 const getLastSnapshot = `-- name: GetLastSnapshot :one
-SELECT COALESCE(ea.aliases, ARRAY[]::text[])::text[] AS aliases, COALESCE(ea.names, ARRAY[]::text[])::text[] AS names, s.created_at, s.env_id, s.sandbox_id, s.id, s.metadata, s.base_env_id, s.sandbox_started_at, s.env_secure, s.origin_node_id, s.allow_internet_access, s.auto_pause, s.team_id, s.config, eb.id, eb.created_at, eb.updated_at, eb.finished_at, eb.status, eb.dockerfile, eb.start_cmd, eb.vcpu, eb.ram_mb, eb.free_disk_size_mb, eb.total_disk_size_mb, eb.kernel_version, eb.firecracker_version, eb.env_id, eb.envd_version, eb.ready_cmd, eb.cluster_node_id, eb.reason, eb.version, eb.cpu_architecture, eb.cpu_family, eb.cpu_model, eb.cpu_model_name, eb.cpu_flags
+SELECT COALESCE(ea.aliases, ARRAY[]::text[])::text[] AS aliases, COALESCE(ea.names, ARRAY[]::text[])::text[] AS names, s.created_at, s.env_id, s.sandbox_id, s.id, s.metadata, s.base_env_id, s.sandbox_started_at, s.env_secure, s.origin_node_id, s.allow_internet_access, s.auto_pause, s.team_id, s.config, eb.id, eb.created_at, eb.updated_at, eb.finished_at, eb.status, eb.dockerfile, eb.start_cmd, eb.vcpu, eb.ram_mb, eb.free_disk_size_mb, eb.total_disk_size_mb, eb.kernel_version, eb.firecracker_version, eb.env_id, eb.envd_version, eb.ready_cmd, eb.cluster_node_id, eb.reason, eb.version, eb.cpu_architecture, eb.cpu_family, eb.cpu_model, eb.cpu_model_name, eb.cpu_flags, eb.status_group
 FROM "public"."snapshots" s
 JOIN "public"."envs" e ON s.env_id  = e.id
 JOIN "public"."env_build_assignments" eba ON eba.env_id = e.id AND eba.tag = 'default'
@@ -22,7 +22,7 @@ LEFT JOIN LATERAL (
     FROM "public"."env_aliases"
     WHERE env_id = s.base_env_id
 ) ea ON TRUE
-WHERE s.sandbox_id = $1 AND eb.status = 'success'
+WHERE s.sandbox_id = $1 AND eb.status_group = 'ready'
 ORDER BY eba.created_at DESC
 LIMIT 1
 `
@@ -77,6 +77,7 @@ func (q *Queries) GetLastSnapshot(ctx context.Context, sandboxID string) (GetLas
 		&i.EnvBuild.CpuModel,
 		&i.EnvBuild.CpuModelName,
 		&i.EnvBuild.CpuFlags,
+		&i.EnvBuild.StatusGroup,
 	)
 	return i, err
 }

@@ -17,7 +17,8 @@ jobs:
   generated-code-check:
     uses: ./.github/workflows/pr-no-generated-changes.yml
     with:
-      commit: true
+      # Only auto-commit for same-repo PRs (secrets aren't available for forks)
+      commit: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
     secrets:
       app_id: ${{ vars.AUTOFIXER_APP_ID }}
       app_secret: ${{ secrets.AUTOFIXER_APP_SECRET }}
@@ -28,6 +29,9 @@ jobs:
   integration-tests:
     needs: [out-of-order-migrations]
     uses: ./.github/workflows/integration_tests.yml
+    with:
+      # Only publish the results for same-repo PRs
+      publish: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
   publish-test-results:
     needs:
       - unit-tests

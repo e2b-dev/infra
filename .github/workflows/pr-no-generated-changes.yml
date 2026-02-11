@@ -6,8 +6,7 @@ on:
       commit:
         type: boolean
         description: 'Whether to commit and push changes automatically'
-        required: false
-        default: false
+        required: true
     secrets:
       app_id:
         description: 'GitHub App ID for pushing commits that trigger workflows'

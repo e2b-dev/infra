@@ -61,7 +61,6 @@ job "orchestrator-${latest_orchestrator_job_id}" {
       env {
         NODE_ID                      = "$${node.unique.name}"
         CONSUL_TOKEN                 = "${consul_acl_token}"
-        OTEL_TRACING_PRINT           = "${otel_tracing_print}"
         LOGS_COLLECTOR_ADDRESS       = "${logs_collector_address}"
         ENVIRONMENT                  = "${environment}"
         DOMAIN_NAME                  = "${domain_name}"

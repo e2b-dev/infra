@@ -15,9 +15,9 @@ import (
 	dbapi "github.com/e2b-dev/infra/packages/api/internal/db"
 	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	templatemanager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
-	apiutils "github.com/e2b-dev/infra/packages/api/internal/utils"
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	apiutils "github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
@@ -39,7 +39,7 @@ func (a *APIStore) CheckAndCancelConcurrentBuilds(ctx context.Context, templateI
 	// make sure there is no other build in progress for the same template
 	if len(concurrentBuilds) > 0 {
 		concurrentRunningBuilds := utils.Filter(concurrentBuilds, func(b queries.EnvBuild) bool {
-			return b.Status == string(dbtypes.BuildStatusBuilding)
+			return b.StatusGroup == dbtypes.BuildStatusGroupInProgress
 		})
 		buildIDs := make([]templatemanager.DeleteBuild, 0, len(concurrentRunningBuilds))
 		for _, b := range concurrentRunningBuilds {
@@ -148,9 +148,9 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 	build := templateBuildDB.EnvBuild
 
 	// only waiting builds can be triggered
-	if build.Status != string(dbtypes.BuildStatusWaiting) {
+	if build.StatusGroup != dbtypes.BuildStatusGroupPending {
 		a.sendAPIStoreError(c, http.StatusBadRequest, "build is not in waiting state")
-		telemetry.ReportCriticalError(ctx, "build is not in waiting state", fmt.Errorf("build is not in waiting state: %s", build.Status), telemetry.WithTemplateID(templateID))
+		telemetry.ReportCriticalError(ctx, "build is not in waiting state", fmt.Errorf("build is not in waiting state: %s", build.StatusGroup), telemetry.WithTemplateID(templateID))
 
 		return
 	}
