@@ -83,14 +83,20 @@ jobs:
 
       - name: Setup orchestrator tests
         run: |
+          # Enable unprivileged uffd (Ubuntu defaults to 0)
           echo 1 | sudo tee /proc/sys/vm/unprivileged_userfaultfd
 
+          # Enable hugepages
           sudo mkdir -p /mnt/hugepages
           sudo mount -t hugetlbfs none /mnt/hugepages
           echo 2000 | sudo tee /proc/sys/vm/nr_hugepages
 
+          # Install extra kernel modules (nbd is not in base modules on GitHub-hosted runners)
+          sudo apt-get update
+          sudo apt-get install -y linux-modules-extra-$(uname -r)
           sudo modprobe nbd nbds_max=256
 
+          # Disable inotify watching of change events for NBD devices
           echo 'ACTION=="add|change", KERNEL=="nbd*", OPTIONS:="nowatch"' | sudo tee /etc/udev/rules.d/97-nbd-device.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger
