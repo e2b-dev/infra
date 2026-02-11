@@ -153,14 +153,18 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	}
 
 	var network *types.SandboxNetworkConfig
-	var volumes []*types.SandboxVolumeMountConfig
 	if snap.Config != nil {
 		network = snap.Config.Network
-		volumes = snap.Config.VolumeMounts
 	}
+
 	var autoResume *types.SandboxAutoResumeConfig
 	if snap.Config != nil {
 		autoResume = snap.Config.AutoResume
+	}
+
+	var volumes []*types.SandboxVolumeMountConfig
+	if snap.Config != nil {
+		volumes = snap.Config.VolumeMounts
 	}
 
 	sbx, createErr := a.startSandbox(
