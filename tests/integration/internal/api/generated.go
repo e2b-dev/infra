@@ -621,7 +621,8 @@ type SandboxDetail struct {
 	State SandboxState `json:"state"`
 
 	// TemplateID Identifier of the template from which is the sandbox created
-	TemplateID string `json:"templateID"`
+	TemplateID   string               `json:"templateID"`
+	VolumeMounts []SandboxVolumeMount `json:"volumeMounts"`
 }
 
 // SandboxLog Log entry with timestamp and line

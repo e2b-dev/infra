@@ -76,7 +76,7 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
 			}
 		}
 
-		volumeMounts := convertToVolumeMounts(config.GetVolumeMounts())
+		volumeMounts := convertOrchestratorMountsToDatabaseMounts(config.GetVolumeMounts())
 
 		sandboxesInfo = append(
 			sandboxesInfo,
@@ -115,11 +115,13 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
 	return sandboxesInfo, nil
 }
 
-func convertToVolumeMounts(mounts []*orchestrator.SandboxVolumeMount) []*types.SandboxVolumeMountConfig {
+func convertOrchestratorMountsToDatabaseMounts(mounts []*orchestrator.SandboxVolumeMount) []*types.SandboxVolumeMountConfig {
 	var results []*types.SandboxVolumeMountConfig
 
 	for _, item := range mounts {
 		results = append(results, &types.SandboxVolumeMountConfig{
+			ID:   item.GetId(),
+			Type: item.GetType(),
 			Name: item.GetName(),
 			Path: item.GetPath(),
 		})

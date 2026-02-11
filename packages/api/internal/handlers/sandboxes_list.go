@@ -253,20 +253,23 @@ func snapshotsToPaginatedSandboxes(ctx context.Context, snapshots []queries.GetS
 
 		sandbox := utils.PaginatedSandbox{
 			ListedSandbox: api.ListedSandbox{
-				ClientID:     consts.ClientID, // for backwards compatibility we need to return a client id
-				Alias:        alias,
-				TemplateID:   snapshot.BaseEnvID,
-				SandboxID:    snapshot.SandboxID,
-				StartedAt:    snapshot.SandboxStartedAt.Time,
-				CpuCount:     int32(build.Vcpu),
-				MemoryMB:     int32(build.RamMb),
-				DiskSizeMB:   diskSize,
-				EndAt:        snapshot.CreatedAt.Time,
-				State:        api.Paused,
-				EnvdVersion:  envdVersion,
-				VolumeMounts: convertToAPIVolumeMounts(snapshot.Config.VolumeMounts),
+				ClientID:    consts.ClientID, // for backwards compatibility we need to return a client id
+				Alias:       alias,
+				TemplateID:  snapshot.BaseEnvID,
+				SandboxID:   snapshot.SandboxID,
+				StartedAt:   snapshot.SandboxStartedAt.Time,
+				CpuCount:    int32(build.Vcpu),
+				MemoryMB:    int32(build.RamMb),
+				DiskSizeMB:  diskSize,
+				EndAt:       snapshot.CreatedAt.Time,
+				State:       api.Paused,
+				EnvdVersion: envdVersion,
 			},
 			PaginationTimestamp: snapshot.SandboxStartedAt.Time,
+		}
+
+		if snapshot.Config != nil {
+			sandbox.ListedSandbox.VolumeMounts = convertFromDBMountsToAPIMounts(snapshot.Config.VolumeMounts)
 		}
 
 		if snapshot.Metadata != nil {
@@ -304,7 +307,7 @@ func instanceInfoToPaginatedSandboxes(runningSandboxes []sandbox.Sandbox) []util
 				EndAt:        info.EndTime,
 				State:        state,
 				EnvdVersion:  info.EnvdVersion,
-				VolumeMounts: convertToAPIVolumeMounts(info.VolumeMounts),
+				VolumeMounts: convertFromDBMountsToAPIMounts(info.VolumeMounts),
 			},
 			PaginationTimestamp: info.StartTime,
 		}
@@ -320,7 +323,7 @@ func instanceInfoToPaginatedSandboxes(runningSandboxes []sandbox.Sandbox) []util
 	return sandboxes
 }
 
-func convertToAPIVolumeMounts(mounts []*dbtypes.SandboxVolumeMountConfig) []api.SandboxVolumeMount {
+func convertFromDBMountsToAPIMounts(mounts []*dbtypes.SandboxVolumeMountConfig) []api.SandboxVolumeMount {
 	results := make([]api.SandboxVolumeMount, 0, len(mounts))
 
 	for _, item := range mounts {

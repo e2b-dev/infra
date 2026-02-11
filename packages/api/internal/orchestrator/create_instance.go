@@ -311,7 +311,7 @@ func (o *Orchestrator) CreateSandbox(
 		sbxDomain,
 		network,
 		trafficAccessToken,
-		buildVolumeMounts(volumeMounts),
+		convertOrchestratorMountsToDatabaseMounts(volumeMounts),
 	)
 
 	err = o.sandboxStore.Add(ctx, sbx, true)
@@ -338,11 +338,13 @@ func (o *Orchestrator) CreateSandbox(
 	return sbx, nil
 }
 
-func buildVolumeMounts(mounts []*orchestrator.SandboxVolumeMount) []*types.SandboxVolumeMountConfig {
+func convertOrchestratorMountsToDatabaseMounts(mounts []*orchestrator.SandboxVolumeMount) []*types.SandboxVolumeMountConfig {
 	results := make([]*types.SandboxVolumeMountConfig, 0, len(mounts))
 
 	for _, item := range mounts {
 		results = append(results, &types.SandboxVolumeMountConfig{
+			ID:   item.GetId(),
+			Type: item.GetType(),
 			Name: item.GetName(),
 			Path: item.GetPath(),
 		})

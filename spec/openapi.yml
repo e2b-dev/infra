@@ -428,6 +428,7 @@ components:
         - endAt
         - state
         - envdVersion
+        - volumeMounts
       properties:
         templateID:
           type: string
@@ -469,6 +470,10 @@ components:
           $ref: "#/components/schemas/SandboxMetadata"
         state:
           $ref: "#/components/schemas/SandboxState"
+        volumeMounts:
+          type: array
+          items:
+            $ref: "#/components/schemas/SandboxVolumeMount"
 
     ListedSandbox:
       required:

@@ -30,6 +30,8 @@ type SandboxNetworkConfig struct {
 }
 
 type SandboxVolumeMountConfig struct {
+	ID   string `json:"id"`
+	Type string `json:"type"`
 	Name string `json:"name"`
 	Path string `json:"path"`
 }
@@ -37,10 +39,10 @@ type SandboxVolumeMountConfig struct {
 type PausedSandboxConfig struct {
 	Version      string                      `json:"version"`
 	Network      *SandboxNetworkConfig       `json:"network,omitempty"`
-	VolumeMounts []*SandboxVolumeMountConfig `json:"volumes,omitempty"`
+	VolumeMounts []*SandboxVolumeMountConfig `json:"volumeMounts,omitempty"`
 }
 
-// Status defines the type for the "status" enum field.
+// BuildStatus defines the type for the "status" enum field.
 type BuildStatus string
 
 // Status values.
