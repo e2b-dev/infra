@@ -906,7 +906,7 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 		fmt.Println("🔧 Creating sandbox factory...")
 	}
 	sandboxes := sandbox.NewSandboxesMap()
-	factory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, flags)
+	factory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, flags, nil)
 
 	if verbose {
 		fmt.Println("🔧 Starting TCP firewall...")

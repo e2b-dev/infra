@@ -23,6 +23,7 @@ import (
 
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	clickhouseevents "github.com/e2b-dev/infra/packages/clickhouse/pkg/events"
+	clickhousehoststats "github.com/e2b-dev/infra/packages/clickhouse/pkg/hoststats"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/events"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/factories"
@@ -312,12 +313,17 @@ func run(config cfg.Config) (success bool) {
 
 	sbxEventsDeliveryTargets := make([]event.Delivery[event.SandboxEvent], 0)
 
-	// Clickhouse sandbox events delivery target
+	var hostStatsDelivery clickhousehoststats.Delivery
+
+	// Clickhouse sandbox events and host stats delivery
 	if config.ClickhouseConnectionString != "" {
 		clickhouseConn, err := clickhouse.NewDriver(config.ClickhouseConnectionString)
 		if err != nil {
 			logger.L().Fatal(ctx, "failed to create clickhouse driver", zap.Error(err))
 		}
+		closers = append(closers, closer{"clickhouse connection", func(context.Context) error {
+			return clickhouseConn.Close()
+		}})
 
 		sbxEventsDeliveryClickhouse, err := clickhouseevents.NewDefaultClickhouseSandboxEventsDelivery(ctx, clickhouseConn, featureFlags)
 		if err != nil {
@@ -326,6 +332,14 @@ func run(config cfg.Config) (success bool) {
 
 		sbxEventsDeliveryTargets = append(sbxEventsDeliveryTargets, sbxEventsDeliveryClickhouse)
 		closers = append(closers, closer{"sandbox events delivery for clickhouse", sbxEventsDeliveryClickhouse.Close})
+
+		hostStatsDeliveryClickhouse, err := clickhousehoststats.NewDefaultClickhouseHostStatsDelivery(ctx, clickhouseConn, featureFlags)
+		if err != nil {
+			logger.L().Fatal(ctx, "failed to create clickhouse host stats delivery", zap.Error(err))
+		}
+
+		hostStatsDelivery = hostStatsDeliveryClickhouse
+		closers = append(closers, closer{"sandbox host stats delivery", hostStatsDeliveryClickhouse.Close})
 	}
 
 	// redis
@@ -410,7 +424,7 @@ func run(config cfg.Config) (success bool) {
 	closers = append(closers, closer{"network pool", networkPool.Close})
 
 	// sandbox factory
-	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags)
+	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags, hostStatsDelivery)
 
 	volumeService := volumes.New(config)
 
