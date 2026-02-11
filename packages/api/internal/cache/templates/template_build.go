@@ -52,7 +52,7 @@ func NewTemplateBuildCache(db *sqlcdb.Client, redisClient redis.UniversalClient)
 	}
 }
 
-func (c *TemplatesBuildCache) SetStatus(ctx context.Context, buildID uuid.UUID, status types.BuildStatus, reason types.BuildReason) {
+func (c *TemplatesBuildCache) SetStatus(ctx context.Context, buildID uuid.UUID, status types.BuildStatusGroup, reason types.BuildReason) {
 	// Update in Redis
 	if err := c.updateStatusInRedis(ctx, buildID, status, reason); err != nil {
 		logger.L().Warn(ctx, "Failed to update build status in Redis",

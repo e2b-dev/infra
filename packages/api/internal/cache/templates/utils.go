@@ -11,9 +11,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 
-	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 )
 
 const (
@@ -111,16 +111,16 @@ func (c *TemplatesBuildCache) fetchFromDB(ctx context.Context, buildID uuid.UUID
 	return TemplateBuildInfo{
 		TeamID:      result.Env.TeamID,
 		TemplateID:  result.Env.ID,
-		BuildStatus: types.BuildStatus(result.EnvBuild.Status),
+		BuildStatus: result.EnvBuild.StatusGroup,
 		Reason:      result.EnvBuild.Reason,
 		Version:     result.EnvBuild.Version,
-		ClusterID:   utils.WithClusterFallback(result.Env.ClusterID),
+		ClusterID:   clusters.WithClusterFallback(result.Env.ClusterID),
 		NodeID:      result.EnvBuild.ClusterNodeID,
 	}, nil
 }
 
 // updateStatusInRedis atomically updates the build status in Redis using a Lua script.
-func (c *TemplatesBuildCache) updateStatusInRedis(ctx context.Context, buildID uuid.UUID, status types.BuildStatus, reason types.BuildReason) error {
+func (c *TemplatesBuildCache) updateStatusInRedis(ctx context.Context, buildID uuid.UUID, status types.BuildStatusGroup, reason types.BuildReason) error {
 	ctx, cancel := context.WithTimeout(ctx, redisBuildCacheTimeout)
 	defer cancel()
 

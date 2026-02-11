@@ -26,7 +26,7 @@ func TestRedisTemplatesBuildCache_Get_L1Hit(t *testing.T) {
 	info := TemplateBuildInfo{
 		TeamID:      uuid.New(),
 		TemplateID:  "test-template",
-		BuildStatus: types.BuildStatusBuilding,
+		BuildStatus: types.BuildStatusGroupInProgress,
 		ClusterID:   uuid.New(),
 	}
 
@@ -54,7 +54,7 @@ func TestRedisTemplatesBuildCache_Get_L2Hit(t *testing.T) {
 	info := TemplateBuildInfo{
 		TeamID:      uuid.New(),
 		TemplateID:  "test-template",
-		BuildStatus: types.BuildStatusBuilding,
+		BuildStatus: types.BuildStatusGroupInProgress,
 		ClusterID:   uuid.New(),
 	}
 
@@ -123,7 +123,7 @@ func TestRedisTemplatesBuildCache_SetStatus_UpdatesAndInvalidatesL1(t *testing.T
 	info := TemplateBuildInfo{
 		TeamID:      uuid.New(),
 		TemplateID:  "test-template",
-		BuildStatus: types.BuildStatusBuilding,
+		BuildStatus: types.BuildStatusGroupInProgress,
 		ClusterID:   uuid.New(),
 	}
 
@@ -138,7 +138,7 @@ func TestRedisTemplatesBuildCache_SetStatus_UpdatesAndInvalidatesL1(t *testing.T
 
 	// Update status
 	newReason := types.BuildReason{Message: "Build completed successfully"}
-	cache.SetStatus(ctx, buildID, types.BuildStatusUploaded, newReason)
+	cache.SetStatus(ctx, buildID, types.BuildStatusGroupReady, newReason)
 
 	// L1 should be invalidated
 	l1Item := cache.l1Cache.Get(buildID)
