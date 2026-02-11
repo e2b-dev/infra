@@ -5,8 +5,8 @@ golang 1.25.4
 golangci-lint 2.8.0
 packer 1.13.1
 protoc 29.3
+protoc-gen-connect-go 1.18.1
 protoc-gen-go 1.28.1
 protoc-gen-go-grpc 1.2.0
-protoc-gen-connect-go 1.18.1
 python 3.13
 terraform 1.5.7
