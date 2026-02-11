@@ -138,6 +138,13 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		}
 	}
 
+	autoResume, autoResumeErr := buildAutoResumeConfig(body.AutoResume)
+	if autoResumeErr != nil {
+		a.sendAPIStoreError(c, autoResumeErr.Code, autoResumeErr.ClientMsg)
+
+		return
+	}
+
 	var envdAccessToken *string = nil
 	if body.Secure != nil && *body.Secure == true {
 		accessToken, tokenErr := a.getEnvdAccessToken(build.EnvdVersion, sandboxID)
@@ -220,6 +227,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		env.TemplateID,
 		env.TemplateID,
 		autoPause,
+		autoResume,
 		envdAccessToken,
 		allowInternetAccess,
 		network,
@@ -233,6 +241,29 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, &sbx)
+}
+
+func buildAutoResumeConfig(autoResume *api.SandboxAutoResumeConfig) (*types.SandboxAutoResumeConfig, *api.APIError) {
+	if autoResume == nil {
+		return nil, nil
+	}
+
+	policy := api.SandboxAutoResumePolicy(strings.TrimSpace(string(autoResume.Policy)))
+
+	switch policy {
+	case api.Any, api.Off:
+		// ok
+	default:
+		return nil, &api.APIError{
+			Code:      http.StatusBadRequest,
+			ClientMsg: fmt.Sprintf("invalid autoResume.policy: %q", string(policy)),
+			Err:       fmt.Errorf("invalid autoResume.policy: %q", string(policy)),
+		}
+	}
+
+	return &types.SandboxAutoResumeConfig{
+		Policy: types.SandboxAutoResumePolicy(policy),
+	}, nil
 }
 
 func dedupeVolumeNames(items []api.SandboxVolumeMount) []string {

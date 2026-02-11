@@ -75,7 +75,7 @@ func (tm *TemplateManager) CreateTemplate(
 		err := tm.SetStatus(
 			ctx,
 			buildID,
-			types.BuildStatusFailed,
+			types.BuildStatusGroupFailed,
 			&templatemanagergrpc.TemplateBuildStatusReason{
 				Message: fmt.Sprintf("error when building env: %s", e),
 			},
@@ -138,7 +138,7 @@ func (tm *TemplateManager) CreateTemplate(
 		err = tm.SetStatus(
 			ctx,
 			buildID,
-			types.BuildStatusFailed,
+			types.BuildStatusGroupFailed,
 			&templatemanagergrpc.TemplateBuildStatusReason{
 				Message: err.Error(),
 				Step:    ut.ToPtr("base"),
@@ -170,7 +170,7 @@ func (tm *TemplateManager) CreateTemplate(
 	err = tm.SetStatus(
 		ctx,
 		buildID,
-		types.BuildStatusBuilding,
+		types.BuildStatusGroupInProgress,
 		nil,
 	)
 	if err != nil {

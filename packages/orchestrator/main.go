@@ -46,6 +46,7 @@ import (
 	event "github.com/e2b-dev/infra/packages/shared/pkg/events"
 	sharedFactories "github.com/e2b-dev/infra/packages/shared/pkg/factories"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
@@ -464,7 +465,7 @@ func run(config cfg.Config) (success bool) {
 	})
 	closers = append(closers, closer{"hyperloop server", hyperloopSrv.Shutdown})
 
-	grpcServer := factories.NewGRPCServer(tel)
+	grpcServer := e2bgrpc.NewGRPCServer(tel)
 	orchestrator.RegisterSandboxServiceServer(grpcServer, orchestratorService)
 	orchestrator.RegisterVolumeServiceServer(grpcServer, volumeService)
 

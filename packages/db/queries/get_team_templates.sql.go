@@ -8,18 +8,19 @@ package queries
 import (
 	"context"
 
+	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/google/uuid"
 )
 
 const getTeamTemplates = `-- name: GetTeamTemplates :many
-SELECT e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count, e.last_spawned_at, e.team_id, e.created_by, e.cluster_id,
+SELECT e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count, e.last_spawned_at, e.team_id, e.created_by, e.cluster_id, e.source,
        COALESCE(eb.id, '00000000-0000-0000-0000-000000000000'::uuid) as build_id,
        COALESCE(eb.vcpu, 0) as build_vcpu,
        COALESCE(eb.ram_mb, 0) as build_ram_mb,
        eb.total_disk_size_mb as build_total_disk_size_mb,
        eb.envd_version as build_envd_version,
        COALESCE(eb.firecracker_version, 'N/A') as build_firecracker_version,
-       COALESCE(latest_build.status, 'waiting') as build_status,
+       COALESCE(latest_build.status_group, 'pending') as build_status,
        u.id as creator_id, u.email as creator_email,
        COALESCE(ea.aliases, ARRAY[]::text[])::text[] AS aliases,
        COALESCE(ea.names, ARRAY[]::text[])::text[] AS names
@@ -33,7 +34,7 @@ LEFT JOIN LATERAL (
     WHERE env_id = e.id
 ) ea ON TRUE
 LEFT JOIN LATERAL (
-    SELECT b.id, b.created_at, b.updated_at, b.finished_at, b.status, b.dockerfile, b.start_cmd, b.vcpu, b.ram_mb, b.free_disk_size_mb, b.total_disk_size_mb, b.kernel_version, b.firecracker_version, b.env_id, b.envd_version, b.ready_cmd, b.cluster_node_id, b.reason, b.version, b.cpu_architecture, b.cpu_family, b.cpu_model, b.cpu_model_name, b.cpu_flags
+    SELECT b.id, b.created_at, b.updated_at, b.finished_at, b.status, b.dockerfile, b.start_cmd, b.vcpu, b.ram_mb, b.free_disk_size_mb, b.total_disk_size_mb, b.kernel_version, b.firecracker_version, b.env_id, b.envd_version, b.ready_cmd, b.cluster_node_id, b.reason, b.version, b.cpu_architecture, b.cpu_family, b.cpu_model, b.cpu_model_name, b.cpu_flags, b.status_group
     FROM public.env_build_assignments AS ba
     JOIN public.env_builds AS b ON b.id = ba.build_id
     WHERE ba.env_id = e.id AND ba.tag = 'default'
@@ -41,20 +42,16 @@ LEFT JOIN LATERAL (
     LIMIT 1
 ) latest_build ON TRUE
 LEFT JOIN LATERAL (
-    SELECT b.id, b.created_at, b.updated_at, b.finished_at, b.status, b.dockerfile, b.start_cmd, b.vcpu, b.ram_mb, b.free_disk_size_mb, b.total_disk_size_mb, b.kernel_version, b.firecracker_version, b.env_id, b.envd_version, b.ready_cmd, b.cluster_node_id, b.reason, b.version, b.cpu_architecture, b.cpu_family, b.cpu_model, b.cpu_model_name, b.cpu_flags
+    SELECT b.id, b.created_at, b.updated_at, b.finished_at, b.status, b.dockerfile, b.start_cmd, b.vcpu, b.ram_mb, b.free_disk_size_mb, b.total_disk_size_mb, b.kernel_version, b.firecracker_version, b.env_id, b.envd_version, b.ready_cmd, b.cluster_node_id, b.reason, b.version, b.cpu_architecture, b.cpu_family, b.cpu_model, b.cpu_model_name, b.cpu_flags, b.status_group
     FROM public.env_build_assignments AS ba
     JOIN public.env_builds AS b ON b.id = ba.build_id
-    WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status = 'uploaded'
+    WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
     ORDER BY ba.created_at DESC
     LIMIT 1
 ) eb ON TRUE
 WHERE
   e.team_id = $1
-  AND NOT EXISTS (
-    SELECT 1
-    FROM public.snapshots AS s
-    WHERE s.env_id = e.id
-  )
+  AND e.source = 'template'
 ORDER BY e.created_at ASC
 `
 
@@ -66,7 +63,7 @@ type GetTeamTemplatesRow struct {
 	BuildTotalDiskSizeMb    *int64
 	BuildEnvdVersion        *string
 	BuildFirecrackerVersion string
-	BuildStatus             string
+	BuildStatus             types.BuildStatusGroup
 	CreatorID               *uuid.UUID
 	CreatorEmail            *string
 	Aliases                 []string
@@ -93,6 +90,7 @@ func (q *Queries) GetTeamTemplates(ctx context.Context, teamID uuid.UUID) ([]Get
 			&i.Env.TeamID,
 			&i.Env.CreatedBy,
 			&i.Env.ClusterID,
+			&i.Env.Source,
 			&i.BuildID,
 			&i.BuildVcpu,
 			&i.BuildRamMb,

@@ -11,10 +11,91 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	handlersmocks "github.com/e2b-dev/infra/packages/api/internal/handlers/mocks"
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
+	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 )
+
+func TestBuildAutoResumeConfig(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		in         *api.SandboxAutoResumeConfig
+		wantNil    bool
+		wantErr    bool
+		wantPolicy dbtypes.SandboxAutoResumePolicy
+	}{
+		{
+			name:    "nil config returns nil",
+			in:      nil,
+			wantNil: true,
+		},
+		{
+			name:    "empty policy is rejected",
+			in:      &api.SandboxAutoResumeConfig{},
+			wantErr: true,
+		},
+		{
+			name: "unknown policy is rejected",
+			in: &api.SandboxAutoResumeConfig{
+				Policy: api.SandboxAutoResumePolicy("garbage"),
+			},
+			wantErr: true,
+		},
+		{
+			name: "policy any is accepted",
+			in: &api.SandboxAutoResumeConfig{
+				Policy: api.Any,
+			},
+			wantPolicy: dbtypes.SandboxAutoResumeAny,
+		},
+		{
+			name: "policy off is accepted",
+			in: &api.SandboxAutoResumeConfig{
+				Policy: api.Off,
+			},
+			wantPolicy: dbtypes.SandboxAutoResumeOff,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := buildAutoResumeConfig(tt.in)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("buildAutoResumeConfig() error = nil, want non-nil error")
+				}
+
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("buildAutoResumeConfig() error = %v, want nil", err)
+			}
+
+			if tt.wantNil {
+				if got != nil {
+					t.Fatalf("buildAutoResumeConfig() = %#v, want nil", got)
+				}
+
+				return
+			}
+
+			if got == nil {
+				t.Fatalf("buildAutoResumeConfig() = nil, want non-nil config")
+			}
+
+			if got.Policy != tt.wantPolicy {
+				t.Fatalf("buildAutoResumeConfig().Policy = %v, want %v", got.Policy, tt.wantPolicy)
+			}
+		})
+	}
+}
 
 func TestValidateNetworkConfig(t *testing.T) {
 	t.Parallel()
