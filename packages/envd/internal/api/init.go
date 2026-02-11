@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"net/netip"
 	"os"
+	"os/exec"
+	"sync"
 	"time"
 
 	"github.com/awnumar/memguard"
@@ -217,7 +219,32 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 		a.defaults.Workdir = data.DefaultWorkdir
 	}
 
+	if data.VolumeMounts != nil {
+		var wg sync.WaitGroup
+		for _, volume := range *data.VolumeMounts {
+			logger.Debug().Msgf("Mounting %s at %q", volume.NfsTarget, volume.Path)
+
+			wg.Go(func() {
+				a.setupNfs(context.WithoutCancel(ctx), volume.NfsTarget, volume.Path)
+			})
+		}
+		wg.Wait()
+	}
+
 	return nil
+}
+
+func (a *API) setupNfs(ctx context.Context, nfsTarget, path string) {
+	data, err := exec.CommandContext(ctx, "bash", "-c", fmt.Sprintf(`
+set -e
+mkdir -p %q
+mount -v -t nfs -o mountproto=tcp,mountport=2049,proto=tcp,port=2049,nfsvers=3,noacl %q %q
+`, path, nfsTarget, path)).CombinedOutput()
+
+	a.logger.Info().
+		Str("output", string(data)).
+		Err(err).
+		Msg("Mount NFS")
 }
 
 func (a *API) SetupHyperloop(address string) {
