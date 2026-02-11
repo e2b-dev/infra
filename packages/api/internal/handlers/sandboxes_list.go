@@ -31,7 +31,15 @@ const (
 	sandboxesMaxLimit     = int32(100)
 )
 
-func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, runningSandboxesIDs []string, metadataFilter *map[string]string, queryLimit int32, cursorTime time.Time, cursorID string) ([]utils.PaginatedSandbox, error) {
+func (a *APIStore) getPausedSandboxes(
+	ctx context.Context,
+	teamID uuid.UUID,
+	runningSandboxesIDs []string,
+	metadataFilter *map[string]string,
+	queryLimit int32,
+	cursorTime time.Time,
+	cursorID string,
+) ([]utils.PaginatedSandbox, error) {
 	queryMetadata := dbtypes.JSONBStringMap{}
 	if metadataFilter != nil {
 		queryMetadata = *metadataFilter
@@ -260,6 +268,10 @@ func snapshotsToPaginatedSandboxes(ctx context.Context, snapshots []queries.GetS
 			PaginationTimestamp: snapshot.SandboxStartedAt.Time,
 		}
 
+		if snapshot.Config != nil {
+			sandbox.ListedSandbox.VolumeMounts = convertFromDBMountsToAPIMounts(snapshot.Config.VolumeMounts)
+		}
+
 		if snapshot.Metadata != nil {
 			meta := api.SandboxMetadata(snapshot.Metadata)
 			sandbox.Metadata = &meta
@@ -277,24 +289,25 @@ func instanceInfoToPaginatedSandboxes(runningSandboxes []sandbox.Sandbox) []util
 	// Add running sandboxes to results
 	for _, info := range runningSandboxes {
 		state := api.Running
-		// If the sandbox is pausing, for the user it behaves the like a paused sandbox - it can be resumed, etc.
+		// If the sandbox is pausing, for the user it behaves like a paused sandbox - it can be resumed, etc.
 		if info.State == sandbox.StatePausing {
 			state = api.Paused
 		}
 
 		sandbox := utils.PaginatedSandbox{
 			ListedSandbox: api.ListedSandbox{
-				ClientID:    info.ClientID,
-				TemplateID:  info.BaseTemplateID,
-				Alias:       info.Alias,
-				SandboxID:   info.SandboxID,
-				StartedAt:   info.StartTime,
-				CpuCount:    api.CPUCount(info.VCpu),
-				MemoryMB:    api.MemoryMB(info.RamMB),
-				DiskSizeMB:  api.DiskSizeMB(info.TotalDiskSizeMB),
-				EndAt:       info.EndTime,
-				State:       state,
-				EnvdVersion: info.EnvdVersion,
+				ClientID:     info.ClientID,
+				TemplateID:   info.BaseTemplateID,
+				Alias:        info.Alias,
+				SandboxID:    info.SandboxID,
+				StartedAt:    info.StartTime,
+				CpuCount:     api.CPUCount(info.VCpu),
+				MemoryMB:     api.MemoryMB(info.RamMB),
+				DiskSizeMB:   api.DiskSizeMB(info.TotalDiskSizeMB),
+				EndAt:        info.EndTime,
+				State:        state,
+				EnvdVersion:  info.EnvdVersion,
+				VolumeMounts: convertFromDBMountsToAPIMounts(info.VolumeMounts),
 			},
 			PaginationTimestamp: info.StartTime,
 		}
@@ -308,4 +321,17 @@ func instanceInfoToPaginatedSandboxes(runningSandboxes []sandbox.Sandbox) []util
 	}
 
 	return sandboxes
+}
+
+func convertFromDBMountsToAPIMounts(mounts []*dbtypes.SandboxVolumeMountConfig) []api.SandboxVolumeMount {
+	results := make([]api.SandboxVolumeMount, 0, len(mounts))
+
+	for _, item := range mounts {
+		results = append(results, api.SandboxVolumeMount{
+			Name: item.Name,
+			Path: item.Path,
+		})
+	}
+
+	return results
 }

@@ -17,6 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -155,9 +156,15 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	if snap.Config != nil {
 		network = snap.Config.Network
 	}
+
 	var autoResume *types.SandboxAutoResumeConfig
 	if snap.Config != nil {
 		autoResume = snap.Config.AutoResume
+	}
+
+	var volumes []*types.SandboxVolumeMountConfig
+	if snap.Config != nil {
+		volumes = snap.Config.VolumeMounts
 	}
 
 	sbx, createErr := a.startSandbox(
@@ -180,7 +187,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		snap.AllowInternetAccess,
 		network,
 		nil, // mcp
-		nil, // volumes
+		convertDatabaseMountsToOrchestratorMounts(volumes),
 	)
 	if createErr != nil {
 		a.sendAPIStoreError(c, createErr.Code, createErr.ClientMsg)
@@ -189,4 +196,19 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	}
 
 	c.JSON(http.StatusCreated, &sbx)
+}
+
+func convertDatabaseMountsToOrchestratorMounts(volumes []*types.SandboxVolumeMountConfig) []*orchestrator.SandboxVolumeMount {
+	results := make([]*orchestrator.SandboxVolumeMount, 0, len(volumes))
+
+	for _, item := range volumes {
+		results = append(results, &orchestrator.SandboxVolumeMount{
+			Id:   item.ID,
+			Type: item.Type,
+			Name: item.Name,
+			Path: item.Path,
+		})
+	}
+
+	return results
 }

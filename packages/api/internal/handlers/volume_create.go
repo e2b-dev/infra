@@ -126,8 +126,8 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 	}
 
 	result := api.Volume{
-		Id:   volume.ID.String(),
-		Name: volume.Name,
+		VolumeID: volume.ID.String(),
+		Name:     volume.Name,
 	}
 
 	c.JSON(http.StatusCreated, result)

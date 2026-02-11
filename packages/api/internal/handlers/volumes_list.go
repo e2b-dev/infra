@@ -35,8 +35,8 @@ func (a *APIStore) GetVolumes(c *gin.Context) {
 	volumes := make([]api.Volume, len(result))
 	for i, v := range result {
 		volumes[i] = api.Volume{
-			Id:   v.ID.String(),
-			Name: v.Name,
+			VolumeID: v.ID.String(),
+			Name:     v.Name,
 		}
 	}
 

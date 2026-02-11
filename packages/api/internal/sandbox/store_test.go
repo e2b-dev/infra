@@ -173,6 +173,7 @@ func createTestSandbox() sandbox.Sandbox {
 		nil, // domain
 		nil, // network
 		nil, // trafficAccessToken
+		nil, // volumes
 	)
 }
 

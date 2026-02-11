@@ -340,7 +340,8 @@ type ListedSandbox struct {
 	State SandboxState `json:"state"`
 
 	// TemplateID Identifier of the template from which is the sandbox created
-	TemplateID string `json:"templateID"`
+	TemplateID   string               `json:"templateID"`
+	VolumeMounts []SandboxVolumeMount `json:"volumeMounts"`
 }
 
 // LogLevel State of the sandbox
@@ -638,7 +639,8 @@ type SandboxDetail struct {
 	State SandboxState `json:"state"`
 
 	// TemplateID Identifier of the template from which is the sandbox created
-	TemplateID string `json:"templateID"`
+	TemplateID   string               `json:"templateID"`
+	VolumeMounts []SandboxVolumeMount `json:"volumeMounts"`
 }
 
 // SandboxLog Log entry with timestamp and line
@@ -1141,11 +1143,11 @@ type UpdateTeamAPIKey struct {
 
 // Volume defines model for Volume.
 type Volume struct {
-	// Id ID of the volume
-	Id string `json:"id"`
-
 	// Name Name of the volume
 	Name string `json:"name"`
+
+	// VolumeID ID of the volume
+	VolumeID string `json:"volumeID"`
 }
 
 // VolumeDirectoryItem defines model for VolumeDirectoryItem.

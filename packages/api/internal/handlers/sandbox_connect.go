@@ -161,6 +161,11 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 		autoResume = snap.Config.AutoResume
 	}
 
+	var volumes []*types.SandboxVolumeMountConfig
+	if snap.Config != nil {
+		volumes = snap.Config.VolumeMounts
+	}
+
 	sbx, createErr := a.startSandbox(
 		ctx,
 		snap.SandboxID,
@@ -181,7 +186,7 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 		snap.AllowInternetAccess,
 		network,
 		nil, // mcp
-		nil, // volumes
+		convertDatabaseMountsToOrchestratorMounts(volumes), // volumes
 	)
 	if createErr != nil {
 		a.sendAPIStoreError(c, createErr.Code, createErr.ClientMsg)
