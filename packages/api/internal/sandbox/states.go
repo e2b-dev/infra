@@ -9,7 +9,7 @@ type StateAction string
 var AllowedTransitions = map[State]map[State]bool{
 	StateRunning:      {StatePausing: true, StateKilling: true, StateSnapshotting: true},
 	StatePausing:      {StateKilling: true},
-	StateSnapshotting: {StateRunning: true},
+	StateSnapshotting: {StateRunning: true, StateKilling: true},
 }
 
 const (

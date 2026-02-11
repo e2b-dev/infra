@@ -415,6 +415,9 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 
 	sbxlogger.E(sbx).Info(ctx, "Checkpointing sandbox")
 
+	// Stop the old sandbox in background after we're done
+	defer s.stopSandboxAsync(context.WithoutCancel(ctx), sbx)
+
 	// Start snapshot and upload async - we'll wait for upload at the end
 	meta, waitForUpload, err := s.snapshotAndCacheSandbox(ctx, sbx, in.GetBuildId())
 	if err != nil {
@@ -431,7 +434,8 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		return nil, status.Errorf(codes.Internal, "error getting template for resume: %s", err)
 	}
 
-	// Resume the sandbox with the same config
+	// Resume the sandbox with the same config but a new ExecutionID
+	// to avoid lifecycle goroutine conflict with the original sandbox
 	resumedSbx, err := s.sandboxFactory.ResumeSandbox(
 		ctx,
 		template,
@@ -439,7 +443,7 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		sandbox.RuntimeMetadata{
 			TemplateID:  sbx.Runtime.TemplateID,
 			SandboxID:   sbx.Runtime.SandboxID,
-			ExecutionID: sbx.Runtime.ExecutionID,
+			ExecutionID: uuid.NewString(),
 			TeamID:      sbx.Runtime.TeamID,
 		},
 		sbx.StartedAt,
@@ -460,9 +464,6 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 
 	// Setup lifecycle for the resumed sandbox
 	s.setupSandboxLifecycle(ctx, resumedSbx)
-
-	// Stop the old sandbox in background
-	s.stopSandboxAsync(context.WithoutCancel(ctx), sbx)
 
 	// Upload prefetch mapping in background
 	if prefetchErr == nil {

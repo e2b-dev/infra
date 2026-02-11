@@ -70,7 +70,16 @@ func (a *APIStore) GetSnapshots(c *gin.Context, params api.GetSnapshotsParams) {
 
 	result := make([]api.SnapshotInfo, 0, len(snapshots))
 	for _, snap := range snapshots {
-		result = append(result, api.SnapshotInfo{SnapshotID: snap.SnapshotID})
+		// Construct name from aliases if available, otherwise use snapshot ID
+		name := snap.SnapshotID
+		if len(snap.Aliases) > 0 {
+			// Use the first alias to construct the name
+			name = snap.Aliases[0]
+		}
+		result = append(result, api.SnapshotInfo{
+			SnapshotID: snap.SnapshotID,
+			Name:       name,
+		})
 	}
 
 	c.JSON(http.StatusOK, result)
