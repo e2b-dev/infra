@@ -30,6 +30,12 @@ var (
 	ErrBufferTooLarge  = errors.New("buffer is too large")
 )
 
+const (
+	nfsCacheOperationAttr       = "operation"
+	nfsCacheOperationAttrReadAt = "ReadAt"
+	nfsCacheOperationAttrSize   = "Size"
+)
+
 var (
 	cacheSlabReadTimerFactory = utils.Must(telemetry.NewTimerFactory(meter,
 		"orchestrator.storage.slab.nfs.read",
@@ -79,7 +85,7 @@ func (c *cachedSeekable) ReadAt(ctx context.Context, buff []byte, offset int64) 
 	// try to read from cache first
 	chunkPath := c.makeChunkFilename(offset)
 
-	readTimer := cacheSlabReadTimerFactory.Begin()
+	readTimer := cacheSlabReadTimerFactory.Begin(attribute.String(nfsCacheOperationAttr, nfsCacheOperationAttrReadAt))
 	count, err := c.readAtFromCache(ctx, chunkPath, buff)
 	if ignoreEOF(err) == nil {
 		recordCacheRead(ctx, true, int64(count), cacheTypeSeekable, cacheOpReadAt)
@@ -129,9 +135,12 @@ func (c *cachedSeekable) Size(ctx context.Context) (n int64, e error) {
 		span.End()
 	}()
 
+	readTimer := cacheSlabReadTimerFactory.Begin(attribute.String(nfsCacheOperationAttr, nfsCacheOperationAttrSize))
+
 	size, err := c.readLocalSize(ctx)
 	if err == nil {
 		recordCacheRead(ctx, true, 8, cacheTypeSeekable, cacheOpSize)
+		readTimer.Success(ctx, 8)
 
 		return size, nil
 	}
@@ -140,6 +149,8 @@ func (c *cachedSeekable) Size(ctx context.Context) (n int64, e error) {
 
 	size, err = c.inner.Size(ctx)
 	if err != nil {
+		readTimer.Failure(ctx, 0)
+
 		return size, err
 	}
 
@@ -154,6 +165,7 @@ func (c *cachedSeekable) Size(ctx context.Context) (n int64, e error) {
 	})
 
 	recordCacheRead(ctx, false, 8, cacheTypeSeekable, cacheOpSize)
+	readTimer.Success(ctx, 8)
 
 	return size, nil
 }
