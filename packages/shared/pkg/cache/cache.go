@@ -94,7 +94,8 @@ func (c *Cache[K, V]) GetOrSet(ctx context.Context, key K, dataCallback DataCall
 	// Cache miss - fetch with singleflight to deduplicate concurrent requests
 	if item == nil {
 		result, err, _ := c.fetchGroup.Do(fmt.Sprint(key), func() (any, error) {
-			return c.getAndSet(ctx, key, dataCallback)
+			// Use a non-cancellable context for the data fetch to ensure short context won't cause all the requests to fail
+			return c.getAndSet(context.WithoutCancel(ctx), key, dataCallback)
 		})
 		if err != nil {
 			var zero V
