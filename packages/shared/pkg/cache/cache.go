@@ -94,29 +94,8 @@ func (c *Cache[K, V]) GetOrSet(ctx context.Context, key K, dataCallback DataCall
 	// Cache miss - fetch with singleflight to deduplicate concurrent requests
 	if item == nil {
 		result, err, _ := c.fetchGroup.Do(fmt.Sprint(key), func() (any, error) {
-			// Double-check cache in case another goroutine just populated it
-			// This is necessary as there would still be a race condition
-			if existingItem := c.cache.Get(key); existingItem != nil {
-				return existingItem.Value().value, nil
-			}
-
-			value, err := dataCallback(ctx, key)
-			if err != nil {
-				return nil, err
-			}
-
-			if c.config.ExtractKeyFunc != nil {
-				key = c.config.ExtractKeyFunc(value)
-			}
-
-			c.cache.Set(key, &Item[V]{
-				value:       value,
-				lastRefresh: time.Now(),
-			}, c.config.TTL)
-
-			return value, nil
+			return c.getAndSet(ctx, key, dataCallback)
 		})
-
 		if err != nil {
 			var zero V
 
@@ -138,6 +117,30 @@ func (c *Cache[K, V]) GetOrSet(ctx context.Context, key K, dataCallback DataCall
 	}
 
 	return cacheItem.value, nil
+}
+
+func (c *Cache[K, V]) getAndSet(ctx context.Context, key K, dataCallback DataCallback[K, V]) (V, error) {
+	// Double-check cache in case another goroutine just populated it
+	// This is necessary as there would still be a race condition
+	if existingItem := c.cache.Get(key); existingItem != nil {
+		return existingItem.Value().value, nil
+	}
+
+	value, err := dataCallback(ctx, key)
+	if err != nil {
+		return value, err
+	}
+
+	if c.config.ExtractKeyFunc != nil {
+		key = c.config.ExtractKeyFunc(value)
+	}
+
+	c.cache.Set(key, &Item[V]{
+		value:       value,
+		lastRefresh: time.Now(),
+	}, c.config.TTL)
+
+	return value, nil
 }
 
 func (c *Cache[K, V]) Keys() []K {
