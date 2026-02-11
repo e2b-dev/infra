@@ -51,14 +51,14 @@ func TestCache_SetAndGet(t *testing.T) {
 	t.Run("set and get value", func(t *testing.T) {
 		t.Parallel()
 		cache.Set("key1", "value1")
-		value, found := cache.Get("key1")
+		value, found := cache.GetWithoutTouch("key1")
 		assert.True(t, found)
 		assert.Equal(t, "value1", value)
 	})
 
 	t.Run("get non-existent key", func(t *testing.T) {
 		t.Parallel()
-		value, found := cache.Get("non-existent")
+		value, found := cache.GetWithoutTouch("non-existent")
 		assert.False(t, found)
 		assert.Empty(t, value) // zero value for string
 	})
@@ -67,7 +67,7 @@ func TestCache_SetAndGet(t *testing.T) {
 		t.Parallel()
 		cache.Set("key2", "original")
 		cache.Set("key2", "updated")
-		value, found := cache.Get("key2")
+		value, found := cache.GetWithoutTouch("key2")
 		assert.True(t, found)
 		assert.Equal(t, "updated", value)
 	})
@@ -83,7 +83,7 @@ func TestCache_SetWithTTL(t *testing.T) {
 	cache.Set("key1", "value1")
 
 	// Value should be present immediately
-	value, found := cache.Get("key1")
+	value, found := cache.GetWithoutTouch("key1")
 	assert.True(t, found)
 	assert.Equal(t, "value1", value)
 
@@ -91,7 +91,7 @@ func TestCache_SetWithTTL(t *testing.T) {
 	time.Sleep(150 * time.Millisecond)
 
 	// Value should be gone
-	_, found = cache.Get("key1")
+	_, found = cache.GetWithoutTouch("key1")
 	assert.False(t, found)
 }
 
@@ -106,7 +106,7 @@ func TestCache_Delete(t *testing.T) {
 	cache.Set("key1", "value1")
 
 	// Verify it exists
-	value, found := cache.Get("key1")
+	value, found := cache.GetWithoutTouch("key1")
 	assert.True(t, found)
 	assert.Equal(t, "value1", value)
 
@@ -114,7 +114,7 @@ func TestCache_Delete(t *testing.T) {
 	cache.Delete("key1")
 
 	// Verify it's gone
-	_, found = cache.Get("key1")
+	_, found = cache.GetWithoutTouch("key1")
 	assert.False(t, found)
 }
 
@@ -139,7 +139,7 @@ func TestCache_GetOrSet_CacheMiss(t *testing.T) {
 	assert.Equal(t, 1, callCount)
 
 	// Verify it's now in cache
-	cachedValue, found := cache.Get("key1")
+	cachedValue, found := cache.GetWithoutTouch("key1")
 	assert.True(t, found)
 	assert.Equal(t, "value-key1", cachedValue)
 	assert.Equal(t, 1, callCount)
@@ -192,7 +192,7 @@ func TestCache_GetOrSet_CallbackError(t *testing.T) {
 	assert.Empty(t, value)
 
 	// Verify nothing was cached
-	_, found := cache.Get("key1")
+	_, found := cache.GetWithoutTouch("key1")
 	assert.False(t, found)
 }
 
@@ -236,7 +236,7 @@ func TestCache_GetOrSet_WithRefreshInterval(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	// Now the cache should have the refreshed value
-	value4, found := cache.Get("key1")
+	value4, found := cache.GetWithoutTouch("key1")
 	assert.True(t, found)
 	assert.Equal(t, 2, value4) // Updated value from refresh
 	assert.Equal(t, int32(2), callCount.Load())
@@ -340,7 +340,7 @@ func TestCache_GetOrSet_CacheMissSingleflight(t *testing.T) {
 	assert.Equal(t, int32(1), callCount.Load())
 
 	// Verify value is cached
-	cachedValue, found := cache.Get("key1")
+	cachedValue, found := cache.GetWithoutTouch("key1")
 	assert.True(t, found)
 	assert.Equal(t, 1, cachedValue)
 }
@@ -371,7 +371,7 @@ func TestCache_Refresh_DeletesOnError(t *testing.T) {
 	assert.Equal(t, "success", value)
 
 	// Verify it's cached
-	_, found := cache.Get("key1")
+	_, found := cache.GetWithoutTouch("key1")
 	assert.True(t, found)
 
 	// Wait for refresh interval
@@ -388,7 +388,7 @@ func TestCache_Refresh_DeletesOnError(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	// Cache should be cleared due to refresh error
-	_, found = cache.Get("key1")
+	_, found = cache.GetWithoutTouch("key1")
 	assert.False(t, found)
 }
 
@@ -415,6 +415,33 @@ func TestCache_ContextCancellation(t *testing.T) {
 	// Context cancellation won't cause GetOrSet to fail
 	_, err := cache.GetOrSet(ctx, "key1", callback)
 	require.NoError(t, err)
+}
+
+func TestCache_CallbackTimeout(t *testing.T) {
+	t.Parallel()
+	config := Config[string]{
+		TTL:             5 * time.Minute,
+		RefreshInterval: 1 * time.Minute,
+		CallbackTimeout: 10 * time.Millisecond,
+	}
+	cache := NewCache[string](config)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel immediately
+
+	callback := func(ctx context.Context, _ string) (string, error) {
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(100 * time.Millisecond):
+			return "value", nil
+		}
+	}
+
+	// Context cancellation won't cause GetOrSet to fail
+	_, err := cache.GetOrSet(ctx, "key1", callback)
+	require.Error(t, err)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
 }
 
 func TestCache_ExtractKeyFunc(t *testing.T) {
@@ -446,12 +473,12 @@ func TestCache_ExtractKeyFunc(t *testing.T) {
 		assert.Equal(t, "Alice", value.Name)
 
 		// Verify the value is cached under the extracted key, not the original key
-		cachedValue, found := cache.Get("user-123")
+		cachedValue, found := cache.GetWithoutTouch("user-123")
 		assert.True(t, found)
 		assert.Equal(t, "Alice", cachedValue.Name)
 
 		// Original key should not have the value
-		_, found = cache.Get("any-key")
+		_, found = cache.GetWithoutTouch("any-key")
 		assert.False(t, found)
 	})
 
@@ -474,12 +501,12 @@ func TestCache_ExtractKeyFunc(t *testing.T) {
 		assert.Equal(t, "Bob", value.Name)
 
 		// Should be cached under the provided key
-		cachedValue, found := cache.Get("custom-key")
+		cachedValue, found := cache.GetWithoutTouch("custom-key")
 		assert.True(t, found)
 		assert.Equal(t, "Bob", cachedValue.Name)
 
 		// Should not be under the extracted ID
-		_, found = cache.Get("user-456")
+		_, found = cache.GetWithoutTouch("user-456")
 		assert.False(t, found)
 	})
 }

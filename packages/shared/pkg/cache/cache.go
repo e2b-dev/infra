@@ -24,6 +24,9 @@ type Config[V any] struct {
 	// RefreshInterval is the interval at which cache entries are refreshed in the background
 	// If 0, no background refresh is performed
 	RefreshInterval time.Duration
+	// CallbackTimeout is the timeout for the data callback function
+	// Defaults to 30 seconds if not specified
+	CallbackTimeout time.Duration
 	// RefreshTimeout is the timeout for refresh operations
 	// Defaults to 30 seconds if not specified
 	RefreshTimeout time.Duration
@@ -54,14 +57,18 @@ func NewCache[V any](config Config[V]) *Cache[V] {
 		config.RefreshTimeout = 30 * time.Second
 	}
 
+	if config.CallbackTimeout == 0 {
+		config.CallbackTimeout = 30 * time.Second
+	}
+
 	return &Cache[V]{
 		cache:  cache,
 		config: config,
 	}
 }
 
-// Get retrieves a value from the cache by key
-func (c *Cache[V]) Get(key string) (V, bool) {
+// GetWithoutTouch retrieves a value from the cache by key
+func (c *Cache[V]) GetWithoutTouch(key string) (V, bool) {
 	item := c.cache.Get(key)
 	if item == nil {
 		var zero V
@@ -95,7 +102,10 @@ func (c *Cache[V]) GetOrSet(ctx context.Context, key string, dataCallback DataCa
 	if item == nil {
 		result, err, _ := c.fetchGroup.Do(key, func() (any, error) {
 			// Use a non-cancellable context for the data fetch to ensure short context won't cause all the requests to fail
-			return c.getAndSet(context.WithoutCancel(ctx), key, dataCallback)
+			ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), c.config.CallbackTimeout)
+			defer cancel()
+
+			return c.getAndSet(ctx, key, dataCallback)
 		})
 		if err != nil {
 			var zero V

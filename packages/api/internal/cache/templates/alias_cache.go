@@ -38,6 +38,7 @@ func NewAliasCache(db *sqlcdb.Client) *AliasCache {
 		TTL:             templateInfoExpiration,
 		RefreshInterval: refreshInterval,
 		RefreshTimeout:  refreshTimeout,
+		CallbackTimeout: callbackTimeout,
 	}
 
 	return &AliasCache{
@@ -176,7 +177,7 @@ func (c *AliasCache) Invalidate(namespace *string, alias string) {
 // InvalidateByTemplateID removes all cache entries pointing to the given template ID
 func (c *AliasCache) InvalidateByTemplateID(templateID string) {
 	for _, key := range c.cache.Keys() {
-		if info, found := c.cache.Get(key); found && info != nil && info.TemplateID == templateID {
+		if info, found := c.cache.GetWithoutTouch(key); found && info != nil && info.TemplateID == templateID {
 			c.cache.Delete(key)
 		}
 	}

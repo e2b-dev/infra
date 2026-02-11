@@ -24,6 +24,7 @@ const (
 	templateInfoExpiration = 5 * time.Minute
 	refreshInterval        = 1 * time.Minute
 	refreshTimeout         = 30 * time.Second
+	callbackTimeout        = 30 * time.Second
 )
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/cache/templates")
@@ -54,6 +55,7 @@ func NewTemplateCache(db *sqlcdb.Client) *TemplateCache {
 		TTL:             templateInfoExpiration,
 		RefreshInterval: refreshInterval,
 		RefreshTimeout:  refreshTimeout,
+		CallbackTimeout: callbackTimeout,
 		ExtractKeyFunc: func(value *TemplateInfo) string {
 			return buildCacheKey(value.Template.TemplateID, value.Tag)
 		},
