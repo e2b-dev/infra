@@ -145,7 +145,35 @@ func (m *MockStorage) Add(ctx context.Context, sbx sandbox.Sandbox) error {
 
 // createTestSandbox creates a test sandbox with default values
 func createTestSandbox() sandbox.Sandbox {
-	return sandbox.NewSandbox("test-sandbox-"+uuid.New().String()[:8], "test-template", consts.ClientID, nil, "", uuid.New(), uuid.New(), map[string]string{"test": "metadata"}, time.Hour, time.Now(), time.Now().Add(time.Hour), 2, 1024, 512, "5.10", "1.0", "1.0", "node-1", uuid.New(), false, nil, nil, "base-template", nil, nil, nil, nil)
+	return sandbox.NewSandbox(
+		"test-sandbox-"+uuid.New().String()[:8],
+		"test-template",
+		consts.ClientID,
+		nil,
+		"",
+		uuid.New(),
+		uuid.New(),
+		map[string]string{"test": "metadata"},
+		time.Hour,
+		time.Now(),
+		time.Now().Add(time.Hour),
+		2,
+		1024,
+		512,
+		"5.10",
+		"1.0",
+		"1.0",
+		"node-1",
+		uuid.New(),
+		false,
+		nil,
+		nil,
+		"base-template",
+		nil,
+		nil,
+		nil,
+		nil,
+	)
 }
 
 // =============================================================================
