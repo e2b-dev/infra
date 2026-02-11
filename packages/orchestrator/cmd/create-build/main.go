@@ -430,7 +430,11 @@ func setupKernel(ctx context.Context, dir, version string) error {
 		return fmt.Errorf("failed to download kernel: %w", err)
 	}
 
-	// Fallback to legacy path without arch directory
+	// Legacy URLs are x86_64-only; only fall back for amd64.
+	if arch != "amd64" {
+		return fmt.Errorf("kernel %s not found for %s (no legacy fallback for non-amd64)", version, arch)
+	}
+
 	legacyURL, err := url.JoinPath("https://storage.googleapis.com/e2b-prod-public-builds/kernels/", version, "vmlinux.bin")
 	if err != nil {
 		return fmt.Errorf("invalid kernel legacy URL: %w", err)
@@ -469,7 +473,11 @@ func setupFC(ctx context.Context, dir, version string) error {
 		return fmt.Errorf("failed to download Firecracker: %w", err)
 	}
 
-	// Fallback to legacy path without arch directory
+	// Legacy URLs are x86_64-only; only fall back for amd64.
+	if arch != "amd64" {
+		return fmt.Errorf("Firecracker %s not found for %s (no legacy fallback for non-amd64)", version, arch)
+	}
+
 	legacyURL, err := url.JoinPath("https://storage.googleapis.com/e2b-prod-public-builds/fc-versions/", version, "firecracker")
 	if err != nil {
 		return fmt.Errorf("invalid Firecracker legacy URL: %w", err)
