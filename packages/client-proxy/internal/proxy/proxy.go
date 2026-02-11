@@ -10,8 +10,11 @@ import (
 
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
@@ -30,10 +33,26 @@ const (
 
 var ErrNodeNotFound = errors.New("node not found")
 
-func catalogResolution(ctx context.Context, sandboxId string, c catalog.SandboxesCatalog) (string, error) {
+type autoResumeResult uint8
+
+const (
+	autoResumeSucceeded autoResumeResult = iota
+	autoResumeNotAllowed
+	autoResumeErrored
+)
+
+func catalogResolution(ctx context.Context, sandboxId string, c catalog.SandboxesCatalog, pausedChecker PausedSandboxResumer, featureFlags *featureflags.Client) (string, error) {
 	s, err := c.GetSandbox(ctx, sandboxId)
 	if err != nil {
 		if errors.Is(err, catalog.ErrSandboxNotFound) {
+			nodeIP, res, pausedErr := handlePausedSandbox(ctx, sandboxId, pausedChecker, featureFlags)
+			if pausedErr != nil {
+				return "", pausedErr
+			}
+			if res == autoResumeSucceeded {
+				return nodeIP, nil
+			}
+
 			return "", ErrNodeNotFound
 		}
 
@@ -45,9 +64,46 @@ func catalogResolution(ctx context.Context, sandboxId string, c catalog.Sandboxe
 	return s.OrchestratorIP, nil
 }
 
-func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog catalog.SandboxesCatalog) (*reverseproxy.Proxy, error) {
-	getTargetFromRequest := reverseproxy.GetTargetFromRequest(env.IsLocal())
+func handlePausedSandbox(
+	ctx context.Context,
+	sandboxId string,
+	pausedChecker PausedSandboxResumer,
+	featureFlags *featureflags.Client,
+) (string, autoResumeResult, error) {
+	if pausedChecker == nil {
+		return "", autoResumeNotAllowed, nil
+	}
 
+	if !featureFlags.BoolFlag(ctx, featureflags.SandboxAutoResumeFlag, featureflags.SandboxContext(sandboxId)) {
+		logger.L().Debug(ctx, "sandbox auto-resume disabled; skipping api resume", logger.WithSandboxID(sandboxId))
+
+		return "", autoResumeNotAllowed, nil
+	}
+
+	logger.L().Info(ctx, "catalog miss, attempting resume via api", logger.WithSandboxID(sandboxId))
+	nodeIP, err := pausedChecker.Resume(ctx, sandboxId)
+	if err != nil {
+		if isNotResumableError(err) {
+			return "", autoResumeNotAllowed, nil
+		}
+
+		return "", autoResumeErrored, err
+	}
+
+	return nodeIP, autoResumeSucceeded, nil
+}
+
+func isNotResumableError(err error) bool {
+	st, ok := status.FromError(err)
+	if !ok {
+		return false
+	}
+
+	return st.Code() == codes.NotFound
+}
+
+func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog catalog.SandboxesCatalog, pausedSandboxResumer PausedSandboxResumer, featureFlagsClient *featureflags.Client) (*reverseproxy.Proxy, error) {
+	getTargetFromRequest := reverseproxy.GetTargetFromRequest(env.IsLocal())
 	proxy := reverseproxy.New(
 		port,
 		// Retries that are needed to handle port forwarding delays in sandbox envd are handled by the orchestrator proxy
@@ -71,7 +127,7 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 				zap.Int64("content_length", r.ContentLength),
 			)
 
-			nodeIP, err := catalogResolution(r.Context(), sandboxId, catalog)
+			nodeIP, err := catalogResolution(ctx, sandboxId, catalog, pausedSandboxResumer, featureFlagsClient)
 			if err != nil {
 				if !errors.Is(err, ErrNodeNotFound) {
 					l.Warn(ctx, "failed to resolve node ip with Redis resolution", zap.Error(err))

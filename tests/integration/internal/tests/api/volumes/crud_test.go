@@ -32,8 +32,8 @@ func TestVolumeRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, http.StatusCreated, createVolume.StatusCode(), string(createVolume.Body))
 	assert.Equal(t, volumeName, createVolume.JSON201.Name)
-	assert.NotEmpty(t, createVolume.JSON201.Id)
-	volumeID := createVolume.JSON201.Id
+	assert.NotEmpty(t, createVolume.JSON201.VolumeID)
+	volumeID := createVolume.JSON201.VolumeID
 
 	// fail to create volume again
 	createVolumeFailure, err := client.PostVolumesWithResponse(
@@ -49,7 +49,7 @@ func TestVolumeRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, getVolume.StatusCode(), string(getVolume.Body))
 	assert.Equal(t, volumeName, getVolume.JSON200.Name)
-	assert.Equal(t, volumeID, getVolume.JSON200.Id)
+	assert.Equal(t, volumeID, getVolume.JSON200.VolumeID)
 
 	// list volumes
 	listVolumes, err := client.GetVolumesWithResponse(t.Context(), auth...)

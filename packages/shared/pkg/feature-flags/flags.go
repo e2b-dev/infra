@@ -83,6 +83,7 @@ func newBoolFlag(name string, fallback bool) BoolFlag {
 var (
 	MetricsWriteFlag                    = newBoolFlag("sandbox-metrics-write", env.IsDevelopment())
 	MetricsReadFlag                     = newBoolFlag("sandbox-metrics-read", env.IsDevelopment())
+	HostStatsEnabled                    = newBoolFlag("host-stats-enabled", env.IsDevelopment())
 	SnapshotFeatureFlag                 = newBoolFlag("use-nfs-for-snapshots", env.IsDevelopment())
 	TemplateFeatureFlag                 = newBoolFlag("use-nfs-for-templates", env.IsDevelopment())
 	EnableWriteThroughCacheFlag         = newBoolFlag("write-to-cache-on-writes", false)
@@ -91,6 +92,7 @@ var (
 	BestOfKTooManyStartingFlag          = newBoolFlag("best-of-k-too-many-starting", false)
 	EdgeProvidedSandboxMetricsFlag      = newBoolFlag("edge-provided-sandbox-metrics", false)
 	CreateStorageCacheSpansFlag         = newBoolFlag("create-storage-cache-spans", env.IsDevelopment())
+	SandboxAutoResumeFlag               = newBoolFlag("sandbox-auto-resume", env.IsDevelopment())
 	PersistentVolumesFlag               = newBoolFlag("can-use-persistent-volumes", env.IsDevelopment())
 )
 

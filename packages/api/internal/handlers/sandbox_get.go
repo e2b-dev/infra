@@ -77,6 +77,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 			EnvdVersion:     sbx.EnvdVersion,
 			EnvdAccessToken: sbx.EnvdAccessToken,
 			Domain:          sbxDomain,
+			VolumeMounts:    convertFromDBMountsToAPIMounts(sbx.VolumeMounts),
 		}
 
 		if sbx.Metadata != nil {

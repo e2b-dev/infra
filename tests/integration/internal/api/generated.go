@@ -70,6 +70,12 @@ const (
 	NodeStatusUnhealthy  NodeStatus = "unhealthy"
 )
 
+// Defines values for SandboxAutoResumePolicy.
+const (
+	Any SandboxAutoResumePolicy = "any"
+	Off SandboxAutoResumePolicy = "off"
+)
+
 // Defines values for SandboxState.
 const (
 	Paused  SandboxState = "paused"
@@ -334,7 +340,8 @@ type ListedSandbox struct {
 	State SandboxState `json:"state"`
 
 	// TemplateID Identifier of the template from which is the sandbox created
-	TemplateID string `json:"templateID"`
+	TemplateID   string               `json:"templateID"`
+	VolumeMounts []SandboxVolumeMount `json:"volumeMounts"`
 }
 
 // LogLevel State of the sandbox
@@ -392,8 +399,11 @@ type NewSandbox struct {
 	AllowInternetAccess *bool `json:"allow_internet_access,omitempty"`
 
 	// AutoPause Automatically pauses the sandbox after the timeout
-	AutoPause *bool    `json:"autoPause,omitempty"`
-	EnvVars   *EnvVars `json:"envVars,omitempty"`
+	AutoPause *bool `json:"autoPause,omitempty"`
+
+	// AutoResume Auto-resume configuration for paused sandboxes. Default is off.
+	AutoResume *SandboxAutoResumeConfig `json:"autoResume,omitempty"`
+	EnvVars    *EnvVars                 `json:"envVars,omitempty"`
 
 	// Mcp MCP configuration for the sandbox
 	Mcp      *Mcp                  `json:"mcp"`
@@ -579,6 +589,15 @@ type Sandbox struct {
 	TrafficAccessToken *string `json:"trafficAccessToken"`
 }
 
+// SandboxAutoResumeConfig Auto-resume configuration for paused sandboxes. Default is off.
+type SandboxAutoResumeConfig struct {
+	// Policy Auto-resume policy for paused sandboxes. Default is off.
+	Policy SandboxAutoResumePolicy `json:"policy"`
+}
+
+// SandboxAutoResumePolicy Auto-resume policy for paused sandboxes. Default is off.
+type SandboxAutoResumePolicy string
+
 // SandboxDetail defines model for SandboxDetail.
 type SandboxDetail struct {
 	// Alias Alias of the template
@@ -620,7 +639,8 @@ type SandboxDetail struct {
 	State SandboxState `json:"state"`
 
 	// TemplateID Identifier of the template from which is the sandbox created
-	TemplateID string `json:"templateID"`
+	TemplateID   string               `json:"templateID"`
+	VolumeMounts []SandboxVolumeMount `json:"volumeMounts"`
 }
 
 // SandboxLog Log entry with timestamp and line
@@ -1123,11 +1143,11 @@ type UpdateTeamAPIKey struct {
 
 // Volume defines model for Volume.
 type Volume struct {
-	// Id ID of the volume
-	Id string `json:"id"`
-
 	// Name Name of the volume
 	Name string `json:"name"`
+
+	// VolumeID ID of the volume
+	VolumeID string `json:"volumeID"`
 }
 
 // AccessTokenID defines model for accessTokenID.
