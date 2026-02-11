@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -134,12 +135,26 @@ func run() int {
 	info := &internal.ServiceInfo{}
 	info.SetStatus(ctx, internal.Healthy)
 
+	var pausedSandboxResumer e2bproxy.PausedSandboxResumer
+	if strings.TrimSpace(config.ApiGrpcAddress) != "" {
+		pausedSandboxResumer, err = e2bproxy.NewGrpcPausedSandboxResumer(config.ApiGrpcAddress)
+		if err != nil {
+			l.Error(ctx, "Failed to create paused sandbox checker", zap.Error(err))
+
+			return 1
+		}
+	} else {
+		l.Warn(ctx, "API gRPC address not set; paused sandbox checks disabled")
+	}
+
 	// Proxy sandbox http traffic to orchestrator nodes
 	trafficProxy, err := e2bproxy.NewClientProxy(
 		tel.MeterProvider,
 		serviceName,
 		config.ProxyPort,
 		catalog,
+		pausedSandboxResumer,
+		featureFlagsClient,
 	)
 	if err != nil {
 		l.Error(ctx, "Failed to create client proxy", zap.Error(err))
@@ -168,6 +183,9 @@ func run() int {
 
 	var closers []Closeable
 	closers = append(closers, featureFlagsClient, catalog)
+	if closeable, ok := pausedSandboxResumer.(Closeable); ok {
+		closers = append(closers, closeable)
+	}
 
 	wg.Go(func() {
 		// make sure to cancel the parent context before this

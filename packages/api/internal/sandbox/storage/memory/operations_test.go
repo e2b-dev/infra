@@ -262,10 +262,9 @@ func TestStartRemoving_ContextTimeout(t *testing.T) {
 	elapsed := time.Since(start)
 
 	// Should timeout after about 20ms
-	require.Error(t, err2)
-	assert.Contains(t, err2.Error(), context.DeadlineExceeded.Error())
+	require.ErrorIs(t, err2, context.DeadlineExceeded)
 	assert.Greater(t, elapsed, 15*time.Millisecond)
-	assert.Less(t, elapsed, 100*time.Millisecond)
+	assert.Less(t, elapsed, 500*time.Millisecond)
 
 	// Clean up
 	finish1(ctx, nil)

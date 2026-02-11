@@ -1,6 +1,8 @@
 package cfg
 
-import "github.com/caarlos0/env/v11"
+import (
+	"github.com/caarlos0/env/v11"
+)
 
 const (
 	DefaultKernelVersion = "vmlinux-6.1.158"
@@ -34,6 +36,8 @@ type Config struct {
 	RedisClusterURL  string `env:"REDIS_CLUSTER_URL"`
 	RedisTLSCABase64 string `env:"REDIS_TLS_CA_BASE64"`
 
+	APIGrpcPort uint16 `env:"API_GRPC_PORT" envDefault:"5009"`
+
 	SandboxAccessTokenHashSeed string `env:"SANDBOX_ACCESS_TOKEN_HASH_SEED"`
 
 	// SupabaseJWTSecrets is a list of secrets used to verify the Supabase JWT.
@@ -42,6 +46,8 @@ type Config struct {
 	SupabaseJWTSecrets []string `env:"SUPABASE_JWT_SECRETS"`
 
 	DefaultKernelVersion string `env:"DEFAULT_KERNEL_VERSION"`
+
+	DefaultPersistentVolumeType string `env:"DEFAULT_PERSISTENT_VOLUME_TYPE"`
 }
 
 func Parse() (Config, error) {

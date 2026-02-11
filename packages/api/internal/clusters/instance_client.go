@@ -13,9 +13,6 @@ import (
 	"google.golang.org/grpc/keepalive"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
-	orchestratorgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
-	templatemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -67,10 +64,5 @@ func createClient(tel *telemetry.Client, auth *instanceAuthorization, endpoint s
 		return nil, fmt.Errorf("failed to create client client: %w", err)
 	}
 
-	return &GRPCClient{
-		Info:       infogrpc.NewInfoServiceClient(conn),
-		Sandbox:    orchestratorgrpc.NewSandboxServiceClient(conn),
-		Template:   templatemanagergrpc.NewTemplateServiceClient(conn),
-		Connection: conn,
-	}, nil
+	return NewGRPCClient(conn), nil
 }

@@ -23,6 +23,7 @@ const (
 	TierKind       ldcontext.Kind = "tier"
 	ServiceKind    ldcontext.Kind = "service"
 	TemplateKind   ldcontext.Kind = "template"
+	VolumeKind     ldcontext.Kind = "volume"
 )
 
 // All flags must be defined here: https://app.launchdarkly.com/projects/default/flags/
@@ -82,6 +83,7 @@ func newBoolFlag(name string, fallback bool) BoolFlag {
 var (
 	MetricsWriteFlag                    = newBoolFlag("sandbox-metrics-write", env.IsDevelopment())
 	MetricsReadFlag                     = newBoolFlag("sandbox-metrics-read", env.IsDevelopment())
+	HostStatsEnabled                    = newBoolFlag("host-stats-enabled", env.IsDevelopment())
 	SnapshotFeatureFlag                 = newBoolFlag("use-nfs-for-snapshots", env.IsDevelopment())
 	TemplateFeatureFlag                 = newBoolFlag("use-nfs-for-templates", env.IsDevelopment())
 	EnableWriteThroughCacheFlag         = newBoolFlag("write-to-cache-on-writes", false)
@@ -90,6 +92,8 @@ var (
 	BestOfKTooManyStartingFlag          = newBoolFlag("best-of-k-too-many-starting", false)
 	EdgeProvidedSandboxMetricsFlag      = newBoolFlag("edge-provided-sandbox-metrics", false)
 	CreateStorageCacheSpansFlag         = newBoolFlag("create-storage-cache-spans", env.IsDevelopment())
+	SandboxAutoResumeFlag               = newBoolFlag("sandbox-auto-resume", env.IsDevelopment())
+	PersistentVolumesFlag               = newBoolFlag("can-use-persistent-volumes", env.IsDevelopment())
 )
 
 type IntFlag struct {
@@ -191,10 +195,11 @@ var firecrackerVersions = map[string]string{
 
 // BuildIoEngine Sync is used by default as there seems to be a bad interaction between Async and a lot of io operations.
 var (
-	BuildFirecrackerVersion = newStringFlag("build-firecracker-version", env.GetEnv("DEFAULT_FIRECRACKER_VERSION", DefaultFirecrackerVersion))
-	BuildIoEngine           = newStringFlag("build-io-engine", "Sync")
-	BuildNodeInfo           = newJSONFlag("preferred-build-node", ldvalue.Null())
-	FirecrackerVersions     = newJSONFlag("firecracker-versions", ldvalue.FromJSONMarshal(firecrackerVersions))
+	BuildFirecrackerVersion     = newStringFlag("build-firecracker-version", env.GetEnv("DEFAULT_FIRECRACKER_VERSION", DefaultFirecrackerVersion))
+	BuildIoEngine               = newStringFlag("build-io-engine", "Sync")
+	DefaultPersistentVolumeType = newStringFlag("default-persistent-volume-type", "")
+	BuildNodeInfo               = newJSONFlag("preferred-build-node", ldvalue.Null())
+	FirecrackerVersions         = newJSONFlag("firecracker-versions", ldvalue.FromJSONMarshal(firecrackerVersions))
 )
 
 // defaultTrackedTemplates is the default map of template aliases tracked for metrics.

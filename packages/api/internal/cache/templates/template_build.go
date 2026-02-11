@@ -22,7 +22,7 @@ import (
 type TemplateBuildInfo struct {
 	TeamID      uuid.UUID
 	TemplateID  string
-	BuildStatus types.BuildStatus
+	BuildStatus types.BuildStatusGroup
 	Reason      types.BuildReason
 	Version     *string
 
@@ -52,7 +52,7 @@ func NewTemplateBuildCache(db *sqlcdb.Client) *TemplatesBuildCache {
 	}
 }
 
-func (c *TemplatesBuildCache) SetStatus(ctx context.Context, buildID uuid.UUID, status types.BuildStatus, reason types.BuildReason) {
+func (c *TemplatesBuildCache) SetStatus(ctx context.Context, buildID uuid.UUID, status types.BuildStatusGroup, reason types.BuildReason) {
 	c.mx.Lock()
 	defer c.mx.Unlock()
 
@@ -110,7 +110,7 @@ func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templa
 			TemplateBuildInfo{
 				TeamID:      result.Env.TeamID,
 				TemplateID:  result.Env.ID,
-				BuildStatus: types.BuildStatus(result.EnvBuild.Status),
+				BuildStatus: result.EnvBuild.StatusGroup,
 				Reason:      result.EnvBuild.Reason,
 				Version:     result.EnvBuild.Version,
 
@@ -133,7 +133,7 @@ func (c *TemplatesBuildCache) GetRunningBuildsForTeam(teamID uuid.UUID) []Templa
 	var builds []TemplateBuildInfo
 	for _, item := range c.cache.Items() {
 		value := item.Value()
-		isRunning := value.BuildStatus == types.BuildStatusBuilding || value.BuildStatus == types.BuildStatusWaiting
+		isRunning := value.BuildStatus == types.BuildStatusGroupInProgress || value.BuildStatus == types.BuildStatusGroupPending
 		if value.TeamID == teamID && isRunning {
 			builds = append(builds, value)
 		}

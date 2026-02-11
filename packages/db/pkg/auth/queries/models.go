@@ -67,6 +67,7 @@ type Env struct {
 	TeamID        uuid.UUID
 	CreatedBy     *uuid.UUID
 	ClusterID     *uuid.UUID
+	Source        string
 }
 
 type EnvAlias struct {
@@ -102,6 +103,7 @@ type EnvBuild struct {
 	CpuModel           *string
 	CpuModelName       *string
 	CpuFlags           []string
+	StatusGroup        string
 }
 
 type EnvBuildAssignment struct {
@@ -195,4 +197,12 @@ type UsersTeam struct {
 	IsDefault bool
 	AddedBy   *uuid.UUID
 	CreatedAt pgtype.Timestamp
+}
+
+type Volume struct {
+	ID         uuid.UUID
+	TeamID     uuid.UUID
+	Name       string
+	VolumeType string
+	CreatedAt  pgtype.Timestamptz
 }
