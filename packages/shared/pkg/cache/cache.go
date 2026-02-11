@@ -40,8 +40,9 @@ type Item[V any] struct {
 
 // Cache is a generic cache with optional background refresh support
 type Cache[K comparable, V any] struct {
-	cache  *ttlcache.Cache[K, *Item[V]]
-	config Config[K, V]
+	cache      *ttlcache.Cache[K, *Item[V]]
+	config     Config[K, V]
+	fetchGroup singleflight.Group // deduplicates concurrent cache miss fetches
 }
 
 // NewCache creates a new Cache with the given configuration
@@ -90,25 +91,39 @@ func (c *Cache[K, V]) Delete(key K) {
 func (c *Cache[K, V]) GetOrSet(ctx context.Context, key K, dataCallback DataCallback[K, V]) (V, error) {
 	item := c.cache.Get(key)
 
-	// Cache miss - fetch immediately
+	// Cache miss - fetch with singleflight to deduplicate concurrent requests
 	if item == nil {
-		value, err := dataCallback(ctx, key)
+		result, err, _ := c.fetchGroup.Do(fmt.Sprint(key), func() (any, error) {
+			// Double-check cache in case another goroutine just populated it
+			// This is necessary as there would still be a race condition
+			if existingItem := c.cache.Get(key); existingItem != nil {
+				return existingItem.Value().value, nil
+			}
+
+			value, err := dataCallback(ctx, key)
+			if err != nil {
+				return nil, err
+			}
+
+			if c.config.ExtractKeyFunc != nil {
+				key = c.config.ExtractKeyFunc(value)
+			}
+
+			c.cache.Set(key, &Item[V]{
+				value:       value,
+				lastRefresh: time.Now(),
+			}, c.config.TTL)
+
+			return value, nil
+		})
+
 		if err != nil {
 			var zero V
 
 			return zero, err
 		}
 
-		if c.config.ExtractKeyFunc != nil {
-			key = c.config.ExtractKeyFunc(value)
-		}
-
-		c.cache.Set(key, &Item[V]{
-			value:       value,
-			lastRefresh: time.Now(),
-		}, c.config.TTL)
-
-		return value, nil
+		return result.(V), nil
 	}
 
 	cacheItem := item.Value()

@@ -297,6 +297,54 @@ func TestCache_GetOrSet_RefreshOnlyOnce(t *testing.T) {
 	assert.LessOrEqual(t, callCount.Load(), int32(2))
 }
 
+func TestCache_GetOrSet_CacheMissSingleflight(t *testing.T) {
+	t.Parallel()
+	config := Config[string, int]{
+		TTL:             5 * time.Second,
+		RefreshInterval: 0, // No refresh
+	}
+	cache := NewCache(config)
+
+	var callCount atomic.Int32
+	callback := func(_ context.Context, _ string) (int, error) {
+		time.Sleep(100 * time.Millisecond) // Simulate slow callback
+		count := int(callCount.Add(1))
+
+		return count, nil
+	}
+
+	// Multiple concurrent calls for the same missing key should only call callback once
+	var wg errgroup.Group
+	results := make([]int, 10)
+	for i := range 10 {
+		wg.Go(func() error {
+			value, err := cache.GetOrSet(context.Background(), "key1", callback)
+			if err != nil {
+				return err
+			}
+			results[i] = value
+
+			return nil
+		})
+	}
+
+	err := wg.Wait()
+	require.NoError(t, err)
+
+	// All should return the same value (1) from the single callback execution
+	for i, result := range results {
+		assert.Equal(t, 1, result, "result %d should be 1", i)
+	}
+
+	// Verify only one callback was called
+	assert.Equal(t, int32(1), callCount.Load())
+
+	// Verify value is cached
+	cachedValue, found := cache.Get("key1")
+	assert.True(t, found)
+	assert.Equal(t, 1, cachedValue)
+}
+
 func TestCache_Refresh_DeletesOnError(t *testing.T) {
 	t.Parallel()
 	config := Config[string, string]{
