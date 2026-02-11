@@ -29,7 +29,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
-	"github.com/e2b-dev/infra/packages/db/pkg/auth"
+	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/pkg/pool"
 	"github.com/e2b-dev/infra/packages/shared/pkg/factories"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
@@ -231,6 +231,12 @@ func (a *APIStore) Close(ctx context.Context) error {
 
 	if err := a.sqlcDB.Close(); err != nil {
 		errs = append(errs, fmt.Errorf("closing sqlc database client: %w", err))
+	}
+
+	if a.templateBuildsCache != nil {
+		if err := a.templateBuildsCache.Close(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("closing template build cache: %w", err))
+		}
 	}
 
 	if a.redisClient != nil {

@@ -9,10 +9,12 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 const (
@@ -58,6 +60,14 @@ func (c *TemplatesBuildCache) getFromRedis(ctx context.Context, buildID uuid.UUI
 	buildKey := getBuildKey(buildID.String())
 	data, err := c.redisClient.Get(ctx, buildKey).Bytes()
 	if err != nil {
+		if err == redis.Nil {
+			return TemplateBuildInfo{}, ErrTemplateBuildInfoNotFound
+		}
+
+		logger.L().Warn(ctx, "Redis error while getting build",
+			logger.WithBuildID(buildID.String()),
+			zap.Error(err))
+
 		return TemplateBuildInfo{}, err
 	}
 
@@ -92,7 +102,7 @@ func (c *TemplatesBuildCache) fetchFromDB(ctx context.Context, buildID uuid.UUID
 	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return TemplateBuildInfo{}, TemplateBuildInfoNotFoundError{}
+			return TemplateBuildInfo{}, ErrTemplateBuildInfoNotFound
 		}
 
 		return TemplateBuildInfo{}, fmt.Errorf("failed to get template build '%s': %w", buildID, err)

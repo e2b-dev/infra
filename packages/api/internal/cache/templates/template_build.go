@@ -20,7 +20,7 @@ const (
 	l1CacheRefreshInterval = 1 * time.Second
 
 	redisBuildCacheTTL     = 5 * time.Minute
-	redisBuildCacheTimeout = 15 * time.Second
+	redisBuildCacheTimeout = 2 * time.Second
 )
 
 type TemplateBuildInfo struct {
@@ -34,11 +34,7 @@ type TemplateBuildInfo struct {
 	NodeID    *string   `json:"node_id,omitempty"`
 }
 
-type TemplateBuildInfoNotFoundError struct{}
-
-func (TemplateBuildInfoNotFoundError) Error() string {
-	return "Template build info not found"
-}
+var ErrTemplateBuildInfoNotFound = errors.New("template build info not found")
 
 type TemplatesBuildCache struct {
 	l1Cache     *cache.Cache[uuid.UUID, TemplateBuildInfo]
@@ -86,13 +82,6 @@ func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templa
 		return info, nil
 	}
 
-	// If Redis error is not "not found", log it but continue to DB
-	if !errors.Is(err, redis.Nil) {
-		logger.L().Warn(ctx, "Redis error while getting build, falling back to DB",
-			logger.WithBuildID(buildID.String()),
-			zap.Error(err))
-	}
-
 	// Step 3: Fetch from DB
 	logger.L().Debug(ctx, "Template build info not found in cache, fetching from DB",
 		logger.WithBuildID(buildID.String()))
@@ -112,4 +101,8 @@ func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templa
 
 		return info, nil
 	})
+}
+
+func (c *TemplatesBuildCache) Close(ctx context.Context) error {
+	return c.l1Cache.Close(ctx)
 }

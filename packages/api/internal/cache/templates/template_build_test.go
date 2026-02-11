@@ -87,6 +87,7 @@ func TestRedisTemplatesBuildCache_Get_DBFallback(t *testing.T) {
 	testutils.CreateTestBuildAssignment(t, ctx, db, templateID, buildID, "default")
 
 	cache := NewTemplateBuildCache(db.SqlcClient, redisClient)
+	defer cache.Close(t.Context())
 
 	// Get should fall back to DB
 	result, err := cache.Get(ctx, buildID, templateID)
@@ -103,11 +104,12 @@ func TestRedisTemplatesBuildCache_Get_NotFound(t *testing.T) {
 	ctx := t.Context()
 
 	cache := NewTemplateBuildCache(db.SqlcClient, redisClient)
+	defer cache.Close(t.Context())
 
 	// Try to get non-existent build
 	_, err := cache.Get(ctx, uuid.New(), "non-existent-template")
 	require.Error(t, err)
-	require.ErrorAs(t, err, &TemplateBuildInfoNotFoundError{})
+	require.ErrorIs(t, err, ErrTemplateBuildInfoNotFound)
 }
 
 // TestRedisTemplatesBuildCache_SetStatus_UpdatesAndInvalidatesL1 tests that SetStatus updates Redis and invalidates L1.
@@ -118,6 +120,7 @@ func TestRedisTemplatesBuildCache_SetStatus_UpdatesAndInvalidatesL1(t *testing.T
 	ctx := t.Context()
 
 	cache := NewTemplateBuildCache(db.SqlcClient, redisClient)
+	defer cache.Close(t.Context())
 
 	buildID := uuid.New()
 	info := TemplateBuildInfo{
