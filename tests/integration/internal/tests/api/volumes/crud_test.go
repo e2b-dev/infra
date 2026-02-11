@@ -2,6 +2,7 @@ package volumes
 
 import (
 	"net/http"
+	"path/filepath"
 	"testing"
 
 	"connectrpc.com/connect"
@@ -26,6 +27,7 @@ func TestVolumeRoundTrip(t *testing.T) {
 
 	auth := []api.RequestEditorFn{
 		setup.WithAccessToken(),
+		setup.WithAPIKey(),
 	}
 
 	// create volume
@@ -38,7 +40,7 @@ func TestVolumeRoundTrip(t *testing.T) {
 	require.Equal(t, http.StatusCreated, createVolume.StatusCode(), string(createVolume.Body))
 	assert.Equal(t, volumeName, createVolume.JSON201.Name)
 	assert.NotEmpty(t, createVolume.JSON201.VolumeID)
-	volumeID := createVolume.JSON201.VolumeID
+	volume := createVolume.JSON201
 
 	// fail to create volume again
 	createVolumeFailure, err := client.PostVolumesWithResponse(
@@ -50,11 +52,10 @@ func TestVolumeRoundTrip(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, createVolumeFailure.StatusCode(), string(createVolumeFailure.Body))
 
 	// retrieve volume
-	getVolume, err := client.GetVolumesVolumeIDWithResponse(t.Context(), volumeID, auth...)
+	getVolume, err := client.GetVolumesVolumeIDWithResponse(t.Context(), volume.VolumeID, auth...)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, getVolume.StatusCode(), string(getVolume.Body))
-	assert.Equal(t, volumeName, getVolume.JSON200.Name)
-	assert.Equal(t, volumeID, getVolume.JSON200.VolumeID)
+	assert.Equal(t, *volume, *getVolume.JSON200)
 
 	// list volumes
 	listVolumes, err := client.GetVolumesWithResponse(t.Context(), auth...)
@@ -62,50 +63,53 @@ func TestVolumeRoundTrip(t *testing.T) {
 	require.Equal(t, http.StatusOK, listVolumes.StatusCode(), string(listVolumes.Body))
 	assert.Contains(t, *listVolumes.JSON200, *getVolume.JSON200)
 
+	// paths
+	volumeMountPath := "/home/user/vol"
+	filePath := filepath.Join(volumeMountPath, "hello.txt")
+
 	// create a sandbox with the volume
+	timeout := int32(30)
 	createSandbox, err := client.PostSandboxesWithResponse(
 		t.Context(),
 		api.NewSandbox{
 			TemplateID: setup.SandboxTemplateID,
-			Timeout: func() *int32 {
-				v := int32(30)
-
-				return &v
-			}(),
+			Timeout:    &timeout,
 			Metadata: &api.SandboxMetadata{
 				"sandboxType": "test",
 			},
 			VolumeMounts: &[]api.SandboxVolumeMount{{
 				Name: volumeName,
-				Path: "/home/user/vol",
+				Path: volumeMountPath,
 			}},
 		},
-		setup.WithAPIKey(),
+		auth...,
 	)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusCreated, createSandbox.StatusCode(), string(createSandbox.Body))
 	require.NotNil(t, createSandbox.JSON201)
 	sbx := createSandbox.JSON201
 
-	// ensure mount directory exists (idempotent)
-	utils.CreateDir(t, sbx, "vol")
+	// verify that path is mounted
+	envdClient := setup.GetEnvdClient(t, t.Context())
+	output, err := utils.ExecCommandAsRootWithOutput(t, t.Context(), sbx, envdClient, "mount")
+	require.NoError(t, err)
+	require.Equal(t, volumeMountPath, output)
 
 	// write a file
 	{
 		ctx := t.Context()
 		envdClient := setup.GetEnvdClient(t, ctx)
-		utils.UploadFile(t, ctx, sbx, envdClient, "vol/hello.txt", "hello from volume")
+		utils.UploadFile(t, ctx, sbx, envdClient, filePath, "hello from volume")
 	}
 
 	// read the file
 	{
 		ctx := t.Context()
 		envdClient := setup.GetEnvdClient(t, ctx)
-		filePath := "vol/hello.txt"
 		readRes, readErr := envdClient.HTTPClient.GetFilesWithResponse(
 			ctx,
 			&envd.GetFilesParams{Path: &filePath, Username: sharedutils.ToPtr("user")},
-			setup.WithSandbox(sbx.SandboxID),
+			setup.WithSandbox(t, sbx.SandboxID),
 		)
 		require.NoError(t, readErr)
 		require.Equal(t, http.StatusOK, readRes.StatusCode(), string(readRes.Body))
@@ -130,10 +134,10 @@ func TestVolumeRoundTrip(t *testing.T) {
 			},
 			VolumeMounts: &[]api.SandboxVolumeMount{{
 				Name: volumeName,
-				Path: "/home/user/vol",
+				Path: volumeMountPath,
 			}},
 		},
-		setup.WithAPIKey(),
+		auth...,
 	)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusCreated, createSandbox2.StatusCode(), string(createSandbox2.Body))
@@ -144,11 +148,10 @@ func TestVolumeRoundTrip(t *testing.T) {
 	{
 		ctx := t.Context()
 		envdClient := setup.GetEnvdClient(t, ctx)
-		filePath := "vol/hello.txt"
 		readRes, readErr := envdClient.HTTPClient.GetFilesWithResponse(
 			ctx,
 			&envd.GetFilesParams{Path: &filePath, Username: sharedutils.ToPtr("user")},
-			setup.WithSandbox(sbx2.SandboxID),
+			setup.WithSandbox(t, sbx2.SandboxID),
 		)
 		require.NoError(t, readErr)
 		require.Equal(t, http.StatusOK, readRes.StatusCode(), string(readRes.Body))
@@ -159,18 +162,17 @@ func TestVolumeRoundTrip(t *testing.T) {
 	{
 		ctx := t.Context()
 		envdClient := setup.GetEnvdClient(t, ctx)
-		req := connect.NewRequest(&sharedfs.RemoveRequest{Path: "vol/hello.txt"})
-		setup.SetSandboxHeader(req.Header(), sbx2.SandboxID)
-		setup.SetUserHeader(req.Header(), "user")
+		req := connect.NewRequest(&sharedfs.RemoveRequest{Path: filePath})
+		setup.SetSandboxHeader(t, req.Header(), sbx2.SandboxID)
+		setup.SetUserHeader(t, req.Header(), "user")
 		_, remErr := envdClient.FilesystemClient.Remove(ctx, req)
 		require.NoError(t, remErr)
 
 		// verify it's gone
-		filePath := "vol/hello.txt"
 		readRes, readErr := envdClient.HTTPClient.GetFilesWithResponse(
 			ctx,
 			&envd.GetFilesParams{Path: &filePath, Username: sharedutils.ToPtr("user")},
-			setup.WithSandbox(sbx2.SandboxID),
+			setup.WithSandbox(t, sbx2.SandboxID),
 		)
 		require.NoError(t, readErr)
 		assert.Equal(t, http.StatusNotFound, readRes.StatusCode(), string(readRes.Body))
@@ -180,12 +182,12 @@ func TestVolumeRoundTrip(t *testing.T) {
 	utils.TeardownSandbox(t, client, sbx2.SandboxID)
 
 	// delete volume
-	deleteVolume, err := client.DeleteVolumesVolumeIDWithResponse(t.Context(), volumeID, auth...)
+	deleteVolume, err := client.DeleteVolumesVolumeIDWithResponse(t.Context(), volume.VolumeID, auth...)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusNoContent, deleteVolume.StatusCode(), string(deleteVolume.Body))
 
 	// verify volume is deleted
-	getVolumeFailed, err := client.GetVolumesVolumeIDWithResponse(t.Context(), volumeID, auth...)
+	getVolumeFailed, err := client.GetVolumesVolumeIDWithResponse(t.Context(), volume.VolumeID, auth...)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusNotFound, getVolumeFailed.StatusCode(), string(getVolumeFailed.Body))
 
@@ -196,7 +198,7 @@ func TestVolumeRoundTrip(t *testing.T) {
 	assert.NotContains(t, *listVolumes.JSON200, *getVolume.JSON200)
 
 	// verify volume cannot be deleted again
-	deleteVolume, err = client.DeleteVolumesVolumeIDWithResponse(t.Context(), volumeID, auth...)
+	deleteVolume, err = client.DeleteVolumesVolumeIDWithResponse(t.Context(), volume.VolumeID, auth...)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusNotFound, deleteVolume.StatusCode(), string(deleteVolume.Body))
 }

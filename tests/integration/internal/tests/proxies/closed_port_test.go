@@ -38,8 +38,8 @@ func TestSandboxProxyWorkingPort(t *testing.T) {
 			Args: []string{"-m", "http.server", fmt.Sprintf("%d", port)},
 		},
 	})
-	setup.SetSandboxHeader(serverReq.Header(), sbx.SandboxID)
-	setup.SetUserHeader(serverReq.Header(), "user")
+	setup.SetSandboxHeader(t, serverReq.Header(), sbx.SandboxID)
+	setup.SetUserHeader(t, serverReq.Header(), "user")
 	serverStream, err := envdClient.ProcessClient.Start(serverCtx, serverReq)
 	require.NoError(t, err)
 	defer func() {

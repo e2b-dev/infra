@@ -37,8 +37,8 @@ func TestCommandKillNextApp(t *testing.T) {
 			Cwd:  &cwd,
 		},
 	})
-	setup.SetSandboxHeader(runDevReq.Header(), sbx.SandboxID)
-	setup.SetUserHeader(runDevReq.Header(), "user")
+	setup.SetSandboxHeader(t, runDevReq.Header(), sbx.SandboxID)
+	setup.SetUserHeader(t, runDevReq.Header(), "user")
 	serverCtx, serverCancel := context.WithCancel(ctx)
 	runDevStream, err := envdClient.ProcessClient.Start(serverCtx, runDevReq)
 	require.NoError(t, err)
@@ -71,8 +71,8 @@ func TestCommandKillNextApp(t *testing.T) {
 	time.Sleep(10 * time.Second)
 
 	listReq := connect.NewRequest(&process.ListRequest{})
-	setup.SetSandboxHeader(listReq.Header(), sbx.SandboxID)
-	setup.SetUserHeader(listReq.Header(), "user")
+	setup.SetSandboxHeader(t, listReq.Header(), sbx.SandboxID)
+	setup.SetUserHeader(t, listReq.Header(), "user")
 	listResp, err := envdClient.ProcessClient.List(ctx, listReq)
 	require.NoError(t, err)
 
@@ -111,8 +111,8 @@ func TestCommandKillWithAnd(t *testing.T) {
 			Args: []string{"-l", "-c", "sleep 30 && echo done"},
 		},
 	})
-	setup.SetSandboxHeader(runDevReq.Header(), sbx.SandboxID)
-	setup.SetUserHeader(runDevReq.Header(), "user")
+	setup.SetSandboxHeader(t, runDevReq.Header(), sbx.SandboxID)
+	setup.SetUserHeader(t, runDevReq.Header(), "user")
 	serverCtx, serverCancel := context.WithCancel(ctx)
 	runDevStream, err := envdClient.ProcessClient.Start(serverCtx, runDevReq)
 	require.NoError(t, err)
@@ -148,8 +148,8 @@ func TestCommandKillWithAnd(t *testing.T) {
 	time.Sleep(5 * time.Second)
 
 	listReq := connect.NewRequest(&process.ListRequest{})
-	setup.SetSandboxHeader(listReq.Header(), sbx.SandboxID)
-	setup.SetUserHeader(listReq.Header(), "user")
+	setup.SetSandboxHeader(t, listReq.Header(), sbx.SandboxID)
+	setup.SetUserHeader(t, listReq.Header(), "user")
 	listResp, err := envdClient.ProcessClient.List(ctx, listReq)
 	require.NoError(t, err)
 
@@ -189,8 +189,8 @@ func killPid(
 			},
 		},
 	})
-	setup.SetSandboxHeader(connectReq.Header(), sandboxID)
-	setup.SetUserHeader(connectReq.Header(), "user")
+	setup.SetSandboxHeader(t, connectReq.Header(), sandboxID)
+	setup.SetUserHeader(t, connectReq.Header(), "user")
 	connectResp, err := envdClient.ProcessClient.Connect(ctx, connectReq)
 	require.NoError(t, err)
 
@@ -203,8 +203,8 @@ func killPid(
 			},
 		},
 	})
-	setup.SetSandboxHeader(killReq.Header(), sandboxID)
-	setup.SetUserHeader(killReq.Header(), "user")
+	setup.SetSandboxHeader(t, killReq.Header(), sandboxID)
+	setup.SetUserHeader(t, killReq.Header(), "user")
 	_, err = envdClient.ProcessClient.SendSignal(ctx, killReq)
 	require.NoError(t, err)
 
