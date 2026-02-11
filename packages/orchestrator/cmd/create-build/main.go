@@ -475,7 +475,7 @@ func setupFC(ctx context.Context, dir, version string) error {
 
 	// Legacy URLs are x86_64-only; only fall back for amd64.
 	if arch != "amd64" {
-		return fmt.Errorf("Firecracker %s not found for %s (no legacy fallback for non-amd64)", version, arch)
+		return fmt.Errorf("firecracker %s not found for %s (no legacy fallback for non-amd64)", version, arch)
 	}
 
 	legacyURL, err := url.JoinPath("https://storage.googleapis.com/e2b-prod-public-builds/fc-versions/", version, "firecracker")
