@@ -16,11 +16,11 @@ import (
 
 // TemplateBuildInfo holds cached template build information.
 type TemplateBuildInfo struct {
-	TeamID      uuid.UUID         `json:"team_id"`
-	TemplateID  string            `json:"template_id"`
+	TeamID      uuid.UUID              `json:"team_id"`
+	TemplateID  string                 `json:"template_id"`
 	BuildStatus types.BuildStatusGroup `json:"build_status"`
-	Reason      types.BuildReason `json:"reason"`
-	Version     *string           `json:"version,omitempty"`
+	Reason      types.BuildReason      `json:"reason"`
+	Version     *string                `json:"version,omitempty"`
 
 	ClusterID uuid.UUID `json:"cluster_id"`
 	NodeID    *string   `json:"node_id,omitempty"`
