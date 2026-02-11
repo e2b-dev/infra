@@ -81,6 +81,7 @@ type Config struct {
 
 type VolumeMountConfig struct {
 	ID   string
+	Name string
 	Path string
 	Type string
 }

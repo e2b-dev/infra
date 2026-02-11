@@ -42,7 +42,7 @@ func TestJailedFS(t *testing.T) {
 	// create file system
 	write(t, fs, "bad_file", 0o644, "bad content")
 	mkdir(t, fs, "good_folder", 0o755)
-	write(t, fs, "good_folder/bad_file", 0o644, "okay content")
+	write(t, fs, "good_folder/bad_file", 0o777, "okay content")
 	write(t, fs, "good_folder/good_file", 0o644, "good content")
 	mkdir(t, fs, "good_folder/more_dir", 0o755)
 	write(t, fs, "good_folder/more_dir/other_file", 0o644, "more content")

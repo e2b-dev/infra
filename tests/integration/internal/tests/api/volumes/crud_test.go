@@ -67,7 +67,11 @@ func TestVolumeRoundTrip(t *testing.T) {
 		t.Context(),
 		api.NewSandbox{
 			TemplateID: setup.SandboxTemplateID,
-			Timeout:    func() *int32 { v := int32(30); return &v }(),
+			Timeout: func() *int32 {
+				v := int32(30)
+
+				return &v
+			}(),
 			Metadata: &api.SandboxMetadata{
 				"sandboxType": "test",
 			},
@@ -116,7 +120,11 @@ func TestVolumeRoundTrip(t *testing.T) {
 		t.Context(),
 		api.NewSandbox{
 			TemplateID: setup.SandboxTemplateID,
-			Timeout:    func() *int32 { v := int32(30); return &v }(),
+			Timeout: func() *int32 {
+				v := int32(30)
+
+				return &v
+			}(),
 			Metadata: &api.SandboxMetadata{
 				"sandboxType": "test",
 			},
