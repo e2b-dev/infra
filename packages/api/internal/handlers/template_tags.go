@@ -174,6 +174,64 @@ func (a *APIStore) PostTemplatesTags(c *gin.Context) {
 	})
 }
 
+// GetTemplatesTemplateIDTags lists all tags for a template
+func (a *APIStore) GetTemplatesTemplateIDTags(c *gin.Context, templateID api.TemplateID) {
+	ctx := c.Request.Context()
+
+	team, apiErr := a.GetTeam(ctx, c, nil)
+	if apiErr != nil {
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+		telemetry.ReportCriticalError(ctx, "error when getting team", apiErr.Err)
+
+		return
+	}
+
+	telemetry.SetAttributes(ctx,
+		attribute.String("env.team.id", team.ID.String()),
+		attribute.String("env.team.name", team.Name),
+		telemetry.WithTemplateID(templateID),
+	)
+
+	// Resolve the template ID (it could be an alias)
+	aliasInfo, err := a.templateCache.ResolveAlias(ctx, templateID, team.Slug)
+	if err != nil {
+		apiErr := templatecache.ErrorToAPIError(err, templateID)
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+		telemetry.ReportError(ctx, "template not found", apiErr.Err, telemetry.WithTemplateID(templateID))
+
+		return
+	}
+
+	if aliasInfo.TeamID != team.ID {
+		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox template '%s'", templateID))
+		telemetry.ReportError(ctx, "no access to the template", nil, telemetry.WithTemplateID(aliasInfo.TemplateID))
+
+		return
+	}
+
+	tags, err := a.sqlcDB.GetTemplateTags(ctx, queries.GetTemplateTagsParams{
+		TemplateID: aliasInfo.TemplateID,
+	})
+	if err != nil {
+		telemetry.ReportCriticalError(ctx, "error when getting template tags", err)
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error getting template tags")
+
+		return
+	}
+
+	result := make([]api.TemplateTagDetail, 0, len(tags))
+	for _, tag := range tags {
+		result = append(result, api.TemplateTagDetail{
+			Tag:     tag.Tag,
+			BuildID: tag.BuildID,
+		})
+	}
+
+	c.JSON(http.StatusOK, api.TemplateTagsResponse{
+		Tags: result,
+	})
+}
+
 // DeleteTemplatesTags deletes multiple tags from a template
 func (a *APIStore) DeleteTemplatesTags(c *gin.Context) {
 	ctx := c.Request.Context()

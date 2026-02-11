@@ -1640,6 +1640,29 @@ components:
           items:
             type: string
 
+    TemplateTagsResponse:
+      required:
+        - tags
+      properties:
+        tags:
+          type: array
+          description: List of tags assigned to the template, each with its associated build
+          items:
+            $ref: "#/components/schemas/TemplateTagDetail"
+
+    TemplateTagDetail:
+      required:
+        - tag
+        - buildID
+      properties:
+        tag:
+          type: string
+          description: Tag name
+        buildID:
+          type: string
+          format: uuid
+          description: Identifier of the build associated with this tag
+
     Error:
       required:
         - code
@@ -2763,6 +2786,32 @@ paths:
           $ref: "#/components/responses/400"
         "401":
           $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /templates/{templateID}/tags:
+    get:
+      description: List all tags for a template
+      tags: [tags]
+      security:
+        - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/templateID"
+      responses:
+        "200":
+          description: Successfully retrieved template tags
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemplateTagsResponse"
+        "401":
+          $ref: "#/components/responses/401"
+        "403":
+          $ref: "#/components/responses/403"
         "404":
           $ref: "#/components/responses/404"
         "500":

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
@@ -94,10 +95,10 @@ func RegisterBuild(
 		}
 	}
 
-	// Add default tag if no tags are present
+	// Always include default tag so template is resolvable by bare name
 	tags := data.Tags
-	if len(tags) == 0 {
-		tags = []string{id.DefaultTag}
+	if !slices.Contains(tags, id.DefaultTag) {
+		tags = append(tags, id.DefaultTag)
 	}
 
 	telemetry.SetAttributes(ctx,
