@@ -185,7 +185,7 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 		envdAccessToken,
 		snap.AllowInternetAccess,
 		network,
-		nil,                                                // mcp
+		nil, // mcp
 		convertDatabaseMountsToOrchestratorMounts(volumes), // volumes
 	)
 	if createErr != nil {
