@@ -370,61 +370,6 @@ func handleSpanError(span trace.Span, err *error) {
 	}
 }
 
-// initializeHostStatsCollector initializes the host stats collector for a sandbox if enabled.
-// This is a best-effort operation - errors are logged but do not fail the sandbox initialization.
-func (f *Factory) initializeHostStatsCollector(
-	ctx context.Context,
-	sbx *Sandbox,
-	fcHandle *fc.Process,
-	buildID string,
-	runtime RuntimeMetadata,
-	config Config,
-) {
-	hostStatsEnabled := f.featureFlags.BoolFlag(ctx, featureflags.HostStatsEnabled)
-	if !hostStatsEnabled || f.hostStatsDelivery == nil {
-		return
-	}
-
-	firecrackerPID, err := fcHandle.Pid()
-	if err != nil {
-		logger.L().Error(ctx, "failed to get firecracker PID for host stats",
-			zap.String("sandbox_id", runtime.SandboxID),
-			zap.Error(err))
-
-		return
-	}
-
-	teamID, err := uuid.Parse(runtime.TeamID)
-	if err != nil {
-		logger.L().Error(ctx, "error parsing team ID", logger.WithTeamID(runtime.TeamID), zap.Error(err))
-	}
-
-	collector, err := NewHostStatsCollector(
-		HostStatsMetadata{
-			SandboxID:   runtime.SandboxID,
-			ExecutionID: runtime.ExecutionID,
-			TemplateID:  runtime.TemplateID,
-			BuildID:     buildID,
-			TeamID:      teamID,
-			VCPUCount:   config.Vcpu,
-			MemoryMB:    config.RamMB,
-		},
-		int32(firecrackerPID),
-		f.hostStatsDelivery,
-	)
-	if err != nil {
-		logger.L().Error(ctx, "failed to create host stats collector",
-			zap.String("sandbox_id", runtime.SandboxID),
-			zap.Error(err))
-
-		return
-	}
-
-	sbx.hostStatsCollector = collector
-
-	go collector.Start(ctx)
-}
-
 // ResumeSandbox resumes the sandbox from already saved template or snapshot.
 // IMPORTANT: You must Close() the sandbox after you are done with it.
 func (f *Factory) ResumeSandbox(
@@ -718,7 +663,9 @@ func (f *Factory) ResumeSandbox(
 
 	telemetry.ReportEvent(execCtx, "envd initialized")
 
-	f.initializeHostStatsCollector(execCtx, sbx, fcHandle, meta.Template.BuildID, runtime, config)
+	if f.featureFlags.BoolFlag(execCtx, featureflags.HostStatsEnabled) {
+		initializeHostStatsCollector(execCtx, sbx, fcHandle, meta.Template.BuildID, runtime, config, f.hostStatsDelivery)
+	}
 
 	go sbx.Checks.Start(execCtx)
 
