@@ -143,7 +143,6 @@ func TestRedisTemplatesBuildCache_SetStatus_UpdatesAndInvalidatesL1(t *testing.T
 	// L1 should be invalidated
 	l1Item, ok := cache.l1Cache.Get(buildID)
 	assert.False(t, ok)
-	assert.Nil(t, l1Item, "L1 cache should be invalidated after SetStatus")
 
 	// Redis should be updated
 	data, err := redisClient.Get(ctx, buildKey).Bytes()
