@@ -75,6 +75,13 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
 			}
 		}
 
+		var autoResume *types.SandboxAutoResumeConfig
+		if autoResumeCfg := config.GetAutoResume(); autoResumeCfg != nil {
+			p := autoResumeCfg.GetPolicy()
+			policy := types.SandboxAutoResumePolicy(p)
+			autoResume = &types.SandboxAutoResumeConfig{Policy: policy}
+		}
+
 		sandboxesInfo = append(
 			sandboxesInfo,
 			sandbox.NewSandbox(
@@ -98,6 +105,7 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
 				n.ID,
 				n.ClusterID,
 				config.GetAutoPause(),
+				autoResume,
 				config.EnvdAccessToken,     //nolint:protogetter // we need the nil check too
 				config.AllowInternetAccess, //nolint:protogetter // we need the nil check too
 				config.GetBaseTemplateId(),

@@ -67,6 +67,7 @@ type Env struct {
 	TeamID        uuid.UUID
 	CreatedBy     *uuid.UUID
 	ClusterID     *uuid.UUID
+	Source        string
 }
 
 type EnvAlias struct {
@@ -102,6 +103,7 @@ type EnvBuild struct {
 	CpuModel           *string
 	CpuModelName       *string
 	CpuFlags           []string
+	StatusGroup        string
 }
 
 type EnvBuildAssignment struct {

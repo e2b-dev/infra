@@ -87,7 +87,7 @@ runs:
 
         while [ "$(docker inspect -f '{{.State.Health.Status}}' redis 2>/dev/null)" != "healthy" ]; do echo "Waiting for Redis to be healthy..."; sleep 2; done
         echo "Redis is healthy!"
-        
+
         echo "REDIS_URL=localhost:6379" >> .env.test
       shell: bash
 
@@ -102,17 +102,20 @@ runs:
         OTEL_COLLECTOR_GRPC_ENDPOINT: "localhost:4317"
         MAX_PARALLEL_MEMFILE_SNAPSHOTTING: "2"
         SHARED_CHUNK_CACHE_PATH: "./.e2b-chunk-cache"
+        REDIS_URL: "localhost:6379"
+        # Client-proxy config
+        API_GRPC_ADDRESS: "localhost:5009"
         DEFAULT_PERSISTENT_VOLUME_TYPE: "test-volume-type"
       run: |
         mkdir -p $SHARED_CHUNK_CACHE_PATH
         mkdir -p ~/logs
-        
+
         echo "creating persistent volume mounts"
         test_volume_dir="$(realpath ${RUNNER_TEMP}/.e2b-test-volumes)"
         mkdir -p $test_volume_dir
         PERSISTENT_VOLUME_MOUNTS="test-volume-type:${test_volume_dir}"
         export PERSISTENT_VOLUME_MOUNTS
-        
+
         echo "Start otel-collector"
         ./scripts/start-service.sh "OtelCollector" packages/otel-collector run ~/logs/otel-collector.log http://localhost:13133/healthz
 
@@ -122,4 +125,7 @@ runs:
 
         echo "Start API"
         ./scripts/start-service.sh "API" packages/api run ~/logs/api.log http://localhost:3000/health
+
+        # Start client-proxy (needed for auto-resume tests)
+        ./scripts/start-service.sh "ClientProxy" packages/client-proxy run ~/logs/client-proxy.log http://localhost:3003
       shell: bash

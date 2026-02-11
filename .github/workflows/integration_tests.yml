@@ -1,7 +1,12 @@
 name: Integration Tests
 
-on: [workflow_call]
-
+on:
+  workflow_call:
+    inputs:
+      publish:
+        type: boolean
+        description: "Whether to publish the results"
+        required: true
 jobs:
   integration_tests:
     runs-on: infra-tests
@@ -29,8 +34,10 @@ jobs:
       - name: Run Integration Tests
         env:
           TESTS_API_SERVER_URL: "http://localhost:3000"
+          TESTS_API_GRPC_ADDRESS: "localhost:5009"
           TESTS_ORCHESTRATOR_HOST: "localhost:5008"
-          TESTS_ENVD_PROXY: "http://localhost:5007"
+          TESTS_ENVD_PROXY: "http://localhost:3002"
+          TESTS_CLIENT_PROXY: "http://localhost:3002"
         run: |
           # Run the integration tests
           make test-integration
@@ -65,14 +72,14 @@ jobs:
         shell: bash
 
       - name: Upload Test Results
-        if: always()
+        if: always() && ${{ inputs.publish == true }}
         uses: actions/upload-artifact@v4
         with:
           name: Integration Tests Results
           path: ./tests/integration/test-results.xml
 
       - name: Upload Service Logs
-        if: always()
+        if: always() && ${{ inputs.publish == true }}
         uses: actions/upload-artifact@v4
         with:
           name: Service Logs

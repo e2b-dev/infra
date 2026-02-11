@@ -1,4 +1,4 @@
-package factories
+package grpc
 
 import (
 	"time"
@@ -10,7 +10,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
 
-	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -29,7 +28,7 @@ func NewGRPCServer(tel *telemetry.Client) *grpc.Server {
 		"/InfoService/ServiceInfo",
 	)
 
-	srv := grpc.NewServer(
+	return grpc.NewServer(
 		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
 			MinTime:             5 * time.Second, // Minimum time between pings from client
 			PermitWithoutStream: true,            // Allow pings even when no active streams
@@ -38,7 +37,7 @@ func NewGRPCServer(tel *telemetry.Client) *grpc.Server {
 			Time:    15 * time.Second, // Server sends keepalive pings every 15s
 			Timeout: 5 * time.Second,  // Wait 5s for response before considering dead
 		}),
-		grpc.StatsHandler(e2bgrpc.NewStatsWrapper(otelgrpc.NewServerHandler(
+		grpc.StatsHandler(NewStatsWrapper(otelgrpc.NewServerHandler(
 			otelgrpc.WithTracerProvider(tel.TracerProvider),
 			otelgrpc.WithMeterProvider(tel.MeterProvider),
 		))),
@@ -56,6 +55,4 @@ func NewGRPCServer(tel *telemetry.Client) *grpc.Server {
 			),
 		),
 	)
-
-	return srv
 }
