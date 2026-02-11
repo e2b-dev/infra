@@ -139,8 +139,8 @@ func (c *cachedSeekable) Size(ctx context.Context) (n int64, e error) {
 
 	size, err := c.readLocalSize(ctx)
 	if err == nil {
-		recordCacheRead(ctx, true, 8, cacheTypeSeekable, cacheOpSize)
-		readTimer.Success(ctx, 8)
+		recordCacheRead(ctx, true, 0, cacheTypeSeekable, cacheOpSize)
+		readTimer.Success(ctx, 0)
 
 		return size, nil
 	}
