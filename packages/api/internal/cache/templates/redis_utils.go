@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
@@ -17,15 +16,6 @@ import (
 )
 
 const (
-	// l1CacheTTL is the in-memory cache TTL for fast local reads.
-	l1CacheTTL = 1 * time.Second
-
-	// redisBuildCacheTTL is the Redis cache TTL for build info.
-	redisBuildCacheTTL = 5 * time.Minute
-
-	// redisBuildCacheTimeout is the timeout for Redis operations.
-	redisBuildCacheTimeout = 5 * time.Second
-
 	// Key prefix for build cache.
 	buildCacheKeyPrefix = "template:build"
 )

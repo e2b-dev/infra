@@ -3,18 +3,29 @@ package templatecache
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
-	"github.com/jellydator/ttlcache/v3"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
+	"github.com/e2b-dev/infra/packages/shared/pkg/cache"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-// TemplateBuildInfo holds cached template build information.
+const (
+	// l1CacheTTL is the in-memory cache TTL for fast local reads.
+	l1CacheTTL = 1 * time.Second
+
+	// redisBuildCacheTTL is the Redis cache TTL for build info.
+	redisBuildCacheTTL = 5 * time.Minute
+
+	// redisBuildCacheTimeout is the timeout for Redis operations.
+	redisBuildCacheTimeout = 5 * time.Second
+)
+
 type TemplateBuildInfo struct {
 	TeamID      uuid.UUID              `json:"team_id"`
 	TemplateID  string                 `json:"template_id"`
@@ -33,17 +44,16 @@ func (TemplateBuildInfoNotFoundError) Error() string {
 }
 
 type TemplatesBuildCache struct {
-	l1Cache     *ttlcache.Cache[uuid.UUID, TemplateBuildInfo]
+	l1Cache     *cache.Cache[uuid.UUID, TemplateBuildInfo]
 	redisClient redis.UniversalClient
 	db          *sqlcdb.Client
 }
 
 func NewTemplateBuildCache(db *sqlcdb.Client, redisClient redis.UniversalClient) *TemplatesBuildCache {
-	l1Cache := ttlcache.New(
-		ttlcache.WithTTL[uuid.UUID, TemplateBuildInfo](l1CacheTTL),
-		ttlcache.WithDisableTouchOnHit[uuid.UUID, TemplateBuildInfo](),
-	)
-	go l1Cache.Start()
+	l1Cache := cache.NewCache[uuid.UUID, TemplateBuildInfo](cache.Config[uuid.UUID, TemplateBuildInfo]{
+		TTL:             l1CacheTTL,
+		RefreshInterval: l1CacheTTL / 2,
+	})
 
 	return &TemplatesBuildCache{
 		l1Cache:     l1Cache,
@@ -66,15 +76,15 @@ func (c *TemplatesBuildCache) SetStatus(ctx context.Context, buildID uuid.UUID, 
 
 func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templateID string) (TemplateBuildInfo, error) {
 	// Step 1: Check L1 cache
-	if item := c.l1Cache.Get(buildID); item != nil {
-		return item.Value(), nil
+	if item, ok := c.l1Cache.Get(buildID); ok {
+		return item, nil
 	}
 
 	// Step 2: Check L2 (Redis)
 	info, err := c.getFromRedis(ctx, buildID)
 	if err == nil {
 		// Store in L1 cache
-		c.l1Cache.Set(buildID, info, l1CacheTTL)
+		c.l1Cache.Set(buildID, info)
 
 		return info, nil
 	}
@@ -96,7 +106,7 @@ func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templa
 	}
 
 	// Store in both L1 and L2 (Redis)
-	c.l1Cache.Set(buildID, info, l1CacheTTL)
+	c.l1Cache.Set(buildID, info)
 	if storeErr := c.storeInRedis(ctx, buildID, info); storeErr != nil {
 		logger.L().Warn(ctx, "Failed to store build info in Redis",
 			logger.WithBuildID(buildID.String()),
