@@ -390,6 +390,57 @@ func TestParseAcceptEncoding(t *testing.T) {
 	})
 }
 
+func TestIsIdentityAcceptable(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns true when no header", func(t *testing.T) {
+		t.Parallel()
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
+
+		assert.True(t, isIdentityAcceptable(req))
+	})
+
+	t.Run("returns true for gzip only (identity implicitly acceptable)", func(t *testing.T) {
+		t.Parallel()
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
+		req.Header.Set("Accept-Encoding", "gzip")
+
+		assert.True(t, isIdentityAcceptable(req))
+	})
+
+	t.Run("returns false when identity explicitly rejected", func(t *testing.T) {
+		t.Parallel()
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
+		req.Header.Set("Accept-Encoding", "gzip, identity;q=0")
+
+		assert.False(t, isIdentityAcceptable(req))
+	})
+
+	t.Run("returns false when wildcard rejected and identity not explicit", func(t *testing.T) {
+		t.Parallel()
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
+		req.Header.Set("Accept-Encoding", "gzip;q=1, *;q=0")
+
+		assert.False(t, isIdentityAcceptable(req))
+	})
+
+	t.Run("returns true when wildcard rejected but identity explicitly accepted", func(t *testing.T) {
+		t.Parallel()
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
+		req.Header.Set("Accept-Encoding", "*;q=0, identity")
+
+		assert.True(t, isIdentityAcceptable(req))
+	})
+
+	t.Run("returns true for wildcard encoding", func(t *testing.T) {
+		t.Parallel()
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
+		req.Header.Set("Accept-Encoding", "*")
+
+		assert.True(t, isIdentityAcceptable(req))
+	})
+}
+
 func TestGetDecompressedBody(t *testing.T) {
 	t.Parallel()
 
