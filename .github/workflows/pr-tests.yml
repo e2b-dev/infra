@@ -7,49 +7,32 @@ permissions:
 
 jobs:
   run-tests:
-    name: Run tests for ${{ matrix.package }} (${{ matrix.runner }})
-    runs-on: ${{ matrix.runner }}
+    name: Run tests for ${{ matrix.package }}
+    runs-on: infra-tests
     strategy:
       matrix:
         include:
-          # amd64
-          - runner: infra-tests
-            package: packages/api
+          - package: packages/api
             test_path: ./...
             sudo: false
-          - runner: infra-tests
-            package: packages/client-proxy
+          - package: packages/client-proxy
             test_path: ./...
             sudo: false
-          - runner: infra-tests
-            package: packages/db
+          - package: packages/db
             test_path: ./...
             sudo: false
-          - runner: infra-tests
-            package: packages/docker-reverse-proxy
+          - package: packages/docker-reverse-proxy
             test_path: ./...
             sudo: false
-          - runner: infra-tests
-            package: packages/envd
+          - package: packages/envd
             test_path: ./...
             sudo: true
-          - runner: infra-tests
-            package: packages/orchestrator
+          - package: packages/orchestrator
             test_path: ./...
             sudo: true
-          - runner: infra-tests
-            package: packages/shared
+          - package: packages/shared
             test_path: ./pkg/...
             sudo: false
-          # arm64 — only arch-sensitive packages
-          - runner: infra-tests-arm64
-            package: packages/envd
-            test_path: ./...
-            sudo: true
-          - runner: infra-tests-arm64
-            package: packages/orchestrator
-            test_path: ./...
-            sudo: true
       fail-fast: false
     steps:
       - name: Checkout repository

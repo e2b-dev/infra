@@ -44,16 +44,25 @@ jobs:
         include:
           - package: packages/api
             test_path: ./...
+            sudo: false
           - package: packages/client-proxy
             test_path: ./...
+            sudo: false
           - package: packages/db
             test_path: ./...
+            sudo: false
           - package: packages/docker-reverse-proxy
             test_path: ./...
+            sudo: false
+          - package: packages/envd
+            test_path: ./...
+            sudo: true
           - package: packages/orchestrator
             test_path: ./...
+            sudo: true
           - package: packages/shared
             test_path: ./pkg/...
+            sudo: false
       fail-fast: false
     steps:
       - name: Checkout repository
@@ -67,6 +76,32 @@ jobs:
             ${{ matrix.package }}/go.mod
             ${{ matrix.package }}/go.sum
 
+      - name: Setup envd tests
+        run: |
+          sudo apt-get update && sudo apt-get install -y bindfs
+        if: matrix.package == 'packages/envd'
+
+      - name: Setup orchestrator tests
+        run: |
+          echo 1 | sudo tee /proc/sys/vm/unprivileged_userfaultfd
+
+          sudo mkdir -p /mnt/hugepages
+          sudo mount -t hugetlbfs none /mnt/hugepages
+          echo 2000 | sudo tee /proc/sys/vm/nr_hugepages
+
+          sudo modprobe nbd nbds_max=256
+
+          echo 'ACTION=="add|change", KERNEL=="nbd*", OPTIONS:="nowatch"' | sudo tee /etc/udev/rules.d/97-nbd-device.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger
+        if: matrix.package == 'packages/orchestrator'
+
+      - name: Run tests that require sudo
+        working-directory: ${{ matrix.package }}
+        run: sudo -E `which go` test -race -v ${{ matrix.test_path }}
+        if: matrix.sudo == true
+
       - name: Run tests
         working-directory: ${{ matrix.package }}
         run: go test -race -v ${{ matrix.test_path }}
+        if: matrix.sudo == false
