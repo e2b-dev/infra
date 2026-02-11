@@ -16,14 +16,11 @@ import (
 )
 
 const (
-	// l1CacheTTL is the in-memory cache TTL for fast local reads.
-	l1CacheTTL = 1 * time.Second
+	l1CacheTTL             = 5 * time.Second
+	l1CacheRefreshInterval = 1 * time.Second
 
-	// redisBuildCacheTTL is the Redis cache TTL for build info.
-	redisBuildCacheTTL = 5 * time.Minute
-
-	// redisBuildCacheTimeout is the timeout for Redis operations.
-	redisBuildCacheTimeout = 5 * time.Second
+	redisBuildCacheTTL     = 5 * time.Minute
+	redisBuildCacheTimeout = 15 * time.Second
 )
 
 type TemplateBuildInfo struct {
@@ -52,7 +49,7 @@ type TemplatesBuildCache struct {
 func NewTemplateBuildCache(db *sqlcdb.Client, redisClient redis.UniversalClient) *TemplatesBuildCache {
 	l1Cache := cache.NewCache[uuid.UUID, TemplateBuildInfo](cache.Config[uuid.UUID, TemplateBuildInfo]{
 		TTL:             l1CacheTTL,
-		RefreshInterval: l1CacheTTL / 2,
+		RefreshInterval: l1CacheRefreshInterval,
 	})
 
 	return &TemplatesBuildCache{
