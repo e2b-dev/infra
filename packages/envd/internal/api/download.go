@@ -1,14 +1,15 @@
 package api
 
 import (
+	"compress/gzip"
 	"errors"
 	"fmt"
+	"io"
 	"mime"
 	"net/http"
 	"os"
 	"os/user"
 	"path/filepath"
-	"time"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/execcontext"
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
@@ -103,6 +104,37 @@ func (a *API) GetFiles(w http.ResponseWriter, r *http.Request, params GetFilesPa
 		return
 	}
 
+	// Validate Accept-Encoding header
+	encoding, err := parseAcceptEncoding(r)
+	if err != nil {
+		errMsg = fmt.Errorf("error parsing Accept-Encoding: %w", err)
+		errorCode = http.StatusNotAcceptable
+		jsonError(w, errorCode, errMsg)
+
+		return
+	}
+
+	// Tell caches to store separate variants for different Accept-Encoding values
+	w.Header().Set("Vary", "Accept-Encoding")
+
+	// Fall back to identity for Range or conditional requests to preserve http.ServeContent
+	// behavior (206 Partial Content, 304 Not Modified). However, we must check if identity
+	// is acceptable per the Accept-Encoding header.
+	hasRangeOrConditional := r.Header.Get("Range") != "" ||
+		r.Header.Get("If-Modified-Since") != "" ||
+		r.Header.Get("If-None-Match") != "" ||
+		r.Header.Get("If-Range") != ""
+	if hasRangeOrConditional {
+		if !isIdentityAcceptable(r) {
+			errMsg = fmt.Errorf("identity encoding not acceptable for Range or conditional request")
+			errorCode = http.StatusNotAcceptable
+			jsonError(w, errorCode, errMsg)
+
+			return
+		}
+		encoding = EncodingIdentity
+	}
+
 	file, err := os.Open(resolvedPath)
 	if err != nil {
 		errMsg = fmt.Errorf("error opening file '%s': %w", resolvedPath, err)
@@ -114,5 +146,28 @@ func (a *API) GetFiles(w http.ResponseWriter, r *http.Request, params GetFilesPa
 	defer file.Close()
 
 	w.Header().Set("Content-Disposition", mime.FormatMediaType("inline", map[string]string{"filename": filepath.Base(resolvedPath)}))
-	http.ServeContent(w, r, path, time.Now(), file)
+
+	// Serve with gzip encoding if requested.
+	if encoding == EncodingGzip {
+		w.Header().Set("Content-Encoding", EncodingGzip)
+
+		// Set Content-Type based on file extension, preserving the original type
+		contentType := mime.TypeByExtension(filepath.Ext(path))
+		if contentType == "" {
+			contentType = "application/octet-stream"
+		}
+		w.Header().Set("Content-Type", contentType)
+
+		gw := gzip.NewWriter(w)
+		defer gw.Close()
+
+		_, err = io.Copy(gw, file)
+		if err != nil {
+			a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error writing gzip response")
+		}
+
+		return
+	}
+
+	http.ServeContent(w, r, path, stat.ModTime(), file)
 }
