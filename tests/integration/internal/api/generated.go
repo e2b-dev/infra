@@ -1153,40 +1153,40 @@ type Volume struct {
 // VolumeDirectoryItem defines model for VolumeDirectoryItem.
 type VolumeDirectoryItem struct {
 	// Ctime Create time of the file or directory
-	Ctime *time.Time `json:"ctime,omitempty"`
+	Ctime time.Time `json:"ctime"`
 
 	// IsDirectory Whether the item is a directory
-	IsDirectory *bool `json:"isDirectory,omitempty"`
+	IsDirectory bool `json:"isDirectory"`
 
 	// Mode File mode
-	Mode *int `json:"mode,omitempty"`
+	Mode uint32 `json:"mode"`
 
 	// Mtime Last modification time of the file or directory
-	Mtime *time.Time `json:"mtime,omitempty"`
+	Mtime time.Time `json:"mtime"`
 
 	// Name Name of the file or directory
-	Name *string `json:"name,omitempty"`
+	Name string `json:"name"`
 
 	// Size File size in bytes
-	Size *int `json:"size,omitempty"`
+	Size int64 `json:"size"`
 }
 
 // VolumeDirectoryListing defines model for VolumeDirectoryListing.
 type VolumeDirectoryListing struct {
-	Files *[]VolumeDirectoryItem `json:"files,omitempty"`
+	Files []VolumeDirectoryItem `json:"files"`
 }
 
 // VolumeStat defines model for VolumeStat.
 type VolumeStat struct {
 	Ctime       time.Time `json:"ctime"`
-	Group       float32   `json:"group"`
-	Mode        float32   `json:"mode"`
+	Group       uint32    `json:"group"`
+	Mode        uint32    `json:"mode"`
 	Mtime       time.Time `json:"mtime"`
 	Name        string    `json:"name"`
-	Owner       float32   `json:"owner"`
+	Owner       uint32    `json:"owner"`
 	Path        string    `json:"path"`
-	Permissions float32   `json:"permissions"`
-	Size        float32   `json:"size"`
+	Permissions uint32    `json:"permissions"`
+	Size        int64     `json:"size"`
 	Target      *string   `json:"target,omitempty"`
 	Type        string    `json:"type"`
 }
