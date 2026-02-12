@@ -10,8 +10,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
-func (v *VolumeService) ListDir(_ context.Context, request *orchestrator.VolumeListDirRequest) (*orchestrator.VolumeListDirResponse, error) {
-	path, statusErr := v.buildVolumePath(request.GetVolumeType(), request.GetTeamId(), request.GetVolumeId())
+func (v *VolumeService) ListDir(_ context.Context, request *orchestrator.VolumeDirListRequest) (*orchestrator.VolumeDirListResponse, error) {
+	path, statusErr := v.buildVolumePath(request.GetVolume())
 	if statusErr != nil {
 		return nil, statusErr.Err()
 	}
@@ -33,5 +33,5 @@ func (v *VolumeService) ListDir(_ context.Context, request *orchestrator.VolumeL
 		})
 	}
 
-	return &orchestrator.VolumeListDirResponse{Files: results}, nil
+	return &orchestrator.VolumeDirListResponse{Files: results}, nil
 }

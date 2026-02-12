@@ -23,22 +23,14 @@ func (v *VolumeService) CreateFile(server orchestrator.VolumeService_CreateFileS
 		return v.processError(ErrExpectedStart)
 	}
 
-	basePath, statusErr := v.buildVolumePath(start.GetVolumeType(), start.GetTeamId(), start.GetVolumeId())
+	basePath, statusErr := v.buildVolumePath(start.GetVolume())
 	if statusErr != nil {
 		return statusErr.Err()
 	}
 
 	fullPath := filepath.Join(basePath, start.GetPath())
 
-	// Ensure directory exists
-	if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
-		return v.processError(err)
-	}
-
-	perm := os.FileMode(start.GetPermissions())
-	if perm == 0 {
-		perm = 0o644
-	}
+	perm := os.FileMode(start.GetMode())
 
 	file, err := os.OpenFile(fullPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, perm)
 	if err != nil {
@@ -59,6 +51,10 @@ func (v *VolumeService) CreateFile(server orchestrator.VolumeService_CreateFileS
 			}
 
 		case *orchestrator.VolumeFileCreateRequest_Finish:
+			if err := os.Chown(fullPath, int(start.GetOwnerId()), int(start.GetGroupId())); err != nil {
+				return v.processError(err)
+			}
+
 			return server.SendAndClose(&orchestrator.VolumeFileCreateResponse{})
 
 		default:

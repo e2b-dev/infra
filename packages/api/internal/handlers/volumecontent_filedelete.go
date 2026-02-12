@@ -8,14 +8,15 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/clusters"
+	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
 func (a *APIStore) DeleteVolumesVolumeIDFile(c *gin.Context, volumeID api.VolumeID, params api.DeleteVolumesVolumeIDFileParams) {
-	a.executeOnOrchestrator(c, func(ctx context.Context, client *clusters.GRPCClient) error {
+	a.executeOnOrchestratorByVolumeID(c, volumeID, func(ctx context.Context, volume queries.Volume, client *clusters.GRPCClient) error {
 		_, err := client.Volumes.DeleteFile(ctx, &orchestrator.VolumeFileDeleteRequest{
-			VolumeId: volumeID,
-			Path:     params.Path,
+			Volume: toVolumeKey(volume),
+			Path:   params.Path,
 		})
 		if err != nil {
 			return err

@@ -151,9 +151,7 @@ func isValidVolumeName(name string) bool {
 func (a *APIStore) createVolume(ctx context.Context, clusterID uuid.UUID, volume queries.Volume) error {
 	return a.executeOnOrchestratorByClusterID(ctx, clusterID, func(ctx context.Context, client *clusters.GRPCClient) error {
 		_, err := client.Volumes.Create(ctx, &orchestrator.VolumeCreateRequest{
-			VolumeId:   volume.ID.String(),
-			VolumeType: volume.VolumeType,
-			TeamId:     volume.TeamID.String(),
+			Volume: toVolumeKey(volume),
 		})
 
 		return err

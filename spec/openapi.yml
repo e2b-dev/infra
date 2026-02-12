@@ -1709,15 +1709,13 @@ components:
           type: string
         type:
           type: string
+          enum: [unknown, file, directory, symlink]
         path:
           type: string
         size:
           type: integer
           format: int64
         mode:
-          type: integer
-          format: uint32
-        permissions:
           type: integer
           format: uint32
         owner:
@@ -1734,14 +1732,12 @@ components:
           format: date-time
         target:
           type: string
-          enum: [file, directory, symlink]
       required:
         - name
         - type
         - path
         - size
         - mode
-        - permissions
         - owner
         - group
         - mtime
@@ -3240,6 +3236,29 @@ paths:
       parameters:
         - $ref: "#/components/parameters/volumeID"
         - $ref: "#/components/parameters/path"
+        - name: userID
+          in: query
+          description: User ID of the created directory
+          schema:
+            type: integer
+            format: uint32
+        - name: groupID
+          in: query
+          description: Group ID of the created directory
+          schema:
+            type: integer
+            format: uint32
+        - name: mode
+          in: query
+          description: Mode of the created directory
+          schema:
+            type: integer
+            format: uint32
+        - name: create_parents
+          in: query
+          description: Force overwrite of an existing directory
+          schema:
+            type: boolean
       responses:
         "204":
           description: "Successfully created a directory"
@@ -3301,6 +3320,29 @@ paths:
       parameters:
         - $ref: "#/components/parameters/volumeID"
         - $ref: "#/components/parameters/path"
+        - name: userID
+          in: query
+          description: User ID of the created file
+          schema:
+            type: integer
+            format: uint32
+        - name: groupID
+          in: query
+          description: Group ID of the created file
+          schema:
+            type: integer
+            format: uint32
+        - name: mode
+          in: query
+          description: Mode of the created file
+          schema:
+            type: integer
+            format: uint32
+        - name: force
+          in: query
+          description: Force overwrite of an existing file
+          schema:
+            type: boolean
       requestBody:
         required: true
         content:

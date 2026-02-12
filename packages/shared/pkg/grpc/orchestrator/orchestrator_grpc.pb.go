@@ -291,9 +291,9 @@ var SandboxService_ServiceDesc = grpc.ServiceDesc{
 type VolumeServiceClient interface {
 	Create(ctx context.Context, in *VolumeCreateRequest, opts ...grpc.CallOption) (*VolumeCreateResponse, error)
 	Delete(ctx context.Context, in *VolumeDeleteRequest, opts ...grpc.CallOption) (*VolumeDeleteResponse, error)
-	ListDir(ctx context.Context, in *VolumeListDirRequest, opts ...grpc.CallOption) (*VolumeListDirResponse, error)
-	CreateDir(ctx context.Context, in *VolumeCreateDirRequest, opts ...grpc.CallOption) (*VolumeCreateDirResponse, error)
-	DeleteDir(ctx context.Context, in *VolumeDeleteDirRequest, opts ...grpc.CallOption) (*VolumeDeleteDirResponse, error)
+	ListDir(ctx context.Context, in *VolumeDirListRequest, opts ...grpc.CallOption) (*VolumeDirListResponse, error)
+	CreateDir(ctx context.Context, in *VolumeDirCreateRequest, opts ...grpc.CallOption) (*VolumeDirCreateResponse, error)
+	DeleteDir(ctx context.Context, in *VolumeDirDeleteRequest, opts ...grpc.CallOption) (*VolumeDirDeleteResponse, error)
 	GetFile(ctx context.Context, in *VolumeFileGetRequest, opts ...grpc.CallOption) (VolumeService_GetFileClient, error)
 	CreateFile(ctx context.Context, opts ...grpc.CallOption) (VolumeService_CreateFileClient, error)
 	DeleteFile(ctx context.Context, in *VolumeFileDeleteRequest, opts ...grpc.CallOption) (*VolumeFileDeleteResponse, error)
@@ -326,8 +326,8 @@ func (c *volumeServiceClient) Delete(ctx context.Context, in *VolumeDeleteReques
 	return out, nil
 }
 
-func (c *volumeServiceClient) ListDir(ctx context.Context, in *VolumeListDirRequest, opts ...grpc.CallOption) (*VolumeListDirResponse, error) {
-	out := new(VolumeListDirResponse)
+func (c *volumeServiceClient) ListDir(ctx context.Context, in *VolumeDirListRequest, opts ...grpc.CallOption) (*VolumeDirListResponse, error) {
+	out := new(VolumeDirListResponse)
 	err := c.cc.Invoke(ctx, "/VolumeService/ListDir", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -335,8 +335,8 @@ func (c *volumeServiceClient) ListDir(ctx context.Context, in *VolumeListDirRequ
 	return out, nil
 }
 
-func (c *volumeServiceClient) CreateDir(ctx context.Context, in *VolumeCreateDirRequest, opts ...grpc.CallOption) (*VolumeCreateDirResponse, error) {
-	out := new(VolumeCreateDirResponse)
+func (c *volumeServiceClient) CreateDir(ctx context.Context, in *VolumeDirCreateRequest, opts ...grpc.CallOption) (*VolumeDirCreateResponse, error) {
+	out := new(VolumeDirCreateResponse)
 	err := c.cc.Invoke(ctx, "/VolumeService/CreateDir", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -344,8 +344,8 @@ func (c *volumeServiceClient) CreateDir(ctx context.Context, in *VolumeCreateDir
 	return out, nil
 }
 
-func (c *volumeServiceClient) DeleteDir(ctx context.Context, in *VolumeDeleteDirRequest, opts ...grpc.CallOption) (*VolumeDeleteDirResponse, error) {
-	out := new(VolumeDeleteDirResponse)
+func (c *volumeServiceClient) DeleteDir(ctx context.Context, in *VolumeDirDeleteRequest, opts ...grpc.CallOption) (*VolumeDirDeleteResponse, error) {
+	out := new(VolumeDirDeleteResponse)
 	err := c.cc.Invoke(ctx, "/VolumeService/DeleteDir", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -443,9 +443,9 @@ func (c *volumeServiceClient) Stat(ctx context.Context, in *StatRequest, opts ..
 type VolumeServiceServer interface {
 	Create(context.Context, *VolumeCreateRequest) (*VolumeCreateResponse, error)
 	Delete(context.Context, *VolumeDeleteRequest) (*VolumeDeleteResponse, error)
-	ListDir(context.Context, *VolumeListDirRequest) (*VolumeListDirResponse, error)
-	CreateDir(context.Context, *VolumeCreateDirRequest) (*VolumeCreateDirResponse, error)
-	DeleteDir(context.Context, *VolumeDeleteDirRequest) (*VolumeDeleteDirResponse, error)
+	ListDir(context.Context, *VolumeDirListRequest) (*VolumeDirListResponse, error)
+	CreateDir(context.Context, *VolumeDirCreateRequest) (*VolumeDirCreateResponse, error)
+	DeleteDir(context.Context, *VolumeDirDeleteRequest) (*VolumeDirDeleteResponse, error)
 	GetFile(*VolumeFileGetRequest, VolumeService_GetFileServer) error
 	CreateFile(VolumeService_CreateFileServer) error
 	DeleteFile(context.Context, *VolumeFileDeleteRequest) (*VolumeFileDeleteResponse, error)
@@ -463,13 +463,13 @@ func (UnimplementedVolumeServiceServer) Create(context.Context, *VolumeCreateReq
 func (UnimplementedVolumeServiceServer) Delete(context.Context, *VolumeDeleteRequest) (*VolumeDeleteResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Delete not implemented")
 }
-func (UnimplementedVolumeServiceServer) ListDir(context.Context, *VolumeListDirRequest) (*VolumeListDirResponse, error) {
+func (UnimplementedVolumeServiceServer) ListDir(context.Context, *VolumeDirListRequest) (*VolumeDirListResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListDir not implemented")
 }
-func (UnimplementedVolumeServiceServer) CreateDir(context.Context, *VolumeCreateDirRequest) (*VolumeCreateDirResponse, error) {
+func (UnimplementedVolumeServiceServer) CreateDir(context.Context, *VolumeDirCreateRequest) (*VolumeDirCreateResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateDir not implemented")
 }
-func (UnimplementedVolumeServiceServer) DeleteDir(context.Context, *VolumeDeleteDirRequest) (*VolumeDeleteDirResponse, error) {
+func (UnimplementedVolumeServiceServer) DeleteDir(context.Context, *VolumeDirDeleteRequest) (*VolumeDirDeleteResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteDir not implemented")
 }
 func (UnimplementedVolumeServiceServer) GetFile(*VolumeFileGetRequest, VolumeService_GetFileServer) error {
@@ -534,7 +534,7 @@ func _VolumeService_Delete_Handler(srv interface{}, ctx context.Context, dec fun
 }
 
 func _VolumeService_ListDir_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(VolumeListDirRequest)
+	in := new(VolumeDirListRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -546,13 +546,13 @@ func _VolumeService_ListDir_Handler(srv interface{}, ctx context.Context, dec fu
 		FullMethod: "/VolumeService/ListDir",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(VolumeServiceServer).ListDir(ctx, req.(*VolumeListDirRequest))
+		return srv.(VolumeServiceServer).ListDir(ctx, req.(*VolumeDirListRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
 func _VolumeService_CreateDir_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(VolumeCreateDirRequest)
+	in := new(VolumeDirCreateRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -564,13 +564,13 @@ func _VolumeService_CreateDir_Handler(srv interface{}, ctx context.Context, dec 
 		FullMethod: "/VolumeService/CreateDir",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(VolumeServiceServer).CreateDir(ctx, req.(*VolumeCreateDirRequest))
+		return srv.(VolumeServiceServer).CreateDir(ctx, req.(*VolumeDirCreateRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
 func _VolumeService_DeleteDir_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(VolumeDeleteDirRequest)
+	in := new(VolumeDirDeleteRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -582,7 +582,7 @@ func _VolumeService_DeleteDir_Handler(srv interface{}, ctx context.Context, dec 
 		FullMethod: "/VolumeService/DeleteDir",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(VolumeServiceServer).DeleteDir(ctx, req.(*VolumeDeleteDirRequest))
+		return srv.(VolumeServiceServer).DeleteDir(ctx, req.(*VolumeDirDeleteRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }

@@ -24,16 +24,19 @@ func New(config cfg.Config) *VolumeService {
 	return &VolumeService{config: config}
 }
 
-func (v *VolumeService) buildVolumePath(volumeType, teamID, volumeID string) (string, *status.Status) {
+func (v *VolumeService) buildVolumePath(volume *orchestrator.VolumeInfo) (string, *status.Status) {
+	volumeType := volume.GetVolumeType()
 	volPath, ok := v.config.PersistentVolumeMounts[volumeType]
 	if !ok {
 		return "", status.Newf(codes.NotFound, "volume type %q not found", volumeType)
 	}
 
+	teamID := volume.GetTeamId()
 	if !tryParseUUID(teamID) {
 		return "", status.Newf(codes.InvalidArgument, "invalid team ID %q", teamID)
 	}
 
+	volumeID := volume.GetVolumeId()
 	if !tryParseUUID(volumeID) {
 		return "", status.Newf(codes.InvalidArgument, "invalid volume ID %q", volumeID)
 	}

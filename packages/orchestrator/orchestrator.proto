@@ -140,10 +140,14 @@ service SandboxService {
   rpc ListCachedBuilds(google.protobuf.Empty) returns (SandboxListCachedBuildsResponse);
 }
 
-message VolumeCreateRequest {
+message VolumeInfo {
   string volume_id = 1;
   string volume_type = 2;
   string team_id = 3;
+}
+
+message VolumeCreateRequest {
+  VolumeInfo volume = 1;
 }
 
 message VolumeCreateResponse {
@@ -151,9 +155,7 @@ message VolumeCreateResponse {
 }
 
 message VolumeDeleteRequest {
-  string volume_id = 1;
-  string volume_type = 2;
-  string team_id = 3;
+  VolumeInfo volume = 1;
 }
 
 message VolumeDeleteResponse {}
@@ -162,45 +164,38 @@ message VolumeDirectoryItem {
   EntryInfo entry = 1;
 }
 
-message VolumeListDirRequest {
-  string volume_id = 1;
+message VolumeDirListRequest {
+  VolumeInfo volume = 1;
   string path = 2;
-  string volume_type = 3;
-  string team_id = 4;
 }
 
-message VolumeListDirResponse {
+message VolumeDirListResponse {
   repeated VolumeDirectoryItem files = 1;
 }
 
-message VolumeCreateDirRequest {
-  string volume_id = 1;
+message VolumeDirCreateRequest {
+  VolumeInfo volume = 1;
   string path = 2;
-  string volume_type = 3;
-  string team_id = 4;
-  uint32 permissions = 5;
-  int32 owner_id = 6;
-  int32 group_id = 7;
+  uint32 mode = 3;
+  uint32 owner_id = 4;
+  uint32 group_id = 5;
+  bool create_parents = 6;
 }
 
-message VolumeCreateDirResponse {
+message VolumeDirCreateResponse {
   EntryInfo entry = 1;
 }
 
-message VolumeDeleteDirRequest {
-  string volume_id = 1;
+message VolumeDirDeleteRequest {
+  VolumeInfo volume = 1;
   string path = 2;
-  string volume_type = 3;
-  string team_id = 4;
 }
 
-message VolumeDeleteDirResponse {}
+message VolumeDirDeleteResponse {}
 
 message VolumeFileGetRequest {
-  string volume_id = 1;
+  VolumeInfo volume = 1;
   string path = 2;
-  string volume_type = 3;
-  string team_id = 4;
 }
 
 message VolumeFileGetResponseStart {
@@ -222,13 +217,12 @@ message VolumeFileGetResponse {
 }
 
 message VolumeFileCreateStart {
-  string volume_id = 1;
+  VolumeInfo volume = 1;
   string path = 2;
-  string volume_type = 3;
-  string team_id = 4;
-  uint32 permissions = 5;
-  int32 owner_id = 6;
-  int32 group_id = 7;
+  uint32 mode = 3;
+  uint32 owner_id = 4;
+  uint32 group_id = 5;
+  bool force = 6;
 }
 
 message VolumeFileCreateContent {
@@ -251,19 +245,15 @@ message VolumeFileCreateResponse {
 }
 
 message VolumeFileDeleteRequest {
-  string volume_id = 1;
+  VolumeInfo volume = 1;
   string path = 2;
-  string volume_type = 3;
-  string team_id = 4;
 }
 
 message VolumeFileDeleteResponse {}
 
 message StatRequest {
-  string volume_id = 1;
+  VolumeInfo volume = 1;
   string path = 2;
-  string volume_type = 3;
-  string team_id = 4;
 }
 
 message StatResponse {
@@ -283,22 +273,21 @@ message EntryInfo {
   string path = 3;
   int64 size = 4;
   uint32 mode = 5;
-  uint32 permissions = 6;
-  uint32 owner = 7;
-  uint32 group = 8;
-  google.protobuf.Timestamp modified_time = 9;
+  uint32 owner = 6;
+  uint32 group = 7;
+  google.protobuf.Timestamp modified_time = 8;
   // If the entry is a symlink, this field contains the target of the symlink.
-  optional string symlink_target = 10;
-  google.protobuf.Timestamp created_time = 11;
+  optional string symlink_target = 9;
+  google.protobuf.Timestamp created_time = 10;
 }
 
 service VolumeService {
   rpc Create(VolumeCreateRequest) returns (VolumeCreateResponse);
   rpc Delete(VolumeDeleteRequest) returns (VolumeDeleteResponse);
 
-  rpc ListDir(VolumeListDirRequest) returns (VolumeListDirResponse);
-  rpc CreateDir(VolumeCreateDirRequest) returns (VolumeCreateDirResponse);
-  rpc DeleteDir(VolumeDeleteDirRequest) returns (VolumeDeleteDirResponse);
+  rpc ListDir(VolumeDirListRequest) returns (VolumeDirListResponse);
+  rpc CreateDir(VolumeDirCreateRequest) returns (VolumeDirCreateResponse);
+  rpc DeleteDir(VolumeDirDeleteRequest) returns (VolumeDirDeleteResponse);
 
   rpc GetFile(VolumeFileGetRequest) returns (stream VolumeFileGetResponse);
   rpc CreateFile(stream VolumeFileCreateRequest) returns (VolumeFileCreateResponse);

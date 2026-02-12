@@ -9,7 +9,7 @@ import (
 )
 
 func (v *VolumeService) DeleteFile(_ context.Context, request *orchestrator.VolumeFileDeleteRequest) (*orchestrator.VolumeFileDeleteResponse, error) {
-	basePath, statusErr := v.buildVolumePath(request.GetVolumeType(), request.GetTeamId(), request.GetVolumeId())
+	basePath, statusErr := v.buildVolumePath(request.GetVolume())
 	if statusErr != nil {
 		return nil, statusErr.Err()
 	}

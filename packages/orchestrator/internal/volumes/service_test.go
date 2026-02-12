@@ -10,6 +10,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
 func TestBuildVolumePath(t *testing.T) {
@@ -84,7 +85,12 @@ func TestBuildVolumePath(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			actualPath, actualStatus := v.buildVolumePath(tc.volumeType, tc.teamID, tc.volumeID)
+			volumeInfo := orchestrator.VolumeInfo{
+				VolumeType: tc.volumeType,
+				TeamId:     tc.teamID,
+				VolumeId:   tc.volumeID,
+			}
+			actualPath, actualStatus := v.buildVolumePath(&volumeInfo)
 			assert.Equal(t, tc.status, actualStatus)
 			assert.Equal(t, tc.expected, actualPath)
 		})

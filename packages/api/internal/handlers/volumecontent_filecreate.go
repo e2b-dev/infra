@@ -12,6 +12,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/clusters"
+	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
@@ -20,17 +21,41 @@ const incomingBufferSize = 1024 * 1024 // 1MB
 func (a *APIStore) PostVolumesVolumeIDFile(c *gin.Context, volumeID api.VolumeID, params api.PostVolumesVolumeIDFileParams) {
 	defer c.Request.Body.Close()
 
-	a.executeOnOrchestrator(c, func(ctx context.Context, client *clusters.GRPCClient) error {
+	a.executeOnOrchestratorByVolumeID(c, volumeID, func(ctx context.Context, volume queries.Volume, client *clusters.GRPCClient) error {
 		fileClient, err := client.Volumes.CreateFile(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to create file: %w", err)
 		}
 
+		mode := defaultFileMode
+		if params.Mode != nil {
+			mode = *params.Mode
+		}
+
+		ownerID := defaultOwnerID
+		if params.UserID != nil {
+			ownerID = *params.UserID
+		}
+
+		groupID := defaultGroupID
+		if params.GroupID != nil {
+			groupID = *params.GroupID
+		}
+
+		force := false
+		if params.Force != nil {
+			force = *params.Force
+		}
+
 		if err = fileClient.Send(&orchestrator.VolumeFileCreateRequest{
 			Message: &orchestrator.VolumeFileCreateRequest_Start{
 				Start: &orchestrator.VolumeFileCreateStart{
-					VolumeId: volumeID,
-					Path:     params.Path,
+					Volume:  toVolumeKey(volume),
+					Path:    params.Path,
+					Mode:    mode,
+					OwnerId: ownerID,
+					GroupId: groupID,
+					Force:   force,
 				},
 			},
 		}); err != nil {

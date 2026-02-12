@@ -7,13 +7,25 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
-func (v *VolumeService) CreateDir(_ context.Context, request *orchestrator.VolumeCreateDirRequest) (*orchestrator.VolumeCreateDirResponse, error) {
-	path, statusErr := v.buildVolumePath(request.GetVolumeType(), request.GetTeamId(), request.GetVolumeId())
+type makeDir func(path string, perm os.FileMode) error
+
+func (v *VolumeService) CreateDir(_ context.Context, request *orchestrator.VolumeDirCreateRequest) (*orchestrator.VolumeDirCreateResponse, error) {
+	path, statusErr := v.buildVolumePath(request.GetVolume())
 	if statusErr != nil {
 		return nil, statusErr.Err()
 	}
 
-	if err := os.Mkdir(path, os.FileMode(request.GetPermissions())); err != nil { // todo: better error handling
+	var fn makeDir
+	if request.GetCreateParents() {
+		fn = os.MkdirAll
+	} else {
+		fn = os.Mkdir
+	}
+	if err := fn(path, os.FileMode(request.GetMode())); err != nil { // todo: better error handling
+		return nil, v.processError(err)
+	}
+
+	if err := os.Chown(path, int(request.GetOwnerId()), int(request.GetGroupId())); err != nil {
 		return nil, v.processError(err)
 	}
 
@@ -22,7 +34,7 @@ func (v *VolumeService) CreateDir(_ context.Context, request *orchestrator.Volum
 		return nil, v.processError(err)
 	}
 
-	return &orchestrator.VolumeCreateDirResponse{
+	return &orchestrator.VolumeDirCreateResponse{
 		Entry: toEntry(stat),
 	}, nil
 }

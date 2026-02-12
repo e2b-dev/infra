@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/clusters"
+	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
@@ -18,10 +20,10 @@ var (
 )
 
 func (a *APIStore) GetVolumesVolumeIDFile(c *gin.Context, volumeID api.VolumeID, params api.GetVolumesVolumeIDFileParams) {
-	a.executeOnOrchestrator(c, func(ctx context.Context, client *clusters.GRPCClient) error {
+	a.executeOnOrchestratorByVolumeID(c, volumeID, func(ctx context.Context, volume queries.Volume, client *clusters.GRPCClient) error {
 		fileClient, err := client.Volumes.GetFile(ctx, &orchestrator.VolumeFileGetRequest{
-			VolumeId: volumeID,
-			Path:     params.Path,
+			Volume: toVolumeKey(volume),
+			Path:   params.Path,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to get file: %w", err)
@@ -37,6 +39,7 @@ func (a *APIStore) GetVolumesVolumeIDFile(c *gin.Context, volumeID api.VolumeID,
 			return ErrExpectedStartMessage
 		}
 
+		c.Writer.WriteHeader(http.StatusOK)
 		c.Writer.Header().Set("Content-Type", "application/octet-stream")
 		c.Writer.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", params.Path))
 		c.Writer.Header().Set("Content-Length", fmt.Sprintf("%d", startMsg.GetSize()))

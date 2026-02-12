@@ -13,7 +13,7 @@ import (
 )
 
 func (v *VolumeService) Stat(_ context.Context, request *orchestrator.StatRequest) (*orchestrator.StatResponse, error) {
-	basePath, statusErr := v.buildVolumePath(request.GetVolumeType(), request.GetTeamId(), request.GetVolumeId())
+	basePath, statusErr := v.buildVolumePath(request.GetVolume())
 	if statusErr != nil {
 		return nil, statusErr.Err()
 	}
@@ -42,7 +42,6 @@ func toEntry(info os.FileInfo) *orchestrator.EntryInfo {
 		Path:         info.Name(),
 		Size:         info.Size(),
 		Mode:         uint32(info.Mode()),
-		Permissions:  uint32(info.Mode().Perm()),
 		ModifiedTime: timestamppb.New(info.ModTime()),
 	}
 

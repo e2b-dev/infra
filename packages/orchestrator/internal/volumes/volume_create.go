@@ -11,7 +11,7 @@ import (
 )
 
 func (v *VolumeService) Create(_ context.Context, request *orchestrator.VolumeCreateRequest) (*orchestrator.VolumeCreateResponse, error) {
-	volumePath, statusErr := v.buildVolumePath(request.GetVolumeType(), request.GetTeamId(), request.GetVolumeId())
+	volumePath, statusErr := v.buildVolumePath(request.GetVolume())
 	if statusErr != nil {
 		return nil, statusErr.Err()
 	}

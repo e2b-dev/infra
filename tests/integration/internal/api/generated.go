@@ -90,11 +90,12 @@ const (
 	TemplateBuildStatusWaiting  TemplateBuildStatus = "waiting"
 )
 
-// Defines values for VolumeStatTarget.
+// Defines values for VolumeStatType.
 const (
-	Directory VolumeStatTarget = "directory"
-	File      VolumeStatTarget = "file"
-	Symlink   VolumeStatTarget = "symlink"
+	Directory VolumeStatType = "directory"
+	File      VolumeStatType = "file"
+	Symlink   VolumeStatType = "symlink"
+	Unknown   VolumeStatType = "unknown"
 )
 
 // Defines values for GetTeamsTeamIDMetricsMaxParamsMetric.
@@ -1164,21 +1165,20 @@ type VolumeDirectoryListing struct {
 
 // VolumeStat defines model for VolumeStat.
 type VolumeStat struct {
-	Ctime       time.Time         `json:"ctime"`
-	Group       uint32            `json:"group"`
-	Mode        uint32            `json:"mode"`
-	Mtime       time.Time         `json:"mtime"`
-	Name        string            `json:"name"`
-	Owner       uint32            `json:"owner"`
-	Path        string            `json:"path"`
-	Permissions uint32            `json:"permissions"`
-	Size        int64             `json:"size"`
-	Target      *VolumeStatTarget `json:"target,omitempty"`
-	Type        string            `json:"type"`
+	Ctime  time.Time      `json:"ctime"`
+	Group  uint32         `json:"group"`
+	Mode   uint32         `json:"mode"`
+	Mtime  time.Time      `json:"mtime"`
+	Name   string         `json:"name"`
+	Owner  uint32         `json:"owner"`
+	Path   string         `json:"path"`
+	Size   int64          `json:"size"`
+	Target *string        `json:"target,omitempty"`
+	Type   VolumeStatType `json:"type"`
 }
 
-// VolumeStatTarget defines model for VolumeStat.Target.
-type VolumeStatTarget string
+// VolumeStatType defines model for VolumeStat.Type.
+type VolumeStatType string
 
 // AccessTokenID defines model for accessTokenID.
 type AccessTokenID = string
@@ -1375,6 +1375,18 @@ type GetVolumesVolumeIDDirParams struct {
 // PostVolumesVolumeIDDirParams defines parameters for PostVolumesVolumeIDDir.
 type PostVolumesVolumeIDDirParams struct {
 	Path Path `form:"path" json:"path"`
+
+	// UserID User ID of the created directory
+	UserID *uint32 `form:"userID,omitempty" json:"userID,omitempty"`
+
+	// GroupID Group ID of the created directory
+	GroupID *uint32 `form:"groupID,omitempty" json:"groupID,omitempty"`
+
+	// Mode Mode of the created directory
+	Mode *uint32 `form:"mode,omitempty" json:"mode,omitempty"`
+
+	// CreateParents Force overwrite of an existing directory
+	CreateParents *bool `form:"create_parents,omitempty" json:"create_parents,omitempty"`
 }
 
 // DeleteVolumesVolumeIDFileParams defines parameters for DeleteVolumesVolumeIDFile.
@@ -1390,6 +1402,18 @@ type GetVolumesVolumeIDFileParams struct {
 // PostVolumesVolumeIDFileParams defines parameters for PostVolumesVolumeIDFile.
 type PostVolumesVolumeIDFileParams struct {
 	Path Path `form:"path" json:"path"`
+
+	// UserID User ID of the created file
+	UserID *uint32 `form:"userID,omitempty" json:"userID,omitempty"`
+
+	// GroupID Group ID of the created file
+	GroupID *uint32 `form:"groupID,omitempty" json:"groupID,omitempty"`
+
+	// Mode Mode of the created file
+	Mode *uint32 `form:"mode,omitempty" json:"mode,omitempty"`
+
+	// Force Force overwrite of an existing file
+	Force *bool `form:"force,omitempty" json:"force,omitempty"`
 }
 
 // GetVolumesVolumeIDStatParams defines parameters for GetVolumesVolumeIDStat.
@@ -5270,6 +5294,70 @@ func NewPostVolumesVolumeIDDirRequest(server string, volumeID VolumeID, params *
 			}
 		}
 
+		if params.UserID != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "userID", runtime.ParamLocationQuery, *params.UserID); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.GroupID != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "groupID", runtime.ParamLocationQuery, *params.GroupID); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Mode != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "mode", runtime.ParamLocationQuery, *params.Mode); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.CreateParents != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "create_parents", runtime.ParamLocationQuery, *params.CreateParents); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
 		queryURL.RawQuery = queryValues.Encode()
 	}
 
@@ -5424,6 +5512,70 @@ func NewPostVolumesVolumeIDFileRequestWithBody(server string, volumeID VolumeID,
 					queryValues.Add(k, v2)
 				}
 			}
+		}
+
+		if params.UserID != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "userID", runtime.ParamLocationQuery, *params.UserID); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.GroupID != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "groupID", runtime.ParamLocationQuery, *params.GroupID); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Mode != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "mode", runtime.ParamLocationQuery, *params.Mode); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Force != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "force", runtime.ParamLocationQuery, *params.Force); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
 		}
 
 		queryURL.RawQuery = queryValues.Encode()

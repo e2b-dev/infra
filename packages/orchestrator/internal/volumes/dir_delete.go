@@ -10,8 +10,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
-func (v *VolumeService) DeleteDir(_ context.Context, request *orchestrator.VolumeDeleteDirRequest) (*orchestrator.VolumeDeleteDirResponse, error) {
-	path, statusErr := v.buildVolumePath(request.GetVolumeType(), request.GetTeamId(), request.GetVolumeId())
+func (v *VolumeService) DeleteDir(_ context.Context, request *orchestrator.VolumeDirDeleteRequest) (*orchestrator.VolumeDirDeleteResponse, error) {
+	path, statusErr := v.buildVolumePath(request.GetVolume())
 	if statusErr != nil {
 		return nil, statusErr.Err()
 	}
@@ -20,5 +20,5 @@ func (v *VolumeService) DeleteDir(_ context.Context, request *orchestrator.Volum
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	return &orchestrator.VolumeDeleteDirResponse{}, nil
+	return &orchestrator.VolumeDirDeleteResponse{}, nil
 }

@@ -11,7 +11,7 @@ import (
 const fileStreamChunkSize = 1024 * 1024 // 1MB
 
 func (v *VolumeService) GetFile(request *orchestrator.VolumeFileGetRequest, server orchestrator.VolumeService_GetFileServer) error {
-	basePath, statusErr := v.buildVolumePath(request.GetVolumeType(), request.GetTeamId(), request.GetVolumeId())
+	basePath, statusErr := v.buildVolumePath(request.GetVolume())
 	if statusErr != nil {
 		return statusErr.Err()
 	}
