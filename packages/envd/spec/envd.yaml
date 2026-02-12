@@ -134,7 +134,7 @@ components:
   securitySchemes:
     AccessTokenAuth:
       type: apiKey
-      scheme: header
+      in: header
       name: X-Access-Token
 
   parameters:
