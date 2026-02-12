@@ -3221,6 +3221,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/VolumeDirectoryListing"
+        "400":
+          description: "Invalid path provided"
         "404":
           description: "path not found"
         "500":
