@@ -119,14 +119,19 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 			server.Close()
 
 			dispatch := NewDispatch(serverc, d.Backend)
+			// Capture loop variables for the goroutine closure to avoid a data
+			// race: deviceIndex is reassigned on each retry iteration of the
+			// outer for-loop while the goroutine may still read it.
+			devIdx := deviceIndex
+			sockIdx := i
 			// Start reading commands on the socket and dispatching them to our provider
 			d.handlersWg.Go(func() {
 				handleErr := dispatch.Handle(ctx)
 				// The error is expected to happen if the nbd (socket connection) is closed
 				logger.L().Info(ctx, "closing handler for NBD commands",
 					zap.Error(handleErr),
-					zap.Uint32("device_index", deviceIndex),
-					zap.Int("socket_index", i),
+					zap.Uint32("device_index", devIdx),
+					zap.Int("socket_index", sockIdx),
 				)
 			})
 
