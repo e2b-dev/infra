@@ -1,0 +1,25 @@
+name: Validate OpenAPI specs
+
+on: [workflow_call]
+
+permissions:
+  contents: read
+
+jobs:
+  validate-openapi:
+    name: Validate ${{ matrix.spec }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        spec:
+          - spec/openapi.yml
+          - spec/openapi-edge.yml
+          - spec/openapi-hyperloop.yml
+          - packages/envd/spec/envd.yaml
+      fail-fast: false
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate OpenAPI spec
+        run: npx --yes @redocly/cli lint ${{ matrix.spec }}
