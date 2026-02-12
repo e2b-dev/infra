@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/connlimit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
@@ -35,13 +36,13 @@ var _ sandbox.MapSubscriber = (*SandboxProxy)(nil)
 
 type SandboxProxy struct {
 	proxy        *reverseproxy.Proxy
-	limiter      *ConnectionLimiter
+	limiter      *connlimit.ConnectionLimiter
 	featureFlags *featureflags.Client
 }
 
 func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes *sandbox.Map, featureFlags *featureflags.Client) (*SandboxProxy, error) {
 	getTargetFromRequest := reverseproxy.GetTargetFromRequest(env.IsLocal())
-	limiter := NewConnectionLimiter()
+	limiter := connlimit.NewConnectionLimiter()
 
 	proxy := reverseproxy.New(
 		port,

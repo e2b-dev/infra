@@ -1,4 +1,4 @@
-package proxy
+package connlimit
 
 import (
 	"sync"
@@ -186,12 +186,10 @@ func TestConnectionLimiter_Concurrent(t *testing.T) {
 		acquired := make(chan bool, goroutines)
 
 		for range goroutines {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				_, ok := limiter.TryAcquire("sandbox1", limit)
 				acquired <- ok
-			}()
+			})
 		}
 
 		wg.Wait()
@@ -217,13 +215,11 @@ func TestConnectionLimiter_Concurrent(t *testing.T) {
 		var wg sync.WaitGroup
 
 		for range iterations {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				if _, ok := limiter.TryAcquire("sandbox1", limit); ok {
 					limiter.Release("sandbox1")
 				}
-			}()
+			})
 		}
 
 		wg.Wait()
