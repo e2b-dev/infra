@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -91,7 +92,7 @@ func TestBuildVolumePath(t *testing.T) {
 				VolumeId:   tc.volumeID,
 			}
 			actualPath, actualStatus := v.buildVolumePath(&volumeInfo)
-			assert.ErrorIs(t, tc.status.Err(), actualStatus)
+			require.ErrorIs(t, tc.status.Err(), actualStatus)
 			assert.Equal(t, tc.expected, actualPath)
 		})
 	}
