@@ -22,4 +22,6 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Validate OpenAPI spec
-        run: npx --yes @redocly/cli lint --extends minimal ${{ matrix.spec }}
+        run: |
+          echo 'extends: [minimal]' > /tmp/redocly.yaml
+          npx --yes @redocly/cli lint --config /tmp/redocly.yaml ${{ matrix.spec }}
