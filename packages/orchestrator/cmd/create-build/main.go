@@ -63,6 +63,7 @@ func main() {
 	memory := flag.Int("memory", 1024, "memory MB")
 	disk := flag.Int("disk", 1024, "disk MB")
 	hugePages := flag.Bool("hugepages", true, "use 2MB huge pages for memory (false = 4KB pages)")
+	freePageReporting := flag.Bool("free-page-reporting", false, "enable free page reporting via balloon device (requires Firecracker v1.14+)")
 	startCmd := flag.String("start-cmd", "", "start command")
 	setupCmd := flag.String("setup-cmd", "", "setup command to run during build (e.g., install deps)")
 	readyCmd := flag.String("ready-cmd", "", "ready check command")
@@ -100,7 +101,16 @@ func main() {
 		log.Fatalf("network config: %v", err)
 	}
 
-	err = doBuild(ctx, *templateID, *toBuild, *fromBuild, *kernel, *fc, *vcpu, *memory, *disk, *hugePages, *startCmd, *setupCmd, *readyCmd, localMode, *verbose, *timeout, builderConfig, networkConfig)
+	// Detect if --free-page-reporting was explicitly set; if not, pass nil so
+	// doBuild can default based on the Firecracker version.
+	var fprOverride *bool
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "free-page-reporting" {
+			fprOverride = freePageReporting
+		}
+	})
+
+	err = doBuild(ctx, *templateID, *toBuild, *fromBuild, *kernel, *fc, *vcpu, *memory, *disk, *hugePages, fprOverride, *startCmd, *setupCmd, *readyCmd, localMode, *verbose, *timeout, builderConfig, networkConfig)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -199,9 +209,10 @@ func setupEnv(ctx context.Context, storagePath, sandboxDir, kernel, fc string, l
 
 func doBuild(
 	parentCtx context.Context,
-	templateID, buildID, fromBuild, kernel, fc string,
+	templateID, buildID, fromBuild, kernel, fcVersion string,
 	vcpu, memory, disk int,
 	hugePages bool,
+	freePageReporting *bool,
 	startCmd, setupCmd, readyCmd string,
 	localMode, verbose bool,
 	timeout int,
@@ -341,6 +352,18 @@ func doBuild(
 		})
 	}
 
+	// Default FPR to enabled when the FC version supports it (v1.14+); explicit flag overrides.
+	var fprEnabled bool
+	if freePageReporting != nil {
+		fprEnabled = *freePageReporting
+	} else {
+		versionOnly, _, _ := strings.Cut(fcVersion, "_")
+		supported, err := utils.IsGTEVersion(versionOnly, "v1.14.0")
+		if err == nil {
+			fprEnabled = supported
+		}
+	}
+
 	tmpl := config.TemplateConfig{
 		Version:            templates.TemplateV2LatestVersion,
 		TemplateID:         templateID,
@@ -349,10 +372,11 @@ func doBuild(
 		MemoryMB:           int64(memory),
 		DiskSizeMB:         int64(disk),
 		HugePages:          hugePages,
+		FreePageReporting:  fprEnabled,
 		StartCmd:           startCmd,
 		ReadyCmd:           readyCmd,
 		KernelVersion:      kernel,
-		FirecrackerVersion: fc,
+		FirecrackerVersion: fcVersion,
 		Steps:              steps,
 	}
 

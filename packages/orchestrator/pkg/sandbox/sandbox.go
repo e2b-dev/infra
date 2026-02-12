@@ -72,6 +72,9 @@ type Config struct {
 	TotalDiskSizeMB int64
 	HugePages       bool
 
+	// Enable free page reporting
+	FreePageReporting bool
+
 	Envd EnvdMetadata
 
 	FirecrackerConfig fc.Config
@@ -509,6 +512,7 @@ func (f *Factory) CreateSandbox(
 		config.Vcpu,
 		config.RamMB,
 		config.HugePages,
+		config.FreePageReporting,
 		processOptions,
 		fc.RateLimiterConfig{
 			Ops:       fc.TokenBucketConfig(throttleConfig.Ops),

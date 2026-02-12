@@ -84,6 +84,7 @@ message TemplateConfig {
   optional FromImageRegistry fromImageRegistry = 15;
 
   string teamID = 16;
+  optional bool freePageReporting = 17;
 }
 
 message TemplateCreateRequest {

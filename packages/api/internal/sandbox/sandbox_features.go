@@ -39,7 +39,15 @@ func (v *VersionInfo) Version() semver.Version {
 }
 
 func (v *VersionInfo) HasHugePages() bool {
-	if v.lastReleaseVersion.Major() >= 1 && v.lastReleaseVersion.Minor() >= 7 {
+	if v.lastReleaseVersion.Major() == 1 && v.lastReleaseVersion.Minor() >= 7 {
+		return true
+	}
+
+	return false
+}
+
+func (v *VersionInfo) HasFreePageReporting() bool {
+	if v.lastReleaseVersion.Major() == 1 && v.lastReleaseVersion.Minor() >= 14 {
 		return true
 	}
 

@@ -853,6 +853,13 @@ func (x *TemplateConfig) GetTeamID() string {
 	return ""
 }
 
+func (x *TemplateConfig) GetFreePageReporting() bool {
+	if x != nil && x.FreePageReporting != nil {
+		return *x.FreePageReporting
+	}
+	return false
+}
+
 type isTemplateConfig_Source interface {
 	isTemplateConfig_Source()
 }
