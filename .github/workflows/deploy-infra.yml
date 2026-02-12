@@ -47,6 +47,7 @@ jobs:
           infisical_client_secret: ${{ secrets.INFISICAL_CLIENT_SECRET }}
 
       - name: Apply init module
+        if: inputs.plan_only == 'false'
         run: |
           make apply-init
 
