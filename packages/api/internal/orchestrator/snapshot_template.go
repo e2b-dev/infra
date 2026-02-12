@@ -61,7 +61,7 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 			return
 		}
 
-		_, updateErr := o.sandboxStore.Update(ctx, sbx.TeamID, sbx.SandboxID, func(s sandbox.Sandbox) (sandbox.Sandbox, error) {
+		_, updateErr := o.sandboxStore.Update(context.WithoutCancel(ctx), sbx.TeamID, sbx.SandboxID, func(s sandbox.Sandbox) (sandbox.Sandbox, error) {
 			if s.State == sandbox.StateSnapshotting {
 				s.State = sandbox.StateRunning
 			}

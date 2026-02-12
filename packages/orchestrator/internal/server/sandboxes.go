@@ -436,6 +436,13 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		return nil, status.Errorf(codes.Internal, "error getting template for resume: %s", err)
 	}
 
+	// Acquire semaphore to limit concurrent sandbox starts
+	err = s.waitForAcquire(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer s.startingSandboxes.Release(1)
+
 	// Resume the sandbox with the same config
 	resumedSbx, err := s.sandboxFactory.ResumeSandbox(
 		ctx,

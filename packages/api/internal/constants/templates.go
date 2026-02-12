@@ -6,4 +6,5 @@ const (
 	MinTemplateMemory     = int64(128)
 	DefaultTemplateCPU    = int64(2)
 	DefaultTemplateMemory = int64(1024)
+	MaxSnapshotsPerTeam   = int32(100)
 )

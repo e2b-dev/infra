@@ -10,6 +10,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
+	"github.com/e2b-dev/infra/packages/api/internal/constants"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
@@ -33,6 +34,21 @@ func (a *APIStore) PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID api
 	)
 
 	sandboxID = utils.ShortID(sandboxID)
+
+	// Enforce quota: check team snapshot count
+	snapshotCount, err := a.sqlcDB.CountTeamSnapshots(ctx, teamID)
+	if err != nil {
+		telemetry.ReportCriticalError(ctx, "Error counting team snapshots", err)
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error checking snapshot quota")
+
+		return
+	}
+
+	if snapshotCount >= constants.MaxSnapshotsPerTeam {
+		a.sendAPIStoreError(c, http.StatusTooManyRequests, fmt.Sprintf("Maximum number of snapshots (%d) reached for this team. Please delete some snapshots before creating new ones.", constants.MaxSnapshotsPerTeam))
+
+		return
+	}
 
 	// Parse optional request body
 	var body api.PostSandboxesSandboxIDSnapshotsJSONRequestBody
