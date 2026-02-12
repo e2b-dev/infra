@@ -45,8 +45,6 @@ build-and-upload:
 .PHONY: generate
 generate:
 	go generate ./...
-	docker build -t proto-gen -f generate.Dockerfile .
-	docker run --rm -v .:/workspace -v ./../shared/pkg/grpc:/shared/pkg/grpc proto-gen
 
 .PHONY: test
 test:

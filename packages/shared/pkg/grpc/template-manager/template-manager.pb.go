@@ -588,7 +588,6 @@ type FromImageRegistry struct {
 	unknownFields protoimpl.UnknownFields
 
 	// Types that are assignable to Type:
-	//
 	//	*FromImageRegistry_Aws
 	//	*FromImageRegistry_Gcp
 	//	*FromImageRegistry_General
@@ -695,7 +694,6 @@ type TemplateConfig struct {
 	Force              *bool           `protobuf:"varint,12,opt,name=force,proto3,oneof" json:"force,omitempty"`
 	Steps              []*TemplateStep `protobuf:"bytes,13,rep,name=steps,proto3" json:"steps,omitempty"`
 	// Types that are assignable to Source:
-	//
 	//	*TemplateConfig_FromImage
 	//	*TemplateConfig_FromTemplate
 	Source            isTemplateConfig_Source `protobuf_oneof:"source"`

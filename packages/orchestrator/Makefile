@@ -9,9 +9,6 @@ init:
 
 .PHONY: generate
 generate:
-	@echo "Generating..."
-	docker build -t proto-gen -f generate.Dockerfile .
-	docker run --rm -v .:/workspace -v ./../shared/pkg/grpc:/shared/pkg/grpc proto-gen
 	go generate ./...
 
 .PHONY: build

@@ -2,6 +2,7 @@ package sandbox
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -21,6 +22,7 @@ func initializeHostStatsCollector(
 	runtime RuntimeMetadata,
 	config Config,
 	hostStatsDelivery hoststats.Delivery,
+	samplingInterval time.Duration,
 ) {
 	if hostStatsDelivery == nil {
 		return
@@ -52,6 +54,7 @@ func initializeHostStatsCollector(
 		},
 		int32(firecrackerPID),
 		hostStatsDelivery,
+		samplingInterval,
 	)
 	if err != nil {
 		logger.L().Error(ctx, "failed to create host stats collector",
