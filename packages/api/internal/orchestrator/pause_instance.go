@@ -32,11 +32,6 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 	defer span.End()
 
 	machineInfo := node.MachineInfo()
-	var startingTimeout *time.Duration
-	if sbx.StartingTimeout > 0 {
-		timeout := sbx.StartingTimeout
-		startingTimeout = &timeout
-	}
 	snapshotConfig := queries.UpsertSnapshotParams{
 		// Used if there's no snapshot for this sandbox yet
 		TemplateID:     id.Generate(),
@@ -57,11 +52,10 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 		AllowInternetAccess: sbx.AllowInternetAccess,
 		AutoPause:           sbx.AutoPause,
 		Config: &types.PausedSandboxConfig{
-			Version:         types.PausedSandboxConfigVersion,
-			Network:         sbx.Network,
-			AutoResume:      sbx.AutoResume,
-			VolumeMounts:    sbx.VolumeMounts,
-			StartingTimeout: startingTimeout,
+			Version:      types.PausedSandboxConfigVersion,
+			Network:      sbx.Network,
+			AutoResume:   sbx.AutoResume,
+			VolumeMounts: sbx.VolumeMounts,
 		},
 		OriginNodeID:    node.ID,
 		Status:          types.BuildStatusSnapshotting,

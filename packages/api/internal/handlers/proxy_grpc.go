@@ -46,15 +46,17 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 	// Default 5 minutes for client-proxy initiated resume.
 	// If the sandbox was paused with a starting timeout, use that instead.
 	timeout := 300 * time.Second
-	if snap.Snapshot.Config != nil &&
-		snap.Snapshot.Config.StartingTimeout != nil &&
-		*snap.Snapshot.Config.StartingTimeout > 0 {
-		timeout = *snap.Snapshot.Config.StartingTimeout
-	}
-
 	var autoResume *dbtypes.SandboxAutoResumeConfig
 	if snap.Snapshot.Config != nil {
 		autoResume = snap.Snapshot.Config.AutoResume
+	}
+	if autoResume != nil && autoResume.StartingTimeout != nil && *autoResume.StartingTimeout > 0 {
+		timeout = *autoResume.StartingTimeout
+	} else if snap.Snapshot.Config != nil &&
+		snap.Snapshot.Config.StartingTimeout != nil &&
+		*snap.Snapshot.Config.StartingTimeout > 0 {
+		// Backward compatibility for snapshots saved before starting timeout moved under autoResume config.
+		timeout = *snap.Snapshot.Config.StartingTimeout
 	}
 	if autoResume == nil || autoResume.Policy != dbtypes.SandboxAutoResumeAny {
 		return nil, status.Error(codes.NotFound, "sandbox auto-resume disabled")

@@ -56,6 +56,8 @@ message SandboxConfig {
 message SandboxAutoResumeConfig {
   // Policy values are owned by the API layer today (e.g. "off", "any").
   string policy = 1;
+  // Original timeout requested on initial sandbox create (seconds).
+  optional int64 starting_timeout_seconds = 2;
 }
 
 message SandboxVolumeMount {

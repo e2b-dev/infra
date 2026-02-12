@@ -136,13 +136,6 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 			return
 		}
-
-		if timeout > 0 {
-			if metadata == nil {
-				metadata = map[string]string{}
-			}
-			metadata[sandbox.StartingTimeoutMetadataKey] = timeout.String()
-		}
 	}
 
 	autoResume, autoResumeErr := buildAutoResumeConfig(body.AutoResume)
@@ -150,6 +143,10 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		a.sendAPIStoreError(c, autoResumeErr.Code, autoResumeErr.ClientMsg)
 
 		return
+	}
+	if body.Timeout != nil && autoResume != nil && timeout > 0 {
+		startingTimeout := timeout
+		autoResume.StartingTimeout = &startingTimeout
 	}
 
 	var envdAccessToken *string = nil

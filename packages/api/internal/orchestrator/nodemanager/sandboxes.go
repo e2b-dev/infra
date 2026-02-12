@@ -77,19 +77,22 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
 		}
 
 		volumeMounts := ConvertOrchestratorMountsToDatabaseMounts(config.GetVolumeMounts())
-		startingTimeout := time.Duration(0)
-		if rawStartingTimeout, ok := config.GetMetadata()[sandbox.StartingTimeoutMetadataKey]; ok {
-			parsedStartingTimeout, parseErr := time.ParseDuration(rawStartingTimeout)
-			if parseErr == nil && parsedStartingTimeout > 0 {
-				startingTimeout = parsedStartingTimeout
-			}
-		}
 
 		var autoResume *types.SandboxAutoResumeConfig
 		if autoResumeCfg := config.GetAutoResume(); autoResumeCfg != nil {
 			p := autoResumeCfg.GetPolicy()
-			policy := types.SandboxAutoResumePolicy(p)
-			autoResume = &types.SandboxAutoResumeConfig{Policy: policy}
+			autoResume = &types.SandboxAutoResumeConfig{
+				Policy: types.SandboxAutoResumePolicy(p),
+			}
+			if autoResumeCfg.GetStartingTimeoutSeconds() > 0 {
+				startingTimeout := time.Duration(autoResumeCfg.GetStartingTimeoutSeconds()) * time.Second
+				autoResume.StartingTimeout = &startingTimeout
+			}
+		}
+
+		startingTimeout := time.Duration(0)
+		if autoResume != nil && autoResume.StartingTimeout != nil && *autoResume.StartingTimeout > 0 {
+			startingTimeout = *autoResume.StartingTimeout
 		}
 
 		sandboxesInfo = append(

@@ -108,13 +108,8 @@ func (o *Orchestrator) CreateSandbox(
 	defer childSpan.End()
 
 	startingTimeout := time.Duration(0)
-	if metadata != nil {
-		if rawStartingTimeout, ok := metadata[sandbox.StartingTimeoutMetadataKey]; ok {
-			parsedStartingTimeout, parseErr := time.ParseDuration(rawStartingTimeout)
-			if parseErr == nil && parsedStartingTimeout > 0 {
-				startingTimeout = parsedStartingTimeout
-			}
-		}
+	if autoResume != nil && autoResume.StartingTimeout != nil && *autoResume.StartingTimeout > 0 {
+		startingTimeout = *autoResume.StartingTimeout
 	}
 
 	// Calculate total concurrent instances including addons
@@ -228,6 +223,10 @@ func (o *Orchestrator) CreateSandbox(
 		policy := string(autoResume.Policy)
 		orchAutoResume = &orchestrator.SandboxAutoResumeConfig{
 			Policy: policy,
+		}
+		if autoResume.StartingTimeout != nil && *autoResume.StartingTimeout > 0 {
+			startingTimeoutSeconds := int64(autoResume.StartingTimeout.Seconds())
+			orchAutoResume.StartingTimeoutSeconds = &startingTimeoutSeconds
 		}
 	}
 

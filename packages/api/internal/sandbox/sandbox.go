@@ -10,8 +10,6 @@ import (
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 )
 
-const StartingTimeoutMetadataKey = "e2b_starting_timeout"
-
 func NewSandbox(
 	sandboxID string,
 	templateID string,
