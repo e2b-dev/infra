@@ -55,6 +55,11 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 				return nil, err
 			}
 
+			sbx, found := sandboxes.Get(sandboxId)
+			if !found {
+				return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)
+			}
+
 			// Check per-sandbox connection limit
 			maxLimit := featureFlags.IntFlag(r.Context(), featureflags.HTTPProxyMaxConnectionsPerSandbox)
 			count, acquired := limiter.TryAcquire(sandboxId, maxLimit)
@@ -69,11 +74,6 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 
 			// Release the connection slot when the request context is done (i.e. after the handler finishes serving).
 			context.AfterFunc(r.Context(), func() { limiter.Release(sandboxId) })
-
-			sbx, found := sandboxes.Get(sandboxId)
-			if !found {
-				return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)
-			}
 
 			var accessToken *string = nil
 			if net := sbx.Config.Network; net != nil && net.GetIngress() != nil {
