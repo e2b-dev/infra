@@ -24,7 +24,7 @@ jobs:
       app_secret: ${{ secrets.AUTOFIXER_APP_SECRET }}
   out-of-order-migrations:
     uses: ./.github/workflows/out-of-order-migrations.yml
-  unit-tests:
+  amd64-tests:
     uses: ./.github/workflows/pr-tests.yml
   arm64-tests:
     uses: ./.github/workflows/pr-tests-arm64.yml
@@ -36,7 +36,7 @@ jobs:
       publish: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
   publish-test-results:
     needs:
-      - unit-tests
+      - amd64-tests
       - integration-tests
     runs-on: ubuntu-latest
     permissions:
