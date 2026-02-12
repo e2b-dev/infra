@@ -10,10 +10,14 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
-func (v *VolumeService) Create(_ context.Context, request *orchestrator.VolumeCreateRequest) (*orchestrator.VolumeCreateResponse, error) {
-	volumePath, statusErr := v.buildVolumePath(request.GetVolume())
-	if statusErr != nil {
-		return nil, statusErr.Err()
+func (v *VolumeService) Create(_ context.Context, request *orchestrator.VolumeCreateRequest) (r *orchestrator.VolumeCreateResponse, err error) {
+	defer func() {
+		err = v.processError(err)
+	}()
+
+	volumePath, err := v.buildVolumePath(request.GetVolume())
+	if err != nil {
+		return nil, err
 	}
 
 	if err := os.MkdirAll(volumePath, 0o700); err != nil {

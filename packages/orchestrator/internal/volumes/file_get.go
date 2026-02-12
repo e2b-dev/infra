@@ -10,23 +10,27 @@ import (
 
 const fileStreamChunkSize = 1024 * 1024 // 1MB
 
-func (v *VolumeService) GetFile(request *orchestrator.VolumeFileGetRequest, server orchestrator.VolumeService_GetFileServer) error {
-	basePath, statusErr := v.buildVolumePath(request.GetVolume())
-	if statusErr != nil {
-		return statusErr.Err()
+func (v *VolumeService) GetFile(request *orchestrator.VolumeFileGetRequest, server orchestrator.VolumeService_GetFileServer) (err error) {
+	defer func() {
+		err = v.processError(err)
+	}()
+
+	basePath, err := v.buildVolumePath(request.GetVolume())
+	if err != nil {
+		return err
 	}
 
 	fullPath := filepath.Join(basePath, request.GetPath())
 
 	f, err := os.Open(fullPath)
 	if err != nil {
-		return v.processError(err)
+		return err
 	}
 	defer f.Close()
 
 	info, err := f.Stat()
 	if err != nil {
-		return v.processError(err)
+		return err
 	}
 
 	if err := server.Send(&orchestrator.VolumeFileGetResponse{
@@ -37,7 +41,7 @@ func (v *VolumeService) GetFile(request *orchestrator.VolumeFileGetRequest, serv
 
 	buf := make([]byte, fileStreamChunkSize)
 	for {
-		n, readErr := f.Read(buf)
+		n, err := f.Read(buf)
 		if n > 0 {
 			if err := server.Send(&orchestrator.VolumeFileGetResponse{
 				Message: &orchestrator.VolumeFileGetResponse_Content{Content: &orchestrator.VolumeFileGetResponseContent{Content: buf[:n]}},
@@ -45,20 +49,17 @@ func (v *VolumeService) GetFile(request *orchestrator.VolumeFileGetRequest, serv
 				return err
 			}
 		}
-		if readErr != nil {
-			if readErr == io.EOF {
-				break
+		if err != nil {
+			if err == io.EOF {
+				return server.Send(&orchestrator.VolumeFileGetResponse{
+					Message: &orchestrator.VolumeFileGetResponse_Finish{
+						Finish: &orchestrator.VolumeFileGetResponseFinish{},
+					},
+				})
 			}
 
-			return v.processError(readErr)
+			return err
 		}
 	}
 
-	if err := server.Send(&orchestrator.VolumeFileGetResponse{
-		Message: &orchestrator.VolumeFileGetResponse_Finish{Finish: &orchestrator.VolumeFileGetResponseFinish{}},
-	}); err != nil {
-		return v.processError(err)
-	}
-
-	return nil
 }

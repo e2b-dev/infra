@@ -1377,6 +1377,9 @@ type GetV2SandboxesSandboxIDLogsParams struct {
 // DeleteVolumesVolumeIDDirParams defines parameters for DeleteVolumesVolumeIDDir.
 type DeleteVolumesVolumeIDDirParams struct {
 	Path Path `form:"path" json:"path"`
+
+	// Recursive Delete all files and directories recursively
+	Recursive *bool `form:"recursive,omitempty" json:"recursive,omitempty"`
 }
 
 // GetVolumesVolumeIDDirParams defines parameters for GetVolumesVolumeIDDir.
@@ -5249,6 +5252,22 @@ func NewDeleteVolumesVolumeIDDirRequest(server string, volumeID VolumeID, params
 					queryValues.Add(k, v2)
 				}
 			}
+		}
+
+		if params.Recursive != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "recursive", runtime.ParamLocationQuery, *params.Recursive); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
 		}
 
 		queryURL.RawQuery = queryValues.Encode()

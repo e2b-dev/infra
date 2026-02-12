@@ -12,17 +12,21 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
-func (v *VolumeService) Stat(_ context.Context, request *orchestrator.StatRequest) (*orchestrator.StatResponse, error) {
-	basePath, statusErr := v.buildVolumePath(request.GetVolume())
-	if statusErr != nil {
-		return nil, statusErr.Err()
+func (v *VolumeService) Stat(_ context.Context, request *orchestrator.StatRequest) (r *orchestrator.StatResponse, err error) {
+	defer func() {
+		err = v.processError(err)
+	}()
+
+	basePath, err := v.buildVolumePath(request.GetVolume())
+	if err != nil {
+		return nil, err
 	}
 
 	fullPath := filepath.Join(basePath, request.GetPath())
 
 	info, err := os.Stat(fullPath)
 	if err != nil {
-		return nil, v.processError(err)
+		return nil, err
 	}
 
 	entry := toEntry(info)

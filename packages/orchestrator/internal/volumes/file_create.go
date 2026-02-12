@@ -12,20 +12,24 @@ var ErrExpectedStart = errors.New("expected start message")
 
 var ErrUnexpectedStart = errors.New("unexpected start message")
 
-func (v *VolumeService) CreateFile(server orchestrator.VolumeService_CreateFileServer) error {
+func (v *VolumeService) CreateFile(server orchestrator.VolumeService_CreateFileServer) (err error) {
+	defer func() {
+		err = v.processError(err)
+	}()
+
 	req, err := server.Recv()
 	if err != nil {
-		return v.processError(err)
+		return err
 	}
 
 	start := req.GetStart()
 	if start == nil {
-		return v.processError(ErrExpectedStart)
+		return ErrExpectedStart
 	}
 
-	basePath, statusErr := v.buildVolumePath(start.GetVolume())
-	if statusErr != nil {
-		return statusErr.Err()
+	basePath, err := v.buildVolumePath(start.GetVolume())
+	if err != nil {
+		return err
 	}
 
 	fullPath := filepath.Join(basePath, start.GetPath())
@@ -34,31 +38,31 @@ func (v *VolumeService) CreateFile(server orchestrator.VolumeService_CreateFileS
 
 	file, err := os.OpenFile(fullPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, perm)
 	if err != nil {
-		return v.processError(err)
+		return err
 	}
 	defer file.Close()
 
 	for {
 		req, err := server.Recv()
 		if err != nil {
-			return v.processError(err)
+			return err
 		}
 
 		switch m := req.GetMessage().(type) {
 		case *orchestrator.VolumeFileCreateRequest_Content:
 			if _, err := file.Write(m.Content.GetContent()); err != nil {
-				return v.processError(err)
+				return err
 			}
 
 		case *orchestrator.VolumeFileCreateRequest_Finish:
 			if err := os.Chown(fullPath, int(start.GetOwnerId()), int(start.GetGroupId())); err != nil {
-				return v.processError(err)
+				return err
 			}
 
 			return server.SendAndClose(&orchestrator.VolumeFileCreateResponse{})
 
 		default:
-			return v.processError(ErrUnexpectedStart)
+			return ErrUnexpectedStart
 		}
 	}
 }

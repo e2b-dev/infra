@@ -24,21 +24,21 @@ func New(config cfg.Config) *VolumeService {
 	return &VolumeService{config: config}
 }
 
-func (v *VolumeService) buildVolumePath(volume *orchestrator.VolumeInfo) (string, *status.Status) {
+func (v *VolumeService) buildVolumePath(volume *orchestrator.VolumeInfo) (string, error) {
 	volumeType := volume.GetVolumeType()
 	volPath, ok := v.config.PersistentVolumeMounts[volumeType]
 	if !ok {
-		return "", status.Newf(codes.NotFound, "volume type %q not found", volumeType)
+		return "", status.Newf(codes.NotFound, "volume type %q not found", volumeType).Err()
 	}
 
 	teamID := volume.GetTeamId()
 	if !tryParseUUID(teamID) {
-		return "", status.Newf(codes.InvalidArgument, "invalid team ID %q", teamID)
+		return "", status.Newf(codes.InvalidArgument, "invalid team ID %q", teamID).Err()
 	}
 
 	volumeID := volume.GetVolumeId()
 	if !tryParseUUID(volumeID) {
-		return "", status.Newf(codes.InvalidArgument, "invalid volume ID %q", volumeID)
+		return "", status.Newf(codes.InvalidArgument, "invalid volume ID %q", volumeID).Err()
 	}
 
 	volumePath := filepath.Join(volPath, teamID, volumeID)
@@ -49,6 +49,11 @@ func (v *VolumeService) buildVolumePath(volume *orchestrator.VolumeInfo) (string
 func (v *VolumeService) processError(err error) error {
 	if err == nil {
 		return nil
+	}
+
+	// already a grpc error?
+	if _, ok := status.FromError(err); ok {
+		return err
 	}
 
 	if os.IsNotExist(err) {

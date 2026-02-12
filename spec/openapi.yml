@@ -3325,6 +3325,11 @@ paths:
       parameters:
         - $ref: "#/components/parameters/volumeID"
         - $ref: "#/components/parameters/path"
+        - name: recursive
+          in: query
+          description: Delete all files and directories recursively
+          schema:
+            type: boolean
       responses:
         "204":
           description: "Successfully deleted a directory"

@@ -9,10 +9,14 @@ import (
 
 type makeDir func(path string, perm os.FileMode) error
 
-func (v *VolumeService) CreateDir(_ context.Context, request *orchestrator.VolumeDirCreateRequest) (*orchestrator.VolumeDirCreateResponse, error) {
-	path, statusErr := v.buildVolumePath(request.GetVolume())
-	if statusErr != nil {
-		return nil, statusErr.Err()
+func (v *VolumeService) CreateDir(_ context.Context, request *orchestrator.VolumeDirCreateRequest) (r *orchestrator.VolumeDirCreateResponse, err error) {
+	defer func() {
+		err = v.processError(err)
+	}()
+
+	path, err := v.buildVolumePath(request.GetVolume())
+	if err != nil {
+		return nil, err
 	}
 
 	var fn makeDir
@@ -22,16 +26,16 @@ func (v *VolumeService) CreateDir(_ context.Context, request *orchestrator.Volum
 		fn = os.Mkdir
 	}
 	if err := fn(path, os.FileMode(request.GetMode())); err != nil { // todo: better error handling
-		return nil, v.processError(err)
+		return nil, err
 	}
 
 	if err := os.Chown(path, int(request.GetOwnerId()), int(request.GetGroupId())); err != nil {
-		return nil, v.processError(err)
+		return nil, err
 	}
 
 	stat, err := os.Stat(path)
 	if err != nil {
-		return nil, v.processError(err)
+		return nil, err
 	}
 
 	return &orchestrator.VolumeDirCreateResponse{

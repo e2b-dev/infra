@@ -1382,6 +1382,9 @@ type GetV2SandboxesSandboxIDLogsParams struct {
 // DeleteVolumesVolumeIDDirParams defines parameters for DeleteVolumesVolumeIDDir.
 type DeleteVolumesVolumeIDDirParams struct {
 	Path Path `form:"path" json:"path"`
+
+	// Recursive Delete all files and directories recursively
+	Recursive *bool `form:"recursive,omitempty" json:"recursive,omitempty"`
 }
 
 // GetVolumesVolumeIDDirParams defines parameters for GetVolumesVolumeIDDir.
@@ -5254,6 +5257,22 @@ func NewDeleteVolumesVolumeIDDirRequest(server string, volumeID VolumeID, params
 					queryValues.Add(k, v2)
 				}
 			}
+		}
+
+		if params.Recursive != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "recursive", runtime.ParamLocationQuery, *params.Recursive); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
 		}
 
 		queryURL.RawQuery = queryValues.Encode()
@@ -12289,6 +12308,14 @@ func (siw *ServerInterfaceWrapper) DeleteVolumesVolumeIDDir(c *gin.Context) {
 		return
 	}
 
+	// ------------- Optional query parameter "recursive" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "recursive", c.Request.URL.Query(), &params.Recursive)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter recursive: %w", err), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -12896,14 +12923,15 @@ var swaggerSpec = []string{
 	"iT7WZe4l9udzmq+ZxwNERnH4l+WzXyM3fd8mzpcU3u+fRXi/fy7hbRZg+Z9dyJsc76c8FucJGVrB1bb2",
 	"3T2LT+u3Yeq5RpsvY7BjNHfz3FE/K0Sv3dKYCq+6j5+POEhdSyEZi8nNPtVwZ+2gF1tDpgmr1/RIci3U",
 	"5bCOnW/6H6MqxbbQnG5kqO6LGXa0CmTXM/BBRgXn9jEGbuL7x3OsudykI5ClgFNrFMs6Mbq7abZgc2i8",
-	"EckgprATUT6IMWiLJeOLYWzhiPIn0NEQr4ucP42DlBsq0V3tqOZAKZNoyvI0eh2Y/mrPWvdrrmLzyLQX",
-	"AxjDc+F01TzkyG5egUI7OIfzlBJyse1dqBv16Ls7HNMIARllnN3RyF6Iv0di61Fo2/mHo8pultKaOa8E",
-	"4ej4qKhDbDRMd+k+Z04uOsoRW5dTv1/pF87ybInpZ6rfCuY/ZREZO3ei6/o+beJPDMK+be5XqBic6gQd",
-	"NJ31rkGv9WuGueFjjTiGG8Zigv1esz6BUV4zvnuB0aIhQKDbEBUBGg7SDj7pli9ZPSjD+34YzeCI3acQ",
-	"4uhFZFMfeDYsdikELJREbgnJCU6qikHBmm5oioGB1MOcurWAyIDnByCPTlnupQ6PEN8QeQyV4mbZzyDA",
-	"O2Zep+zumHYTYrtj+imrv9DyC+ohRs0nnvclUha1qAffM0do0QyExLIzJA62TVONCR3t1CdULtSY38Mt",
-	"8+dU8gXsZvj1sgGvp9VV2aR1CSbndxZhOY+D/WAuZSb2d3ZwRrfJ3s02zrLA6f+tzBRaJsr8VisaXv0R",
-	"spq6f8Met6RaeLVhRrduyaLym4mFL/4uXEzXj/8TAAD//zqXo3opJAEA",
+	"EckgprATUT6IMWiLJeOLYWzhiPIn0NEQr4uce8zfdrlxrMMMwClml06JUizDnAt6R+JFi2m2aOHziN0w",
+	"FhPst78OZ14lLEtKq3ZU20Mpk2jK8jR6HUT21R7z7odkxeaRaS8G8KTNkNP62deR3bwChfatDmdnJeRi",
+	"27vQdOqBf3c4phECMso4u6ORvYt/j8TWo0u3sy5Hi35mxnUlCEfHR0UJZKPcukv3MatcdFRCtt6ufpfW",
+	"L5zl2RLTz1S/Fcx/yiIydu5ElxR+2sSfGESc27SzUKw41blBaDrrXYNe69cMc8PHViowyhvOdy8wWpQT",
+	"iLEbop1Aw0GKySfdcvOiZLh6UEYW/jCawRG7TyG60ovIpj7wbFjsUghYKIncEpITnFQVg4I13dAUAwOp",
+	"R1h1awGRAc8PQB6dstxLHR4hviHyGCrFzbKfQYB3zLxO2d0x7SbEdsf0U1Z/HOYX1EPsqU8870tkS2pR",
+	"D75njtCiGQiJZWc0HmybphoTOtCqT6hcqDG/h1vmz6nkC9jN8OtlA15PK+myScMWTM7vLMJyHgf7wVzK",
+	"TOzv7OCMbpO9m22cZYHT/1uZpLTM0fmtVq+8+iMkVHX/hj1uSbXwasOMbt2SReU3E4Zf/F14t64f/ycA",
+	"AP//9d+fjKQkAQA=",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file
