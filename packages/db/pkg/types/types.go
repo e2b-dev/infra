@@ -50,11 +50,11 @@ type SandboxAutoResumeConfig struct {
 }
 
 type PausedSandboxConfig struct {
-	Version      string                      `json:"version"`
-	Network      *SandboxNetworkConfig       `json:"network,omitempty"`
-	AutoResume   *SandboxAutoResumeConfig    `json:"autoResume,omitempty"`
-	VolumeMounts []*SandboxVolumeMountConfig `json:"volumeMounts,omitempty"`
-	Timeout      *time.Duration              `json:"timeout,omitempty"`
+	Version         string                      `json:"version"`
+	Network         *SandboxNetworkConfig       `json:"network,omitempty"`
+	AutoResume      *SandboxAutoResumeConfig    `json:"autoResume,omitempty"`
+	VolumeMounts    []*SandboxVolumeMountConfig `json:"volumeMounts,omitempty"`
+	StartingTimeout *time.Duration              `json:"startingTimeout,omitempty"`
 }
 
 // BuildStatus represents the raw status value written to the env_builds table.

@@ -117,6 +117,45 @@ func TestSandboxAutoResumeViaProxy(t *testing.T) {
 	require.Equal(t, api.Running, res.JSON200.State, "sandbox should be running after auto-resume")
 }
 
+func TestSandboxAutoResumePreservesTimeout(t *testing.T) {
+	t.Parallel()
+
+	c := setup.GetAPIClient()
+	ctx := t.Context()
+
+	// Create sandbox with a specific timeout (120s) so we can verify it's preserved.
+	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithTimeout(120), utils.WithAutoPause(true), utils.WithAutoResume(api.Any))
+	envdClient := setup.GetEnvdClient(t, ctx)
+
+	// Run ls before pausing.
+	err := utils.ExecCommand(t, ctx, sbx, envdClient, "ls")
+	require.NoError(t, err)
+
+	// Pause the sandbox.
+	pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
+	require.NoError(t, err)
+	require.Equal(t, http.StatusNoContent, pauseResp.StatusCode())
+
+	res, err := c.GetSandboxesSandboxIDWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
+	require.NoError(t, err)
+	require.NotNil(t, res.JSON200, "expected 200 response, got status %d", res.StatusCode())
+	require.Equal(t, api.Paused, res.JSON200.State)
+
+	// Run ls again — this should trigger auto-resume.
+	err = utils.ExecCommand(t, ctx, sbx, envdClient, "ls")
+	require.NoError(t, err)
+
+	// Verify the sandbox is running and the timeout was preserved.
+	res, err = c.GetSandboxesSandboxIDWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
+	require.NoError(t, err)
+	require.NotNil(t, res.JSON200, "expected 200 response, got status %d", res.StatusCode())
+	require.Equal(t, api.Running, res.JSON200.State, "sandbox should be running after auto-resume")
+
+	// Verify the timeout was restored from the persisted value (120s), not the default (300s).
+	duration := res.JSON200.EndAt.Sub(res.JSON200.StartedAt)
+	require.InDelta(t, 120, duration.Seconds(), 30, "expected timeout ~120s (persisted), got %s", duration)
+}
+
 func TestSandboxNoAutoResumeWithoutFlag(t *testing.T) {
 	t.Parallel()
 
