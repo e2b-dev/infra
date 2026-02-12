@@ -119,7 +119,7 @@ func TestSandboxAutoResumeViaProxy(t *testing.T) {
 	require.Equal(t, api.Running, res.JSON200.State, "sandbox should be running after auto-resume")
 }
 
-func TestSandboxAutoResumePreservesDefaultTimeout(t *testing.T) {
+func TestSandboxAutoResumeWithoutExplicitTimeoutUsesProxyFallback(t *testing.T) {
 	t.Parallel()
 
 	c := setup.GetAPIClient()
@@ -172,15 +172,16 @@ func TestSandboxAutoResumePreservesDefaultTimeout(t *testing.T) {
 	err = utils.ExecCommand(t, ctx, sbx, envdClient, "ls")
 	require.NoError(t, err)
 
-	// Verify the sandbox is running and the timeout was preserved.
+	// Verify the sandbox is running after auto-resume.
 	res, err = c.GetSandboxesSandboxIDWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
 	require.NoError(t, err)
 	require.NotNil(t, res.JSON200, "expected 200 response, got status %d", res.StatusCode())
 	require.Equal(t, api.Running, res.JSON200.State, "sandbox should be running after auto-resume")
 
-	// Verify timeout on auto-resume is the same as initial default, not the proxy fallback (300s).
+	// Without explicit create-time timeout, auto-resume should use proxy fallback (300s).
 	resumedDuration := res.JSON200.EndAt.Sub(res.JSON200.StartedAt)
-	require.InDelta(t, initialDuration.Seconds(), resumedDuration.Seconds(), 20, "expected timeout ~%s (default starting timeout), got %s", initialDuration, resumedDuration)
+	require.Greater(t, resumedDuration.Seconds(), 250.0, "expected resumed timeout near proxy fallback (300s), got %s", resumedDuration)
+	require.Less(t, resumedDuration.Seconds(), 360.0, "expected resumed timeout near proxy fallback (300s), got %s", resumedDuration)
 }
 
 func TestSandboxAutoResumeUsesStartingTimeoutNotUpdatedTimeout(t *testing.T) {

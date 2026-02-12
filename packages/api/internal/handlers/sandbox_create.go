@@ -136,6 +136,13 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 			return
 		}
+
+		if timeout > 0 {
+			if metadata == nil {
+				metadata = map[string]string{}
+			}
+			metadata[sandbox.StartingTimeoutMetadataKey] = timeout.String()
+		}
 	}
 
 	autoResume, autoResumeErr := buildAutoResumeConfig(body.AutoResume)

@@ -107,6 +107,16 @@ func (o *Orchestrator) CreateSandbox(
 	ctx, childSpan := tracer.Start(ctx, "create-sandbox")
 	defer childSpan.End()
 
+	startingTimeout := time.Duration(0)
+	if metadata != nil {
+		if rawStartingTimeout, ok := metadata[sandbox.StartingTimeoutMetadataKey]; ok {
+			parsedStartingTimeout, parseErr := time.ParseDuration(rawStartingTimeout)
+			if parseErr == nil && parsedStartingTimeout > 0 {
+				startingTimeout = parsedStartingTimeout
+			}
+		}
+	}
+
 	// Calculate total concurrent instances including addons
 	totalConcurrentInstances := team.Limits.SandboxConcurrency
 
@@ -304,6 +314,7 @@ func (o *Orchestrator) CreateSandbox(
 		team.ID,
 		build.ID,
 		metadata,
+		startingTimeout,
 		time.Duration(team.Limits.MaxLengthHours)*time.Hour,
 		startTime,
 		endTime,

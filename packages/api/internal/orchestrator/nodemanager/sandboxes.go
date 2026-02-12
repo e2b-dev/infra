@@ -77,6 +77,13 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
 		}
 
 		volumeMounts := ConvertOrchestratorMountsToDatabaseMounts(config.GetVolumeMounts())
+		startingTimeout := time.Duration(0)
+		if rawStartingTimeout, ok := config.GetMetadata()[sandbox.StartingTimeoutMetadataKey]; ok {
+			parsedStartingTimeout, parseErr := time.ParseDuration(rawStartingTimeout)
+			if parseErr == nil && parsedStartingTimeout > 0 {
+				startingTimeout = parsedStartingTimeout
+			}
+		}
 
 		var autoResume *types.SandboxAutoResumeConfig
 		if autoResumeCfg := config.GetAutoResume(); autoResumeCfg != nil {
@@ -96,6 +103,7 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
 				teamID,
 				buildID,
 				config.GetMetadata(),
+				startingTimeout,
 				time.Duration(config.GetMaxSandboxLength())*time.Hour,
 				sbx.GetStartTime().AsTime(),
 				sbx.GetEndTime().AsTime(),

@@ -10,6 +10,8 @@ import (
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 )
 
+const StartingTimeoutMetadataKey = "e2b_starting_timeout"
+
 func NewSandbox(
 	sandboxID string,
 	templateID string,
@@ -19,6 +21,7 @@ func NewSandbox(
 	teamID uuid.UUID,
 	buildID uuid.UUID,
 	metadata map[string]string,
+	startingTimeout time.Duration,
 	maxInstanceLength time.Duration,
 	startTime time.Time,
 	endTime time.Time,
@@ -51,7 +54,7 @@ func NewSandbox(
 		TeamID:              teamID,
 		BuildID:             buildID,
 		Metadata:            metadata,
-		StartingTimeout:     endTime.Sub(startTime),
+		StartingTimeout:     startingTimeout,
 		MaxInstanceLength:   maxInstanceLength,
 		StartTime:           startTime,
 		EndTime:             endTime,
