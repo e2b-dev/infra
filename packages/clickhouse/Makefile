@@ -24,6 +24,12 @@ migrate-without-build:
 		$(CLICKHOUSE_MIGRATOR_IMAGE)
 	@echo "Done"
 
+.PHONY: migrate-local
+migrate-local:
+	@echo "Applying Clickhouse migrations for local environment"
+	GOOSE_DBSTRING="clickhouse://clickhouse:clickhouse@localhost:9000/default" go tool goose -table "_migrations" -dir "migrations" clickhouse up
+	@echo "Done"
+
 .PHONY: build
 build:
 	@docker build --platform linux/amd64 --tag "$(CLICKHOUSE_MIGRATOR_IMAGE)" .
