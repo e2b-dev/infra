@@ -60,7 +60,7 @@ func (c *TemplatesBuildCache) getFromRedis(ctx context.Context, buildID uuid.UUI
 	buildKey := getBuildKey(buildID.String())
 	data, err := c.redisClient.Get(ctx, buildKey).Bytes()
 	if err != nil {
-		if err == redis.Nil {
+		if errors.Is(err, redis.Nil) {
 			return TemplateBuildInfo{}, ErrTemplateBuildInfoNotFound
 		}
 

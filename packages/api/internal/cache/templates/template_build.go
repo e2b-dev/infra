@@ -68,26 +68,18 @@ func (c *TemplatesBuildCache) SetStatus(ctx context.Context, buildID uuid.UUID, 
 }
 
 func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templateID string) (TemplateBuildInfo, error) {
-	// Step 1: Check L1 cache
-	if item, ok := c.l1Cache.Get(buildID); ok {
-		return item, nil
-	}
+	return c.l1Cache.GetOrSet(ctx, buildID, c.getDataCallback(ctx, templateID, buildID))
+}
 
-	// Step 2: Check L2 (Redis)
-	info, err := c.getFromRedis(ctx, buildID)
-	if err == nil {
-		// Store in L1 cache
-		c.l1Cache.Set(buildID, info)
+func (c *TemplatesBuildCache) getDataCallback(ctx context.Context, templateID string, buildID uuid.UUID) func(context.Context, uuid.UUID) (TemplateBuildInfo, error) {
+	return func(ctx context.Context, key uuid.UUID) (TemplateBuildInfo, error) {
+		// Step 1: Check L2 (Redis)
+		info, err := c.getFromRedis(ctx, buildID)
+		if err == nil {
+			return info, nil
+		}
 
-		return info, nil
-	}
-
-	// Step 3: Fetch from DB
-	logger.L().Debug(ctx, "Template build info not found in cache, fetching from DB",
-		logger.WithBuildID(buildID.String()))
-
-	// Use GetOrSet to prevent cache stampede for concurrent requests for the same buildID
-	return c.l1Cache.GetOrSet(ctx, buildID, func(ctx context.Context, _ uuid.UUID) (TemplateBuildInfo, error) {
+		// Step 2: Fetch from DB
 		info, err = c.fetchFromDB(ctx, buildID, templateID)
 		if err != nil {
 			return TemplateBuildInfo{}, err
@@ -100,7 +92,7 @@ func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templa
 		}
 
 		return info, nil
-	})
+	}
 }
 
 func (c *TemplatesBuildCache) Close(ctx context.Context) error {
