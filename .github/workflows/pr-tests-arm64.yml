@@ -86,11 +86,10 @@ jobs:
           # Enable unprivileged uffd (Ubuntu defaults to 0)
           echo 1 | sudo tee /proc/sys/vm/unprivileged_userfaultfd
 
-          # Enable hugepages (256 × 2MB = 512MB; keep it low on 16GB GitHub-hosted runner
-          # where -race flag adds significant memory overhead)
+          # Enable hugepages (1100 × 2MB = 2.2GB; the MAX_RW_COUNT test needs ~1026 hugepages)
           sudo mkdir -p /mnt/hugepages
           sudo mount -t hugetlbfs none /mnt/hugepages
-          echo 256 | sudo tee /proc/sys/vm/nr_hugepages
+          echo 1100 | sudo tee /proc/sys/vm/nr_hugepages
 
           # Install extra kernel modules (nbd is not in base modules on GitHub-hosted runners)
           sudo apt-get update
