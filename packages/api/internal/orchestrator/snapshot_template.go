@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/gogo/status"
 	"github.com/google/uuid"
+	"google.golang.org/grpc/codes"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
@@ -99,11 +101,20 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 	if err != nil {
 		o.failSnapshotBuild(ctx, upsertResult.BuildID, err)
 
-		if killErr := o.RemoveSandbox(ctx, sbx, sandbox.StateActionKill); killErr != nil {
-			telemetry.ReportError(ctx, "error killing sandbox after failed checkpoint", killErr)
-		}
+		// Check if the error is DataLoss, which means the sandbox was resumed
+		// successfully but the snapshot upload failed. In this case, the sandbox
+		// is already running with the same ID, so we must NOT kill it.
+		st, ok := status.FromError(err)
+		sandboxResumed := ok && st.Code() == codes.DataLoss
 
-		sandboxRemoved = true
+		if !sandboxResumed {
+			// Only kill the sandbox if it wasn't successfully resumed
+			if killErr := o.RemoveSandbox(ctx, sbx, sandbox.StateActionKill); killErr != nil {
+				telemetry.ReportError(ctx, "error killing sandbox after failed checkpoint", killErr)
+			}
+
+			sandboxRemoved = true
+		}
 
 		return SnapshotTemplateResult{}, fmt.Errorf("checkpoint failed: %w", err)
 	}

@@ -480,7 +480,9 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 	if err := waitForUpload(); err != nil {
 		telemetry.ReportCriticalError(ctx, "error uploading snapshot for checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
 
-		return nil, status.Errorf(codes.Internal, "error uploading snapshot for checkpoint '%s': %s", in.GetSandboxId(), err)
+		// Use DataLoss code to signal that the sandbox resumed successfully but the
+		// snapshot upload failed. This tells the caller NOT to kill the sandbox.
+		return nil, status.Errorf(codes.DataLoss, "error uploading snapshot for checkpoint '%s': %s", in.GetSandboxId(), err)
 	}
 
 	telemetry.ReportEvent(ctx, "Checkpoint completed")
