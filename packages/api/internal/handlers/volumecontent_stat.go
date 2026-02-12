@@ -30,7 +30,7 @@ func (a *APIStore) GetVolumesVolumeIDStat(c *gin.Context, volumeID api.VolumeID,
 			return ErrExpectedEntry
 		}
 
-		result := toVolumeStat(entry)
+		result := toVolumeEntryStat(entry)
 
 		c.JSON(http.StatusOK, api.GetVolumesVolumeIDStatResponse{
 			JSON200: &result,
@@ -40,8 +40,8 @@ func (a *APIStore) GetVolumesVolumeIDStat(c *gin.Context, volumeID api.VolumeID,
 	})
 }
 
-func toVolumeStat(entry *orchestrator.EntryInfo) api.VolumeStat {
-	return api.VolumeStat{
+func toVolumeEntryStat(entry *orchestrator.EntryInfo) api.VolumeEntryStat {
+	return api.VolumeEntryStat{
 		Ctime:  entry.GetCreatedTime().AsTime(),
 		Group:  entry.GetGroup(),
 		Mode:   entry.GetMode(),
@@ -55,7 +55,7 @@ func toVolumeStat(entry *orchestrator.EntryInfo) api.VolumeStat {
 	}
 }
 
-func toType(getType orchestrator.FileType) api.VolumeStatType {
+func toType(getType orchestrator.FileType) api.VolumeEntryStatType {
 	switch getType {
 	case orchestrator.FileType_FILE_TYPE_DIRECTORY:
 		return api.Directory

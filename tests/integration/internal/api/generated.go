@@ -90,12 +90,12 @@ const (
 	TemplateBuildStatusWaiting  TemplateBuildStatus = "waiting"
 )
 
-// Defines values for VolumeStatType.
+// Defines values for VolumeEntryStatType.
 const (
-	Directory VolumeStatType = "directory"
-	File      VolumeStatType = "file"
-	Symlink   VolumeStatType = "symlink"
-	Unknown   VolumeStatType = "unknown"
+	Directory VolumeEntryStatType = "directory"
+	File      VolumeEntryStatType = "file"
+	Symlink   VolumeEntryStatType = "symlink"
+	Unknown   VolumeEntryStatType = "unknown"
 )
 
 // Defines values for GetTeamsTeamIDMetricsMaxParamsMetric.
@@ -1160,25 +1160,25 @@ type Volume struct {
 
 // VolumeDirectoryListing defines model for VolumeDirectoryListing.
 type VolumeDirectoryListing struct {
-	Files []VolumeStat `json:"files"`
+	Files []VolumeEntryStat `json:"files"`
 }
 
-// VolumeStat defines model for VolumeStat.
-type VolumeStat struct {
-	Ctime  time.Time      `json:"ctime"`
-	Group  uint32         `json:"group"`
-	Mode   uint32         `json:"mode"`
-	Mtime  time.Time      `json:"mtime"`
-	Name   string         `json:"name"`
-	Owner  uint32         `json:"owner"`
-	Path   string         `json:"path"`
-	Size   int64          `json:"size"`
-	Target *string        `json:"target,omitempty"`
-	Type   VolumeStatType `json:"type"`
+// VolumeEntryStat defines model for VolumeEntryStat.
+type VolumeEntryStat struct {
+	Ctime  time.Time           `json:"ctime"`
+	Group  uint32              `json:"group"`
+	Mode   uint32              `json:"mode"`
+	Mtime  time.Time           `json:"mtime"`
+	Name   string              `json:"name"`
+	Owner  uint32              `json:"owner"`
+	Path   string              `json:"path"`
+	Size   int64               `json:"size"`
+	Target *string             `json:"target,omitempty"`
+	Type   VolumeEntryStatType `json:"type"`
 }
 
-// VolumeStatType defines model for VolumeStat.Type.
-type VolumeStatType string
+// VolumeEntryStatType defines model for VolumeEntryStat.Type.
+type VolumeEntryStatType string
 
 // AccessTokenID defines model for accessTokenID.
 type AccessTokenID = string
@@ -7235,7 +7235,7 @@ func (r PostVolumesVolumeIDFileResponse) StatusCode() int {
 type GetVolumesVolumeIDStatResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON200      *VolumeStat
+	JSON200      *VolumeEntryStat
 	JSON404      *N404
 }
 
@@ -10259,7 +10259,7 @@ func ParseGetVolumesVolumeIDStatResponse(rsp *http.Response) (*GetVolumesVolumeI
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest VolumeStat
+		var dest VolumeEntryStat
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

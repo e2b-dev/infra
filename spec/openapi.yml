@@ -1702,7 +1702,7 @@ components:
       required:
         - name
 
-    VolumeStat:
+    VolumeEntryStat:
       type: object
       properties:
         name:
@@ -1749,7 +1749,7 @@ components:
         files:
           type: array
           items:
-            $ref: "#/components/schemas/VolumeStat"
+            $ref: "#/components/schemas/VolumeEntryStat"
       required:
         - files
 
@@ -3198,7 +3198,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/VolumeStat"
+                $ref: "#/components/schemas/VolumeEntryStat"
         "404":
           $ref: "#/components/responses/404"
 
