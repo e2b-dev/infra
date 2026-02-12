@@ -42,6 +42,10 @@ plan-only-jobs/%:
 plan-without-jobs:
 	$(MAKE) -C iac/provider-$(PROVIDER) plan-without-jobs
 
+.PHONY: apply-init
+apply-init:
+	$(MAKE) -C iac/provider-$(PROVIDER) apply-init
+
 .PHONY: apply
 apply:
 	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
