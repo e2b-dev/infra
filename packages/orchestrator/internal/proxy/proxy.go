@@ -54,6 +54,21 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 				return nil, err
 			}
 
+			// Check per-sandbox connection limit
+			maxLimit := featureFlags.IntFlag(r.Context(), featureflags.HTTPProxyMaxConnectionsPerSandbox)
+			count, acquired := limiter.TryAcquire(sandboxId, maxLimit)
+			if !acquired {
+				logger.L().Warn(r.Context(), "HTTP proxy connection limit exceeded for sandbox",
+					logger.WithSandboxID(sandboxId),
+					zap.Int64("current_connections", count),
+					zap.Int("max_limit", maxLimit))
+
+				return nil, reverseproxy.NewErrSandboxTooManyIncomingConnections(sandboxId, maxLimit)
+			}
+
+			// Release the connection slot when the request context is done (i.e. after the handler finishes serving).
+			context.AfterFunc(r.Context(), func() { limiter.Release(sandboxId) })
+
 			sbx, found := sandboxes.Get(sandboxId)
 			if !found {
 				return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)
@@ -120,33 +135,6 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 		// and we are also on the same host, so the overhead is minimal.
 		true,
 	)
-
-	// Wrap the proxy handler with connection limiting
-	originalHandler := proxy.Handler
-	proxy.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Extract sandbox ID from request to check limit
-		sandboxId, _, err := getTargetFromRequest(r)
-		if err != nil {
-			// Let the original handler deal with the error
-			originalHandler.ServeHTTP(w, r)
-			return
-		}
-
-		// Check per-sandbox connection limit
-		maxLimit := featureFlags.IntFlag(r.Context(), featureflags.HTTPProxyMaxConnectionsPerSandbox)
-		count, acquired := limiter.TryAcquire(sandboxId, maxLimit)
-		if !acquired {
-			logger.L().Warn(r.Context(), "HTTP proxy connection limit exceeded for sandbox",
-				logger.WithSandboxID(sandboxId),
-				zap.Int64("current_connections", count),
-				zap.Int("max_limit", maxLimit))
-			http.Error(w, "Too many concurrent connections to sandbox", http.StatusTooManyRequests)
-			return
-		}
-		defer limiter.Release(sandboxId)
-
-		originalHandler.ServeHTTP(w, r)
-	})
 
 	meter := meterProvider.Meter("orchestrator.proxy.sandbox")
 	_, err := telemetry.GetObservableUpDownCounter(meter, telemetry.OrchestratorProxyServerConnectionsMeterCounterName, func(_ context.Context, observer metric.Int64Observer) error {

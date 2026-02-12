@@ -157,7 +157,7 @@ var (
 
 	// HTTPProxyMaxConnectionsPerSandbox is the maximum number of concurrent HTTP proxy
 	// connections allowed per sandbox. Negative means no limit.
-	HTTPProxyMaxConnectionsPerSandbox = newIntFlag("httpproxy-max-connections-per-sandbox", -1)
+	HTTPProxyMaxConnectionsPerSandbox = newIntFlag("sandbox-max-incoming-connections", -1)
 )
 
 type StringFlag struct {

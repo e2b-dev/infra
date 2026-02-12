@@ -33,6 +33,22 @@ func (e SandboxNotFoundError) Error() string {
 	return "sandbox not found"
 }
 
+type SandboxTooManyIncomingConnectionsError struct {
+	SandboxId       string
+	ConnectionLimit int
+}
+
+func NewErrSandboxTooManyIncomingConnections(sandboxId string, connectionLimit int) *SandboxTooManyIncomingConnectionsError {
+	return &SandboxTooManyIncomingConnectionsError{
+		SandboxId:       sandboxId,
+		ConnectionLimit: connectionLimit,
+	}
+}
+
+func (e SandboxTooManyIncomingConnectionsError) Error() string {
+	return "sandbox has too many incoming connections"
+}
+
 type MissingTrafficAccessTokenError struct {
 	SandboxId string
 	Header    string

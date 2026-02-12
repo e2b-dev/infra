@@ -59,6 +59,26 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 			return
 		}
 
+		var tooManyConnectionsErr *SandboxTooManyIncomingConnectionsError
+		if errors.As(err, &tooManyConnectionsErr) {
+			logger.L().Warn(ctx, "sandbox too many incoming connections",
+				zap.String("host", r.Host),
+				logger.WithSandboxID(tooManyConnectionsErr.SandboxId),
+				zap.Int("connection_limit", tooManyConnectionsErr.ConnectionLimit))
+
+			err := template.
+				NewSandboxTooManyConnectionsError(tooManyConnectionsErr.SandboxId, r.Host, tooManyConnectionsErr.ConnectionLimit).
+				HandleError(w, r)
+			if err != nil {
+				logger.L().Error(ctx, "failed to handle too many connections error", zap.Error(err), logger.WithSandboxID(tooManyConnectionsErr.SandboxId))
+				http.Error(w, "Failed to handle too many connections error", http.StatusInternalServerError)
+
+				return
+			}
+
+			return
+		}
+
 		var trafficMissingTokenErr *MissingTrafficAccessTokenError
 		if errors.As(err, &trafficMissingTokenErr) {
 			logger.L().Warn(ctx, "traffic access token is missing", zap.String("host", r.Host))
