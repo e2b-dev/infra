@@ -65,7 +65,7 @@ var ErrClusterNotFound = errors.New("cluster not found")
 
 var ErrNoHealthyOrchestratorFound = errors.New("no healthy orchestrator found")
 
-func (a *APIStore) executeOnOrchestrator(
+func (a *APIStore) executeOnOrchestratorByClusterID(
 	ctx context.Context,
 	clusterID uuid.UUID,
 	fn func(context.Context, *clusters.GRPCClient) error,

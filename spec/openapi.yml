@@ -1713,9 +1713,11 @@ components:
           description: Whether the item is a directory
         mode:
           type: integer
+          format: uint32
           description: File mode
         size:
           type: integer
+          format: int64
           description: File size in bytes
         ctime:
           type: string
@@ -1725,6 +1727,13 @@ components:
           type: string
           format: date-time
           description: Last modification time of the file or directory
+      required:
+        - name
+        - isDirectory
+        - mode
+        - size
+        - ctime
+        - mtime
 
     VolumeStat:
       type: object
@@ -1736,15 +1745,20 @@ components:
         path:
           type: string
         size:
-          type: number
+          type: integer
+          format: int64
         mode:
-          type: number
+          type: integer
+          format: uint32
         permissions:
-          type: number
+          type: integer
+          format: uint32
         owner:
-          type: number
+          type: integer
+          format: uint32
         group:
-          type: number
+          type: integer
+          format: uint32
         mtime:
           type: string
           format: date-time
@@ -1772,6 +1786,8 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/VolumeDirectoryItem"
+      required:
+        - files
 
 tags:
   - name: templates
@@ -3244,9 +3260,9 @@ paths:
         "404":
           description: "path not found"
         "500":
-          $ref: "#/components/responses/500"        
+          $ref: "#/components/responses/500"
     post:
-      description: List directory contents
+      description: "Create a directory"
       tags: [volume_content]
       security:
         - AccessTokenAuth: []
@@ -3262,7 +3278,7 @@ paths:
         "404":
           description: "path not found"
         "500":
-          $ref: "#/components/responses/500"        
+          $ref: "#/components/responses/500"
     delete:
       description: Delete a directory
       tags: [volume_content]

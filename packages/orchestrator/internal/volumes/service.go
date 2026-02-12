@@ -1,8 +1,6 @@
 package volumes
 
 import (
-	"context"
-	"os"
 	"path/filepath"
 
 	"github.com/google/uuid"
@@ -48,33 +46,4 @@ func tryParseUUID(id string) bool {
 	_, err := uuid.Parse(id)
 
 	return err == nil
-}
-
-func (v *VolumeService) Create(_ context.Context, request *orchestrator.VolumeCreateRequest) (*orchestrator.VolumeCreateResponse, error) {
-	volumePath, statusErr := v.buildVolumePath(request.GetVolumeType(), request.GetTeamId(), request.GetVolumeId())
-	if statusErr != nil {
-		return nil, statusErr.Err()
-	}
-
-	if err := os.MkdirAll(volumePath, 0o700); err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to create volume: %v", err)
-	}
-
-	return &orchestrator.VolumeCreateResponse{}, nil
-}
-
-func (v *VolumeService) Delete(
-	_ context.Context,
-	request *orchestrator.VolumeDeleteRequest,
-) (*orchestrator.VolumeDeleteResponse, error) {
-	volumePath, statusErr := v.buildVolumePath(request.GetVolumeType(), request.GetTeamId(), request.GetVolumeId())
-	if statusErr != nil {
-		return nil, statusErr.Err()
-	}
-
-	if err := os.RemoveAll(volumePath); err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to delete volume: %s", err.Error())
-	}
-
-	return &orchestrator.VolumeDeleteResponse{}, nil
 }
