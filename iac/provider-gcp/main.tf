@@ -48,8 +48,9 @@ locals {
 module "init" {
   source = "./init"
 
-  labels = var.labels
-  prefix = var.prefix
+  labels        = var.labels
+  prefix        = var.prefix
+  bucket_prefix = var.bucket_prefix
 
   gcp_project_id = var.gcp_project_id
   gcp_region     = var.gcp_region

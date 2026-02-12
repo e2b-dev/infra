@@ -1097,6 +1097,18 @@ type TemplateStep struct {
 	Type string `json:"type"`
 }
 
+// TemplateTag defines model for TemplateTag.
+type TemplateTag struct {
+	// BuildID Identifier of the build associated with this tag
+	BuildID openapi_types.UUID `json:"buildID"`
+
+	// CreatedAt Time when the tag was assigned
+	CreatedAt time.Time `json:"createdAt"`
+
+	// Tag The tag name
+	Tag string `json:"tag"`
+}
+
 // TemplateUpdateRequest defines model for TemplateUpdateRequest.
 type TemplateUpdateRequest struct {
 	// Public Whether the template is public or only accessible by the team
@@ -1727,6 +1739,9 @@ type ClientInterface interface {
 
 	// GetTemplatesTemplateIDFilesHash request
 	GetTemplatesTemplateIDFilesHash(ctx context.Context, templateID TemplateID, hash string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetTemplatesTemplateIDTags request
+	GetTemplatesTemplateIDTags(ctx context.Context, templateID TemplateID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV2Sandboxes request
 	GetV2Sandboxes(ctx context.Context, params *GetV2SandboxesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -2395,6 +2410,18 @@ func (c *Client) GetTemplatesTemplateIDBuildsBuildIDStatus(ctx context.Context, 
 
 func (c *Client) GetTemplatesTemplateIDFilesHash(ctx context.Context, templateID TemplateID, hash string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetTemplatesTemplateIDFilesHashRequest(c.Server, templateID, hash)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetTemplatesTemplateIDTags(ctx context.Context, templateID TemplateID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetTemplatesTemplateIDTagsRequest(c.Server, templateID)
 	if err != nil {
 		return nil, err
 	}
@@ -4456,6 +4483,40 @@ func NewGetTemplatesTemplateIDFilesHashRequest(server string, templateID Templat
 	return req, nil
 }
 
+// NewGetTemplatesTemplateIDTagsRequest generates requests for GetTemplatesTemplateIDTags
+func NewGetTemplatesTemplateIDTagsRequest(server string, templateID TemplateID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "templateID", runtime.ParamLocationPath, templateID)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/templates/%s/tags", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetV2SandboxesRequest generates requests for GetV2Sandboxes
 func NewGetV2SandboxesRequest(server string, params *GetV2SandboxesParams) (*http.Request, error) {
 	var err error
@@ -5144,6 +5205,9 @@ type ClientWithResponsesInterface interface {
 
 	// GetTemplatesTemplateIDFilesHashWithResponse request
 	GetTemplatesTemplateIDFilesHashWithResponse(ctx context.Context, templateID TemplateID, hash string, reqEditors ...RequestEditorFn) (*GetTemplatesTemplateIDFilesHashResponse, error)
+
+	// GetTemplatesTemplateIDTagsWithResponse request
+	GetTemplatesTemplateIDTagsWithResponse(ctx context.Context, templateID TemplateID, reqEditors ...RequestEditorFn) (*GetTemplatesTemplateIDTagsResponse, error)
 
 	// GetV2SandboxesWithResponse request
 	GetV2SandboxesWithResponse(ctx context.Context, params *GetV2SandboxesParams, reqEditors ...RequestEditorFn) (*GetV2SandboxesResponse, error)
@@ -6146,6 +6210,32 @@ func (r GetTemplatesTemplateIDFilesHashResponse) StatusCode() int {
 	return 0
 }
 
+type GetTemplatesTemplateIDTagsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *[]TemplateTag
+	JSON401      *N401
+	JSON403      *N403
+	JSON404      *N404
+	JSON500      *N500
+}
+
+// Status returns HTTPResponse.Status
+func (r GetTemplatesTemplateIDTagsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetTemplatesTemplateIDTagsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type GetV2SandboxesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -6853,6 +6943,15 @@ func (c *ClientWithResponses) GetTemplatesTemplateIDFilesHashWithResponse(ctx co
 		return nil, err
 	}
 	return ParseGetTemplatesTemplateIDFilesHashResponse(rsp)
+}
+
+// GetTemplatesTemplateIDTagsWithResponse request returning *GetTemplatesTemplateIDTagsResponse
+func (c *ClientWithResponses) GetTemplatesTemplateIDTagsWithResponse(ctx context.Context, templateID TemplateID, reqEditors ...RequestEditorFn) (*GetTemplatesTemplateIDTagsResponse, error) {
+	rsp, err := c.GetTemplatesTemplateIDTags(ctx, templateID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetTemplatesTemplateIDTagsResponse(rsp)
 }
 
 // GetV2SandboxesWithResponse request returning *GetV2SandboxesResponse
@@ -8713,6 +8812,60 @@ func ParseGetTemplatesTemplateIDFilesHashResponse(rsp *http.Response) (*GetTempl
 	return response, nil
 }
 
+// ParseGetTemplatesTemplateIDTagsResponse parses an HTTP response from a GetTemplatesTemplateIDTagsWithResponse call
+func ParseGetTemplatesTemplateIDTagsResponse(rsp *http.Response) (*GetTemplatesTemplateIDTagsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetTemplatesTemplateIDTagsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []TemplateTag
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest N403
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseGetV2SandboxesResponse parses an HTTP response from a GetV2SandboxesWithResponse call
 func ParseGetV2SandboxesResponse(rsp *http.Response) (*GetV2SandboxesResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -9274,6 +9427,9 @@ type ServerInterface interface {
 
 	// (GET /templates/{templateID}/files/{hash})
 	GetTemplatesTemplateIDFilesHash(c *gin.Context, templateID TemplateID, hash string)
+
+	// (GET /templates/{templateID}/tags)
+	GetTemplatesTemplateIDTags(c *gin.Context, templateID TemplateID)
 
 	// (GET /v2/sandboxes)
 	GetV2Sandboxes(c *gin.Context, params GetV2SandboxesParams)
@@ -10587,6 +10743,36 @@ func (siw *ServerInterfaceWrapper) GetTemplatesTemplateIDFilesHash(c *gin.Contex
 	siw.Handler.GetTemplatesTemplateIDFilesHash(c, templateID, hash)
 }
 
+// GetTemplatesTemplateIDTags operation middleware
+func (siw *ServerInterfaceWrapper) GetTemplatesTemplateIDTags(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "templateID" -------------
+	var templateID TemplateID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "templateID", c.Param("templateID"), &templateID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter templateID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(ApiKeyAuthScopes, []string{})
+
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetTemplatesTemplateIDTags(c, templateID)
+}
+
 // GetV2Sandboxes operation middleware
 func (siw *ServerInterfaceWrapper) GetV2Sandboxes(c *gin.Context) {
 
@@ -10981,6 +11167,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/templates/:templateID/builds/:buildID/logs", wrapper.GetTemplatesTemplateIDBuildsBuildIDLogs)
 	router.GET(options.BaseURL+"/templates/:templateID/builds/:buildID/status", wrapper.GetTemplatesTemplateIDBuildsBuildIDStatus)
 	router.GET(options.BaseURL+"/templates/:templateID/files/:hash", wrapper.GetTemplatesTemplateIDFilesHash)
+	router.GET(options.BaseURL+"/templates/:templateID/tags", wrapper.GetTemplatesTemplateIDTags)
 	router.GET(options.BaseURL+"/v2/sandboxes", wrapper.GetV2Sandboxes)
 	router.GET(options.BaseURL+"/v2/sandboxes/:sandboxID/logs", wrapper.GetV2SandboxesSandboxIDLogs)
 	router.POST(options.BaseURL+"/v2/templates", wrapper.PostV2Templates)
@@ -11082,62 +11269,63 @@ var swaggerSpec = []string{
 	"s5yMeQAt27bNVztTfTTRiSCpU7OqOdBdumvHS8Da0kzoAfytYg/uMNVP88xDweYsimYJp2SG/WWHl+HV",
 	"p7B2nePVI/CdegRe7fGv9vjV7PG2rq/VfGMvaFT3t+wH3jwvHeJQe6Z+shYtHufFD9egxG/T0JUfhLrz",
 	"KK/0U9KDWusclrdtCh7WM5CwTpvYIZtlkeTFxUN3OfsQQEKFm39h7oidlL8aCEKzPIrcmql+Bxh+xZFD",
-	"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",
-	"vKj1G0xr/Z0rAdcP/xMAAP//3uZ3iN0KAQA=",
+	"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",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

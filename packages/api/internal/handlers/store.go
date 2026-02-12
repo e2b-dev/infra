@@ -29,7 +29,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
-	"github.com/e2b-dev/infra/packages/db/pkg/auth"
+	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/pkg/pool"
 	"github.com/e2b-dev/infra/packages/shared/pkg/factories"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
@@ -118,11 +118,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 		RedisTLSCABase64: config.RedisTLSCABase64,
 	})
 	if err != nil {
-		if errors.Is(err, factories.ErrRedisDisabled) {
-			logger.L().Warn(ctx, "REDIS_URL not set, using local caches")
-		} else {
-			logger.L().Fatal(ctx, "Initializing Redis client", zap.Error(err))
-		}
+		logger.L().Fatal(ctx, "Initializing Redis client", zap.Error(err))
 	}
 
 	queryLogsProvider, err := loki.NewLokiQueryProvider(config.LokiURL, config.LokiUser, config.LokiPassword)
@@ -154,7 +150,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 	templateCache := templatecache.NewTemplateCache(sqlcDB)
 	templateSpawnCounter := utils.NewTemplateSpawnCounter(ctx, time.Minute, sqlcDB)
 
-	templateBuildsCache := templatecache.NewTemplateBuildCache(sqlcDB)
+	templateBuildsCache := templatecache.NewTemplateBuildCache(sqlcDB, redisClient)
 	templateManager, err := template_manager.New(sqlcDB, clusters, templateBuildsCache, templateCache, featureFlags)
 	if err != nil {
 		logger.L().Fatal(ctx, "Initializing Template manager client", zap.Error(err))
@@ -235,6 +231,12 @@ func (a *APIStore) Close(ctx context.Context) error {
 
 	if err := a.sqlcDB.Close(); err != nil {
 		errs = append(errs, fmt.Errorf("closing sqlc database client: %w", err))
+	}
+
+	if a.templateBuildsCache != nil {
+		if err := a.templateBuildsCache.Close(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("closing template build cache: %w", err))
+		}
 	}
 
 	if a.redisClient != nil {
