@@ -90,11 +90,6 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
 			}
 		}
 
-		startingTimeout := time.Duration(0)
-		if autoResume != nil && autoResume.StartingTimeout != nil && *autoResume.StartingTimeout > 0 {
-			startingTimeout = *autoResume.StartingTimeout
-		}
-
 		sandboxesInfo = append(
 			sandboxesInfo,
 			sandbox.NewSandbox(
@@ -106,7 +101,6 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
 				teamID,
 				buildID,
 				config.GetMetadata(),
-				startingTimeout,
 				time.Duration(config.GetMaxSandboxLength())*time.Hour,
 				sbx.GetStartTime().AsTime(),
 				sbx.GetEndTime().AsTime(),
