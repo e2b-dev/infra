@@ -72,7 +72,7 @@ func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templa
 }
 
 func (c *TemplatesBuildCache) getDataCallback(ctx context.Context, templateID string, buildID uuid.UUID) func(context.Context, uuid.UUID) (TemplateBuildInfo, error) {
-	return func(ctx context.Context, key uuid.UUID) (TemplateBuildInfo, error) {
+	return func(_ context.Context, _ uuid.UUID) (TemplateBuildInfo, error) {
 		// Step 1: Check L2 (Redis)
 		info, err := c.getFromRedis(ctx, buildID)
 		if err == nil {
