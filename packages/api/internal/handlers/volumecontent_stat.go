@@ -29,26 +29,41 @@ func (a *APIStore) GetVolumesVolumeIDStat(c *gin.Context, volumeID api.VolumeID,
 			return ErrExpectedEntry
 		}
 
+		result := toVolumeStat(entry)
+
 		c.JSON(http.StatusOK, api.GetVolumesVolumeIDStatResponse{
-			Body:         nil,
-			HTTPResponse: nil,
-			JSON200: &api.VolumeStat{
-				Ctime:       entry.GetCreatedTime().AsTime(),
-				Group:       entry.GetGroup(),
-				Mode:        entry.GetMode(),
-				Mtime:       entry.GetModifiedTime().AsTime(),
-				Name:        entry.GetName(),
-				Owner:       entry.GetOwner(),
-				Path:        entry.GetPath(),
-				Permissions: entry.GetPermissions(),
-				Size:        entry.GetSize(),
-				Target:      entry.SymlinkTarget,
-				Type:        toType(entry.GetType()),
-			},
+			JSON200: &result,
 		})
 
 		return nil
 	})
+}
+
+func toVolumeStat(entry *orchestrator.EntryInfo) api.VolumeStat {
+	return api.VolumeStat{
+		Ctime:       entry.GetCreatedTime().AsTime(),
+		Group:       entry.GetGroup(),
+		Mode:        entry.GetMode(),
+		Mtime:       entry.GetModifiedTime().AsTime(),
+		Name:        entry.GetName(),
+		Owner:       entry.GetOwner(),
+		Path:        entry.GetPath(),
+		Permissions: entry.GetPermissions(),
+		Size:        entry.GetSize(),
+		Target:      toTarget(entry.SymlinkTarget),
+		Type:        toType(entry.GetType()),
+	}
+}
+
+func toTarget(target *string) *api.VolumeStatTarget {
+	if target == nil {
+		return nil
+	}
+
+	v := *target
+	st := api.VolumeStatTarget(v)
+
+	return &st
 }
 
 func toType(getType orchestrator.FileType) string {

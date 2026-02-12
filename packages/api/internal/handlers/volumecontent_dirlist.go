@@ -21,16 +21,14 @@ func (a *APIStore) GetVolumesVolumeIDDir(c *gin.Context, volumeID api.VolumeID, 
 			return err
 		}
 
-		files := make([]api.VolumeDirectoryItem, 0, len(response.GetFiles()))
+		files := make([]api.VolumeStat, 0, len(response.GetFiles()))
 		for _, item := range response.GetFiles() {
-			files = append(files, api.VolumeDirectoryItem{
-				Ctime:       item.GetCtime().AsTime(),
-				IsDirectory: item.GetIsDirectory(),
-				Mode:        item.GetMode(),
-				Mtime:       item.GetMtime().AsTime(),
-				Name:        item.GetName(),
-				Size:        item.GetSize(),
-			})
+			entry := item.GetEntry()
+			if entry == nil {
+				continue
+			}
+
+			files = append(files, toVolumeStat(entry))
 		}
 
 		c.JSON(http.StatusOK, &api.GetVolumesVolumeIDDirResponse{

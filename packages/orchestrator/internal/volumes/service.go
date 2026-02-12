@@ -1,6 +1,7 @@
 package volumes
 
 import (
+	"os"
 	"path/filepath"
 
 	"github.com/google/uuid"
@@ -40,6 +41,18 @@ func (v *VolumeService) buildVolumePath(volumeType, teamID, volumeID string) (st
 	volumePath := filepath.Join(volPath, teamID, volumeID)
 
 	return volumePath, nil
+}
+
+func (v *VolumeService) processError(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	if os.IsNotExist(err) {
+		return status.Error(codes.NotFound, err.Error())
+	}
+
+	return status.Error(codes.Internal, err.Error())
 }
 
 func tryParseUUID(id string) bool {

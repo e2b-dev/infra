@@ -1702,39 +1702,6 @@ components:
       required:
         - name
 
-    VolumeDirectoryItem:
-      type: object
-      properties:
-        name:
-          type: string
-          description: Name of the file or directory
-        isDirectory:
-          type: boolean
-          description: Whether the item is a directory
-        mode:
-          type: integer
-          format: uint32
-          description: File mode
-        size:
-          type: integer
-          format: int64
-          description: File size in bytes
-        ctime:
-          type: string
-          format: date-time
-          description: Create time of the file or directory
-        mtime:
-          type: string
-          format: date-time
-          description: Last modification time of the file or directory
-      required:
-        - name
-        - isDirectory
-        - mode
-        - size
-        - ctime
-        - mtime
-
     VolumeStat:
       type: object
       properties:
@@ -1767,6 +1734,7 @@ components:
           format: date-time
         target:
           type: string
+          enum: [file, directory, symlink]
       required:
         - name
         - type
@@ -1785,7 +1753,7 @@ components:
         files:
           type: array
           items:
-            $ref: "#/components/schemas/VolumeDirectoryItem"
+            $ref: "#/components/schemas/VolumeStat"
       required:
         - files
 
@@ -3341,7 +3309,7 @@ paths:
               type: string
               format: binary
       responses:
-        "200":
+        "204":
           description: "Successfully created a file"
         "404":
           description: "path not found"

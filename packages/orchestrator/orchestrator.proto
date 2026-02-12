@@ -146,7 +146,9 @@ message VolumeCreateRequest {
   string team_id = 3;
 }
 
-message VolumeCreateResponse {}
+message VolumeCreateResponse {
+  EntryInfo entry = 1;
+}
 
 message VolumeDeleteRequest {
   string volume_id = 1;
@@ -157,12 +159,7 @@ message VolumeDeleteRequest {
 message VolumeDeleteResponse {}
 
 message VolumeDirectoryItem {
-  string name = 1;
-  bool is_directory = 2;
-  uint32 mode = 3;
-  int64 size = 4;
-  google.protobuf.Timestamp ctime = 5;
-  google.protobuf.Timestamp mtime = 6;
+  EntryInfo entry = 1;
 }
 
 message VolumeListDirRequest {
@@ -186,7 +183,9 @@ message VolumeCreateDirRequest {
   int32 group_id = 7;
 }
 
-message VolumeCreateDirResponse {}
+message VolumeCreateDirResponse {
+  EntryInfo entry = 1;
+}
 
 message VolumeDeleteDirRequest {
   string volume_id = 1;
@@ -247,7 +246,9 @@ message VolumeFileCreateRequest {
   }
 }
 
-message VolumeFileCreateResponse {}
+message VolumeFileCreateResponse {
+  EntryInfo entry = 1;
+}
 
 message VolumeFileDeleteRequest {
   string volume_id = 1;
@@ -273,6 +274,7 @@ enum FileType {
   FILE_TYPE_UNSPECIFIED = 0;
   FILE_TYPE_FILE = 1;
   FILE_TYPE_DIRECTORY = 2;
+  FILE_TYPE_SYMLINK = 3;
 }
 
 message EntryInfo {

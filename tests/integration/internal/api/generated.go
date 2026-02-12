@@ -90,6 +90,13 @@ const (
 	TemplateBuildStatusWaiting  TemplateBuildStatus = "waiting"
 )
 
+// Defines values for VolumeStatTarget.
+const (
+	Directory VolumeStatTarget = "directory"
+	File      VolumeStatTarget = "file"
+	Symlink   VolumeStatTarget = "symlink"
+)
+
 // Defines values for GetTeamsTeamIDMetricsMaxParamsMetric.
 const (
 	ConcurrentSandboxes GetTeamsTeamIDMetricsMaxParamsMetric = "concurrent_sandboxes"
@@ -1150,46 +1157,28 @@ type Volume struct {
 	VolumeID string `json:"volumeID"`
 }
 
-// VolumeDirectoryItem defines model for VolumeDirectoryItem.
-type VolumeDirectoryItem struct {
-	// Ctime Create time of the file or directory
-	Ctime time.Time `json:"ctime"`
-
-	// IsDirectory Whether the item is a directory
-	IsDirectory bool `json:"isDirectory"`
-
-	// Mode File mode
-	Mode uint32 `json:"mode"`
-
-	// Mtime Last modification time of the file or directory
-	Mtime time.Time `json:"mtime"`
-
-	// Name Name of the file or directory
-	Name string `json:"name"`
-
-	// Size File size in bytes
-	Size int64 `json:"size"`
-}
-
 // VolumeDirectoryListing defines model for VolumeDirectoryListing.
 type VolumeDirectoryListing struct {
-	Files []VolumeDirectoryItem `json:"files"`
+	Files []VolumeStat `json:"files"`
 }
 
 // VolumeStat defines model for VolumeStat.
 type VolumeStat struct {
-	Ctime       time.Time `json:"ctime"`
-	Group       uint32    `json:"group"`
-	Mode        uint32    `json:"mode"`
-	Mtime       time.Time `json:"mtime"`
-	Name        string    `json:"name"`
-	Owner       uint32    `json:"owner"`
-	Path        string    `json:"path"`
-	Permissions uint32    `json:"permissions"`
-	Size        int64     `json:"size"`
-	Target      *string   `json:"target,omitempty"`
-	Type        string    `json:"type"`
+	Ctime       time.Time         `json:"ctime"`
+	Group       uint32            `json:"group"`
+	Mode        uint32            `json:"mode"`
+	Mtime       time.Time         `json:"mtime"`
+	Name        string            `json:"name"`
+	Owner       uint32            `json:"owner"`
+	Path        string            `json:"path"`
+	Permissions uint32            `json:"permissions"`
+	Size        int64             `json:"size"`
+	Target      *VolumeStatTarget `json:"target,omitempty"`
+	Type        string            `json:"type"`
 }
+
+// VolumeStatTarget defines model for VolumeStat.Target.
+type VolumeStatTarget string
 
 // AccessTokenID defines model for accessTokenID.
 type AccessTokenID = string
