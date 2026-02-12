@@ -68,11 +68,11 @@ func (c *TemplatesBuildCache) SetStatus(ctx context.Context, buildID uuid.UUID, 
 }
 
 func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templateID string) (TemplateBuildInfo, error) {
-	return c.l1Cache.GetOrSet(ctx, buildID, c.getDataCallback(ctx, templateID, buildID))
+	return c.l1Cache.GetOrSet(ctx, buildID, c.getDataCallback(templateID))
 }
 
-func (c *TemplatesBuildCache) getDataCallback(ctx context.Context, templateID string, buildID uuid.UUID) func(context.Context, uuid.UUID) (TemplateBuildInfo, error) {
-	return func(_ context.Context, _ uuid.UUID) (TemplateBuildInfo, error) {
+func (c *TemplatesBuildCache) getDataCallback(templateID string) func(context.Context, uuid.UUID) (TemplateBuildInfo, error) {
+	return func(ctx context.Context, buildID uuid.UUID) (TemplateBuildInfo, error) {
 		// Step 1: Check L2 (Redis)
 		info, err := c.getFromRedis(ctx, buildID)
 		if err == nil {
