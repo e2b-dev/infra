@@ -61,5 +61,4 @@ func (v *VolumeService) GetFile(request *orchestrator.VolumeFileGetRequest, serv
 			return err
 		}
 	}
-
 }
