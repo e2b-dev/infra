@@ -14,12 +14,11 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-const hostStatsSamplingInterval = 5 * time.Second
-
 type HostStatsCollector struct {
-	metadata HostStatsMetadata
-	delivery hoststats.Delivery
-	proc     *process.Process
+	metadata         HostStatsMetadata
+	delivery         hoststats.Delivery
+	proc             *process.Process
+	samplingInterval time.Duration
 
 	stopCh    chan struct{}
 	stoppedCh chan struct{}
@@ -40,18 +39,25 @@ func NewHostStatsCollector(
 	metadata HostStatsMetadata,
 	firecrackerPID int32,
 	delivery hoststats.Delivery,
+	samplingInterval time.Duration,
 ) (*HostStatsCollector, error) {
+	// Validate and enforce minimum interval
+	if samplingInterval < 100*time.Millisecond {
+		samplingInterval = 100 * time.Millisecond
+	}
+
 	proc, err := process.NewProcess(firecrackerPID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create process handle: %w", err)
 	}
 
 	return &HostStatsCollector{
-		metadata:  metadata,
-		delivery:  delivery,
-		proc:      proc,
-		stopCh:    make(chan struct{}),
-		stoppedCh: make(chan struct{}),
+		metadata:         metadata,
+		delivery:         delivery,
+		proc:             proc,
+		samplingInterval: samplingInterval,
+		stopCh:           make(chan struct{}),
+		stoppedCh:        make(chan struct{}),
 	}, nil
 }
 
@@ -103,7 +109,7 @@ func (h *HostStatsCollector) Start(ctx context.Context) {
 			zap.Error(err))
 	}
 
-	ticker := time.NewTicker(hostStatsSamplingInterval)
+	ticker := time.NewTicker(h.samplingInterval)
 	defer ticker.Stop()
 
 	for {
