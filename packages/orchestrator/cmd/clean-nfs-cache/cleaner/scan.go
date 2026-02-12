@@ -60,7 +60,7 @@ func (c *Cleaner) Statter(ctx context.Context, done *sync.WaitGroup) {
 		case <-ctx.Done():
 			return
 		case req := <-c.statRequestCh:
-			f, err := c.statInDir(req.df, req.name)
+			f, err := c.statInDir(req.dirPath, req.name)
 			req.f = f
 			req.err = err
 			req.response <- req
@@ -207,7 +207,7 @@ func (c *Cleaner) scanDir(ctx context.Context, path []*Dir) (out *Dir, err error
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case c.statRequestCh <- &statReq{df: df, name: name, response: responseCh}:
+		case c.statRequestCh <- &statReq{dirPath: absPath, name: name, response: responseCh}:
 			// submitted
 		}
 	}
