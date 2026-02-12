@@ -61,7 +61,7 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 			}
 
 			// Check per-sandbox connection limit
-			maxLimit := featureFlags.IntFlag(r.Context(), featureflags.HTTPProxyMaxConnectionsPerSandbox)
+			maxLimit := featureFlags.IntFlag(r.Context(), featureflags.SandboxMaxIncomingConnections)
 			count, acquired := limiter.TryAcquire(sandboxId, maxLimit)
 			if !acquired {
 				logger.L().Warn(r.Context(), "HTTP proxy connection limit exceeded for sandbox",

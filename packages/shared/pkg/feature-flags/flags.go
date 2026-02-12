@@ -155,9 +155,9 @@ var (
 	// connections allowed per sandbox. Negative means no limit.
 	TCPFirewallMaxConnectionsPerSandbox = newIntFlag("tcpfirewall-max-connections-per-sandbox", -1)
 
-	// HTTPProxyMaxConnectionsPerSandbox is the maximum number of concurrent HTTP proxy
+	// SandboxMaxIncomingConnections is the maximum number of concurrent HTTP proxy
 	// connections allowed per sandbox. Negative means no limit.
-	HTTPProxyMaxConnectionsPerSandbox = newIntFlag("sandbox-max-incoming-connections", -1)
+	SandboxMaxIncomingConnections = newIntFlag("sandbox-max-incoming-connections", -1)
 )
 
 type StringFlag struct {
