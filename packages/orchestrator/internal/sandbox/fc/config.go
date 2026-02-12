@@ -2,8 +2,10 @@ package fc
 
 import (
 	"path/filepath"
+	"strings"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -36,6 +38,21 @@ func (t Config) HostKernelPath(config cfg.BuilderConfig) string {
 
 func (t Config) FirecrackerPath(config cfg.BuilderConfig) string {
 	return filepath.Join(config.FirecrackerVersionsDir, t.FirecrackerVersion, FirecrackerBinaryName)
+}
+
+// SupportsFreePageReporting reports whether the Firecracker version supports
+// free page reporting via the balloon device. Free page reporting was introduced
+// in Firecracker v1.14.0.
+func (t Config) SupportsFreePageReporting() bool {
+	// Version format is vX.Y.Z_commithash — strip the commit hash before comparing.
+	versionOnly, _, _ := strings.Cut(t.FirecrackerVersion, "_")
+
+	supported, err := utils.IsGTEVersion(versionOnly, "v1.14.0")
+	if err != nil {
+		return false
+	}
+
+	return supported
 }
 
 type RootfsPaths struct {

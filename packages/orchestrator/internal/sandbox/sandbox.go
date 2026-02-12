@@ -71,6 +71,9 @@ type Config struct {
 	TotalDiskSizeMB int64
 	HugePages       bool
 
+	// Enable free page reporting
+	FreePageReporting bool
+
 	Network *orchestrator.SandboxNetworkConfig
 
 	Envd EnvdMetadata
@@ -363,6 +366,7 @@ func (f *Factory) CreateSandbox(
 		config.Vcpu,
 		config.RamMB,
 		config.HugePages,
+		config.FreePageReporting,
 		processOptions,
 		fc.TxRateLimiterConfig{
 			Ops:       fc.TokenBucketConfig(throttleConfig.Ops),
