@@ -91,7 +91,7 @@ func TestBuildVolumePath(t *testing.T) {
 				VolumeId:   tc.volumeID,
 			}
 			actualPath, actualStatus := v.buildVolumePath(&volumeInfo)
-			assert.Equal(t, tc.status, actualStatus)
+			assert.ErrorIs(t, tc.status.Err(), actualStatus)
 			assert.Equal(t, tc.expected, actualPath)
 		})
 	}
