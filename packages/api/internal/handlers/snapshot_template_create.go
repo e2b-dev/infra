@@ -17,6 +17,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
+const maxSnapshotsPerTeam = 100
+
 func (a *APIStore) PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID api.SandboxID) {
 	ctx := c.Request.Context()
 
@@ -31,6 +33,21 @@ func (a *APIStore) PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID api
 		telemetry.WithTeamID(teamID.String()),
 		telemetry.WithSandboxID(sandboxID),
 	)
+
+	// Enforce quota on snapshot creation
+	snapshotCount, err := a.sqlcDB.CountTeamSnapshots(ctx, teamID)
+	if err != nil {
+		telemetry.ReportCriticalError(ctx, "Error counting team snapshots", err)
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error checking snapshot quota")
+
+		return
+	}
+
+	if snapshotCount >= maxSnapshotsPerTeam {
+		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("Snapshot limit reached. Maximum %d snapshots per team allowed", maxSnapshotsPerTeam))
+
+		return
+	}
 
 	sandboxID = utils.ShortID(sandboxID)
 
