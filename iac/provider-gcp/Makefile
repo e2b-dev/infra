@@ -59,6 +59,8 @@ tf_vars := \
 	$(call tfvar, FILESTORE_CACHE_CAPACITY_GB) \
 	$(call tfvar, FILESTORE_MAX_DISK_USAGE_TARGET) \
 	$(call tfvar, REMOTE_REPOSITORY_ENABLED) \
+	$(call tfvar, DOCKERHUB_AUTH_USERNAME) \
+	$(call tfvar, DOCKERHUB_AUTH_PASSWORD) \
 	$(call tfvar, API_BOOT_DISK_TYPE) \
 	$(call tfvar, SERVER_BOOT_DISK_TYPE) \
 	$(call tfvar, SERVER_BOOT_DISK_SIZE_GB) \
