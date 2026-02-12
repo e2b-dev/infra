@@ -10,6 +10,7 @@ import (
 	"go.uber.org/zap/zapcore"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/builderrors"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildlogger"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
@@ -59,6 +60,11 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		}
 	}
 
+	freePageReporting, err := resolveFreePageReporting(cfg.FreePageReporting, cfg.GetFirecrackerVersion())
+	if err != nil {
+		return nil, fmt.Errorf("invalid template config: %w", err)
+	}
+
 	template := config.TemplateConfig{
 		Version:              version,
 		TeamID:               cfg.GetTeamID(),
@@ -70,6 +76,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		ReadyCmd:             cfg.GetReadyCommand(),
 		DiskSizeMB:           int64(cfg.GetDiskSizeMB()),
 		HugePages:            cfg.GetHugePages(),
+		FreePageReporting:    freePageReporting,
 		FromImage:            cfg.GetFromImage(),
 		FromTemplate:         cfg.GetFromTemplate(),
 		RegistryAuthProvider: authProvider,
@@ -159,4 +166,22 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	}(context.WithoutCancel(ctx))
 
 	return nil, nil
+}
+
+// resolveFreePageReporting determines the effective FPR setting.
+// When override is nil (caller did not set the field), it defaults to true
+// if the Firecracker version supports FPR. An explicit true on an unsupported
+// version is an error; an explicit false always disables FPR.
+func resolveFreePageReporting(override *bool, fcVersion string) (bool, error) {
+	supported := fc.Config{FirecrackerVersion: fcVersion}.SupportsFreePageReporting()
+
+	if override != nil {
+		if *override && !supported {
+			return false, fmt.Errorf("free page reporting is not supported by Firecracker %s (requires >= v1.14.0)", fcVersion)
+		}
+
+		return *override, nil
+	}
+
+	return supported, nil
 }

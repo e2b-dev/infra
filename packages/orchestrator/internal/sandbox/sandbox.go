@@ -72,6 +72,9 @@ type Config struct {
 	TotalDiskSizeMB int64
 	HugePages       bool
 
+	// Enable free page reporting
+	FreePageReporting bool
+
 	Network *orchestrator.SandboxNetworkConfig
 
 	Envd EnvdMetadata

@@ -147,11 +147,18 @@ func (ppb *PostProcessingBuilder) Build(
 		defaultWorkdir = nil
 	}
 
+	fcConfig := fc.Config{
+		KernelVersion:      ppb.Config.KernelVersion,
+		FirecrackerVersion: ppb.Config.FirecrackerVersion,
+	}
+
 	// Configure sandbox for final layer
 	sbxConfig := sandbox.Config{
 		Vcpu:      ppb.Config.VCpuCount,
 		RamMB:     ppb.Config.MemoryMB,
 		HugePages: ppb.Config.HugePages,
+
+		FreePageReporting: ppb.Config.FreePageReporting && fcConfig.SupportsFreePageReporting(),
 
 		Envd: sandbox.EnvdMetadata{
 			Version:        ppb.EnvdVersion,
@@ -159,10 +166,7 @@ func (ppb *PostProcessingBuilder) Build(
 			DefaultWorkdir: defaultWorkdir,
 		},
 
-		FirecrackerConfig: fc.Config{
-			KernelVersion:      ppb.Config.KernelVersion,
-			FirecrackerVersion: ppb.Config.FirecrackerVersion,
-		},
+		FirecrackerConfig: fcConfig,
 	}
 
 	// Select the IO Engine to use for the rootfs drive
