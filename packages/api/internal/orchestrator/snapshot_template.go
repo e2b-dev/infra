@@ -70,7 +70,13 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 
 			return s, nil
 		})
-		e = errors.Join(e, updateErr)
+		// Only join the error if the main operation already failed
+		if e != nil {
+			e = errors.Join(e, updateErr)
+		} else if updateErr != nil {
+			// Log but don't fail the request if state restore fails after successful snapshot
+			telemetry.ReportError(context.WithoutCancel(ctx), "failed to restore sandbox state after successful snapshot", updateErr)
+		}
 	}()
 
 	node := o.GetNode(sbx.ClusterID, sbx.NodeID)
