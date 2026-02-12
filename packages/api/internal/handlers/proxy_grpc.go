@@ -62,6 +62,10 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get team: %v", err)
 	}
+	maxTimeout := time.Duration(team.Limits.MaxLengthHours) * time.Hour
+	if timeout > maxTimeout {
+		timeout = maxTimeout
+	}
 
 	autoPause := snap.Snapshot.AutoPause
 	nodeID := &snap.Snapshot.OriginNodeID
