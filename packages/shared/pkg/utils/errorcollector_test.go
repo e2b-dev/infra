@@ -3,6 +3,7 @@ package utils
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -62,10 +63,10 @@ func TestErrorCollector(t *testing.T) {
 		<-started
 
 		// This Go call should block on the semaphore
-		var wasCalled bool
+		var wasCalled atomic.Bool
 		ctx, cancel2 := context.WithCancel(t.Context())
 		ec.Go(ctx, func() error {
-			wasCalled = true
+			wasCalled.Store(true)
 
 			return nil
 		})
@@ -78,6 +79,6 @@ func TestErrorCollector(t *testing.T) {
 
 		err := ec.Wait()
 		require.ErrorIs(t, err, context.Canceled)
-		assert.False(t, wasCalled)
+		assert.False(t, wasCalled.Load())
 	})
 }
