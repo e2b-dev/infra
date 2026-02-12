@@ -13,10 +13,10 @@ import (
 )
 
 const listTemplateTags = `-- name: ListTemplateTags :many
-SELECT eba.tag, eba.build_id, eba.created_at
+SELECT DISTINCT ON (eba.tag) eba.tag, eba.build_id, eba.created_at
 FROM public.env_build_assignments AS eba
 WHERE eba.env_id = $1
-ORDER BY eba.created_at DESC
+ORDER BY eba.tag, eba.created_at DESC
 `
 
 type ListTemplateTagsRow struct {
@@ -25,7 +25,8 @@ type ListTemplateTagsRow struct {
 	CreatedAt pgtype.Timestamptz
 }
 
-// Lists all tag assignments for a given template.
+// Lists the latest tag assignment per tag for a given template.
+// Multiple assignments can exist per tag; only the most recent is returned.
 // @template_id: the template ID to look up
 func (q *Queries) ListTemplateTags(ctx context.Context, templateID string) ([]ListTemplateTagsRow, error) {
 	rows, err := q.db.Query(ctx, listTemplateTags, templateID)

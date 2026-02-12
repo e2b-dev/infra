@@ -306,26 +306,23 @@ func (a *APIStore) GetTemplatesTemplateIDTags(c *gin.Context, templateID api.Tem
 		telemetry.WithTeamID(team.ID.String()),
 	)
 
-	template, err := a.sqlcDB.GetTemplateByID(ctx, templateID)
-	switch {
-	case dberrors.IsNotFoundError(err):
-		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Template %s not found", templateID))
-		telemetry.ReportError(ctx, "template not found", err, telemetry.WithTemplateID(templateID))
-
-		return
-	case err != nil:
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting template")
-		telemetry.ReportCriticalError(ctx, "error when getting template", err)
-
-		return
-	case template.TeamID != team.ID:
-		telemetry.ReportError(ctx, "user doesn't have access to the template", nil, telemetry.WithTemplateID(templateID))
-		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to this sandbox template (%s)", templateID))
+	aliasInfo, err := a.templateCache.ResolveAlias(ctx, templateID, team.Slug)
+	if err != nil {
+		apiErr := templatecache.ErrorToAPIError(err, templateID)
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+		telemetry.ReportError(ctx, "template not found", apiErr.Err, telemetry.WithTemplateID(templateID))
 
 		return
 	}
 
-	tags, err := a.sqlcDB.ListTemplateTags(ctx, templateID)
+	if aliasInfo.TeamID != team.ID {
+		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox template '%s'", templateID))
+		telemetry.ReportError(ctx, "no access to the template", nil, telemetry.WithTemplateID(aliasInfo.TemplateID))
+
+		return
+	}
+
+	tags, err := a.sqlcDB.ListTemplateTags(ctx, aliasInfo.TemplateID)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when listing template tags")
 		telemetry.ReportCriticalError(ctx, "error when listing template tags", err)
