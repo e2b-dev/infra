@@ -299,6 +299,7 @@ func (p *Process) Create(
 	vCPUCount int64,
 	memoryMB int64,
 	hugePages bool,
+	freePageReporting bool,
 	options ProcessOptions,
 	txRateLimit TxRateLimiterConfig,
 	cgroupFD int,
@@ -436,6 +437,16 @@ func (p *Process) Create(
 		return errors.Join(fmt.Errorf("error setting fc entropy config: %w", err), fcStopErr)
 	}
 	telemetry.ReportEvent(ctx, "set fc entropy config")
+
+	if freePageReporting {
+		err = p.client.enableFreePageReporting(ctx)
+		if err != nil {
+			fcStopErr := p.Stop(ctx)
+
+			return errors.Join(fmt.Errorf("error enabling free page reporting: %w", err), fcStopErr)
+		}
+		telemetry.ReportEvent(ctx, "enabled free page reporting")
+	}
 
 	err = p.client.startVM(ctx)
 	if err != nil {
