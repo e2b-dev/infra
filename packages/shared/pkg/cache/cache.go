@@ -69,7 +69,7 @@ func NewCache[V any](config Config[V]) *Cache[V] {
 
 // GetWithoutTouch retrieves a value from the cache by key
 func (c *Cache[V]) GetWithoutTouch(key string) (V, bool) {
-	item := c.cache.Get(key)
+	item := c.cache.Get(key, ttlcache.WithDisableTouchOnHit[string, *Item[V]]())
 	if item == nil {
 		var zero V
 
