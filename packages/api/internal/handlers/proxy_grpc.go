@@ -52,11 +52,6 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 	}
 	if autoResume != nil && autoResume.StartingTimeout != nil && *autoResume.StartingTimeout > 0 {
 		timeout = *autoResume.StartingTimeout
-	} else if snap.Snapshot.Config != nil &&
-		snap.Snapshot.Config.StartingTimeout != nil &&
-		*snap.Snapshot.Config.StartingTimeout > 0 {
-		// Backward compatibility for snapshots saved before starting timeout moved under autoResume config.
-		timeout = *snap.Snapshot.Config.StartingTimeout
 	}
 	if autoResume == nil || autoResume.Policy != dbtypes.SandboxAutoResumeAny {
 		return nil, status.Error(codes.NotFound, "sandbox auto-resume disabled")
