@@ -78,7 +78,7 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 
 	telemetry.ReportEvent(ctx, "got backend size")
 
-	deviceIndex := uint32(math.MaxUint32)
+	var deviceIndex uint32
 
 	for {
 		deviceIndex, err = d.devicePool.GetDevice(ctx)
