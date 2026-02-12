@@ -144,7 +144,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 		return
 	}
-	if body.Timeout != nil && autoResume != nil && timeout > 0 {
+	if autoResume != nil && timeout > 0 {
 		startingTimeout := timeout
 		autoResume.StartingTimeout = &startingTimeout
 	}
