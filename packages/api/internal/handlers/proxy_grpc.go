@@ -43,9 +43,12 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 
 	teamID := snap.Snapshot.TeamID
 
-	// Fixed 5 minutes for client-proxy initiated resume.
-	// This intentionally does not allow callers to override timeouts via gRPC.
+	// Default 5 minutes for client-proxy initiated resume.
+	// If the sandbox was paused with a timeout, use that instead.
 	timeout := 300 * time.Second
+	if snap.Snapshot.Config != nil && snap.Snapshot.Config.Timeout != nil {
+		timeout = *snap.Snapshot.Config.Timeout
+	}
 
 	var autoResume *dbtypes.SandboxAutoResumeConfig
 	if snap.Snapshot.Config != nil {

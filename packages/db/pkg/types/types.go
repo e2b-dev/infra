@@ -1,5 +1,7 @@
 package types
 
+import "time"
+
 type JSONBStringMap map[string]string
 
 type BuildReason struct {
@@ -52,6 +54,7 @@ type PausedSandboxConfig struct {
 	Network      *SandboxNetworkConfig       `json:"network,omitempty"`
 	AutoResume   *SandboxAutoResumeConfig    `json:"autoResume,omitempty"`
 	VolumeMounts []*SandboxVolumeMountConfig `json:"volumeMounts,omitempty"`
+	Timeout      *time.Duration              `json:"timeout,omitempty"`
 }
 
 // BuildStatus represents the raw status value written to the env_builds table.
