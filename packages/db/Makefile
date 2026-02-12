@@ -7,7 +7,7 @@ goose-local := GOOSE_DBSTRING=postgres://postgres:postgres@localhost:5432/postgr
 ifeq ($(PROVIDER),aws)
 	IMAGE_REGISTRY := $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com/$(PREFIX)orchestration/db-migrator
 else
-	IMAGE_REGISTRY := $(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/e2b-orchestration/db-migrator
+	IMAGE_REGISTRY := $(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/$(PREFIX)orchestration/db-migrator
 endif
 
 .PHONY: migrate
