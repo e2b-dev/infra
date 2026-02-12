@@ -27,7 +27,7 @@ type Server struct {
 
 func NewPortMap(ctx context.Context) *Server {
 	s := rfc1057.MakeServer()
-	h := newHandlers()
+	h := newHandlers(ctx)
 
 	var handler rfc1057.PMAP_PROG_PMAP_VERS_handler
 	handler = h

@@ -56,7 +56,7 @@ func (j jailedFS) OpenFile(filename string, flag int, perm os.FileMode) (billy.F
 func (j jailedFS) Stat(filename string) (os.FileInfo, error) {
 	file, err := j.inner.Stat(filename)
 
-	return wrapOSFile(file, j.prefix), err
+	return tryWrapOSFile(file, j.prefix), err
 }
 
 func (j jailedFS) Rename(oldpath, newpath string) error {
@@ -97,7 +97,7 @@ func (j jailedFS) ReadDir(path string) ([]os.FileInfo, error) {
 
 	prefix := j.prefix + "/"
 	for index, item := range items {
-		items[index] = wrapOSFile(item, prefix)
+		items[index] = tryWrapOSFile(item, prefix)
 	}
 
 	return items, nil
@@ -110,7 +110,7 @@ func (j jailedFS) MkdirAll(filename string, perm os.FileMode) error {
 func (j jailedFS) Lstat(filename string) (os.FileInfo, error) {
 	f, err := j.inner.Lstat(filename)
 
-	return wrapOSFile(f, j.prefix), err
+	return tryWrapOSFile(f, j.prefix), err
 }
 
 func (j jailedFS) Symlink(target, link string) error {

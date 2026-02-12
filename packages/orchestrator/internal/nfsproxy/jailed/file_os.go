@@ -19,7 +19,11 @@ func (j jailedFile) String() string {
 
 var _ os.FileInfo = (*jailedFile)(nil)
 
-func wrapOSFile(item os.FileInfo, prefix string) os.FileInfo {
+func tryWrapOSFile(item os.FileInfo, prefix string) os.FileInfo {
+	if item == nil {
+		return nil
+	}
+
 	return &jailedFile{inner: item, prefix: prefix}
 }
 

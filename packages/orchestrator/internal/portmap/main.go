@@ -16,8 +16,8 @@ type handlers struct {
 	lock sync.RWMutex
 }
 
-func newHandlers() *handlers {
-	return &handlers{maps: make(map[key]portmap.Uint32)}
+func newHandlers(ctx context.Context) *handlers {
+	return &handlers{ctx: ctx, maps: make(map[key]portmap.Uint32)}
 }
 
 var _ portmap.PMAP_PROG_PMAP_VERS_handler = (*handlers)(nil)
