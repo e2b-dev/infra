@@ -697,8 +697,9 @@ type TemplateConfig struct {
 	//	*TemplateConfig_FromImage
 	//	*TemplateConfig_FromTemplate
 	Source            isTemplateConfig_Source `protobuf_oneof:"source"`
-	FromImageRegistry *FromImageRegistry      `protobuf:"bytes,15,opt,name=fromImageRegistry,proto3,oneof" json:"fromImageRegistry,omitempty"`
-	TeamID            string                  `protobuf:"bytes,16,opt,name=teamID,proto3" json:"teamID,omitempty"`
+	FromImageRegistry  *FromImageRegistry      `protobuf:"bytes,15,opt,name=fromImageRegistry,proto3,oneof" json:"fromImageRegistry,omitempty"`
+	TeamID             string                  `protobuf:"bytes,16,opt,name=teamID,proto3" json:"teamID,omitempty"`
+	FreePageReporting  *bool                   `protobuf:"varint,17,opt,name=freePageReporting,proto3,oneof" json:"freePageReporting,omitempty"`
 }
 
 func (x *TemplateConfig) Reset() {
@@ -850,6 +851,13 @@ func (x *TemplateConfig) GetTeamID() string {
 		return x.TeamID
 	}
 	return ""
+}
+
+func (x *TemplateConfig) GetFreePageReporting() bool {
+	if x != nil && x.FreePageReporting != nil {
+		return *x.FreePageReporting
+	}
+	return false
 }
 
 type isTemplateConfig_Source interface {

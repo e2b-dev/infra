@@ -389,6 +389,30 @@ func (c *apiClient) startVM(ctx context.Context) error {
 	return nil
 }
 
+func (c *apiClient) enableFreePageReporting(ctx context.Context) error {
+	ctx, span := tracer.Start(ctx, "enable-free-page-reporting")
+	defer span.End()
+
+	amountMib := int64(0)
+	deflateOnOom := false
+
+	balloonConfig := operations.PutBalloonParams{
+		Context: ctx,
+		Body: &models.Balloon{
+			AmountMib:         &amountMib,
+			DeflateOnOom:      &deflateOnOom,
+			FreePageReporting: true,
+		},
+	}
+
+	_, err := c.client.Operations.PutBalloon(&balloonConfig)
+	if err != nil {
+		return fmt.Errorf("error setting up balloon device: %w", err)
+	}
+
+	return nil
+}
+
 func (c *apiClient) memoryMapping(ctx context.Context) (*memory.Mapping, error) {
 	params := operations.GetMemoryMappingsParams{
 		Context: ctx,
