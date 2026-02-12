@@ -62,7 +62,11 @@ func TestErrorCollector(t *testing.T) {
 
 		<-started
 
-		// This Go call should block on the semaphore
+		// This Go call should block on the semaphore.
+		// wasCalled must be atomic: the goroutine spawned by ec.Go may write it
+		// concurrently with the main goroutine's read in assert.False below.
+		// A plain bool causes a data race that the -race detector catches on ARM64
+		// (weaker memory model) even though it appears safe on x86.
 		var wasCalled atomic.Bool
 		ctx, cancel2 := context.WithCancel(t.Context())
 		ec.Go(ctx, func() error {
