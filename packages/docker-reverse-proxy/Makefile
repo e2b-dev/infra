@@ -4,7 +4,7 @@ ENV := $(shell cat ../../.last_used_env || echo "not-set")
 ifeq ($(PROVIDER),aws)
 	IMAGE_REGISTRY := $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com/$(PREFIX)orchestration/docker-reverse-proxy
 else
-	IMAGE_REGISTRY := $(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/e2b-orchestration/docker-reverse-proxy
+	IMAGE_REGISTRY := $(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/$(PREFIX)orchestration/docker-reverse-proxy
 endif
 
 .PHONY: build

@@ -1,5 +1,5 @@
 resource "google_storage_bucket" "loki_storage_bucket" {
-  name     = "${var.gcp_project_id}-loki-storage"
+  name     = "${var.bucket_prefix}loki-storage"
   location = var.gcp_region
 
   public_access_prevention    = "enforced"
@@ -25,7 +25,7 @@ resource "google_storage_bucket" "loki_storage_bucket" {
 
 # TODO: Not needed anymore, BUT! we may need it for rebuilding templates
 resource "google_storage_bucket" "envs_docker_context" {
-  name     = "${var.gcp_project_id}-envs-docker-context"
+  name     = "${var.bucket_prefix}envs-docker-context"
   location = var.gcp_region
 
   public_access_prevention    = "enforced"
@@ -37,7 +37,7 @@ resource "google_storage_bucket" "envs_docker_context" {
 
 resource "google_storage_bucket" "setup_bucket" {
   location = var.gcp_region
-  name     = "${var.gcp_project_id}-instance-setup"
+  name     = "${var.bucket_prefix}instance-setup"
 
   public_access_prevention    = "enforced"
   storage_class               = "STANDARD"
@@ -48,7 +48,7 @@ resource "google_storage_bucket" "setup_bucket" {
 
 resource "google_storage_bucket" "fc_kernels_bucket" {
   location = var.gcp_region
-  name     = "${var.gcp_project_id}-fc-kernels"
+  name     = "${var.bucket_prefix}fc-kernels"
 
   public_access_prevention    = "enforced"
   storage_class               = "STANDARD"
@@ -59,7 +59,7 @@ resource "google_storage_bucket" "fc_kernels_bucket" {
 
 resource "google_storage_bucket" "fc_versions_bucket" {
   location = var.gcp_region
-  name     = "${var.gcp_project_id}-fc-versions"
+  name     = "${var.bucket_prefix}fc-versions"
 
   public_access_prevention    = "enforced"
   storage_class               = "STANDARD"
@@ -70,7 +70,7 @@ resource "google_storage_bucket" "fc_versions_bucket" {
 
 resource "google_storage_bucket" "fc_env_pipeline_bucket" {
   location = var.template_bucket_location
-  name     = "${var.gcp_project_id}-fc-env-pipeline"
+  name     = "${var.bucket_prefix}fc-env-pipeline"
 
   public_access_prevention    = "enforced"
   storage_class               = "STANDARD"
@@ -80,7 +80,7 @@ resource "google_storage_bucket" "fc_env_pipeline_bucket" {
 }
 
 resource "google_storage_bucket" "clickhouse_backups_bucket" {
-  name     = "${var.gcp_project_id}-clickhouse-backups"
+  name     = "${var.bucket_prefix}clickhouse-backups"
   location = var.gcp_region
 
   lifecycle_rule {
@@ -106,7 +106,7 @@ resource "google_storage_bucket" "clickhouse_backups_bucket" {
 
 resource "google_storage_bucket" "fc_template_bucket" {
   location = var.gcp_region
-  name     = (var.template_bucket_name != "" ? var.template_bucket_name : "${var.gcp_project_id}-fc-templates")
+  name     = (var.template_bucket_name != "" ? var.template_bucket_name : "${var.bucket_prefix}fc-templates")
 
   public_access_prevention    = "enforced"
   storage_class               = "STANDARD"
@@ -121,7 +121,7 @@ resource "google_storage_bucket" "fc_template_bucket" {
 
 resource "google_storage_bucket" "fc_build_cache_bucket" {
   location = var.gcp_region
-  name     = "${var.gcp_project_id}-fc-build-cache"
+  name     = "${var.bucket_prefix}fc-build-cache"
 
   public_access_prevention    = "enforced"
   storage_class               = "STANDARD"
@@ -194,7 +194,7 @@ resource "google_storage_bucket_iam_member" "fc_template_bucket_iam_reader" {
 
 resource "google_storage_bucket" "public_builds_storage_bucket" {
   count    = var.gcp_project_id == "e2b-prod" ? 1 : 0
-  name     = "${var.gcp_project_id}-public-builds"
+  name     = "${var.bucket_prefix}public-builds"
   location = var.gcp_region
 
   storage_class               = "STANDARD"
