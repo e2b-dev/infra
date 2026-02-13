@@ -38,7 +38,7 @@ jobs:
 
   arm64-unit-tests:
     name: ARM64 tests for ${{ matrix.package }}
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-24.04-arm-8
     strategy:
       matrix:
         include:
@@ -87,8 +87,6 @@ jobs:
           echo 1 | sudo tee /proc/sys/vm/unprivileged_userfaultfd
 
           # Enable hugepages (256 × 2MB = 512MB).
-          # The MAX_RW_COUNT test needs ~1026 hugepages but allocating that many
-          # alongside -race (5-10x memory overhead) OOMs the 16GB runner.
           # Tests that need more hugepages than available will skip gracefully.
           sudo mkdir -p /mnt/hugepages
           sudo mount -t hugetlbfs none /mnt/hugepages
