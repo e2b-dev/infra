@@ -8,6 +8,7 @@ TF_VAR_FILE := ./.terraform.${ENV}.tfvars
 TF_VAR_FILE_ARG := $(if $(wildcard $(TF_VAR_FILE)),-var-file=$(TF_VAR_FILE))
 TERRAFORM_STATE_BUCKET ?= $(GCP_PROJECT_ID)-terraform-state
 TEMPLATE_BUCKET_LOCATION ?= $(GCP_REGION)
+BUCKET_PREFIX ?= $(GCP_PROJECT_ID)-
 
 # Set the terraform environment variable only if the environment variable is set
 # Strip the passed variable name (it's space sensitive) and check if the variable is set, if yes return TF_VAR_<variable_name>=<value> with the variable name in lower case
@@ -63,6 +64,7 @@ tf_vars := \
 	$(call tfvar, SERVER_BOOT_DISK_TYPE) \
 	$(call tfvar, SERVER_BOOT_DISK_SIZE_GB) \
 	$(call tfvar, CLICKHOUSE_BOOT_DISK_TYPE) \
+	$(call tfvar, BUCKET_PREFIX) \
 	$(call tfvar, LOKI_BOOT_DISK_TYPE)
 
 .PHONY: init
@@ -88,6 +90,10 @@ init:
 
 	@ TERRAFORM_STATE_BUCKET="$(TERRAFORM_STATE_BUCKET)" $(MAKE) -C nomad-cluster-disk-image init build
 	@ gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
+
+.PHONY: apply-init
+apply-init:
+	@ $(tf_vars) $(TF) apply $(TF_VAR_FILE_ARG) -target=module.init -auto-approve -input=false -compact-warnings
 
 .PHONY: switch
 switch:

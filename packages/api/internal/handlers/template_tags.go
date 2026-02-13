@@ -289,3 +289,55 @@ func (a *APIStore) DeleteTemplatesTags(c *gin.Context) {
 
 	c.Status(http.StatusNoContent)
 }
+
+// GetTemplatesTemplateIDTags lists all tags for a template
+func (a *APIStore) GetTemplatesTemplateIDTags(c *gin.Context, templateID api.TemplateID) {
+	ctx := c.Request.Context()
+
+	team, apiErr := a.GetTeam(ctx, c, nil)
+	if apiErr != nil {
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+		telemetry.ReportCriticalError(ctx, "error when getting team", apiErr.Err)
+
+		return
+	}
+
+	telemetry.SetAttributes(ctx,
+		telemetry.WithTeamID(team.ID.String()),
+	)
+
+	aliasInfo, err := a.templateCache.ResolveAlias(ctx, templateID, team.Slug)
+	if err != nil {
+		apiErr := templatecache.ErrorToAPIError(err, templateID)
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+		telemetry.ReportError(ctx, "template not found", apiErr.Err, telemetry.WithTemplateID(templateID))
+
+		return
+	}
+
+	if aliasInfo.TeamID != team.ID {
+		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox template '%s'", templateID))
+		telemetry.ReportError(ctx, "no access to the template", nil, telemetry.WithTemplateID(aliasInfo.TemplateID))
+
+		return
+	}
+
+	tags, err := a.sqlcDB.ListTemplateTags(ctx, aliasInfo.TemplateID)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when listing template tags")
+		telemetry.ReportCriticalError(ctx, "error when listing template tags", err)
+
+		return
+	}
+
+	res := make([]api.TemplateTag, 0, len(tags))
+	for _, t := range tags {
+		res = append(res, api.TemplateTag{
+			Tag:       t.Tag,
+			BuildID:   t.BuildID,
+			CreatedAt: t.CreatedAt.Time,
+		})
+	}
+
+	c.JSON(http.StatusOK, res)
+}

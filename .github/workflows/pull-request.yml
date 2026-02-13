@@ -14,6 +14,8 @@ on:
 jobs:
   lint:
     uses: ./.github/workflows/lint.yml
+  validate-openapi:
+    uses: ./.github/workflows/validate-openapi.yml
   generated-code-check:
     uses: ./.github/workflows/pr-no-generated-changes.yml
     with:

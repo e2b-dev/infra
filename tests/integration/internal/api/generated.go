@@ -1092,6 +1092,18 @@ type TemplateStep struct {
 	Type string `json:"type"`
 }
 
+// TemplateTag defines model for TemplateTag.
+type TemplateTag struct {
+	// BuildID Identifier of the build associated with this tag
+	BuildID openapi_types.UUID `json:"buildID"`
+
+	// CreatedAt Time when the tag was assigned
+	CreatedAt time.Time `json:"createdAt"`
+
+	// Tag The tag name
+	Tag string `json:"tag"`
+}
+
 // TemplateUpdateRequest defines model for TemplateUpdateRequest.
 type TemplateUpdateRequest struct {
 	// Public Whether the template is public or only accessible by the team
@@ -1722,6 +1734,9 @@ type ClientInterface interface {
 
 	// GetTemplatesTemplateIDFilesHash request
 	GetTemplatesTemplateIDFilesHash(ctx context.Context, templateID TemplateID, hash string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetTemplatesTemplateIDTags request
+	GetTemplatesTemplateIDTags(ctx context.Context, templateID TemplateID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV2Sandboxes request
 	GetV2Sandboxes(ctx context.Context, params *GetV2SandboxesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -2390,6 +2405,18 @@ func (c *Client) GetTemplatesTemplateIDBuildsBuildIDStatus(ctx context.Context, 
 
 func (c *Client) GetTemplatesTemplateIDFilesHash(ctx context.Context, templateID TemplateID, hash string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetTemplatesTemplateIDFilesHashRequest(c.Server, templateID, hash)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetTemplatesTemplateIDTags(ctx context.Context, templateID TemplateID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetTemplatesTemplateIDTagsRequest(c.Server, templateID)
 	if err != nil {
 		return nil, err
 	}
@@ -4451,6 +4478,40 @@ func NewGetTemplatesTemplateIDFilesHashRequest(server string, templateID Templat
 	return req, nil
 }
 
+// NewGetTemplatesTemplateIDTagsRequest generates requests for GetTemplatesTemplateIDTags
+func NewGetTemplatesTemplateIDTagsRequest(server string, templateID TemplateID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "templateID", runtime.ParamLocationPath, templateID)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/templates/%s/tags", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetV2SandboxesRequest generates requests for GetV2Sandboxes
 func NewGetV2SandboxesRequest(server string, params *GetV2SandboxesParams) (*http.Request, error) {
 	var err error
@@ -5139,6 +5200,9 @@ type ClientWithResponsesInterface interface {
 
 	// GetTemplatesTemplateIDFilesHashWithResponse request
 	GetTemplatesTemplateIDFilesHashWithResponse(ctx context.Context, templateID TemplateID, hash string, reqEditors ...RequestEditorFn) (*GetTemplatesTemplateIDFilesHashResponse, error)
+
+	// GetTemplatesTemplateIDTagsWithResponse request
+	GetTemplatesTemplateIDTagsWithResponse(ctx context.Context, templateID TemplateID, reqEditors ...RequestEditorFn) (*GetTemplatesTemplateIDTagsResponse, error)
 
 	// GetV2SandboxesWithResponse request
 	GetV2SandboxesWithResponse(ctx context.Context, params *GetV2SandboxesParams, reqEditors ...RequestEditorFn) (*GetV2SandboxesResponse, error)
@@ -6141,6 +6205,32 @@ func (r GetTemplatesTemplateIDFilesHashResponse) StatusCode() int {
 	return 0
 }
 
+type GetTemplatesTemplateIDTagsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *[]TemplateTag
+	JSON401      *N401
+	JSON403      *N403
+	JSON404      *N404
+	JSON500      *N500
+}
+
+// Status returns HTTPResponse.Status
+func (r GetTemplatesTemplateIDTagsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetTemplatesTemplateIDTagsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type GetV2SandboxesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -6848,6 +6938,15 @@ func (c *ClientWithResponses) GetTemplatesTemplateIDFilesHashWithResponse(ctx co
 		return nil, err
 	}
 	return ParseGetTemplatesTemplateIDFilesHashResponse(rsp)
+}
+
+// GetTemplatesTemplateIDTagsWithResponse request returning *GetTemplatesTemplateIDTagsResponse
+func (c *ClientWithResponses) GetTemplatesTemplateIDTagsWithResponse(ctx context.Context, templateID TemplateID, reqEditors ...RequestEditorFn) (*GetTemplatesTemplateIDTagsResponse, error) {
+	rsp, err := c.GetTemplatesTemplateIDTags(ctx, templateID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetTemplatesTemplateIDTagsResponse(rsp)
 }
 
 // GetV2SandboxesWithResponse request returning *GetV2SandboxesResponse
@@ -8688,6 +8787,60 @@ func ParseGetTemplatesTemplateIDFilesHashResponse(rsp *http.Response) (*GetTempl
 			return nil, err
 		}
 		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetTemplatesTemplateIDTagsResponse parses an HTTP response from a GetTemplatesTemplateIDTagsWithResponse call
+func ParseGetTemplatesTemplateIDTagsResponse(rsp *http.Response) (*GetTemplatesTemplateIDTagsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetTemplatesTemplateIDTagsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []TemplateTag
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest N403
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
 		var dest N404
