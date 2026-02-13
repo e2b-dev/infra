@@ -233,10 +233,15 @@ func (c *apiClient) setMachineConfig(
 	memoryMB int64,
 	hugePages bool,
 ) error {
-	// SMT depends on the physical host CPU, not TARGET_ARCH. ARM processors
-	// don't support simultaneous multi-threading. runtime.GOARCH is correct
-	// here because the binary always runs on the same arch as Firecracker.
-	smt := runtime.GOARCH != "arm64"
+	// SMT (Simultaneous Multi-Threading / Hyper-Threading) must be disabled on
+	// ARM64 because ARM processors use a different core topology (big.LITTLE,
+	// efficiency/performance cores) rather than hardware threads per core.
+	// Firecracker validates this against the host CPU and rejects SMT=true on ARM.
+	// See: https://github.com/firecracker-microvm/firecracker/blob/main/docs/cpu_templates/cpu-features.md
+	// We use runtime.GOARCH (not TARGET_ARCH) because the orchestrator binary
+	// always runs on the same architecture as Firecracker.
+	const archARM64 = "arm64"
+	smt := runtime.GOARCH != archARM64
 	trackDirtyPages := false
 	machineConfig := &models.MachineConfiguration{
 		VcpuCount:       &vCPUCount,

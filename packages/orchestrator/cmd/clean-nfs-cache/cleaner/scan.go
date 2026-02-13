@@ -201,7 +201,10 @@ func (c *Cleaner) scanDir(ctx context.Context, path []*Dir) (out *Dir, err error
 		}
 	}
 
-	// submit all stat requests
+	// Submit stat requests using the directory path (not the *os.File).
+	// The file descriptor df is closed when scanDir returns (defer above),
+	// but Statter goroutines may still be processing requests concurrently.
+	// Passing the path avoids a race between df.Close() and df.Fd().
 	responseCh := make(chan *statReq, len(filenames))
 	for _, name := range filenames {
 		select {
