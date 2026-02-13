@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	"go.uber.org/zap"
 
@@ -16,6 +18,19 @@ const (
 	RootCgroupPath = "/sys/fs/cgroup/e2b"
 )
 
+// Stats contains resource usage statistics from a cgroup
+type Stats struct {
+	// Cumulative CPU time in microseconds (from cpu.stat)
+	CPUUsageUsec  uint64
+	CPUUserUsec   uint64
+	CPUSystemUsec uint64
+
+	// Memory stats (from memory.current, memory.peak, and memory.stat)
+	MemoryUsageBytes uint64
+	MemoryPeakBytes  uint64
+	PageFaults       uint64
+}
+
 // Manager handles lifecycle of cgroups for sandboxes
 type Manager interface {
 	// Initialize creates the root cgroup directory and enables controllers
@@ -25,6 +40,10 @@ type Manager interface {
 	// Create creates a cgroup for a sandbox and adds the Firecracker PID to it
 	// Returns error if cgroup creation or PID assignment fails
 	Create(ctx context.Context, sandboxID string, pid int) error
+
+	// GetStats retrieves current resource usage statistics for a sandbox
+	// Returns error if cgroup does not exist or stats cannot be read
+	GetStats(ctx context.Context, sandboxID string) (*Stats, error)
 
 	// Remove deletes the sandbox cgroup directory
 	// Returns error if removal fails (but cgroup may have been auto-cleaned by kernel)
@@ -84,6 +103,70 @@ func (m *managerImpl) Create(ctx context.Context, sandboxID string, pid int) err
 		zap.String("path", cgroupPath))
 
 	return nil
+}
+
+func (m *managerImpl) GetStats(ctx context.Context, sandboxID string) (*Stats, error) {
+	cgroupPath := m.sandboxCgroupPath(sandboxID)
+
+	stats := &Stats{}
+
+	// Read cpu.stat
+	cpuStatPath := filepath.Join(cgroupPath, "cpu.stat")
+	cpuData, err := os.ReadFile(cpuStatPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read cpu.stat: %w", err)
+	}
+
+	// Parse cpu.stat format: "usage_usec 12345\nuser_usec 6789\nsystem_usec 5556\n..."
+	for _, line := range strings.Split(string(cpuData), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 2 {
+			continue
+		}
+		value, err := strconv.ParseUint(fields[1], 10, 64)
+		if err != nil {
+			continue
+		}
+
+		switch fields[0] {
+		case "usage_usec":
+			stats.CPUUsageUsec = value
+		case "user_usec":
+			stats.CPUUserUsec = value
+		case "system_usec":
+			stats.CPUSystemUsec = value
+		}
+	}
+
+	// Read memory.current
+	memCurrentPath := filepath.Join(cgroupPath, "memory.current")
+	memData, err := os.ReadFile(memCurrentPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read memory.current: %w", err)
+	}
+	stats.MemoryUsageBytes, _ = strconv.ParseUint(strings.TrimSpace(string(memData)), 10, 64)
+
+	// Read memory.peak (may not exist on older kernels)
+	memPeakPath := filepath.Join(cgroupPath, "memory.peak")
+	peakData, err := os.ReadFile(memPeakPath)
+	if err == nil {
+		stats.MemoryPeakBytes, _ = strconv.ParseUint(strings.TrimSpace(string(peakData)), 10, 64)
+	}
+
+	// Read memory.stat for page faults
+	memStatPath := filepath.Join(cgroupPath, "memory.stat")
+	memStatData, err := os.ReadFile(memStatPath)
+	if err == nil {
+		for _, line := range strings.Split(string(memStatData), "\n") {
+			fields := strings.Fields(line)
+			if len(fields) == 2 && fields[0] == "pgfault" {
+				stats.PageFaults, _ = strconv.ParseUint(fields[1], 10, 64)
+				break
+			}
+		}
+	}
+
+	return stats, nil
 }
 
 func (m *managerImpl) Remove(ctx context.Context, sandboxID string) error {
