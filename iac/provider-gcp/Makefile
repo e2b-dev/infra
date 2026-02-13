@@ -91,6 +91,10 @@ init:
 	@ TERRAFORM_STATE_BUCKET="$(TERRAFORM_STATE_BUCKET)" $(MAKE) -C nomad-cluster-disk-image init build
 	@ gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
 
+.PHONY: apply-init
+apply-init:
+	@ $(tf_vars) $(TF) apply $(TF_VAR_FILE_ARG) -target=module.init -auto-approve -input=false -compact-warnings
+
 .PHONY: switch
 switch:
 	@ printf "Switching Terraform backend for different env ${ENV}\n"

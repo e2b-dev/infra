@@ -144,10 +144,10 @@ module "nomad" {
   gcp_region     = var.gcp_region
   gcp_zone       = var.gcp_zone
 
-  consul_acl_token_secret       = module.init.consul_acl_token_secret
-  nomad_acl_token_secret        = module.init.nomad_acl_token_secret
-  nomad_port                    = var.nomad_port
-  orchestration_repository_name = module.init.orchestration_repository_name
+  consul_acl_token_secret = module.init.consul_acl_token_secret
+  nomad_acl_token_secret  = module.init.nomad_acl_token_secret
+  nomad_port              = var.nomad_port
+  core_repository_name    = module.init.core_repository_name
 
   # Clickhouse
   clickhouse_resources_cpu_count   = var.clickhouse_resources_cpu_count

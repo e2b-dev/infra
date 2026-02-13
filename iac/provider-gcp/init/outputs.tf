@@ -34,8 +34,8 @@ output "routing_domains_secret_name" {
   value = google_secret_manager_secret.routing_domains.name
 }
 
-output "orchestration_repository_name" {
-  value = google_artifact_registry_repository.orchestration.name
+output "core_repository_name" {
+  value = google_artifact_registry_repository.core.name
 }
 
 output "cloudflare_api_token_secret_name" {
