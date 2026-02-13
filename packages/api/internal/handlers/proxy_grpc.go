@@ -91,7 +91,9 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 	if network != nil && network.Ingress != nil && network.Ingress.AllowPublicAccess != nil && !*network.Ingress.AllowPublicAccess {
 		expectedToken, tokenErr := s.api.accessTokenGenerator.GenerateTrafficAccessToken(sandboxID)
 		if tokenErr != nil {
-			return nil, status.Errorf(codes.Internal, "failed to generate expected traffic token: %v", tokenErr)
+			logger.L().Error(ctx, "failed to generate expected traffic access token", zap.Error(tokenErr), logger.WithSandboxID(sandboxID))
+
+			return nil, status.Error(codes.Internal, "failed to validate traffic access token")
 		}
 
 		var providedToken string
