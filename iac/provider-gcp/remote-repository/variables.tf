@@ -16,13 +16,6 @@ variable "google_service_account_email" {
 
 variable "dockerhub_auth_username" {
   type        = string
-  description = "DockerHub username for authenticated pulls through the remote repository. Leave empty to use unauthenticated access."
-  default     = ""
-}
-
-variable "dockerhub_auth_password" {
-  type        = string
-  description = "DockerHub password or personal access token for authenticated pulls. Stored in GCP Secret Manager."
-  sensitive   = true
+  description = "DockerHub username for authenticated pulls through the remote repository. Leave empty to use unauthenticated access. The password must be added manually as a secret version in GCP Secret Manager."
   default     = ""
 }

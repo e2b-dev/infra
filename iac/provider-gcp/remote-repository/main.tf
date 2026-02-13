@@ -1,5 +1,5 @@
 locals {
-  dockerhub_auth_enabled = var.dockerhub_auth_username != "" && var.dockerhub_auth_password != ""
+  dockerhub_auth_enabled = var.dockerhub_auth_username != ""
 }
 
 resource "google_secret_manager_secret" "dockerhub_password" {
@@ -12,11 +12,15 @@ resource "google_secret_manager_secret" "dockerhub_password" {
   }
 }
 
-resource "google_secret_manager_secret_version" "dockerhub_password" {
+resource "google_secret_manager_secret_version" "dockerhub_password_initial" {
   count = local.dockerhub_auth_enabled ? 1 : 0
 
   secret      = google_secret_manager_secret.dockerhub_password[0].name
-  secret_data = var.dockerhub_auth_password
+  secret_data = " "
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
 }
 
 data "google_project" "project" {
@@ -40,7 +44,8 @@ resource "google_artifact_registry_repository" "dockerhub_remote_repository" {
   format        = "DOCKER"
   mode          = "REMOTE_REPOSITORY"
   remote_repository_config {
-    description = "Docker Hub"
+    description                 = "Docker Hub"
+    disable_upstream_validation = false
     docker_repository {
       public_repository = "DOCKER_HUB"
     }
@@ -50,7 +55,7 @@ resource "google_artifact_registry_repository" "dockerhub_remote_repository" {
       content {
         username_password_credentials {
           username                = var.dockerhub_auth_username
-          password_secret_version = google_secret_manager_secret_version.dockerhub_password[0].name
+          password_secret_version = "${google_secret_manager_secret.dockerhub_password[0].name}/versions/latest"
         }
       }
     }
@@ -64,7 +69,10 @@ resource "google_artifact_registry_repository" "dockerhub_remote_repository" {
     }
   }
 
-  depends_on = [google_secret_manager_secret_iam_member.ar_service_agent_secret_access]
+  depends_on = [
+    google_secret_manager_secret_iam_member.ar_service_agent_secret_access,
+    google_secret_manager_secret_version.dockerhub_password_initial,
+  ]
 }
 
 resource "google_artifact_registry_repository_iam_member" "dockerhub_remote_repository_member" {

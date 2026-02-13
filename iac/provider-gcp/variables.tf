@@ -437,14 +437,7 @@ variable "remote_repository_enabled" {
 
 variable "dockerhub_auth_username" {
   type        = string
-  description = "DockerHub username for authenticated pulls through the remote repository. Increases rate limits and enables access to private repos."
-  default     = ""
-}
-
-variable "dockerhub_auth_password" {
-  type        = string
-  description = "DockerHub password or personal access token for authenticated pulls."
-  sensitive   = true
+  description = "DockerHub username for authenticated pulls through the remote repository. Increases rate limits and enables access to private repos. The password must be added manually as a secret version in GCP Secret Manager."
   default     = ""
 }
 

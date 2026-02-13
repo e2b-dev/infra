@@ -274,5 +274,4 @@ module "remote_repository" {
   google_service_account_email = module.init.service_account_email
 
   dockerhub_auth_username = var.dockerhub_auth_username
-  dockerhub_auth_password = var.dockerhub_auth_password
 }
