@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -65,21 +64,21 @@ func (a *APIStore) PostVolumesVolumeIDFile(c *gin.Context, volumeID api.VolumeID
 		buffer := make([]byte, incomingBufferSize)
 
 		for {
-			reader := bytes.NewBuffer(buffer)
-			count, err := reader.ReadFrom(c.Request.Body)
+			count, err := c.Request.Body.Read(buffer[:cap(buffer)])
 			if ignoreEOF(err) != nil {
 				return fmt.Errorf("failed to read from request body: %w", err)
 			}
 
-			err = fileClient.Send(&orchestrator.VolumeFileCreateRequest{
-				Message: &orchestrator.VolumeFileCreateRequest_Content{
-					Content: &orchestrator.VolumeFileCreateContent{Content: buffer[:count]},
-				},
-			})
-			if err != nil {
-				return fmt.Errorf("failed to send content message: %w", err)
+			if count > 0 {
+				err = fileClient.Send(&orchestrator.VolumeFileCreateRequest{
+					Message: &orchestrator.VolumeFileCreateRequest_Content{
+						Content: &orchestrator.VolumeFileCreateContent{Content: buffer[:count]},
+					},
+				})
+				if err != nil {
+					return fmt.Errorf("failed to send content message: %w", err)
+				}
 			}
-
 			if errors.Is(err, io.EOF) {
 				break
 			}
@@ -99,7 +98,7 @@ func (a *APIStore) PostVolumesVolumeIDFile(c *gin.Context, volumeID api.VolumeID
 		}
 
 		entry := toVolumeEntryStat(finish.GetEntry())
-		c.JSON(http.StatusOK, &api.PostVolumesVolumeIDFileResponse{
+		c.JSON(http.StatusCreated, &api.PostVolumesVolumeIDFileResponse{
 			JSON201: &entry,
 		})
 

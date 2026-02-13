@@ -56,11 +56,22 @@ func (v *VolumeService) CreateFile(server orchestrator.VolumeService_CreateFileS
 			}
 
 		case *orchestrator.VolumeFileCreateRequest_Finish:
+			if err = file.Sync(); err != nil {
+				return err
+			}
+
 			if err := os.Chown(fullPath, int(start.GetOwnerId()), int(start.GetGroupId())); err != nil {
 				return err
 			}
 
-			return server.SendAndClose(&orchestrator.VolumeFileCreateResponse{})
+			entry, err := os.Stat(fullPath)
+			if err != nil {
+				return err
+			}
+
+			return server.SendAndClose(&orchestrator.VolumeFileCreateResponse{
+				Entry: toEntry(entry),
+			})
 
 		default:
 			return ErrUnexpectedStart
