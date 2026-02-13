@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
+	"strconv"
 	"time"
 
 	"go.uber.org/zap"
@@ -16,6 +17,7 @@ import (
 	dbapi "github.com/e2b-dev/infra/packages/api/internal/db"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sharedutils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -87,8 +89,29 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		network = snap.Snapshot.Config.Network
 	}
 
+	incomingMetadata := metadata.MD{}
+	if md, ok := metadata.FromIncomingContext(ctx); ok {
+		incomingMetadata = md
+	}
+
+	isNonEnvdTraffic := true
+	if vals := incomingMetadata.Get(proxygrpc.MetadataSandboxRequestPort); len(vals) > 0 {
+		requestPort, parseErr := strconv.ParseUint(vals[0], 10, 64)
+		if parseErr != nil {
+			logger.L().Warn(
+				ctx,
+				"invalid sandbox request port metadata for resume",
+				zap.Error(parseErr),
+				zap.String("request_port", vals[0]),
+				logger.WithSandboxID(sandboxID),
+			)
+		} else {
+			isNonEnvdTraffic = requestPort != uint64(consts.DefaultEnvdServerPort)
+		}
+	}
+
 	// Validate traffic access token for sandboxes with private ingress.
-	if network != nil && network.Ingress != nil && network.Ingress.AllowPublicAccess != nil && !*network.Ingress.AllowPublicAccess {
+	if network != nil && network.Ingress != nil && network.Ingress.AllowPublicAccess != nil && !*network.Ingress.AllowPublicAccess && isNonEnvdTraffic {
 		expectedToken, tokenErr := s.api.accessTokenGenerator.GenerateTrafficAccessToken(sandboxID)
 		if tokenErr != nil {
 			logger.L().Error(ctx, "failed to generate expected traffic access token", zap.Error(tokenErr), logger.WithSandboxID(sandboxID))
@@ -97,10 +120,8 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		}
 
 		var providedToken string
-		if md, ok := metadata.FromIncomingContext(ctx); ok {
-			if vals := md.Get("e2b-traffic-access-token"); len(vals) > 0 {
-				providedToken = vals[0]
-			}
+		if vals := incomingMetadata.Get(proxygrpc.MetadataTrafficAccessToken); len(vals) > 0 {
+			providedToken = vals[0]
 		}
 
 		if subtle.ConstantTimeCompare([]byte(providedToken), []byte(expectedToken)) != 1 {

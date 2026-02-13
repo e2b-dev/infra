@@ -41,11 +41,11 @@ const (
 	autoResumeErrored
 )
 
-func findActiveNode(ctx context.Context, sandboxId string, trafficAccessToken string, c catalog.SandboxesCatalog, pausedChecker PausedSandboxResumer, featureFlags *featureflags.Client) (string, error) {
+func findActiveNode(ctx context.Context, sandboxId string, sandboxPort uint64, trafficAccessToken string, c catalog.SandboxesCatalog, pausedChecker PausedSandboxResumer, featureFlags *featureflags.Client) (string, error) {
 	s, err := c.GetSandbox(ctx, sandboxId)
 	if err != nil {
 		if errors.Is(err, catalog.ErrSandboxNotFound) {
-			nodeIP, res, pausedErr := handlePausedSandbox(ctx, sandboxId, trafficAccessToken, pausedChecker, featureFlags)
+			nodeIP, res, pausedErr := handlePausedSandbox(ctx, sandboxId, sandboxPort, trafficAccessToken, pausedChecker, featureFlags)
 			if pausedErr != nil {
 				return "", pausedErr
 			}
@@ -67,6 +67,7 @@ func findActiveNode(ctx context.Context, sandboxId string, trafficAccessToken st
 func handlePausedSandbox(
 	ctx context.Context,
 	sandboxId string,
+	sandboxPort uint64,
 	trafficAccessToken string,
 	pausedChecker PausedSandboxResumer,
 	featureFlags *featureflags.Client,
@@ -82,7 +83,7 @@ func handlePausedSandbox(
 	}
 
 	logger.L().Info(ctx, "catalog miss, attempting resume via api", logger.WithSandboxID(sandboxId))
-	nodeIP, err := pausedChecker.Resume(ctx, sandboxId, trafficAccessToken)
+	nodeIP, err := pausedChecker.Resume(ctx, sandboxId, sandboxPort, trafficAccessToken)
 	if err != nil {
 		if isNotResumableError(err) {
 			return "", autoResumeNotAllowed, nil
@@ -129,7 +130,7 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 			)
 
 			trafficAccessToken := r.Header.Get("e2b-traffic-access-token")
-			nodeIP, err := findActiveNode(ctx, sandboxId, trafficAccessToken, catalog, pausedSandboxResumer, featureFlagsClient)
+			nodeIP, err := findActiveNode(ctx, sandboxId, port, trafficAccessToken, catalog, pausedSandboxResumer, featureFlagsClient)
 			if err != nil {
 				if !errors.Is(err, ErrNodeNotFound) {
 					l.Warn(ctx, "failed to resolve node ip with Redis resolution", zap.Error(err))
