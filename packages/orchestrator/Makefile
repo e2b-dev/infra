@@ -67,6 +67,8 @@ upload/orchestrator:
 	chmod +x ./bin/orchestrator
 ifeq ($(PROVIDER),aws)
 	aws s3 cp ./bin/orchestrator "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/orchestrator" --profile ${AWS_PROFILE} --cache-control "no-cache, max-age=0"
+else ifeq ($(PROVIDER),linux)
+	PROVIDER=$(PROVIDER) ./upload-orchestrator.sh $(GCP_PROJECT_ID)
 else
 	gsutil -h "Cache-Control:no-cache, max-age=0" cp ./bin/orchestrator "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/orchestrator"
 endif
@@ -76,6 +78,8 @@ upload/template-manager:
 	chmod +x ./bin/orchestrator
 ifeq ($(PROVIDER),aws)
 	aws s3 cp ./bin/orchestrator "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/template-manager" --profile ${AWS_PROFILE} --cache-control "no-cache, max-age=0"
+else ifeq ($(PROVIDER),linux)
+	PROVIDER=$(PROVIDER) ./upload-template-manager.sh $(GCP_PROJECT_ID)
 else
 	gsutil -h "Cache-Control:no-cache, max-age=0" cp ./bin/orchestrator "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/template-manager"
 endif

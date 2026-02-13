@@ -15,6 +15,8 @@ upload:
 	chmod +x bin/envd
 ifeq ($(PROVIDER),aws)
 	aws s3 cp ./bin/envd "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/envd" --profile ${AWS_PROFILE} --cache-control "no-cache, max-age=0"
+else ifeq ($(PROVIDER),linux)
+	PROVIDER=$(PROVIDER) ./upload.sh $(GCP_PROJECT_ID)
 else
 	gsutil -h "Cache-Control:no-cache, max-age=0" cp bin/envd "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/envd"
 endif

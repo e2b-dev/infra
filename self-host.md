@@ -54,8 +54,8 @@ Check if you can use config for terraform state management
 2. Create `.env.prod`, `.env.staging`, or `.env.dev` from [`.env.template`](.env.template). You can pick any of them. Make sure to fill in the values. All are required if not specified otherwise.
     > Get Postgres database connection string from your database, e.g. [from Supabase](https://supabase.com/docs/guides/database/connecting-to-postgres#direct-connection): Create a new project in Supabase and go to your project in Supabase -> Settings -> Database -> Connection Strings -> Postgres -> Direct or Shared
     > The variant needs to be IPv4 compatible. You can either use Shared or use the IPv4 add-on in Connect screen
-3. Run `make set-env ENV={prod,staging,dev}` to start using your env
-4. Run `make provider-login` to login to `gcloud`
+3. Run `make switch-env ENV={prod,staging,dev}` to start using your env
+4. Run `make provider-login` to login to your provider (e.g. `gcloud` for GCP)
 5. Run `make init`. If this errors, run it a second time--it's due to a race condition on Terraform enabling API access for the various GCP services; this can take several seconds. A full list of services that will be enabled for API access:
    - [Secret Manager API](https://console.cloud.google.com/apis/library/secretmanager.googleapis.com)
    - [Certificate Manager API](https://console.cloud.google.com/apis/library/certificatemanager.googleapis.com)
@@ -137,7 +137,11 @@ You can build your own kernel and Firecracker version from source by running `ma
 - `make build-and-upload` - builds and uploads the docker images, binaries, and cluster disk image
 - `make copy-public-builds` - copies the old envd binary, kernels, and firecracker versions from the public bucket to your bucket
 - `make migrate` - runs the migrations for your database
+<<<<<<< HEAD
 - `make provider-login` - logs in to cloud provider
+=======
+- `make login` - logs in to the selected provider (gcp will invoke gcloud; linux has no login)
+>>>>>>> provider-linux
 - `make switch-env ENV={prod,staging,dev}` - switches the environment
 - `make import TARGET={resource} ID={resource_id}` - imports the already created resources into the terraform state
 - `make setup-ssh` - sets up the ssh key for the environment (useful for remote-debugging)
@@ -157,3 +161,136 @@ Wait a minute and destroy the VM:
 gcloud compute instances delete dummy-init --zone=YOUR-ZONE --quiet
 ```
 Now, you should see the right quota options in `All Quotas` and be able to request the correct size. 
+
+---
+
+## Self-hosting E2B on Linux (Bare Metal)
+
+### Prerequisites
+
+- Terraform (v1.5.x)
+  - v1.5.7 recommended (license compatibility)
+- SSH access to all machines
+  - Each node must be reachable via SSH with a user and private key
+- Supported OS
+  - Ubuntu/Debian-based distributions with `systemd`
+- Docker
+  - Terraform will install Docker if missing
+- Make
+  - Used for running automation commands
+
+### Accounts and Secrets
+
+- PostgreSQL database connection string
+- Optional: Posthog API key, LaunchDarkly API key
+- Optional: Redis secure cluster URL and TLS CA
+
+### Steps
+
+1. Create `.env.prod`, `.env.staging`, or `.env.dev` from [`.env.template`](.env.template)
+   - Set `PROVIDER=linux`
+   - Set `DATACENTER`, e.g. `dc1`
+   - Set `NOMAD_ADDRESS`, e.g. `http://localhost:4646` (per node)
+   - Optionally set `NOMAD_ACL_TOKEN` and `CONSUL_ACL_TOKEN`
+   - Define bare-metal nodes as JSON strings:
+     - `SERVERS_JSON='[{"host":"10.0.0.10","ssh_user":"ubuntu","ssh_private_key_path":"/home/me/.ssh/id_rsa","node_pool":"servers"}]'`
+     - `CLIENTS_JSON='[{"host":"10.0.0.20","ssh_user":"ubuntu","ssh_private_key_path":"/home/me/.ssh/id_rsa","node_pool":"api"}]'`
+   - Fill port objects (JSON), images, artifacts and application secrets per the template comments
+   - **Network Security**:
+     - Set `ENABLE_NETWORK_POLICY=true` to enable UFW firewall management.
+     - Configure `NETWORK_OPEN_PORTS` (JSON list) for allowed ports (e.g., `["22/tcp", "80/tcp", "4646/tcp", "8500/tcp"]`).
+   - **Storage**:
+     - Set `USE_NFS_SHARE_STORAGE=true` and `NFS_SERVER_IP` to use NFS for shared storage.
+
+2. Run `make switch-env ENV={prod,staging,dev}`
+
+3. Run `make init`
+
+4. Build and upload images and artifacts
+   - Set a Docker registry prefix (optional, enables auto image names)
+     ```sh
+     # Example: local registry on 192.168.3.4
+     echo dev > .last_used_env
+     # in .env.dev
+     DOCKER_IMAGE_PREFIX=192.168.3.4:5000/e2b-orchestration
+     ```
+   - Build and push images and binaries using the global Makefile
+     ```sh
+     make build-and-upload-linux
+     ```
+   - Upload orchestrator/template-manager binaries for HTTP artifact URLs
+     - Ensure in your `.env` you set:
+       - `ARTIFACT_SCP_HOST`, `ARTIFACT_SCP_USER`, `ARTIFACT_SCP_DIR`, `ARTIFACT_SCP_SSH_KEY`, `ARTIFACT_SCP_PORT`
+     - The `make build-and-upload-linux` command handles the upload via `scp` to the server specified in `ARTIFACT_SCP_HOST`.
+     - The Terraform script (`null_resource.artifact_scp_server`) can configure an Nginx server to serve these artifacts if `ENABLE_ARTIFACT_SCP_SERVER=true`.
+
+5. Plan/apply base resources (without Nomad jobs)
+   - `make plan-without-jobs`
+   - `make apply`
+
+6. **Firewall Configuration (Optional but Recommended)**
+   - If `ENABLE_NETWORK_POLICY=true`, you can manage firewall rules:
+     - `make plan-firewall` - Plan firewall changes
+     - `make apply-firewall` - Apply firewall changes (installs/configures UFW)
+     - `make taint-firewall` - Force recreation of firewall resources if needed
+
+7. Plan/apply Nomad jobs
+   - `make plan-only-jobs`
+   - `make apply`
+
+8. Verify services
+   - Nomad UI: `http://<server_ip>:4646` (Nomad bound to `0.0.0.0`)
+   - Consul UI: `http://<server_ip>:8500` (if UI enabled)
+   - Consul DNS: system resolver is configured to use `127.0.0.1:8600`
+
+### Firewall Management
+
+The Linux provider includes built-in support for managing `ufw` firewall rules on the nodes.
+- **Enable**: Set `ENABLE_NETWORK_POLICY=true` in your `.env` file.
+- **Configure**: List allowed ports in `NETWORK_OPEN_PORTS` (e.g., `["22/tcp", "80/tcp", "4646/tcp", "8500/tcp"]`).
+- **Commands**:
+  - `make plan-firewall`: Preview changes.
+  - `make apply-firewall`: Apply changes.
+  - `make taint-firewall [node]`: Taint firewall resource for all nodes or a specific node.
+
+### Uninstalling
+
+To uninstall the Linux provider resources:
+1. The uninstall process requires a confirmation phrase (current timestamp) for safety.
+2. Run the uninstall command:
+   ```sh
+   make uninstall UNINSTALL_CONFIRM_PHRASE=$(date +%Y%m%d%H%M)
+   ```
+   Note: This will remove Nomad jobs first to avoid connection errors, then destroy the infrastructure.
+
+### What Terraform does on bare metal
+
+- Configures Consul (`/etc/consul.d/consul.json`) and Nomad (`/etc/nomad.d/nomad.json`) via SSH
+- Starts and enables `consul` and `nomad` services via `systemd`
+- Optionally enables Consul ACL if `CONSUL_ACL_TOKEN` is set
+- Configures `systemd-resolved` to resolve via Consul DNS (`127.0.0.1:8600`)
+- Provisions Nomad jobs for API, ingress, orchestrator, template-manager, Loki, and Otel Collector
+- **Firewall**: Installs and configures `ufw` if enabled.
+- **NFS**: Configures NFS server if enabled.
+- **Artifact Server**: Optionally configures Nginx to serve artifacts.
+
+### Variables to pay attention to
+
+- Node pools: `API_NODE_POOL`, `ORCHESTRATOR_NODE_POOL`, `BUILDER_NODE_POOL`
+- Ports (JSON strings): `API_PORT`, `INGRESS_PORT`, `EDGE_API_PORT`, `EDGE_PROXY_PORT`, `LOGS_PROXY_PORT`, `LOKI_SERVICE_PORT`, `LOGS_HEALTH_PROXY_PORT`
+- Artifacts: `ORCHESTRATOR_ARTIFACT_URL`, `TEMPLATE_MANAGER_ARTIFACT_URL`, `ARTIFACT_SCP_*`
+- Observability: `OTEL_COLLECTOR_GRPC_PORT`, `OTEL_COLLECTOR_RESOURCES_*`, `LOKI_RESOURCES_*`
+- Secrets/config: `API_SECRET`, `EDGE_API_SECRET`, `API_ADMIN_TOKEN`, `SUPABASE_JWT_SECRETS`, `POSTHOG_API_KEY`, `LAUNCH_DARKLY_API_KEY`
+- Redis: `REDIS_URL`, `REDIS_SECURE_CLUSTER_URL`, `REDIS_TLS_CA_BASE64`
+- Buckets/cache: `TEMPLATE_BUCKET_NAME`, `BUILD_CACHE_BUCKET_NAME`, `SHARED_CHUNK_CACHE_PATH`
+- Sandbox/networking: `ENVD_TIMEOUT`, `ALLOW_SANDBOX_INTERNET`, `ENABLE_NETWORK_POLICY`, `NETWORK_OPEN_PORTS`
+- Storage: `USE_NFS_SHARE_STORAGE`, `NFS_SERVER_IP`
+- ClickHouse: `CLICKHOUSE_*` variables
+
+### Troubleshooting (Linux)
+
+- SSH errors: verify `ssh_user`, `ssh_private_key_path`, and host connectivity
+- Consul/Nomad not starting: check `/var/log/syslog` and `systemctl status {consul,nomad}`
+- DNS resolution: ensure `/etc/systemd/resolved.conf.d/consul.conf` exists and `systemd-resolved` is running
+- Jobs not visible: check Nomad ACL token (`NOMAD_ACL_TOKEN`) and Nomad address in `.env`
+
