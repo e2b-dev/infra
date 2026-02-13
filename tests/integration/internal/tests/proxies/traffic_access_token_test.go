@@ -1,7 +1,9 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -9,10 +11,12 @@ import (
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
@@ -192,4 +196,98 @@ func TestEnvdPortIsNotAffectedByTrafficAccessToken(t *testing.T) {
 	require.NotNil(t, resp)
 	require.NoError(t, resp.Body.Close())
 	require.Equal(t, http.StatusNotFound, resp.StatusCode)
+}
+
+func TestSandboxWithTrafficAccessTokenAutoResumeViaProxy(t *testing.T) {
+	t.Parallel()
+
+	c := setup.GetAPIClient()
+	ctx := t.Context()
+
+	sbxNetAllowPublic := false
+	sbxNet := &api.SandboxNetworkConfig{
+		AllowPublicTraffic: &sbxNetAllowPublic,
+	}
+
+	sbx := utils.SetupSandboxWithCleanup(
+		t,
+		c,
+		utils.WithNetwork(sbxNet),
+		utils.WithSecure(true),
+		utils.WithAutoPause(true),
+		utils.WithAutoResume(api.Any),
+	)
+	require.NotNil(t, sbx.TrafficAccessToken)
+	require.NotNil(t, sbx.EnvdAccessToken)
+
+	envdClient := setup.GetEnvdClient(t, ctx)
+	serverCtx, serverCancel := context.WithCancel(ctx)
+	port := 8080
+	serverReq := connect.NewRequest(&process.StartRequest{
+		Process: &process.ProcessConfig{
+			Cmd:  "python",
+			Args: []string{"-m", "http.server", fmt.Sprintf("%d", port)},
+		},
+	})
+	setup.SetSandboxHeader(serverReq.Header(), sbx.SandboxID)
+	setup.SetUserHeader(serverReq.Header(), "user")
+	setup.SetAccessTokenHeader(serverReq.Header(), *sbx.EnvdAccessToken)
+	serverStream, err := envdClient.ProcessClient.Start(serverCtx, serverReq)
+	require.NoError(t, err)
+	defer func() {
+		serverCancel()
+		if streamErr := serverStream.Close(); streamErr != nil {
+			t.Logf("Error closing server stream: %v", streamErr)
+		}
+	}()
+
+	time.Sleep(time.Second)
+
+	proxyURL, err := url.Parse(setup.EnvdProxy)
+	require.NoError(t, err)
+
+	client := &http.Client{Timeout: 10 * time.Second}
+
+	sbxWithoutToken := *sbx
+	sbxWithoutToken.TrafficAccessToken = nil
+
+	// While running, missing traffic token must be rejected.
+	resp := utils.WaitForStatus(t, client, &sbxWithoutToken, proxyURL, port, nil, http.StatusForbidden)
+	require.NotNil(t, resp)
+	require.NoError(t, resp.Body.Close())
+
+	// Valid traffic token allows access.
+	resp = utils.WaitForStatus(t, client, sbx, proxyURL, port, nil, http.StatusOK)
+	require.NotNil(t, resp)
+	require.NoError(t, resp.Body.Close())
+
+	// Pause sandbox.
+	pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
+	require.NoError(t, err)
+	require.Equal(t, http.StatusNoContent, pauseResp.StatusCode())
+
+	res, err := c.GetSandboxesSandboxIDWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
+	require.NoError(t, err)
+	require.NotNil(t, res.JSON200, "expected 200 response, got status %d", res.StatusCode())
+	require.Equal(t, api.Paused, res.JSON200.State)
+
+	// While paused, missing token must not auto-resume and request should fail.
+	resp = utils.WaitForStatus(t, client, &sbxWithoutToken, proxyURL, port, nil, http.StatusBadGateway)
+	require.NotNil(t, resp)
+	require.NoError(t, resp.Body.Close())
+
+	res, err = c.GetSandboxesSandboxIDWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
+	require.NoError(t, err)
+	require.NotNil(t, res.JSON200, "expected 200 response, got status %d", res.StatusCode())
+	require.Equal(t, api.Paused, res.JSON200.State)
+
+	// Valid token request should auto-resume and succeed.
+	resp = utils.WaitForStatus(t, client, sbx, proxyURL, port, nil, http.StatusOK)
+	require.NotNil(t, resp)
+	require.NoError(t, resp.Body.Close())
+
+	res, err = c.GetSandboxesSandboxIDWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
+	require.NoError(t, err)
+	require.NotNil(t, res.JSON200, "expected 200 response, got status %d", res.StatusCode())
+	require.Equal(t, api.Running, res.JSON200.State)
 }
