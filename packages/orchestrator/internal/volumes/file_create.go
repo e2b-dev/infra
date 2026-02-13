@@ -36,7 +36,11 @@ func (v *VolumeService) CreateFile(server orchestrator.VolumeService_CreateFileS
 
 	perm := os.FileMode(start.GetMode())
 
-	file, err := os.OpenFile(fullPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, perm)
+	flags := os.O_CREATE | os.O_WRONLY
+	if !start.GetForce() { // do not overwrite an existing file
+		flags |= os.O_EXCL | os.O_TRUNC
+	}
+	file, err := os.OpenFile(fullPath, flags, perm)
 	if err != nil {
 		return err
 	}
