@@ -102,3 +102,11 @@ output "fc_build_cache_bucket_name" {
 output "clickhouse_backups_bucket_name" {
   value = google_storage_bucket.clickhouse_backups_bucket.name
 }
+
+output "dockerhub_username_secret_name" {
+  value = google_secret_manager_secret.dockerhub_username.name
+}
+
+output "dockerhub_password_secret_name" {
+  value = google_secret_manager_secret.dockerhub_password.name
+}

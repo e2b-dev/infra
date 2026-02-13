@@ -254,3 +254,41 @@ resource "google_secret_manager_secret_version" "notification_email_value" {
 
   secret_data = "placeholder@example.com"
 }
+
+resource "google_secret_manager_secret" "dockerhub_username" {
+  secret_id = "${var.prefix}dockerhub-remote-repo-username"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [time_sleep.secrets_api_wait_60_seconds]
+}
+
+resource "google_secret_manager_secret_version" "dockerhub_username" {
+  secret      = google_secret_manager_secret.dockerhub_username.name
+  secret_data = " "
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+}
+
+resource "google_secret_manager_secret" "dockerhub_password" {
+  secret_id = "${var.prefix}dockerhub-remote-repo-password"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [time_sleep.secrets_api_wait_60_seconds]
+}
+
+resource "google_secret_manager_secret_version" "dockerhub_password" {
+  secret      = google_secret_manager_secret.dockerhub_password.name
+  secret_data = " "
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+}

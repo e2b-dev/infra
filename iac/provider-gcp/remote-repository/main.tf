@@ -1,40 +1,22 @@
-locals {
-  dockerhub_auth_enabled = var.dockerhub_auth_username != ""
-}
-
-resource "google_secret_manager_secret" "dockerhub_password" {
-  count = local.dockerhub_auth_enabled ? 1 : 0
-
-  secret_id = "${var.prefix}dockerhub-remote-repo-password"
-
-  replication {
-    auto {}
-  }
-}
-
-resource "google_secret_manager_secret_version" "dockerhub_password_initial" {
-  count = local.dockerhub_auth_enabled ? 1 : 0
-
-  secret      = google_secret_manager_secret.dockerhub_password[0].name
-  secret_data = " "
-
-  lifecycle {
-    ignore_changes = [secret_data]
-  }
-}
-
 data "google_project" "project" {
-  count = local.dockerhub_auth_enabled ? 1 : 0
-
   project_id = var.gcp_project_id
 }
 
-resource "google_secret_manager_secret_iam_member" "ar_service_agent_secret_access" {
-  count = local.dockerhub_auth_enabled ? 1 : 0
+data "google_secret_manager_secret_version" "dockerhub_username" {
+  secret  = var.dockerhub_username_secret_name
+  version = "latest"
+}
 
-  secret_id = google_secret_manager_secret.dockerhub_password[0].id
+resource "google_secret_manager_secret_iam_member" "ar_service_agent_username_secret_access" {
+  secret_id = var.dockerhub_username_secret_name
   role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:service-${data.google_project.project[0].number}@gcp-sa-artifactregistry.iam.gserviceaccount.com"
+  member    = "serviceAccount:service-${data.google_project.project.number}@gcp-sa-artifactregistry.iam.gserviceaccount.com"
+}
+
+resource "google_secret_manager_secret_iam_member" "ar_service_agent_password_secret_access" {
+  secret_id = var.dockerhub_password_secret_name
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:service-${data.google_project.project.number}@gcp-sa-artifactregistry.iam.gserviceaccount.com"
 }
 
 resource "google_artifact_registry_repository" "dockerhub_remote_repository" {
@@ -51,11 +33,11 @@ resource "google_artifact_registry_repository" "dockerhub_remote_repository" {
     }
 
     dynamic "upstream_credentials" {
-      for_each = local.dockerhub_auth_enabled ? [1] : []
+      for_each = trimspace(data.google_secret_manager_secret_version.dockerhub_username.secret_data) != "" ? [1] : []
       content {
         username_password_credentials {
-          username                = var.dockerhub_auth_username
-          password_secret_version = "${google_secret_manager_secret.dockerhub_password[0].name}/versions/latest"
+          username                = data.google_secret_manager_secret_version.dockerhub_username.secret_data
+          password_secret_version = "${var.dockerhub_password_secret_name}/versions/latest"
         }
       }
     }
@@ -70,8 +52,8 @@ resource "google_artifact_registry_repository" "dockerhub_remote_repository" {
   }
 
   depends_on = [
-    google_secret_manager_secret_iam_member.ar_service_agent_secret_access,
-    google_secret_manager_secret_version.dockerhub_password_initial,
+    google_secret_manager_secret_iam_member.ar_service_agent_username_secret_access,
+    google_secret_manager_secret_iam_member.ar_service_agent_password_secret_access,
   ]
 }
 

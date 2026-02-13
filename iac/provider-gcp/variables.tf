@@ -435,11 +435,6 @@ variable "remote_repository_enabled" {
   default     = false
 }
 
-variable "dockerhub_auth_username" {
-  type        = string
-  description = "DockerHub username for authenticated pulls through the remote repository. Increases rate limits and enables access to private repos. The password must be added manually as a secret version in GCP Secret Manager."
-  default     = ""
-}
 
 variable "client_clusters_config" {
   type = map(object({
