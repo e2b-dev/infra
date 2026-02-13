@@ -7,12 +7,6 @@ data "google_secret_manager_secret_version" "dockerhub_username" {
   version = "latest"
 }
 
-resource "google_secret_manager_secret_iam_member" "ar_service_agent_username_secret_access" {
-  secret_id = var.dockerhub_username_secret_name
-  role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:service-${data.google_project.project.number}@gcp-sa-artifactregistry.iam.gserviceaccount.com"
-}
-
 resource "google_secret_manager_secret_iam_member" "ar_service_agent_password_secret_access" {
   secret_id = var.dockerhub_password_secret_name
   role      = "roles/secretmanager.secretAccessor"
@@ -52,7 +46,6 @@ resource "google_artifact_registry_repository" "dockerhub_remote_repository" {
   }
 
   depends_on = [
-    google_secret_manager_secret_iam_member.ar_service_agent_username_secret_access,
     google_secret_manager_secret_iam_member.ar_service_agent_password_secret_access,
   ]
 }
