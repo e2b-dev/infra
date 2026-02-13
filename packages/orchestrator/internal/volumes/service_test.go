@@ -36,6 +36,7 @@ func TestBuildVolumePath(t *testing.T) {
 		volumeType string
 		teamID     string
 		volumeID   string
+		relPath    string
 
 		status   *status.Status
 		expected string
@@ -91,9 +92,57 @@ func TestBuildVolumePath(t *testing.T) {
 				TeamId:     tc.teamID,
 				VolumeId:   tc.volumeID,
 			}
-			actualPath, actualStatus := v.buildVolumePath(&volumeInfo)
+			actualPath, actualStatus := v.buildVolumePath(&volumeInfo, tc.relPath)
 			require.ErrorIs(t, tc.status.Err(), actualStatus)
 			assert.Equal(t, tc.expected, actualPath)
+		})
+	}
+}
+
+// TestRelPathTraversal demonstrates whether relPath can be used to traverse outside
+// the configured volume mount. We do not call CreateDir/CreateFile to avoid filesystem
+// permission side-effects (e.g., chown), but instead validate the resulting joined path.
+func TestRelPathTraversal(t *testing.T) {
+	t.Parallel()
+
+	// simulate a mount root with a temp dir instead of relying on /mnt/shared
+	mountRoot := t.TempDir()
+
+	v := VolumeService{
+		config: cfg.Config{
+			PersistentVolumeMounts: map[string]string{
+				"safe": mountRoot,
+			},
+		},
+	}
+
+	teamID := uuid.NewString()
+	volumeID := uuid.NewString()
+
+	tests := map[string]struct {
+		rel     string
+		wantErr bool
+	}{
+		"simple child":                 {rel: "dir/file.txt", wantErr: false},
+		"parent traversal one level":   {rel: "../escape1", wantErr: true},
+		"parent traversal many levels": {rel: "../../../../escape2", wantErr: true},
+		"mixed clean/traverse":         {rel: "./a/.././../escape3", wantErr: true},
+		"absolute path":                {rel: "/etc/passwd", wantErr: false},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			_, err := v.buildVolumePath(&orchestrator.VolumeInfo{
+				VolumeType: "safe",
+				TeamId:     teamID,
+				VolumeId:   volumeID,
+			}, tc.rel)
+			if tc.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
 		})
 	}
 }

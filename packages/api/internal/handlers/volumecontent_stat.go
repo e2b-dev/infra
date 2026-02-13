@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -12,8 +11,6 @@ import (
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
-
-var ErrExpectedEntry = errors.New("expected entry")
 
 func (a *APIStore) GetVolumesVolumeIDStat(c *gin.Context, volumeID api.VolumeID, params api.GetVolumesVolumeIDStatParams) {
 	a.executeOnOrchestratorByVolumeID(c, volumeID, func(ctx context.Context, volume queries.Volume, client *clusters.GRPCClient) error {
@@ -25,12 +22,7 @@ func (a *APIStore) GetVolumesVolumeIDStat(c *gin.Context, volumeID api.VolumeID,
 			return err
 		}
 
-		entry := stat.GetEntry()
-		if entry != nil {
-			return ErrExpectedEntry
-		}
-
-		result := toVolumeEntryStat(entry)
+		result := toVolumeEntryStat(stat.GetEntry())
 
 		c.JSON(http.StatusOK, api.GetVolumesVolumeIDStatResponse{
 			JSON200: &result,

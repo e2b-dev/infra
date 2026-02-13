@@ -14,7 +14,7 @@ func (v *VolumeService) CreateDir(_ context.Context, request *orchestrator.Volum
 		err = v.processError(err)
 	}()
 
-	path, err := v.buildVolumePath(request.GetVolume())
+	fullPath, err := v.buildVolumePath(request.GetVolume(), request.GetPath())
 	if err != nil {
 		return nil, err
 	}
@@ -25,15 +25,15 @@ func (v *VolumeService) CreateDir(_ context.Context, request *orchestrator.Volum
 	} else {
 		fn = os.Mkdir
 	}
-	if err := fn(path, os.FileMode(request.GetMode())); err != nil { // todo: better error handling
+	if err := fn(fullPath, os.FileMode(request.GetMode())); err != nil { // todo: better error handling
 		return nil, err
 	}
 
-	if err := os.Chown(path, int(request.GetOwnerId()), int(request.GetGroupId())); err != nil {
+	if err := os.Chown(fullPath, int(request.GetOwnerId()), int(request.GetGroupId())); err != nil {
 		return nil, err
 	}
 
-	stat, err := os.Stat(path)
+	stat, err := os.Stat(fullPath)
 	if err != nil {
 		return nil, err
 	}

@@ -17,7 +17,7 @@ func (v *VolumeService) DeleteDir(_ context.Context, request *orchestrator.Volum
 		err = v.processError(err)
 	}()
 
-	path, err := v.buildVolumePath(request.GetVolume())
+	fullPath, err := v.buildVolumePath(request.GetVolume(), request.GetPath())
 	if err != nil {
 		return nil, err
 	}
@@ -29,7 +29,7 @@ func (v *VolumeService) DeleteDir(_ context.Context, request *orchestrator.Volum
 		fn = os.Remove
 	}
 
-	if err := fn(path); err != nil { // todo: better error handling
+	if err := fn(fullPath); err != nil { // todo: better error handling
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 

@@ -15,7 +15,7 @@ func (v *VolumeService) Create(_ context.Context, request *orchestrator.VolumeCr
 		err = v.processError(err)
 	}()
 
-	volumePath, err := v.buildVolumePath(request.GetVolume())
+	volumePath, err := v.buildVolumePath(request.GetVolume(), "")
 	if err != nil {
 		return nil, err
 	}

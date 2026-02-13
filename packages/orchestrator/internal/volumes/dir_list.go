@@ -15,12 +15,12 @@ func (v *VolumeService) ListDir(_ context.Context, request *orchestrator.VolumeD
 		err = v.processError(err)
 	}()
 
-	path, err := v.buildVolumePath(request.GetVolume())
+	fullPath, err := v.buildVolumePath(request.GetVolume(), request.GetPath())
 	if err != nil {
 		return nil, err
 	}
 
-	items, err := os.ReadDir(path)
+	items, err := os.ReadDir(fullPath)
 	if err != nil { // todo: better error handling
 		return nil, status.Error(codes.Internal, err.Error())
 	}

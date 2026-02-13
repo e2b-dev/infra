@@ -17,12 +17,10 @@ func (v *VolumeService) Stat(_ context.Context, request *orchestrator.StatReques
 		err = v.processError(err)
 	}()
 
-	basePath, err := v.buildVolumePath(request.GetVolume())
+	fullPath, err := v.buildVolumePath(request.GetVolume(), request.GetPath())
 	if err != nil {
 		return nil, err
 	}
-
-	fullPath := filepath.Join(basePath, request.GetPath())
 
 	info, err := os.Stat(fullPath)
 	if err != nil {

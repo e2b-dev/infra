@@ -3,6 +3,7 @@ package volumes
 import (
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
@@ -24,9 +25,9 @@ func New(config cfg.Config) *VolumeService {
 	return &VolumeService{config: config}
 }
 
-func (v *VolumeService) buildVolumePath(volume *orchestrator.VolumeInfo) (string, error) {
+func (v *VolumeService) buildVolumePath(volume *orchestrator.VolumeInfo, subPath string) (string, error) {
 	volumeType := volume.GetVolumeType()
-	volPath, ok := v.config.PersistentVolumeMounts[volumeType]
+	volTypePath, ok := v.config.PersistentVolumeMounts[volumeType]
 	if !ok {
 		return "", status.Newf(codes.NotFound, "volume type %q not found", volumeType).Err()
 	}
@@ -41,7 +42,17 @@ func (v *VolumeService) buildVolumePath(volume *orchestrator.VolumeInfo) (string
 		return "", status.Newf(codes.InvalidArgument, "invalid volume ID %q", volumeID).Err()
 	}
 
-	volumePath := filepath.Join(volPath, teamID, volumeID)
+	volumePath := filepath.Join(volTypePath, teamID, volumeID)
+	if subPath != "" {
+		subPath = strings.TrimPrefix(subPath, "/")
+		subPath = filepath.Clean(subPath)
+		fullPath := filepath.Join(volumePath, subPath)
+
+		result, err := filepath.Rel(volumePath, fullPath)
+		if err != nil || strings.HasPrefix(result, "..") {
+			return "", status.Newf(codes.InvalidArgument, "invalid relative path %q (%q)", subPath, result).Err()
+		}
+	}
 
 	return volumePath, nil
 }

@@ -3,7 +3,6 @@ package volumes
 import (
 	"io"
 	"os"
-	"path/filepath"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
@@ -15,12 +14,10 @@ func (v *VolumeService) GetFile(request *orchestrator.VolumeFileGetRequest, serv
 		err = v.processError(err)
 	}()
 
-	basePath, err := v.buildVolumePath(request.GetVolume())
+	fullPath, err := v.buildVolumePath(request.GetVolume(), request.GetPath())
 	if err != nil {
 		return err
 	}
-
-	fullPath := filepath.Join(basePath, request.GetPath())
 
 	f, err := os.Open(fullPath)
 	if err != nil {

@@ -3,7 +3,6 @@ package volumes
 import (
 	"context"
 	"os"
-	"path/filepath"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
@@ -13,12 +12,10 @@ func (v *VolumeService) DeleteFile(_ context.Context, request *orchestrator.Volu
 		err = v.processError(err)
 	}()
 
-	basePath, err := v.buildVolumePath(request.GetVolume())
+	fullPath, err := v.buildVolumePath(request.GetVolume(), request.GetPath())
 	if err != nil {
 		return nil, err
 	}
-
-	fullPath := filepath.Join(basePath, request.GetPath())
 
 	if err := os.Remove(fullPath); err != nil {
 		return nil, err

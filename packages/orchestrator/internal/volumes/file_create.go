@@ -3,7 +3,6 @@ package volumes
 import (
 	"errors"
 	"os"
-	"path/filepath"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
@@ -27,12 +26,10 @@ func (v *VolumeService) CreateFile(server orchestrator.VolumeService_CreateFileS
 		return ErrExpectedStart
 	}
 
-	basePath, err := v.buildVolumePath(start.GetVolume())
+	fullPath, err := v.buildVolumePath(start.GetVolume(), start.GetPath())
 	if err != nil {
 		return err
 	}
-
-	fullPath := filepath.Join(basePath, start.GetPath())
 
 	perm := os.FileMode(start.GetMode())
 
