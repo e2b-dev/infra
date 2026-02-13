@@ -9,6 +9,7 @@ import (
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	dbapi "github.com/e2b-dev/infra/packages/api/internal/db"
@@ -83,6 +84,25 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 	var network *dbtypes.SandboxNetworkConfig
 	if snap.Snapshot.Config != nil {
 		network = snap.Snapshot.Config.Network
+	}
+
+	// Validate traffic access token for sandboxes with private ingress.
+	if network != nil && network.Ingress != nil && network.Ingress.AllowPublicAccess != nil && !*network.Ingress.AllowPublicAccess {
+		expectedToken, tokenErr := s.api.accessTokenGenerator.GenerateTrafficAccessToken(sandboxID)
+		if tokenErr != nil {
+			return nil, status.Errorf(codes.Internal, "failed to generate expected traffic token: %v", tokenErr)
+		}
+
+		var providedToken string
+		if md, ok := metadata.FromIncomingContext(ctx); ok {
+			if vals := md.Get("e2b-traffic-access-token"); len(vals) > 0 {
+				providedToken = vals[0]
+			}
+		}
+
+		if providedToken != expectedToken {
+			return nil, status.Error(codes.PermissionDenied, "invalid or missing traffic access token")
+		}
 	}
 
 	headers := http.Header{}
