@@ -435,7 +435,6 @@ variable "remote_repository_enabled" {
   default     = false
 }
 
-
 variable "client_clusters_config" {
   type = map(object({
     cluster_size = number
