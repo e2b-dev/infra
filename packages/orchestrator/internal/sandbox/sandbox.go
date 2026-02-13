@@ -21,6 +21,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/cgroup"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
@@ -170,6 +171,8 @@ type Sandbox struct {
 	exit *utils.ErrorOnce
 
 	stop utils.Lazy[error]
+
+	cgroupManager cgroup.Manager
 }
 
 func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
@@ -186,6 +189,7 @@ type Factory struct {
 	devicePool        *nbd.DevicePool
 	featureFlags      *featureflags.Client
 	hostStatsDelivery hoststats.Delivery
+	cgroupManager     cgroup.Manager
 }
 
 func NewFactory(
@@ -194,6 +198,7 @@ func NewFactory(
 	devicePool *nbd.DevicePool,
 	featureFlags *featureflags.Client,
 	hostStatsDelivery hoststats.Delivery,
+	cgroupManager cgroup.Manager,
 ) *Factory {
 	return &Factory{
 		config:            config,
@@ -201,6 +206,7 @@ func NewFactory(
 		devicePool:        devicePool,
 		featureFlags:      featureFlags,
 		hostStatsDelivery: hostStatsDelivery,
+		cgroupManager:     cgroupManager,
 	}
 }
 
@@ -298,6 +304,7 @@ func (f *Factory) CreateSandbox(
 		config.FirecrackerConfig,
 		rootfsProvider,
 		fc.ConstantRootfsPaths,
+		f.cgroupManager,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to init FC: %w", err)
@@ -356,6 +363,8 @@ func (f *Factory) CreateSandbox(
 		APIStoredConfig: apiConfigToStore,
 
 		exit: exit,
+
+		cgroupManager: f.cgroupManager,
 	}
 
 	sbx.Checks = NewChecks(sbx, false)
@@ -578,6 +587,7 @@ func (f *Factory) ResumeSandbox(
 			TemplateID:      config.BaseTemplateID,
 			BuildID:         rootfs.Header().Metadata.BaseBuildId.String(),
 		},
+		f.cgroupManager,
 	)
 	if fcErr != nil {
 		return nil, fmt.Errorf("failed to create FC: %w", fcErr)
@@ -657,6 +667,8 @@ func (f *Factory) ResumeSandbox(
 		APIStoredConfig: apiConfigToStore,
 
 		exit: exit,
+
+		cgroupManager: f.cgroupManager,
 	}
 
 	useClickhouseMetrics := f.featureFlags.BoolFlag(ctx, featureflags.MetricsWriteFlag)
@@ -768,6 +780,16 @@ func (s *Sandbox) doStop(ctx context.Context) error {
 	// The process exited, we can continue with the rest of the cleanup.
 	// We could use select with ctx.Done() to wait for cancellation, but if the process is not exited the whole cleanup will be in a bad state and will result in unexpected behavior.
 	<-s.process.Exit.Done()
+
+	// Remove cgroup after process has exited
+	if s.cgroupManager != nil {
+		cgroupErr := s.cgroupManager.Remove(ctx, s.Runtime.SandboxID)
+		if cgroupErr != nil {
+			logger.L().Warn(ctx, "failed to remove cgroup during cleanup",
+				logger.WithSandboxID(s.Runtime.SandboxID),
+				zap.Error(cgroupErr))
+		}
+	}
 
 	uffdStopErr := s.Resources.memory.Stop()
 	if uffdStopErr != nil {

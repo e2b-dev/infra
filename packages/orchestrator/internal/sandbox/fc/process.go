@@ -19,6 +19,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/cgroup"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/socket"
@@ -74,6 +75,8 @@ type Process struct {
 	Exit *utils.ErrorOnce
 
 	client *apiClient
+
+	cgroupManager cgroup.Manager
 }
 
 func NewProcess(
@@ -85,6 +88,7 @@ func NewProcess(
 	versions Config,
 	rootfsProvider rootfs.Provider,
 	rootfsPaths RootfsPaths,
+	cgroupManager cgroup.Manager,
 ) (*Process, error) {
 	ctx, childSpan := tracer.Start(ctx, "initialize-fc", trace.WithAttributes(
 		attribute.Int("sandbox.slot.index", slot.Idx),
@@ -136,8 +140,9 @@ func NewProcess(
 		files:                 files,
 		slot:                  slot,
 
-		kernelPath: startScript.KernelPath,
-		rootfsPath: startScript.RootfsPath,
+		kernelPath:    startScript.KernelPath,
+		rootfsPath:    startScript.RootfsPath,
+		cgroupManager: cgroupManager,
 	}, nil
 }
 
@@ -167,6 +172,23 @@ func (p *Process) configure(
 	err := p.cmd.Start()
 	if err != nil {
 		return fmt.Errorf("error starting fc process: %w", err)
+	}
+
+	// Create cgroup for Firecracker process
+	if p.cgroupManager != nil {
+		sandboxID := p.files.SandboxID
+		pid := p.cmd.Process.Pid
+
+		err := p.cgroupManager.Create(ctx, sandboxID, pid)
+		if err != nil {
+			// Kill the process we just started since cgroup creation failed
+			p.cmd.Process.Kill()
+			return fmt.Errorf("failed to create cgroup for sandbox: %w", err)
+		}
+
+		logger.L().Debug(ctx, "created cgroup for firecracker process",
+			logger.WithSandboxID(sandboxID),
+			zap.Int("pid", pid))
 	}
 
 	startCtx, cancelStart := context.WithCancelCause(ctx)
