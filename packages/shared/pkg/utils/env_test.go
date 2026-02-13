@@ -1,27 +1,27 @@
 package utils
 
 import (
-	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
-func TestTargetArch_DefaultsToRuntimeGOARCH(t *testing.T) {
+func TestTargetArch_DefaultsToAmd64(t *testing.T) {
 	t.Setenv("TARGET_ARCH", "")
 
 	result := TargetArch()
 
-	assert.Equal(t, runtime.GOARCH, result)
+	assert.Equal(t, "amd64", result)
 }
 
 func TestTargetArch_RespectsValidOverride(t *testing.T) {
 	tests := []struct {
-		name string
-		arch string
+		name     string
+		arch     string
+		expected string
 	}{
-		{name: "amd64", arch: "amd64"},
-		{name: "arm64", arch: "arm64"},
+		{name: "amd64", arch: "amd64", expected: "amd64"},
+		{name: "arm64", arch: "arm64", expected: "arm64"},
 	}
 
 	for _, tt := range tests {
@@ -30,38 +30,44 @@ func TestTargetArch_RespectsValidOverride(t *testing.T) {
 
 			result := TargetArch()
 
-			assert.Equal(t, tt.arch, result)
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
 
-func TestTargetArch_PanicsOnInvalidValue(t *testing.T) {
+func TestTargetArch_NormalizesAliases(t *testing.T) {
 	tests := []struct {
-		name string
-		arch string
+		name     string
+		arch     string
+		expected string
 	}{
-		{name: "x86_64", arch: "x86_64"},
-		{name: "aarch64", arch: "aarch64"},
-		{name: "mips", arch: "mips"},
-		{name: "386", arch: "386"},
+		{name: "x86_64 → amd64", arch: "x86_64", expected: "amd64"},
+		{name: "aarch64 → arm64", arch: "aarch64", expected: "arm64"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("TARGET_ARCH", tt.arch)
 
-			assert.Panics(t, func() {
-				TargetArch()
-			})
+			result := TargetArch()
+
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
 
-func TestTargetArch_UnsetFallsThrough(t *testing.T) {
-	// Ensure TARGET_ARCH is completely unset, not just empty
+func TestTargetArch_FallsBackOnUnknown(t *testing.T) {
+	t.Setenv("TARGET_ARCH", "mips")
+
+	result := TargetArch()
+
+	assert.Equal(t, "amd64", result)
+}
+
+func TestTargetArch_UnsetDefaultsToAmd64(t *testing.T) {
 	t.Setenv("TARGET_ARCH", "")
 
 	result := TargetArch()
 
-	assert.Contains(t, []string{"amd64", "arm64"}, result)
+	assert.Equal(t, "amd64", result)
 }
