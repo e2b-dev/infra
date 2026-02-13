@@ -1,4 +1,4 @@
-name: AMD64 tests on PRs
+name: Run tests on PRs
 
 on: [workflow_call]
 
@@ -7,7 +7,7 @@ permissions:
 
 jobs:
   run-tests:
-    name: AMD64 tests for ${{ matrix.package }}
+    name: Run tests for ${{ matrix.package }}
     runs-on: infra-tests
     strategy:
       matrix:
