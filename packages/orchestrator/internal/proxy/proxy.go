@@ -60,16 +60,6 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 				return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)
 			}
 
-			// Check per-sandbox connection limit
-			maxLimit := featureFlags.IntFlag(r.Context(), featureflags.SandboxMaxIncomingConnections)
-			_, acquired := limiter.TryAcquire(sandboxId, maxLimit)
-			if !acquired {
-				return nil, reverseproxy.NewErrSandboxTooManyIncomingConnections(sandboxId, maxLimit)
-			}
-
-			// Release the connection slot when the request context is done (i.e. after the handler finishes serving).
-			context.AfterFunc(r.Context(), func() { limiter.Release(sandboxId) })
-
 			var accessToken *string = nil
 			if net := sbx.Config.Network; net != nil && net.GetIngress() != nil {
 				accessToken = net.GetIngress().TrafficAccessToken
@@ -86,6 +76,13 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 				} else if accessTokenRaw != *accessToken {
 					return nil, reverseproxy.NewErrInvalidTrafficAccessToken(sandboxId, trafficAccessTokenHeader)
 				}
+			}
+
+			// Check per-sandbox connection limit
+			maxLimit := featureFlags.IntFlag(r.Context(), featureflags.SandboxMaxIncomingConnections)
+			_, acquired := limiter.TryAcquire(sandboxId, maxLimit)
+			if !acquired {
+				return nil, reverseproxy.NewErrSandboxTooManyIncomingConnections(sandboxId, maxLimit)
 			}
 
 			// Handle request host masking only for non-envd traffic.
@@ -124,6 +121,9 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 				ConnectionKey:   sbx.LifecycleID,
 				RequestLogger:   logger,
 				MaskRequestHost: maskRequestHost,
+				Release: func() {
+					limiter.Release(sandboxId)
+				},
 			}, nil
 		},
 		// We are not using keepalives for orchestrator proxy,

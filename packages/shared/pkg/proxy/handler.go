@@ -120,6 +120,10 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 			return
 		}
 
+		if d.Release != nil {
+			defer d.Release()
+		}
+
 		d.RequestLogger.Debug(ctx, "proxying request")
 
 		ctx = pool.WithDestination(ctx, d)
