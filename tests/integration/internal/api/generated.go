@@ -7320,6 +7320,7 @@ func (r GetVolumesVolumeIDFileResponse) StatusCode() int {
 type PostVolumesVolumeIDFileResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
+	JSON201      *VolumeEntryStat
 	JSON500      *N500
 }
 
@@ -10402,6 +10403,13 @@ func ParsePostVolumesVolumeIDFileResponse(rsp *http.Response) (*PostVolumesVolum
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest VolumeEntryStat
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest N500
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
