@@ -38,7 +38,8 @@ jobs:
 
   arm64-unit-tests:
     name: ARM64 tests for ${{ matrix.package }}
-    runs-on: ubuntu-24.04-arm-8
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
     strategy:
       matrix:
         include:
