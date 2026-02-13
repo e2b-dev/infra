@@ -19,7 +19,7 @@ type stubResumer struct {
 	err    error
 }
 
-func (s stubResumer) Resume(_ context.Context, _ string) (string, error) {
+func (s stubResumer) Resume(_ context.Context, _ string, _ string) (string, error) {
 	return s.nodeIP, s.err
 }
 
@@ -49,7 +49,7 @@ func TestCatalogResolution_CatalogHit(t *testing.T) {
 	}, time.Minute)
 	require.NoError(t, err)
 
-	nodeIP, err := catalogResolution(context.Background(), "sbx", c, stubResumer{}, ff)
+	nodeIP, err := findActiveNode(context.Background(), "sbx", "", c, nil, ff)
 	require.NoError(t, err)
 	require.Equal(t, "10.0.0.1", nodeIP)
 }
@@ -67,69 +67,79 @@ func TestCatalogResolution_CatalogHit_EmptyIPReturnsEmpty(t *testing.T) {
 	}, time.Minute)
 	require.NoError(t, err)
 
-	nodeIP, err := catalogResolution(context.Background(), "sbx", c, stubResumer{}, ff)
+	nodeIP, err := findActiveNode(context.Background(), "sbx", "", c, nil, ff)
 	require.NoError(t, err)
 	require.Empty(t, nodeIP)
 }
 
-func TestCatalogResolution_CatalogMiss_NoResumer(t *testing.T) {
+func TestCatalogResolution_CatalogMiss(t *testing.T) {
 	t.Parallel()
 
 	c := catalog.NewMemorySandboxesCatalog()
 	ff := newFF(t, true)
 
-	_, err := catalogResolution(context.Background(), "sbx", c, nil, ff)
+	_, err := findActiveNode(context.Background(), "sbx", "", c, nil, ff)
 	require.ErrorIs(t, err, ErrNodeNotFound)
 }
 
-func TestCatalogResolution_CatalogMiss_AutoResumeNotAllowed_FlagDisabled(t *testing.T) {
+func TestHandlePausedSandbox_NoResumer(t *testing.T) {
 	t.Parallel()
 
-	c := catalog.NewMemorySandboxesCatalog()
+	ff := newFF(t, true)
+
+	_, res, err := handlePausedSandbox(context.Background(), "sbx", "token", nil, ff)
+	require.NoError(t, err)
+	require.Equal(t, autoResumeNotAllowed, res)
+}
+
+func TestHandlePausedSandbox_FlagDisabled(t *testing.T) {
+	t.Parallel()
+
 	ff := newFF(t, false)
 
-	_, err := catalogResolution(context.Background(), "sbx", c, stubResumer{nodeIP: "10.0.0.1"}, ff)
-	require.ErrorIs(t, err, ErrNodeNotFound)
-}
-
-func TestCatalogResolution_CatalogMiss_AutoResumeNotAllowed_NotFound(t *testing.T) {
-	t.Parallel()
-
-	c := catalog.NewMemorySandboxesCatalog()
-	ff := newFF(t, true)
-
-	_, err := catalogResolution(context.Background(), "sbx", c, stubResumer{err: status.Error(codes.NotFound, "not allowed")}, ff)
-	require.ErrorIs(t, err, ErrNodeNotFound)
-}
-
-func TestCatalogResolution_CatalogMiss_AutoResumeErrored(t *testing.T) {
-	t.Parallel()
-
-	c := catalog.NewMemorySandboxesCatalog()
-	ff := newFF(t, true)
-
-	_, err := catalogResolution(context.Background(), "sbx", c, stubResumer{err: status.Error(codes.Unavailable, "boom")}, ff)
-	require.Error(t, err)
-}
-
-func TestCatalogResolution_CatalogMiss_AutoResumeSucceeded(t *testing.T) {
-	t.Parallel()
-
-	c := catalog.NewMemorySandboxesCatalog()
-	ff := newFF(t, true)
-
-	nodeIP, err := catalogResolution(context.Background(), "sbx", c, stubResumer{nodeIP: "10.0.0.1"}, ff)
+	_, res, err := handlePausedSandbox(context.Background(), "sbx", "token", stubResumer{nodeIP: "10.0.0.1"}, ff)
 	require.NoError(t, err)
+	require.Equal(t, autoResumeNotAllowed, res)
+}
+
+func TestHandlePausedSandbox_NotFound(t *testing.T) {
+	t.Parallel()
+
+	ff := newFF(t, true)
+
+	_, res, err := handlePausedSandbox(context.Background(), "sbx", "token", stubResumer{err: status.Error(codes.NotFound, "not allowed")}, ff)
+	require.NoError(t, err)
+	require.Equal(t, autoResumeNotAllowed, res)
+}
+
+func TestHandlePausedSandbox_Error(t *testing.T) {
+	t.Parallel()
+
+	ff := newFF(t, true)
+
+	_, res, err := handlePausedSandbox(context.Background(), "sbx", "token", stubResumer{err: status.Error(codes.Unavailable, "boom")}, ff)
+	require.Error(t, err)
+	require.Equal(t, autoResumeErrored, res)
+}
+
+func TestHandlePausedSandbox_Succeeded(t *testing.T) {
+	t.Parallel()
+
+	ff := newFF(t, true)
+
+	nodeIP, res, err := handlePausedSandbox(context.Background(), "sbx", "token", stubResumer{nodeIP: "10.0.0.1"}, ff)
+	require.NoError(t, err)
+	require.Equal(t, autoResumeSucceeded, res)
 	require.Equal(t, "10.0.0.1", nodeIP)
 }
 
-func TestCatalogResolution_CatalogMiss_AutoResumeSucceeded_EmptyIPReturnsEmpty(t *testing.T) {
+func TestHandlePausedSandbox_Succeeded_EmptyIP(t *testing.T) {
 	t.Parallel()
 
-	c := catalog.NewMemorySandboxesCatalog()
 	ff := newFF(t, true)
 
-	nodeIP, err := catalogResolution(context.Background(), "sbx", c, stubResumer{nodeIP: ""}, ff)
+	nodeIP, res, err := handlePausedSandbox(context.Background(), "sbx", "token", stubResumer{nodeIP: ""}, ff)
 	require.NoError(t, err)
+	require.Equal(t, autoResumeSucceeded, res)
 	require.Empty(t, nodeIP)
 }
