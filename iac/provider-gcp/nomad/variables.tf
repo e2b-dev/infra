@@ -14,7 +14,7 @@ variable "orchestrator_node_pool" {
   type = string
 }
 
-variable "orchestration_repository_name" {
+variable "core_repository_name" {
   type = string
 }
 
