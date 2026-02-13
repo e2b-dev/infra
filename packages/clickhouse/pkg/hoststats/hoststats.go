@@ -24,6 +24,15 @@ type SandboxHostStat struct {
 	FirecrackerCPUSystemTime float64 `ch:"firecracker_cpu_system_time"` // cumulative system CPU time in seconds
 	FirecrackerMemoryRSS     uint64  `ch:"firecracker_memory_rss"`      // Resident Set Size in bytes
 	FirecrackerMemoryVMS     uint64  `ch:"firecracker_memory_vms"`      // Virtual Memory Size in bytes
+
+	// Cgroup v2 accounting (nullable for backward compatibility)
+	// Values are cumulative (monotonically increasing) - deltas calculated in queries
+	CgroupCPUUsageUsec  uint64 `ch:"cgroup_cpu_usage_usec"`     // cumulative CPU time (user+system) in microseconds from cgroup cpu.stat
+	CgroupCPUUserUsec   uint64 `ch:"cgroup_cpu_user_usec"`      // cumulative user CPU time in microseconds from cgroup cpu.stat
+	CgroupCPUSystemUsec uint64 `ch:"cgroup_cpu_system_usec"`    // cumulative system CPU time in microseconds from cgroup cpu.stat
+	CgroupMemoryUsage   uint64 `ch:"cgroup_memory_usage_bytes"` // current memory usage in bytes from cgroup memory.current
+	CgroupMemoryPeak    uint64 `ch:"cgroup_memory_peak_bytes"`  // peak memory usage in bytes from cgroup memory.peak
+	CgroupPageFaults    uint64 `ch:"cgroup_page_faults"`        // total page faults from cgroup memory.stat
 }
 
 // Delivery is the interface for delivering host stats to storage backend

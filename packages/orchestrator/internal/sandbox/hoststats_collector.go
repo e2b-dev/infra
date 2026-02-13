@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/clickhouse/pkg/hoststats"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/cgroup"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -19,6 +20,7 @@ type HostStatsCollector struct {
 	delivery         hoststats.Delivery
 	proc             *process.Process
 	samplingInterval time.Duration
+	cgroupManager    cgroup.Manager
 
 	stopCh    chan struct{}
 	stoppedCh chan struct{}
@@ -40,6 +42,7 @@ func NewHostStatsCollector(
 	firecrackerPID int32,
 	delivery hoststats.Delivery,
 	samplingInterval time.Duration,
+	cgroupManager cgroup.Manager,
 ) (*HostStatsCollector, error) {
 	// Validate and enforce minimum interval
 	if samplingInterval < 100*time.Millisecond {
@@ -56,6 +59,7 @@ func NewHostStatsCollector(
 		delivery:         delivery,
 		proc:             proc,
 		samplingInterval: samplingInterval,
+		cgroupManager:    cgroupManager,
 		stopCh:           make(chan struct{}),
 		stoppedCh:        make(chan struct{}),
 	}, nil
@@ -88,6 +92,25 @@ func (h *HostStatsCollector) CollectSample(ctx context.Context) error {
 		FirecrackerCPUSystemTime: times.System, // seconds
 		FirecrackerMemoryRSS:     memInfo.RSS,  // bytes
 		FirecrackerMemoryVMS:     memInfo.VMS,  // bytes
+	}
+
+	// Collect cgroup stats if available
+	if h.cgroupManager != nil {
+		cgroupStats, err := h.cgroupManager.GetStats(ctx, h.metadata.SandboxID)
+		if err != nil {
+			// Log at debug level - cgroup may not exist or may have been removed during shutdown
+			logger.L().Debug(ctx, "could not collect cgroup stats",
+				logger.WithSandboxID(h.metadata.SandboxID),
+				zap.Error(err))
+		} else {
+			// Convert stats to pointers for nullable fields
+			stat.CgroupCPUUsageUsec = cgroupStats.CPUUsageUsec
+			stat.CgroupCPUUserUsec = cgroupStats.CPUUserUsec
+			stat.CgroupCPUSystemUsec = cgroupStats.CPUSystemUsec
+			stat.CgroupMemoryUsage = cgroupStats.MemoryUsageBytes
+			stat.CgroupMemoryPeak = cgroupStats.MemoryPeakBytes
+			stat.CgroupPageFaults = cgroupStats.PageFaults
+		}
 	}
 
 	if err := h.delivery.Push(stat); err != nil {
