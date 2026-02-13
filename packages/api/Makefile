@@ -73,3 +73,7 @@ build-and-upload:
 .PHONY: test
 test:
 	go test -race -v ./...
+
+.PHONY: lint
+lint:
+	golangci-lint run --fix ./...

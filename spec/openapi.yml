@@ -1762,14 +1762,9 @@ components:
         - ctime
 
     VolumeDirectoryListing:
-      type: object
-      properties:
-        files:
-          type: array
-          items:
-            $ref: "#/components/schemas/VolumeEntryStat"
-      required:
-        - files
+      type: array
+      items:
+        $ref: "#/components/schemas/VolumeEntryStat"
 
 tags:
   - name: templates
@@ -3251,7 +3246,7 @@ paths:
   /volumes/{volumeID}/dir:
     get:
       description: List directory contents
-      tags: [volume_content]
+      tags: [volumes]
       security:
         - AccessTokenAuth: []
         - ApiKeyAuth: []
@@ -3275,7 +3270,7 @@ paths:
           $ref: "#/components/responses/500"
     post:
       description: "Create a directory"
-      tags: [volume_content]
+      tags: [volumes]
       security:
         - AccessTokenAuth: []
         - ApiKeyAuth: []
@@ -3302,7 +3297,7 @@ paths:
           schema:
             type: integer
             format: uint32
-        - name: create_parents
+        - name: createParents
           in: query
           description: Force overwrite of an existing directory
           schema:
@@ -3316,7 +3311,7 @@ paths:
           $ref: "#/components/responses/500"
     delete:
       description: Delete a directory
-      tags: [volume_content]
+      tags: [volumes]
       security:
         - AccessTokenAuth: []
         - ApiKeyAuth: []
@@ -3341,7 +3336,7 @@ paths:
   /volumes/{volumeID}/file:
     get:
       description: Download file
-      tags: [volume_content]
+      tags: [volumes]
       security:
         - AccessTokenAuth: []
         - ApiKeyAuth: []
@@ -3364,7 +3359,7 @@ paths:
           $ref: "#/components/responses/500"
     post:
       description: Create file
-      tags: [volume_content]
+      tags: [volumes]
       security:
         - AccessTokenAuth: []
         - ApiKeyAuth: []
@@ -3404,15 +3399,19 @@ paths:
               type: string
               format: binary
       responses:
-        "204":
+        "201":
           description: "Successfully created a file"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VolumeEntryStat"
         "404":
           description: "path not found"
         "500":
           $ref: "#/components/responses/500"
     delete:
       description: Delete a file
-      tags: [volume_content]
+      tags: [volumes]
       security:
         - AccessTokenAuth: []
         - ApiKeyAuth: []

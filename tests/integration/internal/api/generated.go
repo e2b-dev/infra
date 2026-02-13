@@ -1171,9 +1171,7 @@ type Volume struct {
 }
 
 // VolumeDirectoryListing defines model for VolumeDirectoryListing.
-type VolumeDirectoryListing struct {
-	Files []VolumeEntryStat `json:"files"`
-}
+type VolumeDirectoryListing = []VolumeEntryStat
 
 // VolumeEntryStat defines model for VolumeEntryStat.
 type VolumeEntryStat struct {
@@ -1401,7 +1399,7 @@ type PostVolumesVolumeIDDirParams struct {
 	Mode *uint32 `form:"mode,omitempty" json:"mode,omitempty"`
 
 	// CreateParents Force overwrite of an existing directory
-	CreateParents *bool `form:"create_parents,omitempty" json:"create_parents,omitempty"`
+	CreateParents *bool `form:"createParents,omitempty" json:"createParents,omitempty"`
 }
 
 // DeleteVolumesVolumeIDFileParams defines parameters for DeleteVolumesVolumeIDFile.
@@ -5424,7 +5422,7 @@ func NewPostVolumesVolumeIDDirRequest(server string, volumeID VolumeID, params *
 
 		if params.CreateParents != nil {
 
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "create_parents", runtime.ParamLocationQuery, *params.CreateParents); err != nil {
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "createParents", runtime.ParamLocationQuery, *params.CreateParents); err != nil {
 				return nil, err
 			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
 				return nil, err

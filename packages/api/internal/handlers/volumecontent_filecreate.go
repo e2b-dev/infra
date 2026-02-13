@@ -93,7 +93,15 @@ func (a *APIStore) PostVolumesVolumeIDFile(c *gin.Context, volumeID api.VolumeID
 			return fmt.Errorf("failed to send finish message: %w", err)
 		}
 
-		c.JSON(http.StatusOK, &api.PostVolumesVolumeIDFileResponse{})
+		finish, err := fileClient.CloseAndRecv()
+		if err != nil {
+			return fmt.Errorf("failed to receive finish message: %w", err)
+		}
+
+		entry := toVolumeEntryStat(finish.GetEntry())
+		c.JSON(http.StatusOK, &api.PostVolumesVolumeIDFileResponse{
+			JSON201: &entry,
+		})
 
 		return nil
 	})
