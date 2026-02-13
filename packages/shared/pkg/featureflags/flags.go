@@ -241,12 +241,14 @@ const (
 const (
 	DefaultFirecackerV1_10Version = "v1.10.1_30cbb07"
 	DefaultFirecackerV1_12Version = "v1.12.1_210cbac"
-	DefaultFirecrackerVersion     = DefaultFirecackerV1_12Version
+	DefaultFirecackerV1_14Version = "v1.14.1_458ca91"
+	DefaultFirecrackerVersion     = DefaultFirecackerV1_14Version
 )
 
 var FirecrackerVersionMap = map[string]string{
 	"v1.10": DefaultFirecackerV1_10Version,
 	"v1.12": DefaultFirecackerV1_12Version,
+	"v1.14": DefaultFirecackerV1_14Version,
 }
 
 // BuildIoEngine Sync is used by default as there seems to be a bad interaction between Async and a lot of io operations.
