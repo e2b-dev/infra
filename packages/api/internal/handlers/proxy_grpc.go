@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"crypto/subtle"
 	"database/sql"
 	"errors"
 	"net/http"
@@ -100,7 +101,7 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 			}
 		}
 
-		if providedToken != expectedToken {
+		if subtle.ConstantTimeCompare([]byte(providedToken), []byte(expectedToken)) != 1 {
 			return nil, status.Error(codes.PermissionDenied, "invalid or missing traffic access token")
 		}
 	}
