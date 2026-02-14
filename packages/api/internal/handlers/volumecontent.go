@@ -19,12 +19,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-const (
-	defaultFileMode uint32 = 0o666
-	defaultOwnerID  uint32 = 1000
-	defaultGroupID  uint32 = 1000
-)
-
 func (a *APIStore) executeOnOrchestratorByVolumeID(
 	c *gin.Context,
 	volumeID api.VolumeID,
@@ -79,20 +73,25 @@ func (a *APIStore) executeOnOrchestratorByVolumeID(
 
 		if code, ok := status.FromError(err); ok {
 			switch code.Code() {
+			case codes.AlreadyExists:
+				a.sendAPIStoreError(c, http.StatusConflict, "file already exists")
+				telemetry.ReportError(ctx, "file already exists", err)
+
+				return
 			case codes.NotFound:
-				a.sendAPIStoreError(c, 404, "path not found")
+				a.sendAPIStoreError(c, http.StatusNotFound, "path not found")
 				telemetry.ReportError(ctx, "path not found", err)
 
 				return
 			case codes.InvalidArgument:
-				a.sendAPIStoreError(c, 400, "invalid argument")
+				a.sendAPIStoreError(c, http.StatusBadRequest, "invalid argument")
 				telemetry.ReportError(ctx, "invalid argument", err)
 
 				return
 			}
 		}
 
-		a.sendAPIStoreError(c, 500, "failed to execute on orchestrator")
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "failed to execute on orchestrator")
 		telemetry.ReportCriticalError(ctx, "error when executing on orchestrator", err)
 
 		return

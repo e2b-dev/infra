@@ -43,7 +43,7 @@ func NewLogger(ctx context.Context, loggerProvider log.LoggerProvider, config Sa
 		ServiceName:       config.ServiceName,
 		IsInternal:        config.IsInternal,
 		IsDebug:           true,
-		DisableStacktrace: !config.IsInternal,
+		DisableStacktrace: true,
 		InitialFields: []zap.Field{
 			zap.String("logger", config.ServiceName),
 		},

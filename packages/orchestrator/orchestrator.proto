@@ -176,9 +176,9 @@ message VolumeDirListResponse {
 message VolumeDirCreateRequest {
   VolumeInfo volume = 1;
   string path = 2;
-  uint32 mode = 3;
-  uint32 owner_id = 4;
-  uint32 group_id = 5;
+  optional uint32 mode = 3;
+  optional uint32 uid = 4;
+  optional uint32 gid = 5;
   bool create_parents = 6;
 }
 
@@ -220,9 +220,9 @@ message VolumeFileGetResponse {
 message VolumeFileCreateStart {
   VolumeInfo volume = 1;
   string path = 2;
-  uint32 mode = 3;
-  uint32 owner_id = 4;
-  uint32 group_id = 5;
+  optional uint32 mode = 3;
+  optional uint32 uid = 4;
+  optional uint32 gid = 5;
   bool force = 6;
 }
 
@@ -274,8 +274,8 @@ message EntryInfo {
   string path = 3;
   int64 size = 4;
   uint32 mode = 5;
-  uint32 owner = 6;
-  uint32 group = 7;
+  uint32 uid = 6;
+  uint32 gid = 7;
   google.protobuf.Timestamp modified_time = 8;
   // If the entry is a symlink, this field contains the target of the symlink.
   optional string symlink_target = 9;

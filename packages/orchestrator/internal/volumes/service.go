@@ -1,6 +1,7 @@
 package volumes
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,13 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+)
+
+const (
+	defaultDirMode  uint32 = 0o777
+	defaultFileMode uint32 = 0o666
+	defaultOwnerID  uint32 = 1000
+	defaultGroupID  uint32 = 1000
 )
 
 type VolumeService struct {
@@ -42,7 +50,7 @@ func (v *VolumeService) buildVolumePath(volume *orchestrator.VolumeInfo, subPath
 		return "", status.Newf(codes.InvalidArgument, "invalid volume ID %q", volumeID).Err()
 	}
 
-	volumePath := filepath.Join(volTypePath, teamID, volumeID)
+	volumePath := filepath.Join(volTypePath, fmt.Sprintf("team-%s", teamID), fmt.Sprintf("vol-%s", volumeID))
 	if subPath != "" {
 		subPath = strings.TrimPrefix(subPath, "/")
 		subPath = filepath.Clean(subPath)
@@ -52,6 +60,8 @@ func (v *VolumeService) buildVolumePath(volume *orchestrator.VolumeInfo, subPath
 		if err != nil || strings.HasPrefix(result, "..") {
 			return "", status.Newf(codes.InvalidArgument, "invalid relative path %q (%q)", subPath, result).Err()
 		}
+
+		volumePath = fullPath
 	}
 
 	return volumePath, nil

@@ -1,6 +1,7 @@
 package volumes
 
 import (
+	"fmt"
 	"io"
 	"os"
 
@@ -16,24 +17,24 @@ func (v *VolumeService) GetFile(request *orchestrator.VolumeFileGetRequest, serv
 
 	fullPath, err := v.buildVolumePath(request.GetVolume(), request.GetPath())
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to build volume path: %w", err)
 	}
 
 	f, err := os.Open(fullPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to open file: %w", err)
 	}
 	defer f.Close()
 
 	info, err := f.Stat()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to stat file: %w", err)
 	}
 
 	if err := server.Send(&orchestrator.VolumeFileGetResponse{
 		Message: &orchestrator.VolumeFileGetResponse_Start{Start: &orchestrator.VolumeFileGetResponseStart{Size: info.Size()}},
 	}); err != nil {
-		return err
+		return fmt.Errorf("failed to send file start: %w", err)
 	}
 
 	buf := make([]byte, fileStreamChunkSize)
@@ -43,7 +44,7 @@ func (v *VolumeService) GetFile(request *orchestrator.VolumeFileGetRequest, serv
 			if err := server.Send(&orchestrator.VolumeFileGetResponse{
 				Message: &orchestrator.VolumeFileGetResponse_Content{Content: &orchestrator.VolumeFileGetResponseContent{Content: buf[:n]}},
 			}); err != nil {
-				return err
+				return fmt.Errorf("failed to send file content: %w", err)
 			}
 		}
 		if err != nil {
@@ -55,7 +56,7 @@ func (v *VolumeService) GetFile(request *orchestrator.VolumeFileGetRequest, serv
 				})
 			}
 
-			return err
+			return fmt.Errorf("failed to read file: %w", err)
 		}
 	}
 }

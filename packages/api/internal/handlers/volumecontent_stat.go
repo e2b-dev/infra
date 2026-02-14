@@ -24,9 +24,7 @@ func (a *APIStore) GetVolumesVolumeIDStat(c *gin.Context, volumeID api.VolumeID,
 
 		result := toVolumeEntryStat(stat.GetEntry())
 
-		c.JSON(http.StatusOK, api.GetVolumesVolumeIDStatResponse{
-			JSON200: &result,
-		})
+		c.JSON(http.StatusOK, &result)
 
 		return nil
 	})
@@ -35,11 +33,11 @@ func (a *APIStore) GetVolumesVolumeIDStat(c *gin.Context, volumeID api.VolumeID,
 func toVolumeEntryStat(entry *orchestrator.EntryInfo) api.VolumeEntryStat {
 	return api.VolumeEntryStat{
 		Ctime:  entry.GetCreatedTime().AsTime(),
-		Group:  entry.GetGroup(),
+		Gid:    entry.GetGid(),
 		Mode:   entry.GetMode(),
 		Mtime:  entry.GetModifiedTime().AsTime(),
 		Name:   entry.GetName(),
-		Owner:  entry.GetOwner(),
+		Uid:    entry.GetUid(),
 		Path:   entry.GetPath(),
 		Size:   entry.GetSize(),
 		Target: entry.SymlinkTarget,

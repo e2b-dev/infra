@@ -1736,10 +1736,10 @@ components:
         mode:
           type: integer
           format: uint32
-        owner:
+        uid:
           type: integer
           format: uint32
-        group:
+        gid:
           type: integer
           format: uint32
         mtime:
@@ -1756,8 +1756,8 @@ components:
         - path
         - size
         - mode
-        - owner
-        - group
+        - uid
+        - gid
         - mtime
         - ctime
 
@@ -3279,13 +3279,13 @@ paths:
       parameters:
         - $ref: "#/components/parameters/volumeID"
         - $ref: "#/components/parameters/path"
-        - name: userID
+        - name: uid
           in: query
           description: User ID of the created directory
           schema:
             type: integer
             format: uint32
-        - name: groupID
+        - name: gid
           in: query
           description: Group ID of the created directory
           schema:
@@ -3368,13 +3368,13 @@ paths:
       parameters:
         - $ref: "#/components/parameters/volumeID"
         - $ref: "#/components/parameters/path"
-        - name: userID
+        - name: uid
           in: query
           description: User ID of the created file
           schema:
             type: integer
             format: uint32
-        - name: groupID
+        - name: gid
           in: query
           description: Group ID of the created file
           schema:

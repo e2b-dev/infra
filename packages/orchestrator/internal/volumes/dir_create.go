@@ -2,9 +2,11 @@ package volumes
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type makeDir func(path string, perm os.FileMode) error
@@ -16,8 +18,12 @@ func (v *VolumeService) CreateDir(_ context.Context, request *orchestrator.Volum
 
 	fullPath, err := v.buildVolumePath(request.GetVolume(), request.GetPath())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to build volume path: %w", err)
 	}
+
+	uid := utils.DerefOrDefault(request.Uid, defaultOwnerID)   //nolint:protogetter
+	gid := utils.DerefOrDefault(request.Gid, defaultGroupID)   //nolint:protogetter
+	mode := utils.DerefOrDefault(request.Mode, defaultDirMode) //nolint:protogetter
 
 	var fn makeDir
 	if request.GetCreateParents() {
@@ -25,17 +31,17 @@ func (v *VolumeService) CreateDir(_ context.Context, request *orchestrator.Volum
 	} else {
 		fn = os.Mkdir
 	}
-	if err := fn(fullPath, os.FileMode(request.GetMode())); err != nil { // todo: better error handling
-		return nil, err
+	if err := fn(fullPath, os.FileMode(mode)); err != nil { // todo: better error handling
+		return nil, fmt.Errorf("failed to create directory: %w", err)
 	}
 
-	if err := os.Chown(fullPath, int(request.GetOwnerId()), int(request.GetGroupId())); err != nil {
-		return nil, err
+	if err := os.Chown(fullPath, int(uid), int(gid)); err != nil {
+		return nil, fmt.Errorf("failed to set directory ownership: %w", err)
 	}
 
 	stat, err := os.Stat(fullPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to stat created directory: %w", err)
 	}
 
 	return &orchestrator.VolumeDirCreateResponse{

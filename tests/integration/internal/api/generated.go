@@ -1176,15 +1176,15 @@ type VolumeDirectoryListing = []VolumeEntryStat
 // VolumeEntryStat defines model for VolumeEntryStat.
 type VolumeEntryStat struct {
 	Ctime  time.Time           `json:"ctime"`
-	Group  uint32              `json:"group"`
+	Gid    uint32              `json:"gid"`
 	Mode   uint32              `json:"mode"`
 	Mtime  time.Time           `json:"mtime"`
 	Name   string              `json:"name"`
-	Owner  uint32              `json:"owner"`
 	Path   string              `json:"path"`
 	Size   int64               `json:"size"`
 	Target *string             `json:"target,omitempty"`
 	Type   VolumeEntryStatType `json:"type"`
+	Uid    uint32              `json:"uid"`
 }
 
 // VolumeEntryStatType defines model for VolumeEntryStat.Type.
@@ -1389,11 +1389,11 @@ type GetVolumesVolumeIDDirParams struct {
 type PostVolumesVolumeIDDirParams struct {
 	Path Path `form:"path" json:"path"`
 
-	// UserID User ID of the created directory
-	UserID *uint32 `form:"userID,omitempty" json:"userID,omitempty"`
+	// Uid User ID of the created directory
+	Uid *uint32 `form:"uid,omitempty" json:"uid,omitempty"`
 
-	// GroupID Group ID of the created directory
-	GroupID *uint32 `form:"groupID,omitempty" json:"groupID,omitempty"`
+	// Gid Group ID of the created directory
+	Gid *uint32 `form:"gid,omitempty" json:"gid,omitempty"`
 
 	// Mode Mode of the created directory
 	Mode *uint32 `form:"mode,omitempty" json:"mode,omitempty"`
@@ -1416,11 +1416,11 @@ type GetVolumesVolumeIDFileParams struct {
 type PostVolumesVolumeIDFileParams struct {
 	Path Path `form:"path" json:"path"`
 
-	// UserID User ID of the created file
-	UserID *uint32 `form:"userID,omitempty" json:"userID,omitempty"`
+	// Uid User ID of the created file
+	Uid *uint32 `form:"uid,omitempty" json:"uid,omitempty"`
 
-	// GroupID Group ID of the created file
-	GroupID *uint32 `form:"groupID,omitempty" json:"groupID,omitempty"`
+	// Gid Group ID of the created file
+	Gid *uint32 `form:"gid,omitempty" json:"gid,omitempty"`
 
 	// Mode Mode of the created file
 	Mode *uint32 `form:"mode,omitempty" json:"mode,omitempty"`
@@ -5372,9 +5372,9 @@ func NewPostVolumesVolumeIDDirRequest(server string, volumeID VolumeID, params *
 			}
 		}
 
-		if params.UserID != nil {
+		if params.Uid != nil {
 
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "userID", runtime.ParamLocationQuery, *params.UserID); err != nil {
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "uid", runtime.ParamLocationQuery, *params.Uid); err != nil {
 				return nil, err
 			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
 				return nil, err
@@ -5388,9 +5388,9 @@ func NewPostVolumesVolumeIDDirRequest(server string, volumeID VolumeID, params *
 
 		}
 
-		if params.GroupID != nil {
+		if params.Gid != nil {
 
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "groupID", runtime.ParamLocationQuery, *params.GroupID); err != nil {
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "gid", runtime.ParamLocationQuery, *params.Gid); err != nil {
 				return nil, err
 			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
 				return nil, err
@@ -5592,9 +5592,9 @@ func NewPostVolumesVolumeIDFileRequestWithBody(server string, volumeID VolumeID,
 			}
 		}
 
-		if params.UserID != nil {
+		if params.Uid != nil {
 
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "userID", runtime.ParamLocationQuery, *params.UserID); err != nil {
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "uid", runtime.ParamLocationQuery, *params.Uid); err != nil {
 				return nil, err
 			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
 				return nil, err
@@ -5608,9 +5608,9 @@ func NewPostVolumesVolumeIDFileRequestWithBody(server string, volumeID VolumeID,
 
 		}
 
-		if params.GroupID != nil {
+		if params.Gid != nil {
 
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "groupID", runtime.ParamLocationQuery, *params.GroupID); err != nil {
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "gid", runtime.ParamLocationQuery, *params.Gid); err != nil {
 				return nil, err
 			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
 				return nil, err
@@ -7320,6 +7320,7 @@ func (r GetVolumesVolumeIDFileResponse) StatusCode() int {
 type PostVolumesVolumeIDFileResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
+	JSON201      *VolumeEntryStat
 	JSON500      *N500
 }
 
@@ -10402,6 +10403,13 @@ func ParsePostVolumesVolumeIDFileResponse(rsp *http.Response) (*PostVolumesVolum
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest VolumeEntryStat
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest N500
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {

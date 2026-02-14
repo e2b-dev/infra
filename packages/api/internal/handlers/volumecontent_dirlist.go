@@ -32,9 +32,7 @@ func (a *APIStore) GetVolumesVolumeIDDir(c *gin.Context, volumeID api.VolumeID, 
 			files = append(files, toVolumeEntryStat(entry))
 		}
 
-		c.JSON(http.StatusOK, &api.GetVolumesVolumeIDDirResponse{
-			JSON200: &files,
-		})
+		c.JSON(http.StatusOK, &files)
 
 		return nil
 	})

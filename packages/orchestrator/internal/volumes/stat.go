@@ -2,6 +2,7 @@ package volumes
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -19,12 +20,12 @@ func (v *VolumeService) Stat(_ context.Context, request *orchestrator.StatReques
 
 	fullPath, err := v.buildVolumePath(request.GetVolume(), request.GetPath())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to build volume path: %w", err)
 	}
 
 	info, err := os.Stat(fullPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to stat path: %w", err)
 	}
 
 	entry := toEntry(info)
@@ -50,8 +51,8 @@ func toEntry(info os.FileInfo) *orchestrator.EntryInfo {
 	if base := getBase(info.Sys()); base != nil {
 		entry.CreatedTime = toTimestamp(base.Ctim)
 		entry.ModifiedTime = toTimestamp(base.Mtim)
-		entry.Owner = base.Uid
-		entry.Group = base.Gid
+		entry.Uid = base.Uid
+		entry.Gid = base.Gid
 	}
 
 	return entry

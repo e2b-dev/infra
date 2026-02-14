@@ -2,6 +2,7 @@ package volumes
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	"google.golang.org/grpc/codes"
@@ -17,7 +18,7 @@ func (v *VolumeService) Create(_ context.Context, request *orchestrator.VolumeCr
 
 	volumePath, err := v.buildVolumePath(request.GetVolume(), "")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to build volume path: %w", err)
 	}
 
 	if err := os.MkdirAll(volumePath, 0o700); err != nil {

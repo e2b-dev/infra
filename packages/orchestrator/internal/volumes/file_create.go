@@ -2,9 +2,14 @@ package volumes
 
 import (
 	"errors"
+	"fmt"
 	"os"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 var ErrExpectedStart = errors.New("expected start message")
@@ -18,7 +23,7 @@ func (v *VolumeService) CreateFile(server orchestrator.VolumeService_CreateFileS
 
 	req, err := server.Recv()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to receive start message: %w", err)
 	}
 
 	start := req.GetStart()
@@ -28,45 +33,54 @@ func (v *VolumeService) CreateFile(server orchestrator.VolumeService_CreateFileS
 
 	fullPath, err := v.buildVolumePath(start.GetVolume(), start.GetPath())
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to build volume path: %w", err)
 	}
 
-	perm := os.FileMode(start.GetMode())
+	uid := utils.DerefOrDefault(start.Uid, defaultOwnerID)    //nolint:protogetter
+	gid := utils.DerefOrDefault(start.Gid, defaultGroupID)    //nolint:protogetter
+	mode := utils.DerefOrDefault(start.Mode, defaultFileMode) //nolint:protogetter
 
-	flags := os.O_CREATE | os.O_WRONLY
-	if !start.GetForce() { // do not overwrite an existing file
-		flags |= os.O_EXCL | os.O_TRUNC
+	var flags int
+	if start.GetForce() {
+		flags = os.O_CREATE | os.O_WRONLY | os.O_TRUNC
+	} else {
+		flags = os.O_CREATE | os.O_WRONLY | os.O_EXCL
 	}
-	file, err := os.OpenFile(fullPath, flags, perm)
+
+	file, err := os.OpenFile(fullPath, flags, os.FileMode(mode))
 	if err != nil {
-		return err
+		if os.IsExist(err) {
+			return status.Error(codes.AlreadyExists, err.Error())
+		}
+
+		return fmt.Errorf("failed to open file for create: %w", err)
 	}
 	defer file.Close()
 
 	for {
 		req, err := server.Recv()
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to receive chunk: %w", err)
 		}
 
 		switch m := req.GetMessage().(type) {
 		case *orchestrator.VolumeFileCreateRequest_Content:
 			if _, err := file.Write(m.Content.GetContent()); err != nil {
-				return err
+				return fmt.Errorf("failed to write file content: %w", err)
 			}
 
 		case *orchestrator.VolumeFileCreateRequest_Finish:
 			if err = file.Sync(); err != nil {
-				return err
+				return fmt.Errorf("failed to sync file to disk: %w", err)
 			}
 
-			if err := os.Chown(fullPath, int(start.GetOwnerId()), int(start.GetGroupId())); err != nil {
-				return err
+			if err := os.Chown(fullPath, int(uid), int(gid)); err != nil {
+				return fmt.Errorf("failed to set file ownership: %w", err)
 			}
 
 			entry, err := os.Stat(fullPath)
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to stat created file: %w", err)
 			}
 
 			return server.SendAndClose(&orchestrator.VolumeFileCreateResponse{

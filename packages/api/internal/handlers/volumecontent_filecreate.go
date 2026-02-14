@@ -26,21 +26,6 @@ func (a *APIStore) PostVolumesVolumeIDFile(c *gin.Context, volumeID api.VolumeID
 			return fmt.Errorf("failed to create file: %w", err)
 		}
 
-		mode := defaultFileMode
-		if params.Mode != nil {
-			mode = *params.Mode
-		}
-
-		ownerID := defaultOwnerID
-		if params.UserID != nil {
-			ownerID = *params.UserID
-		}
-
-		groupID := defaultGroupID
-		if params.GroupID != nil {
-			groupID = *params.GroupID
-		}
-
 		force := false
 		if params.Force != nil {
 			force = *params.Force
@@ -49,12 +34,12 @@ func (a *APIStore) PostVolumesVolumeIDFile(c *gin.Context, volumeID api.VolumeID
 		if err = fileClient.Send(&orchestrator.VolumeFileCreateRequest{
 			Message: &orchestrator.VolumeFileCreateRequest_Start{
 				Start: &orchestrator.VolumeFileCreateStart{
-					Volume:  toVolumeKey(volume),
-					Path:    params.Path,
-					Mode:    mode,
-					OwnerId: ownerID,
-					GroupId: groupID,
-					Force:   force,
+					Volume: toVolumeKey(volume),
+					Path:   params.Path,
+					Mode:   params.Mode,
+					Uid:    params.Uid,
+					Gid:    params.Gid,
+					Force:  force,
 				},
 			},
 		}); err != nil {
@@ -98,9 +83,7 @@ func (a *APIStore) PostVolumesVolumeIDFile(c *gin.Context, volumeID api.VolumeID
 		}
 
 		entry := toVolumeEntryStat(finish.GetEntry())
-		c.JSON(http.StatusCreated, &api.PostVolumesVolumeIDFileResponse{
-			JSON201: &entry,
-		})
+		c.JSON(http.StatusCreated, entry)
 
 		return nil
 	})
