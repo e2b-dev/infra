@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -40,6 +41,13 @@ func (v *VolumeService) CreateFile(server orchestrator.VolumeService_CreateFileS
 	gid := utils.DerefOrDefault(start.Gid, defaultGroupID)    //nolint:protogetter
 	mode := utils.DerefOrDefault(start.Mode, defaultFileMode) //nolint:protogetter
 
+	if start.GetForce() {
+		dirName := filepath.Dir(fullPath)
+		if err := os.MkdirAll(dirName, os.FileMode(defaultDirMode)); err != nil {
+			return fmt.Errorf("failed to create parent directories: %w", err)
+		}
+	}
+
 	var flags int
 	if start.GetForce() {
 		flags = os.O_CREATE | os.O_WRONLY | os.O_TRUNC
@@ -49,6 +57,10 @@ func (v *VolumeService) CreateFile(server orchestrator.VolumeService_CreateFileS
 
 	file, err := os.OpenFile(fullPath, flags, os.FileMode(mode).Perm())
 	if err != nil {
+		if os.IsNotExist(err) {
+			return status.Error(codes.NotFound, err.Error())
+		}
+
 		if os.IsExist(err) {
 			return status.Error(codes.AlreadyExists, err.Error())
 		}

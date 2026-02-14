@@ -1,10 +1,12 @@
 package volumes
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
@@ -77,7 +79,7 @@ func (v *VolumeService) processError(err error) error {
 		return err
 	}
 
-	if os.IsNotExist(err) {
+	if os.IsNotExist(err) || errors.Is(err, syscall.ENOENT) {
 		return status.Error(codes.NotFound, err.Error())
 	}
 
