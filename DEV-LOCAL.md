@@ -17,7 +17,7 @@
 ## Prepare local environment
 
 1. `make -C packages/db migrate-local` initialize the database
-2. `make -C packages/envd build-debug` create the envd that will be embedded in templates
+2. `make -C packages/envd build` create the envd that will be embedded in templates
 3. `make -C packages/local-dev seed-database` generate user, team, and token for local development
 
 ## Run the application locally
