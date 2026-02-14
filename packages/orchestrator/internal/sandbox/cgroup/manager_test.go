@@ -199,11 +199,8 @@ func TestManagerGetStats(t *testing.T) {
 	assert.Greater(t, stats.MemoryUsageBytes, uint64(0), "MemoryUsageBytes should be > 0")
 	// memory.peak may not be available on all kernels, so we don't assert on it
 
-	// Verify page faults are tracked (should have some)
-	assert.GreaterOrEqual(t, stats.PageFaults, uint64(0), "PageFaults should be >= 0")
-
-	t.Logf("Stats collected: CPU=%d usec, Memory=%d bytes, PageFaults=%d",
-		stats.CPUUsageUsec, stats.MemoryUsageBytes, stats.PageFaults)
+	t.Logf("Stats collected: CPU=%d usec, Memory=%d bytes",
+		stats.CPUUsageUsec, stats.MemoryUsageBytes)
 
 	// Kill the process
 	cmd.Process.Kill()
@@ -258,53 +255,6 @@ burst_usec 0`
 	err = os.WriteFile(filepath.Join(cgroupPath, "memory.peak"), []byte(memPeakContent), 0644)
 	require.NoError(t, err)
 
-	// Create mock memory.stat
-	memStatContent := `anon 123456789
-file 987654321
-kernel 12345
-kernel_stack 1024
-pagetables 2048
-sec_pagetables 0
-percpu 4096
-sock 8192
-vmalloc 0
-shmem 0
-file_mapped 456789
-file_dirty 123
-file_writeback 0
-swapcached 0
-anon_thp 0
-file_thp 0
-shmem_thp 0
-inactive_anon 100000
-active_anon 23456
-inactive_file 500000
-active_file 487654
-unevictable 0
-slab_reclaimable 1024
-slab_unreclaimable 2048
-slab 3072
-workingset_refault_anon 0
-workingset_refault_file 10
-workingset_activate_anon 0
-workingset_activate_file 5
-workingset_restore_anon 0
-workingset_restore_file 2
-workingset_nodereclaim 0
-pgfault 1234567
-pgmajfault 123
-pgrefill 456
-pgscan 789
-pgsteal 321
-pgactivate 159
-pgdeactivate 753
-pglazyfree 0
-pglazyfreed 0
-thp_fault_alloc 0
-thp_collapse_alloc 0`
-	err = os.WriteFile(filepath.Join(cgroupPath, "memory.stat"), []byte(memStatContent), 0644)
-	require.NoError(t, err)
-
 	// Create a mock manager that reads from our temp directory
 	mockMgr := &managerImpl{}
 
@@ -353,22 +303,6 @@ thp_collapse_alloc 0`
 	memPeak, err := strconv.ParseUint(strings.TrimSpace(string(peakData)), 10, 64)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(1073741824), memPeak, "MemoryPeakBytes parsing")
-
-	// Read and parse memory.stat for page faults
-	memStatData, err := os.ReadFile(filepath.Join(cgroupPath, "memory.stat"))
-	require.NoError(t, err)
-
-	var pageFaults uint64
-	for _, line := range strings.Split(string(memStatData), "\n") {
-		fields := strings.Fields(line)
-		if len(fields) == 2 && fields[0] == "pgfault" {
-			pageFaults, err = strconv.ParseUint(fields[1], 10, 64)
-			require.NoError(t, err)
-			break
-		}
-	}
-
-	assert.Equal(t, uint64(1234567), pageFaults, "PageFaults parsing")
 
 	_ = mockMgr // Prevent unused variable warning
 }

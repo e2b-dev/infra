@@ -25,10 +25,9 @@ type Stats struct {
 	CPUUserUsec   uint64
 	CPUSystemUsec uint64
 
-	// Memory stats (from memory.current, memory.peak, and memory.stat)
+	// Memory stats (from memory.current and memory.peak)
 	MemoryUsageBytes uint64
 	MemoryPeakBytes  uint64
-	PageFaults       uint64
 }
 
 // Manager handles lifecycle of cgroups for sandboxes
@@ -151,19 +150,6 @@ func (m *managerImpl) GetStats(ctx context.Context, sandboxID string) (*Stats, e
 	peakData, err := os.ReadFile(memPeakPath)
 	if err == nil {
 		stats.MemoryPeakBytes, _ = strconv.ParseUint(strings.TrimSpace(string(peakData)), 10, 64)
-	}
-
-	// Read memory.stat for page faults
-	memStatPath := filepath.Join(cgroupPath, "memory.stat")
-	memStatData, err := os.ReadFile(memStatPath)
-	if err == nil {
-		for _, line := range strings.Split(string(memStatData), "\n") {
-			fields := strings.Fields(line)
-			if len(fields) == 2 && fields[0] == "pgfault" {
-				stats.PageFaults, _ = strconv.ParseUint(fields[1], 10, 64)
-				break
-			}
-		}
 	}
 
 	return stats, nil

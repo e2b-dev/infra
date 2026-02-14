@@ -109,7 +109,6 @@ func (h *HostStatsCollector) CollectSample(ctx context.Context) error {
 			stat.CgroupCPUSystemUsec = cgroupStats.CPUSystemUsec
 			stat.CgroupMemoryUsage = cgroupStats.MemoryUsageBytes
 			stat.CgroupMemoryPeak = cgroupStats.MemoryPeakBytes
-			stat.CgroupPageFaults = cgroupStats.PageFaults
 		}
 	}
 
