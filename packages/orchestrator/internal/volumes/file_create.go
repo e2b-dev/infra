@@ -47,7 +47,7 @@ func (v *VolumeService) CreateFile(server orchestrator.VolumeService_CreateFileS
 		flags = os.O_CREATE | os.O_WRONLY | os.O_EXCL
 	}
 
-	file, err := os.OpenFile(fullPath, flags, os.FileMode(mode))
+	file, err := os.OpenFile(fullPath, flags, os.FileMode(mode).Perm())
 	if err != nil {
 		if os.IsExist(err) {
 			return status.Error(codes.AlreadyExists, err.Error())
@@ -76,6 +76,11 @@ func (v *VolumeService) CreateFile(server orchestrator.VolumeService_CreateFileS
 
 			if err := os.Chown(fullPath, int(uid), int(gid)); err != nil {
 				return fmt.Errorf("failed to set file ownership: %w", err)
+			}
+
+			// we do this again to avoid the process' umask from automatically 'fixing' our requests.
+			if err := os.Chmod(fullPath, os.FileMode(mode)); err != nil {
+				return fmt.Errorf("failed to set file permissions: %w", err)
 			}
 
 			entry, err := os.Stat(fullPath)

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -106,6 +107,13 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 	}
 
 	if err := a.createVolume(ctx, clusterID, volume); err != nil {
+		if errors.Is(err, ErrClusterNotFound) {
+			a.sendAPIStoreError(c, http.StatusInternalServerError, "Cluster not found")
+			telemetry.ReportError(ctx, "cluster not found", err)
+
+			return
+		}
+
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when creating directory")
 		telemetry.ReportCriticalError(ctx, "error when creating directory", err)
 

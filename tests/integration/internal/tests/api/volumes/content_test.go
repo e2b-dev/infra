@@ -37,7 +37,7 @@ func TestVolumeContent(t *testing.T) {
 		assert.NoError(t, err)
 	})
 
-	createFile := func(t *testing.T, path, content string) {
+	createFile := func(t *testing.T, path, content string) *api.VolumeEntryStat {
 		t.Helper()
 
 		response, err := client.PostVolumesVolumeIDFileWithBodyWithResponse(
@@ -52,6 +52,7 @@ func TestVolumeContent(t *testing.T) {
 		)
 		require.NoError(t, err)
 		require.Equal(t, http.StatusCreated, response.StatusCode(), string(response.Body))
+		return response.JSON201
 	}
 
 	retrieveFile := func(t *testing.T, path string) string {
@@ -75,7 +76,15 @@ func TestVolumeContent(t *testing.T) {
 		filename := "test.txt"
 		expected := "test content"
 
-		createFile(t, filename, expected)
+		response := createFile(t, filename, expected)
+		assert.Equal(t, uint32(0o666), response.Mode)
+		assert.Equal(t, uint32(1000), response.Uid)
+		assert.Equal(t, uint32(1000), response.Gid)
+		assert.Equal(t, api.File, response.Type)
+		assert.Equal(t, response.Size, int64(len(expected)))
+		assert.Equal(t, filename, response.Name)
+		assert.False(t, response.Ctime.IsZero())
+		assert.False(t, response.Mtime.IsZero())
 
 		actual := retrieveFile(t, filename)
 		assert.Equal(t, expected, actual)
@@ -214,5 +223,29 @@ func TestVolumeContent(t *testing.T) {
 		entry := response.JSON201
 		assert.Equal(t, uint32(1000), entry.Uid)
 		assert.Equal(t, uint32(12345), entry.Gid)
+	})
+
+	t.Run("can set permissions while creating file", func(t *testing.T) {
+		t.Parallel()
+
+		filename := fmt.Sprintf("%s.txt", uuid.NewString())
+		content := uuid.NewString()
+
+		// create the file
+		response, err := client.PostVolumesVolumeIDFileWithBodyWithResponse(
+			t.Context(),
+			volume.VolumeID,
+			&api.PostVolumesVolumeIDFileParams{
+				Path: filename,
+				Mode: utils.ToPtr(uint32(0o642)),
+			},
+			"application/octet-stream",
+			bytes.NewBufferString(content),
+			setup.WithAPIKey(),
+		)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusCreated, response.StatusCode(), string(response.Body))
+		entry := response.JSON201
+		assert.Equal(t, uint32(0o642), entry.Mode)
 	})
 }
