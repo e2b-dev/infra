@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	RedisRefreshIntervalOff = -1
+	RedisRefreshIntervalOff = 0
 )
 
 // LayeredConfig holds the configuration for a LayeredCache.
@@ -184,7 +184,7 @@ func (lc *LayeredCache[V]) getFromRedis(ctx context.Context, key string) (V, tim
 
 // refreshRedis refreshes a Redis entry in the background by calling the L3 callback.
 func (lc *LayeredCache[V]) refreshRedis(ctx context.Context, key string, dataCallback DataCallback[V]) {
-	lc.redisRefresh.Do(key, func() (any, error) { //nolint:unparam // singleflight API
+	lc.redisRefresh.Do(key, func() (any, error) {
 		ctx, cancel := context.WithTimeout(ctx, lc.config.RedisRefreshTimeout)
 		defer cancel()
 

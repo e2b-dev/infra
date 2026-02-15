@@ -238,7 +238,7 @@ func TestLayeredCache_Singleflight(t *testing.T) {
 
 	var callCount atomic.Int32
 	expected := testValue{ID: "8", Name: "Hank"}
-	callback := func(_ context.Context, _ string) (testValue, error) {
+	callback := func(_ context.Context, _ string) (testValue, error) { //nolint:unparam
 		time.Sleep(100 * time.Millisecond)
 		callCount.Add(1)
 
@@ -306,6 +306,7 @@ func TestLayeredCache_RedisRefresh_TriggeredWhenStale(t *testing.T) {
 	var callCount atomic.Int32
 	result, err := lc.GetOrSet(t.Context(), key, func(_ context.Context, _ string) (testValue, error) {
 		callCount.Add(1)
+
 		return freshValue, nil
 	})
 
@@ -416,6 +417,7 @@ func TestLayeredCache_RedisRefresh_ErrorKeepsStaleValue(t *testing.T) {
 	var callCount atomic.Int32
 	result, err := lc.GetOrSet(t.Context(), key, func(_ context.Context, _ string) (testValue, error) {
 		callCount.Add(1)
+
 		return testValue{}, fmt.Errorf("database unavailable")
 	})
 
@@ -456,6 +458,7 @@ func TestLayeredCache_RedisRefresh_Disabled(t *testing.T) {
 	var callCount atomic.Int32
 	result, err := lc.GetOrSet(t.Context(), key, func(_ context.Context, _ string) (testValue, error) {
 		callCount.Add(1)
+
 		return testValue{ID: "different", Name: "Different"}, nil
 	})
 
