@@ -9,8 +9,6 @@ replace (
 	github.com/e2b-dev/infra/packages/shared v0.0.0 => ../shared
 )
 
-replace github.com/ugorji/go v1.1.4 => github.com/ugorji/go/codec v1.2.12
-
 tool (
 	github.com/air-verse/air
 	github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
