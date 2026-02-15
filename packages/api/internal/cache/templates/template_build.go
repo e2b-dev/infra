@@ -46,12 +46,13 @@ var ErrTemplateBuildInfoNotFound = errors.New("template build info not found")
 
 // Lua script to atomically update build status.
 // Keys: [buildKey]
-// Args: [newStatus, newReasonJSON]
+// Args: [newStatus, newReasonJSON, ttlSeconds]
 // Returns: updated JSON or nil if key doesn't exist
 var updateStatusScript = redis.NewScript(`
 local buildKey = KEYS[1]
 local newStatus = ARGV[1]
 local newReasonJSON = ARGV[2]
+local ttl = tonumber(ARGV[3])
 
 local data = redis.call('GET', buildKey)
 if not data then
@@ -63,7 +64,7 @@ build.build_status = newStatus
 build.reason = cjson.decode(newReasonJSON)
 
 local encoded = cjson.encode(build)
-redis.call('SET', buildKey, encoded, 'KEEPTTL')
+redis.call('SET', buildKey, encoded, 'EX', ttl)
 
 return encoded
 `)
@@ -149,7 +150,8 @@ func (c *TemplatesBuildCache) updateStatusInRedis(ctx context.Context, buildID u
 
 	buildKey := c.cache.RedisKey(buildID.String())
 
-	_, err = updateStatusScript.Run(ctx, c.cache.RedisClient(), []string{buildKey}, string(status), string(reasonJSON)).Result()
+	ttlSeconds := int(redisBuildCacheTTL.Seconds())
+	_, err = updateStatusScript.Run(ctx, c.cache.RedisClient(), []string{buildKey}, string(status), string(reasonJSON), ttlSeconds).Result()
 	if err != nil && !errors.Is(err, redis.Nil) {
 		return fmt.Errorf("failed to update status in Redis: %w", err)
 	}

@@ -3,6 +3,7 @@ package templatecache
 import (
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -152,4 +153,47 @@ func TestRedisTemplatesBuildCache_SetStatus_UpdatesAndInvalidatesL1(t *testing.T
 	require.NoError(t, err)
 	assert.Equal(t, types.BuildStatusGroupReady, updatedInfo.BuildStatus)
 	assert.Equal(t, "Build completed successfully", updatedInfo.Reason.Message)
+}
+
+// TestRedisTemplatesBuildCache_SetStatus_ResetsTTL tests that SetStatus resets the Redis TTL to redisBuildCacheTTL.
+func TestRedisTemplatesBuildCache_SetStatus_ResetsTTL(t *testing.T) {
+	t.Parallel()
+	db := testutils.SetupDatabase(t)
+	redisClient := redis_utils.SetupInstance(t)
+	ctx := t.Context()
+
+	c := NewTemplateBuildCache(db.SqlcClient, redisClient)
+	defer c.Close(t.Context())
+
+	buildID := uuid.New()
+	info := TemplateBuildInfo{
+		TeamID:      uuid.New(),
+		TemplateID:  "test-template",
+		BuildStatus: types.BuildStatusGroupPending,
+		ClusterID:   uuid.New(),
+	}
+
+	// Store in Redis with a short TTL to simulate an aging entry
+	buildJSON, err := json.Marshal(info)
+	require.NoError(t, err)
+
+	buildKey := c.cache.RedisKey(buildID.String())
+	shortTTL := 30 * time.Second
+	err = redisClient.Set(ctx, buildKey, buildJSON, shortTTL).Err()
+	require.NoError(t, err)
+
+	// Verify the initial TTL is short
+	ttlBefore, err := redisClient.TTL(ctx, buildKey).Result()
+	require.NoError(t, err)
+	assert.LessOrEqual(t, ttlBefore, shortTTL)
+
+	// Update status — this should reset TTL to redisBuildCacheTTL (5 minutes)
+	newReason := types.BuildReason{Message: "Build started"}
+	c.SetStatus(ctx, buildID, types.BuildStatusGroupInProgress, newReason)
+
+	// Verify TTL was reset to redisBuildCacheTTL
+	ttlAfter, err := redisClient.TTL(ctx, buildKey).Result()
+	require.NoError(t, err)
+	assert.Greater(t, ttlAfter, shortTTL, "TTL should be reset to redisBuildCacheTTL, not the old short TTL")
+	assert.LessOrEqual(t, ttlAfter, redisBuildCacheTTL)
 }
