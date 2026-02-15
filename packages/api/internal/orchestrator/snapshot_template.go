@@ -93,9 +93,9 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 	}
 
 	// Checkpoint pauses the sandbox, snapshots it, and resumes it on the
-	// orchestrator. On error the orchestrator kills the sandbox itself;
-	// RemoveSandbox is still needed to clean up API-side state (store,
-	// routing, analytics). The node-side Delete may return NotFound.
+	// orchestrator with the same ExecutionID. On error the orchestrator
+	// kills the sandbox itself; RemoveSandbox is still needed to clean up
+	// API-side state (store, routing, analytics).
 	client, childCtx := node.GetClient(ctx)
 	_, err = client.Sandbox.Checkpoint(childCtx, &orchestrator.SandboxCheckpointRequest{
 		SandboxId: sbx.SandboxID,

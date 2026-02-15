@@ -442,7 +442,10 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		return nil, status.Errorf(codes.Internal, "error getting template for resume: %s", err)
 	}
 
-	// Resume the sandbox with the same config
+	// Resume the sandbox keeping the same ExecutionID (stable identity for
+	// the API, routing catalog, and analytics) but with a fresh LifecycleID
+	// so the old sandbox's cleanup goroutine (RemoveByLifecycleID) won't
+	// accidentally evict the resumed sandbox from the map.
 	resumedSbx, err := s.sandboxFactory.ResumeSandbox(
 		ctx,
 		template,
@@ -450,7 +453,7 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		sandbox.RuntimeMetadata{
 			TemplateID:  sbx.Runtime.TemplateID,
 			SandboxID:   sbx.Runtime.SandboxID,
-			ExecutionID: uuid.NewString(),
+			ExecutionID: sbx.Runtime.ExecutionID,
 			TeamID:      sbx.Runtime.TeamID,
 		},
 		sbx.StartedAt,
@@ -602,9 +605,9 @@ func (s *Server) setupSandboxLifecycle(ctx context.Context, sbx *sandbox.Sandbox
 			sbxlogger.I(sbx).Error(ctx, "failed to cleanup sandbox, will remove from cache", zap.Error(cleanupErr))
 		}
 
-		s.sandboxes.RemoveByExecutionID(sbx.Runtime.SandboxID, sbx.Runtime.ExecutionID)
+		s.sandboxes.RemoveByLifecycleID(sbx.Runtime.SandboxID, sbx.LifecycleID)
 
-		closeErr := s.proxy.RemoveFromPool(sbx.Runtime.ExecutionID)
+		closeErr := s.proxy.RemoveFromPool(sbx.LifecycleID)
 		if closeErr != nil {
 			sbxlogger.I(sbx).Warn(ctx, "errors when manually closing connections to sandbox", zap.Error(closeErr))
 		}
