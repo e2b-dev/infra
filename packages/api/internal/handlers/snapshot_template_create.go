@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -127,7 +128,7 @@ func (a *APIStore) PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID api
 		a.templateCache.InvalidateAlias(opts.Namespace, *opts.Alias)
 	}
 
-	a.templateCache.Invalidate(result.TemplateID, &opts.Tag)
+	a.templateCache.Invalidate(context.WithoutCancel(ctx), result.TemplateID, &opts.Tag)
 
 	// Use namespace/alias when a name was provided, otherwise fall back to the raw template ID
 	snapshotID := id.WithTag(result.TemplateID, opts.Tag)

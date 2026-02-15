@@ -72,7 +72,7 @@ type TemplatesBuildCache struct {
 }
 
 func NewTemplateBuildCache(db *sqlcdb.Client, redisClient redis.UniversalClient) *TemplatesBuildCache {
-	rc := cache.NewRedisCache[TemplateBuildInfo](cache.RedisConfig{
+	rc := cache.NewRedisCache[TemplateBuildInfo](cache.RedisConfig[TemplateBuildInfo]{
 		TTL:             buildCacheTTL,
 		RefreshInterval: buildCacheRefreshInterval,
 		RedisTimeout:    buildCacheTimeout,

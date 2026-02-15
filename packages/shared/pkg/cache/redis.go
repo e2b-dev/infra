@@ -19,10 +19,12 @@ const (
 	// redisNoPTTL is the value returned by go-redis PTTL when a key has no expiration.
 	// Redis returns the integer -1; go-redis converts it to -1 * time.Nanosecond.
 	redisNoPTTL = -1 * time.Nanosecond
+
+	redisScanCount = 100
 )
 
 // RedisConfig holds the configuration for a RedisCache.
-type RedisConfig struct {
+type RedisConfig[V any] struct {
 	RedisClient redis.UniversalClient
 	TTL         time.Duration
 	// RefreshInterval triggers a background refresh of a Redis entry
@@ -33,17 +35,21 @@ type RedisConfig struct {
 	RefreshTimeout time.Duration
 	RedisTimeout   time.Duration // default 2s
 	RedisPrefix    string        // e.g. "template:build"
+	// ExtractKeyFunc is an optional function to extract a key from the value.
+	// When set, the key used for Redis storage is derived from the fetched value
+	// rather than the original lookup key.
+	ExtractKeyFunc ExtractKeyFunc[V]
 }
 
 // RedisCache is a generic two-tier cache: Redis + user callback.
 type RedisCache[V any] struct {
-	config       RedisConfig
+	config       RedisConfig[V]
 	fetchGroup   singleflight.Group
 	redisRefresh singleflight.Group
 }
 
 // NewRedisCache creates a new RedisCache with the given configuration.
-func NewRedisCache[V any](config RedisConfig) *RedisCache[V] {
+func NewRedisCache[V any](config RedisConfig[V]) *RedisCache[V] {
 	if config.RedisTimeout == 0 {
 		config.RedisTimeout = 2 * time.Second
 	}
@@ -92,7 +98,11 @@ func (rc *RedisCache[V]) GetOrSet(ctx context.Context, key string, dataCallback 
 		}
 
 		// Backfill into Redis
-		rc.setInRedis(ctx, key, v)
+		storeKey := key
+		if rc.config.ExtractKeyFunc != nil {
+			storeKey = rc.config.ExtractKeyFunc(v)
+		}
+		rc.setInRedis(ctx, storeKey, v)
 
 		return result{value: v}, nil
 	})
@@ -110,6 +120,52 @@ func (rc *RedisCache[V]) Set(ctx context.Context, key string, value V) {
 // Delete removes a value from Redis.
 func (rc *RedisCache[V]) Delete(ctx context.Context, key string) {
 	rc.deleteFromRedis(ctx, key)
+}
+
+// DeleteByPrefix removes all keys matching the given prefix from Redis.
+// Uses SCAN (not KEYS) to avoid blocking Redis on large keyspaces.
+// Returns the list of deleted cache keys (without the Redis prefix).
+func (rc *RedisCache[V]) DeleteByPrefix(ctx context.Context, prefix string) []string {
+	redisPattern := fmt.Sprintf("%s:%s*", rc.config.RedisPrefix, prefix)
+
+	var deleted []string
+	var cursor uint64
+	for {
+		scanCtx, cancel := context.WithTimeout(ctx, rc.config.RedisTimeout)
+		keys, nextCursor, err := rc.config.RedisClient.Scan(scanCtx, cursor, redisPattern, redisScanCount).Result()
+		cancel()
+		if err != nil {
+			logger.L().Warn(ctx, "RedisCache: SCAN error",
+				zap.String("pattern", redisPattern),
+				zap.Error(err))
+
+			break
+		}
+
+		if len(keys) > 0 {
+			pipeCtx, cancel := context.WithTimeout(ctx, rc.config.RedisTimeout)
+			pipe := rc.config.RedisClient.Pipeline()
+			for _, redisKey := range keys {
+				pipe.Del(ctx, redisKey)
+				cacheKey := redisKey[len(rc.config.RedisPrefix)+1:]
+				deleted = append(deleted, cacheKey)
+			}
+
+			if _, err := pipe.Exec(pipeCtx); err != nil {
+				logger.L().Warn(ctx, "RedisCache: pipeline DEL error",
+					zap.String("pattern", redisPattern),
+					zap.Error(err))
+			}
+			cancel()
+		}
+
+		cursor = nextCursor
+		if cursor == 0 {
+			break
+		}
+	}
+
+	return deleted
 }
 
 // Close is a no-op (no background goroutines to stop).
@@ -175,7 +231,11 @@ func (rc *RedisCache[V]) refreshRedis(ctx context.Context, key string, dataCallb
 			return nil, nil
 		}
 
-		rc.setInRedis(ctx, key, value)
+		storeKey := key
+		if rc.config.ExtractKeyFunc != nil {
+			storeKey = rc.config.ExtractKeyFunc(value)
+		}
+		rc.setInRedis(ctx, storeKey, value)
 
 		return nil, nil
 	})
