@@ -135,8 +135,9 @@ func (s *Storage) createCallback(teamID uuid.UUID, sandboxID, transitionKey, res
 	return func(cbCtx context.Context, cbErr error) {
 		logger.L().Debug(cbCtx, "Transition complete", logger.WithSandboxID(sandboxID), zap.String("state", string(stateAction.TargetState)), zap.String("transitionID", transitionID), zap.Error(cbErr))
 
+		var restoreErr error
 		if stateAction.Effect == sandbox.TransitionTransient && cbErr == nil {
-			s.restoreToRunning(cbCtx, teamID, sandboxID, stateAction.TargetState)
+			restoreErr = s.restoreToRunning(cbCtx, teamID, sandboxID, stateAction.TargetState)
 		}
 
 		lock, err := s.lockService.Obtain(cbCtx, redis_utils.GetLockKey(transitionKey), lockTimeout, s.lockOption)
@@ -152,11 +153,15 @@ func (s *Storage) createCallback(teamID uuid.UUID, sandboxID, transitionKey, res
 			}
 		}()
 
-		// For transient actions, always signal success to waiters so
-		// concurrent callers (e.g. kill) are unblocked and can proceed
-		// with their own transition — matching the memory implementation.
+		// Determine result value for waiters:
+		// - Restore failure: propagate so callers know state is inconsistent
+		// - Transient original failure: signal success so concurrent ops
+		//   (e.g. kill) can proceed — matching the memory implementation
+		// - Non-transient failure: propagate the error
 		resultValue := ""
-		if cbErr != nil && stateAction.Effect != sandbox.TransitionTransient {
+		if restoreErr != nil {
+			resultValue = fmt.Errorf("failed to restore sandbox to running: %w", restoreErr).Error()
+		} else if cbErr != nil && stateAction.Effect != sandbox.TransitionTransient {
 			resultValue = cbErr.Error()
 		}
 
@@ -175,7 +180,7 @@ func (s *Storage) createCallback(teamID uuid.UUID, sandboxID, transitionKey, res
 }
 
 // restoreToRunning restores the sandbox to Running if it is still in the given transient state.
-func (s *Storage) restoreToRunning(ctx context.Context, teamID uuid.UUID, sandboxID string, fromState sandbox.State) {
+func (s *Storage) restoreToRunning(ctx context.Context, teamID uuid.UUID, sandboxID string, fromState sandbox.State) error {
 	_, err := s.Update(ctx, teamID, sandboxID, func(sbx sandbox.Sandbox) (sandbox.Sandbox, error) {
 		if sbx.State != fromState {
 			return sbx, nil
@@ -185,9 +190,8 @@ func (s *Storage) restoreToRunning(ctx context.Context, teamID uuid.UUID, sandbo
 
 		return sbx, nil
 	})
-	if err != nil {
-		logger.L().Warn(ctx, "Failed to restore sandbox to running", logger.WithSandboxID(sandboxID), zap.Error(err))
-	}
+
+	return err
 }
 
 // WaitForStateChange waits for a sandbox state transition to complete.

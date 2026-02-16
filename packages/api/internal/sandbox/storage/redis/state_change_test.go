@@ -710,6 +710,87 @@ func TestStartRemoving_DifferentExecutionID(t *testing.T) {
 	callback2(ctx, nil)
 }
 
+// transientAction is used for all transient-transition tests.
+// Snapshot is currently the only transient action; if more are added
+// these tests automatically cover the shared behaviour.
+var transientAction = sandbox.StateActionSnapshot
+
+func TestStartRemoving_TransientTransition(t *testing.T) {
+	t.Parallel()
+
+	t.Run("success restores state to Running", func(t *testing.T) {
+		t.Parallel()
+
+		storage, _ := setupTestStorage(t)
+		ctx := t.Context()
+
+		sbx := createTestSandbox("transient-restore")
+		require.NoError(t, storage.Add(ctx, sbx))
+
+		_, finish, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, transientAction)
+		require.NoError(t, err)
+
+		finish(ctx, nil)
+
+		got, err := storage.Get(ctx, sbx.TeamID, sbx.SandboxID)
+		require.NoError(t, err)
+		assert.Equal(t, sandbox.StateRunning, got.State)
+	})
+
+	t.Run("failure signals success to waiters", func(t *testing.T) {
+		t.Parallel()
+
+		storage, client := setupTestStorage(t)
+		ctx := t.Context()
+
+		sbx := createTestSandbox("transient-fail-result")
+		require.NoError(t, storage.Add(ctx, sbx))
+
+		_, finish, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, transientAction)
+		require.NoError(t, err)
+
+		transitionKey := getTransitionKey(sbx.TeamID.String(), sbx.SandboxID)
+		transitionID, err := client.Get(ctx, transitionKey).Result()
+		require.NoError(t, err)
+
+		finish(ctx, errors.New("operation failed"))
+
+		// Transient transitions signal success even on failure so
+		// concurrent callers (e.g. kill) can proceed.
+		resultKey := getTransitionResultKey(sbx.TeamID.String(), sbx.SandboxID, transitionID)
+		value, err := client.Get(ctx, resultKey).Result()
+		require.NoError(t, err)
+		assert.Empty(t, value, "failed transient transition should still write empty result for waiters")
+	})
+
+	t.Run("restore failure propagates to result key", func(t *testing.T) {
+		t.Parallel()
+
+		storage, client := setupTestStorage(t)
+		ctx := t.Context()
+
+		sbx := createTestSandbox("transient-restore-fail")
+		require.NoError(t, storage.Add(ctx, sbx))
+
+		_, finish, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, transientAction)
+		require.NoError(t, err)
+
+		// Remove the sandbox key to force restoreToRunning to fail
+		client.Del(ctx, getSandboxKey(sbx.TeamID.String(), sbx.SandboxID))
+
+		transitionKey := getTransitionKey(sbx.TeamID.String(), sbx.SandboxID)
+		transitionID, err := client.Get(ctx, transitionKey).Result()
+		require.NoError(t, err)
+
+		finish(ctx, nil)
+
+		resultKey := getTransitionResultKey(sbx.TeamID.String(), sbx.SandboxID, transitionID)
+		value, err := client.Get(ctx, resultKey).Result()
+		require.NoError(t, err)
+		assert.Contains(t, value, "failed to restore sandbox to running")
+	})
+}
+
 // TestStartRemoving_CompletedTransitionAllowsNewTransition tests that a completed
 // transition doesn't block a new transition to a different state.
 func TestStartRemoving_CompletedTransitionAllowsNewTransition(t *testing.T) {

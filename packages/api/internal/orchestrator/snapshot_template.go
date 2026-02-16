@@ -44,9 +44,16 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 		return SnapshotTemplateResult{}, fmt.Errorf("failed to get sandbox: %w", err)
 	}
 
-	_, finishSnapshotting, err := o.sandboxStore.StartRemoving(ctx, teamID, sandboxID, sandbox.StateActionSnapshot)
+	alreadyDone, finishSnapshotting, err := o.sandboxStore.StartRemoving(ctx, teamID, sandboxID, sandbox.StateActionSnapshot)
 	if err != nil {
 		return SnapshotTemplateResult{}, fmt.Errorf("failed to start snapshotting: %w", err)
+	}
+
+	if alreadyDone {
+		return SnapshotTemplateResult{}, &sandbox.InvalidStateTransitionError{
+			CurrentState: sandbox.StateSnapshotting,
+			TargetState:  sandbox.StateSnapshotting,
+		}
 	}
 
 	// finish completes the snapshotting transition exactly once.

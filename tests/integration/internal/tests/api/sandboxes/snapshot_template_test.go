@@ -383,4 +383,24 @@ func TestSnapshotTemplateConcurrentOperations(t *testing.T) {
 
 		<-snapshotDone
 	})
+
+	t.Run("concurrent snapshot returns conflict", func(t *testing.T) {
+		t.Parallel()
+		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false))
+
+		snapshotDone := startSnapshotInBackground(t, c, sbx.SandboxID)
+		waitForSnapshotting(t, db, sbx.SandboxID, 30*time.Second)
+
+		resp, err := c.PostSandboxesSandboxIDSnapshotsWithResponse(
+			t.Context(),
+			sbx.SandboxID,
+			api.PostSandboxesSandboxIDSnapshotsJSONRequestBody{},
+			setup.WithAPIKey(),
+		)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusConflict, resp.StatusCode(),
+			"second snapshot during snapshotting should return conflict, body: %s", string(resp.Body))
+
+		<-snapshotDone
+	})
 }
