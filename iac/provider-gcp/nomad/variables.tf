@@ -14,7 +14,7 @@ variable "orchestrator_node_pool" {
   type = string
 }
 
-variable "orchestration_repository_name" {
+variable "core_repository_name" {
   type = string
 }
 
@@ -107,6 +107,11 @@ variable "api_machine_count" {
 
 variable "api_node_pool" {
   type = string
+}
+
+variable "loki_use_v13_schema_from" {
+  type    = string
+  default = ""
 }
 
 variable "loki_machine_count" {

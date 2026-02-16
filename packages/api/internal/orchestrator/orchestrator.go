@@ -175,7 +175,6 @@ func New(
 		return nil, fmt.Errorf("failed to setup metrics: %w", err)
 	}
 
-	go o.reportLongRunningSandboxes(ctx)
 	go o.startStatusLogging(ctx)
 	go o.updateBestOfKConfig(ctx)
 

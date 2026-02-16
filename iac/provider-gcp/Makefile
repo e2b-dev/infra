@@ -65,7 +65,8 @@ tf_vars := \
 	$(call tfvar, SERVER_BOOT_DISK_SIZE_GB) \
 	$(call tfvar, CLICKHOUSE_BOOT_DISK_TYPE) \
 	$(call tfvar, BUCKET_PREFIX) \
-	$(call tfvar, LOKI_BOOT_DISK_TYPE)
+	$(call tfvar, LOKI_BOOT_DISK_TYPE) \
+	$(call tfvar, LOKI_USE_V13_SCHEMA_FROM)
 
 .PHONY: init
 init:
@@ -90,6 +91,10 @@ init:
 
 	@ TERRAFORM_STATE_BUCKET="$(TERRAFORM_STATE_BUCKET)" $(MAKE) -C nomad-cluster-disk-image init build
 	@ gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
+
+.PHONY: apply-init
+apply-init:
+	@ $(tf_vars) $(TF) apply $(TF_VAR_FILE_ARG) -target=module.init -auto-approve -input=false -compact-warnings
 
 .PHONY: switch
 switch:

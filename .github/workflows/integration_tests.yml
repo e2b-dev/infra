@@ -72,14 +72,14 @@ jobs:
         shell: bash
 
       - name: Upload Test Results
-        if: always() && ${{ inputs.publish == true }}
+        if: ${{ always() && inputs.publish == true }}
         uses: actions/upload-artifact@v4
         with:
           name: Integration Tests Results
           path: ./tests/integration/test-results.xml
 
       - name: Upload Service Logs
-        if: always() && ${{ inputs.publish == true }}
+        if: ${{ always() && inputs.publish == true }}
         uses: actions/upload-artifact@v4
         with:
           name: Service Logs
