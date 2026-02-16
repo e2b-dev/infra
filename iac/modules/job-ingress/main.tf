@@ -22,7 +22,7 @@ variable "nomad_token" {
 }
 
 variable "nomad_endpoint" {
-  type = string
+  type    = string
   default = "http://localhost:4646"
 }
 
@@ -31,7 +31,7 @@ variable "consul_token" {
 }
 
 variable "consul_endpoint" {
-  type = string
+  type    = string
   default = "http://localhost:8500"
 }
 
@@ -40,7 +40,7 @@ variable "ingress_proxy_port" {
 }
 
 variable "ingress_control_port" {
-  type = number
+  type    = number
   default = 8900
 }
 
@@ -57,11 +57,11 @@ variable "ingress_count" {
 }
 
 variable "ingress_cpu_count" {
-  type = number
+  type    = number
   default = 1
 }
 
 variable "ingress_memory_mb" {
-  type = number
+  type    = number
   default = 512
 }
