@@ -72,10 +72,10 @@ func New(
 	cgroupManager cgroups.Manager,
 	cancel context.CancelFunc,
 ) (*Handler, error) {
-	// Wrap the command in a shell that sets the OOM score adjustment before exec-ing the actual command.
+	// Wrap the command in a shell that sets the OOM score and nice value before exec-ing the actual command.
 	// This eliminates the race window where grandchildren could inherit the parent's protected OOM score (-1000)
-	// before the post-start adjustOomScore call had a chance to correct it.
-	oomWrapperScript := fmt.Sprintf(`echo %d > /proc/$$/oom_score_adj && exec "${@}"`, defaultOomScore)
+	// or high CPU priority (nice -20) before the post-start calls had a chance to correct them.
+	oomWrapperScript := fmt.Sprintf(`echo %d > /proc/$$/oom_score_adj && exec nice -n 0 "${@}"`, defaultOomScore)
 	wrapperArgs := append([]string{"-c", oomWrapperScript, "--", req.GetProcess().GetCmd()}, req.GetProcess().GetArgs()...)
 	cmd := exec.CommandContext(ctx, "/bin/sh", wrapperArgs...)
 
