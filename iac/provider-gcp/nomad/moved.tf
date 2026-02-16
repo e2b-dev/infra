@@ -37,3 +37,8 @@ moved {
   from = nomad_job.clickhouse_migrator
   to   = module.clickhouse.nomad_job.clickhouse_migrator
 }
+
+moved {
+  from = nomad_job.otel_collector
+  to   = module.otel_collector.nomad_job.otel_collector
+}

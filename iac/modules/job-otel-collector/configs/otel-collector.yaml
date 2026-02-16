@@ -285,6 +285,7 @@ processors:
 
   resourcedetection:
     # https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/processor/resourcedetectionprocessor
+%{ if provider_name == "gcp" }
     detectors: [gcp]
     override: true
     gcp:
@@ -313,6 +314,19 @@ processors:
           enabled: false
         gcp.gce.instance_group_manager.name:
           enabled: false
+%{ endif }
+%{ if provider_name == "aws" }
+    detectors: [ec2]
+    override: true
+    ec2:
+      resource_attributes:
+        cloud.account.id:
+          enabled: true
+        host.name:
+          enabled: true
+        host.id:
+          enabled: false
+%{ endif }
 
   # For some reason, the metrics require us to set datapoint.attribute and won't accept the resource.attribute
   # That is why we can't use the resource/set_attributes processor
