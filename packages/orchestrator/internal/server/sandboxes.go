@@ -480,8 +480,6 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		s.uploadPrefetchMappingAsync(ctx, resumedSbx, meta, prefetchData)
 	}
 
-	s.publishSandboxEvent(ctx, resumedSbx, events.SandboxCheckpointedEvent)
-
 	// Wait for snapshot upload to complete before returning.
 	// If the upload fails, kill the resumed sandbox — without a persisted
 	// snapshot it cannot be paused/resumed later. We handle the kill here
@@ -494,6 +492,8 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 
 		return nil, status.Errorf(codes.Internal, "error uploading snapshot for checkpoint '%s': %s", in.GetSandboxId(), err)
 	}
+
+	s.publishSandboxEvent(ctx, resumedSbx, events.SandboxCheckpointedEvent)
 
 	telemetry.ReportEvent(ctx, "Checkpoint completed")
 

@@ -3,7 +3,9 @@ package sandboxes
 import (
 	"net/http"
 	"testing"
+	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -255,5 +257,129 @@ func TestSnapshotTemplateCreateSandbox(t *testing.T) {
 
 		assert.NotEqual(t, sbx.SandboxID, newSandbox.SandboxID)
 		assert.Equal(t, snapshot.SnapshotID, newSandbox.TemplateID)
+	})
+}
+
+// waitForSnapshotting polls the database until a build with status 'snapshotting'
+// appears for the given sandbox, or the timeout expires.
+func waitForSnapshotting(t *testing.T, db *setup.Database, sandboxID string, timeout time.Duration) {
+	t.Helper()
+
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		var count int
+
+		err := db.Db.TestsRawSQLQuery(t.Context(),
+			`SELECT COUNT(*) FROM env_builds eb
+			 JOIN env_build_assignments eba ON eba.build_id = eb.id
+			 JOIN snapshots s ON s.env_id = eba.env_id
+			 WHERE s.sandbox_id = $1 AND eb.status = 'snapshotting'`,
+			func(rows pgx.Rows) error {
+				if rows.Next() {
+					return rows.Scan(&count)
+				}
+
+				return nil
+			},
+			sandboxID,
+		)
+		require.NoError(t, err)
+
+		if count > 0 {
+			return
+		}
+
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	t.Fatalf("timed out waiting for sandbox %s to enter snapshotting state", sandboxID)
+}
+
+// startSnapshotInBackground fires a snapshot creation request in a goroutine.
+// Returns a channel that closes when the request completes.
+func startSnapshotInBackground(t *testing.T, c *api.ClientWithResponses, sandboxID string) <-chan struct{} {
+	t.Helper()
+
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+
+		resp, err := c.PostSandboxesSandboxIDSnapshotsWithResponse(
+			t.Context(), sandboxID,
+			api.PostSandboxesSandboxIDSnapshotsJSONRequestBody{},
+			setup.WithAPIKey(),
+		)
+		if err != nil {
+			t.Logf("snapshot request error: %v", err)
+
+			return
+		}
+
+		t.Logf("snapshot response: %d", resp.StatusCode())
+
+		if resp.StatusCode() == http.StatusCreated && resp.JSON201 != nil {
+			t.Cleanup(func() {
+				c.DeleteTemplatesTemplateIDWithResponse(t.Context(), resp.JSON201.SnapshotID, setup.WithAPIKey())
+			})
+		}
+	}()
+
+	return done
+}
+
+func TestSnapshotTemplateConcurrentOperations(t *testing.T) {
+	t.Parallel()
+	c := setup.GetAPIClient()
+	db := setup.GetTestDBClient(t)
+
+	t.Run("pause during snapshot creation", func(t *testing.T) {
+		t.Parallel()
+		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false))
+
+		snapshotDone := startSnapshotInBackground(t, c, sbx.SandboxID)
+		waitForSnapshotting(t, db, sbx.SandboxID, 30*time.Second)
+
+		pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbx.SandboxID, setup.WithAPIKey())
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusInternalServerError, pauseResp.StatusCode(),
+			"pause during snapshotting should fail, body: %s", string(pauseResp.Body))
+
+		<-snapshotDone
+	})
+
+	t.Run("kill during snapshot creation", func(t *testing.T) {
+		t.Parallel()
+		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false))
+
+		snapshotDone := startSnapshotInBackground(t, c, sbx.SandboxID)
+		waitForSnapshotting(t, db, sbx.SandboxID, 30*time.Second)
+
+		killResp, err := c.DeleteSandboxesSandboxIDWithResponse(t.Context(), sbx.SandboxID, setup.WithAPIKey())
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusNoContent, killResp.StatusCode(),
+			"kill during snapshotting should succeed, body: %s", string(killResp.Body))
+
+		<-snapshotDone
+	})
+
+	t.Run("resume during snapshot creation", func(t *testing.T) {
+		t.Parallel()
+		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false))
+
+		snapshotDone := startSnapshotInBackground(t, c, sbx.SandboxID)
+		waitForSnapshotting(t, db, sbx.SandboxID, 30*time.Second)
+
+		resumeResp, err := c.PostSandboxesSandboxIDResumeWithResponse(
+			t.Context(),
+			sbx.SandboxID,
+			api.PostSandboxesSandboxIDResumeJSONRequestBody{},
+			setup.WithAPIKey(),
+		)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusConflict, resumeResp.StatusCode(),
+			"resume during snapshotting should return conflict, body: %s", string(resumeResp.Body))
+
+		<-snapshotDone
 	})
 }

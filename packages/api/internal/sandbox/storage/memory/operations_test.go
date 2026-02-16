@@ -46,6 +46,8 @@ func TestStartRemoving_BasicTransitions(t *testing.T) {
 		{"Killed to Paused (invalid)", sandbox.StateKilling, sandbox.StateActionPause, sandbox.StatePausing, true},
 		{"Killed to Killed (same)", sandbox.StateKilling, sandbox.StateActionKill, sandbox.StateKilling, false},
 		{"Paused to Paused (same)", sandbox.StatePausing, sandbox.StateActionPause, sandbox.StatePausing, false},
+		{"Snapshotting to Killed", sandbox.StateSnapshotting, sandbox.StateActionKill, sandbox.StateKilling, false},
+		{"Snapshotting to Paused (invalid)", sandbox.StateSnapshotting, sandbox.StateActionPause, sandbox.StatePausing, true},
 	}
 
 	for _, tt := range tests {
@@ -421,6 +423,117 @@ func TestWaitForStateChange_MultipleWaiters(t *testing.T) {
 	for i := range numWaiters {
 		require.NoError(t, errs[i])
 	}
+}
+
+func TestStartRemoving_DuringSnapshotting(t *testing.T) {
+	t.Parallel()
+
+	t.Run("pause fails during snapshotting", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		storage := NewStorage()
+
+		sbx := sandbox.Sandbox{
+			SandboxID:         "snap-pause-test",
+			TemplateID:        "test-template",
+			ClientID:          "test-client",
+			TeamID:            uuid.New(),
+			StartTime:         time.Now(),
+			EndTime:           time.Now().Add(time.Hour),
+			MaxInstanceLength: time.Hour,
+			State:             sandbox.StateRunning,
+		}
+
+		err := storage.Add(ctx, sbx)
+		require.NoError(t, err)
+
+		_, err = storage.Update(ctx, sbx.TeamID, sbx.SandboxID, func(s sandbox.Sandbox) (sandbox.Sandbox, error) {
+			s.State = sandbox.StateSnapshotting
+
+			return s, nil
+		})
+		require.NoError(t, err)
+
+		_, finish, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.StateActionPause)
+		require.Error(t, err)
+		assert.Nil(t, finish)
+
+		got, getErr := storage.Get(ctx, sbx.TeamID, sbx.SandboxID)
+		require.NoError(t, getErr)
+		assert.Equal(t, sandbox.StateSnapshotting, got.State)
+	})
+
+	t.Run("kill succeeds during snapshotting", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		storage := NewStorage()
+
+		sbx := sandbox.Sandbox{
+			SandboxID:         "snap-kill-test",
+			TemplateID:        "test-template",
+			ClientID:          "test-client",
+			TeamID:            uuid.New(),
+			StartTime:         time.Now(),
+			EndTime:           time.Now().Add(time.Hour),
+			MaxInstanceLength: time.Hour,
+			State:             sandbox.StateRunning,
+		}
+
+		err := storage.Add(ctx, sbx)
+		require.NoError(t, err)
+
+		_, err = storage.Update(ctx, sbx.TeamID, sbx.SandboxID, func(s sandbox.Sandbox) (sandbox.Sandbox, error) {
+			s.State = sandbox.StateSnapshotting
+
+			return s, nil
+		})
+		require.NoError(t, err)
+
+		alreadyDone, finish, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.StateActionKill)
+		require.NoError(t, err)
+		assert.False(t, alreadyDone)
+		require.NotNil(t, finish)
+
+		got, getErr := storage.Get(ctx, sbx.TeamID, sbx.SandboxID)
+		require.NoError(t, getErr)
+		assert.Equal(t, sandbox.StateKilling, got.State)
+
+		finish(ctx, nil)
+	})
+
+	t.Run("resume sees snapshotting state", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		storage := NewStorage()
+
+		sbx := sandbox.Sandbox{
+			SandboxID:         "snap-resume-test",
+			TemplateID:        "test-template",
+			ClientID:          "test-client",
+			TeamID:            uuid.New(),
+			StartTime:         time.Now(),
+			EndTime:           time.Now().Add(time.Hour),
+			MaxInstanceLength: time.Hour,
+			State:             sandbox.StateRunning,
+		}
+
+		err := storage.Add(ctx, sbx)
+		require.NoError(t, err)
+
+		_, err = storage.Update(ctx, sbx.TeamID, sbx.SandboxID, func(s sandbox.Sandbox) (sandbox.Sandbox, error) {
+			s.State = sandbox.StateSnapshotting
+
+			return s, nil
+		})
+		require.NoError(t, err)
+
+		got, getErr := storage.Get(ctx, sbx.TeamID, sbx.SandboxID)
+		require.NoError(t, getErr)
+		assert.Equal(t, sandbox.StateSnapshotting, got.State)
+	})
 }
 
 // Stress test with random operations
