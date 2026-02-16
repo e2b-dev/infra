@@ -7,7 +7,7 @@ variable "vector_health_port" {
 }
 
 variable "loki_endpoint" {
-  type = string
+  type        = string
   description = "The URL of the Loki instance to which logs will be sent. For example: http://loki:3100"
 }
 

@@ -1,7 +1,7 @@
 locals {
   default_otel_collector_config = templatefile(
     "${path.module}/configs/otel-collector.yaml", {
-      provider_name               = var.provider_name
+      provider_name                = var.provider_name
       grafana_otel_collector_token = var.grafana_otel_collector_token
       grafana_otlp_url             = var.grafana_otlp_url
       grafana_username             = var.grafana_username

@@ -31,11 +31,11 @@ locals {
     job_constraint_prefix = var.job_constraint_prefix
     node_pool             = var.node_pool
 
-    cloud_provider           = var.provider_name
-    backup_bucket            = var.backup_bucket
-    backup_folder            = var.backup_folder
+    cloud_provider               = var.provider_name
+    backup_bucket                = var.backup_bucket
+    backup_folder                = var.backup_folder
     gcs_credentials_json_encoded = var.gcs_credentials_json_encoded
-    aws_region               = var.aws_region
+    aws_region                   = var.aws_region
   }
 }
 

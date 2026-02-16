@@ -4,7 +4,7 @@ locals {
       vector_api_port    = var.vector_api_port
       vector_health_port = var.vector_health_port
 
-      loki_endpoint  = var.loki_endpoint
+      loki_endpoint = var.loki_endpoint
 
       grafana_logs_user     = var.grafana_logs_user
       grafana_logs_endpoint = var.grafana_logs_endpoint
