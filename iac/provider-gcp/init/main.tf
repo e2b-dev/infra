@@ -100,16 +100,16 @@ resource "google_artifact_registry_repository_iam_member" "orchestration_reposit
   depends_on = [time_sleep.artifact_registry_api_wait_90_seconds]
 }
 
-resource "google_artifact_registry_repository" "orchestration" {
+resource "google_artifact_registry_repository" "core" {
   format        = "DOCKER"
-  repository_id = "${var.prefix}orchestration"
+  repository_id = "${var.prefix}core"
   labels        = var.labels
 
   depends_on = [time_sleep.artifact_registry_api_wait_90_seconds]
 }
 
-resource "google_artifact_registry_repository_iam_member" "orchestration" {
-  repository = google_artifact_registry_repository.orchestration.name
+resource "google_artifact_registry_repository_iam_member" "core" {
+  repository = google_artifact_registry_repository.core.name
   role       = "roles/artifactregistry.reader"
   member     = "serviceAccount:${google_service_account.infra_instances_service_account.email}"
 

@@ -12,23 +12,25 @@ const (
 	authInfoExpiration = 5 * time.Minute
 	refreshInterval    = 1 * time.Minute
 	refreshTimeout     = 30 * time.Second
+	callbackTimeout    = 30 * time.Second
 )
 
 type DataCallback = func(ctx context.Context, key string) (*types.Team, error)
 
 type TeamAuthCache struct {
-	cache *cache.Cache[string, *types.Team]
+	cache *cache.Cache[*types.Team]
 }
 
 func NewTeamAuthCache() *TeamAuthCache {
-	config := cache.Config[string, *types.Team]{
+	config := cache.Config[*types.Team]{
 		TTL:             authInfoExpiration,
 		RefreshInterval: refreshInterval,
 		RefreshTimeout:  refreshTimeout,
+		CallbackTimeout: callbackTimeout,
 	}
 
 	return &TeamAuthCache{
-		cache: cache.NewCache[string, *types.Team](config),
+		cache: cache.NewCache[*types.Team](config),
 	}
 }
 

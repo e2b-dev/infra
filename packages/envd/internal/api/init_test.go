@@ -39,7 +39,7 @@ func TestSimpleCases(t *testing.T) {
 `
 			value = preprocessor(value)
 			inputPath := filepath.Join(tempDir, "hosts")
-			err := os.WriteFile(inputPath, []byte(value), hostsFilePermissions)
+			err := os.WriteFile(inputPath, []byte(value), 0o644)
 			require.NoError(t, err)
 
 			err = rewriteHostsFile("127.0.0.3", inputPath)

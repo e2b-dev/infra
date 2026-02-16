@@ -5,6 +5,7 @@ PROVIDER ?= gcp
 -include ${ENV_FILE}
 
 AWS_BUCKET_PREFIX ?= $(PREFIX)$(AWS_ACCOUNT_ID)-
+GCP_BUCKET_PREFIX ?= $(GCP_PROJECT_ID)-
 
 .PHONY: provider-login
 provider-login:
@@ -41,6 +42,10 @@ plan-only-jobs/%:
 .PHONY: plan-without-jobs
 plan-without-jobs:
 	$(MAKE) -C iac/provider-$(PROVIDER) plan-without-jobs
+
+.PHONY: apply-init
+apply-init:
+	$(MAKE) -C iac/provider-$(PROVIDER) apply-init
 
 .PHONY: apply
 apply:
@@ -103,8 +108,8 @@ ifeq ($(PROVIDER),aws)
 	rm -rf ./.kernels
 	rm -rf ./.firecrackers
 else
-	gsutil cp -r gs://e2b-prod-public-builds/kernels/* gs://$(GCP_PROJECT_ID)-fc-kernels/
-	gsutil cp -r gs://e2b-prod-public-builds/firecrackers/* gs://$(GCP_PROJECT_ID)-fc-versions/
+	gsutil cp -r gs://e2b-prod-public-builds/kernels/* gs://$(GCP_BUCKET_PREFIX)fc-kernels/
+	gsutil cp -r gs://e2b-prod-public-builds/firecrackers/* gs://$(GCP_BUCKET_PREFIX)fc-versions/
 endif
 
 .PHONY: download-public-kernels
@@ -184,7 +189,7 @@ generate-mocks:
 
 .PHONY: tidy
 tidy:
-	scripts/golang-dependencies-integrity.sh
+	@scripts/golang-dependencies-integrity.sh
 
 .PHONY: local-infra
 local-infra:

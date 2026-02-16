@@ -13,3 +13,11 @@ variable "gcp_region" {
 variable "google_service_account_email" {
   type = string
 }
+
+variable "dockerhub_username_secret_name" {
+  type = string
+}
+
+variable "dockerhub_password_secret_name" {
+  type = string
+}
