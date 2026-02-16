@@ -128,7 +128,7 @@ func startRemoving(ctx context.Context, sbx *memorySandbox, stateAction sandbox.
 		sbx.mu.Unlock()
 
 		if currentState != newState && !sandbox.AllowedTransitions[currentState][newState] {
-			return false, nil, fmt.Errorf("invalid state transition, already in transition from %s", currentState)
+			return false, nil, &sandbox.InvalidStateTransitionError{CurrentState: currentState, TargetState: newState}
 		}
 
 		logger.L().Debug(ctx, "State transition already in progress to the same state, waiting", logger.WithSandboxID(sbx.SandboxID()), zap.String("state", string(newState)))
@@ -156,7 +156,7 @@ func startRemoving(ctx context.Context, sbx *memorySandbox, stateAction sandbox.
 	}
 
 	if _, ok := sandbox.AllowedTransitions[sbx._data.State][newState]; !ok {
-		return false, nil, fmt.Errorf("invalid state transition from %s to %s", sbx._data.State, newState)
+		return false, nil, &sandbox.InvalidStateTransitionError{CurrentState: sbx._data.State, TargetState: newState}
 	}
 
 	if stateAction.Effect == sandbox.TransitionExpires {

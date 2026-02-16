@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"go.uber.org/zap"
@@ -33,16 +34,20 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, sbx sandbox.Sandbox, s
 				return ErrSandboxOperationFailed
 			}
 		case sandbox.StateActionPause:
-			switch sbx.State {
-			case sandbox.StateKilling:
-				logger.L().Info(ctx, "Sandbox is already killed", logger.WithSandboxID(sandboxID))
+			var transErr *sandbox.InvalidStateTransitionError
+			if errors.As(err, &transErr) {
+				if transErr.CurrentState == sandbox.StateKilling {
+					logger.L().Info(ctx, "Sandbox is already killed", logger.WithSandboxID(sandboxID))
 
-				return ErrSandboxNotFound
-			default:
-				logger.L().Error(ctx, "Error pausing sandbox", zap.Error(err), logger.WithSandboxID(sandboxID))
+					return ErrSandboxNotFound
+				}
 
-				return ErrSandboxOperationFailed
+				return fmt.Errorf("sandbox is in '%s' state: %w", transErr.CurrentState, err)
 			}
+
+			logger.L().Error(ctx, "Error pausing sandbox", zap.Error(err), logger.WithSandboxID(sandboxID))
+
+			return ErrSandboxOperationFailed
 		default:
 			logger.L().Error(ctx, "Invalid state action", logger.WithSandboxID(sandboxID), zap.String("state_action", stateAction.Name))
 

@@ -23,6 +23,15 @@ func (e *NotFoundError) Error() string {
 	return fmt.Sprintf("sandbox %s not found", e.SandboxID)
 }
 
+type InvalidStateTransitionError struct {
+	CurrentState State
+	TargetState  State
+}
+
+func (e *InvalidStateTransitionError) Error() string {
+	return fmt.Sprintf("invalid state transition from %s to %s", e.CurrentState, e.TargetState)
+}
+
 var (
 	ErrAlreadyExists    = errors.New("sandbox already exists")
 	ErrCannotShortenTTL = errors.New("cannot shorten ttl")

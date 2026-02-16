@@ -2,7 +2,6 @@ package orchestrator
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -17,8 +16,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
-
-var ErrSandboxNotRunning = errors.New("sandbox is not in running state")
 
 type SnapshotTemplateResult struct {
 	TemplateID string
