@@ -345,7 +345,7 @@ func (f *Factory) CreateSandbox(
 		Config:  config,
 		Runtime: runtime,
 
-		endAt:     time.Now().Add(sandboxTimeout),
+		endAt: time.Now().Add(sandboxTimeout),
 	}
 
 	sbx := &Sandbox{
@@ -646,7 +646,7 @@ func (f *Factory) ResumeSandbox(
 		Config:  config,
 		Runtime: runtime,
 
-		endAt:     endAt,
+		endAt: endAt,
 	}
 
 	sbx := &Sandbox{
