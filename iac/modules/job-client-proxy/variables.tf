@@ -30,11 +30,13 @@ variable "environment" {
 }
 
 variable "proxy_port" {
-  type = number
+  type    = number
+  default = 3002
 }
 
 variable "health_port" {
-  type = number
+  type    = number
+  default = 3001
 }
 
 variable "redis_url" {
@@ -50,10 +52,6 @@ variable "redis_tls_ca_base64" {
 }
 
 variable "image" {
-  type = string
-}
-
-variable "api_grpc_address" {
   type = string
 }
 
