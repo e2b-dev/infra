@@ -257,16 +257,15 @@ module "otel_collector" {
   clickhouse_database = var.clickhouse_database
 }
 
-resource "nomad_job" "otel_collector_nomad_server" {
-  jobspec = templatefile("${path.module}/jobs/otel-collector-nomad-server.hcl", {
-    node_pool = var.api_node_pool
+module "otel_collector_nomad_server" {
+  source = "../../modules/job-otel-collector-nomad-server"
 
-    otel_collector_config = templatefile("${path.module}/configs/otel-collector-nomad-server.yaml", {
-      grafana_otel_collector_token = data.google_secret_manager_secret_version.grafana_otel_collector_token.secret_data
-      grafana_otlp_url             = data.google_secret_manager_secret_version.grafana_otlp_url.secret_data
-      grafana_username             = data.google_secret_manager_secret_version.grafana_username.secret_data
-    })
-  })
+  provider_name = "gcp"
+  node_pool     = var.api_node_pool
+
+  grafana_otel_collector_token = data.google_secret_manager_secret_version.grafana_otel_collector_token.secret_data
+  grafana_otlp_url             = data.google_secret_manager_secret_version.grafana_otlp_url.secret_data
+  grafana_username             = data.google_secret_manager_secret_version.grafana_username.secret_data
 }
 
 

@@ -39,6 +39,11 @@ moved {
 }
 
 moved {
+  from = nomad_job.otel_collector_nomad_server
+  to   = module.otel_collector_nomad_server.nomad_job.otel_collector_nomad_server
+}
+
+moved {
   from = nomad_job.otel_collector
   to   = module.otel_collector.nomad_job.otel_collector
 }
