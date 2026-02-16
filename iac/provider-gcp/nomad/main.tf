@@ -707,7 +707,6 @@ resource "nomad_job" "clickhouse_migrator" {
     clickhouse_username = var.clickhouse_username
     clickhouse_password = random_password.clickhouse_password.result
     clickhouse_port     = var.clickhouse_server_port.port
-    clickhouse_host     = "clickhouse.service.consul"
     clickhouse_database = var.clickhouse_database
   })
 }
