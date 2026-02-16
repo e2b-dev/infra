@@ -42,6 +42,17 @@ job "client-proxy" {
       name = "client-proxy"
       port = "proxy"
 
+      // This route is fallback (with lowest priority) to catch all requests as it serves sandbox traffic with dynamic subdomains
+      tags = [
+        "traefik.enable=true",
+
+        "traefik.http.routers.client-proxy.rule=PathPrefix(`/`)",
+        "traefik.http.routers.client-proxy.ruleSyntax=v2",
+        "traefik.http.routers.client-proxy.priority=100",
+
+        "traefik.http.services.client-proxy.loadbalancer.server.port=$${NOMAD_PORT_proxy}"
+      ]
+
       check {
         type     = "http"
         name     = "health"
@@ -89,8 +100,8 @@ job "client-proxy" {
         NODE_ID = "$${node.unique.id}"
         NODE_IP = "$${attr.unique.network.ip-address}"
 
-        HEALTH_PORT = "${health_port}"
-        PROXY_PORT  = "${proxy_port}"
+        HEALTH_PORT = "$${NOMAD_PORT_health}"
+        PROXY_PORT  = "$${NOMAD_PORT_proxy}"
 
         ENVIRONMENT = "${environment}"
 
