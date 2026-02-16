@@ -16,6 +16,7 @@ import (
 func TestAliasCacheResolve_BareAliasInTeamNamespace(t *testing.T) {
 	t.Parallel()
 	db := testutils.SetupDatabase(t)
+	redis := redis_utils.SetupInstance(t)
 	ctx := t.Context()
 
 	teamID := testutils.CreateTestTeam(t, db)
@@ -24,7 +25,7 @@ func TestAliasCacheResolve_BareAliasInTeamNamespace(t *testing.T) {
 
 	testutils.CreateTestTemplateAliasWithName(t, db, templateID, "my-alias", &teamSlug)
 
-	cache := NewAliasCache(db.SqlcClient)
+	cache := NewAliasCache(db.SqlcClient, redis)
 	defer cache.Close(ctx)
 
 	// Bare alias should resolve via team namespace fallback
@@ -40,6 +41,7 @@ func TestAliasCacheResolve_BareAliasInTeamNamespace(t *testing.T) {
 func TestAliasCacheResolve_BareAliasFallbackToNullNamespace(t *testing.T) {
 	t.Parallel()
 	db := testutils.SetupDatabase(t)
+	redis := redis_utils.SetupInstance(t)
 	ctx := t.Context()
 
 	// Create requesting team (has no aliases)
@@ -53,7 +55,7 @@ func TestAliasCacheResolve_BareAliasFallbackToNullNamespace(t *testing.T) {
 	// Create alias with NULL namespace (promoted)
 	testutils.CreateTestTemplateAliasWithName(t, db, promotedTemplateID, "base", nil)
 
-	cache := NewAliasCache(db.SqlcClient)
+	cache := NewAliasCache(db.SqlcClient, redis)
 	defer cache.Close(ctx)
 
 	// Bare alias "base" should:
@@ -71,6 +73,7 @@ func TestAliasCacheResolve_BareAliasFallbackToNullNamespace(t *testing.T) {
 func TestAliasCacheResolve_ExplicitNamespaceNoFallback(t *testing.T) {
 	t.Parallel()
 	db := testutils.SetupDatabase(t)
+	redis := redis_utils.SetupInstance(t)
 	ctx := t.Context()
 
 	// Create team
@@ -81,7 +84,7 @@ func TestAliasCacheResolve_ExplicitNamespaceNoFallback(t *testing.T) {
 	// Create alias only in NULL namespace
 	testutils.CreateTestTemplateAliasWithName(t, db, templateID, "only-promoted", nil)
 
-	cache := NewAliasCache(db.SqlcClient)
+	cache := NewAliasCache(db.SqlcClient, redis)
 	defer cache.Close(ctx)
 
 	// Explicit namespace lookup should NOT fall back to NULL
@@ -96,6 +99,7 @@ func TestAliasCacheResolve_ExplicitNamespaceNoFallback(t *testing.T) {
 func TestAliasCacheResolve_ExplicitNamespaceNoIDFallback(t *testing.T) {
 	t.Parallel()
 	db := testutils.SetupDatabase(t)
+	redis := redis_utils.SetupInstance(t)
 	ctx := t.Context()
 
 	// Create team and template
@@ -103,7 +107,7 @@ func TestAliasCacheResolve_ExplicitNamespaceNoIDFallback(t *testing.T) {
 	teamSlug := testutils.GetTeamSlug(t, ctx, db, teamID)
 	templateID := testutils.CreateTestTemplate(t, db, teamID)
 
-	cache := NewAliasCache(db.SqlcClient)
+	cache := NewAliasCache(db.SqlcClient, redis)
 	defer cache.Close(ctx)
 
 	// Request "team-slug/<templateID>" - no alias exists with this name in team namespace.
@@ -129,6 +133,7 @@ func TestAliasCacheResolve_TeamOverridesPromoted(t *testing.T) {
 
 	t.Parallel()
 	db := testutils.SetupDatabase(t)
+	redis := redis_utils.SetupInstance(t)
 	ctx := t.Context()
 
 	// Create team and its template
@@ -144,7 +149,7 @@ func TestAliasCacheResolve_TeamOverridesPromoted(t *testing.T) {
 	testutils.CreateTestTemplateAliasWithName(t, db, promotedTemplateID, "shared-name", nil)
 	testutils.CreateTestTemplateAliasWithName(t, db, teamTemplateID, "shared-name", &teamSlug)
 
-	cache := NewAliasCache(db.SqlcClient)
+	cache := NewAliasCache(db.SqlcClient, redis)
 	defer cache.Close(ctx)
 
 	// Team's alias should take precedence
@@ -158,13 +163,14 @@ func TestAliasCacheResolve_TeamOverridesPromoted(t *testing.T) {
 func TestAliasCacheResolve_DirectTemplateID(t *testing.T) {
 	t.Parallel()
 	db := testutils.SetupDatabase(t)
+	redis := redis_utils.SetupInstance(t)
 	ctx := t.Context()
 
 	teamID := testutils.CreateTestTeam(t, db)
 	teamSlug := testutils.GetTeamSlug(t, ctx, db, teamID)
 	templateID := testutils.CreateTestTemplate(t, db, teamID)
 
-	cache := NewAliasCache(db.SqlcClient)
+	cache := NewAliasCache(db.SqlcClient, redis)
 	defer cache.Close(ctx)
 
 	// Direct template ID should resolve
@@ -178,12 +184,13 @@ func TestAliasCacheResolve_DirectTemplateID(t *testing.T) {
 func TestAliasCacheResolve_NotFound(t *testing.T) {
 	t.Parallel()
 	db := testutils.SetupDatabase(t)
+	redis := redis_utils.SetupInstance(t)
 	ctx := t.Context()
 
 	teamID := testutils.CreateTestTeam(t, db)
 	teamSlug := testutils.GetTeamSlug(t, ctx, db, teamID)
 
-	cache := NewAliasCache(db.SqlcClient)
+	cache := NewAliasCache(db.SqlcClient, redis)
 	defer cache.Close(ctx)
 
 	info, err := cache.Resolve(ctx, "non-existent", teamSlug)
@@ -195,12 +202,13 @@ func TestAliasCacheResolve_NotFound(t *testing.T) {
 func TestAliasCacheLookupByID(t *testing.T) {
 	t.Parallel()
 	db := testutils.SetupDatabase(t)
+	redis := redis_utils.SetupInstance(t)
 	ctx := t.Context()
 
 	teamID := testutils.CreateTestTeam(t, db)
 	templateID := testutils.CreateTestTemplate(t, db, teamID)
 
-	cache := NewAliasCache(db.SqlcClient)
+	cache := NewAliasCache(db.SqlcClient, redis)
 	defer cache.Close(ctx)
 
 	info, err := cache.LookupByID(ctx, templateID)
@@ -214,9 +222,10 @@ func TestAliasCacheLookupByID(t *testing.T) {
 func TestAliasCacheLookupByID_NotFound(t *testing.T) {
 	t.Parallel()
 	db := testutils.SetupDatabase(t)
+	redis := redis_utils.SetupInstance(t)
 	ctx := t.Context()
 
-	cache := NewAliasCache(db.SqlcClient)
+	cache := NewAliasCache(db.SqlcClient, redis)
 	defer cache.Close(ctx)
 
 	info, err := cache.LookupByID(ctx, "non-existent-id")
@@ -228,6 +237,7 @@ func TestAliasCacheLookupByID_NotFound(t *testing.T) {
 func TestAliasCacheLookupByID_UsesCache(t *testing.T) {
 	t.Parallel()
 	db := testutils.SetupDatabase(t)
+	redis := redis_utils.SetupInstance(t)
 	ctx := t.Context()
 
 	teamID := testutils.CreateTestTeam(t, db)
@@ -236,7 +246,7 @@ func TestAliasCacheLookupByID_UsesCache(t *testing.T) {
 
 	testutils.CreateTestTemplateAliasWithName(t, db, templateID, "cached-alias", &teamSlug)
 
-	cache := NewAliasCache(db.SqlcClient)
+	cache := NewAliasCache(db.SqlcClient, redis)
 	defer cache.Close(ctx)
 
 	// First, resolve by alias (this caches by both alias and template ID)
@@ -259,12 +269,13 @@ func TestAliasCacheLookupByID_UsesCache(t *testing.T) {
 func TestAliasCacheResolve_NegativeCaching(t *testing.T) {
 	t.Parallel()
 	db := testutils.SetupDatabase(t)
+	redis := redis_utils.SetupInstance(t)
 	ctx := t.Context()
 
 	teamID := testutils.CreateTestTeam(t, db)
 	teamSlug := testutils.GetTeamSlug(t, ctx, db, teamID)
 
-	cache := NewAliasCache(db.SqlcClient)
+	cache := NewAliasCache(db.SqlcClient, redis)
 	defer cache.Close(ctx)
 
 	// First lookup - not found, should cache tombstone
@@ -287,6 +298,7 @@ func TestAliasCacheResolve_NegativeCaching(t *testing.T) {
 func TestAliasCacheResolve_NegativeCachingFallback(t *testing.T) {
 	t.Parallel()
 	db := testutils.SetupDatabase(t)
+	redis := redis_utils.SetupInstance(t)
 	ctx := t.Context()
 
 	// Create requesting team
@@ -298,7 +310,7 @@ func TestAliasCacheResolve_NegativeCachingFallback(t *testing.T) {
 	promotedTemplateID := testutils.CreateTestTemplate(t, db, promotedTeamID)
 	testutils.CreateTestTemplateAliasWithName(t, db, promotedTemplateID, "promoted-alias", nil)
 
-	cache := NewAliasCache(db.SqlcClient)
+	cache := NewAliasCache(db.SqlcClient, redis)
 	defer cache.Close(ctx)
 
 	// Resolve bare alias - tries team namespace first (not found, caches tombstone),
@@ -321,6 +333,7 @@ func TestAliasCacheResolve_NegativeCachingFallback(t *testing.T) {
 func TestAliasCache_InvalidateByTemplateID(t *testing.T) {
 	t.Parallel()
 	db := testutils.SetupDatabase(t)
+	redis := redis_utils.SetupInstance(t)
 	ctx := t.Context()
 
 	teamID := testutils.CreateTestTeam(t, db)
@@ -329,7 +342,7 @@ func TestAliasCache_InvalidateByTemplateID(t *testing.T) {
 
 	testutils.CreateTestTemplateAliasWithName(t, db, templateID, "alias-to-invalidate", &teamSlug)
 
-	cache := NewAliasCache(db.SqlcClient)
+	cache := NewAliasCache(db.SqlcClient, redis)
 	defer cache.Close(ctx)
 
 	// Resolve to populate cache
@@ -343,7 +356,7 @@ func TestAliasCache_InvalidateByTemplateID(t *testing.T) {
 	assert.Same(t, info1, info2)
 
 	// Invalidate by template ID
-	cache.InvalidateByTemplateID(templateID)
+	cache.InvalidateByTemplateID(ctx, templateID)
 
 	// Next resolve should return a different pointer (fresh fetch)
 	info3, err := cache.Resolve(ctx, "alias-to-invalidate", teamSlug)

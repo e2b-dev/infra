@@ -307,7 +307,7 @@ func RegisterBuild(
 			}
 
 			// Invalidate any cached tombstone for this alias
-			templateCache.InvalidateAlias(&data.Team.Slug, alias)
+			templateCache.InvalidateAlias(context.WithoutCancel(ctx), &data.Team.Slug, alias)
 
 			telemetry.ReportEvent(ctx, "created new alias", attribute.String("env.alias", alias))
 		} else if aliasDB.EnvID != data.TemplateID {

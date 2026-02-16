@@ -125,7 +125,7 @@ func (a *APIStore) PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID api
 
 	// Invalidate cached tombstone if a new alias was created
 	if opts.Alias != nil && opts.Namespace != nil && opts.ExistingTemplateID == nil {
-		a.templateCache.InvalidateAlias(opts.Namespace, *opts.Alias)
+		a.templateCache.InvalidateAlias(context.WithoutCancel(ctx), opts.Namespace, *opts.Alias)
 	}
 
 	a.templateCache.Invalidate(context.WithoutCancel(ctx), result.TemplateID, &opts.Tag)

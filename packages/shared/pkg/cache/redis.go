@@ -15,6 +15,7 @@ import (
 
 const (
 	RedisRefreshIntervalOff = 0
+	RedisDefaultTimeout     = 2 * time.Second
 
 	// redisNoPTTL is the value returned by go-redis PTTL when a key has no expiration.
 	// Redis returns the integer -1; go-redis converts it to -1 * time.Nanosecond.
@@ -51,7 +52,7 @@ type RedisCache[V any] struct {
 // NewRedisCache creates a new RedisCache with the given configuration.
 func NewRedisCache[V any](config RedisConfig[V]) *RedisCache[V] {
 	if config.RedisTimeout == 0 {
-		config.RedisTimeout = 2 * time.Second
+		config.RedisTimeout = RedisDefaultTimeout
 	}
 
 	if config.RefreshTimeout == 0 {
