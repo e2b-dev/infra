@@ -16,7 +16,8 @@ resource "nomad_job" "client_proxy" {
     redis_cluster_url   = var.redis_cluster_url
     redis_tls_ca_base64 = var.redis_tls_ca_base64
 
-    image = var.image
+    image            = var.image
+    api_grpc_address = trimspace(var.api_grpc_address)
 
     otel_collector_grpc_endpoint = var.otel_collector_grpc_endpoint
     logs_collector_address       = var.logs_collector_address

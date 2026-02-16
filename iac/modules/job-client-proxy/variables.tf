@@ -55,6 +55,11 @@ variable "image" {
   type = string
 }
 
+variable "api_grpc_address" {
+  type    = string
+  default = ""
+}
+
 variable "otel_collector_grpc_endpoint" {
   type = string
 }
