@@ -61,7 +61,7 @@ func (a *APIStore) PostNodesNodeID(c *gin.Context, nodeId api.NodeID) {
 	}
 
 	clusterID := clusters.WithClusterFallback(body.ClusterID)
-	node := a.orchestrator.GetNodeByIDOrNomadShortID(clusterID, nodeId)
+	node := a.orchestrator.GetNode(clusterID, nodeId)
 	if node == nil {
 		c.Status(http.StatusNotFound)
 

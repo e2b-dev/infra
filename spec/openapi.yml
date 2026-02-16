@@ -1390,7 +1390,6 @@ components:
 
     Node:
       required:
-        - nodeID
         - id
         - serviceInstanceID
         - clusterID
@@ -1410,10 +1409,6 @@ components:
         commit:
           type: string
           description: Commit of the orchestrator
-        nodeID:
-          type: string
-          deprecated: true
-          description: Identifier of the nomad node
         id:
           type: string
           description: Identifier of the node
@@ -1448,12 +1443,11 @@ components:
 
     NodeDetail:
       required:
-        - nodeID
         - id
         - serviceInstanceID
         - clusterID
         - status
-        - sandboxes
+        - sandboxCount
         - cachedBuilds
         - createSuccesses
         - createFails
@@ -1477,19 +1471,14 @@ components:
         serviceInstanceID:
           type: string
           description: Service instance identifier of the node
-        nodeID:
-          type: string
-          deprecated: true
-          description: Identifier of the nomad node
         machineInfo:
           $ref: "#/components/schemas/MachineInfo"
         status:
           $ref: "#/components/schemas/NodeStatus"
-        sandboxes:
-          type: array
-          description: List of sandboxes running on the node
-          items:
-            $ref: "#/components/schemas/ListedSandbox"
+        sandboxCount:
+          type: integer
+          format: uint32
+          description: Number of sandboxes running on the node
         metrics:
           $ref: "#/components/schemas/NodeMetrics"
         cachedBuilds:
