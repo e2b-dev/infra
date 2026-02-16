@@ -17,10 +17,12 @@ job "orchestrator-${latest_orchestrator_job_id}" {
       }
     }
 
+%{ if latest_orchestrator_job_id != "dev" }
     constraint {
       attribute = "$${meta.orchestrator_job_version}"
       value     = "${latest_orchestrator_job_id}"
     }
+%{ endif }
 
     service {
       name = "orchestrator"
