@@ -37,12 +37,23 @@ var _ sandbox.MapSubscriber = (*SandboxProxy)(nil)
 type SandboxProxy struct {
 	proxy        *reverseproxy.Proxy
 	limiter      *connlimit.ConnectionLimiter
-	featureFlags *featureflags.Client
 }
 
 func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes *sandbox.Map, featureFlags *featureflags.Client) (*SandboxProxy, error) {
 	getTargetFromRequest := reverseproxy.GetTargetFromRequest(env.IsLocal())
 	limiter := connlimit.NewConnectionLimiter()
+	metrics := NewMetrics(meterProvider)
+
+	meter := meterProvider.Meter("orchestrator.proxy.sandbox")
+
+	connLimitConfig := &reverseproxy.ConnectionLimitConfig{
+		Limiter: limiter,
+		GetMaxLimit: func(ctx context.Context) int {
+			return featureFlags.IntFlag(ctx, featureflags.SandboxMaxIncomingConnections)
+		},
+		OnConnectionAcquired: metrics.RecordConnectionsPerSandbox,
+		OnConnectionReleased: metrics.RecordConnectionDuration,
+	}
 
 	proxy := reverseproxy.New(
 		port,
@@ -76,13 +87,6 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 				} else if accessTokenRaw != *accessToken {
 					return nil, reverseproxy.NewErrInvalidTrafficAccessToken(sandboxId, trafficAccessTokenHeader)
 				}
-			}
-
-			// Check per-sandbox connection limit
-			maxLimit := featureFlags.IntFlag(r.Context(), featureflags.SandboxMaxIncomingConnections)
-			_, acquired := limiter.TryAcquire(sandboxId, maxLimit)
-			if !acquired {
-				return nil, reverseproxy.NewErrSandboxTooManyIncomingConnections(sandboxId, maxLimit)
 			}
 
 			// Handle request host masking only for non-envd traffic.
@@ -121,18 +125,15 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 				ConnectionKey:   sbx.LifecycleID,
 				RequestLogger:   logger,
 				MaskRequestHost: maskRequestHost,
-				Release: func() {
-					limiter.Release(sandboxId)
-				},
 			}, nil
 		},
+		connLimitConfig,
 		// We are not using keepalives for orchestrator proxy,
 		// because the servers inside of the sandbox can be unstable (restarts),
 		// and we are also on the same host, so the overhead is minimal.
 		true,
 	)
 
-	meter := meterProvider.Meter("orchestrator.proxy.sandbox")
 	_, err := telemetry.GetObservableUpDownCounter(meter, telemetry.OrchestratorProxyServerConnectionsMeterCounterName, func(_ context.Context, observer metric.Int64Observer) error {
 		observer.Observe(proxy.CurrentServerConnections())
 
@@ -163,7 +164,6 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 	sandboxProxy := &SandboxProxy{
 		proxy:        proxy,
 		limiter:      limiter,
-		featureFlags: featureFlags,
 	}
 
 	// Subscribe to sandbox events for cleanup

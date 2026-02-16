@@ -24,6 +24,4 @@ type Destination struct {
 	IncludeSandboxIdInProxyErrorLogger bool
 	// MaskRequestHost is used to mask the request host.
 	MaskRequestHost *string
-	// Release func called after the request is processed
-	Release func()
 }

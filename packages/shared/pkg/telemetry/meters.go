@@ -69,6 +69,10 @@ const (
 	// TCP Firewall histograms
 	TCPFirewallConnectionDurationHistogramName    HistogramType = "orchestrator.tcpfirewall.connection.duration"
 	TCPFirewallConnectionsPerSandboxHistogramName HistogramType = "orchestrator.tcpfirewall.connections.per_sandbox"
+
+	// Ingress proxy histograms
+	IngressProxyConnectionDurationHistogramName    HistogramType = "orchestrator.proxy.connection.duration"
+	IngressProxyConnectionsPerSandboxHistogramName HistogramType = "orchestrator.proxy.connections.per_sandbox"
 )
 
 const (
@@ -268,6 +272,9 @@ var histogramDesc = map[HistogramType]string{
 
 	TCPFirewallConnectionDurationHistogramName:    "Duration of TCP firewall proxied connections",
 	TCPFirewallConnectionsPerSandboxHistogramName: "Number of active TCP firewall connections per sandbox",
+
+	IngressProxyConnectionDurationHistogramName:    "Duration of ingress proxy connections",
+	IngressProxyConnectionsPerSandboxHistogramName: "Number of active ingress proxy connections per sandbox",
 }
 
 var histogramUnits = map[HistogramType]string{
@@ -278,6 +285,9 @@ var histogramUnits = map[HistogramType]string{
 	WaitForEnvdDurationHistogramName:              "ms",
 	TCPFirewallConnectionDurationHistogramName:    "ms",
 	TCPFirewallConnectionsPerSandboxHistogramName: "{connection}",
+
+	IngressProxyConnectionDurationHistogramName:    "ms",
+	IngressProxyConnectionsPerSandboxHistogramName: "{connection}",
 }
 
 func GetHistogram(meter metric.Meter, name HistogramType) (metric.Int64Histogram, error) {
