@@ -1,7 +1,6 @@
 job "ingress" {
-  datacenters = ["${gcp_zone}"]
-  node_pool   = "${node_pool}"
-  priority    = 90
+  node_pool = "${node_pool}"
+  priority  = 90
 
   group "ingress" {
     count = ${count}
