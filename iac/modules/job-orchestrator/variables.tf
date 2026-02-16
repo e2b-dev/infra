@@ -104,7 +104,7 @@ variable "launch_darkly_api_key" {
 }
 
 variable "orchestrator_services" {
-  type = string
+  type    = string
   default = "orchestrator"
 }
 
