@@ -404,6 +404,10 @@ func (p *Handler) Start() (uint32, error) {
 		fmt.Fprintf(os.Stderr, "error adjusting oom score for process '%s': %s\n", p.cmd, adjustErr)
 	}
 
+	if niceErr := resetNice(p.cmd.Process.Pid); niceErr != nil {
+		fmt.Fprintf(os.Stderr, "error resetting nice for process '%s': %s\n", p.cmd, niceErr)
+	}
+
 	p.logger.
 		Info().
 		Str("event_type", "process_start").

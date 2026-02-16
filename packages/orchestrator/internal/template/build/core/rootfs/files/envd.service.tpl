@@ -13,6 +13,7 @@ Group=root
 Environment=GOTRACEBACK=all
 LimitCORE=infinity
 ExecStart=/bin/bash -l -c "/usr/bin/envd"
+Nice=-20
 OOMPolicy=continue
 OOMScoreAdjust=-1000
 Environment="GOMEMLIMIT={{ .MemoryLimit }}MiB"
