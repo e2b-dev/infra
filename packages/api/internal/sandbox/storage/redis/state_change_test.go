@@ -52,10 +52,13 @@ func TestStartRemoving_BasicTransitions(t *testing.T) {
 	}{
 		{"Running to Pausing", sandbox.StateRunning, sandbox.StateActionPause, sandbox.StatePausing, false},
 		{"Running to Killing", sandbox.StateRunning, sandbox.StateActionKill, sandbox.StateKilling, false},
+		{"Running to Snapshotting", sandbox.StateRunning, sandbox.StateActionSnapshot, sandbox.StateSnapshotting, false},
 		{"Pausing to Killing", sandbox.StatePausing, sandbox.StateActionKill, sandbox.StateKilling, false},
 		{"Killing to Pausing (invalid)", sandbox.StateKilling, sandbox.StateActionPause, sandbox.StatePausing, true},
 		{"Killing to Killing (same)", sandbox.StateKilling, sandbox.StateActionKill, sandbox.StateKilling, false},
 		{"Pausing to Pausing (same)", sandbox.StatePausing, sandbox.StateActionPause, sandbox.StatePausing, false},
+		{"Snapshotting to Killed", sandbox.StateSnapshotting, sandbox.StateActionKill, sandbox.StateKilling, false},
+		{"Snapshotting to Paused", sandbox.StateSnapshotting, sandbox.StateActionPause, sandbox.StatePausing, false},
 	}
 
 	for _, tt := range tests {

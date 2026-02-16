@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -41,39 +42,27 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 	ctx, span := tracer.Start(ctx, "create-snapshot-template")
 	defer span.End()
 
-	sbx, err := o.sandboxStore.Update(ctx, teamID, sandboxID, func(s sandbox.Sandbox) (sandbox.Sandbox, error) {
-		if s.State != sandbox.StateRunning {
-			return s, ErrSandboxNotRunning
-		}
-		s.State = sandbox.StateSnapshotting
+	sbx, err := o.sandboxStore.Get(ctx, teamID, sandboxID)
+	if err != nil {
+		return SnapshotTemplateResult{}, fmt.Errorf("failed to get sandbox: %w", err)
+	}
 
-		return s, nil
-	})
+	_, finishSnapshotting, err := o.sandboxStore.StartRemoving(ctx, teamID, sandboxID, sandbox.StateActionSnapshot)
 	if err != nil {
 		return SnapshotTemplateResult{}, fmt.Errorf("failed to start snapshotting: %w", err)
 	}
 
-	// Restore the sandbox to Running when done. Error paths that call
-	// RemoveSandbox set sandboxRemoved=true to skip this.
-	// Use context.WithoutCancel so the cleanup succeeds even if the
-	// request context is cancelled or timed out.
-	var sandboxRemoved bool
-	defer func() {
-		if sandboxRemoved {
-			return
-		}
-
-		_, updateErr := o.sandboxStore.Update(context.WithoutCancel(ctx), sbx.TeamID, sbx.SandboxID, func(s sandbox.Sandbox) (sandbox.Sandbox, error) {
-			if s.State == sandbox.StateSnapshotting {
-				s.State = sandbox.StateRunning
-			}
-
-			return s, nil
+	// finish completes the snapshotting transition exactly once.
+	// On success (nil) it restores the sandbox to Running.
+	// On error it leaves the state as Snapshotting so that
+	// RemoveSandbox can transition directly to Killing.
+	var once sync.Once
+	finish := func(err error) {
+		once.Do(func() {
+			finishSnapshotting(context.WithoutCancel(ctx), err)
 		})
-		if updateErr != nil {
-			telemetry.ReportCriticalError(ctx, "error restoring sandbox state after snapshotting", updateErr)
-		}
-	}()
+	}
+	defer finish(nil)
 
 	node := o.GetNode(sbx.ClusterID, sbx.NodeID)
 	if node == nil {
@@ -104,11 +93,14 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 	if err != nil {
 		o.failSnapshotBuild(ctx, upsertResult.BuildID, err)
 
+		// Complete the snapshotting transition with error — leaves state as
+		// Snapshotting (no restore to Running) and clears the transition key
+		// so RemoveSandbox can proceed without deadlock.
+		finish(err)
+
 		if killErr := o.RemoveSandbox(ctx, sbx, sandbox.StateActionKill); killErr != nil {
 			telemetry.ReportError(ctx, "error killing sandbox after failed checkpoint", killErr)
 		}
-
-		sandboxRemoved = true
 
 		return SnapshotTemplateResult{}, fmt.Errorf("checkpoint failed: %w", err)
 	}

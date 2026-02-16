@@ -44,7 +44,7 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, sbx sandbox.Sandbox, s
 				return ErrSandboxOperationFailed
 			}
 		default:
-			logger.L().Error(ctx, "Invalid state action", logger.WithSandboxID(sandboxID), zap.String("state_action", string(stateAction)))
+			logger.L().Error(ctx, "Invalid state action", logger.WithSandboxID(sandboxID), zap.String("state_action", stateAction.Name))
 
 			return ErrSandboxOperationFailed
 		}
@@ -95,7 +95,7 @@ func (o *Orchestrator) removeSandboxFromNode(ctx context.Context, sbx sandbox.Sa
 
 	sbxlogger.I(sbx).Debug(ctx, "Removing sandbox",
 		zap.Bool("auto_pause", sbx.AutoPause),
-		zap.String("state_action", string(stateAction)),
+		zap.String("state_action", stateAction.Name),
 	)
 
 	switch stateAction {

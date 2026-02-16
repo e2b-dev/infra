@@ -357,8 +357,9 @@ func TestSnapshotTemplateConcurrentOperations(t *testing.T) {
 
 		killResp, err := c.DeleteSandboxesSandboxIDWithResponse(t.Context(), sbx.SandboxID, setup.WithAPIKey())
 		require.NoError(t, err)
+		// Kill waits for the snapshot to complete, then proceeds normally.
 		assert.Equal(t, http.StatusNoContent, killResp.StatusCode(),
-			"kill during snapshotting should succeed, body: %s", string(killResp.Body))
+			"kill during snapshotting should succeed after waiting, body: %s", string(killResp.Body))
 
 		<-snapshotDone
 	})
