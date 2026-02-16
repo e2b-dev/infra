@@ -189,7 +189,7 @@ generate-mocks:
 
 .PHONY: tidy
 tidy:
-	scripts/golang-dependencies-integrity.sh
+	@scripts/golang-dependencies-integrity.sh
 
 .PHONY: local-infra
 local-infra:
