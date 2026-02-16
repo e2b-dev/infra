@@ -95,7 +95,8 @@ variable "domain_name" {
 }
 
 variable "shared_chunk_cache_path" {
-  type = string
+  type    = string
+  default = ""
 }
 
 variable "launch_darkly_api_key" {
@@ -111,4 +112,9 @@ variable "orchestrator_services" {
 variable "build_cache_bucket_name" {
   type    = string
   default = ""
+}
+
+variable "use_local_namespace_storage" {
+  type    = bool
+  default = false
 }

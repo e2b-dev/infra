@@ -87,6 +87,10 @@ job "orchestrator-${latest_orchestrator_job_id}" {
         LAUNCH_DARKLY_API_KEY        = "${launch_darkly_api_key}"
 %{ endif }
 
+%{ if use_local_namespace_storage }
+        USE_LOCAL_NAMESPACE_STORAGE  = "true"
+%{ endif }
+
 %{ if provider == "gcp" }
         ARTIFACTS_REGISTRY_PROVIDER  = "GCP_ARTIFACTS"
         STORAGE_PROVIDER             = "GCPBucket"
