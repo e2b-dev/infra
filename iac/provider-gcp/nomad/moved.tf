@@ -7,3 +7,8 @@ moved {
   from = nomad_job.client_proxy
   to   = module.client_proxy.nomad_job.client_proxy
 }
+
+moved {
+  from = nomad_job.loki
+  to   = module.loki.nomad_job.loki
+}

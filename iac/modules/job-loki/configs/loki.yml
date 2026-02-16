@@ -1,72 +1,7 @@
-job "loki" {
-  datacenters = ["${gcp_zone}"]
-  type        = "service"
-  node_pool = "${node_pool}"
-
-  priority = 75
-
-  group "loki-service" {
-    // Try to restart the task indefinitely
-    // Tries to restart every 5 seconds
-    restart {
-      interval         = "5s"
-      attempts         = 1
-      delay            = "5s"
-      mode             = "delay"
-    }
-
-    network {
-      port "loki" {
-        to = "${loki_service_port_number}"
-      }
-
-      %{ if prevent_colocation }
-      port "scheduling-block" {
-        // This port is used to block scheduling of jobs with the same block on the same node.
-        // We use this to block API and Loki from being scheduled on the same node.
-        static = 40234
-      }
-      %{ endif }
-    }
-
-    service {
-      name = "loki"
-      port = "${loki_service_port_name}"
-
-      check {
-        type     = "http"
-        path     = "/ready"
-        interval = "20s"
-        timeout  = "2s"
-        port     = "${loki_service_port_number}"
-      }
-    }
-
-    task "loki" {
-      driver = "docker"
-
-      config {
-        network_mode = "host"
-        image = "grafana/loki:3.6.4"
-
-        args = [
-          "-config.file",
-          "local/loki-config.yml",
-        ]
-      }
-
-      resources {
-        memory_max = ${memory_mb * 1.5}
-        memory     = ${memory_mb}
-        cpu        = ${cpu_count * 1000}
-      }
-
-      template {
-        data = <<EOF
 auth_enabled: false
 
 server:
-  http_listen_port: ${loki_service_port_number}
+  http_listen_port: ${loki_port}
   log_level: "warn"
   grpc_server_max_recv_msg_size: 104857600  # 100 Mb
   grpc_server_max_send_msg_size: 104857600  # 100 Mb
@@ -79,9 +14,17 @@ common:
       store: inmemory
 
 storage_config:
+%{ if provider_name == "gcp" }
   gcs:
-    bucket_name: "${loki_bucket_name}"
+    bucket_name: "${bucket_name}"
     chunk_buffer_size: 2097152  # 2MB
+%{ endif }
+%{ if provider_name == "aws" }
+  aws:
+    region: "${aws_region}"
+    bucketnames: "${bucket_name}"
+    s3forcepathstyle: false
+%{ endif }
   tsdb_shipper:
     active_index_directory: /loki/tsdb-shipper-active
     cache_location: /loki/tsdb-shipper-cache
@@ -122,6 +65,7 @@ ingester:
 
 schema_config:
   configs:
+%{ if provider_name == "gcp" }
     - from: 2024-03-05
       store: tsdb
       object_store: gcs
@@ -129,10 +73,20 @@ schema_config:
       index:
         prefix: loki_index_
         period: 24h
-%{if loki_use_v13_schema_from != ""}
-    - from: ${ loki_use_v13_schema_from }
+%{ if loki_use_v13_schema_from != "" }
+    - from: ${loki_use_v13_schema_from}
       store: tsdb
       object_store: gcs
+      schema: v13
+      index:
+        prefix: loki_index_
+        period: 24h
+%{ endif }
+%{ endif }
+%{ if provider_name == "aws" }
+    - from: 2024-03-05
+      store: tsdb
+      object_store: aws
       schema: v13
       index:
         prefix: loki_index_
@@ -145,7 +99,12 @@ compactor:
   retention_enabled: true
   retention_delete_delay: 2h
   retention_delete_worker_count: 150
+%{ if provider_name == "gcp" }
   delete_request_store: gcs
+%{ endif }
+%{ if provider_name == "aws" }
+  delete_request_store: aws
+%{ endif }
 
 # The bucket lifecycle policy should be set to delete objects after MORE than the specified retention period
 limits_config:
@@ -161,10 +120,3 @@ limits_config:
   reject_old_samples_max_age: 168h
 
   allow_structured_metadata: false  # enable after enabling schema v13
-EOF
-
-        destination = "local/loki-config.yml"
-      }
-    }
-  }
-}

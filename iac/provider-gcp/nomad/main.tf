@@ -530,23 +530,23 @@ resource "nomad_job" "nomad_nodepool_apm" {
   })
 }
 
-resource "nomad_job" "loki" {
-  jobspec = templatefile("${path.module}/jobs/loki.hcl", {
-    gcp_zone = var.gcp_zone
+module "loki" {
+  source = "../../modules/job-loki"
 
-    node_pool = var.loki_machine_count > 0 ? var.loki_node_pool : var.api_node_pool
-    // We use colocation 2 here to ensure that there are at least 2 nodes for API to do rolling updates.
-    // It might be possible there could be problems if we are rolling updates for both API and Loki at the same time., so maybe increasing this to > 3 makes sense.
-    prevent_colocation = var.api_machine_count > 2
-    loki_bucket_name   = var.loki_bucket_name
+  provider_name = "gcp"
 
-    memory_mb                = var.loki_resources_memory_mb
-    cpu_count                = var.loki_resources_cpu_count
-    loki_service_port_number = var.loki_service_port.port
-    loki_service_port_name   = var.loki_service_port.name
-    loki_use_v13_schema_from = var.loki_use_v13_schema_from
+  node_pool = var.loki_machine_count > 0 ? var.loki_node_pool : var.api_node_pool
 
-  })
+  // We use colocation 2 here to ensure that there are at least 2 nodes for API to do rolling updates.
+  // It might be possible there could be problems if we are rolling updates for both API and Loki at the same time., so maybe increasing this to > 3 makes sense.
+  prevent_colocation = var.api_machine_count > 2
+  bucket_name        = var.loki_bucket_name
+
+  memory_mb = var.loki_resources_memory_mb
+  cpu_count = var.loki_resources_cpu_count
+  loki_port = var.loki_service_port.port
+
+  loki_use_v13_schema_from = var.loki_use_v13_schema_from
 }
 
 # Create only one user for simplicity now, will separate users in following PRs
