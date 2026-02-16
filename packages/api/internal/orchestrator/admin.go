@@ -2,7 +2,6 @@ package orchestrator
 
 import (
 	"cmp"
-	"context"
 	"slices"
 
 	"github.com/google/uuid"
@@ -10,7 +9,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 )
 
-func (o *Orchestrator) AdminNodes(ctx context.Context) ([]*api.Node, error) {
+func (o *Orchestrator) AdminNodes() ([]*api.Node, error) {
 	var result []*api.Node
 
 	for _, n := range o.nodes.Items() {
@@ -50,7 +49,7 @@ func (o *Orchestrator) AdminNodes(ctx context.Context) ([]*api.Node, error) {
 	return result, nil
 }
 
-func (o *Orchestrator) AdminNodeDetail(ctx context.Context, clusterID uuid.UUID, nodeID string) (*api.NodeDetail, error) {
+func (o *Orchestrator) AdminNodeDetail(clusterID uuid.UUID, nodeID string) (*api.NodeDetail, error) {
 	n := o.GetNode(clusterID, nodeID)
 	if n == nil {
 		return nil, ErrNodeNotFound
