@@ -348,9 +348,9 @@ module "logs_collector" {
   vector_health_port = var.logs_health_proxy_port.port
   vector_api_port    = var.logs_proxy_port.port
 
-  grafana_logs_user     = data.google_secret_manager_secret_version.grafana_logs_user.secret_data
-  grafana_logs_endpoint = data.google_secret_manager_secret_version.grafana_logs_url.secret_data
-  grafana_api_key       = data.google_secret_manager_secret_version.grafana_logs_collector_api_token.secret_data
+  grafana_logs_user     = trimspace(data.google_secret_manager_secret_version.grafana_logs_user.secret_data)
+  grafana_logs_endpoint = trimspace(data.google_secret_manager_secret_version.grafana_logs_url.secret_data)
+  grafana_api_key       = trimspace(data.google_secret_manager_secret_version.grafana_logs_collector_api_token.secret_data)
 }
 
 data "google_storage_bucket_object" "orchestrator" {
