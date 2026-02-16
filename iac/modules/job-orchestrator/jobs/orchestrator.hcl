@@ -60,15 +60,12 @@ job "orchestrator-${latest_orchestrator_job_id}" {
 
       env {
         NODE_ID                      = "$${node.unique.name}"
-        CONSUL_TOKEN                 = "${consul_acl_token}"
         LOGS_COLLECTOR_ADDRESS       = "${logs_collector_address}"
         ENVIRONMENT                  = "${environment}"
-        DOMAIN_NAME                  = "${domain_name}"
         ENVD_TIMEOUT                 = "${envd_timeout}"
         TEMPLATE_BUCKET_NAME         = "${template_bucket_name}"
         OTEL_COLLECTOR_GRPC_ENDPOINT = "${otel_collector_grpc_endpoint}"
         ALLOW_SANDBOX_INTERNET       = "${allow_sandbox_internet}"
-        SHARED_CHUNK_CACHE_PATH      = "${shared_chunk_cache_path}"
         CLICKHOUSE_CONNECTION_STRING = "${clickhouse_connection_string}"
         REDIS_URL                    = "${redis_url}"
         REDIS_CLUSTER_URL            = "${redis_cluster_url}"
@@ -77,8 +74,29 @@ job "orchestrator-${latest_orchestrator_job_id}" {
         PROXY_PORT                   = "${proxy_port}"
         GIN_MODE                     = "release"
 
+        CONSUL_TOKEN                 = "${consul_token}"
+        DOMAIN_NAME                  = "${domain_name}"
+        SHARED_CHUNK_CACHE_PATH      = "${shared_chunk_cache_path}"
+        ORCHESTRATOR_SERVICES        = "${orchestrator_services}"
+
+%{ if build_cache_bucket_name != "" }
+        BUILD_CACHE_BUCKET_NAME      = "${build_cache_bucket_name}"
+%{ endif }
+
 %{ if launch_darkly_api_key != "" }
-        LAUNCH_DARKLY_API_KEY         = "${launch_darkly_api_key}"
+        LAUNCH_DARKLY_API_KEY        = "${launch_darkly_api_key}"
+%{ endif }
+
+%{ if provider == "gcp" }
+        ARTIFACTS_REGISTRY_PROVIDER  = "GCP_ARTIFACTS"
+        STORAGE_PROVIDER             = "GCPBucket"
+%{ endif }
+%{ if provider == "aws" }
+        ARTIFACTS_REGISTRY_PROVIDER  = "AWS_ECR"
+        STORAGE_PROVIDER             = "AWSBucket"
+
+        AWS_REGION                   = "${provider_aws_config.region}"
+        AWS_DOCKER_REPOSITORY_NAME   = "${provider_aws_config.docker_repository_name}"
 %{ endif }
       }
 
@@ -88,12 +106,7 @@ job "orchestrator-${latest_orchestrator_job_id}" {
       }
 
       artifact {
-        %{ if environment == "dev" }
-        // Version hash is only available for dev to increase development speed in prod use rolling updates
-        source      = "gcs::https://www.googleapis.com/storage/v1/${bucket_name}/orchestrator?version=${orchestrator_checksum}"
-        %{ else }
-        source      = "gcs::https://www.googleapis.com/storage/v1/${bucket_name}/orchestrator"
-        %{ endif }
+        source = "${artifact_source}"
       }
     }
   }

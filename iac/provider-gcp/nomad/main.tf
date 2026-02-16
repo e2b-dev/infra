@@ -367,68 +367,36 @@ data "external" "orchestrator_checksum" {
 }
 
 locals {
-  orchestrator_envs = {
-    node_pool        = var.orchestrator_node_pool
-    port             = var.orchestrator_port
-    proxy_port       = var.orchestrator_proxy_port
-    environment      = var.environment
-    consul_acl_token = var.consul_acl_token_secret
-    domain_name      = var.domain_name
-
-    envd_timeout                 = var.envd_timeout
-    bucket_name                  = var.fc_env_pipeline_bucket_name
-    orchestrator_checksum        = data.external.orchestrator_checksum.result.hex
-    logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
-    template_bucket_name         = var.template_bucket_name
-    otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
-    allow_sandbox_internet       = var.allow_sandbox_internet
-    launch_darkly_api_key        = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
-    clickhouse_connection_string = var.clickhouse_server_count > 0 ? "clickhouse://${var.clickhouse_username}:${random_password.clickhouse_password.result}@clickhouse.service.consul:${var.clickhouse_server_port.port}/${var.clickhouse_database}" : ""
-    redis_url                    = local.redis_url
-    redis_cluster_url            = local.redis_cluster_url
-    redis_tls_ca_base64          = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
-    shared_chunk_cache_path      = var.shared_chunk_cache_path
-  }
-
-  orchestrator_job_check = templatefile("${path.module}/jobs/orchestrator.hcl", merge(
-    local.orchestrator_envs,
-    {
-      latest_orchestrator_job_id = "placeholder",
-    }
-  ))
+  orchestrator_artifact_source = var.environment == "dev" ? "gcs::https://www.googleapis.com/storage/v1/${var.fc_env_pipeline_bucket_name}/orchestrator?version=${data.external.orchestrator_checksum.result.hex}" : "gcs::https://www.googleapis.com/storage/v1/${var.fc_env_pipeline_bucket_name}/orchestrator"
 }
 
-resource "random_id" "orchestrator_job" {
-  keepers = {
-    # Use both the orchestrator job (including vars) definition and the latest orchestrator checksum to detect changes
-    orchestrator_job = sha256("${local.orchestrator_job_check}-${data.external.orchestrator_checksum.result.hex}")
-  }
+module "orchestrator" {
+  source = "../../modules/job-orchestrator"
 
-  byte_length = 8
-}
+  provider_name = "gcp"
 
-locals {
-  latest_orchestrator_job_id = var.environment == "dev" ? "dev" : random_id.orchestrator_job.hex
-}
+  node_pool  = var.orchestrator_node_pool
+  port       = var.orchestrator_port
+  proxy_port = var.orchestrator_proxy_port
 
-resource "nomad_variable" "orchestrator_hash" {
-  path = "nomad/jobs"
-  items = {
-    latest_orchestrator_job_id = local.latest_orchestrator_job_id
-  }
-}
+  environment           = var.environment
+  artifact_source       = local.orchestrator_artifact_source
+  orchestrator_checksum = data.external.orchestrator_checksum.result.hex
 
-resource "nomad_job" "orchestrator" {
-  deregister_on_id_change = false
+  logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
+  otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
+  envd_timeout                 = var.envd_timeout
+  template_bucket_name         = var.template_bucket_name
+  allow_sandbox_internet       = var.allow_sandbox_internet
+  clickhouse_connection_string = var.clickhouse_server_count > 0 ? "clickhouse://${var.clickhouse_username}:${random_password.clickhouse_password.result}@clickhouse.service.consul:${var.clickhouse_server_port.port}/${var.clickhouse_database}" : ""
+  redis_url                    = local.redis_url
+  redis_cluster_url            = local.redis_cluster_url
+  redis_tls_ca_base64          = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
 
-  jobspec = templatefile("${path.module}/jobs/orchestrator.hcl", merge(
-    local.orchestrator_envs,
-    {
-      latest_orchestrator_job_id = local.latest_orchestrator_job_id
-    }
-  ))
-
-  depends_on = [nomad_variable.orchestrator_hash, random_id.orchestrator_job]
+  consul_token            = var.consul_acl_token_secret
+  domain_name             = var.domain_name
+  shared_chunk_cache_path = var.shared_chunk_cache_path
+  launch_darkly_api_key   = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
 }
 
 data "google_storage_bucket_object" "template_manager" {
