@@ -47,8 +47,6 @@ func Test_server_List(t *testing.T) {
 						Runtime: sandbox.RuntimeMetadata{
 							SandboxID: id.Generate(),
 						},
-
-						StartedAt: startTime,
 					},
 				},
 			},
@@ -71,6 +69,7 @@ func Test_server_List(t *testing.T) {
 			t.Parallel()
 
 			for _, sbx := range tt.data {
+				sbx.SetStartedAt(startTime)
 				sbx.SetEndAt(tt.endAt)
 			}
 

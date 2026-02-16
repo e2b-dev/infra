@@ -310,10 +310,11 @@ func (s *Server) List(ctx context.Context, _ *emptypb.Empty) (*orchestrator.Sand
 			continue
 		}
 
+		startedAt := sbx.GetStartedAt()
 		sandboxes = append(sandboxes, &orchestrator.RunningSandbox{
 			Config:    sbx.APIStoredConfig,
 			ClientId:  s.info.ClientId,
-			StartTime: timestamppb.New(sbx.StartedAt),
+			StartTime: timestamppb.New(startedAt),
 			EndTime:   timestamppb.New(sbx.GetEndAt()),
 		})
 	}
@@ -524,10 +525,11 @@ func (s *Server) prepareSandboxEventData(ctx context.Context, sbx *sandbox.Sandb
 }
 
 func (s *Server) getSandboxUsageData(sbx *sandbox.Sandbox) map[string]any {
+	startedAt := sbx.GetStartedAt()
 	return map[string]any{
-		"started_at_utc":  sbx.StartedAt.UTC().Format(time.RFC3339Nano),
+		"started_at_utc":  startedAt.UTC().Format(time.RFC3339Nano),
 		"vcpu_count":      sbx.Config.Vcpu,
 		"memory_mb":       sbx.Config.RamMB,
-		"runtime_seconds": time.Since(sbx.StartedAt).Seconds(),
+		"runtime_seconds": time.Since(startedAt).Seconds(),
 	}
 }

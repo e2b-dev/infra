@@ -117,7 +117,8 @@ type Metadata struct {
 	Config         Config
 	Runtime        RuntimeMetadata
 
-	StartedAt time.Time
+	startedAtMu sync.RWMutex // protects startedAt
+	startedAt   time.Time
 
 	endAtMu sync.RWMutex // protects endAt
 	endAt   time.Time
@@ -170,6 +171,22 @@ func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
 		TemplateID: s.Runtime.TemplateID,
 		TeamID:     s.Runtime.TeamID,
 	}
+}
+
+// GetStartedAt returns the sandbox start time in a thread-safe manner.
+func (m *Metadata) GetStartedAt() time.Time {
+	m.startedAtMu.RLock()
+	defer m.startedAtMu.RUnlock()
+
+	return m.startedAt
+}
+
+// SetStartedAt sets the sandbox start time in a thread-safe manner.
+func (m *Metadata) SetStartedAt(t time.Time) {
+	m.startedAtMu.Lock()
+	defer m.startedAtMu.Unlock()
+
+	m.startedAt = t
 }
 
 type Factory struct {
@@ -328,7 +345,6 @@ func (f *Factory) CreateSandbox(
 		Config:  config,
 		Runtime: runtime,
 
-		StartedAt: time.Now(),
 		endAt:     time.Now().Add(sandboxTimeout),
 	}
 
@@ -347,6 +363,8 @@ func (f *Factory) CreateSandbox(
 
 		exit: exit,
 	}
+
+	sbx.SetStartedAt(time.Now())
 
 	sbx.Checks = NewChecks(sbx, false)
 
@@ -628,7 +646,6 @@ func (f *Factory) ResumeSandbox(
 		Config:  config,
 		Runtime: runtime,
 
-		StartedAt: startedAt,
 		endAt:     endAt,
 	}
 
@@ -647,6 +664,8 @@ func (f *Factory) ResumeSandbox(
 
 		exit: exit,
 	}
+
+	sbx.SetStartedAt(startedAt)
 
 	useClickhouseMetrics := f.featureFlags.BoolFlag(ctx, featureflags.MetricsWriteFlag)
 
@@ -1116,7 +1135,7 @@ func (s *Sandbox) WaitForEnvd(
 			attribute.Int64("timeout_ms", s.internalConfig.EnvdInitRequestTimeout.Milliseconds()),
 		))
 		// Update the sandbox as started now
-		s.Metadata.StartedAt = time.Now()
+		s.SetStartedAt(time.Now())
 	}()
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
