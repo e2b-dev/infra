@@ -342,8 +342,8 @@ func TestSnapshotTemplateConcurrentOperations(t *testing.T) {
 
 		pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbx.SandboxID, setup.WithAPIKey())
 		require.NoError(t, err)
-		assert.Equal(t, http.StatusInternalServerError, pauseResp.StatusCode(),
-			"pause during snapshotting should fail, body: %s", string(pauseResp.Body))
+		assert.Equal(t, http.StatusNoContent, pauseResp.StatusCode(),
+			"pause during snapshotting should wait and succeed, body: %s", string(pauseResp.Body))
 
 		<-snapshotDone
 	})
