@@ -20,6 +20,7 @@ type ConnectionLimitConfig struct {
 	GetMaxLimit          func(ctx context.Context) int
 	OnConnectionAcquired func(ctx context.Context, count int64)
 	OnConnectionReleased func(ctx context.Context, durationMs int64)
+	OnConnectionBlocked  func(ctx context.Context)
 }
 
 const (

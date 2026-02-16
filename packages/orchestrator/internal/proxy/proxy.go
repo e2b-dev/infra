@@ -53,6 +53,7 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 		},
 		OnConnectionAcquired: metrics.RecordConnectionsPerSandbox,
 		OnConnectionReleased: metrics.RecordConnectionDuration,
+		OnConnectionBlocked:  metrics.RecordConnectionBlocked,
 	}
 
 	proxy := reverseproxy.New(

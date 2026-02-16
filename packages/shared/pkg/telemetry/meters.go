@@ -84,6 +84,9 @@ const (
 	TCPFirewallConnectionsTotal CounterType = "orchestrator.tcpfirewall.connections.total"
 	TCPFirewallErrorsTotal      CounterType = "orchestrator.tcpfirewall.errors.total"
 	TCPFirewallDecisionsTotal   CounterType = "orchestrator.tcpfirewall.decisions.total"
+
+	// Ingress proxy counters
+	IngressProxyConnectionsBlockedTotal CounterType = "orchestrator.proxy.connections.blocked.total"
 )
 
 const (
@@ -114,6 +117,8 @@ var counterDesc = map[CounterType]string{
 	TCPFirewallConnectionsTotal: "Total number of TCP firewall connections processed",
 	TCPFirewallErrorsTotal:      "Total number of TCP firewall errors",
 	TCPFirewallDecisionsTotal:   "Total number of TCP firewall allow/block decisions",
+
+	IngressProxyConnectionsBlockedTotal: "Total number of ingress proxy connections blocked by connection limit",
 }
 
 var counterUnits = map[CounterType]string{
@@ -127,6 +132,8 @@ var counterUnits = map[CounterType]string{
 	TCPFirewallConnectionsTotal: "{connection}",
 	TCPFirewallErrorsTotal:      "{error}",
 	TCPFirewallDecisionsTotal:   "{decision}",
+
+	IngressProxyConnectionsBlockedTotal: "{connection}",
 }
 
 var observableCounterDesc = map[ObservableCounterType]string{

@@ -111,6 +111,10 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 					logger.WithSandboxID(d.SandboxId),
 					zap.Int("connection_limit", maxLimit))
 
+				if connLimitConfig.OnConnectionBlocked != nil {
+					connLimitConfig.OnConnectionBlocked(ctx)
+				}
+
 				err := template.
 					NewSandboxTooManyConnectionsError(d.SandboxId, r.Host, maxLimit).
 					HandleError(w, r)
