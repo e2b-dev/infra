@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/connlimit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -141,6 +142,12 @@ func assertStreamError(t *testing.T, resp *http.Response) {
 func newTestProxy(t *testing.T, getDestination func(r *http.Request) (*pool.Destination, error)) (*Proxy, uint, error) {
 	t.Helper()
 
+	return newTestProxyWithConnLimit(t, getDestination, nil)
+}
+
+func newTestProxyWithConnLimit(t *testing.T, getDestination func(r *http.Request) (*pool.Destination, error), connLimitConfig *ConnectionLimitConfig) (*Proxy, uint, error) {
+	t.Helper()
+
 	// Find a free port for the proxy
 	var lisCfg net.ListenConfig
 	l, err := lisCfg.Listen(t.Context(), "tcp", "127.0.0.1:0")
@@ -155,7 +162,7 @@ func newTestProxy(t *testing.T, getDestination func(r *http.Request) (*pool.Dest
 		SandboxProxyRetries,
 		20*time.Second, // Short idle timeout
 		getDestination,
-		nil,
+		connLimitConfig,
 		false,
 	)
 
@@ -803,4 +810,91 @@ func TestChangeResponseHeader(t *testing.T) {
 	assert.Equal(t, fmt.Sprintf("127.0.0.1:%d", maskedPort), data.Host)
 	assert.Equal(t, "test123", data.Headers.Get("E2b-Testing"))
 	assert.Equal(t, fmt.Sprintf("127.0.0.1:%d", proxyPort), data.Headers.Get("X-Forwarded-Host"))
+}
+
+func TestConnectionLimitBlocksExcessConnections(t *testing.T) {
+	t.Parallel()
+
+	var lisCfg net.ListenConfig
+	listener, err := lisCfg.Listen(t.Context(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	backend, err := newTestBackend(listener, "backend-limited")
+	require.NoError(t, err)
+	defer backend.Close()
+
+	getDestination := func(*http.Request) (*pool.Destination, error) {
+		return &pool.Destination{
+			Url:           backend.url,
+			SandboxId:     "test-sandbox",
+			RequestLogger: logger.NewNopLogger(),
+			ConnectionKey: backend.id,
+		}, nil
+	}
+
+	const maxConns = 2
+	const holdDelay = 2 * time.Second
+
+	var acquiredCount atomic.Int64
+	var releasedCount atomic.Int64
+	var blockedCount atomic.Int64
+
+	connLimitConfig := &ConnectionLimitConfig{
+		Limiter:     connlimit.NewConnectionLimiter(),
+		GetMaxLimit: func(context.Context) int { return maxConns },
+		OnConnectionAcquired: func(_ context.Context, _ int64) {
+			acquiredCount.Add(1)
+		},
+		OnConnectionReleased: func(_ context.Context, _ int64) {
+			releasedCount.Add(1)
+		},
+		OnConnectionBlocked: func(_ context.Context) {
+			blockedCount.Add(1)
+		},
+	}
+
+	proxy, port, err := newTestProxyWithConnLimit(t, getDestination, connLimitConfig)
+	require.NoError(t, err)
+	defer proxy.Close()
+
+	proxyURL := fmt.Sprintf("http://127.0.0.1:%d/hello", port)
+
+	// Hold maxConns connections open by delaying body write on the backend.
+	// Each request returns 200 headers immediately, but keeps the proxy handler
+	// busy for holdDelay while the backend writes the body.
+	var wg sync.WaitGroup
+	for range maxConns {
+		wg.Go(func() {
+			resp, reqErr := httpGetWithBodyWriteDelay(t, proxyURL, holdDelay)
+			assert.NoError(t, reqErr)
+			if resp != nil {
+				assert.Equal(t, http.StatusOK, resp.StatusCode)
+				io.ReadAll(resp.Body)
+				resp.Body.Close()
+			}
+		})
+	}
+
+	// Give the held requests a moment to be proxied and acquire their slots.
+	time.Sleep(500 * time.Millisecond)
+
+	// The next request should be blocked (429).
+	blockedResp, err := httpGet(t, proxyURL)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusTooManyRequests, blockedResp.StatusCode, "request over limit should get 429")
+	blockedResp.Body.Close()
+
+	assert.Equal(t, int64(maxConns), acquiredCount.Load(), "OnConnectionAcquired should have been called for each acquired slot")
+	assert.Equal(t, int64(1), blockedCount.Load(), "OnConnectionBlocked should have been called once")
+
+	// Wait for the held connections to finish naturally.
+	wg.Wait()
+
+	assert.Equal(t, int64(maxConns), releasedCount.Load(), "OnConnectionReleased should have been called for each released slot")
+
+	// After releasing, a new request should succeed.
+	resp, err := httpGet(t, proxyURL)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assertBackendOutput(t, backend, resp)
 }
