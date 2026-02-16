@@ -27,7 +27,7 @@ job "clickhouse-migrator" {
       }
 
       config {
-        image = "${clickhouse_migrator_version}"
+        image = "${image}"
         network_mode = "host"
       }
 

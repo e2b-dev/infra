@@ -17,3 +17,23 @@ moved {
   from = nomad_job.logs_collector
   to   = module.logs_collector.nomad_job.logs_collector
 }
+
+moved {
+  from = nomad_job.clickhouse
+  to   = module.clickhouse.nomad_job.clickhouse
+}
+
+moved {
+  from = nomad_job.clickhouse_backup
+  to   = module.clickhouse.nomad_job.clickhouse_backup
+}
+
+moved {
+  from = nomad_job.clickhouse_backup_restore
+  to   = module.clickhouse.nomad_job.clickhouse_backup_restore
+}
+
+moved {
+  from = nomad_job.clickhouse_migrator
+  to   = module.clickhouse.nomad_job.clickhouse_migrator
+}

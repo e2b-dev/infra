@@ -9,13 +9,14 @@ receivers:
             - targets: ['localhost:${clickhouse_metrics_port}']
 exporters:
   otlp:
-    endpoint: http://localhost:${otel_collector_grpc_port}
+    endpoint: ${otel_exporter_endpoint}
     tls:
       insecure: true
 processors:
   batch: {}
 
   resourcedetection:
+%{ if provider_name == "gcp" }
     detectors: [gcp]
     override: true
     gcp:
@@ -38,11 +39,26 @@ processors:
           enabled: true
         host.name:
           enabled: true
+%{ endif }
+%{ if provider_name == "aws" }
+    detectors: [ec2]
+    override: true
+    ec2:
+      resource_attributes:
+        host.id:
+          enabled: true
+        host.name:
+          enabled: true
+%{ endif }
 
   transform/set-name:
     metric_statements:
+%{ if provider_name == "gcp" }
       - set(datapoint.attributes["service.instance.id"], resource.attributes["gcp.gce.instance.name"])
-
+%{ endif }
+%{ if provider_name == "aws" }
+      - set(datapoint.attributes["service.instance.id"], resource.attributes["host.name"])
+%{ endif }
 
   # keep only metrics that are used
   filter:

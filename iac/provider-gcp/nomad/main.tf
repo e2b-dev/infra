@@ -401,8 +401,6 @@ locals {
   ))
 }
 
-
-
 resource "random_id" "orchestrator_job" {
   keepers = {
     # Use both the orchestrator job (including vars) definition and the latest orchestrator checksum to detect changes
@@ -598,97 +596,34 @@ resource "google_storage_hmac_key" "clickhouse_hmac_key" {
   service_account_email = google_service_account.clickhouse_service_account.email
 }
 
-resource "nomad_job" "clickhouse" {
-  count = var.clickhouse_server_count > 0 ? 1 : 0
-  jobspec = templatefile("${path.module}/jobs/clickhouse.hcl", {
-    server_secret      = random_password.clickhouse_server_secret.result
-    clickhouse_version = "25.4.5.24"
-
-    cpu_count = var.clickhouse_resources_cpu_count
-    memory_mb = var.clickhouse_resources_memory_mb
-
-    username                = var.clickhouse_username
-    clickhouse_metrics_port = var.clickhouse_metrics_port
-    clickhouse_server_port  = var.clickhouse_server_port.port
-    server_count            = var.clickhouse_server_count
-
-    clickhouse_config = templatefile("${path.module}/configs/clickhouse/config.xml", {
-      clickhouse_server_port  = var.clickhouse_server_port.port
-      clickhouse_metrics_port = var.clickhouse_metrics_port
-
-      server_secret = random_password.clickhouse_server_secret.result
-      server_count  = var.clickhouse_server_count
-
-      username = var.clickhouse_username
-      password = random_password.clickhouse_password.result
-    })
-
-    clickhouse_users_config = templatefile("${path.module}/configs/clickhouse/users.xml", {
-      username = var.clickhouse_username
-      password = random_password.clickhouse_password.result
-    })
-
-    otel_agent_config = templatefile("${path.module}/configs/clickhouse/otel-agent.yaml", {
-      clickhouse_metrics_port  = var.clickhouse_metrics_port
-      otel_collector_grpc_port = var.otel_collector_grpc_port
-    })
-
-    job_constraint_prefix = var.clickhouse_job_constraint_prefix
-    node_pool             = var.clickhouse_node_pool
-  })
-}
-
 resource "google_service_account_key" "clickhouse_service_account_key" {
   service_account_id = google_service_account.clickhouse_service_account.id
 }
 
-resource "nomad_job" "clickhouse_backup" {
-  count = var.clickhouse_server_count > 0 ? 1 : 0
-  jobspec = templatefile("${path.module}/jobs/clickhouse-backup.hcl", {
-    clickhouse_backup_version = "2.6.22"
+module "clickhouse" {
+  source = "../../modules/job-clickhouse"
 
-    gcs_bucket                   = var.clickhouse_backups_bucket_name
-    gcs_folder                   = "clickhouse-data"
-    gcs_credentials_json_encoded = google_service_account_key.clickhouse_service_account_key.private_key
+  provider_name = "gcp"
 
-    server_count        = var.clickhouse_server_count
-    clickhouse_username = var.clickhouse_username
-    clickhouse_password = random_password.clickhouse_password.result
-    clickhouse_port     = var.clickhouse_server_port.port
+  node_pool             = var.clickhouse_node_pool
+  job_constraint_prefix = var.clickhouse_job_constraint_prefix
+  server_count          = var.clickhouse_server_count
 
-    job_constraint_prefix = var.clickhouse_job_constraint_prefix
-    node_pool             = var.clickhouse_node_pool
-  })
-}
+  # Server
+  server_secret           = random_password.clickhouse_server_secret.result
+  cpu_count               = var.clickhouse_resources_cpu_count
+  memory_mb               = var.clickhouse_resources_memory_mb
+  clickhouse_username     = var.clickhouse_username
+  clickhouse_password     = random_password.clickhouse_password.result
+  clickhouse_port         = var.clickhouse_server_port.port
+  clickhouse_metrics_port = var.clickhouse_metrics_port
+  otel_exporter_endpoint  = "http://localhost:${var.otel_collector_grpc_port}"
 
-resource "nomad_job" "clickhouse_backup_restore" {
-  count = var.clickhouse_server_count > 0 ? 1 : 0
-  jobspec = templatefile("${path.module}/jobs/clickhouse-backup-restore.hcl", {
-    clickhouse_backup_version = "2.6.22"
+  # Backup
+  backup_bucket                = var.clickhouse_backups_bucket_name
+  gcs_credentials_json_encoded = google_service_account_key.clickhouse_service_account_key.private_key
 
-    gcs_bucket                   = var.clickhouse_backups_bucket_name
-    gcs_folder                   = "clickhouse-data"
-    gcs_credentials_json_encoded = google_service_account_key.clickhouse_service_account_key.private_key
-
-    server_count        = var.clickhouse_server_count
-    clickhouse_username = var.clickhouse_username
-    clickhouse_password = random_password.clickhouse_password.result
-    clickhouse_port     = var.clickhouse_server_port.port
-
-    job_constraint_prefix = var.clickhouse_job_constraint_prefix
-    node_pool             = var.clickhouse_node_pool
-  })
-}
-
-resource "nomad_job" "clickhouse_migrator" {
-  count = var.clickhouse_server_count > 0 ? 1 : 0
-  jobspec = templatefile("${path.module}/jobs/clickhouse-migrator.hcl", {
-    clickhouse_migrator_version = data.google_artifact_registry_docker_image.clickhouse_migrator_image.self_link
-
-    server_count          = var.clickhouse_server_count
-    job_constraint_prefix = var.clickhouse_job_constraint_prefix
-    node_pool             = var.clickhouse_node_pool
-
-    clickhouse_connection_string = local.clickhouse_connection_string
-  })
+  # Migrator
+  clickhouse_migrator_image    = data.google_artifact_registry_docker_image.clickhouse_migrator_image.self_link
+  clickhouse_connection_string = local.clickhouse_connection_string
 }

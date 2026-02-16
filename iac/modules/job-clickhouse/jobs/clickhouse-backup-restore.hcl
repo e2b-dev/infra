@@ -47,12 +47,20 @@ job "clickhouse-backup-restore" {
         CLICKHOUSE_USERNAME     = "${clickhouse_username}"
         CLICKHOUSE_PASSWORD     = "${clickhouse_password}"
 
-
+%{ if cloud_provider == "gcp" }
         REMOTE_STORAGE               = "gcs"
         GCS_DEBUG                    = "true"
         GCS_CREDENTIALS_JSON_ENCODED = "${gcs_credentials_json_encoded}"
-        GCS_BUCKET                   = "${gcs_bucket}"
-        GCS_PATH                     = "${gcs_folder}/backup/server-${i + 1}/"
+        GCS_BUCKET                   = "${backup_bucket}"
+        GCS_PATH                     = "${backup_folder}/backup/server-${i + 1}/"
+%{ endif }
+%{ if cloud_provider == "aws" }
+        REMOTE_STORAGE = "s3"
+        S3_DEBUG       = "true"
+        S3_BUCKET      = "${backup_bucket}"
+        S3_REGION      = "${aws_region}"
+        S3_PATH        = "${backup_folder}/backup/server-${i + 1}/"
+%{ endif }
       }
 
       resources {
