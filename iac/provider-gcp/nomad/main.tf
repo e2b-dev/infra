@@ -388,7 +388,7 @@ module "orchestrator" {
   envd_timeout                 = var.envd_timeout
   template_bucket_name         = var.template_bucket_name
   allow_sandbox_internet       = var.allow_sandbox_internet
-  clickhouse_connection_string = var.clickhouse_server_count > 0 ? "clickhouse://${var.clickhouse_username}:${random_password.clickhouse_password.result}@clickhouse.service.consul:${var.clickhouse_server_port.port}/${var.clickhouse_database}" : ""
+  clickhouse_connection_string = local.clickhouse_connection_string
   redis_url                    = local.redis_url
   redis_cluster_url            = local.redis_cluster_url
   redis_tls_ca_base64          = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
