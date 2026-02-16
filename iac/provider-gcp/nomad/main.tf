@@ -134,32 +134,31 @@ resource "nomad_job" "docker_reverse_proxy" {
   )
 }
 
-resource "nomad_job" "client_proxy" {
-  jobspec = templatefile("${path.module}/jobs/client-proxy.hcl",
-    {
-      update_stanza       = var.api_machine_count > 1
-      count               = var.client_proxy_count
-      cpu_count           = var.client_proxy_resources_cpu_count
-      memory_mb           = var.client_proxy_resources_memory_mb
-      update_max_parallel = var.client_proxy_update_max_parallel
+module "client_proxy" {
+  source = "../../modules/job-client-proxy"
 
-      node_pool   = var.api_node_pool
-      environment = var.environment
+  update_stanza                    = var.api_machine_count > 1
+  client_proxy_count               = var.client_proxy_count
+  client_proxy_cpu_count           = var.client_proxy_resources_cpu_count
+  client_proxy_memory_mb           = var.client_proxy_resources_memory_mb
+  client_proxy_update_max_parallel = var.client_proxy_update_max_parallel
 
-      proxy_port  = var.client_proxy_session_port
-      health_port = var.client_proxy_health_port
+  node_pool   = var.api_node_pool
+  environment = var.environment
 
-      redis_url           = local.redis_url
-      redis_cluster_url   = local.redis_cluster_url
-      redis_tls_ca_base64 = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
+  proxy_port  = var.client_proxy_session_port
+  health_port = var.client_proxy_health_port
 
-      image_name       = data.google_artifact_registry_docker_image.client_proxy_image.self_link
-      api_grpc_address = "api-grpc.service.consul:${var.api_grpc_port}"
+  redis_url           = local.redis_url
+  redis_cluster_url   = local.redis_cluster_url
+  redis_tls_ca_base64 = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
 
-      otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
-      logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
-      launch_darkly_api_key        = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
-  })
+  image            = data.google_artifact_registry_docker_image.client_proxy_image.self_link
+  api_grpc_address = "api-grpc.service.consul:${var.api_grpc_port}"
+
+  otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
+  logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
+  launch_darkly_api_key        = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
 }
 
 # grafana otel collector url

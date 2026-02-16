@@ -110,7 +110,7 @@ job "client-proxy" {
 
       config {
         network_mode = "host"
-        image        = "${image_name}"
+        image        = "${image}"
         ports        = ["proxy", "health"]
       }
     }
