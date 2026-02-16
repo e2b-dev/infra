@@ -26,6 +26,8 @@ locals {
     provider_aws_config = var.provider_aws_config
 
     artifact_source = var.artifact_source
+
+    use_local_namespace_storage = var.use_local_namespace_storage
   }
 
   # Render with placeholder to detect changes in job definition
