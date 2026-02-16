@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
 

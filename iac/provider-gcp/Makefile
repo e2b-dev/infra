@@ -65,7 +65,8 @@ tf_vars := \
 	$(call tfvar, SERVER_BOOT_DISK_SIZE_GB) \
 	$(call tfvar, CLICKHOUSE_BOOT_DISK_TYPE) \
 	$(call tfvar, BUCKET_PREFIX) \
-	$(call tfvar, LOKI_BOOT_DISK_TYPE)
+	$(call tfvar, LOKI_BOOT_DISK_TYPE) \
+	$(call tfvar, LOKI_USE_V13_SCHEMA_FROM)
 
 .PHONY: init
 init:
