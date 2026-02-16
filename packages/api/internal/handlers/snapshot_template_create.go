@@ -34,9 +34,12 @@ func (a *APIStore) PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID api
 
 	sandboxID = utils.ShortID(sandboxID)
 
-	// Parse optional request body
-	var body api.PostSandboxesSandboxIDSnapshotsJSONRequestBody
-	_ = c.ShouldBindJSON(&body)
+	body, err := utils.ParseBody[api.PostSandboxesSandboxIDSnapshotsJSONRequestBody](ctx, c)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err))
+
+		return
+	}
 
 	// Build opts from the optional name
 	opts := orchestrator.SnapshotTemplateOpts{

@@ -480,7 +480,7 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		s.uploadPrefetchMappingAsync(ctx, resumedSbx, meta, prefetchData)
 	}
 
-	s.publishSandboxEvent(ctx, resumedSbx, "sandbox.checkpointed")
+	s.publishSandboxEvent(ctx, resumedSbx, events.SandboxCheckpointedEvent)
 
 	// Wait for snapshot upload to complete before returning.
 	// If the upload fails, kill the resumed sandbox — without a persisted
@@ -620,19 +620,16 @@ func (s *Server) setupSandboxLifecycle(ctx context.Context, sbx *sandbox.Sandbox
 // and unlocks. Returns the sandbox for snapshotting or an error if not found.
 func (s *Server) acquireSandboxForSnapshot(ctx context.Context, sandboxID string) (*sandbox.Sandbox, error) {
 	s.pauseMu.Lock()
+	defer s.pauseMu.Unlock()
 
 	sbx, ok := s.sandboxes.Get(sandboxID)
 	if !ok {
-		s.pauseMu.Unlock()
-
 		telemetry.ReportCriticalError(ctx, "sandbox not found", nil)
 
 		return nil, status.Error(codes.NotFound, "sandbox not found")
 	}
 
 	s.sandboxes.Remove(sandboxID)
-
-	s.pauseMu.Unlock()
 
 	return sbx, nil
 }
@@ -675,7 +672,9 @@ func (s *Server) publishSandboxEvent(ctx context.Context, sbx *sandbox.Sandbox, 
 
 // uploadPrefetchMappingAsync uploads prefetch mapping to metadata in background.
 func (s *Server) uploadPrefetchMappingAsync(ctx context.Context, sbx *sandbox.Sandbox, meta metadata.Template, prefetchData block.PrefetchData) {
-	go func(ctx context.Context) {
+	ctx = context.WithoutCancel(ctx)
+
+	go func() {
 		ctx, childSpan := tracer.Start(ctx, "upload-prefetch-mapping", trace.WithNewRoot())
 		defer childSpan.End()
 
@@ -701,5 +700,5 @@ func (s *Server) uploadPrefetchMappingAsync(ctx context.Context, sbx *sandbox.Sa
 
 		sbxlogger.I(sbx).Info(ctx, "prefetch mapping uploaded",
 			zap.Int("block_count", prefetchMapping.Count()))
-	}(context.WithoutCancel(ctx))
+	}()
 }

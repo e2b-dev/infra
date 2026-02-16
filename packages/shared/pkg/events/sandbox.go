@@ -12,11 +12,12 @@ const (
 )
 
 const (
-	SandboxCreatedEvent = "sandbox.lifecycle.created"
-	SandboxKilledEvent  = "sandbox.lifecycle.killed"
-	SandboxPausedEvent  = "sandbox.lifecycle.paused"
-	SandboxResumedEvent = "sandbox.lifecycle.resumed"
-	SandboxUpdatedEvent = "sandbox.lifecycle.updated"
+	SandboxCreatedEvent      = "sandbox.lifecycle.created"
+	SandboxKilledEvent       = "sandbox.lifecycle.killed"
+	SandboxPausedEvent       = "sandbox.lifecycle.paused"
+	SandboxResumedEvent      = "sandbox.lifecycle.resumed"
+	SandboxUpdatedEvent      = "sandbox.lifecycle.updated"
+	SandboxCheckpointedEvent = "sandbox.lifecycle.checkpointed"
 )
 
 var ValidSandboxEventTypes = []string{
@@ -25,6 +26,7 @@ var ValidSandboxEventTypes = []string{
 	SandboxPausedEvent,
 	SandboxResumedEvent,
 	SandboxUpdatedEvent,
+	SandboxCheckpointedEvent,
 }
 
 type SandboxEvent struct {
