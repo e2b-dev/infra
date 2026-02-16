@@ -53,6 +53,21 @@ job "ingress" {
       }
     }
 
+    # Expose Nomad dashboard and API via Traefik ingress
+    service {
+      name = "ingress-dashboard"
+      port = "control"
+      task = "ingress"
+
+      tags = [
+        "traefik.enable=true",
+
+        "traefik.http.routers.traefik.rule=PathPrefix(`/dashboard`) || PathPrefix(`/api`)",
+        "traefik.http.routers.traefik.entrypoints=traefik",
+        "traefik.http.routers.traefik.service=api@internal",
+      ]
+    }
+
     task "ingress" {
       driver = "docker"
 
