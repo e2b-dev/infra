@@ -1,88 +1,12 @@
-job "logs-collector" {
-  type        = "system"
-  node_pool    = "all"
-
-  priority = 85
-
-  group "logs-collector" {
-    // Try to restart the task indefinitely
-    // Tries to restart every 5 seconds
-    restart {
-      interval         = "5s"
-      attempts         = 1
-      delay            = "5s"
-      mode             = "delay"
-    }
-
-    network {
-      port "health" {
-        to = "${logs_health_port_number}"
-      }
-      port "logs" {
-        to = "${logs_port_number}"
-      }
-    }
-
-    service {
-      name = "logs-collector"
-      port = "logs"
-      tags = [
-        "logs",
-        "health",
-      ]
-
-      check {
-        type     = "http"
-        name     = "health"
-        path     = "${logs_health_path}"
-        interval = "20s"
-        timeout  = "5s"
-        port     = "${logs_health_port_number}"
-      }
-    }
-
-    task "start-collector" {
-      driver = "docker"
-
-      config {
-        network_mode = "host"
-        image        = "timberio/vector:0.34.X-alpine"
-
-        ports = [
-          "health",
-          "logs",
-        ]
-      }
-
-      env {
-        VECTOR_CONFIG          = "local/vector.toml"
-        VECTOR_REQUIRE_HEALTHY = "true"
-        VECTOR_LOG             = "warn"
-      }
-
-      resources {
-        memory_max = 4096
-        memory     = 512
-        cpu        = 500
-      }
-
-      template {
-        destination   = "local/vector.toml"
-        change_mode   = "signal"
-        change_signal = "SIGHUP"
-        # overriding the delimiters to [[ ]] to avoid conflicts with Vector's native templating, which also uses {{ }}
-        left_delimiter  = "[["
-        right_delimiter = "]]"
-        data            = <<EOH
 data_dir = "alloc/data/vector/"
 
 [api]
 enabled = true
-address = "0.0.0.0:${logs_health_port_number}"
+address = "0.0.0.0:${vector_health_port}"
 
 [sources.http_server]
 type = "http_server"
-address = "0.0.0.0:${logs_port_number}"
+address = "0.0.0.0:${vector_api_port}"
 encoding = "ndjson"
 path_key = "_path"
 
@@ -171,7 +95,7 @@ del(.internal)
 [sinks.local_loki_logs]
 type = "loki"
 inputs = [ "remove_internal" ]
-endpoint = "http://loki.service.consul:${loki_service_port_number}"
+endpoint = "${loki_endpoint}"
 encoding.codec = "json"
 # This is recommended behavior for Loki 2.4.0 and newer and is default in Vector 0.39.0 and newer
 # https://vector.dev/docs/reference/configuration/sinks/loki/#out_of_order_action
@@ -187,7 +111,7 @@ buildID = "{{ buildID }}"
 sandboxID = "{{ sandboxID }}"
 category = "{{ category }}"
 
-%{ if grafana_logs_endpoint != " " }
+%{ if grafana_logs_endpoint != "" }
 [sinks.grafana]
 type = "loki"
 inputs = [ "internal_routing.internal" ]
@@ -208,8 +132,3 @@ teamID = "{{ teamID }}"
 envID = "{{ envID }}"
 sandboxID = "{{ sandboxID }}"
 %{ endif }
-        EOH
-      }
-    }
-  }
-}

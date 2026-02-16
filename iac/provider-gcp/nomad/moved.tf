@@ -12,3 +12,8 @@ moved {
   from = nomad_job.loki
   to   = module.loki.nomad_job.loki
 }
+
+moved {
+  from = nomad_job.logs_collector
+  to   = module.logs_collector.nomad_job.logs_collector
+}

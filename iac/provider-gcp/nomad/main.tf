@@ -343,22 +343,17 @@ data "google_secret_manager_secret_version" "grafana_logs_collector_api_token" {
   depends_on = [google_secret_manager_secret_version.grafana_logs_collector_api_token]
 }
 
+module "logs_collector" {
+  source = "../../modules/job-logs-collector"
 
-resource "nomad_job" "logs_collector" {
-  jobspec = templatefile("${path.module}/jobs/logs-collector.hcl", {
-    gcp_zone = var.gcp_zone
+  loki_endpoint = "http://loki.service.consul:${var.loki_service_port.port}"
 
-    logs_port_number        = var.logs_proxy_port.port
-    logs_health_port_number = var.logs_health_proxy_port.port
-    logs_health_path        = var.logs_health_proxy_port.health_path
-    logs_port_name          = var.logs_proxy_port.name
+  vector_health_port = var.logs_health_proxy_port.port
+  vector_api_port    = var.logs_proxy_port.port
 
-    loki_service_port_number = var.loki_service_port.port
-
-    grafana_logs_user     = data.google_secret_manager_secret_version.grafana_logs_user.secret_data
-    grafana_logs_endpoint = data.google_secret_manager_secret_version.grafana_logs_url.secret_data
-    grafana_api_key       = data.google_secret_manager_secret_version.grafana_logs_collector_api_token.secret_data
-  })
+  grafana_logs_user     = data.google_secret_manager_secret_version.grafana_logs_user.secret_data
+  grafana_logs_endpoint = data.google_secret_manager_secret_version.grafana_logs_url.secret_data
+  grafana_api_key       = data.google_secret_manager_secret_version.grafana_logs_collector_api_token.secret_data
 }
 
 data "google_storage_bucket_object" "orchestrator" {
