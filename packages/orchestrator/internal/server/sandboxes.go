@@ -364,6 +364,7 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	}()
 
 	teamID, buildId, eventData := s.prepareSandboxEventData(ctx, sbx)
+	eventData["usage"] = s.getSandboxUsageData(sbx)
 
 	eventType := events.SandboxKilledEventPair
 	go s.sbxEventsService.Publish(
@@ -478,6 +479,7 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	}(context.WithoutCancel(ctx))
 
 	teamID, buildId, eventData := s.prepareSandboxEventData(ctx, sbx)
+	eventData["usage"] = s.getSandboxUsageData(sbx)
 
 	eventType := events.SandboxPausedEventPair
 	go s.sbxEventsService.Publish(
@@ -519,4 +521,13 @@ func (s *Server) prepareSandboxEventData(ctx context.Context, sbx *sandbox.Sandb
 	}
 
 	return teamID, buildId, eventData
+}
+
+func (s *Server) getSandboxUsageData(sbx *sandbox.Sandbox) map[string]any {
+	return map[string]any{
+		"started_at_utc":  sbx.StartedAt.UTC().Format(time.RFC3339Nano),
+		"vcpu_count":      sbx.Config.Vcpu,
+		"memory_mb":       sbx.Config.RamMB,
+		"runtime_seconds": time.Since(sbx.StartedAt).Seconds(),
+	}
 }
