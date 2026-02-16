@@ -526,6 +526,7 @@ func (s *Server) prepareSandboxEventData(ctx context.Context, sbx *sandbox.Sandb
 
 func (s *Server) getSandboxUsageData(sbx *sandbox.Sandbox) map[string]any {
 	startedAt := sbx.GetStartedAt()
+
 	return map[string]any{
 		"started_at_utc":  startedAt.UTC().Format(time.RFC3339Nano),
 		"vcpu_count":      sbx.Config.Vcpu,
