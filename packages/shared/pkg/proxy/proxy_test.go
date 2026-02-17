@@ -880,6 +880,7 @@ func TestConnectionLimitBlocksExcessConnections(t *testing.T) {
 			// Block until the backend finishes writing the delayed body,
 			// keeping the proxy handler (and connection slot) occupied.
 			_, err := io.ReadAll(resp.Body)
+
 			return err
 		})
 	}
