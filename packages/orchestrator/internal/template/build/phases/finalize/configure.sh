@@ -16,9 +16,13 @@ EOF
 # will ignore the directory if it exists, but we want to include the skeleton files in the home directory
 # in our case.
 echo "Create default user 'user' (if doesn't exist yet)"
+HOME_EXISTED=false
+if $bb [ -d /home/user ]; then
+    HOME_EXISTED=true
+fi
 ADDUSER_OUTPUT=$($bb adduser -D -g "" user 2>&1 || true)
 echo "$ADDUSER_OUTPUT"
-if $bb [ -d /home/user ]; then
+if $bb [ "$HOME_EXISTED" = "true" ]; then
     echo "Copy skeleton files to /home/user"
     for f in /etc/skel/.[!.]* /etc/skel/*; do
         $bb [ -e "$f" ] || continue
