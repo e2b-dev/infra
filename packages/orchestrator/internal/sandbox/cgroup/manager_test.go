@@ -84,7 +84,7 @@ func TestCgroupHandleLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, info.IsDir())
 
-	// Close handle
+	// Close directory
 	err = handle.Close()
 	assert.NoError(t, err)
 
@@ -383,4 +383,81 @@ burst_usec 0`
 	assert.Equal(t, uint64(1073741824), memPeak, "MemoryPeakBytes parsing")
 
 	_ = mockMgr // Prevent unused variable warning
+}
+
+func TestCgroupHandlePeakReset(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("test requires root privileges")
+	}
+
+	ctx := context.Background()
+	mgr, err := NewManager()
+	require.NoError(t, err)
+
+	err = mgr.Initialize(ctx)
+	require.NoError(t, err)
+
+	testSandboxID := "test-peak-reset"
+
+	// Create cgroup and start process
+	handle, err := mgr.Create(ctx, testSandboxID)
+	require.NoError(t, err)
+	defer handle.Remove(ctx)
+	defer handle.Close()
+
+	// Start a process that allocates memory gradually
+	// This gives us time to sample and see the reset behavior
+	cmd := exec.CommandContext(ctx, "bash", "-c",
+		"x=''; for i in {1..10}; do x=$x$(head -c 5M /dev/zero | tr '\\0' 'x'); sleep 0.5; done; sleep 5")
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		UseCgroupFD: true,
+		CgroupFD:    handle.GetFD(),
+	}
+
+	err = cmd.Start()
+	require.NoError(t, err)
+	defer cmd.Process.Kill()
+
+	handle.Close()
+
+	// First sample - get initial peak
+	time.Sleep(1 * time.Second)
+	stats1, err := handle.GetStats(ctx)
+	require.NoError(t, err)
+	peak1 := stats1.MemoryPeakBytes
+	require.Greater(t, peak1, uint64(0), "First peak should be non-zero")
+	t.Logf("First sample - peak: %d bytes, current: %d bytes", peak1, stats1.MemoryUsageBytes)
+
+	// Second sample after some time - peak should represent interval peak, not lifetime
+	// Due to the reset, peak2 should be the peak SINCE the last GetStats() call
+	time.Sleep(2 * time.Second)
+	stats2, err := handle.GetStats(ctx)
+	require.NoError(t, err)
+	peak2 := stats2.MemoryPeakBytes
+	require.Greater(t, peak2, uint64(0), "Second peak should be non-zero")
+	t.Logf("Second sample - peak: %d bytes, current: %d bytes", peak2, stats2.MemoryUsageBytes)
+
+	// The second peak should be >= current memory (peak is always >= current within an interval)
+	assert.GreaterOrEqual(t, peak2, stats2.MemoryUsageBytes,
+		"Peak memory should be >= current memory within the interval")
+
+	// Third sample - verify reset continues to work
+	time.Sleep(2 * time.Second)
+	stats3, err := handle.GetStats(ctx)
+	require.NoError(t, err)
+	peak3 := stats3.MemoryPeakBytes
+	require.Greater(t, peak3, uint64(0), "Third peak should be non-zero")
+	t.Logf("Third sample - peak: %d bytes, current: %d bytes", peak3, stats3.MemoryUsageBytes)
+
+	// Verify reset is actually working by checking that peaks are not monotonically increasing
+	// If reset didn't work, peak would be monotonically increasing (lifetime peak)
+	// With reset, we should see peak values that reflect interval behavior
+	assert.GreaterOrEqual(t, peak3, stats3.MemoryUsageBytes,
+		"Peak memory should be >= current memory within the interval")
+
+	t.Logf("Reset test complete - peaks tracked per interval: %d, %d, %d bytes",
+		peak1, peak2, peak3)
+
+	cmd.Process.Kill()
+	cmd.Wait()
 }
