@@ -26,11 +26,12 @@ SELECT
     eb.kernel_version,
     eb.firecracker_version,
     eb.cluster_node_id,
+    eb.tag,
     COALESCE(ea.names, ARRAY[]::text[])::text[] AS names
 FROM "public"."envs" e
 JOIN "public"."snapshot_templates" st ON st.env_id = e.id
 JOIN LATERAL (
-    SELECT b.id, b.created_at, b.updated_at, b.finished_at, b.status, b.dockerfile, b.start_cmd, b.vcpu, b.ram_mb, b.free_disk_size_mb, b.total_disk_size_mb, b.kernel_version, b.firecracker_version, b.env_id, b.envd_version, b.ready_cmd, b.cluster_node_id, b.reason, b.version, b.cpu_architecture, b.cpu_family, b.cpu_model, b.cpu_model_name, b.cpu_flags, b.status_group
+    SELECT b.id, b.created_at, b.updated_at, b.finished_at, b.status, b.dockerfile, b.start_cmd, b.vcpu, b.ram_mb, b.free_disk_size_mb, b.total_disk_size_mb, b.kernel_version, b.firecracker_version, b.env_id, b.envd_version, b.ready_cmd, b.cluster_node_id, b.reason, b.version, b.cpu_architecture, b.cpu_family, b.cpu_model, b.cpu_model_name, b.cpu_flags, b.status_group, ba.tag
     FROM "public"."env_build_assignments" ba
     JOIN "public"."env_builds" b ON b.id = ba.build_id
     WHERE ba.env_id = e.id AND b.status IN ('success', 'uploaded', 'ready')
@@ -74,6 +75,7 @@ type ListTeamSnapshotTemplatesRow struct {
 	KernelVersion      string
 	FirecrackerVersion string
 	ClusterNodeID      *string
+	Tag                string
 	Names              []string
 }
 
@@ -107,6 +109,7 @@ func (q *Queries) ListTeamSnapshotTemplates(ctx context.Context, arg ListTeamSna
 			&i.KernelVersion,
 			&i.FirecrackerVersion,
 			&i.ClusterNodeID,
+			&i.Tag,
 			&i.Names,
 		); err != nil {
 			return nil, err

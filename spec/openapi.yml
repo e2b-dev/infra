@@ -244,7 +244,7 @@ components:
       properties:
         snapshotID:
           type: string
-          description: Identifier of the snapshot template
+          description: Identifier of the snapshot template including the tag. Uses namespace/alias when a name was provided (e.g. team-slug/my-snapshot:default), otherwise falls back to the raw template ID (e.g. abc123:default).
         names:
           type: array
           items:

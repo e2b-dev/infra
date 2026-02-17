@@ -14,11 +14,12 @@ SELECT
     eb.kernel_version,
     eb.firecracker_version,
     eb.cluster_node_id,
+    eb.tag,
     COALESCE(ea.names, ARRAY[]::text[])::text[] AS names
 FROM "public"."envs" e
 JOIN "public"."snapshot_templates" st ON st.env_id = e.id
 JOIN LATERAL (
-    SELECT b.*
+    SELECT b.*, ba.tag
     FROM "public"."env_build_assignments" ba
     JOIN "public"."env_builds" b ON b.id = ba.build_id
     WHERE ba.env_id = e.id AND b.status IN ('success', 'uploaded', 'ready')

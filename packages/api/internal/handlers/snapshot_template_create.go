@@ -139,8 +139,14 @@ func (a *APIStore) PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID api
 		names = append(names, name)
 	}
 
+	// Use namespace/alias when a name was provided, otherwise fall back to the raw template ID
+	snapshotID := id.WithTag(result.TemplateID, opts.Tag)
+	if opts.Alias != nil && opts.Namespace != nil {
+		snapshotID = id.WithTag(id.WithNamespace(*opts.Namespace, *opts.Alias), opts.Tag)
+	}
+
 	c.JSON(http.StatusCreated, api.SnapshotInfo{
-		SnapshotID: result.TemplateID,
+		SnapshotID: snapshotID,
 		Names:      names,
 	})
 }
