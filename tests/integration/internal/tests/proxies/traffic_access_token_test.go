@@ -288,3 +288,65 @@ func TestSandboxWithTrafficAccessTokenAutoResumeViaProxy(t *testing.T) {
 	require.NotNil(t, res.JSON200, "expected 200 response, got status %d", res.StatusCode())
 	require.Equal(t, api.Running, res.JSON200.State)
 }
+
+func TestEnvdAccessTokenAutoResumeViaProxy(t *testing.T) {
+	t.Parallel()
+
+	c := setup.GetAPIClient()
+	ctx := t.Context()
+
+	sbx := utils.SetupSandboxWithCleanup(
+		t,
+		c,
+		utils.WithSecure(true),
+		utils.WithAutoPause(true),
+		utils.WithAutoResume(api.Any),
+	)
+	require.NotNil(t, sbx.EnvdAccessToken)
+
+	proxyURL, err := url.Parse(setup.EnvdProxy)
+	require.NoError(t, err)
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	envdPort := int(consts.DefaultEnvdServerPort)
+
+	// Verify envd is reachable with valid access token while running.
+	headers := &http.Header{"X-Access-Token": []string{*sbx.EnvdAccessToken}}
+	resp := utils.WaitForStatus(t, client, sbx, proxyURL, envdPort, headers, http.StatusNotFound)
+	require.NotNil(t, resp)
+	require.NoError(t, resp.Body.Close())
+
+	// Pause sandbox.
+	pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
+	require.NoError(t, err)
+	require.Equal(t, http.StatusNoContent, pauseResp.StatusCode())
+
+	res, err := c.GetSandboxesSandboxIDWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
+	require.NoError(t, err)
+	require.NotNil(t, res.JSON200, "expected 200 response, got status %d", res.StatusCode())
+	require.Equal(t, api.Paused, res.JSON200.State)
+
+	// While paused, missing envd access token must not auto-resume.
+	req := utils.NewRequest(sbx, proxyURL, envdPort, nil)
+	resp, err = client.Do(req)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusBadGateway, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	res, err = c.GetSandboxesSandboxIDWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
+	require.NoError(t, err)
+	require.NotNil(t, res.JSON200, "expected 200 response, got status %d", res.StatusCode())
+	require.Equal(t, api.Paused, res.JSON200.State)
+
+	// Valid envd access token should auto-resume.
+	req = utils.NewRequest(sbx, proxyURL, envdPort, headers)
+	resp, err = client.Do(req)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusNotFound, resp.StatusCode) // envd has no GET / handler
+	require.NoError(t, resp.Body.Close())
+
+	res, err = c.GetSandboxesSandboxIDWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
+	require.NoError(t, err)
+	require.NotNil(t, res.JSON200, "expected 200 response, got status %d", res.StatusCode())
+	require.Equal(t, api.Running, res.JSON200.State)
+}
