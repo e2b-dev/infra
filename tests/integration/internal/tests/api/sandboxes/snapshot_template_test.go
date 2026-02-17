@@ -89,7 +89,7 @@ func TestSnapshotTemplateCreate(t *testing.T) {
 		nameV1 := "tagged-snap-" + sbx.SandboxID + ":v1"
 		snapshot := createSnapshotTemplateWithCleanup(t, c, sbx.SandboxID, &nameV1)
 		require.NotEmpty(t, snapshot.Names)
-		assert.Contains(t, snapshot.Names[0], ":v1")
+		assert.NotContains(t, snapshot.Names[0], ":", "names should be tagless")
 
 		// Same alias with different tag should reuse the template
 		nameV2 := "tagged-snap-" + sbx.SandboxID + ":v2"
@@ -102,7 +102,7 @@ func TestSnapshotTemplateCreate(t *testing.T) {
 		assert.Contains(t, snapshot.SnapshotID, ":v1")
 		assert.Contains(t, resp2.JSON201.SnapshotID, ":v2")
 		require.NotEmpty(t, resp2.JSON201.Names)
-		assert.Contains(t, resp2.JSON201.Names[0], ":v2")
+		assert.NotContains(t, resp2.JSON201.Names[0], ":", "names should be tagless")
 	})
 
 	t.Run("create snapshot for non-existent sandbox", func(t *testing.T) {
