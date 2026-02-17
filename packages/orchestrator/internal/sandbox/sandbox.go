@@ -345,7 +345,8 @@ func (f *Factory) CreateSandbox(
 		Config:  config,
 		Runtime: runtime,
 
-		endAt: time.Now().Add(sandboxTimeout),
+		startedAt: time.Now(),
+		endAt:     time.Now().Add(sandboxTimeout),
 	}
 
 	sbx := &Sandbox{
@@ -363,8 +364,6 @@ func (f *Factory) CreateSandbox(
 
 		exit: exit,
 	}
-
-	sbx.SetStartedAt(time.Now())
 
 	sbx.Checks = NewChecks(sbx, false)
 
@@ -646,7 +645,8 @@ func (f *Factory) ResumeSandbox(
 		Config:  config,
 		Runtime: runtime,
 
-		endAt: endAt,
+		startedAt: startedAt,
+		endAt:     endAt,
 	}
 
 	sbx := &Sandbox{
@@ -664,8 +664,6 @@ func (f *Factory) ResumeSandbox(
 
 		exit: exit,
 	}
-
-	sbx.SetStartedAt(startedAt)
 
 	useClickhouseMetrics := f.featureFlags.BoolFlag(ctx, featureflags.MetricsWriteFlag)
 
