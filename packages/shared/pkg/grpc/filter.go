@@ -91,10 +91,5 @@ func setIsResumeFromRS(ctx context.Context, rs any) {
 		return
 	}
 
-	sb := req.GetSandbox()
-	if sb == nil {
-		return
-	}
-
-	holder.Value = sb.GetSnapshot()
+	holder.Value = req.GetSandbox().GetSnapshot()
 }
