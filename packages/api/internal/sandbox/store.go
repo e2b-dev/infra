@@ -171,7 +171,18 @@ func (s *Store) Sync(ctx context.Context, sandboxes []Sandbox, nodeID string) {
 }
 
 func (s *Store) Reserve(ctx context.Context, teamID uuid.UUID, sandboxID string, limit int) (finishStart func(Sandbox, error), waitForStart func(ctx context.Context) (Sandbox, error), err error) {
-	return s.reservations.Reserve(ctx, teamID, sandboxID, limit)
+	finishStart, waitForStart, err = s.reservations.Reserve(ctx, teamID, sandboxID, limit)
+	if err != nil {
+		if errors.Is(err, ErrAlreadyExists) {
+			return nil, func(ctx context.Context) (Sandbox, error) {
+				return s.storage.Get(ctx, teamID, sandboxID)
+			}, nil
+		}
+
+		return nil, nil, err
+	}
+
+	return finishStart, waitForStart, nil
 }
 
 func (s *Store) Release(ctx context.Context, teamID uuid.UUID, sandboxID string) error {
