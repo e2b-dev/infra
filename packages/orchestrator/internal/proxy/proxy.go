@@ -104,7 +104,7 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 				IncludeSandboxIdInProxyErrorLogger: true,
 				// We need to include id unique to sandbox to prevent reuse of connection to the same IP:port pair by different sandboxes reusing the network slot.
 				// We are not using sandbox id to prevent removing connections based on sandbox id (pause/resume race condition).
-				ConnectionKey:   sbx.Runtime.ExecutionID,
+				ConnectionKey:   sbx.LifecycleID,
 				RequestLogger:   logger,
 				MaskRequestHost: maskRequestHost,
 			}, nil
