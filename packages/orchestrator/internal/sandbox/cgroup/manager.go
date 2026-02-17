@@ -288,12 +288,15 @@ func (m *managerImpl) readAndResetMemoryPeak(ctx context.Context, memoryPeakFile
 		return 0, fmt.Errorf("failed to seek memory.peak for read: %w", err)
 	}
 
-	peakData, err := io.ReadAll(memoryPeakFile)
-	if err != nil {
+	// Use a fixed buffer to avoid per-call allocation — the peak value is
+	// always a single number, so 64 bytes is more than enough.
+	var buf [64]byte
+	n, err := memoryPeakFile.Read(buf[:])
+	if err != nil && err != io.EOF {
 		return 0, fmt.Errorf("failed to read memory.peak: %w", err)
 	}
 
-	peakBytes, _ := strconv.ParseUint(strings.TrimSpace(string(peakData)), 10, 64)
+	peakBytes, _ := strconv.ParseUint(strings.TrimSpace(string(buf[:n])), 10, 64)
 
 	// Reset peak for next interval — write any non-empty string.
 	// The kernel ignores both the content and the file offset;
