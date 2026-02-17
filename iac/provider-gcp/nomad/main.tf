@@ -575,12 +575,15 @@ module "clickhouse" {
   server_count          = var.clickhouse_server_count
 
   # Server
-  server_secret           = random_password.clickhouse_server_secret.result
-  cpu_count               = var.clickhouse_resources_cpu_count
-  memory_mb               = var.clickhouse_resources_memory_mb
-  clickhouse_username     = var.clickhouse_username
-  clickhouse_password     = random_password.clickhouse_password.result
-  clickhouse_port         = var.clickhouse_server_port.port
+  server_secret = random_password.clickhouse_server_secret.result
+  cpu_count     = var.clickhouse_resources_cpu_count
+  memory_mb     = var.clickhouse_resources_memory_mb
+
+  clickhouse_database = var.clickhouse_database
+  clickhouse_username = var.clickhouse_username
+  clickhouse_password = random_password.clickhouse_password.result
+  clickhouse_port     = var.clickhouse_server_port.port
+
   clickhouse_metrics_port = var.clickhouse_metrics_port
   otel_exporter_endpoint  = "http://localhost:${var.otel_collector_grpc_port}"
 
@@ -589,6 +592,5 @@ module "clickhouse" {
   gcs_credentials_json_encoded = google_service_account_key.clickhouse_service_account_key.private_key
 
   # Migrator
-  clickhouse_migrator_image    = data.google_artifact_registry_docker_image.clickhouse_migrator_image.self_link
-  clickhouse_connection_string = local.clickhouse_connection_string
+  clickhouse_migrator_image = data.google_artifact_registry_docker_image.clickhouse_migrator_image.self_link
 }

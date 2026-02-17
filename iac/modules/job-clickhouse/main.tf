@@ -85,6 +85,9 @@ resource "nomad_job" "clickhouse_migrator" {
     job_constraint_prefix = var.job_constraint_prefix
     node_pool             = var.node_pool
 
-    clickhouse_connection_string = var.clickhouse_connection_string
+    clickhouse_username = var.clickhouse_username
+    clickhouse_password = var.clickhouse_password
+    clickhouse_port     = var.clickhouse_port
+    clickhouse_database = var.clickhouse_database
   })
 }

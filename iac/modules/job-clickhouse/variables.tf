@@ -43,6 +43,10 @@ variable "memory_mb" {
   default = 512
 }
 
+variable "clickhouse_database" {
+  type = string
+}
+
 variable "clickhouse_username" {
   type = string
 }
@@ -101,9 +105,4 @@ variable "aws_region" {
 
 variable "clickhouse_migrator_image" {
   type = string
-}
-
-variable "clickhouse_connection_string" {
-  type      = string
-  sensitive = true
 }
