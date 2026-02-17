@@ -20,9 +20,10 @@ HOME_EXISTED=false
 if $bb [ -d /home/user ]; then
     HOME_EXISTED=true
 fi
-ADDUSER_OUTPUT=$($bb adduser -D -g "" user 2>&1 || true)
+USER_CREATED=false
+ADDUSER_OUTPUT=$($bb adduser -D -g "" user 2>&1) && USER_CREATED=true || true
 echo "$ADDUSER_OUTPUT"
-if $bb [ "$HOME_EXISTED" = "true" ]; then
+if $bb [ "$HOME_EXISTED" = "true" ] && $bb [ "$USER_CREATED" = "true" ]; then
     echo "Copy skeleton files to /home/user"
     for f in /etc/skel/.[!.]* /etc/skel/*; do
         $bb [ -e "$f" ] || continue
