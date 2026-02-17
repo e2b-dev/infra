@@ -128,14 +128,18 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 				return
 			}
 
-			defer connLimitConfig.Limiter.Release(d.SandboxId)
+			start := time.Now()
+			defer func() {
+				connLimitConfig.Limiter.Release(d.SandboxId)
+				if connLimitConfig.OnConnectionReleased != nil {
+					connLimitConfig.OnConnectionReleased(ctx, time.Since(start).Milliseconds())
+				}
+			}()
 
 			if connLimitConfig.OnConnectionAcquired != nil {
 				connLimitConfig.OnConnectionAcquired(ctx, count)
 			}
 		}
-
-		start := time.Now()
 
 		d.RequestLogger.Debug(ctx, "proxying request")
 
@@ -144,9 +148,5 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 
 		proxy := p.Get(ctx, d)
 		proxy.ServeHTTP(w, r)
-
-		if connLimitConfig != nil && connLimitConfig.OnConnectionReleased != nil {
-			connLimitConfig.OnConnectionReleased(ctx, time.Since(start).Milliseconds())
-		}
 	}
 }
