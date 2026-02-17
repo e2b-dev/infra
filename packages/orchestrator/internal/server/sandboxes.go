@@ -528,9 +528,9 @@ func (s *Server) getSandboxUsageData(sbx *sandbox.Sandbox) map[string]any {
 	startedAt := sbx.GetStartedAt()
 
 	return map[string]any{
-		"started_at_utc":  startedAt.UTC().Format(time.RFC3339Nano),
-		"vcpu_count":      sbx.Config.Vcpu,
-		"memory_mb":       sbx.Config.RamMB,
-		"runtime_seconds": time.Since(startedAt).Seconds(),
+		"started_at":     startedAt.UTC().Format(time.RFC3339),
+		"vcpu_count":     sbx.Config.Vcpu,
+		"memory_mb":      sbx.Config.RamMB,
+		"execution_time": time.Since(startedAt).Seconds(),
 	}
 }
