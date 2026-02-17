@@ -83,3 +83,11 @@ func (a *API) GetMetrics(w http.ResponseWriter, r *http.Request) {
 		a.logger.Error().Err(err).Msg("Failed to encode metrics")
 	}
 }
+
+func (a *API) getLogger(err error) *zerolog.Event {
+	if err != nil {
+		return a.logger.Error().Err(err)
+	}
+
+	return a.logger.Info()
+}

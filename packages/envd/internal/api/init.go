@@ -226,16 +226,25 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 }
 
 func (a *API) setupNfs(ctx context.Context, nfsTarget, path string) {
-	data, err := exec.CommandContext(ctx, "bash", "-c", fmt.Sprintf(`
-set -e
-mkdir -p %q
-mount -v -t nfs -o mountproto=tcp,mountport=2049,proto=tcp,port=2049,nfsvers=3,noacl %q %q
-`, path, nfsTarget, path)).CombinedOutput()
+	commands := [][]string{
+		{"mkdir", "-p", path},
+		{"mount", "-v", "-t", "nfs", "-o", "mountproto=tcp,mountport=2049,proto=tcp,port=2049,nfsvers=3,noacl", nfsTarget, path},
+	}
 
-	a.logger.Info().
-		Str("output", string(data)).
-		Err(err).
-		Msg("Mount NFS")
+	for _, command := range commands {
+		data, err := exec.CommandContext(ctx, command[0], command[1:]...).CombinedOutput()
+
+		logger := a.getLogger(err)
+
+		logger.
+			Strs("command", command).
+			Str("output", string(data)).
+			Msg("Mount NFS")
+
+		if err != nil {
+			return
+		}
+	}
 }
 
 func (a *API) SetupHyperloop(address string) {
