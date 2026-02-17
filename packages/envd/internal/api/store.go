@@ -86,8 +86,8 @@ func (a *API) GetMetrics(w http.ResponseWriter, r *http.Request) {
 
 func (a *API) getLogger(err error) *zerolog.Event {
 	if err != nil {
-		return a.logger.Error().Err(err)
+		return a.logger.Error().Err(err) // nolint:zerologlint // this is only prep
 	}
 
-	return a.logger.Info()
+	return a.logger.Info() // nolint:zerologlint // this is only prep
 }
