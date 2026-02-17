@@ -9,6 +9,17 @@ receivers:
 processors:
   batch:
 
+  batch/clickhouse:
+    timeout: 5s
+    send_batch_size: 50000
+
+  filter/external_metrics:
+    metrics:
+      include:
+        match_type: regexp
+        metric_names:
+          - "e2b.*"
+
 exporters:
   otlphttp/loki:
     endpoint: http://loki:3100/otlp
@@ -18,6 +29,18 @@ exporters:
     endpoint: tempo:4317
     tls:
       insecure: true
+  clickhouse:
+    endpoint: tcp://clickhouse:9000
+    database: default
+    username: clickhouse
+    password: clickhouse
+    async_insert: true
+    create_schema: false
+    metrics_tables:
+      gauge:
+        name: "metrics_gauge"
+      sum:
+        name: "metrics_sum"
 
 extensions:
   health_check:
@@ -38,6 +61,12 @@ service:
       receivers: [otlp]
       processors: [batch]
       exporters: [otlphttp/mimir]
+    metrics/clickhouse:
+      receivers: [otlp]
+      processors:
+        - filter/external_metrics
+        - batch/clickhouse
+      exporters: [clickhouse]
     logs:
       receivers: [otlp]
       processors: [batch]
