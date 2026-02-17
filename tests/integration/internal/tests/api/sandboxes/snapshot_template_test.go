@@ -72,6 +72,7 @@ func TestSnapshotTemplateCreate(t *testing.T) {
 		assert.Contains(t, snapshot.SnapshotID, ":default", "snapshotID should contain the tag")
 		require.NotEmpty(t, snapshot.Names)
 		assert.Contains(t, snapshot.Names[0], name)
+		assert.NotContains(t, snapshot.Names[0], ":default", "names should not include the tag suffix")
 
 		// Creating again with the same name should reuse the same template
 		resp2 := createSnapshotTemplate(t, c, sbx.SandboxID, &name)
