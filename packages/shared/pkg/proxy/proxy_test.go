@@ -17,6 +17,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/connlimit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -862,16 +863,19 @@ func TestConnectionLimitBlocksExcessConnections(t *testing.T) {
 	// Hold maxConns connections open by delaying body write on the backend.
 	// Each request returns 200 headers immediately, but keeps the proxy handler
 	// busy for holdDelay while the backend writes the body.
-	var wg sync.WaitGroup
+	var wg errgroup.Group
 	for range maxConns {
-		wg.Go(func() {
+		wg.Go(func() error {
 			resp, reqErr := httpGetWithBodyWriteDelay(t, proxyURL, holdDelay)
-			assert.NoError(t, reqErr)
-			if resp != nil {
-				assert.Equal(t, http.StatusOK, resp.StatusCode)
-				io.ReadAll(resp.Body)
-				resp.Body.Close()
+			if reqErr != nil {
+				return reqErr
 			}
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+			}
+
+			return nil
 		})
 	}
 
@@ -888,7 +892,8 @@ func TestConnectionLimitBlocksExcessConnections(t *testing.T) {
 	assert.Equal(t, int64(1), blockedCount.Load(), "OnConnectionBlocked should have been called once")
 
 	// Wait for the held connections to finish naturally.
-	wg.Wait()
+	err = wg.Wait()
+	require.NoError(t, err)
 
 	assert.Equal(t, int64(maxConns), releasedCount.Load(), "OnConnectionReleased should have been called for each released slot")
 
