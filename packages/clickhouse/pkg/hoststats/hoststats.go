@@ -25,7 +25,7 @@ type SandboxHostStat struct {
 	FirecrackerMemoryRSS     uint64  `ch:"firecracker_memory_rss"`      // Resident Set Size in bytes
 	FirecrackerMemoryVMS     uint64  `ch:"firecracker_memory_vms"`      // Virtual Memory Size in bytes
 
-	// Cgroup v2 accounting (nullable for backward compatibility)
+	// Cgroup v2 accounting (zero when cgroup accounting is disabled)
 	// CPU values are cumulative (monotonically increasing) - deltas calculated in queries
 	CgroupCPUUsageUsec  uint64 `ch:"cgroup_cpu_usage_usec"`     // cumulative CPU time (user+system) in microseconds from cgroup cpu.stat
 	CgroupCPUUserUsec   uint64 `ch:"cgroup_cpu_user_usec"`      // cumulative user CPU time in microseconds from cgroup cpu.stat
