@@ -98,6 +98,7 @@ func (s *Store) Add(ctx context.Context, sandbox Sandbox, newlyCreated bool) err
 		s.callbacks.AddSandboxToRoutingTable(ctx, sandbox)
 		go s.callbacks.AsyncSandboxCounter(context.WithoutCancel(ctx), sandbox)
 	} else {
+		// TODO [ENG-3514]: Remove once migrated to Redis
 		// There's a race condition when the sandbox is added from node sync
 		// This should be fixed once the sync is improved
 		if !errors.Is(err, ErrAlreadyExists) {
@@ -107,6 +108,7 @@ func (s *Store) Add(ctx context.Context, sandbox Sandbox, newlyCreated bool) err
 		logger.L().Warn(ctx, "Sandbox already exists in cache", logger.WithSandboxID(sandbox.SandboxID))
 	}
 
+	// TODO [ENG-3514]: Remove once migrated to Redis
 	// Ensure the team reservation is set - no limit
 	finishStart, _, err := s.reservations.Reserve(ctx, sandbox.TeamID, sandbox.SandboxID, -1)
 	if err != nil {
