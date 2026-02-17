@@ -454,10 +454,6 @@ type Node struct {
 	// Metrics Node metrics
 	Metrics NodeMetrics `json:"metrics"`
 
-	// NodeID Identifier of the nomad node
-	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-	NodeID string `json:"nodeID"`
-
 	// SandboxCount Number of sandboxes running on the node
 	SandboxCount uint32 `json:"sandboxCount"`
 
@@ -498,12 +494,8 @@ type NodeDetail struct {
 	// Metrics Node metrics
 	Metrics NodeMetrics `json:"metrics"`
 
-	// NodeID Identifier of the nomad node
-	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-	NodeID string `json:"nodeID"`
-
-	// Sandboxes List of sandboxes running on the node
-	Sandboxes []ListedSandbox `json:"sandboxes"`
+	// SandboxCount Number of sandboxes running on the node
+	SandboxCount uint32 `json:"sandboxCount"`
 
 	// ServiceInstanceID Service instance identifier of the node
 	ServiceInstanceID string `json:"serviceInstanceID"`
