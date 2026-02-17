@@ -2,18 +2,24 @@
 
 ## Commands
 
-> **Prerequisite:** Enable NBD module first:
->
-> ```bash
-> modprobe nbd nbds_max=4096
->
-> cat <<EOH >/etc/udev/rules.d/97-nbd-device.rules
-> # Disable inotify watching of change events for NBD devices
-> ACTION=="add|change", KERNEL=="nbd*", OPTIONS:="nowatch"
-> EOH
-> udevadm control --reload-rules
-> udevadm trigger
-> ```
+**Prerequisite:** Enable NBD module first:
+
+```bash
+modprobe nbd nbds_max=4096
+
+cat <<EOH >/etc/udev/rules.d/97-nbd-device.rules
+# Disable inotify watching of change events for NBD devices
+ACTION=="add|change", KERNEL=="nbd*", OPTIONS:="nowatch"
+EOH
+udevadm control --reload-rules
+udevadm trigger
+```
+
+**Prerequisite:** Allocate enough 2MB HugeTLB pages (hugepages) for testing:
+
+```bash
+echo 1024 | sudo tee /proc/sys/vm/nr_hugepages   # for 2GB hugepages, adjust as needed
+```
 
 ### Create Build
 
@@ -37,6 +43,10 @@ Flags:
 - `-hugepages` - Use 2MB huge pages (default: `true`, set `false` for 4KB pages)
 - `-start-cmd <cmd>` - Start command
 - `-ready-cmd <cmd>` - Ready check command
+
+> You can use the `$(uuidgen)` command to generate a random UUID.
+>
+> If you are using Mise, you can run the command as `sudo $(which go) run ./cmd/create-build -to-build <uuid> -storage .local-build`.
 
 ### Resume Build
 

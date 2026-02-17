@@ -17,6 +17,10 @@ func (p *Process) MemoryInfo(ctx context.Context, blockSize int64) (*header.Diff
 	return p.client.memoryInfo(ctx, blockSize)
 }
 
+func (p *Process) DirtyMemory(ctx context.Context, blockSize int64) (*header.DiffMetadata, error) {
+	return p.client.dirtyMemory(ctx, blockSize)
+}
+
 func (p *Process) ExportMemory(
 	ctx context.Context,
 	include *bitset.BitSet,
