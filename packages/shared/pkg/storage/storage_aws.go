@@ -249,7 +249,8 @@ func (o *awsObject) Size(ctx context.Context) (int64, error) {
 	resp, err := o.client.HeadObject(ctx, &s3.HeadObjectInput{Bucket: &o.bucketName, Key: &o.path})
 	if err != nil {
 		var nsk *types.NoSuchKey
-		if errors.As(err, &nsk) {
+		var nfd *types.NotFound
+		if errors.As(err, &nsk) || errors.As(err, &nfd) {
 			return 0, ErrObjectNotExist
 		}
 

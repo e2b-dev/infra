@@ -34,8 +34,8 @@ output "routing_domains_secret_name" {
   value = google_secret_manager_secret.routing_domains.name
 }
 
-output "orchestration_repository_name" {
-  value = google_artifact_registry_repository.orchestration_repository.name
+output "core_repository_name" {
+  value = google_artifact_registry_repository.core.name
 }
 
 output "cloudflare_api_token_secret_name" {
@@ -101,4 +101,12 @@ output "fc_build_cache_bucket_name" {
 
 output "clickhouse_backups_bucket_name" {
   value = google_storage_bucket.clickhouse_backups_bucket.name
+}
+
+output "dockerhub_username_secret_name" {
+  value = google_secret_manager_secret.dockerhub_username.name
+}
+
+output "dockerhub_password_secret_name" {
+  value = google_secret_manager_secret.dockerhub_password.name
 }

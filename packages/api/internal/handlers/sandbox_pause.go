@@ -48,11 +48,18 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 	}
 
 	err = a.orchestrator.RemoveSandbox(ctx, sbx, sandbox.StateActionPause)
+
+	var transErr *sandbox.InvalidStateTransitionError
+
 	switch {
 	case err == nil:
 	case errors.Is(err, orchestrator.ErrSandboxNotFound):
 		apiErr := pauseHandleNotRunningSandbox(ctx, a.sqlcDB, sandboxID, teamID)
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+
+		return
+	case errors.As(err, &transErr):
+		a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Sandbox '%s' cannot be paused while in '%s' state", sandboxID, transErr.CurrentState))
 
 		return
 	default:

@@ -77,7 +77,7 @@ resource "google_service_account_key" "google_service_key" {
   service_account_id = google_service_account.infra_instances_service_account.name
 }
 
-
+// todo: delete after migration period
 resource "google_artifact_registry_repository" "orchestration_repository" {
   format        = "DOCKER"
   repository_id = "e2b-orchestration"
@@ -94,6 +94,22 @@ resource "time_sleep" "artifact_registry_api_wait_90_seconds" {
 
 resource "google_artifact_registry_repository_iam_member" "orchestration_repository_member" {
   repository = google_artifact_registry_repository.orchestration_repository.name
+  role       = "roles/artifactregistry.reader"
+  member     = "serviceAccount:${google_service_account.infra_instances_service_account.email}"
+
+  depends_on = [time_sleep.artifact_registry_api_wait_90_seconds]
+}
+
+resource "google_artifact_registry_repository" "core" {
+  format        = "DOCKER"
+  repository_id = "${var.prefix}core"
+  labels        = var.labels
+
+  depends_on = [time_sleep.artifact_registry_api_wait_90_seconds]
+}
+
+resource "google_artifact_registry_repository_iam_member" "core" {
+  repository = google_artifact_registry_repository.core.name
   role       = "roles/artifactregistry.reader"
   member     = "serviceAccount:${google_service_account.infra_instances_service_account.email}"
 

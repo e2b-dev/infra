@@ -37,13 +37,13 @@ type TemplateBuildInfo struct {
 var ErrTemplateBuildInfoNotFound = errors.New("template build info not found")
 
 type TemplatesBuildCache struct {
-	l1Cache     *cache.Cache[uuid.UUID, TemplateBuildInfo]
+	l1Cache     *cache.Cache[TemplateBuildInfo]
 	redisClient redis.UniversalClient
 	db          *sqlcdb.Client
 }
 
 func NewTemplateBuildCache(db *sqlcdb.Client, redisClient redis.UniversalClient) *TemplatesBuildCache {
-	l1Cache := cache.NewCache[uuid.UUID, TemplateBuildInfo](cache.Config[uuid.UUID, TemplateBuildInfo]{
+	l1Cache := cache.NewCache[TemplateBuildInfo](cache.Config[TemplateBuildInfo]{
 		TTL:             l1CacheTTL,
 		RefreshInterval: l1CacheRefreshInterval,
 	})
@@ -64,17 +64,17 @@ func (c *TemplatesBuildCache) SetStatus(ctx context.Context, buildID uuid.UUID, 
 	}
 
 	// Invalidate L1 cache entry to force re-fetch from Redis on next read
-	c.l1Cache.Delete(buildID)
+	c.l1Cache.Delete(buildID.String())
 }
 
 func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templateID string) (TemplateBuildInfo, error) {
-	return c.l1Cache.GetOrSet(ctx, buildID, c.getDataCallback(templateID))
+	return c.l1Cache.GetOrSet(ctx, buildID.String(), c.getDataCallback(templateID, buildID))
 }
 
-func (c *TemplatesBuildCache) getDataCallback(templateID string) func(context.Context, uuid.UUID) (TemplateBuildInfo, error) {
-	return func(ctx context.Context, buildID uuid.UUID) (TemplateBuildInfo, error) {
+func (c *TemplatesBuildCache) getDataCallback(templateID string, buildID uuid.UUID) func(context.Context, string) (TemplateBuildInfo, error) {
+	return func(ctx context.Context, buildIDStr string) (TemplateBuildInfo, error) {
 		// Step 1: Check L2 (Redis)
-		info, err := c.getFromRedis(ctx, buildID)
+		info, err := c.getFromRedis(ctx, buildIDStr)
 		if err == nil {
 			return info, nil
 		}
@@ -85,9 +85,9 @@ func (c *TemplatesBuildCache) getDataCallback(templateID string) func(context.Co
 			return TemplateBuildInfo{}, err
 		}
 
-		if storeErr := c.storeInRedis(ctx, buildID, info); storeErr != nil {
+		if storeErr := c.storeInRedis(ctx, buildIDStr, info); storeErr != nil {
 			logger.L().Warn(ctx, "Failed to store build info in Redis",
-				logger.WithBuildID(buildID.String()),
+				logger.WithBuildID(buildIDStr),
 				zap.Error(storeErr))
 		}
 

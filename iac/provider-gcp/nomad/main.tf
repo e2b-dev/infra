@@ -49,26 +49,17 @@ data "google_secret_manager_secret_version" "redis_tls_ca_base64" {
   secret = var.redis_tls_ca_base64_secret_version.secret
 }
 
+module "ingress" {
+  source = "../../modules/job-ingress"
 
-resource "nomad_job" "ingress" {
-  jobspec = templatefile("${path.module}/jobs/ingress.hcl",
-    {
-      count         = var.ingress_count
-      update_stanza = var.api_machine_count > 1
-      cpu_count     = 1
-      memory_mb     = 512
-      node_pool     = var.api_node_pool
-      gcp_zone      = var.gcp_zone
+  ingress_count      = var.ingress_count
+  ingress_proxy_port = var.ingress_port.port
 
-      ingress_port = var.ingress_port.port
-      control_port = 8900
+  node_pool     = var.api_node_pool
+  update_stanza = var.api_machine_count > 1
 
-      nomad_endpoint = "http://localhost:4646"
-      nomad_token    = var.nomad_acl_token_secret
-
-      consul_token    = var.consul_acl_token_secret
-      consul_endpoint = "http://localhost:8500"
-  })
+  nomad_token  = var.nomad_acl_token_secret
+  consul_token = var.consul_acl_token_secret
 }
 
 resource "nomad_job" "api" {
@@ -143,32 +134,31 @@ resource "nomad_job" "docker_reverse_proxy" {
   )
 }
 
-resource "nomad_job" "client_proxy" {
-  jobspec = templatefile("${path.module}/jobs/client-proxy.hcl",
-    {
-      update_stanza       = var.api_machine_count > 1
-      count               = var.client_proxy_count
-      cpu_count           = var.client_proxy_resources_cpu_count
-      memory_mb           = var.client_proxy_resources_memory_mb
-      update_max_parallel = var.client_proxy_update_max_parallel
+module "client_proxy" {
+  source = "../../modules/job-client-proxy"
 
-      node_pool   = var.api_node_pool
-      environment = var.environment
+  update_stanza                    = var.api_machine_count > 1
+  client_proxy_count               = var.client_proxy_count
+  client_proxy_cpu_count           = var.client_proxy_resources_cpu_count
+  client_proxy_memory_mb           = var.client_proxy_resources_memory_mb
+  client_proxy_update_max_parallel = var.client_proxy_update_max_parallel
 
-      proxy_port  = var.client_proxy_session_port
-      health_port = var.client_proxy_health_port
+  node_pool   = var.api_node_pool
+  environment = var.environment
 
-      redis_url           = local.redis_url
-      redis_cluster_url   = local.redis_cluster_url
-      redis_tls_ca_base64 = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
+  proxy_port  = var.client_proxy_session_port
+  health_port = var.client_proxy_health_port
 
-      image_name       = data.google_artifact_registry_docker_image.client_proxy_image.self_link
-      api_grpc_address = "api-grpc.service.consul:${var.api_grpc_port}"
+  redis_url           = local.redis_url
+  redis_cluster_url   = local.redis_cluster_url
+  redis_tls_ca_base64 = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
 
-      otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
-      logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
-      launch_darkly_api_key        = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
-  })
+  image            = data.google_artifact_registry_docker_image.client_proxy_image.self_link
+  api_grpc_address = "api-grpc.service.consul:${var.api_grpc_port}"
+
+  otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
+  logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
+  launch_darkly_api_key        = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
 }
 
 # grafana otel collector url
@@ -246,39 +236,36 @@ data "google_secret_manager_secret_version" "grafana_username" {
   depends_on = [google_secret_manager_secret_version.grafana_username]
 }
 
-resource "nomad_job" "otel_collector" {
-  jobspec = templatefile("${path.module}/jobs/otel-collector.hcl", {
-    memory_mb = var.otel_collector_resources_memory_mb
-    cpu_count = var.otel_collector_resources_cpu_count
-    gcp_zone  = var.gcp_zone
+module "otel_collector" {
+  source = "../../modules/job-otel-collector"
 
-    otel_collector_grpc_port = var.otel_collector_grpc_port
+  provider_name = "gcp"
 
-    otel_collector_config = templatefile("${path.module}/configs/otel-collector.yaml", {
-      grafana_otel_collector_token = data.google_secret_manager_secret_version.grafana_otel_collector_token.secret_data
-      grafana_otlp_url             = data.google_secret_manager_secret_version.grafana_otlp_url.secret_data
-      grafana_username             = data.google_secret_manager_secret_version.grafana_username.secret_data
-      consul_token                 = var.consul_acl_token_secret
+  memory_mb = var.otel_collector_resources_memory_mb
+  cpu_count = var.otel_collector_resources_cpu_count
 
-      clickhouse_username = var.clickhouse_username
-      clickhouse_password = random_password.clickhouse_password.result
-      clickhouse_port     = var.clickhouse_server_port.port
-      clickhouse_host     = "clickhouse.service.consul"
-      clickhouse_database = var.clickhouse_database
-    })
-  })
+  otel_collector_grpc_port = var.otel_collector_grpc_port
+
+  grafana_otel_collector_token = data.google_secret_manager_secret_version.grafana_otel_collector_token.secret_data
+  grafana_otlp_url             = data.google_secret_manager_secret_version.grafana_otlp_url.secret_data
+  grafana_username             = data.google_secret_manager_secret_version.grafana_username.secret_data
+  consul_token                 = var.consul_acl_token_secret
+
+  clickhouse_username = var.clickhouse_username
+  clickhouse_password = random_password.clickhouse_password.result
+  clickhouse_port     = var.clickhouse_server_port.port
+  clickhouse_database = var.clickhouse_database
 }
 
-resource "nomad_job" "otel_collector_nomad_server" {
-  jobspec = templatefile("${path.module}/jobs/otel-collector-nomad-server.hcl", {
-    node_pool = var.api_node_pool
+module "otel_collector_nomad_server" {
+  source = "../../modules/job-otel-collector-nomad-server"
 
-    otel_collector_config = templatefile("${path.module}/configs/otel-collector-nomad-server.yaml", {
-      grafana_otel_collector_token = data.google_secret_manager_secret_version.grafana_otel_collector_token.secret_data
-      grafana_otlp_url             = data.google_secret_manager_secret_version.grafana_otlp_url.secret_data
-      grafana_username             = data.google_secret_manager_secret_version.grafana_username.secret_data
-    })
-  })
+  provider_name = "gcp"
+  node_pool     = var.api_node_pool
+
+  grafana_otel_collector_token = data.google_secret_manager_secret_version.grafana_otel_collector_token.secret_data
+  grafana_otlp_url             = data.google_secret_manager_secret_version.grafana_otlp_url.secret_data
+  grafana_username             = data.google_secret_manager_secret_version.grafana_username.secret_data
 }
 
 
@@ -353,22 +340,17 @@ data "google_secret_manager_secret_version" "grafana_logs_collector_api_token" {
   depends_on = [google_secret_manager_secret_version.grafana_logs_collector_api_token]
 }
 
+module "logs_collector" {
+  source = "../../modules/job-logs-collector"
 
-resource "nomad_job" "logs_collector" {
-  jobspec = templatefile("${path.module}/jobs/logs-collector.hcl", {
-    gcp_zone = var.gcp_zone
+  loki_endpoint = "http://loki.service.consul:${var.loki_service_port.port}"
 
-    logs_port_number        = var.logs_proxy_port.port
-    logs_health_port_number = var.logs_health_proxy_port.port
-    logs_health_path        = var.logs_health_proxy_port.health_path
-    logs_port_name          = var.logs_proxy_port.name
+  vector_health_port = var.logs_health_proxy_port.port
+  vector_api_port    = var.logs_proxy_port.port
 
-    loki_service_port_number = var.loki_service_port.port
-
-    grafana_logs_user     = data.google_secret_manager_secret_version.grafana_logs_user.secret_data
-    grafana_logs_endpoint = data.google_secret_manager_secret_version.grafana_logs_url.secret_data
-    grafana_api_key       = data.google_secret_manager_secret_version.grafana_logs_collector_api_token.secret_data
-  })
+  grafana_logs_user     = trimspace(data.google_secret_manager_secret_version.grafana_logs_user.secret_data)
+  grafana_logs_endpoint = trimspace(data.google_secret_manager_secret_version.grafana_logs_url.secret_data)
+  grafana_api_key       = trimspace(data.google_secret_manager_secret_version.grafana_logs_collector_api_token.secret_data)
 }
 
 data "google_storage_bucket_object" "orchestrator" {
@@ -385,70 +367,36 @@ data "external" "orchestrator_checksum" {
 }
 
 locals {
-  orchestrator_envs = {
-    node_pool        = var.orchestrator_node_pool
-    port             = var.orchestrator_port
-    proxy_port       = var.orchestrator_proxy_port
-    environment      = var.environment
-    consul_acl_token = var.consul_acl_token_secret
-    domain_name      = var.domain_name
-
-    envd_timeout                 = var.envd_timeout
-    bucket_name                  = var.fc_env_pipeline_bucket_name
-    orchestrator_checksum        = data.external.orchestrator_checksum.result.hex
-    logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
-    template_bucket_name         = var.template_bucket_name
-    otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
-    allow_sandbox_internet       = var.allow_sandbox_internet
-    launch_darkly_api_key        = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
-    clickhouse_connection_string = var.clickhouse_server_count > 0 ? "clickhouse://${var.clickhouse_username}:${random_password.clickhouse_password.result}@clickhouse.service.consul:${var.clickhouse_server_port.port}/${var.clickhouse_database}" : ""
-    redis_url                    = local.redis_url
-    redis_cluster_url            = local.redis_cluster_url
-    redis_tls_ca_base64          = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
-    shared_chunk_cache_path      = var.shared_chunk_cache_path
-  }
-
-  orchestrator_job_check = templatefile("${path.module}/jobs/orchestrator.hcl", merge(
-    local.orchestrator_envs,
-    {
-      latest_orchestrator_job_id = "placeholder",
-    }
-  ))
+  orchestrator_artifact_source = var.environment == "dev" ? "gcs::https://www.googleapis.com/storage/v1/${var.fc_env_pipeline_bucket_name}/orchestrator?version=${data.external.orchestrator_checksum.result.hex}" : "gcs::https://www.googleapis.com/storage/v1/${var.fc_env_pipeline_bucket_name}/orchestrator"
 }
 
+module "orchestrator" {
+  source = "../../modules/job-orchestrator"
 
+  provider_name = "gcp"
 
-resource "random_id" "orchestrator_job" {
-  keepers = {
-    # Use both the orchestrator job (including vars) definition and the latest orchestrator checksum to detect changes
-    orchestrator_job = sha256("${local.orchestrator_job_check}-${data.external.orchestrator_checksum.result.hex}")
-  }
+  node_pool  = var.orchestrator_node_pool
+  port       = var.orchestrator_port
+  proxy_port = var.orchestrator_proxy_port
 
-  byte_length = 8
-}
+  environment           = var.environment
+  artifact_source       = local.orchestrator_artifact_source
+  orchestrator_checksum = data.external.orchestrator_checksum.result.hex
 
-locals {
-  latest_orchestrator_job_id = var.environment == "dev" ? "dev" : random_id.orchestrator_job.hex
-}
+  logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
+  otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
+  envd_timeout                 = var.envd_timeout
+  template_bucket_name         = var.template_bucket_name
+  allow_sandbox_internet       = var.allow_sandbox_internet
+  clickhouse_connection_string = local.clickhouse_connection_string
+  redis_url                    = local.redis_url
+  redis_cluster_url            = local.redis_cluster_url
+  redis_tls_ca_base64          = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
 
-resource "nomad_variable" "orchestrator_hash" {
-  path = "nomad/jobs"
-  items = {
-    latest_orchestrator_job_id = local.latest_orchestrator_job_id
-  }
-}
-
-resource "nomad_job" "orchestrator" {
-  deregister_on_id_change = false
-
-  jobspec = templatefile("${path.module}/jobs/orchestrator.hcl", merge(
-    local.orchestrator_envs,
-    {
-      latest_orchestrator_job_id = local.latest_orchestrator_job_id
-    }
-  ))
-
-  depends_on = [nomad_variable.orchestrator_hash, random_id.orchestrator_job]
+  consul_token            = var.consul_acl_token_secret
+  domain_name             = var.domain_name
+  shared_chunk_cache_path = var.shared_chunk_cache_path
+  launch_darkly_api_key   = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
 }
 
 data "google_storage_bucket_object" "template_manager" {
@@ -540,21 +488,23 @@ resource "nomad_job" "nomad_nodepool_apm" {
   })
 }
 
-resource "nomad_job" "loki" {
-  jobspec = templatefile("${path.module}/jobs/loki.hcl", {
-    gcp_zone = var.gcp_zone
+module "loki" {
+  source = "../../modules/job-loki"
 
-    node_pool = var.loki_machine_count > 0 ? var.loki_node_pool : var.api_node_pool
-    // We use colocation 2 here to ensure that there are at least 2 nodes for API to do rolling updates.
-    // It might be possible there could be problems if we are rolling updates for both API and Loki at the same time., so maybe increasing this to > 3 makes sense.
-    prevent_colocation = var.api_machine_count > 2
-    loki_bucket_name   = var.loki_bucket_name
+  provider_name = "gcp"
 
-    memory_mb                = var.loki_resources_memory_mb
-    cpu_count                = var.loki_resources_cpu_count
-    loki_service_port_number = var.loki_service_port.port
-    loki_service_port_name   = var.loki_service_port.name
-  })
+  node_pool = var.loki_machine_count > 0 ? var.loki_node_pool : var.api_node_pool
+
+  // We use colocation 2 here to ensure that there are at least 2 nodes for API to do rolling updates.
+  // It might be possible there could be problems if we are rolling updates for both API and Loki at the same time., so maybe increasing this to > 3 makes sense.
+  prevent_colocation = var.api_machine_count > 2
+  bucket_name        = var.loki_bucket_name
+
+  memory_mb = var.loki_resources_memory_mb
+  cpu_count = var.loki_resources_cpu_count
+  loki_port = var.loki_service_port.port
+
+  loki_use_v13_schema_from = var.loki_use_v13_schema_from
 }
 
 # Create only one user for simplicity now, will separate users in following PRs
@@ -611,97 +561,36 @@ resource "google_storage_hmac_key" "clickhouse_hmac_key" {
   service_account_email = google_service_account.clickhouse_service_account.email
 }
 
-resource "nomad_job" "clickhouse" {
-  count = var.clickhouse_server_count > 0 ? 1 : 0
-  jobspec = templatefile("${path.module}/jobs/clickhouse.hcl", {
-    server_secret      = random_password.clickhouse_server_secret.result
-    clickhouse_version = "25.4.5.24"
-
-    cpu_count = var.clickhouse_resources_cpu_count
-    memory_mb = var.clickhouse_resources_memory_mb
-
-    username                = var.clickhouse_username
-    clickhouse_metrics_port = var.clickhouse_metrics_port
-    clickhouse_server_port  = var.clickhouse_server_port.port
-    server_count            = var.clickhouse_server_count
-
-    clickhouse_config = templatefile("${path.module}/configs/clickhouse/config.xml", {
-      clickhouse_server_port  = var.clickhouse_server_port.port
-      clickhouse_metrics_port = var.clickhouse_metrics_port
-
-      server_secret = random_password.clickhouse_server_secret.result
-      server_count  = var.clickhouse_server_count
-
-      username = var.clickhouse_username
-      password = random_password.clickhouse_password.result
-    })
-
-    clickhouse_users_config = templatefile("${path.module}/configs/clickhouse/users.xml", {
-      username = var.clickhouse_username
-      password = random_password.clickhouse_password.result
-    })
-
-    otel_agent_config = templatefile("${path.module}/configs/clickhouse/otel-agent.yaml", {
-      clickhouse_metrics_port  = var.clickhouse_metrics_port
-      otel_collector_grpc_port = var.otel_collector_grpc_port
-    })
-
-    job_constraint_prefix = var.clickhouse_job_constraint_prefix
-    node_pool             = var.clickhouse_node_pool
-  })
-}
-
 resource "google_service_account_key" "clickhouse_service_account_key" {
   service_account_id = google_service_account.clickhouse_service_account.id
 }
 
-resource "nomad_job" "clickhouse_backup" {
-  count = var.clickhouse_server_count > 0 ? 1 : 0
-  jobspec = templatefile("${path.module}/jobs/clickhouse-backup.hcl", {
-    clickhouse_backup_version = "2.6.22"
+module "clickhouse" {
+  source = "../../modules/job-clickhouse"
 
-    gcs_bucket                   = var.clickhouse_backups_bucket_name
-    gcs_folder                   = "clickhouse-data"
-    gcs_credentials_json_encoded = google_service_account_key.clickhouse_service_account_key.private_key
+  provider_name = "gcp"
 
-    server_count        = var.clickhouse_server_count
-    clickhouse_username = var.clickhouse_username
-    clickhouse_password = random_password.clickhouse_password.result
-    clickhouse_port     = var.clickhouse_server_port.port
+  node_pool             = var.clickhouse_node_pool
+  job_constraint_prefix = var.clickhouse_job_constraint_prefix
+  server_count          = var.clickhouse_server_count
 
-    job_constraint_prefix = var.clickhouse_job_constraint_prefix
-    node_pool             = var.clickhouse_node_pool
-  })
-}
+  # Server
+  server_secret = random_password.clickhouse_server_secret.result
+  cpu_count     = var.clickhouse_resources_cpu_count
+  memory_mb     = var.clickhouse_resources_memory_mb
 
-resource "nomad_job" "clickhouse_backup_restore" {
-  count = var.clickhouse_server_count > 0 ? 1 : 0
-  jobspec = templatefile("${path.module}/jobs/clickhouse-backup-restore.hcl", {
-    clickhouse_backup_version = "2.6.22"
+  clickhouse_database = var.clickhouse_database
+  clickhouse_username = var.clickhouse_username
+  clickhouse_password = random_password.clickhouse_password.result
+  clickhouse_port     = var.clickhouse_server_port.port
 
-    gcs_bucket                   = var.clickhouse_backups_bucket_name
-    gcs_folder                   = "clickhouse-data"
-    gcs_credentials_json_encoded = google_service_account_key.clickhouse_service_account_key.private_key
+  clickhouse_metrics_port = var.clickhouse_metrics_port
+  otel_exporter_endpoint  = "http://localhost:${var.otel_collector_grpc_port}"
 
-    server_count        = var.clickhouse_server_count
-    clickhouse_username = var.clickhouse_username
-    clickhouse_password = random_password.clickhouse_password.result
-    clickhouse_port     = var.clickhouse_server_port.port
+  # Backup
+  backup_bucket                = var.clickhouse_backups_bucket_name
+  gcs_credentials_json_encoded = google_service_account_key.clickhouse_service_account_key.private_key
 
-    job_constraint_prefix = var.clickhouse_job_constraint_prefix
-    node_pool             = var.clickhouse_node_pool
-  })
-}
-
-resource "nomad_job" "clickhouse_migrator" {
-  count = var.clickhouse_server_count > 0 ? 1 : 0
-  jobspec = templatefile("${path.module}/jobs/clickhouse-migrator.hcl", {
-    clickhouse_migrator_version = data.google_artifact_registry_docker_image.clickhouse_migrator_image.self_link
-
-    server_count          = var.clickhouse_server_count
-    job_constraint_prefix = var.clickhouse_job_constraint_prefix
-    node_pool             = var.clickhouse_node_pool
-
-    clickhouse_connection_string = local.clickhouse_connection_string
-  })
+  # Migrator
+  clickhouse_migrator_image = data.google_artifact_registry_docker_image.clickhouse_migrator_image.self_link
 }

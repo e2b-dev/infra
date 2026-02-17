@@ -320,6 +320,10 @@ variable "prefix" {
   default     = "e2b-"
 }
 
+variable "bucket_prefix" {
+  type = string
+}
+
 variable "labels" {
   description = "The labels to attach to resources created by this module"
   type        = map(string)
@@ -582,4 +586,15 @@ variable "loki_boot_disk_type" {
   description = "The GCE boot disk type for the Loki machines."
   type        = string
   default     = "pd-ssd"
+}
+
+variable "loki_use_v13_schema_from" {
+  type        = string
+  description = "This should be a date soon after you deploy. Format = YYYY-MM-DD"
+  default     = ""
+
+  validation {
+    condition     = var.loki_use_v13_schema_from == "" || can(regex("\\d{4}-\\d{2}-\\d{2}", var.loki_use_v13_schema_from))
+    error_message = "must be YYYY-MM-DD"
+  }
 }

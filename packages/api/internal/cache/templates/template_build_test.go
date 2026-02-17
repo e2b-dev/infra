@@ -31,7 +31,7 @@ func TestRedisTemplatesBuildCache_Get_L1Hit(t *testing.T) {
 	}
 
 	// Store directly in L1 cache
-	cache.l1Cache.Set(buildID, info)
+	cache.l1Cache.Set(buildID.String(), info)
 
 	// Get should return from L1 without hitting Redis or DB
 	result, err := cache.Get(ctx, buildID, "test-template")
@@ -131,7 +131,7 @@ func TestRedisTemplatesBuildCache_SetStatus_UpdatesAndInvalidatesL1(t *testing.T
 	}
 
 	// Store in L1 and Redis
-	cache.l1Cache.Set(buildID, info)
+	cache.l1Cache.Set(buildID.String(), info)
 	buildJSON, err := json.Marshal(info)
 	require.NoError(t, err)
 
@@ -144,7 +144,7 @@ func TestRedisTemplatesBuildCache_SetStatus_UpdatesAndInvalidatesL1(t *testing.T
 	cache.SetStatus(ctx, buildID, types.BuildStatusGroupReady, newReason)
 
 	// L1 should be invalidated
-	_, ok := cache.l1Cache.Get(buildID)
+	_, ok := cache.l1Cache.GetWithoutTouch(buildID.String())
 	assert.False(t, ok)
 
 	// Redis should be updated
