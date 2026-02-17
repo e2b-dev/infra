@@ -171,8 +171,6 @@ type Sandbox struct {
 	exit *utils.ErrorOnce
 
 	stop utils.Lazy[error]
-
-	cgroupManager cgroup.Manager
 }
 
 func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
@@ -363,8 +361,6 @@ func (f *Factory) CreateSandbox(
 		APIStoredConfig: apiConfigToStore,
 
 		exit: exit,
-
-		cgroupManager: f.cgroupManager,
 	}
 
 	sbx.Checks = NewChecks(sbx, false)
@@ -667,8 +663,6 @@ func (f *Factory) ResumeSandbox(
 		APIStoredConfig: apiConfigToStore,
 
 		exit: exit,
-
-		cgroupManager: f.cgroupManager,
 	}
 
 	useClickhouseMetrics := f.featureFlags.BoolFlag(ctx, featureflags.MetricsWriteFlag)
