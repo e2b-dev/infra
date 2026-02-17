@@ -13,6 +13,7 @@ import (
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/envd"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
@@ -184,9 +185,9 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 	// Step 2: Replace the binary
 	replaceEnvdCmd := fmt.Sprintf(`
 		# Replace the binary and set permissions
-		chmod +x %s
-		mv -f %s %s
-	`, tmpEnvdPath, tmpEnvdPath, storage.GuestEnvdPath)
+		%s chmod +x %s
+		%s mv -f %s %s
+	`, rootfs.SandboxBusyBoxPath, tmpEnvdPath, rootfs.SandboxBusyBoxPath, tmpEnvdPath, storage.GuestEnvdPath)
 
 	err = sandboxtools.RunCommandWithLogger(
 		ctx,

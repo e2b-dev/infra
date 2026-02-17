@@ -9,6 +9,7 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
@@ -59,26 +60,27 @@ func (w *Workdir) Execute(
 		// This ensures that if we have e.g. /home/user and we create /home/user/project/test
 		// we only chown /home/user/project (including /home/user/project/test) and not /home or /home/user
 		fmt.Sprintf(`
+			bb=%s
 			target="%s"
 
 			# Exit early if target already exists
-			if [ -d "$target" ]; then
+			if $bb [ -d "$target" ]; then
 			    exit 0
 			fi
 
 			# Find the first non-existent parent
 			first_new=""
 			check="$target"
-			while [ ! -d "$check" ]; do
+			while ! $bb [ -d "$check" ]; do
 			    first_new="$check"
-			    check=$(dirname "$check")
+			    check=$($bb dirname "$check")
 			done
 
 			# Create and chown from the top (only if we found new directories to create)
-			if [ -n "$first_new" ]; then
-			    mkdir -p "$target" && chown -R %s:%s "$first_new"
+			if $bb [ -n "$first_new" ]; then
+			    $bb mkdir -p "$target" && $bb chown -R %s:%s "$first_new"
 			fi
-    `, workdirArg, cmdMetadata.User, cmdMetadata.User),
+    `, rootfs.SandboxBusyBoxPath, workdirArg, cmdMetadata.User, cmdMetadata.User),
 		metadata.Context{
 			User:    "root",
 			EnvVars: cmdMetadata.EnvVars,

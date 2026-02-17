@@ -7,6 +7,7 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
@@ -40,7 +41,7 @@ func (u *User) Execute(
 		ctx,
 		proxy,
 		sandboxID,
-		fmt.Sprintf("id -u %s", userArg),
+		fmt.Sprintf("%s id -u %s", rootfs.SandboxBusyBoxPath, userArg),
 		metadata.Context{
 			User:    "root",
 			EnvVars: cmdMetadata.EnvVars,
@@ -57,7 +58,7 @@ func (u *User) Execute(
 			lvl,
 			prefix,
 			sandboxID,
-			fmt.Sprintf("adduser --disabled-password --gecos \"\" %s", userArg),
+			fmt.Sprintf("%s adduser -D -g \"\" %s", rootfs.SandboxBusyBoxPath, userArg),
 			metadata.Context{
 				User:    "root",
 				EnvVars: cmdMetadata.EnvVars,
@@ -96,7 +97,7 @@ func addToSudoers(
 		lvl,
 		prefix,
 		sandboxID,
-		fmt.Sprintf("usermod -aG sudo %s", userArg),
+		fmt.Sprintf("%s addgroup %s sudo", rootfs.SandboxBusyBoxPath, userArg),
 		metadata.Context{
 			User:    "root",
 			EnvVars: cmdMetadata.EnvVars,
@@ -114,7 +115,7 @@ func addToSudoers(
 		lvl,
 		prefix,
 		sandboxID,
-		fmt.Sprintf("passwd -d %s", userArg),
+		fmt.Sprintf("%s passwd -d %s", rootfs.SandboxBusyBoxPath, userArg),
 		metadata.Context{
 			User:    "root",
 			EnvVars: cmdMetadata.EnvVars,
@@ -132,7 +133,7 @@ func addToSudoers(
 		lvl,
 		prefix,
 		sandboxID,
-		fmt.Sprintf("grep -q '^%s ALL=(ALL:ALL) NOPASSWD: ALL' /etc/sudoers || echo '%s ALL=(ALL:ALL) NOPASSWD: ALL' >>/etc/sudoers", userArg, userArg),
+		fmt.Sprintf("%s grep -q '^%s ALL=(ALL:ALL) NOPASSWD: ALL' /etc/sudoers || echo '%s ALL=(ALL:ALL) NOPASSWD: ALL' >>/etc/sudoers", rootfs.SandboxBusyBoxPath, userArg, userArg),
 		metadata.Context{
 			User:    "root",
 			EnvVars: cmdMetadata.EnvVars,

@@ -16,6 +16,7 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/paths"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
@@ -42,6 +43,8 @@ type copyScriptData struct {
 	Workdir string
 	// User is used for filling the workdir if empty.
 	User string
+	// BusyBox is the absolute path to busybox inside the sandbox.
+	BusyBox string
 }
 
 //go:embed copy_script.sh
@@ -123,7 +126,7 @@ func (c *Copy) Execute(
 		ctx,
 		proxy,
 		sandboxID,
-		fmt.Sprintf(`mkdir -p "%s" && tar -xzvf "%s" -C "%s"`, sbxUnpackPath, sbxTargetPath, sbxUnpackPath),
+		fmt.Sprintf(`%s mkdir -p "%s" && %s tar -xzvf "%s" -C "%s"`, rootfs.SandboxBusyBoxPath, sbxUnpackPath, rootfs.SandboxBusyBoxPath, sbxTargetPath, sbxUnpackPath),
 		cmdMetadata.WithUser("root"),
 	)
 	if err != nil {
@@ -134,6 +137,7 @@ func (c *Copy) Execute(
 	err = copyScriptTemplate.Execute(&moveScript, copyScriptData{
 		Workdir: utils.DerefOrDefault(cmdMetadata.WorkDir, ""),
 		User:    cmdMetadata.User,
+		BusyBox: rootfs.SandboxBusyBoxPath,
 
 		SourcePath: filepath.Join(sbxUnpackPath, args.SourcePath),
 		TargetPath: args.TargetPath,
