@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -307,11 +306,10 @@ func TestCgroupHandleRemoveNonExistent(t *testing.T) {
 
 func TestStatsParsing(t *testing.T) {
 	// This test doesn't require root - it tests the parsing logic with mock data
-	// We'll create a temporary directory structure to simulate cgroup files
+	// We create a temporary directory structure to simulate cgroup files
 
 	tmpDir := t.TempDir()
-	testSandboxID := "test-parse-sandbox"
-	cgroupPath := filepath.Join(tmpDir, "sbx-"+testSandboxID)
+	cgroupPath := filepath.Join(tmpDir, "sbx-test-parse-sandbox")
 	err := os.MkdirAll(cgroupPath, 0755)
 	require.NoError(t, err)
 
@@ -327,62 +325,25 @@ burst_usec 0`
 	err = os.WriteFile(filepath.Join(cgroupPath, "cpu.stat"), []byte(cpuStatContent), 0644)
 	require.NoError(t, err)
 
-	// Create mock memory.current
-	memCurrentContent := "536870912" // 512 MB
-	err = os.WriteFile(filepath.Join(cgroupPath, "memory.current"), []byte(memCurrentContent), 0644)
+	// Create mock memory.current (512 MB)
+	err = os.WriteFile(filepath.Join(cgroupPath, "memory.current"), []byte("536870912"), 0644)
 	require.NoError(t, err)
 
-	// Create mock memory.peak
-	memPeakContent := "1073741824" // 1 GB
-	err = os.WriteFile(filepath.Join(cgroupPath, "memory.peak"), []byte(memPeakContent), 0644)
+	ctx := context.Background()
+	mgr := &managerImpl{}
+
+	// Call the actual parsing method (nil memoryPeakFile since regular files
+	// don't support the per-FD reset mechanism used by cgroup pseudo-files)
+	stats, err := mgr.getStatsForPath(ctx, cgroupPath, nil)
 	require.NoError(t, err)
+	require.NotNil(t, stats)
 
-	// Create a mock manager that reads from our temp directory
-	mockMgr := &managerImpl{}
-
-	// Read and parse cpu.stat
-	cpuData, err := os.ReadFile(filepath.Join(cgroupPath, "cpu.stat"))
-	require.NoError(t, err)
-
-	var cpuUsage, cpuUser, cpuSystem uint64
-	for _, line := range strings.Split(string(cpuData), "\n") {
-		fields := strings.Fields(line)
-		if len(fields) != 2 {
-			continue
-		}
-		value, err := strconv.ParseUint(fields[1], 10, 64)
-		if err != nil {
-			continue
-		}
-		switch fields[0] {
-		case "usage_usec":
-			cpuUsage = value
-		case "user_usec":
-			cpuUser = value
-		case "system_usec":
-			cpuSystem = value
-		}
-	}
-
-	assert.Equal(t, uint64(123456789), cpuUsage, "CPUUsageUsec parsing")
-	assert.Equal(t, uint64(100000000), cpuUser, "CPUUserUsec parsing")
-	assert.Equal(t, uint64(23456789), cpuSystem, "CPUSystemUsec parsing")
-
-	// Read and parse memory.current
-	memData, err := os.ReadFile(filepath.Join(cgroupPath, "memory.current"))
-	require.NoError(t, err)
-	memUsage, err := strconv.ParseUint(strings.TrimSpace(string(memData)), 10, 64)
-	require.NoError(t, err)
-	assert.Equal(t, uint64(536870912), memUsage, "MemoryUsageBytes parsing")
-
-	// Read and parse memory.peak
-	peakData, err := os.ReadFile(filepath.Join(cgroupPath, "memory.peak"))
-	require.NoError(t, err)
-	memPeak, err := strconv.ParseUint(strings.TrimSpace(string(peakData)), 10, 64)
-	require.NoError(t, err)
-	assert.Equal(t, uint64(1073741824), memPeak, "MemoryPeakBytes parsing")
-
-	_ = mockMgr // Prevent unused variable warning
+	assert.Equal(t, uint64(123456789), stats.CPUUsageUsec, "CPUUsageUsec parsing")
+	assert.Equal(t, uint64(100000000), stats.CPUUserUsec, "CPUUserUsec parsing")
+	assert.Equal(t, uint64(23456789), stats.CPUSystemUsec, "CPUSystemUsec parsing")
+	assert.Equal(t, uint64(536870912), stats.MemoryUsageBytes, "MemoryUsageBytes parsing")
+	// MemoryPeakBytes is 0 because we passed nil memoryPeakFile
+	assert.Equal(t, uint64(0), stats.MemoryPeakBytes, "MemoryPeakBytes should be 0 without peak FD")
 }
 
 func TestCgroupHandlePeakReset(t *testing.T) {
