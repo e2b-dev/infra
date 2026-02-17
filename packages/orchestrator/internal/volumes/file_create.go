@@ -92,7 +92,7 @@ func (v *VolumeService) CreateFile(server orchestrator.VolumeService_CreateFileS
 
 			// we do this again to avoid the process' umask from automatically 'fixing' our requests.
 			if err := os.Chmod(fullPath, os.FileMode(mode)); err != nil {
-				return fmt.Errorf("failed to set file permissions: %w", err)
+				return fmt.Errorf("failed to set file mode: %w", err)
 			}
 
 			entry, err := os.Stat(fullPath)

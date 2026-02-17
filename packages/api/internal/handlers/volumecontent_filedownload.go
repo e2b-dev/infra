@@ -39,10 +39,10 @@ func (a *APIStore) GetVolumesVolumeIDFile(c *gin.Context, volumeID api.VolumeID,
 			return ErrExpectedStartMessage
 		}
 
-		c.Writer.WriteHeader(http.StatusOK)
 		c.Writer.Header().Set("Content-Type", "application/octet-stream")
 		c.Writer.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", params.Path))
 		c.Writer.Header().Set("Content-Length", fmt.Sprintf("%d", startMsg.GetSize()))
+		c.Writer.WriteHeader(http.StatusOK)
 
 		for {
 			message, err := fileClient.Recv()

@@ -34,9 +34,14 @@ func (v *VolumeService) Stat(_ context.Context, request *orchestrator.StatReques
 }
 
 func toEntry(info os.FileInfo) *orchestrator.EntryInfo {
-	fType := orchestrator.FileType_FILE_TYPE_FILE
-	if info.IsDir() {
+	var fType orchestrator.FileType
+	switch {
+	case info.Mode()&os.ModeSymlink != 0:
+		fType = orchestrator.FileType_FILE_TYPE_SYMLINK
+	case info.IsDir():
 		fType = orchestrator.FileType_FILE_TYPE_DIRECTORY
+	default:
+		fType = orchestrator.FileType_FILE_TYPE_FILE
 	}
 
 	entry := &orchestrator.EntryInfo{

@@ -75,25 +75,23 @@ func (a *APIStore) executeOnOrchestratorByVolumeID(
 			switch code.Code() {
 			case codes.AlreadyExists:
 				a.sendAPIStoreError(c, http.StatusConflict, "file already exists")
-				telemetry.ReportError(ctx, "file already exists", err)
 
 				return
 
 			case codes.NotFound:
 				a.sendAPIStoreError(c, http.StatusNotFound, "path not found")
-				telemetry.ReportError(ctx, "path not found", err)
 
 				return
 
 			case codes.InvalidArgument:
 				a.sendAPIStoreError(c, http.StatusBadRequest, "invalid argument")
-				telemetry.ReportError(ctx, "invalid argument", err)
 
 				return
 
 			case codes.FailedPrecondition:
 				a.sendAPIStoreError(c, http.StatusPreconditionFailed, "failed precondition")
-				telemetry.ReportError(ctx, "failed precondition", err)
+
+				return
 			}
 		}
 

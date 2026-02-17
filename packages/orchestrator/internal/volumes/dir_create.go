@@ -39,6 +39,11 @@ func (v *VolumeService) CreateDir(_ context.Context, request *orchestrator.Volum
 		return nil, fmt.Errorf("failed to set directory ownership: %w", err)
 	}
 
+	// we do this again to avoid the process' umask from automatically 'fixing' our requests.
+	if err := os.Chmod(fullPath, os.FileMode(mode)); err != nil {
+		return nil, fmt.Errorf("failed to set directory mode: %w", err)
+	}
+
 	stat, err := os.Stat(fullPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to stat created directory: %w", err)
