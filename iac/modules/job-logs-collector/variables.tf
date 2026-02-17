@@ -22,8 +22,9 @@ variable "grafana_logs_endpoint" {
 }
 
 variable "grafana_api_key" {
-  type    = string
-  default = "" // Optional
+  type      = string
+  default   = "" // Optional
+  sensitive = true
 }
 
 variable "vector_config_override" {

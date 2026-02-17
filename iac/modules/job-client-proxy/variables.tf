@@ -40,15 +40,18 @@ variable "health_port" {
 }
 
 variable "redis_url" {
-  type = string
+  type      = string
+  sensitive = true
 }
 
 variable "redis_cluster_url" {
-  type = string
+  type      = string
+  sensitive = true
 }
 
 variable "redis_tls_ca_base64" {
-  type = string
+  type      = string
+  sensitive = true
 }
 
 variable "image" {
@@ -69,6 +72,7 @@ variable "logs_collector_address" {
 }
 
 variable "launch_darkly_api_key" {
-  type    = string
-  default = ""
+  type      = string
+  default   = ""
+  sensitive = true
 }

@@ -1,5 +1,6 @@
 variable "nomad_token" {
-  type = string
+  type      = string
+  sensitive = true
 }
 
 variable "nomad_endpoint" {
@@ -8,7 +9,8 @@ variable "nomad_endpoint" {
 }
 
 variable "consul_token" {
-  type = string
+  type      = string
+  sensitive = true
 }
 
 variable "consul_endpoint" {

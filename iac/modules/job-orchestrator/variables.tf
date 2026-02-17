@@ -73,16 +73,19 @@ variable "clickhouse_connection_string" {
 }
 
 variable "redis_url" {
-  type = string
+  type      = string
+  sensitive = true
 }
 
 variable "redis_cluster_url" {
-  type = string
+  type      = string
+  sensitive = true
 }
 
 variable "redis_tls_ca_base64" {
-  type    = string
-  default = ""
+  type      = string
+  default   = ""
+  sensitive = true
 }
 
 variable "consul_token" {
@@ -100,8 +103,9 @@ variable "shared_chunk_cache_path" {
 }
 
 variable "launch_darkly_api_key" {
-  type    = string
-  default = ""
+  type      = string
+  default   = ""
+  sensitive = true
 }
 
 variable "orchestrator_services" {
