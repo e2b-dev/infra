@@ -12,6 +12,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
+	"github.com/e2b-dev/infra/packages/shared/pkg/connlimit"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
@@ -22,7 +23,7 @@ type Proxy struct {
 	logger       logger.Logger
 	sandboxes    *sandbox.Map
 	metrics      *Metrics
-	limiter      *ConnectionLimiter
+	limiter      *connlimit.ConnectionLimiter
 	featureFlags *featureflags.Client
 
 	// Separate ports for different traffic types to avoid protocol detection blocking
@@ -42,7 +43,7 @@ func New(logger logger.Logger, networkConfig network.Config, sandboxes *sandbox.
 		logger:       logger,
 		sandboxes:    sandboxes,
 		metrics:      NewMetrics(meterProvider),
-		limiter:      NewConnectionLimiter(),
+		limiter:      connlimit.NewConnectionLimiter(),
 		featureFlags: featureFlags,
 	}
 
@@ -134,13 +135,13 @@ type connectionHandler struct {
 	handler      handlerFunc
 	protocol     Protocol
 	metrics      *Metrics
-	limiter      *ConnectionLimiter
+	limiter      *connlimit.ConnectionLimiter
 	logger       logger.Logger
 	sandboxes    *sandbox.Map
 	featureFlags *featureflags.Client
 }
 
-func newConnectionHandler(ctx context.Context, handler handlerFunc, protocol Protocol, metrics *Metrics, limiter *ConnectionLimiter, logger logger.Logger, sandboxes *sandbox.Map, featureFlags *featureflags.Client) *connectionHandler {
+func newConnectionHandler(ctx context.Context, handler handlerFunc, protocol Protocol, metrics *Metrics, limiter *connlimit.ConnectionLimiter, logger logger.Logger, sandboxes *sandbox.Map, featureFlags *featureflags.Client) *connectionHandler {
 	return &connectionHandler{
 		ctx:          ctx,
 		handler:      handler,
