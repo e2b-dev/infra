@@ -35,8 +35,8 @@ const (
 var _ sandbox.MapSubscriber = (*SandboxProxy)(nil)
 
 type SandboxProxy struct {
-	proxy        *reverseproxy.Proxy
-	limiter      *connlimit.ConnectionLimiter
+	proxy   *reverseproxy.Proxy
+	limiter *connlimit.ConnectionLimiter
 }
 
 func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes *sandbox.Map, featureFlags *featureflags.Client) (*SandboxProxy, error) {
@@ -163,8 +163,8 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 	}
 
 	sandboxProxy := &SandboxProxy{
-		proxy:        proxy,
-		limiter:      limiter,
+		proxy:   proxy,
+		limiter: limiter,
 	}
 
 	// Subscribe to sandbox events for cleanup
