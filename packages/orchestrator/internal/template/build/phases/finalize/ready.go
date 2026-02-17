@@ -8,6 +8,7 @@ import (
 
 	"go.uber.org/zap/zapcore"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -77,8 +78,8 @@ func GetDefaultReadyCommand(templateID string) string {
 	// TODO: Remove this after we can add customizable wait time for building templates.
 	// TODO: Make this user configurable, with health check too
 	if templateID == "zegbt9dl3l2ixqem82mm" || templateID == "ot5bidkk3j2so2j02uuz" || templateID == "0zeou1s7agaytqitvmzc" {
-		return fmt.Sprintf("sleep %d", int((120 * time.Second).Seconds()))
+		return fmt.Sprintf("%s sleep %d", rootfs.SandboxBusyBoxPath, int((120 * time.Second).Seconds()))
 	}
 
-	return fmt.Sprintf("sleep %d", int(defaultReadyWait.Seconds()))
+	return fmt.Sprintf("%s sleep %d", rootfs.SandboxBusyBoxPath, int(defaultReadyWait.Seconds()))
 }
