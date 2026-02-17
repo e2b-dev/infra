@@ -103,7 +103,6 @@ func (h *HostStatsCollector) CollectSample(ctx context.Context) error {
 				logger.WithSandboxID(h.metadata.SandboxID),
 				zap.Error(err))
 		} else {
-			// Convert stats to pointers for nullable fields
 			stat.CgroupCPUUsageUsec = cgroupStats.CPUUsageUsec
 			stat.CgroupCPUUserUsec = cgroupStats.CPUUserUsec
 			stat.CgroupCPUSystemUsec = cgroupStats.CPUSystemUsec
