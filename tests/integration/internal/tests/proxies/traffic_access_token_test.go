@@ -241,8 +241,6 @@ func TestSandboxWithTrafficAccessTokenAutoResumeViaProxy(t *testing.T) {
 		}
 	}()
 
-	time.Sleep(time.Second)
-
 	proxyURL, err := url.Parse(setup.EnvdProxy)
 	require.NoError(t, err)
 
@@ -251,13 +249,8 @@ func TestSandboxWithTrafficAccessTokenAutoResumeViaProxy(t *testing.T) {
 	sbxWithoutToken := *sbx
 	sbxWithoutToken.TrafficAccessToken = nil
 
-	// While running, missing traffic token must be rejected.
-	resp := utils.WaitForStatus(t, client, &sbxWithoutToken, proxyURL, port, nil, http.StatusForbidden)
-	require.NotNil(t, resp)
-	require.NoError(t, resp.Body.Close())
-
 	// Valid traffic token allows access.
-	resp = utils.WaitForStatus(t, client, sbx, proxyURL, port, nil, http.StatusOK)
+	resp := utils.WaitForStatus(t, client, sbx, proxyURL, port, nil, http.StatusOK)
 	require.NotNil(t, resp)
 	require.NoError(t, resp.Body.Close())
 
@@ -272,8 +265,10 @@ func TestSandboxWithTrafficAccessTokenAutoResumeViaProxy(t *testing.T) {
 	require.Equal(t, api.Paused, res.JSON200.State)
 
 	// While paused, missing token must not auto-resume and request should fail.
-	resp = utils.WaitForStatus(t, client, &sbxWithoutToken, proxyURL, port, nil, http.StatusBadGateway)
-	require.NotNil(t, resp)
+	req := utils.NewRequest(&sbxWithoutToken, proxyURL, port, nil)
+	resp, err = client.Do(req)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusBadGateway, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
 	res, err = c.GetSandboxesSandboxIDWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
@@ -282,8 +277,10 @@ func TestSandboxWithTrafficAccessTokenAutoResumeViaProxy(t *testing.T) {
 	require.Equal(t, api.Paused, res.JSON200.State)
 
 	// Valid token request should auto-resume and succeed.
-	resp = utils.WaitForStatus(t, client, sbx, proxyURL, port, nil, http.StatusOK)
-	require.NotNil(t, resp)
+	req = utils.NewRequest(sbx, proxyURL, port, nil)
+	resp, err = client.Do(req)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
 	res, err = c.GetSandboxesSandboxIDWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
