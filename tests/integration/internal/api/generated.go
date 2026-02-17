@@ -1401,6 +1401,9 @@ type DeleteVolumesVolumeIDDirParams struct {
 // GetVolumesVolumeIDDirParams defines parameters for GetVolumesVolumeIDDir.
 type GetVolumesVolumeIDDirParams struct {
 	Path Path `form:"path" json:"path"`
+
+	// Depth Number of layers deep to recurse into the directory
+	Depth *uint32 `form:"depth,omitempty" json:"depth,omitempty"`
 }
 
 // PostVolumesVolumeIDDirParams defines parameters for PostVolumesVolumeIDDir.
@@ -5511,6 +5514,22 @@ func NewGetVolumesVolumeIDDirRequest(server string, volumeID VolumeID, params *G
 					queryValues.Add(k, v2)
 				}
 			}
+		}
+
+		if params.Depth != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "depth", runtime.ParamLocationQuery, *params.Depth); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
 		}
 
 		queryURL.RawQuery = queryValues.Encode()
