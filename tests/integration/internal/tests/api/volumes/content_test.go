@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"strconv"
 	"testing"
 
 	"github.com/google/uuid"
@@ -49,7 +50,7 @@ func TestVolumeContent(t *testing.T) {
 
 		response, err := client.PostVolumesVolumeIDFileWithBodyWithResponse(
 			t.Context(),
-			volume.VolumeID,
+			vol.VolumeID,
 			&api.PostVolumesVolumeIDFileParams{
 				Path: path,
 			},
@@ -59,10 +60,13 @@ func TestVolumeContent(t *testing.T) {
 		)
 		require.NoError(t, err)
 		require.Equal(t, http.StatusCreated, response.StatusCode(), string(response.Body))
+
 		return response.JSON201
 	}
 
 	createFile := func(t *testing.T, path, content string) *api.VolumeEntryStat {
+		t.Helper()
+
 		return createFileInVolume(t, volume, path, content)
 	}
 
@@ -82,6 +86,8 @@ func TestVolumeContent(t *testing.T) {
 	}
 
 	createDirInVolume := func(t *testing.T, volume *api.Volume, path string) {
+		t.Helper()
+
 		response, err := client.PostVolumesVolumeIDDirWithResponse(
 			t.Context(), volume.VolumeID,
 			&api.PostVolumesVolumeIDDirParams{Path: path},
@@ -92,10 +98,14 @@ func TestVolumeContent(t *testing.T) {
 	}
 
 	createDir := func(t *testing.T, path string) {
+		t.Helper()
+
 		createDirInVolume(t, volume, path)
 	}
 
 	readFile := func(t *testing.T, path string) string {
+		t.Helper()
+
 		return readFileInVolume(t, volume, path)
 	}
 
@@ -105,18 +115,29 @@ func TestVolumeContent(t *testing.T) {
 		filename := "test.txt"
 		expected := "test content"
 
-		response := createFile(t, filename, expected)
-		assert.Equal(t, uint32(0o666), response.Mode)
-		assert.Equal(t, uint32(1000), response.Uid)
-		assert.Equal(t, uint32(1000), response.Gid)
-		assert.Equal(t, api.File, response.Type)
-		assert.Equal(t, response.Size, int64(len(expected)))
-		assert.Equal(t, filename, response.Name)
-		assert.False(t, response.Ctime.IsZero())
-		assert.False(t, response.Mtime.IsZero())
+		createdFile := createFile(t, filename, expected)
+		assert.Equal(t, uint32(0o666), createdFile.Mode)
+		assert.Equal(t, uint32(1000), createdFile.Uid)
+		assert.Equal(t, uint32(1000), createdFile.Gid)
+		assert.Equal(t, api.File, createdFile.Type)
+		assert.Equal(t, int64(len(expected)), createdFile.Size)
+		assert.Equal(t, filename, createdFile.Name)
+		assert.False(t, createdFile.Ctime.IsZero())
+		assert.False(t, createdFile.Mtime.IsZero())
 
-		actual := readFile(t, filename)
-		assert.Equal(t, expected, actual)
+		response, err := client.GetVolumesVolumeIDFileWithResponse(
+			t.Context(),
+			volume.VolumeID,
+			&api.GetVolumesVolumeIDFileParams{Path: filename},
+			setup.WithAPIKey(),
+		)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, response.StatusCode(), string(response.Body))
+		assert.Equal(t, expected, string(response.Body))
+		headers := response.HTTPResponse.Header
+		assert.Equal(t, "application/octet-stream", headers.Get("Content-Type"))
+		assert.Equal(t, strconv.Itoa(len(expected)), headers.Get("Content-Length"))
+		assert.Equal(t, fmt.Sprintf("attachment; filename=%s", filename), headers.Get("Content-Disposition"))
 	})
 
 	t.Run("cannot overwrite file without force", func(t *testing.T) {
@@ -299,6 +320,8 @@ func TestVolumeContent(t *testing.T) {
 	})
 
 	t.Run("can delete file", func(t *testing.T) {
+		t.Parallel()
+
 		filename := uuid.NewString()
 
 		createFile(t, filename, uuid.NewString())
@@ -312,6 +335,8 @@ func TestVolumeContent(t *testing.T) {
 	})
 
 	t.Run("cannot delete file that does not exist", func(t *testing.T) {
+		t.Parallel()
+
 		filename := uuid.NewString()
 
 		response, err := client.DeleteVolumesVolumeIDFileWithResponse(
@@ -323,6 +348,8 @@ func TestVolumeContent(t *testing.T) {
 	})
 
 	t.Run("cannot create file in non existent subdirectory", func(t *testing.T) {
+		t.Parallel()
+
 		dirName := uuid.NewString()
 		fileName := uuid.NewString()
 		content := uuid.NewString()
@@ -340,6 +367,8 @@ func TestVolumeContent(t *testing.T) {
 	})
 
 	t.Run("can create file in non existent subdirectory", func(t *testing.T) {
+		t.Parallel()
+
 		dirName := uuid.NewString()
 		fileName := uuid.NewString()
 		content := uuid.NewString()
@@ -358,6 +387,8 @@ func TestVolumeContent(t *testing.T) {
 	})
 
 	t.Run("can create file in created subdirectory", func(t *testing.T) {
+		t.Parallel()
+
 		dirName := uuid.NewString()
 		fileName := uuid.NewString()
 		content := uuid.NewString()
@@ -377,6 +408,8 @@ func TestVolumeContent(t *testing.T) {
 	})
 
 	t.Run("cannot delete subdirectory with contents without force", func(t *testing.T) {
+		t.Parallel()
+
 		dirName := uuid.NewString()
 		fileName := uuid.NewString()
 		content := uuid.NewString()
@@ -396,6 +429,8 @@ func TestVolumeContent(t *testing.T) {
 	})
 
 	t.Run("can delete subdirectory with contents and recursive", func(t *testing.T) {
+		t.Parallel()
+
 		dirName := uuid.NewString()
 		fileName := uuid.NewString()
 		content := uuid.NewString()

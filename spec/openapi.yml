@@ -3333,6 +3333,13 @@ paths:
       parameters:
         - $ref: "#/components/parameters/volumeID"
         - $ref: "#/components/parameters/path"
+        - name: depth
+          in: query
+          description: Number of layers deep to recurse into the directory
+          schema:
+            type: integer
+            format: uint32
+            default: 1
       responses:
         "200":
           description: "Successfully retrieved a directory listing"
