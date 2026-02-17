@@ -863,6 +863,8 @@ func TestConnectionLimitBlocksExcessConnections(t *testing.T) {
 	// Hold maxConns connections open by delaying body write on the backend.
 	// Each request returns 200 headers immediately, but keeps the proxy handler
 	// busy for holdDelay while the backend writes the body.
+	// We must read the full body to keep the client connection alive,
+	// otherwise closing the body releases the proxy handler early.
 	var wg errgroup.Group
 	for range maxConns {
 		wg.Go(func() error {
@@ -875,7 +877,10 @@ func TestConnectionLimitBlocksExcessConnections(t *testing.T) {
 				return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 			}
 
-			return nil
+			// Block until the backend finishes writing the delayed body,
+			// keeping the proxy handler (and connection slot) occupied.
+			_, err := io.ReadAll(resp.Body)
+			return err
 		})
 	}
 
