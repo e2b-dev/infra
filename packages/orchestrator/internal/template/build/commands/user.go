@@ -97,7 +97,7 @@ func addToSudoers(
 		lvl,
 		prefix,
 		sandboxID,
-		fmt.Sprintf("%s addgroup %s sudo", rootfs.SandboxBusyBoxPath, userArg),
+		fmt.Sprintf("%s addgroup %s sudo || true", rootfs.SandboxBusyBoxPath, userArg),
 		metadata.Context{
 			User:    "root",
 			EnvVars: cmdMetadata.EnvVars,

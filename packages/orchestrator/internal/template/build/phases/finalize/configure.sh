@@ -18,7 +18,7 @@ EOF
 echo "Create default user 'user' (if doesn't exist yet)"
 ADDUSER_OUTPUT=$($bb adduser -D -g "" user 2>&1 || true)
 echo "$ADDUSER_OUTPUT"
-if $bb echo "$ADDUSER_OUTPUT" | $bb grep -q "The home directory \`/home/user' already exists"; then
+if $bb [ -d /home/user ]; then
     echo "Copy skeleton files to /home/user"
     for f in /etc/skel/.[!.]* /etc/skel/*; do
         $bb [ -e "$f" ] || continue
@@ -28,7 +28,7 @@ if $bb echo "$ADDUSER_OUTPUT" | $bb grep -q "The home directory \`/home/user' al
 fi
 
 echo "Add sudo to 'user' with no password"
-$bb addgroup user sudo
+$bb addgroup user sudo || true
 $bb passwd -d user
 echo "user ALL=(ALL:ALL) NOPASSWD: ALL" >>/etc/sudoers
 
