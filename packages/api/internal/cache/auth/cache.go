@@ -18,7 +18,7 @@ const (
 type DataCallback = func(ctx context.Context, key string) (*types.Team, error)
 
 type TeamAuthCache struct {
-	cache *cache.Cache[*types.Team]
+	cache *cache.MemoryCache[*types.Team]
 }
 
 func NewTeamAuthCache() *TeamAuthCache {
@@ -30,7 +30,7 @@ func NewTeamAuthCache() *TeamAuthCache {
 	}
 
 	return &TeamAuthCache{
-		cache: cache.NewCache[*types.Team](config),
+		cache: cache.NewMemoryCache[*types.Team](config),
 	}
 }
 

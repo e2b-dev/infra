@@ -21,46 +21,21 @@ type testValue struct {
 	Name string `json:"name"`
 }
 
-func newTestLayeredCache(t *testing.T, redisClient redis.UniversalClient) *LayeredCache[testValue] {
+func newTestRedisCache(t *testing.T, redisClient redis.UniversalClient) *RedisCache[testValue] {
 	t.Helper()
 
-	return NewLayeredCache[testValue](LayeredConfig[testValue]{
-		L1TTL:       5 * time.Second,
-		RedisTTL:    30 * time.Second,
+	return NewRedisCache[testValue](RedisConfig{
+		TTL:         30 * time.Second,
 		RedisClient: redisClient,
 		RedisPrefix: fmt.Sprintf("test:%s", t.Name()),
 	})
 }
 
-func TestLayeredCache_L1Hit(t *testing.T) {
+func TestRedisCache_RedisHit(t *testing.T) {
 	t.Parallel()
 	redisClient := redis_utils.SetupInstance(t)
-	lc := newTestLayeredCache(t, redisClient)
-	defer lc.Close(t.Context())
-
-	key := "key1"
-	expected := testValue{ID: "1", Name: "Alice"}
-
-	// Store directly in L1
-	lc.l1.Set(key, expected)
-
-	callbackCalled := false
-	result, err := lc.GetOrSet(t.Context(), key, func(_ context.Context, _ string) (testValue, error) {
-		callbackCalled = true
-
-		return testValue{}, nil
-	})
-
-	require.NoError(t, err)
-	assert.Equal(t, expected, result)
-	assert.False(t, callbackCalled, "callback should not be called on L1 hit")
-}
-
-func TestLayeredCache_L2Hit(t *testing.T) {
-	t.Parallel()
-	redisClient := redis_utils.SetupInstance(t)
-	lc := newTestLayeredCache(t, redisClient)
-	defer lc.Close(t.Context())
+	rc := newTestRedisCache(t, redisClient)
+	defer rc.Close(t.Context())
 
 	key := "key1"
 	expected := testValue{ID: "2", Name: "Bob"}
@@ -68,11 +43,11 @@ func TestLayeredCache_L2Hit(t *testing.T) {
 	// Store directly in Redis
 	data, err := json.Marshal(expected)
 	require.NoError(t, err)
-	err = redisClient.Set(t.Context(), lc.RedisKey(key), data, 30*time.Second).Err()
+	err = redisClient.Set(t.Context(), rc.RedisKey(key), data, 30*time.Second).Err()
 	require.NoError(t, err)
 
 	callbackCalled := false
-	result, err := lc.GetOrSet(t.Context(), key, func(_ context.Context, _ string) (testValue, error) {
+	result, err := rc.GetOrSet(t.Context(), key, func(_ context.Context, _ string) (testValue, error) {
 		callbackCalled = true
 
 		return testValue{}, nil
@@ -80,37 +55,27 @@ func TestLayeredCache_L2Hit(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, expected, result)
-	assert.False(t, callbackCalled, "callback should not be called on L2 hit")
-
-	// Verify L1 was populated
-	l1Value, found := lc.GetWithoutTouch(key)
-	assert.True(t, found)
-	assert.Equal(t, expected, l1Value)
+	assert.False(t, callbackCalled, "callback should not be called on Redis hit")
 }
 
-func TestLayeredCache_L3Fallback(t *testing.T) {
+func TestRedisCache_CallbackFallback(t *testing.T) {
 	t.Parallel()
 	redisClient := redis_utils.SetupInstance(t)
-	lc := newTestLayeredCache(t, redisClient)
-	defer lc.Close(t.Context())
+	rc := newTestRedisCache(t, redisClient)
+	defer rc.Close(t.Context())
 
 	key := "key1"
 	expected := testValue{ID: "3", Name: "Charlie"}
 
-	result, err := lc.GetOrSet(t.Context(), key, func(_ context.Context, _ string) (testValue, error) {
+	result, err := rc.GetOrSet(t.Context(), key, func(_ context.Context, _ string) (testValue, error) {
 		return expected, nil
 	})
 
 	require.NoError(t, err)
 	assert.Equal(t, expected, result)
 
-	// Verify L1 was populated
-	l1Value, found := lc.GetWithoutTouch(key)
-	assert.True(t, found)
-	assert.Equal(t, expected, l1Value)
-
 	// Verify Redis was populated
-	data, err := redisClient.Get(t.Context(), lc.RedisKey(key)).Bytes()
+	data, err := redisClient.Get(t.Context(), rc.RedisKey(key)).Bytes()
 	require.NoError(t, err)
 
 	var redisValue testValue
@@ -119,7 +84,7 @@ func TestLayeredCache_L3Fallback(t *testing.T) {
 	assert.Equal(t, expected, redisValue)
 }
 
-func TestLayeredCache_RedisErrorFallthrough(t *testing.T) {
+func TestRedisCache_RedisErrorFallthrough(t *testing.T) {
 	t.Parallel()
 	// Use a client pointing to a non-existent Redis
 	badClient := redis.NewClient(&redis.Options{
@@ -128,18 +93,17 @@ func TestLayeredCache_RedisErrorFallthrough(t *testing.T) {
 	})
 	defer badClient.Close()
 
-	lc := NewLayeredCache[testValue](LayeredConfig[testValue]{
-		L1TTL:        5 * time.Second,
-		RedisTTL:     30 * time.Second,
+	rc := NewRedisCache[testValue](RedisConfig{
+		TTL:          30 * time.Second,
 		RedisClient:  badClient,
 		RedisPrefix:  "test:bad",
 		RedisTimeout: 200 * time.Millisecond,
 	})
-	defer lc.Close(t.Context())
+	defer rc.Close(t.Context())
 
 	expected := testValue{ID: "4", Name: "Diana"}
 
-	result, err := lc.GetOrSet(t.Context(), "key1", func(_ context.Context, _ string) (testValue, error) {
+	result, err := rc.GetOrSet(t.Context(), "key1", func(_ context.Context, _ string) (testValue, error) {
 		return expected, nil
 	})
 
@@ -147,81 +111,43 @@ func TestLayeredCache_RedisErrorFallthrough(t *testing.T) {
 	assert.Equal(t, expected, result)
 }
 
-func TestLayeredCache_Delete(t *testing.T) {
+func TestRedisCache_Delete(t *testing.T) {
 	t.Parallel()
 	redisClient := redis_utils.SetupInstance(t)
-	lc := newTestLayeredCache(t, redisClient)
-	defer lc.Close(t.Context())
+	rc := newTestRedisCache(t, redisClient)
+	defer rc.Close(t.Context())
 
 	key := "key1"
 	value := testValue{ID: "5", Name: "Eve"}
 
-	// Populate both tiers
-	lc.Set(t.Context(), key, value)
+	// Populate Redis
+	rc.Set(t.Context(), key, value)
 
-	// Verify both populated
-	_, found := lc.GetWithoutTouch(key)
-	assert.True(t, found)
-	_, err := redisClient.Get(t.Context(), lc.RedisKey(key)).Bytes()
+	// Verify populated
+	_, err := redisClient.Get(t.Context(), rc.RedisKey(key)).Bytes()
 	require.NoError(t, err)
 
 	// Delete
-	lc.Delete(t.Context(), key)
+	rc.Delete(t.Context(), key)
 
-	// Verify both cleared
-	_, found = lc.GetWithoutTouch(key)
-	assert.False(t, found)
-	_, err = redisClient.Get(t.Context(), lc.RedisKey(key)).Result()
+	// Verify cleared
+	_, err = redisClient.Get(t.Context(), rc.RedisKey(key)).Result()
 	assert.ErrorIs(t, err, redis.Nil)
 }
 
-func TestLayeredCache_InvalidateL1(t *testing.T) {
+func TestRedisCache_SetWritesRedis(t *testing.T) {
 	t.Parallel()
 	redisClient := redis_utils.SetupInstance(t)
-	lc := newTestLayeredCache(t, redisClient)
-	defer lc.Close(t.Context())
-
-	key := "key1"
-	value := testValue{ID: "6", Name: "Frank"}
-
-	// Populate both tiers
-	lc.Set(t.Context(), key, value)
-
-	// Invalidate L1 only
-	lc.InvalidateL1(key)
-
-	// L1 should be cleared
-	_, found := lc.GetWithoutTouch(key)
-	assert.False(t, found)
-
-	// Redis should still have the value
-	data, err := redisClient.Get(t.Context(), lc.RedisKey(key)).Bytes()
-	require.NoError(t, err)
-
-	var redisValue testValue
-	err = json.Unmarshal(data, &redisValue)
-	require.NoError(t, err)
-	assert.Equal(t, value, redisValue)
-}
-
-func TestLayeredCache_SetWritesBoth(t *testing.T) {
-	t.Parallel()
-	redisClient := redis_utils.SetupInstance(t)
-	lc := newTestLayeredCache(t, redisClient)
-	defer lc.Close(t.Context())
+	rc := newTestRedisCache(t, redisClient)
+	defer rc.Close(t.Context())
 
 	key := "key1"
 	value := testValue{ID: "7", Name: "Grace"}
 
-	lc.Set(t.Context(), key, value)
-
-	// Verify L1
-	l1Value, found := lc.GetWithoutTouch(key)
-	assert.True(t, found)
-	assert.Equal(t, value, l1Value)
+	rc.Set(t.Context(), key, value)
 
 	// Verify Redis
-	data, err := redisClient.Get(t.Context(), lc.RedisKey(key)).Bytes()
+	data, err := redisClient.Get(t.Context(), rc.RedisKey(key)).Bytes()
 	require.NoError(t, err)
 
 	var redisValue testValue
@@ -230,11 +156,11 @@ func TestLayeredCache_SetWritesBoth(t *testing.T) {
 	assert.Equal(t, value, redisValue)
 }
 
-func TestLayeredCache_Singleflight(t *testing.T) {
+func TestRedisCache_Singleflight(t *testing.T) {
 	t.Parallel()
 	redisClient := redis_utils.SetupInstance(t)
-	lc := newTestLayeredCache(t, redisClient)
-	defer lc.Close(t.Context())
+	rc := newTestRedisCache(t, redisClient)
+	defer rc.Close(t.Context())
 
 	var callCount atomic.Int32
 	expected := testValue{ID: "8", Name: "Hank"}
@@ -249,7 +175,7 @@ func TestLayeredCache_Singleflight(t *testing.T) {
 	results := make([]testValue, 10)
 	for i := range 10 {
 		wg.Go(func() error {
-			val, err := lc.GetOrSet(t.Context(), "key1", callback)
+			val, err := rc.GetOrSet(t.Context(), "key1", callback)
 			if err != nil {
 				return err
 			}
@@ -271,22 +197,21 @@ func TestLayeredCache_Singleflight(t *testing.T) {
 	assert.Equal(t, int32(1), callCount.Load())
 }
 
-func TestLayeredCache_RedisRefresh_TriggeredWhenStale(t *testing.T) {
+func TestRedisCache_RedisRefresh_TriggeredWhenStale(t *testing.T) {
 	t.Parallel()
 	redisClient := redis_utils.SetupInstance(t)
 
 	redisTTL := 10 * time.Second
 	refreshInterval := 100 * time.Millisecond
 
-	lc := NewLayeredCache[testValue](LayeredConfig[testValue]{
-		L1TTL:                500 * time.Millisecond,
-		RedisTTL:             redisTTL,
-		RedisRefreshInterval: refreshInterval,
-		RedisRefreshTimeout:  5 * time.Second,
+	rc := NewRedisCache[testValue](RedisConfig{
+		TTL:                  redisTTL,
+		RefreshInterval: refreshInterval,
+		RefreshTimeout:  5 * time.Second,
 		RedisClient:          redisClient,
 		RedisPrefix:          fmt.Sprintf("test:%s", t.Name()),
 	})
-	defer lc.Close(t.Context())
+	defer rc.Close(t.Context())
 
 	key := "key1"
 	staleValue := testValue{ID: "stale", Name: "StaleData"}
@@ -297,14 +222,11 @@ func TestLayeredCache_RedisRefresh_TriggeredWhenStale(t *testing.T) {
 	require.NoError(t, err)
 	// Set with a TTL such that age = redisTTL - remainingTTL > refreshInterval
 	remainingTTL := redisTTL - refreshInterval - 50*time.Millisecond
-	err = redisClient.Set(t.Context(), lc.RedisKey(key), data, remainingTTL).Err()
+	err = redisClient.Set(t.Context(), rc.RedisKey(key), data, remainingTTL).Err()
 	require.NoError(t, err)
 
-	// Wait for L1 to expire so we hit Redis
-	time.Sleep(600 * time.Millisecond)
-
 	var callCount atomic.Int32
-	result, err := lc.GetOrSet(t.Context(), key, func(_ context.Context, _ string) (testValue, error) {
+	result, err := rc.GetOrSet(t.Context(), key, func(_ context.Context, _ string) (testValue, error) {
 		callCount.Add(1)
 
 		return freshValue, nil
@@ -316,7 +238,7 @@ func TestLayeredCache_RedisRefresh_TriggeredWhenStale(t *testing.T) {
 
 	// Wait for background refresh to complete
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		redisData, err := redisClient.Get(t.Context(), lc.RedisKey(key)).Bytes()
+		redisData, err := redisClient.Get(t.Context(), rc.RedisKey(key)).Bytes()
 		if !assert.NoError(c, err) {
 			return
 		}
@@ -329,22 +251,21 @@ func TestLayeredCache_RedisRefresh_TriggeredWhenStale(t *testing.T) {
 	assert.GreaterOrEqual(t, callCount.Load(), int32(1))
 }
 
-func TestLayeredCache_RedisRefresh_UpdatesBothRedisAndL1(t *testing.T) {
+func TestRedisCache_RedisRefresh_UpdatesRedis(t *testing.T) {
 	t.Parallel()
 	redisClient := redis_utils.SetupInstance(t)
 
 	redisTTL := 10 * time.Second
 	refreshInterval := 100 * time.Millisecond
 
-	lc := NewLayeredCache[testValue](LayeredConfig[testValue]{
-		L1TTL:                500 * time.Millisecond,
-		RedisTTL:             redisTTL,
-		RedisRefreshInterval: refreshInterval,
-		RedisRefreshTimeout:  5 * time.Second,
+	rc := NewRedisCache[testValue](RedisConfig{
+		TTL:                  redisTTL,
+		RefreshInterval: refreshInterval,
+		RefreshTimeout:  5 * time.Second,
 		RedisClient:          redisClient,
 		RedisPrefix:          fmt.Sprintf("test:%s", t.Name()),
 	})
-	defer lc.Close(t.Context())
+	defer rc.Close(t.Context())
 
 	key := "key1"
 	staleValue := testValue{ID: "stale", Name: "StaleData"}
@@ -354,21 +275,17 @@ func TestLayeredCache_RedisRefresh_UpdatesBothRedisAndL1(t *testing.T) {
 	data, err := json.Marshal(staleValue)
 	require.NoError(t, err)
 	remainingTTL := redisTTL - refreshInterval - 50*time.Millisecond
-	err = redisClient.Set(t.Context(), lc.RedisKey(key), data, remainingTTL).Err()
+	err = redisClient.Set(t.Context(), rc.RedisKey(key), data, remainingTTL).Err()
 	require.NoError(t, err)
 
-	// Wait for L1 to expire
-	time.Sleep(600 * time.Millisecond)
-
-	_, err = lc.GetOrSet(t.Context(), key, func(_ context.Context, _ string) (testValue, error) {
+	_, err = rc.GetOrSet(t.Context(), key, func(_ context.Context, _ string) (testValue, error) {
 		return freshValue, nil
 	})
 	require.NoError(t, err)
 
 	// Wait for background refresh
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		// Check Redis
-		redisData, err := redisClient.Get(t.Context(), lc.RedisKey(key)).Bytes()
+		redisData, err := redisClient.Get(t.Context(), rc.RedisKey(key)).Bytes()
 		if !assert.NoError(c, err) {
 			return
 		}
@@ -376,30 +293,24 @@ func TestLayeredCache_RedisRefresh_UpdatesBothRedisAndL1(t *testing.T) {
 		err = json.Unmarshal(redisData, &redisValue)
 		assert.NoError(c, err)
 		assert.Equal(c, freshValue, redisValue)
-
-		// Check L1
-		l1Value, found := lc.GetWithoutTouch(key)
-		assert.True(c, found)
-		assert.Equal(c, freshValue, l1Value)
 	}, 2*time.Second, 50*time.Millisecond)
 }
 
-func TestLayeredCache_RedisRefresh_ErrorKeepsStaleValue(t *testing.T) {
+func TestRedisCache_RedisRefresh_ErrorKeepsStaleValue(t *testing.T) {
 	t.Parallel()
 	redisClient := redis_utils.SetupInstance(t)
 
 	redisTTL := 10 * time.Second
 	refreshInterval := 100 * time.Millisecond
 
-	lc := NewLayeredCache[testValue](LayeredConfig[testValue]{
-		L1TTL:                500 * time.Millisecond,
-		RedisTTL:             redisTTL,
-		RedisRefreshInterval: refreshInterval,
-		RedisRefreshTimeout:  5 * time.Second,
+	rc := NewRedisCache[testValue](RedisConfig{
+		TTL:                  redisTTL,
+		RefreshInterval: refreshInterval,
+		RefreshTimeout:  5 * time.Second,
 		RedisClient:          redisClient,
 		RedisPrefix:          fmt.Sprintf("test:%s", t.Name()),
 	})
-	defer lc.Close(t.Context())
+	defer rc.Close(t.Context())
 
 	key := "key1"
 	staleValue := testValue{ID: "stale", Name: "StaleData"}
@@ -408,14 +319,11 @@ func TestLayeredCache_RedisRefresh_ErrorKeepsStaleValue(t *testing.T) {
 	data, err := json.Marshal(staleValue)
 	require.NoError(t, err)
 	remainingTTL := redisTTL - refreshInterval - 50*time.Millisecond
-	err = redisClient.Set(t.Context(), lc.RedisKey(key), data, remainingTTL).Err()
+	err = redisClient.Set(t.Context(), rc.RedisKey(key), data, remainingTTL).Err()
 	require.NoError(t, err)
 
-	// Wait for L1 to expire
-	time.Sleep(600 * time.Millisecond)
-
 	var callCount atomic.Int32
-	result, err := lc.GetOrSet(t.Context(), key, func(_ context.Context, _ string) (testValue, error) {
+	result, err := rc.GetOrSet(t.Context(), key, func(_ context.Context, _ string) (testValue, error) {
 		callCount.Add(1)
 
 		return testValue{}, fmt.Errorf("database unavailable")
@@ -428,7 +336,7 @@ func TestLayeredCache_RedisRefresh_ErrorKeepsStaleValue(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	// Redis should still have the stale value (not deleted)
-	redisData, err := redisClient.Get(t.Context(), lc.RedisKey(key)).Bytes()
+	redisData, err := redisClient.Get(t.Context(), rc.RedisKey(key)).Bytes()
 	require.NoError(t, err)
 	var redisValue testValue
 	err = json.Unmarshal(redisData, &redisValue)
@@ -438,13 +346,13 @@ func TestLayeredCache_RedisRefresh_ErrorKeepsStaleValue(t *testing.T) {
 	assert.GreaterOrEqual(t, callCount.Load(), int32(1))
 }
 
-func TestLayeredCache_RedisRefresh_Disabled(t *testing.T) {
+func TestRedisCache_RedisRefresh_Disabled(t *testing.T) {
 	t.Parallel()
 	redisClient := redis_utils.SetupInstance(t)
 
 	// No RedisRefreshInterval set (defaults to 0)
-	lc := newTestLayeredCache(t, redisClient)
-	defer lc.Close(t.Context())
+	rc := newTestRedisCache(t, redisClient)
+	defer rc.Close(t.Context())
 
 	key := "key1"
 	expected := testValue{ID: "no-refresh", Name: "NoRefresh"}
@@ -452,11 +360,11 @@ func TestLayeredCache_RedisRefresh_Disabled(t *testing.T) {
 	// Store in Redis
 	data, err := json.Marshal(expected)
 	require.NoError(t, err)
-	err = redisClient.Set(t.Context(), lc.RedisKey(key), data, 30*time.Second).Err()
+	err = redisClient.Set(t.Context(), rc.RedisKey(key), data, 30*time.Second).Err()
 	require.NoError(t, err)
 
 	var callCount atomic.Int32
-	result, err := lc.GetOrSet(t.Context(), key, func(_ context.Context, _ string) (testValue, error) {
+	result, err := rc.GetOrSet(t.Context(), key, func(_ context.Context, _ string) (testValue, error) {
 		callCount.Add(1)
 
 		return testValue{ID: "different", Name: "Different"}, nil

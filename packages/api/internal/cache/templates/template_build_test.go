@@ -14,8 +14,8 @@ import (
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
 )
 
-// TestRedisTemplatesBuildCache_Get_L1Hit tests that Get returns from L1 cache when available.
-func TestRedisTemplatesBuildCache_Get_L1Hit(t *testing.T) {
+// TestRedisTemplatesBuildCache_Get_CacheHit tests that Get returns from Redis cache when available.
+func TestRedisTemplatesBuildCache_Get_CacheHit(t *testing.T) {
 	t.Parallel()
 	db := testutils.SetupDatabase(t)
 	redisClient := redis_utils.SetupInstance(t)
@@ -31,10 +31,10 @@ func TestRedisTemplatesBuildCache_Get_L1Hit(t *testing.T) {
 		ClusterID:   uuid.New(),
 	}
 
-	// Store directly in L1 cache via the layered cache's Set (populates both L1 and Redis)
+	// Store in Redis via the cache's Set
 	c.cache.Set(ctx, buildID.String(), info)
 
-	// Get should return from L1 without hitting DB
+	// Get should return from Redis without hitting DB
 	result, err := c.Get(ctx, buildID, "test-template")
 	require.NoError(t, err)
 	assert.Equal(t, info.TeamID, result.TeamID)
@@ -113,8 +113,8 @@ func TestRedisTemplatesBuildCache_Get_NotFound(t *testing.T) {
 	require.ErrorIs(t, err, ErrTemplateBuildInfoNotFound)
 }
 
-// TestRedisTemplatesBuildCache_SetStatus_UpdatesAndInvalidatesL1 tests that SetStatus updates Redis and invalidates L1.
-func TestRedisTemplatesBuildCache_SetStatus_UpdatesAndInvalidatesL1(t *testing.T) {
+// TestRedisTemplatesBuildCache_SetStatus_UpdatesRedis tests that SetStatus updates Redis.
+func TestRedisTemplatesBuildCache_SetStatus_UpdatesRedis(t *testing.T) {
 	t.Parallel()
 	db := testutils.SetupDatabase(t)
 	redisClient := redis_utils.SetupInstance(t)
@@ -131,7 +131,7 @@ func TestRedisTemplatesBuildCache_SetStatus_UpdatesAndInvalidatesL1(t *testing.T
 		ClusterID:   uuid.New(),
 	}
 
-	// Store in both L1 and Redis via the layered cache
+	// Store in Redis via the cache
 	c.cache.Set(ctx, buildID.String(), info)
 
 	buildKey := c.cache.RedisKey(buildID.String())
@@ -139,10 +139,6 @@ func TestRedisTemplatesBuildCache_SetStatus_UpdatesAndInvalidatesL1(t *testing.T
 	// Update status
 	newReason := types.BuildReason{Message: "Build completed successfully"}
 	c.SetStatus(ctx, buildID, types.BuildStatusGroupReady, newReason)
-
-	// L1 should be invalidated
-	_, ok := c.cache.GetWithoutTouch(buildID.String())
-	assert.False(t, ok)
 
 	// Redis should be updated
 	data, err := redisClient.Get(ctx, buildKey).Bytes()

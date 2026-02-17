@@ -21,9 +21,6 @@ import (
 )
 
 const (
-	l1CacheTTL             = 5 * time.Second
-	l1CacheRefreshInterval = 1 * time.Second
-
 	redisBuildCacheTTL             = 5 * time.Minute
 	redisBuildCacheRefreshInterval = 1 * time.Minute
 	redisBuildCacheTimeout         = 2 * time.Second
@@ -70,23 +67,21 @@ return encoded
 `)
 
 type TemplatesBuildCache struct {
-	cache *cache.LayeredCache[TemplateBuildInfo]
+	cache *cache.RedisCache[TemplateBuildInfo]
 	db    *sqlcdb.Client
 }
 
 func NewTemplateBuildCache(db *sqlcdb.Client, redisClient redis.UniversalClient) *TemplatesBuildCache {
-	lc := cache.NewLayeredCache[TemplateBuildInfo](cache.LayeredConfig[TemplateBuildInfo]{
-		L1TTL:                l1CacheTTL,
-		L1RefreshInterval:    l1CacheRefreshInterval,
-		RedisTTL:             redisBuildCacheTTL,
-		RedisRefreshInterval: redisBuildCacheRefreshInterval,
-		RedisTimeout:         redisBuildCacheTimeout,
-		RedisClient:          redisClient,
-		RedisPrefix:          buildCacheKeyPrefix,
+	rc := cache.NewRedisCache[TemplateBuildInfo](cache.RedisConfig{
+		TTL:             redisBuildCacheTTL,
+		RefreshInterval: redisBuildCacheRefreshInterval,
+		RedisTimeout:    redisBuildCacheTimeout,
+		RedisClient:     redisClient,
+		RedisPrefix:     buildCacheKeyPrefix,
 	})
 
 	return &TemplatesBuildCache{
-		cache: lc,
+		cache: rc,
 		db:    db,
 	}
 }
@@ -98,9 +93,6 @@ func (c *TemplatesBuildCache) SetStatus(ctx context.Context, buildID uuid.UUID, 
 			logger.WithBuildID(buildID.String()),
 			zap.Error(err))
 	}
-
-	// Invalidate L1 cache entry to force re-fetch from Redis on next read
-	c.cache.InvalidateL1(buildID.String())
 }
 
 func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templateID string) (TemplateBuildInfo, error) {
