@@ -17,6 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/layer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases"
@@ -289,7 +290,7 @@ func (ppb *PostProcessingBuilder) postProcessingFn(userLogger logger.Logger) lay
 		readyCmd := meta.Start.ReadyCmd
 		if readyCmd == "" {
 			if meta.Start.StartCmd == "" {
-				readyCmd = "sleep 0"
+				readyCmd = rootfs.SandboxBusyBoxPath + " sleep 0"
 			} else {
 				readyCmd = GetDefaultReadyCommand(ppb.Config.TemplateID)
 			}
