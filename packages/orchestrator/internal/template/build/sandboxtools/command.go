@@ -236,7 +236,7 @@ func SyncChangesToDisk(
 		ctx,
 		proxy,
 		sandboxID,
-		rootfs.SandboxBusyBoxPath + " sync",
+		rootfs.SandboxBusyBoxPath+" sync",
 		metadata.Context{
 			User: "root",
 		},
