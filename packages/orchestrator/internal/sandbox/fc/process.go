@@ -188,9 +188,25 @@ func (p *Process) configure(
 	p.cmd.Stderr = io.MultiWriter(stderrWriters...)
 
 	err := p.cmd.Start()
+	if err != nil {
+		// Clean up cgroup on start failure — the directory and memoryPeakFile FD
+		// would otherwise leak since the caller has no cleanup path for this case.
+		if p.CgroupHandle != nil {
+			if removeErr := p.CgroupHandle.Remove(ctx); removeErr != nil {
+				logger.L().Warn(ctx, "failed to remove cgroup after start failure",
+					logger.WithSandboxID(p.files.SandboxID),
+					zap.Error(removeErr))
+			}
+			p.CgroupHandle = nil
+		}
 
-	// Close cgroup handle FD now that process has started
-	// The kernel has already placed the process in the cgroup atomically during clone
+		return fmt.Errorf("error starting fc process: %w", err)
+	}
+
+	// Close cgroup directory FD now that process has started.
+	// The kernel has already placed the process in the cgroup atomically during clone,
+	// so the directory FD is no longer needed. The memoryPeakFile FD is kept open
+	// by the handle for stats collection (per-FD peak reset requires the same FD).
 	if p.CgroupHandle != nil {
 		closeErr := p.CgroupHandle.Close()
 		if closeErr != nil {
@@ -199,10 +215,6 @@ func (p *Process) configure(
 				zap.Error(closeErr))
 			// Non-fatal: FD will be closed when process exits anyway
 		}
-	}
-
-	if err != nil {
-		return fmt.Errorf("error starting fc process: %w", err)
 	}
 
 	// Log successful placement
