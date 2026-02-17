@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"net/netip"
-	"os"
 	"time"
 
 	"github.com/awnumar/memguard"
@@ -19,10 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/host"
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
-
-const hostsFilePermissions = 0o644
 
 var (
 	ErrAccessTokenMismatch           = errors.New("access token validation failed")
@@ -234,17 +230,10 @@ func (a *API) SetupHyperloop(address string) {
 const eventsHost = "events.e2b.local"
 
 func rewriteHostsFile(address, path string) error {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return fmt.Errorf("failed to read hosts file: %w", err)
-	}
-
-	// the txeh library drops an entry if the file does not end with a newline
-	if len(data) > 0 && data[len(data)-1] != '\n' {
-		data = append(data, '\n')
-	}
-
-	hosts, err := txeh.NewHosts(&txeh.HostsConfig{RawText: utils.ToPtr(string(data))})
+	hosts, err := txeh.NewHosts(&txeh.HostsConfig{
+		ReadFilePath:  path,
+		WriteFilePath: path,
+	})
 	if err != nil {
 		return fmt.Errorf("failed to create hosts: %w", err)
 	}
@@ -262,11 +251,7 @@ func rewriteHostsFile(address, path string) error {
 
 	hosts.AddHost(address, eventsHost)
 
-	if err = os.WriteFile(path, []byte(hosts.RenderHostsFile()), hostsFilePermissions); err != nil {
-		return fmt.Errorf("failed to save hosts file: %w", err)
-	}
-
-	return nil
+	return hosts.Save()
 }
 
 var (

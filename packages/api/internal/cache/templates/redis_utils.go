@@ -53,11 +53,11 @@ func getBuildKey(buildID string) string {
 }
 
 // getFromRedis retrieves a build from Redis.
-func (c *TemplatesBuildCache) getFromRedis(ctx context.Context, buildID uuid.UUID) (TemplateBuildInfo, error) {
+func (c *TemplatesBuildCache) getFromRedis(ctx context.Context, buildID string) (TemplateBuildInfo, error) {
 	ctx, cancel := context.WithTimeout(ctx, redisBuildCacheTimeout)
 	defer cancel()
 
-	buildKey := getBuildKey(buildID.String())
+	buildKey := getBuildKey(buildID)
 	data, err := c.redisClient.Get(ctx, buildKey).Bytes()
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
@@ -65,7 +65,7 @@ func (c *TemplatesBuildCache) getFromRedis(ctx context.Context, buildID uuid.UUI
 		}
 
 		logger.L().Warn(ctx, "Redis error while getting build",
-			logger.WithBuildID(buildID.String()),
+			logger.WithBuildID(buildID),
 			zap.Error(err))
 
 		return TemplateBuildInfo{}, err
@@ -80,7 +80,7 @@ func (c *TemplatesBuildCache) getFromRedis(ctx context.Context, buildID uuid.UUI
 }
 
 // storeInRedis stores a build in Redis.
-func (c *TemplatesBuildCache) storeInRedis(ctx context.Context, buildID uuid.UUID, info TemplateBuildInfo) error {
+func (c *TemplatesBuildCache) storeInRedis(ctx context.Context, buildID string, info TemplateBuildInfo) error {
 	ctx, cancel := context.WithTimeout(ctx, redisBuildCacheTimeout)
 	defer cancel()
 
@@ -89,7 +89,7 @@ func (c *TemplatesBuildCache) storeInRedis(ctx context.Context, buildID uuid.UUI
 		return fmt.Errorf("failed to marshal build info: %w", err)
 	}
 
-	buildKey := getBuildKey(buildID.String())
+	buildKey := getBuildKey(buildID)
 
 	return c.redisClient.Set(ctx, buildKey, buildJSON, redisBuildCacheTTL).Err()
 }

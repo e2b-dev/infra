@@ -29,15 +29,16 @@ var notFoundTombstone = &AliasInfo{notFound: true}
 // AliasCache resolves namespace/alias to templateID with fallback logic.
 // This is the main resolution layer implementing the namespace lookup flowchart.
 type AliasCache struct {
-	cache *cache.Cache[string, *AliasInfo]
+	cache *cache.Cache[*AliasInfo]
 	db    *sqlcdb.Client
 }
 
 func NewAliasCache(db *sqlcdb.Client) *AliasCache {
-	config := cache.Config[string, *AliasInfo]{
+	config := cache.Config[*AliasInfo]{
 		TTL:             templateInfoExpiration,
 		RefreshInterval: refreshInterval,
 		RefreshTimeout:  refreshTimeout,
+		CallbackTimeout: callbackTimeout,
 	}
 
 	return &AliasCache{
@@ -176,7 +177,7 @@ func (c *AliasCache) Invalidate(namespace *string, alias string) {
 // InvalidateByTemplateID removes all cache entries pointing to the given template ID
 func (c *AliasCache) InvalidateByTemplateID(templateID string) {
 	for _, key := range c.cache.Keys() {
-		if info, found := c.cache.Get(key); found && info != nil && info.TemplateID == templateID {
+		if info, found := c.cache.GetWithoutTouch(key); found && info != nil && info.TemplateID == templateID {
 			c.cache.Delete(key)
 		}
 	}
