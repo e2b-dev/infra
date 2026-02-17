@@ -87,6 +87,10 @@ func (v *VolumeService) processError(err error) error {
 		return status.Error(codes.FailedPrecondition, err.Error())
 	}
 
+	if errors.Is(err, syscall.EEXIST) {
+		return status.Error(codes.AlreadyExists, err.Error())
+	}
+
 	return status.Error(codes.Internal, err.Error())
 }
 

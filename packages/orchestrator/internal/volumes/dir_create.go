@@ -31,7 +31,7 @@ func (v *VolumeService) CreateDir(_ context.Context, request *orchestrator.Volum
 	} else {
 		fn = os.Mkdir
 	}
-	if err := fn(fullPath, os.FileMode(mode)); err != nil { // todo: better error handling
+	if err := fn(fullPath, os.FileMode(mode)); err != nil {
 		return nil, fmt.Errorf("failed to create directory: %w", err)
 	}
 
@@ -44,7 +44,7 @@ func (v *VolumeService) CreateDir(_ context.Context, request *orchestrator.Volum
 		return nil, fmt.Errorf("failed to set directory mode: %w", err)
 	}
 
-	stat, err := os.Stat(fullPath)
+	stat, err := os.Lstat(fullPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to stat created directory: %w", err)
 	}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"path/filepath"
 
 	"github.com/gin-gonic/gin"
 
@@ -40,7 +41,7 @@ func (a *APIStore) GetVolumesVolumeIDFile(c *gin.Context, volumeID api.VolumeID,
 		}
 
 		c.Writer.Header().Set("Content-Type", "application/octet-stream")
-		c.Writer.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", params.Path))
+		c.Writer.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filepath.Base(params.Path)))
 		c.Writer.Header().Set("Content-Length", fmt.Sprintf("%d", startMsg.GetSize()))
 		c.Writer.WriteHeader(http.StatusOK)
 

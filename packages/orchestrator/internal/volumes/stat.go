@@ -23,7 +23,7 @@ func (v *VolumeService) Stat(_ context.Context, request *orchestrator.StatReques
 		return nil, fmt.Errorf("failed to build volume path: %w", err)
 	}
 
-	info, err := os.Stat(fullPath)
+	info, err := os.Lstat(fullPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to stat path: %w", err)
 	}

@@ -6,9 +6,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -57,14 +54,6 @@ func (v *VolumeService) CreateFile(server orchestrator.VolumeService_CreateFileS
 
 	file, err := os.OpenFile(fullPath, flags, os.FileMode(mode).Perm())
 	if err != nil {
-		if os.IsNotExist(err) {
-			return status.Error(codes.NotFound, err.Error())
-		}
-
-		if os.IsExist(err) {
-			return status.Error(codes.AlreadyExists, err.Error())
-		}
-
 		return fmt.Errorf("failed to open file for create: %w", err)
 	}
 	defer file.Close()
@@ -95,7 +84,7 @@ func (v *VolumeService) CreateFile(server orchestrator.VolumeService_CreateFileS
 				return fmt.Errorf("failed to set file mode: %w", err)
 			}
 
-			entry, err := os.Stat(fullPath)
+			entry, err := os.Lstat(fullPath)
 			if err != nil {
 				return fmt.Errorf("failed to stat created file: %w", err)
 			}
