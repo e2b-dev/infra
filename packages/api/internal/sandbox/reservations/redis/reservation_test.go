@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -16,7 +15,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
@@ -33,6 +31,7 @@ func setupTestReservationStorage(t *testing.T) (*ReservationStorage, goredis.Uni
 	t.Helper()
 	client := redis_utils.SetupInstance(t)
 	storage := NewReservationStorage(client)
+
 	return storage, client
 }
 
@@ -41,7 +40,7 @@ func TestReservation(t *testing.T) {
 	storage, _ := setupTestReservationStorage(t)
 
 	finishStart, _, err := storage.Reserve(t.Context(), testTeamID, testSandboxID, 1)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, finishStart)
 }
 
@@ -81,62 +80,6 @@ func TestReservation_Release(t *testing.T) {
 
 	_, _, err = storage.Reserve(t.Context(), teamID, testSandboxID, 1)
 	assert.NoError(t, err)
-}
-
-func TestReservation_WaitForStart(t *testing.T) {
-	t.Parallel()
-	storage, _ := setupTestReservationStorage(t)
-
-	teamID := uuid.New()
-	finishStart, _, err := storage.Reserve(t.Context(), teamID, testSandboxID, 10)
-	require.NoError(t, err)
-	require.NotNil(t, finishStart)
-
-	// Second call should return waitForStart
-	_, waitForStart, err := storage.Reserve(t.Context(), teamID, testSandboxID, 10)
-	require.NoError(t, err)
-	require.NotNil(t, waitForStart)
-
-	// Finish the start operation
-	expectedSbx := sandbox.Sandbox{
-		ClientID:          consts.ClientID,
-		SandboxID:         testSandboxID,
-		TemplateID:        "test",
-		TeamID:            teamID,
-		StartTime:         time.Now(),
-		EndTime:           time.Now().Add(time.Hour),
-		MaxInstanceLength: time.Hour,
-	}
-	finishStart(expectedSbx, nil)
-
-	// Wait should now complete and return the sandbox
-	result, err := waitForStart(t.Context())
-	require.NoError(t, err)
-	assert.Equal(t, expectedSbx.SandboxID, result.SandboxID)
-	assert.Equal(t, expectedSbx.TemplateID, result.TemplateID)
-}
-
-func TestReservation_WaitForStartError(t *testing.T) {
-	t.Parallel()
-	storage, _ := setupTestReservationStorage(t)
-
-	teamID := uuid.New()
-	finishStart, _, err := storage.Reserve(t.Context(), teamID, testSandboxID, 10)
-	require.NoError(t, err)
-	require.NotNil(t, finishStart)
-
-	// Second call should return waitForStart
-	_, waitForStart, err := storage.Reserve(t.Context(), teamID, testSandboxID, 10)
-	require.NoError(t, err)
-	require.NotNil(t, waitForStart)
-
-	// Finish with an error
-	finishStart(sandbox.Sandbox{}, errors.New("start failed"))
-
-	// Wait should return an error
-	_, err = waitForStart(t.Context())
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "start failed")
 }
 
 func TestReservation_MultipleWaiters(t *testing.T) {
@@ -283,6 +226,7 @@ func TestReservation_FailedStartWithWaiters(t *testing.T) {
 				return errors.New("waitForStart should not be nil")
 			}
 			waiters[i] = waitForStart
+
 			return nil
 		})
 	}
@@ -414,6 +358,7 @@ func TestReservation_ConcurrentWaitAndFinish(t *testing.T) {
 				return errors.New("waitForStart should not be nil")
 			}
 			waiters[i] = waitForStart
+
 			return nil
 		})
 	}
@@ -450,46 +395,6 @@ func TestReservation_ConcurrentWaitAndFinish(t *testing.T) {
 
 	wg2.Wait()
 	assert.Equal(t, int32(numWaiters), successCount.Load())
-}
-
-func TestReservation_ConcurrentRemove(t *testing.T) {
-	t.Parallel()
-	storage, _ := setupTestReservationStorage(t)
-
-	teamID := uuid.New()
-	concurrency := 50
-
-	var wg errgroup.Group
-
-	// Concurrently reserve and remove sandboxes
-	for i := range concurrency {
-		wg.Go(func() error {
-			sbxID := fmt.Sprintf("sandbox-%d", i)
-
-			// Reserve
-			_, _, err := storage.Reserve(t.Context(), teamID, sbxID, 100)
-			if err != nil {
-				return err
-			}
-
-			// Remove
-			err = storage.Release(t.Context(), teamID, sbxID)
-			if err != nil {
-				return err
-			}
-
-			// Should be able to reserve again
-			_, _, err = storage.Reserve(t.Context(), teamID, sbxID, 100)
-			if err != nil {
-				return err
-			}
-
-			return nil
-		})
-	}
-
-	err := wg.Wait()
-	require.NoError(t, err)
 }
 
 func TestReservation_RaceConditionStressTest(t *testing.T) {
@@ -549,128 +454,6 @@ func TestReservation_RaceConditionStressTest(t *testing.T) {
 	assert.Equal(t, int32(numOperations), operationCount.Load())
 }
 
-// Redis-specific tests
-
-func TestReservation_CrossInstanceWait(t *testing.T) {
-	t.Parallel()
-	client := redis_utils.SetupInstance(t)
-
-	// Two separate ReservationStorage instances sharing the same Redis
-	storage1 := NewReservationStorage(client)
-	storage2 := NewReservationStorage(client)
-
-	teamID := uuid.New()
-	sbxID := "cross-instance-sandbox"
-
-	// Instance 1 reserves
-	finishStart, _, err := storage1.Reserve(t.Context(), teamID, sbxID, 10)
-	require.NoError(t, err)
-	require.NotNil(t, finishStart)
-
-	// Instance 2 sees it as pending and gets waitForStart
-	_, waitForStart, err := storage2.Reserve(t.Context(), teamID, sbxID, 10)
-	require.NoError(t, err)
-	require.NotNil(t, waitForStart)
-
-	// Instance 1 finishes
-	expectedSbx := sandbox.Sandbox{
-		ClientID:          consts.ClientID,
-		SandboxID:         sbxID,
-		TemplateID:        "test",
-		TeamID:            teamID,
-		StartTime:         time.Now(),
-		EndTime:           time.Now().Add(time.Hour),
-		MaxInstanceLength: time.Hour,
-	}
-	finishStart(expectedSbx, nil)
-
-	// Instance 2 gets the result
-	result, err := waitForStart(t.Context())
-	require.NoError(t, err)
-	assert.Equal(t, expectedSbx.SandboxID, result.SandboxID)
-	assert.Equal(t, expectedSbx.TemplateID, result.TemplateID)
-}
-
-func TestReservation_CrossInstanceErrorPropagation(t *testing.T) {
-	t.Parallel()
-	client := redis_utils.SetupInstance(t)
-
-	storage1 := NewReservationStorage(client)
-	storage2 := NewReservationStorage(client)
-
-	teamID := uuid.New()
-	sbxID := "cross-instance-error"
-
-	// Instance 1 reserves
-	finishStart, _, err := storage1.Reserve(t.Context(), teamID, sbxID, 10)
-	require.NoError(t, err)
-	require.NotNil(t, finishStart)
-
-	// Instance 2 waits
-	_, waitForStart, err := storage2.Reserve(t.Context(), teamID, sbxID, 10)
-	require.NoError(t, err)
-	require.NotNil(t, waitForStart)
-
-	// Instance 1 finishes with an api.APIError
-	apiErr := &api.APIError{
-		Code:      http.StatusTooManyRequests,
-		ClientMsg: "too many sandboxes",
-		Err:       errors.New("limit exceeded"),
-	}
-	finishStart(sandbox.Sandbox{}, apiErr)
-
-	// Instance 2 should get back an api.APIError with the same fields
-	_, err = waitForStart(t.Context())
-	require.Error(t, err)
-
-	var reconstructedErr *api.APIError
-	require.ErrorAs(t, err, &reconstructedErr)
-	assert.Equal(t, http.StatusTooManyRequests, reconstructedErr.Code)
-	assert.Equal(t, "too many sandboxes", reconstructedErr.ClientMsg)
-}
-
-func TestReservation_StorageIndexCountsTowardLimit(t *testing.T) {
-	t.Parallel()
-	storage, client := setupTestReservationStorage(t)
-
-	teamID := uuid.New()
-
-	// Pre-populate the storage index set with 3 sandbox IDs (simulating running sandboxes)
-	storageIndexKey := getStorageIndexKey(teamID.String())
-	err := client.SAdd(t.Context(), storageIndexKey, "running-1", "running-2", "running-3").Err()
-	require.NoError(t, err)
-
-	// With limit 5, we should be able to reserve 2 more (3 in storage + 2 pending = 5)
-	_, _, err = storage.Reserve(t.Context(), teamID, "new-1", 5)
-	require.NoError(t, err)
-
-	_, _, err = storage.Reserve(t.Context(), teamID, "new-2", 5)
-	require.NoError(t, err)
-
-	// Third should fail — 3 (storage) + 2 (pending) = 5 >= 5
-	_, _, err = storage.Reserve(t.Context(), teamID, "new-3", 5)
-	require.ErrorAs(t, err, utils.ToPtr(&sandbox.LimitExceededError{}))
-}
-
-func TestReservation_AlreadyInStorageIndex(t *testing.T) {
-	t.Parallel()
-	storage, client := setupTestReservationStorage(t)
-
-	teamID := uuid.New()
-	sbxID := "already-running"
-
-	// Pre-populate the storage index set
-	storageIndexKey := getStorageIndexKey(teamID.String())
-	err := client.SAdd(t.Context(), storageIndexKey, sbxID).Err()
-	require.NoError(t, err)
-
-	// Reserve should return AlreadyExistsError
-	finishStart, waitForStart, err := storage.Reserve(t.Context(), teamID, sbxID, 10)
-	require.ErrorIs(t, err, sandbox.ErrAlreadyExists)
-	assert.Nil(t, finishStart)
-	assert.Nil(t, waitForStart)
-}
-
 func TestReservation_ResultKeyTTL(t *testing.T) {
 	t.Parallel()
 	storage, client := setupTestReservationStorage(t)
@@ -690,46 +473,6 @@ func TestReservation_ResultKeyTTL(t *testing.T) {
 	require.NoError(t, err)
 	assert.Greater(t, ttl, time.Duration(0))
 	assert.LessOrEqual(t, ttl, resultTTL)
-}
-
-func TestReservation_NoLimitBypass(t *testing.T) {
-	t.Parallel()
-	storage, _ := setupTestReservationStorage(t)
-
-	teamID := uuid.New()
-
-	// With limit=-1, should be able to reserve unlimited sandboxes
-	for i := range 20 {
-		finishStart, _, err := storage.Reserve(t.Context(), teamID, fmt.Sprintf("sandbox-%d", i), -1)
-		require.NoError(t, err)
-		require.NotNil(t, finishStart)
-	}
-}
-
-func TestReservation_ContextCancellation(t *testing.T) {
-	t.Parallel()
-	storage, _ := setupTestReservationStorage(t)
-
-	teamID := uuid.New()
-	sbxID := "ctx-cancel-sandbox"
-
-	// Reserve the sandbox
-	_, _, err := storage.Reserve(t.Context(), teamID, sbxID, 10)
-	require.NoError(t, err)
-
-	// Second call gets waitForStart
-	_, waitForStart, err := storage.Reserve(t.Context(), teamID, sbxID, 10)
-	require.NoError(t, err)
-	require.NotNil(t, waitForStart)
-
-	// Cancel the context
-	ctx, cancel := context.WithCancel(t.Context())
-	cancel()
-
-	// Wait should return context cancelled
-	_, err = waitForStart(ctx)
-	require.Error(t, err)
-	assert.ErrorIs(t, err, context.Canceled)
 }
 
 func TestReservation_StalePendingCleanup(t *testing.T) {

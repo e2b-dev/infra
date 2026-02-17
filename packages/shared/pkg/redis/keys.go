@@ -5,11 +5,11 @@ import (
 	"strings"
 )
 
-const Separator = ":"
+const separator = ":"
 
 // CreateKey joins key parts with the standard Redis key separator.
 func CreateKey(keyParts ...string) string {
-	return strings.Join(keyParts, Separator)
+	return strings.Join(keyParts, separator)
 }
 
 // SameSlot wraps a key in curly braces to force Redis Cluster hash slot co-location.

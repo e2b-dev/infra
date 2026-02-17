@@ -1,6 +1,10 @@
 package redis
 
-import "github.com/redis/go-redis/v9"
+import (
+	"fmt"
+
+	"github.com/redis/go-redis/v9"
+)
 
 const (
 	// Reserve result codes
@@ -16,7 +20,7 @@ var (
 	// Stale entries (older than staleTTL) are cleaned up before counting.
 	//
 	// KEYS[1] = storage index key (sandbox:storage:{teamID}:index)
-	// KEYS[2] = pending zset key (sandbox:reservation:{teamID}:pending)
+	// KEYS[2] = pending zset key (sandbox:storage:{teamID}:reservations:pending)
 	// ARGV[1] = sandboxID
 	// ARGV[2] = limit (-1 means no limit)
 	// ARGV[3] = current Unix timestamp (seconds, float)
@@ -27,18 +31,18 @@ var (
 	//   1 = ALREADY_IN_STORAGE (sandbox exists in storage index)
 	//   2 = ALREADY_PENDING (sandbox already in pending zset)
 	//   3 = LIMIT_EXCEEDED (total count >= limit)
-	reserveScript = redis.NewScript(`
+	reserveScript = redis.NewScript(fmt.Sprintf(`
 		-- Clean up stale pending entries (score < cutoff)
 		redis.call('ZREMRANGEBYSCORE', KEYS[2], '-inf', ARGV[4])
 
 		-- Check if sandbox already exists in storage index
 		if redis.call('SISMEMBER', KEYS[1], ARGV[1]) == 1 then
-			return 1
+			return %d
 		end
 
 		-- Check if sandbox is already pending (has a score in the zset)
 		if redis.call('ZSCORE', KEYS[2], ARGV[1]) then
-			return 2
+			return %d
 		end
 
 		-- Check limit (ARGV[2] < 0 means no limit)
@@ -47,14 +51,14 @@ var (
 			local storageCount = redis.call('SCARD', KEYS[1])
 			local pendingCount = redis.call('ZCARD', KEYS[2])
 			if storageCount + pendingCount >= limit then
-				return 3
+				return %d
 			end
 		end
 
 		-- Reserve: add to pending zset with current timestamp as score
 		redis.call('ZADD', KEYS[2], ARGV[3], ARGV[1])
-		return 0
-	`)
+		return %d
+	`, reserveResultAlreadyInStorage, reserveResultAlreadyPending, reserveResultLimitExceeded, reserveResultReserved))
 
 	// finishStartScript removes a sandbox from the pending zset and sets the result key.
 	// KEYS[1] = pending zset key

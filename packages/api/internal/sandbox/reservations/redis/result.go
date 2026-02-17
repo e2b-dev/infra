@@ -11,7 +11,7 @@ import (
 
 // reservationResult is the serializable result stored in Redis for cross-instance communication.
 type reservationResult struct {
-	Sandbox json.RawMessage   `json:"sandbox,omitempty"`
+	Sandbox sandbox.Sandbox   `json:"sandbox,omitzero"`
 	Error   *reservationError `json:"error,omitempty"`
 }
 
@@ -23,7 +23,9 @@ type reservationError struct {
 }
 
 func encodeResult(sbx sandbox.Sandbox, err error) ([]byte, error) {
-	result := reservationResult{}
+	result := reservationResult{
+		Sandbox: sbx,
+	}
 
 	if err != nil {
 		re := &reservationError{Message: err.Error()}
@@ -33,12 +35,6 @@ func encodeResult(sbx sandbox.Sandbox, err error) ([]byte, error) {
 			re.ClientMsg = apiErr.ClientMsg
 		}
 		result.Error = re
-	} else {
-		sbxData, marshalErr := json.Marshal(sbx)
-		if marshalErr != nil {
-			return nil, fmt.Errorf("failed to marshal sandbox: %w", marshalErr)
-		}
-		result.Sandbox = sbxData
 	}
 
 	return json.Marshal(result)
@@ -54,16 +50,7 @@ func decodeResult(data []byte) (sandbox.Sandbox, error) {
 		return sandbox.Sandbox{}, reconstructError(result.Error)
 	}
 
-	if result.Sandbox == nil {
-		return sandbox.Sandbox{}, fmt.Errorf("reservation result has no sandbox data")
-	}
-
-	var sbx sandbox.Sandbox
-	if err := json.Unmarshal(result.Sandbox, &sbx); err != nil {
-		return sandbox.Sandbox{}, fmt.Errorf("failed to unmarshal sandbox from result: %w", err)
-	}
-
-	return sbx, nil
+	return result.Sandbox, nil
 }
 
 // reconstructError rebuilds the appropriate error type from the serialized representation.

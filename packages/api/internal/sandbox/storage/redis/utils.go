@@ -12,6 +12,11 @@ const (
 )
 
 func getTeamPrefix(teamID string) string {
+	return GetTeamPrefix(teamID)
+}
+
+// GetTeamPrefix returns the storage team prefix for external packages (e.g. reservations).
+func GetTeamPrefix(teamID string) string {
 	return redis_utils.CreateKey(sandboxKeyPrefix, redis_utils.SameSlot(teamID))
 }
 
@@ -20,7 +25,12 @@ func getSandboxKey(teamID, sandboxID string) string {
 }
 
 func getTeamIndexKey(teamID string) string {
-	return redis_utils.CreateKey(getTeamPrefix(teamID), indexKey)
+	return GetTeamIndexKey(teamID)
+}
+
+// GetTeamIndexKey returns the storage team index key for external packages (e.g. reservations).
+func GetTeamIndexKey(teamID string) string {
+	return redis_utils.CreateKey(GetTeamPrefix(teamID), indexKey)
 }
 
 func getTransitionKey(teamID, sandboxID string) string {

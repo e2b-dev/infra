@@ -2,6 +2,7 @@ package redis
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -96,8 +97,10 @@ func (s *ReservationStorage) createFinishStart(ctx context.Context, teamID uuid.
 				zap.Error(encodeErr),
 				logger.WithSandboxID(sandboxID),
 			)
+
 			// Still try to remove from pending even if encoding fails
 			_ = s.redisClient.ZRem(context.WithoutCancel(ctx), pendingSetKey, sandboxID).Err()
+
 			return
 		}
 
@@ -112,11 +115,6 @@ func (s *ReservationStorage) createFinishStart(ctx context.Context, teamID uuid.
 				logger.WithSandboxID(sandboxID),
 			)
 		}
-
-		// Note: on error, finishStartScript already removed from pending set.
-		// We do NOT call Release here because that would delete the result key
-		// that cross-instance waiters need to poll. The result key has a TTL
-		// and will expire automatically.
 	}
 }
 
@@ -124,49 +122,42 @@ func (s *ReservationStorage) createFinishStart(ctx context.Context, teamID uuid.
 // initiated by another instance.
 func (s *ReservationStorage) createWaitForStart(teamID uuid.UUID, sandboxID string) func(ctx context.Context) (sandbox.Sandbox, error) {
 	return func(ctx context.Context) (sandbox.Sandbox, error) {
-		return s.pollForResult(ctx, teamID, sandboxID)
-	}
-}
+		teamIDStr := teamID.String()
+		resultKeyStr := getResultKey(teamIDStr, sandboxID)
+		pendingSetKey := getPendingSetKey(teamIDStr)
 
-// pollForResult polls the result key for the outcome of a sandbox creation.
-// It checks every retryInterval until the result appears, the pending entry disappears, or the context is cancelled.
-func (s *ReservationStorage) pollForResult(ctx context.Context, teamID uuid.UUID, sandboxID string) (sandbox.Sandbox, error) {
-	teamIDStr := teamID.String()
-	resultKeyStr := getResultKey(teamIDStr, sandboxID)
-	pendingSetKey := getPendingSetKey(teamIDStr)
-
-	for {
-		// Check for result
-		data, err := s.redisClient.Get(ctx, resultKeyStr).Bytes()
-		if err == nil {
-			return decodeResult(data)
-		}
-		if err != redis.Nil {
-			return sandbox.Sandbox{}, fmt.Errorf("failed to check result key: %w", err)
-		}
-
-		// No result yet — check if still pending (ZSCORE returns nil if not a member)
-		err = s.redisClient.ZScore(ctx, pendingSetKey, sandboxID).Err()
-		if err == redis.Nil {
-			// Not pending and no result — stale state, the creator may have crashed
-			// Check result one more time in case of race
-			data, err = s.redisClient.Get(ctx, resultKeyStr).Bytes()
+		for {
+			// Check for result
+			data, err := s.redisClient.Get(ctx, resultKeyStr).Bytes()
 			if err == nil {
 				return decodeResult(data)
 			}
+			if !errors.Is(err, redis.Nil) {
+				return sandbox.Sandbox{}, fmt.Errorf("failed to check result key: %w", err)
+			}
 
-			return sandbox.Sandbox{}, fmt.Errorf("sandbox %s is no longer pending and has no result", sandboxID)
-		}
-		if err != nil {
-			return sandbox.Sandbox{}, fmt.Errorf("failed to check pending set: %w", err)
-		}
+			// No result yet — check if still pending (ZSCORE returns nil if not a member)
+			err = s.redisClient.ZScore(ctx, pendingSetKey, sandboxID).Err()
+			if errors.Is(err, redis.Nil) {
+				// Not pending anymore, final check
+				data, err = s.redisClient.Get(ctx, resultKeyStr).Bytes()
+				if err == nil {
+					return decodeResult(data)
+				}
 
-		// Wait before next poll
-		select {
-		case <-ctx.Done():
-			return sandbox.Sandbox{}, ctx.Err()
-		case <-time.After(retryInterval):
-			// continue polling
+				return sandbox.Sandbox{}, fmt.Errorf("sandbox %s is no longer pending and has no result", sandboxID)
+			}
+			if err != nil {
+				return sandbox.Sandbox{}, fmt.Errorf("failed to check pending set: %w", err)
+			}
+
+			// Wait before next poll
+			select {
+			case <-ctx.Done():
+				return sandbox.Sandbox{}, ctx.Err()
+			case <-time.After(retryInterval):
+				// continue polling
+			}
 		}
 	}
 }

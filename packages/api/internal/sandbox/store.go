@@ -174,6 +174,7 @@ func (s *Store) Reserve(ctx context.Context, teamID uuid.UUID, sandboxID string,
 	finishStart, waitForStart, err = s.reservations.Reserve(ctx, teamID, sandboxID, limit)
 	if err != nil {
 		if errors.Is(err, ErrAlreadyExists) {
+			// Try to get the sandbox from the storage if already exists
 			return nil, func(ctx context.Context) (Sandbox, error) {
 				return s.storage.Get(ctx, teamID, sandboxID)
 			}, nil
