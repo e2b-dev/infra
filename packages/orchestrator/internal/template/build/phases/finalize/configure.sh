@@ -49,11 +49,11 @@ $bb mkdir -p /home/user
 $bb chown -R user:user /home/user
 
 echo "Give 777 permission to /usr/local"
-$bb chmod 777 -R /usr/local
+$bb chmod -R 777 /usr/local
 
 echo "Create /code directory"
 $bb mkdir -p /code
 echo "Give 777 permission to /code"
-$bb chmod 777 -R /code
+$bb chmod -R 777 /code
 
 echo "Finished configuration script"
