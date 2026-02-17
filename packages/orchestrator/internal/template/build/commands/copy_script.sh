@@ -12,7 +12,8 @@ user="{{ .User }}"
 # Fill the workdir with user home directory if empty
 if $bb [ -z "${workdir}" ]; then
     # Use the user's home directory
-    workdir=$($bb grep "^$user:" /etc/passwd | $bb cut -d: -f6)
+    # Support both username and numeric UID lookups
+    workdir=$($bb awk -F: -v u="$user" '$1 == u || $3 == u { print $6 }' /etc/passwd)
 fi
 cd "$workdir" || exit 1
 

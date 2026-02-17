@@ -133,7 +133,7 @@ func addToSudoers(
 		lvl,
 		prefix,
 		sandboxID,
-		fmt.Sprintf("%s grep -q '^%s ALL=(ALL:ALL) NOPASSWD: ALL' /etc/sudoers || echo '%s ALL=(ALL:ALL) NOPASSWD: ALL' >>/etc/sudoers", rootfs.SandboxBusyBoxPath, userArg, userArg),
+		fmt.Sprintf("%s grep -q '^%s ALL=(ALL:ALL) NOPASSWD: ALL' /etc/sudoers || %s echo '%s ALL=(ALL:ALL) NOPASSWD: ALL' >>/etc/sudoers", rootfs.SandboxBusyBoxPath, userArg, rootfs.SandboxBusyBoxPath, userArg),
 		metadata.Context{
 			User:    "root",
 			EnvVars: cmdMetadata.EnvVars,

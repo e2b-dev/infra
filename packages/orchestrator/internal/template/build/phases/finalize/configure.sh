@@ -16,7 +16,7 @@ EOF
 # will ignore the directory if it exists, but we want to include the skeleton files in the home directory
 # in our case.
 echo "Create default user 'user' (if doesn't exist yet)"
-ADDUSER_OUTPUT=$($bb adduser -disabled-password --gecos "" user 2>&1 || true)
+ADDUSER_OUTPUT=$($bb adduser -D -g "" user 2>&1 || true)
 echo "$ADDUSER_OUTPUT"
 if $bb echo "$ADDUSER_OUTPUT" | $bb grep -q "The home directory \`/home/user' already exists"; then
     echo "Copy skeleton files to /home/user"
