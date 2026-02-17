@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"net/http"
 
 	"github.com/gin-gonic/gin"
 
@@ -22,6 +23,8 @@ func (a *APIStore) DeleteVolumesVolumeIDDir(c *gin.Context, volumeID api.VolumeI
 		if err != nil {
 			return err
 		}
+
+		c.Status(http.StatusNoContent)
 
 		return nil
 	})

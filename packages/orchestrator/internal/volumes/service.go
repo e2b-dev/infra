@@ -83,6 +83,10 @@ func (v *VolumeService) processError(err error) error {
 		return status.Error(codes.NotFound, err.Error())
 	}
 
+	if errors.Is(err, syscall.ENOTEMPTY) {
+		return status.Error(codes.FailedPrecondition, err.Error())
+	}
+
 	return status.Error(codes.Internal, err.Error())
 }
 

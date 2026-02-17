@@ -2,10 +2,8 @@ package volumes
 
 import (
 	"context"
+	"fmt"
 	"os"
-
-	"github.com/gogo/status"
-	"google.golang.org/grpc/codes"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
@@ -22,14 +20,14 @@ func (v *VolumeService) ListDir(_ context.Context, request *orchestrator.VolumeD
 
 	items, err := os.ReadDir(fullPath)
 	if err != nil { // todo: better error handling
-		return nil, status.Error(codes.Internal, err.Error())
+		return nil, fmt.Errorf("failed to read directory %q: %w", fullPath, err)
 	}
 
 	var results []*orchestrator.VolumeDirectoryItem
 	for _, item := range items {
 		info, err := item.Info()
 		if err != nil {
-			return nil, status.Error(codes.Internal, err.Error())
+			return nil, fmt.Errorf("failed to get info for item %q: %w", item.Name(), err)
 		}
 
 		results = append(results, &orchestrator.VolumeDirectoryItem{

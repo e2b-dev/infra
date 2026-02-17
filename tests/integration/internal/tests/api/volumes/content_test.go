@@ -407,7 +407,7 @@ func TestVolumeContent(t *testing.T) {
 		require.Equal(t, http.StatusCreated, response.StatusCode(), string(response.Body))
 	})
 
-	t.Run("cannot delete subdirectory with contents without force", func(t *testing.T) {
+	t.Run("cannot delete directory with contents without force", func(t *testing.T) {
 		t.Parallel()
 
 		dirName := uuid.NewString()
@@ -421,11 +421,11 @@ func TestVolumeContent(t *testing.T) {
 		response, err := client.DeleteVolumesVolumeIDDirWithResponse(
 			t.Context(), volume.VolumeID,
 			&api.DeleteVolumesVolumeIDDirParams{
-				Path: filepath.Join(dirName, fileName),
+				Path: dirName,
 			},
 			setup.WithAPIKey())
 		require.NoError(t, err)
-		require.Equal(t, http.StatusBadRequest, response.StatusCode(), string(response.Body))
+		require.Equal(t, http.StatusPreconditionFailed, response.StatusCode(), string(response.Body))
 	})
 
 	t.Run("can delete subdirectory with contents and recursive", func(t *testing.T) {
@@ -442,12 +442,12 @@ func TestVolumeContent(t *testing.T) {
 		response, err := client.DeleteVolumesVolumeIDDirWithResponse(
 			t.Context(), volume.VolumeID,
 			&api.DeleteVolumesVolumeIDDirParams{
-				Path:      filepath.Join(dirName, fileName),
+				Path:      dirName,
 				Recursive: utils.ToPtr(true),
 			},
 			setup.WithAPIKey())
 		require.NoError(t, err)
-		assert.Equal(t, http.StatusOK, response.StatusCode(), string(response.Body))
+		assert.Equal(t, http.StatusNoContent, response.StatusCode(), string(response.Body))
 
 		// cannot retrieve file, b/c it's gone
 		getResponse, err := client.GetVolumesVolumeIDFileWithResponse(

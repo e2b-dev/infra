@@ -19,7 +19,7 @@ func (a *APIStore) PostVolumesVolumeIDDir(c *gin.Context, volumeID api.VolumeID,
 			parents = *params.CreateParents
 		}
 
-		_, err := client.Volumes.CreateDir(ctx, &orchestrator.VolumeDirCreateRequest{
+		response, err := client.Volumes.CreateDir(ctx, &orchestrator.VolumeDirCreateRequest{
 			Volume:        toVolumeKey(volume),
 			Path:          params.Path,
 			Mode:          params.Mode,
@@ -31,7 +31,7 @@ func (a *APIStore) PostVolumesVolumeIDDir(c *gin.Context, volumeID api.VolumeID,
 			return err
 		}
 
-		c.JSON(http.StatusCreated, &api.PostVolumesVolumeIDDirResponse{})
+		c.JSON(http.StatusCreated, toVolumeEntryStat(response.GetEntry()))
 
 		return nil
 	})

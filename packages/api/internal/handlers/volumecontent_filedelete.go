@@ -22,7 +22,7 @@ func (a *APIStore) DeleteVolumesVolumeIDFile(c *gin.Context, volumeID api.Volume
 			return err
 		}
 
-		c.JSON(http.StatusNoContent, &api.DeleteVolumesVolumeIDFileResponse{})
+		c.Status(http.StatusNoContent)
 
 		return nil
 	})

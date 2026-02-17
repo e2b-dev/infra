@@ -2,10 +2,8 @@ package volumes
 
 import (
 	"context"
+	"fmt"
 	"os"
-
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
@@ -30,7 +28,7 @@ func (v *VolumeService) DeleteDir(_ context.Context, request *orchestrator.Volum
 	}
 
 	if err := fn(fullPath); err != nil { // todo: better error handling
-		return nil, status.Error(codes.Internal, err.Error())
+		return nil, fmt.Errorf("failed to delete directory: %w", err)
 	}
 
 	return &orchestrator.VolumeDirDeleteResponse{}, nil

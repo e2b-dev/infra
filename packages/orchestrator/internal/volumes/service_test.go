@@ -45,7 +45,7 @@ func TestBuildVolumePath(t *testing.T) {
 			volumeType: goodVolumeName,
 			teamID:     teamID,
 			volumeID:   volumeID,
-			expected:   filepath.Join(goodVolumePath, teamID, volumeID),
+			expected:   filepath.Join(goodVolumePath, "team-"+teamID, "vol-"+volumeID),
 		},
 		"invalid team ID": {
 			volumeType: goodVolumeName,

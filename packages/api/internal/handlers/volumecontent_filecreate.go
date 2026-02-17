@@ -49,22 +49,23 @@ func (a *APIStore) PostVolumesVolumeIDFile(c *gin.Context, volumeID api.VolumeID
 		buffer := make([]byte, incomingBufferSize)
 
 		for {
-			count, err := c.Request.Body.Read(buffer[:cap(buffer)])
-			if ignoreEOF(err) != nil {
-				return fmt.Errorf("failed to read from request body: %w", err)
+			count, readErr := c.Request.Body.Read(buffer[:cap(buffer)])
+			if ignoreEOF(readErr) != nil {
+				return fmt.Errorf("failed to read from request body: %w", readErr)
 			}
 
 			if count > 0 {
-				err = fileClient.Send(&orchestrator.VolumeFileCreateRequest{
+				sendErr := fileClient.Send(&orchestrator.VolumeFileCreateRequest{
 					Message: &orchestrator.VolumeFileCreateRequest_Content{
 						Content: &orchestrator.VolumeFileCreateContent{Content: buffer[:count]},
 					},
 				})
-				if err != nil {
-					return fmt.Errorf("failed to send content message: %w", err)
+				if sendErr != nil {
+					return fmt.Errorf("failed to send content message: %w", sendErr)
 				}
 			}
-			if errors.Is(err, io.EOF) {
+
+			if errors.Is(readErr, io.EOF) {
 				break
 			}
 		}
