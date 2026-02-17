@@ -151,7 +151,7 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		providedToken, _ := metadataFirstValue(incomingMetadata, proxygrpc.MetadataTrafficAccessToken)
 
 		if !isExpectedTrafficAccessToken(providedToken, expectedToken) {
-			return nil, status.Error(codes.PermissionDenied, "invalid or missing traffic access token")
+			return nil, status.Error(codes.PermissionDenied, "permission denied")
 		}
 	}
 
@@ -160,7 +160,7 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		providedEnvdToken, _ := metadataFirstValue(incomingMetadata, proxygrpc.MetadataEnvdAccessToken)
 
 		if !isExpectedTrafficAccessToken(providedEnvdToken, *envdAccessToken) {
-			return nil, status.Error(codes.PermissionDenied, "invalid or missing envd access token")
+			return nil, status.Error(codes.PermissionDenied, "permission denied")
 		}
 	}
 
