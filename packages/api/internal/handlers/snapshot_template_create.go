@@ -127,6 +127,8 @@ func (a *APIStore) PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID api
 		a.templateCache.InvalidateAlias(opts.Namespace, *opts.Alias)
 	}
 
+	a.templateCache.Invalidate(result.TemplateID, &opts.Tag)
+
 	// Build names from aliases + tag
 	names := make([]string, 0)
 	if opts.Alias != nil && opts.Namespace != nil {
