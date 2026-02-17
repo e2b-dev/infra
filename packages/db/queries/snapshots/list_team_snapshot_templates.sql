@@ -27,7 +27,8 @@ JOIN LATERAL (
     LIMIT 1
 ) eb ON TRUE
 LEFT JOIN LATERAL (
-    SELECT ARRAY_AGG(CASE WHEN namespace IS NOT NULL THEN namespace || '/' || alias ELSE alias END ORDER BY alias) AS names
+    -- ORDER BY is required: Names[0] is used as the snapshot identifier in the API response.
+    SELECT ARRAY_AGG(CASE WHEN namespace IS NOT NULL THEN namespace || '/' || alias ELSE alias END ORDER BY namespace NULLS LAST, alias) AS names
     FROM "public"."env_aliases"
     WHERE env_id = e.id
 ) ea ON TRUE
