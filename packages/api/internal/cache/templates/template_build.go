@@ -21,9 +21,9 @@ import (
 )
 
 const (
-	redisBuildCacheTTL             = 5 * time.Minute
-	redisBuildCacheRefreshInterval = 1 * time.Minute
-	redisBuildCacheTimeout         = 2 * time.Second
+	buildCacheTTL             = 5 * time.Minute
+	buildCacheRefreshInterval = 1 * time.Minute
+	buildCacheTimeout         = 2 * time.Second
 
 	buildCacheKeyPrefix = "template:build"
 )
@@ -73,9 +73,9 @@ type TemplatesBuildCache struct {
 
 func NewTemplateBuildCache(db *sqlcdb.Client, redisClient redis.UniversalClient) *TemplatesBuildCache {
 	rc := cache.NewRedisCache[TemplateBuildInfo](cache.RedisConfig{
-		TTL:             redisBuildCacheTTL,
-		RefreshInterval: redisBuildCacheRefreshInterval,
-		RedisTimeout:    redisBuildCacheTimeout,
+		TTL:             buildCacheTTL,
+		RefreshInterval: buildCacheRefreshInterval,
+		RedisTimeout:    buildCacheTimeout,
 		RedisClient:     redisClient,
 		RedisPrefix:     buildCacheKeyPrefix,
 	})
@@ -132,7 +132,7 @@ func (c *TemplatesBuildCache) fetchFromDB(templateID string, buildID uuid.UUID) 
 
 // updateStatusInRedis atomically updates the build status in Redis using a Lua script.
 func (c *TemplatesBuildCache) updateStatusInRedis(ctx context.Context, buildID uuid.UUID, status types.BuildStatusGroup, reason types.BuildReason) error {
-	ctx, cancel := context.WithTimeout(ctx, redisBuildCacheTimeout)
+	ctx, cancel := context.WithTimeout(ctx, buildCacheTimeout)
 	defer cancel()
 
 	reasonJSON, err := json.Marshal(reason)
@@ -142,7 +142,7 @@ func (c *TemplatesBuildCache) updateStatusInRedis(ctx context.Context, buildID u
 
 	buildKey := c.cache.RedisKey(buildID.String())
 
-	ttlSeconds := int(redisBuildCacheTTL.Seconds())
+	ttlSeconds := int(buildCacheTTL.Seconds())
 	_, err = updateStatusScript.Run(ctx, c.cache.RedisClient(), []string{buildKey}, string(status), string(reasonJSON), ttlSeconds).Result()
 	if err != nil && !errors.Is(err, redis.Nil) {
 		return fmt.Errorf("failed to update status in Redis: %w", err)

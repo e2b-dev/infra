@@ -64,7 +64,7 @@ func TestRedisTemplatesBuildCache_Get_L2Hit(t *testing.T) {
 	require.NoError(t, err)
 
 	buildKey := c.cache.RedisKey(buildID.String())
-	err = redisClient.Set(ctx, buildKey, buildJSON, redisBuildCacheTTL).Err()
+	err = redisClient.Set(ctx, buildKey, buildJSON, buildCacheTTL).Err()
 	require.NoError(t, err)
 
 	// Get should return from Redis
@@ -191,5 +191,5 @@ func TestRedisTemplatesBuildCache_SetStatus_ResetsTTL(t *testing.T) {
 	ttlAfter, err := redisClient.TTL(ctx, buildKey).Result()
 	require.NoError(t, err)
 	assert.Greater(t, ttlAfter, shortTTL, "TTL should be reset to redisBuildCacheTTL, not the old short TTL")
-	assert.LessOrEqual(t, ttlAfter, redisBuildCacheTTL)
+	assert.LessOrEqual(t, ttlAfter, buildCacheTTL)
 }
