@@ -94,7 +94,7 @@ func TestSandboxAutoPauseResumePersisted(t *testing.T) {
 			Path:     &path,
 			Username: sharedUtils.ToPtr("user"),
 		},
-		setup.WithSandbox(sbxId),
+		setup.WithSandbox(t, sbxId),
 	)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, fileResponse.StatusCode())
@@ -134,7 +134,7 @@ func TestSandboxAutoPauseResumePersisted(t *testing.T) {
 			Path:     &path,
 			Username: sharedUtils.ToPtr("user"),
 		},
-		setup.WithSandbox(sbxId),
+		setup.WithSandbox(t, sbxId),
 	)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, fileResponse.StatusCode())
