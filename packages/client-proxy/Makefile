@@ -21,8 +21,7 @@ build-debug:
 .PHONY: build-and-upload
 build-and-upload:
 	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
-	@docker buildx install # sets up the buildx as default docker builder (otherwise the command below won't work)
-	@docker build --platform linux/amd64 --tag $(IMAGE_REGISTRY) --push --build-arg COMMIT_SHA="$(COMMIT_SHA)" -f ./Dockerfile ..
+	@docker buildx build --platform linux/amd64 --tag $(IMAGE_REGISTRY) --push --build-arg COMMIT_SHA="$(COMMIT_SHA)" -f ./Dockerfile ..
 
 .PHONY: run
 run:
