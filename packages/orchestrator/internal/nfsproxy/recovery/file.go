@@ -27,50 +27,50 @@ func (f *file) Name() string {
 	return f.inner.Name()
 }
 
-func (f *file) Write(p []byte) (int, error) {
-	defer tryRecovery(f.ctx, "File.Write")
+func (f *file) Write(p []byte) (n int, e error) {
+	defer deferErrRecovery(f.ctx, "File.Write", &e)()
 
 	return f.inner.Write(p)
 }
 
-func (f *file) Read(p []byte) (int, error) {
-	defer tryRecovery(f.ctx, "File.Read")
+func (f *file) Read(p []byte) (n int, e error) {
+	defer deferErrRecovery(f.ctx, "File.Read", &e)()
 
 	return f.inner.Read(p)
 }
 
-func (f *file) ReadAt(p []byte, off int64) (int, error) {
-	defer tryRecovery(f.ctx, "File.ReadAt")
+func (f *file) ReadAt(p []byte, off int64) (n int, e error) {
+	defer deferErrRecovery(f.ctx, "File.ReadAt", &e)()
 
 	return f.inner.ReadAt(p, off)
 }
 
-func (f *file) Seek(offset int64, whence int) (int64, error) {
-	defer tryRecovery(f.ctx, "File.Seek")
+func (f *file) Seek(offset int64, whence int) (n int64, e error) {
+	defer deferErrRecovery(f.ctx, "File.Seek", &e)()
 
 	return f.inner.Seek(offset, whence)
 }
 
-func (f *file) Close() error {
-	defer tryRecovery(f.ctx, "File.Close")
+func (f *file) Close() (e error) {
+	defer deferErrRecovery(f.ctx, "File.Close", &e)()
 
 	return f.inner.Close()
 }
 
-func (f *file) Lock() error {
-	defer tryRecovery(f.ctx, "File.Lock")
+func (f *file) Lock() (e error) {
+	defer deferErrRecovery(f.ctx, "File.Lock", &e)()
 
 	return f.inner.Lock()
 }
 
-func (f *file) Unlock() error {
-	defer tryRecovery(f.ctx, "File.Unlock")
+func (f *file) Unlock() (e error) {
+	defer deferErrRecovery(f.ctx, "File.Unlock", &e)()
 
 	return f.inner.Unlock()
 }
 
-func (f *file) Truncate(size int64) error {
-	defer tryRecovery(f.ctx, "File.Truncate")
+func (f *file) Truncate(size int64) (e error) {
+	defer deferErrRecovery(f.ctx, "File.Truncate", &e)()
 
 	return f.inner.Truncate(size)
 }

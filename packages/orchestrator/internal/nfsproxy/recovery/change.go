@@ -23,26 +23,30 @@ func wrapChange(ctx context.Context, c billy.Change) billy.Change {
 	return &change{inner: c, ctx: ctx}
 }
 
-func (c *change) Chmod(name string, mode os.FileMode) error {
-	defer tryRecovery(c.ctx, "Chmod")
+func (c *change) Chmod(name string, mode os.FileMode) (e error) {
+	defer deferErrRecovery(c.ctx, "Change.Chmod", &e)()
 
 	return c.inner.Chmod(name, mode)
 }
 
-func (c *change) Lchown(name string, uid, gid int) error {
-	defer tryRecovery(c.ctx, "Lchown")
+func (c *change) Lchown(name string, uid, gid int) (e error) {
+	defer deferErrRecovery(c.ctx, "Change.Lchown", &e)()
 
 	return c.inner.Lchown(name, uid, gid)
 }
 
-func (c *change) Chown(name string, uid, gid int) error {
-	defer tryRecovery(c.ctx, "Chown")
+func (c *change) Chown(name string, uid, gid int) (e error) {
+	defer deferErrRecovery(c.ctx, "Change.Chown", &e)()
 
 	return c.inner.Chown(name, uid, gid)
 }
 
-func (c *change) Chtimes(name string, atime time.Time, mtime time.Time) error {
-	defer tryRecovery(c.ctx, "Chtimes")
+func (c *change) Chtimes(name string, atime time.Time, mtime time.Time) (e error) {
+	defer deferErrRecovery(c.ctx, "Change.Chtimes", &e)()
 
 	return c.inner.Chtimes(name, atime, mtime)
+}
+
+func (c *change) tryRecoveryWithError(message string, err error) error { // deprecated
+	return err
 }

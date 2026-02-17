@@ -19,7 +19,7 @@ type Handler struct {
 
 var _ nfs.Handler = (*Handler)(nil)
 
-func NewHandler(ctx context.Context, h nfs.Handler) *Handler {
+func WrapWithRecovery(ctx context.Context, h nfs.Handler) *Handler {
 	return &Handler{inner: h, ctx: ctx}
 }
 
@@ -38,8 +38,8 @@ func (h Handler) Change(filesystem billy.Filesystem) billy.Change {
 	return wrapChange(h.ctx, c)
 }
 
-func (h Handler) FSStat(ctx context.Context, filesystem billy.Filesystem, stat *nfs.FSStat) error {
-	defer h.tryRecovery(ctx, "FSStat")
+func (h Handler) FSStat(ctx context.Context, filesystem billy.Filesystem, stat *nfs.FSStat) (e error) {
+	defer deferErrRecovery(ctx, "Handler.FSStat", &e)()
 
 	return h.inner.FSStat(ctx, filesystem, stat)
 }
@@ -50,14 +50,14 @@ func (h Handler) ToHandle(fs billy.Filesystem, path []string) []byte {
 	return h.inner.ToHandle(fs, path)
 }
 
-func (h Handler) FromHandle(fh []byte) (billy.Filesystem, []string, error) {
-	defer h.tryRecovery(h.ctx, "FromHandle")
+func (h Handler) FromHandle(fh []byte) (fs billy.Filesystem, path []string, e error) {
+	defer deferErrRecovery(h.ctx, "Handler.FromHandle", &e)()
 
 	return h.inner.FromHandle(fh)
 }
 
-func (h Handler) InvalidateHandle(filesystem billy.Filesystem, bytes []byte) error {
-	defer h.tryRecovery(h.ctx, "InvalidateHandle")
+func (h Handler) InvalidateHandle(filesystem billy.Filesystem, bytes []byte) (e error) {
+	defer deferErrRecovery(h.ctx, "Handler.InvalidateHandle", &e)()
 
 	return h.inner.InvalidateHandle(filesystem, bytes)
 }
@@ -78,5 +78,21 @@ func tryRecovery(ctx context.Context, name string) {
 			zap.Any("panic", r),
 			zap.Stack("stack"),
 		)
+	}
+}
+
+var ErrPanic = fmt.Errorf("panic")
+
+func deferErrRecovery(ctx context.Context, name string, perr *error) func() {
+	return func() {
+		if r := recover(); r != nil { //nolint:revive // always called via defer
+			logger.L().Error(ctx, fmt.Sprintf("panic in %q nfs handler", name),
+				zap.Any("panic", r),
+				zap.Stack("stack"),
+			)
+			if perr != nil {
+				*perr = ErrPanic
+			}
+		}
 	}
 }

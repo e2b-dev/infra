@@ -110,8 +110,8 @@ func NewProxy(ctx context.Context, sandboxes *sandbox.Map, config cfg.Config) *P
 		getChangeFromFilesystem,
 	)
 	handler = helpers.NewCachingHandler(handler, cacheLimit)
-	handler = logged.NewHandler(ctx, handler)
-	handler = recovery.NewHandler(ctx, handler)
+	handler = logged.WrapWithLogging(ctx, handler)
+	handler = recovery.WrapWithRecovery(ctx, handler)
 
 	s := &nfs.Server{
 		Handler: handler,

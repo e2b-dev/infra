@@ -16,7 +16,7 @@ type loggedHandler struct {
 
 var _ nfs.Handler = (*loggedHandler)(nil)
 
-func NewHandler(ctx context.Context, handler nfs.Handler) nfs.Handler {
+func WrapWithLogging(ctx context.Context, handler nfs.Handler) nfs.Handler {
 	nfs.Log.SetLevel(nfs.TraceLevel)
 
 	return loggedHandler{ctx: ctx, inner: handler}
