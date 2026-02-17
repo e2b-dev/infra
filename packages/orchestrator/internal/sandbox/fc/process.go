@@ -76,8 +76,7 @@ type Process struct {
 
 	client *apiClient
 
-	cgroupManager cgroup.Manager
-	CgroupHandle  *cgroup.CgroupHandle
+	CgroupHandle *cgroup.CgroupHandle
 }
 
 func NewProcess(
@@ -159,10 +158,9 @@ func NewProcess(
 		files:                 files,
 		slot:                  slot,
 
-		kernelPath:    startScript.KernelPath,
-		rootfsPath:    startScript.RootfsPath,
-		cgroupManager: cgroupManager,
-		CgroupHandle:  cgroupHandle,
+		kernelPath:   startScript.KernelPath,
+		rootfsPath:   startScript.RootfsPath,
+		CgroupHandle: cgroupHandle,
 	}, nil
 }
 
