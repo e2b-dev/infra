@@ -13,7 +13,7 @@ const (
 
 // getStorageIndexKey returns the existing storage team index key (read-only).
 func getStorageIndexKey(teamID string) string {
-	return storage_redis.GetTeamIndexKey(teamID)
+	return storage_redis.GetSandboxStorageTeamIndexKey(teamID)
 }
 
 // getReservationPrefix returns the reservation prefix under the storage team key.
@@ -29,7 +29,7 @@ func getPendingSetKey(teamID string) string {
 }
 
 // getResultKey returns the key for a sandbox creation result.
-// e.g. sandbox:storage:{teamID}:reservations:{sandboxID}:result
+// e.g. sandbox:storage:{teamID}:reservations:sandboxID:result
 func getResultKey(teamID, sandboxID string) string {
 	return redis_utils.CreateKey(getReservationPrefix(teamID), sandboxID, resultKey)
 }

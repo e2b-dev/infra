@@ -21,6 +21,7 @@ var (
 	//
 	// KEYS[1] = storage index key (sandbox:storage:{teamID}:index)
 	// KEYS[2] = pending zset key (sandbox:storage:{teamID}:reservations:pending)
+	// KEYS[3] = result key (sandbox:storage:{teamID}:reservations:sandboxID:result)
 	// ARGV[1] = sandboxID
 	// ARGV[2] = limit (-1 means no limit)
 	// ARGV[3] = current Unix timestamp (seconds, float)
@@ -55,6 +56,8 @@ var (
 			end
 		end
 
+		-- Delete stale result key from a previous failed attempt
+		redis.call('DEL', KEYS[3])
 		-- Reserve: add to pending zset with current timestamp as score
 		redis.call('ZADD', KEYS[2], ARGV[3], ARGV[1])
 		return %d

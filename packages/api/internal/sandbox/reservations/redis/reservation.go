@@ -40,12 +40,13 @@ func (s *ReservationStorage) Reserve(ctx context.Context, teamID uuid.UUID, sand
 	teamIDStr := teamID.String()
 	storageIndexKey := getStorageIndexKey(teamIDStr)
 	pendingSetKey := getPendingSetKey(teamIDStr)
+	resultKeyStr := getResultKey(teamIDStr, sandboxID)
 
 	now := float64(time.Now().Unix())
 	staleCutoff := float64(time.Now().Add(-staleTTL).Unix())
 
 	result, err := reserveScript.Run(ctx, s.redisClient,
-		[]string{storageIndexKey, pendingSetKey},
+		[]string{storageIndexKey, pendingSetKey, resultKeyStr},
 		sandboxID, limit, now, staleCutoff,
 	).Int()
 	if err != nil {
