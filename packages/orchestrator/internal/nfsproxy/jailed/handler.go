@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log/slog"
 	"net"
-	"path/filepath"
 
 	"github.com/go-git/go-billy/v5"
 	"github.com/willscott/go-nfs"
@@ -39,10 +38,6 @@ func (h Handler) Mount(ctx context.Context, conn net.Conn, request nfs.MountRequ
 
 		return nfs.MountStatusErrAcces, mountFailedFS{}, nil
 	}
-
-	dirPath := string(request.Dirpath)
-	dirPath = filepath.Join(prefix, dirPath)
-	request.Dirpath = []byte(dirPath)
 
 	return nfs.MountStatusOk, tryWrapFS(fs, prefix), nil
 }
