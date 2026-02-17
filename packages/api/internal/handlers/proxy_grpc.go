@@ -33,6 +33,53 @@ func NewSandboxService(api *APIStore) *SandboxService {
 	return &SandboxService{api: api}
 }
 
+func metadataFromIncomingContext(ctx context.Context) metadata.MD {
+	if md, ok := metadata.FromIncomingContext(ctx); ok {
+		return md
+	}
+
+	return metadata.MD{}
+}
+
+func metadataFirstValue(md metadata.MD, key string) (string, bool) {
+	vals := md.Get(key)
+	if len(vals) == 0 {
+		return "", false
+	}
+
+	return vals[0], true
+}
+
+func isNonEnvdTrafficRequest(ctx context.Context, incomingMetadata metadata.MD, sandboxID string) bool {
+	requestPortRaw, found := metadataFirstValue(incomingMetadata, proxygrpc.MetadataSandboxRequestPort)
+	if !found {
+		return true
+	}
+
+	requestPort, parseErr := strconv.ParseUint(requestPortRaw, 10, 64)
+	if parseErr != nil {
+		logger.L().Warn(
+			ctx,
+			"invalid sandbox request port metadata for resume",
+			zap.Error(parseErr),
+			zap.String("request_port", requestPortRaw),
+			logger.WithSandboxID(sandboxID),
+		)
+
+		return true
+	}
+
+	return requestPort != uint64(consts.DefaultEnvdServerPort)
+}
+
+func isPrivateIngressTraffic(network *dbtypes.SandboxNetworkConfig) bool {
+	return network != nil && network.Ingress != nil && network.Ingress.AllowPublicAccess != nil && !*network.Ingress.AllowPublicAccess
+}
+
+func isExpectedTrafficAccessToken(providedToken string, expectedToken string) bool {
+	return subtle.ConstantTimeCompare([]byte(providedToken), []byte(expectedToken)) == 1
+}
+
 func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.SandboxResumeRequest) (*proxygrpc.SandboxResumeResponse, error) {
 	sandboxID := utils.ShortID(req.GetSandboxId())
 
@@ -89,29 +136,11 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		network = snap.Snapshot.Config.Network
 	}
 
-	incomingMetadata := metadata.MD{}
-	if md, ok := metadata.FromIncomingContext(ctx); ok {
-		incomingMetadata = md
-	}
-
-	isNonEnvdTraffic := true
-	if vals := incomingMetadata.Get(proxygrpc.MetadataSandboxRequestPort); len(vals) > 0 {
-		requestPort, parseErr := strconv.ParseUint(vals[0], 10, 64)
-		if parseErr != nil {
-			logger.L().Warn(
-				ctx,
-				"invalid sandbox request port metadata for resume",
-				zap.Error(parseErr),
-				zap.String("request_port", vals[0]),
-				logger.WithSandboxID(sandboxID),
-			)
-		} else {
-			isNonEnvdTraffic = requestPort != uint64(consts.DefaultEnvdServerPort)
-		}
-	}
+	incomingMetadata := metadataFromIncomingContext(ctx)
+	isNonEnvdTraffic := isNonEnvdTrafficRequest(ctx, incomingMetadata, sandboxID)
 
 	// Validate traffic access token for sandboxes with private ingress.
-	if network != nil && network.Ingress != nil && network.Ingress.AllowPublicAccess != nil && !*network.Ingress.AllowPublicAccess && isNonEnvdTraffic {
+	if isPrivateIngressTraffic(network) && isNonEnvdTraffic {
 		expectedToken, tokenErr := s.api.accessTokenGenerator.GenerateTrafficAccessToken(sandboxID)
 		if tokenErr != nil {
 			logger.L().Error(ctx, "failed to generate expected traffic access token", zap.Error(tokenErr), logger.WithSandboxID(sandboxID))
@@ -119,12 +148,9 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 			return nil, status.Error(codes.Internal, "failed to validate traffic access token")
 		}
 
-		var providedToken string
-		if vals := incomingMetadata.Get(proxygrpc.MetadataTrafficAccessToken); len(vals) > 0 {
-			providedToken = vals[0]
-		}
+		providedToken, _ := metadataFirstValue(incomingMetadata, proxygrpc.MetadataTrafficAccessToken)
 
-		if subtle.ConstantTimeCompare([]byte(providedToken), []byte(expectedToken)) != 1 {
+		if !isExpectedTrafficAccessToken(providedToken, expectedToken) {
 			return nil, status.Error(codes.PermissionDenied, "invalid or missing traffic access token")
 		}
 	}
