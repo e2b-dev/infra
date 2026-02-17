@@ -25,6 +25,10 @@ func newRemoteClusterResourceProvider(instances *smap.Map[*Instance], client *ed
 	}
 }
 
+func (r *ClusterResourceProviderImpl) GetVolumeTypes(_ context.Context) ([]string, error) {
+	return []string{}, nil // byoc currently support no persistent volumes. implement this later, with appropriate caching
+}
+
 func (r *ClusterResourceProviderImpl) GetSandboxMetrics(ctx context.Context, teamID string, sandboxID string, qStart *int64, qEnd *int64) ([]api.SandboxMetric, *api.APIError) {
 	req := &edgeapi.V1SandboxMetricsParams{
 		TeamID: teamID,
