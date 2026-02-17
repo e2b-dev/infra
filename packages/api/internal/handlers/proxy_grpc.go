@@ -155,6 +155,15 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		}
 	}
 
+	// Validate envd access token for secure sandboxes on envd traffic
+	if !isNonEnvdTraffic && snap.Snapshot.EnvSecure && envdAccessToken != nil {
+		providedEnvdToken, _ := metadataFirstValue(incomingMetadata, proxygrpc.MetadataEnvdAccessToken)
+
+		if !isExpectedTrafficAccessToken(providedEnvdToken, *envdAccessToken) {
+			return nil, status.Error(codes.PermissionDenied, "invalid or missing envd access token")
+		}
+	}
+
 	headers := http.Header{}
 	sbx, apiErr := s.api.startSandboxInternal(
 		ctx,

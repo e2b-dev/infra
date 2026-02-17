@@ -41,11 +41,11 @@ const (
 	autoResumeErrored
 )
 
-func findActiveNode(ctx context.Context, sandboxId string, sandboxPort uint64, trafficAccessToken string, c catalog.SandboxesCatalog, pausedChecker PausedSandboxResumer, featureFlags *featureflags.Client) (string, error) {
+func findActiveNode(ctx context.Context, sandboxId string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string, c catalog.SandboxesCatalog, pausedChecker PausedSandboxResumer, featureFlags *featureflags.Client) (string, error) {
 	s, err := c.GetSandbox(ctx, sandboxId)
 	if err != nil {
 		if errors.Is(err, catalog.ErrSandboxNotFound) {
-			nodeIP, res, pausedErr := handlePausedSandbox(ctx, sandboxId, sandboxPort, trafficAccessToken, pausedChecker, featureFlags)
+			nodeIP, res, pausedErr := handlePausedSandbox(ctx, sandboxId, sandboxPort, trafficAccessToken, envdAccessToken, pausedChecker, featureFlags)
 			if pausedErr != nil {
 				return "", pausedErr
 			}
@@ -69,6 +69,7 @@ func handlePausedSandbox(
 	sandboxId string,
 	sandboxPort uint64,
 	trafficAccessToken string,
+	envdAccessToken string,
 	pausedChecker PausedSandboxResumer,
 	featureFlags *featureflags.Client,
 ) (string, autoResumeResult, error) {
@@ -83,7 +84,7 @@ func handlePausedSandbox(
 	}
 
 	logger.L().Info(ctx, "catalog miss, attempting resume via api", logger.WithSandboxID(sandboxId))
-	nodeIP, err := pausedChecker.Resume(ctx, sandboxId, sandboxPort, trafficAccessToken)
+	nodeIP, err := pausedChecker.Resume(ctx, sandboxId, sandboxPort, trafficAccessToken, envdAccessToken)
 	if err != nil {
 		if isNotResumableError(err) {
 			return "", autoResumeNotAllowed, nil
@@ -130,7 +131,8 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 			)
 
 			trafficAccessToken := r.Header.Get("e2b-traffic-access-token")
-			nodeIP, err := findActiveNode(ctx, sandboxId, port, trafficAccessToken, catalog, pausedSandboxResumer, featureFlagsClient)
+			envdAccessToken := r.Header.Get("X-Access-Token")
+			nodeIP, err := findActiveNode(ctx, sandboxId, port, trafficAccessToken, envdAccessToken, catalog, pausedSandboxResumer, featureFlagsClient)
 			if err != nil {
 				if !errors.Is(err, ErrNodeNotFound) {
 					l.Warn(ctx, "failed to resolve node ip with Redis resolution", zap.Error(err))
