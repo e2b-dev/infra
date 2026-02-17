@@ -31,7 +31,7 @@ func initializeHostStatsCollector(
 	firecrackerPID, err := fcHandle.Pid()
 	if err != nil {
 		logger.L().Error(ctx, "failed to get firecracker PID for host stats",
-			zap.String("sandbox_id", runtime.SandboxID),
+			logger.WithSandboxID(runtime.SandboxID),
 			zap.Error(err))
 
 		return
@@ -58,7 +58,7 @@ func initializeHostStatsCollector(
 	)
 	if err != nil {
 		logger.L().Error(ctx, "failed to create host stats collector",
-			zap.String("sandbox_id", runtime.SandboxID),
+			logger.WithSandboxID(runtime.SandboxID),
 			zap.Error(err))
 
 		return
