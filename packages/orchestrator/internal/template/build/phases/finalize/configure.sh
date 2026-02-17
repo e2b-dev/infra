@@ -21,7 +21,7 @@ if $bb [ -d /home/user ]; then
     HOME_EXISTED=true
 fi
 USER_CREATED=false
-ADDUSER_OUTPUT=$($bb adduser -D -g "" user 2>&1) && USER_CREATED=true || true
+ADDUSER_OUTPUT=$($bb adduser -D -g "" -s /bin/bash user 2>&1) && USER_CREATED=true || true
 echo "$ADDUSER_OUTPUT"
 if $bb [ "$HOME_EXISTED" = "true" ] && $bb [ "$USER_CREATED" = "true" ]; then
     echo "Copy skeleton files to /home/user"

@@ -58,7 +58,7 @@ func (u *User) Execute(
 			lvl,
 			prefix,
 			sandboxID,
-			fmt.Sprintf("%s adduser -D -g \"\" %s", rootfs.SandboxBusyBoxPath, userArg),
+			fmt.Sprintf("%s adduser -D -g \"\" -s /bin/bash %s", rootfs.SandboxBusyBoxPath, userArg),
 			metadata.Context{
 				User:    "root",
 				EnvVars: cmdMetadata.EnvVars,
