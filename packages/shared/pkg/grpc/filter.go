@@ -52,18 +52,8 @@ func (s *statsWrapper) HandleRPC(ctx context.Context, rs stats.RPCStats) {
 		return
 	}
 
-	// On InPayload for SandboxService/Create, extract isResume and store in the holder
-	// so that extractIsResume can read it when metrics are recorded.
-	if holder, ok := ctx.Value(isResumeHolderKey{}).(*IsResumeHolder); ok {
-		if payload, ok := rs.(*stats.InPayload); ok {
-			if req, ok := payload.Payload.(*orchestrator.SandboxCreateRequest); ok {
-				if sandbox := req.GetSandbox(); sandbox != nil {
-					isResume := sandbox.GetSnapshot()
-					holder.Value = isResume
-				}
-			}
-		}
-	}
+	// If SandboxService/Create, extract isResume and store in the holder
+	setIsResumeFromRS(ctx, rs)
 
 	s.statsHandler.HandleRPC(ctx, rs)
 }
@@ -82,4 +72,29 @@ func (s *statsWrapper) TagRPC(ctx context.Context, rti *stats.RPCTagInfo) contex
 	}
 
 	return s.statsHandler.TagRPC(ctx, rti)
+}
+
+// setIsResumeFromRS sets the isResume value in the context for SandboxService/Create
+func setIsResumeFromRS(ctx context.Context, rs any) {
+	holder, _ := ctx.Value(isResumeHolderKey{}).(*IsResumeHolder)
+	if holder == nil {
+		return
+	}
+
+	in, ok := rs.(*stats.InPayload)
+	if !ok || in == nil {
+		return
+	}
+
+	req, ok := in.Payload.(*orchestrator.SandboxCreateRequest)
+	if !ok || req == nil {
+		return
+	}
+
+	sb := req.GetSandbox()
+	if sb == nil {
+		return
+	}
+
+	holder.Value = sb.GetSnapshot()
 }
