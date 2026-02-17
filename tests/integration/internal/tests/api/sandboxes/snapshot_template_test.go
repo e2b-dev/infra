@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -258,6 +259,61 @@ func TestSnapshotTemplateCreateSandbox(t *testing.T) {
 		assert.NotEqual(t, sbx.SandboxID, newSandbox.SandboxID)
 		assert.Equal(t, snapshot.SnapshotID, newSandbox.TemplateID)
 	})
+
+	t.Run("overwritten snapshot build is served immediately on sandbox create", func(t *testing.T) {
+		t.Parallel()
+		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false))
+
+		name := "overwrite-snap-" + sbx.SandboxID
+
+		// First snapshot — creates a new template with a build for the default tag
+		snap := createSnapshotTemplateWithCleanup(t, c, sbx.SandboxID, &name)
+		require.NotEmpty(t, snap.Names)
+
+		tagsResp1, err := c.GetTemplatesTemplateIDTagsWithResponse(t.Context(), snap.SnapshotID, setup.WithAPIKey())
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, tagsResp1.StatusCode())
+		require.NotNil(t, tagsResp1.JSON200)
+		require.NotEmpty(t, *tagsResp1.JSON200)
+		build1ID := findDefaultTagBuildID(t, *tagsResp1.JSON200)
+
+		// Second snapshot with the same name — reuses the template, creates a new build
+		snap2Resp := createSnapshotTemplate(t, c, sbx.SandboxID, &name)
+		require.Equal(t, http.StatusCreated, snap2Resp.StatusCode())
+		require.NotNil(t, snap2Resp.JSON201)
+		assert.Equal(t, snap.SnapshotID, snap2Resp.JSON201.SnapshotID, "same template ID should be reused")
+
+		// Verify the default tag now points to a different (newer) build
+		tagsResp2, err := c.GetTemplatesTemplateIDTagsWithResponse(t.Context(), snap.SnapshotID, setup.WithAPIKey())
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, tagsResp2.StatusCode())
+		require.NotNil(t, tagsResp2.JSON200)
+		require.NotEmpty(t, *tagsResp2.JSON200)
+		build2ID := findDefaultTagBuildID(t, *tagsResp2.JSON200)
+		require.NotEqual(t, build1ID, build2ID, "second snapshot should produce a new build for the same tag")
+
+		// Create a sandbox from the snapshot name — the template cache must have been
+		// invalidated so the latest build is resolved, not the stale first one.
+		newSbx := utils.SetupSandboxWithCleanup(t, c,
+			utils.WithTemplateID(snap.Names[0]),
+			utils.WithAutoPause(false),
+		)
+		assert.Equal(t, snap.SnapshotID, newSbx.TemplateID)
+	})
+}
+
+func findDefaultTagBuildID(t *testing.T, tags []api.TemplateTag) openapi_types.UUID {
+	t.Helper()
+
+	for _, tag := range tags {
+		if tag.Tag == "default" {
+			return tag.BuildID
+		}
+	}
+
+	t.Fatal("no 'default' tag found in template tags")
+
+	return openapi_types.UUID{}
 }
 
 // waitForSnapshotting polls the database until a build with status 'snapshotting'
