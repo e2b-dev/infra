@@ -13,8 +13,10 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/connlimit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
@@ -30,12 +32,29 @@ const (
 	trafficAccessTokenHeader = "e2b-traffic-access-token"
 )
 
+var _ sandbox.MapSubscriber = (*SandboxProxy)(nil)
+
 type SandboxProxy struct {
-	proxy *reverseproxy.Proxy
+	proxy   *reverseproxy.Proxy
+	limiter *connlimit.ConnectionLimiter
 }
 
-func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes *sandbox.Map) (*SandboxProxy, error) {
+func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes *sandbox.Map, featureFlags *featureflags.Client) (*SandboxProxy, error) {
 	getTargetFromRequest := reverseproxy.GetTargetFromRequest(env.IsLocal())
+	limiter := connlimit.NewConnectionLimiter()
+	metrics := NewMetrics(meterProvider)
+
+	meter := meterProvider.Meter("orchestrator.proxy.sandbox")
+
+	connLimitConfig := &reverseproxy.ConnectionLimitConfig{
+		Limiter: limiter,
+		GetMaxLimit: func(ctx context.Context) int {
+			return featureFlags.IntFlag(ctx, featureflags.SandboxMaxIncomingConnections)
+		},
+		OnConnectionAcquired: metrics.RecordConnectionsPerSandbox,
+		OnConnectionReleased: metrics.RecordConnectionDuration,
+		OnConnectionBlocked:  metrics.RecordConnectionBlocked,
+	}
 
 	proxy := reverseproxy.New(
 		port,
@@ -109,13 +128,13 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 				MaskRequestHost: maskRequestHost,
 			}, nil
 		},
+		connLimitConfig,
 		// We are not using keepalives for orchestrator proxy,
 		// because the servers inside of the sandbox can be unstable (restarts),
 		// and we are also on the same host, so the overhead is minimal.
 		true,
 	)
 
-	meter := meterProvider.Meter("orchestrator.proxy.sandbox")
 	_, err := telemetry.GetObservableUpDownCounter(meter, telemetry.OrchestratorProxyServerConnectionsMeterCounterName, func(_ context.Context, observer metric.Int64Observer) error {
 		observer.Observe(proxy.CurrentServerConnections())
 
@@ -143,7 +162,15 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 		return nil, fmt.Errorf("error registering orchestrator proxy pool size metric (%s): %w", telemetry.OrchestratorProxyPoolSizeMeterCounterName, err)
 	}
 
-	return &SandboxProxy{proxy}, nil
+	sandboxProxy := &SandboxProxy{
+		proxy:   proxy,
+		limiter: limiter,
+	}
+
+	// Subscribe to sandbox events for cleanup
+	sandboxes.Subscribe(sandboxProxy)
+
+	return sandboxProxy, nil
 }
 
 func (p *SandboxProxy) Start(ctx context.Context) error {
@@ -171,4 +198,13 @@ func (p *SandboxProxy) RemoveFromPool(connectionKey string) error {
 
 func (p *SandboxProxy) GetAddr() string {
 	return p.proxy.Addr
+}
+
+// OnInsert is called when a sandbox is inserted into the map.
+func (p *SandboxProxy) OnInsert(_ *sandbox.Sandbox) {}
+
+// OnRemove is called when a sandbox is removed from the map.
+// It cleans up the connection limiter entry for the sandbox.
+func (p *SandboxProxy) OnRemove(sandboxID string) {
+	p.limiter.Remove(sandboxID)
 }

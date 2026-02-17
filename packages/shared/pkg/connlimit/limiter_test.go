@@ -1,4 +1,4 @@
-package tcpfirewall
+package connlimit
 
 import (
 	"sync"

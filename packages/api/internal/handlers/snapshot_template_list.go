@@ -10,6 +10,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -76,8 +77,13 @@ func (a *APIStore) GetSnapshots(c *gin.Context, params api.GetSnapshotsParams) {
 	})
 
 	result := sharedUtils.Map(snapshots, func(snap queries.ListTeamSnapshotTemplatesRow) api.SnapshotInfo {
+		snapshotID := id.WithTag(snap.SnapshotID, snap.Tag)
+		if len(snap.Names) > 0 {
+			snapshotID = id.WithTag(snap.Names[0], snap.Tag)
+		}
+
 		return api.SnapshotInfo{
-			SnapshotID: snap.SnapshotID,
+			SnapshotID: snapshotID,
 			Names:      snap.Names,
 		}
 	})

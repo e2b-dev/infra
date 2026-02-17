@@ -2,10 +2,12 @@ package sandboxes
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -66,8 +68,11 @@ func TestSnapshotTemplateCreate(t *testing.T) {
 		snapshot := createSnapshotTemplateWithCleanup(t, c, sbx.SandboxID, &name)
 
 		assert.NotEmpty(t, snapshot.SnapshotID)
+		assert.Contains(t, snapshot.SnapshotID, name, "snapshotID should contain the alias")
+		assert.Contains(t, snapshot.SnapshotID, ":default", "snapshotID should contain the tag")
 		require.NotEmpty(t, snapshot.Names)
 		assert.Contains(t, snapshot.Names[0], name)
+		assert.NotContains(t, snapshot.Names[0], ":default", "names should not include the tag suffix")
 
 		// Creating again with the same name should reuse the same template
 		resp2 := createSnapshotTemplate(t, c, sbx.SandboxID, &name)
@@ -84,16 +89,20 @@ func TestSnapshotTemplateCreate(t *testing.T) {
 		nameV1 := "tagged-snap-" + sbx.SandboxID + ":v1"
 		snapshot := createSnapshotTemplateWithCleanup(t, c, sbx.SandboxID, &nameV1)
 		require.NotEmpty(t, snapshot.Names)
-		assert.Contains(t, snapshot.Names[0], ":v1")
+		assert.NotContains(t, snapshot.Names[0], ":", "names should be tagless")
 
 		// Same alias with different tag should reuse the template
 		nameV2 := "tagged-snap-" + sbx.SandboxID + ":v2"
 		resp2 := createSnapshotTemplate(t, c, sbx.SandboxID, &nameV2)
 		require.Equal(t, http.StatusCreated, resp2.StatusCode())
 		require.NotNil(t, resp2.JSON201)
-		assert.Equal(t, snapshot.SnapshotID, resp2.JSON201.SnapshotID, "Same alias with different tag should reuse the same template")
+		templateID1, _, _ := strings.Cut(snapshot.SnapshotID, ":")
+		templateID2, _, _ := strings.Cut(resp2.JSON201.SnapshotID, ":")
+		assert.Equal(t, templateID1, templateID2, "Same alias with different tag should reuse the same template")
+		assert.Contains(t, snapshot.SnapshotID, ":v1")
+		assert.Contains(t, resp2.JSON201.SnapshotID, ":v2")
 		require.NotEmpty(t, resp2.JSON201.Names)
-		assert.Contains(t, resp2.JSON201.Names[0], ":v2")
+		assert.NotContains(t, resp2.JSON201.Names[0], ":", "names should be tagless")
 	})
 
 	t.Run("create snapshot for non-existent sandbox", func(t *testing.T) {
@@ -228,7 +237,8 @@ func TestSnapshotTemplateCreateSandbox(t *testing.T) {
 		})
 
 		assert.NotEqual(t, sbx.SandboxID, newSandbox.SandboxID)
-		assert.Equal(t, snapshot.SnapshotID, newSandbox.TemplateID)
+		snapshotTemplateID, _, _ := strings.Cut(snapshot.SnapshotID, ":")
+		assert.Equal(t, snapshotTemplateID, newSandbox.TemplateID)
 	})
 
 	t.Run("create sandbox from named snapshot using name", func(t *testing.T) {
@@ -256,8 +266,75 @@ func TestSnapshotTemplateCreateSandbox(t *testing.T) {
 		})
 
 		assert.NotEqual(t, sbx.SandboxID, newSandbox.SandboxID)
-		assert.Equal(t, snapshot.SnapshotID, newSandbox.TemplateID)
+		assert.NotEmpty(t, newSandbox.TemplateID)
 	})
+
+	t.Run("overwritten snapshot build is served immediately on sandbox create", func(t *testing.T) {
+		t.Parallel()
+		ctx := t.Context()
+		envdClient := setup.GetEnvdClient(t, ctx)
+		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false))
+
+		name := "overwrite-snap-" + sbx.SandboxID
+
+		// First snapshot — creates a new template with build B1 (no marker file)
+		snap := createSnapshotTemplateWithCleanup(t, c, sbx.SandboxID, &name)
+		require.NotEmpty(t, snap.Names)
+
+		tagsResp1, err := c.GetTemplatesTemplateIDTagsWithResponse(ctx, snap.SnapshotID, setup.WithAPIKey())
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, tagsResp1.StatusCode())
+		require.NotNil(t, tagsResp1.JSON200)
+		require.NotEmpty(t, *tagsResp1.JSON200)
+		build1ID := findDefaultTagBuildID(t, *tagsResp1.JSON200)
+
+		// Write a marker file into the running sandbox so the next snapshot captures it
+		err = utils.ExecCommand(t, ctx, sbx, envdClient, "/bin/sh", "-c", "echo snapshot-v2 > /tmp/snapshot-marker")
+		require.NoError(t, err, "failed to write marker file")
+
+		// Second snapshot with the same name — reuses the template, creates build B2 (has marker)
+		snap2Resp := createSnapshotTemplate(t, c, sbx.SandboxID, &name)
+		require.Equal(t, http.StatusCreated, snap2Resp.StatusCode())
+		require.NotNil(t, snap2Resp.JSON201)
+		assert.Equal(t, snap.SnapshotID, snap2Resp.JSON201.SnapshotID, "same template ID should be reused")
+
+		// Verify the default tag now points to a different (newer) build
+		tagsResp2, err := c.GetTemplatesTemplateIDTagsWithResponse(ctx, snap.SnapshotID, setup.WithAPIKey())
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, tagsResp2.StatusCode())
+		require.NotNil(t, tagsResp2.JSON200)
+		require.NotEmpty(t, *tagsResp2.JSON200)
+		build2ID := findDefaultTagBuildID(t, *tagsResp2.JSON200)
+		require.NotEqual(t, build1ID, build2ID, "second snapshot should produce a new build for the same tag")
+
+		// Create a sandbox from the snapshot name — the template cache must have been
+		// invalidated so the latest build (B2) is resolved, not the stale first one (B1).
+		newSbx := utils.SetupSandboxWithCleanup(t, c,
+			utils.WithTemplateID(snap.Names[0]),
+			utils.WithAutoPause(false),
+		)
+		assert.NotEmpty(t, newSbx.TemplateID)
+
+		// Read the marker file — it only exists in B2. If the cache served
+		// stale B1, the file would be missing.
+		output, err := utils.ExecCommandWithOutput(t, ctx, newSbx, envdClient, nil, "user", "cat", "/tmp/snapshot-marker")
+		require.NoError(t, err, "marker file missing: sandbox was likely created from stale cached build")
+		assert.Equal(t, "snapshot-v2\n", output)
+	})
+}
+
+func findDefaultTagBuildID(t *testing.T, tags []api.TemplateTag) openapi_types.UUID {
+	t.Helper()
+
+	for _, tag := range tags {
+		if tag.Tag == "default" {
+			return tag.BuildID
+		}
+	}
+
+	t.Fatal("no 'default' tag found in template tags")
+
+	return openapi_types.UUID{}
 }
 
 // waitForSnapshotting polls the database until a build with status 'snapshotting'
