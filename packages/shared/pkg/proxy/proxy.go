@@ -8,9 +8,20 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/connlimit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/tracking"
 )
+
+// ConnectionLimitConfig bundles connection limiting and associated metric callbacks.
+// When nil is passed, connection limiting is disabled.
+type ConnectionLimitConfig struct {
+	Limiter              *connlimit.ConnectionLimiter
+	GetMaxLimit          func(ctx context.Context) int
+	OnConnectionAcquired func(ctx context.Context, count int64)
+	OnConnectionReleased func(ctx context.Context, durationMs int64)
+	OnConnectionBlocked  func(ctx context.Context)
+}
 
 const (
 	maxClientConns                      = 16384 // Reasonably big number that is lower than the number of available ports.
@@ -36,6 +47,7 @@ func New(
 	maxConnectionAttempts MaxConnectionAttempts,
 	idleTimeout time.Duration,
 	getDestination func(r *http.Request) (*pool.Destination, error),
+	connLimitConfig *ConnectionLimitConfig,
 	disableKeepAlives bool,
 ) *Proxy {
 	p := pool.New(
@@ -54,7 +66,7 @@ func New(
 			// otherwise there's a chance for a race condition when the server closes and the client tries to use the connection
 			IdleTimeout:       idleTimeout + idleTimeoutBufferUpstreamDownstream,
 			ReadHeaderTimeout: 0,
-			Handler:           handler(p, getDestination),
+			Handler:           handler(p, getDestination, connLimitConfig),
 		},
 		pool: p,
 	}

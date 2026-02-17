@@ -467,10 +467,6 @@ type Node struct {
 	// Metrics Node metrics
 	Metrics NodeMetrics `json:"metrics"`
 
-	// NodeID Identifier of the nomad node
-	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-	NodeID string `json:"nodeID"`
-
 	// SandboxCount Number of sandboxes running on the node
 	SandboxCount uint32 `json:"sandboxCount"`
 
@@ -511,12 +507,8 @@ type NodeDetail struct {
 	// Metrics Node metrics
 	Metrics NodeMetrics `json:"metrics"`
 
-	// NodeID Identifier of the nomad node
-	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-	NodeID string `json:"nodeID"`
-
-	// Sandboxes List of sandboxes running on the node
-	Sandboxes []ListedSandbox `json:"sandboxes"`
+	// SandboxCount Number of sandboxes running on the node
+	SandboxCount uint32 `json:"sandboxCount"`
 
 	// ServiceInstanceID Service instance identifier of the node
 	ServiceInstanceID string `json:"serviceInstanceID"`
@@ -755,6 +747,15 @@ type SandboxVolumeMount struct {
 // SandboxesWithMetrics defines model for SandboxesWithMetrics.
 type SandboxesWithMetrics struct {
 	Sandboxes map[string]SandboxMetric `json:"sandboxes"`
+}
+
+// SnapshotInfo defines model for SnapshotInfo.
+type SnapshotInfo struct {
+	// Names Full names of the snapshot template including team namespace and tag (e.g. team-slug/my-snapshot:v2)
+	Names []string `json:"names"`
+
+	// SnapshotID Identifier of the snapshot template including the tag. Uses namespace/alias when a name was provided (e.g. team-slug/my-snapshot:default), otherwise falls back to the raw template ID (e.g. abc123:default).
+	SnapshotID string `json:"snapshotID"`
 }
 
 // Team defines model for Team.
@@ -1286,10 +1287,27 @@ type PostSandboxesSandboxIDRefreshesJSONBody struct {
 	Duration *int `json:"duration,omitempty"`
 }
 
+// PostSandboxesSandboxIDSnapshotsJSONBody defines parameters for PostSandboxesSandboxIDSnapshots.
+type PostSandboxesSandboxIDSnapshotsJSONBody struct {
+	// Name Optional name for the snapshot template. If a snapshot template with this name already exists, a new build will be assigned to the existing template instead of creating a new one.
+	Name *string `json:"name,omitempty"`
+}
+
 // PostSandboxesSandboxIDTimeoutJSONBody defines parameters for PostSandboxesSandboxIDTimeout.
 type PostSandboxesSandboxIDTimeoutJSONBody struct {
 	// Timeout Timeout in seconds from the current time after which the sandbox should expire
 	Timeout int32 `json:"timeout"`
+}
+
+// GetSnapshotsParams defines parameters for GetSnapshots.
+type GetSnapshotsParams struct {
+	SandboxID *string `form:"sandboxID,omitempty" json:"sandboxID,omitempty"`
+
+	// Limit Maximum number of items to return per page
+	Limit *PaginationLimit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// NextToken Cursor to start the list from
+	NextToken *PaginationNextToken `form:"nextToken,omitempty" json:"nextToken,omitempty"`
 }
 
 // GetTeamsTeamIDMetricsParams defines parameters for GetTeamsTeamIDMetrics.
@@ -1462,6 +1480,9 @@ type PostSandboxesSandboxIDRefreshesJSONRequestBody PostSandboxesSandboxIDRefres
 
 // PostSandboxesSandboxIDResumeJSONRequestBody defines body for PostSandboxesSandboxIDResume for application/json ContentType.
 type PostSandboxesSandboxIDResumeJSONRequestBody = ResumedSandbox
+
+// PostSandboxesSandboxIDSnapshotsJSONRequestBody defines body for PostSandboxesSandboxIDSnapshots for application/json ContentType.
+type PostSandboxesSandboxIDSnapshotsJSONRequestBody PostSandboxesSandboxIDSnapshotsJSONBody
 
 // PostSandboxesSandboxIDTimeoutJSONRequestBody defines body for PostSandboxesSandboxIDTimeout for application/json ContentType.
 type PostSandboxesSandboxIDTimeoutJSONRequestBody PostSandboxesSandboxIDTimeoutJSONBody
@@ -1770,10 +1791,18 @@ type ClientInterface interface {
 
 	PostSandboxesSandboxIDResume(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDResumeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// PostSandboxesSandboxIDSnapshotsWithBody request with any body
+	PostSandboxesSandboxIDSnapshotsWithBody(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PostSandboxesSandboxIDSnapshots(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDSnapshotsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// PostSandboxesSandboxIDTimeoutWithBody request with any body
 	PostSandboxesSandboxIDTimeoutWithBody(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	PostSandboxesSandboxIDTimeout(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDTimeoutJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetSnapshots request
+	GetSnapshots(ctx context.Context, params *GetSnapshotsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetTeams request
 	GetTeams(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -2258,6 +2287,30 @@ func (c *Client) PostSandboxesSandboxIDResume(ctx context.Context, sandboxID San
 	return c.Client.Do(req)
 }
 
+func (c *Client) PostSandboxesSandboxIDSnapshotsWithBody(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostSandboxesSandboxIDSnapshotsRequestWithBody(c.Server, sandboxID, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostSandboxesSandboxIDSnapshots(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDSnapshotsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostSandboxesSandboxIDSnapshotsRequest(c.Server, sandboxID, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) PostSandboxesSandboxIDTimeoutWithBody(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPostSandboxesSandboxIDTimeoutRequestWithBody(c.Server, sandboxID, contentType, body)
 	if err != nil {
@@ -2272,6 +2325,18 @@ func (c *Client) PostSandboxesSandboxIDTimeoutWithBody(ctx context.Context, sand
 
 func (c *Client) PostSandboxesSandboxIDTimeout(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDTimeoutJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPostSandboxesSandboxIDTimeoutRequest(c.Server, sandboxID, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetSnapshots(ctx context.Context, params *GetSnapshotsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSnapshotsRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -3744,6 +3809,53 @@ func NewPostSandboxesSandboxIDResumeRequestWithBody(server string, sandboxID San
 	return req, nil
 }
 
+// NewPostSandboxesSandboxIDSnapshotsRequest calls the generic PostSandboxesSandboxIDSnapshots builder with application/json body
+func NewPostSandboxesSandboxIDSnapshotsRequest(server string, sandboxID SandboxID, body PostSandboxesSandboxIDSnapshotsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPostSandboxesSandboxIDSnapshotsRequestWithBody(server, sandboxID, "application/json", bodyReader)
+}
+
+// NewPostSandboxesSandboxIDSnapshotsRequestWithBody generates requests for PostSandboxesSandboxIDSnapshots with any type of body
+func NewPostSandboxesSandboxIDSnapshotsRequestWithBody(server string, sandboxID SandboxID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "sandboxID", runtime.ParamLocationPath, sandboxID)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/sandboxes/%s/snapshots", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewPostSandboxesSandboxIDTimeoutRequest calls the generic PostSandboxesSandboxIDTimeout builder with application/json body
 func NewPostSandboxesSandboxIDTimeoutRequest(server string, sandboxID SandboxID, body PostSandboxesSandboxIDTimeoutJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -3787,6 +3899,87 @@ func NewPostSandboxesSandboxIDTimeoutRequestWithBody(server string, sandboxID Sa
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetSnapshotsRequest generates requests for GetSnapshots
+func NewGetSnapshotsRequest(server string, params *GetSnapshotsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/snapshots")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.SandboxID != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "sandboxID", runtime.ParamLocationQuery, *params.SandboxID); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.NextToken != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "nextToken", runtime.ParamLocationQuery, *params.NextToken); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -5851,10 +6044,18 @@ type ClientWithResponsesInterface interface {
 
 	PostSandboxesSandboxIDResumeWithResponse(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDResumeJSONRequestBody, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDResumeResponse, error)
 
+	// PostSandboxesSandboxIDSnapshotsWithBodyWithResponse request with any body
+	PostSandboxesSandboxIDSnapshotsWithBodyWithResponse(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDSnapshotsResponse, error)
+
+	PostSandboxesSandboxIDSnapshotsWithResponse(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDSnapshotsJSONRequestBody, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDSnapshotsResponse, error)
+
 	// PostSandboxesSandboxIDTimeoutWithBodyWithResponse request with any body
 	PostSandboxesSandboxIDTimeoutWithBodyWithResponse(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDTimeoutResponse, error)
 
 	PostSandboxesSandboxIDTimeoutWithResponse(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDTimeoutJSONRequestBody, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDTimeoutResponse, error)
+
+	// GetSnapshotsWithResponse request
+	GetSnapshotsWithResponse(ctx context.Context, params *GetSnapshotsParams, reqEditors ...RequestEditorFn) (*GetSnapshotsResponse, error)
 
 	// GetTeamsWithResponse request
 	GetTeamsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetTeamsResponse, error)
@@ -6519,6 +6720,32 @@ func (r PostSandboxesSandboxIDResumeResponse) StatusCode() int {
 	return 0
 }
 
+type PostSandboxesSandboxIDSnapshotsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *SnapshotInfo
+	JSON400      *N400
+	JSON401      *N401
+	JSON404      *N404
+	JSON500      *N500
+}
+
+// Status returns HTTPResponse.Status
+func (r PostSandboxesSandboxIDSnapshotsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostSandboxesSandboxIDSnapshotsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type PostSandboxesSandboxIDTimeoutResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -6537,6 +6764,30 @@ func (r PostSandboxesSandboxIDTimeoutResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r PostSandboxesSandboxIDTimeoutResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetSnapshotsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *[]SnapshotInfo
+	JSON401      *N401
+	JSON500      *N500
+}
+
+// Status returns HTTPResponse.Status
+func (r GetSnapshotsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetSnapshotsResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -7630,6 +7881,23 @@ func (c *ClientWithResponses) PostSandboxesSandboxIDResumeWithResponse(ctx conte
 	return ParsePostSandboxesSandboxIDResumeResponse(rsp)
 }
 
+// PostSandboxesSandboxIDSnapshotsWithBodyWithResponse request with arbitrary body returning *PostSandboxesSandboxIDSnapshotsResponse
+func (c *ClientWithResponses) PostSandboxesSandboxIDSnapshotsWithBodyWithResponse(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDSnapshotsResponse, error) {
+	rsp, err := c.PostSandboxesSandboxIDSnapshotsWithBody(ctx, sandboxID, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostSandboxesSandboxIDSnapshotsResponse(rsp)
+}
+
+func (c *ClientWithResponses) PostSandboxesSandboxIDSnapshotsWithResponse(ctx context.Context, sandboxID SandboxID, body PostSandboxesSandboxIDSnapshotsJSONRequestBody, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDSnapshotsResponse, error) {
+	rsp, err := c.PostSandboxesSandboxIDSnapshots(ctx, sandboxID, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostSandboxesSandboxIDSnapshotsResponse(rsp)
+}
+
 // PostSandboxesSandboxIDTimeoutWithBodyWithResponse request with arbitrary body returning *PostSandboxesSandboxIDTimeoutResponse
 func (c *ClientWithResponses) PostSandboxesSandboxIDTimeoutWithBodyWithResponse(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDTimeoutResponse, error) {
 	rsp, err := c.PostSandboxesSandboxIDTimeoutWithBody(ctx, sandboxID, contentType, body, reqEditors...)
@@ -7645,6 +7913,15 @@ func (c *ClientWithResponses) PostSandboxesSandboxIDTimeoutWithResponse(ctx cont
 		return nil, err
 	}
 	return ParsePostSandboxesSandboxIDTimeoutResponse(rsp)
+}
+
+// GetSnapshotsWithResponse request returning *GetSnapshotsResponse
+func (c *ClientWithResponses) GetSnapshotsWithResponse(ctx context.Context, params *GetSnapshotsParams, reqEditors ...RequestEditorFn) (*GetSnapshotsResponse, error) {
+	rsp, err := c.GetSnapshots(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetSnapshotsResponse(rsp)
 }
 
 // GetTeamsWithResponse request returning *GetTeamsResponse
@@ -8997,6 +9274,60 @@ func ParsePostSandboxesSandboxIDResumeResponse(rsp *http.Response) (*PostSandbox
 	return response, nil
 }
 
+// ParsePostSandboxesSandboxIDSnapshotsResponse parses an HTTP response from a PostSandboxesSandboxIDSnapshotsWithResponse call
+func ParsePostSandboxesSandboxIDSnapshotsResponse(rsp *http.Response) (*PostSandboxesSandboxIDSnapshotsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostSandboxesSandboxIDSnapshotsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest SnapshotInfo
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParsePostSandboxesSandboxIDTimeoutResponse parses an HTTP response from a PostSandboxesSandboxIDTimeoutWithResponse call
 func ParsePostSandboxesSandboxIDTimeoutResponse(rsp *http.Response) (*PostSandboxesSandboxIDTimeoutResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -9024,6 +9355,46 @@ func ParsePostSandboxesSandboxIDTimeoutResponse(rsp *http.Response) (*PostSandbo
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetSnapshotsResponse parses an HTTP response from a GetSnapshotsWithResponse call
+func ParseGetSnapshotsResponse(rsp *http.Response) (*GetSnapshotsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetSnapshotsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []SnapshotInfo
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest N500
@@ -10529,8 +10900,14 @@ type ServerInterface interface {
 	// (POST /sandboxes/{sandboxID}/resume)
 	PostSandboxesSandboxIDResume(c *gin.Context, sandboxID SandboxID)
 
+	// (POST /sandboxes/{sandboxID}/snapshots)
+	PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID SandboxID)
+
 	// (POST /sandboxes/{sandboxID}/timeout)
 	PostSandboxesSandboxIDTimeout(c *gin.Context, sandboxID SandboxID)
+
+	// (GET /snapshots)
+	GetSnapshots(c *gin.Context, params GetSnapshotsParams)
 
 	// (GET /teams)
 	GetTeams(c *gin.Context)
@@ -11260,6 +11637,36 @@ func (siw *ServerInterfaceWrapper) PostSandboxesSandboxIDResume(c *gin.Context) 
 	siw.Handler.PostSandboxesSandboxIDResume(c, sandboxID)
 }
 
+// PostSandboxesSandboxIDSnapshots operation middleware
+func (siw *ServerInterfaceWrapper) PostSandboxesSandboxIDSnapshots(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "sandboxID" -------------
+	var sandboxID SandboxID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sandboxID", c.Param("sandboxID"), &sandboxID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter sandboxID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(ApiKeyAuthScopes, []string{})
+
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.PostSandboxesSandboxIDSnapshots(c, sandboxID)
+}
+
 // PostSandboxesSandboxIDTimeout operation middleware
 func (siw *ServerInterfaceWrapper) PostSandboxesSandboxIDTimeout(c *gin.Context) {
 
@@ -11288,6 +11695,54 @@ func (siw *ServerInterfaceWrapper) PostSandboxesSandboxIDTimeout(c *gin.Context)
 	}
 
 	siw.Handler.PostSandboxesSandboxIDTimeout(c, sandboxID)
+}
+
+// GetSnapshots operation middleware
+func (siw *ServerInterfaceWrapper) GetSnapshots(c *gin.Context) {
+
+	var err error
+
+	c.Set(ApiKeyAuthScopes, []string{})
+
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetSnapshotsParams
+
+	// ------------- Optional query parameter "sandboxID" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "sandboxID", c.Request.URL.Query(), &params.SandboxID)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter sandboxID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", c.Request.URL.Query(), &params.Limit)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter limit: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "nextToken" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "nextToken", c.Request.URL.Query(), &params.NextToken)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter nextToken: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetSnapshots(c, params)
 }
 
 // GetTeams operation middleware
@@ -12745,7 +13200,9 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/sandboxes/:sandboxID/pause", wrapper.PostSandboxesSandboxIDPause)
 	router.POST(options.BaseURL+"/sandboxes/:sandboxID/refreshes", wrapper.PostSandboxesSandboxIDRefreshes)
 	router.POST(options.BaseURL+"/sandboxes/:sandboxID/resume", wrapper.PostSandboxesSandboxIDResume)
+	router.POST(options.BaseURL+"/sandboxes/:sandboxID/snapshots", wrapper.PostSandboxesSandboxIDSnapshots)
 	router.POST(options.BaseURL+"/sandboxes/:sandboxID/timeout", wrapper.PostSandboxesSandboxIDTimeout)
+	router.GET(options.BaseURL+"/snapshots", wrapper.GetSnapshots)
 	router.GET(options.BaseURL+"/teams", wrapper.GetTeams)
 	router.GET(options.BaseURL+"/teams/:teamID/metrics", wrapper.GetTeamsTeamIDMetrics)
 	router.GET(options.BaseURL+"/teams/:teamID/metrics/max", wrapper.GetTeamsTeamIDMetricsMax)
@@ -12785,158 +13242,164 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"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",
-	"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",
+	"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",
-	"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",
+	"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",
-	"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",
+	"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",
+	"unn4/wEAAP//GYwStJwsAQA=",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

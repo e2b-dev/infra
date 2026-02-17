@@ -15,8 +15,7 @@ import (
 )
 
 func (a *APIStore) GetNodes(c *gin.Context) {
-	ctx := c.Request.Context()
-	result, err := a.orchestrator.AdminNodes(ctx)
+	result, err := a.orchestrator.AdminNodes()
 	if err != nil {
 		telemetry.ReportCriticalError(c.Request.Context(), "error when getting nodes", err)
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting nodes")
@@ -28,10 +27,8 @@ func (a *APIStore) GetNodes(c *gin.Context) {
 }
 
 func (a *APIStore) GetNodesNodeID(c *gin.Context, nodeID api.NodeID, params api.GetNodesNodeIDParams) {
-	ctx := c.Request.Context()
-
 	clusterID := clusters.WithClusterFallback(params.ClusterID)
-	result, err := a.orchestrator.AdminNodeDetail(ctx, clusterID, nodeID)
+	result, err := a.orchestrator.AdminNodeDetail(clusterID, nodeID)
 	if err != nil {
 		if errors.Is(err, orchestrator.ErrNodeNotFound) {
 			c.Status(http.StatusNotFound)
@@ -61,7 +58,7 @@ func (a *APIStore) PostNodesNodeID(c *gin.Context, nodeId api.NodeID) {
 	}
 
 	clusterID := clusters.WithClusterFallback(body.ClusterID)
-	node := a.orchestrator.GetNodeByIDOrNomadShortID(clusterID, nodeId)
+	node := a.orchestrator.GetNode(clusterID, nodeId)
 	if node == nil {
 		c.Status(http.StatusNotFound)
 

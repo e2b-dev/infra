@@ -78,6 +78,10 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 			a.sendAPIStoreError(c, http.StatusNotFound, "Sandbox can't be resumed, no snapshot found")
 
 			return
+		case sandbox.StateSnapshotting:
+			a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Sandbox snapshot is currently being created for sandbox '%s'", sandboxID))
+
+			return
 		case sandbox.StateRunning:
 			a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Sandbox %s is already running", sandboxID))
 

@@ -8,9 +8,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	"github.com/e2b-dev/infra/packages/db/queries"
-	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -63,15 +61,10 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		return
 	}
 
-	// Get exclusive builds for cleanup (builds only assigned to this template).
-	builds, err := a.sqlcDB.GetExclusiveBuildsForTemplateDeletion(ctx, templateID)
-	if err != nil {
-		telemetry.ReportError(ctx, "failed to get exclusive builds", fmt.Errorf("failed to get exclusive builds: %w", err), telemetry.WithTemplateID(templateID))
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting template builds")
-
-		return
-	}
-
+	// Delete the template from DB (cascades to env_build_assignments, env_aliases, snapshot_templates).
+	// Build artifacts are intentionally NOT deleted from storage here because builds are layered diffs
+	// that may be referenced by other builds' header mappings.
+	// [ENG-3477] a future GC mechanism will handle orphaned storage.
 	err = a.sqlcDB.DeleteTemplate(ctx, queries.DeleteTemplateParams{
 		TemplateID: templateID,
 		TeamID:     team.ID,
@@ -81,29 +74,6 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when deleting template")
 
 		return
-	}
-
-	buildIds := make([]template_manager.DeleteBuild, 0)
-	for _, build := range builds {
-		// Skip if there was no build
-		if build.ClusterNodeID == nil {
-			continue
-		}
-
-		buildIds = append(buildIds, template_manager.DeleteBuild{
-			BuildID:    build.BuildID,
-			TemplateID: templateID,
-			ClusterID:  clusters.WithClusterFallback(team.ClusterID),
-			NodeID:     *build.ClusterNodeID,
-		})
-	}
-
-	// Delete all builds.
-	err = a.templateManager.DeleteBuilds(ctx, buildIds)
-	if err != nil {
-		telemetry.ReportCriticalError(ctx, "error when deleting template files from storage", err)
-	} else {
-		telemetry.ReportEvent(ctx, "deleted template from storage")
 	}
 
 	a.templateCache.InvalidateAllTags(templateID)
@@ -116,5 +86,5 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 
 	logger.L().Info(ctx, "Deleted template", logger.WithTemplateID(templateID), logger.WithTeamID(team.ID.String()))
 
-	c.JSON(http.StatusOK, nil)
+	c.Status(http.StatusNoContent)
 }

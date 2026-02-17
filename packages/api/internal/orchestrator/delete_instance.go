@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"go.uber.org/zap"
@@ -33,18 +34,22 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, sbx sandbox.Sandbox, s
 				return ErrSandboxOperationFailed
 			}
 		case sandbox.StateActionPause:
-			switch sbx.State {
-			case sandbox.StateKilling:
-				logger.L().Info(ctx, "Sandbox is already killed", logger.WithSandboxID(sandboxID))
+			var transErr *sandbox.InvalidStateTransitionError
+			if errors.As(err, &transErr) {
+				if transErr.CurrentState == sandbox.StateKilling {
+					logger.L().Info(ctx, "Sandbox is already killed", logger.WithSandboxID(sandboxID))
 
-				return ErrSandboxNotFound
-			default:
-				logger.L().Error(ctx, "Error pausing sandbox", zap.Error(err), logger.WithSandboxID(sandboxID))
+					return ErrSandboxNotFound
+				}
 
-				return ErrSandboxOperationFailed
+				return fmt.Errorf("sandbox is in '%s' state: %w", transErr.CurrentState, err)
 			}
+
+			logger.L().Error(ctx, "Error pausing sandbox", zap.Error(err), logger.WithSandboxID(sandboxID))
+
+			return ErrSandboxOperationFailed
 		default:
-			logger.L().Error(ctx, "Invalid state action", logger.WithSandboxID(sandboxID), zap.String("state_action", string(stateAction)))
+			logger.L().Error(ctx, "Invalid state action", logger.WithSandboxID(sandboxID), zap.String("state_action", stateAction.Name))
 
 			return ErrSandboxOperationFailed
 		}
@@ -95,24 +100,24 @@ func (o *Orchestrator) removeSandboxFromNode(ctx context.Context, sbx sandbox.Sa
 
 	sbxlogger.I(sbx).Debug(ctx, "Removing sandbox",
 		zap.Bool("auto_pause", sbx.AutoPause),
-		zap.String("state_action", string(stateAction)),
+		zap.String("state_action", stateAction.Name),
 	)
 
 	switch stateAction {
 	case sandbox.StateActionPause:
-		var err error
-		err = o.pauseSandbox(ctx, node, sbx)
+		err := o.pauseSandbox(ctx, node, sbx)
 		if err != nil {
 			logger.L().Debug(ctx, "failed to create snapshot", logger.WithSandboxID(sbx.SandboxID), zap.String("base_template_id", sbx.BaseTemplateID))
 
 			return fmt.Errorf("failed to auto pause sandbox '%s': %w", sbx.SandboxID, err)
 		}
+
+		return nil
 	case sandbox.StateActionKill:
-		var err error
 		req := &orchestrator.SandboxDeleteRequest{SandboxId: sbx.SandboxID}
 
 		client, ctx := node.GetSandboxDeleteCtx(ctx, sbx.SandboxID, sbx.ExecutionID)
-		_, err = client.Sandbox.Delete(ctx, req)
+		_, err := client.Sandbox.Delete(ctx, req)
 		if err != nil {
 			return fmt.Errorf("failed to delete sandbox '%s': %w", sbx.SandboxID, err)
 		}
