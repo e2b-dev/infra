@@ -371,7 +371,7 @@ func run(config cfg.Config) (success bool) {
 	closers = append(closers, closer{"sandbox observer", sandboxObserver.Close})
 
 	// sandbox proxy
-	sandboxProxy, err := proxy.NewSandboxProxy(tel.MeterProvider, config.ProxyPort, sandboxes)
+	sandboxProxy, err := proxy.NewSandboxProxy(tel.MeterProvider, config.ProxyPort, sandboxes, featureFlags)
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create sandbox proxy", zap.Error(err))
 	}
