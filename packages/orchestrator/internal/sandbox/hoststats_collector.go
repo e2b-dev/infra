@@ -20,7 +20,7 @@ type HostStatsCollector struct {
 	delivery         hoststats.Delivery
 	proc             *process.Process
 	samplingInterval time.Duration
-	cgroupManager    cgroup.Manager
+	cgroupHandle     *cgroup.CgroupHandle
 
 	stopCh    chan struct{}
 	stoppedCh chan struct{}
@@ -42,7 +42,7 @@ func NewHostStatsCollector(
 	firecrackerPID int32,
 	delivery hoststats.Delivery,
 	samplingInterval time.Duration,
-	cgroupManager cgroup.Manager,
+	cgroupHandle *cgroup.CgroupHandle,
 ) (*HostStatsCollector, error) {
 	// Validate and enforce minimum interval
 	if samplingInterval < 100*time.Millisecond {
@@ -59,7 +59,7 @@ func NewHostStatsCollector(
 		delivery:         delivery,
 		proc:             proc,
 		samplingInterval: samplingInterval,
-		cgroupManager:    cgroupManager,
+		cgroupHandle:     cgroupHandle,
 		stopCh:           make(chan struct{}),
 		stoppedCh:        make(chan struct{}),
 	}, nil
@@ -95,8 +95,8 @@ func (h *HostStatsCollector) CollectSample(ctx context.Context) error {
 	}
 
 	// Collect cgroup stats if available
-	if h.cgroupManager != nil {
-		cgroupStats, err := h.cgroupManager.GetStats(ctx, h.metadata.SandboxID)
+	if h.cgroupHandle != nil {
+		cgroupStats, err := h.cgroupHandle.GetStats(ctx)
 		if err != nil {
 			// Log at debug level - cgroup may not exist or may have been removed during shutdown
 			logger.L().Debug(ctx, "could not collect cgroup stats",

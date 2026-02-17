@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -53,7 +54,7 @@ func TestManagerInitialize(t *testing.T) {
 	assert.Contains(t, controllersStr, "memory")
 }
 
-func TestManagerCreateAndRemove(t *testing.T) {
+func TestCgroupHandleLifecycle(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Skip("test requires root privileges")
 	}
@@ -62,63 +63,101 @@ func TestManagerCreateAndRemove(t *testing.T) {
 	mgr, err := NewManager()
 	require.NoError(t, err)
 
-	// Initialize root cgroup
 	err = mgr.Initialize(ctx)
 	require.NoError(t, err)
 
-	// Start a test process (sleep)
-	cmd := exec.CommandContext(ctx, "sleep", "10")
-	err = cmd.Start()
-	require.NoError(t, err)
-	defer cmd.Process.Kill()
+	testSandboxID := "test-handle-lifecycle"
 
-	testSandboxID := "test-sandbox-123"
-	testPID := cmd.Process.Pid
-
-	// Create cgroup and add process
-	err = mgr.Create(ctx, testSandboxID, testPID)
+	// Create cgroup and get handle
+	handle, err := mgr.Create(ctx, testSandboxID)
 	require.NoError(t, err)
+	require.NotNil(t, handle)
+	defer handle.Remove(ctx)
+
+	// Verify handle properties
+	assert.Equal(t, testSandboxID, handle.SandboxID())
+	assert.Contains(t, handle.Path(), testSandboxID)
+	assert.Greater(t, handle.GetFD(), 0)
 
 	// Verify cgroup directory exists
-	cgroupPath := filepath.Join(RootCgroupPath, "sbx-"+testSandboxID)
+	info, err := os.Stat(handle.Path())
+	require.NoError(t, err)
+	assert.True(t, info.IsDir())
+
+	// Close handle
+	err = handle.Close()
+	assert.NoError(t, err)
+
+	// FD should be invalid after close
+	assert.Equal(t, -1, handle.GetFD())
+
+	// Double close should be safe
+	err = handle.Close()
+	assert.NoError(t, err)
+}
+
+func TestCgroupHandleWithProcessCreation(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("test requires root privileges")
+	}
+
+	ctx := context.Background()
+	mgr, err := NewManager()
+	require.NoError(t, err)
+
+	err = mgr.Initialize(ctx)
+	require.NoError(t, err)
+
+	testSandboxID := "test-handle-process"
+
+	// Create cgroup
+	handle, err := mgr.Create(ctx, testSandboxID)
+	require.NoError(t, err)
+	defer handle.Remove(ctx)
+	defer handle.Close()
+
+	// Verify directory exists
+	cgroupPath := handle.Path()
 	info, err := os.Stat(cgroupPath)
 	require.NoError(t, err)
 	assert.True(t, info.IsDir())
 
-	// Verify PID was added to cgroup
+	// Verify FD is valid
+	assert.Greater(t, handle.GetFD(), 0)
+
+	// Start process with cgroup FD using UseCgroupFD
+	cmd := exec.CommandContext(ctx, "sleep", "5")
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		UseCgroupFD: true,
+		CgroupFD:    handle.GetFD(),
+	}
+
+	err = cmd.Start()
+	require.NoError(t, err)
+	defer cmd.Process.Kill()
+
+	// Close handle after Start (as we do in real code)
+	handle.Close()
+
+	// Verify PID is in cgroup (atomically placed by kernel)
 	procsPath := filepath.Join(cgroupPath, "cgroup.procs")
 	data, err := os.ReadFile(procsPath)
 	require.NoError(t, err)
 
 	pids := strings.Split(strings.TrimSpace(string(data)), "\n")
-	assert.Contains(t, pids, fmt.Sprintf("%d", testPID))
+	assert.Contains(t, pids, fmt.Sprintf("%d", cmd.Process.Pid))
 
-	// Verify process is in the cgroup (check /proc/{pid}/cgroup)
-	procCgroupPath := fmt.Sprintf("/proc/%d/cgroup", testPID)
+	// Verify via /proc/{pid}/cgroup
+	procCgroupPath := fmt.Sprintf("/proc/%d/cgroup", cmd.Process.Pid)
 	cgroupData, err := os.ReadFile(procCgroupPath)
 	require.NoError(t, err)
 	assert.Contains(t, string(cgroupData), fmt.Sprintf("e2b/sbx-%s", testSandboxID))
 
-	// Remove cgroup (may fail while process is still running, that's expected)
-	_ = mgr.Remove(ctx, testSandboxID)
-
-	// Kill the process
 	cmd.Process.Kill()
 	cmd.Wait()
-
-	// Wait a bit for kernel to clean up
-	time.Sleep(100 * time.Millisecond)
-
-	// Now removal should succeed (or already be gone)
-	err = mgr.Remove(ctx, testSandboxID)
-	assert.NoError(t, err)
-
-	// Verify cgroup is gone
-	_, err = os.Stat(cgroupPath)
-	assert.True(t, os.IsNotExist(err))
 }
 
-func TestManagerCreateNonExistentPID(t *testing.T) {
+func TestCgroupHandleNoRaceOnQuickExit(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Skip("test requires root privileges")
 	}
@@ -130,32 +169,35 @@ func TestManagerCreateNonExistentPID(t *testing.T) {
 	err = mgr.Initialize(ctx)
 	require.NoError(t, err)
 
-	// Try to add a PID that doesn't exist
-	err = mgr.Create(ctx, "test-nonexistent", 999999)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to add pid")
+	testSandboxID := "test-no-race"
 
-	// Verify cgroup was cleaned up
-	cgroupPath := filepath.Join(RootCgroupPath, "sbx-test-nonexistent")
-	_, err = os.Stat(cgroupPath)
-	assert.True(t, os.IsNotExist(err))
-}
+	// Create cgroup
+	handle, err := mgr.Create(ctx, testSandboxID)
+	require.NoError(t, err)
+	defer handle.Remove(ctx)
+	defer handle.Close()
 
-func TestManagerRemoveNonExistent(t *testing.T) {
-	if os.Geteuid() != 0 {
-		t.Skip("test requires root privileges")
+	// Start process that exits immediately
+	cmd := exec.CommandContext(ctx, "bash", "-c", "exit 0")
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		UseCgroupFD: true,
+		CgroupFD:    handle.GetFD(),
 	}
 
-	ctx := context.Background()
-	mgr, err := NewManager()
+	err = cmd.Start()
 	require.NoError(t, err)
 
-	// Remove a cgroup that doesn't exist should not error
-	err = mgr.Remove(ctx, "nonexistent-sandbox")
-	assert.NoError(t, err)
+	handle.Close()
+
+	// Process exits immediately - but it WAS in the cgroup during its lifetime
+	// (kernel placed it atomically, no race!)
+	cmd.Wait()
+
+	// This test passing means: no error during Start despite rapid exit
+	// In the old code, this would race and potentially fail
 }
 
-func TestManagerGetStats(t *testing.T) {
+func TestCgroupHandleGetStats(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Skip("test requires root privileges")
 	}
@@ -168,36 +210,40 @@ func TestManagerGetStats(t *testing.T) {
 	err = mgr.Initialize(ctx)
 	require.NoError(t, err)
 
+	testSandboxID := "test-stats-sandbox"
+
+	// Create cgroup
+	handle, err := mgr.Create(ctx, testSandboxID)
+	require.NoError(t, err)
+	defer handle.Remove(ctx)
+	defer handle.Close()
+
 	// Start a test process that uses some CPU
 	cmd := exec.CommandContext(ctx, "bash", "-c", "for i in {1..1000}; do echo test > /dev/null; done; sleep 5")
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		UseCgroupFD: true,
+		CgroupFD:    handle.GetFD(),
+	}
+
 	err = cmd.Start()
 	require.NoError(t, err)
 	defer cmd.Process.Kill()
 
-	testSandboxID := "test-stats-sandbox"
-	testPID := cmd.Process.Pid
-
-	// Create cgroup and add process
-	err = mgr.Create(ctx, testSandboxID, testPID)
-	require.NoError(t, err)
-	defer mgr.Remove(ctx, testSandboxID)
+	handle.Close()
 
 	// Wait a bit for some stats to accumulate
 	time.Sleep(100 * time.Millisecond)
 
 	// Get stats
-	stats, err := mgr.GetStats(ctx, testSandboxID)
+	stats, err := handle.GetStats(ctx)
 	require.NoError(t, err)
 	require.NotNil(t, stats)
 
 	// Verify CPU stats are populated (should have some usage)
 	assert.Greater(t, stats.CPUUsageUsec, uint64(0), "CPUUsageUsec should be > 0")
-	// Note: user_usec and system_usec may be 0 for very short-lived processes
-	// but usage_usec should always be populated
 
 	// Verify memory stats are populated
 	assert.Greater(t, stats.MemoryUsageBytes, uint64(0), "MemoryUsageBytes should be > 0")
-	// memory.peak may not be available on all kernels, so we don't assert on it
 
 	t.Logf("Stats collected: CPU=%d usec, Memory=%d bytes",
 		stats.CPUUsageUsec, stats.MemoryUsageBytes)
@@ -207,7 +253,7 @@ func TestManagerGetStats(t *testing.T) {
 	cmd.Wait()
 }
 
-func TestManagerGetStatsNonExistent(t *testing.T) {
+func TestCgroupHandleGetStatsNonExistent(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Skip("test requires root privileges")
 	}
@@ -216,11 +262,47 @@ func TestManagerGetStatsNonExistent(t *testing.T) {
 	mgr, err := NewManager()
 	require.NoError(t, err)
 
-	// Try to get stats for a non-existent cgroup
-	stats, err := mgr.GetStats(ctx, "nonexistent-sandbox")
+	testSandboxID := "test-nonexistent"
+
+	// Create handle
+	handle, err := mgr.Create(ctx, testSandboxID)
+	require.NoError(t, err)
+	defer handle.Close()
+
+	// Remove the cgroup directory
+	err = handle.Remove(ctx)
+	require.NoError(t, err)
+
+	// Try to get stats for removed cgroup
+	stats, err := handle.GetStats(ctx)
 	assert.Error(t, err)
 	assert.Nil(t, stats)
 	assert.Contains(t, err.Error(), "failed to read cpu.stat")
+}
+
+func TestCgroupHandleRemoveNonExistent(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("test requires root privileges")
+	}
+
+	ctx := context.Background()
+	mgr, err := NewManager()
+	require.NoError(t, err)
+
+	testSandboxID := "test-remove-nonexistent"
+
+	// Create handle
+	handle, err := mgr.Create(ctx, testSandboxID)
+	require.NoError(t, err)
+	defer handle.Close()
+
+	// Remove once
+	err = handle.Remove(ctx)
+	assert.NoError(t, err)
+
+	// Remove again - should not error (idempotent)
+	err = handle.Remove(ctx)
+	assert.NoError(t, err)
 }
 
 func TestStatsParsing(t *testing.T) {
@@ -257,10 +339,6 @@ burst_usec 0`
 
 	// Create a mock manager that reads from our temp directory
 	mockMgr := &managerImpl{}
-
-	// We need to temporarily override the RootCgroupPath for testing
-	// Since we can't easily do that without modifying the struct, we'll just
-	// manually construct the path and test the parsing logic
 
 	// Read and parse cpu.stat
 	cpuData, err := os.ReadFile(filepath.Join(cgroupPath, "cpu.stat"))

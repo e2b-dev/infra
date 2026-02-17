@@ -77,6 +77,7 @@ type Process struct {
 	client *apiClient
 
 	cgroupManager cgroup.Manager
+	CgroupHandle  *cgroup.CgroupHandle
 }
 
 func NewProcess(
@@ -129,6 +130,24 @@ func NewProcess(
 		Setsid: true, // Create a new session
 	}
 
+	// Create cgroup and get FD for atomic process placement
+	// This uses CLONE_INTO_CGROUP (Linux 5.7+) to place the process in the cgroup atomically during fork
+	var cgroupHandle *cgroup.CgroupHandle
+	if cgroupManager != nil {
+		var err error
+		cgroupHandle, err = cgroupManager.Create(ctx, files.SandboxID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create cgroup: %w", err)
+		}
+
+		cmd.SysProcAttr.UseCgroupFD = true
+		cmd.SysProcAttr.CgroupFD = cgroupHandle.GetFD()
+
+		logger.L().Debug(ctx, "prepared cgroup for firecracker",
+			logger.WithSandboxID(files.SandboxID),
+			zap.Int("fd", cgroupHandle.GetFD()))
+	}
+
 	return &Process{
 		Versions:              versions,
 		Exit:                  utils.NewErrorOnce(),
@@ -143,6 +162,7 @@ func NewProcess(
 		kernelPath:    startScript.KernelPath,
 		rootfsPath:    startScript.RootfsPath,
 		cgroupManager: cgroupManager,
+		CgroupHandle:  cgroupHandle,
 	}, nil
 }
 
@@ -170,25 +190,28 @@ func (p *Process) configure(
 	p.cmd.Stderr = io.MultiWriter(stderrWriters...)
 
 	err := p.cmd.Start()
+
+	// Close cgroup handle FD now that process has started
+	// The kernel has already placed the process in the cgroup atomically during clone
+	if p.CgroupHandle != nil {
+		closeErr := p.CgroupHandle.Close()
+		if closeErr != nil {
+			logger.L().Warn(ctx, "failed to close cgroup handle",
+				logger.WithSandboxID(p.files.SandboxID),
+				zap.Error(closeErr))
+			// Non-fatal: FD will be closed when process exits anyway
+		}
+	}
+
 	if err != nil {
 		return fmt.Errorf("error starting fc process: %w", err)
 	}
 
-	// Create cgroup for Firecracker process
-	if p.cgroupManager != nil {
-		sandboxID := p.files.SandboxID
-		pid := p.cmd.Process.Pid
-
-		err := p.cgroupManager.Create(ctx, sandboxID, pid)
-		if err != nil {
-			// Kill the process we just started since cgroup creation failed
-			p.cmd.Process.Kill()
-			return fmt.Errorf("failed to create cgroup for sandbox: %w", err)
-		}
-
-		logger.L().Debug(ctx, "created cgroup for firecracker process",
-			logger.WithSandboxID(sandboxID),
-			zap.Int("pid", pid))
+	// Log successful placement
+	if p.CgroupHandle != nil {
+		logger.L().Debug(ctx, "firecracker process started in cgroup",
+			logger.WithSandboxID(p.files.SandboxID),
+			zap.Int("pid", p.cmd.Process.Pid))
 	}
 
 	startCtx, cancelStart := context.WithCancelCause(ctx)

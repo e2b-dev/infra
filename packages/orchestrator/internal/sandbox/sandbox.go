@@ -782,8 +782,8 @@ func (s *Sandbox) doStop(ctx context.Context) error {
 	<-s.process.Exit.Done()
 
 	// Remove cgroup after process has exited
-	if s.cgroupManager != nil {
-		cgroupErr := s.cgroupManager.Remove(ctx, s.Runtime.SandboxID)
+	if s.process.CgroupHandle != nil {
+		cgroupErr := s.process.CgroupHandle.Remove(ctx)
 		if cgroupErr != nil {
 			logger.L().Warn(ctx, "failed to remove cgroup during cleanup",
 				logger.WithSandboxID(s.Runtime.SandboxID),

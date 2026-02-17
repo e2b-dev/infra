@@ -30,23 +30,100 @@ type Stats struct {
 	MemoryPeakBytes  uint64
 }
 
-// Manager handles lifecycle of cgroups for sandboxes
+// CgroupHandle represents a created cgroup for a sandbox
+// It encapsulates the cgroup lifecycle, resource access, and cleanup
+type CgroupHandle struct {
+	sandboxID string
+	path      string
+	file      *os.File // Open FD to the cgroup directory (nil after Close)
+	manager   *managerImpl
+}
+
+// GetFD returns the file descriptor for use with SysProcAttr.CgroupFD
+// Returns -1 if the handle has been closed
+// The FD is valid until Close() is called
+func (h *CgroupHandle) GetFD() int {
+	if h == nil || h.file == nil {
+		return -1
+	}
+	return int(h.file.Fd())
+}
+
+// Close releases the file descriptor
+// Should be called after cmd.Start() completes
+// Safe to call multiple times
+func (h *CgroupHandle) Close() error {
+	if h == nil || h.file == nil {
+		return nil
+	}
+	err := h.file.Close()
+	h.file = nil
+	return err
+}
+
+// GetStats retrieves current resource usage statistics for this cgroup
+// Returns error if cgroup has been removed or stats cannot be read
+func (h *CgroupHandle) GetStats(ctx context.Context) (*Stats, error) {
+	if h == nil {
+		return nil, fmt.Errorf("cgroup handle is nil")
+	}
+	return h.manager.getStatsForPath(ctx, h.path)
+}
+
+// Remove deletes the cgroup directory
+// The handle should not be used after calling Remove
+// Returns error if removal fails (but cgroup may have been auto-cleaned by kernel)
+func (h *CgroupHandle) Remove(ctx context.Context) error {
+	if h == nil {
+		return nil
+	}
+
+	// Ensure FD is closed before removing directory
+	h.Close()
+
+	// Remove the cgroup directory
+	// The kernel automatically cleans up when all processes have exited
+	if err := os.Remove(h.path); err != nil {
+		// Ignore "not exists" errors - cgroup may have been auto-cleaned
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("failed to remove cgroup: %w", err)
+		}
+	}
+
+	logger.L().Debug(ctx, "removed cgroup for sandbox",
+		logger.WithSandboxID(h.sandboxID),
+		zap.String("path", h.path))
+
+	return nil
+}
+
+// Path returns the filesystem path to the cgroup directory
+func (h *CgroupHandle) Path() string {
+	if h == nil {
+		return ""
+	}
+	return h.path
+}
+
+// SandboxID returns the sandbox ID this cgroup is for
+func (h *CgroupHandle) SandboxID() string {
+	if h == nil {
+		return ""
+	}
+	return h.sandboxID
+}
+
+// Manager handles initialization and creation of cgroups
+// Individual cgroup operations are performed through CgroupHandle
 type Manager interface {
 	// Initialize creates the root cgroup directory and enables controllers
 	// Should be called once at orchestrator startup
 	Initialize(ctx context.Context) error
 
-	// Create creates a cgroup for a sandbox and adds the Firecracker PID to it
-	// Returns error if cgroup creation or PID assignment fails
-	Create(ctx context.Context, sandboxID string, pid int) error
-
-	// GetStats retrieves current resource usage statistics for a sandbox
-	// Returns error if cgroup does not exist or stats cannot be read
-	GetStats(ctx context.Context, sandboxID string) (*Stats, error)
-
-	// Remove deletes the sandbox cgroup directory
-	// Returns error if removal fails (but cgroup may have been auto-cleaned by kernel)
-	Remove(ctx context.Context, sandboxID string) error
+	// Create creates a cgroup for a sandbox and returns a handle
+	// The handle provides access to the cgroup's FD, stats, and cleanup
+	// Returns error if cgroup creation fails
+	Create(ctx context.Context, sandboxID string) (*CgroupHandle, error)
 }
 
 type managerImpl struct{}
@@ -79,34 +156,41 @@ func (m *managerImpl) Initialize(ctx context.Context) error {
 	return nil
 }
 
-func (m *managerImpl) Create(ctx context.Context, sandboxID string, pid int) error {
+func (m *managerImpl) Create(ctx context.Context, sandboxID string) (*CgroupHandle, error) {
 	cgroupPath := m.sandboxCgroupPath(sandboxID)
 
 	// Create cgroup directory for this sandbox
 	if err := os.MkdirAll(cgroupPath, 0755); err != nil {
-		return fmt.Errorf("failed to create cgroup: %w", err)
+		return nil, fmt.Errorf("failed to create cgroup directory: %w", err)
 	}
 
-	// Add Firecracker PID to the cgroup
-	procsPath := filepath.Join(cgroupPath, "cgroup.procs")
-	pidStr := fmt.Sprintf("%d", pid)
-	if err := os.WriteFile(procsPath, []byte(pidStr), 0644); err != nil {
-		// Attempt to clean up the cgroup directory we just created
+	// Open the cgroup directory as a file descriptor
+	// This FD will be used with CLONE_INTO_CGROUP for atomic process placement
+	file, err := os.Open(cgroupPath)
+	if err != nil {
+		// Cleanup on failure
 		os.Remove(cgroupPath)
-		return fmt.Errorf("failed to add pid %d to cgroup: %w", pid, err)
+		return nil, fmt.Errorf("failed to open cgroup directory: %w", err)
+	}
+
+	handle := &CgroupHandle{
+		sandboxID: sandboxID,
+		path:      cgroupPath,
+		file:      file,
+		manager:   m,
 	}
 
 	logger.L().Debug(ctx, "created cgroup for sandbox",
 		logger.WithSandboxID(sandboxID),
-		zap.Int("pid", pid),
-		zap.String("path", cgroupPath))
+		zap.String("path", cgroupPath),
+		zap.Int("fd", handle.GetFD()))
 
-	return nil
+	return handle, nil
 }
 
-func (m *managerImpl) GetStats(ctx context.Context, sandboxID string) (*Stats, error) {
-	cgroupPath := m.sandboxCgroupPath(sandboxID)
-
+// getStatsForPath is a private helper called by CgroupHandle.GetStats()
+// It reads cgroup statistics from the specified path
+func (m *managerImpl) getStatsForPath(ctx context.Context, cgroupPath string) (*Stats, error) {
 	stats := &Stats{}
 
 	// Read cpu.stat
@@ -153,25 +237,6 @@ func (m *managerImpl) GetStats(ctx context.Context, sandboxID string) (*Stats, e
 	}
 
 	return stats, nil
-}
-
-func (m *managerImpl) Remove(ctx context.Context, sandboxID string) error {
-	cgroupPath := m.sandboxCgroupPath(sandboxID)
-
-	// Remove the cgroup directory
-	// The kernel automatically cleans up when all processes have exited
-	if err := os.Remove(cgroupPath); err != nil {
-		// Ignore "not exists" errors - cgroup may have been auto-cleaned
-		if !os.IsNotExist(err) {
-			return fmt.Errorf("failed to remove cgroup: %w", err)
-		}
-	}
-
-	logger.L().Debug(ctx, "removed cgroup for sandbox",
-		logger.WithSandboxID(sandboxID),
-		zap.String("path", cgroupPath))
-
-	return nil
 }
 
 // sandboxCgroupPath returns the filesystem path for a sandbox's cgroup
