@@ -741,7 +741,7 @@ type SnapshotInfo struct {
 	// Names Full names of the snapshot template including team namespace and tag (e.g. team-slug/my-snapshot:v2)
 	Names []string `json:"names"`
 
-	// SnapshotID Identifier of the snapshot template
+	// SnapshotID Identifier of the snapshot template including the tag. Uses namespace/alias when a name was provided (e.g. team-slug/my-snapshot:default), otherwise falls back to the raw template ID (e.g. abc123:default).
 	SnapshotID string `json:"snapshotID"`
 }
 
