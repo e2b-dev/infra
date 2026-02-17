@@ -21,7 +21,7 @@ jobs:
         github.event.comment.author_association == 'COLLABORATOR'))
     permissions:
       contents: read
-      pull-requests: read
+      pull-requests: write
       issues: read
       id-token: write
 
@@ -58,26 +58,44 @@ jobs:
             - Performance considerations
             - Important security concerns
 
-            Be constructive and helpful in your feedback and be **very conscise**.
+            Be constructive and helpful in your feedback and be **very concise**.
             Skip general recommendations, skip summarizing the changes, and don't make any recommendations on code style.
             Also skip any summarization about why the PR was done well, focus only on the code changes and the potential issues.
             Don't output final summaries, or final lists of action items.
             Reduce false positives—try to validate if the issue is really a valid problem in the changes.
 
-            When you find a *specific issue* in the code (bug, performance concern, security risk, etc.),
-            leave an **inline comment** on that exact file and line.  
-            If no issues are found, do not post anything.
+            IMPORTANT WORKFLOW:
+            1. First, analyze ALL files in the diff completely. Do NOT post any comments until you have reviewed everything.
+            2. Collect every specific issue you find (bug, performance concern, security risk, etc.) with its file path, line number, and description.
+            3. If no issues are found, do not post anything at all.
+            4. Once you have collected all issues, post them ALL in a SINGLE GitHub review using the command below.
 
-            To comment inline, use this format exactly (MUST be a single line, no backslashes or line breaks):
+            To post all comments as one review, use this exact format:
 
             ```bash
-            gh api --method POST -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" /repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number || github.event.issue.number }}/comments -f body='${BODY}' -f commit_id="${{ steps.pr-sha.outputs.sha }}" -f path='${PATH}' -F line='${LINE}' -f side="RIGHT"
+            gh api --method POST -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" /repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number || github.event.issue.number }}/reviews --input /dev/stdin <<'REVIEW_EOF'
+            {
+              "commit_id": "${{ steps.pr-sha.outputs.sha }}",
+              "event": "COMMENT",
+              "comments": [
+                {
+                  "path": "relative/path/to/file.go",
+                  "line": 42,
+                  "side": "RIGHT",
+                  "body": "Description of the issue found."
+                }
+              ]
+            }
+            REVIEW_EOF
             ```
 
-            IMPORTANT: 
-            - The command MUST be on a single line with no backslashes (\\) or line breaks
-            - Use single quotes around body, path, and line to prevent shell expansion (prevents command injection)
-            - If the body or path contains a single quote ('), escape it by replacing ' with '\'' (this breaks out of the single-quoted string, adds a literal quote, and continues)
-            - Example: if body is "It's a bug", use: body='It'\''s a bug'
+            IMPORTANT:
+            - The command MUST start with `gh api`
+            - Use the heredoc syntax shown above with `<<'REVIEW_EOF'` (single-quoted to prevent shell expansion)
+            - The JSON inside the heredoc must be valid JSON
+            - The `line` field must be a number, not a string
+            - Escape double quotes in the body with `\"` and newlines with `\n`
+            - Include ALL issues as entries in the `comments` array — do NOT make multiple API calls
+            - Even if you find only one issue, use this same batched review format
 
           claude_args: '--allowed-tools "Bash(gh api:*), Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"'
