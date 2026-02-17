@@ -39,7 +39,7 @@ func (h Handler) Change(filesystem billy.Filesystem) billy.Change {
 }
 
 func (h Handler) FSStat(ctx context.Context, filesystem billy.Filesystem, stat *nfs.FSStat) (e error) {
-	defer deferErrRecovery(ctx, "Handler.FSStat", &e)()
+	defer deferErrRecovery(ctx, "Handler.FSStat", &e)
 
 	return h.inner.FSStat(ctx, filesystem, stat)
 }
@@ -51,13 +51,13 @@ func (h Handler) ToHandle(fs billy.Filesystem, path []string) []byte {
 }
 
 func (h Handler) FromHandle(fh []byte) (fs billy.Filesystem, path []string, e error) {
-	defer deferErrRecovery(h.ctx, "Handler.FromHandle", &e)()
+	defer deferErrRecovery(h.ctx, "Handler.FromHandle", &e)
 
 	return h.inner.FromHandle(fh)
 }
 
 func (h Handler) InvalidateHandle(filesystem billy.Filesystem, bytes []byte) (e error) {
-	defer deferErrRecovery(h.ctx, "Handler.InvalidateHandle", &e)()
+	defer deferErrRecovery(h.ctx, "Handler.InvalidateHandle", &e)
 
 	return h.inner.InvalidateHandle(filesystem, bytes)
 }
@@ -83,16 +83,14 @@ func tryRecovery(ctx context.Context, name string) {
 
 var ErrPanic = fmt.Errorf("panic")
 
-func deferErrRecovery(ctx context.Context, name string, perr *error) func() {
-	return func() {
-		if r := recover(); r != nil { //nolint:revive // always called via defer
-			logger.L().Error(ctx, fmt.Sprintf("panic in %q nfs handler", name),
-				zap.Any("panic", r),
-				zap.Stack("stack"),
-			)
-			if perr != nil {
-				*perr = ErrPanic
-			}
+func deferErrRecovery(ctx context.Context, name string, perr *error) {
+	if r := recover(); r != nil { //nolint:revive // always called via defer
+		logger.L().Error(ctx, fmt.Sprintf("panic in %q nfs handler", name),
+			zap.Any("panic", r),
+			zap.Stack("stack"),
+		)
+		if perr != nil {
+			*perr = ErrPanic
 		}
 	}
 }

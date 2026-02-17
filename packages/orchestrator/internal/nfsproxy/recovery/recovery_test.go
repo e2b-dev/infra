@@ -19,9 +19,10 @@ import (
 // ---- Tests: file.go ----
 
 func TestFile_Write_PanicRecovered(t *testing.T) {
+	t.Parallel()
 	mf := nfsproxymocks.NewMockFile(t)
 	mf.EXPECT().Write(mock.Anything).
-		RunAndReturn(func(p []byte) (int, error) { panic("File.Write") })
+		RunAndReturn(func(_ []byte) (int, error) { panic("File.Write") })
 	f := wrapFile(context.Background(), mf)
 	n, err := f.Write([]byte("abc"))
 	require.ErrorIs(t, err, ErrPanic)
@@ -29,6 +30,7 @@ func TestFile_Write_PanicRecovered(t *testing.T) {
 }
 
 func TestFile_Truncate_Happy(t *testing.T) {
+	t.Parallel()
 	mf := nfsproxymocks.NewMockFile(t)
 	mf.EXPECT().Truncate(int64(0)).Return(nil)
 	f := wrapFile(context.Background(), mf)
@@ -36,15 +38,17 @@ func TestFile_Truncate_Happy(t *testing.T) {
 }
 
 func TestFile_Name_Panic_NoCrash(t *testing.T) {
+	t.Parallel()
 	mf := nfsproxymocks.NewMockFile(t)
 	mf.EXPECT().Name().RunAndReturn(func() string { panic("File.Name") })
 	f := wrapFile(context.Background(), mf)
 	// Should not panic; should return zero value
 	got := f.Name()
-	require.Equal(t, "", got)
+	require.Empty(t, got)
 }
 
 func TestFile_Write_Error_Propagates(t *testing.T) {
+	t.Parallel()
 	boom := errors.New("boom")
 	mf := nfsproxymocks.NewMockFile(t)
 	mf.EXPECT().Write(mock.Anything).Return(0, boom)
@@ -56,6 +60,7 @@ func TestFile_Write_Error_Propagates(t *testing.T) {
 // ---- Tests: fs.go ----
 
 func TestFS_Stat_PanicRecovered(t *testing.T) {
+	t.Parallel()
 	mfs := nfsproxymocks.NewMockFilesystem(t)
 	mfs.EXPECT().Stat("/x").RunAndReturn(func(string) (os.FileInfo, error) { panic("FS.Stat") })
 
@@ -65,6 +70,7 @@ func TestFS_Stat_PanicRecovered(t *testing.T) {
 }
 
 func TestFS_Create_Happy_WrapsFile(t *testing.T) {
+	t.Parallel()
 	mfs := nfsproxymocks.NewMockFilesystem(t)
 	mf := nfsproxymocks.NewMockFile(t)
 	mfs.EXPECT().Create("/file.txt").Return(mf, nil)
@@ -76,15 +82,17 @@ func TestFS_Create_Happy_WrapsFile(t *testing.T) {
 }
 
 func TestFS_Join_Panic_NoCrash(t *testing.T) {
+	t.Parallel()
 	mfs := nfsproxymocks.NewMockFilesystem(t)
 	// The generated mock treats variadic args as a single []string parameter in expectation.
 	mfs.EXPECT().Join([]string{"a", "b"}).
-		RunAndReturn(func(elem ...string) string { panic("Join") })
+		RunAndReturn(func(_ ...string) string { panic("Join") })
 	fs := wrapFS(context.Background(), mfs)
 	require.NotPanics(t, func() { _ = fs.Join("a", "b") }) // should not panic
 }
 
 func TestFS_Remove_Error_Propagates(t *testing.T) {
+	t.Parallel()
 	boom := errors.New("boom")
 	mfs := nfsproxymocks.NewMockFilesystem(t)
 	mfs.EXPECT().Remove("/x").Return(boom)
@@ -96,6 +104,7 @@ func TestFS_Remove_Error_Propagates(t *testing.T) {
 // ---- Tests: change.go ----
 
 func TestChange_Chmod_PanicRecovered(t *testing.T) {
+	t.Parallel()
 	mch := nfsproxymocks.NewMockChange(t)
 	mch.EXPECT().Chmod("/x", os.FileMode(0o644)).
 		RunAndReturn(func(string, os.FileMode) error { panic("Change.Chmod") })
@@ -104,6 +113,7 @@ func TestChange_Chmod_PanicRecovered(t *testing.T) {
 }
 
 func TestChange_Chown_Happy(t *testing.T) {
+	t.Parallel()
 	mch := nfsproxymocks.NewMockChange(t)
 	mch.EXPECT().Chown("/x", 1, 1).Return(nil)
 	ch := wrapChange(context.Background(), mch)
@@ -111,6 +121,7 @@ func TestChange_Chown_Happy(t *testing.T) {
 }
 
 func TestChange_Chtimes_Error_Propagates(t *testing.T) {
+	t.Parallel()
 	boom := errors.New("boom")
 	mch := nfsproxymocks.NewMockChange(t)
 	mch.EXPECT().Chtimes("/x", mock.Anything, mock.Anything).Return(boom)
@@ -122,6 +133,7 @@ func TestChange_Chtimes_Error_Propagates(t *testing.T) {
 // ---- Tests: main.go (Handler) ----
 
 func TestHandler_FSStat_PanicRecovered(t *testing.T) {
+	t.Parallel()
 	mh := nfsproxymocks.NewMockHandler(t)
 	mh.EXPECT().FSStat(mock.Anything, mock.Anything, mock.Anything).
 		RunAndReturn(func(context.Context, billy.Filesystem, *nfs.FSStat) error { panic("Handler.FSStat") })
@@ -131,6 +143,7 @@ func TestHandler_FSStat_PanicRecovered(t *testing.T) {
 }
 
 func TestHandler_Mount_Panic_NoCrash(t *testing.T) {
+	t.Parallel()
 	mh := nfsproxymocks.NewMockHandler(t)
 	mh.EXPECT().Mount(mock.Anything, mock.Anything, mock.Anything).
 		RunAndReturn(func(context.Context, net.Conn, nfs.MountRequest) (nfs.MountStatus, billy.Filesystem, []nfs.AuthFlavor) {
@@ -141,10 +154,11 @@ func TestHandler_Mount_Panic_NoCrash(t *testing.T) {
 	// On panic, zero values returned. Ensure it didn't panic and fs is nil.
 	require.Nil(t, fs)
 	require.Zero(t, status)
-	require.Len(t, auth, 0)
+	require.Empty(t, auth)
 }
 
 func TestHandler_Mount_WrapsFS(t *testing.T) {
+	t.Parallel()
 	base := nfsproxymocks.NewMockFilesystem(t)
 	mh := nfsproxymocks.NewMockHandler(t)
 	mh.EXPECT().Mount(mock.Anything, mock.Anything, mock.Anything).Return(nfs.MountStatus(0), base, nil)
@@ -154,6 +168,7 @@ func TestHandler_Mount_WrapsFS(t *testing.T) {
 }
 
 func TestHandler_FromHandle_PanicRecovered(t *testing.T) {
+	t.Parallel()
 	mh := nfsproxymocks.NewMockHandler(t)
 	mh.EXPECT().FromHandle(mock.Anything).
 		RunAndReturn(func([]byte) (billy.Filesystem, []string, error) { panic("Handler.FromHandle") })
@@ -163,6 +178,7 @@ func TestHandler_FromHandle_PanicRecovered(t *testing.T) {
 }
 
 func TestHandler_InvalidateHandle_PanicRecovered(t *testing.T) {
+	t.Parallel()
 	mh := nfsproxymocks.NewMockHandler(t)
 	mh.EXPECT().InvalidateHandle(mock.Anything, mock.Anything).
 		RunAndReturn(func(billy.Filesystem, []byte) error { panic("Handler.InvalidateHandle") })
@@ -171,6 +187,7 @@ func TestHandler_InvalidateHandle_PanicRecovered(t *testing.T) {
 }
 
 func TestHandler_Error_Propagation(t *testing.T) {
+	t.Parallel()
 	boom := errors.New("boom")
 	mh := nfsproxymocks.NewMockHandler(t)
 	// FSStat
