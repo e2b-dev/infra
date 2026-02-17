@@ -262,10 +262,10 @@ func TestSnapshotTemplateCreateSandbox(t *testing.T) {
 
 // waitForSnapshotting polls the database until a build with status 'snapshotting'
 // appears for the given sandbox, or the timeout expires.
-func waitForSnapshotting(t *testing.T, db *setup.Database, sandboxID string, timeout time.Duration) {
+func waitForSnapshotting(t *testing.T, db *setup.Database, sandboxID string) {
 	t.Helper()
 
-	deadline := time.Now().Add(timeout)
+	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
 		var count int
 
@@ -338,7 +338,7 @@ func TestSnapshotTemplateConcurrentOperations(t *testing.T) {
 		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false))
 
 		snapshotDone := startSnapshotInBackground(t, c, sbx.SandboxID)
-		waitForSnapshotting(t, db, sbx.SandboxID, 30*time.Second)
+		waitForSnapshotting(t, db, sbx.SandboxID)
 
 		pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbx.SandboxID, setup.WithAPIKey())
 		require.NoError(t, err)
@@ -353,7 +353,7 @@ func TestSnapshotTemplateConcurrentOperations(t *testing.T) {
 		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false))
 
 		snapshotDone := startSnapshotInBackground(t, c, sbx.SandboxID)
-		waitForSnapshotting(t, db, sbx.SandboxID, 30*time.Second)
+		waitForSnapshotting(t, db, sbx.SandboxID)
 
 		killResp, err := c.DeleteSandboxesSandboxIDWithResponse(t.Context(), sbx.SandboxID, setup.WithAPIKey())
 		require.NoError(t, err)
@@ -369,7 +369,7 @@ func TestSnapshotTemplateConcurrentOperations(t *testing.T) {
 		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false))
 
 		snapshotDone := startSnapshotInBackground(t, c, sbx.SandboxID)
-		waitForSnapshotting(t, db, sbx.SandboxID, 30*time.Second)
+		waitForSnapshotting(t, db, sbx.SandboxID)
 
 		resumeResp, err := c.PostSandboxesSandboxIDResumeWithResponse(
 			t.Context(),
@@ -389,7 +389,7 @@ func TestSnapshotTemplateConcurrentOperations(t *testing.T) {
 		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false))
 
 		snapshotDone := startSnapshotInBackground(t, c, sbx.SandboxID)
-		waitForSnapshotting(t, db, sbx.SandboxID, 30*time.Second)
+		waitForSnapshotting(t, db, sbx.SandboxID)
 
 		resp, err := c.PostSandboxesSandboxIDSnapshotsWithResponse(
 			t.Context(),
