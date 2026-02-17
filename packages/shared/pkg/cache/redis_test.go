@@ -205,11 +205,11 @@ func TestRedisCache_RedisRefresh_TriggeredWhenStale(t *testing.T) {
 	refreshInterval := 100 * time.Millisecond
 
 	rc := NewRedisCache[testValue](RedisConfig{
-		TTL:                  redisTTL,
+		TTL:             redisTTL,
 		RefreshInterval: refreshInterval,
 		RefreshTimeout:  5 * time.Second,
-		RedisClient:          redisClient,
-		RedisPrefix:          fmt.Sprintf("test:%s", t.Name()),
+		RedisClient:     redisClient,
+		RedisPrefix:     fmt.Sprintf("test:%s", t.Name()),
 	})
 	defer rc.Close(t.Context())
 
@@ -259,11 +259,11 @@ func TestRedisCache_RedisRefresh_UpdatesRedis(t *testing.T) {
 	refreshInterval := 100 * time.Millisecond
 
 	rc := NewRedisCache[testValue](RedisConfig{
-		TTL:                  redisTTL,
+		TTL:             redisTTL,
 		RefreshInterval: refreshInterval,
 		RefreshTimeout:  5 * time.Second,
-		RedisClient:          redisClient,
-		RedisPrefix:          fmt.Sprintf("test:%s", t.Name()),
+		RedisClient:     redisClient,
+		RedisPrefix:     fmt.Sprintf("test:%s", t.Name()),
 	})
 	defer rc.Close(t.Context())
 
@@ -304,11 +304,11 @@ func TestRedisCache_RedisRefresh_ErrorKeepsStaleValue(t *testing.T) {
 	refreshInterval := 100 * time.Millisecond
 
 	rc := NewRedisCache[testValue](RedisConfig{
-		TTL:                  redisTTL,
+		TTL:             redisTTL,
 		RefreshInterval: refreshInterval,
 		RefreshTimeout:  5 * time.Second,
-		RedisClient:          redisClient,
-		RedisPrefix:          fmt.Sprintf("test:%s", t.Name()),
+		RedisClient:     redisClient,
+		RedisPrefix:     fmt.Sprintf("test:%s", t.Name()),
 	})
 	defer rc.Close(t.Context())
 
