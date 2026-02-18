@@ -363,3 +363,12 @@ variable "loki_boot_disk_type" {
   description = "The GCE boot disk type for the Loki machines."
   type        = string
 }
+
+variable "persistent_volume_types" {
+  description = "Persistent volume mount information"
+  type = map(object({
+    local_mount_path = string
+    nfs_location     = string
+    nfs_mount_opts   = string
+  }))
+}

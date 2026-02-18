@@ -392,6 +392,7 @@ module "orchestrator" {
   redis_url                    = local.redis_url
   redis_cluster_url            = local.redis_cluster_url
   redis_tls_ca_base64          = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
+  persistent_volume_types      = var.persistent_volume_types
 
   consul_token            = var.consul_acl_token_secret
   domain_name             = var.domain_name

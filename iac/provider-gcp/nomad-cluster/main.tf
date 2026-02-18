@@ -183,7 +183,6 @@ module "build_cluster" {
   consul_gossip_encryption_key_secret_data = google_secret_manager_secret_version.consul_gossip_encryption_key.secret_data
   consul_dns_request_token_secret_data     = google_secret_manager_secret_version.consul_dns_request_token.secret_data
 
-
   docker_contexts_bucket_name = var.docker_contexts_bucket_name
   cluster_setup_bucket_name   = var.cluster_setup_bucket_name
   fc_env_pipeline_bucket_name = var.fc_env_pipeline_bucket_name
@@ -195,6 +194,7 @@ module "build_cluster" {
   nfs_mount_path          = local.nfs_mount_path
   nfs_mount_subdir        = local.nfs_mount_subdir
   nfs_mount_opts          = local.nfs_mount_opts
+  persistent_volume_types = var.persistent_volume_types
 
   environment = var.environment
   labels      = var.labels
@@ -240,7 +240,6 @@ module "client_cluster" {
   consul_gossip_encryption_key_secret_data = google_secret_manager_secret_version.consul_gossip_encryption_key.secret_data
   consul_dns_request_token_secret_data     = google_secret_manager_secret_version.consul_dns_request_token.secret_data
 
-
   docker_contexts_bucket_name = var.docker_contexts_bucket_name
   cluster_setup_bucket_name   = var.cluster_setup_bucket_name
   fc_env_pipeline_bucket_name = var.fc_env_pipeline_bucket_name
@@ -252,6 +251,7 @@ module "client_cluster" {
   nfs_mount_path          = local.nfs_mount_path
   nfs_mount_subdir        = local.nfs_mount_subdir
   nfs_mount_opts          = local.nfs_mount_opts
+  persistent_volume_types = var.persistent_volume_types
 
   environment = var.environment
   labels      = var.labels

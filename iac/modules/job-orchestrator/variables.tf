@@ -122,3 +122,8 @@ variable "use_local_namespace_storage" {
   type    = bool
   default = false
 }
+
+variable "persistent_volume_types" {
+  type    = map(string)
+  default = {}
+}

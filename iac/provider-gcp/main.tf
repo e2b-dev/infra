@@ -43,6 +43,30 @@ locals {
 
   // Check if all clusters has size greater than 1
   template_manages_clusters_size_gt_1 = alltrue([for c in var.build_clusters_config : c.cluster_size > 1])
+
+  persistent_volume_types = {
+    for key, config in var.persistent_volume_types : key => {
+      local_mount_path = "/mnt/persistent-volume-types/${key}"
+      nfs_location     = format("%s:/", join(",", google_filestore_instance.persistent-volumes[key].networks[0].ip_addresses)),
+      nfs_mount_opts = join(",", [ // for more docs, see https://linux.die.net/man/5/nfs
+        format("nfsvers=%s", google_filestore_instance.persistent-volumes[key].protocol == "NFS_V3" ? "3" : "4"),
+        "actimeo=600",          // cache attributes for 60 seconds
+        "async",                // delay writes until certain conditions are met
+        "hard",                 // retry nfs requests indefinitely until they succeed, never fail
+        "lookupcache=positive", // cache successful file handle lookups
+        "nconnect=7",           // use multiple connections
+        "noacl",                // do not use an acl
+        "nocto",                // skip "close-to-open" attribute checks
+        "nolock",               // do not use locking
+        "noresvport",           // use a non-privileged source port
+        "retrans=2",            // retry two times before performing recovery actions
+        "rsize=1048576",        // receive 1 MB per read request
+        "sec=sys",              // use AUTH_SYS for all requests
+        "timeo=600",            // wait 60 seconds (measured in deci-seconds) before retrying a failed request
+        "wsize=1048576",        // receive 1 MB per write request
+      ])
+    }
+  }
 }
 
 module "init" {
@@ -123,6 +147,8 @@ module "cluster" {
   filestore_cache_enabled     = var.filestore_cache_enabled
   filestore_cache_tier        = var.filestore_cache_tier
   filestore_cache_capacity_gb = var.filestore_cache_capacity_gb
+
+  persistent_volume_types = local.persistent_volume_types
 
   labels = var.labels
   prefix = var.prefix
@@ -218,6 +244,7 @@ module "nomad" {
   orchestrator_proxy_port     = var.orchestrator_proxy_port
   fc_env_pipeline_bucket_name = module.init.fc_env_pipeline_bucket_name
   envd_timeout                = var.envd_timeout
+  persistent_volume_types     = { for key, config in local.persistent_volume_types : key => config.local_mount_path }
 
   # Template manager
   builder_node_pool                   = var.build_node_pool

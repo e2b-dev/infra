@@ -598,3 +598,15 @@ variable "loki_use_v13_schema_from" {
     error_message = "must be YYYY-MM-DD"
   }
 }
+
+variable "persistent_volume_types" {
+  description = "Persistence layer for volumes"
+
+  type = map(object({
+    tier        = string
+    location    = optional(string)
+    capacity_gb = number
+  }))
+
+  default = {}
+}
