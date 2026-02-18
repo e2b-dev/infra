@@ -32,6 +32,9 @@ const (
 	portMapperPort    = 111
 )
 
+//go:embed e2e_start.sh
+var e2eStartScript []byte
+
 //go:embed e2e_test.sh
 var e2eTestScript []byte
 
@@ -164,11 +167,18 @@ func TestIntegrationTest(t *testing.T) {
 		testcontainers.WithEnv(map[string]string{
 			"NFS_HOST": nfsListener.Addr().String(),
 		}),
-		testcontainers.WithFiles(testcontainers.ContainerFile{
-			Reader:            bytes.NewBuffer(e2eTestScript),
-			ContainerFilePath: "/e2e_test.sh",
-			FileMode:          0o777,
-		}),
+		testcontainers.WithFiles(
+			testcontainers.ContainerFile{
+				Reader:            bytes.NewBuffer(e2eStartScript),
+				ContainerFilePath: "/e2e_start.sh",
+				FileMode:          0o777,
+			},
+			testcontainers.ContainerFile{
+				Reader:            bytes.NewBuffer(e2eTestScript),
+				ContainerFilePath: "/e2e_test.sh",
+				FileMode:          0o777,
+			},
+		),
 		testcontainers.WithCmd("sleep", "infinity"),
 		testcontainers.WithLogger(log.TestLogger(t)),
 		testcontainers.WithLogConsumerConfig(&testcontainers.LogConsumerConfig{
@@ -188,7 +198,7 @@ func TestIntegrationTest(t *testing.T) {
 
 	// run the actual test
 	code, out, err := testCtr.Exec(t.Context(),
-		[]string{"/e2e_test.sh"},
+		[]string{"/e2e_start.sh"},
 		exec.WithEnv([]string{
 			"NFS_HOST=" + defaultDockerHost,
 			"NFS_PORT=" + nfsListenPortStr,
