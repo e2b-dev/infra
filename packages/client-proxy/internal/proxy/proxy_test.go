@@ -150,10 +150,8 @@ func TestHandlePausedSandbox_SnapshotNotFound(t *testing.T) {
 	ff := newFF(t, true)
 
 	_, res, err := handlePausedSandbox(context.Background(), "sbx", 8000, "token", "", stubResumer{err: status.Error(codes.NotFound, "snapshot not found")}, ff)
-	require.Error(t, err)
-	var inProgressErr *reverseproxy.SandboxResumeInProgressError
-	require.ErrorAs(t, err, &inProgressErr)
-	require.Equal(t, autoResumeErrored, res)
+	require.NoError(t, err)
+	require.Equal(t, autoResumeNotAllowed, res)
 }
 
 func TestHandlePausedSandbox_Error(t *testing.T) {
@@ -242,7 +240,7 @@ func TestGetNotResumableCode(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			code, _, ok := getNotResumableCode(tt.err)
+			code, ok := getNotResumableCode(tt.err)
 			assert.Equal(t, tt.expectedOK, ok)
 			if ok {
 				assert.Equal(t, tt.expectedCode, code)

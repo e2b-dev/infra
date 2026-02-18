@@ -60,16 +60,6 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 			return
 		}
 
-		var resumeInProgressErr *SandboxResumeInProgressError
-		if errors.As(err, &resumeInProgressErr) {
-			logger.L().Warn(ctx, "sandbox resume in progress",
-				zap.String("host", r.Host),
-				logger.WithSandboxID(resumeInProgressErr.SandboxId))
-			http.Error(w, "Sandbox is resuming, please retry", http.StatusConflict)
-
-			return
-		}
-
 		var resumeDeniedErr *SandboxResumePermissionDeniedError
 		if errors.As(err, &resumeDeniedErr) {
 			logger.L().Warn(ctx, "sandbox resume permission denied",
