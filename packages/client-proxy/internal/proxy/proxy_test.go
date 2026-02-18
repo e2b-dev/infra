@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	catalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 )
 
@@ -134,8 +135,22 @@ func TestHandlePausedSandbox_PermissionDenied(t *testing.T) {
 	ff := newFF(t, true)
 
 	_, res, err := handlePausedSandbox(context.Background(), "sbx", 8000, "token", "", stubResumer{err: status.Error(codes.PermissionDenied, "permission denied")}, ff)
-	require.NoError(t, err)
-	require.Equal(t, autoResumeNotAllowed, res)
+	require.Error(t, err)
+	var deniedErr *reverseproxy.SandboxResumePermissionDeniedError
+	require.ErrorAs(t, err, &deniedErr)
+	require.Equal(t, autoResumeErrored, res)
+}
+
+func TestHandlePausedSandbox_SnapshotNotFound(t *testing.T) {
+	t.Parallel()
+
+	ff := newFF(t, true)
+
+	_, res, err := handlePausedSandbox(context.Background(), "sbx", 8000, "token", "", stubResumer{err: status.Error(codes.NotFound, "snapshot not found")}, ff)
+	require.Error(t, err)
+	var inProgressErr *reverseproxy.SandboxResumeInProgressError
+	require.ErrorAs(t, err, &inProgressErr)
+	require.Equal(t, autoResumeErrored, res)
 }
 
 func TestHandlePausedSandbox_Error(t *testing.T) {

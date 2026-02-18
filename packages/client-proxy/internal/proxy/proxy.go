@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel/metric"
@@ -86,7 +87,14 @@ func handlePausedSandbox(
 	logger.L().Info(ctx, "catalog miss, attempting resume via api", logger.WithSandboxID(sandboxId))
 	nodeIP, err := pausedChecker.Resume(ctx, sandboxId, sandboxPort, trafficAccessToken, envdAccessToken)
 	if err != nil {
-		if _, ok := getNotResumableCode(err); ok {
+		if code, message, ok := getNotResumableCode(err); ok {
+			if code == codes.PermissionDenied {
+				return "", autoResumeErrored, reverseproxy.NewErrSandboxResumePermissionDenied(sandboxId)
+			}
+			if code == codes.NotFound && strings.Contains(strings.ToLower(message), "snapshot not found") {
+				return "", autoResumeErrored, reverseproxy.NewErrSandboxResumeInProgress(sandboxId)
+			}
+
 			return "", autoResumeNotAllowed, nil
 		}
 
@@ -96,18 +104,18 @@ func handlePausedSandbox(
 	return nodeIP, autoResumeSucceeded, nil
 }
 
-func getNotResumableCode(err error) (codes.Code, bool) {
+func getNotResumableCode(err error) (codes.Code, string, bool) {
 	st, ok := status.FromError(err)
 	if !ok {
-		return 0, false
+		return 0, "", false
 	}
 
 	code := st.Code()
 	if code == codes.NotFound || code == codes.PermissionDenied {
-		return code, true
+		return code, st.Message(), true
 	}
 
-	return 0, false
+	return 0, "", false
 }
 
 func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog catalog.SandboxesCatalog, pausedSandboxResumer PausedSandboxResumer, featureFlagsClient *featureflags.Client) (*reverseproxy.Proxy, error) {
@@ -139,6 +147,20 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 			envdAccessToken := r.Header.Get("X-Access-Token")
 			nodeIP, err := findActiveNode(ctx, sandboxId, port, trafficAccessToken, envdAccessToken, catalog, pausedSandboxResumer, featureFlagsClient)
 			if err != nil {
+				var resumeInProgressErr *reverseproxy.SandboxResumeInProgressError
+				if errors.As(err, &resumeInProgressErr) {
+					l.Warn(ctx, "sandbox resume is in progress", zap.Error(err))
+
+					return nil, resumeInProgressErr
+				}
+
+				var resumeDeniedErr *reverseproxy.SandboxResumePermissionDeniedError
+				if errors.As(err, &resumeDeniedErr) {
+					l.Warn(ctx, "sandbox resume denied", zap.Error(err))
+
+					return nil, resumeDeniedErr
+				}
+
 				if !errors.Is(err, ErrNodeNotFound) {
 					l.Warn(ctx, "failed to resolve node ip with Redis resolution", zap.Error(err))
 				}
