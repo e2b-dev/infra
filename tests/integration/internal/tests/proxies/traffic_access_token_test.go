@@ -268,7 +268,7 @@ func TestSandboxWithTrafficAccessTokenAutoResumeViaProxy(t *testing.T) {
 	req := utils.NewRequest(&sbxWithoutToken, proxyURL, port, nil)
 	resp, err = client.Do(req)
 	require.NoError(t, err)
-	require.Equal(t, http.StatusBadGateway, resp.StatusCode)
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
 	res, err = c.GetSandboxesSandboxIDWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
@@ -330,7 +330,7 @@ func TestEnvdAccessTokenAutoResumeViaProxy(t *testing.T) {
 	req := utils.NewRequest(sbx, proxyURL, envdPort, nil)
 	resp, err = client.Do(req)
 	require.NoError(t, err)
-	require.Equal(t, http.StatusBadGateway, resp.StatusCode)
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
 	res, err = c.GetSandboxesSandboxIDWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())

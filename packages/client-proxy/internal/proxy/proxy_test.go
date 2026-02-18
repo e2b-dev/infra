@@ -2,10 +2,13 @@ package proxy
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/launchdarkly/go-server-sdk/v7/testhelpers/ldtestdata"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -199,4 +202,51 @@ func TestHandlePausedSandbox_PassesPortAndTokenToResumer(t *testing.T) {
 	require.EqualValues(t, 49983, resumer.sandboxPort)
 	require.Equal(t, "token", resumer.trafficAccessToken)
 	require.Equal(t, "envd-token", resumer.envdAccessToken)
+}
+
+func TestGetNotResumableCode(t *testing.T) {
+	t.Parallel()
+
+	// Direct PermissionDenied/NotFound are already covered by TestHandlePausedSandbox_*.
+	// These cover edge cases: wrapped errors, non-gRPC errors, ignored codes.
+	tests := []struct {
+		name         string
+		err          error
+		expectedCode codes.Code
+		expectedOK   bool
+	}{
+		{
+			name:       "plain error is not extractable",
+			err:        errors.New("plain error"),
+			expectedOK: false,
+		},
+		{
+			name:       "Unavailable is not extractable",
+			err:        status.Error(codes.Unavailable, "service down"),
+			expectedOK: false,
+		},
+		{
+			name:         "wrapped PermissionDenied is extractable",
+			err:          fmt.Errorf("grpc resume: %w", status.Error(codes.PermissionDenied, "denied")),
+			expectedCode: codes.PermissionDenied,
+			expectedOK:   true,
+		},
+		{
+			name:         "wrapped NotFound is extractable",
+			err:          fmt.Errorf("grpc resume: %w", status.Error(codes.NotFound, "not found")),
+			expectedCode: codes.NotFound,
+			expectedOK:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			code, _, ok := getNotResumableCode(tt.err)
+			assert.Equal(t, tt.expectedOK, ok)
+			if ok {
+				assert.Equal(t, tt.expectedCode, code)
+			}
+		})
+	}
 }
