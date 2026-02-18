@@ -15,6 +15,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
@@ -155,6 +156,7 @@ type StreamingChunker struct {
 	cache            *Cache
 	metrics          metrics.Metrics
 	fetchTimeout     time.Duration
+	featureFlags     *featureflags.Client
 	minReadBatchSize int64
 
 	size int64
@@ -169,6 +171,7 @@ func NewStreamingChunker(
 	cachePath string,
 	metrics metrics.Metrics,
 	minReadBatchSize int64,
+	ff *featureflags.Client,
 ) (*StreamingChunker, error) {
 	cache, err := NewCache(size, blockSize, cachePath, false)
 	if err != nil {
@@ -184,6 +187,7 @@ func NewStreamingChunker(
 		upstream:         upstream,
 		cache:            cache,
 		metrics:          metrics,
+		featureFlags:     ff,
 		fetchTimeout:     defaultFetchTimeout,
 		minReadBatchSize: minReadBatchSize,
 		fetchMap:         make(map[int64]*fetchSession),
@@ -380,7 +384,7 @@ func (c *StreamingChunker) progressiveRead(ctx context.Context, s *fetchSession,
 	defer reader.Close()
 
 	blockSize := c.cache.BlockSize()
-	readBatch := max(blockSize, c.minReadBatchSize)
+	readBatch := max(blockSize, c.getMinReadBatchSize(ctx))
 	var totalRead int64
 	var prevCompleted int64
 
@@ -418,6 +422,20 @@ func (c *StreamingChunker) progressiveRead(ctx context.Context, s *fetchSession,
 	}
 
 	return nil
+}
+
+// getMinReadBatchSize returns the effective min read batch size. When a feature
+// flags client is available, the value is read just-in-time from the flag so
+// it can be tuned without restarting the service.
+func (c *StreamingChunker) getMinReadBatchSize(ctx context.Context) int64 {
+	if c.featureFlags != nil {
+		_, minKB := getChunkerConfig(ctx, c.featureFlags)
+		if minKB > 0 {
+			return int64(minKB) * 1024
+		}
+	}
+
+	return c.minReadBatchSize
 }
 
 func (c *StreamingChunker) Close() error {

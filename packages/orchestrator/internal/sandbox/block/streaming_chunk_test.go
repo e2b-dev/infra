@@ -182,7 +182,7 @@ func TestStreamingChunker_BasicSlice(t *testing.T) {
 		int64(len(data)), testBlockSize,
 		upstream, t.TempDir()+"/cache",
 		newTestMetrics(t),
-		0,
+		0, nil,
 	)
 	require.NoError(t, err)
 	defer chunker.Close()
@@ -208,7 +208,7 @@ func TestStreamingChunker_CacheHit(t *testing.T) {
 		int64(len(data)), testBlockSize,
 		upstream, t.TempDir()+"/cache",
 		newTestMetrics(t),
-		0,
+		0, nil,
 	)
 	require.NoError(t, err)
 	defer chunker.Close()
@@ -273,7 +273,7 @@ func TestStreamingChunker_FullChunkCachedAfterPartialRequest(t *testing.T) {
 		int64(len(data)), testBlockSize,
 		upstream, t.TempDir()+"/cache",
 		newTestMetrics(t),
-		0,
+		0, nil,
 	)
 	require.NoError(t, err)
 	defer chunker.Close()
@@ -317,7 +317,7 @@ func TestStreamingChunker_ConcurrentSameChunk(t *testing.T) {
 		int64(len(data)), testBlockSize,
 		upstream, t.TempDir()+"/cache",
 		newTestMetrics(t),
-		0,
+		0, nil,
 	)
 	require.NoError(t, err)
 	defer chunker.Close()
@@ -367,7 +367,7 @@ func TestStreamingChunker_EarlyReturn(t *testing.T) {
 		int64(len(data)), testBlockSize,
 		upstream, t.TempDir()+"/cache",
 		newTestMetrics(t),
-		0,
+		0, nil,
 	)
 	require.NoError(t, err)
 	defer chunker.Close()
@@ -383,7 +383,7 @@ func TestStreamingChunker_EarlyReturn(t *testing.T) {
 		int64(len(data)), testBlockSize,
 		upstream, t.TempDir()+"/cache2",
 		newTestMetrics(t),
-		0,
+		0, nil,
 	)
 	require.NoError(t, err)
 	defer chunker2.Close()
@@ -417,7 +417,7 @@ func TestStreamingChunker_ErrorKeepsPartialData(t *testing.T) {
 		int64(len(data)), testBlockSize,
 		upstream, t.TempDir()+"/cache",
 		newTestMetrics(t),
-		0,
+		0, nil,
 	)
 	require.NoError(t, err)
 	defer chunker.Close()
@@ -447,7 +447,7 @@ func TestStreamingChunker_ContextCancellation(t *testing.T) {
 		int64(len(data)), testBlockSize,
 		upstream, t.TempDir()+"/cache",
 		newTestMetrics(t),
-		0,
+		0, nil,
 	)
 	require.NoError(t, err)
 	defer chunker.Close()
@@ -481,7 +481,7 @@ func TestStreamingChunker_LastBlockPartial(t *testing.T) {
 		int64(len(data)), testBlockSize,
 		upstream, t.TempDir()+"/cache",
 		newTestMetrics(t),
-		0,
+		0, nil,
 	)
 	require.NoError(t, err)
 	defer chunker.Close()
@@ -507,7 +507,7 @@ func TestStreamingChunker_MultiChunkSlice(t *testing.T) {
 		int64(len(data)), testBlockSize,
 		upstream, t.TempDir()+"/cache",
 		newTestMetrics(t),
-		0,
+		0, nil,
 	)
 	require.NoError(t, err)
 	defer chunker.Close()
@@ -583,7 +583,7 @@ func TestStreamingChunker_PanicRecovery(t *testing.T) {
 		int64(len(data)), testBlockSize,
 		upstream, t.TempDir()+"/cache",
 		newTestMetrics(t),
-		0,
+		0, nil,
 	)
 	require.NoError(t, err)
 	defer chunker.Close()
@@ -624,7 +624,7 @@ func TestStreamingChunker_ConcurrentSameChunk_SharedSession(t *testing.T) {
 		int64(len(data)), testBlockSize,
 		upstream, t.TempDir()+"/cache",
 		newTestMetrics(t),
-		0,
+		0, nil,
 	)
 	require.NoError(t, err)
 	defer chunker.Close()
@@ -819,7 +819,7 @@ func BenchmarkRandomAccess(b *testing.B) {
 			name: "StreamingChunker",
 			newChunker: func(b *testing.B, m metrics.Metrics, upstream *realisticUpstream) benchChunker {
 				b.Helper()
-				c, err := NewStreamingChunker(size, testBlockSize, upstream, b.TempDir()+"/cache", m, 0)
+				c, err := NewStreamingChunker(size, testBlockSize, upstream, b.TempDir()+"/cache", m, 0, nil)
 				require.NoError(b, err)
 
 				return c

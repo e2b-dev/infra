@@ -40,7 +40,7 @@ func NewChunker(
 	useStreaming, minReadBatchSizeKB := getChunkerConfig(ctx, featureFlags)
 
 	if useStreaming {
-		return NewStreamingChunker(size, blockSize, upstream, cachePath, metrics, int64(minReadBatchSizeKB)*1024)
+		return NewStreamingChunker(size, blockSize, upstream, cachePath, metrics, int64(minReadBatchSizeKB)*1024, featureFlags)
 	}
 
 	return NewFullFetchChunker(size, blockSize, upstream, cachePath, metrics)
