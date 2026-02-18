@@ -9,7 +9,6 @@ import (
 	"strconv"
 	"time"
 
-	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -21,7 +20,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	sharedutils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -82,15 +80,7 @@ func tokensMatch(providedToken string, expectedToken string) bool {
 	return subtle.ConstantTimeCompare([]byte(providedToken), []byte(expectedToken)) == 1
 }
 
-func denyResumePermission(ctx context.Context, sandboxID string, reason string) error {
-	telemetry.ReportError(
-		ctx,
-		"proxy auto-resume permission denied",
-		errors.New(reason),
-		telemetry.WithSandboxID(sandboxID),
-		attribute.String("reason", reason),
-	)
-
+func denyResumePermission() error {
 	return status.Error(codes.PermissionDenied, "permission denied")
 }
 
@@ -165,7 +155,7 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		providedToken, _ := metadataFirstValue(incomingMetadata, proxygrpc.MetadataTrafficAccessToken)
 
 		if !tokensMatch(providedToken, expectedToken) {
-			return nil, denyResumePermission(ctx, sandboxID, "invalid_or_missing_traffic_access_token")
+			return nil, denyResumePermission()
 		}
 	}
 
@@ -174,7 +164,7 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		providedEnvdToken, _ := metadataFirstValue(incomingMetadata, proxygrpc.MetadataEnvdAccessToken)
 
 		if !tokensMatch(providedEnvdToken, *envdAccessToken) {
-			return nil, denyResumePermission(ctx, sandboxID, "invalid_or_missing_envd_access_token")
+			return nil, denyResumePermission()
 		}
 	}
 
