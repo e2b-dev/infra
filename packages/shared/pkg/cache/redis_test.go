@@ -412,9 +412,9 @@ func TestRedisCache_DeleteByPrefix(t *testing.T) {
 
 	// Verify team1 keys are gone
 	_, err := redisClient.Get(t.Context(), rc.RedisKey("team1:sandbox-a")).Result()
-	assert.ErrorIs(t, err, redis.Nil)
+	require.ErrorIs(t, err, redis.Nil)
 	_, err = redisClient.Get(t.Context(), rc.RedisKey("team1:sandbox-b")).Result()
-	assert.ErrorIs(t, err, redis.Nil)
+	require.ErrorIs(t, err, redis.Nil)
 
 	// Verify team2 key still exists
 	_, err = redisClient.Get(t.Context(), rc.RedisKey("team2:sandbox-c")).Result()
