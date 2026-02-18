@@ -35,7 +35,7 @@ var (
 )
 
 func getPrefixFromSandbox(sandboxes *sandbox.Map, filesystemsByType map[string]billy.Filesystem) jailed.GetPrefix {
-	return func(ctx context.Context, remoteAddr net.Addr, request nfs.MountRequest) (billy.Filesystem, string, error) {
+	return func(_ context.Context, remoteAddr net.Addr, request nfs.MountRequest) (billy.Filesystem, string, error) {
 		sbx, err := sandboxes.GetByHostPort(remoteAddr.String())
 		if err != nil {
 			return nil, "", err
