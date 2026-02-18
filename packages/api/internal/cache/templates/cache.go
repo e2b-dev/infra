@@ -45,7 +45,7 @@ type TemplateInfo struct {
 // TemplateCache caches template+build by templateID:tag.
 // This is a simple lookup layer - resolution happens in AliasCache.
 type TemplateCache struct {
-	cache      *cache.Cache[*TemplateInfo]
+	cache      *cache.MemoryCache[*TemplateInfo]
 	db         *sqlcdb.Client
 	aliasCache *AliasCache
 }
@@ -62,7 +62,7 @@ func NewTemplateCache(db *sqlcdb.Client) *TemplateCache {
 	}
 
 	return &TemplateCache{
-		cache:      cache.NewCache(config),
+		cache:      cache.NewMemoryCache(config),
 		db:         db,
 		aliasCache: NewAliasCache(db),
 	}

@@ -2,7 +2,10 @@ package templatecache
 
 import (
 	"context"
+	"database/sql"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -11,16 +14,18 @@ import (
 
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
+	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/cache"
+	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 const (
-	l1CacheTTL             = 5 * time.Second
-	l1CacheRefreshInterval = 1 * time.Second
+	buildCacheTTL             = 5 * time.Minute
+	buildCacheRefreshInterval = 1 * time.Minute
+	buildCacheTimeout         = 2 * time.Second
 
-	redisBuildCacheTTL     = 5 * time.Minute
-	redisBuildCacheTimeout = 2 * time.Second
+	buildCacheKeyPrefix = "template:build"
 )
 
 type TemplateBuildInfo struct {
@@ -36,65 +41,112 @@ type TemplateBuildInfo struct {
 
 var ErrTemplateBuildInfoNotFound = errors.New("template build info not found")
 
+// Lua script to atomically update build status.
+// Keys: [buildKey]
+// Args: [newStatus, newReasonJSON, ttlSeconds]
+// Returns: updated JSON or nil if key doesn't exist
+var updateStatusScript = redis.NewScript(`
+local buildKey = KEYS[1]
+local newStatus = ARGV[1]
+local newReasonJSON = ARGV[2]
+local ttl = tonumber(ARGV[3])
+
+local data = redis.call('GET', buildKey)
+if not data then
+    return nil
+end
+
+local build = cjson.decode(data)
+build.build_status = newStatus
+build.reason = cjson.decode(newReasonJSON)
+
+local encoded = cjson.encode(build)
+redis.call('SET', buildKey, encoded, 'EX', ttl)
+
+return encoded
+`)
+
 type TemplatesBuildCache struct {
-	l1Cache     *cache.Cache[TemplateBuildInfo]
-	redisClient redis.UniversalClient
-	db          *sqlcdb.Client
+	cache *cache.RedisCache[TemplateBuildInfo]
+	db    *sqlcdb.Client
 }
 
 func NewTemplateBuildCache(db *sqlcdb.Client, redisClient redis.UniversalClient) *TemplatesBuildCache {
-	l1Cache := cache.NewCache[TemplateBuildInfo](cache.Config[TemplateBuildInfo]{
-		TTL:             l1CacheTTL,
-		RefreshInterval: l1CacheRefreshInterval,
+	rc := cache.NewRedisCache[TemplateBuildInfo](cache.RedisConfig{
+		TTL:             buildCacheTTL,
+		RefreshInterval: buildCacheRefreshInterval,
+		RedisTimeout:    buildCacheTimeout,
+		RedisClient:     redisClient,
+		RedisPrefix:     buildCacheKeyPrefix,
 	})
 
 	return &TemplatesBuildCache{
-		l1Cache:     l1Cache,
-		redisClient: redisClient,
-		db:          db,
+		cache: rc,
+		db:    db,
 	}
 }
 
 func (c *TemplatesBuildCache) SetStatus(ctx context.Context, buildID uuid.UUID, status types.BuildStatusGroup, reason types.BuildReason) {
-	// Update in Redis
+	// Update in Redis using Lua script
 	if err := c.updateStatusInRedis(ctx, buildID, status, reason); err != nil {
 		logger.L().Warn(ctx, "Failed to update build status in Redis",
 			logger.WithBuildID(buildID.String()),
 			zap.Error(err))
 	}
-
-	// Invalidate L1 cache entry to force re-fetch from Redis on next read
-	c.l1Cache.Delete(buildID.String())
 }
 
 func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templateID string) (TemplateBuildInfo, error) {
-	return c.l1Cache.GetOrSet(ctx, buildID.String(), c.getDataCallback(templateID, buildID))
-}
-
-func (c *TemplatesBuildCache) getDataCallback(templateID string, buildID uuid.UUID) func(context.Context, string) (TemplateBuildInfo, error) {
-	return func(ctx context.Context, buildIDStr string) (TemplateBuildInfo, error) {
-		// Step 1: Check L2 (Redis)
-		info, err := c.getFromRedis(ctx, buildIDStr)
-		if err == nil {
-			return info, nil
-		}
-
-		// Step 2: Fetch from DB
-		info, err = c.fetchFromDB(ctx, buildID, templateID)
-		if err != nil {
-			return TemplateBuildInfo{}, err
-		}
-
-		if storeErr := c.storeInRedis(ctx, buildIDStr, info); storeErr != nil {
-			logger.L().Warn(ctx, "Failed to store build info in Redis",
-				logger.WithBuildID(buildIDStr),
-				zap.Error(storeErr))
-		}
-
-		return info, nil
-	}
+	return c.cache.GetOrSet(ctx, buildID.String(), c.fetchFromDB(templateID, buildID))
 }
 
 func (c *TemplatesBuildCache) Close(ctx context.Context) error {
-	return c.l1Cache.Close(ctx)
+	return c.cache.Close(ctx)
+}
+
+// fetchFromDB returns a callback that fetches the build from the database.
+func (c *TemplatesBuildCache) fetchFromDB(templateID string, buildID uuid.UUID) func(context.Context, string) (TemplateBuildInfo, error) {
+	return func(ctx context.Context, _ string) (TemplateBuildInfo, error) {
+		result, err := c.db.GetTemplateBuildWithTemplate(ctx, queries.GetTemplateBuildWithTemplateParams{
+			TemplateID: templateID,
+			BuildID:    buildID,
+		})
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return TemplateBuildInfo{}, ErrTemplateBuildInfoNotFound
+			}
+
+			return TemplateBuildInfo{}, fmt.Errorf("failed to get template build '%s': %w", buildID, err)
+		}
+
+		return TemplateBuildInfo{
+			TeamID:      result.Env.TeamID,
+			TemplateID:  result.Env.ID,
+			BuildStatus: result.EnvBuild.StatusGroup,
+			Reason:      result.EnvBuild.Reason,
+			Version:     result.EnvBuild.Version,
+			ClusterID:   clusters.WithClusterFallback(result.Env.ClusterID),
+			NodeID:      result.EnvBuild.ClusterNodeID,
+		}, nil
+	}
+}
+
+// updateStatusInRedis atomically updates the build status in Redis using a Lua script.
+func (c *TemplatesBuildCache) updateStatusInRedis(ctx context.Context, buildID uuid.UUID, status types.BuildStatusGroup, reason types.BuildReason) error {
+	ctx, cancel := context.WithTimeout(ctx, buildCacheTimeout)
+	defer cancel()
+
+	reasonJSON, err := json.Marshal(reason)
+	if err != nil {
+		return fmt.Errorf("failed to marshal reason: %w", err)
+	}
+
+	buildKey := c.cache.RedisKey(buildID.String())
+
+	ttlSeconds := int(buildCacheTTL.Seconds())
+	_, err = updateStatusScript.Run(ctx, c.cache.RedisClient(), []string{buildKey}, string(status), string(reasonJSON), ttlSeconds).Result()
+	if err != nil && !errors.Is(err, redis.Nil) {
+		return fmt.Errorf("failed to update status in Redis: %w", err)
+	}
+
+	return nil
 }
