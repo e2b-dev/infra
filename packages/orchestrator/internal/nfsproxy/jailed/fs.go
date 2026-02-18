@@ -68,19 +68,40 @@ func (j jailedFS) Remove(filename string) error {
 }
 
 func (j jailedFS) Join(elem ...string) string {
-	path := j.inner.Join(elem...)
+	// Start with inner's join and normalize separators and dots.
+	p := j.inner.Join(elem...)
+	p = filepath.ToSlash(p)
+	p = filepath.Clean(p)
 
-	// prevent directory traversal
-	path = filepath.ToSlash(path)
-	path = filepath.Clean(path)
-
-	if len(elem) > 0 {
-		if !strings.HasPrefix(elem[0], j.prefix+"/") {
-			path = filepath.Join(j.prefix, path)
-		}
+	// If the cleaned path is already inside the jail prefix, keep it as-is to
+	// avoid duplicating the prefix (e.g., Join("/jail", "a")).
+	if p == j.prefix || strings.HasPrefix(p, j.prefix+"/") {
+		return p
 	}
 
-	return path
+	// Otherwise, force the path to stay within the jail by removing any
+	// leading slashes and any leading ".." segments, then prepend the prefix.
+	s := p
+	// Drop all leading slashes to make it relative.
+	for strings.HasPrefix(s, "/") {
+		s = strings.TrimPrefix(s, "/")
+	}
+	// Drop all leading parent traversals. filepath.Clean already resolves
+	// internal traversals like "a/../b" to "b", so we only need to handle
+	// leading ".." components here.
+	for {
+		if s == ".." {
+			s = ""
+			break
+		}
+		if strings.HasPrefix(s, "../") {
+			s = strings.TrimPrefix(s, "../")
+			continue
+		}
+		break
+	}
+
+	return filepath.Join(j.prefix, s)
 }
 
 func (j jailedFS) TempFile(dir, prefix string) (billy.File, error) {
