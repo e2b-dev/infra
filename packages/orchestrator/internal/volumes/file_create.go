@@ -90,7 +90,7 @@ func (s *Service) CreateFile(server orchestrator.VolumeService_CreateFileServer)
 			}
 
 			return server.SendAndClose(&orchestrator.VolumeFileCreateResponse{
-				Entry: toEntry(entry),
+				Entry: toEntry(start.GetPath(), entry),
 			})
 
 		default:

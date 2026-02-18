@@ -143,6 +143,7 @@ func TestVolumeContent(t *testing.T) {
 		assert.Equal(t, api.File, createdFile.Type)
 		assert.Equal(t, int64(len(expected)), createdFile.Size)
 		assert.Equal(t, filename, createdFile.Name)
+		assert.Equal(t, "/test.txt", createdFile.Path)
 		assert.False(t, createdFile.Ctime.IsZero())
 		assert.False(t, createdFile.Mtime.IsZero())
 
@@ -387,7 +388,7 @@ func TestVolumeContent(t *testing.T) {
 		require.Equal(t, http.StatusNotFound, response.StatusCode(), string(response.Body))
 	})
 
-	t.Run("can create file in non existent subdirectory", func(t *testing.T) {
+	t.Run("can create file in non existent subdirectory with force=true", func(t *testing.T) {
 		t.Parallel()
 
 		dirName := uuid.NewString()
@@ -426,6 +427,8 @@ func TestVolumeContent(t *testing.T) {
 			setup.WithAPIKey())
 		require.NoError(t, err)
 		require.Equal(t, http.StatusCreated, response.StatusCode(), string(response.Body))
+		assert.Equal(t, fmt.Sprintf("/%s/%s", dirName, fileName), response.JSON201.Path)
+		assert.Equal(t, fileName, response.JSON201.Name)
 	})
 
 	t.Run("cannot delete directory with contents without force", func(t *testing.T) {

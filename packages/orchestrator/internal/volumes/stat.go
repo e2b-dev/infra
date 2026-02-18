@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -28,12 +28,12 @@ func (s *Service) Stat(_ context.Context, request *orchestrator.StatRequest) (r 
 		return nil, fmt.Errorf("failed to stat path: %w", err)
 	}
 
-	entry := toEntry(info)
+	entry := toEntry(request.GetPath(), info)
 
 	return &orchestrator.StatResponse{Entry: entry}, nil
 }
 
-func toEntry(info os.FileInfo) *orchestrator.EntryInfo {
+func toEntry(volumeRelPath string, info os.FileInfo) *orchestrator.EntryInfo {
 	var fType orchestrator.FileType
 	switch {
 	case info.Mode()&os.ModeSymlink != 0:
@@ -44,10 +44,14 @@ func toEntry(info os.FileInfo) *orchestrator.EntryInfo {
 		fType = orchestrator.FileType_FILE_TYPE_FILE
 	}
 
+	if !strings.HasPrefix(volumeRelPath, "/") {
+		volumeRelPath = "/" + volumeRelPath
+	}
+
 	entry := &orchestrator.EntryInfo{
-		Name:         filepath.Base(info.Name()),
+		Name:         info.Name(),
 		Type:         fType,
-		Path:         info.Name(),
+		Path:         volumeRelPath,
 		Size:         info.Size(),
 		Mode:         uint32(info.Mode()),
 		ModifiedTime: timestamppb.New(info.ModTime()),

@@ -8,31 +8,31 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
-func (s *Service) UpdateFileMetadata(_ context.Context, req *orchestrator.VolumeFileUpdateRequest) (r *orchestrator.VolumeFileUpdateResponse, err error) {
+func (s *Service) UpdateFileMetadata(_ context.Context, request *orchestrator.VolumeFileUpdateRequest) (r *orchestrator.VolumeFileUpdateResponse, err error) {
 	defer func() {
 		err = s.processError(err)
 	}()
 
-	fullPath, err := s.buildVolumePath(req.GetVolume(), req.GetPath())
+	fullPath, err := s.buildVolumePath(request.GetVolume(), request.GetPath())
 	if err != nil {
 		return nil, fmt.Errorf("failed to build volume path: %w", err)
 	}
 
-	if req.Mode != nil {
-		if err = os.Chmod(fullPath, os.FileMode(req.GetMode())); err != nil {
+	if request.Mode != nil {
+		if err = os.Chmod(fullPath, os.FileMode(request.GetMode())); err != nil {
 			return nil, fmt.Errorf("failed to update file mode: %w", err)
 		}
 	}
 
-	if req.Gid != nil || req.Uid != nil {
+	if request.Gid != nil || request.Uid != nil {
 		uid := -1
-		if req.Uid != nil {
-			uid = int(req.GetUid())
+		if request.Uid != nil {
+			uid = int(request.GetUid())
 		}
 
 		gid := -1
-		if req.Gid != nil {
-			gid = int(req.GetGid())
+		if request.Gid != nil {
+			gid = int(request.GetGid())
 		}
 
 		if err = os.Chown(fullPath, uid, gid); err != nil {
@@ -46,6 +46,6 @@ func (s *Service) UpdateFileMetadata(_ context.Context, req *orchestrator.Volume
 	}
 
 	return &orchestrator.VolumeFileUpdateResponse{
-		Entry: toEntry(info),
+		Entry: toEntry(request.GetPath(), info),
 	}, nil
 }

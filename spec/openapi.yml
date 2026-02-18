@@ -3521,7 +3521,6 @@ paths:
           schema:
             type: boolean
       requestBody:
-        required: true
         content:
           application/octet-stream:
             schema:

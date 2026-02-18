@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
@@ -31,7 +32,7 @@ func (s *Service) ListDir(_ context.Context, request *orchestrator.VolumeDirList
 		}
 
 		results = append(results, &orchestrator.VolumeDirectoryItem{
-			Entry: toEntry(info),
+			Entry: toEntry(filepath.Join(request.GetPath(), item.Name()), info),
 		})
 	}
 

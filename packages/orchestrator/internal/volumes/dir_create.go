@@ -50,6 +50,6 @@ func (s *Service) CreateDir(_ context.Context, request *orchestrator.VolumeDirCr
 	}
 
 	return &orchestrator.VolumeDirCreateResponse{
-		Entry: toEntry(stat),
+		Entry: toEntry(request.GetPath(), stat),
 	}, nil
 }
