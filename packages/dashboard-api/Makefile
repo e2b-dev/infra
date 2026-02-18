@@ -28,7 +28,7 @@ build-and-upload:
 
 .PHONY: run
 run:
-	make build-debug
+	make build
 	./bin/dashboard-api
 
 .PHONY: test

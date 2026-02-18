@@ -38,7 +38,8 @@ COPY ./dashboard-api/Makefile ./dashboard-api/Makefile
 WORKDIR /build/dashboard-api
 
 ARG COMMIT_SHA
-RUN --mount=type=cache,target=/root/.cache/go-build make build COMMIT_SHA=${COMMIT_SHA}
+ARG EXPECTED_MIGRATION_TIMESTAMP
+RUN --mount=type=cache,target=/root/.cache/go-build make build COMMIT_SHA=${COMMIT_SHA} EXPECTED_MIGRATION_TIMESTAMP=${EXPECTED_MIGRATION_TIMESTAMP}
 RUN chmod +x /build/dashboard-api/bin/dashboard-api
 
 FROM alpine:${ALPINE_VERSION}

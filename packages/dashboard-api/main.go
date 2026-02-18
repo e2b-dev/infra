@@ -8,12 +8,14 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3filter"
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	middleware "github.com/oapi-codegen/gin-middleware"
@@ -42,23 +44,21 @@ const (
 	idleTimeout       = 620 * time.Second
 )
 
-var commitSHA string
+var (
+	commitSHA                  string
+	expectedMigrationTimestamp string
+)
 
 func run() int {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-
-	config, err := cfg.Parse()
-	if err != nil {
-		log.Fatalf("failed to parse config: %v", err)
-	}
 
 	serviceInstanceID := uuid.New().String()
 	nodeID := e2benv.GetNodeID()
 
 	tel, err := telemetry.New(ctx, nodeID, serviceName, commitSHA, serviceVersion, serviceInstanceID)
 	if err != nil {
-		log.Fatalf("failed to create telemetry: %v", err)
+		logger.L().Fatal(ctx, "failed to create telemetry", zap.Error(err))
 	}
 	defer func() {
 		if err := tel.Shutdown(ctx); err != nil {
@@ -74,12 +74,28 @@ func run() int {
 		EnableConsole: true,
 	})
 	if err != nil {
-		log.Fatalf("failed to create logger: %v", err)
+		logger.L().Fatal(ctx, "failed to create logger", zap.Error(err))
 	}
 	defer l.Sync()
 	logger.ReplaceGlobals(ctx, l)
 
+	config, err := cfg.Parse()
+	if err != nil {
+		l.Fatal(ctx, "failed to parse config", zap.Error(err))
+	}
+
 	l.Info(ctx, "Starting dashboard-api service...", zap.String("commit_sha", commitSHA), zap.String("instance_id", serviceInstanceID))
+
+	expectedMigration, err := strconv.ParseInt(expectedMigrationTimestamp, 10, 64)
+	if err != nil {
+		l.Warn(ctx, "Failed to parse expected migration timestamp", zap.Error(err))
+		expectedMigration = 0
+	}
+
+	err = sqlcdb.CheckMigrationVersion(ctx, config.PostgresConnectionString, expectedMigration)
+	if err != nil {
+		l.Fatal(ctx, "failed to check migration version", zap.Error(err))
+	}
 
 	if !e2benv.IsDebug() {
 		gin.SetMode(gin.ReleaseMode)
@@ -117,6 +133,17 @@ func run() int {
 
 	r := gin.New()
 	r.Use(gin.Recovery())
+
+	corsConfig := cors.DefaultConfig()
+	corsConfig.AllowAllOrigins = true
+	corsConfig.AllowHeaders = []string{
+		"Origin",
+		"Content-Length",
+		"Content-Type",
+		"X-Supabase-Token",
+		"X-Supabase-Team",
+	}
+	r.Use(cors.New(corsConfig))
 
 	r.Use(
 		middleware.OapiRequestValidatorWithOptions(swagger,
@@ -160,7 +187,7 @@ func run() int {
 		<-signalCtx.Done()
 		l.Info(ctx, "Shutting down dashboard-api service...")
 
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		shutdownCtx, shutdownCancel := context.WithTimeout(ctx, 30*time.Second)
 		defer shutdownCancel()
 
 		if err := s.Shutdown(shutdownCtx); err != nil {
@@ -171,10 +198,12 @@ func run() int {
 	l.Info(ctx, "HTTP service starting", zap.Int("port", config.Port))
 	if err := s.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		l.Error(ctx, "HTTP service error", zap.Error(err))
+
 		return 1
 	}
 
 	l.Info(ctx, "HTTP service stopped")
+
 	return 0
 }
 

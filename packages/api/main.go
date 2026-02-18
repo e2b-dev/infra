@@ -300,7 +300,7 @@ func run() int {
 		logger.L().Fatal(ctx, "Error parsing config", zap.Error(err))
 	}
 
-	err = utils.CheckMigrationVersion(ctx, config.PostgresConnectionString, expectedMigration)
+	err = sqlcdb.CheckMigrationVersion(ctx, config.PostgresConnectionString, expectedMigration)
 	if err != nil {
 		l.Fatal(ctx, "failed to check migration version", zap.Error(err))
 	}
