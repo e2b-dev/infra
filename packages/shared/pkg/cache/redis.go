@@ -124,40 +124,53 @@ func (rc *RedisCache[V]) Delete(ctx context.Context, key string) {
 
 // DeleteByPrefix removes all keys matching the given prefix from Redis.
 // Uses SCAN (not KEYS) to avoid blocking Redis on large keyspaces.
+// Keys are collected first, then deleted after SCAN completes so that
+// the keyspace is not mutated during cursor iteration.
 // Returns the list of deleted cache keys (without the Redis prefix).
 func (rc *RedisCache[V]) DeleteByPrefix(ctx context.Context, prefix string) []string {
 	redisPattern := fmt.Sprintf("%s:%s*", rc.config.RedisPrefix, prefix)
 
-	var deleted []string
+	// Phase 1: collect all matching keys without mutating the keyspace.
+	allKeys := rc.collectKeys(ctx, prefix)
+	if len(allKeys) == 0 {
+		return nil
+	}
+
+	// Phase 2: delete all collected keys.
+	deleted := make([]string, 0, len(allKeys))
+	pipeCtx, cancel := context.WithTimeout(ctx, rc.config.RedisTimeout)
+	defer cancel()
+	pipe := rc.config.RedisClient.Pipeline()
+	for _, redisKey := range allKeys {
+		pipe.Del(pipeCtx, redisKey)
+		cacheKey := redisKey[len(rc.config.RedisPrefix)+1:]
+		deleted = append(deleted, cacheKey)
+	}
+
+	if _, err := pipe.Exec(pipeCtx); err != nil {
+		logger.L().Warn(ctx, "RedisCache: pipeline DEL error",
+			zap.String("pattern", redisPattern),
+			zap.Error(err))
+	}
+
+	return deleted
+}
+
+func (rc *RedisCache[V]) collectKeys(ctx context.Context, prefix string) []string {
+	var allKeys []string
 	var cursor uint64
 	for {
 		scanCtx, cancel := context.WithTimeout(ctx, rc.config.RedisTimeout)
-		keys, nextCursor, err := rc.config.RedisClient.Scan(scanCtx, cursor, redisPattern, redisScanCount).Result()
+		keys, nextCursor, err := rc.config.RedisClient.Scan(scanCtx, cursor, fmt.Sprintf("%s:%s*", rc.config.RedisPrefix, prefix), 1000).Result()
 		cancel()
 		if err != nil {
 			logger.L().Warn(ctx, "RedisCache: SCAN error",
-				zap.String("pattern", redisPattern),
+				zap.String("pattern", fmt.Sprintf("%s:%s*", rc.config.RedisPrefix, prefix)),
 				zap.Error(err))
-
 			break
 		}
 
-		if len(keys) > 0 {
-			pipeCtx, cancel := context.WithTimeout(ctx, rc.config.RedisTimeout)
-			pipe := rc.config.RedisClient.Pipeline()
-			for _, redisKey := range keys {
-				pipe.Del(ctx, redisKey)
-				cacheKey := redisKey[len(rc.config.RedisPrefix)+1:]
-				deleted = append(deleted, cacheKey)
-			}
-
-			if _, err := pipe.Exec(pipeCtx); err != nil {
-				logger.L().Warn(ctx, "RedisCache: pipeline DEL error",
-					zap.String("pattern", redisPattern),
-					zap.Error(err))
-			}
-			cancel()
-		}
+		allKeys = append(allKeys, keys...)
 
 		cursor = nextCursor
 		if cursor == 0 {
@@ -165,7 +178,7 @@ func (rc *RedisCache[V]) DeleteByPrefix(ctx context.Context, prefix string) []st
 		}
 	}
 
-	return deleted
+	return allKeys
 }
 
 // Close is a no-op (no background goroutines to stop).
