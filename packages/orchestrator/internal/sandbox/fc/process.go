@@ -76,7 +76,8 @@ type Process struct {
 
 	client *apiClient
 
-	CgroupHandle *cgroup.CgroupHandle
+	cgroupManager cgroup.Manager
+	CgroupHandle  *cgroup.CgroupHandle
 }
 
 func NewProcess(
@@ -129,24 +130,6 @@ func NewProcess(
 		Setsid: true, // Create a new session
 	}
 
-	// Create cgroup and get FD for atomic process placement
-	// This uses CLONE_INTO_CGROUP (Linux 5.7+) to place the process in the cgroup atomically during fork
-	var cgroupHandle *cgroup.CgroupHandle
-	if cgroupManager != nil {
-		var err error
-		cgroupHandle, err = cgroupManager.Create(ctx, files.SandboxID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create cgroup: %w", err)
-		}
-
-		cmd.SysProcAttr.UseCgroupFD = true
-		cmd.SysProcAttr.CgroupFD = cgroupHandle.GetFD()
-
-		logger.L().Debug(ctx, "prepared cgroup for firecracker",
-			logger.WithSandboxID(files.SandboxID),
-			zap.Int("fd", cgroupHandle.GetFD()))
-	}
-
 	return &Process{
 		Versions:              versions,
 		Exit:                  utils.NewErrorOnce(),
@@ -158,9 +141,9 @@ func NewProcess(
 		files:                 files,
 		slot:                  slot,
 
-		kernelPath:   startScript.KernelPath,
-		rootfsPath:   startScript.RootfsPath,
-		CgroupHandle: cgroupHandle,
+		kernelPath:    startScript.KernelPath,
+		rootfsPath:    startScript.RootfsPath,
+		cgroupManager: cgroupManager,
 	}, nil
 }
 
@@ -186,6 +169,23 @@ func (p *Process) configure(
 		stderrWriters = append(stderrWriters, stderrExternal)
 	}
 	p.cmd.Stderr = io.MultiWriter(stderrWriters...)
+
+	// Create cgroup and get FD for atomic process placement.
+	// This uses CLONE_INTO_CGROUP (Linux 5.7+) to place the process in the cgroup atomically during fork.
+	if p.cgroupManager != nil {
+		cgroupHandle, err := p.cgroupManager.Create(ctx, p.files.SandboxID)
+		if err != nil {
+			return fmt.Errorf("failed to create cgroup: %w", err)
+		}
+
+		p.CgroupHandle = cgroupHandle
+		p.cmd.SysProcAttr.UseCgroupFD = true
+		p.cmd.SysProcAttr.CgroupFD = cgroupHandle.GetFD()
+
+		logger.L().Debug(ctx, "prepared cgroup for firecracker",
+			logger.WithSandboxID(p.files.SandboxID),
+			zap.Int("fd", cgroupHandle.GetFD()))
+	}
 
 	err := p.cmd.Start()
 	if err != nil {
