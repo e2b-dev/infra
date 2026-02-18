@@ -17,6 +17,10 @@ import (
 const (
 	// RootCgroupPath is the base path for all E2B sandbox cgroups
 	RootCgroupPath = "/sys/fs/cgroup/e2b"
+
+	// NoCgroupFD is a sentinel value indicating that no cgroup file descriptor
+	// is available (e.g. cgroup accounting is disabled or the FD has been released).
+	NoCgroupFD = -1
 )
 
 // Stats contains resource usage statistics from a cgroup
@@ -47,11 +51,11 @@ type CgroupHandle struct {
 }
 
 // GetFD returns the file descriptor for use with SysProcAttr.CgroupFD.
-// Returns -1 if the directory FD has been released.
+// Returns NoCgroupFD if the directory FD has been released.
 // The FD is valid until ReleaseCgroupFD() is called.
 func (h *CgroupHandle) GetFD() int {
 	if h == nil || h.file == nil {
-		return -1
+		return NoCgroupFD
 	}
 	return int(h.file.Fd())
 }

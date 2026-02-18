@@ -1058,10 +1058,10 @@ func pauseProcessRootfs(
 // the provided Cleanup so the cgroup is removed on error paths.
 //
 // Returns the CgroupHandle and the cgroup directory FD to pass to the
-// Firecracker process. If cgroup accounting is disabled, returns (nil, -1).
+// Firecracker process. If cgroup accounting is disabled, returns (nil, cgroup.NoCgroupFD).
 func (f *Factory) createCgroup(ctx context.Context, sandboxID string, cleanup *Cleanup) (*cgroup.CgroupHandle, int) {
 	if f.cgroupManager == nil {
-		return nil, -1
+		return nil, cgroup.NoCgroupFD
 	}
 
 	handle, err := f.cgroupManager.Create(ctx, sandboxID)
@@ -1069,7 +1069,7 @@ func (f *Factory) createCgroup(ctx context.Context, sandboxID string, cleanup *C
 		logger.L().Warn(ctx, "failed to create cgroup, continuing without cgroup accounting",
 			logger.WithSandboxID(sandboxID),
 			zap.Error(err))
-		return nil, -1
+		return nil, cgroup.NoCgroupFD
 	}
 
 	cleanup.Add(ctx, func(ctx context.Context) error {

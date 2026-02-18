@@ -79,7 +79,7 @@ func TestCgroupHandleLifecycle(t *testing.T) {
 
 	err = handle.ReleaseCgroupFD()
 	assert.NoError(t, err)
-	assert.Equal(t, -1, handle.GetFD())
+	assert.Equal(t, NoCgroupFD, handle.GetFD())
 
 	// Double release should be safe
 	err = handle.ReleaseCgroupFD()

@@ -19,6 +19,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/cgroup"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/socket"
@@ -168,7 +169,7 @@ func (p *Process) configure(
 	// Set up cgroup FD for atomic placement via CLONE_INTO_CGROUP.
 	// The cgroup is created and owned by the caller (Sandbox); Process only
 	// uses the FD during clone.
-	if cgroupFD >= 0 {
+	if cgroupFD != cgroup.NoCgroupFD {
 		p.cmd.SysProcAttr.UseCgroupFD = true
 		p.cmd.SysProcAttr.CgroupFD = cgroupFD
 	}
@@ -245,7 +246,7 @@ func (p *Process) Create(
 		sbxMetadata,
 		options.Stdout,
 		options.Stderr,
-		-1,
+		cgroup.NoCgroupFD,
 	)
 	if err != nil {
 		fcStopErr := p.Stop(ctx)
