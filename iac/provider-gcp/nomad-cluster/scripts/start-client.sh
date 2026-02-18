@@ -101,7 +101,7 @@ mkdir -p "${NFS_MOUNT_PATH}/${NFS_MOUNT_SUBDIR}" && chmod +w "${NFS_MOUNT_PATH}/
 %{ endif }
 
 %{ for name, config in PERSISTENT_VOLUME_TYPES }
-mkdir -p ${config.local_mount_path}
+mkdir -p "${config.local_mount_path}"
 echo "${config.nfs_location} ${config.local_mount_path} nfs ${config.nfs_mount_opts} 0 0" | tee -a /etc/fstab
 mount "${config.local_mount_path}"
 %{ endfor }
