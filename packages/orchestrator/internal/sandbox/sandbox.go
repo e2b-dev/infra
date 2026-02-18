@@ -156,7 +156,8 @@ type Sandbox struct {
 	files   *storage.SandboxFiles
 	cleanup *Cleanup
 
-	process *fc.Process
+	process      *fc.Process
+	cgroupHandle *cgroup.CgroupHandle
 
 	Template template.Template
 
@@ -302,7 +303,6 @@ func (f *Factory) CreateSandbox(
 		config.FirecrackerConfig,
 		rootfsProvider,
 		fc.ConstantRootfsPaths,
-		f.cgroupManager,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to init FC: %w", err)
@@ -322,6 +322,7 @@ func (f *Factory) CreateSandbox(
 		config.HugePages,
 		processOptions,
 	)
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to create FC: %w", err)
 	}
@@ -569,6 +570,9 @@ func (f *Factory) ResumeSandbox(
 		return nil, fmt.Errorf("failed to get metadata: %w", err)
 	}
 
+	// Create cgroup for sandbox resource accounting
+	cgroupHandle, cgroupFD := f.createCgroup(ctx, runtime.SandboxID, cleanup)
+
 	fcHandle, fcErr := fc.NewProcess(
 		ctx,
 		execCtx,
@@ -583,7 +587,6 @@ func (f *Factory) ResumeSandbox(
 			TemplateID:      config.BaseTemplateID,
 			BuildID:         rootfs.Header().Metadata.BaseBuildId.String(),
 		},
-		f.cgroupManager,
 	)
 	if fcErr != nil {
 		return nil, fmt.Errorf("failed to create FC: %w", fcErr)
@@ -622,7 +625,18 @@ func (f *Factory) ResumeSandbox(
 		snapfile,
 		fcUffd.Ready(),
 		config.Envd.AccessToken,
+		cgroupFD,
 	)
+
+	// Release the cgroup directory FD — the kernel already used it during clone
+	if cgroupHandle != nil {
+		if releaseErr := cgroupHandle.ReleaseCgroupFD(); releaseErr != nil {
+			logger.L().Warn(ctx, "failed to release cgroup directory FD",
+				logger.WithSandboxID(runtime.SandboxID),
+				zap.Error(releaseErr))
+		}
+	}
+
 	if fcStartErr != nil {
 		return nil, fmt.Errorf("failed to start FC: %w", fcStartErr)
 	}
@@ -650,8 +664,9 @@ func (f *Factory) ResumeSandbox(
 	sbx := &Sandbox{
 		LifecycleID: uuid.NewString(),
 
-		Resources: resources,
-		Metadata:  metadata,
+		Resources:    resources,
+		Metadata:     metadata,
+		cgroupHandle: cgroupHandle,
 
 		Template: t,
 		config:   f.config,
@@ -776,10 +791,12 @@ func (s *Sandbox) doStop(ctx context.Context) error {
 	<-s.process.Exit.Done()
 
 	// Remove cgroup after process has exited
-	if cgroupErr := s.process.CleanupCgroup(ctx); cgroupErr != nil {
-		logger.L().Warn(ctx, "failed to remove cgroup during cleanup",
-			logger.WithSandboxID(s.Runtime.SandboxID),
-			zap.Error(cgroupErr))
+	if s.cgroupHandle != nil {
+		if cgroupErr := s.cgroupHandle.Remove(ctx); cgroupErr != nil {
+			logger.L().Warn(ctx, "failed to remove cgroup during cleanup",
+				logger.WithSandboxID(s.Runtime.SandboxID),
+				zap.Error(cgroupErr))
+		}
 	}
 
 	uffdStopErr := s.Resources.memory.Stop()
@@ -1034,6 +1051,32 @@ func pauseProcessRootfs(
 	}
 
 	return rootfsDiff, rootfsHeader, nil
+}
+
+// createCgroup creates a cgroup for sandbox resource accounting if cgroup
+// accounting is enabled (cgroupManager is non-nil). It registers cleanup with
+// the provided Cleanup so the cgroup is removed on error paths.
+//
+// Returns the CgroupHandle and the cgroup directory FD to pass to the
+// Firecracker process. If cgroup accounting is disabled, returns (nil, -1).
+func (f *Factory) createCgroup(ctx context.Context, sandboxID string, cleanup *Cleanup) (*cgroup.CgroupHandle, int) {
+	if f.cgroupManager == nil {
+		return nil, -1
+	}
+
+	handle, err := f.cgroupManager.Create(ctx, sandboxID)
+	if err != nil {
+		logger.L().Warn(ctx, "failed to create cgroup, continuing without cgroup accounting",
+			logger.WithSandboxID(sandboxID),
+			zap.Error(err))
+		return nil, -1
+	}
+
+	cleanup.Add(ctx, func(ctx context.Context) error {
+		return handle.Remove(ctx)
+	})
+
+	return handle, handle.GetFD()
 }
 
 func getNetworkSlot(

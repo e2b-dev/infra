@@ -19,7 +19,6 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/cgroup"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/socket"
@@ -75,9 +74,6 @@ type Process struct {
 	Exit *utils.ErrorOnce
 
 	client *apiClient
-
-	cgroupManager cgroup.Manager
-	cgroupHandle  *cgroup.CgroupHandle
 }
 
 func NewProcess(
@@ -89,7 +85,6 @@ func NewProcess(
 	versions Config,
 	rootfsProvider rootfs.Provider,
 	rootfsPaths RootfsPaths,
-	cgroupManager cgroup.Manager,
 ) (*Process, error) {
 	ctx, childSpan := tracer.Start(ctx, "initialize-fc", trace.WithAttributes(
 		attribute.Int("sandbox.slot.index", slot.Idx),
@@ -141,9 +136,8 @@ func NewProcess(
 		files:                 files,
 		slot:                  slot,
 
-		kernelPath:    startScript.KernelPath,
-		rootfsPath:    startScript.RootfsPath,
-		cgroupManager: cgroupManager,
+		kernelPath: startScript.KernelPath,
+		rootfsPath: startScript.RootfsPath,
 	}, nil
 }
 
@@ -152,6 +146,7 @@ func (p *Process) configure(
 	sbxMetadata sbxlogger.LoggerMetadata,
 	stdoutExternal io.Writer,
 	stderrExternal io.Writer,
+	cgroupFD int,
 ) error {
 	ctx, childSpan := tracer.Start(ctx, "configure-fc")
 	defer childSpan.End()
@@ -170,50 +165,17 @@ func (p *Process) configure(
 	}
 	p.cmd.Stderr = io.MultiWriter(stderrWriters...)
 
-	// Set up cgroup FD for atomic placement via CLONE_INTO_CGROUP
-	if p.cgroupManager != nil {
-		cgroupHandle, err := p.cgroupManager.Create(ctx, p.files.SandboxID)
-		if err != nil {
-			return fmt.Errorf("failed to create cgroup: %w", err)
-		}
-
-		p.cgroupHandle = cgroupHandle
+	// Set up cgroup FD for atomic placement via CLONE_INTO_CGROUP.
+	// The cgroup is created and owned by the caller (Sandbox); Process only
+	// uses the FD during clone.
+	if cgroupFD >= 0 {
 		p.cmd.SysProcAttr.UseCgroupFD = true
-		p.cmd.SysProcAttr.CgroupFD = cgroupHandle.GetFD()
-
-		logger.L().Debug(ctx, "prepared cgroup for firecracker",
-			logger.WithSandboxID(p.files.SandboxID),
-			zap.Int("fd", cgroupHandle.GetFD()))
+		p.cmd.SysProcAttr.CgroupFD = cgroupFD
 	}
 
 	err := p.cmd.Start()
-
-	// Release cgroup directory FD — kernel already used it during clone
-	if p.cgroupHandle != nil {
-		if releaseErr := p.cgroupHandle.ReleaseCgroupFD(); releaseErr != nil {
-			logger.L().Warn(ctx, "failed to release cgroup directory FD",
-				logger.WithSandboxID(p.files.SandboxID),
-				zap.Error(releaseErr))
-		}
-	}
-
 	if err != nil {
-		if p.cgroupHandle != nil {
-			if removeErr := p.cgroupHandle.Remove(ctx); removeErr != nil {
-				logger.L().Warn(ctx, "failed to remove cgroup after start failure",
-					logger.WithSandboxID(p.files.SandboxID),
-					zap.Error(removeErr))
-			}
-			p.cgroupHandle = nil
-		}
-
 		return fmt.Errorf("error starting fc process: %w", err)
-	}
-
-	if p.cgroupHandle != nil {
-		logger.L().Debug(ctx, "firecracker process started in cgroup",
-			logger.WithSandboxID(p.files.SandboxID),
-			zap.Int("pid", p.cmd.Process.Pid))
 	}
 
 	startCtx, cancelStart := context.WithCancelCause(ctx)
@@ -283,6 +245,7 @@ func (p *Process) Create(
 		sbxMetadata,
 		options.Stdout,
 		options.Stderr,
+		-1,
 	)
 	if err != nil {
 		fcStopErr := p.Stop(ctx)
@@ -409,6 +372,7 @@ func (p *Process) Resume(
 	snapfile template.File,
 	uffdReady chan struct{},
 	accessToken *string,
+	cgroupFD int,
 ) error {
 	ctx, span := tracer.Start(ctx, "resume-fc")
 	defer span.End()
@@ -428,6 +392,7 @@ func (p *Process) Resume(
 			sbxMetadata,
 			nil,
 			nil,
+			cgroupFD,
 		)
 		if err != nil {
 			return fmt.Errorf("error starting fc process: %w", err)
@@ -517,25 +482,6 @@ func (p *Process) Resume(
 	)
 
 	return nil
-}
-
-// CgroupStats returns current cgroup resource usage statistics.
-// Returns (nil, nil) if cgroup accounting is not enabled for this process.
-func (p *Process) CgroupStats(ctx context.Context) (*cgroup.Stats, error) {
-	if p.cgroupHandle == nil {
-		return nil, nil
-	}
-	return p.cgroupHandle.GetStats(ctx)
-}
-
-// CleanupCgroup removes the cgroup directory and releases associated resources.
-// Must be called after the process has exited. Safe to call multiple times
-// or when cgroup accounting is not enabled.
-func (p *Process) CleanupCgroup(ctx context.Context) error {
-	if p.cgroupHandle == nil {
-		return nil
-	}
-	return p.cgroupHandle.Remove(ctx)
 }
 
 func (p *Process) Pid() (int, error) {

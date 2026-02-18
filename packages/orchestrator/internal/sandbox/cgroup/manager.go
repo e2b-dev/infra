@@ -85,8 +85,7 @@ func (h *CgroupHandle) GetStats(ctx context.Context) (*Stats, error) {
 	return h.manager.getStatsForPath(ctx, h.path, h.memoryPeakFile)
 }
 
-// Remove closes the memory.peak FD and deletes the cgroup directory.
-// The caller must have already called ReleaseCgroupFD() before calling Remove.
+// Remove closes all open FDs and deletes the cgroup directory.
 // The handle should not be used after calling Remove.
 // Safe to call multiple times. Returns error if removal fails
 // (but tolerates the cgroup having been auto-cleaned by the kernel).
@@ -96,6 +95,12 @@ func (h *CgroupHandle) Remove(ctx context.Context) error {
 	}
 
 	h.removed = true
+
+	// Close the directory FD if ReleaseCgroupFD() was not called
+	if h.file != nil {
+		h.file.Close()
+		h.file = nil
+	}
 
 	if h.memoryPeakFile != nil {
 		h.memoryPeakFile.Close()
