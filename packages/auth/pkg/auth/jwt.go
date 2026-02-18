@@ -12,9 +12,14 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-// MinJWTSecretLength is the minimum length of a secret used to verify the Supabase JWT.
-// This is a security measure to prevent the use of weak secrets (like empty).
-const MinJWTSecretLength = 16
+const (
+	// MinJWTSecretLength is the minimum length of a secret used to verify the Supabase JWT.
+	// This is a security measure to prevent the use of weak secrets (like empty).
+	MinJWTSecretLength = 16
+
+	TeamContextKey   = "team"
+	UserIDContextKey = "user_id"
+)
 
 // SupabaseClaims defines the claims we expect from the Supabase JWT.
 type SupabaseClaims struct {

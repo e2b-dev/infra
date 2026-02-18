@@ -13,6 +13,7 @@ import (
 	middleware "github.com/oapi-codegen/gin-middleware"
 
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
+	sharedauth "github.com/e2b-dev/infra/packages/shared/pkg/auth"
 )
 
 var (
@@ -95,7 +96,7 @@ func CreateAuthenticationFunc(
 				removePrefix: "",
 			},
 			validationFunction: supabaseTokenValidationFunction,
-			contextKey:         UserIDContextKey,
+			contextKey:         sharedauth.UserIDContextKey,
 			errorMessage:       "Invalid Supabase token.",
 		},
 		&commonAuthenticator[uuid.UUID]{
@@ -106,7 +107,7 @@ func CreateAuthenticationFunc(
 				removePrefix: "",
 			},
 			validationFunction: supabaseTeamValidationFunction,
-			contextKey:         TeamContextKey,
+			contextKey:         sharedauth.TeamContextKey,
 			errorMessage:       "Invalid Supabase team.",
 		},
 	}
