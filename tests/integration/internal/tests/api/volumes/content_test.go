@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strconv"
 	"testing"
@@ -48,10 +49,10 @@ func TestVolumeContent(t *testing.T) {
 	createFileInVolume := func(t *testing.T, vol *api.Volume, path, content string) *api.VolumeEntryStat {
 		t.Helper()
 
-		response, err := client.PostVolumesVolumeIDFileWithBodyWithResponse(
+		response, err := client.PutVolumesVolumeIDFileWithBodyWithResponse(
 			t.Context(),
 			vol.VolumeID,
-			&api.PostVolumesVolumeIDFileParams{
+			&api.PutVolumesVolumeIDFileParams{
 				Path: path,
 			},
 			"application/octet-stream",
@@ -109,6 +110,24 @@ func TestVolumeContent(t *testing.T) {
 		return readFileInVolume(t, volume, path)
 	}
 
+	getStatInVolume := func(t *testing.T, vol *api.Volume, path string) *api.VolumeEntryStat {
+		t.Helper()
+
+		resp, err := client.GetVolumesVolumeIDStatWithResponse(
+			t.Context(), vol.VolumeID,
+			&api.GetVolumesVolumeIDStatParams{Path: path},
+			setup.WithAPIKey(),
+		)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, resp.StatusCode(), string(resp.Body))
+		return resp.JSON200
+	}
+
+	getStat := func(t *testing.T, path string) *api.VolumeEntryStat {
+		t.Helper()
+		return getStatInVolume(t, volume, path)
+	}
+
 	t.Run("get volume content", func(t *testing.T) {
 		t.Parallel()
 
@@ -148,10 +167,10 @@ func TestVolumeContent(t *testing.T) {
 		newContent := uuid.NewString()
 
 		// create the file
-		response, err := client.PostVolumesVolumeIDFileWithBodyWithResponse(
+		response, err := client.PutVolumesVolumeIDFileWithBodyWithResponse(
 			t.Context(),
 			volume.VolumeID,
-			&api.PostVolumesVolumeIDFileParams{
+			&api.PutVolumesVolumeIDFileParams{
 				Path: filename,
 			},
 			"application/octet-stream",
@@ -162,10 +181,10 @@ func TestVolumeContent(t *testing.T) {
 		require.Equal(t, http.StatusCreated, response.StatusCode(), string(response.Body))
 
 		// attempt to overwrite the file, fail
-		response, err = client.PostVolumesVolumeIDFileWithBodyWithResponse(
+		response, err = client.PutVolumesVolumeIDFileWithBodyWithResponse(
 			t.Context(),
 			volume.VolumeID,
-			&api.PostVolumesVolumeIDFileParams{
+			&api.PutVolumesVolumeIDFileParams{
 				Path: filename,
 			},
 			"application/octet-stream",
@@ -180,10 +199,10 @@ func TestVolumeContent(t *testing.T) {
 		assert.Equal(t, originalContent, actual)
 
 		// use force flag
-		response, err = client.PostVolumesVolumeIDFileWithBodyWithResponse(
+		response, err = client.PutVolumesVolumeIDFileWithBodyWithResponse(
 			t.Context(),
 			volume.VolumeID,
-			&api.PostVolumesVolumeIDFileParams{
+			&api.PutVolumesVolumeIDFileParams{
 				Path:  filename,
 				Force: utils.ToPtr(true),
 			},
@@ -206,10 +225,10 @@ func TestVolumeContent(t *testing.T) {
 		content := uuid.NewString()
 
 		// create the file
-		response, err := client.PostVolumesVolumeIDFileWithBodyWithResponse(
+		response, err := client.PutVolumesVolumeIDFileWithBodyWithResponse(
 			t.Context(),
 			volume.VolumeID,
-			&api.PostVolumesVolumeIDFileParams{
+			&api.PutVolumesVolumeIDFileParams{
 				Path: filename,
 				Uid:  utils.ToPtr(uint32(12345)),
 				Gid:  utils.ToPtr(uint32(54321)),
@@ -232,10 +251,10 @@ func TestVolumeContent(t *testing.T) {
 		content := uuid.NewString()
 
 		// create the file
-		response, err := client.PostVolumesVolumeIDFileWithBodyWithResponse(
+		response, err := client.PutVolumesVolumeIDFileWithBodyWithResponse(
 			t.Context(),
 			volume.VolumeID,
-			&api.PostVolumesVolumeIDFileParams{
+			&api.PutVolumesVolumeIDFileParams{
 				Path: filename,
 				Uid:  utils.ToPtr(uint32(12345)),
 			},
@@ -257,10 +276,10 @@ func TestVolumeContent(t *testing.T) {
 		content := uuid.NewString()
 
 		// create the file
-		response, err := client.PostVolumesVolumeIDFileWithBodyWithResponse(
+		response, err := client.PutVolumesVolumeIDFileWithBodyWithResponse(
 			t.Context(),
 			volume.VolumeID,
-			&api.PostVolumesVolumeIDFileParams{
+			&api.PutVolumesVolumeIDFileParams{
 				Path: filename,
 				Gid:  utils.ToPtr(uint32(12345)),
 			},
@@ -282,10 +301,10 @@ func TestVolumeContent(t *testing.T) {
 		content := uuid.NewString()
 
 		// create the file
-		response, err := client.PostVolumesVolumeIDFileWithBodyWithResponse(
+		response, err := client.PutVolumesVolumeIDFileWithBodyWithResponse(
 			t.Context(),
 			volume.VolumeID,
-			&api.PostVolumesVolumeIDFileParams{
+			&api.PutVolumesVolumeIDFileParams{
 				Path: filename,
 				Mode: utils.ToPtr(uint32(0o642)),
 			},
@@ -354,9 +373,9 @@ func TestVolumeContent(t *testing.T) {
 		fileName := uuid.NewString()
 		content := uuid.NewString()
 
-		response, err := client.PostVolumesVolumeIDFileWithBodyWithResponse(
+		response, err := client.PutVolumesVolumeIDFileWithBodyWithResponse(
 			t.Context(), volume.VolumeID,
-			&api.PostVolumesVolumeIDFileParams{
+			&api.PutVolumesVolumeIDFileParams{
 				Path: filepath.Join(dirName, fileName),
 			},
 			"application/octet-stream",
@@ -373,9 +392,9 @@ func TestVolumeContent(t *testing.T) {
 		fileName := uuid.NewString()
 		content := uuid.NewString()
 
-		response, err := client.PostVolumesVolumeIDFileWithBodyWithResponse(
+		response, err := client.PutVolumesVolumeIDFileWithBodyWithResponse(
 			t.Context(), volume.VolumeID,
-			&api.PostVolumesVolumeIDFileParams{
+			&api.PutVolumesVolumeIDFileParams{
 				Path:  filepath.Join(dirName, fileName),
 				Force: utils.ToPtr(true),
 			},
@@ -395,9 +414,9 @@ func TestVolumeContent(t *testing.T) {
 
 		createDir(t, dirName)
 
-		response, err := client.PostVolumesVolumeIDFileWithBodyWithResponse(
+		response, err := client.PutVolumesVolumeIDFileWithBodyWithResponse(
 			t.Context(), volume.VolumeID,
-			&api.PostVolumesVolumeIDFileParams{
+			&api.PutVolumesVolumeIDFileParams{
 				Path: filepath.Join(dirName, fileName),
 			},
 			"application/octet-stream",
@@ -464,5 +483,171 @@ func TestVolumeContent(t *testing.T) {
 			setup.WithAPIKey())
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusNotFound, getDirResponse.StatusCode(), string(getDirResponse.Body))
+	})
+
+	// PATCH (chmod/chown) behavior
+	t.Run("can chmod an existing file", func(t *testing.T) {
+		t.Parallel()
+
+		filename := fmt.Sprintf("%s.txt", uuid.NewString())
+		content := uuid.NewString()
+
+		created := createFile(t, filename, content)
+		assert.Equal(t, uint32(0o666), created.Mode)
+		assert.Equal(t, uint32(1000), created.Uid)
+		assert.Equal(t, uint32(1000), created.Gid)
+
+		// chmod to 0640
+		patchResp, err := client.PatchVolumesVolumeIDFileWithResponse(
+			t.Context(), volume.VolumeID,
+			&api.PatchVolumesVolumeIDFileParams{Path: filename},
+			api.PatchVolumesVolumeIDFileJSONRequestBody{Mode: utils.ToPtr(uint32(0o640))},
+			setup.WithAPIKey(),
+		)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, patchResp.StatusCode(), string(patchResp.Body))
+		entry := patchResp.JSON200
+		require.NotNil(t, entry)
+		assert.Equal(t, uint32(0o640), entry.Mode)
+		// ownership should remain unchanged
+		assert.Equal(t, uint32(1000), entry.Uid)
+		assert.Equal(t, uint32(1000), entry.Gid)
+
+		// verify persisted via stat
+		st := getStat(t, filename)
+		assert.Equal(t, uint32(0o640), st.Mode)
+		assert.Equal(t, uint32(1000), st.Uid)
+		assert.Equal(t, uint32(1000), st.Gid)
+	})
+
+	t.Run("can chown an existing file (uid and gid)", func(t *testing.T) {
+		t.Parallel()
+
+		filename := fmt.Sprintf("%s.txt", uuid.NewString())
+		content := uuid.NewString()
+
+		created := createFile(t, filename, content)
+		oldMode := created.Mode
+
+		patchResp, err := client.PatchVolumesVolumeIDFileWithResponse(
+			t.Context(), volume.VolumeID,
+			&api.PatchVolumesVolumeIDFileParams{Path: filename},
+			api.PatchVolumesVolumeIDFileJSONRequestBody{Uid: utils.ToPtr(uint32(12345)), Gid: utils.ToPtr(uint32(54321))},
+			setup.WithAPIKey(),
+		)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, patchResp.StatusCode(), string(patchResp.Body))
+		entry := patchResp.JSON200
+		require.NotNil(t, entry)
+		assert.Equal(t, uint32(12345), entry.Uid)
+		assert.Equal(t, uint32(54321), entry.Gid)
+		// mode should remain unchanged
+		assert.Equal(t, oldMode, entry.Mode)
+
+		st := getStat(t, filename)
+		assert.Equal(t, uint32(12345), st.Uid)
+		assert.Equal(t, uint32(54321), st.Gid)
+		assert.Equal(t, oldMode, st.Mode)
+	})
+
+	t.Run("can set only uid while patching file", func(t *testing.T) {
+		t.Parallel()
+
+		filename := fmt.Sprintf("%s.txt", uuid.NewString())
+		content := uuid.NewString()
+
+		created := createFile(t, filename, content)
+
+		patchResp, err := client.PatchVolumesVolumeIDFileWithResponse(
+			t.Context(), volume.VolumeID,
+			&api.PatchVolumesVolumeIDFileParams{Path: filename},
+			api.PatchVolumesVolumeIDFileJSONRequestBody{Uid: utils.ToPtr(uint32(12345))},
+			setup.WithAPIKey(),
+		)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, patchResp.StatusCode(), string(patchResp.Body))
+		entry := patchResp.JSON200
+		require.NotNil(t, entry)
+		assert.Equal(t, uint32(12345), entry.Uid)
+		assert.Equal(t, created.Gid, entry.Gid)
+		assert.Equal(t, created.Mode, entry.Mode)
+
+		st := getStat(t, filename)
+		assert.Equal(t, uint32(12345), st.Uid)
+		assert.Equal(t, created.Gid, st.Gid)
+		assert.Equal(t, created.Mode, st.Mode)
+	})
+
+	t.Run("can set only gid while patching file", func(t *testing.T) {
+		t.Parallel()
+
+		filename := fmt.Sprintf("%s.txt", uuid.NewString())
+		content := uuid.NewString()
+
+		created := createFile(t, filename, content)
+
+		patchResp, err := client.PatchVolumesVolumeIDFileWithResponse(
+			t.Context(), volume.VolumeID,
+			&api.PatchVolumesVolumeIDFileParams{Path: filename},
+			api.PatchVolumesVolumeIDFileJSONRequestBody{Gid: utils.ToPtr(uint32(23456))},
+			setup.WithAPIKey(),
+		)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, patchResp.StatusCode(), string(patchResp.Body))
+		entry := patchResp.JSON200
+		require.NotNil(t, entry)
+		assert.Equal(t, created.Uid, entry.Uid)
+		assert.Equal(t, uint32(23456), entry.Gid)
+		assert.Equal(t, created.Mode, entry.Mode)
+
+		st := getStat(t, filename)
+		assert.Equal(t, created.Uid, st.Uid)
+		assert.Equal(t, uint32(23456), st.Gid)
+		assert.Equal(t, created.Mode, st.Mode)
+	})
+
+	t.Run("patching non-existent path returns 404", func(t *testing.T) {
+		t.Parallel()
+
+		path := fmt.Sprintf("%s.txt", uuid.NewString())
+		resp, err := client.PatchVolumesVolumeIDFileWithResponse(
+			t.Context(), volume.VolumeID,
+			&api.PatchVolumesVolumeIDFileParams{Path: path},
+			api.PatchVolumesVolumeIDFileJSONRequestBody{Mode: utils.ToPtr(uint32(0o600))},
+			setup.WithAPIKey(),
+		)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusNotFound, resp.StatusCode(), string(resp.Body))
+	})
+
+	t.Run("can chmod/chown a directory", func(t *testing.T) {
+		t.Parallel()
+
+		dirName := uuid.NewString()
+		createDir(t, dirName)
+
+		// initial stat
+		initial := getStat(t, dirName)
+		assert.Equal(t, api.Directory, initial.Type)
+		assert.Equal(t, uint32(1000), initial.Uid)
+		assert.Equal(t, uint32(1000), initial.Gid)
+
+		resp, err := client.PatchVolumesVolumeIDFileWithResponse(
+			t.Context(), volume.VolumeID,
+			&api.PatchVolumesVolumeIDFileParams{Path: dirName},
+			api.PatchVolumesVolumeIDFileJSONRequestBody{
+				Uid:  utils.ToPtr(uint32(1357)),
+				Gid:  utils.ToPtr(uint32(2468)),
+				Mode: utils.ToPtr(uint32(0o751)),
+			},
+			setup.WithAPIKey(),
+		)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, resp.StatusCode(), string(resp.Body))
+		st := getStat(t, dirName)
+		assert.Equal(t, api.Directory, st.Type)
+		assert.Equal(t, uint32(1357), st.Uid)
+		assert.Equal(t, uint32(2468), st.Gid)
+		assert.Equal(t, uint32(0o751), st.Mode&uint32(os.ModePerm))
 	})
 }

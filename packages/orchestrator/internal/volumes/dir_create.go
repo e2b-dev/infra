@@ -11,12 +11,12 @@ import (
 
 type makeDir func(path string, perm os.FileMode) error
 
-func (v *VolumeService) CreateDir(_ context.Context, request *orchestrator.VolumeDirCreateRequest) (r *orchestrator.VolumeDirCreateResponse, err error) {
+func (s *Service) CreateDir(_ context.Context, request *orchestrator.VolumeDirCreateRequest) (r *orchestrator.VolumeDirCreateResponse, err error) {
 	defer func() {
-		err = v.processError(err)
+		err = s.processError(err)
 	}()
 
-	fullPath, err := v.buildVolumePath(request.GetVolume(), request.GetPath())
+	fullPath, err := s.buildVolumePath(request.GetVolume(), request.GetPath())
 	if err != nil {
 		return nil, fmt.Errorf("failed to build volume path: %w", err)
 	}

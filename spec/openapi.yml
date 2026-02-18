@@ -3446,8 +3446,48 @@ paths:
           description: "path not found"
         "500":
           $ref: "#/components/responses/500"
-    post:
-      description: Create file
+    patch:
+      description: Update file metadata
+      tags: [volumes]
+      security:
+        - AccessTokenAuth: []
+        - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/volumeID"
+        - $ref: "#/components/parameters/path"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                uid:
+                  type: integer
+                  format: uint32
+                gid:
+                  type: integer
+                  format: uint32
+                mode:
+                  type: integer
+                  format: uint32
+      responses:
+        "200":
+          description: "Successfully updated a file's metadata"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VolumeEntryStat"
+        "400":
+          description: "Invalid metadata provided"
+        "404":
+          description: "path not found"
+        "500":
+          description: "Internal server error"
+    put:
+      description: Upload file
       tags: [volumes]
       security:
         - AccessTokenAuth: []
@@ -3459,19 +3499,19 @@ paths:
         - $ref: "#/components/parameters/path"
         - name: uid
           in: query
-          description: User ID of the created file
+          description: User ID of the uploaded file
           schema:
             type: integer
             format: uint32
         - name: gid
           in: query
-          description: Group ID of the created file
+          description: Group ID of the uploaded file
           schema:
             type: integer
             format: uint32
         - name: mode
           in: query
-          description: Mode of the created file
+          description: Mode of the uploaded file
           schema:
             type: integer
             format: uint32

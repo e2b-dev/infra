@@ -20,7 +20,7 @@ func TestBuildVolumePath(t *testing.T) {
 	const goodVolumeName = "good-vol"
 	const goodVolumePath = "/mnt/shared"
 
-	v := VolumeService{
+	v := Service{
 		config: cfg.Config{
 			PersistentVolumeMounts: map[string]string{
 				goodVolumeName: goodVolumePath,
@@ -108,7 +108,7 @@ func TestRelPathTraversal(t *testing.T) {
 	// simulate a mount root with a temp dir instead of relying on /mnt/shared
 	mountRoot := t.TempDir()
 
-	v := VolumeService{
+	v := Service{
 		config: cfg.Config{
 			PersistentVolumeMounts: map[string]string{
 				"safe": mountRoot,

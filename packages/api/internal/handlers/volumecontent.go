@@ -65,7 +65,7 @@ func (a *APIStore) executeOnOrchestratorByVolumeID(
 		return fn(ctx, volume, client)
 	}); err != nil {
 		if errors.Is(err, ErrClusterNotFound) {
-			a.sendAPIStoreError(c, http.StatusNotFound, "cluster not found")
+			a.sendAPIStoreError(c, http.StatusInternalServerError, "cluster not found")
 			telemetry.ReportError(ctx, "cluster not found", err)
 
 			return

@@ -17,7 +17,7 @@ import (
 
 const incomingBufferSize = 1024 * 1024 // 1MB
 
-func (a *APIStore) PostVolumesVolumeIDFile(c *gin.Context, volumeID api.VolumeID, params api.PostVolumesVolumeIDFileParams) {
+func (a *APIStore) PutVolumesVolumeIDFile(c *gin.Context, volumeID api.VolumeID, params api.PutVolumesVolumeIDFileParams) {
 	defer c.Request.Body.Close()
 
 	a.executeOnOrchestratorByVolumeID(c, volumeID, func(ctx context.Context, volume queries.Volume, client *clusters.GRPCClient) error {

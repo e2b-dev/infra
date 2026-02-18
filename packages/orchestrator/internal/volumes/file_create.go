@@ -14,9 +14,9 @@ var ErrExpectedStart = errors.New("expected start message")
 
 var ErrUnexpectedStart = errors.New("unexpected start message")
 
-func (v *VolumeService) CreateFile(server orchestrator.VolumeService_CreateFileServer) (err error) {
+func (s *Service) CreateFile(server orchestrator.VolumeService_CreateFileServer) (err error) {
 	defer func() {
-		err = v.processError(err)
+		err = s.processError(err)
 	}()
 
 	req, err := server.Recv()
@@ -29,7 +29,7 @@ func (v *VolumeService) CreateFile(server orchestrator.VolumeService_CreateFileS
 		return ErrExpectedStart
 	}
 
-	fullPath, err := v.buildVolumePath(start.GetVolume(), start.GetPath())
+	fullPath, err := s.buildVolumePath(start.GetVolume(), start.GetPath())
 	if err != nil {
 		return fmt.Errorf("failed to build volume path: %w", err)
 	}

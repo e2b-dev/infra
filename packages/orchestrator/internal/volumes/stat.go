@@ -13,12 +13,12 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
-func (v *VolumeService) Stat(_ context.Context, request *orchestrator.StatRequest) (r *orchestrator.StatResponse, err error) {
+func (s *Service) Stat(_ context.Context, request *orchestrator.StatRequest) (r *orchestrator.StatResponse, err error) {
 	defer func() {
-		err = v.processError(err)
+		err = s.processError(err)
 	}()
 
-	fullPath, err := v.buildVolumePath(request.GetVolume(), request.GetPath())
+	fullPath, err := s.buildVolumePath(request.GetVolume(), request.GetPath())
 	if err != nil {
 		return nil, fmt.Errorf("failed to build volume path: %w", err)
 	}

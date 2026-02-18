@@ -291,6 +291,18 @@ message EntryInfo {
   google.protobuf.Timestamp created_time = 10;
 }
 
+message VolumeFileUpdateRequest {
+  VolumeInfo volume = 1;
+  string path = 2;
+  optional uint32 mode = 3;
+  optional uint32 uid = 4;
+  optional uint32 gid = 5;
+}
+
+message VolumeFileUpdateResponse {
+  EntryInfo entry = 1;
+}
+
 service VolumeService {
   rpc Create(VolumeCreateRequest) returns (VolumeCreateResponse);
   rpc Delete(VolumeDeleteRequest) returns (VolumeDeleteResponse);
@@ -302,6 +314,7 @@ service VolumeService {
   rpc GetFile(VolumeFileGetRequest) returns (stream VolumeFileGetResponse);
   rpc CreateFile(stream VolumeFileCreateRequest) returns (VolumeFileCreateResponse);
   rpc DeleteFile(VolumeFileDeleteRequest) returns (VolumeFileDeleteResponse);
+  rpc UpdateFileMetadata(VolumeFileUpdateRequest) returns (VolumeFileUpdateResponse);
 
   rpc Stat(StatRequest) returns (StatResponse);
 }

@@ -10,12 +10,12 @@ import (
 
 type removeFunc func(path string) error
 
-func (v *VolumeService) DeleteDir(_ context.Context, request *orchestrator.VolumeDirDeleteRequest) (r *orchestrator.VolumeDirDeleteResponse, err error) {
+func (s *Service) DeleteDir(_ context.Context, request *orchestrator.VolumeDirDeleteRequest) (r *orchestrator.VolumeDirDeleteResponse, err error) {
 	defer func() {
-		err = v.processError(err)
+		err = s.processError(err)
 	}()
 
-	fullPath, err := v.buildVolumePath(request.GetVolume(), request.GetPath())
+	fullPath, err := s.buildVolumePath(request.GetVolume(), request.GetPath())
 	if err != nil {
 		return nil, err
 	}

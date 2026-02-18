@@ -23,16 +23,16 @@ const (
 	defaultGroupID  uint32 = 1000
 )
 
-type VolumeService struct {
+type Service struct {
 	orchestrator.UnimplementedVolumeServiceServer
 
 	config cfg.Config
 }
 
-var _ orchestrator.VolumeServiceServer = (*VolumeService)(nil)
+var _ orchestrator.VolumeServiceServer = (*Service)(nil)
 
-func New(config cfg.Config) *VolumeService {
-	return &VolumeService{config: config}
+func New(config cfg.Config) *Service {
+	return &Service{config: config}
 }
 
 func BuildVolumePathParts(teamID, volumeID string) []string {
@@ -42,9 +42,9 @@ func BuildVolumePathParts(teamID, volumeID string) []string {
 	}
 }
 
-func (v *VolumeService) buildVolumePath(volume *orchestrator.VolumeInfo, subPath string) (string, error) {
+func (s *Service) buildVolumePath(volume *orchestrator.VolumeInfo, subPath string) (string, error) {
 	volumeType := volume.GetVolumeType()
-	volTypePath, ok := v.config.PersistentVolumeMounts[volumeType]
+	volTypePath, ok := s.config.PersistentVolumeMounts[volumeType]
 	if !ok {
 		return "", status.Newf(codes.NotFound, "volume type %q not found", volumeType).Err()
 	}
@@ -77,7 +77,7 @@ func (v *VolumeService) buildVolumePath(volume *orchestrator.VolumeInfo, subPath
 	return volumePath, nil
 }
 
-func (v *VolumeService) processError(err error) error {
+func (s *Service) processError(err error) error {
 	if err == nil {
 		return nil
 	}
