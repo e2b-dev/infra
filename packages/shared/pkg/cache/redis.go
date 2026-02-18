@@ -79,7 +79,7 @@ func (rc *RedisCache[V]) GetOrSet(ctx context.Context, key string, dataCallback 
 			return result{value: v}, nil
 		}
 
-		// Call the data callback with a cancel-free context
+		// Call the data callback with rc.config.RefreshTimeout timeout
 		callbackCtx, cancel := context.WithTimeout(ctx, rc.config.RefreshTimeout)
 		defer cancel()
 		v, cbErr := dataCallback(callbackCtx, key)
