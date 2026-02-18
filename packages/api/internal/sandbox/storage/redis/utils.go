@@ -9,6 +9,8 @@ const (
 	transitionKeyPrefix = "transition:"
 	sandboxesKey        = "sandboxes"
 	indexKey            = "index"
+
+	globalTeamsZSetKey = "sandbox:storage:global:teams"
 )
 
 func getTeamPrefix(teamID string) string {

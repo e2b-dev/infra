@@ -86,6 +86,34 @@ func (s *Storage) TeamItems(_ context.Context, teamID uuid.UUID, states []sandbo
 	return s.getItems(&teamID, states), nil
 }
 
+func (s *Storage) TeamSandboxCount(_ context.Context, teamID uuid.UUID) (int64, error) {
+	var count int64
+	for _, item := range s.items.Items() {
+		data := item.Data()
+		if data.TeamID != teamID {
+			continue
+		}
+
+		count++
+	}
+
+	return count, nil
+}
+
+func (s *Storage) TeamsWithSandboxes(_ context.Context) ([]uuid.UUID, error) {
+	teamSet := make(map[uuid.UUID]struct{})
+	for _, item := range s.items.Items() {
+		teamSet[item.TeamID()] = struct{}{}
+	}
+
+	teams := make([]uuid.UUID, 0, len(teamSet))
+	for id := range teamSet {
+		teams = append(teams, id)
+	}
+
+	return teams, nil
+}
+
 func (s *Storage) AllItems(_ context.Context, states []sandbox.State, options ...sandbox.ItemsOption) ([]sandbox.Sandbox, error) {
 	return s.getItems(nil, states, options...), nil
 }

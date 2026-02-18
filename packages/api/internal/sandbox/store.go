@@ -38,6 +38,8 @@ type Storage interface {
 
 	TeamItems(ctx context.Context, teamID uuid.UUID, states []State) ([]Sandbox, error)
 	AllItems(ctx context.Context, states []State, options ...ItemsOption) ([]Sandbox, error)
+	TeamSandboxCount(ctx context.Context, teamID uuid.UUID) (int64, error)
+	TeamsWithSandboxes(ctx context.Context) ([]uuid.UUID, error)
 
 	Update(ctx context.Context, teamID uuid.UUID, sandboxID string, updateFunc func(sandbox Sandbox) (Sandbox, error)) (Sandbox, error)
 	StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID string, stateAction StateAction) (alreadyDone bool, callback func(context.Context, error), err error)
@@ -148,6 +150,14 @@ func (s *Store) TeamItems(ctx context.Context, teamID uuid.UUID, states []State)
 
 func (s *Store) AllItems(ctx context.Context, states []State, options ...ItemsOption) ([]Sandbox, error) {
 	return s.storage.AllItems(ctx, states, options...)
+}
+
+func (s *Store) TeamSandboxCount(ctx context.Context, teamID uuid.UUID) (int64, error) {
+	return s.storage.TeamSandboxCount(ctx, teamID)
+}
+
+func (s *Store) TeamsWithSandboxes(ctx context.Context) ([]uuid.UUID, error) {
+	return s.storage.TeamsWithSandboxes(ctx)
 }
 
 func (s *Store) Update(ctx context.Context, teamID uuid.UUID, sandboxID string, updateFunc func(sandbox Sandbox) (Sandbox, error)) (Sandbox, error) {

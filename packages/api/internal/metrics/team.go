@@ -77,25 +77,20 @@ func (so *TeamObserver) Start(store *sandbox.Store) (err error) {
 	// Register callbacks for team sandbox metrics
 	so.registration, err = so.meter.RegisterCallback(
 		func(ctx context.Context, obs metric.Observer) error {
-			sbxs, err := store.AllItems(ctx, []sandbox.State{sandbox.StateRunning})
+			teams, err := store.TeamsWithSandboxes(ctx)
 			if err != nil {
-				return fmt.Errorf("failed to get running sandboxes: %w", err)
+				return fmt.Errorf("failed to get teams with sandboxes: %w", err)
 			}
 
-			sbxsPerTeam := make(map[string]int64)
-			for _, sbx := range sbxs {
-				teamID := sbx.TeamID.String()
-				if _, ok := sbxsPerTeam[teamID]; !ok {
-					sbxsPerTeam[teamID] = 0
+			for _, teamID := range teams {
+				count, err := store.TeamSandboxCount(ctx, teamID)
+				if err != nil {
+					return fmt.Errorf("failed to get sandbox count for team %s: %w", teamID, err)
 				}
 
-				sbxsPerTeam[teamID]++
-			}
-
-			// Reset the max for the new interval to the current counts
-			// Observe the max concurrent sandbox counts for each team
-			for teamID, count := range sbxsPerTeam {
-				obs.ObserveInt64(so.teamSandboxRunning, count, metric.WithAttributes(attribute.String("team_id", teamID)))
+				if count > 0 {
+					obs.ObserveInt64(so.teamSandboxRunning, count, metric.WithAttributes(attribute.String("team_id", teamID.String())))
+				}
 			}
 
 			return nil
