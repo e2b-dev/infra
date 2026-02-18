@@ -57,6 +57,7 @@ func (h *CgroupHandle) GetFD() int {
 	if h == nil || h.file == nil {
 		return NoCgroupFD
 	}
+
 	return int(h.file.Fd())
 }
 
@@ -86,6 +87,7 @@ func (h *CgroupHandle) GetStats(ctx context.Context) (*Stats, error) {
 	if h == nil {
 		return nil, fmt.Errorf("cgroup handle is nil")
 	}
+
 	return h.manager.getStatsForPath(ctx, h.path, h.memoryPeakFile)
 }
 
@@ -132,6 +134,7 @@ func (h *CgroupHandle) Path() string {
 	if h == nil {
 		return ""
 	}
+
 	return h.path
 }
 
@@ -140,6 +143,7 @@ func (h *CgroupHandle) SandboxID() string {
 	if h == nil {
 		return ""
 	}
+
 	return h.sandboxID
 }
 
@@ -194,6 +198,7 @@ func (m *managerImpl) Create(ctx context.Context, sandboxID string) (*CgroupHand
 	file, err := os.Open(cgroupPath)
 	if err != nil {
 		os.Remove(cgroupPath)
+
 		return nil, fmt.Errorf("failed to open cgroup directory: %w", err)
 	}
 
@@ -235,7 +240,7 @@ func (m *managerImpl) getStatsForPath(ctx context.Context, cgroupPath string, me
 		return nil, fmt.Errorf("failed to read cpu.stat: %w", err)
 	}
 
-	for _, line := range strings.Split(string(cpuData), "\n") {
+	for line := range strings.SplitSeq(string(cpuData), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) != 2 {
 			continue
@@ -294,7 +299,7 @@ func (m *managerImpl) readAndResetMemoryPeak(ctx context.Context, memoryPeakFile
 	peakBytes, _ := strconv.ParseUint(strings.TrimSpace(string(buf[:n])), 10, 64)
 
 	// Reset per-FD peak for next interval
-	if _, err := memoryPeakFile.Write([]byte("0")); err != nil {
+	if _, err := memoryPeakFile.WriteString("0"); err != nil {
 		logger.L().Debug(ctx, "failed to reset memory.peak", zap.Error(err))
 	}
 

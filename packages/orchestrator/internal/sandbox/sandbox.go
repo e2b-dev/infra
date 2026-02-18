@@ -1068,6 +1068,7 @@ func (f *Factory) createCgroup(ctx context.Context, sandboxID string, cleanup *C
 		logger.L().Warn(ctx, "failed to create cgroup, continuing without cgroup accounting",
 			logger.WithSandboxID(sandboxID),
 			zap.Error(err))
+
 		return nil, cgroup.NoCgroupFD
 	}
 

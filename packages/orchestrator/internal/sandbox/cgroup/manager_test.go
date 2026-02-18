@@ -16,6 +16,8 @@ import (
 )
 
 func TestNewManager(t *testing.T) {
+	t.Parallel()
+
 	if os.Geteuid() != 0 {
 		t.Skip("test requires root privileges")
 	}
@@ -26,6 +28,8 @@ func TestNewManager(t *testing.T) {
 }
 
 func TestManagerInitialize(t *testing.T) {
+	t.Parallel()
+
 	if os.Geteuid() != 0 {
 		t.Skip("test requires root privileges")
 	}
@@ -51,6 +55,8 @@ func TestManagerInitialize(t *testing.T) {
 }
 
 func TestCgroupHandleLifecycle(t *testing.T) {
+	t.Parallel()
+
 	if os.Geteuid() != 0 {
 		t.Skip("test requires root privileges")
 	}
@@ -71,14 +77,14 @@ func TestCgroupHandleLifecycle(t *testing.T) {
 
 	assert.Equal(t, testSandboxID, handle.SandboxID())
 	assert.Contains(t, handle.Path(), testSandboxID)
-	assert.Greater(t, handle.GetFD(), 0)
+	assert.Positive(t, handle.GetFD())
 
 	info, err := os.Stat(handle.Path())
 	require.NoError(t, err)
 	assert.True(t, info.IsDir())
 
 	err = handle.ReleaseCgroupFD()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, NoCgroupFD, handle.GetFD())
 
 	// Double release should be safe
@@ -87,6 +93,8 @@ func TestCgroupHandleLifecycle(t *testing.T) {
 }
 
 func TestCgroupHandleWithProcessCreation(t *testing.T) {
+	t.Parallel()
+
 	if os.Geteuid() != 0 {
 		t.Skip("test requires root privileges")
 	}
@@ -109,7 +117,7 @@ func TestCgroupHandleWithProcessCreation(t *testing.T) {
 	info, err := os.Stat(cgroupPath)
 	require.NoError(t, err)
 	assert.True(t, info.IsDir())
-	assert.Greater(t, handle.GetFD(), 0)
+	assert.Positive(t, handle.GetFD())
 
 	cmd := exec.CommandContext(ctx, "sleep", "5")
 	cmd.SysProcAttr = &syscall.SysProcAttr{
@@ -140,6 +148,8 @@ func TestCgroupHandleWithProcessCreation(t *testing.T) {
 }
 
 func TestCgroupHandleNoRaceOnQuickExit(t *testing.T) {
+	t.Parallel()
+
 	if os.Geteuid() != 0 {
 		t.Skip("test requires root privileges")
 	}
@@ -175,6 +185,8 @@ func TestCgroupHandleNoRaceOnQuickExit(t *testing.T) {
 }
 
 func TestCgroupHandleGetStats(t *testing.T) {
+	t.Parallel()
+
 	if os.Geteuid() != 0 {
 		t.Skip("test requires root privileges")
 	}
@@ -211,8 +223,8 @@ func TestCgroupHandleGetStats(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, stats)
 
-	assert.Greater(t, stats.CPUUsageUsec, uint64(0), "CPUUsageUsec should be > 0")
-	assert.Greater(t, stats.MemoryUsageBytes, uint64(0), "MemoryUsageBytes should be > 0")
+	assert.Positive(t, stats.CPUUsageUsec, "CPUUsageUsec should be > 0")
+	assert.Positive(t, stats.MemoryUsageBytes, "MemoryUsageBytes should be > 0")
 
 	t.Logf("Stats collected: CPU=%d usec, Memory=%d bytes",
 		stats.CPUUsageUsec, stats.MemoryUsageBytes)
@@ -222,6 +234,8 @@ func TestCgroupHandleGetStats(t *testing.T) {
 }
 
 func TestCgroupHandleGetStatsNonExistent(t *testing.T) {
+	t.Parallel()
+
 	if os.Geteuid() != 0 {
 		t.Skip("test requires root privileges")
 	}
@@ -242,12 +256,14 @@ func TestCgroupHandleGetStatsNonExistent(t *testing.T) {
 	require.NoError(t, err)
 
 	stats, err := handle.GetStats(ctx)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, stats)
 	assert.Contains(t, err.Error(), "failed to read cpu.stat")
 }
 
 func TestCgroupHandleRemoveNonExistent(t *testing.T) {
+	t.Parallel()
+
 	if os.Geteuid() != 0 {
 		t.Skip("test requires root privileges")
 	}
@@ -265,7 +281,7 @@ func TestCgroupHandleRemoveNonExistent(t *testing.T) {
 	require.NoError(t, err)
 
 	err = handle.Remove(ctx)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Idempotent
 	err = handle.Remove(ctx)
@@ -273,6 +289,8 @@ func TestCgroupHandleRemoveNonExistent(t *testing.T) {
 }
 
 func TestStatsParsing(t *testing.T) {
+	t.Parallel()
+
 	tmpDir := t.TempDir()
 	cgroupPath := filepath.Join(tmpDir, "sbx-test-parse-sandbox")
 	err := os.MkdirAll(cgroupPath, 0o755)
@@ -308,6 +326,8 @@ burst_usec 0`
 }
 
 func TestCgroupHandlePeakReset(t *testing.T) {
+	t.Parallel()
+
 	if os.Geteuid() != 0 {
 		t.Skip("test requires root privileges")
 	}
@@ -344,7 +364,7 @@ func TestCgroupHandlePeakReset(t *testing.T) {
 	stats1, err := handle.GetStats(ctx)
 	require.NoError(t, err)
 	peak1 := stats1.MemoryPeakBytes
-	require.Greater(t, peak1, uint64(0), "First peak should be non-zero")
+	require.Positive(t, peak1, "First peak should be non-zero")
 	t.Logf("First sample - peak: %d bytes, current: %d bytes", peak1, stats1.MemoryUsageBytes)
 
 	// Peak should represent interval peak (since last GetStats), not lifetime
@@ -352,7 +372,7 @@ func TestCgroupHandlePeakReset(t *testing.T) {
 	stats2, err := handle.GetStats(ctx)
 	require.NoError(t, err)
 	peak2 := stats2.MemoryPeakBytes
-	require.Greater(t, peak2, uint64(0), "Second peak should be non-zero")
+	require.Positive(t, peak2, "Second peak should be non-zero")
 	t.Logf("Second sample - peak: %d bytes, current: %d bytes", peak2, stats2.MemoryUsageBytes)
 
 	assert.GreaterOrEqual(t, peak2, stats2.MemoryUsageBytes,
@@ -362,7 +382,7 @@ func TestCgroupHandlePeakReset(t *testing.T) {
 	stats3, err := handle.GetStats(ctx)
 	require.NoError(t, err)
 	peak3 := stats3.MemoryPeakBytes
-	require.Greater(t, peak3, uint64(0), "Third peak should be non-zero")
+	require.Positive(t, peak3, "Third peak should be non-zero")
 	t.Logf("Third sample - peak: %d bytes, current: %d bytes", peak3, stats3.MemoryUsageBytes)
 
 	assert.GreaterOrEqual(t, peak3, stats3.MemoryUsageBytes,
