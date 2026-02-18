@@ -75,13 +75,16 @@ func (rc *RedisCache[V]) GetOrSet(ctx context.Context, key string, dataCallback 
 	}
 
 	r, _, _ := rc.fetchGroup.Do(key, func() (any, error) {
+		ctx := context.WithoutCancel(ctx)
 		// Double-check Redis (another goroutine may have populated it)
 		if v, _, redisErr := rc.getFromRedis(ctx, key); redisErr == nil {
 			return result{value: v}, nil
 		}
 
 		// Call the data callback with a cancel-free context
-		v, cbErr := dataCallback(context.WithoutCancel(ctx), key)
+		callbackCtx, cancel := context.WithTimeout(ctx, rc.config.RefreshTimeout)
+		defer cancel()
+		v, cbErr := dataCallback(callbackCtx, key)
 		if cbErr != nil {
 			return result{err: cbErr}, nil
 		}
