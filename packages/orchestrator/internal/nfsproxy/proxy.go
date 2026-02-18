@@ -19,6 +19,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy/oschange"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy/recovery"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/volumes"
 )
 
 const cacheLimit = 1024
@@ -80,7 +81,7 @@ func getPrefixFromSandbox(sandboxes *sandbox.Map, filesystemsByType map[string]b
 			return nil, "", fmt.Errorf("failed to mount %q (%s): %w", volumeName, volumeMount.Type, ErrVolumeTypeNotSupported)
 		}
 
-		prefixParts := []string{sbx.Metadata.Runtime.TeamID, volumeName}
+		prefixParts := volumes.BuildVolumePathParts(sbx.Metadata.Runtime.TeamID, volumeMount.ID)
 		if len(requestedPathParts) > 2 {
 			prefixParts = append(prefixParts, requestedPathParts[2:]...)
 		}

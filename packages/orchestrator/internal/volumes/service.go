@@ -35,6 +35,13 @@ func New(config cfg.Config) *VolumeService {
 	return &VolumeService{config: config}
 }
 
+func BuildVolumePathParts(teamID, volumeID string) []string {
+	return []string{
+		fmt.Sprintf("team-%s", teamID),
+		fmt.Sprintf("vol-%s", volumeID),
+	}
+}
+
 func (v *VolumeService) buildVolumePath(volume *orchestrator.VolumeInfo, subPath string) (string, error) {
 	volumeType := volume.GetVolumeType()
 	volTypePath, ok := v.config.PersistentVolumeMounts[volumeType]
@@ -52,7 +59,8 @@ func (v *VolumeService) buildVolumePath(volume *orchestrator.VolumeInfo, subPath
 		return "", status.Newf(codes.InvalidArgument, "invalid volume ID %q", volumeID).Err()
 	}
 
-	volumePath := filepath.Join(volTypePath, fmt.Sprintf("team-%s", teamID), fmt.Sprintf("vol-%s", volumeID))
+	volumeParts := append([]string{volTypePath}, BuildVolumePathParts(teamID, volumeID)...)
+	volumePath := filepath.Join(volumeParts...)
 	if subPath != "" {
 		subPath = strings.TrimPrefix(subPath, "/")
 		subPath = filepath.Clean(subPath)

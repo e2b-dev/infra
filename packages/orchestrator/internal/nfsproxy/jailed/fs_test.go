@@ -15,10 +15,13 @@ func newJailedFS(prefix string, inner billy.Filesystem) jailedFS {
 	if inner == nil {
 		inner = memfs.New()
 	}
+
 	return jailedFS{prefix: prefix, inner: inner}
 }
 
 func TestJailedFS_Join_AlwaysPrefixed(t *testing.T) {
+	t.Parallel()
+
 	const prefix = "/jail"
 	j := newJailedFS(prefix, memfs.New())
 
@@ -42,6 +45,8 @@ func TestJailedFS_Join_AlwaysPrefixed(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(fmt.Sprintf("Join(%v)", tc.elems), func(t *testing.T) {
+			t.Parallel()
+
 			got := j.Join(tc.elems...)
 
 			// All non-empty joins should produce a path that stays within the jail
@@ -61,6 +66,8 @@ func TestJailedFS_Join_AlwaysPrefixed(t *testing.T) {
 }
 
 func TestJailedFS_Join_NoDoublePrefix(t *testing.T) {
+	t.Parallel()
+
 	const prefix = "/jail"
 	j := newJailedFS(prefix, memfs.New())
 

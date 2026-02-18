@@ -101,6 +101,7 @@ func TestIntegrationTest(t *testing.T) {
 	teamID := uuid.NewString()
 	volumeType := "volume-type-1"
 	volumeName := "test-volume-1"
+	volumeID := uuid.NewString()
 	sandboxes := sandbox.NewSandboxesMap()
 	sandboxes.Insert(&sandbox.Sandbox{
 		Metadata: &sandbox.Metadata{
@@ -110,7 +111,7 @@ func TestIntegrationTest(t *testing.T) {
 			},
 			Config: sandbox.Config{
 				VolumeMounts: []sandbox.VolumeMountConfig{
-					{Name: volumeName, Path: "/mnt/volume", Type: volumeType},
+					{ID: volumeID, Name: volumeName, Path: "/mnt/volume", Type: volumeType},
 				},
 			},
 		},
@@ -122,11 +123,14 @@ func TestIntegrationTest(t *testing.T) {
 	// launch nfs proxy server
 	nfsListener := getListener(t, 0)
 
-	volumePath := t.TempDir()
+	volumeTypePath := t.TempDir()
+
+	// make volume dir
+	createVolumeDir(t, volumeTypePath, teamID, volumeID)
 
 	config := cfg.Config{
 		PersistentVolumeMounts: map[string]string{
-			volumeType: volumePath,
+			volumeType: volumeTypePath,
 		},
 	}
 

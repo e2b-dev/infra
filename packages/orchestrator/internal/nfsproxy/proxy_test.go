@@ -26,7 +26,18 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/portmap"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/volumes"
 )
+
+func createVolumeDir(t *testing.T, volumeTypePath, teamID, volumeID string) {
+	t.Helper()
+
+	fullVolumePathParts := append([]string{volumeTypePath}, volumes.BuildVolumePathParts(teamID, volumeID)...)
+	fullVolumePath := filepath.Join(fullVolumePathParts...)
+	t.Logf("creating volume dir: %s", fullVolumePath)
+	err := os.MkdirAll(fullVolumePath, 0o755)
+	require.NoError(t, err)
+}
 
 func TestRoundTrip(t *testing.T) {
 	t.Parallel()
@@ -43,9 +54,14 @@ func TestRoundTrip(t *testing.T) {
 	teamID := uuid.NewString()
 	volPath1 := os.TempDir()
 	volType1 := "volume-type-1"
+	volID1 := "volume-id-1"
 	volName1 := "volume-1"
+	volID2 := "volume-id-2"
 	volName2 := "volume-2"
 	volType2 := "volume-type-2"
+
+	createVolumeDir(t, volPath1, teamID, volID1)
+	createVolumeDir(t, volPath1, teamID, volID2)
 
 	slot := &network.Slot{Key: "abc", HostIP: net.IPv4(127, 0, 0, 1)}
 	require.Equal(t, "127.0.0.1", slot.HostIP.String(), "required for the test to work")
@@ -55,8 +71,8 @@ func TestRoundTrip(t *testing.T) {
 		Metadata: &sandbox.Metadata{
 			Config: sandbox.Config{
 				VolumeMounts: []sandbox.VolumeMountConfig{
-					{Name: volName1, Path: "/mnt/vol1", Type: volType1},
-					{Name: volName2, Path: "/mnt/vol2", Type: volType2},
+					{ID: volID1, Name: volName1, Path: "/mnt/vol1", Type: volType1},
+					{ID: volID2, Name: volName2, Path: "/mnt/vol2", Type: volType2},
 				},
 			},
 			Runtime: sandbox.RuntimeMetadata{
@@ -159,7 +175,7 @@ func TestRoundTrip(t *testing.T) {
 		require.NoError(t, err)
 
 		// verify file contents directly
-		objectName := filepath.Join(volPath1, teamID, volName1, "sandbox-id.txt")
+		objectName := filepath.Join(volPath1, "team-"+teamID, "vol-"+volID1, "sandbox-id.txt")
 		object, err := os.Open(objectName)
 		require.NoError(t, err)
 
@@ -269,16 +285,17 @@ func TestGetPrefixFromSandbox(t *testing.T) {
 	}
 	happyDirPath := "/good-volume"
 	happyFS := memfs.New()
-	happyPrefix := filepath.Join("team-id", "good-volume")
+	happyPrefix := filepath.Join("team-team-id", "vol-good-volume-id")
 	happyVolumeName := "good-volume"
 	happyVolumeType := "good-volume-type"
+	happyVolumeID := "good-volume-id"
 
 	happySlot := &network.Slot{Key: "abc", HostIP: happyIP}
 	happySandbox := &sandbox.Sandbox{
 		Metadata: &sandbox.Metadata{
 			Config: sandbox.Config{
 				VolumeMounts: []sandbox.VolumeMountConfig{
-					{Name: happyVolumeName, Path: "/volume", Type: happyVolumeType},
+					{ID: happyVolumeID, Name: happyVolumeName, Path: "/volume", Type: happyVolumeType},
 				},
 			},
 			Runtime: sandbox.RuntimeMetadata{

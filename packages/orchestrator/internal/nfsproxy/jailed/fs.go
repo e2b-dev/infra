@@ -92,12 +92,15 @@ func (j jailedFS) Join(elem ...string) string {
 	for {
 		if s == ".." {
 			s = ""
+
 			break
 		}
-		if strings.HasPrefix(s, "../") {
-			s = strings.TrimPrefix(s, "../")
+		if after, ok := strings.CutPrefix(s, "../"); ok {
+			s = after
+
 			continue
 		}
+
 		break
 	}
 
