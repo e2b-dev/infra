@@ -60,12 +60,8 @@ func (m *PopulateRedisStorage) AllItems(ctx context.Context, states []sandbox.St
 	return m.memoryBackend.AllItems(ctx, states, options...)
 }
 
-func (m *PopulateRedisStorage) TeamSandboxCount(ctx context.Context, teamID uuid.UUID) (int64, error) {
-	return m.memoryBackend.TeamSandboxCount(ctx, teamID)
-}
-
-func (m *PopulateRedisStorage) TeamsWithSandboxes(ctx context.Context) (map[uuid.UUID]int64, error) {
-	return m.memoryBackend.TeamsWithSandboxes(ctx)
+func (m *PopulateRedisStorage) TeamsWithSandboxCount(ctx context.Context) (map[uuid.UUID]int64, error) {
+	return m.memoryBackend.TeamsWithSandboxCount(ctx)
 }
 
 func (m *PopulateRedisStorage) Update(ctx context.Context, teamID uuid.UUID, sandboxID string, updateFunc func(sandbox sandbox.Sandbox) (sandbox.Sandbox, error)) (sandbox.Sandbox, error) {

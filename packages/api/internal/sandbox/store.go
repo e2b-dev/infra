@@ -31,15 +31,14 @@ type ReservationStorage interface {
 	Release(ctx context.Context, teamID uuid.UUID, sandboxID string) error
 }
 
-type Storage interface { //nolint:interfacebloat
+type Storage interface {
 	Add(ctx context.Context, sandbox Sandbox) error
 	Get(ctx context.Context, teamID uuid.UUID, sandboxID string) (Sandbox, error)
 	Remove(ctx context.Context, teamID uuid.UUID, sandboxID string) error
 
 	TeamItems(ctx context.Context, teamID uuid.UUID, states []State) ([]Sandbox, error)
 	AllItems(ctx context.Context, states []State, options ...ItemsOption) ([]Sandbox, error)
-	TeamSandboxCount(ctx context.Context, teamID uuid.UUID) (int64, error)
-	TeamsWithSandboxes(ctx context.Context) (map[uuid.UUID]int64, error)
+	TeamsWithSandboxCount(ctx context.Context) (map[uuid.UUID]int64, error)
 
 	Update(ctx context.Context, teamID uuid.UUID, sandboxID string, updateFunc func(sandbox Sandbox) (Sandbox, error)) (Sandbox, error)
 	StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID string, stateAction StateAction) (alreadyDone bool, callback func(context.Context, error), err error)
@@ -152,12 +151,8 @@ func (s *Store) AllItems(ctx context.Context, states []State, options ...ItemsOp
 	return s.storage.AllItems(ctx, states, options...)
 }
 
-func (s *Store) TeamSandboxCount(ctx context.Context, teamID uuid.UUID) (int64, error) {
-	return s.storage.TeamSandboxCount(ctx, teamID)
-}
-
 func (s *Store) TeamsWithSandboxes(ctx context.Context) (map[uuid.UUID]int64, error) {
-	return s.storage.TeamsWithSandboxes(ctx)
+	return s.storage.TeamsWithSandboxCount(ctx)
 }
 
 func (s *Store) Update(ctx context.Context, teamID uuid.UUID, sandboxID string, updateFunc func(sandbox Sandbox) (Sandbox, error)) (Sandbox, error) {

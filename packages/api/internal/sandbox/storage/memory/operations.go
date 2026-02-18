@@ -86,21 +86,7 @@ func (s *Storage) TeamItems(_ context.Context, teamID uuid.UUID, states []sandbo
 	return s.getItems(&teamID, states), nil
 }
 
-func (s *Storage) TeamSandboxCount(_ context.Context, teamID uuid.UUID) (int64, error) {
-	var count int64
-	for _, item := range s.items.Items() {
-		data := item.Data()
-		if data.TeamID != teamID {
-			continue
-		}
-
-		count++
-	}
-
-	return count, nil
-}
-
-func (s *Storage) TeamsWithSandboxes(_ context.Context) (map[uuid.UUID]int64, error) {
+func (s *Storage) TeamsWithSandboxCount(_ context.Context) (map[uuid.UUID]int64, error) {
 	teams := make(map[uuid.UUID]int64)
 	for _, item := range s.items.Items() {
 		teams[item.TeamID()]++

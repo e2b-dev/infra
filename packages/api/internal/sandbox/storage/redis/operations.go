@@ -220,7 +220,7 @@ func (s *Storage) TeamSandboxCount(ctx context.Context, teamID uuid.UUID) (int64
 // This prevents races where a Remove sees SCARD==0 right before an Add.
 const staleCutoff = time.Hour
 
-func (s *Storage) TeamsWithSandboxes(ctx context.Context) (map[uuid.UUID]int64, error) {
+func (s *Storage) TeamsWithSandboxCount(ctx context.Context) (map[uuid.UUID]int64, error) {
 	members, err := s.redisClient.ZRangeWithScores(ctx, globalTeamsZSetKey, 0, -1).Result()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get teams from global index: %w", err)
