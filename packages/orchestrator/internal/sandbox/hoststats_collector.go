@@ -105,7 +105,7 @@ func (h *HostStatsCollector) Start(ctx context.Context) {
 	if err := h.CollectSample(ctx); err != nil {
 		// Log error but continue with periodic sampling - don't kill the sandbox
 		logger.L().Error(ctx, "failed to collect initial host stats sample",
-			zap.String("sandbox_id", h.metadata.SandboxID),
+			logger.WithSandboxID(h.metadata.SandboxID),
 			zap.Error(err))
 	}
 
@@ -118,7 +118,7 @@ func (h *HostStatsCollector) Start(ctx context.Context) {
 			if err := h.CollectSample(ctx); err != nil {
 				// Log error but continue sampling - don't kill the sandbox
 				logger.L().Error(ctx, "failed to collect host stats sample",
-					zap.String("sandbox_id", h.metadata.SandboxID),
+					logger.WithSandboxID(h.metadata.SandboxID),
 					zap.Error(err))
 			}
 		case <-h.stopCh:
@@ -139,7 +139,7 @@ func (h *HostStatsCollector) Stop(ctx context.Context) {
 		if err := h.CollectSample(ctx); err != nil {
 			// Log but don't fail the shutdown
 			logger.L().Error(ctx, "failed to collect final host stats sample",
-				zap.String("sandbox_id", h.metadata.SandboxID),
+				logger.WithSandboxID(h.metadata.SandboxID),
 				zap.Error(err))
 		}
 	})

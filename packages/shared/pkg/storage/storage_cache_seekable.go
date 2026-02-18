@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -66,7 +67,10 @@ type cachedSeekable struct {
 	wg sync.WaitGroup
 }
 
-var _ Seekable = (*cachedSeekable)(nil)
+var (
+	_ Seekable        = (*cachedSeekable)(nil)
+	_ StreamingReader = (*cachedSeekable)(nil)
+)
 
 func (c *cachedSeekable) ReadAt(ctx context.Context, buff []byte, offset int64) (n int, err error) {
 	ctx, span := c.tracer.Start(ctx, "read object at offset", trace.WithAttributes(
@@ -126,6 +130,84 @@ func (c *cachedSeekable) ReadAt(ctx context.Context, buff []byte, offset int64) 
 	recordCacheRead(ctx, false, int64(readCount), cacheTypeSeekable, cacheOpReadAt)
 
 	return readCount, err
+}
+
+func (c *cachedSeekable) OpenRangeReader(ctx context.Context, off, length int64) (io.ReadCloser, error) {
+	// Try NFS cache file first
+	chunkPath := c.makeChunkFilename(off)
+
+	fp, err := os.Open(chunkPath)
+	if err == nil {
+		recordCacheRead(ctx, true, length, cacheTypeSeekable, cacheOpOpenRangeReader)
+
+		return &fsRangeReadCloser{
+			Reader: io.NewSectionReader(fp, 0, length),
+			file:   fp,
+		}, nil
+	}
+
+	if !os.IsNotExist(err) {
+		recordCacheReadError(ctx, cacheTypeSeekable, cacheOpOpenRangeReader, err)
+	}
+
+	// Cache miss: delegate to the inner backend (Seekable embeds StreamingReader).
+	inner, err := c.inner.OpenRangeReader(ctx, off, length)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open inner range reader: %w", err)
+	}
+
+	recordCacheRead(ctx, false, length, cacheTypeSeekable, cacheOpOpenRangeReader)
+
+	// Wrap in a write-through reader that caches data on Close
+	return &cacheWriteThroughReader{
+		inner:     inner,
+		buf:       bytes.NewBuffer(make([]byte, 0, length)),
+		cache:     c,
+		ctx:       ctx,
+		off:       off,
+		chunkPath: chunkPath,
+	}, nil
+}
+
+// cacheWriteThroughReader wraps an inner reader, buffering all data read through it.
+// On Close, it asynchronously writes the buffered data to the NFS cache.
+type cacheWriteThroughReader struct {
+	inner     io.ReadCloser
+	buf       *bytes.Buffer
+	cache     *cachedSeekable
+	ctx       context.Context //nolint:containedctx // needed for async cache write-back in Close
+	off       int64
+	chunkPath string
+}
+
+func (r *cacheWriteThroughReader) Read(p []byte) (int, error) {
+	n, err := r.inner.Read(p)
+	if n > 0 {
+		r.buf.Write(p[:n])
+	}
+
+	return n, err
+}
+
+func (r *cacheWriteThroughReader) Close() error {
+	closeErr := r.inner.Close()
+
+	if r.buf.Len() > 0 {
+		data := make([]byte, r.buf.Len())
+		copy(data, r.buf.Bytes())
+
+		r.cache.goCtx(r.ctx, func(ctx context.Context) {
+			ctx, span := r.cache.tracer.Start(ctx, "write range reader chunk back to cache")
+			defer span.End()
+
+			if err := r.cache.writeChunkToCache(ctx, r.off, r.chunkPath, data); err != nil {
+				recordError(span, err)
+				recordCacheWriteError(ctx, cacheTypeSeekable, cacheOpOpenRangeReader, err)
+			}
+		})
+	}
+
+	return closeErr
 }
 
 func (c *cachedSeekable) Size(ctx context.Context) (n int64, e error) {

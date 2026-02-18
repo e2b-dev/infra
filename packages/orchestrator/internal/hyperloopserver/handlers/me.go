@@ -11,7 +11,7 @@ import (
 
 func (h *APIStore) Me(c *gin.Context) {
 	ctx := c.Request.Context()
-	sbx, err := h.sandboxes.GetByHostPort(ctx, c.Request.RemoteAddr)
+	sbx, err := h.sandboxes.GetByHostPort(c.Request.RemoteAddr)
 	if err != nil {
 		h.sendAPIStoreError(c, http.StatusBadRequest, "Error when finding source sandbox")
 		h.logger.Error(ctx, "error finding sandbox for source addr", zap.String("addr", c.Request.RemoteAddr), zap.Error(err))

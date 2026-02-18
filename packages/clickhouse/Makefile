@@ -1,5 +1,6 @@
 ENV := $(shell cat ../../.last_used_env || echo "not-set")
 -include ../../.env.${ENV}
+PREFIX := $(strip $(subst ",,$(PREFIX)))
 
 CLICKHOUSE_HOST ?= clickhouse
 

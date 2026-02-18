@@ -7,6 +7,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -16,15 +17,16 @@ func storagePath(buildId string, diffType DiffType) string {
 }
 
 type StorageDiff struct {
-	chunker           *utils.SetOnce[*block.Chunker]
+	chunker           *utils.SetOnce[block.Chunker]
 	cachePath         string
 	cacheKey          DiffStoreKey
 	storagePath       string
 	storageObjectType storage.SeekableObjectType
 
-	blockSize   int64
-	metrics     blockmetrics.Metrics
-	persistence storage.StorageProvider
+	blockSize    int64
+	metrics      blockmetrics.Metrics
+	persistence  storage.StorageProvider
+	featureFlags *featureflags.Client
 }
 
 var _ Diff = (*StorageDiff)(nil)
@@ -44,6 +46,7 @@ func newStorageDiff(
 	blockSize int64,
 	metrics blockmetrics.Metrics,
 	persistence storage.StorageProvider,
+	featureFlags *featureflags.Client,
 ) (*StorageDiff, error) {
 	storagePath := storagePath(buildId, diffType)
 	storageObjectType, ok := storageObjectType(diffType)
@@ -57,10 +60,11 @@ func newStorageDiff(
 		storagePath:       storagePath,
 		storageObjectType: storageObjectType,
 		cachePath:         cachePath,
-		chunker:           utils.NewSetOnce[*block.Chunker](),
+		chunker:           utils.NewSetOnce[block.Chunker](),
 		blockSize:         blockSize,
 		metrics:           metrics,
 		persistence:       persistence,
+		featureFlags:      featureFlags,
 		cacheKey:          GetDiffStoreKey(buildId, diffType),
 	}, nil
 }
@@ -94,7 +98,7 @@ func (b *StorageDiff) Init(ctx context.Context) error {
 		return errMsg
 	}
 
-	chunker, err := block.NewChunker(size, b.blockSize, obj, b.cachePath, b.metrics)
+	c, err := block.NewChunker(ctx, b.featureFlags, size, b.blockSize, obj, b.cachePath, b.metrics)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to create chunker: %w", err)
 		b.chunker.SetError(errMsg)
@@ -102,7 +106,7 @@ func (b *StorageDiff) Init(ctx context.Context) error {
 		return errMsg
 	}
 
-	return b.chunker.SetValue(chunker)
+	return b.chunker.SetValue(c)
 }
 
 func (b *StorageDiff) Close() error {

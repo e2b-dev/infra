@@ -1,14 +1,10 @@
 package sandbox
 
 import (
-	"context"
 	"fmt"
 	"net"
 	"sync"
 
-	"go.uber.org/zap"
-
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
@@ -52,16 +48,13 @@ func (m *Map) Get(sandboxID string) (*Sandbox, bool) {
 	return m.sandboxes.Get(sandboxID)
 }
 
-func (m *Map) GetByHostPort(ctx context.Context, hostPort string) (*Sandbox, error) {
+func (m *Map) GetByHostPort(hostPort string) (*Sandbox, error) {
 	reqIP, _, err := net.SplitHostPort(hostPort)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing remote address %s: %w", hostPort, err)
 	}
 
 	for _, sbx := range m.sandboxes.Items() {
-		logger.L().Debug(ctx, "looking for sandbox with address",
-			zap.String("requested_ip", reqIP),
-			zap.String("sandbox_ip", sbx.Slot.HostIPString()))
 		if sbx.Slot.HostIPString() == reqIP {
 			return sbx, nil
 		}
