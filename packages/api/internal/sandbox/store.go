@@ -31,7 +31,7 @@ type ReservationStorage interface {
 	Release(ctx context.Context, teamID uuid.UUID, sandboxID string) error
 }
 
-type Storage interface {
+type Storage interface { //nolint:interfacebloat
 	Add(ctx context.Context, sandbox Sandbox) error
 	Get(ctx context.Context, teamID uuid.UUID, sandboxID string) (Sandbox, error)
 	Remove(ctx context.Context, teamID uuid.UUID, sandboxID string) error

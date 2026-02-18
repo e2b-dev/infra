@@ -242,6 +242,7 @@ func (s *Storage) TeamsWithSandboxes(ctx context.Context) ([]uuid.UUID, error) {
 		id, parseErr := uuid.Parse(raw)
 		if parseErr != nil {
 			logger.L().Warn(ctx, "Failed to parse team ID from global teams index", zap.Error(parseErr), zap.String("raw", raw))
+
 			continue
 		}
 		cmd := pipe.SCard(ctx, getTeamIndexKey(raw))
@@ -273,7 +274,7 @@ func (s *Storage) TeamsWithSandboxes(ctx context.Context) ([]uuid.UUID, error) {
 
 	// Prune stale entries from the global teams index
 	if len(stale) > 0 {
-		staleMembers := make([]interface{}, len(stale))
+		staleMembers := make([]any, len(stale))
 		for i, s := range stale {
 			staleMembers[i] = s
 		}
