@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	sharedauth "github.com/e2b-dev/infra/packages/shared/pkg/auth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/tests"
 )
 
@@ -21,42 +22,42 @@ func TestGetJWTClaims(t *testing.T) {
 
 	t.Run("valid token for first secret", func(t *testing.T) {
 		t.Parallel()
-		claims, err := getJWTClaims(ctx, []string{secret1, secret2}, token1)
+		claims, err := sharedauth.GetJWTClaims(ctx, []string{secret1, secret2}, token1)
 		require.NoError(t, err)
 		assert.Equal(t, "1", claims.Subject)
 	})
 
 	t.Run("valid token for second secret", func(t *testing.T) {
 		t.Parallel()
-		claims, err := getJWTClaims(ctx, []string{secret1, secret2}, token2)
+		claims, err := sharedauth.GetJWTClaims(ctx, []string{secret1, secret2}, token2)
 		require.NoError(t, err)
 		assert.Equal(t, "2", claims.Subject)
 	})
 
 	t.Run("invalid token secret combination", func(t *testing.T) {
 		t.Parallel()
-		claims, err := getJWTClaims(ctx, []string{secret1}, token2)
+		claims, err := sharedauth.GetJWTClaims(ctx, []string{secret1}, token2)
 		require.Error(t, err)
 		assert.Nil(t, claims)
 	})
 
 	t.Run("no secrets", func(t *testing.T) {
 		t.Parallel()
-		claims, err := getJWTClaims(ctx, []string{}, token1)
+		claims, err := sharedauth.GetJWTClaims(ctx, []string{}, token1)
 		require.Error(t, err)
 		assert.Nil(t, claims)
 	})
 
 	t.Run("empty secret", func(t *testing.T) {
 		t.Parallel()
-		claims, err := getJWTClaims(ctx, []string{""}, tokenEmpty)
+		claims, err := sharedauth.GetJWTClaims(ctx, []string{""}, tokenEmpty)
 		require.Error(t, err)
 		assert.Nil(t, claims)
 	})
 
 	t.Run("invalid token for all secrets", func(t *testing.T) {
 		t.Parallel()
-		claims, err := getJWTClaims(ctx, []string{secret1, secret2}, "invalid")
+		claims, err := sharedauth.GetJWTClaims(ctx, []string{secret1, secret2}, "invalid")
 		require.Error(t, err)
 		assert.Nil(t, claims)
 	})
