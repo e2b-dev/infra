@@ -21,14 +21,12 @@ const (
 
 // Stats contains resource usage statistics from a cgroup
 type Stats struct {
-	// Cumulative CPU time in microseconds (from cpu.stat)
-	CPUUsageUsec  uint64
-	CPUUserUsec   uint64
-	CPUSystemUsec uint64
+	CPUUsageUsec  uint64 // microseconds
+	CPUUserUsec   uint64 // microseconds
+	CPUSystemUsec uint64 // microseconds
 
-	// Memory stats (from memory.current and memory.peak)
-	MemoryUsageBytes uint64 // current memory usage in bytes
-	MemoryPeakBytes  uint64 // peak memory usage in bytes since last GetStats() call (reset after each read)
+	MemoryUsageBytes uint64 // bytes
+	MemoryPeakBytes  uint64 // bytes, reset after each GetStats() call
 }
 
 // CgroupHandle represents a created cgroup for a sandbox.
@@ -154,7 +152,6 @@ type managerImpl struct{}
 // NewManager creates a new cgroup manager
 // Returns error if cgroups v2 is not available on the system
 func NewManager() (Manager, error) {
-	// Check if cgroups v2 is available by checking for cgroup.controllers file
 	if _, err := os.Stat("/sys/fs/cgroup/cgroup.controllers"); err != nil {
 		return nil, fmt.Errorf("cgroups v2 not available: %w", err)
 	}
@@ -163,12 +160,10 @@ func NewManager() (Manager, error) {
 }
 
 func (m *managerImpl) Initialize(ctx context.Context) error {
-	// Create root cgroup directory
 	if err := os.MkdirAll(RootCgroupPath, 0755); err != nil {
 		return fmt.Errorf("failed to create root cgroup directory: %w", err)
 	}
 
-	// Enable cpu and memory controllers at root level
 	controllersPath := filepath.Join(RootCgroupPath, "cgroup.subtree_control")
 	if err := os.WriteFile(controllersPath, []byte("+cpu +memory"), 0644); err != nil {
 		return fmt.Errorf("failed to enable controllers: %w", err)
@@ -182,28 +177,22 @@ func (m *managerImpl) Initialize(ctx context.Context) error {
 func (m *managerImpl) Create(ctx context.Context, sandboxID string) (*CgroupHandle, error) {
 	cgroupPath := m.sandboxCgroupPath(sandboxID)
 
-	// Create cgroup directory for this sandbox
 	if err := os.MkdirAll(cgroupPath, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create cgroup directory: %w", err)
 	}
 
-	// Open the cgroup directory as a file descriptor
-	// This FD will be used with CLONE_INTO_CGROUP for atomic process placement
+	// FD for CLONE_INTO_CGROUP — atomic process placement during fork
 	file, err := os.Open(cgroupPath)
 	if err != nil {
-		// Cleanup on failure
 		os.Remove(cgroupPath)
 		return nil, fmt.Errorf("failed to open cgroup directory: %w", err)
 	}
 
-	// Open memory.peak with O_RDWR for reset functionality
-	// This FD must remain open for the reset to work across multiple GetStats() calls
-	// According to cgroups v2: reset applies to "subsequent reads through the same FD"
+	// O_RDWR FD must stay open for per-FD peak reset across GetStats() calls
 	memPeakPath := filepath.Join(cgroupPath, "memory.peak")
 	memoryPeakFile, peakErr := os.OpenFile(memPeakPath, os.O_RDWR, 0)
 	if peakErr != nil {
-		// Not fatal - memory.peak may not exist on older kernels
-		// We'll just not have reset functionality
+		// Not fatal — memory.peak may not exist on older kernels
 		logger.L().Debug(ctx, "failed to open memory.peak for reset (will track lifetime peak)",
 			logger.WithSandboxID(sandboxID),
 			zap.String("path", memPeakPath),
@@ -228,20 +217,15 @@ func (m *managerImpl) Create(ctx context.Context, sandboxID string) (*CgroupHand
 	return handle, nil
 }
 
-// getStatsForPath is a private helper called by CgroupHandle.GetStats()
-// It reads cgroup statistics from the specified path
-// memoryPeakFile is the persistent FD for memory.peak (may be nil if not available)
 func (m *managerImpl) getStatsForPath(ctx context.Context, cgroupPath string, memoryPeakFile *os.File) (*Stats, error) {
 	stats := &Stats{}
 
-	// Read cpu.stat
 	cpuStatPath := filepath.Join(cgroupPath, "cpu.stat")
 	cpuData, err := os.ReadFile(cpuStatPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read cpu.stat: %w", err)
 	}
 
-	// Parse cpu.stat format: "usage_usec 12345\nuser_usec 6789\nsystem_usec 5556\n..."
 	for _, line := range strings.Split(string(cpuData), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) != 2 {
@@ -262,7 +246,6 @@ func (m *managerImpl) getStatsForPath(ctx context.Context, cgroupPath string, me
 		}
 	}
 
-	// Read memory.current
 	memCurrentPath := filepath.Join(cgroupPath, "memory.current")
 	memData, err := os.ReadFile(memCurrentPath)
 	if err != nil {
@@ -270,10 +253,6 @@ func (m *managerImpl) getStatsForPath(ctx context.Context, cgroupPath string, me
 	}
 	stats.MemoryUsageBytes, _ = strconv.ParseUint(strings.TrimSpace(string(memData)), 10, 64)
 
-	// Read and reset memory.peak for interval-based tracking
-	// According to cgroups v2 docs: "A write of any non-empty string to this file
-	// resets it to the current memory usage for subsequent reads through the same FD"
-	// The FD must remain open across reads - we keep it in CgroupHandle.memoryPeakFile
 	if memoryPeakFile != nil {
 		peakBytes, err := m.readAndResetMemoryPeak(ctx, memoryPeakFile)
 		if err != nil {
@@ -292,15 +271,11 @@ func (m *managerImpl) getStatsForPath(ctx context.Context, cgroupPath string, me
 //   - Read requires file position 0 (seq_file), so we seek before reading.
 //   - Write resets the per-FD peak to current memory usage. The kernel ignores
 //     both the written content and the file offset, so no seek before write is needed.
-//   - Truncate is not supported on cgroup pseudo-files (returns EINVAL).
 func (m *managerImpl) readAndResetMemoryPeak(ctx context.Context, memoryPeakFile *os.File) (uint64, error) {
-	// Seek to beginning — seq_file requires position 0 for read
 	if _, err := memoryPeakFile.Seek(0, io.SeekStart); err != nil {
 		return 0, fmt.Errorf("failed to seek memory.peak for read: %w", err)
 	}
 
-	// Use a fixed buffer to avoid per-call allocation — the peak value is
-	// always a single number, so 64 bytes is more than enough.
 	var buf [64]byte
 	n, err := memoryPeakFile.Read(buf[:])
 	if err != nil && err != io.EOF {
@@ -309,9 +284,7 @@ func (m *managerImpl) readAndResetMemoryPeak(ctx context.Context, memoryPeakFile
 
 	peakBytes, _ := strconv.ParseUint(strings.TrimSpace(string(buf[:n])), 10, 64)
 
-	// Reset peak for next interval — write any non-empty string.
-	// The kernel ignores both the content and the file offset;
-	// it resets the per-FD peak to current memory usage.
+	// Reset per-FD peak for next interval
 	if _, err := memoryPeakFile.Write([]byte("0")); err != nil {
 		logger.L().Debug(ctx, "failed to reset memory.peak", zap.Error(err))
 	}

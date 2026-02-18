@@ -355,7 +355,6 @@ func run(config cfg.Config) (success bool) {
 			logger.L().Fatal(ctx, "failed to initialize cgroup manager", zap.Error(err))
 		}
 
-		// Create root cgroup directory and enable controllers
 		if err := cgroupManager.Initialize(ctx); err != nil {
 			logger.L().Fatal(ctx, "failed to initialize root cgroup", zap.Error(err))
 		}

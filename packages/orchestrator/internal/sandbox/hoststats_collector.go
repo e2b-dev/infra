@@ -94,11 +94,9 @@ func (h *HostStatsCollector) CollectSample(ctx context.Context) error {
 		FirecrackerMemoryVMS:     memInfo.VMS,  // bytes
 	}
 
-	// Collect cgroup stats if available
 	if h.cgroupHandle != nil {
 		cgroupStats, err := h.cgroupHandle.GetStats(ctx)
 		if err != nil {
-			// Log at debug level - cgroup may not exist or may have been removed during shutdown
 			logger.L().Debug(ctx, "could not collect cgroup stats",
 				logger.WithSandboxID(h.metadata.SandboxID),
 				zap.Error(err))

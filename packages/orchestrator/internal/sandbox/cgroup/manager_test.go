@@ -16,7 +16,6 @@ import (
 )
 
 func TestNewManager(t *testing.T) {
-	// Skip if not root
 	if os.Geteuid() != 0 {
 		t.Skip("test requires root privileges")
 	}
@@ -38,12 +37,10 @@ func TestManagerInitialize(t *testing.T) {
 	err := mgr.Initialize(ctx)
 	require.NoError(t, err)
 
-	// Verify directory was created
 	info, err := os.Stat(RootCgroupPath)
 	require.NoError(t, err)
 	assert.True(t, info.IsDir())
 
-	// Verify controllers were enabled
 	controllersPath := filepath.Join(RootCgroupPath, "cgroup.subtree_control")
 	data, err := os.ReadFile(controllersPath)
 	require.NoError(t, err)
@@ -67,27 +64,21 @@ func TestCgroupHandleLifecycle(t *testing.T) {
 
 	testSandboxID := "test-handle-lifecycle"
 
-	// Create cgroup and get handle
 	handle, err := mgr.Create(ctx, testSandboxID)
 	require.NoError(t, err)
 	require.NotNil(t, handle)
 	defer handle.Remove(ctx)
 
-	// Verify handle properties
 	assert.Equal(t, testSandboxID, handle.SandboxID())
 	assert.Contains(t, handle.Path(), testSandboxID)
 	assert.Greater(t, handle.GetFD(), 0)
 
-	// Verify cgroup directory exists
 	info, err := os.Stat(handle.Path())
 	require.NoError(t, err)
 	assert.True(t, info.IsDir())
 
-	// Release directory FD
 	err = handle.ReleaseCgroupFD()
 	assert.NoError(t, err)
-
-	// FD should be invalid after release
 	assert.Equal(t, -1, handle.GetFD())
 
 	// Double release should be safe
@@ -109,22 +100,17 @@ func TestCgroupHandleWithProcessCreation(t *testing.T) {
 
 	testSandboxID := "test-handle-process"
 
-	// Create cgroup
 	handle, err := mgr.Create(ctx, testSandboxID)
 	require.NoError(t, err)
 	defer handle.Remove(ctx)
 	defer handle.ReleaseCgroupFD()
 
-	// Verify directory exists
 	cgroupPath := handle.Path()
 	info, err := os.Stat(cgroupPath)
 	require.NoError(t, err)
 	assert.True(t, info.IsDir())
-
-	// Verify FD is valid
 	assert.Greater(t, handle.GetFD(), 0)
 
-	// Start process with cgroup FD using UseCgroupFD
 	cmd := exec.CommandContext(ctx, "sleep", "5")
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		UseCgroupFD: true,
@@ -135,10 +121,8 @@ func TestCgroupHandleWithProcessCreation(t *testing.T) {
 	require.NoError(t, err)
 	defer cmd.Process.Kill()
 
-	// Release directory FD after Start (as we do in real code)
 	handle.ReleaseCgroupFD()
 
-	// Verify PID is in cgroup (atomically placed by kernel)
 	procsPath := filepath.Join(cgroupPath, "cgroup.procs")
 	data, err := os.ReadFile(procsPath)
 	require.NoError(t, err)
@@ -146,7 +130,6 @@ func TestCgroupHandleWithProcessCreation(t *testing.T) {
 	pids := strings.Split(strings.TrimSpace(string(data)), "\n")
 	assert.Contains(t, pids, fmt.Sprintf("%d", cmd.Process.Pid))
 
-	// Verify via /proc/{pid}/cgroup
 	procCgroupPath := fmt.Sprintf("/proc/%d/cgroup", cmd.Process.Pid)
 	cgroupData, err := os.ReadFile(procCgroupPath)
 	require.NoError(t, err)
@@ -170,13 +153,11 @@ func TestCgroupHandleNoRaceOnQuickExit(t *testing.T) {
 
 	testSandboxID := "test-no-race"
 
-	// Create cgroup
 	handle, err := mgr.Create(ctx, testSandboxID)
 	require.NoError(t, err)
 	defer handle.Remove(ctx)
 	defer handle.ReleaseCgroupFD()
 
-	// Start process that exits immediately
 	cmd := exec.CommandContext(ctx, "bash", "-c", "exit 0")
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		UseCgroupFD: true,
@@ -188,12 +169,9 @@ func TestCgroupHandleNoRaceOnQuickExit(t *testing.T) {
 
 	handle.ReleaseCgroupFD()
 
-	// Process exits immediately - but it WAS in the cgroup during its lifetime
-	// (kernel placed it atomically, no race!)
+	// Process exits immediately but was placed in the cgroup atomically
+	// by the kernel (CLONE_INTO_CGROUP) — no race with cgroup.procs write.
 	cmd.Wait()
-
-	// This test passing means: no error during Start despite rapid exit
-	// In the old code, this would race and potentially fail
 }
 
 func TestCgroupHandleGetStats(t *testing.T) {
@@ -205,19 +183,16 @@ func TestCgroupHandleGetStats(t *testing.T) {
 	mgr, err := NewManager()
 	require.NoError(t, err)
 
-	// Initialize root cgroup
 	err = mgr.Initialize(ctx)
 	require.NoError(t, err)
 
 	testSandboxID := "test-stats-sandbox"
 
-	// Create cgroup
 	handle, err := mgr.Create(ctx, testSandboxID)
 	require.NoError(t, err)
 	defer handle.Remove(ctx)
 	defer handle.ReleaseCgroupFD()
 
-	// Start a test process that uses some CPU
 	cmd := exec.CommandContext(ctx, "bash", "-c", "for i in {1..1000}; do echo test > /dev/null; done; sleep 5")
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		UseCgroupFD: true,
@@ -230,24 +205,18 @@ func TestCgroupHandleGetStats(t *testing.T) {
 
 	handle.ReleaseCgroupFD()
 
-	// Wait a bit for some stats to accumulate
 	time.Sleep(100 * time.Millisecond)
 
-	// Get stats
 	stats, err := handle.GetStats(ctx)
 	require.NoError(t, err)
 	require.NotNil(t, stats)
 
-	// Verify CPU stats are populated (should have some usage)
 	assert.Greater(t, stats.CPUUsageUsec, uint64(0), "CPUUsageUsec should be > 0")
-
-	// Verify memory stats are populated
 	assert.Greater(t, stats.MemoryUsageBytes, uint64(0), "MemoryUsageBytes should be > 0")
 
 	t.Logf("Stats collected: CPU=%d usec, Memory=%d bytes",
 		stats.CPUUsageUsec, stats.MemoryUsageBytes)
 
-	// Kill the process
 	cmd.Process.Kill()
 	cmd.Wait()
 }
@@ -263,19 +232,15 @@ func TestCgroupHandleGetStatsNonExistent(t *testing.T) {
 
 	testSandboxID := "test-nonexistent"
 
-	// Create handle
 	handle, err := mgr.Create(ctx, testSandboxID)
 	require.NoError(t, err)
 
-	// Release directory FD first (as the real code does after cmd.Start)
 	err = handle.ReleaseCgroupFD()
 	require.NoError(t, err)
 
-	// Remove the cgroup directory
 	err = handle.Remove(ctx)
 	require.NoError(t, err)
 
-	// Try to get stats for removed cgroup
 	stats, err := handle.GetStats(ctx)
 	assert.Error(t, err)
 	assert.Nil(t, stats)
@@ -293,33 +258,26 @@ func TestCgroupHandleRemoveNonExistent(t *testing.T) {
 
 	testSandboxID := "test-remove-nonexistent"
 
-	// Create handle
 	handle, err := mgr.Create(ctx, testSandboxID)
 	require.NoError(t, err)
 
-	// Release directory FD first (as the real code does after cmd.Start)
 	err = handle.ReleaseCgroupFD()
 	require.NoError(t, err)
 
-	// Remove once
 	err = handle.Remove(ctx)
 	assert.NoError(t, err)
 
-	// Remove again - should not error (idempotent)
+	// Idempotent
 	err = handle.Remove(ctx)
 	assert.NoError(t, err)
 }
 
 func TestStatsParsing(t *testing.T) {
-	// This test doesn't require root - it tests the parsing logic with mock data
-	// We create a temporary directory structure to simulate cgroup files
-
 	tmpDir := t.TempDir()
 	cgroupPath := filepath.Join(tmpDir, "sbx-test-parse-sandbox")
 	err := os.MkdirAll(cgroupPath, 0755)
 	require.NoError(t, err)
 
-	// Create mock cpu.stat
 	cpuStatContent := `usage_usec 123456789
 user_usec 100000000
 system_usec 23456789
@@ -331,15 +289,13 @@ burst_usec 0`
 	err = os.WriteFile(filepath.Join(cgroupPath, "cpu.stat"), []byte(cpuStatContent), 0644)
 	require.NoError(t, err)
 
-	// Create mock memory.current (512 MB)
 	err = os.WriteFile(filepath.Join(cgroupPath, "memory.current"), []byte("536870912"), 0644)
 	require.NoError(t, err)
 
 	ctx := context.Background()
 	mgr := &managerImpl{}
 
-	// Call the actual parsing method (nil memoryPeakFile since regular files
-	// don't support the per-FD reset mechanism used by cgroup pseudo-files)
+	// nil memoryPeakFile: regular files don't support the per-FD reset of cgroup pseudo-files
 	stats, err := mgr.getStatsForPath(ctx, cgroupPath, nil)
 	require.NoError(t, err)
 	require.NotNil(t, stats)
@@ -348,7 +304,6 @@ burst_usec 0`
 	assert.Equal(t, uint64(100000000), stats.CPUUserUsec, "CPUUserUsec parsing")
 	assert.Equal(t, uint64(23456789), stats.CPUSystemUsec, "CPUSystemUsec parsing")
 	assert.Equal(t, uint64(536870912), stats.MemoryUsageBytes, "MemoryUsageBytes parsing")
-	// MemoryPeakBytes is 0 because we passed nil memoryPeakFile
 	assert.Equal(t, uint64(0), stats.MemoryPeakBytes, "MemoryPeakBytes should be 0 without peak FD")
 }
 
@@ -366,14 +321,12 @@ func TestCgroupHandlePeakReset(t *testing.T) {
 
 	testSandboxID := "test-peak-reset"
 
-	// Create cgroup and start process
 	handle, err := mgr.Create(ctx, testSandboxID)
 	require.NoError(t, err)
 	defer handle.Remove(ctx)
 	defer handle.ReleaseCgroupFD()
 
-	// Start a process that allocates memory gradually
-	// This gives us time to sample and see the reset behavior
+	// Allocate memory gradually so we can sample the peak reset behavior
 	cmd := exec.CommandContext(ctx, "bash", "-c",
 		"x=''; for i in {1..10}; do x=$x$(head -c 5M /dev/zero | tr '\\0' 'x'); sleep 0.5; done; sleep 5")
 	cmd.SysProcAttr = &syscall.SysProcAttr{
@@ -387,7 +340,6 @@ func TestCgroupHandlePeakReset(t *testing.T) {
 
 	handle.ReleaseCgroupFD()
 
-	// First sample - get initial peak
 	time.Sleep(1 * time.Second)
 	stats1, err := handle.GetStats(ctx)
 	require.NoError(t, err)
@@ -395,8 +347,7 @@ func TestCgroupHandlePeakReset(t *testing.T) {
 	require.Greater(t, peak1, uint64(0), "First peak should be non-zero")
 	t.Logf("First sample - peak: %d bytes, current: %d bytes", peak1, stats1.MemoryUsageBytes)
 
-	// Second sample after some time - peak should represent interval peak, not lifetime
-	// Due to the reset, peak2 should be the peak SINCE the last GetStats() call
+	// Peak should represent interval peak (since last GetStats), not lifetime
 	time.Sleep(2 * time.Second)
 	stats2, err := handle.GetStats(ctx)
 	require.NoError(t, err)
@@ -404,11 +355,9 @@ func TestCgroupHandlePeakReset(t *testing.T) {
 	require.Greater(t, peak2, uint64(0), "Second peak should be non-zero")
 	t.Logf("Second sample - peak: %d bytes, current: %d bytes", peak2, stats2.MemoryUsageBytes)
 
-	// The second peak should be >= current memory (peak is always >= current within an interval)
 	assert.GreaterOrEqual(t, peak2, stats2.MemoryUsageBytes,
 		"Peak memory should be >= current memory within the interval")
 
-	// Third sample - verify reset continues to work
 	time.Sleep(2 * time.Second)
 	stats3, err := handle.GetStats(ctx)
 	require.NoError(t, err)
@@ -416,9 +365,6 @@ func TestCgroupHandlePeakReset(t *testing.T) {
 	require.Greater(t, peak3, uint64(0), "Third peak should be non-zero")
 	t.Logf("Third sample - peak: %d bytes, current: %d bytes", peak3, stats3.MemoryUsageBytes)
 
-	// Verify reset is actually working by checking that peaks are not monotonically increasing
-	// If reset didn't work, peak would be monotonically increasing (lifetime peak)
-	// With reset, we should see peak values that reflect interval behavior
 	assert.GreaterOrEqual(t, peak3, stats3.MemoryUsageBytes,
 		"Peak memory should be >= current memory within the interval")
 

@@ -170,8 +170,7 @@ func (p *Process) configure(
 	}
 	p.cmd.Stderr = io.MultiWriter(stderrWriters...)
 
-	// Create cgroup and get FD for atomic process placement.
-	// This uses CLONE_INTO_CGROUP (Linux 5.7+) to place the process in the cgroup atomically during fork.
+	// Set up cgroup FD for atomic placement via CLONE_INTO_CGROUP
 	if p.cgroupManager != nil {
 		cgroupHandle, err := p.cgroupManager.Create(ctx, p.files.SandboxID)
 		if err != nil {
@@ -189,9 +188,7 @@ func (p *Process) configure(
 
 	err := p.cmd.Start()
 
-	// Always release the cgroup directory FD right after Start — either
-	// the kernel used it for CLONE_INTO_CGROUP (success) or we don't need it (failure).
-	// The memory.peak FD stays open for interval-based peak tracking via GetStats().
+	// Release cgroup directory FD — kernel already used it during clone
 	if p.CgroupHandle != nil {
 		if releaseErr := p.CgroupHandle.ReleaseCgroupFD(); releaseErr != nil {
 			logger.L().Warn(ctx, "failed to release cgroup directory FD",
@@ -201,8 +198,6 @@ func (p *Process) configure(
 	}
 
 	if err != nil {
-		// Clean up cgroup on start failure — the memoryPeakFile FD and directory
-		// would otherwise leak since the caller has no cleanup path for this case.
 		if p.CgroupHandle != nil {
 			if removeErr := p.CgroupHandle.Remove(ctx); removeErr != nil {
 				logger.L().Warn(ctx, "failed to remove cgroup after start failure",
@@ -215,7 +210,6 @@ func (p *Process) configure(
 		return fmt.Errorf("error starting fc process: %w", err)
 	}
 
-	// Log successful placement
 	if p.CgroupHandle != nil {
 		logger.L().Debug(ctx, "firecracker process started in cgroup",
 			logger.WithSandboxID(p.files.SandboxID),
