@@ -8,7 +8,6 @@ import (
 	"net/url"
 	"time"
 
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
@@ -87,21 +86,7 @@ func handlePausedSandbox(
 	logger.L().Info(ctx, "catalog miss, attempting resume via api", logger.WithSandboxID(sandboxId))
 	nodeIP, err := pausedChecker.Resume(ctx, sandboxId, sandboxPort, trafficAccessToken, envdAccessToken)
 	if err != nil {
-		if code, ok := getNotResumableCode(err); ok {
-			telemetry.ReportEvent(
-				ctx,
-				"sandbox auto-resume not allowed",
-				telemetry.WithSandboxID(sandboxId),
-				attribute.String("reason", code.String()),
-			)
-
-			logger.L().Info(
-				ctx,
-				"sandbox auto-resume not allowed",
-				logger.WithSandboxID(sandboxId),
-				zap.String("reason", code.String()),
-			)
-
+		if _, ok := getNotResumableCode(err); ok {
 			return "", autoResumeNotAllowed, nil
 		}
 
