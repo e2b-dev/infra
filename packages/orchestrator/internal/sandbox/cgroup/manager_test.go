@@ -83,15 +83,15 @@ func TestCgroupHandleLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, info.IsDir())
 
-	// Close directory
-	err = handle.Close()
+	// Release directory FD
+	err = handle.ReleaseCgroupFD()
 	assert.NoError(t, err)
 
-	// FD should be invalid after close
+	// FD should be invalid after release
 	assert.Equal(t, -1, handle.GetFD())
 
-	// Double close should be safe
-	err = handle.Close()
+	// Double release should be safe
+	err = handle.ReleaseCgroupFD()
 	assert.NoError(t, err)
 }
 
@@ -113,7 +113,7 @@ func TestCgroupHandleWithProcessCreation(t *testing.T) {
 	handle, err := mgr.Create(ctx, testSandboxID)
 	require.NoError(t, err)
 	defer handle.Remove(ctx)
-	defer handle.Close()
+	defer handle.ReleaseCgroupFD()
 
 	// Verify directory exists
 	cgroupPath := handle.Path()
@@ -135,8 +135,8 @@ func TestCgroupHandleWithProcessCreation(t *testing.T) {
 	require.NoError(t, err)
 	defer cmd.Process.Kill()
 
-	// Close handle after Start (as we do in real code)
-	handle.Close()
+	// Release directory FD after Start (as we do in real code)
+	handle.ReleaseCgroupFD()
 
 	// Verify PID is in cgroup (atomically placed by kernel)
 	procsPath := filepath.Join(cgroupPath, "cgroup.procs")
@@ -174,7 +174,7 @@ func TestCgroupHandleNoRaceOnQuickExit(t *testing.T) {
 	handle, err := mgr.Create(ctx, testSandboxID)
 	require.NoError(t, err)
 	defer handle.Remove(ctx)
-	defer handle.Close()
+	defer handle.ReleaseCgroupFD()
 
 	// Start process that exits immediately
 	cmd := exec.CommandContext(ctx, "bash", "-c", "exit 0")
@@ -186,7 +186,7 @@ func TestCgroupHandleNoRaceOnQuickExit(t *testing.T) {
 	err = cmd.Start()
 	require.NoError(t, err)
 
-	handle.Close()
+	handle.ReleaseCgroupFD()
 
 	// Process exits immediately - but it WAS in the cgroup during its lifetime
 	// (kernel placed it atomically, no race!)
@@ -215,7 +215,7 @@ func TestCgroupHandleGetStats(t *testing.T) {
 	handle, err := mgr.Create(ctx, testSandboxID)
 	require.NoError(t, err)
 	defer handle.Remove(ctx)
-	defer handle.Close()
+	defer handle.ReleaseCgroupFD()
 
 	// Start a test process that uses some CPU
 	cmd := exec.CommandContext(ctx, "bash", "-c", "for i in {1..1000}; do echo test > /dev/null; done; sleep 5")
@@ -228,7 +228,7 @@ func TestCgroupHandleGetStats(t *testing.T) {
 	require.NoError(t, err)
 	defer cmd.Process.Kill()
 
-	handle.Close()
+	handle.ReleaseCgroupFD()
 
 	// Wait a bit for some stats to accumulate
 	time.Sleep(100 * time.Millisecond)
@@ -266,7 +266,7 @@ func TestCgroupHandleGetStatsNonExistent(t *testing.T) {
 	// Create handle
 	handle, err := mgr.Create(ctx, testSandboxID)
 	require.NoError(t, err)
-	defer handle.Close()
+	defer handle.ReleaseCgroupFD()
 
 	// Remove the cgroup directory
 	err = handle.Remove(ctx)
@@ -293,7 +293,7 @@ func TestCgroupHandleRemoveNonExistent(t *testing.T) {
 	// Create handle
 	handle, err := mgr.Create(ctx, testSandboxID)
 	require.NoError(t, err)
-	defer handle.Close()
+	defer handle.ReleaseCgroupFD()
 
 	// Remove once
 	err = handle.Remove(ctx)
@@ -364,7 +364,7 @@ func TestCgroupHandlePeakReset(t *testing.T) {
 	handle, err := mgr.Create(ctx, testSandboxID)
 	require.NoError(t, err)
 	defer handle.Remove(ctx)
-	defer handle.Close()
+	defer handle.ReleaseCgroupFD()
 
 	// Start a process that allocates memory gradually
 	// This gives us time to sample and see the reset behavior
@@ -379,7 +379,7 @@ func TestCgroupHandlePeakReset(t *testing.T) {
 	require.NoError(t, err)
 	defer cmd.Process.Kill()
 
-	handle.Close()
+	handle.ReleaseCgroupFD()
 
 	// First sample - get initial peak
 	time.Sleep(1 * time.Second)

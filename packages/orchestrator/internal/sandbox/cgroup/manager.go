@@ -31,19 +31,22 @@ type Stats struct {
 	MemoryPeakBytes  uint64 // peak memory usage in bytes since last GetStats() call (reset after each read)
 }
 
-// CgroupHandle represents a created cgroup for a sandbox
-// It encapsulates the cgroup lifecycle, resource access, and cleanup
+// CgroupHandle represents a created cgroup for a sandbox.
+// It encapsulates the cgroup lifecycle, resource access, and cleanup.
+//
+// Lifecycle: Create → GetFD → ReleaseCgroupFD → GetStats (repeatedly) → Remove
 type CgroupHandle struct {
 	sandboxID      string
 	path           string
-	file           *os.File // Open FD to the cgroup directory (nil after Close)
-	memoryPeakFile *os.File // Open FD to memory.peak for reset functionality (nil after Close or if not available)
+	file           *os.File // Open FD to the cgroup directory (nil after ReleaseCgroupFD)
+	memoryPeakFile *os.File // Open FD to memory.peak for per-FD reset (nil after Remove or if not available)
 	manager        *managerImpl
+	removed        bool
 }
 
-// GetFD returns the file descriptor for use with SysProcAttr.CgroupFD
-// Returns -1 if the handle has been closed
-// The FD is valid until Close() is called
+// GetFD returns the file descriptor for use with SysProcAttr.CgroupFD.
+// Returns -1 if the directory FD has been released.
+// The FD is valid until ReleaseCgroupFD() is called.
 func (h *CgroupHandle) GetFD() int {
 	if h == nil || h.file == nil {
 		return -1
@@ -51,13 +54,16 @@ func (h *CgroupHandle) GetFD() int {
 	return int(h.file.Fd())
 }
 
-// Close releases the cgroup directory file descriptor.
-// Should be called after cmd.Start() completes — the kernel has already placed
-// the process in the cgroup atomically during clone, so the directory FD is no
-// longer needed. The memory.peak FD is intentionally kept open because the
-// per-FD reset mechanism requires the same FD for the lifetime of stats collection.
+// ReleaseCgroupFD releases the cgroup directory file descriptor.
+// Call this after cmd.Start() — the kernel has already placed the process in
+// the cgroup atomically during clone, so the directory FD is no longer needed.
+//
+// The memory.peak FD is intentionally kept open because the per-FD reset
+// mechanism requires the same FD for the lifetime of stats collection.
+// That FD is closed later by Remove().
+//
 // Safe to call multiple times.
-func (h *CgroupHandle) Close() error {
+func (h *CgroupHandle) ReleaseCgroupFD() error {
 	if h == nil || h.file == nil {
 		return nil
 	}
@@ -77,26 +83,33 @@ func (h *CgroupHandle) GetStats(ctx context.Context) (*Stats, error) {
 	return h.manager.getStatsForPath(ctx, h.path, h.memoryPeakFile)
 }
 
-// Remove releases all file descriptors and deletes the cgroup directory.
-// The handle should not be used after calling Remove.
-// Returns error if removal fails (but cgroup may have been auto-cleaned by kernel).
-func (h *CgroupHandle) Remove(ctx context.Context) error {
-	if h == nil {
-		return nil
-	}
-
-	// Close all FDs before removing directory
-	h.Close()
+// closeAll releases both file descriptors (directory FD and memory.peak FD).
+// This is the internal cleanup used by Remove before deleting the cgroup directory.
+func (h *CgroupHandle) closeAll() {
+	h.ReleaseCgroupFD()
 
 	if h.memoryPeakFile != nil {
 		h.memoryPeakFile.Close()
 		h.memoryPeakFile = nil
 	}
+}
 
-	// Remove the cgroup directory
-	// The kernel automatically cleans up when all processes have exited
+// Remove releases all file descriptors and deletes the cgroup directory.
+// The handle should not be used after calling Remove.
+// Safe to call multiple times. Returns error if removal fails
+// (but tolerates the cgroup having been auto-cleaned by the kernel).
+func (h *CgroupHandle) Remove(ctx context.Context) error {
+	if h == nil || h.removed {
+		return nil
+	}
+
+	h.removed = true
+	h.closeAll()
+
+	// Remove the cgroup directory.
+	// The kernel automatically cleans up when all processes have exited,
+	// so ENOENT is expected and not an error.
 	if err := os.Remove(h.path); err != nil {
-		// Ignore "not exists" errors - cgroup may have been auto-cleaned
 		if !os.IsNotExist(err) {
 			return fmt.Errorf("failed to remove cgroup: %w", err)
 		}

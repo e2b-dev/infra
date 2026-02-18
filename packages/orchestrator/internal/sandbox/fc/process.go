@@ -203,16 +203,15 @@ func (p *Process) configure(
 		return fmt.Errorf("error starting fc process: %w", err)
 	}
 
-	// Close cgroup directory FD now that process has started.
-	// The kernel has already placed the process in the cgroup atomically during clone,
-	// so the directory FD is no longer needed. The memoryPeakFile FD is kept open
-	// by the handle for stats collection (per-FD peak reset requires the same FD).
+	// Release the cgroup directory FD now that the process has started.
+	// The kernel placed the process in the cgroup atomically during clone,
+	// so the directory FD is no longer needed. The memory.peak FD stays open
+	// for interval-based peak tracking via GetStats().
 	if p.CgroupHandle != nil {
-		closeErr := p.CgroupHandle.Close()
-		if closeErr != nil {
-			logger.L().Warn(ctx, "failed to close cgroup handle",
+		if err := p.CgroupHandle.ReleaseCgroupFD(); err != nil {
+			logger.L().Warn(ctx, "failed to release cgroup directory FD",
 				logger.WithSandboxID(p.files.SandboxID),
-				zap.Error(closeErr))
+				zap.Error(err))
 			// Non-fatal: FD will be closed when process exits anyway
 		}
 	}
