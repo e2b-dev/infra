@@ -78,7 +78,7 @@ func isPrivateIngressTraffic(network *dbtypes.SandboxNetworkConfig) bool {
 	return network != nil && network.Ingress != nil && network.Ingress.AllowPublicAccess != nil && !*network.Ingress.AllowPublicAccess
 }
 
-func isExpectedTrafficAccessToken(providedToken string, expectedToken string) bool {
+func tokensMatch(providedToken string, expectedToken string) bool {
 	return subtle.ConstantTimeCompare([]byte(providedToken), []byte(expectedToken)) == 1
 }
 
@@ -164,7 +164,7 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 
 		providedToken, _ := metadataFirstValue(incomingMetadata, proxygrpc.MetadataTrafficAccessToken)
 
-		if !isExpectedTrafficAccessToken(providedToken, expectedToken) {
+		if !tokensMatch(providedToken, expectedToken) {
 			return nil, denyResumePermission(ctx, sandboxID, "invalid_or_missing_traffic_access_token")
 		}
 	}
@@ -173,7 +173,7 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 	if !isNonEnvdTraffic && snap.Snapshot.EnvSecure && envdAccessToken != nil {
 		providedEnvdToken, _ := metadataFirstValue(incomingMetadata, proxygrpc.MetadataEnvdAccessToken)
 
-		if !isExpectedTrafficAccessToken(providedEnvdToken, *envdAccessToken) {
+		if !tokensMatch(providedEnvdToken, *envdAccessToken) {
 			return nil, denyResumePermission(ctx, sandboxID, "invalid_or_missing_envd_access_token")
 		}
 	}
