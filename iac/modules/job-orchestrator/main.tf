@@ -21,7 +21,7 @@ locals {
     launch_darkly_api_key   = var.launch_darkly_api_key
     orchestrator_services   = var.orchestrator_services
     build_cache_bucket_name = var.build_cache_bucket_name
-    persistent_volume_mounts = join(",", [for key, value in var.persistent_volume_mounts : format("%s=%s", key, value)])
+    persistent_volume_mounts = join(",", [for key, value in var.persistent_volume_mounts : format("%s:%s", key, value)])
 
     provider            = var.provider_name
     provider_aws_config = var.provider_aws_config
