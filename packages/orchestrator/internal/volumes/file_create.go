@@ -6,7 +6,10 @@ import (
 	"os"
 	"path/filepath"
 
+	"go.uber.org/zap"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -37,6 +40,14 @@ func (s *Service) CreateFile(server orchestrator.VolumeService_CreateFileServer)
 	uid := utils.DerefOrDefault(start.Uid, defaultOwnerID)    //nolint:protogetter
 	gid := utils.DerefOrDefault(start.Gid, defaultGroupID)    //nolint:protogetter
 	mode := utils.DerefOrDefault(start.Mode, defaultFileMode) //nolint:protogetter
+
+	logger.L().Info(server.Context(), "creating file",
+		zap.String("path", fullPath),
+		zap.Uint32("uid", uid),
+		zap.Uint32("gid", gid),
+		zap.Uint32("mode", mode),
+		zap.Bool("force", start.GetForce()),
+	)
 
 	if start.GetForce() {
 		dirName := filepath.Dir(fullPath)

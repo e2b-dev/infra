@@ -456,30 +456,60 @@ func TestVolumeContent(t *testing.T) {
 		t.Parallel()
 
 		dirName := uuid.NewString()
-		fileName := uuid.NewString()
-		content := uuid.NewString()
+		files := []string{
+			uuid.NewString(),
+			uuid.NewString(),
+			uuid.NewString(),
+		}
 
 		createDir(t, dirName)
 
-		createFile(t, filepath.Join(dirName, fileName), content)
+		for _, fname := range files {
+			createFile(t, filepath.Join(dirName, fname), fmt.Sprintf("%s content", dirName))
+		}
 
+		// verify that files are created
+		listResponse, err := client.GetVolumesVolumeIDDirWithResponse(
+			t.Context(), volume.VolumeID,
+			&api.GetVolumesVolumeIDDirParams{Path: dirName},
+			setup.WithAPIKey(),
+		)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, listResponse.StatusCode(), string(listResponse.Body))
+		require.NotNil(t, listResponse.JSON200)
+		assert.Len(t, *listResponse.JSON200, len(files))
+
+		// delete folder with contents
 		response, err := client.DeleteVolumesVolumeIDDirWithResponse(
 			t.Context(), volume.VolumeID,
 			&api.DeleteVolumesVolumeIDDirParams{
 				Path:      dirName,
 				Recursive: utils.ToPtr(true),
 			},
-			setup.WithAPIKey())
+			setup.WithAPIKey(),
+		)
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusNoContent, response.StatusCode(), string(response.Body))
 
 		// cannot retrieve file, b/c it's gone
-		getResponse, err := client.GetVolumesVolumeIDFileWithResponse(
+		for _, fileName := range files {
+			getResponse, err := client.GetVolumesVolumeIDFileWithResponse(
+				t.Context(), volume.VolumeID,
+				&api.GetVolumesVolumeIDFileParams{Path: filepath.Join(dirName, fileName)},
+				setup.WithAPIKey(),
+			)
+			require.NoError(t, err)
+			assert.Equal(t, http.StatusNotFound, getResponse.StatusCode(), string(getResponse.Body))
+		}
+
+		// cannot list directory, b/c it's gone
+		listDirResponse, err := client.GetVolumesVolumeIDDirWithResponse(
 			t.Context(), volume.VolumeID,
-			&api.GetVolumesVolumeIDFileParams{Path: filepath.Join(dirName, fileName)},
-			setup.WithAPIKey())
+			&api.GetVolumesVolumeIDDirParams{Path: dirName},
+			setup.WithAPIKey(),
+		)
 		require.NoError(t, err)
-		assert.Equal(t, http.StatusNotFound, getResponse.StatusCode(), string(getResponse.Body))
+		assert.Equal(t, http.StatusNotFound, listDirResponse.StatusCode(), string(listDirResponse.Body))
 
 		// cannot retrieve directory, b/c it's gone
 		getDirResponse, err := client.GetVolumesVolumeIDDirWithResponse(

@@ -5,7 +5,10 @@ import (
 	"io"
 	"os"
 
+	"go.uber.org/zap"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 const fileStreamChunkSize = 1024 * 1024 // 1MB
@@ -19,6 +22,10 @@ func (s *Service) GetFile(request *orchestrator.VolumeFileGetRequest, server orc
 	if err != nil {
 		return fmt.Errorf("failed to build volume path: %w", err)
 	}
+
+	logger.L().Info(server.Context(), "creating directory",
+		zap.String("path", fullPath),
+	)
 
 	f, err := os.Open(fullPath)
 	if err != nil {

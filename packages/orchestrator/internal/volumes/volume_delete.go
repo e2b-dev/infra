@@ -5,11 +5,14 @@ import (
 	"fmt"
 	"os"
 
+	"go.uber.org/zap"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 func (s *Service) Delete(
-	_ context.Context,
+	ctx context.Context,
 	request *orchestrator.VolumeDeleteRequest,
 ) (r *orchestrator.VolumeDeleteResponse, err error) {
 	defer func() {
@@ -20,6 +23,10 @@ func (s *Service) Delete(
 	if err != nil {
 		return nil, fmt.Errorf("failed to build volume path: %w", err)
 	}
+
+	logger.L().Info(ctx, "creating directory",
+		zap.String("path", volumePath),
+	)
 
 	if err := os.RemoveAll(volumePath); err != nil {
 		return nil, fmt.Errorf("failed to delete volume: %w", err)

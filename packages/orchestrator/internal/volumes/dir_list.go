@@ -6,10 +6,13 @@ import (
 	"os"
 	"path/filepath"
 
+	"go.uber.org/zap"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-func (s *Service) ListDir(_ context.Context, request *orchestrator.VolumeDirListRequest) (r *orchestrator.VolumeDirListResponse, err error) {
+func (s *Service) ListDir(ctx context.Context, request *orchestrator.VolumeDirListRequest) (r *orchestrator.VolumeDirListResponse, err error) {
 	defer func() {
 		err = s.processError(err)
 	}()
@@ -18,6 +21,10 @@ func (s *Service) ListDir(_ context.Context, request *orchestrator.VolumeDirList
 	if err != nil {
 		return nil, err
 	}
+
+	logger.L().Info(ctx, "listing directory",
+		zap.String("path", fullPath),
+	)
 
 	items, err := os.ReadDir(fullPath)
 	if err != nil { // todo: better error handling

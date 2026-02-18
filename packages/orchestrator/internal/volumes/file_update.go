@@ -5,10 +5,13 @@ import (
 	"fmt"
 	"os"
 
+	"go.uber.org/zap"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-func (s *Service) UpdateFileMetadata(_ context.Context, request *orchestrator.VolumeFileUpdateRequest) (r *orchestrator.VolumeFileUpdateResponse, err error) {
+func (s *Service) UpdateFileMetadata(ctx context.Context, request *orchestrator.VolumeFileUpdateRequest) (r *orchestrator.VolumeFileUpdateResponse, err error) {
 	defer func() {
 		err = s.processError(err)
 	}()
@@ -17,6 +20,13 @@ func (s *Service) UpdateFileMetadata(_ context.Context, request *orchestrator.Vo
 	if err != nil {
 		return nil, fmt.Errorf("failed to build volume path: %w", err)
 	}
+
+	logger.L().Info(ctx, "creating directory",
+		zap.String("path", fullPath),
+		zap.Uint32p("uid", request.GetUid()),
+		zap.Uint32p("gid", request.GetGid()),
+		zap.Uint32p("mode", request.GetMode()),
+	)
 
 	if request.Mode != nil {
 		if err = os.Chmod(fullPath, os.FileMode(request.GetMode())); err != nil {
