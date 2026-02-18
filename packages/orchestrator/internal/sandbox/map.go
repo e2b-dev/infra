@@ -6,9 +6,6 @@ import (
 	"net"
 	"sync"
 
-	"go.uber.org/zap"
-
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
@@ -59,9 +56,6 @@ func (m *Map) GetByHostPort(ctx context.Context, hostPort string) (*Sandbox, err
 	}
 
 	for _, sbx := range m.sandboxes.Items() {
-		logger.L().Debug(ctx, "looking for sandbox with address",
-			zap.String("requested_ip", reqIP),
-			zap.String("sandbox_ip", sbx.Slot.HostIPString()))
 		if sbx.Slot.HostIPString() == reqIP {
 			return sbx, nil
 		}
