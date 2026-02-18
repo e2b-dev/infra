@@ -15,8 +15,8 @@ import (
 func (a *APIStore) PostVolumesVolumeIDDir(c *gin.Context, volumeID api.VolumeID, params api.PostVolumesVolumeIDDirParams) {
 	a.executeOnOrchestratorByVolumeID(c, volumeID, func(ctx context.Context, volume queries.Volume, client *clusters.GRPCClient) error {
 		parents := false
-		if params.CreateParents != nil {
-			parents = *params.CreateParents
+		if params.Force != nil {
+			parents = *params.Force
 		}
 
 		response, err := client.Volumes.CreateDir(ctx, &orchestrator.VolumeDirCreateRequest{

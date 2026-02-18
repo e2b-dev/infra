@@ -42,7 +42,7 @@ locals {
   additional_domains = nonsensitive(jsondecode(data.google_secret_manager_secret_version.routing_domains.secret_data))
 
   // Check if all clusters has size greater than 1
-  template_manages_clusters_size_gt_1 = alltrue([for c in var.build_clusters_config : c.cluster_size > 1])
+  template_manages_clusters_size_gt_1 = alltrue([for c in var.build_clusters_config : (c.cluster_size > 1)])
 
   persistent_volume_types = {
     for key, config in var.persistent_volume_types : key => {
@@ -96,6 +96,7 @@ module "cluster" {
   gcp_region                       = var.gcp_region
   gcp_zone                         = var.gcp_zone
   google_service_account_key       = module.init.google_service_account_key
+  network_name                     = var.network_name
 
   build_clusters_config  = var.build_clusters_config
   client_clusters_config = var.client_clusters_config
@@ -247,7 +248,7 @@ module "nomad" {
   orchestrator_proxy_port        = var.orchestrator_proxy_port
   fc_env_pipeline_bucket_name    = module.init.fc_env_pipeline_bucket_name
   envd_timeout                   = var.envd_timeout
-  persistent_volume_mounts       = { for key, config in local.persistent_volume_types : key => config.local_mount_path }
+  persistent_volume_mounts       = { for key, config in local.persistent_volume_types : key => config["local_mount_path"] }
   default_persistent_volume_type = var.default_persistent_volume_type
 
   # Template manager
@@ -283,6 +284,7 @@ module "redis" {
   gcp_project_id = var.gcp_project_id
   gcp_region     = var.gcp_region
   gcp_zone       = var.gcp_zone
+  network_name   = var.network_name
 
   redis_cluster_url_secret_version   = module.init.redis_cluster_url_secret_version
   redis_tls_ca_base64_secret_version = module.init.redis_tls_ca_base64_secret_version

@@ -178,8 +178,7 @@ variable "gcp_zone" {
 }
 
 variable "network_name" {
-  type    = string
-  default = "default"
+  type = string
 }
 
 variable "google_service_account_email" {

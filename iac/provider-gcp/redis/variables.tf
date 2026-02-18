@@ -16,8 +16,7 @@ variable "gcp_zone" {
 }
 
 variable "network_name" {
-  type    = string
-  default = "default"
+  type = string
 }
 
 // https://registry.terraform.io/providers/hashicorp/google/6.38.0/docs/resources/memorystore_instance#shard_count-1

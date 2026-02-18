@@ -1419,8 +1419,8 @@ type PostVolumesVolumeIDDirParams struct {
 	// Mode Mode of the created directory
 	Mode *uint32 `form:"mode,omitempty" json:"mode,omitempty"`
 
-	// CreateParents Force overwrite of an existing directory
-	CreateParents *bool `form:"createParents,omitempty" json:"createParents,omitempty"`
+	// Force Create the parents of a directory if they don't exist
+	Force *bool `form:"force,omitempty" json:"force,omitempty"`
 }
 
 // DeleteVolumesVolumeIDFileParams defines parameters for DeleteVolumesVolumeIDFile.
@@ -5676,9 +5676,9 @@ func NewPostVolumesVolumeIDDirRequest(server string, volumeID VolumeID, params *
 
 		}
 
-		if params.CreateParents != nil {
+		if params.Force != nil {
 
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "createParents", runtime.ParamLocationQuery, *params.CreateParents); err != nil {
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "force", runtime.ParamLocationQuery, *params.Force); err != nil {
 				return nil, err
 			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
 				return nil, err

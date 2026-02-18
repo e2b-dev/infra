@@ -615,3 +615,8 @@ variable "default_persistent_volume_type" {
   type    = string
   default = ""
 }
+
+variable "network_name" {
+  type    = string
+  default = "default"
+}

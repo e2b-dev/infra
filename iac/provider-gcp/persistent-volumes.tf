@@ -16,6 +16,6 @@ resource "google_filestore_instance" "persistent-volumes" {
 
   networks {
     modes   = ["MODE_IPV4"]
-    network = "default"
+    network = var.network_name
   }
 }
