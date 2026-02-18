@@ -52,7 +52,7 @@ locals {
         key,
       ),
       nfs_mount_opts = join(",", [ // for more docs, see https://linux.die.net/man/5/nfs
-        format("nfsvers=%s", google_filestore_instance.persistent-volumes[key].protocol == "NFS_V3" ? "3" : "4"),
+        format("nfsvers=%s", google_filestore_instance.persistent-volumes[key].protocol == "NFS_V3" ? "3" : "4.1"),
         "sync",             // write immediately
         "hard",             // retry nfs requests indefinitely until they succeed, never fail
         "lookupcache=none", // disable the lookup cache
