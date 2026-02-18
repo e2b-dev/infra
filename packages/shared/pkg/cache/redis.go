@@ -137,20 +137,24 @@ func (rc *RedisCache[V]) DeleteByPrefix(ctx context.Context, prefix string) []st
 	}
 
 	// Phase 2: delete all collected keys.
-	deleted := make([]string, 0, len(allKeys))
 	pipeCtx, cancel := context.WithTimeout(ctx, rc.config.RedisTimeout)
 	defer cancel()
 	pipe := rc.config.RedisClient.Pipeline()
 	for _, redisKey := range allKeys {
 		pipe.Del(pipeCtx, redisKey)
-		cacheKey := redisKey[len(rc.config.RedisPrefix)+1:]
-		deleted = append(deleted, cacheKey)
 	}
 
 	if _, err := pipe.Exec(pipeCtx); err != nil {
 		logger.L().Warn(ctx, "RedisCache: pipeline DEL error",
 			zap.String("pattern", redisPattern),
 			zap.Error(err))
+
+		return nil
+	}
+
+	deleted := make([]string, 0, len(allKeys))
+	for _, redisKey := range allKeys {
+		deleted = append(deleted, redisKey[len(rc.config.RedisPrefix)+1:])
 	}
 
 	return deleted
@@ -161,7 +165,7 @@ func (rc *RedisCache[V]) collectKeys(ctx context.Context, prefix string) []strin
 	var cursor uint64
 	for {
 		scanCtx, cancel := context.WithTimeout(ctx, rc.config.RedisTimeout)
-		keys, nextCursor, err := rc.config.RedisClient.Scan(scanCtx, cursor, fmt.Sprintf("%s:%s*", rc.config.RedisPrefix, prefix), 1000).Result()
+		keys, nextCursor, err := rc.config.RedisClient.Scan(scanCtx, cursor, fmt.Sprintf("%s:%s*", rc.config.RedisPrefix, prefix), redisScanCount).Result()
 		cancel()
 		if err != nil {
 			logger.L().Warn(ctx, "RedisCache: SCAN error",
