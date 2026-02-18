@@ -11,6 +11,7 @@ resource "nomad_job" "dashboard_api" {
 
     postgres_connection_string   = var.postgres_connection_string
     clickhouse_connection_string = var.clickhouse_connection_string
+    supabase_jwt_secrets         = var.supabase_jwt_secrets
 
     otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
     logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"

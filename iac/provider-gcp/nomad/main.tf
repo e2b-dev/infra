@@ -114,6 +114,7 @@ module "dashboard_api" {
 
   postgres_connection_string   = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
   clickhouse_connection_string = local.clickhouse_connection_string
+  supabase_jwt_secrets         = trimspace(data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data)
 
   otel_collector_grpc_port = var.otel_collector_grpc_port
   logs_proxy_port          = var.logs_proxy_port

@@ -32,6 +32,11 @@ variable "clickhouse_connection_string" {
   sensitive = true
 }
 
+variable "supabase_jwt_secrets" {
+  type      = string
+  sensitive = true
+}
+
 variable "otel_collector_grpc_port" {
   type    = number
   default = 4317

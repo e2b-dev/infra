@@ -8,16 +8,21 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
+	"github.com/getkin/kin-openapi/openapi3"
+	"github.com/getkin/kin-openapi/openapi3filter"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	middleware "github.com/oapi-codegen/gin-middleware"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
+	"github.com/e2b-dev/infra/packages/dashboard-api/internal/auth"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/handlers"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
@@ -30,8 +35,6 @@ import (
 const (
 	serviceName    = "dashboard-api"
 	serviceVersion = "0.1.0"
-
-	defaultPort = 3010
 
 	readHeaderTimeout = 5 * time.Second
 	readTimeout       = 10 * time.Second
@@ -99,10 +102,45 @@ func run() int {
 		defer clickhouseClient.Close(ctx)
 	}
 
-	apiStore := handlers.NewAPIStore(db, clickhouseClient)
+	apiStore := handlers.NewAPIStore(config, db, clickhouseClient)
+
+	swagger, err := api.GetSwagger()
+	if err != nil {
+		l.Fatal(ctx, "Error loading swagger spec", zap.Error(err))
+	}
+	swagger.Servers = nil
+
+	authenticationFunc := auth.CreateAuthenticationFunc(
+		apiStore.GetUserIDFromSupabaseToken,
+		apiStore.ValidateTeamID,
+	)
 
 	r := gin.New()
 	r.Use(gin.Recovery())
+
+	r.Use(
+		middleware.OapiRequestValidatorWithOptions(swagger,
+			&middleware.Options{
+				ErrorHandler: func(c *gin.Context, message string, statusCode int) {
+					statusCode = max(c.Writer.Status(), statusCode)
+					c.AbortWithStatusJSON(statusCode, gin.H{
+						"code":    statusCode,
+						"message": message,
+					})
+				},
+				MultiErrorHandler: func(me openapi3.MultiError) error {
+					msgs := make([]string, 0, len(me))
+					for _, e := range me {
+						msgs = append(msgs, e.Error())
+					}
+
+					return fmt.Errorf("%s", strings.Join(msgs, "; "))
+				},
+				Options: openapi3filter.Options{
+					AuthenticationFunc: authenticationFunc,
+				},
+			}),
+	)
 
 	api.RegisterHandlers(r, apiStore)
 

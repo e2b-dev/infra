@@ -68,6 +68,7 @@ job "dashboard-api" {
         PORT                          = "${port_number}"
         POSTGRES_CONNECTION_STRING    = "${postgres_connection_string}"
         CLICKHOUSE_CONNECTION_STRING  = "${clickhouse_connection_string}"
+        SUPABASE_JWT_SECRETS         = "${supabase_jwt_secrets}"
         OTEL_COLLECTOR_GRPC_ENDPOINT  = "${otel_collector_grpc_endpoint}"
         LOGS_COLLECTOR_ADDRESS        = "${logs_collector_address}"
       }

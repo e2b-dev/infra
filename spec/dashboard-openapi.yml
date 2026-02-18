@@ -4,6 +4,49 @@ info:
   version: 0.1.0
   title: E2B Dashboard API
 
+components:
+  securitySchemes:
+    Supabase1TokenAuth:
+      type: apiKey
+      in: header
+      name: X-Supabase-Token
+    Supabase2TeamAuth:
+      type: apiKey
+      in: header
+      name: X-Supabase-Team
+
+  responses:
+    "400":
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    "401":
+      description: Authentication error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    "500":
+      description: Server error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+  schemas:
+    Error:
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: integer
+          format: int32
+        message:
+          type: string
+
 paths:
   /health:
     get:
