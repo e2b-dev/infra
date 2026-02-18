@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"crypto/subtle"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -85,7 +86,7 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 				accessTokenRaw := r.Header.Get(trafficAccessTokenHeader)
 				if accessTokenRaw == "" {
 					return nil, reverseproxy.NewErrMissingTrafficAccessToken(sandboxId, trafficAccessTokenHeader)
-				} else if accessTokenRaw != *accessToken {
+				} else if subtle.ConstantTimeCompare([]byte(accessTokenRaw), []byte(*accessToken)) != 1 {
 					return nil, reverseproxy.NewErrInvalidTrafficAccessToken(sandboxId, trafficAccessTokenHeader)
 				}
 			}
