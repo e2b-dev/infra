@@ -31,6 +31,18 @@ func newTestRedisCache(t *testing.T, redisClient redis.UniversalClient) *RedisCa
 	})
 }
 
+func TestRedisNoPTTL_MatchesRedisBehavior(t *testing.T) {
+	t.Parallel()
+	redisClient := redis_utils.SetupInstance(t)
+
+	// Set a key with no expiration
+	err := redisClient.Set(t.Context(), "test:no-ttl", "value", 0).Err()
+	require.NoError(t, err)
+
+	pttl := redisClient.PTTL(t.Context(), "test:no-ttl").Val()
+	assert.Equal(t, redisNoPTTL, pttl, "redisNoPTTL constant should match PTTL result for a key with no expiration")
+}
+
 func TestRedisCache_RedisHit(t *testing.T) {
 	t.Parallel()
 	redisClient := redis_utils.SetupInstance(t)

@@ -15,6 +15,10 @@ import (
 
 const (
 	RedisRefreshIntervalOff = 0
+
+	// redisNoPTTL is the value returned by go-redis PTTL when a key has no expiration.
+	// Redis returns the integer -1; go-redis converts it to -1 * time.Nanosecond.
+	redisNoPTTL = -1 * time.Nanosecond
 )
 
 // RedisConfig holds the configuration for a RedisCache.
@@ -213,7 +217,7 @@ func (rc *RedisCache[V]) deleteFromRedis(ctx context.Context, key string) {
 // handleRefresh checks if the key should be refreshed in the background and refreshes it if necessary
 func (rc *RedisCache[V]) handleRefresh(ctx context.Context, key string, remainingTTL time.Duration, dataCallback DataCallback[V]) {
 	// check if key isn't persistent, this shouldn't really happen as it should be set with an expiration time
-	if remainingTTL == -1 {
+	if remainingTTL == redisNoPTTL {
 		logger.L().Warn(ctx, "redis key unexpectedly persistent", zap.String("key", key))
 
 		return
