@@ -151,7 +151,7 @@ func TestRedisTemplatesBuildCache_SetStatus_UpdatesRedis(t *testing.T) {
 	assert.Equal(t, "Build completed successfully", updatedInfo.Reason.Message)
 }
 
-// TestRedisTemplatesBuildCache_SetStatus_ResetsTTL tests that SetStatus resets the Redis TTL to redisBuildCacheTTL.
+// TestRedisTemplatesBuildCache_SetStatus_ResetsTTL tests that SetStatus resets the Redis TTL
 func TestRedisTemplatesBuildCache_SetStatus_ResetsTTL(t *testing.T) {
 	t.Parallel()
 	db := testutils.SetupDatabase(t)
@@ -183,13 +183,13 @@ func TestRedisTemplatesBuildCache_SetStatus_ResetsTTL(t *testing.T) {
 	require.NoError(t, err)
 	assert.LessOrEqual(t, ttlBefore, shortTTL)
 
-	// Update status — this should reset TTL to redisBuildCacheTTL (5 minutes)
+	// Update status — this should reset TTL
 	newReason := types.BuildReason{Message: "Build started"}
 	c.SetStatus(ctx, buildID, types.BuildStatusGroupInProgress, newReason)
 
-	// Verify TTL was reset to redisBuildCacheTTL
+	// Verify TTL was reset
 	ttlAfter, err := redisClient.TTL(ctx, buildKey).Result()
 	require.NoError(t, err)
-	assert.Greater(t, ttlAfter, shortTTL, "TTL should be reset to redisBuildCacheTTL, not the old short TTL")
+	assert.Greater(t, ttlAfter, shortTTL, "TTL should be reset, now being less than initial short TTL")
 	assert.LessOrEqual(t, ttlAfter, buildCacheTTL)
 }
