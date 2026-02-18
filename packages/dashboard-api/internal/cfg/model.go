@@ -4,8 +4,6 @@ import (
 	"github.com/caarlos0/env/v11"
 )
 
-const MinSupabaseJWTSecretLength = 16
-
 type Config struct {
 	Port                       int      `env:"PORT" envDefault:"3010"`
 	PostgresConnectionString   string   `env:"POSTGRES_CONNECTION_STRING,required,notEmpty"`
