@@ -39,7 +39,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-
 var _ api.ServerInterface = (*APIStore)(nil)
 
 type APIStore struct {
