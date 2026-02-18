@@ -253,7 +253,7 @@ outerLoop:
 	}
 }
 
-func (u *Userfaultfd) Dirty() *block.Tracker {
+func (u *Userfaultfd) faulted() *block.Tracker {
 	// This will be at worst cancelled when the uffd is closed.
 	u.settleRequests.Lock()
 	// The locking here would work even without using defer (just lock-then-unlock the mutex), but at this point let's make it lock to the clone,

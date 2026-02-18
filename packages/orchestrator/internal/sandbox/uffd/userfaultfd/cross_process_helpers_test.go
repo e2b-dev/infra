@@ -307,7 +307,7 @@ func crossProcessServe() error {
 			case <-ctx.Done():
 				return
 			case <-offsetsSignal:
-				for offset := range uffd.Dirty().Offsets() {
+				for offset := range uffd.faulted().Offsets() {
 					writeErr := binary.Write(offsetsFile, binary.LittleEndian, uint64(offset))
 					if writeErr != nil {
 						msg := fmt.Errorf("error writing offsets to file: %w", writeErr)
