@@ -17,7 +17,7 @@ END;
 $$ LANGUAGE plpgsql;
 -- +goose StatementEnd
 
-CREATE TRIGGER trigger_backfill_team_id
+CREATE OR REPLACE TRIGGER trigger_backfill_team_id
     AFTER INSERT ON env_build_assignments
     FOR EACH ROW EXECUTE FUNCTION backfill_team_id_from_assignment();
 
