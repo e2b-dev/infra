@@ -120,11 +120,13 @@ func TestVolumeContent(t *testing.T) {
 		)
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, resp.StatusCode(), string(resp.Body))
+
 		return resp.JSON200
 	}
 
 	getStat := func(t *testing.T, path string) *api.VolumeEntryStat {
 		t.Helper()
+
 		return getStatInVolume(t, volume, path)
 	}
 
