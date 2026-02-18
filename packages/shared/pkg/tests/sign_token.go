@@ -6,16 +6,14 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
-)
 
-type supabaseClaims struct {
-	jwt.RegisteredClaims
-}
+	"github.com/e2b-dev/infra/packages/shared/pkg/auth"
+)
 
 func SignTestToken(t *testing.T, secret string, subject string) string {
 	t.Helper()
 
-	claims := supabaseClaims{
+	claims := auth.SupabaseClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   subject,
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)), // 1 hour expiry
