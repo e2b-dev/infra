@@ -47,7 +47,10 @@ locals {
   persistent_volume_types = {
     for key, config in var.persistent_volume_types : key => {
       local_mount_path = "/mnt/persistent-volume-types/${key}"
-      nfs_location     = format("%s:/", join(",", google_filestore_instance.persistent-volumes[key].networks[0].ip_addresses)),
+      nfs_location = format("%s:/%s",
+        join(",", google_filestore_instance.persistent-volumes[key].networks[0].ip_addresses),
+        key,
+      ),
       nfs_mount_opts = join(",", [ // for more docs, see https://linux.die.net/man/5/nfs
         format("nfsvers=%s", google_filestore_instance.persistent-volumes[key].protocol == "NFS_V3" ? "3" : "4"),
         "actimeo=600",          // cache attributes for 60 seconds
