@@ -34,6 +34,7 @@ func (s *Storage) Add(ctx context.Context, sbx sandbox.Sandbox) error {
 		return fmt.Errorf("failed to store sandbox in Redis: %w", err)
 	}
 
+	// We can't set the globalTeamsZSetKey in Lua script as they can be in different shards
 	if err := s.redisClient.ZAdd(ctx, globalTeamsZSetKey, redis.Z{
 		Score:  float64(time.Now().Unix()),
 		Member: sbx.TeamID.String(),
