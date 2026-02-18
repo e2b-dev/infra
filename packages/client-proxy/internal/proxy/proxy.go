@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
@@ -86,7 +87,21 @@ func handlePausedSandbox(
 	logger.L().Info(ctx, "catalog miss, attempting resume via api", logger.WithSandboxID(sandboxId))
 	nodeIP, err := pausedChecker.Resume(ctx, sandboxId, sandboxPort, trafficAccessToken, envdAccessToken)
 	if err != nil {
-		if isNotResumableError(err) {
+		if code, ok := getNotResumableCode(err); ok {
+			telemetry.ReportEvent(
+				ctx,
+				"sandbox auto-resume not allowed",
+				telemetry.WithSandboxID(sandboxId),
+				attribute.String("reason", code.String()),
+			)
+
+			logger.L().Info(
+				ctx,
+				"sandbox auto-resume not allowed",
+				logger.WithSandboxID(sandboxId),
+				zap.String("reason", code.String()),
+			)
+
 			return "", autoResumeNotAllowed, nil
 		}
 
@@ -96,13 +111,18 @@ func handlePausedSandbox(
 	return nodeIP, autoResumeSucceeded, nil
 }
 
-func isNotResumableError(err error) bool {
+func getNotResumableCode(err error) (codes.Code, bool) {
 	st, ok := status.FromError(err)
 	if !ok {
-		return false
+		return 0, false
 	}
 
-	return st.Code() == codes.NotFound || st.Code() == codes.PermissionDenied
+	code := st.Code()
+	if code == codes.NotFound || code == codes.PermissionDenied {
+		return code, true
+	}
+
+	return 0, false
 }
 
 func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog catalog.SandboxesCatalog, pausedSandboxResumer PausedSandboxResumer, featureFlagsClient *featureflags.Client) (*reverseproxy.Proxy, error) {
