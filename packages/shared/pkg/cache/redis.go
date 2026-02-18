@@ -171,6 +171,7 @@ func (rc *RedisCache[V]) collectKeys(ctx context.Context, prefix string) []strin
 			logger.L().Warn(ctx, "RedisCache: SCAN error",
 				zap.String("pattern", fmt.Sprintf("%s:%s*", rc.config.RedisPrefix, prefix)),
 				zap.Error(err))
+
 			break
 		}
 
