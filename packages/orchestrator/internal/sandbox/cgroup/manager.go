@@ -169,12 +169,12 @@ func NewManager() (Manager, error) {
 }
 
 func (m *managerImpl) Initialize(ctx context.Context) error {
-	if err := os.MkdirAll(RootCgroupPath, 0755); err != nil {
+	if err := os.MkdirAll(RootCgroupPath, 0o755); err != nil {
 		return fmt.Errorf("failed to create root cgroup directory: %w", err)
 	}
 
 	controllersPath := filepath.Join(RootCgroupPath, "cgroup.subtree_control")
-	if err := os.WriteFile(controllersPath, []byte("+cpu +memory"), 0644); err != nil {
+	if err := os.WriteFile(controllersPath, []byte("+cpu +memory"), 0o644); err != nil {
 		return fmt.Errorf("failed to enable controllers: %w", err)
 	}
 
@@ -186,7 +186,7 @@ func (m *managerImpl) Initialize(ctx context.Context) error {
 func (m *managerImpl) Create(ctx context.Context, sandboxID string) (*CgroupHandle, error) {
 	cgroupPath := m.sandboxCgroupPath(sandboxID)
 
-	if err := os.MkdirAll(cgroupPath, 0755); err != nil {
+	if err := os.MkdirAll(cgroupPath, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create cgroup directory: %w", err)
 	}
 

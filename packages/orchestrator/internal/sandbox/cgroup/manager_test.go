@@ -275,7 +275,7 @@ func TestCgroupHandleRemoveNonExistent(t *testing.T) {
 func TestStatsParsing(t *testing.T) {
 	tmpDir := t.TempDir()
 	cgroupPath := filepath.Join(tmpDir, "sbx-test-parse-sandbox")
-	err := os.MkdirAll(cgroupPath, 0755)
+	err := os.MkdirAll(cgroupPath, 0o755)
 	require.NoError(t, err)
 
 	cpuStatContent := `usage_usec 123456789
@@ -286,10 +286,10 @@ nr_throttled 0
 throttled_usec 0
 nr_bursts 0
 burst_usec 0`
-	err = os.WriteFile(filepath.Join(cgroupPath, "cpu.stat"), []byte(cpuStatContent), 0644)
+	err = os.WriteFile(filepath.Join(cgroupPath, "cpu.stat"), []byte(cpuStatContent), 0o644)
 	require.NoError(t, err)
 
-	err = os.WriteFile(filepath.Join(cgroupPath, "memory.current"), []byte("536870912"), 0644)
+	err = os.WriteFile(filepath.Join(cgroupPath, "memory.current"), []byte("536870912"), 0o644)
 	require.NoError(t, err)
 
 	ctx := context.Background()

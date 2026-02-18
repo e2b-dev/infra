@@ -322,7 +322,6 @@ func (f *Factory) CreateSandbox(
 		config.HugePages,
 		processOptions,
 	)
-
 	if err != nil {
 		return nil, fmt.Errorf("failed to create FC: %w", err)
 	}
