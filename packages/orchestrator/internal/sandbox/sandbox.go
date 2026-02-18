@@ -776,13 +776,10 @@ func (s *Sandbox) doStop(ctx context.Context) error {
 	<-s.process.Exit.Done()
 
 	// Remove cgroup after process has exited
-	if s.process.CgroupHandle != nil {
-		cgroupErr := s.process.CgroupHandle.Remove(ctx)
-		if cgroupErr != nil {
-			logger.L().Warn(ctx, "failed to remove cgroup during cleanup",
-				logger.WithSandboxID(s.Runtime.SandboxID),
-				zap.Error(cgroupErr))
-		}
+	if cgroupErr := s.process.CleanupCgroup(ctx); cgroupErr != nil {
+		logger.L().Warn(ctx, "failed to remove cgroup during cleanup",
+			logger.WithSandboxID(s.Runtime.SandboxID),
+			zap.Error(cgroupErr))
 	}
 
 	uffdStopErr := s.Resources.memory.Stop()

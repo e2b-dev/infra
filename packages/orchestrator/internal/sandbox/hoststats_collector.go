@@ -15,12 +15,16 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
+// CgroupStatsFunc is a function that returns current cgroup resource usage statistics.
+// Returns (nil, nil) if cgroup accounting is not available.
+type CgroupStatsFunc func(ctx context.Context) (*cgroup.Stats, error)
+
 type HostStatsCollector struct {
 	metadata         HostStatsMetadata
 	delivery         hoststats.Delivery
 	proc             *process.Process
 	samplingInterval time.Duration
-	cgroupHandle     *cgroup.CgroupHandle
+	cgroupStats      CgroupStatsFunc
 
 	stopCh    chan struct{}
 	stoppedCh chan struct{}
@@ -42,7 +46,7 @@ func NewHostStatsCollector(
 	firecrackerPID int32,
 	delivery hoststats.Delivery,
 	samplingInterval time.Duration,
-	cgroupHandle *cgroup.CgroupHandle,
+	cgroupStats CgroupStatsFunc,
 ) (*HostStatsCollector, error) {
 	// Validate and enforce minimum interval
 	if samplingInterval < 100*time.Millisecond {
@@ -59,7 +63,7 @@ func NewHostStatsCollector(
 		delivery:         delivery,
 		proc:             proc,
 		samplingInterval: samplingInterval,
-		cgroupHandle:     cgroupHandle,
+		cgroupStats:      cgroupStats,
 		stopCh:           make(chan struct{}),
 		stoppedCh:        make(chan struct{}),
 	}, nil
@@ -94,13 +98,13 @@ func (h *HostStatsCollector) CollectSample(ctx context.Context) error {
 		FirecrackerMemoryVMS:     memInfo.VMS,  // bytes
 	}
 
-	if h.cgroupHandle != nil {
-		cgroupStats, err := h.cgroupHandle.GetStats(ctx)
+	if h.cgroupStats != nil {
+		cgroupStats, err := h.cgroupStats(ctx)
 		if err != nil {
 			logger.L().Debug(ctx, "could not collect cgroup stats",
 				logger.WithSandboxID(h.metadata.SandboxID),
 				zap.Error(err))
-		} else {
+		} else if cgroupStats != nil {
 			stat.CgroupCPUUsageUsec = cgroupStats.CPUUsageUsec
 			stat.CgroupCPUUserUsec = cgroupStats.CPUUserUsec
 			stat.CgroupCPUSystemUsec = cgroupStats.CPUSystemUsec

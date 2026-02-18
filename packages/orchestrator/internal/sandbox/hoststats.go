@@ -55,7 +55,7 @@ func initializeHostStatsCollector(
 		int32(firecrackerPID),
 		hostStatsDelivery,
 		samplingInterval,
-		sbx.process.CgroupHandle,
+		fcHandle.CgroupStats,
 	)
 	if err != nil {
 		logger.L().Error(ctx, "failed to create host stats collector",

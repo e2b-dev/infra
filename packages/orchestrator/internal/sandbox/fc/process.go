@@ -77,7 +77,7 @@ type Process struct {
 	client *apiClient
 
 	cgroupManager cgroup.Manager
-	CgroupHandle  *cgroup.CgroupHandle
+	cgroupHandle  *cgroup.CgroupHandle
 }
 
 func NewProcess(
@@ -177,7 +177,7 @@ func (p *Process) configure(
 			return fmt.Errorf("failed to create cgroup: %w", err)
 		}
 
-		p.CgroupHandle = cgroupHandle
+		p.cgroupHandle = cgroupHandle
 		p.cmd.SysProcAttr.UseCgroupFD = true
 		p.cmd.SysProcAttr.CgroupFD = cgroupHandle.GetFD()
 
@@ -189,8 +189,8 @@ func (p *Process) configure(
 	err := p.cmd.Start()
 
 	// Release cgroup directory FD — kernel already used it during clone
-	if p.CgroupHandle != nil {
-		if releaseErr := p.CgroupHandle.ReleaseCgroupFD(); releaseErr != nil {
+	if p.cgroupHandle != nil {
+		if releaseErr := p.cgroupHandle.ReleaseCgroupFD(); releaseErr != nil {
 			logger.L().Warn(ctx, "failed to release cgroup directory FD",
 				logger.WithSandboxID(p.files.SandboxID),
 				zap.Error(releaseErr))
@@ -198,19 +198,19 @@ func (p *Process) configure(
 	}
 
 	if err != nil {
-		if p.CgroupHandle != nil {
-			if removeErr := p.CgroupHandle.Remove(ctx); removeErr != nil {
+		if p.cgroupHandle != nil {
+			if removeErr := p.cgroupHandle.Remove(ctx); removeErr != nil {
 				logger.L().Warn(ctx, "failed to remove cgroup after start failure",
 					logger.WithSandboxID(p.files.SandboxID),
 					zap.Error(removeErr))
 			}
-			p.CgroupHandle = nil
+			p.cgroupHandle = nil
 		}
 
 		return fmt.Errorf("error starting fc process: %w", err)
 	}
 
-	if p.CgroupHandle != nil {
+	if p.cgroupHandle != nil {
 		logger.L().Debug(ctx, "firecracker process started in cgroup",
 			logger.WithSandboxID(p.files.SandboxID),
 			zap.Int("pid", p.cmd.Process.Pid))
@@ -517,6 +517,25 @@ func (p *Process) Resume(
 	)
 
 	return nil
+}
+
+// CgroupStats returns current cgroup resource usage statistics.
+// Returns (nil, nil) if cgroup accounting is not enabled for this process.
+func (p *Process) CgroupStats(ctx context.Context) (*cgroup.Stats, error) {
+	if p.cgroupHandle == nil {
+		return nil, nil
+	}
+	return p.cgroupHandle.GetStats(ctx)
+}
+
+// CleanupCgroup removes the cgroup directory and releases associated resources.
+// Must be called after the process has exited. Safe to call multiple times
+// or when cgroup accounting is not enabled.
+func (p *Process) CleanupCgroup(ctx context.Context) error {
+	if p.cgroupHandle == nil {
+		return nil
+	}
+	return p.cgroupHandle.Remove(ctx)
 }
 
 func (p *Process) Pid() (int, error) {
