@@ -1,0 +1,18 @@
+openapi: "3.0.0"
+
+info:
+  version: 0.1.0
+  title: E2B Dashboard API
+
+paths:
+  /health:
+    get:
+      operationId: GetHealth
+      summary: Health check
+      responses:
+        "200":
+          description: Health check successful
+          content:
+            text/plain:
+              schema:
+                type: string

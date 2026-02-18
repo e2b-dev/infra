@@ -69,6 +69,7 @@ build/%:
 .PHONY: build-and-upload
 build-and-upload:build-and-upload/api
 build-and-upload:build-and-upload/client-proxy
+build-and-upload:build-and-upload/dashboard-api
 build-and-upload:build-and-upload/docker-reverse-proxy
 build-and-upload:build-and-upload/clean-nfs-cache
 build-and-upload:build-and-upload/orchestrator

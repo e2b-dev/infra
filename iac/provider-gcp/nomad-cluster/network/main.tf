@@ -54,6 +54,18 @@ locals {
       }
       groups = [{ group = var.api_instance_group }]
     }
+    dashboard-api = {
+      protocol                        = "HTTP"
+      port                            = var.dashboard_api_port.port
+      port_name                       = var.dashboard_api_port.name
+      timeout_sec                     = 30
+      connection_draining_timeout_sec = 1
+      http_health_check = {
+        request_path = var.dashboard_api_port.health_path
+        port         = var.dashboard_api_port.port
+      }
+      groups = [{ group = var.api_instance_group }]
+    }
     docker-reverse-proxy = {
       protocol                        = "HTTP"
       port                            = var.docker_reverse_proxy_port.port
@@ -239,6 +251,11 @@ resource "google_compute_url_map" "orch_map" {
   }
 
   host_rule {
+    hosts        = concat(["dashboard-api.${var.domain_name}"], [for d in var.additional_domains : "dashboard-api.${d}"])
+    path_matcher = "dashboard-api-paths"
+  }
+
+  host_rule {
     hosts        = concat(["docker.${var.domain_name}"], [for d in var.additional_domains : "docker.${d}"])
     path_matcher = "docker-reverse-proxy-paths"
   }
@@ -264,6 +281,11 @@ resource "google_compute_url_map" "orch_map" {
         service = path_rule.value.service_id
       }
     }
+  }
+
+  path_matcher {
+    name            = "dashboard-api-paths"
+    default_service = google_compute_backend_service.default["dashboard-api"].self_link
   }
 
   path_matcher {

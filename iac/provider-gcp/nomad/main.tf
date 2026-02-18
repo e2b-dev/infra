@@ -102,6 +102,23 @@ resource "nomad_job" "api" {
   })
 }
 
+module "dashboard_api" {
+  source = "../../modules/job-dashboard-api"
+
+  node_pool     = var.api_node_pool
+  update_stanza = var.api_machine_count > 1
+  environment   = var.environment
+
+  image              = data.google_artifact_registry_docker_image.dashboard_api_image.self_link
+  dashboard_api_port = var.dashboard_api_port
+
+  postgres_connection_string   = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
+  clickhouse_connection_string = local.clickhouse_connection_string
+
+  otel_collector_grpc_port = var.otel_collector_grpc_port
+  logs_proxy_port          = var.logs_proxy_port
+}
+
 resource "nomad_job" "redis" {
   count = var.redis_managed ? 0 : 1
 

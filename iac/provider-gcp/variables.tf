@@ -207,6 +207,19 @@ variable "ingress_port" {
   }
 }
 
+variable "dashboard_api_port" {
+  type = object({
+    name        = string
+    port        = number
+    health_path = string
+  })
+  default = {
+    name        = "dashboard-api"
+    port        = 3010
+    health_path = "/health"
+  }
+}
+
 variable "docker_reverse_proxy_port" {
   type = object({
     name        = string

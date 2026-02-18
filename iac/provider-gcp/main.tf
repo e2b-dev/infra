@@ -98,6 +98,7 @@ module "cluster" {
 
   ingress_port                 = var.ingress_port
   api_port                     = var.api_port
+  dashboard_api_port           = var.dashboard_api_port
   docker_reverse_proxy_port    = var.docker_reverse_proxy_port
   nomad_port                   = var.nomad_port
   google_service_account_email = module.init.service_account_email
@@ -206,6 +207,9 @@ module "nomad" {
   # Otel Colelctor
   otel_collector_resources_memory_mb = var.otel_collector_resources_memory_mb
   otel_collector_resources_cpu_count = var.otel_collector_resources_cpu_count
+
+  # Dashboard API
+  dashboard_api_port = var.dashboard_api_port
 
   # Docker reverse proxy
   docker_reverse_proxy_port                = var.docker_reverse_proxy_port

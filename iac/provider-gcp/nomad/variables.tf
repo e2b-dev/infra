@@ -408,3 +408,12 @@ variable "filestore_cache_cleanup_max_retries" {
 variable "dockerhub_remote_repository_url" {
   type = string
 }
+
+# Dashboard API
+variable "dashboard_api_port" {
+  type = object({
+    name        = string
+    port        = number
+    health_path = string
+  })
+}

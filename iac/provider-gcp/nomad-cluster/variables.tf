@@ -88,6 +88,14 @@ variable "ingress_port" {
   })
 }
 
+variable "dashboard_api_port" {
+  type = object({
+    name        = string
+    port        = number
+    health_path = string
+  })
+}
+
 variable "docker_reverse_proxy_port" {
   type = object({
     name        = string
