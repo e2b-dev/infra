@@ -30,7 +30,7 @@ Flags:
 - `-template <id>` - Template ID (default: `local-template`)
 - `-storage <path>` - Local path or `gs://bucket` (enables local mode with auto-download of kernel/FC)
 - `-kernel <version>` - Kernel version (default: `vmlinux-6.1.102`)
-- `-firecracker <version>` - Firecracker version (default: `v1.12.1_717921c`)
+- `-firecracker <version>` - Firecracker version (default: `v1.12.1_a41d3fb`)
 - `-vcpu <n>` - vCPUs (default: `1`)
 - `-memory <mb>` - Memory in MB (default: `512`)
 - `-disk <mb>` - Disk in MB (default: `1000`)

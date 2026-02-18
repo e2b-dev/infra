@@ -189,8 +189,8 @@ func newStringFlag(name string, fallback string) StringFlag {
 // The Firecracker version the last tag + the short SHA (so we can build our dev previews)
 // TODO: The short tag here has only 7 characters — the one from our build pipeline will likely have exactly 8 so this will break.
 const (
-	DefaultFirecackerV1_10Version = "v1.10.1_fb257a1"
-	DefaultFirecackerV1_12Version = "v1.12.1_717921c"
+	DefaultFirecackerV1_10Version = "v1.10.1_30cbb07"
+	DefaultFirecackerV1_12Version = "v1.12.1_a41d3fb"
 	DefaultFirecrackerVersion     = DefaultFirecackerV1_12Version
 )
 
