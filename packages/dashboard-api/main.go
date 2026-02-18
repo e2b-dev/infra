@@ -11,7 +11,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/caarlos0/env/v11"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -19,6 +18,7 @@ import (
 
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
+	"github.com/e2b-dev/infra/packages/dashboard-api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/handlers"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/pkg/pool"
@@ -41,18 +41,12 @@ const (
 
 var commitSHA string
 
-type config struct {
-	Port                       int    `env:"PORT" envDefault:"3010"`
-	PostgresConnectionString   string `env:"POSTGRES_CONNECTION_STRING,required,notEmpty"`
-	ClickhouseConnectionString string `env:"CLICKHOUSE_CONNECTION_STRING"`
-}
-
 func run() int {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	cfg := config{}
-	if err := env.Parse(&cfg); err != nil {
+	config, err := cfg.Parse()
+	if err != nil {
 		log.Fatalf("failed to parse config: %v", err)
 	}
 
@@ -88,17 +82,17 @@ func run() int {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
-	db, err := sqlcdb.NewClient(ctx, cfg.PostgresConnectionString, pool.WithMaxConnections(8))
+	db, err := sqlcdb.NewClient(ctx, config.PostgresConnectionString, pool.WithMaxConnections(8))
 	if err != nil {
 		l.Fatal(ctx, "Initializing database client", zap.Error(err))
 	}
 	defer db.Close()
 
 	var clickhouseClient clickhouse.Clickhouse
-	if cfg.ClickhouseConnectionString == "" {
+	if config.ClickhouseConnectionString == "" {
 		clickhouseClient = clickhouse.NewNoopClient()
 	} else {
-		clickhouseClient, err = clickhouse.New(cfg.ClickhouseConnectionString)
+		clickhouseClient, err = clickhouse.New(config.ClickhouseConnectionString)
 		if err != nil {
 			l.Fatal(ctx, "Initializing ClickHouse client", zap.Error(err))
 		}
@@ -114,7 +108,7 @@ func run() int {
 
 	s := &http.Server{
 		Handler:           r,
-		Addr:              fmt.Sprintf("0.0.0.0:%d", cfg.Port),
+		Addr:              fmt.Sprintf("0.0.0.0:%d", config.Port),
 		ReadHeaderTimeout: readHeaderTimeout,
 		ReadTimeout:       readTimeout,
 		WriteTimeout:      writeTimeout,
@@ -136,7 +130,7 @@ func run() int {
 		}
 	}()
 
-	l.Info(ctx, "HTTP service starting", zap.Int("port", cfg.Port))
+	l.Info(ctx, "HTTP service starting", zap.Int("port", config.Port))
 	if err := s.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		l.Error(ctx, "HTTP service error", zap.Error(err))
 		return 1
