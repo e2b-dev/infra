@@ -128,6 +128,16 @@ func TestHandlePausedSandbox_NotFound(t *testing.T) {
 	require.Equal(t, autoResumeNotAllowed, res)
 }
 
+func TestHandlePausedSandbox_PermissionDenied(t *testing.T) {
+	t.Parallel()
+
+	ff := newFF(t, true)
+
+	_, res, err := handlePausedSandbox(context.Background(), "sbx", 8000, "token", "", stubResumer{err: status.Error(codes.PermissionDenied, "permission denied")}, ff)
+	require.NoError(t, err)
+	require.Equal(t, autoResumeNotAllowed, res)
+}
+
 func TestHandlePausedSandbox_Error(t *testing.T) {
 	t.Parallel()
 
