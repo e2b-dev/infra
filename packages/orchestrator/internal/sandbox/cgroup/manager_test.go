@@ -266,7 +266,10 @@ func TestCgroupHandleGetStatsNonExistent(t *testing.T) {
 	// Create handle
 	handle, err := mgr.Create(ctx, testSandboxID)
 	require.NoError(t, err)
-	defer handle.ReleaseCgroupFD()
+
+	// Release directory FD first (as the real code does after cmd.Start)
+	err = handle.ReleaseCgroupFD()
+	require.NoError(t, err)
 
 	// Remove the cgroup directory
 	err = handle.Remove(ctx)
@@ -293,7 +296,10 @@ func TestCgroupHandleRemoveNonExistent(t *testing.T) {
 	// Create handle
 	handle, err := mgr.Create(ctx, testSandboxID)
 	require.NoError(t, err)
-	defer handle.ReleaseCgroupFD()
+
+	// Release directory FD first (as the real code does after cmd.Start)
+	err = handle.ReleaseCgroupFD()
+	require.NoError(t, err)
 
 	// Remove once
 	err = handle.Remove(ctx)

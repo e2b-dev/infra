@@ -34,7 +34,11 @@ type Stats struct {
 // CgroupHandle represents a created cgroup for a sandbox.
 // It encapsulates the cgroup lifecycle, resource access, and cleanup.
 //
-// Lifecycle: Create → GetFD → ReleaseCgroupFD → GetStats (repeatedly) → Remove
+// Lifecycle: Create → GetFD → cmd.Start() → ReleaseCgroupFD → GetStats (repeatedly) → Remove
+//
+// The caller MUST call ReleaseCgroupFD() right after cmd.Start() (regardless of
+// whether Start succeeded or failed). Remove() only closes the memory.peak FD
+// and deletes the cgroup directory — it does not release the cgroup directory FD.
 type CgroupHandle struct {
 	sandboxID      string
 	path           string
@@ -83,18 +87,8 @@ func (h *CgroupHandle) GetStats(ctx context.Context) (*Stats, error) {
 	return h.manager.getStatsForPath(ctx, h.path, h.memoryPeakFile)
 }
 
-// closeAll releases both file descriptors (directory FD and memory.peak FD).
-// This is the internal cleanup used by Remove before deleting the cgroup directory.
-func (h *CgroupHandle) closeAll() {
-	h.ReleaseCgroupFD()
-
-	if h.memoryPeakFile != nil {
-		h.memoryPeakFile.Close()
-		h.memoryPeakFile = nil
-	}
-}
-
-// Remove releases all file descriptors and deletes the cgroup directory.
+// Remove closes the memory.peak FD and deletes the cgroup directory.
+// The caller must have already called ReleaseCgroupFD() before calling Remove.
 // The handle should not be used after calling Remove.
 // Safe to call multiple times. Returns error if removal fails
 // (but tolerates the cgroup having been auto-cleaned by the kernel).
@@ -104,7 +98,11 @@ func (h *CgroupHandle) Remove(ctx context.Context) error {
 	}
 
 	h.removed = true
-	h.closeAll()
+
+	if h.memoryPeakFile != nil {
+		h.memoryPeakFile.Close()
+		h.memoryPeakFile = nil
+	}
 
 	// Remove the cgroup directory.
 	// The kernel automatically cleans up when all processes have exited,

@@ -188,8 +188,20 @@ func (p *Process) configure(
 	}
 
 	err := p.cmd.Start()
+
+	// Always release the cgroup directory FD right after Start — either
+	// the kernel used it for CLONE_INTO_CGROUP (success) or we don't need it (failure).
+	// The memory.peak FD stays open for interval-based peak tracking via GetStats().
+	if p.CgroupHandle != nil {
+		if releaseErr := p.CgroupHandle.ReleaseCgroupFD(); releaseErr != nil {
+			logger.L().Warn(ctx, "failed to release cgroup directory FD",
+				logger.WithSandboxID(p.files.SandboxID),
+				zap.Error(releaseErr))
+		}
+	}
+
 	if err != nil {
-		// Clean up cgroup on start failure — the directory and memoryPeakFile FD
+		// Clean up cgroup on start failure — the memoryPeakFile FD and directory
 		// would otherwise leak since the caller has no cleanup path for this case.
 		if p.CgroupHandle != nil {
 			if removeErr := p.CgroupHandle.Remove(ctx); removeErr != nil {
@@ -201,19 +213,6 @@ func (p *Process) configure(
 		}
 
 		return fmt.Errorf("error starting fc process: %w", err)
-	}
-
-	// Release the cgroup directory FD now that the process has started.
-	// The kernel placed the process in the cgroup atomically during clone,
-	// so the directory FD is no longer needed. The memory.peak FD stays open
-	// for interval-based peak tracking via GetStats().
-	if p.CgroupHandle != nil {
-		if err := p.CgroupHandle.ReleaseCgroupFD(); err != nil {
-			logger.L().Warn(ctx, "failed to release cgroup directory FD",
-				logger.WithSandboxID(p.files.SandboxID),
-				zap.Error(err))
-			// Non-fatal: FD will be closed when process exits anyway
-		}
 	}
 
 	// Log successful placement
