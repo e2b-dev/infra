@@ -23,9 +23,9 @@ func (s *Service) UpdateFileMetadata(ctx context.Context, request *orchestrator.
 
 	logger.L().Info(ctx, "creating directory",
 		zap.String("path", fullPath),
-		zap.Uint32p("uid", request.GetUid()),
-		zap.Uint32p("gid", request.GetGid()),
-		zap.Uint32p("mode", request.GetMode()),
+		zap.Uint32p("uid", request.Uid),   // nolint:protogetter // the pointer matters!
+		zap.Uint32p("gid", request.Gid),   // nolint:protogetter // the pointer matters!
+		zap.Uint32p("mode", request.Mode), // nolint:protogetter // the pointer matters!
 	)
 
 	if request.Mode != nil {
