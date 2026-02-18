@@ -82,15 +82,8 @@ func (so *TeamObserver) Start(store *sandbox.Store) (err error) {
 				return fmt.Errorf("failed to get teams with sandboxes: %w", err)
 			}
 
-			for _, teamID := range teams {
-				count, err := store.TeamSandboxCount(ctx, teamID)
-				if err != nil {
-					return fmt.Errorf("failed to get sandbox count for team %s: %w", teamID, err)
-				}
-
-				if count > 0 {
-					obs.ObserveInt64(so.teamSandboxRunning, count, metric.WithAttributes(attribute.String("team_id", teamID.String())))
-				}
+			for teamID, count := range teams {
+				obs.ObserveInt64(so.teamSandboxRunning, count, metric.WithAttributes(attribute.String("team_id", teamID.String())))
 			}
 
 			return nil

@@ -39,7 +39,7 @@ type Storage interface { //nolint:interfacebloat
 	TeamItems(ctx context.Context, teamID uuid.UUID, states []State) ([]Sandbox, error)
 	AllItems(ctx context.Context, states []State, options ...ItemsOption) ([]Sandbox, error)
 	TeamSandboxCount(ctx context.Context, teamID uuid.UUID) (int64, error)
-	TeamsWithSandboxes(ctx context.Context) ([]uuid.UUID, error)
+	TeamsWithSandboxes(ctx context.Context) (map[uuid.UUID]int64, error)
 
 	Update(ctx context.Context, teamID uuid.UUID, sandboxID string, updateFunc func(sandbox Sandbox) (Sandbox, error)) (Sandbox, error)
 	StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID string, stateAction StateAction) (alreadyDone bool, callback func(context.Context, error), err error)
@@ -156,7 +156,7 @@ func (s *Store) TeamSandboxCount(ctx context.Context, teamID uuid.UUID) (int64, 
 	return s.storage.TeamSandboxCount(ctx, teamID)
 }
 
-func (s *Store) TeamsWithSandboxes(ctx context.Context) ([]uuid.UUID, error) {
+func (s *Store) TeamsWithSandboxes(ctx context.Context) (map[uuid.UUID]int64, error) {
 	return s.storage.TeamsWithSandboxes(ctx)
 }
 

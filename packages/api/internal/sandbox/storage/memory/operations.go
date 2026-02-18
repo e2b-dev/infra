@@ -100,15 +100,10 @@ func (s *Storage) TeamSandboxCount(_ context.Context, teamID uuid.UUID) (int64, 
 	return count, nil
 }
 
-func (s *Storage) TeamsWithSandboxes(_ context.Context) ([]uuid.UUID, error) {
-	teamSet := make(map[uuid.UUID]struct{})
+func (s *Storage) TeamsWithSandboxes(_ context.Context) (map[uuid.UUID]int64, error) {
+	teams := make(map[uuid.UUID]int64)
 	for _, item := range s.items.Items() {
-		teamSet[item.TeamID()] = struct{}{}
-	}
-
-	teams := make([]uuid.UUID, 0, len(teamSet))
-	for id := range teamSet {
-		teams = append(teams, id)
+		teams[item.TeamID()]++
 	}
 
 	return teams, nil

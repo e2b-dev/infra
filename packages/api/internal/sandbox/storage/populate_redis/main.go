@@ -64,7 +64,7 @@ func (m *PopulateRedisStorage) TeamSandboxCount(ctx context.Context, teamID uuid
 	return m.memoryBackend.TeamSandboxCount(ctx, teamID)
 }
 
-func (m *PopulateRedisStorage) TeamsWithSandboxes(ctx context.Context) ([]uuid.UUID, error) {
+func (m *PopulateRedisStorage) TeamsWithSandboxes(ctx context.Context) (map[uuid.UUID]int64, error) {
 	return m.memoryBackend.TeamsWithSandboxes(ctx)
 }
 

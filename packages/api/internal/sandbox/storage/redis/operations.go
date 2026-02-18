@@ -38,7 +38,7 @@ func (s *Storage) Add(ctx context.Context, sbx sandbox.Sandbox) error {
 		Score:  float64(time.Now().Unix()),
 		Member: sbx.TeamID.String(),
 	}).Err(); err != nil {
-		logger.L().Warn(ctx, "Failed to add team to global teams index", zap.Error(err), logger.WithTeamID(sbx.TeamID.String()))
+		return fmt.Errorf("failed to add team to global teams index: %w", err)
 	}
 
 	return nil
@@ -219,13 +219,13 @@ func (s *Storage) TeamSandboxCount(ctx context.Context, teamID uuid.UUID) (int64
 // This prevents races where a Remove sees SCARD==0 right before an Add.
 const staleCutoff = time.Hour
 
-func (s *Storage) TeamsWithSandboxes(ctx context.Context) ([]uuid.UUID, error) {
+func (s *Storage) TeamsWithSandboxes(ctx context.Context) (map[uuid.UUID]int64, error) {
 	members, err := s.redisClient.ZRangeWithScores(ctx, globalTeamsZSetKey, 0, -1).Result()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get teams from global index: %w", err)
 	}
 
-	// Pipeline SCARD per team index key to filter out stale entries
+	// Pipeline SCARD per team index key to get counts and filter stale entries
 	type teamEntry struct {
 		id    uuid.UUID
 		score float64
@@ -260,11 +260,11 @@ func (s *Storage) TeamsWithSandboxes(ctx context.Context) ([]uuid.UUID, error) {
 	now := time.Now().Unix()
 	cutoff := now - int64(staleCutoff.Seconds())
 
-	teams := make([]uuid.UUID, 0, len(entries))
+	teams := make(map[uuid.UUID]int64, len(entries))
 	var stale []string
 	for _, e := range entries {
-		if e.cmd.Val() > 0 {
-			teams = append(teams, e.id)
+		if count := e.cmd.Val(); count > 0 {
+			teams[e.id] = count
 		} else if int64(e.score) < cutoff {
 			// Only prune if the entry is old enough — a fresh score means
 			// an Add happened recently and SCARD==0 may be a transient race.
