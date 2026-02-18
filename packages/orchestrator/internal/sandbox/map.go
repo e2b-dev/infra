@@ -1,7 +1,6 @@
 package sandbox
 
 import (
-	"context"
 	"fmt"
 	"net"
 	"sync"
@@ -49,7 +48,7 @@ func (m *Map) Get(sandboxID string) (*Sandbox, bool) {
 	return m.sandboxes.Get(sandboxID)
 }
 
-func (m *Map) GetByHostPort(ctx context.Context, hostPort string) (*Sandbox, error) {
+func (m *Map) GetByHostPort(hostPort string) (*Sandbox, error) {
 	reqIP, _, err := net.SplitHostPort(hostPort)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing remote address %s: %w", hostPort, err)
