@@ -123,7 +123,7 @@ variable "use_local_namespace_storage" {
   default = false
 }
 
-variable "persistent_volume_types" {
+variable "persistent_volume_mounts" {
   type    = map(string)
   default = {}
 }

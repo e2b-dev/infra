@@ -241,13 +241,14 @@ module "nomad" {
   docker_reverse_proxy_service_account_key = google_service_account_key.google_service_key.private_key
 
   # Orchestrator
-  orchestrator_node_pool      = var.orchestrator_node_pool
-  allow_sandbox_internet      = var.allow_sandbox_internet
-  orchestrator_port           = var.orchestrator_port
-  orchestrator_proxy_port     = var.orchestrator_proxy_port
-  fc_env_pipeline_bucket_name = module.init.fc_env_pipeline_bucket_name
-  envd_timeout                = var.envd_timeout
-  persistent_volume_types     = { for key, config in local.persistent_volume_types : key => config.local_mount_path }
+  orchestrator_node_pool         = var.orchestrator_node_pool
+  allow_sandbox_internet         = var.allow_sandbox_internet
+  orchestrator_port              = var.orchestrator_port
+  orchestrator_proxy_port        = var.orchestrator_proxy_port
+  fc_env_pipeline_bucket_name    = module.init.fc_env_pipeline_bucket_name
+  envd_timeout                   = var.envd_timeout
+  persistent_volume_mounts       = { for key, config in local.persistent_volume_types : key => config.local_mount_path }
+  default_persistent_volume_type = var.default_persistent_volume_type
 
   # Template manager
   builder_node_pool                   = var.build_node_pool

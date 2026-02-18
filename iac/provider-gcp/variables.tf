@@ -610,3 +610,8 @@ variable "persistent_volume_types" {
 
   default = {}
 }
+
+variable "default_persistent_volume_type" {
+  type    = string
+  default = ""
+}

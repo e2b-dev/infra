@@ -409,6 +409,11 @@ variable "dockerhub_remote_repository_url" {
   type = string
 }
 
-variable "persistent_volume_types" {
+variable "persistent_volume_mounts" {
   type = map(string)
+}
+
+variable "default_persistent_volume_type" {
+  type    = string
+  default = ""
 }

@@ -99,6 +99,7 @@ resource "nomad_job" "api" {
     sandbox_access_token_hash_seed          = var.sandbox_access_token_hash_seed
     db_migrator_docker_image                = data.google_artifact_registry_docker_image.db_migrator_image.self_link
     launch_darkly_api_key                   = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
+    default_persistent_volume_type          = var.default_persistent_volume_type
   })
 }
 
@@ -392,7 +393,7 @@ module "orchestrator" {
   redis_url                    = local.redis_url
   redis_cluster_url            = local.redis_cluster_url
   redis_tls_ca_base64          = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
-  persistent_volume_types      = var.persistent_volume_types
+  persistent_volume_mounts     = var.persistent_volume_mounts
 
   consul_token            = var.consul_acl_token_secret
   domain_name             = var.domain_name
