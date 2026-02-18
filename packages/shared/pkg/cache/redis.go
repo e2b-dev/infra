@@ -60,10 +60,8 @@ func (rc *RedisCache[V]) GetOrSet(ctx context.Context, key string, dataCallback 
 	// Fast path: try Redis outside singleflight
 	value, remainingTTL, err := rc.getFromRedis(ctx, key)
 	if err == nil {
-		age := rc.config.TTL - remainingTTL
-		if rc.config.RefreshInterval != RedisRefreshIntervalOff && age > rc.config.RefreshInterval {
-			go rc.refreshRedis(context.WithoutCancel(ctx), key, dataCallback)
-		}
+		// Check if eligible for refresh and refresh if necessary
+		rc.handleRefresh(ctx, key, remainingTTL, dataCallback)
 
 		return value, nil
 	}
@@ -209,5 +207,21 @@ func (rc *RedisCache[V]) deleteFromRedis(ctx context.Context, key string) {
 		logger.L().Warn(ctx, "RedisCache: Redis DEL error",
 			zap.String("key", redisKey),
 			zap.Error(err))
+	}
+}
+
+// handleRefresh checks if the key should be refreshed in the background and refreshes it if necessary
+func (rc *RedisCache[V]) handleRefresh(ctx context.Context, key string, remainingTTL time.Duration, dataCallback DataCallback[V]) {
+	// check if key isn't persistent, this shouldn't really happen as it should be set with an expiration time
+	if remainingTTL == -1 {
+		logger.L().Warn(ctx, "redis key unexpectedly persistent", zap.String("key", key))
+
+		return
+	}
+
+	// Check if key is ready for to be refreshed in the background
+	age := rc.config.TTL - remainingTTL
+	if rc.config.RefreshInterval != RedisRefreshIntervalOff && age > rc.config.RefreshInterval {
+		go rc.refreshRedis(context.WithoutCancel(ctx), key, dataCallback)
 	}
 }
