@@ -7,6 +7,9 @@ replace (
 	github.com/e2b-dev/infra/packages/shared v0.0.0 => ../shared
 )
 
+// Fix non existent garyburd/redigo from Microsoft/hcsshim/test v0.0.0
+replace github.com/garyburd/redigo => github.com/gomodule/redigo v1.9.2
+
 tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
 
 require (
