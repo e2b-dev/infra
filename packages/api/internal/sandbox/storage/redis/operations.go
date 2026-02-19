@@ -243,9 +243,8 @@ func (s *Storage) TeamsWithSandboxCount(ctx context.Context) (map[uuid.UUID]int6
 		return map[uuid.UUID]int64{}, nil
 	}
 
-	if _, err = pipe.Exec(ctx); err != nil {
-		return nil, fmt.Errorf("failed to verify team sandbox counts: %w", err)
-	}
+	// We'll get the result and potentially errors later
+	_, _ = pipe.Exec(ctx)
 
 	now := time.Now().Unix()
 	cutoff := now - int64(staleCutoff.Seconds())
