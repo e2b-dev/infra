@@ -134,6 +134,7 @@ resource "google_storage_bucket" "fc_template_bucket" {
       # Delete non-current versions after 2 days.
       # This triggers the soft-delete policy, so objects are then deleted after another 10 days.
       days_since_noncurrent_time = 2
+      send_age_if_zero           = false
       with_state                 = "ARCHIVED"
     }
   }
