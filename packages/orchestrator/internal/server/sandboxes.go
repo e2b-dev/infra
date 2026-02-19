@@ -42,6 +42,9 @@ const (
 	// acquireTimeout is the max time to wait for a semaphore for resuming sandboxes snapshot.
 	acquireTimeout              = 15 * time.Second
 	maxStartingInstancesPerNode = 3
+
+	// executionEventDataKey is the key used in webhook event data for sandbox execution metrics.
+	executionEventDataKey = "execution"
 )
 
 func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequest) (*orchestrator.SandboxCreateResponse, error) {
@@ -286,10 +289,11 @@ func (s *Server) List(ctx context.Context, _ *emptypb.Empty) (*orchestrator.Sand
 			continue
 		}
 
+		startedAt := sbx.GetStartedAt()
 		sandboxes = append(sandboxes, &orchestrator.RunningSandbox{
 			Config:    sbx.APIStoredConfig,
 			ClientId:  s.info.ClientId,
-			StartTime: timestamppb.New(sbx.StartedAt),
+			StartTime: timestamppb.New(startedAt),
 			EndTime:   timestamppb.New(sbx.GetEndAt()),
 		})
 	}
@@ -340,6 +344,9 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	}()
 
 	teamID, buildId, eventData := s.prepareSandboxEventData(ctx, sbx)
+	if s.featureFlags.BoolFlag(ctx, featureflags.ExecutionMetricsOnWebhooksFlag) {
+		eventData[executionEventDataKey] = s.getSandboxExecutionData(sbx)
+	}
 
 	eventType := events.SandboxKilledEventPair
 	go s.sbxEventsService.Publish(
@@ -393,7 +400,29 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		return nil, status.Errorf(codes.Internal, "error snapshotting sandbox '%s': %s", in.GetSandboxId(), err)
 	}
 
-	s.publishSandboxEvent(ctx, sbx, events.SandboxPausedEventPair.Type)
+	teamID, buildId, eventData := s.prepareSandboxEventData(ctx, sbx)
+	if s.featureFlags.BoolFlag(ctx, featureflags.ExecutionMetricsOnWebhooksFlag) {
+		eventData[executionEventDataKey] = s.getSandboxExecutionData(sbx)
+	}
+
+	eventType := events.SandboxPausedEventPair
+	go s.sbxEventsService.Publish(
+		context.WithoutCancel(ctx),
+		teamID,
+		events.SandboxEvent{
+			Version:   events.StructureVersionV2,
+			ID:        uuid.New(),
+			Type:      eventType.Type,
+			Timestamp: time.Now().UTC(),
+
+			EventData:          eventData,
+			SandboxID:          sbx.Runtime.SandboxID,
+			SandboxExecutionID: sbx.Runtime.ExecutionID,
+			SandboxTemplateID:  sbx.Config.BaseTemplateID,
+			SandboxBuildID:     buildId,
+			SandboxTeamID:      teamID,
+		},
+	)
 
 	return &emptypb.Empty{}, nil
 }
@@ -457,7 +486,7 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 			ExecutionID: sbx.Runtime.ExecutionID,
 			TeamID:      sbx.Runtime.TeamID,
 		},
-		sbx.StartedAt,
+		sbx.GetStartedAt(),
 		sbx.GetEndAt(),
 		sbx.APIStoredConfig,
 	)
@@ -519,6 +548,17 @@ func (s *Server) prepareSandboxEventData(ctx context.Context, sbx *sandbox.Sandb
 	}
 
 	return teamID, buildId, eventData
+}
+
+func (s *Server) getSandboxExecutionData(sbx *sandbox.Sandbox) map[string]any {
+	startedAt := sbx.GetStartedAt()
+
+	return map[string]any{
+		"started_at":     startedAt.UTC().Format(time.RFC3339),
+		"vcpu_count":     sbx.Config.Vcpu,
+		"memory_mb":      sbx.Config.RamMB,
+		"execution_time": time.Since(startedAt).Seconds(),
+	}
 }
 
 // snapshotAndCacheSandbox creates a snapshot of a sandbox, adds it to cache, and starts uploading async.

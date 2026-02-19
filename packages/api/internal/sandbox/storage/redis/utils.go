@@ -11,9 +11,7 @@ const (
 	indexKey            = "index"
 )
 
-func getTeamPrefix(teamID string) string {
-	return GetTeamPrefix(teamID)
-}
+var globalTeamsSet = redis_utils.CreateKey(sandboxKeyPrefix, "global:teams")
 
 // GetTeamPrefix returns the storage team prefix for external packages (e.g. reservations).
 func GetTeamPrefix(teamID string) string {
@@ -21,7 +19,7 @@ func GetTeamPrefix(teamID string) string {
 }
 
 func getSandboxKey(teamID, sandboxID string) string {
-	return redis_utils.CreateKey(getTeamPrefix(teamID), sandboxesKey, sandboxID)
+	return redis_utils.CreateKey(GetTeamPrefix(teamID), sandboxesKey, sandboxID)
 }
 
 func getTeamIndexKey(teamID string) string {
@@ -34,7 +32,7 @@ func GetSandboxStorageTeamIndexKey(teamID string) string {
 }
 
 func getTransitionKey(teamID, sandboxID string) string {
-	return redis_utils.CreateKey(getTeamPrefix(teamID), transitionKeyPrefix, sandboxID)
+	return redis_utils.CreateKey(GetTeamPrefix(teamID), transitionKeyPrefix, sandboxID)
 }
 
 func getTransitionResultKey(teamID, sandboxID, transitionID string) string {

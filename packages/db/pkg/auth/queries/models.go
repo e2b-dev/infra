@@ -104,6 +104,7 @@ type EnvBuild struct {
 	CpuModelName       *string
 	CpuFlags           []string
 	StatusGroup        string
+	TeamID             *uuid.UUID
 }
 
 type EnvBuildAssignment struct {
