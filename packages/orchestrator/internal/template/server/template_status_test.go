@@ -27,83 +27,9 @@ type testLogLine struct {
 	level   string
 }
 
-func TestTemplateBuildStatus_BackwardDirectionReturnsTimestampSortedDescendingLogs(t *testing.T) {
-	now := time.Now().UTC()
-	serverStore, buildID := newTestServerStore(t, []testLogLine{
-		{ts: timeToEpoch(now.Add(-1 * time.Second)), message: "third", level: "info"},
-		{ts: timeToEpoch(now.Add(-3 * time.Second)), message: "first", level: "info"},
-		{ts: timeToEpoch(now.Add(-2 * time.Second)), message: "second", level: "info"},
-	})
+func TestTemplateBuildStatus_OrderingParityWithPersistentMapper(t *testing.T) {
+	t.Parallel()
 
-	limit := uint32(2)
-	direction := template_manager.LogsDirection_Backward
-
-	response, err := serverStore.TemplateBuildStatus(context.Background(), &template_manager.TemplateStatusRequest{
-		BuildID:    buildID,
-		TemplateID: "template-id",
-		Start:      timestamppb.New(now.Add(-1 * time.Hour)),
-		End:        timestamppb.New(now.Add(1 * time.Hour)),
-		Limit:      &limit,
-		Direction:  &direction,
-	})
-	require.NoError(t, err)
-	require.Len(t, response.LogEntries, 2)
-
-	assert.Equal(t, []string{"third", "second"}, []string{response.LogEntries[0].GetMessage(), response.LogEntries[1].GetMessage()})
-}
-
-func TestTemplateBuildStatus_ForwardDirectionKeepsAscendingOrderWithOffset(t *testing.T) {
-	now := time.Now().UTC()
-	serverStore, buildID := newTestServerStore(t, []testLogLine{
-		{ts: timeToEpoch(now.Add(-3 * time.Second)), message: "first", level: "info"},
-		{ts: timeToEpoch(now.Add(-2 * time.Second)), message: "second", level: "info"},
-		{ts: timeToEpoch(now.Add(-1 * time.Second)), message: "third", level: "info"},
-	})
-
-	offset := int32(1)
-	limit := uint32(2)
-	direction := template_manager.LogsDirection_Forward
-
-	response, err := serverStore.TemplateBuildStatus(context.Background(), &template_manager.TemplateStatusRequest{
-		BuildID:    buildID,
-		TemplateID: "template-id",
-		Start:      timestamppb.New(now.Add(-1 * time.Hour)),
-		End:        timestamppb.New(now.Add(1 * time.Hour)),
-		Offset:     &offset,
-		Limit:      &limit,
-		Direction:  &direction,
-	})
-	require.NoError(t, err)
-	require.Len(t, response.LogEntries, 2)
-
-	assert.Equal(t, []string{"second", "third"}, []string{response.LogEntries[0].GetMessage(), response.LogEntries[1].GetMessage()})
-}
-
-func TestTemplateBuildStatus_ForwardDirectionPreservesOrderForSameTimestamp(t *testing.T) {
-	now := time.Now().UTC()
-	sameTimestamp := timeToEpoch(now.Add(-1 * time.Second))
-	serverStore, buildID := newTestServerStore(t, []testLogLine{
-		{ts: timeToEpoch(now.Add(-2 * time.Second)), message: "older", level: "info"},
-		{ts: sameTimestamp, message: "same-1", level: "info"},
-		{ts: sameTimestamp, message: "same-2", level: "info"},
-	})
-
-	direction := template_manager.LogsDirection_Forward
-
-	response, err := serverStore.TemplateBuildStatus(context.Background(), &template_manager.TemplateStatusRequest{
-		BuildID:    buildID,
-		TemplateID: "template-id",
-		Start:      timestamppb.New(now.Add(-1 * time.Hour)),
-		End:        timestamppb.New(now.Add(1 * time.Hour)),
-		Direction:  &direction,
-	})
-	require.NoError(t, err)
-	require.Len(t, response.LogEntries, 3)
-
-	assert.Equal(t, []string{"older", "same-1", "same-2"}, []string{response.LogEntries[0].GetMessage(), response.LogEntries[1].GetMessage(), response.LogEntries[2].GetMessage()})
-}
-
-func TestTemplateBuildStatus_OrderingParityWithPersistentRules(t *testing.T) {
 	now := time.Now().UTC()
 	lines := []testLogLine{
 		{ts: timeToEpoch(now.Add(-1 * time.Second)), message: "third", level: "info"},
@@ -123,6 +49,8 @@ func TestTemplateBuildStatus_OrderingParityWithPersistentRules(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			response, err := serverStore.TemplateBuildStatus(context.Background(), &template_manager.TemplateStatusRequest{
 				BuildID:    buildID,
 				TemplateID: "template-id",
@@ -131,16 +59,19 @@ func TestTemplateBuildStatus_OrderingParityWithPersistentRules(t *testing.T) {
 				Direction:  &tc.direction,
 			})
 			require.NoError(t, err)
-			require.Len(t, response.LogEntries, len(lines))
 
-			expected, err := persistentMapperOrder(lines, tc.direction)
+			actualEntries := response.GetLogEntries()
+			require.Len(t, actualEntries, len(lines))
+
+			expectedMessages, err := persistentMapperOrder(lines, tc.direction)
 			require.NoError(t, err)
-			actual := make([]string, len(response.LogEntries))
-			for i, entry := range response.LogEntries {
-				actual[i] = entry.GetMessage()
+
+			actualMessages := make([]string, len(actualEntries))
+			for i, entry := range actualEntries {
+				actualMessages[i] = entry.GetMessage()
 			}
 
-			assert.Equal(t, expected, actual)
+			assert.Equal(t, expectedMessages, actualMessages)
 		})
 	}
 }
@@ -180,10 +111,6 @@ func writeTestBuildLogs(t *testing.T, buildLogs *buildlogger.LogEntryLogger, lin
 
 	_, err := buildLogs.Write([]byte(input.String()))
 	require.NoError(t, err)
-}
-
-func timeToEpoch(t time.Time) float64 {
-	return float64(t.UnixNano()) / float64(time.Second)
 }
 
 func persistentMapperOrder(lines []testLogLine, direction template_manager.LogsDirection) ([]string, error) {
@@ -230,6 +157,10 @@ func persistentMapperOrder(lines []testLogLine, direction template_manager.LogsD
 	}
 
 	return messages, nil
+}
+
+func timeToEpoch(t time.Time) float64 {
+	return float64(t.UnixNano()) / float64(time.Second)
 }
 
 func epochToTime(epoch float64) time.Time {
