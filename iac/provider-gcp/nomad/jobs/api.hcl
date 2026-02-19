@@ -4,6 +4,8 @@ job "api" {
   priority = 90
 
   group "api-service" {
+    count = ${count}
+
     // Try to restart the task indefinitely
     // Tries to restart every 5 seconds
     restart {

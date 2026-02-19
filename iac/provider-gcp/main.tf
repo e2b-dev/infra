@@ -163,6 +163,7 @@ module "nomad" {
   ingress_count = var.ingress_count
 
   # API
+  api_server_count                                       = var.api_server_count
   api_resources_cpu_count                                = var.api_resources_cpu_count
   api_resources_memory_mb                                = var.api_resources_memory_mb
   api_machine_count                                      = var.api_cluster_size

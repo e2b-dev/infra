@@ -20,7 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
-	"github.com/e2b-dev/infra/packages/api/internal/sandbox/reservations"
+	redisreservations "github.com/e2b-dev/infra/packages/api/internal/sandbox/reservations/redis"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/memory"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/populate_redis"
 	redisbackend "github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/redis"
@@ -81,12 +81,7 @@ func New(
 		return nil, err
 	}
 
-	var routingCatalog e2bcatalog.SandboxesCatalog
-	if redisClient != nil {
-		routingCatalog = e2bcatalog.NewRedisSandboxesCatalog(redisClient)
-	} else {
-		routingCatalog = e2bcatalog.NewMemorySandboxesCatalog()
-	}
+	routingCatalog := e2bcatalog.NewRedisSandboxesCatalog(redisClient)
 
 	// We will need to either use Redis or Consul's KV for storing active sandboxes to keep everything in sync,
 	// right now we load them from Orchestrator
@@ -130,16 +125,21 @@ func New(
 	}
 
 	var sandboxStorage sandbox.Storage
-	memoryStorage := memory.NewStorage()
+	redisStorage := redisbackend.NewStorage(redisClient)
 
-	if redisClient != nil {
-		redisStorage := redisbackend.NewStorage(redisClient)
-		sandboxStorage = populate_redis.NewStorage(memoryStorage, redisStorage)
-	} else {
-		sandboxStorage = memoryStorage
+	switch config.SandboxStorageBackend {
+	case cfg.SandboxStorageBackendMemory:
+		sandboxStorage = populate_redis.NewStorage(memory.NewStorage(), redisStorage)
+		logger.L().Info(ctx, "Using populate_redis sandbox storage backend")
+	case cfg.SandboxStorageBeckendRedis:
+		sandboxStorage = redisStorage
+		logger.L().Info(ctx, "Using redis sandbox storage backend")
+	default:
+		return nil, fmt.Errorf("Invalid sandbox storage backend: %s", config.SandboxStorageBackend)
+
 	}
 
-	reservationStorage := reservations.NewReservationStorage()
+	reservationStorage := redisreservations.NewReservationStorage(redisClient)
 
 	o.sandboxStore = sandbox.NewStore(
 		sandboxStorage,

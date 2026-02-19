@@ -51,6 +51,11 @@ variable "api_nat_min_ports_per_vm" {
   default     = 170
 }
 
+variable "api_server_count" {
+  type    = number
+  default = 1
+}
+
 variable "api_resources_cpu_count" {
   type    = number
   default = 2

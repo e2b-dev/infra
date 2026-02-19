@@ -71,6 +71,7 @@ resource "nomad_job" "api" {
     // We use colocation 2 here to ensure that there are at least 2 nodes for API to do rolling updates.
     // It might be possible there could be problems if we are rolling updates for both API and Loki at the same time., so maybe increasing this to > 3 makes sense.
     prevent_colocation = var.api_machine_count > 2
+    count              = var.api_server_count
 
 
     memory_mb = var.api_resources_memory_mb

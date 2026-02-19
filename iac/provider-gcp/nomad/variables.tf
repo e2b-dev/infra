@@ -101,6 +101,10 @@ variable "environment" {
   type = string
 }
 
+variable "api_server_count" {
+  type = number
+}
+
 variable "api_machine_count" {
   type = number
 }
