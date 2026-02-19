@@ -264,6 +264,15 @@ func (s *Storage) TeamsWithSandboxCount(ctx context.Context) (map[uuid.UUID]int6
 	teams := make(map[uuid.UUID]int64, len(entries))
 	var stale []string
 	for _, e := range entries {
+		if e.cmd.Err() != nil {
+			// Skip entries whose SCARD failed — we can't tell whether the
+			// team has sandboxes, so don't count it and don't prune it.
+			logger.L().Warn(ctx, "SCARD failed for team index key",
+				zap.Error(e.cmd.Err()), logger.WithTeamID(e.id.String()))
+
+			continue
+		}
+
 		if count := e.cmd.Val(); count > 0 {
 			teams[e.id] = count
 		} else if int64(e.score) < cutoff {
