@@ -211,6 +211,25 @@ func (o *awsObject) Put(ctx context.Context, data []byte) error {
 	return nil
 }
 
+func (o *awsObject) OpenRangeReader(ctx context.Context, off, length int64) (io.ReadCloser, error) {
+	readRange := aws.String(fmt.Sprintf("bytes=%d-%d", off, off+length-1))
+	resp, err := o.client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(o.bucketName),
+		Key:    aws.String(o.path),
+		Range:  readRange,
+	})
+	if err != nil {
+		var nsk *types.NoSuchKey
+		if errors.As(err, &nsk) {
+			return nil, ErrObjectNotExist
+		}
+
+		return nil, fmt.Errorf("failed to create S3 range reader for %q: %w", o.path, err)
+	}
+
+	return resp.Body, nil
+}
+
 func (o *awsObject) ReadAt(ctx context.Context, buff []byte, off int64) (n int, err error) {
 	ctx, cancel := context.WithTimeout(ctx, awsReadTimeout)
 	defer cancel()

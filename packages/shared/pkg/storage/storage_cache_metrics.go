@@ -32,6 +32,8 @@ const (
 	cacheOpReadAt  cacheOp = "read_at"
 	cacheOpSize    cacheOp = "size"
 
+	cacheOpOpenRangeReader cacheOp = "open_range_reader"
+
 	cacheOpWrite               cacheOp = "write"
 	cacheOpWriteFromFileSystem cacheOp = "write_from_filesystem"
 )
