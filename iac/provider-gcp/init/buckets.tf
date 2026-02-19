@@ -131,7 +131,7 @@ resource "google_storage_bucket" "fc_template_bucket" {
       type = "Delete"
     }
     condition {
-      # Delete non-current versions after 2 days.
+      # Delete non-current versions immediatelly.
       # This triggers the soft-delete policy, so objects are then deleted after another 10 days.
       days_since_noncurrent_time = 0
       # Added because of https://github.com/hashicorp/terraform-provider-google/issues/17990
