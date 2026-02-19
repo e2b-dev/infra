@@ -28,6 +28,7 @@ import (
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/handlers"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
+	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/pkg/pool"
 	e2benv "github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -107,6 +108,12 @@ func run() int {
 	}
 	defer db.Close()
 
+	authDB, err := authdb.NewClient(ctx, config.AuthDBConnectionString, config.AuthDBReadReplicaConnectionString, pool.WithMaxConnections(8))
+	if err != nil {
+		l.Fatal(ctx, "Initializing auth database client", zap.Error(err))
+	}
+	defer authDB.Close()
+
 	var clickhouseClient clickhouse.Clickhouse
 	if config.ClickhouseConnectionString == "" {
 		clickhouseClient = clickhouse.NewNoopClient()
@@ -118,7 +125,7 @@ func run() int {
 		defer clickhouseClient.Close(ctx)
 	}
 
-	apiStore := handlers.NewAPIStore(config, db, clickhouseClient)
+	apiStore := handlers.NewAPIStore(config, db, authDB, clickhouseClient)
 
 	swagger, err := api.GetSwagger()
 	if err != nil {
