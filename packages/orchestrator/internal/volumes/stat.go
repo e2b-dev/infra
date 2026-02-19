@@ -49,12 +49,11 @@ func toEntry(volumeRelPath string, info os.FileInfo) *orchestrator.EntryInfo {
 	}
 
 	entry := &orchestrator.EntryInfo{
-		Name:         info.Name(),
-		Type:         fType,
-		Path:         volumeRelPath,
-		Size:         info.Size(),
-		Mode:         uint32(info.Mode() & os.ModePerm),
-		ModifiedTime: timestamppb.New(info.ModTime()),
+		Name: info.Name(),
+		Type: fType,
+		Path: volumeRelPath,
+		Size: info.Size(),
+		Mode: uint32(info.Mode() & os.ModePerm),
 	}
 
 	if base := getBase(info.Sys()); base != nil {
@@ -63,6 +62,8 @@ func toEntry(volumeRelPath string, info os.FileInfo) *orchestrator.EntryInfo {
 		entry.ModifiedTime = toTimestamp(base.Mtim)
 		entry.Uid = base.Uid
 		entry.Gid = base.Gid
+	} else if !info.ModTime().IsZero() {
+		entry.ModifiedTime = timestamppb.New(info.ModTime())
 	}
 
 	return entry
