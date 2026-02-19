@@ -1753,6 +1753,9 @@ components:
         gid:
           type: integer
           format: uint32
+        atime:
+          type: string
+          format: date-time
         mtime:
           type: string
           format: date-time
@@ -1769,6 +1772,7 @@ components:
         - mode
         - uid
         - gid
+        - atime
         - mtime
         - ctime
 

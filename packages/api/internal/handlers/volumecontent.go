@@ -109,3 +109,32 @@ func toVolumeKey(volume queries.Volume) *orchestrator.VolumeInfo {
 		TeamId:     volume.TeamID.String(),
 	}
 }
+
+func toVolumeEntryStat(entry *orchestrator.EntryInfo) api.VolumeEntryStat {
+	return api.VolumeEntryStat{
+		Atime:  entry.GetAccessedTime().AsTime(),
+		Ctime:  entry.GetCreatedTime().AsTime(),
+		Gid:    entry.GetGid(),
+		Mode:   entry.GetMode(),
+		Mtime:  entry.GetModifiedTime().AsTime(),
+		Name:   entry.GetName(),
+		Path:   entry.GetPath(),
+		Size:   entry.GetSize(),
+		Target: entry.SymlinkTarget,
+		Type:   toType(entry.GetType()),
+		Uid:    entry.GetUid(),
+	}
+}
+
+func toType(getType orchestrator.FileType) api.VolumeEntryStatType {
+	switch getType {
+	case orchestrator.FileType_FILE_TYPE_DIRECTORY:
+		return api.Directory
+	case orchestrator.FileType_FILE_TYPE_FILE:
+		return api.File
+	case orchestrator.FileType_FILE_TYPE_SYMLINK:
+		return api.Symlink
+	default:
+		return api.Unknown
+	}
+}

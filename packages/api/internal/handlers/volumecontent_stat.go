@@ -29,31 +29,3 @@ func (a *APIStore) GetVolumesVolumeIDStat(c *gin.Context, volumeID api.VolumeID,
 		return nil
 	})
 }
-
-func toVolumeEntryStat(entry *orchestrator.EntryInfo) api.VolumeEntryStat {
-	return api.VolumeEntryStat{
-		Ctime:  entry.GetCreatedTime().AsTime(),
-		Gid:    entry.GetGid(),
-		Mode:   entry.GetMode(),
-		Mtime:  entry.GetModifiedTime().AsTime(),
-		Name:   entry.GetName(),
-		Uid:    entry.GetUid(),
-		Path:   entry.GetPath(),
-		Size:   entry.GetSize(),
-		Target: entry.SymlinkTarget,
-		Type:   toType(entry.GetType()),
-	}
-}
-
-func toType(getType orchestrator.FileType) api.VolumeEntryStatType {
-	switch getType {
-	case orchestrator.FileType_FILE_TYPE_DIRECTORY:
-		return api.Directory
-	case orchestrator.FileType_FILE_TYPE_FILE:
-		return api.File
-	case orchestrator.FileType_FILE_TYPE_SYMLINK:
-		return api.Symlink
-	default:
-		return api.Unknown
-	}
-}
