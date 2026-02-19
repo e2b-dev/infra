@@ -241,7 +241,7 @@ func (c *AliasCache) InvalidateByTemplateID(ctx context.Context, templateID stri
 
 	members, err := popReverseIndexScript.Run(ctx, rc, []string{reverseKey}).StringSlice()
 	if err != nil {
-		if err != redis.Nil {
+		if !errors.Is(err, redis.Nil) {
 			logger.L().Warn(ctx, "failed to pop alias reverse index",
 				zap.String("template_id", templateID),
 				zap.Error(err),
