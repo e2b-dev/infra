@@ -81,17 +81,17 @@ $$ LANGUAGE plpgsql;
 CALL backfill_env_builds_team_id();
 DROP PROCEDURE backfill_env_builds_team_id();
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_env_builds_team_status_group
-  ON public.env_builds (team_id, status_group);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_env_builds_team_status_pagination
+  ON public.env_builds (team_id, created_at DESC, id DESC) INCLUDE (status, status_group);
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_env_builds_team_status
-  ON public.env_builds (team_id, status);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_env_builds_team_env_created_id
+  ON public.env_builds (team_id, env_id, created_at DESC, id DESC);
 
 -- +goose Down
 -- +goose NO TRANSACTION
 
-DROP INDEX CONCURRENTLY IF EXISTS idx_env_builds_team_status;
-DROP INDEX CONCURRENTLY IF EXISTS idx_env_builds_team_status_group;
+DROP INDEX CONCURRENTLY IF EXISTS idx_env_builds_team_env_created_id;
+DROP INDEX CONCURRENTLY IF EXISTS idx_env_builds_team_status_pagination;
 DROP TRIGGER IF EXISTS trigger_backfill_team_id ON env_build_assignments;
 DROP FUNCTION IF EXISTS backfill_team_id_from_assignment();
 ALTER TABLE public.env_builds DROP COLUMN IF EXISTS team_id;
