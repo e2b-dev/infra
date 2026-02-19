@@ -34,7 +34,7 @@ func (s *Service) DeleteDir(ctx context.Context, request *orchestrator.VolumeDir
 		zap.String("path", fullPath),
 	)
 
-	if err := fn(fullPath); err != nil { // todo: better error handling
+	if err := fn(fullPath); err != nil {
 		return nil, fmt.Errorf("failed to delete directory: %w", err)
 	}
 
