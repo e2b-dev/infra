@@ -570,7 +570,7 @@ func (f *Factory) ResumeSandbox(
 	}
 
 	// Create cgroup for sandbox resource accounting
-	cgroupHandle, cgroupFD := f.createCgroup(ctx, runtime.SandboxID, cleanup)
+	cgroupHandle, cgroupFD := createCgroup(ctx, f.cgroupManager, runtime.SandboxID, cleanup)
 
 	fcHandle, fcErr := fc.NewProcess(
 		ctx,
@@ -1058,17 +1058,17 @@ func pauseProcessRootfs(
 //
 // Returns the CgroupHandle and the cgroup directory FD to pass to the
 // Firecracker process. If cgroup accounting is disabled, returns (nil, cgroup.NoCgroupFD).
-func (f *Factory) createCgroup(ctx context.Context, sandboxID string, cleanup *Cleanup) (*cgroup.CgroupHandle, int) {
+func createCgroup(ctx context.Context, cgroupManager cgroup.Manager, sandboxID string, cleanup *Cleanup) (*cgroup.CgroupHandle, int) {
 	ctx, span := tracer.Start(ctx, "sandbox-create-cgroup", trace.WithAttributes(
 		telemetry.WithSandboxID(sandboxID),
 	))
 	defer span.End()
 
-	if f.cgroupManager == nil {
+	if cgroupManager == nil {
 		return nil, cgroup.NoCgroupFD
 	}
 
-	handle, err := f.cgroupManager.Create(ctx, sandboxID)
+	handle, err := cgroupManager.Create(ctx, sandboxID)
 	if err != nil {
 		logger.L().Warn(ctx, "failed to create cgroup, continuing without cgroup accounting",
 			logger.WithSandboxID(sandboxID),
