@@ -104,6 +104,7 @@ echo "Used memory after tmpfs mount and file fill: ${USED_MEM_MB_AFTER} MB"
 			t.Helper()
 			out, err := utils.ExecCommandAsRootWithOutput(t, t.Context(), sbx, envdClient, "bash", "-c", cmd)
 			require.NoError(t, err)
+
 			return strings.TrimSpace(out)
 		}
 		pause := func() {
