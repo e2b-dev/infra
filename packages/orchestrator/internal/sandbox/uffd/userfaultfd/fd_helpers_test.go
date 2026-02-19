@@ -30,6 +30,8 @@ func configureApi(f Fd, pagesize uint64) error {
 		features |= UFFD_FEATURE_MISSING_HUGETLBFS
 	}
 
+	features |= UFFD_FEATURE_WP_ASYNC
+
 	api := newUffdioAPI(UFFD_API, features)
 	ret, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(f), UFFDIO_API, uintptr(unsafe.Pointer(&api)))
 	if errno != 0 {
