@@ -121,7 +121,7 @@ func (o *Orchestrator) CreateSandbox(
 				Code: http.StatusTooManyRequests,
 				ClientMsg: fmt.Sprintf(
 					"you have reached the maximum number of concurrent E2B sandboxes (%d). If you need more, "+
-						"please contact us at 'https://e2b.dev/docs/getting-help'", totalConcurrentInstances),
+						"please take a look at https://e2b.dev/docs/billing or contact us at 'https://e2b.dev/docs/support'", totalConcurrentInstances),
 				Err: fmt.Errorf("team '%s' has reached the maximum number of instances (%d)", team.ID, totalConcurrentInstances),
 			}
 		default:
