@@ -128,7 +128,7 @@ func (a *APIStore) updateTemplate(ctx context.Context, c *gin.Context, aliasOrTe
 	}
 
 	// Invalidate cache immediately after successful DB update
-	a.templateCache.InvalidateAllTags(aliasInfo.TemplateID)
+	a.templateCache.InvalidateAllTags(context.WithoutCancel(ctx), aliasInfo.TemplateID)
 
 	// For backward compatibility with older CLIs (v1 endpoint), also create a non-namespaced alias
 	// when publishing a template, so older CLIs can still find it by bare alias name

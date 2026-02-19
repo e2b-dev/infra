@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
@@ -76,7 +77,7 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		return
 	}
 
-	a.templateCache.InvalidateAllTags(templateID)
+	a.templateCache.InvalidateAllTags(context.WithoutCancel(ctx), templateID)
 
 	telemetry.ReportEvent(ctx, "deleted template from db")
 

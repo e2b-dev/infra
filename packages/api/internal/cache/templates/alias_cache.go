@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
@@ -14,6 +15,13 @@ import (
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/cache"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
+)
+
+const (
+	templateInfoExpiration = 5 * time.Minute
+	refreshInterval        = 1 * time.Minute
+	refreshTimeout         = 30 * time.Second
+	callbackTimeout        = 30 * time.Second
 )
 
 // AliasInfo holds resolved alias information
