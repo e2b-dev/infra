@@ -252,7 +252,7 @@ func (s *Storage) TeamsWithSandboxCount(ctx context.Context) (map[uuid.UUID]int6
 	cutoff := now - int64(staleCutoff.Seconds())
 
 	teams := make(map[uuid.UUID]int64, len(entries))
-	var stale []string
+	var stale []any
 	for _, e := range entries {
 		if count := e.cmd.Val(); count > 0 {
 			teams[e.id] = count
@@ -265,11 +265,7 @@ func (s *Storage) TeamsWithSandboxCount(ctx context.Context) (map[uuid.UUID]int6
 
 	// Prune stale entries from the global teams index
 	if len(stale) > 0 {
-		staleMembers := make([]any, len(stale))
-		for i, s := range stale {
-			staleMembers[i] = s
-		}
-		if err := s.redisClient.ZRem(ctx, globalTeamsZSetKey, staleMembers...).Err(); err != nil {
+		if err := s.redisClient.ZRem(ctx, globalTeamsSet, stale...).Err(); err != nil {
 			logger.L().Warn(ctx, "Failed to prune stale teams from global index", zap.Error(err), zap.Int("count", len(stale)))
 		}
 	}
