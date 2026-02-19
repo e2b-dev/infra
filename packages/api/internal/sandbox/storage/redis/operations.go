@@ -251,7 +251,7 @@ func (s *Storage) TeamsWithSandboxCount(ctx context.Context) (map[uuid.UUID]int6
 	}
 
 	if len(entries) == 0 {
-		return nil, nil
+		return map[uuid.UUID]int64{}, nil
 	}
 
 	if _, err = pipe.Exec(ctx); err != nil {
