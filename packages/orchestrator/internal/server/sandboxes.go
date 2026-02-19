@@ -341,7 +341,7 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 
 	teamID, buildId, eventData := s.prepareSandboxEventData(ctx, sbx)
 	if s.featureFlags.BoolFlag(ctx, featureflags.ExecutionMetricsOnWebhooksFlag) {
-		eventData["execution"] = s.getSandboxUsageData(sbx)
+		eventData["execution"] = s.getSandboxExecutionData(sbx)
 	}
 
 	eventType := events.SandboxKilledEventPair
@@ -398,7 +398,7 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 
 	teamID, buildId, eventData := s.prepareSandboxEventData(ctx, sbx)
 	if s.featureFlags.BoolFlag(ctx, featureflags.ExecutionMetricsOnWebhooksFlag) {
-		eventData["execution"] = s.getSandboxUsageData(sbx)
+		eventData["execution"] = s.getSandboxExecutionData(sbx)
 	}
 
 	eventType := events.SandboxPausedEventPair

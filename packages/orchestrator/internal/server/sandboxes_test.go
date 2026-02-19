@@ -94,7 +94,7 @@ func Test_server_List(t *testing.T) {
 	}
 }
 
-func TestGetSandboxUsageData(t *testing.T) {
+func TestGetSandboxExecutionData(t *testing.T) {
 	t.Parallel()
 
 	sbxStartedAt := time.Now().Add(-5 * time.Minute)
@@ -113,7 +113,7 @@ func TestGetSandboxUsageData(t *testing.T) {
 	sbx.SetStartedAt(sbxStartedAt)
 
 	s := &Server{}
-	result := s.getSandboxUsageData(sbx)
+	result := s.getSandboxExecutionData(sbx)
 
 	assert.Equal(t, sbxStartedAt.UTC().Format(time.RFC3339), result["started_at"])
 	assert.Equal(t, int64(2), result["vcpu_count"])
