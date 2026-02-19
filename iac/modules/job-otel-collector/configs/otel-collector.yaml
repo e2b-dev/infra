@@ -214,6 +214,7 @@ processors:
           - "db.sql.connection.*"
           - "vault.*"
           - "client_proxy.*"
+          - "rpc\\.client\\..*"
           - "Click*"
           - "otelcol.exporter.queue.capacity"
           - "otelcol.exporter.queue.size"
