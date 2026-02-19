@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"slices"
@@ -150,7 +151,7 @@ func (a *APIStore) PostTemplatesTags(c *gin.Context) {
 	}
 
 	for _, tag := range tags {
-		a.templateCache.Invalidate(template.ID, &tag)
+		a.templateCache.Invalidate(context.WithoutCancel(ctx), template.ID, &tag)
 	}
 
 	telemetry.ReportEvent(ctx, "assigned template tag")
@@ -273,7 +274,7 @@ func (a *APIStore) DeleteTemplatesTags(c *gin.Context) {
 	}
 
 	for _, tag := range tags {
-		a.templateCache.Invalidate(aliasInfo.TemplateID, &tag)
+		a.templateCache.Invalidate(context.WithoutCancel(ctx), aliasInfo.TemplateID, &tag)
 	}
 
 	telemetry.ReportEvent(ctx, "deleted template tags")
