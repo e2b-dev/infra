@@ -42,6 +42,9 @@ const (
 	// acquireTimeout is the max time to wait for a semaphore for resuming sandboxes snapshot.
 	acquireTimeout              = 15 * time.Second
 	maxStartingInstancesPerNode = 3
+
+	// executionEventDataKey is the key used in webhook event data for sandbox execution metrics.
+	executionEventDataKey = "execution"
 )
 
 func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequest) (*orchestrator.SandboxCreateResponse, error) {
@@ -341,7 +344,7 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 
 	teamID, buildId, eventData := s.prepareSandboxEventData(ctx, sbx)
 	if s.featureFlags.BoolFlag(ctx, featureflags.ExecutionMetricsOnWebhooksFlag) {
-		eventData["execution"] = s.getSandboxExecutionData(sbx)
+		eventData[executionEventDataKey] = s.getSandboxExecutionData(sbx)
 	}
 
 	eventType := events.SandboxKilledEventPair
@@ -398,7 +401,7 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 
 	teamID, buildId, eventData := s.prepareSandboxEventData(ctx, sbx)
 	if s.featureFlags.BoolFlag(ctx, featureflags.ExecutionMetricsOnWebhooksFlag) {
-		eventData["execution"] = s.getSandboxExecutionData(sbx)
+		eventData[executionEventDataKey] = s.getSandboxExecutionData(sbx)
 	}
 
 	eventType := events.SandboxPausedEventPair
