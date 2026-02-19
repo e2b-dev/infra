@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"math"
 	"slices"
 	"time"
 
@@ -554,10 +555,11 @@ func (s *Server) getSandboxExecutionData(sbx *sandbox.Sandbox) map[string]any {
 	startedAt := sbx.GetStartedAt()
 
 	return map[string]any{
-		"started_at":     startedAt.UTC().Format(time.RFC3339),
-		"vcpu_count":     sbx.Config.Vcpu,
-		"memory_mb":      sbx.Config.RamMB,
-		"execution_time": time.Since(startedAt).Seconds(),
+		"started_at": startedAt.UTC().Format(time.RFC3339),
+		"vcpu_count": sbx.Config.Vcpu,
+		"memory_mb":  sbx.Config.RamMB,
+		// get milliseconds rounded to 2 decimals
+		"execution_time": math.Round((float64(time.Since(startedAt))/float64(time.Millisecond))*100) / 100,
 	}
 }
 
