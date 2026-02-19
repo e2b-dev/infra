@@ -546,7 +546,7 @@ func (s *Server) prepareSandboxEventData(ctx context.Context, sbx *sandbox.Sandb
 	return teamID, buildId, eventData
 }
 
-func (s *Server) getSandboxUsageData(sbx *sandbox.Sandbox) map[string]any {
+func (s *Server) getSandboxExecutionData(sbx *sandbox.Sandbox) map[string]any {
 	startedAt := sbx.GetStartedAt()
 
 	return map[string]any{
