@@ -135,6 +135,7 @@ func (c *AliasCache) cacheByTemplateID(ctx context.Context, originalKey string, 
 	}
 
 	// Track alias key in reverse index for InvalidateByTemplateID
+	c.trackReverseKey(ctx, originalKey, idKey, info)
 }
 
 func (c *AliasCache) trackReverseKey(ctx context.Context, originalKey string, idKey string, info *AliasInfo) {
