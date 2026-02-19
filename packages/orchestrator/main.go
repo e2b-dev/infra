@@ -347,22 +347,16 @@ func run(config cfg.Config) (success bool) {
 	}
 
 	// cgroup manager for resource accounting
-	var cgroupManager cgroup.Manager
-	if featureFlags.BoolFlag(ctx, featureflags.EnableCgroupAccounting) {
-		var err error
-		cgroupManager, err = cgroup.NewManager()
-		if err != nil {
-			logger.L().Fatal(ctx, "failed to initialize cgroup manager", zap.Error(err))
-		}
-
-		if err := cgroupManager.Initialize(ctx); err != nil {
-			logger.L().Fatal(ctx, "failed to initialize root cgroup", zap.Error(err))
-		}
-
-		logger.L().Info(ctx, "cgroup accounting enabled", zap.String("root", cgroup.RootCgroupPath))
-	} else {
-		logger.L().Info(ctx, "cgroup accounting disabled")
+	cgroupManager, err := cgroup.NewManager()
+	if err != nil {
+		logger.L().Fatal(ctx, "failed to initialize cgroup manager", zap.Error(err))
 	}
+
+	if err := cgroupManager.Initialize(ctx); err != nil {
+		logger.L().Fatal(ctx, "failed to initialize root cgroup", zap.Error(err))
+	}
+
+	logger.L().Info(ctx, "cgroup accounting enabled", zap.String("root", cgroup.RootCgroupPath))
 
 	// redis
 	redisClient, err := sharedFactories.NewRedisClient(ctx, sharedFactories.RedisConfig{
