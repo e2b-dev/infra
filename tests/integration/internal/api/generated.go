@@ -1176,6 +1176,7 @@ type VolumeDirectoryListing = []VolumeEntryStat
 
 // VolumeEntryStat defines model for VolumeEntryStat.
 type VolumeEntryStat struct {
+	Atime  time.Time           `json:"atime"`
 	Ctime  time.Time           `json:"ctime"`
 	Gid    uint32              `json:"gid"`
 	Mode   uint32              `json:"mode"`
