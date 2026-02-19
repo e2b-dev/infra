@@ -250,19 +250,21 @@ func TestAliasCacheLookupByID_UsesCache(t *testing.T) {
 	defer cache.Close(ctx)
 
 	// First, resolve by alias (this caches by both alias and template ID)
-	info1, err := cache.Resolve(ctx, "cached-alias", teamSlug)
+	_, err := cache.Resolve(ctx, "cached-alias", teamSlug)
 	require.NoError(t, err)
-	require.NotNil(t, info1)
 
-	// Lookup by ID should return the same cached pointer
+	// Verify the template ID key was backfilled into Redis by the alias resolve
+	idKey := cache.cache.RedisKey(templateID)
+	exists, err := redis.Exists(ctx, idKey).Result()
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), exists, "template ID key should be cached after alias resolve")
+
+	// Lookup by ID should return correct data from cache
 	info2, err := cache.LookupByID(ctx, templateID)
 	require.NoError(t, err)
 	require.NotNil(t, info2)
 	assert.Equal(t, templateID, info2.TemplateID)
 	assert.Equal(t, teamID, info2.TeamID)
-
-	// Same pointer proves cache was hit (not a fresh DB fetch)
-	assert.Same(t, info1, info2)
 }
 
 // TestAliasCacheResolve_NegativeCaching tests that not-found results are cached (tombstones)
@@ -315,17 +317,22 @@ func TestAliasCacheResolve_NegativeCachingFallback(t *testing.T) {
 
 	// Resolve bare alias - tries team namespace first (not found, caches tombstone),
 	// then falls back to NULL namespace (found)
-	info1, err := cache.Resolve(ctx, "promoted-alias", requestingTeamSlug)
+	info, err := cache.Resolve(ctx, "promoted-alias", requestingTeamSlug)
 	require.NoError(t, err)
-	require.NotNil(t, info1)
-	assert.Equal(t, promotedTemplateID, info1.TemplateID)
+	require.NotNil(t, info)
+	assert.Equal(t, promotedTemplateID, info.TemplateID)
 
-	// Second resolve should use cached tombstone for team namespace lookup
-	// and cached result for NULL namespace lookup (same pointer)
-	info2, err := cache.Resolve(ctx, "promoted-alias", requestingTeamSlug)
+	// Verify tombstone was cached for team namespace lookup
+	tombstoneKey := cache.cache.RedisKey(buildAliasKey(&requestingTeamSlug, "promoted-alias"))
+	exists, err := redis.Exists(ctx, tombstoneKey).Result()
 	require.NoError(t, err)
-	require.NotNil(t, info2)
-	assert.Same(t, info1, info2)
+	assert.Equal(t, int64(1), exists, "tombstone should be cached for team namespace miss")
+
+	// Verify positive result was cached for NULL namespace lookup
+	positiveKey := cache.cache.RedisKey(buildAliasKey(nil, "promoted-alias"))
+	exists, err = redis.Exists(ctx, positiveKey).Result()
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), exists, "positive result should be cached for NULL namespace hit")
 }
 
 // TestAliasCache_InvalidateByTemplateID tests that InvalidateByTemplateID
@@ -351,24 +358,34 @@ func TestAliasCache_InvalidateByTemplateID(t *testing.T) {
 	require.NotNil(t, info1)
 
 	// Also lookup by ID to cache that entry
-	info2, err := cache.LookupByID(ctx, templateID)
+	_, err = cache.LookupByID(ctx, templateID)
 	require.NoError(t, err)
-	assert.Same(t, info1, info2)
+
+	// Verify alias key exists in Redis before invalidation
+	aliasKey := cache.cache.RedisKey(buildAliasKey(&teamSlug, "alias-to-invalidate"))
+	exists, err := redis.Exists(ctx, aliasKey).Result()
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), exists, "alias key should exist before invalidation")
 
 	// Invalidate by template ID
 	cache.InvalidateByTemplateID(ctx, templateID)
 
-	// Next resolve should return a different pointer (fresh fetch)
+	// Verify alias key is gone from Redis
+	exists, err = redis.Exists(ctx, aliasKey).Result()
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), exists, "alias key should be deleted after invalidation")
+
+	// Verify template ID key is gone from Redis
+	idKey := cache.cache.RedisKey(templateID)
+	exists, err = redis.Exists(ctx, idKey).Result()
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), exists, "template ID key should be deleted after invalidation")
+
+	// Re-resolve should still work (fresh fetch from DB)
 	info3, err := cache.Resolve(ctx, "alias-to-invalidate", teamSlug)
 	require.NoError(t, err)
 	require.NotNil(t, info3)
-	assert.NotSame(t, info1, info3)
-
-	// LookupByID should also return a different pointer
-	info4, err := cache.LookupByID(ctx, templateID)
-	require.NoError(t, err)
-	require.NotNil(t, info4)
-	assert.NotSame(t, info1, info4)
+	assert.Equal(t, templateID, info3.TemplateID)
 }
 
 // TestTemplateCache_InvalidateDoesNotInvalidateAliases tests that TemplateCache.Invalidate
@@ -393,14 +410,19 @@ func TestTemplateCache_InvalidateDoesNotInvalidateAliases(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, info1)
 
+	// Verify alias key exists in Redis
+	aliasKey := cache.aliasCache.cache.RedisKey(buildAliasKey(&teamSlug, "alias-for-template"))
+	exists, err := redis.Exists(ctx, aliasKey).Result()
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), exists, "alias key should exist before template invalidation")
+
 	// Invalidate the template (should NOT invalidate alias cache)
 	cache.Invalidate(ctx, templateID, nil)
 
-	// Next resolve should return the same cached pointer
-	info2, err := cache.ResolveAlias(ctx, "alias-for-template", teamSlug)
+	// Alias key should still exist in Redis
+	exists, err = redis.Exists(ctx, aliasKey).Result()
 	require.NoError(t, err)
-	require.NotNil(t, info2)
-	assert.Same(t, info1, info2)
+	assert.Equal(t, int64(1), exists, "alias key should survive template invalidation")
 }
 
 // TestTemplateCache_InvalidateAllTagsDeletesRedisEntries tests that
@@ -458,16 +480,20 @@ func TestTemplateCache_InvalidateAllTagsAlsoInvalidatesAliases(t *testing.T) {
 	defer cache.Close(ctx)
 
 	// Resolve alias to populate alias cache
-	info1, err := cache.ResolveAlias(ctx, "alias-all-tags", teamSlug)
+	_, err := cache.ResolveAlias(ctx, "alias-all-tags", teamSlug)
 	require.NoError(t, err)
-	require.NotNil(t, info1)
+
+	// Verify alias key exists in Redis before invalidation
+	aliasKey := cache.aliasCache.cache.RedisKey(buildAliasKey(&teamSlug, "alias-all-tags"))
+	exists, err := redis.Exists(ctx, aliasKey).Result()
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), exists, "alias key should exist before invalidation")
 
 	// Invalidate all tags (should also invalidate alias cache)
 	cache.InvalidateAllTags(ctx, templateID)
 
-	// Next resolve should return a different pointer (fresh fetch)
-	info2, err := cache.ResolveAlias(ctx, "alias-all-tags", teamSlug)
+	// Alias key should be gone from Redis
+	exists, err = redis.Exists(ctx, aliasKey).Result()
 	require.NoError(t, err)
-	require.NotNil(t, info2)
-	assert.NotSame(t, info1, info2)
+	assert.Equal(t, int64(0), exists, "alias key should be deleted after InvalidateAllTags")
 }
