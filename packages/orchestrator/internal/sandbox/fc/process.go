@@ -361,7 +361,6 @@ func (p *Process) Resume(
 	uffdSocketPath string,
 	snapfile template.File,
 	uffdReady chan struct{},
-	slot *network.Slot,
 	accessToken *string,
 ) error {
 	ctx, span := tracer.Start(ctx, "resume-fc")
@@ -448,7 +447,7 @@ func (p *Process) Resume(
 	meta := &MmdsMetadata{
 		SandboxID:            sbxMetadata.SandboxID,
 		TemplateID:           sbxMetadata.TemplateID,
-		LogsCollectorAddress: fmt.Sprintf("http://%s/logs", slot.HyperloopIPString()),
+		LogsCollectorAddress: fmt.Sprintf("http://%s/logs", p.config.NetworkConfig.OrchestratorInSandboxIPAddress),
 	}
 
 	if accessToken != nil && *accessToken != "" {

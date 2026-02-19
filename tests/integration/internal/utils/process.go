@@ -57,8 +57,8 @@ func ExecCommandWithOutput(tb testing.TB, ctx context.Context, sbx *api.Sandbox,
 		Stdin: &f,
 	})
 
-	setup.SetSandboxHeader(req.Header(), sbx.SandboxID)
-	setup.SetUserHeader(req.Header(), user)
+	setup.SetSandboxHeader(tb, req.Header(), sbx.SandboxID)
+	setup.SetUserHeader(tb, req.Header(), user)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 

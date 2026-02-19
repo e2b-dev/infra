@@ -11,13 +11,57 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-type Chunker struct {
+// Chunker is the interface satisfied by both FullFetchChunker and StreamingChunker.
+type Chunker interface {
+	Slice(ctx context.Context, off, length int64) ([]byte, error)
+	ReadAt(ctx context.Context, b []byte, off int64) (int, error)
+	WriteTo(ctx context.Context, w io.Writer) (int64, error)
+	Close() error
+	FileSize() (int64, error)
+}
+
+// NewChunker creates a Chunker based on the chunker-config feature flag.
+// It reads the flag internally so callers don't need to parse flag values.
+func NewChunker(
+	ctx context.Context,
+	featureFlags *featureflags.Client,
+	size, blockSize int64,
+	upstream storage.Seekable,
+	cachePath string,
+	metrics metrics.Metrics,
+) (Chunker, error) {
+	useStreaming, minReadBatchSizeKB := getChunkerConfig(ctx, featureFlags)
+
+	if useStreaming {
+		return NewStreamingChunker(size, blockSize, upstream, cachePath, metrics, int64(minReadBatchSizeKB)*1024, featureFlags)
+	}
+
+	return NewFullFetchChunker(size, blockSize, upstream, cachePath, metrics)
+}
+
+// getChunkerConfig fetches the chunker-config feature flag and returns the parsed values.
+func getChunkerConfig(ctx context.Context, ff *featureflags.Client) (useStreaming bool, minReadBatchSizeKB int) {
+	value := ff.JSONFlag(ctx, featureflags.ChunkerConfigFlag)
+
+	if v := value.GetByKey("useStreaming"); v.IsDefined() {
+		useStreaming = v.BoolValue()
+	}
+
+	if v := value.GetByKey("minReadBatchSizeKB"); v.IsDefined() {
+		minReadBatchSizeKB = v.IntValue()
+	}
+
+	return useStreaming, minReadBatchSizeKB
+}
+
+type FullFetchChunker struct {
 	base    storage.SeekableReader
 	cache   *Cache
 	metrics metrics.Metrics
@@ -28,18 +72,18 @@ type Chunker struct {
 	fetchers *utils.WaitMap
 }
 
-func NewChunker(
+func NewFullFetchChunker(
 	size, blockSize int64,
 	base storage.SeekableReader,
 	cachePath string,
 	metrics metrics.Metrics,
-) (*Chunker, error) {
+) (*FullFetchChunker, error) {
 	cache, err := NewCache(size, blockSize, cachePath, false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create file cache: %w", err)
 	}
 
-	chunker := &Chunker{
+	chunker := &FullFetchChunker{
 		size:     size,
 		base:     base,
 		cache:    cache,
@@ -50,7 +94,7 @@ func NewChunker(
 	return chunker, nil
 }
 
-func (c *Chunker) ReadAt(ctx context.Context, b []byte, off int64) (int, error) {
+func (c *FullFetchChunker) ReadAt(ctx context.Context, b []byte, off int64) (int, error) {
 	slice, err := c.Slice(ctx, off, int64(len(b)))
 	if err != nil {
 		return 0, fmt.Errorf("failed to slice cache at %d-%d: %w", off, off+int64(len(b)), err)
@@ -59,7 +103,7 @@ func (c *Chunker) ReadAt(ctx context.Context, b []byte, off int64) (int, error) 
 	return copy(b, slice), nil
 }
 
-func (c *Chunker) WriteTo(ctx context.Context, w io.Writer) (int64, error) {
+func (c *FullFetchChunker) WriteTo(ctx context.Context, w io.Writer) (int64, error) {
 	for i := int64(0); i < c.size; i += storage.MemoryChunkSize {
 		chunk := make([]byte, storage.MemoryChunkSize)
 
@@ -77,7 +121,7 @@ func (c *Chunker) WriteTo(ctx context.Context, w io.Writer) (int64, error) {
 	return c.size, nil
 }
 
-func (c *Chunker) Slice(ctx context.Context, off, length int64) ([]byte, error) {
+func (c *FullFetchChunker) Slice(ctx context.Context, off, length int64) ([]byte, error) {
 	timer := c.metrics.SlicesTimerFactory.Begin()
 
 	b, err := c.cache.Slice(off, length)
@@ -121,7 +165,7 @@ func (c *Chunker) Slice(ctx context.Context, off, length int64) ([]byte, error) 
 }
 
 // fetchToCache ensures that the data at the given offset and length is available in the cache.
-func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
+func (c *FullFetchChunker) fetchToCache(ctx context.Context, off, length int64) error {
 	var eg errgroup.Group
 
 	chunks := header.BlocksOffsets(length, storage.MemoryChunkSize)
@@ -194,11 +238,11 @@ func (c *Chunker) fetchToCache(ctx context.Context, off, length int64) error {
 	return nil
 }
 
-func (c *Chunker) Close() error {
+func (c *FullFetchChunker) Close() error {
 	return c.cache.Close()
 }
 
-func (c *Chunker) FileSize() (int64, error) {
+func (c *FullFetchChunker) FileSize() (int64, error) {
 	return c.cache.FileSize()
 }
 

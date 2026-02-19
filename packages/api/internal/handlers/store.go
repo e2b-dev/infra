@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	nomadapi "github.com/hashicorp/nomad/api"
 	"github.com/redis/go-redis/v9"
@@ -31,6 +30,7 @@ import (
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/pkg/pool"
+	sharedauth "github.com/e2b-dev/infra/packages/shared/pkg/auth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/factories"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
@@ -38,10 +38,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs/loki"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
-
-// minSupabaseJWTSecretLength is the minimum length of a secret used to verify the Supabase JWT.
-// This is a security measure to prevent the use of weak secrets (like empty).
-const minSupabaseJWTSecretLength = 16
 
 var _ api.ServerInterface = (*APIStore)(nil)
 
@@ -126,7 +122,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 		logger.L().Fatal(ctx, "error when getting logs query provider", zap.Error(err))
 	}
 
-	clusters, err := clusters.NewPool(ctx, tel, sqlcDB, nomadClient, clickhouseStore, queryLogsProvider)
+	clusters, err := clusters.NewPool(ctx, tel, sqlcDB, nomadClient, clickhouseStore, queryLogsProvider, config)
 	if err != nil {
 		logger.L().Fatal(ctx, "initializing edge clusters pool failed", zap.Error(err))
 	}
@@ -340,58 +336,11 @@ func (a *APIStore) GetUserFromAccessToken(ctx context.Context, _ *gin.Context, a
 	return userID, nil
 }
 
-// supabaseClaims defines the claims we expect from the Supabase JWT.
-type supabaseClaims struct {
-	jwt.RegisteredClaims
-}
-
-func getJWTClaims(ctx context.Context, secrets []string, token string) (*supabaseClaims, error) {
-	ctx, span := tracer.Start(ctx, "get jwt claims")
-	defer span.End()
-
-	errs := make([]error, 0)
-
-	for _, secret := range secrets {
-		if len(secret) < minSupabaseJWTSecretLength {
-			logger.L().Warn(ctx, "jwt secret is too short and will be ignored", zap.Int("min_length", minSupabaseJWTSecretLength), zap.String("secret_start", secret[:min(3, len(secret))]))
-
-			continue
-		}
-
-		// Parse the token with the custom claims.
-		token, err := jwt.ParseWithClaims(token, &supabaseClaims{}, func(token *jwt.Token) (any, error) {
-			// Verify that the signing method is HMAC (HS256)
-			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
-			}
-			// Return the secret key used for signing the token.
-			return []byte(secret), nil
-		})
-		if err != nil {
-			// This error is ignored because we will try to parse the token with the next secret.
-			errs = append(errs, fmt.Errorf("failed to parse supabase token: %w", err))
-
-			continue
-		}
-
-		// Extract and return the custom claims if the token is valid.
-		if claims, ok := token.Claims.(*supabaseClaims); ok && token.Valid {
-			return claims, nil
-		}
-	}
-
-	if len(errs) == 0 {
-		return nil, errors.New("failed to parse supabase token, no secrets found")
-	}
-
-	return nil, errors.Join(errs...)
-}
-
 func (a *APIStore) GetUserIDFromSupabaseToken(ctx context.Context, _ *gin.Context, supabaseToken string) (uuid.UUID, *api.APIError) {
 	ctx, span := tracer.Start(ctx, "get user id from supabase token")
 	defer span.End()
 
-	claims, err := getJWTClaims(ctx, a.config.SupabaseJWTSecrets, supabaseToken)
+	userID, err := sharedauth.ParseUserIDFromToken(ctx, a.config.SupabaseJWTSecrets, supabaseToken)
 	if err != nil {
 		return uuid.UUID{}, &api.APIError{
 			Err:       err,
@@ -400,25 +349,7 @@ func (a *APIStore) GetUserIDFromSupabaseToken(ctx context.Context, _ *gin.Contex
 		}
 	}
 
-	userId, err := claims.GetSubject()
-	if err != nil {
-		return uuid.UUID{}, &api.APIError{
-			Err:       fmt.Errorf("failed getting jwt subject: %w", err),
-			ClientMsg: "Backend authentication failed",
-			Code:      http.StatusUnauthorized,
-		}
-	}
-
-	userIDParsed, err := uuid.Parse(userId)
-	if err != nil {
-		return uuid.UUID{}, &api.APIError{
-			Err:       fmt.Errorf("failed parsing user uuid: %w", err),
-			ClientMsg: "Backend authentication failed",
-			Code:      http.StatusUnauthorized,
-		}
-	}
-
-	return userIDParsed, nil
+	return userID, nil
 }
 
 func (a *APIStore) GetTeamFromSupabaseToken(ctx context.Context, ginCtx *gin.Context, teamID string) (*types.Team, *api.APIError) {
