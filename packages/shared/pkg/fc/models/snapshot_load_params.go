@@ -18,7 +18,7 @@ import (
 // swagger:model SnapshotLoadParams
 type SnapshotLoadParams struct {
 
-	// Enable support for incremental (diff) snapshots by tracking dirty guest pages.
+	// (Deprecated) Enable dirty page tracking to improve space efficiency of diff snapshots
 	EnableDiffSnapshots bool `json:"enable_diff_snapshots,omitempty"`
 
 	// Configuration for the backend that handles memory load. If this field is specified, `mem_file_path` is forbidden. Either `mem_backend` or `mem_file_path` must be present at a time.
@@ -36,6 +36,9 @@ type SnapshotLoadParams struct {
 	// Path to the file that contains the microVM state to be loaded.
 	// Required: true
 	SnapshotPath *string `json:"snapshot_path"`
+
+	// Enable dirty page tracking to improve space efficiency of diff snapshots
+	TrackDirtyPages bool `json:"track_dirty_pages,omitempty"`
 }
 
 // Validate validates this snapshot load params
