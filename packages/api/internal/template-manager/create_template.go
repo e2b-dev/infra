@@ -193,7 +193,7 @@ func (tm *TemplateManager) CreateTemplate(
 		telemetry.ReportEvent(ctx, "build status sync completed")
 
 		// Invalidate the cache
-		invalidatedKeys := tm.templateCache.InvalidateAllTags(templateID)
+		invalidatedKeys := tm.templateCache.InvalidateAllTags(context.WithoutCancel(ctx), templateID)
 
 		telemetry.ReportEvent(ctx, "invalidated template cache", attribute.StringSlice("invalidated_keys", invalidatedKeys))
 	}(context.WithoutCancel(ctx))

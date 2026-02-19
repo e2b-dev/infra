@@ -16,18 +16,20 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
+	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
 )
 
 func TestQueryNotExistingTemplateAlias(t *testing.T) {
 	t.Parallel()
 
 	testDB := testutils.SetupDatabase(t)
+	redis := redis_utils.SetupInstance(t)
 	ctx := t.Context()
 
 	store := &APIStore{
 		sqlcDB:        testDB.SqlcClient,
 		authDB:        testDB.AuthDb,
-		templateCache: templatecache.NewTemplateCache(testDB.SqlcClient),
+		templateCache: templatecache.NewTemplateCache(testDB.SqlcClient, redis),
 	}
 
 	alias := "non-existing-template-alias"
@@ -58,6 +60,7 @@ func TestQueryExistingTemplateAlias(t *testing.T) {
 	t.Parallel()
 
 	testDB := testutils.SetupDatabase(t)
+	redis := redis_utils.SetupInstance(t)
 	ctx := t.Context()
 
 	teamID := testutils.CreateTestTeam(t, testDB)
@@ -70,7 +73,7 @@ func TestQueryExistingTemplateAlias(t *testing.T) {
 	store := &APIStore{
 		sqlcDB:        testDB.SqlcClient,
 		authDB:        testDB.AuthDb,
-		templateCache: templatecache.NewTemplateCache(testDB.SqlcClient),
+		templateCache: templatecache.NewTemplateCache(testDB.SqlcClient, redis),
 	}
 
 	w := httptest.NewRecorder()
@@ -103,6 +106,7 @@ func TestQueryExistingTemplateAliasAsNotOwnerTeam(t *testing.T) {
 	t.Parallel()
 
 	testDB := testutils.SetupDatabase(t)
+	redis := redis_utils.SetupInstance(t)
 	ctx := t.Context()
 
 	ownerTeamID := testutils.CreateTestTeam(t, testDB)
@@ -117,7 +121,7 @@ func TestQueryExistingTemplateAliasAsNotOwnerTeam(t *testing.T) {
 	store := &APIStore{
 		sqlcDB:        testDB.SqlcClient,
 		authDB:        testDB.AuthDb,
-		templateCache: templatecache.NewTemplateCache(testDB.SqlcClient),
+		templateCache: templatecache.NewTemplateCache(testDB.SqlcClient, redis),
 	}
 
 	w := httptest.NewRecorder()

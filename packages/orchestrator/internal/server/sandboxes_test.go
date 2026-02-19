@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -47,8 +48,6 @@ func Test_server_List(t *testing.T) {
 						Runtime: sandbox.RuntimeMetadata{
 							SandboxID: id.Generate(),
 						},
-
-						StartedAt: startTime,
 					},
 				},
 			},
@@ -71,6 +70,7 @@ func Test_server_List(t *testing.T) {
 			t.Parallel()
 
 			for _, sbx := range tt.data {
+				sbx.SetStartedAt(startTime)
 				sbx.SetEndAt(tt.endAt)
 			}
 
@@ -92,4 +92,32 @@ func Test_server_List(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGetSandboxExecutionData(t *testing.T) {
+	t.Parallel()
+
+	sbxStartedAt := time.Now().Add(-5 * time.Minute)
+
+	sbx := &sandbox.Sandbox{
+		Metadata: &sandbox.Metadata{
+			Config: sandbox.Config{
+				Vcpu:  2,
+				RamMB: 512,
+			},
+			Runtime: sandbox.RuntimeMetadata{
+				SandboxID: id.Generate(),
+			},
+		},
+	}
+	sbx.SetStartedAt(sbxStartedAt)
+
+	s := &Server{}
+	result := s.getSandboxExecutionData(sbx)
+
+	assert.Equal(t, sbxStartedAt.UTC().Format(time.RFC3339), result["started_at"])
+	assert.Equal(t, int64(2), result["vcpu_count"])
+	assert.Equal(t, int64(512), result["memory_mb"])
+	assert.IsType(t, float64(0), result["execution_time"])
+	assert.Greater(t, result["execution_time"].(float64), float64(0))
 }

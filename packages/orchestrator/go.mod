@@ -9,6 +9,8 @@ replace (
 
 replace github.com/willscott/go-nfs => github.com/e2b-dev/go-nfs v0.0.0-20260218081127-527fb181bfaa
 
+replace github.com/willscott/go-nfs v0.0.3 => github.com/e2b-dev/go-nfs v0.0.0-20260219005151-377638440f63
+
 tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
 
 require (
@@ -54,7 +56,7 @@ require (
 	github.com/tklauser/go-sysconf v0.3.15
 	github.com/vishvananda/netlink v1.3.1
 	github.com/vishvananda/netns v0.0.5
-	github.com/willscott/go-nfs v0.0.0-20260218081127-527fb181bfaa
+	github.com/willscott/go-nfs v0.0.3
 	github.com/willscott/go-nfs-client v0.0.0-20251022144359-801f10d98886
 	github.com/zeldovich/go-rpcgen v0.1.5
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.64.0

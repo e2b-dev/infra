@@ -7,6 +7,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
 )
 
 // TestAliasCacheResolve_BareAliasInTeamNamespace tests that a bare alias
@@ -361,6 +363,7 @@ func TestAliasCache_InvalidateByTemplateID(t *testing.T) {
 func TestTemplateCache_InvalidateDoesNotInvalidateAliases(t *testing.T) {
 	t.Parallel()
 	db := testutils.SetupDatabase(t)
+	redis := redis_utils.SetupInstance(t)
 	ctx := t.Context()
 
 	teamID := testutils.CreateTestTeam(t, db)
@@ -369,7 +372,7 @@ func TestTemplateCache_InvalidateDoesNotInvalidateAliases(t *testing.T) {
 
 	testutils.CreateTestTemplateAliasWithName(t, db, templateID, "alias-for-template", &teamSlug)
 
-	cache := NewTemplateCache(db.SqlcClient)
+	cache := NewTemplateCache(db.SqlcClient, redis)
 	defer cache.Close(ctx)
 
 	// Resolve alias to populate alias cache
@@ -378,7 +381,7 @@ func TestTemplateCache_InvalidateDoesNotInvalidateAliases(t *testing.T) {
 	require.NotNil(t, info1)
 
 	// Invalidate the template (should NOT invalidate alias cache)
-	cache.Invalidate(templateID, nil)
+	cache.Invalidate(ctx, templateID, nil)
 
 	// Next resolve should return the same cached pointer
 	info2, err := cache.ResolveAlias(ctx, "alias-for-template", teamSlug)
@@ -387,11 +390,49 @@ func TestTemplateCache_InvalidateDoesNotInvalidateAliases(t *testing.T) {
 	assert.Same(t, info1, info2)
 }
 
+// TestTemplateCache_InvalidateAllTagsDeletesRedisEntries tests that
+// InvalidateAllTags deletes Redis entries.
+func TestTemplateCache_InvalidateAllTagsDeletesRedisEntries(t *testing.T) {
+	t.Parallel()
+	db := testutils.SetupDatabase(t)
+	redisClient := redis_utils.SetupInstance(t)
+	ctx := t.Context()
+
+	teamID := testutils.CreateTestTeam(t, db)
+	templateID := testutils.CreateTestTemplate(t, db, teamID)
+	buildID := testutils.CreateTestBuild(t, ctx, db, templateID, "ready")
+	testutils.CreateTestBuildAssignment(t, ctx, db, templateID, buildID, "default")
+
+	tc := NewTemplateCache(db.SqlcClient, redisClient)
+	defer tc.Close(ctx)
+
+	// Populate the cache (this backfills into Redis via the callback)
+	_, _, err := tc.Get(ctx, templateID, nil, teamID, consts.LocalClusterID)
+	require.NoError(t, err)
+
+	// Verify the entry exists in Redis
+	cacheKey := buildCacheKey(templateID, "default")
+	redisKey := tc.cache.RedisKey(cacheKey)
+	val, err := redisClient.Get(ctx, redisKey).Result()
+	require.NoError(t, err)
+	require.NotEmpty(t, val)
+
+	// InvalidateAllTags should delete the entry from Redis
+	keys := tc.InvalidateAllTags(ctx, templateID)
+	require.NotEmpty(t, keys, "should have deleted at least one key")
+
+	// Verify Redis entry is gone
+	exists, err := redisClient.Exists(ctx, redisKey).Result()
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), exists, "Redis entry should be deleted after InvalidateAllTags")
+}
+
 // TestTemplateCache_InvalidateAllTagsAlsoInvalidatesAliases tests that
 // TemplateCache.InvalidateAllTags also invalidates the alias cache entries
 func TestTemplateCache_InvalidateAllTagsAlsoInvalidatesAliases(t *testing.T) {
 	t.Parallel()
 	db := testutils.SetupDatabase(t)
+	redis := redis_utils.SetupInstance(t)
 	ctx := t.Context()
 
 	teamID := testutils.CreateTestTeam(t, db)
@@ -400,7 +441,7 @@ func TestTemplateCache_InvalidateAllTagsAlsoInvalidatesAliases(t *testing.T) {
 
 	testutils.CreateTestTemplateAliasWithName(t, db, templateID, "alias-all-tags", &teamSlug)
 
-	cache := NewTemplateCache(db.SqlcClient)
+	cache := NewTemplateCache(db.SqlcClient, redis)
 	defer cache.Close(ctx)
 
 	// Resolve alias to populate alias cache
@@ -409,7 +450,7 @@ func TestTemplateCache_InvalidateAllTagsAlsoInvalidatesAliases(t *testing.T) {
 	require.NotNil(t, info1)
 
 	// Invalidate all tags (should also invalidate alias cache)
-	cache.InvalidateAllTags(templateID)
+	cache.InvalidateAllTags(ctx, templateID)
 
 	// Next resolve should return a different pointer (fresh fetch)
 	info2, err := cache.ResolveAlias(ctx, "alias-all-tags", teamSlug)

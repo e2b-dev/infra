@@ -113,7 +113,21 @@ resource "google_storage_bucket" "fc_template_bucket" {
   uniform_bucket_level_access = true
 
   autoclass {
-    enabled = true
+    enabled                = true
+    terminal_storage_class = "ARCHIVE"
+  }
+
+  lifecycle_rule {
+    action {
+      type = "AbortIncompleteMultipartUpload"
+    }
+    condition {
+      age = 1 # abort multipart uploads left incomplete for 1 days
+    }
+  }
+
+  soft_delete_policy {
+    retention_duration_seconds = 864000 # 10 days
   }
 
   labels = var.labels

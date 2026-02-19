@@ -24,7 +24,7 @@ type testValue struct {
 func newTestRedisCache(t *testing.T, redisClient redis.UniversalClient) *RedisCache[testValue] {
 	t.Helper()
 
-	return NewRedisCache[testValue](RedisConfig{
+	return NewRedisCache[testValue](RedisConfig[testValue]{
 		TTL:         30 * time.Second,
 		RedisClient: redisClient,
 		RedisPrefix: fmt.Sprintf("test:%s", t.Name()),
@@ -105,7 +105,7 @@ func TestRedisCache_RedisErrorFallthrough(t *testing.T) {
 	})
 	defer badClient.Close()
 
-	rc := NewRedisCache[testValue](RedisConfig{
+	rc := NewRedisCache[testValue](RedisConfig[testValue]{
 		TTL:          30 * time.Second,
 		RedisClient:  badClient,
 		RedisPrefix:  "test:bad",
@@ -216,7 +216,7 @@ func TestRedisCache_RedisRefresh_TriggeredWhenStale(t *testing.T) {
 	redisTTL := 10 * time.Second
 	refreshInterval := 100 * time.Millisecond
 
-	rc := NewRedisCache[testValue](RedisConfig{
+	rc := NewRedisCache[testValue](RedisConfig[testValue]{
 		TTL:             redisTTL,
 		RefreshInterval: refreshInterval,
 		RefreshTimeout:  5 * time.Second,
@@ -270,7 +270,7 @@ func TestRedisCache_RedisRefresh_UpdatesRedis(t *testing.T) {
 	redisTTL := 10 * time.Second
 	refreshInterval := 100 * time.Millisecond
 
-	rc := NewRedisCache[testValue](RedisConfig{
+	rc := NewRedisCache[testValue](RedisConfig[testValue]{
 		TTL:             redisTTL,
 		RefreshInterval: refreshInterval,
 		RefreshTimeout:  5 * time.Second,
@@ -315,7 +315,7 @@ func TestRedisCache_RedisRefresh_ErrorKeepsStaleValue(t *testing.T) {
 	redisTTL := 10 * time.Second
 	refreshInterval := 100 * time.Millisecond
 
-	rc := NewRedisCache[testValue](RedisConfig{
+	rc := NewRedisCache[testValue](RedisConfig[testValue]{
 		TTL:             redisTTL,
 		RefreshInterval: refreshInterval,
 		RefreshTimeout:  5 * time.Second,
@@ -390,4 +390,50 @@ func TestRedisCache_RedisRefresh_Disabled(t *testing.T) {
 
 	// Callback should not have been called (Redis hit, no refresh)
 	assert.Equal(t, int32(0), callCount.Load())
+}
+
+func TestRedisCache_DeleteByPrefix(t *testing.T) {
+	t.Parallel()
+	redisClient := redis_utils.SetupInstance(t)
+	rc := newTestRedisCache(t, redisClient)
+	defer rc.Close(t.Context())
+
+	// Populate keys with a shared prefix and one without
+	rc.Set(t.Context(), "team1:sandbox-a", testValue{ID: "a", Name: "A"})
+	rc.Set(t.Context(), "team1:sandbox-b", testValue{ID: "b", Name: "B"})
+	rc.Set(t.Context(), "team2:sandbox-c", testValue{ID: "c", Name: "C"})
+
+	// Delete by prefix
+	deleted := rc.DeleteByPrefix(t.Context(), "team1:")
+
+	// Should have deleted exactly the two team1 keys
+	assert.Len(t, deleted, 2)
+	assert.ElementsMatch(t, []string{"team1:sandbox-a", "team1:sandbox-b"}, deleted)
+
+	// Verify team1 keys are gone
+	_, err := redisClient.Get(t.Context(), rc.RedisKey("team1:sandbox-a")).Result()
+	require.ErrorIs(t, err, redis.Nil)
+	_, err = redisClient.Get(t.Context(), rc.RedisKey("team1:sandbox-b")).Result()
+	require.ErrorIs(t, err, redis.Nil)
+
+	// Verify team2 key still exists
+	_, err = redisClient.Get(t.Context(), rc.RedisKey("team2:sandbox-c")).Result()
+	assert.NoError(t, err)
+}
+
+func TestRedisCache_DeleteByPrefix_NoMatches(t *testing.T) {
+	t.Parallel()
+	redisClient := redis_utils.SetupInstance(t)
+	rc := newTestRedisCache(t, redisClient)
+	defer rc.Close(t.Context())
+
+	rc.Set(t.Context(), "key1", testValue{ID: "1", Name: "One"})
+
+	deleted := rc.DeleteByPrefix(t.Context(), "nonexistent:")
+
+	assert.Empty(t, deleted)
+
+	// Original key untouched
+	_, err := redisClient.Get(t.Context(), rc.RedisKey("key1")).Result()
+	assert.NoError(t, err)
 }

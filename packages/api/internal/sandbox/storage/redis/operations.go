@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
@@ -31,6 +32,14 @@ func (s *Storage) Add(ctx context.Context, sbx sandbox.Sandbox) error {
 	err = addSandboxScript.Run(ctx, s.redisClient, []string{key, teamKey}, data, sbx.SandboxID).Err()
 	if err != nil {
 		return fmt.Errorf("failed to store sandbox in Redis: %w", err)
+	}
+
+	// We can't set the globalTeamsSet in Lua script as they can be in different shards
+	if err := s.redisClient.ZAdd(ctx, globalTeamsSet, redis.Z{
+		Score:  float64(time.Now().Unix()),
+		Member: sbx.TeamID.String(),
+	}).Err(); err != nil {
+		return fmt.Errorf("failed to add team to global teams index: %w", err)
 	}
 
 	return nil
@@ -193,4 +202,73 @@ func (s *Storage) Update(ctx context.Context, teamID uuid.UUID, sandboxID string
 func (s *Storage) AllItems(_ context.Context, _ []sandbox.State, _ ...sandbox.ItemsOption) ([]sandbox.Sandbox, error) {
 	// TODO: Implement later (ENG-3451)
 	return nil, nil
+}
+
+// staleCutoff is how long a team entry must be idle (no Add calls) before it
+// can be pruned from the global teams ZSET when its sandbox count is zero.
+// This prevents races where a Remove sees SCARD==0 right before an Add.
+const staleCutoff = time.Hour
+
+func (s *Storage) TeamsWithSandboxCount(ctx context.Context) (map[uuid.UUID]int64, error) {
+	members, err := s.redisClient.ZRangeWithScores(ctx, globalTeamsSet, 0, -1).Result()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get teams from global index: %w", err)
+	}
+
+	// Pipeline SCARD per team index key to get counts and filter stale entries
+	type teamEntry struct {
+		id    uuid.UUID
+		score float64
+		cmd   *redis.IntCmd
+	}
+
+	pipe := s.redisClient.Pipeline()
+	entries := make([]teamEntry, 0, len(members))
+	for _, m := range members {
+		raw, ok := m.Member.(string)
+		if !ok {
+			continue
+		}
+		id, parseErr := uuid.Parse(raw)
+		if parseErr != nil {
+			logger.L().Warn(ctx, "Failed to parse team ID from global teams index", zap.Error(parseErr), zap.String("raw", raw))
+
+			continue
+		}
+		cmd := pipe.SCard(ctx, getTeamIndexKey(raw))
+		entries = append(entries, teamEntry{id: id, score: m.Score, cmd: cmd})
+	}
+
+	if len(entries) == 0 {
+		return map[uuid.UUID]int64{}, nil
+	}
+
+	_, err = pipe.Exec(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("SCARD pipeline failed: %w", err)
+	}
+
+	now := time.Now().Unix()
+	cutoff := now - int64(staleCutoff.Seconds())
+
+	teams := make(map[uuid.UUID]int64, len(entries))
+	var stale []any
+	for _, e := range entries {
+		if count := e.cmd.Val(); count > 0 {
+			teams[e.id] = count
+		} else if int64(e.score) < cutoff {
+			// Only prune if the entry is old enough — a fresh score means
+			// an Add happened recently and SCARD==0 may be a transient race.
+			stale = append(stale, e.id.String())
+		}
+	}
+
+	// Prune stale entries from the global teams index
+	if len(stale) > 0 {
+		if err := s.redisClient.ZRem(ctx, globalTeamsSet, stale...).Err(); err != nil {
+			logger.L().Warn(ctx, "Failed to prune stale teams from global index", zap.Error(err), zap.Int("count", len(stale)))
+		}
+	}
+
+	return teams, nil
 }
