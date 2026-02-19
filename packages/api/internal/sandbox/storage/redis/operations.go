@@ -204,17 +204,6 @@ func (s *Storage) AllItems(_ context.Context, _ []sandbox.State, _ ...sandbox.It
 	return nil, nil
 }
 
-func (s *Storage) TeamSandboxCount(ctx context.Context, teamID uuid.UUID) (int64, error) {
-	teamIDStr := teamID.String()
-	teamKey := getTeamIndexKey(teamIDStr)
-	count, err := s.redisClient.SCard(ctx, teamKey).Result()
-	if err != nil {
-		return 0, fmt.Errorf("failed to get team sandbox count: %w", err)
-	}
-
-	return count, nil
-}
-
 // staleCutoff is how long a team entry must be idle (no Add calls) before it
 // can be pruned from the global teams ZSET when its sandbox count is zero.
 // This prevents races where a Remove sees SCARD==0 right before an Add.
