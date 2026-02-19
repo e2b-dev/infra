@@ -127,7 +127,7 @@ resource "google_storage_bucket" "fc_template_bucket" {
   }
 
   soft_delete_policy {
-    retention_duration_seconds = 10
+    retention_duration_seconds = 864000 # 10 days
   }
 
   labels = var.labels
