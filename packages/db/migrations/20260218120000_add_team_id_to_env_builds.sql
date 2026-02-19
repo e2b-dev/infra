@@ -87,9 +87,12 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_env_builds_team_status_pagination
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_env_builds_team_env_created_id
   ON public.env_builds (team_id, env_id, created_at DESC, id DESC);
 
+DROP INDEX CONCURRENTLY IF EXISTS idx_env_builds_created_at;
+
 -- +goose Down
 -- +goose NO TRANSACTION
 
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_env_builds_created_at ON env_builds (created_at DESC);
 DROP INDEX CONCURRENTLY IF EXISTS idx_env_builds_team_env_created_id;
 DROP INDEX CONCURRENTLY IF EXISTS idx_env_builds_team_status_pagination;
 DROP TRIGGER IF EXISTS trigger_backfill_team_id ON env_build_assignments;
