@@ -42,6 +42,14 @@ func (s *Storage) Add(ctx context.Context, sbx sandbox.Sandbox) error {
 		return fmt.Errorf("failed to add team to global teams index: %w", err)
 	}
 
+	// Index by EndTime so ExpiredItems can use ZRANGEBYSCORE instead of scanning all sandboxes.
+	if err := s.redisClient.ZAdd(ctx, globalExpirationSet, redis.Z{
+		Score:  float64(sbx.EndTime.UnixMilli()),
+		Member: expirationMember(sbx.TeamID.String(), sbx.SandboxID),
+	}).Err(); err != nil {
+		return fmt.Errorf("failed to add sandbox to global expiration index: %w", err)
+	}
+
 	return nil
 }
 
@@ -86,6 +94,11 @@ func (s *Storage) Remove(ctx context.Context, teamID uuid.UUID, sandboxID string
 	err = removeSandboxScript.Run(ctx, s.redisClient, []string{key, teamKey}, sandboxID).Err()
 	if err != nil {
 		return fmt.Errorf("failed to remove sandbox from Redis: %w", err)
+	}
+
+	// Clean up from the global expiration index.
+	if err := s.redisClient.ZRem(ctx, globalExpirationSet, expirationMember(teamID.String(), sandboxID)).Err(); err != nil {
+		logger.L().Warn(ctx, "Failed to remove sandbox from global expiration index", zap.Error(err), logger.WithSandboxID(sandboxID))
 	}
 
 	return nil
@@ -196,12 +209,90 @@ func (s *Storage) Update(ctx context.Context, teamID uuid.UUID, sandboxID string
 		return sandbox.Sandbox{}, fmt.Errorf("failed to store sandbox in Redis: %w", err)
 	}
 
+	// Re-score the expiration index if EndTime changed.
+	if !updatedSbx.EndTime.Equal(sbx.EndTime) {
+		if err := s.redisClient.ZAdd(ctx, globalExpirationSet, redis.Z{
+			Score:  float64(updatedSbx.EndTime.UnixMilli()),
+			Member: expirationMember(teamID.String(), sandboxID),
+		}).Err(); err != nil {
+			logger.L().Warn(ctx, "Failed to update sandbox in global expiration index", zap.Error(err), logger.WithSandboxID(sandboxID))
+		}
+	}
+
 	return updatedSbx, nil
 }
 
-func (s *Storage) AllItems(_ context.Context, _ []sandbox.State, _ ...sandbox.ItemsOption) ([]sandbox.Sandbox, error) {
-	// TODO: Implement later (ENG-3451)
-	return nil, nil
+// ExpiredItems returns all sandboxes matching that have expired.
+func (s *Storage) ExpiredItems(ctx context.Context) ([]sandbox.Sandbox, error) {
+	nowMs := float64(time.Now().UnixMilli())
+
+	// Fetch members whose score (EndTime in ms) is <= now.
+	expiredMembers, err := s.redisClient.ZRangeByScore(ctx, globalExpirationSet, &redis.ZRangeBy{
+		Min: "-inf",
+		Max: fmt.Sprintf("%v", nowMs),
+	}).Result()
+	if err != nil {
+		return nil, fmt.Errorf("failed to query global expiration index: %w", err)
+	}
+
+	if len(expiredMembers) == 0 {
+		return nil, nil
+	}
+
+	teamSandboxes := make(map[string][]string) // teamID -> []sandboxID
+	for _, member := range expiredMembers {
+		teamID, sandboxID, ok := parseExpirationMember(member)
+		if !ok {
+			logger.L().Warn(ctx, "Invalid expiration index member", zap.String("member", member))
+
+			continue
+		}
+
+		teamSandboxes[teamID] = append(teamSandboxes[teamID], sandboxID)
+	}
+
+	pipe := s.redisClient.Pipeline()
+	var batches []*redis.SliceCmd
+	for teamID, sandboxIDs := range teamSandboxes {
+		keys := make([]string, len(sandboxIDs))
+		for i, id := range sandboxIDs {
+			keys[i] = getSandboxKey(teamID, id)
+		}
+
+		cmd := pipe.MGet(ctx, keys...)
+		batches = append(batches, cmd)
+	}
+
+	_, err = pipe.Exec(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("MGET pipeline failed: %w", err)
+	}
+
+	// Deserialize and filter by state; double-check IsExpired in case the index is slightly stale.
+	var result []sandbox.Sandbox
+	for _, cmd := range batches {
+		for _, raw := range cmd.Val() {
+			if raw == nil {
+				continue
+			}
+
+			str, ok := raw.(string)
+			if !ok {
+				continue
+			}
+
+			var sbx sandbox.Sandbox
+			if err := json.Unmarshal([]byte(str), &sbx); err != nil {
+				logger.L().Error(ctx, "Failed to unmarshal sandbox", zap.Error(err))
+
+				continue
+			}
+
+			result = append(result, sbx)
+		}
+	}
+
+	return result, nil
 }
 
 // staleCutoff is how long a team entry must be idle (no Add calls) before it

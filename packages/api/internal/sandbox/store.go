@@ -11,20 +11,7 @@ import (
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 )
 
-type (
-	InsertCallback func(ctx context.Context, sbx Sandbox)
-	ItemsOption    func(*ItemsFilter)
-)
-
-type ItemsFilter struct {
-	OnlyExpired bool
-}
-
-func NewItemsFilter() *ItemsFilter {
-	return &ItemsFilter{
-		OnlyExpired: false,
-	}
-}
+type InsertCallback func(ctx context.Context, sbx Sandbox)
 
 type ReservationStorage interface {
 	Reserve(ctx context.Context, teamID uuid.UUID, sandboxID string, limit int) (finishStart func(Sandbox, error), waitForStart func(ctx context.Context) (Sandbox, error), err error)
@@ -37,19 +24,13 @@ type Storage interface {
 	Remove(ctx context.Context, teamID uuid.UUID, sandboxID string) error
 
 	TeamItems(ctx context.Context, teamID uuid.UUID, states []State) ([]Sandbox, error)
-	AllItems(ctx context.Context, states []State, options ...ItemsOption) ([]Sandbox, error)
+	ExpiredItems(ctx context.Context) ([]Sandbox, error)
 	TeamsWithSandboxCount(ctx context.Context) (map[uuid.UUID]int64, error)
 
 	Update(ctx context.Context, teamID uuid.UUID, sandboxID string, updateFunc func(sandbox Sandbox) (Sandbox, error)) (Sandbox, error)
 	StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID string, stateAction StateAction) (alreadyDone bool, callback func(context.Context, error), err error)
 	WaitForStateChange(ctx context.Context, teamID uuid.UUID, sandboxID string) error
 	Sync(sandboxes []Sandbox, nodeID string) []Sandbox
-}
-
-func WithOnlyExpired(isExpired bool) ItemsOption {
-	return func(f *ItemsFilter) {
-		f.OnlyExpired = isExpired
-	}
 }
 
 type Callbacks struct {
@@ -147,8 +128,8 @@ func (s *Store) TeamItems(ctx context.Context, teamID uuid.UUID, states []State)
 	return s.storage.TeamItems(ctx, teamID, states)
 }
 
-func (s *Store) AllItems(ctx context.Context, states []State, options ...ItemsOption) ([]Sandbox, error) {
-	return s.storage.AllItems(ctx, states, options...)
+func (s *Store) ExpiredItems(ctx context.Context) ([]Sandbox, error) {
+	return s.storage.ExpiredItems(ctx)
 }
 
 func (s *Store) TeamsWithSandboxes(ctx context.Context) (map[uuid.UUID]int64, error) {
