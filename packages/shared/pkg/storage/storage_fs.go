@@ -22,9 +22,20 @@ type fsObject struct {
 }
 
 var (
-	_ Seekable = (*fsObject)(nil)
-	_ Blob     = (*fsObject)(nil)
+	_ Seekable        = (*fsObject)(nil)
+	_ Blob            = (*fsObject)(nil)
+	_ StreamingReader = (*fsObject)(nil)
 )
+
+type fsRangeReadCloser struct {
+	io.Reader
+
+	file *os.File
+}
+
+func (r *fsRangeReadCloser) Close() error {
+	return r.file.Close()
+}
 
 func newFileSystemStorage(basePath string) *fsStorage {
 	return &fsStorage{
@@ -115,6 +126,18 @@ func (o *fsObject) StoreFile(_ context.Context, path string) error {
 	}
 
 	return nil
+}
+
+func (o *fsObject) OpenRangeReader(_ context.Context, off, length int64) (io.ReadCloser, error) {
+	f, err := o.getHandle(true)
+	if err != nil {
+		return nil, err
+	}
+
+	return &fsRangeReadCloser{
+		Reader: io.NewSectionReader(f, off, length),
+		file:   f,
+	}, nil
 }
 
 func (o *fsObject) ReadAt(_ context.Context, buff []byte, off int64) (n int, err error) {

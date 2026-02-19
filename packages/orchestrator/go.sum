@@ -1228,8 +1228,8 @@ github.com/vmware-labs/yaml-jsonpath v0.3.2 h1:/5QKeCBGdsInyDCyVNLbXyilb61MXGi9N
 github.com/vmware-labs/yaml-jsonpath v0.3.2/go.mod h1:U6whw1z03QyqgWdgXxvVnQ90zN1BWz5V+51Ewf8k+rQ=
 github.com/willf/bitset v1.1.11-0.20200630133818-d5bec3311243/go.mod h1:RjeCKbqT1RxIR/KWY6phxZiaY1IyutSBfGjNPySAYV4=
 github.com/willf/bitset v1.1.11/go.mod h1:83CECat5yLh5zVOf4P1ErAgKA5UDvKtgyUABdr3+MjI=
-github.com/willscott/go-nfs v0.0.3 h1:Z5fHVxMsppgEucdkKBN26Vou19MtEM875NmRwj156RE=
-github.com/willscott/go-nfs v0.0.3/go.mod h1:VhNccO67Oug787VNXcyx9JDI3ZoSpqoKMT/lWMhUIDg=
+github.com/willscott/go-nfs v0.0.0-20260218081127-527fb181bfaa h1:x5BlhHIuJ6O/oR3Nys8dpCmgAxZAERUSWA/huWwUtyw=
+github.com/willscott/go-nfs v0.0.0-20260218081127-527fb181bfaa/go.mod h1:VhNccO67Oug787VNXcyx9JDI3ZoSpqoKMT/lWMhUIDg=
 github.com/willscott/go-nfs-client v0.0.0-20251022144359-801f10d98886 h1:DtrBtkgTJk2XGt4T7eKdKVkd9A5NCevN2e4inLXtsqA=
 github.com/willscott/go-nfs-client v0.0.0-20251022144359-801f10d98886/go.mod h1:Tq++Lr/FgiS3X48q5FETemXiSLGuYMQT2sPjYNPJSwA=
 github.com/woodsbury/decimal128 v1.3.0 h1:8pffMNWIlC0O5vbyHWFZAt5yWvWcrHA+3ovIIjVWss0=
