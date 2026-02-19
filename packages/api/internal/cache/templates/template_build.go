@@ -130,7 +130,7 @@ func (c *TemplatesBuildCache) fetchFromDB(templateID string, buildID uuid.UUID) 
 
 // updateStatusInRedis atomically updates the build status in Redis using a Lua script.
 func (c *TemplatesBuildCache) updateStatusInRedis(ctx context.Context, buildID uuid.UUID, status types.BuildStatusGroup, reason types.BuildReason) error {
-	ctx, cancel := context.WithTimeout(ctx, buildCacheTTL)
+	ctx, cancel := context.WithTimeout(ctx, cache.RedisDefaultTimeout)
 	defer cancel()
 
 	reasonJSON, err := json.Marshal(reason)
