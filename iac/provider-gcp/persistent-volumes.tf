@@ -6,7 +6,7 @@ resource "google_filestore_instance" "persistent-volumes" {
   protocol = each.value.tier == "ZONAL" ? "NFS_V4_1" : "NFS_V3"
   location = each.value.location
 
-  deletion_protection_enabled = true
+  deletion_protection_enabled = !(coalesce(each.value.allow_deletion, false))
   deletion_protection_reason  = "If this gets removed, the orchestrator will throw tons of errors"
 
   file_shares {

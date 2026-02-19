@@ -603,9 +603,10 @@ variable "persistent_volume_types" {
   description = "Persistence layer for volumes"
 
   type = map(object({
-    tier        = string
-    location    = optional(string)
-    capacity_gb = number
+    allow_deletion = optional(bool)
+    tier           = string
+    location       = optional(string)
+    capacity_gb    = number
   }))
 
   default = {}
