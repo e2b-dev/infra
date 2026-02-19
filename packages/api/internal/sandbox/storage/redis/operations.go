@@ -34,8 +34,8 @@ func (s *Storage) Add(ctx context.Context, sbx sandbox.Sandbox) error {
 		return fmt.Errorf("failed to store sandbox in Redis: %w", err)
 	}
 
-	// We can't set the globalTeamsZSetKey in Lua script as they can be in different shards
-	if err := s.redisClient.ZAdd(ctx, globalTeamsZSetKey, redis.Z{
+	// We can't set the globalTeamsSetKey in Lua script as they can be in different shards
+	if err := s.redisClient.ZAdd(ctx, globalTeamsSetKey, redis.Z{
 		Score:  float64(time.Now().Unix()),
 		Member: sbx.TeamID.String(),
 	}).Err(); err != nil {
@@ -210,7 +210,7 @@ func (s *Storage) AllItems(_ context.Context, _ []sandbox.State, _ ...sandbox.It
 const staleCutoff = time.Hour
 
 func (s *Storage) TeamsWithSandboxCount(ctx context.Context) (map[uuid.UUID]int64, error) {
-	members, err := s.redisClient.ZRangeWithScores(ctx, globalTeamsZSetKey, 0, -1).Result()
+	members, err := s.redisClient.ZRangeWithScores(ctx, globalTeamsSetKey, 0, -1).Result()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get teams from global index: %w", err)
 	}
