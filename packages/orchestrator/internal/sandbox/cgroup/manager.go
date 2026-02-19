@@ -15,8 +15,11 @@ import (
 )
 
 const (
+	// standard kernel mount point for cgroups v2
+	cgroupV2MountPoint = "/sys/fs/cgroup"
+
 	// RootCgroupPath is the base path for all E2B sandbox cgroups
-	RootCgroupPath = "/sys/fs/cgroup/e2b"
+	RootCgroupPath = cgroupV2MountPoint + "/e2b"
 
 	// NoCgroupFD is a sentinel value indicating that no cgroup file descriptor
 	// is available (e.g. cgroup accounting is disabled or the FD has been released).
@@ -165,7 +168,7 @@ type managerImpl struct{}
 // NewManager creates a new cgroup manager
 // Returns error if cgroups v2 is not available on the system
 func NewManager() (Manager, error) {
-	if _, err := os.Stat("/sys/fs/cgroup/cgroup.controllers"); err != nil {
+	if _, err := os.Stat(filepath.Join(cgroupV2MountPoint, "cgroup.controllers")); err != nil {
 		return nil, fmt.Errorf("cgroups v2 not available: %w", err)
 	}
 
