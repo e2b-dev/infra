@@ -12,9 +12,7 @@ const (
 	globalTeamsSetKey   = "global:teams"
 )
 
-var (
-	globalTeamsSet = redis_utils.CreateKey(sandboxKeyPrefix, globalTeamsSetKey)
-)
+var globalTeamsSet = redis_utils.CreateKey(sandboxKeyPrefix, globalTeamsSetKey)
 
 // GetTeamPrefix returns the storage team prefix for external packages (e.g. reservations).
 func GetTeamPrefix(teamID string) string {
