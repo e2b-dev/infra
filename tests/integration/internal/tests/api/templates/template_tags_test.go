@@ -553,7 +553,7 @@ func TestAssignmentOrderingLatestWins(t *testing.T) {
 	fileResp, err := envdClient.HTTPClient.GetFilesWithResponse(
 		ctx,
 		&envd.GetFilesParams{Path: &versionFilePath, Username: utils.ToPtr("user")},
-		setup.WithSandbox(sbx.SandboxID),
+		setup.WithSandbox(t, sbx.SandboxID),
 	)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, fileResp.StatusCode(), "Failed to read version file")
@@ -622,7 +622,7 @@ func TestAssignmentOrderingAfterTagReassignment(t *testing.T) {
 	fileResp, err := envdClient.HTTPClient.GetFilesWithResponse(
 		ctx,
 		&envd.GetFilesParams{Path: &versionFilePath, Username: utils.ToPtr("user")},
-		setup.WithSandbox(sbx.SandboxID),
+		setup.WithSandbox(t, sbx.SandboxID),
 	)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, fileResp.StatusCode(), "Failed to read version file")

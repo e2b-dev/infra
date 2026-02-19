@@ -1,44 +1,42 @@
 package redis
 
 import (
-	"fmt"
-	"strings"
+	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
 )
 
 const (
-	separator           = ":"
 	sandboxKeyPrefix    = "sandbox:storage"
 	transitionKeyPrefix = "transition:"
 	sandboxesKey        = "sandboxes"
 	indexKey            = "index"
 )
 
-func createKey(keyParts ...string) string {
-	return strings.Join(keyParts, separator)
-}
-
-// sameSlot forces Redis to use the same slot for all keys
-// this is needed e.g. to use MGet and transactions
-func sameSlot(key string) string {
-	return fmt.Sprintf("{%s}", key)
-}
-
 func getTeamPrefix(teamID string) string {
-	return createKey(sandboxKeyPrefix, sameSlot(teamID))
+	return GetTeamPrefix(teamID)
+}
+
+// GetTeamPrefix returns the storage team prefix for external packages (e.g. reservations).
+func GetTeamPrefix(teamID string) string {
+	return redis_utils.CreateKey(sandboxKeyPrefix, redis_utils.SameSlot(teamID))
 }
 
 func getSandboxKey(teamID, sandboxID string) string {
-	return createKey(getTeamPrefix(teamID), sandboxesKey, sandboxID)
+	return redis_utils.CreateKey(getTeamPrefix(teamID), sandboxesKey, sandboxID)
 }
 
 func getTeamIndexKey(teamID string) string {
-	return createKey(getTeamPrefix(teamID), indexKey)
+	return GetSandboxStorageTeamIndexKey(teamID)
+}
+
+// GetSandboxStorageTeamIndexKey returns the storage team index key for external packages (e.g. reservations).
+func GetSandboxStorageTeamIndexKey(teamID string) string {
+	return redis_utils.CreateKey(GetTeamPrefix(teamID), indexKey)
 }
 
 func getTransitionKey(teamID, sandboxID string) string {
-	return createKey(getTeamPrefix(teamID), transitionKeyPrefix, sandboxID)
+	return redis_utils.CreateKey(getTeamPrefix(teamID), transitionKeyPrefix, sandboxID)
 }
 
 func getTransitionResultKey(teamID, sandboxID, transitionID string) string {
-	return createKey(getTransitionKey(teamID, sandboxID), transitionID)
+	return redis_utils.CreateKey(getTransitionKey(teamID, sandboxID), transitionID)
 }

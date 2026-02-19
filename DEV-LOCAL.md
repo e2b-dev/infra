@@ -17,8 +17,9 @@
 ## Prepare local environment
 
 1. `make -C packages/db migrate-local` initialize the database
-2. `make -C packages/envd build-debug` create the envd that will be embedded in templates
-3. `make -C packages/local-dev seed-database` generate user, team, and token for local development
+2. `make -C packages/clickhouse migrate-local` initialize the clickhouse database
+3. `make -C packages/envd build` create the envd that will be embedded in templates
+4. `make -C packages/local-dev seed-database` generate user, team, and token for local development
 
 ## Run the application locally
 
@@ -35,7 +36,7 @@ These commands will launch each service in the foreground, and will need multipl
 - grafana: http://localhost:53000
 - postgres: postgres:postgres@127.0.0.1:5432
 - clickhouse (http): http://localhost:8123
-- clickhouse (native): clickhouse:clickhouse@127.0.0.1:9000
+- clickhouse (native): clickhouse:clickhouse@localhost:9000
 - redis: localhost:6379
 - otel collector (grpc): localhost:4317
 - otel collector (http): localhost:4318

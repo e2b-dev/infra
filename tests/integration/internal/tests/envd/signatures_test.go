@@ -38,7 +38,7 @@ func TestDownloadFileWhenAuthIsDisabled(t *testing.T) {
 		},
 		contentType,
 		textFile,
-		setup.WithSandbox(sbx.JSON201.SandboxID),
+		setup.WithSandbox(t, sbx.JSON201.SandboxID),
 	)
 
 	require.NoError(t, err)
@@ -47,7 +47,7 @@ func TestDownloadFileWhenAuthIsDisabled(t *testing.T) {
 	getRes, err := envdClient.HTTPClient.GetFilesWithResponse(
 		ctx,
 		&envd.GetFilesParams{Path: &filePath, Username: sharedUtils.ToPtr("user")},
-		setup.WithSandbox(sbx.JSON201.SandboxID),
+		setup.WithSandbox(t, sbx.JSON201.SandboxID),
 	)
 
 	require.NoError(t, err)
@@ -80,8 +80,8 @@ func TestDownloadFileWithoutSigningWhenAuthIsEnabled(t *testing.T) {
 		},
 		contentType,
 		textFile,
-		setup.WithSandbox(sbx.JSON201.SandboxID),
-		setup.WithEnvdAccessToken(*envdToken),
+		setup.WithSandbox(t, sbx.JSON201.SandboxID),
+		setup.WithEnvdAccessToken(t, *envdToken),
 	)
 
 	require.NoError(t, err)
@@ -90,7 +90,7 @@ func TestDownloadFileWithoutSigningWhenAuthIsEnabled(t *testing.T) {
 	readRes, readErr := envdClient.HTTPClient.GetFiles(
 		ctx,
 		&envd.GetFilesParams{Path: &filePath, Username: sharedUtils.ToPtr("user")},
-		setup.WithSandbox(sbx.JSON201.SandboxID),
+		setup.WithSandbox(t, sbx.JSON201.SandboxID),
 	)
 	require.NoError(t, readErr)
 	require.NoError(t, readRes.Body.Close())
@@ -124,7 +124,7 @@ func TestDownloadFileWithSigningWhenAuthIsEnabled(t *testing.T) {
 		},
 		contentType,
 		textFile,
-		setup.WithSandbox(sbx.JSON201.SandboxID),
+		setup.WithSandbox(t, sbx.JSON201.SandboxID),
 	)
 
 	require.NoError(t, err)
@@ -133,7 +133,7 @@ func TestDownloadFileWithSigningWhenAuthIsEnabled(t *testing.T) {
 	readRes, readErr := envdClient.HTTPClient.GetFilesWithResponse(
 		ctx,
 		&envd.GetFilesParams{Path: &filePath, Username: sharedUtils.ToPtr("user"), Signature: &readFileSigning},
-		setup.WithSandbox(sbx.JSON201.SandboxID),
+		setup.WithSandbox(t, sbx.JSON201.SandboxID),
 	)
 
 	require.NoError(t, readErr)
@@ -167,7 +167,7 @@ func TestDownloadWithAlreadyExpiredToken(t *testing.T) {
 			Signature:           &signatureForRead,
 			SignatureExpiration: &readExpiration,
 		},
-		setup.WithSandbox(sbx.JSON201.SandboxID),
+		setup.WithSandbox(t, sbx.JSON201.SandboxID),
 	)
 
 	require.NoError(t, readErr)
@@ -201,7 +201,7 @@ func TestDownloadWithHealthyToken(t *testing.T) {
 			Signature:           &signatureForRead,
 			SignatureExpiration: &readExpiration,
 		},
-		setup.WithSandbox(sbx.JSON201.SandboxID),
+		setup.WithSandbox(t, sbx.JSON201.SandboxID),
 	)
 
 	require.NoError(t, readErr)
@@ -235,7 +235,7 @@ func TestAccessWithNotCorrespondingSignatureAndSignatureExpiration(t *testing.T)
 			Signature:           &signatureForRead,
 			SignatureExpiration: &readExpiration,
 		},
-		setup.WithSandbox(sbx.JSON201.SandboxID),
+		setup.WithSandbox(t, sbx.JSON201.SandboxID),
 	)
 
 	require.NoError(t, readErr)

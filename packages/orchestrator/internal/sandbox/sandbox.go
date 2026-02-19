@@ -81,6 +81,7 @@ type Config struct {
 
 type VolumeMountConfig struct {
 	ID   string
+	Name string
 	Path string
 	Type string
 }
@@ -142,6 +143,13 @@ func (m *Metadata) SetEndAt(t time.Time) {
 type Sandbox struct {
 	*Resources
 	*Metadata
+
+	// LifecycleID is a unique identifier for each Firecracker process.
+	// It is used internally by the orchestrator for map eviction guards
+	// and proxy connection pooling. Unlike ExecutionID (which is stable
+	// across checkpoints and shared with the API), LifecycleID changes
+	// every time a new Firecracker VM is started.
+	LifecycleID string
 
 	config  cfg.BuilderConfig
 	files   *storage.SandboxFiles
@@ -333,6 +341,8 @@ func (f *Factory) CreateSandbox(
 	}
 
 	sbx := &Sandbox{
+		LifecycleID: uuid.NewString(),
+
 		Resources: resources,
 		Metadata:  metadata,
 
@@ -605,7 +615,6 @@ func (f *Factory) ResumeSandbox(
 		fcUffdPath,
 		snapfile,
 		fcUffd.Ready(),
-		ips,
 		config.Envd.AccessToken,
 	)
 	if fcStartErr != nil {
@@ -633,6 +642,8 @@ func (f *Factory) ResumeSandbox(
 	}
 
 	sbx := &Sandbox{
+		LifecycleID: uuid.NewString(),
+
 		Resources: resources,
 		Metadata:  metadata,
 

@@ -306,11 +306,19 @@ func (a *APIStore) GetTemplatesTemplateIDTags(c *gin.Context, templateID api.Tem
 		telemetry.WithTeamID(team.ID.String()),
 	)
 
-	aliasInfo, err := a.templateCache.ResolveAlias(ctx, templateID, team.Slug)
+	identifier, _, err := id.ParseName(templateID)
 	if err != nil {
-		apiErr := templatecache.ErrorToAPIError(err, templateID)
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid template reference: %s", err))
+		telemetry.ReportError(ctx, "invalid template reference", err)
+
+		return
+	}
+
+	aliasInfo, err := a.templateCache.ResolveAlias(ctx, identifier, team.Slug)
+	if err != nil {
+		apiErr := templatecache.ErrorToAPIError(err, identifier)
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
-		telemetry.ReportError(ctx, "template not found", apiErr.Err, telemetry.WithTemplateID(templateID))
+		telemetry.ReportError(ctx, "template not found", apiErr.Err, telemetry.WithTemplateID(identifier))
 
 		return
 	}

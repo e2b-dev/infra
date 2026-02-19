@@ -65,7 +65,8 @@ tf_vars := \
 	$(call tfvar, SERVER_BOOT_DISK_SIZE_GB) \
 	$(call tfvar, CLICKHOUSE_BOOT_DISK_TYPE) \
 	$(call tfvar, BUCKET_PREFIX) \
-	$(call tfvar, LOKI_BOOT_DISK_TYPE)
+	$(call tfvar, LOKI_BOOT_DISK_TYPE) \
+	$(call tfvar, LOKI_USE_V13_SCHEMA_FROM)
 
 .PHONY: init
 init:
@@ -130,7 +131,7 @@ plan-only-jobs:
 plan-only-jobs/%:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(TF) fmt -recursive
-	@ $(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -compact-warnings -target=module.nomad.nomad_job.$$(echo "$(notdir $@)" | tr '-' '_');
+	@ $(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -compact-warnings -target=module.nomad.nomad_job.$$(echo "$(notdir $@)" | tr '-' '_') -target=module.nomad.module.$$(echo "$(notdir $@)" | tr '-' '_');
 
 .PHONY: plan-without-jobs
 plan-without-jobs:

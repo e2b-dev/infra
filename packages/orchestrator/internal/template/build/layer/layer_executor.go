@@ -88,7 +88,7 @@ func (lb *LayerExecutor) BuildLayer(
 	defer func() {
 		lb.sandboxes.Remove(sbx.Runtime.SandboxID)
 
-		closeErr := lb.proxy.RemoveFromPool(sbx.Runtime.ExecutionID)
+		closeErr := lb.proxy.RemoveFromPool(sbx.LifecycleID)
 		if closeErr != nil {
 			// Errors here will be from forcefully closing the connections, so we can ignore them—they will at worst timeout on their own.
 			lb.logger.Warn(ctx, "errors when manually closing connections to sandbox", zap.Error(closeErr))
@@ -214,7 +214,7 @@ func (lb *LayerExecutor) updateEnvdInSandbox(
 
 	// Remove the proxy client to prevent reuse of broken connection, because we restarted envd server inside of the sandbox.
 	// This might not be necessary if we don't use keepalives for the proxy.
-	err = lb.proxy.RemoveFromPool(sbx.Runtime.ExecutionID)
+	err = lb.proxy.RemoveFromPool(sbx.LifecycleID)
 	if err != nil {
 		// Errors here will be from forcefully closing the connections, so we can ignore them—they will at worst timeout on their own.
 		lb.logger.Warn(ctx, "errors when manually closing connections to sandbox after restarting envd", zap.Error(err))

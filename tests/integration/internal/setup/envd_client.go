@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/filesystem/filesystemconnect"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process/processconnect"
@@ -25,9 +27,7 @@ func GetEnvdClient(tb testing.TB, _ context.Context) *EnvdClient {
 	}
 
 	httpC, err := envd.NewClientWithResponses(EnvdProxy, envd.WithHTTPClient(&hc))
-	if err != nil {
-		panic(err)
-	}
+	require.NoError(tb, err)
 
 	fileC := filesystemconnect.NewFilesystemClient(&hc, EnvdProxy)
 	processC := processconnect.NewProcessClient(&hc, EnvdProxy)
@@ -39,34 +39,39 @@ func GetEnvdClient(tb testing.TB, _ context.Context) *EnvdClient {
 	}
 }
 
-func WithSandbox(sandboxID string) func(context.Context, *http.Request) error {
+func WithSandbox(tb testing.TB, sandboxID string) func(context.Context, *http.Request) error {
+	tb.Helper()
+
 	return func(_ context.Context, req *http.Request) error {
-		SetSandboxHeader(req.Header, sandboxID)
+		SetSandboxHeader(tb, req.Header, sandboxID)
 		req.Host = req.Header.Get("Host")
 
 		return nil
 	}
 }
 
-func WithEnvdAccessToken(accessToken string) func(ctx context.Context, req *http.Request) error {
+func WithEnvdAccessToken(tb testing.TB, accessToken string) func(ctx context.Context, req *http.Request) error {
+	tb.Helper()
+
 	return func(_ context.Context, req *http.Request) error {
-		SetAccessTokenHeader(req.Header, accessToken)
+		SetAccessTokenHeader(tb, req.Header, accessToken)
 
 		return nil
 	}
 }
 
-func SetSandboxHeader(header http.Header, sandboxID string) {
+func SetSandboxHeader(tb testing.TB, header http.Header, sandboxID string) {
+	tb.Helper()
 	err := grpc.SetSandboxHeader(header, EnvdProxy, sandboxID)
-	if err != nil {
-		panic(err)
-	}
+	require.NoError(tb, err)
 }
 
-func SetAccessTokenHeader(header http.Header, accessToken string) {
+func SetAccessTokenHeader(tb testing.TB, header http.Header, accessToken string) {
+	tb.Helper()
 	header.Set("X-Access-Token", accessToken)
 }
 
-func SetUserHeader(header http.Header, user string) {
+func SetUserHeader(tb testing.TB, header http.Header, user string) {
+	tb.Helper()
 	grpc.SetUserHeader(header, user)
 }

@@ -59,3 +59,11 @@ service:
       receivers:  [otlp]
       processors: [filter/external_metrics, batch/clickhouse]
       exporters:  [clickhouse]
+    traces:
+      receivers:  [otlp]
+      processors: [batch]
+      exporters:  [debug]
+    logs:
+      receivers:  [otlp]
+      processors: [batch]
+      exporters:  [debug]

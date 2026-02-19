@@ -17,6 +17,7 @@ import (
 )
 
 var (
+	teamID         = uuid.MustParse("0b8a3ded-4489-4722-afd1-1d82e64ec2d5")
 	tokenID        = uuid.MustParse("3d98c426-d348-446b-bdf6-5be3ca4123e2")
 	userTokenValue = "89215020937a4c989cde33d7bc647715"
 	teamTokenValue = "53ae1fed82754c17ad8077fbc8bcdd90"
@@ -103,9 +104,16 @@ func ensureUserIsOnTeam(ctx context.Context, db *authdb.Client, teamID uuid.UUID
 	if err := db.TestsRawSQL(ctx, `
 INSERT INTO users_teams (user_id, team_id, is_default)
 VALUES ($1, $2, $3)
-ON CONFLICT DO NOTHING
-`, userID, teamID, true); ignoreConstraints(err) != nil {
+ON CONFLICT DO NOTHING;`, userID, teamID, true); err != nil {
 		return fmt.Errorf("failed to add user to team: %w", err)
+	}
+
+	if err := db.TestsRawSQL(ctx, `
+UPDATE users_teams 
+SET is_default = CASE WHEN team_id = $2 THEN true ELSE false END 
+WHERE user_id = $1
+`, userID, teamID); err != nil {
+		return fmt.Errorf("failed to set test team as default: %w", err)
 	}
 
 	return nil
@@ -146,8 +154,6 @@ func ignoreConstraints(err error) error {
 }
 
 func upsertTeam(ctx context.Context, db *authdb.Client) (uuid.UUID, error) {
-	teamID := uuid.MustParse("0b8a3ded-4489-4722-afd1-1d82e64ec2d5")
-
 	err := db.TestsRawSQL(ctx, `
 INSERT INTO teams (id, email, name, tier, is_blocked, slug)
 VALUES ($1, $2, $3, $4, $5, $6)
