@@ -20,10 +20,13 @@ const (
 // PagemapEntry represents a single 8-byte entry from /proc/self/pagemap.
 //
 // Bit layout:
-//   - Bits 0-54:  PFN (if privileged) or zero
+//   - Bits 0-54:  PFN if page present, 0-4: page type 5-54: swap offset if page swapped
 //   - Bit 55:     Soft-dirty
 //   - Bit 56:     Exclusively mapped
 //   - Bit 57:     Write-protected via userfaultfd
+//   - Bit 58-60:  Zero
+//   - Bit 61:     Page is file-page or shared-anon
+//   - Bit 62:     Page is swapped
 //   - Bit 63:     Present in RAM
 type PagemapEntry struct {
 	Raw uint64
