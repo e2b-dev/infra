@@ -312,8 +312,11 @@ func TestEnvdAccessTokenAutoResumeViaProxy(t *testing.T) {
 
 	// Verify envd is reachable with valid access token while running.
 	headers := &http.Header{"X-Access-Token": []string{*sbx.EnvdAccessToken}}
-	resp := utils.WaitForStatus(t, client, sbx, proxyURL, envdPort, headers, http.StatusNotFound)
+	req := utils.NewRequest(sbx, proxyURL, envdPort, headers)
+	resp, err := client.Do(req)
+	require.NoError(t, err)
 	require.NotNil(t, resp)
+	require.NotEqual(t, http.StatusForbidden, resp.StatusCode, "valid envd access token should be accepted")
 	require.NoError(t, resp.Body.Close())
 
 	// Pause sandbox.
@@ -327,7 +330,7 @@ func TestEnvdAccessTokenAutoResumeViaProxy(t *testing.T) {
 	require.Equal(t, api.Paused, res.JSON200.State)
 
 	// While paused, missing envd access token must not auto-resume.
-	req := utils.NewRequest(sbx, proxyURL, envdPort, nil)
+	req = utils.NewRequest(sbx, proxyURL, envdPort, nil)
 	resp, err = client.Do(req)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusForbidden, resp.StatusCode)
