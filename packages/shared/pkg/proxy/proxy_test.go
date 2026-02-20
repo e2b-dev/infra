@@ -197,7 +197,9 @@ func TestProxyRoutesToTargetServer(t *testing.T) {
 
 	proxy, port, err := newTestProxy(t, getDestination)
 	require.NoError(t, err)
-	defer proxy.Close()
+	t.Cleanup(func() {
+		proxy.Close()
+	})
 
 	assert.Equal(t, uint64(0), proxy.TotalPoolConnections())
 	assert.Equal(t, uint64(0), backend.RequestCount())
@@ -223,14 +225,18 @@ func TestProxyResumePermissionDeniedErrorTemplate(t *testing.T) {
 
 	proxy, port, err := newTestProxy(t, getDestination)
 	require.NoError(t, err)
-	defer proxy.Close()
+	t.Cleanup(func() {
+		proxy.Close()
+	})
 
 	t.Run("json for non-browser", func(t *testing.T) {
 		t.Parallel()
 		proxyURL := fmt.Sprintf("http://127.0.0.1:%d/hello", port)
 		resp, err := httpGet(t, proxyURL)
 		require.NoError(t, err)
-		defer resp.Body.Close()
+		t.Cleanup(func() {
+			_ = resp.Body.Close()
+		})
 
 		require.Equal(t, http.StatusForbidden, resp.StatusCode)
 		require.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
@@ -256,7 +262,9 @@ func TestProxyResumePermissionDeniedErrorTemplate(t *testing.T) {
 
 		resp, err := httpGetWithHeaders(t, proxyURL, headers)
 		require.NoError(t, err)
-		defer resp.Body.Close()
+		t.Cleanup(func() {
+			_ = resp.Body.Close()
+		})
 
 		require.Equal(t, http.StatusForbidden, resp.StatusCode)
 		require.Equal(t, "text/html; charset=utf-8", resp.Header.Get("Content-Type"))
