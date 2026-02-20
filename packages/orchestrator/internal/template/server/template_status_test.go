@@ -59,7 +59,7 @@ func TestTemplateBuildStatus_DirectionOrdering(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			response, err := serverStore.TemplateBuildStatus(context.Background(), &template_manager.TemplateStatusRequest{
+			response, err := serverStore.TemplateBuildStatus(t.Context(), &template_manager.TemplateStatusRequest{
 				BuildID:    buildID,
 				TemplateID: "template-id",
 				Start:      timestamppb.New(now.Add(-1 * time.Hour)),
