@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -49,9 +48,9 @@ func TestTemplateBuildStatus_DirectionOrdering(t *testing.T) {
 			expected:  []string{"first", "same-a", "same-b", "last"},
 		},
 		{
-			name:      "backward_sorts_descending_and_keeps_reversed_equal_timestamps_stable",
+			name:      "backward_sorts_descending_and_keeps_equal_timestamps_stable",
 			direction: template_manager.LogsDirection_Backward,
-			expected:  []string{"last", "same-b", "same-a", "first"},
+			expected:  []string{"last", "same-a", "same-b", "first"},
 		},
 	}
 

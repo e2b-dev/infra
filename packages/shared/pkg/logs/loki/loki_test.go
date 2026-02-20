@@ -1,7 +1,6 @@
 package loki
 
 import (
-	"context"
 	"encoding/json"
 	"testing"
 	"time"
