@@ -10,34 +10,23 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/db/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
+	sharedauth "github.com/e2b-dev/infra/packages/shared/pkg/auth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/db")
 
-type TeamForbiddenError struct {
-	message string
-}
+type TeamForbiddenError = sharedauth.TeamForbiddenError
 
-func (e *TeamForbiddenError) Error() string {
-	return e.message
-}
-
-type TeamBlockedError struct {
-	message string
-}
-
-func (e *TeamBlockedError) Error() string {
-	return e.message
-}
+type TeamBlockedError = sharedauth.TeamBlockedError
 
 func validateTeamUsage(team authqueries.Team) error {
 	if team.IsBanned {
-		return &TeamForbiddenError{message: "team is banned"}
+		return &TeamForbiddenError{Message: "team is banned"}
 	}
 
 	if team.IsBlocked {
-		return &TeamBlockedError{message: "team is blocked"}
+		return &TeamBlockedError{Message: "team is blocked"}
 	}
 
 	return nil
