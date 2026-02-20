@@ -45,8 +45,9 @@ func TestSandboxWithEnabledTrafficAccessTokenButMissingHeader(t *testing.T) {
 	sbx.TrafficAccessToken = nil // Simulate missing header
 
 	port := 8080
-	resp := utils.WaitForStatus(t, client, sbx, url, port, nil, http.StatusForbidden)
-	require.NotNil(t, resp)
+	req := utils.NewRequest(sbx, url, port, nil)
+	resp, err := client.Do(req)
+	require.NoError(t, err)
 	require.Equal(t, http.StatusForbidden, resp.StatusCode)
 	assert.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
 
@@ -63,8 +64,9 @@ func TestSandboxWithEnabledTrafficAccessTokenButMissingHeader(t *testing.T) {
 
 	// Pretend to be a browser
 	headers := &http.Header{"User-Agent": []string{"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"}}
-	resp = utils.WaitForStatus(t, client, sbx, url, port, headers, http.StatusForbidden)
-	require.NotNil(t, resp)
+	req = utils.NewRequest(sbx, url, port, headers)
+	resp, err = client.Do(req)
+	require.NoError(t, err)
 	require.Equal(t, http.StatusForbidden, resp.StatusCode)
 	assert.Equal(t, "text/html; charset=utf-8", resp.Header.Get("Content-Type"))
 	body, err := io.ReadAll(resp.Body)
@@ -101,8 +103,9 @@ func TestSandboxWithEnabledTrafficAccessTokenButInvalidHeader(t *testing.T) {
 	sbx.TrafficAccessToken = &invalidTrafficAccessToken
 
 	port := 8080
-	resp := utils.WaitForStatus(t, client, sbx, url, port, nil, http.StatusForbidden)
-	require.NotNil(t, resp)
+	req := utils.NewRequest(sbx, url, port, nil)
+	resp, err := client.Do(req)
+	require.NoError(t, err)
 	require.Equal(t, http.StatusForbidden, resp.StatusCode)
 	assert.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
 
@@ -119,8 +122,9 @@ func TestSandboxWithEnabledTrafficAccessTokenButInvalidHeader(t *testing.T) {
 
 	// Pretend to be a browser
 	headers := &http.Header{"User-Agent": []string{"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"}}
-	resp = utils.WaitForStatus(t, client, sbx, url, port, headers, http.StatusForbidden)
-	require.NotNil(t, resp)
+	req = utils.NewRequest(sbx, url, port, headers)
+	resp, err = client.Do(req)
+	require.NoError(t, err)
 	require.Equal(t, http.StatusForbidden, resp.StatusCode)
 	assert.Equal(t, "text/html; charset=utf-8", resp.Header.Get("Content-Type"))
 	body, err := io.ReadAll(resp.Body)
@@ -153,8 +157,9 @@ func TestSandboxWithEnabledTrafficAccessToken(t *testing.T) {
 	}
 
 	port := 8080
-	resp := utils.WaitForStatus(t, client, sbx, url, port, nil, http.StatusBadGateway)
-	require.NotNil(t, resp)
+	req := utils.NewRequest(sbx, url, port, nil)
+	resp, err := client.Do(req)
+	require.NoError(t, err)
 	require.Equal(t, http.StatusBadGateway, resp.StatusCode)
 
 	assert.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
@@ -254,7 +259,7 @@ func TestSandboxWithTrafficAccessTokenAutoResumeViaProxy(t *testing.T) {
 	sbxWithoutToken := *sbx
 	sbxWithoutToken.TrafficAccessToken = nil
 
-	// Valid traffic token allows access.
+	// Valid traffic token allows access (wait for python server to start).
 	resp := utils.WaitForStatus(t, client, sbx, proxyURL, port, nil, http.StatusOK)
 	require.NotNil(t, resp)
 	require.NoError(t, resp.Body.Close())
