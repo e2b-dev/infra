@@ -51,7 +51,7 @@ DOCKERFILE = """\
 FROM golang:1.25-alpine
 RUN apk add --no-cache git
 RUN go install github.com/bufbuild/buf/cmd/buf@v1.50.0
-RUN go install github.com/sudorandom/protoc-gen-connect-openapi@latest
+RUN go install github.com/sudorandom/protoc-gen-connect-openapi@v0.25.3
 ENV PATH="/go/bin:${PATH}"
 """
 
@@ -256,13 +256,15 @@ def docker_build_image() -> None:
     print("==> Building Docker image")
     with tempfile.NamedTemporaryFile(mode="w", suffix=".Dockerfile", delete=False) as f:
         f.write(DOCKERFILE)
-        f.flush()
+        dockerfile_path = f.name
+    try:
         subprocess.run(
-            ["docker", "build", "-t", DOCKER_IMAGE, "-f", f.name, "."],
+            ["docker", "build", "-t", DOCKER_IMAGE, "-f", dockerfile_path, "."],
             check=True,
             cwd=REPO_ROOT,
         )
-    os.unlink(f.name)
+    finally:
+        os.unlink(dockerfile_path)
 
 
 def docker_generate_specs() -> list[str]:
@@ -351,7 +353,10 @@ def merge_specs(raw_docs: list[str]) -> dict[str, Any]:
             merged.setdefault("tags", []).extend(doc["tags"])
 
         if "security" in doc:
-            merged.setdefault("security", []).extend(doc["security"])
+            existing = merged.setdefault("security", [])
+            for entry in doc["security"]:
+                if entry not in existing:
+                    existing.append(entry)
 
     return merged
 
@@ -444,13 +449,13 @@ def _has_admin_token_security(path_item: dict[str, Any]) -> bool:
 def filter_paths(spec: dict[str, Any]) -> None:
     """Clean up paths that should not appear in the public spec.
 
-    - Removes volume, access-token, and api-key endpoints
+    - Removes access-token and api-key endpoints
     - Removes endpoints using AdminToken auth
     - Strips Supabase auth entries from all operations
     - Removes Supabase and AdminToken securityScheme definitions
     """
     # Remove excluded paths
-    excluded_prefixes = ("/volumes", "/access-tokens", "/api-keys")
+    excluded_prefixes = ("/access-tokens", "/api-keys")
     excluded_exact = {"/v2/sandboxes/{sandboxID}/logs", "/init"}
     to_remove = [
         p for p in spec["paths"]
@@ -500,21 +505,22 @@ def remove_orphaned_schemas(spec: dict[str, Any]) -> None:
 
         orphaned = []
         for name in list(schemas.keys()):
-            ref_pattern = f"schemas/{name}"
-            # Referenced from paths/responses/params or from other schemas
-            if ref_pattern not in spec_text and ref_pattern not in schema_text.replace(
-                f"schemas/{name}:", ""  # exclude self-definition line
-            ):
-                # Double-check: not referenced by any other schema
-                used = False
-                for other_name, other_schema in schemas.items():
-                    if other_name == name:
-                        continue
-                    if ref_pattern in yaml.dump(other_schema, default_flow_style=False):
-                        used = True
-                        break
-                if not used:
-                    orphaned.append(name)
+            # Use exact ref pattern to avoid substring collisions
+            # (e.g. "schemas/Foo" matching inside "schemas/FooBar")
+            ref_pattern = f"schemas/{name}'"
+            # Referenced from paths/responses/params
+            if ref_pattern in spec_text:
+                continue
+            # Referenced from other schemas (exclude self-definition)
+            used = False
+            for other_name, other_schema in schemas.items():
+                if other_name == name:
+                    continue
+                if ref_pattern in yaml.dump(other_schema, default_flow_style=False):
+                    used = True
+                    break
+            if not used:
+                orphaned.append(name)
 
         if not orphaned:
             break
