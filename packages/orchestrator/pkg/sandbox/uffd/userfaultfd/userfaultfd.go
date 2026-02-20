@@ -19,6 +19,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/fdexit"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/memory"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/userfaultfd")
@@ -86,6 +87,58 @@ func (u *Userfaultfd) Close() error {
 	return u.fd.close()
 }
 
+// readEvents reads all available UFFD events from the file descriptor.
+// Returns a queue with the events read, or an error.
+func (u *Userfaultfd) readEvents(ctx context.Context) (*queue, error) {
+	buf := make([]byte, unsafe.Sizeof(UffdMsg{}))
+
+	queue := newQueue()
+	for {
+		n, err := syscall.Read(int(u.fd), buf)
+		if errors.Is(err, syscall.EINTR) {
+			u.logger.Debug(ctx, "uffd: interrupted read. Reading again")
+
+			continue
+		}
+
+		if errors.Is(err, syscall.EAGAIN) {
+			// EAGAIN means that we have drained all the available events for the file descriptro.
+			// We are done.
+			break
+		}
+
+		if err != nil {
+			return nil, fmt.Errorf("failed reading uffd: %w", err)
+		}
+
+		// `Read` returned with 0 bytes actually read. No more events to read
+		// and the writing end has been closed. This should never happen, unless
+		// something (us or Firecracker) closes the file descriptor
+		// TODO: Ignore it for now, but maybe we should return an error(?)
+		if n == 0 {
+			break
+		}
+
+		msg := (*UffdMsg)(unsafe.Pointer(&buf[0]))
+
+		event := getMsgEvent(msg)
+		arg := getMsgArg(msg)
+
+		switch event {
+		case UFFD_EVENT_PAGEFAULT:
+			pagefault := (*UffdPagefault)(unsafe.Pointer(&arg[0]))
+			queue.push(pagefault)
+		case UFFD_EVENT_REMOVE:
+			remove := (*UffdRemove)(unsafe.Pointer(&arg[0]))
+			queue.push(remove)
+		default:
+			return nil, ErrUnexpectedEventType
+		}
+	}
+
+	return queue, nil
+}
+
 func (u *Userfaultfd) Serve(
 	ctx context.Context,
 	fdExit *fdexit.FdExit,
@@ -113,7 +166,8 @@ func (u *Userfaultfd) Serve(
 		unix.POLLNVAL: "POLLNVAL",
 	}
 
-outerLoop:
+	deferredEvents := newQueue()
+
 	for {
 		if _, err := unix.Poll(
 			pollFds,
@@ -179,81 +233,95 @@ outerLoop:
 			continue
 		}
 
-		buf := make([]byte, unsafe.Sizeof(UffdMsg{}))
-
-		for {
-			_, err := syscall.Read(int(u.fd), buf)
-			if err == syscall.EINTR {
-				u.logger.Debug(ctx, "uffd: interrupted read, reading again")
-
-				continue
-			}
-
-			if err == nil {
-				// There is no error so we can proceed.
-
-				eagainCounter.Log(ctx)
-				noDataCounter.Log(ctx)
-
-				break
-			}
-
-			if err == syscall.EAGAIN {
-				eagainCounter.Increase("EAGAIN")
-
-				// Continue polling the fd.
-				continue outerLoop
-			}
-
+		events, err := u.readEvents(ctx)
+		if err != nil {
 			u.logger.Error(ctx, "uffd: read error", zap.Error(err))
 
 			return fmt.Errorf("failed to read: %w", err)
 		}
 
-		msg := *(*UffdMsg)(unsafe.Pointer(&buf[0]))
+		events.prepend(deferredEvents)
+		// This is not racy because there shouldn't be any goroutines running at the moment.
+		deferredEvents.reset()
 
-		if msgEvent := getMsgEvent(&msg); msgEvent != UFFD_EVENT_PAGEFAULT {
-			u.logger.Error(ctx, "UFFD serve unexpected event type", zap.Any("event_type", msgEvent))
-
-			return ErrUnexpectedEventType
-		}
-
-		arg := getMsgArg(&msg)
-		pagefault := (*(*UffdPagefault)(unsafe.Pointer(&arg[0])))
-		flags := pagefault.flags
-
-		addr := getPagefaultAddress(&pagefault)
-
-		offset, err := u.ma.GetOffset(addr)
-		if err != nil {
-			u.logger.Error(ctx, "UFFD serve get mapping error", zap.Error(err))
-
-			return fmt.Errorf("failed to map: %w", err)
-		}
-
-		// Handle write to missing page (WRITE flag)
-		// If the event has WRITE flag, it was a write to a missing page.
-		// For the write to be executed, we first need to copy the page from the source to the guest memory.
-		if flags&UFFD_PAGEFAULT_FLAG_WRITE != 0 {
-			u.wg.Go(func() error {
-				return u.faultPage(ctx, addr, offset, u.pageSize, u.src, fdExit.SignalExit, block.Write)
-			})
+		// No events were found which is weird since, if we are here,
+		// poll() returned with an event indicating that UFFD had something
+		// for us to read. Log an error and continue
+		if events.size() == 0 {
+			eagainCounter.Increase("EAGAIN")
 
 			continue
 		}
 
-		// Handle read to missing page ("MISSING" flag)
-		// If the event has no flags, it was a read to a missing page and we need to copy the page from the source to the guest memory.
-		if flags == 0 {
-			u.wg.Go(func() error {
-				return u.faultPage(ctx, addr, offset, u.pageSize, u.src, fdExit.SignalExit, block.Read)
-			})
+		// We successfully read all available UFFD events.
+		noDataCounter.Log(ctx)
+		eagainCounter.Log(ctx)
 
-			continue
+		// First handle the UFFD_EVENT_REMOVE events
+		for rm := range each[*UffdRemove](events) {
+			u.pageTracker.setState(removed, uintptr(rm.start), uintptr(rm.end))
 		}
 
-		// MINOR and WP flags are not expected as we don't register the uffd with these flags.
-		return fmt.Errorf("unexpected event type: %d, closing uffd", flags)
+		for pf := range each[*UffdPagefault](events) {
+			// We don't handle minor page faults.
+			if pf.flags&UFFD_PAGEFAULT_FLAG_MINOR != 0 {
+				return fmt.Errorf("unexpected MINOR pagefault event, closing UFFD")
+			}
+
+			// We don't handle write-protection page faults, we're using asynchronous write protection.
+			if pf.flags&UFFD_PAGEFAULT_FLAG_WP != 0 {
+				return fmt.Errorf("unexecpted WP pagefault event, closuing UFFD")
+			}
+
+			addr := getPagefaultAddress(pf)
+			offset, err := u.ma.GetOffset(addr)
+			if err != nil {
+				u.logger.Error(ctx, "UFFD serve got mapping error", zap.Error(err))
+
+				return fmt.Errorf("failed to map: %w", err)
+			}
+
+			state := u.pageTracker.get(addr)
+			switch state {
+			case faulted:
+				continue
+			case removed:
+				u.wg.Go(func() error {
+					handled, err := u.faultPage(ctx, addr, offset, nil, fdExit.SignalExit, block.Remove)
+					if err != nil {
+						return err
+					}
+
+					if !handled {
+						deferredEvents.push(pf)
+					}
+
+					return nil
+				})
+			case unfaulted:
+				var accessType block.AccessType
+				if pf.flags&UFFD_PAGEFAULT_FLAG_WRITE == 0 {
+					accessType = block.Read
+				} else {
+					accessType = block.Write
+				}
+
+				u.wg.Go(func() error {
+					handled, err := u.faultPage(ctx, addr, offset, u.src, fdExit.SignalExit, accessType)
+					if err != nil {
+						return err
+					}
+
+					if !handled {
+						deferredEvents.push(pf)
+					}
+
+					return nil
+				})
+			default:
+				return fmt.Errorf("unexpected pageState: %#v", state)
+			}
+		}
 	}
 }
 
@@ -294,7 +362,16 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) e
 		return fmt.Errorf("data length (%d) is less than pagesize (%d)", len(data), u.pageSize)
 	}
 
-	return u.faultPage(ctx, addr, offset, u.pageSize, directDataSource{data, int64(u.pageSize)}, nil, block.Prefetch)
+	handled, err := u.faultPage(ctx, addr, offset, directDataSource{data, int64(u.pageSize)}, nil, block.Prefetch)
+	if err != nil {
+		return fmt.Errorf("failted to fault page: %w", err)
+	}
+
+	if !handled {
+		span.RecordError(fmt.Errorf("page already faulted"))
+	}
+
+	return nil
 }
 
 // directDataSource wraps a byte slice to implement block.Slicer for prefaulting.
@@ -315,11 +392,10 @@ func (u *Userfaultfd) faultPage(
 	ctx context.Context,
 	addr uintptr,
 	offset int64,
-	pagesize uintptr,
 	source block.Slicer,
 	onFailure func() error,
 	accessType block.AccessType,
-) error {
+) (bool, error) {
 	span := trace.SpanFromContext(ctx)
 
 	// The RLock must be called inside the goroutine to ensure RUnlock runs via defer,
@@ -331,61 +407,83 @@ func (u *Userfaultfd) faultPage(
 
 	defer func() {
 		if r := recover(); r != nil {
-			u.logger.Error(ctx, "UFFD serve panic", zap.Any("pagesize", pagesize), zap.Any("panic", r))
+			u.logger.Error(ctx, "UFFD serve panic", zap.Any("pagesize", u.pageSize), zap.Any("panic", r))
 		}
 	}()
 
-	b, dataErr := source.Slice(ctx, offset, int64(pagesize))
-	if dataErr != nil {
-		var signalErr error
-		if onFailure != nil {
-			signalErr = onFailure()
-		}
-
-		joinedErr := errors.Join(dataErr, signalErr)
-
-		span.RecordError(joinedErr)
-		u.logger.Error(ctx, "UFFD serve data fetch error", zap.Error(joinedErr))
-
-		return fmt.Errorf("failed to read from source: %w", joinedErr)
-	}
-
+	var writeErr error
 	var copyMode CULong
 
 	// Performing copy() on UFFD clears the WP bit unless we explicitly tell
 	// it not to. We do that for faults caused by a read access. Write accesses
 	// would anyways cause clear the write-protection bit.
 	if accessType != block.Write {
-		copyMode |= UFFDIO_COPY_MODE_WP
+		copyMode = UFFDIO_COPY_MODE_WP
 	}
 
-	copyErr := u.fd.copy(addr, pagesize, b, copyMode)
-	if errors.Is(copyErr, unix.EEXIST) {
-		// Page is already mapped
+	// Write to guest memory. nil data means zero-fill
+	switch {
+	case source == nil && u.pageSize == header.PageSize:
+		writeErr = u.fd.zero(addr, u.pageSize, copyMode)
+	case source == nil && u.pageSize == header.HugepageSize:
+		writeErr = u.fd.copy(addr, u.pageSize, header.EmptyHugePage, 0)
+	default:
+		b, dataErr := source.Slice(ctx, offset, int64(u.pageSize))
+		if dataErr != nil {
+			var signalErr error
+			if onFailure != nil {
+				signalErr = onFailure()
+			}
+
+			joinedErr := errors.Join(dataErr, signalErr)
+
+			span.RecordError(joinedErr)
+			u.logger.Error(ctx, "UFFD serve data fetch error", zap.Error(joinedErr))
+
+			return false, fmt.Errorf("failed to read from source: %w", joinedErr)
+		}
+
+		writeErr = u.fd.copy(addr, u.pageSize, b, copyMode)
+	}
+
+	// Page is already mapped.
+	// Probably because we have already pre-faulted it. Otherwise, we should not
+	// try to handle a page fault for the same address twich, since we are now
+	// tracking the state of pages.
+	if errors.Is(writeErr, unix.EEXIST) {
+		u.pageTracker.setState(faulted, addr, addr+u.pageSize)
 		span.SetAttributes(attribute.Bool("uffd.already_mapped", true))
-		u.pageTracker.setState(faulted, addr, addr+pagesize)
 
-		return nil
+		return true, nil
 	}
 
-	if copyErr != nil {
+	if errors.Is(writeErr, unix.EAGAIN) {
+		// This happens when a remove event arrives in the UFFD file descriptor while
+		// we are trying to copy()/zero() a page. We need to read all the events from
+		// file descriptor and try again.
+		u.logger.Debug(ctx, "UFFD page write EAGAIN, deferring", zap.Uintptr("addr", addr))
+
+		return false, nil
+	}
+
+	if writeErr != nil {
 		var signalErr error
 		if onFailure != nil {
 			signalErr = onFailure()
 		}
 
-		joinedErr := errors.Join(copyErr, signalErr)
+		joinedErr := errors.Join(writeErr, signalErr)
 
 		span.RecordError(joinedErr)
 		u.logger.Error(ctx, "UFFD serve uffdio copy error", zap.Error(joinedErr))
 
-		return fmt.Errorf("failed uffdio copy: %w", joinedErr)
+		return false, fmt.Errorf("failed uffdio copy %w", joinedErr)
 	}
 
 	// Add the offset to the missing requests tracker with metadata.
 	u.missingRequests.Add(offset)
 	u.prefetchTracker.Add(offset, accessType)
-	u.pageTracker.setState(faulted, addr, addr+pagesize)
+	u.pageTracker.setState(faulted, addr, addr+u.pageSize)
 
-	return nil
+	return true, nil
 }
