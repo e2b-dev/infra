@@ -17,6 +17,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process"
+	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
@@ -193,7 +194,7 @@ func TestEnvdPortIsNotAffectedByTrafficAccessToken(t *testing.T) {
 		Timeout: 1000 * time.Second,
 	}
 
-	headers := &http.Header{"X-Access-Token": []string{*sbx.EnvdAccessToken}}
+	headers := &http.Header{proxygrpc.MetadataEnvdHTTPAccessToken: []string{*sbx.EnvdAccessToken}}
 	req := utils.NewRequest(sbx, &envdHealthURL, int(consts.DefaultEnvdServerPort), headers)
 	resp, err := client.Do(req)
 	require.NoError(t, err)
@@ -317,7 +318,7 @@ func TestEnvdAccessTokenAutoResumeViaProxy(t *testing.T) {
 	envdPort := int(consts.DefaultEnvdServerPort)
 
 	// Verify envd is reachable with valid access token while running.
-	headers := &http.Header{"X-Access-Token": []string{*sbx.EnvdAccessToken}}
+	headers := &http.Header{proxygrpc.MetadataEnvdHTTPAccessToken: []string{*sbx.EnvdAccessToken}}
 	req := utils.NewRequest(sbx, &envdHealthURL, envdPort, headers)
 	resp, err := client.Do(req)
 	require.NoError(t, err)
