@@ -305,7 +305,7 @@ func setTemplateSource(ctx context.Context, tm *TemplateManager, teamID uuid.UUI
 		}
 
 		// Step 1: Resolve alias to template ID (using cache with fallback for promoted templates)
-		aliasInfo, err := tm.templateCache.ResolveAlias(ctx, identifier, teamSlug)
+		resolvedTemplateID, err := tm.templateCache.ResolveAlias(ctx, identifier, teamSlug)
 		if err != nil {
 			msg := fmt.Sprintf("error resolving base template '%s'", *fromTemplate)
 			if errors.Is(err, templatecache.ErrTemplateNotFound) {
@@ -318,7 +318,15 @@ func setTemplateSource(ctx context.Context, tm *TemplateManager, teamID uuid.UUI
 			}
 		}
 
-		if !aliasInfo.Public && aliasInfo.TeamID != teamID {
+		info, err := tm.templateCache.GetByID(ctx, resolvedTemplateID, nil)
+		if err != nil {
+			return &FromTemplateError{
+				err:     err,
+				message: fmt.Sprintf("error resolving base template '%s'", *fromTemplate),
+			}
+		}
+
+		if !info.Template.Public && info.TeamID != teamID {
 			return &FromTemplateError{
 				err:     nil,
 				message: fmt.Sprintf("you have no access to use '%s' as a base template", *fromTemplate),
@@ -327,7 +335,7 @@ func setTemplateSource(ctx context.Context, tm *TemplateManager, teamID uuid.UUI
 
 		// Step 2: Get template with build by ID
 		baseTemplate, err := tm.sqlcDB.GetTemplateWithBuildByTag(ctx, queries.GetTemplateWithBuildByTagParams{
-			TemplateID: aliasInfo.TemplateID,
+			TemplateID: resolvedTemplateID,
 			Tag:        tag,
 		})
 		if err != nil {

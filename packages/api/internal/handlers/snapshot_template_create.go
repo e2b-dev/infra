@@ -68,11 +68,15 @@ func (a *APIStore) PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID api
 		}
 
 		// Resolve alias using the cache — same pattern as template builds
-		aliasInfo, err := a.templateCache.ResolveAlias(ctx, identifier, teamInfo.Slug)
+		existingTemplateID, err := a.templateCache.ResolveAlias(ctx, identifier, teamInfo.Slug)
+		if err == nil {
+			info, infoErr := a.templateCache.GetByID(ctx, existingTemplateID, nil)
+			if infoErr == nil && info.TeamID == teamID {
+				// Alias exists and is owned by this team — reuse the template
+				opts.ExistingTemplateID = &info.Template.TemplateID
+			}
+		}
 		switch {
-		case err == nil && aliasInfo.TeamID == teamID:
-			// Alias exists and is owned by this team — reuse the template
-			opts.ExistingTemplateID = &aliasInfo.TemplateID
 		case err == nil || errors.Is(err, templatecache.ErrTemplateNotFound):
 			// Not found, or owned by a different team — will create a new template with this alias
 		default:

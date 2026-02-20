@@ -28,7 +28,7 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 	}
 
 	// Resolve template and get the owning team
-	team, aliasInfo, apiErr := a.resolveTemplateAndTeam(ctx, c, identifier)
+	team, info, apiErr := a.resolveTemplateAndTeam(ctx, c, identifier)
 	if apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 		if apiErr.Code != http.StatusNotFound {
@@ -38,7 +38,7 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		return
 	}
 
-	templateID := aliasInfo.TemplateID
+	templateID := info.Template.TemplateID
 
 	telemetry.SetAttributes(ctx,
 		attribute.String("env.team.id", team.ID.String()),

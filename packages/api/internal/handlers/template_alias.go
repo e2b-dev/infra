@@ -37,7 +37,15 @@ func (a *APIStore) GetTemplatesAliasesAlias(c *gin.Context, alias string) {
 		return
 	}
 
-	aliasInfo, err := a.templateCache.ResolveAlias(ctx, identifier, team.Slug)
+	templateID, err := a.templateCache.ResolveAlias(ctx, identifier, team.Slug)
+	if err != nil {
+		apiErr := templatecache.ErrorToAPIError(err, identifier)
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+
+		return
+	}
+
+	info, err := a.templateCache.GetByID(ctx, templateID, nil)
 	if err != nil {
 		apiErr := templatecache.ErrorToAPIError(err, identifier)
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
@@ -46,7 +54,7 @@ func (a *APIStore) GetTemplatesAliasesAlias(c *gin.Context, alias string) {
 	}
 
 	// Ownership verification (handles edge case where template was transferred)
-	if aliasInfo.TeamID != team.ID {
+	if info.TeamID != team.ID {
 		a.sendAPIStoreError(c, http.StatusForbidden, "You don't have access to this template alias")
 
 		return
@@ -55,8 +63,8 @@ func (a *APIStore) GetTemplatesAliasesAlias(c *gin.Context, alias string) {
 	// Team is alias owner
 	c.JSON(
 		http.StatusOK, api.TemplateAliasResponse{
-			Public:     aliasInfo.Public,
-			TemplateID: aliasInfo.TemplateID,
+			Public:     info.Template.Public,
+			TemplateID: info.Template.TemplateID,
 		},
 	)
 }

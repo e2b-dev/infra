@@ -66,11 +66,20 @@ func (a *APIStore) PostTemplatesTags(c *gin.Context) {
 		targetTagValue = *tag
 	}
 
-	aliasInfo, err := a.templateCache.ResolveAlias(ctx, identifier, team.Slug)
+	resolvedTemplateID, err := a.templateCache.ResolveAlias(ctx, identifier, team.Slug)
 	if err != nil {
 		apiErr := templatecache.ErrorToAPIError(err, identifier)
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 		telemetry.ReportError(ctx, "template not found", apiErr.Err, telemetry.WithTemplateID(identifier))
+
+		return
+	}
+
+	info, err := a.templateCache.GetByID(ctx, resolvedTemplateID, nil)
+	if err != nil {
+		apiErr := templatecache.ErrorToAPIError(err, identifier)
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+		telemetry.ReportError(ctx, "template not found", apiErr.Err, telemetry.WithTemplateID(resolvedTemplateID))
 
 		return
 	}
@@ -86,13 +95,13 @@ func (a *APIStore) PostTemplatesTags(c *gin.Context) {
 
 	// Step 2: Get template with build by ID and tag
 	result, err := client.GetTemplateWithBuildByTag(ctx, queries.GetTemplateWithBuildByTagParams{
-		TemplateID: aliasInfo.TemplateID,
+		TemplateID: resolvedTemplateID,
 		Tag:        &targetTagValue,
 	})
 	if err != nil {
 		if dberrors.IsNotFoundError(err) {
 			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Template '%s' with tag '%s' not found", body.Target, targetTagValue))
-			telemetry.ReportError(ctx, "template tag not found", err, telemetry.WithTemplateID(aliasInfo.TemplateID))
+			telemetry.ReportError(ctx, "template tag not found", err, telemetry.WithTemplateID(resolvedTemplateID))
 
 			return
 		}
@@ -112,7 +121,7 @@ func (a *APIStore) PostTemplatesTags(c *gin.Context) {
 		telemetry.WithTemplateID(template.ID),
 	)
 
-	if aliasInfo.TeamID != team.ID {
+	if info.TeamID != team.ID {
 		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox template '%s'", identifier))
 		telemetry.ReportError(ctx, "no access to the template", nil, telemetry.WithTemplateID(template.ID))
 
@@ -239,7 +248,7 @@ func (a *APIStore) DeleteTemplatesTags(c *gin.Context) {
 		return
 	}
 
-	aliasInfo, err := a.templateCache.ResolveAlias(ctx, identifier, team.Slug)
+	resolvedTemplateID, err := a.templateCache.ResolveAlias(ctx, identifier, team.Slug)
 	if err != nil {
 		apiErr := templatecache.ErrorToAPIError(err, identifier)
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
@@ -248,9 +257,18 @@ func (a *APIStore) DeleteTemplatesTags(c *gin.Context) {
 		return
 	}
 
-	if aliasInfo.TeamID != team.ID {
+	info, err := a.templateCache.GetByID(ctx, resolvedTemplateID, nil)
+	if err != nil {
+		apiErr := templatecache.ErrorToAPIError(err, identifier)
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+		telemetry.ReportError(ctx, "template not found", apiErr.Err, telemetry.WithTemplateID(resolvedTemplateID))
+
+		return
+	}
+
+	if info.TeamID != team.ID {
 		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox template '%s'", identifier))
-		telemetry.ReportError(ctx, "no access to the template", nil, telemetry.WithTemplateID(aliasInfo.TemplateID))
+		telemetry.ReportError(ctx, "no access to the template", nil, telemetry.WithTemplateID(resolvedTemplateID))
 
 		return
 	}
@@ -258,12 +276,12 @@ func (a *APIStore) DeleteTemplatesTags(c *gin.Context) {
 	telemetry.SetAttributes(ctx,
 		attribute.String("env.team.id", team.ID.String()),
 		attribute.String("env.team.name", team.Name),
-		telemetry.WithTemplateID(aliasInfo.TemplateID),
+		telemetry.WithTemplateID(resolvedTemplateID),
 	)
 
 	// Delete the tag assignments
 	err = a.sqlcDB.DeleteTemplateTags(ctx, queries.DeleteTemplateTagsParams{
-		TemplateID: aliasInfo.TemplateID,
+		TemplateID: resolvedTemplateID,
 		Tags:       tags,
 	})
 	if err != nil {
@@ -274,17 +292,17 @@ func (a *APIStore) DeleteTemplatesTags(c *gin.Context) {
 	}
 
 	for _, tag := range tags {
-		a.templateCache.Invalidate(context.WithoutCancel(ctx), aliasInfo.TemplateID, &tag)
+		a.templateCache.Invalidate(context.WithoutCancel(ctx), resolvedTemplateID, &tag)
 	}
 
 	telemetry.ReportEvent(ctx, "deleted template tags")
 
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
 	a.posthog.IdentifyAnalyticsTeam(ctx, team.ID.String(), team.Name)
-	a.posthog.CreateAnalyticsTeamEvent(ctx, team.ID.String(), "deleted template tags", properties.Set("environment", aliasInfo.TemplateID).Set("tags", tags))
+	a.posthog.CreateAnalyticsTeamEvent(ctx, team.ID.String(), "deleted template tags", properties.Set("environment", resolvedTemplateID).Set("tags", tags))
 
 	logger.L().Info(ctx, "Deleted template tags",
-		logger.WithTemplateID(aliasInfo.TemplateID),
+		logger.WithTemplateID(resolvedTemplateID),
 		logger.WithTeamID(team.ID.String()),
 	)
 
@@ -315,7 +333,7 @@ func (a *APIStore) GetTemplatesTemplateIDTags(c *gin.Context, templateID api.Tem
 		return
 	}
 
-	aliasInfo, err := a.templateCache.ResolveAlias(ctx, identifier, team.Slug)
+	resolvedTemplateID, err := a.templateCache.ResolveAlias(ctx, identifier, team.Slug)
 	if err != nil {
 		apiErr := templatecache.ErrorToAPIError(err, identifier)
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
@@ -324,14 +342,23 @@ func (a *APIStore) GetTemplatesTemplateIDTags(c *gin.Context, templateID api.Tem
 		return
 	}
 
-	if aliasInfo.TeamID != team.ID {
-		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox template '%s'", templateID))
-		telemetry.ReportError(ctx, "no access to the template", nil, telemetry.WithTemplateID(aliasInfo.TemplateID))
+	info, err := a.templateCache.GetByID(ctx, resolvedTemplateID, nil)
+	if err != nil {
+		apiErr := templatecache.ErrorToAPIError(err, identifier)
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+		telemetry.ReportError(ctx, "template not found", apiErr.Err, telemetry.WithTemplateID(resolvedTemplateID))
 
 		return
 	}
 
-	tags, err := a.sqlcDB.ListTemplateTags(ctx, aliasInfo.TemplateID)
+	if info.TeamID != team.ID {
+		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox template '%s'", templateID))
+		telemetry.ReportError(ctx, "no access to the template", nil, telemetry.WithTemplateID(resolvedTemplateID))
+
+		return
+	}
+
+	tags, err := a.sqlcDB.ListTemplateTags(ctx, resolvedTemplateID)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when listing template tags")
 		telemetry.ReportCriticalError(ctx, "error when listing template tags", err)

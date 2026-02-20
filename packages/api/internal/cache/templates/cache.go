@@ -59,10 +59,6 @@ func NewTemplateCache(db *sqlcdb.Client, redisClient redis.UniversalClient) *Tem
 		RefreshInterval: templateCacheRefreshInterval,
 		RedisClient:     redisClient,
 		RedisPrefix:     templateCacheKeyPrefix,
-
-		ExtractKeyFunc: func(value *TemplateInfo) string {
-			return buildCacheKey(value.Template.TemplateID, value.Tag)
-		},
 	})
 
 	return &TemplateCache{
@@ -72,16 +68,11 @@ func NewTemplateCache(db *sqlcdb.Client, redisClient redis.UniversalClient) *Tem
 	}
 }
 
-// ResolveAlias resolves an identifier to AliasInfo (templateID, teamID, public).
+// ResolveAlias resolves an identifier to a templateID string.
 // The identifier is "namespace/alias" or just "alias" (already validated by id.ParseName).
 // namespaceFallback is used for bare aliases (no explicit namespace).
-func (c *TemplateCache) ResolveAlias(ctx context.Context, identifier string, namespaceFallback string) (*AliasInfo, error) {
+func (c *TemplateCache) ResolveAlias(ctx context.Context, identifier string, namespaceFallback string) (string, error) {
 	return c.aliasCache.Resolve(ctx, identifier, namespaceFallback)
-}
-
-// GetByID looks up template info by direct template ID only (no alias resolution).
-func (c *TemplateCache) GetByID(ctx context.Context, templateID string) (*AliasInfo, error) {
-	return c.aliasCache.LookupByID(ctx, templateID)
 }
 
 // Get fetches a template with build by templateID and tag.
@@ -92,7 +83,7 @@ func (c *TemplateCache) Get(ctx context.Context, templateID string, tag *string,
 	defer span.End()
 
 	// Step 1: Get template with build by ID and tag
-	templateInfo, err := c.getByID(ctx, templateID, tag)
+	templateInfo, err := c.GetByID(ctx, templateID, tag)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -110,8 +101,9 @@ func (c *TemplateCache) Get(ctx context.Context, templateID string, tag *string,
 	return templateInfo.Template, templateInfo.Build, nil
 }
 
-// getByID fetches template+build by templateID and tag
-func (c *TemplateCache) getByID(ctx context.Context, templateID string, tag *string) (*TemplateInfo, error) {
+// GetByID fetches template+build by templateID and tag from cache (or DB on miss).
+// Does NOT perform access control or cluster checks — use Get for that.
+func (c *TemplateCache) GetByID(ctx context.Context, templateID string, tag *string) (*TemplateInfo, error) {
 	tagValue := id.DefaultTag
 	if tag != nil {
 		tagValue = *tag
@@ -174,14 +166,10 @@ func (c *TemplateCache) Invalidate(ctx context.Context, templateID string, tag *
 	c.cache.Delete(ctx, cacheKey)
 }
 
-// InvalidateAllTags invalidates the cache for the given templateID across all tags
+// InvalidateAllTags invalidates the cache for the given templateID across all tags.
 func (c *TemplateCache) InvalidateAllTags(ctx context.Context, templateID string) []string {
 	pattern := buildCacheKey(templateID, "")
-	keys := c.cache.DeleteByPrefix(ctx, pattern)
-
-	c.aliasCache.InvalidateByTemplateID(ctx, templateID)
-
-	return keys
+	return c.cache.DeleteByPrefix(ctx, pattern)
 }
 
 // InvalidateAlias invalidates the alias cache entry

@@ -39,7 +39,7 @@ func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID ap
 func (a *APIStore) PatchV2TemplatesTemplateID(c *gin.Context, aliasOrTemplateID api.TemplateID) {
 	ctx := c.Request.Context()
 
-	team, aliasInfo, apiErr := a.updateTemplate(ctx, c, aliasOrTemplateID, false)
+	team, info, apiErr := a.updateTemplate(ctx, c, aliasOrTemplateID, false)
 	if apiErr != nil {
 		telemetry.ReportErrorByCode(ctx, apiErr.Code, apiErr.ClientMsg, apiErr.Err, telemetry.WithTemplateID(aliasOrTemplateID))
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
@@ -47,7 +47,9 @@ func (a *APIStore) PatchV2TemplatesTemplateID(c *gin.Context, aliasOrTemplateID 
 		return
 	}
 
-	template, err := a.sqlcDB.GetTemplateByIDWithAliases(ctx, aliasInfo.TemplateID)
+	templateID := info.Template.TemplateID
+
+	template, err := a.sqlcDB.GetTemplateByIDWithAliases(ctx, templateID)
 	if err != nil {
 		telemetry.ReportError(ctx, "error getting template names after update", err)
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error retrieving template after update")
@@ -60,13 +62,13 @@ func (a *APIStore) PatchV2TemplatesTemplateID(c *gin.Context, aliasOrTemplateID 
 	})
 
 	logger.L().Debug(ctx, "Returned template names after update",
-		logger.WithTemplateID(aliasInfo.TemplateID),
+		logger.WithTemplateID(templateID),
 		logger.WithTeamID(team.ID.String()))
 }
 
 // updateTemplate contains the shared logic for updating a template.
-// Returns the resolved team and aliasInfo on success, or an APIError on failure.
-func (a *APIStore) updateTemplate(ctx context.Context, c *gin.Context, aliasOrTemplateID api.TemplateID, createBackwardCompatAlias bool) (*types.Team, *templatecache.AliasInfo, *api.APIError) {
+// Returns the resolved team and template metadata on success, or an APIError on failure.
+func (a *APIStore) updateTemplate(ctx context.Context, c *gin.Context, aliasOrTemplateID api.TemplateID, createBackwardCompatAlias bool) (*types.Team, *templatecache.TemplateInfo, *api.APIError) {
 	body, err := utils.ParseBody[api.TemplateUpdateRequest](ctx, c)
 	if err != nil {
 		return nil, nil, &api.APIError{
@@ -86,28 +88,30 @@ func (a *APIStore) updateTemplate(ctx context.Context, c *gin.Context, aliasOrTe
 	}
 
 	// Resolve template and get the owning team
-	team, aliasInfo, apiErr := a.resolveTemplateAndTeam(ctx, c, identifier)
+	team, info, apiErr := a.resolveTemplateAndTeam(ctx, c, identifier)
 	if apiErr != nil {
 		return nil, nil, apiErr
 	}
+
+	templateID := info.Template.TemplateID
 
 	telemetry.SetAttributes(ctx,
 		attribute.String("env.team.id", team.ID.String()),
 		attribute.String("env.team.name", team.Name),
 		attribute.String("package_version", c.Request.Header.Get("package_version")),
 		attribute.Bool("create_backward_compat_alias", createBackwardCompatAlias),
-		telemetry.WithTemplateID(aliasInfo.TemplateID),
+		telemetry.WithTemplateID(templateID),
 	)
 
 	// No-op if no update fields provided (empty body is valid per OpenAPI spec)
 	if body.Public == nil {
-		logger.L().Debug(ctx, "Empty PATCH body, no-op", logger.WithTemplateID(aliasInfo.TemplateID))
+		logger.L().Debug(ctx, "Empty PATCH body, no-op", logger.WithTemplateID(templateID))
 
-		return team, aliasInfo, nil
+		return team, info, nil
 	}
 
 	_, err = a.sqlcDB.UpdateTemplate(ctx, queries.UpdateTemplateParams{
-		TemplateIDOrAlias: aliasInfo.TemplateID,
+		TemplateIDOrAlias: templateID,
 		TeamID:            team.ID,
 		Public:            *body.Public,
 	})
@@ -128,12 +132,12 @@ func (a *APIStore) updateTemplate(ctx context.Context, c *gin.Context, aliasOrTe
 	}
 
 	// Invalidate cache immediately after successful DB update
-	a.templateCache.InvalidateAllTags(context.WithoutCancel(ctx), aliasInfo.TemplateID)
+	a.templateCache.InvalidateAllTags(context.WithoutCancel(ctx), templateID)
 
 	// For backward compatibility with older CLIs (v1 endpoint), also create a non-namespaced alias
 	// when publishing a template, so older CLIs can still find it by bare alias name
 	if createBackwardCompatAlias && *body.Public {
-		if apiErr := a.createBackwardCompatibleAlias(ctx, identifier, aliasInfo.TemplateID, team.Slug); apiErr != nil {
+		if apiErr := a.createBackwardCompatibleAlias(ctx, identifier, templateID, team.Slug); apiErr != nil {
 			return nil, nil, apiErr
 		}
 	}
@@ -142,11 +146,11 @@ func (a *APIStore) updateTemplate(ctx context.Context, c *gin.Context, aliasOrTe
 
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
 	a.posthog.IdentifyAnalyticsTeam(ctx, team.ID.String(), team.Name)
-	a.posthog.CreateAnalyticsTeamEvent(ctx, team.ID.String(), "updated environment", properties.Set("environment", aliasInfo.TemplateID))
+	a.posthog.CreateAnalyticsTeamEvent(ctx, team.ID.String(), "updated environment", properties.Set("environment", templateID))
 
-	logger.L().Info(ctx, "Updated template", logger.WithTemplateID(aliasInfo.TemplateID), logger.WithTeamID(team.ID.String()))
+	logger.L().Info(ctx, "Updated template", logger.WithTemplateID(templateID), logger.WithTeamID(team.ID.String()))
 
-	return team, aliasInfo, nil
+	return team, info, nil
 }
 
 // createBackwardCompatibleAlias creates a non-namespaced alias for older CLIs

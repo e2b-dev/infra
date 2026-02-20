@@ -123,16 +123,21 @@ func (a *APIStore) resolveTemplateAndTeam(
 	ctx context.Context,
 	c *gin.Context,
 	identifier string,
-) (*types.Team, *templatecache.AliasInfo, *api.APIError) {
+) (*types.Team, *templatecache.TemplateInfo, *api.APIError) {
 	switch {
 	case c.Value(auth.TeamContextKey) != nil:
 		team := a.GetTeamInfo(c)
-		aliasInfo, err := a.templateCache.ResolveAlias(ctx, identifier, team.Slug)
+		templateID, err := a.templateCache.ResolveAlias(ctx, identifier, team.Slug)
 		if err != nil {
 			return nil, nil, templatecache.ErrorToAPIError(err, identifier)
 		}
 
-		if aliasInfo.TeamID != team.ID {
+		info, err := a.templateCache.GetByID(ctx, templateID, nil)
+		if err != nil {
+			return nil, nil, templatecache.ErrorToAPIError(err, identifier)
+		}
+
+		if info.TeamID != team.ID {
 			return nil, nil, &api.APIError{
 				Code:      http.StatusForbidden,
 				ClientMsg: fmt.Sprintf("You don't have access to template '%s'", identifier),
@@ -140,9 +145,9 @@ func (a *APIStore) resolveTemplateAndTeam(
 			}
 		}
 
-		return team, aliasInfo, nil
+		return team, info, nil
 	case c.Value(auth.UserIDContextKey) != nil:
-		aliasInfo, err := a.templateCache.GetByID(ctx, identifier)
+		info, err := a.templateCache.GetByID(ctx, identifier, nil)
 		if err != nil {
 			return nil, nil, templatecache.ErrorToAPIError(err, identifier)
 		}
@@ -153,8 +158,8 @@ func (a *APIStore) resolveTemplateAndTeam(
 		}
 
 		for _, t := range userTeams {
-			if t.Team.ID == aliasInfo.TeamID {
-				return t.Team, aliasInfo, nil
+			if t.Team.ID == info.TeamID {
+				return t.Team, info, nil
 			}
 		}
 
