@@ -16,16 +16,13 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
 )
 
-func (a *API) GetFiles(w http.ResponseWriter, r *http.Request, params GetFilesParams) {
+func (a *API) DownloadFile(w http.ResponseWriter, r *http.Request, params DownloadFileParams) {
 	defer r.Body.Close()
 
 	var errorCode int
 	var errMsg error
 
-	var path string
-	if params.Path != nil {
-		path = *params.Path
-	}
+	path := string(params.Path)
 
 	operationID := logs.AssignOperationID()
 

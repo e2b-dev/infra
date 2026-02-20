@@ -550,9 +550,9 @@ func TestAssignmentOrderingLatestWins(t *testing.T) {
 
 	// Read the version file from the sandbox to verify it's using the latest build
 	envdClient := setup.GetEnvdClient(t, ctx)
-	fileResp, err := envdClient.HTTPClient.GetFilesWithResponse(
+	fileResp, err := envdClient.HTTPClient.DownloadFileWithResponse(
 		ctx,
-		&envd.GetFilesParams{Path: &versionFilePath, Username: utils.ToPtr("user")},
+		&envd.DownloadFileParams{Path: versionFilePath, Username: utils.ToPtr("user")},
 		setup.WithSandbox(t, sbx.SandboxID),
 	)
 	require.NoError(t, err)
@@ -619,9 +619,9 @@ func TestAssignmentOrderingAfterTagReassignment(t *testing.T) {
 
 	// Read the version file from the sandbox to verify it's using the reassigned build
 	envdClient := setup.GetEnvdClient(t, ctx)
-	fileResp, err := envdClient.HTTPClient.GetFilesWithResponse(
+	fileResp, err := envdClient.HTTPClient.DownloadFileWithResponse(
 		ctx,
-		&envd.GetFilesParams{Path: &versionFilePath, Username: utils.ToPtr("user")},
+		&envd.DownloadFileParams{Path: versionFilePath, Username: utils.ToPtr("user")},
 		setup.WithSandbox(t, sbx.SandboxID),
 	)
 	require.NoError(t, err)

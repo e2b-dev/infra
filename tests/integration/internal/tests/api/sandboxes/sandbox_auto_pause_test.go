@@ -88,10 +88,10 @@ func TestSandboxAutoPauseResumePersisted(t *testing.T) {
 	require.NoError(t, err)
 
 	// Check if the file is still there after resuming
-	fileResponse, err := envdClient.HTTPClient.GetFilesWithResponse(
+	fileResponse, err := envdClient.HTTPClient.DownloadFileWithResponse(
 		t.Context(),
-		&envd.GetFilesParams{
-			Path:     &path,
+		&envd.DownloadFileParams{
+			Path:     path,
 			Username: sharedUtils.ToPtr("user"),
 		},
 		setup.WithSandbox(t, sbxId),
@@ -128,10 +128,10 @@ func TestSandboxAutoPauseResumePersisted(t *testing.T) {
 	assert.Equal(t, sbxResume.JSON201.SandboxID, sbxId)
 
 	// Check if the file is still there after resuming
-	fileResponse, err = envdClient.HTTPClient.GetFilesWithResponse(
+	fileResponse, err = envdClient.HTTPClient.DownloadFileWithResponse(
 		t.Context(),
-		&envd.GetFilesParams{
-			Path:     &path,
+		&envd.DownloadFileParams{
+			Path:     path,
 			Username: sharedUtils.ToPtr("user"),
 		},
 		setup.WithSandbox(t, sbxId),

@@ -35,7 +35,7 @@ func (s *Sandbox) doRequestWithInfiniteRetries(
 ) (*http.Response, int64, error) {
 	requestCount := int64(0)
 
-	jsonBody := &envd.PostInitJSONBody{
+	jsonBody := &envd.InitSandboxJSONBody{
 		EnvVars:        s.Config.Envd.Vars,
 		HyperloopIP:    s.config.NetworkConfig.OrchestratorInSandboxIPAddress,
 		AccessToken:    utils.DerefOrDefault(s.Config.Envd.AccessToken, ""),

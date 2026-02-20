@@ -29,9 +29,9 @@ func TestAccessingHyperloopServerViaIP(t *testing.T) {
 	require.NoError(t, err, "Should be able to contact hyperloop server")
 
 	readPath := "output.txt"
-	readRes, readErr := envdClient.HTTPClient.GetFilesWithResponse(
+	readRes, readErr := envdClient.HTTPClient.DownloadFileWithResponse(
 		ctx,
-		&envd.GetFilesParams{Path: &readPath, Username: sharedUtils.ToPtr("user")},
+		&envd.DownloadFileParams{Path: readPath, Username: sharedUtils.ToPtr("user")},
 		setup.WithSandbox(t, sbx.SandboxID),
 	)
 
@@ -54,9 +54,9 @@ func TestAccessingHyperloopServerViaDomain(t *testing.T) {
 	require.NoError(t, err, "Should be able to contact hyperloop server")
 
 	readPath := "output.txt"
-	readRes, readErr := envdClient.HTTPClient.GetFilesWithResponse(
+	readRes, readErr := envdClient.HTTPClient.DownloadFileWithResponse(
 		ctx,
-		&envd.GetFilesParams{Path: &readPath, Username: sharedUtils.ToPtr("user")},
+		&envd.DownloadFileParams{Path: readPath, Username: sharedUtils.ToPtr("user")},
 		setup.WithSandbox(t, sbx.SandboxID),
 	)
 
@@ -79,9 +79,9 @@ func TestAccessingHyperloopServerViaIPWithBlockedInternet(t *testing.T) {
 	require.NoError(t, err, "Should be able to contact hyperloop server")
 
 	readPath := "output.txt"
-	readRes, readErr := envdClient.HTTPClient.GetFilesWithResponse(
+	readRes, readErr := envdClient.HTTPClient.DownloadFileWithResponse(
 		ctx,
-		&envd.GetFilesParams{Path: &readPath, Username: sharedUtils.ToPtr("user")},
+		&envd.DownloadFileParams{Path: readPath, Username: sharedUtils.ToPtr("user")},
 		setup.WithSandbox(t, sbx.SandboxID),
 	)
 

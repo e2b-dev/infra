@@ -30,10 +30,10 @@ func TestDownloadFileWhenAuthIsDisabled(t *testing.T) {
 	filePath := "test.txt"
 	textFile, contentType := utils.CreateTextFile(t, filePath, "Hello, World!")
 
-	writeRes, err := envdClient.HTTPClient.PostFilesWithBodyWithResponse(
+	writeRes, err := envdClient.HTTPClient.UploadFileWithBodyWithResponse(
 		ctx,
-		&envd.PostFilesParams{
-			Path:     &filePath,
+		&envd.UploadFileParams{
+			Path:     filePath,
 			Username: sharedUtils.ToPtr("user"),
 		},
 		contentType,
@@ -44,9 +44,9 @@ func TestDownloadFileWhenAuthIsDisabled(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, writeRes.StatusCode())
 
-	getRes, err := envdClient.HTTPClient.GetFilesWithResponse(
+	getRes, err := envdClient.HTTPClient.DownloadFileWithResponse(
 		ctx,
-		&envd.GetFilesParams{Path: &filePath, Username: sharedUtils.ToPtr("user")},
+		&envd.DownloadFileParams{Path: filePath, Username: sharedUtils.ToPtr("user")},
 		setup.WithSandbox(t, sbx.JSON201.SandboxID),
 	)
 
@@ -71,10 +71,10 @@ func TestDownloadFileWithoutSigningWhenAuthIsEnabled(t *testing.T) {
 	textFile, contentType := utils.CreateTextFile(t, filePath, "Hello, World!")
 
 	writeFileSigning := generateSignature(filePath, "user", "write", nil, *envdToken)
-	writeRes, err := envdClient.HTTPClient.PostFilesWithBodyWithResponse(
+	writeRes, err := envdClient.HTTPClient.UploadFileWithBodyWithResponse(
 		ctx,
-		&envd.PostFilesParams{
-			Path:      &filePath,
+		&envd.UploadFileParams{
+			Path:      filePath,
 			Username:  sharedUtils.ToPtr("user"),
 			Signature: &writeFileSigning,
 		},
@@ -89,7 +89,7 @@ func TestDownloadFileWithoutSigningWhenAuthIsEnabled(t *testing.T) {
 
 	readRes, readErr := envdClient.HTTPClient.GetFiles(
 		ctx,
-		&envd.GetFilesParams{Path: &filePath, Username: sharedUtils.ToPtr("user")},
+		&envd.DownloadFileParams{Path: filePath, Username: sharedUtils.ToPtr("user")},
 		setup.WithSandbox(t, sbx.JSON201.SandboxID),
 	)
 	require.NoError(t, readErr)
@@ -115,10 +115,10 @@ func TestDownloadFileWithSigningWhenAuthIsEnabled(t *testing.T) {
 	writeFileSigning := generateSignature(filePath, "user", "write", nil, *envdToken)
 	textFile, contentType := utils.CreateTextFile(t, filePath, "Hello, World!")
 
-	writeRes, err := envdClient.HTTPClient.PostFilesWithBodyWithResponse(
+	writeRes, err := envdClient.HTTPClient.UploadFileWithBodyWithResponse(
 		ctx,
-		&envd.PostFilesParams{
-			Path:      &filePath,
+		&envd.UploadFileParams{
+			Path:      filePath,
 			Username:  sharedUtils.ToPtr("user"),
 			Signature: &writeFileSigning,
 		},
@@ -130,9 +130,9 @@ func TestDownloadFileWithSigningWhenAuthIsEnabled(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, writeRes.StatusCode())
 
-	readRes, readErr := envdClient.HTTPClient.GetFilesWithResponse(
+	readRes, readErr := envdClient.HTTPClient.DownloadFileWithResponse(
 		ctx,
-		&envd.GetFilesParams{Path: &filePath, Username: sharedUtils.ToPtr("user"), Signature: &readFileSigning},
+		&envd.DownloadFileParams{Path: filePath, Username: sharedUtils.ToPtr("user"), Signature: &readFileSigning},
 		setup.WithSandbox(t, sbx.JSON201.SandboxID),
 	)
 
@@ -159,10 +159,10 @@ func TestDownloadWithAlreadyExpiredToken(t *testing.T) {
 	signatureForRead := generateSignature(filePath, "user", "read", &signatureExpiration, *envdToken)
 
 	readExpiration := int(signatureExpiration)
-	readRes, readErr := envdClient.HTTPClient.GetFilesWithResponse(
+	readRes, readErr := envdClient.HTTPClient.DownloadFileWithResponse(
 		ctx,
-		&envd.GetFilesParams{
-			Path:                &filePath,
+		&envd.DownloadFileParams{
+			Path:                filePath,
 			Username:            sharedUtils.ToPtr("user"),
 			Signature:           &signatureForRead,
 			SignatureExpiration: &readExpiration,
@@ -193,10 +193,10 @@ func TestDownloadWithHealthyToken(t *testing.T) {
 	signatureForRead := generateSignature(filePath, "user", "read", &signatureExpiration, *envdToken)
 
 	readExpiration := int(signatureExpiration)
-	readRes, readErr := envdClient.HTTPClient.GetFilesWithResponse(
+	readRes, readErr := envdClient.HTTPClient.DownloadFileWithResponse(
 		ctx,
-		&envd.GetFilesParams{
-			Path:                &filePath,
+		&envd.DownloadFileParams{
+			Path:                filePath,
 			Username:            sharedUtils.ToPtr("user"),
 			Signature:           &signatureForRead,
 			SignatureExpiration: &readExpiration,
@@ -227,10 +227,10 @@ func TestAccessWithNotCorrespondingSignatureAndSignatureExpiration(t *testing.T)
 	signatureForRead := generateSignature(filePath, "user", "read", nil, *envdToken)
 
 	readExpiration := int(signatureExpiration)
-	readRes, readErr := envdClient.HTTPClient.GetFilesWithResponse(
+	readRes, readErr := envdClient.HTTPClient.DownloadFileWithResponse(
 		ctx,
-		&envd.GetFilesParams{
-			Path:                &filePath,
+		&envd.DownloadFileParams{
+			Path:                filePath,
 			Username:            sharedUtils.ToPtr("user"),
 			Signature:           &signatureForRead,
 			SignatureExpiration: &readExpiration,

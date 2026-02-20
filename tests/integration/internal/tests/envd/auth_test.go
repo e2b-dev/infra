@@ -185,9 +185,9 @@ func TestAccessAuthorizedPathWithResumedSandboxWithValidAccessToken(t *testing.T
 	require.Equal(t, http.StatusCreated, sbxResume.StatusCode())
 
 	// try to get the file with the valid access token
-	fileResponse, err := envdClient.HTTPClient.GetFilesWithResponse(
+	fileResponse, err := envdClient.HTTPClient.DownloadFileWithResponse(
 		ctx,
-		&envd.GetFilesParams{Path: &filePath, Username: sharedUtils.ToPtr("user")},
+		&envd.DownloadFileParams{Path: filePath, Username: sharedUtils.ToPtr("user")},
 		setup.WithSandbox(t, sbx.JSON201.SandboxID),
 		setup.WithEnvdAccessToken(t, *sbxMeta.EnvdAccessToken),
 	)
@@ -242,9 +242,9 @@ func TestAccessAuthorizedPathWithResumedSandboxWithoutAccessToken(t *testing.T) 
 	assert.Equal(t, http.StatusCreated, sbxResume.StatusCode())
 
 	// try to get the file with the without access token
-	fileResponse, err := envdClient.HTTPClient.GetFilesWithResponse(
+	fileResponse, err := envdClient.HTTPClient.DownloadFileWithResponse(
 		ctx,
-		&envd.GetFilesParams{Path: &filePath, Username: sharedUtils.ToPtr("user")},
+		&envd.DownloadFileParams{Path: filePath, Username: sharedUtils.ToPtr("user")},
 		setup.WithSandbox(t, sbx.JSON201.SandboxID),
 	)
 	if err != nil {

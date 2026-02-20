@@ -102,11 +102,11 @@ func TestGetFilesContentDisposition(t *testing.T) {
 			w := httptest.NewRecorder()
 
 			// Call the handler
-			params := GetFilesParams{
-				Path:     &tempFile,
+			params := DownloadFileParams{
+				Path:     FilePath(tempFile),
 				Username: &currentUser.Username,
 			}
-			api.GetFiles(w, req, params)
+			api.DownloadFile(w, req, params)
 
 			// Check response
 			resp := w.Result()
@@ -151,11 +151,11 @@ func TestGetFilesContentDispositionWithNestedPath(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	// Call the handler
-	params := GetFilesParams{
-		Path:     &tempFile,
+	params := DownloadFileParams{
+		Path:     FilePath(tempFile),
 		Username: &currentUser.Username,
 	}
-	api.GetFiles(w, req, params)
+	api.DownloadFile(w, req, params)
 
 	// Check response
 	resp := w.Result()
@@ -196,11 +196,11 @@ func TestGetFiles_GzipEncoding_ExplicitIdentityOffWithRange(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	// Call the handler
-	params := GetFilesParams{
-		Path:     &tempFile,
+	params := DownloadFileParams{
+		Path:     FilePath(tempFile),
 		Username: &currentUser.Username,
 	}
-	api.GetFiles(w, req, params)
+	api.DownloadFile(w, req, params)
 
 	// Check response
 	resp := w.Result()
@@ -234,11 +234,11 @@ func TestGetFiles_GzipDownload(t *testing.T) {
 	req.Header.Set("Accept-Encoding", "gzip")
 	w := httptest.NewRecorder()
 
-	params := GetFilesParams{
-		Path:     &tempFile,
+	params := DownloadFileParams{
+		Path:     FilePath(tempFile),
 		Username: &currentUser.Username,
 	}
-	api.GetFiles(w, req, params)
+	api.DownloadFile(w, req, params)
 
 	resp := w.Result()
 	defer resp.Body.Close()
@@ -300,11 +300,11 @@ func TestPostFiles_GzipUpload(t *testing.T) {
 	req.Header.Set("Content-Encoding", "gzip")
 	w := httptest.NewRecorder()
 
-	params := PostFilesParams{
-		Path:     &destPath,
+	params := UploadFileParams{
+		Path:     FilePath(destPath),
 		Username: &currentUser.Username,
 	}
-	api.PostFiles(w, req, params)
+	api.UploadFile(w, req, params)
 
 	resp := w.Result()
 	defer resp.Body.Close()
@@ -360,11 +360,11 @@ func TestGzipUploadThenGzipDownload(t *testing.T) {
 	uploadReq.Header.Set("Content-Encoding", "gzip")
 	uploadW := httptest.NewRecorder()
 
-	uploadParams := PostFilesParams{
-		Path:     &destPath,
+	uploadParams := UploadFileParams{
+		Path:     FilePath(destPath),
 		Username: &currentUser.Username,
 	}
-	api.PostFiles(uploadW, uploadReq, uploadParams)
+	api.UploadFile(uploadW, uploadReq, uploadParams)
 
 	uploadResp := uploadW.Result()
 	defer uploadResp.Body.Close()
@@ -377,11 +377,11 @@ func TestGzipUploadThenGzipDownload(t *testing.T) {
 	downloadReq.Header.Set("Accept-Encoding", "gzip")
 	downloadW := httptest.NewRecorder()
 
-	downloadParams := GetFilesParams{
-		Path:     &destPath,
+	downloadParams := DownloadFileParams{
+		Path:     FilePath(destPath),
 		Username: &currentUser.Username,
 	}
-	api.GetFiles(downloadW, downloadReq, downloadParams)
+	api.DownloadFile(downloadW, downloadReq, downloadParams)
 
 	downloadResp := downloadW.Result()
 	defer downloadResp.Body.Close()

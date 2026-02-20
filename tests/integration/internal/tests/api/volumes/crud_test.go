@@ -110,9 +110,9 @@ func TestVolumeRoundTrip(t *testing.T) {
 	{
 		ctx := t.Context()
 		envdClient := setup.GetEnvdClient(t, ctx)
-		readRes, readErr := envdClient.HTTPClient.GetFilesWithResponse(
+		readRes, readErr := envdClient.HTTPClient.DownloadFileWithResponse(
 			ctx,
-			&envd.GetFilesParams{Path: &filePath, Username: sharedutils.ToPtr("user")},
+			&envd.DownloadFileParams{Path: filePath, Username: sharedutils.ToPtr("user")},
 			setup.WithSandbox(t, sbx.SandboxID),
 		)
 		require.NoError(t, readErr)
@@ -166,9 +166,9 @@ func TestVolumeRoundTrip(t *testing.T) {
 	{
 		ctx := t.Context()
 		envdClient := setup.GetEnvdClient(t, ctx)
-		readRes, readErr := envdClient.HTTPClient.GetFilesWithResponse(
+		readRes, readErr := envdClient.HTTPClient.DownloadFileWithResponse(
 			ctx,
-			&envd.GetFilesParams{Path: &filePath, Username: sharedutils.ToPtr("user")},
+			&envd.DownloadFileParams{Path: filePath, Username: sharedutils.ToPtr("user")},
 			setup.WithSandbox(t, sbx2.SandboxID),
 		)
 		require.NoError(t, readErr)
@@ -187,9 +187,9 @@ func TestVolumeRoundTrip(t *testing.T) {
 		require.NoError(t, remErr)
 
 		// verify it's gone
-		readRes, readErr := envdClient.HTTPClient.GetFilesWithResponse(
+		readRes, readErr := envdClient.HTTPClient.DownloadFileWithResponse(
 			ctx,
-			&envd.GetFilesParams{Path: &filePath, Username: sharedutils.ToPtr("user")},
+			&envd.DownloadFileParams{Path: filePath, Username: sharedutils.ToPtr("user")},
 			setup.WithSandbox(t, sbx2.SandboxID),
 		)
 		require.NoError(t, readErr)
