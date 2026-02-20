@@ -103,13 +103,12 @@ func TestMapping_GetOffset(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			offset, pagesize, err := mapping.GetOffset(tt.hostVirtAddr)
+			offset, err := mapping.GetOffset(tt.hostVirtAddr)
 			if tt.expectError != nil {
 				require.ErrorIs(t, err, tt.expectError)
 			} else {
 				require.NoError(t, err)
 				assert.Equal(t, tt.expectedOffset, offset)
-				assert.Equal(t, tt.expectedPagesize, pagesize)
 			}
 		})
 	}
@@ -121,7 +120,7 @@ func TestMapping_EmptyRegions(t *testing.T) {
 	mapping := NewMapping([]Region{})
 
 	// Test GetOffset with empty regions
-	_, _, err := mapping.GetOffset(0x1000)
+	_, err := mapping.GetOffset(0x1000)
 	require.ErrorIs(t, err, AddressNotFoundError{hostVirtAddr: 0x1000})
 }
 
@@ -140,23 +139,21 @@ func TestMapping_BoundaryConditions(t *testing.T) {
 	mapping := NewMapping(regions)
 
 	// Test exact start boundary
-	offset, pagesize, err := mapping.GetOffset(0x1000)
+	offset, err := mapping.GetOffset(0x1000)
 	require.NoError(t, err)
 	assert.Equal(t, int64(0x5000), offset) // 0x5000 + (0x1000 - 0x1000)
-	assert.Equal(t, uintptr(header.PageSize), pagesize)
 
 	// Test just before end boundary (exclusive)
-	offset, pagesize, err = mapping.GetOffset(0x2FFF) // 0x1000 + 0x2000 - 1
+	offset, err = mapping.GetOffset(0x2FFF) // 0x1000 + 0x2000 - 1
 	require.NoError(t, err)
 	assert.Equal(t, int64(0x5000+(0x2FFF-0x1000)), offset) // 0x6FFF
-	assert.Equal(t, uintptr(header.PageSize), pagesize)
 
 	// Test exact end boundary (should fail - exclusive)
-	_, _, err = mapping.GetOffset(0x3000) // 0x1000 + 0x2000
+	_, err = mapping.GetOffset(0x3000) // 0x1000 + 0x2000
 	require.ErrorIs(t, err, AddressNotFoundError{hostVirtAddr: 0x3000})
 
 	// Test below start boundary (should fail)
-	_, _, err = mapping.GetOffset(0x0FFF) // 0x1000 - 0x1000
+	_, err = mapping.GetOffset(0x0FFF) // 0x1000 - 0x1000
 	require.ErrorIs(t, err, AddressNotFoundError{hostVirtAddr: 0x0FFF})
 }
 
@@ -174,10 +171,9 @@ func TestMapping_SingleLargeRegion(t *testing.T) {
 	}
 	mapping := NewMapping(regions)
 
-	offset, pagesize, err := mapping.GetOffset(0xABCDEF)
+	offset, err := mapping.GetOffset(0xABCDEF)
 	require.NoError(t, err)
 	assert.Equal(t, int64(0x100+0xABCDEF), offset)
-	assert.Equal(t, uintptr(header.PageSize), pagesize)
 }
 
 func TestMapping_ZeroSizeRegion(t *testing.T) {
@@ -194,7 +190,7 @@ func TestMapping_ZeroSizeRegion(t *testing.T) {
 
 	mapping := NewMapping(regions)
 
-	_, _, err := mapping.GetOffset(0x2000)
+	_, err := mapping.GetOffset(0x2000)
 	require.ErrorIs(t, err, AddressNotFoundError{hostVirtAddr: 0x2000})
 }
 
@@ -218,19 +214,17 @@ func TestMapping_MultipleRegionsSparse(t *testing.T) {
 	mapping := NewMapping(regions)
 
 	// Should succeed for start of first region
-	offset, pagesize, err := mapping.GetOffset(0x100)
+	offset, err := mapping.GetOffset(0x100)
 	require.NoError(t, err)
 	assert.Equal(t, int64(0x1000), offset)
-	assert.Equal(t, uintptr(header.PageSize), pagesize)
 
 	// Should succeed for start of second region
-	offset, pagesize, err = mapping.GetOffset(0x10000)
+	offset, err = mapping.GetOffset(0x10000)
 	require.NoError(t, err)
 	assert.Equal(t, int64(0x2000), offset)
-	assert.Equal(t, uintptr(header.PageSize), pagesize)
 
 	// In gap
-	_, _, err = mapping.GetOffset(0x5000)
+	_, err = mapping.GetOffset(0x5000)
 	require.ErrorIs(t, err, AddressNotFoundError{hostVirtAddr: 0x5000})
 }
 
@@ -250,18 +244,16 @@ func TestMapping_HugepagePagesize(t *testing.T) {
 	mapping := NewMapping(regions)
 
 	// Test valid address in region using hugepages
-	offset, pagesize, err := mapping.GetOffset(0x401000)
+	offset, err := mapping.GetOffset(0x401000)
 	require.NoError(t, err)
 	assert.Equal(t, int64(0x800000+(0x401000-0x400000)), offset)
-	assert.Equal(t, uintptr(hugepageSize), pagesize)
 
 	// Test start of region
-	offset, pagesize, err = mapping.GetOffset(0x400000)
+	offset, err = mapping.GetOffset(0x400000)
 	require.NoError(t, err)
 	assert.Equal(t, int64(0x800000), offset)
-	assert.Equal(t, uintptr(hugepageSize), pagesize)
 
 	// Test end of region (exclusive, should fail)
-	_, _, err = mapping.GetOffset(0x400000 + uintptr(hugepageSize))
+	_, err = mapping.GetOffset(0x400000 + uintptr(hugepageSize))
 	require.ErrorIs(t, err, AddressNotFoundError{hostVirtAddr: 0x400000 + uintptr(hugepageSize)})
 }
