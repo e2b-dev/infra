@@ -87,32 +87,19 @@ func handlePausedSandbox(
 	logger.L().Info(ctx, "catalog miss, attempting resume via api", logger.WithSandboxID(sandboxId))
 	nodeIP, err := pausedChecker.Resume(ctx, sandboxId, sandboxPort, trafficAccessToken, envdAccessToken)
 	if err != nil {
-		if code, ok := getNotResumableCode(err); ok {
-			if code == codes.PermissionDenied {
+		if st, ok := status.FromError(err); ok {
+			if st.Code() == codes.PermissionDenied {
 				return "", autoResumePermissionDenied, reverseproxy.NewErrSandboxResumePermissionDenied(sandboxId)
 			}
-
-			return "", autoResumeNotAllowed, nil
+			if st.Code() == codes.NotFound {
+				return "", autoResumeNotAllowed, nil
+			}
 		}
 
 		return "", autoResumeErrored, err
 	}
 
 	return nodeIP, autoResumeSucceeded, nil
-}
-
-func getNotResumableCode(err error) (codes.Code, bool) {
-	st, ok := status.FromError(err)
-	if !ok {
-		return 0, false
-	}
-
-	code := st.Code()
-	if code == codes.NotFound || code == codes.PermissionDenied {
-		return code, true
-	}
-
-	return 0, false
 }
 
 func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog catalog.SandboxesCatalog, pausedSandboxResumer PausedSandboxResumer, featureFlagsClient *featureflags.Client) (*reverseproxy.Proxy, error) {
