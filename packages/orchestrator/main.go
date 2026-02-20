@@ -36,6 +36,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/cgroup"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
@@ -345,6 +346,18 @@ func run(config cfg.Config) (success bool) {
 		closers = append(closers, closer{"sandbox host stats delivery", hostStatsDeliveryClickhouse.Close})
 	}
 
+	// cgroup manager for resource accounting
+	cgroupManager, err := cgroup.NewManager()
+	if err != nil {
+		logger.L().Fatal(ctx, "failed to initialize cgroup manager", zap.Error(err))
+	}
+
+	if err := cgroupManager.Initialize(ctx); err != nil {
+		logger.L().Fatal(ctx, "failed to initialize root cgroup", zap.Error(err))
+	}
+
+	logger.L().Info(ctx, "cgroup accounting enabled", zap.String("root", cgroup.RootCgroupPath))
+
 	// redis
 	redisClient, err := sharedFactories.NewRedisClient(ctx, sharedFactories.RedisConfig{
 		RedisURL:         config.RedisURL,
@@ -427,7 +440,7 @@ func run(config cfg.Config) (success bool) {
 	closers = append(closers, closer{"network pool", networkPool.Close})
 
 	// sandbox factory
-	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags, hostStatsDelivery)
+	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags, hostStatsDelivery, cgroupManager)
 
 	volumeService := volumes.New(config)
 

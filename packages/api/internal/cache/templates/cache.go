@@ -23,7 +23,6 @@ import (
 const (
 	templateCacheTTL             = 5 * time.Minute
 	templateCacheRefreshInterval = 1 * time.Minute
-	templateCacheTimeout         = 2 * time.Second
 
 	templateCacheKeyPrefix = "template:info"
 )
@@ -58,7 +57,6 @@ func NewTemplateCache(db *sqlcdb.Client, redisClient redis.UniversalClient) *Tem
 	redisCache := cache.NewRedisCache[*TemplateInfo](cache.RedisConfig[*TemplateInfo]{
 		TTL:             templateCacheTTL,
 		RefreshInterval: templateCacheRefreshInterval,
-		RedisTimeout:    templateCacheTimeout,
 		RedisClient:     redisClient,
 		RedisPrefix:     templateCacheKeyPrefix,
 
@@ -70,7 +68,7 @@ func NewTemplateCache(db *sqlcdb.Client, redisClient redis.UniversalClient) *Tem
 	return &TemplateCache{
 		cache:      redisCache,
 		db:         db,
-		aliasCache: NewAliasCache(db),
+		aliasCache: NewAliasCache(db, redisClient),
 	}
 }
 
@@ -181,14 +179,14 @@ func (c *TemplateCache) InvalidateAllTags(ctx context.Context, templateID string
 	pattern := buildCacheKey(templateID, "")
 	keys := c.cache.DeleteByPrefix(ctx, pattern)
 
-	c.aliasCache.InvalidateByTemplateID(templateID)
+	c.aliasCache.InvalidateByTemplateID(ctx, templateID)
 
 	return keys
 }
 
 // InvalidateAlias invalidates the alias cache entry
-func (c *TemplateCache) InvalidateAlias(namespace *string, alias string) {
-	c.aliasCache.Invalidate(namespace, alias)
+func (c *TemplateCache) InvalidateAlias(ctx context.Context, namespace *string, alias string) {
+	c.aliasCache.Invalidate(ctx, namespace, alias)
 }
 
 func (c *TemplateCache) Close(ctx context.Context) error {

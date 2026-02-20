@@ -186,7 +186,7 @@ func (a *APIStore) createBackwardCompatibleAlias(
 		}
 	}
 
-	a.templateCache.InvalidateAlias(nil, alias)
+	a.templateCache.InvalidateAlias(context.WithoutCancel(ctx), nil, alias)
 	logger.L().Info(ctx, "Created or verified backward compatible non-namespaced alias",
 		logger.WithTemplateID(templateID),
 		zap.String("alias", alias))

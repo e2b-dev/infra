@@ -7,50 +7,55 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/cache"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
 )
 
 const (
-	templateInfoExpiration = 5 * time.Minute
-	refreshInterval        = 1 * time.Minute
-	refreshTimeout         = 30 * time.Second
-	callbackTimeout        = 30 * time.Second
+	aliasCacheTTL             = 5 * time.Minute
+	aliasCacheRefreshInterval = time.Minute
+
+	aliasCacheKeyPrefix     = "template:alias"
+	aliasReverseIndexPrefix = "template:alias-reverse"
 )
 
 // AliasInfo holds resolved alias information
 type AliasInfo struct {
-	TemplateID string
-	TeamID     uuid.UUID
-	Public     bool
-	notFound   bool // tombstone marker for caching negative lookups
+	TemplateID string    `json:"template_id"`
+	TeamID     uuid.UUID `json:"team_id"`
+	Public     bool      `json:"public"`
+	NotFound   bool      `json:"not_found"` // tombstone marker for caching negative lookups
 }
 
-var notFoundTombstone = &AliasInfo{notFound: true}
+var notFoundTombstone = &AliasInfo{NotFound: true}
 
 // AliasCache resolves namespace/alias to templateID with fallback logic.
 // This is the main resolution layer implementing the namespace lookup flowchart.
 type AliasCache struct {
-	cache *cache.MemoryCache[*AliasInfo]
+	cache *cache.RedisCache[*AliasInfo]
 	db    *sqlcdb.Client
 }
 
-func NewAliasCache(db *sqlcdb.Client) *AliasCache {
-	config := cache.Config[*AliasInfo]{
-		TTL:             templateInfoExpiration,
-		RefreshInterval: refreshInterval,
-		RefreshTimeout:  refreshTimeout,
-		CallbackTimeout: callbackTimeout,
-	}
+func NewAliasCache(db *sqlcdb.Client, redisClient redis.UniversalClient) *AliasCache {
+	rc := cache.NewRedisCache[*AliasInfo](cache.RedisConfig[*AliasInfo]{
+		TTL:             aliasCacheTTL,
+		RefreshInterval: aliasCacheRefreshInterval,
+		RedisClient:     redisClient,
+		RedisPrefix:     aliasCacheKeyPrefix,
+	})
 
 	return &AliasCache{
-		cache: cache.NewMemoryCache(config),
+		cache: rc,
 		db:    db,
 	}
 }
@@ -110,25 +115,58 @@ func (c *AliasCache) lookup(ctx context.Context, namespace *string, alias string
 		return nil, err
 	}
 
-	if info.notFound {
+	if info.NotFound {
 		return nil, ErrTemplateNotFound
-	}
-
-	// Also cache by template ID for direct ID lookups (use nil namespace since
-	// direct ID lookups don't have namespace context)
-	idKey := buildAliasKey(nil, info.TemplateID)
-	if idKey != key {
-		c.cache.Set(idKey, info)
 	}
 
 	return info, nil
 }
 
-func (c *AliasCache) fetchFromDB(ctx context.Context, key string) (*AliasInfo, error) {
+// cacheByTemplateID caches info also by template ID and tracks the alias key
+// in a Redis reverse index set for bulk invalidation by template ID.
+func (c *AliasCache) cacheByTemplateID(ctx context.Context, originalKey string, info *AliasInfo) {
+	if info.NotFound {
+		return
+	}
+
+	idKey := buildAliasKey(nil, info.TemplateID)
+	if idKey != originalKey {
+		c.cache.Set(ctx, idKey, info)
+	}
+
+	// Track alias key in reverse index for InvalidateByTemplateID
+	c.trackReverseKey(ctx, originalKey, idKey, info)
+}
+
+func (c *AliasCache) trackReverseKey(ctx context.Context, originalKey string, idKey string, info *AliasInfo) {
+	rc := c.cache.RedisClient()
+	reverseKey := redis_utils.CreateKey(aliasReverseIndexPrefix, info.TemplateID)
+
+	ctx, cancel := context.WithTimeout(ctx, cache.RedisDefaultTimeout)
+	defer cancel()
+
+	pipe := rc.Pipeline()
+	pipe.SAdd(ctx, reverseKey, originalKey, idKey)
+	pipe.Expire(ctx, reverseKey, aliasCacheTTL)
+	_, err := pipe.Exec(ctx)
+	if err != nil {
+		logger.L().Warn(ctx, "failed to cache alias by template ID", zap.Error(err))
+	}
+}
+
+func (c *AliasCache) fetchFromDB(ctx context.Context, key string) (info *AliasInfo, err error) {
 	ctx, span := tracer.Start(ctx, "fetch alias from DB", trace.WithAttributes(
 		attribute.String("key", key),
 	))
 	defer span.End()
+
+	// Also cache by template ID for direct ID lookups (use nil namespace since
+	// direct ID lookups don't have namespace context)
+	defer func() {
+		if err == nil {
+			c.cacheByTemplateID(ctx, key, info)
+		}
+	}()
 
 	namespace, alias := id.SplitIdentifier(key)
 
@@ -177,17 +215,54 @@ func (c *AliasCache) LookupByID(ctx context.Context, templateID string) (*AliasI
 	return c.lookup(ctx, nil, templateID)
 }
 
-func (c *AliasCache) Invalidate(namespace *string, alias string) {
-	key := buildAliasKey(namespace, alias)
-	c.cache.Delete(key)
+func (c *AliasCache) Invalidate(ctx context.Context, namespace *string, alias string) {
+	c.cache.Delete(ctx, buildAliasKey(namespace, alias))
 }
 
-// InvalidateByTemplateID removes all cache entries pointing to the given template ID
-func (c *AliasCache) InvalidateByTemplateID(templateID string) {
-	for _, key := range c.cache.Keys() {
-		if info, found := c.cache.GetWithoutTouch(key); found && info != nil && info.TemplateID == templateID {
-			c.cache.Delete(key)
+// popReverseIndexScript atomically reads all members from the reverse index set
+// and deletes the set. Both operations target the same key (same hash slot).
+// Returns the list of alias cache keys that were in the set.
+// KEYS[1] = reverse index set key
+var popReverseIndexScript = redis.NewScript(`
+	local members = redis.call("SMEMBERS", KEYS[1])
+	redis.call("DEL", KEYS[1])
+	return members
+`)
+
+// InvalidateByTemplateID removes all cache entries pointing to the given template ID.
+// It atomically pops the reverse index set (Lua script, single slot), then pipelines
+// DELs for the alias cache keys (which may span different slots).
+func (c *AliasCache) InvalidateByTemplateID(ctx context.Context, templateID string) {
+	rc := c.cache.RedisClient()
+	reverseKey := redis_utils.CreateKey(aliasReverseIndexPrefix, templateID)
+
+	ctx, cancel := context.WithTimeout(ctx, cache.RedisDefaultTimeout)
+	defer cancel()
+
+	members, err := popReverseIndexScript.Run(ctx, rc, []string{reverseKey}).StringSlice()
+	if err != nil {
+		if !errors.Is(err, redis.Nil) {
+			logger.L().Warn(ctx, "failed to pop alias reverse index",
+				zap.String("template_id", templateID),
+				zap.Error(err),
+			)
 		}
+	}
+
+	if len(members) == 0 {
+		return
+	}
+
+	pipe := rc.Pipeline()
+	for _, aliasKey := range members {
+		pipe.Del(ctx, c.cache.RedisKey(aliasKey))
+	}
+
+	if _, err := pipe.Exec(ctx); err != nil {
+		logger.L().Warn(ctx, "failed to delete alias cache entries",
+			zap.String("template_id", templateID),
+			zap.Error(err),
+		)
 	}
 }
 
