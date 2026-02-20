@@ -89,7 +89,7 @@ func TestInitWithNilTokenOnSecuredSandboxReturnsUnauthorized(t *testing.T) {
 	sandboxEnvdInitCall(t, ctx, envdInitCall{
 		sbx:                   sbx,
 		client:                envdClient,
-		body:                  envd.PostInitJSONRequestBody{},
+		body:                  envd.InitSandboxJSONRequestBody{},
 		expectedResErr:        nil,
 		expectedResHttpStatus: http.StatusUnauthorized,
 	})
@@ -111,7 +111,7 @@ func TestInitWithWrongTokenOnSecuredSandboxReturnsUnauthorized(t *testing.T) {
 	sandboxEnvdInitCall(t, ctx, envdInitCall{
 		sbx:                   sbx,
 		client:                envdClient,
-		body:                  envd.PostInitJSONRequestBody{AccessToken: &wrongToken},
+		body:                  envd.InitSandboxJSONRequestBody{AccessToken: &wrongToken},
 		expectedResErr:        nil,
 		expectedResHttpStatus: http.StatusUnauthorized,
 	})
@@ -136,7 +136,7 @@ func TestChangeAccessAuthorizedToken(t *testing.T) {
 		sbx:                   sbx,
 		client:                envdClient,
 		authToken:             envdAuthTokenA, // this is the old token used currently by envd
-		body:                  envd.PostInitJSONRequestBody{AccessToken: &envdAuthTokenB},
+		body:                  envd.InitSandboxJSONRequestBody{AccessToken: &envdAuthTokenB},
 		expectedResErr:        nil,
 		expectedResHttpStatus: http.StatusUnauthorized,
 	})
@@ -257,7 +257,7 @@ func TestAccessAuthorizedPathWithResumedSandboxWithoutAccessToken(t *testing.T) 
 type envdInitCall struct {
 	sbx                   *api.PostSandboxesResponse
 	client                *setup.EnvdClient
-	body                  envd.PostInitJSONRequestBody
+	body                  envd.InitSandboxJSONRequestBody
 	authToken             *string
 	expectedResErr        *error
 	expectedResHttpStatus int
@@ -271,7 +271,7 @@ func sandboxEnvdInitCall(t *testing.T, ctx context.Context, req envdInitCall) {
 		envdReqSetup = append(envdReqSetup, setup.WithEnvdAccessToken(t, *req.authToken))
 	}
 
-	res, err := req.client.HTTPClient.PostInitWithResponse(ctx, req.body, envdReqSetup...)
+	res, err := req.client.HTTPClient.InitSandboxWithResponse(ctx, req.body, envdReqSetup...)
 	if req.expectedResErr != nil {
 		assert.Equal(t, *req.expectedResErr, err)
 	} else {

@@ -22,7 +22,7 @@ func (a *API) DownloadFile(w http.ResponseWriter, r *http.Request, params Downlo
 	var errorCode int
 	var errMsg error
 
-	path := string(params.Path)
+	path := params.Path
 
 	operationID := logs.AssignOperationID()
 

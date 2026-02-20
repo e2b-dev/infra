@@ -111,7 +111,7 @@ func resolvePath(part *multipart.Part, paths *UploadSuccess, u *user.User, defau
 	var pathToResolve string
 
 	if params.Path != "" {
-		pathToResolve = string(params.Path)
+		pathToResolve = params.Path
 	} else {
 		var err error
 		customPart := utils.NewCustomPart(part)
@@ -186,7 +186,7 @@ func (a *API) UploadFile(w http.ResponseWriter, r *http.Request, params UploadFi
 	var errorCode int
 	var errMsg error
 
-	path := string(params.Path)
+	path := params.Path
 
 	operationID := logs.AssignOperationID()
 

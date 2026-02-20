@@ -103,7 +103,7 @@ func TestGetFilesContentDisposition(t *testing.T) {
 
 			// Call the handler
 			params := DownloadFileParams{
-				Path:     FilePath(tempFile),
+				Path:     tempFile,
 				Username: &currentUser.Username,
 			}
 			api.DownloadFile(w, req, params)
@@ -152,7 +152,7 @@ func TestGetFilesContentDispositionWithNestedPath(t *testing.T) {
 
 	// Call the handler
 	params := DownloadFileParams{
-		Path:     FilePath(tempFile),
+		Path:     tempFile,
 		Username: &currentUser.Username,
 	}
 	api.DownloadFile(w, req, params)
@@ -197,7 +197,7 @@ func TestGetFiles_GzipEncoding_ExplicitIdentityOffWithRange(t *testing.T) {
 
 	// Call the handler
 	params := DownloadFileParams{
-		Path:     FilePath(tempFile),
+		Path:     tempFile,
 		Username: &currentUser.Username,
 	}
 	api.DownloadFile(w, req, params)
@@ -235,7 +235,7 @@ func TestGetFiles_GzipDownload(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	params := DownloadFileParams{
-		Path:     FilePath(tempFile),
+		Path:     tempFile,
 		Username: &currentUser.Username,
 	}
 	api.DownloadFile(w, req, params)
@@ -301,7 +301,7 @@ func TestPostFiles_GzipUpload(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	params := UploadFileParams{
-		Path:     FilePath(destPath),
+		Path:     destPath,
 		Username: &currentUser.Username,
 	}
 	api.UploadFile(w, req, params)
@@ -361,7 +361,7 @@ func TestGzipUploadThenGzipDownload(t *testing.T) {
 	uploadW := httptest.NewRecorder()
 
 	uploadParams := UploadFileParams{
-		Path:     FilePath(destPath),
+		Path:     destPath,
 		Username: &currentUser.Username,
 	}
 	api.UploadFile(uploadW, uploadReq, uploadParams)
@@ -378,7 +378,7 @@ func TestGzipUploadThenGzipDownload(t *testing.T) {
 	downloadW := httptest.NewRecorder()
 
 	downloadParams := DownloadFileParams{
-		Path:     FilePath(destPath),
+		Path:     destPath,
 		Username: &currentUser.Username,
 	}
 	api.DownloadFile(downloadW, downloadReq, downloadParams)
