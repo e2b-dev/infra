@@ -91,7 +91,7 @@ func (a *API) checkMMDSHash(ctx context.Context, requestToken *SecureToken) (boo
 	return keys.HashAccessTokenBytes(tokenBytes) == mmdsHash, true
 }
 
-func (a *API) InitSandbox(w http.ResponseWriter, r *http.Request) {
+func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
 	ctx := r.Context()
@@ -111,7 +111,7 @@ func (a *API) InitSandbox(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		var initRequest InitSandboxJSONBody
+		var initRequest PostInitJSONBody
 		if len(body) > 0 {
 			err = json.Unmarshal(body, &initRequest)
 			if err != nil {
@@ -160,7 +160,7 @@ func (a *API) InitSandbox(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data InitSandboxJSONBody) error {
+func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJSONBody) error {
 	// Validate access token before proceeding with any action
 	// The request must provide a token that is either:
 	// 1. Matches the existing access token (if set), OR

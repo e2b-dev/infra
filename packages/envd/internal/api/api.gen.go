@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	SandboxAccessTokenAuthScopes = "SandboxAccessTokenAuth.Scopes"
+	AccessTokenAuthScopes = "AccessTokenAuth.Scopes"
 )
 
 // Defines values for EntryInfoType.
@@ -67,26 +67,17 @@ type Metrics struct {
 	// MemTotal Total virtual memory in bytes
 	MemTotal *int `json:"mem_total,omitempty"`
 
-	// MemTotalMib Total virtual memory in MiB
-	MemTotalMib *int `json:"mem_total_mib,omitempty"`
-
 	// MemUsed Used virtual memory in bytes
 	MemUsed *int `json:"mem_used,omitempty"`
-
-	// MemUsedMib Used virtual memory in MiB
-	MemUsedMib *int `json:"mem_used_mib,omitempty"`
 
 	// Ts Unix timestamp in UTC for current sandbox time
 	Ts *int64 `json:"ts,omitempty"`
 }
 
-// VolumeMount NFS volume mount configuration
+// VolumeMount Volume
 type VolumeMount struct {
-	// NfsTarget NFS server target address
 	NfsTarget string `json:"nfs_target"`
-
-	// Path Mount path inside the sandbox
-	Path string `json:"path"`
+	Path      string `json:"path"`
 }
 
 // FilePath defines model for FilePath.
@@ -113,52 +104,49 @@ type InvalidPath = Error
 // InvalidUser defines model for InvalidUser.
 type InvalidUser = Error
 
-// NotAcceptable defines model for NotAcceptable.
-type NotAcceptable = Error
-
 // NotEnoughDiskSpace defines model for NotEnoughDiskSpace.
 type NotEnoughDiskSpace = Error
 
 // UploadSuccess defines model for UploadSuccess.
 type UploadSuccess = []EntryInfo
 
-// DownloadFileParams defines parameters for DownloadFile.
-type DownloadFileParams struct {
-	// Path Path to the file, URL encoded. Can be relative to the user's home directory (e.g. "file.txt" resolves to ~/file.txt).
-	Path FilePath `form:"path" json:"path"`
+// GetFilesParams defines parameters for GetFiles.
+type GetFilesParams struct {
+	// Path Path to the file, URL encoded. Can be relative to user's home directory.
+	Path *FilePath `form:"path,omitempty" json:"path,omitempty"`
 
-	// Username User for setting file ownership and resolving relative paths. Defaults to the sandbox's default user.
+	// Username User used for setting the owner, or resolving relative paths.
 	Username *User `form:"username,omitempty" json:"username,omitempty"`
 
-	// Signature HMAC signature for access verification. Required when no X-Access-Token header is provided. Format is "v1_<sha256hash>".
+	// Signature Signature used for file access permission verification.
 	Signature *Signature `form:"signature,omitempty" json:"signature,omitempty"`
 
-	// SignatureExpiration Unix timestamp (seconds) after which the signature expires. Only used with the signature parameter.
+	// SignatureExpiration Signature expiration used for defining the expiration time of the signature.
 	SignatureExpiration *SignatureExpiration `form:"signature_expiration,omitempty" json:"signature_expiration,omitempty"`
 }
 
-// UploadFileMultipartBody defines parameters for UploadFile.
-type UploadFileMultipartBody struct {
+// PostFilesMultipartBody defines parameters for PostFiles.
+type PostFilesMultipartBody struct {
 	File *openapi_types.File `json:"file,omitempty"`
 }
 
-// UploadFileParams defines parameters for UploadFile.
-type UploadFileParams struct {
-	// Path Path to the file, URL encoded. Can be relative to the user's home directory (e.g. "file.txt" resolves to ~/file.txt).
-	Path FilePath `form:"path" json:"path"`
+// PostFilesParams defines parameters for PostFiles.
+type PostFilesParams struct {
+	// Path Path to the file, URL encoded. Can be relative to user's home directory.
+	Path *FilePath `form:"path,omitempty" json:"path,omitempty"`
 
-	// Username User for setting file ownership and resolving relative paths. Defaults to the sandbox's default user.
+	// Username User used for setting the owner, or resolving relative paths.
 	Username *User `form:"username,omitempty" json:"username,omitempty"`
 
-	// Signature HMAC signature for access verification. Required when no X-Access-Token header is provided. Format is "v1_<sha256hash>".
+	// Signature Signature used for file access permission verification.
 	Signature *Signature `form:"signature,omitempty" json:"signature,omitempty"`
 
-	// SignatureExpiration Unix timestamp (seconds) after which the signature expires. Only used with the signature parameter.
+	// SignatureExpiration Signature expiration used for defining the expiration time of the signature.
 	SignatureExpiration *SignatureExpiration `form:"signature_expiration,omitempty" json:"signature_expiration,omitempty"`
 }
 
-// InitSandboxJSONBody defines parameters for InitSandbox.
-type InitSandboxJSONBody struct {
+// PostInitJSONBody defines parameters for PostInit.
+type PostInitJSONBody struct {
 	// AccessToken Access token for secure access to envd service
 	AccessToken *SecureToken `json:"accessToken,omitempty"`
 
@@ -179,29 +167,29 @@ type InitSandboxJSONBody struct {
 	VolumeMounts *[]VolumeMount `json:"volumeMounts,omitempty"`
 }
 
-// UploadFileMultipartRequestBody defines body for UploadFile for multipart/form-data ContentType.
-type UploadFileMultipartRequestBody UploadFileMultipartBody
+// PostFilesMultipartRequestBody defines body for PostFiles for multipart/form-data ContentType.
+type PostFilesMultipartRequestBody PostFilesMultipartBody
 
-// InitSandboxJSONRequestBody defines body for InitSandbox for application/json ContentType.
-type InitSandboxJSONRequestBody InitSandboxJSONBody
+// PostInitJSONRequestBody defines body for PostInit for application/json ContentType.
+type PostInitJSONRequestBody PostInitJSONBody
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// Get the environment variables
 	// (GET /envs)
-	GetEnvVars(w http.ResponseWriter, r *http.Request)
+	GetEnvs(w http.ResponseWriter, r *http.Request)
 	// Download a file
 	// (GET /files)
-	DownloadFile(w http.ResponseWriter, r *http.Request, params DownloadFileParams)
+	GetFiles(w http.ResponseWriter, r *http.Request, params GetFilesParams)
 	// Upload a file and ensure the parent directories exist. If the file exists, it will be overwritten.
 	// (POST /files)
-	UploadFile(w http.ResponseWriter, r *http.Request, params UploadFileParams)
+	PostFiles(w http.ResponseWriter, r *http.Request, params PostFilesParams)
 	// Check the health of the service
 	// (GET /health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
 	// Set initial vars, ensure the time and metadata is synced with the host
 	// (POST /init)
-	InitSandbox(w http.ResponseWriter, r *http.Request)
+	PostInit(w http.ResponseWriter, r *http.Request)
 	// Get the stats of the service
 	// (GET /metrics)
 	GetMetrics(w http.ResponseWriter, r *http.Request)
@@ -213,19 +201,19 @@ type Unimplemented struct{}
 
 // Get the environment variables
 // (GET /envs)
-func (_ Unimplemented) GetEnvVars(w http.ResponseWriter, r *http.Request) {
+func (_ Unimplemented) GetEnvs(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
 // Download a file
 // (GET /files)
-func (_ Unimplemented) DownloadFile(w http.ResponseWriter, r *http.Request, params DownloadFileParams) {
+func (_ Unimplemented) GetFiles(w http.ResponseWriter, r *http.Request, params GetFilesParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
 // Upload a file and ensure the parent directories exist. If the file exists, it will be overwritten.
 // (POST /files)
-func (_ Unimplemented) UploadFile(w http.ResponseWriter, r *http.Request, params UploadFileParams) {
+func (_ Unimplemented) PostFiles(w http.ResponseWriter, r *http.Request, params PostFilesParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -237,7 +225,7 @@ func (_ Unimplemented) GetHealth(w http.ResponseWriter, r *http.Request) {
 
 // Set initial vars, ensure the time and metadata is synced with the host
 // (POST /init)
-func (_ Unimplemented) InitSandbox(w http.ResponseWriter, r *http.Request) {
+func (_ Unimplemented) PostInit(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -256,17 +244,17 @@ type ServerInterfaceWrapper struct {
 
 type MiddlewareFunc func(http.Handler) http.Handler
 
-// GetEnvVars operation middleware
-func (siw *ServerInterfaceWrapper) GetEnvVars(w http.ResponseWriter, r *http.Request) {
+// GetEnvs operation middleware
+func (siw *ServerInterfaceWrapper) GetEnvs(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
-	ctx = context.WithValue(ctx, SandboxAccessTokenAuthScopes, []string{})
+	ctx = context.WithValue(ctx, AccessTokenAuthScopes, []string{})
 
 	r = r.WithContext(ctx)
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetEnvVars(w, r)
+		siw.Handler.GetEnvs(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -276,30 +264,23 @@ func (siw *ServerInterfaceWrapper) GetEnvVars(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
-// DownloadFile operation middleware
-func (siw *ServerInterfaceWrapper) DownloadFile(w http.ResponseWriter, r *http.Request) {
+// GetFiles operation middleware
+func (siw *ServerInterfaceWrapper) GetFiles(w http.ResponseWriter, r *http.Request) {
 
 	var err error
 
 	ctx := r.Context()
 
-	ctx = context.WithValue(ctx, SandboxAccessTokenAuthScopes, []string{})
+	ctx = context.WithValue(ctx, AccessTokenAuthScopes, []string{})
 
 	r = r.WithContext(ctx)
 
 	// Parameter object where we will unmarshal all parameters from the context
-	var params DownloadFileParams
+	var params GetFilesParams
 
-	// ------------- Required query parameter "path" -------------
+	// ------------- Optional query parameter "path" -------------
 
-	if paramValue := r.URL.Query().Get("path"); paramValue != "" {
-
-	} else {
-		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "path"})
-		return
-	}
-
-	err = runtime.BindQueryParameter("form", true, true, "path", r.URL.Query(), &params.Path)
+	err = runtime.BindQueryParameter("form", true, false, "path", r.URL.Query(), &params.Path)
 	if err != nil {
 		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "path", Err: err})
 		return
@@ -330,7 +311,7 @@ func (siw *ServerInterfaceWrapper) DownloadFile(w http.ResponseWriter, r *http.R
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.DownloadFile(w, r, params)
+		siw.Handler.GetFiles(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -340,30 +321,23 @@ func (siw *ServerInterfaceWrapper) DownloadFile(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
-// UploadFile operation middleware
-func (siw *ServerInterfaceWrapper) UploadFile(w http.ResponseWriter, r *http.Request) {
+// PostFiles operation middleware
+func (siw *ServerInterfaceWrapper) PostFiles(w http.ResponseWriter, r *http.Request) {
 
 	var err error
 
 	ctx := r.Context()
 
-	ctx = context.WithValue(ctx, SandboxAccessTokenAuthScopes, []string{})
+	ctx = context.WithValue(ctx, AccessTokenAuthScopes, []string{})
 
 	r = r.WithContext(ctx)
 
 	// Parameter object where we will unmarshal all parameters from the context
-	var params UploadFileParams
+	var params PostFilesParams
 
-	// ------------- Required query parameter "path" -------------
+	// ------------- Optional query parameter "path" -------------
 
-	if paramValue := r.URL.Query().Get("path"); paramValue != "" {
-
-	} else {
-		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "path"})
-		return
-	}
-
-	err = runtime.BindQueryParameter("form", true, true, "path", r.URL.Query(), &params.Path)
+	err = runtime.BindQueryParameter("form", true, false, "path", r.URL.Query(), &params.Path)
 	if err != nil {
 		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "path", Err: err})
 		return
@@ -394,7 +368,7 @@ func (siw *ServerInterfaceWrapper) UploadFile(w http.ResponseWriter, r *http.Req
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.UploadFile(w, r, params)
+		siw.Handler.PostFiles(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -418,17 +392,17 @@ func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r)
 }
 
-// InitSandbox operation middleware
-func (siw *ServerInterfaceWrapper) InitSandbox(w http.ResponseWriter, r *http.Request) {
+// PostInit operation middleware
+func (siw *ServerInterfaceWrapper) PostInit(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
-	ctx = context.WithValue(ctx, SandboxAccessTokenAuthScopes, []string{})
+	ctx = context.WithValue(ctx, AccessTokenAuthScopes, []string{})
 
 	r = r.WithContext(ctx)
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.InitSandbox(w, r)
+		siw.Handler.PostInit(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -443,7 +417,7 @@ func (siw *ServerInterfaceWrapper) GetMetrics(w http.ResponseWriter, r *http.Req
 
 	ctx := r.Context()
 
-	ctx = context.WithValue(ctx, SandboxAccessTokenAuthScopes, []string{})
+	ctx = context.WithValue(ctx, AccessTokenAuthScopes, []string{})
 
 	r = r.WithContext(ctx)
 
@@ -572,19 +546,19 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	}
 
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/envs", wrapper.GetEnvVars)
+		r.Get(options.BaseURL+"/envs", wrapper.GetEnvs)
 	})
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/files", wrapper.DownloadFile)
+		r.Get(options.BaseURL+"/files", wrapper.GetFiles)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/files", wrapper.UploadFile)
+		r.Post(options.BaseURL+"/files", wrapper.PostFiles)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/health", wrapper.GetHealth)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/init", wrapper.InitSandbox)
+		r.Post(options.BaseURL+"/init", wrapper.PostInit)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/metrics", wrapper.GetMetrics)

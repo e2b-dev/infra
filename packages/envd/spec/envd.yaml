@@ -10,7 +10,6 @@ tags:
 paths:
   /health:
     get:
-      operationId: getHealth
       summary: Check the health of the service
       responses:
         "204":
@@ -18,10 +17,9 @@ paths:
 
   /metrics:
     get:
-      operationId: getMetrics
       summary: Get the stats of the service
       security:
-        - SandboxAccessTokenAuth: []
+        - AccessTokenAuth: []
         - {}
       responses:
         "200":
@@ -33,10 +31,9 @@ paths:
 
   /init:
     post:
-      operationId: initSandbox
       summary: Set initial vars, ensure the time and metadata is synced with the host
       security:
-        - SandboxAccessTokenAuth: []
+        - AccessTokenAuth: []
         - {}
       requestBody:
         content:
@@ -73,10 +70,9 @@ paths:
 
   /envs:
     get:
-      operationId: getEnvVars
       summary: Get the environment variables
       security:
-        - SandboxAccessTokenAuth: []
+        - AccessTokenAuth: []
         - {}
       responses:
         "200":
@@ -88,11 +84,10 @@ paths:
 
   /files:
     get:
-      operationId: downloadFile
       summary: Download a file
       tags: [files]
       security:
-        - SandboxAccessTokenAuth: []
+        - AccessTokenAuth: []
         - {}
       parameters:
         - $ref: "#/components/parameters/FilePath"
@@ -113,11 +108,10 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
     post:
-      operationId: uploadFile
       summary: Upload a file and ensure the parent directories exist. If the file exists, it will be overwritten.
       tags: [files]
       security:
-        - SandboxAccessTokenAuth: []
+        - AccessTokenAuth: []
         - {}
       parameters:
         - $ref: "#/components/parameters/FilePath"
@@ -140,7 +134,7 @@ paths:
 
 components:
   securitySchemes:
-    SandboxAccessTokenAuth:
+    AccessTokenAuth:
       type: apiKey
       in: header
       name: X-Access-Token
@@ -149,7 +143,7 @@ components:
     FilePath:
       name: path
       in: query
-      required: true
+      required: false
       description: Path to the file, URL encoded. Can be relative to the user's home directory (e.g. "file.txt" resolves to ~/file.txt).
       schema:
         type: string

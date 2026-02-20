@@ -418,6 +418,65 @@ def fix_security_schemes(spec: dict[str, Any]) -> None:
             scheme["in"] = scheme.pop("scheme")
 
 
+def rename_envd_auth_scheme(spec: dict[str, Any]) -> None:
+    """Rename AccessTokenAuth → SandboxAccessTokenAuth in the merged spec.
+
+    The source envd.yaml uses AccessTokenAuth for code generation compatibility,
+    but the public docs need SandboxAccessTokenAuth to avoid collisions with
+    the platform API's AccessTokenAuth scheme.
+    """
+    old_name = "AccessTokenAuth"
+    new_name = SANDBOX_AUTH_SCHEME
+    schemes = spec.get("components", {}).get("securitySchemes", {})
+    if old_name in schemes:
+        schemes[new_name] = schemes.pop(old_name)
+    # Update all security references in operations
+    for path_item in spec.get("paths", {}).values():
+        for method in ("get", "post", "put", "patch", "delete", "head", "options"):
+            op = path_item.get(method)
+            if not op or "security" not in op:
+                continue
+            for sec_req in op["security"]:
+                if old_name in sec_req:
+                    sec_req[new_name] = sec_req.pop(old_name)
+    # Update top-level security
+    for sec_req in spec.get("security", []):
+        if old_name in sec_req:
+            sec_req[new_name] = sec_req.pop(old_name)
+
+
+# Mapping of (path, method) to desired operationId for the public docs.
+# These are added at post-processing time to avoid breaking Go code generation
+# (oapi-codegen derives type names from operationIds).
+ENVD_OPERATION_IDS: dict[tuple[str, str], str] = {
+    ("/health", "get"): "getHealth",
+    ("/metrics", "get"): "getMetrics",
+    ("/init", "post"): "initSandbox",
+    ("/envs", "get"): "getEnvVars",
+    ("/files", "get"): "downloadFile",
+    ("/files", "post"): "uploadFile",
+}
+
+
+def add_operation_ids(spec: dict[str, Any]) -> None:
+    """Add operationIds to envd endpoints for clean documentation.
+
+    These are added at post-processing time (not in the source spec) to
+    avoid changing generated Go type names.
+    """
+    count = 0
+    for (path, method), op_id in ENVD_OPERATION_IDS.items():
+        path_item = spec.get("paths", {}).get(path)
+        if not path_item:
+            continue
+        op = path_item.get(method)
+        if op and "operationId" not in op:
+            op["operationId"] = op_id
+            count += 1
+    if count:
+        print(f"==> Added {count} operationIds to envd endpoints")
+
+
 def _strip_supabase_security(path_item: dict[str, Any]) -> None:
     """Remove Supabase security entries from all operations in a path item.
 
@@ -663,6 +722,8 @@ def main() -> None:
 
     # Fix known issues
     fix_security_schemes(merged)
+    rename_envd_auth_scheme(merged)
+    add_operation_ids(merged)
 
     # Remove internal/unwanted paths
     filter_paths(merged)

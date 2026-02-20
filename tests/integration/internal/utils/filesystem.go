@@ -27,9 +27,9 @@ func UploadFile(tb testing.TB, ctx context.Context, sbx *api.Sandbox, envdClient
 		reqEditors = append(reqEditors, setup.WithEnvdAccessToken(tb, *(sbx.EnvdAccessToken)))
 	}
 
-	writeRes, err := envdClient.HTTPClient.UploadFileWithBodyWithResponse(
+	writeRes, err := envdClient.HTTPClient.PostFilesWithBodyWithResponse(
 		ctx,
-		&envd.UploadFileParams{Path: path, Username: utils.ToPtr("user")},
+		&envd.PostFilesParams{Path: &path, Username: utils.ToPtr("user")},
 		contentType,
 		buffer,
 		reqEditors...,

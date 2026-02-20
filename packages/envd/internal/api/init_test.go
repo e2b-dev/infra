@@ -453,7 +453,7 @@ func TestSetData(t *testing.T) {
 				mmdsClient := &mockMMDSClient{hash: tt.mmdsHash, err: tt.mmdsErr}
 				api := newTestAPI(tt.existingToken, mmdsClient)
 
-				data := InitSandboxJSONBody{
+				data := PostInitJSONBody{
 					AccessToken: tt.requestToken,
 				}
 
@@ -481,7 +481,7 @@ func TestSetData(t *testing.T) {
 		api := newTestAPI(nil, mmdsClient)
 
 		envVars := EnvVars{"FOO": "bar", "BAZ": "qux"}
-		data := InitSandboxJSONBody{
+		data := PostInitJSONBody{
 			EnvVars: &envVars,
 		}
 
@@ -501,7 +501,7 @@ func TestSetData(t *testing.T) {
 		mmdsClient := &mockMMDSClient{hash: "", err: assert.AnError}
 		api := newTestAPI(nil, mmdsClient)
 
-		data := InitSandboxJSONBody{
+		data := PostInitJSONBody{
 			DefaultUser: utilsShared.ToPtr("testuser"),
 		}
 
@@ -517,7 +517,7 @@ func TestSetData(t *testing.T) {
 		api := newTestAPI(nil, mmdsClient)
 		api.defaults.User = "original"
 
-		data := InitSandboxJSONBody{
+		data := PostInitJSONBody{
 			DefaultUser: utilsShared.ToPtr(""),
 		}
 
@@ -532,7 +532,7 @@ func TestSetData(t *testing.T) {
 		mmdsClient := &mockMMDSClient{hash: "", err: assert.AnError}
 		api := newTestAPI(nil, mmdsClient)
 
-		data := InitSandboxJSONBody{
+		data := PostInitJSONBody{
 			DefaultWorkdir: utilsShared.ToPtr("/home/user"),
 		}
 
@@ -550,7 +550,7 @@ func TestSetData(t *testing.T) {
 		originalWorkdir := "/original"
 		api.defaults.Workdir = &originalWorkdir
 
-		data := InitSandboxJSONBody{
+		data := PostInitJSONBody{
 			DefaultWorkdir: utilsShared.ToPtr(""),
 		}
 
@@ -567,7 +567,7 @@ func TestSetData(t *testing.T) {
 		api := newTestAPI(nil, mmdsClient)
 
 		envVars := EnvVars{"KEY": "value"}
-		data := InitSandboxJSONBody{
+		data := PostInitJSONBody{
 			AccessToken:    secureTokenPtr("token"),
 			DefaultUser:    utilsShared.ToPtr("user"),
 			DefaultWorkdir: utilsShared.ToPtr("/workdir"),

@@ -7,7 +7,7 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 )
 
-func (a *API) GetEnvVars(w http.ResponseWriter, _ *http.Request) {
+func (a *API) GetEnvs(w http.ResponseWriter, _ *http.Request) {
 	operationID := logs.AssignOperationID()
 
 	a.logger.Debug().Str(string(logs.OperationIDKey), operationID).Msg("Getting env vars")

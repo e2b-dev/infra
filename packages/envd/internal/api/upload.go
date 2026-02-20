@@ -107,11 +107,11 @@ func processFile(r *http.Request, path string, part io.Reader, uid, gid int, log
 	return http.StatusNoContent, nil
 }
 
-func resolvePath(part *multipart.Part, paths *UploadSuccess, u *user.User, defaultPath *string, params UploadFileParams) (string, error) {
+func resolvePath(part *multipart.Part, paths *UploadSuccess, u *user.User, defaultPath *string, params PostFilesParams) (string, error) {
 	var pathToResolve string
 
-	if params.Path != "" {
-		pathToResolve = params.Path
+	if params.Path != nil {
+		pathToResolve = *params.Path
 	} else {
 		var err error
 		customPart := utils.NewCustomPart(part)
@@ -148,7 +148,7 @@ func resolvePath(part *multipart.Part, paths *UploadSuccess, u *user.User, defau
 	return filePath, nil
 }
 
-func (a *API) handlePart(r *http.Request, part *multipart.Part, paths UploadSuccess, u *user.User, uid, gid int, operationID string, params UploadFileParams) (*EntryInfo, int, error) {
+func (a *API) handlePart(r *http.Request, part *multipart.Part, paths UploadSuccess, u *user.User, uid, gid int, operationID string, params PostFilesParams) (*EntryInfo, int, error) {
 	defer part.Close()
 
 	if part.FormName() != "file" {
@@ -178,7 +178,7 @@ func (a *API) handlePart(r *http.Request, part *multipart.Part, paths UploadSucc
 	}, http.StatusOK, nil
 }
 
-func (a *API) UploadFile(w http.ResponseWriter, r *http.Request, params UploadFileParams) {
+func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFilesParams) {
 	// Capture original body to ensure it's always closed
 	originalBody := r.Body
 	defer originalBody.Close()
@@ -186,7 +186,10 @@ func (a *API) UploadFile(w http.ResponseWriter, r *http.Request, params UploadFi
 	var errorCode int
 	var errMsg error
 
-	path := params.Path
+	var path string
+	if params.Path != nil {
+		path = *params.Path
+	}
 
 	operationID := logs.AssignOperationID()
 
