@@ -186,16 +186,20 @@ func TestEnvdPortIsNotAffectedByTrafficAccessToken(t *testing.T) {
 
 	url, err := url.Parse(setup.EnvdProxy)
 	require.NoError(t, err)
+	envdHealthURL := *url
+	envdHealthURL.Path = "/health"
 
 	client := &http.Client{
 		Timeout: 1000 * time.Second,
 	}
 
 	headers := &http.Header{"X-Access-Token": []string{*sbx.EnvdAccessToken}}
-	resp := utils.WaitForStatus(t, client, sbx, url, int(consts.DefaultEnvdServerPort), headers, http.StatusNotFound)
+	req := utils.NewRequest(sbx, &envdHealthURL, int(consts.DefaultEnvdServerPort), headers)
+	resp, err := client.Do(req)
+	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.NoError(t, resp.Body.Close())
-	require.Equal(t, http.StatusNotFound, resp.StatusCode)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 }
 
 func TestSandboxWithTrafficAccessTokenAutoResumeViaProxy(t *testing.T) {
@@ -306,17 +310,19 @@ func TestEnvdAccessTokenAutoResumeViaProxy(t *testing.T) {
 
 	proxyURL, err := url.Parse(setup.EnvdProxy)
 	require.NoError(t, err)
+	envdHealthURL := *proxyURL
+	envdHealthURL.Path = "/health"
 
 	client := &http.Client{Timeout: 10 * time.Second}
 	envdPort := int(consts.DefaultEnvdServerPort)
 
 	// Verify envd is reachable with valid access token while running.
 	headers := &http.Header{"X-Access-Token": []string{*sbx.EnvdAccessToken}}
-	req := utils.NewRequest(sbx, proxyURL, envdPort, headers)
+	req := utils.NewRequest(sbx, &envdHealthURL, envdPort, headers)
 	resp, err := client.Do(req)
 	require.NoError(t, err)
 	require.NotNil(t, resp)
-	require.NotEqual(t, http.StatusForbidden, resp.StatusCode, "valid envd access token should be accepted")
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
 	// Pause sandbox.
@@ -330,7 +336,7 @@ func TestEnvdAccessTokenAutoResumeViaProxy(t *testing.T) {
 	require.Equal(t, api.Paused, res.JSON200.State)
 
 	// While paused, missing envd access token must not auto-resume.
-	req = utils.NewRequest(sbx, proxyURL, envdPort, nil)
+	req = utils.NewRequest(sbx, &envdHealthURL, envdPort, nil)
 	resp, err = client.Do(req)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusForbidden, resp.StatusCode)
@@ -342,10 +348,10 @@ func TestEnvdAccessTokenAutoResumeViaProxy(t *testing.T) {
 	require.Equal(t, api.Paused, res.JSON200.State)
 
 	// Valid envd access token should auto-resume.
-	req = utils.NewRequest(sbx, proxyURL, envdPort, headers)
+	req = utils.NewRequest(sbx, &envdHealthURL, envdPort, headers)
 	resp, err = client.Do(req)
 	require.NoError(t, err)
-	require.Equal(t, http.StatusNotFound, resp.StatusCode) // envd has no GET / handler
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
 	res, err = c.GetSandboxesSandboxIDWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
