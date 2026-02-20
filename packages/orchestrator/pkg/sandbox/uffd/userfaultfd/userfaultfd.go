@@ -35,8 +35,10 @@ func hasEvent(revents, event int16) bool {
 type Userfaultfd struct {
 	fd Fd
 
-	src block.Slicer
-	ma  *memory.Mapping
+	src         block.Slicer
+	ma          *memory.Mapping
+	pageSize    uintptr
+	pageTracker pageTracker
 
 	// We don't skip the already mapped pages, because if the memory is swappable the page *might* under some conditions be mapped out.
 	// For hugepages this should not be a problem, but might theoretically happen to normal pages with swap
@@ -64,6 +66,8 @@ func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logge
 	u := &Userfaultfd{
 		fd:              Fd(fd),
 		src:             src,
+		pageSize:        uintptr(blockSize),
+		pageTracker:     newPageTracker(uintptr(blockSize)),
 		missingRequests: block.NewTracker(blockSize),
 		prefetchTracker: block.NewPrefetchTracker(blockSize),
 		ma:              m,
@@ -220,7 +224,7 @@ outerLoop:
 
 		addr := getPagefaultAddress(&pagefault)
 
-		offset, pagesize, err := u.ma.GetOffset(addr)
+		offset, err := u.ma.GetOffset(addr)
 		if err != nil {
 			u.logger.Error(ctx, "UFFD serve get mapping error", zap.Error(err))
 
@@ -232,7 +236,7 @@ outerLoop:
 		// For the write to be executed, we first need to copy the page from the source to the guest memory.
 		if flags&UFFD_PAGEFAULT_FLAG_WRITE != 0 {
 			u.wg.Go(func() error {
-				return u.faultPage(ctx, addr, offset, pagesize, u.src, fdExit.SignalExit, block.Write)
+				return u.faultPage(ctx, addr, offset, u.pageSize, u.src, fdExit.SignalExit, block.Write)
 			})
 
 			continue
@@ -242,7 +246,7 @@ outerLoop:
 		// If the event has no flags, it was a read to a missing page and we need to copy the page from the source to the guest memory.
 		if flags == 0 {
 			u.wg.Go(func() error {
-				return u.faultPage(ctx, addr, offset, pagesize, u.src, fdExit.SignalExit, block.Read)
+				return u.faultPage(ctx, addr, offset, u.pageSize, u.src, fdExit.SignalExit, block.Read)
 			})
 
 			continue
@@ -281,16 +285,16 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) e
 	defer span.End()
 
 	// Get host virtual address and page size for this offset
-	addr, pagesize, err := u.ma.GetHostVirtAddr(offset)
+	addr, err := u.ma.GetHostVirtAddr(offset)
 	if err != nil {
 		return fmt.Errorf("failed to get host virtual address: %w", err)
 	}
 
-	if len(data) != int(pagesize) {
-		return fmt.Errorf("data length (%d) is less than pagesize (%d)", len(data), pagesize)
+	if len(data) != int(u.pageSize) {
+		return fmt.Errorf("data length (%d) is less than pagesize (%d)", len(data), u.pageSize)
 	}
 
-	return u.faultPage(ctx, addr, offset, pagesize, directDataSource{data, int64(pagesize)}, nil, block.Prefetch)
+	return u.faultPage(ctx, addr, offset, u.pageSize, directDataSource{data, int64(u.pageSize)}, nil, block.Prefetch)
 }
 
 // directDataSource wraps a byte slice to implement block.Slicer for prefaulting.
@@ -359,6 +363,7 @@ func (u *Userfaultfd) faultPage(
 	if errors.Is(copyErr, unix.EEXIST) {
 		// Page is already mapped
 		span.SetAttributes(attribute.Bool("uffd.already_mapped", true))
+		u.pageTracker.setState(faulted, addr, addr+pagesize)
 
 		return nil
 	}
@@ -380,6 +385,7 @@ func (u *Userfaultfd) faultPage(
 	// Add the offset to the missing requests tracker with metadata.
 	u.missingRequests.Add(offset)
 	u.prefetchTracker.Add(offset, accessType)
+	u.pageTracker.setState(faulted, addr, addr+pagesize)
 
 	return nil
 }
