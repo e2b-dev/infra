@@ -65,7 +65,16 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 			logger.L().Warn(ctx, "sandbox resume permission denied",
 				zap.String("host", r.Host),
 				logger.WithSandboxID(resumeDeniedErr.SandboxId))
-			http.Error(w, "Sandbox resume denied", http.StatusForbidden)
+
+			err := template.
+				NewSandboxResumePermissionDeniedError(resumeDeniedErr.SandboxId, r.Host).
+				HandleError(w, r)
+			if err != nil {
+				logger.L().Error(ctx, "failed to handle sandbox resume permission denied error", zap.Error(err), logger.WithSandboxID(resumeDeniedErr.SandboxId))
+				http.Error(w, "Failed to handle sandbox resume permission denied error", http.StatusInternalServerError)
+
+				return
+			}
 
 			return
 		}
