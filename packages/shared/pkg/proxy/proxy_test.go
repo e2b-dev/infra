@@ -226,6 +226,7 @@ func TestProxyResumePermissionDeniedErrorTemplate(t *testing.T) {
 	defer proxy.Close()
 
 	t.Run("json for non-browser", func(t *testing.T) {
+		t.Parallel()
 		proxyURL := fmt.Sprintf("http://127.0.0.1:%d/hello", port)
 		resp, err := httpGet(t, proxyURL)
 		require.NoError(t, err)
@@ -247,6 +248,7 @@ func TestProxyResumePermissionDeniedErrorTemplate(t *testing.T) {
 	})
 
 	t.Run("html for browser", func(t *testing.T) {
+		t.Parallel()
 		proxyURL := fmt.Sprintf("http://127.0.0.1:%d/hello", port)
 		headers := http.Header{
 			"User-Agent": {"Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
