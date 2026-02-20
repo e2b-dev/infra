@@ -38,6 +38,7 @@ type autoResumeResult uint8
 const (
 	autoResumeSucceeded autoResumeResult = iota
 	autoResumeNotAllowed
+	autoResumePermissionDenied
 	autoResumeErrored
 )
 
@@ -88,7 +89,7 @@ func handlePausedSandbox(
 	if err != nil {
 		if code, ok := getNotResumableCode(err); ok {
 			if code == codes.PermissionDenied {
-				return "", autoResumeErrored, reverseproxy.NewErrSandboxResumePermissionDenied(sandboxId)
+				return "", autoResumePermissionDenied, reverseproxy.NewErrSandboxResumePermissionDenied(sandboxId)
 			}
 
 			return "", autoResumeNotAllowed, nil

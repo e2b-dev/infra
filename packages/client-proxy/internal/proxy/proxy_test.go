@@ -141,7 +141,7 @@ func TestHandlePausedSandbox_PermissionDenied(t *testing.T) {
 	require.Error(t, err)
 	var deniedErr *reverseproxy.SandboxResumePermissionDeniedError
 	require.ErrorAs(t, err, &deniedErr)
-	require.Equal(t, autoResumeErrored, res)
+	require.Equal(t, autoResumePermissionDenied, res)
 }
 
 func TestHandlePausedSandbox_SnapshotNotFound(t *testing.T) {
