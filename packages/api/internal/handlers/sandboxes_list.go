@@ -323,7 +323,7 @@ func instanceInfoToPaginatedSandboxes(runningSandboxes []sandbox.Sandbox) []util
 	return sandboxes
 }
 
-func convertFromDBMountsToAPIMounts(mounts []*dbtypes.SandboxVolumeMountConfig) []api.SandboxVolumeMount {
+func convertFromDBMountsToAPIMounts(mounts []*dbtypes.SandboxVolumeMountConfig) *[]api.SandboxVolumeMount {
 	results := make([]api.SandboxVolumeMount, 0, len(mounts))
 
 	for _, item := range mounts {
@@ -333,5 +333,5 @@ func convertFromDBMountsToAPIMounts(mounts []*dbtypes.SandboxVolumeMountConfig) 
 		})
 	}
 
-	return results
+	return &results
 }

@@ -348,8 +348,8 @@ type ListedSandbox struct {
 	State SandboxState `json:"state"`
 
 	// TemplateID Identifier of the template from which is the sandbox created
-	TemplateID   string               `json:"templateID"`
-	VolumeMounts []SandboxVolumeMount `json:"volumeMounts"`
+	TemplateID   string                `json:"templateID"`
+	VolumeMounts *[]SandboxVolumeMount `json:"volumeMounts,omitempty"`
 }
 
 // LogLevel State of the sandbox
@@ -639,8 +639,8 @@ type SandboxDetail struct {
 	State SandboxState `json:"state"`
 
 	// TemplateID Identifier of the template from which is the sandbox created
-	TemplateID   string               `json:"templateID"`
-	VolumeMounts []SandboxVolumeMount `json:"volumeMounts"`
+	TemplateID   string                `json:"templateID"`
+	VolumeMounts *[]SandboxVolumeMount `json:"volumeMounts,omitempty"`
 }
 
 // SandboxLog Log entry with timestamp and line
