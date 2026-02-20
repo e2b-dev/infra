@@ -69,7 +69,7 @@ func TestCatalogResolution_CatalogHit(t *testing.T) {
 	}, time.Minute)
 	require.NoError(t, err)
 
-	nodeIP, err := findActiveNode(context.Background(), "sbx", 8000, "", "", c, nil, ff)
+	nodeIP, err := catalogResolution(context.Background(), "sbx", 8000, "", "", c, nil, ff)
 	require.NoError(t, err)
 	require.Equal(t, "10.0.0.1", nodeIP)
 }
@@ -87,7 +87,7 @@ func TestCatalogResolution_CatalogHit_EmptyIPReturnsEmpty(t *testing.T) {
 	}, time.Minute)
 	require.NoError(t, err)
 
-	nodeIP, err := findActiveNode(context.Background(), "sbx", 8000, "", "", c, nil, ff)
+	nodeIP, err := catalogResolution(context.Background(), "sbx", 8000, "", "", c, nil, ff)
 	require.NoError(t, err)
 	require.Empty(t, nodeIP)
 }
@@ -98,7 +98,7 @@ func TestCatalogResolution_CatalogMiss(t *testing.T) {
 	c := catalog.NewMemorySandboxesCatalog()
 	ff := newFF(t, true)
 
-	_, err := findActiveNode(context.Background(), "sbx", 8000, "", "", c, nil, ff)
+	_, err := catalogResolution(context.Background(), "sbx", 8000, "", "", c, nil, ff)
 	require.ErrorIs(t, err, ErrNodeNotFound)
 }
 

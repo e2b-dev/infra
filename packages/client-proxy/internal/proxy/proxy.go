@@ -42,7 +42,7 @@ const (
 	autoResumeErrored
 )
 
-func findActiveNode(ctx context.Context, sandboxId string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string, c catalog.SandboxesCatalog, pausedChecker PausedSandboxResumer, featureFlags *featureflags.Client) (string, error) {
+func catalogResolution(ctx context.Context, sandboxId string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string, c catalog.SandboxesCatalog, pausedChecker PausedSandboxResumer, featureFlags *featureflags.Client) (string, error) {
 	s, err := c.GetSandbox(ctx, sandboxId)
 	if err != nil {
 		if errors.Is(err, catalog.ErrSandboxNotFound) {
@@ -142,7 +142,7 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 
 			trafficAccessToken := r.Header.Get("e2b-traffic-access-token")
 			envdAccessToken := r.Header.Get("X-Access-Token")
-			nodeIP, err := findActiveNode(ctx, sandboxId, port, trafficAccessToken, envdAccessToken, catalog, pausedSandboxResumer, featureFlagsClient)
+			nodeIP, err := catalogResolution(ctx, sandboxId, port, trafficAccessToken, envdAccessToken, catalog, pausedSandboxResumer, featureFlagsClient)
 			if err != nil {
 				var resumeDeniedErr *reverseproxy.SandboxResumePermissionDeniedError
 				if errors.As(err, &resumeDeniedErr) {
