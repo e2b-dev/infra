@@ -22,7 +22,7 @@ const (
 	migrationsDir        = "./migrations"
 	authMigrationVersion = 20000101000000
 
-	statementTimeout = 10 * time.Minute
+	statementTimeout = 0 * time.Second
 )
 
 func main() {
