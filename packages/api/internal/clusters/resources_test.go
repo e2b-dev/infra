@@ -127,7 +127,7 @@ func TestGetBuildLogsWithSources_ParityBetweenTemporaryAndPersistent(t *testing.
 
 			persistentSource := api.LogsSourcePersistent
 			fromPersistent, persistentErr := getBuildLogsWithSources(
-				context.Background(),
+				t.Context(),
 				instances,
 				&nodeID,
 				templateID,
