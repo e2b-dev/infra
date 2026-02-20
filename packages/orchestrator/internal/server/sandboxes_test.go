@@ -119,5 +119,5 @@ func TestGetSandboxExecutionData(t *testing.T) {
 	assert.Equal(t, int64(2), result["vcpu_count"])
 	assert.Equal(t, int64(512), result["memory_mb"])
 	assert.IsType(t, int64(0), result["execution_time"])
-	assert.Greater(t, result["execution_time"].(int64), int64(0))
+	assert.Positive(t, result["execution_time"].(int64))
 }
