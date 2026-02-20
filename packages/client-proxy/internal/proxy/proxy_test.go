@@ -99,12 +99,22 @@ func TestCatalogResolution_CatalogMiss(t *testing.T) {
 	require.ErrorIs(t, err, ErrNodeNotFound)
 }
 
-func TestHandlePausedSandbox_NoResumer(t *testing.T) {
+func TestHandlePausedSandbox_NoResumer_MissingTrafficAccessToken(t *testing.T) {
 	t.Parallel()
 
 	ff := newFF(t, true)
 
-	_, res, err := handlePausedSandbox(context.Background(), "sbx", 8000, "token", "", nil, ff)
+	_, res, err := handlePausedSandbox(context.Background(), "sbx", 8000, "", "", nil, ff)
+	require.NoError(t, err)
+	require.Equal(t, autoResumeNotAllowed, res)
+}
+
+func TestHandlePausedSandbox_NoResumer_InvalidTrafficAccessToken(t *testing.T) {
+	t.Parallel()
+
+	ff := newFF(t, true)
+
+	_, res, err := handlePausedSandbox(context.Background(), "sbx", 8000, "wrong-token", "", nil, ff)
 	require.NoError(t, err)
 	require.Equal(t, autoResumeNotAllowed, res)
 }
