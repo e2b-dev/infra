@@ -87,7 +87,7 @@ func newTestServerStore(t *testing.T, logLines []testLogLine) (*ServerStore, str
 	buildLogs := buildlogger.NewLogEntryLogger()
 	writeTestBuildLogs(t, buildLogs, logLines)
 
-	buildCache := templatecache.NewBuildCache(context.Background(), noop.NewMeterProvider())
+	buildCache := templatecache.NewBuildCache(t.Context(), noop.NewMeterProvider())
 	buildID := uuid.NewString()
 
 	_, err := buildCache.Create("team-id", buildID, buildLogs)
