@@ -71,17 +71,26 @@ type Metrics struct {
 	// MemTotal Total virtual memory in bytes
 	MemTotal *int `json:"mem_total,omitempty"`
 
+	// MemTotalMib Total virtual memory in MiB
+	MemTotalMib *int `json:"mem_total_mib,omitempty"`
+
 	// MemUsed Used virtual memory in bytes
 	MemUsed *int `json:"mem_used,omitempty"`
+
+	// MemUsedMib Used virtual memory in MiB
+	MemUsedMib *int `json:"mem_used_mib,omitempty"`
 
 	// Ts Unix timestamp in UTC for current sandbox time
 	Ts *int64 `json:"ts,omitempty"`
 }
 
-// VolumeMount Volume
+// VolumeMount NFS volume mount configuration
 type VolumeMount struct {
+	// NfsTarget NFS server target address
 	NfsTarget string `json:"nfs_target"`
-	Path      string `json:"path"`
+
+	// Path Mount path inside the sandbox
+	Path string `json:"path"`
 }
 
 // FilePath defines model for FilePath.
@@ -108,6 +117,9 @@ type InvalidPath = Error
 // InvalidUser defines model for InvalidUser.
 type InvalidUser = Error
 
+// NotAcceptable defines model for NotAcceptable.
+type NotAcceptable = Error
+
 // NotEnoughDiskSpace defines model for NotEnoughDiskSpace.
 type NotEnoughDiskSpace = Error
 
@@ -116,16 +128,16 @@ type UploadSuccess = []EntryInfo
 
 // GetFilesParams defines parameters for GetFiles.
 type GetFilesParams struct {
-	// Path Path to the file, URL encoded. Can be relative to user's home directory.
+	// Path Path to the file, URL encoded. Can be relative to the user's home directory (e.g. "file.txt" resolves to ~/file.txt).
 	Path *FilePath `form:"path,omitempty" json:"path,omitempty"`
 
-	// Username User used for setting the owner, or resolving relative paths.
+	// Username User for setting file ownership and resolving relative paths. Defaults to the sandbox's default user.
 	Username *User `form:"username,omitempty" json:"username,omitempty"`
 
-	// Signature Signature used for file access permission verification.
+	// Signature HMAC signature for access verification. Required when no X-Access-Token header is provided. Format is "v1_<sha256hash>".
 	Signature *Signature `form:"signature,omitempty" json:"signature,omitempty"`
 
-	// SignatureExpiration Signature expiration used for defining the expiration time of the signature.
+	// SignatureExpiration Unix timestamp (seconds) after which the signature expires. Only used with the signature parameter.
 	SignatureExpiration *SignatureExpiration `form:"signature_expiration,omitempty" json:"signature_expiration,omitempty"`
 }
 
@@ -136,16 +148,16 @@ type PostFilesMultipartBody struct {
 
 // PostFilesParams defines parameters for PostFiles.
 type PostFilesParams struct {
-	// Path Path to the file, URL encoded. Can be relative to user's home directory.
+	// Path Path to the file, URL encoded. Can be relative to the user's home directory (e.g. "file.txt" resolves to ~/file.txt).
 	Path *FilePath `form:"path,omitempty" json:"path,omitempty"`
 
-	// Username User used for setting the owner, or resolving relative paths.
+	// Username User for setting file ownership and resolving relative paths. Defaults to the sandbox's default user.
 	Username *User `form:"username,omitempty" json:"username,omitempty"`
 
-	// Signature Signature used for file access permission verification.
+	// Signature HMAC signature for access verification. Required when no X-Access-Token header is provided. Format is "v1_<sha256hash>".
 	Signature *Signature `form:"signature,omitempty" json:"signature,omitempty"`
 
-	// SignatureExpiration Signature expiration used for defining the expiration time of the signature.
+	// SignatureExpiration Unix timestamp (seconds) after which the signature expires. Only used with the signature parameter.
 	SignatureExpiration *SignatureExpiration `form:"signature_expiration,omitempty" json:"signature_expiration,omitempty"`
 }
 
@@ -764,6 +776,7 @@ type GetFilesResponse struct {
 	JSON400      *InvalidPath
 	JSON401      *InvalidUser
 	JSON404      *FileNotFound
+	JSON406      *NotAcceptable
 	JSON500      *InternalServerError
 }
 
@@ -995,6 +1008,13 @@ func ParseGetFilesResponse(rsp *http.Response) (*GetFilesResponse, error) {
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 406:
+		var dest NotAcceptable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON406 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest InternalServerError
