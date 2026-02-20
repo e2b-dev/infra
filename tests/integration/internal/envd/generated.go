@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	AccessTokenAuthScopes = "AccessTokenAuth.Scopes"
+	SandboxAccessTokenAuthScopes = "SandboxAccessTokenAuth.Scopes"
 )
 
 // Defines values for EntryInfoType.
@@ -71,17 +71,26 @@ type Metrics struct {
 	// MemTotal Total virtual memory in bytes
 	MemTotal *int `json:"mem_total,omitempty"`
 
+	// MemTotalMib Total virtual memory in MiB
+	MemTotalMib *int `json:"mem_total_mib,omitempty"`
+
 	// MemUsed Used virtual memory in bytes
 	MemUsed *int `json:"mem_used,omitempty"`
+
+	// MemUsedMib Used virtual memory in MiB
+	MemUsedMib *int `json:"mem_used_mib,omitempty"`
 
 	// Ts Unix timestamp in UTC for current sandbox time
 	Ts *int64 `json:"ts,omitempty"`
 }
 
-// VolumeMount Volume
+// VolumeMount NFS volume mount configuration
 type VolumeMount struct {
+	// NfsTarget NFS server target address
 	NfsTarget string `json:"nfs_target"`
-	Path      string `json:"path"`
+
+	// Path Mount path inside the sandbox
+	Path string `json:"path"`
 }
 
 // FilePath defines model for FilePath.
@@ -108,49 +117,52 @@ type InvalidPath = Error
 // InvalidUser defines model for InvalidUser.
 type InvalidUser = Error
 
+// NotAcceptable defines model for NotAcceptable.
+type NotAcceptable = Error
+
 // NotEnoughDiskSpace defines model for NotEnoughDiskSpace.
 type NotEnoughDiskSpace = Error
 
 // UploadSuccess defines model for UploadSuccess.
 type UploadSuccess = []EntryInfo
 
-// GetFilesParams defines parameters for GetFiles.
-type GetFilesParams struct {
-	// Path Path to the file, URL encoded. Can be relative to user's home directory.
-	Path *FilePath `form:"path,omitempty" json:"path,omitempty"`
+// DownloadFileParams defines parameters for DownloadFile.
+type DownloadFileParams struct {
+	// Path Path to the file, URL encoded. Can be relative to the user's home directory (e.g. "file.txt" resolves to ~/file.txt).
+	Path FilePath `form:"path" json:"path"`
 
-	// Username User used for setting the owner, or resolving relative paths.
+	// Username User for setting file ownership and resolving relative paths. Defaults to the sandbox's default user.
 	Username *User `form:"username,omitempty" json:"username,omitempty"`
 
-	// Signature Signature used for file access permission verification.
+	// Signature HMAC signature for access verification. Required when no X-Access-Token header is provided. Format is "v1_<sha256hash>".
 	Signature *Signature `form:"signature,omitempty" json:"signature,omitempty"`
 
-	// SignatureExpiration Signature expiration used for defining the expiration time of the signature.
+	// SignatureExpiration Unix timestamp (seconds) after which the signature expires. Only used with the signature parameter.
 	SignatureExpiration *SignatureExpiration `form:"signature_expiration,omitempty" json:"signature_expiration,omitempty"`
 }
 
-// PostFilesMultipartBody defines parameters for PostFiles.
-type PostFilesMultipartBody struct {
+// UploadFileMultipartBody defines parameters for UploadFile.
+type UploadFileMultipartBody struct {
 	File *openapi_types.File `json:"file,omitempty"`
 }
 
-// PostFilesParams defines parameters for PostFiles.
-type PostFilesParams struct {
-	// Path Path to the file, URL encoded. Can be relative to user's home directory.
-	Path *FilePath `form:"path,omitempty" json:"path,omitempty"`
+// UploadFileParams defines parameters for UploadFile.
+type UploadFileParams struct {
+	// Path Path to the file, URL encoded. Can be relative to the user's home directory (e.g. "file.txt" resolves to ~/file.txt).
+	Path FilePath `form:"path" json:"path"`
 
-	// Username User used for setting the owner, or resolving relative paths.
+	// Username User for setting file ownership and resolving relative paths. Defaults to the sandbox's default user.
 	Username *User `form:"username,omitempty" json:"username,omitempty"`
 
-	// Signature Signature used for file access permission verification.
+	// Signature HMAC signature for access verification. Required when no X-Access-Token header is provided. Format is "v1_<sha256hash>".
 	Signature *Signature `form:"signature,omitempty" json:"signature,omitempty"`
 
-	// SignatureExpiration Signature expiration used for defining the expiration time of the signature.
+	// SignatureExpiration Unix timestamp (seconds) after which the signature expires. Only used with the signature parameter.
 	SignatureExpiration *SignatureExpiration `form:"signature_expiration,omitempty" json:"signature_expiration,omitempty"`
 }
 
-// PostInitJSONBody defines parameters for PostInit.
-type PostInitJSONBody struct {
+// InitSandboxJSONBody defines parameters for InitSandbox.
+type InitSandboxJSONBody struct {
 	// AccessToken Access token for secure access to envd service
 	AccessToken *SecureToken `json:"accessToken,omitempty"`
 
@@ -171,11 +183,11 @@ type PostInitJSONBody struct {
 	VolumeMounts *[]VolumeMount `json:"volumeMounts,omitempty"`
 }
 
-// PostFilesMultipartRequestBody defines body for PostFiles for multipart/form-data ContentType.
-type PostFilesMultipartRequestBody PostFilesMultipartBody
+// UploadFileMultipartRequestBody defines body for UploadFile for multipart/form-data ContentType.
+type UploadFileMultipartRequestBody UploadFileMultipartBody
 
-// PostInitJSONRequestBody defines body for PostInit for application/json ContentType.
-type PostInitJSONRequestBody PostInitJSONBody
+// InitSandboxJSONRequestBody defines body for InitSandbox for application/json ContentType.
+type InitSandboxJSONRequestBody InitSandboxJSONBody
 
 // RequestEditorFn  is the function signature for the RequestEditor callback function
 type RequestEditorFn func(ctx context.Context, req *http.Request) error
@@ -250,29 +262,29 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 
 // The interface specification for the client above.
 type ClientInterface interface {
-	// GetEnvs request
-	GetEnvs(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// GetEnvVars request
+	GetEnvVars(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// GetFiles request
-	GetFiles(ctx context.Context, params *GetFilesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// DownloadFile request
+	DownloadFile(ctx context.Context, params *DownloadFileParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// PostFilesWithBody request with any body
-	PostFilesWithBody(ctx context.Context, params *PostFilesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// UploadFileWithBody request with any body
+	UploadFileWithBody(ctx context.Context, params *UploadFileParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetHealth request
 	GetHealth(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// PostInitWithBody request with any body
-	PostInitWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// InitSandboxWithBody request with any body
+	InitSandboxWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	PostInit(ctx context.Context, body PostInitJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+	InitSandbox(ctx context.Context, body InitSandboxJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetMetrics request
 	GetMetrics(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
-func (c *Client) GetEnvs(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetEnvsRequest(c.Server)
+func (c *Client) GetEnvVars(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetEnvVarsRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -283,8 +295,8 @@ func (c *Client) GetEnvs(ctx context.Context, reqEditors ...RequestEditorFn) (*h
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetFiles(ctx context.Context, params *GetFilesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetFilesRequest(c.Server, params)
+func (c *Client) DownloadFile(ctx context.Context, params *DownloadFileParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDownloadFileRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -295,8 +307,8 @@ func (c *Client) GetFiles(ctx context.Context, params *GetFilesParams, reqEditor
 	return c.Client.Do(req)
 }
 
-func (c *Client) PostFilesWithBody(ctx context.Context, params *PostFilesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewPostFilesRequestWithBody(c.Server, params, contentType, body)
+func (c *Client) UploadFileWithBody(ctx context.Context, params *UploadFileParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUploadFileRequestWithBody(c.Server, params, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -319,8 +331,8 @@ func (c *Client) GetHealth(ctx context.Context, reqEditors ...RequestEditorFn) (
 	return c.Client.Do(req)
 }
 
-func (c *Client) PostInitWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewPostInitRequestWithBody(c.Server, contentType, body)
+func (c *Client) InitSandboxWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewInitSandboxRequestWithBody(c.Server, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -331,8 +343,8 @@ func (c *Client) PostInitWithBody(ctx context.Context, contentType string, body 
 	return c.Client.Do(req)
 }
 
-func (c *Client) PostInit(ctx context.Context, body PostInitJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewPostInitRequest(c.Server, body)
+func (c *Client) InitSandbox(ctx context.Context, body InitSandboxJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewInitSandboxRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -355,8 +367,8 @@ func (c *Client) GetMetrics(ctx context.Context, reqEditors ...RequestEditorFn) 
 	return c.Client.Do(req)
 }
 
-// NewGetEnvsRequest generates requests for GetEnvs
-func NewGetEnvsRequest(server string) (*http.Request, error) {
+// NewGetEnvVarsRequest generates requests for GetEnvVars
+func NewGetEnvVarsRequest(server string) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -382,8 +394,8 @@ func NewGetEnvsRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
-// NewGetFilesRequest generates requests for GetFiles
-func NewGetFilesRequest(server string, params *GetFilesParams) (*http.Request, error) {
+// NewDownloadFileRequest generates requests for DownloadFile
+func NewDownloadFileRequest(server string, params *DownloadFileParams) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -404,20 +416,16 @@ func NewGetFilesRequest(server string, params *GetFilesParams) (*http.Request, e
 	if params != nil {
 		queryValues := queryURL.Query()
 
-		if params.Path != nil {
-
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "path", runtime.ParamLocationQuery, *params.Path); err != nil {
-				return nil, err
-			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-				return nil, err
-			} else {
-				for k, v := range parsed {
-					for _, v2 := range v {
-						queryValues.Add(k, v2)
-					}
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "path", runtime.ParamLocationQuery, params.Path); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
 				}
 			}
-
 		}
 
 		if params.Username != nil {
@@ -479,8 +487,8 @@ func NewGetFilesRequest(server string, params *GetFilesParams) (*http.Request, e
 	return req, nil
 }
 
-// NewPostFilesRequestWithBody generates requests for PostFiles with any type of body
-func NewPostFilesRequestWithBody(server string, params *PostFilesParams, contentType string, body io.Reader) (*http.Request, error) {
+// NewUploadFileRequestWithBody generates requests for UploadFile with any type of body
+func NewUploadFileRequestWithBody(server string, params *UploadFileParams, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -501,20 +509,16 @@ func NewPostFilesRequestWithBody(server string, params *PostFilesParams, content
 	if params != nil {
 		queryValues := queryURL.Query()
 
-		if params.Path != nil {
-
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "path", runtime.ParamLocationQuery, *params.Path); err != nil {
-				return nil, err
-			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-				return nil, err
-			} else {
-				for k, v := range parsed {
-					for _, v2 := range v {
-						queryValues.Add(k, v2)
-					}
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "path", runtime.ParamLocationQuery, params.Path); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
 				}
 			}
-
 		}
 
 		if params.Username != nil {
@@ -605,19 +609,19 @@ func NewGetHealthRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
-// NewPostInitRequest calls the generic PostInit builder with application/json body
-func NewPostInitRequest(server string, body PostInitJSONRequestBody) (*http.Request, error) {
+// NewInitSandboxRequest calls the generic InitSandbox builder with application/json body
+func NewInitSandboxRequest(server string, body InitSandboxJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
 	buf, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
 	bodyReader = bytes.NewReader(buf)
-	return NewPostInitRequestWithBody(server, "application/json", bodyReader)
+	return NewInitSandboxRequestWithBody(server, "application/json", bodyReader)
 }
 
-// NewPostInitRequestWithBody generates requests for PostInit with any type of body
-func NewPostInitRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+// NewInitSandboxRequestWithBody generates requests for InitSandbox with any type of body
+func NewInitSandboxRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -715,35 +719,35 @@ func WithBaseURL(baseURL string) ClientOption {
 
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
 type ClientWithResponsesInterface interface {
-	// GetEnvsWithResponse request
-	GetEnvsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetEnvsResponse, error)
+	// GetEnvVarsWithResponse request
+	GetEnvVarsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetEnvVarsResponse, error)
 
-	// GetFilesWithResponse request
-	GetFilesWithResponse(ctx context.Context, params *GetFilesParams, reqEditors ...RequestEditorFn) (*GetFilesResponse, error)
+	// DownloadFileWithResponse request
+	DownloadFileWithResponse(ctx context.Context, params *DownloadFileParams, reqEditors ...RequestEditorFn) (*DownloadFileResponse, error)
 
-	// PostFilesWithBodyWithResponse request with any body
-	PostFilesWithBodyWithResponse(ctx context.Context, params *PostFilesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostFilesResponse, error)
+	// UploadFileWithBodyWithResponse request with any body
+	UploadFileWithBodyWithResponse(ctx context.Context, params *UploadFileParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UploadFileResponse, error)
 
 	// GetHealthWithResponse request
 	GetHealthWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetHealthResponse, error)
 
-	// PostInitWithBodyWithResponse request with any body
-	PostInitWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostInitResponse, error)
+	// InitSandboxWithBodyWithResponse request with any body
+	InitSandboxWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*InitSandboxResponse, error)
 
-	PostInitWithResponse(ctx context.Context, body PostInitJSONRequestBody, reqEditors ...RequestEditorFn) (*PostInitResponse, error)
+	InitSandboxWithResponse(ctx context.Context, body InitSandboxJSONRequestBody, reqEditors ...RequestEditorFn) (*InitSandboxResponse, error)
 
 	// GetMetricsWithResponse request
 	GetMetricsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetMetricsResponse, error)
 }
 
-type GetEnvsResponse struct {
+type GetEnvVarsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	JSON200      *EnvVars
 }
 
 // Status returns HTTPResponse.Status
-func (r GetEnvsResponse) Status() string {
+func (r GetEnvVarsResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -751,24 +755,25 @@ func (r GetEnvsResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r GetEnvsResponse) StatusCode() int {
+func (r GetEnvVarsResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
 	return 0
 }
 
-type GetFilesResponse struct {
+type DownloadFileResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	JSON400      *InvalidPath
 	JSON401      *InvalidUser
 	JSON404      *FileNotFound
+	JSON406      *NotAcceptable
 	JSON500      *InternalServerError
 }
 
 // Status returns HTTPResponse.Status
-func (r GetFilesResponse) Status() string {
+func (r DownloadFileResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -776,14 +781,14 @@ func (r GetFilesResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r GetFilesResponse) StatusCode() int {
+func (r DownloadFileResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
 	return 0
 }
 
-type PostFilesResponse struct {
+type UploadFileResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	JSON200      *UploadSuccess
@@ -794,7 +799,7 @@ type PostFilesResponse struct {
 }
 
 // Status returns HTTPResponse.Status
-func (r PostFilesResponse) Status() string {
+func (r UploadFileResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -802,7 +807,7 @@ func (r PostFilesResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r PostFilesResponse) StatusCode() int {
+func (r UploadFileResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -830,13 +835,13 @@ func (r GetHealthResponse) StatusCode() int {
 	return 0
 }
 
-type PostInitResponse struct {
+type InitSandboxResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 }
 
 // Status returns HTTPResponse.Status
-func (r PostInitResponse) Status() string {
+func (r InitSandboxResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -844,7 +849,7 @@ func (r PostInitResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r PostInitResponse) StatusCode() int {
+func (r InitSandboxResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -873,31 +878,31 @@ func (r GetMetricsResponse) StatusCode() int {
 	return 0
 }
 
-// GetEnvsWithResponse request returning *GetEnvsResponse
-func (c *ClientWithResponses) GetEnvsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetEnvsResponse, error) {
-	rsp, err := c.GetEnvs(ctx, reqEditors...)
+// GetEnvVarsWithResponse request returning *GetEnvVarsResponse
+func (c *ClientWithResponses) GetEnvVarsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetEnvVarsResponse, error) {
+	rsp, err := c.GetEnvVars(ctx, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseGetEnvsResponse(rsp)
+	return ParseGetEnvVarsResponse(rsp)
 }
 
-// GetFilesWithResponse request returning *GetFilesResponse
-func (c *ClientWithResponses) GetFilesWithResponse(ctx context.Context, params *GetFilesParams, reqEditors ...RequestEditorFn) (*GetFilesResponse, error) {
-	rsp, err := c.GetFiles(ctx, params, reqEditors...)
+// DownloadFileWithResponse request returning *DownloadFileResponse
+func (c *ClientWithResponses) DownloadFileWithResponse(ctx context.Context, params *DownloadFileParams, reqEditors ...RequestEditorFn) (*DownloadFileResponse, error) {
+	rsp, err := c.DownloadFile(ctx, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseGetFilesResponse(rsp)
+	return ParseDownloadFileResponse(rsp)
 }
 
-// PostFilesWithBodyWithResponse request with arbitrary body returning *PostFilesResponse
-func (c *ClientWithResponses) PostFilesWithBodyWithResponse(ctx context.Context, params *PostFilesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostFilesResponse, error) {
-	rsp, err := c.PostFilesWithBody(ctx, params, contentType, body, reqEditors...)
+// UploadFileWithBodyWithResponse request with arbitrary body returning *UploadFileResponse
+func (c *ClientWithResponses) UploadFileWithBodyWithResponse(ctx context.Context, params *UploadFileParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UploadFileResponse, error) {
+	rsp, err := c.UploadFileWithBody(ctx, params, contentType, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParsePostFilesResponse(rsp)
+	return ParseUploadFileResponse(rsp)
 }
 
 // GetHealthWithResponse request returning *GetHealthResponse
@@ -909,21 +914,21 @@ func (c *ClientWithResponses) GetHealthWithResponse(ctx context.Context, reqEdit
 	return ParseGetHealthResponse(rsp)
 }
 
-// PostInitWithBodyWithResponse request with arbitrary body returning *PostInitResponse
-func (c *ClientWithResponses) PostInitWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostInitResponse, error) {
-	rsp, err := c.PostInitWithBody(ctx, contentType, body, reqEditors...)
+// InitSandboxWithBodyWithResponse request with arbitrary body returning *InitSandboxResponse
+func (c *ClientWithResponses) InitSandboxWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*InitSandboxResponse, error) {
+	rsp, err := c.InitSandboxWithBody(ctx, contentType, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParsePostInitResponse(rsp)
+	return ParseInitSandboxResponse(rsp)
 }
 
-func (c *ClientWithResponses) PostInitWithResponse(ctx context.Context, body PostInitJSONRequestBody, reqEditors ...RequestEditorFn) (*PostInitResponse, error) {
-	rsp, err := c.PostInit(ctx, body, reqEditors...)
+func (c *ClientWithResponses) InitSandboxWithResponse(ctx context.Context, body InitSandboxJSONRequestBody, reqEditors ...RequestEditorFn) (*InitSandboxResponse, error) {
+	rsp, err := c.InitSandbox(ctx, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParsePostInitResponse(rsp)
+	return ParseInitSandboxResponse(rsp)
 }
 
 // GetMetricsWithResponse request returning *GetMetricsResponse
@@ -935,15 +940,15 @@ func (c *ClientWithResponses) GetMetricsWithResponse(ctx context.Context, reqEdi
 	return ParseGetMetricsResponse(rsp)
 }
 
-// ParseGetEnvsResponse parses an HTTP response from a GetEnvsWithResponse call
-func ParseGetEnvsResponse(rsp *http.Response) (*GetEnvsResponse, error) {
+// ParseGetEnvVarsResponse parses an HTTP response from a GetEnvVarsWithResponse call
+func ParseGetEnvVarsResponse(rsp *http.Response) (*GetEnvVarsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &GetEnvsResponse{
+	response := &GetEnvVarsResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
@@ -961,15 +966,15 @@ func ParseGetEnvsResponse(rsp *http.Response) (*GetEnvsResponse, error) {
 	return response, nil
 }
 
-// ParseGetFilesResponse parses an HTTP response from a GetFilesWithResponse call
-func ParseGetFilesResponse(rsp *http.Response) (*GetFilesResponse, error) {
+// ParseDownloadFileResponse parses an HTTP response from a DownloadFileWithResponse call
+func ParseDownloadFileResponse(rsp *http.Response) (*DownloadFileResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &GetFilesResponse{
+	response := &DownloadFileResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
@@ -996,6 +1001,13 @@ func ParseGetFilesResponse(rsp *http.Response) (*GetFilesResponse, error) {
 		}
 		response.JSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 406:
+		var dest NotAcceptable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON406 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest InternalServerError
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -1008,15 +1020,15 @@ func ParseGetFilesResponse(rsp *http.Response) (*GetFilesResponse, error) {
 	return response, nil
 }
 
-// ParsePostFilesResponse parses an HTTP response from a PostFilesWithResponse call
-func ParsePostFilesResponse(rsp *http.Response) (*PostFilesResponse, error) {
+// ParseUploadFileResponse parses an HTTP response from a UploadFileWithResponse call
+func ParseUploadFileResponse(rsp *http.Response) (*UploadFileResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &PostFilesResponse{
+	response := &UploadFileResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
@@ -1078,15 +1090,15 @@ func ParseGetHealthResponse(rsp *http.Response) (*GetHealthResponse, error) {
 	return response, nil
 }
 
-// ParsePostInitResponse parses an HTTP response from a PostInitWithResponse call
-func ParsePostInitResponse(rsp *http.Response) (*PostInitResponse, error) {
+// ParseInitSandboxResponse parses an HTTP response from a InitSandboxWithResponse call
+func ParseInitSandboxResponse(rsp *http.Response) (*InitSandboxResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &PostInitResponse{
+	response := &InitSandboxResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
