@@ -50,15 +50,15 @@ func NewMappingFromFc(regions []*models.GuestMemoryRegionMapping) (*Mapping, err
 	return NewMapping(r), nil
 }
 
-// GetOffset returns the relative offset and the pagesize of the mapped range for a given address.
-func (m *Mapping) GetOffset(hostVirtAddr uintptr) (int64, uintptr, error) {
+// GetOffset returns the relative offset of the mapped range for a given address.
+func (m *Mapping) GetOffset(hostVirtAddr uintptr) (int64, error) {
 	for _, r := range m.Regions {
 		if hostVirtAddr >= r.BaseHostVirtAddr && hostVirtAddr < r.endHostVirtAddr() {
-			return r.shiftedOffset(hostVirtAddr), r.PageSize, nil
+			return r.shiftedOffset(hostVirtAddr), nil
 		}
 	}
 
-	return 0, 0, AddressNotFoundError{hostVirtAddr: hostVirtAddr}
+	return 0, AddressNotFoundError{hostVirtAddr: hostVirtAddr}
 }
 
 // GetHostVirtRanges returns the host virtual addresses and sizes (ranges) that cover exactly the given [offset, offset+length) range in the host virtual address space.
@@ -95,12 +95,12 @@ func (m *Mapping) getHostVirtRegion(off int64) (*Region, error) {
 	return nil, OffsetNotFoundError{offset: off}
 }
 
-// GetHostVirtAddr returns the host virtual address and page size for the given offset.
-func (m *Mapping) GetHostVirtAddr(off int64) (uintptr, uintptr, error) {
+// GetHostVirtAddr returns the host virtual address the given offset.
+func (m *Mapping) GetHostVirtAddr(off int64) (uintptr, error) {
 	region, err := m.getHostVirtRegion(off)
 	if err != nil {
-		return 0, 0, err
+		return 0, err
 	}
 
-	return region.shiftedHostVirtAddr(off), region.PageSize, nil
+	return region.shiftedHostVirtAddr(off), nil
 }
