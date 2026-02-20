@@ -1,13 +1,5 @@
 package api
 
-var _ error = (*APIError)(nil)
+import sharedauth "github.com/e2b-dev/infra/packages/shared/pkg/auth"
 
-type APIError struct {
-	Err       error
-	ClientMsg string
-	Code      int
-}
-
-func (e *APIError) Error() string {
-	return e.Err.Error()
-}
+type APIError = sharedauth.APIError
