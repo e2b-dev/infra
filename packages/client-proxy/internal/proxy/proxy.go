@@ -15,6 +15,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
@@ -127,8 +128,8 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 				zap.Int64("content_length", r.ContentLength),
 			)
 
-			trafficAccessToken := r.Header.Get("e2b-traffic-access-token")
-			envdAccessToken := r.Header.Get("X-Access-Token")
+			trafficAccessToken := r.Header.Get(proxygrpc.MetadataTrafficAccessToken)
+			envdAccessToken := r.Header.Get(proxygrpc.MetadataEnvdHTTPAccessToken)
 			nodeIP, err := catalogResolution(ctx, sandboxId, port, trafficAccessToken, envdAccessToken, catalog, pausedSandboxResumer, featureFlagsClient)
 			if err != nil {
 				var resumeDeniedErr *reverseproxy.SandboxResumePermissionDeniedError
