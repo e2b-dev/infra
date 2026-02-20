@@ -52,7 +52,7 @@ func TestResponseMapper_DirectionOrdering(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			entries, err := ResponseMapper(context.Background(), res, 0, nil, tc.direction)
+			entries, err := ResponseMapper(t.Context(), res, 0, nil, tc.direction)
 			require.NoError(t, err)
 			require.Len(t, entries, 3)
 
