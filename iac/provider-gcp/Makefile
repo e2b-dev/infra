@@ -119,12 +119,20 @@ terraform:
 	@ $(tf_vars) $(TF) $(ARGS)
 
 # Deploy all jobs in Nomad
-.PHONY: plan-only-jobs plan-only-jobs/clickhouse_migrator
+# Clickhouse jobs are scoped in Clickhouse submodule so we need special handling for them
+.PHONY: plan-only-jobs plan-only-jobs/clickhouse_migrator plan-only-jobs/clickhouse_backup plan-only-jobs/clickhouse_backup_restore
 plan-only-jobs/clickhouse_migrator:
-	# Clickhouse migrator is scoped in Clickhouse submodule so we need special handling for it
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(TF) fmt -recursive
-	@ $(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -compact-warnings -target="module.nomad.module.clickhouse.nomad_job.clickhouse_migrator"
+	$(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -compact-warnings -target="module.nomad.module.clickhouse.nomad_job.clickhouse_migrator"
+plan-only-jobs/clickhouse_backup:
+	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	$(TF) fmt -recursive
+	$(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -compact-warnings -target="module.nomad.module.clickhouse.nomad_job.clickhouse_backup"
+plan-only-jobs/clickhouse_backup_restore:
+	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	$(TF) fmt -recursive
+	$(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -compact-warnings -target="module.nomad.module.clickhouse.nomad_job.clickhouse_backup_restore"
 plan-only-jobs/%:
 	# When job name is specified, all '-' are replaced with '_' in the job name
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
