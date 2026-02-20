@@ -319,8 +319,16 @@ def load_yaml_file(path: str) -> str:
         return f.read()
 
 
-def merge_specs(raw_docs: list[str]) -> dict[str, Any]:
-    """Merge multiple raw YAML OpenAPI docs into a single spec."""
+def merge_specs(raw_docs: list[str], protected_paths: set[str] | None = None) -> dict[str, Any]:
+    """Merge multiple raw YAML OpenAPI docs into a single spec.
+
+    Args:
+        raw_docs: Raw YAML strings to merge (order matters — later docs
+                  overwrite earlier ones for paths and component entries).
+        protected_paths: Paths that should not be overwritten once set.
+                         Used to prevent the platform API from overwriting
+                         envd paths that share the same name (e.g. /health).
+    """
     merged: dict[str, Any] = {
         "openapi": "3.1.0",
         "info": {
@@ -343,6 +351,8 @@ def merge_specs(raw_docs: list[str]) -> dict[str, Any]:
             continue
 
         for path, methods in doc.get("paths", {}).items():
+            if protected_paths and path in protected_paths and path in merged["paths"]:
+                continue
             merged["paths"][path] = methods
 
         for section, entries in doc.get("components", {}).items():
@@ -699,8 +709,10 @@ def main() -> None:
 
     # --- Merge everything ---
     # Order: envd first, then platform API (platform schemas take precedence
-    # for shared names like Error since they're more complete)
-    merged = merge_specs(envd_raw_docs + [api_doc])
+    # for shared names like Error since they're more complete).
+    # Protect envd paths so the platform API doesn't overwrite them
+    # (e.g. /health exists in both but the envd version is authoritative).
+    merged = merge_specs(envd_raw_docs + [api_doc], protected_paths=envd_paths)
 
     # Auto-detect and fill streaming RPC endpoints
     streaming_rpcs = find_streaming_rpcs(ENVD_SPEC_DIR)
