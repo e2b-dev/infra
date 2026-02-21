@@ -12,7 +12,7 @@ WHERE ea.alias = @alias
 -- name: GetTemplateById :one
 -- Looks up a template by its ID directly
 -- @template_id: the template ID to look up
-SELECT e.id, e.team_id, e.public
+SELECT e.id, e.team_id, e.public, e.cluster_id
 FROM public.envs AS e
 WHERE e.id = @template_id
   AND e.source IN ('template', 'snapshot_template');

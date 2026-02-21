@@ -97,12 +97,12 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 	templateID := id.Generate()
 	public := false
 
-	aliasInfo, err := a.templateCache.ResolveAlias(findTemplateCtx, identifier, team.Slug)
+	aliasInfo, metadata, err := a.templateCache.ResolveAliasWithMetadata(findTemplateCtx, identifier, team.Slug)
 	switch {
 	case err == nil && aliasInfo.TeamID == team.ID:
 		// Template exists and is owned by this team - update it
 		templateID = aliasInfo.TemplateID
-		public = aliasInfo.Public
+		public = metadata.Public
 	case err == nil || errors.Is(err, templatecache.ErrTemplateNotFound):
 		// Either alias not found, or found but owned by different team (e.g. promoted template)
 		// Team can create their own template with this alias in their namespace
