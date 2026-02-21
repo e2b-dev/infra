@@ -125,11 +125,7 @@ func TestAliasCacheResolve_ExplicitNamespaceNoIDFallback(t *testing.T) {
 
 // TestAliasCacheResolve_TeamOverridesPromoted tests that team's alias
 // takes precedence over promoted template with same name.
-// NOTE: This test is for Phase 2 when PK becomes (alias, namespace).
-// During Phase 1, PK is still (alias) only, so duplicate alias names are not allowed.
 func TestAliasCacheResolve_TeamOverridesPromoted(t *testing.T) {
-	t.Skip("Phase 2 test: requires PK change to (alias, namespace) to allow duplicate alias names")
-
 	t.Parallel()
 	db := testutils.SetupDatabase(t)
 	redis := redis_utils.SetupInstance(t)
