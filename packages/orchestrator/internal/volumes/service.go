@@ -1,19 +1,15 @@
 package volumes
 
 import (
-	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
-
-	"github.com/google/uuid"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/google/uuid"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 const (
@@ -75,31 +71,6 @@ func (s *Service) buildVolumePath(volume *orchestrator.VolumeInfo, subPath strin
 	}
 
 	return volumePath, nil
-}
-
-func (s *Service) processError(err error) error {
-	if err == nil {
-		return nil
-	}
-
-	// already a grpc error?
-	if _, ok := status.FromError(err); ok {
-		return err
-	}
-
-	if os.IsNotExist(err) || errors.Is(err, syscall.ENOENT) {
-		return status.Error(codes.NotFound, err.Error())
-	}
-
-	if errors.Is(err, syscall.ENOTEMPTY) {
-		return status.Error(codes.FailedPrecondition, err.Error())
-	}
-
-	if errors.Is(err, syscall.EEXIST) {
-		return status.Error(codes.AlreadyExists, err.Error())
-	}
-
-	return status.Error(codes.Internal, err.Error())
 }
 
 func tryParseUUID(id string) bool {

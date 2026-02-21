@@ -95,14 +95,6 @@ const (
 	TemplateBuildStatusWaiting  TemplateBuildStatus = "waiting"
 )
 
-// Defines values for VolumeEntryStatType.
-const (
-	Directory VolumeEntryStatType = "directory"
-	File      VolumeEntryStatType = "file"
-	Symlink   VolumeEntryStatType = "symlink"
-	Unknown   VolumeEntryStatType = "unknown"
-)
-
 // Defines values for GetTeamsTeamIDMetricsMaxParamsMetric.
 const (
 	ConcurrentSandboxes GetTeamsTeamIDMetricsMaxParamsMetric = "concurrent_sandboxes"
@@ -1176,27 +1168,6 @@ type Volume struct {
 	VolumeID string `json:"volumeID"`
 }
 
-// VolumeDirectoryListing defines model for VolumeDirectoryListing.
-type VolumeDirectoryListing = []VolumeEntryStat
-
-// VolumeEntryStat defines model for VolumeEntryStat.
-type VolumeEntryStat struct {
-	Atime  time.Time           `json:"atime"`
-	Ctime  time.Time           `json:"ctime"`
-	Gid    uint32              `json:"gid"`
-	Mode   uint32              `json:"mode"`
-	Mtime  time.Time           `json:"mtime"`
-	Name   string              `json:"name"`
-	Path   string              `json:"path"`
-	Size   int64               `json:"size"`
-	Target *string             `json:"target,omitempty"`
-	Type   VolumeEntryStatType `json:"type"`
-	Uid    uint32              `json:"uid"`
-}
-
-// VolumeEntryStatType defines model for VolumeEntryStat.Type.
-type VolumeEntryStatType string
-
 // AccessTokenID defines model for accessTokenID.
 type AccessTokenID = string
 
@@ -1214,9 +1185,6 @@ type PaginationLimit = int32
 
 // PaginationNextToken defines model for paginationNextToken.
 type PaginationNextToken = string
-
-// Path defines model for path.
-type Path = string
 
 // SandboxID defines model for sandboxID.
 type SandboxID = string
@@ -1396,83 +1364,6 @@ type GetV2SandboxesSandboxIDLogsParams struct {
 	Direction *LogsDirection `form:"direction,omitempty" json:"direction,omitempty"`
 }
 
-// DeleteVolumesVolumeIDDirParams defines parameters for DeleteVolumesVolumeIDDir.
-type DeleteVolumesVolumeIDDirParams struct {
-	Path Path `form:"path" json:"path"`
-
-	// Recursive Delete all files and directories recursively
-	Recursive *bool `form:"recursive,omitempty" json:"recursive,omitempty"`
-}
-
-// GetVolumesVolumeIDDirParams defines parameters for GetVolumesVolumeIDDir.
-type GetVolumesVolumeIDDirParams struct {
-	Path Path `form:"path" json:"path"`
-
-	// Depth Number of layers deep to recurse into the directory
-	Depth *uint32 `form:"depth,omitempty" json:"depth,omitempty"`
-}
-
-// PostVolumesVolumeIDDirParams defines parameters for PostVolumesVolumeIDDir.
-type PostVolumesVolumeIDDirParams struct {
-	Path Path `form:"path" json:"path"`
-
-	// Uid User ID of the created directory
-	Uid *uint32 `form:"uid,omitempty" json:"uid,omitempty"`
-
-	// Gid Group ID of the created directory
-	Gid *uint32 `form:"gid,omitempty" json:"gid,omitempty"`
-
-	// Mode Mode of the created directory
-	Mode *uint32 `form:"mode,omitempty" json:"mode,omitempty"`
-
-	// Force Create the parents of a directory if they don't exist
-	Force *bool `form:"force,omitempty" json:"force,omitempty"`
-}
-
-// DeleteVolumesVolumeIDFileParams defines parameters for DeleteVolumesVolumeIDFile.
-type DeleteVolumesVolumeIDFileParams struct {
-	Path Path `form:"path" json:"path"`
-}
-
-// GetVolumesVolumeIDFileParams defines parameters for GetVolumesVolumeIDFile.
-type GetVolumesVolumeIDFileParams struct {
-	Path Path `form:"path" json:"path"`
-}
-
-// PatchVolumesVolumeIDFileJSONBody defines parameters for PatchVolumesVolumeIDFile.
-type PatchVolumesVolumeIDFileJSONBody struct {
-	Gid  *uint32 `json:"gid,omitempty"`
-	Mode *uint32 `json:"mode,omitempty"`
-	Uid  *uint32 `json:"uid,omitempty"`
-}
-
-// PatchVolumesVolumeIDFileParams defines parameters for PatchVolumesVolumeIDFile.
-type PatchVolumesVolumeIDFileParams struct {
-	Path Path `form:"path" json:"path"`
-}
-
-// PutVolumesVolumeIDFileParams defines parameters for PutVolumesVolumeIDFile.
-type PutVolumesVolumeIDFileParams struct {
-	Path Path `form:"path" json:"path"`
-
-	// Uid User ID of the uploaded file
-	Uid *uint32 `form:"uid,omitempty" json:"uid,omitempty"`
-
-	// Gid Group ID of the uploaded file
-	Gid *uint32 `form:"gid,omitempty" json:"gid,omitempty"`
-
-	// Mode Mode of the uploaded file
-	Mode *uint32 `form:"mode,omitempty" json:"mode,omitempty"`
-
-	// Force Force overwrite of an existing file
-	Force *bool `form:"force,omitempty" json:"force,omitempty"`
-}
-
-// GetVolumesVolumeIDStatParams defines parameters for GetVolumesVolumeIDStat.
-type GetVolumesVolumeIDStatParams struct {
-	Path Path `form:"path" json:"path"`
-}
-
 // PostAccessTokensJSONRequestBody defines body for PostAccessTokens for application/json ContentType.
 type PostAccessTokensJSONRequestBody = NewAccessToken
 
@@ -1532,9 +1423,6 @@ type PostV3TemplatesJSONRequestBody = TemplateBuildRequestV3
 
 // PostVolumesJSONRequestBody defines body for PostVolumes for application/json ContentType.
 type PostVolumesJSONRequestBody = NewVolume
-
-// PatchVolumesVolumeIDFileJSONRequestBody defines body for PatchVolumesVolumeIDFile for application/json ContentType.
-type PatchVolumesVolumeIDFileJSONRequestBody PatchVolumesVolumeIDFileJSONBody
 
 // AsAWSRegistry returns the union data inside the FromImageRegistry as a AWSRegistry
 func (t FromImageRegistry) AsAWSRegistry() (AWSRegistry, error) {
@@ -1923,32 +1811,6 @@ type ClientInterface interface {
 
 	// GetVolumesVolumeID request
 	GetVolumesVolumeID(ctx context.Context, volumeID VolumeID, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// DeleteVolumesVolumeIDDir request
-	DeleteVolumesVolumeIDDir(ctx context.Context, volumeID VolumeID, params *DeleteVolumesVolumeIDDirParams, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// GetVolumesVolumeIDDir request
-	GetVolumesVolumeIDDir(ctx context.Context, volumeID VolumeID, params *GetVolumesVolumeIDDirParams, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// PostVolumesVolumeIDDir request
-	PostVolumesVolumeIDDir(ctx context.Context, volumeID VolumeID, params *PostVolumesVolumeIDDirParams, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// DeleteVolumesVolumeIDFile request
-	DeleteVolumesVolumeIDFile(ctx context.Context, volumeID VolumeID, params *DeleteVolumesVolumeIDFileParams, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// GetVolumesVolumeIDFile request
-	GetVolumesVolumeIDFile(ctx context.Context, volumeID VolumeID, params *GetVolumesVolumeIDFileParams, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// PatchVolumesVolumeIDFileWithBody request with any body
-	PatchVolumesVolumeIDFileWithBody(ctx context.Context, volumeID VolumeID, params *PatchVolumesVolumeIDFileParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	PatchVolumesVolumeIDFile(ctx context.Context, volumeID VolumeID, params *PatchVolumesVolumeIDFileParams, body PatchVolumesVolumeIDFileJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// PutVolumesVolumeIDFileWithBody request with any body
-	PutVolumesVolumeIDFileWithBody(ctx context.Context, volumeID VolumeID, params *PutVolumesVolumeIDFileParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// GetVolumesVolumeIDStat request
-	GetVolumesVolumeIDStat(ctx context.Context, volumeID VolumeID, params *GetVolumesVolumeIDStatParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
 func (c *Client) PostAccessTokensWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -2805,114 +2667,6 @@ func (c *Client) DeleteVolumesVolumeID(ctx context.Context, volumeID VolumeID, r
 
 func (c *Client) GetVolumesVolumeID(ctx context.Context, volumeID VolumeID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetVolumesVolumeIDRequest(c.Server, volumeID)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *Client) DeleteVolumesVolumeIDDir(ctx context.Context, volumeID VolumeID, params *DeleteVolumesVolumeIDDirParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewDeleteVolumesVolumeIDDirRequest(c.Server, volumeID, params)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *Client) GetVolumesVolumeIDDir(ctx context.Context, volumeID VolumeID, params *GetVolumesVolumeIDDirParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetVolumesVolumeIDDirRequest(c.Server, volumeID, params)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *Client) PostVolumesVolumeIDDir(ctx context.Context, volumeID VolumeID, params *PostVolumesVolumeIDDirParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewPostVolumesVolumeIDDirRequest(c.Server, volumeID, params)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *Client) DeleteVolumesVolumeIDFile(ctx context.Context, volumeID VolumeID, params *DeleteVolumesVolumeIDFileParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewDeleteVolumesVolumeIDFileRequest(c.Server, volumeID, params)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *Client) GetVolumesVolumeIDFile(ctx context.Context, volumeID VolumeID, params *GetVolumesVolumeIDFileParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetVolumesVolumeIDFileRequest(c.Server, volumeID, params)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *Client) PatchVolumesVolumeIDFileWithBody(ctx context.Context, volumeID VolumeID, params *PatchVolumesVolumeIDFileParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewPatchVolumesVolumeIDFileRequestWithBody(c.Server, volumeID, params, contentType, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *Client) PatchVolumesVolumeIDFile(ctx context.Context, volumeID VolumeID, params *PatchVolumesVolumeIDFileParams, body PatchVolumesVolumeIDFileJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewPatchVolumesVolumeIDFileRequest(c.Server, volumeID, params, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *Client) PutVolumesVolumeIDFileWithBody(ctx context.Context, volumeID VolumeID, params *PutVolumesVolumeIDFileParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewPutVolumesVolumeIDFileRequestWithBody(c.Server, volumeID, params, contentType, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *Client) GetVolumesVolumeIDStat(ctx context.Context, volumeID VolumeID, params *GetVolumesVolumeIDStatParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetVolumesVolumeIDStatRequest(c.Server, volumeID, params)
 	if err != nil {
 		return nil, err
 	}
@@ -5457,597 +5211,6 @@ func NewGetVolumesVolumeIDRequest(server string, volumeID VolumeID) (*http.Reque
 	return req, nil
 }
 
-// NewDeleteVolumesVolumeIDDirRequest generates requests for DeleteVolumesVolumeIDDir
-func NewDeleteVolumesVolumeIDDirRequest(server string, volumeID VolumeID, params *DeleteVolumesVolumeIDDirParams) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "volumeID", runtime.ParamLocationPath, volumeID)
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/volumes/%s/dir", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	if params != nil {
-		queryValues := queryURL.Query()
-
-		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "path", runtime.ParamLocationQuery, params.Path); err != nil {
-			return nil, err
-		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-			return nil, err
-		} else {
-			for k, v := range parsed {
-				for _, v2 := range v {
-					queryValues.Add(k, v2)
-				}
-			}
-		}
-
-		if params.Recursive != nil {
-
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "recursive", runtime.ParamLocationQuery, *params.Recursive); err != nil {
-				return nil, err
-			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-				return nil, err
-			} else {
-				for k, v := range parsed {
-					for _, v2 := range v {
-						queryValues.Add(k, v2)
-					}
-				}
-			}
-
-		}
-
-		queryURL.RawQuery = queryValues.Encode()
-	}
-
-	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-// NewGetVolumesVolumeIDDirRequest generates requests for GetVolumesVolumeIDDir
-func NewGetVolumesVolumeIDDirRequest(server string, volumeID VolumeID, params *GetVolumesVolumeIDDirParams) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "volumeID", runtime.ParamLocationPath, volumeID)
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/volumes/%s/dir", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	if params != nil {
-		queryValues := queryURL.Query()
-
-		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "path", runtime.ParamLocationQuery, params.Path); err != nil {
-			return nil, err
-		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-			return nil, err
-		} else {
-			for k, v := range parsed {
-				for _, v2 := range v {
-					queryValues.Add(k, v2)
-				}
-			}
-		}
-
-		if params.Depth != nil {
-
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "depth", runtime.ParamLocationQuery, *params.Depth); err != nil {
-				return nil, err
-			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-				return nil, err
-			} else {
-				for k, v := range parsed {
-					for _, v2 := range v {
-						queryValues.Add(k, v2)
-					}
-				}
-			}
-
-		}
-
-		queryURL.RawQuery = queryValues.Encode()
-	}
-
-	req, err := http.NewRequest("GET", queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-// NewPostVolumesVolumeIDDirRequest generates requests for PostVolumesVolumeIDDir
-func NewPostVolumesVolumeIDDirRequest(server string, volumeID VolumeID, params *PostVolumesVolumeIDDirParams) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "volumeID", runtime.ParamLocationPath, volumeID)
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/volumes/%s/dir", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	if params != nil {
-		queryValues := queryURL.Query()
-
-		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "path", runtime.ParamLocationQuery, params.Path); err != nil {
-			return nil, err
-		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-			return nil, err
-		} else {
-			for k, v := range parsed {
-				for _, v2 := range v {
-					queryValues.Add(k, v2)
-				}
-			}
-		}
-
-		if params.Uid != nil {
-
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "uid", runtime.ParamLocationQuery, *params.Uid); err != nil {
-				return nil, err
-			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-				return nil, err
-			} else {
-				for k, v := range parsed {
-					for _, v2 := range v {
-						queryValues.Add(k, v2)
-					}
-				}
-			}
-
-		}
-
-		if params.Gid != nil {
-
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "gid", runtime.ParamLocationQuery, *params.Gid); err != nil {
-				return nil, err
-			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-				return nil, err
-			} else {
-				for k, v := range parsed {
-					for _, v2 := range v {
-						queryValues.Add(k, v2)
-					}
-				}
-			}
-
-		}
-
-		if params.Mode != nil {
-
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "mode", runtime.ParamLocationQuery, *params.Mode); err != nil {
-				return nil, err
-			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-				return nil, err
-			} else {
-				for k, v := range parsed {
-					for _, v2 := range v {
-						queryValues.Add(k, v2)
-					}
-				}
-			}
-
-		}
-
-		if params.Force != nil {
-
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "force", runtime.ParamLocationQuery, *params.Force); err != nil {
-				return nil, err
-			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-				return nil, err
-			} else {
-				for k, v := range parsed {
-					for _, v2 := range v {
-						queryValues.Add(k, v2)
-					}
-				}
-			}
-
-		}
-
-		queryURL.RawQuery = queryValues.Encode()
-	}
-
-	req, err := http.NewRequest("POST", queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-// NewDeleteVolumesVolumeIDFileRequest generates requests for DeleteVolumesVolumeIDFile
-func NewDeleteVolumesVolumeIDFileRequest(server string, volumeID VolumeID, params *DeleteVolumesVolumeIDFileParams) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "volumeID", runtime.ParamLocationPath, volumeID)
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/volumes/%s/file", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	if params != nil {
-		queryValues := queryURL.Query()
-
-		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "path", runtime.ParamLocationQuery, params.Path); err != nil {
-			return nil, err
-		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-			return nil, err
-		} else {
-			for k, v := range parsed {
-				for _, v2 := range v {
-					queryValues.Add(k, v2)
-				}
-			}
-		}
-
-		queryURL.RawQuery = queryValues.Encode()
-	}
-
-	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-// NewGetVolumesVolumeIDFileRequest generates requests for GetVolumesVolumeIDFile
-func NewGetVolumesVolumeIDFileRequest(server string, volumeID VolumeID, params *GetVolumesVolumeIDFileParams) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "volumeID", runtime.ParamLocationPath, volumeID)
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/volumes/%s/file", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	if params != nil {
-		queryValues := queryURL.Query()
-
-		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "path", runtime.ParamLocationQuery, params.Path); err != nil {
-			return nil, err
-		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-			return nil, err
-		} else {
-			for k, v := range parsed {
-				for _, v2 := range v {
-					queryValues.Add(k, v2)
-				}
-			}
-		}
-
-		queryURL.RawQuery = queryValues.Encode()
-	}
-
-	req, err := http.NewRequest("GET", queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-// NewPatchVolumesVolumeIDFileRequest calls the generic PatchVolumesVolumeIDFile builder with application/json body
-func NewPatchVolumesVolumeIDFileRequest(server string, volumeID VolumeID, params *PatchVolumesVolumeIDFileParams, body PatchVolumesVolumeIDFileJSONRequestBody) (*http.Request, error) {
-	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-	bodyReader = bytes.NewReader(buf)
-	return NewPatchVolumesVolumeIDFileRequestWithBody(server, volumeID, params, "application/json", bodyReader)
-}
-
-// NewPatchVolumesVolumeIDFileRequestWithBody generates requests for PatchVolumesVolumeIDFile with any type of body
-func NewPatchVolumesVolumeIDFileRequestWithBody(server string, volumeID VolumeID, params *PatchVolumesVolumeIDFileParams, contentType string, body io.Reader) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "volumeID", runtime.ParamLocationPath, volumeID)
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/volumes/%s/file", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	if params != nil {
-		queryValues := queryURL.Query()
-
-		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "path", runtime.ParamLocationQuery, params.Path); err != nil {
-			return nil, err
-		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-			return nil, err
-		} else {
-			for k, v := range parsed {
-				for _, v2 := range v {
-					queryValues.Add(k, v2)
-				}
-			}
-		}
-
-		queryURL.RawQuery = queryValues.Encode()
-	}
-
-	req, err := http.NewRequest("PATCH", queryURL.String(), body)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Add("Content-Type", contentType)
-
-	return req, nil
-}
-
-// NewPutVolumesVolumeIDFileRequestWithBody generates requests for PutVolumesVolumeIDFile with any type of body
-func NewPutVolumesVolumeIDFileRequestWithBody(server string, volumeID VolumeID, params *PutVolumesVolumeIDFileParams, contentType string, body io.Reader) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "volumeID", runtime.ParamLocationPath, volumeID)
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/volumes/%s/file", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	if params != nil {
-		queryValues := queryURL.Query()
-
-		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "path", runtime.ParamLocationQuery, params.Path); err != nil {
-			return nil, err
-		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-			return nil, err
-		} else {
-			for k, v := range parsed {
-				for _, v2 := range v {
-					queryValues.Add(k, v2)
-				}
-			}
-		}
-
-		if params.Uid != nil {
-
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "uid", runtime.ParamLocationQuery, *params.Uid); err != nil {
-				return nil, err
-			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-				return nil, err
-			} else {
-				for k, v := range parsed {
-					for _, v2 := range v {
-						queryValues.Add(k, v2)
-					}
-				}
-			}
-
-		}
-
-		if params.Gid != nil {
-
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "gid", runtime.ParamLocationQuery, *params.Gid); err != nil {
-				return nil, err
-			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-				return nil, err
-			} else {
-				for k, v := range parsed {
-					for _, v2 := range v {
-						queryValues.Add(k, v2)
-					}
-				}
-			}
-
-		}
-
-		if params.Mode != nil {
-
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "mode", runtime.ParamLocationQuery, *params.Mode); err != nil {
-				return nil, err
-			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-				return nil, err
-			} else {
-				for k, v := range parsed {
-					for _, v2 := range v {
-						queryValues.Add(k, v2)
-					}
-				}
-			}
-
-		}
-
-		if params.Force != nil {
-
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "force", runtime.ParamLocationQuery, *params.Force); err != nil {
-				return nil, err
-			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-				return nil, err
-			} else {
-				for k, v := range parsed {
-					for _, v2 := range v {
-						queryValues.Add(k, v2)
-					}
-				}
-			}
-
-		}
-
-		queryURL.RawQuery = queryValues.Encode()
-	}
-
-	req, err := http.NewRequest("PUT", queryURL.String(), body)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Add("Content-Type", contentType)
-
-	return req, nil
-}
-
-// NewGetVolumesVolumeIDStatRequest generates requests for GetVolumesVolumeIDStat
-func NewGetVolumesVolumeIDStatRequest(server string, volumeID VolumeID, params *GetVolumesVolumeIDStatParams) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "volumeID", runtime.ParamLocationPath, volumeID)
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/volumes/%s/stat", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	if params != nil {
-		queryValues := queryURL.Query()
-
-		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "path", runtime.ParamLocationQuery, params.Path); err != nil {
-			return nil, err
-		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-			return nil, err
-		} else {
-			for k, v := range parsed {
-				for _, v2 := range v {
-					queryValues.Add(k, v2)
-				}
-			}
-		}
-
-		queryURL.RawQuery = queryValues.Encode()
-	}
-
-	req, err := http.NewRequest("GET", queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
 func (c *Client) applyEditors(ctx context.Context, req *http.Request, additionalEditors []RequestEditorFn) error {
 	for _, r := range c.RequestEditors {
 		if err := r(ctx, req); err != nil {
@@ -6286,32 +5449,6 @@ type ClientWithResponsesInterface interface {
 
 	// GetVolumesVolumeIDWithResponse request
 	GetVolumesVolumeIDWithResponse(ctx context.Context, volumeID VolumeID, reqEditors ...RequestEditorFn) (*GetVolumesVolumeIDResponse, error)
-
-	// DeleteVolumesVolumeIDDirWithResponse request
-	DeleteVolumesVolumeIDDirWithResponse(ctx context.Context, volumeID VolumeID, params *DeleteVolumesVolumeIDDirParams, reqEditors ...RequestEditorFn) (*DeleteVolumesVolumeIDDirResponse, error)
-
-	// GetVolumesVolumeIDDirWithResponse request
-	GetVolumesVolumeIDDirWithResponse(ctx context.Context, volumeID VolumeID, params *GetVolumesVolumeIDDirParams, reqEditors ...RequestEditorFn) (*GetVolumesVolumeIDDirResponse, error)
-
-	// PostVolumesVolumeIDDirWithResponse request
-	PostVolumesVolumeIDDirWithResponse(ctx context.Context, volumeID VolumeID, params *PostVolumesVolumeIDDirParams, reqEditors ...RequestEditorFn) (*PostVolumesVolumeIDDirResponse, error)
-
-	// DeleteVolumesVolumeIDFileWithResponse request
-	DeleteVolumesVolumeIDFileWithResponse(ctx context.Context, volumeID VolumeID, params *DeleteVolumesVolumeIDFileParams, reqEditors ...RequestEditorFn) (*DeleteVolumesVolumeIDFileResponse, error)
-
-	// GetVolumesVolumeIDFileWithResponse request
-	GetVolumesVolumeIDFileWithResponse(ctx context.Context, volumeID VolumeID, params *GetVolumesVolumeIDFileParams, reqEditors ...RequestEditorFn) (*GetVolumesVolumeIDFileResponse, error)
-
-	// PatchVolumesVolumeIDFileWithBodyWithResponse request with any body
-	PatchVolumesVolumeIDFileWithBodyWithResponse(ctx context.Context, volumeID VolumeID, params *PatchVolumesVolumeIDFileParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchVolumesVolumeIDFileResponse, error)
-
-	PatchVolumesVolumeIDFileWithResponse(ctx context.Context, volumeID VolumeID, params *PatchVolumesVolumeIDFileParams, body PatchVolumesVolumeIDFileJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchVolumesVolumeIDFileResponse, error)
-
-	// PutVolumesVolumeIDFileWithBodyWithResponse request with any body
-	PutVolumesVolumeIDFileWithBodyWithResponse(ctx context.Context, volumeID VolumeID, params *PutVolumesVolumeIDFileParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutVolumesVolumeIDFileResponse, error)
-
-	// GetVolumesVolumeIDStatWithResponse request
-	GetVolumesVolumeIDStatWithResponse(ctx context.Context, volumeID VolumeID, params *GetVolumesVolumeIDStatParams, reqEditors ...RequestEditorFn) (*GetVolumesVolumeIDStatResponse, error)
 }
 
 type PostAccessTokensResponse struct {
@@ -7596,186 +6733,6 @@ func (r GetVolumesVolumeIDResponse) StatusCode() int {
 	return 0
 }
 
-type DeleteVolumesVolumeIDDirResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON500      *N500
-}
-
-// Status returns HTTPResponse.Status
-func (r DeleteVolumesVolumeIDDirResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r DeleteVolumesVolumeIDDirResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-type GetVolumesVolumeIDDirResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON200      *VolumeDirectoryListing
-	JSON500      *N500
-}
-
-// Status returns HTTPResponse.Status
-func (r GetVolumesVolumeIDDirResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r GetVolumesVolumeIDDirResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-type PostVolumesVolumeIDDirResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON201      *VolumeEntryStat
-	JSON500      *N500
-}
-
-// Status returns HTTPResponse.Status
-func (r PostVolumesVolumeIDDirResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r PostVolumesVolumeIDDirResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-type DeleteVolumesVolumeIDFileResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON500      *N500
-}
-
-// Status returns HTTPResponse.Status
-func (r DeleteVolumesVolumeIDFileResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r DeleteVolumesVolumeIDFileResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-type GetVolumesVolumeIDFileResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON500      *N500
-}
-
-// Status returns HTTPResponse.Status
-func (r GetVolumesVolumeIDFileResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r GetVolumesVolumeIDFileResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-type PatchVolumesVolumeIDFileResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON200      *VolumeEntryStat
-}
-
-// Status returns HTTPResponse.Status
-func (r PatchVolumesVolumeIDFileResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r PatchVolumesVolumeIDFileResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-type PutVolumesVolumeIDFileResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON201      *VolumeEntryStat
-	JSON500      *N500
-}
-
-// Status returns HTTPResponse.Status
-func (r PutVolumesVolumeIDFileResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r PutVolumesVolumeIDFileResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-type GetVolumesVolumeIDStatResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON200      *VolumeEntryStat
-	JSON404      *N404
-}
-
-// Status returns HTTPResponse.Status
-func (r GetVolumesVolumeIDStatResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r GetVolumesVolumeIDStatResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
 // PostAccessTokensWithBodyWithResponse request with arbitrary body returning *PostAccessTokensResponse
 func (c *ClientWithResponses) PostAccessTokensWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostAccessTokensResponse, error) {
 	rsp, err := c.PostAccessTokensWithBody(ctx, contentType, body, reqEditors...)
@@ -8402,86 +7359,6 @@ func (c *ClientWithResponses) GetVolumesVolumeIDWithResponse(ctx context.Context
 		return nil, err
 	}
 	return ParseGetVolumesVolumeIDResponse(rsp)
-}
-
-// DeleteVolumesVolumeIDDirWithResponse request returning *DeleteVolumesVolumeIDDirResponse
-func (c *ClientWithResponses) DeleteVolumesVolumeIDDirWithResponse(ctx context.Context, volumeID VolumeID, params *DeleteVolumesVolumeIDDirParams, reqEditors ...RequestEditorFn) (*DeleteVolumesVolumeIDDirResponse, error) {
-	rsp, err := c.DeleteVolumesVolumeIDDir(ctx, volumeID, params, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseDeleteVolumesVolumeIDDirResponse(rsp)
-}
-
-// GetVolumesVolumeIDDirWithResponse request returning *GetVolumesVolumeIDDirResponse
-func (c *ClientWithResponses) GetVolumesVolumeIDDirWithResponse(ctx context.Context, volumeID VolumeID, params *GetVolumesVolumeIDDirParams, reqEditors ...RequestEditorFn) (*GetVolumesVolumeIDDirResponse, error) {
-	rsp, err := c.GetVolumesVolumeIDDir(ctx, volumeID, params, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseGetVolumesVolumeIDDirResponse(rsp)
-}
-
-// PostVolumesVolumeIDDirWithResponse request returning *PostVolumesVolumeIDDirResponse
-func (c *ClientWithResponses) PostVolumesVolumeIDDirWithResponse(ctx context.Context, volumeID VolumeID, params *PostVolumesVolumeIDDirParams, reqEditors ...RequestEditorFn) (*PostVolumesVolumeIDDirResponse, error) {
-	rsp, err := c.PostVolumesVolumeIDDir(ctx, volumeID, params, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParsePostVolumesVolumeIDDirResponse(rsp)
-}
-
-// DeleteVolumesVolumeIDFileWithResponse request returning *DeleteVolumesVolumeIDFileResponse
-func (c *ClientWithResponses) DeleteVolumesVolumeIDFileWithResponse(ctx context.Context, volumeID VolumeID, params *DeleteVolumesVolumeIDFileParams, reqEditors ...RequestEditorFn) (*DeleteVolumesVolumeIDFileResponse, error) {
-	rsp, err := c.DeleteVolumesVolumeIDFile(ctx, volumeID, params, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseDeleteVolumesVolumeIDFileResponse(rsp)
-}
-
-// GetVolumesVolumeIDFileWithResponse request returning *GetVolumesVolumeIDFileResponse
-func (c *ClientWithResponses) GetVolumesVolumeIDFileWithResponse(ctx context.Context, volumeID VolumeID, params *GetVolumesVolumeIDFileParams, reqEditors ...RequestEditorFn) (*GetVolumesVolumeIDFileResponse, error) {
-	rsp, err := c.GetVolumesVolumeIDFile(ctx, volumeID, params, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseGetVolumesVolumeIDFileResponse(rsp)
-}
-
-// PatchVolumesVolumeIDFileWithBodyWithResponse request with arbitrary body returning *PatchVolumesVolumeIDFileResponse
-func (c *ClientWithResponses) PatchVolumesVolumeIDFileWithBodyWithResponse(ctx context.Context, volumeID VolumeID, params *PatchVolumesVolumeIDFileParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchVolumesVolumeIDFileResponse, error) {
-	rsp, err := c.PatchVolumesVolumeIDFileWithBody(ctx, volumeID, params, contentType, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParsePatchVolumesVolumeIDFileResponse(rsp)
-}
-
-func (c *ClientWithResponses) PatchVolumesVolumeIDFileWithResponse(ctx context.Context, volumeID VolumeID, params *PatchVolumesVolumeIDFileParams, body PatchVolumesVolumeIDFileJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchVolumesVolumeIDFileResponse, error) {
-	rsp, err := c.PatchVolumesVolumeIDFile(ctx, volumeID, params, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParsePatchVolumesVolumeIDFileResponse(rsp)
-}
-
-// PutVolumesVolumeIDFileWithBodyWithResponse request with arbitrary body returning *PutVolumesVolumeIDFileResponse
-func (c *ClientWithResponses) PutVolumesVolumeIDFileWithBodyWithResponse(ctx context.Context, volumeID VolumeID, params *PutVolumesVolumeIDFileParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutVolumesVolumeIDFileResponse, error) {
-	rsp, err := c.PutVolumesVolumeIDFileWithBody(ctx, volumeID, params, contentType, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParsePutVolumesVolumeIDFileResponse(rsp)
-}
-
-// GetVolumesVolumeIDStatWithResponse request returning *GetVolumesVolumeIDStatResponse
-func (c *ClientWithResponses) GetVolumesVolumeIDStatWithResponse(ctx context.Context, volumeID VolumeID, params *GetVolumesVolumeIDStatParams, reqEditors ...RequestEditorFn) (*GetVolumesVolumeIDStatResponse, error) {
-	rsp, err := c.GetVolumesVolumeIDStat(ctx, volumeID, params, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseGetVolumesVolumeIDStatResponse(rsp)
 }
 
 // ParsePostAccessTokensResponse parses an HTTP response from a PostAccessTokensWithResponse call
@@ -10802,242 +9679,6 @@ func ParseGetVolumesVolumeIDResponse(rsp *http.Response) (*GetVolumesVolumeIDRes
 	return response, nil
 }
 
-// ParseDeleteVolumesVolumeIDDirResponse parses an HTTP response from a DeleteVolumesVolumeIDDirWithResponse call
-func ParseDeleteVolumesVolumeIDDirResponse(rsp *http.Response) (*DeleteVolumesVolumeIDDirResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &DeleteVolumesVolumeIDDirResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
-		var dest N500
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON500 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseGetVolumesVolumeIDDirResponse parses an HTTP response from a GetVolumesVolumeIDDirWithResponse call
-func ParseGetVolumesVolumeIDDirResponse(rsp *http.Response) (*GetVolumesVolumeIDDirResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &GetVolumesVolumeIDDirResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest VolumeDirectoryListing
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
-		var dest N500
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON500 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParsePostVolumesVolumeIDDirResponse parses an HTTP response from a PostVolumesVolumeIDDirWithResponse call
-func ParsePostVolumesVolumeIDDirResponse(rsp *http.Response) (*PostVolumesVolumeIDDirResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &PostVolumesVolumeIDDirResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
-		var dest VolumeEntryStat
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON201 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
-		var dest N500
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON500 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseDeleteVolumesVolumeIDFileResponse parses an HTTP response from a DeleteVolumesVolumeIDFileWithResponse call
-func ParseDeleteVolumesVolumeIDFileResponse(rsp *http.Response) (*DeleteVolumesVolumeIDFileResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &DeleteVolumesVolumeIDFileResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
-		var dest N500
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON500 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseGetVolumesVolumeIDFileResponse parses an HTTP response from a GetVolumesVolumeIDFileWithResponse call
-func ParseGetVolumesVolumeIDFileResponse(rsp *http.Response) (*GetVolumesVolumeIDFileResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &GetVolumesVolumeIDFileResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
-		var dest N500
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON500 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParsePatchVolumesVolumeIDFileResponse parses an HTTP response from a PatchVolumesVolumeIDFileWithResponse call
-func ParsePatchVolumesVolumeIDFileResponse(rsp *http.Response) (*PatchVolumesVolumeIDFileResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &PatchVolumesVolumeIDFileResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest VolumeEntryStat
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParsePutVolumesVolumeIDFileResponse parses an HTTP response from a PutVolumesVolumeIDFileWithResponse call
-func ParsePutVolumesVolumeIDFileResponse(rsp *http.Response) (*PutVolumesVolumeIDFileResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &PutVolumesVolumeIDFileResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
-		var dest VolumeEntryStat
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON201 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
-		var dest N500
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON500 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseGetVolumesVolumeIDStatResponse parses an HTTP response from a GetVolumesVolumeIDStatWithResponse call
-func ParseGetVolumesVolumeIDStatResponse(rsp *http.Response) (*GetVolumesVolumeIDStatResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &GetVolumesVolumeIDStatResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest VolumeEntryStat
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest N404
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON404 = &dest
-
-	}
-
-	return response, nil
-}
-
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 
@@ -11196,30 +9837,6 @@ type ServerInterface interface {
 
 	// (GET /volumes/{volumeID})
 	GetVolumesVolumeID(c *gin.Context, volumeID VolumeID)
-
-	// (DELETE /volumes/{volumeID}/dir)
-	DeleteVolumesVolumeIDDir(c *gin.Context, volumeID VolumeID, params DeleteVolumesVolumeIDDirParams)
-
-	// (GET /volumes/{volumeID}/dir)
-	GetVolumesVolumeIDDir(c *gin.Context, volumeID VolumeID, params GetVolumesVolumeIDDirParams)
-
-	// (POST /volumes/{volumeID}/dir)
-	PostVolumesVolumeIDDir(c *gin.Context, volumeID VolumeID, params PostVolumesVolumeIDDirParams)
-
-	// (DELETE /volumes/{volumeID}/file)
-	DeleteVolumesVolumeIDFile(c *gin.Context, volumeID VolumeID, params DeleteVolumesVolumeIDFileParams)
-
-	// (GET /volumes/{volumeID}/file)
-	GetVolumesVolumeIDFile(c *gin.Context, volumeID VolumeID, params GetVolumesVolumeIDFileParams)
-
-	// (PATCH /volumes/{volumeID}/file)
-	PatchVolumesVolumeIDFile(c *gin.Context, volumeID VolumeID, params PatchVolumesVolumeIDFileParams)
-
-	// (PUT /volumes/{volumeID}/file)
-	PutVolumesVolumeIDFile(c *gin.Context, volumeID VolumeID, params PutVolumesVolumeIDFileParams)
-
-	// (GET /volumes/{volumeID}/stat)
-	GetVolumesVolumeIDStat(c *gin.Context, volumeID VolumeID, params GetVolumesVolumeIDStatParams)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -12939,486 +11556,6 @@ func (siw *ServerInterfaceWrapper) GetVolumesVolumeID(c *gin.Context) {
 	siw.Handler.GetVolumesVolumeID(c, volumeID)
 }
 
-// DeleteVolumesVolumeIDDir operation middleware
-func (siw *ServerInterfaceWrapper) DeleteVolumesVolumeIDDir(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "volumeID" -------------
-	var volumeID VolumeID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "volumeID", c.Param("volumeID"), &volumeID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter volumeID: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(AccessTokenAuthScopes, []string{})
-
-	c.Set(ApiKeyAuthScopes, []string{})
-
-	c.Set(Supabase1TokenAuthScopes, []string{})
-
-	c.Set(Supabase2TeamAuthScopes, []string{})
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params DeleteVolumesVolumeIDDirParams
-
-	// ------------- Required query parameter "path" -------------
-
-	if paramValue := c.Query("path"); paramValue != "" {
-
-	} else {
-		siw.ErrorHandler(c, fmt.Errorf("Query argument path is required, but not found"), http.StatusBadRequest)
-		return
-	}
-
-	err = runtime.BindQueryParameter("form", true, true, "path", c.Request.URL.Query(), &params.Path)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter path: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Optional query parameter "recursive" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "recursive", c.Request.URL.Query(), &params.Recursive)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter recursive: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.DeleteVolumesVolumeIDDir(c, volumeID, params)
-}
-
-// GetVolumesVolumeIDDir operation middleware
-func (siw *ServerInterfaceWrapper) GetVolumesVolumeIDDir(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "volumeID" -------------
-	var volumeID VolumeID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "volumeID", c.Param("volumeID"), &volumeID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter volumeID: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(AccessTokenAuthScopes, []string{})
-
-	c.Set(ApiKeyAuthScopes, []string{})
-
-	c.Set(Supabase1TokenAuthScopes, []string{})
-
-	c.Set(Supabase2TeamAuthScopes, []string{})
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params GetVolumesVolumeIDDirParams
-
-	// ------------- Required query parameter "path" -------------
-
-	if paramValue := c.Query("path"); paramValue != "" {
-
-	} else {
-		siw.ErrorHandler(c, fmt.Errorf("Query argument path is required, but not found"), http.StatusBadRequest)
-		return
-	}
-
-	err = runtime.BindQueryParameter("form", true, true, "path", c.Request.URL.Query(), &params.Path)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter path: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Optional query parameter "depth" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "depth", c.Request.URL.Query(), &params.Depth)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter depth: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.GetVolumesVolumeIDDir(c, volumeID, params)
-}
-
-// PostVolumesVolumeIDDir operation middleware
-func (siw *ServerInterfaceWrapper) PostVolumesVolumeIDDir(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "volumeID" -------------
-	var volumeID VolumeID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "volumeID", c.Param("volumeID"), &volumeID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter volumeID: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(AccessTokenAuthScopes, []string{})
-
-	c.Set(ApiKeyAuthScopes, []string{})
-
-	c.Set(Supabase1TokenAuthScopes, []string{})
-
-	c.Set(Supabase2TeamAuthScopes, []string{})
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params PostVolumesVolumeIDDirParams
-
-	// ------------- Required query parameter "path" -------------
-
-	if paramValue := c.Query("path"); paramValue != "" {
-
-	} else {
-		siw.ErrorHandler(c, fmt.Errorf("Query argument path is required, but not found"), http.StatusBadRequest)
-		return
-	}
-
-	err = runtime.BindQueryParameter("form", true, true, "path", c.Request.URL.Query(), &params.Path)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter path: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Optional query parameter "uid" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "uid", c.Request.URL.Query(), &params.Uid)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter uid: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Optional query parameter "gid" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "gid", c.Request.URL.Query(), &params.Gid)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter gid: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Optional query parameter "mode" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "mode", c.Request.URL.Query(), &params.Mode)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter mode: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Optional query parameter "force" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "force", c.Request.URL.Query(), &params.Force)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter force: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.PostVolumesVolumeIDDir(c, volumeID, params)
-}
-
-// DeleteVolumesVolumeIDFile operation middleware
-func (siw *ServerInterfaceWrapper) DeleteVolumesVolumeIDFile(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "volumeID" -------------
-	var volumeID VolumeID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "volumeID", c.Param("volumeID"), &volumeID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter volumeID: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(AccessTokenAuthScopes, []string{})
-
-	c.Set(ApiKeyAuthScopes, []string{})
-
-	c.Set(Supabase1TokenAuthScopes, []string{})
-
-	c.Set(Supabase2TeamAuthScopes, []string{})
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params DeleteVolumesVolumeIDFileParams
-
-	// ------------- Required query parameter "path" -------------
-
-	if paramValue := c.Query("path"); paramValue != "" {
-
-	} else {
-		siw.ErrorHandler(c, fmt.Errorf("Query argument path is required, but not found"), http.StatusBadRequest)
-		return
-	}
-
-	err = runtime.BindQueryParameter("form", true, true, "path", c.Request.URL.Query(), &params.Path)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter path: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.DeleteVolumesVolumeIDFile(c, volumeID, params)
-}
-
-// GetVolumesVolumeIDFile operation middleware
-func (siw *ServerInterfaceWrapper) GetVolumesVolumeIDFile(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "volumeID" -------------
-	var volumeID VolumeID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "volumeID", c.Param("volumeID"), &volumeID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter volumeID: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(AccessTokenAuthScopes, []string{})
-
-	c.Set(ApiKeyAuthScopes, []string{})
-
-	c.Set(Supabase1TokenAuthScopes, []string{})
-
-	c.Set(Supabase2TeamAuthScopes, []string{})
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params GetVolumesVolumeIDFileParams
-
-	// ------------- Required query parameter "path" -------------
-
-	if paramValue := c.Query("path"); paramValue != "" {
-
-	} else {
-		siw.ErrorHandler(c, fmt.Errorf("Query argument path is required, but not found"), http.StatusBadRequest)
-		return
-	}
-
-	err = runtime.BindQueryParameter("form", true, true, "path", c.Request.URL.Query(), &params.Path)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter path: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.GetVolumesVolumeIDFile(c, volumeID, params)
-}
-
-// PatchVolumesVolumeIDFile operation middleware
-func (siw *ServerInterfaceWrapper) PatchVolumesVolumeIDFile(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "volumeID" -------------
-	var volumeID VolumeID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "volumeID", c.Param("volumeID"), &volumeID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter volumeID: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(AccessTokenAuthScopes, []string{})
-
-	c.Set(ApiKeyAuthScopes, []string{})
-
-	c.Set(Supabase1TokenAuthScopes, []string{})
-
-	c.Set(Supabase2TeamAuthScopes, []string{})
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params PatchVolumesVolumeIDFileParams
-
-	// ------------- Required query parameter "path" -------------
-
-	if paramValue := c.Query("path"); paramValue != "" {
-
-	} else {
-		siw.ErrorHandler(c, fmt.Errorf("Query argument path is required, but not found"), http.StatusBadRequest)
-		return
-	}
-
-	err = runtime.BindQueryParameter("form", true, true, "path", c.Request.URL.Query(), &params.Path)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter path: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.PatchVolumesVolumeIDFile(c, volumeID, params)
-}
-
-// PutVolumesVolumeIDFile operation middleware
-func (siw *ServerInterfaceWrapper) PutVolumesVolumeIDFile(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "volumeID" -------------
-	var volumeID VolumeID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "volumeID", c.Param("volumeID"), &volumeID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter volumeID: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(AccessTokenAuthScopes, []string{})
-
-	c.Set(ApiKeyAuthScopes, []string{})
-
-	c.Set(Supabase1TokenAuthScopes, []string{})
-
-	c.Set(Supabase2TeamAuthScopes, []string{})
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params PutVolumesVolumeIDFileParams
-
-	// ------------- Required query parameter "path" -------------
-
-	if paramValue := c.Query("path"); paramValue != "" {
-
-	} else {
-		siw.ErrorHandler(c, fmt.Errorf("Query argument path is required, but not found"), http.StatusBadRequest)
-		return
-	}
-
-	err = runtime.BindQueryParameter("form", true, true, "path", c.Request.URL.Query(), &params.Path)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter path: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Optional query parameter "uid" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "uid", c.Request.URL.Query(), &params.Uid)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter uid: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Optional query parameter "gid" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "gid", c.Request.URL.Query(), &params.Gid)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter gid: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Optional query parameter "mode" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "mode", c.Request.URL.Query(), &params.Mode)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter mode: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Optional query parameter "force" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "force", c.Request.URL.Query(), &params.Force)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter force: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.PutVolumesVolumeIDFile(c, volumeID, params)
-}
-
-// GetVolumesVolumeIDStat operation middleware
-func (siw *ServerInterfaceWrapper) GetVolumesVolumeIDStat(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "volumeID" -------------
-	var volumeID VolumeID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "volumeID", c.Param("volumeID"), &volumeID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter volumeID: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(AccessTokenAuthScopes, []string{})
-
-	c.Set(ApiKeyAuthScopes, []string{})
-
-	c.Set(Supabase1TokenAuthScopes, []string{})
-
-	c.Set(Supabase2TeamAuthScopes, []string{})
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params GetVolumesVolumeIDStatParams
-
-	// ------------- Required query parameter "path" -------------
-
-	if paramValue := c.Query("path"); paramValue != "" {
-
-	} else {
-		siw.ErrorHandler(c, fmt.Errorf("Query argument path is required, but not found"), http.StatusBadRequest)
-		return
-	}
-
-	err = runtime.BindQueryParameter("form", true, true, "path", c.Request.URL.Query(), &params.Path)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter path: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.GetVolumesVolumeIDStat(c, volumeID, params)
-}
-
 // GinServerOptions provides options for the Gin server.
 type GinServerOptions struct {
 	BaseURL      string
@@ -13498,179 +11635,160 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/volumes", wrapper.PostVolumes)
 	router.DELETE(options.BaseURL+"/volumes/:volumeID", wrapper.DeleteVolumesVolumeID)
 	router.GET(options.BaseURL+"/volumes/:volumeID", wrapper.GetVolumesVolumeID)
-	router.DELETE(options.BaseURL+"/volumes/:volumeID/dir", wrapper.DeleteVolumesVolumeIDDir)
-	router.GET(options.BaseURL+"/volumes/:volumeID/dir", wrapper.GetVolumesVolumeIDDir)
-	router.POST(options.BaseURL+"/volumes/:volumeID/dir", wrapper.PostVolumesVolumeIDDir)
-	router.DELETE(options.BaseURL+"/volumes/:volumeID/file", wrapper.DeleteVolumesVolumeIDFile)
-	router.GET(options.BaseURL+"/volumes/:volumeID/file", wrapper.GetVolumesVolumeIDFile)
-	router.PATCH(options.BaseURL+"/volumes/:volumeID/file", wrapper.PatchVolumesVolumeIDFile)
-	router.PUT(options.BaseURL+"/volumes/:volumeID/file", wrapper.PutVolumesVolumeIDFile)
-	router.GET(options.BaseURL+"/volumes/:volumeID/stat", wrapper.GetVolumesVolumeIDStat)
 }
 
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"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",
+	"AAAA//8/O6Z3sxYBAA==",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file
