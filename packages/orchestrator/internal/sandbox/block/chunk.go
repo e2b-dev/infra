@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -15,17 +14,6 @@ import (
 )
 
 const (
-	pullType       = "pull-type"
-	pullTypeLocal  = "local"
-	pullTypeRemote = "remote"
-
-	failureReason = "failure-reason"
-
-	failureTypeLocalRead      = "local-read"
-	failureTypeLocalReadAgain = "local-read-again"
-	failureTypeRemoteRead     = "remote-read"
-	failureTypeCacheFetch     = "cache-fetch"
-
 	compressedAttr = "compressed"
 
 	// decompressFetchTimeout is the maximum time a single frame/chunk fetch may take.
@@ -104,15 +92,7 @@ type Chunker struct {
 	metrics metrics.Metrics
 	flags   *featureflags.Client
 
-	fetchMu  sync.Mutex
-	fetchMap map[fetchKey]*fetchSession
-}
-
-// fetchKey distinguishes compressed and uncompressed fetch sessions that
-// may have overlapping U-space offsets.
-type fetchKey struct {
-	offset     int64
-	compressed bool
+	regions *regionLock
 }
 
 var _ Reader = (*Chunker)(nil)
@@ -131,11 +111,11 @@ func NewChunker(
 	}
 
 	return &Chunker{
-		assets:   assets,
-		cache:    cache,
-		metrics:  m,
-		flags:    flags,
-		fetchMap: make(map[fetchKey]*fetchSession),
+		assets:  assets,
+		cache:   cache,
+		metrics: m,
+		flags:   flags,
+		regions: newRegionLock(assets.Size),
 	}, nil
 }
 
@@ -148,9 +128,9 @@ func (c *Chunker) ReadBlock(ctx context.Context, b []byte, off int64, ft *storag
 	return copy(b, slice), nil
 }
 
-// GetBlock reads data at the given uncompressed offset.
-// If ft is non-nil and a matching compressed asset exists, fetches via compressed path.
-// Otherwise falls back to uncompressed streaming via GetFrame with nil frameTable.
+// GetBlock returns data at the given uncompressed offset as a reference to the
+// mmap cache. On cache miss, fetches from storage (decompressing if ft is
+// non-nil and a matching compressed asset exists).
 func (c *Chunker) GetBlock(ctx context.Context, off, length int64, ft *storage.FrameTable) ([]byte, error) {
 	// if off < 0 || length < 0 {
 	// 	return nil, fmt.Errorf("invalid slice params: off=%d length=%d", off, length)
@@ -214,15 +194,19 @@ func (c *Chunker) GetBlock(ctx context.Context, off, length int64, ft *storage.F
 	return b, nil
 }
 
-// getOrCreateSession creates or reuses a fetch session for the given offset.
-// For compressed: session boundaries are frame-aligned.
-// For uncompressed: session boundaries are MemoryChunkSize-aligned.
+// getOrCreateSession returns an existing session covering [off, off+...) or
+// creates a new one. Session boundaries are frame-aligned for compressed
+// requests and MemoryChunkSize-aligned for uncompressed requests.
+//
+// Deduplication and overlap prevention are handled by the regionLock's
+// slot-based tracking: each MemoryChunkSize-aligned interval stores the
+// active session pointer. Single-slot requests join an existing session;
+// multi-slot requests wait for all occupied slots to clear.
 func (c *Chunker) getOrCreateSession(ctx context.Context, off int64, ft *storage.FrameTable, useCompressed bool) (*fetchSession, error) {
 	var (
 		chunkOff   int64
 		chunkLen   int64
 		decompress bool
-		key        fetchKey
 	)
 
 	if useCompressed {
@@ -234,41 +218,33 @@ func (c *Chunker) getOrCreateSession(ctx context.Context, off int64, ft *storage
 		chunkOff = frameStarts.U
 		chunkLen = int64(frameSize.U)
 		decompress = true
-		key = fetchKey{offset: frameStarts.U, compressed: true}
 	} else {
 		chunkOff = (off / storage.MemoryChunkSize) * storage.MemoryChunkSize
 		chunkLen = min(int64(storage.MemoryChunkSize), c.assets.Size-chunkOff)
 		decompress = false
-		key = fetchKey{offset: chunkOff, compressed: false}
 	}
 
-	c.fetchMu.Lock()
-	if existing, ok := c.fetchMap[key]; ok {
-		c.fetchMu.Unlock()
+	session, isNew := c.regions.getOrCreate(chunkOff, chunkLen, func() *fetchSession {
+		return newFetchSession(chunkOff, chunkLen, c.cache.BlockSize(), c.cache.isCached)
+	})
 
-		return existing, nil
+	if isNew {
+		go c.runFetch(context.WithoutCancel(ctx), session, chunkOff, ft, decompress)
 	}
 
-	s := newFetchSession(chunkOff, chunkLen, c.cache.BlockSize(), c.cache.isCached)
-	c.fetchMap[key] = s
-	c.fetchMu.Unlock()
-
-	go c.runFetch(context.WithoutCancel(ctx), s, key, chunkOff, ft, decompress)
-
-	return s, nil
+	return session, nil
 }
 
 // runFetch fetches data from storage into the mmap cache. Runs in a background goroutine.
 // Works for both compressed (decompress=true, ft!=nil) and uncompressed (decompress=false, ft=nil) paths.
-func (c *Chunker) runFetch(ctx context.Context, s *fetchSession, key fetchKey, offsetU int64, ft *storage.FrameTable, decompress bool) {
+func (c *Chunker) runFetch(ctx context.Context, s *fetchSession, offsetU int64, ft *storage.FrameTable, decompress bool) {
 	ctx, cancel := context.WithTimeout(ctx, decompressFetchTimeout)
 	defer cancel()
 
-	defer func() {
-		c.fetchMu.Lock()
-		delete(c.fetchMap, key)
-		c.fetchMu.Unlock()
-	}()
+	// Release region slots after session completes. This must run after
+	// setDone/setError so that session waiters are notified before slot
+	// claimers are unblocked.
+	defer c.regions.release(s.chunkOff, s.chunkLen)
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -334,3 +310,16 @@ func (c *Chunker) Close() error {
 func (c *Chunker) FileSize() (int64, error) {
 	return c.cache.FileSize()
 }
+
+const (
+	pullType       = "pull-type"
+	pullTypeLocal  = "local"
+	pullTypeRemote = "remote"
+
+	failureReason = "failure-reason"
+
+	failureTypeLocalRead      = "local-read"
+	failureTypeLocalReadAgain = "local-read-again"
+	failureTypeRemoteRead     = "remote-read"
+	failureTypeCacheFetch     = "cache-fetch"
+)

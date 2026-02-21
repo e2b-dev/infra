@@ -26,7 +26,7 @@ type StorageDiff struct {
 	blockSize   int64
 	metrics     blockmetrics.Metrics
 	persistence storage.StorageProvider
-	flags       *featureflags.Client
+	featureFlags *featureflags.Client
 }
 
 var _ Diff = (*StorageDiff)(nil)
@@ -62,7 +62,7 @@ func newStorageDiff(
 		blockSize:   blockSize,
 		metrics:     metrics,
 		persistence: persistence,
-		flags:       flags,
+		featureFlags: flags,
 		cacheKey:    GetDiffStoreKey(buildId, diffType),
 	}, nil
 }
@@ -94,7 +94,7 @@ func (b *StorageDiff) createChunker(ctx context.Context) (*block.Chunker, error)
 		return nil, fmt.Errorf("no asset found for %s (no uncompressed or compressed with metadata)", b.storagePath)
 	}
 
-	return block.NewChunker(assets, b.blockSize, b.cachePath, b.metrics, b.flags)
+	return block.NewChunker(assets, b.blockSize, b.cachePath, b.metrics, b.featureFlags)
 }
 
 // probeAssets probes for uncompressed and compressed asset variants in parallel.
