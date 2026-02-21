@@ -262,6 +262,95 @@ func TestAliasCacheLookupByID_UsesCache(t *testing.T) {
 	assert.Equal(t, teamID, info2.TeamID)
 }
 
+// TestAliasCache_InvalidateAliasesByTemplateID tests that InvalidateAliasesByTemplateID
+// deletes alias cache entries and the template-ID-keyed entry from Redis.
+func TestAliasCache_InvalidateAliasesByTemplateID(t *testing.T) {
+	t.Parallel()
+	db := testutils.SetupDatabase(t)
+	redis := redis_utils.SetupInstance(t)
+	ctx := t.Context()
+
+	teamID := testutils.CreateTestTeam(t, db)
+	teamSlug := testutils.GetTeamSlug(t, ctx, db, teamID)
+	templateID := testutils.CreateTestTemplate(t, db, teamID)
+
+	// Create two aliases: one namespaced, one bare (NULL namespace)
+	testutils.CreateTestTemplateAliasWithName(t, db, templateID, "alias-a", &teamSlug)
+	testutils.CreateTestTemplateAliasWithName(t, db, templateID, "alias-b", nil)
+
+	cache := NewAliasCache(db.SqlcClient, redis)
+	defer cache.Close(ctx)
+
+	// Resolve both aliases to populate the cache
+	info, err := cache.Resolve(ctx, teamSlug+"/alias-a", teamSlug)
+	require.NoError(t, err)
+	assert.Equal(t, templateID, info.TemplateID)
+
+	info, err = cache.Resolve(ctx, "alias-b", teamSlug)
+	require.NoError(t, err)
+	assert.Equal(t, templateID, info.TemplateID)
+
+	// Verify all three Redis keys exist: namespaced alias, bare alias, and template ID
+	namespacedKey := cache.cache.RedisKey(buildAliasKey(&teamSlug, "alias-a"))
+	bareKey := cache.cache.RedisKey(buildAliasKey(nil, "alias-b"))
+	idKey := cache.cache.RedisKey(templateID)
+
+	for _, key := range []string{namespacedKey, bareKey, idKey} {
+		exists, err := redis.Exists(ctx, key).Result()
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), exists, "key %s should exist before invalidation", key)
+	}
+
+	// Invalidate by template ID with the alias keys
+	cache.InvalidateAliasesByTemplateID(ctx, templateID, []string{
+		buildAliasKey(&teamSlug, "alias-a"),
+		buildAliasKey(nil, "alias-b"),
+	})
+
+	// Assert all three keys are deleted
+	for _, key := range []string{namespacedKey, bareKey, idKey} {
+		exists, err := redis.Exists(ctx, key).Result()
+		require.NoError(t, err)
+		assert.Equal(t, int64(0), exists, "key %s should be deleted after invalidation", key)
+	}
+}
+
+// TestAliasCache_InvalidateAliasesByTemplateID_EmptyKeys tests that
+// InvalidateAliasesByTemplateID deletes the template-ID-keyed entry even
+// when no alias keys are provided.
+func TestAliasCache_InvalidateAliasesByTemplateID_EmptyKeys(t *testing.T) {
+	t.Parallel()
+	db := testutils.SetupDatabase(t)
+	redis := redis_utils.SetupInstance(t)
+	ctx := t.Context()
+
+	teamID := testutils.CreateTestTeam(t, db)
+	teamSlug := testutils.GetTeamSlug(t, ctx, db, teamID)
+	templateID := testutils.CreateTestTemplate(t, db, teamID)
+
+	cache := NewAliasCache(db.SqlcClient, redis)
+	defer cache.Close(ctx)
+
+	// Resolve by template ID directly to populate the cache
+	info, err := cache.Resolve(ctx, templateID, teamSlug)
+	require.NoError(t, err)
+	assert.Equal(t, templateID, info.TemplateID)
+
+	// Verify the template ID key exists in Redis
+	idKey := cache.cache.RedisKey(templateID)
+	exists, err := redis.Exists(ctx, idKey).Result()
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), exists, "template ID key should exist before invalidation")
+
+	// Invalidate with no alias keys
+	cache.InvalidateAliasesByTemplateID(ctx, templateID, nil)
+
+	// Assert the template ID key is deleted
+	exists, err = redis.Exists(ctx, idKey).Result()
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), exists, "template ID key should be deleted after invalidation")
+}
+
 // TestAliasCacheResolve_NegativeCaching tests that not-found results are cached (tombstones)
 func TestAliasCacheResolve_NegativeCaching(t *testing.T) {
 	t.Parallel()
