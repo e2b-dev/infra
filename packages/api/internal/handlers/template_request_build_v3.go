@@ -138,6 +138,11 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 		return nil
 	}
 
+	// Invalidate aliases to prevent stale NotFound entries
+	for _, alias := range template.Aliases {
+		a.templateCache.InvalidateAlias(ctx, &team.Slug, alias)
+	}
+
 	posthogCtx, span := tracer.Start(ctx, "posthog-analytics")
 	defer span.End()
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
