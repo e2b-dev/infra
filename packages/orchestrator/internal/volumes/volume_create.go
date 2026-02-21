@@ -12,10 +12,6 @@ import (
 )
 
 func (s *Service) Create(ctx context.Context, request *orchestrator.VolumeCreateRequest) (r *orchestrator.VolumeCreateResponse, err error) {
-	defer func() {
-		err = s.processError(err)
-	}()
-
 	volumePath, err := s.buildVolumePath(request.GetVolume(), "")
 	if err != nil {
 		return nil, fmt.Errorf("failed to build volume path: %w", err)

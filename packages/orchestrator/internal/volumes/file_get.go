@@ -14,10 +14,6 @@ import (
 const fileStreamChunkSize = 1024 * 1024 // 1MB
 
 func (s *Service) GetFile(request *orchestrator.VolumeFileGetRequest, server orchestrator.VolumeService_GetFileServer) (err error) {
-	defer func() {
-		err = s.processError(err)
-	}()
-
 	fullPath, err := s.buildVolumePath(request.GetVolume(), request.GetPath())
 	if err != nil {
 		return fmt.Errorf("failed to build volume path: %w", err)

@@ -15,16 +15,12 @@ func (s *Service) Delete(
 	ctx context.Context,
 	request *orchestrator.VolumeDeleteRequest,
 ) (r *orchestrator.VolumeDeleteResponse, err error) {
-	defer func() {
-		err = s.processError(err)
-	}()
-
 	volumePath, err := s.buildVolumePath(request.GetVolume(), "")
 	if err != nil {
 		return nil, fmt.Errorf("failed to build volume path: %w", err)
 	}
 
-	logger.L().Info(ctx, "creating directory",
+	logger.L().Info(ctx, "deleting directory",
 		zap.String("path", volumePath),
 	)
 

@@ -18,10 +18,6 @@ var ErrExpectedStart = errors.New("expected start message")
 var ErrUnexpectedStart = errors.New("unexpected start message")
 
 func (s *Service) CreateFile(server orchestrator.VolumeService_CreateFileServer) (err error) {
-	defer func() {
-		err = s.processError(err)
-	}()
-
 	req, err := server.Recv()
 	if err != nil {
 		return fmt.Errorf("failed to receive start message: %w", err)

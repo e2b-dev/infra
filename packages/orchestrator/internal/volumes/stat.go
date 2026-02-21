@@ -8,16 +8,13 @@ import (
 	"syscall"
 	"time"
 
+	"google.golang.org/grpc/codes"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
-func (s *Service) Stat(_ context.Context, request *orchestrator.StatRequest) (r *orchestrator.StatResponse, err error) {
-	defer func() {
-		err = s.processError(err)
-	}()
-
+func (s *Service) Stat(ctx context.Context, request *orchestrator.StatRequest) (r *orchestrator.StatResponse, err error) {
 	fullPath, err := s.buildVolumePath(request.GetVolume(), request.GetPath())
 	if err != nil {
 		return nil, fmt.Errorf("failed to build volume path: %w", err)
@@ -25,6 +22,10 @@ func (s *Service) Stat(_ context.Context, request *orchestrator.StatRequest) (r 
 
 	info, err := os.Lstat(fullPath)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, newAPIError(ctx, codes.NotFound, "path_not_found", "failed to stat: %q not found.", fullPath)
+		}
+
 		return nil, fmt.Errorf("failed to stat path: %w", err)
 	}
 

@@ -6,16 +6,13 @@ import (
 	"os"
 
 	"go.uber.org/zap"
+	"google.golang.org/grpc/codes"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 func (s *Service) UpdateFileMetadata(ctx context.Context, request *orchestrator.VolumeFileUpdateRequest) (r *orchestrator.VolumeFileUpdateResponse, err error) {
-	defer func() {
-		err = s.processError(err)
-	}()
-
 	fullPath, err := s.buildVolumePath(request.GetVolume(), request.GetPath())
 	if err != nil {
 		return nil, fmt.Errorf("failed to build volume path: %w", err)
@@ -30,6 +27,10 @@ func (s *Service) UpdateFileMetadata(ctx context.Context, request *orchestrator.
 
 	if request.Mode != nil {
 		if err = os.Chmod(fullPath, os.FileMode(request.GetMode())); err != nil {
+			if os.IsNotExist(err) {
+				return nil, newAPIError(ctx, codes.NotFound, "path_not_found", "failed to chmod: %q not found.", fullPath)
+			}
+
 			return nil, fmt.Errorf("failed to update file mode: %w", err)
 		}
 	}
@@ -46,12 +47,20 @@ func (s *Service) UpdateFileMetadata(ctx context.Context, request *orchestrator.
 		}
 
 		if err = os.Chown(fullPath, uid, gid); err != nil {
+			if os.IsNotExist(err) {
+				return nil, newAPIError(ctx, codes.NotFound, "path_not_found", "failed to chown: %q not found.", fullPath)
+			}
+
 			return nil, fmt.Errorf("failed to update file ownership: %w", err)
 		}
 	}
 
 	info, err := os.Stat(fullPath)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, newAPIError(ctx, codes.NotFound, "path_not_found", "failed to stat: %q not found.", fullPath)
+		}
+
 		return nil, fmt.Errorf("failed to stat file: %w", err)
 	}
 
