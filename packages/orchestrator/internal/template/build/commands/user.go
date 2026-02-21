@@ -7,7 +7,6 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
@@ -41,7 +40,7 @@ func (u *User) Execute(
 		ctx,
 		proxy,
 		sandboxID,
-		fmt.Sprintf("%s id -u %s", rootfs.SandboxBusyBoxPath, userArg),
+		fmt.Sprintf("id -u %s", userArg),
 		metadata.Context{
 			User:    "root",
 			EnvVars: cmdMetadata.EnvVars,
@@ -58,7 +57,7 @@ func (u *User) Execute(
 			lvl,
 			prefix,
 			sandboxID,
-			fmt.Sprintf("%s adduser -D -g \"\" -s /bin/bash %s", rootfs.SandboxBusyBoxPath, userArg),
+			fmt.Sprintf("adduser --disabled-password --gecos \"\" %s", userArg),
 			metadata.Context{
 				User:    "root",
 				EnvVars: cmdMetadata.EnvVars,
@@ -97,7 +96,7 @@ func addToSudoers(
 		lvl,
 		prefix,
 		sandboxID,
-		fmt.Sprintf("%s addgroup %s sudo || true", rootfs.SandboxBusyBoxPath, userArg),
+		fmt.Sprintf("usermod -aG sudo %s", userArg),
 		metadata.Context{
 			User:    "root",
 			EnvVars: cmdMetadata.EnvVars,
@@ -115,7 +114,7 @@ func addToSudoers(
 		lvl,
 		prefix,
 		sandboxID,
-		fmt.Sprintf("%s passwd -d %s", rootfs.SandboxBusyBoxPath, userArg),
+		fmt.Sprintf("passwd -d %s", userArg),
 		metadata.Context{
 			User:    "root",
 			EnvVars: cmdMetadata.EnvVars,
@@ -133,7 +132,7 @@ func addToSudoers(
 		lvl,
 		prefix,
 		sandboxID,
-		fmt.Sprintf("%s grep -q '^%s ALL=(ALL:ALL) NOPASSWD: ALL' /etc/sudoers || %s echo '%s ALL=(ALL:ALL) NOPASSWD: ALL' >>/etc/sudoers", rootfs.SandboxBusyBoxPath, userArg, rootfs.SandboxBusyBoxPath, userArg),
+		fmt.Sprintf("grep -q '^%s ALL=(ALL:ALL) NOPASSWD: ALL' /etc/sudoers || echo '%s ALL=(ALL:ALL) NOPASSWD: ALL' >>/etc/sudoers", userArg, userArg),
 		metadata.Context{
 			User:    "root",
 			EnvVars: cmdMetadata.EnvVars,

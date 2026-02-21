@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"strings"
 	"time"
@@ -133,6 +134,13 @@ func runCommandWithAllOptions(
 		}
 	}()
 
+	// Append standard directories to PATH so that utilities are always
+	// findable even if the user sets PATH to something broken.
+	envs := maps.Clone(metadata.EnvVars)
+	if _, ok := envs["PATH"]; ok {
+		envs["PATH"] += ":/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+	}
+
 	runCmdReq := connect.NewRequest(&process.StartRequest{
 		Process: &process.ProcessConfig{
 			Cmd: "/bin/bash",
@@ -140,7 +148,7 @@ func runCommandWithAllOptions(
 			Args: []string{
 				"-l", "-c", command,
 			},
-			Envs: metadata.EnvVars,
+			Envs: envs,
 		},
 	})
 

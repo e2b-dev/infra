@@ -12,7 +12,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/buildcontext"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -28,7 +27,6 @@ type ConfigurationParams struct {
 	EnvID      string
 	TemplateID string
 	BuildID    string
-	BusyBox    string
 }
 
 func runConfiguration(
@@ -47,7 +45,6 @@ func runConfiguration(
 		EnvID:      bc.Config.TemplateID,
 		TemplateID: bc.Config.TemplateID,
 		BuildID:    bc.Template.BuildID,
-		BusyBox:    rootfs.SandboxBusyBoxPath,
 	})
 	if err != nil {
 		return fmt.Errorf("error executing provision script: %w", err)
