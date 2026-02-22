@@ -205,13 +205,13 @@ components:
     CPUCount:
       type: integer
       format: int32
-      minimum: 1
+      minimum: 0
       description: CPU cores for the sandbox
 
     MemoryMB:
       type: integer
       format: int32
-      minimum: 128
+      minimum: 0
       description: Memory for the sandbox in MiB
 
     DiskSizeMB:
@@ -467,7 +467,6 @@ components:
         - endAt
         - state
         - envdVersion
-        - volumeMounts
       properties:
         templateID:
           type: string
@@ -526,7 +525,6 @@ components:
         - endAt
         - state
         - envdVersion
-        - volumeMounts
       properties:
         templateID:
           type: string
@@ -870,6 +868,13 @@ components:
           description: Number of times the template was built
         envdVersion:
           $ref: "#/components/schemas/EnvdVersion"
+        buildStatus:
+          $ref: "#/components/schemas/TemplateBuildStatus"
+        names:
+          type: array
+          nullable: true
+          items:
+            type: string
 
     TemplateBuild:
       required:
@@ -1169,6 +1174,7 @@ components:
         - info
         - warn
         - error
+        - ""
 
     BuildLogEntry:
       required:
@@ -1214,6 +1220,9 @@ components:
         - waiting
         - ready
         - error
+        - uploaded
+        - failed
+        - ""
 
     TemplateBuildInfo:
       required:
@@ -1739,8 +1748,8 @@ paths:
     get:
       description: Health check
       responses:
-        "200":
-          description: Request was successful
+        "204":
+          description: The service is healthy
         "401":
           $ref: "#/components/responses/401"
 
