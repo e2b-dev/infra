@@ -285,9 +285,9 @@ func RegisterBuild(
 				}
 			}
 
-			count := len(aliases)
-			if count > 0 {
-				telemetry.ReportEvent(ctx, "deleted old aliases", attribute.Int("env.alias.count", count))
+			for _, alias := range aliases {
+				templateCache.InvalidateAlias(context.WithoutCancel(ctx), &data.Team.Slug, alias)
+				telemetry.ReportEvent(ctx, "deleted old alias", attribute.String("env.alias", alias))
 			}
 
 			err = client.
