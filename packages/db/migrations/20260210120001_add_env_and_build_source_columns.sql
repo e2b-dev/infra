@@ -43,6 +43,7 @@ BEGIN
         GET DIAGNOSTICS affected = ROW_COUNT;
         COMMIT;
         EXIT WHEN affected = 0;
+        PERFORM pg_sleep(10);
     END LOOP;
 END;
 $$ LANGUAGE plpgsql;

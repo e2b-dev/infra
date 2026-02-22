@@ -42,6 +42,7 @@ BEGIN
     GET DIAGNOSTICS rows_updated = ROW_COUNT;
     COMMIT;
     EXIT WHEN rows_updated = 0;
+    PERFORM pg_sleep(10);
   END LOOP;
 END;
 $$ LANGUAGE plpgsql;

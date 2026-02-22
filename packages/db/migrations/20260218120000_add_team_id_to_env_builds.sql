@@ -70,6 +70,7 @@ BEGIN
     last_created_at := current_max_created_at;
     last_id := current_max_id;
     COMMIT;
+    PERFORM pg_sleep(10);
     RAISE NOTICE 'backfill_env_builds_team_id: updated % rows in batch, total: %, up to created_at: %, id: %',
       rows_updated, total_updated, last_created_at, last_id;
   END LOOP;
