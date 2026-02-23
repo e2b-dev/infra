@@ -399,7 +399,7 @@ exporters:
   debug:
     verbosity: detailed
     use_internal_logger: false
-  otlphttp/grafana_cloud:
+  otlp_http/grafana_cloud:
     # https://github.com/open-telemetry/opentelemetry-collector/tree/main/exporter/otlpexporter
     endpoint: "${grafana_otlp_url}/otlp"
     auth:
@@ -441,7 +441,7 @@ service:
         - transform/set-name
         - batch
       exporters:
-        - otlphttp/grafana_cloud
+        - otlp_http/grafana_cloud
     metrics/prometheus:
       receivers:
         - prometheus
@@ -451,7 +451,7 @@ service:
         - transform/set-name
         - batch
       exporters:
-        - otlphttp/grafana_cloud
+        - otlp_http/grafana_cloud
     metrics/rpc_only:
       receivers:
         - otlp
@@ -462,7 +462,7 @@ service:
         - transform/set-name
         - batch
       exporters:
-        - otlphttp/grafana_cloud
+        - otlp_http/grafana_cloud
     metrics/host:
       receivers:
         - hostmetrics
@@ -472,7 +472,7 @@ service:
         - metricstransform/single_cpu
         - batch
       exporters:
-        - otlphttp/grafana_cloud
+        - otlp_http/grafana_cloud
     metrics/external:
       receivers:
         - otlp
@@ -489,7 +489,7 @@ service:
         - resource/set_attributes
         - batch
       exporters:
-        - otlphttp/grafana_cloud
+        - otlp_http/grafana_cloud
     logs:
       receivers:
         - otlp
@@ -498,4 +498,4 @@ service:
         - resource/set_attributes
         - batch
       exporters:
-        - otlphttp/grafana_cloud
+        - otlp_http/grafana_cloud
