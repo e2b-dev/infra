@@ -6,7 +6,7 @@ import (
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
-	"github.com/e2b-dev/infra/packages/api/internal/db/types"
+	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 )
 

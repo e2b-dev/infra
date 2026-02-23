@@ -29,12 +29,13 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
-	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/handlers"
 	customMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware"
 	metricsMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics"
 	tracingMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware/otel/tracing"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	sharedauth "github.com/e2b-dev/infra/packages/auth/pkg/auth"
+	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
@@ -129,8 +130,9 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 	r.Use(cors.New(corsConfig))
 
 	// Create a team API Key auth validator
-	AuthenticationFunc := auth.CreateAuthenticationFunc(
-		config,
+	AuthenticationFunc := sharedauth.CreateAuthenticationFunc(
+		config.AdminToken,
+		metricsMiddleware.SetProcessingStartTime,
 		apiStore.GetTeamFromAPIKey,
 		apiStore.GetUserFromAccessToken,
 		apiStore.GetUserIDFromSupabaseToken,

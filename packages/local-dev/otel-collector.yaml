@@ -21,9 +21,9 @@ processors:
           - "e2b.*"
 
 exporters:
-  otlphttp/loki:
+  otlp_http/loki:
     endpoint: http://loki:3100/otlp
-  otlphttp/mimir:
+  otlp_http/mimir:
     endpoint: http://mimir:9009/otlp
   otlp/tempo:
     endpoint: tempo:4317
@@ -60,7 +60,7 @@ service:
     metrics:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlphttp/mimir]
+      exporters: [otlp_http/mimir]
     metrics/clickhouse:
       receivers: [otlp]
       processors:
@@ -70,4 +70,4 @@ service:
     logs:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlphttp/loki]
+      exporters: [otlp_http/loki]
