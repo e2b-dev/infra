@@ -30,6 +30,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/tcpfirewall"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
@@ -1066,7 +1067,7 @@ func runCommandInSandbox(ctx context.Context, sbx *sandbox.Sandbox, command stri
 // syncAndDropCaches syncs filesystem and drops caches before snapshot
 func syncAndDropCaches(ctx context.Context, sbx *sandbox.Sandbox) error {
 	// Run sync command
-	if err := runCommandInSandbox(ctx, sbx, "/usr/bin/busybox sync"); err != nil {
+	if err := runCommandInSandbox(ctx, sbx, rootfs.SandboxBusyBoxPath+" sync"); err != nil {
 		return fmt.Errorf("sync failed: %w", err)
 	}
 

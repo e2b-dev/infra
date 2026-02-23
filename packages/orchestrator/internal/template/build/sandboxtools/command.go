@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"strings"
 	"time"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process"
@@ -132,6 +134,13 @@ func runCommandWithAllOptions(
 		}
 	}()
 
+	// Append standard directories to PATH so that utilities are always
+	// findable even if the user sets PATH to something broken.
+	envs := maps.Clone(metadata.EnvVars)
+	if _, ok := envs["PATH"]; ok {
+		envs["PATH"] += ":/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+	}
+
 	runCmdReq := connect.NewRequest(&process.StartRequest{
 		Process: &process.ProcessConfig{
 			Cmd: "/bin/bash",
@@ -139,7 +148,7 @@ func runCommandWithAllOptions(
 			Args: []string{
 				"-l", "-c", command,
 			},
-			Envs: metadata.EnvVars,
+			Envs: envs,
 		},
 	})
 
@@ -235,7 +244,7 @@ func SyncChangesToDisk(
 		ctx,
 		proxy,
 		sandboxID,
-		"/usr/bin/busybox sync",
+		rootfs.SandboxBusyBoxPath+" sync",
 		metadata.Context{
 			User: "root",
 		},
