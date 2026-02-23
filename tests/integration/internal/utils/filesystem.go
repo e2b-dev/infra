@@ -3,12 +3,12 @@ package utils
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"mime/multipart"
 	"net/http"
 	"testing"
 
 	"connectrpc.com/connect"
+	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/filesystem"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -22,9 +22,9 @@ func UploadFile(tb testing.TB, ctx context.Context, sbx *api.Sandbox, envdClient
 
 	buffer, contentType := CreateTextFile(tb, path, content)
 
-	reqEditors := []envd.RequestEditorFn{setup.WithSandbox(sbx.SandboxID)}
+	reqEditors := []envd.RequestEditorFn{setup.WithSandbox(tb, sbx.SandboxID)}
 	if sbx.EnvdAccessToken != nil {
-		reqEditors = append(reqEditors, setup.WithEnvdAccessToken(*(sbx.EnvdAccessToken)))
+		reqEditors = append(reqEditors, setup.WithEnvdAccessToken(tb, *(sbx.EnvdAccessToken)))
 	}
 
 	writeRes, err := envdClient.HTTPClient.PostFilesWithBodyWithResponse(
@@ -34,13 +34,8 @@ func UploadFile(tb testing.TB, ctx context.Context, sbx *api.Sandbox, envdClient
 		buffer,
 		reqEditors...,
 	)
-	if err != nil {
-		tb.Fatal(fmt.Errorf("failed to upload file %s: %w", path, err))
-	}
-
-	if writeRes.StatusCode() != http.StatusOK {
-		tb.Fatal(fmt.Errorf("failed to upload file %s, status code: %d", path, writeRes.StatusCode()))
-	}
+	require.NoError(tb, err)
+	require.Equal(tb, http.StatusOK, writeRes.StatusCode(), string(writeRes.Body))
 }
 
 func CreateTextFile(tb testing.TB, path string, content string) (*bytes.Buffer, string) {
@@ -74,10 +69,9 @@ func CreateDir(tb testing.TB, sbx *api.Sandbox, path string) {
 	req := connect.NewRequest(&filesystem.MakeDirRequest{
 		Path: path,
 	})
-	setup.SetSandboxHeader(req.Header(), sbx.SandboxID)
-	setup.SetUserHeader(req.Header(), "user")
+	setup.SetSandboxHeader(tb, req.Header(), sbx.SandboxID)
+	setup.SetUserHeader(tb, req.Header(), "user")
+
 	_, err := client.FilesystemClient.MakeDir(ctx, req)
-	if err != nil {
-		tb.Fatal(err)
-	}
+	require.NoError(tb, err)
 }

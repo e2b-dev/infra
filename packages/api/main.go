@@ -29,12 +29,13 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
-	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/handlers"
 	customMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware"
 	metricsMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics"
 	tracingMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware/otel/tracing"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	sharedauth "github.com/e2b-dev/infra/packages/auth/pkg/auth"
+	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
@@ -72,6 +73,11 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 	swagger.Servers = nil
 
 	r := gin.New()
+	// Use the raw (percent-encoded) URL path for route matching so that encoded slashes (%2F)
+	// in path params are treated as part of the segment, not as path separators.
+	// This is needed for template IDs that contain namespace/alias (e.g. "team-slug/my-template").
+	// Param values are still unescaped before reaching handlers (UnescapePathValues defaults to true).
+	r.UseRawPath = true
 
 	r.Use(
 		// We use custom otel gin middleware because we want to log 4xx errors in the otel
@@ -124,8 +130,9 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 	r.Use(cors.New(corsConfig))
 
 	// Create a team API Key auth validator
-	AuthenticationFunc := auth.CreateAuthenticationFunc(
-		config,
+	AuthenticationFunc := sharedauth.CreateAuthenticationFunc(
+		config.AdminToken,
+		metricsMiddleware.SetProcessingStartTime,
 		apiStore.GetTeamFromAPIKey,
 		apiStore.GetUserFromAccessToken,
 		apiStore.GetUserIDFromSupabaseToken,

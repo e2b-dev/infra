@@ -40,6 +40,9 @@ const (
 	BusyBoxPath     = "usr/bin/busybox"
 	BusyBoxInitPath = "usr/bin/init"
 
+	// SandboxBusyBoxPath is the absolute path to busybox inside the sandbox.
+	SandboxBusyBoxPath = "/" + BusyBoxPath
+
 	ProvisioningExitPrefix = "E2B_PROVISIONING_EXIT:"
 )
 

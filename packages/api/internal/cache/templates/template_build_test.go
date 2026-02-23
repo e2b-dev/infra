@@ -3,6 +3,7 @@ package templatecache
 import (
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -13,14 +14,14 @@ import (
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
 )
 
-// TestRedisTemplatesBuildCache_Get_L1Hit tests that Get returns from L1 cache when available.
-func TestRedisTemplatesBuildCache_Get_L1Hit(t *testing.T) {
+// TestRedisTemplatesBuildCache_Get_CacheHit tests that Get returns from Redis cache when available.
+func TestRedisTemplatesBuildCache_Get_CacheHit(t *testing.T) {
 	t.Parallel()
 	db := testutils.SetupDatabase(t)
 	redisClient := redis_utils.SetupInstance(t)
 	ctx := t.Context()
 
-	cache := NewTemplateBuildCache(db.SqlcClient, redisClient)
+	c := NewTemplateBuildCache(db.SqlcClient, redisClient)
 
 	buildID := uuid.New()
 	info := TemplateBuildInfo{
@@ -30,11 +31,11 @@ func TestRedisTemplatesBuildCache_Get_L1Hit(t *testing.T) {
 		ClusterID:   uuid.New(),
 	}
 
-	// Store directly in L1 cache
-	cache.l1Cache.Set(buildID.String(), info)
+	// Store in Redis via the cache's Set
+	c.cache.Set(ctx, buildID.String(), info)
 
-	// Get should return from L1 without hitting Redis or DB
-	result, err := cache.Get(ctx, buildID, "test-template")
+	// Get should return from Redis without hitting DB
+	result, err := c.Get(ctx, buildID, "test-template")
 	require.NoError(t, err)
 	assert.Equal(t, info.TeamID, result.TeamID)
 	assert.Equal(t, info.TemplateID, result.TemplateID)
@@ -48,7 +49,7 @@ func TestRedisTemplatesBuildCache_Get_L2Hit(t *testing.T) {
 	redisClient := redis_utils.SetupInstance(t)
 	ctx := t.Context()
 
-	cache := NewTemplateBuildCache(db.SqlcClient, redisClient)
+	c := NewTemplateBuildCache(db.SqlcClient, redisClient)
 
 	buildID := uuid.New()
 	info := TemplateBuildInfo{
@@ -62,12 +63,12 @@ func TestRedisTemplatesBuildCache_Get_L2Hit(t *testing.T) {
 	buildJSON, err := json.Marshal(info)
 	require.NoError(t, err)
 
-	buildKey := getBuildKey(buildID.String())
-	err = redisClient.Set(ctx, buildKey, buildJSON, redisBuildCacheTTL).Err()
+	buildKey := c.cache.RedisKey(buildID.String())
+	err = redisClient.Set(ctx, buildKey, buildJSON, buildCacheTTL).Err()
 	require.NoError(t, err)
 
 	// Get should return from Redis
-	result, err := cache.Get(ctx, buildID, "test-template")
+	result, err := c.Get(ctx, buildID, "test-template")
 	require.NoError(t, err)
 	assert.Equal(t, info.TeamID, result.TeamID)
 	assert.Equal(t, info.TemplateID, result.TemplateID)
@@ -86,11 +87,11 @@ func TestRedisTemplatesBuildCache_Get_DBFallback(t *testing.T) {
 	buildID := testutils.CreateTestBuild(t, ctx, db, templateID, "building")
 	testutils.CreateTestBuildAssignment(t, ctx, db, templateID, buildID, "default")
 
-	cache := NewTemplateBuildCache(db.SqlcClient, redisClient)
-	defer cache.Close(t.Context())
+	c := NewTemplateBuildCache(db.SqlcClient, redisClient)
+	defer c.Close(t.Context())
 
 	// Get should fall back to DB
-	result, err := cache.Get(ctx, buildID, templateID)
+	result, err := c.Get(ctx, buildID, templateID)
 	require.NoError(t, err)
 	assert.Equal(t, teamID, result.TeamID)
 	assert.Equal(t, templateID, result.TemplateID)
@@ -103,24 +104,24 @@ func TestRedisTemplatesBuildCache_Get_NotFound(t *testing.T) {
 	redisClient := redis_utils.SetupInstance(t)
 	ctx := t.Context()
 
-	cache := NewTemplateBuildCache(db.SqlcClient, redisClient)
-	defer cache.Close(t.Context())
+	c := NewTemplateBuildCache(db.SqlcClient, redisClient)
+	defer c.Close(t.Context())
 
 	// Try to get non-existent build
-	_, err := cache.Get(ctx, uuid.New(), "non-existent-template")
+	_, err := c.Get(ctx, uuid.New(), "non-existent-template")
 	require.Error(t, err)
 	require.ErrorIs(t, err, ErrTemplateBuildInfoNotFound)
 }
 
-// TestRedisTemplatesBuildCache_SetStatus_UpdatesAndInvalidatesL1 tests that SetStatus updates Redis and invalidates L1.
-func TestRedisTemplatesBuildCache_SetStatus_UpdatesAndInvalidatesL1(t *testing.T) {
+// TestRedisTemplatesBuildCache_SetStatus_UpdatesRedis tests that SetStatus updates Redis.
+func TestRedisTemplatesBuildCache_SetStatus_UpdatesRedis(t *testing.T) {
 	t.Parallel()
 	db := testutils.SetupDatabase(t)
 	redisClient := redis_utils.SetupInstance(t)
 	ctx := t.Context()
 
-	cache := NewTemplateBuildCache(db.SqlcClient, redisClient)
-	defer cache.Close(t.Context())
+	c := NewTemplateBuildCache(db.SqlcClient, redisClient)
+	defer c.Close(t.Context())
 
 	buildID := uuid.New()
 	info := TemplateBuildInfo{
@@ -130,22 +131,14 @@ func TestRedisTemplatesBuildCache_SetStatus_UpdatesAndInvalidatesL1(t *testing.T
 		ClusterID:   uuid.New(),
 	}
 
-	// Store in L1 and Redis
-	cache.l1Cache.Set(buildID.String(), info)
-	buildJSON, err := json.Marshal(info)
-	require.NoError(t, err)
+	// Store in Redis via the cache
+	c.cache.Set(ctx, buildID.String(), info)
 
-	buildKey := getBuildKey(buildID.String())
-	err = redisClient.Set(ctx, buildKey, string(buildJSON), redisBuildCacheTTL).Err()
-	require.NoError(t, err)
+	buildKey := c.cache.RedisKey(buildID.String())
 
 	// Update status
 	newReason := types.BuildReason{Message: "Build completed successfully"}
-	cache.SetStatus(ctx, buildID, types.BuildStatusGroupReady, newReason)
-
-	// L1 should be invalidated
-	_, ok := cache.l1Cache.GetWithoutTouch(buildID.String())
-	assert.False(t, ok)
+	c.SetStatus(ctx, buildID, types.BuildStatusGroupReady, newReason)
 
 	// Redis should be updated
 	data, err := redisClient.Get(ctx, buildKey).Bytes()
@@ -156,4 +149,47 @@ func TestRedisTemplatesBuildCache_SetStatus_UpdatesAndInvalidatesL1(t *testing.T
 	require.NoError(t, err)
 	assert.Equal(t, types.BuildStatusGroupReady, updatedInfo.BuildStatus)
 	assert.Equal(t, "Build completed successfully", updatedInfo.Reason.Message)
+}
+
+// TestRedisTemplatesBuildCache_SetStatus_ResetsTTL tests that SetStatus resets the Redis TTL
+func TestRedisTemplatesBuildCache_SetStatus_ResetsTTL(t *testing.T) {
+	t.Parallel()
+	db := testutils.SetupDatabase(t)
+	redisClient := redis_utils.SetupInstance(t)
+	ctx := t.Context()
+
+	c := NewTemplateBuildCache(db.SqlcClient, redisClient)
+	defer c.Close(t.Context())
+
+	buildID := uuid.New()
+	info := TemplateBuildInfo{
+		TeamID:      uuid.New(),
+		TemplateID:  "test-template",
+		BuildStatus: types.BuildStatusGroupPending,
+		ClusterID:   uuid.New(),
+	}
+
+	// Store in Redis with a short TTL to simulate an aging entry
+	buildJSON, err := json.Marshal(info)
+	require.NoError(t, err)
+
+	buildKey := c.cache.RedisKey(buildID.String())
+	shortTTL := 30 * time.Second
+	err = redisClient.Set(ctx, buildKey, buildJSON, shortTTL).Err()
+	require.NoError(t, err)
+
+	// Verify the initial TTL is short
+	ttlBefore, err := redisClient.TTL(ctx, buildKey).Result()
+	require.NoError(t, err)
+	assert.LessOrEqual(t, ttlBefore, shortTTL)
+
+	// Update status — this should reset TTL
+	newReason := types.BuildReason{Message: "Build started"}
+	c.SetStatus(ctx, buildID, types.BuildStatusGroupInProgress, newReason)
+
+	// Verify TTL was reset
+	ttlAfter, err := redisClient.TTL(ctx, buildKey).Result()
+	require.NoError(t, err)
+	assert.Greater(t, ttlAfter, shortTTL, "TTL should be reset, now being less than initial short TTL")
+	assert.LessOrEqual(t, ttlAfter, buildCacheTTL)
 }

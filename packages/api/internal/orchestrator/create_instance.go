@@ -14,10 +14,10 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	teamtypes "github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	teamtypes "github.com/e2b-dev/infra/packages/auth/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/pkg/builds"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
@@ -121,7 +121,7 @@ func (o *Orchestrator) CreateSandbox(
 				Code: http.StatusTooManyRequests,
 				ClientMsg: fmt.Sprintf(
 					"you have reached the maximum number of concurrent E2B sandboxes (%d). If you need more, "+
-						"please contact us at 'https://e2b.dev/docs/getting-help'", totalConcurrentInstances),
+						"please visit 'https://e2b.dev/docs/billing'", totalConcurrentInstances),
 				Err: fmt.Errorf("team '%s' has reached the maximum number of instances (%d)", team.ID, totalConcurrentInstances),
 			}
 		default:

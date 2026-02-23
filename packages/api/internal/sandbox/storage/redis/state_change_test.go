@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
-	"github.com/e2b-dev/infra/packages/shared/pkg/redis"
+	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
 )
 
 func setupTestStorage(t *testing.T) (*Storage, redis.UniversalClient) {
@@ -52,10 +52,13 @@ func TestStartRemoving_BasicTransitions(t *testing.T) {
 	}{
 		{"Running to Pausing", sandbox.StateRunning, sandbox.StateActionPause, sandbox.StatePausing, false},
 		{"Running to Killing", sandbox.StateRunning, sandbox.StateActionKill, sandbox.StateKilling, false},
+		{"Running to Snapshotting", sandbox.StateRunning, sandbox.StateActionSnapshot, sandbox.StateSnapshotting, false},
 		{"Pausing to Killing", sandbox.StatePausing, sandbox.StateActionKill, sandbox.StateKilling, false},
 		{"Killing to Pausing (invalid)", sandbox.StateKilling, sandbox.StateActionPause, sandbox.StatePausing, true},
 		{"Killing to Killing (same)", sandbox.StateKilling, sandbox.StateActionKill, sandbox.StateKilling, false},
 		{"Pausing to Pausing (same)", sandbox.StatePausing, sandbox.StateActionPause, sandbox.StatePausing, false},
+		{"Snapshotting to Killed", sandbox.StateSnapshotting, sandbox.StateActionKill, sandbox.StateKilling, false},
+		{"Snapshotting to Paused", sandbox.StateSnapshotting, sandbox.StateActionPause, sandbox.StatePausing, false},
 	}
 
 	for _, tt := range tests {
@@ -705,6 +708,87 @@ func TestStartRemoving_DifferentExecutionID(t *testing.T) {
 	assert.Equal(t, int64(1), exists)
 
 	callback2(ctx, nil)
+}
+
+// transientAction is used for all transient-transition tests.
+// Snapshot is currently the only transient action; if more are added
+// these tests automatically cover the shared behaviour.
+var transientAction = sandbox.StateActionSnapshot
+
+func TestStartRemoving_TransientTransition(t *testing.T) {
+	t.Parallel()
+
+	t.Run("success restores state to Running", func(t *testing.T) {
+		t.Parallel()
+
+		storage, _ := setupTestStorage(t)
+		ctx := t.Context()
+
+		sbx := createTestSandbox("transient-restore")
+		require.NoError(t, storage.Add(ctx, sbx))
+
+		_, finish, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, transientAction)
+		require.NoError(t, err)
+
+		finish(ctx, nil)
+
+		got, err := storage.Get(ctx, sbx.TeamID, sbx.SandboxID)
+		require.NoError(t, err)
+		assert.Equal(t, sandbox.StateRunning, got.State)
+	})
+
+	t.Run("failure signals success to waiters", func(t *testing.T) {
+		t.Parallel()
+
+		storage, client := setupTestStorage(t)
+		ctx := t.Context()
+
+		sbx := createTestSandbox("transient-fail-result")
+		require.NoError(t, storage.Add(ctx, sbx))
+
+		_, finish, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, transientAction)
+		require.NoError(t, err)
+
+		transitionKey := getTransitionKey(sbx.TeamID.String(), sbx.SandboxID)
+		transitionID, err := client.Get(ctx, transitionKey).Result()
+		require.NoError(t, err)
+
+		finish(ctx, errors.New("operation failed"))
+
+		// Transient transitions signal success even on failure so
+		// concurrent callers (e.g. kill) can proceed.
+		resultKey := getTransitionResultKey(sbx.TeamID.String(), sbx.SandboxID, transitionID)
+		value, err := client.Get(ctx, resultKey).Result()
+		require.NoError(t, err)
+		assert.Empty(t, value, "failed transient transition should still write empty result for waiters")
+	})
+
+	t.Run("restore failure propagates to result key", func(t *testing.T) {
+		t.Parallel()
+
+		storage, client := setupTestStorage(t)
+		ctx := t.Context()
+
+		sbx := createTestSandbox("transient-restore-fail")
+		require.NoError(t, storage.Add(ctx, sbx))
+
+		_, finish, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, transientAction)
+		require.NoError(t, err)
+
+		// Remove the sandbox key to force restoreToRunning to fail
+		client.Del(ctx, getSandboxKey(sbx.TeamID.String(), sbx.SandboxID))
+
+		transitionKey := getTransitionKey(sbx.TeamID.String(), sbx.SandboxID)
+		transitionID, err := client.Get(ctx, transitionKey).Result()
+		require.NoError(t, err)
+
+		finish(ctx, nil)
+
+		resultKey := getTransitionResultKey(sbx.TeamID.String(), sbx.SandboxID, transitionID)
+		value, err := client.Get(ctx, resultKey).Result()
+		require.NoError(t, err)
+		assert.Contains(t, value, "failed to restore sandbox to running")
+	})
 }
 
 // TestStartRemoving_CompletedTransitionAllowsNewTransition tests that a completed

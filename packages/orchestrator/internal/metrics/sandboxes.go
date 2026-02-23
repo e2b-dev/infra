@@ -199,7 +199,7 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 								logger.WithTeamID(sbx.Runtime.TeamID),
 								logger.WithTemplateID(sbx.Runtime.TemplateID),
 								logger.WithEnvdVersion(sbx.Config.Envd.Version),
-								zap.Time("sandbox_start", sbx.StartedAt),
+								zap.Time("sandbox_start", sbx.GetStartedAt()),
 								zap.Int64("clock_host", hostTm),
 								zap.Int64("clock_sbx", sbxTm),
 								zap.Float64("clock_drift_seconds", sbxDrift),

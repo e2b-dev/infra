@@ -11,14 +11,20 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/clickhouse/pkg/hoststats"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/cgroup"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
+
+// CgroupStatsFunc is a function that returns current cgroup resource usage statistics.
+// Returns (nil, nil) if cgroup accounting is not available.
+type CgroupStatsFunc func(ctx context.Context) (*cgroup.Stats, error)
 
 type HostStatsCollector struct {
 	metadata         HostStatsMetadata
 	delivery         hoststats.Delivery
 	proc             *process.Process
 	samplingInterval time.Duration
+	cgroupStats      CgroupStatsFunc
 
 	stopCh    chan struct{}
 	stoppedCh chan struct{}
@@ -40,6 +46,7 @@ func NewHostStatsCollector(
 	firecrackerPID int32,
 	delivery hoststats.Delivery,
 	samplingInterval time.Duration,
+	cgroupStats CgroupStatsFunc,
 ) (*HostStatsCollector, error) {
 	// Validate and enforce minimum interval
 	if samplingInterval < 100*time.Millisecond {
@@ -56,6 +63,7 @@ func NewHostStatsCollector(
 		delivery:         delivery,
 		proc:             proc,
 		samplingInterval: samplingInterval,
+		cgroupStats:      cgroupStats,
 		stopCh:           make(chan struct{}),
 		stoppedCh:        make(chan struct{}),
 	}, nil
@@ -90,6 +98,21 @@ func (h *HostStatsCollector) CollectSample(ctx context.Context) error {
 		FirecrackerMemoryVMS:     memInfo.VMS,  // bytes
 	}
 
+	if h.cgroupStats != nil {
+		cgroupStats, err := h.cgroupStats(ctx)
+		if err != nil {
+			logger.L().Debug(ctx, "could not collect cgroup stats",
+				logger.WithSandboxID(h.metadata.SandboxID),
+				zap.Error(err))
+		} else if cgroupStats != nil {
+			stat.CgroupCPUUsageUsec = cgroupStats.CPUUsageUsec
+			stat.CgroupCPUUserUsec = cgroupStats.CPUUserUsec
+			stat.CgroupCPUSystemUsec = cgroupStats.CPUSystemUsec
+			stat.CgroupMemoryUsage = cgroupStats.MemoryUsageBytes
+			stat.CgroupMemoryPeak = cgroupStats.MemoryPeakBytes
+		}
+	}
+
 	if err := h.delivery.Push(stat); err != nil {
 		return fmt.Errorf("failed to push stat to delivery: %w", err)
 	}
@@ -105,7 +128,7 @@ func (h *HostStatsCollector) Start(ctx context.Context) {
 	if err := h.CollectSample(ctx); err != nil {
 		// Log error but continue with periodic sampling - don't kill the sandbox
 		logger.L().Error(ctx, "failed to collect initial host stats sample",
-			zap.String("sandbox_id", h.metadata.SandboxID),
+			logger.WithSandboxID(h.metadata.SandboxID),
 			zap.Error(err))
 	}
 
@@ -118,7 +141,7 @@ func (h *HostStatsCollector) Start(ctx context.Context) {
 			if err := h.CollectSample(ctx); err != nil {
 				// Log error but continue sampling - don't kill the sandbox
 				logger.L().Error(ctx, "failed to collect host stats sample",
-					zap.String("sandbox_id", h.metadata.SandboxID),
+					logger.WithSandboxID(h.metadata.SandboxID),
 					zap.Error(err))
 			}
 		case <-h.stopCh:
@@ -139,7 +162,7 @@ func (h *HostStatsCollector) Stop(ctx context.Context) {
 		if err := h.CollectSample(ctx); err != nil {
 			// Log but don't fail the shutdown
 			logger.L().Error(ctx, "failed to collect final host stats sample",
-				zap.String("sandbox_id", h.metadata.SandboxID),
+				logger.WithSandboxID(h.metadata.SandboxID),
 				zap.Error(err))
 		}
 	})

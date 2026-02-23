@@ -223,7 +223,7 @@ func doBuild(
 
 	sandboxes := sandbox.NewSandboxesMap()
 
-	sandboxProxy, err := proxy.NewSandboxProxy(noop.MeterProvider{}, proxyPort, sandboxes)
+	sandboxProxy, err := proxy.NewSandboxProxy(noop.MeterProvider{}, proxyPort, sandboxes, featureFlags)
 	if err != nil {
 		return fmt.Errorf("proxy: %w", err)
 	}
@@ -288,7 +288,7 @@ func doBuild(
 	defer templateCache.Stop()
 
 	buildMetrics, _ := metrics.NewBuildMetrics(noop.MeterProvider{})
-	sandboxFactory := sandbox.NewFactory(c.BuilderConfig, networkPool, devicePool, featureFlags, nil)
+	sandboxFactory := sandbox.NewFactory(c.BuilderConfig, networkPool, devicePool, featureFlags, nil, nil)
 
 	builder := build.NewBuilder(
 		builderConfig, l, featureFlags, sandboxFactory,

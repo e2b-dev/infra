@@ -19,6 +19,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/cgroup"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/socket"
@@ -146,6 +147,7 @@ func (p *Process) configure(
 	sbxMetadata sbxlogger.LoggerMetadata,
 	stdoutExternal io.Writer,
 	stderrExternal io.Writer,
+	cgroupFD int,
 ) error {
 	ctx, childSpan := tracer.Start(ctx, "configure-fc")
 	defer childSpan.End()
@@ -163,6 +165,14 @@ func (p *Process) configure(
 		stderrWriters = append(stderrWriters, stderrExternal)
 	}
 	p.cmd.Stderr = io.MultiWriter(stderrWriters...)
+
+	// Set up cgroup FD for atomic placement via CLONE_INTO_CGROUP.
+	// The cgroup is created and owned by the caller (Sandbox); Process only
+	// uses the FD during clone.
+	if cgroupFD != cgroup.NoCgroupFD {
+		p.cmd.SysProcAttr.UseCgroupFD = true
+		p.cmd.SysProcAttr.CgroupFD = cgroupFD
+	}
 
 	err := p.cmd.Start()
 	if err != nil {
@@ -236,6 +246,7 @@ func (p *Process) Create(
 		sbxMetadata,
 		options.Stdout,
 		options.Stderr,
+		cgroup.NoCgroupFD,
 	)
 	if err != nil {
 		fcStopErr := p.Stop(ctx)
@@ -361,8 +372,8 @@ func (p *Process) Resume(
 	uffdSocketPath string,
 	snapfile template.File,
 	uffdReady chan struct{},
-	slot *network.Slot,
 	accessToken *string,
+	cgroupFD int,
 ) error {
 	ctx, span := tracer.Start(ctx, "resume-fc")
 	defer span.End()
@@ -382,6 +393,7 @@ func (p *Process) Resume(
 			sbxMetadata,
 			nil,
 			nil,
+			cgroupFD,
 		)
 		if err != nil {
 			return fmt.Errorf("error starting fc process: %w", err)
@@ -448,7 +460,7 @@ func (p *Process) Resume(
 	meta := &MmdsMetadata{
 		SandboxID:            sbxMetadata.SandboxID,
 		TemplateID:           sbxMetadata.TemplateID,
-		LogsCollectorAddress: fmt.Sprintf("http://%s/logs", slot.HyperloopIPString()),
+		LogsCollectorAddress: fmt.Sprintf("http://%s/logs", p.config.NetworkConfig.OrchestratorInSandboxIPAddress),
 	}
 
 	if accessToken != nil && *accessToken != "" {

@@ -124,6 +124,11 @@ func ParseName(input string) (identifier string, tag *string, err error) {
 	return identifier, tag, nil
 }
 
+// WithTag returns the identifier with the given tag appended (e.g. "templateID:tag").
+func WithTag(identifier, tag string) string {
+	return identifier + TagSeparator + tag
+}
+
 // WithNamespace returns identifier with the given namespace prefix.
 func WithNamespace(namespace, alias string) string {
 	return namespace + NamespaceSeparator + alias

@@ -28,31 +28,24 @@ const (
 
 // doRequestWithInfiniteRetries does a request with infinite retries until the context is done.
 // The parent context should have a deadline or a timeout.
-func doRequestWithInfiniteRetries(
+func (s *Sandbox) doRequestWithInfiniteRetries(
 	ctx context.Context,
 	method,
 	address string,
-	accessToken *string,
-	envdInitRequestTimeout time.Duration,
-	envVars map[string]string,
-	sandboxID,
-	envdVersion,
-	hyperloopIP string,
-	defaultUser *string,
-	defaultWorkdir *string,
 ) (*http.Response, int64, error) {
 	requestCount := int64(0)
-	for {
-		now := time.Now()
 
-		jsonBody := &envd.PostInitJSONBody{
-			EnvVars:        envVars,
-			HyperloopIP:    hyperloopIP,
-			AccessToken:    utils.DerefOrDefault(accessToken, ""),
-			Timestamp:      now,
-			DefaultUser:    utils.DerefOrDefault(defaultUser, ""),
-			DefaultWorkdir: utils.DerefOrDefault(defaultWorkdir, ""),
-		}
+	jsonBody := &envd.PostInitJSONBody{
+		EnvVars:        s.Config.Envd.Vars,
+		HyperloopIP:    s.config.NetworkConfig.OrchestratorInSandboxIPAddress,
+		AccessToken:    utils.DerefOrDefault(s.Config.Envd.AccessToken, ""),
+		DefaultUser:    utils.DerefOrDefault(s.Config.Envd.DefaultUser, ""),
+		DefaultWorkdir: utils.DerefOrDefault(s.Config.Envd.DefaultWorkdir, ""),
+		VolumeMounts:   s.convertMounts(s.Config.VolumeMounts),
+	}
+
+	for {
+		jsonBody.Timestamp = time.Now()
 
 		body, err := json.Marshal(jsonBody)
 		if err != nil {
@@ -60,7 +53,7 @@ func doRequestWithInfiniteRetries(
 		}
 
 		requestCount++
-		reqCtx, cancel := context.WithTimeout(ctx, envdInitRequestTimeout)
+		reqCtx, cancel := context.WithTimeout(ctx, s.internalConfig.EnvdInitRequestTimeout)
 		request, err := http.NewRequestWithContext(reqCtx, method, address, bytes.NewReader(body))
 		if err != nil {
 			cancel()
@@ -70,8 +63,8 @@ func doRequestWithInfiniteRetries(
 
 		// make sure request to already authorized envd will not fail
 		// this can happen in sandbox resume and in some edge cases when previous request was success, but we continued
-		if accessToken != nil {
-			request.Header.Set("X-Access-Token", *accessToken)
+		if s.Config.Envd.AccessToken != nil {
+			request.Header.Set("X-Access-Token", *s.Config.Envd.AccessToken)
 		}
 
 		response, err := sandboxHttpClient.Do(request)
@@ -81,7 +74,11 @@ func doRequestWithInfiniteRetries(
 			return response, requestCount, nil
 		}
 
-		logger.L().Debug(ctx, "failed to do request to envd, retrying", logger.WithSandboxID(sandboxID), logger.WithEnvdVersion(envdVersion), zap.Int64("timeout_ms", envdInitRequestTimeout.Milliseconds()), zap.Error(err))
+		logger.L().Debug(ctx, "failed to do request to envd, retrying",
+			logger.WithSandboxID(s.Runtime.SandboxID),
+			logger.WithEnvdVersion(s.Config.Envd.Version),
+			zap.Int64("timeout_ms", s.internalConfig.EnvdInitRequestTimeout.Milliseconds()),
+			zap.Error(err))
 
 		select {
 		case <-ctx.Done():
@@ -89,6 +86,19 @@ func doRequestWithInfiniteRetries(
 		case <-time.After(loopDelay):
 		}
 	}
+}
+
+func (s *Sandbox) convertMounts(mounts []VolumeMountConfig) []envd.VolumeMount {
+	results := make([]envd.VolumeMount, 0, len(mounts))
+
+	for _, mount := range mounts {
+		results = append(results, envd.VolumeMount{
+			NfsTarget: fmt.Sprintf("%s:/%s", s.config.NetworkConfig.OrchestratorInSandboxIPAddress, mount.Name),
+			Path:      mount.Path,
+		})
+	}
+
+	return results
 }
 
 func (s *Sandbox) initEnvd(ctx context.Context) (e error) {
@@ -105,22 +115,9 @@ func (s *Sandbox) initEnvd(ctx context.Context) (e error) {
 	attributesFail := append(attributes, attribute.Bool("success", false))
 	attributesSuccess := append(attributes, attribute.Bool("success", true))
 
-	hyperloopIP := s.Slot.HyperloopIPString()
 	address := fmt.Sprintf("http://%s:%d/init", s.Slot.HostIPString(), consts.DefaultEnvdServerPort)
 
-	response, count, err := doRequestWithInfiniteRetries(
-		ctx,
-		http.MethodPost,
-		address,
-		s.Config.Envd.AccessToken,
-		s.internalConfig.EnvdInitRequestTimeout,
-		s.Config.Envd.Vars,
-		s.Runtime.SandboxID,
-		s.Config.Envd.Version,
-		hyperloopIP,
-		s.Config.Envd.DefaultUser,
-		s.Config.Envd.DefaultWorkdir,
-	)
+	response, count, err := s.doRequestWithInfiniteRetries(ctx, http.MethodPost, address)
 	if err != nil {
 		envdInitCalls.Add(ctx, count, metric.WithAttributes(attributesFail...))
 

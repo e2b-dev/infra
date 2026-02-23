@@ -79,8 +79,9 @@ type gcpObject struct {
 }
 
 var (
-	_ Seekable = (*gcpObject)(nil)
-	_ Blob     = (*gcpObject)(nil)
+	_ Seekable        = (*gcpObject)(nil)
+	_ Blob            = (*gcpObject)(nil)
+	_ StreamingReader = (*gcpObject)(nil)
 )
 
 func NewGCP(ctx context.Context, bucketName string, limiter *limit.Limiter) (StorageProvider, error) {
@@ -229,6 +230,33 @@ func (o *gcpObject) Size(ctx context.Context) (int64, error) {
 	timer.Success(ctx, 0)
 
 	return attrs.Size, nil
+}
+
+func (o *gcpObject) OpenRangeReader(ctx context.Context, off, length int64) (io.ReadCloser, error) {
+	ctx, cancel := context.WithTimeout(ctx, googleReadTimeout)
+
+	reader, err := o.handle.NewRangeReader(ctx, off, length)
+	if err != nil {
+		cancel()
+
+		return nil, fmt.Errorf("failed to create GCS range reader for %q at %d+%d: %w", o.path, off, length, err)
+	}
+
+	return &cancelOnCloseReader{ReadCloser: reader, cancel: cancel}, nil
+}
+
+// cancelOnCloseReader wraps a ReadCloser and calls a CancelFunc on Close,
+// ensuring the context used to create the reader is cleaned up.
+type cancelOnCloseReader struct {
+	io.ReadCloser
+
+	cancel context.CancelFunc
+}
+
+func (r *cancelOnCloseReader) Close() error {
+	defer r.cancel()
+
+	return r.ReadCloser.Close()
 }
 
 func (o *gcpObject) ReadAt(ctx context.Context, buff []byte, off int64) (n int, err error) {

@@ -13,9 +13,9 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
-	typesteam "github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	typesteam "github.com/e2b-dev/infra/packages/auth/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -76,6 +76,10 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 			}
 		case sandbox.StateKilling:
 			a.sendAPIStoreError(c, http.StatusNotFound, "Sandbox can't be resumed, no snapshot found")
+
+			return
+		case sandbox.StateSnapshotting:
+			a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Sandbox snapshot is currently being created for sandbox '%s'", sandboxID))
 
 			return
 		case sandbox.StateRunning:

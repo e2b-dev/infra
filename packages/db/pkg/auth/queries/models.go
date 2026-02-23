@@ -104,6 +104,7 @@ type EnvBuild struct {
 	CpuModelName       *string
 	CpuFlags           []string
 	StatusGroup        string
+	TeamID             *uuid.UUID
 }
 
 type EnvBuildAssignment struct {
@@ -129,6 +130,12 @@ type Snapshot struct {
 	AutoPause           bool
 	TeamID              uuid.UUID
 	Config              types.JSONBStringMap
+}
+
+type SnapshotTemplate struct {
+	EnvID     string
+	SandboxID string
+	CreatedAt pgtype.Timestamptz
 }
 
 type Team struct {

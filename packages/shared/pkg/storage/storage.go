@@ -79,6 +79,11 @@ type SeekableReader interface {
 	Size(ctx context.Context) (int64, error)
 }
 
+// StreamingReader supports progressive reads via a streaming range reader.
+type StreamingReader interface {
+	OpenRangeReader(ctx context.Context, off, length int64) (io.ReadCloser, error)
+}
+
 type SeekableWriter interface {
 	// Store entire file
 	StoreFile(ctx context.Context, path string) error
@@ -87,6 +92,7 @@ type SeekableWriter interface {
 type Seekable interface {
 	SeekableReader
 	SeekableWriter
+	StreamingReader
 }
 
 func GetTemplateStorageProvider(ctx context.Context, limiter *limit.Limiter) (StorageProvider, error) {

@@ -21,6 +21,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/cgroup"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
@@ -81,6 +82,7 @@ type Config struct {
 
 type VolumeMountConfig struct {
 	ID   string
+	Name string
 	Path string
 	Type string
 }
@@ -117,7 +119,8 @@ type Metadata struct {
 	Config         Config
 	Runtime        RuntimeMetadata
 
-	StartedAt time.Time
+	startedAtMu sync.RWMutex // protects startedAt
+	startedAt   time.Time
 
 	endAtMu sync.RWMutex // protects endAt
 	endAt   time.Time
@@ -143,11 +146,19 @@ type Sandbox struct {
 	*Resources
 	*Metadata
 
+	// LifecycleID is a unique identifier for each Firecracker process.
+	// It is used internally by the orchestrator for map eviction guards
+	// and proxy connection pooling. Unlike ExecutionID (which is stable
+	// across checkpoints and shared with the API), LifecycleID changes
+	// every time a new Firecracker VM is started.
+	LifecycleID string
+
 	config  cfg.BuilderConfig
 	files   *storage.SandboxFiles
 	cleanup *Cleanup
 
-	process *fc.Process
+	process      *fc.Process
+	cgroupHandle *cgroup.CgroupHandle
 
 	Template template.Template
 
@@ -172,12 +183,29 @@ func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
 	}
 }
 
+// GetStartedAt returns the sandbox start time in a thread-safe manner.
+func (m *Metadata) GetStartedAt() time.Time {
+	m.startedAtMu.RLock()
+	defer m.startedAtMu.RUnlock()
+
+	return m.startedAt
+}
+
+// SetStartedAt sets the sandbox start time in a thread-safe manner.
+func (m *Metadata) SetStartedAt(t time.Time) {
+	m.startedAtMu.Lock()
+	defer m.startedAtMu.Unlock()
+
+	m.startedAt = t
+}
+
 type Factory struct {
 	config            cfg.BuilderConfig
 	networkPool       *network.Pool
 	devicePool        *nbd.DevicePool
 	featureFlags      *featureflags.Client
 	hostStatsDelivery hoststats.Delivery
+	cgroupManager     cgroup.Manager
 }
 
 func NewFactory(
@@ -186,6 +214,7 @@ func NewFactory(
 	devicePool *nbd.DevicePool,
 	featureFlags *featureflags.Client,
 	hostStatsDelivery hoststats.Delivery,
+	cgroupManager cgroup.Manager,
 ) *Factory {
 	return &Factory{
 		config:            config,
@@ -193,6 +222,7 @@ func NewFactory(
 		devicePool:        devicePool,
 		featureFlags:      featureFlags,
 		hostStatsDelivery: hostStatsDelivery,
+		cgroupManager:     cgroupManager,
 	}
 }
 
@@ -328,11 +358,13 @@ func (f *Factory) CreateSandbox(
 		Config:  config,
 		Runtime: runtime,
 
-		StartedAt: time.Now(),
+		startedAt: time.Now(),
 		endAt:     time.Now().Add(sandboxTimeout),
 	}
 
 	sbx := &Sandbox{
+		LifecycleID: uuid.NewString(),
+
 		Resources: resources,
 		Metadata:  metadata,
 
@@ -554,6 +586,9 @@ func (f *Factory) ResumeSandbox(
 		return nil, fmt.Errorf("failed to get metadata: %w", err)
 	}
 
+	// Create cgroup for sandbox resource accounting
+	cgroupHandle, cgroupFD := createCgroup(ctx, f.cgroupManager, runtime.SandboxID, cleanup)
+
 	fcHandle, fcErr := fc.NewProcess(
 		ctx,
 		execCtx,
@@ -605,9 +640,19 @@ func (f *Factory) ResumeSandbox(
 		fcUffdPath,
 		snapfile,
 		fcUffd.Ready(),
-		ips,
 		config.Envd.AccessToken,
+		cgroupFD,
 	)
+
+	// Release the cgroup directory FD — the kernel already used it during clone
+	if cgroupHandle != nil {
+		if releaseErr := cgroupHandle.ReleaseCgroupFD(); releaseErr != nil {
+			logger.L().Warn(ctx, "failed to release cgroup directory FD",
+				logger.WithSandboxID(runtime.SandboxID),
+				zap.Error(releaseErr))
+		}
+	}
+
 	if fcStartErr != nil {
 		return nil, fmt.Errorf("failed to start FC: %w", fcStartErr)
 	}
@@ -628,13 +673,16 @@ func (f *Factory) ResumeSandbox(
 		Config:  config,
 		Runtime: runtime,
 
-		StartedAt: startedAt,
+		startedAt: startedAt,
 		endAt:     endAt,
 	}
 
 	sbx := &Sandbox{
-		Resources: resources,
-		Metadata:  metadata,
+		LifecycleID: uuid.NewString(),
+
+		Resources:    resources,
+		Metadata:     metadata,
+		cgroupHandle: cgroupHandle,
 
 		Template: t,
 		config:   f.config,
@@ -757,6 +805,15 @@ func (s *Sandbox) doStop(ctx context.Context) error {
 	// The process exited, we can continue with the rest of the cleanup.
 	// We could use select with ctx.Done() to wait for cancellation, but if the process is not exited the whole cleanup will be in a bad state and will result in unexpected behavior.
 	<-s.process.Exit.Done()
+
+	// Remove cgroup after process has exited
+	if s.cgroupHandle != nil {
+		if cgroupErr := s.cgroupHandle.Remove(ctx); cgroupErr != nil {
+			logger.L().Warn(ctx, "failed to remove cgroup during cleanup",
+				logger.WithSandboxID(s.Runtime.SandboxID),
+				zap.Error(cgroupErr))
+		}
+	}
 
 	uffdStopErr := s.Resources.memory.Stop()
 	if uffdStopErr != nil {
@@ -1012,6 +1069,40 @@ func pauseProcessRootfs(
 	return rootfsDiff, rootfsHeader, nil
 }
 
+// createCgroup creates a cgroup for sandbox resource accounting if cgroup
+// accounting is enabled (cgroupManager is non-nil). It registers cleanup with
+// the provided Cleanup so the cgroup is removed on error paths.
+//
+// Returns the CgroupHandle and the cgroup directory FD to pass to the
+// Firecracker process. If cgroup accounting is disabled, returns (nil, cgroup.NoCgroupFD).
+func createCgroup(ctx context.Context, cgroupManager cgroup.Manager, sandboxID string, cleanup *Cleanup) (*cgroup.CgroupHandle, int) {
+	ctx, span := tracer.Start(ctx, "sandbox-create-cgroup", trace.WithAttributes(
+		telemetry.WithSandboxID(sandboxID),
+	))
+	defer span.End()
+
+	if cgroupManager == nil {
+		return nil, cgroup.NoCgroupFD
+	}
+
+	handle, err := cgroupManager.Create(ctx, sandboxID)
+	if err != nil {
+		logger.L().Warn(ctx, "failed to create cgroup, continuing without cgroup accounting",
+			logger.WithSandboxID(sandboxID),
+			zap.Error(err))
+
+		telemetry.ReportEvent(ctx, "cgroup creation failed, continuing without accounting")
+
+		return nil, cgroup.NoCgroupFD
+	}
+
+	cleanup.Add(ctx, func(ctx context.Context) error {
+		return handle.Remove(ctx)
+	})
+
+	return handle, handle.GetFD()
+}
+
 func getNetworkSlot(
 	ctx context.Context,
 	networkPool *network.Pool,
@@ -1116,7 +1207,7 @@ func (s *Sandbox) WaitForEnvd(
 			attribute.Int64("timeout_ms", s.internalConfig.EnvdInitRequestTimeout.Milliseconds()),
 		))
 		// Update the sandbox as started now
-		s.Metadata.StartedAt = time.Now()
+		s.SetStartedAt(time.Now())
 	}()
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)

@@ -31,7 +31,7 @@ func initializeHostStatsCollector(
 	firecrackerPID, err := fcHandle.Pid()
 	if err != nil {
 		logger.L().Error(ctx, "failed to get firecracker PID for host stats",
-			zap.String("sandbox_id", runtime.SandboxID),
+			logger.WithSandboxID(runtime.SandboxID),
 			zap.Error(err))
 
 		return
@@ -40,6 +40,11 @@ func initializeHostStatsCollector(
 	teamID, err := uuid.Parse(runtime.TeamID)
 	if err != nil {
 		logger.L().Error(ctx, "error parsing team ID", logger.WithTeamID(runtime.TeamID), zap.Error(err))
+	}
+
+	var cgroupStats CgroupStatsFunc
+	if sbx.cgroupHandle != nil {
+		cgroupStats = sbx.cgroupHandle.GetStats
 	}
 
 	collector, err := NewHostStatsCollector(
@@ -55,10 +60,11 @@ func initializeHostStatsCollector(
 		int32(firecrackerPID),
 		hostStatsDelivery,
 		samplingInterval,
+		cgroupStats,
 	)
 	if err != nil {
 		logger.L().Error(ctx, "failed to create host stats collector",
-			zap.String("sandbox_id", runtime.SandboxID),
+			logger.WithSandboxID(runtime.SandboxID),
 			zap.Error(err))
 
 		return

@@ -38,6 +38,7 @@ type Storage interface {
 
 	TeamItems(ctx context.Context, teamID uuid.UUID, states []State) ([]Sandbox, error)
 	AllItems(ctx context.Context, states []State, options ...ItemsOption) ([]Sandbox, error)
+	TeamsWithSandboxCount(ctx context.Context) (map[uuid.UUID]int64, error)
 
 	Update(ctx context.Context, teamID uuid.UUID, sandboxID string, updateFunc func(sandbox Sandbox) (Sandbox, error)) (Sandbox, error)
 	StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID string, stateAction StateAction) (alreadyDone bool, callback func(context.Context, error), err error)
@@ -98,6 +99,7 @@ func (s *Store) Add(ctx context.Context, sandbox Sandbox, newlyCreated bool) err
 		s.callbacks.AddSandboxToRoutingTable(ctx, sandbox)
 		go s.callbacks.AsyncSandboxCounter(context.WithoutCancel(ctx), sandbox)
 	} else {
+		// TODO [ENG-3514]: Remove once migrated to Redis
 		// There's a race condition when the sandbox is added from node sync
 		// This should be fixed once the sync is improved
 		if !errors.Is(err, ErrAlreadyExists) {
@@ -107,6 +109,7 @@ func (s *Store) Add(ctx context.Context, sandbox Sandbox, newlyCreated bool) err
 		logger.L().Warn(ctx, "Sandbox already exists in cache", logger.WithSandboxID(sandbox.SandboxID))
 	}
 
+	// TODO [ENG-3514]: Remove once migrated to Redis
 	// Ensure the team reservation is set - no limit
 	finishStart, _, err := s.reservations.Reserve(ctx, sandbox.TeamID, sandbox.SandboxID, -1)
 	if err != nil {
@@ -148,6 +151,10 @@ func (s *Store) AllItems(ctx context.Context, states []State, options ...ItemsOp
 	return s.storage.AllItems(ctx, states, options...)
 }
 
+func (s *Store) TeamsWithSandboxes(ctx context.Context) (map[uuid.UUID]int64, error) {
+	return s.storage.TeamsWithSandboxCount(ctx)
+}
+
 func (s *Store) Update(ctx context.Context, teamID uuid.UUID, sandboxID string, updateFunc func(sandbox Sandbox) (Sandbox, error)) (Sandbox, error) {
 	return s.storage.Update(ctx, teamID, sandboxID, updateFunc)
 }
@@ -171,7 +178,19 @@ func (s *Store) Sync(ctx context.Context, sandboxes []Sandbox, nodeID string) {
 }
 
 func (s *Store) Reserve(ctx context.Context, teamID uuid.UUID, sandboxID string, limit int) (finishStart func(Sandbox, error), waitForStart func(ctx context.Context) (Sandbox, error), err error) {
-	return s.reservations.Reserve(ctx, teamID, sandboxID, limit)
+	finishStart, waitForStart, err = s.reservations.Reserve(ctx, teamID, sandboxID, limit)
+	if err != nil {
+		if errors.Is(err, ErrAlreadyExists) {
+			// Try to get the sandbox from the storage if already exists
+			return nil, func(ctx context.Context) (Sandbox, error) {
+				return s.storage.Get(ctx, teamID, sandboxID)
+			}, nil
+		}
+
+		return nil, nil, err
+	}
+
+	return finishStart, waitForStart, nil
 }
 
 func (s *Store) Release(ctx context.Context, teamID uuid.UUID, sandboxID string) error {

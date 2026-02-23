@@ -140,3 +140,7 @@ fetch-busybox:
 .PHONY: migrate
 migrate:
 	./scripts/upload-envs.sh /mnt/disks/fc-envs/v1 $(TEMPLATE_BUCKET_NAME)
+
+.PHONY: lint
+lint:
+	golangci-lint run --fix ./...

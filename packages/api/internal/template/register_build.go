@@ -11,8 +11,8 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
-	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/team"
+	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
@@ -307,7 +307,7 @@ func RegisterBuild(
 			}
 
 			// Invalidate any cached tombstone for this alias
-			templateCache.InvalidateAlias(&data.Team.Slug, alias)
+			templateCache.InvalidateAlias(context.WithoutCancel(ctx), &data.Team.Slug, alias)
 
 			telemetry.ReportEvent(ctx, "created new alias", attribute.String("env.alias", alias))
 		} else if aliasDB.EnvID != data.TemplateID {

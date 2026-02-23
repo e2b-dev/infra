@@ -94,6 +94,7 @@ var (
 	CreateStorageCacheSpansFlag         = newBoolFlag("create-storage-cache-spans", env.IsDevelopment())
 	SandboxAutoResumeFlag               = newBoolFlag("sandbox-auto-resume", env.IsDevelopment())
 	PersistentVolumesFlag               = newBoolFlag("can-use-persistent-volumes", env.IsDevelopment())
+	ExecutionMetricsOnWebhooksFlag      = newBoolFlag("execution-metrics-on-webhooks", false) // TODO: Remove NLT 20250315
 )
 
 type IntFlag struct {
@@ -154,6 +155,10 @@ var (
 	// TCPFirewallMaxConnectionsPerSandbox is the maximum number of concurrent TCP firewall
 	// connections allowed per sandbox. Negative means no limit.
 	TCPFirewallMaxConnectionsPerSandbox = newIntFlag("tcpfirewall-max-connections-per-sandbox", -1)
+
+	// SandboxMaxIncomingConnections is the maximum number of concurrent HTTP proxy
+	// connections allowed per sandbox. Negative means no limit.
+	SandboxMaxIncomingConnections = newIntFlag("sandbox-max-incoming-connections", -1)
 )
 
 type StringFlag struct {
@@ -234,3 +239,16 @@ func GetTrackedTemplatesSet(ctx context.Context, ff *Client) map[string]struct{}
 
 	return result
 }
+
+// ChunkerConfigFlag is a JSON flag controlling the chunker implementation and tuning.
+//
+// NOTE: Changing useStreaming has no effect on chunkers already created for
+// cached templates. A service restart (redeploy) is required for that change
+// to take effect. minReadBatchSizeKB is checked just-in-time on each fetch,
+// so it takes effect immediately.
+//
+// JSON format: {"useStreaming": false, "minReadBatchSizeKB": 16}
+var ChunkerConfigFlag = newJSONFlag("chunker-config", ldvalue.FromJSONMarshal(map[string]any{
+	"useStreaming":       false,
+	"minReadBatchSizeKB": 16,
+}))
