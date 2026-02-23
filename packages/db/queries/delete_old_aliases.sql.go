@@ -27,11 +27,11 @@ func (q *Queries) DeleteOtherTemplateAliases(ctx context.Context, envID string) 
 	defer rows.Close()
 	var items []string
 	for rows.Next() {
-		var aliasKey string
-		if err := rows.Scan(&aliasKey); err != nil {
+		var alias_key string
+		if err := rows.Scan(&alias_key); err != nil {
 			return nil, err
 		}
-		items = append(items, aliasKey)
+		items = append(items, alias_key)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
