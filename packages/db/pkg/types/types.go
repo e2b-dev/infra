@@ -1,5 +1,7 @@
 package types
 
+import "time"
+
 type JSONBStringMap map[string]string
 
 type BuildReason struct {
@@ -44,7 +46,8 @@ const (
 )
 
 type SandboxAutoResumeConfig struct {
-	Policy SandboxAutoResumePolicy `json:"policy"`
+	Policy          SandboxAutoResumePolicy `json:"policy"`
+	StartingTimeout *time.Duration          `json:"startingTimeout,omitempty"`
 }
 
 type PausedSandboxConfig struct {

@@ -1,0 +1,66 @@
+package handlers
+
+import (
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+
+	typesteam "github.com/e2b-dev/infra/packages/api/internal/db/types"
+	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
+)
+
+func testTeamWithMaxLengthHours(hours int64) *typesteam.Team {
+	return &typesteam.Team{
+		Limits: &typesteam.TeamLimits{
+			MaxLengthHours: hours,
+		},
+	}
+}
+
+// TestCalculateTimeout verifies create-time timeout handling:
+// no timeout -> do not persist, short timeout -> min floor, long timeout -> team cap.
+func TestCalculateTimeout(t *testing.T) {
+	team := testTeamWithMaxLengthHours(1)
+
+	// Create without explicit timeout should not persist any starting timeout.
+	timeout, ok := calculateTimeout(0, team)
+	require.False(t, ok)
+	require.Zero(t, timeout)
+
+	// Very short requests are floored to the anti-thrash minimum.
+	timeout, ok = calculateTimeout(15*time.Second, team)
+	require.True(t, ok)
+	require.Equal(t, time.Minute, timeout)
+
+	// Very long requests are capped by the team's maximum sandbox length.
+	timeout, ok = calculateTimeout(2*time.Hour, team)
+	require.True(t, ok)
+	require.Equal(t, time.Hour, timeout)
+}
+
+// TestCalculateAutoResumeTimeout verifies resume-time timeout handling:
+// default fallback, persisted timeout minimum floor, and team cap.
+func TestCalculateAutoResumeTimeout(t *testing.T) {
+	team := testTeamWithMaxLengthHours(1)
+
+	// Older snapshots without persisted value should use the proxy fallback timeout.
+	timeout := calculateAutoResumeTimeout(nil, team)
+	require.Equal(t, 5*time.Minute, timeout)
+
+	// Persisted values below minimum are floored to the anti-thrash minimum.
+	shortTimeout := 20 * time.Second
+	timeout = calculateAutoResumeTimeout(
+		&dbtypes.SandboxAutoResumeConfig{StartingTimeout: &shortTimeout},
+		team,
+	)
+	require.Equal(t, time.Minute, timeout)
+
+	// Persisted values above plan limit are capped by the team limit.
+	longTimeout := 2 * time.Hour
+	timeout = calculateAutoResumeTimeout(
+		&dbtypes.SandboxAutoResumeConfig{StartingTimeout: &longTimeout},
+		team,
+	)
+	require.Equal(t, time.Hour, timeout)
+}

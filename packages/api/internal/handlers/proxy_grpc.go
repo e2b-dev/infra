@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
-	"time"
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
@@ -43,10 +42,6 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 
 	teamID := snap.Snapshot.TeamID
 
-	// Fixed 5 minutes for client-proxy initiated resume.
-	// This intentionally does not allow callers to override timeouts via gRPC.
-	timeout := 300 * time.Second
-
 	var autoResume *dbtypes.SandboxAutoResumeConfig
 	if snap.Snapshot.Config != nil {
 		autoResume = snap.Snapshot.Config.AutoResume
@@ -59,6 +54,7 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get team: %v", err)
 	}
+	timeout := calculateAutoResumeTimeout(autoResume, team)
 
 	autoPause := snap.Snapshot.AutoPause
 	nodeID := &snap.Snapshot.OriginNodeID

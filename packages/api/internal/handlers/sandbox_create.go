@@ -144,6 +144,12 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 		return
 	}
+	if autoResume != nil {
+		startingTimeout, ok := calculateTimeout(timeout, teamInfo)
+		if ok {
+			autoResume.StartingTimeout = &startingTimeout
+		}
+	}
 
 	var envdAccessToken *string = nil
 	if body.Secure != nil && *body.Secure == true {
