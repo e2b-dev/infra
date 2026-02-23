@@ -6,15 +6,18 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/bsm/redislock"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 	"golang.org/x/sync/singleflight"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
 )
 
 const (
 	RedisRefreshIntervalOff = 0
+	RedisLockOff            = -1
 	RedisDefaultTimeout     = 2 * time.Second
 
 	// redisNoPTTL is the value returned by go-redis PTTL when a key has no expiration.
@@ -22,6 +25,9 @@ const (
 	redisNoPTTL = -1 * time.Nanosecond
 
 	redisScanCount = 100
+
+	defaultLockTTL           = 30 * time.Second
+	defaultLockRetryInterval = 50 * time.Millisecond
 )
 
 // RedisConfig holds the configuration for a RedisCache.
@@ -40,6 +46,13 @@ type RedisConfig[V any] struct {
 	// When set, the key used for Redis storage is derived from the fetched value
 	// rather than the original lookup key.
 	ExtractKeyFunc ExtractKeyFunc[V]
+	// LockTTL is the maximum time a distributed lock is held during cache updates.
+	// When set, a Redis lock is acquired before calling the data callback to prevent thundering herd across instances.
+	// Default is 30 seconds. For disabling pass RedisLockOff (-1).
+	LockTTL time.Duration
+	// LockRetryInterval is the interval between lock acquisition retries.
+	// Defaults to 50ms.
+	LockRetryInterval time.Duration
 }
 
 // RedisCache is a generic two-tier cache: Redis + user callback.
@@ -47,6 +60,7 @@ type RedisCache[V any] struct {
 	config       RedisConfig[V]
 	fetchGroup   singleflight.Group
 	redisRefresh singleflight.Group
+	lockClient   *redislock.Client // nil when locking disabled
 }
 
 // NewRedisCache creates a new RedisCache with the given configuration.
@@ -59,9 +73,23 @@ func NewRedisCache[V any](config RedisConfig[V]) *RedisCache[V] {
 		config.RefreshTimeout = 30 * time.Second
 	}
 
-	return &RedisCache[V]{
+	rc := &RedisCache[V]{
 		config: config,
 	}
+
+	if config.LockTTL != RedisLockOff {
+		rc.lockClient = redislock.New(config.RedisClient)
+
+		if config.LockTTL <= 0 {
+			config.LockTTL = defaultLockTTL
+		}
+
+		if config.LockRetryInterval == 0 {
+			config.LockRetryInterval = defaultLockRetryInterval
+		}
+	}
+
+	return rc
 }
 
 // GetOrSet retrieves a value from Redis, falling back to dataCallback on miss.
@@ -85,6 +113,19 @@ func (rc *RedisCache[V]) GetOrSet(ctx context.Context, key string, dataCallback 
 
 	r, _, _ := rc.fetchGroup.Do(key, func() (any, error) {
 		ctx := context.WithoutCancel(ctx)
+
+		// Acquire distributed lock if enabled
+		lock := rc.acquireLock(ctx, key, redislock.LinearBackoff(rc.config.LockRetryInterval))
+		if lock != nil {
+			defer func() {
+				if err := lock.Release(ctx); err != nil {
+					logger.L().Warn(ctx, "RedisCache: failed to release lock",
+						zap.String("key", key),
+						zap.Error(err))
+				}
+			}()
+		}
+
 		// Double-check Redis (another goroutine may have populated it)
 		if v, _, redisErr := rc.getFromRedis(ctx, key); redisErr == nil {
 			return result{value: v}, nil
@@ -238,6 +279,25 @@ func (rc *RedisCache[V]) getFromRedis(ctx context.Context, key string) (V, time.
 // refreshRedis refreshes a Redis entry in the background by calling the data callback.
 func (rc *RedisCache[V]) refreshRedis(ctx context.Context, key string, dataCallback DataCallback[V]) {
 	rc.redisRefresh.Do(key, func() (any, error) {
+		// Acquire lock without retry — if another instance is refreshing, skip.
+		lock := rc.acquireLock(ctx, key, redislock.NoRetry())
+		if rc.lockClient != nil && lock == nil {
+			// Locking enabled but couldn't acquire — another instance is refreshing.
+			logger.L().Debug(ctx, "RedisCache: skipping refresh, lock held by another instance",
+				zap.String("key", key))
+
+			return nil, nil
+		}
+		if lock != nil {
+			defer func() {
+				if err := lock.Release(ctx); err != nil {
+					logger.L().Debug(ctx, "RedisCache: failed to release refresh lock",
+						zap.String("key", key),
+						zap.Error(err))
+				}
+			}()
+		}
+
 		ctx, cancel := context.WithTimeout(ctx, rc.config.RefreshTimeout)
 		defer cancel()
 
@@ -258,6 +318,28 @@ func (rc *RedisCache[V]) refreshRedis(ctx context.Context, key string, dataCallb
 
 		return nil, nil
 	})
+}
+
+// acquireLock attempts to acquire a distributed Redis lock for the given key.
+// Returns the lock on success, or nil if locking is disabled or acquisition fails.
+func (rc *RedisCache[V]) acquireLock(ctx context.Context, key string, retry redislock.RetryStrategy) *redislock.Lock {
+	if rc.lockClient == nil {
+		return nil
+	}
+
+	lockKey := redis_utils.GetLockKey(rc.RedisKey(key))
+	lock, err := rc.lockClient.Obtain(ctx, lockKey, rc.config.LockTTL, &redislock.Options{
+		RetryStrategy: retry,
+	})
+	if err != nil {
+		logger.L().Warn(ctx, "RedisCache: failed to acquire distributed lock, proceeding without lock",
+			zap.String("key", key),
+			zap.Error(err))
+
+		return nil
+	}
+
+	return lock
 }
 
 func (rc *RedisCache[V]) setInRedis(ctx context.Context, key string, value V) {

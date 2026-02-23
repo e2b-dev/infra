@@ -437,3 +437,110 @@ func TestRedisCache_DeleteByPrefix_NoMatches(t *testing.T) {
 	_, err := redisClient.Get(t.Context(), rc.RedisKey("key1")).Result()
 	assert.NoError(t, err)
 }
+
+func newTestRedisCacheWithLock(t *testing.T, redisClient redis.UniversalClient) *RedisCache[testValue] {
+	t.Helper()
+
+	return NewRedisCache(RedisConfig[testValue]{
+		TTL:         30 * time.Second,
+		RedisClient: redisClient,
+		RedisPrefix: fmt.Sprintf("test:%s", t.Name()),
+		LockTTL:     5 * time.Second,
+	})
+}
+
+func TestRedisCache_Lock_PreventsParallelCallbacks(t *testing.T) {
+	t.Parallel()
+	redisClient := redis_utils.SetupInstance(t)
+
+	// Two independent cache instances (simulating two service instances) sharing the same Redis
+	rc1 := newTestRedisCacheWithLock(t, redisClient)
+	defer rc1.Close(t.Context())
+	rc2 := newTestRedisCacheWithLock(t, redisClient)
+	defer rc2.Close(t.Context())
+
+	var callCount atomic.Int32
+	expected := testValue{ID: "locked", Name: "LockedValue"}
+	callback := func(_ context.Context, _ string) (testValue, error) {
+		callCount.Add(1)
+		// Simulate slow data fetch so the second instance has time to acquire (and wait for) the lock
+		time.Sleep(200 * time.Millisecond)
+
+		return expected, nil
+	}
+
+	var wg errgroup.Group
+	var result1, result2 testValue
+	wg.Go(func() error {
+		v, err := rc1.GetOrSet(t.Context(), "key1", callback)
+		result1 = v
+
+		return err
+	})
+	wg.Go(func() error {
+		// Small delay to ensure rc1 acquires the lock first
+		time.Sleep(20 * time.Millisecond)
+		v, err := rc2.GetOrSet(t.Context(), "key1", callback)
+		result2 = v
+
+		return err
+	})
+
+	err := wg.Wait()
+	require.NoError(t, err)
+
+	assert.Equal(t, expected, result1)
+	assert.Equal(t, expected, result2)
+	// Callback should only be called once — the second instance should find the value
+	// in Redis after acquiring the lock (triple-check).
+	assert.Equal(t, int32(1), callCount.Load())
+}
+
+func TestRedisCache_Lock_GracefulDegradation(t *testing.T) {
+	t.Parallel()
+	// Use a client pointing to a non-existent Redis — lock acquisition will fail
+	badClient := redis.NewClient(&redis.Options{
+		Addr:        "localhost:1",
+		DialTimeout: 100 * time.Millisecond,
+	})
+	defer badClient.Close()
+
+	rc := NewRedisCache(RedisConfig[testValue]{
+		TTL:          30 * time.Second,
+		RedisClient:  badClient,
+		RedisPrefix:  "test:lock-degrade",
+		RedisTimeout: 200 * time.Millisecond,
+		LockTTL:      5 * time.Second,
+	})
+	defer rc.Close(t.Context())
+
+	expected := testValue{ID: "degraded", Name: "DegradedValue"}
+
+	// Even though locking is enabled and Redis is unavailable, the callback should still execute
+	result, err := rc.GetOrSet(t.Context(), "key1", func(_ context.Context, _ string) (testValue, error) {
+		return expected, nil
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, expected, result)
+}
+
+func TestRedisCache_Lock_Disabled(t *testing.T) {
+	t.Parallel()
+	redisClient := redis_utils.SetupInstance(t)
+
+	// LockTTL=0 means no locking
+	rc := newTestRedisCache(t, redisClient)
+	defer rc.Close(t.Context())
+
+	assert.Nil(t, rc.lockClient, "lockClient should be nil when LockTTL is 0")
+
+	expected := testValue{ID: "no-lock", Name: "NoLock"}
+
+	result, err := rc.GetOrSet(t.Context(), "key1", func(_ context.Context, _ string) (testValue, error) {
+		return expected, nil
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, expected, result)
+}
