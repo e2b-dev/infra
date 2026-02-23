@@ -11,8 +11,8 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
-	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
@@ -186,7 +186,7 @@ func (a *APIStore) createBackwardCompatibleAlias(
 		}
 	}
 
-	a.templateCache.InvalidateAlias(nil, alias)
+	a.templateCache.InvalidateAlias(context.WithoutCancel(ctx), nil, alias)
 	logger.L().Info(ctx, "Created or verified backward compatible non-namespaced alias",
 		logger.WithTemplateID(templateID),
 		zap.String("alias", alias))

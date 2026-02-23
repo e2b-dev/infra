@@ -42,6 +42,11 @@ func initializeHostStatsCollector(
 		logger.L().Error(ctx, "error parsing team ID", logger.WithTeamID(runtime.TeamID), zap.Error(err))
 	}
 
+	var cgroupStats CgroupStatsFunc
+	if sbx.cgroupHandle != nil {
+		cgroupStats = sbx.cgroupHandle.GetStats
+	}
+
 	collector, err := NewHostStatsCollector(
 		HostStatsMetadata{
 			SandboxID:   runtime.SandboxID,
@@ -55,6 +60,7 @@ func initializeHostStatsCollector(
 		int32(firecrackerPID),
 		hostStatsDelivery,
 		samplingInterval,
+		cgroupStats,
 	)
 	if err != nil {
 		logger.L().Error(ctx, "failed to create host stats collector",

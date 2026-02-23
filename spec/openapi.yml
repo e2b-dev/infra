@@ -696,6 +696,18 @@ components:
           type: integer
           description: Number of sandboxes that failed to kill
 
+    AdminBuildCancelResult:
+      required:
+        - cancelledCount
+        - failedCount
+      properties:
+        cancelledCount:
+          type: integer
+          description: Number of builds successfully cancelled
+        failedCount:
+          type: integer
+          description: Number of builds that failed to cancel
+
     Template:
       required:
         - templateID
@@ -3016,6 +3028,35 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AdminSandboxKillResult"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /admin/teams/{teamID}/builds/cancel:
+    post:
+      summary: Cancel all builds for a team
+      description: Cancels all in-progress and pending builds for the specified team
+      tags: [admin]
+      security:
+        - AdminTokenAuth: []
+      parameters:
+        - name: teamID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Team ID
+      responses:
+        "200":
+          description: Successfully cancelled builds
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminBuildCancelResult"
         "401":
           $ref: "#/components/responses/401"
         "404":

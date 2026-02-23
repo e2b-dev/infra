@@ -42,6 +42,8 @@ BEGIN
     GET DIAGNOSTICS rows_updated = ROW_COUNT;
     COMMIT;
     EXIT WHEN rows_updated = 0;
+    RAISE NOTICE 'backfill_status_group: updated % rows, sleeping 10s before next batch...', rows_updated;
+    PERFORM pg_sleep(10);
   END LOOP;
 END;
 $$ LANGUAGE plpgsql;

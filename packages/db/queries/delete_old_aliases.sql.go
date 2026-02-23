@@ -13,7 +13,10 @@ const deleteOtherTemplateAliases = `-- name: DeleteOtherTemplateAliases :many
 DELETE FROM "public"."env_aliases"
 WHERE env_id = $1
   AND is_renamable = TRUE
-RETURNING alias
+RETURNING CASE
+    WHEN namespace IS NOT NULL THEN namespace || '/' || alias
+    ELSE alias
+  END::text AS alias_key
 `
 
 func (q *Queries) DeleteOtherTemplateAliases(ctx context.Context, envID string) ([]string, error) {
@@ -24,11 +27,11 @@ func (q *Queries) DeleteOtherTemplateAliases(ctx context.Context, envID string) 
 	defer rows.Close()
 	var items []string
 	for rows.Next() {
-		var alias string
-		if err := rows.Scan(&alias); err != nil {
+		var alias_key string
+		if err := rows.Scan(&alias_key); err != nil {
 			return nil, err
 		}
-		items = append(items, alias)
+		items = append(items, alias_key)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

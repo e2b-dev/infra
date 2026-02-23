@@ -94,6 +94,7 @@ var (
 	CreateStorageCacheSpansFlag         = newBoolFlag("create-storage-cache-spans", env.IsDevelopment())
 	SandboxAutoResumeFlag               = newBoolFlag("sandbox-auto-resume", env.IsDevelopment())
 	PersistentVolumesFlag               = newBoolFlag("can-use-persistent-volumes", env.IsDevelopment())
+	ExecutionMetricsOnWebhooksFlag      = newBoolFlag("execution-metrics-on-webhooks", false) // TODO: Remove NLT 20250315
 )
 
 type IntFlag struct {
@@ -158,6 +159,9 @@ var (
 	// SandboxMaxIncomingConnections is the maximum number of concurrent HTTP proxy
 	// connections allowed per sandbox. Negative means no limit.
 	SandboxMaxIncomingConnections = newIntFlag("sandbox-max-incoming-connections", -1)
+
+	// BuildBaseRootfsSizeLimitMB is the maximum size of the base rootfs filesystem created from the OCI image, in MB.
+	BuildBaseRootfsSizeLimitMB = newIntFlag("build-base-rootfs-size-limit-mb", 25000)
 )
 
 type StringFlag struct {

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
@@ -18,39 +19,39 @@ import (
 )
 
 const (
-	templateInfoExpiration = 5 * time.Minute
-	refreshInterval        = 1 * time.Minute
-	refreshTimeout         = 30 * time.Second
-	callbackTimeout        = 30 * time.Second
+	aliasCacheTTL             = 5 * time.Minute
+	aliasCacheRefreshInterval = time.Minute
+
+	aliasCacheKeyPrefix = "template:alias"
 )
 
-// AliasInfo holds resolved alias information
+// AliasInfo holds resolved alias information (immutable mapping data only).
+// Mutable metadata like Public is in TemplateMetadata.
 type AliasInfo struct {
-	TemplateID string
-	TeamID     uuid.UUID
-	Public     bool
-	notFound   bool // tombstone marker for caching negative lookups
+	TemplateID string    `json:"template_id"`
+	TeamID     uuid.UUID `json:"team_id"`
+	NotFound   bool      `json:"not_found"` // tombstone marker for caching negative lookups
 }
 
-var notFoundTombstone = &AliasInfo{notFound: true}
+var notFoundTombstone = &AliasInfo{NotFound: true}
 
 // AliasCache resolves namespace/alias to templateID with fallback logic.
 // This is the main resolution layer implementing the namespace lookup flowchart.
 type AliasCache struct {
-	cache *cache.MemoryCache[*AliasInfo]
+	cache *cache.RedisCache[*AliasInfo]
 	db    *sqlcdb.Client
 }
 
-func NewAliasCache(db *sqlcdb.Client) *AliasCache {
-	config := cache.Config[*AliasInfo]{
-		TTL:             templateInfoExpiration,
-		RefreshInterval: refreshInterval,
-		RefreshTimeout:  refreshTimeout,
-		CallbackTimeout: callbackTimeout,
-	}
+func NewAliasCache(db *sqlcdb.Client, redisClient redis.UniversalClient) *AliasCache {
+	rc := cache.NewRedisCache[*AliasInfo](cache.RedisConfig[*AliasInfo]{
+		TTL:             aliasCacheTTL,
+		RefreshInterval: aliasCacheRefreshInterval,
+		RedisClient:     redisClient,
+		RedisPrefix:     aliasCacheKeyPrefix,
+	})
 
 	return &AliasCache{
-		cache: cache.NewMemoryCache(config),
+		cache: rc,
 		db:    db,
 	}
 }
@@ -110,25 +111,38 @@ func (c *AliasCache) lookup(ctx context.Context, namespace *string, alias string
 		return nil, err
 	}
 
-	if info.notFound {
+	if info.NotFound {
 		return nil, ErrTemplateNotFound
-	}
-
-	// Also cache by template ID for direct ID lookups (use nil namespace since
-	// direct ID lookups don't have namespace context)
-	idKey := buildAliasKey(nil, info.TemplateID)
-	if idKey != key {
-		c.cache.Set(idKey, info)
 	}
 
 	return info, nil
 }
 
-func (c *AliasCache) fetchFromDB(ctx context.Context, key string) (*AliasInfo, error) {
+// cacheByTemplateID caches info also by template ID for direct ID lookups.
+func (c *AliasCache) cacheByTemplateID(ctx context.Context, originalKey string, info *AliasInfo) {
+	if info.NotFound {
+		return
+	}
+
+	idKey := buildAliasKey(nil, info.TemplateID)
+	if idKey != originalKey {
+		c.cache.Set(ctx, idKey, info)
+	}
+}
+
+func (c *AliasCache) fetchFromDB(ctx context.Context, key string) (info *AliasInfo, err error) {
 	ctx, span := tracer.Start(ctx, "fetch alias from DB", trace.WithAttributes(
 		attribute.String("key", key),
 	))
 	defer span.End()
+
+	// Also cache by template ID for direct ID lookups (use nil namespace since
+	// direct ID lookups don't have namespace context)
+	defer func() {
+		if err == nil {
+			c.cacheByTemplateID(ctx, key, info)
+		}
+	}()
 
 	namespace, alias := id.SplitIdentifier(key)
 
@@ -141,7 +155,6 @@ func (c *AliasCache) fetchFromDB(ctx context.Context, key string) (*AliasInfo, e
 		return &AliasInfo{
 			TemplateID: result.ID,
 			TeamID:     result.TeamID,
-			Public:     result.Public,
 		}, nil
 	}
 
@@ -156,7 +169,6 @@ func (c *AliasCache) fetchFromDB(ctx context.Context, key string) (*AliasInfo, e
 				return &AliasInfo{
 					TemplateID: idResult.ID,
 					TeamID:     idResult.TeamID,
-					Public:     idResult.Public,
 				}, nil
 			}
 
@@ -177,18 +189,20 @@ func (c *AliasCache) LookupByID(ctx context.Context, templateID string) (*AliasI
 	return c.lookup(ctx, nil, templateID)
 }
 
-func (c *AliasCache) Invalidate(namespace *string, alias string) {
-	key := buildAliasKey(namespace, alias)
-	c.cache.Delete(key)
+func (c *AliasCache) Invalidate(ctx context.Context, namespace *string, alias string) {
+	c.cache.Delete(ctx, buildAliasKey(namespace, alias))
 }
 
-// InvalidateByTemplateID removes all cache entries pointing to the given template ID
-func (c *AliasCache) InvalidateByTemplateID(templateID string) {
-	for _, key := range c.cache.Keys() {
-		if info, found := c.cache.GetWithoutTouch(key); found && info != nil && info.TemplateID == templateID {
-			c.cache.Delete(key)
-		}
+// InvalidateAliasesByTemplateID deletes alias cache entries for the given keys
+// plus the template-ID-keyed entry. aliasKeys should be cache-key-formatted
+// (e.g. "namespace/alias" or bare "alias"), as returned by DeleteTemplate.
+func (c *AliasCache) InvalidateAliasesByTemplateID(ctx context.Context, templateID string, aliasKeys []string) {
+	for _, key := range aliasKeys {
+		c.cache.Delete(ctx, key)
 	}
+
+	// Also delete the template-ID-keyed entry
+	c.cache.Delete(ctx, templateID)
 }
 
 func (c *AliasCache) Close(ctx context.Context) error {

@@ -39,7 +39,7 @@ job "otel-collector-nomad-server" {
 
       config {
         network_mode = "host"
-        image        = "e2bdev/opentelemetry-collector-contrib:0.135.0-with-hugepages-metrics"
+        image        = "otel/opentelemetry-collector-contrib:0.146.0"
 
         volumes = [
           "local/config:/config",

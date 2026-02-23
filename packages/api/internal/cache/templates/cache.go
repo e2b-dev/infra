@@ -23,7 +23,6 @@ import (
 const (
 	templateCacheTTL             = 5 * time.Minute
 	templateCacheRefreshInterval = 1 * time.Minute
-	templateCacheTimeout         = 2 * time.Second
 
 	templateCacheKeyPrefix = "template:info"
 )
@@ -49,16 +48,16 @@ type TemplateInfo struct {
 // TemplateCache caches template+build by templateID:tag.
 // This is a simple lookup layer - resolution happens in AliasCache.
 type TemplateCache struct {
-	cache      *cache.RedisCache[*TemplateInfo]
-	db         *sqlcdb.Client
-	aliasCache *AliasCache
+	cache         *cache.RedisCache[*TemplateInfo]
+	db            *sqlcdb.Client
+	aliasCache    *AliasCache
+	metadataCache *TemplateMetadataCache
 }
 
 func NewTemplateCache(db *sqlcdb.Client, redisClient redis.UniversalClient) *TemplateCache {
 	redisCache := cache.NewRedisCache[*TemplateInfo](cache.RedisConfig[*TemplateInfo]{
 		TTL:             templateCacheTTL,
 		RefreshInterval: templateCacheRefreshInterval,
-		RedisTimeout:    templateCacheTimeout,
 		RedisClient:     redisClient,
 		RedisPrefix:     templateCacheKeyPrefix,
 
@@ -68,13 +67,14 @@ func NewTemplateCache(db *sqlcdb.Client, redisClient redis.UniversalClient) *Tem
 	})
 
 	return &TemplateCache{
-		cache:      redisCache,
-		db:         db,
-		aliasCache: NewAliasCache(db),
+		cache:         redisCache,
+		db:            db,
+		aliasCache:    NewAliasCache(db, redisClient),
+		metadataCache: NewTemplateMetadataCache(db, redisClient),
 	}
 }
 
-// ResolveAlias resolves an identifier to AliasInfo (templateID, teamID, public).
+// ResolveAlias resolves an identifier to AliasInfo (templateID, teamID).
 // The identifier is "namespace/alias" or just "alias" (already validated by id.ParseName).
 // namespaceFallback is used for bare aliases (no explicit namespace).
 func (c *TemplateCache) ResolveAlias(ctx context.Context, identifier string, namespaceFallback string) (*AliasInfo, error) {
@@ -84,6 +84,21 @@ func (c *TemplateCache) ResolveAlias(ctx context.Context, identifier string, nam
 // GetByID looks up template info by direct template ID only (no alias resolution).
 func (c *TemplateCache) GetByID(ctx context.Context, templateID string) (*AliasInfo, error) {
 	return c.aliasCache.LookupByID(ctx, templateID)
+}
+
+// ResolveAliasWithMetadata chains alias resolution with metadata lookup.
+func (c *TemplateCache) ResolveAliasWithMetadata(ctx context.Context, identifier string, namespaceFallback string) (*AliasInfo, *TemplateMetadata, error) {
+	aliasInfo, err := c.aliasCache.Resolve(ctx, identifier, namespaceFallback)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	metadata, err := c.metadataCache.Get(ctx, aliasInfo.TemplateID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return aliasInfo, metadata, nil
 }
 
 // Get fetches a template with build by templateID and tag.
@@ -181,16 +196,22 @@ func (c *TemplateCache) InvalidateAllTags(ctx context.Context, templateID string
 	pattern := buildCacheKey(templateID, "")
 	keys := c.cache.DeleteByPrefix(ctx, pattern)
 
-	c.aliasCache.InvalidateByTemplateID(templateID)
+	c.metadataCache.Invalidate(ctx, templateID)
 
 	return keys
 }
 
+// InvalidateAliasesByTemplateID invalidates alias cache entries for the given keys.
+// aliasKeys are cache-key-formatted strings as returned by DeleteTemplate.
+func (c *TemplateCache) InvalidateAliasesByTemplateID(ctx context.Context, templateID string, aliasKeys []string) {
+	c.aliasCache.InvalidateAliasesByTemplateID(ctx, templateID, aliasKeys)
+}
+
 // InvalidateAlias invalidates the alias cache entry
-func (c *TemplateCache) InvalidateAlias(namespace *string, alias string) {
-	c.aliasCache.Invalidate(namespace, alias)
+func (c *TemplateCache) InvalidateAlias(ctx context.Context, namespace *string, alias string) {
+	c.aliasCache.Invalidate(ctx, namespace, alias)
 }
 
 func (c *TemplateCache) Close(ctx context.Context) error {
-	return errors.Join(c.aliasCache.Close(ctx), c.cache.Close(ctx))
+	return errors.Join(c.aliasCache.Close(ctx), c.metadataCache.Close(ctx), c.cache.Close(ctx))
 }

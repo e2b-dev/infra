@@ -211,7 +211,7 @@ func TestTemplateBuildENV(t *testing.T) {
 					},
 					{
 						Type: "RUN",
-						Args: utils.ToPtr([]string{"[[ \"$PATH\" == *:/my/path ]] || exit 1"}),
+						Args: utils.ToPtr([]string{"[[ \"$PATH\" == *:/my/path* ]] || exit 1"}),
 					},
 				}),
 			},
