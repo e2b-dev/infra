@@ -154,6 +154,7 @@ components:
 
   schemas:
     TokenInfo:
+      type: object
       properties:
         userID:
           type: string
