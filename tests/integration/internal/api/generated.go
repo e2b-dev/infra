@@ -1164,9 +1164,6 @@ type TokenInfo struct {
 
 	// TeamName Name of the team the user belongs to
 	TeamName *string `json:"teamName,omitempty"`
-
-	// UserID Identifier of the user
-	UserID *openapi_types.UUID `json:"userID,omitempty"`
 }
 
 // UpdateTeamAPIKey defines model for UpdateTeamAPIKey.
