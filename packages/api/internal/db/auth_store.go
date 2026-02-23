@@ -14,6 +14,8 @@ type AuthStoreImpl struct {
 	authDB *authdb.Client
 }
 
+var _ sharedauth.AuthStore[*types.Team] = (*AuthStoreImpl)(nil)
+
 // NewAuthStore creates a new AuthStoreImpl.
 func NewAuthStore(authDB *authdb.Client) *AuthStoreImpl {
 	return &AuthStoreImpl{authDB: authDB}
