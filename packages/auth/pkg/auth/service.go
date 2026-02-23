@@ -123,7 +123,9 @@ func (s *AuthService[T]) ValidateSupabaseToken(ctx context.Context, supabaseToke
 func (s *AuthService[T]) ValidateSupabaseTeam(ctx context.Context, ginCtx *gin.Context, teamID string, userIDContextKey string) (T, *APIError) {
 	userID, ok := ginCtx.Value(userIDContextKey).(uuid.UUID)
 	if !ok {
-		return *new(T), &APIError{
+		var zero T
+
+		return zero, &APIError{
 			Err:       fmt.Errorf("user ID has invalid type"),
 			ClientMsg: "Backend authentication failed",
 			Code:      http.StatusInternalServerError,
