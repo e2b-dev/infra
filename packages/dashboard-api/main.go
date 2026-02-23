@@ -22,9 +22,10 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
+	sharedauth "github.com/e2b-dev/infra/packages/auth/pkg/auth"
+	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
-	"github.com/e2b-dev/infra/packages/dashboard-api/internal/auth"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/handlers"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
@@ -125,7 +126,12 @@ func run() int {
 		defer clickhouseClient.Close(ctx)
 	}
 
-	apiStore := handlers.NewAPIStore(config, db, authDB, clickhouseClient)
+	authCache := sharedauth.NewAuthCache[*types.Team]()
+	authStore := sharedauth.NewAuthStore(authDB)
+	authService := sharedauth.NewAuthService[*types.Team](authStore, authCache, config.SupabaseJWTSecrets)
+	defer authService.Close(ctx)
+
+	apiStore := handlers.NewAPIStore(config, db, authDB, clickhouseClient, authService)
 
 	swagger, err := api.GetSwagger()
 	if err != nil {
@@ -133,9 +139,13 @@ func run() int {
 	}
 	swagger.Servers = nil
 
-	authenticationFunc := auth.CreateAuthenticationFunc(
+	authenticationFunc := sharedauth.CreateAuthenticationFunc(
+		"", // no admin token needed for dashboard
+		nil, // no pre-auth hook
+		apiStore.GetTeamFromAPIKey,
+		apiStore.GetUserFromAccessToken,
 		apiStore.GetUserIDFromSupabaseToken,
-		apiStore.ValidateTeamID,
+		apiStore.GetTeamFromSupabaseToken,
 	)
 
 	r := gin.New()
