@@ -94,4 +94,3 @@ func (c *TemplatesBuildCache) fetchFromDB(templateID string, buildID uuid.UUID) 
 		}, nil
 	}
 }
-
