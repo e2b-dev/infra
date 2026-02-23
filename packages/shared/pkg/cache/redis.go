@@ -117,11 +117,6 @@ func (rc *RedisCache[V]) GetOrSet(ctx context.Context, key string, dataCallback 
 
 		// Acquire distributed lock if enabled
 		lock, lockErr := rc.acquireLock(ctx, key, redislock.LinearBackoff(rc.config.LockRetryInterval))
-		if lockErr != nil {
-			logger.L().Warn(ctx, "RedisCache: failed to acquire lock, proceeding without lock",
-				zap.String("key", key),
-				zap.Error(lockErr))
-		}
 		defer rc.releaseLock(ctx, lock, key)
 
 		// Double-check Redis (another goroutine may have populated it)
@@ -339,15 +334,21 @@ func (rc *RedisCache[V]) releaseLock(ctx context.Context, lock redis_utils.Lock,
 }
 
 // acquireLock attempts to acquire a distributed lock for the given key.
+// Always returns a non-nil Lock (NoopLock on failure) so callers can defer Release unconditionally.
 func (rc *RedisCache[V]) acquireLock(ctx context.Context, key string, retry redislock.RetryStrategy) (redis_utils.Lock, error) {
 	ctx, cancel := context.WithTimeout(ctx, acquireLockTimeout)
 	defer cancel()
 
 	lockKey := redis_utils.GetLockKey(rc.RedisKey(key))
 
-	return rc.locker.Obtain(ctx, lockKey, rc.config.LockTTL, &redislock.Options{
+	lock, err := rc.locker.Obtain(ctx, lockKey, rc.config.LockTTL, &redislock.Options{
 		RetryStrategy: retry,
 	})
+	if err != nil {
+		return redis_utils.NoopLock{}, err
+	}
+
+	return lock, nil
 }
 
 func (rc *RedisCache[V]) setInRedis(ctx context.Context, key string, value V) {
