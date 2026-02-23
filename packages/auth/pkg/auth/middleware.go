@@ -9,8 +9,11 @@ import (
 
 	"github.com/getkin/kin-openapi/openapi3filter"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	middleware "github.com/oapi-codegen/gin-middleware"
 	"go.opentelemetry.io/otel/attribute"
 
+	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -120,4 +123,105 @@ func (a *CommonAuthenticator[T]) Authenticate(ctx context.Context, ginCtx *gin.C
 // SecuritySchemeName returns the name of the security scheme this authenticator handles.
 func (a *CommonAuthenticator[T]) SecuritySchemeName() string {
 	return a.SchemeName
+}
+
+func adminValidationFunction(adminToken string) func(ctx context.Context, ginCtx *gin.Context, token string) (struct{}, *APIError) {
+	return func(_ context.Context, _ *gin.Context, token string) (struct{}, *APIError) {
+		if token != adminToken {
+			return struct{}{}, &APIError{
+				Code:      http.StatusUnauthorized,
+				Err:       errors.New("invalid access token"),
+				ClientMsg: "Invalid Access token.",
+			}
+		}
+
+		return struct{}{}, nil
+	}
+}
+
+func CreateAuthenticationFunc(
+	adminToken string,
+	preAuthHook func(*gin.Context),
+	teamValidationFunction func(ctx context.Context, ginCtx *gin.Context, token string) (*types.Team, *APIError),
+	userValidationFunction func(ctx context.Context, ginCtx *gin.Context, token string) (uuid.UUID, *APIError),
+	supabaseTokenValidationFunction func(ctx context.Context, ginCtx *gin.Context, token string) (uuid.UUID, *APIError),
+	supabaseTeamValidationFunction func(ctx context.Context, ginCtx *gin.Context, token string) (*types.Team, *APIError),
+) openapi3filter.AuthenticationFunc {
+	authenticators := []Authenticator{
+		&CommonAuthenticator[*types.Team]{
+			SchemeName: "ApiKeyAuth",
+			Header: HeaderKey{
+				Name:         "X-API-Key",
+				Prefix:       "e2b_",
+				RemovePrefix: "",
+			},
+			ValidationFunc: teamValidationFunction,
+			ContextKey:     TeamContextKey,
+			ErrorMessage:   "Invalid API key, please visit https://e2b.dev/docs/api-key for more information.",
+		},
+		&CommonAuthenticator[uuid.UUID]{
+			SchemeName: "AccessTokenAuth",
+			Header: HeaderKey{
+				Name:         "Authorization",
+				Prefix:       "sk_e2b_",
+				RemovePrefix: "Bearer ",
+			},
+			ValidationFunc: userValidationFunction,
+			ContextKey:     UserIDContextKey,
+			ErrorMessage:   "Invalid Access token, try to login again by running `e2b auth login`.",
+		},
+		&CommonAuthenticator[uuid.UUID]{
+			SchemeName: "Supabase1TokenAuth",
+			Header: HeaderKey{
+				Name:         "X-Supabase-Token",
+				Prefix:       "",
+				RemovePrefix: "",
+			},
+			ValidationFunc: supabaseTokenValidationFunction,
+			ContextKey:     UserIDContextKey,
+			ErrorMessage:   "Invalid Supabase token.",
+		},
+		&CommonAuthenticator[*types.Team]{
+			SchemeName: "Supabase2TeamAuth",
+			Header: HeaderKey{
+				Name:         "X-Supabase-Team",
+				Prefix:       "",
+				RemovePrefix: "",
+			},
+			ValidationFunc: supabaseTeamValidationFunction,
+			ContextKey:     TeamContextKey,
+			ErrorMessage:   "Invalid Supabase token teamID.",
+		},
+		&CommonAuthenticator[struct{}]{
+			SchemeName: "AdminTokenAuth",
+			Header: HeaderKey{
+				Name:         "X-Admin-Token",
+				Prefix:       "",
+				RemovePrefix: "",
+			},
+			ValidationFunc: adminValidationFunction(adminToken),
+			ContextKey:     "",
+			ErrorMessage:   "Invalid Access token.",
+		},
+	}
+
+	return func(ctx context.Context, input *openapi3filter.AuthenticationInput) error {
+		ginCtx := middleware.GetGinContext(ctx)
+
+		if preAuthHook != nil {
+			preAuthHook(ginCtx)
+		}
+
+		ctx, span := tracer.Start(ginCtx.Request.Context(), "authenticate")
+		defer span.End()
+
+		for _, validator := range authenticators {
+			if input.SecuritySchemeName == validator.SecuritySchemeName() {
+				//nolint:contextcheck // We use the gin request context here by design.
+				return validator.Authenticate(ctx, ginCtx, input)
+			}
+		}
+
+		return fmt.Errorf("invalid security scheme name '%s'", input.SecuritySchemeName)
+	}
 }
