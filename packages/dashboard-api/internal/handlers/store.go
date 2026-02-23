@@ -40,14 +40,6 @@ func (s *APIStore) GetHealth(c *gin.Context) {
 	c.String(http.StatusOK, "Health check successful")
 }
 
-func (s *APIStore) GetTeamFromAPIKey(ctx context.Context, _ *gin.Context, apiKey string) (*types.Team, *sharedauth.APIError) {
-	return s.authService.ValidateAPIKey(ctx, apiKey)
-}
-
-func (s *APIStore) GetUserFromAccessToken(ctx context.Context, _ *gin.Context, accessToken string) (uuid.UUID, *sharedauth.APIError) {
-	return s.authService.ValidateAccessToken(ctx, accessToken)
-}
-
 func (s *APIStore) GetUserIDFromSupabaseToken(ctx context.Context, _ *gin.Context, supabaseToken string) (uuid.UUID, *sharedauth.APIError) {
 	return s.authService.ValidateSupabaseToken(ctx, supabaseToken)
 }

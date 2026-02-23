@@ -132,12 +132,14 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 
 	// Create a team API Key auth validator
 	AuthenticationFunc := sharedauth.CreateAuthenticationFunc(
-		config.AdminToken,
+		[]sharedauth.Authenticator{
+			sharedauth.NewApiKeyAuthenticator(apiStore.GetTeamFromAPIKey),
+			sharedauth.NewAccessTokenAuthenticator(apiStore.GetUserFromAccessToken),
+			sharedauth.NewSupabaseTokenAuthenticator(apiStore.GetUserIDFromSupabaseToken),
+			sharedauth.NewSupabaseTeamAuthenticator(apiStore.GetTeamFromSupabaseToken),
+			sharedauth.NewAdminTokenAuthenticator(config.AdminToken),
+		},
 		metricsMiddleware.SetProcessingStartTime,
-		apiStore.GetTeamFromAPIKey,
-		apiStore.GetUserFromAccessToken,
-		apiStore.GetUserIDFromSupabaseToken,
-		apiStore.GetTeamFromSupabaseToken,
 	)
 
 	// Use our validation middleware to check all requests against the
