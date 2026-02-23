@@ -1772,6 +1772,12 @@ paths:
   /me:
     get:
       description: Get information about the authenticated user
+      tags: [auth]
+      security:
+        - AccessTokenAuth: []
+        - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       responses:
         "200":
           description: User is authenticated
