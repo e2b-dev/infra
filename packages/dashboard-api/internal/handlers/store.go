@@ -7,11 +7,11 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	sharedauth "github.com/e2b-dev/infra/packages/auth/pkg/auth"
+	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/cfg"
-	sharedauth "github.com/e2b-dev/infra/packages/auth/pkg/auth"
-	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 )

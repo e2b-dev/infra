@@ -140,7 +140,7 @@ func run() int {
 	swagger.Servers = nil
 
 	authenticationFunc := sharedauth.CreateAuthenticationFunc(
-		"", // no admin token needed for dashboard
+		"",  // no admin token needed for dashboard
 		nil, // no pre-auth hook
 		apiStore.GetTeamFromAPIKey,
 		apiStore.GetUserFromAccessToken,
