@@ -121,7 +121,14 @@ func (s *AuthService[T]) ValidateSupabaseToken(ctx context.Context, supabaseToke
 
 // ValidateSupabaseTeam extracts the user ID from the gin context and fetches the team via cache + store.
 func (s *AuthService[T]) ValidateSupabaseTeam(ctx context.Context, ginCtx *gin.Context, teamID string, userIDContextKey string) (T, *APIError) {
-	userID := ginCtx.Value(userIDContextKey).(uuid.UUID)
+	userID, ok := ginCtx.Value(userIDContextKey).(uuid.UUID)
+	if !ok {
+		return *new(T), &APIError{
+			Err:       fmt.Errorf("user ID has invalid type"),
+			ClientMsg: "Backend authentication failed",
+			Code:      http.StatusInternalServerError,
+		}
+	}
 
 	cacheKey := fmt.Sprintf("%s-%s", userID.String(), teamID)
 
