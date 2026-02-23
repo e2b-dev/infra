@@ -61,7 +61,7 @@ type RedisCache[V any] struct {
 	config       RedisConfig[V]
 	fetchGroup   singleflight.Group
 	redisRefresh singleflight.Group
-	lockClient   *redislock.Client // nil when locking disabled
+	locker       redis_utils.Locker
 }
 
 // NewRedisCache creates a new RedisCache with the given configuration.
@@ -74,7 +74,7 @@ func NewRedisCache[V any](config RedisConfig[V]) *RedisCache[V] {
 		config.RefreshTimeout = 30 * time.Second
 	}
 
-	var lockClient *redislock.Client
+	var locker redis_utils.Locker = redis_utils.NoopLocker{}
 	if config.LockTTL != RedisLockOff {
 		if config.LockRetryInterval == 0 {
 			config.LockRetryInterval = defaultLockRetryInterval
@@ -82,12 +82,12 @@ func NewRedisCache[V any](config RedisConfig[V]) *RedisCache[V] {
 
 		config.LockTTL = config.RefreshTimeout + 2*config.RedisTimeout
 
-		lockClient = redislock.New(config.RedisClient)
+		locker = &redis_utils.RedisLocker{Client: redislock.New(config.RedisClient)}
 	}
 
 	rc := &RedisCache[V]{
-		config:     config,
-		lockClient: lockClient,
+		config: config,
+		locker: locker,
 	}
 
 	return rc
@@ -326,12 +326,8 @@ func (rc *RedisCache[V]) refreshRedis(ctx context.Context, key string, dataCallb
 	})
 }
 
-// releaseLock releases a distributed Redis lock. Logs on failure but does not return an error.
-func (rc *RedisCache[V]) releaseLock(ctx context.Context, lock *redislock.Lock, key string) {
-	if lock == nil {
-		return
-	}
-
+// releaseLock releases a distributed lock. Logs on failure but does not return an error.
+func (rc *RedisCache[V]) releaseLock(ctx context.Context, lock redis_utils.Lock, key string) {
 	ctx, cancel := context.WithTimeout(ctx, rc.config.RedisTimeout)
 	defer cancel()
 
@@ -342,25 +338,16 @@ func (rc *RedisCache[V]) releaseLock(ctx context.Context, lock *redislock.Lock, 
 	}
 }
 
-// acquireLock attempts to acquire a distributed Redis lock for the given key.
-// Returns (lock, nil) on success, (nil, nil) if locking is disabled, or (nil, err) on failure.
-func (rc *RedisCache[V]) acquireLock(ctx context.Context, key string, retry redislock.RetryStrategy) (*redislock.Lock, error) {
-	if rc.lockClient == nil {
-		return nil, nil
-	}
-
+// acquireLock attempts to acquire a distributed lock for the given key.
+func (rc *RedisCache[V]) acquireLock(ctx context.Context, key string, retry redislock.RetryStrategy) (redis_utils.Lock, error) {
 	ctx, cancel := context.WithTimeout(ctx, acquireLockTimeout)
 	defer cancel()
 
 	lockKey := redis_utils.GetLockKey(rc.RedisKey(key))
-	lock, err := rc.lockClient.Obtain(ctx, lockKey, rc.config.LockTTL, &redislock.Options{
+
+	return rc.locker.Obtain(ctx, lockKey, rc.config.LockTTL, &redislock.Options{
 		RetryStrategy: retry,
 	})
-	if err != nil {
-		return nil, err
-	}
-
-	return lock, nil
 }
 
 func (rc *RedisCache[V]) setInRedis(ctx context.Context, key string, value V) {

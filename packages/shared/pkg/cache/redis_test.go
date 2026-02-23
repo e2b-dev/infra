@@ -535,7 +535,8 @@ func TestRedisCache_Lock_Disabled(t *testing.T) {
 	})
 	defer rc.Close(t.Context())
 
-	assert.Nil(t, rc.lockClient, "lockClient should be nil when LockTTL is RedisLockOff")
+	_, isNoop := rc.locker.(redis_utils.NoopLocker)
+	assert.True(t, isNoop, "locker should be NoopLocker when LockTTL is RedisLockOff")
 
 	expected := testValue{ID: "no-lock", Name: "NoLock"}
 
