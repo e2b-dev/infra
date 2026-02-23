@@ -54,6 +54,7 @@ func baseImage() string {
 	if img := os.Getenv("E2B_BASE_IMAGE"); img != "" {
 		return img
 	}
+
 	return defaultBaseImage
 }
 
