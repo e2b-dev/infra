@@ -121,7 +121,7 @@ func (rc *RedisCache[V]) GetOrSet(ctx context.Context, key string, dataCallback 
 				zap.String("key", key),
 				zap.Error(lockErr))
 		}
-		defer rc.releaseLock(context.WithoutCancel(ctx), lock, key)
+		defer rc.releaseLock(ctx, lock, key)
 
 		// Double-check Redis (another goroutine may have populated it)
 		if v, _, redisErr := rc.getFromRedis(ctx, key); redisErr == nil {
@@ -347,6 +347,9 @@ func (rc *RedisCache[V]) acquireLock(ctx context.Context, key string, retry redi
 	if rc.lockClient == nil {
 		return nil, nil
 	}
+
+	ctx, cancel := context.WithTimeout(ctx, rc.config.TTL)
+	defer cancel()
 
 	lockKey := redis_utils.GetLockKey(rc.RedisKey(key))
 	lock, err := rc.lockClient.Obtain(ctx, lockKey, rc.config.LockTTL, &redislock.Options{
