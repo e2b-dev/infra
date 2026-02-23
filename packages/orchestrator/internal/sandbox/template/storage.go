@@ -29,9 +29,9 @@ func isKnownDiffType(diffType build.DiffType) bool {
 	return diffType == build.Memfile || diffType == build.Rootfs
 }
 
-// loadV3Header loads a v3 header from the standard (uncompressed) path.
+// loadHeaderV3 loads a v3 header from the standard (uncompressed) path.
 // Returns (nil, nil) if not found.
-func loadV3Header(ctx context.Context, persistence storage.StorageProvider, path string) (*header.Header, error) {
+func loadHeaderV3(ctx context.Context, persistence storage.StorageProvider, path string) (*header.Header, error) {
 	blob, err := persistence.OpenBlob(ctx, path)
 	if err != nil {
 		if errors.Is(err, storage.ErrObjectNotExist) {
@@ -71,7 +71,7 @@ func loadHeaderPreferV4(ctx context.Context, persistence storage.StorageProvider
 
 	eg, egCtx := errgroup.WithContext(ctx)
 	eg.Go(func() error {
-		v3Header, v3Err = loadV3Header(egCtx, persistence, v3Path)
+		v3Header, v3Err = loadHeaderV3(egCtx, persistence, v3Path)
 
 		return nil
 	})
@@ -122,7 +122,7 @@ func NewStorage(
 			h, err = loadHeaderPreferV4(ctx, persistence, buildId, fileType)
 		} else {
 			files := storage.TemplateFiles{BuildID: buildId}
-			h, err = loadV3Header(ctx, persistence, files.HeaderPath(string(fileType)))
+			h, err = loadHeaderV3(ctx, persistence, files.HeaderPath(string(fileType)))
 		}
 		if err != nil {
 			return nil, err

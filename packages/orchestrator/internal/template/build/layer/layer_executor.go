@@ -284,26 +284,12 @@ func (lb *LayerExecutor) PauseAndUpload(
 	// Upload snapshot async, it's added to the template cache immediately
 	userLogger.Debug(ctx, fmt.Sprintf("Saving: %s", meta.Template.BuildID))
 
-	lb.uploadLayerAsync(ctx, userLogger, snapshot, hash, meta)
-
-	return nil
-}
-
-// uploadLayerAsync uploads a layer's snapshot in the background.
-//
-// Pipeline per layer:
-//  1. Upload data files (uncompressed + compressed) — parallel across layers
-//  2. Register this layer's frame tables in shared pending
-//  3. Wait for previous layers to complete (data + headers)
-//  4. Finalize compressed headers — all upstream FTs now available
-//  5. Signal complete, save cache index
-func (lb *LayerExecutor) uploadLayerAsync(
-	ctx context.Context,
-	userLogger logger.Logger,
-	snapshot *sandbox.Snapshot,
-	hash string,
-	meta metadata.Template,
-) {
+	// Pipeline per layer:
+	//  1. Upload data files (uncompressed + compressed) — parallel across layers
+	//  2. Register this layer's frame tables in shared pending
+	//  3. Wait for previous layers to complete (data + headers)
+	//  4. Finalize compressed headers — all upstream FTs now available
+	//  5. Signal complete, save cache index
 	completeUpload, waitForPreviousUploads := lb.uploadTracker.StartUpload()
 	pending := lb.uploadTracker.Pending()
 	buildID := meta.Template.BuildID
@@ -316,8 +302,8 @@ func (lb *LayerExecutor) uploadLayerAsync(
 		// Signal completion when done (including on error) to unblock downstream layers.
 		defer completeUpload()
 
-		// Step 1: Upload data files (uncompressed + optionally compressed)
-		result, err := snapshot.UploadDataFiles(
+		// Step 1: Upload everything except V4 headers (parallel across layers)
+		templateBuild, memFT, rootFT, err := snapshot.UploadLayerExceptV4Headers(
 			ctx,
 			lb.templateStorage,
 			storage.TemplateFiles{BuildID: buildID},
@@ -328,11 +314,11 @@ func (lb *LayerExecutor) uploadLayerAsync(
 		}
 
 		// Step 2: Register this layer's frame tables
-		if result.MemfileFrameTable != nil {
-			pending.Add(sandbox.PendingFrameTableKey(buildID, storage.MemfileName), result.MemfileFrameTable)
+		if memFT != nil {
+			pending.Add(sandbox.PendingFrameTableKey(buildID, storage.MemfileName), memFT)
 		}
-		if result.RootfsFrameTable != nil {
-			pending.Add(sandbox.PendingFrameTableKey(buildID, storage.RootfsName), result.RootfsFrameTable)
+		if rootFT != nil {
+			pending.Add(sandbox.PendingFrameTableKey(buildID, storage.RootfsName), rootFT)
 		}
 
 		// Step 3: Wait for all previous layers (data + headers) to complete
@@ -340,9 +326,9 @@ func (lb *LayerExecutor) uploadLayerAsync(
 			return fmt.Errorf("error waiting for previous uploads: %w", err)
 		}
 
-		// Step 4: Finalize compressed headers — all upstream FTs are now in pending
-		if result.MemfileFrameTable != nil || result.RootfsFrameTable != nil {
-			if err := result.TemplateBuild.UploadCompressedHeaders(ctx, pending); err != nil {
+		// Step 4: Finalize V4 compressed headers — all upstream FTs are now in pending
+		if memFT != nil || rootFT != nil {
+			if err := templateBuild.UploadCompressedHeaders(ctx, pending); err != nil {
 				return fmt.Errorf("error uploading compressed headers: %w", err)
 			}
 		}
@@ -360,4 +346,6 @@ func (lb *LayerExecutor) uploadLayerAsync(
 
 		return nil
 	})
+
+	return nil
 }

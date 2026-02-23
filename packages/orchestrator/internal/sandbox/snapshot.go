@@ -60,7 +60,7 @@ func (s *Snapshot) Upload(
 		ff,
 	)
 
-	uploadErrCh := templateBuild.Upload(
+	uploadErrCh := templateBuild.UploadAll(
 		ctx,
 		s.Metafile.Path(),
 		s.Snapfile.Path(),
@@ -77,32 +77,22 @@ func (s *Snapshot) Upload(
 	return nil
 }
 
-// UploadDataFilesResult holds the results of a data-file upload phase,
-// including the TemplateBuild for header finalization and frame tables
-// from compressed uploads.
-type UploadDataFilesResult struct {
-	TemplateBuild     *TemplateBuild
-	MemfileFrameTable *storage.FrameTable
-	RootfsFrameTable  *storage.FrameTable
-}
-
-// UploadDataFiles uploads data files (uncompressed + optionally compressed).
-// When compression is enabled (via feature flag), compressed data is uploaded in
-// parallel with uncompressed data (dual-write). It returns the TemplateBuild and
-// frame tables so the caller can finalize compressed headers after all layers complete.
-func (s *Snapshot) UploadDataFiles(
+// UploadLayerExceptV4Headers uploads everything except V4 compressed headers for one layer in a
+// multi-layer build pipeline. It returns the TemplateBuild and frame tables so the
+// caller can finalize compressed headers after all layers complete.
+func (s *Snapshot) UploadLayerExceptV4Headers(
 	ctx context.Context,
 	persistence storage.StorageProvider,
 	templateFiles storage.TemplateFiles,
 	ff *featureflags.Client,
-) (*UploadDataFilesResult, error) {
+) (tb *TemplateBuild, memFT, rootFT *storage.FrameTable, err error) {
 	var memfilePath *string
 	switch r := s.MemfileDiff.(type) {
 	case *build.NoDiff:
 	default:
 		memfileLocalPath, err := r.CachePath()
 		if err != nil {
-			return nil, fmt.Errorf("error getting memfile diff path: %w", err)
+			return nil, nil, nil, fmt.Errorf("error getting memfile diff path: %w", err)
 		}
 
 		memfilePath = &memfileLocalPath
@@ -114,7 +104,7 @@ func (s *Snapshot) UploadDataFiles(
 	default:
 		rootfsLocalPath, err := r.CachePath()
 		if err != nil {
-			return nil, fmt.Errorf("error getting rootfs diff path: %w", err)
+			return nil, nil, nil, fmt.Errorf("error getting rootfs diff path: %w", err)
 		}
 
 		rootfsPath = &rootfsLocalPath
@@ -128,7 +118,7 @@ func (s *Snapshot) UploadDataFiles(
 		ff,
 	)
 
-	result, err := templateBuild.UploadData(
+	memFT, rootFT, err = templateBuild.UploadExceptV4Headers(
 		ctx,
 		s.Metafile.Path(),
 		s.Snapfile.Path(),
@@ -136,14 +126,10 @@ func (s *Snapshot) UploadDataFiles(
 		rootfsPath,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("error uploading template data: %w", err)
+		return nil, nil, nil, fmt.Errorf("error uploading template data: %w", err)
 	}
 
-	return &UploadDataFilesResult{
-		TemplateBuild:     templateBuild,
-		MemfileFrameTable: result.MemfileFrameTable,
-		RootfsFrameTable:  result.RootfsFrameTable,
-	}, nil
+	return templateBuild, memFT, rootFT, nil
 }
 
 func (s *Snapshot) Close(ctx context.Context) error {

@@ -23,9 +23,9 @@ type StorageDiff struct {
 	cacheKey    DiffStoreKey
 	storagePath string
 
-	blockSize   int64
-	metrics     blockmetrics.Metrics
-	persistence storage.StorageProvider
+	blockSize    int64
+	metrics      blockmetrics.Metrics
+	persistence  storage.StorageProvider
 	featureFlags *featureflags.Client
 }
 
@@ -56,14 +56,14 @@ func newStorageDiff(
 	cachePath := GenerateDiffCachePath(basePath, buildId, diffType)
 
 	return &StorageDiff{
-		storagePath: storagePath,
-		cachePath:   cachePath,
-		chunker:     utils.NewSetOnce[*block.Chunker](),
-		blockSize:   blockSize,
-		metrics:     metrics,
-		persistence: persistence,
+		storagePath:  storagePath,
+		cachePath:    cachePath,
+		chunker:      utils.NewSetOnce[*block.Chunker](),
+		blockSize:    blockSize,
+		metrics:      metrics,
+		persistence:  persistence,
 		featureFlags: flags,
-		cacheKey:    GetDiffStoreKey(buildId, diffType),
+		cacheKey:     GetDiffStoreKey(buildId, diffType),
 	}, nil
 }
 
