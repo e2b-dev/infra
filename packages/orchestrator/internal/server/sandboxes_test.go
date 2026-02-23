@@ -118,6 +118,6 @@ func TestGetSandboxExecutionData(t *testing.T) {
 	assert.Equal(t, sbxStartedAt.UTC().Format(time.RFC3339), result["started_at"])
 	assert.Equal(t, int64(2), result["vcpu_count"])
 	assert.Equal(t, int64(512), result["memory_mb"])
-	assert.IsType(t, float64(0), result["execution_time"])
-	assert.Greater(t, result["execution_time"].(float64), float64(0))
+	assert.IsType(t, int64(0), result["execution_time"])
+	assert.Positive(t, result["execution_time"].(int64))
 }

@@ -557,7 +557,7 @@ func (s *Server) getSandboxExecutionData(sbx *sandbox.Sandbox) map[string]any {
 		"started_at":     startedAt.UTC().Format(time.RFC3339),
 		"vcpu_count":     sbx.Config.Vcpu,
 		"memory_mb":      sbx.Config.RamMB,
-		"execution_time": time.Since(startedAt).Seconds(),
+		"execution_time": time.Since(startedAt).Milliseconds(),
 	}
 }
 

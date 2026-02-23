@@ -11,10 +11,22 @@ import (
 	"github.com/google/uuid"
 )
 
-const deleteTemplate = `-- name: DeleteTemplate :exec
-DELETE FROM "public"."envs"
-WHERE id = $1
-AND team_id = $2
+const deleteTemplate = `-- name: DeleteTemplate :many
+WITH alias_keys AS (
+  SELECT CASE
+    WHEN namespace IS NOT NULL THEN namespace || '/' || alias
+    ELSE alias
+  END::text AS alias_key
+  FROM public.env_aliases
+  WHERE env_id = $1
+), deleted AS (
+  DELETE FROM "public"."envs"
+  WHERE id = $1
+  AND team_id = $2
+  RETURNING id
+)
+SELECT alias_key FROM alias_keys
+WHERE EXISTS (SELECT 1 FROM deleted)
 `
 
 type DeleteTemplateParams struct {
@@ -22,7 +34,24 @@ type DeleteTemplateParams struct {
 	TeamID     uuid.UUID
 }
 
-func (q *Queries) DeleteTemplate(ctx context.Context, arg DeleteTemplateParams) error {
-	_, err := q.db.Exec(ctx, deleteTemplate, arg.TemplateID, arg.TeamID)
-	return err
+// Deletes a template and returns its alias cache keys for cache invalidation.
+// Alias keys are captured via CTE before the cascade delete removes them.
+func (q *Queries) DeleteTemplate(ctx context.Context, arg DeleteTemplateParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, deleteTemplate, arg.TemplateID, arg.TeamID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var alias_key string
+		if err := rows.Scan(&alias_key); err != nil {
+			return nil, err
+		}
+		items = append(items, alias_key)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

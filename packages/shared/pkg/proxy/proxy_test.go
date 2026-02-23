@@ -197,7 +197,9 @@ func TestProxyRoutesToTargetServer(t *testing.T) {
 
 	proxy, port, err := newTestProxy(t, getDestination)
 	require.NoError(t, err)
-	defer proxy.Close()
+	t.Cleanup(func() {
+		proxy.Close()
+	})
 
 	assert.Equal(t, uint64(0), proxy.TotalPoolConnections())
 	assert.Equal(t, uint64(0), backend.RequestCount())
@@ -212,6 +214,66 @@ func TestProxyRoutesToTargetServer(t *testing.T) {
 
 	assert.Equal(t, uint64(1), backend.RequestCount(), "backend should have been called once")
 	assert.Equal(t, uint64(1), proxy.TotalPoolConnections(), "proxy should have established one connection")
+}
+
+func TestProxyResumePermissionDeniedErrorTemplate(t *testing.T) {
+	t.Parallel()
+
+	getDestination := func(*http.Request) (*pool.Destination, error) {
+		return nil, NewErrSandboxResumePermissionDenied("test-sandbox")
+	}
+
+	proxy, port, err := newTestProxy(t, getDestination)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		proxy.Close()
+	})
+
+	t.Run("json for non-browser", func(t *testing.T) {
+		t.Parallel()
+		proxyURL := fmt.Sprintf("http://127.0.0.1:%d/hello", port)
+		resp, err := httpGet(t, proxyURL)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			_ = resp.Body.Close()
+		})
+
+		require.Equal(t, http.StatusForbidden, resp.StatusCode)
+		require.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
+
+		var response struct {
+			SandboxID string `json:"sandboxId"`
+			Message   string `json:"message"`
+			Code      int    `json:"code"`
+		}
+		err = json.NewDecoder(resp.Body).Decode(&response)
+		require.NoError(t, err)
+		require.Equal(t, "test-sandbox", response.SandboxID)
+		require.Equal(t, "This sandbox can't be resumed with the credentials provided. Check your access token and try again.", response.Message)
+		require.Equal(t, http.StatusForbidden, response.Code)
+	})
+
+	t.Run("html for browser", func(t *testing.T) {
+		t.Parallel()
+		proxyURL := fmt.Sprintf("http://127.0.0.1:%d/hello", port)
+		headers := http.Header{
+			"User-Agent": {"Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
+		}
+
+		resp, err := httpGetWithHeaders(t, proxyURL, headers)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			_ = resp.Body.Close()
+		})
+
+		require.Equal(t, http.StatusForbidden, resp.StatusCode)
+		require.Equal(t, "text/html; charset=utf-8", resp.Header.Get("Content-Type"))
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		assert.Contains(t, string(body), "Unable to Resume Sandbox")
+		assert.Contains(t, string(body), "test-sandbox")
+	})
 }
 
 func httpGet(t *testing.T, proxyURL string) (*http.Response, error) {

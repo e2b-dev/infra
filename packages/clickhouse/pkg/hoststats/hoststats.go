@@ -30,7 +30,7 @@ type SandboxHostStat struct {
 	CgroupCPUUserUsec   uint64 `ch:"cgroup_cpu_user_usec"`      // cumulative, microseconds
 	CgroupCPUSystemUsec uint64 `ch:"cgroup_cpu_system_usec"`    // cumulative, microseconds
 	CgroupMemoryUsage   uint64 `ch:"cgroup_memory_usage_bytes"` // current, bytes
-	CgroupMemoryPeak    uint64 `ch:"cgroup_memory_peak_bytes"`  // interval peak, bytes (reset after each sample)
+	CgroupMemoryPeak    uint64 `ch:"cgroup_memory_peak_bytes"`  // lifetime peak, bytes
 }
 
 // Delivery is the interface for delivering host stats to storage backend

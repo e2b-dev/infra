@@ -63,10 +63,11 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 	}
 
 	// Delete the template from DB (cascades to env_build_assignments, env_aliases, snapshot_templates).
+	// Returns alias cache keys captured before cascade deletion for cache invalidation.
 	// Build artifacts are intentionally NOT deleted from storage here because builds are layered diffs
 	// that may be referenced by other builds' header mappings.
 	// [ENG-3477] a future GC mechanism will handle orphaned storage.
-	err = a.sqlcDB.DeleteTemplate(ctx, queries.DeleteTemplateParams{
+	aliasKeys, err := a.sqlcDB.DeleteTemplate(ctx, queries.DeleteTemplateParams{
 		TemplateID: templateID,
 		TeamID:     team.ID,
 	})
@@ -78,6 +79,7 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 	}
 
 	a.templateCache.InvalidateAllTags(context.WithoutCancel(ctx), templateID)
+	a.templateCache.InvalidateAliasesByTemplateID(context.WithoutCancel(ctx), templateID, aliasKeys)
 
 	telemetry.ReportEvent(ctx, "deleted template from db")
 
