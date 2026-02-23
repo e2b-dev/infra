@@ -98,17 +98,19 @@ receivers:
           system.memory.utilization:
             enabled: true
 
-          # Huge pages metrics added as part of temporal patch
-          # https://github.com/e2b-dev/opentelemetry-collector-contrib/pull/1
-          system.linux.memory.huge_pages.free:
+          # Huge pages metrics (upstream support added in v0.146.0)
+          # https://github.com/open-telemetry/opentelemetry-collector-contrib/pull/44125
+          system.memory.linux.hugepages.usage:
             enabled: true
-          system.linux.memory.huge_pages.page_size:
+          system.memory.linux.hugepages.utilization:
             enabled: true
-          system.linux.memory.huge_pages.reserved:
+          system.memory.linux.hugepages.limit:
             enabled: true
-          system.linux.memory.huge_pages.surplus:
+          system.memory.linux.hugepages.page_size:
             enabled: true
-          system.linux.memory.huge_pages.total:
+          system.memory.linux.hugepages.reserved:
+            enabled: true
+          system.memory.linux.hugepages.surplus:
             enabled: true
 
       # Scraping traffic going in/out of network interfaces
