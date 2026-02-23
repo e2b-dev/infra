@@ -27,7 +27,6 @@ const (
 
 	redisScanCount = 100
 
-	defaultLockTTL           = 30 * time.Second
 	defaultLockRetryInterval = 50 * time.Millisecond
 )
 
@@ -47,9 +46,9 @@ type RedisConfig[V any] struct {
 	// When set, the key used for Redis storage is derived from the fetched value
 	// rather than the original lookup key.
 	ExtractKeyFunc ExtractKeyFunc[V]
-	// LockTTL is the maximum time a distributed lock is held during cache updates.
-	// Redis lock is acquired before calling the data callback to prevent thundering herd across instances.
-	// Default is 30 seconds. For disabling pass RedisLockOff (-1).
+	// LockTTL controls distributed locking for cache updates.
+	// Lock is acquired before calling the data callback to prevent thundering herd across instances.
+	// TTL is auto-computed as RefreshTimeout + 2*RedisTimeout
 	LockTTL time.Duration
 	// LockRetryInterval is the interval between lock acquisition retries.
 	// Defaults to 50ms.
@@ -80,9 +79,7 @@ func NewRedisCache[V any](config RedisConfig[V]) *RedisCache[V] {
 			config.LockRetryInterval = defaultLockRetryInterval
 		}
 
-		if config.LockTTL <= 0 {
-			config.LockTTL = defaultLockTTL
-		}
+		config.LockTTL = config.RefreshTimeout + 2*config.RedisTimeout
 
 		lockClient = redislock.New(config.RedisClient)
 	}

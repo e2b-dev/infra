@@ -445,7 +445,6 @@ func newTestRedisCacheWithLock(t *testing.T, redisClient redis.UniversalClient) 
 		TTL:         30 * time.Second,
 		RedisClient: redisClient,
 		RedisPrefix: fmt.Sprintf("test:%s", t.Name()),
-		LockTTL:     5 * time.Second,
 	})
 }
 
@@ -510,7 +509,6 @@ func TestRedisCache_Lock_GracefulDegradation(t *testing.T) {
 		RedisClient:  badClient,
 		RedisPrefix:  "test:lock-degrade",
 		RedisTimeout: 200 * time.Millisecond,
-		LockTTL:      5 * time.Second,
 	})
 	defer rc.Close(t.Context())
 
