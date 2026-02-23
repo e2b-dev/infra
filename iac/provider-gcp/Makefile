@@ -120,7 +120,11 @@ terraform:
 
 # Deploy all jobs in Nomad
 # Clickhouse jobs are scoped in Clickhouse submodule so we need special handling for them
-.PHONY: plan-only-jobs plan-only-jobs/clickhouse_migrator plan-only-jobs/clickhouse_backup plan-only-jobs/clickhouse_backup_restore
+.PHONY: plan-only-jobs plan-only-jobs/clickhouse_server plan-only-jobs/clickhouse_migrator plan-only-jobs/clickhouse_backup plan-only-jobs/clickhouse_backup_restore
+plan-only-jobs/clickhouse_server:
+	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	$(TF) fmt -recursive
+	$(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -compact-warnings -target="module.nomad.module.clickhouse.nomad_job.clickhouse"
 plan-only-jobs/clickhouse_migrator:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(TF) fmt -recursive
