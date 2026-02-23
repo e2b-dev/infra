@@ -3,7 +3,7 @@ package handlers
 import (
 	"time"
 
-	typesteam "github.com/e2b-dev/infra/packages/api/internal/db/types"
+	typesteam "github.com/e2b-dev/infra/packages/auth/pkg/types"
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 )
 

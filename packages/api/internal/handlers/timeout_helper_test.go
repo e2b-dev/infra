@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	typesteam "github.com/e2b-dev/infra/packages/api/internal/db/types"
+	typesteam "github.com/e2b-dev/infra/packages/auth/pkg/types"
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 )
 
@@ -21,6 +21,7 @@ func testTeamWithMaxLengthHours(hours int64) *typesteam.Team {
 // TestCalculateTimeout verifies create-time timeout handling:
 // no timeout -> do not persist, short timeout -> min floor, long timeout -> team cap.
 func TestCalculateTimeout(t *testing.T) {
+	t.Parallel()
 	team := testTeamWithMaxLengthHours(1)
 
 	// Create without explicit timeout should not persist any starting timeout.
@@ -42,6 +43,7 @@ func TestCalculateTimeout(t *testing.T) {
 // TestCalculateAutoResumeTimeout verifies resume-time timeout handling:
 // default fallback, persisted timeout minimum floor, and team cap.
 func TestCalculateAutoResumeTimeout(t *testing.T) {
+	t.Parallel()
 	team := testTeamWithMaxLengthHours(1)
 
 	// Older snapshots without persisted value should use the proxy fallback timeout.
