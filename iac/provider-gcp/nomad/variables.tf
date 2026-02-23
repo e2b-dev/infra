@@ -1,3 +1,9 @@
+variable "git_commit_sha" {
+  description = "Git commit SHA of the deployment, used for tracking in Nomad job metadata"
+  type        = string
+  default     = "unknown"
+}
+
 variable "envd_timeout" {
   type = string
 }

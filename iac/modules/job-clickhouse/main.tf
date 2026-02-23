@@ -22,6 +22,7 @@ locals {
   })
 
   backup_vars = {
+    git_commit_sha            = var.git_commit_sha
     clickhouse_backup_version = var.clickhouse_backup_version
 
     server_count          = var.server_count
@@ -43,6 +44,7 @@ resource "nomad_job" "clickhouse" {
   count = var.server_count > 0 ? 1 : 0
 
   jobspec = templatefile("${path.module}/jobs/clickhouse.hcl", {
+    git_commit_sha     = var.git_commit_sha
     server_secret      = var.server_secret
     clickhouse_version = var.clickhouse_version
 
@@ -79,7 +81,8 @@ resource "nomad_job" "clickhouse_migrator" {
   count = var.server_count > 0 ? 1 : 0
 
   jobspec = templatefile("${path.module}/jobs/clickhouse-migrator.hcl", {
-    image = var.clickhouse_migrator_image
+    git_commit_sha = var.git_commit_sha
+    image          = var.clickhouse_migrator_image
 
     server_count          = var.server_count
     job_constraint_prefix = var.job_constraint_prefix

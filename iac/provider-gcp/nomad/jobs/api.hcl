@@ -3,6 +3,10 @@ job "api" {
   node_pool = "${node_pool}"
   priority = 90
 
+  meta {
+    git_commit_sha = "${git_commit_sha}"
+  }
+
   group "api-service" {
     // Try to restart the task indefinitely
     // Tries to restart every 5 seconds

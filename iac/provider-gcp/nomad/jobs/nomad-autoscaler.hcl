@@ -1,6 +1,10 @@
 job "nomad-autoscaler" {
   type     = "service"
   node_pool = "${node_pool}"
+  meta {
+    git_commit_sha = "${git_commit_sha}"
+  }
+
 
   group "autoscaler" {
     count = 1

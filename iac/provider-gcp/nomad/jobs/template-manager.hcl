@@ -2,6 +2,10 @@ job "template-manager" {
   type = "service"
   node_pool  = "${node_pool}"
   priority = 75
+  meta {
+    git_commit_sha = "${git_commit_sha}"
+  }
+
 
   group "template-manager" {
     # Count is fetched from current Nomad state to preserve autoscaler-managed value

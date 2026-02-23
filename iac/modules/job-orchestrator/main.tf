@@ -1,8 +1,9 @@
 locals {
   orchestrator_vars = {
-    node_pool  = var.node_pool
-    port       = var.port
-    proxy_port = var.proxy_port
+    git_commit_sha = var.git_commit_sha
+    node_pool      = var.node_pool
+    port           = var.port
+    proxy_port     = var.proxy_port
 
     environment                  = var.environment
     logs_collector_address       = var.logs_collector_address

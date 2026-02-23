@@ -3,6 +3,10 @@ job "redis" {
   node_pool = "${node_pool}"
   type = "service"
   priority = 95
+  meta {
+    git_commit_sha = "${git_commit_sha}"
+  }
+
 
   group "redis" {
     // Try to restart the task indefinitely

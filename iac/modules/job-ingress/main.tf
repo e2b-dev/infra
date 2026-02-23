@@ -1,6 +1,7 @@
 resource "nomad_job" "ingress" {
   jobspec = templatefile("${path.module}/jobs/ingress.hcl", {
-    count         = var.ingress_count
+    git_commit_sha = var.git_commit_sha
+    count          = var.ingress_count
     node_pool     = var.node_pool
     update_stanza = var.update_stanza
     cpu_count     = var.ingress_cpu_count

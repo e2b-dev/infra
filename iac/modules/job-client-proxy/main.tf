@@ -1,5 +1,6 @@
 resource "nomad_job" "client_proxy" {
   jobspec = templatefile("${path.module}/jobs/client-proxy.hcl", {
+    git_commit_sha      = var.git_commit_sha
     update_stanza       = var.update_stanza
     count               = var.client_proxy_count
     cpu_count           = var.client_proxy_cpu_count

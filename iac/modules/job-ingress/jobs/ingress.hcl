@@ -1,4 +1,7 @@
 job "ingress" {
+  meta {
+    git_commit_sha = "${git_commit_sha}"
+  }
   node_pool = "${node_pool}"
   priority  = 90
 
