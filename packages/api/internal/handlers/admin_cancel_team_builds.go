@@ -56,10 +56,12 @@ func (a *APIStore) PostAdminTeamsTeamIDBuildsCancel(c *gin.Context, teamID uuid.
 						zap.String("templateID", templateID),
 						logger.WithTeamID(teamID.String()),
 						zap.Error(deleteErr))
+					failedCount.Add(1)
+
+					return nil
 				}
 			}
 
-			// Mark the build as failed in DB and cache
 			err := a.templateManager.SetStatus(ctx, buildID, dbtypes.BuildStatusGroupFailed, &templatemanagergrpc.TemplateBuildStatusReason{
 				Message: "cancelled by admin",
 			})
