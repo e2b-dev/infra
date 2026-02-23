@@ -28,11 +28,11 @@ func getTeamPlanLimit(team *typesteam.Team) time.Duration {
 // clampAutoResumeTimeout applies the auto-resume floor and team plan cap.
 func clampAutoResumeTimeout(requestedTimeout, teamPlanLimit time.Duration) time.Duration {
 	timeout := requestedTimeout
-	if timeout < minAutoResumeTimeout {
-		timeout = minAutoResumeTimeout
-	}
 	if teamPlanLimit > 0 && timeout > teamPlanLimit {
 		timeout = teamPlanLimit
+	}
+	if timeout < minAutoResumeTimeout {
+		timeout = minAutoResumeTimeout
 	}
 
 	return timeout
