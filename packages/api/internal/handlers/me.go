@@ -4,27 +4,21 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 )
 
 func (a *APIStore) GetMe(c *gin.Context) {
-	var tokenInfo api.TokenInfo
-
 	teamInfo := a.GetTeamInfo(c)
-	userID := a.GetUserID(c)
-
-	switch {
-	case teamInfo != nil:
-		tokenInfo.TeamID = &teamInfo.ID
-		tokenInfo.TeamName = &teamInfo.Name
-	case userID != uuid.Nil:
-		tokenInfo.UserID = &userID
-	default:
+	if teamInfo == nil {
 		a.sendAPIStoreError(c, http.StatusUnauthorized, "no credentials found")
 
 		return
+	}
+
+	tokenInfo := api.TokenInfo{
+		TeamID:   &teamInfo.ID,
+		TeamName: &teamInfo.Name,
 	}
 
 	c.JSON(200, tokenInfo)

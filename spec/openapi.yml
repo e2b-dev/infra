@@ -156,10 +156,6 @@ components:
     TokenInfo:
       type: object
       properties:
-        userID:
-          type: string
-          format: uuid
-          description: Identifier of the user
         teamID:
           type: string
           format: uuid
