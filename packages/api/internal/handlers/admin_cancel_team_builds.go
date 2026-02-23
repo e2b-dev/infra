@@ -23,7 +23,7 @@ func (a *APIStore) PostAdminTeamsTeamIDBuildsCancel(c *gin.Context, teamID uuid.
 
 	logger.L().Info(ctx, "Admin cancelling all builds for team", logger.WithTeamID(teamID.String()))
 
-	builds, err := a.sqlcDB.GetInProgressTemplateBuildsByTeam(ctx, teamID)
+	builds, err := a.sqlcDB.GetCancellableTemplateBuildsByTeam(ctx, teamID)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to get builds")
 
@@ -43,13 +43,13 @@ func (a *APIStore) PostAdminTeamsTeamIDBuildsCancel(c *gin.Context, teamID uuid.
 
 	for _, b := range builds {
 		wg.Go(func() error {
-			buildID := b.EnvBuild.ID
-			templateID := b.Env.ID
-			clusterID := clusters.WithClusterFallback(b.Env.ClusterID)
+			buildID := b.BuildID
+			templateID := b.TemplateID
+			clusterID := clusters.WithClusterFallback(b.ClusterID)
 
 			// Stop the build on the orchestrator node if it's running
-			if b.EnvBuild.ClusterNodeID != nil {
-				deleteErr := a.templateManager.DeleteBuild(ctx, buildID, templateID, clusterID, *b.EnvBuild.ClusterNodeID)
+			if b.ClusterNodeID != nil {
+				deleteErr := a.templateManager.DeleteBuild(ctx, buildID, templateID, clusterID, *b.ClusterNodeID)
 				if deleteErr != nil {
 					logger.L().Error(ctx, "Failed to delete build on node",
 						zap.String("buildID", buildID.String()),

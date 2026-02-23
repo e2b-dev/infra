@@ -11,6 +11,48 @@ import (
 	"github.com/google/uuid"
 )
 
+const getCancellableTemplateBuildsByTeam = `-- name: GetCancellableTemplateBuildsByTeam :many
+SELECT DISTINCT ON (b.id) b.id as build_id, e.id as template_id, e.cluster_id, b.cluster_node_id
+FROM public.env_builds b
+JOIN public.env_build_assignments eba ON eba.build_id = b.id
+JOIN public.envs e ON e.id = eba.env_id
+WHERE e.team_id = $1 AND b.status_group IN ('pending', 'in_progress')
+  AND e.source = 'template'
+ORDER BY b.id, b.created_at DESC
+`
+
+type GetCancellableTemplateBuildsByTeamRow struct {
+	BuildID       uuid.UUID
+	TemplateID    string
+	ClusterID     *uuid.UUID
+	ClusterNodeID *string
+}
+
+func (q *Queries) GetCancellableTemplateBuildsByTeam(ctx context.Context, teamID uuid.UUID) ([]GetCancellableTemplateBuildsByTeamRow, error) {
+	rows, err := q.db.Query(ctx, getCancellableTemplateBuildsByTeam, teamID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetCancellableTemplateBuildsByTeamRow
+	for rows.Next() {
+		var i GetCancellableTemplateBuildsByTeamRow
+		if err := rows.Scan(
+			&i.BuildID,
+			&i.TemplateID,
+			&i.ClusterID,
+			&i.ClusterNodeID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getInProgressTemplateBuilds = `-- name: GetInProgressTemplateBuilds :many
 SELECT DISTINCT ON (b.id) t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t.blocked_reason, t.cluster_id, t.slug, e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count, e.last_spawned_at, e.team_id, e.created_by, e.cluster_id, e.source, b.id, b.created_at, b.updated_at, b.finished_at, b.status, b.dockerfile, b.start_cmd, b.vcpu, b.ram_mb, b.free_disk_size_mb, b.total_disk_size_mb, b.kernel_version, b.firecracker_version, b.env_id, b.envd_version, b.ready_cmd, b.cluster_node_id, b.reason, b.version, b.cpu_architecture, b.cpu_family, b.cpu_model, b.cpu_model_name, b.cpu_flags, b.status_group, b.team_id
 FROM public.env_builds b
@@ -97,71 +139,27 @@ func (q *Queries) GetInProgressTemplateBuilds(ctx context.Context) ([]GetInProgr
 }
 
 const getInProgressTemplateBuildsByTeam = `-- name: GetInProgressTemplateBuildsByTeam :many
-SELECT DISTINCT ON (b.id) e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count, e.last_spawned_at, e.team_id, e.created_by, e.cluster_id, e.source, b.id, b.created_at, b.updated_at, b.finished_at, b.status, b.dockerfile, b.start_cmd, b.vcpu, b.ram_mb, b.free_disk_size_mb, b.total_disk_size_mb, b.kernel_version, b.firecracker_version, b.env_id, b.envd_version, b.ready_cmd, b.cluster_node_id, b.reason, b.version, b.cpu_architecture, b.cpu_family, b.cpu_model, b.cpu_model_name, b.cpu_flags, b.status_group, b.team_id
+SELECT DISTINCT ON (b.id) e.id as template_id
 FROM public.env_builds b
 JOIN public.env_build_assignments eba ON eba.build_id = b.id
 JOIN public.envs e ON e.id = eba.env_id
-WHERE e.team_id = $1 AND b.status_group IN ('pending', 'in_progress')
-  AND e.source = 'template'
+WHERE e.team_id = $1 AND b.status_group IN ('pending', 'in_progress') AND e.source = 'template'
 ORDER BY b.id, b.created_at DESC
 `
 
-type GetInProgressTemplateBuildsByTeamRow struct {
-	Env      Env
-	EnvBuild EnvBuild
-}
-
-func (q *Queries) GetInProgressTemplateBuildsByTeam(ctx context.Context, teamID uuid.UUID) ([]GetInProgressTemplateBuildsByTeamRow, error) {
+func (q *Queries) GetInProgressTemplateBuildsByTeam(ctx context.Context, teamID uuid.UUID) ([]string, error) {
 	rows, err := q.db.Query(ctx, getInProgressTemplateBuildsByTeam, teamID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []GetInProgressTemplateBuildsByTeamRow
+	var items []string
 	for rows.Next() {
-		var i GetInProgressTemplateBuildsByTeamRow
-		if err := rows.Scan(
-			&i.Env.ID,
-			&i.Env.CreatedAt,
-			&i.Env.UpdatedAt,
-			&i.Env.Public,
-			&i.Env.BuildCount,
-			&i.Env.SpawnCount,
-			&i.Env.LastSpawnedAt,
-			&i.Env.TeamID,
-			&i.Env.CreatedBy,
-			&i.Env.ClusterID,
-			&i.Env.Source,
-			&i.EnvBuild.ID,
-			&i.EnvBuild.CreatedAt,
-			&i.EnvBuild.UpdatedAt,
-			&i.EnvBuild.FinishedAt,
-			&i.EnvBuild.Status,
-			&i.EnvBuild.Dockerfile,
-			&i.EnvBuild.StartCmd,
-			&i.EnvBuild.Vcpu,
-			&i.EnvBuild.RamMb,
-			&i.EnvBuild.FreeDiskSizeMb,
-			&i.EnvBuild.TotalDiskSizeMb,
-			&i.EnvBuild.KernelVersion,
-			&i.EnvBuild.FirecrackerVersion,
-			&i.EnvBuild.EnvID,
-			&i.EnvBuild.EnvdVersion,
-			&i.EnvBuild.ReadyCmd,
-			&i.EnvBuild.ClusterNodeID,
-			&i.EnvBuild.Reason,
-			&i.EnvBuild.Version,
-			&i.EnvBuild.CpuArchitecture,
-			&i.EnvBuild.CpuFamily,
-			&i.EnvBuild.CpuModel,
-			&i.EnvBuild.CpuModelName,
-			&i.EnvBuild.CpuFlags,
-			&i.EnvBuild.StatusGroup,
-			&i.EnvBuild.TeamID,
-		); err != nil {
+		var template_id string
+		if err := rows.Scan(&template_id); err != nil {
 			return nil, err
 		}
-		items = append(items, i)
+		items = append(items, template_id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
