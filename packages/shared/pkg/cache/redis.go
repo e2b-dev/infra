@@ -124,15 +124,7 @@ func (rc *RedisCache[V]) GetOrSet(ctx context.Context, key string, dataCallback 
 				zap.String("key", key),
 				zap.Error(lockErr))
 		}
-		if lock != nil {
-			defer func() {
-				if err := lock.Release(context.WithoutCancel(ctx)); err != nil {
-					logger.L().Warn(ctx, "RedisCache: failed to release lock",
-						zap.String("key", key),
-						zap.Error(err))
-				}
-			}()
-		}
+		defer rc.releaseLock(context.WithoutCancel(ctx), lock, key)
 
 		// Double-check Redis (another goroutine may have populated it)
 		if v, _, redisErr := rc.getFromRedis(ctx, key); redisErr == nil {
@@ -311,15 +303,7 @@ func (rc *RedisCache[V]) refreshRedis(ctx context.Context, key string, dataCallb
 
 			return nil, nil
 		}
-		if lock != nil {
-			defer func() {
-				if err := lock.Release(context.WithoutCancel(ctx)); err != nil {
-					logger.L().Debug(ctx, "RedisCache: failed to release refresh lock",
-						zap.String("key", key),
-						zap.Error(err))
-				}
-			}()
-		}
+		defer rc.releaseLock(context.WithoutCancel(ctx), lock, key)
 
 		ctx, cancel := context.WithTimeout(ctx, rc.config.RefreshTimeout)
 		defer cancel()
@@ -342,6 +326,22 @@ func (rc *RedisCache[V]) refreshRedis(ctx context.Context, key string, dataCallb
 
 		return nil, nil
 	})
+}
+
+// releaseLock releases a distributed Redis lock. Logs on failure but does not return an error.
+func (rc *RedisCache[V]) releaseLock(ctx context.Context, lock *redislock.Lock, key string) {
+	if lock == nil {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, rc.config.RedisTimeout)
+	defer cancel()
+
+	if err := lock.Release(ctx); err != nil {
+		logger.L().Warn(ctx, "RedisCache: failed to release lock",
+			zap.String("key", key),
+			zap.Error(err))
+	}
 }
 
 // acquireLock attempts to acquire a distributed Redis lock for the given key.

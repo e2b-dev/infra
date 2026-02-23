@@ -461,7 +461,7 @@ func TestRedisCache_Lock_PreventsParallelCallbacks(t *testing.T) {
 
 	var callCount atomic.Int32
 	expected := testValue{ID: "locked", Name: "LockedValue"}
-	callback := func(_ context.Context, _ string) (testValue, error) {
+	callback := func(_ context.Context, _ string) (testValue, error) { //nolint:unparam
 		callCount.Add(1)
 		// Simulate slow data fetch so the second instance has time to acquire (and wait for) the lock
 		time.Sleep(200 * time.Millisecond)
