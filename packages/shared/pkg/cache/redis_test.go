@@ -100,7 +100,7 @@ func TestRedisCache_RedisErrorFallthrough(t *testing.T) {
 	t.Parallel()
 	// Use a client pointing to a non-existent Redis
 	badClient := redis.NewClient(&redis.Options{
-		Addr:        "localhost:1", // invalid port
+		Addr:        "127.0.0.1:1", // invalid port, use IP to avoid DNS lookup
 		DialTimeout: 100 * time.Millisecond,
 	})
 	defer badClient.Close()
@@ -286,7 +286,7 @@ func TestRedisCache_RedisRefresh_UpdatesRedis(t *testing.T) {
 	// Populate Redis with a stale entry
 	data, err := json.Marshal(staleValue)
 	require.NoError(t, err)
-	remainingTTL := redisTTL - refreshInterval - 50*time.Millisecond
+	remainingTTL := redisTTL - refreshInterval - 100*time.Millisecond
 	err = redisClient.Set(t.Context(), rc.RedisKey(key), data, remainingTTL).Err()
 	require.NoError(t, err)
 
@@ -529,11 +529,15 @@ func TestRedisCache_Lock_Disabled(t *testing.T) {
 	t.Parallel()
 	redisClient := redis_utils.SetupInstance(t)
 
-	// LockTTL=0 means no locking
-	rc := newTestRedisCache(t, redisClient)
+	rc := NewRedisCache(RedisConfig[testValue]{
+		TTL:         30 * time.Second,
+		RedisClient: redisClient,
+		RedisPrefix: fmt.Sprintf("test:%s", t.Name()),
+		LockTTL:     RedisLockOff,
+	})
 	defer rc.Close(t.Context())
 
-	assert.Nil(t, rc.lockClient, "lockClient should be nil when LockTTL is 0")
+	assert.Nil(t, rc.lockClient, "lockClient should be nil when LockTTL is RedisLockOff")
 
 	expected := testValue{ID: "no-lock", Name: "NoLock"}
 
