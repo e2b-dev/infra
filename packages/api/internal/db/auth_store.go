@@ -9,7 +9,6 @@ import (
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 )
 
-// AuthStoreImpl implements sharedauth.AuthStore[*types.Team] using the auth DB client.
 type AuthStoreImpl struct {
 	authDB *authdb.Client
 }
