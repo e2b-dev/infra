@@ -1777,7 +1777,7 @@ paths:
         - AccessTokenAuth: []
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
+        - Supabase2TeamAuth: []
       responses:
         "200":
           description: User is authenticated
