@@ -220,8 +220,7 @@ func (o *Orchestrator) CreateSandbox(
 			Policy: policy,
 		}
 		if autoResume.StartingTimeout != nil && *autoResume.StartingTimeout > 0 {
-			startingTimeoutSeconds := int64(autoResume.StartingTimeout.Seconds())
-			orchAutoResume.StartingTimeoutSeconds = &startingTimeoutSeconds
+			orchAutoResume.StartingTimeoutSeconds = autoResume.StartingTimeout
 		}
 	}
 

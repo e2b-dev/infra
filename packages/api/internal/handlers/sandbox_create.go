@@ -147,7 +147,8 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	if autoResume != nil {
 		startingTimeout, ok := calculateTimeout(timeout, teamInfo)
 		if ok {
-			autoResume.StartingTimeout = &startingTimeout
+			startingTimeoutSeconds := int64(startingTimeout.Seconds())
+			autoResume.StartingTimeout = &startingTimeoutSeconds
 		}
 	}
 
