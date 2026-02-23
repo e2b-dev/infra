@@ -86,11 +86,6 @@ func (c *TemplateCache) GetByID(ctx context.Context, templateID string) (*AliasI
 	return c.aliasCache.LookupByID(ctx, templateID)
 }
 
-// GetTemplateMetadata returns mutable metadata for a template (public, clusterID).
-func (c *TemplateCache) GetTemplateMetadata(ctx context.Context, templateID string) (*TemplateMetadata, error) {
-	return c.metadataCache.Get(ctx, templateID)
-}
-
 // ResolveAliasWithMetadata chains alias resolution with metadata lookup.
 func (c *TemplateCache) ResolveAliasWithMetadata(ctx context.Context, identifier string, namespaceFallback string) (*AliasInfo, *TemplateMetadata, error) {
 	aliasInfo, err := c.aliasCache.Resolve(ctx, identifier, namespaceFallback)

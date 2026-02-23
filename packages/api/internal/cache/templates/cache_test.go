@@ -100,7 +100,7 @@ func TestTemplateCache_InvalidateAllTagsAlsoInvalidatesMetadata(t *testing.T) {
 	defer tc.Close(ctx)
 
 	// Populate metadata cache
-	_, err := tc.GetTemplateMetadata(ctx, templateID)
+	_, err := tc.metadataCache.Get(ctx, templateID)
 	require.NoError(t, err)
 
 	// Verify metadata key exists in Redis
