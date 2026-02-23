@@ -28,6 +28,7 @@ const (
 	redisScanCount = 100
 
 	defaultLockRetryInterval = 50 * time.Millisecond
+	acquireLockTimeout       = 5 * time.Second
 )
 
 // RedisConfig holds the configuration for a RedisCache.
@@ -348,7 +349,7 @@ func (rc *RedisCache[V]) acquireLock(ctx context.Context, key string, retry redi
 		return nil, nil
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, rc.config.TTL)
+	ctx, cancel := context.WithTimeout(ctx, acquireLockTimeout)
 	defer cancel()
 
 	lockKey := redis_utils.GetLockKey(rc.RedisKey(key))
