@@ -1,6 +1,6 @@
 package auth
 
-import sharedauth "github.com/e2b-dev/infra/packages/shared/pkg/auth"
+import sharedauth "github.com/e2b-dev/infra/packages/auth/pkg/auth"
 
 const (
 	TeamContextKey   = "team"

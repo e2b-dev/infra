@@ -7,10 +7,10 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/api/internal/db/types"
+	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
-	sharedauth "github.com/e2b-dev/infra/packages/shared/pkg/auth"
+	sharedauth "github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -30,34 +30,4 @@ func validateTeamUsage(team authqueries.Team) error {
 	}
 
 	return nil
-}
-
-func GetTeamAuth(ctx context.Context, db *authdb.Client, apiKey string) (*types.Team, error) {
-	ctx, span := tracer.Start(ctx, "get team auth")
-	defer span.End()
-
-	result, err := db.Read.GetTeamWithTierByAPIKey(ctx, apiKey)
-	if err != nil {
-		errMsg := fmt.Errorf("failed to get team from API key: %w", err)
-
-		return nil, errMsg
-	}
-
-	err = validateTeamUsage(result.Team)
-	if err != nil {
-		return nil, err
-	}
-
-	go func() {
-		// Run the update in a separate context to avoid an extra latency
-		ctx := context.WithoutCancel(ctx)
-		updateErr := db.Write.UpdateLastTimeUsed(ctx, apiKey)
-		if updateErr != nil {
-			logger.L().Error(ctx, "failed to update last time used", zap.Error(updateErr))
-		}
-	}()
-
-	team := types.NewTeam(&result.Team, &result.TeamLimit)
-
-	return team, nil
 }

@@ -13,7 +13,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	dbapi "github.com/e2b-dev/infra/packages/api/internal/db"
-	"github.com/e2b-dev/infra/packages/api/internal/db/types"
+	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	templatemanager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
