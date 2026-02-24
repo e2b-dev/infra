@@ -13,12 +13,12 @@ job "dashboard-api" {
     }
 
     network {
-      port "dashboard-api" {}
+      port "api" {}
     }
 
     service {
       name = "dashboard-api"
-      port = "dashboard-api"
+      port = "api"
       task = "start"
 
       tags = [
@@ -36,7 +36,7 @@ job "dashboard-api" {
         path     = "/health"
         interval = "3s"
         timeout  = "3s"
-        port     = "dashboard-api"
+        port     = "api"
       }
     }
 
@@ -74,7 +74,7 @@ job "dashboard-api" {
         GIN_MODE                               = "release"
         ENVIRONMENT                            = "${environment}"
         NODE_ID                                = "$${node.unique.id}"
-        PORT                                   = "$${NOMAD_PORT_dashboard_api}"
+        PORT                                   = "$${NOMAD_PORT_api}"
         POSTGRES_CONNECTION_STRING             = "${postgres_connection_string}"
         AUTH_DB_CONNECTION_STRING              = "${auth_db_connection_string}"
         AUTH_DB_READ_REPLICA_CONNECTION_STRING = "${auth_db_read_replica_connection_string}"
@@ -87,7 +87,7 @@ job "dashboard-api" {
       config {
         network_mode = "host"
         image        = "${image_name}"
-        ports        = ["dashboard-api"]
+        ports        = ["api"]
       }
     }
   }
