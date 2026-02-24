@@ -206,17 +206,19 @@ flowchart TD
 
 1. **NFS cache passthrough for uncompressed `GetFrame`**: currently `cache.GetFrame` with `ft=nil` delegates directly to `c.inner.GetFrame` (no NFS caching). Compressed frames are NFS-cached in `getFrameCompressed`, but uncompressed `GetFrame` calls bypass NFS. Must fix for parity with main's uncompressed read path.
 
-2. **Per-artifact compression config**: memfile and rootfs have very different compressibility profiles (memfile is mostly sparse/zero, rootfs is filesystem data). The `compress-config` flag should support separate codec, level, and frame size settings per artifact type rather than applying a single config to both.
+2. **Per-artifact compression config**: memfile and rootfs have different runtime requirements. The `compress-config` flag should support separate codec, level, and frame size settings per artifact type rather than applying a single config to both.
 
-3. **Verify `getFrame` timer lifecycle**: audit that `Success()`/`Failure()` is always called on every code path in the storage cache's `getFrameCompressed` and `getFrameUncompressed`. Check for timer leaks on panics or early returns.
+3. **Verify `getFrame` timer lifecycle**: audit that `Success()`/`Failure()` is always called on every code path in the storage cache's `getFrameCompressed` and `getFrameUncompressed`.
+
+4. **Feature flag to disable progressive `GetBlock` reading**: add a flag that bypasses progressive reading/returning in `GetBlock` and falls back to the original whole-block fetch behavior. Useful as a fault-tolerance lever if progressive reads cause issues in production.
 
 ### From `lev-zstd-compression` (Unported)
 
-4. **Storage Provider/Backend layer separation**: decompose `StorageProvider` into distinct Provider (high-level: `FrameGetter`, `FileStorer`, `Blobber`) and Backend (low-level: `Basic`, `RangeGetter`, `MultipartUploaderFactory`) layers. Prerequisite for clean instrumentation wrapping.
+5. **Storage Provider/Backend layer separation**: decompose `StorageProvider` into distinct Provider (high-level: `FrameGetter`, `FileStorer`, `Blobber`) and Backend (low-level: `Basic`, `RangeGetter`, `MultipartUploaderFactory`) layers. Prerequisite for clean instrumentation wrapping.
 
-5. **OTEL instrumentation middleware** (`instrumented_provider.go`, `instrumented_backend.go`): full span and metrics wrapping at both layers. ~400 lines.
+6. **OTEL instrumentation middleware** (`instrumented_provider.go`, `instrumented_backend.go`): full span and metrics wrapping at both layers. ~400 lines.
 
-6. **Test coverage** (~4300 lines total): chunker matrix tests (`chunk_test.go` — concurrent access, decompression stats, cross-chunker coverage), compression round-trip tests (`compress_test.go`), NFS cache with compressed data (`storage_cache_seekable_test.go`), template build upload tests (`template_build_test.go`), and auto-generated mocks (`MockStorageProvider`, `MockFeatureFlagsClient`).
+7. **Test coverage** (~4300 lines total): chunker matrix tests (`chunk_test.go` — concurrent access, decompression stats, cross-chunker coverage), compression round-trip tests (`compress_test.go`), NFS cache with compressed data (`storage_cache_seekable_test.go`), template build upload tests (`template_build_test.go`).
 
 ---
 
