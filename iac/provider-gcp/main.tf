@@ -209,7 +209,6 @@ module "nomad" {
 
   # Dashboard API
   dashboard_api_count = var.dashboard_api_count
-  dashboard_api_port  = var.dashboard_api_port
 
   # Docker reverse proxy
   docker_reverse_proxy_port                = var.docker_reverse_proxy_port
