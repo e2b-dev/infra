@@ -264,28 +264,26 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 		return
 	}
 
-	partNumber := params.Part
-
 	// Reject parts for empty files (no parts expected)
 	if session.NumParts == 0 {
-		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Int("partNumber", partNumber).Msg("upload has no parts (empty file)")
+		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Int("partNumber", params.Part).Msg("upload has no parts (empty file)")
 		jsonError(w, http.StatusBadRequest, fmt.Errorf("upload has no parts (empty file); no part uploads are accepted"))
 
 		return
 	}
 
 	// Check part number is within range
-	if partNumber >= session.NumParts {
-		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Int("partNumber", partNumber).Int("numParts", session.NumParts).Msg("part number out of range")
-		jsonError(w, http.StatusBadRequest, fmt.Errorf("part number %d out of range (expected 0-%d)", partNumber, session.NumParts-1))
+	if params.Part >= session.NumParts {
+		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Int("partNumber", params.Part).Int("numParts", session.NumParts).Msg("part number out of range")
+		jsonError(w, http.StatusBadRequest, fmt.Errorf("part number %d out of range (expected 0-%d)", params.Part, session.NumParts-1))
 
 		return
 	}
 
 	// Calculate offset and expected size for this part
-	offset := int64(partNumber) * session.PartSize
+	offset := int64(params.Part) * session.PartSize
 	expectedSize := session.PartSize
-	if partNumber == session.NumParts-1 {
+	if params.Part == session.NumParts-1 {
 		// Last part may be smaller
 		expectedSize = session.TotalSize - offset
 	}
@@ -301,14 +299,14 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 
 		return
 	}
-	if session.Parts[partNumber] == PartInProgress {
+	if session.Parts[params.Part] == PartInProgress {
 		session.mu.Unlock()
-		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Str("uploadId", uploadId).Int("partNumber", partNumber).Msg("part is already being uploaded by another request")
-		jsonError(w, http.StatusConflict, fmt.Errorf("part %d is already being uploaded by another request for session %s", partNumber, uploadId))
+		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Str("uploadId", uploadId).Int("partNumber", params.Part).Msg("part is already being uploaded by another request")
+		jsonError(w, http.StatusConflict, fmt.Errorf("part %d is already being uploaded by another request for session %s", params.Part, uploadId))
 
 		return
 	}
-	session.Parts[partNumber] = PartInProgress
+	session.Parts[params.Part] = PartInProgress
 	session.wg.Add(1) // Must happen under mu while completed is false to avoid Add/Wait race
 	session.mu.Unlock()
 
@@ -321,7 +319,7 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 	defer func() {
 		if !partWritten {
 			session.mu.Lock()
-			delete(session.Parts, partNumber)
+			delete(session.Parts, params.Part)
 			session.mu.Unlock()
 		}
 	}()
@@ -339,7 +337,7 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 			return
 		}
 		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error writing part data")
-		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error writing part %d data: %w", partNumber, err))
+		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error writing part %d data: %w", params.Part, err))
 
 		return
 	}
@@ -365,18 +363,18 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 	// Then check completed — if the session was finalized mid-write, return 409
 	// but leave the part as PartComplete so Complete's validation sees it.
 	session.mu.Lock()
-	if session.Parts[partNumber] == PartComplete {
+	if session.Parts[params.Part] == PartComplete {
 		a.logger.Warn().
 			Str(string(logs.OperationIDKey), operationID).
 			Str("uploadId", uploadId).
-			Int("partNumber", partNumber).
+			Int("partNumber", params.Part).
 			Msg("overwriting existing part")
 	}
-	session.Parts[partNumber] = PartComplete
+	session.Parts[params.Part] = PartComplete
 	partWritten = true
 	if session.completed.Load() {
 		session.mu.Unlock()
-		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Str("uploadId", uploadId).Int("partNumber", partNumber).Msg("session completed during part upload")
+		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Str("uploadId", uploadId).Int("partNumber", params.Part).Msg("session completed during part upload")
 		jsonError(w, http.StatusConflict, fmt.Errorf("upload session %s was completed or aborted during part upload", uploadId))
 
 		return
@@ -386,7 +384,7 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 	a.logger.Debug().
 		Str(string(logs.OperationIDKey), operationID).
 		Str("uploadId", uploadId).
-		Int("partNumber", partNumber).
+		Int("partNumber", params.Part).
 		Int64("size", written).
 		Int64("offset", offset).
 		Msg("part uploaded")
@@ -394,7 +392,7 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(MultipartUploadPart{
-		PartNumber: partNumber,
+		PartNumber: params.Part,
 		Size:       written,
 	}); err != nil {
 		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("failed to encode response")
