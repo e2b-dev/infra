@@ -50,18 +50,16 @@ func TestCalculateAutoResumeTimeout(t *testing.T) {
 	require.Equal(t, 5*time.Minute, timeout)
 
 	// Persisted values below minimum are floored to the anti-thrash minimum.
-	shortTimeout := int64(20)
 	timeout = calculateAutoResumeTimeout(
-		&dbtypes.SandboxAutoResumeConfig{Timeout: &shortTimeout},
+		&dbtypes.SandboxAutoResumeConfig{Timeout: 20},
 		minTimeout,
 		team,
 	)
 	require.Equal(t, time.Minute, timeout)
 
 	// Persisted values above plan limit are capped by the team limit.
-	longTimeout := int64(7200)
 	timeout = calculateAutoResumeTimeout(
-		&dbtypes.SandboxAutoResumeConfig{Timeout: &longTimeout},
+		&dbtypes.SandboxAutoResumeConfig{Timeout: 7200},
 		minTimeout,
 		team,
 	)

@@ -37,8 +37,8 @@ func calculateTimeout(requestedTimeout, minAutoResumeTimeout time.Duration, team
 
 func calculateAutoResumeTimeout(autoResume *dbtypes.SandboxAutoResumeConfig, minAutoResumeTimeout time.Duration, team *typesteam.Team) time.Duration {
 	timeout := defaultProxyAutoResumeTimeout
-	if autoResume != nil && autoResume.Timeout != nil && *autoResume.Timeout > 0 {
-		timeout = time.Duration(*autoResume.Timeout) * time.Second
+	if autoResume != nil && autoResume.Timeout > 0 {
+		timeout = time.Duration(autoResume.Timeout) * time.Second
 	}
 
 	return clampAutoResumeTimeout(timeout, getTeamPlanLimit(team), minAutoResumeTimeout)
