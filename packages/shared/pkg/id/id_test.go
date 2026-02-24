@@ -275,6 +275,98 @@ func TestValidateAndDeduplicateTags(t *testing.T) {
 	}
 }
 
+func TestValidateSandboxID(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		input   string
+		wantErr bool
+	}{
+		{
+			name:    "canonical sandbox ID",
+			input:   "i1a2b3c4d5e6f7g8h9j0k",
+			wantErr: false,
+		},
+		{
+			name:    "short alphanumeric",
+			input:   "abc123",
+			wantErr: false,
+		},
+		{
+			name:    "all digits",
+			input:   "1234567890",
+			wantErr: false,
+		},
+		{
+			name:    "all lowercase letters",
+			input:   "abcdefghijklmnopqrst",
+			wantErr: false,
+		},
+		{
+			name:    "invalid - empty",
+			input:   "",
+			wantErr: true,
+		},
+		{
+			name:    "invalid - contains colon (Redis separator)",
+			input:   "abc:def",
+			wantErr: true,
+		},
+		{
+			name:    "invalid - contains open brace (Redis hash slot)",
+			input:   "abc{def",
+			wantErr: true,
+		},
+		{
+			name:    "invalid - contains close brace (Redis hash slot)",
+			input:   "abc}def",
+			wantErr: true,
+		},
+		{
+			name:    "invalid - contains newline",
+			input:   "abc\ndef",
+			wantErr: true,
+		},
+		{
+			name:    "invalid - contains space",
+			input:   "abc def",
+			wantErr: true,
+		},
+		{
+			name:    "invalid - contains hyphen",
+			input:   "abc-def",
+			wantErr: true,
+		},
+		{
+			name:    "invalid - contains uppercase",
+			input:   "abcDEF",
+			wantErr: true,
+		},
+		{
+			name:    "invalid - contains slash",
+			input:   "abc/def",
+			wantErr: true,
+		},
+		{
+			name:    "invalid - contains null byte",
+			input:   "abc\x00def",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := ValidateSandboxID(tt.input)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidateSandboxID(%q) error = %v, wantErr %v", tt.input, err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestValidateNamespaceMatchesTeam(t *testing.T) {
 	t.Parallel()
 

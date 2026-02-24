@@ -78,7 +78,14 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 	sandboxID string,
 ) {
 	ctx := c.Request.Context()
-	sandboxID = utils.ShortID(sandboxID)
+
+	var err error
+	sandboxID, err = utils.ShortID(sandboxID)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid sandbox ID")
+
+		return
+	}
 
 	team := c.Value(auth.TeamContextKey).(*types.Team)
 	teamID := team.ID

@@ -33,7 +33,16 @@ func (a *APIStore) getSandboxesMetrics(
 	defer span.End()
 
 	for i, id := range sandboxIDs {
-		sandboxIDs[i] = utils.ShortID(id)
+		short, err := utils.ShortID(id)
+		if err != nil {
+			return nil, &api.APIError{
+				Code:      http.StatusBadRequest,
+				ClientMsg: "Invalid sandbox ID",
+				Err:       err,
+			}
+		}
+
+		sandboxIDs[i] = short
 	}
 
 	telemetry.SetAttributes(ctx,
