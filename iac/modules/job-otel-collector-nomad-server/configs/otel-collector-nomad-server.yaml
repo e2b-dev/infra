@@ -129,7 +129,7 @@ extensions:
   health_check:
     endpoint: 0.0.0.0:13134
 exporters:
-  otlphttp/grafana_cloud:
+  otlp_http/grafana_cloud:
     # https://github.com/open-telemetry/opentelemetry-collector/tree/main/exporter/otlpexporter
     endpoint: "${grafana_otlp_url}/otlp"
     auth:
@@ -151,4 +151,4 @@ service:
         - transform/set-name
         - batch
       exporters:
-        - otlphttp/grafana_cloud
+        - otlp_http/grafana_cloud

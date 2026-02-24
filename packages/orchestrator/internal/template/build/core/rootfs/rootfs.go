@@ -22,6 +22,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -34,11 +35,11 @@ var files embed.FS
 var fileTemplates = template.Must(template.ParseFS(files, "files/*"))
 
 const (
-	// Max size of the rootfs file in MB.
-	maxRootfsSize = 25000 << constants.ToMBShift
-
 	BusyBoxPath     = "usr/bin/busybox"
 	BusyBoxInitPath = "usr/bin/init"
+
+	// SandboxBusyBoxPath is the absolute path to busybox inside the sandbox.
+	SandboxBusyBoxPath = "/" + BusyBoxPath
 
 	ProvisioningExitPrefix = "E2B_PROVISIONING_EXIT:"
 )
@@ -47,6 +48,7 @@ type Rootfs struct {
 	buildContext        buildcontext.BuildContext
 	artifactRegistry    artifactsregistry.ArtifactsRegistry
 	dockerhubRepository dockerhub.RemoteRepository
+	featureFlags        *featureflags.Client
 }
 
 type MultiWriter struct {
@@ -68,11 +70,13 @@ func New(
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
 	dockerhubRepository dockerhub.RemoteRepository,
 	buildContext buildcontext.BuildContext,
+	featureFlags *featureflags.Client,
 ) *Rootfs {
 	return &Rootfs{
 		buildContext:        buildContext,
 		artifactRegistry:    artifactRegistry,
 		dockerhubRepository: dockerhubRepository,
+		featureFlags:        featureFlags,
 	}
 }
 
@@ -127,6 +131,7 @@ func (r *Rootfs) CreateExt4Filesystem(
 	telemetry.ReportEvent(childCtx, "set up filesystem")
 
 	l.Info(ctx, "Creating file system and pulling Docker image")
+	maxRootfsSize := int64(r.featureFlags.IntFlag(ctx, featureflags.BuildBaseRootfsSizeLimitMB)) << constants.ToMBShift
 	ext4Size, err := oci.ToExt4(ctx, l, img, rootfsPath, maxRootfsSize, template.RootfsBlockSize())
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error converting oci to ext4: %w", err)

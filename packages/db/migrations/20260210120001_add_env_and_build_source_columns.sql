@@ -43,6 +43,8 @@ BEGIN
         GET DIAGNOSTICS affected = ROW_COUNT;
         COMMIT;
         EXIT WHEN affected = 0;
+        RAISE NOTICE 'backfill_env_source: updated % rows, sleeping 10s before next batch...', affected;
+        PERFORM pg_sleep(10);
     END LOOP;
 END;
 $$ LANGUAGE plpgsql;

@@ -1,14 +1,13 @@
 package handlers
 
 import (
-	"errors"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/hyperloopserver/contracts"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/apierrors"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -35,11 +34,5 @@ func NewHyperloopStore(logger logger.Logger, sandboxes *sandbox.Map, sandboxColl
 }
 
 func (h *APIStore) sendAPIStoreError(c *gin.Context, code int, message string) {
-	apiErr := contracts.Error{
-		Code:    int32(code),
-		Message: message,
-	}
-
-	c.Error(errors.New(message))
-	c.JSON(code, apiErr)
+	apierrors.SendAPIStoreError(c, code, message)
 }

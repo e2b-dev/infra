@@ -11,8 +11,8 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
-	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/team"
+	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
@@ -274,7 +274,7 @@ func RegisterBuild(
 				}
 			}
 
-			aliases, err := client.DeleteOtherTemplateAliases(ctx, data.TemplateID)
+			aliasKeys, err := client.DeleteOtherTemplateAliases(ctx, data.TemplateID)
 			if err != nil {
 				telemetry.ReportCriticalError(ctx, "error when deleting template alias", err, attribute.String("alias", alias))
 
@@ -285,9 +285,9 @@ func RegisterBuild(
 				}
 			}
 
-			count := len(aliases)
-			if count > 0 {
-				telemetry.ReportEvent(ctx, "deleted old aliases", attribute.Int("env.alias.count", count))
+			templateCache.InvalidateAliasesByTemplateID(context.WithoutCancel(ctx), data.TemplateID, aliasKeys)
+			for _, key := range aliasKeys {
+				telemetry.ReportEvent(ctx, "deleted old alias", attribute.String("env.alias", key))
 			}
 
 			err = client.

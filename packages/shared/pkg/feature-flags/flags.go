@@ -159,6 +159,9 @@ var (
 	// SandboxMaxIncomingConnections is the maximum number of concurrent HTTP proxy
 	// connections allowed per sandbox. Negative means no limit.
 	SandboxMaxIncomingConnections = newIntFlag("sandbox-max-incoming-connections", -1)
+
+	// BuildBaseRootfsSizeLimitMB is the maximum size of the base rootfs filesystem created from the OCI image, in MB.
+	BuildBaseRootfsSizeLimitMB = newIntFlag("build-base-rootfs-size-limit-mb", 25000)
 )
 
 type StringFlag struct {

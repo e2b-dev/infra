@@ -54,7 +54,7 @@ services:
       - ./mimir.yaml:/etc/mimir/mimir.yaml:z
 
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.135.0
+    image: otel/opentelemetry-collector-contrib:0.146.0
     volumes:
       - ./otel-collector.yaml:/etc/otelcol-contrib/config.yaml:z
     ports:
