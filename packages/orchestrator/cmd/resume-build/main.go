@@ -621,16 +621,20 @@ func (r *runner) pauseOnce(ctx context.Context, opts pauseOptions, verbose bool)
 
 	// Only upload when not in benchmark mode (verbose = true means single run)
 	if verbose {
-		templateFiles := storage.TemplateFiles{BuildID: opts.newBuildID}
+		tb, err := sandbox.NewTemplateBuild(snapshot, r.storage, storage.TemplateFiles{BuildID: opts.newBuildID}, nil, nil)
+		if err != nil {
+			return timings, fmt.Errorf("failed to create template build: %w", err)
+		}
+
 		if opts.isRemoteStorage {
 			fmt.Println("📤 Uploading snapshot...")
-			if err := snapshot.Upload(ctx, r.storage, templateFiles, nil); err != nil {
+			if err := tb.UploadAll(ctx); err != nil {
 				return timings, fmt.Errorf("failed to upload snapshot: %w", err)
 			}
 			fmt.Println("✅ Snapshot uploaded successfully")
 		} else {
 			fmt.Println("💾 Saving snapshot to local storage...")
-			if err := snapshot.Upload(ctx, r.storage, templateFiles, nil); err != nil {
+			if err := tb.UploadAll(ctx); err != nil {
 				return timings, fmt.Errorf("failed to save snapshot: %w", err)
 			}
 			fmt.Println("✅ Snapshot saved successfully")

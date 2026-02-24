@@ -15,13 +15,11 @@ type PendingFrameTables struct {
 	tables sync.Map // key: "buildId/fileType", value: *storage.FrameTable
 }
 
-// Key builds the lookup key for a frame table: "buildId/fileType".
-func PendingFrameTableKey(buildID, fileType string) string {
+func pendingFrameTableKey(buildID, fileType string) string {
 	return buildID + "/" + fileType
 }
 
-// Add stores a frame table for the given object key.
-func (p *PendingFrameTables) Add(key string, ft *storage.FrameTable) {
+func (p *PendingFrameTables) add(key string, ft *storage.FrameTable) {
 	if ft == nil {
 		return
 	}
@@ -29,8 +27,7 @@ func (p *PendingFrameTables) Add(key string, ft *storage.FrameTable) {
 	p.tables.Store(key, ft)
 }
 
-// Get retrieves a stored frame table by key. Returns nil if not found.
-func (p *PendingFrameTables) Get(key string) *storage.FrameTable {
+func (p *PendingFrameTables) get(key string) *storage.FrameTable {
 	v, ok := p.tables.Load(key)
 	if !ok {
 		return nil
@@ -39,17 +36,14 @@ func (p *PendingFrameTables) Get(key string) *storage.FrameTable {
 	return v.(*storage.FrameTable)
 }
 
-// ApplyToHeader applies stored frame tables to header mappings for a given file type.
-// For each mapping in the header, it looks up the frame table by "mappingBuildId/fileType"
-// and calls mapping.AddFrames(ft).
-func (p *PendingFrameTables) ApplyToHeader(h *header.Header, fileType string) error {
+func (p *PendingFrameTables) applyToHeader(h *header.Header, fileType string) error {
 	if h == nil {
 		return nil
 	}
 
 	for _, mapping := range h.Mapping {
-		key := PendingFrameTableKey(mapping.BuildId.String(), fileType)
-		ft := p.Get(key)
+		key := pendingFrameTableKey(mapping.BuildId.String(), fileType)
+		ft := p.get(key)
 
 		if ft == nil {
 			continue

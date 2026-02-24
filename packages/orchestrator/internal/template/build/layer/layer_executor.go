@@ -285,14 +285,19 @@ func (lb *LayerExecutor) PauseAndUpload(
 	userLogger.Debug(ctx, fmt.Sprintf("Saving: %s", meta.Template.BuildID))
 
 	// Pipeline per layer:
-	//  1. Upload data files (uncompressed + compressed) — parallel across layers
-	//  2. Register this layer's frame tables in shared pending
-	//  3. Wait for previous layers to complete (data + headers)
-	//  4. Finalize compressed headers — all upstream FTs now available
-	//  5. Signal complete, save cache index
+	//  1. Upload all files (uncompressed + compressed, except the V4 headers) — parallel across layers
+	//  2. Wait for previous layers to complete (data + headers)
+	//  3. Finalize compressed headers — all upstream FTs now available
+	//  4. Signal complete, save cache index
 	completeUpload, waitForPreviousUploads := lb.uploadTracker.StartUpload()
-	pending := lb.uploadTracker.Pending()
 	buildID := meta.Template.BuildID
+
+	tb, err := sandbox.NewTemplateBuild(snapshot, lb.templateStorage, storage.TemplateFiles{BuildID: buildID}, lb.featureFlags, lb.uploadTracker.Pending())
+	if err != nil {
+		completeUpload()
+
+		return fmt.Errorf("error creating template build: %w", err)
+	}
 
 	lb.UploadErrGroup.Go(func() error {
 		ctx := context.WithoutCancel(ctx)
@@ -303,32 +308,19 @@ func (lb *LayerExecutor) PauseAndUpload(
 		defer completeUpload()
 
 		// Step 1: Upload everything except V4 headers (parallel across layers)
-		templateBuild, memFT, rootFT, err := snapshot.UploadLayerExceptV4Headers(
-			ctx,
-			lb.templateStorage,
-			storage.TemplateFiles{BuildID: buildID},
-			lb.featureFlags,
-		)
+		hasCompressed, err := tb.UploadExceptV4Headers(ctx)
 		if err != nil {
 			return fmt.Errorf("error uploading data files: %w", err)
 		}
 
-		// Step 2: Register this layer's frame tables
-		if memFT != nil {
-			pending.Add(sandbox.PendingFrameTableKey(buildID, storage.MemfileName), memFT)
-		}
-		if rootFT != nil {
-			pending.Add(sandbox.PendingFrameTableKey(buildID, storage.RootfsName), rootFT)
-		}
-
-		// Step 3: Wait for all previous layers (data + headers) to complete
+		// Step 2: Wait for all previous layers (data + headers) to complete
 		if err := waitForPreviousUploads(ctx); err != nil {
 			return fmt.Errorf("error waiting for previous uploads: %w", err)
 		}
 
-		// Step 4: Finalize V4 compressed headers — all upstream FTs are now in pending
-		if memFT != nil || rootFT != nil {
-			if err := templateBuild.UploadCompressedHeaders(ctx, pending); err != nil {
+		// Step 3: Finalize V4 compressed headers — all upstream FTs are now in pending
+		if hasCompressed {
+			if err := tb.UploadV4Header(ctx); err != nil {
 				return fmt.Errorf("error uploading compressed headers: %w", err)
 			}
 		}
