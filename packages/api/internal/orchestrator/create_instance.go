@@ -219,8 +219,8 @@ func (o *Orchestrator) CreateSandbox(
 		orchAutoResume = &orchestrator.SandboxAutoResumeConfig{
 			Policy: policy,
 		}
-		if autoResume.StartingTimeout != nil && *autoResume.StartingTimeout > 0 {
-			orchAutoResume.StartingTimeoutSeconds = autoResume.StartingTimeout
+		if autoResume.Timeout != nil && *autoResume.Timeout > 0 {
+			orchAutoResume.TimeoutSeconds = autoResume.Timeout
 		}
 	}
 

@@ -84,9 +84,9 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
 			autoResume = &types.SandboxAutoResumeConfig{
 				Policy: types.SandboxAutoResumePolicy(p),
 			}
-			if autoResumeCfg.GetStartingTimeoutSeconds() > 0 {
-				startingTimeoutSeconds := autoResumeCfg.GetStartingTimeoutSeconds()
-				autoResume.StartingTimeout = &startingTimeoutSeconds
+			if autoResumeCfg.GetTimeoutSeconds() > 0 {
+				timeoutSeconds := autoResumeCfg.GetTimeoutSeconds()
+				autoResume.Timeout = &timeoutSeconds
 			}
 		}
 

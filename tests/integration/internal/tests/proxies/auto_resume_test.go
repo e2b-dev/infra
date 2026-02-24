@@ -165,7 +165,7 @@ func TestSandboxAutoResumeWithoutExplicitTimeoutUsesMinimumTimeout(t *testing.T)
 	require.InDelta(t, 60, resumedDuration.Seconds(), 15, "expected resumed timeout near 60s minimum, got %s", resumedDuration)
 }
 
-func TestSandboxAutoResumeUsesStartingTimeoutNotUpdatedTimeout(t *testing.T) {
+func TestSandboxAutoResumeUsesInitialTimeoutNotUpdatedTimeout(t *testing.T) {
 	t.Parallel()
 
 	c := setup.GetAPIClient()
