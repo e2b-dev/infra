@@ -1,10 +1,11 @@
-package utils
+package client
 
 import (
 	"context"
 	"database/sql"
 	"fmt"
 
+	_ "github.com/lib/pq" //nolint:blank-imports
 	"github.com/pressly/goose/v3"
 	"go.uber.org/zap"
 

@@ -66,7 +66,8 @@ tf_vars := \
 	$(call tfvar, CLICKHOUSE_BOOT_DISK_TYPE) \
 	$(call tfvar, BUCKET_PREFIX) \
 	$(call tfvar, LOKI_BOOT_DISK_TYPE) \
-	$(call tfvar, LOKI_USE_V13_SCHEMA_FROM)
+	$(call tfvar, LOKI_USE_V13_SCHEMA_FROM) \
+	$(call tfvar, DASHBOARD_API_COUNT)
 
 .PHONY: init
 init:
