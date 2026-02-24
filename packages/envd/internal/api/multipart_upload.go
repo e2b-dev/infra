@@ -22,6 +22,8 @@ import (
 const (
 	// maxUploadSessions limits concurrent upload sessions to prevent resource exhaustion
 	maxUploadSessions = 100
+	// maxTotalSize limits the total upload size to 10GB
+	maxTotalSize = 10 * 1024 * 1024 * 1024
 	// maxPartSize limits individual part size to 100MB to prevent DoS
 	maxPartSize = 100 * 1024 * 1024
 	// uploadSessionTTL is the maximum time an upload session can remain active
@@ -51,6 +53,11 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 
 		return
 	}
+	if body.TotalSize > maxTotalSize {
+		jsonError(w, http.StatusBadRequest, fmt.Errorf("totalSize %d exceeds maximum allowed size of %d bytes (10GB)", body.TotalSize, maxTotalSize))
+
+		return
+	}
 	if body.PartSize <= 0 {
 		jsonError(w, http.StatusBadRequest, fmt.Errorf("partSize must be positive"))
 
@@ -58,17 +65,6 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 	}
 	if body.PartSize > maxPartSize {
 		jsonError(w, http.StatusBadRequest, fmt.Errorf("partSize exceeds maximum allowed size of %d bytes", maxPartSize))
-
-		return
-	}
-
-	// Check session limit early before doing any file operations
-	a.uploadsLock.RLock()
-	sessionCount := len(a.uploads)
-	a.uploadsLock.RUnlock()
-	if sessionCount >= maxUploadSessions {
-		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Int("maxSessions", maxUploadSessions).Msg("too many concurrent upload sessions")
-		jsonError(w, http.StatusTooManyRequests, fmt.Errorf("too many concurrent upload sessions (max %d)", maxUploadSessions))
 
 		return
 	}
@@ -191,7 +187,18 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 		CreatedAt:    time.Now(),
 	}
 
+	// Atomically check session limit and insert — prevents TOCTOU race where
+	// concurrent requests all pass a read-lock check before any inserts.
 	a.uploadsLock.Lock()
+	if len(a.uploads) >= maxUploadSessions {
+		a.uploadsLock.Unlock()
+		destFile.Close()
+		os.Remove(filePath)
+		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Int("maxSessions", maxUploadSessions).Msg("too many concurrent upload sessions")
+		jsonError(w, http.StatusTooManyRequests, fmt.Errorf("too many concurrent upload sessions (max %d)", maxUploadSessions))
+
+		return
+	}
 	a.uploads[uploadID] = session
 	a.uploadsLock.Unlock()
 
@@ -218,6 +225,14 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 	defer r.Body.Close()
 
 	operationID := logs.AssignOperationID()
+
+	// Validate access token
+	if err := a.validateAccessToken(r); err != nil {
+		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("unauthorized upload part request")
+		jsonError(w, http.StatusUnauthorized, err)
+
+		return
+	}
 
 	// Validate uploadId is a valid UUID to prevent path traversal
 	if _, err := uuid.Parse(uploadId); err != nil {
@@ -353,6 +368,14 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 
 	operationID := logs.AssignOperationID()
 
+	// Validate access token
+	if err := a.validateAccessToken(r); err != nil {
+		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("unauthorized upload complete request")
+		jsonError(w, http.StatusUnauthorized, err)
+
+		return
+	}
+
 	// Get and remove the session
 	a.uploadsLock.Lock()
 	session, exists := a.uploads[uploadId]
@@ -431,6 +454,14 @@ func (a *API) DeleteFilesUploadUploadId(w http.ResponseWriter, r *http.Request, 
 	defer r.Body.Close()
 
 	operationID := logs.AssignOperationID()
+
+	// Validate access token
+	if err := a.validateAccessToken(r); err != nil {
+		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("unauthorized upload abort request")
+		jsonError(w, http.StatusUnauthorized, err)
+
+		return
+	}
 
 	// Get and remove the session
 	a.uploadsLock.Lock()

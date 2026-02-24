@@ -93,6 +93,21 @@ func (a *API) generateSignature(path string, username string, operation string, 
 	return fmt.Sprintf("v1_%s", hasher.HashWithoutPrefix([]byte(signature))), nil
 }
 
+// validateAccessToken checks that the request carries the correct access token header.
+// Returns nil if no access token is configured or if the token matches.
+func (a *API) validateAccessToken(r *http.Request) error {
+	if !a.accessToken.IsSet() {
+		return nil
+	}
+
+	tokenFromHeader := r.Header.Get(accessTokenHeader)
+	if tokenFromHeader == "" || !a.accessToken.Equals(tokenFromHeader) {
+		return fmt.Errorf("unauthorized: valid access token required")
+	}
+
+	return nil
+}
+
 func (a *API) validateSigning(r *http.Request, signature *string, signatureExpiration *int, username *string, path string, operation string) (err error) {
 	var expectedSignature string
 
