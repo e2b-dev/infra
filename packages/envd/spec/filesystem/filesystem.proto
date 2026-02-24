@@ -68,6 +68,7 @@ enum FileType {
   FILE_TYPE_UNSPECIFIED = 0;
   FILE_TYPE_FILE = 1;
   FILE_TYPE_DIRECTORY = 2;
+  FILE_TYPE_SYMLINK = 3;
 }
 
 message ListDirRequest {

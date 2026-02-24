@@ -8,7 +8,7 @@ import (
 )
 
 func GetEntryFromPath(path string) (EntryInfo, error) {
-	fileInfo, err := os.Stat(path)
+	fileInfo, err := os.Lstat(path)
 	if err != nil {
 		return EntryInfo{}, err
 	}
@@ -45,6 +45,7 @@ func GetEntryInfo(path string, fileInfo os.FileInfo) EntryInfo {
 
 	entry := EntryInfo{
 		Name:          fileInfo.Name(),
+		Path:          path,
 		Type:          entryType,
 		Size:          fileInfo.Size(),
 		Mode:          mode,
@@ -74,6 +75,8 @@ func getEntryType(mode os.FileMode) FileType {
 		return FileFileType
 	case mode.IsDir():
 		return DirectoryFileType
+	case mode&os.ModeSymlink == os.ModeSymlink:
+		return SymlinkFileType
 	default:
 		return UnknownFileType
 	}
