@@ -22,6 +22,20 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
 )
 
+func newDownloadTestAPI(t *testing.T, username string) *API {
+	t.Helper()
+	logger := zerolog.Nop()
+	defaults := &execcontext.Defaults{
+		EnvVars: utils.NewMap[string, string](),
+		User:    username,
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	return New(ctx, &logger, defaults, nil, false)
+}
+
 func TestGetFilesContentDisposition(t *testing.T) {
 	t.Parallel()
 
@@ -90,13 +104,7 @@ func TestGetFilesContentDisposition(t *testing.T) {
 			err := os.WriteFile(tempFile, []byte("test content"), 0o644)
 			require.NoError(t, err)
 
-			// Create test API
-			logger := zerolog.Nop()
-			defaults := &execcontext.Defaults{
-				EnvVars: utils.NewMap[string, string](),
-				User:    currentUser.Username,
-			}
-			api := New(context.Background(), &logger, defaults, nil, false)
+			api := newDownloadTestAPI(t, currentUser.Username)
 
 			// Create request and response recorder
 			req := httptest.NewRequest(http.MethodGet, "/files?path="+url.QueryEscape(tempFile), nil)
@@ -139,13 +147,7 @@ func TestGetFilesContentDispositionWithNestedPath(t *testing.T) {
 	err = os.WriteFile(tempFile, []byte("test content"), 0o644)
 	require.NoError(t, err)
 
-	// Create test API
-	logger := zerolog.Nop()
-	defaults := &execcontext.Defaults{
-		EnvVars: utils.NewMap[string, string](),
-		User:    currentUser.Username,
-	}
-	api := New(context.Background(), &logger, defaults, nil, false)
+	api := newDownloadTestAPI(t, currentUser.Username)
 
 	// Create request and response recorder
 	req := httptest.NewRequest(http.MethodGet, "/files?path="+url.QueryEscape(tempFile), nil)
@@ -182,13 +184,7 @@ func TestGetFiles_GzipEncoding_ExplicitIdentityOffWithRange(t *testing.T) {
 	err = os.WriteFile(tempFile, []byte("test content"), 0o644)
 	require.NoError(t, err)
 
-	// Create test API
-	logger := zerolog.Nop()
-	defaults := &execcontext.Defaults{
-		EnvVars: utils.NewMap[string, string](),
-		User:    currentUser.Username,
-	}
-	api := New(context.Background(), &logger, defaults, nil, false)
+	api := newDownloadTestAPI(t, currentUser.Username)
 
 	// Create request and response recorder
 	req := httptest.NewRequest(http.MethodGet, "/files?path="+url.QueryEscape(tempFile), nil)
@@ -224,12 +220,7 @@ func TestGetFiles_GzipDownload(t *testing.T) {
 	err = os.WriteFile(tempFile, originalContent, 0o644)
 	require.NoError(t, err)
 
-	logger := zerolog.Nop()
-	defaults := &execcontext.Defaults{
-		EnvVars: utils.NewMap[string, string](),
-		User:    currentUser.Username,
-	}
-	api := New(context.Background(), &logger, defaults, nil, false)
+	api := newDownloadTestAPI(t, currentUser.Username)
 
 	req := httptest.NewRequest(http.MethodGet, "/files?path="+url.QueryEscape(tempFile), nil)
 	req.Header.Set("Accept-Encoding", "gzip")
@@ -289,12 +280,7 @@ func TestPostFiles_GzipUpload(t *testing.T) {
 	tempDir := t.TempDir()
 	destPath := filepath.Join(tempDir, "uploaded.txt")
 
-	logger := zerolog.Nop()
-	defaults := &execcontext.Defaults{
-		EnvVars: utils.NewMap[string, string](),
-		User:    currentUser.Username,
-	}
-	api := New(context.Background(), &logger, defaults, nil, false)
+	api := newDownloadTestAPI(t, currentUser.Username)
 
 	req := httptest.NewRequest(http.MethodPost, "/files?path="+url.QueryEscape(destPath), &gzBuf)
 	req.Header.Set("Content-Type", mpWriter.FormDataContentType())
@@ -349,12 +335,7 @@ func TestGzipUploadThenGzipDownload(t *testing.T) {
 	tempDir := t.TempDir()
 	destPath := filepath.Join(tempDir, "roundtrip.txt")
 
-	logger := zerolog.Nop()
-	defaults := &execcontext.Defaults{
-		EnvVars: utils.NewMap[string, string](),
-		User:    currentUser.Username,
-	}
-	api := New(context.Background(), &logger, defaults, nil, false)
+	api := newDownloadTestAPI(t, currentUser.Username)
 
 	uploadReq := httptest.NewRequest(http.MethodPost, "/files?path="+url.QueryEscape(destPath), &gzBuf)
 	uploadReq.Header.Set("Content-Type", mpWriter.FormDataContentType())

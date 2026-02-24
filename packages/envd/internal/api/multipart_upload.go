@@ -359,17 +359,10 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 	}
 
 	// Finalize: always mark the part as complete since the data was written to disk.
-	// Mark partWritten first so the deferred cleanup does not revert the status.
+	// Mark partWritten so the deferred cleanup does not revert the status.
 	// Then check completed — if the session was finalized mid-write, return 409
 	// but leave the part as PartComplete so Complete's validation sees it.
 	session.mu.Lock()
-	if session.Parts[params.Part] == PartComplete {
-		a.logger.Warn().
-			Str(string(logs.OperationIDKey), operationID).
-			Str("uploadId", uploadId).
-			Int("partNumber", params.Part).
-			Msg("overwriting existing part")
-	}
 	session.Parts[params.Part] = PartComplete
 	partWritten = true
 	if session.completed.Load() {
@@ -462,6 +455,10 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 	a.uploadsLock.Unlock()
 
 	if err := session.DestFile.Close(); err != nil {
+		// Session is already removed from the map; clean up the orphaned file.
+		if rmErr := ignoreNotExist(os.Remove(session.FilePath)); rmErr != nil {
+			a.logger.Warn().Err(rmErr).Str(string(logs.OperationIDKey), operationID).Msg("failed to remove file after close error")
+		}
 		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error closing destination file")
 		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error closing destination file: %w", err))
 
@@ -505,6 +502,12 @@ func (a *API) DeleteFilesUploadUploadId(w http.ResponseWriter, r *http.Request, 
 
 			return
 		}
+		// Unlink the file before removing from the map so a new Init for
+		// the same path creates a fresh inode. In-flight writers use the
+		// open DestFile descriptor, which remains valid after unlink.
+		if err := ignoreNotExist(os.Remove(session.FilePath)); err != nil {
+			a.logger.Warn().Err(err).Str(string(logs.OperationIDKey), operationID).Str("uploadId", uploadId).Msg("error removing file")
+		}
 		delete(a.uploads, uploadId)
 	}
 	a.uploadsLock.Unlock()
@@ -516,14 +519,9 @@ func (a *API) DeleteFilesUploadUploadId(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 
-	// Wait for any in-flight part writes to finish before closing the file
+	// Wait for any in-flight part writes to finish before closing the file descriptor
 	session.wg.Wait()
-
-	// Close and remove the file
 	session.DestFile.Close()
-	if err := ignoreNotExist(os.Remove(session.FilePath)); err != nil {
-		a.logger.Warn().Err(err).Str(string(logs.OperationIDKey), operationID).Str("uploadId", uploadId).Msg("error removing file")
-	}
 
 	a.logger.Debug().
 		Str(string(logs.OperationIDKey), operationID).

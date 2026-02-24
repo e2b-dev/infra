@@ -124,14 +124,16 @@ func (a *API) removeExpiredSessions() {
 		if now.Sub(session.CreatedAt) > uploadSessionTTL {
 			// Mark as completed to prevent races
 			if session.completed.CompareAndSwap(false, true) {
+				// Unlink the file before removing from the map so a new Init
+				// for the same path creates a fresh inode.
+				if err := ignoreNotExist(os.Remove(session.FilePath)); err != nil {
+					a.logger.Warn().Err(err).Str("filePath", session.FilePath).Msg("failed to cleanup expired upload file")
+				}
 				delete(a.uploads, uploadID)
 				go func(s *MultipartUploadSession) {
-					// Wait for any in-flight part writes to finish before closing the file
+					// Wait for any in-flight part writes to finish before closing the descriptor
 					s.wg.Wait()
 					s.DestFile.Close()
-					if err := ignoreNotExist(os.Remove(s.FilePath)); err != nil {
-						a.logger.Warn().Err(err).Str("filePath", s.FilePath).Msg("failed to cleanup expired upload file")
-					}
 				}(session)
 				a.logger.Info().Str("uploadId", uploadID).Msg("cleaned up expired multipart upload session")
 			}
