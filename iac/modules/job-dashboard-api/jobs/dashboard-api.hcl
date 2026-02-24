@@ -23,6 +23,15 @@ job "dashboard-api" {
       port = "${port_number}"
       task = "start"
 
+      tags = [
+
+        "traefik.enable=true",
+
+        "traefik.http.routers.otel-gateway.rule=HostRegexp(`${subdomain}.{domain:.+}`)",
+        "traefik.http.routers.otel-gateway.ruleSyntax=v2",
+        "traefik.http.routers.otel-gateway.priority=1000"
+      ]
+
       check {
         type     = "http"
         name     = "health"
