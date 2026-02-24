@@ -33,9 +33,6 @@ const (
 	// maxNumParts caps the number of parts to prevent memory/CPU exhaustion.
 	// With totalSize=10GB and partSize=1, numParts would be ~10 billion without this.
 	maxNumParts = 10_000
-	// maxMissingPartsInError caps the number of missing part numbers shown in error responses
-	// to avoid huge JSON payloads (e.g. 10,000 missing parts serialized as integers).
-	maxMissingPartsInError = 20
 )
 
 // PostFilesUploadInit initializes a multipart upload session
@@ -441,12 +438,7 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 			Str("uploadId", uploadId).
 			Int("missingCount", len(missingParts)).
 			Msg("missing parts in upload")
-		// Cap the error message to avoid huge JSON responses (e.g. 10,000 missing parts)
-		if len(missingParts) > maxMissingPartsInError {
-			jsonError(w, http.StatusBadRequest, fmt.Errorf("missing %d parts (first %d: %v)", len(missingParts), maxMissingPartsInError, missingParts[:maxMissingPartsInError]))
-		} else {
-			jsonError(w, http.StatusBadRequest, fmt.Errorf("missing parts: %v", missingParts))
-		}
+		jsonError(w, http.StatusBadRequest, fmt.Errorf("missing %d of %d parts", len(missingParts), session.NumParts))
 
 		return
 	}
