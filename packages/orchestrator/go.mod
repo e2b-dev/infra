@@ -44,6 +44,7 @@ require (
 	github.com/hashicorp/consul/api v1.32.1
 	github.com/inetaf/tcpproxy v0.0.0-20250222171855-c4b9df066048
 	github.com/jellydator/ttlcache/v3 v3.4.0
+	github.com/klauspost/compress v1.18.2
 	github.com/launchdarkly/go-sdk-common/v3 v3.3.0
 	github.com/launchdarkly/go-server-sdk/v7 v7.13.0
 	github.com/ngrok/firewall_toolkit v0.0.18
@@ -203,7 +204,6 @@ require (
 	github.com/hashicorp/serf v0.10.2 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
-	github.com/klauspost/compress v1.18.2 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.11 // indirect
 	github.com/klauspost/pgzip v1.2.6 // indirect
 	github.com/launchdarkly/ccache v1.1.0 // indirect
