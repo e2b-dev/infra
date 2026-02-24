@@ -417,3 +417,9 @@ variable "default_persistent_volume_type" {
   type    = string
   default = ""
 }
+
+# Dashboard API
+variable "dashboard_api_count" {
+  type    = number
+  default = 0
+}
