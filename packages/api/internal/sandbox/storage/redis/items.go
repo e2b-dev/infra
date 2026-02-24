@@ -113,12 +113,13 @@ func (s *Storage) ExpiredItems(ctx context.Context) ([]sandbox.Sandbox, error) {
 
 			// Only evict running sandboxes
 			if sbx.State != sandbox.StateRunning {
-				if time.Since(sbx.EndTime) > staleCutoff {
-					logger.L().Debug(ctx, "ExpiredItems: Sandbox is in transition state for more than stale cutoff, removing", logger.WithSandboxID(sbx.SandboxID), zap.Time("end_time", sbx.EndTime))
-				} else {
+				if time.Since(sbx.EndTime) <= staleCutoff {
 					// Let the current removal finish
+
 					continue
 				}
+
+				logger.L().Debug(ctx, "ExpiredItems: Sandbox is in transition state for more than stale cutoff, removing", logger.WithSandboxID(sbx.SandboxID), zap.Time("end_time", sbx.EndTime))
 			}
 
 			result = append(result, sbx)
