@@ -486,14 +486,13 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	// All parts present — remove session from map, close the file, and
-	// atomically rename the temp file to the final destination path.
-	a.uploadsLock.Lock()
-	delete(a.uploads, uploadId)
-	a.uploadsLock.Unlock()
-
+	// All parts present — close the file and rename to the final path.
+	// The session stays in the map during finalization to prevent a new
+	// upload to the same path from starting before the rename completes.
 	if err := session.DestFile.Close(); err != nil {
-		// Session is already removed from the map; clean up the orphaned temp file.
+		a.uploadsLock.Lock()
+		delete(a.uploads, uploadId)
+		a.uploadsLock.Unlock()
 		if rmErr := ignoreNotExist(os.Remove(session.TempPath)); rmErr != nil {
 			a.logger.Warn().Err(rmErr).Str(string(logs.OperationIDKey), operationID).Msg("failed to remove temp file after close error")
 		}
@@ -504,6 +503,9 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 	}
 
 	if err := os.Rename(session.TempPath, session.FilePath); err != nil {
+		a.uploadsLock.Lock()
+		delete(a.uploads, uploadId)
+		a.uploadsLock.Unlock()
 		if rmErr := ignoreNotExist(os.Remove(session.TempPath)); rmErr != nil {
 			a.logger.Warn().Err(rmErr).Str(string(logs.OperationIDKey), operationID).Msg("failed to remove temp file after rename error")
 		}
@@ -512,6 +514,10 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 
 		return
 	}
+
+	a.uploadsLock.Lock()
+	delete(a.uploads, uploadId)
+	a.uploadsLock.Unlock()
 
 	a.logger.Debug().
 		Str(string(logs.OperationIDKey), operationID).
@@ -537,29 +543,12 @@ func (a *API) DeleteFilesUploadUploadId(w http.ResponseWriter, r *http.Request, 
 
 	operationID := logs.AssignOperationID()
 
-	// Look up and remove the session from the map under the lock, but defer
-	// filesystem I/O (Remove, Close) until after the lock is released so a
-	// slow/unresponsive filesystem cannot block unrelated upload operations.
-	a.uploadsLock.Lock()
+	// Look up the session under a read lock, then operate on it
+	// independently. This avoids holding the global write lock during
+	// the CAS, which would block all concurrent RLock callers.
+	a.uploadsLock.RLock()
 	session, exists := a.uploads[uploadId]
-	if exists {
-		// Mark as completed under session.mu to synchronize with part
-		// reservation (which checks completed and calls wg.Add under the
-		// same lock). This prevents a part upload from calling wg.Add(1)
-		// after our wg.Wait below has already observed a zero counter.
-		session.mu.Lock()
-		if !session.completed.CompareAndSwap(false, true) {
-			session.mu.Unlock()
-			a.uploadsLock.Unlock()
-			a.logger.Error().Str(string(logs.OperationIDKey), operationID).Str("uploadId", uploadId).Msg("upload session is already completing")
-			jsonError(w, http.StatusConflict, fmt.Errorf("upload session %s is already completing or aborted", uploadId))
-
-			return
-		}
-		session.mu.Unlock()
-		delete(a.uploads, uploadId)
-	}
-	a.uploadsLock.Unlock()
+	a.uploadsLock.RUnlock()
 
 	if !exists {
 		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Str("uploadId", uploadId).Msg("upload session not found")
@@ -567,6 +556,25 @@ func (a *API) DeleteFilesUploadUploadId(w http.ResponseWriter, r *http.Request, 
 
 		return
 	}
+
+	// Mark as completed under session.mu to synchronize with part
+	// reservation (which checks completed and calls wg.Add under the
+	// same lock). This prevents a part upload from calling wg.Add(1)
+	// after our wg.Wait below has already observed a zero counter.
+	session.mu.Lock()
+	if !session.completed.CompareAndSwap(false, true) {
+		session.mu.Unlock()
+		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Str("uploadId", uploadId).Msg("upload session is already completing")
+		jsonError(w, http.StatusConflict, fmt.Errorf("upload session %s is already completing or aborted", uploadId))
+
+		return
+	}
+	session.mu.Unlock()
+
+	// Remove session from map under the write lock.
+	a.uploadsLock.Lock()
+	delete(a.uploads, uploadId)
+	a.uploadsLock.Unlock()
 
 	// Unlink the temp file. The temp path is unique per upload ID so no
 	// other operation can conflict. In-flight writers use the open DestFile
