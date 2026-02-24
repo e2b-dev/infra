@@ -5,6 +5,7 @@ use (
 	./packages/auth
 	./packages/clickhouse
 	./packages/client-proxy
+	./packages/dashboard-api
 	./packages/db
 	./packages/docker-reverse-proxy
 	./packages/envd

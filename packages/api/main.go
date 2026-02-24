@@ -36,6 +36,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	sharedauth "github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
+	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
@@ -112,8 +113,8 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 		"Authorization",
 		"X-API-Key",
 		// Supabase headers
-		"X-Supabase-Token",
-		"X-Supabase-Team",
+		sharedauth.HeaderSupabaseToken,
+		sharedauth.HeaderSupabaseTeam,
 		// Custom headers sent from SDK
 		"browser",
 		"lang",
@@ -131,12 +132,14 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 
 	// Create a team API Key auth validator
 	AuthenticationFunc := sharedauth.CreateAuthenticationFunc(
-		config.AdminToken,
+		[]sharedauth.Authenticator{
+			sharedauth.NewApiKeyAuthenticator(apiStore.GetTeamFromAPIKey),
+			sharedauth.NewAccessTokenAuthenticator(apiStore.GetUserFromAccessToken),
+			sharedauth.NewSupabaseTokenAuthenticator(apiStore.GetUserIDFromSupabaseToken),
+			sharedauth.NewSupabaseTeamAuthenticator(apiStore.GetTeamFromSupabaseToken),
+			sharedauth.NewAdminTokenAuthenticator(config.AdminToken),
+		},
 		metricsMiddleware.SetProcessingStartTime,
-		apiStore.GetTeamFromAPIKey,
-		apiStore.GetUserFromAccessToken,
-		apiStore.GetUserIDFromSupabaseToken,
-		apiStore.GetTeamFromSupabaseToken,
 	)
 
 	// Use our validation middleware to check all requests against the
@@ -300,7 +303,7 @@ func run() int {
 		logger.L().Fatal(ctx, "Error parsing config", zap.Error(err))
 	}
 
-	err = utils.CheckMigrationVersion(ctx, config.PostgresConnectionString, expectedMigration)
+	err = sqlcdb.CheckMigrationVersion(ctx, config.PostgresConnectionString, expectedMigration)
 	if err != nil {
 		l.Fatal(ctx, "failed to check migration version", zap.Error(err))
 	}

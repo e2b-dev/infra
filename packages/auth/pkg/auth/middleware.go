@@ -139,72 +139,78 @@ func adminValidationFunction(adminToken string) func(ctx context.Context, ginCtx
 	}
 }
 
-func CreateAuthenticationFunc(
-	adminToken string,
-	preAuthHook func(*gin.Context),
-	teamValidationFunction func(ctx context.Context, ginCtx *gin.Context, token string) (*types.Team, *APIError),
-	userValidationFunction func(ctx context.Context, ginCtx *gin.Context, token string) (uuid.UUID, *APIError),
-	supabaseTokenValidationFunction func(ctx context.Context, ginCtx *gin.Context, token string) (uuid.UUID, *APIError),
-	supabaseTeamValidationFunction func(ctx context.Context, ginCtx *gin.Context, token string) (*types.Team, *APIError),
-) openapi3filter.AuthenticationFunc {
-	authenticators := []Authenticator{
-		&CommonAuthenticator[*types.Team]{
-			SchemeName: "ApiKeyAuth",
-			Header: HeaderKey{
-				Name:         "X-API-Key",
-				Prefix:       "e2b_",
-				RemovePrefix: "",
-			},
-			ValidationFunc: teamValidationFunction,
-			ContextKey:     TeamContextKey,
-			ErrorMessage:   "Invalid API key, please visit https://e2b.dev/docs/api-key for more information.",
+// NewApiKeyAuthenticator creates an authenticator for the ApiKeyAuth security scheme (X-API-Key header, e2b_ prefix).
+func NewApiKeyAuthenticator(validationFunc func(ctx context.Context, ginCtx *gin.Context, token string) (*types.Team, *APIError)) Authenticator {
+	return &CommonAuthenticator[*types.Team]{
+		SchemeName: "ApiKeyAuth",
+		Header: HeaderKey{
+			Name:   HeaderAPIKey,
+			Prefix: PrefixAPIKey,
 		},
-		&CommonAuthenticator[uuid.UUID]{
-			SchemeName: "AccessTokenAuth",
-			Header: HeaderKey{
-				Name:         "Authorization",
-				Prefix:       "sk_e2b_",
-				RemovePrefix: "Bearer ",
-			},
-			ValidationFunc: userValidationFunction,
-			ContextKey:     UserIDContextKey,
-			ErrorMessage:   "Invalid Access token, try to login again by running `e2b auth login`.",
-		},
-		&CommonAuthenticator[uuid.UUID]{
-			SchemeName: "Supabase1TokenAuth",
-			Header: HeaderKey{
-				Name:         "X-Supabase-Token",
-				Prefix:       "",
-				RemovePrefix: "",
-			},
-			ValidationFunc: supabaseTokenValidationFunction,
-			ContextKey:     UserIDContextKey,
-			ErrorMessage:   "Invalid Supabase token.",
-		},
-		&CommonAuthenticator[*types.Team]{
-			SchemeName: "Supabase2TeamAuth",
-			Header: HeaderKey{
-				Name:         "X-Supabase-Team",
-				Prefix:       "",
-				RemovePrefix: "",
-			},
-			ValidationFunc: supabaseTeamValidationFunction,
-			ContextKey:     TeamContextKey,
-			ErrorMessage:   "Invalid Supabase token teamID.",
-		},
-		&CommonAuthenticator[struct{}]{
-			SchemeName: "AdminTokenAuth",
-			Header: HeaderKey{
-				Name:         "X-Admin-Token",
-				Prefix:       "",
-				RemovePrefix: "",
-			},
-			ValidationFunc: adminValidationFunction(adminToken),
-			ContextKey:     "",
-			ErrorMessage:   "Invalid Access token.",
-		},
+		ValidationFunc: validationFunc,
+		ContextKey:     TeamContextKey,
+		ErrorMessage:   "Invalid API key, please visit https://e2b.dev/docs/api-key for more information.",
 	}
+}
 
+// NewAccessTokenAuthenticator creates an authenticator for the AccessTokenAuth security scheme (Authorization Bearer sk_e2b_).
+func NewAccessTokenAuthenticator(validationFunc func(ctx context.Context, ginCtx *gin.Context, token string) (uuid.UUID, *APIError)) Authenticator {
+	return &CommonAuthenticator[uuid.UUID]{
+		SchemeName: "AccessTokenAuth",
+		Header: HeaderKey{
+			Name:         HeaderAuthorization,
+			Prefix:       PrefixAccessToken,
+			RemovePrefix: PrefixBearer,
+		},
+		ValidationFunc: validationFunc,
+		ContextKey:     UserIDContextKey,
+		ErrorMessage:   "Invalid Access token, try to login again by running `e2b auth login`.",
+	}
+}
+
+// NewSupabaseTokenAuthenticator creates an authenticator for the Supabase1TokenAuth security scheme (X-Supabase-Token header).
+func NewSupabaseTokenAuthenticator(validationFunc func(ctx context.Context, ginCtx *gin.Context, token string) (uuid.UUID, *APIError)) Authenticator {
+	return &CommonAuthenticator[uuid.UUID]{
+		SchemeName: "Supabase1TokenAuth",
+		Header: HeaderKey{
+			Name: HeaderSupabaseToken,
+		},
+		ValidationFunc: validationFunc,
+		ContextKey:     UserIDContextKey,
+		ErrorMessage:   "Invalid Supabase token.",
+	}
+}
+
+// NewSupabaseTeamAuthenticator creates an authenticator for the Supabase2TeamAuth security scheme (X-Supabase-Team header).
+func NewSupabaseTeamAuthenticator(validationFunc func(ctx context.Context, ginCtx *gin.Context, token string) (*types.Team, *APIError)) Authenticator {
+	return &CommonAuthenticator[*types.Team]{
+		SchemeName: "Supabase2TeamAuth",
+		Header: HeaderKey{
+			Name: HeaderSupabaseTeam,
+		},
+		ValidationFunc: validationFunc,
+		ContextKey:     TeamContextKey,
+		ErrorMessage:   "Invalid Supabase token teamID.",
+	}
+}
+
+// NewAdminTokenAuthenticator creates an authenticator for the AdminTokenAuth security scheme (X-Admin-Token header).
+func NewAdminTokenAuthenticator(adminToken string) Authenticator {
+	return &CommonAuthenticator[struct{}]{
+		SchemeName: "AdminTokenAuth",
+		Header: HeaderKey{
+			Name: HeaderAdminToken,
+		},
+		ValidationFunc: adminValidationFunction(adminToken),
+		ErrorMessage:   "Invalid Access token.",
+	}
+}
+
+// CreateAuthenticationFunc creates an OpenAPI authentication function from a list of authenticators.
+func CreateAuthenticationFunc(
+	authenticators []Authenticator,
+	preAuthHook func(*gin.Context),
+) openapi3filter.AuthenticationFunc {
 	return func(ctx context.Context, input *openapi3filter.AuthenticationInput) error {
 		ginCtx := middleware.GetGinContext(ctx)
 
