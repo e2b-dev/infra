@@ -1,6 +1,6 @@
 # Template Compression: Architecture & Status
 
-## A. Current Architecture
+## A. Architecture
 
 Templates are stored in GCS as build artifacts. Each build produces two data files (memfile, rootfs) plus a header and metadata. With compression enabled, each data file can have an uncompressed variant (`{buildId}/memfile`) and a compressed variant (`{buildId}/v4.memfile.lz4`) side-by-side, with corresponding v3 (uncompressed) and v4 (compressed) headers.
 
@@ -72,7 +72,7 @@ GetBlock(offset, length, ft) // was Slice()
 
 ---
 
-## B. Major Changes (This Branch)
+## B. Biggest Changes
 
 - **Unified Chunker**: collapsed `FullFetchChunker`, `StreamingChunker`, and the `Chunker` interface back into a single concrete `Chunker` struct backed by slot-based `regionLock` for fetch deduplication; a single code path handles both compressed and uncompressed data via `GetFrame`.
 
@@ -207,7 +207,7 @@ flowchart TD
 
 ## E. Write Paths
 
-### Inline Build / Pause (Hot Path)
+### Inline Build / Pause
 
 Triggered by `sbx.Pause()` or initial template build. The orchestrator creates a `Snapshot` (FC memory + rootfs diffs, headers, snapfile, metadata), then constructs a `TemplateBuild` which owns the upload lifecycle:
 
