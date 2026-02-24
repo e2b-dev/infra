@@ -74,7 +74,7 @@ mount -t tmpfs -o size=65G tmpfs /mnt/snapshot-cache
 
 # --- System tuning ---
 ulimit -n 1048576
-export GOMAXPROCS='nproc'
+export GOMAXPROCS=$(nproc)
 
 tee -a /etc/sysctl.conf <<EOF
 net.core.somaxconn = 65535

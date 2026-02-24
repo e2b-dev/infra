@@ -11,11 +11,13 @@ variable "environment" {
 }
 
 variable "consul_acl_token_secret" {
-  type = string
+  type      = string
+  sensitive = true
 }
 
 variable "nomad_acl_token_secret" {
-  type = string
+  type      = string
+  sensitive = true
 }
 
 variable "nomad_port" {

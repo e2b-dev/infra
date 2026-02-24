@@ -6,7 +6,7 @@ set -e
 exec > >(tee /var/log/user-data.log | logger -t user-data -s 2>/dev/console) 2>&1
 
 ulimit -n 65536
-export GOMAXPROCS='nproc'
+export GOMAXPROCS=$(nproc)
 
 # Download setup scripts from S3
 aws s3 cp "s3://${SCRIPTS_BUCKET}/run-consul-${RUN_CONSUL_FILE_HASH}.sh" /opt/consul/bin/run-consul.sh --region "${AWS_REGION}"

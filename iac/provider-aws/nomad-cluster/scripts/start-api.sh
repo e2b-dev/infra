@@ -9,7 +9,7 @@ set -x
 exec > >(tee /var/log/user-data.log | logger -t user-data -s 2>/dev/console) 2>&1
 
 ulimit -n 1048576
-export GOMAXPROCS='nproc'
+export GOMAXPROCS=$(nproc)
 
 sudo tee -a /etc/sysctl.conf <<EOF
 net.core.somaxconn = 65535
