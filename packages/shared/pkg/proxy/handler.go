@@ -33,6 +33,13 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 			return
 		}
 
+		if errors.Is(err, ErrInvalidSandboxID) {
+			logger.L().Warn(ctx, "invalid sandbox ID", zap.String("host", r.Host))
+			http.Error(w, "Invalid sandbox ID", http.StatusBadRequest)
+
+			return
+		}
+
 		var invalidPortErr *InvalidSandboxPortError
 		if errors.As(err, &invalidPortErr) {
 			logger.L().Warn(ctx, "invalid sandbox port", zap.String("host", r.Host), zap.String("port", invalidPortErr.Port))
