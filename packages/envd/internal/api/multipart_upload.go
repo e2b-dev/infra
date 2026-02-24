@@ -261,8 +261,14 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 	}); err != nil {
 		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("failed to encode response")
 		// Client never received the uploadId, so clean up to avoid a permanent leak.
+		// Set completed under session.mu to synchronize with part uploads that
+		// check completed and call wg.Add under the same lock.
+		session.mu.Lock()
 		session.completed.Store(true)
+		session.mu.Unlock()
 		removeSession()
+		// Wait for any in-flight part writes before closing the file descriptor.
+		session.wg.Wait()
 		destFile.Close()
 		if rmErr := ignoreNotExist(os.Remove(tempPath)); rmErr != nil {
 			a.logger.Warn().Err(rmErr).Str(string(logs.OperationIDKey), operationID).Msg("failed to remove temp file after response encoding error")
@@ -487,8 +493,13 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 	session.mu.Unlock()
 
 	if len(missingParts) > 0 {
-		// Reset completed flag so the client can upload missing parts and retry
+		// Reset completed flag under session.mu so the client can upload missing
+		// parts and retry. Holding the lock prevents a concurrent Complete from
+		// winning the CAS (false→true) before this goroutine has returned,
+		// which would cause two goroutines to race on Close/Rename.
+		session.mu.Lock()
 		session.completed.Store(false)
+		session.mu.Unlock()
 		a.logger.Error().
 			Str(string(logs.OperationIDKey), operationID).
 			Str("uploadId", uploadId).
