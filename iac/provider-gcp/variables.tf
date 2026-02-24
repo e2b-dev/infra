@@ -598,6 +598,12 @@ variable "loki_boot_disk_type" {
   default     = "pd-ssd"
 }
 
+variable "sandbox_storage_backend" {
+  description = "The sandbox storage backend to use. Valid values: 'memory', 'redis'."
+  type        = string
+  default     = ""
+}
+
 variable "loki_use_v13_schema_from" {
   type        = string
   description = "This should be a date soon after you deploy. Format = YYYY-MM-DD"

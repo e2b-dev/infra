@@ -100,6 +100,7 @@ resource "nomad_job" "api" {
     clickhouse_connection_string            = local.clickhouse_connection_string
     loki_url                                = local.loki_url
     sandbox_access_token_hash_seed          = var.sandbox_access_token_hash_seed
+    sandbox_storage_backend                 = var.sandbox_storage_backend
     db_migrator_docker_image                = data.google_artifact_registry_docker_image.db_migrator_image.self_link
     launch_darkly_api_key                   = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
   })

@@ -183,6 +183,7 @@ module "nomad" {
   redis_cluster_url_secret_version                       = module.init.redis_cluster_url_secret_version
   redis_tls_ca_base64_secret_version                     = module.init.redis_tls_ca_base64_secret_version
   sandbox_access_token_hash_seed                         = random_password.sandbox_access_token_hash_seed.result
+  sandbox_storage_backend                                = var.sandbox_storage_backend
 
   # Click Proxy
   client_proxy_count               = var.client_proxy_count
