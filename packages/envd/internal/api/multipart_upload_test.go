@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -27,7 +28,10 @@ func newMultipartTestAPI(t *testing.T) *API {
 		EnvVars: utils.NewMap[string, string](),
 	}
 
-	return New(&logger, defaults, nil, true)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	return New(ctx, &logger, defaults, nil, true)
 }
 
 func TestMultipartUpload(t *testing.T) {
@@ -473,6 +477,101 @@ func TestMultipartUpload(t *testing.T) {
 		content, err := os.ReadFile(destPath)
 		require.NoError(t, err)
 		assert.Empty(t, string(content))
+	})
+
+	t.Run("reject too many parts", func(t *testing.T) {
+		t.Parallel()
+		api := newMultipartTestAPI(t)
+
+		// totalSize=10GB, partSize=1 would create ~10 billion parts
+		body := PostFilesUploadInitJSONRequestBody{
+			Path:      "/tmp/too-many-parts.txt",
+			TotalSize: maxTotalSize,
+			PartSize:  1,
+		}
+		bodyBytes, _ := json.Marshal(body)
+
+		req := httptest.NewRequest(http.MethodPost, "/files/upload/init", bytes.NewReader(bodyBytes))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		api.PostFilesUploadInit(w, req, PostFilesUploadInitParams{})
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+
+		var errResp Error
+		err := json.Unmarshal(w.Body.Bytes(), &errResp)
+		require.NoError(t, err)
+		assert.Contains(t, errResp.Message, "parts")
+	})
+
+	t.Run("reject partSize zero", func(t *testing.T) {
+		t.Parallel()
+		api := newMultipartTestAPI(t)
+
+		body := PostFilesUploadInitJSONRequestBody{
+			Path:      "/tmp/should-not-exist.txt",
+			TotalSize: 100,
+			PartSize:  0,
+		}
+		bodyBytes, _ := json.Marshal(body)
+
+		req := httptest.NewRequest(http.MethodPost, "/files/upload/init", bytes.NewReader(bodyBytes))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		api.PostFilesUploadInit(w, req, PostFilesUploadInitParams{})
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
+	t.Run("reject part upload on empty file", func(t *testing.T) {
+		t.Parallel()
+		api := newMultipartTestAPI(t)
+		tempDir := t.TempDir()
+		destPath := filepath.Join(tempDir, "empty-reject.txt")
+
+		// Initialize upload with 0 size
+		body := PostFilesUploadInitJSONRequestBody{
+			Path:      destPath,
+			TotalSize: 0,
+			PartSize:  1024,
+		}
+		bodyBytes, _ := json.Marshal(body)
+
+		initReq := httptest.NewRequest(http.MethodPost, "/files/upload/init", bytes.NewReader(bodyBytes))
+		initReq.Header.Set("Content-Type", "application/json")
+		initW := httptest.NewRecorder()
+
+		api.PostFilesUploadInit(initW, initReq, PostFilesUploadInitParams{})
+		require.Equal(t, http.StatusOK, initW.Code)
+
+		var initResp MultipartUploadInit
+		err := json.Unmarshal(initW.Body.Bytes(), &initResp)
+		require.NoError(t, err)
+		uploadId := initResp.UploadId
+
+		// Try to upload a part — should be rejected with clear message
+		partReq := httptest.NewRequest(http.MethodPut, "/files/upload/"+uploadId+"?part=0", bytes.NewReader([]byte("data")))
+		partReq.Header.Set("Content-Type", "application/octet-stream")
+		partW := httptest.NewRecorder()
+
+		api.PutFilesUploadUploadId(partW, partReq, uploadId, PutFilesUploadUploadIdParams{Part: 0})
+		assert.Equal(t, http.StatusBadRequest, partW.Code)
+
+		// Verify error message does not contain a huge number from uint underflow
+		var errResp Error
+		err = json.Unmarshal(partW.Body.Bytes(), &errResp)
+		require.NoError(t, err)
+		assert.Contains(t, errResp.Message, "empty file")
+
+		// Clean up
+		api.uploadsLock.Lock()
+		session := api.uploads[uploadId]
+		if session != nil {
+			session.DestFile.Close()
+			os.Remove(session.FilePath)
+		}
+		delete(api.uploads, uploadId)
+		api.uploadsLock.Unlock()
 	})
 }
 

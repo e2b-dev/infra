@@ -71,7 +71,7 @@ type API struct {
 	uploadsLock sync.RWMutex
 }
 
-func New(l *zerolog.Logger, defaults *execcontext.Defaults, mmdsChan chan *host.MMDSOpts, isNotFC bool) *API {
+func New(ctx context.Context, l *zerolog.Logger, defaults *execcontext.Defaults, mmdsChan chan *host.MMDSOpts, isNotFC bool) *API {
 	api := &API{
 		logger:      l,
 		defaults:    defaults,
@@ -84,18 +84,24 @@ func New(l *zerolog.Logger, defaults *execcontext.Defaults, mmdsChan chan *host.
 	}
 
 	// Start background cleanup for expired upload sessions
-	go api.cleanupExpiredUploads()
+	go api.cleanupExpiredUploads(ctx)
 
 	return api
 }
 
-// cleanupExpiredUploads periodically removes upload sessions that have exceeded their TTL
-func (a *API) cleanupExpiredUploads() {
+// cleanupExpiredUploads periodically removes upload sessions that have exceeded their TTL.
+// It stops when ctx is cancelled, preventing goroutine leaks in tests and enabling graceful shutdown.
+func (a *API) cleanupExpiredUploads(ctx context.Context) {
 	ticker := time.NewTicker(uploadSessionCleanupInterval)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		a.removeExpiredSessions()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			a.removeExpiredSessions()
+		}
 	}
 }
 

@@ -30,6 +30,9 @@ const (
 	uploadSessionTTL = 1 * time.Hour
 	// uploadSessionCleanupInterval is how often to check for expired sessions
 	uploadSessionCleanupInterval = 5 * time.Minute
+	// maxNumParts caps the number of parts to prevent memory/CPU exhaustion.
+	// With totalSize=10GB and partSize=1, numParts would be ~10 billion without this.
+	maxNumParts = 10_000
 )
 
 // PostFilesUploadInit initializes a multipart upload session
@@ -47,6 +50,11 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 		return
 	}
 
+	if body.PartSize < 1 {
+		jsonError(w, http.StatusBadRequest, fmt.Errorf("partSize must be at least 1"))
+
+		return
+	}
 	if body.TotalSize > maxTotalSize {
 		jsonError(w, http.StatusBadRequest, fmt.Errorf("totalSize %d exceeds maximum allowed size of %d bytes", body.TotalSize, maxTotalSize))
 
@@ -54,6 +62,31 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 	}
 	if body.PartSize > maxPartSize {
 		jsonError(w, http.StatusBadRequest, fmt.Errorf("partSize exceeds maximum allowed size of %d bytes", maxPartSize))
+
+		return
+	}
+
+	// Compute numParts and validate the cap before any file I/O.
+	var numParts uint
+	if body.TotalSize > 0 {
+		numParts = uint((body.TotalSize + body.PartSize - 1) / body.PartSize)
+	}
+
+	if numParts > maxNumParts {
+		jsonError(w, http.StatusBadRequest, fmt.Errorf("upload would require %d parts, exceeding the maximum of %d (increase partSize)", numParts, maxNumParts))
+
+		return
+	}
+
+	// Check session limit early, before any file I/O, to avoid truncating
+	// existing files only to reject the request due to capacity.
+	a.uploadsLock.RLock()
+	sessionCount := len(a.uploads)
+	a.uploadsLock.RUnlock()
+
+	if sessionCount >= maxUploadSessions {
+		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Int("maxSessions", maxUploadSessions).Msg("too many concurrent upload sessions")
+		jsonError(w, http.StatusTooManyRequests, fmt.Errorf("too many concurrent upload sessions (max %d)", maxUploadSessions))
 
 		return
 	}
@@ -146,8 +179,6 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 
 	uploadID := uuid.NewString()
 
-	numParts := uint((body.TotalSize + body.PartSize - 1) / body.PartSize)
-
 	session := &MultipartUploadSession{
 		UploadID:     uploadID,
 		FilePath:     filePath,
@@ -222,7 +253,15 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 
 	partNumber := uint(params.Part)
 
-	// Check part number is within range (also rejects parts for empty files where NumParts == 0)
+	// Reject parts for empty files (no parts expected)
+	if session.NumParts == 0 {
+		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Uint("partNumber", partNumber).Msg("upload has no parts (empty file)")
+		jsonError(w, http.StatusBadRequest, fmt.Errorf("upload has no parts (empty file); no part uploads are accepted"))
+
+		return
+	}
+
+	// Check part number is within range
 	if partNumber >= session.NumParts {
 		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Uint("partNumber", partNumber).Uint("numParts", session.NumParts).Msg("part number out of range")
 		jsonError(w, http.StatusBadRequest, fmt.Errorf("part number %d out of range (expected 0-%d)", partNumber, session.NumParts-1))
@@ -238,30 +277,12 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 		expectedSize = session.TotalSize - offset
 	}
 
-	// Read the part data with size limit
-	limitedReader := io.LimitReader(r.Body, expectedSize+1)
-	data, err := io.ReadAll(limitedReader)
-	if err != nil {
-		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error reading part data")
-		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error reading part %d data: %w", partNumber, err))
-
-		return
-	}
-
-	size := int64(len(data))
-
-	// Enforce exact size match to prevent silent corruption from truncated uploads
-	if size != expectedSize {
-		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Int64("size", size).Int64("expectedSize", expectedSize).Msg("part size mismatch")
-		jsonError(w, http.StatusBadRequest, fmt.Errorf("part size %d does not match expected size %d", size, expectedSize))
-
-		return
-	}
-
-	// Write directly to the destination file at the correct offset
-	// WriteAt is safe for concurrent writes at different offsets, no lock needed here
-	_, err = session.DestFile.WriteAt(data, offset)
-	if err != nil {
+	// Stream the part data directly to the file at offset without buffering the
+	// entire part in memory. OffsetWriter + CopyN uses a small internal buffer
+	// (~32KB) instead of reading the full part into a single allocation.
+	offsetWriter := io.NewOffsetWriter(session.DestFile, offset)
+	written, err := io.CopyN(offsetWriter, r.Body, expectedSize)
+	if err != nil && !errors.Is(err, io.EOF) {
 		if errors.Is(err, syscall.ENOSPC) {
 			a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("not enough disk space")
 			jsonError(w, http.StatusInsufficientStorage, fmt.Errorf("not enough disk space"))
@@ -273,6 +294,24 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 
 		return
 	}
+
+	if written != expectedSize {
+		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Int64("written", written).Int64("expectedSize", expectedSize).Msg("part size mismatch")
+		jsonError(w, http.StatusBadRequest, fmt.Errorf("part size %d does not match expected size %d", written, expectedSize))
+
+		return
+	}
+
+	// Check for extra data beyond expected size
+	var extra [1]byte
+	if n, _ := r.Body.Read(extra[:]); n > 0 {
+		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Int64("expectedSize", expectedSize).Msg("part data exceeds expected size")
+		jsonError(w, http.StatusBadRequest, fmt.Errorf("part data exceeds expected size %d", expectedSize))
+
+		return
+	}
+
+	size := written
 
 	// Mark part as written - only lock for map access
 	session.mu.Lock()
