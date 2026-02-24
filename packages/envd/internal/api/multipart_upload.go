@@ -33,6 +33,9 @@ const (
 	// maxNumParts caps the number of parts to prevent memory/CPU exhaustion.
 	// With totalSize=10GB and partSize=1, numParts would be ~10 billion without this.
 	maxNumParts = 10_000
+	// maxMissingPartsInError caps the number of missing part numbers shown in error responses
+	// to avoid huge JSON payloads (e.g. 10,000 missing parts serialized as integers).
+	maxMissingPartsInError = 20
 )
 
 // PostFilesUploadInit initializes a multipart upload session
@@ -52,6 +55,11 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 
 	if body.PartSize < 1 {
 		jsonError(w, http.StatusBadRequest, fmt.Errorf("partSize must be at least 1"))
+
+		return
+	}
+	if body.TotalSize < 0 {
+		jsonError(w, http.StatusBadRequest, fmt.Errorf("totalSize must be non-negative"))
 
 		return
 	}
@@ -188,8 +196,9 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 		NumParts:     numParts,
 		UID:          uid,
 		GID:          gid,
-		PartsWritten: make(map[uint]bool),
-		CreatedAt:    time.Now(),
+		PartsWritten:    make(map[uint]bool),
+		partsInProgress: make(map[uint]bool),
+		CreatedAt:       time.Now(),
 	}
 
 	// Atomically check session limit and insert — prevents TOCTOU race where
@@ -243,7 +252,7 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 		return
 	}
 
-	// Check if session is already being completed/aborted
+	// Fast-path: reject early if session is already completing (authoritative check under session.mu below)
 	if session.completed.Load() {
 		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Str("uploadId", uploadId).Msg("upload session is already completing")
 		jsonError(w, http.StatusConflict, fmt.Errorf("upload session %s is already completing or aborted", uploadId))
@@ -276,6 +285,36 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 		// Last part may be smaller
 		expectedSize = session.TotalSize - offset
 	}
+
+	// Reserve this part under lock to prevent concurrent writes to the same part number
+	// and to authoritatively check completed status (the atomic check above is a fast path).
+	session.mu.Lock()
+	if session.completed.Load() {
+		session.mu.Unlock()
+		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Str("uploadId", uploadId).Msg("upload session completed during part reservation")
+		jsonError(w, http.StatusConflict, fmt.Errorf("upload session %s is already completing or aborted", uploadId))
+
+		return
+	}
+	if session.partsInProgress[partNumber] {
+		session.mu.Unlock()
+		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Str("uploadId", uploadId).Uint("partNumber", partNumber).Msg("part is already being uploaded by another request")
+		jsonError(w, http.StatusConflict, fmt.Errorf("part %d is already being uploaded by another request for session %s", partNumber, uploadId))
+
+		return
+	}
+	session.partsInProgress[partNumber] = true
+	session.mu.Unlock()
+
+	// Ensure in-progress flag is cleaned up on any early return (write errors, size mismatch, etc.)
+	partReserved := true
+	defer func() {
+		if partReserved {
+			session.mu.Lock()
+			delete(session.partsInProgress, partNumber)
+			session.mu.Unlock()
+		}
+	}()
 
 	// Stream the part data directly to the file at offset without buffering the
 	// entire part in memory. OffsetWriter + CopyN uses a small internal buffer
@@ -313,8 +352,19 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 
 	size := written
 
-	// Mark part as written - only lock for map access
+	// Finalize: mark part as written under lock. Re-check completed to prevent
+	// the race where Complete deletes the file between our write and this point,
+	// which would cause us to return 200 while the file is gone.
 	session.mu.Lock()
+	delete(session.partsInProgress, partNumber)
+	partReserved = false
+	if session.completed.Load() {
+		session.mu.Unlock()
+		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Str("uploadId", uploadId).Uint("partNumber", partNumber).Msg("session completed during part upload")
+		jsonError(w, http.StatusConflict, fmt.Errorf("upload session %s was completed or aborted during part upload", uploadId))
+
+		return
+	}
 	if session.PartsWritten[partNumber] {
 		a.logger.Warn().
 			Str(string(logs.OperationIDKey), operationID).
@@ -389,9 +439,14 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 		a.logger.Error().
 			Str(string(logs.OperationIDKey), operationID).
 			Str("uploadId", uploadId).
-			Uints("missingParts", missingParts).
+			Int("missingCount", len(missingParts)).
 			Msg("missing parts in upload")
-		jsonError(w, http.StatusBadRequest, fmt.Errorf("missing parts: %v", missingParts))
+		// Cap the error message to avoid huge JSON responses (e.g. 10,000 missing parts)
+		if len(missingParts) > maxMissingPartsInError {
+			jsonError(w, http.StatusBadRequest, fmt.Errorf("missing %d parts (first %d: %v)", len(missingParts), maxMissingPartsInError, missingParts[:maxMissingPartsInError]))
+		} else {
+			jsonError(w, http.StatusBadRequest, fmt.Errorf("missing parts: %v", missingParts))
+		}
 
 		return
 	}

@@ -26,10 +26,11 @@ type MultipartUploadSession struct {
 	NumParts     uint     // Total number of expected parts
 	UID          int
 	GID          int
-	PartsWritten map[uint]bool // partNumber -> whether it's been written
-	CreatedAt    time.Time
-	completed    atomic.Bool // Set to true when complete/abort starts to prevent new parts
-	mu           sync.Mutex
+	PartsWritten    map[uint]bool // partNumber -> whether it's been written
+	partsInProgress map[uint]bool // partNumber -> whether a write is currently in flight
+	CreatedAt       time.Time
+	completed       atomic.Bool // Set to true when complete/abort starts to prevent new parts
+	mu              sync.Mutex
 }
 
 // ignoreNotExist returns nil if err is a "not exist" error, otherwise returns err unchanged.

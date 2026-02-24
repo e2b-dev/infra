@@ -504,6 +504,30 @@ func TestMultipartUpload(t *testing.T) {
 		assert.Contains(t, errResp.Message, "parts")
 	})
 
+	t.Run("reject negative totalSize", func(t *testing.T) {
+		t.Parallel()
+		api := newMultipartTestAPI(t)
+
+		body := PostFilesUploadInitJSONRequestBody{
+			Path:      "/tmp/negative-size.txt",
+			TotalSize: -1,
+			PartSize:  1024,
+		}
+		bodyBytes, _ := json.Marshal(body)
+
+		req := httptest.NewRequest(http.MethodPost, "/files/upload/init", bytes.NewReader(bodyBytes))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		api.PostFilesUploadInit(w, req, PostFilesUploadInitParams{})
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+
+		var errResp Error
+		err := json.Unmarshal(w.Body.Bytes(), &errResp)
+		require.NoError(t, err)
+		assert.Contains(t, errResp.Message, "non-negative")
+	})
+
 	t.Run("reject partSize zero", func(t *testing.T) {
 		t.Parallel()
 		api := newMultipartTestAPI(t)
