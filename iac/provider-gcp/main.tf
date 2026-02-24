@@ -13,7 +13,7 @@ terraform {
 
     cloudflare = {
       source  = "cloudflare/cloudflare"
-      version = "4.19.0"
+      version = "4.52.5"
     }
 
     nomad = {
@@ -98,7 +98,6 @@ module "cluster" {
 
   ingress_port                 = var.ingress_port
   api_port                     = var.api_port
-  dashboard_api_port           = var.dashboard_api_port
   docker_reverse_proxy_port    = var.docker_reverse_proxy_port
   nomad_port                   = var.nomad_port
   google_service_account_email = module.init.service_account_email

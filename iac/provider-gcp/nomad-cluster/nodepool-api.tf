@@ -76,11 +76,6 @@ resource "google_compute_instance_group_manager" "api_pool" {
     port = var.ingress_port.port
   }
 
-  named_port {
-    name = var.dashboard_api_port.name
-    port = var.dashboard_api_port.port
-  }
-
   dynamic "named_port" {
     for_each = local.api_additional_ports
     content {

@@ -78,7 +78,7 @@ resource "google_compute_target_https_proxy" "ingress" {
 }
 
 locals {
-  domains    = toset(concat(jsondecode(nonsensitive(data.google_secret_manager_secret_version.routing_domains.secret_data)), [var.domain_name]))
+  domains    = toset(concat(var.additional_domains, [var.domain_name]))
   subdomains = ["dashboard-api"]
 
   // Create matrix for each domain and subdomain combination
