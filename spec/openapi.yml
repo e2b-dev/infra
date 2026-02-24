@@ -163,6 +163,9 @@ components:
         teamName:
           type: string
           description: Name of the team the user belongs to
+      required:
+        - teamID
+        - teamName
     Team:
       required:
         - teamID
