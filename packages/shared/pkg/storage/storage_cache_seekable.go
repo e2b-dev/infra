@@ -434,6 +434,12 @@ func (c *cachedFramedFile) storeFileCompressed(ctx context.Context, localPath st
 	return c.inner.StoreFile(ctx, localPath, &modifiedOpts)
 }
 
+// makeFrameFilename returns the NFS cache path for a compressed frame.
+// Format: {cacheBasePath}/{016xC}-{xC}.frm
+func makeFrameFilename(cacheBasePath string, offset FrameOffset, size FrameSize) string {
+	return fmt.Sprintf("%s/%016x-%x.frm", cacheBasePath, offset.C, size.C)
+}
+
 func (c *cachedFramedFile) goCtx(ctx context.Context, fn func(context.Context)) {
 	c.wg.Go(func() {
 		fn(context.WithoutCancel(ctx))

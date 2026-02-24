@@ -113,12 +113,6 @@ func (c cache) GetDetails() string {
 		c.rootPath, c.inner.GetDetails())
 }
 
-// makeFrameFilename returns the NFS cache path for a compressed frame.
-// Format: {cacheBasePath}/{016xC}-{xC}.frm
-func makeFrameFilename(cacheBasePath string, offset FrameOffset, size FrameSize) string {
-	return fmt.Sprintf("%s/%016x-%x.frm", cacheBasePath, offset.C, size.C)
-}
-
 func (c cache) deleteCachedObjectsWithPrefix(ctx context.Context, prefix string) {
 	fullPrefix := filepath.Join(c.rootPath, prefix)
 	if err := os.RemoveAll(fullPrefix); err != nil {
