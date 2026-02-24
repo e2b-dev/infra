@@ -35,6 +35,26 @@ resource "aws_launch_template" "worker" {
 
   vpc_security_group_ids = var.security_group_ids
 
+  # Enable nested virtualization for non-metal instances (C8i/M8i/R8i)
+  dynamic "cpu_options" {
+    for_each = var.nested_virtualization ? [1] : []
+    content {
+      nested_virtualization = "enabled"
+    }
+  }
+
+  # Use Spot Instances for fault-tolerant workloads (e.g. build clusters)
+  dynamic "instance_market_options" {
+    for_each = var.use_spot ? [1] : []
+    content {
+      market_type = "spot"
+      spot_options {
+        spot_instance_type             = "one-time"
+        instance_interruption_behavior = "terminate"
+      }
+    }
+  }
+
   block_device_mappings {
     device_name = "/dev/sda1"
 
@@ -43,6 +63,21 @@ resource "aws_launch_template" "worker" {
       volume_type           = var.boot_disk_type
       delete_on_termination = true
       encrypted             = true
+    }
+  }
+
+  # Additional EBS cache disk for non-NVMe instances (replaces instance store)
+  dynamic "block_device_mappings" {
+    for_each = var.cache_disk_size_gb > 0 ? [1] : []
+    content {
+      device_name = "/dev/xvdb"
+
+      ebs {
+        volume_size           = var.cache_disk_size_gb
+        volume_type           = "gp3"
+        delete_on_termination = true
+        encrypted             = true
+      }
     }
   }
 
@@ -71,7 +106,7 @@ resource "aws_launch_template" "worker" {
 resource "aws_autoscaling_group" "worker" {
   name_prefix      = "${var.cluster_name}-"
   desired_capacity = var.cluster_size
-  min_size         = var.cluster_size
+  min_size         = try(var.autoscaler.min_size, var.cluster_size)
   max_size         = try(var.autoscaler.max_size, var.cluster_size)
 
   vpc_zone_identifier = var.subnet_ids

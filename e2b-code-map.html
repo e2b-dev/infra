@@ -136,7 +136,7 @@
 
   <div class="main">
     <div class="canvas-wrap">
-      <svg id="diagram" viewBox="0 0 1260 710" xmlns="http://www.w3.org/2000/svg">
+      <svg id="diagram" viewBox="0 0 1260 740" xmlns="http://www.w3.org/2000/svg">
         <defs>
           <marker id="ah-http" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto"><polygon points="0 0,7 2.5,0 5" fill="#58a6ff"/></marker>
           <marker id="ah-grpc" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto"><polygon points="0 0,7 2.5,0 5" fill="#3fb950"/></marker>
@@ -212,7 +212,7 @@ const nodes = [
   { id: 'client',       label: 'External Client',      subtitle: 'SDK / Browser',                          x: 60,   y: 30,  w: 165, h: 50, layer: 'edge',
     aws: { label: 'External Client', subtitle: 'SDK / Browser', status: 'ready' } },
   { id: 'lb',           label: 'GCP Load Balancer',     subtitle: 'HTTPS termination',                      x: 330,  y: 30,  w: 195, h: 50, layer: 'edge',
-    aws: { label: 'AWS ALB / NLB', subtitle: 'No Terraform yet', status: 'missing' } },
+    aws: { label: 'AWS ALB + NLB', subtitle: 'load-balancer/main.tf (ALB :443, NLB WebSocket)', status: 'ready' } },
   { id: 'client-proxy', label: 'Client-Proxy',          subtitle: 'packages/client-proxy/',                  x: 630,  y: 30,  w: 175, h: 50, layer: 'edge',
     aws: { label: 'Client-Proxy', subtitle: 'packages/client-proxy/ (same binary)', status: 'ready' } },
   // API
@@ -230,24 +230,24 @@ const nodes = [
   { id: 'tcp-firewall', label: 'TCP Firewall',          subtitle: 'Egress domain/CIDR filter',               x: 320,  y: 372, w: 175, h: 48, layer: 'orchestration',
     aws: { label: 'TCP Firewall', subtitle: 'iptables (same kernel features)', status: 'ready' } },
   { id: 'nfs-proxy',    label: 'NFS Proxy',             subtitle: 'Persistent volumes :2049',                 x: 555,  y: 372, w: 170, h: 48, layer: 'orchestration',
-    aws: { label: 'NFS Proxy', subtitle: 'No EFS Terraform yet', status: 'partial' } },
+    aws: { label: 'NFS Proxy → EFS', subtitle: 'efs/main.tf (mount targets + access points)', status: 'ready' } },
   // VM
   { id: 'firecracker',  label: 'Firecracker VM',        subtitle: 'microVM + UFFD + cgroups',                x: 150,  y: 475, w: 205, h: 55, layer: 'vm',
-    aws: { label: 'Firecracker VM', subtitle: 'Needs EC2 bare-metal / nested virt', status: 'partial' } },
+    aws: { label: 'Firecracker VM', subtitle: 'nomad-cluster/ (i3.metal or C8i nested virt + KVM)', status: 'ready' } },
   { id: 'envd',         label: 'envd',                  subtitle: 'packages/envd/ :49983 Connect RPC',       x: 440,  y: 475, w: 245, h: 55, layer: 'vm',
     aws: { label: 'envd', subtitle: 'packages/envd/ :49983 (same binary)', status: 'ready' } },
   // Data
   { id: 'postgresql',   label: 'PostgreSQL',            subtitle: 'Main + Auth DB (sqlc, pgx)',               x: 40,   y: 595, w: 185, h: 55, layer: 'data',
-    aws: { label: 'PostgreSQL (RDS?)', subtitle: 'No RDS / Aurora Terraform yet', status: 'missing' } },
+    aws: { label: 'Aurora PostgreSQL', subtitle: 'database/main.tf (Serverless v2, multi-AZ)', status: 'ready' } },
   { id: 'redis',        label: 'Redis',                 subtitle: 'Catalog, cache, events, streams',          x: 280,  y: 595, w: 175, h: 55, layer: 'data',
-    aws: { label: 'Redis (ElastiCache?)', subtitle: 'No ElastiCache TF; can use Nomad job', status: 'partial' } },
+    aws: { label: 'ElastiCache Redis', subtitle: 'redis/main.tf (cluster mode, multi-AZ, TLS)', status: 'ready' } },
   { id: 'clickhouse',   label: 'ClickHouse',            subtitle: 'Analytics, events, host stats',            x: 510,  y: 595, w: 180, h: 55, layer: 'data',
     aws: { label: 'ClickHouse', subtitle: 'Self-hosted on Nomad, S3 backup ready', status: 'ready' } },
   { id: 'gcs',          label: 'GCS',                   subtitle: 'Template & build storage',                 x: 745,  y: 595, w: 160, h: 55, layer: 'data',
-    aws: { label: 'AWS S3', subtitle: 'Go client ready (no bucket TF)', status: 'partial' } },
+    aws: { label: 'AWS S3 (9 buckets)', subtitle: 'init/buckets.tf (templates, kernels, cache, loki)', status: 'ready' } },
   // External
   { id: 'nomad',        label: 'Nomad API',             subtitle: 'Service discovery',                        x: 1020, y: 140, w: 155, h: 48, layer: 'external',
-    aws: { label: 'Nomad API', subtitle: 'No AWS cluster Terraform', status: 'missing' } },
+    aws: { label: 'Nomad Cluster', subtitle: 'nomad-cluster/main.tf (EC2 ASGs + Consul)', status: 'ready' } },
   { id: 'launchdarkly', label: 'LaunchDarkly',          subtitle: 'Feature flags',                            x: 1020, y: 218, w: 168, h: 48, layer: 'external',
     aws: { label: 'LaunchDarkly', subtitle: 'Feature flags (same SDK)', status: 'ready' } },
   { id: 'otel',         label: 'OTEL / Grafana',        subtitle: 'Traces, metrics, logs',                    x: 1020, y: 360, w: 178, h: 48, layer: 'external',
@@ -256,6 +256,17 @@ const nodes = [
     aws: { label: 'Loki', subtitle: 'S3 backend configured in Nomad job', status: 'ready' } },
   { id: 'posthog',      label: 'PostHog',               subtitle: 'User analytics',                           x: 1020, y: 516, w: 148, h: 48, layer: 'external',
     aws: { label: 'PostHog', subtitle: 'User analytics (same SDK)', status: 'ready' } },
+  // Cloud infrastructure (both providers)
+  { id: 'waf',          label: 'Cloud Armor',            subtitle: 'DDoS + WAF rules',                         x: 850,  y: 30,  w: 150, h: 50, layer: 'edge',
+    aws: { label: 'AWS WAF', subtitle: 'load-balancer/waf.tf', status: 'ready' } },
+  { id: 'sg',           label: 'VPC Firewall Rules',     subtitle: 'Network access control',                    x: 1020, y: 62,  w: 178, h: 48, layer: 'external',
+    aws: { label: 'Security Groups (5)', subtitle: 'network/security-groups.tf', status: 'ready' } },
+  { id: 'container-reg',label: 'Artifact Registry',      subtitle: 'Container images (GAR)',                    x: 1020, y: 296, w: 168, h: 48, layer: 'external',
+    aws: { label: 'ECR Repos (2)', subtitle: 'init/main.tf (e2b-core + e2b-orchestration)', status: 'ready' } },
+  { id: 'secrets',      label: 'Secret Manager',         subtitle: 'Secrets storage',                           x: 1020, y: 594, w: 178, h: 48, layer: 'external',
+    aws: { label: 'Secrets Manager (18)', subtitle: 'init/secrets.tf', status: 'ready' } },
+  { id: 'iam',          label: 'GCP IAM',                subtitle: 'Service accounts',                          x: 1020, y: 660, w: 155, h: 44, layer: 'external',
+    aws: { label: 'IAM Roles', subtitle: 'init/main.tf (e2b-infra-instances)', status: 'ready' } },
 ];
 
 const connections = [
@@ -294,6 +305,17 @@ const connections = [
   { from: 'orchestrator', to: 'otel',           type: 'external', label: 'Telemetry',     awsLabel: 'Telemetry' },
   { from: 'api',          to: 'otel',           type: 'external', label: 'Telemetry',     awsLabel: 'Telemetry' },
   { from: 'envd',         to: 'otel',           type: 'external', label: 'Sandbox logs',  awsLabel: 'Sandbox logs' },
+  // WAF / Cloud Armor
+  { from: 'waf',          to: 'lb',             type: 'http',     label: 'Protects',        awsLabel: 'Protects ALB' },
+  // Container Registry
+  { from: 'docker-proxy', to: 'container-reg',  type: 'storage',  label: 'Pull images',     awsLabel: 'ECR pull' },
+  { from: 'template-mgr', to: 'container-reg',  type: 'storage',  label: 'Push builds',     awsLabel: 'ECR push' },
+  // Secrets
+  { from: 'api',          to: 'secrets',        type: 'external', label: 'Secrets',          awsLabel: 'Secrets' },
+  { from: 'orchestrator', to: 'secrets',        type: 'external', label: 'Secrets',          awsLabel: 'Secrets' },
+  // IAM
+  { from: 'iam',          to: 'gcs',            type: 'external', label: 'Storage access',   awsLabel: 'S3 policies' },
+  { from: 'iam',          to: 'container-reg',  type: 'external', label: 'Registry access',  awsLabel: 'ECR pull' },
 ];
 
 const nodesById = Object.fromEntries(nodes.map(n => [n.id, n]));
@@ -317,7 +339,7 @@ const state = {
   panX: 0, panY: 0
 };
 
-const BASE_VB = { x: 0, y: 0, w: 1260, h: 710 };
+const BASE_VB = { x: 0, y: 0, w: 1260, h: 740 };
 let isPanning = false, panStart = { x: 0, y: 0 }, panStartVB = { x: 0, y: 0 };
 
 // --- Provider ---
@@ -373,7 +395,7 @@ function render() {
   ];
   layerBands.forEach(b => {
     if (!state.layers[b.layer]) return;
-    const rect = svgEl('rect', { x: 8, y: b.y, width: 980, height: b.h, rx: 8, fill: LAYERS[b.layer].fill, opacity: 0.35 });
+    const rect = svgEl('rect', { x: 8, y: b.y, width: 1000, height: b.h, rx: 8, fill: LAYERS[b.layer].fill, opacity: 0.35 });
     g.appendChild(rect);
     const txt = svgEl('text', { x: 16, y: b.y + 14, fill: LAYERS[b.layer].color, opacity: 0.4, 'font-size': '10px', 'font-weight': '600', 'font-family': '-apple-system, system-ui, sans-serif' });
     txt.textContent = b.label;

@@ -7,13 +7,14 @@ variable "cluster_size" {
   type = number
 
   validation {
-    condition     = var.cluster_size >= 1
-    error_message = "Cluster size must be at least 1."
+    condition     = var.cluster_size >= 0
+    error_message = "Cluster size must be at least 0."
   }
 }
 
 variable "autoscaler" {
   type = object({
+    min_size   = optional(number)
     max_size   = optional(number)
     cpu_target = optional(number)
   })
@@ -21,8 +22,26 @@ variable "autoscaler" {
 }
 
 variable "instance_type" {
-  description = "EC2 instance type. Must be .metal for Firecracker KVM support."
+  description = "EC2 instance type. Use .metal for bare-metal KVM, or C8i/M8i/R8i with nested_virtualization=true."
   type        = string
+}
+
+variable "nested_virtualization" {
+  description = "Enable nested virtualization (required for Firecracker on non-metal instances like C8i/M8i/R8i)"
+  type        = bool
+  default     = false
+}
+
+variable "cache_disk_size_gb" {
+  description = "Size of EBS cache disk in GB. Set to 0 to skip (when using NVMe instance store)."
+  type        = number
+  default     = 0
+}
+
+variable "use_spot" {
+  description = "Use Spot Instances. Suitable for fault-tolerant workloads (e.g. build clusters). Instances are terminated on interruption."
+  type        = bool
+  default     = false
 }
 
 variable "ami_id" {
