@@ -20,6 +20,8 @@ import (
 func TestGetMe(t *testing.T) {
 	t.Parallel()
 
+	gin.SetMode(gin.TestMode)
+
 	t.Run("authenticated", func(t *testing.T) {
 		t.Parallel()
 

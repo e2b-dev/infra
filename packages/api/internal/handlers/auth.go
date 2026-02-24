@@ -21,7 +21,26 @@ func (a *APIStore) GetUserID(c *gin.Context) uuid.UUID {
 }
 
 func (a *APIStore) GetTeamInfo(c *gin.Context) *types.Team {
-	return c.Value(auth.TeamContextKey).(*types.Team)
+	teamInfo, ok := c.Value(auth.TeamContextKey).(*types.Team)
+	if !ok {
+		panic("team info not found in context")
+	}
+
+	return teamInfo
+}
+
+func (a *APIStore) safeGetTeamInfo(c *gin.Context) (*types.Team, bool) {
+	teamInfoVal, ok := c.Get(auth.TeamContextKey)
+	if !ok || teamInfoVal == nil {
+		return nil, false
+	}
+
+	tokenInfo, ok := teamInfoVal.(*types.Team)
+	if !ok || tokenInfo == nil {
+		return nil, false
+	}
+
+	return tokenInfo, true
 }
 
 func (a *APIStore) GetTeam(
