@@ -13,7 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	dbapi "github.com/e2b-dev/infra/packages/api/internal/db"
-	"github.com/e2b-dev/infra/packages/api/internal/db/types"
+	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 )
 
 func (a *APIStore) GetUserID(c *gin.Context) uuid.UUID {

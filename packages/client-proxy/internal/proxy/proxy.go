@@ -15,6 +15,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
@@ -38,14 +39,15 @@ type autoResumeResult uint8
 const (
 	autoResumeSucceeded autoResumeResult = iota
 	autoResumeNotAllowed
+	autoResumePermissionDenied
 	autoResumeErrored
 )
 
-func catalogResolution(ctx context.Context, sandboxId string, c catalog.SandboxesCatalog, pausedChecker PausedSandboxResumer, featureFlags *featureflags.Client) (string, error) {
+func catalogResolution(ctx context.Context, sandboxId string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string, c catalog.SandboxesCatalog, pausedChecker PausedSandboxResumer, featureFlags *featureflags.Client) (string, error) {
 	s, err := c.GetSandbox(ctx, sandboxId)
 	if err != nil {
 		if errors.Is(err, catalog.ErrSandboxNotFound) {
-			nodeIP, res, pausedErr := handlePausedSandbox(ctx, sandboxId, pausedChecker, featureFlags)
+			nodeIP, res, pausedErr := handlePausedSandbox(ctx, sandboxId, sandboxPort, trafficAccessToken, envdAccessToken, pausedChecker, featureFlags)
 			if pausedErr != nil {
 				return "", pausedErr
 			}
@@ -67,6 +69,9 @@ func catalogResolution(ctx context.Context, sandboxId string, c catalog.Sandboxe
 func handlePausedSandbox(
 	ctx context.Context,
 	sandboxId string,
+	sandboxPort uint64,
+	trafficAccessToken string,
+	envdAccessToken string,
 	pausedChecker PausedSandboxResumer,
 	featureFlags *featureflags.Client,
 ) (string, autoResumeResult, error) {
@@ -81,25 +86,21 @@ func handlePausedSandbox(
 	}
 
 	logger.L().Info(ctx, "catalog miss, attempting resume via api", logger.WithSandboxID(sandboxId))
-	nodeIP, err := pausedChecker.Resume(ctx, sandboxId)
+	nodeIP, err := pausedChecker.Resume(ctx, sandboxId, sandboxPort, trafficAccessToken, envdAccessToken)
 	if err != nil {
-		if isNotResumableError(err) {
-			return "", autoResumeNotAllowed, nil
+		if st, ok := status.FromError(err); ok {
+			if st.Code() == codes.PermissionDenied {
+				return "", autoResumePermissionDenied, reverseproxy.NewErrSandboxResumePermissionDenied(sandboxId)
+			}
+			if st.Code() == codes.NotFound {
+				return "", autoResumeNotAllowed, nil
+			}
 		}
 
 		return "", autoResumeErrored, err
 	}
 
 	return nodeIP, autoResumeSucceeded, nil
-}
-
-func isNotResumableError(err error) bool {
-	st, ok := status.FromError(err)
-	if !ok {
-		return false
-	}
-
-	return st.Code() == codes.NotFound
 }
 
 func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog catalog.SandboxesCatalog, pausedSandboxResumer PausedSandboxResumer, featureFlagsClient *featureflags.Client) (*reverseproxy.Proxy, error) {
@@ -127,8 +128,17 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 				zap.Int64("content_length", r.ContentLength),
 			)
 
-			nodeIP, err := catalogResolution(ctx, sandboxId, catalog, pausedSandboxResumer, featureFlagsClient)
+			trafficAccessToken := r.Header.Get(proxygrpc.MetadataTrafficAccessToken)
+			envdAccessToken := r.Header.Get(proxygrpc.MetadataEnvdHTTPAccessToken)
+			nodeIP, err := catalogResolution(ctx, sandboxId, port, trafficAccessToken, envdAccessToken, catalog, pausedSandboxResumer, featureFlagsClient)
 			if err != nil {
+				var resumeDeniedErr *reverseproxy.SandboxResumePermissionDeniedError
+				if errors.As(err, &resumeDeniedErr) {
+					l.Warn(ctx, "sandbox resume denied", zap.Error(err))
+
+					return nil, resumeDeniedErr
+				}
+
 				if !errors.Is(err, ErrNodeNotFound) {
 					l.Warn(ctx, "failed to resolve node ip with Redis resolution", zap.Error(err))
 				}
