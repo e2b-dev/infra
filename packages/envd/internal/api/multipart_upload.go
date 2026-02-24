@@ -134,12 +134,25 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 		return
 	}
 
-	// Atomically check session limit, check for path conflicts, create the
-	// temp file, and register the session. Writing to a temp file avoids
-	// destroying any existing file at the destination until the upload is
-	// fully complete.
+	// Register a placeholder session under the lock to claim the path and
+	// count toward the session limit, then perform file I/O outside the lock
+	// to avoid blocking unrelated upload operations. The session starts with
+	// completed=true so any concurrent access (Put/Complete/Delete) is safely
+	// rejected until initialization finishes.
 	uploadID := uuid.NewString()
 	tempPath := filePath + ".upload." + uploadID
+
+	session := &multipartUploadSession{
+		UploadID:  uploadID,
+		FilePath:  filePath,
+		TempPath:  tempPath,
+		TotalSize: body.TotalSize,
+		PartSize:  body.PartSize,
+		NumParts:  numParts,
+		UID:       uid,
+		GID:       gid,
+	}
+	session.completed.Store(true) // Block access until initialization finishes
 
 	a.uploadsLock.Lock()
 	if len(a.uploads) >= maxUploadSessions {
@@ -158,12 +171,23 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 			return
 		}
 	}
+	a.uploads[uploadID] = session
+	a.uploadsLock.Unlock()
 
-	// Create and preallocate a temporary file; the final path is untouched
-	// until complete atomically renames the temp file into place.
+	// removeSession unregisters the placeholder on file I/O failure.
+	removeSession := func() {
+		a.uploadsLock.Lock()
+		delete(a.uploads, uploadID)
+		a.uploadsLock.Unlock()
+	}
+
+	// Create and preallocate a temporary file outside the lock; the final
+	// path is untouched until complete atomically renames the temp file
+	// into place. The temp path is unique per upload ID so no other
+	// operation can conflict.
 	destFile, err := os.OpenFile(tempPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o666)
 	if err != nil {
-		a.uploadsLock.Unlock()
+		removeSession()
 		if errors.Is(err, syscall.ENOSPC) {
 			a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("not enough disk space")
 			jsonError(w, http.StatusInsufficientStorage, fmt.Errorf("not enough disk space"))
@@ -181,7 +205,7 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 		if err := destFile.Truncate(body.TotalSize); err != nil {
 			destFile.Close()
 			os.Remove(tempPath)
-			a.uploadsLock.Unlock()
+			removeSession()
 			if errors.Is(err, syscall.ENOSPC) {
 				a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("not enough disk space")
 				jsonError(w, http.StatusInsufficientStorage, fmt.Errorf("not enough disk space"))
@@ -199,28 +223,20 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 	if err := os.Chown(tempPath, uid, gid); err != nil {
 		destFile.Close()
 		os.Remove(tempPath)
-		a.uploadsLock.Unlock()
+		removeSession()
 		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error changing file ownership")
 		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error changing file ownership: %w", err))
 
 		return
 	}
 
-	session := &multipartUploadSession{
-		UploadID:  uploadID,
-		FilePath:  filePath,
-		TempPath:  tempPath,
-		DestFile:  destFile,
-		TotalSize: body.TotalSize,
-		PartSize:  body.PartSize,
-		NumParts:  numParts,
-		UID:       uid,
-		GID:       gid,
-		Parts:     make(map[int]partStatus),
-	}
-
-	a.uploads[uploadID] = session
-	a.uploadsLock.Unlock()
+	// Initialization complete — set the file handle and parts map, then
+	// clear the completed flag to allow part uploads. The atomic store
+	// provides the necessary memory ordering: any goroutine that observes
+	// completed==false via Load is guaranteed to see DestFile and Parts.
+	session.DestFile = destFile
+	session.Parts = make(map[int]partStatus)
+	session.completed.Store(false)
 
 	a.logger.Debug().
 		Str(string(logs.OperationIDKey), operationID).
