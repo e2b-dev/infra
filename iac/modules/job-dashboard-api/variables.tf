@@ -14,14 +14,6 @@ variable "image" {
   type = string
 }
 
-variable "dashboard_api_port" {
-  type = object({
-    name        = string
-    port        = number
-    health_path = string
-  })
-}
-
 variable "count_instances" {
   type = number
 }

@@ -2,7 +2,6 @@ resource "nomad_job" "dashboard_api" {
   jobspec = templatefile("${path.module}/jobs/dashboard-api.hcl", {
     update_stanza = var.update_stanza
     node_pool     = var.node_pool
-    port_number   = var.dashboard_api_port.port
     image_name    = var.image
     environment   = var.environment
 
