@@ -1,6 +1,7 @@
 ENV := $(shell cat ../../.last_used_env || echo "not-set")
 -include ../../.env.${ENV}
 PREFIX := $(strip $(subst ",,$(PREFIX)))
+HOSTNAME := $(shell hostname || hostnamectl hostname)
 
 expectedMigration := $(shell ./../../scripts/get-latest-migration.sh)
 
@@ -51,7 +52,7 @@ endef
 run-local:
 	make build-debug
 	$(call setup_local_env)
-	NODE_ID=$$(hostname) ./bin/api --port 3000
+	NODE_ID=$(HOSTNAME) ./bin/api --port 3000
 
 # Run the API using air
 .PHONY: dev

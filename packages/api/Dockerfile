@@ -18,6 +18,10 @@ WORKDIR /build/db
 COPY ./db/go.mod ./db/go.sum ./
 RUN go mod download
 
+WORKDIR /build/auth
+COPY ./auth/go.mod ./auth/go.sum ./
+RUN go mod download
+
 WORKDIR /build/api
 COPY ./api/go.mod ./api/go.sum ./
 RUN go mod download
@@ -25,6 +29,7 @@ RUN go mod download
 # Copy source code
 WORKDIR /build
 
+COPY ./auth/pkg ./auth/pkg
 COPY ./clickhouse/pkg ./clickhouse/pkg
 COPY ./shared/pkg ./shared/pkg
 COPY ./db/client ./db/client

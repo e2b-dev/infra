@@ -72,6 +72,10 @@ BEGIN
     COMMIT;
     RAISE NOTICE 'backfill_env_builds_team_id: updated % rows in batch, total: %, up to created_at: %, id: %',
       rows_updated, total_updated, last_created_at, last_id;
+    IF rows_updated > 0 THEN
+      RAISE NOTICE 'backfill_env_builds_team_id: sleeping 10s before next batch...';
+      PERFORM pg_sleep(10);
+    END IF;
   END LOOP;
   RAISE NOTICE 'backfill_env_builds_team_id: complete, % rows updated', total_updated;
 END;

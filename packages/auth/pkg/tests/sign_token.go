@@ -7,7 +7,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/auth"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 )
 
 func SignTestToken(t *testing.T, secret string, subject string) string {

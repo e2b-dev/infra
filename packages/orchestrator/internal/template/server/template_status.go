@@ -45,10 +45,15 @@ func (s *ServerStore) TemplateBuildStatus(ctx context.Context, in *template_mana
 	}
 
 	logLines := buildInfo.GetLogs()
-	// If the direction is backward, we need to reverse the log entries to have them in the descending order
-	if direction == template_manager.LogsDirection_Backward {
-		slices.Reverse(logLines)
-	}
+
+	// Keep response ordering aligned with persistent log mapping.
+	slices.SortStableFunc(logLines, func(a, b *template_manager.TemplateBuildLogEntry) int {
+		if direction == template_manager.LogsDirection_Backward {
+			return b.GetTimestamp().AsTime().Compare(a.GetTimestamp().AsTime())
+		}
+
+		return a.GetTimestamp().AsTime().Compare(b.GetTimestamp().AsTime())
+	})
 
 	logEntries := make([]*template_manager.TemplateBuildLogEntry, 0)
 	logsCrawled := int32(0)
@@ -76,11 +81,6 @@ func (s *ServerStore) TemplateBuildStatus(ctx context.Context, in *template_mana
 		}
 
 		logEntries = append(logEntries, entry)
-	}
-
-	// If the direction is backward, we need to reverse the log entries again to have them back in the ascending order
-	if direction == template_manager.LogsDirection_Backward {
-		slices.Reverse(logEntries)
 	}
 
 	result := buildInfo.GetResult()
