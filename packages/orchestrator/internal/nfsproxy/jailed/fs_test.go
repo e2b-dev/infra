@@ -8,6 +8,7 @@ import (
 
 	billy "github.com/go-git/go-billy/v5"
 	"github.com/go-git/go-billy/v5/memfs"
+	"github.com/stretchr/testify/assert"
 )
 
 // newJailedFS is a small helper to construct jailedFS with an in-memory FS.
@@ -35,12 +36,12 @@ func TestJailedFS_Join_AlwaysPrefixed(t *testing.T) {
 		{[]string{"./a", "./b"}, "/jail/a/b"},
 		{[]string{"../a"}, "/jail/a"},
 		{[]string{"../../a/b"}, "/jail/a/b"},
-		{[]string{"/"}, "/jail/"},
+		{[]string{"/"}, "/jail"},
 		{[]string{"/", "a"}, "/jail/a"},
 		{[]string{"/jail/a"}, "/jail/a"},           // already prefixed
 		{[]string{"/jail/../a"}, "/jail/a"},        // weird but should normalize and keep prefix
 		{[]string{"..", "..", "etc"}, "/jail/etc"}, // multi-level traversal
-		{[]string{"a", "..", "..", "..", "/etc/passwd"}, "/jail/a/etc/passwd"},
+		{[]string{"a", "..", "..", "..", "/etc/passwd"}, "/jail/etc/passwd"},
 	}
 
 	for _, tc := range cases {
@@ -57,10 +58,8 @@ func TestJailedFS_Join_AlwaysPrefixed(t *testing.T) {
 
 			// Normalize to slash for assertion parity.
 			got = filepath.ToSlash(got)
-
-			if !strings.HasPrefix(got+"/", prefix+"/") { // add trailing slash to treat exact match fairly
-				t.Errorf("Join(%q) = %q; want path starting with %q", tc.elems, got, prefix+"/")
-			}
+			assert.Equal(t, tc.expected, got)
+			assert.Truef(t, strings.HasPrefix(got+"/", prefix+"/"), "Join(%q) = %q; want path starting with %q", tc.elems, got, prefix+"/")
 		})
 	}
 }
