@@ -1,20 +1,13 @@
 package handlers
 
 import (
-	"net/http"
-
 	"github.com/gin-gonic/gin"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 )
 
 func (a *APIStore) GetMe(c *gin.Context) {
-	teamInfo, ok := a.safeGetTeamInfo(c)
-	if !ok {
-		a.sendAPIStoreError(c, http.StatusUnauthorized, "no credentials found")
-
-		return
-	}
+	teamInfo, _ := a.safeGetTeamInfo(c)
 
 	tokenInfo := api.TokenInfo{
 		TeamID:   teamInfo.ID,
