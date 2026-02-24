@@ -197,6 +197,7 @@ paths:
           description: The part number (0-indexed)
           schema:
             type: integer
+            minimum: 0
       requestBody:
         required: true
         content:
