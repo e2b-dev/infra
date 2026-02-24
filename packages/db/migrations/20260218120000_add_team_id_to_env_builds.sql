@@ -66,6 +66,11 @@ BEGIN
   ORDER BY eb.created_at DESC, eb.id DESC
   LIMIT 1;
 
+  IF NOT FOUND THEN
+    last_created_at := '1970-01-01 00:00:00+00';
+    last_id := '00000000-0000-0000-0000-000000000000';
+  END IF;
+
   RAISE NOTICE 'backfill_env_builds_team_id: resuming from cursor (%, %)', last_created_at, last_id;
 
   LOOP
