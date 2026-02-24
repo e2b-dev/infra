@@ -272,6 +272,14 @@ var ChunkerConfigFlag = newJSONFlag("chunker-config", ldvalue.FromJSONMarshal(ma
 //   - decoderConcurrency (int): Goroutines per pooled zstd decoder. Default 1.
 //
 // JSON format: {"compressBuilds": false, "compressionType": "lz4", "level": 3, ...}
+// OverrideJSONFlag updates a JSON flag value in the offline store.
+// The change is visible immediately to all clients created from the offline store.
+// Intended for benchmarks and tests.
+func OverrideJSONFlag(flag JSONFlag, value ldvalue.Value) {
+	builder := launchDarklyOfflineStore.Flag(flag.Key()).ValueForAll(value)
+	launchDarklyOfflineStore.Update(builder)
+}
+
 var CompressConfigFlag = newJSONFlag("compress-config", ldvalue.FromJSONMarshal(map[string]any{
 	"compressBuilds":         false,
 	"compressionType":        "zstd",
