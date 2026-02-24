@@ -12,8 +12,7 @@ import (
 )
 
 const (
-	pollInterval     = 50 * time.Millisecond
-	concurrencyLimit = 64
+	pollInterval = 50 * time.Millisecond
 )
 
 type Evictor struct {
@@ -33,7 +32,6 @@ func New(
 
 func (e *Evictor) Start(ctx context.Context) {
 	g := errgroup.Group{}
-	g.SetLimit(concurrencyLimit)
 
 	for {
 		select {
