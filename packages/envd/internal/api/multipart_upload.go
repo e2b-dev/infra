@@ -164,16 +164,10 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 		return
 	}
 
-	// Create upload ID
-	uploadID := uuid.New().String()
+	uploadID := uuid.NewString()
 
-	// Calculate number of parts
-	numParts := int((body.TotalSize + body.PartSize - 1) / body.PartSize)
-	if numParts == 0 && body.TotalSize == 0 {
-		numParts = 0 // Empty file, no parts needed
-	}
+	numParts := uint((body.TotalSize + body.PartSize - 1) / body.PartSize)
 
-	// Store the session with the open file handle
 	session := &MultipartUploadSession{
 		UploadID:     uploadID,
 		FilePath:     filePath,
@@ -183,7 +177,7 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 		NumParts:     numParts,
 		UID:          uid,
 		GID:          gid,
-		PartsWritten: make(map[int]bool),
+		PartsWritten: make(map[uint]bool),
 		CreatedAt:    time.Now(),
 	}
 
@@ -208,7 +202,7 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 		Str("filePath", filePath).
 		Int64("totalSize", body.TotalSize).
 		Int64("partSize", body.PartSize).
-		Int("numParts", numParts).
+		Uint("numParts", numParts).
 		Msg("multipart upload initialized")
 
 	w.Header().Set("Content-Type", "application/json")
@@ -234,14 +228,6 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 		return
 	}
 
-	// Validate uploadId is a valid UUID to prevent path traversal
-	if _, err := uuid.Parse(uploadId); err != nil {
-		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Str("uploadId", uploadId).Msg("invalid upload ID format")
-		jsonError(w, http.StatusBadRequest, fmt.Errorf("invalid upload ID format: must be a valid UUID"))
-
-		return
-	}
-
 	// Get the session
 	a.uploadsLock.RLock()
 	session, exists := a.uploads[uploadId]
@@ -262,27 +248,18 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 		return
 	}
 
-	partNumber := params.Part
-
-	// Check for negative part numbers
-	if partNumber < 0 {
-		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Int("partNumber", partNumber).Msg("invalid part number")
+	if params.Part < 0 {
+		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Int("partNumber", params.Part).Msg("invalid part number")
 		jsonError(w, http.StatusBadRequest, fmt.Errorf("part number must be non-negative"))
 
 		return
 	}
 
-	// Reject part uploads for empty files (no parts needed)
-	if session.NumParts == 0 {
-		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Msg("cannot upload parts to empty file")
-		jsonError(w, http.StatusBadRequest, fmt.Errorf("cannot upload parts to empty file (totalSize is 0)"))
+	partNumber := uint(params.Part)
 
-		return
-	}
-
-	// Check part number is within range
+	// Check part number is within range (also rejects parts for empty files where NumParts == 0)
 	if partNumber >= session.NumParts {
-		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Int("partNumber", partNumber).Int("numParts", session.NumParts).Msg("part number out of range")
+		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Uint("partNumber", partNumber).Uint("numParts", session.NumParts).Msg("part number out of range")
 		jsonError(w, http.StatusBadRequest, fmt.Errorf("part number %d out of range (expected 0-%d)", partNumber, session.NumParts-1))
 
 		return
@@ -338,7 +315,7 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 		a.logger.Warn().
 			Str(string(logs.OperationIDKey), operationID).
 			Str("uploadId", uploadId).
-			Int("partNumber", partNumber).
+			Uint("partNumber", partNumber).
 			Msg("overwriting existing part")
 	}
 	session.PartsWritten[partNumber] = true
@@ -347,7 +324,7 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 	a.logger.Debug().
 		Str(string(logs.OperationIDKey), operationID).
 		Str("uploadId", uploadId).
-		Int("partNumber", partNumber).
+		Uint("partNumber", partNumber).
 		Int64("size", size).
 		Int64("offset", offset).
 		Msg("part uploaded")
@@ -355,7 +332,7 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(MultipartUploadPart{
-		PartNumber: partNumber,
+		PartNumber: int(partNumber),
 		Size:       size,
 	}); err != nil {
 		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("failed to encode response")
@@ -402,7 +379,7 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 
 	// Verify all parts were uploaded
 	session.mu.Lock()
-	missingParts := []int{}
+	var missingParts []uint
 	for i := range session.NumParts {
 		if !session.PartsWritten[i] {
 			missingParts = append(missingParts, i)
@@ -416,7 +393,7 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 		a.logger.Error().
 			Str(string(logs.OperationIDKey), operationID).
 			Str("uploadId", uploadId).
-			Ints("missingParts", missingParts).
+			Uints("missingParts", missingParts).
 			Msg("missing parts in upload")
 		jsonError(w, http.StatusBadRequest, fmt.Errorf("missing parts: %v", missingParts))
 
@@ -436,7 +413,7 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 		Str("uploadId", uploadId).
 		Str("filePath", session.FilePath).
 		Int64("totalSize", session.TotalSize).
-		Int("numParts", session.NumParts).
+		Uint("numParts", session.NumParts).
 		Msg("multipart upload completed")
 
 	w.Header().Set("Content-Type", "application/json")
@@ -489,7 +466,7 @@ func (a *API) DeleteFilesUploadUploadId(w http.ResponseWriter, r *http.Request, 
 
 	// Close and remove the file
 	session.DestFile.Close()
-	if err := os.Remove(session.FilePath); err != nil && !os.IsNotExist(err) {
+	if err := ignoreNotExist(os.Remove(session.FilePath)); err != nil {
 		a.logger.Warn().Err(err).Str(string(logs.OperationIDKey), operationID).Str("uploadId", uploadId).Msg("error removing file")
 	}
 

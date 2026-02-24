@@ -198,12 +198,10 @@ func TestMultipartUpload(t *testing.T) {
 		t.Parallel()
 		api := newMultipartTestAPI(t)
 
-		// Use a valid UUID that doesn't exist in the sessions map
-		nonExistentUUID := "00000000-0000-0000-0000-000000000000"
-		req := httptest.NewRequest(http.MethodPut, "/files/upload/"+nonExistentUUID+"?part=0", bytes.NewReader([]byte("test")))
+		req := httptest.NewRequest(http.MethodPut, "/files/upload/no-such-session?part=0", bytes.NewReader([]byte("test")))
 		w := httptest.NewRecorder()
 
-		api.PutFilesUploadUploadId(w, req, nonExistentUUID, PutFilesUploadUploadIdParams{Part: 0})
+		api.PutFilesUploadUploadId(w, req, "no-such-session", PutFilesUploadUploadIdParams{Part: 0})
 		assert.Equal(t, http.StatusNotFound, w.Code)
 	})
 
@@ -227,18 +225,6 @@ func TestMultipartUpload(t *testing.T) {
 
 		api.DeleteFilesUploadUploadId(w, req, "non-existent")
 		assert.Equal(t, http.StatusNotFound, w.Code)
-	})
-
-	t.Run("invalid upload ID format", func(t *testing.T) {
-		t.Parallel()
-		api := newMultipartTestAPI(t)
-
-		// Try to upload with an invalid UUID (path traversal attempt)
-		req := httptest.NewRequest(http.MethodPut, "/files/upload/../../../etc/passwd?part=0", bytes.NewReader([]byte("test")))
-		w := httptest.NewRecorder()
-
-		api.PutFilesUploadUploadId(w, req, "../../../etc/passwd", PutFilesUploadUploadIdParams{Part: 0})
-		assert.Equal(t, http.StatusBadRequest, w.Code)
 	})
 
 	t.Run("negative part number", func(t *testing.T) {

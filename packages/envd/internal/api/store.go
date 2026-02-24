@@ -21,15 +21,24 @@ type MultipartUploadSession struct {
 	UploadID     string
 	FilePath     string   // Final destination path
 	DestFile     *os.File // Open file handle for direct writes
-	TotalSize    int64    // Total expected file size
-	PartSize     int64    // Size of each part (except possibly last)
-	NumParts     int      // Total number of expected parts
+	TotalSize    int64    // Total expected file size (validated >= 0 at input)
+	PartSize     int64    // Size of each part (validated > 0 at input)
+	NumParts     uint     // Total number of expected parts
 	UID          int
 	GID          int
-	PartsWritten map[int]bool // partNumber -> whether it's been written
+	PartsWritten map[uint]bool // partNumber -> whether it's been written
 	CreatedAt    time.Time
 	completed    atomic.Bool // Set to true when complete/abort starts to prevent new parts
 	mu           sync.Mutex
+}
+
+// ignoreNotExist returns nil if err is a "not exist" error, otherwise returns err unchanged.
+func ignoreNotExist(err error) error {
+	if os.IsNotExist(err) {
+		return nil
+	}
+
+	return err
 }
 
 // MMDSClient provides access to MMDS metadata.
@@ -86,25 +95,29 @@ func (a *API) cleanupExpiredUploads() {
 	defer ticker.Stop()
 
 	for range ticker.C {
-		a.uploadsLock.Lock()
-		now := time.Now()
-		for uploadID, session := range a.uploads {
-			if now.Sub(session.CreatedAt) > uploadSessionTTL {
-				// Mark as completed to prevent races
-				if session.completed.CompareAndSwap(false, true) {
-					delete(a.uploads, uploadID)
-					// Close file handle and remove file in background
-					go func(s *MultipartUploadSession) {
-						s.DestFile.Close()
-						if err := os.Remove(s.FilePath); err != nil && !os.IsNotExist(err) {
-							a.logger.Warn().Err(err).Str("filePath", s.FilePath).Msg("failed to cleanup expired upload file")
-						}
-					}(session)
-					a.logger.Info().Str("uploadId", uploadID).Msg("cleaned up expired multipart upload session")
-				}
+		a.removeExpiredSessions()
+	}
+}
+
+func (a *API) removeExpiredSessions() {
+	a.uploadsLock.Lock()
+	defer a.uploadsLock.Unlock()
+
+	now := time.Now()
+	for uploadID, session := range a.uploads {
+		if now.Sub(session.CreatedAt) > uploadSessionTTL {
+			// Mark as completed to prevent races
+			if session.completed.CompareAndSwap(false, true) {
+				delete(a.uploads, uploadID)
+				go func(s *MultipartUploadSession) {
+					s.DestFile.Close()
+					if err := ignoreNotExist(os.Remove(s.FilePath)); err != nil {
+						a.logger.Warn().Err(err).Str("filePath", s.FilePath).Msg("failed to cleanup expired upload file")
+					}
+				}(session)
+				a.logger.Info().Str("uploadId", uploadID).Msg("cleaned up expired multipart upload session")
 			}
 		}
-		a.uploadsLock.Unlock()
 	}
 }
 
