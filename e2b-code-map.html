@@ -8,7 +8,7 @@
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: #0d1117; color: #e6edf3; height: 100vh; overflow: hidden; }
   .layout { display: flex; height: 100vh; }
-  .sidebar { width: 280px; min-width: 280px; background: #161b22; border-right: 1px solid #30363d; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+  .sidebar { width: 290px; min-width: 290px; background: #161b22; border-right: 1px solid #30363d; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
   .sidebar h1 { font-size: 15px; font-weight: 600; color: #e6edf3; letter-spacing: -0.3px; }
   .sidebar h2 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #8b949e; margin-bottom: 8px; }
   .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
@@ -22,14 +22,28 @@
   .legend { position: absolute; bottom: 12px; left: 12px; background: #161b22ee; border: 1px solid #30363d; border-radius: 8px; padding: 10px 14px; display: flex; gap: 14px; flex-wrap: wrap; font-size: 11px; }
   .legend-item { display: flex; align-items: center; gap: 5px; color: #8b949e; }
   .legend-line { width: 24px; height: 2px; border-radius: 1px; }
-  .prompt-area { border-top: 1px solid #30363d; background: #161b22; padding: 12px 16px; max-height: 160px; display: flex; flex-direction: column; }
+  .legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .prompt-area { border-top: 1px solid #30363d; background: #161b22; padding: 12px 16px; max-height: 180px; display: flex; flex-direction: column; }
   .prompt-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
   .prompt-header span { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #8b949e; }
   .copy-btn { background: #238636; border: none; color: #fff; padding: 4px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; transition: background 0.15s; }
   .copy-btn:hover { background: #2ea043; }
   .copy-btn.copied { background: #1a7f37; }
   .prompt-text { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; color: #c9d1d9; line-height: 1.5; overflow-y: auto; flex: 1; white-space: pre-wrap; }
-  .section { background: #21262d; border-radius: 8px; padding: 12px; }
+  .provider-toggle { display: flex; gap: 0; border-radius: 8px; overflow: hidden; border: 1px solid #30363d; }
+  .provider-btn { flex: 1; padding: 8px 0; border: none; cursor: pointer; font-size: 12px; font-weight: 600; text-align: center; transition: all 0.15s; background: #21262d; color: #8b949e; }
+  .provider-btn:first-child { border-right: 1px solid #30363d; }
+  .provider-btn.active-gcp { background: #1a3a1a; color: #3fb950; }
+  .provider-btn.active-aws { background: #3d2b07; color: #f0a030; }
+  .provider-btn:hover:not(.active-gcp):not(.active-aws) { background: #30363d; }
+  .aws-status-bar { background: #21262d; border-radius: 8px; padding: 10px 12px; }
+  .aws-status-bar .status-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #8b949e; margin-bottom: 8px; }
+  .status-meter { height: 6px; background: #30363d; border-radius: 3px; overflow: hidden; margin-bottom: 6px; }
+  .status-meter-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
+  .status-counts { display: flex; gap: 12px; font-size: 11px; }
+  .status-counts .ready { color: #3fb950; }
+  .status-counts .partial { color: #d29922; }
+  .status-counts .missing { color: #f85149; }
   .preset-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
   .preset-btn { background: #30363d; border: 1px solid #444c56; color: #c9d1d9; padding: 6px 8px; border-radius: 6px; cursor: pointer; font-size: 11px; font-weight: 500; text-align: center; transition: all 0.15s; }
   .preset-btn:hover { background: #3d444d; border-color: #58a6ff; }
@@ -39,7 +53,7 @@
   .toggle-item input { accent-color: #58a6ff; cursor: pointer; }
   .toggle-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
   .toggle-line { width: 18px; height: 3px; border-radius: 2px; flex-shrink: 0; }
-  .comments-list { display: flex; flex-direction: column; gap: 6px; max-height: 220px; overflow-y: auto; }
+  .comments-list { display: flex; flex-direction: column; gap: 6px; max-height: 200px; overflow-y: auto; }
   .comment-card { background: #30363d; border-radius: 6px; padding: 8px 10px; position: relative; }
   .comment-target { font-size: 11px; font-weight: 600; color: #58a6ff; margin-bottom: 3px; }
   .comment-file { font-size: 10px; color: #6e7681; font-family: monospace; margin-bottom: 4px; }
@@ -49,9 +63,13 @@
   .empty-comments { font-size: 12px; color: #6e7681; font-style: italic; text-align: center; padding: 8px 0; }
   .modal-overlay { display: none; position: fixed; inset: 0; background: #000000aa; z-index: 100; align-items: center; justify-content: center; }
   .modal-overlay.open { display: flex; }
-  .modal { background: #21262d; border: 1px solid #30363d; border-radius: 12px; padding: 20px; width: 380px; max-width: 90vw; }
+  .modal { background: #21262d; border: 1px solid #30363d; border-radius: 12px; padding: 20px; width: 400px; max-width: 90vw; }
   .modal h3 { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
-  .modal .modal-file { font-size: 11px; color: #8b949e; font-family: monospace; margin-bottom: 12px; }
+  .modal .modal-file { font-size: 11px; color: #8b949e; font-family: monospace; margin-bottom: 6px; }
+  .modal .modal-status { font-size: 11px; margin-bottom: 10px; padding: 4px 8px; border-radius: 4px; display: inline-block; }
+  .modal .modal-status.ready { background: #0d2818; color: #3fb950; }
+  .modal .modal-status.partial { background: #2d2007; color: #d29922; }
+  .modal .modal-status.missing { background: #2d1419; color: #f85149; }
   .modal textarea { width: 100%; height: 80px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #e6edf3; padding: 8px; font-family: inherit; font-size: 13px; resize: vertical; outline: none; }
   .modal textarea:focus { border-color: #58a6ff; }
   .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
@@ -61,11 +79,12 @@
   .btn-save { background: #238636; border-color: #238636; color: #fff; }
   .btn-save:hover { background: #2ea043; }
   .node-group { cursor: pointer; }
-  .node-group:hover rect { filter: brightness(1.3); }
-  .node-group.commented rect { stroke-width: 2.5; }
+  .node-group:hover rect.node-rect { filter: brightness(1.3); }
+  .node-group.commented rect.node-rect { stroke-width: 2.5; }
   .conn-label { font-family: 'SF Mono', monospace; font-size: 9px; fill: #8b949e; pointer-events: none; }
   .node-title { font-family: -apple-system, system-ui, sans-serif; font-size: 12px; font-weight: 600; pointer-events: none; }
   .node-subtitle { font-family: 'SF Mono', monospace; font-size: 9px; pointer-events: none; }
+  .node-status-badge { font-family: -apple-system, system-ui, sans-serif; font-size: 8px; font-weight: 700; pointer-events: none; letter-spacing: 0.3px; }
 </style>
 </head>
 <body>
@@ -73,6 +92,24 @@
 <div class="layout">
   <div class="sidebar">
     <h1>E2B Infrastructure</h1>
+
+    <div>
+      <h2>Cloud Provider</h2>
+      <div class="provider-toggle">
+        <button class="provider-btn active-gcp" id="btn-gcp" onclick="setProvider('gcp')">GCP</button>
+        <button class="provider-btn" id="btn-aws" onclick="setProvider('aws')">AWS</button>
+      </div>
+    </div>
+
+    <div class="aws-status-bar" id="awsStatusBar" style="display:none">
+      <div class="status-title">AWS Readiness</div>
+      <div class="status-meter"><div class="status-meter-fill" id="awsMeterFill" style="width:0%;background:#3fb950"></div></div>
+      <div class="status-counts">
+        <span class="ready" id="awsReady"></span>
+        <span class="partial" id="awsPartial"></span>
+        <span class="missing" id="awsMissing"></span>
+      </div>
+    </div>
 
     <div>
       <h2>View Presets</h2>
@@ -132,6 +169,7 @@
   <div class="modal">
     <h3 id="modalTitle"></h3>
     <div class="modal-file" id="modalFile"></div>
+    <div class="modal-status" id="modalStatus" style="display:none"></div>
     <textarea id="modalText" placeholder="Add your feedback about this component..."></textarea>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeModal()">Cancel</button>
@@ -151,80 +189,111 @@ const LAYERS = {
 };
 
 const CONN_TYPES = {
-  http:     { label: 'HTTP / REST',   color: '#58a6ff', dash: '',      style: 'solid' },
-  grpc:     { label: 'gRPC',          color: '#3fb950', dash: '6,3',   style: 'dashed' },
-  data:     { label: 'Database',      color: '#d29922', dash: '',      style: 'solid' },
-  storage:  { label: 'Object Storage',color: '#bc8cff', dash: '4,4',   style: 'dotted' },
-  system:   { label: 'System / Kernel', color: '#f85149', dash: '5,3', style: 'dashed' },
-  external: { label: 'External Svc',  color: '#636e7b', dash: '2,2',   style: 'dotted' }
+  http:     { label: 'HTTP / REST',    color: '#58a6ff', dash: '' },
+  grpc:     { label: 'gRPC',           color: '#3fb950', dash: '6,3' },
+  data:     { label: 'Database',       color: '#d29922', dash: '' },
+  storage:  { label: 'Object Storage', color: '#bc8cff', dash: '4,4' },
+  system:   { label: 'System / Kernel',color: '#f85149', dash: '5,3' },
+  external: { label: 'External Svc',   color: '#636e7b', dash: '2,2' }
+};
+
+// AWS implementation status:
+//   ready   = Go code + Nomad job config support AWS
+//   partial = Go code exists but needs infra provisioning
+//   missing = No Terraform infrastructure exists yet
+const AWS_STATUS = {
+  ready:   { label: 'Ready',   color: '#3fb950', bg: '#0d2818', desc: 'Go code + Nomad config support AWS' },
+  partial: { label: 'Partial', color: '#d29922', bg: '#2d2007', desc: 'Code ready, infra Terraform missing' },
+  missing: { label: 'Missing', color: '#f85149', bg: '#2d1419', desc: 'No Terraform infrastructure yet' }
 };
 
 const nodes = [
   // Edge
-  { id: 'client',       label: 'External Client',      subtitle: 'SDK / Browser',                     x: 60,   y: 30,  w: 165, h: 50, layer: 'edge' },
-  { id: 'lb',           label: 'GCP Load Balancer',     subtitle: 'HTTPS termination',                 x: 330,  y: 30,  w: 195, h: 50, layer: 'edge' },
-  { id: 'client-proxy', label: 'Client-Proxy',          subtitle: 'packages/client-proxy/',             x: 630,  y: 30,  w: 175, h: 50, layer: 'edge' },
+  { id: 'client',       label: 'External Client',      subtitle: 'SDK / Browser',                          x: 60,   y: 30,  w: 165, h: 50, layer: 'edge',
+    aws: { label: 'External Client', subtitle: 'SDK / Browser', status: 'ready' } },
+  { id: 'lb',           label: 'GCP Load Balancer',     subtitle: 'HTTPS termination',                      x: 330,  y: 30,  w: 195, h: 50, layer: 'edge',
+    aws: { label: 'AWS ALB / NLB', subtitle: 'No Terraform yet', status: 'missing' } },
+  { id: 'client-proxy', label: 'Client-Proxy',          subtitle: 'packages/client-proxy/',                  x: 630,  y: 30,  w: 175, h: 50, layer: 'edge',
+    aws: { label: 'Client-Proxy', subtitle: 'packages/client-proxy/ (same binary)', status: 'ready' } },
   // API
-  { id: 'api',          label: 'API Service',           subtitle: 'packages/api/ :80 :5009',            x: 210,  y: 150, w: 260, h: 55, layer: 'api' },
-  { id: 'docker-proxy', label: 'Docker Registry Proxy', subtitle: 'packages/docker-reverse-proxy/ :5000', x: 600, y: 150, w: 250, h: 55, layer: 'api' },
+  { id: 'api',          label: 'API Service',           subtitle: 'packages/api/ :80 :5009',                 x: 210,  y: 150, w: 260, h: 55, layer: 'api',
+    aws: { label: 'API Service', subtitle: 'packages/api/ :80 :5009 (same binary)', status: 'ready' } },
+  { id: 'docker-proxy', label: 'Docker Registry Proxy', subtitle: 'packages/docker-reverse-proxy/ :5000',    x: 600,  y: 150, w: 250, h: 55, layer: 'api',
+    aws: { label: 'Docker Registry Proxy', subtitle: 'Proxies to ECR (Go code ready)', status: 'ready' } },
   // Orchestration
-  { id: 'orchestrator', label: 'Orchestrator',          subtitle: 'packages/orchestrator/ :5008 gRPC',  x: 40,   y: 290, w: 220, h: 55, layer: 'orchestration' },
-  { id: 'sandbox-proxy',label: 'Sandbox Proxy',         subtitle: ':5007 HTTP reverse proxy',           x: 320,  y: 290, w: 200, h: 55, layer: 'orchestration' },
-  { id: 'template-mgr', label: 'Template Manager',      subtitle: 'gRPC TemplateService',               x: 580,  y: 290, w: 200, h: 55, layer: 'orchestration' },
-  { id: 'tcp-firewall', label: 'TCP Firewall',          subtitle: 'Egress domain/CIDR filter',          x: 320,  y: 372, w: 175, h: 48, layer: 'orchestration' },
-  { id: 'nfs-proxy',    label: 'NFS Proxy',             subtitle: 'Persistent volumes :2049',            x: 555,  y: 372, w: 170, h: 48, layer: 'orchestration' },
+  { id: 'orchestrator', label: 'Orchestrator',          subtitle: 'packages/orchestrator/ :5008 gRPC',       x: 40,   y: 290, w: 220, h: 55, layer: 'orchestration',
+    aws: { label: 'Orchestrator', subtitle: ':5008 gRPC (S3 + ECR provider branching)', status: 'ready' } },
+  { id: 'sandbox-proxy',label: 'Sandbox Proxy',         subtitle: ':5007 HTTP reverse proxy',                x: 320,  y: 290, w: 200, h: 55, layer: 'orchestration',
+    aws: { label: 'Sandbox Proxy', subtitle: ':5007 HTTP reverse proxy (same)', status: 'ready' } },
+  { id: 'template-mgr', label: 'Template Manager',      subtitle: 'gRPC TemplateService',                    x: 580,  y: 290, w: 200, h: 55, layer: 'orchestration',
+    aws: { label: 'Template Manager', subtitle: 'ECR auth + S3 builds (Go ready)', status: 'ready' } },
+  { id: 'tcp-firewall', label: 'TCP Firewall',          subtitle: 'Egress domain/CIDR filter',               x: 320,  y: 372, w: 175, h: 48, layer: 'orchestration',
+    aws: { label: 'TCP Firewall', subtitle: 'iptables (same kernel features)', status: 'ready' } },
+  { id: 'nfs-proxy',    label: 'NFS Proxy',             subtitle: 'Persistent volumes :2049',                 x: 555,  y: 372, w: 170, h: 48, layer: 'orchestration',
+    aws: { label: 'NFS Proxy', subtitle: 'No EFS Terraform yet', status: 'partial' } },
   // VM
-  { id: 'firecracker',  label: 'Firecracker VM',        subtitle: 'microVM + UFFD + cgroups',           x: 150,  y: 475, w: 205, h: 55, layer: 'vm' },
-  { id: 'envd',         label: 'envd',                  subtitle: 'packages/envd/ :49983 Connect RPC',  x: 440,  y: 475, w: 245, h: 55, layer: 'vm' },
+  { id: 'firecracker',  label: 'Firecracker VM',        subtitle: 'microVM + UFFD + cgroups',                x: 150,  y: 475, w: 205, h: 55, layer: 'vm',
+    aws: { label: 'Firecracker VM', subtitle: 'Needs EC2 bare-metal / nested virt', status: 'partial' } },
+  { id: 'envd',         label: 'envd',                  subtitle: 'packages/envd/ :49983 Connect RPC',       x: 440,  y: 475, w: 245, h: 55, layer: 'vm',
+    aws: { label: 'envd', subtitle: 'packages/envd/ :49983 (same binary)', status: 'ready' } },
   // Data
-  { id: 'postgresql',   label: 'PostgreSQL',            subtitle: 'Main + Auth DB (sqlc, pgx)',          x: 40,   y: 595, w: 185, h: 55, layer: 'data' },
-  { id: 'redis',        label: 'Redis',                 subtitle: 'Catalog, cache, events, streams',     x: 280,  y: 595, w: 175, h: 55, layer: 'data' },
-  { id: 'clickhouse',   label: 'ClickHouse',            subtitle: 'Analytics, events, host stats',       x: 510,  y: 595, w: 180, h: 55, layer: 'data' },
-  { id: 'gcs',          label: 'GCS / S3',              subtitle: 'Template & build storage',            x: 745,  y: 595, w: 160, h: 55, layer: 'data' },
+  { id: 'postgresql',   label: 'PostgreSQL',            subtitle: 'Main + Auth DB (sqlc, pgx)',               x: 40,   y: 595, w: 185, h: 55, layer: 'data',
+    aws: { label: 'PostgreSQL (RDS?)', subtitle: 'No RDS / Aurora Terraform yet', status: 'missing' } },
+  { id: 'redis',        label: 'Redis',                 subtitle: 'Catalog, cache, events, streams',          x: 280,  y: 595, w: 175, h: 55, layer: 'data',
+    aws: { label: 'Redis (ElastiCache?)', subtitle: 'No ElastiCache TF; can use Nomad job', status: 'partial' } },
+  { id: 'clickhouse',   label: 'ClickHouse',            subtitle: 'Analytics, events, host stats',            x: 510,  y: 595, w: 180, h: 55, layer: 'data',
+    aws: { label: 'ClickHouse', subtitle: 'Self-hosted on Nomad, S3 backup ready', status: 'ready' } },
+  { id: 'gcs',          label: 'GCS',                   subtitle: 'Template & build storage',                 x: 745,  y: 595, w: 160, h: 55, layer: 'data',
+    aws: { label: 'AWS S3', subtitle: 'Go client ready (no bucket TF)', status: 'partial' } },
   // External
-  { id: 'nomad',        label: 'Nomad API',             subtitle: 'Service discovery',                   x: 1020, y: 140, w: 155, h: 48, layer: 'external' },
-  { id: 'launchdarkly', label: 'LaunchDarkly',          subtitle: 'Feature flags',                       x: 1020, y: 218, w: 168, h: 48, layer: 'external' },
-  { id: 'otel',         label: 'OTEL / Grafana',        subtitle: 'Traces, metrics, logs',               x: 1020, y: 360, w: 178, h: 48, layer: 'external' },
-  { id: 'loki',         label: 'Loki',                  subtitle: 'Log queries (HTTP)',                   x: 1020, y: 438, w: 135, h: 48, layer: 'external' },
-  { id: 'posthog',      label: 'PostHog',               subtitle: 'User analytics',                      x: 1020, y: 516, w: 148, h: 48, layer: 'external' },
+  { id: 'nomad',        label: 'Nomad API',             subtitle: 'Service discovery',                        x: 1020, y: 140, w: 155, h: 48, layer: 'external',
+    aws: { label: 'Nomad API', subtitle: 'No AWS cluster Terraform', status: 'missing' } },
+  { id: 'launchdarkly', label: 'LaunchDarkly',          subtitle: 'Feature flags',                            x: 1020, y: 218, w: 168, h: 48, layer: 'external',
+    aws: { label: 'LaunchDarkly', subtitle: 'Feature flags (same SDK)', status: 'ready' } },
+  { id: 'otel',         label: 'OTEL / Grafana',        subtitle: 'Traces, metrics, logs',                    x: 1020, y: 360, w: 178, h: 48, layer: 'external',
+    aws: { label: 'OTEL / Grafana', subtitle: 'EC2 resource detection configured', status: 'ready' } },
+  { id: 'loki',         label: 'Loki',                  subtitle: 'Log queries (HTTP)',                        x: 1020, y: 438, w: 135, h: 48, layer: 'external',
+    aws: { label: 'Loki', subtitle: 'S3 backend configured in Nomad job', status: 'ready' } },
+  { id: 'posthog',      label: 'PostHog',               subtitle: 'User analytics',                           x: 1020, y: 516, w: 148, h: 48, layer: 'external',
+    aws: { label: 'PostHog', subtitle: 'User analytics (same SDK)', status: 'ready' } },
 ];
 
 const connections = [
   // HTTP
-  { from: 'client',       to: 'lb',            type: 'http', label: 'HTTPS' },
-  { from: 'lb',           to: 'client-proxy',   type: 'http', label: 'Sandbox traffic' },
-  { from: 'lb',           to: 'api',            type: 'http', label: 'API traffic' },
-  { from: 'client-proxy', to: 'sandbox-proxy',  type: 'http', label: 'HTTP proxy' },
-  { from: 'sandbox-proxy',to: 'envd',           type: 'http', label: 'Connect RPC' },
+  { from: 'client',       to: 'lb',            type: 'http', label: 'HTTPS',           awsLabel: 'HTTPS' },
+  { from: 'lb',           to: 'client-proxy',   type: 'http', label: 'Sandbox traffic', awsLabel: 'Sandbox traffic' },
+  { from: 'lb',           to: 'api',            type: 'http', label: 'API traffic',     awsLabel: 'API traffic' },
+  { from: 'client-proxy', to: 'sandbox-proxy',  type: 'http', label: 'HTTP proxy',      awsLabel: 'HTTP proxy' },
+  { from: 'sandbox-proxy',to: 'envd',           type: 'http', label: 'Connect RPC',     awsLabel: 'Connect RPC' },
   // gRPC
-  { from: 'client-proxy', to: 'api',            type: 'grpc', label: 'ResumeSandbox' },
-  { from: 'api',          to: 'orchestrator',   type: 'grpc', label: 'Sandbox/Volume/Info' },
-  { from: 'api',          to: 'template-mgr',   type: 'grpc', label: 'TemplateService' },
+  { from: 'client-proxy', to: 'api',            type: 'grpc', label: 'ResumeSandbox',       awsLabel: 'ResumeSandbox' },
+  { from: 'api',          to: 'orchestrator',   type: 'grpc', label: 'Sandbox/Volume/Info', awsLabel: 'Sandbox/Volume/Info' },
+  { from: 'api',          to: 'template-mgr',   type: 'grpc', label: 'TemplateService',     awsLabel: 'TemplateService' },
   // Data
-  { from: 'api',          to: 'postgresql',     type: 'data', label: 'pgx (main+auth)' },
-  { from: 'api',          to: 'redis',          type: 'data', label: 'Catalog + cache' },
-  { from: 'api',          to: 'clickhouse',     type: 'data', label: 'Analytics queries' },
-  { from: 'client-proxy', to: 'redis',          type: 'data', label: 'Catalog lookup' },
-  { from: 'orchestrator', to: 'redis',          type: 'data', label: 'Events + net slots' },
-  { from: 'orchestrator', to: 'clickhouse',     type: 'data', label: 'Events + host stats' },
+  { from: 'api',          to: 'postgresql',     type: 'data', label: 'pgx (main+auth)',      awsLabel: 'pgx (main+auth)' },
+  { from: 'api',          to: 'redis',          type: 'data', label: 'Catalog + cache',      awsLabel: 'Catalog + cache' },
+  { from: 'api',          to: 'clickhouse',     type: 'data', label: 'Analytics queries',    awsLabel: 'Analytics queries' },
+  { from: 'client-proxy', to: 'redis',          type: 'data', label: 'Catalog lookup',       awsLabel: 'Catalog lookup' },
+  { from: 'orchestrator', to: 'redis',          type: 'data', label: 'Events + net slots',   awsLabel: 'Events + net slots' },
+  { from: 'orchestrator', to: 'clickhouse',     type: 'data', label: 'Events + host stats',  awsLabel: 'Events + host stats' },
   // Storage
-  { from: 'orchestrator', to: 'gcs',            type: 'storage', label: 'Template cache' },
-  { from: 'template-mgr', to: 'gcs',            type: 'storage', label: 'Build artifacts' },
-  { from: 'docker-proxy', to: 'gcs',            type: 'storage', label: 'Artifact Registry' },
+  { from: 'orchestrator', to: 'gcs',            type: 'storage', label: 'Template cache',     awsLabel: 'S3 template cache' },
+  { from: 'template-mgr', to: 'gcs',            type: 'storage', label: 'Build artifacts',    awsLabel: 'S3 build artifacts' },
+  { from: 'docker-proxy', to: 'gcs',            type: 'storage', label: 'Artifact Registry',  awsLabel: 'ECR proxy' },
   // System
-  { from: 'orchestrator', to: 'firecracker',    type: 'system', label: 'Unix socket API' },
-  { from: 'tcp-firewall', to: 'firecracker',    type: 'system', label: 'iptables egress' },
-  { from: 'nfs-proxy',    to: 'firecracker',    type: 'system', label: 'NFS mount' },
-  { from: 'firecracker',  to: 'envd',           type: 'system', label: 'In-VM process' },
+  { from: 'orchestrator', to: 'firecracker',    type: 'system', label: 'Unix socket API',   awsLabel: 'Unix socket API' },
+  { from: 'tcp-firewall', to: 'firecracker',    type: 'system', label: 'iptables egress',   awsLabel: 'iptables egress' },
+  { from: 'nfs-proxy',    to: 'firecracker',    type: 'system', label: 'NFS mount',          awsLabel: 'NFS / EFS mount' },
+  { from: 'firecracker',  to: 'envd',           type: 'system', label: 'In-VM process',     awsLabel: 'In-VM process' },
   // External
-  { from: 'api',          to: 'nomad',          type: 'external', label: 'Discovery' },
-  { from: 'api',          to: 'launchdarkly',   type: 'external', label: 'Flags' },
-  { from: 'api',          to: 'posthog',        type: 'external', label: 'Analytics' },
-  { from: 'api',          to: 'loki',           type: 'external', label: 'Log queries' },
-  { from: 'orchestrator', to: 'launchdarkly',   type: 'external', label: 'Flags' },
-  { from: 'orchestrator', to: 'otel',           type: 'external', label: 'Telemetry' },
-  { from: 'api',          to: 'otel',           type: 'external', label: 'Telemetry' },
-  { from: 'envd',         to: 'otel',           type: 'external', label: 'Sandbox logs' },
+  { from: 'api',          to: 'nomad',          type: 'external', label: 'Discovery',     awsLabel: 'Discovery' },
+  { from: 'api',          to: 'launchdarkly',   type: 'external', label: 'Flags',         awsLabel: 'Flags' },
+  { from: 'api',          to: 'posthog',        type: 'external', label: 'Analytics',     awsLabel: 'Analytics' },
+  { from: 'api',          to: 'loki',           type: 'external', label: 'Log queries',   awsLabel: 'Log queries' },
+  { from: 'orchestrator', to: 'launchdarkly',   type: 'external', label: 'Flags',         awsLabel: 'Flags' },
+  { from: 'orchestrator', to: 'otel',           type: 'external', label: 'Telemetry',     awsLabel: 'Telemetry' },
+  { from: 'api',          to: 'otel',           type: 'external', label: 'Telemetry',     awsLabel: 'Telemetry' },
+  { from: 'envd',         to: 'otel',           type: 'external', label: 'Sandbox logs',  awsLabel: 'Sandbox logs' },
 ];
 
 const nodesById = Object.fromEntries(nodes.map(n => [n.id, n]));
@@ -239,6 +308,7 @@ const PRESETS = {
 
 // State
 const state = {
+  provider: 'gcp',
   layers: { edge: true, api: true, orchestration: true, vm: true, data: true, external: true },
   connectionTypes: { http: true, grpc: true, data: true, storage: true, system: true, external: true },
   activePreset: 'Full System',
@@ -250,12 +320,50 @@ const state = {
 const BASE_VB = { x: 0, y: 0, w: 1260, h: 710 };
 let isPanning = false, panStart = { x: 0, y: 0 }, panStartVB = { x: 0, y: 0 };
 
+// --- Provider ---
+function setProvider(p) {
+  state.provider = p;
+  document.getElementById('btn-gcp').className = 'provider-btn' + (p === 'gcp' ? ' active-gcp' : '');
+  document.getElementById('btn-aws').className = 'provider-btn' + (p === 'aws' ? ' active-aws' : '');
+  document.getElementById('awsStatusBar').style.display = p === 'aws' ? 'block' : 'none';
+  if (p === 'aws') updateAwsStatus();
+  render();
+}
+
+function updateAwsStatus() {
+  const visible = nodes.filter(n => state.layers[n.layer] && n.aws);
+  const ready = visible.filter(n => n.aws.status === 'ready').length;
+  const partial = visible.filter(n => n.aws.status === 'partial').length;
+  const missing = visible.filter(n => n.aws.status === 'missing').length;
+  const total = visible.length;
+  const pct = total > 0 ? Math.round(((ready + partial * 0.5) / total) * 100) : 0;
+  document.getElementById('awsMeterFill').style.width = pct + '%';
+  const clr = pct > 70 ? '#3fb950' : pct > 40 ? '#d29922' : '#f85149';
+  document.getElementById('awsMeterFill').style.background = clr;
+  document.getElementById('awsReady').textContent = ready + ' ready';
+  document.getElementById('awsPartial').textContent = partial + ' partial';
+  document.getElementById('awsMissing').textContent = missing + ' missing';
+}
+
+function getNodeDisplay(n) {
+  if (state.provider === 'aws' && n.aws) {
+    return { label: n.aws.label, subtitle: n.aws.subtitle, status: n.aws.status };
+  }
+  return { label: n.label, subtitle: n.subtitle, status: null };
+}
+
+function getConnLabel(c) {
+  return state.provider === 'aws' ? (c.awsLabel || c.label) : c.label;
+}
+
 // --- Rendering ---
 function render() {
   const g = document.getElementById('diagram-content');
   g.innerHTML = '';
 
-  // Draw layer bands
+  if (state.provider === 'aws') updateAwsStatus();
+
+  // Layer bands
   const layerBands = [
     { layer: 'edge',          y: 15, h: 78,  label: 'Edge' },
     { layer: 'api',           y: 135, h: 82,  label: 'API' },
@@ -267,12 +375,12 @@ function render() {
     if (!state.layers[b.layer]) return;
     const rect = svgEl('rect', { x: 8, y: b.y, width: 980, height: b.h, rx: 8, fill: LAYERS[b.layer].fill, opacity: 0.35 });
     g.appendChild(rect);
-    const txt = svgEl('text', { x: 16, y: b.y + 14, fill: LAYERS[b.layer].color, opacity: 0.4, 'font-size': '10px', 'font-weight': '600', 'font-family': '-apple-system, system-ui, sans-serif', 'text-transform': 'uppercase', 'letter-spacing': '0.5px' });
+    const txt = svgEl('text', { x: 16, y: b.y + 14, fill: LAYERS[b.layer].color, opacity: 0.4, 'font-size': '10px', 'font-weight': '600', 'font-family': '-apple-system, system-ui, sans-serif' });
     txt.textContent = b.label;
     g.appendChild(txt);
   });
 
-  // Draw connections
+  // Connections
   connections.forEach(c => {
     if (!isConnVisible(c)) return;
     const from = nodesById[c.from], to = nodesById[c.to];
@@ -280,38 +388,68 @@ function render() {
     const path = calcPath(from, to);
     const el = svgEl('path', { d: path, stroke: ct.color, 'stroke-width': 1.5, fill: 'none', 'stroke-dasharray': ct.dash, 'marker-end': `url(#ah-${c.type})`, opacity: 0.65 });
     g.appendChild(el);
-    // Label
-    if (c.label) {
+    const lbl = getConnLabel(c);
+    if (lbl) {
       const mid = pathMidpoint(from, to);
-      const bg = svgEl('rect', { x: mid.x - 2, y: mid.y - 9, width: c.label.length * 5.5 + 6, height: 13, rx: 3, fill: '#0d1117', opacity: 0.85 });
+      const bg = svgEl('rect', { x: mid.x - 2, y: mid.y - 9, width: lbl.length * 5.5 + 6, height: 13, rx: 3, fill: '#0d1117', opacity: 0.85 });
       g.appendChild(bg);
-      const lbl = svgEl('text', { x: mid.x + 1, y: mid.y, class: 'conn-label', fill: ct.color, opacity: 0.8 });
-      lbl.textContent = c.label;
-      g.appendChild(lbl);
+      const t = svgEl('text', { x: mid.x + 1, y: mid.y, class: 'conn-label', fill: ct.color, opacity: 0.8 });
+      t.textContent = lbl;
+      g.appendChild(t);
     }
   });
 
-  // Draw nodes
+  // Nodes
   nodes.forEach(n => {
     if (!state.layers[n.layer]) return;
     const ly = LAYERS[n.layer];
+    const d = getNodeDisplay(n);
     const hasComment = state.comments.some(c => c.target === n.id);
+    const isAws = state.provider === 'aws';
     const grp = svgEl('g', { class: 'node-group' + (hasComment ? ' commented' : ''), 'data-id': n.id });
 
-    const rect = svgEl('rect', { x: n.x, y: n.y, width: n.w, height: n.h, rx: 8, fill: ly.fill, stroke: ly.color, 'stroke-width': hasComment ? 2.5 : 1.2 });
+    // Determine border style for AWS status
+    let strokeDash = '';
+    let strokeOpacity = 1;
+    let fillOpacity = 1;
+    if (isAws && d.status === 'missing') { strokeDash = '4,3'; fillOpacity = 0.5; }
+    else if (isAws && d.status === 'partial') { strokeDash = '8,3'; fillOpacity = 0.75; }
+
+    const rect = svgEl('rect', {
+      x: n.x, y: n.y, width: n.w, height: n.h, rx: 8,
+      fill: ly.fill, stroke: isAws && d.status ? (AWS_STATUS[d.status]?.color || ly.color) : ly.color,
+      'stroke-width': hasComment ? 2.5 : 1.2,
+      'stroke-dasharray': strokeDash,
+      opacity: fillOpacity,
+      class: 'node-rect'
+    });
     grp.appendChild(rect);
 
+    // Comment badge
     if (hasComment) {
       const badge = svgEl('circle', { cx: n.x + n.w - 6, cy: n.y + 6, r: 5, fill: '#58a6ff' });
       grp.appendChild(badge);
     }
 
-    const title = svgEl('text', { x: n.x + 10, y: n.y + (n.h > 50 ? 22 : 20), class: 'node-title', fill: ly.textColor });
-    title.textContent = n.label;
+    // AWS status badge
+    if (isAws && d.status) {
+      const st = AWS_STATUS[d.status];
+      const badgeW = d.status === 'missing' ? 42 : d.status === 'partial' ? 40 : 34;
+      const bx = n.x + n.w - badgeW - 6;
+      const by = n.y + n.h - 14;
+      const br = svgEl('rect', { x: bx, y: by, width: badgeW, height: 12, rx: 3, fill: st.bg, stroke: st.color, 'stroke-width': 0.5 });
+      grp.appendChild(br);
+      const bt = svgEl('text', { x: bx + badgeW / 2, y: by + 9, 'text-anchor': 'middle', class: 'node-status-badge', fill: st.color });
+      bt.textContent = st.label.toUpperCase();
+      grp.appendChild(bt);
+    }
+
+    const title = svgEl('text', { x: n.x + 10, y: n.y + (n.h > 50 ? 22 : 20), class: 'node-title', fill: isAws && d.status ? (AWS_STATUS[d.status]?.color || ly.textColor) : ly.textColor });
+    title.textContent = d.label;
     grp.appendChild(title);
 
     const sub = svgEl('text', { x: n.x + 10, y: n.y + (n.h > 50 ? 38 : 34), class: 'node-subtitle', fill: '#8b949e' });
-    sub.textContent = n.subtitle;
+    sub.textContent = d.subtitle;
     grp.appendChild(sub);
 
     grp.addEventListener('click', (e) => { e.stopPropagation(); openModal(n); });
@@ -337,7 +475,6 @@ function calcPath(from, to) {
   const tcx = to.x + to.w / 2, tcy = to.y + to.h / 2;
   const dx = tcx - fcx, dy = tcy - fcy;
   let x1, y1, x2, y2;
-
   if (Math.abs(dy) > Math.abs(dx) * 0.4) {
     if (dy > 0) { x1 = fcx; y1 = from.y + from.h; x2 = tcx; y2 = to.y; }
     else { x1 = fcx; y1 = from.y; x2 = tcx; y2 = to.y + to.h; }
@@ -379,12 +516,10 @@ function resetZoom() {
 function applyViewBox() {
   const w = BASE_VB.w / state.zoom, h = BASE_VB.h / state.zoom;
   const cx = BASE_VB.w / 2 + state.panX, cy = BASE_VB.h / 2 + state.panY;
-  const vx = cx - w / 2, vy = cy - h / 2;
-  document.getElementById('diagram').setAttribute('viewBox', `${vx} ${vy} ${w} ${h}`);
+  document.getElementById('diagram').setAttribute('viewBox', `${cx - w/2} ${cy - h/2} ${w} ${h}`);
   document.getElementById('zoomLevel').textContent = Math.round(state.zoom * 100) + '%';
 }
 
-// Pan support
 const svg = document.getElementById('diagram');
 svg.addEventListener('mousedown', e => {
   if (e.target.closest('.node-group')) return;
@@ -394,17 +529,14 @@ svg.addEventListener('mousedown', e => {
 });
 svg.addEventListener('mousemove', e => {
   if (!isPanning) return;
-  const dx = (e.clientX - panStart.x) / state.zoom;
-  const dy = (e.clientY - panStart.y) / state.zoom;
-  state.panX = panStartVB.x - dx;
-  state.panY = panStartVB.y - dy;
+  state.panX = panStartVB.x - (e.clientX - panStart.x) / state.zoom;
+  state.panY = panStartVB.y - (e.clientY - panStart.y) / state.zoom;
   applyViewBox();
 });
 document.addEventListener('mouseup', () => { isPanning = false; });
 svg.addEventListener('wheel', e => {
   e.preventDefault();
-  const dir = e.deltaY < 0 ? 1 : -1;
-  state.zoom = Math.max(0.35, Math.min(3, state.zoom + dir * 0.1));
+  state.zoom = Math.max(0.35, Math.min(3, state.zoom + (e.deltaY < 0 ? 0.1 : -0.1)));
   applyViewBox();
 }, { passive: false });
 
@@ -413,8 +545,18 @@ let modalNode = null;
 
 function openModal(node) {
   modalNode = node;
-  document.getElementById('modalTitle').textContent = node.label;
-  document.getElementById('modalFile').textContent = node.subtitle;
+  const d = getNodeDisplay(node);
+  document.getElementById('modalTitle').textContent = d.label;
+  document.getElementById('modalFile').textContent = d.subtitle;
+  const statusEl = document.getElementById('modalStatus');
+  if (state.provider === 'aws' && d.status) {
+    const st = AWS_STATUS[d.status];
+    statusEl.textContent = st.label + ': ' + st.desc;
+    statusEl.className = 'modal-status ' + d.status;
+    statusEl.style.display = 'inline-block';
+  } else {
+    statusEl.style.display = 'none';
+  }
   document.getElementById('modalText').value = '';
   document.getElementById('modalOverlay').classList.add('open');
   setTimeout(() => document.getElementById('modalText').focus(), 50);
@@ -428,7 +570,14 @@ function closeModal() {
 function saveComment() {
   const text = document.getElementById('modalText').value.trim();
   if (!text || !modalNode) return;
-  state.comments.push({ id: Date.now(), target: modalNode.id, targetLabel: modalNode.label, targetFile: modalNode.subtitle, text });
+  const d = getNodeDisplay(modalNode);
+  state.comments.push({
+    id: Date.now(), target: modalNode.id,
+    targetLabel: d.label, targetFile: d.subtitle,
+    provider: state.provider,
+    awsStatus: d.status,
+    text
+  });
   closeModal();
   renderComments();
   render();
@@ -446,14 +595,16 @@ function renderComments() {
     return;
   }
   cnt.textContent = `(${state.comments.length})`;
-  el.innerHTML = state.comments.map(c => `
+  el.innerHTML = state.comments.map(c => {
+    const provTag = c.provider === 'aws' && c.awsStatus ? ` <span style="color:${AWS_STATUS[c.awsStatus].color};font-size:10px">[${c.awsStatus}]</span>` : '';
+    return `
     <div class="comment-card">
       <button class="comment-del" onclick="deleteComment(${c.id})">&times;</button>
-      <div class="comment-target">${c.targetLabel}</div>
-      <div class="comment-file">${c.targetFile}</div>
+      <div class="comment-target">${escHtml(c.targetLabel)}${provTag}</div>
+      <div class="comment-file">${escHtml(c.targetFile)}</div>
       <div class="comment-text">${escHtml(c.text)}</div>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
 }
 
 function deleteComment(id) {
@@ -466,7 +617,6 @@ function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replac
 
 // --- Controls ---
 function buildControls() {
-  // Presets
   const pg = document.getElementById('presets');
   Object.keys(PRESETS).forEach(name => {
     const btn = document.createElement('button');
@@ -476,7 +626,6 @@ function buildControls() {
     pg.appendChild(btn);
   });
 
-  // Layer toggles
   const lt = document.getElementById('layerToggles');
   Object.entries(LAYERS).forEach(([key, ly]) => {
     const label = document.createElement('label');
@@ -491,7 +640,6 @@ function buildControls() {
     lt.appendChild(label);
   });
 
-  // Connection toggles
   const ct = document.getElementById('connToggles');
   Object.entries(CONN_TYPES).forEach(([key, ct_]) => {
     const label = document.createElement('label');
@@ -519,6 +667,21 @@ function buildControls() {
     item.appendChild(document.createTextNode(ct_.label));
     leg.appendChild(item);
   });
+  // AWS status legend items (shown dynamically)
+  const sep = document.createElement('span');
+  sep.id = 'legendAwsSep'; sep.style.display = 'none';
+  sep.style.cssText = 'width:1px;height:14px;background:#30363d;display:none';
+  leg.appendChild(sep);
+  Object.entries(AWS_STATUS).forEach(([key, st]) => {
+    const item = document.createElement('div');
+    item.className = 'legend-item aws-legend-item';
+    item.style.display = 'none';
+    const dot = document.createElement('span');
+    dot.className = 'legend-dot'; dot.style.background = st.color;
+    item.appendChild(dot);
+    item.appendChild(document.createTextNode('AWS ' + st.label));
+    leg.appendChild(item);
+  });
 }
 
 function applyPreset(name) {
@@ -526,7 +689,6 @@ function applyPreset(name) {
   state.activePreset = name;
   Object.assign(state.layers, p.layers);
   Object.assign(state.connectionTypes, p.conns);
-  // Sync checkboxes
   document.querySelectorAll('#layerToggles input').forEach((cb, i) => { cb.checked = Object.values(p.layers)[i]; });
   document.querySelectorAll('#connToggles input').forEach((cb, i) => { cb.checked = Object.values(p.conns)[i]; });
   document.querySelectorAll('.preset-btn').forEach(b => b.classList.toggle('active', b.textContent === name));
@@ -544,18 +706,48 @@ function syncPreset() {
   document.querySelectorAll('.preset-btn').forEach(b => b.classList.toggle('active', b.textContent === matched));
 }
 
+// Toggle AWS legend items
+const origSetProvider = setProvider;
+setProvider = function(p) {
+  origSetProvider(p);
+  const show = p === 'aws';
+  document.querySelectorAll('.aws-legend-item').forEach(el => el.style.display = show ? 'flex' : 'none');
+  const sep = document.getElementById('legendAwsSep');
+  if (sep) sep.style.display = show ? 'block' : 'none';
+};
+
 // --- Prompt ---
 function updatePrompt() {
   const parts = [];
+  const isAws = state.provider === 'aws';
+  const providerName = isAws ? 'AWS' : 'GCP';
   const visibleLayers = Object.entries(state.layers).filter(([_, v]) => v).map(([k]) => LAYERS[k].label);
   const allVisible = visibleLayers.length === Object.keys(LAYERS).length;
 
   if (state.activePreset && state.activePreset !== 'Full System') {
-    parts.push(`Viewing the E2B infrastructure architecture with the "${state.activePreset}" preset (${visibleLayers.join(', ')} layers).`);
+    parts.push(`Viewing the E2B infrastructure architecture on ${providerName} with the "${state.activePreset}" preset (${visibleLayers.join(', ')} layers).`);
   } else if (!allVisible) {
-    parts.push(`Viewing the E2B infrastructure architecture, focusing on: ${visibleLayers.join(', ')}.`);
+    parts.push(`Viewing the E2B infrastructure on ${providerName}, focusing on: ${visibleLayers.join(', ')}.`);
   } else {
-    parts.push('Viewing the full E2B infrastructure architecture.');
+    parts.push(`Viewing the full E2B infrastructure architecture on ${providerName}.`);
+  }
+
+  if (isAws) {
+    const visible = nodes.filter(n => state.layers[n.layer] && n.aws);
+    const ready = visible.filter(n => n.aws.status === 'ready').length;
+    const partial = visible.filter(n => n.aws.status === 'partial').length;
+    const missing = visible.filter(n => n.aws.status === 'missing').length;
+    parts.push('');
+    parts.push(`AWS readiness: ${ready} components ready, ${partial} partially ready (Go code done, Terraform missing), ${missing} not yet implemented.`);
+
+    if (missing > 0) {
+      const missingNodes = visible.filter(n => n.aws.status === 'missing');
+      parts.push(`Missing infrastructure: ${missingNodes.map(n => n.aws.label).join(', ')}.`);
+    }
+    if (partial > 0) {
+      const partialNodes = visible.filter(n => n.aws.status === 'partial');
+      parts.push(`Needs Terraform: ${partialNodes.map(n => n.aws.label).join(', ')}.`);
+    }
   }
 
   if (state.comments.length > 0) {
@@ -563,7 +755,8 @@ function updatePrompt() {
     parts.push('Feedback on specific components:');
     state.comments.forEach(c => {
       parts.push('');
-      parts.push(`**${c.targetLabel}** (${c.targetFile}):`);
+      const statusNote = c.awsStatus && c.provider === 'aws' ? ` [AWS: ${c.awsStatus}]` : '';
+      parts.push(`**${c.targetLabel}**${statusNote} (${c.targetFile}):`);
       parts.push(c.text);
     });
   }
@@ -572,8 +765,7 @@ function updatePrompt() {
 }
 
 function copyPrompt() {
-  const text = document.getElementById('promptText').textContent;
-  navigator.clipboard.writeText(text).then(() => {
+  navigator.clipboard.writeText(document.getElementById('promptText').textContent).then(() => {
     const btn = document.getElementById('copyBtn');
     btn.textContent = 'Copied!'; btn.classList.add('copied');
     setTimeout(() => { btn.textContent = 'Copy Prompt'; btn.classList.remove('copied'); }, 1500);
