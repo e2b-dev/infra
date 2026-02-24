@@ -26,7 +26,7 @@ func (s *Storage) Add(ctx context.Context, sbx sandbox.Sandbox) error {
 	}
 
 	key := getSandboxKey(sbx.TeamID.String(), sbx.SandboxID)
-	teamKey := getTeamIndexKey(sbx.TeamID.String())
+	teamKey := GetSandboxStorageTeamIndexKey(sbx.TeamID.String())
 
 	// Execute Lua script for atomic SET + SADD
 	err = addSandboxScript.Run(ctx, s.redisClient, []string{key, teamKey}, data, sbx.SandboxID).Err()
@@ -76,7 +76,7 @@ func (s *Storage) Get(ctx context.Context, teamID uuid.UUID, sandboxID string) (
 // Remove deletes a sandbox from Redis atomically with its team index entry.
 func (s *Storage) Remove(ctx context.Context, teamID uuid.UUID, sandboxID string) error {
 	key := getSandboxKey(teamID.String(), sandboxID)
-	teamKey := getTeamIndexKey(teamID.String())
+	teamKey := GetSandboxStorageTeamIndexKey(teamID.String())
 
 	lock, err := s.lockService.Obtain(ctx, redis_utils.GetLockKey(key), lockTimeout, s.lockOption)
 	if err != nil {
@@ -90,15 +90,15 @@ func (s *Storage) Remove(ctx context.Context, teamID uuid.UUID, sandboxID string
 		}
 	}()
 
+	// Clean up from the global expiration index.
+	if err := s.redisClient.ZRem(ctx, globalExpirationSet, expirationMember(teamID.String(), sandboxID)).Err(); err != nil {
+		logger.L().Warn(ctx, "Failed to remove sandbox from global expiration index", zap.Error(err), logger.WithSandboxID(sandboxID))
+	}
+
 	// Execute Lua script for atomic DEL + SREM
 	err = removeSandboxScript.Run(ctx, s.redisClient, []string{key, teamKey}, sandboxID).Err()
 	if err != nil {
 		return fmt.Errorf("failed to remove sandbox from Redis: %w", err)
-	}
-
-	// Clean up from the global expiration index.
-	if err := s.redisClient.ZRem(ctx, globalExpirationSet, expirationMember(teamID.String(), sandboxID)).Err(); err != nil {
-		logger.L().Warn(ctx, "Failed to remove sandbox from global expiration index", zap.Error(err), logger.WithSandboxID(sandboxID))
 	}
 
 	return nil
@@ -107,7 +107,7 @@ func (s *Storage) Remove(ctx context.Context, teamID uuid.UUID, sandboxID string
 // TeamItems retrieves sandboxes for a specific team, filtered by states and options
 func (s *Storage) TeamItems(ctx context.Context, teamID uuid.UUID, states []sandbox.State) ([]sandbox.Sandbox, error) {
 	// Get sandbox IDs from team index
-	teamKey := getTeamIndexKey(teamID.String())
+	teamKey := GetSandboxStorageTeamIndexKey(teamID.String())
 	sandboxIDs, err := s.redisClient.SMembers(ctx, teamKey).Result()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get sandbox IDs from team index: %w", err)
@@ -222,79 +222,6 @@ func (s *Storage) Update(ctx context.Context, teamID uuid.UUID, sandboxID string
 	return updatedSbx, nil
 }
 
-// ExpiredItems returns all sandboxes matching that have expired.
-func (s *Storage) ExpiredItems(ctx context.Context) ([]sandbox.Sandbox, error) {
-	nowMs := float64(time.Now().UnixMilli())
-
-	// Fetch members whose score (EndTime in ms) is <= now.
-	expiredMembers, err := s.redisClient.ZRangeByScore(ctx, globalExpirationSet, &redis.ZRangeBy{
-		Min: "-inf",
-		Max: fmt.Sprintf("%v", nowMs),
-	}).Result()
-	if err != nil {
-		return nil, fmt.Errorf("failed to query global expiration index: %w", err)
-	}
-
-	if len(expiredMembers) == 0 {
-		return nil, nil
-	}
-
-	teamSandboxes := make(map[string][]string) // teamID -> []sandboxID
-	for _, member := range expiredMembers {
-		teamID, sandboxID, ok := parseExpirationMember(member)
-		if !ok {
-			logger.L().Warn(ctx, "Invalid expiration index member", zap.String("member", member))
-
-			continue
-		}
-
-		teamSandboxes[teamID] = append(teamSandboxes[teamID], sandboxID)
-	}
-
-	pipe := s.redisClient.Pipeline()
-	var batches []*redis.SliceCmd
-	for teamID, sandboxIDs := range teamSandboxes {
-		keys := make([]string, len(sandboxIDs))
-		for i, id := range sandboxIDs {
-			keys[i] = getSandboxKey(teamID, id)
-		}
-
-		cmd := pipe.MGet(ctx, keys...)
-		batches = append(batches, cmd)
-	}
-
-	_, err = pipe.Exec(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("MGET pipeline failed: %w", err)
-	}
-
-	// Deserialize and filter by state; double-check IsExpired in case the index is slightly stale.
-	var result []sandbox.Sandbox
-	for _, cmd := range batches {
-		for _, raw := range cmd.Val() {
-			if raw == nil {
-				continue
-			}
-
-			str, ok := raw.(string)
-			if !ok {
-				continue
-			}
-
-			var sbx sandbox.Sandbox
-			if err := json.Unmarshal([]byte(str), &sbx); err != nil {
-				logger.L().Error(ctx, "Failed to unmarshal sandbox", zap.Error(err))
-
-				continue
-			}
-
-			result = append(result, sbx)
-		}
-	}
-
-	return result, nil
-}
-
 // staleCutoff is how long a team entry must be idle (no Add calls) before it
 // can be pruned from the global teams ZSET when its sandbox count is zero.
 // This prevents races where a Remove sees SCARD==0 right before an Add.
@@ -326,7 +253,7 @@ func (s *Storage) TeamsWithSandboxCount(ctx context.Context) (map[uuid.UUID]int6
 
 			continue
 		}
-		cmd := pipe.SCard(ctx, getTeamIndexKey(raw))
+		cmd := pipe.SCard(ctx, GetSandboxStorageTeamIndexKey(raw))
 		entries = append(entries, teamEntry{id: id, score: m.Score, cmd: cmd})
 	}
 

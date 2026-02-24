@@ -37,10 +37,6 @@ func getSandboxKey(teamID, sandboxID string) string {
 	return redis_utils.CreateKey(GetTeamPrefix(teamID), sandboxesKey, sandboxID)
 }
 
-func getTeamIndexKey(teamID string) string {
-	return GetSandboxStorageTeamIndexKey(teamID)
-}
-
 // GetSandboxStorageTeamIndexKey returns the storage team index key for external packages (e.g. reservations).
 func GetSandboxStorageTeamIndexKey(teamID string) string {
 	return redis_utils.CreateKey(GetTeamPrefix(teamID), indexKey)
