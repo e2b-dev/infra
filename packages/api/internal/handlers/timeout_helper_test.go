@@ -24,19 +24,16 @@ func TestCalculateTimeout(t *testing.T) {
 	t.Parallel()
 	team := testTeamWithMaxLengthHours(1)
 
-	// Create without explicit timeout should not persist any starting timeout.
-	timeout, ok := calculateTimeout(0, team)
-	require.False(t, ok)
-	require.Zero(t, timeout)
+	// Create without explicit timeout should floor to the anti-thrash minimum.
+	timeout := calculateTimeout(0, team)
+	require.Equal(t, time.Minute, timeout)
 
 	// Very short requests are floored to the anti-thrash minimum.
-	timeout, ok = calculateTimeout(15*time.Second, team)
-	require.True(t, ok)
+	timeout = calculateTimeout(15*time.Second, team)
 	require.Equal(t, time.Minute, timeout)
 
 	// Very long requests are capped by the team's maximum sandbox length.
-	timeout, ok = calculateTimeout(2*time.Hour, team)
-	require.True(t, ok)
+	timeout = calculateTimeout(2*time.Hour, team)
 	require.Equal(t, time.Hour, timeout)
 }
 
