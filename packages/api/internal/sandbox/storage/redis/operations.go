@@ -28,6 +28,15 @@ func (s *Storage) Add(ctx context.Context, sbx sandbox.Sandbox) error {
 	key := getSandboxKey(sbx.TeamID.String(), sbx.SandboxID)
 	teamKey := GetSandboxStorageTeamIndexKey(sbx.TeamID.String())
 
+	// Add to the index before adding to the cache, so there's no possibility of leaking
+	// Index by EndTime so ExpiredItems can use ZRANGEBYSCORE instead of scanning all sandboxes.
+	if err := s.redisClient.ZAdd(ctx, globalExpirationSet, redis.Z{
+		Score:  float64(sbx.EndTime.UnixMilli()),
+		Member: expirationMember(sbx.TeamID.String(), sbx.SandboxID),
+	}).Err(); err != nil {
+		return fmt.Errorf("failed to add sandbox to global expiration index: %w", err)
+	}
+
 	// Execute Lua script for atomic SET + SADD
 	err = addSandboxScript.Run(ctx, s.redisClient, []string{key, teamKey}, data, sbx.SandboxID).Err()
 	if err != nil {
@@ -39,15 +48,7 @@ func (s *Storage) Add(ctx context.Context, sbx sandbox.Sandbox) error {
 		Score:  float64(time.Now().Unix()),
 		Member: sbx.TeamID.String(),
 	}).Err(); err != nil {
-		return fmt.Errorf("failed to add team to global teams index: %w", err)
-	}
-
-	// Index by EndTime so ExpiredItems can use ZRANGEBYSCORE instead of scanning all sandboxes.
-	if err := s.redisClient.ZAdd(ctx, globalExpirationSet, redis.Z{
-		Score:  float64(sbx.EndTime.UnixMilli()),
-		Member: expirationMember(sbx.TeamID.String(), sbx.SandboxID),
-	}).Err(); err != nil {
-		return fmt.Errorf("failed to add sandbox to global expiration index: %w", err)
+		logger.L().Warn(ctx, "failed to add team to global teams index", zap.Error(err), logger.WithSandboxID(sbx.SandboxID))
 	}
 
 	return nil
@@ -90,15 +91,16 @@ func (s *Storage) Remove(ctx context.Context, teamID uuid.UUID, sandboxID string
 		}
 	}()
 
-	// Clean up from the global expiration index.
-	if err := s.redisClient.ZRem(ctx, globalExpirationSet, expirationMember(teamID.String(), sandboxID)).Err(); err != nil {
-		logger.L().Warn(ctx, "Failed to remove sandbox from global expiration index", zap.Error(err), logger.WithSandboxID(sandboxID))
-	}
-
 	// Execute Lua script for atomic DEL + SREM
 	err = removeSandboxScript.Run(ctx, s.redisClient, []string{key, teamKey}, sandboxID).Err()
 	if err != nil {
 		return fmt.Errorf("failed to remove sandbox from Redis: %w", err)
+	}
+
+	// Clean up from the global expiration index.
+	// Do it after the removal to prevent leaking expired sandboxes.
+	if err := s.redisClient.ZRem(ctx, globalExpirationSet, expirationMember(teamID.String(), sandboxID)).Err(); err != nil {
+		logger.L().Warn(ctx, "Failed to remove sandbox from global expiration index", zap.Error(err), logger.WithSandboxID(sandboxID))
 	}
 
 	return nil
