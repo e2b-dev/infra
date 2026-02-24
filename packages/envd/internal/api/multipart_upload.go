@@ -363,7 +363,7 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 	// (~32KB) instead of reading the full part into a single allocation.
 	offsetWriter := io.NewOffsetWriter(session.DestFile, offset)
 	written, err := io.CopyN(offsetWriter, r.Body, expectedSize)
-	if err != nil && !errors.Is(err, io.EOF) {
+	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
 		if errors.Is(err, syscall.ENOSPC) {
 			a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("not enough disk space")
 			jsonError(w, http.StatusInsufficientStorage, fmt.Errorf("not enough disk space"))
