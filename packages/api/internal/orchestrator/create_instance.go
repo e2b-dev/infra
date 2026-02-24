@@ -215,11 +215,10 @@ func (o *Orchestrator) CreateSandbox(
 
 	var orchAutoResume *orchestrator.SandboxAutoResumeConfig
 	if autoResume != nil {
-		policy := string(autoResume.Policy)
 		orchAutoResume = &orchestrator.SandboxAutoResumeConfig{
-			Policy: policy,
+			Policy:         string(autoResume.Policy),
+			TimeoutSeconds: int64(autoResume.Timeout),
 		}
-		orchAutoResume.TimeoutSeconds = autoResume.Timeout
 	}
 
 	sbxRequest := &orchestrator.SandboxCreateRequest{
