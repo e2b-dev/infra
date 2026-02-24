@@ -1777,7 +1777,7 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
-        - {}
+        - {}  # support anonymous or failed auth tokens
       responses:
         "200":
           description: User is authenticated
