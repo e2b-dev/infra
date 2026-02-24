@@ -18,14 +18,14 @@ import (
 
 // MultipartUploadSession tracks an in-progress multipart upload
 type MultipartUploadSession struct {
-	UploadID     string
-	FilePath     string   // Final destination path
-	DestFile     *os.File // Open file handle for direct writes
-	TotalSize    int64    // Total expected file size (validated >= 0 at input)
-	PartSize     int64    // Size of each part (validated > 0 at input)
-	NumParts     uint     // Total number of expected parts
-	UID          int
-	GID          int
+	UploadID        string
+	FilePath        string   // Final destination path
+	DestFile        *os.File // Open file handle for direct writes
+	TotalSize       int64    // Total expected file size (validated >= 0 at input)
+	PartSize        int64    // Size of each part (validated > 0 at input)
+	NumParts        uint     // Total number of expected parts
+	UID             int
+	GID             int
 	PartsWritten    map[uint]bool // partNumber -> whether it's been written
 	partsInProgress map[uint]bool // partNumber -> whether a write is currently in flight
 	CreatedAt       time.Time

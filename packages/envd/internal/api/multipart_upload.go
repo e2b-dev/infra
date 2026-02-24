@@ -188,14 +188,14 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 	uploadID := uuid.NewString()
 
 	session := &MultipartUploadSession{
-		UploadID:     uploadID,
-		FilePath:     filePath,
-		DestFile:     destFile,
-		TotalSize:    body.TotalSize,
-		PartSize:     body.PartSize,
-		NumParts:     numParts,
-		UID:          uid,
-		GID:          gid,
+		UploadID:        uploadID,
+		FilePath:        filePath,
+		DestFile:        destFile,
+		TotalSize:       body.TotalSize,
+		PartSize:        body.PartSize,
+		NumParts:        numParts,
+		UID:             uid,
+		GID:             gid,
 		PartsWritten:    make(map[uint]bool),
 		partsInProgress: make(map[uint]bool),
 		CreatedAt:       time.Now(),
