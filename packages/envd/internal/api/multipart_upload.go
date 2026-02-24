@@ -47,19 +47,8 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 		return
 	}
 
-	// Validate totalSize and partSize
-	if body.TotalSize < 0 {
-		jsonError(w, http.StatusBadRequest, fmt.Errorf("totalSize must be non-negative"))
-
-		return
-	}
 	if body.TotalSize > maxTotalSize {
 		jsonError(w, http.StatusBadRequest, fmt.Errorf("totalSize %d exceeds maximum allowed size of %d bytes (10GB)", body.TotalSize, maxTotalSize))
-
-		return
-	}
-	if body.PartSize <= 0 {
-		jsonError(w, http.StatusBadRequest, fmt.Errorf("partSize must be positive"))
 
 		return
 	}

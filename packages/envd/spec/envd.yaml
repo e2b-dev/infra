@@ -158,10 +158,12 @@ paths:
                 totalSize:
                   type: integer
                   format: int64
+                  minimum: 0
                   description: Total size of the file in bytes
                 partSize:
                   type: integer
                   format: int64
+                  minimum: 1
                   description: Size of each part in bytes (last part may be smaller)
       responses:
         "200":
