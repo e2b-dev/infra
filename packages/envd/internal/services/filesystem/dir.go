@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 
@@ -87,12 +86,13 @@ func (s Service) MakeDir(ctx context.Context, req *connect.Request[rpc.MakeDirRe
 		return nil, connect.NewError(connect.CodeInternal, userErr)
 	}
 
+	entry, err := entryInfo(dirPath)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+
 	return connect.NewResponse(&rpc.MakeDirResponse{
-		Entry: &rpc.EntryInfo{
-			Name: path.Base(dirPath),
-			Type: rpc.FileType_FILE_TYPE_DIRECTORY,
-			Path: dirPath,
-		},
+		Entry: entry,
 	}), nil
 }
 
