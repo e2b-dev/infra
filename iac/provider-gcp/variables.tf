@@ -207,6 +207,11 @@ variable "ingress_port" {
   }
 }
 
+variable "dashboard_api_count" {
+  type    = number
+  default = 0
+}
+
 variable "dashboard_api_port" {
   type = object({
     name        = string

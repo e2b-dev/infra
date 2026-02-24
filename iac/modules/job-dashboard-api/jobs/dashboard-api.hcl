@@ -3,6 +3,8 @@ job "dashboard-api" {
   priority = 80
 
   group "dashboard-api-service" {
+    count = ${count}
+
     restart {
       interval         = "5s"
       attempts         = 1
@@ -62,16 +64,17 @@ job "dashboard-api" {
       }
 
       env {
-        GIN_MODE                      = "release"
-        ENVIRONMENT                   = "${environment}"
-        NODE_ID                       = "$${node.unique.id}"
-        PORT                          = "${port_number}"
-        POSTGRES_CONNECTION_STRING    = "${postgres_connection_string}"
-        AUTH_DB_CONNECTION_STRING     = "${postgres_connection_string}"
-        CLICKHOUSE_CONNECTION_STRING  = "${clickhouse_connection_string}"
-        SUPABASE_JWT_SECRETS          = "${supabase_jwt_secrets}"
-        OTEL_COLLECTOR_GRPC_ENDPOINT  = "${otel_collector_grpc_endpoint}"
-        LOGS_COLLECTOR_ADDRESS        = "${logs_collector_address}"
+        GIN_MODE                               = "release"
+        ENVIRONMENT                            = "${environment}"
+        NODE_ID                                = "$${node.unique.id}"
+        PORT                                   = "${port_number}"
+        POSTGRES_CONNECTION_STRING             = "${postgres_connection_string}"
+        AUTH_DB_CONNECTION_STRING              = "${auth_db_connection_string}"
+        AUTH_DB_READ_REPLICA_CONNECTION_STRING = "${auth_db_read_replica_connection_string}"
+        CLICKHOUSE_CONNECTION_STRING           = "${clickhouse_connection_string}"
+        SUPABASE_JWT_SECRETS                   = "${supabase_jwt_secrets}"
+        OTEL_COLLECTOR_GRPC_ENDPOINT           = "${otel_collector_grpc_endpoint}"
+        LOGS_COLLECTOR_ADDRESS                 = "${logs_collector_address}"
       }
 
       config {

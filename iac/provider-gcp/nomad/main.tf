@@ -104,17 +104,21 @@ resource "nomad_job" "api" {
 
 module "dashboard_api" {
   source = "../../modules/job-dashboard-api"
+  count  = var.dashboard_api_count > 0 ? 1 : 0
 
-  node_pool     = var.api_node_pool
-  update_stanza = var.api_machine_count > 1
-  environment   = var.environment
+  count_instances = var.dashboard_api_count
+  node_pool       = var.api_node_pool
+  update_stanza   = var.dashboard_api_count > 1
+  environment     = var.environment
 
-  image              = data.google_artifact_registry_docker_image.dashboard_api_image.self_link
+  image              = data.google_artifact_registry_docker_image.dashboard_api_image[0].self_link
   dashboard_api_port = var.dashboard_api_port
 
-  postgres_connection_string   = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
-  clickhouse_connection_string = local.clickhouse_connection_string
-  supabase_jwt_secrets         = trimspace(data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data)
+  postgres_connection_string             = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
+  auth_db_connection_string              = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
+  auth_db_read_replica_connection_string = trimspace(data.google_secret_manager_secret_version.postgres_read_replica_connection_string.secret_data)
+  clickhouse_connection_string           = local.clickhouse_connection_string
+  supabase_jwt_secrets                   = trimspace(data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data)
 
   otel_collector_grpc_port = var.otel_collector_grpc_port
   logs_proxy_port          = var.logs_proxy_port
