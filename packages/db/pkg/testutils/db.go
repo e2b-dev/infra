@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
@@ -16,6 +17,8 @@ import (
 
 	db "github.com/e2b-dev/infra/packages/db/client"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
+	"github.com/e2b-dev/infra/packages/db/pkg/pool"
+	"github.com/e2b-dev/infra/packages/db/pkg/testutils/queries"
 )
 
 const (
@@ -27,8 +30,9 @@ const (
 
 // Database encapsulates the test database container and clients
 type Database struct {
-	SqlcClient *db.Client
-	AuthDb     *authdb.Client
+	SqlcClient  *db.Client
+	AuthDb      *authdb.Client
+	TestQueries *queries.Queries
 }
 
 // SetupDatabase creates a fresh PostgreSQL container with migrations applied
@@ -40,36 +44,6 @@ func SetupDatabase(t *testing.T) *Database {
 	}
 
 	// Start PostgreSQL container
-	container := startPostgresContainer(t)
-	connStr, err := container.ConnectionString(t.Context(), "sslmode=disable")
-	require.NoError(t, err, "Failed to get connection string")
-
-	// Setup environment and run migrations
-	runDatabaseMigrations(t, connStr)
-
-	// Create database client
-	sqlcClient, err := db.NewClient(t.Context(), connStr)
-	require.NoError(t, err, "Failed to create sqlc client")
-
-	authDb, err := authdb.NewClient(t.Context(), connStr, connStr)
-	require.NoError(t, err, "Failed to create auth db client")
-
-	// Register cleanup
-	t.Cleanup(func() {
-		_ = authDb.Close()
-		cleanupTestDatabase(t, context.WithoutCancel(t.Context()), sqlcClient, container)
-	})
-
-	return &Database{
-		SqlcClient: sqlcClient,
-		AuthDb:     authDb,
-	}
-}
-
-// startPostgresContainer initializes and starts a PostgreSQL container
-func startPostgresContainer(t *testing.T) *postgres.PostgresContainer {
-	t.Helper()
-
 	container, err := postgres.Run(
 		t.Context(),
 		testPostgresImage,
@@ -83,8 +57,48 @@ func startPostgresContainer(t *testing.T) *postgres.PostgresContainer {
 		),
 	)
 	require.NoError(t, err, "Failed to start postgres container")
+	t.Cleanup(func() {
+		ctx := t.Context()
+		ctx = context.WithoutCancel(ctx)
+		err := container.Terminate(ctx)
+		assert.NoError(t, err)
+	})
 
-	return container
+	connStr, err := container.ConnectionString(t.Context(), "sslmode=disable")
+	require.NoError(t, err, "Failed to get connection string")
+
+	// Setup environment and run migrations
+	runDatabaseMigrations(t, connStr)
+
+	// create test queries client
+	dbClient, connPool, err := pool.New(t.Context(), connStr)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		connPool.Close()
+	})
+	testQueries := queries.New(dbClient)
+
+	// Create app db client
+	sqlcClient, err := db.NewClient(t.Context(), connStr)
+	require.NoError(t, err, "Failed to create sqlc client")
+	t.Cleanup(func() {
+		err := sqlcClient.Close()
+		assert.NoError(t, err)
+	})
+
+	// Create the auth db client
+	authDb, err := authdb.NewClient(t.Context(), connStr, connStr)
+	require.NoError(t, err, "Failed to create auth db client")
+	t.Cleanup(func() {
+		err := authDb.Close()
+		assert.NoError(t, err)
+	})
+
+	return &Database{
+		SqlcClient:  sqlcClient,
+		AuthDb:      authDb,
+		TestQueries: testQueries,
+	}
 }
 
 // runDatabaseMigrations executes all required database migrations
@@ -104,23 +118,4 @@ func runDatabaseMigrations(t *testing.T, connStr string) {
 
 	output, err = cmd.CombinedOutput()
 	require.NoError(t, err, "Migration failed: %s", string(output))
-}
-
-// cleanupTestDatabase terminates the container and restores environment
-func cleanupTestDatabase(tb testing.TB, ctx context.Context, sqlcClient *db.Client, container *postgres.PostgresContainer) {
-	tb.Helper()
-
-	if sqlcClient != nil {
-		err := sqlcClient.Close()
-		if err != nil {
-			tb.Errorf("Failed to close sqlc client: %s", err)
-		}
-	}
-
-	if container != nil {
-		err := container.Terminate(ctx)
-		if err != nil {
-			tb.Errorf("Failed to terminate container: %s", err)
-		}
-	}
 }

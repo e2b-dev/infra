@@ -41,6 +41,10 @@ paths:
             schema:
               type: object
               properties:
+                volumeMounts:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/VolumeMount"
                 hyperloopIP:
                   type: string
                   description: IP address of the hyperloop server to connect to
@@ -49,6 +53,7 @@ paths:
                 accessToken:
                   type: string
                   description: Access token for secure access to envd service
+                  x-go-type: SecureToken
                 timestamp:
                   type: string
                   format: date-time
@@ -267,7 +272,7 @@ components:
   securitySchemes:
     AccessTokenAuth:
       type: apiKey
-      scheme: header
+      in: header
       name: X-Access-Token
 
   parameters:
@@ -462,3 +467,15 @@ components:
           type: integer
           format: int64
           description: Total size of the assembled file in bytes
+    VolumeMount:
+      type: object
+      description: Volume
+      additionalProperties: false
+      properties:
+        nfs_target:
+          type: string
+        path:
+          type: string
+      required:
+        - nfs_target
+        - path

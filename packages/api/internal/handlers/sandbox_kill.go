@@ -12,12 +12,13 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/db"
-	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -28,7 +29,7 @@ func (a *APIStore) deleteSnapshot(ctx context.Context, sandboxID string, teamID 
 		return err
 	}
 
-	dbErr := a.sqlcDB.DeleteTemplate(ctx, queries.DeleteTemplateParams{
+	aliasKeys, dbErr := a.sqlcDB.DeleteTemplate(ctx, queries.DeleteTemplateParams{
 		TeamID:     teamID,
 		TemplateID: snapshot.TemplateID,
 	})
@@ -50,7 +51,7 @@ func (a *APIStore) deleteSnapshot(ctx context.Context, sandboxID string, teamID 
 				template_manager.DeleteBuild{
 					BuildID:    build.BuildID,
 					TemplateID: snapshot.TemplateID,
-					ClusterID:  utils.WithClusterFallback(teamClusterID),
+					ClusterID:  clusters.WithClusterFallback(teamClusterID),
 					NodeID:     build.ClusterNodeID,
 				},
 			)
@@ -66,7 +67,8 @@ func (a *APIStore) deleteSnapshot(ctx context.Context, sandboxID string, teamID 
 		}
 	}(context.WithoutCancel(ctx))
 
-	a.templateCache.InvalidateAllTags(snapshot.TemplateID)
+	a.templateCache.InvalidateAllTags(context.WithoutCancel(ctx), snapshot.TemplateID)
+	a.templateCache.InvalidateAliasesByTemplateID(context.WithoutCancel(ctx), snapshot.TemplateID, aliasKeys)
 
 	return nil
 }

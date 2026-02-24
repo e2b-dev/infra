@@ -14,7 +14,7 @@ variable "orchestrator_node_pool" {
   type = string
 }
 
-variable "orchestration_repository_name" {
+variable "core_repository_name" {
   type = string
 }
 
@@ -51,10 +51,6 @@ variable "otel_collector_resources_cpu_count" {
   type = number
 }
 
-variable "otel_tracing_print" {
-  type = bool
-}
-
 # API
 variable "api_port" {
   type = object({
@@ -62,6 +58,11 @@ variable "api_port" {
     port        = number
     health_path = string
   })
+}
+
+variable "api_grpc_port" {
+  type    = number
+  default = 5009
 }
 
 variable "ingress_port" {
@@ -106,6 +107,11 @@ variable "api_machine_count" {
 
 variable "api_node_pool" {
   type = string
+}
+
+variable "loki_use_v13_schema_from" {
+  type    = string
+  default = ""
 }
 
 variable "loki_machine_count" {

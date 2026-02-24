@@ -9,6 +9,7 @@ import (
 	nomadapi "github.com/hashicorp/nomad/api"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/queries"
@@ -33,12 +34,12 @@ type Pool struct {
 	synchronization *synchronization.Synchronize[queries.Cluster, *Cluster]
 }
 
-func localClusterConfig() (*queries.Cluster, error) {
+func localClusterConfig() *queries.Cluster {
 	return &queries.Cluster{
 		ID:                 consts.LocalClusterID,
 		EndpointTls:        false,
 		SandboxProxyDomain: nil,
-	}, nil
+	}
 }
 
 func NewPool(
@@ -48,13 +49,11 @@ func NewPool(
 	nomad *nomadapi.Client,
 	queryMetricsProvider clickhouse.Clickhouse,
 	queryLogsProvider *loki.LokiQueryProvider,
+	config cfg.Config,
 ) (*Pool, error) {
 	clusters := smap.New[*Cluster]()
 
-	localCluster, err := localClusterConfig()
-	if err != nil {
-		return nil, err
-	}
+	localCluster := localClusterConfig()
 
 	p := &Pool{
 		db:       db,
@@ -64,6 +63,7 @@ func NewPool(
 			"clusters-pool",
 			"Clusters pool",
 			clustersSyncStore{
+				config:               config,
 				db:                   db,
 				tel:                  tel,
 				clusters:             clusters,
@@ -114,6 +114,7 @@ type clustersSyncStore struct {
 	nomad                *nomadapi.Client
 	queryMetricsProvider clickhouse.Clickhouse
 	queryLogsProvider    *loki.LokiQueryProvider
+	config               cfg.Config
 }
 
 func (d clustersSyncStore) SourceList(ctx context.Context) ([]queries.Cluster, error) {
@@ -170,13 +171,7 @@ func (d clustersSyncStore) PoolInsert(ctx context.Context, cluster queries.Clust
 
 	// Local cluster
 	if cluster.ID == consts.LocalClusterID {
-		c, err = newLocalCluster(context.WithoutCancel(ctx), d.tel, d.nomad, d.queryMetricsProvider, d.queryLogsProvider)
-		if err != nil {
-			logger.L().Error(ctx, "Initializing local cluster failed", zap.Error(err), logger.WithClusterID(cluster.ID))
-
-			return
-		}
-
+		c = newLocalCluster(context.WithoutCancel(ctx), d.tel, d.nomad, d.queryMetricsProvider, d.queryLogsProvider, d.config)
 		d.clusters.Insert(clusterID, c)
 		logger.L().Info(ctx, "Local cluster initialized successfully", logger.WithClusterID(cluster.ID))
 

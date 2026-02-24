@@ -184,7 +184,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	templateCache.Start(b.Context())
 	b.Cleanup(templateCache.Stop)
 
-	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags)
+	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags, nil, nil)
 
 	dockerhubRepository, err := dockerhub.GetRemoteRepository(b.Context())
 	require.NoError(b, err)
@@ -237,6 +237,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		config.NetworkConfig,
 		sandboxes,
 		noop.NewMeterProvider(),
+		featureFlags,
 	)
 	go func() {
 		err := tcpFirewall.Start(b.Context())
@@ -248,7 +249,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		assert.NoError(b, err)
 	})
 
-	sandboxProxy, err := proxy.NewSandboxProxy(noop.MeterProvider{}, proxyPort, sandboxes)
+	sandboxProxy, err := proxy.NewSandboxProxy(noop.MeterProvider{}, proxyPort, sandboxes, featureFlags)
 	require.NoError(b, err)
 	go func() {
 		err := sandboxProxy.Start(b.Context())

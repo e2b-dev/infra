@@ -148,8 +148,40 @@ func resolvePath(part *multipart.Part, paths *UploadSuccess, u *user.User, defau
 	return filePath, nil
 }
 
+func (a *API) handlePart(r *http.Request, part *multipart.Part, paths UploadSuccess, u *user.User, uid, gid int, operationID string, params PostFilesParams) (*EntryInfo, int, error) {
+	defer part.Close()
+
+	if part.FormName() != "file" {
+		return nil, http.StatusOK, nil
+	}
+
+	filePath, err := resolvePath(part, &paths, u, a.defaults.Workdir, params)
+	if err != nil {
+		return nil, http.StatusBadRequest, err
+	}
+
+	logger := a.logger.
+		With().
+		Str(string(logs.OperationIDKey), operationID).
+		Str("event_type", "file_processing").
+		Logger()
+
+	status, err := processFile(r, filePath, part, uid, gid, logger)
+	if err != nil {
+		return nil, status, err
+	}
+
+	return &EntryInfo{
+		Path: filePath,
+		Name: filepath.Base(filePath),
+		Type: File,
+	}, http.StatusOK, nil
+}
+
 func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFilesParams) {
-	defer r.Body.Close()
+	// Capture original body to ensure it's always closed
+	originalBody := r.Body
+	defer originalBody.Close()
 
 	var errorCode int
 	var errMsg error
@@ -192,6 +224,18 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 
 		l.Msg("File write")
 	}()
+
+	// Handle gzip-encoded request body
+	body, err := getDecompressedBody(r)
+	if err != nil {
+		errMsg = fmt.Errorf("error decompressing request body: %w", err)
+		errorCode = http.StatusBadRequest
+		jsonError(w, errorCode, errMsg)
+
+		return
+	}
+	defer body.Close()
+	r.Body = body
 
 	f, err := r.MultipartReader()
 	if err != nil {
@@ -237,38 +281,18 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 			break
 		}
 
-		if part.FormName() == "file" {
-			filePath, err := resolvePath(part, &paths, u, a.defaults.Workdir, params)
-			if err != nil {
-				errorCode = http.StatusBadRequest
-				errMsg = err
-				jsonError(w, errorCode, errMsg)
+		entry, status, err := a.handlePart(r, part, paths, u, uid, gid, operationID, params)
+		if err != nil {
+			errorCode = status
+			errMsg = err
+			jsonError(w, errorCode, errMsg)
 
-				return
-			}
-
-			logger := a.logger.
-				With().
-				Str(string(logs.OperationIDKey), operationID).
-				Str("event_type", "file_processing").
-				Logger()
-			status, err := processFile(r, filePath, part, uid, gid, logger)
-			if err != nil {
-				errorCode = status
-				errMsg = err
-				jsonError(w, errorCode, errMsg)
-
-				return
-			}
-
-			paths = append(paths, EntryInfo{
-				Path: filePath,
-				Name: filepath.Base(filePath),
-				Type: File,
-			})
+			return
 		}
 
-		part.Close()
+		if entry != nil {
+			paths = append(paths, *entry)
+		}
 	}
 
 	data, err := json.Marshal(paths)

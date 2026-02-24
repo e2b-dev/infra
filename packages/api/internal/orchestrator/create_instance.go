@@ -14,14 +14,14 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	teamtypes "github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
-	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	teamtypes "github.com/e2b-dev/infra/packages/auth/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/pkg/builds"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	feature_flags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -95,11 +95,14 @@ func (o *Orchestrator) CreateSandbox(
 	timeout time.Duration,
 	isResume bool,
 	nodeID *string,
+	templateID string,
 	baseTemplateID string,
 	autoPause bool,
+	autoResume *types.SandboxAutoResumeConfig,
 	envdAuthToken *string,
 	allowInternetAccess *bool,
 	network *types.SandboxNetworkConfig,
+	volumeMounts []*orchestrator.SandboxVolumeMount,
 ) (sbx sandbox.Sandbox, apiErr *api.APIError) {
 	ctx, childSpan := tracer.Start(ctx, "create-sandbox")
 	defer childSpan.End()
@@ -118,7 +121,7 @@ func (o *Orchestrator) CreateSandbox(
 				Code: http.StatusTooManyRequests,
 				ClientMsg: fmt.Sprintf(
 					"you have reached the maximum number of concurrent E2B sandboxes (%d). If you need more, "+
-						"please contact us at 'https://e2b.dev/docs/getting-help'", totalConcurrentInstances),
+						"please visit 'https://e2b.dev/docs/billing'", totalConcurrentInstances),
 				Err: fmt.Errorf("team '%s' has reached the maximum number of instances (%d)", team.ID, totalConcurrentInstances),
 			}
 		default:
@@ -209,10 +212,19 @@ func (o *Orchestrator) CreateSandbox(
 	}
 
 	sbxNetwork := buildNetworkConfig(network, allowInternetAccess, trafficAccessToken)
+
+	var orchAutoResume *orchestrator.SandboxAutoResumeConfig
+	if autoResume != nil {
+		policy := string(autoResume.Policy)
+		orchAutoResume = &orchestrator.SandboxAutoResumeConfig{
+			Policy: policy,
+		}
+	}
+
 	sbxRequest := &orchestrator.SandboxCreateRequest{
 		Sandbox: &orchestrator.SandboxConfig{
 			BaseTemplateId:      baseTemplateID,
-			TemplateId:          build.EnvID,
+			TemplateId:          templateID,
 			Alias:               &alias,
 			TeamId:              team.ID.String(),
 			BuildId:             build.ID.String(),
@@ -230,9 +242,11 @@ func (o *Orchestrator) CreateSandbox(
 			Vcpu:                build.Vcpu,
 			Snapshot:            isResume,
 			AutoPause:           autoPause,
+			AutoResume:          orchAutoResume,
 			AllowInternetAccess: allowInternetAccess,
 			Network:             sbxNetwork,
 			TotalDiskSizeMb:     ut.FromPtr(build.TotalDiskSizeMb),
+			VolumeMounts:        volumeMounts,
 		},
 		StartTime: timestamppb.New(startTime),
 		EndTime:   timestamppb.New(endTime),
@@ -243,14 +257,14 @@ func (o *Orchestrator) CreateSandbox(
 	if isResume && nodeID != nil {
 		telemetry.ReportEvent(ctx, "Placing sandbox on the node where the snapshot was taken")
 
-		clusterID := utils.WithClusterFallback(team.ClusterID)
+		clusterID := clusters.WithClusterFallback(team.ClusterID)
 		node = o.GetNode(clusterID, *nodeID)
 		if node != nil && node.Status() != api.NodeStatusReady {
 			node = nil
 		}
 	}
 
-	nodeClusterID := utils.WithClusterFallback(team.ClusterID)
+	nodeClusterID := clusters.WithClusterFallback(team.ClusterID)
 	clusterNodes := o.GetClusterNodes(nodeClusterID)
 
 	node, err = placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, builds.ToMachineInfo(build))
@@ -283,7 +297,7 @@ func (o *Orchestrator) CreateSandbox(
 
 	sbx = sandbox.NewSandbox(
 		sandboxID,
-		build.EnvID,
+		templateID,
 		consts.ClientID,
 		&alias,
 		executionID,
@@ -302,12 +316,14 @@ func (o *Orchestrator) CreateSandbox(
 		node.ID,
 		node.ClusterID,
 		autoPause,
+		autoResume,
 		envdAuthToken,
 		allowInternetAccess,
 		baseTemplateID,
 		sbxDomain,
 		network,
 		trafficAccessToken,
+		nodemanager.ConvertOrchestratorMountsToDatabaseMounts(volumeMounts),
 	)
 
 	err = o.sandboxStore.Add(ctx, sbx, true)

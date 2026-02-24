@@ -291,12 +291,6 @@ variable "clickhouse_resources_cpu_count" {
   default = 4
 }
 
-variable "otel_tracing_print" {
-  description = "Whether to print OTEL traces to stdout"
-  type        = bool
-  default     = false
-}
-
 variable "domain_name" {
   type        = string
   description = "The domain name where e2b will run"
@@ -324,6 +318,10 @@ variable "prefix" {
   type        = string
   description = "The prefix to use for all resources in this module"
   default     = "e2b-"
+}
+
+variable "bucket_prefix" {
+  type = string
 }
 
 variable "labels" {
@@ -588,4 +586,15 @@ variable "loki_boot_disk_type" {
   description = "The GCE boot disk type for the Loki machines."
   type        = string
   default     = "pd-ssd"
+}
+
+variable "loki_use_v13_schema_from" {
+  type        = string
+  description = "This should be a date soon after you deploy. Format = YYYY-MM-DD"
+  default     = ""
+
+  validation {
+    condition     = var.loki_use_v13_schema_from == "" || can(regex("\\d{4}-\\d{2}-\\d{2}", var.loki_use_v13_schema_from))
+    error_message = "must be YYYY-MM-DD"
+  }
 }

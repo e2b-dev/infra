@@ -79,6 +79,11 @@ type SeekableReader interface {
 	Size(ctx context.Context) (int64, error)
 }
 
+// StreamingReader supports progressive reads via a streaming range reader.
+type StreamingReader interface {
+	OpenRangeReader(ctx context.Context, off, length int64) (io.ReadCloser, error)
+}
+
 type SeekableWriter interface {
 	// Store entire file
 	StoreFile(ctx context.Context, path string) error
@@ -87,6 +92,7 @@ type SeekableWriter interface {
 type Seekable interface {
 	SeekableReader
 	SeekableWriter
+	StreamingReader
 }
 
 func GetTemplateStorageProvider(ctx context.Context, limiter *limit.Limiter) (StorageProvider, error) {
@@ -95,7 +101,7 @@ func GetTemplateStorageProvider(ctx context.Context, limiter *limit.Limiter) (St
 	if provider == LocalStorageProvider {
 		basePath := env.GetEnv("LOCAL_TEMPLATE_STORAGE_BASE_PATH", "/tmp/templates")
 
-		return newFileSystemStorage(basePath)
+		return newFileSystemStorage(basePath), nil
 	}
 
 	bucketName := utils.RequiredEnv("TEMPLATE_BUCKET_NAME", "Bucket for storing template files")
@@ -117,7 +123,7 @@ func GetBuildCacheStorageProvider(ctx context.Context, limiter *limit.Limiter) (
 	if provider == LocalStorageProvider {
 		basePath := env.GetEnv("LOCAL_BUILD_CACHE_STORAGE_BASE_PATH", "/tmp/build-cache")
 
-		return newFileSystemStorage(basePath)
+		return newFileSystemStorage(basePath), nil
 	}
 
 	bucketName := utils.RequiredEnv("BUILD_CACHE_BUCKET_NAME", "Bucket for storing template files")

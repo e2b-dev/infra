@@ -48,8 +48,9 @@ locals {
 module "init" {
   source = "./init"
 
-  labels = var.labels
-  prefix = var.prefix
+  labels        = var.labels
+  prefix        = var.prefix
+  bucket_prefix = var.bucket_prefix
 
   gcp_project_id = var.gcp_project_id
   gcp_region     = var.gcp_region
@@ -76,7 +77,6 @@ module "cluster" {
   clickhouse_cluster_size = var.clickhouse_cluster_size
   server_cluster_size     = var.server_cluster_size
   loki_cluster_size       = var.loki_cluster_size
-
 
   server_machine_type     = var.server_machine_type
   api_machine_type        = var.api_machine_type
@@ -143,11 +143,10 @@ module "nomad" {
   gcp_region     = var.gcp_region
   gcp_zone       = var.gcp_zone
 
-  consul_acl_token_secret       = module.init.consul_acl_token_secret
-  nomad_acl_token_secret        = module.init.nomad_acl_token_secret
-  nomad_port                    = var.nomad_port
-  otel_tracing_print            = var.otel_tracing_print
-  orchestration_repository_name = module.init.orchestration_repository_name
+  consul_acl_token_secret = module.init.consul_acl_token_secret
+  nomad_acl_token_secret  = module.init.nomad_acl_token_secret
+  nomad_port              = var.nomad_port
+  core_repository_name    = module.init.core_repository_name
 
   # Clickhouse
   clickhouse_resources_cpu_count   = var.clickhouse_resources_cpu_count
@@ -173,14 +172,14 @@ module "nomad" {
   google_service_account_key                             = module.init.google_service_account_key
   api_secret                                             = random_password.api_secret.result
   custom_envs_repository_name                            = google_artifact_registry_repository.custom_environments_repository.name
-  postgres_connection_string_secret_name                 = google_secret_manager_secret.postgres_connection_string.name
+  postgres_connection_string_secret_name                 = module.init.postgres_connection_string_secret_name
   postgres_read_replica_connection_string_secret_version = google_secret_manager_secret_version.postgres_read_replica_connection_string
-  supabase_jwt_secrets_secret_name                       = google_secret_manager_secret.supabase_jwt_secrets.name
-  posthog_api_key_secret_name                            = google_secret_manager_secret.posthog_api_key.name
+  supabase_jwt_secrets_secret_name                       = module.init.supabase_jwt_secret_name
+  posthog_api_key_secret_name                            = module.init.posthog_api_key_secret_name
   analytics_collector_host_secret_name                   = module.init.analytics_collector_host_secret_name
   analytics_collector_api_token_secret_name              = module.init.analytics_collector_api_token_secret_name
   api_admin_token                                        = random_password.api_admin_secret.result
-  redis_cluster_url_secret_version                       = google_secret_manager_secret_version.redis_cluster_url
+  redis_cluster_url_secret_version                       = module.init.redis_cluster_url_secret_version
   redis_tls_ca_base64_secret_version                     = module.init.redis_tls_ca_base64_secret_version
   sandbox_access_token_hash_seed                         = random_password.sandbox_access_token_hash_seed.result
 
@@ -200,9 +199,9 @@ module "nomad" {
   loki_machine_count       = var.loki_cluster_size
   loki_resources_memory_mb = var.loki_resources_memory_mb
   loki_resources_cpu_count = var.loki_resources_cpu_count
-
-  loki_bucket_name  = module.init.loki_bucket_name
-  loki_service_port = var.loki_service_port
+  loki_use_v13_schema_from = var.loki_use_v13_schema_from
+  loki_bucket_name         = module.init.loki_bucket_name
+  loki_service_port        = var.loki_service_port
 
   # Otel Colelctor
   otel_collector_resources_memory_mb = var.otel_collector_resources_memory_mb
@@ -254,7 +253,7 @@ module "redis" {
   gcp_region     = var.gcp_region
   gcp_zone       = var.gcp_zone
 
-  redis_cluster_url_secret_version   = google_secret_manager_secret_version.redis_cluster_url
+  redis_cluster_url_secret_version   = module.init.redis_cluster_url_secret_version
   redis_tls_ca_base64_secret_version = module.init.redis_tls_ca_base64_secret_version
 
   prefix = var.prefix
@@ -265,10 +264,15 @@ module "remote_repository" {
 
   count = var.remote_repository_enabled ? 1 : 0
 
+  depends_on = [module.init]
+
   prefix = var.prefix
 
   gcp_project_id = var.gcp_project_id
   gcp_region     = var.gcp_region
 
   google_service_account_email = module.init.service_account_email
+
+  dockerhub_username_secret_name = module.init.dockerhub_username_secret_name
+  dockerhub_password_secret_name = module.init.dockerhub_password_secret_name
 }

@@ -33,6 +33,20 @@ func (e SandboxNotFoundError) Error() string {
 	return "sandbox not found"
 }
 
+type SandboxResumePermissionDeniedError struct {
+	SandboxId string
+}
+
+func NewErrSandboxResumePermissionDenied(sandboxId string) *SandboxResumePermissionDeniedError {
+	return &SandboxResumePermissionDeniedError{
+		SandboxId: sandboxId,
+	}
+}
+
+func (e SandboxResumePermissionDeniedError) Error() string {
+	return "sandbox resume permission denied"
+}
+
 type MissingTrafficAccessTokenError struct {
 	SandboxId string
 	Header    string

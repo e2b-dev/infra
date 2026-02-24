@@ -86,6 +86,15 @@ func (s *Storage) TeamItems(_ context.Context, teamID uuid.UUID, states []sandbo
 	return s.getItems(&teamID, states), nil
 }
 
+func (s *Storage) TeamsWithSandboxCount(_ context.Context) (map[uuid.UUID]int64, error) {
+	teams := make(map[uuid.UUID]int64)
+	for _, item := range s.items.Items() {
+		teams[item.TeamID()]++
+	}
+
+	return teams, nil
+}
+
 func (s *Storage) AllItems(_ context.Context, states []sandbox.State, options ...sandbox.ItemsOption) ([]sandbox.Sandbox, error) {
 	return s.getItems(nil, states, options...), nil
 }
@@ -119,10 +128,7 @@ func (s *Storage) StartRemoving(ctx context.Context, _ uuid.UUID, sandboxID stri
 }
 
 func startRemoving(ctx context.Context, sbx *memorySandbox, stateAction sandbox.StateAction) (alreadyDone bool, callback func(ctx context.Context, err error), err error) {
-	newState := sandbox.StateKilling
-	if stateAction == sandbox.StateActionPause {
-		newState = sandbox.StatePausing
-	}
+	newState := stateAction.TargetState
 
 	sbx.mu.Lock()
 	transition := sbx.transition
@@ -131,7 +137,7 @@ func startRemoving(ctx context.Context, sbx *memorySandbox, stateAction sandbox.
 		sbx.mu.Unlock()
 
 		if currentState != newState && !sandbox.AllowedTransitions[currentState][newState] {
-			return false, nil, fmt.Errorf("invalid state transition, already in transition from %s", currentState)
+			return false, nil, &sandbox.InvalidStateTransitionError{CurrentState: currentState, TargetState: newState}
 		}
 
 		logger.L().Debug(ctx, "State transition already in progress to the same state, waiting", logger.WithSandboxID(sbx.SandboxID()), zap.String("state", string(newState)))
@@ -159,10 +165,13 @@ func startRemoving(ctx context.Context, sbx *memorySandbox, stateAction sandbox.
 	}
 
 	if _, ok := sandbox.AllowedTransitions[sbx._data.State][newState]; !ok {
-		return false, nil, fmt.Errorf("invalid state transition from %s to %s", sbx._data.State, newState)
+		return false, nil, &sandbox.InvalidStateTransitionError{CurrentState: sbx._data.State, TargetState: newState}
 	}
 
-	sbx.setExpired()
+	if stateAction.Effect == sandbox.TransitionExpires {
+		sbx.setExpired()
+	}
+
 	sbx._data.State = newState
 	sbx.transition = utils.NewErrorOnce()
 
@@ -170,6 +179,16 @@ func startRemoving(ctx context.Context, sbx *memorySandbox, stateAction sandbox.
 		logger.L().Debug(ctx, "Transition complete", logger.WithSandboxID(sbx.SandboxID()), zap.String("state", string(newState)), zap.Error(err))
 		sbx.mu.Lock()
 		defer sbx.mu.Unlock()
+
+		if stateAction.Effect == sandbox.TransitionTransient {
+			if err == nil && sbx._data.State == newState {
+				sbx._data.State = sandbox.StateRunning
+			}
+
+			// Signal nil to waiters so concurrent callers (e.g. kill)
+			// are unblocked and can proceed with their own transition.
+			err = nil
+		}
 
 		setErr := sbx.transition.SetError(err)
 		if setErr != nil {

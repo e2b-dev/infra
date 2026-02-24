@@ -67,6 +67,7 @@ type Env struct {
 	TeamID        uuid.UUID
 	CreatedBy     *uuid.UUID
 	ClusterID     *uuid.UUID
+	Source        string
 }
 
 type EnvAlias struct {
@@ -82,7 +83,7 @@ type EnvBuild struct {
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
 	FinishedAt         *time.Time
-	Status             string
+	Status             types.BuildStatus
 	Dockerfile         *string
 	StartCmd           *string
 	Vcpu               int64
@@ -91,7 +92,7 @@ type EnvBuild struct {
 	TotalDiskSizeMb    *int64
 	KernelVersion      string
 	FirecrackerVersion string
-	EnvID              string
+	EnvID              *string
 	EnvdVersion        *string
 	ReadyCmd           *string
 	ClusterNodeID      *string
@@ -102,6 +103,8 @@ type EnvBuild struct {
 	CpuModel           *string
 	CpuModelName       *string
 	CpuFlags           []string
+	StatusGroup        types.BuildStatusGroup
+	TeamID             *uuid.UUID
 }
 
 type EnvBuildAssignment struct {
@@ -127,6 +130,12 @@ type Snapshot struct {
 	AutoPause           bool
 	TeamID              uuid.UUID
 	Config              *types.PausedSandboxConfig
+}
+
+type SnapshotTemplate struct {
+	EnvID     string
+	SandboxID string
+	CreatedAt pgtype.Timestamptz
 }
 
 type Team struct {
@@ -195,4 +204,12 @@ type UsersTeam struct {
 	IsDefault bool
 	AddedBy   *uuid.UUID
 	CreatedAt pgtype.Timestamp
+}
+
+type Volume struct {
+	ID         uuid.UUID
+	TeamID     uuid.UUID
+	Name       string
+	VolumeType string
+	CreatedAt  pgtype.Timestamptz
 }

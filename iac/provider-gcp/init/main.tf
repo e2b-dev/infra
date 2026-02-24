@@ -65,7 +65,7 @@ resource "google_project_service" "filestore_api" {
 resource "time_sleep" "secrets_api_wait_60_seconds" {
   depends_on = [google_project_service.secrets_manager_api]
 
-  create_duration = "20s"
+  create_duration = "60s"
 }
 
 resource "google_service_account" "infra_instances_service_account" {
@@ -77,158 +77,7 @@ resource "google_service_account_key" "google_service_key" {
   service_account_id = google_service_account.infra_instances_service_account.name
 }
 
-
-resource "google_secret_manager_secret" "cloudflare_api_token" {
-  secret_id = "${var.prefix}cloudflare-api-token"
-
-  replication {
-    auto {}
-  }
-
-  depends_on = [time_sleep.secrets_api_wait_60_seconds]
-}
-
-resource "google_secret_manager_secret" "consul_acl_token" {
-  secret_id = "${var.prefix}consul-secret-id"
-
-  replication {
-    auto {}
-  }
-
-  depends_on = [time_sleep.secrets_api_wait_60_seconds]
-}
-
-resource "random_uuid" "consul_acl_token" {}
-
-resource "google_secret_manager_secret_version" "consul_acl_token" {
-  secret      = google_secret_manager_secret.consul_acl_token.name
-  secret_data = random_uuid.consul_acl_token.result
-}
-
-resource "google_secret_manager_secret" "nomad_acl_token" {
-  secret_id = "${var.prefix}nomad-secret-id"
-
-  replication {
-    auto {}
-  }
-
-  depends_on = [time_sleep.secrets_api_wait_60_seconds]
-}
-
-resource "random_uuid" "nomad_acl_token" {}
-
-resource "google_secret_manager_secret_version" "nomad_acl_token" {
-  secret      = google_secret_manager_secret.nomad_acl_token.name
-  secret_data = random_uuid.nomad_acl_token.result
-}
-
-
-
-# grafana api key
-resource "google_secret_manager_secret" "grafana_api_key" {
-  secret_id = "${var.prefix}grafana-api-key"
-
-  replication {
-    auto {}
-  }
-
-  depends_on = [time_sleep.secrets_api_wait_60_seconds]
-}
-
-resource "google_secret_manager_secret" "launch_darkly_api_key" {
-  secret_id = "${var.prefix}launch-darkly-api-key"
-
-  replication {
-    auto {}
-  }
-
-  depends_on = [time_sleep.secrets_api_wait_60_seconds]
-}
-
-resource "google_secret_manager_secret_version" "launch_darkly_api_key" {
-  secret      = google_secret_manager_secret.launch_darkly_api_key.name
-  secret_data = " "
-
-  lifecycle {
-    ignore_changes = [secret_data]
-  }
-
-  depends_on = [time_sleep.secrets_api_wait_60_seconds]
-}
-
-resource "google_secret_manager_secret_version" "grafana_api_key" {
-  secret      = google_secret_manager_secret.grafana_api_key.name
-  secret_data = " "
-
-  lifecycle {
-    ignore_changes = [secret_data]
-  }
-
-  depends_on = [time_sleep.secrets_api_wait_60_seconds]
-}
-resource "google_secret_manager_secret" "analytics_collector_host" {
-  secret_id = "${var.prefix}analytics-collector-host"
-
-  replication {
-    auto {}
-  }
-
-  depends_on = [time_sleep.secrets_api_wait_60_seconds]
-}
-
-resource "google_secret_manager_secret_version" "analytics_collector_host" {
-  secret      = google_secret_manager_secret.analytics_collector_host.name
-  secret_data = " "
-
-  lifecycle {
-    ignore_changes = [secret_data]
-  }
-
-  depends_on = [time_sleep.secrets_api_wait_60_seconds]
-}
-
-resource "google_secret_manager_secret" "analytics_collector_api_token" {
-  secret_id = "${var.prefix}analytics-collector-api-token"
-
-  replication {
-    auto {}
-  }
-
-  depends_on = [time_sleep.secrets_api_wait_60_seconds]
-}
-
-resource "google_secret_manager_secret_version" "analytics_collector_api_token" {
-  secret      = google_secret_manager_secret.analytics_collector_api_token.name
-  secret_data = " "
-
-  lifecycle {
-    ignore_changes = [secret_data]
-  }
-
-  depends_on = [time_sleep.secrets_api_wait_60_seconds]
-}
-
-resource "google_secret_manager_secret" "routing_domains" {
-  secret_id = "${var.prefix}routing-domains"
-
-  replication {
-    auto {}
-  }
-
-  depends_on = [time_sleep.secrets_api_wait_60_seconds]
-}
-
-resource "google_secret_manager_secret_version" "routing_domains" {
-  secret      = google_secret_manager_secret.routing_domains.name
-  secret_data = jsonencode([])
-
-  lifecycle {
-    ignore_changes = [secret_data]
-  }
-
-  depends_on = [time_sleep.secrets_api_wait_60_seconds]
-}
-
+// todo: delete after migration period
 resource "google_artifact_registry_repository" "orchestration_repository" {
   format        = "DOCKER"
   repository_id = "e2b-orchestration"
@@ -251,38 +100,18 @@ resource "google_artifact_registry_repository_iam_member" "orchestration_reposit
   depends_on = [time_sleep.artifact_registry_api_wait_90_seconds]
 }
 
-resource "google_secret_manager_secret" "notification_email" {
-  secret_id = "${var.prefix}security-notification-email"
+resource "google_artifact_registry_repository" "core" {
+  format        = "DOCKER"
+  repository_id = "${var.prefix}core"
+  labels        = var.labels
 
-  replication {
-    auto {}
-  }
-
-  depends_on = [time_sleep.secrets_api_wait_60_seconds]
+  depends_on = [time_sleep.artifact_registry_api_wait_90_seconds]
 }
 
-resource "google_secret_manager_secret_version" "notification_email_value" {
-  secret = google_secret_manager_secret.notification_email.id
+resource "google_artifact_registry_repository_iam_member" "core" {
+  repository = google_artifact_registry_repository.core.name
+  role       = "roles/artifactregistry.reader"
+  member     = "serviceAccount:${google_service_account.infra_instances_service_account.email}"
 
-  secret_data = "placeholder@example.com"
-}
-
-
-resource "google_secret_manager_secret" "redis_tls_ca_base64" {
-  secret_id = "${var.prefix}redis-tls-ca-base64"
-
-  replication {
-    auto {}
-  }
-
-  depends_on = [time_sleep.secrets_api_wait_60_seconds]
-}
-
-resource "google_secret_manager_secret_version" "redis_tls_ca_base64" {
-  secret      = google_secret_manager_secret.redis_tls_ca_base64.name
-  secret_data = " "
-
-  lifecycle {
-    ignore_changes = [secret_data]
-  }
+  depends_on = [time_sleep.artifact_registry_api_wait_90_seconds]
 }

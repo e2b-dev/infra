@@ -23,6 +23,7 @@ const (
 	TierKind       ldcontext.Kind = "tier"
 	ServiceKind    ldcontext.Kind = "service"
 	TemplateKind   ldcontext.Kind = "template"
+	VolumeKind     ldcontext.Kind = "volume"
 )
 
 // All flags must be defined here: https://app.launchdarkly.com/projects/default/flags/
@@ -82,6 +83,7 @@ func newBoolFlag(name string, fallback bool) BoolFlag {
 var (
 	MetricsWriteFlag                    = newBoolFlag("sandbox-metrics-write", env.IsDevelopment())
 	MetricsReadFlag                     = newBoolFlag("sandbox-metrics-read", env.IsDevelopment())
+	HostStatsEnabled                    = newBoolFlag("host-stats-enabled", env.IsDevelopment())
 	SnapshotFeatureFlag                 = newBoolFlag("use-nfs-for-snapshots", env.IsDevelopment())
 	TemplateFeatureFlag                 = newBoolFlag("use-nfs-for-templates", env.IsDevelopment())
 	EnableWriteThroughCacheFlag         = newBoolFlag("write-to-cache-on-writes", false)
@@ -90,6 +92,9 @@ var (
 	BestOfKTooManyStartingFlag          = newBoolFlag("best-of-k-too-many-starting", false)
 	EdgeProvidedSandboxMetricsFlag      = newBoolFlag("edge-provided-sandbox-metrics", false)
 	CreateStorageCacheSpansFlag         = newBoolFlag("create-storage-cache-spans", env.IsDevelopment())
+	SandboxAutoResumeFlag               = newBoolFlag("sandbox-auto-resume", env.IsDevelopment())
+	PersistentVolumesFlag               = newBoolFlag("can-use-persistent-volumes", env.IsDevelopment())
+	ExecutionMetricsOnWebhooksFlag      = newBoolFlag("execution-metrics-on-webhooks", false) // TODO: Remove NLT 20250315
 )
 
 type IntFlag struct {
@@ -128,6 +133,7 @@ var (
 	BestOfKMaxOvercommit          = newIntFlag("best-of-k-max-overcommit", 400)              // Default R=4 (stored as percentage, max over-commit ratio)
 	BestOfKAlpha                  = newIntFlag("best-of-k-alpha", 50)                        // Default Alpha=0.5 (stored as percentage for int flag, current usage weight)
 	EnvdInitTimeoutMilliseconds   = newIntFlag("envd-init-request-timeout-milliseconds", 50) // Timeout for envd init request in milliseconds
+	HostStatsSamplingInterval     = newIntFlag("host-stats-sampling-interval", 5000)         // Host stats sampling interval in milliseconds (default 5s)
 	MaxCacheWriterConcurrencyFlag = newIntFlag("max-cache-writer-concurrency", 10)
 
 	// BuildCacheMaxUsagePercentage the maximum percentage of the cache disk storage
@@ -145,6 +151,17 @@ var (
 	// MemoryPrefetchMaxCopyWorkers is the maximum number of parallel copy workers per sandbox for memory prefetching.
 	// Copy uses uffd syscalls, so we limit parallelism to avoid overwhelming the system.
 	MemoryPrefetchMaxCopyWorkers = newIntFlag("memory-prefetch-max-copy-workers", 8)
+
+	// TCPFirewallMaxConnectionsPerSandbox is the maximum number of concurrent TCP firewall
+	// connections allowed per sandbox. Negative means no limit.
+	TCPFirewallMaxConnectionsPerSandbox = newIntFlag("tcpfirewall-max-connections-per-sandbox", -1)
+
+	// SandboxMaxIncomingConnections is the maximum number of concurrent HTTP proxy
+	// connections allowed per sandbox. Negative means no limit.
+	SandboxMaxIncomingConnections = newIntFlag("sandbox-max-incoming-connections", -1)
+
+	// BuildBaseRootfsSizeLimitMB is the maximum size of the base rootfs filesystem created from the OCI image, in MB.
+	BuildBaseRootfsSizeLimitMB = newIntFlag("build-base-rootfs-size-limit-mb", 25000)
 )
 
 type StringFlag struct {
@@ -187,10 +204,11 @@ var firecrackerVersions = map[string]string{
 
 // BuildIoEngine Sync is used by default as there seems to be a bad interaction between Async and a lot of io operations.
 var (
-	BuildFirecrackerVersion = newStringFlag("build-firecracker-version", env.GetEnv("DEFAULT_FIRECRACKER_VERSION", DefaultFirecrackerVersion))
-	BuildIoEngine           = newStringFlag("build-io-engine", "Sync")
-	BuildNodeInfo           = newJSONFlag("preferred-build-node", ldvalue.Null())
-	FirecrackerVersions     = newJSONFlag("firecracker-versions", ldvalue.FromJSONMarshal(firecrackerVersions))
+	BuildFirecrackerVersion     = newStringFlag("build-firecracker-version", env.GetEnv("DEFAULT_FIRECRACKER_VERSION", DefaultFirecrackerVersion))
+	BuildIoEngine               = newStringFlag("build-io-engine", "Sync")
+	DefaultPersistentVolumeType = newStringFlag("default-persistent-volume-type", "")
+	BuildNodeInfo               = newJSONFlag("preferred-build-node", ldvalue.Null())
+	FirecrackerVersions         = newJSONFlag("firecracker-versions", ldvalue.FromJSONMarshal(firecrackerVersions))
 )
 
 // defaultTrackedTemplates is the default map of template aliases tracked for metrics.
@@ -224,3 +242,16 @@ func GetTrackedTemplatesSet(ctx context.Context, ff *Client) map[string]struct{}
 
 	return result
 }
+
+// ChunkerConfigFlag is a JSON flag controlling the chunker implementation and tuning.
+//
+// NOTE: Changing useStreaming has no effect on chunkers already created for
+// cached templates. A service restart (redeploy) is required for that change
+// to take effect. minReadBatchSizeKB is checked just-in-time on each fetch,
+// so it takes effect immediately.
+//
+// JSON format: {"useStreaming": false, "minReadBatchSizeKB": 16}
+var ChunkerConfigFlag = newJSONFlag("chunker-config", ldvalue.FromJSONMarshal(map[string]any{
+	"useStreaming":       false,
+	"minReadBatchSizeKB": 16,
+}))

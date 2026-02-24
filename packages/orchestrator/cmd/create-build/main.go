@@ -70,9 +70,6 @@ func main() {
 		log.Fatal("-to-build required")
 	}
 
-	// Always suppress OTEL tracing logs
-	cmdutil.SuppressOTELLogs()
-
 	// Suppress other noisy output unless verbose, but keep std log for fatal errors
 	if !*verbose {
 		cmdutil.SuppressNoisyLogsKeepStdLog()
@@ -218,9 +215,15 @@ func doBuild(
 
 	l.Info(ctx, "building template", logger.WithTemplateID(templateID), logger.WithBuildID(buildID))
 
+	logLevel := ldlog.Error
+	if verbose {
+		logLevel = ldlog.Info
+	}
+	featureFlags, _ := featureflags.NewClientWithLogLevel(logLevel)
+
 	sandboxes := sandbox.NewSandboxesMap()
 
-	sandboxProxy, err := proxy.NewSandboxProxy(noop.MeterProvider{}, proxyPort, sandboxes)
+	sandboxProxy, err := proxy.NewSandboxProxy(noop.MeterProvider{}, proxyPort, sandboxes, featureFlags)
 	if err != nil {
 		return fmt.Errorf("proxy: %w", err)
 	}
@@ -231,7 +234,7 @@ func doBuild(
 	}()
 	defer sandboxProxy.Close(parentCtx)
 
-	tcpFirewall := tcpfirewall.New(l, networkConfig, sandboxes, noop.NewMeterProvider())
+	tcpFirewall := tcpfirewall.New(l, networkConfig, sandboxes, noop.NewMeterProvider(), featureFlags)
 	go tcpFirewall.Start(ctx)
 	defer tcpFirewall.Close(parentCtx)
 
@@ -271,11 +274,6 @@ func doBuild(
 	defer dockerhubRepo.Close()
 
 	blockMetrics, _ := blockmetrics.NewMetrics(noop.NewMeterProvider())
-	logLevel := ldlog.Error
-	if verbose {
-		logLevel = ldlog.Info
-	}
-	featureFlags, _ := featureflags.NewClientWithLogLevel(logLevel)
 
 	c, err := cfg.Parse()
 	if err != nil {
@@ -290,7 +288,7 @@ func doBuild(
 	defer templateCache.Stop()
 
 	buildMetrics, _ := metrics.NewBuildMetrics(noop.MeterProvider{})
-	sandboxFactory := sandbox.NewFactory(c.BuilderConfig, networkPool, devicePool, featureFlags)
+	sandboxFactory := sandbox.NewFactory(c.BuilderConfig, networkPool, devicePool, featureFlags, nil, nil)
 
 	builder := build.NewBuilder(
 		builderConfig, l, featureFlags, sandboxFactory,

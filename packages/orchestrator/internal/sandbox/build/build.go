@@ -123,6 +123,7 @@ func (b *File) getBuild(ctx context.Context, buildID *uuid.UUID) (Diff, error) {
 		int64(b.header.Metadata.BlockSize),
 		b.metrics,
 		b.persistence,
+		b.store.flags,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create storage diff: %w", err)

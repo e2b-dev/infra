@@ -6,8 +6,7 @@ on:
       commit:
         type: boolean
         description: 'Whether to commit and push changes automatically'
-        required: false
-        default: false
+        required: true
     secrets:
       app_id:
         description: 'GitHub App ID for pushing commits that trigger workflows'
@@ -58,8 +57,12 @@ jobs:
       - name: Fix tracers
         run: ./scripts/fix-tracers.sh
 
+      - uses: jdx/mise-action@v3
+        with:
+          install_args: "buf protoc protoc-gen-connect-go protoc-gen-go protoc-gen-go-grpc"
+
       - name: Generate all code
-        run: make --jobs=4 generate
+        run: make generate  # cannot do this in parallel, as there are some race conditions
 
       - name: Install golangci-lint
         uses: golangci/golangci-lint-action@v9

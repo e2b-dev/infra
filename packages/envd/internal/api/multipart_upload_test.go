@@ -19,7 +19,7 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
 )
 
-func newTestAPI(t *testing.T) *API {
+func newMultipartTestAPI(t *testing.T) *API {
 	t.Helper()
 	logger := zerolog.New(os.Stderr).Level(zerolog.Disabled)
 	defaults := &execcontext.Defaults{
@@ -40,7 +40,7 @@ func TestMultipartUpload(t *testing.T) {
 
 	t.Run("init upload", func(t *testing.T) {
 		t.Parallel()
-		api := newTestAPI(t)
+		api := newMultipartTestAPI(t)
 		tempDir := t.TempDir()
 
 		body := PostFilesUploadInitJSONRequestBody{
@@ -76,7 +76,7 @@ func TestMultipartUpload(t *testing.T) {
 
 	t.Run("complete multipart upload", func(t *testing.T) {
 		t.Parallel()
-		api := newTestAPI(t)
+		api := newMultipartTestAPI(t)
 		tempDir := t.TempDir()
 		destPath := filepath.Join(tempDir, "assembled-file.txt")
 
@@ -148,7 +148,7 @@ func TestMultipartUpload(t *testing.T) {
 
 	t.Run("abort multipart upload", func(t *testing.T) {
 		t.Parallel()
-		api := newTestAPI(t)
+		api := newMultipartTestAPI(t)
 		tempDir := t.TempDir()
 		destPath := filepath.Join(tempDir, "aborted-file.txt")
 
@@ -196,7 +196,7 @@ func TestMultipartUpload(t *testing.T) {
 
 	t.Run("upload part to non-existent session", func(t *testing.T) {
 		t.Parallel()
-		api := newTestAPI(t)
+		api := newMultipartTestAPI(t)
 
 		// Use a valid UUID that doesn't exist in the sessions map
 		nonExistentUUID := "00000000-0000-0000-0000-000000000000"
@@ -209,7 +209,7 @@ func TestMultipartUpload(t *testing.T) {
 
 	t.Run("complete non-existent session", func(t *testing.T) {
 		t.Parallel()
-		api := newTestAPI(t)
+		api := newMultipartTestAPI(t)
 
 		req := httptest.NewRequest(http.MethodPost, "/files/upload/non-existent/complete", nil)
 		w := httptest.NewRecorder()
@@ -220,7 +220,7 @@ func TestMultipartUpload(t *testing.T) {
 
 	t.Run("abort non-existent session", func(t *testing.T) {
 		t.Parallel()
-		api := newTestAPI(t)
+		api := newMultipartTestAPI(t)
 
 		req := httptest.NewRequest(http.MethodDelete, "/files/upload/non-existent", nil)
 		w := httptest.NewRecorder()
@@ -231,7 +231,7 @@ func TestMultipartUpload(t *testing.T) {
 
 	t.Run("invalid upload ID format", func(t *testing.T) {
 		t.Parallel()
-		api := newTestAPI(t)
+		api := newMultipartTestAPI(t)
 
 		// Try to upload with an invalid UUID (path traversal attempt)
 		req := httptest.NewRequest(http.MethodPut, "/files/upload/../../../etc/passwd?part=0", bytes.NewReader([]byte("test")))
@@ -243,7 +243,7 @@ func TestMultipartUpload(t *testing.T) {
 
 	t.Run("negative part number", func(t *testing.T) {
 		t.Parallel()
-		api := newTestAPI(t)
+		api := newMultipartTestAPI(t)
 		tempDir := t.TempDir()
 
 		// Initialize upload
@@ -286,7 +286,7 @@ func TestMultipartUpload(t *testing.T) {
 
 	t.Run("missing part in sequence", func(t *testing.T) {
 		t.Parallel()
-		api := newTestAPI(t)
+		api := newMultipartTestAPI(t)
 		tempDir := t.TempDir()
 		destPath := filepath.Join(tempDir, "gap-file.txt")
 
@@ -331,7 +331,7 @@ func TestMultipartUpload(t *testing.T) {
 
 	t.Run("upload part after complete started", func(t *testing.T) {
 		t.Parallel()
-		api := newTestAPI(t)
+		api := newMultipartTestAPI(t)
 		tempDir := t.TempDir()
 		destPath := filepath.Join(tempDir, "race-file.txt")
 
@@ -390,7 +390,7 @@ func TestMultipartUpload(t *testing.T) {
 
 	t.Run("max sessions limit", func(t *testing.T) {
 		t.Parallel()
-		api := newTestAPI(t)
+		api := newMultipartTestAPI(t)
 		tempDir := t.TempDir()
 
 		// Create maxUploadSessions sessions
@@ -437,7 +437,7 @@ func TestMultipartUpload(t *testing.T) {
 
 	t.Run("parts uploaded out of order", func(t *testing.T) {
 		t.Parallel()
-		api := newTestAPI(t)
+		api := newMultipartTestAPI(t)
 		tempDir := t.TempDir()
 		destPath := filepath.Join(tempDir, "out-of-order-file.txt")
 
@@ -495,7 +495,7 @@ func TestMultipartUpload(t *testing.T) {
 
 	t.Run("empty file upload", func(t *testing.T) {
 		t.Parallel()
-		api := newTestAPI(t)
+		api := newMultipartTestAPI(t)
 		tempDir := t.TempDir()
 		destPath := filepath.Join(tempDir, "empty-file.txt")
 
@@ -541,7 +541,7 @@ func TestMultipartUploadRouting(t *testing.T) {
 		t.Skip("skipping routing tests: requires root")
 	}
 
-	api := newTestAPI(t)
+	api := newMultipartTestAPI(t)
 	router := chi.NewRouter()
 	HandlerFromMux(api, router)
 

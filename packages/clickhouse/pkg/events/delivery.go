@@ -114,8 +114,6 @@ func (c *ClickhouseDelivery) Publish(_ context.Context, _ string, event events.S
 }
 
 func (c *ClickhouseDelivery) Close(context.Context) error {
-	defer c.conn.Close()
-
 	return c.batcher.Stop()
 }
 

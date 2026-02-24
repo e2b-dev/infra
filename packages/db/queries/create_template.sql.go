@@ -13,8 +13,8 @@ import (
 )
 
 const createOrUpdateTemplate = `-- name: CreateOrUpdateTemplate :exec
-INSERT INTO "public"."envs"(id, team_id, created_by, updated_at, public, cluster_id)
-VALUES ($1, $2, $3, NOW(),FALSE, $4)
+INSERT INTO "public"."envs"(id, team_id, created_by, updated_at, public, cluster_id, source)
+VALUES ($1, $2, $3, NOW(), FALSE, $4, 'template')
 ON CONFLICT (id) DO UPDATE
 SET updated_at  = NOW(),
     build_count = envs.build_count + 1
@@ -41,7 +41,6 @@ const createTemplateBuild = `-- name: CreateTemplateBuild :exec
 INSERT INTO "public"."env_builds" (
     id,
     updated_at,
-    env_id,
     status,
     ram_mb,
     vcpu,
@@ -56,7 +55,6 @@ INSERT INTO "public"."env_builds" (
     $1,
     NOW(),
     $2,
-    'waiting',
     $3,
     $4,
     $5,
@@ -71,7 +69,7 @@ INSERT INTO "public"."env_builds" (
 
 type CreateTemplateBuildParams struct {
 	BuildID            uuid.UUID
-	TemplateID         string
+	Status             types.BuildStatus
 	RamMb              int64
 	Vcpu               int64
 	KernelVersion      string
@@ -86,7 +84,7 @@ type CreateTemplateBuildParams struct {
 func (q *Queries) CreateTemplateBuild(ctx context.Context, arg CreateTemplateBuildParams) error {
 	_, err := q.db.Exec(ctx, createTemplateBuild,
 		arg.BuildID,
-		arg.TemplateID,
+		arg.Status,
 		arg.RamMb,
 		arg.Vcpu,
 		arg.KernelVersion,
@@ -110,7 +108,7 @@ FROM "public"."env_build_assignments" eba
 WHERE eba.build_id = eb.id
     AND eba.env_id = $2
     AND eba.tag = ANY($3::text[])
-    AND eb.status = 'waiting'
+    AND eb.status_group = 'pending'
 `
 
 type InvalidateUnstartedTemplateBuildsParams struct {

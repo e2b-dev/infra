@@ -30,6 +30,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/tcpfirewall"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
@@ -821,9 +822,6 @@ func (r *runner) benchmark(ctx context.Context, n int) error {
 }
 
 func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefetch, verbose bool, pauseOpts pauseOptions, runOpts runOptions) error {
-	// Always suppress OTEL tracing logs
-	cmdutil.SuppressOTELLogs()
-
 	// Silence other loggers unless verbose mode
 	var l logger.Logger
 	if !verbose {
@@ -909,12 +907,12 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 		fmt.Println("🔧 Creating sandbox factory...")
 	}
 	sandboxes := sandbox.NewSandboxesMap()
-	factory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, flags)
+	factory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, flags, nil, nil)
 
 	if verbose {
 		fmt.Println("🔧 Starting TCP firewall...")
 	}
-	tcpFw := tcpfirewall.New(l, config.NetworkConfig, sandboxes, noop.NewMeterProvider())
+	tcpFw := tcpfirewall.New(l, config.NetworkConfig, sandboxes, noop.NewMeterProvider(), flags)
 	go tcpFw.Start(ctx)
 	defer tcpFw.Close(context.WithoutCancel(ctx))
 
@@ -1069,7 +1067,7 @@ func runCommandInSandbox(ctx context.Context, sbx *sandbox.Sandbox, command stri
 // syncAndDropCaches syncs filesystem and drops caches before snapshot
 func syncAndDropCaches(ctx context.Context, sbx *sandbox.Sandbox) error {
 	// Run sync command
-	if err := runCommandInSandbox(ctx, sbx, "/usr/bin/busybox sync"); err != nil {
+	if err := runCommandInSandbox(ctx, sbx, rootfs.SandboxBusyBoxPath+" sync"); err != nil {
 		return fmt.Errorf("sync failed: %w", err)
 	}
 

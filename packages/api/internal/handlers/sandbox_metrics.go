@@ -8,8 +8,9 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
-	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/auth/pkg/types"
+	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -45,7 +46,7 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string
 		return
 	}
 
-	clusterID := utils.WithClusterFallback(team.ClusterID)
+	clusterID := clusters.WithClusterFallback(team.ClusterID)
 	cluster, found := a.clusters.GetClusterById(clusterID)
 	if !found {
 		logger.L().Error(ctx, "cluster not found for sandbox metrics", logger.WithClusterID(clusterID))
@@ -56,12 +57,7 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string
 
 	metrics, apiErr := cluster.GetResources().GetSandboxMetrics(ctx, team.ID.String(), sandboxID, params.Start, params.End)
 	if apiErr != nil {
-		if apiErr.Code >= 500 {
-			telemetry.ReportCriticalError(ctx, "error getting sandbox metrics", apiErr.Err)
-		} else {
-			telemetry.ReportError(ctx, "error getting sandbox metrics", apiErr.Err)
-		}
-
+		telemetry.ReportErrorByCode(ctx, apiErr.Code, "error getting sandbox metrics", apiErr.Err)
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return

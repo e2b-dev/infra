@@ -15,8 +15,8 @@ import (
 
 const upsertSnapshot = `-- name: UpsertSnapshot :one
 WITH new_template AS (
-    INSERT INTO "public"."envs" (id, public, created_by, team_id, updated_at)
-    SELECT $1, FALSE, NULL, $2, now()
+    INSERT INTO "public"."envs" (id, public, created_by, team_id, updated_at, source)
+    SELECT $1, FALSE, NULL, $2, now(), 'snapshot'
     WHERE NOT EXISTS (
         SELECT id
         FROM "public"."snapshots" s
@@ -63,7 +63,6 @@ snapshot as (
 
 new_build as (
     INSERT INTO "public"."env_builds" (
-        env_id,
         vcpu,
         ram_mb,
         free_disk_size_mb,
@@ -80,7 +79,6 @@ new_build as (
         cpu_model_name,
         cpu_flags
     ) VALUES (
-        (SELECT template_id FROM snapshot),
         $12,
         $13,
         $14,
@@ -96,20 +94,20 @@ new_build as (
         $22,
         $23,
         $24
-    ) RETURNING id as build_id, env_id as template_id
+    ) RETURNING id as build_id
 ),
 
 build_assignment as (
     INSERT INTO "public"."env_build_assignments" (env_id, build_id, tag)
     VALUES (
-        (SELECT template_id FROM new_build),
+        (SELECT template_id FROM snapshot),
         (SELECT build_id FROM new_build),
         'default'
     )
     RETURNING build_id, env_id as template_id
 )
 
-SELECT build_id, template_id FROM new_build
+SELECT build_id, template_id FROM build_assignment
 `
 
 type UpsertSnapshotParams struct {
@@ -130,7 +128,7 @@ type UpsertSnapshotParams struct {
 	KernelVersion       string
 	FirecrackerVersion  string
 	EnvdVersion         *string
-	Status              string
+	Status              types.BuildStatus
 	TotalDiskSizeMb     *int64
 	CpuArchitecture     *string
 	CpuFamily           *string

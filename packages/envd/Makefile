@@ -3,7 +3,9 @@ ENV := $(shell cat ../../.last_used_env || echo "not-set")
 
 BUILD := $(shell git rev-parse --short HEAD)
 LDFLAGS=-ldflags "-X=main.commitSHA=$(BUILD)"
+
 AWS_BUCKET_PREFIX ?= $(PREFIX)$(AWS_ACCOUNT_ID)-
+GCP_BUCKET_PREFIX ?= $(GCP_PROJECT_ID)-
 
 .PHONY: init
 init:
@@ -14,7 +16,7 @@ upload:
 ifeq ($(PROVIDER),aws)
 	aws s3 cp ./bin/envd "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/envd" --profile ${AWS_PROFILE} --cache-control "no-cache, max-age=0"
 else
-	gsutil -h "Cache-Control:no-cache, max-age=0" cp bin/envd "gs://${GCP_PROJECT_ID}-fc-env-pipeline/envd"
+	gsutil -h "Cache-Control:no-cache, max-age=0" cp bin/envd "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/envd"
 endif
 
 build:
@@ -45,8 +47,6 @@ build-and-upload:
 .PHONY: generate
 generate:
 	go generate ./...
-	docker build -t proto-gen -f generate.Dockerfile .
-	docker run --rm -v .:/workspace -v ./../shared/pkg/grpc:/shared/pkg/grpc proto-gen
 
 .PHONY: test
 test:

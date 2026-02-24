@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/tests"
+	"github.com/e2b-dev/infra/packages/auth/pkg/tests"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 )
 

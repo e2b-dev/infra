@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"strconv"
 	"sync"
 	"syscall"
 
@@ -50,7 +51,8 @@ type Handler struct {
 	outCtx    context.Context //nolint:containedctx // todo: refactor so this can be removed
 	outCancel context.CancelFunc
 
-	stdin io.WriteCloser
+	stdinMu sync.Mutex
+	stdin   io.WriteCloser
 
 	DataEvent *MultiplexedChannel[rpc.ProcessEvent_Data]
 	EndEvent  *MultiplexedChannel[rpc.ProcessEvent_End]
@@ -77,16 +79,26 @@ func New(
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 
+	groups := []uint32{gid}
+	if gids, err := user.GroupIds(); err != nil {
+		logger.Warn().Err(err).Str("user", user.Username).Msg("failed to get supplementary groups")
+	} else {
+		for _, g := range gids {
+			if parsed, err := strconv.ParseUint(g, 10, 32); err == nil {
+				groups = append(groups, uint32(parsed))
+			}
+		}
+	}
+
 	cgroupFD, ok := cgroupManager.GetFileDescriptor(getProcType(req))
 
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		UseCgroupFD: ok,
 		CgroupFD:    cgroupFD,
 		Credential: &syscall.Credential{
-			Uid:         uid,
-			Gid:         gid,
-			Groups:      []uint32{gid},
-			NoSetGroups: true,
+			Uid:    uid,
+			Gid:    gid,
+			Groups: groups,
 		},
 	}
 
@@ -328,8 +340,11 @@ func (p *Handler) WriteStdin(data []byte) error {
 		return fmt.Errorf("tty assigned to process — input should be written to the pty, not the stdin")
 	}
 
+	p.stdinMu.Lock()
+	defer p.stdinMu.Unlock()
+
 	if p.stdin == nil {
-		return fmt.Errorf("stdin not enabled — set stdin to true when starting the command")
+		return fmt.Errorf("stdin not enabled or closed")
 	}
 
 	_, err := p.stdin.Write(data)
@@ -338,6 +353,28 @@ func (p *Handler) WriteStdin(data []byte) error {
 	}
 
 	return nil
+}
+
+// CloseStdin closes the stdin pipe to signal EOF to the process.
+// Only works for non-PTY processes.
+func (p *Handler) CloseStdin() error {
+	if p.tty != nil {
+		return fmt.Errorf("cannot close stdin for PTY process — send Ctrl+D (0x04) instead")
+	}
+
+	p.stdinMu.Lock()
+	defer p.stdinMu.Unlock()
+
+	if p.stdin == nil {
+		return nil
+	}
+
+	err := p.stdin.Close()
+	// We still set the stdin to nil even on error as there are no errors,
+	// for which it is really safe to retry close across all distributions.
+	p.stdin = nil
+
+	return err
 }
 
 func (p *Handler) WriteTty(data []byte) error {

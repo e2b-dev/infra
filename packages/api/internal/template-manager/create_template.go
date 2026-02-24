@@ -75,7 +75,7 @@ func (tm *TemplateManager) CreateTemplate(
 		err := tm.SetStatus(
 			ctx,
 			buildID,
-			types.BuildStatusFailed,
+			types.BuildStatusGroupFailed,
 			&templatemanagergrpc.TemplateBuildStatusReason{
 				Message: fmt.Sprintf("error when building env: %s", e),
 			},
@@ -138,7 +138,7 @@ func (tm *TemplateManager) CreateTemplate(
 		err = tm.SetStatus(
 			ctx,
 			buildID,
-			types.BuildStatusFailed,
+			types.BuildStatusGroupFailed,
 			&templatemanagergrpc.TemplateBuildStatusReason{
 				Message: err.Error(),
 				Step:    ut.ToPtr("base"),
@@ -170,7 +170,7 @@ func (tm *TemplateManager) CreateTemplate(
 	err = tm.SetStatus(
 		ctx,
 		buildID,
-		types.BuildStatusBuilding,
+		types.BuildStatusGroupInProgress,
 		nil,
 	)
 	if err != nil {
@@ -193,7 +193,7 @@ func (tm *TemplateManager) CreateTemplate(
 		telemetry.ReportEvent(ctx, "build status sync completed")
 
 		// Invalidate the cache
-		invalidatedKeys := tm.templateCache.InvalidateAllTags(templateID)
+		invalidatedKeys := tm.templateCache.InvalidateAllTags(context.WithoutCancel(ctx), templateID)
 
 		telemetry.ReportEvent(ctx, "invalidated template cache", attribute.StringSlice("invalidated_keys", invalidatedKeys))
 	}(context.WithoutCancel(ctx))
@@ -305,7 +305,7 @@ func setTemplateSource(ctx context.Context, tm *TemplateManager, teamID uuid.UUI
 		}
 
 		// Step 1: Resolve alias to template ID (using cache with fallback for promoted templates)
-		aliasInfo, err := tm.templateCache.ResolveAlias(ctx, identifier, teamSlug)
+		aliasInfo, metadata, err := tm.templateCache.ResolveAliasWithMetadata(ctx, identifier, teamSlug)
 		if err != nil {
 			msg := fmt.Sprintf("error resolving base template '%s'", *fromTemplate)
 			if errors.Is(err, templatecache.ErrTemplateNotFound) {
@@ -318,7 +318,7 @@ func setTemplateSource(ctx context.Context, tm *TemplateManager, teamID uuid.UUI
 			}
 		}
 
-		if !aliasInfo.Public && aliasInfo.TeamID != teamID {
+		if !metadata.Public && aliasInfo.TeamID != teamID {
 			return &FromTemplateError{
 				err:     nil,
 				message: fmt.Sprintf("you have no access to use '%s' as a base template", *fromTemplate),

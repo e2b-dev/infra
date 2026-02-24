@@ -79,7 +79,7 @@ func (m *Map) Remove(sandboxID string) {
 	})
 }
 
-func (m *Map) RemoveByExecutionID(sandboxID, executionID string) {
+func (m *Map) RemoveByLifecycleID(sandboxID, lifecycleID string) {
 	removed := m.sandboxes.RemoveCb(sandboxID, func(_ string, v *Sandbox, exists bool) bool {
 		if !exists {
 			return false
@@ -89,7 +89,7 @@ func (m *Map) RemoveByExecutionID(sandboxID, executionID string) {
 			return false
 		}
 
-		return v.Runtime.ExecutionID == executionID
+		return v.LifecycleID == lifecycleID
 	})
 
 	if removed {

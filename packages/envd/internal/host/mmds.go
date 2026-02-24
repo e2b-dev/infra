@@ -19,12 +19,22 @@ const (
 
 	mmdsDefaultAddress  = "169.254.169.254"
 	mmdsTokenExpiration = 60 * time.Second
+
+	mmdsAccessTokenRequestClientTimeout = 10 * time.Second
 )
+
+var mmdsAccessTokenClient = &http.Client{
+	Timeout: mmdsAccessTokenRequestClientTimeout,
+	Transport: &http.Transport{
+		DisableKeepAlives: true,
+	},
+}
 
 type MMDSOpts struct {
 	SandboxID            string `json:"instanceID"`
 	TemplateID           string `json:"envID"`
 	LogsCollectorAddress string `json:"address"`
+	AccessTokenHash      string `json:"accessTokenHash"`
 }
 
 func (opts *MMDSOpts) Update(sandboxID, templateID, collectorAddress string) {
@@ -106,6 +116,22 @@ func getMMDSOpts(ctx context.Context, client *http.Client, token string) (*MMDSO
 	}
 
 	return &opts, nil
+}
+
+// GetAccessTokenHashFromMMDS reads the access token hash from MMDS.
+// This is used to validate that /init requests come from the orchestrator.
+func GetAccessTokenHashFromMMDS(ctx context.Context) (string, error) {
+	token, err := getMMDSToken(ctx, mmdsAccessTokenClient)
+	if err != nil {
+		return "", fmt.Errorf("failed to get MMDS token: %w", err)
+	}
+
+	opts, err := getMMDSOpts(ctx, mmdsAccessTokenClient, token)
+	if err != nil {
+		return "", fmt.Errorf("failed to get MMDS opts: %w", err)
+	}
+
+	return opts.AccessTokenHash, nil
 }
 
 func PollForMMDSOpts(ctx context.Context, mmdsChan chan<- *MMDSOpts, envVars *utils.Map[string, string]) {

@@ -1,22 +1,19 @@
 ENV := $(shell cat ../../.last_used_env || echo "not-set")
 -include ../../.env.${ENV}
+PREFIX := $(strip $(subst ",,$(PREFIX)))
+HOSTNAME := $(shell hostname || hostnamectl hostname)
 
-openapi := ../../spec/openapi.yml
-codegen := go tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
 expectedMigration := $(shell ./../../scripts/get-latest-migration.sh)
 
 ifeq ($(PROVIDER),aws)
-	IMAGE_REGISTRY := $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com/$(PREFIX)orchestration/api
+	IMAGE_REGISTRY := $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com/$(PREFIX)core/api
 else
-	IMAGE_REGISTRY := $(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/e2b-orchestration/api
+	IMAGE_REGISTRY := $(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/$(PREFIX)core/api
 endif
 
 .PHONY: generate
 generate:
-	$(codegen) -old-config-style -generate gin --package api $(openapi) > internal/api/api.gen.go
-	$(codegen) -old-config-style -generate types --package api $(openapi) > internal/api/types.gen.go
-	$(codegen) -old-config-style -generate spec --package api $(openapi) > internal/api/spec.gen.go
-	$(codegen) -old-config-style -generate client --package api $(openapi) > internal/api/client.gen.go
+	go generate ./...
 
 .PHONY: build
 build:
@@ -55,7 +52,7 @@ endef
 run-local:
 	make build-debug
 	$(call setup_local_env)
-	NODE_ID=$$(hostname) ./bin/api --port 3000
+	NODE_ID=$(HOSTNAME) ./bin/api --port 3000
 
 # Run the API using air
 .PHONY: dev
@@ -72,8 +69,7 @@ profiler:
 build-and-upload:
 	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
 	$(eval EXPECTED_MIGRATION_TIMESTAMP := $(expectedMigration))
-	@ docker buildx install # sets up the buildx as default docker builder (otherwise the command below won't work)
-	@ docker build --platform linux/amd64 --tag $(IMAGE_REGISTRY) --push --build-arg COMMIT_SHA="$(COMMIT_SHA)" --build-arg EXPECTED_MIGRATION_TIMESTAMP="$(EXPECTED_MIGRATION_TIMESTAMP)"  -f ./Dockerfile ..
+	@ docker buildx build --platform linux/amd64 --tag $(IMAGE_REGISTRY) --push --build-arg COMMIT_SHA="$(COMMIT_SHA)" --build-arg EXPECTED_MIGRATION_TIMESTAMP="$(EXPECTED_MIGRATION_TIMESTAMP)"  -f ./Dockerfile ..
 
 .PHONY: test
 test:

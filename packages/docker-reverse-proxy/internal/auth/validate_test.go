@@ -71,10 +71,10 @@ func TestValidate(t *testing.T) {
 			error:            false,
 		},
 		{
-			name:             "invalid status",
+			name:             "completed build status",
 			valid:            false,
 			createdEnvId:     envID,
-			createdEnvStatus: "finished",
+			createdEnvStatus: "uploaded",
 			validateEnvId:    envID,
 			accessTokenUsed:  accessToken.PrefixedRawValue,
 			error:            false,
@@ -145,21 +145,27 @@ func setupValidateTest(tb testing.TB, db *testutils.Database, userID, teamID uui
 
 	// Create env
 	err = db.SqlcClient.TestsRawSQL(tb.Context(), `
-		INSERT INTO envs (id, team_id, updated_at)
-		VALUES ($1, $2, NOW())
+		INSERT INTO envs (id, team_id, updated_at, source)
+		VALUES ($1, $2, NOW(), 'template')
 	`, envID, teamID)
 	require.NoError(tb, err)
 
 	// Create env_build
 	buildID := uuid.New()
 	var finishedAt *string
-	if createdEnvStatus == "finished" {
+	if createdEnvStatus == "uploaded" || createdEnvStatus == "success" || createdEnvStatus == "ready" {
 		now := time.Now().Format(time.RFC3339)
 		finishedAt = &now
 	}
 	err = db.SqlcClient.TestsRawSQL(tb.Context(), `
-		INSERT INTO env_builds (id, env_id, status, finished_at, dockerfile, updated_at, vcpu, ram_mb, free_disk_size_mb, firecracker_version, kernel_version, cluster_node_id)
-		VALUES ($1, $2, $3, $4, 'FROM ubuntu', NOW(), 1, 1024, 1024, '0.0.0', '0.0.0', 'abc')
-	`, buildID, envID, createdEnvStatus, finishedAt)
+		INSERT INTO env_builds (id, status, finished_at, dockerfile, updated_at, vcpu, ram_mb, free_disk_size_mb, firecracker_version, kernel_version, cluster_node_id)
+		VALUES ($1, $2, $3, 'FROM ubuntu', NOW(), 1, 1024, 1024, '0.0.0', '0.0.0', 'abc')
+	`, buildID, createdEnvStatus, finishedAt)
+	require.NoError(tb, err)
+
+	err = db.SqlcClient.TestsRawSQL(tb.Context(), `
+		INSERT INTO env_build_assignments (env_id, build_id, tag)
+		VALUES ($1, $2, 'default')
+	`, envID, buildID)
 	require.NoError(tb, err)
 }

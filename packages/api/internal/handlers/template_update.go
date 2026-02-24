@@ -11,8 +11,8 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
-	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
@@ -26,11 +26,7 @@ func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID ap
 
 	_, _, apiErr := a.updateTemplate(ctx, c, aliasOrTemplateID, true)
 	if apiErr != nil {
-		if apiErr.Code < http.StatusInternalServerError {
-			telemetry.ReportError(ctx, apiErr.ClientMsg, apiErr.Err, telemetry.WithTemplateID(aliasOrTemplateID))
-		} else {
-			telemetry.ReportCriticalError(ctx, apiErr.ClientMsg, apiErr.Err, telemetry.WithTemplateID(aliasOrTemplateID))
-		}
+		telemetry.ReportErrorByCode(ctx, apiErr.Code, apiErr.ClientMsg, apiErr.Err, telemetry.WithTemplateID(aliasOrTemplateID))
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return
@@ -45,11 +41,7 @@ func (a *APIStore) PatchV2TemplatesTemplateID(c *gin.Context, aliasOrTemplateID 
 
 	team, aliasInfo, apiErr := a.updateTemplate(ctx, c, aliasOrTemplateID, false)
 	if apiErr != nil {
-		if apiErr.Code < http.StatusInternalServerError {
-			telemetry.ReportError(ctx, apiErr.ClientMsg, apiErr.Err, telemetry.WithTemplateID(aliasOrTemplateID))
-		} else {
-			telemetry.ReportCriticalError(ctx, apiErr.ClientMsg, apiErr.Err, telemetry.WithTemplateID(aliasOrTemplateID))
-		}
+		telemetry.ReportErrorByCode(ctx, apiErr.Code, apiErr.ClientMsg, apiErr.Err, telemetry.WithTemplateID(aliasOrTemplateID))
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return
@@ -136,7 +128,7 @@ func (a *APIStore) updateTemplate(ctx context.Context, c *gin.Context, aliasOrTe
 	}
 
 	// Invalidate cache immediately after successful DB update
-	a.templateCache.InvalidateAllTags(aliasInfo.TemplateID)
+	a.templateCache.InvalidateAllTags(context.WithoutCancel(ctx), aliasInfo.TemplateID)
 
 	// For backward compatibility with older CLIs (v1 endpoint), also create a non-namespaced alias
 	// when publishing a template, so older CLIs can still find it by bare alias name
@@ -194,7 +186,7 @@ func (a *APIStore) createBackwardCompatibleAlias(
 		}
 	}
 
-	a.templateCache.InvalidateAlias(nil, alias)
+	a.templateCache.InvalidateAlias(context.WithoutCancel(ctx), nil, alias)
 	logger.L().Info(ctx, "Created or verified backward compatible non-namespaced alias",
 		logger.WithTemplateID(templateID),
 		zap.String("alias", alias))

@@ -46,6 +46,23 @@ message SandboxConfig {
   optional bool allow_internet_access = 21;
 
   optional SandboxNetworkConfig network = 22;
+
+  repeated SandboxVolumeMount volumeMounts = 23;
+
+  // Auto-resume policy for paused sandboxes.
+  optional SandboxAutoResumeConfig auto_resume = 24;
+}
+
+message SandboxAutoResumeConfig {
+  // Policy values are owned by the API layer today (e.g. "off", "any").
+  string policy = 1;
+}
+
+message SandboxVolumeMount {
+  string id = 1;
+  string path = 2;
+  string type = 3;
+  string name = 4;
 }
 
 message SandboxNetworkConfig {
@@ -56,7 +73,7 @@ message SandboxNetworkConfig {
 message SandboxNetworkEgressConfig {
   repeated string allowed_cidrs = 1;
   repeated string denied_cidrs = 2;
-  
+
   repeated string allowed_domains = 3;
 }
 
@@ -92,6 +109,14 @@ message SandboxPauseRequest {
   string build_id = 3;
 }
 
+message SandboxCheckpointRequest {
+  string sandbox_id = 1;
+  string build_id = 3;
+}
+
+message SandboxCheckpointResponse {
+}
+
 message RunningSandbox {
   SandboxConfig config = 1;
   string client_id = 2;
@@ -119,6 +144,28 @@ service SandboxService {
   rpc List(google.protobuf.Empty) returns (SandboxListResponse);
   rpc Delete(SandboxDeleteRequest) returns (google.protobuf.Empty);
   rpc Pause(SandboxPauseRequest) returns (google.protobuf.Empty);
+  rpc Checkpoint(SandboxCheckpointRequest) returns (SandboxCheckpointResponse);
 
   rpc ListCachedBuilds(google.protobuf.Empty) returns (SandboxListCachedBuildsResponse);
+}
+
+message VolumeCreateRequest {
+  string volume_id = 1;
+  string volume_type = 2;
+  string team_id = 3;
+}
+
+message VolumeCreateResponse {}
+
+message VolumeDeleteRequest {
+  string volume_id = 1;
+  string volume_type = 2;
+  string team_id = 3;
+}
+
+message VolumeDeleteResponse {}
+
+service VolumeService {
+  rpc Create(VolumeCreateRequest) returns (VolumeCreateResponse);
+  rpc Delete(VolumeDeleteRequest) returns (VolumeDeleteResponse);
 }

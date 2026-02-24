@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -23,15 +24,19 @@ import (
 
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	clickhouseevents "github.com/e2b-dev/infra/packages/clickhouse/pkg/events"
+	clickhousehoststats "github.com/e2b-dev/infra/packages/clickhouse/pkg/hoststats"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/events"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/factories"
 	e2bhealthcheck "github.com/e2b-dev/infra/packages/orchestrator/internal/healthcheck"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/hyperloopserver"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/metrics"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/portmap"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/cgroup"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
@@ -41,10 +46,12 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/tcpfirewall"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	tmplserver "github.com/e2b-dev/infra/packages/orchestrator/internal/template/server"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/volumes"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	event "github.com/e2b-dev/infra/packages/shared/pkg/events"
 	sharedFactories "github.com/e2b-dev/infra/packages/shared/pkg/factories"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
@@ -310,12 +317,17 @@ func run(config cfg.Config) (success bool) {
 
 	sbxEventsDeliveryTargets := make([]event.Delivery[event.SandboxEvent], 0)
 
-	// Clickhouse sandbox events delivery target
+	var hostStatsDelivery clickhousehoststats.Delivery
+
+	// Clickhouse sandbox events and host stats delivery
 	if config.ClickhouseConnectionString != "" {
 		clickhouseConn, err := clickhouse.NewDriver(config.ClickhouseConnectionString)
 		if err != nil {
 			logger.L().Fatal(ctx, "failed to create clickhouse driver", zap.Error(err))
 		}
+		closers = append(closers, closer{"clickhouse connection", func(context.Context) error {
+			return clickhouseConn.Close()
+		}})
 
 		sbxEventsDeliveryClickhouse, err := clickhouseevents.NewDefaultClickhouseSandboxEventsDelivery(ctx, clickhouseConn, featureFlags)
 		if err != nil {
@@ -324,7 +336,27 @@ func run(config cfg.Config) (success bool) {
 
 		sbxEventsDeliveryTargets = append(sbxEventsDeliveryTargets, sbxEventsDeliveryClickhouse)
 		closers = append(closers, closer{"sandbox events delivery for clickhouse", sbxEventsDeliveryClickhouse.Close})
+
+		hostStatsDeliveryClickhouse, err := clickhousehoststats.NewDefaultClickhouseHostStatsDelivery(ctx, clickhouseConn, featureFlags)
+		if err != nil {
+			logger.L().Fatal(ctx, "failed to create clickhouse host stats delivery", zap.Error(err))
+		}
+
+		hostStatsDelivery = hostStatsDeliveryClickhouse
+		closers = append(closers, closer{"sandbox host stats delivery", hostStatsDeliveryClickhouse.Close})
 	}
+
+	// cgroup manager for resource accounting
+	cgroupManager, err := cgroup.NewManager()
+	if err != nil {
+		logger.L().Fatal(ctx, "failed to initialize cgroup manager", zap.Error(err))
+	}
+
+	if err := cgroupManager.Initialize(ctx); err != nil {
+		logger.L().Fatal(ctx, "failed to initialize root cgroup", zap.Error(err))
+	}
+
+	logger.L().Info(ctx, "cgroup accounting enabled", zap.String("root", cgroup.RootCgroupPath))
 
 	// redis
 	redisClient, err := sharedFactories.NewRedisClient(ctx, sharedFactories.RedisConfig{
@@ -355,7 +387,7 @@ func run(config cfg.Config) (success bool) {
 	closers = append(closers, closer{"sandbox observer", sandboxObserver.Close})
 
 	// sandbox proxy
-	sandboxProxy, err := proxy.NewSandboxProxy(tel.MeterProvider, config.ProxyPort, sandboxes)
+	sandboxProxy, err := proxy.NewSandboxProxy(tel.MeterProvider, config.ProxyPort, sandboxes, featureFlags)
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create sandbox proxy", zap.Error(err))
 	}
@@ -375,6 +407,7 @@ func run(config cfg.Config) (success bool) {
 		config.NetworkConfig,
 		sandboxes,
 		tel.MeterProvider,
+		featureFlags,
 	)
 	startService("tcp egress firewall", func() error {
 		return tcpFirewall.Start(ctx)
@@ -407,7 +440,9 @@ func run(config cfg.Config) (success bool) {
 	closers = append(closers, closer{"network pool", networkPool.Close})
 
 	// sandbox factory
-	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags)
+	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags, hostStatsDelivery, cgroupManager)
+
+	volumeService := volumes.New(config)
 
 	orchestratorService := server.New(ctx, server.ServiceConfig{
 		Config:           config,
@@ -445,6 +480,15 @@ func run(config cfg.Config) (success bool) {
 		},
 	})
 
+	// nfs proxy server
+	if len(config.PersistentVolumeMounts) > 0 {
+		nfsClosers, err := startNFSProxy(ctx, config, startService, sandboxes)
+		if err != nil {
+			logger.L().Fatal(ctx, "failed to start nfs proxy", zap.Error(err))
+		}
+		closers = append(closers, nfsClosers...)
+	}
+
 	// hyperloop server
 	hyperloopSrv, err := hyperloopserver.NewHyperloopServer(ctx, config.NetworkConfig.HyperloopProxyPort, globalLogger, sandboxes)
 	if err != nil {
@@ -460,8 +504,9 @@ func run(config cfg.Config) (success bool) {
 	})
 	closers = append(closers, closer{"hyperloop server", hyperloopSrv.Shutdown})
 
-	grpcServer := factories.NewGRPCServer(tel)
+	grpcServer := e2bgrpc.NewGRPCServer(tel)
 	orchestrator.RegisterSandboxServiceServer(grpcServer, orchestratorService)
+	orchestrator.RegisterVolumeServiceServer(grpcServer, volumeService)
 
 	// template manager
 	var tmpl *tmplserver.ServerStore
@@ -608,6 +653,50 @@ func run(config cfg.Config) (success bool) {
 	}
 
 	return success
+}
+
+func startNFSProxy(
+	ctx context.Context,
+	config cfg.Config,
+	startService func(name string, f func() error),
+	sandboxes *sandbox.Map,
+) ([]closer, error) {
+	var closers []closer
+
+	// portmapper listener
+	var pmConfig net.ListenConfig
+	pmLis, err := pmConfig.Listen(ctx, "tcp", fmt.Sprintf(":%d", config.NetworkConfig.PortmapperPort))
+	if err != nil {
+		return nil, fmt.Errorf("failed to listen on portmapper port: %w", err)
+	}
+
+	// portmapper implementation
+	pm := portmap.NewPortMap(ctx)
+	pm.RegisterPort(ctx, 2049)
+	startService("portmapper server", func() error {
+		return pm.Serve(ctx, pmLis)
+	})
+	closers = append(closers, closer{"portmapper server", func(_ context.Context) error { return pmLis.Close() }})
+
+	// nfs proxy listener
+	var nfsConfig net.ListenConfig
+	lis, err := nfsConfig.Listen(ctx, "tcp", fmt.Sprintf(":%d", config.NetworkConfig.NFSProxyPort))
+	if err != nil {
+		return nil, fmt.Errorf("failed to listen on nfs port: %w", err)
+	}
+
+	// nfs proxy implementation
+	nfsServer := nfsproxy.NewProxy(ctx, sandboxes, config)
+	startService("nfs proxy", func() error {
+		return nfsServer.Serve(lis)
+	})
+	closers = append(closers, closer{
+		"nfs proxy server", func(_ context.Context) error {
+			return lis.Close()
+		},
+	})
+
+	return closers, nil
 }
 
 type serviceDoneError struct {

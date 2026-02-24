@@ -37,7 +37,7 @@ func (a *APIStore) GetTemplatesAliasesAlias(c *gin.Context, alias string) {
 		return
 	}
 
-	aliasInfo, err := a.templateCache.ResolveAlias(ctx, identifier, team.Slug)
+	aliasInfo, metadata, err := a.templateCache.ResolveAliasWithMetadata(ctx, identifier, team.Slug)
 	if err != nil {
 		apiErr := templatecache.ErrorToAPIError(err, identifier)
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
@@ -55,7 +55,7 @@ func (a *APIStore) GetTemplatesAliasesAlias(c *gin.Context, alias string) {
 	// Team is alias owner
 	c.JSON(
 		http.StatusOK, api.TemplateAliasResponse{
-			Public:     aliasInfo.Public,
+			Public:     metadata.Public,
 			TemplateID: aliasInfo.TemplateID,
 		},
 	)

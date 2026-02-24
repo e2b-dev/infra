@@ -10,10 +10,11 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/template"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
+	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -189,7 +190,7 @@ func (a *APIStore) buildTemplate(
 
 	// Create the build
 	data := template.RegisterBuildData{
-		ClusterID:          utils.WithClusterFallback(team.ClusterID),
+		ClusterID:          clusters.WithClusterFallback(team.ClusterID),
 		TemplateID:         templateID,
 		UserID:             &userID,
 		Team:               team,
@@ -205,5 +206,5 @@ func (a *APIStore) buildTemplate(
 		FirecrackerVersion: firecrackerVersion,
 	}
 
-	return template.RegisterBuild(ctx, a.templateBuildsCache, a.templateCache, a.sqlcDB, data)
+	return template.RegisterBuild(ctx, a.templateCache, a.sqlcDB, data)
 }

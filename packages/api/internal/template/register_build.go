@@ -11,8 +11,8 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
-	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/team"
+	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
@@ -53,7 +53,6 @@ type RegisterBuildResponse struct {
 
 func RegisterBuild(
 	ctx context.Context,
-	templateBuildsCache *templatecache.TemplatesBuildCache,
 	templateCache *templatecache.TemplateCache,
 	db *sqlcdb.Client,
 	data RegisterBuildData,
@@ -61,12 +60,20 @@ func RegisterBuild(
 	ctx, span := tracer.Start(ctx, "register build")
 	defer span.End()
 
-	// Limit concurrent template builds
-	teamBuilds := templateBuildsCache.GetRunningBuildsForTeam(data.Team.ID)
+	// This is a simple implementation of concurrency limit
+	// It does not guarantee that the limit is not exceeded, but it should be good enough for now (considering overall low number of total builds)
+	templateIDs, err := db.GetInProgressTemplateBuildsByTeam(ctx, data.Team.ID)
+	if err != nil {
+		return nil, &api.APIError{
+			Err:       err,
+			ClientMsg: fmt.Sprintf("Error when checking concurrent builds: %s", err),
+			Code:      http.StatusInternalServerError,
+		}
+	}
 
-	// Exclude the current build if it's a rebuild (it will be cancelled)
-	teamBuildsExcludingCurrent := gutils.Filter(teamBuilds, func(item templatecache.TemplateBuildInfo) bool {
-		return item.TemplateID != data.TemplateID
+	// Exclude the current build if it's a rebuild (it will be canceled)
+	teamBuildsExcludingCurrent := gutils.Filter(templateIDs, func(templateID string) bool {
+		return templateID != data.TemplateID
 	})
 
 	totalConcurrentTemplateBuilds := data.Team.Limits.BuildConcurrency
@@ -195,9 +202,10 @@ func RegisterBuild(
 	telemetry.ReportEvent(ctx, "marked previous builds as failed")
 
 	// Insert the new build
+	// TODO(ENG-3469): Switch to dbtypes.BuildStatusPending once all consumers are migrated.
 	err = client.CreateTemplateBuild(ctx, queries.CreateTemplateBuildParams{
 		BuildID:            buildID,
-		TemplateID:         data.TemplateID,
+		Status:             dbtypes.BuildStatusWaiting,
 		RamMb:              ramMB,
 		Vcpu:               cpuCount,
 		KernelVersion:      data.KernelVersion,
@@ -266,7 +274,7 @@ func RegisterBuild(
 				}
 			}
 
-			aliases, err := client.DeleteOtherTemplateAliases(ctx, data.TemplateID)
+			aliasKeys, err := client.DeleteOtherTemplateAliases(ctx, data.TemplateID)
 			if err != nil {
 				telemetry.ReportCriticalError(ctx, "error when deleting template alias", err, attribute.String("alias", alias))
 
@@ -277,9 +285,9 @@ func RegisterBuild(
 				}
 			}
 
-			count := len(aliases)
-			if count > 0 {
-				telemetry.ReportEvent(ctx, "deleted old aliases", attribute.Int("env.alias.count", count))
+			templateCache.InvalidateAliasesByTemplateID(context.WithoutCancel(ctx), data.TemplateID, aliasKeys)
+			for _, key := range aliasKeys {
+				telemetry.ReportEvent(ctx, "deleted old alias", attribute.String("env.alias", key))
 			}
 
 			err = client.
@@ -299,7 +307,7 @@ func RegisterBuild(
 			}
 
 			// Invalidate any cached tombstone for this alias
-			templateCache.InvalidateAlias(&data.Team.Slug, alias)
+			templateCache.InvalidateAlias(context.WithoutCancel(ctx), &data.Team.Slug, alias)
 
 			telemetry.ReportEvent(ctx, "created new alias", attribute.String("env.alias", alias))
 		} else if aliasDB.EnvID != data.TemplateID {
@@ -314,24 +322,6 @@ func RegisterBuild(
 		}
 
 		telemetry.ReportEvent(ctx, "inserted alias", attribute.String("env.alias", alias))
-	}
-
-	if len(data.Tags) != 0 {
-		// TODO: Remove this once the migration is deployed [ENG-3268](https://linear.app/e2b/issue/ENG-3268)
-		err = client.DeleteTriggerTemplateBuildAssignment(ctx, queries.DeleteTriggerTemplateBuildAssignmentParams{
-			TemplateID: data.TemplateID,
-			BuildID:    buildID,
-			Tag:        id.DefaultTag,
-		})
-		if err != nil {
-			telemetry.ReportCriticalError(ctx, "error when deleting tag assignment", err, attribute.String("tag", id.DefaultTag))
-
-			return nil, &api.APIError{
-				Err:       err,
-				ClientMsg: fmt.Sprintf("Error when deleting tag assignment: %s", err),
-				Code:      http.StatusInternalServerError,
-			}
-		}
 	}
 
 	for _, tag := range tags {

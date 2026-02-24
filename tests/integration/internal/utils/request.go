@@ -6,11 +6,11 @@ import (
 	"maps"
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"golang.org/x/net/publicsuffix"
 
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 )
@@ -21,9 +21,21 @@ func NewRequest(sbx *api.Sandbox, url *url.URL, port int, extraHeaders *http.Hea
 	if url.Hostname() == "localhost" {
 		host = fmt.Sprintf("%d-%s-%s.%s", port, sbx.SandboxID, sbx.ClientID, "localhost")
 	} else {
-		// Extract top level domain from EnvdProxy
-		eTLD, _ := publicsuffix.EffectiveTLDPlusOne(url.Hostname())
-		host = fmt.Sprintf("%d-%s-%s.%s:%s", port, sbx.SandboxID, sbx.ClientID, eTLD, url.Port())
+		proxyHost := url.Hostname()
+		labels := strings.Split(proxyHost, ".")
+		// Expected proxy host shape is something like: "<proxy>.<routing-domain>".
+		routingDomain := strings.Join(labels[1:], ".")
+
+		// Just in case it's something crazy
+		if routingDomain == "" {
+			routingDomain = proxyHost
+		}
+
+		portSuffix := ""
+		if proxyPort := url.Port(); proxyPort != "" {
+			portSuffix = ":" + proxyPort
+		}
+		host = fmt.Sprintf("%d-%s-%s.%s%s", port, sbx.SandboxID, sbx.ClientID, routingDomain, portSuffix)
 	}
 
 	header := http.Header{

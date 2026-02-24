@@ -41,3 +41,38 @@ packages:
           dir: packages/shared/pkg/utils
           filename: mocks_test.go
           pkgname: utils
+
+  github.com/e2b-dev/infra/packages/api/internal/handlers:
+    interfaces:
+      featureFlagsClient:
+        config:
+          dir: packages/api/internal/handlers/mocks
+          filename: mockfeatureflagsclient.go
+          pkgname: handlersmocks
+          structname: MockFeatureFlagsClient
+
+  github.com/willscott/go-nfs:
+    interfaces:
+      Handler:
+        config:
+          dir: packages/orchestrator/internal/nfsproxy/mocks
+          filename: nfshandler.go
+          pkgname: nfsproxymocks
+
+  github.com/go-git/go-billy/v5:
+    interfaces:
+      Change:
+        config:
+          dir: packages/orchestrator/internal/nfsproxy/mocks
+          filename: billychange.go
+          pkgname: nfsproxymocks
+      File:
+        config:
+          dir: packages/orchestrator/internal/nfsproxy/mocks
+          filename: billyfile.go
+          pkgname: nfsproxymocks
+      Filesystem:
+        config:
+          dir: packages/orchestrator/internal/nfsproxy/mocks
+          filename: billyfs.go
+          pkgname: nfsproxymocks

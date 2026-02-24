@@ -46,6 +46,11 @@ jobs:
           infisical_client_id: ${{ secrets.INFISICAL_CLIENT_ID }}
           infisical_client_secret: ${{ secrets.INFISICAL_CLIENT_SECRET }}
 
+      - name: Apply init module
+        if: inputs.plan_only == 'false'
+        run: |
+          make apply-init
+
       - name: Copy public builds
         run: |
           make copy-public-builds

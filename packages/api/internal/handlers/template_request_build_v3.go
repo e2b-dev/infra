@@ -12,6 +12,7 @@ import (
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/template"
 	apiutils "github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -96,12 +97,12 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 	templateID := id.Generate()
 	public := false
 
-	aliasInfo, err := a.templateCache.ResolveAlias(findTemplateCtx, identifier, team.Slug)
+	aliasInfo, metadata, err := a.templateCache.ResolveAliasWithMetadata(findTemplateCtx, identifier, team.Slug)
 	switch {
 	case err == nil && aliasInfo.TeamID == team.ID:
 		// Template exists and is owned by this team - update it
 		templateID = aliasInfo.TemplateID
-		public = aliasInfo.Public
+		public = metadata.Public
 	case err == nil || errors.Is(err, templatecache.ErrTemplateNotFound):
 		// Either alias not found, or found but owned by different team (e.g. promoted template)
 		// Team can create their own template with this alias in their namespace
@@ -116,7 +117,7 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 
 	firecrackerVersion := a.featureFlags.StringFlag(ctx, featureflags.BuildFirecrackerVersion)
 	buildReq := template.RegisterBuildData{
-		ClusterID:          apiutils.WithClusterFallback(team.ClusterID),
+		ClusterID:          clusters.WithClusterFallback(team.ClusterID),
 		TemplateID:         templateID,
 		UserID:             nil,
 		Team:               team,
@@ -129,12 +130,17 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 		FirecrackerVersion: firecrackerVersion,
 	}
 
-	template, apiError := template.RegisterBuild(ctx, a.templateBuildsCache, a.templateCache, a.sqlcDB, buildReq)
+	template, apiError := template.RegisterBuild(ctx, a.templateCache, a.sqlcDB, buildReq)
 	if apiError != nil {
 		a.sendAPIStoreError(c, apiError.Code, apiError.ClientMsg)
 		telemetry.ReportCriticalError(ctx, "build template register failed", apiError.Err)
 
 		return nil
+	}
+
+	// Invalidate aliases to prevent stale NotFound entries
+	for _, alias := range template.Aliases {
+		a.templateCache.InvalidateAlias(context.WithoutCancel(ctx), &team.Slug, alias)
 	}
 
 	posthogCtx, span := tracer.Start(ctx, "posthog-analytics")
