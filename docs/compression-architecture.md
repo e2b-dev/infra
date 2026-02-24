@@ -212,13 +212,24 @@ flowchart TD
 
 4. **NFS write-through for compressed uploads**: during `StoreFile` with compression, tee out uncompressed chunk data to NFS cache via a callback, so uncompressed `GetFrame` reads can hit cache immediately after upload without a cold GCS fetch.
 
+### Compression Modes & Write-Path Timing
+
+5. **Compressed-only write mode**: add a `compress-config` flag (e.g. `"skipUncompressed": true`) that skips the uncompressed upload entirely and writes only compressed data + v4 header. Code: `TemplateBuild.UploadAll` / `UploadExceptV4Headers` currently always uploads uncompressed; gate that behind the flag. Read path: `probeAssets` already handles missing uncompressed variants, so this should work as-is. Saves the dual-write bandwidth and storage cost, but makes rollback to uncompressed reads impossible for those builds.
+
+6. **Purity enforcement (no mixed compressed/uncompressed stacks)**: add a `chunker-config` flag (e.g. `"requirePureCompression": true`) that, at template load time, validates that if the top-layer build has compressed assets then every ancestor build in the header's mappings also has compressed assets (and vice versa). Fail sandbox creation if the check fails rather than silently mixing. This interacts with the write path: when `requirePureCompression` is enabled and a new layer is built on top of an uncompressed parent, the build must either (a) refuse to compress, (b) refuse to start, or (c) trigger background compression of the parent chain first. Today's `probeAssets` per-build routing lets mixed stacks work; purity enforcement would intentionally break that flexibility for correctness guarantees.
+
+7. **Sync vs async layer compression**: today compression is either inline (during `TemplateBuild.Upload*`, blocking the build) or fully async (background `compress-build` CLI, after the fact). Middle ground to explore:
+   - **Compress before upload submission**: the snapshot data is already in memory/mmap after Firecracker pause. Compress frames in-process before kicking off the GCS upload, so the upload only sends compressed data (pairs with #5). Tradeoff: adds compression latency to the critical path before the sandbox can be resumed on another server.
+   - **Compress shortly after build completes**: fire an async compression job (in-process goroutine or separate task) that runs after the uncompressed upload finishes. The sandbox is resumable immediately from uncompressed data, and compressed data appears later. But: if another build references this layer before compression finishes, the child gets an uncompressed parent — violating purity (#6). And if the sandbox is resumed from the uncompressed image on a different server while compression is in-flight, we have a race on the GCS objects.
+   - **Implications for purity**: strict purity enforcement (#6) effectively forces synchronous compression of the entire ancestor chain before a compressed child can be built. Async compression is only safe when purity is not enforced, or when there's a coordination mechanism (e.g. a "compression pending" state that blocks child builds until the parent is compressed).
+
 ### From `lev-zstd-compression` (Unported)
 
-5. **Storage Provider/Backend layer separation**: decompose `StorageProvider` into distinct Provider (high-level: `FrameGetter`, `FileStorer`, `Blobber`) and Backend (low-level: `Basic`, `RangeGetter`, `MultipartUploaderFactory`) layers. Prerequisite for clean instrumentation wrapping.
+8. **Storage Provider/Backend layer separation**: decompose `StorageProvider` into distinct Provider (high-level: `FrameGetter`, `FileStorer`, `Blobber`) and Backend (low-level: `Basic`, `RangeGetter`, `MultipartUploaderFactory`) layers. Prerequisite for clean instrumentation wrapping.
 
-6. **OTEL instrumentation middleware** (`instrumented_provider.go`, `instrumented_backend.go`): full span and metrics wrapping at both layers. ~400 lines.
+9. **OTEL instrumentation middleware** (`instrumented_provider.go`, `instrumented_backend.go`): full span and metrics wrapping at both layers. ~400 lines.
 
-7. **Test coverage** (~4300 lines total): chunker matrix tests (`chunk_test.go` — concurrent access, decompression stats, cross-chunker coverage), compression round-trip tests (`compress_test.go`), NFS cache with compressed data (`storage_cache_seekable_test.go`), template build upload tests (`template_build_test.go`).
+10. **Test coverage** (~4300 lines total): chunker matrix tests (`chunk_test.go` — concurrent access, decompression stats, cross-chunker coverage), compression round-trip tests (`compress_test.go`), NFS cache with compressed data (`storage_cache_seekable_test.go`), template build upload tests (`template_build_test.go`).
 
 ---
 
