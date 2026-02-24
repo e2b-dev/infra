@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"os/user"
 	"syscall"
+	"time"
+
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem"
 	"github.com/e2b-dev/infra/packages/shared/pkg/filesystem"
@@ -53,9 +56,20 @@ func entryInfo(path string) (*rpc.EntryInfo, error) {
 		Permissions:   perms.String(),
 		Owner:         owner,
 		Group:         group,
-		ModifiedTime:  nil,
-		SymlinkTarget: nil,
+		ModifiedTime:  toTimestamp(info.ModifiedTime),
+		SymlinkTarget: info.SymlinkTarget,
 	}, nil
+}
+
+func toTimestamp(time time.Time) *timestamppb.Timestamp {
+	if time.IsZero() {
+		return nil
+	}
+
+	return &timestamppb.Timestamp{
+		Seconds: int64(time.Second()),
+		Nanos:   int32(time.Nanosecond()),
+	}
 }
 
 // getFileOwnership returns the owner and group names for a file.
