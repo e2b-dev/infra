@@ -424,6 +424,7 @@ func (f *Factory) ResumeSandbox(
 	ctx, span := tracer.Start(ctx, "resume sandbox")
 	defer span.End()
 	defer handleSpanError(span, &e)
+
 	execCtx, execSpan := startExecutionSpan(ctx)
 
 	exit := utils.NewErrorOnce()
@@ -606,6 +607,7 @@ func (f *Factory) ResumeSandbox(
 	if fcErr != nil {
 		return nil, fmt.Errorf("failed to create FC: %w", fcErr)
 	}
+
 	telemetry.ReportEvent(ctx, "created FC process")
 
 	// todo: check if kernel, firecracker, and envd versions exist
@@ -654,6 +656,7 @@ func (f *Factory) ResumeSandbox(
 	if fcStartErr != nil {
 		return nil, fmt.Errorf("failed to start FC: %w", fcStartErr)
 	}
+
 	telemetry.ReportEvent(ctx, "initialized FC")
 
 	resources := &Resources{
@@ -713,6 +716,7 @@ func (f *Factory) ResumeSandbox(
 	if err != nil {
 		return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
 	}
+
 	telemetry.ReportEvent(execCtx, "envd initialized")
 
 	if f.featureFlags.BoolFlag(execCtx, featureflags.HostStatsEnabled) {

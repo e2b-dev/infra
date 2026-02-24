@@ -165,9 +165,8 @@ func (c *Cache) GetTemplate(
 	if err != nil {
 		return nil, fmt.Errorf("failed to create template cache from storage: %w", err)
 	}
-	result := c.getTemplateWithFetch(ctx, storageTemplate)
 
-	return result, nil
+	return c.getTemplateWithFetch(ctx, storageTemplate), nil
 }
 
 func (c *Cache) AddSnapshot(
