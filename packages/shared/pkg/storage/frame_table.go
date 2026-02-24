@@ -103,7 +103,7 @@ func IsCompressed(ft *FrameTable) bool {
 
 // Range calls fn for each frame overlapping [start, start+length).
 func (ft *FrameTable) Range(start, length int64, fn func(offset FrameOffset, frame FrameSize) error) error {
-	var currentOffset FrameOffset
+	currentOffset := ft.StartAt
 	for _, frame := range ft.Frames {
 		frameEnd := currentOffset.U + int64(frame.U)
 		requestEnd := start + length
