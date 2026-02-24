@@ -69,12 +69,6 @@ type Metrics struct {
 	Ts int64 `json:"ts,omitempty"`
 }
 
-// VolumeMount Volume
-type VolumeMount struct {
-	NfsTarget string `json:"nfs_target"`
-	Path      string `json:"path"`
-}
-
 // MultipartUploadComplete defines model for MultipartUploadComplete.
 type MultipartUploadComplete struct {
 	// Path Path to the final assembled file
@@ -97,6 +91,12 @@ type MultipartUploadPart struct {
 
 	// Size Size of the uploaded part in bytes
 	Size int64 `json:"size"`
+}
+
+// VolumeMount Volume
+type VolumeMount struct {
+	NfsTarget string `json:"nfs_target"`
+	Path      string `json:"path"`
 }
 
 // FilePath defines model for FilePath.
@@ -182,13 +182,13 @@ type PostFilesUploadInitJSONBody struct {
 // PostFilesUploadInitParams defines parameters for PostFilesUploadInit.
 type PostFilesUploadInitParams struct {
 	// Username User used for setting the owner, or resolving relative paths.
-	Username *User `form:"username,omitempty" json:"username,omitempty"`
+	Username User `form:"username,omitempty" json:"username,omitempty"`
 
 	// Signature Signature used for file access permission verification.
-	Signature *Signature `form:"signature,omitempty" json:"signature,omitempty"`
+	Signature Signature `form:"signature,omitempty" json:"signature,omitempty"`
 
 	// SignatureExpiration Signature expiration used for defining the expiration time of the signature.
-	SignatureExpiration *SignatureExpiration `form:"signature_expiration,omitempty" json:"signature_expiration,omitempty"`
+	SignatureExpiration SignatureExpiration `form:"signature_expiration,omitempty" json:"signature_expiration,omitempty"`
 }
 
 // PutFilesUploadUploadIdParams defines parameters for PutFilesUploadUploadId.
