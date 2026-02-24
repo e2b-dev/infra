@@ -28,6 +28,7 @@ const (
 type multipartUploadSession struct {
 	UploadID  string
 	FilePath  string   // Final destination path
+	TempPath  string   // Temporary file path during upload (renamed to FilePath on complete)
 	DestFile  *os.File // Open file handle for direct writes
 	TotalSize int64    // Total expected file size (validated >= 0 at input)
 	PartSize  int64    // Size of each part (validated > 0 at input)

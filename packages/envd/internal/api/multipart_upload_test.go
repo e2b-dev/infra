@@ -67,7 +67,7 @@ func TestMultipartUpload(t *testing.T) {
 		session := api.uploads[resp.UploadId]
 		if session != nil {
 			session.DestFile.Close()
-			os.Remove(session.FilePath)
+			os.Remove(session.TempPath)
 		}
 		delete(api.uploads, resp.UploadId)
 		api.uploadsLock.Unlock()
@@ -171,9 +171,17 @@ func TestMultipartUpload(t *testing.T) {
 		require.NoError(t, err)
 		uploadId := initResp.UploadId
 
-		// Verify file was created
+		// Verify temp file was created but destination is untouched
+		api.uploadsLock.RLock()
+		session := api.uploads[uploadId]
+		api.uploadsLock.RUnlock()
+		require.NotNil(t, session)
+		_, err = os.Stat(session.TempPath)
+		require.NoError(t, err, "temp file should exist after init")
 		_, err = os.Stat(destPath)
-		require.NoError(t, err, "destination file should exist after init")
+		assert.True(t, os.IsNotExist(err), "destination should not exist yet")
+
+		tempPath := session.TempPath
 
 		// Abort upload
 		abortReq := httptest.NewRequest(http.MethodDelete, "/files/upload/"+uploadId, nil)
@@ -188,9 +196,11 @@ func TestMultipartUpload(t *testing.T) {
 		api.uploadsLock.RUnlock()
 		assert.False(t, exists)
 
-		// Verify file is cleaned up
+		// Verify temp file is cleaned up and destination still doesn't exist
+		_, err = os.Stat(tempPath)
+		assert.True(t, os.IsNotExist(err), "temp file should be removed after abort")
 		_, err = os.Stat(destPath)
-		assert.True(t, os.IsNotExist(err))
+		assert.True(t, os.IsNotExist(err), "destination should not exist after abort")
 	})
 
 	t.Run("upload part to non-existent session", func(t *testing.T) {
@@ -280,7 +290,7 @@ func TestMultipartUpload(t *testing.T) {
 		api.uploadsLock.Lock()
 		if s := api.uploads[uploadId]; s != nil {
 			s.DestFile.Close()
-			os.Remove(s.FilePath)
+			os.Remove(s.TempPath)
 		}
 		delete(api.uploads, uploadId)
 		api.uploadsLock.Unlock()
@@ -342,7 +352,7 @@ func TestMultipartUpload(t *testing.T) {
 		delete(api.uploads, uploadId)
 		api.uploadsLock.Unlock()
 		session.DestFile.Close()
-		os.Remove(destPath)
+		os.Remove(session.TempPath)
 	})
 
 	t.Run("max sessions limit", func(t *testing.T) {
@@ -386,7 +396,7 @@ func TestMultipartUpload(t *testing.T) {
 		api.uploadsLock.Lock()
 		for _, session := range api.uploads {
 			session.DestFile.Close()
-			os.Remove(session.FilePath)
+			os.Remove(session.TempPath)
 		}
 		api.uploads = make(map[string]*multipartUploadSession)
 		api.uploadsLock.Unlock()
@@ -602,7 +612,7 @@ func TestMultipartUpload(t *testing.T) {
 		session := api.uploads[uploadId]
 		if session != nil {
 			session.DestFile.Close()
-			os.Remove(session.FilePath)
+			os.Remove(session.TempPath)
 		}
 		delete(api.uploads, uploadId)
 		api.uploadsLock.Unlock()
@@ -652,7 +662,7 @@ func TestMultipartUpload(t *testing.T) {
 		session := api.uploads[uploadId]
 		if session != nil {
 			session.DestFile.Close()
-			os.Remove(session.FilePath)
+			os.Remove(session.TempPath)
 		}
 		delete(api.uploads, uploadId)
 		api.uploadsLock.Unlock()
@@ -703,7 +713,7 @@ func TestMultipartUpload(t *testing.T) {
 		session := api.uploads[uploadId]
 		if session != nil {
 			session.DestFile.Close()
-			os.Remove(session.FilePath)
+			os.Remove(session.TempPath)
 		}
 		delete(api.uploads, uploadId)
 		api.uploadsLock.Unlock()
@@ -759,7 +769,7 @@ func TestMultipartUpload(t *testing.T) {
 		session := api.uploads[initResp2.UploadId]
 		if session != nil {
 			session.DestFile.Close()
-			os.Remove(session.FilePath)
+			os.Remove(session.TempPath)
 		}
 		delete(api.uploads, initResp2.UploadId)
 		api.uploadsLock.Unlock()
@@ -815,9 +825,51 @@ func TestMultipartUpload(t *testing.T) {
 		session := api.uploads[initResp2.UploadId]
 		if session != nil {
 			session.DestFile.Close()
-			os.Remove(session.FilePath)
+			os.Remove(session.TempPath)
 		}
 		delete(api.uploads, initResp2.UploadId)
 		api.uploadsLock.Unlock()
+	})
+
+	t.Run("abort preserves original file", func(t *testing.T) {
+		t.Parallel()
+		api := newMultipartTestAPI(t)
+		tempDir := t.TempDir()
+		destPath := filepath.Join(tempDir, "existing-file.txt")
+
+		// Create a pre-existing file at the destination
+		originalContent := []byte("original content")
+		require.NoError(t, os.WriteFile(destPath, originalContent, 0o644))
+
+		// Initialize upload targeting the same path
+		initBody := PostFilesUploadInitJSONRequestBody{
+			Path:      destPath,
+			TotalSize: 100,
+			PartSize:  50,
+		}
+		initBodyBytes, _ := json.Marshal(initBody)
+
+		initReq := httptest.NewRequest(http.MethodPost, "/files/upload/init", bytes.NewReader(initBodyBytes))
+		initReq.Header.Set("Content-Type", "application/json")
+		initW := httptest.NewRecorder()
+
+		api.PostFilesUploadInit(initW, initReq, PostFilesUploadInitParams{})
+		require.Equal(t, http.StatusOK, initW.Code)
+
+		var initResp MultipartUploadInit
+		err := json.Unmarshal(initW.Body.Bytes(), &initResp)
+		require.NoError(t, err)
+
+		// Abort the upload
+		abortReq := httptest.NewRequest(http.MethodDelete, "/files/upload/"+initResp.UploadId, nil)
+		abortW := httptest.NewRecorder()
+
+		api.DeleteFilesUploadUploadId(abortW, abortReq, initResp.UploadId)
+		require.Equal(t, http.StatusNoContent, abortW.Code)
+
+		// Verify original file is untouched
+		content, err := os.ReadFile(destPath)
+		require.NoError(t, err)
+		assert.Equal(t, string(originalContent), string(content))
 	})
 }

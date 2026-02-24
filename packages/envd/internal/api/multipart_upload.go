@@ -135,11 +135,11 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 	}
 
 	// Atomically check session limit, check for path conflicts, create the
-	// file, and register the session. File creation (O_TRUNC) must happen
-	// under the lock to prevent two inits for the same path from both
-	// passing the check before either truncates. The syscalls under the lock
-	// (open, truncate, chown) are fast; heavy work like EnsureDirs is above.
+	// temp file, and register the session. Writing to a temp file avoids
+	// destroying any existing file at the destination until the upload is
+	// fully complete.
 	uploadID := uuid.NewString()
+	tempPath := filePath + ".upload." + uploadID
 
 	a.uploadsLock.Lock()
 	if len(a.uploads) >= maxUploadSessions {
@@ -159,8 +159,9 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 		}
 	}
 
-	// Create and preallocate the destination file
-	destFile, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o666)
+	// Create and preallocate a temporary file; the final path is untouched
+	// until complete atomically renames the temp file into place.
+	destFile, err := os.OpenFile(tempPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o666)
 	if err != nil {
 		a.uploadsLock.Unlock()
 		if errors.Is(err, syscall.ENOSPC) {
@@ -169,8 +170,8 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 
 			return
 		}
-		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error creating destination file")
-		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error creating destination file: %w", err))
+		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error creating temp file")
+		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error creating temp file: %w", err))
 
 		return
 	}
@@ -179,7 +180,7 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 	if body.TotalSize > 0 {
 		if err := destFile.Truncate(body.TotalSize); err != nil {
 			destFile.Close()
-			os.Remove(filePath)
+			os.Remove(tempPath)
 			a.uploadsLock.Unlock()
 			if errors.Is(err, syscall.ENOSPC) {
 				a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("not enough disk space")
@@ -194,10 +195,10 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 		}
 	}
 
-	// Set ownership
-	if err := os.Chown(filePath, uid, gid); err != nil {
+	// Set ownership on the temp file
+	if err := os.Chown(tempPath, uid, gid); err != nil {
 		destFile.Close()
-		os.Remove(filePath)
+		os.Remove(tempPath)
 		a.uploadsLock.Unlock()
 		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error changing file ownership")
 		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error changing file ownership: %w", err))
@@ -208,6 +209,7 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 	session := &multipartUploadSession{
 		UploadID:  uploadID,
 		FilePath:  filePath,
+		TempPath:  tempPath,
 		DestFile:  destFile,
 		TotalSize: body.TotalSize,
 		PartSize:  body.PartSize,
@@ -224,6 +226,7 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 		Str(string(logs.OperationIDKey), operationID).
 		Str("uploadId", uploadID).
 		Str("filePath", filePath).
+		Str("tempPath", tempPath).
 		Int64("totalSize", body.TotalSize).
 		Int64("partSize", body.PartSize).
 		Int("numParts", numParts).
@@ -467,18 +470,29 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	// All parts present — remove session from map and close the file
+	// All parts present — remove session from map, close the file, and
+	// atomically rename the temp file to the final destination path.
 	a.uploadsLock.Lock()
 	delete(a.uploads, uploadId)
 	a.uploadsLock.Unlock()
 
 	if err := session.DestFile.Close(); err != nil {
-		// Session is already removed from the map; clean up the orphaned file.
-		if rmErr := ignoreNotExist(os.Remove(session.FilePath)); rmErr != nil {
-			a.logger.Warn().Err(rmErr).Str(string(logs.OperationIDKey), operationID).Msg("failed to remove file after close error")
+		// Session is already removed from the map; clean up the orphaned temp file.
+		if rmErr := ignoreNotExist(os.Remove(session.TempPath)); rmErr != nil {
+			a.logger.Warn().Err(rmErr).Str(string(logs.OperationIDKey), operationID).Msg("failed to remove temp file after close error")
 		}
-		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error closing destination file")
-		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error closing destination file: %w", err))
+		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error closing temp file")
+		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error closing temp file: %w", err))
+
+		return
+	}
+
+	if err := os.Rename(session.TempPath, session.FilePath); err != nil {
+		if rmErr := ignoreNotExist(os.Remove(session.TempPath)); rmErr != nil {
+			a.logger.Warn().Err(rmErr).Str(string(logs.OperationIDKey), operationID).Msg("failed to remove temp file after rename error")
+		}
+		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error renaming temp file to destination")
+		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error renaming temp file to destination: %w", err))
 
 		return
 	}
@@ -525,11 +539,11 @@ func (a *API) DeleteFilesUploadUploadId(w http.ResponseWriter, r *http.Request, 
 			return
 		}
 		session.mu.Unlock()
-		// Unlink the file before removing from the map so a new Init for
-		// the same path creates a fresh inode. In-flight writers use the
-		// open DestFile descriptor, which remains valid after unlink.
-		if err := ignoreNotExist(os.Remove(session.FilePath)); err != nil {
-			a.logger.Warn().Err(err).Str(string(logs.OperationIDKey), operationID).Str("uploadId", uploadId).Msg("error removing file")
+		// Unlink the temp file before removing from the map. In-flight
+		// writers use the open DestFile descriptor, which remains valid
+		// after unlink. The original file at FilePath is never touched.
+		if err := ignoreNotExist(os.Remove(session.TempPath)); err != nil {
+			a.logger.Warn().Err(err).Str(string(logs.OperationIDKey), operationID).Str("uploadId", uploadId).Msg("error removing temp file")
 		}
 		delete(a.uploads, uploadId)
 	}
