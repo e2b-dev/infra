@@ -48,7 +48,7 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 	}
 
 	if body.TotalSize > maxTotalSize {
-		jsonError(w, http.StatusBadRequest, fmt.Errorf("totalSize %d exceeds maximum allowed size of %d bytes (10GB)", body.TotalSize, maxTotalSize))
+		jsonError(w, http.StatusBadRequest, fmt.Errorf("totalSize %d exceeds maximum allowed size of %d bytes", body.TotalSize, maxTotalSize))
 
 		return
 	}
@@ -62,7 +62,7 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 	username, err := execcontext.ResolveDefaultUsername(params.Username, a.defaults.User)
 	if err != nil {
 		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("no user specified")
-		jsonError(w, http.StatusBadRequest, err)
+		jsonError(w, http.StatusBadRequest, fmt.Errorf("error resolving username (provided=%v, default=%q): %w", params.Username, a.defaults.User, err))
 
 		return
 	}
@@ -79,7 +79,7 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 	uid, gid, err := permissions.GetUserIdInts(u)
 	if err != nil {
 		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error getting user ids")
-		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error getting user ids: %w", err))
+		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error getting user ids for user %q (uid=%s, gid=%s): %w", u.Username, u.Uid, u.Gid, err))
 
 		return
 	}
@@ -88,7 +88,7 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 	filePath, err := permissions.ExpandAndResolve(body.Path, u, a.defaults.Workdir)
 	if err != nil {
 		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error resolving path")
-		jsonError(w, http.StatusBadRequest, fmt.Errorf("error resolving path: %w", err))
+		jsonError(w, http.StatusBadRequest, fmt.Errorf("error resolving path %q: %w", body.Path, err))
 
 		return
 	}
@@ -96,7 +96,7 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 	// Ensure parent directories exist
 	if err := permissions.EnsureDirs(filepath.Dir(filePath), uid, gid); err != nil {
 		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error ensuring directories")
-		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error ensuring directories: %w", err))
+		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error ensuring directories for %q: %w", filepath.Dir(filePath), err))
 
 		return
 	}
@@ -215,7 +215,7 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 	// Check if session is already being completed/aborted
 	if session.completed.Load() {
 		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Str("uploadId", uploadId).Msg("upload session is already completing")
-		jsonError(w, http.StatusConflict, fmt.Errorf("upload session is already completing or aborted"))
+		jsonError(w, http.StatusConflict, fmt.Errorf("upload session %s is already completing or aborted", uploadId))
 
 		return
 	}
@@ -243,7 +243,7 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 	data, err := io.ReadAll(limitedReader)
 	if err != nil {
 		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error reading part data")
-		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error reading part data: %w", err))
+		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error reading part %d data: %w", partNumber, err))
 
 		return
 	}
@@ -269,7 +269,7 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 			return
 		}
 		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error writing part data")
-		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error writing part data: %w", err))
+		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error writing part %d data: %w", partNumber, err))
 
 		return
 	}
@@ -319,7 +319,7 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 			// Already being completed by another request
 			a.uploadsLock.Unlock()
 			a.logger.Error().Str(string(logs.OperationIDKey), operationID).Str("uploadId", uploadId).Msg("upload session is already completing")
-			jsonError(w, http.StatusConflict, fmt.Errorf("upload session is already completing"))
+			jsonError(w, http.StatusConflict, fmt.Errorf("upload session %s is already completing", uploadId))
 
 			return
 		}
@@ -398,7 +398,7 @@ func (a *API) DeleteFilesUploadUploadId(w http.ResponseWriter, r *http.Request, 
 			// Already being completed/aborted by another request
 			a.uploadsLock.Unlock()
 			a.logger.Error().Str(string(logs.OperationIDKey), operationID).Str("uploadId", uploadId).Msg("upload session is already completing")
-			jsonError(w, http.StatusConflict, fmt.Errorf("upload session is already completing or aborted"))
+			jsonError(w, http.StatusConflict, fmt.Errorf("upload session %s is already completing or aborted", uploadId))
 
 			return
 		}
