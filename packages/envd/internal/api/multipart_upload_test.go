@@ -662,4 +662,167 @@ func TestMultipartUpload(t *testing.T) {
 		delete(api.uploads, uploadId)
 		api.uploadsLock.Unlock()
 	})
+
+	t.Run("reject duplicate destination path", func(t *testing.T) {
+		t.Parallel()
+		api := newMultipartTestAPI(t)
+		tempDir := t.TempDir()
+		destPath := filepath.Join(tempDir, "dup-path.txt")
+
+		// First init should succeed
+		body := PostFilesUploadInitJSONRequestBody{
+			Path:      destPath,
+			TotalSize: 100,
+			PartSize:  50,
+		}
+		bodyBytes, _ := json.Marshal(body)
+
+		req := httptest.NewRequest(http.MethodPost, "/files/upload/init", bytes.NewReader(bodyBytes))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		api.PostFilesUploadInit(w, req, PostFilesUploadInitParams{})
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var initResp MultipartUploadInit
+		err := json.Unmarshal(w.Body.Bytes(), &initResp)
+		require.NoError(t, err)
+		uploadId := initResp.UploadId
+
+		// Second init with same path should be rejected with 409
+		bodyBytes2, _ := json.Marshal(body)
+		req2 := httptest.NewRequest(http.MethodPost, "/files/upload/init", bytes.NewReader(bodyBytes2))
+		req2.Header.Set("Content-Type", "application/json")
+		w2 := httptest.NewRecorder()
+
+		api.PostFilesUploadInit(w2, req2, PostFilesUploadInitParams{})
+		assert.Equal(t, http.StatusConflict, w2.Code)
+
+		var errResp Error
+		err = json.Unmarshal(w2.Body.Bytes(), &errResp)
+		require.NoError(t, err)
+		assert.Contains(t, errResp.Message, "active upload session")
+
+		// Clean up
+		api.uploadsLock.Lock()
+		session := api.uploads[uploadId]
+		if session != nil {
+			session.DestFile.Close()
+			os.Remove(session.FilePath)
+		}
+		delete(api.uploads, uploadId)
+		api.uploadsLock.Unlock()
+	})
+
+	t.Run("reuse path after complete", func(t *testing.T) {
+		t.Parallel()
+		api := newMultipartTestAPI(t)
+		tempDir := t.TempDir()
+		destPath := filepath.Join(tempDir, "reuse-path.txt")
+
+		// First upload (empty file for simplicity)
+		body := PostFilesUploadInitJSONRequestBody{
+			Path:      destPath,
+			TotalSize: 0,
+			PartSize:  1024,
+		}
+		bodyBytes, _ := json.Marshal(body)
+
+		initReq := httptest.NewRequest(http.MethodPost, "/files/upload/init", bytes.NewReader(bodyBytes))
+		initReq.Header.Set("Content-Type", "application/json")
+		initW := httptest.NewRecorder()
+
+		api.PostFilesUploadInit(initW, initReq, PostFilesUploadInitParams{})
+		require.Equal(t, http.StatusOK, initW.Code)
+
+		var initResp MultipartUploadInit
+		err := json.Unmarshal(initW.Body.Bytes(), &initResp)
+		require.NoError(t, err)
+
+		// Complete it
+		completeReq := httptest.NewRequest(http.MethodPost, "/files/upload/"+initResp.UploadId+"/complete", nil)
+		completeW := httptest.NewRecorder()
+
+		api.PostFilesUploadUploadIdComplete(completeW, completeReq, initResp.UploadId)
+		require.Equal(t, http.StatusOK, completeW.Code)
+
+		// Second init with same path should succeed now
+		bodyBytes2, _ := json.Marshal(body)
+		initReq2 := httptest.NewRequest(http.MethodPost, "/files/upload/init", bytes.NewReader(bodyBytes2))
+		initReq2.Header.Set("Content-Type", "application/json")
+		initW2 := httptest.NewRecorder()
+
+		api.PostFilesUploadInit(initW2, initReq2, PostFilesUploadInitParams{})
+		require.Equal(t, http.StatusOK, initW2.Code)
+
+		var initResp2 MultipartUploadInit
+		err = json.Unmarshal(initW2.Body.Bytes(), &initResp2)
+		require.NoError(t, err)
+
+		// Clean up
+		api.uploadsLock.Lock()
+		session := api.uploads[initResp2.UploadId]
+		if session != nil {
+			session.DestFile.Close()
+			os.Remove(session.FilePath)
+		}
+		delete(api.uploads, initResp2.UploadId)
+		api.uploadsLock.Unlock()
+	})
+
+	t.Run("reuse path after abort", func(t *testing.T) {
+		t.Parallel()
+		api := newMultipartTestAPI(t)
+		tempDir := t.TempDir()
+		destPath := filepath.Join(tempDir, "reuse-abort.txt")
+
+		// First upload
+		body := PostFilesUploadInitJSONRequestBody{
+			Path:      destPath,
+			TotalSize: 100,
+			PartSize:  50,
+		}
+		bodyBytes, _ := json.Marshal(body)
+
+		initReq := httptest.NewRequest(http.MethodPost, "/files/upload/init", bytes.NewReader(bodyBytes))
+		initReq.Header.Set("Content-Type", "application/json")
+		initW := httptest.NewRecorder()
+
+		api.PostFilesUploadInit(initW, initReq, PostFilesUploadInitParams{})
+		require.Equal(t, http.StatusOK, initW.Code)
+
+		var initResp MultipartUploadInit
+		err := json.Unmarshal(initW.Body.Bytes(), &initResp)
+		require.NoError(t, err)
+
+		// Abort it
+		abortReq := httptest.NewRequest(http.MethodDelete, "/files/upload/"+initResp.UploadId, nil)
+		abortW := httptest.NewRecorder()
+
+		api.DeleteFilesUploadUploadId(abortW, abortReq, initResp.UploadId)
+		require.Equal(t, http.StatusNoContent, abortW.Code)
+
+		// Second init with same path should succeed now
+		bodyBytes2, _ := json.Marshal(body)
+		initReq2 := httptest.NewRequest(http.MethodPost, "/files/upload/init", bytes.NewReader(bodyBytes2))
+		initReq2.Header.Set("Content-Type", "application/json")
+		initW2 := httptest.NewRecorder()
+
+		api.PostFilesUploadInit(initW2, initReq2, PostFilesUploadInitParams{})
+		require.Equal(t, http.StatusOK, initW2.Code)
+
+		// Clean up
+		var initResp2 MultipartUploadInit
+		err = json.Unmarshal(initW2.Body.Bytes(), &initResp2)
+		require.NoError(t, err)
+
+		api.uploadsLock.Lock()
+		session := api.uploads[initResp2.UploadId]
+		if session != nil {
+			session.DestFile.Close()
+			os.Remove(session.FilePath)
+		}
+		delete(api.uploads, initResp2.UploadId)
+		api.uploadsLock.Unlock()
+	})
 }

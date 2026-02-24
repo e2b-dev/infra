@@ -139,9 +139,35 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 		return
 	}
 
+	// Atomically check session limit, check for path conflicts, create the
+	// file, and register the session. File creation (O_TRUNC) must happen
+	// under the lock to prevent two inits for the same path from both
+	// passing the check before either truncates. The syscalls under the lock
+	// (open, truncate, chown) are fast; heavy work like EnsureDirs is above.
+	uploadID := uuid.NewString()
+
+	a.uploadsLock.Lock()
+	if len(a.uploads) >= maxUploadSessions {
+		a.uploadsLock.Unlock()
+		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Int("maxSessions", maxUploadSessions).Msg("too many concurrent upload sessions")
+		jsonError(w, http.StatusTooManyRequests, fmt.Errorf("too many concurrent upload sessions (max %d)", maxUploadSessions))
+
+		return
+	}
+	for _, existing := range a.uploads {
+		if existing.FilePath == filePath {
+			a.uploadsLock.Unlock()
+			a.logger.Error().Str(string(logs.OperationIDKey), operationID).Str("filePath", filePath).Msg("destination path already has an active upload")
+			jsonError(w, http.StatusConflict, fmt.Errorf("destination path %q already has an active upload session", filePath))
+
+			return
+		}
+	}
+
 	// Create and preallocate the destination file
 	destFile, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o666)
 	if err != nil {
+		a.uploadsLock.Unlock()
 		if errors.Is(err, syscall.ENOSPC) {
 			a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("not enough disk space")
 			jsonError(w, http.StatusInsufficientStorage, fmt.Errorf("not enough disk space"))
@@ -159,6 +185,7 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 		if err := destFile.Truncate(body.TotalSize); err != nil {
 			destFile.Close()
 			os.Remove(filePath)
+			a.uploadsLock.Unlock()
 			if errors.Is(err, syscall.ENOSPC) {
 				a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("not enough disk space")
 				jsonError(w, http.StatusInsufficientStorage, fmt.Errorf("not enough disk space"))
@@ -176,13 +203,12 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 	if err := os.Chown(filePath, uid, gid); err != nil {
 		destFile.Close()
 		os.Remove(filePath)
+		a.uploadsLock.Unlock()
 		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error changing file ownership")
 		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error changing file ownership: %w", err))
 
 		return
 	}
-
-	uploadID := uuid.NewString()
 
 	session := &multipartUploadSession{
 		UploadID:  uploadID,
@@ -197,18 +223,6 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 		CreatedAt: time.Now(),
 	}
 
-	// Atomically check session limit and insert — prevents TOCTOU race where
-	// concurrent requests all pass a read-lock check before any inserts.
-	a.uploadsLock.Lock()
-	if len(a.uploads) >= maxUploadSessions {
-		a.uploadsLock.Unlock()
-		destFile.Close()
-		os.Remove(filePath)
-		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Int("maxSessions", maxUploadSessions).Msg("too many concurrent upload sessions")
-		jsonError(w, http.StatusTooManyRequests, fmt.Errorf("too many concurrent upload sessions (max %d)", maxUploadSessions))
-
-		return
-	}
 	a.uploads[uploadID] = session
 	a.uploadsLock.Unlock()
 
@@ -398,21 +412,10 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 
 	operationID := logs.AssignOperationID()
 
-	// Look up the session and mark as completing to prevent new part reservations.
-	// Do NOT delete from the map yet — if validation fails, the client can retry.
-	a.uploadsLock.Lock()
+	// Look up the session.
+	a.uploadsLock.RLock()
 	session, exists := a.uploads[uploadId]
-	if exists {
-		if !session.completed.CompareAndSwap(false, true) {
-			// Already being completed by another request
-			a.uploadsLock.Unlock()
-			a.logger.Error().Str(string(logs.OperationIDKey), operationID).Str("uploadId", uploadId).Msg("upload session is already completing")
-			jsonError(w, http.StatusConflict, fmt.Errorf("upload session %s is already completing", uploadId))
-
-			return
-		}
-	}
-	a.uploadsLock.Unlock()
+	a.uploadsLock.RUnlock()
 
 	if !exists {
 		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Str("uploadId", uploadId).Msg("upload session not found")
@@ -420,6 +423,20 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 
 		return
 	}
+
+	// Mark as completing under session.mu so the transition is synchronized
+	// with part reservation (which checks completed and calls wg.Add under
+	// the same lock). This prevents a part upload from calling wg.Add(1)
+	// after our wg.Wait below has already observed a zero counter.
+	session.mu.Lock()
+	if !session.completed.CompareAndSwap(false, true) {
+		session.mu.Unlock()
+		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Str("uploadId", uploadId).Msg("upload session is already completing")
+		jsonError(w, http.StatusConflict, fmt.Errorf("upload session %s is already completing", uploadId))
+
+		return
+	}
+	session.mu.Unlock()
 
 	// Wait for all in-flight part writes to finish before checking part status.
 	// This prevents closing the file while io.CopyN is still writing and ensures
@@ -493,15 +510,20 @@ func (a *API) DeleteFilesUploadUploadId(w http.ResponseWriter, r *http.Request, 
 	a.uploadsLock.Lock()
 	session, exists := a.uploads[uploadId]
 	if exists {
-		// Mark as completed to prevent new parts from being uploaded
+		// Mark as completed under session.mu to synchronize with part
+		// reservation (which checks completed and calls wg.Add under the
+		// same lock). This prevents a part upload from calling wg.Add(1)
+		// after our wg.Wait below has already observed a zero counter.
+		session.mu.Lock()
 		if !session.completed.CompareAndSwap(false, true) {
-			// Already being completed/aborted by another request
+			session.mu.Unlock()
 			a.uploadsLock.Unlock()
 			a.logger.Error().Str(string(logs.OperationIDKey), operationID).Str("uploadId", uploadId).Msg("upload session is already completing")
 			jsonError(w, http.StatusConflict, fmt.Errorf("upload session %s is already completing or aborted", uploadId))
 
 			return
 		}
+		session.mu.Unlock()
 		// Unlink the file before removing from the map so a new Init for
 		// the same path creates a fresh inode. In-flight writers use the
 		// open DestFile descriptor, which remains valid after unlink.

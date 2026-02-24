@@ -122,8 +122,14 @@ func (a *API) removeExpiredSessions() {
 	now := time.Now()
 	for uploadID, session := range a.uploads {
 		if now.Sub(session.CreatedAt) > uploadSessionTTL {
-			// Mark as completed to prevent races
-			if session.completed.CompareAndSwap(false, true) {
+			// Mark as completed under session.mu to synchronize with part
+			// reservation (which checks completed and calls wg.Add under
+			// the same lock). This prevents a late wg.Add after our Wait.
+			session.mu.Lock()
+			swapped := session.completed.CompareAndSwap(false, true)
+			session.mu.Unlock()
+
+			if swapped {
 				// Unlink the file before removing from the map so a new Init
 				// for the same path creates a fresh inode.
 				if err := ignoreNotExist(os.Remove(session.FilePath)); err != nil {
