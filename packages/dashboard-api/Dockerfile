@@ -6,10 +6,6 @@ FROM golang:${GOLANG_VERSION}-alpine${ALPINE_VERSION} AS builder
 RUN apk add --no-cache make
 
 # Cached golang dependencies
-WORKDIR /build/auth
-COPY ./auth/go.mod ./auth/go.sum ./
-RUN go mod download
-
 WORKDIR /build/shared
 COPY ./shared/go.mod ./shared/go.sum ./
 RUN go mod download
@@ -20,6 +16,10 @@ RUN go mod download
 
 WORKDIR /build/db
 COPY ./db/go.mod ./db/go.sum ./
+RUN go mod download
+
+WORKDIR /build/auth
+COPY ./auth/go.mod ./auth/go.sum ./
 RUN go mod download
 
 WORKDIR /build/dashboard-api
