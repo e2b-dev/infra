@@ -34,8 +34,9 @@ func NewRedisClient(ctx context.Context, config RedisConfig) (redis.UniversalCli
 		// https://cloud.google.com/memorystore/docs/cluster/cluster-node-specification#cluster_endpoints
 		// https://cloud.google.com/memorystore/docs/cluster/client-library-code-samples#go-redis
 		clusterOpts := &redis.ClusterOptions{
-			Addrs:        []string{config.RedisClusterURL},
-			MinIdleConns: 1,
+			Addrs:         []string{config.RedisClusterURL},
+			MinIdleConns:  20,
+			RouteRandomly: true,
 		}
 
 		if config.RedisTLSCABase64 != "" {
@@ -79,6 +80,13 @@ func NewRedisClient(ctx context.Context, config RedisConfig) (redis.UniversalCli
 		closeErr := redisClient.Close()
 
 		return nil, errors.Join(fmt.Errorf("failed to enable redis tracing: %w", err), closeErr)
+	}
+
+	// Enable metrics (pool stats, command latency histograms)
+	if err := redisotel.InstrumentMetrics(redisClient); err != nil {
+		closeErr := redisClient.Close()
+
+		return nil, errors.Join(fmt.Errorf("failed to enable redis metrics: %w", err), closeErr)
 	}
 
 	if _, err := redisClient.Ping(ctx).Result(); err != nil {
