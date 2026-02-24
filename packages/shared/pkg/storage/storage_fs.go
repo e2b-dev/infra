@@ -3,16 +3,23 @@ package storage
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 )
 
 type fsStorage struct {
-	basePath string
-	opened   map[string]*os.File
+	basePath  string
+	opened    map[string]*os.File
+	uploadURL string // base URL for local upload endpoint (e.g. "http://localhost:5008")
+	hmacKey   []byte // HMAC key for signing upload tokens
 }
 
 var _ StorageProvider = (*fsStorage)(nil)
@@ -37,10 +44,12 @@ func (r *fsRangeReadCloser) Close() error {
 	return r.file.Close()
 }
 
-func newFileSystemStorage(basePath string) *fsStorage {
+func newFileSystemStorage(basePath string, uploadBaseURL string, hmacKey []byte) *fsStorage {
 	return &fsStorage{
-		basePath: basePath,
-		opened:   make(map[string]*os.File),
+		basePath:  basePath,
+		opened:    make(map[string]*os.File),
+		uploadURL: uploadBaseURL,
+		hmacKey:   hmacKey,
 	}
 }
 
@@ -54,8 +63,18 @@ func (s *fsStorage) GetDetails() string {
 	return fmt.Sprintf("[Local file storage, base path set to %s]", s.basePath)
 }
 
-func (s *fsStorage) UploadSignedURL(_ context.Context, _ string, _ time.Duration) (string, error) {
-	return "", fmt.Errorf("file system storage does not support signed URLs")
+func (s *fsStorage) UploadSignedURL(_ context.Context, path string, ttl time.Duration) (string, error) {
+	if s.uploadURL == "" || s.hmacKey == nil {
+		return "", fmt.Errorf("file system storage does not support signed URLs (no local upload endpoint configured)")
+	}
+
+	expires := time.Now().Add(ttl).Unix()
+	token := computeHMAC(s.hmacKey, path, expires)
+
+	u := fmt.Sprintf("%s/upload?path=%s&expires=%d&token=%s",
+		s.uploadURL, url.QueryEscape(path), expires, url.QueryEscape(token))
+
+	return u, nil
 }
 
 func (s *fsStorage) OpenSeekable(_ context.Context, path string, _ SeekableObjectType) (Seekable, error) {
@@ -176,6 +195,26 @@ func (o *fsObject) Size(_ context.Context) (int64, error) {
 
 func (o *fsObject) Delete(_ context.Context) error {
 	return os.Remove(o.path)
+}
+
+func computeHMAC(key []byte, path string, expires int64) string {
+	mac := hmac.New(sha256.New, key)
+	mac.Write([]byte(path))
+	mac.Write([]byte(strconv.FormatInt(expires, 10)))
+
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+// ValidateUploadToken validates an HMAC token for a local upload URL.
+// Exported so that the upload handler in the orchestrator can use it.
+func ValidateUploadToken(key []byte, path string, expires int64, token string) bool {
+	if time.Now().Unix() > expires {
+		return false
+	}
+
+	expected := computeHMAC(key, path, expires)
+
+	return hmac.Equal([]byte(expected), []byte(token))
 }
 
 func (o *fsObject) getHandle(checkExistence bool) (*os.File, error) {

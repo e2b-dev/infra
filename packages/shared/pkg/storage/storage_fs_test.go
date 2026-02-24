@@ -14,7 +14,7 @@ func newTempProvider(t *testing.T) *fsStorage {
 	t.Helper()
 
 	base := t.TempDir()
-	p := newFileSystemStorage(base)
+	p := newFileSystemStorage(base, "", nil)
 
 	return p
 }

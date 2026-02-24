@@ -23,7 +23,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
-	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
@@ -61,7 +60,7 @@ func New(
 	sandboxes *sandbox.Map,
 	templateCache *sbxtemplate.Cache,
 	templatePersistence storage.StorageProvider,
-	limiter *limit.Limiter,
+	buildPersistence storage.StorageProvider,
 ) (s *ServerStore, e error) {
 	logger.Info(ctx, "Initializing template manager")
 
@@ -88,11 +87,6 @@ func New(
 		return nil, fmt.Errorf("error getting docker remote repository provider: %w", err)
 	}
 	closers = append(closers, dockerhubRepository)
-
-	buildPersistence, err := storage.GetStorageProvider(ctx, storage.BuildCacheStorageConfig.WithLimiter(limiter))
-	if err != nil {
-		return nil, fmt.Errorf("error getting build cache storage provider: %w", err)
-	}
 
 	buildCache := cache.NewBuildCache(ctx, meterProvider)
 	buildMetrics, err := metrics.NewBuildMetrics(meterProvider)
