@@ -15,7 +15,12 @@ import (
 type removeFunc func(path string) error
 
 func (s *Service) DeleteDir(ctx context.Context, request *orchestrator.VolumeDirDeleteRequest) (r *orchestrator.VolumeDirDeleteResponse, err error) {
-	fullPath, err := s.buildVolumePath(request.GetVolume(), request.GetPath())
+	relPath := request.GetPath()
+	if relPath == "" {
+		return nil, newAPIError(ctx, codes.InvalidArgument, "empty_path", "path cannot be empty")
+	}
+
+	fullPath, err := s.buildVolumePath(request.GetVolume(), relPath)
 	if err != nil {
 		return nil, err
 	}

@@ -63,7 +63,19 @@ func (s *Service) CreateFile(server orchestrator.VolumeService_CreateFileServer)
 	if err != nil {
 		return fmt.Errorf("failed to open file for create: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		closeErr := file.Close()
+		if closeErr != nil {
+			logger.L().Error(server.Context(), "failed to close file", zap.Error(closeErr))
+		}
+
+		if err != nil {
+			deleteErr := os.Remove(fullPath)
+			if deleteErr != nil {
+				logger.L().Error(server.Context(), "failed to delete file after error", zap.Error(deleteErr))
+			}
+		}
+	}()
 
 	for {
 		req, err := server.Recv()

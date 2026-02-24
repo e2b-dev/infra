@@ -2,6 +2,7 @@ package volumes
 
 import (
 	"context"
+	"fmt"
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
@@ -12,8 +13,10 @@ import (
 )
 
 func newAPIError(ctx context.Context, grpcCode codes.Code, devCode string, devMessage string, args ...any) error {
-	s := status.Newf(grpcCode, devMessage, args...)
-	if s2, err := s.WithDetails(&orchestrator.UserError{Code: devCode, Message: devMessage}); err != nil {
+	message := fmt.Sprintf(devMessage, args...)
+
+	s := status.Newf(grpcCode, message)
+	if s2, err := s.WithDetails(&orchestrator.UserError{Code: devCode, Message: message}); err != nil {
 		logger.L().Error(ctx, "failed to add user error details", zap.Error(err))
 	} else {
 		s = s2

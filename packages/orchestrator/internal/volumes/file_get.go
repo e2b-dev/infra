@@ -19,7 +19,7 @@ func (s *Service) GetFile(request *orchestrator.VolumeFileGetRequest, server orc
 		return fmt.Errorf("failed to build volume path: %w", err)
 	}
 
-	logger.L().Info(server.Context(), "creating directory",
+	logger.L().Info(server.Context(), "retrieving file",
 		zap.String("path", fullPath),
 	)
 

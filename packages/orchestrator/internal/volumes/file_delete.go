@@ -13,7 +13,12 @@ import (
 )
 
 func (s *Service) DeleteFile(ctx context.Context, request *orchestrator.VolumeFileDeleteRequest) (r *orchestrator.VolumeFileDeleteResponse, err error) {
-	fullPath, err := s.buildVolumePath(request.GetVolume(), request.GetPath())
+	relPath := request.GetPath()
+	if relPath == "" {
+		return nil, newAPIError(ctx, codes.InvalidArgument, "empty_path", "path cannot be empty")
+	}
+
+	fullPath, err := s.buildVolumePath(request.GetVolume(), relPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build volume path: %w", err)
 	}

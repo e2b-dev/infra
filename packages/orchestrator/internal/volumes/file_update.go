@@ -18,7 +18,7 @@ func (s *Service) UpdateFileMetadata(ctx context.Context, request *orchestrator.
 		return nil, fmt.Errorf("failed to build volume path: %w", err)
 	}
 
-	logger.L().Info(ctx, "creating directory",
+	logger.L().Info(ctx, "updating file metadata",
 		zap.String("path", fullPath),
 		zap.Uint32p("uid", request.Uid),   //nolint:protogetter // the pointer matters!
 		zap.Uint32p("gid", request.Gid),   //nolint:protogetter // the pointer matters!
