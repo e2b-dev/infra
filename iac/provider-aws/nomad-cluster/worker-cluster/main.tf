@@ -35,6 +35,14 @@ resource "aws_launch_template" "worker" {
 
   vpc_security_group_ids = var.security_group_ids
 
+  # Enable nested virtualization for non-metal instances (C8i/M8i/R8i)
+  dynamic "cpu_options" {
+    for_each = var.nested_virtualization ? [1] : []
+    content {
+      nested_virtualization = "enabled"
+    }
+  }
+
   block_device_mappings {
     device_name = "/dev/sda1"
 
@@ -43,6 +51,21 @@ resource "aws_launch_template" "worker" {
       volume_type           = var.boot_disk_type
       delete_on_termination = true
       encrypted             = true
+    }
+  }
+
+  # Additional EBS cache disk for non-NVMe instances (replaces instance store)
+  dynamic "block_device_mappings" {
+    for_each = var.cache_disk_size_gb > 0 ? [1] : []
+    content {
+      device_name = "/dev/xvdb"
+
+      ebs {
+        volume_size           = var.cache_disk_size_gb
+        volume_type           = "gp3"
+        delete_on_termination = true
+        encrypted             = true
+      }
     }
   }
 

@@ -68,12 +68,14 @@ module "build_cluster" {
 
   iam_instance_profile_name = var.iam_instance_profile_name
 
-  instance_type     = each.value.instance_type
-  ami_id            = var.ami_id
-  cluster_size      = each.value.cluster_size
-  boot_disk_size_gb = each.value.boot_disk_size_gb
-  boot_disk_type    = each.value.boot_disk_type
-  autoscaler        = each.value.autoscaler
+  instance_type         = each.value.instance_type
+  nested_virtualization = each.value.nested_virtualization
+  ami_id                = var.ami_id
+  cluster_size          = each.value.cluster_size
+  boot_disk_size_gb     = each.value.boot_disk_size_gb
+  boot_disk_type        = each.value.boot_disk_type
+  cache_disk_size_gb    = each.value.cache_disk_size_gb
+  autoscaler            = each.value.autoscaler
 
   hugepages_percentage = coalesce(each.value.hugepages_percentage, 60)
 
@@ -121,12 +123,14 @@ module "client_cluster" {
 
   iam_instance_profile_name = var.iam_instance_profile_name
 
-  instance_type     = each.value.instance_type
-  ami_id            = var.ami_id
-  cluster_size      = each.value.cluster_size
-  boot_disk_size_gb = each.value.boot_disk_size_gb
-  boot_disk_type    = each.value.boot_disk_type
-  autoscaler        = each.value.autoscaler
+  instance_type         = each.value.instance_type
+  nested_virtualization = each.value.nested_virtualization
+  ami_id                = var.ami_id
+  cluster_size          = each.value.cluster_size
+  boot_disk_size_gb     = each.value.boot_disk_size_gb
+  boot_disk_type        = each.value.boot_disk_type
+  cache_disk_size_gb    = each.value.cache_disk_size_gb
+  autoscaler            = each.value.autoscaler
 
   hugepages_percentage = coalesce(each.value.hugepages_percentage, 80)
 

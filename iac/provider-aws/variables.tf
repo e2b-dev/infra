@@ -402,15 +402,17 @@ variable "client_clusters_config" {
   type = map(object({
     cluster_size = number
 
-    instance_type = string
+    instance_type         = string
+    nested_virtualization = optional(bool, false)
 
     autoscaler = optional(object({
       max_size   = optional(number)
       cpu_target = optional(number)
     }))
 
-    boot_disk_size_gb = number
-    boot_disk_type    = optional(string, "gp3")
+    boot_disk_size_gb  = number
+    boot_disk_type     = optional(string, "gp3")
+    cache_disk_size_gb = optional(number, 0)
 
     cache_disks = object({
       type    = string
@@ -425,16 +427,18 @@ variable "client_clusters_config" {
 Configuration for the client clusters.
 Format: {
   "default" = {
-    cluster_size  = 1
-    instance_type = "i3.metal"   # Must be .metal for Firecracker KVM
+    cluster_size          = 1
+    instance_type         = "c8i.4xlarge"   # Or i3.metal for bare-metal
+    nested_virtualization = true             # Required for non-metal instances
+    cache_disk_size_gb    = 500              # EBS cache (0 when using NVMe instance store)
     autoscaler = {
       max_size   = 3
       cpu_target = 70
     }
     boot_disk_size_gb = 100
     cache_disks = {
-      type    = "nvme"       # "nvme" for instance store, "ebs" for EBS
-      size_gb = 1900
+      type    = "ebs"
+      size_gb = 500
       count   = 1
     }
     hugepages_percentage = 80
@@ -447,15 +451,17 @@ variable "build_clusters_config" {
   type = map(object({
     cluster_size = number
 
-    instance_type = string
+    instance_type         = string
+    nested_virtualization = optional(bool, false)
 
     autoscaler = optional(object({
       max_size   = optional(number)
       cpu_target = optional(number)
     }))
 
-    boot_disk_size_gb = number
-    boot_disk_type    = optional(string, "gp3")
+    boot_disk_size_gb  = number
+    boot_disk_type     = optional(string, "gp3")
+    cache_disk_size_gb = optional(number, 0)
 
     cache_disks = object({
       type    = string
@@ -470,16 +476,18 @@ variable "build_clusters_config" {
 Configuration for the build clusters.
 Format: {
   "default" = {
-    cluster_size  = 1
-    instance_type = "i3.metal"   # Must be .metal for Firecracker KVM
+    cluster_size          = 1
+    instance_type         = "c8i.4xlarge"   # Or i3.metal for bare-metal
+    nested_virtualization = true             # Required for non-metal instances
+    cache_disk_size_gb    = 500             # EBS cache (0 when using NVMe instance store)
     autoscaler = {
       max_size   = 3
       cpu_target = 70
     }
     boot_disk_size_gb = 100
     cache_disks = {
-      type    = "nvme"
-      size_gb = 1900
+      type    = "ebs"
+      size_gb = 500
       count   = 1
     }
     hugepages_percentage = 60
