@@ -204,7 +204,9 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 	if body.TotalSize > 0 {
 		if err := destFile.Truncate(body.TotalSize); err != nil {
 			destFile.Close()
-			os.Remove(tempPath)
+			if rmErr := ignoreNotExist(os.Remove(tempPath)); rmErr != nil {
+				a.logger.Warn().Err(rmErr).Str(string(logs.OperationIDKey), operationID).Msg("failed to remove temp file after truncate error")
+			}
 			removeSession()
 			if errors.Is(err, syscall.ENOSPC) {
 				a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("not enough disk space")
@@ -222,7 +224,9 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 	// Set ownership on the temp file
 	if err := os.Chown(tempPath, uid, gid); err != nil {
 		destFile.Close()
-		os.Remove(tempPath)
+		if rmErr := ignoreNotExist(os.Remove(tempPath)); rmErr != nil {
+			a.logger.Warn().Err(rmErr).Str(string(logs.OperationIDKey), operationID).Msg("failed to remove temp file after chown error")
+		}
 		removeSession()
 		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error changing file ownership")
 		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error changing file ownership: %w", err))
@@ -230,13 +234,15 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 		return
 	}
 
-	// Initialization complete — set the file handle and parts map, then
-	// clear the completed flag to allow part uploads. The atomic store
-	// provides the necessary memory ordering: any goroutine that observes
-	// completed==false via Load is guaranteed to see DestFile and Parts.
+	// Initialization complete — set the file handle and parts map under
+	// session.mu, then clear the completed flag. The mutex ensures that
+	// any goroutine that later acquires session.mu and observes
+	// completed==false is guaranteed to see DestFile and Parts.
+	session.mu.Lock()
 	session.DestFile = destFile
 	session.Parts = make(map[int]partStatus)
 	session.completed.Store(false)
+	session.mu.Unlock()
 
 	a.logger.Debug().
 		Str(string(logs.OperationIDKey), operationID).
@@ -254,6 +260,13 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 		UploadId: uploadID,
 	}); err != nil {
 		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("failed to encode response")
+		// Client never received the uploadId, so clean up to avoid a permanent leak.
+		session.completed.Store(true)
+		removeSession()
+		destFile.Close()
+		if rmErr := ignoreNotExist(os.Remove(tempPath)); rmErr != nil {
+			a.logger.Warn().Err(rmErr).Str(string(logs.OperationIDKey), operationID).Msg("failed to remove temp file after response encoding error")
+		}
 	}
 }
 
@@ -585,7 +598,9 @@ func (a *API) DeleteFilesUploadUploadId(w http.ResponseWriter, r *http.Request, 
 
 	// Wait for any in-flight part writes to finish before closing the file descriptor
 	session.wg.Wait()
-	session.DestFile.Close()
+	if err := session.DestFile.Close(); err != nil {
+		a.logger.Warn().Err(err).Str(string(logs.OperationIDKey), operationID).Str("uploadId", uploadId).Msg("error closing temp file during abort")
+	}
 
 	a.logger.Debug().
 		Str(string(logs.OperationIDKey), operationID).
