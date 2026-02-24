@@ -325,7 +325,7 @@ func (lb *LayerExecutor) PauseAndUpload(
 			}
 		}
 
-		// Step 5: Save cache index
+		// Step 4: Save cache index
 		if err := lb.index.SaveLayerMeta(ctx, hash, cache.LayerMetadata{
 			Template: cache.Template{
 				BuildID: buildID,
