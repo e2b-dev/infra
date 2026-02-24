@@ -107,12 +107,6 @@ components:
       required: false
       schema:
         type: string
-    path:
-      name: path
-      in: query
-      required: true
-      schema:
-        type: string
     volumeID:
       name: volumeID
       in: path
