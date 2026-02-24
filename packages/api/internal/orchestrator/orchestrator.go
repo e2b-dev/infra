@@ -140,8 +140,7 @@ func New(
 		sandboxStorage = redisStorage
 		logger.L().Info(ctx, "Using redis sandbox storage backend")
 	default:
-		return nil, fmt.Errorf("Invalid sandbox storage backend: %s", config.SandboxStorageBackend)
-
+		return nil, fmt.Errorf("invalid sandbox storage backend: %s", config.SandboxStorageBackend)
 	}
 
 	reservationStorage := redisreservations.NewReservationStorage(redisClient)
