@@ -16,17 +16,17 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
 )
 
-// PartStatus represents the state of a multipart upload part.
-type PartStatus int
+// partStatus represents the state of a multipart upload part.
+type partStatus int
 
 const (
-	partPending    PartStatus = iota // zero value: part not yet started
-	PartInProgress                   // write currently in flight
-	PartComplete                     // write finished successfully
+	partPending    partStatus = iota // zero value: part not yet started
+	partInProgress                   // write currently in flight
+	partComplete                     // write finished successfully
 )
 
-// MultipartUploadSession tracks an in-progress multipart upload
-type MultipartUploadSession struct {
+// multipartUploadSession tracks an in-progress multipart upload
+type multipartUploadSession struct {
 	UploadID  string
 	FilePath  string   // Final destination path
 	DestFile  *os.File // Open file handle for direct writes
@@ -35,7 +35,7 @@ type MultipartUploadSession struct {
 	NumParts  int      // Total number of expected parts
 	UID       int
 	GID       int
-	Parts     map[int]PartStatus // partNumber -> status
+	Parts     map[int]partStatus // partNumber -> status
 	CreatedAt time.Time
 	completed atomic.Bool    // Set to true when complete/abort starts to prevent new parts
 	mu        sync.Mutex     // Protects Parts and activeWriters
@@ -77,7 +77,7 @@ type API struct {
 	initLock    sync.Mutex
 
 	// Multipart upload sessions
-	uploads     map[string]*MultipartUploadSession
+	uploads     map[string]*multipartUploadSession
 	uploadsLock sync.RWMutex
 }
 
@@ -90,7 +90,7 @@ func New(ctx context.Context, l *zerolog.Logger, defaults *execcontext.Defaults,
 		mmdsClient:  &DefaultMMDSClient{},
 		lastSetTime: utils.NewAtomicMax(),
 		accessToken: &SecureToken{},
-		uploads:     make(map[string]*MultipartUploadSession),
+		uploads:     make(map[string]*multipartUploadSession),
 	}
 
 	// Start background cleanup for expired upload sessions
@@ -130,7 +130,7 @@ func (a *API) removeExpiredSessions() {
 					a.logger.Warn().Err(err).Str("filePath", session.FilePath).Msg("failed to cleanup expired upload file")
 				}
 				delete(a.uploads, uploadID)
-				go func(s *MultipartUploadSession) {
+				go func(s *multipartUploadSession) {
 					// Wait for any in-flight part writes to finish before closing the descriptor
 					s.wg.Wait()
 					s.DestFile.Close()

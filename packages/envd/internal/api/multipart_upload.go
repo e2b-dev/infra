@@ -184,7 +184,7 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 
 	uploadID := uuid.NewString()
 
-	session := &MultipartUploadSession{
+	session := &multipartUploadSession{
 		UploadID:  uploadID,
 		FilePath:  filePath,
 		DestFile:  destFile,
@@ -193,7 +193,7 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 		NumParts:  numParts,
 		UID:       uid,
 		GID:       gid,
-		Parts:     make(map[int]PartStatus),
+		Parts:     make(map[int]partStatus),
 		CreatedAt: time.Now(),
 	}
 
@@ -299,14 +299,14 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 
 		return
 	}
-	if session.Parts[params.Part] == PartInProgress {
+	if session.Parts[params.Part] == partInProgress {
 		session.mu.Unlock()
 		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Str("uploadId", uploadId).Int("partNumber", params.Part).Msg("part is already being uploaded by another request")
 		jsonError(w, http.StatusConflict, fmt.Errorf("part %d is already being uploaded by another request for session %s", params.Part, uploadId))
 
 		return
 	}
-	session.Parts[params.Part] = PartInProgress
+	session.Parts[params.Part] = partInProgress
 	session.wg.Add(1) // Must happen under mu while completed is false to avoid Add/Wait race
 	session.mu.Unlock()
 
@@ -361,9 +361,9 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 	// Finalize: always mark the part as complete since the data was written to disk.
 	// Mark partWritten so the deferred cleanup does not revert the status.
 	// Then check completed — if the session was finalized mid-write, return 409
-	// but leave the part as PartComplete so Complete's validation sees it.
+	// but leave the part as partComplete so Complete's validation sees it.
 	session.mu.Lock()
-	session.Parts[params.Part] = PartComplete
+	session.Parts[params.Part] = partComplete
 	partWritten = true
 	if session.completed.Load() {
 		session.mu.Unlock()
@@ -430,7 +430,7 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 	session.mu.Lock()
 	var missingParts []int
 	for i := range session.NumParts {
-		if session.Parts[i] != PartComplete {
+		if session.Parts[i] != partComplete {
 			missingParts = append(missingParts, i)
 		}
 	}

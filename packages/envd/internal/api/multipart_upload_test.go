@@ -393,7 +393,7 @@ func TestMultipartUpload(t *testing.T) {
 			session.DestFile.Close()
 			os.Remove(session.FilePath)
 		}
-		api.uploads = make(map[string]*MultipartUploadSession)
+		api.uploads = make(map[string]*multipartUploadSession)
 		api.uploadsLock.Unlock()
 	})
 
