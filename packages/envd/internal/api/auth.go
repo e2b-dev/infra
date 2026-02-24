@@ -21,37 +21,13 @@ const (
 	accessTokenHeader = "X-Access-Token"
 )
 
-// allowedExactPaths are paths that bypass general authentication using exact matching
+// allowedPaths are paths that bypass general authentication
 // (e.g., health check, endpoints supporting signing)
-var allowedExactPaths = []string{
+var allowedPaths = []string{
 	"GET/health",
 	"GET/files",
 	"POST/files",
 	"POST/init",
-}
-
-// allowedPathPrefixes are paths that bypass general authentication using prefix matching
-// These are for paths with dynamic segments (e.g., upload ID)
-var allowedPathPrefixes = []string{
-	"PUT/files/upload/",
-	"DELETE/files/upload/",
-	"POST/files/upload/",
-}
-
-func isAllowedPath(methodPath string) bool {
-	// Check exact matches first
-	if slices.Contains(allowedExactPaths, methodPath) {
-		return true
-	}
-
-	// Check prefix matches for paths with dynamic segments
-	for _, prefix := range allowedPathPrefixes {
-		if strings.HasPrefix(methodPath, prefix) {
-			return true
-		}
-	}
-
-	return false
 }
 
 func (a *API) WithAuthorization(handler http.Handler) http.Handler {
@@ -60,7 +36,7 @@ func (a *API) WithAuthorization(handler http.Handler) http.Handler {
 			authHeader := req.Header.Get(accessTokenHeader)
 			methodPath := req.Method + req.URL.Path
 
-			if !a.accessToken.Equals(authHeader) && !isAllowedPath(methodPath) {
+			if !a.accessToken.Equals(authHeader) && !slices.Contains(allowedPaths, methodPath) {
 				a.logger.Error().Msg("Trying to access secured envd without correct access token")
 
 				err := fmt.Errorf("unauthorized access, please provide a valid access token or method signing if supported")
