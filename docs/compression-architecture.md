@@ -1,8 +1,23 @@
 # Template Compression: Architecture & Status
 
+- [A. Architecture](#a-architecture)
+  - [Storage Format](#storage-format) · [Storage interface](#storage-interface) · [Feature Flags](#feature-flags) · [Template Loading](#template-loading) · [Read Path](#read-path-nbd--uffd--prefetch)
+- [B. Biggest Changes](#b-biggest-changes)
+- [C. Read Path Diagram](#c-read-path-diagram)
+- [D. Remaining Work](#d-remaining-work)
+  - [From This Branch](#from-this-branch) · [From lev-zstd-compression](#from-lev-zstd-compression-unported)
+- [E. Write Paths](#e-write-paths)
+  - [Inline Build / Pause](#inline-build--pause) · [Background Compression](#background-compression-compress-build-cli)
+- [F. Failure Modes](#f-failure-modes)
+- [G. Cost & Benefit](#g-cost--benefit)
+  - [Storage](#storage) · [CPU](#cpu) · [Memory](#memory) · [Net](#net)
+- [H. Grafana Metrics](#h-grafana-metrics)
+  - [Chunker](#chunker-meter-internalsandboxblockmetrics) · [NFS Cache](#nfs-cache-meter-sharedpkgstorage) · [GCS Backend](#gcs-backend-meter-sharedpkgstorage) · [Key Queries](#key-queries)
+- [I. Rollout Strategy](#i-rollout-strategy)
+
 ## A. Architecture
 
-Templates are stored in GCS as build artifacts. Each build produces two data files (memfile, rootfs) plus a header and metadata. With compression enabled, each data file can have an uncompressed variant (`{buildId}/memfile`) and a compressed variant (`{buildId}/v4.memfile.lz4`) side-by-side, with corresponding v3 (uncompressed) and v4 (compressed) headers.
+Templates are stored in GCS as build artifacts. Each build produces two data files (memfile, rootfs) plus a header and metadata. Each data file can have an uncompressed variant (`{buildId}/memfile`) and a compressed variant (`{buildId}/v4.memfile.lz4`), with corresponding v3 and v4 headers.
 
 ### Storage Format
 
@@ -49,7 +64,7 @@ Two LaunchDarkly JSON flags control compression, with per-team/cluster/template 
 When an orchestrator loads a template from storage (cache miss):
 
 1. **Header probe**: if `useCompressedAssets`, probes for v4 and v3 headers in parallel, preferring v4. Falls back to v3 if v4 is missing.
-2. **Asset probe**: for each build referenced in header mappings, probes for 3 data variants in parallel (uncompressed, `.lz4`, `.zstd`). Missing variants are silently skipped. This allows supporting serving across compressed/uncompressed-only assets.
+2. **Asset probe**: for each build referenced in header mappings, probes for 3 data variants in parallel (uncompressed, `.lz4`, `.zstd`). Missing variants are silently skipped.
 3. **Chunker creation**: one `Chunker` per `(buildId, fileType)`. The chunker's `AssetInfo` records which variants exist.
 
 ### Read Path (NBD / UFFD / Prefetch)
@@ -67,7 +82,7 @@ GetBlock(offset, length, ft) // was Slice()
 ```
 
 - Prefetch reads 4 MiB, UFFD reads 4 KB or 2 MB (hugepage), NBD reads 4 KB.
-- Compressed frames are composed of chunks aligned to `MemoryChunkSize` (4 MiB) — the maximum of the three consumer sizes. This guarantees no `GetBlock` call ever crosses a frame boundary.
+- Frames are aligned to `MemoryChunkSize` (4 MiB), so no `GetBlock` call ever crosses a frame boundary.
 - If the v4 header was loaded, each mapping carries a subset `FrameTable`; this `ft` is threaded through to `GetBlock`, routing to compressed or uncompressed fetch, no header fetch is needed.
 
 ---
@@ -199,7 +214,7 @@ flowchart TD
 
 4. **Storage Provider/Backend layer separation**: decompose `StorageProvider` into distinct Provider (high-level: `FrameGetter`, `FileStorer`, `Blobber`) and Backend (low-level: `Basic`, `RangeGetter`, `MultipartUploaderFactory`) layers. Prerequisite for clean instrumentation wrapping.
 
-5. **OTEL instrumentation middleware** (`instrumented_provider.go`, `instrumented_backend.go`): full span and metrics wrapping at both layers. Production-grade observability for debugging compression issues. ~400 lines.
+5. **OTEL instrumentation middleware** (`instrumented_provider.go`, `instrumented_backend.go`): full span and metrics wrapping at both layers. ~400 lines.
 
 6. **Test coverage** (~4300 lines total): chunker matrix tests (`chunk_test.go` — concurrent access, decompression stats, cross-chunker coverage), compression round-trip tests (`compress_test.go`), NFS cache with compressed data (`storage_cache_seekable_test.go`), template build upload tests (`template_build_test.go`), and auto-generated mocks (`MockStorageProvider`, `MockFeatureFlagsClient`).
 
@@ -257,11 +272,11 @@ Sampled from `gs://e2b-staging-lev-fc-templates/` (262 builds, zstd level 2):
 | memfile  | 191 (both variants) | 140 MiB | 35 MiB | **4.0x** |
 | rootfs   | 153 (compressed-only) | unknown | varies | est. 2-10x (diff layers are tiny, full builds ~2x) |
 
-With dual-write (transition period), GCS storage increases ~25% for memfile (compressed copy is 1/4 the size). After dropping uncompressed, net savings are **~75% for memfile**. Rootfs savings depend on the mix of diff vs full builds.
+During dual-write, GCS storage increases ~25% for memfile. After dropping uncompressed, net savings are **~75% for memfile**. Rootfs savings depend on the mix of diff vs full builds.
 
 ### CPU
 
-New per-orchestrator CPU cost: decompressing every GCS-fetched frame. At ~35 MiB compressed per cold memfile load and zstd level 2 decode throughput of ~1-2 GB/s, each cold load burns ~20-40 ms of CPU. This scales with cold template load rate, not with sandbox count (mmap hits are free). Encode cost is on the write path only (build/pause), bounded by upload concurrency.
+New per-orchestrator CPU cost: decompressing every GCS-fetched frame. At ~35 MiB compressed per cold memfile load and zstd level 2 decode throughput of ~1-2 GB/s, each cold load burns ~20-40 ms of CPU. Scales with cold template load rate, not sandbox count. Encode cost is write-path only (build/pause), bounded by upload concurrency.
 
 ### Memory
 
@@ -269,7 +284,7 @@ The main cost: **mmap regions are allocated at uncompressed size** but frames ar
 
 ### Net
 
-Smaller GCS reads (4x fewer bytes) and smaller NFS cache entries reduce network bandwidth. Upload path doubles bandwidth during dual-write transition. Overall, compression is net-positive on network cost once dual-write ends.
+Smaller GCS reads (4x fewer bytes) and smaller NFS cache entries reduce network bandwidth. Upload path doubles bandwidth during dual-write.
 
 ---
 
