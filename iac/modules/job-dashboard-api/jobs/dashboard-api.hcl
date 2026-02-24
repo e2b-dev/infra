@@ -25,9 +25,9 @@ job "dashboard-api" {
 
         "traefik.enable=true",
 
-        "traefik.http.routers.otel-gateway.rule=HostRegexp(`${subdomain}.{domain:.+}`)",
-        "traefik.http.routers.otel-gateway.ruleSyntax=v2",
-        "traefik.http.routers.otel-gateway.priority=1000"
+        "traefik.http.routers.dashboard-api.rule=HostRegexp(`${subdomain}.{domain:.+}`)",
+        "traefik.http.routers.dashboard-api.ruleSyntax=v2",
+        "traefik.http.routers.dashboard-api.priority=1000"
       ]
 
       check {
