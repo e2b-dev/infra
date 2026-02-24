@@ -104,9 +104,21 @@ func (s *Storage) ExpiredItems(ctx context.Context) ([]sandbox.Sandbox, error) {
 				continue
 			}
 
+			// In case that index have failed to be updated
+			if !sbx.IsExpired() {
+				logger.L().Debug(ctx, "ExpiredItems: Sandbox marked as expried in index, but state say otherwise", logger.WithSandboxID(sbx.SandboxID), zap.Time("end_time", sbx.EndTime))
+
+				continue
+			}
+
 			// Only evict running sandboxes
 			if sbx.State != sandbox.StateRunning {
-				continue
+				if time.Since(sbx.EndTime) > staleCutoff {
+					logger.L().Debug(ctx, "ExpiredItems: Sandbox is in transition state for more than stale cutoff, removing", logger.WithSandboxID(sbx.SandboxID), zap.Time("end_time", sbx.EndTime))
+				} else {
+					// Let the current removal finish
+					continue
+				}
 			}
 
 			result = append(result, sbx)
