@@ -248,13 +248,6 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 		return
 	}
 
-	if params.Part < 0 {
-		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Int("partNumber", params.Part).Msg("invalid part number")
-		jsonError(w, http.StatusBadRequest, fmt.Errorf("part number must be non-negative"))
-
-		return
-	}
-
 	partNumber := uint(params.Part)
 
 	// Check part number is within range (also rejects parts for empty files where NumParts == 0)

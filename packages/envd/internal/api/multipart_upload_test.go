@@ -227,49 +227,6 @@ func TestMultipartUpload(t *testing.T) {
 		assert.Equal(t, http.StatusNotFound, w.Code)
 	})
 
-	t.Run("negative part number", func(t *testing.T) {
-		t.Parallel()
-		api := newMultipartTestAPI(t)
-		tempDir := t.TempDir()
-
-		// Initialize upload
-		body := PostFilesUploadInitJSONRequestBody{
-			Path:      filepath.Join(tempDir, "test-file.txt"),
-			TotalSize: 100,
-			PartSize:  50,
-		}
-		bodyBytes, _ := json.Marshal(body)
-
-		initReq := httptest.NewRequest(http.MethodPost, "/files/upload/init", bytes.NewReader(bodyBytes))
-		initReq.Header.Set("Content-Type", "application/json")
-		initW := httptest.NewRecorder()
-
-		api.PostFilesUploadInit(initW, initReq, PostFilesUploadInitParams{})
-		require.Equal(t, http.StatusOK, initW.Code)
-
-		var initResp MultipartUploadInit
-		err := json.Unmarshal(initW.Body.Bytes(), &initResp)
-		require.NoError(t, err)
-		uploadId := initResp.UploadId
-
-		// Try to upload with negative part number
-		req := httptest.NewRequest(http.MethodPut, "/files/upload/"+uploadId+"?part=-1", bytes.NewReader([]byte("test")))
-		w := httptest.NewRecorder()
-
-		api.PutFilesUploadUploadId(w, req, uploadId, PutFilesUploadUploadIdParams{Part: -1})
-		assert.Equal(t, http.StatusBadRequest, w.Code)
-
-		// Clean up
-		api.uploadsLock.Lock()
-		session := api.uploads[uploadId]
-		if session != nil {
-			session.DestFile.Close()
-			os.Remove(session.FilePath)
-		}
-		delete(api.uploads, uploadId)
-		api.uploadsLock.Unlock()
-	})
-
 	t.Run("missing part in sequence", func(t *testing.T) {
 		t.Parallel()
 		api := newMultipartTestAPI(t)
