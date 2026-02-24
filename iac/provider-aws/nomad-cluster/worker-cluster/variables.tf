@@ -14,6 +14,7 @@ variable "cluster_size" {
 
 variable "autoscaler" {
   type = object({
+    min_size   = optional(number)
     max_size   = optional(number)
     cpu_target = optional(number)
   })
@@ -35,6 +36,12 @@ variable "cache_disk_size_gb" {
   description = "Size of EBS cache disk in GB. Set to 0 to skip (when using NVMe instance store)."
   type        = number
   default     = 0
+}
+
+variable "use_spot" {
+  description = "Use Spot Instances. Suitable for fault-tolerant workloads (e.g. build clusters). Instances are terminated on interruption."
+  type        = bool
+  default     = false
 }
 
 variable "ami_id" {

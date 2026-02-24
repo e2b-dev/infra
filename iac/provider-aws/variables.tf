@@ -404,8 +404,10 @@ variable "client_clusters_config" {
 
     instance_type         = string
     nested_virtualization = optional(bool, false)
+    use_spot              = optional(bool, false)
 
     autoscaler = optional(object({
+      min_size   = optional(number)
       max_size   = optional(number)
       cpu_target = optional(number)
     }))
@@ -428,10 +430,11 @@ Configuration for the client clusters.
 Format: {
   "default" = {
     cluster_size          = 1
-    instance_type         = "c8i.4xlarge"   # Or i3.metal for bare-metal
+    instance_type         = "c8i.2xlarge"   # Or c8i.4xlarge, i3.metal, etc.
     nested_virtualization = true             # Required for non-metal instances
-    cache_disk_size_gb    = 500              # EBS cache (0 when using NVMe instance store)
+    cache_disk_size_gb    = 500             # EBS cache (0 when using NVMe instance store)
     autoscaler = {
+      min_size   = 1
       max_size   = 3
       cpu_target = 70
     }
@@ -453,8 +456,10 @@ variable "build_clusters_config" {
 
     instance_type         = string
     nested_virtualization = optional(bool, false)
+    use_spot              = optional(bool, false)
 
     autoscaler = optional(object({
+      min_size   = optional(number)
       max_size   = optional(number)
       cpu_target = optional(number)
     }))
@@ -477,11 +482,13 @@ Configuration for the build clusters.
 Format: {
   "default" = {
     cluster_size          = 1
-    instance_type         = "c8i.4xlarge"   # Or i3.metal for bare-metal
+    instance_type         = "c8i.2xlarge"   # Or c8i.4xlarge, i3.metal, etc.
     nested_virtualization = true             # Required for non-metal instances
+    use_spot              = true             # Spot instances for fault-tolerant build workloads
     cache_disk_size_gb    = 500             # EBS cache (0 when using NVMe instance store)
     autoscaler = {
-      max_size   = 3
+      min_size   = 1
+      max_size   = 2
       cpu_target = 70
     }
     boot_disk_size_gb = 100

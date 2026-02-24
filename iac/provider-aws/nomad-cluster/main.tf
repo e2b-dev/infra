@@ -70,6 +70,7 @@ module "build_cluster" {
 
   instance_type         = each.value.instance_type
   nested_virtualization = each.value.nested_virtualization
+  use_spot              = each.value.use_spot
   ami_id                = var.ami_id
   cluster_size          = each.value.cluster_size
   boot_disk_size_gb     = each.value.boot_disk_size_gb
@@ -125,6 +126,7 @@ module "client_cluster" {
 
   instance_type         = each.value.instance_type
   nested_virtualization = each.value.nested_virtualization
+  use_spot              = each.value.use_spot
   ami_id                = var.ami_id
   cluster_size          = each.value.cluster_size
   boot_disk_size_gb     = each.value.boot_disk_size_gb

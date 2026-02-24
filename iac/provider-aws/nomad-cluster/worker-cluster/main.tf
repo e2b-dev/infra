@@ -43,6 +43,18 @@ resource "aws_launch_template" "worker" {
     }
   }
 
+  # Use Spot Instances for fault-tolerant workloads (e.g. build clusters)
+  dynamic "instance_market_options" {
+    for_each = var.use_spot ? [1] : []
+    content {
+      market_type = "spot"
+      spot_options {
+        spot_instance_type             = "one-time"
+        instance_interruption_behavior = "terminate"
+      }
+    }
+  }
+
   block_device_mappings {
     device_name = "/dev/sda1"
 
@@ -94,7 +106,7 @@ resource "aws_launch_template" "worker" {
 resource "aws_autoscaling_group" "worker" {
   name_prefix      = "${var.cluster_name}-"
   desired_capacity = var.cluster_size
-  min_size         = var.cluster_size
+  min_size         = try(var.autoscaler.min_size, var.cluster_size)
   max_size         = try(var.autoscaler.max_size, var.cluster_size)
 
   vpc_zone_identifier = var.subnet_ids
