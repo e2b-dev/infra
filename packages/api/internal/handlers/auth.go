@@ -21,7 +21,7 @@ func (a *APIStore) GetUserID(c *gin.Context) uuid.UUID {
 }
 
 func (a *APIStore) GetTeamInfo(c *gin.Context) *types.Team {
-	teamInfo, ok := c.Value(auth.TeamContextKey).(*types.Team)
+	teamInfo, ok := a.safeGetTeamInfo(c)
 	if !ok {
 		panic("team info not found in context")
 	}
