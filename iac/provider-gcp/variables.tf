@@ -388,6 +388,12 @@ variable "filestore_cache_capacity_gb" {
   default     = 0
 }
 
+variable "filestore_nfs_version" {
+  type        = string
+  description = "The NFS protocol version to use"
+  default     = ""
+}
+
 variable "filestore_cache_cleanup_disk_usage_target" {
   type        = number
   description = "The max disk usage target of the Filestore"
@@ -607,6 +613,8 @@ variable "persistent_volume_types" {
     tier           = string
     location       = optional(string)
     capacity_gb    = number
+    protocol       = optional(string)
+    nfs_version    = optional(string)
   }))
 
   default = {}

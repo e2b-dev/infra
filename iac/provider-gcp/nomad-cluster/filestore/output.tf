@@ -3,5 +3,5 @@ output "nfs_ip_addresses" {
 }
 
 output "nfs_version" {
-  value = google_filestore_instance.shared_disk_store.protocol
+  value = local.nfs_version
 }

@@ -1,21 +1,14 @@
-resource "google_filestore_instance" "persistent-volumes" {
+module "persistent-volume-types" {
+  source = "./persistent-volume-types"
+
   for_each = var.persistent_volume_types
 
-  name     = "${var.prefix}persistent-volume-${each.key}"
-  tier     = each.value.tier
-  protocol = each.value.tier == "ZONAL" ? "NFS_V4_1" : "NFS_V3"
-  location = each.value.location
-
-  deletion_protection_enabled = !(coalesce(each.value.allow_deletion, false))
-  deletion_protection_reason  = "If this gets removed, the orchestrator will throw tons of errors"
-
-  file_shares {
-    capacity_gb = each.value.capacity_gb
-    name        = each.key
-  }
-
-  networks {
-    modes   = ["MODE_IPV4"]
-    network = var.network_name
-  }
+  allow_deletion = each.value.allow_deletion
+  capacity_gb    = each.value.capacity_gb
+  key            = each.key
+  location       = each.value.location
+  network_name   = var.network_name
+  nfs_version    = each.value.nfs_version
+  prefix         = var.prefix
+  tier           = each.value.tier
 }

@@ -2,14 +2,21 @@ package volumes
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
+	otelcodes "go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
+	"github.com/e2b-dev/infra/packages/shared/pkg/filesystem"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
@@ -19,6 +26,8 @@ const (
 	defaultOwnerID  uint32 = 1000
 	defaultGroupID  uint32 = 1000
 )
+
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/volumes")
 
 type Service struct {
 	orchestrator.UnimplementedVolumeServiceServer
@@ -78,4 +87,64 @@ func tryParseUUID(id string) bool {
 	_, err := uuid.Parse(id)
 
 	return err == nil
+}
+
+func toEntryFromOSInfo(absPath, volumeRelPath string, fileInfo os.FileInfo) *orchestrator.EntryInfo {
+	entry := filesystem.GetEntryInfo(absPath, fileInfo)
+
+	return toEntry(volumeRelPath, entry)
+}
+
+func toEntry(volumeRelPath string, fileInfo filesystem.EntryInfo) *orchestrator.EntryInfo {
+	if !strings.HasPrefix(volumeRelPath, "/") {
+		volumeRelPath = "/" + volumeRelPath
+	}
+
+	entry := &orchestrator.EntryInfo{
+		Name:          fileInfo.Name,
+		Path:          volumeRelPath,
+		Size:          fileInfo.Size,
+		Mode:          uint32(fileInfo.Mode & os.ModePerm),
+		Uid:           fileInfo.UID,
+		Gid:           fileInfo.GID,
+		ModifiedTime:  toTimestamp(fileInfo.ModifiedTime),
+		SymlinkTarget: fileInfo.SymlinkTarget,
+		CreatedTime:   toTimestamp(fileInfo.CreatedTime),
+		AccessedTime:  toTimestamp(fileInfo.AccessedTime),
+		Type:          toType(fileInfo.Type),
+	}
+
+	return entry
+}
+
+func toType(fileType filesystem.FileType) orchestrator.FileType {
+	switch fileType {
+	case filesystem.DirectoryFileType:
+		return orchestrator.FileType_FILE_TYPE_DIRECTORY
+	case filesystem.FileFileType:
+		return orchestrator.FileType_FILE_TYPE_FILE
+	case filesystem.SymlinkFileType:
+		return orchestrator.FileType_FILE_TYPE_SYMLINK
+	default:
+		return orchestrator.FileType_FILE_TYPE_UNSPECIFIED
+	}
+}
+
+func toTimestamp(spec time.Time) *timestamppb.Timestamp {
+	if spec.IsZero() {
+		return nil
+	}
+
+	return timestamppb.New(spec)
+}
+
+func setSpanStatus(span trace.Span, err error) {
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(otelcodes.Error, err.Error())
+
+		return
+	}
+
+	span.SetStatus(otelcodes.Ok, "")
 }

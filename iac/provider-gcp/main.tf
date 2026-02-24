@@ -47,12 +47,9 @@ locals {
   persistent_volume_types = {
     for key, config in var.persistent_volume_types : key => {
       local_mount_path = "/mnt/persistent-volume-types/${key}"
-      nfs_location = format("%s:/%s",
-        join(",", google_filestore_instance.persistent-volumes[key].networks[0].ip_addresses),
-        key,
-      ),
+      nfs_location     = module.persistent-volume-types[key].nfs_location
       nfs_mount_opts = join(",", [ // for more docs, see https://linux.die.net/man/5/nfs
-        format("nfsvers=%s", google_filestore_instance.persistent-volumes[key].protocol == "NFS_V3" ? "3" : "4.1"),
+        format("nfsvers=%s", module.persistent-volume-types[key].nfs_version),
         "sync",             // write immediately
         "hard",             // retry nfs requests indefinitely until they succeed, never fail
         "lookupcache=none", // disable the lookup cache
@@ -149,6 +146,7 @@ module "cluster" {
   filestore_cache_enabled     = var.filestore_cache_enabled
   filestore_cache_tier        = var.filestore_cache_tier
   filestore_cache_capacity_gb = var.filestore_cache_capacity_gb
+  filestore_nfs_version       = var.filestore_nfs_version
 
   persistent_volume_types = local.persistent_volume_types
 

@@ -3195,7 +3195,6 @@ paths:
       description: List all team volumes
       tags: [volumes]
       security:
-        - AccessTokenAuth: []
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
@@ -3217,7 +3216,6 @@ paths:
       description: Create a new team volume
       tags: [volumes]
       security:
-        - AccessTokenAuth: []
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
@@ -3246,7 +3244,6 @@ paths:
       description: Get team volume info
       tags: [volumes]
       security:
-        - AccessTokenAuth: []
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
@@ -3270,7 +3267,6 @@ paths:
       description: Delete a team volume
       tags: [volumes]
       security:
-        - AccessTokenAuth: []
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []

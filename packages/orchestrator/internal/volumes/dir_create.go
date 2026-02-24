@@ -5,17 +5,23 @@ import (
 	"fmt"
 	"os"
 
-	"go.uber.org/zap"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type makeDir func(path string, perm os.FileMode) error
 
 func (s *Service) CreateDir(ctx context.Context, request *orchestrator.VolumeDirCreateRequest) (r *orchestrator.VolumeDirCreateResponse, err error) {
+	_, span := tracer.Start(ctx, "create directory in volume")
+	defer func() {
+		setSpanStatus(span, err)
+		span.End()
+	}()
+
 	fullPath, err := s.buildVolumePath(request.GetVolume(), request.GetPath())
 	if err != nil {
 		return nil, fmt.Errorf("failed to build volume path: %w", err)
@@ -25,12 +31,12 @@ func (s *Service) CreateDir(ctx context.Context, request *orchestrator.VolumeDir
 	gid := utils.DerefOrDefault(request.Gid, defaultGroupID)   //nolint:protogetter
 	mode := utils.DerefOrDefault(request.Mode, defaultDirMode) //nolint:protogetter
 
-	logger.L().Info(ctx, "creating directory",
-		zap.String("path", fullPath),
-		zap.Uint32("uid", uid),
-		zap.Uint32("gid", gid),
-		zap.Uint32("mode", mode),
-	)
+	span.AddEvent("creating directory", trace.WithAttributes(
+		attribute.String("path", fullPath),
+		attribute.Int64("uid", int64(uid)),
+		attribute.Int64("gid", int64(gid)),
+		attribute.Int64("mode", int64(mode)),
+	))
 
 	var fn makeDir
 	if request.GetCreateParents() {
@@ -67,7 +73,7 @@ func (s *Service) CreateDir(ctx context.Context, request *orchestrator.VolumeDir
 		return nil, fmt.Errorf("failed to set directory mode: %w", err)
 	}
 
-	stat, err := os.Lstat(fullPath)
+	entry, err := toEntryFromPath(fullPath, request.GetPath())
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, newAPIError(ctx, codes.NotFound, "path_not_found", "failed to stat: %q not found.", fullPath)
@@ -76,7 +82,5 @@ func (s *Service) CreateDir(ctx context.Context, request *orchestrator.VolumeDir
 		return nil, fmt.Errorf("failed to stat created directory: %w", err)
 	}
 
-	return &orchestrator.VolumeDirCreateResponse{
-		Entry: toEntry(request.GetPath(), stat),
-	}, nil
+	return &orchestrator.VolumeDirCreateResponse{Entry: entry}, nil
 }

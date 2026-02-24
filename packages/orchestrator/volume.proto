@@ -138,6 +138,7 @@ message VolumeFileDeleteResponse {}
 message StatRequest {
   VolumeInfo volume = 1;
   string path = 2;
+  bool followSymlinks = 3;
 }
 
 message StatResponse {

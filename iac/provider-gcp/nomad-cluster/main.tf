@@ -7,7 +7,7 @@ locals {
   nfs_mount_path   = "/orchestrator/shared-store"
   nfs_mount_subdir = "chunks-cache"
   nfs_mount_opts = join(",", [ // for more docs, see https://linux.die.net/man/5/nfs
-    format("nfsvers=%s", var.filestore_cache_enabled ? module.filestore[0].nfs_version == "NFS_V3" ? "3" : "4.1" : ""),
+    format("nfsvers=%s", var.filestore_cache_enabled ? module.filestore[0].nfs_version : ""),
 
     "actimeo=600",          // cache attributes for 600 seconds
     "async",                // delay writes until certain conditions are met
@@ -150,6 +150,7 @@ module "filestore" {
 
   tier        = var.filestore_cache_tier
   capacity_gb = var.filestore_cache_capacity_gb
+  nfs_version = var.filestore_nfs_version
 }
 
 

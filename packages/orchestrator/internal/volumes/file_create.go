@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -18,6 +20,12 @@ var ErrExpectedStart = errors.New("expected start message")
 var ErrUnexpectedStart = errors.New("unexpected start message")
 
 func (s *Service) CreateFile(server orchestrator.VolumeService_CreateFileServer) (err error) {
+	ctx, span := tracer.Start(server.Context(), "create file in volume")
+	defer func() {
+		setSpanStatus(span, err)
+		span.End()
+	}()
+
 	req, err := server.Recv()
 	if err != nil {
 		return fmt.Errorf("failed to receive start message: %w", err)
@@ -37,13 +45,13 @@ func (s *Service) CreateFile(server orchestrator.VolumeService_CreateFileServer)
 	gid := utils.DerefOrDefault(start.Gid, defaultGroupID)    //nolint:protogetter
 	mode := utils.DerefOrDefault(start.Mode, defaultFileMode) //nolint:protogetter
 
-	logger.L().Info(server.Context(), "creating file",
-		zap.String("path", fullPath),
-		zap.Uint32("uid", uid),
-		zap.Uint32("gid", gid),
-		zap.Uint32("mode", mode),
-		zap.Bool("force", start.GetForce()),
-	)
+	span.AddEvent("creating file", trace.WithAttributes(
+		attribute.String("path", fullPath),
+		attribute.Int64("uid", int64(uid)),
+		attribute.Int64("gid", int64(gid)),
+		attribute.Int64("mode", int64(mode)),
+		attribute.Bool("force", start.GetForce()),
+	))
 
 	if start.GetForce() {
 		dirName := filepath.Dir(fullPath)
@@ -63,16 +71,18 @@ func (s *Service) CreateFile(server orchestrator.VolumeService_CreateFileServer)
 	if err != nil {
 		return fmt.Errorf("failed to open file for create: %w", err)
 	}
+
+	deleteFileOnError := true
 	defer func() {
 		closeErr := file.Close()
 		if closeErr != nil {
-			logger.L().Error(server.Context(), "failed to close file", zap.Error(closeErr))
+			logger.L().Error(ctx, "failed to close file", zap.Error(closeErr))
 		}
 
-		if err != nil {
+		if err != nil && deleteFileOnError {
 			deleteErr := os.Remove(fullPath)
 			if deleteErr != nil {
-				logger.L().Error(server.Context(), "failed to delete file after error", zap.Error(deleteErr))
+				logger.L().Error(ctx, "failed to delete file after error", zap.Error(deleteErr))
 			}
 		}
 	}()
@@ -103,13 +113,15 @@ func (s *Service) CreateFile(server orchestrator.VolumeService_CreateFileServer)
 				return fmt.Errorf("failed to set file mode: %w", err)
 			}
 
-			entry, err := os.Lstat(fullPath)
+			deleteFileOnError = false
+
+			entry, err := toEntryFromPath(fullPath, start.GetPath())
 			if err != nil {
 				return fmt.Errorf("failed to stat created file: %w", err)
 			}
 
 			return server.SendAndClose(&orchestrator.VolumeFileCreateResponse{
-				Entry: toEntry(start.GetPath(), entry),
+				Entry: entry,
 			})
 
 		default:

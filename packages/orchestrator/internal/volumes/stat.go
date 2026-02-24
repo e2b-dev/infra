@@ -4,23 +4,31 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
-	"syscall"
-	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/filesystem"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
 func (s *Service) Stat(ctx context.Context, request *orchestrator.StatRequest) (r *orchestrator.StatResponse, err error) {
+	ctx, span := tracer.Start(ctx, "stat path in volume")
+	defer func() {
+		setSpanStatus(span, err)
+		span.End()
+	}()
 	fullPath, err := s.buildVolumePath(request.GetVolume(), request.GetPath())
 	if err != nil {
 		return nil, fmt.Errorf("failed to build volume path: %w", err)
 	}
 
-	info, err := os.Lstat(fullPath)
+	span.AddEvent("stat", trace.WithAttributes(
+		attribute.String("path", fullPath),
+	))
+
+	info, err := filesystem.GetEntryFromPath(fullPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, newAPIError(ctx, codes.NotFound, "path_not_found", "failed to stat: %q not found.", fullPath)
@@ -34,52 +42,11 @@ func (s *Service) Stat(ctx context.Context, request *orchestrator.StatRequest) (
 	return &orchestrator.StatResponse{Entry: entry}, nil
 }
 
-func toEntry(volumeRelPath string, info os.FileInfo) *orchestrator.EntryInfo {
-	var fType orchestrator.FileType
-	switch {
-	case info.Mode()&os.ModeSymlink != 0:
-		fType = orchestrator.FileType_FILE_TYPE_SYMLINK
-	case info.IsDir():
-		fType = orchestrator.FileType_FILE_TYPE_DIRECTORY
-	default:
-		fType = orchestrator.FileType_FILE_TYPE_FILE
+func toEntryFromPath(absPath, volumeRelPath string) (*orchestrator.EntryInfo, error) {
+	entry, err := filesystem.GetEntryFromPath(absPath)
+	if err != nil {
+		return nil, err
 	}
 
-	if !strings.HasPrefix(volumeRelPath, "/") {
-		volumeRelPath = "/" + volumeRelPath
-	}
-
-	entry := &orchestrator.EntryInfo{
-		Name: info.Name(),
-		Type: fType,
-		Path: volumeRelPath,
-		Size: info.Size(),
-		Mode: uint32(info.Mode() & os.ModePerm),
-	}
-
-	if base := getBase(info.Sys()); base != nil {
-		entry.AccessedTime = toTimestamp(base.Atim)
-		entry.CreatedTime = toTimestamp(base.Ctim)
-		entry.ModifiedTime = toTimestamp(base.Mtim)
-		entry.Uid = base.Uid
-		entry.Gid = base.Gid
-	} else if !info.ModTime().IsZero() {
-		entry.ModifiedTime = timestamppb.New(info.ModTime())
-	}
-
-	return entry
-}
-
-func toTimestamp(spec syscall.Timespec) *timestamppb.Timestamp {
-	if spec.Sec == 0 && spec.Nsec == 0 {
-		return nil
-	}
-
-	return timestamppb.New(time.Unix(spec.Sec, spec.Nsec))
-}
-
-func getBase(sys any) *syscall.Stat_t {
-	st, _ := sys.(*syscall.Stat_t)
-
-	return st
+	return toEntry(volumeRelPath, entry), nil
 }

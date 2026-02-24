@@ -298,6 +298,10 @@ variable "filestore_cache_capacity_gb" {
   default = 0
 }
 
+variable "filestore_nfs_version" {
+  type = string
+}
+
 variable "api_node_pool" {
   description = "The name of the Nomad pool."
   type        = string

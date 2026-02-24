@@ -5,14 +5,19 @@ import (
 	"fmt"
 	"os"
 
-	"go.uber.org/zap"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 func (s *Service) DeleteFile(ctx context.Context, request *orchestrator.VolumeFileDeleteRequest) (r *orchestrator.VolumeFileDeleteResponse, err error) {
+	ctx, span := tracer.Start(ctx, "delete file in volume")
+	defer func() {
+		setSpanStatus(span, err)
+		span.End()
+	}()
 	relPath := request.GetPath()
 	if relPath == "" {
 		return nil, newAPIError(ctx, codes.InvalidArgument, "empty_path", "path cannot be empty")
@@ -23,9 +28,9 @@ func (s *Service) DeleteFile(ctx context.Context, request *orchestrator.VolumeFi
 		return nil, fmt.Errorf("failed to build volume path: %w", err)
 	}
 
-	logger.L().Info(ctx, "deleting file",
-		zap.String("path", fullPath),
-	)
+	span.AddEvent("deleting file", trace.WithAttributes(
+		attribute.String("path", fullPath),
+	))
 
 	if err := os.Remove(fullPath); err != nil {
 		if os.IsNotExist(err) {

@@ -5,16 +5,22 @@ import (
 	"fmt"
 	"os"
 
-	"go.uber.org/zap"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 type removeFunc func(path string) error
 
 func (s *Service) DeleteDir(ctx context.Context, request *orchestrator.VolumeDirDeleteRequest) (r *orchestrator.VolumeDirDeleteResponse, err error) {
+	ctx, span := tracer.Start(ctx, "delete directory in volume")
+	defer func() {
+		setSpanStatus(span, err)
+		span.End()
+	}()
+
 	relPath := request.GetPath()
 	if relPath == "" {
 		return nil, newAPIError(ctx, codes.InvalidArgument, "empty_path", "path cannot be empty")
@@ -32,9 +38,9 @@ func (s *Service) DeleteDir(ctx context.Context, request *orchestrator.VolumeDir
 		fn = os.Remove
 	}
 
-	logger.L().Info(ctx, "removing directory",
-		zap.String("path", fullPath),
-	)
+	span.AddEvent("removing directory", trace.WithAttributes(
+		attribute.String("path", fullPath),
+	))
 
 	if err := fn(fullPath); err != nil {
 		if os.IsNotExist(err) {

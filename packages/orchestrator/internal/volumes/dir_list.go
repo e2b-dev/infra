@@ -6,22 +6,28 @@ import (
 	"os"
 	"path/filepath"
 
-	"go.uber.org/zap"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 func (s *Service) ListDir(ctx context.Context, request *orchestrator.VolumeDirListRequest) (r *orchestrator.VolumeDirListResponse, err error) {
+	ctx, span := tracer.Start(ctx, "list directory in volume")
+	defer func() {
+		setSpanStatus(span, err)
+		span.End()
+	}()
+
 	fullPath, err := s.buildVolumePath(request.GetVolume(), request.GetPath())
 	if err != nil {
 		return nil, err
 	}
 
-	logger.L().Info(ctx, "listing directory",
-		zap.String("path", fullPath),
-	)
+	span.AddEvent("listing directory", trace.WithAttributes(
+		attribute.String("path", fullPath),
+	))
 
 	items, err := os.ReadDir(fullPath)
 	if err != nil { // todo: better error handling
@@ -39,8 +45,12 @@ func (s *Service) ListDir(ctx context.Context, request *orchestrator.VolumeDirLi
 			return nil, fmt.Errorf("failed to get info for item %q: %w", item.Name(), err)
 		}
 
+		absPath := filepath.Join(fullPath, item.Name())
+		relPath := filepath.Join(request.GetPath(), item.Name())
+		entry := toEntryFromOSInfo(absPath, relPath, info)
+
 		results = append(results, &orchestrator.VolumeDirectoryItem{
-			Entry: toEntry(filepath.Join(request.GetPath(), item.Name()), info),
+			Entry: entry,
 		})
 	}
 

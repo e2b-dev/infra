@@ -5,25 +5,38 @@ import (
 	"fmt"
 	"os"
 
-	"go.uber.org/zap"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 func (s *Service) UpdateFileMetadata(ctx context.Context, request *orchestrator.VolumeFileUpdateRequest) (r *orchestrator.VolumeFileUpdateResponse, err error) {
+	ctx, span := tracer.Start(ctx, "update file metadata in volume")
+	defer func() {
+		setSpanStatus(span, err)
+		span.End()
+	}()
 	fullPath, err := s.buildVolumePath(request.GetVolume(), request.GetPath())
 	if err != nil {
 		return nil, fmt.Errorf("failed to build volume path: %w", err)
 	}
 
-	logger.L().Info(ctx, "updating file metadata",
-		zap.String("path", fullPath),
-		zap.Uint32p("uid", request.Uid),   //nolint:protogetter // the pointer matters!
-		zap.Uint32p("gid", request.Gid),   //nolint:protogetter // the pointer matters!
-		zap.Uint32p("mode", request.Mode), //nolint:protogetter // the pointer matters!
-	)
+	// record provided fields; keep pointers semantics by checking nil
+	attrs := []attribute.KeyValue{
+		attribute.String("path", fullPath),
+	}
+	if request.Uid != nil {
+		attrs = append(attrs, attribute.Int64("uid", int64(request.GetUid())))
+	}
+	if request.Gid != nil {
+		attrs = append(attrs, attribute.Int64("gid", int64(request.GetGid())))
+	}
+	if request.Mode != nil {
+		attrs = append(attrs, attribute.Int64("mode", int64(request.GetMode())))
+	}
+	span.AddEvent("updating file metadata", trace.WithAttributes(attrs...))
 
 	if request.Mode != nil {
 		if err = os.Chmod(fullPath, os.FileMode(request.GetMode())); err != nil {
@@ -55,7 +68,7 @@ func (s *Service) UpdateFileMetadata(ctx context.Context, request *orchestrator.
 		}
 	}
 
-	info, err := os.Stat(fullPath)
+	entry, err := toEntryFromPath(fullPath, request.GetPath())
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, newAPIError(ctx, codes.NotFound, "path_not_found", "failed to stat: %q not found.", fullPath)
@@ -64,7 +77,5 @@ func (s *Service) UpdateFileMetadata(ctx context.Context, request *orchestrator.
 		return nil, fmt.Errorf("failed to stat file: %w", err)
 	}
 
-	return &orchestrator.VolumeFileUpdateResponse{
-		Entry: toEntry(request.GetPath(), info),
-	}, nil
+	return &orchestrator.VolumeFileUpdateResponse{Entry: entry}, nil
 }

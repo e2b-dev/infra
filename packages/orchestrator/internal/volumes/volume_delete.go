@@ -5,24 +5,30 @@ import (
 	"fmt"
 	"os"
 
-	"go.uber.org/zap"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 func (s *Service) Delete(
 	ctx context.Context,
 	request *orchestrator.VolumeDeleteRequest,
 ) (r *orchestrator.VolumeDeleteResponse, err error) {
+	_, span := tracer.Start(ctx, "delete volume")
+	defer func() {
+		setSpanStatus(span, err)
+		span.End()
+	}()
+
 	volumePath, err := s.buildVolumePath(request.GetVolume(), "")
 	if err != nil {
 		return nil, fmt.Errorf("failed to build volume path: %w", err)
 	}
 
-	logger.L().Info(ctx, "deleting directory",
-		zap.String("path", volumePath),
-	)
+	span.AddEvent("deleting directory", trace.WithAttributes(
+		attribute.String("path", volumePath),
+	))
 
 	if err := os.RemoveAll(volumePath); err != nil {
 		return nil, fmt.Errorf("failed to delete volume: %w", err)
