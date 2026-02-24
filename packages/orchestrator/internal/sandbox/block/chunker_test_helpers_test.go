@@ -35,7 +35,6 @@ func newTestFlags(t *testing.T) *featureflags.Client {
 	return flags
 }
 
-//nolint:unparam // size is always testFileSize in current tests but kept as parameter for flexibility
 func makeTestData(t *testing.T, size int) []byte {
 	t.Helper()
 

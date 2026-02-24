@@ -116,7 +116,7 @@ func (g *testFrameGetter) GetFrame(_ context.Context, offsetU int64, ft *storage
 
 // makeCompressedTestData creates test data, LZ4-compresses it into frames,
 // and returns the FrameTable and a testFrameGetter ready for use.
-func makeCompressedTestData(t *testing.T, dataSize, frameSize int, delay time.Duration) ([]byte, *storage.FrameTable, *testFrameGetter) {
+func makeCompressedTestData(t *testing.T, dataSize int, delay time.Duration) ([]byte, *storage.FrameTable, *testFrameGetter) {
 	t.Helper()
 
 	data := make([]byte, dataSize)
@@ -127,8 +127,8 @@ func makeCompressedTestData(t *testing.T, dataSize, frameSize int, delay time.Du
 	compressed := make(map[int64][]byte)
 
 	var cOffset int64
-	for i := 0; i < len(data); i += frameSize {
-		end := min(i+frameSize, len(data))
+	for i := 0; i < len(data); i += testFrameSize {
+		end := min(i+testFrameSize, len(data))
 		frame := data[i:end]
 
 		var buf bytes.Buffer
@@ -270,6 +270,7 @@ func (p *testProgressiveStorage) GetFrame(_ context.Context, offsetU int64, ft *
 			if onRead != nil && written > 0 {
 				onRead(written)
 			}
+
 			return storage.Range{Start: srcStart, Length: int(written)}, fmt.Errorf("simulated upstream error at offset %d", pos)
 		}
 
@@ -303,7 +304,7 @@ func allChunkerTestCases() []chunkerTestCase {
 			name: "Chunker_Compressed",
 			newChunker: func(t *testing.T, data []byte, delay time.Duration) (*Chunker, *storage.FrameTable) {
 				t.Helper()
-				_, ft, getter := makeCompressedTestData(t, len(data), testFrameSize, delay)
+				_, ft, getter := makeCompressedTestData(t, len(data), delay)
 				// Use the getter's uncompressed data as the source truth
 				// since compression may round-trip differently.
 				copy(data, getter.uncompressed)
@@ -588,7 +589,7 @@ func TestChunker_FetchDedup(t *testing.T) {
 		_, err := rand.Read(data)
 		require.NoError(t, err)
 
-		_, ft, getter := makeCompressedTestData(t, testFileSize, testFrameSize, 10*time.Millisecond)
+		_, ft, getter := makeCompressedTestData(t, testFileSize, 10*time.Millisecond)
 		copy(data, getter.uncompressed)
 
 		chunker, err := NewChunker(
@@ -633,7 +634,7 @@ func TestChunker_FetchDedup(t *testing.T) {
 func TestChunker_DualMode_SharedCache(t *testing.T) {
 	t.Parallel()
 
-	data, ft, getter := makeCompressedTestData(t, testFileSize, testFrameSize, 0)
+	data, ft, getter := makeCompressedTestData(t, testFileSize, 0)
 
 	// Create ONE chunker with both compressed and uncompressed assets available.
 	chunker, err := NewChunker(
@@ -728,7 +729,7 @@ func TestChunker_FullChunkCachedAfterPartialRequest(t *testing.T) {
 		t.Parallel()
 
 		data := makeTestData(t, testFileSize)
-		_, ft, getter := makeCompressedTestData(t, testFileSize, testFrameSize, 0)
+		_, ft, getter := makeCompressedTestData(t, testFileSize, 0)
 		copy(data, getter.uncompressed)
 
 		chunker, err := NewChunker(
@@ -759,6 +760,7 @@ func TestChunker_FullChunkCachedAfterPartialRequest(t *testing.T) {
 			if err != nil {
 				return false
 			}
+
 			return bytes.Equal(data[lastBlockInFrame:lastBlockInFrame+testBlockSize], slice)
 		}, 5*time.Second, 10*time.Millisecond)
 
@@ -797,6 +799,7 @@ func TestChunker_FullChunkCachedAfterPartialRequest(t *testing.T) {
 			if err != nil {
 				return false
 			}
+
 			return bytes.Equal(data[lastOff:lastOff+testBlockSize], slice)
 		}, 5*time.Second, 10*time.Millisecond)
 
@@ -987,6 +990,7 @@ func TestChunker_LastBlockPartial(t *testing.T) {
 					newTestFlags(t),
 				)
 				require.NoError(t, err)
+
 				return c, nil
 			},
 		},
@@ -994,7 +998,7 @@ func TestChunker_LastBlockPartial(t *testing.T) {
 			name: "Compressed",
 			newChunker: func(t *testing.T, data []byte, _ time.Duration) (*Chunker, *storage.FrameTable) {
 				t.Helper()
-				_, ft, getter := makeCompressedTestData(t, len(data), testFrameSize, 0)
+				_, ft, getter := makeCompressedTestData(t, len(data), 0)
 				copy(data, getter.uncompressed)
 				c, err := NewChunker(
 					AssetInfo{
@@ -1010,6 +1014,7 @@ func TestChunker_LastBlockPartial(t *testing.T) {
 					newTestFlags(t),
 				)
 				require.NoError(t, err)
+
 				return c, ft
 			},
 		},
