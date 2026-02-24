@@ -521,7 +521,9 @@ func (a *API) DeleteFilesUploadUploadId(w http.ResponseWriter, r *http.Request, 
 
 	operationID := logs.AssignOperationID()
 
-	// Get and remove the session
+	// Look up and remove the session from the map under the lock, but defer
+	// filesystem I/O (Remove, Close) until after the lock is released so a
+	// slow/unresponsive filesystem cannot block unrelated upload operations.
 	a.uploadsLock.Lock()
 	session, exists := a.uploads[uploadId]
 	if exists {
@@ -539,12 +541,6 @@ func (a *API) DeleteFilesUploadUploadId(w http.ResponseWriter, r *http.Request, 
 			return
 		}
 		session.mu.Unlock()
-		// Unlink the temp file before removing from the map. In-flight
-		// writers use the open DestFile descriptor, which remains valid
-		// after unlink. The original file at FilePath is never touched.
-		if err := ignoreNotExist(os.Remove(session.TempPath)); err != nil {
-			a.logger.Warn().Err(err).Str(string(logs.OperationIDKey), operationID).Str("uploadId", uploadId).Msg("error removing temp file")
-		}
 		delete(a.uploads, uploadId)
 	}
 	a.uploadsLock.Unlock()
@@ -554,6 +550,13 @@ func (a *API) DeleteFilesUploadUploadId(w http.ResponseWriter, r *http.Request, 
 		jsonError(w, http.StatusNotFound, fmt.Errorf("upload session not found: %s", uploadId))
 
 		return
+	}
+
+	// Unlink the temp file. The temp path is unique per upload ID so no
+	// other operation can conflict. In-flight writers use the open DestFile
+	// descriptor, which remains valid after unlink.
+	if err := ignoreNotExist(os.Remove(session.TempPath)); err != nil {
+		a.logger.Warn().Err(err).Str(string(logs.OperationIDKey), operationID).Str("uploadId", uploadId).Msg("error removing temp file")
 	}
 
 	// Wait for any in-flight part writes to finish before closing the file descriptor
