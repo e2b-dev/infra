@@ -95,13 +95,14 @@ resource "aws_security_group" "nomad_cluster" {
     security_groups = [aws_security_group.alb.id]
   }
 
-  # SSH access (restrict in production)
+  # SSH access — in production, restrict to within the cluster only
   ingress {
     description = "SSH"
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = [var.vpc_cidr]
+    self        = var.environment != "dev"
+    cidr_blocks = var.environment == "dev" ? [var.vpc_cidr] : []
   }
 
   # Allow all outbound

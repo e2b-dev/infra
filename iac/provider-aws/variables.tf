@@ -498,3 +498,8 @@ variable "loki_use_v13_schema_from" {
     error_message = "must be YYYY-MM-DD"
   }
 }
+
+variable "dockerhub_remote_repository_url" {
+  type    = string
+  default = ""
+}

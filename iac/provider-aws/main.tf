@@ -80,6 +80,7 @@ module "network" {
   aws_region         = var.aws_region
   availability_zones = var.availability_zones
   vpc_cidr           = var.vpc_cidr
+  environment        = var.environment
 
   tags = var.tags
 }
@@ -102,7 +103,6 @@ module "database" {
 
   prefix     = var.prefix
   subnet_ids = module.network.private_subnet_ids
-  rds_sg_id  = module.network.rds_security_group_id
 
   tags = var.tags
 }
@@ -133,10 +133,8 @@ module "cluster" {
   aws_region         = var.aws_region
   availability_zones = var.availability_zones
 
-  vpc_id             = module.network.vpc_id
-  public_subnet_ids  = module.network.public_subnet_ids
-  private_subnet_ids = module.network.private_subnet_ids
-  cluster_sg_id      = module.network.nomad_cluster_security_group_id
+  public_subnet_ids = module.network.public_subnet_ids
+  cluster_sg_id     = module.network.nomad_cluster_security_group_id
 
   iam_instance_profile_name = module.init.iam_instance_profile_name
 
@@ -160,13 +158,6 @@ module "cluster" {
   docker_contexts_bucket_name = module.init.envs_docker_context_bucket_name
 
   nomad_port = var.nomad_port
-  domain_name = var.domain_name
-
-  api_port                 = var.api_port
-  ingress_port             = var.ingress_port
-  docker_reverse_proxy_port = var.docker_reverse_proxy_port
-  client_proxy_port        = var.client_proxy_port
-  client_proxy_health_port = var.client_proxy_health_port
 
   efs_cache_enabled = var.efs_cache_enabled
   efs_dns_name      = var.efs_cache_enabled ? module.efs[0].efs_dns_name : ""
@@ -290,6 +281,12 @@ module "nomad" {
   # Redis
   redis_managed = var.redis_managed
   redis_port    = var.redis_port
+
+  # Loki
+  loki_use_v13_schema_from = var.loki_use_v13_schema_from
+
+  # DockerHub
+  dockerhub_remote_repository_url = var.dockerhub_remote_repository_url
 
   # Filestore / EFS
   shared_chunk_cache_path                       = module.cluster.shared_chunk_cache_path

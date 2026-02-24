@@ -163,7 +163,7 @@ overcommitment_hugepages=$(remove_decimal $overcommitment_hugepages)
 echo $overcommitment_hugepages > /proc/sys/vm/nr_overcommit_hugepages
 
 # --- Start Consul ---
-# Use Amazon-provided DNS as recursor (VPC DNS at .2 of VPC CIDR)
+# Use Amazon-provided DNS as recursor (Route 53 Resolver link-local endpoint)
 VPC_DNS="169.254.169.253"
 
 /opt/consul/bin/run-consul.sh --client \

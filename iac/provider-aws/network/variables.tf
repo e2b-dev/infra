@@ -17,6 +17,12 @@ variable "vpc_cidr" {
   default     = "10.0.0.0/16"
 }
 
+variable "environment" {
+  description = "Environment name (e.g. dev, staging, prod)"
+  type        = string
+  default     = "dev"
+}
+
 variable "tags" {
   description = "Tags to apply to all resources"
   type        = map(string)

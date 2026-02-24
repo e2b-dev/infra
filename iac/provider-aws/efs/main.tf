@@ -31,7 +31,7 @@ resource "aws_efs_access_point" "chunks_cache" {
     creation_info {
       owner_gid   = 0
       owner_uid   = 0
-      permissions = "0777"
+      permissions = "0755"
     }
   }
 

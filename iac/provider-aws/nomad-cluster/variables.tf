@@ -19,15 +19,7 @@ variable "availability_zones" {
   type = list(string)
 }
 
-variable "vpc_id" {
-  type = string
-}
-
 variable "public_subnet_ids" {
-  type = list(string)
-}
-
-variable "private_subnet_ids" {
   type = list(string)
 }
 
@@ -106,49 +98,6 @@ variable "docker_contexts_bucket_name" {
 variable "nomad_port" {
   type    = number
   default = 4646
-}
-
-variable "domain_name" {
-  type = string
-}
-
-variable "api_port" {
-  type = object({
-    name        = string
-    port        = number
-    health_path = string
-  })
-}
-
-variable "ingress_port" {
-  type = object({
-    name        = string
-    port        = number
-    health_path = string
-  })
-}
-
-variable "docker_reverse_proxy_port" {
-  type = object({
-    name        = string
-    port        = number
-    health_path = string
-  })
-}
-
-variable "client_proxy_port" {
-  type = object({
-    name = string
-    port = number
-  })
-}
-
-variable "client_proxy_health_port" {
-  type = object({
-    name = string
-    port = number
-    path = string
-  })
 }
 
 # EFS

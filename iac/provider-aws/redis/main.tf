@@ -50,5 +50,5 @@ resource "aws_elasticache_replication_group" "redis" {
 # Write the connection URL to Secrets Manager
 resource "aws_secretsmanager_secret_version" "redis_cluster_url" {
   secret_id     = var.redis_cluster_url_secret_arn
-  secret_string = "${aws_elasticache_replication_group.redis.configuration_endpoint_address}:6379"
+  secret_string = "rediss://${aws_elasticache_replication_group.redis.configuration_endpoint_address}:6379"
 }

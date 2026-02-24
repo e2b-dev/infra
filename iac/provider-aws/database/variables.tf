@@ -7,11 +7,6 @@ variable "subnet_ids" {
   type        = list(string)
 }
 
-variable "rds_sg_id" {
-  description = "Security group ID for RDS"
-  type        = string
-}
-
 variable "tags" {
   description = "Tags to apply to all resources"
   type        = map(string)
