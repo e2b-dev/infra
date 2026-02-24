@@ -139,6 +139,39 @@ func GetBuildCacheStorageProvider(ctx context.Context, limiter *limit.Limiter) (
 	return nil, fmt.Errorf("unknown storage provider: %s", provider)
 }
 
+// ConfigureLocalUpload configures a filesystem storage provider to generate
+// local signed URLs for file uploads. This is only applicable when using
+// the Local storage provider. Returns true if the provider was configured,
+// false if the provider is not a filesystem storage backend.
+// The hmacKey is used to sign upload tokens, and uploadBaseURL is the base
+// URL of the local upload HTTP endpoint (e.g. "http://localhost:5008").
+func ConfigureLocalUpload(provider StorageProvider, uploadBaseURL string, hmacKey []byte) bool {
+	switch p := provider.(type) {
+	case *fsStorage:
+		p.uploadURL = uploadBaseURL
+		p.hmacKey = hmacKey
+
+		return true
+	case *cache:
+		return ConfigureLocalUpload(p.inner, uploadBaseURL, hmacKey)
+	default:
+		return false
+	}
+}
+
+// GetFSBasePath returns the base path of a filesystem storage provider.
+// Returns empty string and false if the provider is not filesystem-backed.
+func GetFSBasePath(provider StorageProvider) (string, bool) {
+	switch p := provider.(type) {
+	case *fsStorage:
+		return p.basePath, true
+	case *cache:
+		return GetFSBasePath(p.inner)
+	default:
+		return "", false
+	}
+}
+
 func recordError(span trace.Span, err error) {
 	if ignoreEOF(err) == nil {
 		return
