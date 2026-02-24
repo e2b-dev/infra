@@ -10,6 +10,8 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -54,6 +56,8 @@ var (
 func run() int {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	errorCode := atomic.Int32{}
 
 	serviceInstanceID := uuid.New().String()
 	nodeID := e2benv.GetNodeID()
@@ -199,28 +203,34 @@ func run() int {
 	signalCtx, sigCancel := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)
 	defer sigCancel()
 
-	go func() {
+	wg := sync.WaitGroup{}
+
+	wg.Go(func() {
 		<-signalCtx.Done()
 		l.Info(ctx, "Shutting down dashboard-api service...")
 
-		shutdownCtx, shutdownCancel := context.WithTimeout(ctx, 30*time.Second)
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 		defer shutdownCancel()
 
 		if err := s.Shutdown(shutdownCtx); err != nil {
 			l.Error(ctx, "HTTP server shutdown error", zap.Error(err))
+
+			errorCode.Add(1)
 		}
-	}()
+	})
 
 	l.Info(ctx, "HTTP service starting", zap.Int("port", config.Port))
 	if err := s.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		l.Error(ctx, "HTTP service error", zap.Error(err))
 
-		return 1
+		errorCode.Add(1)
+	} else {
+		l.Info(ctx, "HTTP service stopped")
 	}
 
-	l.Info(ctx, "HTTP service stopped")
+	wg.Wait()
 
-	return 0
+	return int(errorCode.Load())
 }
 
 func main() {
