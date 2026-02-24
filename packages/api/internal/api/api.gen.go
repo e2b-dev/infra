@@ -11624,8 +11624,6 @@ func (siw *ServerInterfaceWrapper) PostV3Templates(c *gin.Context) {
 // GetVolumes operation middleware
 func (siw *ServerInterfaceWrapper) GetVolumes(c *gin.Context) {
 
-	c.Set(AccessTokenAuthScopes, []string{})
-
 	c.Set(ApiKeyAuthScopes, []string{})
 
 	c.Set(Supabase1TokenAuthScopes, []string{})
@@ -11644,8 +11642,6 @@ func (siw *ServerInterfaceWrapper) GetVolumes(c *gin.Context) {
 
 // PostVolumes operation middleware
 func (siw *ServerInterfaceWrapper) PostVolumes(c *gin.Context) {
-
-	c.Set(AccessTokenAuthScopes, []string{})
 
 	c.Set(ApiKeyAuthScopes, []string{})
 
@@ -11677,8 +11673,6 @@ func (siw *ServerInterfaceWrapper) DeleteVolumesVolumeID(c *gin.Context) {
 		return
 	}
 
-	c.Set(AccessTokenAuthScopes, []string{})
-
 	c.Set(ApiKeyAuthScopes, []string{})
 
 	c.Set(Supabase1TokenAuthScopes, []string{})
@@ -11708,8 +11702,6 @@ func (siw *ServerInterfaceWrapper) GetVolumesVolumeID(c *gin.Context) {
 		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter volumeID: %w", err), http.StatusBadRequest)
 		return
 	}
-
-	c.Set(AccessTokenAuthScopes, []string{})
 
 	c.Set(ApiKeyAuthScopes, []string{})
 
@@ -11958,10 +11950,10 @@ var swaggerSpec = []string{
 	"hKCUoThlKv87YGJQjlyhjvFyCXTOhZZJ6gWmuVhAUVYp3r0kE9JrwvOnDBPsTMQ3KC9YmxbOYhEvNFXf",
 	"i9Sm9T3wdsbCXOjEhmC2BeTHa+M2lFHw8+5yaqofOrfg7W7V5X71TtKfd5/CTfrz7nM3F2pM/GgFFupv",
 	"LJsAG35Z3TX4uj0rLLr7vn0r1gJEOyN9dd5YBXX3GNHHmsydxP50RvM183jAyCgO/7xs9mvkpm/brvMl",
-	"L++3T3J5v32qy1sDYPifAeT1Hu+nvDTKYzK0jrlp7Xp7Fp/Wr8NUc41WX0agx2iu5qm9fla4vWZJY+qc",
-	"qz5uPmJt6lrKqZmd3Gyohj1rB72Y1HZNXL2kIMm1UJfFOibf1D9G1UtvoTnVSFPdZz3saBHIwDMwIKOy",
-	"5yYYAzf3+8czrNncpMORpcBTqxfLOnd0Z9NsweTQeCWSOlOAydmt2dScRd6eNxci43uTCc7oNtm93sZZ",
-	"5ln9v5W5HMpUBt9q6eyqP0LeCftvWOOWkIBXG5p679Zv2lpZ/F0IAVcP/z8AAP//rBJjxncaAQA=",
+	"L++3T3J5v32qy1sDYPifAeT1Hu+nvDTKYzK0jrlp7Xp7Fp/Wr8NUc41WX0agx2iu5iXuo4F9TEFz1cfN",
+	"MKzdW0vdNLNlm43JsGftIAyTw66Jq++dHZRkZDGDyTf1j1EV0FuISzXS5PVZDztaqDHwDAyxqGyuCa/A",
+	"zY39jhUGNn/o8EEpENLqgLLOrdvZ9EE36S9+XGpQs7Bbs3s5i7w9by5ExvcmE5zRbbJ7vY2zzLP6fyvz",
+	"LZTpBr7VUs5Vf4TcEPbfsAtbQgJebWhqslu/aYti8XdxUV89/P8AAAD//+50raYbGgEA",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file
