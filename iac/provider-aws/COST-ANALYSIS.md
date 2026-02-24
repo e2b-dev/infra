@@ -201,17 +201,118 @@ A Fargate migration would require a complete orchestrator rewrite (3–6 months 
 
 ---
 
+## Amazon Bedrock AgentCore Analysis
+
+[Amazon Bedrock AgentCore](https://aws.amazon.com/bedrock/agentcore/) (GA since October 2025) includes a **Code Interpreter** that provides sandboxed code execution in isolated microVMs — conceptually similar to E2B sandboxes. This section evaluates whether AgentCore could replace E2B's self-hosted Firecracker infrastructure.
+
+### AgentCore Code Interpreter Specs
+
+| Spec | Value |
+|------|-------|
+| **vCPU per session** | 2 (fixed, not adjustable) |
+| **Memory per session** | 8 GB (fixed, not adjustable) |
+| **Disk per session** | 10 GB |
+| **Concurrent sessions/account** | 1,000 (adjustable via AWS support) |
+| **Session timeout** | 15 min default, up to 8 hrs |
+| **Languages** | Python, JavaScript, TypeScript |
+| **Isolation** | Dedicated microVM per session |
+| **Network modes** | Sandbox (limited) or Public (internet access) |
+| **File upload** | 100 MB inline, 5 GB via S3 |
+| **Regions** | 15 regions including eu-central-1 |
+| **Boot time** | "Low-latency" (no published numbers) |
+| **Pricing** | $0.0895/vCPU-hr + $0.00945/GB-hr, per-second billing, idle time free |
+
+### AgentCore Pricing (eu-central-1)
+
+Per session (2 vCPU, 8 GB):
+
+```
+$0.0895 × 2 vCPU + $0.00945 × 8 GB = $0.2546/hr active
+```
+
+Only active execution time is billed — idle time within a session is free.
+
+#### Comparison to Self-Hosted
+
+| Approach | Per-Sandbox $/hr | Notes |
+|----------|-----------------|-------|
+| **E2B self-hosted (C8i)** | ~$0.054 | c8i.4xlarge at $0.862/hr ÷ ~16 concurrent sandboxes |
+| **E2B managed (e2b.dev)** | ~$0.109 | 2 vCPU, 512 MB — published pricing |
+| **AgentCore** | ~$0.255 | 2 vCPU, 8 GB — idle time free |
+
+AgentCore is **~4.7× more expensive** per active hour than self-hosted C8i, and **~2.3× more expensive** than E2B's managed offering. However, AgentCore's idle-free billing can close the gap for bursty, low-utilization workloads.
+
+#### At-Scale Cost Projections
+
+| Users | Peak Concurrent | Avg Active Hrs/mo | AgentCore $/mo | C8i Self-Hosted $/mo |
+|------:|:---------------:|:-----------------:|---------------:|--------------------:|
+| **10** | 1–2 | ~50 | ~$13 | ~$1,838 (floor) |
+| **100** | 5–10 | ~500 | ~$127 | ~$1,838 (floor) |
+| **1,000** | 50–100 | ~5,000 | ~$1,273 | ~$3,183 |
+| **10,000** | 500–1,000 | ~50,000 | ~$12,730 | ~$7,000–$10,000 |
+
+AgentCore is cheaper at **<1,000 concurrent users** due to zero infrastructure floor, but self-hosted C8i wins at scale because amortized compute is cheaper than per-session billing.
+
+### Feature Comparison: AgentCore vs E2B Self-Hosted
+
+| Capability | AgentCore Code Interpreter | E2B Self-Hosted (Firecracker) |
+|-----------|---------------------------|-------------------------------|
+| **Boot time** | Undisclosed ("low-latency") | <1s from snapshot |
+| **Snapshot/restore** | No | Yes (userfaultfd) |
+| **Custom VM images** | No (pre-built runtimes only) | Yes (Docker → Firecracker templates) |
+| **Languages** | Python, JS, TS | Any Linux runtime |
+| **Memory per sandbox** | 8 GB fixed | Configurable (default 512 MB) |
+| **vCPU per sandbox** | 2 fixed | Configurable (default 2) |
+| **Block storage overlays** | No | Yes (NBD rootfs diffs) |
+| **Custom networking** | No (sandbox/public modes) | Yes (per-sandbox netns + iptables) |
+| **Hugepages** | No | Yes (configurable 60–80%) |
+| **Persistent storage** | No (session data deleted) | Yes (EBS, NVMe, S3) |
+| **Disk limit** | 10 GB | Unlimited (EBS/NVMe) |
+| **Concurrent limit** | 1,000/account (adjustable) | Hardware-bound (~150/node) |
+| **Infrastructure mgmt** | None (fully managed) | EC2, Nomad, Consul, Terraform |
+| **Scaling** | Automatic | ASG + manual capacity planning |
+| **IAM integration** | Native | Via instance roles |
+| **Audit logging** | CloudTrail built-in | Custom (OpenTelemetry) |
+| **Rate limit** | 3 invocations/sec/session | None (hardware-bound) |
+
+### When AgentCore Makes Sense
+
+- **Code interpreter only:** Data analysis, chart generation, math computation in Python/JS/TS
+- **Bursty, low-volume workloads:** The idle-free billing wins when sandboxes spend most time waiting
+- **No custom runtime needed:** Standard Python/JS/TS libraries are sufficient
+- **Zero-ops requirement:** No capacity planning, no instance management, no Nomad/Consul
+- **Boot time not critical:** Multi-second startup is acceptable
+
+### When AgentCore Does Not Work (E2B's Case)
+
+- **Sub-second boot from snapshot** — core E2B differentiator, not available in AgentCore
+- **Custom VM templates** — Docker → Firecracker image pipeline not replaceable
+- **Block-level storage overlays** — NBD rootfs diffs for template layering
+- **Per-sandbox networking** — custom netns + iptables rules
+- **Arbitrary runtimes** — any Linux binary, not just Python/JS/TS
+- **High concurrency at scale** — 10K+ concurrent sandboxes (1,000 default account limit)
+- **Right-sized sandboxes** — 512 MB RAM vs forced 8 GB wastes memory budget
+- **Persistent storage** — session data deleted on termination
+
+**Verdict:** AgentCore Code Interpreter is a **complementary tool, not a replacement** for E2B's self-hosted Firecracker infrastructure. It could serve as a lightweight option for simple code interpretation use cases at low volume, but it lacks the snapshot/restore, custom templates, and arbitrary runtime support that define E2B's architecture. For cost optimization, C8i nested virtualization remains the recommended path.
+
+---
+
 ## Approach Comparison
 
-| | i3.metal (current) | C8i + nested virt | Fargate |
-|---|---|---|---|
-| **Min monthly cost** | $9,190 | ~$1,169–1,838 | N/A |
-| **Boot time** | <1s | <1s | 10–30s |
-| **Terraform changes** | None | 2 variables | Complete rewrite |
-| **Application changes** | None | None | 3–6 months |
-| **Scaling granularity** | 72 vCPU steps | 16 vCPU steps | Per-task |
-| **NVMe cache** | 15.2 TB included | EBS (pay per GB) | N/A |
-| **Risk** | None (current) | Low (new AWS feature) | High |
+| | i3.metal (current) | C8i + nested virt | Fargate | AgentCore |
+|---|---|---|---|---|
+| **Min monthly cost** | $9,190 | ~$1,169–1,838 | N/A | $0 (idle-free) |
+| **Cost at 1K users** | ~$9,700 | ~$3,183 | N/A | ~$1,273 |
+| **Cost at 10K users** | ~$31K–40K | ~$7K–10K | N/A | ~$12,730 |
+| **Boot time** | <1s | <1s | 10–30s | Undisclosed |
+| **Snapshot/restore** | Yes | Yes | No | No |
+| **Custom runtimes** | Any Linux | Any Linux | Containers | Python/JS/TS only |
+| **Terraform changes** | None | 2 variables | Complete rewrite | N/A (managed) |
+| **Application changes** | None | None | 3–6 months | Full rewrite |
+| **Scaling granularity** | 72 vCPU steps | 16 vCPU steps | Per-task | Per-session |
+| **NVMe cache** | 15.2 TB included | EBS (pay per GB) | N/A | N/A |
+| **Risk** | None (current) | Low (new AWS feature) | High | N/A (different product) |
 
 ---
 
@@ -313,7 +414,9 @@ Monthly Cost (eu-central-1, on-demand)
 
 5. **Fargate is not viable:** Fargate doesn't expose KVM, NBD, hugepages, or custom netns — all required by the Firecracker orchestrator. A migration would take 3–6 months and degrade boot time from <1s to 10–30s.
 
-6. **Data/DB costs are negligible:** Aurora, Redis, S3, and data transfer together are <5% of total cost at every tier. Compute dominates everything.
+6. **AgentCore is complementary, not a replacement:** Bedrock AgentCore Code Interpreter has zero infrastructure floor and idle-free billing, making it cheaper at <1K users (~$1,273/mo vs $3,183/mo on C8i). But it lacks snapshot/restore, custom runtimes, and scales worse — at 10K users it costs ~$12,730/mo vs ~$7–10K on C8i. It's a viable option only for simple Python/JS/TS code interpretation at low volume.
+
+7. **Data/DB costs are negligible:** Aurora, Redis, S3, and data transfer together are <5% of total cost at every tier. Compute dominates everything.
 
 ---
 
@@ -340,3 +443,7 @@ Monthly Cost (eu-central-1, on-demand)
 - [WAF Pricing](https://aws.amazon.com/waf/pricing/)
 - [ACM Pricing](https://aws.amazon.com/certificate-manager/pricing/)
 - [E2B Sandbox Pricing & Billing](https://e2b.dev/pricing)
+- [Amazon Bedrock AgentCore](https://aws.amazon.com/bedrock/agentcore/)
+- [AgentCore Code Interpreter Docs](https://docs.aws.amazon.com/bedrock/latest/userguide/agentcore-code-interpreter.html)
+- [AgentCore Pricing](https://aws.amazon.com/bedrock/agentcore/pricing/)
+- [AgentCore Code Interpreter Quotas](https://docs.aws.amazon.com/bedrock/latest/userguide/agentcore-quotas.html)
