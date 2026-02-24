@@ -23,17 +23,18 @@ func testTeamWithMaxLengthHours(hours int64) *typesteam.Team {
 func TestCalculateTimeout(t *testing.T) {
 	t.Parallel()
 	team := testTeamWithMaxLengthHours(1)
+	minTimeout := time.Minute
 
 	// Create without explicit timeout should floor to the anti-thrash minimum.
-	timeout := calculateTimeout(0, team)
+	timeout := calculateTimeout(0, minTimeout, team)
 	require.Equal(t, time.Minute, timeout)
 
 	// Very short requests are floored to the anti-thrash minimum.
-	timeout = calculateTimeout(15*time.Second, team)
+	timeout = calculateTimeout(15*time.Second, minTimeout, team)
 	require.Equal(t, time.Minute, timeout)
 
 	// Very long requests are capped by the team's maximum sandbox length.
-	timeout = calculateTimeout(2*time.Hour, team)
+	timeout = calculateTimeout(2*time.Hour, minTimeout, team)
 	require.Equal(t, time.Hour, timeout)
 }
 
@@ -42,15 +43,17 @@ func TestCalculateTimeout(t *testing.T) {
 func TestCalculateAutoResumeTimeout(t *testing.T) {
 	t.Parallel()
 	team := testTeamWithMaxLengthHours(1)
+	minTimeout := time.Minute
 
 	// Older snapshots without persisted value should use the proxy fallback timeout.
-	timeout := calculateAutoResumeTimeout(nil, team)
+	timeout := calculateAutoResumeTimeout(nil, minTimeout, team)
 	require.Equal(t, 5*time.Minute, timeout)
 
 	// Persisted values below minimum are floored to the anti-thrash minimum.
 	shortTimeout := int64(20)
 	timeout = calculateAutoResumeTimeout(
 		&dbtypes.SandboxAutoResumeConfig{Timeout: &shortTimeout},
+		minTimeout,
 		team,
 	)
 	require.Equal(t, time.Minute, timeout)
@@ -59,6 +62,7 @@ func TestCalculateAutoResumeTimeout(t *testing.T) {
 	longTimeout := int64(7200)
 	timeout = calculateAutoResumeTimeout(
 		&dbtypes.SandboxAutoResumeConfig{Timeout: &longTimeout},
+		minTimeout,
 		team,
 	)
 	require.Equal(t, time.Hour, timeout)

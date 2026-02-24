@@ -8,8 +8,6 @@ import (
 )
 
 const (
-	// enforce a minimum of 1 minute autoresume for now
-	minAutoResumeTimeout          = time.Minute
 	defaultProxyAutoResumeTimeout = 5 * time.Minute
 )
 
@@ -21,7 +19,7 @@ func getTeamPlanLimit(team *typesteam.Team) time.Duration {
 	return time.Duration(team.Limits.MaxLengthHours) * time.Hour
 }
 
-func clampAutoResumeTimeout(requestedTimeout, teamPlanLimit time.Duration) time.Duration {
+func clampAutoResumeTimeout(requestedTimeout, teamPlanLimit, minAutoResumeTimeout time.Duration) time.Duration {
 	timeout := requestedTimeout
 	if teamPlanLimit > 0 && timeout > teamPlanLimit {
 		timeout = teamPlanLimit
@@ -33,15 +31,15 @@ func clampAutoResumeTimeout(requestedTimeout, teamPlanLimit time.Duration) time.
 	return timeout
 }
 
-func calculateTimeout(requestedTimeout time.Duration, team *typesteam.Team) time.Duration {
-	return clampAutoResumeTimeout(requestedTimeout, getTeamPlanLimit(team))
+func calculateTimeout(requestedTimeout, minAutoResumeTimeout time.Duration, team *typesteam.Team) time.Duration {
+	return clampAutoResumeTimeout(requestedTimeout, getTeamPlanLimit(team), minAutoResumeTimeout)
 }
 
-func calculateAutoResumeTimeout(autoResume *dbtypes.SandboxAutoResumeConfig, team *typesteam.Team) time.Duration {
+func calculateAutoResumeTimeout(autoResume *dbtypes.SandboxAutoResumeConfig, minAutoResumeTimeout time.Duration, team *typesteam.Team) time.Duration {
 	timeout := defaultProxyAutoResumeTimeout
 	if autoResume != nil && autoResume.Timeout != nil && *autoResume.Timeout > 0 {
 		timeout = time.Duration(*autoResume.Timeout) * time.Second
 	}
 
-	return clampAutoResumeTimeout(timeout, getTeamPlanLimit(team))
+	return clampAutoResumeTimeout(timeout, getTeamPlanLimit(team), minAutoResumeTimeout)
 }
