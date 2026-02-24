@@ -2,7 +2,7 @@
 
 ## Context
 
-Cost estimation for self-hosting E2B infrastructure on AWS **eu-central-1 (Frankfurt)**, based on the Terraform configuration in `iac/provider-aws/`. All prices are **on-demand** rates as of February 2026. Frankfurt is ~12–19% more expensive than us-east-1 depending on the service.
+Cost estimation for self-hosting E2B infrastructure on AWS **eu-central-1 (Frankfurt)**, based on the Terraform configuration in `iac/provider-aws/`. All prices are **on-demand** rates unless noted as spot. Spot prices are approximate and vary by AZ and time. Prices as of February 2026. Frankfurt is ~12–19% more expensive than us-east-1 depending on the service.
 
 Sandbox config: **2 vCPU, 512 MB RAM** (default).
 
@@ -88,6 +88,8 @@ Each Firecracker sandbox: **2 vCPU + 512 MB RAM** (default).
 
 ### Scaling Table
 
+> Costs shown for i3.metal baseline. With the recommended c8i.2xlarge + spot setup, the floor drops to ~$1,107/mo — see [Baseline with C8i](#baseline-with-c8i-eu-central-1) for C8i-specific numbers.
+
 | Users | Peak Concurrent Sandboxes | Client Nodes | Build Nodes | Aurora ACU | Monthly Cost |
 |------:|:------------------------:|:------------:|:-----------:|:----------:|-------------:|
 | **0** | 0 | 1 | 1 | 0.5 | **~$9,190** |
@@ -136,39 +138,57 @@ As of February 2026, AWS supports [nested virtualization on C8i/M8i/R8i instance
 
 This eliminates the bare-metal requirement and allows right-sizing instances to actual load.
 
-### C8i Pricing (eu-central-1, on-demand)
+### C8i Pricing (eu-central-1)
 
-| Instance | vCPU | RAM | $/hr | $/month | Sandboxes (2vCPU, 512MB) |
-|----------|------|-----|------|---------|--------------------------|
-| c8i.4xlarge | 16 | 32 GB | $0.862 | **$629** | ~8–24 |
-| c8i.8xlarge | 32 | 64 GB | $1.724 | **$1,258** | ~16–48 |
-| c8i.12xlarge | 48 | 96 GB | $2.586 | **$1,884** | ~24–72 |
-| c8i.24xlarge | 96 | 192 GB | $5.172 | **$3,775** | ~48–144 |
-| i3.metal | 72 | 512 GB | $5.952 | **$4,345** | ~100–150 |
+| Instance | vCPU | RAM | On-Demand $/hr | Spot $/hr | On-Demand $/mo | Spot $/mo | Sandboxes (2vCPU, 512MB) |
+|----------|------|-----|---------------|-----------|---------------|-----------|--------------------------|
+| c8i.2xlarge | 8 | 16 GB | $0.410 | ~$0.290 | **$299** | **~$212** | ~4–12 |
+| c8i.4xlarge | 16 | 32 GB | $0.862 | ~$0.610 | **$629** | **~$445** | ~8–24 |
+| c8i.8xlarge | 32 | 64 GB | $1.724 | ~$1.220 | **$1,258** | **~$891** | ~16–48 |
+| c8i.12xlarge | 48 | 96 GB | $2.586 | ~$1.830 | **$1,884** | **~$1,336** | ~24–72 |
+| c8i.24xlarge | 96 | 192 GB | $5.172 | ~$3.660 | **$3,775** | **~$2,672** | ~48–144 |
+| i3.metal | 72 | 512 GB | $5.952 | ~$1.700 | **$4,345** | **~$1,241** | ~100–150 |
 
-> **Note:** C8i instances have less RAM per vCPU than i3.metal (2 GB/vCPU vs 7 GB/vCPU), so sandbox capacity is CPU-bound at lower instance sizes. At c8i.4xlarge with 80% hugepages, ~25 GB is available for sandbox memory (~50 sandboxes at 512 MB). Cache storage uses an EBS gp3 volume instead of NVMe instance store.
+> **Note:** C8i instances have less RAM per vCPU than i3.metal (2 GB/vCPU vs 7 GB/vCPU), so sandbox capacity is CPU-bound at lower instance sizes. At c8i.2xlarge with 80% hugepages, ~12.8 GB is available for sandbox memory (~25 sandboxes at 512 MB), but CPU limits practical concurrency to ~4–12. At c8i.4xlarge with 80% hugepages, ~25 GB is available (~50 sandboxes at 512 MB). Cache storage uses an EBS gp3 volume instead of NVMe instance store. Spot pricing is typically ~29–31% off on-demand for C8i instances.
 
-### Baseline with C8i (eu-central-1, on-demand)
+### Baseline with C8i (eu-central-1)
 
 | Scenario | Client | Build | Other Infra | EBS Cache | Total |
 |----------|--------|-------|-------------|-----------|-------|
 | **Current (i3.metal)** | $4,345 | $4,345 | $500 | $0 (NVMe) | **$9,190** |
-| **C8i (0–100 users)** | $629 (c8i.4xlarge) | $629 (c8i.4xlarge) | $500 | ~$80 | **~$1,838** |
-| **C8i + build at zero** | $629 (c8i.4xlarge) | $0 | $500 | ~$40 | **~$1,169** |
-| **C8i (1K users)** | $1,884 (c8i.12xlarge) | $629 | $550 | ~$120 | **~$3,183** |
+| **Recommended (c8i.2xlarge + spot)** | $299 (c8i.2xlarge on-demand) | ~$212 (c8i.2xlarge spot) | $500 | ~$96 | **~$1,107** |
+| **C8i.4xlarge (0–100 users)** | $629 (c8i.4xlarge) | $629 (c8i.4xlarge) | $500 | ~$96 | **~$1,854** |
+| **C8i.4xlarge + build at zero** | $629 (c8i.4xlarge) | $0 | $500 | ~$48 | **~$1,177** |
+| **C8i (1K users)** | $1,884 (c8i.12xlarge) | $629 | $550 | ~$144 | **~$3,207** |
 
-> EBS cache cost: 500 GB gp3 at ~$0.096/GB-mo = ~$48/volume. Included in estimates above.
+> EBS cache cost: 500 GB gp3 at ~$0.096/GB-mo = ~$48/volume. The recommended setup uses 2 volumes (1 client + 1 build) = ~$96/mo.
 
-### Example Terraform Config (C8i)
+### C8i Cost by User Scale
+
+| Users | Peak Concurrent | Client Config | Build | Other + EBS | Monthly Cost |
+|------:|:---------------:|---------------|-------|-------------|-------------:|
+| **0–350** | 0–18 | 1× c8i.2xlarge | 1× c8i.2xlarge spot | ~$596 | **~$1,107** |
+| **350–1K** | 18–50 | 3× c8i.2xlarge (autoscale) | 1× c8i.2xlarge spot | ~$740 | **~$1,850–2,800** |
+| **1K–5K** | 50–250 | 2–4× c8i.4xlarge | 1× c8i.4xlarge | ~$900 | **~$3,000–5,000** |
+| **5K–10K** | 250–1000 | 4–8× c8i.12xlarge | 1× c8i.4xlarge | ~$1,100 | **~$9,000–17,000** |
+
+### Example Terraform Config (Recommended: c8i.2xlarge + spot build)
 
 ```hcl
+# Client cluster: on-demand c8i.2xlarge with autoscaling (1–3 nodes)
 client_clusters_config = {
   "default" = {
     cluster_size          = 1
-    instance_type         = "c8i.4xlarge"
+    instance_type         = "c8i.2xlarge"
     nested_virtualization = true
     cache_disk_size_gb    = 500
-    boot_disk_size_gb     = 100
+    autoscaler = {
+      min_size   = 1
+      max_size   = 3
+      cpu_target = 70
+    }
+    boot_disk_size_gb = 100
+    # cache_disks is reserved for future multi-disk support
     cache_disks = {
       type    = "ebs"
       size_gb = 500
@@ -177,7 +197,33 @@ client_clusters_config = {
     hugepages_percentage = 80
   }
 }
+
+# Build cluster: spot c8i.2xlarge — always-on but cheap
+build_clusters_config = {
+  "default" = {
+    cluster_size          = 1
+    instance_type         = "c8i.2xlarge"
+    nested_virtualization = true
+    use_spot              = true
+    cache_disk_size_gb    = 500
+    autoscaler = {
+      min_size   = 1
+      max_size   = 2
+      cpu_target = 70
+    }
+    boot_disk_size_gb = 100
+    # cache_disks is reserved for future multi-disk support
+    cache_disks = {
+      type    = "ebs"
+      size_gb = 500
+      count   = 1
+    }
+    hugepages_percentage = 60
+  }
+}
 ```
+
+This gives ~4–12 concurrent sandboxes per client node, scaling to ~12–36 with autoscaler max=3 — sufficient for 0–350 users (at typical 5% peak concurrency). The build cluster uses spot instances (~29% discount) since template builds are fault-tolerant and can retry on interruption.
 
 ---
 
@@ -236,22 +282,22 @@ Only active execution time is billed — idle time within a session is free.
 
 | Approach | Per-Sandbox $/hr | Notes |
 |----------|-----------------|-------|
-| **E2B self-hosted (C8i)** | ~$0.054 | c8i.4xlarge at $0.862/hr ÷ ~16 concurrent sandboxes |
+| **E2B self-hosted (C8i)** | ~$0.054 | c8i.4xlarge at $0.862/hr ÷ ~16 concurrent sandboxes (c8i.2xlarge: ~$0.051/sandbox at $0.410/hr ÷ ~8) |
 | **E2B managed (e2b.dev)** | ~$0.109 | 2 vCPU, 512 MB — published pricing |
 | **AgentCore** | ~$0.255 | 2 vCPU, 8 GB — idle time free |
 
-AgentCore is **~4.7× more expensive** per active hour than self-hosted C8i, and **~2.3× more expensive** than E2B's managed offering. However, AgentCore's idle-free billing can close the gap for bursty, low-utilization workloads.
+AgentCore is **~4.7–5× more expensive** per active hour than self-hosted C8i (depending on instance size), and **~2.3× more expensive** than E2B's managed offering. However, AgentCore's idle-free billing can close the gap for bursty, low-utilization workloads.
 
 #### At-Scale Cost Projections
 
 | Users | Peak Concurrent | Avg Active Hrs/mo | AgentCore $/mo | C8i Self-Hosted $/mo |
 |------:|:---------------:|:-----------------:|---------------:|--------------------:|
-| **10** | 1–2 | ~50 | ~$13 | ~$1,838 (floor) |
-| **100** | 5–10 | ~500 | ~$127 | ~$1,838 (floor) |
-| **1,000** | 50–100 | ~5,000 | ~$1,273 | ~$3,183 |
-| **10,000** | 500–1,000 | ~50,000 | ~$12,730 | ~$7,000–$10,000 |
+| **10** | 1–2 | ~50 | ~$13 | ~$1,107 (floor) |
+| **100** | 5–10 | ~500 | ~$127 | ~$1,107 (floor) |
+| **1,000** | 50–100 | ~5,000 | ~$1,273 | ~$2,500–3,500 |
+| **10,000** | 500–1,000 | ~50,000 | ~$12,730 | ~$10,000–15,000 |
 
-AgentCore is cheaper at **<1,000 concurrent users** due to zero infrastructure floor, but self-hosted C8i wins at scale because amortized compute is cheaper than per-session billing.
+AgentCore is cheaper at **<~1,000 registered users** due to zero infrastructure floor, but self-hosted C8i wins at scale because amortized compute is cheaper than per-session billing. The crossover is lower with the recommended c8i.2xlarge + spot baseline (~$1,107/mo floor) than with c8i.4xlarge (~$1,854/mo).
 
 ### Feature Comparison: AgentCore vs E2B Self-Hosted
 
@@ -268,7 +314,7 @@ AgentCore is cheaper at **<1,000 concurrent users** due to zero infrastructure f
 | **Hugepages** | No | Yes (configurable 60–80%) |
 | **Persistent storage** | No (session data deleted) | Yes (EBS, NVMe, S3) |
 | **Disk limit** | 10 GB | Unlimited (EBS/NVMe) |
-| **Concurrent limit** | 1,000/account (adjustable) | Hardware-bound (~150/node) |
+| **Concurrent limit** | 1,000/account (adjustable) | Hardware-bound (~4–150/node depending on instance) |
 | **Infrastructure mgmt** | None (fully managed) | EC2, Nomad, Consul, Terraform |
 | **Scaling** | Automatic | ASG + manual capacity planning |
 | **IAM integration** | Native | Via instance roles |
@@ -300,27 +346,30 @@ AgentCore is cheaper at **<1,000 concurrent users** due to zero infrastructure f
 
 ## Approach Comparison
 
-| | i3.metal (current) | C8i + nested virt | Fargate | AgentCore |
-|---|---|---|---|---|
-| **Min monthly cost** | $9,190 | ~$1,169–1,838 | N/A | $0 (idle-free) |
-| **Cost at 1K users** | ~$9,700 | ~$3,183 | N/A | ~$1,273 |
-| **Cost at 10K users** | ~$31K–40K | ~$7K–10K | N/A | ~$12,730 |
-| **Boot time** | <1s | <1s | 10–30s | Undisclosed |
-| **Snapshot/restore** | Yes | Yes | No | No |
-| **Custom runtimes** | Any Linux | Any Linux | Containers | Python/JS/TS only |
-| **Terraform changes** | None | 2 variables | Complete rewrite | N/A (managed) |
-| **Application changes** | None | None | 3–6 months | Full rewrite |
-| **Scaling granularity** | 72 vCPU steps | 16 vCPU steps | Per-task | Per-session |
-| **NVMe cache** | 15.2 TB included | EBS (pay per GB) | N/A | N/A |
-| **Risk** | None (current) | Low (new AWS feature) | High | N/A (different product) |
+| | i3.metal (current) | C8i.2xlarge + spot (recommended) | C8i.4xlarge | Fargate | AgentCore |
+|---|---|---|---|---|---|
+| **Min monthly cost** | $9,190 | **~$1,107** | ~$1,177–1,854 | N/A | $0 (idle-free) |
+| **Cost at 1K users** | ~$9,700 | ~$2,500–3,500 | ~$3,207 | N/A | ~$1,273 |
+| **Cost at 10K users** | ~$31K–40K | ~$10K–15K¹ | ~$7K–10K | N/A | ~$12,730 |
+| **Boot time** | <1s | <1s | <1s | 10–30s | Undisclosed |
+| **Snapshot/restore** | Yes | Yes | Yes | No | No |
+| **Custom runtimes** | Any Linux | Any Linux | Any Linux | Containers | Python/JS/TS only |
+| **Terraform changes** | None | 3 variables | 2 variables | Complete rewrite | N/A (managed) |
+| **Application changes** | None | None | None | 3–6 months | Full rewrite |
+| **Scaling granularity** | 72 vCPU steps | 8 vCPU steps | 16 vCPU steps | Per-task | Per-session |
+| **Sandboxes per node** | ~100–150 | ~4–12 | ~8–24 | Per-task | Per-session |
+| **NVMe cache** | 15.2 TB included | EBS (pay per GB) | EBS (pay per GB) | N/A | N/A |
+| **Risk** | None (current) | Low (spot interruption) | Low (new AWS feature) | High | N/A (different product) |
+
+> ¹ At 10K users you'd scale to larger C8i instances (c8i.8xlarge+), not stay on c8i.2xlarge. Estimate assumes a mix of c8i.12xlarge nodes.
 
 ---
 
 ## Cost Optimization Strategies
 
-### 1. C8i Nested Virtualization (Biggest Impact — New)
+### 1. C8i Nested Virtualization + Spot (Biggest Impact — Recommended)
 
-Switch from i3.metal to C8i instances with `nested_virtualization = true`. Drops the infrastructure floor from $9,190 to ~$1,169–1,838/mo — an **80–87% reduction**. See [C8i Nested Virtualization Option](#c8i-nested-virtualization-option) above.
+Switch from i3.metal to C8i instances with `nested_virtualization = true`. The recommended baseline is c8i.2xlarge on-demand (client) + c8i.2xlarge spot (build), dropping the floor from $9,190 to **~$1,107/mo** — an **88% reduction**. Spot instances provide ~29% savings on the build cluster since template builds are fault-tolerant. See [C8i Nested Virtualization Option](#c8i-nested-virtualization-option) above.
 
 ### 2. Reserved Instances (Biggest Impact on i3.metal)
 
@@ -336,7 +385,7 @@ At 2 nodes (minimum), **1-year RI saves ~$3,214/mo** ($38.6K/year).
 At 10 nodes (10K users), **3-year RI saves ~$25,640/mo** ($307K/year).
 
 ### 3. Spot Instances for Build Cluster
-Build nodes are used intermittently for template compilation. Spot pricing for i3.metal is typically **60–70% off** (~$1,700/mo vs $4,345). Builds can retry on interruption.
+Build nodes are used intermittently for template compilation and are fault-tolerant (builds can retry on interruption). The recommended config uses `use_spot = true` on the build cluster. C8i spot savings are ~29% (~$212/mo vs $299/mo for c8i.2xlarge). For i3.metal, spot pricing is typically **~70% off** (~$1,241/mo vs $4,345), though i3.metal spot prices are highly variable.
 
 ### 4. Single NAT Gateway (Dev/Staging)
 Use 1 NAT gateway instead of per-AZ: saves ~$35/mo. Trade-off: AZ-level egress failure risk.
@@ -345,7 +394,7 @@ Use 1 NAT gateway instead of per-AZ: saves ~$35/mo. Trade-off: AZ-level egress f
 Firecracker supports aarch64. `c7g.metal` (~$2.77/hr in eu-central-1, ~$2,022/mo) could cut compute costs by **53%** but requires building ARM AMI and thorough testing.
 
 ### 6. Scale-to-Zero Build Cluster
-If template building is infrequent, scale build ASG to 0 when idle and bring up on demand. Saves $4,345/mo when idle.
+If template building is infrequent, scale build ASG to 0 when idle and bring up on demand. Saves the build node cost when idle — from ~$212/mo (c8i.2xlarge spot) to $4,345/mo (i3.metal on-demand), depending on config.
 
 ### 7. Self-Hosted Redis on Nomad
 Terraform supports `redis_managed = false` with a self-hosted Redis Nomad job. Saves ~$111/mo but loses managed HA, auto-failover, and TLS.
@@ -358,32 +407,53 @@ Terraform supports `redis_managed = false` with a self-hosted Redis Nomad job. S
 
 | Optimization | Monthly Savings |
 |-------------|----------------|
-| 1-year RI on 2× i3.metal | −$3,214 |
-| Spot for build cluster | −$2,600 |
+| 1-year RI on client i3.metal | −$1,607 |
+| Spot for build i3.metal | −$3,104 |
 | 1 NAT gateway (dev/staging) | −$35 |
 | Self-hosted Redis | −$111 |
-| **Optimized i3.metal minimum** | **~$3,230/mo** |
+| **Optimized i3.metal minimum** | **~$4,333/mo** |
+
+> RI and spot are mutually exclusive pricing models — RI is applied to the always-on client node, spot to the fault-tolerant build node.
 
 vs. on-demand baseline of **$9,190/mo**.
 
-### With C8i nested virtualization (recommended)
+### With c8i.2xlarge + spot build (recommended)
+
+| Component | Config | Monthly Cost |
+|-----------|--------|-------------|
+| Client cluster | 1× c8i.2xlarge on-demand | $299 |
+| Build cluster | 1× c8i.2xlarge spot | ~$212 |
+| EBS cache | 2× 500 GB gp3 | $96 |
+| Other infra | Servers, API, Redis, Aurora, NAT, etc. | ~$500 |
+| **Recommended baseline** | | **~$1,107/mo** |
+
+With further optimizations:
 
 | Optimization | Monthly Cost |
 |-------------|-------------|
-| C8i.4xlarge client + build | ~$1,838 |
+| Recommended baseline (above) | ~$1,107 |
+| 1 NAT gateway (dev/staging) | −$35 |
+| Self-hosted Redis | −$111 |
+| **Optimized minimum** | **~$961/mo** |
+
+vs. on-demand i3.metal baseline of **$9,190/mo** — a **90% reduction**.
+
+### With C8i.4xlarge (higher capacity alternative)
+
+| Optimization | Monthly Cost |
+|-------------|-------------|
+| C8i.4xlarge client + build | ~$1,854 |
 | Scale build cluster to zero | −$629 |
 | 1 NAT gateway (dev/staging) | −$35 |
 | Self-hosted Redis | −$111 |
-| **Optimized C8i minimum** | **~$1,063/mo** |
-
-vs. on-demand i3.metal baseline of **$9,190/mo** — an **88% reduction**.
+| **Optimized C8i.4xlarge minimum** | **~$1,079/mo** |
 
 ---
 
 ## Summary
 
 ```
-Monthly Cost (eu-central-1, on-demand)
+Monthly Cost (eu-central-1)
 
   $400K ┤                                                    ╱
         │                                                  ╱
@@ -395,26 +465,27 @@ Monthly Cost (eu-central-1, on-demand)
         │                                      ╱
    $40K ┤                          ╱──────────
         │           ╱─────────────
-   $10K ┤──────────     ← i3.metal floor: $9,190/mo (0–1K users)
-    $2K ┤──────────     ← C8i floor: ~$1,838/mo (0–100 users)
-    $1K ┤ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ← Optimized C8i: ~$1,063/mo
+   $10K ┤──────────     ← i3.metal floor: $9,190/mo
+    $2K ┤──────────     ← C8i.4xlarge floor: ~$1,854/mo
+    $1K ┤──────────     ← c8i.2xlarge + spot (recommended): ~$1,107/mo
+        ┤ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ← Optimized minimum: ~$961/mo
         ├────────┬────────┬────────┬────────┬────────┬────
         0       10      100      1K      10K     100K   Users
 ```
 
 ### Key Takeaways
 
-1. **C8i nested virtualization drops the floor by 80%:** Switching from i3.metal to c8i.4xlarge reduces baseline from $9,190 to ~$1,838/mo with zero application changes. With build cluster at zero, the floor is ~$1,169/mo.
+1. **C8i.2xlarge + spot drops the floor by 88%:** The recommended starting point is c8i.2xlarge on-demand (client) + c8i.2xlarge spot (build), reducing baseline from $9,190 to **~$1,107/mo** with zero application changes. This provides ~4–12 concurrent sandboxes per node, scaling to ~36 with autoscaler max=3 (sufficient for 0–350 users at typical 5% peak concurrency). For higher capacity without spot risk, c8i.4xlarge at ~$1,854/mo provides ~8–24 sandboxes per node.
 
 2. **High i3.metal floor, flat to 1K users:** With i3.metal, infrastructure costs ~$9,190/mo regardless of whether you have 0 or 1,000 users. The two bare-metal instances ($8,690/mo) are the dominant cost.
 
-3. **Finer scaling granularity with C8i:** Instead of 72-vCPU steps (i3.metal), scale in 16-vCPU increments. Better cost-to-load matching at every tier.
+3. **Finer scaling granularity with C8i:** Instead of 72-vCPU steps (i3.metal), scale in 8-vCPU increments (c8i.2xlarge) or 16-vCPU (c8i.4xlarge). Better cost-to-load matching at every tier.
 
 4. **Reserved Instances still matter at scale:** At 10K+ users, 3-year RIs on C8i instances save significant cost. The per-node savings percentage is the same.
 
 5. **Fargate is not viable:** Fargate doesn't expose KVM, NBD, hugepages, or custom netns — all required by the Firecracker orchestrator. A migration would take 3–6 months and degrade boot time from <1s to 10–30s.
 
-6. **AgentCore is complementary, not a replacement:** Bedrock AgentCore Code Interpreter has zero infrastructure floor and idle-free billing, making it cheaper at <1K users (~$1,273/mo vs $3,183/mo on C8i). But it lacks snapshot/restore, custom runtimes, and scales worse — at 10K users it costs ~$12,730/mo vs ~$7–10K on C8i. It's a viable option only for simple Python/JS/TS code interpretation at low volume.
+6. **AgentCore is complementary, not a replacement:** Bedrock AgentCore Code Interpreter has zero infrastructure floor and idle-free billing, making it cheaper at <~1,000 registered users (~$127/mo at 100 users vs $1,107/mo floor on C8i). But it lacks snapshot/restore, custom runtimes, and scales worse — at 10K users it costs ~$12,730/mo vs ~$10–15K on C8i. It's a viable option only for simple Python/JS/TS code interpretation at low volume.
 
 7. **Data/DB costs are negligible:** Aurora, Redis, S3, and data transfer together are <5% of total cost at every tier. Compute dominates everything.
 
