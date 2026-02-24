@@ -58,13 +58,6 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 		return
 	}
 
-	if err := a.validateAccessToken(r); err != nil {
-		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("unauthorized upload init request")
-		jsonError(w, http.StatusUnauthorized, err)
-
-		return
-	}
-
 	// Resolve username
 	username, err := execcontext.ResolveDefaultUsername(params.Username, a.defaults.User)
 	if err != nil {
@@ -207,14 +200,6 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 
 	operationID := logs.AssignOperationID()
 
-	// Validate access token
-	if err := a.validateAccessToken(r); err != nil {
-		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("unauthorized upload part request")
-		jsonError(w, http.StatusUnauthorized, err)
-
-		return
-	}
-
 	// Get the session
 	a.uploadsLock.RLock()
 	session, exists := a.uploads[uploadId]
@@ -325,14 +310,6 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 
 	operationID := logs.AssignOperationID()
 
-	// Validate access token
-	if err := a.validateAccessToken(r); err != nil {
-		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("unauthorized upload complete request")
-		jsonError(w, http.StatusUnauthorized, err)
-
-		return
-	}
-
 	// Get and remove the session
 	a.uploadsLock.Lock()
 	session, exists := a.uploads[uploadId]
@@ -411,14 +388,6 @@ func (a *API) DeleteFilesUploadUploadId(w http.ResponseWriter, r *http.Request, 
 	defer r.Body.Close()
 
 	operationID := logs.AssignOperationID()
-
-	// Validate access token
-	if err := a.validateAccessToken(r); err != nil {
-		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("unauthorized upload abort request")
-		jsonError(w, http.StatusUnauthorized, err)
-
-		return
-	}
 
 	// Get and remove the session
 	a.uploadsLock.Lock()

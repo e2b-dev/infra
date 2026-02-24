@@ -21,9 +21,9 @@ const (
 	accessTokenHeader = "X-Access-Token"
 )
 
-// allowedPaths are paths that bypass general authentication
-// (e.g., health check, endpoints supporting signing)
-var allowedPaths = []string{
+// paths that are always allowed without general authentication
+// POST/init is secured via MMDS hash validation instead
+var authExcludedPaths = []string{
 	"GET/health",
 	"GET/files",
 	"POST/files",
@@ -34,9 +34,11 @@ func (a *API) WithAuthorization(handler http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if a.accessToken.IsSet() {
 			authHeader := req.Header.Get(accessTokenHeader)
-			methodPath := req.Method + req.URL.Path
 
-			if !a.accessToken.Equals(authHeader) && !slices.Contains(allowedPaths, methodPath) {
+			// check if this path is allowed without authentication (e.g., health check, endpoints supporting signing)
+			allowedPath := slices.Contains(authExcludedPaths, req.Method+req.URL.Path)
+
+			if !a.accessToken.Equals(authHeader) && !allowedPath {
 				a.logger.Error().Msg("Trying to access secured envd without correct access token")
 
 				err := fmt.Errorf("unauthorized access, please provide a valid access token or method signing if supported")
@@ -67,21 +69,6 @@ func (a *API) generateSignature(path string, username string, operation string, 
 	}
 
 	return fmt.Sprintf("v1_%s", hasher.HashWithoutPrefix([]byte(signature))), nil
-}
-
-// validateAccessToken checks that the request carries the correct access token header.
-// Returns nil if no access token is configured or if the token matches.
-func (a *API) validateAccessToken(r *http.Request) error {
-	if !a.accessToken.IsSet() {
-		return nil
-	}
-
-	tokenFromHeader := r.Header.Get(accessTokenHeader)
-	if tokenFromHeader == "" || !a.accessToken.Equals(tokenFromHeader) {
-		return fmt.Errorf("unauthorized: valid access token required")
-	}
-
-	return nil
 }
 
 func (a *API) validateSigning(r *http.Request, signature *string, signatureExpiration *int, username *string, path string, operation string) (err error) {
