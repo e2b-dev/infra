@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"connectrpc.com/connect"
 
@@ -92,9 +93,17 @@ func (s *Service) handleConnect(ctx context.Context, req *connect.Request[rpc.Co
 			}
 		}
 
+		// We MUST deliver the end event if the process has exited.
+		// The data channel closing means all stdout/stderr is drained,
+		// so the process is done or nearly done. Use a generous timeout
+		// rather than racing against ctx.Done(), which can fire due to
+		// transient network issues (proxy reset, NAT rebinding, etc).
+		endCtx, endCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer endCancel()
+
 		select {
-		case <-ctx.Done():
-			cancel(ctx.Err())
+		case <-endCtx.Done():
+			cancel(fmt.Errorf("timed out waiting for process end event after data channel closed"))
 
 			return
 		case event, ok := <-end:
@@ -110,8 +119,6 @@ func (s *Service) handleConnect(ctx context.Context, req *connect.Request[rpc.Co
 				},
 			})
 			if streamErr != nil {
-				cancel(connect.NewError(connect.CodeUnknown, fmt.Errorf("error sending end event: %w", streamErr)))
-
 				return
 			}
 		}
