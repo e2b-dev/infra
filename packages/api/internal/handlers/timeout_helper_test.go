@@ -18,24 +18,24 @@ func testTeamWithMaxLengthHours(hours int64) *typesteam.Team {
 	}
 }
 
-// TestCalculateTimeout verifies create-time timeout handling:
+// TestCalculateTimeoutSeconds verifies create-time timeout handling:
 // no timeout -> do not persist, short timeout -> min floor, long timeout -> team cap.
-func TestCalculateTimeout(t *testing.T) {
+func TestCalculateTimeoutSeconds(t *testing.T) {
 	t.Parallel()
 	team := testTeamWithMaxLengthHours(1)
 	minTimeout := time.Minute
 
 	// Create without explicit timeout should floor to the anti-thrash minimum.
-	timeout := calculateTimeout(0, minTimeout, team)
-	require.Equal(t, time.Minute, timeout)
+	timeout := calculateTimeoutSeconds(0, minTimeout, team)
+	require.Equal(t, uint64(60), timeout)
 
 	// Very short requests are floored to the anti-thrash minimum.
-	timeout = calculateTimeout(15*time.Second, minTimeout, team)
-	require.Equal(t, time.Minute, timeout)
+	timeout = calculateTimeoutSeconds(15*time.Second, minTimeout, team)
+	require.Equal(t, uint64(60), timeout)
 
 	// Very long requests are capped by the team's maximum sandbox length.
-	timeout = calculateTimeout(2*time.Hour, minTimeout, team)
-	require.Equal(t, time.Hour, timeout)
+	timeout = calculateTimeoutSeconds(2*time.Hour, minTimeout, team)
+	require.Equal(t, uint64(3600), timeout)
 }
 
 // TestCalculateAutoResumeTimeout verifies resume-time timeout handling:

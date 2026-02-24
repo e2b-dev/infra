@@ -31,8 +31,8 @@ func clampAutoResumeTimeout(requestedTimeout, teamPlanLimit, minAutoResumeTimeou
 	return timeout
 }
 
-func calculateTimeout(requestedTimeout, minAutoResumeTimeout time.Duration, team *typesteam.Team) time.Duration {
-	return clampAutoResumeTimeout(requestedTimeout, getTeamPlanLimit(team), minAutoResumeTimeout)
+func calculateTimeoutSeconds(requestedTimeout, minAutoResumeTimeout time.Duration, team *typesteam.Team) uint64 {
+	return uint64(clampAutoResumeTimeout(requestedTimeout, getTeamPlanLimit(team), minAutoResumeTimeout).Seconds())
 }
 
 func calculateAutoResumeTimeout(autoResume *dbtypes.SandboxAutoResumeConfig, minAutoResumeTimeout time.Duration, team *typesteam.Team) time.Duration {
