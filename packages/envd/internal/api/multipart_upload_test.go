@@ -273,6 +273,22 @@ func TestMultipartUpload(t *testing.T) {
 
 		api.PostFilesUploadUploadIdComplete(completeW, completeReq, uploadId)
 		assert.Equal(t, http.StatusBadRequest, completeW.Code)
+
+		// Session should still exist (completed flag reset) so client can retry
+		api.uploadsLock.RLock()
+		session, exists := api.uploads[uploadId]
+		api.uploadsLock.RUnlock()
+		assert.True(t, exists, "session should still exist after failed complete")
+		assert.False(t, session.completed.Load(), "completed flag should be reset")
+
+		// Clean up
+		api.uploadsLock.Lock()
+		if s := api.uploads[uploadId]; s != nil {
+			s.DestFile.Close()
+			os.Remove(s.FilePath)
+		}
+		delete(api.uploads, uploadId)
+		api.uploadsLock.Unlock()
 	})
 
 	t.Run("upload part after complete started", func(t *testing.T) {
@@ -585,6 +601,56 @@ func TestMultipartUpload(t *testing.T) {
 		err = json.Unmarshal(partW.Body.Bytes(), &errResp)
 		require.NoError(t, err)
 		assert.Contains(t, errResp.Message, "empty file")
+
+		// Clean up
+		api.uploadsLock.Lock()
+		session := api.uploads[uploadId]
+		if session != nil {
+			session.DestFile.Close()
+			os.Remove(session.FilePath)
+		}
+		delete(api.uploads, uploadId)
+		api.uploadsLock.Unlock()
+	})
+
+	t.Run("reject negative part number", func(t *testing.T) {
+		t.Parallel()
+		api := newMultipartTestAPI(t)
+		tempDir := t.TempDir()
+		destPath := filepath.Join(tempDir, "neg-part.txt")
+
+		// Initialize upload
+		body := PostFilesUploadInitJSONRequestBody{
+			Path:      destPath,
+			TotalSize: 10,
+			PartSize:  10,
+		}
+		bodyBytes, _ := json.Marshal(body)
+
+		initReq := httptest.NewRequest(http.MethodPost, "/files/upload/init", bytes.NewReader(bodyBytes))
+		initReq.Header.Set("Content-Type", "application/json")
+		initW := httptest.NewRecorder()
+
+		api.PostFilesUploadInit(initW, initReq, PostFilesUploadInitParams{})
+		require.Equal(t, http.StatusOK, initW.Code)
+
+		var initResp MultipartUploadInit
+		err := json.Unmarshal(initW.Body.Bytes(), &initResp)
+		require.NoError(t, err)
+		uploadId := initResp.UploadId
+
+		// Try to upload with negative part number
+		partReq := httptest.NewRequest(http.MethodPut, "/files/upload/"+uploadId+"?part=-1", bytes.NewReader([]byte("data")))
+		partReq.Header.Set("Content-Type", "application/octet-stream")
+		partW := httptest.NewRecorder()
+
+		api.PutFilesUploadUploadId(partW, partReq, uploadId, PutFilesUploadUploadIdParams{Part: -1})
+		assert.Equal(t, http.StatusBadRequest, partW.Code)
+
+		var errResp Error
+		err = json.Unmarshal(partW.Body.Bytes(), &errResp)
+		require.NoError(t, err)
+		assert.Contains(t, errResp.Message, "non-negative")
 
 		// Clean up
 		api.uploadsLock.Lock()

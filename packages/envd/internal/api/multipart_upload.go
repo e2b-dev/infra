@@ -256,6 +256,14 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 		return
 	}
 
+	// Validate part number before casting to uint to avoid confusing wraparound errors
+	if params.Part < 0 {
+		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Int("part", params.Part).Msg("negative part number")
+		jsonError(w, http.StatusBadRequest, fmt.Errorf("part number must be non-negative, got %d", params.Part))
+
+		return
+	}
+
 	partNumber := uint(params.Part)
 
 	// Reject parts for empty files (no parts expected)
@@ -284,6 +292,7 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 
 	// Reserve this part under lock to prevent concurrent writes to the same part number
 	// and to authoritatively check completed status (the atomic check above is a fast path).
+	// Also register with the WaitGroup so Complete/Delete wait for this write to finish.
 	session.mu.Lock()
 	if session.completed.Load() {
 		session.mu.Unlock()
@@ -300,12 +309,17 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 		return
 	}
 	session.Parts[partNumber] = PartInProgress
+	session.wg.Add(1) // Must happen under mu while completed is false to avoid Add/Wait race
 	session.mu.Unlock()
 
+	// Always signal writer completion so Complete/Delete can proceed.
+	// This must be the first defer (runs last) so cleanup below finishes first.
+	defer session.wg.Done()
+
 	// Ensure in-progress flag is cleaned up on any early return (write errors, size mismatch, etc.)
-	partReserved := true
+	partWritten := false
 	defer func() {
-		if partReserved {
+		if !partWritten {
 			session.mu.Lock()
 			delete(session.Parts, partNumber)
 			session.mu.Unlock()
@@ -346,18 +360,11 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 		return
 	}
 
-	// Finalize: mark part as complete under lock. Re-check completed to prevent
-	// the race where Complete deletes the file between our write and this point,
-	// which would cause us to return 200 while the file is gone.
+	// Finalize: always mark the part as complete since the data was written to disk.
+	// Mark partWritten first so the deferred cleanup does not revert the status.
+	// Then check completed — if the session was finalized mid-write, return 409
+	// but leave the part as PartComplete so Complete's validation sees it.
 	session.mu.Lock()
-	partReserved = false
-	if session.completed.Load() {
-		session.mu.Unlock()
-		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Str("uploadId", uploadId).Uint("partNumber", partNumber).Msg("session completed during part upload")
-		jsonError(w, http.StatusConflict, fmt.Errorf("upload session %s was completed or aborted during part upload", uploadId))
-
-		return
-	}
 	if session.Parts[partNumber] == PartComplete {
 		a.logger.Warn().
 			Str(string(logs.OperationIDKey), operationID).
@@ -366,6 +373,14 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 			Msg("overwriting existing part")
 	}
 	session.Parts[partNumber] = PartComplete
+	partWritten = true
+	if session.completed.Load() {
+		session.mu.Unlock()
+		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Str("uploadId", uploadId).Uint("partNumber", partNumber).Msg("session completed during part upload")
+		jsonError(w, http.StatusConflict, fmt.Errorf("upload session %s was completed or aborted during part upload", uploadId))
+
+		return
+	}
 	session.mu.Unlock()
 
 	a.logger.Debug().
@@ -392,11 +407,11 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 
 	operationID := logs.AssignOperationID()
 
-	// Get and remove the session
+	// Look up the session and mark as completing to prevent new part reservations.
+	// Do NOT delete from the map yet — if validation fails, the client can retry.
 	a.uploadsLock.Lock()
 	session, exists := a.uploads[uploadId]
 	if exists {
-		// Mark as completed to prevent new parts from being uploaded
 		if !session.completed.CompareAndSwap(false, true) {
 			// Already being completed by another request
 			a.uploadsLock.Unlock()
@@ -405,7 +420,6 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 
 			return
 		}
-		delete(a.uploads, uploadId)
 	}
 	a.uploadsLock.Unlock()
 
@@ -415,6 +429,11 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 
 		return
 	}
+
+	// Wait for all in-flight part writes to finish before checking part status.
+	// This prevents closing the file while io.CopyN is still writing and ensures
+	// parts that were mid-write when completed was set are properly accounted for.
+	session.wg.Wait()
 
 	// Verify all parts were uploaded
 	session.mu.Lock()
@@ -427,8 +446,8 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 	session.mu.Unlock()
 
 	if len(missingParts) > 0 {
-		session.DestFile.Close()
-		os.Remove(session.FilePath)
+		// Reset completed flag so the client can upload missing parts and retry
+		session.completed.Store(false)
 		a.logger.Error().
 			Str(string(logs.OperationIDKey), operationID).
 			Str("uploadId", uploadId).
@@ -439,7 +458,11 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	// Close the file
+	// All parts present — remove session from map and close the file
+	a.uploadsLock.Lock()
+	delete(a.uploads, uploadId)
+	a.uploadsLock.Unlock()
+
 	if err := session.DestFile.Close(); err != nil {
 		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error closing destination file")
 		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error closing destination file: %w", err))
@@ -494,6 +517,9 @@ func (a *API) DeleteFilesUploadUploadId(w http.ResponseWriter, r *http.Request, 
 
 		return
 	}
+
+	// Wait for any in-flight part writes to finish before closing the file
+	session.wg.Wait()
 
 	// Close and remove the file
 	session.DestFile.Close()

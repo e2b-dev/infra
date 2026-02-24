@@ -37,8 +37,9 @@ type MultipartUploadSession struct {
 	GID       int
 	Parts     map[uint]PartStatus // partNumber -> status
 	CreatedAt time.Time
-	completed atomic.Bool // Set to true when complete/abort starts to prevent new parts
-	mu        sync.Mutex
+	completed atomic.Bool    // Set to true when complete/abort starts to prevent new parts
+	mu        sync.Mutex     // Protects Parts and activeWriters
+	wg        sync.WaitGroup // Tracks in-flight part writes; Complete/Delete wait on this before closing DestFile
 }
 
 // ignoreNotExist returns nil if err is a "not exist" error, otherwise returns err unchanged.
@@ -125,6 +126,8 @@ func (a *API) removeExpiredSessions() {
 			if session.completed.CompareAndSwap(false, true) {
 				delete(a.uploads, uploadID)
 				go func(s *MultipartUploadSession) {
+					// Wait for any in-flight part writes to finish before closing the file
+					s.wg.Wait()
 					s.DestFile.Close()
 					if err := ignoreNotExist(os.Remove(s.FilePath)); err != nil {
 						a.logger.Warn().Err(err).Str("filePath", s.FilePath).Msg("failed to cleanup expired upload file")
