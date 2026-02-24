@@ -12,14 +12,18 @@ import (
 	"go.uber.org/zap"
 )
 
-// ExpiredItems returns all sandboxes matching that have expired.
+const expiredItemsBatchSize = 256
+
+// ExpiredItems returns running sandboxes whose EndTime has passed.
+// It bounds per-cycle work via LIMIT and cleans up orphaned ZSET entries.
 func (s *Storage) ExpiredItems(ctx context.Context) ([]sandbox.Sandbox, error) {
 	nowMs := float64(time.Now().UnixMilli())
 
-	// Fetch members whose score (EndTime in ms) is <= now.
+	// Fetch members whose score (EndTime in ms) is <= now, bounded to 256 per cycle.
 	expiredMembers, err := s.redisClient.ZRangeByScore(ctx, globalExpirationSet, &redis.ZRangeBy{
-		Min: "-inf",
-		Max: fmt.Sprintf("%v", nowMs),
+		Min:   "-inf",
+		Max:   fmt.Sprintf("%v", nowMs),
+		Count: expiredItemsBatchSize,
 	}).Result()
 	if err != nil {
 		return nil, fmt.Errorf("failed to query global expiration index: %w", err)
@@ -29,7 +33,12 @@ func (s *Storage) ExpiredItems(ctx context.Context) ([]sandbox.Sandbox, error) {
 		return nil, nil
 	}
 
-	teamSandboxes := make(map[string][]string) // teamID -> []sandboxID
+	// Group by team for per-team MGET (Redis Cluster slot compatibility).
+	type teamEntry struct {
+		sandboxIDs []string
+		members    []string // original ZSET members, aligned 1:1 with sandboxIDs
+	}
+	teamSandboxes := make(map[string]*teamEntry)
 	for _, member := range expiredMembers {
 		teamID, sandboxID, ok := parseExpirationMember(member)
 		if !ok {
@@ -38,19 +47,30 @@ func (s *Storage) ExpiredItems(ctx context.Context) ([]sandbox.Sandbox, error) {
 			continue
 		}
 
-		teamSandboxes[teamID] = append(teamSandboxes[teamID], sandboxID)
+		entry, ok := teamSandboxes[teamID]
+		if !ok {
+			entry = &teamEntry{}
+			teamSandboxes[teamID] = entry
+		}
+
+		entry.sandboxIDs = append(entry.sandboxIDs, sandboxID)
+		entry.members = append(entry.members, member)
 	}
 
 	pipe := s.redisClient.Pipeline()
-	var batches []*redis.SliceCmd
-	for teamID, sandboxIDs := range teamSandboxes {
-		keys := make([]string, len(sandboxIDs))
-		for i, id := range sandboxIDs {
+	type batchInfo struct {
+		cmd     *redis.SliceCmd
+		members []string // aligned 1:1 with MGET keys
+	}
+	var batches []batchInfo
+	for teamID, entry := range teamSandboxes {
+		keys := make([]string, len(entry.sandboxIDs))
+		for i, id := range entry.sandboxIDs {
 			keys[i] = getSandboxKey(teamID, id)
 		}
 
 		cmd := pipe.MGet(ctx, keys...)
-		batches = append(batches, cmd)
+		batches = append(batches, batchInfo{cmd: cmd, members: entry.members})
 	}
 
 	_, err = pipe.Exec(ctx)
@@ -58,11 +78,16 @@ func (s *Storage) ExpiredItems(ctx context.Context) ([]sandbox.Sandbox, error) {
 		return nil, fmt.Errorf("MGET pipeline failed: %w", err)
 	}
 
-	// Deserialize and filter by state; double-check IsExpired in case the index is slightly stale.
+	// Deserialize and filter; collect stale ZSET members for cleanup.
 	var result []sandbox.Sandbox
-	for _, cmd := range batches {
-		for _, raw := range cmd.Val() {
+	var staleMembers []any
+
+	for _, batch := range batches {
+		for i, raw := range batch.cmd.Val() {
+			// Sandbox key gone but ZSET entry remains — orphaned.
 			if raw == nil {
+				staleMembers = append(staleMembers, batch.members[i])
+
 				continue
 			}
 
@@ -78,7 +103,19 @@ func (s *Storage) ExpiredItems(ctx context.Context) ([]sandbox.Sandbox, error) {
 				continue
 			}
 
+			// Only evict running sandboxes
+			if sbx.State != sandbox.StateRunning {
+				continue
+			}
+
 			result = append(result, sbx)
+		}
+	}
+
+	// Remove orphaned ZSET entries so the set doesn't grow unboundedly.
+	if len(staleMembers) > 0 {
+		if err := s.redisClient.ZRem(ctx, globalExpirationSet, staleMembers...).Err(); err != nil {
+			logger.L().Warn(ctx, "Failed to clean up stale expiration index entries", zap.Error(err), zap.Int("count", len(staleMembers)))
 		}
 	}
 
