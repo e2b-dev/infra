@@ -32,6 +32,13 @@ const (
 )
 
 var (
+	ErrOffsetUnaligned = errors.New("offset must be a multiple of chunk size")
+	ErrBufferTooSmall  = errors.New("buffer is too small")
+	ErrMultipleChunks  = errors.New("cannot read multiple chunks")
+	ErrBufferTooLarge  = errors.New("buffer is too large")
+)
+
+var (
 	cacheSlabReadTimerFactory = utils.Must(telemetry.NewTimerFactory(meter,
 		"orchestrator.storage.slab.nfs.read",
 		"Duration of NFS reads",
@@ -73,6 +80,10 @@ var _ FramedFile = (*cachedFramedFile)(nil)
 // Cache hit → read from NFS chunk file → deliver.
 // Cache miss → inner.GetFrame → async write-back.
 func (c *cachedFramedFile) GetFrame(ctx context.Context, offsetU int64, frameTable *FrameTable, decompress bool, buf []byte, readSize int64, onRead func(totalWritten int64)) (Range, error) {
+	if err := c.validateGetFrameParams(offsetU, len(buf), frameTable, decompress); err != nil {
+		return Range{}, err
+	}
+
 	if IsCompressed(frameTable) {
 		return c.getFrameCompressed(ctx, offsetU, frameTable, decompress, buf, readSize, onRead)
 	}
@@ -96,7 +107,7 @@ func (c *cachedFramedFile) getFrameCompressed(ctx context.Context, offsetU int64
 		return Range{}, fmt.Errorf("cache GetFrame: frame lookup for offset %#x: %w", offsetU, err)
 	}
 
-	framePath := fmt.Sprintf("%s/%016x-%x.frm", c.path, frameStart.C, frameSize.C)
+	framePath := makeFrameFilename(c.path, frameStart, frameSize)
 
 	// Try NFS cache
 	readTimer := cacheSlabReadTimerFactory.Begin(attribute.String(nfsCacheOperationAttr, nfsCacheOperationAttrGetFrame))
@@ -478,6 +489,27 @@ func (c *cachedFramedFile) readLocalSize(context.Context) (int64, error) {
 	}
 
 	return u, nil
+}
+
+func (c *cachedFramedFile) validateGetFrameParams(off int64, length int, frameTable *FrameTable, decompress bool) error {
+	if length == 0 {
+		return ErrBufferTooSmall
+	}
+	if decompress {
+		if off%c.chunkSize != 0 {
+			return fmt.Errorf("offset %#x is not aligned to chunk size %#x: %w", off, c.chunkSize, ErrOffsetUnaligned)
+		}
+		if !IsCompressed(frameTable) {
+			if length > int(c.chunkSize) {
+				return ErrBufferTooLarge
+			}
+			if (off%c.chunkSize + int64(length)) > c.chunkSize {
+				return ErrMultipleChunks
+			}
+		}
+	}
+
+	return nil
 }
 
 func (c *cachedFramedFile) writeChunkToCache(ctx context.Context, offset int64, chunkPath string, data []byte) error {
