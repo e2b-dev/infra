@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -22,13 +23,22 @@ func (s *Service) DeleteDir(ctx context.Context, request *orchestrator.VolumeDir
 	}()
 
 	relPath := request.GetPath()
-	if relPath == "" {
+	if relPath == "" || relPath == "/" || relPath == "." {
 		return nil, newAPIError(ctx, codes.InvalidArgument, "empty_path", "path cannot be empty")
+	}
+
+	rootPath, err := s.buildVolumePath(request.GetVolume(), "")
+	if err != nil {
+		return nil, err
 	}
 
 	fullPath, err := s.buildVolumePath(request.GetVolume(), relPath)
 	if err != nil {
 		return nil, err
+	}
+
+	if filepath.Clean(rootPath) == filepath.Clean(fullPath) {
+		return nil, newAPIError(ctx, codes.InvalidArgument, "cannot_delete_root", "cannot delete root directory")
 	}
 
 	var fn removeFunc

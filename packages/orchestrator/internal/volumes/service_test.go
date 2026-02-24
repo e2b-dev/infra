@@ -93,7 +93,7 @@ func TestBuildVolumePath(t *testing.T) {
 				VolumeId:   tc.volumeID,
 			}
 			actualPath, actualStatus := v.buildVolumePath(&volumeInfo, tc.relPath)
-			require.ErrorIs(t, tc.status.Err(), actualStatus)
+			require.ErrorIs(t, actualStatus, tc.status.Err())
 			assert.Equal(t, tc.expected, actualPath)
 		})
 	}
