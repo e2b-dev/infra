@@ -10,6 +10,9 @@ GCP_BUCKET_PREFIX ?= $(GCP_PROJECT_ID)-
 # Architecture for builds. Defaults to local arch; override for cross-compilation
 # (e.g., BUILD_ARCH=amd64 make build from an ARM64 host).
 BUILD_ARCH ?= $(shell go env GOARCH)
+# Docker platform string. Override for multi-arch builds:
+#   BUILD_PLATFORM=linux/amd64,linux/arm64 make start-docker
+BUILD_PLATFORM ?= linux/$(BUILD_ARCH)
 
 .PHONY: init
 init:
@@ -31,10 +34,10 @@ build-debug:
 
 start-docker:
 	make build
-	DOCKER_BUILDKIT=1 docker build --platform linux/$(BUILD_ARCH) -t envd-debug . -f debug.Dockerfile
+	DOCKER_BUILDKIT=1 docker build --platform $(BUILD_PLATFORM) -t envd-debug . -f debug.Dockerfile
 	docker run \
 	--name envd \
-	--platform linux/$(BUILD_ARCH) \
+	--platform $(BUILD_PLATFORM) \
 	-p 49983:49983 \
 	-p 2345:2345 \
 	-p 9999:9999 \

@@ -6,6 +6,9 @@ HOSTNAME := $(shell hostname || hostnamectl hostname)
 # Architecture for builds. Defaults to local arch; override for cross-compilation
 # (e.g., BUILD_ARCH=amd64 make build-and-upload from an ARM64 host).
 BUILD_ARCH ?= $(shell go env GOARCH)
+# Docker platform string. Override for multi-arch builds:
+#   BUILD_PLATFORM=linux/amd64,linux/arm64 make build-and-upload
+BUILD_PLATFORM ?= linux/$(BUILD_ARCH)
 
 expectedMigration := $(shell ./../../scripts/get-latest-migration.sh)
 
@@ -74,7 +77,7 @@ build-and-upload:
 	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
 	$(eval EXPECTED_MIGRATION_TIMESTAMP := $(expectedMigration))
 	@ docker buildx install # sets up the buildx as default docker builder (otherwise the command below won't work)
-	@ docker buildx build --platform linux/$(BUILD_ARCH) --tag $(IMAGE_REGISTRY) --push --build-arg COMMIT_SHA="$(COMMIT_SHA)" --build-arg EXPECTED_MIGRATION_TIMESTAMP="$(EXPECTED_MIGRATION_TIMESTAMP)"  -f ./Dockerfile ..
+	@ docker buildx build --platform $(BUILD_PLATFORM) --tag $(IMAGE_REGISTRY) --push --build-arg COMMIT_SHA="$(COMMIT_SHA)" --build-arg EXPECTED_MIGRATION_TIMESTAMP="$(EXPECTED_MIGRATION_TIMESTAMP)"  -f ./Dockerfile ..
 
 .PHONY: test
 test:
