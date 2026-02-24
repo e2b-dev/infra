@@ -34,9 +34,8 @@ func NewRedisClient(ctx context.Context, config RedisConfig) (redis.UniversalCli
 		// https://cloud.google.com/memorystore/docs/cluster/cluster-node-specification#cluster_endpoints
 		// https://cloud.google.com/memorystore/docs/cluster/client-library-code-samples#go-redis
 		clusterOpts := &redis.ClusterOptions{
-			Addrs:         []string{config.RedisClusterURL},
-			MinIdleConns:  20,
-			RouteRandomly: true,
+			Addrs:        []string{config.RedisClusterURL},
+			MinIdleConns: 20,
 		}
 
 		if config.RedisTLSCABase64 != "" {
