@@ -16,21 +16,29 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
 )
 
+// PartStatus represents the state of a multipart upload part.
+type PartStatus int
+
+const (
+	partPending    PartStatus = iota // zero value: part not yet started
+	PartInProgress                   // write currently in flight
+	PartComplete                     // write finished successfully
+)
+
 // MultipartUploadSession tracks an in-progress multipart upload
 type MultipartUploadSession struct {
-	UploadID        string
-	FilePath        string   // Final destination path
-	DestFile        *os.File // Open file handle for direct writes
-	TotalSize       int64    // Total expected file size (validated >= 0 at input)
-	PartSize        int64    // Size of each part (validated > 0 at input)
-	NumParts        uint     // Total number of expected parts
-	UID             int
-	GID             int
-	PartsWritten    map[uint]bool // partNumber -> whether it's been written
-	partsInProgress map[uint]bool // partNumber -> whether a write is currently in flight
-	CreatedAt       time.Time
-	completed       atomic.Bool // Set to true when complete/abort starts to prevent new parts
-	mu              sync.Mutex
+	UploadID  string
+	FilePath  string   // Final destination path
+	DestFile  *os.File // Open file handle for direct writes
+	TotalSize int64    // Total expected file size (validated >= 0 at input)
+	PartSize  int64    // Size of each part (validated > 0 at input)
+	NumParts  uint     // Total number of expected parts
+	UID       int
+	GID       int
+	Parts     map[uint]PartStatus // partNumber -> status
+	CreatedAt time.Time
+	completed atomic.Bool // Set to true when complete/abort starts to prevent new parts
+	mu        sync.Mutex
 }
 
 // ignoreNotExist returns nil if err is a "not exist" error, otherwise returns err unchanged.

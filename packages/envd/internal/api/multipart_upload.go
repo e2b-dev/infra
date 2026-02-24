@@ -185,17 +185,16 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 	uploadID := uuid.NewString()
 
 	session := &MultipartUploadSession{
-		UploadID:        uploadID,
-		FilePath:        filePath,
-		DestFile:        destFile,
-		TotalSize:       body.TotalSize,
-		PartSize:        body.PartSize,
-		NumParts:        numParts,
-		UID:             uid,
-		GID:             gid,
-		PartsWritten:    make(map[uint]bool),
-		partsInProgress: make(map[uint]bool),
-		CreatedAt:       time.Now(),
+		UploadID:  uploadID,
+		FilePath:  filePath,
+		DestFile:  destFile,
+		TotalSize: body.TotalSize,
+		PartSize:  body.PartSize,
+		NumParts:  numParts,
+		UID:       uid,
+		GID:       gid,
+		Parts:     make(map[uint]PartStatus),
+		CreatedAt: time.Now(),
 	}
 
 	// Atomically check session limit and insert — prevents TOCTOU race where
@@ -293,14 +292,14 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 
 		return
 	}
-	if session.partsInProgress[partNumber] {
+	if session.Parts[partNumber] == PartInProgress {
 		session.mu.Unlock()
 		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Str("uploadId", uploadId).Uint("partNumber", partNumber).Msg("part is already being uploaded by another request")
 		jsonError(w, http.StatusConflict, fmt.Errorf("part %d is already being uploaded by another request for session %s", partNumber, uploadId))
 
 		return
 	}
-	session.partsInProgress[partNumber] = true
+	session.Parts[partNumber] = PartInProgress
 	session.mu.Unlock()
 
 	// Ensure in-progress flag is cleaned up on any early return (write errors, size mismatch, etc.)
@@ -308,7 +307,7 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 	defer func() {
 		if partReserved {
 			session.mu.Lock()
-			delete(session.partsInProgress, partNumber)
+			delete(session.Parts, partNumber)
 			session.mu.Unlock()
 		}
 	}()
@@ -347,13 +346,10 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 		return
 	}
 
-	size := written
-
-	// Finalize: mark part as written under lock. Re-check completed to prevent
+	// Finalize: mark part as complete under lock. Re-check completed to prevent
 	// the race where Complete deletes the file between our write and this point,
 	// which would cause us to return 200 while the file is gone.
 	session.mu.Lock()
-	delete(session.partsInProgress, partNumber)
 	partReserved = false
 	if session.completed.Load() {
 		session.mu.Unlock()
@@ -362,21 +358,21 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 
 		return
 	}
-	if session.PartsWritten[partNumber] {
+	if session.Parts[partNumber] == PartComplete {
 		a.logger.Warn().
 			Str(string(logs.OperationIDKey), operationID).
 			Str("uploadId", uploadId).
 			Uint("partNumber", partNumber).
 			Msg("overwriting existing part")
 	}
-	session.PartsWritten[partNumber] = true
+	session.Parts[partNumber] = PartComplete
 	session.mu.Unlock()
 
 	a.logger.Debug().
 		Str(string(logs.OperationIDKey), operationID).
 		Str("uploadId", uploadId).
 		Uint("partNumber", partNumber).
-		Int64("size", size).
+		Int64("size", written).
 		Int64("offset", offset).
 		Msg("part uploaded")
 
@@ -384,7 +380,7 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(MultipartUploadPart{
 		PartNumber: int(partNumber),
-		Size:       size,
+		Size:       written,
 	}); err != nil {
 		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("failed to encode response")
 	}
@@ -424,7 +420,7 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 	session.mu.Lock()
 	var missingParts []uint
 	for i := range session.NumParts {
-		if !session.PartsWritten[i] {
+		if session.Parts[i] != PartComplete {
 			missingParts = append(missingParts, i)
 		}
 	}

@@ -1215,7 +1215,6 @@ type PostFilesUploadUploadIdCompleteResponse struct {
 	JSON200      *MultipartUploadComplete
 	JSON404      *UploadNotFound
 	JSON500      *InternalServerError
-	JSON507      *NotEnoughDiskSpace
 }
 
 // Status returns HTTPResponse.Status
@@ -1699,13 +1698,6 @@ func ParsePostFilesUploadUploadIdCompleteResponse(rsp *http.Response) (*PostFile
 			return nil, err
 		}
 		response.JSON500 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 507:
-		var dest NotEnoughDiskSpace
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON507 = &dest
 
 	}
 

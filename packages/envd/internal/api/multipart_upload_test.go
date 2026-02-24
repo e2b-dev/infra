@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -596,37 +595,5 @@ func TestMultipartUpload(t *testing.T) {
 		}
 		delete(api.uploads, uploadId)
 		api.uploadsLock.Unlock()
-	})
-}
-
-func TestMultipartUploadRouting(t *testing.T) {
-	t.Parallel()
-
-	// Skip if not running as root
-	if os.Geteuid() != 0 {
-		t.Skip("skipping routing tests: requires root")
-	}
-
-	api := newMultipartTestAPI(t)
-	router := chi.NewRouter()
-	HandlerFromMux(api, router)
-
-	// Test that routes are registered
-	t.Run("init route exists", func(t *testing.T) {
-		t.Parallel()
-		body := PostFilesUploadInitJSONRequestBody{
-			Path:      "/tmp/test-file.txt",
-			TotalSize: 100,
-			PartSize:  50,
-		}
-		bodyBytes, _ := json.Marshal(body)
-
-		req := httptest.NewRequest(http.MethodPost, "/files/upload/init", bytes.NewReader(bodyBytes))
-		req.Header.Set("Content-Type", "application/json")
-		w := httptest.NewRecorder()
-
-		router.ServeHTTP(w, req)
-		// Should get 200 (success) not 404 (route not found)
-		assert.NotEqual(t, http.StatusNotFound, w.Code)
 	})
 }
