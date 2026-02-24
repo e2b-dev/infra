@@ -188,12 +188,6 @@ type PostFilesUploadInitJSONBody struct {
 type PostFilesUploadInitParams struct {
 	// Username User used for setting the owner, or resolving relative paths.
 	Username *User `form:"username,omitempty" json:"username,omitempty"`
-
-	// Signature Signature used for file access permission verification.
-	Signature *Signature `form:"signature,omitempty" json:"signature,omitempty"`
-
-	// SignatureExpiration Signature expiration used for defining the expiration time of the signature.
-	SignatureExpiration *SignatureExpiration `form:"signature_expiration,omitempty" json:"signature_expiration,omitempty"`
 }
 
 // PutFilesUploadUploadIdParams defines parameters for PutFilesUploadUploadId.
@@ -493,22 +487,6 @@ func (siw *ServerInterfaceWrapper) PostFilesUploadInit(w http.ResponseWriter, r 
 	err = runtime.BindQueryParameter("form", true, false, "username", r.URL.Query(), &params.Username)
 	if err != nil {
 		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "username", Err: err})
-		return
-	}
-
-	// ------------- Optional query parameter "signature" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "signature", r.URL.Query(), &params.Signature)
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "signature", Err: err})
-		return
-	}
-
-	// ------------- Optional query parameter "signature_expiration" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "signature_expiration", r.URL.Query(), &params.SignatureExpiration)
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "signature_expiration", Err: err})
 		return
 	}
 

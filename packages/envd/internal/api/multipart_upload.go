@@ -58,10 +58,8 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 		return
 	}
 
-	// Validate access token or signing
-	err := a.validateSigning(r, params.Signature, params.SignatureExpiration, params.Username, body.Path, SigningWriteOperation)
-	if err != nil {
-		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error during auth validation")
+	if err := a.validateAccessToken(r); err != nil {
+		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("unauthorized upload init request")
 		jsonError(w, http.StatusUnauthorized, err)
 
 		return
