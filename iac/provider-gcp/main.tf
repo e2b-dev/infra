@@ -96,7 +96,6 @@ module "cluster" {
   client_proxy_port        = var.client_proxy_port
   client_proxy_health_port = var.client_proxy_health_port
 
-  dashboard_api_count          = var.dashboard_api_count
   ingress_port                 = var.ingress_port
   api_port                     = var.api_port
   docker_reverse_proxy_port    = var.docker_reverse_proxy_port

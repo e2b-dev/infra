@@ -80,10 +80,6 @@ variable "api_port" {
   })
 }
 
-variable "dashboard_api_count" {
-  type = number
-}
-
 variable "ingress_port" {
   type = object({
     name        = string

@@ -1,17 +1,15 @@
 locals {
-  dashboard_api_enabled = var.dashboard_api_count > 0
-
   domains    = toset(concat(var.additional_domains, [var.domain_name]))
-  subdomains = local.dashboard_api_enabled ? ["dashboard-api"] : []
+  subdomains = ["dashboard-api"]
 
   // Create matrix for each domain and subdomain combination
-  routing_matrix = local.dashboard_api_enabled ? {
+  routing_matrix = {
     for p in setproduct(local.domains, local.subdomains) :
     "${p[0]}|${p[1]}" => {
       domain    = p[0]
       subdomain = p[1]
     }
-  } : {}
+  }
 }
 
 resource "google_compute_health_check" "ingress" {
@@ -94,7 +92,7 @@ resource "google_compute_target_https_proxy" "ingress" {
 }
 
 data "cloudflare_zone" "zone" {
-  for_each = length(local.routing_matrix) > 0 ? local.domains : toset([])
+  for_each = local.domains
   name     = each.value
 }
 
