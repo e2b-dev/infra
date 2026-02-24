@@ -20,6 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/reservations"
 	redisreservations "github.com/e2b-dev/infra/packages/api/internal/sandbox/reservations/redis"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/memory"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/populate_redis"
@@ -129,21 +130,22 @@ func New(
 		createdCounter: createdCounter,
 	}
 
+	var reservationStorage sandbox.ReservationStorage
 	var sandboxStorage sandbox.Storage
 	redisStorage := redisbackend.NewStorage(redisClient)
 
 	switch config.SandboxStorageBackend {
 	case cfg.SandboxStorageBackendMemory:
+		reservationStorage = reservations.NewReservationStorage()
 		sandboxStorage = populate_redis.NewStorage(memory.NewStorage(), redisStorage)
 		logger.L().Info(ctx, "Using populate_redis sandbox storage backend")
 	case cfg.SandboxStorageBeckendRedis:
+		reservationStorage = redisreservations.NewReservationStorage(redisClient)
 		sandboxStorage = redisStorage
 		logger.L().Info(ctx, "Using redis sandbox storage backend")
 	default:
 		return nil, fmt.Errorf("invalid sandbox storage backend: %s", config.SandboxStorageBackend)
 	}
-
-	reservationStorage := redisreservations.NewReservationStorage(redisClient)
 
 	o.sandboxStore = sandbox.NewStore(
 		sandboxStorage,
