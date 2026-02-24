@@ -60,6 +60,25 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 			return
 		}
 
+		var resumeDeniedErr *SandboxResumePermissionDeniedError
+		if errors.As(err, &resumeDeniedErr) {
+			logger.L().Warn(ctx, "sandbox resume permission denied",
+				zap.String("host", r.Host),
+				logger.WithSandboxID(resumeDeniedErr.SandboxId))
+
+			err := template.
+				NewSandboxResumePermissionDeniedError(resumeDeniedErr.SandboxId, r.Host).
+				HandleError(w, r)
+			if err != nil {
+				logger.L().Error(ctx, "failed to handle sandbox resume permission denied error", zap.Error(err), logger.WithSandboxID(resumeDeniedErr.SandboxId))
+				http.Error(w, "Failed to handle sandbox resume permission denied error", http.StatusInternalServerError)
+
+				return
+			}
+
+			return
+		}
+
 		var trafficMissingTokenErr *MissingTrafficAccessTokenError
 		if errors.As(err, &trafficMissingTokenErr) {
 			logger.L().Warn(ctx, "traffic access token is missing", zap.String("host", r.Host))

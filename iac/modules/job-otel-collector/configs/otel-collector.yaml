@@ -98,17 +98,19 @@ receivers:
           system.memory.utilization:
             enabled: true
 
-          # Huge pages metrics added as part of temporal patch
-          # https://github.com/e2b-dev/opentelemetry-collector-contrib/pull/1
-          system.linux.memory.huge_pages.free:
+          # Huge pages metrics (upstream support added in v0.146.0)
+          # https://github.com/open-telemetry/opentelemetry-collector-contrib/pull/44125
+          system.memory.linux.hugepages.usage:
             enabled: true
-          system.linux.memory.huge_pages.page_size:
+          system.memory.linux.hugepages.utilization:
             enabled: true
-          system.linux.memory.huge_pages.reserved:
+          system.memory.linux.hugepages.limit:
             enabled: true
-          system.linux.memory.huge_pages.surplus:
+          system.memory.linux.hugepages.page_size:
             enabled: true
-          system.linux.memory.huge_pages.total:
+          system.memory.linux.hugepages.reserved:
+            enabled: true
+          system.memory.linux.hugepages.surplus:
             enabled: true
 
       # Scraping traffic going in/out of network interfaces
@@ -221,6 +223,7 @@ processors:
           - "otelcol.exporter.sent.*"
           - "otelcol.receiver.refused.*"
           - "pgxpool.*"
+          - "traefik.*"
 
   filter/only_client_allocs:
     metrics:
@@ -397,7 +400,7 @@ exporters:
   debug:
     verbosity: detailed
     use_internal_logger: false
-  otlphttp/grafana_cloud:
+  otlp_http/grafana_cloud:
     # https://github.com/open-telemetry/opentelemetry-collector/tree/main/exporter/otlpexporter
     endpoint: "${grafana_otlp_url}/otlp"
     auth:
@@ -439,7 +442,7 @@ service:
         - transform/set-name
         - batch
       exporters:
-        - otlphttp/grafana_cloud
+        - otlp_http/grafana_cloud
     metrics/prometheus:
       receivers:
         - prometheus
@@ -449,7 +452,7 @@ service:
         - transform/set-name
         - batch
       exporters:
-        - otlphttp/grafana_cloud
+        - otlp_http/grafana_cloud
     metrics/rpc_only:
       receivers:
         - otlp
@@ -460,7 +463,7 @@ service:
         - transform/set-name
         - batch
       exporters:
-        - otlphttp/grafana_cloud
+        - otlp_http/grafana_cloud
     metrics/host:
       receivers:
         - hostmetrics
@@ -470,7 +473,7 @@ service:
         - metricstransform/single_cpu
         - batch
       exporters:
-        - otlphttp/grafana_cloud
+        - otlp_http/grafana_cloud
     metrics/external:
       receivers:
         - otlp
@@ -487,7 +490,7 @@ service:
         - resource/set_attributes
         - batch
       exporters:
-        - otlphttp/grafana_cloud
+        - otlp_http/grafana_cloud
     logs:
       receivers:
         - otlp
@@ -496,4 +499,4 @@ service:
         - resource/set_attributes
         - batch
       exporters:
-        - otlphttp/grafana_cloud
+        - otlp_http/grafana_cloud

@@ -3,10 +3,12 @@ package proxy
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 )
@@ -37,7 +39,17 @@ func (c *grpcPausedSandboxResumer) Close(_ context.Context) error {
 	return c.conn.Close()
 }
 
-func (c *grpcPausedSandboxResumer) Resume(ctx context.Context, sandboxId string) (string, error) {
+func (c *grpcPausedSandboxResumer) Resume(ctx context.Context, sandboxId string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string) (string, error) {
+	ctx = metadata.AppendToOutgoingContext(ctx, proxygrpc.MetadataSandboxRequestPort, strconv.FormatUint(sandboxPort, 10))
+
+	if trafficAccessToken != "" {
+		ctx = metadata.AppendToOutgoingContext(ctx, proxygrpc.MetadataTrafficAccessToken, trafficAccessToken)
+	}
+
+	if envdAccessToken != "" {
+		ctx = metadata.AppendToOutgoingContext(ctx, proxygrpc.MetadataEnvdAccessToken, envdAccessToken)
+	}
+
 	resp, err := c.client.ResumeSandbox(ctx, &proxygrpc.SandboxResumeRequest{
 		SandboxId: sandboxId,
 	})
