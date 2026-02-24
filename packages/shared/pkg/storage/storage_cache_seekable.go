@@ -196,6 +196,11 @@ func (c *cachedFramedFile) getFrameUncompressed(ctx context.Context, offsetU int
 		recordCacheReadError(ctx, cacheTypeFramedFile, cacheOpGetFrame, readErr)
 	}
 
+	logger.L().Debug(ctx, "cache miss for uncompressed chunk, falling back to remote read",
+		zap.String("chunk_path", chunkPath),
+		zap.Int64("offset", offsetU),
+		zap.Error(readErr))
+
 	// Cache miss: fetch from inner
 	r, err := c.inner.GetFrame(ctx, offsetU, nil, false, buf, readSize, onRead)
 	if err != nil {
@@ -491,22 +496,23 @@ func (c *cachedFramedFile) readLocalSize(context.Context) (int64, error) {
 	return u, nil
 }
 
-func (c *cachedFramedFile) validateGetFrameParams(off int64, length int, frameTable *FrameTable, decompress bool) error {
+func (c *cachedFramedFile) validateGetFrameParams(off int64, length int, frameTable *FrameTable, _ bool) error {
 	if length == 0 {
 		return ErrBufferTooSmall
 	}
-	if decompress {
-		if off%c.chunkSize != 0 {
-			return fmt.Errorf("offset %#x is not aligned to chunk size %#x: %w", off, c.chunkSize, ErrOffsetUnaligned)
-		}
-		if !IsCompressed(frameTable) {
-			if length > int(c.chunkSize) {
-				return ErrBufferTooLarge
-			}
-			if (off%c.chunkSize + int64(length)) > c.chunkSize {
-				return ErrMultipleChunks
-			}
-		}
+
+	// Compressed reads: the frame table handles alignment, no chunk checks needed.
+	if IsCompressed(frameTable) {
+		return nil
+	}
+
+	// Uncompressed reads: enforce chunk alignment and bounds.
+	if off%c.chunkSize != 0 {
+		return fmt.Errorf("offset %#x is not aligned to chunk size %#x: %w", off, c.chunkSize, ErrOffsetUnaligned)
+	}
+
+	if int64(length) > c.chunkSize {
+		return fmt.Errorf("buffer length %d exceeds chunk size %d: %w", length, c.chunkSize, ErrBufferTooLarge)
 	}
 
 	return nil

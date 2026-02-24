@@ -162,6 +162,36 @@ func TestCachedFramedFile_GetFrame_Uncompressed(t *testing.T) {
 	})
 }
 
+func TestCachedFramedFile_GetFrame_Uncompressed_Validation(t *testing.T) {
+	t.Parallel()
+
+	c := cachedFramedFile{path: "/tmp/test", chunkSize: 1024, tracer: noopTracer}
+
+	t.Run("rejects empty buffer", func(t *testing.T) {
+		t.Parallel()
+
+		buf := make([]byte, 0)
+		_, err := c.GetFrame(t.Context(), 0, nil, false, buf, 0, nil)
+		assert.ErrorIs(t, err, ErrBufferTooSmall)
+	})
+
+	t.Run("rejects unaligned offset", func(t *testing.T) {
+		t.Parallel()
+
+		buf := make([]byte, 512)
+		_, err := c.GetFrame(t.Context(), 100, nil, false, buf, 0, nil)
+		assert.ErrorIs(t, err, ErrOffsetUnaligned)
+	})
+
+	t.Run("rejects oversized buffer", func(t *testing.T) {
+		t.Parallel()
+
+		buf := make([]byte, 2048)
+		_, err := c.GetFrame(t.Context(), 0, nil, false, buf, 0, nil)
+		assert.ErrorIs(t, err, ErrBufferTooLarge)
+	})
+}
+
 func TestCachedFramedFile_WriteTo(t *testing.T) {
 	t.Parallel()
 

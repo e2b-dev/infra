@@ -204,13 +204,13 @@ flowchart TD
 
 ### From This Branch
 
-1. **NFS cache passthrough for uncompressed `GetFrame`**: currently `cache.GetFrame` with `ft=nil` delegates directly to `c.inner.GetFrame` (no NFS caching). Compressed frames are NFS-cached in `getFrameCompressed`, but uncompressed `GetFrame` calls bypass NFS. Must fix for parity with main's uncompressed read path.
+1. **Per-artifact compression config**: memfile and rootfs have different runtime requirements. The `compress-config` flag should support separate codec, level, and frame size settings per artifact type rather than applying a single config to both.
 
-2. **Per-artifact compression config**: memfile and rootfs have different runtime requirements. The `compress-config` flag should support separate codec, level, and frame size settings per artifact type rather than applying a single config to both.
+2. **Verify `getFrame` timer lifecycle**: audit that `Success()`/`Failure()` is always called on every code path in the storage cache's `getFrameCompressed` and `getFrameUncompressed`.
 
-3. **Verify `getFrame` timer lifecycle**: audit that `Success()`/`Failure()` is always called on every code path in the storage cache's `getFrameCompressed` and `getFrameUncompressed`.
+3. **Feature flag to disable progressive `GetBlock` reading**: add a flag that bypasses progressive reading/returning in `GetBlock` and falls back to the original whole-block fetch behavior. Useful as a fault-tolerance lever if progressive reads cause issues in production.
 
-4. **Feature flag to disable progressive `GetBlock` reading**: add a flag that bypasses progressive reading/returning in `GetBlock` and falls back to the original whole-block fetch behavior. Useful as a fault-tolerance lever if progressive reads cause issues in production.
+4. **NFS write-through for compressed uploads**: during `StoreFile` with compression, tee out uncompressed chunk data to NFS cache via a callback, so uncompressed `GetFrame` reads can hit cache immediately after upload without a cold GCS fetch.
 
 ### From `lev-zstd-compression` (Unported)
 
@@ -253,7 +253,7 @@ compress-build -build <uuid> [-storage gs://bucket] [-compression lz4|zstd] [-re
 
 **Half-compressed builds** (some layers have v4 header + compressed data, ancestors don't): handled by design. `probeAssets` finds whichever variants exist per build; each Chunker routes independently. A v4 header with a nil FrameTable for an ancestor mapping falls through to uncompressed fetch for that mapping.
 
-**NFS unavailable**: compressed frames that miss NFS go straight to GCS (existing behavior). Uncompressed reads currently bypass NFS entirely (see TODO #1). No circuit breaker — repeated NFS timeouts will add latency to every miss until the cache recovers.
+**NFS unavailable**: compressed frames that miss NFS go straight to GCS (existing behavior). Uncompressed reads also use NFS caching with read-through and async write-back. No circuit breaker — repeated NFS timeouts will add latency to every miss until the cache recovers.
 
 **Upload path complexity**: dual-write (uncompressed + compressed), `PendingFrameTables` accumulation, and V4 header serialization add failure surface to the build hot path. Multi-layer builds add `UploadTracker` coordination between layers. A compression failure during upload could fail the entire build. Back-out: set `compressBuilds: false` in `compress-config` — this disables compressed writes entirely; uncompressed uploads continue as before and the read path already handles missing compressed variants. No cleanup of already-written compressed data needed (it becomes inert).
 
