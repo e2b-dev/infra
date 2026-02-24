@@ -115,3 +115,7 @@ variable "additional_ports" {
   description = "Additional ports to expose on the load balancer."
   type        = list(number)
 }
+
+variable "dashboard_api_count" {
+  type = number
+}

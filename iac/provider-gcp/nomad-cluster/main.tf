@@ -110,6 +110,7 @@ module "network" {
   api_nat_ips              = var.api_nat_ips
   api_nat_min_ports_per_vm = var.api_nat_min_ports_per_vm
 
+  dashboard_api_count       = var.dashboard_api_count
   ingress_port              = var.ingress_port
   api_port                  = var.api_port
   docker_reverse_proxy_port = var.docker_reverse_proxy_port

@@ -1,3 +1,19 @@
+locals {
+  dashboard_api_enabled = var.dashboard_api_count > 0
+
+  domains    = toset(concat(var.additional_domains, [var.domain_name]))
+  subdomains = local.dashboard_api_enabled ? ["dashboard-api"] : []
+
+  // Create matrix for each domain and subdomain combination
+  routing_matrix = local.dashboard_api_enabled ? {
+    for p in setproduct(local.domains, local.subdomains) :
+    "${p[0]}|${p[1]}" => {
+      domain    = p[0]
+      subdomain = p[1]
+    }
+  } : {}
+}
+
 resource "google_compute_health_check" "ingress" {
   name = "${var.prefix}ingress"
 
@@ -75,20 +91,6 @@ resource "google_compute_target_https_proxy" "ingress" {
   ssl_policy = google_compute_ssl_policy.ingress.self_link
 
   certificate_map = "//certificatemanager.googleapis.com/${google_certificate_manager_certificate_map.certificate_map.id}"
-}
-
-locals {
-  domains    = toset(concat(var.additional_domains, [var.domain_name]))
-  subdomains = ["dashboard-api"]
-
-  // Create matrix for each domain and subdomain combination
-  routing_matrix = {
-    for p in setproduct(local.domains, local.subdomains) :
-    "${p[0]}|${p[1]}" => {
-      domain    = p[0]
-      subdomain = p[1]
-    }
-  }
 }
 
 data "cloudflare_zone" "zone" {
