@@ -94,7 +94,7 @@ resource "google_compute_target_https_proxy" "ingress" {
 }
 
 data "cloudflare_zone" "zone" {
-  for_each = local.domains
+  for_each = len(local.routing_matrix) > 0 ? local.domains : {}
   name     = each.value
 }
 
