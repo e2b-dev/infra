@@ -3,6 +3,9 @@ package id
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -92,27 +95,17 @@ func TestParseName(t *testing.T) {
 
 			gotIdentifier, gotTag, err := ParseName(tt.input)
 
-			if (err != nil) != tt.wantErr {
-				t.Errorf("ParseName() error = %v, wantErr %v", err, tt.wantErr)
-
-				return
-			}
-
 			if tt.wantErr {
-				return
-			}
-
-			if gotIdentifier != tt.wantIdentifier {
-				t.Errorf("ParseName() identifier = %v, want %v", gotIdentifier, tt.wantIdentifier)
-			}
-
-			if (gotTag == nil) != (tt.wantTag == nil) {
-				t.Errorf("ParseName() tag = %v, want %v", gotTag, tt.wantTag)
+				require.Error(t, err, "Expected ParseName() to return error, got")
 
 				return
 			}
-			if gotTag != nil && tt.wantTag != nil && *gotTag != *tt.wantTag {
-				t.Errorf("ParseName() tag = %v, want %v", *gotTag, *tt.wantTag)
+
+			require.NoError(t, err, "Expected ParseName() not to return error, got: %v", err)
+			assert.Equal(t, tt.wantIdentifier, gotIdentifier, "ParseName() identifier = %v, want %v", gotIdentifier, tt.wantIdentifier)
+			require.Equal(t, gotTag == nil, tt.wantTag == nil, "ParseName() tag = %v, want %v", gotTag, tt.wantTag)
+			if tt.wantTag != nil {
+				assert.Equalf(t, tt.wantTag, gotTag, "ParseName() tag = %v, want %v", *gotTag, *tt.wantTag)
 			}
 		})
 	}
@@ -123,9 +116,7 @@ func TestWithNamespace(t *testing.T) {
 
 	got := WithNamespace("acme", "my-template")
 	want := "acme/my-template"
-	if got != want {
-		t.Errorf("WithNamespace() = %q, want %q", got, want)
-	}
+	assert.Equal(t, want, got, "WithNamespace() = %q, want %q", got, want)
 }
 
 func TestSplitIdentifier(t *testing.T) {
@@ -169,17 +160,14 @@ func TestSplitIdentifier(t *testing.T) {
 
 			gotNamespace, gotAlias := SplitIdentifier(tt.identifier)
 
-			if (gotNamespace == nil) != (tt.wantNamespace == nil) {
-				t.Errorf("SplitIdentifier() namespace = %v, want %v", gotNamespace, tt.wantNamespace)
+			if tt.wantNamespace == nil {
+				assert.Nil(t, gotNamespace)
+			} else {
+				require.NotNil(t, gotNamespace)
+				assert.Equal(t, *tt.wantNamespace, *gotNamespace)
+			}
 
-				return
-			}
-			if gotNamespace != nil && tt.wantNamespace != nil && *gotNamespace != *tt.wantNamespace {
-				t.Errorf("SplitIdentifier() namespace = %q, want %q", *gotNamespace, *tt.wantNamespace)
-			}
-			if gotAlias != tt.wantAlias {
-				t.Errorf("SplitIdentifier() alias = %q, want %q", gotAlias, tt.wantAlias)
-			}
+			assert.Equal(t, tt.wantAlias, gotAlias)
 		})
 	}
 }
@@ -245,32 +233,14 @@ func TestValidateAndDeduplicateTags(t *testing.T) {
 
 			got, err := ValidateAndDeduplicateTags(tt.tags)
 
-			if (err != nil) != tt.wantErr {
-				t.Errorf("ValidateAndDeduplicateTags() error = %v, wantErr %v", err, tt.wantErr)
-
-				return
-			}
-
 			if tt.wantErr {
-				return
-			}
-
-			if len(got) != len(tt.want) {
-				t.Errorf("ValidateAndDeduplicateTags() got %v, want %v", got, tt.want)
+				require.Error(t, err)
 
 				return
 			}
 
-			// Check all expected tags are present (order may vary due to map iteration)
-			gotSet := make(map[string]bool)
-			for _, tag := range got {
-				gotSet[tag] = true
-			}
-			for _, tag := range tt.want {
-				if !gotSet[tag] {
-					t.Errorf("ValidateAndDeduplicateTags() missing tag %v, got %v", tag, got)
-				}
-			}
+			require.NoError(t, err)
+			assert.ElementsMatch(t, tt.want, got)
 		})
 	}
 }
@@ -360,8 +330,10 @@ func TestValidateSandboxID(t *testing.T) {
 			t.Parallel()
 
 			err := ValidateSandboxID(tt.input)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("ValidateSandboxID(%q) error = %v, wantErr %v", tt.input, err, tt.wantErr)
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
 			}
 		})
 	}
@@ -401,8 +373,10 @@ func TestValidateNamespaceMatchesTeam(t *testing.T) {
 			t.Parallel()
 
 			err := ValidateNamespaceMatchesTeam(tt.identifier, tt.teamSlug)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("ValidateNamespaceMatchesTeam() error = %v, wantErr %v", err, tt.wantErr)
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
 			}
 		})
 	}

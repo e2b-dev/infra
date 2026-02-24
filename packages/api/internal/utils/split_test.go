@@ -2,6 +2,9 @@ package utils
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestShortID(t *testing.T) {
@@ -65,15 +68,14 @@ func TestShortID(t *testing.T) {
 			t.Parallel()
 
 			got, err := ShortID(tt.input)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("ShortID(%q) error = %v, wantErr %v", tt.input, err, tt.wantErr)
+			if tt.wantErr {
+				require.Error(t, err)
 
 				return
 			}
 
-			if !tt.wantErr && got != tt.want {
-				t.Errorf("ShortID(%q) = %q, want %q", tt.input, got, tt.want)
-			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
