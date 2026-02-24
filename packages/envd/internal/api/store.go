@@ -7,7 +7,6 @@ import (
 	"os"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/rs/zerolog"
 
@@ -36,10 +35,9 @@ type multipartUploadSession struct {
 	UID       int
 	GID       int
 	Parts     map[int]partStatus // partNumber -> status
-	CreatedAt time.Time
-	completed atomic.Bool    // Set to true when complete/abort starts to prevent new parts
-	mu        sync.Mutex     // Protects Parts and activeWriters
-	wg        sync.WaitGroup // Tracks in-flight part writes; Complete/Delete wait on this before closing DestFile
+	completed atomic.Bool        // Set to true when complete/abort starts to prevent new parts
+	mu        sync.Mutex         // Protects Parts and activeWriters
+	wg        sync.WaitGroup     // Tracks in-flight part writes; Complete/Delete wait on this before closing DestFile
 }
 
 // ignoreNotExist returns nil if err is a "not exist" error, otherwise returns err unchanged.
@@ -81,8 +79,8 @@ type API struct {
 	uploadsLock sync.RWMutex
 }
 
-func New(ctx context.Context, l *zerolog.Logger, defaults *execcontext.Defaults, mmdsChan chan *host.MMDSOpts, isNotFC bool) *API {
-	api := &API{
+func New(l *zerolog.Logger, defaults *execcontext.Defaults, mmdsChan chan *host.MMDSOpts, isNotFC bool) *API {
+	return &API{
 		logger:      l,
 		defaults:    defaults,
 		mmdsChan:    mmdsChan,
@@ -91,59 +89,6 @@ func New(ctx context.Context, l *zerolog.Logger, defaults *execcontext.Defaults,
 		lastSetTime: utils.NewAtomicMax(),
 		accessToken: &SecureToken{},
 		uploads:     make(map[string]*multipartUploadSession),
-	}
-
-	// Start background cleanup for expired upload sessions
-	go api.cleanupExpiredUploads(ctx)
-
-	return api
-}
-
-// cleanupExpiredUploads periodically removes upload sessions that have exceeded their TTL.
-// It stops when ctx is cancelled, preventing goroutine leaks in tests and enabling graceful shutdown.
-func (a *API) cleanupExpiredUploads(ctx context.Context) {
-	ticker := time.NewTicker(uploadSessionCleanupInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			a.removeExpiredSessions()
-		}
-	}
-}
-
-func (a *API) removeExpiredSessions() {
-	a.uploadsLock.Lock()
-	defer a.uploadsLock.Unlock()
-
-	now := time.Now()
-	for uploadID, session := range a.uploads {
-		if now.Sub(session.CreatedAt) > uploadSessionTTL {
-			// Mark as completed under session.mu to synchronize with part
-			// reservation (which checks completed and calls wg.Add under
-			// the same lock). This prevents a late wg.Add after our Wait.
-			session.mu.Lock()
-			swapped := session.completed.CompareAndSwap(false, true)
-			session.mu.Unlock()
-
-			if swapped {
-				// Unlink the file before removing from the map so a new Init
-				// for the same path creates a fresh inode.
-				if err := ignoreNotExist(os.Remove(session.FilePath)); err != nil {
-					a.logger.Warn().Err(err).Str("filePath", session.FilePath).Msg("failed to cleanup expired upload file")
-				}
-				delete(a.uploads, uploadID)
-				go func(s *multipartUploadSession) {
-					// Wait for any in-flight part writes to finish before closing the descriptor
-					s.wg.Wait()
-					s.DestFile.Close()
-				}(session)
-				a.logger.Info().Str("uploadId", uploadID).Msg("cleaned up expired multipart upload session")
-			}
-		}
 	}
 }
 

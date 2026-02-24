@@ -10,7 +10,6 @@ import (
 	"os/user"
 	"path/filepath"
 	"syscall"
-	"time"
 
 	"github.com/google/uuid"
 
@@ -26,10 +25,6 @@ const (
 	maxTotalSize = 10 * 1024 * 1024 * 1024
 	// maxPartSize limits individual part size to 100MB to prevent DoS
 	maxPartSize = 100 * 1024 * 1024
-	// uploadSessionTTL is the maximum time an upload session can remain active
-	uploadSessionTTL = 1 * time.Hour
-	// uploadSessionCleanupInterval is how often to check for expired sessions
-	uploadSessionCleanupInterval = 5 * time.Minute
 	// maxNumParts caps the number of parts to prevent memory/CPU exhaustion.
 	// With totalSize=10GB and partSize=1, numParts would be ~10 billion without this.
 	maxNumParts = 10_000
@@ -220,7 +215,6 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 		UID:       uid,
 		GID:       gid,
 		Parts:     make(map[int]partStatus),
-		CreatedAt: time.Now(),
 	}
 
 	a.uploads[uploadID] = session
@@ -317,6 +311,13 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 		session.mu.Unlock()
 		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Str("uploadId", uploadId).Int("partNumber", params.Part).Msg("part is already being uploaded by another request")
 		jsonError(w, http.StatusConflict, fmt.Errorf("part %d is already being uploaded by another request for session %s", params.Part, uploadId))
+
+		return
+	}
+	if session.Parts[params.Part] == partComplete {
+		session.mu.Unlock()
+		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Str("uploadId", uploadId).Int("partNumber", params.Part).Msg("part was already uploaded")
+		jsonError(w, http.StatusConflict, fmt.Errorf("part %d was already uploaded for session %s", params.Part, uploadId))
 
 		return
 	}

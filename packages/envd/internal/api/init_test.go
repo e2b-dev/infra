@@ -137,12 +137,12 @@ func (m *mockMMDSClient) GetAccessTokenHash(_ context.Context) (string, error) {
 	return m.hash, m.err
 }
 
-func newTestAPI(ctx context.Context, accessToken *SecureToken, mmdsClient MMDSClient) *API {
+func newTestAPI(accessToken *SecureToken, mmdsClient MMDSClient) *API {
 	logger := zerolog.Nop()
 	defaults := &execcontext.Defaults{
 		EnvVars: utils.NewMap[string, string](),
 	}
-	api := New(ctx, &logger, defaults, nil, false)
+	api := New(&logger, defaults, nil, false)
 	if accessToken != nil {
 		api.accessToken.TakeFrom(accessToken)
 	}
@@ -241,7 +241,7 @@ func TestValidateInitAccessToken(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			mmdsClient := &mockMMDSClient{hash: tt.mmdsHash, err: tt.mmdsErr}
-			api := newTestAPI(ctx, tt.accessToken, mmdsClient)
+			api := newTestAPI(tt.accessToken, mmdsClient)
 
 			err := api.validateInitAccessToken(ctx, tt.requestToken)
 
@@ -263,7 +263,7 @@ func TestCheckMMDSHash(t *testing.T) {
 		t.Parallel()
 		token := "my-secret-token"
 		mmdsClient := &mockMMDSClient{hash: keys.HashAccessToken(token), err: nil}
-		api := newTestAPI(ctx, nil, mmdsClient)
+		api := newTestAPI(nil, mmdsClient)
 
 		matches, exists := api.checkMMDSHash(ctx, secureTokenPtr(token))
 
@@ -274,7 +274,7 @@ func TestCheckMMDSHash(t *testing.T) {
 	t.Run("returns no match when token hash differs from MMDS hash", func(t *testing.T) {
 		t.Parallel()
 		mmdsClient := &mockMMDSClient{hash: keys.HashAccessToken("different-token"), err: nil}
-		api := newTestAPI(ctx, nil, mmdsClient)
+		api := newTestAPI(nil, mmdsClient)
 
 		matches, exists := api.checkMMDSHash(ctx, secureTokenPtr("my-token"))
 
@@ -285,7 +285,7 @@ func TestCheckMMDSHash(t *testing.T) {
 	t.Run("returns exists but no match when request token is nil", func(t *testing.T) {
 		t.Parallel()
 		mmdsClient := &mockMMDSClient{hash: keys.HashAccessToken("some-token"), err: nil}
-		api := newTestAPI(ctx, nil, mmdsClient)
+		api := newTestAPI(nil, mmdsClient)
 
 		matches, exists := api.checkMMDSHash(ctx, nil)
 
@@ -296,7 +296,7 @@ func TestCheckMMDSHash(t *testing.T) {
 	t.Run("returns false, false when MMDS returns error", func(t *testing.T) {
 		t.Parallel()
 		mmdsClient := &mockMMDSClient{hash: "", err: assert.AnError}
-		api := newTestAPI(ctx, nil, mmdsClient)
+		api := newTestAPI(nil, mmdsClient)
 
 		matches, exists := api.checkMMDSHash(ctx, secureTokenPtr("any-token"))
 
@@ -307,7 +307,7 @@ func TestCheckMMDSHash(t *testing.T) {
 	t.Run("returns false, false when MMDS returns empty hash with non-nil request", func(t *testing.T) {
 		t.Parallel()
 		mmdsClient := &mockMMDSClient{hash: "", err: nil}
-		api := newTestAPI(ctx, nil, mmdsClient)
+		api := newTestAPI(nil, mmdsClient)
 
 		matches, exists := api.checkMMDSHash(ctx, secureTokenPtr("any-token"))
 
@@ -318,7 +318,7 @@ func TestCheckMMDSHash(t *testing.T) {
 	t.Run("returns false, false when MMDS returns empty hash with nil request", func(t *testing.T) {
 		t.Parallel()
 		mmdsClient := &mockMMDSClient{hash: "", err: nil}
-		api := newTestAPI(ctx, nil, mmdsClient)
+		api := newTestAPI(nil, mmdsClient)
 
 		matches, exists := api.checkMMDSHash(ctx, nil)
 
@@ -329,7 +329,7 @@ func TestCheckMMDSHash(t *testing.T) {
 	t.Run("returns true, true when MMDS returns hash of empty string with nil request (explicit reset)", func(t *testing.T) {
 		t.Parallel()
 		mmdsClient := &mockMMDSClient{hash: keys.HashAccessToken(""), err: nil}
-		api := newTestAPI(ctx, nil, mmdsClient)
+		api := newTestAPI(nil, mmdsClient)
 
 		matches, exists := api.checkMMDSHash(ctx, nil)
 
@@ -451,7 +451,7 @@ func TestSetData(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
 				mmdsClient := &mockMMDSClient{hash: tt.mmdsHash, err: tt.mmdsErr}
-				api := newTestAPI(ctx, tt.existingToken, mmdsClient)
+				api := newTestAPI(tt.existingToken, mmdsClient)
 
 				data := PostInitJSONBody{
 					AccessToken: tt.requestToken,
@@ -478,7 +478,7 @@ func TestSetData(t *testing.T) {
 	t.Run("sets environment variables", func(t *testing.T) {
 		t.Parallel()
 		mmdsClient := &mockMMDSClient{hash: "", err: assert.AnError}
-		api := newTestAPI(ctx, nil, mmdsClient)
+		api := newTestAPI(nil, mmdsClient)
 
 		envVars := EnvVars{"FOO": "bar", "BAZ": "qux"}
 		data := PostInitJSONBody{
@@ -499,7 +499,7 @@ func TestSetData(t *testing.T) {
 	t.Run("sets default user", func(t *testing.T) {
 		t.Parallel()
 		mmdsClient := &mockMMDSClient{hash: "", err: assert.AnError}
-		api := newTestAPI(ctx, nil, mmdsClient)
+		api := newTestAPI(nil, mmdsClient)
 
 		data := PostInitJSONBody{
 			DefaultUser: utilsShared.ToPtr("testuser"),
@@ -514,7 +514,7 @@ func TestSetData(t *testing.T) {
 	t.Run("does not set default user when empty", func(t *testing.T) {
 		t.Parallel()
 		mmdsClient := &mockMMDSClient{hash: "", err: assert.AnError}
-		api := newTestAPI(ctx, nil, mmdsClient)
+		api := newTestAPI(nil, mmdsClient)
 		api.defaults.User = "original"
 
 		data := PostInitJSONBody{
@@ -530,7 +530,7 @@ func TestSetData(t *testing.T) {
 	t.Run("sets default workdir", func(t *testing.T) {
 		t.Parallel()
 		mmdsClient := &mockMMDSClient{hash: "", err: assert.AnError}
-		api := newTestAPI(ctx, nil, mmdsClient)
+		api := newTestAPI(nil, mmdsClient)
 
 		data := PostInitJSONBody{
 			DefaultWorkdir: utilsShared.ToPtr("/home/user"),
@@ -546,7 +546,7 @@ func TestSetData(t *testing.T) {
 	t.Run("does not set default workdir when empty", func(t *testing.T) {
 		t.Parallel()
 		mmdsClient := &mockMMDSClient{hash: "", err: assert.AnError}
-		api := newTestAPI(ctx, nil, mmdsClient)
+		api := newTestAPI(nil, mmdsClient)
 		originalWorkdir := "/original"
 		api.defaults.Workdir = &originalWorkdir
 
@@ -564,7 +564,7 @@ func TestSetData(t *testing.T) {
 	t.Run("sets multiple fields at once", func(t *testing.T) {
 		t.Parallel()
 		mmdsClient := &mockMMDSClient{hash: "", err: assert.AnError}
-		api := newTestAPI(ctx, nil, mmdsClient)
+		api := newTestAPI(nil, mmdsClient)
 
 		envVars := EnvVars{"KEY": "value"}
 		data := PostInitJSONBody{

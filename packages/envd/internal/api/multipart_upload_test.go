@@ -2,7 +2,6 @@ package api
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -27,10 +26,7 @@ func newMultipartTestAPI(t *testing.T) *API {
 		EnvVars: utils.NewMap[string, string](),
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-
-	return New(ctx, &logger, defaults, nil, true)
+	return New(&logger, defaults, nil, true)
 }
 
 func TestMultipartUpload(t *testing.T) {
@@ -276,10 +272,9 @@ func TestMultipartUpload(t *testing.T) {
 
 		// Session should still exist (completed flag reset) so client can retry
 		api.uploadsLock.RLock()
-		session, exists := api.uploads[uploadId]
+		_, exists := api.uploads[uploadId]
 		api.uploadsLock.RUnlock()
 		assert.True(t, exists, "session should still exist after failed complete")
-		assert.False(t, session.completed.Load(), "completed flag should be reset")
 
 		// Clean up
 		api.uploadsLock.Lock()

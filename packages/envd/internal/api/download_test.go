@@ -3,7 +3,6 @@ package api
 import (
 	"bytes"
 	"compress/gzip"
-	"context"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -30,10 +29,7 @@ func newDownloadTestAPI(t *testing.T, username string) *API {
 		User:    username,
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-
-	return New(ctx, &logger, defaults, nil, false)
+	return New(&logger, defaults, nil, false)
 }
 
 func TestGetFilesContentDisposition(t *testing.T) {
