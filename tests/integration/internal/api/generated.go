@@ -1160,10 +1160,10 @@ type TemplateWithBuilds struct {
 // TokenInfo defines model for TokenInfo.
 type TokenInfo struct {
 	// TeamID Identifier of the team the user belongs to
-	TeamID *openapi_types.UUID `json:"teamID,omitempty"`
+	TeamID openapi_types.UUID `json:"teamID"`
 
 	// TeamName Name of the team the user belongs to
-	TeamName *string `json:"teamName,omitempty"`
+	TeamName string `json:"teamName"`
 }
 
 // UpdateTeamAPIKey defines model for UpdateTeamAPIKey.
