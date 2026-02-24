@@ -333,5 +333,7 @@ func convertFromDBMountsToAPIMounts(mounts []*dbtypes.SandboxVolumeMountConfig) 
 		})
 	}
 
+	// this intentionally returns a pointer to the slice.
+	// generated code adds `omitempty` for backwards compatibility reasons; we should always return a slice here.
 	return &results
 }

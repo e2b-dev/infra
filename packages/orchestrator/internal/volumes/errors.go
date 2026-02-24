@@ -15,7 +15,7 @@ import (
 func newAPIError(ctx context.Context, grpcCode codes.Code, devCode string, devMessage string, args ...any) error {
 	message := fmt.Sprintf(devMessage, args...)
 
-	s := status.Newf(grpcCode, message)
+	s := status.New(grpcCode, message)
 	if s2, err := s.WithDetails(&orchestrator.UserError{Code: devCode, Message: message}); err != nil {
 		logger.L().Error(ctx, "failed to add user error details", zap.Error(err))
 	} else {
