@@ -174,8 +174,14 @@ paths:
           $ref: "#/components/responses/InvalidPath"
         "401":
           $ref: "#/components/responses/InvalidUser"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
         "500":
           $ref: "#/components/responses/InternalServerError"
+        "507":
+          $ref: "#/components/responses/NotEnoughDiskSpace"
 
   /files/upload/{uploadId}:
     put:
@@ -216,6 +222,8 @@ paths:
           $ref: "#/components/responses/InvalidPath"
         "404":
           $ref: "#/components/responses/UploadNotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalServerError"
         "507":
@@ -238,6 +246,8 @@ paths:
           description: Upload aborted and cleaned up successfully
         "404":
           $ref: "#/components/responses/UploadNotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalServerError"
 
@@ -262,8 +272,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MultipartUploadComplete"
+        "400":
+          $ref: "#/components/responses/InvalidPath"
         "404":
           $ref: "#/components/responses/UploadNotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalServerError"
 
@@ -360,6 +374,18 @@ components:
             $ref: "#/components/schemas/Error"
     NotEnoughDiskSpace:
       description: Not enough disk space
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Conflict:
+      description: Conflict with current state of the resource
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    TooManyRequests:
+      description: Too many concurrent upload sessions
       content:
         application/json:
           schema:

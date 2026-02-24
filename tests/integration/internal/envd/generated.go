@@ -120,6 +120,9 @@ type SignatureExpiration = int
 // User defines model for User.
 type User = string
 
+// Conflict defines model for Conflict.
+type Conflict = Error
+
 // FileNotFound defines model for FileNotFound.
 type FileNotFound = Error
 
@@ -134,6 +137,9 @@ type InvalidUser = Error
 
 // NotEnoughDiskSpace defines model for NotEnoughDiskSpace.
 type NotEnoughDiskSpace = Error
+
+// TooManyRequests defines model for TooManyRequests.
+type TooManyRequests = Error
 
 // UploadNotFound defines model for UploadNotFound.
 type UploadNotFound = Error
@@ -1141,7 +1147,10 @@ type PostFilesUploadInitResponse struct {
 	JSON200      *MultipartUploadInit
 	JSON400      *InvalidPath
 	JSON401      *InvalidUser
+	JSON409      *Conflict
+	JSON429      *TooManyRequests
 	JSON500      *InternalServerError
+	JSON507      *NotEnoughDiskSpace
 }
 
 // Status returns HTTPResponse.Status
@@ -1164,6 +1173,7 @@ type DeleteFilesUploadUploadIdResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	JSON404      *UploadNotFound
+	JSON409      *Conflict
 	JSON500      *InternalServerError
 }
 
@@ -1189,6 +1199,7 @@ type PutFilesUploadUploadIdResponse struct {
 	JSON200      *MultipartUploadPart
 	JSON400      *InvalidPath
 	JSON404      *UploadNotFound
+	JSON409      *Conflict
 	JSON500      *InternalServerError
 	JSON507      *NotEnoughDiskSpace
 }
@@ -1213,7 +1224,9 @@ type PostFilesUploadUploadIdCompleteResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	JSON200      *MultipartUploadComplete
+	JSON400      *InvalidPath
 	JSON404      *UploadNotFound
+	JSON409      *Conflict
 	JSON500      *InternalServerError
 }
 
@@ -1565,12 +1578,33 @@ func ParsePostFilesUploadInitResponse(rsp *http.Response) (*PostFilesUploadInitR
 		}
 		response.JSON401 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest TooManyRequests
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest InternalServerError
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 507:
+		var dest NotEnoughDiskSpace
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON507 = &dest
 
 	}
 
@@ -1597,6 +1631,13 @@ func ParseDeleteFilesUploadUploadIdResponse(rsp *http.Response) (*DeleteFilesUpl
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest InternalServerError
@@ -1645,6 +1686,13 @@ func ParsePutFilesUploadUploadIdResponse(rsp *http.Response) (*PutFilesUploadUpl
 		}
 		response.JSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest InternalServerError
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -1685,12 +1733,26 @@ func ParsePostFilesUploadUploadIdCompleteResponse(rsp *http.Response) (*PostFile
 		}
 		response.JSON200 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest InvalidPath
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
 		var dest UploadNotFound
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest InternalServerError

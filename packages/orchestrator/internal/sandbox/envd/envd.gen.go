@@ -111,6 +111,9 @@ type SignatureExpiration = int
 // User defines model for User.
 type User = string
 
+// Conflict defines model for Conflict.
+type Conflict = Error
+
 // FileNotFound defines model for FileNotFound.
 type FileNotFound = Error
 
@@ -125,6 +128,9 @@ type InvalidUser = Error
 
 // NotEnoughDiskSpace defines model for NotEnoughDiskSpace.
 type NotEnoughDiskSpace = Error
+
+// TooManyRequests defines model for TooManyRequests.
+type TooManyRequests = Error
 
 // UploadNotFound defines model for UploadNotFound.
 type UploadNotFound = Error
