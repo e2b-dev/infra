@@ -73,18 +73,13 @@ func (a *AssetInfo) CompressedFile(ft *storage.FrameTable) storage.FramedFile {
 
 // Chunker fetches data from storage into a memory-mapped cache file.
 //
-// A single instance serves both compressed and uncompressed callers for the same
-// build artifact. The routing decision is made per-GetBlock call based on the
-// FrameTable and asset availability:
-//
-//   - Compressed (ft != nil AND matching compressed asset exists): fetches
-//     compressed frames, decompresses them progressively into mmap via GetFrame.
-//   - Uncompressed (ft == nil OR no compressed asset): streams raw bytes from
-//     storage via GetFrame (with nil frameTable) into mmap.
+// The compression mode is determined once at construction time by the AssetInfo:
+// if a compressed variant exists and a FrameTable is provided, frames are fetched
+// compressed and decompressed into mmap; otherwise raw bytes are streamed directly.
 //
 // Both paths use GetFrame with an onRead callback for progressive delivery.
-// Decompressed/fetched bytes end up in the shared mmap cache and are
-// available to all subsequent callers regardless of compression mode.
+// Fetched bytes end up in the shared mmap cache and are available to all
+// subsequent callers.
 type Chunker struct {
 	assets AssetInfo
 
@@ -128,9 +123,8 @@ func (c *Chunker) ReadBlock(ctx context.Context, b []byte, off int64, ft *storag
 	return copy(b, slice), nil
 }
 
-// GetBlock returns data at the given uncompressed offset as a reference to the
-// mmap cache. On cache miss, fetches from storage (decompressing if ft is
-// non-nil and a matching compressed asset exists).
+// GetBlock returns a reference to the mmap cache at the given uncompressed
+// offset. On cache miss, fetches from storage into the cache first.
 func (c *Chunker) GetBlock(ctx context.Context, off, length int64, ft *storage.FrameTable) ([]byte, error) {
 	// if off < 0 || length < 0 {
 	// 	return nil, fmt.Errorf("invalid slice params: off=%d length=%d", off, length)

@@ -46,7 +46,7 @@ func newStorageDiff(
 	blockSize int64,
 	metrics blockmetrics.Metrics,
 	persistence storage.StorageProvider,
-	flags *featureflags.Client,
+	featureFlags *featureflags.Client,
 ) (*StorageDiff, error) {
 	storagePath := storagePath(buildId, diffType)
 	if !isKnownDiffType(diffType) {
@@ -62,7 +62,7 @@ func newStorageDiff(
 		blockSize:    blockSize,
 		metrics:      metrics,
 		persistence:  persistence,
-		featureFlags: flags,
+		featureFlags: featureFlags,
 		cacheKey:     GetDiffStoreKey(buildId, diffType),
 	}, nil
 }
