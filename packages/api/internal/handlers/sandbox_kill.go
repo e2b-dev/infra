@@ -29,7 +29,7 @@ func (a *APIStore) deleteSnapshot(ctx context.Context, sandboxID string, teamID 
 		return err
 	}
 
-	dbErr := a.sqlcDB.DeleteTemplate(ctx, queries.DeleteTemplateParams{
+	aliasKeys, dbErr := a.sqlcDB.DeleteTemplate(ctx, queries.DeleteTemplateParams{
 		TeamID:     teamID,
 		TemplateID: snapshot.TemplateID,
 	})
@@ -68,6 +68,7 @@ func (a *APIStore) deleteSnapshot(ctx context.Context, sandboxID string, teamID 
 	}(context.WithoutCancel(ctx))
 
 	a.templateCache.InvalidateAllTags(context.WithoutCancel(ctx), snapshot.TemplateID)
+	a.templateCache.InvalidateAliasesByTemplateID(context.WithoutCancel(ctx), snapshot.TemplateID, aliasKeys)
 
 	return nil
 }

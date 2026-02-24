@@ -356,48 +356,95 @@ func TestStreamingChunker_ConcurrentSameChunk(t *testing.T) {
 func TestStreamingChunker_EarlyReturn(t *testing.T) {
 	t.Parallel()
 
-	data := makeTestData(t, storage.MemoryChunkSize)
-	upstream := &slowUpstream{
-		data:      data,
-		blockSize: testBlockSize,
-		delay:     100 * time.Microsecond,
+	type testCase struct {
+		name      string
+		blockSize int64
+		delay     time.Duration
+		// blockIndices are block indices within the chunk, listed in the
+		// expected completion order (earlier blocks are notified first).
+		blockIndices []int
 	}
 
-	chunker, err := NewStreamingChunker(
-		int64(len(data)), testBlockSize,
-		upstream, t.TempDir()+"/cache",
-		newTestMetrics(t),
-		0, nil,
-	)
-	require.NoError(t, err)
-	defer chunker.Close()
+	cases := []testCase{
+		{
+			name:         "hugepage",
+			blockSize:    header.HugepageSize, // 2MB → 2 blocks per 4MB chunk
+			delay:        50 * time.Millisecond,
+			blockIndices: []int{0, 1},
+		},
+		{
+			name:         "4K",
+			blockSize:    header.PageSize, // 4KB → 1024 blocks per 4MB chunk
+			delay:        100 * time.Microsecond,
+			blockIndices: []int{1, 512, 1022},
+		},
+	}
 
-	// Time how long it takes to get the first block
-	start := time.Now()
-	_, err = chunker.Slice(t.Context(), 0, testBlockSize)
-	earlyLatency := time.Since(start)
-	require.NoError(t, err)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	// Time how long it takes to get the last block (on a fresh chunker)
-	chunker2, err := NewStreamingChunker(
-		int64(len(data)), testBlockSize,
-		upstream, t.TempDir()+"/cache2",
-		newTestMetrics(t),
-		0, nil,
-	)
-	require.NoError(t, err)
-	defer chunker2.Close()
+			data := makeTestData(t, storage.MemoryChunkSize)
 
-	lastOff := int64(len(data)) - testBlockSize
-	start = time.Now()
-	_, err = chunker2.Slice(t.Context(), lastOff, testBlockSize)
-	lateLatency := time.Since(start)
-	require.NoError(t, err)
+			gate := make(chan struct{})
+			upstream := streamingFunc(func(_ context.Context, off, length int64) (io.ReadCloser, error) {
+				<-gate
+				end := min(off+length, int64(len(data)))
 
-	// The early slice should return significantly faster
-	t.Logf("early latency: %v, late latency: %v", earlyLatency, lateLatency)
-	assert.Less(t, earlyLatency, lateLatency,
-		"first-block latency should be less than last-block latency")
+				return &slowReader{
+					data:      data[off:end],
+					blockSize: int(tc.blockSize),
+					delay:     tc.delay,
+				}, nil
+			})
+
+			chunker, err := NewStreamingChunker(
+				int64(len(data)), tc.blockSize,
+				upstream, t.TempDir()+"/cache",
+				newTestMetrics(t),
+				0, nil,
+			)
+			require.NoError(t, err)
+			defer chunker.Close()
+
+			n := len(tc.blockIndices)
+			completionOrder := make(chan int, n)
+
+			var eg errgroup.Group
+			for i, blockIdx := range tc.blockIndices {
+				off := int64(blockIdx) * tc.blockSize
+				eg.Go(func() error {
+					_, err := chunker.Slice(t.Context(), off, tc.blockSize)
+					if err != nil {
+						return fmt.Errorf("request %d (block %d) failed: %w", i, blockIdx, err)
+					}
+					completionOrder <- i
+
+					return nil
+				})
+			}
+
+			// Let all goroutines register as waiters before the fetch begins.
+			time.Sleep(10 * time.Millisecond)
+			close(gate)
+
+			require.NoError(t, eg.Wait())
+			close(completionOrder)
+
+			got := make([]int, 0, n)
+			for idx := range completionOrder {
+				got = append(got, idx)
+			}
+
+			expected := make([]int, n)
+			for i := range expected {
+				expected[i] = i
+			}
+
+			assert.Equal(t, expected, got,
+				"requests should complete in offset order (earlier blocks first)")
+		})
+	}
 }
 
 func TestStreamingChunker_ErrorKeepsPartialData(t *testing.T) {

@@ -305,7 +305,7 @@ func setTemplateSource(ctx context.Context, tm *TemplateManager, teamID uuid.UUI
 		}
 
 		// Step 1: Resolve alias to template ID (using cache with fallback for promoted templates)
-		aliasInfo, err := tm.templateCache.ResolveAlias(ctx, identifier, teamSlug)
+		aliasInfo, metadata, err := tm.templateCache.ResolveAliasWithMetadata(ctx, identifier, teamSlug)
 		if err != nil {
 			msg := fmt.Sprintf("error resolving base template '%s'", *fromTemplate)
 			if errors.Is(err, templatecache.ErrTemplateNotFound) {
@@ -318,7 +318,7 @@ func setTemplateSource(ctx context.Context, tm *TemplateManager, teamID uuid.UUI
 			}
 		}
 
-		if !aliasInfo.Public && aliasInfo.TeamID != teamID {
+		if !metadata.Public && aliasInfo.TeamID != teamID {
 			return &FromTemplateError{
 				err:     nil,
 				message: fmt.Sprintf("you have no access to use '%s' as a base template", *fromTemplate),
