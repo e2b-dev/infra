@@ -156,8 +156,8 @@ func run() int {
 		"Origin",
 		"Content-Length",
 		"Content-Type",
-		"X-Supabase-Token",
-		"X-Supabase-Team",
+		sharedauth.HeaderSupabaseToken,
+		sharedauth.HeaderSupabaseTeam,
 	}
 	r.Use(cors.New(corsConfig))
 
