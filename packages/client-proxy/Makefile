@@ -1,7 +1,11 @@
 ENV := $(shell cat ../../.last_used_env || echo "not-set")
 -include ../../.env.${ENV}
 PREFIX := $(strip $(subst ",,$(PREFIX)))
-HOSTNAME := $(shell hostname || hostnamectl hostname) 
+HOSTNAME := $(shell hostname || hostnamectl hostname)
+
+# Architecture for builds. Defaults to local arch; override for cross-compilation
+# (e.g., BUILD_ARCH=amd64 make build-and-upload from an ARM64 host).
+BUILD_ARCH ?= $(shell go env GOARCH)
 
 ifeq ($(PROVIDER),aws)
 	IMAGE_REGISTRY := $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com/$(PREFIX)core/client-proxy
@@ -13,7 +17,7 @@ endif
 build:
 	# Allow for passing commit sha directly for docker builds
 	$(eval COMMIT_SHA ?= $(shell git rev-parse --short HEAD))
-	CGO_ENABLED=0 GOOS=linux GOARCH=$(shell go env GOARCH) go build -o bin/client-proxy -ldflags "-X=main.commitSHA=$(COMMIT_SHA)" .
+	CGO_ENABLED=0 GOOS=linux GOARCH=$(BUILD_ARCH) go build -o bin/client-proxy -ldflags "-X=main.commitSHA=$(COMMIT_SHA)" .
 
 .PHONY: build-debug
 build-debug:
@@ -24,7 +28,7 @@ build-debug:
 build-and-upload:
 	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
 	@docker buildx install # sets up the buildx as default docker builder (otherwise the command below won't work)
-	@docker buildx build --platform linux/$(shell go env GOARCH) --tag $(IMAGE_REGISTRY) --push --build-arg COMMIT_SHA="$(COMMIT_SHA)" -f ./Dockerfile ..
+	@docker buildx build --platform linux/$(BUILD_ARCH) --tag $(IMAGE_REGISTRY) --push --build-arg COMMIT_SHA="$(COMMIT_SHA)" -f ./Dockerfile ..
 
 .PHONY: run
 run:

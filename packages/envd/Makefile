@@ -7,6 +7,10 @@ LDFLAGS=-ldflags "-X=main.commitSHA=$(BUILD)"
 AWS_BUCKET_PREFIX ?= $(PREFIX)$(AWS_ACCOUNT_ID)-
 GCP_BUCKET_PREFIX ?= $(GCP_PROJECT_ID)-
 
+# Architecture for builds. Defaults to local arch; override for cross-compilation
+# (e.g., BUILD_ARCH=amd64 make build from an ARM64 host).
+BUILD_ARCH ?= $(shell go env GOARCH)
+
 .PHONY: init
 init:
 	brew install protobuf
@@ -20,17 +24,17 @@ else
 endif
 
 build:
-	CGO_ENABLED=0 GOOS=linux GOARCH=$(shell go env GOARCH) go build -a -o bin/envd ${LDFLAGS}
+	CGO_ENABLED=0 GOOS=linux GOARCH=$(BUILD_ARCH) go build -a -o bin/envd ${LDFLAGS}
 
 build-debug:
 	CGO_ENABLED=1 go build -race -gcflags=all="-N -l" -o bin/debug/envd ${LDFLAGS}
 
 start-docker:
 	make build
-	DOCKER_BUILDKIT=1 docker build --platform linux/$(shell go env GOARCH) -t envd-debug . -f debug.Dockerfile
+	DOCKER_BUILDKIT=1 docker build --platform linux/$(BUILD_ARCH) -t envd-debug . -f debug.Dockerfile
 	docker run \
 	--name envd \
-	--platform linux/$(shell go env GOARCH) \
+	--platform linux/$(BUILD_ARCH) \
 	-p 49983:49983 \
 	-p 2345:2345 \
 	-p 9999:9999 \

@@ -7,6 +7,8 @@ RESULT_PATH="{{ .ResultPath }}"
 echo "Starting provisioning script"
 
 echo "Making configuration immutable"
+# chattr may not be available in all busybox builds (e.g., ARM64 busybox-static
+# packages often omit it). Treat failure as non-fatal to support both architectures.
 if $BUSYBOX chattr +i /etc/resolv.conf 2>/tmp/chattr_err; then
     echo "chattr +i /etc/resolv.conf: ok"
 else
@@ -99,6 +101,7 @@ echo "Linking systemd to init"
 ln -sf /lib/systemd/systemd /usr/sbin/init
 
 echo "Unlocking immutable configuration"
+# See comment above — chattr may be missing on ARM64 busybox builds.
 if $BUSYBOX chattr -i /etc/resolv.conf 2>/tmp/chattr_err; then
     echo "chattr -i /etc/resolv.conf: ok"
 else
