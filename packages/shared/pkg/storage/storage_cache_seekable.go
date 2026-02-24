@@ -512,7 +512,7 @@ func (c *cachedFramedFile) validateGetFrameParams(off int64, length int, frameTa
 	return nil
 }
 
-func (c *cachedFramedFile) writeChunkToCache(ctx context.Context, offset int64, chunkPath string, data []byte) error {
+func (c *cachedFramedFile) writeChunkToCache(ctx context.Context, offset int64, chunkPath string, bytes []byte) error {
 	writeTimer := cacheSlabWriteTimerFactory.Begin()
 
 	lockFile, err := lock.TryAcquireLock(ctx, chunkPath)
@@ -535,21 +535,21 @@ func (c *cachedFramedFile) writeChunkToCache(ctx context.Context, offset int64, 
 
 	tempPath := c.makeTempChunkFilename(offset)
 
-	if err := os.WriteFile(tempPath, data, cacheFilePermissions); err != nil {
+	if err := os.WriteFile(tempPath, bytes, cacheFilePermissions); err != nil {
 		go safelyRemoveFile(ctx, tempPath)
 
-		writeTimer.Failure(ctx, int64(len(data)))
+		writeTimer.Failure(ctx, int64(len(bytes)))
 
 		return fmt.Errorf("failed to write temp cache file: %w", err)
 	}
 
 	if err := utils.RenameOrDeleteFile(ctx, tempPath, chunkPath); err != nil {
-		writeTimer.Failure(ctx, int64(len(data)))
+		writeTimer.Failure(ctx, int64(len(bytes)))
 
 		return fmt.Errorf("failed to rename temp file: %w", err)
 	}
 
-	writeTimer.Success(ctx, int64(len(data)))
+	writeTimer.Success(ctx, int64(len(bytes)))
 
 	return nil
 }
