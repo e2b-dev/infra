@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
@@ -25,7 +26,7 @@ func (a *APIStore) PostTemplates(c *gin.Context) {
 	ctx := c.Request.Context()
 	span := trace.SpanFromContext(ctx)
 
-	userID := a.GetUserID(c)
+	userID := auth.MustGetUserID(c)
 
 	body, err := utils.ParseBody[api.TemplateBuildRequest](ctx, c)
 	if err != nil {
@@ -77,7 +78,7 @@ func (a *APIStore) PostTemplatesTemplateID(c *gin.Context, rawTemplateID api.Tem
 	ctx := c.Request.Context()
 	span := trace.SpanFromContext(ctx)
 
-	userID := a.GetUserID(c)
+	userID := auth.MustGetUserID(c)
 
 	body, err := utils.ParseBody[api.TemplateBuildRequest](ctx, c)
 	if err != nil {

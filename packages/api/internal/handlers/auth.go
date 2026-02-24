@@ -16,14 +16,6 @@ import (
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 )
 
-func (a *APIStore) GetUserID(c *gin.Context) uuid.UUID {
-	return auth.MustGetUserID(c)
-}
-
-func (a *APIStore) GetTeamInfo(c *gin.Context) *types.Team {
-	return auth.MustGetTeamInfo(c)
-}
-
 func (a *APIStore) GetTeam(
 	ctx context.Context,
 	c *gin.Context,

@@ -7,13 +7,14 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/team"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 func (a *APIStore) GetTeams(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	userID := a.GetUserID(c)
+	userID := auth.MustGetUserID(c)
 
 	results, err := a.authDB.Read.GetTeamsWithUsersTeams(ctx, userID)
 	if err != nil {
