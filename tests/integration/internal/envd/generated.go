@@ -192,12 +192,6 @@ type PostFilesUploadInitJSONBody struct {
 type PostFilesUploadInitParams struct {
 	// Username User used for setting the owner, or resolving relative paths.
 	Username *User `form:"username,omitempty" json:"username,omitempty"`
-
-	// Signature Signature used for file access permission verification.
-	Signature *Signature `form:"signature,omitempty" json:"signature,omitempty"`
-
-	// SignatureExpiration Signature expiration used for defining the expiration time of the signature.
-	SignatureExpiration *SignatureExpiration `form:"signature_expiration,omitempty" json:"signature_expiration,omitempty"`
 }
 
 // PutFilesUploadUploadIdParams defines parameters for PutFilesUploadUploadId.
@@ -748,38 +742,6 @@ func NewPostFilesUploadInitRequestWithBody(server string, params *PostFilesUploa
 		if params.Username != nil {
 
 			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "username", runtime.ParamLocationQuery, *params.Username); err != nil {
-				return nil, err
-			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-				return nil, err
-			} else {
-				for k, v := range parsed {
-					for _, v2 := range v {
-						queryValues.Add(k, v2)
-					}
-				}
-			}
-
-		}
-
-		if params.Signature != nil {
-
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "signature", runtime.ParamLocationQuery, *params.Signature); err != nil {
-				return nil, err
-			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-				return nil, err
-			} else {
-				for k, v := range parsed {
-					for _, v2 := range v {
-						queryValues.Add(k, v2)
-					}
-				}
-			}
-
-		}
-
-		if params.SignatureExpiration != nil {
-
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "signature_expiration", runtime.ParamLocationQuery, *params.SignatureExpiration); err != nil {
 				return nil, err
 			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
 				return nil, err

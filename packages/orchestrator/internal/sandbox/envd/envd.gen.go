@@ -183,12 +183,6 @@ type PostFilesUploadInitJSONBody struct {
 type PostFilesUploadInitParams struct {
 	// Username User used for setting the owner, or resolving relative paths.
 	Username User `form:"username,omitempty" json:"username,omitempty"`
-
-	// Signature Signature used for file access permission verification.
-	Signature Signature `form:"signature,omitempty" json:"signature,omitempty"`
-
-	// SignatureExpiration Signature expiration used for defining the expiration time of the signature.
-	SignatureExpiration SignatureExpiration `form:"signature_expiration,omitempty" json:"signature_expiration,omitempty"`
 }
 
 // PutFilesUploadUploadIdParams defines parameters for PutFilesUploadUploadId.
