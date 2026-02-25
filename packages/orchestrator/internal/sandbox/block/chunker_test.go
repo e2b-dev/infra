@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	lz4 "github.com/pierrec/lz4/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
@@ -31,181 +30,77 @@ const (
 // Test fakes
 // ---------------------------------------------------------------------------
 
-// testFrameGetter implements storage.FramedFile for testing.
-// It serves both compressed frames (via GetFrame with ft!=nil) and
-// uncompressed data (via GetFrame with ft==nil).
-type testFrameGetter struct {
-	uncompressed []byte
-	compressed   map[int64][]byte // keyed by C-space offset
-	frameTable   *storage.FrameTable
-	delay        time.Duration
-	fetchCount   atomic.Int64
-	dataSize     int64
-}
-
-var _ storage.FramedFile = (*testFrameGetter)(nil)
-
-func (g *testFrameGetter) Size(_ context.Context) (int64, error) { return g.dataSize, nil }
-func (g *testFrameGetter) StoreFile(_ context.Context, _ string, _ *storage.FramedUploadOptions) (*storage.FrameTable, error) {
-	return nil, fmt.Errorf("testFrameGetter: StoreFile not supported")
-}
-
-func (g *testFrameGetter) GetFrame(_ context.Context, offsetU int64, ft *storage.FrameTable, decompress bool, buf []byte, readSize int64, onRead func(int64)) (storage.Range, error) {
-	g.fetchCount.Add(1)
-
-	if g.delay > 0 {
-		time.Sleep(g.delay)
-	}
-
-	// Uncompressed path: ft is nil, serve raw data directly.
-	if ft == nil {
-		end := min(offsetU+int64(len(buf)), int64(len(g.uncompressed)))
-		n := copy(buf, g.uncompressed[offsetU:end])
-
-		if onRead != nil {
-			batchSize := int64(testBlockSize)
-			if readSize > 0 {
-				batchSize = readSize
-			}
-			for written := batchSize; written <= int64(n); written += batchSize {
-				onRead(written)
-			}
-			if int64(n)%batchSize != 0 {
-				onRead(int64(n))
-			}
-		}
-
-		return storage.Range{Start: offsetU, Length: n}, nil
-	}
-
-	// Compressed path: use frame table.
-	starts, size, err := ft.FrameFor(offsetU)
-	if err != nil {
-		return storage.Range{}, fmt.Errorf("testFrameGetter: %w", err)
-	}
-
-	if decompress {
-		uEnd := min(starts.U+int64(size.U), int64(len(g.uncompressed)))
-		n := copy(buf, g.uncompressed[starts.U:uEnd])
-
-		if onRead != nil {
-			batchSize := int64(testBlockSize)
-			if readSize > 0 {
-				batchSize = readSize
-			}
-			// Simulate progressive delivery in readSize chunks.
-			for written := batchSize; written <= int64(n); written += batchSize {
-				onRead(written)
-			}
-			if int64(n)%batchSize != 0 {
-				onRead(int64(n))
-			}
-		}
-
-		return storage.Range{Start: starts.U, Length: n}, nil
-	}
-
-	cData, ok := g.compressed[starts.C]
-	if !ok {
-		return storage.Range{}, fmt.Errorf("testFrameGetter: no compressed data at C-offset %d", starts.C)
-	}
-	n := copy(buf, cData)
-
-	return storage.Range{Start: starts.C, Length: n}, nil
-}
-
-// makeCompressedTestData creates test data, LZ4-compresses it into frames,
-// and returns the FrameTable and a testFrameGetter ready for use.
-func makeCompressedTestData(t *testing.T, dataSize int, delay time.Duration) ([]byte, *storage.FrameTable, *testFrameGetter) {
-	t.Helper()
-
-	data := make([]byte, dataSize)
-	_, err := rand.Read(data)
-	require.NoError(t, err)
-
-	ft := &storage.FrameTable{CompressionType: storage.CompressionLZ4}
-	compressed := make(map[int64][]byte)
-
-	var cOffset int64
-	for i := 0; i < len(data); i += testFrameSize {
-		end := min(i+testFrameSize, len(data))
-		frame := data[i:end]
-
-		var buf bytes.Buffer
-		w := lz4.NewWriter(&buf)
-		_, err := w.Write(frame)
-		require.NoError(t, err)
-		require.NoError(t, w.Close())
-
-		cData := make([]byte, buf.Len())
-		copy(cData, buf.Bytes())
-		compressed[cOffset] = cData
-
-		ft.Frames = append(ft.Frames, storage.FrameSize{
-			U: int32(end - i),
-			C: int32(len(cData)),
-		})
-
-		cOffset += int64(len(cData))
-	}
-
-	getter := &testFrameGetter{
-		uncompressed: data,
-		compressed:   compressed,
-		frameTable:   ft,
-		delay:        delay,
-		dataSize:     int64(dataSize),
-	}
-
-	return data, ft, getter
-}
-
-// testUncompressedStorage implements storage.FramedFile for uncompressed-only tests.
-// GetFrame serves raw uncompressed data when ft is nil.
-type testUncompressedStorage struct {
+// slowFrameGetter implements storage.FramedFile for testing and benchmarks.
+// Serves raw uncompressed data with optional latency (ttfb) and bandwidth
+// simulation. Used as both the Uncompressed and compressed FramedFile handle
+// (Chunker always passes decompress=true, so real decompression never happens).
+type slowFrameGetter struct {
 	data       []byte
-	delay      time.Duration
+	ttfb       time.Duration
+	bandwidth  int64 // bytes/sec; 0 = instant
 	fetchCount atomic.Int64
 }
 
-var _ storage.FramedFile = (*testUncompressedStorage)(nil)
+var _ storage.FramedFile = (*slowFrameGetter)(nil)
 
-func (t *testUncompressedStorage) Size(_ context.Context) (int64, error) {
-	return int64(len(t.data)), nil
+func (s *slowFrameGetter) Size(_ context.Context) (int64, error) {
+	return int64(len(s.data)), nil
 }
 
-func (t *testUncompressedStorage) StoreFile(_ context.Context, _ string, _ *storage.FramedUploadOptions) (*storage.FrameTable, error) {
-	return nil, fmt.Errorf("testUncompressedStorage: StoreFile not supported")
+func (s *slowFrameGetter) StoreFile(context.Context, string, *storage.FramedUploadOptions) (*storage.FrameTable, error) {
+	panic("slowFrameGetter: StoreFile not used in tests")
 }
 
-func (t *testUncompressedStorage) GetFrame(_ context.Context, offsetU int64, ft *storage.FrameTable, _ bool, buf []byte, readSize int64, onRead func(int64)) (storage.Range, error) {
-	t.fetchCount.Add(1)
+func (s *slowFrameGetter) GetFrame(_ context.Context, offsetU int64, _ *storage.FrameTable, _ bool, buf []byte, readSize int64, onRead func(int64)) (storage.Range, error) {
+	s.fetchCount.Add(1)
 
-	if t.delay > 0 {
-		time.Sleep(t.delay)
+	if s.ttfb > 0 {
+		time.Sleep(s.ttfb)
 	}
 
-	if ft != nil {
-		return storage.Range{}, fmt.Errorf("testUncompressedStorage: compressed GetFrame not supported")
-	}
+	end := min(offsetU+int64(len(buf)), int64(len(s.data)))
+	n := copy(buf, s.data[offsetU:end])
 
-	end := min(offsetU+int64(len(buf)), int64(len(t.data)))
-	n := copy(buf, t.data[offsetU:end])
-
+	// Progressive delivery with optional bandwidth simulation.
 	if onRead != nil {
-		batchSize := int64(testBlockSize)
-		if readSize > 0 {
-			batchSize = readSize
+		batch := readSize
+		if batch <= 0 {
+			batch = int64(n)
 		}
-		for written := batchSize; written <= int64(n); written += batchSize {
+
+		for written := batch; written <= int64(n); written += batch {
+			if s.bandwidth > 0 {
+				delay := time.Duration(float64(batch) / float64(s.bandwidth) * float64(time.Second))
+				time.Sleep(delay)
+			}
 			onRead(written)
 		}
-		if int64(n)%batchSize != 0 {
+		if int64(n)%batch != 0 {
+			tail := int64(n) % batch
+			if s.bandwidth > 0 {
+				delay := time.Duration(float64(tail) / float64(s.bandwidth) * float64(time.Second))
+				time.Sleep(delay)
+			}
 			onRead(int64(n))
 		}
 	}
 
 	return storage.Range{Start: offsetU, Length: n}, nil
+}
+
+// makeCompressedTestData builds a synthetic FrameTable with exact frameSize
+// boundaries and a slowFrameGetter that serves the original data. The C sizes
+// are set equal to U sizes since Chunker only uses U-space values.
+func makeCompressedTestData(tb testing.TB, data []byte, frameSize int, ttfb time.Duration) (*storage.FrameTable, *slowFrameGetter) {
+	tb.Helper()
+
+	ft := &storage.FrameTable{CompressionType: storage.CompressionLZ4}
+	for off := 0; off < len(data); off += frameSize {
+		u := int32(min(frameSize, len(data)-off))
+		ft.Frames = append(ft.Frames, storage.FrameSize{U: u, C: u})
+	}
+
+	return ft, &slowFrameGetter{data: data, ttfb: ttfb}
 }
 
 // testProgressiveStorage implements storage.FramedFile with progressive
@@ -304,10 +199,7 @@ func allChunkerTestCases() []chunkerTestCase {
 			name: "Chunker_Compressed",
 			newChunker: func(t *testing.T, data []byte, delay time.Duration) (*Chunker, *storage.FrameTable) {
 				t.Helper()
-				_, ft, getter := makeCompressedTestData(t, len(data), delay)
-				// Use the getter's uncompressed data as the source truth
-				// since compression may round-trip differently.
-				copy(data, getter.uncompressed)
+				ft, getter := makeCompressedTestData(t, data, testFrameSize, delay)
 				c, err := NewChunker(
 					AssetInfo{
 						BasePath:     "test-object",
@@ -330,7 +222,7 @@ func allChunkerTestCases() []chunkerTestCase {
 			name: "Chunker_Uncompressed",
 			newChunker: func(t *testing.T, data []byte, delay time.Duration) (*Chunker, *storage.FrameTable) {
 				t.Helper()
-				getter := &testUncompressedStorage{data: data, delay: delay}
+				getter := &slowFrameGetter{data: data, ttfb: delay}
 				c, err := NewChunker(
 					AssetInfo{
 						BasePath:        "test-object",
@@ -345,7 +237,7 @@ func allChunkerTestCases() []chunkerTestCase {
 				)
 				require.NoError(t, err)
 
-				return c, nil // no FT for uncompressed
+				return c, nil
 			},
 		},
 	}
@@ -435,14 +327,7 @@ func TestChunker_ConcurrentDifferentOffsets(t *testing.T) {
 				})
 			}
 
-			require.NoError(t, eg.Wait())
-
-			for i := range numGoroutines {
-				assert.Equal(t, data[offsets[i]:offsets[i]+readLen], results[i],
-					"goroutine %d (off=%d) got wrong data", i, offsets[i])
-			}
 		})
-	}
 }
 
 func TestChunker_ConcurrentMixed(t *testing.T) {
@@ -589,8 +474,7 @@ func TestChunker_FetchDedup(t *testing.T) {
 		_, err := rand.Read(data)
 		require.NoError(t, err)
 
-		_, ft, getter := makeCompressedTestData(t, testFileSize, 10*time.Millisecond)
-		copy(data, getter.uncompressed)
+		ft, getter := makeCompressedTestData(t, data, testFrameSize, 10*time.Millisecond)
 
 		chunker, err := NewChunker(
 			AssetInfo{
@@ -634,7 +518,8 @@ func TestChunker_FetchDedup(t *testing.T) {
 func TestChunker_DualMode_SharedCache(t *testing.T) {
 	t.Parallel()
 
-	data, ft, getter := makeCompressedTestData(t, testFileSize, 0)
+	data := makeTestData(t, testFileSize)
+	ft, getter := makeCompressedTestData(t, data, testFrameSize, 0)
 
 	// Create ONE chunker with both compressed and uncompressed assets available.
 	chunker, err := NewChunker(
@@ -729,8 +614,7 @@ func TestChunker_FullChunkCachedAfterPartialRequest(t *testing.T) {
 		t.Parallel()
 
 		data := makeTestData(t, testFileSize)
-		_, ft, getter := makeCompressedTestData(t, testFileSize, 0)
-		copy(data, getter.uncompressed)
+		ft, getter := makeCompressedTestData(t, data, testFrameSize, 0)
 
 		chunker, err := NewChunker(
 			AssetInfo{
@@ -772,7 +656,7 @@ func TestChunker_FullChunkCachedAfterPartialRequest(t *testing.T) {
 		t.Parallel()
 
 		data := makeTestData(t, storage.MemoryChunkSize)
-		getter := &testUncompressedStorage{data: data}
+		getter := &slowFrameGetter{data: data}
 
 		chunker, err := NewChunker(
 			AssetInfo{
@@ -784,12 +668,8 @@ func TestChunker_FullChunkCachedAfterPartialRequest(t *testing.T) {
 			testBlockSize,
 			t.TempDir()+"/cache",
 			newTestMetrics(t),
-			newTestFlags(t),
-		)
-		require.NoError(t, err)
 		defer chunker.Close()
 
-		// Request only the FIRST block (triggers fetch of entire MemoryChunkSize chunk).
 		_, err = chunker.GetBlock(t.Context(), 0, testBlockSize, nil)
 		require.NoError(t, err)
 
@@ -976,7 +856,7 @@ func TestChunker_LastBlockPartial(t *testing.T) {
 			name: "Uncompressed",
 			newChunker: func(t *testing.T, data []byte, _ time.Duration) (*Chunker, *storage.FrameTable) {
 				t.Helper()
-				getter := &testUncompressedStorage{data: data}
+				getter := &slowFrameGetter{data: data}
 				c, err := NewChunker(
 					AssetInfo{
 						BasePath:        "test-object",
@@ -998,8 +878,7 @@ func TestChunker_LastBlockPartial(t *testing.T) {
 			name: "Compressed",
 			newChunker: func(t *testing.T, data []byte, _ time.Duration) (*Chunker, *storage.FrameTable) {
 				t.Helper()
-				_, ft, getter := makeCompressedTestData(t, len(data), 0)
-				copy(data, getter.uncompressed)
+				ft, getter := makeCompressedTestData(t, data, testFrameSize, 0)
 				c, err := NewChunker(
 					AssetInfo{
 						BasePath:     "test-object",

@@ -1,44 +1,32 @@
 package block
 
 import (
-	"cmp"
 	"context"
 	"fmt"
-	"slices"
 	"sync"
 	"sync/atomic"
 )
 
-type rangeWaiter struct {
-	// endByte: relative to session start, block-aligned (except at tail).
-	endByte int64
-	ch      chan error // buffered cap 1
-}
-
-// fetchSession coordinates concurrent waiters for a single fetch unit
-// (a 4 MB chunk or a compressed frame). The fetch goroutine calls
-// advance/setDone/setError; callers block on registerAndWait.
 type fetchSession struct {
-	mu        sync.Mutex
 	chunkOff  int64 // absolute start offset in U-space
 	chunkLen  int64 // total length of this chunk/frame
 	blockSize int64 // progress tracking granularity
 
-	waiters  []*rangeWaiter // sorted by endByte ascending
+	mu       sync.Mutex
 	fetchErr error
+	signal   chan struct{} // closed on each advance; nil when terminated
 
 	// bytesReady is the byte count (from chunkOff) up to which all blocks
-	// are fully written and marked cached. Atomic so registerAndWait can do
-	// a lock-free fast-path check: bytesReady only increases, so a
-	// Load() >= endByte guarantees data availability without taking the mutex.
+	// are fully written and marked cached. Atomic so registerAndWait can
+	// do a lock-free fast-path check: bytesReady only increases.
 	bytesReady atomic.Int64
 
 	// isCachedFn checks persistent cache for data from previous sessions.
 	isCachedFn func(off, length int64) bool
 }
 
-// terminated reports whether the session reached a terminal state
-// (done or errored). Must be called with mu held.
+// terminated reports whether the session reached a terminal state.
+// Must be called with mu held.
 func (s *fetchSession) terminated() bool {
 	return s.fetchErr != nil || s.bytesReady.Load() == s.chunkLen
 }
@@ -49,12 +37,15 @@ func newFetchSession(chunkOff, chunkLen, blockSize int64, isCachedFn func(off, l
 		chunkLen:   chunkLen,
 		blockSize:  blockSize,
 		isCachedFn: isCachedFn,
+		signal:     make(chan struct{}),
 	}
 }
 
-// registerAndWait blocks until [off, off+length) is cached or ctx is cancelled.
+// registerAndWait blocks until [off, off+length) is cached, the session
+// terminates, or ctx is cancelled.
 func (s *fetchSession) registerAndWait(ctx context.Context, off, length int64) error {
 	relEnd := off + length - s.chunkOff
+
 	var endByte int64
 	if s.blockSize > 0 {
 		lastBlockIdx := (relEnd - 1) / s.blockSize
@@ -63,74 +54,78 @@ func (s *fetchSession) registerAndWait(ctx context.Context, off, length int64) e
 		endByte = s.chunkLen
 	}
 
-	// Lock-free fast path: bytesReady only increases, so >= endByte
-	// guarantees data is available without taking the mutex.
-	if s.bytesReady.Load() >= endByte {
-		return nil
-	}
-
-	s.mu.Lock()
-
-	// Re-check under lock.
-	if s.bytesReady.Load() >= endByte {
-		s.mu.Unlock()
-
-		return nil
-	}
-
-	// Terminal but range not covered — only happens on error
-	// (setDone sets bytesReady=chunkLen). Check cache for prior session data.
-	if s.terminated() {
-		fetchErr := s.fetchErr
-		s.mu.Unlock()
-
-		if s.isCachedFn != nil && s.isCachedFn(off, length) {
+	for {
+		// Lock-free fast path: bytesReady only increases, so >= endByte
+		// guarantees data is available.
+		if s.bytesReady.Load() >= endByte {
 			return nil
 		}
 
-		if fetchErr != nil {
-			return fmt.Errorf("fetch failed: %w", fetchErr)
+		s.mu.Lock()
+
+		// Re-check under lock.
+		if s.bytesReady.Load() >= endByte {
+			s.mu.Unlock()
+
+			return nil
 		}
 
-		return nil
-	}
+		// Terminal but range not covered — only happens on error
+		// (setDone sets bytesReady=chunkLen). Check cache for prior session data.
+		if s.terminated() {
+			fetchErr := s.fetchErr
+			s.mu.Unlock()
 
-	// Fetch in progress — register waiter.
-	w := &rangeWaiter{endByte: endByte, ch: make(chan error, 1)}
-	idx, _ := slices.BinarySearchFunc(s.waiters, endByte, func(w *rangeWaiter, target int64) int {
-		return cmp.Compare(w.endByte, target)
-	})
-	s.waiters = slices.Insert(s.waiters, idx, w)
+			if s.isCachedFn != nil && s.isCachedFn(off, length) {
+				return nil
+			}
 
-	s.mu.Unlock()
+			if fetchErr != nil {
+				return fmt.Errorf("fetch failed: %w", fetchErr)
+			}
 
-	select {
-	case err := <-w.ch:
-		return err
-	case <-ctx.Done():
-		return ctx.Err()
+			return nil
+		}
+
+		ch := s.signal
+		s.mu.Unlock()
+
+		select {
+		case <-ch:
+			continue
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
 }
 
-// advance updates progress and wakes satisfied waiters.
+// advance updates progress and wakes all waiters by closing the current
+// broadcast channel and replacing it with a fresh one.
 func (s *fetchSession) advance(bytesReady int64) {
 	s.mu.Lock()
 	s.bytesReady.Store(bytesReady)
-	s.notifyWaiters(nil)
+	old := s.signal
+	s.signal = make(chan struct{})
 	s.mu.Unlock()
+
+	close(old)
 }
 
-// setDone marks the session as successfully completed.
+// setDone marks the session as successfully completed and wakes all waiters.
 func (s *fetchSession) setDone() {
 	s.mu.Lock()
 	s.bytesReady.Store(s.chunkLen)
-	s.notifyWaiters(nil)
+	old := s.signal
+	s.signal = nil
 	s.mu.Unlock()
+
+	close(old)
 }
 
-// setError records the error and wakes remaining waiters.
-// When onlyIfRunning is true, a no-op if the session already terminated
-// (used for panic recovery to avoid overriding a successful completion).
+// setError records the error and wakes all waiters.
+// When onlyIfRunning is true, it is a no-op if the session already
+// terminated (used for panic recovery to avoid overriding a successful
+// completion or double-closing the broadcast channel).
 func (s *fetchSession) setError(err error, onlyIfRunning bool) {
 	s.mu.Lock()
 	if onlyIfRunning && s.terminated() {
@@ -140,35 +135,11 @@ func (s *fetchSession) setError(err error, onlyIfRunning bool) {
 	}
 
 	s.fetchErr = err
-	s.notifyWaiters(err)
+	old := s.signal
+	s.signal = nil
 	s.mu.Unlock()
-}
 
-// notifyWaiters releases satisfied waiters. Must be called with mu held.
-func (s *fetchSession) notifyWaiters(sendErr error) {
-	ready := s.bytesReady.Load()
-
-	// Terminal: notify every remaining waiter.
-	if s.terminated() {
-		for _, w := range s.waiters {
-			if sendErr != nil && w.endByte > ready {
-				w.ch <- sendErr
-			}
-
-			close(w.ch)
-		}
-
-		s.waiters = nil
-
-		return
+	if old != nil {
+		close(old)
 	}
-
-	// Progress: pop satisfied waiters from the sorted front.
-	i := 0
-	for i < len(s.waiters) && s.waiters[i].endByte <= ready {
-		close(s.waiters[i].ch)
-		i++
-	}
-
-	s.waiters = s.waiters[i:]
 }

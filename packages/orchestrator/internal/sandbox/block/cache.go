@@ -8,7 +8,6 @@ import (
 	"math"
 	"math/rand"
 	"os"
-	"slices"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -49,7 +48,7 @@ type Cache struct {
 	blockSize int64
 	mmap      *mmap.MMap
 	mu        sync.RWMutex
-	dirty     sync.Map
+	dirty     []atomic.Bool // indexed by off/blockSize — block is present and dirty
 	dirtyFile bool
 	closed    atomic.Bool
 }
@@ -87,12 +86,15 @@ func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (*Cache, e
 		return nil, fmt.Errorf("error mapping file: %w", err)
 	}
 
+	numBlocks := (size + blockSize - 1) / blockSize
+
 	return &Cache{
 		mmap:      &mm,
 		filePath:  filePath,
 		size:      size,
 		blockSize: blockSize,
 		dirtyFile: dirtyFile,
+		dirty:     make([]atomic.Bool, numBlocks),
 	}, nil
 }
 
@@ -246,9 +248,11 @@ func (c *Cache) Slice(off, length int64) ([]byte, error) {
 }
 
 func (c *Cache) isCached(off, length int64) bool {
-	for _, blockOff := range header.BlocksOffsets(length, c.blockSize) {
-		_, dirty := c.dirty.Load(off + blockOff)
-		if !dirty {
+	startIdx := off / c.blockSize
+	endIdx := (off + length + c.blockSize - 1) / c.blockSize
+
+	for idx := startIdx; idx < endIdx; idx++ {
+		if !c.dirty[idx].Load() {
 			return false
 		}
 	}
@@ -257,8 +261,11 @@ func (c *Cache) isCached(off, length int64) bool {
 }
 
 func (c *Cache) setIsCached(off, length int64) {
-	for _, blockOff := range header.BlocksOffsets(length, c.blockSize) {
-		c.dirty.Store(off+blockOff, struct{}{})
+	startIdx := off / c.blockSize
+	endIdx := (off + length + c.blockSize - 1) / c.blockSize
+
+	for idx := startIdx; idx < endIdx; idx++ {
+		c.dirty[idx].Store(true)
 	}
 }
 
@@ -281,16 +288,14 @@ func (c *Cache) WriteAtWithoutLock(b []byte, off int64) (int, error) {
 	return n, nil
 }
 
-// dirtySortedKeys returns a sorted list of dirty keys.
-// Key represents a block offset.
+// dirtySortedKeys returns a sorted list of dirty block offsets.
 func (c *Cache) dirtySortedKeys() []int64 {
 	var keys []int64
-	c.dirty.Range(func(key, _ any) bool {
-		keys = append(keys, key.(int64))
-
-		return true
-	})
-	slices.Sort(keys)
+	for i := range c.dirty {
+		if c.dirty[i].Load() {
+			keys = append(keys, int64(i)*c.blockSize)
+		}
+	}
 
 	return keys
 }
@@ -481,9 +486,7 @@ func (c *Cache) copyProcessMemory(
 				return fmt.Errorf("failed to read memory: expected %d bytes, got %d", segmentSize, n)
 			}
 
-			for _, blockOff := range header.BlocksOffsets(segmentSize, c.blockSize) {
-				c.dirty.Store(offset+blockOff, struct{}{})
-			}
+			c.setIsCached(offset, segmentSize)
 
 			offset += segmentSize
 

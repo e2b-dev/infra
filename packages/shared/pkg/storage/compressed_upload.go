@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"sync"
 
 	"github.com/klauspost/compress/zstd"
@@ -133,6 +134,56 @@ func ValidateCompressionOptions(opts *FramedUploadOptions) error {
 	}
 
 	return nil
+}
+
+// CompressBytes compresses data using opts and returns the concatenated
+// compressed bytes along with the FrameTable. This is a convenience wrapper
+// around CompressStream that collects all parts in memory.
+func CompressBytes(ctx context.Context, data []byte, opts *FramedUploadOptions) ([]byte, *FrameTable, error) {
+	up := &memPartUploader{}
+
+	ft, err := CompressStream(ctx, bytes.NewReader(data), opts, up)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return up.assemble(), ft, nil
+}
+
+// memPartUploader collects compressed parts in memory.
+type memPartUploader struct {
+	parts map[int][]byte
+}
+
+func (m *memPartUploader) Start(context.Context) error {
+	m.parts = make(map[int][]byte)
+	return nil
+}
+
+func (m *memPartUploader) UploadPart(_ context.Context, partIndex int, data ...[]byte) error {
+	var buf bytes.Buffer
+	for _, d := range data {
+		buf.Write(d)
+	}
+	m.parts[partIndex] = buf.Bytes()
+	return nil
+}
+
+func (m *memPartUploader) Complete(context.Context) error { return nil }
+
+func (m *memPartUploader) assemble() []byte {
+	keys := make([]int, 0, len(m.parts))
+	for k := range m.parts {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+
+	var buf bytes.Buffer
+	for _, k := range keys {
+		buf.Write(m.parts[k])
+	}
+
+	return buf.Bytes()
 }
 
 // CompressStream reads from in, compresses using opts, and writes parts through uploader.
