@@ -1,0 +1,13 @@
+{
+  "name": "e2b-lite-build",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "E2B infrastructure VM build and test tools",
+  "scripts": {
+    "test": "node test-sandbox.mjs"
+  },
+  "dependencies": {
+    "e2b": "^2.12.1"
+  }
+}

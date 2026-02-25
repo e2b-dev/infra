@@ -1,0 +1,195 @@
+#cloud-config
+hostname: e2b-infra
+manage_etc_hosts: true
+
+# Enable SSH password authentication
+ssh_pwauth: true
+
+users:
+  - name: e2b
+    gecos: E2B Admin
+    groups: [sudo, docker, kvm]
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    lock_passwd: false
+    plain_text_passwd: "e2b-infra-build"
+    ssh_authorized_keys:
+      - __SSH_PUBKEY__
+
+# Grow the root partition to fill the disk
+growpart:
+  mode: auto
+  devices: [/]
+
+resize_rootfs: true
+
+package_update: true
+package_upgrade: false
+
+# Do NOT use cloud-init packages directive — needrestart causes failures.
+# All packages are installed via runcmd/deploy scripts with NEEDRESTART_MODE=a.
+
+write_files:
+  # Force SSH password authentication on
+  - path: /etc/ssh/sshd_config.d/99-e2b-allow-password.conf
+    content: |
+      PasswordAuthentication yes
+      PermitRootLogin yes
+    permissions: "0644"
+
+  # Nested virt for Intel
+  - path: /etc/modprobe.d/kvm-intel.conf
+    content: |
+      options kvm_intel nested=1
+      options kvm_intel enable_shadow_vmcs=1
+      options kvm_intel enable_apicv=1
+      options kvm_intel ept=1
+    permissions: "0644"
+
+  # Nested virt for AMD
+  - path: /etc/modprobe.d/kvm-amd.conf
+    content: |
+      options kvm_amd nested=1
+    permissions: "0644"
+
+  # Kernel modules to load at boot
+  - path: /etc/modules-load.d/e2b.conf
+    content: |
+      kvm
+      kvm_intel
+      kvm_amd
+      nbd
+      tun
+      vhost_net
+    permissions: "0644"
+
+  # NBD module options
+  - path: /etc/modprobe.d/nbd.conf
+    content: |
+      options nbd max_part=16 nbds_max=128
+    permissions: "0644"
+
+  # Hugepages configuration (persistent across reboots)
+  - path: /etc/sysctl.d/90-e2b-hugepages.conf
+    content: |
+      vm.nr_hugepages=2048
+    permissions: "0644"
+
+  # Network configuration - single DHCP interface (Netplan)
+  - path: /etc/netplan/99-e2b-network.yaml
+    content: |
+      network:
+        version: 2
+        renderer: networkd
+        ethernets:
+          id0:
+            match:
+              name: "en*"
+            dhcp4: true
+            dhcp6: false
+          id1:
+            match:
+              name: "eth*"
+            dhcp4: true
+            dhcp6: false
+    permissions: "0600"
+
+  # __VM_SCRIPTS__
+
+  # ── Phase 2 systemd service (runs on second boot only) ─────────────────────
+  - path: /etc/systemd/system/e2b-phase2.service
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=E2B Phase 2 Setup (one-time, official make targets on HWE kernel)
+      After=network-online.target docker.service
+      Wants=network-online.target docker.service
+      Requires=docker.service
+      ConditionPathExists=/opt/e2b/needs-phase2
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=no
+      ExecStart=/opt/e2b/deploy-phase2.sh
+      # Shut down VM after phase 2 completes
+      ExecStartPost=/sbin/shutdown -h now
+      TimeoutStartSec=3600
+      StandardOutput=journal+console
+      StandardError=journal+console
+
+      [Install]
+      WantedBy=multi-user.target
+
+  # ── Phase 2 trigger flag ───────────────────────────────────────────────────
+  - path: /opt/e2b/needs-phase2
+    content: "1"
+    permissions: "0644"
+
+  # ── Systemd service: e2b-infra (starts all services on boot) ───────────────
+  # NOT enabled during build — enabled at end of Phase 2
+  - path: /etc/systemd/system/e2b-infra.service
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=E2B Infrastructure Services
+      After=network-online.target docker.service
+      Wants=network-online.target docker.service
+      Requires=docker.service
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      WorkingDirectory=/opt/e2b/infra
+      Environment=HOME=/root
+      Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin:/usr/local/go/bin
+
+      # Load required kernel modules
+      ExecStartPre=/sbin/modprobe nbd max_part=16 nbds_max=128
+      ExecStartPre=/sbin/modprobe tun
+      ExecStartPre=/sbin/modprobe kvm
+      ExecStartPre=-/sbin/modprobe kvm_intel nested=1
+      ExecStartPre=-/sbin/modprobe kvm_amd nested=1
+      ExecStartPre=/sbin/sysctl -p /etc/sysctl.d/90-e2b-hugepages.conf
+
+      ExecStart=/opt/e2b/start-all.sh
+      ExecStop=/opt/e2b/stop-all.sh
+
+      TimeoutStartSec=300
+      TimeoutStopSec=120
+
+      [Install]
+      WantedBy=multi-user.target
+
+runcmd:
+  # Reload kernel modules for nested virt
+  - modprobe -r kvm_intel || true
+  - modprobe kvm_intel nested=1 || true
+  - modprobe -r kvm_amd || true
+  - modprobe kvm_amd nested=1 || true
+  - modprobe nbd max_part=16 nbds_max=128 || true
+  - modprobe tun || true
+  - sysctl -p /etc/sysctl.d/90-e2b-hugepages.conf || true
+
+  # Apply netplan and fix permissions
+  - netplan apply || true
+  - chmod 600 /etc/netplan/99-e2b-network.yaml || true
+
+  # Restart SSH for password auth
+  - systemctl restart sshd || systemctl restart ssh
+
+  # Run Phase 1 deployment (packages, Docker, Go, Node, clone repo)
+  - /opt/e2b/deploy-phase1.sh
+
+  # Enable the phase2 service (runs on next boot with HWE kernel)
+  - systemctl daemon-reload
+  - systemctl enable e2b-phase2.service
+
+  # Do NOT enable e2b-infra.service here — Phase 2 does that after setup
+
+  # Signal Phase 1 completion
+  - echo "PHASE1_COMPLETE" > /var/log/e2b-build-status
+
+  # Shut down — build script will boot again for Phase 2
+  - shutdown -h now
+
+final_message: "E2B Phase 1 setup complete after $UPTIME seconds."
