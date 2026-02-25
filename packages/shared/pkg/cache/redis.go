@@ -118,6 +118,7 @@ func (rc *RedisCache[V]) GetOrSet(ctx context.Context, key string, dataCallback 
 		// Acquire distributed lock if enabled
 		lock, lockErr := rc.acquireLock(ctx, key, redislock.LinearBackoff(rc.config.LockRetryInterval))
 		defer rc.releaseLock(ctx, lock, key)
+		// We want to get the results even without the lock to prevent failing all the waiting requests
 
 		// Double-check Redis (another goroutine may have populated it)
 		if v, _, redisErr := rc.getFromRedis(ctx, key); redisErr == nil {
