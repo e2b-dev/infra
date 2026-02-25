@@ -85,7 +85,10 @@ func denyResumePermission() error {
 }
 
 func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.SandboxResumeRequest) (*proxygrpc.SandboxResumeResponse, error) {
-	sandboxID := utils.ShortID(req.GetSandboxId())
+	sandboxID, err := utils.ShortID(req.GetSandboxId())
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "invalid sandbox ID")
+	}
 
 	snap, err := s.api.sqlcDB.GetLastSnapshot(ctx, sandboxID)
 	if err != nil {

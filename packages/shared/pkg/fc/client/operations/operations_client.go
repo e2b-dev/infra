@@ -61,6 +61,8 @@ type ClientService interface {
 
 	DescribeInstance(params *DescribeInstanceParams, opts ...ClientOption) (*DescribeInstanceOK, error)
 
+	GetDirtyMemory(params *GetDirtyMemoryParams, opts ...ClientOption) (*GetDirtyMemoryOK, error)
+
 	GetExportVMConfig(params *GetExportVMConfigParams, opts ...ClientOption) (*GetExportVMConfigOK, error)
 
 	GetFirecrackerVersion(params *GetFirecrackerVersionParams, opts ...ClientOption) (*GetFirecrackerVersionOK, error)
@@ -324,6 +326,50 @@ func (a *Client) DescribeInstance(params *DescribeInstanceParams, opts ...Client
 	//
 	// a default response is provided: fill this and return an error
 	unexpectedSuccess := result.(*DescribeInstanceDefault)
+
+	return nil, runtime.NewAPIError("unexpected success response: content available as default response in error", unexpectedSuccess, unexpectedSuccess.Code())
+}
+
+/*
+GetDirtyMemory gets the dirty pages bitmap for guest memory
+
+Returns a bitmap of dirty pages (pages written to since write-protection was enabled). The bitmap is encoded as a vector of u64 values where each bit represents one guest page. Pages are ordered following the order of memory regions as reported by /memory/mappings. The microVM must be paused before calling this endpoint.
+*/
+func (a *Client) GetDirtyMemory(params *GetDirtyMemoryParams, opts ...ClientOption) (*GetDirtyMemoryOK, error) {
+	// NOTE: parameters are not validated before sending
+	if params == nil {
+		params = NewGetDirtyMemoryParams()
+	}
+	op := &runtime.ClientOperation{
+		ID:                 "getDirtyMemory",
+		Method:             "GET",
+		PathPattern:        "/memory/dirty",
+		ProducesMediaTypes: []string{"application/json"},
+		ConsumesMediaTypes: []string{"application/json"},
+		Schemes:            []string{"http"},
+		Params:             params,
+		Reader:             &GetDirtyMemoryReader{formats: a.formats},
+		Context:            params.Context,
+		Client:             params.HTTPClient,
+	}
+	for _, opt := range opts {
+		opt(op)
+	}
+	result, err := a.transport.Submit(op)
+	if err != nil {
+		return nil, err
+	}
+
+	// only one success response has to be checked
+	success, ok := result.(*GetDirtyMemoryOK)
+	if ok {
+		return success, nil
+	}
+
+	// unexpected success response.
+	//
+	// a default response is provided: fill this and return an error
+	unexpectedSuccess := result.(*GetDirtyMemoryDefault)
 
 	return nil, runtime.NewAPIError("unexpected success response: content available as default response in error", unexpectedSuccess, unexpectedSuccess.Code())
 }

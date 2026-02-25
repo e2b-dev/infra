@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 )
 
 func GetTargetFromRequest(processHeaders bool) func(r *http.Request) (sandboxId string, port uint64, err error) {
@@ -15,6 +17,10 @@ func GetTargetFromRequest(processHeaders bool) func(r *http.Request) (sandboxId 
 			if err != nil {
 				return "", 0, err
 			} else if ok {
+				if err := id.ValidateSandboxID(sandboxId); err != nil {
+					return "", 0, ErrInvalidSandboxID
+				}
+
 				return sandboxId, port, nil
 			}
 		}
@@ -22,6 +28,10 @@ func GetTargetFromRequest(processHeaders bool) func(r *http.Request) (sandboxId 
 		sandboxId, port, err = parseHost(r.Host)
 		if err != nil {
 			return "", 0, err
+		}
+
+		if err := id.ValidateSandboxID(sandboxId); err != nil {
+			return "", 0, ErrInvalidSandboxID
 		}
 
 		return sandboxId, port, nil

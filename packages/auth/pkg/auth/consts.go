@@ -1,9 +1,6 @@
 package auth
 
 const (
-	TeamContextKey   = "team"
-	UserIDContextKey = "user_id"
-
 	// Header names for authentication.
 	HeaderAPIKey        = "X-API-Key"
 	HeaderAuthorization = "Authorization"
