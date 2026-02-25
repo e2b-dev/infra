@@ -126,14 +126,6 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 		return
 	}
 
-	// Ensure parent directories exist
-	if err := permissions.EnsureDirs(filepath.Dir(filePath), uid, gid); err != nil {
-		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error ensuring directories")
-		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error ensuring directories for %q: %w", filepath.Dir(filePath), err))
-
-		return
-	}
-
 	// Register a placeholder session under the lock to claim the path and
 	// count toward the session limit, then perform file I/O outside the lock
 	// to avoid blocking unrelated upload operations. The session starts with
@@ -179,6 +171,16 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 		a.uploadsLock.Lock()
 		delete(a.uploads, uploadID)
 		a.uploadsLock.Unlock()
+	}
+
+	// Ensure parent directories exist after the authoritative session-limit
+	// check to avoid creating directories for requests that will be rejected.
+	if err := permissions.EnsureDirs(filepath.Dir(filePath), uid, gid); err != nil {
+		removeSession()
+		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error ensuring directories")
+		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error ensuring directories for %q: %w", filepath.Dir(filePath), err))
+
+		return
 	}
 
 	// Create and preallocate a temporary file outside the lock; the final
