@@ -2,18 +2,24 @@
 
 ## Commands
 
-> **Prerequisite:** Enable NBD module first:
->
-> ```bash
-> modprobe nbd nbds_max=4096
->
-> cat <<EOH >/etc/udev/rules.d/97-nbd-device.rules
-> # Disable inotify watching of change events for NBD devices
-> ACTION=="add|change", KERNEL=="nbd*", OPTIONS:="nowatch"
-> EOH
-> udevadm control --reload-rules
-> udevadm trigger
-> ```
+**Prerequisite:** Enable NBD module first:
+
+```bash
+modprobe nbd nbds_max=4096
+
+cat <<EOH >/etc/udev/rules.d/97-nbd-device.rules
+# Disable inotify watching of change events for NBD devices
+ACTION=="add|change", KERNEL=="nbd*", OPTIONS:="nowatch"
+EOH
+udevadm control --reload-rules
+udevadm trigger
+```
+
+**Prerequisite:** Allocate enough 2MB HugeTLB pages (hugepages) for testing:
+
+```bash
+echo 1024 | sudo tee /proc/sys/vm/nr_hugepages   # for 2GB hugepages, adjust as needed
+```
 
 ### Create Build
 
@@ -30,13 +36,17 @@ Flags:
 - `-template <id>` - Template ID (default: `local-template`)
 - `-storage <path>` - Local path or `gs://bucket` (enables local mode with auto-download of kernel/FC)
 - `-kernel <version>` - Kernel version (default: `vmlinux-6.1.102`)
-- `-firecracker <version>` - Firecracker version (default: `v1.12.1_717921c`)
-- `-vcpu <n>` - vCPUs (default: `2`)
-- `-memory <mb>` - Memory in MB (default: `1024`)
-- `-disk <mb>` - Disk in MB (default: `1024`)
+- `-firecracker <version>` - Firecracker version (default: `v1.12.1_a41d3fb`)
+- `-vcpu <n>` - vCPUs (default: `1`)
+- `-memory <mb>` - Memory in MB (default: `512`)
+- `-disk <mb>` - Disk in MB (default: `1000`)
 - `-hugepages` - Use 2MB huge pages (default: `true`, set `false` for 4KB pages)
 - `-start-cmd <cmd>` - Start command
 - `-ready-cmd <cmd>` - Ready check command
+
+> You can use the `$(uuidgen)` command to generate a random UUID.
+>
+> If you are using Mise, you can run the command as `sudo $(which go) run ./cmd/create-build -to-build <uuid> -storage .local-build`.
 
 ### Resume Build
 

@@ -11,6 +11,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -19,7 +20,7 @@ import (
 func (a *APIStore) PostAccessTokens(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	userID := a.GetUserID(c)
+	userID := auth.MustGetUserID(c)
 
 	body, err := utils.ParseBody[api.NewAccessToken](ctx, c)
 	if err != nil {
@@ -74,7 +75,7 @@ func (a *APIStore) PostAccessTokens(c *gin.Context) {
 func (a *APIStore) DeleteAccessTokensAccessTokenID(c *gin.Context, accessTokenID string) {
 	ctx := c.Request.Context()
 
-	userID := a.GetUserID(c)
+	userID := auth.MustGetUserID(c)
 
 	accessTokenIDParsed, err := uuid.Parse(accessTokenID)
 	if err != nil {

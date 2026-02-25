@@ -333,3 +333,20 @@ func (c *apiClient) memoryInfo(ctx context.Context, blockSize int64) (*header.Di
 		BlockSize: blockSize,
 	}, nil
 }
+
+func (c *apiClient) dirtyMemory(ctx context.Context, blockSize int64) (*header.DiffMetadata, error) {
+	params := operations.GetDirtyMemoryParams{
+		Context: ctx,
+	}
+
+	res, err := c.client.Operations.GetDirtyMemory(&params)
+	if err != nil {
+		return nil, fmt.Errorf("error getting dirty memory: %w", err)
+	}
+
+	return &header.DiffMetadata{
+		Dirty:     bitset.From(res.Payload.Bitmap),
+		Empty:     bitset.New(0),
+		BlockSize: blockSize,
+	}, nil
+}
