@@ -47,10 +47,6 @@ variable "docker_reverse_proxy_port" {
   })
 }
 
-variable "nomad_port" {
-  type = number
-}
-
 variable "client_proxy_port" {
   type = object({
     name = string
@@ -58,12 +54,10 @@ variable "client_proxy_port" {
   })
 }
 
-variable "api_asg_id" {
-  type = string
-}
-
-variable "server_asg_id" {
-  type = string
+variable "eks_node_security_group_id" {
+  description = "EKS node security group ID for target group health checks"
+  type        = string
+  default     = ""
 }
 
 variable "cloudflare_api_token_secret_arn" {

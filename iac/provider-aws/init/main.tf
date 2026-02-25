@@ -121,7 +121,7 @@ resource "aws_iam_role_policy" "cloudwatch_access" {
   })
 }
 
-# EC2 describe access (for Consul auto-join)
+# EC2 describe access (for Karpenter node discovery)
 resource "aws_iam_role_policy" "ec2_describe" {
   name = "${var.prefix}ec2-describe"
   role = aws_iam_role.infra_instances.id

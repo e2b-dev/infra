@@ -23,6 +23,12 @@ variable "environment" {
   default     = "dev"
 }
 
+variable "cluster_name" {
+  description = "EKS cluster name for subnet discovery tags"
+  type        = string
+  default     = ""
+}
+
 variable "tags" {
   description = "Tags to apply to all resources"
   type        = map(string)

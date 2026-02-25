@@ -14,32 +14,63 @@ variable "vpc_cidr" {
   default     = "10.0.0.0/16"
 }
 
-variable "ami_id" {
-  description = "AMI ID for the cluster instances (must have Nomad/Consul pre-installed)"
+# --- EKS Configuration ---
+variable "kubernetes_version" {
+  description = "Kubernetes version for the EKS cluster"
+  type        = string
+  default     = "1.31"
+}
+
+variable "eks_ami_id" {
+  description = "Custom AMI ID for EKS nodes (must have kubelet + nested virtualization support)"
   type        = string
 }
 
-variable "server_cluster_size" {
-  type = number
-}
-
-variable "server_instance_type" {
-  description = "EC2 instance type for Nomad server nodes"
+variable "karpenter_version" {
+  description = "Karpenter Helm chart version"
   type        = string
+  default     = "1.6.0"
 }
 
+variable "client_instance_types" {
+  description = "Instance types for the client (orchestrator) Karpenter NodePool"
+  type        = list(string)
+  default     = ["c8i.2xlarge", "c8i.4xlarge", "c8i.8xlarge"]
+}
+
+variable "build_instance_types" {
+  description = "Instance types for the build (template-manager) Karpenter NodePool"
+  type        = list(string)
+  default     = ["c8i.2xlarge", "c8i.4xlarge", "c8i.8xlarge"]
+}
+
+variable "boot_disk_size_gb" {
+  description = "Boot EBS volume size in GB for Karpenter nodes"
+  type        = number
+  default     = 100
+}
+
+variable "cache_disk_size_gb" {
+  description = "Cache EBS volume size in GB for Karpenter nodes"
+  type        = number
+  default     = 500
+}
+
+variable "client_hugepages_percentage" {
+  description = "Hugepages percentage for client nodes"
+  type        = number
+  default     = 80
+}
+
+variable "build_hugepages_percentage" {
+  description = "Hugepages percentage for build nodes"
+  type        = number
+  default     = 60
+}
+
+# --- API Configuration ---
 variable "api_cluster_size" {
   type = number
-}
-
-variable "api_instance_type" {
-  description = "EC2 instance type for API nodes"
-  type        = string
-}
-
-variable "api_node_pool" {
-  type    = string
-  default = "api"
 }
 
 variable "api_resources_cpu_count" {
@@ -52,11 +83,6 @@ variable "api_resources_memory_mb" {
   default = 2048
 }
 
-variable "build_node_pool" {
-  type    = string
-  default = "build"
-}
-
 variable "clickhouse_cluster_size" {
   type = number
 }
@@ -65,18 +91,6 @@ variable "clickhouse_database_name" {
   description = "The name of the ClickHouse database to create."
   type        = string
   default     = "default"
-}
-
-variable "clickhouse_job_constraint_prefix" {
-  description = "The prefix to use for the job constraint of the instance in the metadata."
-  type        = string
-  default     = "clickhouse"
-}
-
-variable "clickhouse_node_pool" {
-  description = "The name of the Nomad pool."
-  type        = string
-  default     = "clickhouse"
 }
 
 variable "clickhouse_server_service_port" {
@@ -158,11 +172,6 @@ variable "loki_cluster_size" {
   default = 0
 }
 
-variable "loki_node_pool" {
-  type    = string
-  default = "loki"
-}
-
 variable "api_port" {
   type = object({
     name        = string
@@ -213,19 +222,9 @@ variable "redis_port" {
   }
 }
 
-variable "nomad_port" {
-  type    = number
-  default = 4646
-}
-
 variable "allow_sandbox_internet" {
   type    = bool
   default = true
-}
-
-variable "orchestrator_node_pool" {
-  type    = string
-  default = "default"
 }
 
 variable "orchestrator_port" {
@@ -396,111 +395,6 @@ variable "filestore_cache_cleanup_max_retries" {
   type        = number
   description = "Maximum number of continuous error or miss retries before giving up"
   default     = 10000
-}
-
-variable "client_clusters_config" {
-  type = map(object({
-    cluster_size = number
-
-    instance_type         = string
-    nested_virtualization = optional(bool, false)
-    use_spot              = optional(bool, false)
-
-    autoscaler = optional(object({
-      min_size   = optional(number)
-      max_size   = optional(number)
-      cpu_target = optional(number)
-    }))
-
-    boot_disk_size_gb  = number
-    boot_disk_type     = optional(string, "gp3")
-    cache_disk_size_gb = optional(number, 0)
-
-    cache_disks = object({
-      type    = string
-      size_gb = number
-      count   = number
-    })
-
-    hugepages_percentage = optional(number)
-  }))
-
-  description = <<EOT
-Configuration for the client clusters.
-Format: {
-  "default" = {
-    cluster_size          = 1
-    instance_type         = "c8i.2xlarge"   # Or c8i.4xlarge, i3.metal, etc.
-    nested_virtualization = true             # Required for non-metal instances
-    cache_disk_size_gb    = 500             # EBS cache (0 when using NVMe instance store)
-    autoscaler = {
-      min_size   = 1
-      max_size   = 3
-      cpu_target = 70
-    }
-    boot_disk_size_gb = 100
-    cache_disks = {
-      type    = "ebs"
-      size_gb = 500
-      count   = 1
-    }
-    hugepages_percentage = 80
-  }
-}
-EOT
-}
-
-variable "build_clusters_config" {
-  type = map(object({
-    cluster_size = number
-
-    instance_type         = string
-    nested_virtualization = optional(bool, false)
-    use_spot              = optional(bool, false)
-
-    autoscaler = optional(object({
-      min_size   = optional(number)
-      max_size   = optional(number)
-      cpu_target = optional(number)
-    }))
-
-    boot_disk_size_gb  = number
-    boot_disk_type     = optional(string, "gp3")
-    cache_disk_size_gb = optional(number, 0)
-
-    cache_disks = object({
-      type    = string
-      size_gb = number
-      count   = number
-    })
-
-    hugepages_percentage = optional(number)
-  }))
-
-  description = <<EOT
-Configuration for the build clusters.
-Format: {
-  "default" = {
-    cluster_size          = 1
-    instance_type         = "c8i.2xlarge"   # Or c8i.4xlarge, i3.metal, etc.
-    nested_virtualization = true             # Required for non-metal instances
-    use_spot              = true             # Spot instances for fault-tolerant build workloads
-    cache_disk_size_gb    = 500             # EBS cache (0 when using NVMe instance store)
-    autoscaler = {
-      min_size   = 1
-      max_size   = 2
-      cpu_target = 70
-    }
-    boot_disk_size_gb = 100
-    cache_disks = {
-      type    = "ebs"
-      size_gb = 500
-      count   = 1
-    }
-    hugepages_percentage = 60
-  }
-}
-EOT
 }
 
 variable "loki_use_v13_schema_from" {

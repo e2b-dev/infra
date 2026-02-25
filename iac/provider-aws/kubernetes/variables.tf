@@ -10,20 +10,6 @@ variable "environment" {
   type = string
 }
 
-variable "consul_acl_token_secret" {
-  type      = string
-  sensitive = true
-}
-
-variable "nomad_acl_token_secret" {
-  type      = string
-  sensitive = true
-}
-
-variable "nomad_port" {
-  type = number
-}
-
 variable "domain_name" {
   type = string
 }
@@ -57,10 +43,6 @@ variable "api_resources_memory_mb" {
 
 variable "api_machine_count" {
   type = number
-}
-
-variable "api_node_pool" {
-  type = string
 }
 
 variable "api_secret" {
@@ -160,10 +142,6 @@ variable "docker_reverse_proxy_port" {
 }
 
 # Orchestrator
-variable "orchestrator_node_pool" {
-  type = string
-}
-
 variable "orchestrator_port" {
   type = number
 }
@@ -185,10 +163,6 @@ variable "envd_timeout" {
 }
 
 # Template manager
-variable "builder_node_pool" {
-  type = string
-}
-
 variable "template_manager_port" {
   type = number
 }
@@ -201,15 +175,7 @@ variable "build_cache_bucket_name" {
   type = string
 }
 
-variable "template_manages_clusters_size_gt_1" {
-  type = bool
-}
-
 # Logs
-variable "loki_node_pool" {
-  type = string
-}
-
 variable "loki_machine_count" {
   type = number
 }
@@ -278,14 +244,6 @@ variable "clickhouse_server_port" {
     name = string
     port = number
   })
-}
-
-variable "clickhouse_job_constraint_prefix" {
-  type = string
-}
-
-variable "clickhouse_node_pool" {
-  type = string
 }
 
 variable "clickhouse_username" {
@@ -371,11 +329,6 @@ variable "filestore_cache_cleanup_max_concurrent_delete" {
 
 variable "filestore_cache_cleanup_max_retries" {
   type = number
-}
-
-variable "nomad_autoscaler_version" {
-  type    = string
-  default = "0.4.5"
 }
 
 variable "dockerhub_remote_repository_url" {

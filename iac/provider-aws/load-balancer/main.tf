@@ -25,7 +25,7 @@ provider "cloudflare" {
   api_token = data.aws_secretsmanager_secret_version.cloudflare_api_token.secret_string
 }
 
-# --- Application Load Balancer (HTTP routing: API, Docker, Nomad, Ingress) ---
+# --- Application Load Balancer (HTTP routing: API, Docker, Ingress) ---
 resource "aws_lb" "alb" {
   name               = "${var.prefix}alb"
   internal           = false
@@ -85,27 +85,6 @@ resource "aws_lb_target_group" "docker_reverse_proxy" {
   health_check {
     path                = var.docker_reverse_proxy_port.health_path
     port                = var.docker_reverse_proxy_port.port
-    protocol            = "HTTP"
-    healthy_threshold   = 2
-    unhealthy_threshold = 2
-    timeout             = 3
-    interval            = 5
-  }
-
-  deregistration_delay = 30
-
-  tags = var.tags
-}
-
-resource "aws_lb_target_group" "nomad" {
-  name     = "${var.prefix}nomad"
-  port     = var.nomad_port
-  protocol = "HTTP"
-  vpc_id   = var.vpc_id
-
-  health_check {
-    path                = "/v1/status/peers"
-    port                = var.nomad_port
     protocol            = "HTTP"
     healthy_threshold   = 2
     unhealthy_threshold = 2
@@ -227,25 +206,6 @@ resource "aws_lb_listener_rule" "docker_reverse_proxy" {
   }
 }
 
-resource "aws_lb_listener_rule" "nomad" {
-  listener_arn = aws_lb_listener.alb_https.arn
-  priority     = 30
-
-  action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.nomad.arn
-  }
-
-  condition {
-    host_header {
-      values = concat(
-        ["nomad.${var.domain_name}"],
-        [for d in var.additional_domains : "nomad.${d}"]
-      )
-    }
-  }
-}
-
 # --- NLB Listener (TLS for WebSocket session traffic) ---
 resource "aws_lb_listener" "nlb_tls" {
   load_balancer_arn = aws_lb.nlb.arn
@@ -260,30 +220,6 @@ resource "aws_lb_listener" "nlb_tls" {
   }
 }
 
-# --- ASG Attachments ---
-# API ASG -> api, docker, ingress target groups
-resource "aws_autoscaling_attachment" "api_to_api_tg" {
-  autoscaling_group_name = var.api_asg_id
-  lb_target_group_arn    = aws_lb_target_group.api.arn
-}
-
-resource "aws_autoscaling_attachment" "api_to_docker_tg" {
-  autoscaling_group_name = var.api_asg_id
-  lb_target_group_arn    = aws_lb_target_group.docker_reverse_proxy.arn
-}
-
-resource "aws_autoscaling_attachment" "api_to_ingress_tg" {
-  autoscaling_group_name = var.api_asg_id
-  lb_target_group_arn    = aws_lb_target_group.ingress.arn
-}
-
-resource "aws_autoscaling_attachment" "api_to_session_tg" {
-  autoscaling_group_name = var.api_asg_id
-  lb_target_group_arn    = aws_lb_target_group.session.arn
-}
-
-# Server ASG -> nomad target group
-resource "aws_autoscaling_attachment" "server_to_nomad_tg" {
-  autoscaling_group_name = var.server_asg_id
-  lb_target_group_arn    = aws_lb_target_group.nomad.arn
-}
+# --- Target Group Outputs ---
+# Target group ARNs are exported for EKS TargetGroupBinding resources
+# or AWS Load Balancer Controller to manage registration automatically.
