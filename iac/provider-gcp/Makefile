@@ -3,6 +3,9 @@ ENV_FILE := ../../.env.${ENV}
 
 -include ${ENV_FILE}
 
+# Default to current git commit SHA if not set via environment
+GIT_COMMIT_SHA ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+
 TF := $(shell which terraform)
 TF_VAR_FILE := ./.terraform.${ENV}.tfvars
 TF_VAR_FILE_ARG := $(if $(wildcard $(TF_VAR_FILE)),-var-file=$(TF_VAR_FILE))
