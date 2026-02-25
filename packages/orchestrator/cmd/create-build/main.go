@@ -45,7 +45,7 @@ import (
 const (
 	baseImage     = "e2bdev/base:latest"
 	defaultKernel = "vmlinux-6.1.102"
-	defaultFC     = "v1.12.1_717921c"
+	defaultFC     = "v1.12.1_a41d3fb"
 	proxyPort     = 5007
 )
 

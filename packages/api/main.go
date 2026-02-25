@@ -27,15 +27,14 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/api/internal/handlers"
 	customMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware"
 	metricsMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics"
 	tracingMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware/otel/tracing"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	sharedauth "github.com/e2b-dev/infra/packages/auth/pkg/auth"
-	"github.com/e2b-dev/infra/packages/auth/pkg/types"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
+	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
@@ -112,8 +111,8 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 		"Authorization",
 		"X-API-Key",
 		// Supabase headers
-		"X-Supabase-Token",
-		"X-Supabase-Team",
+		auth.HeaderSupabaseToken,
+		auth.HeaderSupabaseTeam,
 		// Custom headers sent from SDK
 		"browser",
 		"lang",
@@ -130,13 +129,15 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 	r.Use(cors.New(corsConfig))
 
 	// Create a team API Key auth validator
-	AuthenticationFunc := sharedauth.CreateAuthenticationFunc(
-		config.AdminToken,
+	AuthenticationFunc := auth.CreateAuthenticationFunc(
+		[]auth.Authenticator{
+			auth.NewApiKeyAuthenticator(apiStore.GetTeamFromAPIKey),
+			auth.NewAccessTokenAuthenticator(apiStore.GetUserFromAccessToken),
+			auth.NewSupabaseTokenAuthenticator(apiStore.GetUserIDFromSupabaseToken),
+			auth.NewSupabaseTeamAuthenticator(apiStore.GetTeamFromSupabaseToken),
+			auth.NewAdminTokenAuthenticator(config.AdminToken),
+		},
 		metricsMiddleware.SetProcessingStartTime,
-		apiStore.GetTeamFromAPIKey,
-		apiStore.GetUserFromAccessToken,
-		apiStore.GetUserIDFromSupabaseToken,
-		apiStore.GetTeamFromSupabaseToken,
 	)
 
 	// Use our validation middleware to check all requests against the
@@ -169,9 +170,8 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 				teamID := ""
 
 				// Get team from context, use TeamContextKey
-				teamInfo := c.Value(auth.TeamContextKey)
-				if teamInfo != nil {
-					teamID = teamInfo.(*types.Team).ID.String()
+				if teamInfo, ok := auth.GetTeamInfo(c); ok {
+					teamID = teamInfo.ID.String()
 				}
 
 				reqLogger := l
@@ -300,7 +300,7 @@ func run() int {
 		logger.L().Fatal(ctx, "Error parsing config", zap.Error(err))
 	}
 
-	err = utils.CheckMigrationVersion(ctx, config.PostgresConnectionString, expectedMigration)
+	err = sqlcdb.CheckMigrationVersion(ctx, config.PostgresConnectionString, expectedMigration)
 	if err != nil {
 		l.Fatal(ctx, "failed to check migration version", zap.Error(err))
 	}

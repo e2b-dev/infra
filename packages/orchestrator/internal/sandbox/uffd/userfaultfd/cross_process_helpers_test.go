@@ -99,7 +99,7 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	err = configureApi(uffdFd, tt.pagesize)
 	require.NoError(t, err)
 
-	err = register(uffdFd, memoryStart, uint64(size), UFFDIO_REGISTER_MODE_MISSING)
+	err = register(uffdFd, memoryStart, uint64(size), UFFDIO_REGISTER_MODE_MISSING|UFFDIO_REGISTER_MODE_WP)
 	require.NoError(t, err)
 
 	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=TestHelperServingProcess")
@@ -307,7 +307,7 @@ func crossProcessServe() error {
 			case <-ctx.Done():
 				return
 			case <-offsetsSignal:
-				for offset := range uffd.Dirty().Offsets() {
+				for offset := range uffd.faulted().Offsets() {
 					writeErr := binary.Write(offsetsFile, binary.LittleEndian, uint64(offset))
 					if writeErr != nil {
 						msg := fmt.Errorf("error writing offsets to file: %w", writeErr)

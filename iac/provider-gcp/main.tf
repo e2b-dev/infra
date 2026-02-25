@@ -13,7 +13,7 @@ terraform {
 
     cloudflare = {
       source  = "cloudflare/cloudflare"
-      version = "4.19.0"
+      version = "4.52.5"
     }
 
     nomad = {
@@ -206,6 +206,9 @@ module "nomad" {
   # Otel Colelctor
   otel_collector_resources_memory_mb = var.otel_collector_resources_memory_mb
   otel_collector_resources_cpu_count = var.otel_collector_resources_cpu_count
+
+  # Dashboard API
+  dashboard_api_count = var.dashboard_api_count
 
   # Docker reverse proxy
   docker_reverse_proxy_port                = var.docker_reverse_proxy_port

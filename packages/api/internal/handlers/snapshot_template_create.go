@@ -14,6 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -21,7 +22,7 @@ import (
 func (a *APIStore) PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID api.SandboxID) {
 	ctx := c.Request.Context()
 
-	teamInfo := a.GetTeamInfo(c)
+	teamInfo := auth.MustGetTeamInfo(c)
 	teamID := teamInfo.Team.ID
 
 	span := trace.SpanFromContext(ctx)
@@ -33,7 +34,13 @@ func (a *APIStore) PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID api
 		telemetry.WithSandboxID(sandboxID),
 	)
 
-	sandboxID = utils.ShortID(sandboxID)
+	var err error
+	sandboxID, err = utils.ShortID(sandboxID)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid sandbox ID")
+
+		return
+	}
 
 	body, err := utils.ParseBody[api.PostSandboxesSandboxIDSnapshotsJSONRequestBody](ctx, c)
 	if err != nil {
