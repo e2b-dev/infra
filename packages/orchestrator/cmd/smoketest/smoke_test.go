@@ -15,7 +15,6 @@ import (
 	"github.com/launchdarkly/go-sdk-common/v3/ldlog"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
@@ -48,7 +47,7 @@ const (
 // TestSmokeAllFCVersions builds a template and resumes from it for every
 // Firecracker version in FirecrackerVersionMap. It requires root, Docker,
 // the envd binary, KVM, NBD, and hugepages.
-func TestSmokeAllFCVersions(t *testing.T) {
+func TestSmokeAllFCVersions(t *testing.T) { //nolint:paralleltest // subtests share infra and must run sequentially
 	checkPrerequisites(t)
 
 	dataDir := t.TempDir()
@@ -68,7 +67,7 @@ func TestSmokeAllFCVersions(t *testing.T) {
 	infra := newTestInfra(t, ctx)
 	defer infra.close(ctx)
 
-	for fcMajor, fcVersion := range featureflags.FirecrackerVersionMap {
+	for fcMajor, fcVersion := range featureflags.FirecrackerVersionMap { //nolint:paralleltest // sequential by design
 		t.Run("fc-"+fcMajor, func(t *testing.T) {
 			buildID := uuid.New().String()
 
@@ -90,7 +89,7 @@ func TestSmokeAllFCVersions(t *testing.T) {
 					FirecrackerVersion: fcVersion,
 					FromImage:          baseImage,
 				},
-				zap.NewNop().Core(),
+				logger.NewNopLogger().Detach(ctx).Core(),
 			)
 			require.NoError(t, err, "create build failed for FC %s", fcVersion)
 			t.Logf("build %s done", buildID)
@@ -263,6 +262,7 @@ func findOrBuildEnvd(t *testing.T) string {
 	if p := os.Getenv("HOST_ENVD_PATH"); p != "" {
 		if _, err := os.Stat(p); err == nil {
 			t.Logf("using envd from HOST_ENVD_PATH: %s", p)
+
 			return p
 		}
 	}
@@ -275,13 +275,14 @@ func findOrBuildEnvd(t *testing.T) string {
 	binPath := filepath.Join(envdDir, "bin", "envd")
 	if _, err := os.Stat(binPath); err == nil {
 		t.Logf("using existing envd binary: %s", binPath)
+
 		return binPath
 	}
 
 	t.Logf("building envd from %s", envdDir)
 	require.NoError(t, os.MkdirAll(filepath.Join(envdDir, "bin"), 0o755))
 
-	cmd := exec.Command("go", "build", "-o", binPath, ".")
+	cmd := exec.CommandContext(context.Background(), "go", "build", "-o", binPath, ".") //nolint:gosec // trusted input
 	cmd.Dir = envdDir
 	cmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS=linux", "GOARCH=amd64")
 	out, err := cmd.CombinedOutput()
@@ -290,6 +291,7 @@ func findOrBuildEnvd(t *testing.T) string {
 	}
 
 	t.Logf("built envd: %s", binPath)
+
 	return binPath
 }
 
@@ -328,6 +330,7 @@ func setupEnvVars(t *testing.T, dataDir, envdPath string) {
 	abs := func(rel string) string {
 		a, err := filepath.Abs(rel)
 		require.NoError(t, err)
+
 		return a
 	}
 
@@ -346,15 +349,7 @@ func setupEnvVars(t *testing.T, dataDir, envdPath string) {
 	}
 
 	for k, v := range vars {
-		old, wasSet := os.LookupEnv(k)
-		os.Setenv(k, v)
-		if wasSet {
-			k, old := k, old
-			t.Cleanup(func() { os.Setenv(k, old) })
-		} else {
-			k := k
-			t.Cleanup(func() { os.Unsetenv(k) })
-		}
+		t.Setenv(k, v)
 	}
 }
 
