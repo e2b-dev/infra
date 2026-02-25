@@ -32,6 +32,8 @@ func New(
 
 func (e *Evictor) Start(ctx context.Context) {
 	g := errgroup.Group{}
+	ticker := time.NewTicker(pollInterval)
+	defer ticker.Stop()
 
 	for {
 		select {
@@ -40,7 +42,7 @@ func (e *Evictor) Start(ctx context.Context) {
 			g.Wait()
 
 			return
-		case <-time.After(pollInterval):
+		case <-ticker.C:
 			sbxs, err := e.store.ExpiredItems(ctx)
 			if err != nil {
 				logger.L().Error(ctx, "Failed to get expired sandboxes", zap.Error(err))

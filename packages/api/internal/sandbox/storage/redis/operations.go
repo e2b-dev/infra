@@ -217,7 +217,7 @@ func (s *Storage) Update(ctx context.Context, teamID uuid.UUID, sandboxID string
 			Score:  float64(updatedSbx.EndTime.UnixMilli()),
 			Member: expirationMember(teamID.String(), sandboxID),
 		}).Err(); err != nil {
-			logger.L().Warn(ctx, "Failed to update sandbox in global expiration index", zap.Error(err), logger.WithSandboxID(sandboxID))
+			return sandbox.Sandbox{}, fmt.Errorf("failed to update sandbox in global expiration index: %w", err)
 		}
 	}
 
