@@ -133,17 +133,29 @@ build-template:
 .PHONY: fetch-busybox
 fetch-busybox:
 	@ARCH=$(BUILD_ARCH); \
-	if [ "$$ARCH" = "arm64" ]; then \
+	BUSYBOX_TARGET=./internal/template/build/core/systeminit/busybox_1.36.1-2; \
+	if [ "$$ARCH" != "arm64" ]; then \
+		echo "✓ Using bundled amd64 busybox"; \
+	elif file "$$BUSYBOX_TARGET" 2>/dev/null | grep -q 'aarch64\|ARM aarch64'; then \
+		echo "✓ Busybox is already arm64"; \
+	elif command -v busybox >/dev/null 2>&1 && file "$$(command -v busybox)" 2>/dev/null | grep -q 'aarch64\|ARM aarch64'; then \
+		cp "$$(command -v busybox)" "$$BUSYBOX_TARGET" && \
+		echo "✓ Copied host busybox (arm64) to embedded path"; \
+	elif command -v apt-get >/dev/null 2>&1 && command -v dpkg-deb >/dev/null 2>&1; then \
 		echo "Fetching arm64 busybox via apt..."; \
 		TMPDIR=$$(mktemp -d); \
 		apt-get download busybox-static 2>/dev/null && \
 			dpkg-deb -x busybox-static_*.deb "$$TMPDIR" && \
-			cp "$$TMPDIR/bin/busybox" ./internal/template/build/core/systeminit/busybox_1.36.1-2 && \
+			cp "$$TMPDIR/bin/busybox" "$$BUSYBOX_TARGET" && \
 			rm -rf "$$TMPDIR" busybox-static_*.deb && \
 			echo "✓ Replaced embedded busybox with arm64 binary (from busybox-static package)" || \
-			{ rm -rf "$$TMPDIR" busybox-static_*.deb; echo "⚠ Failed to fetch busybox-static — install it: apt install busybox-static"; exit 1; }; \
+			{ rm -rf "$$TMPDIR" busybox-static_*.deb; echo "⚠ apt-get download failed"; exit 1; }; \
 	else \
-		echo "✓ Using bundled amd64 busybox"; \
+		echo "⚠ ARM64 busybox required but no method available to fetch it."; \
+		echo "  Options:"; \
+		echo "    1. Install busybox-static: apt install busybox-static, then re-run"; \
+		echo "    2. Manually place an arm64 busybox binary at: $$BUSYBOX_TARGET"; \
+		exit 1; \
 	fi
 
 .PHONY: migrate

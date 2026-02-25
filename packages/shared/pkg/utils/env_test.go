@@ -1,17 +1,18 @@
 package utils
 
 import (
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
-func TestTargetArch_DefaultsToAmd64(t *testing.T) {
+func TestTargetArch_DefaultsToHostArch(t *testing.T) {
 	t.Setenv("TARGET_ARCH", "")
 
 	result := TargetArch()
 
-	assert.Equal(t, "amd64", result)
+	assert.Equal(t, runtime.GOARCH, result)
 }
 
 func TestTargetArch_RespectsValidOverride(t *testing.T) {
@@ -61,13 +62,5 @@ func TestTargetArch_FallsBackOnUnknown(t *testing.T) {
 
 	result := TargetArch()
 
-	assert.Equal(t, "amd64", result)
-}
-
-func TestTargetArch_UnsetDefaultsToAmd64(t *testing.T) {
-	t.Setenv("TARGET_ARCH", "")
-
-	result := TargetArch()
-
-	assert.Equal(t, "amd64", result)
+	assert.Equal(t, runtime.GOARCH, result)
 }

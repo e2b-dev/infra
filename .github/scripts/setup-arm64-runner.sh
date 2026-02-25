@@ -52,18 +52,29 @@ apt-get install -y --no-install-recommends \
 
 # Enable unprivileged userfaultfd
 echo 1 > /proc/sys/vm/unprivileged_userfaultfd
-echo "vm.unprivileged_userfaultfd=1" >> /etc/sysctl.d/99-e2b.conf
 
 # Hugepages
 mkdir -p /mnt/hugepages
 mount -t hugetlbfs none /mnt/hugepages 2>/dev/null || true
 echo 2000 > /proc/sys/vm/nr_hugepages
-echo "hugetlbfs /mnt/hugepages hugetlbfs defaults 0 0" >> /etc/fstab
-echo "vm.nr_hugepages=2000" >> /etc/sysctl.d/99-e2b.conf
+
+grep -qF 'hugetlbfs /mnt/hugepages' /etc/fstab || \
+    echo "hugetlbfs /mnt/hugepages hugetlbfs defaults 0 0" >> /etc/fstab
+
+# Sysctl — write once (idempotent)
+cat <<'EOF' > /etc/sysctl.d/99-e2b.conf
+vm.unprivileged_userfaultfd=1
+vm.nr_hugepages=2000
+net.core.somaxconn=65535
+net.core.netdev_max_backlog=65535
+net.ipv4.tcp_max_syn_backlog=65535
+vm.max_map_count=1048576
+EOF
+sysctl --system
 
 # NBD
 modprobe nbd nbds_max=256
-echo "nbd" >> /etc/modules-load.d/e2b.conf
+echo "nbd" > /etc/modules-load.d/e2b.conf
 echo "options nbd nbds_max=256" > /etc/modprobe.d/e2b-nbd.conf
 
 # Disable inotify for NBD devices
@@ -72,15 +83,6 @@ ACTION=="add|change", KERNEL=="nbd*", OPTIONS:="nowatch"
 EOF
 udevadm control --reload-rules
 udevadm trigger
-
-# Sysctl tuning
-cat <<'EOF' >> /etc/sysctl.d/99-e2b.conf
-net.core.somaxconn=65535
-net.core.netdev_max_backlog=65535
-net.ipv4.tcp_max_syn_backlog=65535
-vm.max_map_count=1048576
-EOF
-sysctl --system
 
 # File descriptor limits
 cat <<'EOF' > /etc/security/limits.d/99-e2b.conf

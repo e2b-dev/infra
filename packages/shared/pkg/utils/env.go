@@ -3,6 +3,7 @@ package utils
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 )
 
@@ -14,23 +15,21 @@ var archAliases = map[string]string{
 	"aarch64": "arm64",
 }
 
-const defaultArch = "amd64"
-
 // TargetArch returns the target architecture for binary paths and OCI platform.
 // If TARGET_ARCH is set, it is normalized to Go convention ("amd64" or "arm64");
-// otherwise defaults to "amd64" for backwards compatibility with existing deployments.
+// otherwise defaults to the host architecture (runtime.GOARCH).
 func TargetArch() string {
 	if arch := os.Getenv("TARGET_ARCH"); arch != "" {
 		if normalized, ok := archAliases[arch]; ok {
 			return normalized
 		}
 
-		fmt.Fprintf(os.Stderr, "WARNING: unrecognized TARGET_ARCH=%q, falling back to %s\n", arch, defaultArch)
+		fmt.Fprintf(os.Stderr, "WARNING: unrecognized TARGET_ARCH=%q, falling back to %s\n", arch, runtime.GOARCH)
 
-		return defaultArch
+		return runtime.GOARCH
 	}
 
-	return defaultArch
+	return runtime.GOARCH
 }
 
 // RequiredEnv returns the value of the environment variable for key if it is set, non-empty and not only whitespace.
