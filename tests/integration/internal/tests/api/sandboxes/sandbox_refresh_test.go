@@ -100,5 +100,5 @@ func TestSandboxRefresh_CrossTeamAccess(t *testing.T) {
 		Duration: &duration,
 	}, setup.WithAPIKey(foreignAPIKey))
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusForbidden, refreshResp.StatusCode(), "Should return 403 Forbidden when trying to refresh a sandbox owned by a different team")
+	assert.Equal(t, http.StatusNotFound, refreshResp.StatusCode(), "Should return 404 Not Found when trying to refresh a sandbox owned by a different team")
 }
