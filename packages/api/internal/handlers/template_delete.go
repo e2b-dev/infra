@@ -9,6 +9,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -46,8 +47,8 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		telemetry.WithTemplateID(templateID),
 	)
 
-	// Check across all teams for running sandboxes that use this template as their base
-	hasRunningSandboxes, err := a.orchestrator.HasRunningSandboxesForBaseTemplate(ctx, templateID)
+	// Check if there are running sandboxes that use this template as their base
+	sandboxes, err := a.orchestrator.GetSandboxes(ctx, team.ID, []sandbox.State{sandbox.StateRunning, sandbox.StatePausing, sandbox.StateSnapshotting})
 	if err != nil {
 		telemetry.ReportError(ctx, "error when checking for running sandboxes", err)
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when checking for running sandboxes")
@@ -55,10 +56,12 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		return
 	}
 
-	if hasRunningSandboxes {
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("cannot delete template '%s' because there are running sandboxes using it", templateID))
+	for _, sbx := range sandboxes {
+		if sbx.BaseTemplateID == templateID {
+			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("cannot delete template '%s' because there are running sandboxes using it", templateID))
 
-		return
+			return
+		}
 	}
 
 	// check if base template has snapshots
