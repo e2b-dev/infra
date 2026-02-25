@@ -19,9 +19,16 @@ func (a *APIStore) PostSandboxesSandboxIDRefreshes(
 	sandboxID string,
 ) {
 	ctx := c.Request.Context()
-	sandboxID = utils.ShortID(sandboxID)
-	team := auth.MustGetTeamInfo(c)
 
+	var err error
+	sandboxID, err = utils.ShortID(sandboxID)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid sandbox ID")
+
+		return
+	}
+
+	team := auth.MustGetTeamInfo(c)
 	var duration time.Duration
 
 	body, err := utils.ParseBody[api.PostSandboxesSandboxIDRefreshesJSONBody](ctx, c)

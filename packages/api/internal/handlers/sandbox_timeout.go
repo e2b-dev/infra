@@ -18,7 +18,14 @@ func (a *APIStore) PostSandboxesSandboxIDTimeout(
 	sandboxID string,
 ) {
 	ctx := c.Request.Context()
-	sandboxID = utils.ShortID(sandboxID)
+
+	var err error
+	sandboxID, err = utils.ShortID(sandboxID)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid sandbox ID")
+
+		return
+	}
 
 	team := auth.MustGetTeamInfo(c)
 
