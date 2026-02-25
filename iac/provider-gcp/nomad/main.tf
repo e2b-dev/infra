@@ -447,7 +447,7 @@ resource "nomad_job" "template_manager" {
     git_commit_sha = var.git_commit_sha
     update_stanza  = var.template_manages_clusters_size_gt_1
     node_pool      = var.builder_node_pool
-    current_count = tonumber(data.external.template_manager_count.result.count)
+    current_count  = tonumber(data.external.template_manager_count.result.count)
 
     gcp_project      = var.gcp_project_id
     gcp_region       = var.gcp_region
