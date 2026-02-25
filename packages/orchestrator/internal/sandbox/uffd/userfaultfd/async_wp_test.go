@@ -20,6 +20,10 @@ import (
 //   - present + WP set   → page is clean (only read)
 //   - present + WP clear → page is dirty (was written to)
 //
+// Operations are executed in exact sequence so we can verify that
+// specific orderings (read→write, write→read, interleaved, etc.)
+// produce the correct dirty/clean state.
+//
 // This mirrors the approach used in the e2b Firecracker fork
 // (src/vmm/src/utils/pagemap.rs) but skips the mincore check.
 func TestAsyncWriteProtection(t *testing.T) {
@@ -29,77 +33,196 @@ func TestAsyncWriteProtection(t *testing.T) {
 		name          string
 		pagesize      uint64
 		numberOfPages uint64
-		// Pages to read first (indices).
-		readPages []int
-		// Pages to write after reading (indices). May include pages not in readPages (write-to-missing).
-		writePages []int
-		// Expected dirty pages: present and WP cleared.
+		operations    []operation
 		expectedDirty []int
-		// Expected clean pages: present and WP set.
 		expectedClean []int
 	}{
 		{
-			name:          "4k read then write clears WP",
-			pagesize:      header.PageSize,
-			numberOfPages: 8,
-			readPages:     []int{0, 1, 2, 3},
-			writePages:    []int{1, 3},
-			expectedDirty: []int{1, 3},
-			expectedClean: []int{0, 2},
-		},
-		{
-			name:          "4k write to missing page has no WP",
+			name:          "4k read then write same page",
 			pagesize:      header.PageSize,
 			numberOfPages: 4,
-			readPages:     []int{},
-			writePages:    []int{0, 2},
+			operations: []operation{
+				{offset: 0, mode: operationModeRead},
+				{offset: 0, mode: operationModeWrite},
+			},
+			expectedDirty: []int{0},
+		},
+		{
+			name:          "4k write then read same page",
+			pagesize:      header.PageSize,
+			numberOfPages: 4,
+			operations: []operation{
+				{offset: 0, mode: operationModeWrite},
+				{offset: 0, mode: operationModeRead},
+			},
+			expectedDirty: []int{0},
+		},
+		{
+			name:          "4k write to missing page (no prior read)",
+			pagesize:      header.PageSize,
+			numberOfPages: 4,
+			operations: []operation{
+				{offset: 0 * header.PageSize, mode: operationModeWrite},
+				{offset: 2 * header.PageSize, mode: operationModeWrite},
+			},
 			expectedDirty: []int{0, 2},
-			expectedClean: []int{},
 		},
 		{
 			name:          "4k all pages clean after read-only",
 			pagesize:      header.PageSize,
 			numberOfPages: 4,
-			readPages:     []int{0, 1, 2, 3},
-			writePages:    []int{},
-			expectedDirty: []int{},
+			operations: []operation{
+				{offset: 0 * header.PageSize, mode: operationModeRead},
+				{offset: 1 * header.PageSize, mode: operationModeRead},
+				{offset: 2 * header.PageSize, mode: operationModeRead},
+				{offset: 3 * header.PageSize, mode: operationModeRead},
+			},
 			expectedClean: []int{0, 1, 2, 3},
 		},
 		{
-			name:          "hugepage read then write clears WP",
-			pagesize:      header.HugepageSize,
+			name:          "4k interleaved across pages",
+			pagesize:      header.PageSize,
 			numberOfPages: 4,
-			readPages:     []int{0, 1, 2, 3},
-			writePages:    []int{1, 3},
-			expectedDirty: []int{1, 3},
+			operations: []operation{
+				{offset: 0 * header.PageSize, mode: operationModeRead},
+				{offset: 1 * header.PageSize, mode: operationModeWrite},
+				{offset: 1 * header.PageSize, mode: operationModeRead},
+				{offset: 0 * header.PageSize, mode: operationModeWrite},
+			},
+			expectedDirty: []int{0, 1},
+		},
+		{
+			name:          "4k read-write-read stays dirty",
+			pagesize:      header.PageSize,
+			numberOfPages: 4,
+			operations: []operation{
+				{offset: 0, mode: operationModeRead},
+				{offset: 0, mode: operationModeWrite},
+				{offset: 0, mode: operationModeRead},
+			},
+			expectedDirty: []int{0},
+		},
+		{
+			name:          "4k write all then read all",
+			pagesize:      header.PageSize,
+			numberOfPages: 4,
+			operations: []operation{
+				{offset: 0 * header.PageSize, mode: operationModeWrite},
+				{offset: 1 * header.PageSize, mode: operationModeWrite},
+				{offset: 0 * header.PageSize, mode: operationModeRead},
+				{offset: 1 * header.PageSize, mode: operationModeRead},
+			},
+			expectedDirty: []int{0, 1},
+		},
+		{
+			name:          "4k selective write among reads",
+			pagesize:      header.PageSize,
+			numberOfPages: 4,
+			operations: []operation{
+				{offset: 0 * header.PageSize, mode: operationModeRead},
+				{offset: 1 * header.PageSize, mode: operationModeRead},
+				{offset: 2 * header.PageSize, mode: operationModeRead},
+				{offset: 1 * header.PageSize, mode: operationModeWrite},
+			},
+			expectedDirty: []int{1},
 			expectedClean: []int{0, 2},
 		},
 		{
-			name:          "hugepage write to missing page has no WP",
+			name:          "4k alternating read-write across pages",
+			pagesize:      header.PageSize,
+			numberOfPages: 4,
+			operations: []operation{
+				{offset: 0 * header.PageSize, mode: operationModeRead},
+				{offset: 0 * header.PageSize, mode: operationModeWrite},
+				{offset: 1 * header.PageSize, mode: operationModeRead},
+				{offset: 2 * header.PageSize, mode: operationModeRead},
+				{offset: 2 * header.PageSize, mode: operationModeWrite},
+				{offset: 3 * header.PageSize, mode: operationModeRead},
+			},
+			expectedDirty: []int{0, 2},
+			expectedClean: []int{1, 3},
+		},
+		{
+			name:          "hugepage read then write same page",
 			pagesize:      header.HugepageSize,
 			numberOfPages: 4,
-			readPages:     []int{},
-			writePages:    []int{0, 2},
+			operations: []operation{
+				{offset: 0, mode: operationModeRead},
+				{offset: 0, mode: operationModeWrite},
+			},
+			expectedDirty: []int{0},
+		},
+		{
+			name:          "hugepage write then read same page",
+			pagesize:      header.HugepageSize,
+			numberOfPages: 4,
+			operations: []operation{
+				{offset: 0, mode: operationModeWrite},
+				{offset: 0, mode: operationModeRead},
+			},
+			expectedDirty: []int{0},
+		},
+		{
+			name:          "hugepage write to missing page (no prior read)",
+			pagesize:      header.HugepageSize,
+			numberOfPages: 4,
+			operations: []operation{
+				{offset: 0 * header.HugepageSize, mode: operationModeWrite},
+				{offset: 2 * header.HugepageSize, mode: operationModeWrite},
+			},
 			expectedDirty: []int{0, 2},
-			expectedClean: []int{},
 		},
 		{
 			name:          "hugepage all pages clean after read-only",
 			pagesize:      header.HugepageSize,
 			numberOfPages: 4,
-			readPages:     []int{0, 1, 2, 3},
-			writePages:    []int{},
-			expectedDirty: []int{},
+			operations: []operation{
+				{offset: 0 * header.HugepageSize, mode: operationModeRead},
+				{offset: 1 * header.HugepageSize, mode: operationModeRead},
+				{offset: 2 * header.HugepageSize, mode: operationModeRead},
+				{offset: 3 * header.HugepageSize, mode: operationModeRead},
+			},
 			expectedClean: []int{0, 1, 2, 3},
 		},
 		{
-			name:          "hugepage mix of read, write, and missing write",
+			name:          "hugepage interleaved across pages",
 			pagesize:      header.HugepageSize,
 			numberOfPages: 4,
-			readPages:     []int{0, 1},
-			writePages:    []int{1, 2},
-			expectedDirty: []int{1, 2},
-			expectedClean: []int{0},
+			operations: []operation{
+				{offset: 0 * header.HugepageSize, mode: operationModeRead},
+				{offset: 1 * header.HugepageSize, mode: operationModeWrite},
+				{offset: 1 * header.HugepageSize, mode: operationModeRead},
+				{offset: 0 * header.HugepageSize, mode: operationModeWrite},
+			},
+			expectedDirty: []int{0, 1},
+		},
+		{
+			name:          "hugepage selective write among reads",
+			pagesize:      header.HugepageSize,
+			numberOfPages: 4,
+			operations: []operation{
+				{offset: 0 * header.HugepageSize, mode: operationModeRead},
+				{offset: 1 * header.HugepageSize, mode: operationModeRead},
+				{offset: 2 * header.HugepageSize, mode: operationModeRead},
+				{offset: 1 * header.HugepageSize, mode: operationModeWrite},
+			},
+			expectedDirty: []int{1},
+			expectedClean: []int{0, 2},
+		},
+		{
+			name:          "hugepage alternating read-write across pages",
+			pagesize:      header.HugepageSize,
+			numberOfPages: 4,
+			operations: []operation{
+				{offset: 0 * header.HugepageSize, mode: operationModeRead},
+				{offset: 0 * header.HugepageSize, mode: operationModeWrite},
+				{offset: 1 * header.HugepageSize, mode: operationModeRead},
+				{offset: 2 * header.HugepageSize, mode: operationModeRead},
+				{offset: 2 * header.HugepageSize, mode: operationModeWrite},
+				{offset: 3 * header.HugepageSize, mode: operationModeRead},
+			},
+			expectedDirty: []int{0, 2},
+			expectedClean: []int{1, 3},
 		},
 	}
 
@@ -113,20 +236,15 @@ func TestAsyncWriteProtection(t *testing.T) {
 			})
 			require.NoError(t, err)
 
-			for _, p := range tt.readPages {
-				err := h.executeRead(t.Context(), operation{
-					offset: int64(p) * int64(tt.pagesize),
-					mode:   operationModeRead,
-				})
-				require.NoError(t, err, "read page %d", p)
-			}
-
-			for _, p := range tt.writePages {
-				err := h.executeWrite(t.Context(), operation{
-					offset: int64(p) * int64(tt.pagesize),
-					mode:   operationModeWrite,
-				})
-				require.NoError(t, err, "write page %d", p)
+			for i, op := range tt.operations {
+				switch op.mode {
+				case operationModeRead:
+					err := h.executeRead(t.Context(), op)
+					require.NoError(t, err, "step %d: read at offset %d", i, op.offset)
+				case operationModeWrite:
+					err := h.executeWrite(t.Context(), op)
+					require.NoError(t, err, "step %d: write at offset %d", i, op.offset)
+				}
 			}
 
 			pagemap, err := testutils.NewPagemapReader()

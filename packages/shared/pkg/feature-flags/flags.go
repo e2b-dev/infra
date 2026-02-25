@@ -197,7 +197,7 @@ const (
 	DefaultFirecrackerVersion     = DefaultFirecackerV1_12Version
 )
 
-var firecrackerVersions = map[string]string{
+var FirecrackerVersionMap = map[string]string{
 	"v1.10": DefaultFirecackerV1_10Version,
 	"v1.12": DefaultFirecackerV1_12Version,
 }
@@ -208,7 +208,7 @@ var (
 	BuildIoEngine               = newStringFlag("build-io-engine", "Sync")
 	DefaultPersistentVolumeType = newStringFlag("default-persistent-volume-type", "")
 	BuildNodeInfo               = newJSONFlag("preferred-build-node", ldvalue.Null())
-	FirecrackerVersions         = newJSONFlag("firecracker-versions", ldvalue.FromJSONMarshal(firecrackerVersions))
+	FirecrackerVersions         = newJSONFlag("firecracker-versions", ldvalue.FromJSONMarshal(FirecrackerVersionMap))
 )
 
 // defaultTrackedTemplates is the default map of template aliases tracked for metrics.
