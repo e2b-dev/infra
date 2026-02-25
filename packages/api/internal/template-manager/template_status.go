@@ -277,7 +277,7 @@ func (tm *TemplateManager) SetStatus(ctx context.Context, buildID uuid.UUID, sta
 		BuildID:    buildID,
 	})
 
-	tm.buildCache.SetStatus(ctx, buildID, statusGroup, buildReason)
+	tm.buildCache.Invalidate(ctx, buildID)
 
 	return err
 }
@@ -292,14 +292,12 @@ func (tm *TemplateManager) SetFinished(ctx context.Context, buildID uuid.UUID, r
 		BuildID:         buildID,
 	})
 	if err != nil {
-		tm.buildCache.SetStatus(ctx, buildID, types.BuildStatusGroupFailed, types.BuildReason{
-			Message: fmt.Sprintf("error when finishing build: %s", err.Error()),
-		})
+		tm.buildCache.Invalidate(ctx, buildID)
 
 		return err
 	}
 
-	tm.buildCache.SetStatus(ctx, buildID, types.BuildStatusGroupReady, types.BuildReason{})
+	tm.buildCache.Invalidate(ctx, buildID)
 
 	return nil
 }
