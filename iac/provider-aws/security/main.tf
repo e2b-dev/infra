@@ -1,0 +1,222 @@
+# --- GuardDuty ---
+# Threat detection for malicious API calls, compromised instances, cryptocurrency mining (ISO 27001)
+
+resource "aws_guardduty_detector" "main" {
+  count = var.enable_guardduty ? 1 : 0
+
+  enable                       = true
+  finding_publishing_frequency = "FIFTEEN_MINUTES"
+
+  tags = var.tags
+}
+
+resource "aws_guardduty_detector_feature" "s3_logs" {
+  count = var.enable_guardduty ? 1 : 0
+
+  detector_id = aws_guardduty_detector.main[0].id
+  name        = "S3_DATA_EVENTS"
+  status      = "ENABLED"
+}
+
+resource "aws_guardduty_detector_feature" "eks_audit_logs" {
+  count = var.enable_guardduty ? 1 : 0
+
+  detector_id = aws_guardduty_detector.main[0].id
+  name        = "EKS_AUDIT_LOGS"
+  status      = "ENABLED"
+}
+
+resource "aws_guardduty_detector_feature" "ebs_malware_protection" {
+  count = var.enable_guardduty ? 1 : 0
+
+  detector_id = aws_guardduty_detector.main[0].id
+  name        = "EBS_MALWARE_PROTECTION"
+  status      = "ENABLED"
+}
+
+# --- AWS Config ---
+# Continuous configuration compliance monitoring and drift detection (ISO 27001)
+
+resource "aws_s3_bucket" "config" {
+  count = var.enable_aws_config ? 1 : 0
+
+  bucket = "${var.bucket_prefix}aws-config"
+
+  tags = var.tags
+}
+
+resource "aws_s3_bucket_public_access_block" "config" {
+  count = var.enable_aws_config ? 1 : 0
+
+  bucket = aws_s3_bucket.config[0].id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "config" {
+  count = var.enable_aws_config ? 1 : 0
+
+  bucket = aws_s3_bucket.config[0].id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "config" {
+  count = var.enable_aws_config ? 1 : 0
+
+  bucket = aws_s3_bucket.config[0].id
+
+  rule {
+    id     = "config-lifecycle"
+    status = "Enabled"
+
+    transition {
+      days          = 90
+      storage_class = "STANDARD_IA"
+    }
+
+    expiration {
+      days = 365
+    }
+  }
+}
+
+data "aws_caller_identity" "current" {}
+
+resource "aws_s3_bucket_policy" "config" {
+  count = var.enable_aws_config ? 1 : 0
+
+  bucket = aws_s3_bucket.config[0].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AWSConfigBucketPermissionsCheck"
+        Effect = "Allow"
+        Principal = {
+          Service = "config.amazonaws.com"
+        }
+        Action   = "s3:GetBucketAcl"
+        Resource = aws_s3_bucket.config[0].arn
+      },
+      {
+        Sid    = "AWSConfigBucketDelivery"
+        Effect = "Allow"
+        Principal = {
+          Service = "config.amazonaws.com"
+        }
+        Action   = "s3:PutObject"
+        Resource = "${aws_s3_bucket.config[0].arn}/AWSLogs/${data.aws_caller_identity.current.account_id}/Config/*"
+        Condition = {
+          StringEquals = {
+            "s3:x-amz-acl" = "bucket-owner-full-control"
+          }
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role" "config" {
+  count = var.enable_aws_config ? 1 : 0
+
+  name = "${var.prefix}aws-config"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "config.amazonaws.com"
+        }
+      }
+    ]
+  })
+
+  tags = var.tags
+}
+
+resource "aws_iam_role_policy_attachment" "config" {
+  count = var.enable_aws_config ? 1 : 0
+
+  role       = aws_iam_role.config[0].name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWS_ConfigRole"
+}
+
+resource "aws_iam_role_policy" "config_s3" {
+  count = var.enable_aws_config ? 1 : 0
+
+  name = "${var.prefix}aws-config-s3-delivery"
+  role = aws_iam_role.config[0].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = [
+          "s3:PutObject",
+          "s3:GetBucketAcl",
+        ]
+        Effect = "Allow"
+        Resource = [
+          aws_s3_bucket.config[0].arn,
+          "${aws_s3_bucket.config[0].arn}/*",
+        ]
+      }
+    ]
+  })
+}
+
+resource "aws_config_configuration_recorder" "main" {
+  count = var.enable_aws_config ? 1 : 0
+
+  name     = "${var.prefix}config-recorder"
+  role_arn = aws_iam_role.config[0].arn
+
+  recording_group {
+    all_supported                 = true
+    include_global_resource_types = true
+  }
+}
+
+resource "aws_config_delivery_channel" "main" {
+  count = var.enable_aws_config ? 1 : 0
+
+  name           = "${var.prefix}config-delivery"
+  s3_bucket_name = aws_s3_bucket.config[0].id
+
+  snapshot_delivery_properties {
+    delivery_frequency = "TwentyFour_Hours"
+  }
+
+  depends_on = [aws_config_configuration_recorder.main]
+}
+
+resource "aws_config_configuration_recorder_status" "main" {
+  count = var.enable_aws_config ? 1 : 0
+
+  name       = aws_config_configuration_recorder.main[0].name
+  is_enabled = true
+
+  depends_on = [aws_config_delivery_channel.main]
+}
+
+# --- Inspector v2 ---
+# Automated vulnerability scanning for EC2 instances and container images (ISO 27001)
+
+resource "aws_inspector2_enabler" "main" {
+  count = var.enable_inspector ? 1 : 0
+
+  account_ids    = [data.aws_caller_identity.current.account_id]
+  resource_types = ["EC2", "ECR"]
+}

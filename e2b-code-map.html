@@ -136,7 +136,7 @@
 
   <div class="main">
     <div class="canvas-wrap">
-      <svg id="diagram" viewBox="0 0 1260 740" xmlns="http://www.w3.org/2000/svg">
+      <svg id="diagram" viewBox="0 0 1260 820" xmlns="http://www.w3.org/2000/svg">
         <defs>
           <marker id="ah-http" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto"><polygon points="0 0,7 2.5,0 5" fill="#58a6ff"/></marker>
           <marker id="ah-grpc" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto"><polygon points="0 0,7 2.5,0 5" fill="#3fb950"/></marker>
@@ -267,6 +267,15 @@ const nodes = [
     aws: { label: 'Secrets Manager (18)', subtitle: 'init/secrets.tf', status: 'ready' } },
   { id: 'iam',          label: 'GCP IAM',                subtitle: 'Service accounts',                          x: 1020, y: 660, w: 155, h: 44, layer: 'external',
     aws: { label: 'IAM Roles', subtitle: 'init/main.tf (e2b-infra-instances)', status: 'ready' } },
+  // Compliance / Security
+  { id: 'flowlogs',    label: 'VPC Flow Logs',          subtitle: 'Network traffic audit',                     x: 850,  y: 718, w: 170, h: 44, layer: 'external',
+    aws: { label: 'VPC Flow Logs', subtitle: 'network/flow-logs.tf (CloudWatch, 90d retention)', status: 'ready' } },
+  { id: 'guardduty',   label: 'Threat Detection',       subtitle: 'Security monitoring',                       x: 1020, y: 718, w: 178, h: 44, layer: 'external',
+    aws: { label: 'AWS GuardDuty', subtitle: 'security/main.tf (S3, EKS, EBS malware)', status: 'ready' } },
+  { id: 'awsconfig',   label: 'Config Compliance',      subtitle: 'Configuration audit',                       x: 850,  y: 770, w: 170, h: 44, layer: 'external',
+    aws: { label: 'AWS Config', subtitle: 'security/main.tf (recorder + S3 delivery)', status: 'ready' } },
+  { id: 'inspector',   label: 'Vulnerability Scan',     subtitle: 'Instance & image scanning',                 x: 1020, y: 770, w: 178, h: 44, layer: 'external',
+    aws: { label: 'AWS Inspector v2', subtitle: 'security/main.tf (EC2 + ECR scanning)', status: 'ready' } },
 ];
 
 const connections = [
@@ -316,6 +325,13 @@ const connections = [
   // IAM
   { from: 'iam',          to: 'gcs',            type: 'external', label: 'Storage access',   awsLabel: 'S3 policies' },
   { from: 'iam',          to: 'container-reg',  type: 'external', label: 'Registry access',  awsLabel: 'ECR pull' },
+  // Compliance / Security monitoring
+  { from: 'flowlogs',    to: 'sg',             type: 'external', label: 'Network audit',    awsLabel: 'VPC traffic logs' },
+  { from: 'guardduty',   to: 'nomad',          type: 'external', label: 'Threat detection', awsLabel: 'K8s audit logs' },
+  { from: 'guardduty',   to: 'gcs',            type: 'external', label: 'S3 monitoring',    awsLabel: 'S3 data events' },
+  { from: 'awsconfig',   to: 'iam',            type: 'external', label: 'Config audit',     awsLabel: 'Resource compliance' },
+  { from: 'inspector',   to: 'container-reg',  type: 'external', label: 'Image scan',       awsLabel: 'ECR image scan' },
+  { from: 'inspector',   to: 'firecracker',    type: 'external', label: 'Instance scan',    awsLabel: 'EC2 assessment' },
 ];
 
 const nodesById = Object.fromEntries(nodes.map(n => [n.id, n]));
@@ -339,7 +355,7 @@ const state = {
   panX: 0, panY: 0
 };
 
-const BASE_VB = { x: 0, y: 0, w: 1260, h: 740 };
+const BASE_VB = { x: 0, y: 0, w: 1260, h: 820 };
 let isPanning = false, panStart = { x: 0, y: 0 }, panStartVB = { x: 0, y: 0 };
 
 // --- Provider ---

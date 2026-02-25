@@ -117,6 +117,19 @@ module "init" {
   template_bucket_name = var.template_bucket_name
 }
 
+module "security" {
+  source = "./security"
+
+  prefix        = var.prefix
+  bucket_prefix = var.bucket_prefix
+
+  enable_guardduty  = var.enable_guardduty
+  enable_aws_config = var.enable_aws_config
+  enable_inspector  = var.enable_inspector
+
+  tags = var.tags
+}
+
 module "network" {
   source = "./network"
 
@@ -126,6 +139,9 @@ module "network" {
   vpc_cidr           = var.vpc_cidr
   environment        = var.environment
   cluster_name       = local.cluster_name
+
+  enable_vpc_flow_logs         = var.enable_vpc_flow_logs
+  vpc_flow_logs_retention_days = var.vpc_flow_logs_retention_days
 
   tags = var.tags
 }
@@ -156,12 +172,12 @@ module "redis" {
   source = "./redis"
   count  = var.redis_managed ? 1 : 0
 
-  prefix     = var.prefix
-  subnet_ids = module.network.private_subnet_ids
+  prefix      = var.prefix
+  subnet_ids  = module.network.private_subnet_ids
   redis_sg_id = module.network.elasticache_security_group_id
 
-  redis_node_type    = var.redis_node_type
-  redis_shard_count  = var.redis_shard_count
+  redis_node_type     = var.redis_node_type
+  redis_shard_count   = var.redis_shard_count
   redis_replica_count = var.redis_replica_count
 
   redis_cluster_url_secret_arn = module.init.redis_cluster_url_secret_arn
@@ -183,7 +199,7 @@ module "eks_cluster" {
 
   iam_instance_profile_name = module.init.iam_instance_profile_name
 
-  eks_ami_id           = var.eks_ami_id
+  eks_ami_id            = var.eks_ami_id
   client_instance_types = var.client_instance_types
   build_instance_types  = var.build_instance_types
   karpenter_version     = var.karpenter_version
@@ -235,23 +251,23 @@ module "kubernetes" {
   core_repository_url = module.init.core_repository_url
 
   # API
-  api_port                  = var.api_port
-  api_resources_cpu_count   = var.api_resources_cpu_count
-  api_resources_memory_mb   = var.api_resources_memory_mb
-  api_machine_count         = var.api_cluster_size
-  api_secret                = random_password.api_secret.result
-  api_admin_token           = random_password.api_admin_secret.result
+  api_port                       = var.api_port
+  api_resources_cpu_count        = var.api_resources_cpu_count
+  api_resources_memory_mb        = var.api_resources_memory_mb
+  api_machine_count              = var.api_cluster_size
+  api_secret                     = random_password.api_secret.result
+  api_admin_token                = random_password.api_admin_secret.result
   sandbox_access_token_hash_seed = random_password.sandbox_access_token_hash_seed.result
 
-  postgres_connection_string_secret_arn                 = module.init.postgres_connection_string_secret_arn
-  postgres_read_replica_connection_string_secret_arn    = module.init.postgres_read_replica_connection_string_secret_arn
-  supabase_jwt_secrets_secret_arn                       = module.init.supabase_jwt_secrets_secret_arn
-  posthog_api_key_secret_arn                            = module.init.posthog_api_key_secret_arn
-  analytics_collector_host_secret_arn                   = module.init.analytics_collector_host_secret_arn
-  analytics_collector_api_token_secret_arn              = module.init.analytics_collector_api_token_secret_arn
-  launch_darkly_api_key_secret_arn                      = module.init.launch_darkly_api_key_secret_arn
-  redis_cluster_url_secret_arn                          = module.init.redis_cluster_url_secret_arn
-  redis_tls_ca_base64_secret_arn                        = module.init.redis_tls_ca_base64_secret_arn
+  postgres_connection_string_secret_arn              = module.init.postgres_connection_string_secret_arn
+  postgres_read_replica_connection_string_secret_arn = module.init.postgres_read_replica_connection_string_secret_arn
+  supabase_jwt_secrets_secret_arn                    = module.init.supabase_jwt_secrets_secret_arn
+  posthog_api_key_secret_arn                         = module.init.posthog_api_key_secret_arn
+  analytics_collector_host_secret_arn                = module.init.analytics_collector_host_secret_arn
+  analytics_collector_api_token_secret_arn           = module.init.analytics_collector_api_token_secret_arn
+  launch_darkly_api_key_secret_arn                   = module.init.launch_darkly_api_key_secret_arn
+  redis_cluster_url_secret_arn                       = module.init.redis_cluster_url_secret_arn
+  redis_tls_ca_base64_secret_arn                     = module.init.redis_tls_ca_base64_secret_arn
 
   # Ingress
   ingress_port  = var.ingress_port
@@ -276,9 +292,9 @@ module "kubernetes" {
   envd_timeout                = var.envd_timeout
 
   # Template manager
-  template_manager_port               = var.template_manager_port
-  template_bucket_name                = module.init.fc_template_bucket_name
-  build_cache_bucket_name             = module.init.fc_build_cache_bucket_name
+  template_manager_port   = var.template_manager_port
+  template_bucket_name    = module.init.fc_template_bucket_name
+  build_cache_bucket_name = module.init.fc_build_cache_bucket_name
 
   # Logs
   loki_machine_count       = var.loki_cluster_size
@@ -292,12 +308,12 @@ module "kubernetes" {
   otel_collector_resources_cpu_count = var.otel_collector_resources_cpu_count
 
   # Clickhouse
-  clickhouse_resources_cpu_count   = var.clickhouse_resources_cpu_count
-  clickhouse_resources_memory_mb   = var.clickhouse_resources_memory_mb
-  clickhouse_database              = var.clickhouse_database_name
-  clickhouse_backups_bucket_name   = module.init.clickhouse_backups_bucket_name
-  clickhouse_server_count          = var.clickhouse_cluster_size
-  clickhouse_server_port           = var.clickhouse_server_service_port
+  clickhouse_resources_cpu_count = var.clickhouse_resources_cpu_count
+  clickhouse_resources_memory_mb = var.clickhouse_resources_memory_mb
+  clickhouse_database            = var.clickhouse_database_name
+  clickhouse_backups_bucket_name = module.init.clickhouse_backups_bucket_name
+  clickhouse_server_count        = var.clickhouse_cluster_size
+  clickhouse_server_port         = var.clickhouse_server_service_port
 
   # Redis
   redis_managed = var.redis_managed

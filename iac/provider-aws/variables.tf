@@ -352,6 +352,37 @@ variable "efs_cache_enabled" {
   default     = false
 }
 
+# --- Compliance Services ---
+variable "enable_vpc_flow_logs" {
+  description = "Enable VPC Flow Logs for network audit trail (GDPR + ISO 27001)"
+  type        = bool
+  default     = false
+}
+
+variable "vpc_flow_logs_retention_days" {
+  description = "CloudWatch log group retention in days for VPC Flow Logs"
+  type        = number
+  default     = 90
+}
+
+variable "enable_guardduty" {
+  description = "Enable AWS GuardDuty for threat detection (ISO 27001)"
+  type        = bool
+  default     = false
+}
+
+variable "enable_aws_config" {
+  description = "Enable AWS Config for configuration compliance monitoring (ISO 27001)"
+  type        = bool
+  default     = false
+}
+
+variable "enable_inspector" {
+  description = "Enable AWS Inspector v2 for vulnerability scanning (ISO 27001)"
+  type        = bool
+  default     = false
+}
+
 variable "filestore_cache_cleanup_disk_usage_target" {
   type        = number
   description = "The max disk usage target of the shared cache in percent"
