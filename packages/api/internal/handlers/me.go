@@ -1,10 +1,10 @@
 package handlers
 
 import (
-	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/gin-gonic/gin"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 )
 
 func (a *APIStore) GetMe(c *gin.Context) {
