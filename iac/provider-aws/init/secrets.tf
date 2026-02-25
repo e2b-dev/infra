@@ -1,29 +1,3 @@
-# --- Auto-generated secrets ---
-
-resource "aws_secretsmanager_secret" "consul_acl_token" {
-  name = "${var.prefix}consul-secret-id"
-  tags = var.tags
-}
-
-resource "random_uuid" "consul_acl_token" {}
-
-resource "aws_secretsmanager_secret_version" "consul_acl_token" {
-  secret_id     = aws_secretsmanager_secret.consul_acl_token.id
-  secret_string = random_uuid.consul_acl_token.result
-}
-
-resource "aws_secretsmanager_secret" "nomad_acl_token" {
-  name = "${var.prefix}nomad-secret-id"
-  tags = var.tags
-}
-
-resource "random_uuid" "nomad_acl_token" {}
-
-resource "aws_secretsmanager_secret_version" "nomad_acl_token" {
-  secret_id     = aws_secretsmanager_secret.nomad_acl_token.id
-  secret_string = random_uuid.nomad_acl_token.result
-}
-
 # --- Placeholder secrets (user must populate after deployment) ---
 
 resource "aws_secretsmanager_secret" "cloudflare_api_token" {

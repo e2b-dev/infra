@@ -115,6 +115,14 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "fc_kernels" {
   }
 }
 
+resource "aws_s3_bucket_versioning" "fc_kernels" {
+  bucket = aws_s3_bucket.fc_kernels.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
 # --- FC Versions ---
 resource "aws_s3_bucket" "fc_versions" {
   bucket = "${var.bucket_prefix}fc-versions"
@@ -234,6 +242,14 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "fc_templates" {
     apply_server_side_encryption_by_default {
       sse_algorithm = "AES256"
     }
+  }
+}
+
+resource "aws_s3_bucket_versioning" "fc_templates" {
+  bucket = aws_s3_bucket.fc_templates.id
+
+  versioning_configuration {
+    status = "Enabled"
   }
 }
 

@@ -2,10 +2,6 @@ variable "prefix" {
   type = string
 }
 
-variable "aws_region" {
-  type = string
-}
-
 variable "availability_zones" {
   description = "List of availability zones to use"
   type        = list(string)

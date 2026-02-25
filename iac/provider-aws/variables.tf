@@ -63,15 +63,9 @@ variable "cache_disk_size_gb" {
 }
 
 variable "client_hugepages_percentage" {
-  description = "Hugepages percentage for client nodes"
+  description = "Hugepages percentage for Karpenter-managed nodes (client and build share one EC2NodeClass)"
   type        = number
   default     = 80
-}
-
-variable "build_hugepages_percentage" {
-  description = "Hugepages percentage for build nodes"
-  type        = number
-  default     = 60
 }
 
 # --- API Configuration ---

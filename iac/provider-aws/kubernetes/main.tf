@@ -10,6 +10,26 @@ locals {
   }
 }
 
+# --- gp3 StorageClass for EBS CSI Driver ---
+resource "kubernetes_storage_class_v1" "gp3" {
+  metadata {
+    name = "gp3"
+    annotations = {
+      "storageclass.kubernetes.io/is-default-class" = "true"
+    }
+  }
+
+  storage_provisioner = "ebs.csi.aws.com"
+  reclaim_policy      = "Delete"
+  volume_binding_mode = "WaitForFirstConsumer"
+
+  parameters = {
+    type      = "gp3"
+    encrypted = "true"
+    fsType    = "ext4"
+  }
+}
+
 # --- Namespace ---
 resource "kubernetes_namespace_v1" "e2b" {
   metadata {
@@ -1233,7 +1253,7 @@ resource "kubernetes_stateful_set_v1" "clickhouse" {
 
       spec {
         access_modes       = ["ReadWriteOnce"]
-        storage_class_name = "gp3"
+        storage_class_name = kubernetes_storage_class_v1.gp3.metadata[0].name
 
         resources {
           requests = {
@@ -1281,7 +1301,7 @@ resource "kubernetes_deployment_v1" "loki" {
   }
 
   spec {
-    replicas = 1
+    replicas = var.loki_machine_count > 0 ? var.loki_machine_count : 1
 
     selector {
       match_labels = { "app.kubernetes.io/name" = "loki" }

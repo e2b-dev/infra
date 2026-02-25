@@ -142,7 +142,7 @@ These costs are the same for both approaches since they use the same managed ser
 |-----------|--------|-----:|-------|
 | EKS or Nomad control plane | EKS $73 + 2x t3.med $70 / Nomad 3x t3.med $105 | $143 / $105 | EKS is $38/mo more |
 | ElastiCache Redis | 2x cache.t3.medium (primary + replica) | $111 | Multi-AZ, TLS, AOF |
-| Aurora PostgreSQL | Serverless v2, 0.5 ACU min | $49 | Scales 0.5-128 ACU |
+| Aurora PostgreSQL | Serverless v2, 0.5 ACU min | $51 | Scales 0.5-128 ACU |
 | NAT Gateways | 2 (one per AZ) | $70 | + $0.048/GB processed |
 | ALB | 1 Application LB | $20 | + LCU usage |
 | NLB | 1 Network LB | $20 | WebSocket sessions |
@@ -466,7 +466,7 @@ Monthly Cost (eu-central-1, on-demand)
 - [EC2 On-Demand Pricing](https://aws.amazon.com/ec2/pricing/on-demand/) -- i3.metal: $5.952/hr, c8i.2xlarge: $0.428/hr (eu-central-1)
 - [Amazon EKS Pricing](https://aws.amazon.com/eks/pricing/) -- $0.10/hr control plane
 - [ElastiCache Pricing](https://aws.amazon.com/elasticache/pricing/) -- cache.t3.medium Redis: $0.076/hr (eu-central-1)
-- [Aurora Serverless v2 Pricing](https://aws.amazon.com/rds/aurora/pricing/) -- $0.134/ACU-hr (eu-central-1)
+- [Aurora Serverless v2 Pricing](https://aws.amazon.com/rds/aurora/pricing/) -- $0.14/ACU-hr (eu-central-1)
 - [VPC / NAT Gateway Pricing](https://aws.amazon.com/vpc/pricing/) -- $0.048/hr + $0.048/GB (eu-central-1)
 - [ELB Pricing](https://aws.amazon.com/elasticloadbalancing/pricing/)
 - [EFS Pricing](https://aws.amazon.com/efs/pricing/)

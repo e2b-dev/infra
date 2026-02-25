@@ -6,16 +6,6 @@ output "iam_role_arn" {
   value = aws_iam_role.infra_instances.arn
 }
 
-output "consul_acl_token_secret" {
-  value     = aws_secretsmanager_secret_version.consul_acl_token.secret_string
-  sensitive = true
-}
-
-output "nomad_acl_token_secret" {
-  value     = aws_secretsmanager_secret_version.nomad_acl_token.secret_string
-  sensitive = true
-}
-
 output "core_repository_url" {
   value = aws_ecr_repository.core.repository_url
 }

@@ -145,7 +145,7 @@ resource "aws_iam_role_policy" "ec2_describe" {
 # ECR Repositories
 resource "aws_ecr_repository" "core" {
   name                 = "${var.prefix}core"
-  image_tag_mutability = "MUTABLE"
+  image_tag_mutability = "IMMUTABLE"
 
   image_scanning_configuration {
     scan_on_push = true
@@ -177,7 +177,7 @@ resource "aws_ecr_lifecycle_policy" "core" {
 
 resource "aws_ecr_repository" "orchestration" {
   name                 = "${var.prefix}orchestration"
-  image_tag_mutability = "MUTABLE"
+  image_tag_mutability = "IMMUTABLE"
 
   image_scanning_configuration {
     scan_on_push = true

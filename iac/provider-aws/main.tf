@@ -134,7 +134,6 @@ module "network" {
   source = "./network"
 
   prefix             = var.prefix
-  aws_region         = var.aws_region
   availability_zones = var.availability_zones
   vpc_cidr           = var.vpc_cidr
   environment        = var.environment
@@ -152,7 +151,6 @@ module "efs" {
   count = var.efs_cache_enabled ? 1 : 0
 
   prefix     = var.prefix
-  vpc_id     = module.network.vpc_id
   subnet_ids = module.network.private_subnet_ids
   efs_sg_id  = module.network.efs_security_group_id
 
@@ -190,14 +188,9 @@ module "eks_cluster" {
 
   cluster_name       = local.cluster_name
   kubernetes_version = var.kubernetes_version
-  prefix             = var.prefix
 
-  vpc_id             = module.network.vpc_id
-  subnet_ids         = module.network.public_subnet_ids
-  private_subnet_ids = module.network.private_subnet_ids
-  cluster_sg_id      = module.network.eks_nodes_security_group_id
-
-  iam_instance_profile_name = module.init.iam_instance_profile_name
+  vpc_id     = module.network.vpc_id
+  subnet_ids = module.network.public_subnet_ids
 
   eks_ami_id            = var.eks_ami_id
   client_instance_types  = var.client_instance_types
@@ -208,7 +201,6 @@ module "eks_cluster" {
   boot_disk_size_gb           = var.boot_disk_size_gb
   cache_disk_size_gb          = var.cache_disk_size_gb
   client_hugepages_percentage = var.client_hugepages_percentage
-  build_hugepages_percentage  = var.build_hugepages_percentage
 
   efs_dns_name   = var.efs_cache_enabled ? module.efs[0].efs_dns_name : ""
   efs_mount_path = "/orchestrator/shared-store"

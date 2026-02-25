@@ -16,6 +16,15 @@ modprobe nbd max_part=0 nbds_max=4096
 echo "nbd" > /etc/modules-load.d/nbd.conf
 echo "options nbd max_part=0 nbds_max=4096" > /etc/modprobe.d/nbd.conf
 
+# Configure hugepages for Firecracker VM memory
+%{ if HUGEPAGES_PERCENTAGE > 0 ~}
+TOTAL_MEM_KB=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+HUGEPAGE_SIZE_KB=2048
+TARGET_HUGEPAGES=$(( TOTAL_MEM_KB * ${HUGEPAGES_PERCENTAGE} / 100 / HUGEPAGE_SIZE_KB ))
+echo "$TARGET_HUGEPAGES" > /proc/sys/vm/nr_hugepages
+echo "vm.nr_hugepages=$TARGET_HUGEPAGES" >> /etc/sysctl.conf
+%{ endif ~}
+
 # Mount EFS if configured
 %{ if EFS_DNS_NAME != "" ~}
 mkdir -p "${EFS_MOUNT_PATH}"

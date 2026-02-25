@@ -27,6 +27,7 @@ module "eks" {
     kube-proxy             = {}
     vpc-cni                = {}
     eks-pod-identity-agent = {}
+    aws-ebs-csi-driver     = {}
   }
 
   # Bootstrap managed node group for Karpenter + system pods
@@ -41,6 +42,10 @@ module "eks" {
 
       labels = {
         "e2b.dev/node-pool" = "system"
+      }
+
+      iam_role_additional_policies = {
+        AmazonEBSCSIDriverPolicy = "arn:${local.partition}:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
       }
 
       tags = merge(var.tags, {
@@ -79,6 +84,7 @@ module "karpenter" {
   create_node_iam_role = true
   node_iam_role_additional_policies = {
     AmazonSSMManagedInstanceCore = "arn:${local.partition}:iam::aws:policy/AmazonSSMManagedInstanceCore"
+    AmazonEBSCSIDriverPolicy    = "arn:${local.partition}:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
   }
 
   # Create SQS queue for spot interruption handling

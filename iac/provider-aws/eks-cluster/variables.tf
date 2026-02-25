@@ -19,21 +19,6 @@ variable "subnet_ids" {
   type        = list(string)
 }
 
-variable "private_subnet_ids" {
-  description = "Private subnet IDs for internal services"
-  type        = list(string)
-}
-
-variable "cluster_sg_id" {
-  description = "Security group ID for EKS nodes"
-  type        = string
-}
-
-variable "iam_instance_profile_name" {
-  description = "IAM instance profile for nodes (existing infra profile)"
-  type        = string
-}
-
 variable "client_instance_types" {
   description = "Instance types for the client (orchestrator) Karpenter NodePool"
   type        = list(string)
@@ -70,15 +55,9 @@ variable "cache_disk_size_gb" {
 }
 
 variable "client_hugepages_percentage" {
-  description = "Hugepages percentage for client nodes"
+  description = "Hugepages percentage for client nodes (applied to all Karpenter-managed nodes)"
   type        = number
   default     = 80
-}
-
-variable "build_hugepages_percentage" {
-  description = "Hugepages percentage for build nodes"
-  type        = number
-  default     = 60
 }
 
 variable "efs_dns_name" {
@@ -103,9 +82,4 @@ variable "tags" {
   description = "Tags to apply to all resources"
   type        = map(string)
   default     = {}
-}
-
-variable "prefix" {
-  description = "Resource name prefix"
-  type        = string
 }

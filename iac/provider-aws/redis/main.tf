@@ -34,9 +34,10 @@ resource "aws_elasticache_replication_group" "redis" {
   security_group_ids = [var.redis_sg_id]
   parameter_group_name = aws_elasticache_parameter_group.redis.name
 
-  automatic_failover_enabled = true
-  multi_az_enabled           = true
-  transit_encryption_enabled = true
+  automatic_failover_enabled  = true
+  multi_az_enabled            = true
+  transit_encryption_enabled  = true
+  at_rest_encryption_enabled  = true
 
   port = 6379
 
@@ -50,5 +51,5 @@ resource "aws_elasticache_replication_group" "redis" {
 # Write the connection URL to Secrets Manager
 resource "aws_secretsmanager_secret_version" "redis_cluster_url" {
   secret_id     = var.redis_cluster_url_secret_arn
-  secret_string = "rediss://${aws_elasticache_replication_group.redis.configuration_endpoint_address}:6379"
+  secret_string = "rediss://${var.redis_shard_count > 1 ? aws_elasticache_replication_group.redis.configuration_endpoint_address : aws_elasticache_replication_group.redis.primary_endpoint_address}:6379"
 }

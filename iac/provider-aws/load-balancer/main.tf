@@ -56,10 +56,11 @@ resource "aws_lb" "nlb" {
 
 # --- ALB Target Groups ---
 resource "aws_lb_target_group" "api" {
-  name     = "${var.prefix}api"
-  port     = var.api_port.port
-  protocol = "HTTP"
-  vpc_id   = var.vpc_id
+  name        = "${var.prefix}api"
+  port        = var.api_port.port
+  protocol    = "HTTP"
+  vpc_id      = var.vpc_id
+  target_type = "ip"
 
   health_check {
     path                = var.api_port.health_path
@@ -77,10 +78,11 @@ resource "aws_lb_target_group" "api" {
 }
 
 resource "aws_lb_target_group" "docker_reverse_proxy" {
-  name     = "${var.prefix}docker"
-  port     = var.docker_reverse_proxy_port.port
-  protocol = "HTTP"
-  vpc_id   = var.vpc_id
+  name        = "${var.prefix}docker"
+  port        = var.docker_reverse_proxy_port.port
+  protocol    = "HTTP"
+  vpc_id      = var.vpc_id
+  target_type = "ip"
 
   health_check {
     path                = var.docker_reverse_proxy_port.health_path
@@ -98,10 +100,11 @@ resource "aws_lb_target_group" "docker_reverse_proxy" {
 }
 
 resource "aws_lb_target_group" "ingress" {
-  name     = "${var.prefix}ingress"
-  port     = var.ingress_port.port
-  protocol = "HTTP"
-  vpc_id   = var.vpc_id
+  name        = "${var.prefix}ingress"
+  port        = var.ingress_port.port
+  protocol    = "HTTP"
+  vpc_id      = var.vpc_id
+  target_type = "ip"
 
   health_check {
     path                = var.ingress_port.health_path
@@ -120,10 +123,11 @@ resource "aws_lb_target_group" "ingress" {
 
 # --- NLB Target Group (TCP for WebSocket sessions) ---
 resource "aws_lb_target_group" "session" {
-  name     = "${var.prefix}session"
-  port     = var.client_proxy_port.port
-  protocol = "TCP"
-  vpc_id   = var.vpc_id
+  name        = "${var.prefix}session"
+  port        = var.client_proxy_port.port
+  protocol    = "TCP"
+  vpc_id      = var.vpc_id
+  target_type = "ip"
 
   health_check {
     protocol            = "TCP"
