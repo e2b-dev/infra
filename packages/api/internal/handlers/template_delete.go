@@ -46,6 +46,21 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		telemetry.WithTemplateID(templateID),
 	)
 
+	// Check across all teams for running sandboxes that use this template as their base
+	hasRunningSandboxes, err := a.orchestrator.HasRunningSandboxesForBaseTemplate(ctx, templateID)
+	if err != nil {
+		telemetry.ReportError(ctx, "error when checking for running sandboxes", err)
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when checking for running sandboxes")
+
+		return
+	}
+
+	if hasRunningSandboxes {
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("cannot delete template '%s' because there are running sandboxes using it", templateID))
+
+		return
+	}
+
 	// check if base template has snapshots
 	hasSnapshots, err := a.sqlcDB.ExistsTemplateSnapshots(ctx, templateID)
 	if err != nil {
