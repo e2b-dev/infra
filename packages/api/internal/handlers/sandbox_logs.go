@@ -10,9 +10,9 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/clusters"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	clustersshared "github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -23,7 +23,7 @@ func (a *APIStore) GetSandboxesSandboxIDLogs(c *gin.Context, sandboxID string, p
 	ctx := c.Request.Context()
 	sandboxID = utils.ShortID(sandboxID)
 
-	team := c.Value(auth.TeamContextKey).(*types.Team)
+	team := auth.MustGetTeamInfo(c)
 
 	telemetry.SetAttributes(ctx,
 		attribute.String("instance.id", sandboxID),
@@ -45,7 +45,7 @@ func (a *APIStore) GetV2SandboxesSandboxIDLogs(c *gin.Context, sandboxID api.San
 	ctx := c.Request.Context()
 	sandboxID = utils.ShortID(sandboxID)
 
-	team := c.Value(auth.TeamContextKey).(*types.Team)
+	team := auth.MustGetTeamInfo(c)
 
 	telemetry.SetAttributes(ctx,
 		attribute.String("instance.id", sandboxID),

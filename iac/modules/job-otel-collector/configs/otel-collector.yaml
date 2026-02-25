@@ -214,6 +214,7 @@ processors:
           - "template.*"
           - "api.*"
           - "db.sql.connection.*"
+          - "db.client.*"
           - "vault.*"
           - "client_proxy.*"
           - "Click*"
