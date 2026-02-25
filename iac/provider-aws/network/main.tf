@@ -18,11 +18,11 @@ resource "aws_subnet" "public" {
   map_public_ip_on_launch = true
 
   tags = merge(var.tags, {
-    Name                                            = "${var.prefix}public-${var.availability_zones[count.index]}"
-    Type                                            = "public"
-    "kubernetes.io/role/elb"                        = "1"
-    "kubernetes.io/cluster/${var.cluster_name}"      = var.cluster_name != "" ? "shared" : null
-    "karpenter.sh/discovery"                        = var.cluster_name != "" ? var.cluster_name : null
+    Name                                        = "${var.prefix}public-${var.availability_zones[count.index]}"
+    Type                                        = "public"
+    "kubernetes.io/role/elb"                    = "1"
+    "kubernetes.io/cluster/${var.cluster_name}" = var.cluster_name != "" ? "shared" : null
+    "karpenter.sh/discovery"                    = var.cluster_name != "" ? var.cluster_name : null
   })
 }
 
@@ -35,10 +35,10 @@ resource "aws_subnet" "private" {
   availability_zone = var.availability_zones[count.index]
 
   tags = merge(var.tags, {
-    Name                                            = "${var.prefix}private-${var.availability_zones[count.index]}"
-    Type                                            = "private"
-    "kubernetes.io/role/internal-elb"               = "1"
-    "kubernetes.io/cluster/${var.cluster_name}"      = var.cluster_name != "" ? "shared" : null
+    Name                                        = "${var.prefix}private-${var.availability_zones[count.index]}"
+    Type                                        = "private"
+    "kubernetes.io/role/internal-elb"           = "1"
+    "kubernetes.io/cluster/${var.cluster_name}" = var.cluster_name != "" ? "shared" : null
   })
 }
 

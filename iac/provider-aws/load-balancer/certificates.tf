@@ -1,6 +1,6 @@
 # --- ACM Certificate ---
 resource "aws_acm_certificate" "main" {
-  domain_name               = var.domain_name
+  domain_name = var.domain_name
   subject_alternative_names = concat(
     ["*.${var.domain_name}"],
     flatten([for d in var.additional_domains : [d, "*.${d}"]])
@@ -31,9 +31,9 @@ locals {
   # Build a map of domain_validation_options keyed by domain name
   dvo_map = {
     for dvo in aws_acm_certificate.main.domain_validation_options : dvo.domain_name => {
-      name   = dvo.resource_record_name
-      type   = dvo.resource_record_type
-      value  = dvo.resource_record_value
+      name  = dvo.resource_record_name
+      type  = dvo.resource_record_type
+      value = dvo.resource_record_value
     }
   }
 

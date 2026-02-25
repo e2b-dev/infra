@@ -136,7 +136,7 @@
 
   <div class="main">
     <div class="canvas-wrap">
-      <svg id="diagram" viewBox="0 0 1260 820" xmlns="http://www.w3.org/2000/svg">
+      <svg id="diagram" viewBox="0 0 1260 880" xmlns="http://www.w3.org/2000/svg">
         <defs>
           <marker id="ah-http" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto"><polygon points="0 0,7 2.5,0 5" fill="#58a6ff"/></marker>
           <marker id="ah-grpc" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto"><polygon points="0 0,7 2.5,0 5" fill="#3fb950"/></marker>
@@ -244,10 +244,10 @@ const nodes = [
   { id: 'clickhouse',   label: 'ClickHouse',            subtitle: 'Analytics, events, host stats',            x: 510,  y: 595, w: 180, h: 55, layer: 'data',
     aws: { label: 'ClickHouse', subtitle: 'Self-hosted on K8s StatefulSet, S3 backup ready', status: 'ready' } },
   { id: 'gcs',          label: 'GCS',                   subtitle: 'Template & build storage',                 x: 745,  y: 595, w: 160, h: 55, layer: 'data',
-    aws: { label: 'AWS S3 (9 buckets)', subtitle: 'init/buckets.tf (templates, kernels, cache, loki)', status: 'ready' } },
+    aws: { label: 'AWS S3 (10 buckets)', subtitle: 'init/buckets.tf (templates, kernels, cache, loki, access logs)', status: 'ready' } },
   // External
   { id: 'nomad',        label: 'Nomad API',             subtitle: 'Service discovery',                        x: 1020, y: 140, w: 155, h: 48, layer: 'external',
-    aws: { label: 'EKS + Karpenter', subtitle: 'eks-cluster/main.tf (Karpenter NodePools + C8i)', status: 'ready' } },
+    aws: { label: 'EKS + Karpenter', subtitle: 'eks-cluster/main.tf (Karpenter NodePools + C8i + CIDR restrict)', status: 'ready' } },
   { id: 'launchdarkly', label: 'LaunchDarkly',          subtitle: 'Feature flags',                            x: 1020, y: 218, w: 168, h: 48, layer: 'external',
     aws: { label: 'LaunchDarkly', subtitle: 'Feature flags (same SDK)', status: 'ready' } },
   { id: 'otel',         label: 'OTEL / Grafana',        subtitle: 'Traces, metrics, logs',                    x: 1020, y: 360, w: 178, h: 48, layer: 'external',
@@ -276,6 +276,10 @@ const nodes = [
     aws: { label: 'AWS Config', subtitle: 'security/main.tf (recorder + S3 delivery)', status: 'ready' } },
   { id: 'inspector',   label: 'Vulnerability Scan',     subtitle: 'Instance & image scanning',                 x: 1020, y: 770, w: 178, h: 44, layer: 'external',
     aws: { label: 'AWS Inspector v2', subtitle: 'security/main.tf (EC2 + ECR scanning)', status: 'ready' } },
+  { id: 'cloudtrail',  label: 'API Audit Trail',        subtitle: 'API call logging',                           x: 850,  y: 822, w: 170, h: 44, layer: 'external',
+    aws: { label: 'AWS CloudTrail', subtitle: 'security/main.tf (multi-region, S3 delivery)', status: 'ready' } },
+  { id: 's3logging',   label: 'S3 Access Logging',      subtitle: 'Bucket access audit',                        x: 1020, y: 822, w: 178, h: 44, layer: 'external',
+    aws: { label: 'S3 Access Logging', subtitle: 'init/buckets.tf (templates, kernels, pipeline, CH)', status: 'ready' } },
 ];
 
 const connections = [
@@ -332,6 +336,10 @@ const connections = [
   { from: 'awsconfig',   to: 'iam',            type: 'external', label: 'Config audit',     awsLabel: 'Resource compliance' },
   { from: 'inspector',   to: 'container-reg',  type: 'external', label: 'Image scan',       awsLabel: 'ECR image scan' },
   { from: 'inspector',   to: 'firecracker',    type: 'external', label: 'Instance scan',    awsLabel: 'EC2 assessment' },
+  // CloudTrail + S3 Access Logging
+  { from: 'cloudtrail',  to: 'gcs',            type: 'storage',  label: 'Audit logs',       awsLabel: 'S3 log delivery' },
+  { from: 'cloudtrail',  to: 'iam',            type: 'external', label: 'API audit',        awsLabel: 'API call audit' },
+  { from: 's3logging',   to: 'gcs',            type: 'storage',  label: 'Access logs',      awsLabel: 'Bucket access audit' },
 ];
 
 const nodesById = Object.fromEntries(nodes.map(n => [n.id, n]));
@@ -342,6 +350,7 @@ const PRESETS = {
   'Build Pipeline': { layers: { edge: false, api: true, orchestration: true, vm: true, data: true, external: false }, conns: { http: false, grpc: true, data: false, storage: true, system: true, external: false } },
   'Data Layer':     { layers: { edge: false, api: true, orchestration: true, vm: false, data: true, external: false }, conns: { http: false, grpc: false, data: true, storage: true, system: false, external: false } },
   'Observability':  { layers: { edge: false, api: true, orchestration: true, vm: true, data: false, external: true }, conns: { http: false, grpc: false, data: false, storage: false, system: false, external: true } },
+  'Security':       { layers: { edge: true, api: false, orchestration: false, vm: true, data: true, external: true }, conns: { http: false, grpc: false, data: false, storage: true, system: false, external: true } },
 };
 
 // State
@@ -355,7 +364,7 @@ const state = {
   panX: 0, panY: 0
 };
 
-const BASE_VB = { x: 0, y: 0, w: 1260, h: 820 };
+const BASE_VB = { x: 0, y: 0, w: 1260, h: 880 };
 let isPanning = false, panStart = { x: 0, y: 0 }, panStartVB = { x: 0, y: 0 };
 
 // --- Provider ---

@@ -114,7 +114,8 @@ module "init" {
 
   aws_region = var.aws_region
 
-  template_bucket_name = var.template_bucket_name
+  template_bucket_name     = var.template_bucket_name
+  enable_s3_access_logging = var.enable_s3_access_logging
 }
 
 module "security" {
@@ -126,6 +127,7 @@ module "security" {
   enable_guardduty  = var.enable_guardduty
   enable_aws_config = var.enable_aws_config
   enable_inspector  = var.enable_inspector
+  enable_cloudtrail = var.enable_cloudtrail
 
   tags = var.tags
 }
@@ -193,10 +195,11 @@ module "eks_cluster" {
   subnet_ids = module.network.public_subnet_ids
 
   eks_ami_id            = var.eks_ami_id
-  client_instance_types  = var.client_instance_types
-  build_instance_types   = var.build_instance_types
-  client_capacity_types  = var.client_capacity_types
+  client_instance_types = var.client_instance_types
+  build_instance_types  = var.build_instance_types
+  client_capacity_types = var.client_capacity_types
   karpenter_version     = var.karpenter_version
+  public_access_cidrs   = var.eks_public_access_cidrs
 
   boot_disk_size_gb           = var.boot_disk_size_gb
   cache_disk_size_gb          = var.cache_disk_size_gb

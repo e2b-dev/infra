@@ -13,3 +13,11 @@ output "config_bucket_name" {
 output "inspector_enabled" {
   value = var.enable_inspector
 }
+
+output "cloudtrail_arn" {
+  value = var.enable_cloudtrail ? aws_cloudtrail.main[0].arn : ""
+}
+
+output "cloudtrail_bucket_name" {
+  value = var.enable_cloudtrail ? aws_s3_bucket.cloudtrail[0].id : ""
+}

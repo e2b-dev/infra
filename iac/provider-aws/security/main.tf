@@ -211,6 +211,109 @@ resource "aws_config_configuration_recorder_status" "main" {
   depends_on = [aws_config_delivery_channel.main]
 }
 
+# --- CloudTrail ---
+# API audit logging for all AWS API calls (ISO 27001 / SOC2 requirement)
+
+resource "aws_s3_bucket" "cloudtrail" {
+  count = var.enable_cloudtrail ? 1 : 0
+
+  bucket = "${var.bucket_prefix}cloudtrail-logs"
+
+  tags = var.tags
+}
+
+resource "aws_s3_bucket_public_access_block" "cloudtrail" {
+  count = var.enable_cloudtrail ? 1 : 0
+
+  bucket = aws_s3_bucket.cloudtrail[0].id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "cloudtrail" {
+  count = var.enable_cloudtrail ? 1 : 0
+
+  bucket = aws_s3_bucket.cloudtrail[0].id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "cloudtrail" {
+  count = var.enable_cloudtrail ? 1 : 0
+
+  bucket = aws_s3_bucket.cloudtrail[0].id
+
+  rule {
+    id     = "cloudtrail-lifecycle"
+    status = "Enabled"
+
+    transition {
+      days          = 90
+      storage_class = "STANDARD_IA"
+    }
+
+    expiration {
+      days = 365
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "cloudtrail" {
+  count = var.enable_cloudtrail ? 1 : 0
+
+  bucket = aws_s3_bucket.cloudtrail[0].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AWSCloudTrailAclCheck"
+        Effect = "Allow"
+        Principal = {
+          Service = "cloudtrail.amazonaws.com"
+        }
+        Action   = "s3:GetBucketAcl"
+        Resource = aws_s3_bucket.cloudtrail[0].arn
+      },
+      {
+        Sid    = "AWSCloudTrailWrite"
+        Effect = "Allow"
+        Principal = {
+          Service = "cloudtrail.amazonaws.com"
+        }
+        Action   = "s3:PutObject"
+        Resource = "${aws_s3_bucket.cloudtrail[0].arn}/AWSLogs/${data.aws_caller_identity.current.account_id}/*"
+        Condition = {
+          StringEquals = {
+            "s3:x-amz-acl" = "bucket-owner-full-control"
+          }
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_cloudtrail" "main" {
+  count = var.enable_cloudtrail ? 1 : 0
+
+  name                          = "${var.prefix}cloudtrail"
+  s3_bucket_name                = aws_s3_bucket.cloudtrail[0].id
+  include_global_service_events = true
+  is_multi_region_trail         = true
+  enable_logging                = true
+
+  tags = var.tags
+
+  depends_on = [aws_s3_bucket_policy.cloudtrail]
+}
+
 # --- Inspector v2 ---
 # Automated vulnerability scanning for EC2 instances and container images (ISO 27001)
 

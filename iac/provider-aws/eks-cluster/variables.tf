@@ -78,6 +78,12 @@ variable "karpenter_version" {
   default     = "1.6.0"
 }
 
+variable "public_access_cidrs" {
+  description = "CIDR blocks allowed to access the EKS API endpoint publicly. Restrict for production."
+  type        = list(string)
+  default     = ["0.0.0.0/0"]
+}
+
 variable "tags" {
   description = "Tags to apply to all resources"
   type        = map(string)

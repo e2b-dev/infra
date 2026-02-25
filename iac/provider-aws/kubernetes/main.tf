@@ -950,8 +950,8 @@ resource "kubernetes_deployment_v1" "template_manager" {
     template {
       metadata {
         labels = merge(local.common_labels, {
-          "app.kubernetes.io/name"      = "template-manager"
-          "template-manager-checksum"   = local.template_manager_checksum
+          "app.kubernetes.io/name"    = "template-manager"
+          "template-manager-checksum" = local.template_manager_checksum
         })
       }
 

@@ -383,6 +383,24 @@ variable "enable_inspector" {
   default     = false
 }
 
+variable "enable_cloudtrail" {
+  description = "Enable AWS CloudTrail for API audit logging (ISO 27001 / SOC2)"
+  type        = bool
+  default     = false
+}
+
+variable "enable_s3_access_logging" {
+  description = "Enable S3 server access logging for compliance-sensitive buckets"
+  type        = bool
+  default     = false
+}
+
+variable "eks_public_access_cidrs" {
+  description = "CIDR blocks allowed to access the EKS API endpoint publicly. Set to a restricted list for production."
+  type        = list(string)
+  default     = ["0.0.0.0/0"]
+}
+
 variable "filestore_cache_cleanup_disk_usage_target" {
   type        = number
   description = "The max disk usage target of the shared cache in percent"

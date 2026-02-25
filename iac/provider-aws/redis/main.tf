@@ -26,18 +26,18 @@ resource "aws_elasticache_replication_group" "redis" {
   replication_group_id = "${var.prefix}redis"
   description          = "E2B Redis cluster"
 
-  node_type            = var.redis_node_type
-  num_node_groups      = var.redis_shard_count
+  node_type               = var.redis_node_type
+  num_node_groups         = var.redis_shard_count
   replicas_per_node_group = var.redis_replica_count
 
-  subnet_group_name  = aws_elasticache_subnet_group.redis.name
-  security_group_ids = [var.redis_sg_id]
+  subnet_group_name    = aws_elasticache_subnet_group.redis.name
+  security_group_ids   = [var.redis_sg_id]
   parameter_group_name = aws_elasticache_parameter_group.redis.name
 
-  automatic_failover_enabled  = true
-  multi_az_enabled            = true
-  transit_encryption_enabled  = true
-  at_rest_encryption_enabled  = true
+  automatic_failover_enabled = true
+  multi_az_enabled           = true
+  transit_encryption_enabled = true
+  at_rest_encryption_enabled = true
 
   port = 6379
 

@@ -20,6 +20,7 @@ module "eks" {
   # API endpoint access
   endpoint_public_access  = true
   endpoint_private_access = true
+  public_access_cidrs     = var.public_access_cidrs
 
   # Core EKS addons
   addons = {
@@ -75,7 +76,7 @@ module "karpenter" {
   cluster_name = module.eks.cluster_name
 
   # Create IAM role for Karpenter controller (via Pod Identity)
-  create_iam_role                = true
+  create_iam_role                 = true
   create_pod_identity_association = true
   namespace                       = "kube-system"
   service_account                 = "karpenter"
@@ -84,7 +85,7 @@ module "karpenter" {
   create_node_iam_role = true
   node_iam_role_additional_policies = {
     AmazonSSMManagedInstanceCore = "arn:${local.partition}:iam::aws:policy/AmazonSSMManagedInstanceCore"
-    AmazonEBSCSIDriverPolicy    = "arn:${local.partition}:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
+    AmazonEBSCSIDriverPolicy     = "arn:${local.partition}:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
   }
 
   # Create SQS queue for spot interruption handling

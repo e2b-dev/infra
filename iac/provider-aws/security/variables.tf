@@ -28,3 +28,9 @@ variable "enable_inspector" {
   type        = bool
   default     = true
 }
+
+variable "enable_cloudtrail" {
+  description = "Enable AWS CloudTrail for API audit logging (ISO 27001 / SOC2)"
+  type        = bool
+  default     = true
+}

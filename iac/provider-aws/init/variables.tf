@@ -20,3 +20,9 @@ variable "template_bucket_name" {
   description = "The name of the FC template bucket"
   default     = ""
 }
+
+variable "enable_s3_access_logging" {
+  description = "Enable S3 server access logging for compliance-sensitive buckets"
+  type        = bool
+  default     = false
+}

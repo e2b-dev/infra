@@ -53,11 +53,11 @@ resource "kubectl_manifest" "ec2nodeclass_c8i_firecracker" {
       ]
 
       userData = templatefile("${path.module}/templates/node-userdata.sh", {
-        EFS_DNS_NAME            = var.efs_dns_name
-        EFS_MOUNT_PATH          = var.efs_mount_path
-        CACHE_DISK_DEVICE       = "/dev/xvdb"
-        CACHE_MOUNT_PATH        = "/mnt/cache"
-        HUGEPAGES_PERCENTAGE    = var.client_hugepages_percentage
+        EFS_DNS_NAME         = var.efs_dns_name
+        EFS_MOUNT_PATH       = var.efs_mount_path
+        CACHE_DISK_DEVICE    = "/dev/xvdb"
+        CACHE_MOUNT_PATH     = "/mnt/cache"
+        HUGEPAGES_PERCENTAGE = var.client_hugepages_percentage
       })
 
       tags = merge(var.tags, {
