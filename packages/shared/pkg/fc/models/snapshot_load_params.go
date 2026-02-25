@@ -28,7 +28,7 @@ type SnapshotLoadParams struct {
 	MemFilePath string `json:"mem_file_path,omitempty"`
 
 	// Network host device names to override
-	NetworkOverrides []*NetworkOverride `json:"network_overrides"`
+	NetworkOverrides []*NetworkOverride `json:"network_overrides,omitempty"`
 
 	// When set to true, the vm is also resumed if the snapshot load is successful.
 	ResumeVM bool `json:"resume_vm,omitempty"`

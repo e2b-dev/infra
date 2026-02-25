@@ -1381,6 +1381,7 @@ definitions:
       network_overrides:
         type: array
         description: Network host device names to override
+        x-omitempty: true
         items:
           $ref: "#/definitions/NetworkOverride"
 
