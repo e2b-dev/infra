@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"sync"
 
 	"github.com/go-git/go-billy/v5"
 	"github.com/willscott/go-nfs"
@@ -16,8 +17,12 @@ type loggedHandler struct {
 
 var _ nfs.Handler = (*loggedHandler)(nil)
 
+var setLogLevelOnce sync.Once
+
 func WrapWithLogging(ctx context.Context, handler nfs.Handler) nfs.Handler {
-	nfs.Log.SetLevel(nfs.TraceLevel)
+	setLogLevelOnce.Do(func() {
+		nfs.Log.SetLevel(nfs.TraceLevel)
+	})
 
 	return loggedHandler{ctx: ctx, inner: handler}
 }

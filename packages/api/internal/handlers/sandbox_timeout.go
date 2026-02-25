@@ -8,9 +8,8 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/e2b-dev/infra/packages/auth/pkg/types"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -21,7 +20,7 @@ func (a *APIStore) PostSandboxesSandboxIDTimeout(
 	ctx := c.Request.Context()
 	sandboxID = utils.ShortID(sandboxID)
 
-	team := c.Value(auth.TeamContextKey).(*types.Team)
+	team := auth.MustGetTeamInfo(c)
 
 	var duration time.Duration
 

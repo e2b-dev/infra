@@ -1,13 +1,14 @@
 package handlers
 
 import (
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/gin-gonic/gin"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 )
 
 func (a *APIStore) GetMe(c *gin.Context) {
-	teamInfo, _ := a.safeGetTeamInfo(c)
+	teamInfo := auth.MustGetTeamInfo(c)
 
 	tokenInfo := api.TokenInfo{
 		TeamID:   teamInfo.ID,

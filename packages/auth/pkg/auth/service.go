@@ -120,8 +120,8 @@ func (s *AuthService[T]) ValidateSupabaseToken(ctx context.Context, supabaseToke
 }
 
 // ValidateSupabaseTeam extracts the user ID from the gin context and fetches the team via cache + store.
-func (s *AuthService[T]) ValidateSupabaseTeam(ctx context.Context, ginCtx *gin.Context, teamID string, userIDContextKey string) (T, *APIError) {
-	userID, ok := ginCtx.Value(userIDContextKey).(uuid.UUID)
+func (s *AuthService[T]) ValidateSupabaseTeam(ctx context.Context, ginCtx *gin.Context, teamID string) (T, *APIError) {
+	userID, ok := GetUserID(ginCtx)
 	if !ok {
 		var zero T
 

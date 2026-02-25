@@ -14,6 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	dbapi "github.com/e2b-dev/infra/packages/api/internal/db"
 	templatemanager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
@@ -84,7 +85,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		return
 	}
 
-	userID := a.GetUserID(c)
+	userID := auth.MustGetUserID(c)
 
 	teams, err := dbapi.GetTeamsByUser(ctx, a.authDB, userID)
 	if err != nil {

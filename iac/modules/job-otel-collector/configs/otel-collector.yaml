@@ -214,6 +214,7 @@ processors:
           - "template.*"
           - "api.*"
           - "db.sql.connection.*"
+          - "db.client.*"
           - "vault.*"
           - "client_proxy.*"
           - "Click*"
@@ -223,6 +224,7 @@ processors:
           - "otelcol.exporter.sent.*"
           - "otelcol.receiver.refused.*"
           - "pgxpool.*"
+          - "traefik.*"
 
   filter/only_client_allocs:
     metrics:

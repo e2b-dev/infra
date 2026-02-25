@@ -10,38 +10,11 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	dbapi "github.com/e2b-dev/infra/packages/api/internal/db"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 )
-
-func (a *APIStore) GetUserID(c *gin.Context) uuid.UUID {
-	return c.Value(auth.UserIDContextKey).(uuid.UUID)
-}
-
-func (a *APIStore) GetTeamInfo(c *gin.Context) *types.Team {
-	teamInfo, ok := a.safeGetTeamInfo(c)
-	if !ok {
-		panic("team info not found in context")
-	}
-
-	return teamInfo
-}
-
-func (a *APIStore) safeGetTeamInfo(c *gin.Context) (*types.Team, bool) {
-	teamInfoVal, ok := c.Get(auth.TeamContextKey)
-	if !ok || teamInfoVal == nil {
-		return nil, false
-	}
-
-	tokenInfo, ok := teamInfoVal.(*types.Team)
-	if !ok || tokenInfo == nil {
-		return nil, false
-	}
-
-	return tokenInfo, true
-}
 
 func (a *APIStore) GetTeam(
 	ctx context.Context,
@@ -52,11 +25,12 @@ func (a *APIStore) GetTeam(
 	ctx, span := tracer.Start(ctx, "get team-and-tier")
 	defer span.End()
 
-	switch {
-	case c.Value(auth.TeamContextKey) != nil:
-		return a.GetTeamInfo(c), nil
-	case c.Value(auth.UserIDContextKey) != nil:
-		teams, apiErr := a.getUserTeams(ctx, c)
+	if team, ok := auth.GetTeamInfo(c); ok {
+		return team, nil
+	}
+
+	if userID, ok := auth.GetUserID(c); ok {
+		teams, apiErr := a.getUserTeams(ctx, userID)
 		if apiErr != nil {
 			return nil, apiErr
 		}
@@ -79,12 +53,12 @@ func (a *APIStore) GetTeam(
 		}
 
 		return team, nil
-	default:
-		return nil, &api.APIError{
-			Code:      http.StatusUnauthorized,
-			ClientMsg: "You are not authenticated",
-			Err:       errors.New("invalid authentication context"),
-		}
+	}
+
+	return nil, &api.APIError{
+		Code:      http.StatusUnauthorized,
+		ClientMsg: "You are not authenticated",
+		Err:       errors.New("invalid authentication context"),
 	}
 }
 
@@ -113,8 +87,8 @@ func findTeam(teams []*types.TeamWithDefault, teamID *string) (*types.Team, erro
 	return nil, fmt.Errorf("default team not found")
 }
 
-func (a *APIStore) getUserTeams(ctx context.Context, c *gin.Context) ([]*types.TeamWithDefault, *api.APIError) {
-	teams, err := dbapi.GetTeamsByUser(ctx, a.authDB, a.GetUserID(c))
+func (a *APIStore) getUserTeams(ctx context.Context, userID uuid.UUID) ([]*types.TeamWithDefault, *api.APIError) {
+	teams, err := dbapi.GetTeamsByUser(ctx, a.authDB, userID)
 	if err != nil {
 		return nil, &api.APIError{
 			Code:      http.StatusInternalServerError,
@@ -143,9 +117,7 @@ func (a *APIStore) resolveTemplateAndTeam(
 	c *gin.Context,
 	identifier string,
 ) (*types.Team, *templatecache.AliasInfo, *api.APIError) {
-	switch {
-	case c.Value(auth.TeamContextKey) != nil:
-		team := a.GetTeamInfo(c)
+	if team, ok := auth.GetTeamInfo(c); ok {
 		aliasInfo, err := a.templateCache.ResolveAlias(ctx, identifier, team.Slug)
 		if err != nil {
 			return nil, nil, templatecache.ErrorToAPIError(err, identifier)
@@ -160,13 +132,15 @@ func (a *APIStore) resolveTemplateAndTeam(
 		}
 
 		return team, aliasInfo, nil
-	case c.Value(auth.UserIDContextKey) != nil:
+	}
+
+	if userID, ok := auth.GetUserID(c); ok {
 		aliasInfo, err := a.templateCache.GetByID(ctx, identifier)
 		if err != nil {
 			return nil, nil, templatecache.ErrorToAPIError(err, identifier)
 		}
 
-		userTeams, apiErr := a.getUserTeams(ctx, c)
+		userTeams, apiErr := a.getUserTeams(ctx, userID)
 		if apiErr != nil {
 			return nil, nil, apiErr
 		}
@@ -182,11 +156,11 @@ func (a *APIStore) resolveTemplateAndTeam(
 			ClientMsg: fmt.Sprintf("You don't have access to template '%s'", identifier),
 			Err:       fmt.Errorf("user does not have access to template's team"),
 		}
-	default:
-		return nil, nil, &api.APIError{
-			Code:      http.StatusUnauthorized,
-			ClientMsg: "You are not authenticated",
-			Err:       errors.New("invalid authentication context"),
-		}
+	}
+
+	return nil, nil, &api.APIError{
+		Code:      http.StatusUnauthorized,
+		ClientMsg: "You are not authenticated",
+		Err:       errors.New("invalid authentication context"),
 	}
 }

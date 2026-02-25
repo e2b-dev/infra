@@ -42,16 +42,17 @@ func (q *Queries) GetTemplateByAlias(ctx context.Context, arg GetTemplateByAlias
 }
 
 const getTemplateById = `-- name: GetTemplateById :one
-SELECT e.id, e.team_id, e.public
+SELECT e.id, e.team_id, e.public, e.cluster_id
 FROM public.envs AS e
 WHERE e.id = $1
   AND e.source IN ('template', 'snapshot_template')
 `
 
 type GetTemplateByIdRow struct {
-	ID     string
-	TeamID uuid.UUID
-	Public bool
+	ID        string
+	TeamID    uuid.UUID
+	Public    bool
+	ClusterID *uuid.UUID
 }
 
 // Looks up a template by its ID directly
@@ -59,6 +60,11 @@ type GetTemplateByIdRow struct {
 func (q *Queries) GetTemplateById(ctx context.Context, templateID string) (GetTemplateByIdRow, error) {
 	row := q.db.QueryRow(ctx, getTemplateById, templateID)
 	var i GetTemplateByIdRow
-	err := row.Scan(&i.ID, &i.TeamID, &i.Public)
+	err := row.Scan(
+		&i.ID,
+		&i.TeamID,
+		&i.Public,
+		&i.ClusterID,
+	)
 	return i, err
 }
