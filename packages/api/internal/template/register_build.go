@@ -62,7 +62,7 @@ func RegisterBuild(
 
 	// This is a simple implementation of concurrency limit
 	// It does not guarantee that the limit is not exceeded, but it should be good enough for now (considering overall low number of total builds)
-	templateIDs, err := db.GetInProgressTemplateBuildsByTeam(ctx, data.Team.ID)
+	templateIDs, err := db.GetInProgressTemplateBuildsByTeam(ctx, &data.Team.ID)
 	if err != nil {
 		return nil, &api.APIError{
 			Err:       err,
