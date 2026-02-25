@@ -706,6 +706,14 @@ components:
           type: integer
           description: Number of builds that failed to cancel
 
+    VolumeToken:
+      type: object
+      properties:
+        token:
+          type: string
+      required:
+        - token
+
     Template:
       required:
         - templateID
@@ -3275,6 +3283,30 @@ paths:
       responses:
         "204":
           description: Successfully deleted a team volume
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /volumes/{volumeID}/token:
+    post:
+      description: Create a token for future requests
+      tags: [volumes]
+      security:
+        - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/volumeID"
+      responses:
+        "201":
+          description: Successfully created a token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VolumeToken"
         "401":
           $ref: "#/components/responses/401"
         "404":

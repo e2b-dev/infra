@@ -634,3 +634,12 @@ variable "network_name" {
   type    = string
   default = "default"
 }
+
+variable "volume_token" {
+  type = object({
+    issuer         = string
+    signing_key    = string
+    signing_method = optional(string)
+    expiration     = optional(string)
+  })
+}

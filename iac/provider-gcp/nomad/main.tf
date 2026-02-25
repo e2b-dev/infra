@@ -102,6 +102,13 @@ resource "nomad_job" "api" {
     db_migrator_docker_image                = data.google_artifact_registry_docker_image.db_migrator_image.self_link
     launch_darkly_api_key                   = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
     default_persistent_volume_type          = var.default_persistent_volume_type
+
+    job_env_vars = {
+      VOLUME_TOKEN_ISSUER         = var.volume_token_issuer
+      VOLUME_TOKEN_SIGNING_KEY    = var.volume_token_signing_key
+      VOLUME_TOKEN_EXPIRATION     = var.volume_token_signing_method
+      VOLUME_TOKEN_SIGNING_METHOD = var.volume_token_signing_method
+    }
   })
 }
 

@@ -1,7 +1,12 @@
 package cfg
 
 import (
+	"fmt"
+	"reflect"
+	"time"
+
 	"github.com/caarlos0/env/v11"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 const (
@@ -48,11 +53,33 @@ type Config struct {
 	DefaultKernelVersion string `env:"DEFAULT_KERNEL_VERSION"`
 
 	DefaultPersistentVolumeType string `env:"DEFAULT_PERSISTENT_VOLUME_TYPE"`
+
+	VolumesToken VolumesTokenConfig
+}
+
+type VolumesTokenConfig struct {
+	Issuer        string            `env:"VOLUME_TOKEN_ISSUER,required"`
+	SigningMethod jwt.SigningMethod `env:"VOLUME_TOKEN_SIGNING_METHOD" envDefault:"HS256"`
+	SigningKey    []byte            `env:"VOLUME_TOKEN_SIGNING_KEY,required"`
+	Expiration    time.Duration     `env:"VOLUME_TOKEN_EXPIRATION" envDefault:"1h"`
 }
 
 func Parse() (Config, error) {
-	var config Config
-	err := env.Parse(&config)
+	config, err := env.ParseAsWithOptions[Config](env.Options{
+		FuncMap: map[reflect.Type]env.ParserFunc{
+			reflect.TypeFor[jwt.SigningMethod](): func(v string) (interface{}, error) {
+				method := jwt.GetSigningMethod(v)
+				if method == nil {
+					return nil, fmt.Errorf("unknown signing method: %s", v)
+				}
+
+				return method, nil
+			},
+		},
+	})
+	if err != nil {
+		return Config{}, err
+	}
 
 	if config.DefaultKernelVersion == "" {
 		config.DefaultKernelVersion = DefaultKernelVersion
@@ -62,5 +89,5 @@ func Parse() (Config, error) {
 		config.AuthDBConnectionString = config.PostgresConnectionString
 	}
 
-	return config, err
+	return config, nil
 }

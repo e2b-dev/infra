@@ -136,6 +136,12 @@ job "api" {
 %{ if default_persistent_volume_type != "" }
         DEFAULT_PERSISTENT_VOLUME_TYPE = "${ default_persistent_volume_type }"
 %{ endif }
+
+%{ for key, value in job_env_vars }
+  %{ if value != "" }
+        ${ key } = "${ value }"
+  %{ endif }
+%{ endfor }
       }
 
       config {

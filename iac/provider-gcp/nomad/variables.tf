@@ -423,3 +423,19 @@ variable "dashboard_api_count" {
   type    = number
   default = 0
 }
+
+variable "volume_token_issuer" {
+  type = string
+}
+
+variable "volume_token_signing_key" {
+  type = string
+}
+
+variable "volume_token_signing_method" {
+  type = string
+}
+
+variable "volume_token_expiration" {
+  type = string
+}
