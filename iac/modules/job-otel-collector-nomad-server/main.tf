@@ -23,7 +23,6 @@ resource "nomad_job" "otel_collector_nomad_server" {
 variable "git_commit_sha" {
   description = "Git commit SHA of the deployment"
   type        = string
-  default     = "unknown"
 }
 
 variable "provider_name" {
