@@ -43,7 +43,7 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 	}
 
 	if sbx.TeamID != teamID {
-		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox \"%s\"", sandboxID))
+		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Sandbox \"%s\" not found", sandboxID))
 
 		return
 	}
@@ -75,12 +75,13 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 }
 
 func pauseHandleNotRunningSandbox(ctx context.Context, sqlcDB *sqlcdb.Client, sandboxID string, teamID uuid.UUID) api.APIError {
+	// TODO: ENG-3544 scope GetLastSnapshot query by teamID to avoid post-fetch ownership check.
 	snap, err := sqlcDB.GetLastSnapshot(ctx, sandboxID)
 	if err == nil {
 		if snap.Snapshot.TeamID != teamID {
 			return api.APIError{
-				Code:      http.StatusForbidden,
-				ClientMsg: fmt.Sprintf("You don't have access to sandbox '%s'", sandboxID),
+				Code:      http.StatusNotFound,
+				ClientMsg: fmt.Sprintf("Sandbox \"%s\" not found", sandboxID),
 			}
 		}
 

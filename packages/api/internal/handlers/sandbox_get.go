@@ -90,6 +90,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	}
 
 	// If sandbox not found try to get the latest snapshot
+	// TODO: ENG-3544 scope GetLastSnapshot query by teamID to avoid post-fetch ownership check.
 	lastSnapshot, err := a.sqlcDB.GetLastSnapshot(ctx, sandboxId)
 	if err != nil {
 		telemetry.ReportError(ctx, "error getting last snapshot", err)
@@ -100,7 +101,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 
 	if lastSnapshot.Snapshot.TeamID != team.ID {
 		telemetry.ReportError(ctx, fmt.Sprintf("snapshot for sandbox '%s' doesn't belong to team '%s'", sandboxId, team.ID.String()), nil)
-		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox \"%s\"", id))
+		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Sandbox \"%s\" not found", id))
 
 		return
 	}
