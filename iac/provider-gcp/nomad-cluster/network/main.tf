@@ -2,7 +2,7 @@ terraform {
   required_providers {
     cloudflare = {
       source  = "cloudflare/cloudflare"
-      version = "4.19.0"
+      version = "4.52.5"
     }
   }
 }
@@ -548,7 +548,7 @@ resource "google_compute_security_policy_rule" "api-throttling-api-key" {
     }
 
     rate_limit_threshold {
-      count        = 1200
+      count        = 1800
       interval_sec = 10
     }
   }
