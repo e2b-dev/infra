@@ -16,6 +16,11 @@ struct uffd_pagefault {
 	__u64	address;
 	__u32 ptid;
 };
+
+#ifndef UFFD_FEATURE_WP_ASYNC
+#define UFFD_FEATURE_WP_ASYNC (1 << 15)
+#endif
+
 */
 import "C"
 
