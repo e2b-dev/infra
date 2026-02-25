@@ -461,3 +461,35 @@ variable "dockerhub_remote_repository_url" {
   type    = string
   default = ""
 }
+
+# --- Temporal Configuration ---
+
+variable "temporal_enabled" {
+  description = "Enable Temporal Server deployment for multi-agent orchestration"
+  type        = bool
+  default     = false
+}
+
+variable "aurora_host" {
+  description = "Aurora PostgreSQL cluster endpoint for Temporal persistence"
+  type        = string
+  default     = ""
+}
+
+variable "aurora_port" {
+  description = "Aurora PostgreSQL port"
+  type        = number
+  default     = 5432
+}
+
+variable "temporal_db_user" {
+  description = "PostgreSQL user for Temporal databases (temporal, temporal_visibility)"
+  type        = string
+  default     = "temporal"
+}
+
+variable "temporal_chart_version" {
+  description = "Temporal Helm chart version (use >=1.0.0-0 for RC releases)"
+  type        = string
+  default     = ">=1.0.0-0"
+}

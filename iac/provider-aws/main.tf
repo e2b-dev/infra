@@ -35,6 +35,11 @@ terraform {
       source  = "hashicorp/random"
       version = "3.5.1"
     }
+
+    tls = {
+      source  = "hashicorp/tls"
+      version = "4.1.0"
+    }
   }
 }
 
@@ -331,4 +336,19 @@ module "kubernetes" {
   filestore_cache_cleanup_max_concurrent_scan   = var.filestore_cache_cleanup_max_concurrent_scan
   filestore_cache_cleanup_max_concurrent_delete = var.filestore_cache_cleanup_max_concurrent_delete
   filestore_cache_cleanup_max_retries           = var.filestore_cache_cleanup_max_retries
+}
+
+module "temporal" {
+  source = "./temporal"
+  count  = var.temporal_enabled ? 1 : 0
+
+  prefix = var.prefix
+  tags   = var.tags
+
+  aurora_host            = var.aurora_host
+  aurora_port            = var.aurora_port
+  temporal_db_user       = var.temporal_db_user
+  temporal_chart_version = var.temporal_chart_version
+
+  depends_on = [module.eks_cluster, module.database]
 }
