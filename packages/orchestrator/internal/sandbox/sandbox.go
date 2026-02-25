@@ -347,7 +347,7 @@ func (f *Factory) CreateSandbox(
 	resources := &Resources{
 		Slot:   ips,
 		rootfs: rootfsProvider,
-		memory: uffd.NewNoopMemory(memfileSize, memfile.BlockSize(), fcHandle.MemoryInfo),
+		memory: uffd.NewNoopMemory(memfileSize, memfile.BlockSize()),
 	}
 
 	metadata := &Metadata{
@@ -926,7 +926,7 @@ func (s *Sandbox) Pause(
 		return nil, fmt.Errorf("failed to get original rootfs: %w", err)
 	}
 
-	memfileDiffMetadata, err := s.Resources.memory.DiffMetadata(ctx)
+	memfileDiffMetadata, err := s.Resources.memory.DiffMetadata(ctx, s.process)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get memfile metadata: %w", err)
 	}

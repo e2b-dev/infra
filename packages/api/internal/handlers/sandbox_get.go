@@ -7,10 +7,9 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/e2b-dev/infra/packages/auth/pkg/types"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -19,12 +18,17 @@ import (
 func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	ctx := c.Request.Context()
 
-	teamInfo := c.Value(auth.TeamContextKey).(*types.Team)
+	teamInfo := auth.MustGetTeamInfo(c)
 	team := teamInfo.Team
 
 	telemetry.ReportEvent(ctx, "get sandbox")
 
-	sandboxId := utils.ShortID(id)
+	sandboxId, err := utils.ShortID(id)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid sandbox ID")
+
+		return
+	}
 
 	var sbxDomain *string
 	if team.ClusterID != nil {

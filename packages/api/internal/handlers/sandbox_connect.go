@@ -12,10 +12,9 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	typesteam "github.com/e2b-dev/infra/packages/auth/pkg/types"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -26,7 +25,7 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 	ctx := c.Request.Context()
 
 	// Get team from context, use TeamContextKey
-	teamInfo := c.Value(auth.TeamContextKey).(*typesteam.Team)
+	teamInfo := auth.MustGetTeamInfo(c)
 
 	span := trace.SpanFromContext(ctx)
 	traceID := span.SpanContext().TraceID().String()
@@ -51,7 +50,14 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 	}
 
 	teamID := teamInfo.Team.ID
-	sandboxID = utils.ShortID(sandboxID)
+
+	sandboxID, err = utils.ShortID(sandboxID)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid sandbox ID")
+
+		return
+	}
+
 	sandboxData, err := a.orchestrator.GetSandbox(ctx, teamID, sandboxID)
 	if err == nil {
 		if sandboxData.TeamID != teamID {
