@@ -44,6 +44,12 @@ if [[ ! "$INSTANCE_NAME" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$ ]]; then
   exit 1
 fi
 
+# Linux IFNAMSIZ is 15 chars; TAP prefix "e2b-tap-" is 8, leaving 7 for the name
+if (( ${#INSTANCE_NAME} > 7 )); then
+  error "Instance name must be 7 characters or fewer (TAP device name would exceed Linux 15-char limit)."
+  exit 1
+fi
+
 STATE_DIR="/tmp/e2b-vm-${INSTANCE_NAME}"
 PID_FILE="${STATE_DIR}/pid"
 MONITOR_SOCK="${STATE_DIR}/monitor.sock"

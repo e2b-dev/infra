@@ -84,7 +84,7 @@ cd /opt/e2b/infra
 
 # Checkout specific commit if requested
 COMMIT="__COMMIT_HASH__"
-if [[ -n "$COMMIT" && "$COMMIT" != "__COMMIT_HASH__" ]]; then
+if [[ -n "$COMMIT" ]]; then
   echo "[$(date)] Checking out commit: $COMMIT"
   git fetch --all
   git checkout "$COMMIT"
