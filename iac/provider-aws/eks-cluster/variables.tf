@@ -46,6 +46,12 @@ variable "build_instance_types" {
   default     = ["c8i.2xlarge", "c8i.4xlarge", "c8i.8xlarge"]
 }
 
+variable "client_capacity_types" {
+  description = "Capacity types for client NodePool (on-demand, spot). Spot enables lower-cost scale-to-zero."
+  type        = list(string)
+  default     = ["on-demand", "spot"]
+}
+
 variable "eks_ami_id" {
   description = "Custom AMI ID for EKS nodes (must have kubelet + nested virtualization support)"
   type        = string

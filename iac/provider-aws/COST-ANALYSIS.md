@@ -47,7 +47,7 @@ Client -> ALB/NLB -> API (K8s Deployment)
 ```
 
 - **Control plane**: EKS managed control plane ($73/mo) + 2x t3.medium bootstrap nodes for system pods and Karpenter controller.
-- **Client cluster**: 1 warm C8i node (on-demand), autoscales with Karpenter. Karpenter provisions nodes in ~55 seconds via EC2 Fleet API.
+- **Client cluster**: Scale-to-zero via Karpenter. Nodes provisioned only when orchestrator pods are pending. Supports spot + on-demand fleet. Karpenter provisions nodes in ~55 seconds via EC2 Fleet API.
 - **Build cluster**: Scale-to-zero via Karpenter. Nodes provisioned only when template-manager pods are pending. ~5% utilization (template builds are intermittent). Uses spot instances.
 - **Scaling**: Karpenter NodePools. Scale-up ~55 seconds. Multi-instance-type fleet (c8i.2xlarge / c8i.4xlarge / c8i.8xlarge). Minimum unit: 1 c8i.2xlarge (8 vCPU / $312/mo).
 - **Cache**: EBS gp3 volumes (500 GB default, ~$48/mo per node). Provisioned per-node by Karpenter EC2NodeClass.
@@ -67,14 +67,14 @@ Client -> ALB/NLB -> API (K8s Deployment)
 | **Terraform status** | Not built for AWS (requires porting GCP Nomad modules) | Ready to deploy (`iac/provider-aws/`) |
 | **Application changes** | None (same orchestrator binary) | None (same orchestrator binary) |
 | **Scale-up time** | 3-4 min (ASG) | ~55 sec (Karpenter EC2 Fleet API) |
-| **Scale-to-zero (build)** | No (i3.metal always-on, $4,345/mo minimum) | Yes (Karpenter deprovisions idle nodes) |
+| **Scale-to-zero** | No (i3.metal always-on, $4,345/mo minimum) | Yes (Karpenter deprovisions idle nodes, both clusters) |
 | **Scaling granularity** | 72 vCPU steps ($4,345/step) | 8 vCPU steps ($312/step) |
 | **Sandboxes per node** | ~100-120 (bare metal, 3x CPU overcommit) | ~12-144 (depends on C8i size) |
 | **NVMe cache** | 15.2 TB included (8x 1.9TB, ~3.3 GB/s read) | EBS gp3 (125 MB/s default, pay per GB) |
 | **Nested virt overhead** | None (direct hardware KVM) | ~3-5% CPU overhead |
 | **Per-vCPU cost** | $0.083/vCPU/hr | $0.053/vCPU/hr (**36% cheaper**) |
 | **Per-sandbox cost** | ~$36/mo (at capacity) | ~$26-30/mo (at capacity) |
-| **Minimum monthly cost** | ~$9,300 (2x i3.metal + infra) | ~$870 (1x c8i.2xlarge + 5% build + infra) |
+| **Minimum monthly cost** | ~$9,300 (2x i3.metal + infra) | ~$513 (scale-to-zero client + build, infra-only) |
 | **Spot instance support** | Limited (i3.metal spot volatile) | Multi-type fleet via Karpenter |
 | **Control plane** | Self-managed Nomad + Consul (3x t3.medium) | AWS-managed EKS ($73/mo) |
 | **Ecosystem** | Smaller Nomad community, BSL license | Large Kubernetes ecosystem |
@@ -183,25 +183,25 @@ Infrastructure scales with usage (Aurora ACU, Redis shards, NAT data processing,
 
 ## Cost by User Scale
 
-### EKS + Karpenter + C8i (client 1 warm, build 5%, both autoscaling)
+### EKS + Karpenter + C8i (both clusters scale-to-zero, autoscaling)
 
 Build cluster: scale-to-zero via Karpenter, ~5% utilization (template builds are intermittent, ~36 hrs/mo). c8i.2xlarge spot at ~$0.30/hr = ~$11/mo compute + ~$2 ephemeral EBS = **~$13/mo**.
 
-Client cluster: 1 warm c8i.2xlarge on-demand ($312/mo), autoscales up with demand. Karpenter selects optimal instance size from the NodePool (c8i.2xlarge / c8i.4xlarge / c8i.8xlarge).
+Client cluster: scale-to-zero via Karpenter. Nodes provisioned only when orchestrator pods are pending (~55 seconds). Supports spot + on-demand fleet. At low scale, Karpenter selects c8i.2xlarge; at high scale, larger sizes (c8i.4xlarge / c8i.8xlarge) for better density.
 
-EBS cache: ~$48/mo per node (500 GB gp3).
+EBS cache: ~$48/mo per node (500 GB gp3). $0 when no nodes are running.
 
 | Users | Peak Concurrent | Client Config | Client $/mo | Build (5%) | Infra | EBS Cache | **Total** |
 |------:|:---------------:|---------------|------------:|----------:|---------:|----------:|----------:|
-| **0** | 0 | 1x c8i.2xl (warm) | $312 | $13 | $500 | $48 | **$873** |
-| **10** | 2-5 | 1x c8i.2xl | $312 | $13 | $500 | $48 | **$873** |
+| **0** | 0 | 0 (scale-to-zero) | $0 | $13 | $500 | $0 | **$513** |
+| **10** | 2-5 | 0-1x c8i.2xl | $0-$312 | $13 | $500 | $0-$48 | **$513-$873** |
 | **100** | 5-15 | 1-2x c8i.2xl | $312-$624 | $13 | $500 | $48-$96 | **$873-$1,233** |
 | **1,000** | 25-75 | 2-7x c8i.2xl | $624-$2,184 | $16 | $600 | $96-$336 | **$1,336-$3,136** |
 | **10,000** | 150-500 | 4-11x c8i.8xl | $6,844-$18,821 | $25 | $1,000 | $192-$528 | **$8,061-$20,374** |
 | **100,000** | 500-2,000 | 4-14x c8i.24xl | $14,988-$52,458 | $50 | $3,000 | $192-$672 | **$18,230-$56,180** |
 | **1,000,000** | 1,500-7,500 | 11-53x c8i.24xl | $41,217-$198,591 | $100 | $8,000 | $528-$2,544 | **$49,845-$209,235** |
 
-> At scale (10K+ users), Karpenter selects larger instance types (c8i.8xlarge/c8i.24xlarge) for better density. Per-sandbox cost remains ~$30/mo regardless of instance size.
+> Both clusters scale to zero when idle. At scale (10K+ users), Karpenter selects larger instance types (c8i.8xlarge/c8i.24xlarge) for better density. Per-sandbox cost remains ~$30/mo regardless of instance size.
 
 ### Nomad + i3.metal (both always-on, no scale-to-zero)
 
@@ -227,19 +227,19 @@ Nomad control plane: 3x t3.medium ($105/mo).
 
 | Users | EKS + C8i (low-high) | Nomad + i3.metal (low-high) | Savings (mid) |
 |------:|---------------------:|----------------------------:|--------------:|
-| **0** | **$873** | $9,295 | **91%** |
-| **10** | **$873** | $9,295 | **91%** |
+| **0** | **$513** | $9,295 | **94%** |
+| **10** | **$513-$873** | $9,295 | **93%** |
 | **100** | **$873-$1,233** | $9,295 | **89%** |
 | **1,000** | **$1,336-$3,136** | $9,395 | **76%** |
 | **10,000** | **$8,061-$20,374** | $14,140-$27,175 | **31%** |
 | **100,000** | **$18,230-$56,180** | $33,520-$85,660 | **38%** |
 | **1,000,000** | **$49,845-$209,235** | $77,625-$294,875 | **30%** |
 
-> **Why savings decrease at scale**: At 0-1K users, the EKS + C8i floor ($873) is dramatically lower than the i3.metal floor ($9,295) because the build cluster scales to zero and the client uses an 8-vCPU node instead of a 72-vCPU bare-metal instance. At 10K+ users, both approaches are dominated by client compute, and the savings converge to the per-vCPU cost difference (~36% cheaper for C8i, partially offset by EBS cache cost and nested virtualization overhead).
+> **Why savings decrease at scale**: At 0-1K users, the EKS + C8i floor ($513) is dramatically lower than the i3.metal floor ($9,295) because both clusters scale to zero and use small instance types instead of 72-vCPU bare-metal instances. At 10K+ users, both approaches are dominated by client compute, and the savings converge to the per-vCPU cost difference (~36% cheaper for C8i, partially offset by EBS cache cost and nested virtualization overhead).
 
 ### Tier Breakdowns
 
-**0-100 Users ($873 vs $9,295)** -- The infrastructure floor. Sandbox load is negligible. On i3.metal, you pay $8,690/mo for two bare-metal instances sitting mostly idle. On EKS + C8i, you pay $312 for one warm client node and ~$13 for intermittent build. This tier is 100% determined by minimum instance size.
+**0-100 Users ($513 vs $9,295)** -- The infrastructure floor. Sandbox load is negligible. On i3.metal, you pay $8,690/mo for two bare-metal instances sitting mostly idle. On EKS + C8i, both clusters scale to zero -- you pay only ~$13 for intermittent build compute and ~$500 for base infrastructure. Client nodes spin up in ~55 seconds when needed and scale back down when idle. This tier is 100% determined by scale-to-zero capability.
 
 **1,000 Users ($1,336-$3,136 vs $9,395)** -- The i3.metal's single-node capacity (~100-120 sandboxes) means it still fits on 1 client node, but you pay $4,345 regardless. With C8i, you scale from 1 to ~7 small nodes as needed (paying only for what you use). Karpenter autoscaling is the key advantage here.
 
@@ -303,7 +303,7 @@ Use 1 NAT gateway instead of 2. Saves ~$35/mo. Trade-off: AZ-level egress failur
 
 | Approach | Baseline | + 1yr RI | + Self-hosted Redis | + 1 NAT | Optimized |
 |----------|---------|---------|--------------------|---------|---------:|
-| **EKS + C8i** | $873 | $758 (-$115) | $647 (-$111) | $612 (-$35) | **$612** |
+| **EKS + C8i** | $513 | -- (scale-to-zero) | $402 (-$111) | $367 (-$35) | **$367** |
 | **Nomad + i3.metal** | $9,295 | $7,688 (-$1,607) | $7,577 (-$111) | $7,542 (-$35) | **$7,542** |
 
 ---
@@ -401,7 +401,7 @@ AWS eu-central-1 is ISO 27001 certified. All services used in this architecture 
 | **Cache performance** | NVMe: 3.3 GB/s, 500K IOPS | EBS gp3: 125 MB/s default (up to 1 GB/s provisioned) |
 | **Spot reliability** | i3.metal spot volatile, limited supply | Multi-type C8i fleet reduces interruption risk |
 | **Scale-up latency** | 3-4 min (ASG) -- can miss traffic spikes | ~55 sec (Karpenter) -- handles spikes well |
-| **Scale-to-zero** | Not practical ($4,345/node, slow spin-up) | Supported by Karpenter (build cluster) |
+| **Scale-to-zero** | Not practical ($4,345/node, slow spin-up) | Supported by Karpenter (both client and build clusters) |
 | **Operational complexity** | Nomad + Consul cluster management | K8s complexity (CRDs, RBAC, networking) |
 | **Hiring/expertise** | Smaller Nomad talent pool | Large K8s ecosystem and talent pool |
 | **Terraform readiness** | Not built for AWS (requires porting GCP modules) | Already built (`iac/provider-aws/`) |
@@ -431,15 +431,16 @@ Monthly Cost (eu-central-1, on-demand)
         |        __.--''
    $10K + ------''  <-- i3.metal floor: $9,295/mo
         |
-    $3K +-------.
-    $1K +-------'  <-- C8i floor: $873/mo
+    $3K +
+    $1K +--------.
+   $500 +--------'  <-- C8i floor: $513/mo (scale-to-zero)
         +-------+-------+-------+-------+-------+--------+
         0      10     100      1K     10K    100K       1M  Users
 ```
 
 ### Key Takeaways
 
-1. **91% lower floor cost**: EKS + C8i starts at **$873/mo** vs $9,295/mo for Nomad + i3.metal. The difference comes from right-sized instances (8 vCPU vs 72 vCPU minimum) and build cluster scale-to-zero.
+1. **94% lower floor cost**: EKS + C8i starts at **$513/mo** vs $9,295/mo for Nomad + i3.metal. Both client and build clusters scale to zero via Karpenter -- you only pay for base infrastructure (EKS control plane, Aurora, Redis, networking) when idle.
 
 2. **30-36% cheaper at scale**: C8i is 36% cheaper per vCPU ($0.053 vs $0.083/hr). At 100K+ users, this translates to ~30-38% total cost savings after accounting for EBS cache costs and infrastructure overhead.
 
@@ -453,7 +454,7 @@ Monthly Cost (eu-central-1, on-demand)
 
 7. **Compliance equivalent**: Both approaches achieve GDPR + ISO 27001 compliance using the same underlying AWS services in eu-central-1. EKS has more mature compliance tooling and AWS-managed control plane patching.
 
-8. **Recommended approach**: **EKS + Karpenter + C8i** -- lower cost at every scale, faster autoscaling, scale-to-zero build cluster, already implemented in Terraform, and built on actively maintained AWS/Kubernetes ecosystem. The 3-5% nested virtualization overhead and EBS cache limitations are acceptable trade-offs for 30-91% cost savings.
+8. **Recommended approach**: **EKS + Karpenter + C8i** -- lower cost at every scale, faster autoscaling, scale-to-zero for both client and build clusters, already implemented in Terraform, and built on actively maintained AWS/Kubernetes ecosystem. The 3-5% nested virtualization overhead and EBS cache limitations are acceptable trade-offs for 30-94% cost savings.
 
 ---
 

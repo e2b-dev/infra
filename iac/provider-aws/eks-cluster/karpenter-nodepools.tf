@@ -98,7 +98,7 @@ resource "kubectl_manifest" "nodepool_client" {
             {
               key      = "karpenter.sh/capacity-type"
               operator = "In"
-              values   = ["on-demand"]
+              values   = var.client_capacity_types
             },
             {
               key      = "node.kubernetes.io/instance-type"

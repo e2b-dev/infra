@@ -44,6 +44,12 @@ variable "build_instance_types" {
   default     = ["c8i.2xlarge", "c8i.4xlarge", "c8i.8xlarge"]
 }
 
+variable "client_capacity_types" {
+  description = "Capacity types for client Karpenter NodePool (on-demand, spot)"
+  type        = list(string)
+  default     = ["on-demand", "spot"]
+}
+
 variable "boot_disk_size_gb" {
   description = "Boot EBS volume size in GB for Karpenter nodes"
   type        = number

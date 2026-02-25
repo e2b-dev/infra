@@ -200,8 +200,9 @@ module "eks_cluster" {
   iam_instance_profile_name = module.init.iam_instance_profile_name
 
   eks_ami_id            = var.eks_ami_id
-  client_instance_types = var.client_instance_types
-  build_instance_types  = var.build_instance_types
+  client_instance_types  = var.client_instance_types
+  build_instance_types   = var.build_instance_types
+  client_capacity_types  = var.client_capacity_types
   karpenter_version     = var.karpenter_version
 
   boot_disk_size_gb           = var.boot_disk_size_gb
