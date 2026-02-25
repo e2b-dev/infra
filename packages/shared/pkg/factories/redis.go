@@ -25,6 +25,11 @@ type RedisConfig struct {
 	RedisTLSCABase64 string
 }
 
+const (
+	clusterNodeConnectionSizePerCPU = 20
+	minIdleConnectionsPerCPU        = 5
+)
+
 func NewRedisClient(ctx context.Context, config RedisConfig) (redis.UniversalClient, error) {
 	var redisClient redis.UniversalClient
 
@@ -38,8 +43,8 @@ func NewRedisClient(ctx context.Context, config RedisConfig) (redis.UniversalCli
 		numCPU := runtime.GOMAXPROCS(0)
 		clusterOpts := &redis.ClusterOptions{
 			Addrs:        []string{config.RedisClusterURL},
-			PoolSize:     50 * numCPU,
-			MinIdleConns: 10 * numCPU,
+			PoolSize:     clusterNodeConnectionSizePerCPU * numCPU,
+			MinIdleConns: minIdleConnectionsPerCPU * numCPU,
 		}
 
 		if config.RedisTLSCABase64 != "" {
