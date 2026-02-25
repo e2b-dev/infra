@@ -13,16 +13,14 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/db"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
-	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/queries"
-	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-func (a *APIStore) deleteSnapshot(ctx context.Context, sandboxID string, teamID uuid.UUID, teamClusterID *uuid.UUID) error {
+func (a *APIStore) deleteSnapshot(ctx context.Context, sandboxID string, teamID uuid.UUID) error {
 	snapshot, err := db.GetSnapshotBuilds(ctx, a.sqlcDB, teamID, sandboxID)
 	if err != nil {
 		return err
@@ -35,36 +33,6 @@ func (a *APIStore) deleteSnapshot(ctx context.Context, sandboxID string, teamID 
 	if dbErr != nil {
 		return fmt.Errorf("error deleting template from db: %w", dbErr)
 	}
-
-	go func(ctx context.Context) {
-		// remove any snapshots when the sandbox is not running
-		ctx, span := tracer.Start(ctx, "delete-snapshot")
-		defer span.End()
-		span.SetAttributes(telemetry.WithSandboxID(sandboxID))
-		span.SetAttributes(telemetry.WithTemplateID(snapshot.TemplateID))
-
-		envBuildIDs := make([]template_manager.DeleteBuild, 0)
-		for _, build := range snapshot.Builds {
-			envBuildIDs = append(
-				envBuildIDs,
-				template_manager.DeleteBuild{
-					BuildID:    build.BuildID,
-					TemplateID: snapshot.TemplateID,
-					ClusterID:  clusters.WithClusterFallback(teamClusterID),
-					NodeID:     build.ClusterNodeID,
-				},
-			)
-		}
-
-		if len(envBuildIDs) == 0 {
-			return
-		}
-
-		deleteJobErr := a.templateManager.DeleteBuilds(ctx, envBuildIDs)
-		if deleteJobErr != nil {
-			telemetry.ReportError(ctx, "error deleting snapshot builds", deleteJobErr, telemetry.WithSandboxID(sandboxID))
-		}
-	}(context.WithoutCancel(ctx))
 
 	a.templateCache.InvalidateAllTags(context.WithoutCancel(ctx), snapshot.TemplateID)
 	a.templateCache.InvalidateAliasesByTemplateID(context.WithoutCancel(ctx), snapshot.TemplateID, aliasKeys)
@@ -120,7 +88,7 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 	}
 
 	// remove any snapshots when the sandbox is not running
-	deleteSnapshotErr := a.deleteSnapshot(ctx, sandboxID, teamID, team.ClusterID)
+	deleteSnapshotErr := a.deleteSnapshot(ctx, sandboxID, teamID)
 	switch {
 	case errors.Is(deleteSnapshotErr, db.ErrSnapshotNotFound):
 		// no snapshot found, nothing to do
