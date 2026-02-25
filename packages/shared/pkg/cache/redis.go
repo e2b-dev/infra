@@ -167,6 +167,8 @@ func (rc *RedisCache[V]) Delete(ctx context.Context, key string) {
 	lock, err := rc.acquireLock(ctx, key, redislock.LinearBackoff(rc.config.LockRetryInterval))
 	if err != nil {
 		logger.L().Warn(ctx, "RedisCache - Delete: failed to acquire lock", zap.String("key", key))
+		// Continue without the lock to remove the stale data
+		// In that case it's just a best effort, the data may get repopulated with stale data
 	}
 	defer rc.releaseLock(ctx, lock, key)
 
