@@ -10,6 +10,8 @@ import (
 const (
 	DefaultKernelVersion = "vmlinux-6.1.158"
 
+	// SandboxStorageBackendMemory will use memory backend as a primary storage for sandbox data.
+	// It will also keep redis populated to allow for seamless migration to redis.
 	SandboxStorageBackendMemory = "memory"
 	SandboxStorageBeckendRedis  = "redis"
 )

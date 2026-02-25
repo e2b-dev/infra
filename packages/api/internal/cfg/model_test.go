@@ -33,6 +33,13 @@ func TestParse(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, []string{"aaa", "bbb"}, result.SupabaseJWTSecrets)
 	})
+
+	t.Run("test sandbox backend empty string", func(t *testing.T) {
+		t.Setenv("SANDBOX_STORAGE_BACKEND", "")
+		result, err := Parse()
+		require.NoError(t, err)
+		assert.Equal(t, SandboxStorageBackendMemory, result.SandboxStorageBackend)
+	})
 }
 
 // removeEnv was mostly copied from the implementation of t.Setenv
