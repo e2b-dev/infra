@@ -1,6 +1,7 @@
 package cfg
 
 import (
+	"encoding/base64"
 	"os"
 	"testing"
 
@@ -12,6 +13,8 @@ func TestParse(t *testing.T) {
 	// set base required values
 	t.Setenv("POSTGRES_CONNECTION_STRING", "postgres-connection-string")
 	t.Setenv("LOKI_URL", "http://loki:3100")
+	t.Setenv("VOLUME_TOKEN_ISSUER", "local.e2b-dev.com")
+	t.Setenv("VOLUME_TOKEN_SIGNING_KEY", base64.StdEncoding.EncodeToString([]byte("secret")))
 
 	t.Run("postgres connection string is required", func(t *testing.T) { //nolint:paralleltest // cannot call t.Setenv and t.Parallel
 		removeEnv(t, "POSTGRES_CONNECTION_STRING")
@@ -32,6 +35,16 @@ func TestParse(t *testing.T) {
 		result, err := Parse()
 		require.NoError(t, err)
 		assert.Equal(t, []string{"aaa", "bbb"}, result.SupabaseJWTSecrets)
+	})
+
+	t.Run("base64 signing key can be parsed", func(t *testing.T) {
+		content := []byte{1, 2, 3, 4, 5, 6}
+		encoded := base64.StdEncoding.EncodeToString(content)
+		t.Setenv("VOLUME_TOKEN_SIGNING_KEY", encoded)
+
+		result, err := Parse()
+		require.NoError(t, err)
+		assert.Equal(t, content, result.VolumesToken.SigningKey)
 	})
 }
 

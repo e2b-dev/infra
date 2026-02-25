@@ -1,6 +1,7 @@
 package cfg
 
 import (
+	"encoding/base64"
 	"fmt"
 	"reflect"
 	"time"
@@ -67,6 +68,9 @@ type VolumesTokenConfig struct {
 func Parse() (Config, error) {
 	config, err := env.ParseAsWithOptions[Config](env.Options{
 		FuncMap: map[reflect.Type]env.ParserFunc{
+			reflect.TypeFor[[]byte](): func(v string) (interface{}, error) {
+				return base64.StdEncoding.DecodeString(v)
+			},
 			reflect.TypeFor[jwt.SigningMethod](): func(v string) (interface{}, error) {
 				method := jwt.GetSigningMethod(v)
 				if method == nil {
