@@ -43,10 +43,10 @@ import (
 )
 
 const (
-	baseImage     = "e2bdev/base:latest"
-	defaultKernel = "vmlinux-6.1.102"
-	defaultFC     = "v1.12.1_a41d3fb"
-	proxyPort     = 5007
+	defaultBaseImage = "e2bdev/base:latest"
+	defaultKernel    = "vmlinux-6.1.102"
+	defaultFC        = "v1.12.1_a41d3fb"
+	proxyPort        = 5007
 )
 
 // baseImage returns the OCI base image, overridable via E2B_BASE_IMAGE env var.
