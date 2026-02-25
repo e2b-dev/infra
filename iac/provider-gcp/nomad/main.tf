@@ -106,8 +106,8 @@ resource "nomad_job" "api" {
     job_env_vars = {
       VOLUME_TOKEN_ISSUER         = var.volume_token_issuer
       VOLUME_TOKEN_SIGNING_KEY    = var.volume_token_signing_key
-      VOLUME_TOKEN_EXPIRATION     = var.volume_token_signing_method
-      VOLUME_TOKEN_SIGNING_METHOD = var.volume_token_signing_method
+      VOLUME_TOKEN_EXPIRATION     = var.volume_token_expiration == null ? "" : var.volume_token_expiration
+      VOLUME_TOKEN_SIGNING_METHOD = var.volume_token_signing_method == null ? "" : var.volume_token_signing_method
     }
   })
 }
