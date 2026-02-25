@@ -163,7 +163,21 @@ func (rc *RedisCache[V]) Set(ctx context.Context, key string, value V) {
 
 // Delete removes a value from Redis.
 func (rc *RedisCache[V]) Delete(ctx context.Context, key string) {
-	rc.deleteFromRedis(ctx, key)
+	lock, err := rc.acquireLock(ctx, key, redislock.LinearBackoff(rc.config.LockRetryInterval))
+	if err != nil {
+		logger.L().Warn(ctx, "RedisCache - Delete: failed to acquire lock", zap.String("key", key))
+	}
+	defer rc.releaseLock(ctx, lock, key)
+
+	ctx, cancel := context.WithTimeout(ctx, rc.config.RedisTimeout)
+	defer cancel()
+
+	redisKey := rc.RedisKey(key)
+	if err := rc.config.RedisClient.Del(ctx, redisKey).Err(); err != nil {
+		logger.L().Warn(ctx, "RedisCache: Redis DEL error",
+			zap.String("key", redisKey),
+			zap.Error(err))
+	}
 }
 
 // DeleteByPrefix removes all keys matching the given prefix from Redis.
@@ -367,18 +381,6 @@ func (rc *RedisCache[V]) setInRedis(ctx context.Context, key string, value V) {
 	redisKey := rc.RedisKey(key)
 	if err := rc.config.RedisClient.Set(ctx, redisKey, data, rc.config.TTL).Err(); err != nil {
 		logger.L().Warn(ctx, "RedisCache: Redis SET error",
-			zap.String("key", redisKey),
-			zap.Error(err))
-	}
-}
-
-func (rc *RedisCache[V]) deleteFromRedis(ctx context.Context, key string) {
-	ctx, cancel := context.WithTimeout(ctx, rc.config.RedisTimeout)
-	defer cancel()
-
-	redisKey := rc.RedisKey(key)
-	if err := rc.config.RedisClient.Del(ctx, redisKey).Err(); err != nil {
-		logger.L().Warn(ctx, "RedisCache: Redis DEL error",
 			zap.String("key", redisKey),
 			zap.Error(err))
 	}
