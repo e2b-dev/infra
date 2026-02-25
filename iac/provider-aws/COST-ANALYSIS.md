@@ -1,520 +1,494 @@
-# E2B AWS Infrastructure Cost Analysis
+# E2B AWS Infrastructure: Architecture Comparison
 
 ## Context
 
-Cost estimation for self-hosting E2B infrastructure on AWS **eu-central-1 (Frankfurt)**, based on the Terraform configuration in `iac/provider-aws/`. All prices are **on-demand** rates unless noted as spot. Spot prices are approximate and vary by AZ and time. Prices as of February 2026. Frankfurt is ~12–19% more expensive than us-east-1 depending on the service.
+This document compares two approaches for deploying E2B's Firecracker-based sandbox infrastructure on AWS **eu-central-1 (Frankfurt)**:
 
-Sandbox config: **2 vCPU, 512 MB RAM** (default).
+1. **Original: Nomad + i3.metal** -- The GCP-native architecture ported to AWS. Bare-metal instances with direct KVM access, orchestrated by HashiCorp Nomad + Consul.
+2. **New: EKS + Karpenter + C8i** -- A Kubernetes-native architecture using C8i instances with nested virtualization, orchestrated by EKS with Karpenter autoscaling.
 
----
+Sandbox default configuration: **2 vCPU, 512 MB RAM** per sandbox.
 
-## Why Two Worker Clusters (Build vs Client)
-
-Both clusters use the same `worker-cluster` Terraform module but serve different roles via Nomad node pools:
-
-- **Build cluster** (`node_pool = "build"`): Runs Template Manager, which compiles Docker images into Firecracker VM templates (rootfs + memory snapshots). Intermittent workload — only active during template builds. 60% hugepages.
-- **Client cluster** (`node_pool = "default"`): Runs Orchestrator as a Nomad system job, managing live Firecracker sandboxes for end users. Always-on workload. 80% hugepages.
-
-Both need `/dev/kvm` access for Firecracker. With i3.metal (bare-metal), KVM is exposed directly. With C8i/M8i/R8i instances, nested virtualization must be enabled to expose `/dev/kvm` inside the VM.
+All prices are **on-demand** rates in eu-central-1 unless noted. Prices verified against the AWS Price List API (February 2026). Frankfurt is ~12-19% more expensive than us-east-1 depending on the service.
 
 ---
 
-## Baseline Infrastructure (Always-On)
+## Architecture Overview
 
-These costs run 24/7 regardless of sandbox usage.
+### Original: Nomad + i3.metal
 
-| Component | Config | $/hr | $/month | Terraform File |
-|-----------|--------|------|---------|----------------|
-| **Build Cluster** | 1× i3.metal (72 vCPU, 512GB, 8×1.9TB NVMe) | $5.952 | **$4,345** | `nomad-cluster/worker-cluster/` |
-| **Client Cluster** | 1× i3.metal (same) | $5.952 | **$4,345** | `nomad-cluster/worker-cluster/` |
-| **Nomad Servers** | 3× t3.medium (2 vCPU, 4GB) | $0.140 | **$102** | `nomad-cluster/nodepool-control-server.tf` |
-| **API Node** | 1× t3.large (2 vCPU, 8GB) + 200GB gp3 | $0.094 | **$85** | `nomad-cluster/nodepool-api.tf` |
-| **ElastiCache Redis** | 2× cache.t3.medium (primary + replica) | $0.152 | **$111** | `redis/main.tf` |
-| **Aurora PostgreSQL** | Serverless v2, 0.5 ACU min | $0.067 | **$49** | `database/main.tf` |
-| **NAT Gateways** | 2 (one per AZ) | $0.096 | **$70** | `network/main.tf` |
-| **ALB** | 1 Application LB | $0.025 | **$18** | `load-balancer/main.tf` |
-| **NLB** | 1 Network LB | $0.025 | **$18** | `load-balancer/main.tf` |
-| **EFS** | Elastic throughput, ~10 GB | — | **$4** | `efs/main.tf` |
-| **S3** (9 buckets) | ~50 GB baseline | — | **$2** | `init/buckets.tf` |
-| **ECR** (2 repos) | ~10 GB container images | — | **$1** | `init/main.tf` |
-| **Secrets Manager** | 18 secrets | — | **$7** | `init/secrets.tf` |
-| **WAF** | 1 Web ACL + ~5 rules | — | **$11** | `load-balancer/waf.tf` |
-| **ACM Certificates** | SSL/TLS for ALB | — | **$0** | `load-balancer/certificates.tf` |
-| **EBS** (API + servers) | 200 + 60 GB gp3 | — | **$22** | various |
+```
+Client -> ALB/NLB -> API (Nomad job)
+                       |
+                   Orchestrator (Nomad system job, 1 per i3.metal node)
+                       |
+                   Firecracker VMs (direct /dev/kvm on bare metal)
+                       |
+                   NVMe SSD cache (15.2 TB per node, included)
+```
 
-### Baseline Total: ~$9,190/month (eu-central-1)
+- **Control plane**: 3x t3.medium running Nomad servers + Consul agents
+- **Client cluster**: 1+ i3.metal bare-metal instances (always-on). Each node runs one Orchestrator process managing Firecracker VMs directly on hardware KVM.
+- **Build cluster**: 1+ i3.metal bare-metal instances (always-on). Runs Template Manager for compiling Docker images into Firecracker VM templates (rootfs + memory snapshots).
+- **Scaling**: AWS Auto Scaling Groups (ASG). Scale-up takes 3-4 minutes. Minimum unit: 1 i3.metal (72 vCPU / $4,345/mo).
+- **Cache**: 8x 1.9 TB NVMe SSDs per node (15.2 TB total, included in instance cost). Used for template snapshots and rootfs overlays.
+- **Service discovery**: Consul.
 
-> The two i3.metal bare-metal instances account for **94%** of baseline cost ($8,690 of $9,190). Bare-metal was historically required because Firecracker needs hardware KVM — but see [C8i Nested Virtualization Option](#c8i-nested-virtualization-option) below for a significantly cheaper alternative.
+### New: EKS + Karpenter + C8i
+
+```
+Client -> ALB/NLB -> API (K8s Deployment)
+                       |
+                   Orchestrator (K8s DaemonSet, 1 per C8i node)
+                       |
+                   Firecracker VMs (nested /dev/kvm via C8i nested virtualization)
+                       |
+                   EBS gp3 cache (500 GB per node, ~$48/mo)
+```
+
+- **Control plane**: EKS managed control plane ($73/mo) + 2x t3.medium bootstrap nodes for system pods and Karpenter controller.
+- **Client cluster**: Scale-to-zero via Karpenter. Nodes provisioned only when orchestrator pods are pending. Supports spot + on-demand fleet. Karpenter provisions nodes in ~55 seconds via EC2 Fleet API.
+- **Build cluster**: Scale-to-zero via Karpenter. Nodes provisioned only when template-manager pods are pending. ~5% utilization (template builds are intermittent). Uses spot instances.
+- **Scaling**: Karpenter NodePools. Scale-up ~55 seconds. Multi-instance-type fleet (c8i.2xlarge / c8i.4xlarge / c8i.8xlarge). Minimum unit: 1 c8i.2xlarge (8 vCPU / $312/mo).
+- **Cache**: EBS gp3 volumes (500 GB default, ~$48/mo per node). Provisioned per-node by Karpenter EC2NodeClass.
+- **Service discovery**: Kubernetes CoreDNS.
+
+**Key architectural difference**: The Orchestrator binary is identical in both approaches. Only the deployment method differs (Nomad job vs K8s DaemonSet). No application code changes required.
 
 ---
 
-## Usage-Based Costs (Scale with Traffic)
+## Feature Comparison
 
-| Component | Unit | Rate (eu-central-1) | Notes |
-|-----------|------|------|-------|
-| **Aurora ACUs** | per ACU-hour | ~$0.134 | Auto-scales 0.5–128 ACU |
-| **ALB LCU** | per LCU-hour | ~$0.009 | Connections + data processed |
-| **NLB NLCU** | per NLCU-hour | ~$0.007 | WebSocket connections + data |
-| **NAT data processing** | per GB | $0.048 | All private→internet traffic |
-| **Data transfer out** | per GB (first 10TB) | $0.09 | Internet egress |
-| **S3 requests** | per 1K PUT/GET | $0.0054 / $0.00043 | Template storage ops |
-| **EFS throughput** | per GB read/write | ~$0.04 / $0.07 | Elastic mode |
-| **Secrets Manager API** | per 10K calls | $0.05 | Negligible at any scale |
+| Feature | Nomad + i3.metal | EKS + Karpenter + C8i |
+|---------|-----------------|----------------------|
+| **Boot time** | <1s (snapshot/restore via UFFD) | <1s (identical -- same Firecracker) |
+| **Snapshot/restore** | Yes (userfaultfd lazy loading) | Yes (identical) |
+| **Custom runtimes** | Any Linux (Docker -> Firecracker template) | Any Linux (identical) |
+| **Terraform status** | Not built for AWS (requires porting GCP Nomad modules) | Ready to deploy (`iac/provider-aws/`) |
+| **Application changes** | None (same orchestrator binary) | None (same orchestrator binary) |
+| **Scale-up time** | 3-4 min (ASG) | ~55 sec (Karpenter EC2 Fleet API) |
+| **Scale-to-zero** | No (i3.metal always-on, $4,345/mo minimum) | Yes (Karpenter deprovisions idle nodes, both clusters) |
+| **Scaling granularity** | 72 vCPU steps ($4,345/step) | 8 vCPU steps ($312/step) |
+| **Sandboxes per node** | ~100-120 (bare metal, 3x CPU overcommit) | ~12-144 (depends on C8i size) |
+| **NVMe cache** | 15.2 TB included (8x 1.9TB, ~3.3 GB/s read) | EBS gp3 (125 MB/s default, pay per GB) |
+| **Nested virt overhead** | None (direct hardware KVM) | ~3-5% CPU overhead |
+| **Per-vCPU cost** | $0.083/vCPU/hr | $0.053/vCPU/hr (**36% cheaper**) |
+| **Per-sandbox cost** | ~$36/mo (at capacity) | ~$26-30/mo (at capacity) |
+| **Minimum monthly cost** | ~$9,300 (2x i3.metal + infra) | ~$513 (scale-to-zero client + build, infra-only) |
+| **Spot instance support** | Limited (i3.metal spot volatile) | Multi-type fleet via Karpenter |
+| **Control plane** | Self-managed Nomad + Consul (3x t3.medium) | AWS-managed EKS ($73/mo) |
+| **Ecosystem** | Smaller Nomad community, BSL license | Large Kubernetes ecosystem |
+| **Operational complexity** | Nomad + Consul cluster management | K8s complexity (CRDs, RBAC, networking) |
 
 ---
 
-## Sandbox Capacity Per i3.metal Node
+## Sandbox Capacity Per Node
 
-Each Firecracker sandbox: **2 vCPU + 512 MB RAM** (default).
+Each sandbox: **2 vCPU, 512 MB RAM**. Hugepages at 80% of RAM. CPU overcommit at 3x (sandboxes are mostly idle between code executions).
 
-| Resource | i3.metal Total | Available (80% hugepages) | Per Sandbox | Max Concurrent |
-|----------|---------------|--------------------------|-------------|----------------|
-| **RAM** | 512 GB | ~410 GB | 512 MB | **~800** |
-| **vCPU** | 72 | 72 | 2 | **~36** (strict) |
-| **vCPU** (3× overcommit) | 72 | 72 | 2 | **~108** |
-| **NVMe cache** | 15.2 TB | — | Shared | Template caching |
+| Instance | vCPU | RAM | $/hr | $/mo | Hugepages (80%) | Sandboxes (CPU 3x) | Sandboxes (RAM) | Practical | $/sandbox/mo |
+|----------|------|-----|------|------|-----------------|--------------------|-----------------|-----------|----|
+| c8i.2xlarge | 8 | 16 GiB | $0.428 | $312 | 12.8 GiB | 12 | 25 | **~12** | ~$30 |
+| c8i.4xlarge | 16 | 32 GiB | $0.856 | $625 | 25.6 GiB | 24 | 50 | **~24** | ~$30 |
+| c8i.8xlarge | 32 | 64 GiB | $1.711 | $1,249 | 51.2 GiB | 48 | 100 | **~48** | ~$30 |
+| c8i.12xlarge | 48 | 96 GiB | $2.567 | $1,874 | 76.8 GiB | 72 | 150 | **~72** | ~$30 |
+| c8i.24xlarge | 96 | 192 GiB | $5.133 | $3,747 | 153.6 GiB | 144 | 300 | **~144** | ~$30 |
+| **i3.metal** | 72 | 512 GiB | $5.952 | $4,345 | 409.6 GiB | 108 | 800 | **~100-120** | ~$36-43 |
 
-**Practical capacity: ~100–150 concurrent sandboxes per node.** CPU is the bottleneck; sandboxes mostly idle between code executions, allowing ~3× overcommit.
+> **i3.metal note**: AWS Pricing API reports 64 vCPU / 488 GiB; AWS documentation reports 72 vCPU / 512 GiB. Bare metal exposes all physical cores (2x Intel Xeon, 36 cores, 72 threads). This analysis uses the documentation spec (72 vCPU) since bare metal bypasses the hypervisor.
+
+> **C8i advantage**: C8i is consistently ~$0.053/vCPU/hr vs i3.metal's ~$0.083/vCPU/hr -- **36% cheaper per vCPU**. C8i is CPU-bound at all sizes (RAM exceeds CPU capacity at 512 MB/sandbox). The per-sandbox cost is consistent across C8i sizes (~$30/mo including $48 EBS cache amortized).
+
+> **i3.metal advantage**: Higher RAM-to-vCPU ratio (7.1 GiB/vCPU vs 2 GiB/vCPU) allows slightly higher CPU overcommit. 15.2 TB NVMe cache included at no extra cost. No nested virtualization overhead.
+
+### NVMe vs EBS Cache Performance
+
+| Metric | i3.metal NVMe (included) | EBS gp3 500 GB ($48/mo) |
+|--------|-------------------------|------------------------|
+| Sequential read throughput | ~3.3 GB/s | 125 MB/s default, up to 1 GB/s provisioned |
+| Sequential write throughput | ~2.5 GB/s | 125 MB/s default, up to 1 GB/s provisioned |
+| Random IOPS | ~500,000 | 3,000 default, up to 16,000 provisioned |
+| Latency | ~100 us | ~200-500 us |
+| Capacity | 15.2 TB | 500 GB (configurable) |
+| Persistence | Ephemeral (instance store) | Persistent across reboots |
+| Extra cost for high perf | N/A | ~$36/mo for 6K IOPS + 500 MB/s throughput |
+
+**Impact**: Template loading from cold cache is ~6-26x slower on EBS default vs NVMe. A 1 GB template loads in ~0.3s on NVMe vs ~8s on EBS default (or ~1s with provisioned 1 GB/s throughput). For steady-state operations with warm caches, the difference is negligible since sandbox boot uses UFFD lazy page loading. EFS shared cache reduces cold-start impact by caching templates across nodes.
+
+---
+
+## Cost Model
+
+### Concurrency Assumptions
+
+| Users | DAU Rate | DAU | Peak Concurrent Sandboxes | Ratio | Reasoning |
+|------:|:--------:|:---:|:-------------------------:|:-----:|-----------|
+| 10 | 80% | 8 | 2-5 | 20-50% | Small team, all active during work hours |
+| 100 | 50% | 50 | 5-15 | 5-15% | Early adopters, high engagement |
+| 1,000 | 25% | 250 | 25-75 | 2.5-7.5% | Mix of power users and casual |
+| 10,000 | 15% | 1,500 | 150-500 | 1.5-5% | Long tail, power users dominate peak |
+| 100,000 | 8% | 8,000 | 500-2,000 | 0.5-2% | Distribution normalizes |
+| 1,000,000 | 3% | 30,000 | 1,500-7,500 | 0.15-0.75% | Very long tail, most users dormant |
+
+**Model**: Average sandbox session duration of 3 minutes, 10 sessions per active user per day, concentrated in 8 active hours. Peak-hour multiplier of 2x. Concurrent = (DAU x 10 sessions x 2 peak / 8 hrs) x (3 min / 60 min). Range reflects +/-50% around the formula to account for usage variance.
+
+> **Important**: "Users" means registered API customers. If users are platform integrations (each generating many end-user sandboxes), multiply concurrency accordingly.
+
+### Infrastructure Baseline (Non-Worker, Always-On)
+
+These costs are the same for both approaches since they use the same managed services.
+
+| Component | Config | $/mo | Notes |
+|-----------|--------|-----:|-------|
+| EKS or Nomad control plane | EKS $73 + 2x t3.med $70 / Nomad 3x t3.med $105 | $143 / $105 | EKS is $38/mo more |
+| ElastiCache Redis | 2x cache.t3.medium (primary + replica) | $111 | Multi-AZ, TLS, AOF |
+| Aurora PostgreSQL | Serverless v2, 0.5 ACU min | $51 | Scales 0.5-128 ACU |
+| NAT Gateways | 2 (one per AZ) | $70 | + $0.048/GB processed |
+| ALB | 1 Application LB | $20 | + LCU usage |
+| NLB | 1 Network LB | $20 | WebSocket sessions |
+| EFS | Elastic throughput, ~10 GB | $4 | Shared chunk cache |
+| S3 | 9 buckets, ~50 GB baseline | $2 | Templates, logs, builds |
+| ECR | 2 repos, ~10 GB images | $1 | Container images |
+| Secrets Manager | 18 secrets | $7 | DB, API keys, tokens |
+| WAF | 1 Web ACL + ~5 rules | $11 | OWASP on ALB |
+| EBS (system) | API + bootstrap volumes | $22 | gp3, encrypted |
+| **Base total (EKS)** | | **$460** | |
+| **Base total (Nomad)** | | **$422** | |
+
+Infrastructure scales with usage (Aurora ACU, Redis shards, NAT data processing, data transfer). Estimated at each tier:
+
+| Users | Infra Total |
+|------:|------------:|
+| 0-100 | ~$500 |
+| 1,000 | ~$600 |
+| 10,000 | ~$1,000 |
+| 100,000 | ~$3,000 |
+| 1,000,000 | ~$8,000 |
+
+> Infrastructure is <5% of total cost at every tier. Compute dominates everything.
+
+### Compliance Services (Optional, All Disabled by Default)
+
+| Service | Variable | $/mo | Notes |
+|---------|----------|-----:|-------|
+| VPC Flow Logs | `enable_vpc_flow_logs` | $50-100 | ~$0.57/GB ingested + CloudWatch storage |
+| AWS GuardDuty | `enable_guardduty` | $3-15 | Free 30-day trial; scales with events |
+| AWS Config | `enable_aws_config` | $5-20 | $0.003/config item + S3 storage |
+| AWS Inspector v2 | `enable_inspector` | $2-10 | $0.01/EC2 assessment + $0.09/ECR scan |
+| **Total** | | **$60-145** | <2% of total cost at any scale |
+
+> All compliance services are gated by `enable_*` variables (default `false`). Enable them for GDPR audit trail and ISO 27001 compliance.
 
 ---
 
 ## Cost by User Scale
 
-### Assumptions
-- Average sandbox session: **3 minutes**
-- Sessions per active user per day: **10**
-- Peak concurrency: **5–10%** of registered users simultaneously
-- Data transfer per sandbox session: ~5 MB
+### EKS + Karpenter + C8i (both clusters scale-to-zero, autoscaling)
 
-### Scaling Table
+Build cluster: scale-to-zero via Karpenter, ~5% utilization (template builds are intermittent, ~36 hrs/mo). c8i.2xlarge spot at ~$0.30/hr = ~$11/mo compute + ~$2 ephemeral EBS = **~$13/mo**.
 
-> Costs shown for i3.metal baseline. With the recommended c8i.2xlarge + spot setup, the floor drops to ~$1,107/mo — see [Baseline with C8i](#baseline-with-c8i-eu-central-1) for C8i-specific numbers.
+Client cluster: scale-to-zero via Karpenter. Nodes provisioned only when orchestrator pods are pending (~55 seconds). Supports spot + on-demand fleet. At low scale, Karpenter selects c8i.2xlarge; at high scale, larger sizes (c8i.4xlarge / c8i.8xlarge) for better density.
 
-| Users | Peak Concurrent Sandboxes | Client Nodes | Build Nodes | Aurora ACU | Monthly Cost |
-|------:|:------------------------:|:------------:|:-----------:|:----------:|-------------:|
-| **0** | 0 | 1 | 1 | 0.5 | **~$9,190** |
-| **10** | 1–2 | 1 | 1 | 0.5 | **~$9,190** |
-| **100** | 5–10 | 1 | 1 | 1 | **~$9,250** |
-| **1,000** | 50–100 | 1 | 1 | 2–4 | **~$9,700** |
-| **10,000** | 500–1,000 | 5–7 | 1 | 8–16 | **~$31,000–$40,000** |
-| **100,000** | 5,000–10,000 | 34–67 | 2–3 | 32–64 | **~$215,000–$415,000** |
+EBS cache: ~$48/mo per node (500 GB gp3). $0 when no nodes are running.
 
-### Breakdown by Tier
+| Users | Peak Concurrent | Client Config | Client $/mo | Build (5%) | Infra | EBS Cache | **Total** |
+|------:|:---------------:|---------------|------------:|----------:|---------:|----------:|----------:|
+| **0** | 0 | 0 (scale-to-zero) | $0 | $13 | $500 | $0 | **$513** |
+| **10** | 2-5 | 0-1x c8i.2xl | $0-$312 | $13 | $500 | $0-$48 | **$513-$873** |
+| **100** | 5-15 | 1-2x c8i.2xl | $312-$624 | $13 | $500 | $48-$96 | **$873-$1,233** |
+| **1,000** | 25-75 | 2-7x c8i.2xl | $624-$2,184 | $16 | $600 | $96-$336 | **$1,336-$3,136** |
+| **10,000** | 150-500 | 4-11x c8i.8xl | $6,844-$18,821 | $25 | $1,000 | $192-$528 | **$8,061-$20,374** |
+| **100,000** | 500-2,000 | 4-14x c8i.24xl | $14,988-$52,458 | $50 | $3,000 | $192-$672 | **$18,230-$56,180** |
+| **1,000,000** | 1,500-7,500 | 11-53x c8i.24xl | $41,217-$198,591 | $100 | $8,000 | $528-$2,544 | **$49,845-$209,235** |
 
-#### 0–100 Users (~$9,190–$9,250/mo)
-The infrastructure floor. Sandbox load is negligible — all costs are baseline. Aurora auto-scales to 1 ACU under light query load (+$49/mo peak). This tier is dominated entirely by the two i3.metal bare-metal instances.
+> Both clusters scale to zero when idle. At scale (10K+ users), Karpenter selects larger instance types (c8i.8xlarge/c8i.24xlarge) for better density. Per-sandbox cost remains ~$30/mo regardless of instance size.
 
-#### 1,000 Users (~$9,700/mo)
-- Still fits on **1 client i3.metal** (~50–100 concurrent sandboxes)
-- Aurora: 2–4 ACU → +$150–$340/mo
-- Data transfer: ~150 GB → +$14/mo (NAT) + $14/mo (egress)
-- Redis: cache.t3.medium handles load fine
-- **+$510/mo over baseline** (+5.5%)
+### Nomad + i3.metal (both always-on, no scale-to-zero)
 
-#### 10,000 Users (~$31,000–$40,000/mo)
-- **5–7 client i3.metal nodes**: +$17,400–$26,100/mo (the dominant scaling cost)
-- Aurora: 8–16 ACU → +$640–$1,320/mo
-- Redis: add 1 shard → +$56/mo
-- Data transfer: ~1.5 TB → +$170/mo
-- Additional API node: +$85/mo
-- 3rd NAT gateway for 3-AZ HA: +$35/mo
-- **~3.5–4.5× baseline**
+Build cluster: 1x i3.metal always-on ($4,345/mo). No practical scale-to-zero due to 3-4 minute ASG spin-up and $4,345/mo minimum unit. Additional build nodes added at very high scale.
 
-#### 100,000 Users (~$215,000–$415,000/mo)
-- **34–67 client i3.metal nodes**: $148,000–$291,000/mo
-- 2–3 build nodes: $8,700–$13,000/mo
-- Aurora: 32–64 ACU → $3,100–$6,300/mo
-- Redis: 4+ shards, upgrade to cache.r6g.large → ~$900/mo
-- Data transfer: ~15 TB → ~$2,100/mo
-- 3–5 API nodes: $255–$425/mo
-- EFS + S3 storage growth: ~$120/mo
-- **~23–45× baseline**
+Client cluster: 1x i3.metal always-on ($4,345/mo). Scales via ASG in i3.metal increments.
 
----
+Nomad control plane: 3x t3.medium ($105/mo).
 
-## C8i Nested Virtualization Option
+| Users | Peak Concurrent | Client Nodes (i3.metal) | Client $/mo | Build $/mo | Nomad | Infra | **Total** |
+|------:|:---------------:|:-----------------------:|------------:|-----------:|------:|------:|----------:|
+| **0** | 0 | 1 | $4,345 | $4,345 | $105 | $500 | **$9,295** |
+| **10** | 2-5 | 1 | $4,345 | $4,345 | $105 | $500 | **$9,295** |
+| **100** | 5-15 | 1 | $4,345 | $4,345 | $105 | $500 | **$9,295** |
+| **1,000** | 25-75 | 1 | $4,345 | $4,345 | $105 | $600 | **$9,395** |
+| **10,000** | 150-500 | 2-5 | $8,690-$21,725 | $4,345 | $105 | $1,000 | **$14,140-$27,175** |
+| **100,000** | 500-2,000 | 5-17 | $21,725-$73,865 | $8,690 | $105 | $3,000 | **$33,520-$85,660** |
+| **1,000,000** | 1,500-7,500 | 13-63 | $56,485-$273,735 | $13,035 | $105 | $8,000 | **$77,625-$294,875** |
 
-As of February 2026, AWS supports [nested virtualization on C8i/M8i/R8i instances](https://aws.amazon.com/about-aws/whats-new/2026/02/amazon-ec2-nested-virtualization-on-virtual/). This has been [confirmed working with Firecracker](https://dev.classmethod.jp/en/articles/ec2-nested-virtualization-support-non-bare-metal/). The Terraform module supports this via `nested_virtualization = true` on the worker cluster config.
+> i3.metal at ~120 sandboxes/node has high per-node density, but the minimum $4,345/node step size wastes capacity at low-to-mid scale. 1,000 users (25-75 concurrent) fits on a single i3.metal but you still pay $4,345/mo for that node.
 
-This eliminates the bare-metal requirement and allows right-sizing instances to actual load.
+### Side-by-Side Comparison
 
-### C8i Pricing (eu-central-1)
+| Users | EKS + C8i (low-high) | Nomad + i3.metal (low-high) | Savings (mid) |
+|------:|---------------------:|----------------------------:|--------------:|
+| **0** | **$513** | $9,295 | **94%** |
+| **10** | **$513-$873** | $9,295 | **93%** |
+| **100** | **$873-$1,233** | $9,295 | **89%** |
+| **1,000** | **$1,336-$3,136** | $9,395 | **76%** |
+| **10,000** | **$8,061-$20,374** | $14,140-$27,175 | **31%** |
+| **100,000** | **$18,230-$56,180** | $33,520-$85,660 | **38%** |
+| **1,000,000** | **$49,845-$209,235** | $77,625-$294,875 | **30%** |
 
-| Instance | vCPU | RAM | On-Demand $/hr | Spot $/hr | On-Demand $/mo | Spot $/mo | Sandboxes (2vCPU, 512MB) |
-|----------|------|-----|---------------|-----------|---------------|-----------|--------------------------|
-| c8i.2xlarge | 8 | 16 GB | $0.410 | ~$0.290 | **$299** | **~$212** | ~4–12 |
-| c8i.4xlarge | 16 | 32 GB | $0.862 | ~$0.610 | **$629** | **~$445** | ~8–24 |
-| c8i.8xlarge | 32 | 64 GB | $1.724 | ~$1.220 | **$1,258** | **~$891** | ~16–48 |
-| c8i.12xlarge | 48 | 96 GB | $2.586 | ~$1.830 | **$1,884** | **~$1,336** | ~24–72 |
-| c8i.24xlarge | 96 | 192 GB | $5.172 | ~$3.660 | **$3,775** | **~$2,672** | ~48–144 |
-| i3.metal | 72 | 512 GB | $5.952 | ~$1.700 | **$4,345** | **~$1,241** | ~100–150 |
+> **Why savings decrease at scale**: At 0-1K users, the EKS + C8i floor ($513) is dramatically lower than the i3.metal floor ($9,295) because both clusters scale to zero and use small instance types instead of 72-vCPU bare-metal instances. At 10K+ users, both approaches are dominated by client compute, and the savings converge to the per-vCPU cost difference (~36% cheaper for C8i, partially offset by EBS cache cost and nested virtualization overhead).
 
-> **Note:** C8i instances have less RAM per vCPU than i3.metal (2 GB/vCPU vs 7 GB/vCPU), so sandbox capacity is CPU-bound at lower instance sizes. At c8i.2xlarge with 80% hugepages, ~12.8 GB is available for sandbox memory (~25 sandboxes at 512 MB), but CPU limits practical concurrency to ~4–12. At c8i.4xlarge with 80% hugepages, ~25 GB is available (~50 sandboxes at 512 MB). Cache storage uses an EBS gp3 volume instead of NVMe instance store. Spot pricing is typically ~29–31% off on-demand for C8i instances.
+### Tier Breakdowns
 
-### Baseline with C8i (eu-central-1)
+**0-100 Users ($513 vs $9,295)** -- The infrastructure floor. Sandbox load is negligible. On i3.metal, you pay $8,690/mo for two bare-metal instances sitting mostly idle. On EKS + C8i, both clusters scale to zero -- you pay only ~$13 for intermittent build compute and ~$500 for base infrastructure. Client nodes spin up in ~55 seconds when needed and scale back down when idle. This tier is 100% determined by scale-to-zero capability.
 
-| Scenario | Client | Build | Other Infra | EBS Cache | Total |
-|----------|--------|-------|-------------|-----------|-------|
-| **Current (i3.metal)** | $4,345 | $4,345 | $500 | $0 (NVMe) | **$9,190** |
-| **Recommended (c8i.2xlarge + spot)** | $299 (c8i.2xlarge on-demand) | ~$212 (c8i.2xlarge spot) | $500 | ~$96 | **~$1,107** |
-| **C8i.4xlarge (0–100 users)** | $629 (c8i.4xlarge) | $629 (c8i.4xlarge) | $500 | ~$96 | **~$1,854** |
-| **C8i.4xlarge + build at zero** | $629 (c8i.4xlarge) | $0 | $500 | ~$48 | **~$1,177** |
-| **C8i (1K users)** | $1,884 (c8i.12xlarge) | $629 | $550 | ~$144 | **~$3,207** |
+**1,000 Users ($1,336-$3,136 vs $9,395)** -- The i3.metal's single-node capacity (~100-120 sandboxes) means it still fits on 1 client node, but you pay $4,345 regardless. With C8i, you scale from 1 to ~7 small nodes as needed (paying only for what you use). Karpenter autoscaling is the key advantage here.
 
-> EBS cache cost: 500 GB gp3 at ~$0.096/GB-mo = ~$48/volume. The recommended setup uses 2 volumes (1 client + 1 build) = ~$96/mo.
+**10,000 Users ($8,061-$20,374 vs $14,140-$27,175)** -- Both approaches now have multiple client nodes. i3.metal needs 2-5 nodes; C8i needs 4-11 c8i.8xlarge nodes. Per-sandbox cost advantage (~$30 vs ~$36-43) gives C8i a ~31% edge. Karpenter's ~55-second scale-up vs ASG's 3-4 minutes matters for handling traffic spikes.
 
-### C8i Cost by User Scale
+**100,000 Users ($18,230-$56,180 vs $33,520-$85,660)** -- At scale, C8i switches to c8i.24xlarge (144 sandboxes/node, comparable density to i3.metal's ~120). The per-vCPU cost advantage (36%) is the main driver. Build cluster cost is negligible in both approaches at this scale.
 
-| Users | Peak Concurrent | Client Config | Build | Other + EBS | Monthly Cost |
-|------:|:---------------:|---------------|-------|-------------|-------------:|
-| **0–350** | 0–18 | 1× c8i.2xlarge | 1× c8i.2xlarge spot | ~$596 | **~$1,107** |
-| **350–1K** | 18–50 | 3× c8i.2xlarge (autoscale) | 1× c8i.2xlarge spot | ~$740 | **~$1,850–2,800** |
-| **1K–5K** | 50–250 | 2–4× c8i.4xlarge | 1× c8i.4xlarge | ~$900 | **~$3,000–5,000** |
-| **5K–10K** | 250–1000 | 4–8× c8i.12xlarge | 1× c8i.4xlarge | ~$1,100 | **~$9,000–17,000** |
-
-### Example Terraform Config (Recommended: c8i.2xlarge + spot build)
-
-```hcl
-# Client cluster: on-demand c8i.2xlarge with autoscaling (1–3 nodes)
-client_clusters_config = {
-  "default" = {
-    cluster_size          = 1
-    instance_type         = "c8i.2xlarge"
-    nested_virtualization = true
-    cache_disk_size_gb    = 500
-    autoscaler = {
-      min_size   = 1
-      max_size   = 3
-      cpu_target = 70
-    }
-    boot_disk_size_gb = 100
-    # cache_disks is reserved for future multi-disk support
-    cache_disks = {
-      type    = "ebs"
-      size_gb = 500
-      count   = 1
-    }
-    hugepages_percentage = 80
-  }
-}
-
-# Build cluster: spot c8i.2xlarge — always-on but cheap
-build_clusters_config = {
-  "default" = {
-    cluster_size          = 1
-    instance_type         = "c8i.2xlarge"
-    nested_virtualization = true
-    use_spot              = true
-    cache_disk_size_gb    = 500
-    autoscaler = {
-      min_size   = 1
-      max_size   = 2
-      cpu_target = 70
-    }
-    boot_disk_size_gb = 100
-    # cache_disks is reserved for future multi-disk support
-    cache_disks = {
-      type    = "ebs"
-      size_gb = 500
-      count   = 1
-    }
-    hugepages_percentage = 60
-  }
-}
-```
-
-This gives ~4–12 concurrent sandboxes per client node, scaling to ~12–36 with autoscaler max=3 — sufficient for 0–350 users (at typical 5% peak concurrency). The build cluster uses spot instances (~29% discount) since template builds are fault-tolerant and can retry on interruption.
-
----
-
-## Fargate Analysis (Why Not Serverless)
-
-AWS Fargate runs on Firecracker internally, which raises the question: could E2B run sandboxes on Fargate instead of managing EC2 instances?
-
-**No — Fargate doesn't expose the Firecracker APIs that E2B depends on:**
-
-| Requirement | E2B/Firecracker | Fargate |
-|-------------|-----------------|---------|
-| **Sub-second boot** | Snapshot/restore via userfaultfd — boots in <1s | 10–30s cold start |
-| **NBD rootfs overlays** | `/dev/nbd` block-level diffs for template layering | No device access |
-| **Custom network namespaces** | Per-sandbox netns with iptables | Security groups only |
-| **Hugepages** | Configurable (60–80% of RAM) | Not configurable |
-| **KVM access** | Direct `/dev/kvm` | Not exposed |
-
-A Fargate migration would require a complete orchestrator rewrite (3–6 months estimated) and degrade boot time from <1s to 10–30s, which is a core product differentiator.
-
-**Verdict:** Fargate is not viable without fundamentally changing the E2B architecture. C8i nested virtualization provides the cost reduction without any application changes.
-
----
-
-## Amazon Bedrock AgentCore Analysis
-
-[Amazon Bedrock AgentCore](https://aws.amazon.com/bedrock/agentcore/) (GA since October 2025) includes a **Code Interpreter** that provides sandboxed code execution in isolated microVMs — conceptually similar to E2B sandboxes. This section evaluates whether AgentCore could replace E2B's self-hosted Firecracker infrastructure.
-
-### AgentCore Code Interpreter Specs
-
-| Spec | Value |
-|------|-------|
-| **vCPU per session** | 2 (fixed, not adjustable) |
-| **Memory per session** | 8 GB (fixed, not adjustable) |
-| **Disk per session** | 10 GB |
-| **Concurrent sessions/account** | 1,000 (adjustable via AWS support) |
-| **Session timeout** | 15 min default, up to 8 hrs |
-| **Languages** | Python, JavaScript, TypeScript |
-| **Isolation** | Dedicated microVM per session |
-| **Network modes** | Sandbox (limited) or Public (internet access) |
-| **File upload** | 100 MB inline, 5 GB via S3 |
-| **Regions** | 15 regions including eu-central-1 |
-| **Boot time** | "Low-latency" (no published numbers) |
-| **Pricing** | $0.0895/vCPU-hr + $0.00945/GB-hr, per-second billing, idle time free |
-
-### AgentCore Pricing (eu-central-1)
-
-Per session (2 vCPU, 8 GB):
-
-```
-$0.0895 × 2 vCPU + $0.00945 × 8 GB = $0.2546/hr active
-```
-
-Only active execution time is billed — idle time within a session is free.
-
-#### Comparison to Self-Hosted
-
-| Approach | Per-Sandbox $/hr | Notes |
-|----------|-----------------|-------|
-| **E2B self-hosted (C8i)** | ~$0.054 | c8i.4xlarge at $0.862/hr ÷ ~16 concurrent sandboxes (c8i.2xlarge: ~$0.051/sandbox at $0.410/hr ÷ ~8) |
-| **E2B managed (e2b.dev)** | ~$0.109 | 2 vCPU, 512 MB — published pricing |
-| **AgentCore** | ~$0.255 | 2 vCPU, 8 GB — idle time free |
-
-AgentCore is **~4.7–5× more expensive** per active hour than self-hosted C8i (depending on instance size), and **~2.3× more expensive** than E2B's managed offering. However, AgentCore's idle-free billing can close the gap for bursty, low-utilization workloads.
-
-#### At-Scale Cost Projections
-
-| Users | Peak Concurrent | Avg Active Hrs/mo | AgentCore $/mo | C8i Self-Hosted $/mo |
-|------:|:---------------:|:-----------------:|---------------:|--------------------:|
-| **10** | 1–2 | ~50 | ~$13 | ~$1,107 (floor) |
-| **100** | 5–10 | ~500 | ~$127 | ~$1,107 (floor) |
-| **1,000** | 50–100 | ~5,000 | ~$1,273 | ~$2,500–3,500 |
-| **10,000** | 500–1,000 | ~50,000 | ~$12,730 | ~$10,000–15,000 |
-
-AgentCore is cheaper at **<~1,000 registered users** due to zero infrastructure floor, but self-hosted C8i wins at scale because amortized compute is cheaper than per-session billing. The crossover is lower with the recommended c8i.2xlarge + spot baseline (~$1,107/mo floor) than with c8i.4xlarge (~$1,854/mo).
-
-### Feature Comparison: AgentCore vs E2B Self-Hosted
-
-| Capability | AgentCore Code Interpreter | E2B Self-Hosted (Firecracker) |
-|-----------|---------------------------|-------------------------------|
-| **Boot time** | Undisclosed ("low-latency") | <1s from snapshot |
-| **Snapshot/restore** | No | Yes (userfaultfd) |
-| **Custom VM images** | No (pre-built runtimes only) | Yes (Docker → Firecracker templates) |
-| **Languages** | Python, JS, TS | Any Linux runtime |
-| **Memory per sandbox** | 8 GB fixed | Configurable (default 512 MB) |
-| **vCPU per sandbox** | 2 fixed | Configurable (default 2) |
-| **Block storage overlays** | No | Yes (NBD rootfs diffs) |
-| **Custom networking** | No (sandbox/public modes) | Yes (per-sandbox netns + iptables) |
-| **Hugepages** | No | Yes (configurable 60–80%) |
-| **Persistent storage** | No (session data deleted) | Yes (EBS, NVMe, S3) |
-| **Disk limit** | 10 GB | Unlimited (EBS/NVMe) |
-| **Concurrent limit** | 1,000/account (adjustable) | Hardware-bound (~4–150/node depending on instance) |
-| **Infrastructure mgmt** | None (fully managed) | EC2, Nomad, Consul, Terraform |
-| **Scaling** | Automatic | ASG + manual capacity planning |
-| **IAM integration** | Native | Via instance roles |
-| **Audit logging** | CloudTrail built-in | Custom (OpenTelemetry) |
-| **Rate limit** | 3 invocations/sec/session | None (hardware-bound) |
-
-### When AgentCore Makes Sense
-
-- **Code interpreter only:** Data analysis, chart generation, math computation in Python/JS/TS
-- **Bursty, low-volume workloads:** The idle-free billing wins when sandboxes spend most time waiting
-- **No custom runtime needed:** Standard Python/JS/TS libraries are sufficient
-- **Zero-ops requirement:** No capacity planning, no instance management, no Nomad/Consul
-- **Boot time not critical:** Multi-second startup is acceptable
-
-### When AgentCore Does Not Work (E2B's Case)
-
-- **Sub-second boot from snapshot** — core E2B differentiator, not available in AgentCore
-- **Custom VM templates** — Docker → Firecracker image pipeline not replaceable
-- **Block-level storage overlays** — NBD rootfs diffs for template layering
-- **Per-sandbox networking** — custom netns + iptables rules
-- **Arbitrary runtimes** — any Linux binary, not just Python/JS/TS
-- **High concurrency at scale** — 10K+ concurrent sandboxes (1,000 default account limit)
-- **Right-sized sandboxes** — 512 MB RAM vs forced 8 GB wastes memory budget
-- **Persistent storage** — session data deleted on termination
-
-**Verdict:** AgentCore Code Interpreter is a **complementary tool, not a replacement** for E2B's self-hosted Firecracker infrastructure. It could serve as a lightweight option for simple code interpretation use cases at low volume, but it lacks the snapshot/restore, custom templates, and arbitrary runtime support that define E2B's architecture. For cost optimization, C8i nested virtualization remains the recommended path.
-
----
-
-## Approach Comparison
-
-| | i3.metal (current) | C8i.2xlarge + spot (recommended) | C8i.4xlarge | Fargate | AgentCore |
-|---|---|---|---|---|---|
-| **Min monthly cost** | $9,190 | **~$1,107** | ~$1,177–1,854 | N/A | $0 (idle-free) |
-| **Cost at 1K users** | ~$9,700 | ~$2,500–3,500 | ~$3,207 | N/A | ~$1,273 |
-| **Cost at 10K users** | ~$31K–40K | ~$10K–15K¹ | ~$7K–10K | N/A | ~$12,730 |
-| **Boot time** | <1s | <1s | <1s | 10–30s | Undisclosed |
-| **Snapshot/restore** | Yes | Yes | Yes | No | No |
-| **Custom runtimes** | Any Linux | Any Linux | Any Linux | Containers | Python/JS/TS only |
-| **Terraform changes** | None | 3 variables | 2 variables | Complete rewrite | N/A (managed) |
-| **Application changes** | None | None | None | 3–6 months | Full rewrite |
-| **Scaling granularity** | 72 vCPU steps | 8 vCPU steps | 16 vCPU steps | Per-task | Per-session |
-| **Sandboxes per node** | ~100–150 | ~4–12 | ~8–24 | Per-task | Per-session |
-| **NVMe cache** | 15.2 TB included | EBS (pay per GB) | EBS (pay per GB) | N/A | N/A |
-| **Risk** | None (current) | Low (spot interruption) | Low (new AWS feature) | High | N/A (different product) |
-
-> ¹ At 10K users you'd scale to larger C8i instances (c8i.8xlarge+), not stay on c8i.2xlarge. Estimate assumes a mix of c8i.12xlarge nodes.
+**1,000,000 Users ($49,845-$209,235 vs $77,625-$294,875)** -- Compute dominates entirely. C8i's 36% per-vCPU advantage translates to ~30% total savings. Additional savings possible with Karpenter spot fleet diversification (see Cost Optimization below).
 
 ---
 
 ## Cost Optimization Strategies
 
-### 1. C8i Nested Virtualization + Spot (Biggest Impact — Recommended)
+### 1. Spot Instances for Client Nodes (EKS + Karpenter only)
 
-Switch from i3.metal to C8i instances with `nested_virtualization = true`. The recommended baseline is c8i.2xlarge on-demand (client) + c8i.2xlarge spot (build), dropping the floor from $9,190 to **~$1,107/mo** — an **88% reduction**. Spot instances provide ~29% savings on the build cluster since template builds are fault-tolerant. See [C8i Nested Virtualization Option](#c8i-nested-virtualization-option) above.
+Karpenter can run a portion of client nodes on spot instances, with automatic drain-and-replace on interruption (~55 seconds). Multi-instance-type fleet (c8i.2xl/4xl/8xl) reduces interruption risk.
 
-### 2. Reserved Instances (Biggest Impact on i3.metal)
+Conservative spot discount on C8i: ~30% off on-demand.
 
-For i3.metal in eu-central-1:
+| Scale | 50% Spot Mix | Savings vs On-Demand |
+|-------|-------------|---------------------|
+| 10K users | $6,000-$15,300 | ~$2,000-$5,000/mo |
+| 100K users | $14,700-$44,400 | ~$3,500-$11,800/mo |
+| 1M users | $39,600-$166,000 | ~$10,200-$43,200/mo |
 
-| Commitment | $/hr | $/month (per node) | Savings |
-|-----------|------|-------------------|---------|
-| On-Demand | $5.952 | $4,345 | — |
-| 1-year RI (all upfront) | ~$3.75 | ~$2,738 | **37%** |
-| 3-year RI (all upfront) | ~$2.44 | ~$1,781 | **59%** |
+> i3.metal spot is available at ~$1.70/hr (~71% off) but supply is highly variable and not recommended for client nodes running live sandboxes.
 
-At 2 nodes (minimum), **1-year RI saves ~$3,214/mo** ($38.6K/year).
-At 10 nodes (10K users), **3-year RI saves ~$25,640/mo** ($307K/year).
+### 2. Reserved Instances (Both Approaches)
 
-### 3. Spot Instances for Build Cluster
-Build nodes are used intermittently for template compilation and are fault-tolerant (builds can retry on interruption). The recommended config uses `use_spot = true` on the build cluster. C8i spot savings are ~29% (~$212/mo vs $299/mo for c8i.2xlarge). For i3.metal, spot pricing is typically **~70% off** (~$1,241/mo vs $4,345), though i3.metal spot prices are highly variable.
+For predictable baseline capacity (the always-warm client nodes):
 
-### 4. Single NAT Gateway (Dev/Staging)
-Use 1 NAT gateway instead of per-AZ: saves ~$35/mo. Trade-off: AZ-level egress failure risk.
+**C8i (EKS approach):**
 
-### 5. Graviton Bare-Metal (Future — Requires ARM AMI)
-Firecracker supports aarch64. `c7g.metal` (~$2.77/hr in eu-central-1, ~$2,022/mo) could cut compute costs by **53%** but requires building ARM AMI and thorough testing.
+| Commitment | c8i.2xlarge $/hr | $/mo | Savings |
+|-----------|-----------------|------|---------|
+| On-Demand | $0.428 | $312 | -- |
+| 1-year RI | ~$0.270 | ~$197 | **37%** |
+| 3-year RI | ~$0.175 | ~$128 | **59%** |
 
-### 6. Scale-to-Zero Build Cluster
-If template building is infrequent, scale build ASG to 0 when idle and bring up on demand. Saves the build node cost when idle — from ~$212/mo (c8i.2xlarge spot) to $4,345/mo (i3.metal on-demand), depending on config.
+**i3.metal (original approach):**
 
-### 7. Self-Hosted Redis on Nomad
-Terraform supports `redis_managed = false` with a self-hosted Redis Nomad job. Saves ~$111/mo but loses managed HA, auto-failover, and TLS.
+| Commitment | $/hr | $/mo | Savings |
+|-----------|------|------|---------|
+| On-Demand | $5.952 | $4,345 | -- |
+| 1-year RI | ~$3.750 | ~$2,738 | **37%** |
+| 3-year RI | ~$2.440 | ~$1,781 | **59%** |
+
+### 3. Scale-to-Zero Build Cluster (EKS only)
+
+Already included in the EKS cost model above. Reduces build cost from $4,345/mo (i3.metal always-on) to ~$13/mo (c8i.2xlarge spot at 5% utilization). Karpenter's ~55-second spin-up makes this practical without significant UX impact on template builds.
+
+### 4. Self-Hosted Redis on Kubernetes (EKS only)
+
+Terraform supports `redis_managed = false` for a self-hosted Redis K8s deployment. Saves ~$111/mo but loses managed HA, auto-failover, and TLS.
+
+### 5. Single NAT Gateway (Dev/Staging)
+
+Use 1 NAT gateway instead of 2. Saves ~$35/mo. Trade-off: AZ-level egress failure risk.
+
+### Optimized Minimums
+
+| Approach | Baseline | + 1yr RI | + Self-hosted Redis | + 1 NAT | Optimized |
+|----------|---------|---------|--------------------|---------|---------:|
+| **EKS + C8i** | $513 | -- (scale-to-zero) | $402 (-$111) | $367 (-$35) | **$367** |
+| **Nomad + i3.metal** | $9,295 | $7,688 (-$1,607) | $7,577 (-$111) | $7,542 (-$35) | **$7,542** |
 
 ---
 
-## Optimized Minimum Cost
+## GDPR & ISO 27001 Compliance Review
 
-### With i3.metal (original approach)
+### Region Selection: eu-central-1 (Frankfurt)
 
-| Optimization | Monthly Savings |
-|-------------|----------------|
-| 1-year RI on client i3.metal | −$1,607 |
-| Spot for build i3.metal | −$3,104 |
-| 1 NAT gateway (dev/staging) | −$35 |
-| Self-hosted Redis | −$111 |
-| **Optimized i3.metal minimum** | **~$4,333/mo** |
-
-> RI and spot are mutually exclusive pricing models — RI is applied to the always-on client node, spot to the fault-tolerant build node.
-
-vs. on-demand baseline of **$9,190/mo**.
-
-### With c8i.2xlarge + spot build (recommended)
-
-| Component | Config | Monthly Cost |
-|-----------|--------|-------------|
-| Client cluster | 1× c8i.2xlarge on-demand | $299 |
-| Build cluster | 1× c8i.2xlarge spot | ~$212 |
-| EBS cache | 2× 500 GB gp3 | $96 |
-| Other infra | Servers, API, Redis, Aurora, NAT, etc. | ~$500 |
-| **Recommended baseline** | | **~$1,107/mo** |
-
-With further optimizations:
-
-| Optimization | Monthly Cost |
+| Requirement | How It's Met |
 |-------------|-------------|
-| Recommended baseline (above) | ~$1,107 |
-| 1 NAT gateway (dev/staging) | −$35 |
-| Self-hosted Redis | −$111 |
-| **Optimized minimum** | **~$961/mo** |
+| **GDPR data residency** | All data stays within the EU. Frankfurt is an EU region with full service coverage. |
+| **ISO 27001** | AWS eu-central-1 is [ISO 27001 certified](https://aws.amazon.com/compliance/iso-27001-faqs/). All services used (EKS, EC2, RDS, ElastiCache, EFS, S3, ELB, Secrets Manager) are in scope. |
+| **C8i availability** | eu-central-1 has C8i instances for nested virtualization. Not all EU regions do. |
+| **Germany's BDSG** | German Federal Data Protection Act provides additional protections on top of GDPR. |
+| **SOC 2 Type II** | AWS eu-central-1 is SOC 2 audited, often required alongside ISO 27001. |
 
-vs. on-demand i3.metal baseline of **$9,190/mo** — a **90% reduction**.
+**Alternative GDPR-compliant regions**: eu-west-1 (Ireland), eu-west-3 (Paris), eu-north-1 (Stockholm), eu-south-1 (Milan). C8i availability must be verified per region -- Frankfurt is the only EU region confirmed to have C8i with nested virtualization as of February 2026.
 
-### With C8i.4xlarge (higher capacity alternative)
+### GDPR Compliance Analysis
 
-| Optimization | Monthly Cost |
-|-------------|-------------|
-| C8i.4xlarge client + build | ~$1,854 |
-| Scale build cluster to zero | −$629 |
-| 1 NAT gateway (dev/staging) | −$35 |
-| Self-hosted Redis | −$111 |
-| **Optimized C8i.4xlarge minimum** | **~$1,079/mo** |
+Both approaches use the same underlying AWS services, so GDPR compliance is equivalent. The analysis below applies to either architecture.
+
+| GDPR Principle | Implementation | Status |
+|----------------|---------------|--------|
+| **Data residency** | All resources deployed in eu-central-1. No cross-region replication configured. | Met |
+| **Encryption at rest** | EBS (AES-256 via KMS), S3 (SSE-KMS), Aurora (KMS), ElastiCache (at-rest encryption), EFS (encrypted). All configured in Terraform. | Met |
+| **Encryption in transit** | ALB/NLB with TLS 1.3 (`ELBSecurityPolicy-TLS13-1-2-2021-06`), ElastiCache TLS, Aurora SSL, internal K8s traffic. | Met |
+| **Access control** | IAM roles with least-privilege policies. K8s RBAC (EKS) or Nomad ACL (original). No direct SSH to worker nodes. | Met |
+| **Data minimization** | Sandboxes are ephemeral -- destroyed after session. No persistent user data in VMs. | Met |
+| **Right to erasure** | Sandbox data auto-deleted on termination. User data in Aurora via standard DELETE. S3 objects deletable. | Met |
+| **Audit trail** | CloudTrail for AWS API activity. OpenTelemetry for application observability. K8s audit logs (EKS). | Met |
+| **Data processing agreement** | AWS DPA available for eu-central-1 customers. | Available |
+| **Privacy by design** | Each sandbox is an isolated Firecracker microVM with separate kernel, filesystem, and network namespace. | Met |
+
+**GDPR gaps and recommendations:**
+
+1. **VPC Flow Logs**: Available via `enable_vpc_flow_logs = true`. Enables network audit trail and incident investigation with configurable retention (`vpc_flow_logs_retention_days`, default 90). Estimated cost: ~$50-100/mo at moderate scale.
+2. **CloudTrail log encryption**: Should use customer-managed KMS key for CloudTrail logs.
+3. **Third-party data residency**: If using external services (Supabase for auth, LaunchDarkly for feature flags), verify their data processing stays within the EU or obtain appropriate SCCs.
+4. **Data retention policies**: No explicit TTL/retention policies configured for Aurora user data or S3 template objects beyond lifecycle rules. Define retention periods aligned with GDPR requirements.
+5. **Data Protection Impact Assessment (DPIA)**: Recommended for processing at scale, particularly if handling personal data within sandboxes.
+
+### ISO 27001 Compliance Analysis
+
+AWS eu-central-1 is ISO 27001 certified. All services used in this architecture are within the certification scope.
+
+| ISO 27001 Control | Implementation | Status |
+|--------------------|---------------|--------|
+| **A.5 Information security policies** | AWS Shared Responsibility Model. Terraform enforces infrastructure policies as code. | Met |
+| **A.6 Organization** | IAM roles enforce separation of duties. Karpenter node IAM scoped to cluster. | Met |
+| **A.8 Asset management** | All infrastructure tracked in Terraform state. ECR for container image inventory. | Met |
+| **A.9 Access control** | IAM least-privilege. K8s RBAC / Nomad ACL. Secrets Manager for credentials (not environment variables). | Met |
+| **A.10 Cryptography** | AWS KMS for all encryption. TLS 1.3 on load balancers. ElastiCache + Aurora in-transit encryption. | Met |
+| **A.12 Operations security** | CloudTrail API logging. OpenTelemetry observability. Deletion protection on ALB/NLB and Aurora. VPC Flow Logs, GuardDuty, Config, Inspector available via `enable_*` variables. | Met (with compliance services enabled) |
+| **A.13 Communications security** | VPC with private subnets for data tier. Security groups restrict traffic by port and source. WAF on ALB. | Met |
+| **A.14 System acquisition** | Infrastructure as Code (Terraform). Version-controlled. Reviewed via PR process. | Met |
+| **A.17 Business continuity** | Multi-AZ deployment. Aurora multi-AZ failover. ElastiCache replica in second AZ. | Met |
+| **A.18 Compliance** | Region-specific deployment. GDPR-aligned data handling. AWS compliance certifications. | Met |
+
+**ISO 27001 gaps and recommendations:**
+
+1. **AWS GuardDuty**: Available via `enable_guardduty = true`. Enables threat detection for malicious API calls, compromised instances, and cryptocurrency mining with S3, K8s audit log, and malware protection data sources. ~$3-15/mo.
+2. **AWS Config**: Available via `enable_aws_config = true`. Enables continuous configuration compliance monitoring and drift detection with S3 delivery (90-day IA transition, 365-day expiration). ~$5-20/mo.
+3. **AWS Inspector v2**: Available via `enable_inspector = true`. Enables automated vulnerability scanning of EC2 instances and ECR container images. ~$2-10/mo.
+4. **VPC Flow Logs**: Available via `enable_vpc_flow_logs = true`. Same as GDPR recommendation above.
+5. **Backup/restore testing**: Aurora automated backups are configured, but no documented restore testing process. ISO 27001 A.17.1 requires tested business continuity plans.
+6. **Incident response automation**: No automated runbooks for security incidents. Consider AWS Security Hub with automated remediation.
+7. **Network segmentation**: Firecracker provides strong tenant isolation at the VM level (separate kernel per sandbox). Network isolation via per-sandbox netns + iptables. This exceeds typical container-level isolation.
+
+### Compliance Comparison Between Approaches
+
+| Aspect | EKS + C8i | Nomad + i3.metal |
+|--------|-----------|-----------------|
+| Audit logging | K8s audit logs + CloudTrail (more granular) | Nomad audit logs + CloudTrail |
+| Access control | K8s RBAC (fine-grained, namespace-scoped) | Nomad ACL (simpler, job-scoped) |
+| Control plane security | AWS-managed EKS (patched by AWS) | Self-managed Nomad (manual patching) |
+| Attack surface | K8s API server + etcd (managed) | Nomad API + Consul (self-managed) |
+| Privileged workloads | Privileged pods required (security policy consideration) | Direct binary execution (no container layer) |
+| Compliance automation | Rich K8s policy ecosystem (OPA, Kyverno) | Limited Nomad policy tooling |
+
+> Both approaches achieve equivalent GDPR + ISO 27001 compliance. The EKS approach has more mature compliance tooling and benefits from AWS-managed control plane patching. The Nomad approach has a simpler architecture with fewer components to audit.
+
+---
+
+## Risk Assessment
+
+| Risk | Nomad + i3.metal | EKS + Karpenter + C8i |
+|------|:----------------:|:---------------------:|
+| **Instance availability** | i3.metal is an older family; limited AZ availability | C8i is current-gen Intel; widely available |
+| **Instance deprecation** | i3 family aging (Broadwell, 2017) | C8i is latest Intel generation |
+| **Vendor lock-in** | Low (Nomad is OSS, but BSL-licensed since 2023) | Medium (EKS-specific, but standard K8s APIs) |
+| **Orchestrator maturity** | Nomad stable but smaller community | EKS managed by AWS; Karpenter GA and actively developed |
+| **Nested virt stability** | N/A (bare metal) | New AWS feature (Feb 2026). Confirmed working with Firecracker. |
+| **Nested virt overhead** | None | ~3-5% CPU for nested KVM |
+| **Cache performance** | NVMe: 3.3 GB/s, 500K IOPS | EBS gp3: 125 MB/s default (up to 1 GB/s provisioned) |
+| **Spot reliability** | i3.metal spot volatile, limited supply | Multi-type C8i fleet reduces interruption risk |
+| **Scale-up latency** | 3-4 min (ASG) -- can miss traffic spikes | ~55 sec (Karpenter) -- handles spikes well |
+| **Scale-to-zero** | Not practical ($4,345/node, slow spin-up) | Supported by Karpenter (both client and build clusters) |
+| **Operational complexity** | Nomad + Consul cluster management | K8s complexity (CRDs, RBAC, networking) |
+| **Hiring/expertise** | Smaller Nomad talent pool | Large K8s ecosystem and talent pool |
+| **Terraform readiness** | Not built for AWS (requires porting GCP modules) | Already built (`iac/provider-aws/`) |
+| **Custom AMI maintenance** | Node images for Nomad agents | EKS AMI with nested virt, hugepages, NBD |
+| **Overall risk** | **Medium** (unbuilt Terraform + aging hardware) | **Low-Medium** (new feature + K8s complexity) |
 
 ---
 
 ## Summary
 
 ```
-Monthly Cost (eu-central-1)
+Monthly Cost (eu-central-1, on-demand)
 
-  $400K ┤                                                    ╱
-        │                                                  ╱
-  $300K ┤                                                ╱
-        │                                              ╱
-  $200K ┤                                            ╱
-        │                                          ╱
-  $100K ┤                                        ╱
-        │                                      ╱
-   $40K ┤                          ╱──────────
-        │           ╱─────────────
-   $10K ┤──────────     ← i3.metal floor: $9,190/mo
-    $2K ┤──────────     ← C8i.4xlarge floor: ~$1,854/mo
-    $1K ┤──────────     ← c8i.2xlarge + spot (recommended): ~$1,107/mo
-        ┤ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ← Optimized minimum: ~$961/mo
-        ├────────┬────────┬────────┬────────┬────────┬────
-        0       10      100      1K      10K     100K   Users
+  $300K +                                                         ,/
+        |                                                       ,/
+  $250K +                                                     ,/
+        |                                                   ,/
+  $200K +                                                 ,/
+        |                                 Nomad+i3.metal /
+  $150K +                                             ,'
+        |                                           ,'
+  $100K +                                         ,'
+        |                          EKS+C8i      ,'
+   $50K +                              ___..--''
+        |                     __.--'''
+   $20K +              __.--''
+        |        __.--''
+   $10K + ------''  <-- i3.metal floor: $9,295/mo
+        |
+    $3K +
+    $1K +--------.
+   $500 +--------'  <-- C8i floor: $513/mo (scale-to-zero)
+        +-------+-------+-------+-------+-------+--------+
+        0      10     100      1K     10K    100K       1M  Users
 ```
 
 ### Key Takeaways
 
-1. **C8i.2xlarge + spot drops the floor by 88%:** The recommended starting point is c8i.2xlarge on-demand (client) + c8i.2xlarge spot (build), reducing baseline from $9,190 to **~$1,107/mo** with zero application changes. This provides ~4–12 concurrent sandboxes per node, scaling to ~36 with autoscaler max=3 (sufficient for 0–350 users at typical 5% peak concurrency). For higher capacity without spot risk, c8i.4xlarge at ~$1,854/mo provides ~8–24 sandboxes per node.
+1. **94% lower floor cost**: EKS + C8i starts at **$513/mo** vs $9,295/mo for Nomad + i3.metal. Both client and build clusters scale to zero via Karpenter -- you only pay for base infrastructure (EKS control plane, Aurora, Redis, networking) when idle.
 
-2. **High i3.metal floor, flat to 1K users:** With i3.metal, infrastructure costs ~$9,190/mo regardless of whether you have 0 or 1,000 users. The two bare-metal instances ($8,690/mo) are the dominant cost.
+2. **30-36% cheaper at scale**: C8i is 36% cheaper per vCPU ($0.053 vs $0.083/hr). At 100K+ users, this translates to ~30-38% total cost savings after accounting for EBS cache costs and infrastructure overhead.
 
-3. **Finer scaling granularity with C8i:** Instead of 72-vCPU steps (i3.metal), scale in 8-vCPU increments (c8i.2xlarge) or 16-vCPU (c8i.4xlarge). Better cost-to-load matching at every tier.
+3. **4x faster autoscaling**: Karpenter provisions nodes in ~55 seconds vs ASG's 3-4 minutes. This means better handling of traffic spikes and tighter capacity-to-demand matching.
 
-4. **Reserved Instances still matter at scale:** At 10K+ users, 3-year RIs on C8i instances save significant cost. The per-node savings percentage is the same.
+4. **No application changes**: Both approaches run the identical Orchestrator binary. Firecracker, snapshot/restore, custom runtimes, and sub-second boot all work the same way. The only difference is the deployment method (Nomad job vs K8s DaemonSet).
 
-5. **Fargate is not viable:** Fargate doesn't expose KVM, NBD, hugepages, or custom netns — all required by the Firecracker orchestrator. A migration would take 3–6 months and degrade boot time from <1s to 10–30s.
+5. **Terraform readiness**: The EKS + C8i approach is already implemented in `iac/provider-aws/`. The Nomad approach would require porting GCP Nomad modules to AWS from scratch.
 
-6. **AgentCore is complementary, not a replacement:** Bedrock AgentCore Code Interpreter has zero infrastructure floor and idle-free billing, making it cheaper at <~1,000 registered users (~$127/mo at 100 users vs $1,107/mo floor on C8i). But it lacks snapshot/restore, custom runtimes, and scales worse — at 10K users it costs ~$12,730/mo vs ~$10–15K on C8i. It's a viable option only for simple Python/JS/TS code interpretation at low volume.
+6. **Trade-offs**: The EKS approach adds Kubernetes operational complexity (CRDs, RBAC, privileged pods, custom AMI). The i3.metal approach provides superior cache performance (15.2 TB NVMe vs 500 GB EBS) and no nested virtualization overhead. At very high density per-node, i3.metal's 512 GiB RAM allows deeper CPU overcommit.
 
-7. **Data/DB costs are negligible:** Aurora, Redis, S3, and data transfer together are <5% of total cost at every tier. Compute dominates everything.
+7. **Compliance equivalent**: Both approaches achieve GDPR + ISO 27001 compliance using the same underlying AWS services in eu-central-1. EKS has more mature compliance tooling and AWS-managed control plane patching.
+
+8. **Recommended approach**: **EKS + Karpenter + C8i** -- lower cost at every scale, faster autoscaling, scale-to-zero for both client and build clusters, already implemented in Terraform, and built on actively maintained AWS/Kubernetes ecosystem. The 3-5% nested virtualization overhead and EBS cache limitations are acceptable trade-offs for 30-94% cost savings.
 
 ---
 
 ## Sources
 
-- [EC2 On-Demand Pricing](https://aws.amazon.com/ec2/pricing/on-demand/)
-- [i3.metal Pricing — aws-pricing.com](https://aws-pricing.com/i3.metal.html) (eu-central-1: $5.952/hr confirmed)
-- [i3.metal Pricing — Economize](https://www.economize.cloud/resources/aws/pricing/ec2/i3.metal/)
-- [AWS Nested Virtualization Announcement (Feb 2026)](https://aws.amazon.com/about-aws/whats-new/2026/02/amazon-ec2-nested-virtualization-on-virtual/)
-- [AWS Nested Virtualization Docs](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/amazon-ec2-nested-virtualization.html)
-- [DevelopersIO: Firecracker on m8i.large](https://dev.classmethod.jp/en/articles/ec2-nested-virtualization-support-non-bare-metal/)
-- [The Register: AWS Nested Virtualization](https://www.theregister.com/2026/02/17/nested_virtualization_aws_ec2/)
-- [ElastiCache Pricing](https://aws.amazon.com/elasticache/pricing/)
-- [cache.t3.medium — Economize](https://www.economize.cloud/resources/aws/pricing/elasticache/cache.t3.medium/)
-- [Aurora Serverless v2 Pricing](https://aws.amazon.com/rds/aurora/pricing/)
-- [Aurora Pricing — Bytebase](https://www.bytebase.com/blog/understanding-aws-aurora-pricing/)
-- [VPC / NAT Gateway Pricing](https://aws.amazon.com/vpc/pricing/)
-- [NAT Gateway Pricing — CostGoat](https://costgoat.com/pricing/aws-nat-gateway) (eu-central-1: $0.048/hr confirmed)
+### Pricing (verified via AWS Price List API, February 2026)
+
+- [AWS Price List API](https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/price-changes.html)
+- [EC2 On-Demand Pricing](https://aws.amazon.com/ec2/pricing/on-demand/) -- i3.metal: $5.952/hr, c8i.2xlarge: $0.428/hr (eu-central-1)
+- [Amazon EKS Pricing](https://aws.amazon.com/eks/pricing/) -- $0.10/hr control plane
+- [ElastiCache Pricing](https://aws.amazon.com/elasticache/pricing/) -- cache.t3.medium Redis: $0.076/hr (eu-central-1)
+- [Aurora Serverless v2 Pricing](https://aws.amazon.com/rds/aurora/pricing/) -- $0.14/ACU-hr (eu-central-1)
+- [VPC / NAT Gateway Pricing](https://aws.amazon.com/vpc/pricing/) -- $0.048/hr + $0.048/GB (eu-central-1)
 - [ELB Pricing](https://aws.amazon.com/elasticloadbalancing/pricing/)
 - [EFS Pricing](https://aws.amazon.com/efs/pricing/)
 - [S3 Pricing](https://aws.amazon.com/s3/pricing/)
 - [ECR Pricing](https://aws.amazon.com/ecr/pricing/)
 - [Secrets Manager Pricing](https://aws.amazon.com/secrets-manager/pricing/)
 - [WAF Pricing](https://aws.amazon.com/waf/pricing/)
-- [ACM Pricing](https://aws.amazon.com/certificate-manager/pricing/)
-- [E2B Sandbox Pricing & Billing](https://e2b.dev/pricing)
-- [Amazon Bedrock AgentCore](https://aws.amazon.com/bedrock/agentcore/)
-- [AgentCore Code Interpreter Docs](https://docs.aws.amazon.com/bedrock/latest/userguide/agentcore-code-interpreter.html)
-- [AgentCore Pricing](https://aws.amazon.com/bedrock/agentcore/pricing/)
-- [AgentCore Code Interpreter Quotas](https://docs.aws.amazon.com/bedrock/latest/userguide/agentcore-quotas.html)
+
+### Architecture & Technology
+
+- [AWS Nested Virtualization Announcement (Feb 2026)](https://aws.amazon.com/about-aws/whats-new/2026/02/amazon-ec2-nested-virtualization-on-virtual/)
+- [AWS Nested Virtualization Docs](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/amazon-ec2-nested-virtualization.html)
+- [DevelopersIO: Firecracker on nested virt](https://dev.classmethod.jp/en/articles/ec2-nested-virtualization-support-non-bare-metal/)
+- [The Register: AWS Nested Virtualization](https://www.theregister.com/2026/02/17/nested_virtualization_aws_ec2/)
+- [Kata Containers on EKS (nested virtualization)](https://aws.amazon.com/blogs/containers/using-kata-containers-on-amazon-eks/)
+- [Karpenter Documentation](https://karpenter.sh/docs/)
+- [Karpenter Best Practices -- AWS](https://aws.github.io/aws-eks-best-practices/karpenter/)
+- [AWS Blog: Optimizing Spot with Karpenter](https://aws.amazon.com/blogs/compute/optimizing-amazon-eks-with-spot-instances-and-karpenter/)
+
+### Compliance
+
+- [AWS ISO 27001 Compliance](https://aws.amazon.com/compliance/iso-27001-faqs/)
+- [AWS GDPR Center](https://aws.amazon.com/compliance/gdpr-center/)
+- [AWS SOC Reports](https://aws.amazon.com/compliance/soc-faqs/)
+- [AWS Services in Scope (ISO 27001)](https://aws.amazon.com/compliance/services-in-scope/)

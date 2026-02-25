@@ -1,3 +1,91 @@
+# --- S3 Access Logging ---
+# Central bucket for S3 server access logs (compliance requirement)
+
+resource "aws_s3_bucket" "access_logs" {
+  count = var.enable_s3_access_logging ? 1 : 0
+
+  bucket = "${var.bucket_prefix}s3-access-logs"
+
+  tags = var.tags
+}
+
+resource "aws_s3_bucket_public_access_block" "access_logs" {
+  count = var.enable_s3_access_logging ? 1 : 0
+
+  bucket = aws_s3_bucket.access_logs[0].id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "access_logs" {
+  count = var.enable_s3_access_logging ? 1 : 0
+
+  bucket = aws_s3_bucket.access_logs[0].id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "access_logs" {
+  count = var.enable_s3_access_logging ? 1 : 0
+
+  bucket = aws_s3_bucket.access_logs[0].id
+
+  rule {
+    id     = "access-logs-lifecycle"
+    status = "Enabled"
+
+    transition {
+      days          = 30
+      storage_class = "STANDARD_IA"
+    }
+
+    expiration {
+      days = 90
+    }
+  }
+}
+
+# Enable access logging on compliance-sensitive buckets
+
+resource "aws_s3_bucket_logging" "fc_templates" {
+  count = var.enable_s3_access_logging ? 1 : 0
+
+  bucket        = aws_s3_bucket.fc_templates.id
+  target_bucket = aws_s3_bucket.access_logs[0].id
+  target_prefix = "fc-templates/"
+}
+
+resource "aws_s3_bucket_logging" "fc_kernels" {
+  count = var.enable_s3_access_logging ? 1 : 0
+
+  bucket        = aws_s3_bucket.fc_kernels.id
+  target_bucket = aws_s3_bucket.access_logs[0].id
+  target_prefix = "fc-kernels/"
+}
+
+resource "aws_s3_bucket_logging" "fc_env_pipeline" {
+  count = var.enable_s3_access_logging ? 1 : 0
+
+  bucket        = aws_s3_bucket.fc_env_pipeline.id
+  target_bucket = aws_s3_bucket.access_logs[0].id
+  target_prefix = "fc-env-pipeline/"
+}
+
+resource "aws_s3_bucket_logging" "clickhouse_backups" {
+  count = var.enable_s3_access_logging ? 1 : 0
+
+  bucket        = aws_s3_bucket.clickhouse_backups.id
+  target_bucket = aws_s3_bucket.access_logs[0].id
+  target_prefix = "clickhouse-backups/"
+}
+
 # --- Loki Storage ---
 resource "aws_s3_bucket" "loki_storage" {
   bucket = "${var.bucket_prefix}loki-storage"
@@ -112,6 +200,14 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "fc_kernels" {
     apply_server_side_encryption_by_default {
       sse_algorithm = "AES256"
     }
+  }
+}
+
+resource "aws_s3_bucket_versioning" "fc_kernels" {
+  bucket = aws_s3_bucket.fc_kernels.id
+
+  versioning_configuration {
+    status = "Enabled"
   }
 }
 
@@ -234,6 +330,14 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "fc_templates" {
     apply_server_side_encryption_by_default {
       sse_algorithm = "AES256"
     }
+  }
+}
+
+resource "aws_s3_bucket_versioning" "fc_templates" {
+  bucket = aws_s3_bucket.fc_templates.id
+
+  versioning_configuration {
+    status = "Enabled"
   }
 }
 

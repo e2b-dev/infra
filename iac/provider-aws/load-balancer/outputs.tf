@@ -13,3 +13,19 @@ output "alb_arn" {
 output "nlb_arn" {
   value = aws_lb.nlb.arn
 }
+
+output "api_target_group_arn" {
+  value = aws_lb_target_group.api.arn
+}
+
+output "docker_reverse_proxy_target_group_arn" {
+  value = aws_lb_target_group.docker_reverse_proxy.arn
+}
+
+output "ingress_target_group_arn" {
+  value = aws_lb_target_group.ingress.arn
+}
+
+output "session_target_group_arn" {
+  value = aws_lb_target_group.session.arn
+}

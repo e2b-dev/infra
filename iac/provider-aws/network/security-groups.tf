@@ -1,87 +1,40 @@
-# Nomad cluster security group
-resource "aws_security_group" "nomad_cluster" {
-  name_prefix = "${var.prefix}nomad-cluster-"
-  description = "Security group for Nomad/Consul cluster nodes"
+# EKS nodes security group (additional rules beyond EKS module managed SG)
+resource "aws_security_group" "eks_nodes" {
+  name_prefix = "${var.prefix}eks-nodes-"
+  description = "Security group for EKS worker nodes"
   vpc_id      = aws_vpc.main.id
 
-  # Inter-node communication (Nomad)
+  # Inter-node all traffic
   ingress {
-    description = "Nomad HTTP API"
-    from_port   = 4646
-    to_port     = 4646
+    description = "All inter-node traffic"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    self        = true
+  }
+
+  # K8s API server → nodes (kubelet)
+  ingress {
+    description = "Kubelet API"
+    from_port   = 10250
+    to_port     = 10250
+    protocol    = "tcp"
+    self        = true
+  }
+
+  # CoreDNS
+  ingress {
+    description = "CoreDNS TCP"
+    from_port   = 53
+    to_port     = 53
     protocol    = "tcp"
     self        = true
   }
 
   ingress {
-    description = "Nomad RPC"
-    from_port   = 4647
-    to_port     = 4647
-    protocol    = "tcp"
-    self        = true
-  }
-
-  ingress {
-    description = "Nomad Serf WAN"
-    from_port   = 4648
-    to_port     = 4648
-    protocol    = "tcp"
-    self        = true
-  }
-
-  ingress {
-    description = "Nomad Serf WAN UDP"
-    from_port   = 4648
-    to_port     = 4648
-    protocol    = "udp"
-    self        = true
-  }
-
-  # Inter-node communication (Consul)
-  ingress {
-    description = "Consul HTTP API"
-    from_port   = 8500
-    to_port     = 8500
-    protocol    = "tcp"
-    self        = true
-  }
-
-  ingress {
-    description = "Consul DNS"
-    from_port   = 8600
-    to_port     = 8600
-    protocol    = "tcp"
-    self        = true
-  }
-
-  ingress {
-    description = "Consul DNS UDP"
-    from_port   = 8600
-    to_port     = 8600
-    protocol    = "udp"
-    self        = true
-  }
-
-  ingress {
-    description = "Consul RPC"
-    from_port   = 8300
-    to_port     = 8300
-    protocol    = "tcp"
-    self        = true
-  }
-
-  ingress {
-    description = "Consul Serf LAN"
-    from_port   = 8301
-    to_port     = 8302
-    protocol    = "tcp"
-    self        = true
-  }
-
-  ingress {
-    description = "Consul Serf LAN UDP"
-    from_port   = 8301
-    to_port     = 8302
+    description = "CoreDNS UDP"
+    from_port   = 53
+    to_port     = 53
     protocol    = "udp"
     self        = true
   }
@@ -114,7 +67,7 @@ resource "aws_security_group" "nomad_cluster" {
   }
 
   tags = merge(var.tags, {
-    Name = "${var.prefix}nomad-cluster"
+    Name = "${var.prefix}eks-nodes"
   })
 
   lifecycle {
@@ -171,7 +124,7 @@ resource "aws_security_group" "rds" {
     from_port       = 5432
     to_port         = 5432
     protocol        = "tcp"
-    security_groups = [aws_security_group.nomad_cluster.id]
+    security_groups = [aws_security_group.eks_nodes.id]
   }
 
   egress {
@@ -201,7 +154,7 @@ resource "aws_security_group" "elasticache" {
     from_port       = 6379
     to_port         = 6379
     protocol        = "tcp"
-    security_groups = [aws_security_group.nomad_cluster.id]
+    security_groups = [aws_security_group.eks_nodes.id]
   }
 
   egress {
@@ -231,7 +184,7 @@ resource "aws_security_group" "efs" {
     from_port       = 2049
     to_port         = 2049
     protocol        = "tcp"
-    security_groups = [aws_security_group.nomad_cluster.id]
+    security_groups = [aws_security_group.eks_nodes.id]
   }
 
   egress {

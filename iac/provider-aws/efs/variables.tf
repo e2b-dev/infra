@@ -2,10 +2,6 @@ variable "prefix" {
   type = string
 }
 
-variable "vpc_id" {
-  type = string
-}
-
 variable "subnet_ids" {
   description = "Private subnet IDs for EFS mount targets"
   type        = list(string)

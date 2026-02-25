@@ -136,7 +136,7 @@
 
   <div class="main">
     <div class="canvas-wrap">
-      <svg id="diagram" viewBox="0 0 1260 740" xmlns="http://www.w3.org/2000/svg">
+      <svg id="diagram" viewBox="0 0 1260 880" xmlns="http://www.w3.org/2000/svg">
         <defs>
           <marker id="ah-http" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto"><polygon points="0 0,7 2.5,0 5" fill="#58a6ff"/></marker>
           <marker id="ah-grpc" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto"><polygon points="0 0,7 2.5,0 5" fill="#3fb950"/></marker>
@@ -198,12 +198,12 @@ const CONN_TYPES = {
 };
 
 // AWS implementation status:
-//   ready   = Go code + Nomad job config support AWS
+//   ready   = Go code + K8s manifest support AWS
 //   partial = Go code exists but needs infra provisioning
 //   missing = No Terraform infrastructure exists yet
 const AWS_STATUS = {
-  ready:   { label: 'Ready',   color: '#3fb950', bg: '#0d2818', desc: 'Go code + Nomad config support AWS' },
-  partial: { label: 'Partial', color: '#d29922', bg: '#2d2007', desc: 'Code ready, infra Terraform missing' },
+  ready:   { label: 'Ready',   color: '#3fb950', bg: '#0d2818', desc: 'Go code + K8s manifest support AWS' },
+  partial: { label: 'Partial', color: '#d29922', bg: '#2d2007', desc: 'Code ready, K8s infra Terraform ready' },
   missing: { label: 'Missing', color: '#f85149', bg: '#2d1419', desc: 'No Terraform infrastructure yet' }
 };
 
@@ -233,7 +233,7 @@ const nodes = [
     aws: { label: 'NFS Proxy → EFS', subtitle: 'efs/main.tf (mount targets + access points)', status: 'ready' } },
   // VM
   { id: 'firecracker',  label: 'Firecracker VM',        subtitle: 'microVM + UFFD + cgroups',                x: 150,  y: 475, w: 205, h: 55, layer: 'vm',
-    aws: { label: 'Firecracker VM', subtitle: 'nomad-cluster/ (i3.metal or C8i nested virt + KVM)', status: 'ready' } },
+    aws: { label: 'Firecracker VM', subtitle: 'eks-cluster/ (C8i nested virt + Karpenter scaling + KVM)', status: 'ready' } },
   { id: 'envd',         label: 'envd',                  subtitle: 'packages/envd/ :49983 Connect RPC',       x: 440,  y: 475, w: 245, h: 55, layer: 'vm',
     aws: { label: 'envd', subtitle: 'packages/envd/ :49983 (same binary)', status: 'ready' } },
   // Data
@@ -242,31 +242,44 @@ const nodes = [
   { id: 'redis',        label: 'Redis',                 subtitle: 'Catalog, cache, events, streams',          x: 280,  y: 595, w: 175, h: 55, layer: 'data',
     aws: { label: 'ElastiCache Redis', subtitle: 'redis/main.tf (cluster mode, multi-AZ, TLS)', status: 'ready' } },
   { id: 'clickhouse',   label: 'ClickHouse',            subtitle: 'Analytics, events, host stats',            x: 510,  y: 595, w: 180, h: 55, layer: 'data',
-    aws: { label: 'ClickHouse', subtitle: 'Self-hosted on Nomad, S3 backup ready', status: 'ready' } },
+    aws: { label: 'ClickHouse', subtitle: 'Self-hosted on K8s StatefulSet, S3 backup ready', status: 'ready' } },
   { id: 'gcs',          label: 'GCS',                   subtitle: 'Template & build storage',                 x: 745,  y: 595, w: 160, h: 55, layer: 'data',
-    aws: { label: 'AWS S3 (9 buckets)', subtitle: 'init/buckets.tf (templates, kernels, cache, loki)', status: 'ready' } },
+    aws: { label: 'AWS S3 (10 buckets)', subtitle: 'init/buckets.tf (templates, kernels, cache, loki, access logs)', status: 'ready' } },
   // External
   { id: 'nomad',        label: 'Nomad API',             subtitle: 'Service discovery',                        x: 1020, y: 140, w: 155, h: 48, layer: 'external',
-    aws: { label: 'Nomad Cluster', subtitle: 'nomad-cluster/main.tf (EC2 ASGs + Consul)', status: 'ready' } },
+    aws: { label: 'EKS + Karpenter', subtitle: 'eks-cluster/main.tf (Karpenter NodePools + C8i + CIDR restrict)', status: 'ready' } },
   { id: 'launchdarkly', label: 'LaunchDarkly',          subtitle: 'Feature flags',                            x: 1020, y: 218, w: 168, h: 48, layer: 'external',
     aws: { label: 'LaunchDarkly', subtitle: 'Feature flags (same SDK)', status: 'ready' } },
   { id: 'otel',         label: 'OTEL / Grafana',        subtitle: 'Traces, metrics, logs',                    x: 1020, y: 360, w: 178, h: 48, layer: 'external',
     aws: { label: 'OTEL / Grafana', subtitle: 'EC2 resource detection configured', status: 'ready' } },
   { id: 'loki',         label: 'Loki',                  subtitle: 'Log queries (HTTP)',                        x: 1020, y: 438, w: 135, h: 48, layer: 'external',
-    aws: { label: 'Loki', subtitle: 'S3 backend configured in Nomad job', status: 'ready' } },
+    aws: { label: 'Loki', subtitle: 'S3 backend configured in K8s deployment', status: 'ready' } },
   { id: 'posthog',      label: 'PostHog',               subtitle: 'User analytics',                           x: 1020, y: 516, w: 148, h: 48, layer: 'external',
     aws: { label: 'PostHog', subtitle: 'User analytics (same SDK)', status: 'ready' } },
   // Cloud infrastructure (both providers)
   { id: 'waf',          label: 'Cloud Armor',            subtitle: 'DDoS + WAF rules',                         x: 850,  y: 30,  w: 150, h: 50, layer: 'edge',
     aws: { label: 'AWS WAF', subtitle: 'load-balancer/waf.tf', status: 'ready' } },
   { id: 'sg',           label: 'VPC Firewall Rules',     subtitle: 'Network access control',                    x: 1020, y: 62,  w: 178, h: 48, layer: 'external',
-    aws: { label: 'Security Groups (5)', subtitle: 'network/security-groups.tf', status: 'ready' } },
+    aws: { label: 'Security Groups (5) + EKS SG', subtitle: 'network/security-groups.tf + EKS managed SG', status: 'ready' } },
   { id: 'container-reg',label: 'Artifact Registry',      subtitle: 'Container images (GAR)',                    x: 1020, y: 296, w: 168, h: 48, layer: 'external',
     aws: { label: 'ECR Repos (2)', subtitle: 'init/main.tf (e2b-core + e2b-orchestration)', status: 'ready' } },
   { id: 'secrets',      label: 'Secret Manager',         subtitle: 'Secrets storage',                           x: 1020, y: 594, w: 178, h: 48, layer: 'external',
     aws: { label: 'Secrets Manager (18)', subtitle: 'init/secrets.tf', status: 'ready' } },
   { id: 'iam',          label: 'GCP IAM',                subtitle: 'Service accounts',                          x: 1020, y: 660, w: 155, h: 44, layer: 'external',
     aws: { label: 'IAM Roles', subtitle: 'init/main.tf (e2b-infra-instances)', status: 'ready' } },
+  // Compliance / Security
+  { id: 'flowlogs',    label: 'VPC Flow Logs',          subtitle: 'Network traffic audit',                     x: 850,  y: 718, w: 170, h: 44, layer: 'external',
+    aws: { label: 'VPC Flow Logs', subtitle: 'network/flow-logs.tf (CloudWatch, 90d retention)', status: 'ready' } },
+  { id: 'guardduty',   label: 'Threat Detection',       subtitle: 'Security monitoring',                       x: 1020, y: 718, w: 178, h: 44, layer: 'external',
+    aws: { label: 'AWS GuardDuty', subtitle: 'security/main.tf (S3, EKS, EBS malware)', status: 'ready' } },
+  { id: 'awsconfig',   label: 'Config Compliance',      subtitle: 'Configuration audit',                       x: 850,  y: 770, w: 170, h: 44, layer: 'external',
+    aws: { label: 'AWS Config', subtitle: 'security/main.tf (recorder + S3 delivery)', status: 'ready' } },
+  { id: 'inspector',   label: 'Vulnerability Scan',     subtitle: 'Instance & image scanning',                 x: 1020, y: 770, w: 178, h: 44, layer: 'external',
+    aws: { label: 'AWS Inspector v2', subtitle: 'security/main.tf (EC2 + ECR scanning)', status: 'ready' } },
+  { id: 'cloudtrail',  label: 'API Audit Trail',        subtitle: 'API call logging',                           x: 850,  y: 822, w: 170, h: 44, layer: 'external',
+    aws: { label: 'AWS CloudTrail', subtitle: 'security/main.tf (multi-region, S3 delivery)', status: 'ready' } },
+  { id: 's3logging',   label: 'S3 Access Logging',      subtitle: 'Bucket access audit',                        x: 1020, y: 822, w: 178, h: 44, layer: 'external',
+    aws: { label: 'S3 Access Logging', subtitle: 'init/buckets.tf (templates, kernels, pipeline, CH)', status: 'ready' } },
 ];
 
 const connections = [
@@ -316,6 +329,17 @@ const connections = [
   // IAM
   { from: 'iam',          to: 'gcs',            type: 'external', label: 'Storage access',   awsLabel: 'S3 policies' },
   { from: 'iam',          to: 'container-reg',  type: 'external', label: 'Registry access',  awsLabel: 'ECR pull' },
+  // Compliance / Security monitoring
+  { from: 'flowlogs',    to: 'sg',             type: 'external', label: 'Network audit',    awsLabel: 'VPC traffic logs' },
+  { from: 'guardduty',   to: 'nomad',          type: 'external', label: 'Threat detection', awsLabel: 'K8s audit logs' },
+  { from: 'guardduty',   to: 'gcs',            type: 'external', label: 'S3 monitoring',    awsLabel: 'S3 data events' },
+  { from: 'awsconfig',   to: 'iam',            type: 'external', label: 'Config audit',     awsLabel: 'Resource compliance' },
+  { from: 'inspector',   to: 'container-reg',  type: 'external', label: 'Image scan',       awsLabel: 'ECR image scan' },
+  { from: 'inspector',   to: 'firecracker',    type: 'external', label: 'Instance scan',    awsLabel: 'EC2 assessment' },
+  // CloudTrail + S3 Access Logging
+  { from: 'cloudtrail',  to: 'gcs',            type: 'storage',  label: 'Audit logs',       awsLabel: 'S3 log delivery' },
+  { from: 'cloudtrail',  to: 'iam',            type: 'external', label: 'API audit',        awsLabel: 'API call audit' },
+  { from: 's3logging',   to: 'gcs',            type: 'storage',  label: 'Access logs',      awsLabel: 'Bucket access audit' },
 ];
 
 const nodesById = Object.fromEntries(nodes.map(n => [n.id, n]));
@@ -326,6 +350,7 @@ const PRESETS = {
   'Build Pipeline': { layers: { edge: false, api: true, orchestration: true, vm: true, data: true, external: false }, conns: { http: false, grpc: true, data: false, storage: true, system: true, external: false } },
   'Data Layer':     { layers: { edge: false, api: true, orchestration: true, vm: false, data: true, external: false }, conns: { http: false, grpc: false, data: true, storage: true, system: false, external: false } },
   'Observability':  { layers: { edge: false, api: true, orchestration: true, vm: true, data: false, external: true }, conns: { http: false, grpc: false, data: false, storage: false, system: false, external: true } },
+  'Security':       { layers: { edge: true, api: false, orchestration: false, vm: true, data: true, external: true }, conns: { http: false, grpc: false, data: false, storage: true, system: false, external: true } },
 };
 
 // State
@@ -339,7 +364,7 @@ const state = {
   panX: 0, panY: 0
 };
 
-const BASE_VB = { x: 0, y: 0, w: 1260, h: 740 };
+const BASE_VB = { x: 0, y: 0, w: 1260, h: 880 };
 let isPanning = false, panStart = { x: 0, y: 0 }, panStartVB = { x: 0, y: 0 };
 
 // --- Provider ---

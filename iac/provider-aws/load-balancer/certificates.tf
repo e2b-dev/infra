@@ -1,6 +1,6 @@
 # --- ACM Certificate ---
 resource "aws_acm_certificate" "main" {
-  domain_name               = var.domain_name
+  domain_name = var.domain_name
   subject_alternative_names = concat(
     ["*.${var.domain_name}"],
     flatten([for d in var.additional_domains : [d, "*.${d}"]])
@@ -31,9 +31,9 @@ locals {
   # Build a map of domain_validation_options keyed by domain name
   dvo_map = {
     for dvo in aws_acm_certificate.main.domain_validation_options : dvo.domain_name => {
-      name   = dvo.resource_record_name
-      type   = dvo.resource_record_type
-      value  = dvo.resource_record_value
+      name  = dvo.resource_record_name
+      type  = dvo.resource_record_type
+      value = dvo.resource_record_value
     }
   }
 
@@ -84,7 +84,7 @@ resource "aws_acm_certificate_validation" "main" {
 }
 
 # --- Cloudflare DNS Records ---
-# ALB records: api, docker, nomad subdomains
+# ALB records: api, docker subdomains
 resource "cloudflare_record" "api" {
   zone_id = data.cloudflare_zone.domain.id
   name    = local.is_subdomain ? "api.${local.subdomain}" : "api"
@@ -97,15 +97,6 @@ resource "cloudflare_record" "api" {
 resource "cloudflare_record" "docker" {
   zone_id = data.cloudflare_zone.domain.id
   name    = local.is_subdomain ? "docker.${local.subdomain}" : "docker"
-  value   = aws_lb.alb.dns_name
-  type    = "CNAME"
-  ttl     = 1
-  proxied = false
-}
-
-resource "cloudflare_record" "nomad" {
-  zone_id = data.cloudflare_zone.domain.id
-  name    = local.is_subdomain ? "nomad.${local.subdomain}" : "nomad"
   value   = aws_lb.alb.dns_name
   type    = "CNAME"
   ttl     = 1
@@ -134,7 +125,7 @@ resource "cloudflare_record" "wildcard_additional" {
   proxied = false
 }
 
-# Additional domains: api, docker, nomad -> ALB
+# Additional domains: api, docker -> ALB
 resource "cloudflare_record" "api_additional" {
   for_each = local.domain_map
 
@@ -157,13 +148,3 @@ resource "cloudflare_record" "docker_additional" {
   proxied = false
 }
 
-resource "cloudflare_record" "nomad_additional" {
-  for_each = local.domain_map
-
-  zone_id = data.cloudflare_zone.domains_additional[each.key].id
-  name    = "nomad"
-  value   = aws_lb.alb.dns_name
-  type    = "CNAME"
-  ttl     = 1
-  proxied = false
-}
