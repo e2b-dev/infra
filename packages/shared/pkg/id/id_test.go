@@ -103,10 +103,8 @@ func TestParseName(t *testing.T) {
 
 			require.NoError(t, err, "Expected ParseName() not to return error, got: %v", err)
 			assert.Equal(t, tt.wantIdentifier, gotIdentifier, "ParseName() identifier = %v, want %v", gotIdentifier, tt.wantIdentifier)
-			require.Equal(t, gotTag == nil, tt.wantTag == nil, "ParseName() tag = %v, want %v", gotTag, tt.wantTag)
-			if tt.wantTag != nil {
-				assert.Equalf(t, tt.wantTag, gotTag, "ParseName() tag = %v, want %v", *gotTag, *tt.wantTag)
-			}
+			require.Equal(t, tt.wantTag == nil, gotTag == nil, "ParseName() tag = %v, want %v", gotTag, tt.wantTag)
+			assert.Equal(t, tt.wantTag, gotTag, "ParseName() tag = %v, want %v", *gotTag, *tt.wantTag)
 		})
 	}
 }
