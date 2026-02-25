@@ -52,9 +52,7 @@ mkdir -p /etc/docker
 cat > /etc/docker/daemon.json <<'DOCKERJSON'
 {
   "registry-mirrors": [
-    "https://mirror.gcr.io",
-    "https://docker-cf.registry.cyou",
-    "https://dockerpull.org"
+    "https://mirror.gcr.io"
   ],
   "max-concurrent-downloads": 3
 }

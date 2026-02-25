@@ -6,6 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../lib/common.sh"
 
 require_root
+init_bridge_networking
 
 info "Tearing down E2B bridge network..."
 
@@ -28,10 +29,12 @@ if [[ -n "$DEFAULT_IFACE" ]]; then
   iptables -D FORWARD -i "$BRIDGE" -o "$DEFAULT_IFACE" -j ACCEPT 2>/dev/null || true
   iptables -D FORWARD -i "$DEFAULT_IFACE" -o "$BRIDGE" -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || true
   iptables -D FORWARD -i "$BRIDGE" -o "$BRIDGE" -j ACCEPT 2>/dev/null || true
-  iptables -D INPUT -i "$BRIDGE" -p udp --dport 67 -j ACCEPT 2>/dev/null || true
-  iptables -D INPUT -i "$BRIDGE" -p udp --dport 68 -j ACCEPT 2>/dev/null || true
-  iptables -D INPUT -i "$BRIDGE" -s "$BRIDGE_CIDR" -j ACCEPT 2>/dev/null || true
 fi
+
+# Remove INPUT rules (added unconditionally in setup, clean up regardless of DEFAULT_IFACE)
+iptables -D INPUT -i "$BRIDGE" -p udp --dport 67 -j ACCEPT 2>/dev/null || true
+iptables -D INPUT -i "$BRIDGE" -p udp --dport 68 -j ACCEPT 2>/dev/null || true
+iptables -D INPUT -i "$BRIDGE" -s "$BRIDGE_CIDR" -j ACCEPT 2>/dev/null || true
 
 # Remove TAP devices
 RUNNING_TAPS=$(ip link show 2>/dev/null | grep -o 'e2b-tap-[^ :@]*' || true)

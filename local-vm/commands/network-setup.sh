@@ -8,6 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../lib/common.sh"
 
 require_root
+init_bridge_networking
 
 # Install dnsmasq if missing
 if ! command -v dnsmasq &>/dev/null; then
@@ -64,6 +65,12 @@ debug "Starting dnsmasq..."
 touch "$DNSMASQ_LEASE"
 dnsmasq --conf-file="$DNSMASQ_CONF"
 debug "dnsmasq started (PID: $(cat "$DNSMASQ_PID"))"
+
+# Enable IP forwarding (required for NAT — defaults to 0 on clean hosts)
+if [[ "$(sysctl -n net.ipv4.ip_forward)" != "1" ]]; then
+  debug "Enabling net.ipv4.ip_forward..."
+  sysctl -w net.ipv4.ip_forward=1 >/dev/null
+fi
 
 # iptables: MASQUERADE for outbound NAT
 DEFAULT_IFACE=$(ip route | grep '^default' | head -1 | awk '{print $5}')

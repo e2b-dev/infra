@@ -2,8 +2,8 @@
 hostname: e2b-infra
 manage_etc_hosts: true
 
-# Enable SSH password authentication
-ssh_pwauth: true
+# SSH key authentication only
+ssh_pwauth: false
 
 users:
   - name: e2b
@@ -11,8 +11,7 @@ users:
     groups: [sudo, docker, kvm]
     shell: /bin/bash
     sudo: ALL=(ALL) NOPASSWD:ALL
-    lock_passwd: false
-    plain_text_passwd: "e2b-infra-build"
+    lock_passwd: true
     ssh_authorized_keys:
       - __SSH_PUBKEY__
 
@@ -30,11 +29,11 @@ package_upgrade: false
 # All packages are installed via runcmd/deploy scripts with NEEDRESTART_MODE=a.
 
 write_files:
-  # Force SSH password authentication on
-  - path: /etc/ssh/sshd_config.d/99-e2b-allow-password.conf
+  # Harden SSH: key-only authentication, no root login
+  - path: /etc/ssh/sshd_config.d/99-e2b-hardened.conf
     content: |
-      PasswordAuthentication yes
-      PermitRootLogin yes
+      PasswordAuthentication no
+      PermitRootLogin no
     permissions: "0644"
 
   # Nested virt for Intel
@@ -174,7 +173,7 @@ runcmd:
   - netplan apply || true
   - chmod 600 /etc/netplan/99-e2b-network.yaml || true
 
-  # Restart SSH for password auth
+  # Restart SSH for hardened config
   - systemctl restart sshd || systemctl restart ssh
 
   # Run Phase 1 deployment (packages, Docker, Go, Node, clone repo)

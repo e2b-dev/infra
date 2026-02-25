@@ -64,7 +64,12 @@ DHCP_LEASE_TIME="12h"
 DNSMASQ_CONF="/etc/dnsmasq.d/e2b-bridge.conf"
 DNSMASQ_PID="/run/dnsmasq-e2b.pid"
 DNSMASQ_LEASE="/var/lib/misc/dnsmasq-e2b.leases"
-_init_bridge_vars
+# NOTE: _init_bridge_vars is NOT called here at source time.
+# Scripts that need bridge networking must call init_bridge_networking explicitly.
+
+init_bridge_networking() {
+  _init_bridge_vars
+}
 
 # ── SSH constants ─────────────────────────────────────────────────────────────
 SSH_KEY="$HOME/.ssh/e2b_vm_key"

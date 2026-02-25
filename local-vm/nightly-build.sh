@@ -94,12 +94,18 @@ fi
 if [[ "$SKIP_BUILD" == true ]]; then
   log "Skipping build (--skip-build)."
   if [[ ! -f "$IMAGE_FILE" ]]; then
-    # Try latest symlink
-    if [[ -L "$LATEST_LINK" && -f "$LATEST_LINK" ]]; then
-      IMAGE_FILE="$(readlink -f "$LATEST_LINK")"
-      log "No dated image found, using latest: ${IMAGE_FILE}"
+    # Try compressed version of dated image
+    if [[ -f "${IMAGE_FILE}.xz" ]]; then
+      log "Found compressed image, decompressing ${IMAGE_FILE}.xz..."
+      xz -dk "${IMAGE_FILE}.xz"
+    # Try latest symlink (points to .xz file)
+    elif [[ -L "${LATEST_LINK}.xz" && -f "${LATEST_LINK}.xz" ]]; then
+      COMPRESSED_FILE="$(readlink -f "${LATEST_LINK}.xz")"
+      log "No dated image found, decompressing latest: ${COMPRESSED_FILE}"
+      IMAGE_FILE="${COMPRESSED_FILE%.xz}"
+      xz -dk "$COMPRESSED_FILE"
     else
-      error "No image found at ${IMAGE_FILE} and no latest symlink."
+      error "No image found at ${IMAGE_FILE} and no latest symlink at ${LATEST_LINK}.xz"
       exit 1
     fi
   fi

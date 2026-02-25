@@ -112,6 +112,7 @@ if [[ "$PORT_FORWARD" == true ]]; then
     -daemonize -display none -pidfile "$PID_FILE"
 
   echo "localhost" > "$IP_FILE"
+  echo "$SSH_PORT" > "${STATE_DIR}/ssh_port"
   info "VM started (PID: $(cat "$PID_FILE"))"
   print_env_vars "localhost" "ssh -p $SSH_PORT e2b@localhost"
   exit 0

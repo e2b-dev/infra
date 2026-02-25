@@ -29,5 +29,12 @@ fi
 
 SSH_CMD=($SSH_OPTS)
 [[ -f "$SSH_KEY" ]] && SSH_CMD+=(-i "$SSH_KEY")
-[[ "$VM_IP" == "localhost" ]] && SSH_CMD+=(-p 2222)
+if [[ "$VM_IP" == "localhost" ]]; then
+  SSH_PORT_FILE="/tmp/e2b-vm-${INSTANCE_NAME}/ssh_port"
+  if [[ -f "$SSH_PORT_FILE" ]]; then
+    SSH_CMD+=(-p "$(cat "$SSH_PORT_FILE")")
+  else
+    SSH_CMD+=(-p 2222)
+  fi
+fi
 exec ssh "${SSH_CMD[@]}" "e2b@${VM_IP}" "${EXTRA_ARGS[@]}"

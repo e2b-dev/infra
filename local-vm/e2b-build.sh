@@ -87,8 +87,12 @@ install_if_missing socat socat
 if [[ ! -e /dev/kvm ]]; then
   warn "/dev/kvm not found. Build will be very slow without KVM."
   KVM_FLAG=""
+  MACHINE_FLAG="-machine q35,accel=tcg"
+  CPU_FLAG="-cpu max"
 else
   KVM_FLAG="-enable-kvm"
+  MACHINE_FLAG="-machine q35,accel=kvm"
+  CPU_FLAG="-cpu host"
 fi
 
 # ── Generate SSH key pair if needed ──────────────────────────────────────────
@@ -116,10 +120,12 @@ if [[ ! -f jammy-server-cloudimg-amd64.img ]]; then
   wget -q --show-progress -O jammy-server-cloudimg-amd64.img "$UBUNTU_IMG_URL"
 fi
 
-# ── Create the qcow2 disk ───────────────────────────────────────────────────
-info "Creating qcow2 disk ($DISK_SIZE)..."
-cp jammy-server-cloudimg-amd64.img "$OUTPUT"
-qemu-img resize "$OUTPUT" "$DISK_SIZE"
+# ── Create the qcow2 disk (skip if --skip-build) ────────────────────────────
+if [[ "$SKIP_BUILD" != true ]]; then
+  info "Creating qcow2 disk ($DISK_SIZE)..."
+  cp jammy-server-cloudimg-amd64.img "$OUTPUT"
+  qemu-img resize "$OUTPUT" "$DISK_SIZE"
+fi
 
 # ══════════════════════════════════════════════════════════════════════════════
 # CLOUD-INIT ASSEMBLY
@@ -208,8 +214,8 @@ else
   # Launch QEMU for Phase 1 (blocks until VM shuts down)
   qemu-system-x86_64 \
     ${KVM_FLAG} \
-    -cpu host \
-    -machine q35,accel=kvm \
+    ${CPU_FLAG} \
+    ${MACHINE_FLAG} \
     -smp "$CPUS" \
     -m "$RAM" \
     -drive file="$OUTPUT",format=qcow2,if=virtio,cache=writeback \
@@ -243,8 +249,8 @@ else
 
   qemu-system-x86_64 \
     ${KVM_FLAG} \
-    -cpu host \
-    -machine q35,accel=kvm \
+    ${CPU_FLAG} \
+    ${MACHINE_FLAG} \
     -smp "$CPUS" \
     -m "$RAM" \
     -drive file="$OUTPUT",format=qcow2,if=virtio,cache=writeback \
@@ -333,7 +339,6 @@ info ""
 info "  SSH access:"
 info "    ./e2b-local.sh ssh                   # default instance"
 info "    ./e2b-local.sh ssh --name second     # named instance"
-info "    # user: e2b / password: e2b-infra-build"
 info ""
 info "  All E2B services start automatically on boot via systemd."
 info "════════════════════════════════════════════════════════════════"
