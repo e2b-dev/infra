@@ -138,9 +138,9 @@ fetch-busybox:
 		echo "✓ Using bundled amd64 busybox"; \
 	elif file "$$BUSYBOX_TARGET" 2>/dev/null | grep -q 'aarch64\|ARM aarch64'; then \
 		echo "✓ Busybox is already arm64"; \
-	elif command -v busybox >/dev/null 2>&1 && file "$$(command -v busybox)" 2>/dev/null | grep -q 'aarch64\|ARM aarch64'; then \
+	elif command -v busybox >/dev/null 2>&1 && file "$$(command -v busybox)" 2>/dev/null | grep -q 'aarch64\|ARM aarch64' && file "$$(command -v busybox)" 2>/dev/null | grep -q 'statically linked'; then \
 		cp "$$(command -v busybox)" "$$BUSYBOX_TARGET" && \
-		echo "✓ Copied host busybox (arm64) to embedded path"; \
+		echo "✓ Copied host busybox (arm64, static) to embedded path"; \
 	elif command -v apt-get >/dev/null 2>&1 && command -v dpkg-deb >/dev/null 2>&1; then \
 		echo "Fetching arm64 busybox via apt..."; \
 		TMPDIR=$$(mktemp -d); \

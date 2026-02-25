@@ -27,14 +27,16 @@ func Detect() (MachineInfo, error) {
 
 		// On ARM64, gopsutil doesn't populate Family/Model from /proc/cpuinfo.
 		// Provide fallback values so callers don't get an error.
-		if (family == "" || model == "") && runtime.GOARCH == "arm64" {
+		if runtime.GOARCH == "arm64" {
 			if family == "" {
 				family = "arm64"
 			}
 			if model == "" {
 				model = "0"
 			}
-		} else if family == "" || model == "" {
+		}
+
+		if family == "" || model == "" {
 			return MachineInfo{}, fmt.Errorf("unable to detect CPU platform from CPU info: %+v", info[0])
 		}
 
