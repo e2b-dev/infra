@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/launchdarkly/go-sdk-common/v3/ldlog"
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/zap"
@@ -38,6 +39,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	compresspkg "github.com/e2b-dev/infra/packages/shared/pkg/storage/compress"
+	headers "github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -63,6 +66,7 @@ func main() {
 	startCmd := flag.String("start-cmd", "", "start command")
 	setupCmd := flag.String("setup-cmd", "", "setup command to run during build (e.g., install deps)")
 	readyCmd := flag.String("ready-cmd", "", "ready check command")
+	compressFlag := flag.Bool("compress", false, "enable zstd seekable compression")
 	verbose := flag.Bool("v", false, "verbose output")
 	flag.Parse()
 
@@ -96,7 +100,12 @@ func main() {
 		log.Fatalf("network config: %v", err)
 	}
 
-	err = doBuild(ctx, *templateID, *toBuild, *fromBuild, *kernel, *fc, *vcpu, *memory, *disk, *hugePages, *startCmd, *setupCmd, *readyCmd, localMode, *verbose, builderConfig, networkConfig)
+	var compressConfig *compresspkg.Config
+	if *compressFlag {
+		compressConfig = compresspkg.DefaultConfig()
+	}
+
+	err = doBuild(ctx, *templateID, *toBuild, *fromBuild, *kernel, *fc, *vcpu, *memory, *disk, *hugePages, *startCmd, *setupCmd, *readyCmd, localMode, *verbose, compressConfig, builderConfig, networkConfig)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -179,6 +188,7 @@ func doBuild(
 	hugePages bool,
 	startCmd, setupCmd, readyCmd string,
 	localMode, verbose bool,
+	compressConfig *compresspkg.Config,
 	builderConfig cfg.BuilderConfig,
 	networkConfig network.Config,
 ) error {
@@ -294,6 +304,7 @@ func doBuild(
 		builderConfig, l, featureFlags, sandboxFactory,
 		persistenceTemplate, persistenceBuild, artifactRegistry,
 		dockerhubRepo, sandboxProxy, sandboxes, templateCache, buildMetrics,
+		compressConfig,
 	)
 
 	l = l.With(zap.String("envID", templateID)).With(zap.String("buildID", buildID))
@@ -346,60 +357,114 @@ func doBuild(
 
 	fmt.Printf("\n✅ Build finished: %s\n", buildID)
 
+	if compressConfig != nil {
+		fmt.Printf("   Compression: %s\n", compressConfig)
+	}
+
 	// Print artifact sizes
-	printArtifactSizes(ctx, persistenceTemplate, buildID, result)
+	printArtifactSizes(ctx, persistenceTemplate, buildID, result, compressConfig != nil)
 
 	return nil
 }
 
-func printArtifactSizes(ctx context.Context, persistence storage.StorageProvider, buildID string, _ *build.Result) {
-	files := storage.TemplateFiles{BuildID: buildID}
-	basePath := os.Getenv("LOCAL_TEMPLATE_STORAGE_BASE_PATH")
-
+func printArtifactSizes(ctx context.Context, persistence storage.StorageProvider, buildID string, _ *build.Result, compressed bool) {
 	fmt.Printf("\n📦 Artifacts:\n")
 
-	// For local storage, get actual file sizes on disk
+	printSeekableArtifact(ctx, persistence, buildID, "Memfile", storage.MemfileName, storage.MemfileObjectType, compressed)
+	printSeekableArtifact(ctx, persistence, buildID, "Rootfs", storage.RootfsName, storage.RootFSObjectType, compressed)
+
+	basePath := os.Getenv("LOCAL_TEMPLATE_STORAGE_BASE_PATH")
 	if basePath != "" {
-		printLocalFileSizes(basePath, buildID)
-	} else {
-		// For remote storage, get sizes from storage provider
-		if memfile, err := persistence.OpenSeekable(ctx, files.StorageMemfilePath(), storage.MemfileObjectType); err == nil {
-			if size, err := memfile.Size(ctx); err == nil {
-				fmt.Printf("   Memfile: %d MB\n", size>>20)
+		dir := filepath.Join(basePath, buildID)
+		for _, a := range cmdutil.SmallArtifacts() {
+			path := filepath.Join(dir, a.File)
+			if actual, err := cmdutil.GetActualFileSize(path); err == nil {
+				fmt.Printf("   %s: %d KB\n", a.Name, actual>>10)
 			}
 		}
 	}
 }
 
-func printLocalFileSizes(basePath, buildID string) {
-	dir := filepath.Join(basePath, buildID)
+func printSeekableArtifact(ctx context.Context, persistence storage.StorageProvider, buildID, name, fileName string, objectType storage.SeekableObjectType, compressed bool) {
+	files := storage.TemplateFiles{BuildID: buildID}
+	headerPath := files.BuildID + "/" + fileName + storage.HeaderSuffix
+	dataPath := files.BuildID + "/" + fileName
 
-	for _, a := range cmdutil.MainArtifacts() {
-		path := filepath.Join(dir, a.File)
-		_, actual, err := cmdutil.GetFileSizes(path)
-		if err != nil {
-			continue
-		}
+	h := getHeaderFromStorage(ctx, persistence, headerPath)
 
-		headerPath := filepath.Join(dir, a.HeaderFile)
-		totalSize, blockSize := cmdutil.GetHeaderInfo(headerPath)
+	// Get the on-disk size of the diff
+	rawObj, err := persistence.OpenSeekable(ctx, dataPath, objectType)
+	if err != nil {
+		return
+	}
+	diskSize, err := rawObj.Size(ctx)
+	if err != nil {
+		return
+	}
+
+	var totalSize, blockSize uint64
+	if h != nil {
+		totalSize = h.Metadata.Size
+		blockSize = h.Metadata.BlockSize
+	}
+
+	if !compressed {
 		if totalSize == 0 {
-			fmt.Printf("   %s: %d MB (this layer)\n", a.Name, actual>>20)
-
-			continue
+			fmt.Printf("   %s: %d MB (this layer)\n", name, diskSize>>20)
+		} else {
+			pct := float64(diskSize) / float64(totalSize) * 100
+			fmt.Printf("   %s: %d MB diff / %d MB total (%.1f%%), block size: %d KB\n",
+				name, diskSize>>20, totalSize>>20, pct, blockSize>>10)
 		}
-
-		pct := float64(actual) / float64(totalSize) * 100
-		fmt.Printf("   %s: %d MB diff / %d MB total (%.1f%%), block size: %d KB\n",
-			a.Name, actual>>20, totalSize>>20, pct, blockSize>>10)
+		return
 	}
 
-	for _, a := range cmdutil.SmallArtifacts() {
-		path := filepath.Join(dir, a.File)
-		if actual, err := cmdutil.GetActualFileSize(path); err == nil {
-			fmt.Printf("   %s: %d KB\n", a.Name, actual>>10)
+	// Get uncompressed diff size from the header's frame table.
+	var uncompressedSize uint64
+	if h != nil {
+		bid, _ := uuid.Parse(buildID)
+		if ft := h.GetFrameTable(bid); ft != nil {
+			uncompressedSize = ft.UncompressedSize
 		}
 	}
+	if uncompressedSize == 0 {
+		uncompressedSize = uint64(diskSize) // fallback
+	}
+
+	ratio := float64(uncompressedSize) / float64(diskSize)
+	if totalSize > 0 {
+		fmt.Printf("   %s: %d MB total, %d MB diff, %d MB compressed (%.1f:1), block size: %d KB\n",
+			name, totalSize>>20, uncompressedSize>>20, diskSize>>20, ratio, blockSize>>10)
+	} else {
+		fmt.Printf("   %s: %d MB diff, %d MB compressed (%.1f:1)\n",
+			name, uncompressedSize>>20, diskSize>>20, ratio)
+	}
+}
+
+func getHeaderFromStorage(ctx context.Context, persistence storage.StorageProvider, headerPath string) *headers.Header {
+	basePath := os.Getenv("LOCAL_TEMPLATE_STORAGE_BASE_PATH")
+
+	var data []byte
+	var err error
+
+	if basePath != "" {
+		data, err = os.ReadFile(filepath.Join(basePath, headerPath))
+	} else {
+		obj, e := persistence.OpenBlob(ctx, headerPath, storage.MemfileHeaderObjectType)
+		if e != nil {
+			return nil
+		}
+		data, err = storage.GetBlob(ctx, obj)
+	}
+	if err != nil {
+		return nil
+	}
+
+	h, err := headers.DeserializeBytes(data)
+	if err != nil {
+		return nil
+	}
+	return h
 }
 
 func setupKernel(ctx context.Context, dir, version string) error {

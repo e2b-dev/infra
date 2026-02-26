@@ -37,6 +37,7 @@ import (
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/compress"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
@@ -61,6 +62,7 @@ type Builder struct {
 	templateCache       *sbxtemplate.Cache
 	metrics             *metrics.BuildMetrics
 	featureFlags        *featureflags.Client
+	compressConfig      *compress.Config
 }
 
 func NewBuilder(
@@ -76,6 +78,7 @@ func NewBuilder(
 	sandboxes *sandbox.Map,
 	templateCache *sbxtemplate.Cache,
 	buildMetrics *metrics.BuildMetrics,
+	compressConfig *compress.Config,
 ) *Builder {
 	return &Builder{
 		config:              config,
@@ -90,6 +93,7 @@ func NewBuilder(
 		sandboxes:           sandboxes,
 		templateCache:       templateCache,
 		metrics:             buildMetrics,
+		compressConfig:      compressConfig,
 	}
 }
 
@@ -269,6 +273,7 @@ func runBuild(
 		builder.buildStorage,
 		index,
 		uploadTracker,
+		builder.compressConfig,
 	)
 
 	baseBuilder := base.New(

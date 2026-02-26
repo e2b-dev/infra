@@ -7,6 +7,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/compress"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
@@ -25,6 +26,7 @@ func (s *Snapshot) Upload(
 	ctx context.Context,
 	persistence storage.StorageProvider,
 	templateFiles storage.TemplateFiles,
+	compressConfig *compress.Config,
 ) error {
 	var memfilePath *string
 	switch r := s.MemfileDiff.(type) {
@@ -55,6 +57,7 @@ func (s *Snapshot) Upload(
 		s.RootfsDiffHeader,
 		persistence,
 		templateFiles,
+		compressConfig,
 	)
 
 	uploadErrCh := templateBuild.Upload(

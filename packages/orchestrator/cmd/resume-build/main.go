@@ -40,6 +40,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	compresspkg "github.com/e2b-dev/infra/packages/shared/pkg/storage/compress"
+	headers "github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -51,6 +53,7 @@ func main() {
 	coldStart := flag.Bool("cold", false, "clear cache between iterations (cold start each time)")
 	noPrefetch := flag.Bool("no-prefetch", false, "disable memory prefetching")
 	verbose := flag.Bool("v", false, "verbose logging")
+	compressFlag := flag.Bool("compress", false, "enable zstd seekable compression")
 
 	// Command execution (no pause)
 	cmd := flag.String("cmd", "", "execute command in sandbox and exit (no snapshot)")
@@ -120,6 +123,10 @@ func main() {
 	go func() { <-sig; fmt.Println("\n🛑 Stopping..."); cancel() }()
 
 	isRemoteStorage := strings.HasPrefix(*storagePath, "gs://")
+	var compressConfig *compresspkg.Config
+	if *compressFlag {
+		compressConfig = compresspkg.DefaultConfig()
+	}
 	pauseOpts := pauseOptions{
 		immediate:       *pause,
 		signalName:      *signalPause,
@@ -128,6 +135,7 @@ func main() {
 		isRemoteStorage: isRemoteStorage,
 		newBuildID:      outputBuildID,
 		iterations:      *iterations,
+		compressConfig:  compressConfig,
 	}
 
 	runOpts := runOptions{
@@ -154,7 +162,8 @@ type pauseOptions struct {
 	storagePath     string
 	isRemoteStorage bool
 	newBuildID      string
-	iterations      int // for benchmarking pause (only with immediate)
+	iterations      int  // for benchmarking pause (only with immediate)
+	compressConfig  *compresspkg.Config // enable zstd seekable compression when non-nil
 }
 
 func (p pauseOptions) enabled() bool {
@@ -165,6 +174,7 @@ func (p pauseOptions) enabled() bool {
 type pauseTimings struct {
 	resume time.Duration
 	pause  time.Duration
+	upload time.Duration
 	total  time.Duration
 	err    error
 }
@@ -597,47 +607,57 @@ func (r *runner) pauseOnce(ctx context.Context, opts pauseOptions, verbose bool)
 	pauseStart := time.Now()
 	snapshot, err := sbx.Pause(ctx, newMeta)
 	pauseDur := time.Since(pauseStart)
+
+	if err != nil {
+		totalDur := time.Since(t0)
+		return pauseTimings{resume: resumeDur, pause: pauseDur, total: totalDur, err: err}, fmt.Errorf("failed to pause: %w", err)
+	}
+	defer snapshot.Close(context.WithoutCancel(ctx))
+
+	// Upload snapshot (and compress if configured) — always run so we can time it
+	if verbose {
+		if opts.isRemoteStorage {
+			fmt.Println("📤 Uploading snapshot...")
+		} else {
+			fmt.Println("💾 Saving snapshot...")
+		}
+	}
+
+	templateFiles := storage.TemplateFiles{BuildID: opts.newBuildID}
+	uploadStart := time.Now()
+	uploadErr := snapshot.Upload(ctx, r.storage, templateFiles, opts.compressConfig)
+	uploadDur := time.Since(uploadStart)
 	totalDur := time.Since(t0)
 
 	timings := pauseTimings{
 		resume: resumeDur,
 		pause:  pauseDur,
+		upload: uploadDur,
 		total:  totalDur,
-		err:    err,
+		err:    uploadErr,
 	}
 
-	if err != nil {
-		return timings, fmt.Errorf("failed to pause: %w", err)
+	if uploadErr != nil {
+		return timings, fmt.Errorf("failed to upload snapshot: %w", uploadErr)
 	}
-	defer snapshot.Close(context.WithoutCancel(ctx))
 
 	if verbose {
 		fmt.Println()
 		fmt.Println("📊 Timing breakdown:")
 		fmt.Printf("   Resume: %s\n", fmtDur(resumeDur))
 		fmt.Printf("   Pause:  %s\n", fmtDur(pauseDur))
-		fmt.Printf("   Total:  %s\n", fmtDur(totalDur))
-	}
-
-	// Only upload when not in benchmark mode (verbose = true means single run)
-	if verbose {
-		templateFiles := storage.TemplateFiles{BuildID: opts.newBuildID}
-		if opts.isRemoteStorage {
-			fmt.Println("📤 Uploading snapshot...")
-			if err := snapshot.Upload(ctx, r.storage, templateFiles); err != nil {
-				return timings, fmt.Errorf("failed to upload snapshot: %w", err)
-			}
-			fmt.Println("✅ Snapshot uploaded successfully")
-		} else {
-			fmt.Println("💾 Saving snapshot to local storage...")
-			if err := snapshot.Upload(ctx, r.storage, templateFiles); err != nil {
-				return timings, fmt.Errorf("failed to save snapshot: %w", err)
-			}
-			fmt.Println("✅ Snapshot saved successfully")
+		fmt.Printf("   Upload: %s", fmtDur(uploadDur))
+		if opts.compressConfig != nil {
+			fmt.Print(" (zstd)")
 		}
+		fmt.Println()
+		fmt.Printf("   Total:  %s\n", fmtDur(totalDur))
 
 		fmt.Printf("\n✅ Build finished: %s\n", opts.newBuildID)
-		printArtifactSizes(opts.storagePath, opts.newBuildID)
+		if opts.compressConfig != nil {
+			fmt.Printf("   Compression: %s\n", opts.compressConfig)
+		}
+		printArtifactSizes(ctx, r.storage, opts.newBuildID, opts.compressConfig != nil)
 	}
 
 	return timings, nil
@@ -718,19 +738,21 @@ func printPauseResults(results []pauseTimings) {
 	}
 
 	// Calculate averages
-	var totalResume, totalPause, totalTotal time.Duration
+	var totalResume, totalPause, totalUpload, totalTotal time.Duration
 	for _, t := range successful {
 		totalResume += t.resume
 		totalPause += t.pause
+		totalUpload += t.upload
 		totalTotal += t.total
 	}
 	n := len(successful)
 	avgResume := totalResume / time.Duration(n)
 	avgPause := totalPause / time.Duration(n)
+	avgUpload := totalUpload / time.Duration(n)
 	avgTotal := totalTotal / time.Duration(n)
 
 	// Print individual results
-	fmt.Println("\n📋 Run times (resume / pause / total):")
+	fmt.Println("\n📋 Run times (resume / pause / upload / total):")
 	for i, t := range results {
 		if t.err != nil {
 			fmt.Printf("   [%2d] ❌ Failed: %v\n", i+1, t.err)
@@ -740,24 +762,28 @@ func printPauseResults(results []pauseTimings) {
 
 		resumeDiff := float64(t.resume-avgResume) / float64(avgResume) * 100
 		pauseDiff := float64(t.pause-avgPause) / float64(avgPause) * 100
+		uploadDiff := float64(t.upload-avgUpload) / float64(avgUpload) * 100
 
-		fmt.Printf("   [%2d] %s / %s / %s  (resume: %s%+.1f%%%s, pause: %s%+.1f%%%s)\n",
+		fmt.Printf("   [%2d] %s / %s / %s / %s  (resume: %s%+.1f%%%s, pause: %s%+.1f%%%s, upload: %s%+.1f%%%s)\n",
 			i+1,
-			fmtDur(t.resume), fmtDur(t.pause), fmtDur(t.total),
+			fmtDur(t.resume), fmtDur(t.pause), fmtDur(t.upload), fmtDur(t.total),
 			colorForDiff(resumeDiff), resumeDiff, colorReset,
-			colorForDiff(pauseDiff), pauseDiff, colorReset)
+			colorForDiff(pauseDiff), pauseDiff, colorReset,
+			colorForDiff(uploadDiff), uploadDiff, colorReset)
 	}
 
 	// Print summary
 	fmt.Printf("\n📊 Summary (%d runs):\n", n)
 	fmt.Printf("   Resume: Avg %s\n", fmtDur(avgResume))
 	fmt.Printf("   Pause:  Avg %s\n", fmtDur(avgPause))
+	fmt.Printf("   Upload: Avg %s\n", fmtDur(avgUpload))
 	fmt.Printf("   Total:  Avg %s\n", fmtDur(avgTotal))
 
 	// Min/Max for each
 	if n > 1 {
 		minR, maxR := successful[0].resume, successful[0].resume
 		minP, maxP := successful[0].pause, successful[0].pause
+		minU, maxU := successful[0].upload, successful[0].upload
 		for _, t := range successful[1:] {
 			if t.resume < minR {
 				minR = t.resume
@@ -771,9 +797,16 @@ func printPauseResults(results []pauseTimings) {
 			if t.pause > maxP {
 				maxP = t.pause
 			}
+			if t.upload < minU {
+				minU = t.upload
+			}
+			if t.upload > maxU {
+				maxU = t.upload
+			}
 		}
 		fmt.Printf("   Resume: Min %s | Max %s\n", fmtDur(minR), fmtDur(maxR))
 		fmt.Printf("   Pause:  Min %s | Max %s\n", fmtDur(minP), fmtDur(maxP))
+		fmt.Printf("   Upload: Min %s | Max %s\n", fmtDur(minU), fmtDur(maxU))
 	}
 }
 
@@ -1095,43 +1128,102 @@ func parseSignal(name string) os.Signal {
 	return signals[name]
 }
 
-// printArtifactSizes prints artifact sizes
-func printArtifactSizes(_, buildID string) {
+// printArtifactSizes prints artifact sizes using the storage provider
+func printArtifactSizes(ctx context.Context, persistence storage.StorageProvider, buildID string, compressed bool) {
+	fmt.Println("\n📦 Artifacts:")
+
+	printSeekableArtifact(ctx, persistence, buildID, "Memfile", storage.MemfileName, storage.MemfileObjectType, compressed)
+	printSeekableArtifact(ctx, persistence, buildID, "Rootfs", storage.RootfsName, storage.RootFSObjectType, compressed)
+
 	basePath := os.Getenv("LOCAL_TEMPLATE_STORAGE_BASE_PATH")
-	if basePath == "" {
+	if basePath != "" {
+		dir := filepath.Join(basePath, buildID)
+		for _, a := range cmdutil.SmallArtifacts() {
+			path := filepath.Join(dir, a.File)
+			if actual, err := cmdutil.GetActualFileSize(path); err == nil {
+				fmt.Printf("   %s: %d KB\n", a.Name, actual>>10)
+			}
+		}
+	}
+}
+
+func printSeekableArtifact(ctx context.Context, persistence storage.StorageProvider, buildID, name, fileName string, objectType storage.SeekableObjectType, compressed bool) {
+	headerPath := buildID + "/" + fileName + storage.HeaderSuffix
+	dataPath := buildID + "/" + fileName
+
+	h := getHeaderFromStorage(ctx, persistence, headerPath)
+
+	rawObj, err := persistence.OpenSeekable(ctx, dataPath, objectType)
+	if err != nil {
+		return
+	}
+	diskSize, err := rawObj.Size(ctx)
+	if err != nil {
 		return
 	}
 
-	dir := filepath.Join(basePath, buildID)
+	var totalSize, blockSize uint64
+	if h != nil {
+		totalSize = h.Metadata.Size
+		blockSize = h.Metadata.BlockSize
+	}
 
-	fmt.Println("\n📦 Artifacts:")
-
-	for _, a := range cmdutil.MainArtifacts() {
-		path := filepath.Join(dir, a.File)
-		_, actual, err := cmdutil.GetFileSizes(path)
-		if err != nil {
-			continue
-		}
-
-		headerPath := filepath.Join(dir, a.HeaderFile)
-		totalSize, blockSize := cmdutil.GetHeaderInfo(headerPath)
+	if !compressed {
 		if totalSize == 0 {
-			fmt.Printf("   %s: %d MB (this layer)\n", a.Name, actual>>20)
-
-			continue
+			fmt.Printf("   %s: %d MB (this layer)\n", name, diskSize>>20)
+		} else {
+			pct := float64(diskSize) / float64(totalSize) * 100
+			fmt.Printf("   %s: %d MB diff / %d MB total (%.1f%%), block size: %d KB\n",
+				name, diskSize>>20, totalSize>>20, pct, blockSize>>10)
 		}
-
-		pct := float64(actual) / float64(totalSize) * 100
-		fmt.Printf("   %s: %d MB diff / %d MB total (%.1f%%), block size: %d KB\n",
-			a.Name, actual>>20, totalSize>>20, pct, blockSize>>10)
+		return
 	}
 
-	for _, a := range cmdutil.SmallArtifacts() {
-		path := filepath.Join(dir, a.File)
-		if actual, err := cmdutil.GetActualFileSize(path); err == nil {
-			fmt.Printf("   %s: %d KB\n", a.Name, actual>>10)
+	var uncompressedSize uint64
+	if h != nil {
+		bid, _ := uuid.Parse(buildID)
+		if ft := h.GetFrameTable(bid); ft != nil {
+			uncompressedSize = ft.UncompressedSize
 		}
 	}
+	if uncompressedSize == 0 {
+		uncompressedSize = uint64(diskSize)
+	}
+
+	ratio := float64(uncompressedSize) / float64(diskSize)
+	if totalSize > 0 {
+		fmt.Printf("   %s: %d MB total, %d MB diff, %d MB compressed (%.1f:1), block size: %d KB\n",
+			name, totalSize>>20, uncompressedSize>>20, diskSize>>20, ratio, blockSize>>10)
+	} else {
+		fmt.Printf("   %s: %d MB diff, %d MB compressed (%.1f:1)\n",
+			name, uncompressedSize>>20, diskSize>>20, ratio)
+	}
+}
+
+func getHeaderFromStorage(ctx context.Context, persistence storage.StorageProvider, headerPath string) *headers.Header {
+	basePath := os.Getenv("LOCAL_TEMPLATE_STORAGE_BASE_PATH")
+
+	var data []byte
+	var err error
+
+	if basePath != "" {
+		data, err = os.ReadFile(filepath.Join(basePath, headerPath))
+	} else {
+		obj, e := persistence.OpenBlob(ctx, headerPath, storage.MemfileHeaderObjectType)
+		if e != nil {
+			return nil
+		}
+		data, err = storage.GetBlob(ctx, obj)
+	}
+	if err != nil {
+		return nil
+	}
+
+	h, err := headers.DeserializeBytes(data)
+	if err != nil {
+		return nil
+	}
+	return h
 }
 
 // Benchmark output formatting

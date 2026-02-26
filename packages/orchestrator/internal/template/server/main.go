@@ -113,6 +113,7 @@ func New(
 		sandboxes,
 		templateCache,
 		buildMetrics,
+		nil,
 	)
 
 	store := &ServerStore{

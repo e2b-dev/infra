@@ -18,7 +18,8 @@ type Header struct {
 	blockStarts *bitset.BitSet
 	startMap    map[int64]*BuildMap
 
-	Mapping []*BuildMap
+	Mapping     []*BuildMap
+	FrameTables map[uuid.UUID]*FrameTable // compressed frame layout per build (nil = uncompressed)
 }
 
 func NewHeader(metadata *Metadata, mapping []*BuildMap) (*Header, error) {

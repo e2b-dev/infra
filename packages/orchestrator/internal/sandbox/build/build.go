@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -116,6 +117,12 @@ func (b *File) Slice(ctx context.Context, off, _ int64) ([]byte, error) {
 }
 
 func (b *File) getBuild(ctx context.Context, buildID *uuid.UUID) (Diff, error) {
+	ft := b.header.GetFrameTable(*buildID)
+
+	if ft != nil {
+		return b.getCompressedBuild(ctx, buildID, ft)
+	}
+
 	storageDiff, err := newStorageDiff(
 		b.store.cachePath,
 		buildID.String(),
@@ -134,4 +141,34 @@ func (b *File) getBuild(ctx context.Context, buildID *uuid.UUID) (Diff, error) {
 	}
 
 	return source, nil
+}
+
+func (b *File) getCompressedBuild(ctx context.Context, buildID *uuid.UUID, ft *header.FrameTable) (Diff, error) {
+	path := storagePath(buildID.String(), b.fileType)
+	objectType, ok := storageObjectType(b.fileType)
+	if !ok {
+		return nil, UnknownDiffTypeError{b.fileType}
+	}
+
+	raw, err := b.persistence.OpenSeekable(ctx, path, objectType)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open compressed build: %w", err)
+	}
+
+	cr, err := newCompressedSeekable(raw, ft)
+	if err != nil {
+		return nil, fmt.Errorf("compressed reader: %w", err)
+	}
+
+	cachePath := GenerateDiffCachePath(b.store.cachePath, buildID.String(), b.fileType)
+	chunker, err := block.NewChunker(cr.size, int64(b.header.Metadata.BlockSize), cr, cachePath, b.metrics)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create chunker for compressed build: %w", err)
+	}
+
+	return &compressedBuildDiff{
+		chunker:   chunker,
+		blockSz:   int64(b.header.Metadata.BlockSize),
+		cachePath: cachePath,
+	}, nil
 }

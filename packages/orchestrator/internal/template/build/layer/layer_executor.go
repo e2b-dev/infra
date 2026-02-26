@@ -18,6 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/compress"
 )
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/layer")
@@ -34,6 +35,7 @@ type LayerExecutor struct {
 	buildStorage    storage.StorageProvider
 	index           cache.Index
 	uploadTracker   *UploadTracker
+	compressConfig  *compress.Config
 }
 
 func NewLayerExecutor(
@@ -46,6 +48,7 @@ func NewLayerExecutor(
 	buildStorage storage.StorageProvider,
 	index cache.Index,
 	uploadTracker *UploadTracker,
+	compressConfig *compress.Config,
 ) *LayerExecutor {
 	return &LayerExecutor{
 		BuildContext: buildContext,
@@ -59,6 +62,7 @@ func NewLayerExecutor(
 		buildStorage:    buildStorage,
 		index:           index,
 		uploadTracker:   uploadTracker,
+		compressConfig:  compressConfig,
 	}
 }
 
@@ -297,6 +301,7 @@ func (lb *LayerExecutor) PauseAndUpload(
 			ctx,
 			lb.templateStorage,
 			storage.TemplateFiles{BuildID: meta.Template.BuildID},
+			lb.compressConfig,
 		)
 		if err != nil {
 			return fmt.Errorf("error uploading snapshot: %w", err)

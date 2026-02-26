@@ -93,6 +93,14 @@ func (d *DiffMetadata) ToDiffHeader(
 		return nil, fmt.Errorf("failed to create header: %w", err)
 	}
 
+	// Carry forward frame tables pruned to only the frames still referenced.
+	for _, ft := range originalHeader.FrameTables {
+		pruned := ft.PruneToMappings(m)
+		if len(pruned.Frames) > 0 {
+			header.SetFrameTable(pruned)
+		}
+	}
+
 	err = ValidateMappings(header.Mapping, header.Metadata.Size, header.Metadata.BlockSize)
 	if err != nil {
 		if header.IsNormalizeFixApplied() {
@@ -103,6 +111,22 @@ func (d *DiffMetadata) ToDiffHeader(
 	}
 
 	return header, nil
+}
+
+// SetFrameTable attaches a compressed frame table for the given build.
+func (h *Header) SetFrameTable(ft *FrameTable) {
+	if h.FrameTables == nil {
+		h.FrameTables = make(map[uuid.UUID]*FrameTable)
+	}
+	h.FrameTables[ft.BuildID] = ft
+}
+
+// GetFrameTable returns the frame table for the given build, or nil.
+func (h *Header) GetFrameTable(buildID uuid.UUID) *FrameTable {
+	if h.FrameTables == nil {
+		return nil
+	}
+	return h.FrameTables[buildID]
 }
 
 type DiffMetadataBuilder struct {

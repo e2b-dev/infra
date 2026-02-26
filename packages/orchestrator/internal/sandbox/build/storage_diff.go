@@ -81,12 +81,12 @@ func (b *StorageDiff) CacheKey() DiffStoreKey {
 }
 
 func (b *StorageDiff) Init(ctx context.Context) error {
-	obj, err := b.persistence.OpenSeekable(ctx, b.storagePath, b.storageObjectType)
+	reader, err := b.persistence.OpenSeekable(ctx, b.storagePath, b.storageObjectType)
 	if err != nil {
 		return err
 	}
 
-	size, err := obj.Size(ctx)
+	size, err := reader.Size(ctx)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to get object size: %w", err)
 		b.chunker.SetError(errMsg)
@@ -94,7 +94,7 @@ func (b *StorageDiff) Init(ctx context.Context) error {
 		return errMsg
 	}
 
-	chunker, err := block.NewChunker(size, b.blockSize, obj, b.cachePath, b.metrics)
+	chunker, err := block.NewChunker(size, b.blockSize, reader, b.cachePath, b.metrics)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to create chunker: %w", err)
 		b.chunker.SetError(errMsg)

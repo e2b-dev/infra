@@ -155,6 +155,84 @@ func printHeader(h *header.Header, source string) {
 		}
 		fmt.Printf("%s%s: %d blocks, %d MiB (%0.2f%%)\n", buildID, additionalInfo, uint64(size)/h.Metadata.BlockSize, uint64(size)/1024/1024, float64(size)/float64(h.Metadata.Size)*100)
 	}
+
+	if len(h.FrameTables) > 0 {
+		fmt.Printf("\nFRAME TABLES (%d builds)\n", len(h.FrameTables))
+		fmt.Printf("============\n")
+		for buildID, ft := range h.FrameTables {
+			var tag string
+			switch buildID.String() {
+			case h.Metadata.BuildId.String():
+				tag = " (current)"
+			case h.Metadata.BaseBuildId.String():
+				tag = " (parent)"
+			}
+			fmt.Printf("\nBuild %s%s\n", buildID, tag)
+			fmt.Printf("  Uncompressed: %d MiB, Frames: %d\n",
+				ft.UncompressedSize/1024/1024, len(ft.Frames))
+
+			if len(ft.Frames) > 0 {
+				var totalComp uint64
+				minComp := uint64(ft.Frames[0].CompressedSize)
+				maxComp := uint64(ft.Frames[0].CompressedSize)
+				for _, f := range ft.Frames {
+					totalComp += uint64(f.CompressedSize)
+					if uint64(f.CompressedSize) < minComp {
+						minComp = uint64(f.CompressedSize)
+					}
+					if uint64(f.CompressedSize) > maxComp {
+						maxComp = uint64(f.CompressedSize)
+					}
+				}
+				avgComp := totalComp / uint64(len(ft.Frames))
+				ratio := float64(ft.UncompressedSize) / float64(totalComp)
+				fmt.Printf("  Compressed:   %d MiB (%.1f:1)\n", totalComp/1024/1024, ratio)
+				fmt.Printf("  Frame stats:  avg %d KiB, min %d KiB, max %d KiB\n",
+					avgComp/1024, minComp/1024, maxComp/1024)
+
+				// Ratio matrix: 16 frames per row, each showing compression ratio
+				const cols = 16
+				frameSize := uint64(2 * 1024 * 1024)
+				fmt.Printf("\n  Ratio matrix (%d per row, frame = %d MiB):\n", cols, frameSize/1024/1024)
+				for row := 0; row < len(ft.Frames); row += cols {
+					end := row + cols
+					if end > len(ft.Frames) {
+						end = len(ft.Frames)
+					}
+					fmt.Printf("  %4d: ", ft.Frames[row].Index)
+					for _, f := range ft.Frames[row:end] {
+						uncomp := frameSize
+						frameEnd := (uint64(f.Index) + 1) * frameSize
+						if frameEnd > ft.UncompressedSize {
+							uncomp = ft.UncompressedSize - uint64(f.Index)*frameSize
+						}
+						r := float64(uncomp) / float64(f.CompressedSize)
+						var color string
+						switch {
+						case r < 1.5:
+							color = "\033[91m" // bright red — incompressible
+						case r < 2.5:
+							color = "\033[33m" // yellow — poor
+						case r < 4:
+							color = "\033[0m" // default — typical
+						case r < 8:
+							color = "\033[32m" // green — good
+						case r < 50:
+							color = "\033[36m" // cyan — very sparse
+						default:
+							color = "\033[34m" // blue — nearly empty
+						}
+						if r >= 100 {
+							fmt.Printf(" %s%4.0f\033[0m", color, r)
+						} else {
+							fmt.Printf(" %s%4.1f\033[0m", color, r)
+						}
+					}
+					fmt.Println()
+				}
+			}
+		}
+	}
 }
 
 func inspectData(ctx context.Context, storagePath, buildID, dataFile string, h *header.Header, start, end int64) {

@@ -5,15 +5,15 @@
 > **Prerequisite:** Enable NBD module first:
 >
 > ```bash
-> modprobe nbd nbds_max=4096
->
-> cat <<EOH >/etc/udev/rules.d/97-nbd-device.rules
-> # Disable inotify watching of change events for NBD devices
-> ACTION=="add|change", KERNEL=="nbd*", OPTIONS:="nowatch"
-> EOH
-> udevadm control --reload-rules
-> udevadm trigger
-> ```
+modprobe nbd nbds_max=4096
+
+cat <<EOH >/etc/udev/rules.d/97-nbd-device.rules
+# Disable inotify watching of change events for NBD devices
+ACTION=="add|change", KERNEL=="nbd*", OPTIONS:="nowatch"
+EOH
+udevadm control --reload-rules
+udevadm trigger
+```
 
 ### Create Build
 
