@@ -14,6 +14,11 @@ variable "alb_sg_id" {
   type = string
 }
 
+variable "nlb_sg_id" {
+  description = "Security group ID for the Network Load Balancer"
+  type        = string
+}
+
 variable "domain_name" {
   type = string
 }

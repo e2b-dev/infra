@@ -133,6 +133,12 @@ variable "client_proxy_health_port" {
 }
 
 # Docker reverse proxy
+variable "docker_reverse_proxy_count" {
+  description = "Number of docker-reverse-proxy replicas"
+  type        = number
+  default     = 2
+}
+
 variable "docker_reverse_proxy_port" {
   type = object({
     name        = string

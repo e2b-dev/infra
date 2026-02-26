@@ -21,3 +21,8 @@ output "cloudtrail_arn" {
 output "cloudtrail_bucket_name" {
   value = var.enable_cloudtrail ? aws_s3_bucket.cloudtrail[0].id : ""
 }
+
+output "s3_kms_key_arn" {
+  description = "KMS CMK ARN for S3 bucket encryption"
+  value       = aws_kms_key.s3.arn
+}

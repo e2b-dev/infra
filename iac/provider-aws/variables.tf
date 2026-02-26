@@ -32,6 +32,12 @@ variable "karpenter_version" {
   default     = "1.6.0"
 }
 
+variable "bootstrap_instance_type" {
+  description = "Instance type for bootstrap managed node group (Karpenter controller + system pods). Use t3.xlarge for production with Temporal."
+  type        = string
+  default     = "t3.xlarge"
+}
+
 variable "client_instance_types" {
   description = "Instance types for the client (orchestrator) Karpenter NodePool"
   type        = list(string)
@@ -124,7 +130,7 @@ variable "client_proxy_count" {
 
 variable "ingress_count" {
   type    = number
-  default = 1
+  default = 2
 }
 
 variable "client_proxy_resources_memory_mb" {
@@ -196,6 +202,12 @@ variable "ingress_port" {
     port        = 8800
     health_path = "/ping"
   }
+}
+
+variable "docker_reverse_proxy_count" {
+  description = "Number of docker-reverse-proxy replicas"
+  type        = number
+  default     = 2
 }
 
 variable "docker_reverse_proxy_port" {
@@ -366,9 +378,9 @@ variable "vpc_flow_logs_retention_days" {
 }
 
 variable "enable_guardduty" {
-  description = "Enable AWS GuardDuty for threat detection (ISO 27001)"
+  description = "Enable AWS GuardDuty for threat detection (ISO 27001). Enabled by default for production security."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "enable_aws_config" {
@@ -384,9 +396,9 @@ variable "enable_inspector" {
 }
 
 variable "enable_cloudtrail" {
-  description = "Enable AWS CloudTrail for API audit logging (ISO 27001 / SOC2)"
+  description = "Enable AWS CloudTrail for API audit logging (ISO 27001 / SOC2). Enabled by default for production security."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "enable_s3_access_logging" {
@@ -587,9 +599,9 @@ variable "temporal_db_user" {
 }
 
 variable "temporal_chart_version" {
-  description = "Temporal Helm chart version. Pin to a specific version for reproducible deploys."
+  description = "Temporal Helm chart version. Pin to a specific version for reproducible deploys. Last reviewed: 2026-02-26."
   type        = string
-  default     = "1.2.1"
+  default     = "0.73.1"
 }
 
 variable "temporal_cert_validity_hours" {

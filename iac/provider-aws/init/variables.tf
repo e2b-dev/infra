@@ -26,3 +26,9 @@ variable "enable_s3_access_logging" {
   type        = bool
   default     = false
 }
+
+variable "s3_kms_key_arn" {
+  description = "KMS CMK ARN for S3 bucket encryption. When set, buckets use SSE-KMS instead of SSE-S3."
+  type        = string
+  default     = ""
+}

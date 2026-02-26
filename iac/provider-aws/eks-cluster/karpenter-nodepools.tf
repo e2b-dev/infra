@@ -116,6 +116,13 @@ resource "kubectl_manifest" "nodepool_client" {
               effect = "NoSchedule"
             }
           ]
+          topologySpreadConstraints = [
+            {
+              maxSkew           = 1
+              topologyKey       = "topology.kubernetes.io/zone"
+              whenUnsatisfiable = "ScheduleAnyway"
+            }
+          ]
         }
       }
       disruption = {
@@ -175,6 +182,13 @@ resource "kubectl_manifest" "nodepool_build" {
               key    = "e2b.dev/node-pool"
               value  = "build"
               effect = "NoSchedule"
+            }
+          ]
+          topologySpreadConstraints = [
+            {
+              maxSkew           = 1
+              topologyKey       = "topology.kubernetes.io/zone"
+              whenUnsatisfiable = "ScheduleAnyway"
             }
           ]
         }

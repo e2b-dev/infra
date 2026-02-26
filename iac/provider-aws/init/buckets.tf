@@ -27,7 +27,8 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "access_logs" {
 
   rule {
     apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
+      sse_algorithm     = var.s3_kms_key_arn != "" ? "aws:kms" : "AES256"
+      kms_master_key_id = var.s3_kms_key_arn != "" ? var.s3_kms_key_arn : null
     }
   }
 }
@@ -107,7 +108,8 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "loki_storage" {
 
   rule {
     apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
+      sse_algorithm     = var.s3_kms_key_arn != "" ? "aws:kms" : "AES256"
+      kms_master_key_id = var.s3_kms_key_arn != "" ? var.s3_kms_key_arn : null
     }
   }
 }
@@ -146,7 +148,8 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "envs_docker_conte
 
   rule {
     apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
+      sse_algorithm     = var.s3_kms_key_arn != "" ? "aws:kms" : "AES256"
+      kms_master_key_id = var.s3_kms_key_arn != "" ? var.s3_kms_key_arn : null
     }
   }
 }
@@ -172,7 +175,8 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "instance_setup" {
 
   rule {
     apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
+      sse_algorithm     = var.s3_kms_key_arn != "" ? "aws:kms" : "AES256"
+      kms_master_key_id = var.s3_kms_key_arn != "" ? var.s3_kms_key_arn : null
     }
   }
 }
@@ -198,7 +202,8 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "fc_kernels" {
 
   rule {
     apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
+      sse_algorithm     = var.s3_kms_key_arn != "" ? "aws:kms" : "AES256"
+      kms_master_key_id = var.s3_kms_key_arn != "" ? var.s3_kms_key_arn : null
     }
   }
 }
@@ -232,7 +237,8 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "fc_versions" {
 
   rule {
     apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
+      sse_algorithm     = var.s3_kms_key_arn != "" ? "aws:kms" : "AES256"
+      kms_master_key_id = var.s3_kms_key_arn != "" ? var.s3_kms_key_arn : null
     }
   }
 }
@@ -258,7 +264,8 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "fc_env_pipeline" 
 
   rule {
     apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
+      sse_algorithm     = var.s3_kms_key_arn != "" ? "aws:kms" : "AES256"
+      kms_master_key_id = var.s3_kms_key_arn != "" ? var.s3_kms_key_arn : null
     }
   }
 }
@@ -284,7 +291,8 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "clickhouse_backup
 
   rule {
     apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
+      sse_algorithm     = var.s3_kms_key_arn != "" ? "aws:kms" : "AES256"
+      kms_master_key_id = var.s3_kms_key_arn != "" ? var.s3_kms_key_arn : null
     }
   }
 }
@@ -328,7 +336,8 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "fc_templates" {
 
   rule {
     apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
+      sse_algorithm     = var.s3_kms_key_arn != "" ? "aws:kms" : "AES256"
+      kms_master_key_id = var.s3_kms_key_arn != "" ? var.s3_kms_key_arn : null
     }
   }
 }
@@ -390,7 +399,8 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "fc_build_cache" {
 
   rule {
     apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
+      sse_algorithm     = var.s3_kms_key_arn != "" ? "aws:kms" : "AES256"
+      kms_master_key_id = var.s3_kms_key_arn != "" ? var.s3_kms_key_arn : null
     }
   }
 }

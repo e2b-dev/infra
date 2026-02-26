@@ -65,3 +65,9 @@ variable "single_nat_gateway" {
   type        = bool
   default     = false
 }
+
+variable "allow_sandbox_internet" {
+  description = "Allow unrestricted egress from EKS nodes (required when sandboxes need internet access)"
+  type        = bool
+  default     = true
+}

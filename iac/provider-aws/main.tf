@@ -121,6 +121,7 @@ module "init" {
 
   template_bucket_name     = var.template_bucket_name
   enable_s3_access_logging = var.enable_s3_access_logging
+  s3_kms_key_arn           = module.security.s3_kms_key_arn
 }
 
 module "security" {
@@ -153,6 +154,7 @@ module "network" {
   aws_region             = var.aws_region
   restrict_egress_to_vpc = var.restrict_egress_to_vpc
   single_nat_gateway     = var.single_nat_gateway
+  allow_sandbox_internet = var.allow_sandbox_internet
 
   tags = var.tags
 }
@@ -204,12 +206,13 @@ module "eks_cluster" {
   vpc_id     = module.network.vpc_id
   subnet_ids = module.network.private_subnet_ids
 
-  eks_ami_id            = var.eks_ami_id
-  client_instance_types = var.client_instance_types
-  build_instance_types  = var.build_instance_types
-  client_capacity_types = var.client_capacity_types
-  karpenter_version     = var.karpenter_version
-  public_access_cidrs   = var.eks_public_access_cidrs
+  eks_ami_id              = var.eks_ami_id
+  bootstrap_instance_type = var.bootstrap_instance_type
+  client_instance_types   = var.client_instance_types
+  build_instance_types    = var.build_instance_types
+  client_capacity_types   = var.client_capacity_types
+  karpenter_version       = var.karpenter_version
+  public_access_cidrs     = var.eks_public_access_cidrs
 
   boot_disk_size_gb           = var.boot_disk_size_gb
   cache_disk_size_gb          = var.cache_disk_size_gb
@@ -241,6 +244,7 @@ module "load_balancer" {
   vpc_id            = module.network.vpc_id
   public_subnet_ids = module.network.public_subnet_ids
   alb_sg_id         = module.network.alb_security_group_id
+  nlb_sg_id         = module.network.nlb_security_group_id
 
   domain_name        = var.domain_name
   additional_domains = local.additional_domains
@@ -307,7 +311,8 @@ module "kubernetes" {
   client_proxy_health_port         = var.client_proxy_health_port.port
 
   # Docker reverse proxy
-  docker_reverse_proxy_port = var.docker_reverse_proxy_port
+  docker_reverse_proxy_count = var.docker_reverse_proxy_count
+  docker_reverse_proxy_port  = var.docker_reverse_proxy_port
 
   # Orchestrator
   orchestrator_port           = var.orchestrator_port

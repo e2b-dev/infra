@@ -42,7 +42,7 @@ module "eks" {
       instance_types = [var.bootstrap_instance_type]
 
       min_size     = 2
-      max_size     = 5
+      max_size     = 10
       desired_size = 2
 
       labels = {
