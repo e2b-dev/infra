@@ -25,6 +25,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 func createFileTar(t *testing.T, fileName string) *bytes.Buffer {
@@ -147,7 +148,7 @@ func TestGetPublicImageWithGeneralAuth(t *testing.T) {
 	// Set the config to include the proper platform
 	configFile, err := testImage.ConfigFile()
 	require.NoError(t, err)
-	configFile.Architecture = "amd64"
+	configFile.Architecture = utils.TargetArch()
 	configFile.OS = "linux"
 	testImage, err = mutate.ConfigFile(testImage, configFile)
 	require.NoError(t, err)
