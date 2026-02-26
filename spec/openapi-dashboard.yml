@@ -159,7 +159,6 @@ components:
           description: Template alias when present, otherwise template ID.
         templateId:
           type: string
-          format: uuid
           description: Identifier of the template.
         status:
           $ref: "#/components/schemas/BuildStatus"

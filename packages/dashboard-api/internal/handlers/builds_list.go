@@ -67,14 +67,6 @@ func (s *APIStore) GetBuilds(c *gin.Context, params api.GetBuildsParams) {
 
 	builds := make([]api.ListedBuild, 0, len(rows))
 	for _, row := range rows {
-		templateID, parseErr := uuid.Parse(row.TemplateID)
-		if parseErr != nil {
-			logger.L().Error(ctx, "invalid template id in build row", zap.Error(parseErr), zap.String("templateId", row.TemplateID), logger.WithTeamID(teamID.String()), logger.WithBuildID(row.ID.String()))
-			s.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting builds")
-
-			return
-		}
-
 		template := row.TemplateAlias
 		if template == "" {
 			template = row.TemplateID
@@ -83,7 +75,7 @@ func (s *APIStore) GetBuilds(c *gin.Context, params api.GetBuildsParams) {
 		builds = append(builds, api.ListedBuild{
 			Id:            row.ID,
 			Template:      template,
-			TemplateId:    templateID,
+			TemplateId:    row.TemplateID,
 			Status:        dashboardutils.MapBuildStatusFromDBStatus(row.Status),
 			StatusMessage: dashboardutils.MapBuildStatusMessageFromDBStatus(row.Status, row.Reason),
 			CreatedAt:     row.CreatedAt,
@@ -139,40 +131,26 @@ func (s *APIStore) listBuildRows(
 	}
 
 	filter := strings.TrimSpace(*buildIDOrTemplate)
-	filterUUID, err := uuid.Parse(filter)
-	if err != nil {
-		rows, queryErr := s.db.GetTeamBuildsPageByTemplateAlias(ctx, queries.GetTeamBuildsPageByTemplateAliasParams{
-			TemplateAlias:   filter,
+	filterUUID, parseErr := uuid.Parse(filter)
+	if parseErr == nil {
+		byBuildIDRows, byBuildIDErr := s.db.GetTeamBuildsPageByBuildID(ctx, queries.GetTeamBuildsPageByBuildIDParams{
 			TeamID:          teamID,
+			BuildID:         filterUUID,
 			CursorCreatedAt: cursorTime,
 			CursorID:        cursorID,
 			Statuses:        statuses,
 			LimitPlusOne:    limitPlusOne,
 		})
-		if queryErr != nil {
-			return nil, queryErr
+		if byBuildIDErr != nil {
+			return nil, byBuildIDErr
 		}
-
-		return mapBuildRowsByTemplateAlias(rows), nil
-	}
-
-	byBuildIDRows, byBuildIDErr := s.db.GetTeamBuildsPageByBuildID(ctx, queries.GetTeamBuildsPageByBuildIDParams{
-		TeamID:          teamID,
-		BuildID:         filterUUID,
-		CursorCreatedAt: cursorTime,
-		CursorID:        cursorID,
-		Statuses:        statuses,
-		LimitPlusOne:    limitPlusOne,
-	})
-	if byBuildIDErr != nil {
-		return nil, byBuildIDErr
-	}
-	if len(byBuildIDRows) > 0 {
-		return mapBuildRowsByBuildID(byBuildIDRows), nil
+		if len(byBuildIDRows) > 0 {
+			return mapBuildRowsByBuildID(byBuildIDRows), nil
+		}
 	}
 
 	byTemplateIDRows, byTemplateIDErr := s.db.GetTeamBuildsPageByTemplateID(ctx, queries.GetTeamBuildsPageByTemplateIDParams{
-		TemplateID:      filterUUID.String(),
+		TemplateID:      filter,
 		TeamID:          teamID,
 		CursorCreatedAt: cursorTime,
 		CursorID:        cursorID,
@@ -182,8 +160,23 @@ func (s *APIStore) listBuildRows(
 	if byTemplateIDErr != nil {
 		return nil, byTemplateIDErr
 	}
+	if len(byTemplateIDRows) > 0 {
+		return mapBuildRowsByTemplateID(byTemplateIDRows), nil
+	}
 
-	return mapBuildRowsByTemplateID(byTemplateIDRows), nil
+	byTemplateAliasRows, byTemplateAliasErr := s.db.GetTeamBuildsPageByTemplateAlias(ctx, queries.GetTeamBuildsPageByTemplateAliasParams{
+		TemplateAlias:   filter,
+		TeamID:          teamID,
+		CursorCreatedAt: cursorTime,
+		CursorID:        cursorID,
+		Statuses:        statuses,
+		LimitPlusOne:    limitPlusOne,
+	})
+	if byTemplateAliasErr != nil {
+		return nil, byTemplateAliasErr
+	}
+
+	return mapBuildRowsByTemplateAlias(byTemplateAliasRows), nil
 }
 
 func normalizeBuildsLimit(limit *api.BuildsLimit) int32 {

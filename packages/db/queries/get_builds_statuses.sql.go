@@ -21,7 +21,6 @@ SELECT
   b.finished_at
 FROM public.env_builds b
 WHERE b.team_id = $1::uuid
-  AND b.source = 'template'
   AND b.id = ANY(COALESCE($2::uuid[], ARRAY[]::uuid[]))
 `
 

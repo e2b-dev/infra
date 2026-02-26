@@ -6,5 +6,4 @@ SELECT
   b.finished_at
 FROM public.env_builds b
 WHERE b.team_id = sqlc.arg(team_id)::uuid
-  AND b.source = 'template'
   AND b.id = ANY(COALESCE(sqlc.arg(build_ids)::uuid[], ARRAY[]::uuid[]));

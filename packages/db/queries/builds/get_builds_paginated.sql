@@ -6,9 +6,9 @@ SELECT
   b.created_at,
   b.finished_at,
   eba.env_id AS template_id,
-  ea.alias AS template_alias
+  COALESCE(ea.alias, '') AS template_alias
 FROM public.env_builds b
-LEFT JOIN LATERAL (
+JOIN LATERAL (
   SELECT a.env_id
   FROM public.env_build_assignments a
   WHERE a.build_id = b.id
@@ -39,9 +39,9 @@ SELECT
   b.created_at,
   b.finished_at,
   eba.env_id AS template_id,
-  ea.alias AS template_alias
+  COALESCE(ea.alias, '') AS template_alias
 FROM public.env_builds b
-LEFT JOIN LATERAL (
+JOIN LATERAL (
   SELECT a.env_id
   FROM public.env_build_assignments a
   WHERE a.build_id = b.id
@@ -73,7 +73,7 @@ SELECT
   b.created_at,
   b.finished_at,
   eba.env_id AS template_id,
-  ea.alias AS template_alias
+  COALESCE(ea.alias, '') AS template_alias
 FROM public.env_builds b
 JOIN LATERAL (
   SELECT a.env_id
@@ -107,7 +107,7 @@ SELECT
   b.created_at,
   b.finished_at,
   eba.env_id AS template_id,
-  ea.alias AS template_alias
+  COALESCE(ea.alias, '') AS template_alias
 FROM public.env_builds b
 JOIN LATERAL (
   SELECT a.env_id
