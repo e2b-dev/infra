@@ -19,6 +19,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/fdexit"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/userfaultfd")
@@ -32,11 +33,26 @@ func hasEvent(revents, event int16) bool {
 	return revents&event != 0
 }
 
+// PageReader is the interface used by the UFFD handler to read page data from the template build.
+// It uses a context-aware ReadAt that handles mixed-granularity mappings (4KiB dedup pages + 2MB template ranges).
+type PageReader interface {
+	ReadAt(ctx context.Context, p []byte, off int64) (int, error)
+}
+
+// pagePool is shared across all UFFD instances to reuse hugepage-sized buffers.
+var pagePool = sync.Pool{
+	New: func() any {
+		buf := make([]byte, header.HugepageSize)
+		return &buf
+	},
+}
+
 type Userfaultfd struct {
 	fd Fd
 
-	src block.Slicer
-	ma  *memory.Mapping
+	src      PageReader
+	pagesize int64
+	ma       *memory.Mapping
 
 	// We don't skip the already mapped pages, because if the memory is swappable the page *might* under some conditions be mapped out.
 	// For hugepages this should not be a problem, but might theoretically happen to normal pages with swap
@@ -51,21 +67,21 @@ type Userfaultfd struct {
 	logger logger.Logger
 }
 
-// NewUserfaultfdFromFd creates a new userfaultfd instance with optional configuration.
-func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logger logger.Logger) (*Userfaultfd, error) {
-	blockSize := src.BlockSize()
-
-	for _, region := range m.Regions {
-		if region.PageSize != uintptr(blockSize) {
-			return nil, fmt.Errorf("block size mismatch: %d != %d for region %d", region.PageSize, blockSize, region.BaseHostVirtAddr)
-		}
+// NewUserfaultfdFromFd creates a new userfaultfd instance.
+// The src must implement ReadAt with context, which handles mixed-granularity reads
+// (e.g., 4KiB dedup pages combined with 2MB template ranges).
+func NewUserfaultfdFromFd(fd uintptr, src PageReader, m *memory.Mapping, logger logger.Logger) (*Userfaultfd, error) {
+	pagesize := int64(header.HugepageSize)
+	if len(m.Regions) > 0 {
+		pagesize = int64(m.Regions[0].PageSize)
 	}
 
 	u := &Userfaultfd{
 		fd:              Fd(fd),
 		src:             src,
-		missingRequests: block.NewTracker(blockSize),
-		prefetchTracker: block.NewPrefetchTracker(blockSize),
+		pagesize:        pagesize,
+		missingRequests: block.NewTracker(pagesize),
+		prefetchTracker: block.NewPrefetchTracker(pagesize),
 		ma:              m,
 		logger:          logger,
 	}
@@ -232,7 +248,7 @@ outerLoop:
 		// For the write to be executed, we first need to copy the page from the source to the guest memory.
 		if flags&UFFD_PAGEFAULT_FLAG_WRITE != 0 {
 			u.wg.Go(func() error {
-				return u.faultPage(ctx, addr, offset, pagesize, u.src, fdExit.SignalExit, block.Write)
+				return u.faultPage(ctx, addr, offset, pagesize, fdExit.SignalExit, block.Write)
 			})
 
 			continue
@@ -242,7 +258,7 @@ outerLoop:
 		// If the event has no flags, it was a read to a missing page and we need to copy the page from the source to the guest memory.
 		if flags == 0 {
 			u.wg.Go(func() error {
-				return u.faultPage(ctx, addr, offset, pagesize, u.src, fdExit.SignalExit, block.Read)
+				return u.faultPage(ctx, addr, offset, pagesize, fdExit.SignalExit, block.Read)
 			})
 
 			continue
@@ -280,7 +296,6 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) e
 	ctx, span := tracer.Start(ctx, "prefault page")
 	defer span.End()
 
-	// Get host virtual address and page size for this offset
 	addr, pagesize, err := u.ma.GetHostVirtAddr(offset)
 	if err != nil {
 		return fmt.Errorf("failed to get host virtual address: %w", err)
@@ -290,21 +305,7 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) e
 		return fmt.Errorf("data length (%d) is less than pagesize (%d)", len(data), pagesize)
 	}
 
-	return u.faultPage(ctx, addr, offset, pagesize, directDataSource{data, int64(pagesize)}, nil, block.Prefetch)
-}
-
-// directDataSource wraps a byte slice to implement block.Slicer for prefaulting.
-type directDataSource struct {
-	data     []byte
-	pagesize int64
-}
-
-func (d directDataSource) Slice(_ context.Context, _, _ int64) ([]byte, error) {
-	return d.data, nil
-}
-
-func (d directDataSource) BlockSize() int64 {
-	return d.pagesize
+	return u.faultPageDirect(ctx, addr, pagesize, data, nil, block.Prefetch, offset)
 }
 
 func (u *Userfaultfd) faultPage(
@@ -312,16 +313,11 @@ func (u *Userfaultfd) faultPage(
 	addr uintptr,
 	offset int64,
 	pagesize uintptr,
-	source block.Slicer,
 	onFailure func() error,
 	accessType block.AccessType,
 ) error {
 	span := trace.SpanFromContext(ctx)
 
-	// The RLock must be called inside the goroutine to ensure RUnlock runs via defer,
-	// even if the errgroup is cancelled or the goroutine returns early.
-	// This check protects us against race condition between marking the request as missing and accessing the missingRequests tracker.
-	// The Firecracker pause should return only after the requested memory is faulted in, so we don't need to guard the pagefault from the moment it is created.
 	u.settleRequests.RLock()
 	defer u.settleRequests.RUnlock()
 
@@ -331,7 +327,11 @@ func (u *Userfaultfd) faultPage(
 		}
 	}()
 
-	b, dataErr := source.Slice(ctx, offset, int64(pagesize))
+	bufPtr := pagePool.Get().(*[]byte)
+	defer pagePool.Put(bufPtr)
+	b := *bufPtr
+
+	_, dataErr := u.src.ReadAt(ctx, b[:pagesize], offset)
 	if dataErr != nil {
 		var signalErr error
 		if onFailure != nil {
@@ -348,16 +348,12 @@ func (u *Userfaultfd) faultPage(
 
 	var copyMode CULong
 
-	// Performing copy() on UFFD clears the WP bit unless we explicitly tell
-	// it not to. We do that for faults caused by a read access. Write accesses
-	// would anyways cause clear the write-protection bit.
 	if accessType != block.Write {
 		copyMode |= UFFDIO_COPY_MODE_WP
 	}
 
-	copyErr := u.fd.copy(addr, pagesize, b, copyMode)
+	copyErr := u.fd.copy(addr, pagesize, b[:pagesize], copyMode)
 	if errors.Is(copyErr, unix.EEXIST) {
-		// Page is already mapped
 		span.SetAttributes(attribute.Bool("uffd.already_mapped", true))
 
 		return nil
@@ -377,7 +373,51 @@ func (u *Userfaultfd) faultPage(
 		return fmt.Errorf("failed uffdio copy %w", joinedErr)
 	}
 
-	// Add the offset to the missing requests tracker with metadata.
+	u.missingRequests.Add(offset)
+	u.prefetchTracker.Add(offset, accessType)
+
+	return nil
+}
+
+// faultPageDirect copies pre-loaded data (e.g. from prefault) into VM memory.
+func (u *Userfaultfd) faultPageDirect(
+	ctx context.Context,
+	addr uintptr,
+	pagesize uintptr,
+	data []byte,
+	onFailure func() error,
+	accessType block.AccessType,
+	offset int64,
+) error {
+	span := trace.SpanFromContext(ctx)
+
+	u.settleRequests.RLock()
+	defer u.settleRequests.RUnlock()
+
+	var copyMode CULong
+	if accessType != block.Write {
+		copyMode |= UFFDIO_COPY_MODE_WP
+	}
+
+	copyErr := u.fd.copy(addr, pagesize, data, copyMode)
+	if errors.Is(copyErr, unix.EEXIST) {
+		span.SetAttributes(attribute.Bool("uffd.already_mapped", true))
+		return nil
+	}
+
+	if copyErr != nil {
+		var signalErr error
+		if onFailure != nil {
+			signalErr = onFailure()
+		}
+
+		joinedErr := errors.Join(copyErr, signalErr)
+		span.RecordError(joinedErr)
+		u.logger.Error(ctx, "UFFD serve uffdio copy error", zap.Error(joinedErr))
+
+		return fmt.Errorf("failed uffdio copy %w", joinedErr)
+	}
+
 	u.missingRequests.Add(offset)
 	u.prefetchTracker.Add(offset, accessType)
 

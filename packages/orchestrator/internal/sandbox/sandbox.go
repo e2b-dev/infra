@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -939,6 +940,7 @@ func (s *Sandbox) Pause(
 		memfileDiffMetadata,
 		s.config.DefaultCacheDir,
 		s.process,
+		originalMemfile,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error while post processing: %w", err)
@@ -997,37 +999,63 @@ func pauseProcessMemory(
 	diffMetadata *header.DiffMetadata,
 	cacheDir string,
 	fc *fc.Process,
+	originalMemfile block.ReadonlyDevice,
 ) (d build.Diff, h *header.Header, e error) {
 	ctx, span := tracer.Start(ctx, "process-memory")
 	defer span.End()
 
-	header, err := diffMetadata.ToDiffHeader(ctx, originalHeader, buildID)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create memfile header: %w", err)
-	}
+	// Step 1: Export dirty hugepages from FC process to a temporary cache
+	exportPath := build.GenerateDiffCachePath(cacheDir, buildID.String(), build.Memfile)
 
-	memfileDiffPath := build.GenerateDiffCachePath(cacheDir, buildID.String(), build.Memfile)
-
-	cache, err := fc.ExportMemory(
+	exportedCache, err := fc.ExportMemory(
 		ctx,
 		diffMetadata.Dirty,
-		memfileDiffPath,
+		exportPath,
 		diffMetadata.BlockSize,
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to export memory: %w", err)
 	}
 
-	diff, err := build.NewLocalDiffFromCache(
-		build.GetDiffStoreKey(buildID.String(), build.Memfile),
-		cache,
+	// Step 2: Deduplicate at 4KiB page level by comparing against original template
+	dedupPath := build.GenerateDiffCachePath(cacheDir, buildID.String(), build.Memfile)
+
+	dedupMetadata, err := writeDedupDiff(
+		ctx,
+		exportedCache,
+		originalMemfile,
+		diffMetadata.Dirty,
+		diffMetadata.BlockSize,
+		dedupPath,
 	)
 	if err != nil {
-		// Close the cache even if the diff creation fails.
-		return nil, nil, fmt.Errorf("failed to create local diff from cache: %w", errors.Join(err, cache.Close()))
+		return nil, nil, fmt.Errorf("failed to write dedup diff: %w", errors.Join(err, exportedCache.Close()))
 	}
 
-	return diff, header, nil
+	// Close the exported cache — we no longer need it after dedup
+	if err := exportedCache.Close(); err != nil {
+		return nil, nil, fmt.Errorf("failed to close exported cache: %w", err)
+	}
+
+	// Clean up the temporary export file
+	os.Remove(exportPath)
+
+	// Step 3: Create header from dedup metadata (4KiB page level mappings)
+	dedupHeader, err := dedupMetadata.ToDiffHeader(ctx, originalHeader, buildID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create dedup memfile header: %w", err)
+	}
+
+	// Step 4: Create diff from the dedup file
+	diff, err := newDedupDiffFromFile(
+		build.GetDiffStoreKey(buildID.String(), build.Memfile),
+		dedupPath,
+	)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create dedup diff: %w", err)
+	}
+
+	return diff, dedupHeader, nil
 }
 
 func pauseProcessRootfs(

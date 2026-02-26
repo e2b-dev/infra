@@ -93,7 +93,7 @@ func (d *DiffMetadata) ToDiffHeader(
 		return nil, fmt.Errorf("failed to create header: %w", err)
 	}
 
-	err = ValidateMappings(header.Mapping, header.Metadata.Size, header.Metadata.BlockSize)
+	err = ValidateMappings(header.Mapping, header.Metadata.Size, PageSize)
 	if err != nil {
 		if header.IsNormalizeFixApplied() {
 			return nil, fmt.Errorf("invalid header mappings: %w", err)
