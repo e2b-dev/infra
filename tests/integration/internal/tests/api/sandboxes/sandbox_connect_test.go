@@ -111,7 +111,7 @@ func TestSandboxConnect(t *testing.T) {
 	t.Run("connect to not existing sandbox", func(t *testing.T) {
 		t.Parallel()
 		// Try to connect the sandbox
-		sbxConnect, err := c.PostSandboxesSandboxIDConnectWithResponse(t.Context(), "it-isnt-there", api.PostSandboxesSandboxIDConnectJSONRequestBody{
+		sbxConnect, err := c.PostSandboxesSandboxIDConnectWithResponse(t.Context(), "itisntthere0000", api.PostSandboxesSandboxIDConnectJSONRequestBody{
 			Timeout: 30,
 		}, setup.WithAPIKey())
 		require.NoError(t, err)
@@ -121,7 +121,7 @@ func TestSandboxConnect(t *testing.T) {
 	t.Run("connect with too big timeout", func(t *testing.T) {
 		t.Parallel()
 		// Try to connect the sandbox
-		sbxConnect, err := c.PostSandboxesSandboxIDConnectWithResponse(t.Context(), "it-isnt-there", api.PostSandboxesSandboxIDConnectJSONRequestBody{
+		sbxConnect, err := c.PostSandboxesSandboxIDConnectWithResponse(t.Context(), "itisntthere0000", api.PostSandboxesSandboxIDConnectJSONRequestBody{
 			Timeout: 60 * 60 * 72, // 3 days
 		}, setup.WithAPIKey())
 		require.NoError(t, err)

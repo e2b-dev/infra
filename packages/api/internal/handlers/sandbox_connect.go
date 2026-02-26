@@ -50,7 +50,14 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 	}
 
 	teamID := teamInfo.Team.ID
-	sandboxID = utils.ShortID(sandboxID)
+
+	sandboxID, err = utils.ShortID(sandboxID)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid sandbox ID")
+
+		return
+	}
+
 	sandboxData, err := a.orchestrator.GetSandbox(ctx, teamID, sandboxID)
 	if err == nil {
 		if sandboxData.TeamID != teamID {

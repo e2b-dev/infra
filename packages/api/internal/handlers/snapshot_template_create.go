@@ -36,7 +36,13 @@ func (a *APIStore) PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID api
 		telemetry.WithSandboxID(sandboxID),
 	)
 
-	sandboxID = utils.ShortID(sandboxID)
+	var err error
+	sandboxID, err = utils.ShortID(sandboxID)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid sandbox ID")
+
+		return
+	}
 
 	body, err := utils.ParseBody[api.PostSandboxesSandboxIDSnapshotsJSONRequestBody](ctx, c)
 	if err != nil {
