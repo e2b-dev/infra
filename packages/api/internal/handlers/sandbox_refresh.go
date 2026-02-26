@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
@@ -61,7 +60,7 @@ func (a *APIStore) PostSandboxesSandboxIDRefreshes(
 	}
 
 	if sandboxData.TeamID != team.ID {
-		logger.L().Debug(ctx, "Sandbox team mismatch on refresh", logger.WithSandboxID(sandboxID), logger.WithTeamID(teamID))
+		logger.L().Debug(ctx, "Sandbox team mismatch on refresh", logger.WithSandboxID(sandboxID), logger.WithTeamID(team.ID.String()))
 		a.sendAPIStoreError(c, http.StatusNotFound, sandboxNotFoundMsg(sandboxID))
 
 		return

@@ -9,8 +9,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
-	"go.uber.org/zap"
-
 	"github.com/e2b-dev/infra/packages/api/internal/db"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
@@ -70,7 +68,7 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 	sbx, err := a.orchestrator.GetSandbox(ctx, teamID, sandboxID)
 	if err == nil {
 		if sbx.TeamID != teamID {
-			logger.L().Debug(ctx, "Sandbox team mismatch on kill", logger.WithSandboxID(sandboxID), logger.WithTeamID(teamID))
+			logger.L().Debug(ctx, "Sandbox team mismatch on kill", logger.WithSandboxID(sandboxID), logger.WithTeamID(teamID.String()))
 			a.sendAPIStoreError(c, http.StatusNotFound, sandboxNotFoundMsg(sandboxID))
 
 			return

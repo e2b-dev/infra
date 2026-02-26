@@ -8,7 +8,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
@@ -111,7 +110,7 @@ func (a *APIStore) PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID api
 	}
 
 	if sbx.TeamID != teamID {
-		logger.L().Debug(ctx, "Sandbox team mismatch on snapshot", logger.WithSandboxID(sandboxID), logger.WithTeamID(teamID))
+		logger.L().Debug(ctx, "Sandbox team mismatch on snapshot", logger.WithSandboxID(sandboxID), logger.WithTeamID(teamID.String()))
 		a.sendAPIStoreError(c, http.StatusNotFound, sandboxNotFoundMsg(sandboxID))
 
 		return
