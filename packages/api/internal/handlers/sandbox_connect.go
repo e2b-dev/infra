@@ -58,6 +58,7 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 		return
 	}
 
+	// It could happen that after sandbox transition, it'll be again transitioning, retry up to maxConnectRetries times.
 	const maxConnectRetries = 3
 
 	for attempt := range maxConnectRetries {
