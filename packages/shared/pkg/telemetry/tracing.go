@@ -48,6 +48,7 @@ func ReportError(ctx context.Context, message string, err error, attrs ...attrib
 	logger.L().With(attributesToZapFields(attrs...)...).Warn(ctx, message, zap.Error(err))
 
 	span.RecordError(fmt.Errorf("%s: %w", message, err),
+		trace.WithStackTrace(true),
 		trace.WithAttributes(
 			attrs...,
 		),
