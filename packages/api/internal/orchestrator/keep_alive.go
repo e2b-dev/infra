@@ -22,7 +22,7 @@ func (o *Orchestrator) KeepAliveFor(ctx context.Context, teamID uuid.UUID, sandb
 
 	updateFunc := func(sbx sandbox.Sandbox) (sandbox.Sandbox, error) {
 		if sbx.State != sandbox.StateRunning {
-			return sbx, &sandbox.NotFoundError{SandboxID: sandboxID}
+			return sbx, &sandbox.NotRunningError{SandboxID: sandboxID, State: sbx.State}
 		}
 
 		// Calculate the maximum TTL that can be set without exceeding the max instance length
@@ -44,9 +44,12 @@ func (o *Orchestrator) KeepAliveFor(ctx context.Context, teamID uuid.UUID, sandb
 	}
 
 	var sbxNotFoundErr *sandbox.NotFoundError
+	var sbxNotRunningErr *sandbox.NotRunningError
 	sbx, err := o.sandboxStore.Update(ctx, teamID, sandboxID, updateFunc)
 	if err != nil {
 		switch {
+		case errors.As(err, &sbxNotRunningErr):
+			return &api.APIError{Code: http.StatusNotFound, ClientMsg: "Sandbox not found", Err: err}
 		case errors.As(err, &sbxNotFoundErr):
 			return &api.APIError{Code: http.StatusNotFound, ClientMsg: "Sandbox not found", Err: err}
 		case errors.Is(err, errMaxInstanceLengthExceeded):
