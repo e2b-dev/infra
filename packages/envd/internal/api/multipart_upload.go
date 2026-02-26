@@ -413,20 +413,14 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 		return
 	}
 
-	// Finalize: always mark the part as complete since the data was written to disk.
+	// Finalize: mark the part as complete since the data was written to disk.
 	// Mark partWritten so the deferred cleanup does not revert the status.
-	// Then check completed — if the session was finalized mid-write, return 409
-	// but leave the part as partComplete so Complete's validation sees it.
+	// We intentionally do not check session.completed here — the write
+	// succeeded and Complete's parts scan will count it, so returning 200
+	// gives the client an accurate view regardless of concurrent completion.
 	session.mu.Lock()
 	session.Parts[params.Part] = partComplete
 	partWritten = true
-	if session.completed.Load() {
-		session.mu.Unlock()
-		a.logger.Error().Str(string(logs.OperationIDKey), operationID).Str("uploadId", uploadId).Int("partNumber", params.Part).Msg("session completed during part upload")
-		jsonError(w, http.StatusConflict, fmt.Errorf("upload session %s was completed or aborted during part upload", uploadId))
-
-		return
-	}
 	session.mu.Unlock()
 
 	a.logger.Debug().
