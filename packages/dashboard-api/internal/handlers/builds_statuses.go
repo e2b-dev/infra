@@ -1,14 +1,14 @@
 package handlers
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
-	"github.com/e2b-dev/infra/packages/db/pkg/types"
+	dashboardutils "github.com/e2b-dev/infra/packages/dashboard-api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -16,8 +16,10 @@ import (
 
 func (s *APIStore) GetBuildsStatuses(c *gin.Context, params api.GetBuildsStatusesParams) {
 	ctx := c.Request.Context()
+	telemetry.ReportEvent(ctx, "get build statuses")
 
 	teamID := auth.MustGetTeamInfo(c).Team.ID
+	telemetry.SetAttributes(ctx, telemetry.WithTeamID(teamID.String()))
 
 	buildIDs := make([]uuid.UUID, len(params.BuildIds))
 	for i, buildID := range params.BuildIds {
@@ -32,7 +34,7 @@ func (s *APIStore) GetBuildsStatuses(c *gin.Context, params api.GetBuildsStatuse
 	rows, err := s.db.GetBuildsStatusesByTeam(ctx, p)
 
 	if err != nil {
-		logger.L().Error(ctx, "Error getting build statuses", zap.Error(err))
+		logger.L().Error(ctx, "Error getting build statuses", zap.Error(err), logger.WithTeamID(teamID.String()))
 		s.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting build statuses")
 
 		return
@@ -43,9 +45,9 @@ func (s *APIStore) GetBuildsStatuses(c *gin.Context, params api.GetBuildsStatuse
 	for _, record := range rows {
 		buildStatuses = append(buildStatuses, api.BuildStatusItem{
 			Id:            record.ID,
-			Status:        api.BuildStatus(record.StatusGroup),
+			Status:        dashboardutils.MapBuildStatusFromDBStatusGroup(record.StatusGroup),
 			FinishedAt:    record.FinishedAt,
-			StatusMessage: mapBuildStatusMessage(record.StatusGroup, record.Reason),
+			StatusMessage: dashboardutils.MapBuildStatusMessageFromDBStatusGroup(record.StatusGroup, record.Reason),
 		})
 	}
 
@@ -54,36 +56,4 @@ func (s *APIStore) GetBuildsStatuses(c *gin.Context, params api.GetBuildsStatuse
 	}
 
 	c.JSON(http.StatusOK, response)
-}
-
-// UTILS
-
-func mapBuildStatusMessage(status types.BuildStatusGroup, reason []byte) *string {
-
-	if status != types.BuildStatusGroupFailed {
-		return nil
-	}
-
-	if len(reason) == 0 {
-		return nil
-	}
-
-	var data map[string]interface{}
-
-	err := json.Unmarshal(reason, &data)
-	if err != nil {
-		return nil
-	}
-
-	message, ok := data["message"]
-	if !ok {
-		return nil
-	}
-
-	messageString, ok := message.(string)
-	if !ok {
-		return nil
-	}
-
-	return &messageString
 }
