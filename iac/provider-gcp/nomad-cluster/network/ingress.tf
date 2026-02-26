@@ -1,17 +1,5 @@
 locals {
-  domains    = toset(concat(var.additional_domains, [var.domain_name]))
   subdomains = ["dashboard-api"]
-
-  // Extract root domain (Cloudflare zone) and prefix from each domain.
-  // e.g. "sub.example.com" -> root_domain = "example.com", prefix = "sub"
-  //      "example.dev"     -> root_domain = "example.dev", prefix = ""
-  domain_parts = { for d in local.domains : d => split(".", d) }
-  domain_info = {
-    for d, parts in local.domain_parts : d => {
-      root_domain = join(".", slice(parts, length(parts) - 2, length(parts)))
-      prefix      = join(".", slice(parts, 0, max(length(parts) - 2, 0)))
-    }
-  }
 
   ingress_zones = toset([for info in local.domain_info : info.root_domain])
 
