@@ -147,16 +147,16 @@ JOIN public.envs e ON e.id = eba.env_id
 WHERE b.team_id = $1
   AND b.status_group IN ('pending', 'in_progress')
   AND e.source = 'template'
-  AND eba.env_id != $2
+  AND eba.tag != ALL($2::text[])
 `
 
 type GetInProgressTemplateBuildsByTeamParams struct {
-	TeamID            *uuid.UUID
-	ExcludeTemplateID string
+	TeamID      *uuid.UUID
+	ExcludeTags []string
 }
 
 func (q *Queries) GetInProgressTemplateBuildsByTeam(ctx context.Context, arg GetInProgressTemplateBuildsByTeamParams) (int64, error) {
-	row := q.db.QueryRow(ctx, getInProgressTemplateBuildsByTeam, arg.TeamID, arg.ExcludeTemplateID)
+	row := q.db.QueryRow(ctx, getInProgressTemplateBuildsByTeam, arg.TeamID, arg.ExcludeTags)
 	var build_count int64
 	err := row.Scan(&build_count)
 	return build_count, err

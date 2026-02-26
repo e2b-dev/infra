@@ -60,11 +60,17 @@ func RegisterBuild(
 	ctx, span := tracer.Start(ctx, "register build")
 	defer span.End()
 
+	// Add default tag if no tags are present
+	tags := data.Tags
+	if len(tags) == 0 {
+		tags = []string{id.DefaultTag}
+	}
+
 	// This is a simple implementation of concurrency limit
 	// It does not guarantee that the limit is not exceeded, but it should be good enough for now (considering overall low number of total builds)
 	otherBuildCount, err := db.GetInProgressTemplateBuildsByTeam(ctx, queries.GetInProgressTemplateBuildsByTeamParams{
-		TeamID:            &data.Team.ID,
-		ExcludeTemplateID: data.TemplateID,
+		TeamID:      &data.Team.ID,
+		ExcludeTags: tags,
 	})
 	if err != nil {
 		return nil, &api.APIError{
@@ -97,12 +103,6 @@ func RegisterBuild(
 			ClientMsg: "Failed to generate build id",
 			Code:      http.StatusInternalServerError,
 		}
-	}
-
-	// Add default tag if no tags are present
-	tags := data.Tags
-	if len(tags) == 0 {
-		tags = []string{id.DefaultTag}
 	}
 
 	telemetry.SetAttributes(ctx,
