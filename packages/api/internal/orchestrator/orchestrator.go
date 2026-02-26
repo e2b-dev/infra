@@ -139,7 +139,7 @@ func New(
 		reservationStorage = reservations.NewReservationStorage()
 		sandboxStorage = populate_redis.NewStorage(memory.NewStorage(), redisStorage)
 		logger.L().Info(ctx, "Using populate_redis sandbox storage backend")
-	case cfg.SandboxStorageBeckendRedis:
+	case cfg.SandboxStorageBackendRedis:
 		reservationStorage = redisreservations.NewReservationStorage(redisClient)
 		sandboxStorage = redisStorage
 		logger.L().Info(ctx, "Using redis sandbox storage backend")
