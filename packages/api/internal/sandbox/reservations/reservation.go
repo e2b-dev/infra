@@ -2,6 +2,7 @@ package reservations
 
 import (
 	"context"
+	"sort"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -39,6 +40,8 @@ func NewReservationStorage() *ReservationStorage {
 func (s *ReservationStorage) Reserve(ctx context.Context, teamID uuid.UUID, sandboxID string, limit int) (finishStart func(sandbox.Sandbox, error), waitForStart func(ctx context.Context) (sandbox.Sandbox, error), err error) {
 	alreadyPresent := false
 	limitExceeded := false
+	var currentReservationCount int
+	var currentReservationSandboxIDs []string
 	var startResult *utils.SetOnce[sandbox.Sandbox]
 
 	teamIDStr := teamID.String()
@@ -56,6 +59,8 @@ func (s *ReservationStorage) Reserve(ctx context.Context, teamID uuid.UUID, sand
 
 		if limit >= 0 && len(teamSandboxes) >= limit {
 			limitExceeded = true
+			currentReservationCount = len(teamSandboxes)
+			currentReservationSandboxIDs = reservationSandboxIDs(teamSandboxes)
 
 			return teamSandboxes
 		}
@@ -67,6 +72,16 @@ func (s *ReservationStorage) Reserve(ctx context.Context, teamID uuid.UUID, sand
 	})
 
 	if limitExceeded {
+		logger.L().Warn(
+			ctx,
+			"Sandbox reservation limit exceeded",
+			logger.WithTeamID(teamIDStr),
+			logger.WithSandboxID(sandboxID),
+			zap.Int("reservation_limit", limit),
+			zap.Int("current_reservation_count", currentReservationCount),
+			zap.Strings("current_reservation_sandbox_ids", currentReservationSandboxIDs),
+		)
+
 		return nil, nil, &sandbox.LimitExceededError{TeamID: teamID}
 	}
 
@@ -85,6 +100,17 @@ func (s *ReservationStorage) Reserve(ctx context.Context, teamID uuid.UUID, sand
 			_ = s.Release(ctx, teamID, sandboxID)
 		}
 	}, nil, nil
+}
+
+func reservationSandboxIDs(teamSandboxes TeamSandboxes) []string {
+	ids := make([]string, 0, len(teamSandboxes))
+	for id := range teamSandboxes {
+		ids = append(ids, id)
+	}
+
+	sort.Strings(ids)
+
+	return ids
 }
 
 func (s *ReservationStorage) Release(_ context.Context, teamID uuid.UUID, sandboxID string) error {
