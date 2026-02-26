@@ -37,9 +37,6 @@ const (
 	tarballExportUpdates = 10
 )
 
-// ErrImageTooLarge is a sentinel for errors.Is checks.
-var ErrImageTooLarge = errors.New("image too large")
-
 // ImageTooLargeError is returned when the uncompressed Docker image exceeds the maximum filesystem size.
 type ImageTooLargeError struct {
 	ImageSize int64 // actual uncompressed size in bytes, 0 if unknown
@@ -61,10 +58,6 @@ func (e *ImageTooLargeError) Error() string {
 			"Please reduce your Docker image size (e.g., use a smaller base image, multi-stage builds, or remove unnecessary files)",
 		humanize.Bytes(uint64(e.MaxSize)),
 	)
-}
-
-func (e *ImageTooLargeError) Is(target error) bool {
-	return target == ErrImageTooLarge
 }
 
 var DefaultPlatform = containerregistry.Platform{
