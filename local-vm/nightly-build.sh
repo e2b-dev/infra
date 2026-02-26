@@ -80,7 +80,7 @@ if [[ -f "$LOCKFILE" ]]; then
   fi
 fi
 echo $$ > "$LOCKFILE"
-trap 'rm -f "$LOCKFILE"' EXIT
+trap '"${SCRIPT_DIR}/e2b-local.sh" stop --name "$VM_NAME" --force 2>/dev/null || true; rm -f "$LOCKFILE"' EXIT
 
 # ── Resolve image to test ────────────────────────────────────────────────────
 if [[ -n "$SPECIFIC_IMAGE" ]]; then
