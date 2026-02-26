@@ -4,16 +4,16 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5"
+	"go.uber.org/zap"
+
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
 	dashboardutils "github.com/e2b-dev/infra/packages/dashboard-api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
-
-	"github.com/jackc/pgx/v5"
 )
 
 func (s *APIStore) GetBuildsBuildId(c *gin.Context, buildId api.BuildId) {

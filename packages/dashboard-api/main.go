@@ -59,9 +59,7 @@ func run() int {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	var (
-		port  int
-	)
+	var port int
 	flag.IntVar(&port, "port", defaultPort, "Port for test HTTP server")
 	flag.Parse()
 
