@@ -231,6 +231,8 @@ const nodes = [
     aws: { label: 'TCP Firewall', subtitle: 'iptables (same kernel features)', status: 'ready' } },
   { id: 'nfs-proxy',    label: 'NFS Proxy',             subtitle: 'Persistent volumes :2049',                 x: 555,  y: 372, w: 170, h: 48, layer: 'orchestration',
     aws: { label: 'NFS Proxy → EFS', subtitle: 'efs/main.tf (mount targets + access points)', status: 'ready' } },
+  { id: 'temporal',     label: 'Temporal Server',       subtitle: 'Durable workflow orchestration',            x: 40,   y: 372, w: 220, h: 48, layer: 'orchestration',
+    aws: { label: 'Temporal Server', subtitle: 'temporal/ (Helm, mTLS, Aurora PostgreSQL, optional)', status: 'ready' } },
   // VM
   { id: 'firecracker',  label: 'Firecracker VM',        subtitle: 'microVM + UFFD + cgroups',                x: 150,  y: 475, w: 205, h: 55, layer: 'vm',
     aws: { label: 'Firecracker VM', subtitle: 'eks-cluster/ (C8i nested virt + Karpenter scaling + KVM)', status: 'ready' } },
@@ -264,7 +266,7 @@ const nodes = [
   { id: 'container-reg',label: 'Artifact Registry',      subtitle: 'Container images (GAR)',                    x: 1020, y: 296, w: 168, h: 48, layer: 'external',
     aws: { label: 'ECR Repos (2)', subtitle: 'init/main.tf (e2b-core + e2b-orchestration)', status: 'ready' } },
   { id: 'secrets',      label: 'Secret Manager',         subtitle: 'Secrets storage',                           x: 1020, y: 594, w: 178, h: 48, layer: 'external',
-    aws: { label: 'Secrets Manager (18)', subtitle: 'init/secrets.tf', status: 'ready' } },
+    aws: { label: 'Secrets Manager (19)', subtitle: 'init/secrets.tf + temporal/ (DB password)', status: 'ready' } },
   { id: 'iam',          label: 'GCP IAM',                subtitle: 'Service accounts',                          x: 1020, y: 660, w: 155, h: 44, layer: 'external',
     aws: { label: 'IAM Roles', subtitle: 'init/main.tf (e2b-infra-instances)', status: 'ready' } },
   // Compliance / Security
@@ -300,6 +302,10 @@ const connections = [
   { from: 'client-proxy', to: 'redis',          type: 'data', label: 'Catalog lookup',       awsLabel: 'Catalog lookup' },
   { from: 'orchestrator', to: 'redis',          type: 'data', label: 'Events + net slots',   awsLabel: 'Events + net slots' },
   { from: 'orchestrator', to: 'clickhouse',     type: 'data', label: 'Events + host stats',  awsLabel: 'Events + host stats' },
+  // Temporal (multi-agent workflow orchestration)
+  { from: 'api',          to: 'temporal',        type: 'grpc',   label: 'Workflow SDK',        awsLabel: 'Workflow SDK (gRPC :7233)' },
+  { from: 'temporal',     to: 'postgresql',      type: 'data',   label: 'Workflow state',      awsLabel: 'Aurora (temporal + visibility DBs)' },
+  { from: 'temporal',     to: 'orchestrator',    type: 'grpc',   label: 'Activity: sandbox',   awsLabel: 'Activity: CreateSandbox' },
   // Storage
   { from: 'orchestrator', to: 'gcs',            type: 'storage', label: 'Template cache',     awsLabel: 'S3 template cache' },
   { from: 'template-mgr', to: 'gcs',            type: 'storage', label: 'Build artifacts',    awsLabel: 'S3 build artifacts' },
