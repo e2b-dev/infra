@@ -276,6 +276,39 @@ func TestProxyResumePermissionDeniedErrorTemplate(t *testing.T) {
 	})
 }
 
+func TestProxyResourceExhaustedReturnsJSON(t *testing.T) {
+	t.Parallel()
+
+	getDestination := func(*http.Request) (*pool.Destination, error) {
+		return nil, NewErrSandboxResourceExhausted("test-sandbox", "rate limit hit")
+	}
+
+	proxy, port, err := newTestProxy(t, getDestination)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		proxy.Close()
+	})
+
+	proxyURL := fmt.Sprintf("http://127.0.0.1:%d/hello", port)
+	resp, err := httpGet(t, proxyURL)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = resp.Body.Close()
+	})
+
+	require.Equal(t, http.StatusTooManyRequests, resp.StatusCode)
+	require.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
+
+	var response struct {
+		Code    int32  `json:"code"`
+		Message string `json:"message"`
+	}
+	err = json.NewDecoder(resp.Body).Decode(&response)
+	require.NoError(t, err)
+	require.Equal(t, int32(http.StatusTooManyRequests), response.Code)
+	require.Equal(t, "rate limit hit", response.Message)
+}
+
 func httpGet(t *testing.T, proxyURL string) (*http.Response, error) {
 	t.Helper()
 

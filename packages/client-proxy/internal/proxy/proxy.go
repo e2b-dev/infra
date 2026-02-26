@@ -97,7 +97,7 @@ func handlePausedSandbox(
 				return "", autoResumeNotAllowed, nil
 			}
 			if st.Code() == codes.ResourceExhausted {
-				return "", autoResumeResourceExhausted, reverseproxy.NewErrSandboxResourceExhausted(sandboxId)
+				return "", autoResumeResourceExhausted, reverseproxy.NewErrSandboxResourceExhausted(sandboxId, st.Message())
 			}
 		}
 

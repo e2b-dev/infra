@@ -151,6 +151,20 @@ func TestHandlePausedSandbox_PermissionDenied(t *testing.T) {
 	require.Equal(t, autoResumePermissionDenied, res)
 }
 
+func TestHandlePausedSandbox_ResourceExhausted(t *testing.T) {
+	t.Parallel()
+
+	ff := newFF(t, true)
+
+	_, res, err := handlePausedSandbox(context.Background(), "sbx", 8000, "token", "", stubResumer{err: status.Error(codes.ResourceExhausted, "rate limit hit")}, ff)
+	require.Error(t, err)
+	var exhaustedErr *reverseproxy.SandboxResourceExhaustedError
+	require.ErrorAs(t, err, &exhaustedErr)
+	require.Equal(t, "sbx", exhaustedErr.SandboxId)
+	require.Equal(t, "rate limit hit", exhaustedErr.Message)
+	require.Equal(t, autoResumeResourceExhausted, res)
+}
+
 func TestHandlePausedSandbox_SnapshotNotFound(t *testing.T) {
 	t.Parallel()
 
