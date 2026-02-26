@@ -110,8 +110,8 @@ write_files:
       Type=oneshot
       RemainAfterExit=no
       ExecStart=/opt/e2b/deploy-phase2.sh
-      # Shut down VM after phase 2 completes
-      ExecStartPost=/sbin/shutdown -h now
+      # Shut down VM after phase 2 regardless of success or failure
+      ExecStopPost=/sbin/shutdown -h now
       TimeoutStartSec=3600
       StandardOutput=journal+console
       StandardError=journal+console

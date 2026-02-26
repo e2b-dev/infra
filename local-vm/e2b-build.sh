@@ -298,8 +298,18 @@ else
   TAIL_PID=$!
 
   # Wait for QEMU process to exit (phase2.service shuts down VM when done)
+  PHASE2_TIMEOUT=3600
+  PHASE2_ELAPSED=0
   while kill -0 "$QEMU_PID" 2>/dev/null; do
     sleep 5
+    PHASE2_ELAPSED=$((PHASE2_ELAPSED + 5))
+    if (( PHASE2_ELAPSED >= PHASE2_TIMEOUT )); then
+      error "Phase 2 timed out after ${PHASE2_TIMEOUT}s. Killing VM."
+      kill "$QEMU_PID" 2>/dev/null || true
+      sleep 2
+      kill -9 "$QEMU_PID" 2>/dev/null || true
+      exit 1
+    fi
   done
 
   # Stop the tail process
