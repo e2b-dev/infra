@@ -105,6 +105,7 @@ func check(snapshotPath string) error {
 			len(snapshotData.SandboxIDs),
 			len(currentSandboxes),
 		)
+
 		return nil
 	}
 
