@@ -1,7 +1,6 @@
 package proxy
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -89,34 +88,18 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 
 		var resourceExhaustedErr *SandboxResourceExhaustedError
 		if errors.As(err, &resourceExhaustedErr) {
-			logger.L().Warn(ctx, "sandbox resource exhausted",
+			logger.L().Warn(ctx, "team sandbox limit reached",
 				zap.String("host", r.Host),
 				logger.WithSandboxID(resourceExhaustedErr.SandboxId))
 
-			message := resourceExhaustedErr.Message
-			if message == "" {
-				message = "Sandbox limit reached"
-			}
-
-			body, marshalErr := json.Marshal(struct {
-				Code    int32  `json:"code"`
-				Message string `json:"message"`
-			}{
-				Code:    int32(http.StatusTooManyRequests),
-				Message: message,
-			})
-			if marshalErr != nil {
-				logger.L().Error(ctx, "failed to marshal sandbox resource exhausted error", zap.Error(marshalErr), logger.WithSandboxID(resourceExhaustedErr.SandboxId))
-				http.Error(w, "Failed to handle sandbox resource exhausted error", http.StatusInternalServerError)
+			err := template.
+				NewTeamSandboxLimitError(resourceExhaustedErr.SandboxId, r.Host, resourceExhaustedErr.Message).
+				HandleError(w, r)
+			if err != nil {
+				logger.L().Error(ctx, "failed to handle team sandbox limit error", zap.Error(err), logger.WithSandboxID(resourceExhaustedErr.SandboxId))
+				http.Error(w, "Failed to handle team sandbox limit error", http.StatusInternalServerError)
 
 				return
-			}
-
-			w.Header().Set("Content-Type", "application/json; charset=utf-8")
-			w.WriteHeader(http.StatusTooManyRequests)
-			if _, writeErr := w.Write(body); writeErr != nil {
-				logger.L().Error(ctx, "failed to write sandbox resource exhausted error", zap.Error(writeErr), logger.WithSandboxID(resourceExhaustedErr.SandboxId))
-				http.Error(w, "Failed to handle sandbox resource exhausted error", http.StatusInternalServerError)
 			}
 
 			return
