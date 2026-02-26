@@ -35,7 +35,7 @@ build-local: fetch-busybox
 	CGO_ENABLED=1 GOOS=linux GOARCH=$(BUILD_ARCH) go build -o bin/clean-nfs-cache -ldflags "-X=main.commitSHA=$(COMMIT_SHA)" ./cmd/clean-nfs-cache
 
 .PHONY: build-debug
-build-debug:
+build-debug: fetch-busybox
 	CGO_ENABLED=1 GOOS=linux GOARCH=$(BUILD_ARCH) go build -race -gcflags=all="-N -l" -o bin/orchestrator .
 
 .PHONY: run-debug
