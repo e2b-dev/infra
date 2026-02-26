@@ -36,7 +36,9 @@ tf_vars := \
 	$(call tfvar, DOMAIN_NAME) \
 	$(call tfvar, ADDITIONAL_API_SERVICES_JSON) \
 	$(call tfvar, PREFIX) \
+	$(call tfvar, SANDBOX_STORAGE_BACKEND) \
 	$(call tfvar, ALLOW_SANDBOX_INTERNET) \
+	$(call tfvar, API_SERVER_COUNT) \
 	$(call tfvar, API_RESOURCES_CPU_COUNT) \
 	$(call tfvar, API_RESOURCES_MEMORY_MB) \
 	$(call tfvar, INGRESS_COUNT) \

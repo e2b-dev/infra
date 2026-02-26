@@ -49,7 +49,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		// Check if sandbox belongs to the team
 		if sbx.TeamID != team.ID {
 			telemetry.ReportCriticalError(ctx, fmt.Sprintf("sandbox '%s' doesn't belong to team '%s'", sandboxId, team.ID.String()), nil)
-			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("sandbox \"%s\" doesn't exist or you don't have access to it", id))
+			a.sendAPIStoreError(c, http.StatusNotFound, sandboxNotFoundMsg(id))
 
 			return
 		}
@@ -61,7 +61,8 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 			state = api.Paused
 		// Sandbox is being stopped or already is stopped, user can't work with it anymore
 		case sandbox.StateKilling:
-			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("sandbox \"%s\" doesn't exist or you don't have access to it", id))
+			logger.L().Debug(ctx, "Sandbox is being killed", logger.WithSandboxID(sandboxId))
+			a.sendAPIStoreError(c, http.StatusNotFound, sandboxNotFoundMsg(id))
 
 			return
 		}
@@ -95,17 +96,18 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	}
 
 	// If sandbox not found try to get the latest snapshot
+	// TODO: ENG-3544 scope GetLastSnapshot query by teamID to avoid post-fetch ownership check.
 	lastSnapshot, err := a.sqlcDB.GetLastSnapshot(ctx, sandboxId)
 	if err != nil {
 		telemetry.ReportError(ctx, "error getting last snapshot", err)
-		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("sandbox \"%s\" doesn't exist", id))
+		a.sendAPIStoreError(c, http.StatusNotFound, sandboxNotFoundMsg(id))
 
 		return
 	}
 
 	if lastSnapshot.Snapshot.TeamID != team.ID {
 		telemetry.ReportError(ctx, fmt.Sprintf("snapshot for sandbox '%s' doesn't belong to team '%s'", sandboxId, team.ID.String()), nil)
-		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox \"%s\"", id))
+		a.sendAPIStoreError(c, http.StatusNotFound, sandboxNotFoundMsg(id))
 
 		return
 	}

@@ -13,12 +13,20 @@ import (
 
 type InsertCallback func(ctx context.Context, sbx Sandbox)
 
+const (
+	StorageNameMemory        = "memory"
+	StorageNameRedis         = "redis"
+	StorageNamePopulateRedis = "populate_redis"
+)
+
 type ReservationStorage interface {
 	Reserve(ctx context.Context, teamID uuid.UUID, sandboxID string, limit int) (finishStart func(Sandbox, error), waitForStart func(ctx context.Context) (Sandbox, error), err error)
 	Release(ctx context.Context, teamID uuid.UUID, sandboxID string) error
 }
 
-type Storage interface {
+// TODO [ENG-3514]: Remove Name() and Sync() and nolint once migrated to Redis
+type Storage interface { //nolint: interfacebloat
+	Name() string
 	Add(ctx context.Context, sandbox Sandbox) error
 	Get(ctx context.Context, teamID uuid.UUID, sandboxID string) (Sandbox, error)
 	Remove(ctx context.Context, teamID uuid.UUID, sandboxID string) error
@@ -90,15 +98,17 @@ func (s *Store) Add(ctx context.Context, sandbox Sandbox, newlyCreated bool) err
 		logger.L().Warn(ctx, "Sandbox already exists in cache", logger.WithSandboxID(sandbox.SandboxID))
 	}
 
-	// TODO [ENG-3514]: Remove once migrated to Redis
-	// Ensure the team reservation is set - no limit
-	finishStart, _, err := s.reservations.Reserve(ctx, sandbox.TeamID, sandbox.SandboxID, -1)
-	if err != nil {
-		logger.L().Error(ctx, "Failed to reserve sandbox", zap.Error(err), logger.WithSandboxID(sandbox.SandboxID))
-	}
+	// TODO [ENG-3514]: Simplify once migrated to Redis
+	// Ensure the team reservation is set - no limit.
+	if s.storage.Name() != StorageNameRedis {
+		finishStart, _, err := s.reservations.Reserve(ctx, sandbox.TeamID, sandbox.SandboxID, -1)
+		if err != nil {
+			logger.L().Error(ctx, "Failed to reserve sandbox", zap.Error(err), logger.WithSandboxID(sandbox.SandboxID))
+		}
 
-	if finishStart != nil {
-		finishStart(sandbox, nil)
+		if finishStart != nil {
+			finishStart(sandbox, nil)
+		}
 	}
 
 	if newlyCreated {

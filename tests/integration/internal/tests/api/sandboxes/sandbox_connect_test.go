@@ -200,7 +200,7 @@ func TestSandboxConnect_CrossTeamAccess_Paused(t *testing.T) {
 		Timeout: 30,
 	}, setup.WithAPIKey(foreignAPIKey))
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusForbidden, connectResp.StatusCode(), "Should return 403 Forbidden when trying to connect to a sandbox owned by a different team")
+	assert.Equal(t, http.StatusNotFound, connectResp.StatusCode(), "Should return 404 Not Found when trying to connect to a paused sandbox owned by a different team")
 }
 
 func TestSandboxConnect_CrossTeamAccess_Running(t *testing.T) {
@@ -221,5 +221,5 @@ func TestSandboxConnect_CrossTeamAccess_Running(t *testing.T) {
 		Timeout: 30,
 	}, setup.WithAPIKey(foreignAPIKey))
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusForbidden, connectResp.StatusCode(), "Should return 403 Forbidden when trying to connect to a sandbox owned by a different team")
+	assert.Equal(t, http.StatusNotFound, connectResp.StatusCode(), "Should return 404 Not Found when trying to connect to a sandbox owned by a different team")
 }
