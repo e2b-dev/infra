@@ -1,0 +1,959 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>E2B Infrastructure — AWS vs GCP Code Map</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: #0d1117; color: #e6edf3; height: 100vh; overflow: hidden; }
+  .layout { display: flex; height: 100vh; }
+
+  /* Sidebar */
+  .sidebar { width: 290px; min-width: 290px; background: #161b22; border-right: 1px solid #30363d; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+  .sidebar h1 { font-size: 15px; font-weight: 600; color: #e6edf3; letter-spacing: -0.3px; }
+  .sidebar h2 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #8b949e; margin-bottom: 8px; }
+
+  /* Main */
+  .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .canvas-wrap { flex: 1; position: relative; overflow: hidden; }
+  .canvas-wrap svg { width: 100%; height: 100%; cursor: grab; }
+  .canvas-wrap svg:active { cursor: grabbing; }
+
+  /* Zoom */
+  .zoom-controls { position: absolute; top: 12px; right: 12px; display: flex; gap: 4px; align-items: center; }
+  .zoom-controls button, .zoom-controls span { background: #21262d; border: 1px solid #30363d; color: #e6edf3; padding: 4px 10px; border-radius: 6px; cursor: pointer; font-size: 13px; font-family: monospace; }
+  .zoom-controls button:hover { background: #30363d; }
+  .zoom-controls span { cursor: default; min-width: 48px; text-align: center; }
+
+  /* Legend */
+  .legend { position: absolute; bottom: 12px; left: 12px; background: #161b22ee; border: 1px solid #30363d; border-radius: 8px; padding: 10px 14px; display: flex; gap: 14px; flex-wrap: wrap; font-size: 11px; }
+  .legend-item { display: flex; align-items: center; gap: 5px; color: #8b949e; }
+  .legend-line { width: 24px; height: 2px; border-radius: 1px; }
+  .legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+  /* Prompt */
+  .prompt-area { border-top: 1px solid #30363d; background: #161b22; padding: 12px 16px; max-height: 180px; display: flex; flex-direction: column; }
+  .prompt-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .prompt-header span { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #8b949e; }
+  .copy-btn { background: #238636; border: none; color: #fff; padding: 4px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; transition: background 0.15s; }
+  .copy-btn:hover { background: #2ea043; }
+  .copy-btn.copied { background: #1a7f37; }
+  .prompt-text { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; color: #c9d1d9; line-height: 1.5; overflow-y: auto; flex: 1; white-space: pre-wrap; }
+
+  /* Provider toggle */
+  .provider-toggle { display: flex; gap: 0; border-radius: 8px; overflow: hidden; border: 1px solid #30363d; }
+  .provider-btn { flex: 1; padding: 8px 0; border: none; cursor: pointer; font-size: 12px; font-weight: 600; text-align: center; transition: all 0.15s; background: #21262d; color: #8b949e; }
+  .provider-btn:not(:last-child) { border-right: 1px solid #30363d; }
+  .provider-btn.active-gcp { background: #1a3a1a; color: #3fb950; }
+  .provider-btn.active-aws { background: #3d2b07; color: #f0a030; }
+  .provider-btn.active-both { background: #1a1a3d; color: #818cf8; }
+  .provider-btn:hover:not(.active-gcp):not(.active-aws):not(.active-both) { background: #30363d; }
+
+  /* Comparison bar */
+  .compare-bar { background: #21262d; border-radius: 8px; padding: 10px 12px; }
+  .compare-bar .status-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #8b949e; margin-bottom: 8px; }
+  .compare-row { display: flex; justify-content: space-between; align-items: center; font-size: 11px; padding: 3px 0; }
+  .compare-row .label { color: #8b949e; flex: 1; }
+  .compare-row .gcp-val { color: #3fb950; width: 110px; text-align: right; font-family: monospace; font-size: 10px; }
+  .compare-row .aws-val { color: #f0a030; width: 110px; text-align: right; font-family: monospace; font-size: 10px; }
+  .compare-divider { height: 1px; background: #30363d; margin: 4px 0; }
+
+  /* Presets */
+  .preset-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .preset-btn { background: #30363d; border: 1px solid #444c56; color: #c9d1d9; padding: 6px 8px; border-radius: 6px; cursor: pointer; font-size: 11px; font-weight: 500; text-align: center; transition: all 0.15s; }
+  .preset-btn:hover { background: #3d444d; border-color: #58a6ff; }
+  .preset-btn.active { background: #1f3a5f; border-color: #58a6ff; color: #58a6ff; }
+
+  /* Toggles */
+  .toggle-list { display: flex; flex-direction: column; gap: 4px; }
+  .toggle-item { display: flex; align-items: center; gap: 8px; padding: 4px 0; cursor: pointer; font-size: 12px; user-select: none; }
+  .toggle-item input { accent-color: #58a6ff; cursor: pointer; }
+  .toggle-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .toggle-line { width: 18px; height: 3px; border-radius: 2px; flex-shrink: 0; }
+
+  /* Comments */
+  .comments-list { display: flex; flex-direction: column; gap: 6px; max-height: 200px; overflow-y: auto; }
+  .comment-card { background: #30363d; border-radius: 6px; padding: 8px 10px; position: relative; }
+  .comment-target { font-size: 11px; font-weight: 600; color: #58a6ff; margin-bottom: 3px; }
+  .comment-file { font-size: 10px; color: #6e7681; font-family: monospace; margin-bottom: 4px; }
+  .comment-text { font-size: 12px; color: #c9d1d9; line-height: 1.4; }
+  .comment-del { position: absolute; top: 6px; right: 8px; background: none; border: none; color: #6e7681; cursor: pointer; font-size: 14px; line-height: 1; }
+  .comment-del:hover { color: #f85149; }
+  .empty-comments { font-size: 12px; color: #6e7681; font-style: italic; text-align: center; padding: 8px 0; }
+
+  /* Modal */
+  .modal-overlay { display: none; position: fixed; inset: 0; background: #000000aa; z-index: 100; align-items: center; justify-content: center; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: #21262d; border: 1px solid #30363d; border-radius: 12px; padding: 20px; width: 420px; max-width: 90vw; }
+  .modal h3 { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+  .modal .modal-file { font-size: 11px; color: #8b949e; font-family: monospace; margin-bottom: 10px; }
+  .modal textarea { width: 100%; height: 80px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #e6edf3; padding: 8px; font-family: inherit; font-size: 13px; resize: vertical; outline: none; }
+  .modal textarea:focus { border-color: #58a6ff; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+  .modal-actions button { padding: 6px 14px; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; border: 1px solid #30363d; }
+  .btn-cancel { background: #21262d; color: #c9d1d9; }
+  .btn-cancel:hover { background: #30363d; }
+  .btn-save { background: #238636; border-color: #238636; color: #fff; }
+  .btn-save:hover { background: #2ea043; }
+
+  /* SVG classes */
+  .node-group { cursor: pointer; }
+  .node-group:hover rect.node-rect { filter: brightness(1.3); }
+  .node-group.commented rect.node-rect { stroke-width: 2.5; }
+  .conn-label { font-family: 'SF Mono', monospace; font-size: 9px; fill: #8b949e; pointer-events: none; }
+  .node-title { font-family: -apple-system, system-ui, sans-serif; font-size: 12px; font-weight: 600; pointer-events: none; }
+  .node-subtitle { font-family: 'SF Mono', monospace; font-size: 9px; pointer-events: none; }
+  .node-provider-badge { font-family: -apple-system, system-ui, sans-serif; font-size: 8px; font-weight: 700; pointer-events: none; letter-spacing: 0.3px; }
+</style>
+</head>
+<body>
+
+<div class="layout">
+  <div class="sidebar">
+    <h1>E2B Infrastructure</h1>
+
+    <div>
+      <h2>Cloud Provider</h2>
+      <div class="provider-toggle">
+        <button class="provider-btn active-gcp" id="btn-gcp" onclick="setProvider('gcp')">GCP</button>
+        <button class="provider-btn" id="btn-aws" onclick="setProvider('aws')">AWS</button>
+        <button class="provider-btn" id="btn-both" onclick="setProvider('both')">Compare</button>
+      </div>
+    </div>
+
+    <div class="compare-bar" id="compareBar" style="display:none">
+      <div class="status-title" id="compareTitle">Comparison</div>
+      <div id="compareContent"></div>
+    </div>
+
+    <div>
+      <h2>View Presets</h2>
+      <div class="preset-grid" id="presets"></div>
+    </div>
+
+    <div>
+      <h2>Layers</h2>
+      <div class="toggle-list" id="layerToggles"></div>
+    </div>
+
+    <div>
+      <h2>Connection Types</h2>
+      <div class="toggle-list" id="connToggles"></div>
+    </div>
+
+    <div>
+      <h2>Comments <span id="commentCount" style="color:#58a6ff"></span></h2>
+      <div class="comments-list" id="commentsList">
+        <div class="empty-comments">Click a component to add feedback</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="canvas-wrap">
+      <svg id="diagram" viewBox="0 0 1260 900" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="ah-http" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto"><polygon points="0 0,7 2.5,0 5" fill="#58a6ff"/></marker>
+          <marker id="ah-grpc" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto"><polygon points="0 0,7 2.5,0 5" fill="#3fb950"/></marker>
+          <marker id="ah-data" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto"><polygon points="0 0,7 2.5,0 5" fill="#d29922"/></marker>
+          <marker id="ah-storage" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto"><polygon points="0 0,7 2.5,0 5" fill="#bc8cff"/></marker>
+          <marker id="ah-system" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto"><polygon points="0 0,7 2.5,0 5" fill="#f85149"/></marker>
+          <marker id="ah-external" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto"><polygon points="0 0,7 2.5,0 5" fill="#636e7b"/></marker>
+        </defs>
+        <g id="diagram-content"></g>
+      </svg>
+      <div class="zoom-controls">
+        <button onclick="changeZoom(-1)">-</button>
+        <span id="zoomLevel">100%</span>
+        <button onclick="changeZoom(1)">+</button>
+        <button onclick="resetZoom()">Reset</button>
+      </div>
+      <div class="legend" id="legend"></div>
+    </div>
+    <div class="prompt-area">
+      <div class="prompt-header">
+        <span>Generated Prompt</span>
+        <button class="copy-btn" id="copyBtn" onclick="copyPrompt()">Copy Prompt</button>
+      </div>
+      <div class="prompt-text" id="promptText">Adjust the view and click components to add architecture feedback.</div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <h3 id="modalTitle"></h3>
+    <div class="modal-file" id="modalFile"></div>
+    <div id="modalCompare" style="display:none; margin-bottom:10px; font-size:11px; line-height:1.6;"></div>
+    <textarea id="modalText" placeholder="Add your feedback about this component..."></textarea>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+      <button class="btn-save" onclick="saveComment()">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── LAYERS & CONNECTION TYPES ──────────────────────────────────────────────
+
+const LAYERS = {
+  edge:          { label: 'Edge / Proxy',    color: '#58a6ff', fill: '#1a2744', textColor: '#c8dcf8' },
+  api:           { label: 'API Services',    color: '#d29922', fill: '#2d2007', textColor: '#f0d89c' },
+  orchestration: { label: 'Orchestration',   color: '#3fb950', fill: '#0d2818', textColor: '#a8e6b5' },
+  vm:            { label: 'VM / Sandbox',    color: '#bc8cff', fill: '#231a33', textColor: '#d8c4ff' },
+  data:          { label: 'Data Stores',     color: '#f85149', fill: '#2d1419', textColor: '#fca5a1' },
+  external:      { label: 'External',        color: '#39d5e0', fill: '#132c2e', textColor: '#8aecf2' }
+};
+
+const CONN_TYPES = {
+  http:     { label: 'HTTP / REST',     color: '#58a6ff', dash: '' },
+  grpc:     { label: 'gRPC',            color: '#3fb950', dash: '6,3' },
+  data:     { label: 'Database',        color: '#d29922', dash: '' },
+  storage:  { label: 'Object Storage',  color: '#bc8cff', dash: '4,4' },
+  system:   { label: 'System / Kernel', color: '#f85149', dash: '5,3' },
+  external: { label: 'External Svc',    color: '#636e7b', dash: '2,2' }
+};
+
+// ─── NODES ──────────────────────────────────────────────────────────────────
+// Each node has GCP label/subtitle by default, aws override, and comparison data
+
+const nodes = [
+  // Edge layer
+  { id: 'client',       label: 'External Client',      subtitle: 'SDK / Browser',                     x: 60,   y: 30,  w: 165, h: 50, layer: 'edge',
+    aws: { label: 'External Client', subtitle: 'SDK / Browser' },
+    compare: null },
+  { id: 'lb',           label: 'Global HTTPS LB',      subtitle: 'Cloud LB + Certificate Manager',   x: 330,  y: 30,  w: 210, h: 50, layer: 'edge',
+    aws: { label: 'ALB + NLB',       subtitle: 'load-balancer/main.tf (ALB HTTP + NLB WebSocket)' },
+    compare: { gcp: 'Global HTTPS LB (Anycast, 1 LB)', aws: 'ALB (HTTP) + NLB (TCP/WS, 2 LBs)', diff: 'GCP uses single global LB vs AWS split ALB+NLB' } },
+  { id: 'client-proxy', label: 'Client-Proxy',          subtitle: 'packages/client-proxy/ :3002',     x: 640,  y: 30,  w: 175, h: 50, layer: 'edge',
+    aws: { label: 'Client-Proxy', subtitle: 'packages/client-proxy/ (same binary)' },
+    compare: { gcp: 'Redis sandbox catalog lookup', aws: 'Redis sandbox catalog lookup', diff: 'Same Go binary + Redis discovery on both providers' } },
+  { id: 'waf',          label: 'Cloud Armor',           subtitle: 'DDoS + WAF rules',                 x: 850,  y: 30,  w: 155, h: 50, layer: 'edge',
+    aws: { label: 'AWS WAFv2',     subtitle: 'load-balancer/waf.tf' },
+    compare: { gcp: 'Cloud Armor (Adaptive L7 DDoS)', aws: 'WAFv2 (rate limiting rules)', diff: 'Similar WAF functionality, different APIs' } },
+
+  // API layer
+  { id: 'api',          label: 'API Service',           subtitle: 'packages/api/ :80 :5009',           x: 180,  y: 150, w: 270, h: 55, layer: 'api',
+    aws: { label: 'API Service', subtitle: 'packages/api/ :80 :5009 (same Gin binary)' },
+    compare: { gcp: 'Nomad job allocation', aws: 'K8s Deployment', diff: 'Same Go binary, different deployment' } },
+  { id: 'docker-proxy', label: 'Docker Registry Proxy', subtitle: 'packages/docker-reverse-proxy/ :5000', x: 560, y: 150, w: 260, h: 55, layer: 'api',
+    aws: { label: 'Docker Registry Proxy', subtitle: 'Proxies to ECR (Go code ready)' },
+    compare: { gcp: 'Proxies to Artifact Registry', aws: 'Proxies to ECR', diff: 'Different container registry backends' } },
+
+  // Orchestration layer
+  { id: 'orchestrator', label: 'Orchestrator',          subtitle: 'packages/orchestrator/ :5008 gRPC', x: 40,  y: 290, w: 225, h: 55, layer: 'orchestration',
+    aws: { label: 'Orchestrator', subtitle: ':5008 gRPC (S3 + ECR provider branching)' },
+    compare: { gcp: 'Nomad system job', aws: 'K8s DaemonSet', diff: 'Same binary with GCS/S3 storage branching' } },
+  { id: 'sandbox-proxy',label: 'Sandbox Proxy',         subtitle: ':5007 HTTP reverse proxy',          x: 320,  y: 290, w: 200, h: 55, layer: 'orchestration',
+    aws: { label: 'Sandbox Proxy', subtitle: ':5007 HTTP reverse proxy (same)' },
+    compare: null },
+  { id: 'template-mgr', label: 'Template Manager',      subtitle: 'gRPC TemplateService',              x: 580,  y: 290, w: 205, h: 55, layer: 'orchestration',
+    aws: { label: 'Template Manager', subtitle: 'ECR auth + S3 builds (Go ready)' },
+    compare: { gcp: 'GCS template storage', aws: 'S3 template storage', diff: 'Different object storage backends' } },
+  { id: 'tcp-firewall', label: 'TCP Firewall',          subtitle: 'nftables egress filter (in-app)',    x: 320,  y: 372, w: 175, h: 48, layer: 'orchestration',
+    aws: { label: 'TCP Firewall', subtitle: 'nftables egress filter (same kernel)' },
+    compare: null },
+  { id: 'nfs-proxy',    label: 'NFS Proxy',             subtitle: 'Persistent volumes :2049',           x: 555,  y: 372, w: 175, h: 48, layer: 'orchestration',
+    aws: { label: 'NFS Proxy (EFS)', subtitle: 'efs/main.tf (mount targets + access points)' },
+    compare: { gcp: 'Filestore NFS (BASIC_HDD/SSD)', aws: 'EFS (elastic throughput)', diff: 'GCP fixed tier vs AWS elastic scaling' } },
+  { id: 'temporal',     label: 'Temporal Server',       subtitle: 'AWS only (not in GCP)',               x: 40,   y: 372, w: 225, h: 48, layer: 'orchestration',
+    aws: { label: 'Temporal Server', subtitle: 'temporal/ (Helm, mTLS, Aurora, optional)' },
+    awsOnly: true,
+    compare: { gcp: 'Not available (no Terraform)', aws: 'EKS Helm chart + Aurora backend + mTLS', diff: 'AWS only: Frontend/History/Matching/Worker/UI' } },
+
+  // VM layer
+  { id: 'firecracker',  label: 'Firecracker VM',        subtitle: 'microVM + UFFD + cgroups',          x: 120,  y: 480, w: 220, h: 55, layer: 'vm',
+    aws: { label: 'Firecracker VM', subtitle: 'C8i nested virt + Karpenter + KVM' },
+    compare: { gcp: 'GCE bare metal / nested virt', aws: 'EC2 C8i nested virtualization', diff: 'Different host types, same Firecracker binary' } },
+  { id: 'envd',         label: 'envd',                  subtitle: 'packages/envd/ :49983 Connect RPC', x: 430,  y: 480, w: 260, h: 55, layer: 'vm',
+    aws: { label: 'envd', subtitle: 'packages/envd/ :49983 (same binary)' },
+    compare: null },
+
+  // Data layer
+  { id: 'postgresql',   label: 'PostgreSQL',            subtitle: 'Main + Auth DB (sqlc, pgx)',         x: 40,   y: 600, w: 185, h: 55, layer: 'data',
+    aws: { label: 'Aurora PostgreSQL', subtitle: 'database/ (subnet group only, Aurora manual)' },
+    compare: { gcp: 'Supabase / external PostgreSQL', aws: 'Aurora Serverless v2 (recommended, provisioned externally)', diff: 'Neither provider auto-provisions DB in Terraform' } },
+  { id: 'redis',        label: 'Redis',                 subtitle: 'Catalog, cache, events, streams',    x: 280,  y: 600, w: 175, h: 55, layer: 'data',
+    aws: { label: 'ElastiCache Redis', subtitle: 'redis/main.tf (cluster mode, multi-AZ, TLS)' },
+    compare: { gcp: 'Memorystore Valkey (managed) or self-hosted Nomad job', aws: 'ElastiCache Redis 7 (cluster, multi-AZ, TLS)', diff: 'GCP: toggle redis_managed for Memorystore vs Nomad job' } },
+  { id: 'clickhouse',   label: 'ClickHouse',            subtitle: 'Analytics, events, host stats',      x: 510,  y: 600, w: 180, h: 55, layer: 'data',
+    aws: { label: 'ClickHouse', subtitle: 'Self-hosted K8s StatefulSet, S3 backup' },
+    compare: { gcp: 'Nomad job, GCS backup', aws: 'K8s StatefulSet, S3 backup', diff: 'Self-hosted on both, different orchestrators' } },
+  { id: 'gcs',          label: 'GCS',                   subtitle: 'Templates, kernels, cache, logs',    x: 745,  y: 600, w: 160, h: 55, layer: 'data',
+    aws: { label: 'S3 (10 buckets)', subtitle: 'init/buckets.tf (templates, kernels, loki, cache)' },
+    compare: { gcp: 'GCS (Autoclass tiering, lifecycle)', aws: 'S3 (10 buckets, access logging)', diff: 'Same bucket structure, different providers' } },
+
+  // External column (right side)
+  { id: 'platform',     label: 'Nomad + Consul',        subtitle: 'Orchestration platform',             x: 1020, y: 140, w: 178, h: 48, layer: 'external',
+    aws: { label: 'EKS + Karpenter', subtitle: 'eks-cluster/ (K8s 1.31, ~55s scale)' },
+    compare: { gcp: 'Nomad + Consul (self-managed)', aws: 'EKS + Karpenter (managed K8s)', diff: 'Biggest arch diff: Nomad vs K8s. Karpenter ~55s vs MIG 3-4min scale' } },
+  { id: 'launchdarkly', label: 'LaunchDarkly',          subtitle: 'Feature flags',                      x: 1020, y: 218, w: 168, h: 48, layer: 'external',
+    aws: { label: 'LaunchDarkly', subtitle: 'Feature flags (same SDK)' },
+    compare: null },
+  { id: 'container-reg',label: 'Artifact Registry',     subtitle: 'Container images (GAR)',              x: 1020, y: 296, w: 178, h: 48, layer: 'external',
+    aws: { label: 'ECR (2 repos)', subtitle: 'init/main.tf (core + orchestration)' },
+    compare: { gcp: 'Artifact Registry (GAR)', aws: 'ECR (2 repos, immutable tags)', diff: 'Different container registries' } },
+  { id: 'otel',         label: 'OTEL / Grafana',        subtitle: 'Traces, metrics, logs',               x: 1020, y: 374, w: 178, h: 48, layer: 'external',
+    aws: { label: 'OTEL / Grafana', subtitle: 'EC2 resource detection configured' },
+    compare: { gcp: 'GCE resource detection', aws: 'EC2 resource detection', diff: 'Same OTel stack, different resource detectors' } },
+  { id: 'loki',         label: 'Loki',                  subtitle: 'Log queries (HTTP)',                   x: 1020, y: 452, w: 135, h: 48, layer: 'external',
+    aws: { label: 'Loki', subtitle: 'S3 backend in K8s deployment' },
+    compare: { gcp: 'GCS-backed chunk storage', aws: 'S3-backed chunk storage', diff: 'Same Loki, different object storage' } },
+  { id: 'posthog',      label: 'PostHog',               subtitle: 'User analytics',                      x: 1020, y: 530, w: 148, h: 48, layer: 'external',
+    aws: { label: 'PostHog', subtitle: 'User analytics (same SDK)' },
+    compare: null },
+  { id: 'secrets',      label: 'Secret Manager',        subtitle: 'Secrets storage',                     x: 1020, y: 600, w: 178, h: 48, layer: 'external',
+    aws: { label: 'Secrets Manager (19)', subtitle: 'init/secrets.tf + temporal/ DB pw' },
+    compare: { gcp: 'GCP Secret Manager', aws: 'AWS Secrets Manager (19 secrets)', diff: 'Same secrets, different providers' } },
+  { id: 'iam',          label: 'GCP IAM',               subtitle: 'Service accounts',                    x: 1020, y: 670, w: 155, h: 44, layer: 'external',
+    aws: { label: 'IAM Roles + IRSA', subtitle: 'init/main.tf (instance profile + IRSA)' },
+    compare: { gcp: 'Service Account + bucket IAM', aws: 'IAM Role + IRSA (pod-level)', diff: 'AWS IRSA enables pod-level IAM' } },
+  { id: 'sg',           label: 'VPC Firewall Rules',    subtitle: 'Network access control',              x: 1020, y: 62,  w: 178, h: 48, layer: 'external',
+    aws: { label: 'Security Groups (5)', subtitle: 'network/security-groups.tf' },
+    compare: { gcp: 'GCE firewall rules (tag-based)', aws: '5 Security Groups (EKS, ALB, RDS, Redis, EFS)', diff: 'AWS more granular per-service SGs' } },
+
+  // Compliance (external layer)
+  { id: 'flowlogs',    label: 'VPC Flow Logs',          subtitle: 'AWS only (not configured in GCP)',    x: 850,  y: 728, w: 170, h: 44, layer: 'external',
+    aws: { label: 'VPC Flow Logs', subtitle: 'network/flow-logs.tf (CloudWatch, 90d)' },
+    awsOnly: true,
+    compare: { gcp: 'Not configured (no Terraform)', aws: 'CloudWatch flow logs (90d retention)', diff: 'AWS only: no GCP VPC flow logs configured' } },
+  { id: 'guardduty',   label: 'Threat Detection',       subtitle: 'AWS only (GuardDuty)',                x: 1020, y: 728, w: 178, h: 44, layer: 'external',
+    aws: { label: 'GuardDuty', subtitle: 'security/main.tf (S3, EKS, EBS malware)' },
+    awsOnly: true,
+    compare: { gcp: 'Not configured (no Terraform)', aws: 'GuardDuty (S3+EKS+EBS scanning)', diff: 'AWS only: no GCP equivalent configured' } },
+  { id: 'awsconfig',   label: 'Config Compliance',      subtitle: 'AWS only (AWS Config)',               x: 850,  y: 780, w: 170, h: 44, layer: 'external',
+    aws: { label: 'AWS Config', subtitle: 'security/main.tf (recorder + S3)' },
+    awsOnly: true,
+    compare: { gcp: 'Not configured (no Terraform)', aws: 'AWS Config (recorder + S3 delivery)', diff: 'AWS only' } },
+  { id: 'inspector',   label: 'Vulnerability Scan',     subtitle: 'AWS only (Inspector v2)',             x: 1020, y: 780, w: 178, h: 44, layer: 'external',
+    aws: { label: 'Inspector v2', subtitle: 'security/main.tf (EC2 + ECR scanning)' },
+    awsOnly: true,
+    compare: { gcp: 'Not configured (no Terraform)', aws: 'Inspector v2 (EC2 + ECR)', diff: 'AWS only' } },
+  { id: 'cloudtrail',  label: 'API Audit Trail',        subtitle: 'AWS only (CloudTrail)',               x: 850,  y: 832, w: 170, h: 44, layer: 'external',
+    aws: { label: 'CloudTrail', subtitle: 'security/main.tf (multi-region, S3)' },
+    awsOnly: true,
+    compare: { gcp: 'Not configured (no Terraform)', aws: 'CloudTrail (multi-region, S3)', diff: 'AWS only: GCP has built-in audit logging but not configured here' } },
+];
+
+const nodesById = Object.fromEntries(nodes.map(n => [n.id, n]));
+
+// ─── CONNECTIONS ────────────────────────────────────────────────────────────
+
+const connections = [
+  // HTTP
+  { from: 'client',       to: 'lb',            type: 'http', label: 'HTTPS',           awsLabel: 'HTTPS' },
+  { from: 'lb',           to: 'client-proxy',   type: 'http', label: 'Sandbox traffic', awsLabel: 'NLB WebSocket' },
+  { from: 'lb',           to: 'api',            type: 'http', label: 'API traffic',     awsLabel: 'ALB routing' },
+  { from: 'client-proxy', to: 'sandbox-proxy',  type: 'http', label: 'HTTP proxy',      awsLabel: 'HTTP proxy' },
+  { from: 'sandbox-proxy',to: 'envd',           type: 'http', label: 'Connect RPC',     awsLabel: 'Connect RPC' },
+  // gRPC
+  { from: 'client-proxy', to: 'api',            type: 'grpc', label: 'ResumeSandbox',       awsLabel: 'ResumeSandbox' },
+  { from: 'api',          to: 'orchestrator',   type: 'grpc', label: 'Sandbox/Volume/Info', awsLabel: 'Sandbox/Volume/Info' },
+  { from: 'api',          to: 'template-mgr',   type: 'grpc', label: 'TemplateService',     awsLabel: 'TemplateService' },
+  // Temporal
+  { from: 'api',          to: 'temporal',        type: 'grpc',   label: 'Workflow SDK',        awsLabel: 'Workflow SDK (gRPC :7233)' },
+  { from: 'temporal',     to: 'postgresql',      type: 'data',   label: 'Workflow state',      awsLabel: 'Aurora (temporal + visibility DBs)' },
+  { from: 'temporal',     to: 'orchestrator',    type: 'grpc',   label: 'Activity: sandbox',   awsLabel: 'Activity: CreateSandbox' },
+  // Data
+  { from: 'api',          to: 'postgresql',     type: 'data', label: 'pgx (main+auth)',      awsLabel: 'pgx (main+auth)' },
+  { from: 'api',          to: 'redis',          type: 'data', label: 'Catalog + cache',      awsLabel: 'Catalog + cache' },
+  { from: 'api',          to: 'clickhouse',     type: 'data', label: 'Analytics queries',    awsLabel: 'Analytics queries' },
+  { from: 'client-proxy', to: 'redis',          type: 'data', label: 'Catalog lookup',       awsLabel: 'Catalog lookup' },
+  { from: 'orchestrator', to: 'redis',          type: 'data', label: 'Events + net slots',   awsLabel: 'Events + net slots' },
+  { from: 'orchestrator', to: 'clickhouse',     type: 'data', label: 'Events + host stats',  awsLabel: 'Events + host stats' },
+  // Storage
+  { from: 'orchestrator', to: 'gcs',            type: 'storage', label: 'Template cache',     awsLabel: 'S3 template cache' },
+  { from: 'template-mgr', to: 'gcs',            type: 'storage', label: 'Build artifacts',    awsLabel: 'S3 build artifacts' },
+  { from: 'docker-proxy', to: 'gcs',            type: 'storage', label: 'Artifact Registry',  awsLabel: 'ECR proxy' },
+  // System
+  { from: 'orchestrator', to: 'firecracker',    type: 'system', label: 'Unix socket API',   awsLabel: 'Unix socket API' },
+  { from: 'tcp-firewall', to: 'firecracker',    type: 'system', label: 'iptables egress',   awsLabel: 'iptables egress' },
+  { from: 'nfs-proxy',    to: 'firecracker',    type: 'system', label: 'NFS mount',          awsLabel: 'EFS mount' },
+  { from: 'firecracker',  to: 'envd',           type: 'system', label: 'In-VM process',     awsLabel: 'In-VM process' },
+  // External
+  { from: 'api',          to: 'platform',       type: 'external', label: 'Discovery',     awsLabel: 'K8s API' },
+  { from: 'api',          to: 'launchdarkly',   type: 'external', label: 'Flags',         awsLabel: 'Flags' },
+  { from: 'api',          to: 'posthog',        type: 'external', label: 'Analytics',     awsLabel: 'Analytics' },
+  { from: 'api',          to: 'loki',           type: 'external', label: 'Log queries',   awsLabel: 'Log queries' },
+  { from: 'orchestrator', to: 'launchdarkly',   type: 'external', label: 'Flags',         awsLabel: 'Flags' },
+  { from: 'orchestrator', to: 'otel',           type: 'external', label: 'Telemetry',     awsLabel: 'Telemetry' },
+  { from: 'api',          to: 'otel',           type: 'external', label: 'Telemetry',     awsLabel: 'Telemetry' },
+  { from: 'envd',         to: 'otel',           type: 'external', label: 'Sandbox logs',  awsLabel: 'Sandbox logs' },
+  // WAF
+  { from: 'waf',          to: 'lb',             type: 'http',     label: 'Protects',        awsLabel: 'Protects ALB' },
+  // Registry
+  { from: 'docker-proxy', to: 'container-reg',  type: 'storage',  label: 'Pull images',     awsLabel: 'ECR pull' },
+  { from: 'template-mgr', to: 'container-reg',  type: 'storage',  label: 'Push builds',     awsLabel: 'ECR push' },
+  // Secrets & IAM
+  { from: 'api',          to: 'secrets',        type: 'external', label: 'Secrets',          awsLabel: 'Secrets' },
+  { from: 'orchestrator', to: 'secrets',        type: 'external', label: 'Secrets',          awsLabel: 'Secrets' },
+  { from: 'iam',          to: 'gcs',            type: 'external', label: 'Storage access',   awsLabel: 'S3 policies' },
+  { from: 'iam',          to: 'container-reg',  type: 'external', label: 'Registry access',  awsLabel: 'ECR pull' },
+  // Compliance
+  { from: 'flowlogs',    to: 'sg',             type: 'external', label: 'Network audit',    awsLabel: 'VPC traffic logs' },
+  { from: 'guardduty',   to: 'platform',       type: 'external', label: 'Threat detection', awsLabel: 'K8s audit logs' },
+  { from: 'guardduty',   to: 'gcs',            type: 'external', label: 'S3 monitoring',    awsLabel: 'S3 data events' },
+  { from: 'awsconfig',   to: 'iam',            type: 'external', label: 'Config audit',     awsLabel: 'Resource compliance' },
+  { from: 'inspector',   to: 'container-reg',  type: 'external', label: 'Image scan',       awsLabel: 'ECR image scan' },
+  { from: 'inspector',   to: 'firecracker',    type: 'external', label: 'Instance scan',    awsLabel: 'EC2 assessment' },
+  { from: 'cloudtrail',  to: 'gcs',            type: 'storage',  label: 'Audit logs',       awsLabel: 'S3 log delivery' },
+  { from: 'cloudtrail',  to: 'iam',            type: 'external', label: 'API audit',        awsLabel: 'API call audit' },
+];
+
+// ─── PRESETS ────────────────────────────────────────────────────────────────
+
+const PRESETS = {
+  'Full System':    { layers: { edge: true, api: true, orchestration: true, vm: true, data: true, external: true }, conns: { http: true, grpc: true, data: true, storage: true, system: true, external: true } },
+  'Request Flow':   { layers: { edge: true, api: true, orchestration: true, vm: true, data: false, external: false }, conns: { http: true, grpc: true, data: false, storage: false, system: true, external: false } },
+  'Build Pipeline': { layers: { edge: false, api: true, orchestration: true, vm: true, data: true, external: false }, conns: { http: false, grpc: true, data: false, storage: true, system: true, external: false } },
+  'Data Layer':     { layers: { edge: false, api: true, orchestration: true, vm: false, data: true, external: false }, conns: { http: false, grpc: false, data: true, storage: true, system: false, external: false } },
+  'Observability':  { layers: { edge: false, api: true, orchestration: true, vm: true, data: false, external: true }, conns: { http: false, grpc: false, data: false, storage: false, system: false, external: true } },
+  'Security':       { layers: { edge: true, api: false, orchestration: false, vm: true, data: true, external: true }, conns: { http: false, grpc: false, data: false, storage: true, system: false, external: true } },
+};
+
+// ─── STATE ──────────────────────────────────────────────────────────────────
+
+const state = {
+  provider: 'gcp',
+  layers: { edge: true, api: true, orchestration: true, vm: true, data: true, external: true },
+  connectionTypes: { http: true, grpc: true, data: true, storage: true, system: true, external: true },
+  activePreset: 'Full System',
+  comments: [],
+  zoom: 1,
+  panX: 0, panY: 0
+};
+
+const BASE_VB = { x: 0, y: 0, w: 1260, h: 900 };
+let isPanning = false, panStart = { x: 0, y: 0 }, panStartVB = { x: 0, y: 0 };
+
+// ─── PROVIDER ───────────────────────────────────────────────────────────────
+
+function setProvider(p) {
+  state.provider = p;
+  document.getElementById('btn-gcp').className = 'provider-btn' + (p === 'gcp' ? ' active-gcp' : '');
+  document.getElementById('btn-aws').className = 'provider-btn' + (p === 'aws' ? ' active-aws' : '');
+  document.getElementById('btn-both').className = 'provider-btn' + (p === 'both' ? ' active-both' : '');
+  updateCompareBar();
+  updateLegend();
+  render();
+}
+
+function updateCompareBar() {
+  const bar = document.getElementById('compareBar');
+  if (state.provider === 'both') {
+    bar.style.display = 'block';
+    document.getElementById('compareTitle').textContent = 'Key Differences';
+    const diffs = [
+      { label: 'Orchestration', gcp: 'Nomad + Consul', aws: 'EKS + Karpenter' },
+      { label: 'Node scaling',  gcp: 'MIG (3-4 min)',  aws: 'Karpenter (~55s)' },
+      { label: 'Load balancer', gcp: '1 Global HTTPS LB', aws: 'ALB + NLB' },
+      { label: 'Database',      gcp: 'External PG',    aws: 'Aurora Serverless v2' },
+      { label: 'Cache',         gcp: 'Self-hosted/ext', aws: 'ElastiCache Redis 7' },
+      { label: 'Shared disk',   gcp: 'Filestore NFS',  aws: 'EFS' },
+      { label: 'Temporal',      gcp: 'N/A',            aws: 'Helm + Aurora + mTLS' },
+      { label: 'Min cost',      gcp: '~$422/mo',       aws: '~$513/mo' },
+    ];
+    document.getElementById('compareContent').innerHTML = diffs.map(d =>
+      `<div class="compare-row"><span class="label">${d.label}</span><span class="gcp-val">${d.gcp}</span><span class="aws-val">${d.aws}</span></div>`
+    ).join('');
+  } else if (state.provider === 'aws') {
+    bar.style.display = 'block';
+    document.getElementById('compareTitle').textContent = 'AWS Status';
+    const visible = nodes.filter(n => state.layers[n.layer]);
+    const withCompare = visible.filter(n => n.compare);
+    const awsOnly = visible.filter(n => n.awsOnly);
+    document.getElementById('compareContent').innerHTML =
+      `<div class="compare-row"><span class="label">Total components</span><span class="aws-val">${visible.length}</span></div>` +
+      `<div class="compare-row"><span class="label">With GCP differences</span><span class="aws-val">${withCompare.length}</span></div>` +
+      `<div class="compare-row"><span class="label">AWS-only features</span><span class="aws-val">${awsOnly.length}</span></div>`;
+  } else {
+    bar.style.display = 'none';
+  }
+}
+
+function getNodeDisplay(n) {
+  if (state.provider === 'aws' && n.aws) return { label: n.aws.label, subtitle: n.aws.subtitle };
+  return { label: n.label, subtitle: n.subtitle };
+}
+
+function getConnLabel(c) {
+  if (state.provider === 'aws') return c.awsLabel || c.label;
+  if (state.provider === 'both') {
+    if (c.awsLabel && c.awsLabel !== c.label) return `${c.label} / ${c.awsLabel}`;
+    return c.label;
+  }
+  return c.label;
+}
+
+// ─── RENDERING ──────────────────────────────────────────────────────────────
+
+function render() {
+  const g = document.getElementById('diagram-content');
+  g.innerHTML = '';
+  updateCompareBar();
+
+  // Layer bands
+  const layerBands = [
+    { layer: 'edge',          y: 15,  h: 78,  label: 'Edge' },
+    { layer: 'api',           y: 135, h: 82,  label: 'API' },
+    { layer: 'orchestration', y: 270, h: 165, label: 'Orchestration' },
+    { layer: 'vm',            y: 465, h: 82,  label: 'VM' },
+    { layer: 'data',          y: 585, h: 82,  label: 'Data' },
+  ];
+  layerBands.forEach(b => {
+    if (!state.layers[b.layer]) return;
+    g.appendChild(svgEl('rect', { x: 8, y: b.y, width: 1000, height: b.h, rx: 8, fill: LAYERS[b.layer].fill, opacity: 0.35 }));
+    const txt = svgEl('text', { x: 16, y: b.y + 14, fill: LAYERS[b.layer].color, opacity: 0.4, 'font-size': '10px', 'font-weight': '600', 'font-family': '-apple-system, system-ui, sans-serif' });
+    txt.textContent = b.label;
+    g.appendChild(txt);
+  });
+
+  // Connections
+  connections.forEach(c => {
+    if (!isConnVisible(c)) return;
+    const from = nodesById[c.from], to = nodesById[c.to];
+    const ct = CONN_TYPES[c.type];
+    const path = calcPath(from, to);
+    g.appendChild(svgEl('path', { d: path, stroke: ct.color, 'stroke-width': 1.5, fill: 'none', 'stroke-dasharray': ct.dash, 'marker-end': `url(#ah-${c.type})`, opacity: 0.65 }));
+    const lbl = getConnLabel(c);
+    if (lbl) {
+      const mid = pathMidpoint(from, to);
+      g.appendChild(svgEl('rect', { x: mid.x - 2, y: mid.y - 9, width: lbl.length * 4.8 + 6, height: 13, rx: 3, fill: '#0d1117', opacity: 0.85 }));
+      const t = svgEl('text', { x: mid.x + 1, y: mid.y, class: 'conn-label', fill: ct.color, opacity: 0.8 });
+      t.textContent = lbl;
+      g.appendChild(t);
+    }
+  });
+
+  // Nodes
+  nodes.forEach(n => {
+    if (!state.layers[n.layer]) return;
+    if (n.awsOnly && state.provider === 'gcp') return; // Skip AWS-only nodes in GCP view
+    const ly = LAYERS[n.layer];
+    const d = getNodeDisplay(n);
+    const hasComment = state.comments.some(c => c.target === n.id);
+    const isBoth = state.provider === 'both';
+    const hasCompare = isBoth && n.compare;
+
+    const grp = svgEl('g', { class: 'node-group' + (hasComment ? ' commented' : ''), 'data-id': n.id });
+
+    // Node rect
+    let strokeColor = ly.color;
+    let strokeW = hasComment ? 2.5 : 1.2;
+    let strokeDash = '';
+    let fillOpacity = 1;
+
+    if (n.awsOnly && isBoth) {
+      // AWS-only nodes in compare mode: dashed orange border
+      strokeColor = '#f0a030';
+      strokeW = hasComment ? 2.5 : 1.5;
+      strokeDash = '6,3';
+      fillOpacity = 0.7;
+    } else if (isBoth && hasCompare) {
+      // In compare mode, highlight nodes with differences
+      strokeColor = '#818cf8';
+      strokeW = hasComment ? 2.5 : 1.8;
+    }
+
+    const rect = svgEl('rect', {
+      x: n.x, y: n.y, width: n.w, height: n.h, rx: 8,
+      fill: ly.fill, stroke: strokeColor, 'stroke-width': strokeW,
+      'stroke-dasharray': strokeDash, opacity: fillOpacity, class: 'node-rect'
+    });
+    grp.appendChild(rect);
+
+    // Comment badge
+    if (hasComment) {
+      grp.appendChild(svgEl('circle', { cx: n.x + n.w - 6, cy: n.y + 6, r: 5, fill: '#58a6ff' }));
+    }
+
+    // AWS ONLY badge (in compare mode)
+    if (n.awsOnly && isBoth) {
+      const bw = 52, bx = n.x + n.w - bw - 4, by = n.y + 3;
+      grp.appendChild(svgEl('rect', { x: bx, y: by, width: bw, height: 13, rx: 3, fill: '#3d2b07', stroke: '#f0a030', 'stroke-width': 0.5 }));
+      const bt = svgEl('text', { x: bx + bw / 2, y: by + 10, 'text-anchor': 'middle', class: 'node-provider-badge', fill: '#f0a030' });
+      bt.textContent = 'AWS ONLY';
+      grp.appendChild(bt);
+    }
+
+    // Title
+    const title = svgEl('text', { x: n.x + 10, y: n.y + (n.h > 50 ? 22 : 20), class: 'node-title', fill: n.awsOnly && isBoth ? '#f0a030' : ly.textColor });
+    if (isBoth && n.aws && n.aws.label !== n.label) {
+      title.textContent = n.label;
+    } else {
+      title.textContent = d.label;
+    }
+    grp.appendChild(title);
+
+    // Subtitle
+    const sub = svgEl('text', { x: n.x + 10, y: n.y + (n.h > 50 ? 38 : 34), class: 'node-subtitle', fill: '#8b949e' });
+    sub.textContent = d.subtitle;
+    grp.appendChild(sub);
+
+    // In compare mode, show both provider names
+    if (isBoth && n.aws && n.aws.label !== n.label) {
+      // GCP badge
+      const gcpBadge = svgEl('rect', { x: n.x + n.w - 80, y: n.y + n.h - 16, width: 32, height: 13, rx: 3, fill: '#1a3a1a', stroke: '#3fb950', 'stroke-width': 0.5 });
+      grp.appendChild(gcpBadge);
+      const gcpTxt = svgEl('text', { x: n.x + n.w - 64, y: n.y + n.h - 6, 'text-anchor': 'middle', class: 'node-provider-badge', fill: '#3fb950' });
+      gcpTxt.textContent = 'GCP';
+      grp.appendChild(gcpTxt);
+
+      // AWS badge with alt label
+      const awsBadge = svgEl('rect', { x: n.x + n.w - 44, y: n.y + n.h - 16, width: 38, height: 13, rx: 3, fill: '#3d2b07', stroke: '#f0a030', 'stroke-width': 0.5 });
+      grp.appendChild(awsBadge);
+      const awsTxt = svgEl('text', { x: n.x + n.w - 25, y: n.y + n.h - 6, 'text-anchor': 'middle', class: 'node-provider-badge', fill: '#f0a030' });
+      awsTxt.textContent = 'AWS';
+      grp.appendChild(awsTxt);
+
+      // Second line with AWS name
+      if (n.h >= 50) {
+        const awsName = svgEl('text', { x: n.x + 10, y: n.y + (n.h > 50 ? 50 : 46), class: 'node-subtitle', fill: '#f0a030', 'font-size': '9px' });
+        awsName.textContent = 'AWS: ' + n.aws.label;
+        grp.appendChild(awsName);
+      }
+    }
+
+    grp.addEventListener('click', (e) => { e.stopPropagation(); openModal(n); });
+    g.appendChild(grp);
+  });
+
+  updatePrompt();
+}
+
+function svgEl(tag, attrs) {
+  const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  return el;
+}
+
+function isConnVisible(c) {
+  const from = nodesById[c.from], to = nodesById[c.to];
+  if (!state.layers[from.layer] || !state.layers[to.layer]) return false;
+  if (!state.connectionTypes[c.type]) return false;
+  // Hide connections to/from AWS-only nodes when viewing GCP
+  if (state.provider === 'gcp' && (from.awsOnly || to.awsOnly)) return false;
+  return true;
+}
+
+function calcPath(from, to) {
+  const fcx = from.x + from.w / 2, fcy = from.y + from.h / 2;
+  const tcx = to.x + to.w / 2, tcy = to.y + to.h / 2;
+  const dx = tcx - fcx, dy = tcy - fcy;
+  let x1, y1, x2, y2;
+  if (Math.abs(dy) > Math.abs(dx) * 0.4) {
+    if (dy > 0) { x1 = fcx; y1 = from.y + from.h; x2 = tcx; y2 = to.y; }
+    else { x1 = fcx; y1 = from.y; x2 = tcx; y2 = to.y + to.h; }
+    const my = (y1 + y2) / 2;
+    return `M${x1},${y1} C${x1},${my} ${x2},${my} ${x2},${y2}`;
+  } else {
+    if (dx > 0) { x1 = from.x + from.w; y1 = fcy; x2 = to.x; y2 = tcy; }
+    else { x1 = from.x; y1 = fcy; x2 = to.x + to.w; y2 = tcy; }
+    const mx = (x1 + x2) / 2;
+    return `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`;
+  }
+}
+
+function pathMidpoint(from, to) {
+  const fcx = from.x + from.w / 2, fcy = from.y + from.h / 2;
+  const tcx = to.x + to.w / 2, tcy = to.y + to.h / 2;
+  const dx = tcx - fcx, dy = tcy - fcy;
+  if (Math.abs(dy) > Math.abs(dx) * 0.4) {
+    const y1 = dy > 0 ? from.y + from.h : from.y;
+    const y2 = dy > 0 ? to.y : to.y + to.h;
+    return { x: (fcx + tcx) / 2, y: (y1 + y2) / 2 };
+  }
+  const x1 = dx > 0 ? from.x + from.w : from.x;
+  const x2 = dx > 0 ? to.x : to.x + to.w;
+  return { x: (x1 + x2) / 2, y: (fcy + tcy) / 2 };
+}
+
+// ─── ZOOM & PAN ─────────────────────────────────────────────────────────────
+
+function changeZoom(dir) {
+  state.zoom = Math.max(0.35, Math.min(3, state.zoom + dir * 0.2));
+  applyViewBox();
+}
+
+function resetZoom() {
+  state.zoom = 1; state.panX = 0; state.panY = 0;
+  applyViewBox();
+}
+
+function applyViewBox() {
+  const w = BASE_VB.w / state.zoom, h = BASE_VB.h / state.zoom;
+  const cx = BASE_VB.w / 2 + state.panX, cy = BASE_VB.h / 2 + state.panY;
+  document.getElementById('diagram').setAttribute('viewBox', `${cx - w/2} ${cy - h/2} ${w} ${h}`);
+  document.getElementById('zoomLevel').textContent = Math.round(state.zoom * 100) + '%';
+}
+
+const svg = document.getElementById('diagram');
+svg.addEventListener('mousedown', e => {
+  if (e.target.closest('.node-group')) return;
+  isPanning = true;
+  panStart = { x: e.clientX, y: e.clientY };
+  panStartVB = { x: state.panX, y: state.panY };
+});
+svg.addEventListener('mousemove', e => {
+  if (!isPanning) return;
+  state.panX = panStartVB.x - (e.clientX - panStart.x) / state.zoom;
+  state.panY = panStartVB.y - (e.clientY - panStart.y) / state.zoom;
+  applyViewBox();
+});
+document.addEventListener('mouseup', () => { isPanning = false; });
+svg.addEventListener('wheel', e => {
+  e.preventDefault();
+  state.zoom = Math.max(0.35, Math.min(3, state.zoom + (e.deltaY < 0 ? 0.1 : -0.1)));
+  applyViewBox();
+}, { passive: false });
+
+// ─── MODAL ──────────────────────────────────────────────────────────────────
+
+let modalNode = null;
+
+function openModal(node) {
+  modalNode = node;
+  const d = getNodeDisplay(node);
+  document.getElementById('modalTitle').textContent = d.label;
+  document.getElementById('modalFile').textContent = d.subtitle;
+
+  const compareEl = document.getElementById('modalCompare');
+  if (node.compare) {
+    compareEl.style.display = 'block';
+    compareEl.innerHTML =
+      `<div style="padding:8px;background:#161b22;border-radius:6px;border:1px solid #30363d;">` +
+      `<div style="color:#3fb950;margin-bottom:4px;"><strong>GCP:</strong> ${escHtml(node.compare.gcp)}</div>` +
+      `<div style="color:#f0a030;margin-bottom:4px;"><strong>AWS:</strong> ${escHtml(node.compare.aws)}</div>` +
+      `<div style="color:#8b949e;font-style:italic;">${escHtml(node.compare.diff)}</div>` +
+      `</div>`;
+  } else {
+    compareEl.style.display = 'none';
+  }
+
+  document.getElementById('modalText').value = '';
+  document.getElementById('modalOverlay').classList.add('open');
+  setTimeout(() => document.getElementById('modalText').focus(), 50);
+}
+
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('open');
+  modalNode = null;
+}
+
+function saveComment() {
+  const text = document.getElementById('modalText').value.trim();
+  if (!text || !modalNode) return;
+  const d = getNodeDisplay(modalNode);
+  state.comments.push({
+    id: Date.now(), target: modalNode.id,
+    targetLabel: d.label, targetFile: d.subtitle,
+    provider: state.provider,
+    compare: modalNode.compare,
+    text
+  });
+  closeModal();
+  renderComments();
+  render();
+}
+
+document.getElementById('modalOverlay').addEventListener('click', e => { if (e.target === e.currentTarget) closeModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); if (e.key === 'Enter' && e.metaKey) saveComment(); });
+
+function renderComments() {
+  const el = document.getElementById('commentsList');
+  const cnt = document.getElementById('commentCount');
+  if (!state.comments.length) {
+    el.innerHTML = '<div class="empty-comments">Click a component to add feedback</div>';
+    cnt.textContent = '';
+    return;
+  }
+  cnt.textContent = `(${state.comments.length})`;
+  el.innerHTML = state.comments.map(c => `
+    <div class="comment-card">
+      <button class="comment-del" onclick="deleteComment(${c.id})">&times;</button>
+      <div class="comment-target">${escHtml(c.targetLabel)}</div>
+      <div class="comment-file">${escHtml(c.targetFile)}</div>
+      <div class="comment-text">${escHtml(c.text)}</div>
+    </div>`).join('');
+}
+
+function deleteComment(id) {
+  state.comments = state.comments.filter(c => c.id !== id);
+  renderComments();
+  render();
+}
+
+function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// ─── CONTROLS ───────────────────────────────────────────────────────────────
+
+function buildControls() {
+  // Presets
+  const pg = document.getElementById('presets');
+  Object.keys(PRESETS).forEach(name => {
+    const btn = document.createElement('button');
+    btn.className = 'preset-btn' + (name === state.activePreset ? ' active' : '');
+    btn.textContent = name;
+    btn.onclick = () => applyPreset(name);
+    pg.appendChild(btn);
+  });
+
+  // Layer toggles
+  const lt = document.getElementById('layerToggles');
+  Object.entries(LAYERS).forEach(([key, ly]) => {
+    const label = document.createElement('label');
+    label.className = 'toggle-item';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.checked = state.layers[key];
+    cb.onchange = () => { state.layers[key] = cb.checked; syncPreset(); render(); };
+    const dot = document.createElement('span');
+    dot.className = 'toggle-dot'; dot.style.background = ly.color;
+    label.appendChild(cb); label.appendChild(dot);
+    label.appendChild(document.createTextNode(ly.label));
+    lt.appendChild(label);
+  });
+
+  // Connection toggles
+  const ct = document.getElementById('connToggles');
+  Object.entries(CONN_TYPES).forEach(([key, ct_]) => {
+    const label = document.createElement('label');
+    label.className = 'toggle-item';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.checked = state.connectionTypes[key];
+    cb.onchange = () => { state.connectionTypes[key] = cb.checked; syncPreset(); render(); };
+    const line = document.createElement('span');
+    line.className = 'toggle-line'; line.style.background = ct_.color;
+    if (ct_.dash) { line.style.background = `repeating-linear-gradient(90deg, ${ct_.color} 0 3px, transparent 3px 5px)`; }
+    label.appendChild(cb); label.appendChild(line);
+    label.appendChild(document.createTextNode(ct_.label));
+    ct.appendChild(label);
+  });
+}
+
+function updateLegend() {
+  const leg = document.getElementById('legend');
+  leg.innerHTML = '';
+  Object.entries(CONN_TYPES).forEach(([key, ct_]) => {
+    const item = document.createElement('div');
+    item.className = 'legend-item';
+    const line = document.createElement('span');
+    line.className = 'legend-line'; line.style.background = ct_.color;
+    if (ct_.dash) { line.style.background = `repeating-linear-gradient(90deg, ${ct_.color} 0 3px, transparent 3px 5px)`; }
+    item.appendChild(line);
+    item.appendChild(document.createTextNode(ct_.label));
+    leg.appendChild(item);
+  });
+  if (state.provider === 'both') {
+    // Add provider legend
+    const sep = document.createElement('span');
+    sep.style.cssText = 'width:1px;height:14px;background:#30363d';
+    leg.appendChild(sep);
+    [{ color: '#3fb950', label: 'GCP' }, { color: '#f0a030', label: 'AWS' }, { color: '#818cf8', label: 'Differs' }].forEach(p => {
+      const item = document.createElement('div');
+      item.className = 'legend-item';
+      const dot = document.createElement('span');
+      dot.className = 'legend-dot'; dot.style.background = p.color;
+      item.appendChild(dot);
+      item.appendChild(document.createTextNode(p.label));
+      leg.appendChild(item);
+    });
+  }
+}
+
+function applyPreset(name) {
+  const p = PRESETS[name];
+  state.activePreset = name;
+  Object.assign(state.layers, p.layers);
+  Object.assign(state.connectionTypes, p.conns);
+  document.querySelectorAll('#layerToggles input').forEach((cb, i) => { cb.checked = Object.values(p.layers)[i]; });
+  document.querySelectorAll('#connToggles input').forEach((cb, i) => { cb.checked = Object.values(p.conns)[i]; });
+  document.querySelectorAll('.preset-btn').forEach(b => b.classList.toggle('active', b.textContent === name));
+  render();
+}
+
+function syncPreset() {
+  let matched = null;
+  for (const [name, p] of Object.entries(PRESETS)) {
+    const layersMatch = Object.entries(p.layers).every(([k, v]) => state.layers[k] === v);
+    const connsMatch = Object.entries(p.conns).every(([k, v]) => state.connectionTypes[k] === v);
+    if (layersMatch && connsMatch) { matched = name; break; }
+  }
+  state.activePreset = matched;
+  document.querySelectorAll('.preset-btn').forEach(b => b.classList.toggle('active', b.textContent === matched));
+}
+
+// ─── PROMPT ─────────────────────────────────────────────────────────────────
+
+function updatePrompt() {
+  const parts = [];
+  const visibleLayers = Object.entries(state.layers).filter(([_, v]) => v).map(([k]) => LAYERS[k].label);
+  const allVisible = visibleLayers.length === Object.keys(LAYERS).length;
+
+  if (state.provider === 'both') {
+    if (state.activePreset && state.activePreset !== 'Full System') {
+      parts.push(`Comparing E2B GCP vs AWS architecture with "${state.activePreset}" preset (${visibleLayers.join(', ')} layers).`);
+    } else if (!allVisible) {
+      parts.push(`Comparing E2B GCP vs AWS architecture, focusing on: ${visibleLayers.join(', ')}.`);
+    } else {
+      parts.push(`Comparing full E2B infrastructure: GCP vs AWS.`);
+    }
+
+    parts.push('');
+    parts.push('Key architectural differences:');
+    parts.push('- Orchestration: Nomad+Consul (GCP, self-managed) vs EKS+Karpenter (AWS, managed K8s)');
+    parts.push('- Node scaling: GCE MIG autoscaler 3-4 min vs Karpenter EC2 Fleet ~55 sec');
+    parts.push('- Load balancing: Single Global HTTPS LB (GCP) vs ALB+NLB split (AWS)');
+    parts.push('- Database: Supabase/external PG (GCP) vs Aurora Serverless v2 recommended (AWS, provisioned externally)');
+    parts.push('- Cache: Memorystore Valkey or self-hosted Nomad (GCP) vs ElastiCache Redis 7 (AWS)');
+    parts.push('- Shared disk: Filestore NFS (GCP) vs EFS (AWS)');
+    parts.push('- Temporal Server: AWS only (Helm chart + Aurora + mTLS PKI)');
+    parts.push('- Security suite: AWS has GuardDuty, Config, Inspector, CloudTrail, VPC Flow Logs (all optional toggles)');
+
+    // List nodes with compare data that are visible
+    const diffNodes = nodes.filter(n => n.compare && state.layers[n.layer]);
+    if (diffNodes.length > 0) {
+      parts.push('');
+      parts.push(`${diffNodes.length} components have provider-specific differences (click to see details).`);
+    }
+  } else {
+    const providerName = state.provider === 'aws' ? 'AWS' : 'GCP';
+    if (state.activePreset && state.activePreset !== 'Full System') {
+      parts.push(`Viewing the E2B infrastructure on ${providerName} with the "${state.activePreset}" preset (${visibleLayers.join(', ')} layers).`);
+    } else if (!allVisible) {
+      parts.push(`Viewing the E2B infrastructure on ${providerName}, focusing on: ${visibleLayers.join(', ')}.`);
+    } else {
+      parts.push(`Viewing the full E2B infrastructure architecture on ${providerName}.`);
+    }
+  }
+
+  if (state.comments.length > 0) {
+    parts.push('');
+    parts.push('Feedback on specific components:');
+    state.comments.forEach(c => {
+      parts.push('');
+      parts.push(`**${c.targetLabel}** (${c.targetFile}):`);
+      if (c.compare) parts.push(`[GCP: ${c.compare.gcp} | AWS: ${c.compare.aws}]`);
+      parts.push(c.text);
+    });
+  }
+
+  document.getElementById('promptText').textContent = parts.join('\n');
+}
+
+function copyPrompt() {
+  navigator.clipboard.writeText(document.getElementById('promptText').textContent).then(() => {
+    const btn = document.getElementById('copyBtn');
+    btn.textContent = 'Copied!'; btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'Copy Prompt'; btn.classList.remove('copied'); }, 1500);
+  });
+}
+
+// ─── INIT ───────────────────────────────────────────────────────────────────
+
+buildControls();
+updateLegend();
+render();
+</script>
+</body>
+</html>
