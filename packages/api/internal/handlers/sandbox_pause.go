@@ -43,7 +43,7 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 	}
 
 	if sbx.TeamID != teamID {
-		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Sandbox \"%s\" not found", sandboxID))
+		a.sendAPIStoreError(c, http.StatusNotFound, sandboxNotFoundMsg(sandboxID))
 
 		return
 	}
@@ -81,7 +81,7 @@ func pauseHandleNotRunningSandbox(ctx context.Context, sqlcDB *sqlcdb.Client, sa
 		if snap.Snapshot.TeamID != teamID {
 			return api.APIError{
 				Code:      http.StatusNotFound,
-				ClientMsg: fmt.Sprintf("Sandbox \"%s\" not found", sandboxID),
+				ClientMsg: sandboxNotFoundMsg(sandboxID),
 			}
 		}
 
@@ -98,7 +98,7 @@ func pauseHandleNotRunningSandbox(ctx context.Context, sqlcDB *sqlcdb.Client, sa
 
 		return api.APIError{
 			Code:      http.StatusNotFound,
-			ClientMsg: fmt.Sprintf("Error pausing sandbox - snapshot for sandbox '%s' was not found", sandboxID),
+			ClientMsg: sandboxNotFoundMsg(sandboxID),
 		}
 	}
 

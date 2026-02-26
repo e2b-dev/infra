@@ -41,13 +41,13 @@ func (a *APIStore) PostSandboxesSandboxIDTimeout(
 
 	sandboxData, err := a.orchestrator.GetSandbox(ctx, team.ID, sandboxID)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusNotFound, "Sandbox not found")
+		a.sendAPIStoreError(c, http.StatusNotFound, sandboxNotFoundMsg(sandboxID))
 
 		return
 	}
 
 	if sandboxData.TeamID != team.ID {
-		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Sandbox \"%s\" not found", sandboxID))
+		a.sendAPIStoreError(c, http.StatusNotFound, sandboxNotFoundMsg(sandboxID))
 
 		return
 	}
