@@ -24,7 +24,8 @@ type ReservationStorage interface {
 	Release(ctx context.Context, teamID uuid.UUID, sandboxID string) error
 }
 
-type Storage interface {
+// TODO [ENG-3514]: Remove Name() and Sync() and nolint once migrated to Redis
+type Storage interface { //nolint: interfacebloat
 	Name() string
 	Add(ctx context.Context, sandbox Sandbox) error
 	Get(ctx context.Context, teamID uuid.UUID, sandboxID string) (Sandbox, error)
