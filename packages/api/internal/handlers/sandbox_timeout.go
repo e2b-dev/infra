@@ -57,7 +57,7 @@ func (a *APIStore) PostSandboxesSandboxIDTimeout(
 	}
 
 	if sandboxData.TeamID != team.ID {
-		logger.L().Debug(ctx, "Sandbox team mismatch on timeout", logger.WithSandboxID(sandboxID), zap.String("team_id", team.ID.String()))
+		logger.L().Debug(ctx, "Sandbox team mismatch on timeout", logger.WithSandboxID(sandboxID), logger.WithTeamID(teamID))
 		a.sendAPIStoreError(c, http.StatusNotFound, sandboxNotFoundMsg(sandboxID))
 
 		return

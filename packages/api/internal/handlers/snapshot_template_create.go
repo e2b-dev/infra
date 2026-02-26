@@ -111,7 +111,7 @@ func (a *APIStore) PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID api
 	}
 
 	if sbx.TeamID != teamID {
-		logger.L().Debug(ctx, "Sandbox team mismatch on snapshot", logger.WithSandboxID(sandboxID), zap.String("team_id", teamID.String()))
+		logger.L().Debug(ctx, "Sandbox team mismatch on snapshot", logger.WithSandboxID(sandboxID), logger.WithTeamID(teamID))
 		a.sendAPIStoreError(c, http.StatusNotFound, sandboxNotFoundMsg(sandboxID))
 
 		return
