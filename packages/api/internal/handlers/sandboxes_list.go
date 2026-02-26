@@ -14,10 +14,9 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/e2b-dev/infra/packages/auth/pkg/types"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
@@ -78,7 +77,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 	ctx := c.Request.Context()
 	telemetry.ReportEvent(ctx, "list sandboxes")
 
-	teamInfo := c.Value(auth.TeamContextKey).(*types.Team)
+	teamInfo := auth.MustGetTeamInfo(c)
 	team := teamInfo.Team
 
 	a.posthog.IdentifyAnalyticsTeam(ctx, team.ID.String(), team.Name)
@@ -113,7 +112,7 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 	ctx := c.Request.Context()
 	telemetry.ReportEvent(ctx, "list sandboxes")
 
-	teamInfo := c.Value(auth.TeamContextKey).(*types.Team)
+	teamInfo := auth.MustGetTeamInfo(c)
 	team := teamInfo.Team
 
 	a.posthog.IdentifyAnalyticsTeam(ctx, team.ID.String(), team.Name)
@@ -192,10 +191,10 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 		// Running Sandbox IDs
 		runningSandboxesIDs := make([]string, 0)
 		for _, info := range runningSandboxes {
-			runningSandboxesIDs = append(runningSandboxesIDs, utils.ShortID(info.SandboxID))
+			runningSandboxesIDs = append(runningSandboxesIDs, info.SandboxID)
 		}
 		for _, info := range pausingSandboxes {
-			runningSandboxesIDs = append(runningSandboxesIDs, utils.ShortID(info.SandboxID))
+			runningSandboxesIDs = append(runningSandboxesIDs, info.SandboxID)
 		}
 
 		pausedSandboxList, err := a.getPausedSandboxes(ctx, team.ID, runningSandboxesIDs, metadataFilter, pagination.QueryLimit(), pagination.CursorTime(), pagination.CursorID())

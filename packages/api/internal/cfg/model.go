@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"reflect"
+	"slices"
 	"time"
 
 	"github.com/caarlos0/env/v11"
@@ -12,6 +13,11 @@ import (
 
 const (
 	DefaultKernelVersion = "vmlinux-6.1.158"
+
+	// SandboxStorageBackendMemory will use memory backend as a primary storage for sandbox data.
+	// It will also keep redis populated to allow for seamless migration to redis.
+	SandboxStorageBackendMemory = "memory"
+	SandboxStorageBackendRedis  = "redis"
 )
 
 type Config struct {
@@ -55,23 +61,27 @@ type Config struct {
 
 	DefaultPersistentVolumeType string `env:"DEFAULT_PERSISTENT_VOLUME_TYPE"`
 
+	// SandboxStorageBackend selects the sandbox storage implementation.
+	// "redis" uses Redis directly; "populate_redis" uses in-memory with Redis shadow writes.
+	SandboxStorageBackend string `env:"SANDBOX_STORAGE_BACKEND" envDefault:"memory"`
+
 	VolumesToken VolumesTokenConfig
 }
 
 type VolumesTokenConfig struct {
 	Issuer        string            `env:"VOLUME_TOKEN_ISSUER,required"`
-	SigningMethod jwt.SigningMethod `env:"VOLUME_TOKEN_SIGNING_METHOD" envDefault:"HS256"`
+	SigningMethod jwt.SigningMethod `env:"VOLUME_TOKEN_SIGNING_METHOD"       envDefault:"HS256"`
 	SigningKey    []byte            `env:"VOLUME_TOKEN_SIGNING_KEY,required"`
-	Expiration    time.Duration     `env:"VOLUME_TOKEN_EXPIRATION" envDefault:"1h"`
+	Expiration    time.Duration     `env:"VOLUME_TOKEN_EXPIRATION"           envDefault:"1h"`
 }
 
 func Parse() (Config, error) {
 	config, err := env.ParseAsWithOptions[Config](env.Options{
 		FuncMap: map[reflect.Type]env.ParserFunc{
-			reflect.TypeFor[[]byte](): func(v string) (interface{}, error) {
+			reflect.TypeFor[[]byte](): func(v string) (any, error) {
 				return base64.StdEncoding.DecodeString(v)
 			},
-			reflect.TypeFor[jwt.SigningMethod](): func(v string) (interface{}, error) {
+			reflect.TypeFor[jwt.SigningMethod](): func(v string) (any, error) {
 				method := jwt.GetSigningMethod(v)
 				if method == nil {
 					return nil, fmt.Errorf("unknown signing method: %s", v)
@@ -91,6 +101,10 @@ func Parse() (Config, error) {
 
 	if config.AuthDBConnectionString == "" {
 		config.AuthDBConnectionString = config.PostgresConnectionString
+	}
+
+	if !slices.Contains([]string{SandboxStorageBackendMemory, SandboxStorageBackendRedis}, config.SandboxStorageBackend) {
+		return config, fmt.Errorf("invalid sandbox storage backend: %s", config.SandboxStorageBackend)
 	}
 
 	return config, nil

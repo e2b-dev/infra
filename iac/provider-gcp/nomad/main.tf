@@ -71,6 +71,7 @@ resource "nomad_job" "api" {
     // We use colocation 2 here to ensure that there are at least 2 nodes for API to do rolling updates.
     // It might be possible there could be problems if we are rolling updates for both API and Loki at the same time., so maybe increasing this to > 3 makes sense.
     prevent_colocation = var.api_machine_count > 2
+    count              = var.api_server_count
 
 
     memory_mb = var.api_resources_memory_mb
@@ -99,6 +100,7 @@ resource "nomad_job" "api" {
     clickhouse_connection_string            = local.clickhouse_connection_string
     loki_url                                = local.loki_url
     sandbox_access_token_hash_seed          = var.sandbox_access_token_hash_seed
+    sandbox_storage_backend                 = var.sandbox_storage_backend
     db_migrator_docker_image                = data.google_artifact_registry_docker_image.db_migrator_image.self_link
     launch_darkly_api_key                   = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
     default_persistent_volume_type          = var.default_persistent_volume_type

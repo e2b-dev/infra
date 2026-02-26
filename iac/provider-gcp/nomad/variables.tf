@@ -97,8 +97,17 @@ variable "sandbox_access_token_hash_seed" {
   type = string
 }
 
+variable "sandbox_storage_backend" {
+  type    = string
+  default = "memory"
+}
+
 variable "environment" {
   type = string
+}
+
+variable "api_server_count" {
+  type = number
 }
 
 variable "api_machine_count" {

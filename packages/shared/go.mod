@@ -14,6 +14,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ecr v1.44.0
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.79.3
 	github.com/bits-and-blooms/bitset v1.22.0
+	github.com/bsm/redislock v0.9.4
 	github.com/dchest/uniuri v1.2.0
 	github.com/gin-gonic/gin v1.10.1
 	github.com/go-openapi/errors v0.22.6

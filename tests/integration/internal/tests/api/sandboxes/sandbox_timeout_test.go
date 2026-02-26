@@ -75,7 +75,7 @@ func TestSandboxTimeout_NotFound(t *testing.T) {
 	t.Parallel()
 	c := setup.GetAPIClient()
 
-	timeoutResp, err := c.PostSandboxesSandboxIDTimeoutWithResponse(t.Context(), "nonexistent-sandbox-id", api.PostSandboxesSandboxIDTimeoutJSONRequestBody{
+	timeoutResp, err := c.PostSandboxesSandboxIDTimeoutWithResponse(t.Context(), "nonexistentsandboxid", api.PostSandboxesSandboxIDTimeoutJSONRequestBody{
 		Timeout: 60,
 	}, setup.WithAPIKey())
 	require.NoError(t, err)
@@ -148,5 +148,5 @@ func TestSandboxTimeout_CrossTeamAccess(t *testing.T) {
 		Timeout: 120,
 	}, setup.WithAPIKey(foreignAPIKey))
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusForbidden, timeoutResp.StatusCode(), "Should return 403 Forbidden when trying to set timeout on a sandbox owned by a different team")
+	assert.Equal(t, http.StatusNotFound, timeoutResp.StatusCode(), "Should return 404 Not Found when trying to set timeout on a sandbox owned by a different team")
 }

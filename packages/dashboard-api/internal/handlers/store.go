@@ -45,5 +45,5 @@ func (s *APIStore) GetUserIDFromSupabaseToken(ctx context.Context, _ *gin.Contex
 }
 
 func (s *APIStore) GetTeamFromSupabaseToken(ctx context.Context, ginCtx *gin.Context, teamID string) (*types.Team, *sharedauth.APIError) {
-	return s.authService.ValidateSupabaseTeam(ctx, ginCtx, teamID, sharedauth.UserIDContextKey)
+	return s.authService.ValidateSupabaseTeam(ctx, ginCtx, teamID)
 }

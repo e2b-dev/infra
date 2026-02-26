@@ -18,12 +18,24 @@ provider "cloudflare" {
 locals {
   domain_map = { for d in var.additional_domains : replace(d, ".", "-") => d }
 
-  parts        = split(".", var.domain_name)
-  is_subdomain = length(local.parts) > 2
-  // Take everything except last 2 parts
-  subdomain = local.is_subdomain ? join(".", slice(local.parts, 0, length(local.parts) - 2)) : ""
-  // Take last 2 parts (1 dot)
-  root_domain = local.is_subdomain ? join(".", slice(local.parts, length(local.parts) - 2, length(local.parts))) : var.domain_name
+  // All domains (primary + additional)
+  domains = toset(concat(var.additional_domains, [var.domain_name]))
+
+  // Extract root domain (Cloudflare zone) and prefix from each domain.
+  // e.g. "sub.example.com" -> root_domain = "example.com", prefix = "sub"
+  //      "example.dev"     -> root_domain = "example.dev", prefix = ""
+  domain_parts = { for d in local.domains : d => split(".", d) }
+  domain_info = {
+    for d, parts in local.domain_parts : d => {
+      root_domain = length(parts) >= 2 ? join(".", slice(parts, length(parts) - 2, length(parts))) : d
+      prefix      = join(".", slice(parts, 0, max(length(parts) - 2, 0)))
+    }
+  }
+
+  // Primary domain parsing
+  is_subdomain = local.domain_info[var.domain_name].prefix != ""
+  subdomain    = local.domain_info[var.domain_name].prefix
+  root_domain  = local.domain_info[var.domain_name].root_domain
 
   backends = {
     session = {

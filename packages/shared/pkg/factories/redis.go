@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"runtime"
 	"strings"
 
 	"github.com/redis/go-redis/extra/redisotel/v9"
@@ -24,6 +25,11 @@ type RedisConfig struct {
 	RedisTLSCABase64 string
 }
 
+const (
+	clusterNodeConnectionSizePerCPU = 20
+	minIdleConnectionsPerCPU        = 5
+)
+
 func NewRedisClient(ctx context.Context, config RedisConfig) (redis.UniversalClient, error) {
 	var redisClient redis.UniversalClient
 
@@ -33,9 +39,12 @@ func NewRedisClient(ctx context.Context, config RedisConfig) (redis.UniversalCli
 		// > Redis node endpoints can change and can be recycled as nodes are added and removed over time.
 		// https://cloud.google.com/memorystore/docs/cluster/cluster-node-specification#cluster_endpoints
 		// https://cloud.google.com/memorystore/docs/cluster/client-library-code-samples#go-redis
+
+		numCPU := runtime.GOMAXPROCS(0)
 		clusterOpts := &redis.ClusterOptions{
 			Addrs:        []string{config.RedisClusterURL},
-			MinIdleConns: 20,
+			PoolSize:     clusterNodeConnectionSizePerCPU * numCPU,
+			MinIdleConns: minIdleConnectionsPerCPU * numCPU,
 		}
 
 		if config.RedisTLSCABase64 != "" {

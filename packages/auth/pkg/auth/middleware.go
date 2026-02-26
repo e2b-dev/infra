@@ -47,7 +47,7 @@ type CommonAuthenticator[T any] struct {
 	SchemeName     string
 	Header         HeaderKey
 	ValidationFunc func(ctx context.Context, ginCtx *gin.Context, token string) (T, *APIError)
-	ContextKey     string
+	SetContextFunc func(ginCtx *gin.Context, value T)
 	ErrorMessage   string
 }
 
@@ -113,8 +113,8 @@ func (a *CommonAuthenticator[T]) Authenticate(ctx context.Context, ginCtx *gin.C
 
 	telemetry.ReportEvent(ctx, "api key validated")
 
-	if a.ContextKey != "" {
-		ginCtx.Set(a.ContextKey, result)
+	if a.SetContextFunc != nil {
+		a.SetContextFunc(ginCtx, result)
 	}
 
 	return nil
@@ -148,7 +148,7 @@ func NewApiKeyAuthenticator(validationFunc func(ctx context.Context, ginCtx *gin
 			Prefix: PrefixAPIKey,
 		},
 		ValidationFunc: validationFunc,
-		ContextKey:     TeamContextKey,
+		SetContextFunc: SetTeamInfo,
 		ErrorMessage:   "Invalid API key, please visit https://e2b.dev/docs/api-key for more information.",
 	}
 }
@@ -163,7 +163,7 @@ func NewAccessTokenAuthenticator(validationFunc func(ctx context.Context, ginCtx
 			RemovePrefix: PrefixBearer,
 		},
 		ValidationFunc: validationFunc,
-		ContextKey:     UserIDContextKey,
+		SetContextFunc: SetUserID,
 		ErrorMessage:   "Invalid Access token, try to login again by running `e2b auth login`.",
 	}
 }
@@ -176,7 +176,7 @@ func NewSupabaseTokenAuthenticator(validationFunc func(ctx context.Context, ginC
 			Name: HeaderSupabaseToken,
 		},
 		ValidationFunc: validationFunc,
-		ContextKey:     UserIDContextKey,
+		SetContextFunc: SetUserID,
 		ErrorMessage:   "Invalid Supabase token.",
 	}
 }
@@ -189,7 +189,7 @@ func NewSupabaseTeamAuthenticator(validationFunc func(ctx context.Context, ginCt
 			Name: HeaderSupabaseTeam,
 		},
 		ValidationFunc: validationFunc,
-		ContextKey:     TeamContextKey,
+		SetContextFunc: SetTeamInfo,
 		ErrorMessage:   "Invalid Supabase token teamID.",
 	}
 }

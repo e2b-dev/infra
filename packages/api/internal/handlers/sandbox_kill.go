@@ -10,20 +10,17 @@ import (
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
 
-	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/db"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
-	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/e2b-dev/infra/packages/auth/pkg/types"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/queries"
-	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-func (a *APIStore) deleteSnapshot(ctx context.Context, sandboxID string, teamID uuid.UUID, teamClusterID *uuid.UUID) error {
+func (a *APIStore) deleteSnapshot(ctx context.Context, sandboxID string, teamID uuid.UUID) error {
 	snapshot, err := db.GetSnapshotBuilds(ctx, a.sqlcDB, teamID, sandboxID)
 	if err != nil {
 		return err
@@ -37,36 +34,6 @@ func (a *APIStore) deleteSnapshot(ctx context.Context, sandboxID string, teamID 
 		return fmt.Errorf("error deleting template from db: %w", dbErr)
 	}
 
-	go func(ctx context.Context) {
-		// remove any snapshots when the sandbox is not running
-		ctx, span := tracer.Start(ctx, "delete-snapshot")
-		defer span.End()
-		span.SetAttributes(telemetry.WithSandboxID(sandboxID))
-		span.SetAttributes(telemetry.WithTemplateID(snapshot.TemplateID))
-
-		envBuildIDs := make([]template_manager.DeleteBuild, 0)
-		for _, build := range snapshot.Builds {
-			envBuildIDs = append(
-				envBuildIDs,
-				template_manager.DeleteBuild{
-					BuildID:    build.BuildID,
-					TemplateID: snapshot.TemplateID,
-					ClusterID:  clusters.WithClusterFallback(teamClusterID),
-					NodeID:     build.ClusterNodeID,
-				},
-			)
-		}
-
-		if len(envBuildIDs) == 0 {
-			return
-		}
-
-		deleteJobErr := a.templateManager.DeleteBuilds(ctx, envBuildIDs)
-		if deleteJobErr != nil {
-			telemetry.ReportError(ctx, "error deleting snapshot builds", deleteJobErr, telemetry.WithSandboxID(sandboxID))
-		}
-	}(context.WithoutCancel(ctx))
-
 	a.templateCache.InvalidateAllTags(context.WithoutCancel(ctx), snapshot.TemplateID)
 	a.templateCache.InvalidateAliasesByTemplateID(context.WithoutCancel(ctx), snapshot.TemplateID, aliasKeys)
 
@@ -78,9 +45,16 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 	sandboxID string,
 ) {
 	ctx := c.Request.Context()
-	sandboxID = utils.ShortID(sandboxID)
 
-	team := c.Value(auth.TeamContextKey).(*types.Team)
+	var err error
+	sandboxID, err = utils.ShortID(sandboxID)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid sandbox ID")
+
+		return
+	}
+
+	team := auth.MustGetTeamInfo(c)
 	teamID := team.ID
 
 	telemetry.SetAttributes(ctx,
@@ -95,7 +69,8 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 	sbx, err := a.orchestrator.GetSandbox(ctx, teamID, sandboxID)
 	if err == nil {
 		if sbx.TeamID != teamID {
-			a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox \"%s\"", sandboxID))
+			logger.L().Debug(ctx, "Sandbox team mismatch on kill", logger.WithSandboxID(sandboxID), logger.WithTeamID(teamID.String()))
+			a.sendAPIStoreError(c, http.StatusNotFound, sandboxNotFoundMsg(sandboxID))
 
 			return
 		}
@@ -121,7 +96,7 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 	}
 
 	// remove any snapshots when the sandbox is not running
-	deleteSnapshotErr := a.deleteSnapshot(ctx, sandboxID, teamID, team.ClusterID)
+	deleteSnapshotErr := a.deleteSnapshot(ctx, sandboxID, teamID)
 	switch {
 	case errors.Is(deleteSnapshotErr, db.ErrSnapshotNotFound):
 		// no snapshot found, nothing to do
@@ -137,6 +112,7 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 	if killedOrRemoved {
 		c.Status(http.StatusNoContent)
 	} else {
-		a.sendAPIStoreError(c, http.StatusNotFound, "Sandbox not found")
+		logger.L().Debug(ctx, "Sandbox not found for deletion", logger.WithSandboxID(sandboxID))
+		a.sendAPIStoreError(c, http.StatusNotFound, sandboxNotFoundMsg(sandboxID))
 	}
 }
