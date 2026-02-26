@@ -43,5 +43,4 @@ func (e *NotRunningError) Error() string {
 
 var (
 	ErrAlreadyExists    = errors.New("sandbox already exists")
-	ErrCannotShortenTTL = errors.New("cannot shorten ttl")
 )
