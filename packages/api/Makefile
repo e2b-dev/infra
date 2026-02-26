@@ -42,6 +42,8 @@ run:
 	ORCHESTRATOR_PORT=5008 \
 	NODE_ID=integration-tests \
 	LOKI_URL=unset \
+	VOLUME_TOKEN_ISSUER=dev.e2b.test \
+	VOLUME_TOKEN_SIGNING_KEY=bWFnaWNhbC1zaWduaW5nLWtleQo= \
 	./bin/api --port 3000
 
 define setup_local_env
