@@ -7,9 +7,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"go.uber.org/zap"
+
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -41,12 +44,14 @@ func (a *APIStore) PostSandboxesSandboxIDTimeout(
 
 	sandboxData, err := a.orchestrator.GetSandbox(ctx, team.ID, sandboxID)
 	if err != nil {
+		logger.L().Debug(ctx, "Sandbox not found for timeout", logger.WithSandboxID(sandboxID))
 		a.sendAPIStoreError(c, http.StatusNotFound, sandboxNotFoundMsg(sandboxID))
 
 		return
 	}
 
 	if sandboxData.TeamID != team.ID {
+		logger.L().Debug(ctx, "Sandbox team mismatch on timeout", logger.WithSandboxID(sandboxID), zap.String("team_id", team.ID.String()))
 		a.sendAPIStoreError(c, http.StatusNotFound, sandboxNotFoundMsg(sandboxID))
 
 		return

@@ -18,6 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"go.uber.org/zap"
 )
 
 func (a *APIStore) deleteSnapshot(ctx context.Context, sandboxID string, teamID uuid.UUID) error {
@@ -62,6 +63,7 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 	sbx, err := a.orchestrator.GetSandbox(ctx, teamID, sandboxID)
 	if err == nil {
 		if sbx.TeamID != teamID {
+			logger.L().Debug(ctx, "Sandbox team mismatch on kill", logger.WithSandboxID(sandboxID), zap.String("team_id", teamID.String()))
 			a.sendAPIStoreError(c, http.StatusNotFound, sandboxNotFoundMsg(sandboxID))
 
 			return
@@ -104,6 +106,7 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 	if killedOrRemoved {
 		c.Status(http.StatusNoContent)
 	} else {
+		logger.L().Debug(ctx, "Sandbox not found for deletion", logger.WithSandboxID(sandboxID))
 		a.sendAPIStoreError(c, http.StatusNotFound, sandboxNotFoundMsg(sandboxID))
 	}
 }

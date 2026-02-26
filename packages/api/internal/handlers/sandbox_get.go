@@ -56,6 +56,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 			state = api.Paused
 		// Sandbox is being stopped or already is stopped, user can't work with it anymore
 		case sandbox.StateKilling:
+			logger.L().Debug(ctx, "Sandbox is being killed", logger.WithSandboxID(sandboxId))
 			a.sendAPIStoreError(c, http.StatusNotFound, sandboxNotFoundMsg(id))
 
 			return

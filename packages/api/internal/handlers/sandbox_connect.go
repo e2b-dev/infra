@@ -54,6 +54,7 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 	sandboxData, err := a.orchestrator.GetSandbox(ctx, teamID, sandboxID)
 	if err == nil {
 		if sandboxData.TeamID != teamID {
+			logger.L().Debug(ctx, "Sandbox team mismatch on connect", logger.WithSandboxID(sandboxID), zap.String("team_id", teamID.String()))
 			a.sendAPIStoreError(c, http.StatusNotFound, sandboxNotFoundMsg(sandboxID))
 
 			return
@@ -69,6 +70,7 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 				return
 			}
 		case sandbox.StateKilling:
+			logger.L().Debug(ctx, "Sandbox is being killed, cannot connect", logger.WithSandboxID(sandboxID))
 			a.sendAPIStoreError(c, http.StatusNotFound, sandboxNotFoundMsg(sandboxID))
 
 			return
