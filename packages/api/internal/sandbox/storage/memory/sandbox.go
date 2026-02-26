@@ -51,15 +51,9 @@ func (i *memorySandbox) State() sandbox.State {
 }
 
 func (i *memorySandbox) SandboxID() string {
-	i.mu.RLock()
-	defer i.mu.RUnlock()
-
 	return i._data.SandboxID
 }
 
 func (i *memorySandbox) TeamID() uuid.UUID {
-	i.mu.RLock()
-	defer i.mu.RUnlock()
-
 	return i._data.TeamID
 }
