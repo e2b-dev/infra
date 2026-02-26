@@ -548,7 +548,7 @@ resource "google_compute_security_policy_rule" "api-throttling-api-key" {
     }
 
     rate_limit_threshold {
-      count        = 1200
+      count        = 1800
       interval_sec = 10
     }
   }

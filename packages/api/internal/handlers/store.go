@@ -16,7 +16,6 @@ import (
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/api/internal/clusters"
@@ -285,5 +284,5 @@ func (a *APIStore) GetTeamFromSupabaseToken(ctx context.Context, ginCtx *gin.Con
 	ctx, span := tracer.Start(ctx, "get team from supabase token")
 	defer span.End()
 
-	return a.authService.ValidateSupabaseTeam(ctx, ginCtx, teamID, auth.UserIDContextKey)
+	return a.authService.ValidateSupabaseTeam(ctx, ginCtx, teamID)
 }

@@ -11,11 +11,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/bits-and-blooms/bitset"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/fdexit"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/userfaultfd"
@@ -216,18 +216,8 @@ func (u *Uffd) Exit() *utils.ErrorOnce {
 // DiffMetadata waits for the current requests to finish and returns the dirty pages.
 //
 // It *MUST* be only called after the sandbox was successfully paused via API and after the snapshot endpoint was called.
-func (u *Uffd) DiffMetadata(ctx context.Context) (*header.DiffMetadata, error) {
-	uffd, err := u.handler.WaitWithContext(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get uffd: %w", err)
-	}
-
-	return &header.DiffMetadata{
-		Dirty: uffd.Dirty().BitSet(),
-		// We don't track and filter empty pages for subsequent sandbox pauses as pages should usually not be empty.
-		Empty:     bitset.New(0),
-		BlockSize: u.memfile.BlockSize(),
-	}, nil
+func (u *Uffd) DiffMetadata(ctx context.Context, f *fc.Process) (*header.DiffMetadata, error) {
+	return f.DirtyMemory(ctx, u.memfile.BlockSize())
 }
 
 // PrefetchData returns page fault data for prefetch mapping.

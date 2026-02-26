@@ -16,6 +16,7 @@ var (
 	caseInsensitiveAlphabet = []byte("abcdefghijklmnopqrstuvwxyz1234567890")
 	identifierRegex         = regexp.MustCompile(`^[a-z0-9-_]+$`)
 	tagRegex                = regexp.MustCompile(`^[a-z0-9-_.]+$`)
+	sandboxIDRegex          = regexp.MustCompile(`^[a-z0-9]+$`)
 )
 
 const (
@@ -26,6 +27,15 @@ const (
 
 func Generate() string {
 	return uniuri.NewLenChars(uniuri.UUIDLen, caseInsensitiveAlphabet)
+}
+
+// ValidateSandboxID checks that a sandbox ID contains only lowercase alphanumeric characters.
+func ValidateSandboxID(sandboxID string) error {
+	if !sandboxIDRegex.MatchString(sandboxID) {
+		return fmt.Errorf("invalid sandbox ID: %q", sandboxID)
+	}
+
+	return nil
 }
 
 func cleanAndValidate(value, name string, re *regexp.Regexp) (string, error) {

@@ -5,10 +5,10 @@ info:
     The API is accessible through HTTP calls on specific URLs
     carrying JSON modeled data.
     The transport medium is a Unix Domain Socket.
-  version: 1.10.1
+  version: 1.12.1
   termsOfService: ""
   contact:
-    email: "compute-capsule@amazon.com"
+    email: "firecracker-maintainers@amazon.com"
   license:
     name: "Apache 2.0"
     url: "http://www.apache.org/licenses/LICENSE-2.0.html"
@@ -647,6 +647,25 @@ paths:
           schema:
             $ref: "#/definitions/Error"
 
+  /memory/dirty:
+    get:
+      summary: Gets the dirty pages bitmap for guest memory.
+      description: Returns a bitmap of dirty pages (pages written to since write-protection was enabled). The bitmap is encoded as a vector of u64 values where each bit represents one guest page. Pages are ordered following the order of memory regions as reported by /memory/mappings. The microVM must be paused before calling this endpoint.
+      operationId: getDirtyMemory
+      responses:
+        200:
+          description: OK
+          schema:
+            $ref: "#/definitions/DirtyMemory"
+        400:
+          description: The microVM is not paused.
+          schema:
+            $ref: "#/definitions/Error"
+        default:
+          description: Internal server error
+          schema:
+            $ref: "#/definitions/Error"
+
   /version:
     get:
       summary: Gets the Firecracker version.
@@ -869,7 +888,7 @@ definitions:
     default: "None"
 
   CpuConfig:
-    type: string
+    type: object
     description:
       The CPU configuration template defines a set of bit maps as modifiers of flags accessed by register
       to be disabled/enabled for the microvm.
@@ -883,6 +902,12 @@ definitions:
       reg_modifiers:
         type: object
         description: A collection of registers to be modified. (aarch64)
+      vcpu_features:
+        type: object
+        description: A collection of vcpu features to be modified. (aarch64)
+      kvm_capabilities:
+        type: object
+        description: A collection of kvm capabilities to be modified. (aarch64)
 
   Drive:
     type: object
@@ -1069,6 +1094,19 @@ definitions:
       empty:
         type: array
         description: The empty bitmap as a vector of u64 values. Each bit represents if the page is zero (empty). This is a subset of the resident pages.
+        items:
+          type: integer
+          format: uint64
+
+  DirtyMemory:
+    type: object
+    description: Response containing the dirty pages bitmap for guest memory. The bitmap is structured as a vector of u64, so its length is total_number_of_pages.div_ceil(64). Pages are ordered in the order of pages as reported by /memory/mappings.
+    required:
+      - bitmap
+    properties:
+      bitmap:
+        type: array
+        description: Bitmap for dirty pages. Each bit represents whether a page has been written since write-protection was enabled.
         items:
           type: integer
           format: uint64
@@ -1291,6 +1329,24 @@ definitions:
           Type of snapshot to create. It is optional and by default, a full
           snapshot is created.
 
+  NetworkOverride:
+    type: object
+    description:
+      Allows for changing the backing TAP device of a network interface
+      during snapshot restore.
+    required:
+      - iface_id
+      - host_dev_name
+    properties:
+      iface_id:
+        type: string
+        description:
+          The name of the interface to modify
+      host_dev_name:
+        type: string
+        description:
+          The new host device of the interface
+
   SnapshotLoadParams:
     type: object
     description:
@@ -1322,6 +1378,13 @@ definitions:
         type: boolean
         description:
           When set to true, the vm is also resumed if the snapshot load is successful.
+      network_overrides:
+        type: array
+        description: Network host device names to override
+        x-omitempty: true
+        items:
+          $ref: "#/definitions/NetworkOverride"
+
 
   TokenBucket:
     type: object

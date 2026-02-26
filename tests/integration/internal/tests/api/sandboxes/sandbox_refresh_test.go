@@ -76,7 +76,7 @@ func TestSandboxRefresh_NotFound(t *testing.T) {
 	t.Parallel()
 	c := setup.GetAPIClient()
 
-	timeoutResp, err := c.PostSandboxesSandboxIDRefreshesWithResponse(t.Context(), "nonexistent-sandbox-id", api.PostSandboxesSandboxIDRefreshesJSONRequestBody{}, setup.WithAPIKey())
+	timeoutResp, err := c.PostSandboxesSandboxIDRefreshesWithResponse(t.Context(), "nonexistentsandboxid", api.PostSandboxesSandboxIDRefreshesJSONRequestBody{}, setup.WithAPIKey())
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusNotFound, timeoutResp.StatusCode())
 }
