@@ -186,7 +186,7 @@ receivers:
           process.cpu.time:
             enabled: true
           process.disk.io:
-            enabled: false
+            enabled: true
           process.memory.usage:
             enabled: true
           process.memory.virtual:
@@ -196,7 +196,7 @@ receivers:
           process.cpu.utilization:
             enabled: false
           process.disk.operations:
-            enabled: false
+            enabled: true
           process.handles:
             enabled: false
           process.memory.utilization:
