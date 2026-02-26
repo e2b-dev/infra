@@ -62,7 +62,10 @@ func RegisterBuild(
 
 	// This is a simple implementation of concurrency limit
 	// It does not guarantee that the limit is not exceeded, but it should be good enough for now (considering overall low number of total builds)
-	templateIDs, err := db.GetInProgressTemplateBuildsByTeam(ctx, &data.Team.ID)
+	otherBuildCount, err := db.GetInProgressTemplateBuildsByTeam(ctx, queries.GetInProgressTemplateBuildsByTeamParams{
+		TeamID:            &data.Team.ID,
+		ExcludeTemplateID: data.TemplateID,
+	})
 	if err != nil {
 		return nil, &api.APIError{
 			Err:       err,
@@ -71,13 +74,8 @@ func RegisterBuild(
 		}
 	}
 
-	// Exclude the current build if it's a rebuild (it will be canceled)
-	teamBuildsExcludingCurrent := gutils.Filter(templateIDs, func(templateID string) bool {
-		return templateID != data.TemplateID
-	})
-
 	totalConcurrentTemplateBuilds := data.Team.Limits.BuildConcurrency
-	if len(teamBuildsExcludingCurrent) >= int(totalConcurrentTemplateBuilds) {
+	if otherBuildCount >= totalConcurrentTemplateBuilds {
 		telemetry.ReportError(ctx, "team has reached max concurrent template builds", nil, telemetry.WithTeamID(data.Team.ID.String()), attribute.Int64("total.concurrent_template_builds", totalConcurrentTemplateBuilds))
 
 		return nil, &api.APIError{

@@ -8,22 +8,22 @@ WHERE b.status_group IN ('pending', 'in_progress')
   AND e.source = 'template'
 ORDER BY b.id, b.created_at DESC;
 
--- name: GetInProgressTemplateBuildsByTeam :many
-SELECT e.id as template_id
+-- name: GetInProgressTemplateBuildsByTeam :one
+SELECT COUNT(DISTINCT b.id) as build_count
 FROM public.env_builds b
 JOIN public.env_build_assignments eba ON eba.build_id = b.id
 JOIN public.envs e ON e.id = eba.env_id
-WHERE b.team_id = $1
+WHERE b.team_id = @team_id
   AND b.status_group IN ('pending', 'in_progress')
   AND e.source = 'template'
-GROUP BY b.id, e.id;
+  AND eba.env_id != @exclude_template_id;
 
 -- name: GetCancellableTemplateBuildsByTeam :many
-SELECT b.id as build_id, e.id as template_id, e.cluster_id, b.cluster_node_id
+SELECT DISTINCT ON (b.id) b.id as build_id, e.id as template_id, e.cluster_id, b.cluster_node_id
 FROM public.env_builds b
 JOIN public.env_build_assignments eba ON eba.build_id = b.id
 JOIN public.envs e ON e.id = eba.env_id
 WHERE b.team_id = $1
   AND b.status_group IN ('pending', 'in_progress')
   AND e.source = 'template'
-GROUP BY b.id, e.id;
+ORDER BY b.id;
