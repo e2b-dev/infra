@@ -61,7 +61,7 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 	sandboxData, err := a.orchestrator.GetSandbox(ctx, teamID, sandboxID)
 	if err == nil {
 		if sandboxData.TeamID != teamID {
-			logger.L().Debug(ctx, "Sandbox team mismatch on connect", logger.WithSandboxID(sandboxID), zap.String("team_id", teamID.String()))
+			logger.L().Debug(ctx, "Sandbox team mismatch on connect", logger.WithSandboxID(sandboxID), logger.WithTeamID(teamID.String()))
 			a.sendAPIStoreError(c, http.StatusNotFound, sandboxNotFoundMsg(sandboxID))
 
 			return
