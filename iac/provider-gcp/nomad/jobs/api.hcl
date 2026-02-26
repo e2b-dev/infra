@@ -103,6 +103,7 @@ job "api" {
 
       env {
         ENVIRONMENT                    = "${environment}"
+        DOMAIN_NAME                    = "${domain_name}"
         NODE_ID                        = "$${node.unique.id}"
         NOMAD_TOKEN                    = "${nomad_acl_token}"
         ORCHESTRATOR_PORT              = "${orchestrator_port}"
