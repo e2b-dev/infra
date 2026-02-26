@@ -109,15 +109,21 @@ variable "build_consolidation_after" {
 }
 
 variable "cache_disk_iops" {
-  description = "Provisioned IOPS for cache EBS volume (gp3 baseline: 3000)"
+  description = "Provisioned IOPS for cache EBS volume (gp3 baseline: 3000, recommended: 6000 for high sandbox density)"
   type        = number
-  default     = 3000
+  default     = 6000
 }
 
 variable "cache_disk_throughput_mbps" {
   description = "Provisioned throughput in MB/s for cache EBS volume (gp3 baseline: 125, recommended: 400)"
   type        = number
   default     = 400
+}
+
+variable "bootstrap_instance_type" {
+  description = "Instance type for bootstrap managed node group (Karpenter controller + system pods)"
+  type        = string
+  default     = "t3.large"
 }
 
 variable "tags" {

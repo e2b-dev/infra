@@ -68,6 +68,16 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "config" {
   }
 }
 
+resource "aws_s3_bucket_versioning" "config" {
+  count = var.enable_aws_config ? 1 : 0
+
+  bucket = aws_s3_bucket.config[0].id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
 resource "aws_s3_bucket_lifecycle_configuration" "config" {
   count = var.enable_aws_config ? 1 : 0
 
@@ -242,6 +252,16 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "cloudtrail" {
     apply_server_side_encryption_by_default {
       sse_algorithm = "AES256"
     }
+  }
+}
+
+resource "aws_s3_bucket_versioning" "cloudtrail" {
+  count = var.enable_cloudtrail ? 1 : 0
+
+  bucket = aws_s3_bucket.cloudtrail[0].id
+
+  versioning_configuration {
+    status = "Enabled"
   }
 }
 

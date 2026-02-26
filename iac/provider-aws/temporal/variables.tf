@@ -38,9 +38,9 @@ variable "temporal_chart_version" {
 }
 
 variable "temporal_cert_validity_hours" {
-  description = "Validity period in hours for Temporal mTLS certificates (default: 90 days)"
+  description = "Validity period in hours for Temporal mTLS certificates (default: 1 year)"
   type        = number
-  default     = 2160
+  default     = 8760
 }
 
 variable "temporal_worker_replica_count" {

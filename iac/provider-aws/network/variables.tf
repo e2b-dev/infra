@@ -59,3 +59,9 @@ variable "restrict_egress_to_vpc" {
   type        = bool
   default     = false
 }
+
+variable "single_nat_gateway" {
+  description = "Use a single NAT gateway instead of one per AZ (cost savings for dev/staging, reduced HA)"
+  type        = bool
+  default     = false
+}

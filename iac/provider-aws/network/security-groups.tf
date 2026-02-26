@@ -4,12 +4,115 @@ resource "aws_security_group" "eks_nodes" {
   description = "Security group for EKS worker nodes"
   vpc_id      = aws_vpc.main.id
 
-  # Inter-node all traffic
+  # Application ports (orchestrator, client-proxy, API)
   ingress {
-    description = "All inter-node traffic"
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
+    description = "E2B application ports"
+    from_port   = 3001
+    to_port     = 3002
+    protocol    = "tcp"
+    self        = true
+  }
+
+  ingress {
+    description = "Orchestrator ports"
+    from_port   = 5007
+    to_port     = 5009
+    protocol    = "tcp"
+    self        = true
+  }
+
+  ingress {
+    description = "API port"
+    from_port   = 50001
+    to_port     = 50001
+    protocol    = "tcp"
+    self        = true
+  }
+
+  # Kubernetes NodePort range
+  ingress {
+    description = "NodePort services"
+    from_port   = 30000
+    to_port     = 32767
+    protocol    = "tcp"
+    self        = true
+  }
+
+  # Metrics and monitoring
+  ingress {
+    description = "Metrics and ingress ports"
+    from_port   = 8800
+    to_port     = 8800
+    protocol    = "tcp"
+    self        = true
+  }
+
+  ingress {
+    description = "OTel collector"
+    from_port   = 4317
+    to_port     = 4318
+    protocol    = "tcp"
+    self        = true
+  }
+
+  # ClickHouse
+  ingress {
+    description = "ClickHouse"
+    from_port   = 8123
+    to_port     = 8123
+    protocol    = "tcp"
+    self        = true
+  }
+
+  ingress {
+    description = "ClickHouse native"
+    from_port   = 9000
+    to_port     = 9000
+    protocol    = "tcp"
+    self        = true
+  }
+
+  ingress {
+    description = "ClickHouse metrics"
+    from_port   = 9363
+    to_port     = 9363
+    protocol    = "tcp"
+    self        = true
+  }
+
+  # Docker reverse proxy
+  ingress {
+    description = "Docker reverse proxy"
+    from_port   = 5000
+    to_port     = 5000
+    protocol    = "tcp"
+    self        = true
+  }
+
+  # Loki
+  ingress {
+    description = "Loki"
+    from_port   = 3100
+    to_port     = 3100
+    protocol    = "tcp"
+    self        = true
+  }
+
+  # Redis (in-cluster)
+  ingress {
+    description = "Redis"
+    from_port   = 6379
+    to_port     = 6379
+    protocol    = "tcp"
+    self        = true
+  }
+
+  # VXLAN for pod-to-pod (VPC CNI)
+  ingress {
+    description = "VXLAN overlay"
+    from_port   = 4789
+    to_port     = 4789
+    protocol    = "udp"
     self        = true
   }
 

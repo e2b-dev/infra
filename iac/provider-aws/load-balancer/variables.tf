@@ -54,6 +54,18 @@ variable "client_proxy_port" {
   })
 }
 
+variable "client_proxy_health_port" {
+  description = "Client proxy health check port configuration"
+  type = object({
+    port = number
+    path = string
+  })
+  default = {
+    port = 3001
+    path = "/health"
+  }
+}
+
 variable "eks_node_security_group_id" {
   description = "EKS node security group ID for target group health checks"
   type        = string

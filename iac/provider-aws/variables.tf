@@ -119,7 +119,7 @@ variable "clickhouse_health_port" {
 
 variable "client_proxy_count" {
   type    = number
-  default = 1
+  default = 2
 }
 
 variable "ingress_count" {
@@ -396,23 +396,23 @@ variable "enable_s3_access_logging" {
 }
 
 variable "eks_public_access_cidrs" {
-  description = "CIDR blocks allowed to access the EKS API endpoint publicly. WARNING: Default 0.0.0.0/0 is insecure for production. Restrict to your team's IP ranges."
+  description = "CIDR blocks allowed to access the EKS API endpoint publicly. Empty default forces explicit configuration. Restrict to your team's IP ranges."
   type        = list(string)
-  default     = ["0.0.0.0/0"]
+  default     = []
 }
 
 # --- EKS Cluster Logging ---
 
 variable "eks_cluster_log_types" {
-  description = "EKS control plane log types to enable"
+  description = "EKS control plane log types to enable (default: audit + authenticator for non-production; production should override to include all 5 types)"
   type        = list(string)
-  default     = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
+  default     = ["audit", "authenticator"]
 }
 
 variable "eks_log_retention_days" {
-  description = "CloudWatch log group retention in days for EKS cluster logs"
+  description = "CloudWatch log group retention in days for EKS cluster logs (default: 30 days for non-production; production should override to 90+ days)"
   type        = number
-  default     = 90
+  default     = 30
 }
 
 # --- Karpenter Tuning ---
@@ -432,9 +432,9 @@ variable "build_consolidation_after" {
 # --- EBS Performance ---
 
 variable "cache_disk_iops" {
-  description = "Provisioned IOPS for cache EBS volume (gp3 baseline: 3000)"
+  description = "Provisioned IOPS for cache EBS volume (gp3 baseline: 3000, recommended: 6000 for high sandbox density)"
   type        = number
-  default     = 3000
+  default     = 6000
 }
 
 variable "cache_disk_throughput_mbps" {
@@ -446,7 +446,13 @@ variable "cache_disk_throughput_mbps" {
 # --- VPC Endpoints ---
 
 variable "enable_vpc_endpoints" {
-  description = "Enable VPC endpoints for AWS services (S3, ECR, Secrets Manager, CloudWatch, STS) to reduce NAT costs"
+  description = "Enable VPC endpoints for AWS services (S3, ECR, Secrets Manager, CloudWatch, STS) to reduce NAT costs. Enabled by default for cost savings."
+  type        = bool
+  default     = true
+}
+
+variable "single_nat_gateway" {
+  description = "Use a single NAT gateway instead of one per AZ (cost savings for dev/staging, reduced HA)"
   type        = bool
   default     = false
 }
@@ -488,9 +494,9 @@ variable "monthly_budget_amount" {
 # --- Security Hardening ---
 
 variable "restrict_egress_to_vpc" {
-  description = "Restrict egress on RDS, ElastiCache, EFS, and ALB security groups to VPC CIDR only (opt-in)"
+  description = "Restrict egress on RDS, ElastiCache, EFS, and ALB security groups to VPC CIDR only (enabled by default)"
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "filestore_cache_cleanup_disk_usage_target" {
@@ -587,9 +593,9 @@ variable "temporal_chart_version" {
 }
 
 variable "temporal_cert_validity_hours" {
-  description = "Validity period in hours for Temporal mTLS certificates (default: 90 days)"
+  description = "Validity period in hours for Temporal mTLS certificates (default: 1 year)"
   type        = number
-  default     = 2160
+  default     = 8760
 }
 
 variable "temporal_worker_replica_count" {

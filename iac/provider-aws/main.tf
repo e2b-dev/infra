@@ -152,6 +152,7 @@ module "network" {
   enable_vpc_endpoints   = var.enable_vpc_endpoints
   aws_region             = var.aws_region
   restrict_egress_to_vpc = var.restrict_egress_to_vpc
+  single_nat_gateway     = var.single_nat_gateway
 
   tags = var.tags
 }
@@ -201,7 +202,7 @@ module "eks_cluster" {
   kubernetes_version = var.kubernetes_version
 
   vpc_id     = module.network.vpc_id
-  subnet_ids = module.network.public_subnet_ids
+  subnet_ids = module.network.private_subnet_ids
 
   eks_ami_id            = var.eks_ami_id
   client_instance_types = var.client_instance_types
@@ -248,6 +249,10 @@ module "load_balancer" {
   ingress_port              = var.ingress_port
   docker_reverse_proxy_port = var.docker_reverse_proxy_port
   client_proxy_port         = var.client_proxy_port
+  client_proxy_health_port = {
+    port = var.client_proxy_health_port.port
+    path = var.client_proxy_health_port.path
+  }
 
   eks_node_security_group_id = module.eks_cluster.node_security_group_id
 
@@ -399,5 +404,19 @@ check "eks_public_access_not_open" {
   assert {
     condition     = !contains(var.eks_public_access_cidrs, "0.0.0.0/0")
     error_message = "WARNING: EKS API is publicly accessible from 0.0.0.0/0. Restrict for production."
+  }
+}
+
+check "cloudtrail_enabled_for_prod" {
+  assert {
+    condition     = var.environment != "prod" || var.enable_cloudtrail
+    error_message = "WARNING: CloudTrail is disabled in production. Enable for audit compliance (ISO 27001 / SOC2)."
+  }
+}
+
+check "guardduty_enabled_for_prod" {
+  assert {
+    condition     = var.environment != "prod" || var.enable_guardduty
+    error_message = "WARNING: GuardDuty is disabled in production. Enable for threat detection (ISO 27001)."
   }
 }

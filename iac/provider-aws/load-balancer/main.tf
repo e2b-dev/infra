@@ -130,8 +130,9 @@ resource "aws_lb_target_group" "session" {
   target_type = "ip"
 
   health_check {
-    protocol            = "TCP"
-    port                = var.client_proxy_port.port
+    protocol            = "HTTP"
+    port                = var.client_proxy_health_port.port
+    path                = var.client_proxy_health_port.path
     healthy_threshold   = 2
     unhealthy_threshold = 2
     interval            = 10

@@ -22,7 +22,6 @@ resource "aws_subnet" "public" {
     Type                                        = "public"
     "kubernetes.io/role/elb"                    = "1"
     "kubernetes.io/cluster/${var.cluster_name}" = var.cluster_name != "" ? "shared" : null
-    "karpenter.sh/discovery"                    = var.cluster_name != "" ? var.cluster_name : null
   })
 }
 
@@ -39,6 +38,7 @@ resource "aws_subnet" "private" {
     Type                                        = "private"
     "kubernetes.io/role/internal-elb"           = "1"
     "kubernetes.io/cluster/${var.cluster_name}" = var.cluster_name != "" ? "shared" : null
+    "karpenter.sh/discovery"                    = var.cluster_name != "" ? var.cluster_name : null
   })
 }
 
@@ -53,7 +53,7 @@ resource "aws_internet_gateway" "main" {
 
 # NAT Gateway (one per AZ for HA)
 resource "aws_eip" "nat" {
-  count  = length(var.availability_zones)
+  count  = var.single_nat_gateway ? 1 : length(var.availability_zones)
   domain = "vpc"
 
   tags = merge(var.tags, {
@@ -62,7 +62,7 @@ resource "aws_eip" "nat" {
 }
 
 resource "aws_nat_gateway" "main" {
-  count = length(var.availability_zones)
+  count = var.single_nat_gateway ? 1 : length(var.availability_zones)
 
   allocation_id = aws_eip.nat[count.index].id
   subnet_id     = aws_subnet.public[count.index].id
@@ -103,7 +103,7 @@ resource "aws_route_table" "private" {
 
   route {
     cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.main[count.index].id
+    nat_gateway_id = var.single_nat_gateway ? aws_nat_gateway.main[0].id : aws_nat_gateway.main[count.index].id
   }
 
   tags = merge(var.tags, {

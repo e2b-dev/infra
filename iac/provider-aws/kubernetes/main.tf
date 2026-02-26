@@ -420,6 +420,39 @@ resource "kubernetes_service_v1" "api" {
   }
 }
 
+# --- API Horizontal Pod Autoscaler ---
+resource "kubernetes_horizontal_pod_autoscaler_v2" "api" {
+  metadata {
+    name      = "api"
+    namespace = kubernetes_namespace_v1.e2b.metadata[0].name
+    labels    = merge(local.common_labels, { "app.kubernetes.io/name" = "api" })
+  }
+
+  spec {
+    scale_target_ref {
+      api_version = "apps/v1"
+      kind        = "Deployment"
+      name        = kubernetes_deployment_v1.api.metadata[0].name
+    }
+
+    min_replicas = var.api_machine_count
+    max_replicas = var.api_machine_count * 3
+
+    metric {
+      type = "Resource"
+
+      resource {
+        name = "cpu"
+
+        target {
+          type                = "Utilization"
+          average_utilization = 70
+        }
+      }
+    }
+  }
+}
+
 # --- Client Proxy Deployment ---
 resource "kubernetes_deployment_v1" "client_proxy" {
   metadata {
@@ -450,6 +483,20 @@ resource "kubernetes_deployment_v1" "client_proxy" {
       spec {
         node_selector = {
           "e2b.dev/node-pool" = "system"
+        }
+
+        affinity {
+          pod_anti_affinity {
+            preferred_during_scheduling_ignored_during_execution {
+              weight = 100
+              pod_affinity_term {
+                label_selector {
+                  match_labels = { "app.kubernetes.io/name" = "client-proxy" }
+                }
+                topology_key = "kubernetes.io/hostname"
+              }
+            }
+          }
         }
 
         container {
@@ -520,6 +567,15 @@ resource "kubernetes_deployment_v1" "client_proxy" {
             }
             initial_delay_seconds = 10
             period_seconds        = 10
+          }
+
+          readiness_probe {
+            http_get {
+              path = "/health"
+              port = var.client_proxy_health_port
+            }
+            initial_delay_seconds = 5
+            period_seconds        = 5
           }
         }
       }
@@ -716,6 +772,193 @@ resource "kubernetes_service_v1" "ingress" {
       port        = var.ingress_port.port
       target_port = var.ingress_port.port
     }
+  }
+}
+
+# --- PodDisruptionBudgets ---
+resource "kubernetes_pod_disruption_budget_v1" "api" {
+  metadata {
+    name      = "api"
+    namespace = kubernetes_namespace_v1.e2b.metadata[0].name
+    labels    = merge(local.common_labels, { "app.kubernetes.io/name" = "api" })
+  }
+
+  spec {
+    max_unavailable = "1"
+
+    selector {
+      match_labels = { "app.kubernetes.io/name" = "api" }
+    }
+  }
+}
+
+resource "kubernetes_pod_disruption_budget_v1" "client_proxy" {
+  metadata {
+    name      = "client-proxy"
+    namespace = kubernetes_namespace_v1.e2b.metadata[0].name
+    labels    = merge(local.common_labels, { "app.kubernetes.io/name" = "client-proxy" })
+  }
+
+  spec {
+    max_unavailable = "1"
+
+    selector {
+      match_labels = { "app.kubernetes.io/name" = "client-proxy" }
+    }
+  }
+}
+
+resource "kubernetes_pod_disruption_budget_v1" "ingress" {
+  metadata {
+    name      = "ingress"
+    namespace = kubernetes_namespace_v1.e2b.metadata[0].name
+    labels    = merge(local.common_labels, { "app.kubernetes.io/name" = "ingress" })
+  }
+
+  spec {
+    max_unavailable = "1"
+
+    selector {
+      match_labels = { "app.kubernetes.io/name" = "ingress" }
+    }
+  }
+}
+
+# --- NetworkPolicy for e2b namespace ---
+resource "kubernetes_network_policy_v1" "e2b" {
+  metadata {
+    name      = "e2b-default"
+    namespace = kubernetes_namespace_v1.e2b.metadata[0].name
+    labels    = local.common_labels
+  }
+
+  spec {
+    pod_selector {}
+
+    # Allow all traffic within e2b namespace
+    ingress {
+      from {
+        namespace_selector {
+          match_labels = {
+            "kubernetes.io/metadata.name" = "e2b"
+          }
+        }
+      }
+    }
+
+    # Allow ingress from ALB (kube-system for AWS LB controller, or node traffic)
+    ingress {
+      from {
+        ip_block {
+          cidr = "10.0.0.0/16"
+        }
+      }
+
+      ports {
+        port     = "50001"
+        protocol = "TCP"
+      }
+      ports {
+        port     = "8800"
+        protocol = "TCP"
+      }
+      ports {
+        port     = "5000"
+        protocol = "TCP"
+      }
+      ports {
+        port     = "3002"
+        protocol = "TCP"
+      }
+      ports {
+        port     = "3001"
+        protocol = "TCP"
+      }
+    }
+
+    # Allow Temporal namespace to reach API gRPC
+    ingress {
+      from {
+        namespace_selector {
+          match_labels = {
+            "kubernetes.io/metadata.name" = "temporal"
+          }
+        }
+      }
+
+      ports {
+        port     = "5009"
+        protocol = "TCP"
+      }
+    }
+
+    # Allow DNS from kube-system
+    egress {
+      to {
+        namespace_selector {
+          match_labels = {
+            "kubernetes.io/metadata.name" = "kube-system"
+          }
+        }
+      }
+
+      ports {
+        port     = "53"
+        protocol = "TCP"
+      }
+      ports {
+        port     = "53"
+        protocol = "UDP"
+      }
+    }
+
+    # Allow all egress within e2b namespace
+    egress {
+      to {
+        namespace_selector {
+          match_labels = {
+            "kubernetes.io/metadata.name" = "e2b"
+          }
+        }
+      }
+    }
+
+    # Allow egress to Temporal namespace
+    egress {
+      to {
+        namespace_selector {
+          match_labels = {
+            "kubernetes.io/metadata.name" = "temporal"
+          }
+        }
+      }
+
+      ports {
+        port     = "7233"
+        protocol = "TCP"
+      }
+    }
+
+    # Allow egress to VPC CIDR (for AWS services, RDS, ElastiCache, etc.)
+    egress {
+      to {
+        ip_block {
+          cidr = "10.0.0.0/16"
+        }
+      }
+    }
+
+    # Allow egress to internet (for external APIs, S3, etc.)
+    egress {
+      to {
+        ip_block {
+          cidr   = "0.0.0.0/0"
+          except = []
+        }
+      }
+    }
+
+    policy_types = ["Ingress", "Egress"]
   }
 }
 

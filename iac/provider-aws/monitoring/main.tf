@@ -162,3 +162,28 @@ resource "aws_cloudwatch_metric_alarm" "nat_port_allocation" {
 
   tags = var.tags
 }
+
+# --- Karpenter Pending Pods Alarm ---
+resource "aws_cloudwatch_metric_alarm" "karpenter_pending_pods" {
+  count = var.enable_monitoring ? 1 : 0
+
+  alarm_name          = "${var.prefix}karpenter-pending-pods"
+  alarm_description   = "Karpenter has >10 pending pods for 5+ minutes — possible NodePool limit reached or capacity issue"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  metric_name         = "pending_pods"
+  namespace           = "ContainerInsights"
+  period              = 300
+  statistic           = "Maximum"
+  threshold           = 10
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    ClusterName = var.eks_cluster_name
+  }
+
+  alarm_actions = [aws_sns_topic.alerts[0].arn]
+  ok_actions    = [aws_sns_topic.alerts[0].arn]
+
+  tags = var.tags
+}
