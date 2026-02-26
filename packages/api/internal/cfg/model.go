@@ -1,11 +1,19 @@
 package cfg
 
 import (
+	"fmt"
+	"slices"
+
 	"github.com/caarlos0/env/v11"
 )
 
 const (
 	DefaultKernelVersion = "vmlinux-6.1.158"
+
+	// SandboxStorageBackendMemory will use memory backend as a primary storage for sandbox data.
+	// It will also keep redis populated to allow for seamless migration to redis.
+	SandboxStorageBackendMemory = "memory"
+	SandboxStorageBackendRedis  = "redis"
 )
 
 type Config struct {
@@ -48,6 +56,12 @@ type Config struct {
 	DefaultKernelVersion string `env:"DEFAULT_KERNEL_VERSION"`
 
 	DefaultPersistentVolumeType string `env:"DEFAULT_PERSISTENT_VOLUME_TYPE"`
+
+	// SandboxStorageBackend selects the sandbox storage implementation.
+	// "redis" uses Redis directly; "populate_redis" uses in-memory with Redis shadow writes.
+	SandboxStorageBackend string `env:"SANDBOX_STORAGE_BACKEND" envDefault:"memory"`
+
+	DomainName string `env:"DOMAIN_NAME" envDefault:""`
 }
 
 func Parse() (Config, error) {
@@ -60,6 +74,10 @@ func Parse() (Config, error) {
 
 	if config.AuthDBConnectionString == "" {
 		config.AuthDBConnectionString = config.PostgresConnectionString
+	}
+
+	if !slices.Contains([]string{SandboxStorageBackendMemory, SandboxStorageBackendRedis}, config.SandboxStorageBackend) {
+		return config, fmt.Errorf("invalid sandbox storage backend: %s", config.SandboxStorageBackend)
 	}
 
 	return config, err

@@ -20,6 +20,8 @@ type PopulateRedisStorage struct {
 	redisBackend  *redis.Storage
 }
 
+func (m *PopulateRedisStorage) Name() string { return sandbox.StorageNamePopulateRedis }
+
 func (m *PopulateRedisStorage) Add(ctx context.Context, sandbox sandbox.Sandbox) error {
 	err := m.memoryBackend.Add(ctx, sandbox)
 	if err != nil {
@@ -56,8 +58,8 @@ func (m *PopulateRedisStorage) TeamItems(ctx context.Context, teamID uuid.UUID, 
 	return m.memoryBackend.TeamItems(ctx, teamID, states)
 }
 
-func (m *PopulateRedisStorage) AllItems(ctx context.Context, states []sandbox.State, options ...sandbox.ItemsOption) ([]sandbox.Sandbox, error) {
-	return m.memoryBackend.AllItems(ctx, states, options...)
+func (m *PopulateRedisStorage) ExpiredItems(ctx context.Context) ([]sandbox.Sandbox, error) {
+	return m.memoryBackend.ExpiredItems(ctx)
 }
 
 func (m *PopulateRedisStorage) TeamsWithSandboxCount(ctx context.Context) (map[uuid.UUID]int64, error) {

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/containers/storage/pkg/archive"
@@ -35,6 +36,29 @@ const (
 	ToMBShift            = 20
 	tarballExportUpdates = 10
 )
+
+// ImageTooLargeError is returned when the uncompressed Docker image exceeds the maximum filesystem size.
+type ImageTooLargeError struct {
+	ImageSize int64 // actual uncompressed size in bytes, 0 if unknown
+	MaxSize   int64 // maximum filesystem size in bytes
+}
+
+func (e *ImageTooLargeError) Error() string {
+	if e.ImageSize > 0 {
+		return fmt.Sprintf(
+			"the uncompressed Docker image size (%s) exceeds the maximum filesystem size (%s). "+
+				"Please reduce your Docker image size (e.g., use a smaller base image, multi-stage builds, or remove unnecessary files)",
+			humanize.Bytes(uint64(e.ImageSize)),
+			humanize.Bytes(uint64(e.MaxSize)),
+		)
+	}
+
+	return fmt.Sprintf(
+		"the Docker image is too large for the maximum filesystem size of %s. "+
+			"Please reduce your Docker image size (e.g., use a smaller base image, multi-stage builds, or remove unnecessary files)",
+		humanize.Bytes(uint64(e.MaxSize)),
+	)
+}
 
 var DefaultPlatform = containerregistry.Platform{
 	OS:           "linux",
@@ -174,7 +198,7 @@ func ToExt4(ctx context.Context, logger logger.Logger, img containerregistry.Ima
 		return 0, fmt.Errorf("error creating ext4 file: %w", err)
 	}
 
-	err = ExtractToExt4(ctx, logger, img, rootfsPath)
+	err = ExtractToExt4(ctx, logger, img, rootfsPath, maxSize)
 	if err != nil {
 		return 0, fmt.Errorf("error extracting image to ext4 filesystem: %w", err)
 	}
@@ -200,7 +224,7 @@ func ToExt4(ctx context.Context, logger logger.Logger, img containerregistry.Ima
 	return size, nil
 }
 
-func ExtractToExt4(ctx context.Context, l logger.Logger, img containerregistry.Image, rootfsPath string) error {
+func ExtractToExt4(ctx context.Context, l logger.Logger, img containerregistry.Image, rootfsPath string, maxSize int64) error {
 	ctx, childSpan := tracer.Start(ctx, "extract-to-ext4")
 	defer childSpan.End()
 
@@ -229,7 +253,7 @@ func ExtractToExt4(ctx context.Context, l logger.Logger, img containerregistry.I
 		zap.String("tmp_mount", tmpMount),
 	)
 
-	err = unpackRootfs(ctx, l, img, tmpMount)
+	err = unpackRootfs(ctx, l, img, tmpMount, maxSize)
 	if err != nil {
 		return fmt.Errorf("error extracting tar to directory: %w", err)
 	}
@@ -257,7 +281,7 @@ func ParseEnvs(envs []string) map[string]string {
 	return envMap
 }
 
-func unpackRootfs(ctx context.Context, l logger.Logger, srcImage containerregistry.Image, destDir string) (err error) {
+func unpackRootfs(ctx context.Context, l logger.Logger, srcImage containerregistry.Image, destDir string, maxSize int64) (err error) {
 	ctx, childSpan := tracer.Start(ctx, "unpack-rootfs")
 	defer childSpan.End()
 
@@ -304,6 +328,12 @@ func unpackRootfs(ctx context.Context, l logger.Logger, srcImage containerregist
 	// Copy files from the overlayfs mount point to the destination directory
 	err = copyFiles(ctx, mountPath, destDir)
 	if err != nil {
+		if strings.Contains(err.Error(), "No space left on device") {
+			imageSize, _ := getDirSize(ctx, mountPath)
+
+			return &ImageTooLargeError{ImageSize: imageSize, MaxSize: maxSize}
+		}
+
 		return fmt.Errorf("while copying files from overlayfs to destination directory: %w", err)
 	}
 
@@ -413,6 +443,27 @@ func createExport(ctx context.Context, logger logger.Logger, srcImage containerr
 	logger.Info(ctx, "Layers extracted")
 
 	return layerPaths, nil
+}
+
+// getDirSize returns the total disk usage of a directory in bytes using du -sb.
+func getDirSize(ctx context.Context, dir string) (int64, error) {
+	cmd := exec.CommandContext(ctx, "du", "-sb", dir)
+	out, err := cmd.Output()
+	if err != nil {
+		return 0, fmt.Errorf("error running du: %w", err)
+	}
+
+	fields := strings.Fields(strings.TrimSpace(string(out)))
+	if len(fields) == 0 {
+		return 0, fmt.Errorf("unexpected du output: %s", string(out))
+	}
+
+	size, err := strconv.ParseInt(fields[0], 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("error parsing du output: %w", err)
+	}
+
+	return size, nil
 }
 
 func verifyImagePlatform(img containerregistry.Image, platform containerregistry.Platform) error {

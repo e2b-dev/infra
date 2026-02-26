@@ -24,6 +24,8 @@ type Storage struct {
 	lockOption  *redislock.Options
 }
 
+func (s *Storage) Name() string { return sandbox.StorageNameRedis }
+
 func NewStorage(
 	redisClient redis.UniversalClient,
 ) *Storage {

@@ -1,5 +1,5 @@
 ENV := $(shell cat .last_used_env || echo "not-set")
-ENV_FILE := $(PWD)/.env.${ENV}
+ENV_FILE := .env.${ENV}
 PROVIDER ?= gcp
 
 -include ${ENV_FILE}
@@ -146,7 +146,7 @@ migrate:
 set-env:
 	@ touch .last_used_env
 	@ echo $(ENV) > .last_used_env
-	@ . ${ENV_FILE}
+	@ . ./${ENV_FILE}
 
 .PHONY: switch-env
 switch-env:
