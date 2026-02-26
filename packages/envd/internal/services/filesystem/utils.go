@@ -43,8 +43,6 @@ func entryInfo(path string) (*rpc.EntryInfo, error) {
 		return nil, err
 	}
 
-	perms := info.Mode.Perm()
-
 	owner, group := getFileOwnership(info)
 
 	return &rpc.EntryInfo{
@@ -52,8 +50,8 @@ func entryInfo(path string) (*rpc.EntryInfo, error) {
 		Type:          getEntryType(info.Type),
 		Path:          info.Path,
 		Size:          info.Size,
-		Mode:          uint32(perms),
-		Permissions:   perms.String(),
+		Mode:          uint32(info.Mode),
+		Permissions:   info.Permissions,
 		Owner:         owner,
 		Group:         group,
 		ModifiedTime:  toTimestamp(info.ModifiedTime),

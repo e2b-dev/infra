@@ -102,14 +102,15 @@ func TestEntryInfoFromFileInfo_DifferentPermissions(t *testing.T) {
 	tempDir := t.TempDir()
 
 	testCases := []struct {
-		name        string
-		permissions os.FileMode
-		expected    os.FileMode
+		name           string
+		permissions    os.FileMode
+		expectedMode   os.FileMode
+		expectedString string
 	}{
-		{"read-only", 0o444, 0o444},
-		{"executable", 0o755, 0o755},
-		{"write-only", 0o200, 0o200},
-		{"no permissions", 0o000, 0o000},
+		{"read-only", 0o444, 0o444, "-r--r--r--"},
+		{"executable", 0o755, 0o755, "-rwxr-xr-x"},
+		{"write-only", 0o200, 0o200, "--w-------"},
+		{"no permissions", 0o000, 0o000, "----------"},
 	}
 
 	for _, tc := range testCases {
@@ -121,7 +122,8 @@ func TestEntryInfoFromFileInfo_DifferentPermissions(t *testing.T) {
 
 			result, err := GetEntryFromPath(testFile)
 			require.NoError(t, err)
-			assert.Equal(t, tc.expected, result.Mode)
+			assert.Equal(t, tc.expectedMode, result.Mode)
+			assert.Equal(t, tc.expectedString, result.Permissions)
 		})
 	}
 }
@@ -227,7 +229,7 @@ func TestEntryInfoFromFileInfo_Directory(t *testing.T) {
 	assert.Equal(t, testDir, result.Path)
 	assert.Equal(t, DirectoryFileType, result.Type)
 	assert.Equal(t, os.FileMode(0o755), result.Mode)
-	assert.Contains(t, result.Permissions, "d")
+	assert.Equal(t, result.Permissions, "drwxr-xr-x")
 	assert.Empty(t, result.SymlinkTarget)
 }
 
