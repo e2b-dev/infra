@@ -33,8 +33,11 @@ resource "kubernetes_storage_class_v1" "gp3" {
 # --- Namespace ---
 resource "kubernetes_namespace_v1" "e2b" {
   metadata {
-    name   = "e2b"
-    labels = local.common_labels
+    name = "e2b"
+    labels = merge(local.common_labels, {
+      "pod-security.kubernetes.io/enforce" = "baseline"
+      "pod-security.kubernetes.io/warn"    = "restricted"
+    })
   }
 }
 
@@ -629,6 +632,39 @@ resource "kubernetes_service_v1" "client_proxy" {
   }
 }
 
+# --- Client Proxy Horizontal Pod Autoscaler ---
+resource "kubernetes_horizontal_pod_autoscaler_v2" "client_proxy" {
+  metadata {
+    name      = "client-proxy"
+    namespace = kubernetes_namespace_v1.e2b.metadata[0].name
+    labels    = merge(local.common_labels, { "app.kubernetes.io/name" = "client-proxy" })
+  }
+
+  spec {
+    scale_target_ref {
+      api_version = "apps/v1"
+      kind        = "Deployment"
+      name        = kubernetes_deployment_v1.client_proxy.metadata[0].name
+    }
+
+    min_replicas = var.client_proxy_count
+    max_replicas = var.client_proxy_count * 3
+
+    metric {
+      type = "Resource"
+
+      resource {
+        name = "cpu"
+
+        target {
+          type                = "Utilization"
+          average_utilization = 70
+        }
+      }
+    }
+  }
+}
+
 # --- Docker Reverse Proxy Deployment ---
 resource "kubernetes_deployment_v1" "docker_reverse_proxy" {
   metadata {
@@ -846,6 +882,24 @@ resource "kubernetes_pod_disruption_budget_v1" "ingress" {
 
     selector {
       match_labels = { "app.kubernetes.io/name" = "ingress" }
+    }
+  }
+}
+
+resource "kubernetes_pod_disruption_budget_v1" "clickhouse" {
+  count = var.clickhouse_server_count > 0 ? 1 : 0
+
+  metadata {
+    name      = "clickhouse"
+    namespace = kubernetes_namespace_v1.e2b.metadata[0].name
+    labels    = merge(local.common_labels, { "app.kubernetes.io/name" = "clickhouse" })
+  }
+
+  spec {
+    max_unavailable = "1"
+
+    selector {
+      match_labels = { "app.kubernetes.io/name" = "clickhouse" }
     }
   }
 }

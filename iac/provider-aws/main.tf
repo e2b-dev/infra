@@ -96,18 +96,21 @@ locals {
 }
 
 resource "random_password" "api_secret" {
-  length  = 32
-  special = false
+  length           = 32
+  special          = true
+  override_special = "!#$%&*()-_=+[]{}:,.<>?"
 }
 
 resource "random_password" "api_admin_secret" {
-  length  = 32
-  special = false
+  length           = 32
+  special          = true
+  override_special = "!#$%&*()-_=+[]{}:,.<>?"
 }
 
 resource "random_password" "sandbox_access_token_hash_seed" {
-  length  = 32
-  special = false
+  length           = 32
+  special          = true
+  override_special = "!#$%&*()-_=+[]{}:,.<>?"
 }
 
 module "init" {
@@ -423,5 +426,12 @@ check "guardduty_enabled_for_prod" {
   assert {
     condition     = var.environment != "prod" || var.enable_guardduty
     error_message = "WARNING: GuardDuty is disabled in production. Enable for threat detection (ISO 27001)."
+  }
+}
+
+check "monitoring_requires_alert_email" {
+  assert {
+    condition     = !var.enable_monitoring || var.alert_email != ""
+    error_message = "WARNING: Monitoring is enabled but alert_email is not set. Alerts will not be delivered."
   }
 }

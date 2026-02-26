@@ -174,20 +174,75 @@ kubectl exec -it deploy/temporal-admintools -n temporal -- \
 
 See `TEMPORAL.md` for worker connection examples, workflow patterns, and security configuration.
 
-## 7. Production Hardening Checklist
+## 7. Configure Monitoring
 
+Monitoring is enabled by default (`enable_monitoring = true`). You **must** set `alert_email` for alarm notifications to work.
+
+```bash
+# In your tfvars:
+alert_email           = "ops@example.com"
+monthly_budget_amount = 2000  # USD threshold for billing alarm
+```
+
+After applying, confirm the SNS email subscription (check your inbox for the AWS confirmation email).
+
+CloudWatch alarms are created for: monthly cost threshold, EKS node count, ALB 5xx errors, Redis CPU/replication lag, NAT port allocation, and Karpenter pending pods.
+
+## 8. Verify Security Hardening
+
+The following security features are enabled by default and should be verified after deploy:
+
+```bash
+# Verify EKS secrets envelope encryption (KMS)
+aws eks describe-cluster --name $(terraform output -raw eks_cluster_name) \
+  --query 'cluster.encryptionConfig' --region $AWS_REGION
+
+# Verify CloudTrail with log validation and KMS
+aws cloudtrail describe-trails --region $AWS_REGION \
+  --query 'trailList[].{Name:Name,LogFileValidation:LogFileValidationEnabled,KmsKeyId:KmsKeyId}'
+
+# Verify GuardDuty Runtime Monitoring
+aws guardduty list-detectors --region $AWS_REGION
+
+# Verify Pod Security Standards on e2b namespace
+kubectl get ns e2b -o jsonpath='{.metadata.labels}' | jq .
+
+# Verify NetworkPolicy for e2b namespace
+kubectl get networkpolicies -n e2b
+
+# Verify PodDisruptionBudgets
+kubectl get pdb -n e2b
+
+# Verify HPA for API and client-proxy
+kubectl get hpa -n e2b
+```
+
+## 9. Production Hardening Checklist
+
+**Enabled by default (verify after deploy):**
+- [x] CloudTrail with KMS encryption and log file validation (`enable_cloudtrail = true`)
+- [x] GuardDuty with Runtime Monitoring (`enable_guardduty = true`)
+- [x] CloudWatch monitoring and SNS alerting (`enable_monitoring = true`)
+- [x] EKS secrets envelope encryption (KMS)
+- [x] Pod Security Standards (baseline enforce, restricted warn)
+- [x] NetworkPolicy for e2b and temporal namespaces
+- [x] PodDisruptionBudgets for API, client-proxy, ingress, ClickHouse
+- [x] HPA for API and client-proxy (scales pods before Karpenter adds nodes)
+- [x] VPC endpoints for S3, ECR, Secrets Manager, CloudWatch, STS
+- [x] WAF managed rules on ALB
+
+**Manual steps required:**
 - [ ] Restrict EKS public API endpoint (`eks_public_access_cidrs` variable)
-- [ ] Enable CloudTrail (`enable_cloudtrail = true`)
+- [ ] Set `alert_email` and confirm SNS subscription (see Step 7)
 - [ ] Enable S3 access logging (`enable_s3_access_logging = true`)
 - [ ] Enable VPC Flow Logs (`enable_vpc_flow_logs = true`)
-- [ ] Enable GuardDuty (`enable_guardduty = true`)
 - [ ] Enable AWS Config (`enable_aws_config = true`)
 - [ ] Enable Inspector (`enable_inspector = true`)
 - [ ] Populate all Secrets Manager values
 - [ ] Provision Aurora Serverless v2 database
 - [ ] Configure DNS records for your domain
-- [ ] Verify WAF rules are active on ALB
 - [ ] If Temporal enabled: verify all pods Running in `temporal` namespace
 - [ ] If Temporal enabled: register application namespaces via `tctl`
 - [ ] If Temporal enabled: generate worker TLS certificates from Temporal CA
+- [ ] If Temporal enabled: note cert expiry dates from `terraform output temporal_internode_cert_expiry` and `terraform output temporal_frontend_cert_expiry`
 - [ ] If Temporal enabled: configure OIDC for Web UI before external exposure

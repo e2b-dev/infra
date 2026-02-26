@@ -457,112 +457,116 @@ Temporal provides community Grafana dashboards:
 
 Import via Grafana UI → Dashboards → Import → Dashboard ID.
 
-## End-to-End Guide: Python Multi-Agent System
+## End-to-End Guide: Multi-Agent Backend with WebSocket API
 
-This section walks through building and deploying a Python multi-agent system that uses Temporal for orchestration and Firecracker VMs (E2B sandboxes) for isolated code execution.
+You bring the frontend. We provide the agentic backend runtime.
 
-### Architecture
+This guide walks through building a Python multi-agent backend that runs inside a Firecracker VM, exposes a WebSocket API, and connects to your React app. The VM runs everything — FastAPI server, Temporal worker, LLM calls, code execution — in complete isolation. Your frontend connects via WebSocket, sends tasks, and receives streaming results.
+
+### Step 1: Architecture
 
 ```
-                                    EKS Cluster
-                    ┌──────────────────────────────────────────────┐
-                    │                                              │
- HTTP Request ──────┼──► E2B API ──► Temporal Frontend (:7233)     │
-                    │       │              │                       │
-                    │       │        Temporal History/Matching      │
-                    │       │              │                       │
-                    │       │    ┌─────────▼──────────┐            │
-                    │       │    │  Your Python Worker │            │
-                    │       │    │  (K8s Deployment)   │            │
-                    │       │    │                     │            │
-                    │       │    │  Workflow:           │            │
-                    │       │    │   1. call_llm()     │            │
-                    │       │    │   2. create_sandbox()│───────┐   │
-                    │       │    │   3. run_code()     │       │   │
-                    │       │    │   4. call_llm()     │       │   │
-                    │       │    │   5. wait_approval()│       │   │
-                    │       │    │   6. destroy_sandbox│       │   │
-                    │       │    └─────────────────────┘       │   │
-                    │       │                                  │   │
-                    │       ▼                                  ▼   │
-                    │  ┌─────────┐    ┌───────────────────────┐   │
-                    │  │ Aurora  │    │   Firecracker VM      │   │
-                    │  │ (state) │    │   (sandbox)           │   │
-                    │  └─────────┘    │   - runs agent code   │   │
-                    │                 │   - isolated env       │   │
-                    │                 │   - auto-destroyed     │   │
-                    │                 └───────────────────────┘   │
-                    └──────────────────────────────────────────────┘
-                                          │
-                                          ▼
-                                    External LLM API
-                                    (OpenAI / Anthropic)
+    Your React App                          EKS Cluster
+    ┌──────────────┐              ┌──────────────────────────────┐
+    │              │   WebSocket  │                              │
+    │  useAgent()  ├──────────────┼──► Client-Proxy              │
+    │              │              │        │                     │
+    └──────┬───────┘              │        ▼                     │
+           │                      │   Orchestrator Proxy (:5007) │
+           │                      │        │                     │
+    ┌──────▼───────┐              │        │    Temporal Frontend │
+    │ Your Backend │   E2B API    │        │    (:7233, NLB)     │
+    │              ├──────────────┼──►  E2B API                  │
+    │ POST /start  │              │        │                     │
+    │ DELETE /stop │              └────────┼─────────────────────┘
+    └──────────────┘                       │
+                                           ▼
+                              ┌─────────────────────────────┐
+                              │  Firecracker VM             │
+                              │                             │
+                              │  envd → python3 server.py   │
+                              │  ┌───────────────────────┐  │
+                              │  │ FastAPI (:8000)       │  │
+                              │  │  └─ /ws endpoint      │◄─┼── WebSocket
+                              │  │                       │  │
+                              │  │ Temporal Worker       │  │
+                              │  │  └─ polls Frontend ───┼──┼──► Temporal
+                              │  │                       │  │
+                              │  │ Activities:           │  │
+                              │  │  call_llm() ──────────┼──┼──► Anthropic API
+                              │  │  execute_code()       │  │    (outbound NAT)
+                              │  │  (subprocess.run)     │  │
+                              │  └───────────────────────┘  │
+                              └─────────────────────────────┘
 ```
 
 **What runs where:**
 
-| Component | Where | Purpose |
-|-----------|-------|---------|
-| Temporal Server | EKS system nodes | Workflow state, task dispatch |
-| Your Python Worker | EKS (K8s Deployment) | Polls task queue, executes activities |
-| Agent code | Firecracker VM (sandbox) | Isolated code execution |
-| LLM calls | External API | AI reasoning |
-| Workflow state | Aurora PostgreSQL | Durable execution history |
+| Component | Where | How |
+|-----------|-------|-----|
+| React app | User's browser | Connects via WebSocket to VM |
+| Provisioning backend | User's server | Creates/destroys VMs via E2B API |
+| FastAPI + Temporal Worker | Inside Firecracker VM | Auto-started by envd at VM boot |
+| LLM calls | Outbound from VM via NAT | `anthropic` SDK → internet via host MASQUERADE |
+| Code execution | Inside Firecracker VM | `subprocess.run()` with tempfile, local to VM |
+| Temporal Server | EKS system nodes | Manages workflow state, dispatches tasks |
+| Workflow state | Aurora PostgreSQL | Persisted by Temporal Server |
 
-The worker runs on EKS, not inside the VM. The VM is an ephemeral sandbox that activities create, use, and destroy.
+**The lifecycle:**
 
-### Prerequisites
+1. **Provision** — Your backend calls E2B API → VM boots → envd auto-starts `server.py` → FastAPI listens on `:8000`, Temporal worker polls Frontend
+2. **Connect** — Your backend returns `wss://8000-{sandbox_id}.{domain}/ws` to the React app → React opens WebSocket → Client-Proxy routes to VM → envd's port scanner auto-forwards port 8000 via `socat`
+3. **Interact** — React sends task via WebSocket → FastAPI starts Temporal workflow → streams status/artifacts back as the workflow progresses
+4. **Tear down** — Your backend calls E2B API to kill the VM, or VM TTL expires
 
-- Infrastructure deployed with `temporal_enabled = true`
-- Temporal databases created on Aurora (see Pre-Deployment Steps above)
-- `tctl namespace register` completed
-- E2B API running and accessible
-- E2B API key for your team
+### Step 2: Write the Agent Backend
 
-### Step 1: Create the Python Project
+This is a normal Python project. Nothing E2B-specific in the application code.
+
+#### Project Structure
 
 ```
-my-agent-system/
+my-agent-backend/
+├── server.py                   # FastAPI + WebSocket + Temporal worker (entry point)
 ├── workflows/
 │   ├── __init__.py
 │   └── agent_workflow.py       # Workflow definition (deterministic)
 ├── activities/
 │   ├── __init__.py
-│   ├── llm_activities.py       # LLM API calls
-│   └── sandbox_activities.py   # E2B sandbox operations
-├── worker.py                   # Worker entry point
-├── starter.py                  # Script to trigger workflows
-├── Dockerfile
-├── k8s/
-│   └── worker-deployment.yaml
+│   ├── llm_activities.py       # LLM API calls (outbound via NAT)
+│   └── execution_activities.py # Local code execution (subprocess)
+├── e2b.Dockerfile              # VM template definition
 └── requirements.txt
 ```
 
-### Step 2: Define Dependencies
+#### Dependencies
 
 ```
 # requirements.txt
 temporalio>=1.9.0
-e2b-code-interpreter>=1.0.0
-anthropic>=0.40.0           # or openai>=1.0.0
+anthropic>=0.40.0
 pydantic>=2.0.0
+fastapi>=0.115.0
+uvicorn>=0.34.0
 ```
 
-### Step 3: Define Data Models
+No `e2b-code-interpreter` — the code runs inside the VM via `subprocess.run()`.
+
+#### Data Models
 
 ```python
 # workflows/__init__.py
-from dataclasses import dataclass
-from enum import Enum
+from dataclasses import dataclass, field
+
 
 @dataclass
 class AgentTask:
     """Input to the multi-agent workflow."""
     task_description: str
-    template_id: str = "base"        # E2B sandbox template
     language: str = "python"
     max_iterations: int = 3
     require_approval: bool = False
+
 
 @dataclass
 class AgentResult:
@@ -573,112 +577,70 @@ class AgentResult:
     review: str
     approved: bool
 
+
 @dataclass
 class ApprovalSignal:
     """Signal sent by a human to approve/reject."""
     approved: bool
     feedback: str = ""
-
-@dataclass
-class SandboxInfo:
-    """Sandbox reference passed between activities."""
-    sandbox_id: str
-    domain: str
 ```
 
-### Step 4: Write the Activities
+#### Activities: Code Execution (Local)
 
-Activities are where the real work happens. They are NOT deterministic (unlike workflows) and can make network calls, use SDKs, etc.
+Code runs locally inside the VM via `subprocess.run()`. No sandbox SDK, no network calls — the VM itself is the sandbox.
 
 ```python
-# activities/sandbox_activities.py
+# activities/execution_activities.py
 import os
-from dataclasses import dataclass
+import subprocess
+import tempfile
 from temporalio import activity
-from e2b_code_interpreter import Sandbox
-
-
-E2B_API_KEY = os.environ.get("E2B_API_KEY", "")
-# Self-hosted E2B API endpoint (inside the cluster)
-E2B_API_URL = os.environ.get("E2B_API_URL", "https://api.yourdomain.com")
-
-
-@dataclass
-class SandboxInfo:
-    sandbox_id: str
 
 
 @activity.defn
-async def create_sandbox(template_id: str) -> SandboxInfo:
-    """Create a Firecracker VM sandbox."""
-    activity.logger.info(f"Creating sandbox with template: {template_id}")
+async def execute_code(code: str, language: str) -> str:
+    """Execute code locally inside the Firecracker VM."""
+    activity.logger.info(f"Executing {language} code ({len(code)} chars)")
 
-    sandbox = Sandbox(
-        template=template_id,
-        api_key=E2B_API_KEY,
-        api_url=E2B_API_URL,
-        timeout=300,  # 5 min TTL
-    )
+    suffix = {"python": ".py", "javascript": ".js", "bash": ".sh"}.get(language, ".py")
+    with tempfile.NamedTemporaryFile(mode="w", suffix=suffix, delete=False) as f:
+        f.write(code)
+        code_path = f.name
 
-    activity.logger.info(f"Sandbox created: {sandbox.sandbox_id}")
-    return SandboxInfo(sandbox_id=sandbox.sandbox_id)
+    try:
+        cmd = {
+            "python": ["python3", code_path],
+            "javascript": ["node", code_path],
+            "bash": ["bash", code_path],
+        }.get(language, ["python3", code_path])
 
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            cwd="/tmp",
+        )
 
-@activity.defn
-async def run_code_in_sandbox(sandbox_id: str, code: str) -> str:
-    """Execute code inside an existing Firecracker VM."""
-    activity.logger.info(f"Executing code in sandbox {sandbox_id}")
+        output_parts = []
+        if result.stdout:
+            output_parts.append(result.stdout)
+        if result.stderr:
+            output_parts.append(f"STDERR: {result.stderr}")
+        if result.returncode != 0:
+            output_parts.append(f"Exit code: {result.returncode}")
 
-    sandbox = Sandbox.connect(
-        sandbox_id=sandbox_id,
-        api_key=E2B_API_KEY,
-        api_url=E2B_API_URL,
-    )
+        return "\n".join(output_parts) if output_parts else "(no output)"
 
-    execution = sandbox.run_code(code)
-
-    # Combine stdout, stderr, and any error
-    output_parts = []
-    if execution.text:
-        output_parts.append(execution.text)
-    if execution.error:
-        output_parts.append(f"ERROR: {execution.error.name}: {execution.error.value}")
-        if execution.error.traceback:
-            output_parts.append(execution.error.traceback)
-
-    result = "\n".join(output_parts) if output_parts else "(no output)"
-    activity.logger.info(f"Execution result ({len(result)} chars)")
-    return result
-
-
-@activity.defn
-async def install_packages(sandbox_id: str, packages: list[str]) -> str:
-    """Install Python packages inside a sandbox."""
-    sandbox = Sandbox.connect(
-        sandbox_id=sandbox_id,
-        api_key=E2B_API_KEY,
-        api_url=E2B_API_URL,
-    )
-
-    cmd = f"pip install {' '.join(packages)}"
-    execution = sandbox.run_code(
-        f"import subprocess; subprocess.run('{cmd}'.split(), capture_output=True, text=True).stdout"
-    )
-    return execution.text or ""
-
-
-@activity.defn
-async def destroy_sandbox(sandbox_id: str) -> None:
-    """Destroy a Firecracker VM sandbox."""
-    activity.logger.info(f"Destroying sandbox {sandbox_id}")
-
-    sandbox = Sandbox.connect(
-        sandbox_id=sandbox_id,
-        api_key=E2B_API_KEY,
-        api_url=E2B_API_URL,
-    )
-    sandbox.kill()
+    except subprocess.TimeoutExpired:
+        return "ERROR: Code execution timed out after 120 seconds"
+    finally:
+        os.unlink(code_path)
 ```
+
+#### Activities: LLM Calls (Outbound via NAT)
+
+LLM calls go outbound from the VM through the host's NAT (SNAT → MASQUERADE) to reach the Anthropic API. No special configuration needed — the VM has internet access via the orchestrator's network namespace routing.
 
 ```python
 # activities/llm_activities.py
@@ -729,7 +691,6 @@ Plan:
     )
 
     code = response.content[0].text
-    # Strip markdown code fences if present
     if code.startswith("```"):
         lines = code.split("\n")
         code = "\n".join(lines[1:-1]) if lines[-1].strip() == "```" else "\n".join(lines[1:])
@@ -769,467 +730,730 @@ Then a brief explanation."""
     return response.content[0].text
 ```
 
-### Step 5: Write the Workflow
+#### Workflow
 
-The workflow is **deterministic** — no direct I/O, no randomness, no current time. All side effects happen in activities.
+The workflow is **deterministic** — no direct I/O, no randomness, no current time. All side effects happen in activities. It emits events to a list that the WebSocket server polls and streams to the client.
 
 ```python
 # workflows/agent_workflow.py
-import asyncio
 from datetime import timedelta
 from temporalio import workflow
+from temporalio.common import RetryPolicy
 
-# Import activity stubs (these are references, not the actual functions)
 with workflow.unsafe.imports_passed_through():
-    from activities.sandbox_activities import (
-        create_sandbox, run_code_in_sandbox, install_packages, destroy_sandbox,
-    )
-    from activities.llm_activities import (
-        call_planner, call_coder, call_reviewer,
-    )
+    from activities.execution_activities import execute_code
+    from activities.llm_activities import call_planner, call_coder, call_reviewer
     from workflows import AgentTask, AgentResult, ApprovalSignal
 
 
 @workflow.defn
 class MultiAgentWorkflow:
     """
-    Orchestrates a multi-agent pipeline:
-      1. Planner agent creates a plan (LLM)
-      2. Coder agent writes code (LLM)
-      3. Code executes in a Firecracker VM sandbox
-      4. Reviewer agent evaluates the result (LLM)
-      5. Optionally waits for human approval
-      6. Retries if review fails (up to max_iterations)
+    Multi-agent pipeline with event streaming:
+      Plan → Code → Execute → Review → Retry loop → Optional approval
     """
 
     def __init__(self):
+        self._events: list[dict] = []
         self.approval: ApprovalSignal | None = None
 
     @workflow.signal
     async def approve(self, signal: ApprovalSignal):
-        """Receive human approval/rejection signal."""
         self.approval = signal
 
     @workflow.query
-    def current_status(self) -> str:
-        """Query the current workflow status."""
-        return self._status
+    def get_events(self) -> list[dict]:
+        """Returns all events emitted so far. The WebSocket server polls this."""
+        return self._events
 
     @workflow.run
     async def run(self, task: AgentTask) -> AgentResult:
-        self._status = "starting"
-
-        # Activity options: retry up to 3 times with backoff
-        activity_opts = workflow.ActivityOptions(
-            start_to_close_timeout=timedelta(minutes=5),
-            retry_policy=workflow.RetryPolicy(
-                initial_interval=timedelta(seconds=1),
-                maximum_interval=timedelta(seconds=30),
-                maximum_attempts=3,
-            ),
+        llm_timeout = timedelta(minutes=5)
+        llm_retry = RetryPolicy(
+            initial_interval=timedelta(seconds=1),
+            maximum_interval=timedelta(seconds=30),
+            maximum_attempts=3,
         )
+        exec_timeout = timedelta(minutes=3)
+        exec_retry = RetryPolicy(maximum_attempts=2)
 
-        # Longer timeout for sandbox operations
-        sandbox_opts = workflow.ActivityOptions(
-            start_to_close_timeout=timedelta(minutes=10),
-            retry_policy=workflow.RetryPolicy(maximum_attempts=2),
-            heartbeat_timeout=timedelta(minutes=2),
-        )
-
-        # --- Step 1: Plan ---
-        self._status = "planning"
+        # --- Plan ---
+        self._events.append({"type": "status", "step": "planning"})
         plan = await workflow.execute_activity(
-            call_planner, task.task_description, **activity_opts,
+            call_planner, task.task_description,
+            start_to_close_timeout=llm_timeout, retry_policy=llm_retry,
         )
+        self._events.append({"type": "artifact", "name": "plan", "data": plan})
 
-        # --- Step 2: Create sandbox ---
-        self._status = "creating_sandbox"
-        sandbox = await workflow.execute_activity(
-            create_sandbox, task.template_id, **sandbox_opts,
-        )
+        code = ""
+        output = ""
+        review = ""
 
-        try:
-            code = ""
-            output = ""
-            review = ""
+        for iteration in range(task.max_iterations):
+            # --- Code ---
+            self._events.append({
+                "type": "status", "step": "coding", "iteration": iteration + 1,
+            })
+            code = await workflow.execute_activity(
+                call_coder, plan, task.language,
+                start_to_close_timeout=llm_timeout, retry_policy=llm_retry,
+            )
+            self._events.append({"type": "artifact", "name": "code", "data": code})
 
-            for iteration in range(task.max_iterations):
-                # --- Step 3: Generate code ---
-                self._status = f"coding (iteration {iteration + 1})"
-                code = await workflow.execute_activity(
-                    call_coder, plan, task.language, **activity_opts,
-                )
+            # --- Execute ---
+            self._events.append({
+                "type": "status", "step": "executing", "iteration": iteration + 1,
+            })
+            output = await workflow.execute_activity(
+                execute_code, code, task.language,
+                start_to_close_timeout=exec_timeout,
+                heartbeat_timeout=timedelta(minutes=1),
+                retry_policy=exec_retry,
+            )
+            self._events.append({"type": "artifact", "name": "output", "data": output})
 
-                # --- Step 4: Execute in sandbox ---
-                self._status = f"executing (iteration {iteration + 1})"
-                output = await workflow.execute_activity(
-                    run_code_in_sandbox,
-                    sandbox.sandbox_id,
-                    code,
-                    **sandbox_opts,
-                )
+            # --- Review ---
+            self._events.append({
+                "type": "status", "step": "reviewing", "iteration": iteration + 1,
+            })
+            review = await workflow.execute_activity(
+                call_reviewer, code, output, task.task_description,
+                start_to_close_timeout=llm_timeout, retry_policy=llm_retry,
+            )
+            self._events.append({"type": "artifact", "name": "review", "data": review})
 
-                # --- Step 5: Review ---
-                self._status = f"reviewing (iteration {iteration + 1})"
-                review = await workflow.execute_activity(
-                    call_reviewer,
-                    code,
-                    output,
-                    task.task_description,
-                    **activity_opts,
-                )
+            if "VERDICT: PASS" in review:
+                break
 
-                if "VERDICT: PASS" in review:
-                    break
+            plan = f"{plan}\n\nPrevious attempt failed. Reviewer feedback:\n{review}"
 
-                # If failed, update plan with feedback for next iteration
-                plan = f"{plan}\n\nPrevious attempt failed. Reviewer feedback:\n{review}"
+        # --- Approval ---
+        if task.require_approval:
+            self._events.append({"type": "status", "step": "waiting_for_approval"})
 
-            # --- Step 6: Human approval (optional) ---
-            if task.require_approval:
-                self._status = "waiting_for_approval"
-
-                # Wait up to 24 hours for approval signal (zero CPU during wait)
-                await workflow.wait_condition(
-                    lambda: self.approval is not None,
-                    timeout=timedelta(hours=24),
-                )
-
-                if self.approval is None:
-                    raise workflow.ApplicationError("Approval timed out after 24h")
-
-                if not self.approval.approved:
-                    raise workflow.ApplicationError(
-                        f"Rejected by human: {self.approval.feedback}"
-                    )
-
-        finally:
-            # --- Always destroy sandbox ---
-            self._status = "cleanup"
-            await workflow.execute_activity(
-                destroy_sandbox, sandbox.sandbox_id, **sandbox_opts,
+            await workflow.wait_condition(
+                lambda: self.approval is not None,
+                timeout=timedelta(hours=24),
             )
 
-        self._status = "completed"
+            if self.approval is None:
+                raise workflow.ApplicationError("Approval timed out after 24h")
+            if not self.approval.approved:
+                raise workflow.ApplicationError(
+                    f"Rejected by human: {self.approval.feedback}"
+                )
+
+        self._events.append({"type": "status", "step": "completed"})
         return AgentResult(
-            plan=plan,
-            code=code,
-            output=output,
-            review=review,
+            plan=plan, code=code, output=output, review=review,
             approved=self.approval.approved if self.approval else True,
         )
 ```
 
-### Step 6: Write the Worker
+#### Server (FastAPI + WebSocket + Temporal Worker)
 
-The worker is a long-running process that polls Temporal for tasks.
+This is the entry point that runs inside the VM. It starts both a FastAPI server (for WebSocket connections from your React app) and a Temporal worker (for executing workflows) in the same process.
 
 ```python
-# worker.py
+# server.py
 import asyncio
 import os
+import uuid
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from temporalio.client import Client
 from temporalio.worker import Worker
 
 from workflows.agent_workflow import MultiAgentWorkflow
-from activities.sandbox_activities import (
-    create_sandbox, run_code_in_sandbox, install_packages, destroy_sandbox,
-)
-from activities.llm_activities import (
-    call_planner, call_coder, call_reviewer,
-)
+from workflows import AgentTask, ApprovalSignal
+from activities.execution_activities import execute_code
+from activities.llm_activities import call_planner, call_coder, call_reviewer
 
-TEMPORAL_HOST = os.environ.get(
-    "TEMPORAL_HOST",
-    "temporal-frontend.temporal.svc.cluster.local:7233",
-)
+
+TEMPORAL_HOST = os.environ.get("TEMPORAL_HOST")
 TEMPORAL_NAMESPACE = os.environ.get("TEMPORAL_NAMESPACE", "default")
 TASK_QUEUE = os.environ.get("TASK_QUEUE", "agent-tasks")
 
+temporal_client: Client | None = None
 
-async def main():
-    # Connect to Temporal
-    client = await Client.connect(TEMPORAL_HOST, namespace=TEMPORAL_NAMESPACE)
 
-    # Create worker
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global temporal_client
+
+    if not TEMPORAL_HOST:
+        raise RuntimeError(
+            "TEMPORAL_HOST must be set (e.g. temporal-nlb.internal:7233). "
+            "K8s ClusterIP DNS is not resolvable from inside a VM."
+        )
+
+    temporal_client = await Client.connect(
+        TEMPORAL_HOST, namespace=TEMPORAL_NAMESPACE
+    )
+
     worker = Worker(
-        client,
+        temporal_client,
         task_queue=TASK_QUEUE,
         workflows=[MultiAgentWorkflow],
-        activities=[
-            create_sandbox,
-            run_code_in_sandbox,
-            install_packages,
-            destroy_sandbox,
-            call_planner,
-            call_coder,
-            call_reviewer,
-        ],
+        activities=[execute_code, call_planner, call_coder, call_reviewer],
     )
 
-    print(f"Worker started, polling task queue: {TASK_QUEUE}")
-    await worker.run()
+    worker_task = asyncio.create_task(worker.run())
+    print(f"Agent server ready — Temporal: {TEMPORAL_HOST}, queue: {TASK_QUEUE}")
+
+    yield
+
+    worker_task.cancel()
+
+
+app = FastAPI(lifespan=lifespan)
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
+
+@app.websocket("/ws")
+async def agent_session(ws: WebSocket):
+    await ws.accept()
+
+    try:
+        # 1. Receive task from React client
+        msg = await ws.receive_json()
+        task = AgentTask(
+            task_description=msg["task"],
+            language=msg.get("language", "python"),
+            max_iterations=msg.get("max_iterations", 3),
+            require_approval=msg.get("require_approval", False),
+        )
+
+        # 2. Start Temporal workflow
+        workflow_id = f"agent-{uuid.uuid4().hex[:12]}"
+        handle = await temporal_client.start_workflow(
+            MultiAgentWorkflow.run,
+            task,
+            id=workflow_id,
+            task_queue=TASK_QUEUE,
+        )
+        await ws.send_json({"type": "connected", "workflow_id": workflow_id})
+
+        # 3. Stream events from workflow to client
+        result_task = asyncio.create_task(handle.result())
+        last_event_idx = 0
+
+        while not result_task.done():
+            # Poll workflow for new events
+            events = await handle.query(MultiAgentWorkflow.get_events)
+            for event in events[last_event_idx:]:
+                await ws.send_json(event)
+            last_event_idx = len(events)
+
+            # Check for client messages (approval signals) — non-blocking
+            try:
+                client_msg = await asyncio.wait_for(
+                    ws.receive_json(), timeout=1.0
+                )
+                if client_msg.get("type") == "approve":
+                    await handle.signal(
+                        MultiAgentWorkflow.approve,
+                        ApprovalSignal(
+                            approved=client_msg.get("approved", True),
+                            feedback=client_msg.get("feedback", ""),
+                        ),
+                    )
+            except asyncio.TimeoutError:
+                pass
+
+        # 4. Send final result
+        events = await handle.query(MultiAgentWorkflow.get_events)
+        for event in events[last_event_idx:]:
+            await ws.send_json(event)
+
+        try:
+            result = result_task.result()
+            await ws.send_json({
+                "type": "result",
+                "plan": result.plan,
+                "code": result.code,
+                "output": result.output,
+                "review": result.review,
+                "approved": result.approved,
+            })
+        except Exception as e:
+            await ws.send_json({"type": "error", "message": str(e)})
+
+    except WebSocketDisconnect:
+        # Client disconnected — the workflow keeps running in Temporal.
+        # The client can reconnect and query the workflow by ID.
+        pass
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
 ```
 
-### Step 7: Write the Workflow Starter
+**Key design decisions:**
+- FastAPI and Temporal worker share the same asyncio event loop — the worker picks up tasks dispatched to this VM
+- The WebSocket handler polls the workflow's `get_events` query every second and streams new events to the client
+- If the client disconnects, the Temporal workflow keeps running — it's durable
+- Approval signals arrive as WebSocket messages and are forwarded as Temporal signals
 
-Use this to trigger workflows from the command line or integrate into your API.
+### Step 3: Connect from React
 
-```python
-# starter.py
-import asyncio
-import os
-import sys
-from temporalio.client import Client
-from workflows import AgentTask
-from workflows.agent_workflow import MultiAgentWorkflow
+#### WebSocket Hook
 
-TEMPORAL_HOST = os.environ.get(
-    "TEMPORAL_HOST",
-    "temporal-frontend.temporal.svc.cluster.local:7233",
-)
-TEMPORAL_NAMESPACE = os.environ.get("TEMPORAL_NAMESPACE", "default")
-TASK_QUEUE = os.environ.get("TASK_QUEUE", "agent-tasks")
+```typescript
+// hooks/useAgent.ts
+import { useState, useRef, useCallback } from "react";
 
+interface AgentEvent {
+  type: "connected" | "status" | "artifact" | "result" | "error";
+  step?: string;
+  iteration?: number;
+  name?: string;
+  data?: string;
+  workflow_id?: string;
+  plan?: string;
+  code?: string;
+  output?: string;
+  review?: string;
+  approved?: boolean;
+  message?: string;
+}
 
-async def main():
-    task_description = sys.argv[1] if len(sys.argv) > 1 else \
-        "Write a Python function that finds the longest palindromic substring in a string"
+export function useAgent() {
+  const [events, setEvents] = useState<AgentEvent[]>([]);
+  const [status, setStatus] = useState<string>("idle");
+  const wsRef = useRef<WebSocket | null>(null);
+  const sandboxIdRef = useRef<string | null>(null);
 
-    client = await Client.connect(TEMPORAL_HOST, namespace=TEMPORAL_NAMESPACE)
+  const start = useCallback(async (task: string, options?: {
+    language?: string;
+    maxIterations?: number;
+    requireApproval?: boolean;
+  }) => {
+    setEvents([]);
+    setStatus("provisioning");
 
-    # Start the workflow
-    handle = await client.start_workflow(
-        MultiAgentWorkflow.run,
-        AgentTask(
-            task_description=task_description,
-            template_id="base",
-            language="python",
-            max_iterations=3,
-            require_approval=False,
-        ),
-        id=f"agent-{task_description[:40].replace(' ', '-').lower()}",
-        task_queue=TASK_QUEUE,
-    )
+    // 1. Ask your backend to create a VM
+    const res = await fetch("/api/agent/start", { method: "POST" });
+    const { sandbox_id, ws_url } = await res.json();
+    sandboxIdRef.current = sandbox_id;
 
-    print(f"Workflow started: {handle.id}")
-    print(f"View in Web UI: http://localhost:8080/namespaces/default/workflows/{handle.id}")
+    // 2. Connect WebSocket to the VM
+    const ws = new WebSocket(ws_url);
+    wsRef.current = ws;
 
-    # Wait for result
-    result = await handle.result()
-    print(f"\n{'='*60}")
-    print(f"Plan:\n{result.plan}\n")
-    print(f"Code:\n{result.code}\n")
-    print(f"Output:\n{result.output}\n")
-    print(f"Review:\n{result.review}\n")
+    ws.onopen = () => {
+      setStatus("connected");
+      ws.send(JSON.stringify({
+        task,
+        language: options?.language ?? "python",
+        max_iterations: options?.maxIterations ?? 3,
+        require_approval: options?.requireApproval ?? false,
+      }));
+    };
 
+    ws.onmessage = (e) => {
+      const event: AgentEvent = JSON.parse(e.data);
+      setEvents((prev) => [...prev, event]);
 
-if __name__ == "__main__":
-    asyncio.run(main())
+      if (event.type === "status") setStatus(event.step ?? "running");
+      if (event.type === "result") setStatus("completed");
+      if (event.type === "error") setStatus("error");
+    };
+
+    ws.onclose = () => {
+      if (status !== "completed" && status !== "error") {
+        setStatus("disconnected");
+      }
+    };
+  }, []);
+
+  const approve = useCallback((approved: boolean, feedback = "") => {
+    wsRef.current?.send(JSON.stringify({
+      type: "approve", approved, feedback,
+    }));
+  }, []);
+
+  const stop = useCallback(async () => {
+    wsRef.current?.close();
+    if (sandboxIdRef.current) {
+      await fetch(`/api/agent/${sandboxIdRef.current}`, { method: "DELETE" });
+      sandboxIdRef.current = null;
+    }
+    setStatus("idle");
+  }, []);
+
+  return { events, status, start, approve, stop };
+}
 ```
 
-### Step 8: Send a Human Approval Signal
+#### Example Component
 
-When `require_approval=True`, send an approval signal from anywhere:
+```tsx
+// components/AgentPanel.tsx
+import { useAgent } from "../hooks/useAgent";
 
-```python
-# approve.py
-import asyncio
-import sys
-from temporalio.client import Client
-from workflows import ApprovalSignal
+export function AgentPanel() {
+  const { events, status, start, approve, stop } = useAgent();
 
-async def main():
-    workflow_id = sys.argv[1]
-    approved = sys.argv[2].lower() == "true" if len(sys.argv) > 2 else True
-    feedback = sys.argv[3] if len(sys.argv) > 3 else ""
+  const latestArtifact = (name: string) =>
+    [...events].reverse().find((e) => e.type === "artifact" && e.name === name);
 
-    client = await Client.connect(
-        "temporal-frontend.temporal.svc.cluster.local:7233"
-    )
+  return (
+    <div>
+      <h2>Agent — {status}</h2>
 
-    handle = client.get_workflow_handle(workflow_id)
-    await handle.signal(
-        "approve",
-        ApprovalSignal(approved=approved, feedback=feedback),
-    )
-    print(f"Signal sent to {workflow_id}: approved={approved}")
+      <form onSubmit={(e) => {
+        e.preventDefault();
+        const task = new FormData(e.currentTarget).get("task") as string;
+        start(task, { requireApproval: true });
+      }}>
+        <input name="task" placeholder="Describe your task..." />
+        <button type="submit" disabled={status !== "idle"}>Run</button>
+      </form>
 
-if __name__ == "__main__":
-    asyncio.run(main())
+      {latestArtifact("plan") && (
+        <section>
+          <h3>Plan</h3>
+          <pre>{latestArtifact("plan")?.data}</pre>
+        </section>
+      )}
+
+      {latestArtifact("code") && (
+        <section>
+          <h3>Code</h3>
+          <pre>{latestArtifact("code")?.data}</pre>
+        </section>
+      )}
+
+      {latestArtifact("output") && (
+        <section>
+          <h3>Output</h3>
+          <pre>{latestArtifact("output")?.data}</pre>
+        </section>
+      )}
+
+      {latestArtifact("review") && (
+        <section>
+          <h3>Review</h3>
+          <pre>{latestArtifact("review")?.data}</pre>
+        </section>
+      )}
+
+      {status === "waiting_for_approval" && (
+        <div>
+          <button onClick={() => approve(true)}>Approve</button>
+          <button onClick={() => approve(false, "Needs changes")}>Reject</button>
+        </div>
+      )}
+
+      {(status === "completed" || status === "error") && (
+        <button onClick={stop}>Stop VM</button>
+      )}
+    </div>
+  );
+}
 ```
 
-### Step 9: Containerize
+#### WebSocket Message Protocol
+
+**Client → Server (VM):**
+
+| Message | When |
+|---------|------|
+| `{"task": "...", "language": "python", "max_iterations": 3, "require_approval": false}` | After WebSocket opens |
+| `{"type": "approve", "approved": true, "feedback": ""}` | When user clicks Approve/Reject |
+
+**Server (VM) → Client:**
+
+| Message | When |
+|---------|------|
+| `{"type": "connected", "workflow_id": "agent-a1b2c3"}` | Workflow started |
+| `{"type": "status", "step": "planning"}` | Each phase begins |
+| `{"type": "artifact", "name": "plan", "data": "..."}` | Each artifact produced |
+| `{"type": "status", "step": "coding", "iteration": 1}` | Iteration begins |
+| `{"type": "artifact", "name": "code", "data": "..."}` | Code generated |
+| `{"type": "status", "step": "executing", "iteration": 1}` | Execution begins |
+| `{"type": "artifact", "name": "output", "data": "..."}` | Execution output |
+| `{"type": "status", "step": "reviewing", "iteration": 1}` | Review begins |
+| `{"type": "artifact", "name": "review", "data": "..."}` | Review result |
+| `{"type": "status", "step": "waiting_for_approval"}` | Awaiting human |
+| `{"type": "result", "plan": "...", "code": "...", ...}` | Workflow completed |
+| `{"type": "error", "message": "..."}` | Workflow failed |
+
+### Step 4: Package as a VM Template
+
+#### Dockerfile
 
 ```dockerfile
-# Dockerfile
-FROM python:3.12-slim
+# e2b.Dockerfile
+FROM e2bdev/base:latest
 
-WORKDIR /app
+COPY requirements.txt /home/user/app/requirements.txt
+RUN pip install --no-cache-dir -r /home/user/app/requirements.txt
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-COPY . .
-
-CMD ["python", "worker.py"]
+COPY workflows/ /home/user/app/workflows/
+COPY activities/ /home/user/app/activities/
+COPY server.py /home/user/app/server.py
 ```
 
-Build and push to ECR:
+#### Build the Template
 
 ```bash
-# Get ECR login
-ECR_URL=$(terraform -chdir=iac/provider-aws output -raw core_ecr_repository_url)
-REGISTRY=$(echo $ECR_URL | cut -d/ -f1)
-aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $REGISTRY
-
-# Create ECR repo for the worker
-aws ecr create-repository --repository-name e2b-agent-worker --region $AWS_REGION
-
-# Build and push
-WORKER_REPO="$REGISTRY/e2b-agent-worker"
-docker build -t $WORKER_REPO:latest .
-docker push $WORKER_REPO:latest
+e2b template build \
+  --name "agent-worker" \
+  --dockerfile e2b.Dockerfile \
+  --start-cmd "cd /home/user/app && python3 server.py" \
+  --cpu-count 2 \
+  --memory-mb 1024
 ```
 
-### Step 10: Deploy the Worker to EKS
+**What happens at boot:** The VM starts → envd's `InitializeStartProcess()` runs the `StartCmd` → `server.py` starts → uvicorn listens on `0.0.0.0:8000` → envd's port scanner detects port 8000 and auto-starts a `socat` forwarder (`169.254.0.21:8000 → localhost:8000`) → the port is now reachable from outside the VM. No port configuration needed — it's automatic.
 
-```yaml
-# k8s/worker-deployment.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: agent-worker
-  namespace: e2b
-  labels:
-    app: agent-worker
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: agent-worker
-  template:
-    metadata:
-      labels:
-        app: agent-worker
-    spec:
-      nodeSelector:
-        e2b.dev/node-pool: system
-      containers:
-        - name: worker
-          image: <REGISTRY>/e2b-agent-worker:latest  # Replace with your ECR URL
-          env:
-            - name: TEMPORAL_HOST
-              value: "temporal-frontend.temporal.svc.cluster.local:7233"
-            - name: TEMPORAL_NAMESPACE
-              value: "default"
-            - name: TASK_QUEUE
-              value: "agent-tasks"
-            - name: E2B_API_URL
-              value: "http://api.e2b.svc.cluster.local:50001"
-            - name: E2B_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: agent-worker-secrets
-                  key: e2b-api-key
-            - name: ANTHROPIC_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: agent-worker-secrets
-                  key: anthropic-api-key
-          resources:
-            requests:
-              cpu: "250m"
-              memory: "256Mi"
-            limits:
-              cpu: "500m"
-              memory: "512Mi"
----
-# Create secrets first:
-# kubectl create secret generic agent-worker-secrets -n e2b \
-#   --from-literal=e2b-api-key=YOUR_KEY \
-#   --from-literal=anthropic-api-key=YOUR_KEY
-```
+### Step 5: Deploy and Run
 
-Deploy:
+#### One-Time: Expose Temporal Frontend
+
+**K8s ClusterIP DNS is NOT resolvable from inside VMs.** VMs run in isolated network namespaces — they are not part of the K8s pod network. You need an NLB endpoint:
 
 ```bash
-# Create the secrets
-kubectl create secret generic agent-worker-secrets -n e2b \
-  --from-literal=e2b-api-key="$E2B_API_KEY" \
-  --from-literal=anthropic-api-key="$ANTHROPIC_API_KEY"
+# Get existing LB, or create one
+TEMPORAL_HOST=$(kubectl get svc temporal-frontend -n temporal \
+  -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'):7233
 
-# Deploy the worker
-kubectl apply -f k8s/worker-deployment.yaml
+# If no LB exists:
+kubectl expose svc temporal-frontend -n temporal \
+  --name=temporal-frontend-nlb \
+  --type=LoadBalancer \
+  --port=7233 --target-port=7233
+kubectl annotate svc temporal-frontend-nlb -n temporal \
+  service.beta.kubernetes.io/aws-load-balancer-internal="true" \
+  service.beta.kubernetes.io/aws-load-balancer-type="nlb"
 
-# Verify worker is running and connected
-kubectl logs -f deploy/agent-worker -n e2b
+TEMPORAL_HOST=$(kubectl get svc temporal-frontend-nlb -n temporal \
+  -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'):7233
 ```
 
-### Step 11: Test End-to-End
+This NLB hostname resolves via public DNS and is routable from VMs through their NAT path: VM (169.254.0.21) → SNAT to host IP → MASQUERADE to node IP → NLB → Temporal pod.
+
+#### Provisioning Backend
+
+Add two endpoints to your existing backend. These create and destroy VMs — they run on **your** server, not inside the VM.
+
+**Python (FastAPI):**
+
+```python
+# In your backend — not inside the VM
+import os
+from e2b import Sandbox
+from fastapi import FastAPI
+
+app = FastAPI()
+
+E2B_DOMAIN = os.environ["E2B_DOMAIN"]  # e.g. "e2b.app" or your self-hosted domain
+
+
+@app.post("/api/agent/start")
+async def start_agent():
+    vm = Sandbox(
+        template="agent-worker",
+        timeout=3600,  # 1 hour — set longer than expected workflow duration
+        envs={
+            "TEMPORAL_HOST": os.environ["TEMPORAL_HOST"],
+            "ANTHROPIC_API_KEY": os.environ["ANTHROPIC_API_KEY"],
+            "TASK_QUEUE": "agent-tasks",
+        },
+    )
+    return {
+        "sandbox_id": vm.sandbox_id,
+        "ws_url": f"wss://8000-{vm.sandbox_id}.{E2B_DOMAIN}/ws",
+    }
+
+
+@app.delete("/api/agent/{sandbox_id}")
+async def stop_agent(sandbox_id: str):
+    Sandbox.connect(sandbox_id).kill()
+    return {"status": "destroyed"}
+```
+
+**curl equivalent:**
 
 ```bash
-# Option A: Run starter locally (with port-forward)
-kubectl port-forward svc/temporal-frontend -n temporal 7233:7233 &
-TEMPORAL_HOST=localhost:7233 python starter.py "Calculate the first 20 Fibonacci numbers"
+# Create VM
+curl -X POST https://api.yourdomain.com/sandboxes \
+  -H "Authorization: Bearer $E2B_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "templateID": "agent-worker",
+    "timeout": 3600,
+    "envs": {
+      "TEMPORAL_HOST": "'$TEMPORAL_HOST'",
+      "TASK_QUEUE": "agent-tasks",
+      "ANTHROPIC_API_KEY": "'$ANTHROPIC_API_KEY'"
+    }
+  }'
+# Response: {"sandboxID": "isv6ril5xadwn1k9t2jye", ...}
+# WebSocket URL: wss://8000-isv6ril5xadwn1k9t2jye.{domain}/ws
 
-# Option B: Run starter as a K8s job
-kubectl run agent-starter --rm -it --image=<REGISTRY>/e2b-agent-worker:latest \
-  -n e2b --env="TEMPORAL_HOST=temporal-frontend.temporal.svc.cluster.local:7233" \
-  -- python starter.py "Calculate the first 20 Fibonacci numbers"
+# Destroy VM
+curl -X DELETE https://api.yourdomain.com/sandboxes/isv6ril5xadwn1k9t2jye \
+  -H "Authorization: Bearer $E2B_API_KEY"
+```
 
-# Watch workflow progress in Web UI
+Secrets (`ANTHROPIC_API_KEY`, `TEMPORAL_HOST`) are injected as env vars at VM creation time — they are **not** baked into the template image.
+
+#### The Full Sequence
+
+```
+User clicks "Run" in React app
+  │
+  ▼
+React → POST /api/agent/start (your backend)
+  │
+  ▼
+Your backend → E2B API: create VM from "agent-worker" template
+  │     Injects: TEMPORAL_HOST, ANTHROPIC_API_KEY, TASK_QUEUE
+  │
+  ▼
+VM boots (~1s)
+  │  envd starts
+  │  envd runs StartCmd: python3 server.py
+  │  FastAPI listens on :8000
+  │  Temporal worker connects to Frontend via NLB (outbound NAT)
+  │  envd port scanner detects :8000 → socat binds 169.254.0.21:8000
+  │
+  ▼
+Your backend → returns {sandbox_id, ws_url} to React
+  │
+  ▼
+React → opens WebSocket to wss://8000-{sandbox_id}.{domain}/ws
+  │  DNS → Client-Proxy → Orchestrator Proxy → socat → FastAPI
+  │
+  ▼
+React → sends {"task": "Build a web scraper for ..."}
+  │
+  ▼
+server.py → starts Temporal workflow → streams events back via WebSocket
+  │  planning → plan artifact
+  │  coding → code artifact
+  │  executing (subprocess.run) → output artifact
+  │  reviewing → review artifact
+  │  (retry loop if VERDICT: FAIL)
+  │  waiting_for_approval (if required)
+  │
+  ▼
+React → receives events, renders UI, sends approval if needed
+  │
+  ▼
+Workflow completes → {"type": "result", ...} sent to React
+  │
+  ▼
+User clicks "Stop VM"
+  │
+  ▼
+React → DELETE /api/agent/{sandbox_id} (your backend)
+  │
+  ▼
+Your backend → E2B API: kill VM
+  │  Firecracker process terminates, network namespace cleaned up, slot freed
+```
+
+#### Debug
+
+```bash
+# Temporal Web UI — see workflow history, activity inputs/outputs
 kubectl port-forward svc/temporal-web -n temporal 8080:8080
 # Open http://localhost:8080
-```
-
-### Step 12: Observe
-
-```bash
-# Watch workflow in Temporal Web UI
-kubectl port-forward svc/temporal-web -n temporal 8080:8080
-# http://localhost:8080 → click on workflow → see each activity's input/output
-
-# Query workflow status programmatically
-kubectl run query --rm -it --image=<REGISTRY>/e2b-agent-worker:latest \
-  -n e2b -- python -c "
-import asyncio
-from temporalio.client import Client
-from workflows.agent_workflow import MultiAgentWorkflow
-
-async def main():
-    client = await Client.connect('temporal-frontend.temporal.svc.cluster.local:7233')
-    handle = client.get_workflow_handle('YOUR_WORKFLOW_ID')
-    status = await handle.query(MultiAgentWorkflow.current_status)
-    print(f'Status: {status}')
-
-asyncio.run(main())
-"
 
 # List running workflows
 kubectl exec -it deploy/temporal-admintools -n temporal -- \
   tctl workflow list --open
+
+# Query a specific workflow
+kubectl exec -it deploy/temporal-admintools -n temporal -- \
+  tctl workflow query --workflow_id "agent-a1b2c3d4e5f6" \
+  --query_type get_events
 ```
 
-### What Happens When Things Fail
+### Step 6: Networking Deep Dive
 
-This is why Temporal exists — every failure mode is handled automatically:
+#### Inbound: WebSocket → VM
 
-| Failure | What Temporal Does |
-|---------|-------------------|
-| Worker pod crashes mid-activity | Activity times out, Temporal retries on another worker |
+When your React app opens `wss://8000-{sandbox_id}.{domain}/ws`, the request traverses:
+
+```
+Browser
+  │
+  ▼
+Client-Proxy (edge layer, port 443)
+  │  Parses hostname: port=8000, sandbox_id=isv6ril5xadwn1k9t2jye
+  │  Redis catalog lookup → finds orchestrator node IP
+  │
+  ▼
+Orchestrator Proxy (:5007 on the host node)
+  │  Local sandbox map → finds VM's HostIP (10.11.x.x)
+  │  Optional: validates traffic access token (E2b-Traffic-Access-Token header)
+  │  Forwards to 10.11.x.x:8000
+  │
+  ▼
+VM network namespace
+  │  socat: 169.254.0.21:8000 → localhost:8000
+  │  (auto-configured by envd port scanner — no manual setup)
+  │
+  ▼
+FastAPI server inside the VM
+```
+
+HTTP, WebSocket, and SSE all work through this path. The URL scheme is `{PORT}-{SANDBOX_ID}.{DOMAIN}` — change the port prefix to reach different services inside the same VM.
+
+#### Outbound: VM → Temporal / LLM
+
+When the Temporal worker or Anthropic SDK makes an outbound connection:
+
+```
+Process inside VM (e.g. worker connecting to Temporal Frontend)
+  │  Source: 169.254.0.21:random
+  │
+  ▼
+TAP device → veth pair
+  │  SNAT: 169.254.0.21 → 10.11.x.x (host IP)
+  │
+  ▼
+Host network namespace
+  │  MASQUERADE: 10.11.x.x → physical node IP
+  │  Routes to destination via node's default gateway
+  │
+  ▼
+Temporal NLB / Anthropic API / any internet endpoint
+```
+
+All outbound traffic is allowed by default. Egress filtering can be configured per-sandbox via the orchestrator's firewall rules if needed.
+
+### Step 7: What Happens When Things Fail
+
+Every failure mode is handled by Temporal's durable execution — no manual recovery needed:
+
+| Failure | What Happens |
+|---------|-------------|
+| VM crashes mid-activity | Activity heartbeat times out → Temporal reschedules on another worker VM |
+| VM network partition | Same — heartbeat timeout triggers retry on a healthy worker |
+| VM TTL expires | Worker process dies → in-flight activity retried on surviving VMs |
+| Orchestrator host node goes down | All VMs on that node lose heartbeat → work redistributed to VMs on other nodes |
 | LLM API returns 500 | Activity retry policy kicks in (3 attempts, exponential backoff) |
-| Sandbox creation fails | Activity retries with a new sandbox |
-| Worker pod killed during sandbox execution | Sandbox TTL auto-expires; new worker retries the activity |
-| Entire EKS node goes down | Worker rescheduled on new node, workflow resumes from last checkpoint |
-| Human doesn't approve within 24h | Workflow times out with `ApplicationError` (zero CPU consumed while waiting) |
-| You deploy a new worker version | Old activities complete on old workers; new activities route to new workers |
+| `subprocess.run()` timeout | Activity returns error → reviewer sees it → coder retries with feedback |
+| WebSocket disconnects | **Workflow keeps running** — Temporal is the source of truth, not the WebSocket. Client can reconnect or query the workflow by ID later. |
+| Human doesn't approve within 24h | Workflow raises `ApplicationError` (zero CPU consumed while waiting) |
 
-Every activity input/output is persisted in Aurora. You can inspect the full execution history in the Web UI — including exactly what code was generated, what the sandbox output was, and what the LLM reviewer said.
+**VM TTL:** Set the VM `timeout` longer than your expected workflow duration. If a workflow might run for 30 minutes, set timeout to 3600 (1 hour). Use `activity.heartbeat()` in long-running activities so Temporal can detect dead workers promptly.
+
+**Scaling:** To handle more concurrent workflows, create more VMs from the same template — each runs its own Temporal worker. For per-user isolation, create one VM per user session (each user gets their own sandbox with their own WebSocket connection).
+
+Every activity input/output is persisted in Aurora. You can inspect the full execution history in the Temporal Web UI — including what code was generated, what the subprocess output was, and what the LLM reviewer said.
 
 ## Production Checklist
 

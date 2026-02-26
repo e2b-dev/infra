@@ -152,7 +152,10 @@ These costs are the same for both approaches since they use the same managed ser
 | Secrets Manager | 18 secrets | $7 | DB, API keys, tokens |
 | WAF | 1 Web ACL + ~5 rules | $11 | OWASP on ALB |
 | EBS (system) | API + bootstrap volumes | $22 | gp3, encrypted |
-| **Base total (EKS)** | | **$460** | |
+| VPC Endpoints | 6 interface + 1 gateway | $44 | ECR, Secrets Mgr, CloudWatch, STS (S3 gateway is free) |
+| KMS | 2 CMKs (S3 + EKS secrets) | $2 | Auto-rotation enabled |
+| CloudWatch Monitoring | SNS + 7 alarms | $1 | Enabled by default; requires `alert_email` |
+| **Base total (EKS)** | | **$507** | |
 | Temporal (optional) | 9 pods on system nodes | +$75-85 | Multi-agent orchestration |
 | **Base total (Nomad)** | | **$422** | |
 
@@ -191,17 +194,19 @@ When enabled, Temporal runs on the system node pool (t3.medium instances). The s
 
 > Temporal uses PostgreSQL for persistence — the same Aurora cluster used by E2B. No additional database infrastructure needed. The two Temporal databases (`temporal`, `temporal_visibility`) add modest load (~$5-15/mo in ACU usage).
 
-### Compliance Services (Optional, All Disabled by Default)
+### Compliance & Security Services
 
-| Service | Variable | $/mo | Notes |
-|---------|----------|-----:|-------|
-| VPC Flow Logs | `enable_vpc_flow_logs` | $50-100 | ~$0.57/GB ingested + CloudWatch storage |
-| AWS GuardDuty | `enable_guardduty` | $3-15 | Free 30-day trial; scales with events |
-| AWS Config | `enable_aws_config` | $5-20 | $0.003/config item + S3 storage |
-| AWS Inspector v2 | `enable_inspector` | $2-10 | $0.01/EC2 assessment + $0.09/ECR scan |
-| **Total** | | **$60-145** | <2% of total cost at any scale |
+| Service | Variable | Default | $/mo | Notes |
+|---------|----------|---------|-----:|-------|
+| AWS GuardDuty | `enable_guardduty` | **true** | $3-15 | Includes S3, EKS audit, EBS malware, and Runtime Monitoring |
+| AWS CloudTrail | `enable_cloudtrail` | **true** | $0-2 | KMS-encrypted, log file validation enabled |
+| VPC Flow Logs | `enable_vpc_flow_logs` | false | $50-100 | ~$0.57/GB ingested + CloudWatch storage |
+| AWS Config | `enable_aws_config` | false | $5-20 | $0.003/config item + S3 storage |
+| AWS Inspector v2 | `enable_inspector` | false | $2-10 | $0.01/EC2 assessment + $0.09/ECR scan |
+| **Default total** | | | **$3-17** | GuardDuty + CloudTrail (included in base) |
+| **Full compliance total** | | | **$60-145** | All services enabled |
 
-> All compliance services are gated by `enable_*` variables (default `false`). Enable them for GDPR audit trail and ISO 27001 compliance.
+> GuardDuty (with Runtime Monitoring for EKS pod-level threats) and CloudTrail (with KMS encryption and log file validation) are enabled by default. VPC Flow Logs, Config, and Inspector are opt-in via `enable_*` variables.
 
 ---
 
@@ -353,19 +358,19 @@ Both approaches use the same underlying AWS services, so GDPR compliance is equi
 | GDPR Principle | Implementation | Status |
 |----------------|---------------|--------|
 | **Data residency** | All resources deployed in eu-central-1. No cross-region replication configured. | Met |
-| **Encryption at rest** | EBS (AES-256 via KMS), S3 (SSE-KMS), Aurora (KMS), ElastiCache (at-rest encryption), EFS (encrypted). All configured in Terraform. | Met |
+| **Encryption at rest** | EBS (AES-256 via KMS), S3 (SSE-KMS with CMK), CloudTrail (KMS CMK), EKS secrets (KMS envelope encryption), Aurora (KMS), ElastiCache (at-rest encryption), EFS (encrypted). All configured in Terraform. | Met |
 | **Encryption in transit** | ALB/NLB with TLS 1.3 (`ELBSecurityPolicy-TLS13-1-2-2021-06`), ElastiCache TLS, Aurora SSL, internal K8s traffic. | Met |
 | **Access control** | IAM roles with least-privilege policies. K8s RBAC (EKS) or Nomad ACL (original). No direct SSH to worker nodes. | Met |
 | **Data minimization** | Sandboxes are ephemeral -- destroyed after session. No persistent user data in VMs. | Met |
 | **Right to erasure** | Sandbox data auto-deleted on termination. User data in Aurora via standard DELETE. S3 objects deletable. | Met |
-| **Audit trail** | CloudTrail for AWS API activity. OpenTelemetry for application observability. K8s audit logs (EKS). | Met |
+| **Audit trail** | CloudTrail (KMS-encrypted, log file validation) for AWS API activity. OpenTelemetry for application observability. K8s audit logs (EKS, 90-day retention). | Met |
 | **Data processing agreement** | AWS DPA available for eu-central-1 customers. | Available |
 | **Privacy by design** | Each sandbox is an isolated Firecracker microVM with separate kernel, filesystem, and network namespace. | Met |
 
 **GDPR gaps and recommendations:**
 
 1. **VPC Flow Logs**: Available via `enable_vpc_flow_logs = true`. Enables network audit trail and incident investigation with configurable retention (`vpc_flow_logs_retention_days`, default 90). Estimated cost: ~$50-100/mo at moderate scale.
-2. **CloudTrail log encryption**: Should use customer-managed KMS key for CloudTrail logs.
+2. ~~**CloudTrail log encryption**~~: **Resolved** — CloudTrail now uses KMS CMK encryption with log file validation enabled by default.
 3. **Third-party data residency**: If using external services (Supabase for auth, LaunchDarkly for feature flags), verify their data processing stays within the EU or obtain appropriate SCCs.
 4. **Data retention policies**: No explicit TTL/retention policies configured for Aurora user data or S3 template objects beyond lifecycle rules. Define retention periods aligned with GDPR requirements.
 5. **Data Protection Impact Assessment (DPIA)**: Recommended for processing at scale, particularly if handling personal data within sandboxes.
@@ -380,32 +385,34 @@ AWS eu-central-1 is ISO 27001 certified. All services used in this architecture 
 | **A.6 Organization** | IAM roles enforce separation of duties. Karpenter node IAM scoped to cluster. | Met |
 | **A.8 Asset management** | All infrastructure tracked in Terraform state. ECR for container image inventory. | Met |
 | **A.9 Access control** | IAM least-privilege. K8s RBAC / Nomad ACL. Secrets Manager for credentials (not environment variables). | Met |
-| **A.10 Cryptography** | AWS KMS for all encryption. TLS 1.3 on load balancers. ElastiCache + Aurora in-transit encryption. | Met |
-| **A.12 Operations security** | CloudTrail API logging. OpenTelemetry observability. Deletion protection on ALB/NLB and Aurora. VPC Flow Logs, GuardDuty, Config, Inspector available via `enable_*` variables. | Met (with compliance services enabled) |
-| **A.13 Communications security** | VPC with private subnets for data tier. Security groups restrict traffic by port and source. WAF on ALB. | Met |
+| **A.10 Cryptography** | AWS KMS for all encryption (S3, CloudTrail, EKS secrets envelope encryption). TLS 1.3 on load balancers. ElastiCache + Aurora in-transit encryption. | Met |
+| **A.12 Operations security** | CloudTrail (KMS-encrypted, log validation). CloudWatch alarms + SNS alerting (enabled by default). GuardDuty with Runtime Monitoring (enabled by default). OpenTelemetry observability. PodDisruptionBudgets for all services. HPA for API and client-proxy. VPC Flow Logs, Config, Inspector available via `enable_*` variables. | Met |
+| **A.13 Communications security** | VPC with private subnets for data tier. Security groups restrict traffic by port and source. WAF on ALB. Kubernetes NetworkPolicy for e2b and temporal namespaces. Pod Security Standards (baseline enforce, restricted warn). | Met |
 | **A.14 System acquisition** | Infrastructure as Code (Terraform). Version-controlled. Reviewed via PR process. | Met |
 | **A.17 Business continuity** | Multi-AZ deployment. Aurora multi-AZ failover. ElastiCache replica in second AZ. | Met |
 | **A.18 Compliance** | Region-specific deployment. GDPR-aligned data handling. AWS compliance certifications. | Met |
 
 **ISO 27001 gaps and recommendations:**
 
-1. **AWS GuardDuty**: Available via `enable_guardduty = true`. Enables threat detection for malicious API calls, compromised instances, and cryptocurrency mining with S3, K8s audit log, and malware protection data sources. ~$3-15/mo.
+1. ~~**AWS GuardDuty**~~: **Resolved** — Enabled by default with S3, EKS audit, EBS malware, and Runtime Monitoring (EKS pod-level threat detection).
 2. **AWS Config**: Available via `enable_aws_config = true`. Enables continuous configuration compliance monitoring and drift detection with S3 delivery (90-day IA transition, 365-day expiration). ~$5-20/mo.
 3. **AWS Inspector v2**: Available via `enable_inspector = true`. Enables automated vulnerability scanning of EC2 instances and ECR container images. ~$2-10/mo.
 4. **VPC Flow Logs**: Available via `enable_vpc_flow_logs = true`. Same as GDPR recommendation above.
 5. **Backup/restore testing**: Aurora automated backups are configured, but no documented restore testing process. ISO 27001 A.17.1 requires tested business continuity plans.
-6. **Incident response automation**: No automated runbooks for security incidents. Consider AWS Security Hub with automated remediation.
-7. **Network segmentation**: Firecracker provides strong tenant isolation at the VM level (separate kernel per sandbox). Network isolation via per-sandbox netns + iptables. This exceeds typical container-level isolation.
+6. **Incident response automation**: CloudWatch alarms with SNS notifications are now enabled by default. Consider AWS Security Hub with automated remediation for additional coverage.
+7. **Network segmentation**: Firecracker provides strong tenant isolation at the VM level (separate kernel per sandbox). Kubernetes NetworkPolicy restricts pod-to-pod and namespace traffic. Pod Security Standards enforce baseline policies. Network isolation via per-sandbox netns + iptables exceeds typical container-level isolation.
 
 ### Compliance Comparison Between Approaches
 
 | Aspect | EKS + C8i | Nomad + i3.metal |
 |--------|-----------|-----------------|
-| Audit logging | K8s audit logs + CloudTrail (more granular) | Nomad audit logs + CloudTrail |
-| Access control | K8s RBAC (fine-grained, namespace-scoped) | Nomad ACL (simpler, job-scoped) |
-| Control plane security | AWS-managed EKS (patched by AWS) | Self-managed Nomad (manual patching) |
+| Audit logging | K8s audit logs (90-day retention) + CloudTrail (KMS-encrypted, log validation) | Nomad audit logs + CloudTrail |
+| Access control | K8s RBAC (fine-grained, namespace-scoped) + Pod Security Standards | Nomad ACL (simpler, job-scoped) |
+| Control plane security | AWS-managed EKS (patched by AWS), secrets encrypted with KMS | Self-managed Nomad (manual patching) |
+| Network isolation | NetworkPolicy per namespace, VPC endpoints for AWS services | Security groups only |
 | Attack surface | K8s API server + etcd (managed) | Nomad API + Consul (self-managed) |
-| Privileged workloads | Privileged pods required (security policy consideration) | Direct binary execution (no container layer) |
+| Privileged workloads | Privileged pods required (baseline PSS enforced) | Direct binary execution (no container layer) |
+| Monitoring | CloudWatch alarms + SNS alerting (enabled by default) | Manual monitoring setup |
 | Compliance automation | Rich K8s policy ecosystem (OPA, Kyverno) | Limited Nomad policy tooling |
 
 > Both approaches achieve equivalent GDPR + ISO 27001 compliance. The EKS approach has more mature compliance tooling and benefits from AWS-managed control plane patching. The Nomad approach has a simpler architecture with fewer components to audit.

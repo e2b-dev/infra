@@ -34,6 +34,19 @@ resource "aws_guardduty_detector_feature" "ebs_malware_protection" {
   status      = "ENABLED"
 }
 
+resource "aws_guardduty_detector_feature" "runtime_monitoring" {
+  count = var.enable_guardduty ? 1 : 0
+
+  detector_id = aws_guardduty_detector.main[0].id
+  name        = "RUNTIME_MONITORING"
+  status      = "ENABLED"
+
+  additional_configuration {
+    name   = "EKS_ADDON_MANAGEMENT"
+    status = "ENABLED"
+  }
+}
+
 # --- AWS Config ---
 # Continuous configuration compliance monitoring and drift detection (ISO 27001)
 
@@ -250,7 +263,8 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "cloudtrail" {
 
   rule {
     apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
+      sse_algorithm     = "aws:kms"
+      kms_master_key_id = aws_kms_key.s3.arn
     }
   }
 }
@@ -328,6 +342,8 @@ resource "aws_cloudtrail" "main" {
   include_global_service_events = true
   is_multi_region_trail         = true
   enable_logging                = true
+  enable_log_file_validation    = true
+  kms_key_id                    = aws_kms_key.s3.arn
 
   tags = var.tags
 
@@ -373,6 +389,24 @@ resource "aws_kms_key" "s3" {
           "kms:GenerateDataKey",
         ]
         Resource = "*"
+      },
+      {
+        Sid    = "AllowCloudTrailEncryption"
+        Effect = "Allow"
+        Principal = {
+          Service = "cloudtrail.amazonaws.com"
+        }
+        Action = [
+          "kms:Decrypt",
+          "kms:GenerateDataKey*",
+          "kms:DescribeKey",
+        ]
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "aws:SourceArn" = "arn:aws:cloudtrail:*:${data.aws_caller_identity.current.account_id}:trail/${var.prefix}cloudtrail"
+          }
+        }
       }
     ]
   })

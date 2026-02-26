@@ -12,3 +12,13 @@ output "temporal_namespace" {
   description = "Kubernetes namespace where Temporal is deployed"
   value       = kubernetes_namespace_v1.temporal.metadata[0].name
 }
+
+output "temporal_internode_cert_expiry" {
+  description = "Expiry time of the Temporal internode mTLS certificate. Rotate before this date."
+  value       = tls_locally_signed_cert.temporal_internode.validity_end_time
+}
+
+output "temporal_frontend_cert_expiry" {
+  description = "Expiry time of the Temporal frontend mTLS certificate. Rotate before this date."
+  value       = tls_locally_signed_cert.temporal_frontend.validity_end_time
+}

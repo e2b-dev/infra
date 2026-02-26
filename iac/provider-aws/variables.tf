@@ -33,7 +33,7 @@ variable "karpenter_version" {
 }
 
 variable "bootstrap_instance_type" {
-  description = "Instance type for bootstrap managed node group (Karpenter controller + system pods). Use t3.xlarge for production with Temporal."
+  description = "Instance type for bootstrap managed node group (Karpenter controller + system pods). Use t3.xlarge for production with Temporal. For dev/staging without Temporal, t3.large is sufficient."
   type        = string
   default     = "t3.xlarge"
 }
@@ -63,7 +63,7 @@ variable "boot_disk_size_gb" {
 }
 
 variable "cache_disk_size_gb" {
-  description = "Cache EBS volume size in GB for Karpenter nodes"
+  description = "Cache EBS volume size in GB for Karpenter nodes. For dev/staging with low sandbox density, 200 GB is sufficient."
   type        = number
   default     = 500
 }
@@ -175,7 +175,7 @@ variable "client_proxy_port" {
 
 variable "loki_cluster_size" {
   type    = number
-  default = 0
+  default = 1
 }
 
 variable "api_port" {
@@ -422,9 +422,9 @@ variable "eks_cluster_log_types" {
 }
 
 variable "eks_log_retention_days" {
-  description = "CloudWatch log group retention in days for EKS cluster logs (default: 30 days for non-production; production should override to 90+ days)"
+  description = "CloudWatch log group retention in days for EKS cluster logs"
   type        = number
-  default     = 30
+  default     = 90
 }
 
 # --- Karpenter Tuning ---
@@ -444,7 +444,7 @@ variable "build_consolidation_after" {
 # --- EBS Performance ---
 
 variable "cache_disk_iops" {
-  description = "Provisioned IOPS for cache EBS volume (gp3 baseline: 3000, recommended: 6000 for high sandbox density)"
+  description = "Provisioned IOPS for cache EBS volume (gp3 baseline: 3000, recommended: 6000 for high sandbox density). For dev/staging, 3000 is sufficient and saves cost."
   type        = number
   default     = 6000
 }
@@ -464,7 +464,7 @@ variable "enable_vpc_endpoints" {
 }
 
 variable "single_nat_gateway" {
-  description = "Use a single NAT gateway instead of one per AZ (cost savings for dev/staging, reduced HA)"
+  description = "Use a single NAT gateway instead of one per AZ (cost savings for dev/staging, reduced HA). Recommended true for dev, false for staging/prod."
   type        = bool
   default     = false
 }
@@ -486,9 +486,9 @@ variable "session_deregistration_delay" {
 # --- Monitoring & Alerting ---
 
 variable "enable_monitoring" {
-  description = "Enable CloudWatch alarms and SNS alerting for cost, reliability, and performance monitoring"
+  description = "Enable CloudWatch alarms and SNS alerting for cost, reliability, and performance monitoring. Requires alert_email to be set."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "alert_email" {
