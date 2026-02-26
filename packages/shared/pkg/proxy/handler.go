@@ -86,6 +86,16 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 			return
 		}
 
+		var resourceExhaustedErr *SandboxResourceExhaustedError
+		if errors.As(err, &resourceExhaustedErr) {
+			logger.L().Warn(ctx, "sandbox resource exhausted",
+				zap.String("host", r.Host),
+				logger.WithSandboxID(resourceExhaustedErr.SandboxId))
+			http.Error(w, "Sandbox limit reached", http.StatusTooManyRequests)
+
+			return
+		}
+
 		var trafficMissingTokenErr *MissingTrafficAccessTokenError
 		if errors.As(err, &trafficMissingTokenErr) {
 			logger.L().Warn(ctx, "traffic access token is missing", zap.String("host", r.Host))

@@ -81,3 +81,17 @@ func NewErrInvalidTrafficAccessToken(sandboxId string, header string) *InvalidTr
 		Header:    header,
 	}
 }
+
+type SandboxResourceExhaustedError struct {
+	SandboxId string
+}
+
+func NewErrSandboxResourceExhausted(sandboxId string) *SandboxResourceExhaustedError {
+	return &SandboxResourceExhaustedError{
+		SandboxId: sandboxId,
+	}
+}
+
+func (e SandboxResourceExhaustedError) Error() string {
+	return "sandbox resource exhausted"
+}
