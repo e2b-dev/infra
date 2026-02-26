@@ -16,7 +16,7 @@ JOIN public.envs e ON e.id = eba.env_id
 WHERE b.team_id = @team_id
   AND b.status_group IN ('pending', 'in_progress')
   AND e.source = 'template'
-  AND eba.tag != ALL(@exclude_tags::text[]);
+  AND NOT (eba.env_id = @exclude_template_id AND eba.tag = ANY(@exclude_tags::text[]));
 
 -- name: GetCancellableTemplateBuildsByTeam :many
 SELECT DISTINCT ON (b.id) b.id as build_id, e.id as template_id, e.cluster_id, b.cluster_node_id
