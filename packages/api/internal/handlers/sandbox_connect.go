@@ -112,8 +112,8 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 
 			switch notRunningErr.State {
 			case sandbox.StateKilling:
-				// Sandbox is being killed — no snapshot to resume from.
-				a.sendAPIStoreError(c, http.StatusNotFound, "Sandbox can't be resumed, no snapshot found")
+				// Sandbox is being killed — treat as not found.
+				a.sendAPIStoreError(c, http.StatusNotFound, sandboxNotFoundMsg(sandboxID))
 
 				return
 			case sandbox.StateSnapshotting:
