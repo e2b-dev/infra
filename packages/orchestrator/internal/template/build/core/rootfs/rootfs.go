@@ -135,8 +135,9 @@ func (r *Rootfs) CreateExt4Filesystem(
 	maxRootfsSize := int64(r.featureFlags.IntFlag(ctx, featureflags.BuildBaseRootfsSizeLimitMB)) << constants.ToMBShift
 	ext4Size, err := oci.ToExt4(ctx, l, img, rootfsPath, maxRootfsSize, template.RootfsBlockSize())
 	if err != nil {
-		if errors.Is(err, oci.ErrImageTooLarge) {
-			return containerregistry.Config{}, phases.NewPhaseBuildError(phaseMetadata, err)
+		var imgErr *oci.ImageTooLargeError
+		if errors.As(err, &imgErr) {
+			return containerregistry.Config{}, phases.NewPhaseBuildError(phaseMetadata, imgErr)
 		}
 
 		return containerregistry.Config{}, fmt.Errorf("error converting oci to ext4: %w", err)
