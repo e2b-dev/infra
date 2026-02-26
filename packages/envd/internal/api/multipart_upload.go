@@ -382,6 +382,12 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 		}
 	}()
 
+	// Limit the request body to expectedSize+1 so the server does not buffer
+	// an arbitrarily large oversized body. The +1 allows the trailing-byte
+	// check below to detect excess data without triggering MaxBytesError
+	// during io.CopyN itself (which reads exactly expectedSize bytes).
+	r.Body = http.MaxBytesReader(w, r.Body, expectedSize+1)
+
 	// Stream the part data directly to the file at offset without buffering the
 	// entire part in memory. OffsetWriter + CopyN uses a small internal buffer
 	// (~32KB) instead of reading the full part into a single allocation.
