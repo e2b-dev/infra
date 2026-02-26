@@ -26,7 +26,16 @@ func (s *Storage) Add(ctx context.Context, sbx sandbox.Sandbox) error {
 	}
 
 	key := getSandboxKey(sbx.TeamID.String(), sbx.SandboxID)
-	teamKey := getTeamIndexKey(sbx.TeamID.String())
+	teamKey := GetSandboxStorageTeamIndexKey(sbx.TeamID.String())
+
+	// Add to the index before adding to the cache, so there's no possibility of leaking
+	// Index by EndTime so ExpiredItems can use ZRANGEBYSCORE instead of scanning all sandboxes.
+	if err := s.redisClient.ZAdd(ctx, globalExpirationSet, redis.Z{
+		Score:  float64(sbx.EndTime.UnixMilli()),
+		Member: expirationMember(sbx.TeamID.String(), sbx.SandboxID),
+	}).Err(); err != nil {
+		return fmt.Errorf("failed to add sandbox to global expiration index: %w", err)
+	}
 
 	// Execute Lua script for atomic SET + SADD
 	err = addSandboxScript.Run(ctx, s.redisClient, []string{key, teamKey}, data, sbx.SandboxID).Err()
@@ -39,7 +48,7 @@ func (s *Storage) Add(ctx context.Context, sbx sandbox.Sandbox) error {
 		Score:  float64(time.Now().Unix()),
 		Member: sbx.TeamID.String(),
 	}).Err(); err != nil {
-		return fmt.Errorf("failed to add team to global teams index: %w", err)
+		logger.L().Warn(ctx, "failed to add team to global teams index", zap.Error(err), logger.WithSandboxID(sbx.SandboxID))
 	}
 
 	return nil
@@ -68,7 +77,7 @@ func (s *Storage) Get(ctx context.Context, teamID uuid.UUID, sandboxID string) (
 // Remove deletes a sandbox from Redis atomically with its team index entry.
 func (s *Storage) Remove(ctx context.Context, teamID uuid.UUID, sandboxID string) error {
 	key := getSandboxKey(teamID.String(), sandboxID)
-	teamKey := getTeamIndexKey(teamID.String())
+	teamKey := GetSandboxStorageTeamIndexKey(teamID.String())
 
 	lock, err := s.lockService.Obtain(ctx, redis_utils.GetLockKey(key), lockTimeout, s.lockOption)
 	if err != nil {
@@ -88,13 +97,19 @@ func (s *Storage) Remove(ctx context.Context, teamID uuid.UUID, sandboxID string
 		return fmt.Errorf("failed to remove sandbox from Redis: %w", err)
 	}
 
+	// Clean up from the global expiration index.
+	// Do it after the removal to prevent leaking expired sandboxes.
+	if err := s.redisClient.ZRem(ctx, globalExpirationSet, expirationMember(teamID.String(), sandboxID)).Err(); err != nil {
+		logger.L().Warn(ctx, "Failed to remove sandbox from global expiration index", zap.Error(err), logger.WithSandboxID(sandboxID))
+	}
+
 	return nil
 }
 
 // TeamItems retrieves sandboxes for a specific team, filtered by states and options
 func (s *Storage) TeamItems(ctx context.Context, teamID uuid.UUID, states []sandbox.State) ([]sandbox.Sandbox, error) {
 	// Get sandbox IDs from team index
-	teamKey := getTeamIndexKey(teamID.String())
+	teamKey := GetSandboxStorageTeamIndexKey(teamID.String())
 	sandboxIDs, err := s.redisClient.SMembers(ctx, teamKey).Result()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get sandbox IDs from team index: %w", err)
@@ -196,12 +211,17 @@ func (s *Storage) Update(ctx context.Context, teamID uuid.UUID, sandboxID string
 		return sandbox.Sandbox{}, fmt.Errorf("failed to store sandbox in Redis: %w", err)
 	}
 
-	return updatedSbx, nil
-}
+	// Re-score the expiration index if EndTime changed.
+	if !updatedSbx.EndTime.Equal(sbx.EndTime) {
+		if err := s.redisClient.ZAdd(ctx, globalExpirationSet, redis.Z{
+			Score:  float64(updatedSbx.EndTime.UnixMilli()),
+			Member: expirationMember(teamID.String(), sandboxID),
+		}).Err(); err != nil {
+			return sandbox.Sandbox{}, fmt.Errorf("failed to update sandbox in global expiration index: %w", err)
+		}
+	}
 
-func (s *Storage) AllItems(_ context.Context, _ []sandbox.State, _ ...sandbox.ItemsOption) ([]sandbox.Sandbox, error) {
-	// TODO: Implement later (ENG-3451)
-	return nil, nil
+	return updatedSbx, nil
 }
 
 // staleCutoff is how long a team entry must be idle (no Add calls) before it
@@ -235,7 +255,7 @@ func (s *Storage) TeamsWithSandboxCount(ctx context.Context) (map[uuid.UUID]int6
 
 			continue
 		}
-		cmd := pipe.SCard(ctx, getTeamIndexKey(raw))
+		cmd := pipe.SCard(ctx, GetSandboxStorageTeamIndexKey(raw))
 		entries = append(entries, teamEntry{id: id, score: m.Score, cmd: cmd})
 	}
 

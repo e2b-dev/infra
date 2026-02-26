@@ -1,7 +1,8 @@
 ENV := $(shell cat ../../.last_used_env || echo "not-set")
 -include ../../.env.${ENV}
 PREFIX := $(strip $(subst ",,$(PREFIX)))
-HOSTNAME := $(shell hostname || hostnamectl hostname)
+HOSTNAME := $(shell hostname 2> /dev/null || hostnamectl hostname 2> /dev/null)
+$(if $(HOSTNAME),,$(error Failed to determine hostname: both 'hostname' and 'hostnamectl' failed))
 
 # Architecture for builds. Defaults to local arch; override for cross-compilation
 # (e.g., BUILD_ARCH=amd64 make build-and-upload from an ARM64 host).

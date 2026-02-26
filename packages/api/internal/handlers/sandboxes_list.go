@@ -191,10 +191,10 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 		// Running Sandbox IDs
 		runningSandboxesIDs := make([]string, 0)
 		for _, info := range runningSandboxes {
-			runningSandboxesIDs = append(runningSandboxesIDs, utils.ShortID(info.SandboxID))
+			runningSandboxesIDs = append(runningSandboxesIDs, info.SandboxID)
 		}
 		for _, info := range pausingSandboxes {
-			runningSandboxesIDs = append(runningSandboxesIDs, utils.ShortID(info.SandboxID))
+			runningSandboxesIDs = append(runningSandboxesIDs, info.SandboxID)
 		}
 
 		pausedSandboxList, err := a.getPausedSandboxes(ctx, team.ID, runningSandboxesIDs, metadataFilter, pagination.QueryLimit(), pagination.CursorTime(), pagination.CursorID())
