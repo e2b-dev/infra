@@ -84,6 +84,42 @@ variable "public_access_cidrs" {
   default     = ["0.0.0.0/0"]
 }
 
+variable "eks_cluster_log_types" {
+  description = "EKS control plane log types to enable"
+  type        = list(string)
+  default     = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
+}
+
+variable "eks_log_retention_days" {
+  description = "CloudWatch log group retention in days for EKS cluster logs"
+  type        = number
+  default     = 90
+}
+
+variable "client_consolidation_after" {
+  description = "Karpenter consolidation delay for client NodePool (prevents thrashing for bursty sandboxes)"
+  type        = string
+  default     = "300s"
+}
+
+variable "build_consolidation_after" {
+  description = "Karpenter consolidation delay for build NodePool (batch-style, fast consolidation)"
+  type        = string
+  default     = "60s"
+}
+
+variable "cache_disk_iops" {
+  description = "Provisioned IOPS for cache EBS volume (gp3 baseline: 3000)"
+  type        = number
+  default     = 3000
+}
+
+variable "cache_disk_throughput_mbps" {
+  description = "Provisioned throughput in MB/s for cache EBS volume (gp3 baseline: 125, recommended: 400)"
+  type        = number
+  default     = 400
+}
+
 variable "tags" {
   description = "Tags to apply to all resources"
   type        = map(string)

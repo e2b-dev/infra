@@ -396,9 +396,101 @@ variable "enable_s3_access_logging" {
 }
 
 variable "eks_public_access_cidrs" {
-  description = "CIDR blocks allowed to access the EKS API endpoint publicly. Set to a restricted list for production."
+  description = "CIDR blocks allowed to access the EKS API endpoint publicly. WARNING: Default 0.0.0.0/0 is insecure for production. Restrict to your team's IP ranges."
   type        = list(string)
   default     = ["0.0.0.0/0"]
+}
+
+# --- EKS Cluster Logging ---
+
+variable "eks_cluster_log_types" {
+  description = "EKS control plane log types to enable"
+  type        = list(string)
+  default     = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
+}
+
+variable "eks_log_retention_days" {
+  description = "CloudWatch log group retention in days for EKS cluster logs"
+  type        = number
+  default     = 90
+}
+
+# --- Karpenter Tuning ---
+
+variable "client_consolidation_after" {
+  description = "Karpenter consolidation delay for client NodePool (prevents thrashing for bursty sandboxes)"
+  type        = string
+  default     = "300s"
+}
+
+variable "build_consolidation_after" {
+  description = "Karpenter consolidation delay for build NodePool (batch-style, fast consolidation)"
+  type        = string
+  default     = "60s"
+}
+
+# --- EBS Performance ---
+
+variable "cache_disk_iops" {
+  description = "Provisioned IOPS for cache EBS volume (gp3 baseline: 3000)"
+  type        = number
+  default     = 3000
+}
+
+variable "cache_disk_throughput_mbps" {
+  description = "Provisioned throughput in MB/s for cache EBS volume (gp3 baseline: 125, recommended: 400)"
+  type        = number
+  default     = 400
+}
+
+# --- VPC Endpoints ---
+
+variable "enable_vpc_endpoints" {
+  description = "Enable VPC endpoints for AWS services (S3, ECR, Secrets Manager, CloudWatch, STS) to reduce NAT costs"
+  type        = bool
+  default     = false
+}
+
+# --- WAF & Load Balancer ---
+
+variable "enable_waf_managed_rules" {
+  description = "Enable AWS managed WAF rule groups (CommonRuleSet, KnownBadInputs, SQLi, IpReputation)"
+  type        = bool
+  default     = true
+}
+
+variable "session_deregistration_delay" {
+  description = "Deregistration delay in seconds for NLB session target group (higher for long-lived WebSockets)"
+  type        = number
+  default     = 300
+}
+
+# --- Monitoring & Alerting ---
+
+variable "enable_monitoring" {
+  description = "Enable CloudWatch alarms and SNS alerting for cost, reliability, and performance monitoring"
+  type        = bool
+  default     = false
+}
+
+variable "alert_email" {
+  description = "Email address for CloudWatch alarm notifications"
+  type        = string
+  default     = ""
+}
+
+variable "monthly_budget_amount" {
+  description = "Monthly AWS spending threshold in USD for billing alarm"
+  type        = number
+  default     = 1000
+}
+
+# --- Security Hardening ---
+
+variable "restrict_egress_to_vpc" {
+  description = "Restrict egress on RDS, ElastiCache, EFS, and ALB security groups to VPC CIDR only (opt-in)"
+  type        = bool
+  default     = false
 }
 
 variable "filestore_cache_cleanup_disk_usage_target" {
@@ -492,4 +584,22 @@ variable "temporal_chart_version" {
   description = "Temporal Helm chart version. Pin to a specific version for reproducible deploys."
   type        = string
   default     = "1.2.1"
+}
+
+variable "temporal_cert_validity_hours" {
+  description = "Validity period in hours for Temporal mTLS certificates (default: 90 days)"
+  type        = number
+  default     = 2160
+}
+
+variable "temporal_worker_replica_count" {
+  description = "Number of Temporal worker replicas"
+  type        = number
+  default     = 2
+}
+
+variable "temporal_web_replica_count" {
+  description = "Number of Temporal web UI replicas"
+  type        = number
+  default     = 2
 }

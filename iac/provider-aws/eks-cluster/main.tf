@@ -18,9 +18,13 @@ module "eks" {
   subnet_ids = var.subnet_ids
 
   # API endpoint access
-  endpoint_public_access  = true
-  endpoint_private_access = true
+  endpoint_public_access       = true
+  endpoint_private_access      = true
   endpoint_public_access_cidrs = var.public_access_cidrs
+
+  # Cluster logging
+  enabled_log_types                      = var.eks_cluster_log_types
+  cloudwatch_log_group_retention_in_days = var.eks_log_retention_days
 
   # Core EKS addons
   addons = {

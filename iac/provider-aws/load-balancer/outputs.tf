@@ -29,3 +29,8 @@ output "ingress_target_group_arn" {
 output "session_target_group_arn" {
   value = aws_lb_target_group.session.arn
 }
+
+output "alb_arn_suffix" {
+  description = "ALB ARN suffix for CloudWatch metrics"
+  value       = aws_lb.alb.arn_suffix
+}

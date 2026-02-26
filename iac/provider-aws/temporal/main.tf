@@ -37,8 +37,13 @@ resource "kubernetes_namespace_v1" "temporal" {
 # --- Database Credentials ---
 
 resource "random_password" "temporal_db_password" {
-  length  = 32
-  special = false
+  length           = 32
+  special          = true
+  override_special = "!#$%&*()-_=+[]{}|:,.<>?"
+
+  lifecycle {
+    ignore_changes = [special, override_special]
+  }
 }
 
 resource "aws_secretsmanager_secret" "temporal_db_password" {
@@ -120,7 +125,7 @@ resource "tls_locally_signed_cert" "temporal_internode" {
   ca_private_key_pem = tls_private_key.temporal_ca.private_key_pem
   ca_cert_pem        = tls_self_signed_cert.temporal_ca.cert_pem
 
-  validity_period_hours = 8760 # 1 year
+  validity_period_hours = var.temporal_cert_validity_hours
 
   allowed_uses = [
     "digital_signature",
@@ -157,7 +162,7 @@ resource "tls_locally_signed_cert" "temporal_frontend" {
   ca_private_key_pem = tls_private_key.temporal_ca.private_key_pem
   ca_cert_pem        = tls_self_signed_cert.temporal_ca.cert_pem
 
-  validity_period_hours = 8760 # 1 year
+  validity_period_hours = var.temporal_cert_validity_hours
 
   allowed_uses = [
     "digital_signature",
@@ -317,6 +322,10 @@ resource "helm_release" "temporal" {
             limits   = { cpu = "1", memory = "1Gi" }
           }
 
+          podAnnotations = {
+            "e2b.dev/cert-hash" = sha256(tls_locally_signed_cert.temporal_frontend.cert_pem)
+          }
+
           nodeSelector = {
             "e2b.dev/node-pool" = "system"
           }
@@ -341,6 +350,10 @@ resource "helm_release" "temporal" {
           resources = {
             requests = { cpu = "500m", memory = "512Mi" }
             limits   = { cpu = "1", memory = "1Gi" }
+          }
+
+          podAnnotations = {
+            "e2b.dev/cert-hash" = sha256(tls_locally_signed_cert.temporal_internode.cert_pem)
           }
 
           nodeSelector = {
@@ -369,6 +382,10 @@ resource "helm_release" "temporal" {
             limits   = { cpu = "500m", memory = "512Mi" }
           }
 
+          podAnnotations = {
+            "e2b.dev/cert-hash" = sha256(tls_locally_signed_cert.temporal_internode.cert_pem)
+          }
+
           nodeSelector = {
             "e2b.dev/node-pool" = "system"
           }
@@ -388,11 +405,15 @@ resource "helm_release" "temporal" {
         }
 
         worker = {
-          replicaCount = 1
+          replicaCount = var.temporal_worker_replica_count
 
           resources = {
             requests = { cpu = "250m", memory = "256Mi" }
             limits   = { cpu = "500m", memory = "512Mi" }
+          }
+
+          podAnnotations = {
+            "e2b.dev/cert-hash" = sha256(tls_locally_signed_cert.temporal_internode.cert_pem)
           }
 
           nodeSelector = {
@@ -415,7 +436,7 @@ resource "helm_release" "temporal" {
       }
 
       web = {
-        replicaCount = 1
+        replicaCount = var.temporal_web_replica_count
 
         resources = {
           requests = { cpu = "100m", memory = "128Mi" }

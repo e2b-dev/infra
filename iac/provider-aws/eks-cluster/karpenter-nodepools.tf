@@ -46,6 +46,8 @@ resource "kubectl_manifest" "ec2nodeclass_c8i_firecracker" {
           ebs = {
             volumeSize          = "${var.cache_disk_size_gb}Gi"
             volumeType          = "gp3"
+            iops                = var.cache_disk_iops
+            throughput          = var.cache_disk_throughput_mbps
             deleteOnTermination = true
             encrypted           = true
           }
@@ -118,7 +120,7 @@ resource "kubectl_manifest" "nodepool_client" {
       }
       disruption = {
         consolidationPolicy = "WhenEmptyOrUnderutilized"
-        consolidateAfter    = "60s"
+        consolidateAfter    = var.client_consolidation_after
       }
       limits = {
         cpu    = "1000"
@@ -179,7 +181,7 @@ resource "kubectl_manifest" "nodepool_build" {
       }
       disruption = {
         consolidationPolicy = "WhenEmptyOrUnderutilized"
-        consolidateAfter    = "60s"
+        consolidateAfter    = var.build_consolidation_after
       }
       limits = {
         cpu    = "500"

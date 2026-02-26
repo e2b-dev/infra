@@ -22,6 +22,12 @@ resource "aws_elasticache_parameter_group" "redis" {
   tags = var.tags
 }
 
+resource "random_password" "redis_auth_token" {
+  length           = 64
+  special          = true
+  override_special = "!&#$^<>-"
+}
+
 resource "aws_elasticache_replication_group" "redis" {
   replication_group_id = "${var.prefix}redis"
   description          = "E2B Redis cluster"
@@ -38,6 +44,7 @@ resource "aws_elasticache_replication_group" "redis" {
   multi_az_enabled           = true
   transit_encryption_enabled = true
   at_rest_encryption_enabled = true
+  auth_token                 = random_password.redis_auth_token.result
 
   port = 6379
 
@@ -51,5 +58,5 @@ resource "aws_elasticache_replication_group" "redis" {
 # Write the connection URL to Secrets Manager
 resource "aws_secretsmanager_secret_version" "redis_cluster_url" {
   secret_id     = var.redis_cluster_url_secret_arn
-  secret_string = "rediss://${var.redis_shard_count > 1 ? aws_elasticache_replication_group.redis.configuration_endpoint_address : aws_elasticache_replication_group.redis.primary_endpoint_address}:6379"
+  secret_string = "rediss://:${random_password.redis_auth_token.result}@${var.redis_shard_count > 1 ? aws_elasticache_replication_group.redis.configuration_endpoint_address : aws_elasticache_replication_group.redis.primary_endpoint_address}:6379"
 }

@@ -101,7 +101,7 @@ resource "aws_security_group" "alb" {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = var.restrict_egress_to_vpc ? [var.vpc_cidr] : ["0.0.0.0/0"]
   }
 
   tags = merge(var.tags, {
@@ -131,7 +131,7 @@ resource "aws_security_group" "rds" {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = var.restrict_egress_to_vpc ? [var.vpc_cidr] : ["0.0.0.0/0"]
   }
 
   tags = merge(var.tags, {
@@ -161,7 +161,7 @@ resource "aws_security_group" "elasticache" {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = var.restrict_egress_to_vpc ? [var.vpc_cidr] : ["0.0.0.0/0"]
   }
 
   tags = merge(var.tags, {
@@ -191,7 +191,7 @@ resource "aws_security_group" "efs" {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = var.restrict_egress_to_vpc ? [var.vpc_cidr] : ["0.0.0.0/0"]
   }
 
   tags = merge(var.tags, {

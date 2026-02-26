@@ -64,6 +64,18 @@ variable "cloudflare_api_token_secret_arn" {
   type = string
 }
 
+variable "enable_waf_managed_rules" {
+  description = "Enable AWS managed WAF rule groups (CommonRuleSet, KnownBadInputs, SQLi, IpReputation)"
+  type        = bool
+  default     = true
+}
+
+variable "session_deregistration_delay" {
+  description = "Deregistration delay in seconds for NLB session target group (higher for long-lived WebSockets)"
+  type        = number
+  default     = 300
+}
+
 variable "tags" {
   type    = map(string)
   default = {}

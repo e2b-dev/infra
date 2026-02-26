@@ -137,7 +137,7 @@ resource "aws_lb_target_group" "session" {
     interval            = 10
   }
 
-  deregistration_delay = 30
+  deregistration_delay = var.session_deregistration_delay
 
   tags = var.tags
 }
