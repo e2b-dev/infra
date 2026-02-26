@@ -41,6 +41,4 @@ func (e *NotRunningError) Error() string {
 	return fmt.Sprintf("sandbox %s is not running (state: %s)", e.SandboxID, e.State)
 }
 
-var (
-	ErrAlreadyExists    = errors.New("sandbox already exists")
-)
+var ErrAlreadyExists = errors.New("sandbox already exists")
