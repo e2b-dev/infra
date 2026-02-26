@@ -4,7 +4,7 @@ on: workflow_call
 
 jobs:
   firecracker:
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
 
     steps:
       - name: Checkout Code

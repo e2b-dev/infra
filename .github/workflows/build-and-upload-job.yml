@@ -27,7 +27,7 @@ concurrency:
 jobs:
   deploy:
     name: Build and upload job to the ${{ inputs.environment }} environment
-    runs-on: ci-builder
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     permissions:
       contents: read
       id-token: write
