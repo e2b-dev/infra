@@ -21,7 +21,14 @@ import (
 
 func (a *APIStore) GetSandboxesSandboxIDLogs(c *gin.Context, sandboxID string, params api.GetSandboxesSandboxIDLogsParams) {
 	ctx := c.Request.Context()
-	sandboxID = utils.ShortID(sandboxID)
+
+	var err error
+	sandboxID, err = utils.ShortID(sandboxID)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid sandbox ID")
+
+		return
+	}
 
 	team := auth.MustGetTeamInfo(c)
 
@@ -43,7 +50,14 @@ func (a *APIStore) GetSandboxesSandboxIDLogs(c *gin.Context, sandboxID string, p
 
 func (a *APIStore) GetV2SandboxesSandboxIDLogs(c *gin.Context, sandboxID api.SandboxID, params api.GetV2SandboxesSandboxIDLogsParams) {
 	ctx := c.Request.Context()
-	sandboxID = utils.ShortID(sandboxID)
+
+	var err error
+	sandboxID, err = utils.ShortID(sandboxID)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid sandbox ID")
+
+		return
+	}
 
 	team := auth.MustGetTeamInfo(c)
 

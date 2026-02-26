@@ -23,7 +23,12 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 
 	telemetry.ReportEvent(ctx, "get sandbox")
 
-	sandboxId := utils.ShortID(id)
+	sandboxId, err := utils.ShortID(id)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid sandbox ID")
+
+		return
+	}
 
 	var sbxDomain *string
 	if team.ClusterID != nil {

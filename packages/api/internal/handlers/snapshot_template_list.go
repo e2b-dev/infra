@@ -55,7 +55,13 @@ func (a *APIStore) GetSnapshots(c *gin.Context, params api.GetSnapshotsParams) {
 
 	var sandboxIDFilter *string
 	if params.SandboxID != nil {
-		short := utils.ShortID(*params.SandboxID)
+		short, err := utils.ShortID(*params.SandboxID)
+		if err != nil {
+			a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid sandbox ID")
+
+			return
+		}
+
 		sandboxIDFilter = &short
 	}
 

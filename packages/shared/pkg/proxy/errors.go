@@ -4,7 +4,10 @@ import (
 	"errors"
 )
 
-var ErrInvalidHost = errors.New("invalid url host")
+var (
+	ErrInvalidHost      = errors.New("invalid url host")
+	ErrInvalidSandboxID = errors.New("invalid sandbox ID")
+)
 
 type InvalidSandboxPortError struct {
 	Port    string

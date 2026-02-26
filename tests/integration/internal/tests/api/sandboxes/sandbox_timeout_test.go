@@ -75,7 +75,7 @@ func TestSandboxTimeout_NotFound(t *testing.T) {
 	t.Parallel()
 	c := setup.GetAPIClient()
 
-	timeoutResp, err := c.PostSandboxesSandboxIDTimeoutWithResponse(t.Context(), "nonexistent-sandbox-id", api.PostSandboxesSandboxIDTimeoutJSONRequestBody{
+	timeoutResp, err := c.PostSandboxesSandboxIDTimeoutWithResponse(t.Context(), "nonexistentsandboxid", api.PostSandboxesSandboxIDTimeoutJSONRequestBody{
 		Timeout: 60,
 	}, setup.WithAPIKey())
 	require.NoError(t, err)
