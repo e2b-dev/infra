@@ -60,6 +60,8 @@ type Config struct {
 	// SandboxStorageBackend selects the sandbox storage implementation.
 	// "redis" uses Redis directly; "populate_redis" uses in-memory with Redis shadow writes.
 	SandboxStorageBackend string `env:"SANDBOX_STORAGE_BACKEND" envDefault:"memory"`
+
+	DomainName string `env:"DOMAIN_NAME" envDefault:""`
 }
 
 func Parse() (Config, error) {

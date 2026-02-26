@@ -77,6 +77,7 @@ resource "nomad_job" "api" {
     memory_mb = var.api_resources_memory_mb
     cpu_count = var.api_resources_cpu_count
 
+    domain_name                             = var.domain_name
     orchestrator_port                       = var.orchestrator_port
     otel_collector_grpc_endpoint            = "localhost:${var.otel_collector_grpc_port}"
     logs_collector_address                  = "http://localhost:${var.logs_proxy_port.port}"
