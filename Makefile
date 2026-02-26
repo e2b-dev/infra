@@ -146,7 +146,7 @@ migrate:
 set-env:
 	@ touch .last_used_env
 	@ echo $(ENV) > .last_used_env
-	@ . ${ENV_FILE}
+	@ . ./${ENV_FILE}
 
 .PHONY: switch-env
 switch-env:
