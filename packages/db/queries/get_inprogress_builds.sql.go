@@ -147,7 +147,12 @@ JOIN public.envs e ON e.id = eba.env_id
 WHERE b.team_id = $1
   AND b.status_group IN ('pending', 'in_progress')
   AND e.source = 'template'
-  AND NOT (eba.env_id = $2 AND eba.tag = ANY($3::text[]))
+  AND NOT EXISTS (
+    SELECT 1 FROM public.env_build_assignments exc
+    WHERE exc.build_id = b.id
+      AND exc.env_id = $2
+      AND exc.tag = ANY($3::text[])
+  )
 `
 
 type GetInProgressTemplateBuildsByTeamParams struct {
