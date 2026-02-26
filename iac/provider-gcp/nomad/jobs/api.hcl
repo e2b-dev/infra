@@ -4,6 +4,8 @@ job "api" {
   priority = 90
 
   group "api-service" {
+    count = ${count}
+
     // Try to restart the task indefinitely
     // Tries to restart every 5 seconds
     restart {
@@ -125,6 +127,8 @@ job "api" {
         REDIS_URL                      = "${redis_url}"
         REDIS_CLUSTER_URL              = "${redis_cluster_url}"
         REDIS_TLS_CA_BASE64            = "${redis_tls_ca_base64}"
+
+        SANDBOX_STORAGE_BACKEND        = "${sandbox_storage_backend}"
 
 %{ if launch_darkly_api_key != "" }
         LAUNCH_DARKLY_API_KEY         = "${launch_darkly_api_key}"
