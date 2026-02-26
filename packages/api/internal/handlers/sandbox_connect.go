@@ -58,105 +58,51 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 		return
 	}
 
-	sandboxData, err := a.orchestrator.GetSandbox(ctx, teamID, sandboxID)
-	if err == nil {
-		if sandboxData.TeamID != teamID {
-			logger.L().Debug(ctx, "Sandbox team mismatch on connect", logger.WithSandboxID(sandboxID), logger.WithTeamID(teamID.String()))
+	const maxConnectRetries = 3
+
+	for attempt := range maxConnectRetries {
+		sbx, apiErr := a.orchestrator.KeepAliveFor(ctx, teamID, sandboxID, timeout, false)
+		if apiErr == nil {
+			c.JSON(http.StatusOK, sbx.ToAPISandbox())
+
+			return
+		}
+
+		// Sandbox not in store at all → fall through to snapshot resume.
+		var notFoundErr *sandbox.NotFoundError
+		if errors.As(apiErr.Err, &notFoundErr) {
+			break
+		}
+
+		// Sandbox exists but isn't running → check which transitional state.
+		var notRunningErr *sandbox.NotRunningError
+		if !errors.As(apiErr.Err, &notRunningErr) {
+			a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+
+			return
+		}
+
+		if notRunningErr.State == sandbox.StateKilling {
 			a.sendAPIStoreError(c, http.StatusNotFound, sandboxNotFoundMsg(sandboxID))
 
 			return
 		}
 
-		switch sandboxData.State {
-		case sandbox.StatePausing:
-			logger.L().Debug(ctx, "Waiting for sandbox to pause", logger.WithSandboxID(sandboxID))
-			err = a.orchestrator.WaitForStateChange(ctx, teamID, sandboxID)
-			if err != nil {
-				a.sendAPIStoreError(c, http.StatusInternalServerError, "Error waiting for sandbox to pause")
+		logger.L().Info(ctx, "Sandbox not running, waiting for state change",
+			logger.WithSandboxID(sandboxID),
+			zap.String("state", string(notRunningErr.State)),
+			zap.Int("attempt", attempt+1),
+		)
 
-				return
-			}
-		case sandbox.StateKilling:
-			logger.L().Debug(ctx, "Sandbox is being killed, cannot connect", logger.WithSandboxID(sandboxID))
-			a.sendAPIStoreError(c, http.StatusNotFound, sandboxNotFoundMsg(sandboxID))
-
-			return
-		case sandbox.StateRunning:
-			logger.L().Debug(ctx, "Sandbox is already running",
-				logger.WithSandboxID(sandboxID),
-				zap.Time("end_time", sandboxData.EndTime),
-				zap.Time("start_time", sandboxData.StartTime),
-				zap.String("node_id", sandboxData.NodeID),
-			)
-
-			apiErr := a.orchestrator.KeepAliveFor(ctx, teamID, sandboxID, timeout, false)
-			if apiErr == nil {
-				c.JSON(http.StatusOK, sandboxData.ToAPISandbox())
-
-				return
-			}
-
-			// If the sandbox started transitioning (e.g. pausing) between our state
-			// check and the timeout update, handle based on the transition state.
-			var notRunningErr *sandbox.NotRunningError
-			if !errors.As(apiErr.Err, &notRunningErr) {
-				logger.L().Error(ctx, "Error during sandbox keep alive", zap.Error(apiErr.Err))
-				a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
-
-				return
-			}
-
-			logger.L().Warn(ctx, "Sandbox transitioned during keepalive, waiting for state change",
-				logger.WithSandboxID(sandboxID),
-				zap.String("state", string(notRunningErr.State)))
-
-			switch notRunningErr.State {
-			case sandbox.StateKilling:
-				// Sandbox is being killed — treat as not found.
-				a.sendAPIStoreError(c, http.StatusNotFound, sandboxNotFoundMsg(sandboxID))
-
-				return
-			case sandbox.StateSnapshotting:
-				// Snapshotting is transient — sandbox returns to Running when done.
-				// Wait for it to finish, then retry the keepalive.
-				err = a.orchestrator.WaitForStateChange(ctx, teamID, sandboxID)
-				if err != nil {
-					logger.L().Error(ctx, "Error waiting for sandbox state change",
-						logger.WithSandboxID(sandboxID), zap.Error(err))
-					a.sendAPIStoreError(c, http.StatusInternalServerError, "Error waiting for sandbox state change")
-
-					return
-				}
-
-				apiErr = a.orchestrator.KeepAliveFor(ctx, teamID, sandboxID, timeout, false)
-				if apiErr != nil {
-					logger.L().Error(ctx, "Error during sandbox keep alive after snapshot", zap.Error(apiErr.Err))
-					a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
-
-					return
-				}
-
-				c.JSON(http.StatusOK, sandboxData.ToAPISandbox())
-
-				return
-			default:
-				// StatePausing or any other transitioning state — wait then resume from snapshot.
-				err = a.orchestrator.WaitForStateChange(ctx, teamID, sandboxID)
-				if err != nil {
-					logger.L().Error(ctx, "Error waiting for sandbox state change",
-						logger.WithSandboxID(sandboxID), zap.Error(err))
-					a.sendAPIStoreError(c, http.StatusInternalServerError, "Error waiting for sandbox state change")
-
-					return
-				}
-				// Fall through to snapshot resume path
-			}
-		default:
-			logger.L().Error(ctx, "Sandbox is in an unknown state", logger.WithSandboxID(sandboxID), zap.String("state", string(sandboxData.State)))
-			a.sendAPIStoreError(c, http.StatusInternalServerError, "Sandbox is in an unknown state")
+		err = a.orchestrator.WaitForStateChange(ctx, teamID, sandboxID)
+		if err != nil {
+			a.sendAPIStoreError(c, http.StatusInternalServerError,
+				"Error waiting for sandbox state change")
 
 			return
 		}
+
+		continue
 	}
 
 	// TODO: ENG-3544 scope GetLastSnapshot query by teamID to avoid post-fetch ownership check.

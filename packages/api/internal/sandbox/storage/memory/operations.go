@@ -39,13 +39,18 @@ func (s *Storage) get(sandboxID string) (*memorySandbox, error) {
 }
 
 // Get the item from the cache.
-func (s *Storage) Get(_ context.Context, _ uuid.UUID, sandboxID string) (sandbox.Sandbox, error) {
+func (s *Storage) Get(_ context.Context, teamID uuid.UUID, sandboxID string) (sandbox.Sandbox, error) {
 	item, ok := s.items.Get(sandboxID)
 	if !ok {
 		return sandbox.Sandbox{}, &sandbox.NotFoundError{SandboxID: sandboxID}
 	}
 
-	return item.Data(), nil
+	data := item.Data()
+	if data.TeamID != teamID {
+		return sandbox.Sandbox{}, &sandbox.NotFoundError{SandboxID: sandboxID}
+	}
+
+	return data, nil
 }
 
 func (s *Storage) Remove(_ context.Context, _ uuid.UUID, sandboxID string) error {
@@ -98,7 +103,7 @@ func (s *Storage) ExpiredItems(_ context.Context) ([]sandbox.Sandbox, error) {
 	return expired, nil
 }
 
-func (s *Storage) Update(_ context.Context, _ uuid.UUID, sandboxID string, updateFunc func(sandbox.Sandbox) (sandbox.Sandbox, error)) (sandbox.Sandbox, error) {
+func (s *Storage) Update(_ context.Context, teamID uuid.UUID, sandboxID string, updateFunc func(sandbox.Sandbox) (sandbox.Sandbox, error)) (sandbox.Sandbox, error) {
 	item, ok := s.items.Get(sandboxID)
 	if !ok {
 		return sandbox.Sandbox{}, &sandbox.NotFoundError{SandboxID: sandboxID}
@@ -106,6 +111,10 @@ func (s *Storage) Update(_ context.Context, _ uuid.UUID, sandboxID string, updat
 
 	item.mu.Lock()
 	defer item.mu.Unlock()
+
+	if item._data.TeamID != teamID {
+		return sandbox.Sandbox{}, &sandbox.NotFoundError{SandboxID: sandboxID}
+	}
 
 	sbx, err := updateFunc(item._data)
 	if err != nil {

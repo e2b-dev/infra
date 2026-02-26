@@ -17,7 +17,7 @@ import (
 
 var errMaxInstanceLengthExceeded = fmt.Errorf("max instance length exceeded")
 
-func (o *Orchestrator) KeepAliveFor(ctx context.Context, teamID uuid.UUID, sandboxID string, duration time.Duration, allowShorter bool) *api.APIError {
+func (o *Orchestrator) KeepAliveFor(ctx context.Context, teamID uuid.UUID, sandboxID string, duration time.Duration, allowShorter bool) (*sandbox.Sandbox, *api.APIError) {
 	now := time.Now()
 
 	updateFunc := func(sbx sandbox.Sandbox) (sandbox.Sandbox, error) {
@@ -49,28 +49,28 @@ func (o *Orchestrator) KeepAliveFor(ctx context.Context, teamID uuid.UUID, sandb
 	if err != nil {
 		switch {
 		case errors.As(err, &sbxNotRunningErr):
-			return &api.APIError{Code: http.StatusNotFound, ClientMsg: "Sandbox not found", Err: err}
+			return nil, &api.APIError{Code: http.StatusNotFound, ClientMsg: "Sandbox not found", Err: err}
 		case errors.As(err, &sbxNotFoundErr):
-			return &api.APIError{Code: http.StatusNotFound, ClientMsg: "Sandbox not found", Err: err}
+			return nil, &api.APIError{Code: http.StatusNotFound, ClientMsg: "Sandbox not found", Err: err}
 		case errors.Is(err, errMaxInstanceLengthExceeded):
-			return &api.APIError{Code: http.StatusBadRequest, ClientMsg: "Max instance length exceeded", Err: err}
+			return nil, &api.APIError{Code: http.StatusBadRequest, ClientMsg: "Max instance length exceeded", Err: err}
 		case errors.Is(err, sandbox.ErrCannotShortenTTL):
 			// If shorter than the current end time, we don't extend, so we can return
-			return nil
+			return &sbx, nil
 		default:
-			return &api.APIError{Code: http.StatusInternalServerError, ClientMsg: "Error when setting sandbox timeout", Err: err}
+			return nil, &api.APIError{Code: http.StatusInternalServerError, ClientMsg: "Error when setting sandbox timeout", Err: err}
 		}
 	}
 	err = o.UpdateSandbox(ctx, sandboxID, sbx.EndTime, sbx.ClusterID, sbx.NodeID)
 	if err != nil {
 		if errors.Is(err, ErrSandboxNotFound) {
-			return &api.APIError{Code: http.StatusNotFound, ClientMsg: "Sandbox not found", Err: err}
+			return nil, &api.APIError{Code: http.StatusNotFound, ClientMsg: "Sandbox not found", Err: err}
 		}
 
-		return &api.APIError{Code: http.StatusInternalServerError, ClientMsg: "Error when setting sandbox timeout", Err: err}
+		return nil, &api.APIError{Code: http.StatusInternalServerError, ClientMsg: "Error when setting sandbox timeout", Err: err}
 	}
 
-	return nil
+	return &sbx, nil
 }
 
 // getMaxAllowedTTL calculates the maximum allowed TTL for a sandbox without exceeding its max instance length.
