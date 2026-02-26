@@ -298,11 +298,18 @@ else
   TAIL_PID=$!
 
   # Wait for QEMU process to exit (phase2.service shuts down VM when done)
+  # Poll build status via SSH while waiting so we capture result before shutdown
   PHASE2_TIMEOUT=3600
   PHASE2_ELAPSED=0
+  PHASE2_STATUS=""
   while kill -0 "$QEMU_PID" 2>/dev/null; do
     sleep 5
     PHASE2_ELAPSED=$((PHASE2_ELAPSED + 5))
+    # Periodically check build status (file is written before shutdown)
+    if (( PHASE2_ELAPSED % 15 == 0 )); then
+      PHASE2_STATUS=$(ssh $SSH_OPTS -i "$SSH_KEY_FILE" -p "$SSH_PORT" e2b@localhost \
+        "cat /var/log/e2b-build-status 2>/dev/null" 2>/dev/null || true)
+    fi
     if (( PHASE2_ELAPSED >= PHASE2_TIMEOUT )); then
       error "Phase 2 timed out after ${PHASE2_TIMEOUT}s. Killing VM."
       kill "$QEMU_PID" 2>/dev/null || true
@@ -320,7 +327,17 @@ else
   echo ""
   echo "    ── End of Phase 2 build log ───────────────────────────"
   echo ""
-  info "Phase 2 complete. VM has shut down."
+
+  # Check Phase 2 result
+  if [[ "$PHASE2_STATUS" == *"PHASE2_COMPLETE"* ]]; then
+    info "Phase 2 complete. VM has shut down."
+  elif [[ "$PHASE2_STATUS" == *"PHASE2_FAILED"* ]]; then
+    error "Phase 2 failed (status: $PHASE2_STATUS). The image may be broken."
+    exit 1
+  else
+    error "Phase 2 status unknown (no status file found). The build may have failed."
+    exit 1
+  fi
 fi
 
 # ── Print summary ────────────────────────────────────────────────────────────
