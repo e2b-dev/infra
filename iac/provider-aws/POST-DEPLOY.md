@@ -124,7 +124,57 @@ ECR_URL=$(terraform output -raw core_ecr_repository_url)
 aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_URL
 ```
 
-## 6. Production Hardening Checklist
+## 6. Temporal Server (if `temporal_enabled = true`)
+
+### 6a. Create Temporal Databases on Aurora
+
+Before enabling the Temporal module, create the databases and user:
+
+```sql
+-- Connect to your Aurora cluster
+CREATE DATABASE temporal;
+CREATE DATABASE temporal_visibility;
+CREATE USER temporal WITH PASSWORD '<from Secrets Manager: {prefix}temporal-db-password>';
+GRANT ALL PRIVILEGES ON DATABASE temporal TO temporal;
+GRANT ALL PRIVILEGES ON DATABASE temporal_visibility TO temporal;
+-- Grant schema permissions
+\c temporal
+GRANT ALL ON SCHEMA public TO temporal;
+\c temporal_visibility
+GRANT ALL ON SCHEMA public TO temporal;
+```
+
+### 6b. Verify Temporal Deployment
+
+```bash
+# All pods should be Running
+kubectl get pods -n temporal
+
+# Schema setup/update jobs should be Completed
+kubectl get jobs -n temporal
+
+# Access Web UI
+kubectl port-forward svc/temporal-web -n temporal 8080:8080
+# Open http://localhost:8080
+
+# Test admin tools
+kubectl exec -it deploy/temporal-admintools -n temporal -- tctl namespace list
+```
+
+### 6c. Register Application Namespaces
+
+```bash
+kubectl exec -it deploy/temporal-admintools -n temporal -- \
+  tctl namespace register default --retention 72h
+
+kubectl exec -it deploy/temporal-admintools -n temporal -- \
+  tctl namespace register agents --retention 72h \
+  --description "Multi-agent workflow namespace"
+```
+
+See `TEMPORAL.md` for worker connection examples, workflow patterns, and security configuration.
+
+## 7. Production Hardening Checklist
 
 - [ ] Restrict EKS public API endpoint (`eks_public_access_cidrs` variable)
 - [ ] Enable CloudTrail (`enable_cloudtrail = true`)
@@ -137,3 +187,7 @@ aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --
 - [ ] Provision Aurora Serverless v2 database
 - [ ] Configure DNS records for your domain
 - [ ] Verify WAF rules are active on ALB
+- [ ] If Temporal enabled: verify all pods Running in `temporal` namespace
+- [ ] If Temporal enabled: register application namespaces via `tctl`
+- [ ] If Temporal enabled: generate worker TLS certificates from Temporal CA
+- [ ] If Temporal enabled: configure OIDC for Web UI before external exposure

@@ -12,6 +12,11 @@ variable "tags" {
 variable "aurora_host" {
   description = "Aurora PostgreSQL cluster endpoint"
   type        = string
+
+  validation {
+    condition     = var.aurora_host != ""
+    error_message = "aurora_host must be set when temporal module is enabled. Provide the Aurora cluster endpoint."
+  }
 }
 
 variable "aurora_port" {
@@ -27,7 +32,7 @@ variable "temporal_db_user" {
 }
 
 variable "temporal_chart_version" {
-  description = "Temporal Helm chart version (RC releases require >=1.0.0-0 syntax)"
+  description = "Temporal Helm chart version. Pin to a specific version for reproducible deploys."
   type        = string
-  default     = ">=1.0.0-0"
+  default     = "1.2.1"
 }

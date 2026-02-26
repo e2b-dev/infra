@@ -153,6 +153,7 @@ These costs are the same for both approaches since they use the same managed ser
 | WAF | 1 Web ACL + ~5 rules | $11 | OWASP on ALB |
 | EBS (system) | API + bootstrap volumes | $22 | gp3, encrypted |
 | **Base total (EKS)** | | **$460** | |
+| Temporal (optional) | 9 pods on system nodes | +$75-85 | Multi-agent orchestration |
 | **Base total (Nomad)** | | **$422** | |
 
 Infrastructure scales with usage (Aurora ACU, Redis shards, NAT data processing, data transfer). Estimated at each tier:
@@ -166,6 +167,29 @@ Infrastructure scales with usage (Aurora ACU, Redis shards, NAT data processing,
 | 1,000,000 | ~$8,000 |
 
 > Infrastructure is <5% of total cost at every tier. Compute dominates everything.
+
+### Temporal Server (Optional, `temporal_enabled = false`)
+
+When enabled, Temporal runs on the system node pool (t3.medium instances). The system pool max_size increases from 3 to 5 to accommodate the additional pods.
+
+| Component | Replicas | CPU Request | Memory Request |
+|-----------|----------|-------------|----------------|
+| Frontend | 2 | 500m | 512Mi |
+| History | 2 | 500m | 512Mi |
+| Matching | 2 | 250m | 256Mi |
+| Worker (internal) | 1 | 250m | 256Mi |
+| Web UI | 1 | 100m | 128Mi |
+| Admin Tools | 1 | minimal | minimal |
+| **Total** | **9** | **~2.85 vCPU** | **~2.9 GiB** |
+
+| Cost Component | $/mo | Notes |
+|----------------|-----:|-------|
+| Additional system nodes | ~$70 | ~2x t3.medium ($35/node) to fit Temporal pods |
+| Aurora DB load (Temporal) | ~$5-15 | Two additional databases on existing Aurora cluster |
+| Secrets Manager | ~$0.40 | 1 additional secret |
+| **Temporal total** | **~$75-85** | Negligible at scale (<1% of total cost) |
+
+> Temporal uses PostgreSQL for persistence — the same Aurora cluster used by E2B. No additional database infrastructure needed. The two Temporal databases (`temporal`, `temporal_visibility`) add modest load (~$5-15/mo in ACU usage).
 
 ### Compliance Services (Optional, All Disabled by Default)
 

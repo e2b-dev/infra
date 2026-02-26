@@ -350,5 +350,5 @@ module "temporal" {
   temporal_db_user       = var.temporal_db_user
   temporal_chart_version = var.temporal_chart_version
 
-  depends_on = [module.eks_cluster, module.database]
+  depends_on = [module.eks_cluster]
 }

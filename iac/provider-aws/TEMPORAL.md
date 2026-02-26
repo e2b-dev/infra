@@ -37,11 +37,14 @@ GRANT ALL ON SCHEMA public TO temporal;
 Then set the Terraform variables:
 
 ```hcl
-temporal_enabled = true
-aurora_host      = "your-aurora-cluster.cluster-xxxxx.us-east-1.rds.amazonaws.com"
-aurora_port      = 5432
-temporal_db_user = "temporal"
+temporal_enabled       = true
+aurora_host            = "your-aurora-cluster.cluster-xxxxx.us-east-1.rds.amazonaws.com"
+aurora_port            = 5432
+temporal_db_user       = "temporal"
+temporal_chart_version = "1.2.1"  # pin to specific version for reproducible deploys
 ```
+
+> **Note**: `aurora_host` is required when `temporal_enabled = true`. Terraform will fail validation if it is empty. The Aurora cluster must be provisioned externally (see POST-DEPLOY.md step 2).
 
 ## How to Access
 

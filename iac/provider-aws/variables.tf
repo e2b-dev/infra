@@ -489,7 +489,7 @@ variable "temporal_db_user" {
 }
 
 variable "temporal_chart_version" {
-  description = "Temporal Helm chart version (use >=1.0.0-0 for RC releases)"
+  description = "Temporal Helm chart version. Pin to a specific version for reproducible deploys."
   type        = string
-  default     = ">=1.0.0-0"
+  default     = "1.2.1"
 }

@@ -42,8 +42,9 @@ resource "random_password" "temporal_db_password" {
 }
 
 resource "aws_secretsmanager_secret" "temporal_db_password" {
-  name = "${var.prefix}temporal-db-password"
-  tags = var.tags
+  name                    = "${var.prefix}temporal-db-password"
+  recovery_window_in_days = 7
+  tags                    = var.tags
 }
 
 resource "aws_secretsmanager_secret_version" "temporal_db_password" {
@@ -252,12 +253,13 @@ resource "helm_release" "temporal" {
               driver = "sql"
 
               sql = {
-                driver         = "postgres12"
-                host           = var.aurora_host
-                port           = var.aurora_port
-                database       = "temporal"
-                user           = var.temporal_db_user
-                existingSecret = kubernetes_secret_v1.temporal_db.metadata[0].name
+                driver            = "postgres12"
+                host              = var.aurora_host
+                port              = var.aurora_port
+                database          = "temporal"
+                user              = var.temporal_db_user
+                existingSecret    = kubernetes_secret_v1.temporal_db.metadata[0].name
+                secretPasswordKey = "PASSWORD"
               }
             }
 
@@ -265,12 +267,13 @@ resource "helm_release" "temporal" {
               driver = "sql"
 
               sql = {
-                driver         = "postgres12"
-                host           = var.aurora_host
-                port           = var.aurora_port
-                database       = "temporal_visibility"
-                user           = var.temporal_db_user
-                existingSecret = kubernetes_secret_v1.temporal_db.metadata[0].name
+                driver            = "postgres12"
+                host              = var.aurora_host
+                port              = var.aurora_port
+                database          = "temporal_visibility"
+                user              = var.temporal_db_user
+                existingSecret    = kubernetes_secret_v1.temporal_db.metadata[0].name
+                secretPasswordKey = "PASSWORD"
               }
             }
           }
