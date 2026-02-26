@@ -88,15 +88,15 @@ func (s *slowFrameGetter) GetFrame(_ context.Context, offsetU int64, _ *storage.
 	return storage.Range{Start: offsetU, Length: n}, nil
 }
 
-// makeCompressedTestData builds a synthetic FrameTable with exact frameSize
+// makeCompressedTestData builds a synthetic FrameTable with testFrameSize
 // boundaries and a slowFrameGetter that serves the original data. The C sizes
 // are set equal to U sizes since Chunker only uses U-space values.
-func makeCompressedTestData(tb testing.TB, data []byte, frameSize int, ttfb time.Duration) (*storage.FrameTable, *slowFrameGetter) {
+func makeCompressedTestData(tb testing.TB, data []byte, ttfb time.Duration) (*storage.FrameTable, *slowFrameGetter) {
 	tb.Helper()
 
 	ft := &storage.FrameTable{CompressionType: storage.CompressionLZ4}
-	for off := 0; off < len(data); off += frameSize {
-		u := int32(min(frameSize, len(data)-off))
+	for off := 0; off < len(data); off += testFrameSize {
+		u := int32(min(testFrameSize, len(data)-off))
 		ft.Frames = append(ft.Frames, storage.FrameSize{U: u, C: u})
 	}
 
@@ -199,7 +199,7 @@ func allChunkerTestCases() []chunkerTestCase {
 			name: "Chunker_Compressed",
 			newChunker: func(t *testing.T, data []byte, delay time.Duration) (*Chunker, *storage.FrameTable) {
 				t.Helper()
-				ft, getter := makeCompressedTestData(t, data, testFrameSize, delay)
+				ft, getter := makeCompressedTestData(t, data, delay)
 				c, err := NewChunker(
 					AssetInfo{
 						BasePath:     "test-object",
@@ -327,7 +327,14 @@ func TestChunker_ConcurrentDifferentOffsets(t *testing.T) {
 				})
 			}
 
+			require.NoError(t, eg.Wait())
+
+			for i := range numGoroutines {
+				assert.Equal(t, data[offsets[i]:offsets[i]+readLen], results[i],
+					"goroutine %d got wrong data", i)
+			}
 		})
+	}
 }
 
 func TestChunker_ConcurrentMixed(t *testing.T) {
@@ -474,7 +481,7 @@ func TestChunker_FetchDedup(t *testing.T) {
 		_, err := rand.Read(data)
 		require.NoError(t, err)
 
-		ft, getter := makeCompressedTestData(t, data, testFrameSize, 10*time.Millisecond)
+		ft, getter := makeCompressedTestData(t, data, 10*time.Millisecond)
 
 		chunker, err := NewChunker(
 			AssetInfo{
@@ -519,7 +526,7 @@ func TestChunker_DualMode_SharedCache(t *testing.T) {
 	t.Parallel()
 
 	data := makeTestData(t, testFileSize)
-	ft, getter := makeCompressedTestData(t, data, testFrameSize, 0)
+	ft, getter := makeCompressedTestData(t, data, 0)
 
 	// Create ONE chunker with both compressed and uncompressed assets available.
 	chunker, err := NewChunker(
@@ -614,7 +621,7 @@ func TestChunker_FullChunkCachedAfterPartialRequest(t *testing.T) {
 		t.Parallel()
 
 		data := makeTestData(t, testFileSize)
-		ft, getter := makeCompressedTestData(t, data, testFrameSize, 0)
+		ft, getter := makeCompressedTestData(t, data, 0)
 
 		chunker, err := NewChunker(
 			AssetInfo{
@@ -668,6 +675,9 @@ func TestChunker_FullChunkCachedAfterPartialRequest(t *testing.T) {
 			testBlockSize,
 			t.TempDir()+"/cache",
 			newTestMetrics(t),
+			newTestFlags(t),
+		)
+		require.NoError(t, err)
 		defer chunker.Close()
 
 		_, err = chunker.GetBlock(t.Context(), 0, testBlockSize, nil)
@@ -878,7 +888,7 @@ func TestChunker_LastBlockPartial(t *testing.T) {
 			name: "Compressed",
 			newChunker: func(t *testing.T, data []byte, _ time.Duration) (*Chunker, *storage.FrameTable) {
 				t.Helper()
-				ft, getter := makeCompressedTestData(t, data, testFrameSize, 0)
+				ft, getter := makeCompressedTestData(t, data, 0)
 				c, err := NewChunker(
 					AssetInfo{
 						BasePath:     "test-object",

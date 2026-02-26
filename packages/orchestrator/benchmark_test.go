@@ -354,7 +354,7 @@ func BenchmarkBaseImage(b *testing.B) {
 			// every page fault — a true cold start.
 			b.ResetTimer()
 			b.StopTimer()
-			for i := 0; i < b.N; i++ {
+			for range b.N {
 				// Setup (untimed): fresh template with empty block cache
 				templateCache.InvalidateAll()
 				tmpl, err := templateCache.GetTemplate(b.Context(), mode.buildID, false, false)

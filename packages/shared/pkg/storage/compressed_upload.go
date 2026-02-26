@@ -157,6 +157,7 @@ type memPartUploader struct {
 
 func (m *memPartUploader) Start(context.Context) error {
 	m.parts = make(map[int][]byte)
+
 	return nil
 }
 
@@ -166,6 +167,7 @@ func (m *memPartUploader) UploadPart(_ context.Context, partIndex int, data ...[
 		buf.Write(d)
 	}
 	m.parts[partIndex] = buf.Bytes()
+
 	return nil
 }
 

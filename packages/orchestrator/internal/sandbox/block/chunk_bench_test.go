@@ -73,6 +73,7 @@ type coldSetup struct {
 	read       benchReadFunc
 	close      func()
 	fetchCount func() int64
+	storeBytes int64 // compressed bytes transferred per iteration (= benchDataSize for uncompressed)
 }
 
 // ---------------------------------------------------------------------------
@@ -82,6 +83,8 @@ type coldSetup struct {
 const benchWorkers = 4
 
 func newBenchFlags(tb testing.TB) *MockFlagsClient {
+	tb.Helper()
+
 	m := NewMockFlagsClient(tb)
 	m.EXPECT().JSONFlag(mock.Anything, mock.Anything).Return(
 		ldvalue.FromJSONMarshal(map[string]any{"minReadBatchSizeKB": 256}),
@@ -157,6 +160,15 @@ func fmtSize(n int64) string {
 	}
 }
 
+func frameTableCompressedSize(ft *storage.FrameTable) int64 {
+	var total int64
+	for _, f := range ft.Frames {
+		total += int64(f.C)
+	}
+
+	return total
+}
+
 func setCompressedAsset(a *AssetInfo, ct storage.CompressionType, file storage.FramedFile) {
 	switch ct {
 	case storage.CompressionLZ4:
@@ -174,19 +186,30 @@ func setCompressedAsset(a *AssetInfo, ct storage.CompressionType, file storage.F
 
 // runColdLeaf runs a single cold-concurrent benchmark leaf (one profile, one
 // blockSize, one mode). Each b.N iteration creates a fresh cold cache.
+//
+// Reported metrics (in addition to ns/op):
+//   - U-MB/op     — uncompressed megabytes delivered per iteration (fixed)
+//   - U-MB/s      — uncompressed throughput to the client
+//   - C-MB/op     — compressed megabytes fetched from store per iteration
+//   - fetches/op  — upstream fetch count (deduped)
 func runColdLeaf(b *testing.B, data []byte, blockSize int64, profile backendProfile, newIter func(tb testing.TB, slow *slowFrameGetter, blockSize int64) coldSetup) {
 	b.Helper()
 
 	dataSize := int64(len(data))
 	offsets := shuffledOffsets(dataSize, blockSize)
-	b.SetBytes(benchDataSize)
 	b.ResetTimer()
+
+	var totalElapsed time.Duration
+	var storeBytes int64
 
 	for range b.N {
 		b.StopTimer()
 		slow := &slowFrameGetter{data: data, ttfb: profile.ttfb, bandwidth: profile.bandwidth}
 		s := newIter(b, slow, blockSize)
+		storeBytes = s.storeBytes
 		b.StartTimer()
+
+		start := time.Now()
 
 		g, ctx := errgroup.WithContext(context.Background())
 		for w := range benchWorkers {
@@ -206,10 +229,22 @@ func runColdLeaf(b *testing.B, data []byte, blockSize int64, profile backendProf
 			b.Fatal(err)
 		}
 
+		totalElapsed += time.Since(start)
+
 		b.StopTimer()
 		b.ReportMetric(float64(s.fetchCount()), "fetches/op")
 		s.close()
 		b.StartTimer()
+	}
+
+	uMB := float64(dataSize) / (1024 * 1024)
+	cMB := float64(storeBytes) / (1024 * 1024)
+
+	b.ReportMetric(uMB, "U-MB/op")
+	b.ReportMetric(cMB, "C-MB/op")
+
+	if totalElapsed > 0 {
+		b.ReportMetric(uMB/(totalElapsed.Seconds()/float64(b.N)), "U-MB/s")
 	}
 }
 
@@ -336,16 +371,21 @@ func BenchmarkColdConcurrent(b *testing.B) {
 	}
 
 	legacyFactory := func(tb testing.TB, slow *slowFrameGetter, blockSize int64) coldSetup {
+		tb.Helper()
+
 		c := newFullFetchBench(tb, slow, dataSize, blockSize)
 
 		return coldSetup{
 			read:       func(ctx context.Context, off, length int64) ([]byte, error) { return c.Slice(ctx, off, length) },
 			close:      func() { c.Close() },
 			fetchCount: func() int64 { return slow.fetchCount.Load() },
+			storeBytes: benchDataSize,
 		}
 	}
 
 	uncompressedFactory := func(tb testing.TB, slow *slowFrameGetter, blockSize int64) coldSetup {
+		tb.Helper()
+
 		assets := AssetInfo{
 			BasePath:        "bench",
 			Size:            dataSize,
@@ -358,6 +398,7 @@ func BenchmarkColdConcurrent(b *testing.B) {
 			read:       func(ctx context.Context, off, length int64) ([]byte, error) { return c.GetBlock(ctx, off, length, nil) },
 			close:      func() { c.Close() },
 			fetchCount: func() int64 { return slow.fetchCount.Load() },
+			storeBytes: benchDataSize,
 		}
 	}
 
@@ -384,9 +425,12 @@ func BenchmarkColdConcurrent(b *testing.B) {
 						b.Run(fmt.Sprintf("block=%s", fmtSize(blockSize)), func(b *testing.B) {
 							for ci, codec := range benchCodecs {
 								ft := frameTables[ftKey{frameSize, ci}].ft
+								cBytes := frameTableCompressedSize(ft)
 
 								b.Run(codec.name, func(b *testing.B) {
 									runColdLeaf(b, data, blockSize, profile, func(tb testing.TB, slow *slowFrameGetter, blockSize int64) coldSetup {
+										tb.Helper()
+
 										assets := AssetInfo{
 											BasePath: "bench",
 											Size:     dataSize,
@@ -398,6 +442,7 @@ func BenchmarkColdConcurrent(b *testing.B) {
 											read:       func(ctx context.Context, off, length int64) ([]byte, error) { return c.GetBlock(ctx, off, length, ft) },
 											close:      func() { c.Close() },
 											fetchCount: func() int64 { return slow.fetchCount.Load() },
+											storeBytes: cBytes,
 										}
 									})
 								})

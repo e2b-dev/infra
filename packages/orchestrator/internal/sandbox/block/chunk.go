@@ -2,6 +2,7 @@ package block
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -55,7 +56,8 @@ func (c *fullFetchChunker) Slice(ctx context.Context, off, length int64) ([]byte
 		return b, nil
 	}
 
-	if _, ok := err.(BytesNotAvailableError); !ok {
+	var bytesNotAvailableError BytesNotAvailableError
+	if !errors.As(err, &bytesNotAvailableError) {
 		timer.Failure(ctx, length,
 			attribute.String(pullType, pullTypeLocal),
 			attribute.String(failureReason, failureTypeLocalRead))

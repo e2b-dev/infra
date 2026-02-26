@@ -2,6 +2,7 @@ package block
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -194,7 +195,8 @@ func (c *Chunker) GetBlock(ctx context.Context, off, length int64, ft *storage.F
 		return b, nil
 	}
 
-	if _, ok := err.(BytesNotAvailableError); !ok {
+	var bytesNotAvailableError BytesNotAvailableError
+	if !errors.As(err, &bytesNotAvailableError) {
 		timer.Record(ctx, length, attrs.failCacheRead)
 
 		return nil, fmt.Errorf("failed read from cache at offset %d: %w", off, err)

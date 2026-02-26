@@ -16,11 +16,11 @@ const (
 	testBlockSize = header.PageSize // 4KB
 )
 
-func newTestMetrics(t *testing.T) metrics.Metrics {
-	t.Helper()
+func newTestMetrics(tb testing.TB) metrics.Metrics {
+	tb.Helper()
 
 	m, err := metrics.NewMetrics(noop.NewMeterProvider())
-	require.NoError(t, err)
+	require.NoError(tb, err)
 
 	return m
 }
