@@ -20,7 +20,7 @@ func (s *Service) DeleteFile(ctx context.Context, request *orchestrator.VolumeFi
 	}()
 	relPath := request.GetPath()
 	if relPath == "" {
-		return nil, newAPIError(ctx, codes.InvalidArgument, "empty_path", "path cannot be empty")
+		return nil, newAPIError(ctx, codes.InvalidArgument, orchestrator.UserErrorCode_CANNOT_DELETE_ROOT, "path cannot be empty")
 	}
 
 	fullPath, err := s.buildVolumePath(request.GetVolume(), relPath)
@@ -34,7 +34,7 @@ func (s *Service) DeleteFile(ctx context.Context, request *orchestrator.VolumeFi
 
 	if err := os.Remove(fullPath); err != nil {
 		if os.IsNotExist(err) {
-			return nil, newAPIError(ctx, codes.NotFound, "path_not_found", "failed to delete: %q not found.", fullPath)
+			return nil, newAPIError(ctx, codes.NotFound, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to delete: %q not found.", fullPath)
 		}
 
 		return nil, fmt.Errorf("failed to delete file: %w", err)

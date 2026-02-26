@@ -32,7 +32,7 @@ func (s *Service) ListDir(ctx context.Context, request *orchestrator.VolumeDirLi
 	items, err := os.ReadDir(fullPath)
 	if err != nil { // todo: better error handling
 		if os.IsNotExist(err) {
-			return nil, newAPIError(ctx, codes.NotFound, "path_not_found", "failed to read: %q not found.", fullPath)
+			return nil, newAPIError(ctx, codes.NotFound, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to read: %q not found.", fullPath)
 		}
 
 		return nil, fmt.Errorf("failed to read directory %q: %w", fullPath, err)

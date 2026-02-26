@@ -25,8 +25,15 @@ message EntryInfo {
   google.protobuf.Timestamp accessed_time = 11;
 }
 
+enum UserErrorCode {
+  UNKNOWN_USER_ERROR_CODE = 0;
+  PATH_NOT_FOUND = 1;
+  PATH_ALREADY_EXISTS = 2;
+  CANNOT_DELETE_ROOT = 3;
+}
+
 message UserError {
-  string code = 1;
+  UserErrorCode code = 1;
   string message = 2;
 }
 

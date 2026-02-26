@@ -12,7 +12,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-func newAPIError(ctx context.Context, grpcCode codes.Code, devCode string, devMessage string, args ...any) error {
+func newAPIError(ctx context.Context, grpcCode codes.Code, devCode orchestrator.UserErrorCode, devMessage string, args ...any) error {
 	message := fmt.Sprintf(devMessage, args...)
 
 	s := status.New(grpcCode, message)

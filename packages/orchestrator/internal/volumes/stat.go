@@ -31,7 +31,7 @@ func (s *Service) Stat(ctx context.Context, request *orchestrator.StatRequest) (
 	info, err := filesystem.GetEntryFromPath(fullPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, newAPIError(ctx, codes.NotFound, "path_not_found", "failed to stat: %q not found.", fullPath)
+			return nil, newAPIError(ctx, codes.NotFound, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to stat: %q not found.", fullPath)
 		}
 
 		return nil, fmt.Errorf("failed to stat path: %w", err)

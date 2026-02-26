@@ -24,7 +24,7 @@ func (s *Service) DeleteDir(ctx context.Context, request *orchestrator.VolumeDir
 
 	relPath := request.GetPath()
 	if relPath == "" || relPath == "/" || relPath == "." {
-		return nil, newAPIError(ctx, codes.InvalidArgument, "empty_path", "path cannot be empty")
+		return nil, newAPIError(ctx, codes.InvalidArgument, orchestrator.UserErrorCode_CANNOT_DELETE_ROOT, "path cannot be empty")
 	}
 
 	rootPath, err := s.buildVolumePath(request.GetVolume(), "")
@@ -38,7 +38,7 @@ func (s *Service) DeleteDir(ctx context.Context, request *orchestrator.VolumeDir
 	}
 
 	if filepath.Clean(rootPath) == filepath.Clean(fullPath) {
-		return nil, newAPIError(ctx, codes.InvalidArgument, "cannot_delete_root", "cannot delete root directory")
+		return nil, newAPIError(ctx, codes.InvalidArgument, orchestrator.UserErrorCode_CANNOT_DELETE_ROOT, "cannot delete root directory")
 	}
 
 	var fn removeFunc
@@ -54,7 +54,7 @@ func (s *Service) DeleteDir(ctx context.Context, request *orchestrator.VolumeDir
 
 	if err := fn(fullPath); err != nil {
 		if os.IsNotExist(err) {
-			return nil, newAPIError(ctx, codes.NotFound, "path_not_found", "failed to delete: %q not found.", fullPath)
+			return nil, newAPIError(ctx, codes.NotFound, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to delete: %q not found.", fullPath)
 		}
 
 		return nil, fmt.Errorf("failed to delete directory: %w", err)
