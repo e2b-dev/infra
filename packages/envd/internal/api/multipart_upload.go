@@ -66,17 +66,20 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 		return
 	}
 
-	// Compute numParts and validate the cap before any file I/O.
-	var numParts int
+	// Compute numParts as int64 and validate the cap before any file I/O.
+	// The cast to int is safe after the cap check (maxNumParts fits in any int).
+	var numParts64 int64
 	if body.TotalSize > 0 {
-		numParts = int((body.TotalSize + body.PartSize - 1) / body.PartSize)
+		numParts64 = (body.TotalSize + body.PartSize - 1) / body.PartSize
 	}
 
-	if numParts > maxNumParts {
-		jsonError(w, http.StatusBadRequest, fmt.Errorf("upload would require %d parts, exceeding the maximum of %d (increase partSize)", numParts, maxNumParts))
+	if numParts64 > maxNumParts {
+		jsonError(w, http.StatusBadRequest, fmt.Errorf("upload would require %d parts, exceeding the maximum of %d (increase partSize)", numParts64, maxNumParts))
 
 		return
 	}
+
+	numParts := int(numParts64)
 
 	// Check session limit early, before any file I/O, to avoid truncating
 	// existing files only to reject the request due to capacity.
