@@ -52,10 +52,16 @@ func (i *memorySandbox) State() sandbox.State {
 
 // SandboxID returns the sandbox ID, safe to use without lock, it's immutable
 func (i *memorySandbox) SandboxID() string {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+
 	return i._data.SandboxID
 }
 
 // TeamID returns the team ID, safe to use without lock, it's immutable
 func (i *memorySandbox) TeamID() uuid.UUID {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+
 	return i._data.TeamID
 }
