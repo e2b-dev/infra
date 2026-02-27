@@ -17,6 +17,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
+const minIdleConnections = 10
+
 var ErrRedisDisabled = errors.New("redis is disabled")
 
 type RedisConfig struct {
@@ -48,7 +50,7 @@ func NewRedisClient(ctx context.Context, config RedisConfig) (redis.UniversalCli
 		minIdleConns := minIdleConnectionsPerCPU * numCPU
 		if config.PoolSize > 0 {
 			poolSize = config.PoolSize
-			minIdleConns = config.PoolSize / 4
+			minIdleConns = max(minIdleConnections, config.PoolSize/4)
 		}
 
 		clusterOpts := &redis.ClusterOptions{
