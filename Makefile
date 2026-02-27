@@ -88,9 +88,18 @@ build-and-upload/orchestrator:
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/orchestrator build-and-upload/orchestrator
 build-and-upload/api:
 	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
-	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/api build-and-upload & pid_api=$$!; \
-	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/db build-and-upload & pid_db=$$!; \
-	wait $$pid_api && wait $$pid_db
+	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
+	$(eval EXPECTED_MIGRATION_TIMESTAMP := $(shell ./scripts/get-latest-migration.sh))
+	$(eval _PREFIX := $(strip $(subst ",,$(PREFIX))))
+ifeq ($(PROVIDER),aws)
+	$(eval REGISTRY_PREFIX := $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com/$(_PREFIX)core)
+else
+	$(eval REGISTRY_PREFIX := $(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/$(_PREFIX)core)
+endif
+	cd packages && REGISTRY_PREFIX=$(REGISTRY_PREFIX) \
+		COMMIT_SHA=$(COMMIT_SHA) \
+		EXPECTED_MIGRATION_TIMESTAMP=$(EXPECTED_MIGRATION_TIMESTAMP) \
+		docker buildx bake -f api/docker-bake.hcl --push
 build-and-upload/clickhouse-migrator:
 	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/clickhouse build-and-upload
