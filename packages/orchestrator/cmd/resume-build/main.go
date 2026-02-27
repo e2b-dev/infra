@@ -832,6 +832,7 @@ func (r *runner) collectAndUploadPrefetch(ctx context.Context, opts pauseOptions
 		sbx, err := r.factory.ResumeSandbox(ctx, tmpl, r.sbxConfig, runtime, t0, t0.Add(5*time.Minute), nil)
 		if err != nil {
 			fmt.Println()
+
 			return fmt.Errorf("resume sandbox (run %d): %w", i+1, err)
 		}
 
@@ -848,6 +849,7 @@ func (r *runner) collectAndUploadPrefetch(ctx context.Context, opts pauseOptions
 	commonEntries := computeCommonPrefetchEntries(allPrefetchData)
 	if len(commonEntries) == 0 {
 		fmt.Println("⚠️  No common prefetch blocks found")
+
 		return nil
 	}
 
@@ -870,6 +872,7 @@ func (r *runner) collectAndUploadPrefetch(ctx context.Context, opts pauseOptions
 	r.cache.Invalidate(opts.newBuildID)
 
 	fmt.Printf("✅ Prefetch mapping saved: %d blocks\n", mapping.Count())
+
 	return nil
 }
 
@@ -891,6 +894,7 @@ func computeCommonPrefetchEntries(allData []block.PrefetchData) []block.Prefetch
 			entry, exists := allData[i].BlockEntries[idx]
 			if !exists {
 				allMatch = false
+
 				break
 			}
 			totalOrder += entry.Order
