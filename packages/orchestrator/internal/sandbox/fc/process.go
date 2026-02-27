@@ -58,12 +58,19 @@ type ProcessOptions struct {
 	Stderr io.Writer
 }
 
-// TxRateLimitConfig holds TX ops rate limit parameters for a VM's network interface.
-// BucketSize < 0 disables rate limiting. Effective rate = BucketSize * 1000 / RefillTimeMs ops/second.
-type TxRateLimitConfig struct {
+// TokenBucketConfig holds parameters for a single Firecracker token bucket.
+// BucketSize < 0 disables the bucket.
+type TokenBucketConfig struct {
 	BucketSize   int64
 	OneTimeBurst int64
 	RefillTimeMs int64
+}
+
+// TxRateLimiterConfig holds TX rate limit parameters for a VM's network interface.
+// Mirrors the Firecracker RateLimiter structure: two independent token buckets.
+type TxRateLimiterConfig struct {
+	Ops       TokenBucketConfig // packets; effective rate = BucketSize * 1000 / RefillTimeMs ops/s
+	Bandwidth TokenBucketConfig // bytes;   effective rate = BucketSize * 1000 / RefillTimeMs bytes/s
 }
 
 type Process struct {
@@ -251,7 +258,7 @@ func (p *Process) Create(
 	memoryMB int64,
 	hugePages bool,
 	options ProcessOptions,
-	txRateLimit TxRateLimitConfig,
+	txRateLimit TxRateLimiterConfig,
 ) error {
 	ctx, childSpan := tracer.Start(ctx, "create-fc")
 	defer childSpan.End()
@@ -363,7 +370,7 @@ func (p *Process) Create(
 	}
 	telemetry.ReportEvent(ctx, "set fc drivers config")
 
-	err = p.client.setNetworkInterface(ctx, p.slot.VpeerName(), p.slot.TapName(), p.slot.TapMAC(), buildTxOpsLimiter(txRateLimit.BucketSize, txRateLimit.OneTimeBurst, txRateLimit.RefillTimeMs))
+	err = p.client.setNetworkInterface(ctx, p.slot.VpeerName(), p.slot.TapName(), p.slot.TapMAC(), buildTxRateLimiter(txRateLimit))
 	if err != nil {
 		fcStopErr := p.Stop(ctx)
 
@@ -407,7 +414,7 @@ func (p *Process) Resume(
 	uffdReady chan struct{},
 	accessToken *string,
 	cgroupFD int,
-	txRateLimit TxRateLimitConfig,
+	txRateLimit TxRateLimiterConfig,
 ) error {
 	ctx, span := tracer.Start(ctx, "resume-fc")
 	defer span.End()
@@ -497,7 +504,7 @@ func (p *Process) Resume(
 
 	// Always apply/reset the TX rate limit before resuming so any rate limit
 	// persisted in the snapshot is overwritten by the current config.
-	if setErr := p.client.setTxRateLimit(ctx, p.slot.VpeerName(), txRateLimit.BucketSize, txRateLimit.OneTimeBurst, txRateLimit.RefillTimeMs); setErr != nil {
+	if setErr := p.client.setTxRateLimit(ctx, p.slot.VpeerName(), txRateLimit); setErr != nil {
 		fcStopErr := p.Stop(ctx)
 
 		return errors.Join(fmt.Errorf("error setting TX rate limit: %w", setErr), fcStopErr)

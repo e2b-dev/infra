@@ -325,7 +325,7 @@ func (f *Factory) CreateSandbox(
 		return nil, fmt.Errorf("failed to init FC: %w", err)
 	}
 
-	throttleConfig := featureflags.GetTCPFirewallEgressOpsThrottleConfig(ctx, f.featureFlags)
+	throttleConfig := featureflags.GetTCPFirewallEgressThrottleConfig(ctx, f.featureFlags)
 
 	telemetry.ReportEvent(ctx, "created fc client")
 
@@ -340,10 +340,9 @@ func (f *Factory) CreateSandbox(
 		config.RamMB,
 		config.HugePages,
 		processOptions,
-		fc.TxRateLimitConfig{
-			BucketSize:   throttleConfig.BucketSize,
-			OneTimeBurst: throttleConfig.OneTimeBurst,
-			RefillTimeMs: throttleConfig.RefillTimeMs,
+		fc.TxRateLimiterConfig{
+			Ops:       fc.TokenBucketConfig(throttleConfig.Ops),
+			Bandwidth: fc.TokenBucketConfig(throttleConfig.Bandwidth),
 		},
 	)
 	if err != nil {
@@ -615,7 +614,7 @@ func (f *Factory) ResumeSandbox(
 		return nil, fmt.Errorf("failed to create FC: %w", fcErr)
 	}
 
-	resumeThrottleConfig := featureflags.GetTCPFirewallEgressOpsThrottleConfig(ctx, f.featureFlags)
+	resumeThrottleConfig := featureflags.GetTCPFirewallEgressThrottleConfig(ctx, f.featureFlags)
 
 	telemetry.ReportEvent(ctx, "created FC process")
 
@@ -651,10 +650,9 @@ func (f *Factory) ResumeSandbox(
 		fcUffd.Ready(),
 		config.Envd.AccessToken,
 		cgroupFD,
-		fc.TxRateLimitConfig{
-			BucketSize:   resumeThrottleConfig.BucketSize,
-			OneTimeBurst: resumeThrottleConfig.OneTimeBurst,
-			RefillTimeMs: resumeThrottleConfig.RefillTimeMs,
+		fc.TxRateLimiterConfig{
+			Ops:       fc.TokenBucketConfig(resumeThrottleConfig.Ops),
+			Bandwidth: fc.TokenBucketConfig(resumeThrottleConfig.Bandwidth),
 		},
 	)
 

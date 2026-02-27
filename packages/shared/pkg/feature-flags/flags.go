@@ -256,40 +256,51 @@ var ChunkerConfigFlag = newJSONFlag("chunker-config", ldvalue.FromJSONMarshal(ma
 	"minReadBatchSizeKB": 16,
 }))
 
-// TCPFirewallEgressOpsThrottleConfig controls per-sandbox egress throttling via Firecracker's
-// VMM-level token bucket rate limiter (ops/packets) on the network interface.
-// JSON format: {"bucketSize": -1, "oneTimeBurst": 0, "refillTimeMs": 1000}
-// bucketSize: token bucket capacity (ops per refill window). -1 = disabled.
+// TCPFirewallEgressThrottleConfig controls per-sandbox egress throttling via Firecracker's
+// VMM-level token bucket rate limiters on the network interface.
+// Structure mirrors the Firecracker RateLimiter API: two independent token buckets.
+// Set bucketSize to -1 to disable a bucket.
 //
-//	Effective rate = bucketSize * 1000 / refillTimeMs ops/second.
-//
-// oneTimeBurst: one-time initial burst in ops (consumed before refill starts). 0 = no extra burst.
-// refillTimeMs: token bucket refill period in milliseconds. Maps to TokenBucket refill_time.
-var TCPFirewallEgressOpsThrottleConfig = newJSONFlag("tcpfirewall-egress-ops-throttle-config", ldvalue.FromJSONMarshal(map[string]any{
-	"bucketSize":   -1,
-	"oneTimeBurst": 0,
-	"refillTimeMs": 1000,
+// Ops bucket (packets):    effective rate = ops.bucketSize * 1000 / ops.refillTimeMs ops/s.
+// Bandwidth bucket (bytes): effective rate = bandwidth.bucketSize * 1000 / bandwidth.refillTimeMs bytes/s.
+var TCPFirewallEgressThrottleConfig = newJSONFlag("tcpfirewall-egress-throttle-config", ldvalue.FromJSONMarshal(map[string]any{
+	"ops":       map[string]any{"bucketSize": -1, "oneTimeBurst": 0, "refillTimeMs": 1000},
+	"bandwidth": map[string]any{"bucketSize": -1, "oneTimeBurst": 0, "refillTimeMs": 1000},
 }))
 
-// TCPFirewallEgressOpsThrottleConfigValue holds the parsed values of TCPFirewallEgressOpsThrottleConfig.
-type TCPFirewallEgressOpsThrottleConfigValue struct {
-	// BucketSize is the token bucket capacity (ops per refill window).
-	// Effective rate = BucketSize * 1000 / RefillTimeMs ops/second. -1 disables rate limiting.
-	BucketSize int64
-	// OneTimeBurst is an additional one-time burst in ops allowed before steady-state throttling kicks in.
-	// 0 means no extra burst beyond the token bucket's own capacity.
+// TokenBucketConfig holds parameters for a single Firecracker token bucket.
+// BucketSize < 0 disables the bucket.
+type TokenBucketConfig struct {
+	BucketSize   int64
 	OneTimeBurst int64
-	// RefillTimeMs is the token bucket refill period in milliseconds.
 	RefillTimeMs int64
 }
 
-// GetTCPFirewallEgressOpsThrottleConfig fetches and parses the TCPFirewallEgressOpsThrottleConfig flag.
-func GetTCPFirewallEgressOpsThrottleConfig(ctx context.Context, ff *Client) TCPFirewallEgressOpsThrottleConfigValue {
-	value := ff.JSONFlag(ctx, TCPFirewallEgressOpsThrottleConfig)
+// TCPFirewallEgressThrottleConfigValue holds the parsed values of TCPFirewallEgressThrottleConfig.
+type TCPFirewallEgressThrottleConfigValue struct {
+	Ops       TokenBucketConfig
+	Bandwidth TokenBucketConfig
+}
 
-	return TCPFirewallEgressOpsThrottleConfigValue{
-		BucketSize:   int64(value.GetByKey("bucketSize").IntValue()),
-		OneTimeBurst: int64(value.GetByKey("oneTimeBurst").IntValue()),
-		RefillTimeMs: int64(value.GetByKey("refillTimeMs").IntValue()),
+// GetTCPFirewallEgressThrottleConfig fetches and parses the TCPFirewallEgressThrottleConfig flag.
+func GetTCPFirewallEgressThrottleConfig(ctx context.Context, ff *Client) TCPFirewallEgressThrottleConfigValue {
+	value := ff.JSONFlag(ctx, TCPFirewallEgressThrottleConfig)
+
+	parseBucket := func(key string) TokenBucketConfig {
+		b := value.GetByKey(key)
+		if b.IsNull() {
+			return TokenBucketConfig{BucketSize: -1} // disabled
+		}
+
+		return TokenBucketConfig{
+			BucketSize:   int64(b.GetByKey("bucketSize").IntValue()),
+			OneTimeBurst: int64(b.GetByKey("oneTimeBurst").IntValue()),
+			RefillTimeMs: int64(b.GetByKey("refillTimeMs").IntValue()),
+		}
+	}
+
+	return TCPFirewallEgressThrottleConfigValue{
+		Ops:       parseBucket("ops"),
+		Bandwidth: parseBucket("bandwidth"),
 	}
 }

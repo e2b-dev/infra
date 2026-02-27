@@ -226,31 +226,45 @@ func (c *apiClient) setRootfsDrive(ctx context.Context, rootfsPath string, ioEng
 	return nil
 }
 
-// buildTxOpsLimiter constructs a Firecracker RateLimiter that limits transmit operations (packets).
-// bucketSize maps to TokenBucket.Size; effective rate = bucketSize * 1000 / refillTimeMs ops/second.
-// Returns nil for bucketSize < 0 (no rate limit).
-func buildTxOpsLimiter(bucketSize, oneTimeBurst, refillTimeMs int64) *models.RateLimiter {
-	if bucketSize < 0 {
+// buildTokenBucket constructs a Firecracker TokenBucket from a TokenBucketConfig.
+// Returns nil when BucketSize < 0 (disabled).
+func buildTokenBucket(b TokenBucketConfig) *models.TokenBucket {
+	if b.BucketSize < 0 {
 		return nil
 	}
 
 	bucket := &models.TokenBucket{
-		Size:       &bucketSize,
-		RefillTime: &refillTimeMs,
+		Size:       &b.BucketSize,
+		RefillTime: &b.RefillTimeMs,
 	}
 
-	if oneTimeBurst > 0 {
-		bucket.OneTimeBurst = &oneTimeBurst
+	if b.OneTimeBurst > 0 {
+		bucket.OneTimeBurst = &b.OneTimeBurst
 	}
 
-	return &models.RateLimiter{Ops: bucket}
+	return bucket
 }
 
-// setTxRateLimit applies or clears a Firecracker VMM-level transmit ops cap.
-// bucketSize < 0 resets any existing limit (empty RateLimiter); >= 0 applies it.
-// This always sends a PATCH so any rate limit persisted in a snapshot is overwritten.
-func (c *apiClient) setTxRateLimit(ctx context.Context, ifaceID string, bucketSize, oneTimeBurst, refillTimeMs int64) error {
-	limiter := buildTxOpsLimiter(bucketSize, oneTimeBurst, refillTimeMs)
+// buildTxRateLimiter constructs a Firecracker RateLimiter from a TxRateLimiterConfig.
+// Either bucket is omitted when its BucketSize is < 0.
+// Returns nil only when both buckets are disabled.
+func buildTxRateLimiter(config TxRateLimiterConfig) *models.RateLimiter {
+	ops := buildTokenBucket(config.Ops)
+	bw := buildTokenBucket(config.Bandwidth)
+
+	if ops == nil && bw == nil {
+		return nil
+	}
+
+	return &models.RateLimiter{Ops: ops, Bandwidth: bw}
+}
+
+// setTxRateLimit applies or clears a Firecracker VMM-level transmit rate limit.
+// Both buckets are disabled when their BucketSize < 0; if all are disabled an empty
+// RateLimiter is sent to reset any limit persisted in a snapshot.
+// This always sends a PATCH so snapshot-persisted limits are overwritten.
+func (c *apiClient) setTxRateLimit(ctx context.Context, ifaceID string, config TxRateLimiterConfig) error {
+	limiter := buildTxRateLimiter(config)
 	if limiter == nil {
 		limiter = &models.RateLimiter{} // empty = reset
 	}
