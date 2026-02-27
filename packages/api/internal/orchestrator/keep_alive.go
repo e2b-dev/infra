@@ -51,7 +51,7 @@ func (o *Orchestrator) KeepAliveFor(ctx context.Context, teamID uuid.UUID, sandb
 	if err != nil {
 		switch {
 		case errors.As(err, &sbxNotRunningErr):
-			return nil, &api.APIError{Code: http.StatusBadRequest, ClientMsg: utils.SandboxChangingStateMsg(sandboxID, string(sbxNotRunningErr.State)), Err: err}
+			return nil, &api.APIError{Code: http.StatusConflict, ClientMsg: utils.SandboxChangingStateMsg(sandboxID, string(sbxNotRunningErr.State)), Err: err}
 		case errors.As(err, &sbxNotFoundErr):
 			return nil, &api.APIError{Code: http.StatusNotFound, ClientMsg: utils.SandboxNotFoundMsg(sandboxID), Err: err}
 		case errors.Is(err, errMaxInstanceLengthExceeded):
