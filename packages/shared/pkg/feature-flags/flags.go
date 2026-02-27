@@ -255,3 +255,39 @@ var ChunkerConfigFlag = newJSONFlag("chunker-config", ldvalue.FromJSONMarshal(ma
 	"useStreaming":       false,
 	"minReadBatchSizeKB": 16,
 }))
+
+// TCPFirewallEgressOpsThrottleConfig controls per-sandbox egress throttling via Firecracker's
+// VMM-level token bucket rate limiter (ops/packets) on the network interface.
+// JSON format: {"bucketSize": -1, "oneTimeBurst": 0, "refillTimeMs": 1000}
+// bucketSize: token bucket capacity (ops per refill window). -1 = disabled.
+//   Effective rate = bucketSize * 1000 / refillTimeMs ops/second.
+// oneTimeBurst: one-time initial burst in ops (consumed before refill starts). 0 = no extra burst.
+// refillTimeMs: token bucket refill period in milliseconds. Maps to TokenBucket refill_time.
+var TCPFirewallEgressOpsThrottleConfig = newJSONFlag("tcpfirewall-egress-ops-throttle-config", ldvalue.FromJSONMarshal(map[string]any{
+	"bucketSize":   -1,
+	"oneTimeBurst": 0,
+	"refillTimeMs": 1000,
+}))
+
+// TCPFirewallEgressOpsThrottleConfigValue holds the parsed values of TCPFirewallEgressOpsThrottleConfig.
+type TCPFirewallEgressOpsThrottleConfigValue struct {
+	// BucketSize is the token bucket capacity (ops per refill window).
+	// Effective rate = BucketSize * 1000 / RefillTimeMs ops/second. -1 disables rate limiting.
+	BucketSize int64
+	// OneTimeBurst is an additional one-time burst in ops allowed before steady-state throttling kicks in.
+	// 0 means no extra burst beyond the token bucket's own capacity.
+	OneTimeBurst int64
+	// RefillTimeMs is the token bucket refill period in milliseconds.
+	RefillTimeMs int64
+}
+
+// GetTCPFirewallEgressOpsThrottleConfig fetches and parses the TCPFirewallEgressOpsThrottleConfig flag.
+func GetTCPFirewallEgressOpsThrottleConfig(ctx context.Context, ff *Client) TCPFirewallEgressOpsThrottleConfigValue {
+	value := ff.JSONFlag(ctx, TCPFirewallEgressOpsThrottleConfig)
+
+	return TCPFirewallEgressOpsThrottleConfigValue{
+		BucketSize:   int64(value.GetByKey("bucketSize").IntValue()),
+		OneTimeBurst: int64(value.GetByKey("oneTimeBurst").IntValue()),
+		RefillTimeMs: int64(value.GetByKey("refillTimeMs").IntValue()),
+	}
+}

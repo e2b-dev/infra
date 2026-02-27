@@ -58,6 +58,14 @@ type ProcessOptions struct {
 	Stderr io.Writer
 }
 
+// TxRateLimitConfig holds TX ops rate limit parameters for a VM's network interface.
+// BucketSize < 0 disables rate limiting. Effective rate = BucketSize * 1000 / RefillTimeMs ops/second.
+type TxRateLimitConfig struct {
+	BucketSize   int64
+	OneTimeBurst int64
+	RefillTimeMs int64
+}
+
 type Process struct {
 	Versions Config
 
@@ -231,6 +239,7 @@ func (p *Process) Create(
 	memoryMB int64,
 	hugePages bool,
 	options ProcessOptions,
+	txRateLimit TxRateLimitConfig,
 ) error {
 	ctx, childSpan := tracer.Start(ctx, "create-fc")
 	defer childSpan.End()
@@ -329,8 +338,7 @@ func (p *Process) Create(
 	}
 	telemetry.ReportEvent(ctx, "set fc drivers config")
 
-	// Network
-	err = p.client.setNetworkInterface(ctx, p.slot.VpeerName(), p.slot.TapName(), p.slot.TapMAC())
+	err = p.client.setNetworkInterface(ctx, p.slot.VpeerName(), p.slot.TapName(), p.slot.TapMAC(), buildTxOpsLimiter(txRateLimit.BucketSize, txRateLimit.OneTimeBurst, txRateLimit.RefillTimeMs))
 	if err != nil {
 		fcStopErr := p.Stop(ctx)
 
@@ -374,6 +382,7 @@ func (p *Process) Resume(
 	uffdReady chan struct{},
 	accessToken *string,
 	cgroupFD int,
+	txRateLimit TxRateLimitConfig,
 ) error {
 	ctx, span := tracer.Start(ctx, "resume-fc")
 	defer span.End()
@@ -449,6 +458,15 @@ func (p *Process) Resume(
 
 		return errors.Join(fmt.Errorf("error loading snapshot: %w", err), fcStopErr)
 	}
+
+	// Always apply/reset the TX rate limit before resuming so any rate limit
+	// persisted in the snapshot is overwritten by the current config.
+	if setErr := p.client.setTxRateLimit(ctx, p.slot.VpeerName(), txRateLimit.BucketSize, txRateLimit.OneTimeBurst, txRateLimit.RefillTimeMs); setErr != nil {
+		fcStopErr := p.Stop(ctx)
+
+		return errors.Join(fmt.Errorf("error setting TX rate limit: %w", setErr), fcStopErr)
+	}
+	telemetry.ReportEvent(ctx, "configured tx rate limit")
 
 	err = p.client.resumeVM(ctx)
 	if err != nil {
@@ -567,6 +585,7 @@ func (p *Process) Stop(ctx context.Context) error {
 
 	return nil
 }
+
 
 func (p *Process) Pause(ctx context.Context) error {
 	ctx, childSpan := tracer.Start(ctx, "pause-fc")

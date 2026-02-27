@@ -325,6 +325,8 @@ func (f *Factory) CreateSandbox(
 		return nil, fmt.Errorf("failed to init FC: %w", err)
 	}
 
+	throttleConfig := featureflags.GetTCPFirewallEgressOpsThrottleConfig(ctx, f.featureFlags)
+
 	telemetry.ReportEvent(ctx, "created fc client")
 
 	err = fcHandle.Create(
@@ -338,6 +340,11 @@ func (f *Factory) CreateSandbox(
 		config.RamMB,
 		config.HugePages,
 		processOptions,
+		fc.TxRateLimitConfig{
+			BucketSize:   throttleConfig.BucketSize,
+			OneTimeBurst: throttleConfig.OneTimeBurst,
+			RefillTimeMs: throttleConfig.RefillTimeMs,
+		},
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create FC: %w", err)
@@ -608,6 +615,8 @@ func (f *Factory) ResumeSandbox(
 		return nil, fmt.Errorf("failed to create FC: %w", fcErr)
 	}
 
+	resumeThrottleConfig := featureflags.GetTCPFirewallEgressOpsThrottleConfig(ctx, f.featureFlags)
+
 	telemetry.ReportEvent(ctx, "created FC process")
 
 	// todo: check if kernel, firecracker, and envd versions exist
@@ -642,6 +651,11 @@ func (f *Factory) ResumeSandbox(
 		fcUffd.Ready(),
 		config.Envd.AccessToken,
 		cgroupFD,
+		fc.TxRateLimitConfig{
+			BucketSize:   resumeThrottleConfig.BucketSize,
+			OneTimeBurst: resumeThrottleConfig.OneTimeBurst,
+			RefillTimeMs: resumeThrottleConfig.RefillTimeMs,
+		},
 	)
 
 	// Release the cgroup directory FD — the kernel already used it during clone

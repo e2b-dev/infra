@@ -193,14 +193,62 @@ func (c *apiClient) setRootfsDrive(ctx context.Context, rootfsPath string, ioEng
 	return nil
 }
 
-func (c *apiClient) setNetworkInterface(ctx context.Context, ifaceID string, tapName string, tapMac string) error {
+// buildTxOpsLimiter constructs a Firecracker RateLimiter that limits transmit operations (packets).
+// bucketSize maps to TokenBucket.Size; effective rate = bucketSize * 1000 / refillTimeMs ops/second.
+// Returns nil for bucketSize < 0 (no rate limit).
+func buildTxOpsLimiter(bucketSize, oneTimeBurst, refillTimeMs int64) *models.RateLimiter {
+	if bucketSize < 0 {
+		return nil
+	}
+
+	bucket := &models.TokenBucket{
+		Size:       &bucketSize,
+		RefillTime: &refillTimeMs,
+	}
+
+	if oneTimeBurst > 0 {
+		bucket.OneTimeBurst = &oneTimeBurst
+	}
+
+	return &models.RateLimiter{Ops: bucket}
+}
+
+// setTxRateLimit applies or clears a Firecracker VMM-level transmit ops cap.
+// bucketSize < 0 resets any existing limit (empty RateLimiter); >= 0 applies it.
+// This always sends a PATCH so any rate limit persisted in a snapshot is overwritten.
+func (c *apiClient) setTxRateLimit(ctx context.Context, ifaceID string, bucketSize, oneTimeBurst, refillTimeMs int64) error {
+	limiter := buildTxOpsLimiter(bucketSize, oneTimeBurst, refillTimeMs)
+	if limiter == nil {
+		limiter = &models.RateLimiter{} // empty = reset
+	}
+
+	params := operations.PatchGuestNetworkInterfaceByIDParams{
+		Context: ctx,
+		IfaceID: ifaceID,
+		Body: &models.PartialNetworkInterface{
+			IfaceID:       &ifaceID,
+			TxRateLimiter: limiter,
+		},
+	}
+
+	_, err := c.client.Operations.PatchGuestNetworkInterfaceByID(&params)
+	if err != nil {
+		return fmt.Errorf("error setting TX rate limit: %w", err)
+	}
+
+	return nil
+}
+
+
+func (c *apiClient) setNetworkInterface(ctx context.Context, ifaceID string, tapName string, tapMac string, txRateLimiter *models.RateLimiter) error {
 	networkConfig := operations.PutGuestNetworkInterfaceByIDParams{
 		Context: ctx,
 		IfaceID: ifaceID,
 		Body: &models.NetworkInterface{
-			IfaceID:     &ifaceID,
-			GuestMac:    tapMac,
-			HostDevName: &tapName,
+			IfaceID:       &ifaceID,
+			GuestMac:      tapMac,
+			HostDevName:   &tapName,
+			TxRateLimiter: txRateLimiter,
 		},
 	}
 
