@@ -182,9 +182,6 @@ func (t *connectionHandler) HandleConn(conn net.Conn) {
 	maxLimit := t.featureFlags.IntFlag(ctx, featureflags.TCPFirewallMaxConnectionsPerSandbox)
 	count, acquired := t.limiter.TryAcquire(sandboxID, maxLimit)
 	if !acquired {
-		sbxLogger.Warn(ctx, "connection limit exceeded for sandbox",
-			zap.Int64("current_connections", count),
-			zap.Int("max_limit", maxLimit))
 		t.metrics.RecordError(ctx, ErrorTypeLimitExceeded, t.protocol)
 		conn.Close()
 
