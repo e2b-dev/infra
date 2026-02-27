@@ -50,6 +50,7 @@ require (
 	github.com/oapi-codegen/gin-middleware v1.0.2
 	github.com/oapi-codegen/runtime v1.1.1
 	github.com/pkg/errors v0.9.1
+	github.com/redis/go-redis/v9 v9.17.3
 	github.com/shirou/gopsutil/v4 v4.25.9
 	github.com/soheilhy/cmux v0.1.5
 	github.com/stretchr/testify v1.11.1
@@ -255,7 +256,6 @@ require (
 	github.com/rasky/go-xdr v0.0.0-20170124162913-1a41d1a06c93 // indirect
 	github.com/redis/go-redis/extra/rediscmd/v9 v9.17.3 // indirect
 	github.com/redis/go-redis/extra/redisotel/v9 v9.17.3 // indirect
-	github.com/redis/go-redis/v9 v9.17.3 // indirect
 	github.com/rs/zerolog v1.34.0 // indirect
 	github.com/segmentio/asm v1.2.0 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect

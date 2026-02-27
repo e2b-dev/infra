@@ -72,6 +72,7 @@ type Config struct {
 	ForceStop                  bool              `env:"FORCE_STOP"`
 	GRPCPort                   uint16            `env:"GRPC_PORT"                    envDefault:"5008"`
 	LaunchDarklyAPIKey         string            `env:"LAUNCH_DARKLY_API_KEY"`
+	NodeIP                     string            `env:"NODE_IP,required,notEmpty"`
 	OrchestratorLockPath       string            `env:"ORCHESTRATOR_LOCK_PATH"       envDefault:"/orchestrator.lock"`
 	ProxyPort                  uint16            `env:"PROXY_PORT"                   envDefault:"5007"`
 	RedisClusterURL            string            `env:"REDIS_CLUSTER_URL"`
@@ -80,6 +81,10 @@ type Config struct {
 	RedisPoolSize              int               `env:"REDIS_POOL_SIZE"              envDefault:"50"`
 	Services                   []string          `env:"ORCHESTRATOR_SERVICES"        envDefault:"orchestrator"`
 	PersistentVolumeMounts     map[string]string `env:"PERSISTENT_VOLUME_MOUNTS"`
+}
+
+func (c Config) NodeAddress() string {
+	return fmt.Sprintf("%s:%d", c.NodeIP, c.GRPCPort)
 }
 
 func Parse() (Config, error) {

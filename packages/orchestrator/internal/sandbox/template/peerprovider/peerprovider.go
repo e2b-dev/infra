@@ -1,0 +1,43 @@
+package peerprovider
+
+import (
+	"context"
+	"errors"
+
+	"go.opentelemetry.io/otel"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
+	tmpl "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+)
+
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/peerprovider")
+
+var (
+	// ErrNotSupported is returned when a source type does not implement an operation.
+	ErrNotSupported = errors.New("operation not supported")
+	// ErrNotAvailable is returned when the requested build is not in the local peer cache.
+	ErrNotAvailable = errors.New("not available in local peer cache")
+)
+
+// Sender receives chunks of file data for streaming to a caller.
+type Sender interface {
+	Send(data []byte) error
+}
+
+// Cache is the subset of template.Cache the peerprovider needs.
+type Cache interface {
+	LookupDiff(buildID string, diffType build.DiffType) (build.Diff, bool)
+	GetCachedTemplate(buildID string) (tmpl.Template, bool)
+}
+
+// BlobSource serves whole-file reads and existence checks (snapfile, metadata, headers).
+type BlobSource interface {
+	Stream(ctx context.Context, sender Sender) error
+	Exists(ctx context.Context) (bool, error)
+}
+
+// SeekableSource serves random-access reads with offset/length and size queries (memfile, rootfs).
+type SeekableSource interface {
+	Stream(ctx context.Context, offset, length int64, sender Sender) error
+	Size(ctx context.Context) (int64, error)
+}
