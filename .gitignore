@@ -17,4 +17,3 @@ go.work.sum
 /packages/fc-kernels
 /packages/fc-versions
 aws-cost-estimate.md
-iac/provider-aws/PRICING-ANALYSIS.md
