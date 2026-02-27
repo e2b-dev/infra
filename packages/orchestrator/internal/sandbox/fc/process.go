@@ -572,6 +572,12 @@ func (p *Process) Stop(ctx context.Context) error {
 		return fmt.Errorf("fc process not started")
 	}
 
+	// Always remove the metrics FIFO, even if the process already exited,
+	// to avoid leaving orphaned files behind.
+	if removeErr := os.Remove(p.metricsPath); removeErr != nil && !os.IsNotExist(removeErr) {
+		logger.L().Warn(ctx, "failed to remove fc metrics FIFO", zap.Error(removeErr), logger.WithSandboxID(p.files.SandboxID))
+	}
+
 	// Check if process has already exited.
 	select {
 	case <-p.Exit.Done():
@@ -589,11 +595,6 @@ func (p *Process) Stop(ctx context.Context) error {
 		logger.L().Warn(ctx, "failed to get fc process state", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
 	} else if state == "D" {
 		logger.L().Info(ctx, "fc process is in the D state before we call SIGTERM", logger.WithSandboxID(p.files.SandboxID))
-	}
-
-	// Remove the metrics FIFO; the reader goroutine will get EOF and exit on its own.
-	if removeErr := os.Remove(p.metricsPath); removeErr != nil && !os.IsNotExist(removeErr) {
-		logger.L().Warn(ctx, "failed to remove fc metrics FIFO", zap.Error(removeErr), logger.WithSandboxID(p.files.SandboxID))
 	}
 
 	err = p.cmd.Process.Signal(syscall.SIGTERM)
