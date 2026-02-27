@@ -155,6 +155,39 @@ func (c *apiClient) setMmds(ctx context.Context, metadata *MmdsMetadata) error {
 	return nil
 }
 
+func (c *apiClient) flushMetrics(ctx context.Context) error {
+	action := models.InstanceActionInfoActionTypeFlushMetrics
+	params := operations.CreateSyncActionParams{
+		Context: ctx,
+		Info: &models.InstanceActionInfo{
+			ActionType: &action,
+		},
+	}
+
+	_, err := c.client.Operations.CreateSyncAction(&params)
+	if err != nil {
+		return fmt.Errorf("error flushing fc metrics: %w", err)
+	}
+
+	return nil
+}
+
+func (c *apiClient) setMetrics(ctx context.Context, metricsPath string) error {
+	params := operations.PutMetricsParams{
+		Context: ctx,
+		Body: &models.Metrics{
+			MetricsPath: &metricsPath,
+		},
+	}
+
+	_, err := c.client.Operations.PutMetrics(&params)
+	if err != nil {
+		return fmt.Errorf("error setting fc metrics: %w", err)
+	}
+
+	return nil
+}
+
 func (c *apiClient) setBootSource(ctx context.Context, kernelArgs string, kernelPath string) error {
 	bootSourceConfig := operations.PutGuestBootSourceParams{
 		Context: ctx,

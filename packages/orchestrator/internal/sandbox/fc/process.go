@@ -73,6 +73,7 @@ type Process struct {
 
 	config                cfg.BuilderConfig
 	firecrackerSocketPath string
+	metricsPath           string
 
 	slot           *network.Slot
 	rootfsProvider rootfs.Provider
@@ -139,6 +140,7 @@ func NewProcess(
 		Exit:                  utils.NewErrorOnce(),
 		cmd:                   cmd,
 		firecrackerSocketPath: files.SandboxFirecrackerSocketPath(),
+		metricsPath:           files.SandboxMetricsFifoPath(),
 		config:                config,
 		client:                newApiClient(files.SandboxFirecrackerSocketPath()),
 		rootfsProvider:        rootfsProvider,
@@ -182,8 +184,18 @@ func (p *Process) configure(
 		p.cmd.SysProcAttr.CgroupFD = cgroupFD
 	}
 
+	// Create the metrics FIFO before Firecracker starts.
+	// Firecracker will open the write end once PUT /metrics is called.
+	if err := syscall.Mkfifo(p.metricsPath, 0600); err != nil {
+		return fmt.Errorf("error creating fc metrics FIFO: %w", err)
+	}
+
 	err := p.cmd.Start()
 	if err != nil {
+		// cmd.Process is nil when Start fails, so Stop() won't reach the FIFO cleanup.
+		// Remove the FIFO here to avoid leaving it behind.
+		_ = os.Remove(p.metricsPath)
+
 		return fmt.Errorf("error starting fc process: %w", err)
 	}
 
@@ -262,6 +274,19 @@ func (p *Process) Create(
 
 		return errors.Join(fmt.Errorf("error starting fc process: %w", err), fcStopErr)
 	}
+
+	// Start the metrics reader goroutine before calling setMetrics.
+	// The goroutine blocks on open(O_RDONLY) until Firecracker opens the write end,
+	// which happens when it processes PUT /metrics below.
+	p.startMetricsReader(ctx)
+
+	err = p.client.setMetrics(ctx, p.metricsPath)
+	if err != nil {
+		fcStopErr := p.Stop(ctx)
+
+		return errors.Join(fmt.Errorf("error setting fc metrics: %w", err), fcStopErr)
+	}
+	telemetry.ReportEvent(ctx, "set fc metrics")
 
 	// IPv4 configuration - format: [local_ip]::[gateway_ip]:[netmask]:hostname:iface:dhcp_option:[dns]
 	ipv4 := fmt.Sprintf("%s::%s:%s:instance:%s:off:%s", p.slot.NamespaceIP(), p.slot.TapIPString(), p.slot.TapMaskString(), p.slot.VpeerName(), p.slot.TapName())
@@ -447,6 +472,17 @@ func (p *Process) Resume(
 		return errors.Join(fmt.Errorf("error waiting for uffd socket or symlinking rootfs: %w", err), fcStopErr)
 	}
 
+	// Start the metrics reader goroutine before calling setMetrics (same ordering as Create).
+	p.startMetricsReader(ctx)
+
+	err = p.client.setMetrics(ctx, p.metricsPath)
+	if err != nil {
+		fcStopErr := p.Stop(ctx)
+
+		return errors.Join(fmt.Errorf("error setting fc metrics: %w", err), fcStopErr)
+	}
+	telemetry.ReportEvent(ctx, "set fc metrics")
+
 	err = p.client.loadSnapshot(
 		ctx,
 		uffdSocketPath,
@@ -546,6 +582,11 @@ func (p *Process) Stop(ctx context.Context) error {
 		logger.L().Warn(ctx, "failed to get fc process state", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
 	} else if state == "D" {
 		logger.L().Info(ctx, "fc process is in the D state before we call SIGTERM", logger.WithSandboxID(p.files.SandboxID))
+	}
+
+	// Remove the metrics FIFO; the reader goroutine will get EOF and exit on its own.
+	if removeErr := os.Remove(p.metricsPath); removeErr != nil && !os.IsNotExist(removeErr) {
+		logger.L().Warn(ctx, "failed to remove fc metrics FIFO", zap.Error(removeErr), logger.WithSandboxID(p.files.SandboxID))
 	}
 
 	err = p.cmd.Process.Signal(syscall.SIGTERM)
