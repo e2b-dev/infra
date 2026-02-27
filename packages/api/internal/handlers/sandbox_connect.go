@@ -84,7 +84,7 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 		}
 
 		if notRunningErr.State == sandbox.StateKilling {
-			a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(sandboxID))
+			a.sendAPIStoreError(c, http.StatusConflict, utils.SandboxChangingStateMsg(sandboxID, notRunningErr.State))
 
 			return
 		}
