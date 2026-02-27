@@ -59,7 +59,7 @@ message VolumeDirectoryItem {
 message VolumeDirListRequest {
   VolumeInfo volume = 1;
   string path = 2;
-  int64 depth = 3;
+  uint32 depth = 3;
 }
 
 message VolumeDirListResponse {
