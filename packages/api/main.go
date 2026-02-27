@@ -30,7 +30,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/api/internal/handlers"
 	customMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware"
-	sharedmiddleware "github.com/e2b-dev/infra/packages/shared/pkg/middleware"
 	metricsMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics"
 	tracingMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware/otel/tracing"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
@@ -41,6 +40,7 @@ import (
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+	sharedmiddleware "github.com/e2b-dev/infra/packages/shared/pkg/middleware"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	sharedutils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
