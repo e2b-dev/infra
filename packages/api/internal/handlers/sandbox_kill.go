@@ -66,33 +66,21 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 
 	killedOrRemoved := false
 
-	sbx, err := a.orchestrator.GetSandbox(ctx, teamID, sandboxID)
-	if err == nil {
-		if sbx.TeamID != teamID {
-			logger.L().Debug(ctx, "Sandbox team mismatch on kill", logger.WithSandboxID(sandboxID), logger.WithTeamID(teamID.String()))
-			a.sendAPIStoreError(c, http.StatusNotFound, sandboxNotFoundMsg(sandboxID))
+	err = a.orchestrator.RemoveSandbox(ctx, teamID, sandboxID, sandbox.StateActionKill)
+	switch {
+	case err == nil:
+		killedOrRemoved = true
+	case errors.Is(err, orchestrator.ErrSandboxNotFound):
+		logger.L().Debug(ctx, "Running sandbox not found", logger.WithSandboxID(sandboxID))
+	case errors.Is(err, orchestrator.ErrSandboxOperationFailed):
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error killing sandbox: %s", err))
 
-			return
-		}
+		return
+	default:
+		telemetry.ReportError(ctx, "error killing sandbox", err)
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error killing sandbox: %s", err))
 
-		err = a.orchestrator.RemoveSandbox(ctx, sbx, sandbox.StateActionKill)
-		switch {
-		case err == nil:
-			killedOrRemoved = true
-		case errors.Is(err, orchestrator.ErrSandboxNotFound):
-			logger.L().Debug(ctx, "Sandbox not found", logger.WithSandboxID(sandboxID))
-		case errors.Is(err, orchestrator.ErrSandboxOperationFailed):
-			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error killing sandbox: %s", err))
-
-			return
-		default:
-			telemetry.ReportError(ctx, "error killing sandbox", err)
-			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error killing sandbox: %s", err))
-
-			return
-		}
-	} else {
-		logger.L().Debug(ctx, "Sandbox not found", logger.WithSandboxID(sandboxID))
+		return
 	}
 
 	// remove any snapshots when the sandbox is not running
