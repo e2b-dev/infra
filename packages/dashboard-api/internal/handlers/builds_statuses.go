@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
@@ -26,8 +25,6 @@ func (s *APIStore) GetBuildsStatuses(c *gin.Context, params api.GetBuildsStatuse
 	teamID := auth.MustGetTeamInfo(c).Team.ID
 	telemetry.SetAttributes(ctx, telemetry.WithTeamID(teamID.String()))
 
-	buildIDs := make([]uuid.UUID, len(params.BuildIds))
-
 	if len(params.BuildIds) > int(buildIdsLimit) {
 		logger.L().Warn(ctx, "Too many build IDs", zap.Int("build_ids_count", len(params.BuildIds)), logger.WithTeamID(teamID.String()))
 		s.sendAPIStoreError(c, http.StatusBadRequest, "Too many build IDs")
@@ -35,11 +32,9 @@ func (s *APIStore) GetBuildsStatuses(c *gin.Context, params api.GetBuildsStatuse
 		return
 	}
 
-	copy(buildIDs, params.BuildIds)
-
 	p := queries.GetBuildsStatusesByTeamParams{
 		TeamID:   teamID,
-		BuildIds: buildIDs,
+		BuildIds: params.BuildIds,
 	}
 
 	rows, err := s.db.GetBuildsStatusesByTeam(ctx, p)
