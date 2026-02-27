@@ -3,15 +3,16 @@ package handlers
 import (
 	"net/http"
 
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"go.uber.org/zap"
+
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
 	dashboardutils "github.com/e2b-dev/infra/packages/dashboard-api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
-	"go.uber.org/zap"
 )
 
 const (
@@ -43,7 +44,6 @@ func (s *APIStore) GetBuildsStatuses(c *gin.Context, params api.GetBuildsStatuse
 	}
 
 	rows, err := s.db.GetBuildsStatusesByTeam(ctx, p)
-
 	if err != nil {
 		logger.L().Error(ctx, "Error getting build statuses", zap.Error(err), logger.WithTeamID(teamID.String()))
 		s.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting build statuses")

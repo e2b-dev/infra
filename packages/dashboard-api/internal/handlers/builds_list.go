@@ -7,15 +7,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
-
-	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
-	dashboardutils "github.com/e2b-dev/infra/packages/dashboard-api/internal/utils"
-
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
+	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
+	dashboardutils "github.com/e2b-dev/infra/packages/dashboard-api/internal/utils"
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
