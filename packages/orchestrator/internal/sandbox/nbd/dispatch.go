@@ -11,13 +11,13 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 var ErrShuttingDown = errors.New("shutting down. Cannot serve any new requests")
 
 type Provider interface {
-	storage.SeekableReader
+	ReadAt(ctx context.Context, p []byte, off int64) (int, error)
+	Size(ctx context.Context) (int64, error)
 	io.WriterAt
 }
 

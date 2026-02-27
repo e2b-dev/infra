@@ -282,10 +282,9 @@ func run(config cfg.Config) (success bool) {
 		logger.L().Fatal(ctx, "failed to create feature flags client", zap.Error(err))
 	}
 	closers = append(closers, closer{"feature flags", featureFlags.Close})
+	featureFlags.SetDeploymentName(config.DomainName)
 
-	if config.DomainName != "" {
-		featureFlags.SetDeploymentName(config.DomainName)
-	}
+	storage.InitDecoders(ctx, featureFlags)
 
 	// gcp concurrent upload limiter
 	limiter, err := limit.New(ctx, featureFlags)

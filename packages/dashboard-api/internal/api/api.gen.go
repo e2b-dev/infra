@@ -8,16 +8,184 @@ import (
 	"compress/gzip"
 	"encoding/base64"
 	"fmt"
+	"net/http"
 	"net/url"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/gin-gonic/gin"
+	"github.com/oapi-codegen/runtime"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 )
+
+const (
+	Supabase1TokenAuthScopes = "Supabase1TokenAuth.Scopes"
+	Supabase2TeamAuthScopes  = "Supabase2TeamAuth.Scopes"
+)
+
+// Defines values for BuildStatus.
+const (
+	Building BuildStatus = "building"
+	Failed   BuildStatus = "failed"
+	Success  BuildStatus = "success"
+)
+
+// BuildInfo defines model for BuildInfo.
+type BuildInfo struct {
+	// CreatedAt Build creation timestamp in RFC3339 format.
+	CreatedAt time.Time `json:"createdAt"`
+
+	// FinishedAt Build completion timestamp in RFC3339 format, if finished.
+	FinishedAt *time.Time `json:"finishedAt"`
+
+	// Names Template names related to this build, if available.
+	Names *[]string `json:"names"`
+
+	// Status Build status mapped for dashboard clients.
+	Status BuildStatus `json:"status"`
+
+	// StatusMessage Failure message when status is `failed`, otherwise `null`.
+	StatusMessage *string `json:"statusMessage"`
+}
+
+// BuildStatus Build status mapped for dashboard clients.
+type BuildStatus string
+
+// BuildStatusItem defines model for BuildStatusItem.
+type BuildStatusItem struct {
+	// FinishedAt Build completion timestamp in RFC3339 format, if finished.
+	FinishedAt *time.Time `json:"finishedAt"`
+
+	// Id Identifier of the build.
+	Id openapi_types.UUID `json:"id"`
+
+	// Status Build status mapped for dashboard clients.
+	Status BuildStatus `json:"status"`
+
+	// StatusMessage Failure message when status is `failed`, otherwise `null`.
+	StatusMessage *string `json:"statusMessage"`
+}
+
+// BuildsListResponse defines model for BuildsListResponse.
+type BuildsListResponse struct {
+	Data []ListedBuild `json:"data"`
+
+	// NextCursor Cursor to pass to the next list request, or `null` if there is no next page.
+	NextCursor *string `json:"nextCursor"`
+}
+
+// BuildsStatusesResponse defines model for BuildsStatusesResponse.
+type BuildsStatusesResponse struct {
+	// BuildStatuses List of build statuses
+	BuildStatuses []BuildStatusItem `json:"buildStatuses"`
+}
+
+// Error defines model for Error.
+type Error struct {
+	// Code Error code.
+	Code int32 `json:"code"`
+
+	// Message Error message.
+	Message string `json:"message"`
+}
+
+// HealthResponse defines model for HealthResponse.
+type HealthResponse struct {
+	// Message Human-readable health check result.
+	Message string `json:"message"`
+}
+
+// ListedBuild defines model for ListedBuild.
+type ListedBuild struct {
+	// CreatedAt Build creation timestamp in RFC3339 format.
+	CreatedAt time.Time `json:"createdAt"`
+
+	// FinishedAt Build completion timestamp in RFC3339 format, if finished.
+	FinishedAt *time.Time `json:"finishedAt"`
+
+	// Id Identifier of the build.
+	Id openapi_types.UUID `json:"id"`
+
+	// Status Build status mapped for dashboard clients.
+	Status BuildStatus `json:"status"`
+
+	// StatusMessage Failure message when status is `failed`, otherwise `null`.
+	StatusMessage *string `json:"statusMessage"`
+
+	// Template Template alias when present, otherwise template ID.
+	Template string `json:"template"`
+
+	// TemplateId Identifier of the template.
+	TemplateId string `json:"templateId"`
+}
+
+// BuildId defines model for build_id.
+type BuildId = openapi_types.UUID
+
+// BuildIdOrTemplate defines model for build_id_or_template.
+type BuildIdOrTemplate = string
+
+// BuildIds defines model for build_ids.
+type BuildIds = []openapi_types.UUID
+
+// BuildStatuses defines model for build_statuses.
+type BuildStatuses = []BuildStatus
+
+// BuildsCursor defines model for builds_cursor.
+type BuildsCursor = string
+
+// BuildsLimit defines model for builds_limit.
+type BuildsLimit = int32
+
+// N400 defines model for 400.
+type N400 = Error
+
+// N401 defines model for 401.
+type N401 = Error
+
+// N403 defines model for 403.
+type N403 = Error
+
+// N404 defines model for 404.
+type N404 = Error
+
+// N500 defines model for 500.
+type N500 = Error
+
+// GetBuildsParams defines parameters for GetBuilds.
+type GetBuildsParams struct {
+	// BuildIdOrTemplate Optional filter by build identifier, template identifier, or template alias.
+	BuildIdOrTemplate *BuildIdOrTemplate `form:"build_id_or_template,omitempty" json:"build_id_or_template,omitempty"`
+
+	// Statuses Comma-separated list of build statuses to include.
+	Statuses *BuildStatuses `form:"statuses,omitempty" json:"statuses,omitempty"`
+
+	// Limit Maximum number of items to return per page.
+	Limit *BuildsLimit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor Cursor returned by the previous list response in `created_at|build_id` format.
+	Cursor *BuildsCursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
+// GetBuildsStatusesParams defines parameters for GetBuildsStatuses.
+type GetBuildsStatusesParams struct {
+	// BuildIds Comma-separated list of build IDs to get statuses for.
+	BuildIds BuildIds `form:"build_ids" json:"build_ids"`
+}
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// List team builds
+	// (GET /builds)
+	GetBuilds(c *gin.Context, params GetBuildsParams)
+	// Get build statuses
+	// (GET /builds/statuses)
+	GetBuildsStatuses(c *gin.Context, params GetBuildsStatusesParams)
+	// Get build details
+	// (GET /builds/{build_id})
+	GetBuildsBuildId(c *gin.Context, buildId BuildId)
 	// Health check
 	// (GET /health)
 	GetHealth(c *gin.Context)
@@ -31,6 +199,125 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(c *gin.Context)
+
+// GetBuilds operation middleware
+func (siw *ServerInterfaceWrapper) GetBuilds(c *gin.Context) {
+
+	var err error
+
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetBuildsParams
+
+	// ------------- Optional query parameter "build_id_or_template" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "build_id_or_template", c.Request.URL.Query(), &params.BuildIdOrTemplate)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter build_id_or_template: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "statuses" -------------
+
+	err = runtime.BindQueryParameter("form", false, false, "statuses", c.Request.URL.Query(), &params.Statuses)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter statuses: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", c.Request.URL.Query(), &params.Limit)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter limit: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "cursor", c.Request.URL.Query(), &params.Cursor)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter cursor: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetBuilds(c, params)
+}
+
+// GetBuildsStatuses operation middleware
+func (siw *ServerInterfaceWrapper) GetBuildsStatuses(c *gin.Context) {
+
+	var err error
+
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetBuildsStatusesParams
+
+	// ------------- Required query parameter "build_ids" -------------
+
+	if paramValue := c.Query("build_ids"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Query argument build_ids is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", false, true, "build_ids", c.Request.URL.Query(), &params.BuildIds)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter build_ids: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetBuildsStatuses(c, params)
+}
+
+// GetBuildsBuildId operation middleware
+func (siw *ServerInterfaceWrapper) GetBuildsBuildId(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "build_id" -------------
+	var buildId BuildId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "build_id", c.Param("build_id"), &buildId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter build_id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetBuildsBuildId(c, buildId)
+}
 
 // GetHealth operation middleware
 func (siw *ServerInterfaceWrapper) GetHealth(c *gin.Context) {
@@ -72,17 +359,40 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 		ErrorHandler:       errorHandler,
 	}
 
+	router.GET(options.BaseURL+"/builds", wrapper.GetBuilds)
+	router.GET(options.BaseURL+"/builds/statuses", wrapper.GetBuildsStatuses)
+	router.GET(options.BaseURL+"/builds/:build_id", wrapper.GetBuildsBuildId)
 	router.GET(options.BaseURL+"/health", wrapper.GetHealth)
 }
 
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"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",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

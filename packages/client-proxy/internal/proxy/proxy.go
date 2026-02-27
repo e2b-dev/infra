@@ -40,6 +40,7 @@ const (
 	autoResumeSucceeded autoResumeResult = iota
 	autoResumeNotAllowed
 	autoResumePermissionDenied
+	autoResumeResourceExhausted
 	autoResumeErrored
 )
 
@@ -95,6 +96,9 @@ func handlePausedSandbox(
 			if st.Code() == codes.NotFound {
 				return "", autoResumeNotAllowed, nil
 			}
+			if st.Code() == codes.ResourceExhausted {
+				return "", autoResumeResourceExhausted, reverseproxy.NewErrSandboxResourceExhausted(sandboxId, st.Message())
+			}
 		}
 
 		return "", autoResumeErrored, err
@@ -137,6 +141,13 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 					l.Warn(ctx, "sandbox resume denied", zap.Error(err))
 
 					return nil, resumeDeniedErr
+				}
+
+				var resourceExhaustedErr *reverseproxy.SandboxResourceExhaustedError
+				if errors.As(err, &resourceExhaustedErr) {
+					l.Warn(ctx, "sandbox resource exhausted", zap.Error(err))
+
+					return nil, resourceExhaustedErr
 				}
 
 				if !errors.Is(err, ErrNodeNotFound) {

@@ -1,8 +1,15 @@
 // run with something like:
 //
-// sudo `which go` test -benchtime=15s -bench=. -v
 // sudo modprobe nbd
-// echo 1024 | sudo tee /proc/sys/vm/nr_hugepages
+// sudo `which go` test ./packages/orchestrator/ -bench=BenchmarkBaseImage -v -timeout=60m
+//
+// Single mode:
+//
+// sudo `which go` test ./packages/orchestrator/ -bench=BenchmarkBaseImage/zstd-2 -v
+//
+// More iterations:
+//
+// sudo `which go` test ./packages/orchestrator/ -bench=BenchmarkBaseImage -benchtime=5x -v -timeout=60m
 package main
 
 import (
@@ -14,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
@@ -32,7 +40,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build"
 	buildconfig "github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/metrics"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
@@ -45,21 +52,34 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator")
+type benchMode struct {
+	name            string
+	buildID         string
+	compressionType string // "lz4" or "zstd"; "" = uncompressed
+	level           int
+}
 
-func BenchmarkBaseImageLaunch(b *testing.B) {
+func (m benchMode) compressed() bool { return m.compressionType != "" }
+
+var benchModes = []benchMode{
+	{"uncompressed", "ba6aae36-0000-0000-0000-000000000000", "", 0},
+	{"lz4", "ba6aae36-0000-0000-0000-000000000001", "lz4", 0},
+	{"zstd-0", "ba6aae36-0000-0000-0000-000000000002", "zstd", 0},
+	{"zstd-1", "ba6aae36-0000-0000-0000-000000000003", "zstd", 1},
+	{"zstd-2", "ba6aae36-0000-0000-0000-000000000004", "zstd", 2},
+	{"zstd-3", "ba6aae36-0000-0000-0000-000000000005", "zstd", 3},
+}
+
+func BenchmarkBaseImage(b *testing.B) {
 	if os.Geteuid() != 0 {
 		b.Skip("skipping benchmark because not running as root")
 	}
 
-	// test configuration
 	const (
-		testType        = onlyStart
 		baseImage       = "e2bdev/base"
 		kernelVersion   = "vmlinux-6.1.158"
 		fcVersion       = featureflags.DefaultFirecrackerVersion
 		templateID      = "fcb33d09-3141-42c4-8d3b-c2df411681db"
-		buildID         = "ba6aae36-74f7-487a-b6f7-74fd7c94e479"
 		useHugePages    = false
 		templateVersion = "v2.0.0"
 	)
@@ -92,7 +112,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		})
 
 		require.NoError(b, err)
-		resource, err := telemetry.GetResource(b.Context(), "node-id", "BenchmarkBaseImageLaunch", "service-commit", "service-version", "service-instance-id")
+		resource, err := telemetry.GetResource(b.Context(), "node-id", "BenchmarkBaseImage", "service-commit", "service-version", "service-instance-id")
 		require.NoError(b, err)
 		tracerProvider := telemetry.NewTracerProvider(spanExporter, resource)
 		otel.SetTracerProvider(tracerProvider)
@@ -105,11 +125,12 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	downloadKernel(b, linuxKernelFilename, linuxKernelURL)
 
 	// hacks, these should go away
+	templateStoragePath := abs(filepath.Join(persistenceDir, "templates"))
 	b.Setenv("ARTIFACTS_REGISTRY_PROVIDER", "Local")
 	b.Setenv("FIRECRACKER_VERSIONS_DIR", abs(filepath.Join("..", "fc-versions", "builds")))
 	b.Setenv("HOST_ENVD_PATH", abs(filepath.Join("..", "envd", "bin", "envd")))
 	b.Setenv("HOST_KERNELS_DIR", abs(kernelsDir))
-	b.Setenv("LOCAL_TEMPLATE_STORAGE_BASE_PATH", abs(filepath.Join(persistenceDir, "templates")))
+	b.Setenv("LOCAL_TEMPLATE_STORAGE_BASE_PATH", templateStoragePath)
 	b.Setenv("ORCHESTRATOR_BASE_PATH", tempDir)
 	b.Setenv("SANDBOX_DIR", abs(sandboxDir))
 	b.Setenv("SNAPSHOT_CACHE_DIR", abs(filepath.Join(tempDir, "snapshot-cache")))
@@ -130,7 +151,6 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	require.NoError(b, err)
 
 	sbxlogger.SetSandboxLoggerInternal(l)
-	// sbxlogger.SetSandboxLoggerExternal(logger)
 
 	slotStorage, err := network.NewStorageLocal(b.Context(), config.NetworkConfig)
 	require.NoError(b, err)
@@ -175,9 +195,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	require.NoError(b, err)
 
 	c, err := cfg.Parse()
-	if err != nil {
-		b.Fatalf("error parsing config: %v", err)
-	}
+	require.NoError(b, err)
 
 	templateCache, err := template.NewCache(c, featureFlags, persistence, blockMetrics)
 	require.NoError(b, err)
@@ -279,50 +297,93 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		buildMetrics,
 	)
 
-	buildPath := filepath.Join(os.Getenv("LOCAL_TEMPLATE_STORAGE_BASE_PATH"), buildID, "rootfs.ext4")
-	if _, err := os.Stat(buildPath); os.IsNotExist(err) {
-		// build template
-		force := true
-		templateConfig := buildconfig.TemplateConfig{
-			Version:            templateVersion,
-			TemplateID:         templateID,
-			FromImage:          baseImage,
-			Force:              &force,
-			VCpuCount:          sandboxConfig.Vcpu,
-			MemoryMB:           sandboxConfig.RamMB,
-			StartCmd:           "echo 'start cmd debug' && sleep .1 && echo 'done starting command debug'",
-			DiskSizeMB:         sandboxConfig.TotalDiskSizeMB,
-			HugePages:          sandboxConfig.HugePages,
-			KernelVersion:      kernelVersion,
-			FirecrackerVersion: fcVersion,
-		}
-
-		metadata := storage.TemplateFiles{
-			BuildID: buildID,
-		}
-		_, err = builder.Build(b.Context(), metadata, templateConfig, l.Detach(b.Context()).Core())
-		require.NoError(b, err)
+	force := true
+	templateConfig := buildconfig.TemplateConfig{
+		Version:            templateVersion,
+		TemplateID:         templateID,
+		FromImage:          baseImage,
+		Force:              &force,
+		VCpuCount:          sandboxConfig.Vcpu,
+		MemoryMB:           sandboxConfig.RamMB,
+		StartCmd:           "echo 'start cmd debug' && sleep .1 && echo 'done starting command debug'",
+		DiskSizeMB:         sandboxConfig.TotalDiskSizeMB,
+		HugePages:          sandboxConfig.HugePages,
+		KernelVersion:      kernelVersion,
+		FirecrackerVersion: fcVersion,
 	}
 
-	// retrieve template
-	tmpl, err := templateCache.GetTemplate(
-		b.Context(),
-		buildID,
-		false,
-		false,
-	)
-	require.NoError(b, err)
+	for _, mode := range benchModes {
+		b.Run(mode.name, func(b *testing.B) {
+			// Set flags for this mode
+			featureflags.OverrideJSONFlag(featureflags.CompressConfigFlag, ldvalue.FromJSONMarshal(map[string]any{
+				"compressBuilds":         mode.compressed(),
+				"compressionType":        mode.compressionType,
+				"level":                  mode.level,
+				"frameTargetMB":          2,
+				"uploadPartTargetMB":     50,
+				"frameMaxUncompressedMB": 16,
+				"encoderConcurrency":     1,
+				"decoderConcurrency":     1,
+			}))
+			featureflags.OverrideJSONFlag(featureflags.ChunkerConfigFlag, ldvalue.FromJSONMarshal(map[string]any{
+				"useCompressedAssets": mode.compressed(),
+				"minReadBatchSizeKB":  16,
+			}))
 
-	tc := testContainer{
-		sandboxFactory: sandboxFactory,
-		testType:       testType,
-		tmpl:           tmpl,
-		sandboxConfig:  sandboxConfig,
-		runtime:        runtime,
-	}
+			b.Logf("mode=%s buildID=%s compressed=%v type=%s level=%d",
+				mode.name, mode.buildID, mode.compressed(), mode.compressionType, mode.level)
 
-	for b.Loop() {
-		tc.testOneItem(b, buildID, kernelVersion, fcVersion)
+			// Build (exactly once, timed for reporting).
+			// Skipped if template already exists on disk.
+			// To force rebuild: rm -rf /root/.cache/e2b-orchestrator-benchmark/templates/
+			buildStart := time.Now()
+			buildPath := filepath.Join(templateStoragePath, mode.buildID, "rootfs.ext4")
+			if _, err := os.Stat(buildPath); os.IsNotExist(err) {
+				metadata := storage.TemplateFiles{BuildID: mode.buildID}
+				_, err = builder.Build(b.Context(), metadata, templateConfig, l.Detach(b.Context()).Core())
+				require.NoError(b, err)
+			}
+			buildDuration := time.Since(buildStart)
+
+			// Cold start benchmark.
+			// Each iteration gets a fresh template with empty block caches.
+			// InvalidateAll() evicts the cached template; GetTemplate() creates
+			// a new storageTemplate with fresh chunkers (no mmap data cached).
+			// Template headers reload from local FS (cheap, OS page cache).
+			// The timed ResumeSandbox() then triggers real block fetches on
+			// every page fault — a true cold start.
+			b.ResetTimer()
+			b.StopTimer()
+			for range b.N {
+				// Setup (untimed): fresh template with empty block cache
+				templateCache.InvalidateAll()
+				tmpl, err := templateCache.GetTemplate(b.Context(), mode.buildID, false, false)
+				require.NoError(b, err)
+
+				_, err = tmpl.Metadata()
+				require.NoError(b, err)
+
+				// Timed: cold start sandbox launch
+				b.StartTimer()
+				sbx, err := sandboxFactory.ResumeSandbox(
+					b.Context(),
+					tmpl,
+					sandboxConfig,
+					runtime,
+					time.Now(),
+					time.Now().Add(time.Second*15),
+					nil,
+				)
+				b.StopTimer()
+				require.NoError(b, err)
+
+				// Cleanup (untimed)
+				err = sbx.Close(b.Context())
+				require.NoError(b, err)
+			}
+
+			b.ReportMetric(buildDuration.Seconds(), "build-s")
+		})
 	}
 }
 
@@ -333,76 +394,6 @@ func getPersistenceDir() string {
 	}
 
 	return filepath.Join(os.TempDir(), "e2b-orchestrator-benchmark")
-}
-
-type testCycle string
-
-const (
-	onlyStart        testCycle = "only-start"
-	startAndPause    testCycle = "start-and-pause"
-	startPauseResume testCycle = "start-pause-resume"
-)
-
-type testContainer struct {
-	testType       testCycle
-	sandboxFactory *sandbox.Factory
-	tmpl           template.Template
-	sandboxConfig  sandbox.Config
-	runtime        sandbox.RuntimeMetadata
-}
-
-func (tc *testContainer) testOneItem(b *testing.B, buildID, kernelVersion, fcVersion string) {
-	b.Helper()
-
-	ctx, span := tracer.Start(b.Context(), "testOneItem")
-	defer span.End()
-
-	sbx, err := tc.sandboxFactory.ResumeSandbox(
-		ctx,
-		tc.tmpl,
-		tc.sandboxConfig,
-		tc.runtime,
-		time.Now(),
-		time.Now().Add(time.Second*15),
-		nil,
-	)
-	require.NoError(b, err)
-
-	if tc.testType == onlyStart {
-		b.StopTimer()
-		err = sbx.Close(ctx)
-		require.NoError(b, err)
-		b.StartTimer()
-
-		return
-	}
-
-	meta, err := sbx.Template.Metadata()
-	require.NoError(b, err)
-
-	templateMetadata := meta.SameVersionTemplate(metadata.TemplateMetadata{
-		BuildID:            buildID,
-		KernelVersion:      kernelVersion,
-		FirecrackerVersion: fcVersion,
-	})
-	snap, err := sbx.Pause(ctx, templateMetadata)
-	require.NoError(b, err)
-	require.NotNil(b, snap)
-
-	if tc.testType == startAndPause {
-		b.StopTimer()
-		err = sbx.Close(ctx)
-		require.NoError(b, err)
-		b.StartTimer()
-	}
-
-	// resume sandbox
-	sbx, err = tc.sandboxFactory.ResumeSandbox(ctx, tc.tmpl, tc.sandboxConfig, tc.runtime, time.Now(), time.Now().Add(time.Second*15), nil)
-	require.NoError(b, err)
-
-	// close sandbox
-	err = sbx.Close(ctx)
-	require.NoError(b, err)
 }
 
 func downloadKernel(b *testing.B, filename, url string) {

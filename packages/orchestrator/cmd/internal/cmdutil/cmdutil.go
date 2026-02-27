@@ -72,24 +72,55 @@ func GetActualFileSize(path string) (int64, error) {
 
 // ArtifactInfo contains information about a build artifact.
 type ArtifactInfo struct {
-	Name       string
-	File       string
-	HeaderFile string
+	Name                 string
+	File                 string   // e.g., "memfile"
+	HeaderFile           string   // e.g., "memfile.header"
+	CompressedFiles      []string // e.g., ["v4.memfile.lz4", "v4.memfile.zstd"]
+	CompressedHeaderFile string   // e.g., "v4.memfile.header.lz4"
+}
+
+// allCompressionTypes lists all supported compression types for file probing.
+var allCompressionTypes = []storage.CompressionType{
+	storage.CompressionLZ4,
+	storage.CompressionZstd,
 }
 
 // MainArtifacts returns the list of main artifacts (rootfs, memfile).
 func MainArtifacts() []ArtifactInfo {
 	return []ArtifactInfo{
-		{"Rootfs", storage.RootfsName, storage.RootfsName + storage.HeaderSuffix},
-		{"Memfile", storage.MemfileName, storage.MemfileName + storage.HeaderSuffix},
+		{
+			Name:                 "Rootfs",
+			File:                 storage.RootfsName,
+			HeaderFile:           storage.RootfsName + storage.HeaderSuffix,
+			CompressedFiles:      v4DataNames(storage.RootfsName),
+			CompressedHeaderFile: storage.V4HeaderName(storage.RootfsName),
+		},
+		{
+			Name:                 "Memfile",
+			File:                 storage.MemfileName,
+			HeaderFile:           storage.MemfileName + storage.HeaderSuffix,
+			CompressedFiles:      v4DataNames(storage.MemfileName),
+			CompressedHeaderFile: storage.V4HeaderName(storage.MemfileName),
+		},
 	}
+}
+
+func v4DataNames(fileName string) []string {
+	names := make([]string, len(allCompressionTypes))
+	for i, ct := range allCompressionTypes {
+		names[i] = storage.V4DataName(fileName, ct)
+	}
+
+	return names
 }
 
 // SmallArtifacts returns the list of small artifacts (headers, snapfile, metadata).
 func SmallArtifacts() []struct{ Name, File string } {
 	return []struct{ Name, File string }{
 		{"Rootfs header", storage.RootfsName + storage.HeaderSuffix},
+		{"Rootfs v4 header", storage.V4HeaderName(storage.RootfsName)},
 		{"Memfile header", storage.MemfileName + storage.HeaderSuffix},
+		{"Memfile v4 header", storage.V4HeaderName(storage.MemfileName)},
 		{"Snapfile", storage.SnapfileName},
 		{"Metadata", storage.MetadataName},
 	}

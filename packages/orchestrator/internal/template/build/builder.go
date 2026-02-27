@@ -269,6 +269,7 @@ func runBuild(
 		builder.buildStorage,
 		index,
 		uploadTracker,
+		builder.featureFlags,
 	)
 
 	baseBuilder := base.New(
@@ -404,7 +405,7 @@ func getRootfsSize(
 	s storage.StorageProvider,
 	metadata storage.TemplateFiles,
 ) (uint64, error) {
-	obj, err := s.OpenBlob(ctx, metadata.StorageRootfsHeaderPath(), storage.RootFSHeaderObjectType)
+	obj, err := s.OpenBlob(ctx, metadata.StorageRootfsHeaderPath())
 	if err != nil {
 		return 0, fmt.Errorf("error opening rootfs header object: %w", err)
 	}

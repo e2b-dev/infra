@@ -16,3 +16,5 @@ go.work.sum
 .vscode/mise-tools
 /packages/fc-kernels
 /packages/fc-versions
+/compress-build
+/inspect-build

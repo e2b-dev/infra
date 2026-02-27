@@ -6,9 +6,11 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"golang.org/x/sync/errgroup"
 
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
@@ -23,26 +25,77 @@ type Storage struct {
 	source *build.File
 }
 
-func storageHeaderObjectType(diffType build.DiffType) (storage.ObjectType, bool) {
-	switch diffType {
-	case build.Memfile:
-		return storage.MemfileHeaderObjectType, true
-	case build.Rootfs:
-		return storage.RootFSHeaderObjectType, true
-	default:
-		return storage.UnknownObjectType, false
-	}
+func isKnownDiffType(diffType build.DiffType) bool {
+	return diffType == build.Memfile || diffType == build.Rootfs
 }
 
-func objectType(diffType build.DiffType) (storage.SeekableObjectType, bool) {
-	switch diffType {
-	case build.Memfile:
-		return storage.MemfileObjectType, true
-	case build.Rootfs:
-		return storage.RootFSObjectType, true
-	default:
-		return storage.UnknownSeekableObjectType, false
+// loadHeaderV3 loads a v3 header from the standard (uncompressed) path.
+// Returns (nil, nil) if not found.
+func loadHeaderV3(ctx context.Context, persistence storage.StorageProvider, path string) (*header.Header, error) {
+	blob, err := persistence.OpenBlob(ctx, path)
+	if err != nil {
+		if errors.Is(err, storage.ErrObjectNotExist) {
+			return nil, nil
+		}
+
+		return nil, err
 	}
+
+	return header.Deserialize(ctx, blob)
+}
+
+// loadV4Header loads a v4 header (LZ4 compressed), decompresses, and deserializes it.
+// Returns (nil, nil) if not found.
+func loadV4Header(ctx context.Context, persistence storage.StorageProvider, path string) (*header.Header, error) {
+	data, err := storage.LoadBlob(ctx, persistence, path)
+	if err != nil {
+		if errors.Is(err, storage.ErrObjectNotExist) {
+			return nil, nil
+		}
+
+		return nil, err
+	}
+
+	return header.DeserializeV4(data)
+}
+
+// loadHeaderPreferV4 fetches both v3 and v4 headers in parallel,
+// preferring the v4 (compressed) header if available.
+func loadHeaderPreferV4(ctx context.Context, persistence storage.StorageProvider, buildId string, fileType build.DiffType) (*header.Header, error) {
+	files := storage.TemplateFiles{BuildID: buildId}
+	v3Path := files.HeaderPath(string(fileType))
+	v4Path := files.CompressedHeaderPath(string(fileType))
+
+	var v3Header, v4Header *header.Header
+	var v3Err, v4Err error
+
+	eg, egCtx := errgroup.WithContext(ctx)
+	eg.Go(func() error {
+		v3Header, v3Err = loadHeaderV3(egCtx, persistence, v3Path)
+
+		return nil
+	})
+	eg.Go(func() error {
+		v4Header, v4Err = loadV4Header(egCtx, persistence, v4Path)
+
+		return nil
+	})
+	_ = eg.Wait()
+
+	if v4Err == nil && v4Header != nil {
+		return v4Header, nil
+	}
+	if v3Err == nil && v3Header != nil {
+		return v3Header, nil
+	}
+	if v4Err != nil {
+		return nil, v4Err
+	}
+	if v3Err != nil {
+		return nil, v3Err
+	}
+
+	return nil, nil
 }
 
 func NewStorage(
@@ -51,41 +104,38 @@ func NewStorage(
 	buildId string,
 	fileType build.DiffType,
 	h *header.Header,
+	flags *featureflags.Client,
 	persistence storage.StorageProvider,
 	metrics blockmetrics.Metrics,
 ) (*Storage, error) {
+	// Read chunker config from feature flag.
+	chunkerCfg := flags.JSONFlag(ctx, featureflags.ChunkerConfigFlag).AsValueMap()
+	useCompressedAssets := chunkerCfg.Get("useCompressedAssets").BoolValue()
+
 	if h == nil {
-		headerObjectPath := buildId + "/" + string(fileType) + storage.HeaderSuffix
-		headerObjectType, ok := storageHeaderObjectType(fileType)
-		if !ok {
+		if !isKnownDiffType(fileType) {
 			return nil, build.UnknownDiffTypeError{DiffType: fileType}
 		}
 
-		headerObject, err := persistence.OpenBlob(ctx, headerObjectPath, headerObjectType)
+		var err error
+		if useCompressedAssets {
+			h, err = loadHeaderPreferV4(ctx, persistence, buildId, fileType)
+		} else {
+			files := storage.TemplateFiles{BuildID: buildId}
+			h, err = loadHeaderV3(ctx, persistence, files.HeaderPath(string(fileType)))
+		}
 		if err != nil {
 			return nil, err
-		}
-
-		diffHeader, err := header.Deserialize(ctx, headerObject)
-
-		// If we can't find the diff header in storage, we switch to templates without a headers
-		if err != nil && !errors.Is(err, storage.ErrObjectNotExist) {
-			return nil, fmt.Errorf("failed to deserialize header: %w", err)
-		}
-
-		if err == nil {
-			h = diffHeader
 		}
 	}
 
 	// If we can't find the diff header in storage, we try to find the "old" style template without a header as a fallback.
 	if h == nil {
 		objectPath := buildId + "/" + string(fileType)
-		objectType, ok := objectType(fileType)
-		if !ok {
+		if !isKnownDiffType(fileType) {
 			return nil, build.UnknownDiffTypeError{DiffType: fileType}
 		}
-		object, err := persistence.OpenSeekable(ctx, objectPath, objectType)
+		object, err := persistence.OpenFramedFile(ctx, objectPath)
 		if err != nil {
 			return nil, err
 		}
@@ -126,7 +176,7 @@ func NewStorage(
 		}
 	}
 
-	b := build.NewFile(h, store, fileType, persistence, metrics)
+	b := build.NewFile(h, store, fileType, persistence, metrics, flags)
 
 	return &Storage{
 		source: b,

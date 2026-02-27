@@ -15,6 +15,7 @@ import (
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -35,6 +36,7 @@ type storageTemplate struct {
 	localSnapfile File
 	localMetafile File
 
+	flags       *featureflags.Client
 	metrics     blockmetrics.Metrics
 	persistence storage.StorageProvider
 }
@@ -44,6 +46,7 @@ func newTemplateFromStorage(
 	buildId string,
 	memfileHeader *header.Header,
 	rootfsHeader *header.Header,
+	flags *featureflags.Client,
 	persistence storage.StorageProvider,
 	metrics blockmetrics.Metrics,
 	localSnapfile File,
@@ -62,6 +65,7 @@ func newTemplateFromStorage(
 		localMetafile: localMetafile,
 		memfileHeader: memfileHeader,
 		rootfsHeader:  rootfsHeader,
+		flags:         flags,
 		metrics:       metrics,
 		persistence:   persistence,
 		memfile:       utils.NewSetOnce[block.ReadonlyDevice](),
@@ -76,7 +80,6 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 		telemetry.WithBuildID(t.files.BuildID),
 	))
 	defer span.End()
-
 	var wg errgroup.Group
 
 	wg.Go(func() error {
@@ -93,7 +96,6 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			t.persistence,
 			t.files.StorageSnapfilePath(),
 			t.files.CacheSnapfilePath(),
-			storage.SnapfileObjectType,
 		)
 		if snapfileErr != nil {
 			errMsg := fmt.Errorf("failed to fetch snapfile: %w", snapfileErr)
@@ -126,7 +128,6 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			t.persistence,
 			t.files.StorageMetadataPath(),
 			t.files.CacheMetadataPath(),
-			storage.MetadataObjectType,
 		)
 		if err != nil && !errors.Is(err, storage.ErrObjectNotExist) {
 			sourceErr := fmt.Errorf("failed to fetch metafile: %w", err)
@@ -178,10 +179,10 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			t.files.BuildID,
 			build.Memfile,
 			t.memfileHeader,
+			t.flags,
 			t.persistence,
 			t.metrics,
 		)
-
 		if memfileErr != nil {
 			errMsg := fmt.Errorf("failed to create memfile storage: %w", memfileErr)
 
@@ -206,6 +207,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			t.files.BuildID,
 			build.Rootfs,
 			t.rootfsHeader,
+			t.flags,
 			t.persistence,
 			t.metrics,
 		)

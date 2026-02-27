@@ -55,7 +55,6 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	// set up tracing
 	ctx, childSpan := tracer.Start(ctx, "sandbox-create")
 	defer childSpan.End()
-
 	childSpan.SetAttributes(
 		telemetry.WithTemplateID(req.GetSandbox().GetTemplateId()),
 		attribute.String("kernel.version", req.GetSandbox().GetKernelVersion()),
@@ -112,7 +111,6 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	if err != nil {
 		return nil, fmt.Errorf("failed to get template snapshot data: %w", err)
 	}
-
 	// Clone the network config to avoid modifying the original request
 	network := proto.CloneOf(req.GetSandbox().GetNetwork())
 
@@ -602,12 +600,16 @@ func (s *Server) snapshotAndCacheSandbox(
 	telemetry.ReportEvent(ctx, "added snapshot to template cache")
 
 	// Start upload in background, return a wait function
+	tb, err := sandbox.NewTemplateBuild(snapshot, s.persistence, storage.TemplateFiles{BuildID: meta.Template.BuildID}, s.featureFlags, nil)
+	if err != nil {
+		return metadata.Template{}, nil, fmt.Errorf("error creating template build: %w", err)
+	}
+
 	uploadCtx := context.WithoutCancel(ctx)
 	errCh := make(chan error, 1)
 
 	go func() {
-		err := snapshot.Upload(uploadCtx, s.persistence, storage.TemplateFiles{BuildID: meta.Template.BuildID})
-		if err != nil {
+		if err := tb.UploadAll(uploadCtx); err != nil {
 			sbxlogger.I(sbx).Error(uploadCtx, "error uploading snapshot", zap.Error(err))
 			errCh <- err
 

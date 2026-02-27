@@ -86,6 +86,25 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 			return
 		}
 
+		var resourceExhaustedErr *SandboxResourceExhaustedError
+		if errors.As(err, &resourceExhaustedErr) {
+			logger.L().Warn(ctx, "team sandbox limit reached",
+				zap.String("host", r.Host),
+				logger.WithSandboxID(resourceExhaustedErr.SandboxId))
+
+			err := template.
+				NewTeamSandboxLimitError(resourceExhaustedErr.SandboxId, r.Host, resourceExhaustedErr.Message).
+				HandleError(w, r)
+			if err != nil {
+				logger.L().Error(ctx, "failed to handle team sandbox limit error", zap.Error(err), logger.WithSandboxID(resourceExhaustedErr.SandboxId))
+				http.Error(w, "Failed to handle team sandbox limit error", http.StatusInternalServerError)
+
+				return
+			}
+
+			return
+		}
+
 		var trafficMissingTokenErr *MissingTrafficAccessTokenError
 		if errors.As(err, &trafficMissingTokenErr) {
 			logger.L().Warn(ctx, "traffic access token is missing", zap.String("host", r.Host))

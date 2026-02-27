@@ -45,12 +45,12 @@ func (b *cachedBlob) WriteTo(ctx context.Context, dst io.Writer) (n int64, e err
 
 	bytesRead, err := b.copyFullFileFromCache(ctx, dst)
 	if err == nil {
-		recordCacheRead(ctx, true, bytesRead, cacheTypeObject, cacheOpWriteTo)
+		recordCacheRead(ctx, true, bytesRead, cacheTypeBlob, cacheOpWriteTo)
 
 		return bytesRead, nil
 	}
 
-	recordCacheReadError(ctx, cacheTypeObject, cacheOpWriteTo, err)
+	recordCacheReadError(ctx, cacheTypeBlob, cacheOpWriteTo, err)
 
 	// This is semi-arbitrary. this code path is called for files that tend to be less than 1 MB (headers, metadata, etc),
 	// so 2 MB allows us to read the file without needing to allocate more memory, with some room for growth. If the
@@ -72,13 +72,13 @@ func (b *cachedBlob) WriteTo(ctx context.Context, dst io.Writer) (n int64, e err
 
 		count, err := b.writeFileToCache(ctx, buffer)
 		if err != nil {
-			recordCacheWriteError(ctx, cacheTypeObject, cacheOpWriteTo, err)
+			recordCacheWriteError(ctx, cacheTypeBlob, cacheOpWriteTo, err)
 			recordError(span, err)
 
 			return
 		}
 
-		recordCacheWrite(ctx, count, cacheTypeObject, cacheOpWriteTo)
+		recordCacheWrite(ctx, count, cacheTypeBlob, cacheOpWriteTo)
 	})
 
 	written, err := dst.Write(data)
@@ -86,7 +86,7 @@ func (b *cachedBlob) WriteTo(ctx context.Context, dst io.Writer) (n int64, e err
 		return int64(written), fmt.Errorf("failed to write object: %w", err)
 	}
 
-	recordCacheRead(ctx, false, int64(written), cacheTypeObject, cacheOpWriteTo)
+	recordCacheRead(ctx, false, int64(written), cacheTypeBlob, cacheOpWriteTo)
 
 	return int64(written), err // in case  err == EOF
 }
@@ -108,9 +108,9 @@ func (b *cachedBlob) Put(ctx context.Context, data []byte) (e error) {
 			count, err := b.writeFileToCache(ctx, bytes.NewReader(data))
 			if err != nil {
 				recordError(span, err)
-				recordCacheWriteError(ctx, cacheTypeObject, cacheOpWrite, err)
+				recordCacheWriteError(ctx, cacheTypeBlob, cacheOpPut, err)
 			} else {
-				recordCacheWrite(ctx, count, cacheTypeObject, cacheOpWrite)
+				recordCacheWrite(ctx, count, cacheTypeBlob, cacheOpPut)
 			}
 		})
 	}

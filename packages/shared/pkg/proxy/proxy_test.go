@@ -276,6 +276,64 @@ func TestProxyResumePermissionDeniedErrorTemplate(t *testing.T) {
 	})
 }
 
+func TestProxyTeamSandboxLimitError(t *testing.T) {
+	t.Parallel()
+
+	getDestination := func(*http.Request) (*pool.Destination, error) {
+		return nil, NewErrSandboxResourceExhausted("test-sandbox", "rate limit hit")
+	}
+
+	proxy, port, err := newTestProxy(t, getDestination)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		proxy.Close()
+	})
+
+	t.Run("json for non-browser", func(t *testing.T) {
+		t.Parallel()
+		proxyURL := fmt.Sprintf("http://127.0.0.1:%d/hello", port)
+		resp, err := httpGet(t, proxyURL)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			_ = resp.Body.Close()
+		})
+
+		require.Equal(t, http.StatusTooManyRequests, resp.StatusCode)
+		require.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
+
+		var response struct {
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+		}
+		err = json.NewDecoder(resp.Body).Decode(&response)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusTooManyRequests, response.Code)
+		require.Equal(t, "rate limit hit", response.Message)
+	})
+
+	t.Run("html for browser", func(t *testing.T) {
+		t.Parallel()
+		proxyURL := fmt.Sprintf("http://127.0.0.1:%d/hello", port)
+		headers := http.Header{
+			"User-Agent": {"Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
+		}
+
+		resp, err := httpGetWithHeaders(t, proxyURL, headers)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			_ = resp.Body.Close()
+		})
+
+		require.Equal(t, http.StatusTooManyRequests, resp.StatusCode)
+		require.Equal(t, "text/html; charset=utf-8", resp.Header.Get("Content-Type"))
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		assert.Contains(t, string(body), "Sandbox Limit Reached")
+		assert.Contains(t, string(body), "rate limit hit")
+	})
+}
+
 func httpGet(t *testing.T, proxyURL string) (*http.Response, error) {
 	t.Helper()
 

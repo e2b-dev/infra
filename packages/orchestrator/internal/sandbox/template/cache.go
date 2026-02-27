@@ -140,7 +140,6 @@ func (c *Cache) GetTemplate(
 		attribute.Bool("is_building", isBuilding),
 	))
 	defer span.End()
-
 	persistence := c.persistence
 	// Because of the template caching, if we enable the NFS cache feature flag,
 	// it will start working only for new orchestrators or new builds.
@@ -157,6 +156,7 @@ func (c *Cache) GetTemplate(
 		buildID,
 		nil,
 		nil,
+		c.flags,
 		persistence,
 		c.blockMetrics,
 		nil,
@@ -196,6 +196,7 @@ func (c *Cache) AddSnapshot(
 		buildId,
 		memfileHeader,
 		rootfsHeader,
+		c.flags,
 		c.persistence,
 		c.blockMetrics,
 		localSnapfile,

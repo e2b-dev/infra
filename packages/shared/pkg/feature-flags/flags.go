@@ -245,13 +245,48 @@ func GetTrackedTemplatesSet(ctx context.Context, ff *Client) map[string]struct{}
 
 // ChunkerConfigFlag is a JSON flag controlling the chunker implementation and tuning.
 //
-// NOTE: Changing useStreaming has no effect on chunkers already created for
-// cached templates. A service restart (redeploy) is required for that change
-// to take effect. minReadBatchSizeKB is checked just-in-time on each fetch,
-// so it takes effect immediately.
+// Fields:
+//   - useCompressedAssets (bool): Try loading v4 compressed headers and use
+//     the compressed read path. Restart required — no effect on already-cached templates.
+//   - minReadBatchSizeKB (int): Floor for uncompressed read batch size in KB.
+//     Applied at chunker creation time; restart required for existing chunkers.
 //
-// JSON format: {"useStreaming": false, "minReadBatchSizeKB": 16}
+// JSON format: {"useCompressedAssets": false, "minReadBatchSizeKB": 16}
 var ChunkerConfigFlag = newJSONFlag("chunker-config", ldvalue.FromJSONMarshal(map[string]any{
-	"useStreaming":       false,
-	"minReadBatchSizeKB": 16,
+	"useCompressedAssets": false,
+	"minReadBatchSizeKB":  16,
+}))
+
+// CompressConfigFlag is a JSON flag controlling compression behaviour.
+//
+// Fields:
+//   - compressBuilds (bool): Enable compressed (dual-write) uploads during
+//     template builds. Default false.
+//   - compressionType (string): "lz4" or "zstd". Default "lz4".
+//   - level (int): Compression level. For LZ4 0=fast, higher=better ratio. Default 3.
+//   - frameTargetMB (int): Target compressed frame size in MiB. Default 2.
+//   - frameMaxUncompressedMB (int): Cap on uncompressed bytes per frame in MiB.
+//     Default 16 (= 4 × MemoryChunkSize).
+//   - uploadPartTargetMB (int): Target upload part size in MiB. Default 50.
+//   - encoderConcurrency (int): Goroutines per zstd encoder. Default 1.
+//   - decoderConcurrency (int): Goroutines per pooled zstd decoder. Default 1.
+//
+// JSON format: {"compressBuilds": false, "compressionType": "lz4", "level": 3, ...}
+// OverrideJSONFlag updates a JSON flag value in the offline store.
+// The change is visible immediately to all clients created from the offline store.
+// Intended for benchmarks and tests.
+func OverrideJSONFlag(flag JSONFlag, value ldvalue.Value) {
+	builder := launchDarklyOfflineStore.Flag(flag.Key()).ValueForAll(value)
+	launchDarklyOfflineStore.Update(builder)
+}
+
+var CompressConfigFlag = newJSONFlag("compress-config", ldvalue.FromJSONMarshal(map[string]any{
+	"compressBuilds":         false,
+	"compressionType":        "zstd",
+	"level":                  2,
+	"frameTargetMB":          2,
+	"uploadPartTargetMB":     50,
+	"frameMaxUncompressedMB": 16,
+	"encoderConcurrency":     1,
+	"decoderConcurrency":     1,
 }))

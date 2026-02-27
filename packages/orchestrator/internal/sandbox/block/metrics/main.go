@@ -15,13 +15,16 @@ const (
 )
 
 type Metrics struct {
-	// SlicesMetric is used to measure page faulting performance.
+	// BlocksTimerFactory measures page-fault / GetBlock latency.
+	BlocksTimerFactory telemetry.TimerFactory
+
+	// SlicesTimerFactory is the legacy name for BlocksTimerFactory (fullFetchChunker path).
 	SlicesTimerFactory telemetry.TimerFactory
 
-	// WriteChunksMetric is used to measure the time taken to download chunks from remote storage
+	// RemoteReadsTimerFactory measures the time taken to download chunks from remote storage.
 	RemoteReadsTimerFactory telemetry.TimerFactory
 
-	// WriteChunksMetric is used to measure performance of writing chunks to disk.
+	// WriteChunksTimerFactory measures performance of writing chunks to disk.
 	WriteChunksTimerFactory telemetry.TimerFactory
 }
 
@@ -31,7 +34,7 @@ func NewMetrics(meterProvider metric.MeterProvider) (Metrics, error) {
 	blocksMeter := meterProvider.Meter("internal.sandbox.block.metrics")
 
 	var err error
-	if m.SlicesTimerFactory, err = telemetry.NewTimerFactory(
+	if m.BlocksTimerFactory, err = telemetry.NewTimerFactory(
 		blocksMeter, orchestratorBlockSlices,
 		"Time taken to retrieve memory slices",
 		"Total bytes requested",
@@ -39,6 +42,8 @@ func NewMetrics(meterProvider metric.MeterProvider) (Metrics, error) {
 	); err != nil {
 		return m, fmt.Errorf("error creating slices timer factory: %w", err)
 	}
+
+	m.SlicesTimerFactory = m.BlocksTimerFactory
 
 	if m.RemoteReadsTimerFactory, err = telemetry.NewTimerFactory(
 		blocksMeter, orchestratorBlockChunksFetch,

@@ -139,6 +139,53 @@ type MultipartUploader struct {
 	client      *retryablehttp.Client
 	retryConfig RetryConfig
 	baseURL     string // Allow overriding for testing
+
+	// Fields for PartUploader interface
+	uploadID string
+	mu       sync.Mutex
+	parts    []Part
+}
+
+var _ PartUploader = (*MultipartUploader)(nil)
+
+// Start initiates the GCS multipart upload.
+func (m *MultipartUploader) Start(ctx context.Context) error {
+	uploadID, err := m.initiateUpload(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to initiate multipart upload: %w", err)
+	}
+
+	m.uploadID = uploadID
+
+	return nil
+}
+
+// UploadPart uploads a single part to GCS. Multiple data slices are hashed
+// and uploaded without copying into a single contiguous buffer.
+func (m *MultipartUploader) UploadPart(ctx context.Context, partIndex int, data ...[]byte) error {
+	etag, err := m.uploadPartSlices(ctx, m.uploadID, partIndex, data)
+	if err != nil {
+		return fmt.Errorf("failed to upload part %d: %w", partIndex, err)
+	}
+
+	m.mu.Lock()
+	m.parts = append(m.parts, Part{
+		PartNumber: partIndex,
+		ETag:       etag,
+	})
+	m.mu.Unlock()
+
+	return nil
+}
+
+// Complete finalizes the GCS multipart upload with all collected parts.
+func (m *MultipartUploader) Complete(ctx context.Context) error {
+	m.mu.Lock()
+	parts := make([]Part, len(m.parts))
+	copy(parts, m.parts)
+	m.mu.Unlock()
+
+	return m.completeUpload(ctx, m.uploadID, parts)
 }
 
 func NewMultipartUploaderWithRetryConfig(ctx context.Context, bucketName, objectName string, retryConfig RetryConfig) (*MultipartUploader, error) {
@@ -210,6 +257,60 @@ func (m *MultipartUploader) uploadPart(ctx context.Context, uploadID string, par
 
 	req.Header.Set("Authorization", "Bearer "+m.token)
 	req.Header.Set("Content-Length", fmt.Sprintf("%d", len(data)))
+	req.Header.Set("Content-MD5", md5Sum)
+
+	resp, err := m.client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+
+		return "", fmt.Errorf("failed to upload part %d (status %d): %s", partNumber, resp.StatusCode, string(body))
+	}
+
+	etag := resp.Header.Get("ETag")
+	if etag == "" {
+		return "", fmt.Errorf("no ETag returned for part %d", partNumber)
+	}
+
+	return etag, nil
+}
+
+// uploadPartSlices uploads a part from multiple byte slices without concatenating them.
+// It computes MD5 by hashing each slice and uses a ReaderFunc for retryable reads.
+func (m *MultipartUploader) uploadPartSlices(ctx context.Context, uploadID string, partNumber int, slices [][]byte) (string, error) {
+	// Compute MD5 and total length without copying
+	hasher := md5.New()
+	totalLen := 0
+	for _, s := range slices {
+		hasher.Write(s)
+		totalLen += len(s)
+	}
+	md5Sum := base64.StdEncoding.EncodeToString(hasher.Sum(nil))
+
+	url := fmt.Sprintf("%s/%s?partNumber=%d&uploadId=%s",
+		m.baseURL, m.objectName, partNumber, uploadID)
+
+	// Use a ReaderFunc so the retryable client can replay the body on retries
+	bodyFn := func() (io.Reader, error) {
+		readers := make([]io.Reader, len(slices))
+		for i, s := range slices {
+			readers[i] = bytes.NewReader(s)
+		}
+
+		return io.MultiReader(readers...), nil
+	}
+
+	req, err := retryablehttp.NewRequestWithContext(ctx, "PUT", url, retryablehttp.ReaderFunc(bodyFn))
+	if err != nil {
+		return "", err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+m.token)
+	req.Header.Set("Content-Length", fmt.Sprintf("%d", totalLen))
 	req.Header.Set("Content-MD5", md5Sum)
 
 	resp, err := m.client.Do(req)

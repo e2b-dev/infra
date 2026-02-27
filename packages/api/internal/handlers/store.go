@@ -130,6 +130,8 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 		logger.L().Fatal(ctx, "failed to create feature flags client", zap.Error(err))
 	}
 
+	featureFlags.SetDeploymentName(config.DomainName)
+
 	accessTokenGenerator, err := sandbox.NewAccessTokenGenerator(config.SandboxAccessTokenHashSeed)
 	if err != nil {
 		logger.L().Fatal(ctx, "Initializing access token generator failed", zap.Error(err))

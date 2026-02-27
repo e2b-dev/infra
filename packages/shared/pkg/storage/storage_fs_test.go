@@ -24,7 +24,7 @@ func TestOpenObject_Write_Exists_WriteTo(t *testing.T) {
 	p := newTempProvider(t)
 	ctx := t.Context()
 
-	obj, err := p.OpenBlob(ctx, filepath.Join("sub", "file.txt"), MetadataObjectType)
+	obj, err := p.OpenBlob(ctx, filepath.Join("sub", "file.txt"))
 	require.NoError(t, err)
 
 	contents := []byte("hello world")
@@ -53,7 +53,7 @@ func TestFSPut(t *testing.T) {
 	const payload = "copy me please"
 	require.NoError(t, os.WriteFile(srcPath, []byte(payload), 0o600))
 
-	obj, err := p.OpenBlob(ctx, "copy/dst.txt", UnknownObjectType)
+	obj, err := p.OpenBlob(ctx, "copy/dst.txt")
 	require.NoError(t, err)
 
 	require.NoError(t, obj.Put(t.Context(), []byte(payload)))
@@ -68,7 +68,7 @@ func TestDelete(t *testing.T) {
 	p := newTempProvider(t)
 	ctx := t.Context()
 
-	obj, err := p.OpenBlob(ctx, "to/delete.txt", 0)
+	obj, err := p.OpenBlob(ctx, "to/delete.txt")
 	require.NoError(t, err)
 
 	err = obj.Put(t.Context(), []byte("bye"))
@@ -98,7 +98,7 @@ func TestDeleteObjectsWithPrefix(t *testing.T) {
 		"data/sub/c.txt",
 	}
 	for _, pth := range paths {
-		obj, err := p.OpenBlob(ctx, pth, UnknownObjectType)
+		obj, err := p.OpenBlob(ctx, pth)
 		require.NoError(t, err)
 		err = obj.Put(t.Context(), []byte("x"))
 		require.NoError(t, err)
@@ -119,7 +119,7 @@ func TestWriteToNonExistentObject(t *testing.T) {
 	p := newTempProvider(t)
 
 	ctx := t.Context()
-	obj, err := p.OpenBlob(ctx, "missing/file.txt", UnknownObjectType)
+	obj, err := p.OpenBlob(ctx, "missing/file.txt")
 	require.NoError(t, err)
 
 	_, err = GetBlob(t.Context(), obj)
