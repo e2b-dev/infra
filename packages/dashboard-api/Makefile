@@ -1,5 +1,6 @@
 ENV := $(shell cat ../../.last_used_env || echo "not-set")
 -include ../../.env.${ENV}
+PREFIX := $(strip $(subst ",,$(PREFIX)))
 
 expectedMigration := $(shell ./../../scripts/get-latest-migration.sh)
 
