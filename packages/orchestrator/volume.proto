@@ -30,6 +30,7 @@ enum UserErrorCode {
   PATH_NOT_FOUND = 1;
   PATH_ALREADY_EXISTS = 2;
   CANNOT_DELETE_ROOT = 3;
+  NOT_SUPPORTED = 4;
 }
 
 message UserError {
@@ -58,6 +59,7 @@ message VolumeDirectoryItem {
 message VolumeDirListRequest {
   VolumeInfo volume = 1;
   string path = 2;
+  int64 depth = 3;
 }
 
 message VolumeDirListResponse {

@@ -21,6 +21,10 @@ func (s *Service) ListDir(ctx context.Context, request *orchestrator.VolumeDirLi
 		span.End()
 	}()
 
+	if request.GetDepth() != 0 {
+		return nil, newAPIError(ctx, codes.InvalidArgument, http.StatusNotImplemented, orchestrator.UserErrorCode_NOT_SUPPORTED, "depth must be zero")
+	}
+
 	fullPath, err := s.buildVolumePath(request.GetVolume(), request.GetPath())
 	if err != nil {
 		return nil, err

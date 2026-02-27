@@ -225,9 +225,10 @@ func createVolumeMountModelsFromAPI(volumeMounts []*orchestrator.SandboxVolumeMo
 	results := make([]sandbox.VolumeMountConfig, 0, len(volumeMounts))
 
 	for _, v := range volumeMounts {
-		volumeID, err := uuid.Parse(v.Id)
+		volumeID, err := uuid.Parse(v.GetId())
 		if err != nil {
-			errs = append(errs, fmt.Errorf("invalid volume id %q: %w", v.Id, err))
+			errs = append(errs, fmt.Errorf("invalid volume id %q: %w", v.GetId(), err))
+
 			continue
 		}
 
