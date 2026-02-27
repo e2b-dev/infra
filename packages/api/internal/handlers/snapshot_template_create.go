@@ -95,7 +95,9 @@ func (a *APIStore) PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID api
 		opts.Namespace = &teamInfo.Slug
 	}
 
-	sbx, err := a.orchestrator.GetSandbox(ctx, teamID, sandboxID)
+	telemetry.ReportEvent(ctx, "Creating snapshot template")
+
+	result, err := a.orchestrator.CreateSnapshotTemplate(ctx, teamID, sandboxID, opts)
 	if err != nil {
 		var notFoundErr *sandbox.NotFoundError
 		if errors.As(err, &notFoundErr) {
@@ -104,22 +106,7 @@ func (a *APIStore) PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID api
 
 			return
 		}
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error getting sandbox")
 
-		return
-	}
-
-	if sbx.TeamID != teamID {
-		logger.L().Debug(ctx, "Sandbox team mismatch on snapshot", logger.WithSandboxID(sandboxID), logger.WithTeamID(teamID.String()))
-		a.sendAPIStoreError(c, http.StatusNotFound, sandboxNotFoundMsg(sandboxID))
-
-		return
-	}
-
-	telemetry.ReportEvent(ctx, "Creating snapshot template")
-
-	result, err := a.orchestrator.CreateSnapshotTemplate(ctx, teamID, sandboxID, opts)
-	if err != nil {
 		var transErr *sandbox.InvalidStateTransitionError
 		if errors.As(err, &transErr) {
 			a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Sandbox '%s' cannot be snapshotted while in '%s' state", sandboxID, transErr.CurrentState))

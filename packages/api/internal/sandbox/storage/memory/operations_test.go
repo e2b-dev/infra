@@ -449,7 +449,7 @@ func TestStartRemoving_DuringSnapshotting(t *testing.T) {
 		err := storage.Add(ctx, sbx)
 		require.NoError(t, err)
 
-		snapAlreadyDone, finishSnap, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.StateActionSnapshot)
+		_, snapAlreadyDone, finishSnap, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.StateActionSnapshot)
 		require.NoError(t, err)
 		assert.False(t, snapAlreadyDone)
 		require.NotNil(t, finishSnap)
@@ -461,7 +461,7 @@ func TestStartRemoving_DuringSnapshotting(t *testing.T) {
 
 		go func() {
 			defer close(pauseDone)
-			pauseAlreadyDone, pauseFinish, pauseErr = storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.StateActionPause)
+			_, pauseAlreadyDone, pauseFinish, pauseErr = storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.StateActionPause)
 		}()
 
 		time.Sleep(50 * time.Millisecond)
@@ -505,7 +505,7 @@ func TestStartRemoving_DuringSnapshotting(t *testing.T) {
 		err := storage.Add(ctx, sbx)
 		require.NoError(t, err)
 
-		snapAlreadyDone, finishSnap, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.StateActionSnapshot)
+		_, snapAlreadyDone, finishSnap, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.StateActionSnapshot)
 		require.NoError(t, err)
 		assert.False(t, snapAlreadyDone)
 
@@ -517,7 +517,7 @@ func TestStartRemoving_DuringSnapshotting(t *testing.T) {
 
 		go func() {
 			defer close(killDone)
-			killAlreadyDone, killFinish, killErr = storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.StateActionKill)
+			_, killAlreadyDone, killFinish, killErr = storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.StateActionKill)
 		}()
 
 		// Give the kill goroutine time to start waiting
@@ -564,7 +564,7 @@ func TestStartRemoving_DuringSnapshotting(t *testing.T) {
 		err := storage.Add(ctx, sbx)
 		require.NoError(t, err)
 
-		_, finishSnap, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.StateActionSnapshot)
+		_, _, finishSnap, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.StateActionSnapshot)
 		require.NoError(t, err)
 
 		// Finish with error — state stays Snapshotting, transition cleared
@@ -575,7 +575,7 @@ func TestStartRemoving_DuringSnapshotting(t *testing.T) {
 		assert.Equal(t, sandbox.StateSnapshotting, got.State)
 
 		// Kill proceeds immediately — no active transition, Snapshotting→Killing is allowed
-		killAlreadyDone, killFinish, killErr := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.StateActionKill)
+		_, killAlreadyDone, killFinish, killErr := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.StateActionKill)
 		require.NoError(t, killErr)
 		assert.False(t, killAlreadyDone)
 		require.NotNil(t, killFinish)
@@ -607,7 +607,7 @@ func TestStartRemoving_DuringSnapshotting(t *testing.T) {
 		err := storage.Add(ctx, sbx)
 		require.NoError(t, err)
 
-		snapAlreadyDone, finishSnap, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.StateActionSnapshot)
+		_, snapAlreadyDone, finishSnap, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.StateActionSnapshot)
 		require.NoError(t, err)
 		assert.False(t, snapAlreadyDone)
 

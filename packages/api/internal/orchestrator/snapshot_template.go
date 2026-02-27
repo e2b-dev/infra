@@ -39,12 +39,7 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 	ctx, span := tracer.Start(ctx, "create-snapshot-template")
 	defer span.End()
 
-	sbx, err := o.sandboxStore.Get(ctx, teamID, sandboxID)
-	if err != nil {
-		return SnapshotTemplateResult{}, fmt.Errorf("failed to get sandbox: %w", err)
-	}
-
-	alreadyDone, finishSnapshotting, err := o.sandboxStore.StartRemoving(ctx, teamID, sandboxID, sandbox.StateActionSnapshot)
+	sbx, alreadyDone, finishSnapshotting, err := o.sandboxStore.StartRemoving(ctx, teamID, sandboxID, sandbox.StateActionSnapshot)
 	if err != nil {
 		return SnapshotTemplateResult{}, fmt.Errorf("failed to start snapshotting: %w", err)
 	}
@@ -102,7 +97,7 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 		// so RemoveSandbox can proceed without deadlock.
 		finish(err)
 
-		if killErr := o.RemoveSandbox(ctx, sbx, sandbox.StateActionKill); killErr != nil {
+		if killErr := o.RemoveSandbox(ctx, teamID, sandboxID, sandbox.StateActionKill); killErr != nil {
 			telemetry.ReportError(ctx, "error killing sandbox after failed checkpoint", killErr)
 		}
 

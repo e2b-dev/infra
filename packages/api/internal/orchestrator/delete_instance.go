@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
@@ -14,15 +15,21 @@ import (
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 )
 
-func (o *Orchestrator) RemoveSandbox(ctx context.Context, sbx sandbox.Sandbox, stateAction sandbox.StateAction) error {
+func (o *Orchestrator) RemoveSandbox(ctx context.Context, teamID uuid.UUID, sandboxID string, stateAction sandbox.StateAction) error {
 	ctx, span := tracer.Start(ctx, "remove-sandbox")
 	defer span.End()
 
-	sandboxID := sbx.SandboxID
-	alreadyDone, finish, err := o.sandboxStore.StartRemoving(ctx, sbx.TeamID, sandboxID, stateAction)
+	sbx, alreadyDone, finish, err := o.sandboxStore.StartRemoving(ctx, teamID, sandboxID, stateAction)
 	if err != nil {
 		switch stateAction {
 		case sandbox.StateActionKill:
+			var notFoundErr *sandbox.NotFoundError
+			if errors.As(err, &notFoundErr) {
+				logger.L().Info(ctx, "Sandbox not found, already removed", logger.WithSandboxID(sandboxID))
+
+				return ErrSandboxNotFound
+			}
+
 			switch sbx.State {
 			case sandbox.StateKilling:
 				logger.L().Info(ctx, "Sandbox is already killed", logger.WithSandboxID(sandboxID))
@@ -34,6 +41,13 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, sbx sandbox.Sandbox, s
 				return ErrSandboxOperationFailed
 			}
 		case sandbox.StateActionPause:
+			var notFoundErrPause *sandbox.NotFoundError
+			if errors.As(err, &notFoundErrPause) {
+				logger.L().Info(ctx, "Sandbox not found for pause", logger.WithSandboxID(sandboxID))
+
+				return ErrSandboxNotFound
+			}
+
 			var transErr *sandbox.InvalidStateTransitionError
 			if errors.As(err, &transErr) {
 				if transErr.CurrentState == sandbox.StateKilling {
@@ -64,9 +78,9 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, sbx sandbox.Sandbox, s
 		return nil
 	}
 
-	defer func() { go o.countersRemove(context.WithoutCancel(ctx), sbx, stateAction) }()
+	defer func() { go o.countersRemove(context.WithoutCancel(ctx), teamID, stateAction) }()
 	defer func() { go o.analyticsRemove(context.WithoutCancel(ctx), sbx, stateAction) }()
-	defer o.sandboxStore.Remove(ctx, sbx.TeamID, sbx.SandboxID)
+	defer o.sandboxStore.Remove(ctx, teamID, sandboxID)
 	err = o.removeSandboxFromNode(ctx, sbx, stateAction)
 	if err != nil {
 		logger.L().Error(ctx, "Error pausing sandbox", zap.Error(err), logger.WithSandboxID(sbx.SandboxID))
