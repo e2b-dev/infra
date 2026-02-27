@@ -12,6 +12,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -50,9 +51,9 @@ func (o *Orchestrator) KeepAliveFor(ctx context.Context, teamID uuid.UUID, sandb
 	if err != nil {
 		switch {
 		case errors.As(err, &sbxNotRunningErr):
-			return nil, &api.APIError{Code: http.StatusNotFound, ClientMsg: "Sandbox not found", Err: err}
+			return nil, &api.APIError{Code: http.StatusBadRequest, ClientMsg: utils.SandboxChangingStateMsg(sandboxID, string(sbxNotRunningErr.State)), Err: err}
 		case errors.As(err, &sbxNotFoundErr):
-			return nil, &api.APIError{Code: http.StatusNotFound, ClientMsg: "Sandbox not found", Err: err}
+			return nil, &api.APIError{Code: http.StatusNotFound, ClientMsg: utils.SandboxNotFoundMsg(sandboxID), Err: err}
 		case errors.Is(err, errMaxInstanceLengthExceeded):
 			return nil, &api.APIError{Code: http.StatusBadRequest, ClientMsg: "Max instance length exceeded", Err: err}
 		default:
@@ -62,7 +63,7 @@ func (o *Orchestrator) KeepAliveFor(ctx context.Context, teamID uuid.UUID, sandb
 	err = o.UpdateSandbox(ctx, sandboxID, sbx.EndTime, sbx.ClusterID, sbx.NodeID)
 	if err != nil {
 		if errors.Is(err, ErrSandboxNotFound) {
-			return nil, &api.APIError{Code: http.StatusNotFound, ClientMsg: "Sandbox not found", Err: err}
+			return nil, &api.APIError{Code: http.StatusNotFound, ClientMsg: utils.SandboxNotFoundMsg(sandboxID), Err: err}
 		}
 
 		return nil, &api.APIError{Code: http.StatusInternalServerError, ClientMsg: "Error when setting sandbox timeout", Err: err}
