@@ -53,13 +53,13 @@ components:
       name: statuses
       in: query
       required: false
-      description: Comma-separated list of DB build statuses to include.
+      description: Comma-separated list of build statuses to include.
       style: form
       explode: false
       schema:
         type: array
         items:
-          $ref: "#/components/schemas/BuildStatusDB"
+          $ref: "#/components/schemas/BuildStatus"
     build_ids:
       name: build_ids
       in: query
@@ -130,15 +130,6 @@ components:
         - failed
         - success
 
-    BuildStatusDB:
-      type: string
-      description: Internal build status values used for filtering.
-      enum:
-        - waiting
-        - building
-        - uploaded
-        - failed
-
     ListedBuild:
       type: object
       required:
@@ -189,7 +180,7 @@ components:
         nextCursor:
           type: string
           nullable: true
-          description: Cursor to pass to the next list request, or `null` if there is no next page.
+          description: Cursor to pass to the next list request, or `null` if there is no next page. 
 
     BuildStatusItem:
       type: object

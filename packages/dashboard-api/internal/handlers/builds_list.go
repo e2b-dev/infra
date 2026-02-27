@@ -28,13 +28,6 @@ const (
 	maxCursorID        = "ffffffff-ffff-ffff-ffff-ffffffffffff"
 )
 
-var defaultBuildStatuses = []string{
-	string(api.BuildStatusDBWaiting),
-	string(api.BuildStatusDBBuilding),
-	string(api.BuildStatusDBUploaded),
-	string(api.BuildStatusDBFailed),
-}
-
 func (s *APIStore) GetBuilds(c *gin.Context, params api.GetBuildsParams) {
 	ctx := c.Request.Context()
 	telemetry.ReportEvent(ctx, "list builds")
@@ -51,8 +44,8 @@ func (s *APIStore) GetBuilds(c *gin.Context, params api.GetBuildsParams) {
 		return
 	}
 
-	statuses := normalizeBuildStatuses(params.Statuses)
-	rows, err := s.listBuildRows(ctx, teamID, params.BuildIdOrTemplate, statuses, cursorTime, cursorID, limit+1)
+	statusGroups := dashboardutils.MapBuildStatusesToDBStatusGroups(params.Statuses)
+	rows, err := s.listBuildRows(ctx, teamID, params.BuildIdOrTemplate, statusGroups, cursorTime, cursorID, limit+1)
 	if err != nil {
 		logger.L().Error(ctx, "Error getting builds", zap.Error(err), logger.WithTeamID(teamID.String()))
 		s.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting builds")
@@ -76,8 +69,8 @@ func (s *APIStore) GetBuilds(c *gin.Context, params api.GetBuildsParams) {
 			Id:            row.ID,
 			Template:      template,
 			TemplateId:    row.TemplateID,
-			Status:        dashboardutils.MapBuildStatusFromDBStatus(row.Status),
-			StatusMessage: dashboardutils.MapBuildStatusMessageFromDBStatus(row.Status, row.Reason),
+			Status:        dashboardutils.MapBuildStatusFromDBStatusGroup(row.StatusGroup),
+			StatusMessage: dashboardutils.MapBuildStatusMessageFromDBStatusGroup(row.StatusGroup, row.Reason),
 			CreatedAt:     row.CreatedAt,
 			FinishedAt:    row.FinishedAt,
 		})
@@ -98,7 +91,7 @@ func (s *APIStore) GetBuilds(c *gin.Context, params api.GetBuildsParams) {
 
 type listBuildRow struct {
 	ID            uuid.UUID
-	Status        dbtypes.BuildStatus
+	StatusGroup   dbtypes.BuildStatusGroup
 	Reason        []byte
 	CreatedAt     time.Time
 	FinishedAt    *time.Time
@@ -110,11 +103,13 @@ func (s *APIStore) listBuildRows(
 	ctx context.Context,
 	teamID uuid.UUID,
 	buildIDOrTemplate *string,
-	statuses []string,
+	statusGroups []dbtypes.BuildStatusGroup,
 	cursorTime time.Time,
 	cursorID uuid.UUID,
 	limitPlusOne int32,
 ) ([]listBuildRow, error) {
+	statuses := buildStatusGroupsToStrings(statusGroups)
+
 	if buildIDOrTemplate == nil || strings.TrimSpace(*buildIDOrTemplate) == "" {
 		rows, err := s.db.GetTeamBuildsPage(ctx, queries.GetTeamBuildsPageParams{
 			TeamID:          teamID,
@@ -179,6 +174,15 @@ func (s *APIStore) listBuildRows(
 	return mapBuildRowsByTemplateAlias(byTemplateAliasRows), nil
 }
 
+func buildStatusGroupsToStrings(groups []dbtypes.BuildStatusGroup) []string {
+	statuses := make([]string, 0, len(groups))
+	for _, group := range groups {
+		statuses = append(statuses, string(group))
+	}
+
+	return statuses
+}
+
 func normalizeBuildsLimit(limit *api.BuildsLimit) int32 {
 	if limit == nil {
 		return defaultBuildsLimit
@@ -193,19 +197,6 @@ func normalizeBuildsLimit(limit *api.BuildsLimit) int32 {
 	}
 
 	return int32(*limit)
-}
-
-func normalizeBuildStatuses(statuses *api.BuildStatuses) []string {
-	if statuses == nil || len(*statuses) == 0 {
-		return defaultBuildStatuses
-	}
-
-	normalized := make([]string, 0, len(*statuses))
-	for _, status := range *statuses {
-		normalized = append(normalized, string(status))
-	}
-
-	return normalized
 }
 
 func parseBuildsCursor(cursor *api.BuildsCursor) (time.Time, uuid.UUID, error) {
@@ -251,7 +242,7 @@ func mapBuildRows(rows []queries.GetTeamBuildsPageRow) []listBuildRow {
 	for _, row := range rows {
 		out = append(out, listBuildRow{
 			ID:            row.ID,
-			Status:        row.Status,
+			StatusGroup:   row.StatusGroup,
 			Reason:        row.Reason,
 			CreatedAt:     row.CreatedAt,
 			FinishedAt:    row.FinishedAt,
@@ -268,7 +259,7 @@ func mapBuildRowsByBuildID(rows []queries.GetTeamBuildsPageByBuildIDRow) []listB
 	for _, row := range rows {
 		out = append(out, listBuildRow{
 			ID:            row.ID,
-			Status:        row.Status,
+			StatusGroup:   row.StatusGroup,
 			Reason:        row.Reason,
 			CreatedAt:     row.CreatedAt,
 			FinishedAt:    row.FinishedAt,
@@ -285,7 +276,7 @@ func mapBuildRowsByTemplateID(rows []queries.GetTeamBuildsPageByTemplateIDRow) [
 	for _, row := range rows {
 		out = append(out, listBuildRow{
 			ID:            row.ID,
-			Status:        row.Status,
+			StatusGroup:   row.StatusGroup,
 			Reason:        row.Reason,
 			CreatedAt:     row.CreatedAt,
 			FinishedAt:    row.FinishedAt,
@@ -302,7 +293,7 @@ func mapBuildRowsByTemplateAlias(rows []queries.GetTeamBuildsPageByTemplateAlias
 	for _, row := range rows {
 		out = append(out, listBuildRow{
 			ID:            row.ID,
-			Status:        row.Status,
+			StatusGroup:   row.StatusGroup,
 			Reason:        row.Reason,
 			CreatedAt:     row.CreatedAt,
 			FinishedAt:    row.FinishedAt,

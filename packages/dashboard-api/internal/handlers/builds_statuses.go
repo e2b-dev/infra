@@ -14,6 +14,10 @@ import (
 	"go.uber.org/zap"
 )
 
+const (
+	buildIdsLimit     = int32(100)
+)
+
 func (s *APIStore) GetBuildsStatuses(c *gin.Context, params api.GetBuildsStatusesParams) {
 	ctx := c.Request.Context()
 	telemetry.ReportEvent(ctx, "get build statuses")
@@ -22,6 +26,13 @@ func (s *APIStore) GetBuildsStatuses(c *gin.Context, params api.GetBuildsStatuse
 	telemetry.SetAttributes(ctx, telemetry.WithTeamID(teamID.String()))
 
 	buildIDs := make([]uuid.UUID, len(params.BuildIds))
+
+	if (len(params.BuildIds) > int(buildIdsLimit)) {
+		logger.L().Warn(ctx, "Too many build IDs", zap.Int("build_ids_count", len(params.BuildIds)), logger.WithTeamID(teamID.String()))
+		s.sendAPIStoreError(c, http.StatusBadRequest, "Too many build IDs")
+		return
+	}
+
 	for i, buildID := range params.BuildIds {
 		buildIDs[i] = uuid.UUID(buildID)
 	}

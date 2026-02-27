@@ -16,7 +16,7 @@ import (
 const getTeamBuildsPage = `-- name: GetTeamBuildsPage :many
 SELECT
   b.id,
-  b.status,
+  b.status_group,
   b.reason::jsonb AS reason,
   b.created_at,
   b.finished_at,
@@ -42,7 +42,7 @@ WHERE b.team_id = $1::uuid
     $2::timestamptz,
     $3::uuid
   )
-  AND b.status = ANY($4::text[])
+  AND b.status_group = ANY($4::text[])
 ORDER BY b.created_at DESC, b.id DESC
 LIMIT $5::int
 `
@@ -57,7 +57,7 @@ type GetTeamBuildsPageParams struct {
 
 type GetTeamBuildsPageRow struct {
 	ID            uuid.UUID
-	Status        types.BuildStatus
+	StatusGroup   types.BuildStatusGroup
 	Reason        []byte
 	CreatedAt     time.Time
 	FinishedAt    *time.Time
@@ -82,7 +82,7 @@ func (q *Queries) GetTeamBuildsPage(ctx context.Context, arg GetTeamBuildsPagePa
 		var i GetTeamBuildsPageRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.Status,
+			&i.StatusGroup,
 			&i.Reason,
 			&i.CreatedAt,
 			&i.FinishedAt,
@@ -102,7 +102,7 @@ func (q *Queries) GetTeamBuildsPage(ctx context.Context, arg GetTeamBuildsPagePa
 const getTeamBuildsPageByBuildID = `-- name: GetTeamBuildsPageByBuildID :many
 SELECT
   b.id,
-  b.status,
+  b.status_group,
   b.reason::jsonb AS reason,
   b.created_at,
   b.finished_at,
@@ -129,7 +129,7 @@ WHERE b.team_id = $1::uuid
     $3::timestamptz,
     $4::uuid
   )
-  AND b.status = ANY($5::text[])
+  AND b.status_group = ANY($5::text[])
 ORDER BY b.created_at DESC, b.id DESC
 LIMIT $6::int
 `
@@ -145,7 +145,7 @@ type GetTeamBuildsPageByBuildIDParams struct {
 
 type GetTeamBuildsPageByBuildIDRow struct {
 	ID            uuid.UUID
-	Status        types.BuildStatus
+	StatusGroup   types.BuildStatusGroup
 	Reason        []byte
 	CreatedAt     time.Time
 	FinishedAt    *time.Time
@@ -171,7 +171,7 @@ func (q *Queries) GetTeamBuildsPageByBuildID(ctx context.Context, arg GetTeamBui
 		var i GetTeamBuildsPageByBuildIDRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.Status,
+			&i.StatusGroup,
 			&i.Reason,
 			&i.CreatedAt,
 			&i.FinishedAt,
@@ -191,7 +191,7 @@ func (q *Queries) GetTeamBuildsPageByBuildID(ctx context.Context, arg GetTeamBui
 const getTeamBuildsPageByTemplateAlias = `-- name: GetTeamBuildsPageByTemplateAlias :many
 SELECT
   b.id,
-  b.status,
+  b.status_group,
   b.reason::jsonb AS reason,
   b.created_at,
   b.finished_at,
@@ -223,7 +223,7 @@ WHERE b.team_id = $2::uuid
     $3::timestamptz,
     $4::uuid
   )
-  AND b.status = ANY($5::text[])
+  AND b.status_group = ANY($5::text[])
 ORDER BY b.created_at DESC, b.id DESC
 LIMIT $6::int
 `
@@ -239,7 +239,7 @@ type GetTeamBuildsPageByTemplateAliasParams struct {
 
 type GetTeamBuildsPageByTemplateAliasRow struct {
 	ID            uuid.UUID
-	Status        types.BuildStatus
+	StatusGroup   types.BuildStatusGroup
 	Reason        []byte
 	CreatedAt     time.Time
 	FinishedAt    *time.Time
@@ -265,7 +265,7 @@ func (q *Queries) GetTeamBuildsPageByTemplateAlias(ctx context.Context, arg GetT
 		var i GetTeamBuildsPageByTemplateAliasRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.Status,
+			&i.StatusGroup,
 			&i.Reason,
 			&i.CreatedAt,
 			&i.FinishedAt,
@@ -285,7 +285,7 @@ func (q *Queries) GetTeamBuildsPageByTemplateAlias(ctx context.Context, arg GetT
 const getTeamBuildsPageByTemplateID = `-- name: GetTeamBuildsPageByTemplateID :many
 SELECT
   b.id,
-  b.status,
+  b.status_group,
   b.reason::jsonb AS reason,
   b.created_at,
   b.finished_at,
@@ -312,7 +312,7 @@ WHERE b.team_id = $2::uuid
     $3::timestamptz,
     $4::uuid
   )
-  AND b.status = ANY($5::text[])
+  AND b.status_group = ANY($5::text[])
 ORDER BY b.created_at DESC, b.id DESC
 LIMIT $6::int
 `
@@ -328,7 +328,7 @@ type GetTeamBuildsPageByTemplateIDParams struct {
 
 type GetTeamBuildsPageByTemplateIDRow struct {
 	ID            uuid.UUID
-	Status        types.BuildStatus
+	StatusGroup   types.BuildStatusGroup
 	Reason        []byte
 	CreatedAt     time.Time
 	FinishedAt    *time.Time
@@ -354,7 +354,7 @@ func (q *Queries) GetTeamBuildsPageByTemplateID(ctx context.Context, arg GetTeam
 		var i GetTeamBuildsPageByTemplateIDRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.Status,
+			&i.StatusGroup,
 			&i.Reason,
 			&i.CreatedAt,
 			&i.FinishedAt,

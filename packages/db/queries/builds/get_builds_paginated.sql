@@ -1,7 +1,7 @@
 -- name: GetTeamBuildsPage :many
 SELECT
   b.id,
-  b.status,
+  b.status_group,
   b.reason::jsonb AS reason,
   b.created_at,
   b.finished_at,
@@ -27,14 +27,14 @@ WHERE b.team_id = sqlc.arg(team_id)::uuid
     sqlc.arg(cursor_created_at)::timestamptz,
     sqlc.arg(cursor_id)::uuid
   )
-  AND b.status = ANY(sqlc.arg(statuses)::text[])
+  AND b.status_group = ANY(sqlc.arg(statuses)::text[])
 ORDER BY b.created_at DESC, b.id DESC
 LIMIT sqlc.arg(limit_plus_one)::int;
 
 -- name: GetTeamBuildsPageByBuildID :many
 SELECT
   b.id,
-  b.status,
+  b.status_group,
   b.reason::jsonb AS reason,
   b.created_at,
   b.finished_at,
@@ -61,14 +61,14 @@ WHERE b.team_id = sqlc.arg(team_id)::uuid
     sqlc.arg(cursor_created_at)::timestamptz,
     sqlc.arg(cursor_id)::uuid
   )
-  AND b.status = ANY(sqlc.arg(statuses)::text[])
+  AND b.status_group = ANY(sqlc.arg(statuses)::text[])
 ORDER BY b.created_at DESC, b.id DESC
 LIMIT sqlc.arg(limit_plus_one)::int;
 
 -- name: GetTeamBuildsPageByTemplateID :many
 SELECT
   b.id,
-  b.status,
+  b.status_group,
   b.reason::jsonb AS reason,
   b.created_at,
   b.finished_at,
@@ -95,14 +95,14 @@ WHERE b.team_id = sqlc.arg(team_id)::uuid
     sqlc.arg(cursor_created_at)::timestamptz,
     sqlc.arg(cursor_id)::uuid
   )
-  AND b.status = ANY(sqlc.arg(statuses)::text[])
+  AND b.status_group = ANY(sqlc.arg(statuses)::text[])
 ORDER BY b.created_at DESC, b.id DESC
 LIMIT sqlc.arg(limit_plus_one)::int;
 
 -- name: GetTeamBuildsPageByTemplateAlias :many
 SELECT
   b.id,
-  b.status,
+  b.status_group,
   b.reason::jsonb AS reason,
   b.created_at,
   b.finished_at,
@@ -134,6 +134,6 @@ WHERE b.team_id = sqlc.arg(team_id)::uuid
     sqlc.arg(cursor_created_at)::timestamptz,
     sqlc.arg(cursor_id)::uuid
   )
-  AND b.status = ANY(sqlc.arg(statuses)::text[])
+  AND b.status_group = ANY(sqlc.arg(statuses)::text[])
 ORDER BY b.created_at DESC, b.id DESC
 LIMIT sqlc.arg(limit_plus_one)::int;
