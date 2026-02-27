@@ -39,23 +39,7 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 	traceID := span.SpanContext().TraceID().String()
 	c.Set("traceID", traceID)
 
-	sbx, err := a.orchestrator.GetSandbox(ctx, teamID, sandboxID)
-	if err != nil {
-		apiErr := pauseHandleNotRunningSandbox(ctx, a.snapshotCache, sandboxID, teamID)
-		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
-
-		return
-	}
-
-	if sbx.TeamID != teamID {
-		logger.L().Debug(ctx, "Sandbox team mismatch on pause", logger.WithSandboxID(sandboxID), logger.WithTeamID(teamID.String()))
-		a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(sandboxID))
-
-		return
-	}
-
-	err = a.orchestrator.RemoveSandbox(ctx, sbx, sandbox.StateActionPause)
-
+	err = a.orchestrator.RemoveSandbox(ctx, teamID, sandboxID, sandbox.StateActionPause)
 	var transErr *sandbox.InvalidStateTransitionError
 
 	switch {
