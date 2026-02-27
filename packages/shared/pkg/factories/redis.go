@@ -23,6 +23,9 @@ type RedisConfig struct {
 	RedisURL         string
 	RedisClusterURL  string
 	RedisTLSCABase64 string
+	// PoolSize overrides the default connection pool size.
+	// When zero, defaults are used (clusterNodeConnectionSizePerCPU * GOMAXPROCS for cluster, go-redis default for standalone).
+	PoolSize int
 }
 
 const (
@@ -41,10 +44,17 @@ func NewRedisClient(ctx context.Context, config RedisConfig) (redis.UniversalCli
 		// https://cloud.google.com/memorystore/docs/cluster/client-library-code-samples#go-redis
 
 		numCPU := runtime.GOMAXPROCS(0)
+		poolSize := clusterNodeConnectionSizePerCPU * numCPU
+		minIdleConns := minIdleConnectionsPerCPU * numCPU
+		if config.PoolSize > 0 {
+			poolSize = config.PoolSize
+			minIdleConns = config.PoolSize / 4
+		}
+
 		clusterOpts := &redis.ClusterOptions{
 			Addrs:        []string{config.RedisClusterURL},
-			PoolSize:     clusterNodeConnectionSizePerCPU * numCPU,
-			MinIdleConns: minIdleConnectionsPerCPU * numCPU,
+			PoolSize:     poolSize,
+			MinIdleConns: minIdleConns,
 		}
 
 		if config.RedisTLSCABase64 != "" {
@@ -75,10 +85,15 @@ func NewRedisClient(ctx context.Context, config RedisConfig) (redis.UniversalCli
 
 		redisClient = redis.NewClusterClient(clusterOpts)
 	case config.RedisURL != "":
-		redisClient = redis.NewClient(&redis.Options{
+		opts := &redis.Options{
 			Addr:         config.RedisURL,
 			MinIdleConns: 1,
-		})
+		}
+		if config.PoolSize > 0 {
+			opts.PoolSize = config.PoolSize
+		}
+
+		redisClient = redis.NewClient(opts)
 	default:
 		return nil, ErrRedisDisabled
 	}
