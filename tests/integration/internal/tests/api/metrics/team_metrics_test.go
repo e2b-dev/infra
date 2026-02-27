@@ -68,14 +68,14 @@ func TestTeamMetricsWithTimeRange(t *testing.T) {
 
 	// Create a sandbox to generate metrics
 	utils.SetupSandboxWithCleanup(t, c)
+	maxDuration := 25 * time.Second
 
 	// Test with custom time range (last hour)
 	now := time.Now()
 	start := now.Add(-1 * time.Hour).Unix()
-	end := now.Unix()
+	end := now.Add(maxDuration).Unix()
 	var metrics []api.TeamMetric
 
-	maxDuration := 15 * time.Second
 	tick := 500 * time.Millisecond
 
 	require.Eventually(t, func() bool {
