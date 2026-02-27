@@ -94,6 +94,7 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 			"/sandboxes/:sandboxID/pause",
 			"/sandboxes/:sandboxID/connect",
 			"/sandboxes/:sandboxID/resume",
+			"/sandboxes/:sandboxID/snapshots",
 		),
 		gin.Recovery(),
 	)
