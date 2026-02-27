@@ -167,11 +167,6 @@ func (f *Forwarder) startPortForwarding(ctx context.Context, p *PortToForward) {
 		return
 	}
 
-	// Reset nice to default (0) so socat doesn't inherit envd's high priority (Nice=-20).
-	if niceErr := syscall.Setpriority(syscall.PRIO_PROCESS, cmd.Process.Pid, 0); niceErr != nil {
-		f.logger.Warn().Err(niceErr).Int("pid", cmd.Process.Pid).Msg("error resetting nice for socat process")
-	}
-
 	go func() {
 		if err := cmd.Wait(); err != nil {
 			f.logger.
