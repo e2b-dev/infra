@@ -37,7 +37,7 @@ func NewAPIStore(config cfg.Config, db *sqlcdb.Client, authDB *authdb.Client, ch
 	}
 }
 
-func (a *APIStore) sendAPIStoreError(c *gin.Context, code int, message string) {
+func (s *APIStore) sendAPIStoreError(c *gin.Context, code int, message string) {
 	apierrors.SendAPIStoreError(c, code, message)
 }
 

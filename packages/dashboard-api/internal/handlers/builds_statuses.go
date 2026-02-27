@@ -31,12 +31,11 @@ func (s *APIStore) GetBuildsStatuses(c *gin.Context, params api.GetBuildsStatuse
 	if len(params.BuildIds) > int(buildIdsLimit) {
 		logger.L().Warn(ctx, "Too many build IDs", zap.Int("build_ids_count", len(params.BuildIds)), logger.WithTeamID(teamID.String()))
 		s.sendAPIStoreError(c, http.StatusBadRequest, "Too many build IDs")
+
 		return
 	}
 
-	for i, buildID := range params.BuildIds {
-		buildIDs[i] = uuid.UUID(buildID)
-	}
+	copy(buildIDs, params.BuildIds)
 
 	p := queries.GetBuildsStatusesByTeamParams{
 		TeamID:   teamID,

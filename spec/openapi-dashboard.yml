@@ -39,7 +39,7 @@ components:
       name: cursor
       in: query
       required: false
-      description: Cursor returned by the previous list response. Supports both legacy (`created_at`) and stable (`created_at|build_id`) formats.
+      description: Cursor returned by the previous list response in `created_at|build_id` format.
       schema:
         type: string
     build_id_or_template:

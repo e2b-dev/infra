@@ -197,7 +197,7 @@ func normalizeBuildsLimit(limit *api.BuildsLimit) int32 {
 		return maxBuildsLimit
 	}
 
-	return int32(*limit)
+	return *limit
 }
 
 func parseBuildsCursor(cursor *api.BuildsCursor) (time.Time, uuid.UUID, error) {
@@ -207,13 +207,8 @@ func parseBuildsCursor(cursor *api.BuildsCursor) (time.Time, uuid.UUID, error) {
 	}
 
 	parts := strings.SplitN(*cursor, "|", 2)
-	if len(parts) == 1 {
-		cursorTime, err := parseCursorTime(parts[0])
-		if err != nil {
-			return time.Time{}, uuid.Nil, err
-		}
-
-		return cursorTime, defaultID, nil
+	if len(parts) != 2 {
+		return time.Time{}, uuid.Nil, fmt.Errorf("invalid cursor format")
 	}
 
 	cursorTime, err := parseCursorTime(parts[0])
