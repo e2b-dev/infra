@@ -48,7 +48,7 @@ func (c *RedisSandboxCatalog) GetSandbox(ctx context.Context, sandboxID string) 
 	spanCtx, span := tracer.Start(ctx, "sandbox-catalog-get")
 	defer span.End()
 
-	useLocalCache := c.featureFlags == nil || c.featureFlags.BoolFlag(spanCtx, featureflags.SandboxCatalogLocalCacheFlag)
+	useLocalCache := c.featureFlags.BoolFlag(spanCtx, featureflags.SandboxCatalogLocalCacheFlag)
 
 	if useLocalCache {
 		sandboxInfo := c.cache.Get(sandboxID)
