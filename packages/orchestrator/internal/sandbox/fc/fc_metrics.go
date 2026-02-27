@@ -83,8 +83,8 @@ type firecrackerMetrics struct {
 
 // startMetricsReader opens the metrics FIFO and starts a goroutine that reads
 // Firecracker metrics lines and exports net device metrics via OTEL.
-// It must be called before setMetrics so that the reader's open(O_RDONLY) unblocks
-// as soon as Firecracker opens the write end in response to PUT /metrics.
+// It must be called before setMetrics so that the FIFO is open for reading
+// before Firecracker opens the write end in response to PUT /metrics.
 func (p *Process) startMetricsReader(ctx context.Context) {
 	// Detach from the request context so the goroutine runs for the VM's lifetime
 	// but still inherits trace values for logging.
@@ -114,10 +114,12 @@ func (p *Process) startMetricsReader(ctx context.Context) {
 	}()
 
 	go func() {
-		// O_RDWR on a FIFO opens without blocking regardless of whether the write end is
-		// open yet. We never write to the file; this just avoids a goroutine leak if Stop
-		// is called before setMetrics triggers Firecracker to open the write end.
-		f, err := os.OpenFile(metricsPath, os.O_RDWR, os.ModeNamedPipe)
+		// O_RDWR opens without blocking (no need to wait for a writer).
+		// We keep this FD solely to unblock the open; the scanner reads from
+		// a separate O_RDONLY FD below. On process exit we close the O_RDWR FD
+		// to drop our write reference — once Firecracker also exits, the
+		// O_RDONLY read receives EOF and the goroutine exits cleanly.
+		rwFd, err := os.OpenFile(metricsPath, os.O_RDWR, os.ModeNamedPipe)
 		if err != nil {
 			logger.L().Warn(ctx, "failed to open fc metrics FIFO",
 				zap.Error(err),
@@ -126,9 +128,27 @@ func (p *Process) startMetricsReader(ctx context.Context) {
 
 			return
 		}
-		defer f.Close()
 
-		scanner := bufio.NewScanner(f)
+		// O_RDONLY succeeds immediately because O_RDWR already established both ends.
+		rFd, err := os.OpenFile(metricsPath, os.O_RDONLY, os.ModeNamedPipe)
+		if err != nil {
+			rwFd.Close()
+			logger.L().Warn(ctx, "failed to open fc metrics FIFO for reading",
+				zap.Error(err),
+				logger.WithSandboxID(sandboxID),
+			)
+
+			return
+		}
+		defer rFd.Close()
+
+		// Drop our write reference on exit so the scanner can receive EOF.
+		go func() {
+			<-p.Exit.Done()
+			rwFd.Close()
+		}()
+
+		scanner := bufio.NewScanner(rFd)
 		scanner.Buffer(make([]byte, metricsReaderBufSize), metricsReaderBufSize)
 
 		for scanner.Scan() {
