@@ -142,19 +142,22 @@ func (s *APIStore) listBuildRows(
 		}
 	}
 
-	byTemplateIDRows, byTemplateIDErr := s.db.GetTeamBuildsPageByTemplateID(ctx, queries.GetTeamBuildsPageByTemplateIDParams{
-		TemplateID:      filter,
-		TeamID:          teamID,
-		CursorCreatedAt: cursorTime,
-		CursorID:        cursorID,
-		Statuses:        statuses,
-		LimitPlusOne:    limitPlusOne,
-	})
-	if byTemplateIDErr != nil {
-		return nil, byTemplateIDErr
-	}
-	if len(byTemplateIDRows) > 0 {
-		return mapBuildRowsByTemplateID(byTemplateIDRows), nil
+	// templateIDs are not UUIDs
+	if parseErr != nil {
+		byTemplateIDRows, byTemplateIDErr := s.db.GetTeamBuildsPageByTemplateID(ctx, queries.GetTeamBuildsPageByTemplateIDParams{
+			TemplateID:      filter,
+			TeamID:          teamID,
+			CursorCreatedAt: cursorTime,
+			CursorID:        cursorID,
+			Statuses:        statuses,
+			LimitPlusOne:    limitPlusOne,
+		})
+		if byTemplateIDErr != nil {
+			return nil, byTemplateIDErr
+		}
+		if len(byTemplateIDRows) > 0 {
+			return mapBuildRowsByTemplateID(byTemplateIDRows), nil
+		}
 	}
 
 	byTemplateAliasRows, byTemplateAliasErr := s.db.GetTeamBuildsPageByTemplateAlias(ctx, queries.GetTeamBuildsPageByTemplateAliasParams{
