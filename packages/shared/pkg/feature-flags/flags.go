@@ -292,10 +292,16 @@ func GetTCPFirewallEgressThrottleConfig(ctx context.Context, ff *Client) TCPFire
 			return TokenBucketConfig{BucketSize: -1} // disabled
 		}
 
+		// Valudate refill time
+		refillTimeMs := int64(b.GetByKey("refillTimeMs").IntValue())
+		if refillTimeMs <= 0 {
+			return TokenBucketConfig{BucketSize: -1} // disabled — invalid refill time
+		}
+
 		return TokenBucketConfig{
 			BucketSize:   int64(b.GetByKey("bucketSize").IntValue()),
 			OneTimeBurst: int64(b.GetByKey("oneTimeBurst").IntValue()),
-			RefillTimeMs: int64(b.GetByKey("refillTimeMs").IntValue()),
+			RefillTimeMs: refillTimeMs,
 		}
 	}
 
