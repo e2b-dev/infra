@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -42,7 +41,6 @@ import (
 const (
 	serviceName    = "dashboard-api"
 	serviceVersion = "0.1.0"
-	defaultPort    = 80
 
 	readHeaderTimeout = 5 * time.Second
 	readTimeout       = 10 * time.Second
@@ -58,12 +56,6 @@ var (
 func run() int {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-
-	var (
-		port  int
-	)
-	flag.IntVar(&port, "port", defaultPort, "Port for test HTTP server")
-	flag.Parse()
 
 	errorCode := atomic.Int32{}
 
@@ -201,7 +193,7 @@ func run() int {
 
 	s := &http.Server{
 		Handler:           r,
-		Addr:              fmt.Sprintf("0.0.0.0:%d", port),
+		Addr:              fmt.Sprintf("0.0.0.0:%d", config.Port),
 		ReadHeaderTimeout: readHeaderTimeout,
 		ReadTimeout:       readTimeout,
 		WriteTimeout:      writeTimeout,
@@ -227,7 +219,7 @@ func run() int {
 		}
 	})
 
-	l.Info(ctx, "HTTP service starting", zap.Int("port", port))
+	l.Info(ctx, "HTTP service starting", zap.Int("port", config.Port))
 	if err := s.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		l.Error(ctx, "HTTP service error", zap.Error(err))
 

@@ -37,7 +37,7 @@ run:
 .PHONY: run-local
 run-local:
 	make build
-	NODE_ID=$(HOSTNAME) ./bin/dashboard-api --port 3333
+	NODE_ID=$(HOSTNAME) ./bin/dashboard-api
 
 .PHONY: test
 test:
