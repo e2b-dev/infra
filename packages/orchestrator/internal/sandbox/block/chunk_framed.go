@@ -15,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -229,7 +230,7 @@ func (c *Chunker) GetBlock(ctx context.Context, off, length int64, ft *storage.F
 
 // getOrCreateSession returns an existing session covering [off, off+...) or
 // creates a new one. Session boundaries are frame-aligned for compressed
-// requests and MemoryChunkSize-aligned for uncompressed requests.
+// requests and DefaultCompressFrameSize-aligned for uncompressed requests.
 //
 // Deduplication is handled by the sessionList: if an active session's range
 // contains the requested offset, the caller joins it instead of creating a
@@ -251,8 +252,8 @@ func (c *Chunker) getOrCreateSession(ctx context.Context, off int64, ft *storage
 		chunkLen = int64(frameSize.U)
 		decompress = true
 	} else {
-		chunkOff = (off / storage.MemoryChunkSize) * storage.MemoryChunkSize
-		chunkLen = min(int64(storage.MemoryChunkSize), c.assets.Size-chunkOff)
+		chunkOff = (off / header.HugepageSize) * header.HugepageSize
+		chunkLen = min(int64(header.HugepageSize), c.assets.Size-chunkOff)
 		decompress = false
 	}
 
@@ -273,12 +274,6 @@ func (c *Chunker) runFetch(ctx context.Context, s *fetchSession, offsetU int64, 
 
 	// Remove session from active list after completion.
 	defer c.releaseFetchSession(s)
-
-	defer func() {
-		if r := recover(); r != nil {
-			s.setError(fmt.Errorf("fetch panicked: %v", r), true)
-		}
-	}()
 
 	// Get mmap region for the fetch target.
 	mmapSlice, releaseLock, err := c.cache.addressBytes(s.chunkOff, s.chunkLen)

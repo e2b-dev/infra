@@ -316,14 +316,14 @@ func BenchmarkBaseImage(b *testing.B) {
 		b.Run(mode.name, func(b *testing.B) {
 			// Set flags for this mode
 			featureflags.OverrideJSONFlag(featureflags.CompressConfigFlag, ldvalue.FromJSONMarshal(map[string]any{
-				"compressBuilds":         mode.compressed(),
-				"compressionType":        mode.compressionType,
-				"level":                  mode.level,
-				"frameTargetMB":          2,
-				"uploadPartTargetMB":     50,
-				"frameMaxUncompressedMB": 16,
-				"encoderConcurrency":     1,
-				"decoderConcurrency":     1,
+				"compressBuilds":     mode.compressed(),
+				"compressionType":    mode.compressionType,
+				"level":              mode.level,
+				"frameSizeKB":        2048,
+				"uploadPartTargetMB": 50,
+				"encodeWorkers":      4,
+				"encoderConcurrency": 1,
+				"decoderConcurrency": 1,
 			}))
 			featureflags.OverrideJSONFlag(featureflags.ChunkerConfigFlag, ldvalue.FromJSONMarshal(map[string]any{
 				"useCompressedAssets": mode.compressed(),

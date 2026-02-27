@@ -289,5 +289,5 @@ func ignoreNotExists(err error) error {
 }
 
 func (o *awsObject) GetFrame(ctx context.Context, offsetU int64, frameTable *FrameTable, decompress bool, buf []byte, readSize int64, onRead func(totalWritten int64)) (Range, error) {
-	return getFrame(ctx, o.openRangeReader, "S3:"+o.path, offsetU, frameTable, decompress, buf, readSize, onRead)
+	return ReadFrame(ctx, o.openRangeReader, "S3:"+o.path, offsetU, frameTable, decompress, buf, readSize, onRead)
 }

@@ -61,7 +61,6 @@ type compressConfig struct {
 	compType    storage.CompressionType
 	level       int
 	frameSize   int
-	maxFrameU   int
 	dryRun      bool
 	recursive   bool
 	verbose     bool
@@ -73,8 +72,7 @@ func main() {
 	storagePath := flag.String("storage", ".local-build", "storage: local path or gs://bucket")
 	compression := flag.String("compression", "lz4", "compression type: lz4 or zstd")
 	level := flag.Int("level", storage.DefaultCompressionOptions.Level, "compression level (0=default)")
-	frameSize := flag.Int("frame-size", storage.DefaultCompressionOptions.TargetFrameSize, "target compressed frame size in bytes")
-	maxFrameU := flag.Int("max-frame-u", storage.DefaultMaxFrameUncompressedSize, "max uncompressed bytes per frame")
+	frameSize := flag.Int("frame-size", storage.DefaultCompressFrameSize, "uncompressed frame size in bytes")
 	dryRun := flag.Bool("dry-run", false, "show what would be done without making changes")
 	recursive := flag.Bool("recursive", false, "recursively compress dependencies (referenced builds)")
 	verbose := flag.Bool("v", false, "verbose: print per-frame info during compression")
@@ -115,7 +113,6 @@ func main() {
 		compType:    compType,
 		level:       *level,
 		frameSize:   *frameSize,
-		maxFrameU:   *maxFrameU,
 		dryRun:      *dryRun,
 		recursive:   *recursive,
 		verbose:     *verbose,
@@ -297,11 +294,10 @@ func compressArtifact(ctx context.Context, cfg *compressConfig, buildID, name, f
 
 	// Set up compression options
 	opts := &storage.FramedUploadOptions{
-		CompressionType:          cfg.compType,
-		Level:                    cfg.level,
-		TargetFrameSize:          cfg.frameSize,
-		MaxUncompressedFrameSize: cfg.maxFrameU,
-		TargetPartSize:           50 * 1024 * 1024,
+		CompressionType: cfg.compType,
+		Level:           cfg.level,
+		FrameSize:       cfg.frameSize,
+		TargetPartSize:  50 * 1024 * 1024,
 	}
 
 	if cfg.verbose {
@@ -335,8 +331,8 @@ func compressArtifact(ctx context.Context, cfg *compressConfig, buildID, name, f
 	// Create an io.Reader from the DataReader (which supports ReadAt)
 	sectionReader := io.NewSectionReader(reader, 0, dataSize)
 
-	fmt.Printf("  Compressing with %s (level=%d, frame-size=%#x, max-frame-u=%#x)...\n",
-		cfg.compType, cfg.level, cfg.frameSize, cfg.maxFrameU)
+	fmt.Printf("  Compressing with %s (level=%d, frame-size=%#x)...\n",
+		cfg.compType, cfg.level, cfg.frameSize)
 
 	// Compress
 	compressStart := time.Now()

@@ -39,8 +39,8 @@ const (
 	MemoryChunkSize = 4 * 1024 * 1024 // 4 MB
 )
 
-// rangeReadFunc is a callback for reading a byte range from storage.
-type rangeReadFunc func(ctx context.Context, offset int64, length int) (io.ReadCloser, error)
+// RangeReadFunc is a callback for reading a byte range from storage.
+type RangeReadFunc func(ctx context.Context, offset int64, length int) (io.ReadCloser, error)
 
 type ObjectType int
 
@@ -164,7 +164,7 @@ func LoadBlob(ctx context.Context, s StorageProvider, path string) ([]byte, erro
 	return GetBlob(ctx, blob)
 }
 
-// getFrame is the shared implementation for reading a single frame from storage.
+// ReadFrame is the shared implementation for reading a single frame from storage.
 // Each backend (GCP, AWS, FS) calls this with their own rangeRead callback.
 //
 // When onRead is non-nil, the output is written to buf in readSize-aligned
@@ -172,7 +172,7 @@ func LoadBlob(ctx context.Context, s StorageProvider, path string) ([]byte, erro
 // written. This pipelines network I/O with decompression — the LZ4/zstd reader
 // pulls compressed bytes from the HTTP stream on demand, so fetch and decompress
 // overlap naturally. When readSize <= 0, MemoryChunkSize is used.
-func getFrame(ctx context.Context, rangeRead rangeReadFunc, storageDetails string, offsetU int64, frameTable *FrameTable, decompress bool, buf []byte, readSize int64, onRead func(totalWritten int64)) (Range, error) {
+func ReadFrame(ctx context.Context, rangeRead RangeReadFunc, storageDetails string, offsetU int64, frameTable *FrameTable, decompress bool, buf []byte, readSize int64, onRead func(totalWritten int64)) (Range, error) {
 	// Handle uncompressed data (nil frameTable) - read directly without frame translation
 	if !IsCompressed(frameTable) {
 		return getFrameUncompressed(ctx, rangeRead, storageDetails, offsetU, buf, readSize, onRead)
@@ -268,7 +268,7 @@ func readProgressive(src io.Reader, buf []byte, totalSize int, rangeStart int64,
 
 // getFrameUncompressed reads uncompressed data directly from storage.
 // When onRead is non-nil, uses readProgressive for progressive delivery.
-func getFrameUncompressed(ctx context.Context, rangeRead rangeReadFunc, storageDetails string, offset int64, buf []byte, readSize int64, onRead func(totalWritten int64)) (Range, error) {
+func getFrameUncompressed(ctx context.Context, rangeRead RangeReadFunc, storageDetails string, offset int64, buf []byte, readSize int64, onRead func(totalWritten int64)) (Range, error) {
 	respBody, err := rangeRead(ctx, offset, len(buf))
 	if err != nil {
 		return Range{}, fmt.Errorf("getting uncompressed data at %#x from %s: %w", offset, storageDetails, err)

@@ -1,5 +1,6 @@
 # Template Compression: Architecture & Status
 
+- [Key Architectural Decisions](#key-architectural-decisions)
 - [A. Architecture](#a-architecture)
   - [Storage Format](#storage-format) · [Storage interface](#storage-interface) · [Feature Flags](#feature-flags) · [Template Loading](#template-loading) · [Read Path](#read-path-nbd--uffd--prefetch)
 - [B. Biggest Changes](#b-biggest-changes)
@@ -15,14 +16,36 @@
   - [Chunker](#chunker-meter-internalsandboxblockmetrics) · [NFS Cache](#nfs-cache-meter-sharedpkgstorage) · [GCS Backend](#gcs-backend-meter-sharedpkgstorage) · [Key Queries](#key-queries)
 - [I. Rollout Strategy](#i-rollout-strategy)
 
+## Key Architectural Decisions
+
+Decisions to revisit as needed. Each links to the section where it's detailed.
+
+| # | Decision | Current choice | Rationale / tradeoff |
+|---|----------|---------------|---------------------|
+| 1 | **Frame size** | Fixed-size uncompressed (default 2 MiB, FF-configurable via `frameSizeKB`, min 128 KiB) | Simple, matches UFFD hugepage size at default; variable compressed output. See [Storage Format](#storage-format). |
+| 2 | **Compression codec** | Zstd level 1 (recommended), LZ4 as alternative, per-template via FF | Zstd1 is within 0.6% of LZ4 throughput but stores 32% less data. See [Compression Settings Selection](#compression-settings-selection). |
+| 3 | **Dual-write vs compressed-only** | Always dual-write (uncompressed + compressed) | Safe rollback; compressed-only planned (#5 in [Remaining Work](#d-remaining-work)). |
+| 4 | **Single unified Chunker** | One `Chunker` struct for both paths | Replaces 3 prior chunker types; slot-based `regionLock` for dedup. See [Biggest Changes](#b-biggest-changes). |
+| 5 | **V4 header with per-mapping FrameTable** | Each mapping carries only its frames | Avoids loading full frame table; subset per mapping. See [Storage Format](#storage-format). |
+| 6 | **Asset probing at init** | Probe all 3 data variants per build in parallel | Enables mixed compressed/uncompressed stacks. See [Template Loading](#template-loading). |
+| 7 | **Mmap cache granularity** | Whole frames decompressed into mmap (default 2 MiB) | A 4 KB read fetches a full frame; acceptable at default size for memfile locality. See [Memory](#memory). |
+| 8 | **NFS cache for compressed frames** | Raw compressed bytes cached by `(path, offset, size)` | Saves NFS space; decompress on read. See [Biggest Changes](#b-biggest-changes). |
+| 9 | **regionLock fetch dedup** | Concurrent reads for same region coalesced | Prevents thundering herd on cold frames. See [Read Path](#read-path-nbd--uffd--prefetch). |
+| 10 | **Upload lifecycle on TemplateBuild** | TemplateBuild owns paths, frame tables, header serialization | Moved from Snapshot; enables multi-layer coordination. See [Write Paths](#e-write-paths). |
+| 11 | **No fallback on decompression error** | Corrupt frame → read fails (no silent fallback) | Fail-fast; fallback TBD in [Failure Modes](#f-failure-modes). |
+| 12 | **Feature-flag gated rollout** | Two JSON flags: `chunker-config` (read), `compress-config` (write) | Per-team/cluster/template targeting. See [Feature Flags](#feature-flags). |
+| 13 | **Prefetch chunk size** | 1 frame (default 2 MiB) | Matches frame size; no cross-frame prefetch. See [Read Path](#read-path-nbd--uffd--prefetch). |
+
+---
+
 ## A. Architecture
 
 Templates are stored in GCS as build artifacts. Each build produces two data files (memfile, rootfs) plus a header and metadata. Each data file can have an uncompressed variant (`{buildId}/memfile`) and a compressed variant (`{buildId}/v4.memfile.lz4`), with corresponding v3 and v4 headers.
 
 ### Storage Format
 
-- Data is broken into **frames**, each independently decompressible (LZ4 or Zstd).
-- Frames are aligned to `FrameAlignmentSize` (= `MemoryChunkSize` = 4 MiB) in uncompressed space, with a minimum of 1 MB compressed and a maximum of 32 MB uncompressed (configurable).
+- Data is broken into **frames** of fixed uncompressed size (default **2 MiB**, configurable via `frameSizeKB` FF, min 128 KiB), each independently decompressible (LZ4 or Zstd). Compressed size varies per frame depending on data entropy.
+- Frames are aligned to `DefaultCompressFrameSize` in uncompressed space. The last frame in a file may be shorter.
 - The **v4 header** embeds a `FrameTable` per mapping: `CompressionType + StartAt + []FrameSize`. The header itself is always LZ4-block-compressed, regardless of data compression type.
 - The `FrameTable` is subset per mapping so each mapping carries only the frames it references.
 
@@ -51,10 +74,10 @@ Two LaunchDarkly JSON flags control compression, with per-team/cluster/template 
   "compressBuilds": false,         // enable compressed dual-write uploads
   "compressionType": "zstd",       // "lz4" or "zstd"
   "level": 2,                      // compression level (0=fast, higher=better ratio)
-  "frameTargetMB": 2,              // target compressed frame size in MiB
-  "frameMaxUncompressedMB": 16,    // cap on uncompressed bytes per frame (= 4 × MemoryChunkSize)
+  "frameSizeKB": 2048,             // uncompressed frame size in KiB (min 128)
   "uploadPartTargetMB": 50,        // target GCS multipart upload part size in MiB
-  "encoderConcurrency": 1,         // goroutines per zstd encoder
+  "encodeWorkers": 4,            // concurrent frame compression workers per file
+  "encoderConcurrency": 1,         // goroutines per individual zstd encoder
   "decoderConcurrency": 1          // goroutines per pooled zstd decoder
 }
 ```
@@ -81,8 +104,8 @@ GetBlock(offset, length, ft) // was Slice()
       → decompressed bytes written into mmap, waiters notified
 ```
 
-- Prefetch reads 4 MiB, UFFD reads 4 KB or 2 MB (hugepage), NBD reads 4 KB.
-- Frames are aligned to `MemoryChunkSize` (4 MiB), so no `GetBlock` call ever crosses a frame boundary.
+- Prefetch reads 2 MiB (= 1 frame), UFFD reads 4 KB or 2 MB (hugepage), NBD reads 4 KB.
+- Frames are 2 MiB aligned, so no `GetBlock` call ever crosses a frame boundary.
 - If the v4 header was loaded, each mapping carries a subset `FrameTable`; this `ft` is threaded through to `GetBlock`, routing to compressed or uncompressed fetch, no header fetch is needed.
 
 ---
@@ -108,7 +131,7 @@ flowchart TD
     subgraph Consumers
         NBD["NBD (4 KB)"]
         UFFD["UFFD (4 KB / 2 MB)"]
-        PF["Prefetch (4 MiB)"]
+        PF["Prefetch (2 MiB)"]
     end
 
     NBD & UFFD & PF --> GM["header.GetShiftedMapping(offset)"]
@@ -143,7 +166,7 @@ flowchart TD
 <summary>ASCII version</summary>
 
 ```
-  NBD (4KB)    UFFD (4KB/2MB)    Prefetch (4MiB)
+  NBD (4KB)    UFFD (4KB/2MB)    Prefetch (2MiB)
       \              |               /
        `---------.---'--------.-----'
                  v            v
@@ -204,7 +227,7 @@ flowchart TD
 
 ### From This Branch
 
-1. **Per-artifact compression config**: memfile and rootfs have different runtime requirements. The `compress-config` flag should support separate codec, level, and frame size settings per artifact type rather than applying a single config to both.
+1. ~~**Fixed frame compression with concurrent pipeline**~~: **Done.** Variable frame sizing eliminated; frames are fixed-size uncompressed (default 2 MiB, FF-configurable via `frameSizeKB`). Concurrent compression pipeline with `encodeWorkers` workers per file. See **[plan-fixed-frame-compression.md](plan-fixed-frame-compression.md)**.
 
 2. **Verify `getFrame` timer lifecycle**: audit that `Success()`/`Failure()` is always called on every code path in the storage cache's `getFrameCompressed` and `getFrameUncompressed`.
 
@@ -287,13 +310,60 @@ Sampled from `gs://e2b-staging-lev-fc-templates/` (262 builds, zstd level 2):
 
 During dual-write, GCS storage increases ~25% for memfile. After dropping uncompressed, net savings are **~75% for memfile**. Rootfs savings depend on the mix of diff vs full builds.
 
+### Compression Settings Selection
+
+Benchmarked on 100 MiB of semi-random data (short runs mimicking VM memory), 4 concurrent workers, frame size = 2 MiB. GCS simulated at 50 ms TTFB + 100 MB/s; NFS at 1 ms TTFB + 500 MB/s.
+
+**Cold concurrent read throughput (U-MB/s):**
+
+| Codec | GCS 4KB | GCS 2MB | NFS 4KB | NFS 2MB | Fetches | C-MB | Ratio |
+|---|---|---|---|---|---|---|---|
+| Legacy (4 MiB chunks) | 118 | 119 | 555 | 578 | 25 | 100.0 | 1.0x |
+| Uncompressed | 97 | 98 | 844 | 650 | 50 | 100.0 | 1.0x |
+| LZ4 | 97 | 98 | 846 | 649 | 50 | 52.7 | 1.9x |
+| Zstd level 1 | 97 | 98 | 842 | 645 | 50 | 35.6 | 2.8x |
+| Zstd level 3 | 97 | 98 | 841 | 630 | 50 | 30.0 | 3.3x |
+
+**Cache-hit latency (ns/op):**
+
+| Path | 4KB block | 2MB block |
+|---|---|---|
+| Legacy (fullFetchChunker) | 270 | 281 |
+| New Chunker | 129 | 137 |
+
+**Weighted throughput (70% NFS, 30% GCS):**
+
+| Codec | Rootfs (4KB) | Memfile (2MB) |
+|---|---|---|
+| Legacy (4 MiB chunks) | 424 MB/s | 440 MB/s |
+| LZ4 | 621 MB/s (+46%) | 484 MB/s (+10%) |
+| Zstd1 | 619 MB/s (+46%) | 481 MB/s (+9%) |
+| Zstd3 | 618 MB/s (+46%) | 470 MB/s (+7%) |
+
+**Storage cost per 100 MiB uncompressed:**
+
+| Codec | Stored | vs Uncomp | vs LZ4 |
+|---|---|---|---|
+| Legacy / Uncompressed | 100 MiB | — | — |
+| LZ4 | 52.7 MiB | -47% | — |
+| Zstd1 | 35.6 MiB | -64% | -32% smaller |
+| Zstd3 | 30.0 MiB | -70% | -43% smaller |
+
+**Recommendation: Zstd level 1, 2 MiB frames.**
+
+- 46% faster than Legacy on rootfs, 9% faster on memfile (weighted throughput). Cache-hit path is 2x faster.
+- Throughput is within 0.6% of LZ4 — the difference is in the noise.
+- Stores 32% less data than LZ4 (35.6 vs 52.7 MiB per 100 MiB). At scale across thousands of templates this meaningfully reduces GCS storage and egress costs.
+- Zstd3 squeezes another 16% over Zstd1 but costs 2.8% throughput on the memfile hot path (2MB blocks on NFS) — diminishing returns for a measurable penalty.
+- Frame size = 2 MiB aligns with HugepageSize so each UFFD fault triggers exactly one fetch.
+
 ### CPU
 
-New per-orchestrator CPU cost: decompressing every GCS-fetched frame. At ~35 MiB compressed per cold memfile load and zstd level 2 decode throughput of ~1-2 GB/s, each cold load burns ~20-40 ms of CPU. Scales with cold template load rate, not sandbox count. Encode cost is write-path only (build/pause), bounded by upload concurrency.
+New per-orchestrator CPU cost: decompressing every GCS-fetched frame. At ~35 MiB compressed per cold memfile load and zstd level 2 decode throughput of ~1-2 GB/s, each cold load burns ~20-40 ms of CPU. Scales with cold template load rate, not sandbox count. Encode cost is write-path only (build/pause), parallelized across `encodeWorkers` goroutines per file (default 4).
 
 ### Memory
 
-The main cost: **mmap regions are allocated at uncompressed size** but frames are fetched whole. A 4 KB NBD read triggers a full frame fetch (4-16 MiB uncompressed), filling mmap with data the sandbox may never touch. This inflates RSS and can pressure the orchestrator fleet into scaling. Mitigations: tune `frameMaxUncompressedMB` down, or drop unrequested bytes from the mmap after the requesting read completes.
+The main cost: **mmap regions are allocated at uncompressed size** but frames are fetched whole. A 4 KB NBD read triggers a full 2 MiB frame fetch, filling mmap with data the sandbox may never touch. At 2 MiB per frame this is acceptable — it matches the UFFD hugepage size, so most fetches would populate this much data anyway.
 
 ### Net
 

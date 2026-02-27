@@ -10,59 +10,14 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"runtime/pprof"
 	"slices"
 	"strings"
-	"sync"
 	"time"
-
-	"github.com/klauspost/compress/zstd"
-	lz4 "github.com/pierrec/lz4/v4"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/cmd/internal/cmdutil"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
-
-// bufferPartUploader implements storage.PartUploader for in-memory writes.
-// Parts are collected by index and assembled in order on Complete, since
-// CompressStream uploads parts concurrently and they may arrive out of order.
-type bufferPartUploader struct {
-	mu    sync.Mutex
-	parts map[int][]byte
-	buf   bytes.Buffer
-}
-
-func (b *bufferPartUploader) Start(_ context.Context) error {
-	b.parts = make(map[int][]byte)
-
-	return nil
-}
-
-func (b *bufferPartUploader) UploadPart(_ context.Context, partIndex int, data ...[]byte) error {
-	var combined bytes.Buffer
-	for _, d := range data {
-		combined.Write(d)
-	}
-	b.mu.Lock()
-	b.parts[partIndex] = combined.Bytes()
-	b.mu.Unlock()
-
-	return nil
-}
-
-func (b *bufferPartUploader) Complete(_ context.Context) error {
-	// Assemble parts in order
-	keys := make([]int, 0, len(b.parts))
-	for k := range b.parts {
-		keys = append(keys, k)
-	}
-	slices.Sort(keys)
-	for _, k := range keys {
-		b.buf.Write(b.parts[k])
-	}
-	b.parts = nil
-
-	return nil
-}
 
 type benchResult struct {
 	codec      string
@@ -84,8 +39,26 @@ func main() {
 	doMemfile := flag.Bool("memfile", false, "benchmark memfile only")
 	doRootfs := flag.Bool("rootfs", false, "benchmark rootfs only")
 	iterations := flag.Int("iterations", 1, "number of iterations for timing (results averaged)")
+	cpuProfile := flag.String("cpuprofile", "", "write CPU profile to file")
+	encWorkers := flag.Int("encworkers", 1, "encode workers for framed compression")
+	encConcurrency := flag.Int("encconcurrency", 1, "per-encoder concurrency (zstd only)")
 
 	flag.Parse()
+
+	if *cpuProfile != "" {
+		f, err := os.Create(*cpuProfile)
+		if err != nil {
+			log.Fatalf("failed to create CPU profile: %s", err)
+		}
+		if err := pprof.StartCPUProfile(f); err != nil {
+			log.Fatalf("failed to start CPU profile: %s", err)
+		}
+		defer func() {
+			pprof.StopCPUProfile()
+			f.Close()
+			fmt.Printf("\nCPU profile written to %s\n", *cpuProfile)
+		}()
+	}
 
 	cmdutil.SuppressNoisyLogsKeepStdLog()
 
@@ -132,6 +105,9 @@ func main() {
 
 	ctx := context.Background()
 
+	fmt.Printf("Settings: encWorkers=%d, encConcurrency=%d, frameSize=%d, iterations=%d\n",
+		*encWorkers, *encConcurrency, storage.DefaultCompressFrameSize, *iterations)
+
 	for _, a := range artifacts {
 		data, err := loadArtifact(ctx, *storagePath, *build, a.file)
 		if err != nil {
@@ -139,7 +115,7 @@ func main() {
 		}
 
 		printHeader(a.name, int64(len(data)))
-		benchmarkArtifact(data, *iterations, func(r benchResult) {
+		benchmarkArtifact(data, *iterations, *encWorkers, *encConcurrency, func(r benchResult) {
 			printRow(r)
 		})
 		fmt.Println()
@@ -165,7 +141,7 @@ func loadArtifact(ctx context.Context, storagePath, buildID, file string) ([]byt
 	return data, nil
 }
 
-func benchmarkArtifact(data []byte, iterations int, emit func(benchResult)) {
+func benchmarkArtifact(data []byte, iterations, encWorkers, encConcurrency int, emit func(benchResult)) {
 	type codecConfig struct {
 		name   string
 		ct     storage.CompressionType
@@ -173,12 +149,7 @@ func benchmarkArtifact(data []byte, iterations int, emit func(benchResult)) {
 	}
 	codecs := []codecConfig{
 		{"lz4", storage.CompressionLZ4, []int{0, 1}},
-		{"zstd", storage.CompressionZstd, []int{
-			int(zstd.SpeedFastest),           // 1
-			int(zstd.SpeedDefault),           // 2
-			int(zstd.SpeedBetterCompression), // 3
-			int(zstd.SpeedBestCompression),   // 4
-		}},
+		{"zstd", storage.CompressionZstd, []int{1, 2, 3, 4}},
 	}
 
 	for _, codec := range codecs {
@@ -194,7 +165,7 @@ func benchmarkArtifact(data []byte, iterations int, emit func(benchResult)) {
 
 			for range iterations {
 				rc, rawDur := rawEncode(data, codec.ct, level)
-				fc, fft, frmDur := framedEncode(data, codec.ct, level)
+				fc, fft, frmDur := framedEncode(data, codec.ct, level, encWorkers, encConcurrency)
 
 				r.rawEncTime += rawDur
 				r.frmEncTime += frmDur
@@ -213,16 +184,9 @@ func benchmarkArtifact(data []byte, iterations int, emit func(benchResult)) {
 				r.numFrames = len(ft.Frames)
 			}
 
-			// Pre-allocate a shared output buffer for decode benchmarks
-			// so both paths pay the same allocation cost (zero).
-			decBuf := make([]byte, len(data))
-
 			for range iterations {
-				rawDecDur := rawDecode(rawCompressed, codec.ct, decBuf)
-				frmDecDur := framedDecode(framedCompressed, ft, codec.ct, decBuf)
-
-				r.rawDecTime += rawDecDur
-				r.frmDecTime += frmDecDur
+				r.rawDecTime += rawDecode(rawCompressed, codec.ct, len(data))
+				r.frmDecTime += framedDecode(framedCompressed, ft)
 			}
 
 			r.rawDecTime /= time.Duration(iterations)
@@ -234,52 +198,27 @@ func benchmarkArtifact(data []byte, iterations int, emit func(benchResult)) {
 }
 
 func rawEncode(data []byte, ct storage.CompressionType, level int) ([]byte, time.Duration) {
-	var buf bytes.Buffer
-	buf.Grow(len(data))
-
 	start := time.Now()
-
-	switch ct {
-	case storage.CompressionLZ4:
-		w := lz4.NewWriter(&buf)
-		opts := []lz4.Option{lz4.ConcurrencyOption(1)}
-		if level > 0 {
-			opts = append(opts, lz4.CompressionLevelOption(lz4.CompressionLevel(1<<(8+level))))
-		}
-		_ = w.Apply(opts...)
-		_, _ = w.Write(data)
-		_ = w.Close()
-
-	case storage.CompressionZstd:
-		// Match the framed encoder: CompressStream passes TargetFrameSize as
-		// windowSize to newZstdEncoder, so we must use the same window here
-		// for an apples-to-apples comparison.
-		w, err := zstd.NewWriter(&buf,
-			zstd.WithEncoderLevel(zstd.EncoderLevel(level)),
-			zstd.WithEncoderConcurrency(1),
-			zstd.WithWindowSize(2*1024*1024))
-		if err != nil {
-			log.Fatalf("zstd raw encoder (level %d): %s", level, err)
-		}
-		_, _ = w.Write(data)
-		_ = w.Close()
-	}
-
+	compressed, err := storage.CompressBytes(ct, level, data)
 	elapsed := time.Since(start)
 
-	return buf.Bytes(), elapsed
+	if err != nil {
+		log.Fatalf("raw encode failed: %s", err)
+	}
+
+	return compressed, elapsed
 }
 
-func framedEncode(data []byte, ct storage.CompressionType, level int) ([]byte, *storage.FrameTable, time.Duration) {
-	uploader := &bufferPartUploader{}
+func framedEncode(data []byte, ct storage.CompressionType, level, encWorkers, encConcurrency int) ([]byte, *storage.FrameTable, time.Duration) {
+	uploader := &storage.MemPartUploader{}
 
 	opts := &storage.FramedUploadOptions{
-		CompressionType:          ct,
-		Level:                    level,
-		CompressionConcurrency:   1,
-		TargetFrameSize:          2 * 1024 * 1024, // 2 MiB
-		MaxUncompressedFrameSize: storage.DefaultMaxFrameUncompressedSize,
-		TargetPartSize:           50 * 1024 * 1024,
+		CompressionType:    ct,
+		Level:              level,
+		EncoderConcurrency: encConcurrency,
+		EncodeWorkers:      encWorkers,
+		FrameSize:          storage.DefaultCompressFrameSize,
+		TargetPartSize:     50 * 1024 * 1024,
 	}
 
 	ctx := context.Background()
@@ -293,27 +232,20 @@ func framedEncode(data []byte, ct storage.CompressionType, level int) ([]byte, *
 		log.Fatalf("framed encode failed: %s", err)
 	}
 
-	return uploader.buf.Bytes(), ft, elapsed
+	return uploader.Assemble(), ft, elapsed
 }
 
-func rawDecode(compressed []byte, ct storage.CompressionType, buf []byte) time.Duration {
+func rawDecode(compressed []byte, ct storage.CompressionType, origSize int) time.Duration {
 	start := time.Now()
-
-	switch ct {
-	case storage.CompressionLZ4:
-		r := lz4.NewReader(bytes.NewReader(compressed))
-		_, _ = io.ReadFull(r, buf)
-
-	case storage.CompressionZstd:
-		r, _ := zstd.NewReader(bytes.NewReader(compressed), zstd.WithDecoderConcurrency(1))
-		_, _ = io.ReadFull(r, buf)
-		r.Close()
+	_, err := storage.DecompressReader(ct, bytes.NewReader(compressed), origSize)
+	if err != nil {
+		log.Fatalf("raw decode failed: %s", err)
 	}
 
 	return time.Since(start)
 }
 
-func framedDecode(compressed []byte, ft *storage.FrameTable, ct storage.CompressionType, buf []byte) time.Duration {
+func framedDecode(compressed []byte, ft *storage.FrameTable) time.Duration {
 	if ft == nil || len(ft.Frames) == 0 {
 		return 0
 	}
@@ -321,40 +253,15 @@ func framedDecode(compressed []byte, ft *storage.FrameTable, ct storage.Compress
 	start := time.Now()
 
 	var cOffset int64
-	var uOffset int
 	for _, frame := range ft.Frames {
 		frameData := compressed[cOffset : cOffset+int64(frame.C)]
-		frameBuf := buf[uOffset : uOffset+int(frame.U)]
-		decompressFrameInto(ct, frameData, frameBuf)
+		if _, err := storage.DecompressFrame(ft.CompressionType, frameData, frame.U); err != nil {
+			log.Fatalf("framed decode failed: %s", err)
+		}
 		cOffset += int64(frame.C)
-		uOffset += int(frame.U)
 	}
 
 	return time.Since(start)
-}
-
-// decompressFrameInto decompresses into a pre-allocated buffer to avoid
-// per-frame allocation. Uses single-threaded decoders to match rawDecode.
-func decompressFrameInto(ct storage.CompressionType, compressed, buf []byte) {
-	switch ct {
-	case storage.CompressionLZ4:
-		r := lz4.NewReader(bytes.NewReader(compressed))
-		_, err := io.ReadFull(r, buf)
-		if err != nil {
-			log.Fatalf("framed lz4 decode failed: %s", err)
-		}
-
-	case storage.CompressionZstd:
-		r, err := zstd.NewReader(bytes.NewReader(compressed), zstd.WithDecoderConcurrency(1))
-		if err != nil {
-			log.Fatalf("framed zstd decoder create failed: %s", err)
-		}
-		_, err = io.ReadFull(r, buf)
-		if err != nil {
-			log.Fatalf("framed zstd decode failed: %s", err)
-		}
-		r.Close()
-	}
 }
 
 // ANSI colors.

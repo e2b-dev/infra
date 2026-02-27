@@ -264,11 +264,11 @@ var ChunkerConfigFlag = newJSONFlag("chunker-config", ldvalue.FromJSONMarshal(ma
 //     template builds. Default false.
 //   - compressionType (string): "lz4" or "zstd". Default "lz4".
 //   - level (int): Compression level. For LZ4 0=fast, higher=better ratio. Default 3.
-//   - frameTargetMB (int): Target compressed frame size in MiB. Default 2.
-//   - frameMaxUncompressedMB (int): Cap on uncompressed bytes per frame in MiB.
-//     Default 16 (= 4 × MemoryChunkSize).
+//   - frameSizeKB (int): Fixed uncompressed frame size in KiB. Default 2048 (2 MiB).
+//     Minimum 128 KiB.
 //   - uploadPartTargetMB (int): Target upload part size in MiB. Default 50.
-//   - encoderConcurrency (int): Goroutines per zstd encoder. Default 1.
+//   - encodeWorkers (int): Concurrent frame compression workers per file. Default 4.
+//   - encoderConcurrency (int): Goroutines per individual zstd encoder. Default 1.
 //   - decoderConcurrency (int): Goroutines per pooled zstd decoder. Default 1.
 //
 // JSON format: {"compressBuilds": false, "compressionType": "lz4", "level": 3, ...}
@@ -281,12 +281,12 @@ func OverrideJSONFlag(flag JSONFlag, value ldvalue.Value) {
 }
 
 var CompressConfigFlag = newJSONFlag("compress-config", ldvalue.FromJSONMarshal(map[string]any{
-	"compressBuilds":         false,
-	"compressionType":        "zstd",
-	"level":                  2,
-	"frameTargetMB":          2,
-	"uploadPartTargetMB":     50,
-	"frameMaxUncompressedMB": 16,
-	"encoderConcurrency":     1,
-	"decoderConcurrency":     1,
+	"compressBuilds":     false,
+	"compressionType":    "zstd",
+	"level":              2,
+	"frameSizeKB":        2048,
+	"uploadPartTargetMB": 50,
+	"encodeWorkers":      4,
+	"encoderConcurrency": 1,
+	"decoderConcurrency": 1,
 }))

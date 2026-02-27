@@ -1,6 +1,7 @@
 package block
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"math/rand/v2"
@@ -15,26 +16,18 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
-// ---------------------------------------------------------------------------
-// Benchmark constants & dimensions
-// ---------------------------------------------------------------------------
+// --- Benchmark dimensions ---------------------------------------------------
 
-const benchDataSize = 100 * 1024 * 1024 // 100 MB
-
-var benchFrameSizes = []int{
-	1 * 1024 * 1024, // 1 MB
-	2 * 1024 * 1024, // 2 MB
-	4 * 1024 * 1024, // 4 MB (= MemoryChunkSize)
-}
+const (
+	megabyte      = 1024 * 1024
+	benchDataSize = 100 * megabyte
+	benchWorkers  = 4
+)
 
 var benchBlockSizes = []int64{
-	4 * 1024,        // 4 KB — typical VM page fault
-	2 * 1024 * 1024, // 2 MB — large sequential read
+	4 * 1024,     // 4 KB — typical VM page fault
+	2 * megabyte, // 2 MB — hugepage / sequential read
 }
-
-// ---------------------------------------------------------------------------
-// Backend profiles (simulated latency/bandwidth)
-// ---------------------------------------------------------------------------
 
 type backendProfile struct {
 	name      string
@@ -43,48 +36,41 @@ type backendProfile struct {
 }
 
 var profiles = []backendProfile{
-	{name: "GCS", ttfb: 50 * time.Millisecond, bandwidth: 100 * 1024 * 1024},
-	{name: "NFS", ttfb: 1 * time.Millisecond, bandwidth: 500 * 1024 * 1024},
+	{name: "GCS", ttfb: 50 * time.Millisecond, bandwidth: 100 * megabyte},
+	{name: "NFS", ttfb: 1 * time.Millisecond, bandwidth: 500 * megabyte},
 }
-
-// ---------------------------------------------------------------------------
-// Codec configurations
-// ---------------------------------------------------------------------------
 
 type codecConfig struct {
 	name            string
 	compressionType storage.CompressionType
 	level           int
+	frameSize       int
 }
 
 var benchCodecs = []codecConfig{
-	{name: "LZ4", compressionType: storage.CompressionLZ4, level: 0},
-	{name: "Zstd1", compressionType: storage.CompressionZstd, level: 1},
-	{name: "Zstd3", compressionType: storage.CompressionZstd, level: 3},
+	{name: "LZ4/2MB", compressionType: storage.CompressionLZ4, level: 0, frameSize: 2 * megabyte},
+	{name: "Zstd1/2MB", compressionType: storage.CompressionZstd, level: 1, frameSize: 2 * megabyte},
+	{name: "Zstd2/2MB", compressionType: storage.CompressionZstd, level: 2, frameSize: 2 * megabyte},
+	{name: "Zstd3/2MB", compressionType: storage.CompressionZstd, level: 3, frameSize: 2 * megabyte},
 }
 
-// ---------------------------------------------------------------------------
-// Generic read function + setup types
-// ---------------------------------------------------------------------------
+// --- Setup helpers ----------------------------------------------------------
 
-type benchReadFunc func(ctx context.Context, off, length int64) ([]byte, error)
+type benchReadF func(ctx context.Context, off, length int64) ([]byte, error)
 
 type coldSetup struct {
-	read       benchReadFunc
+	read       benchReadF
 	close      func()
 	fetchCount func() int64
-	storeBytes int64 // compressed bytes transferred per iteration (= benchDataSize for uncompressed)
+	storeBytes int64 // compressed bytes per iteration (= benchDataSize for uncompressed)
 }
 
-// ---------------------------------------------------------------------------
-// Shared helpers
-// ---------------------------------------------------------------------------
+// coldSetupF creates a fresh coldSetup for the Nth iteration (cold cache needs
+// to be reinitialized every time).
+type coldSetupF func(tb testing.TB, profile backendProfile, blockSize int64) coldSetup
 
-const benchWorkers = 4
-
-func newBenchFlags(tb testing.TB) *MockFlagsClient {
+func newFlags(tb testing.TB) *MockFlagsClient {
 	tb.Helper()
-
 	m := NewMockFlagsClient(tb)
 	m.EXPECT().JSONFlag(mock.Anything, mock.Anything).Return(
 		ldvalue.FromJSONMarshal(map[string]any{"minReadBatchSizeKB": 256}),
@@ -93,14 +79,26 @@ func newBenchFlags(tb testing.TB) *MockFlagsClient {
 	return m
 }
 
+func newChunker(tb testing.TB, assets AssetInfo, blockSize int64) *Chunker {
+	tb.Helper()
+	c, err := NewChunker(assets, blockSize, tb.TempDir()+"/cache", newTestMetrics(tb), newFlags(tb))
+	require.NoError(tb, err)
+
+	return c
+}
+
+func newLegacyChunker(tb testing.TB, upstream storage.FramedFile, size, blockSize int64) *fullFetchChunker {
+	tb.Helper()
+	c, err := newFullFetchChunker(size, blockSize, upstream, tb.TempDir()+"/cache", newTestMetrics(tb))
+	require.NoError(tb, err)
+
+	return c
+}
+
 func generateSemiRandomData(size int) []byte {
 	data := make([]byte, size)
-	rng := rand.New(rand.NewPCG(1, 2)) //nolint:gosec // deterministic for benchmarks
-
-	// Random byte value repeated 1–16 times. Resembles real VM memory:
-	// mostly random with occasional short runs (zero-filled structs, padding).
-	// Kept short enough that compression stays under ~4x so frame count
-	// scales with TargetFrameSize without hitting DefaultMaxFrameUncompressedSize.
+	rng := rand.New(rand.NewPCG(1, 2)) //nolint:gosec // deterministic
+	// Random byte repeated 1–16 times.
 	i := 0
 	for i < size {
 		runLen := rng.IntN(16) + 1
@@ -117,34 +115,14 @@ func generateSemiRandomData(size int) []byte {
 	return data
 }
 
-func newBenchChunker(tb testing.TB, assets AssetInfo, blockSize int64) *Chunker {
-	tb.Helper()
-
-	c, err := NewChunker(assets, blockSize, tb.TempDir()+"/cache", newTestMetrics(tb), newBenchFlags(tb))
-	require.NoError(tb, err)
-
-	return c
-}
-
-func newFullFetchBench(tb testing.TB, upstream storage.FramedFile, size, blockSize int64) *fullFetchChunker {
-	tb.Helper()
-
-	c, err := newFullFetchChunker(size, blockSize, upstream, tb.TempDir()+"/cache", newTestMetrics(tb))
-	require.NoError(tb, err)
-
-	return c
-}
-
 func shuffledOffsets(dataSize, blockSize int64) []int64 {
 	n := (dataSize + blockSize - 1) / blockSize
 	offsets := make([]int64, n)
 	for i := range offsets {
 		offsets[i] = int64(i) * blockSize
 	}
-	rng := rand.New(rand.NewPCG(42, 99)) //nolint:gosec // deterministic for benchmarks
-	rng.Shuffle(len(offsets), func(i, j int) {
-		offsets[i], offsets[j] = offsets[j], offsets[i]
-	})
+	rng := rand.New(rand.NewPCG(42, 99)) //nolint:gosec // deterministic
+	rng.Shuffle(len(offsets), func(i, j int) { offsets[i], offsets[j] = offsets[j], offsets[i] })
 
 	return offsets
 }
@@ -169,33 +147,11 @@ func frameTableCompressedSize(ft *storage.FrameTable) int64 {
 	return total
 }
 
-func setCompressedAsset(a *AssetInfo, ct storage.CompressionType, file storage.FramedFile) {
-	switch ct {
-	case storage.CompressionLZ4:
-		a.HasLZ4 = true
-		a.LZ4 = file
-	case storage.CompressionZstd:
-		a.HasZstd = true
-		a.Zstd = file
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Leaf runners
-// ---------------------------------------------------------------------------
-
-// runColdLeaf runs a single cold-concurrent benchmark leaf (one profile, one
-// blockSize, one mode). Each b.N iteration creates a fresh cold cache.
-//
-// Reported metrics (in addition to ns/op):
-//   - U-MB/op     — uncompressed megabytes delivered per iteration (fixed)
-//   - U-MB/s      — uncompressed throughput to the client
-//   - C-MB/op     — compressed megabytes fetched from store per iteration
-//   - fetches/op  — upstream fetch count (deduped)
-func runColdLeaf(b *testing.B, data []byte, blockSize int64, profile backendProfile, newIter func(tb testing.TB, slow *slowFrameGetter, blockSize int64) coldSetup) {
+// runCold benchmarks cold-cache concurrent reads. Each b.N iteration creates
+// a fresh cache and reads all offsets concurrently with benchWorkers goroutines.
+func runCold(b *testing.B, dataSize, blockSize int64, profile backendProfile, newIter coldSetupF) {
 	b.Helper()
 
-	dataSize := int64(len(data))
 	offsets := shuffledOffsets(dataSize, blockSize)
 	b.ResetTimer()
 
@@ -204,13 +160,11 @@ func runColdLeaf(b *testing.B, data []byte, blockSize int64, profile backendProf
 
 	for range b.N {
 		b.StopTimer()
-		slow := &slowFrameGetter{data: data, ttfb: profile.ttfb, bandwidth: profile.bandwidth}
-		s := newIter(b, slow, blockSize)
+		s := newIter(b, profile, blockSize)
 		storeBytes = s.storeBytes
 		b.StartTimer()
 
 		start := time.Now()
-
 		g, ctx := errgroup.WithContext(context.Background())
 		for w := range benchWorkers {
 			g.Go(func() error {
@@ -228,7 +182,6 @@ func runColdLeaf(b *testing.B, data []byte, blockSize int64, profile backendProf
 		if err := g.Wait(); err != nil {
 			b.Fatal(err)
 		}
-
 		totalElapsed += time.Since(start)
 
 		b.StopTimer()
@@ -239,18 +192,15 @@ func runColdLeaf(b *testing.B, data []byte, blockSize int64, profile backendProf
 
 	uMB := float64(dataSize) / (1024 * 1024)
 	cMB := float64(storeBytes) / (1024 * 1024)
-
 	b.ReportMetric(uMB, "U-MB/op")
 	b.ReportMetric(cMB, "C-MB/op")
-
 	if totalElapsed > 0 {
 		b.ReportMetric(uMB/(totalElapsed.Seconds()/float64(b.N)), "U-MB/s")
 	}
 }
 
-// runCacheHitLeaf runs a single cache-hit benchmark leaf (one blockSize, one
-// mode). Creates one chunker, warms the cache, then measures b.N reads.
-func runCacheHitLeaf(b *testing.B, dataSize, blockSize int64, read benchReadFunc) {
+// runCacheHit warms the cache once, then measures b.N reads from cache.
+func runCacheHit(b *testing.B, dataSize, blockSize int64, read benchReadF) {
 	b.Helper()
 
 	ctx := context.Background()
@@ -270,110 +220,12 @@ func runCacheHitLeaf(b *testing.B, dataSize, blockSize int64, read benchReadFunc
 	}
 }
 
-// ---------------------------------------------------------------------------
-// BenchmarkCacheHit
-//
-// block=4KB/
-//
-//	Legacy
-//	Uncompressed
-//
-// block=2MB/
-//
-//	Legacy
-//	Uncompressed
-//
-// ---------------------------------------------------------------------------
-func BenchmarkCacheHit(b *testing.B) {
-	data := generateSemiRandomData(benchDataSize)
-	dataSize := int64(len(data))
-
-	for _, blockSize := range benchBlockSizes {
-		b.Run(fmt.Sprintf("block=%s", fmtSize(blockSize)), func(b *testing.B) {
-			b.Run("Legacy", func(b *testing.B) {
-				getter := &slowFrameGetter{data: data}
-				c := newFullFetchBench(b, getter, dataSize, blockSize)
-				defer c.Close()
-
-				runCacheHitLeaf(b, dataSize, blockSize, func(ctx context.Context, off, length int64) ([]byte, error) {
-					return c.Slice(ctx, off, length)
-				})
-			})
-
-			b.Run("Uncompressed", func(b *testing.B) {
-				getter := &slowFrameGetter{data: data}
-				assets := AssetInfo{
-					BasePath:        "bench",
-					Size:            dataSize,
-					HasUncompressed: true,
-					Uncompressed:    getter,
-				}
-				c := newBenchChunker(b, assets, blockSize)
-				defer c.Close()
-
-				runCacheHitLeaf(b, dataSize, blockSize, func(ctx context.Context, off, length int64) ([]byte, error) {
-					return c.GetBlock(ctx, off, length, nil)
-				})
-			})
-		})
-	}
-}
-
-// ---------------------------------------------------------------------------
-// BenchmarkColdConcurrent
-//
-// GCS/
-//
-//	no-frame/
-//	  block=4KB/
-//	    Legacy
-//	    Uncompressed
-//	frame=1MB/
-//	  block=4KB/
-//	    LZ4
-//	    Zstd1
-//	    Zstd3
-//
-// NFS/
-//
-//	...
-//
-// ---------------------------------------------------------------------------
-func BenchmarkColdConcurrent(b *testing.B) {
-	data := generateSemiRandomData(benchDataSize)
-	dataSize := int64(len(data))
-
-	// Precompute frame tables so CompressBytes runs once per combo, not per profile.
-	type ftEntry struct {
-		ft *storage.FrameTable
-	}
-	type ftKey struct {
-		frameSize int
-		codecIdx  int
-	}
-
-	frameTables := make(map[ftKey]ftEntry)
-
-	for _, frameSize := range benchFrameSizes {
-		for ci, codec := range benchCodecs {
-			_, ft, err := storage.CompressBytes(context.Background(), data, &storage.FramedUploadOptions{
-				CompressionType:          codec.compressionType,
-				Level:                    codec.level,
-				CompressionConcurrency:   1,
-				TargetFrameSize:          frameSize,
-				MaxUncompressedFrameSize: storage.DefaultMaxFrameUncompressedSize,
-				TargetPartSize:           50 * 1024 * 1024,
-			})
-			require.NoError(b, err)
-
-			frameTables[ftKey{frameSize, ci}] = ftEntry{ft}
-		}
-	}
-
-	legacyFactory := func(tb testing.TB, slow *slowFrameGetter, blockSize int64) coldSetup {
+// newLegacySetup uses the old legacy chunker with a slow uncompressed backend.
+func newLegacySetup(data []byte, dataSize int64) coldSetupF {
+	return func(tb testing.TB, profile backendProfile, blockSize int64) coldSetup {
 		tb.Helper()
-
-		c := newFullFetchBench(tb, slow, dataSize, blockSize)
+		slow := &slowFrameGetter{data: data, ttfb: profile.ttfb, bandwidth: profile.bandwidth}
+		c := newLegacyChunker(tb, slow, dataSize, blockSize)
 
 		return coldSetup{
 			read:       func(ctx context.Context, off, length int64) ([]byte, error) { return c.Slice(ctx, off, length) },
@@ -382,17 +234,20 @@ func BenchmarkColdConcurrent(b *testing.B) {
 			storeBytes: benchDataSize,
 		}
 	}
+}
 
-	uncompressedFactory := func(tb testing.TB, slow *slowFrameGetter, blockSize int64) coldSetup {
+// newUncompressedSetup uses the new Chunker with a slow uncompressed backend.
+func newUncompressedSetup(data []byte, dataSize int64) coldSetupF {
+	return func(tb testing.TB, profile backendProfile, blockSize int64) coldSetup {
 		tb.Helper()
-
+		slow := &slowFrameGetter{data: data, ttfb: profile.ttfb, bandwidth: profile.bandwidth}
 		assets := AssetInfo{
 			BasePath:        "bench",
 			Size:            dataSize,
 			HasUncompressed: true,
 			Uncompressed:    slow,
 		}
-		c := newBenchChunker(tb, assets, blockSize)
+		c := newChunker(tb, assets, blockSize)
 
 		return coldSetup{
 			read:       func(ctx context.Context, off, length int64) ([]byte, error) { return c.GetBlock(ctx, off, length, nil) },
@@ -401,52 +256,118 @@ func BenchmarkColdConcurrent(b *testing.B) {
 			storeBytes: benchDataSize,
 		}
 	}
+}
+
+// newCompressedSetup uses the new Chunker with real compressed data + decompression.
+// The getter is set as both LZ4 and Zstd — the Chunker picks the right one based on the FT.
+func newCompressedSetup(dataSize int64, ft *storage.FrameTable, compressedData []byte) coldSetupF {
+	cBytes := frameTableCompressedSize(ft)
+
+	return func(tb testing.TB, profile backendProfile, blockSize int64) coldSetup {
+		tb.Helper()
+		getter := &slowFrameGetter{
+			data:      compressedData,
+			ttfb:      profile.ttfb,
+			bandwidth: profile.bandwidth,
+		}
+		c := newChunker(tb, AssetInfo{
+			BasePath: "bench",
+			Size:     dataSize,
+			HasLZ4:   true,
+			LZ4:      getter,
+			HasZstd:  true,
+			Zstd:     getter,
+		}, blockSize)
+
+		return coldSetup{
+			read:       func(ctx context.Context, off, length int64) ([]byte, error) { return c.GetBlock(ctx, off, length, ft) },
+			close:      func() { c.Close() },
+			fetchCount: func() int64 { return getter.fetchCount.Load() },
+			storeBytes: cBytes,
+		}
+	}
+}
+
+// --- BenchmarkCacheHit ------------------------------------------------------
+
+func BenchmarkCacheHit(b *testing.B) {
+	data := generateSemiRandomData(benchDataSize)
+	dataSize := int64(len(data))
+
+	for _, blockSize := range benchBlockSizes {
+		b.Run(fmt.Sprintf("block=%s", fmtSize(blockSize)), func(b *testing.B) {
+			b.Run("Legacy", func(b *testing.B) {
+				getter := &slowFrameGetter{data: data}
+				c := newLegacyChunker(b, getter, dataSize, blockSize)
+				defer c.Close()
+				runCacheHit(b, dataSize, blockSize, func(ctx context.Context, off, length int64) ([]byte, error) {
+					return c.Slice(ctx, off, length)
+				})
+			})
+
+			b.Run("Uncompressed", func(b *testing.B) {
+				getter := &slowFrameGetter{data: data}
+				assets := AssetInfo{BasePath: "bench", Size: dataSize, HasUncompressed: true, Uncompressed: getter}
+				c := newChunker(b, assets, blockSize)
+				defer c.Close()
+				runCacheHit(b, dataSize, blockSize, func(ctx context.Context, off, length int64) ([]byte, error) {
+					return c.GetBlock(ctx, off, length, nil)
+				})
+			})
+		})
+	}
+}
+
+// --- BenchmarkColdConcurrent ------------------------------------------------
+
+func BenchmarkColdConcurrent(b *testing.B) {
+	data := generateSemiRandomData(benchDataSize)
+	dataSize := int64(len(data))
+
+	// Precompute compressed data + frame tables for each codec config.
+	type compressedBundle struct {
+		ft             *storage.FrameTable
+		compressedData []byte
+	}
+	bundles := make([]compressedBundle, len(benchCodecs))
+
+	for ci, codec := range benchCodecs {
+		up := &storage.MemPartUploader{}
+		ft, err := storage.CompressStream(context.Background(), bytes.NewReader(data), &storage.FramedUploadOptions{
+			CompressionType:    codec.compressionType,
+			Level:              codec.level,
+			EncoderConcurrency: 1,
+			EncodeWorkers:      1,
+			FrameSize:          codec.frameSize,
+			TargetPartSize:     50 * 1024 * 1024,
+		}, up)
+		require.NoError(b, err)
+		bundles[ci] = compressedBundle{ft, up.Assemble()}
+	}
 
 	for _, profile := range profiles {
 		b.Run(profile.name, func(b *testing.B) {
-			// Uncompressed: no-frame → block → {Legacy, Uncompressed}
+			// Uncompressed paths: Legacy and Uncompressed (new Chunker).
 			b.Run("no-frame", func(b *testing.B) {
 				for _, blockSize := range benchBlockSizes {
 					b.Run(fmt.Sprintf("block=%s", fmtSize(blockSize)), func(b *testing.B) {
 						b.Run("Legacy", func(b *testing.B) {
-							runColdLeaf(b, data, blockSize, profile, legacyFactory)
+							runCold(b, dataSize, blockSize, profile, newLegacySetup(data, dataSize))
 						})
 						b.Run("Uncompressed", func(b *testing.B) {
-							runColdLeaf(b, data, blockSize, profile, uncompressedFactory)
+							runCold(b, dataSize, blockSize, profile, newUncompressedSetup(data, dataSize))
 						})
 					})
 				}
 			})
 
-			// Compressed: frame → block → codec
-			for _, frameSize := range benchFrameSizes {
-				b.Run(fmt.Sprintf("frame=%s", fmtSize(int64(frameSize))), func(b *testing.B) {
+			// Compressed paths: all codec options
+			for ci, codec := range benchCodecs {
+				entry := bundles[ci]
+				b.Run(codec.name, func(b *testing.B) {
 					for _, blockSize := range benchBlockSizes {
 						b.Run(fmt.Sprintf("block=%s", fmtSize(blockSize)), func(b *testing.B) {
-							for ci, codec := range benchCodecs {
-								ft := frameTables[ftKey{frameSize, ci}].ft
-								cBytes := frameTableCompressedSize(ft)
-
-								b.Run(codec.name, func(b *testing.B) {
-									runColdLeaf(b, data, blockSize, profile, func(tb testing.TB, slow *slowFrameGetter, blockSize int64) coldSetup {
-										tb.Helper()
-
-										assets := AssetInfo{
-											BasePath: "bench",
-											Size:     dataSize,
-										}
-										setCompressedAsset(&assets, codec.compressionType, slow)
-										c := newBenchChunker(tb, assets, blockSize)
-
-										return coldSetup{
-											read:       func(ctx context.Context, off, length int64) ([]byte, error) { return c.GetBlock(ctx, off, length, ft) },
-											close:      func() { c.Close() },
-											fetchCount: func() int64 { return slow.fetchCount.Load() },
-											storeBytes: cBytes,
-										}
-									})
-								})
-							}
+							runCold(b, dataSize, blockSize, profile, newCompressedSetup(dataSize, entry.ft, entry.compressedData))
 						})
 					}
 				})

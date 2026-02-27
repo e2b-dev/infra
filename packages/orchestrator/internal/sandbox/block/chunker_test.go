@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"io"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -30,10 +31,9 @@ const (
 // Test fakes
 // ---------------------------------------------------------------------------
 
-// slowFrameGetter implements storage.FramedFile for testing and benchmarks.
-// Serves raw uncompressed data with optional latency (ttfb) and bandwidth
-// simulation. Used as both the Uncompressed and compressed FramedFile handle
-// (Chunker always passes decompress=true, so real decompression never happens).
+// slowFrameGetter implements storage.FramedFile backed by an in-memory []byte.
+// Simulates TTFB and bandwidth, delegates to storage.ReadFrame for the actual
+// frame reading/decompression (same code path as GCS/S3/FS backends).
 type slowFrameGetter struct {
 	data       []byte
 	ttfb       time.Duration
@@ -51,56 +51,58 @@ func (s *slowFrameGetter) StoreFile(context.Context, string, *storage.FramedUplo
 	panic("slowFrameGetter: StoreFile not used in tests")
 }
 
-func (s *slowFrameGetter) GetFrame(_ context.Context, offsetU int64, _ *storage.FrameTable, _ bool, buf []byte, readSize int64, onRead func(int64)) (storage.Range, error) {
+func (s *slowFrameGetter) GetFrame(ctx context.Context, offsetU int64, frameTable *storage.FrameTable, decompress bool, buf []byte, readSize int64, onRead func(int64)) (storage.Range, error) {
 	s.fetchCount.Add(1)
 
 	if s.ttfb > 0 {
 		time.Sleep(s.ttfb)
 	}
 
-	end := min(offsetU+int64(len(buf)), int64(len(s.data)))
-	n := copy(buf, s.data[offsetU:end])
-
-	// Progressive delivery with optional bandwidth simulation.
-	if onRead != nil {
-		batch := readSize
-		if batch <= 0 {
-			batch = int64(n)
+	rangeRead := func(_ context.Context, offset int64, length int) (io.ReadCloser, error) {
+		end := min(offset+int64(length), int64(len(s.data)))
+		r := io.Reader(bytes.NewReader(s.data[offset:end]))
+		if s.bandwidth > 0 {
+			r = &throttledReader{r: r, bandwidth: s.bandwidth}
 		}
 
-		for written := batch; written <= int64(n); written += batch {
-			if s.bandwidth > 0 {
-				delay := time.Duration(float64(batch) / float64(s.bandwidth) * float64(time.Second))
-				time.Sleep(delay)
-			}
-			onRead(written)
-		}
-		if int64(n)%batch != 0 {
-			tail := int64(n) % batch
-			if s.bandwidth > 0 {
-				delay := time.Duration(float64(tail) / float64(s.bandwidth) * float64(time.Second))
-				time.Sleep(delay)
-			}
-			onRead(int64(n))
-		}
+		return io.NopCloser(r), nil
 	}
 
-	return storage.Range{Start: offsetU, Length: n}, nil
+	return storage.ReadFrame(ctx, rangeRead, "test", offsetU, frameTable, decompress, buf, readSize, onRead)
 }
 
-// makeCompressedTestData builds a synthetic FrameTable with testFrameSize
-// boundaries and a slowFrameGetter that serves the original data. The C sizes
-// are set equal to U sizes since Chunker only uses U-space values.
+// throttledReader simulates network bandwidth by sleeping after each Read.
+type throttledReader struct {
+	r         io.Reader
+	bandwidth int64
+}
+
+func (t *throttledReader) Read(p []byte) (int, error) {
+	n, err := t.r.Read(p)
+	if n > 0 && t.bandwidth > 0 {
+		delay := time.Duration(float64(n) / float64(t.bandwidth) * float64(time.Second))
+		time.Sleep(delay)
+	}
+
+	return n, err
+}
+
+// makeCompressedTestData compresses data with LZ4 in testFrameSize frames and
+// returns the frame table + a slowFrameGetter backed by the compressed bytes.
 func makeCompressedTestData(tb testing.TB, data []byte, ttfb time.Duration) (*storage.FrameTable, *slowFrameGetter) {
 	tb.Helper()
 
-	ft := &storage.FrameTable{CompressionType: storage.CompressionLZ4}
-	for off := 0; off < len(data); off += testFrameSize {
-		u := int32(min(testFrameSize, len(data)-off))
-		ft.Frames = append(ft.Frames, storage.FrameSize{U: u, C: u})
-	}
+	up := &storage.MemPartUploader{}
+	ft, err := storage.CompressStream(context.Background(), bytes.NewReader(data), &storage.FramedUploadOptions{
+		CompressionType:    storage.CompressionLZ4,
+		EncoderConcurrency: 1,
+		EncodeWorkers:      1,
+		FrameSize:          testFrameSize,
+		TargetPartSize:     50 * 1024 * 1024,
+	}, up)
+	require.NoError(tb, err)
 
-	return ft, &slowFrameGetter{data: data, ttfb: ttfb}
+	return ft, &slowFrameGetter{data: up.Assemble(), ttfb: ttfb}
 }
 
 // testProgressiveStorage implements storage.FramedFile with progressive
@@ -109,7 +111,6 @@ type testProgressiveStorage struct {
 	data       []byte
 	batchDelay time.Duration // delay between onRead callbacks
 	failAfter  int64         // absolute U-offset to error at (-1 = disabled)
-	panicAfter int64         // absolute U-offset to panic at (-1 = disabled)
 	gate       chan struct{} // if non-nil, GetFrame blocks until closed
 	fetchCount atomic.Int64
 }
@@ -157,9 +158,6 @@ func (p *testProgressiveStorage) GetFrame(_ context.Context, offsetU int64, ft *
 		relEnd := end - srcStart
 
 		// Check fault injection before each batch.
-		if p.panicAfter >= 0 && pos >= p.panicAfter {
-			panic("simulated upstream panic")
-		}
 		if p.failAfter >= 0 && pos >= p.failAfter {
 			// Notify what we have so far, then error.
 			if onRead != nil && written > 0 {
@@ -246,146 +244,6 @@ func allChunkerTestCases() []chunkerTestCase {
 // ---------------------------------------------------------------------------
 // Concurrency tests (from chunker_concurrency_test.go)
 // ---------------------------------------------------------------------------
-
-func TestChunker_ConcurrentSameOffset(t *testing.T) {
-	t.Parallel()
-
-	for _, tc := range allChunkerTestCases() {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			data := makeTestData(t, testFileSize)
-			chunker, ft := tc.newChunker(t, data, 100*time.Microsecond)
-			defer chunker.Close()
-
-			const numGoroutines = 20
-			off := int64(0)
-			readLen := int64(testBlockSize)
-
-			results := make([][]byte, numGoroutines)
-			var eg errgroup.Group
-
-			for i := range numGoroutines {
-				eg.Go(func() error {
-					slice, err := chunker.GetBlock(t.Context(), off, readLen, ft)
-					if err != nil {
-						return fmt.Errorf("goroutine %d: %w", i, err)
-					}
-					results[i] = make([]byte, len(slice))
-					copy(results[i], slice)
-
-					return nil
-				})
-			}
-
-			require.NoError(t, eg.Wait())
-
-			for i := range numGoroutines {
-				assert.Equal(t, data[off:off+readLen], results[i],
-					"goroutine %d got wrong data", i)
-			}
-		})
-	}
-}
-
-func TestChunker_ConcurrentDifferentOffsets(t *testing.T) {
-	t.Parallel()
-
-	for _, tc := range allChunkerTestCases() {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			data := makeTestData(t, testFileSize)
-			chunker, ft := tc.newChunker(t, data, 50*time.Microsecond)
-			defer chunker.Close()
-
-			const numGoroutines = 10
-			readLen := int64(testBlockSize)
-
-			// Pick offsets spread across the file.
-			offsets := make([]int64, numGoroutines)
-			for i := range numGoroutines {
-				offsets[i] = int64(i) * readLen
-				if offsets[i]+readLen > int64(len(data)) {
-					offsets[i] = 0
-				}
-			}
-
-			results := make([][]byte, numGoroutines)
-			var eg errgroup.Group
-
-			for i := range numGoroutines {
-				eg.Go(func() error {
-					slice, err := chunker.GetBlock(t.Context(), offsets[i], readLen, ft)
-					if err != nil {
-						return fmt.Errorf("goroutine %d (off=%d): %w", i, offsets[i], err)
-					}
-					results[i] = make([]byte, len(slice))
-					copy(results[i], slice)
-
-					return nil
-				})
-			}
-
-			require.NoError(t, eg.Wait())
-
-			for i := range numGoroutines {
-				assert.Equal(t, data[offsets[i]:offsets[i]+readLen], results[i],
-					"goroutine %d got wrong data", i)
-			}
-		})
-	}
-}
-
-func TestChunker_ConcurrentMixed(t *testing.T) {
-	t.Parallel()
-
-	for _, tc := range allChunkerTestCases() {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			data := makeTestData(t, testFileSize)
-			chunker, ft := tc.newChunker(t, data, 50*time.Microsecond)
-			defer chunker.Close()
-
-			// Mix of ReadBlock, GetBlock, and repeated same-offset reads.
-			const numGoroutines = 15
-			readLen := int64(testBlockSize)
-
-			var eg errgroup.Group
-
-			for i := range numGoroutines {
-				off := int64((i % 4) * testBlockSize) // 4 distinct offsets
-				eg.Go(func() error {
-					if i%2 == 0 {
-						// GetBlock path
-						slice, err := chunker.GetBlock(t.Context(), off, readLen, ft)
-						if err != nil {
-							return fmt.Errorf("goroutine %d GetBlock: %w", i, err)
-						}
-						if !bytes.Equal(data[off:off+readLen], slice) {
-							return fmt.Errorf("goroutine %d GetBlock: data mismatch at off=%d", i, off)
-						}
-					} else {
-						// ReadBlock path
-						buf := make([]byte, readLen)
-						n, err := chunker.ReadBlock(t.Context(), buf, off, ft)
-						if err != nil {
-							return fmt.Errorf("goroutine %d ReadBlock: %w", i, err)
-						}
-						if !bytes.Equal(data[off:off+int64(n)], buf[:n]) {
-							return fmt.Errorf("goroutine %d ReadBlock: data mismatch at off=%d", i, off)
-						}
-					}
-
-					return nil
-				})
-			}
-
-			require.NoError(t, eg.Wait())
-		})
-	}
-}
 
 func TestChunker_ConcurrentStress(t *testing.T) {
 	t.Parallel()
@@ -526,7 +384,8 @@ func TestChunker_DualMode_SharedCache(t *testing.T) {
 	t.Parallel()
 
 	data := makeTestData(t, testFileSize)
-	ft, getter := makeCompressedTestData(t, data, 0)
+	ft, compressedGetter := makeCompressedTestData(t, data, 0)
+	uncompressedGetter := &slowFrameGetter{data: data}
 
 	// Create ONE chunker with both compressed and uncompressed assets available.
 	chunker, err := NewChunker(
@@ -535,8 +394,8 @@ func TestChunker_DualMode_SharedCache(t *testing.T) {
 			Size:            int64(len(data)),
 			HasLZ4:          true,
 			HasUncompressed: true,
-			Uncompressed:    getter,
-			LZ4:             getter,
+			Uncompressed:    uncompressedGetter,
+			LZ4:             compressedGetter,
 		},
 		testBlockSize,
 		t.TempDir()+"/cache",
@@ -548,12 +407,16 @@ func TestChunker_DualMode_SharedCache(t *testing.T) {
 
 	readLen := int64(testBlockSize)
 
+	totalFetches := func() int64 {
+		return compressedGetter.fetchCount.Load() + uncompressedGetter.fetchCount.Load()
+	}
+
 	// --- Phase 1: Compressed caller fetches frame 0 ---
 	slice1, err := chunker.GetBlock(t.Context(), 0, readLen, ft)
 	require.NoError(t, err)
 	assert.Equal(t, data[0:readLen], slice1, "compressed read: data mismatch at offset 0")
 
-	fetchesAfterPhase1 := getter.fetchCount.Load()
+	fetchesAfterPhase1 := totalFetches()
 	assert.Equal(t, int64(1), fetchesAfterPhase1, "expected 1 fetch for frame 0")
 
 	// --- Phase 2: Uncompressed caller reads offset 0 — should be served from cache ---
@@ -562,7 +425,7 @@ func TestChunker_DualMode_SharedCache(t *testing.T) {
 	assert.Equal(t, data[0:readLen], slice2, "uncompressed read from cache: data mismatch at offset 0")
 
 	// No new fetches should have occurred.
-	assert.Equal(t, fetchesAfterPhase1, getter.fetchCount.Load(),
+	assert.Equal(t, fetchesAfterPhase1, totalFetches(),
 		"uncompressed read of cached region should not trigger any fetch")
 
 	// --- Phase 3: Uncompressed caller reads a new region (frame 1) ---
@@ -573,9 +436,9 @@ func TestChunker_DualMode_SharedCache(t *testing.T) {
 		"uncompressed read: data mismatch at frame 1")
 
 	// This should have triggered a new fetch via GetFrame (uncompressed path).
-	assert.Greater(t, getter.fetchCount.Load(), fetchesAfterPhase1,
+	assert.Greater(t, totalFetches(), fetchesAfterPhase1,
 		"new region should trigger a fetch")
-	fetchesAfterPhase3 := getter.fetchCount.Load()
+	fetchesAfterPhase3 := totalFetches()
 
 	// --- Phase 4: Compressed caller reads frame 1 — should be served from cache ---
 	slice4, err := chunker.GetBlock(t.Context(), frame1Off, readLen, ft)
@@ -584,32 +447,13 @@ func TestChunker_DualMode_SharedCache(t *testing.T) {
 		"compressed read from cache: data mismatch at frame 1")
 
 	// No new fetches for frame 1.
-	assert.Equal(t, fetchesAfterPhase3, getter.fetchCount.Load(),
+	assert.Equal(t, fetchesAfterPhase3, totalFetches(),
 		"compressed read of cached region should not trigger new fetch")
 }
 
 // ---------------------------------------------------------------------------
 // Progressive delivery tests (ported from main's streaming_chunk_test.go)
 // ---------------------------------------------------------------------------
-
-// TestChunker_BasicGetBlock is a simple smoke test: read one block at offset 0.
-func TestChunker_BasicGetBlock(t *testing.T) {
-	t.Parallel()
-
-	for _, tc := range allChunkerTestCases() {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			data := makeTestData(t, testFileSize)
-			chunker, ft := tc.newChunker(t, data, 0)
-			defer chunker.Close()
-
-			slice, err := chunker.GetBlock(t.Context(), 0, testBlockSize, ft)
-			require.NoError(t, err)
-			require.Equal(t, data[:testBlockSize], slice)
-		})
-	}
-}
 
 // TestChunker_FullChunkCachedAfterPartialRequest verifies that requesting the
 // first block triggers a full background fetch of the entire chunk/frame, so
@@ -662,7 +506,7 @@ func TestChunker_FullChunkCachedAfterPartialRequest(t *testing.T) {
 	t.Run("Uncompressed", func(t *testing.T) {
 		t.Parallel()
 
-		data := makeTestData(t, storage.MemoryChunkSize)
+		data := makeTestData(t, storage.DefaultCompressFrameSize)
 		getter := &slowFrameGetter{data: data}
 
 		chunker, err := NewChunker(
@@ -683,7 +527,7 @@ func TestChunker_FullChunkCachedAfterPartialRequest(t *testing.T) {
 		_, err = chunker.GetBlock(t.Context(), 0, testBlockSize, nil)
 		require.NoError(t, err)
 
-		lastOff := int64(storage.MemoryChunkSize) - testBlockSize
+		lastOff := int64(storage.DefaultCompressFrameSize) - testBlockSize
 		require.Eventually(t, func() bool {
 			slice, err := chunker.GetBlock(t.Context(), lastOff, testBlockSize, nil)
 			if err != nil {
@@ -710,7 +554,6 @@ func TestChunker_EarlyReturn(t *testing.T) {
 		data:       data,
 		batchDelay: 50 * time.Microsecond,
 		failAfter:  -1,
-		panicAfter: -1,
 		gate:       gate,
 	}
 
@@ -775,9 +618,8 @@ func TestChunker_ErrorKeepsPartialData(t *testing.T) {
 	data := makeTestData(t, testFileSize)
 
 	getter := &testProgressiveStorage{
-		data:       data,
-		failAfter:  int64(testFileSize / 2),
-		panicAfter: -1,
+		data:      data,
+		failAfter: int64(testFileSize / 2),
 	}
 
 	chunker, err := NewChunker(
@@ -817,7 +659,6 @@ func TestChunker_ContextCancellation(t *testing.T) {
 		data:       data,
 		batchDelay: 100 * time.Microsecond,
 		failAfter:  -1,
-		panicAfter: -1,
 	}
 
 	chunker, err := NewChunker(
@@ -926,45 +767,4 @@ func TestChunker_LastBlockPartial(t *testing.T) {
 			require.Equal(t, localData[lastBlockOff:], slice)
 		})
 	}
-}
-
-// TestChunker_PanicRecovery verifies that an upstream panic is recovered and
-// converted to an error. Data before the panic point remains servable.
-func TestChunker_PanicRecovery(t *testing.T) {
-	t.Parallel()
-
-	data := makeTestData(t, testFileSize)
-	panicAt := int64(testFileSize / 2)
-
-	getter := &testProgressiveStorage{
-		data:       data,
-		panicAfter: panicAt,
-		failAfter:  -1,
-	}
-
-	chunker, err := NewChunker(
-		AssetInfo{
-			BasePath:        "test-object",
-			Size:            int64(len(data)),
-			HasUncompressed: true,
-			Uncompressed:    getter,
-		},
-		testBlockSize,
-		t.TempDir()+"/cache",
-		newTestMetrics(t),
-		newTestFlags(t),
-	)
-	require.NoError(t, err)
-	defer chunker.Close()
-
-	// Request data past the panic point — should get an error, not hang or crash.
-	lastOff := int64(testFileSize) - testBlockSize
-	_, err = chunker.GetBlock(t.Context(), lastOff, testBlockSize, nil)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "panicked")
-
-	// Data before the panic point should still be cached.
-	slice, err := chunker.GetBlock(t.Context(), 0, testBlockSize, nil)
-	require.NoError(t, err)
-	require.Equal(t, data[:testBlockSize], slice)
 }

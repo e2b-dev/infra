@@ -466,7 +466,7 @@ func parseServiceAccountBase64(serviceAccount string) (*gcpServiceToken, error) 
 func (o *gcpObject) GetFrame(ctx context.Context, offsetU int64, frameTable *FrameTable, decompress bool, buf []byte, readSize int64, onRead func(totalWritten int64)) (Range, error) {
 	timer := googleReadTimerFactory.Begin(attribute.String(gcsOperationAttr, gcsOperationAttrGetFrame))
 
-	r, err := getFrame(ctx, o.openRangeReader, "GCS:"+o.path, offsetU, frameTable, decompress, buf, readSize, onRead)
+	r, err := ReadFrame(ctx, o.openRangeReader, "GCS:"+o.path, offsetU, frameTable, decompress, buf, readSize, onRead)
 	if err != nil {
 		timer.Failure(ctx, int64(r.Length))
 

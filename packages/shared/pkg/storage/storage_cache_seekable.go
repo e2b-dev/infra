@@ -109,58 +109,70 @@ func (c *cachedFramedFile) getFrameCompressed(ctx context.Context, offsetU int64
 
 	framePath := makeFrameFilename(c.path, frameStart, frameSize)
 
-	// Try NFS cache
-	readTimer := cacheSlabReadTimerFactory.Begin(attribute.String(nfsCacheOperationAttr, nfsCacheOperationAttrGetFrame))
-	compressedBuf := make([]byte, frameSize.C)
-	n, readErr := readCacheFile(framePath, compressedBuf)
+	timer := cacheSlabReadTimerFactory.Begin(attribute.String(nfsCacheOperationAttr, nfsCacheOperationAttrGetFrame))
 
+	// Try NFS cache — stream directly from file into the decompressor.
+	f, readErr := os.Open(framePath)
 	if readErr == nil {
-		// Cache hit
-		readTimer.Success(ctx, int64(n))
-		recordCacheRead(ctx, true, int64(n), cacheTypeFramedFile, cacheOpGetFrame)
-	} else {
-		readTimer.Failure(ctx, 0)
+		recordCacheRead(ctx, true, int64(frameSize.C), cacheTypeFramedFile, cacheOpGetFrame)
 
-		if !os.IsNotExist(readErr) {
-			recordCacheReadError(ctx, cacheTypeFramedFile, cacheOpGetFrame, readErr)
+		rangeRead := func(_ context.Context, _ int64, _ int) (io.ReadCloser, error) {
+			return f, nil
 		}
 
-		// Cache miss: fetch compressed data from inner
-		_, err = c.inner.GetFrame(ctx, offsetU, frameTable, false, compressedBuf, readSize, nil)
+		r, err := ReadFrame(ctx, rangeRead, "NFS:"+c.path, offsetU, frameTable, decompress, buf, readSize, onRead)
 		if err != nil {
-			return Range{}, fmt.Errorf("cache GetFrame: inner fetch for offset %#x: %w", offsetU, err)
+			timer.Failure(ctx, int64(r.Length))
+
+			return r, err
 		}
 
-		n = int(frameSize.C)
-		recordCacheRead(ctx, false, int64(n), cacheTypeFramedFile, cacheOpGetFrame)
+		timer.Success(ctx, int64(r.Length))
 
-		// Async write-back
-		dataCopy := make([]byte, n)
-		copy(dataCopy, compressedBuf[:n])
-
-		c.goCtx(ctx, func(ctx context.Context) {
-			if err := c.writeFrameToCache(ctx, framePath, dataCopy); err != nil {
-				recordCacheWriteError(ctx, cacheTypeFramedFile, cacheOpGetFrame, err)
-			}
-		})
+		return r, nil
 	}
 
-	if !decompress {
-		copy(buf, compressedBuf[:n])
-		if onRead != nil {
-			onRead(int64(n))
-		}
-
-		return Range{Start: frameStart.C, Length: n}, nil
+	if !os.IsNotExist(readErr) {
+		recordCacheReadError(ctx, cacheTypeFramedFile, cacheOpGetFrame, readErr)
 	}
 
-	// Decompress: stream compressed data through a pooled decoder into buf
-	decompN, err := decompressInto(frameTable.CompressionType, compressedBuf[:n], buf, readSize, onRead)
+	// Cache miss: fetch compressed data from inner
+	compressedBuf := make([]byte, frameSize.C)
+
+	_, err = c.inner.GetFrame(ctx, offsetU, frameTable, false, compressedBuf, readSize, nil)
 	if err != nil {
-		return Range{}, fmt.Errorf("cache GetFrame: decompress for offset %#x: %w", offsetU, err)
+		timer.Failure(ctx, 0)
+
+		return Range{}, fmt.Errorf("cache GetFrame: inner fetch for offset %#x: %w", offsetU, err)
 	}
 
-	return Range{Start: frameStart.C, Length: decompN}, nil
+	recordCacheRead(ctx, false, int64(frameSize.C), cacheTypeFramedFile, cacheOpGetFrame)
+
+	// Async write-back
+	dataCopy := make([]byte, frameSize.C)
+	copy(dataCopy, compressedBuf)
+
+	c.goCtx(ctx, func(ctx context.Context) {
+		if err := c.writeFrameToCache(ctx, framePath, dataCopy); err != nil {
+			recordCacheWriteError(ctx, cacheTypeFramedFile, cacheOpGetFrame, err)
+		}
+	})
+
+	// Decompress from the in-memory buffer
+	rangeRead := func(_ context.Context, _ int64, length int) (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(compressedBuf[:min(int(frameSize.C), length)])), nil
+	}
+
+	r, err := ReadFrame(ctx, rangeRead, "NFS:"+c.path, offsetU, frameTable, decompress, buf, readSize, onRead)
+	if err != nil {
+		timer.Failure(ctx, int64(r.Length))
+
+		return r, err
+	}
+
+	timer.Success(ctx, int64(r.Length))
+
+	return r, nil
 }
 
 func (c *cachedFramedFile) getFrameUncompressed(ctx context.Context, offsetU int64, buf []byte, readSize int64, onRead func(totalWritten int64)) (_ Range, e error) {
@@ -176,21 +188,28 @@ func (c *cachedFramedFile) getFrameUncompressed(ctx context.Context, offsetU int
 
 	chunkPath := c.makeChunkFilename(offsetU)
 
-	readTimer := cacheSlabReadTimerFactory.Begin(attribute.String(nfsCacheOperationAttr, nfsCacheOperationAttrGetFrame))
-	n, readErr := readCacheFile(chunkPath, buf)
+	timer := cacheSlabReadTimerFactory.Begin(attribute.String(nfsCacheOperationAttr, nfsCacheOperationAttrGetFrame))
 
+	// Try NFS cache — stream from file with progressive onRead callbacks.
+	f, readErr := os.Open(chunkPath)
 	if readErr == nil {
-		// Cache hit
-		readTimer.Success(ctx, int64(n))
-		recordCacheRead(ctx, true, int64(n), cacheTypeFramedFile, cacheOpGetFrame)
+		recordCacheRead(ctx, true, int64(len(buf)), cacheTypeFramedFile, cacheOpGetFrame)
 
-		if onRead != nil {
-			onRead(int64(n))
+		rangeRead := func(_ context.Context, _ int64, _ int) (io.ReadCloser, error) {
+			return f, nil
 		}
 
-		return Range{Start: offsetU, Length: n}, nil
+		r, err := ReadFrame(ctx, rangeRead, "NFS:"+c.path, offsetU, nil, false, buf, readSize, onRead)
+		if err != nil {
+			timer.Failure(ctx, int64(r.Length))
+
+			return r, err
+		}
+
+		timer.Success(ctx, int64(r.Length))
+
+		return r, nil
 	}
-	readTimer.Failure(ctx, 0)
 
 	if !os.IsNotExist(readErr) {
 		recordCacheReadError(ctx, cacheTypeFramedFile, cacheOpGetFrame, readErr)
@@ -201,13 +220,17 @@ func (c *cachedFramedFile) getFrameUncompressed(ctx context.Context, offsetU int
 		zap.Int64("offset", offsetU),
 		zap.Error(readErr))
 
-	// Cache miss: fetch from inner
+	// Cache miss: fetch from inner. For uncompressed data, inner fills buf
+	// directly with the final bytes, so progressive onRead callbacks are correct.
 	r, err := c.inner.GetFrame(ctx, offsetU, nil, false, buf, readSize, onRead)
 	if err != nil {
+		timer.Failure(ctx, 0)
+
 		return Range{}, fmt.Errorf("cache GetFrame uncompressed: inner fetch at %#x: %w", offsetU, err)
 	}
 
 	recordCacheRead(ctx, false, int64(r.Length), cacheTypeFramedFile, cacheOpGetFrame)
+	timer.Success(ctx, int64(r.Length))
 
 	// Async write-back
 	dataCopy := make([]byte, r.Length)
@@ -220,88 +243,6 @@ func (c *cachedFramedFile) getFrameUncompressed(ctx context.Context, offsetU int
 	})
 
 	return r, nil
-}
-
-// decompressInto decompresses src into dst using pooled decoders.
-// If onRead is non-nil, calls it progressively in readSize chunks.
-func decompressInto(ct CompressionType, src, dst []byte, readSize int64, onRead func(int64)) (int, error) {
-	r := bytes.NewReader(src)
-
-	switch ct {
-	case CompressionZstd:
-		dec, err := getZstdDecoder(r)
-		if err != nil {
-			return 0, fmt.Errorf("zstd decoder: %w", err)
-		}
-		defer putZstdDecoder(dec)
-
-		return readIntoWithCallback(dec, dst, readSize, onRead)
-
-	case CompressionLZ4:
-		rd := getLZ4Reader(r)
-		defer putLZ4Reader(rd)
-
-		return readIntoWithCallback(rd, dst, readSize, onRead)
-
-	default:
-		return 0, fmt.Errorf("unsupported compression type: %s", ct)
-	}
-}
-
-// readIntoWithCallback reads from src into dst. If onRead is non-nil,
-// delivers data in readSize-aligned chunks with progressive callbacks.
-func readIntoWithCallback(src io.Reader, dst []byte, readSize int64, onRead func(int64)) (int, error) {
-	if onRead == nil {
-		n, err := io.ReadFull(src, dst)
-		if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, io.EOF) {
-			return n, err
-		}
-
-		return n, nil
-	}
-
-	if readSize <= 0 {
-		readSize = MemoryChunkSize
-	}
-
-	var total int64
-	totalSize := int64(len(dst))
-
-	for total < totalSize {
-		end := min(total+readSize, totalSize)
-		n, err := io.ReadFull(src, dst[total:end])
-		total += int64(n)
-
-		if n > 0 {
-			onRead(total)
-		}
-
-		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
-			break
-		}
-
-		if err != nil {
-			return int(total), fmt.Errorf("progressive decompress error after %d bytes: %w", total, err)
-		}
-	}
-
-	return int(total), nil
-}
-
-// readCacheFile reads a cache file into buf. Returns bytes read and error.
-func readCacheFile(path string, buf []byte) (int, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return 0, err
-	}
-	defer f.Close()
-
-	n, err := io.ReadFull(f, buf)
-	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, io.EOF) {
-		return n, err
-	}
-
-	return n, nil
 }
 
 // writeFrameToCache writes compressed frame data to the NFS cache.

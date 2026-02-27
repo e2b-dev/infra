@@ -73,6 +73,12 @@ make migrate
 
 # Run single test
 cd packages/<package> && go test -v -run TestName ./path/to/package
+
+# Run chunker benchmarks (cache hit / cold concurrent)
+# Use auto-calibrated N (no -benchtime=Nx) for the cache-hit benchmark;
+# each read is sub-microsecond so low iteration counts produce noisy results.
+go test -bench=BenchmarkCacheHit -timeout=10m ./packages/orchestrator/internal/sandbox/block/ -run=^$
+go test -bench=BenchmarkColdConcurrent -benchtime=3x -timeout=30m ./packages/orchestrator/internal/sandbox/block/ -run=^$
 ```
 
 ### Deployment
