@@ -49,7 +49,7 @@ func NewRedisClient(ctx context.Context, config RedisConfig) (redis.UniversalCli
 		poolSize := clusterNodeConnectionSizePerCPU * numCPU
 		minIdleConns := minIdleConnectionsPerCPU * numCPU
 		if config.PoolSize > 0 {
-			poolSize = config.PoolSize
+			poolSize = max(minIdleConnections, config.PoolSize)
 			minIdleConns = max(minIdleConnections, config.PoolSize/4)
 		}
 
