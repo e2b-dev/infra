@@ -90,9 +90,9 @@ const (
 
 	// Firecracker net counters — global totals, no sandbox_id (low cardinality).
 	// All carry a direction=tx/rx attribute. Per-sandbox distributions are histograms below.
-	SandboxFCNetFails        CounterType = "orchestrator.sandbox.fc.net.fails"
+	SandboxFCNetFails         CounterType = "orchestrator.sandbox.fc.net.fails"
 	SandboxFCNetNoAvailBuffer CounterType = "orchestrator.sandbox.fc.net.no_avail_buffer"
-	SandboxFCNetTapIOFails   CounterType = "orchestrator.sandbox.fc.net.tap_io_fails"
+	SandboxFCNetTapIOFails    CounterType = "orchestrator.sandbox.fc.net.tap_io_fails"
 )
 
 const (
@@ -311,10 +311,10 @@ var histogramDesc = map[HistogramType]string{
 	IngressProxyConnectionsPerSandboxHistogramName: "Number of active ingress proxy connections per sandbox",
 
 	// Firecracker net histograms (direction=tx/rx attribute; TX-only carry direction=tx)
-	SandboxFCNetBytes:                "Distribution of Firecracker VMM bytes per metrics flush",
-	SandboxFCNetPackets:              "Distribution of Firecracker VMM packets per metrics flush",
-	SandboxFCNetCount:                "Distribution of Firecracker VMM I/O operations per metrics flush",
-	SandboxFCNetRateLimiterThrottled: "Distribution of Firecracker VMM ops throttled by rate limiter per metrics flush",
+	SandboxFCNetBytes:                 "Distribution of Firecracker VMM bytes per metrics flush",
+	SandboxFCNetPackets:               "Distribution of Firecracker VMM packets per metrics flush",
+	SandboxFCNetCount:                 "Distribution of Firecracker VMM I/O operations per metrics flush",
+	SandboxFCNetRateLimiterThrottled:  "Distribution of Firecracker VMM ops throttled by rate limiter per metrics flush",
 	SandboxFCNetRateLimiterEventCount: "Distribution of Firecracker VMM TX rate limiter events per metrics flush",
 	SandboxFCNetRemainingReqs:         "Distribution of Firecracker VMM TX queue remaining-request events per metrics flush",
 }

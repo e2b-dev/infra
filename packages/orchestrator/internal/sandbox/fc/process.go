@@ -186,7 +186,7 @@ func (p *Process) configure(
 
 	// Create the metrics FIFO before Firecracker starts.
 	// Firecracker will open the write end once PUT /metrics is called.
-	if err := syscall.Mkfifo(p.metricsPath, 0600); err != nil {
+	if err := syscall.Mkfifo(p.metricsPath, 0o600); err != nil {
 		return fmt.Errorf("error creating fc metrics FIFO: %w", err)
 	}
 
