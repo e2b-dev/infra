@@ -155,6 +155,39 @@ func (c *apiClient) setMmds(ctx context.Context, metadata *MmdsMetadata) error {
 	return nil
 }
 
+func (c *apiClient) flushMetrics(ctx context.Context) error {
+	action := models.InstanceActionInfoActionTypeFlushMetrics
+	params := operations.CreateSyncActionParams{
+		Context: ctx,
+		Info: &models.InstanceActionInfo{
+			ActionType: &action,
+		},
+	}
+
+	_, err := c.client.Operations.CreateSyncAction(&params)
+	if err != nil {
+		return fmt.Errorf("error flushing fc metrics: %w", err)
+	}
+
+	return nil
+}
+
+func (c *apiClient) setMetrics(ctx context.Context, metricsPath string) error {
+	params := operations.PutMetricsParams{
+		Context: ctx,
+		Body: &models.Metrics{
+			MetricsPath: &metricsPath,
+		},
+	}
+
+	_, err := c.client.Operations.PutMetrics(&params)
+	if err != nil {
+		return fmt.Errorf("error setting fc metrics: %w", err)
+	}
+
+	return nil
+}
+
 func (c *apiClient) setBootSource(ctx context.Context, kernelArgs string, kernelPath string) error {
 	bootSourceConfig := operations.PutGuestBootSourceParams{
 		Context: ctx,
@@ -193,14 +226,75 @@ func (c *apiClient) setRootfsDrive(ctx context.Context, rootfsPath string, ioEng
 	return nil
 }
 
-func (c *apiClient) setNetworkInterface(ctx context.Context, ifaceID string, tapName string, tapMac string) error {
+// buildTokenBucket constructs a Firecracker TokenBucket from a TokenBucketConfig.
+// Returns nil when BucketSize < 0 (disabled).
+func buildTokenBucket(b TokenBucketConfig) *models.TokenBucket {
+	if b.BucketSize < 0 {
+		return nil
+	}
+
+	bucket := &models.TokenBucket{
+		Size:       &b.BucketSize,
+		RefillTime: &b.RefillTimeMs,
+	}
+
+	if b.OneTimeBurst > 0 {
+		bucket.OneTimeBurst = &b.OneTimeBurst
+	}
+
+	return bucket
+}
+
+// buildTxRateLimiter constructs a Firecracker RateLimiter from a TxRateLimiterConfig.
+// Either bucket is omitted when its BucketSize is < 0.
+// Returns nil only when both buckets are disabled.
+func buildTxRateLimiter(config TxRateLimiterConfig) *models.RateLimiter {
+	ops := buildTokenBucket(config.Ops)
+	bw := buildTokenBucket(config.Bandwidth)
+
+	if ops == nil && bw == nil {
+		return nil
+	}
+
+	return &models.RateLimiter{Ops: ops, Bandwidth: bw}
+}
+
+// setTxRateLimit applies or clears a Firecracker VMM-level transmit rate limit.
+// Both buckets are disabled when their BucketSize < 0; if all are disabled an empty
+// RateLimiter is sent to reset any limit persisted in a snapshot.
+// This always sends a PATCH so snapshot-persisted limits are overwritten.
+func (c *apiClient) setTxRateLimit(ctx context.Context, ifaceID string, config TxRateLimiterConfig) error {
+	limiter := buildTxRateLimiter(config)
+	if limiter == nil {
+		limiter = &models.RateLimiter{} // empty = reset
+	}
+
+	params := operations.PatchGuestNetworkInterfaceByIDParams{
+		Context: ctx,
+		IfaceID: ifaceID,
+		Body: &models.PartialNetworkInterface{
+			IfaceID:       &ifaceID,
+			TxRateLimiter: limiter,
+		},
+	}
+
+	_, err := c.client.Operations.PatchGuestNetworkInterfaceByID(&params)
+	if err != nil {
+		return fmt.Errorf("error setting TX rate limit: %w", err)
+	}
+
+	return nil
+}
+
+func (c *apiClient) setNetworkInterface(ctx context.Context, ifaceID string, tapName string, tapMac string, txRateLimiter *models.RateLimiter) error {
 	networkConfig := operations.PutGuestNetworkInterfaceByIDParams{
 		Context: ctx,
 		IfaceID: ifaceID,
 		Body: &models.NetworkInterface{
-			IfaceID:     &ifaceID,
-			GuestMac:    tapMac,
-			HostDevName: &tapName,
+			IfaceID:       &ifaceID,
+			GuestMac:      tapMac,
+			HostDevName:   &tapName,
+			TxRateLimiter: txRateLimiter,
 		},
 	}
 

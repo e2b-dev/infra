@@ -52,6 +52,8 @@ type Config struct {
 
 	SandboxAccessTokenHashSeed string `env:"SANDBOX_ACCESS_TOKEN_HASH_SEED"`
 
+	VolumesToken VolumesTokenConfig
+
 	// SupabaseJWTSecrets is a list of secrets used to verify the Supabase JWT.
 	// More secrets are possible in the case of JWT secret rotation where we need to accept
 	// tokens signed with the old secret for some time.
@@ -65,7 +67,7 @@ type Config struct {
 	// "redis" uses Redis directly; "populate_redis" uses in-memory with Redis shadow writes.
 	SandboxStorageBackend string `env:"SANDBOX_STORAGE_BACKEND" envDefault:"memory"`
 
-	VolumesToken VolumesTokenConfig
+	DomainName string `env:"DOMAIN_NAME" envDefault:""`
 }
 
 type VolumesTokenConfig struct {

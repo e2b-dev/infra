@@ -283,9 +283,7 @@ func run(config cfg.Config) (success bool) {
 	}
 	closers = append(closers, closer{"feature flags", featureFlags.Close})
 
-	if config.DomainName != "" {
-		featureFlags.SetDeploymentName(config.DomainName)
-	}
+	featureFlags.SetDeploymentName(config.DomainName)
 
 	// gcp concurrent upload limiter
 	limiter, err := limit.New(ctx, featureFlags)

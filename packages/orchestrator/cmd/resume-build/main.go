@@ -24,6 +24,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/cmd/internal/cmdutil"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
@@ -60,6 +61,7 @@ func main() {
 	pause := flag.Bool("pause", false, "start and immediately pause (snapshot)")
 	signalPause := flag.String("signal-pause", "", "wait for signal before pause (e.g., SIGTERM, SIGUSR1)")
 	cmdPause := flag.String("cmd-pause", "", "execute command in sandbox, then pause on success")
+	optimize := flag.Bool("optimize", false, "collect fresh prefetch mapping after pause (resumes snapshot to record page faults)")
 
 	flag.Parse()
 
@@ -104,6 +106,13 @@ func main() {
 		log.Fatal("-to-build requires a pause flag (-pause, -signal-pause, or -cmd-pause)")
 	}
 
+	if *optimize && !isPauseMode {
+		log.Fatal("-optimize requires a pause flag (-pause, -signal-pause, or -cmd-pause)")
+	}
+	if *optimize && *iterations > 0 {
+		log.Fatal("-optimize is incompatible with -iterations (benchmarking doesn't upload)")
+	}
+
 	// Generate new build ID if not specified and pause mode is enabled
 	outputBuildID := *toBuild
 	if isPauseMode && outputBuildID == "" {
@@ -129,6 +138,7 @@ func main() {
 		isRemoteStorage: isRemoteStorage,
 		newBuildID:      outputBuildID,
 		iterations:      *iterations,
+		optimize:        *optimize,
 	}
 
 	runOpts := runOptions{
@@ -156,6 +166,7 @@ type pauseOptions struct {
 	isRemoteStorage bool
 	newBuildID      string
 	iterations      int // for benchmarking pause (only with immediate)
+	optimize        bool
 }
 
 func (p pauseOptions) enabled() bool {
@@ -594,6 +605,12 @@ func (r *runner) pauseOnce(ctx context.Context, opts pauseOptions, verbose bool)
 	newMeta := origMeta
 	newMeta.Template.BuildID = opts.newBuildID
 
+	// Strip stale prefetch data — it corresponds to the parent build, not this snapshot.
+	// Fresh prefetch will be collected in the optimize step if -optimize is set.
+	if opts.optimize {
+		newMeta.Prefetch = nil
+	}
+
 	// Pause and create snapshot
 	pauseStart := time.Now()
 	snapshot, err := sbx.Pause(ctx, newMeta)
@@ -639,6 +656,12 @@ func (r *runner) pauseOnce(ctx context.Context, opts pauseOptions, verbose bool)
 
 		fmt.Printf("\n✅ Build finished: %s\n", opts.newBuildID)
 		printArtifactSizes(opts.storagePath, opts.newBuildID)
+
+		if opts.optimize {
+			if err := r.collectAndUploadPrefetch(ctx, opts); err != nil {
+				return timings, fmt.Errorf("prefetch optimization: %w", err)
+			}
+		}
 	}
 
 	return timings, nil
@@ -776,6 +799,122 @@ func printPauseResults(results []pauseTimings) {
 		fmt.Printf("   Resume: Min %s | Max %s\n", fmtDur(minR), fmtDur(maxR))
 		fmt.Printf("   Pause:  Min %s | Max %s\n", fmtDur(minP), fmtDur(maxP))
 	}
+}
+
+const prefetchCollectionIterations = 2
+
+// collectAndUploadPrefetch resumes the snapshot to collect fresh page fault data,
+// then updates the metadata with the resulting prefetch mapping.
+func (r *runner) collectAndUploadPrefetch(ctx context.Context, opts pauseOptions) error {
+	fmt.Println("\n🔍 Collecting prefetch mapping...")
+
+	r.cache.Invalidate(opts.newBuildID)
+	tmpl, err := r.cache.GetTemplate(ctx, opts.newBuildID, false, false)
+	if err != nil {
+		return fmt.Errorf("load template: %w", err)
+	}
+
+	// Disable any leftover prefetch during collection runs
+	tmpl = &noPrefetchTemplate{tmpl}
+
+	var allPrefetchData []block.PrefetchData
+	for i := range prefetchCollectionIterations {
+		fmt.Printf("   Run %d/%d...", i+1, prefetchCollectionIterations)
+
+		runtime := sandbox.RuntimeMetadata{
+			TemplateID:  opts.newBuildID,
+			TeamID:      "local",
+			SandboxID:   fmt.Sprintf("prefetch-%d-%d", time.Now().UnixNano(), i),
+			ExecutionID: fmt.Sprintf("prefetch-exec-%d-%d", time.Now().UnixNano(), i),
+		}
+
+		t0 := time.Now()
+		sbx, err := r.factory.ResumeSandbox(ctx, tmpl, r.sbxConfig, runtime, t0, t0.Add(5*time.Minute), nil)
+		if err != nil {
+			fmt.Println()
+
+			return fmt.Errorf("resume sandbox (run %d): %w", i+1, err)
+		}
+
+		data, dataErr := sbx.MemoryPrefetchData(ctx)
+		sbx.Close(context.WithoutCancel(ctx))
+		if dataErr != nil {
+			return fmt.Errorf("collect prefetch (run %d): %w", i+1, dataErr)
+		}
+
+		fmt.Printf(" %d blocks (%s)\n", len(data.BlockEntries), fmtDur(time.Since(t0)))
+		allPrefetchData = append(allPrefetchData, data)
+	}
+
+	commonEntries := computeCommonPrefetchEntries(allPrefetchData)
+	if len(commonEntries) == 0 {
+		fmt.Println("⚠️  No common prefetch blocks found")
+
+		return nil
+	}
+
+	mapping := metadata.PrefetchEntriesToMapping(commonEntries, allPrefetchData[0].BlockSize)
+	fmt.Printf("   Common: %d blocks\n", mapping.Count())
+
+	existingMeta, err := metadata.FromBuildID(ctx, r.storage, opts.newBuildID)
+	if err != nil {
+		return fmt.Errorf("load metadata: %w", err)
+	}
+
+	updatedMeta := existingMeta.WithPrefetch(&metadata.Prefetch{
+		Memory: mapping,
+	})
+
+	if err := metadata.UploadMetadata(ctx, r.storage, updatedMeta); err != nil {
+		return fmt.Errorf("upload metadata: %w", err)
+	}
+
+	r.cache.Invalidate(opts.newBuildID)
+
+	fmt.Printf("✅ Prefetch mapping saved: %d blocks\n", mapping.Count())
+
+	return nil
+}
+
+// computeCommonPrefetchEntries computes the intersection of multiple prefetch data sets.
+// Only pages present in ALL runs are included, with averaged ordering.
+func computeCommonPrefetchEntries(allData []block.PrefetchData) []block.PrefetchBlockEntry {
+	if len(allData) == 0 {
+		return nil
+	}
+
+	var commonEntries []block.PrefetchBlockEntry
+
+	for idx, entry1 := range allData[0].BlockEntries {
+		totalOrder := entry1.Order
+		accessType := entry1.AccessType
+		allMatch := true
+
+		for i := 1; i < len(allData); i++ {
+			entry, exists := allData[i].BlockEntries[idx]
+			if !exists {
+				allMatch = false
+
+				break
+			}
+			totalOrder += entry.Order
+			if entry.AccessType != accessType {
+				accessType = block.Read
+			}
+		}
+
+		if !allMatch {
+			continue
+		}
+
+		commonEntries = append(commonEntries, block.PrefetchBlockEntry{
+			Index:      idx,
+			Order:      totalOrder / uint64(len(allData)),
+			AccessType: accessType,
+		})
+	}
+
+	return commonEntries
 }
 
 func (r *runner) benchmark(ctx context.Context, n int) error {

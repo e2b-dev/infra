@@ -374,7 +374,7 @@ func (u *Userfaultfd) faultPage(
 		span.RecordError(joinedErr)
 		u.logger.Error(ctx, "UFFD serve uffdio copy error", zap.Error(joinedErr))
 
-		return fmt.Errorf("failed uffdio copy %w", joinedErr)
+		return fmt.Errorf("failed uffdio copy: %w", joinedErr)
 	}
 
 	// Add the offset to the missing requests tracker with metadata.

@@ -255,3 +255,58 @@ var ChunkerConfigFlag = newJSONFlag("chunker-config", ldvalue.FromJSONMarshal(ma
 	"useStreaming":       false,
 	"minReadBatchSizeKB": 16,
 }))
+
+// TCPFirewallEgressThrottleConfig controls per-sandbox egress throttling via Firecracker's
+// VMM-level token bucket rate limiters on the network interface.
+// Structure mirrors the Firecracker RateLimiter API: two independent token buckets.
+// Set bucketSize to -1 to disable a bucket.
+//
+// Ops bucket (packets):    effective rate = ops.bucketSize * 1000 / ops.refillTimeMs ops/s.
+// Bandwidth bucket (bytes): effective rate = bandwidth.bucketSize * 1000 / bandwidth.refillTimeMs bytes/s.
+var TCPFirewallEgressThrottleConfig = newJSONFlag("tcpfirewall-egress-throttle-config", ldvalue.FromJSONMarshal(map[string]any{
+	"ops":       map[string]any{"bucketSize": -1, "oneTimeBurst": 0, "refillTimeMs": 1000},
+	"bandwidth": map[string]any{"bucketSize": -1, "oneTimeBurst": 0, "refillTimeMs": 1000},
+}))
+
+// TokenBucketConfig holds parameters for a single Firecracker token bucket.
+// BucketSize < 0 disables the bucket.
+type TokenBucketConfig struct {
+	BucketSize   int64
+	OneTimeBurst int64
+	RefillTimeMs int64
+}
+
+// TCPFirewallEgressThrottleConfigValue holds the parsed values of TCPFirewallEgressThrottleConfig.
+type TCPFirewallEgressThrottleConfigValue struct {
+	Ops       TokenBucketConfig
+	Bandwidth TokenBucketConfig
+}
+
+// GetTCPFirewallEgressThrottleConfig fetches and parses the TCPFirewallEgressThrottleConfig flag.
+func GetTCPFirewallEgressThrottleConfig(ctx context.Context, ff *Client) TCPFirewallEgressThrottleConfigValue {
+	value := ff.JSONFlag(ctx, TCPFirewallEgressThrottleConfig)
+
+	parseBucket := func(key string) TokenBucketConfig {
+		b := value.GetByKey(key)
+		if b.IsNull() {
+			return TokenBucketConfig{BucketSize: -1} // disabled
+		}
+
+		// Validate refill time
+		refillTimeMs := int64(b.GetByKey("refillTimeMs").IntValue())
+		if refillTimeMs <= 0 {
+			return TokenBucketConfig{BucketSize: -1} // disabled — invalid refill time
+		}
+
+		return TokenBucketConfig{
+			BucketSize:   int64(b.GetByKey("bucketSize").IntValue()),
+			OneTimeBurst: int64(b.GetByKey("oneTimeBurst").IntValue()),
+			RefillTimeMs: refillTimeMs,
+		}
+	}
+
+	return TCPFirewallEgressThrottleConfigValue{
+		Ops:       parseBucket("ops"),
+		Bandwidth: parseBucket("bandwidth"),
+	}
+}

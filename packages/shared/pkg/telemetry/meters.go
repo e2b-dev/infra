@@ -87,6 +87,25 @@ const (
 
 	// Ingress proxy counters
 	IngressProxyConnectionsBlockedTotal CounterType = "orchestrator.proxy.connections.blocked.total"
+
+	// Firecracker net counters — global totals, no sandbox_id (low cardinality).
+	// All carry a direction=tx/rx attribute. Per-sandbox distributions are histograms below.
+	SandboxFCNetFails         CounterType = "orchestrator.sandbox.fc.net.fails"
+	SandboxFCNetNoAvailBuffer CounterType = "orchestrator.sandbox.fc.net.no_avail_buffer"
+	SandboxFCNetTapIOFails    CounterType = "orchestrator.sandbox.fc.net.tap_io_fails"
+)
+
+const (
+	// Firecracker net histograms — per-sandbox distribution per metrics flush, no sandbox_id.
+	// Firecracker serializes SharedIncMetric as per-flush deltas (default flush interval: 60 s).
+	// Symmetric TX/RX metrics carry a direction=tx/rx attribute; TX-only metrics always use direction=tx.
+	SandboxFCNetBytes                HistogramType = "orchestrator.sandbox.fc.net.bytes"
+	SandboxFCNetPackets              HistogramType = "orchestrator.sandbox.fc.net.packets"
+	SandboxFCNetCount                HistogramType = "orchestrator.sandbox.fc.net.count"
+	SandboxFCNetRateLimiterThrottled HistogramType = "orchestrator.sandbox.fc.net.rate_limiter_throttled"
+	// TX-only: no RX equivalent in Firecracker metrics.
+	SandboxFCNetRateLimiterEventCount HistogramType = "orchestrator.sandbox.fc.net.rate_limiter_event_count"
+	SandboxFCNetRemainingReqs         HistogramType = "orchestrator.sandbox.fc.net.remaining_reqs"
 )
 
 const (
@@ -119,6 +138,10 @@ var counterDesc = map[CounterType]string{
 	TCPFirewallDecisionsTotal:   "Total number of TCP firewall allow/block decisions",
 
 	IngressProxyConnectionsBlockedTotal: "Total number of ingress proxy connections blocked by connection limit",
+
+	SandboxFCNetFails:         "Total Firecracker VMM errors transmitting or receiving data (direction=tx/rx)",
+	SandboxFCNetNoAvailBuffer: "Total Firecracker VMM events where no virtqueue buffer was available (direction=tx/rx)",
+	SandboxFCNetTapIOFails:    "Total Firecracker VMM TAP I/O failures (direction=tx/rx)",
 }
 
 var counterUnits = map[CounterType]string{
@@ -134,6 +157,10 @@ var counterUnits = map[CounterType]string{
 	TCPFirewallDecisionsTotal:   "{decision}",
 
 	IngressProxyConnectionsBlockedTotal: "{connection}",
+
+	SandboxFCNetFails:         "{error}",
+	SandboxFCNetNoAvailBuffer: "{event}",
+	SandboxFCNetTapIOFails:    "{error}",
 }
 
 var observableCounterDesc = map[ObservableCounterType]string{
@@ -282,6 +309,14 @@ var histogramDesc = map[HistogramType]string{
 
 	IngressProxyConnectionDurationHistogramName:    "Duration of ingress proxy connections",
 	IngressProxyConnectionsPerSandboxHistogramName: "Number of active ingress proxy connections per sandbox",
+
+	// Firecracker net histograms (direction=tx/rx attribute; TX-only carry direction=tx)
+	SandboxFCNetBytes:                 "Distribution of Firecracker VMM bytes per metrics flush",
+	SandboxFCNetPackets:               "Distribution of Firecracker VMM packets per metrics flush",
+	SandboxFCNetCount:                 "Distribution of Firecracker VMM I/O operations per metrics flush",
+	SandboxFCNetRateLimiterThrottled:  "Distribution of Firecracker VMM ops throttled by rate limiter per metrics flush",
+	SandboxFCNetRateLimiterEventCount: "Distribution of Firecracker VMM TX rate limiter events per metrics flush",
+	SandboxFCNetRemainingReqs:         "Distribution of Firecracker VMM TX queue remaining-request events per metrics flush",
 }
 
 var histogramUnits = map[HistogramType]string{
@@ -295,6 +330,14 @@ var histogramUnits = map[HistogramType]string{
 
 	IngressProxyConnectionDurationHistogramName:    "ms",
 	IngressProxyConnectionsPerSandboxHistogramName: "{connection}",
+
+	// Firecracker net histograms
+	SandboxFCNetBytes:                 "{By}",
+	SandboxFCNetPackets:               "{packet}",
+	SandboxFCNetCount:                 "{op}",
+	SandboxFCNetRateLimiterThrottled:  "{op}",
+	SandboxFCNetRateLimiterEventCount: "{event}",
+	SandboxFCNetRemainingReqs:         "{event}",
 }
 
 func GetHistogram(meter metric.Meter, name HistogramType) (metric.Int64Histogram, error) {
