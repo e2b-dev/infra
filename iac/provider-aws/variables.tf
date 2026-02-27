@@ -33,9 +33,9 @@ variable "karpenter_version" {
 }
 
 variable "bootstrap_instance_type" {
-  description = "Instance type for bootstrap managed node group (Karpenter controller + system pods). Use t3.xlarge for production with Temporal. For dev/staging without Temporal, t3.large is sufficient."
+  description = "Instance type for bootstrap managed node group (Karpenter controller + system pods). Dev default (2 vCPU, 4 GiB). For production or Temporal, use t3.xlarge."
   type        = string
-  default     = "t3.xlarge"
+  default     = "t3.medium"
 }
 
 variable "client_instance_types" {
@@ -80,13 +80,15 @@ variable "api_cluster_size" {
 }
 
 variable "api_resources_cpu_count" {
-  type    = number
-  default = 2
+  description = "CPU cores for API pods. Dev default. For production, use 2."
+  type        = number
+  default     = 0.5
 }
 
 variable "api_resources_memory_mb" {
-  type    = number
-  default = 2048
+  description = "Memory in MB for API pods. Dev default. For production, use 2048."
+  type        = number
+  default     = 512
 }
 
 variable "clickhouse_cluster_size" {
@@ -134,13 +136,15 @@ variable "ingress_count" {
 }
 
 variable "client_proxy_resources_memory_mb" {
-  type    = number
-  default = 1024
+  description = "Memory in MB for client proxy pods. Dev default. For production, use 1024."
+  type        = number
+  default     = 256
 }
 
 variable "client_proxy_resources_cpu_count" {
-  type    = number
-  default = 1
+  description = "CPU cores for client proxy pods. Dev default. For production, use 1."
+  type        = number
+  default     = 0.25
 }
 
 variable "client_proxy_update_max_parallel" {
@@ -265,23 +269,27 @@ variable "environment" {
 }
 
 variable "otel_collector_resources_memory_mb" {
-  type    = number
-  default = 1024
+  description = "Memory in MB for OTEL collector pods. Dev default. For production telemetry, use 1024."
+  type        = number
+  default     = 256
 }
 
 variable "otel_collector_resources_cpu_count" {
-  type    = number
-  default = 0.5
+  description = "CPU cores for OTEL collector pods. Dev default. For production telemetry, use 0.5."
+  type        = number
+  default     = 0.1
 }
 
 variable "clickhouse_resources_memory_mb" {
-  type    = number
-  default = 8192
+  description = "Memory in MB for ClickHouse pods. Dev default. For production analytics, use 8192."
+  type        = number
+  default     = 1024
 }
 
 variable "clickhouse_resources_cpu_count" {
-  type    = number
-  default = 4
+  description = "CPU cores for ClickHouse pods. Dev default. For production analytics, use 4."
+  type        = number
+  default     = 0.5
 }
 
 variable "domain_name" {
@@ -309,13 +317,15 @@ variable "tags" {
 }
 
 variable "loki_resources_memory_mb" {
-  type    = number
-  default = 2048
+  description = "Memory in MB for Loki pods. Dev default. For production log volume, use 2048."
+  type        = number
+  default     = 512
 }
 
 variable "loki_resources_cpu_count" {
-  type    = number
-  default = 1
+  description = "CPU cores for Loki pods. Dev default. For production log volume, use 1."
+  type        = number
+  default     = 0.25
 }
 
 variable "loki_service_port" {

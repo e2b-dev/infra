@@ -147,17 +147,17 @@ These costs are the same for both approaches since they use the same managed ser
 | ALB | 1 Application LB | $20 | + LCU usage |
 | NLB | 1 Network LB | $20 | WebSocket sessions |
 | EFS | Elastic throughput, ~10 GB | $4 | Shared chunk cache |
-| S3 | 9 buckets, ~50 GB baseline | $2 | Templates, logs, builds |
+| S3 | 10 buckets, ~50 GB baseline | $2 | Templates, logs, builds |
 | ECR | 2 repos, ~10 GB images | $1 | Container images |
-| Secrets Manager | 18 secrets | $7 | DB, API keys, tokens |
+| Secrets Manager | 14 secrets | $6 | DB, API keys, tokens |
 | WAF | 1 Web ACL + ~5 rules | $11 | OWASP on ALB |
 | EBS (system) | API + bootstrap volumes | $22 | gp3, encrypted |
 | VPC Endpoints | 6 interface + 1 gateway | $44 | ECR, Secrets Mgr, CloudWatch, STS (S3 gateway is free) |
 | KMS | 2 CMKs (S3 + EKS secrets) | $2 | Auto-rotation enabled |
 | CloudWatch Monitoring | SNS + 7 alarms | $1 | Enabled by default; requires `alert_email` |
-| **Base total (EKS)** | | **$507** | |
-| Temporal (optional) | 9 pods on system nodes | +$75-85 | Multi-agent orchestration |
-| **Base total (Nomad)** | | **$422** | |
+| **Base total (EKS)** | | **$506** | |
+| Temporal (optional) | 11 pods on system nodes | +$75-85 | Multi-agent orchestration |
+| **Base total (Nomad)** | | **$421** | |
 
 Infrastructure scales with usage (Aurora ACU, Redis shards, NAT data processing, data transfer). Estimated at each tier:
 
@@ -173,22 +173,23 @@ Infrastructure scales with usage (Aurora ACU, Redis shards, NAT data processing,
 
 ### Temporal Server (Optional, `temporal_enabled = false`)
 
-When enabled, Temporal runs on the system node pool (t3.medium instances). The system pool max_size increases from 3 to 5 to accommodate the additional pods.
+When enabled, Temporal runs on the system node pool. The bootstrap pool
+scales from 2 to 4 t3.medium nodes to accommodate the additional pods.
 
 | Component | Replicas | CPU Request | Memory Request |
 |-----------|----------|-------------|----------------|
 | Frontend | 2 | 500m | 512Mi |
 | History | 2 | 500m | 512Mi |
 | Matching | 2 | 250m | 256Mi |
-| Worker (internal) | 1 | 250m | 256Mi |
-| Web UI | 1 | 100m | 128Mi |
+| Worker (internal) | 2 | 250m | 256Mi |
+| Web UI | 2 | 100m | 128Mi |
 | Admin Tools | 1 | minimal | minimal |
-| **Total** | **9** | **~2.85 vCPU** | **~2.9 GiB** |
+| **Total** | **11** | **~3.2 vCPU** | **~3.3 GiB** |
 
 | Cost Component | $/mo | Notes |
 |----------------|-----:|-------|
-| Additional system nodes | ~$70 | ~2x t3.medium ($35/node) to fit Temporal pods |
-| Aurora DB load (Temporal) | ~$5-15 | Two additional databases on existing Aurora cluster |
+| Additional system nodes | ~$70 | 2x t3.medium ($35/node) |
+| Aurora DB load (Temporal) | ~$5-15 | Two additional DBs on existing Aurora |
 | Secrets Manager | ~$0.40 | 1 additional secret |
 | **Temporal total** | **~$75-85** | Negligible at scale (<1% of total cost) |
 

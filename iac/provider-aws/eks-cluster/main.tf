@@ -41,9 +41,9 @@ module "eks" {
       ami_type       = "AL2023_x86_64_STANDARD"
       instance_types = [var.bootstrap_instance_type]
 
-      min_size     = 2
+      min_size     = var.temporal_enabled ? 4 : 2
       max_size     = 10
-      desired_size = 2
+      desired_size = var.temporal_enabled ? 4 : 2
 
       labels = {
         "e2b.dev/node-pool" = "system"
@@ -167,12 +167,12 @@ resource "helm_release" "karpenter" {
       controller = {
         resources = {
           requests = {
-            cpu    = "1"
-            memory = "1Gi"
+            cpu    = "250m"
+            memory = "512Mi"
           }
           limits = {
-            cpu    = "1"
-            memory = "1Gi"
+            cpu    = "250m"
+            memory = "512Mi"
           }
         }
       }

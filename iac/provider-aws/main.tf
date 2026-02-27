@@ -236,6 +236,9 @@ module "eks_cluster" {
   cache_disk_iops            = var.cache_disk_iops
   cache_disk_throughput_mbps = var.cache_disk_throughput_mbps
 
+  # Temporal affects bootstrap pool sizing
+  temporal_enabled = var.temporal_enabled
+
   tags = var.tags
 }
 

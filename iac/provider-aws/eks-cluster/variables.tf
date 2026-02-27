@@ -126,6 +126,12 @@ variable "bootstrap_instance_type" {
   default     = "t3.large"
 }
 
+variable "temporal_enabled" {
+  description = "Whether Temporal is enabled (affects bootstrap node pool sizing)"
+  type        = bool
+  default     = false
+}
+
 variable "tags" {
   description = "Tags to apply to all resources"
   type        = map(string)
