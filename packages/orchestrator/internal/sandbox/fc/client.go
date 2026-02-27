@@ -239,7 +239,6 @@ func (c *apiClient) setTxRateLimit(ctx context.Context, ifaceID string, bucketSi
 	return nil
 }
 
-
 func (c *apiClient) setNetworkInterface(ctx context.Context, ifaceID string, tapName string, tapMac string, txRateLimiter *models.RateLimiter) error {
 	networkConfig := operations.PutGuestNetworkInterfaceByIDParams{
 		Context: ctx,

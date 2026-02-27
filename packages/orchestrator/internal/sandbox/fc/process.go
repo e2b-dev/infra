@@ -586,7 +586,6 @@ func (p *Process) Stop(ctx context.Context) error {
 	return nil
 }
 
-
 func (p *Process) Pause(ctx context.Context) error {
 	ctx, childSpan := tracer.Start(ctx, "pause-fc")
 	defer childSpan.End()

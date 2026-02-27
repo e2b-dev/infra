@@ -260,7 +260,9 @@ var ChunkerConfigFlag = newJSONFlag("chunker-config", ldvalue.FromJSONMarshal(ma
 // VMM-level token bucket rate limiter (ops/packets) on the network interface.
 // JSON format: {"bucketSize": -1, "oneTimeBurst": 0, "refillTimeMs": 1000}
 // bucketSize: token bucket capacity (ops per refill window). -1 = disabled.
-//   Effective rate = bucketSize * 1000 / refillTimeMs ops/second.
+//
+//	Effective rate = bucketSize * 1000 / refillTimeMs ops/second.
+//
 // oneTimeBurst: one-time initial burst in ops (consumed before refill starts). 0 = no extra burst.
 // refillTimeMs: token bucket refill period in milliseconds. Maps to TokenBucket refill_time.
 var TCPFirewallEgressOpsThrottleConfig = newJSONFlag("tcpfirewall-egress-ops-throttle-config", ldvalue.FromJSONMarshal(map[string]any{
