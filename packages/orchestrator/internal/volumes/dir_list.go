@@ -3,6 +3,7 @@ package volumes
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 
@@ -32,7 +33,7 @@ func (s *Service) ListDir(ctx context.Context, request *orchestrator.VolumeDirLi
 	items, err := os.ReadDir(fullPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, newAPIError(ctx, codes.NotFound, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to read: %q not found.", fullPath)
+			return nil, newAPIError(ctx, codes.NotFound, http.StatusNotFound, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to read: %q not found.", fullPath)
 		}
 
 		return nil, fmt.Errorf("failed to read directory %q: %w", fullPath, err)

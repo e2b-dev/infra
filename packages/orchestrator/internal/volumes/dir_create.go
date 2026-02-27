@@ -3,6 +3,7 @@ package volumes
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -50,11 +51,11 @@ func (s *Service) CreateDir(ctx context.Context, request *orchestrator.VolumeDir
 				return nil, fmt.Errorf("failed to create directory %q: %w", fullPath, err)
 			}
 
-			return nil, newAPIError(ctx, codes.NotFound, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to mkdir: parent of %q not found.", fullPath)
+			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to mkdir: parent of %q not found.", fullPath)
 		}
 
 		if os.IsExist(err) {
-			return nil, newAPIError(ctx, codes.AlreadyExists, orchestrator.UserErrorCode_PATH_ALREADY_EXISTS, "failed to mkdir: %q already exists.", fullPath)
+			return nil, newAPIError(ctx, codes.AlreadyExists, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_ALREADY_EXISTS, "failed to mkdir: %q already exists.", fullPath)
 		}
 
 		return nil, fmt.Errorf("failed to create directory: %w", err)
@@ -62,7 +63,7 @@ func (s *Service) CreateDir(ctx context.Context, request *orchestrator.VolumeDir
 
 	if err := os.Chown(fullPath, int(uid), int(gid)); err != nil {
 		if os.IsNotExist(err) {
-			return nil, newAPIError(ctx, codes.NotFound, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to chown: %q not found.", fullPath)
+			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to chown: %q not found.", fullPath)
 		}
 
 		return nil, fmt.Errorf("failed to set directory ownership: %w", err)
@@ -71,7 +72,7 @@ func (s *Service) CreateDir(ctx context.Context, request *orchestrator.VolumeDir
 	// we do this again to avoid the process' umask from automatically 'fixing' our requests.
 	if err := os.Chmod(fullPath, os.FileMode(mode)); err != nil {
 		if os.IsNotExist(err) {
-			return nil, newAPIError(ctx, codes.NotFound, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to chmod: %q not found.", fullPath)
+			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to chmod: %q not found.", fullPath)
 		}
 
 		return nil, fmt.Errorf("failed to set directory mode: %w", err)
@@ -80,7 +81,7 @@ func (s *Service) CreateDir(ctx context.Context, request *orchestrator.VolumeDir
 	entry, err := toEntryFromPath(fullPath, request.GetPath())
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, newAPIError(ctx, codes.NotFound, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to stat: %q not found.", fullPath)
+			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to stat: %q not found.", fullPath)
 		}
 
 		return nil, fmt.Errorf("failed to stat created directory: %w", err)

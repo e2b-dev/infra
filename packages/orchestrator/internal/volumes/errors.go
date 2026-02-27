@@ -12,11 +12,11 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-func newAPIError(ctx context.Context, grpcCode codes.Code, devCode orchestrator.UserErrorCode, devMessage string, args ...any) error {
+func newAPIError(ctx context.Context, grpcCode codes.Code, httpStatus uint32, devCode orchestrator.UserErrorCode, devMessage string, args ...any) error {
 	message := fmt.Sprintf(devMessage, args...)
 
 	s := status.New(grpcCode, message)
-	if s2, err := s.WithDetails(&orchestrator.UserError{Code: devCode, Message: message}); err != nil {
+	if s2, err := s.WithDetails(&orchestrator.UserError{Code: devCode, Message: message, HttpStatus: httpStatus}); err != nil {
 		logger.L().Error(ctx, "failed to add user error details", zap.Error(err))
 	} else {
 		s = s2
