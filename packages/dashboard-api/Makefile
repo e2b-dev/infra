@@ -10,6 +10,9 @@ else
 	IMAGE_REGISTRY := $(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/$(PREFIX)core/dashboard-api
 endif
 
+HOSTNAME := $(shell hostname 2> /dev/null || hostnamectl hostname 2> /dev/null)
+$(if $(HOSTNAME),,$(error Failed to determine hostname: both 'hostname' and 'hostnamectl' failed))
+
 .PHONY: generate
 generate:
 	go generate ./...
@@ -31,6 +34,11 @@ build-and-upload:
 run:
 	make build
 	./bin/dashboard-api
+
+.PHONY: run-local
+run-local:
+	make build
+	NODE_ID=$(HOSTNAME) ./bin/dashboard-api
 
 .PHONY: test
 test:

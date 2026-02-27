@@ -14,6 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/cfg"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
+	"github.com/e2b-dev/infra/packages/shared/pkg/apierrors"
 )
 
 var _ api.ServerInterface = (*APIStore)(nil)
@@ -36,8 +37,14 @@ func NewAPIStore(config cfg.Config, db *sqlcdb.Client, authDB *authdb.Client, ch
 	}
 }
 
+func (s *APIStore) sendAPIStoreError(c *gin.Context, code int, message string) {
+	apierrors.SendAPIStoreError(c, code, message)
+}
+
 func (s *APIStore) GetHealth(c *gin.Context) {
-	c.String(http.StatusOK, "Health check successful")
+	c.JSON(http.StatusOK, api.HealthResponse{
+		Message: "Health check successful",
+	})
 }
 
 func (s *APIStore) GetUserIDFromSupabaseToken(ctx context.Context, _ *gin.Context, supabaseToken string) (uuid.UUID, *sharedauth.APIError) {
