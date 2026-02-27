@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	buildIdsLimit     = int32(100)
+	buildIdsLimit = int32(100)
 )
 
 func (s *APIStore) GetBuildsStatuses(c *gin.Context, params api.GetBuildsStatusesParams) {
@@ -28,7 +28,7 @@ func (s *APIStore) GetBuildsStatuses(c *gin.Context, params api.GetBuildsStatuse
 
 	buildIDs := make([]uuid.UUID, len(params.BuildIds))
 
-	if (len(params.BuildIds) > int(buildIdsLimit)) {
+	if len(params.BuildIds) > int(buildIdsLimit) {
 		logger.L().Warn(ctx, "Too many build IDs", zap.Int("build_ids_count", len(params.BuildIds)), logger.WithTeamID(teamID.String()))
 		s.sendAPIStoreError(c, http.StatusBadRequest, "Too many build IDs")
 		return
