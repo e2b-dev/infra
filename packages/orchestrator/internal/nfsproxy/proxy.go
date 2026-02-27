@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-git/go-billy/v5"
 	"github.com/go-git/go-billy/v5/osfs"
+	"github.com/google/uuid"
 	"github.com/willscott/go-nfs"
 	"github.com/willscott/go-nfs/helpers"
 
@@ -33,6 +34,8 @@ var (
 	ErrVolumeTypeNotSupported = errors.New("volume type not supported")
 	ErrVolumeNotFound         = errors.New("volume not found")
 	ErrMustMountAbsolutePath  = errors.New("must mount absolute path")
+	ErrInvalidTeamID          = errors.New("invalid team ID")
+	ErrVolumeID               = errors.New("invalid volume ID")
 )
 
 func getPrefixFromSandbox(sandboxes *sandbox.Map, filesystemsByType map[string]billy.Filesystem) jailed.GetPrefix {
@@ -81,13 +84,28 @@ func getPrefixFromSandbox(sandboxes *sandbox.Map, filesystemsByType map[string]b
 			return nil, "", fmt.Errorf("failed to mount %q (%s): %w", volumeName, volumeMount.Type, ErrVolumeTypeNotSupported)
 		}
 
-		prefixParts := volumes.BuildVolumePathParts(sbx.Metadata.Runtime.TeamID, volumeMount.ID)
+		teamID, ok := tryParseUUID(sbx.Metadata.Runtime.TeamID)
+		if !ok {
+			return nil, "", ErrInvalidTeamID
+		}
+
+		if volumeMount.ID == uuid.Nil {
+			return nil, "", ErrVolumeID
+		}
+
+		prefixParts := volumes.BuildVolumePathParts(teamID, volumeMount.ID)
 		if len(requestedPathParts) > 2 {
 			prefixParts = append(prefixParts, requestedPathParts[2:]...)
 		}
 
 		return fileSystem, filepath.Join(prefixParts...), nil
 	}
+}
+
+func tryParseUUID(id string) (uuid.UUID, bool) {
+	val, err := uuid.Parse(id)
+
+	return val, err == nil
 }
 
 func getChangeFromFilesystem(fs billy.Filesystem) billy.Change {

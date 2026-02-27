@@ -1,6 +1,7 @@
 package volumes
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel"
 	otelcodes "go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -18,6 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/shared/pkg/filesystem"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 const (
@@ -41,7 +44,7 @@ func New(config cfg.Config) *Service {
 	return &Service{config: config}
 }
 
-func BuildVolumePathParts(teamID, volumeID string) []string {
+func BuildVolumePathParts(teamID, volumeID uuid.UUID) []string {
 	return []string{
 		fmt.Sprintf("team-%s", teamID),
 		fmt.Sprintf("vol-%s", volumeID),
@@ -55,13 +58,13 @@ func (s *Service) buildVolumePath(volume *orchestrator.VolumeInfo, subPath strin
 		return "", status.Newf(codes.NotFound, "volume type %q not found", volumeType).Err()
 	}
 
-	teamID := volume.GetTeamId()
-	if !tryParseUUID(teamID) {
+	teamID, ok := tryParseUUID(volume.GetTeamId())
+	if !ok {
 		return "", status.Newf(codes.InvalidArgument, "invalid team ID %q", teamID).Err()
 	}
 
-	volumeID := volume.GetVolumeId()
-	if !tryParseUUID(volumeID) {
+	volumeID, ok := tryParseUUID(volume.GetVolumeId())
+	if !ok {
 		return "", status.Newf(codes.InvalidArgument, "invalid volume ID %q", volumeID).Err()
 	}
 
@@ -83,10 +86,52 @@ func (s *Service) buildVolumePath(volume *orchestrator.VolumeInfo, subPath strin
 	return volumePath, nil
 }
 
-func tryParseUUID(id string) bool {
-	_, err := uuid.Parse(id)
+func (s *Service) isVolumeRootHealthy(ctx context.Context, volume *orchestrator.VolumeInfo) bool {
+	basePath, err := s.buildVolumePath(volume, "")
+	if err != nil {
+		logger.L().Warn(ctx, "failed to build volume root path",
+			zap.Error(err),
+			zap.String("path", basePath),
+			zap.String("volume_type", volume.GetVolumeType()),
+			zap.String("volume_id", volume.GetVolumeId()),
+			zap.String("team_id", volume.GetTeamId()),
+		)
 
-	return err == nil
+		return false
+	}
+
+	stat, err := os.Stat(basePath)
+	if err != nil {
+		logger.L().Warn(ctx, "failed to stat volume root",
+			zap.Error(err),
+			zap.String("path", basePath),
+			zap.String("volume_type", volume.GetVolumeType()),
+			zap.String("volume_id", volume.GetVolumeId()),
+			zap.String("team_id", volume.GetTeamId()),
+		)
+
+		return false
+	}
+
+	if !stat.IsDir() {
+		logger.L().Warn(ctx, "volume root is not a directory!",
+			zap.Error(err),
+			zap.String("path", basePath),
+			zap.String("volume_type", volume.GetVolumeType()),
+			zap.String("volume_id", volume.GetVolumeId()),
+			zap.String("team_id", volume.GetTeamId()),
+		)
+
+		return false
+	}
+
+	return true
+}
+
+func tryParseUUID(id string) (uuid.UUID, bool) {
+	val, err := uuid.Parse(id)
+
+	return val, err == nil
 }
 
 func toEntryFromOSInfo(absPath, volumeRelPath string, fileInfo os.FileInfo) *orchestrator.EntryInfo {

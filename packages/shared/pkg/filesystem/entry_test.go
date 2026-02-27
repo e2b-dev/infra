@@ -229,7 +229,7 @@ func TestEntryInfoFromFileInfo_Directory(t *testing.T) {
 	assert.Equal(t, testDir, result.Path)
 	assert.Equal(t, DirectoryFileType, result.Type)
 	assert.Equal(t, os.FileMode(0o755), result.Mode)
-	assert.Equal(t, result.Permissions, "drwxr-xr-x")
+	assert.Equal(t, "drwxr-xr-x", result.Permissions)
 	assert.Empty(t, result.SymlinkTarget)
 }
 

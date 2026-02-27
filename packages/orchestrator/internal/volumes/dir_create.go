@@ -46,6 +46,10 @@ func (s *Service) CreateDir(ctx context.Context, request *orchestrator.VolumeDir
 	}
 	if err := fn(fullPath, os.FileMode(mode)); err != nil {
 		if os.IsNotExist(err) {
+			if !s.isVolumeRootHealthy(ctx, request.GetVolume()) {
+				return nil, fmt.Errorf("failed to create directory %q: %w", fullPath, err)
+			}
+
 			return nil, newAPIError(ctx, codes.NotFound, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to mkdir: parent of %q not found.", fullPath)
 		}
 

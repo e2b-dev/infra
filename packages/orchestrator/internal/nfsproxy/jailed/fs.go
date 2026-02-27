@@ -70,7 +70,6 @@ func (j jailedFS) Remove(filename string) error {
 func (j jailedFS) Join(elem ...string) string {
 	// Start with inner's join and normalize separators and dots.
 	p := j.inner.Join(elem...)
-	p = filepath.ToSlash(p)
 	p = filepath.Clean(p)
 
 	// If the cleaned path is already inside the jail prefix, keep it as-is to

@@ -133,6 +133,11 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		network.Egress.DeniedCidrs = []string{sandbox_network.AllInternetTrafficCIDR}
 	}
 
+	volumeMounts, err := createVolumeMountModelsFromAPI(req.GetSandbox().GetVolumeMounts())
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert volume mounts: %w", err)
+	}
+
 	sbx, err := s.sandboxFactory.ResumeSandbox(
 		ctx,
 		template,
@@ -157,7 +162,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 				FirecrackerVersion: req.GetSandbox().GetFirecrackerVersion(),
 			},
 
-			VolumeMounts: createVolumeMountModelsFromAPI(req.GetSandbox().GetVolumeMounts()),
+			VolumeMounts: volumeMounts,
 		},
 		sandbox.RuntimeMetadata{
 			TemplateID:  req.GetSandbox().GetTemplateId(),
@@ -214,19 +219,27 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	}, nil
 }
 
-func createVolumeMountModelsFromAPI(volumeMounts []*orchestrator.SandboxVolumeMount) []sandbox.VolumeMountConfig {
+func createVolumeMountModelsFromAPI(volumeMounts []*orchestrator.SandboxVolumeMount) ([]sandbox.VolumeMountConfig, error) {
+	var errs []error
+
 	results := make([]sandbox.VolumeMountConfig, 0, len(volumeMounts))
 
 	for _, v := range volumeMounts {
+		volumeID, err := uuid.Parse(v.Id)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("invalid volume id %q: %w", v.Id, err))
+			continue
+		}
+
 		results = append(results, sandbox.VolumeMountConfig{
-			ID:   v.GetId(),
+			ID:   volumeID,
 			Name: v.GetName(),
 			Path: v.GetPath(),
 			Type: v.GetType(),
 		})
 	}
 
-	return results
+	return results, errors.Join(errs...)
 }
 
 func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequest) (*emptypb.Empty, error) {

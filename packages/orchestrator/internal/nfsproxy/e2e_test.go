@@ -101,16 +101,16 @@ func TestIntegrationTest(t *testing.T) {
 	slot := &network.Slot{Key: "abc", HostIP: localIP}
 
 	sandboxID := uuid.NewString()
-	teamID := uuid.NewString()
+	teamID := uuid.New()
 	volumeType := "volume-type-1"
 	volumeName := "test-volume-1"
-	volumeID := uuid.NewString()
+	volumeID := uuid.New()
 	sandboxes := sandbox.NewSandboxesMap()
 	sandboxes.Insert(&sandbox.Sandbox{
 		Metadata: &sandbox.Metadata{
 			Runtime: sandbox.RuntimeMetadata{
 				SandboxID: sandboxID,
-				TeamID:    teamID,
+				TeamID:    teamID.String(),
 			},
 			Config: sandbox.Config{
 				VolumeMounts: []sandbox.VolumeMountConfig{

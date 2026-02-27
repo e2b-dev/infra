@@ -29,7 +29,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/volumes"
 )
 
-func createVolumeDir(t *testing.T, volumeTypePath, teamID, volumeID string) {
+func createVolumeDir(t *testing.T, volumeTypePath string, teamID, volumeID uuid.UUID) {
 	t.Helper()
 
 	fullVolumePathParts := append([]string{volumeTypePath}, volumes.BuildVolumePathParts(teamID, volumeID)...)
@@ -51,12 +51,12 @@ func TestRoundTrip(t *testing.T) {
 
 	// setup data
 	sandboxID := uuid.NewString()
-	teamID := uuid.NewString()
+	teamID := uuid.New()
 	volPath1 := os.TempDir()
 	volType1 := "volume-type-1"
-	volID1 := "volume-id-1"
+	volID1 := uuid.New()
 	volName1 := "volume-1"
-	volID2 := "volume-id-2"
+	volID2 := uuid.New()
 	volName2 := "volume-2"
 	volType2 := "volume-type-2"
 
@@ -77,7 +77,7 @@ func TestRoundTrip(t *testing.T) {
 			},
 			Runtime: sandbox.RuntimeMetadata{
 				SandboxID: sandboxID,
-				TeamID:    teamID,
+				TeamID:    teamID.String(),
 			},
 		},
 		Resources: &sandbox.Resources{
@@ -175,7 +175,7 @@ func TestRoundTrip(t *testing.T) {
 		require.NoError(t, err)
 
 		// verify file contents directly
-		objectName := filepath.Join(volPath1, "team-"+teamID, "vol-"+volID1, "sandbox-id.txt")
+		objectName := filepath.Join(volPath1, "team-"+teamID.String(), "vol-"+volID1.String(), "sandbox-id.txt")
 		object, err := os.Open(objectName)
 		require.NoError(t, err)
 
@@ -288,7 +288,7 @@ func TestGetPrefixFromSandbox(t *testing.T) {
 	happyPrefix := filepath.Join("team-team-id", "vol-good-volume-id")
 	happyVolumeName := "good-volume"
 	happyVolumeType := "good-volume-type"
-	happyVolumeID := "good-volume-id"
+	happyVolumeID := uuid.New()
 
 	happySlot := &network.Slot{Key: "abc", HostIP: happyIP}
 	happySandbox := &sandbox.Sandbox{

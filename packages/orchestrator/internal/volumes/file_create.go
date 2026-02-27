@@ -50,7 +50,6 @@ func (s *Service) CreateFile(server orchestrator.VolumeService_CreateFileServer)
 		attribute.Int64("uid", int64(uid)),
 		attribute.Int64("gid", int64(gid)),
 		attribute.Int64("mode", int64(mode)),
-		attribute.Bool("force", start.GetForce()),
 	))
 
 	if start.GetForce() {
@@ -72,18 +71,10 @@ func (s *Service) CreateFile(server orchestrator.VolumeService_CreateFileServer)
 		return fmt.Errorf("failed to open file for create: %w", err)
 	}
 
-	deleteFileOnError := true
 	defer func() {
 		closeErr := file.Close()
 		if closeErr != nil {
 			logger.L().Error(ctx, "failed to close file", zap.Error(closeErr))
-		}
-
-		if err != nil && deleteFileOnError {
-			deleteErr := os.Remove(fullPath)
-			if deleteErr != nil {
-				logger.L().Error(ctx, "failed to delete file after error", zap.Error(deleteErr))
-			}
 		}
 	}()
 
@@ -112,8 +103,6 @@ func (s *Service) CreateFile(server orchestrator.VolumeService_CreateFileServer)
 			if err := os.Chmod(fullPath, os.FileMode(mode)); err != nil {
 				return fmt.Errorf("failed to set file mode: %w", err)
 			}
-
-			deleteFileOnError = false
 
 			entry, err := toEntryFromPath(fullPath, start.GetPath())
 			if err != nil {

@@ -108,7 +108,7 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 
 	if err := a.createVolume(ctx, clusterID, volume); err != nil {
 		if errors.Is(err, ErrClusterNotFound) {
-			a.sendAPIStoreError(c, http.StatusInternalServerError, "Cluster not found")
+			a.sendAPIStoreError(c, http.StatusServiceUnavailable, "Cluster not found")
 			telemetry.ReportError(ctx, "cluster not found", err)
 
 			return
