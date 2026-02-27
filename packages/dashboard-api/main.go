@@ -30,6 +30,7 @@ import (
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/handlers"
+	sharedmiddleware "github.com/e2b-dev/infra/packages/shared/pkg/middleware"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/pkg/pool"
@@ -164,6 +165,20 @@ func run() int {
 		sharedauth.HeaderSupabaseTeam,
 	}
 	r.Use(cors.New(corsConfig))
+
+	r.Use(sharedmiddleware.LoggingMiddleware(l, sharedmiddleware.Config{
+		TimeFormat:   time.RFC3339Nano,
+		UTC:          true,
+		DefaultLevel: zap.InfoLevel,
+		SkipPaths:    []string{"/health"},
+		Context: func(c *gin.Context) []zapcore.Field {
+			if teamInfo, ok := sharedauth.GetTeamInfo(c); ok {
+				return []zapcore.Field{logger.WithTeamID(teamInfo.ID.String())}
+			}
+
+			return nil
+		},
+	}))
 
 	r.Use(
 		middleware.OapiRequestValidatorWithOptions(swagger,
