@@ -19,6 +19,7 @@ package tracing // import "go.opentelemetry.io/contrib/instrumentation/github.co
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -115,7 +116,7 @@ func Middleware(tracerProvider oteltrace.TracerProvider, service string) gin.Han
 		span.SetAttributes(attrs...)
 		span.SetStatus(spanStatus, spanMessage)
 		if len(c.Errors) > 0 {
-			span.SetAttributes(attribute.String("gin.errors", c.Errors.String()))
+			span.SetAttributes(attribute.String("gin.errors", strings.TrimSpace(c.Errors.String())))
 		}
 	}
 }
