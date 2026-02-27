@@ -195,7 +195,7 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		nil, // volumeMounts
 	)
 	if apiErr != nil {
-		return nil, status.Errorf(sharedutils.GRPCCodeFromHTTPStatus(apiErr.Code), "resume failed: %s", apiErr.ClientMsg)
+		return nil, status.Error(sharedutils.GRPCCodeFromHTTPStatus(apiErr.Code), apiErr.ClientMsg)
 	}
 
 	node := s.api.orchestrator.GetNode(sbx.ClusterID, sbx.NodeID)
