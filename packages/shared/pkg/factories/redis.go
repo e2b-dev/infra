@@ -24,7 +24,7 @@ type RedisConfig struct {
 	RedisClusterURL  string
 	RedisTLSCABase64 string
 	// PoolSize overrides the default connection pool size.
-	// When zero, defaults are used (clusterNodeConnectionSizePerCPU * GOMAXPROCS for cluster, go-redis default for standalone).
+	// When non-positive, defaults are used (clusterNodeConnectionSizePerCPU * GOMAXPROCS for cluster, go-redis default for standalone).
 	PoolSize int
 }
 
