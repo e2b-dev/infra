@@ -1,3 +1,8 @@
+variable "git_commit_sha" {
+  description = "Git commit SHA of the deployment"
+  type        = string
+}
+
 variable "vector_api_port" {
   type = number
 }

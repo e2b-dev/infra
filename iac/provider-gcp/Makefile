@@ -3,6 +3,9 @@ ENV_FILE := ../../.env.${ENV}
 
 -include ${ENV_FILE}
 
+# Default to current git commit SHA if not set via environment
+GIT_COMMIT_SHA ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+
 TF := $(shell which terraform)
 TF_VAR_FILE := ./.terraform.${ENV}.tfvars
 TF_VAR_FILE_ARG := $(if $(wildcard $(TF_VAR_FILE)),-var-file=$(TF_VAR_FILE))
@@ -18,6 +21,7 @@ endef
 
 tf_vars := \
 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
+	$(call tfvar, GIT_COMMIT_SHA) \
 	$(call tfvar, BUILD_CLUSTERS_CONFIG) \
 	$(call tfvar, CLIENT_CLUSTERS_CONFIG) \
 	$(call tfvar, API_MACHINE_TYPE) \

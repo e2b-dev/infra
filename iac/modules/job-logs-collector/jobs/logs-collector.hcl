@@ -1,4 +1,7 @@
 job "logs-collector" {
+  meta {
+    git_commit_sha = "${git_commit_sha}"
+  }
   type      = "system"
   node_pool = "all"
 

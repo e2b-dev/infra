@@ -1,4 +1,7 @@
 job "orchestrator-${latest_orchestrator_job_id}" {
+  meta {
+    git_commit_sha = "${git_commit_sha}"
+  }
   type = "system"
   node_pool = "${node_pool}"
 

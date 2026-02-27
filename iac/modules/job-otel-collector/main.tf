@@ -21,12 +21,18 @@ locals {
 
 resource "nomad_job" "otel_collector" {
   jobspec = templatefile("${path.module}/jobs/otel-collector.hcl", {
-    memory_mb = var.memory_mb
-    cpu_count = var.cpu_count
+    git_commit_sha = var.git_commit_sha
+    memory_mb      = var.memory_mb
+    cpu_count      = var.cpu_count
 
     otel_collector_grpc_port = var.otel_collector_grpc_port
     otel_collector_config    = local.otel_collector_config
   })
+}
+
+variable "git_commit_sha" {
+  description = "Git commit SHA of the deployment"
+  type        = string
 }
 
 variable "provider_name" {

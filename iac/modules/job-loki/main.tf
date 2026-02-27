@@ -15,6 +15,7 @@ locals {
 
 resource "nomad_job" "loki" {
   jobspec = templatefile("${path.module}/jobs/loki.hcl", {
+    git_commit_sha     = var.git_commit_sha
     node_pool          = var.node_pool
     prevent_colocation = var.prevent_colocation
 

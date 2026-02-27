@@ -52,6 +52,8 @@ data "google_secret_manager_secret_version" "redis_tls_ca_base64" {
 module "ingress" {
   source = "../../modules/job-ingress"
 
+  git_commit_sha = var.git_commit_sha
+
   ingress_count      = var.ingress_count
   ingress_proxy_port = var.ingress_port.port
 
@@ -66,8 +68,9 @@ module "ingress" {
 
 resource "nomad_job" "api" {
   jobspec = templatefile("${path.module}/jobs/api.hcl", {
-    update_stanza = var.api_machine_count > 1
-    node_pool     = var.api_node_pool
+    git_commit_sha = var.git_commit_sha
+    update_stanza  = var.api_machine_count > 1
+    node_pool      = var.api_node_pool
     // We use colocation 2 here to ensure that there are at least 2 nodes for API to do rolling updates.
     // It might be possible there could be problems if we are rolling updates for both API and Loki at the same time., so maybe increasing this to > 3 makes sense.
     prevent_colocation = var.api_machine_count > 2
@@ -133,10 +136,11 @@ resource "nomad_job" "redis" {
 
   jobspec = templatefile("${path.module}/jobs/redis.hcl",
     {
-      node_pool   = var.api_node_pool
-      gcp_zone    = var.gcp_zone
-      port_number = var.redis_port.port
-      port_name   = var.redis_port.name
+      git_commit_sha = var.git_commit_sha
+      node_pool      = var.api_node_pool
+      gcp_zone       = var.gcp_zone
+      port_number    = var.redis_port.port
+      port_name      = var.redis_port.name
     }
   )
 }
@@ -144,6 +148,7 @@ resource "nomad_job" "redis" {
 resource "nomad_job" "docker_reverse_proxy" {
   jobspec = templatefile("${path.module}/jobs/docker-reverse-proxy.hcl",
     {
+      git_commit_sha                = var.git_commit_sha
       gcp_zone                      = var.gcp_zone
       node_pool                     = var.api_node_pool
       image_name                    = data.google_artifact_registry_docker_image.docker_reverse_proxy_image.self_link
@@ -162,6 +167,8 @@ resource "nomad_job" "docker_reverse_proxy" {
 
 module "client_proxy" {
   source = "../../modules/job-client-proxy"
+
+  git_commit_sha = var.git_commit_sha
 
   update_stanza                    = var.api_machine_count > 1
   client_proxy_count               = var.client_proxy_count
@@ -265,6 +272,8 @@ data "google_secret_manager_secret_version" "grafana_username" {
 module "otel_collector" {
   source = "../../modules/job-otel-collector"
 
+  git_commit_sha = var.git_commit_sha
+
   provider_name = "gcp"
 
   memory_mb = var.otel_collector_resources_memory_mb
@@ -285,6 +294,8 @@ module "otel_collector" {
 
 module "otel_collector_nomad_server" {
   source = "../../modules/job-otel-collector-nomad-server"
+
+  git_commit_sha = var.git_commit_sha
 
   provider_name = "gcp"
   node_pool     = var.api_node_pool
@@ -369,6 +380,8 @@ data "google_secret_manager_secret_version" "grafana_logs_collector_api_token" {
 module "logs_collector" {
   source = "../../modules/job-logs-collector"
 
+  git_commit_sha = var.git_commit_sha
+
   loki_endpoint = "http://loki.service.consul:${var.loki_service_port.port}"
 
   vector_health_port = var.logs_health_proxy_port.port
@@ -398,6 +411,8 @@ locals {
 
 module "orchestrator" {
   source = "../../modules/job-orchestrator"
+
+  git_commit_sha = var.git_commit_sha
 
   provider_name = "gcp"
 
@@ -455,9 +470,10 @@ data "external" "template_manager_count" {
 
 resource "nomad_job" "template_manager" {
   jobspec = templatefile("${path.module}/jobs/template-manager.hcl", {
-    update_stanza = var.template_manages_clusters_size_gt_1
-    node_pool     = var.builder_node_pool
-    current_count = tonumber(data.external.template_manager_count.result.count)
+    git_commit_sha = var.git_commit_sha
+    update_stanza  = var.template_manages_clusters_size_gt_1
+    node_pool      = var.builder_node_pool
+    current_count  = tonumber(data.external.template_manager_count.result.count)
 
     gcp_project      = var.gcp_project_id
     gcp_region       = var.gcp_region
@@ -506,6 +522,7 @@ resource "nomad_job" "nomad_nodepool_apm" {
   count = var.template_manages_clusters_size_gt_1 ? 1 : 0
 
   jobspec = templatefile("${path.module}/jobs/nomad-autoscaler.hcl", {
+    git_commit_sha              = var.git_commit_sha
     node_pool                   = var.api_node_pool
     autoscaler_version          = var.nomad_autoscaler_version
     bucket_name                 = var.fc_env_pipeline_bucket_name
@@ -516,6 +533,8 @@ resource "nomad_job" "nomad_nodepool_apm" {
 
 module "loki" {
   source = "../../modules/job-loki"
+
+  git_commit_sha = var.git_commit_sha
 
   provider_name = "gcp"
 
@@ -593,6 +612,8 @@ resource "google_service_account_key" "clickhouse_service_account_key" {
 
 module "clickhouse" {
   source = "../../modules/job-clickhouse"
+
+  git_commit_sha = var.git_commit_sha
 
   provider_name = "gcp"
 

@@ -3,6 +3,10 @@ job "api" {
   node_pool = "${node_pool}"
   priority = 90
 
+  meta {
+    git_commit_sha = "${git_commit_sha}"
+  }
+
   group "api-service" {
     count = ${count}
 

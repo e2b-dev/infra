@@ -18,6 +18,7 @@ locals {
 
 resource "nomad_job" "logs_collector" {
   jobspec = templatefile("${path.module}/jobs/logs-collector.hcl", {
+    git_commit_sha     = var.git_commit_sha
     vector_api_port    = var.vector_api_port
     vector_health_port = var.vector_health_port
     vector_config      = local.vector_config

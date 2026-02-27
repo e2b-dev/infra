@@ -1,6 +1,10 @@
 job "filestore-cleanup" {
     type = "batch"
     node_pool = "${node_pool}"
+  meta {
+    git_commit_sha = "${git_commit_sha}"
+  }
+
 
     datacenters = ["*"]
 
