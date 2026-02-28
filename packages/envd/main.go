@@ -47,7 +47,7 @@ const (
 )
 
 var (
-	Version = "0.5.3"
+	Version = "0.5.4"
 
 	commitSHA string
 
