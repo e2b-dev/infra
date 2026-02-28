@@ -158,23 +158,20 @@ func (sb *StepBuilder) Build(
 
 	step := sb.step
 
-	fcConfig := fc.Config{
-		KernelVersion:      sb.Config.KernelVersion,
-		FirecrackerVersion: sb.Config.FirecrackerVersion,
-	}
-
 	sbxConfig := sandbox.Config{
-		Vcpu:      sb.Config.VCpuCount,
-		RamMB:     sb.Config.MemoryMB,
-		HugePages: sb.Config.HugePages,
-
-		FreePageReporting: sb.Config.FreePageReporting && fcConfig.SupportsFreePageReporting(),
+		Vcpu:              sb.Config.VCpuCount,
+		RamMB:             sb.Config.MemoryMB,
+		HugePages:         sb.Config.HugePages,
+		FreePageReporting: sb.Config.FreePageReporting,
 
 		Envd: sandbox.EnvdMetadata{
 			Version: sb.EnvdVersion,
 		},
 
-		FirecrackerConfig: fcConfig,
+		FirecrackerConfig: fc.Config{
+			KernelVersion:      sb.Config.KernelVersion,
+			FirecrackerVersion: sb.Config.FirecrackerVersion,
+		},
 	}
 
 	// First not cached layer is create (to change CPU, Memory, etc), subsequent are layers are resumes.
