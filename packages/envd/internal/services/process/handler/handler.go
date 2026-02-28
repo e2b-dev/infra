@@ -72,7 +72,12 @@ func New(
 	cgroupManager cgroups.Manager,
 	cancel context.CancelFunc,
 ) (*Handler, error) {
-	cmd := exec.CommandContext(ctx, req.GetProcess().GetCmd(), req.GetProcess().GetArgs()...)
+	// Wrap the command in a shell that sets the OOM score adjustment before exec-ing the actual command.
+	// This eliminates the race window where grandchildren could inherit the parent's protected OOM score (-1000)
+	// before the post-start adjustOomScore call had a chance to correct it.
+	oomWrapperScript := fmt.Sprintf(`echo %d > /proc/$$/oom_score_adj && exec "${@}"`, defaultOomScore)
+	wrapperArgs := append([]string{"-c", oomWrapperScript, "--", req.GetProcess().GetCmd()}, req.GetProcess().GetArgs()...)
+	cmd := exec.CommandContext(ctx, "/bin/sh", wrapperArgs...)
 
 	uid, gid, err := permissions.GetUserIdUints(user)
 	if err != nil {
@@ -397,11 +402,6 @@ func (p *Handler) Start() (uint32, error) {
 		if err != nil {
 			return 0, fmt.Errorf("error starting process '%s': %w", p.cmd, err)
 		}
-	}
-
-	adjustErr := adjustOomScore(p.cmd.Process.Pid, defaultOomScore)
-	if adjustErr != nil {
-		fmt.Fprintf(os.Stderr, "error adjusting oom score for process '%s': %s\n", p.cmd, adjustErr)
 	}
 
 	p.logger.
