@@ -363,12 +363,7 @@ func (u *Userfaultfd) faultPage(
 	default:
 		b, dataErr := source.Slice(ctx, offset, int64(u.pageSize))
 		if dataErr != nil {
-			var signalErr error
-			if onFailure != nil {
-				signalErr = onFailure()
-			}
-
-			joinedErr := errors.Join(dataErr, signalErr)
+			joinedErr := errors.Join(dataErr, safeInvoke(onFailure))
 
 			span.RecordError(joinedErr)
 			u.logger.Error(ctx, "UFFD serve data fetch error", zap.Error(joinedErr))
@@ -400,12 +395,7 @@ func (u *Userfaultfd) faultPage(
 	}
 
 	if writeErr != nil {
-		var signalErr error
-		if onFailure != nil {
-			signalErr = onFailure()
-		}
-
-		joinedErr := errors.Join(writeErr, signalErr)
+		joinedErr := errors.Join(writeErr, safeInvoke(onFailure))
 
 		span.RecordError(joinedErr)
 		u.logger.Error(ctx, "UFFD serve uffdio copy error", zap.Error(joinedErr))
