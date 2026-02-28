@@ -126,7 +126,7 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 		CpuCount:           body.CpuCount,
 		MemoryMB:           body.MemoryMB,
 		Version:            templates.TemplateV2LatestVersion,
-		KernelVersion:      featureflags.DefaultKernelVersion,
+		KernelVersion:      a.config.DefaultKernelVersion,
 		FirecrackerVersion: firecrackerVersion,
 	}
 
