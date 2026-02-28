@@ -190,6 +190,11 @@ func newStringFlag(name string, fallback string) StringFlag {
 	return flag
 }
 
+// This is currently not configurable via feature flags.
+const (
+	DefaultKernelVersion = "vmlinux-6.1.158"
+)
+
 // The Firecracker version the last tag + the short SHA (so we can build our dev previews)
 // TODO: The short tag here has only 7 characters — the one from our build pipeline will likely have exactly 8 so this will break.
 const (
