@@ -39,9 +39,8 @@ import (
 )
 
 const (
-	baseImage     = "ubuntu:22.04"
-	defaultKernel = "vmlinux-6.1.102"
-	proxyPort     = 5009
+	baseImage = "ubuntu:22.04"
+	proxyPort = 5009
 )
 
 // TestSmokeAllFCVersions builds a template and resumes from it for every
@@ -85,7 +84,7 @@ func TestSmokeAllFCVersions(t *testing.T) { //nolint:paralleltest // subtests sh
 					MemoryMB:           512,
 					DiskSizeMB:         512,
 					HugePages:          true,
-					KernelVersion:      defaultKernel,
+					KernelVersion:      featureflags.DefaultKernelVersion,
 					FirecrackerVersion: fcVersion,
 					FromImage:          baseImage,
 				},
@@ -357,8 +356,8 @@ func setupEnvVars(t *testing.T, dataDir, envdPath string) {
 
 func downloadKernel(t *testing.T, dataDir string) {
 	t.Helper()
-	dst := filepath.Join(dataDir, "kernels", defaultKernel, "vmlinux.bin")
-	url := fmt.Sprintf("https://storage.googleapis.com/e2b-prod-public-builds/kernels/%s/vmlinux.bin", defaultKernel)
+	dst := filepath.Join(dataDir, "kernels", featureflags.DefaultKernelVersion, "vmlinux.bin")
+	url := fmt.Sprintf("https://storage.googleapis.com/e2b-prod-public-builds/kernels/%s/vmlinux.bin", featureflags.DefaultKernelVersion)
 	downloadFile(t, url, dst, 0o644)
 }
 

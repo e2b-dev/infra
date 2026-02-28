@@ -203,7 +203,7 @@ func (a *APIStore) buildTemplate(
 		CpuCount:           body.CpuCount,
 		MemoryMB:           body.MemoryMB,
 		Version:            templates.TemplateV1Version,
-		KernelVersion:      a.config.DefaultKernelVersion,
+		KernelVersion:      featureflags.DefaultKernelVersion,
 		FirecrackerVersion: firecrackerVersion,
 	}
 
