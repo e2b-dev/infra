@@ -103,7 +103,9 @@ func (c *Client) StringFlag(ctx context.Context, flag StringFlag, contexts ...ld
 type typedFlag[T any] interface {
 	Key() string
 	Fallback() T
-	isSentinel(value T) bool
+	// shouldUseFallback reports whether the value returned by LaunchDarkly is
+	// a sentinel meaning "use the code-level default instead".
+	shouldUseFallback(value T) bool
 }
 
 func getFlag[T any](
@@ -124,7 +126,7 @@ func getFlag[T any](
 		logger.L().Warn(ctx, "error evaluating flag", zap.Error(err), zap.String("flag", flag.Key()))
 	}
 
-	if flag.isSentinel(value) {
+	if flag.shouldUseFallback(value) {
 		return flag.Fallback()
 	}
 

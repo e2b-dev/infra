@@ -38,7 +38,7 @@ type JSONFlag struct {
 	sentinel *ldvalue.Value
 }
 
-func (f JSONFlag) isSentinel(value ldvalue.Value) bool {
+func (f JSONFlag) shouldUseFallback(value ldvalue.Value) bool {
 	return f.sentinel != nil && value.Equal(*f.sentinel)
 }
 
@@ -77,7 +77,7 @@ type BoolFlag struct {
 	fallback bool
 }
 
-func (f BoolFlag) isSentinel(_ bool) bool { return false }
+func (f BoolFlag) shouldUseFallback(_ bool) bool { return false }
 
 func (f BoolFlag) Key() string {
 	return f.name
@@ -121,7 +121,7 @@ type IntFlag struct {
 	fallback int
 }
 
-func (f IntFlag) isSentinel(_ int) bool { return false }
+func (f IntFlag) shouldUseFallback(_ int) bool { return false }
 
 func (f IntFlag) Key() string {
 	return f.name
@@ -190,7 +190,7 @@ type StringFlag struct {
 	fallback string
 }
 
-func (f StringFlag) isSentinel(_ string) bool { return false }
+func (f StringFlag) shouldUseFallback(_ string) bool { return false }
 
 func (f StringFlag) Key() string {
 	return f.name
