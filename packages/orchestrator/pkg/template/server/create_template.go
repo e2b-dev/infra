@@ -60,11 +60,6 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		}
 	}
 
-	freePageReporting, err := resolveFreePageReporting(cfg.FreePageReporting, cfg.GetFirecrackerVersion())
-	if err != nil {
-		return nil, fmt.Errorf("invalid template config: %w", err)
-	}
-
 	template := config.TemplateConfig{
 		Version:              version,
 		TeamID:               cfg.GetTeamID(),
@@ -76,7 +71,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		ReadyCmd:             cfg.GetReadyCommand(),
 		DiskSizeMB:           int64(cfg.GetDiskSizeMB()),
 		HugePages:            cfg.GetHugePages(),
-		FreePageReporting:    freePageReporting,
+		FreePageReporting:    cfg.GetFreePageReporting(),
 		FromImage:            cfg.GetFromImage(),
 		FromTemplate:         cfg.GetFromTemplate(),
 		RegistryAuthProvider: authProvider,
