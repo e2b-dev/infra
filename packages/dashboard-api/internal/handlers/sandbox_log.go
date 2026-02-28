@@ -23,7 +23,7 @@ func (s *APIStore) GetSandboxesSandboxIDLog(c *gin.Context, sandboxID api.Sandbo
 	telemetry.ReportEvent(ctx, "get sandbox details")
 
 	teamID := auth.MustGetTeamInfo(c).Team.ID
-	telemetry.SetAttributes(ctx, telemetry.WithTeamID(teamID.String()), telemetry.WithSandboxID(string(sandboxID)))
+	telemetry.SetAttributes(ctx, telemetry.WithTeamID(teamID.String()), telemetry.WithSandboxID(sandboxID))
 
 	row, err := s.db.GetSandboxDetailByTeamAndSandboxID(ctx, queries.GetSandboxDetailByTeamAndSandboxIDParams{
 		TeamID:    teamID,
@@ -36,7 +36,7 @@ func (s *APIStore) GetSandboxesSandboxIDLog(c *gin.Context, sandboxID api.Sandbo
 			return
 		}
 
-		logger.L().Error(ctx, "Error getting sandbox details", zap.Error(err), logger.WithTeamID(teamID.String()), logger.WithSandboxID(string(sandboxID)))
+		logger.L().Error(ctx, "Error getting sandbox details", zap.Error(err), logger.WithTeamID(teamID.String()), logger.WithSandboxID(sandboxID))
 		s.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting sandbox details")
 
 		return
@@ -48,19 +48,20 @@ func (s *APIStore) GetSandboxesSandboxIDLog(c *gin.Context, sandboxID api.Sandbo
 	}
 
 	c.JSON(http.StatusOK, api.SandboxDetail{
-		TemplateID:  row.TemplateID,
-		Alias:       alias,
-		SandboxID:   row.SandboxID,
-		StartedAt:   row.StartedAt,
-		StoppedAt:   row.StoppedAt,
-		Domain:      row.Domain,
-		CpuCount:    api.CPUCount(row.Vcpu),
-		MemoryMB:    api.MemoryMB(row.RamMb),
-		DiskSizeMB:  api.DiskSizeMB(row.TotalDiskSizeMb),
+		TemplateID: row.TemplateID,
+		Alias:      alias,
+		SandboxID:  row.SandboxID,
+		StartedAt:  row.StartedAt,
+		StoppedAt:  row.StoppedAt,
+		Domain:     row.Domain,
+		CpuCount:   api.CPUCount(row.Vcpu),
+		MemoryMB:   api.MemoryMB(row.RamMb),
+		DiskSizeMB: api.DiskSizeMB(row.TotalDiskSizeMb),
 	})
 }
 
 func isUndefinedTableError(err error) bool {
 	var pgErr *pgconn.PgError
+
 	return errors.As(err, &pgErr) && pgErr.Code == undefinedTableErrorCode
 }
