@@ -109,6 +109,8 @@ func (tm *TemplateManager) CreateTemplate(
 		return fmt.Errorf("failed to convert image registry: %w", err)
 	}
 
+	freePageReporting := features.HasFreePageReporting()
+
 	template := &templatemanagergrpc.TemplateConfig{
 		TeamID:             teamID.String(),
 		TemplateID:         templateID,
@@ -119,6 +121,7 @@ func (tm *TemplateManager) CreateTemplate(
 		KernelVersion:      kernelVersion,
 		FirecrackerVersion: firecrackerVersion,
 		HugePages:          features.HasHugePages(),
+		FreePageReporting:  &freePageReporting,
 		StartCommand:       startCmd,
 		ReadyCommand:       readyCmd,
 		Force:              force,

@@ -199,20 +199,11 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 	// Provision sandbox with systemd and other vital parts
 	userLogger.Info(ctx, "Provisioning sandbox template")
 
-	fcConfig := fc.Config{
-		KernelVersion:      bb.Config.KernelVersion,
-		FirecrackerVersion: bb.Config.FirecrackerVersion,
-	}
-
 	baseSbxConfig := sandbox.Config{
-		Vcpu:      bb.Config.VCpuCount,
-		RamMB:     bb.Config.MemoryMB,
-		HugePages: bb.Config.HugePages,
-
-		// Enable free page reporting if requested and supported by the Firecracker version.
-		// The balloon device state is saved in the snapshot, so resumed sandboxes
-		// will automatically have free page reporting active.
-		FreePageReporting: bb.Config.FreePageReporting && fcConfig.SupportsFreePageReporting(),
+		Vcpu:              bb.Config.VCpuCount,
+		RamMB:             bb.Config.MemoryMB,
+		HugePages:         bb.Config.HugePages,
+		FreePageReporting: bb.Config.FreePageReporting,
 
 		// Allow sandbox internet access during provisioning
 		Network: &orchestrator.SandboxNetworkConfig{},
@@ -221,7 +212,10 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 			Version: bb.EnvdVersion,
 		},
 
-		FirecrackerConfig: fcConfig,
+		FirecrackerConfig: fc.Config{
+			KernelVersion:      bb.Config.KernelVersion,
+			FirecrackerVersion: bb.Config.FirecrackerVersion,
+		},
 	}
 	err = bb.provisionSandbox(
 		ctx,
