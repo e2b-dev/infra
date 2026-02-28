@@ -71,6 +71,17 @@ func (p *Handler) userCommand() string {
 	return strings.Join(append([]string{p.Config.GetCmd()}, p.Config.GetArgs()...), " ")
 }
 
+// currentNice returns the nice value of the current process.
+func currentNice() int {
+	prio, err := syscall.Getpriority(syscall.PRIO_PROCESS, 0)
+	if err != nil {
+		return 0
+	}
+
+	// Getpriority returns 20 - nice on Linux.
+	return 20 - prio
+}
+
 func New(
 	ctx context.Context,
 	user *user.User,
@@ -86,7 +97,9 @@ func New(
 	// Wrap the command in a shell that sets the OOM score and nice value before exec-ing the actual command.
 	// This eliminates the race window where grandchildren could inherit the parent's protected OOM score (-1000)
 	// or high CPU priority (nice -20) before the post-start calls had a chance to correct them.
-	oomWrapperScript := fmt.Sprintf(`echo %d > /proc/$$/oom_score_adj && exec nice -n %d "${@}"`, defaultOomScore, defaultNice)
+	// nice(1) applies a relative adjustment, so we compute the delta from the current (inherited) nice to the target.
+	niceDelta := defaultNice - currentNice()
+	oomWrapperScript := fmt.Sprintf(`echo %d > /proc/$$/oom_score_adj && exec /usr/bin/nice -n %d "${@}"`, defaultOomScore, niceDelta)
 	wrapperArgs := append([]string{"-c", oomWrapperScript, "--", req.GetProcess().GetCmd()}, req.GetProcess().GetArgs()...)
 	cmd := exec.CommandContext(ctx, "/bin/sh", wrapperArgs...)
 
