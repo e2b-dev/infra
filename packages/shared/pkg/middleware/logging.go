@@ -28,8 +28,7 @@ type Config struct {
 	SkipPathRegexps []*regexp.Regexp
 	Context         Fn
 	DefaultLevel    zapcore.Level
-	// skip is a Skipper that indicates which logs should not be written.
-	// Optional.
+	// Skipper indicates which logs should not be written. Optional.
 	Skipper Skipper
 }
 

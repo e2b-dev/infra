@@ -43,10 +43,8 @@ import (
 )
 
 const (
-	baseImage     = "e2bdev/base:latest"
-	defaultKernel = "vmlinux-6.1.102"
-	defaultFC     = "v1.12.1_a41d3fb"
-	proxyPort     = 5007
+	baseImage = "e2bdev/base:latest"
+	proxyPort = 5007
 )
 
 func main() {
@@ -54,8 +52,8 @@ func main() {
 	fromBuild := flag.String("from-build", "", "base build ID to build from (incremental build)")
 	toBuild := flag.String("to-build", "", "output build ID (UUID, required)")
 	storagePath := flag.String("storage", "", "storage: local path or gs://bucket (default: gs://$TEMPLATE_BUCKET_NAME or .local-build)")
-	kernel := flag.String("kernel", defaultKernel, "kernel version")
-	fc := flag.String("firecracker", defaultFC, "firecracker version")
+	kernel := flag.String("kernel", featureflags.DefaultKernelVersion, "kernel version")
+	fc := flag.String("firecracker", featureflags.DefaultFirecrackerVersion, "firecracker version")
 	vcpu := flag.Int("vcpu", 2, "vCPUs")
 	memory := flag.Int("memory", 1024, "memory MB")
 	disk := flag.Int("disk", 1024, "disk MB")
