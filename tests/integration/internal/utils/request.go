@@ -89,3 +89,33 @@ func WaitForStatus(tb testing.TB, client *http.Client, sbx *api.Sandbox, url *ur
 
 	return nil
 }
+
+func WaitForQuota(tb testing.TB, client *http.Client, sbx *api.Sandbox, url *url.URL, port int, headers *http.Header) *http.Response {
+	tb.Helper()
+
+	for attempt := 1; attempt <= 10; attempt++ {
+		req := NewRequest(sbx, url, port, headers)
+		resp, err := client.Do(req)
+		require.NoError(tb, err)
+
+		if resp.StatusCode != http.StatusTooManyRequests {
+			return resp
+		}
+
+		x, err := io.ReadAll(resp.Body)
+		if err != nil {
+			tb.Logf("[Status code: %d] attempt %d/10: error reading response body: %v", resp.StatusCode, attempt, err)
+		} else {
+			tb.Logf("[Status code: %d] attempt %d/10: response body: %s", resp.StatusCode, attempt, string(x))
+		}
+		require.NoError(tb, resp.Body.Close())
+
+		if attempt < 10 {
+			time.Sleep(500 * time.Millisecond)
+		}
+	}
+
+	tb.Fail()
+
+	return nil
+}

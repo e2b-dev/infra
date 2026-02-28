@@ -2,8 +2,10 @@ package utils
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"connectrpc.com/connect"
 
@@ -16,6 +18,48 @@ func ExecCommand(tb testing.TB, ctx context.Context, sbx *api.Sandbox, envdClien
 	tb.Helper()
 
 	return ExecCommandWithOptions(tb, ctx, sbx, envdClient, nil, "user", command, args...)
+}
+
+func WaitForQuotaExecCommand(tb testing.TB, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, command string, args ...string) error {
+	tb.Helper()
+
+	const maxRetries = 10
+	const retryDelay = 500 * time.Millisecond
+
+	var lastErr error
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
+		err := ExecCommand(tb, ctx, sbx, envdClient, command, args...)
+		if err == nil {
+			return nil
+		}
+
+		if !isQuotaExecError(err) {
+			return err
+		}
+
+		lastErr = err
+		tb.Logf("Command [%s] attempt %d/%d hit quota/resource exhaustion: %v", command, attempt, maxRetries, err)
+
+		if attempt < maxRetries {
+			time.Sleep(retryDelay)
+		}
+	}
+
+	return lastErr
+}
+
+func isQuotaExecError(err error) bool {
+	var connectErr *connect.Error
+	if !errors.As(err, &connectErr) {
+		return false
+	}
+
+	return connectErr.Code() == connect.CodeResourceExhausted
 }
 
 func ExecCommandWithCwd(tb testing.TB, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, cwd *string, command string, args ...string) error {

@@ -275,9 +275,8 @@ func TestSandboxWithTrafficAccessTokenAutoResumeViaProxy(t *testing.T) {
 	require.Equal(t, api.Paused, res.JSON200.State)
 
 	// While paused, missing token must not auto-resume and request should fail.
-	req := utils.NewRequest(&sbxWithoutToken, proxyURL, port, nil)
-	resp, err = client.Do(req)
-	require.NoError(t, err)
+	resp = utils.WaitForQuota(t, client, &sbxWithoutToken, proxyURL, port, nil)
+	require.NotNil(t, resp)
 	require.Equal(t, http.StatusForbidden, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
@@ -287,9 +286,8 @@ func TestSandboxWithTrafficAccessTokenAutoResumeViaProxy(t *testing.T) {
 	require.Equal(t, api.Paused, res.JSON200.State)
 
 	// Valid token request should auto-resume and succeed.
-	req = utils.NewRequest(sbx, proxyURL, port, nil)
-	resp, err = client.Do(req)
-	require.NoError(t, err)
+	resp = utils.WaitForQuota(t, client, sbx, proxyURL, port, nil)
+	require.NotNil(t, resp)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
@@ -342,9 +340,8 @@ func TestEnvdAccessTokenAutoResumeViaProxy(t *testing.T) {
 	require.Equal(t, api.Paused, res.JSON200.State)
 
 	// While paused, missing envd access token must not auto-resume.
-	req = utils.NewRequest(sbx, &envdHealthURL, envdPort, nil)
-	resp, err = client.Do(req)
-	require.NoError(t, err)
+	resp = utils.WaitForQuota(t, client, sbx, &envdHealthURL, envdPort, nil)
+	require.NotNil(t, resp)
 	require.Equal(t, http.StatusForbidden, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
@@ -354,9 +351,8 @@ func TestEnvdAccessTokenAutoResumeViaProxy(t *testing.T) {
 	require.Equal(t, api.Paused, res.JSON200.State)
 
 	// Valid envd access token should auto-resume.
-	req = utils.NewRequest(sbx, &envdHealthURL, envdPort, headers)
-	resp, err = client.Do(req)
-	require.NoError(t, err)
+	resp = utils.WaitForQuota(t, client, sbx, &envdHealthURL, envdPort, headers)
+	require.NotNil(t, resp)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
