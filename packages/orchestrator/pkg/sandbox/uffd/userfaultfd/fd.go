@@ -25,7 +25,6 @@ struct uffd_remove {
 	__u64 start;
 	__u64 end;
 };
-
 */
 import "C"
 
@@ -38,7 +37,8 @@ import (
 const (
 	NR_userfaultfd = C.__NR_userfaultfd
 
-	UFFD_API             = C.UFFD_API
+	UFFD_API = C.UFFD_API
+
 	UFFD_EVENT_PAGEFAULT = C.UFFD_EVENT_PAGEFAULT
 	UFFD_EVENT_REMOVE    = C.UFFD_EVENT_REMOVE
 
