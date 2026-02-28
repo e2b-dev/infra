@@ -48,16 +48,6 @@ jobs:
             ${{ matrix.package }}/go.mod
             ${{ matrix.package }}/go.sum
 
-      - name: Cache Go build cache (db)
-        id: db-gobuild-cache
-        if: matrix.package == 'packages/db'
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/go-build
-          key: ${{ runner.os }}-db-gobuild-${{ hashFiles('go.work', 'packages/db/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-db-gobuild-
-
       - name: Warm goose tool
         working-directory: ${{ matrix.package }}
         run: go tool goose --version
