@@ -21,11 +21,10 @@ func TestBuildAutoResumeConfig(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name       string
-		in         *api.SandboxAutoResumeConfig
-		wantNil    bool
-		wantErr    bool
-		wantPolicy dbtypes.SandboxAutoResumePolicy
+		name        string
+		in          *api.SandboxAutoResumeConfig
+		wantNil     bool
+		wantEnabled dbtypes.SandboxAutoResumeEnabled
 	}{
 		{
 			name:    "nil config returns nil",
@@ -33,30 +32,18 @@ func TestBuildAutoResumeConfig(t *testing.T) {
 			wantNil: true,
 		},
 		{
-			name:    "empty policy is rejected",
-			in:      &api.SandboxAutoResumeConfig{},
-			wantErr: true,
+			name: "enabled true is accepted",
+			in: &api.SandboxAutoResumeConfig{
+				Enabled: true,
+			},
+			wantEnabled: true,
 		},
 		{
-			name: "unknown policy is rejected",
+			name: "enabled false is accepted",
 			in: &api.SandboxAutoResumeConfig{
-				Policy: api.SandboxAutoResumePolicy("garbage"),
+				Enabled: false,
 			},
-			wantErr: true,
-		},
-		{
-			name: "policy any is accepted",
-			in: &api.SandboxAutoResumeConfig{
-				Policy: api.Any,
-			},
-			wantPolicy: dbtypes.SandboxAutoResumeAny,
-		},
-		{
-			name: "policy off is accepted",
-			in: &api.SandboxAutoResumeConfig{
-				Policy: api.Off,
-			},
-			wantPolicy: dbtypes.SandboxAutoResumeOff,
+			wantEnabled: false,
 		},
 	}
 
@@ -64,19 +51,7 @@ func TestBuildAutoResumeConfig(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := buildAutoResumeConfig(tt.in)
-
-			if tt.wantErr {
-				if err == nil {
-					t.Fatalf("buildAutoResumeConfig() error = nil, want non-nil error")
-				}
-
-				return
-			}
-
-			if err != nil {
-				t.Fatalf("buildAutoResumeConfig() error = %v, want nil", err)
-			}
+			got := buildAutoResumeConfig(tt.in)
 
 			if tt.wantNil {
 				if got != nil {
@@ -90,8 +65,8 @@ func TestBuildAutoResumeConfig(t *testing.T) {
 				t.Fatalf("buildAutoResumeConfig() = nil, want non-nil config")
 			}
 
-			if got.Policy != tt.wantPolicy {
-				t.Fatalf("buildAutoResumeConfig().Policy = %v, want %v", got.Policy, tt.wantPolicy)
+			if got.Enabled != tt.wantEnabled {
+				t.Fatalf("buildAutoResumeConfig().Enabled = %v, want %v", got.Enabled, tt.wantEnabled)
 			}
 		})
 	}

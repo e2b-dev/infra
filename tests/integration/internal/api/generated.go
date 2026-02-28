@@ -70,12 +70,6 @@ const (
 	NodeStatusUnhealthy  NodeStatus = "unhealthy"
 )
 
-// Defines values for SandboxAutoResumePolicy.
-const (
-	Any SandboxAutoResumePolicy = "any"
-	Off SandboxAutoResumePolicy = "off"
-)
-
 // Defines values for SandboxState.
 const (
 	Paused  SandboxState = "paused"
@@ -410,7 +404,7 @@ type NewSandbox struct {
 	// AutoPause Automatically pauses the sandbox after the timeout
 	AutoPause *bool `json:"autoPause,omitempty"`
 
-	// AutoResume Auto-resume configuration for paused sandboxes. Default is off.
+	// AutoResume Auto-resume configuration for paused sandboxes. Default false.
 	AutoResume *SandboxAutoResumeConfig `json:"autoResume,omitempty"`
 	EnvVars    *EnvVars                 `json:"envVars,omitempty"`
 
@@ -590,14 +584,14 @@ type Sandbox struct {
 	TrafficAccessToken *string `json:"trafficAccessToken"`
 }
 
-// SandboxAutoResumeConfig Auto-resume configuration for paused sandboxes. Default is off.
+// SandboxAutoResumeConfig Auto-resume configuration for paused sandboxes. Default false.
 type SandboxAutoResumeConfig struct {
-	// Policy Auto-resume policy for paused sandboxes. Default is off.
-	Policy SandboxAutoResumePolicy `json:"policy"`
+	// Enabled Auto-resume policy for paused sandboxes. Default false.
+	Enabled SandboxAutoResumeEnabled `json:"enabled"`
 }
 
-// SandboxAutoResumePolicy Auto-resume policy for paused sandboxes. Default is off.
-type SandboxAutoResumePolicy string
+// SandboxAutoResumeEnabled Auto-resume policy for paused sandboxes. Default false.
+type SandboxAutoResumeEnabled = bool
 
 // SandboxDetail defines model for SandboxDetail.
 type SandboxDetail struct {

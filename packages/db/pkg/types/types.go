@@ -36,15 +36,10 @@ type SandboxVolumeMountConfig struct {
 	Path string `json:"path"`
 }
 
-type SandboxAutoResumePolicy string
-
-const (
-	SandboxAutoResumeAny SandboxAutoResumePolicy = "any"
-	SandboxAutoResumeOff SandboxAutoResumePolicy = "off"
-)
+type SandboxAutoResumeEnabled bool
 
 type SandboxAutoResumeConfig struct {
-	Policy SandboxAutoResumePolicy `json:"policy"`
+	Enabled SandboxAutoResumeEnabled `json:"enabled"`
 }
 
 type PausedSandboxConfig struct {
