@@ -256,19 +256,19 @@ components:
 
     CPUCount:
       type: integer
-      format: int32
+      format: int64
       minimum: 1
       description: CPU cores for the sandbox
 
     MemoryMB:
       type: integer
-      format: int32
+      format: int64
       minimum: 128
       description: Memory for the sandbox in MiB
 
     DiskSizeMB:
       type: integer
-      format: int32
+      format: int64
       minimum: 0
       description: Disk size for the sandbox in MiB
 
