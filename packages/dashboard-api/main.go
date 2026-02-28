@@ -30,7 +30,6 @@ import (
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/handlers"
-	customMiddleware "github.com/e2b-dev/infra/packages/dashboard-api/internal/middleware"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/pkg/pool"
@@ -155,14 +154,6 @@ func run() int {
 
 	r := gin.New()
 	r.Use(gin.Recovery())
-	if !config.DisableHTTPLogging {
-		r.Use(customMiddleware.LoggingMiddleware(l, customMiddleware.Config{
-			TimeFormat:   time.RFC3339Nano,
-			UTC:          true,
-			DefaultLevel: zap.InfoLevel,
-			SkipPaths:    []string{"/health"},
-		}))
-	}
 
 	corsConfig := cors.DefaultConfig()
 	corsConfig.AllowAllOrigins = true
