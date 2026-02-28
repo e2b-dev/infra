@@ -53,6 +53,11 @@ jobs:
         run: go tool goose --version
         if: matrix.package == 'packages/db'
 
+      - name: Warm goose tool to check cacche (remove after)
+        working-directory: ${{ matrix.package }}
+        run: go tool goose --version
+        if: matrix.package == 'packages/db'
+
       - name: Setup envd tests
         run: |
           # Install bindfs for FUSE mount tests
