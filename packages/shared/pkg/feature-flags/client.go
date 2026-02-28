@@ -103,6 +103,7 @@ func (c *Client) StringFlag(ctx context.Context, flag StringFlag, contexts ...ld
 type typedFlag[T any] interface {
 	Key() string
 	Fallback() T
+	isSentinel(value T) bool
 }
 
 func getFlag[T any](
@@ -121,6 +122,10 @@ func getFlag[T any](
 	value, err := getFromLaunchDarkly(ctx, flag.Key(), mergeContexts(ctx, contexts), flag.Fallback())
 	if err != nil {
 		logger.L().Warn(ctx, "error evaluating flag", zap.Error(err), zap.String("flag", flag.Key()))
+	}
+
+	if flag.isSentinel(value) {
+		return flag.Fallback()
 	}
 
 	return value
