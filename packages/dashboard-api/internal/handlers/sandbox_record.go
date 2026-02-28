@@ -3,6 +3,7 @@ package handlers
 import (
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
@@ -16,7 +17,11 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-const undefinedTableErrorCode = "42P01"
+const (
+	sandboxRecordRetention = 7 * 24 * time.Hour
+
+	undefinedTableErrorCode = "42P01"
+)
 
 func (s *APIStore) GetSandboxesSandboxIDRecord(c *gin.Context, sandboxID api.SandboxID) {
 	ctx := c.Request.Context()
@@ -26,8 +31,9 @@ func (s *APIStore) GetSandboxesSandboxIDRecord(c *gin.Context, sandboxID api.San
 	telemetry.SetAttributes(ctx, telemetry.WithTeamID(teamID.String()), telemetry.WithSandboxID(sandboxID))
 
 	row, err := s.db.GetSandboxRecordByTeamAndSandboxID(ctx, queries.GetSandboxRecordByTeamAndSandboxIDParams{
-		TeamID:    teamID,
-		SandboxID: sandboxID,
+		TeamID:       teamID,
+		SandboxID:    sandboxID,
+		CreatedAfter: time.Now().UTC().Add(-sandboxRecordRetention),
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) || isUndefinedTableError(err) {
