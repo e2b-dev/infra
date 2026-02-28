@@ -54,7 +54,9 @@ message SandboxConfig {
 }
 
 message SandboxAutoResumeConfig {
-  bool enabled = 1;
+  reserved 1;
+  reserved "policy";
+  bool enabled = 2;
 }
 
 message SandboxVolumeMount {
