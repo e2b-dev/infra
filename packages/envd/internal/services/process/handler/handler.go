@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"os/user"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 
@@ -64,6 +65,12 @@ func (p *Handler) Pid() uint32 {
 	return uint32(p.cmd.Process.Pid)
 }
 
+// userCommand returns a human-readable representation of the user's original command,
+// without the internal OOM/nice wrapper that is prepended to the actual exec.
+func (p *Handler) userCommand() string {
+	return strings.Join(append([]string{p.Config.GetCmd()}, p.Config.GetArgs()...), " ")
+}
+
 func New(
 	ctx context.Context,
 	user *user.User,
@@ -73,6 +80,9 @@ func New(
 	cgroupManager cgroups.Manager,
 	cancel context.CancelFunc,
 ) (*Handler, error) {
+	// User command string for logging (without the internal wrapper details).
+	userCmd := strings.Join(append([]string{req.GetProcess().GetCmd()}, req.GetProcess().GetArgs()...), " ")
+
 	// Wrap the command in a shell that sets the OOM score and nice value before exec-ing the actual command.
 	// This eliminates the race window where grandchildren could inherit the parent's protected OOM score (-1000)
 	// or high CPU priority (nice -20) before the post-start calls had a chance to correct them.
@@ -173,7 +183,7 @@ func New(
 			Rows: uint16(req.GetPty().GetSize().GetRows()),
 		})
 		if err != nil {
-			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("error starting pty with command '%s' in dir '%s' with '%d' cols and '%d' rows: %w", cmd, cmd.Dir, req.GetPty().GetSize().GetCols(), req.GetPty().GetSize().GetRows(), err))
+			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("error starting pty with command '%s' in dir '%s' with '%d' cols and '%d' rows: %w", userCmd, cmd.Dir, req.GetPty().GetSize().GetCols(), req.GetPty().GetSize().GetRows(), err))
 		}
 
 		outWg.Go(func() {
@@ -208,7 +218,7 @@ func New(
 	} else {
 		stdout, err := cmd.StdoutPipe()
 		if err != nil {
-			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error creating stdout pipe for command '%s': %w", cmd, err))
+			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error creating stdout pipe for command '%s': %w", userCmd, err))
 		}
 
 		outWg.Go(func() {
@@ -250,7 +260,7 @@ func New(
 
 		stderr, err := cmd.StderrPipe()
 		if err != nil {
-			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error creating stderr pipe for command '%s': %w", cmd, err))
+			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error creating stderr pipe for command '%s': %w", userCmd, err))
 		}
 
 		outWg.Go(func() {
@@ -295,7 +305,7 @@ func New(
 		if req.Stdin == nil || req.GetStdin() == true {
 			stdin, err := cmd.StdinPipe()
 			if err != nil {
-				return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error creating stdin pipe for command '%s': %w", cmd, err))
+				return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error creating stdin pipe for command '%s': %w", userCmd, err))
 			}
 
 			h.stdin = stdin
@@ -401,7 +411,7 @@ func (p *Handler) Start() (uint32, error) {
 	if p.tty == nil {
 		err := p.cmd.Start()
 		if err != nil {
-			return 0, fmt.Errorf("error starting process '%s': %w", p.cmd, err)
+			return 0, fmt.Errorf("error starting process '%s': %w", p.userCommand(), err)
 		}
 	}
 
@@ -409,7 +419,7 @@ func (p *Handler) Start() (uint32, error) {
 		Info().
 		Str("event_type", "process_start").
 		Int("pid", p.cmd.Process.Pid).
-		Str("command", p.cmd.String()).
+		Str("command", p.userCommand()).
 		Msg(fmt.Sprintf("Process with pid %d started", p.cmd.Process.Pid))
 
 	return uint32(p.cmd.Process.Pid), nil
