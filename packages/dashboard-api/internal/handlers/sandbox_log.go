@@ -48,15 +48,15 @@ func (s *APIStore) GetSandboxesSandboxIDLog(c *gin.Context, sandboxID api.Sandbo
 	}
 
 	c.JSON(http.StatusOK, api.SandboxDetail{
-		TemplateID:  row.TemplateID,
-		Alias:       alias,
-		SandboxID:   row.SandboxID,
-		StartedAt:   row.StartedAt,
-		StoppedAt:   row.StoppedAt,
-		Domain:      row.Domain,
-		CpuCount:    api.CPUCount(row.Vcpu),
-		MemoryMB:    api.MemoryMB(row.RamMb),
-		DiskSizeMB:  api.DiskSizeMB(row.TotalDiskSizeMb),
+		TemplateID: row.TemplateID,
+		Alias:      alias,
+		SandboxID:  row.SandboxID,
+		StartedAt:  row.StartedAt,
+		StoppedAt:  row.StoppedAt,
+		Domain:     row.Domain,
+		CpuCount:   api.CPUCount(row.Vcpu),
+		MemoryMB:   api.MemoryMB(row.RamMb),
+		DiskSizeMB: api.DiskSizeMB(row.TotalDiskSizeMb),
 	})
 }
 
