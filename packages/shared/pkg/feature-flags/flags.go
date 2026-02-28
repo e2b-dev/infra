@@ -9,9 +9,10 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 )
 
-// JSONFlagSentinel is an empty JSON object ({}). When LD returns this value
-// for FirecrackerVersions, the code-level fallback is used instead.
-var JSONFlagSentinel = ldvalue.ObjectBuild().Build()
+// JSONFlagSentinel is a JSON object with a unique marker key. When LD returns
+// this value, the code-level fallback is used instead.
+// Value: {"__use_code_default__": true}
+var JSONFlagSentinel = ldvalue.ObjectBuild().Set("__use_code_default__", ldvalue.Bool(true)).Build()
 
 // kinds
 const (
@@ -62,7 +63,7 @@ func newJSONFlag(name string, fallback ldvalue.Value) JSONFlag {
 	return flag
 }
 
-func newJSONFlagWithSentinel(name string, fallback ldvalue.Value) JSONFlag {
+func newJSONFlagWithFallback(name string, fallback ldvalue.Value) JSONFlag {
 	flag := newJSONFlag(name, fallback)
 	sentinel := JSONFlagSentinel
 	flag.sentinel = &sentinel
@@ -231,7 +232,7 @@ var (
 	BuildIoEngine               = newStringFlag("build-io-engine", "Sync")
 	DefaultPersistentVolumeType = newStringFlag("default-persistent-volume-type", "")
 	BuildNodeInfo               = newJSONFlag("preferred-build-node", ldvalue.Null())
-	FirecrackerVersions         = newJSONFlagWithSentinel("firecracker-versions", ldvalue.FromJSONMarshal(FirecrackerVersionMap))
+	FirecrackerVersions         = newJSONFlagWithFallback("firecracker-versions", ldvalue.FromJSONMarshal(FirecrackerVersionMap))
 )
 
 // defaultTrackedTemplates is the default map of template aliases tracked for metrics.
