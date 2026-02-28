@@ -1,5 +1,4 @@
 // Builds the API server and its DB migrator in parallel.
-// Usage: cd packages && docker buildx bake -f api/docker-bake.hcl --push
 
 variable "REGISTRY_PREFIX" {}
 
