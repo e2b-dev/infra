@@ -81,7 +81,7 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
 		var autoResume *types.SandboxAutoResumeConfig
 		if autoResumeCfg := config.GetAutoResume(); autoResumeCfg != nil {
 			autoResume = &types.SandboxAutoResumeConfig{
-				Enabled: types.SandboxAutoResumeEnabled(autoResumeCfg.GetEnabled()),
+				Enabled: autoResumeCfg.GetEnabled(),
 			}
 		}
 

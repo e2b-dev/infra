@@ -11,7 +11,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	handlersmocks "github.com/e2b-dev/infra/packages/api/internal/handlers/mocks"
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
-	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
@@ -24,7 +23,7 @@ func TestBuildAutoResumeConfig(t *testing.T) {
 		name        string
 		in          *api.SandboxAutoResumeConfig
 		wantNil     bool
-		wantEnabled dbtypes.SandboxAutoResumeEnabled
+		wantEnabled bool
 	}{
 		{
 			name:    "nil config returns nil",

@@ -243,7 +243,7 @@ func buildAutoResumeConfig(autoResume *api.SandboxAutoResumeConfig) *types.Sandb
 	}
 
 	return &types.SandboxAutoResumeConfig{
-		Enabled: types.SandboxAutoResumeEnabled(autoResume.Enabled),
+		Enabled: autoResume.Enabled,
 	}
 }
 

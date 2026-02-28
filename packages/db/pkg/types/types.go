@@ -36,10 +36,8 @@ type SandboxVolumeMountConfig struct {
 	Path string `json:"path"`
 }
 
-type SandboxAutoResumeEnabled bool
-
 type SandboxAutoResumeConfig struct {
-	Enabled SandboxAutoResumeEnabled `json:"enabled"`
+	Enabled bool `json:"enabled"`
 }
 
 type PausedSandboxConfig struct {
