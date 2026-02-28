@@ -285,10 +285,14 @@ func TestGetPrefixFromSandbox(t *testing.T) {
 	}
 	happyDirPath := "/good-volume"
 	happyFS := memfs.New()
-	happyPrefix := filepath.Join("team-team-id", "vol-good-volume-id")
 	happyVolumeName := "good-volume"
 	happyVolumeType := "good-volume-type"
 	happyVolumeID := uuid.New()
+	happyTeamID := uuid.New()
+	happyPrefix := filepath.Join(
+		fmt.Sprintf("team-%s", happyTeamID.String()),
+		fmt.Sprintf("vol-%s", happyVolumeID.String()),
+	)
 
 	happySlot := &network.Slot{Key: "abc", HostIP: happyIP}
 	happySandbox := &sandbox.Sandbox{
@@ -299,7 +303,7 @@ func TestGetPrefixFromSandbox(t *testing.T) {
 				},
 			},
 			Runtime: sandbox.RuntimeMetadata{
-				TeamID: "team-id",
+				TeamID: happyTeamID.String(),
 			},
 		},
 		Resources: &sandbox.Resources{

@@ -60,12 +60,12 @@ func (s *Service) buildVolumePath(volume *orchestrator.VolumeInfo, subPath strin
 
 	teamID, ok := tryParseUUID(volume.GetTeamId())
 	if !ok {
-		return "", status.Newf(codes.InvalidArgument, "invalid team ID %q", teamID).Err()
+		return "", status.Newf(codes.InvalidArgument, "invalid team ID %q", volume.GetTeamId()).Err()
 	}
 
 	volumeID, ok := tryParseUUID(volume.GetVolumeId())
 	if !ok {
-		return "", status.Newf(codes.InvalidArgument, "invalid volume ID %q", volumeID).Err()
+		return "", status.Newf(codes.InvalidArgument, "invalid volume ID %q", volume.GetVolumeId()).Err()
 	}
 
 	volumeParts := append([]string{volTypePath}, BuildVolumePathParts(teamID, volumeID)...)
@@ -131,7 +131,7 @@ func (s *Service) isVolumeRootHealthy(ctx context.Context, volume *orchestrator.
 func tryParseUUID(id string) (uuid.UUID, bool) {
 	val, err := uuid.Parse(id)
 
-	return val, err == nil
+	return val, err == nil && val != uuid.Nil
 }
 
 func toEntryFromOSInfo(absPath, volumeRelPath string, fileInfo os.FileInfo) *orchestrator.EntryInfo {
