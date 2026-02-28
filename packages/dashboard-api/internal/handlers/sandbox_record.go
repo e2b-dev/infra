@@ -18,14 +18,14 @@ import (
 
 const undefinedTableErrorCode = "42P01"
 
-func (s *APIStore) GetSandboxesSandboxIDLog(c *gin.Context, sandboxID api.SandboxID) {
+func (s *APIStore) GetSandboxesSandboxIDRecord(c *gin.Context, sandboxID api.SandboxID) {
 	ctx := c.Request.Context()
 	telemetry.ReportEvent(ctx, "get sandbox details")
 
 	teamID := auth.MustGetTeamInfo(c).Team.ID
 	telemetry.SetAttributes(ctx, telemetry.WithTeamID(teamID.String()), telemetry.WithSandboxID(sandboxID))
 
-	row, err := s.db.GetSandboxDetailByTeamAndSandboxID(ctx, queries.GetSandboxDetailByTeamAndSandboxIDParams{
+	row, err := s.db.GetSandboxRecordByTeamAndSandboxID(ctx, queries.GetSandboxRecordByTeamAndSandboxIDParams{
 		TeamID:    teamID,
 		SandboxID: sandboxID,
 	})
@@ -47,7 +47,7 @@ func (s *APIStore) GetSandboxesSandboxIDLog(c *gin.Context, sandboxID api.Sandbo
 		alias = &row.Alias
 	}
 
-	c.JSON(http.StatusOK, api.SandboxDetail{
+	c.JSON(http.StatusOK, api.SandboxRecord{
 		TemplateID: row.TemplateID,
 		Alias:      alias,
 		SandboxID:  row.SandboxID,

@@ -1,4 +1,4 @@
--- name: GetSandboxDetailByTeamAndSandboxID :one
+-- name: GetSandboxRecordByTeamAndSandboxID :one
 SELECT
     sl.sandbox_id,
     sl.env_id AS template_id,

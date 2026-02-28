@@ -272,7 +272,7 @@ components:
       minimum: 0
       description: Disk size for the sandbox in MiB
 
-    SandboxDetail:
+    SandboxRecord:
       type: object
       required:
         - templateID
@@ -415,9 +415,9 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
-  /sandboxes/{sandboxID}/log:
+  /sandboxes/{sandboxID}/record:
     get:
-      summary: Get sandbox details
+      summary: Get sandbox record
       tags: [sandboxes]
       security:
         - Supabase1TokenAuth: []
@@ -430,7 +430,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SandboxDetail"
+                $ref: "#/components/schemas/SandboxRecord"
         "401":
           $ref: "#/components/responses/401"
         "403":
