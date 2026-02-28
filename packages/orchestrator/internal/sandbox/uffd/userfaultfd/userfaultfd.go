@@ -83,10 +83,6 @@ func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logge
 	return u, nil
 }
 
-func (u *Userfaultfd) Close() error {
-	return u.fd.close()
-}
-
 // readEvents reads all available UFFD events from the file descriptor.
 // Returns a queue with the events read, or an error.
 func (u *Userfaultfd) readEvents(ctx context.Context) (*queue, error) {
@@ -259,7 +255,7 @@ func (u *Userfaultfd) Serve(
 
 		// First handle the UFFD_EVENT_REMOVE events
 		for rm := range each[*UffdRemove](events) {
-			u.pageTracker.setState(removed, uintptr(rm.start), uintptr(rm.end))
+			u.pageTracker.setState(uintptr(rm.start), uintptr(rm.end), removed)
 		}
 
 		for pf := range each[*UffdPagefault](events) {
@@ -325,69 +321,6 @@ func (u *Userfaultfd) Serve(
 	}
 }
 
-func (u *Userfaultfd) faulted() *block.Tracker {
-	// This will be at worst cancelled when the uffd is closed.
-	u.settleRequests.Lock()
-	// The locking here would work even without using defer (just lock-then-unlock the mutex), but at this point let's make it lock to the clone,
-	// so it is consistent even if there is a another uffd call after.
-	defer u.settleRequests.Unlock()
-
-	return u.missingRequests.Clone()
-}
-
-func (u *Userfaultfd) PrefetchData() block.PrefetchData {
-	// This will be at worst cancelled when the uffd is closed.
-	u.settleRequests.Lock()
-	// The locking here would work even without using defer (just lock-then-unlock the mutex), but at this point let's make it lock to the clone,
-	// so it is consistent even if there is a another uffd call after.
-	defer u.settleRequests.Unlock()
-
-	return u.prefetchTracker.PrefetchData()
-}
-
-// Prefault proactively copies a page to guest memory at the given offset.
-// This is used to speed up sandbox starts by prefetching pages that are known to be needed.
-// Returns nil on success, or if the page is already mapped (EEXIST is handled gracefully).
-func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) error {
-	ctx, span := tracer.Start(ctx, "prefault page")
-	defer span.End()
-
-	// Get host virtual address and page size for this offset
-	addr, err := u.ma.GetHostVirtAddr(offset)
-	if err != nil {
-		return fmt.Errorf("failed to get host virtual address: %w", err)
-	}
-
-	if len(data) != int(u.pageSize) {
-		return fmt.Errorf("data length (%d) is less than pagesize (%d)", len(data), u.pageSize)
-	}
-
-	handled, err := u.faultPage(ctx, addr, offset, directDataSource{data, int64(u.pageSize)}, nil, block.Prefetch)
-	if err != nil {
-		return fmt.Errorf("failted to fault page: %w", err)
-	}
-
-	if !handled {
-		span.RecordError(fmt.Errorf("page already faulted"))
-	}
-
-	return nil
-}
-
-// directDataSource wraps a byte slice to implement block.Slicer for prefaulting.
-type directDataSource struct {
-	data     []byte
-	pagesize int64
-}
-
-func (d directDataSource) Slice(_ context.Context, _, _ int64) ([]byte, error) {
-	return d.data, nil
-}
-
-func (d directDataSource) BlockSize() int64 {
-	return d.pagesize
-}
-
 func (u *Userfaultfd) faultPage(
 	ctx context.Context,
 	addr uintptr,
@@ -451,7 +384,7 @@ func (u *Userfaultfd) faultPage(
 	// try to handle a page fault for the same address twich, since we are now
 	// tracking the state of pages.
 	if errors.Is(writeErr, unix.EEXIST) {
-		u.pageTracker.setState(faulted, addr, addr+u.pageSize)
+		u.pageTracker.setState(addr, addr+u.pageSize, faulted)
 		span.SetAttributes(attribute.Bool("uffd.already_mapped", true))
 
 		return true, nil
@@ -483,7 +416,21 @@ func (u *Userfaultfd) faultPage(
 	// Add the offset to the missing requests tracker with metadata.
 	u.missingRequests.Add(offset)
 	u.prefetchTracker.Add(offset, accessType)
-	u.pageTracker.setState(faulted, addr, addr+u.pageSize)
+	u.pageTracker.setState(addr, addr+u.pageSize, faulted)
 
 	return true, nil
+}
+
+func (u *Userfaultfd) PrefetchData() block.PrefetchData {
+	// This will be at worst cancelled when the uffd is closed.
+	u.settleRequests.Lock()
+	// The locking here would work even without using defer (just lock-then-unlock the mutex), but at this point let's make it lock to the clone,
+	// so it is consistent even if there is a another uffd call after.
+	defer u.settleRequests.Unlock()
+
+	return u.prefetchTracker.PrefetchData()
+}
+
+func (u *Userfaultfd) Close() error {
+	return u.fd.close()
 }
