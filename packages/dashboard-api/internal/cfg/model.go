@@ -9,7 +9,6 @@ type Config struct {
 	PostgresConnectionString   string   `env:"POSTGRES_CONNECTION_STRING,required,notEmpty"`
 	ClickhouseConnectionString string   `env:"CLICKHOUSE_CONNECTION_STRING"`
 	SupabaseJWTSecrets         []string `env:"SUPABASE_JWT_SECRETS"`
-	DisableHTTPLogging         bool     `env:"DISABLE_HTTP_LOGGING"                         envDefault:"false"`
 
 	AuthDBConnectionString            string `env:"AUTH_DB_CONNECTION_STRING"`
 	AuthDBReadReplicaConnectionString string `env:"AUTH_DB_READ_REPLICA_CONNECTION_STRING"`
