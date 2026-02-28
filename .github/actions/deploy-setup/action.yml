@@ -71,7 +71,6 @@ runs:
       working-directory: iac/provider-gcp
       run: |
         mkdir -p ~/.terraform.d/plugin-cache
+        export TF_PLUGIN_CACHE_DIR=~/.terraform.d/plugin-cache
         terraform init -input=false -reconfigure -backend-config="bucket=${TERRAFORM_STATE_BUCKET}"
       shell: bash
-      env:
-        TF_PLUGIN_CACHE_DIR: ~/.terraform.d/plugin-cache

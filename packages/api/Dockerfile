@@ -13,13 +13,12 @@ COPY ./db/go.mod ./db/go.sum ./db/
 COPY ./auth/go.mod ./auth/go.sum ./auth/
 COPY ./api/go.mod ./api/go.sum ./api/
 
-# Download all module dependencies in parallel
-RUN (cd /build/shared && go mod download) & \
-    (cd /build/clickhouse && go mod download) & \
-    (cd /build/db && go mod download) & \
-    (cd /build/auth && go mod download) & \
-    (cd /build/api && go mod download) & \
-    wait
+# Download all module dependencies
+RUN cd /build/shared && go mod download && \
+    cd /build/clickhouse && go mod download && \
+    cd /build/db && go mod download && \
+    cd /build/auth && go mod download && \
+    cd /build/api && go mod download
 
 # Copy source code
 WORKDIR /build
