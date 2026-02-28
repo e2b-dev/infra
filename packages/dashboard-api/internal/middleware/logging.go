@@ -53,6 +53,7 @@ func LoggingMiddleware(logger logger.Logger, conf Config) gin.HandlerFunc {
 				}
 
 				track = false
+
 				break
 			}
 		}

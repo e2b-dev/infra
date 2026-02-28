@@ -22,21 +22,21 @@ import (
 
 type noRowsDB struct{}
 
-func (d noRowsDB) Exec(context.Context, string, ...interface{}) (pgconn.CommandTag, error) {
+func (d noRowsDB) Exec(context.Context, string, ...any) (pgconn.CommandTag, error) {
 	return pgconn.CommandTag{}, nil
 }
 
-func (d noRowsDB) Query(context.Context, string, ...interface{}) (pgx.Rows, error) {
+func (d noRowsDB) Query(context.Context, string, ...any) (pgx.Rows, error) {
 	return nil, nil
 }
 
-func (d noRowsDB) QueryRow(context.Context, string, ...interface{}) pgx.Row {
+func (d noRowsDB) QueryRow(context.Context, string, ...any) pgx.Row {
 	return noRowsRow{}
 }
 
 type noRowsRow struct{}
 
-func (r noRowsRow) Scan(...interface{}) error {
+func (r noRowsRow) Scan(...any) error {
 	return pgx.ErrNoRows
 }
 
