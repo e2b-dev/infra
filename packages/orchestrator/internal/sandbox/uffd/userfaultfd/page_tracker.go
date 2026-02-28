@@ -1,10 +1,8 @@
 package userfaultfd
 
-import (
-	"sync"
-)
+import "sync"
 
-type pageState int
+type pageState uint8
 
 const (
 	unfaulted pageState = iota
@@ -12,15 +10,11 @@ const (
 	removed
 )
 
-// pageTracker is a concurrent map tracking the state of guest memory pages,
-// keyed by host virtual address. Pages not yet recorded are implicitly
-// unfaulted.
-//
-// Uses sync.Map because the access pattern is predominantly read-heavy
-// with disjoint key access across goroutines.
 type pageTracker struct {
 	pageSize uintptr
-	m        sync.Map // map[uintptr]pageState
+
+	m  map[uintptr]pageState
+	mu sync.RWMutex
 }
 
 func newPageTracker(pageSize uintptr) pageTracker {
@@ -28,16 +22,22 @@ func newPageTracker(pageSize uintptr) pageTracker {
 }
 
 func (pt *pageTracker) get(addr uintptr) pageState {
-	v, ok := pt.m.Load(addr)
+	pt.mu.RLock()
+	defer pt.mu.RUnlock()
+
+	state, ok := pt.m[addr]
 	if !ok {
 		return unfaulted
 	}
 
-	return v.(pageState)
+	return state
 }
 
-func (pt *pageTracker) setState(state pageState, start, end uintptr) {
+func (pt *pageTracker) setState(start, end uintptr, state pageState) {
+	pt.mu.Lock()
+	defer pt.mu.Unlock()
+
 	for addr := start; addr < end; addr += pt.pageSize {
-		pt.m.Store(addr, state)
+		pt.m[addr] = state
 	}
 }
