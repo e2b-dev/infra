@@ -42,11 +42,6 @@ func (s *APIStore) GetSandboxesSandboxIDLog(c *gin.Context, sandboxID api.Sandbo
 		return
 	}
 
-	envdVersion := "v1.0.0"
-	if row.EnvdVersion != nil && *row.EnvdVersion != "" {
-		envdVersion = *row.EnvdVersion
-	}
-
 	var alias *string
 	if row.Alias != "" {
 		alias = &row.Alias
@@ -58,7 +53,6 @@ func (s *APIStore) GetSandboxesSandboxIDLog(c *gin.Context, sandboxID api.Sandbo
 		SandboxID:   row.SandboxID,
 		StartedAt:   row.StartedAt,
 		StoppedAt:   row.StoppedAt,
-		EnvdVersion: envdVersion,
 		Domain:      row.Domain,
 		CpuCount:    api.CPUCount(row.Vcpu),
 		MemoryMB:    api.MemoryMB(row.RamMb),

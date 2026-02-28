@@ -21,20 +21,9 @@ SELECT
     sl.total_disk_size_mb,
     sl.started_at,
     sl.stopped_at,
-    latest_build.envd_version,
     c.sandbox_proxy_domain AS domain,
     COALESCE(template_alias.alias, '') AS alias
 FROM billing.sandbox_logs sl
-LEFT JOIN LATERAL (
-    SELECT eb.envd_version
-    FROM public.env_build_assignments eba
-    JOIN public.env_builds eb ON eb.id = eba.build_id
-    WHERE eba.env_id = sl.env_id
-      AND eba.tag = 'default'
-      AND eb.status_group = 'ready'
-    ORDER BY eba.created_at DESC, eba.id DESC
-    LIMIT 1
-) latest_build ON TRUE
 LEFT JOIN public.teams t ON t.id = sl.team_id
 LEFT JOIN public.clusters c ON c.id = t.cluster_id
 LEFT JOIN LATERAL (
@@ -64,7 +53,6 @@ type GetSandboxDetailByTeamAndSandboxIDRow struct {
 	TotalDiskSizeMb int64
 	StartedAt       time.Time
 	StoppedAt       *time.Time
-	EnvdVersion     *string
 	Domain          *string
 	Alias           string
 }
@@ -80,7 +68,6 @@ func (q *Queries) GetSandboxDetailByTeamAndSandboxID(ctx context.Context, arg Ge
 		&i.TotalDiskSizeMb,
 		&i.StartedAt,
 		&i.StoppedAt,
-		&i.EnvdVersion,
 		&i.Domain,
 		&i.Alias,
 	)
