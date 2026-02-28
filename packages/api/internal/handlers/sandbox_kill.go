@@ -70,7 +70,7 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 	if err == nil {
 		if sbx.TeamID != teamID {
 			logger.L().Debug(ctx, "Sandbox team mismatch on kill", logger.WithSandboxID(sandboxID), logger.WithTeamID(teamID.String()))
-			a.sendAPIStoreError(c, http.StatusNotFound, sandboxNotFoundMsg(sandboxID))
+			a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(sandboxID))
 
 			return
 		}
@@ -113,6 +113,6 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 		c.Status(http.StatusNoContent)
 	} else {
 		logger.L().Debug(ctx, "Sandbox not found for deletion", logger.WithSandboxID(sandboxID))
-		a.sendAPIStoreError(c, http.StatusNotFound, sandboxNotFoundMsg(sandboxID))
+		a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(sandboxID))
 	}
 }

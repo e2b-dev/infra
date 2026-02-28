@@ -58,54 +58,52 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 		return
 	}
 
-	sandboxData, err := a.orchestrator.GetSandbox(ctx, teamID, sandboxID)
-	if err == nil {
-		if sandboxData.TeamID != teamID {
-			logger.L().Debug(ctx, "Sandbox team mismatch on connect", logger.WithSandboxID(sandboxID), logger.WithTeamID(teamID.String()))
-			a.sendAPIStoreError(c, http.StatusNotFound, sandboxNotFoundMsg(sandboxID))
+	// It could happen that after sandbox transition, it'll be again transitioning, retry up to maxConnectRetries times.
+	const maxConnectRetries = 3
+
+	for attempt := range maxConnectRetries {
+		sbx, apiErr := a.orchestrator.KeepAliveFor(ctx, teamID, sandboxID, timeout, false)
+		if apiErr == nil {
+			c.JSON(http.StatusOK, sbx.ToAPISandbox())
 
 			return
 		}
 
-		switch sandboxData.State {
-		case sandbox.StatePausing:
-			logger.L().Debug(ctx, "Waiting for sandbox to pause", logger.WithSandboxID(sandboxID))
-			err = a.orchestrator.WaitForStateChange(ctx, teamID, sandboxID)
-			if err != nil {
-				a.sendAPIStoreError(c, http.StatusInternalServerError, "Error waiting for sandbox to pause")
+		// Sandbox not in store at all → fall through to snapshot resume.
+		var notFoundErr *sandbox.NotFoundError
+		if errors.As(apiErr.Err, &notFoundErr) {
+			break
+		}
 
-				return
-			}
-		case sandbox.StateKilling:
-			logger.L().Debug(ctx, "Sandbox is being killed, cannot connect", logger.WithSandboxID(sandboxID))
-			a.sendAPIStoreError(c, http.StatusNotFound, sandboxNotFoundMsg(sandboxID))
-
-			return
-		case sandbox.StateRunning:
-			logger.L().Debug(ctx, "Sandbox is already running",
-				logger.WithSandboxID(sandboxID),
-				zap.Time("end_time", sandboxData.EndTime),
-				zap.Time("start_time", sandboxData.StartTime),
-				zap.String("node_id", sandboxData.NodeID),
-			)
-
-			apiErr := a.orchestrator.KeepAliveFor(ctx, teamID, sandboxID, timeout, false)
-			if apiErr != nil {
-				logger.L().Error(ctx, "Error when resuming sandbox", zap.Error(apiErr.Err))
-				a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
-
-				return
-			}
-
-			c.JSON(http.StatusOK, sandboxData.ToAPISandbox())
-
-			return
-		default:
-			logger.L().Error(ctx, "Sandbox is in an unknown state", logger.WithSandboxID(sandboxID), zap.String("state", string(sandboxData.State)))
-			a.sendAPIStoreError(c, http.StatusInternalServerError, "Sandbox is in an unknown state")
+		// Sandbox exists but isn't running → check which transitional state.
+		var notRunningErr *sandbox.NotRunningError
+		if !errors.As(apiErr.Err, &notRunningErr) {
+			a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 			return
 		}
+
+		if notRunningErr.State == sandbox.StateKilling {
+			a.sendAPIStoreError(c, http.StatusConflict, utils.SandboxChangingStateMsg(sandboxID, notRunningErr.State))
+
+			return
+		}
+
+		logger.L().Info(ctx, "Sandbox not running, waiting for state change",
+			logger.WithSandboxID(sandboxID),
+			zap.String("state", string(notRunningErr.State)),
+			zap.Int("attempt", attempt+1),
+		)
+
+		err = a.orchestrator.WaitForStateChange(ctx, teamID, sandboxID)
+		if err != nil {
+			a.sendAPIStoreError(c, http.StatusInternalServerError,
+				"Error waiting for sandbox state change")
+
+			return
+		}
+
+		continue
 	}
 
 	// TODO: ENG-3544 scope GetLastSnapshot query by teamID to avoid post-fetch ownership check.
@@ -113,7 +111,7 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			logger.L().Debug(ctx, "Snapshot not found", logger.WithSandboxID(sandboxID))
-			a.sendAPIStoreError(c, http.StatusNotFound, sandboxNotFoundMsg(sandboxID))
+			a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(sandboxID))
 
 			return
 		}
@@ -126,7 +124,7 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 
 	if lastSnapshot.Snapshot.TeamID != teamID {
 		telemetry.ReportError(ctx, fmt.Sprintf("snapshot for sandbox '%s' doesn't belong to team '%s'", sandboxID, teamID.String()), nil)
-		a.sendAPIStoreError(c, http.StatusNotFound, sandboxNotFoundMsg(sandboxID))
+		a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(sandboxID))
 
 		return
 	}
