@@ -60,9 +60,9 @@ func (s *APIStore) GetSandboxesSandboxIDRecord(c *gin.Context, sandboxID api.San
 		StartedAt:  row.StartedAt,
 		StoppedAt:  row.StoppedAt,
 		Domain:     row.Domain,
-		CpuCount:   api.CPUCount(row.Vcpu),
-		MemoryMB:   api.MemoryMB(row.RamMb),
-		DiskSizeMB: api.DiskSizeMB(row.TotalDiskSizeMb),
+		CpuCount:   row.Vcpu,
+		MemoryMB:   row.RamMb,
+		DiskSizeMB: row.TotalDiskSizeMb,
 	})
 }
 
