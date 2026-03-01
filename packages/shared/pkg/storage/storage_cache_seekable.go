@@ -394,7 +394,7 @@ func (c *cachedFramedFile) Size(ctx context.Context) (size int64, e error) {
 
 	u, err = c.inner.Size(ctx)
 	if err != nil {
-		return 0, err
+		return u, err
 	}
 
 	finalU := u

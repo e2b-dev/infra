@@ -167,22 +167,6 @@ test:
 test-integration:
 	$(MAKE) -C tests/integration test
 
-.PHONY: test-integration/sandboxes
-test-integration/sandboxes:
-	$(MAKE) -C tests/integration test/api/sandboxes
-
-.PHONY: test-integration/templates
-test-integration/templates:
-	$(MAKE) -C tests/integration test/api/templates
-
-.PHONY: test-integration/envd
-test-integration/envd:
-	$(MAKE) -C tests/integration test/envd
-
-.PHONY: reset-test-env
-reset-test-env:
-	scripts/reset-test-env.sh
-
 .PHONY: connect-orchestrator
 connect-orchestrator:
 	$(MAKE) -C tests/integration connect-orchestrator
