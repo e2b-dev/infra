@@ -199,17 +199,12 @@ func allChunkerTestCases() []chunkerTestCase {
 				t.Helper()
 				ft, getter := makeCompressedTestData(t, data, delay)
 				c, err := NewChunker(
-					AssetInfo{
-						BasePath:     "test-object",
-						Size:         int64(len(data)),
-						HasLZ4:       true,
-						Uncompressed: getter,
-						LZ4:          getter,
-					},
+					getter,
+					int64(len(data)),
+					true,
 					testBlockSize,
 					t.TempDir()+"/cache",
 					newTestMetrics(t),
-					newTestFlags(t),
 				)
 				require.NoError(t, err)
 
@@ -222,16 +217,12 @@ func allChunkerTestCases() []chunkerTestCase {
 				t.Helper()
 				getter := &slowFrameGetter{data: data, ttfb: delay}
 				c, err := NewChunker(
-					AssetInfo{
-						BasePath:        "test-object",
-						Size:            int64(len(data)),
-						HasUncompressed: true,
-						Uncompressed:    getter,
-					},
+					getter,
+					int64(len(data)),
+					false,
 					testBlockSize,
 					t.TempDir()+"/cache",
 					newTestMetrics(t),
-					newTestFlags(t),
 				)
 				require.NoError(t, err)
 
@@ -342,17 +333,12 @@ func TestChunker_FetchDedup(t *testing.T) {
 		ft, getter := makeCompressedTestData(t, data, 10*time.Millisecond)
 
 		chunker, err := NewChunker(
-			AssetInfo{
-				BasePath:     "test-object",
-				Size:         int64(len(data)),
-				HasLZ4:       true,
-				Uncompressed: getter,
-				LZ4:          getter,
-			},
+			getter,
+			int64(len(data)),
+			true,
 			testBlockSize,
 			t.TempDir()+"/cache",
 			newTestMetrics(t),
-			newTestFlags(t),
 		)
 		require.NoError(t, err)
 		defer chunker.Close()
@@ -376,81 +362,6 @@ func TestChunker_FetchDedup(t *testing.T) {
 	})
 }
 
-// TestChunker_DualMode_SharedCache verifies that a single chunker
-// instance correctly serves both compressed and uncompressed callers, sharing
-// the mmap cache across modes. If region X is fetched via compressed path,
-// a subsequent uncompressed request for region X is served from cache (no fetch).
-func TestChunker_DualMode_SharedCache(t *testing.T) {
-	t.Parallel()
-
-	data := makeTestData(t, testFileSize)
-	ft, compressedGetter := makeCompressedTestData(t, data, 0)
-	uncompressedGetter := &slowFrameGetter{data: data}
-
-	// Create ONE chunker with both compressed and uncompressed assets available.
-	chunker, err := NewChunker(
-		AssetInfo{
-			BasePath:        "test-object",
-			Size:            int64(len(data)),
-			HasLZ4:          true,
-			HasUncompressed: true,
-			Uncompressed:    uncompressedGetter,
-			LZ4:             compressedGetter,
-		},
-		testBlockSize,
-		t.TempDir()+"/cache",
-		newTestMetrics(t),
-		newTestFlags(t),
-	)
-	require.NoError(t, err)
-	defer chunker.Close()
-
-	readLen := int64(testBlockSize)
-
-	totalFetches := func() int64 {
-		return compressedGetter.fetchCount.Load() + uncompressedGetter.fetchCount.Load()
-	}
-
-	// --- Phase 1: Compressed caller fetches frame 0 ---
-	slice1, err := chunker.GetBlock(t.Context(), 0, readLen, ft)
-	require.NoError(t, err)
-	assert.Equal(t, data[0:readLen], slice1, "compressed read: data mismatch at offset 0")
-
-	fetchesAfterPhase1 := totalFetches()
-	assert.Equal(t, int64(1), fetchesAfterPhase1, "expected 1 fetch for frame 0")
-
-	// --- Phase 2: Uncompressed caller reads offset 0 — should be served from cache ---
-	slice2, err := chunker.GetBlock(t.Context(), 0, readLen, nil)
-	require.NoError(t, err)
-	assert.Equal(t, data[0:readLen], slice2, "uncompressed read from cache: data mismatch at offset 0")
-
-	// No new fetches should have occurred.
-	assert.Equal(t, fetchesAfterPhase1, totalFetches(),
-		"uncompressed read of cached region should not trigger any fetch")
-
-	// --- Phase 3: Uncompressed caller reads a new region (frame 1) ---
-	frame1Off := int64(testFrameSize) // start of frame 1
-	slice3, err := chunker.GetBlock(t.Context(), frame1Off, readLen, nil)
-	require.NoError(t, err)
-	assert.Equal(t, data[frame1Off:frame1Off+readLen], slice3,
-		"uncompressed read: data mismatch at frame 1")
-
-	// This should have triggered a new fetch via GetFrame (uncompressed path).
-	assert.Greater(t, totalFetches(), fetchesAfterPhase1,
-		"new region should trigger a fetch")
-	fetchesAfterPhase3 := totalFetches()
-
-	// --- Phase 4: Compressed caller reads frame 1 — should be served from cache ---
-	slice4, err := chunker.GetBlock(t.Context(), frame1Off, readLen, ft)
-	require.NoError(t, err)
-	assert.Equal(t, data[frame1Off:frame1Off+readLen], slice4,
-		"compressed read from cache: data mismatch at frame 1")
-
-	// No new fetches for frame 1.
-	assert.Equal(t, fetchesAfterPhase3, totalFetches(),
-		"compressed read of cached region should not trigger new fetch")
-}
-
 // ---------------------------------------------------------------------------
 // Progressive delivery tests (ported from main's streaming_chunk_test.go)
 // ---------------------------------------------------------------------------
@@ -468,17 +379,12 @@ func TestChunker_FullChunkCachedAfterPartialRequest(t *testing.T) {
 		ft, getter := makeCompressedTestData(t, data, 0)
 
 		chunker, err := NewChunker(
-			AssetInfo{
-				BasePath:     "test-object",
-				Size:         int64(len(data)),
-				HasLZ4:       true,
-				Uncompressed: getter,
-				LZ4:          getter,
-			},
+			getter,
+			int64(len(data)),
+			true,
 			testBlockSize,
 			t.TempDir()+"/cache",
 			newTestMetrics(t),
-			newTestFlags(t),
 		)
 		require.NoError(t, err)
 		defer chunker.Close()
@@ -510,16 +416,12 @@ func TestChunker_FullChunkCachedAfterPartialRequest(t *testing.T) {
 		getter := &slowFrameGetter{data: data}
 
 		chunker, err := NewChunker(
-			AssetInfo{
-				BasePath:        "test-object",
-				Size:            int64(len(data)),
-				HasUncompressed: true,
-				Uncompressed:    getter,
-			},
+			getter,
+			int64(len(data)),
+			false,
 			testBlockSize,
 			t.TempDir()+"/cache",
 			newTestMetrics(t),
-			newTestFlags(t),
 		)
 		require.NoError(t, err)
 		defer chunker.Close()
@@ -558,16 +460,12 @@ func TestChunker_EarlyReturn(t *testing.T) {
 	}
 
 	chunker, err := NewChunker(
-		AssetInfo{
-			BasePath:        "test-object",
-			Size:            int64(len(data)),
-			HasUncompressed: true,
-			Uncompressed:    getter,
-		},
+		getter,
+		int64(len(data)),
+		false,
 		testBlockSize,
 		t.TempDir()+"/cache",
 		newTestMetrics(t),
-		newTestFlags(t),
 	)
 	require.NoError(t, err)
 	defer chunker.Close()
@@ -623,16 +521,12 @@ func TestChunker_ErrorKeepsPartialData(t *testing.T) {
 	}
 
 	chunker, err := NewChunker(
-		AssetInfo{
-			BasePath:        "test-object",
-			Size:            int64(len(data)),
-			HasUncompressed: true,
-			Uncompressed:    getter,
-		},
+		getter,
+		int64(len(data)),
+		false,
 		testBlockSize,
 		t.TempDir()+"/cache",
 		newTestMetrics(t),
-		newTestFlags(t),
 	)
 	require.NoError(t, err)
 	defer chunker.Close()
@@ -662,16 +556,12 @@ func TestChunker_ContextCancellation(t *testing.T) {
 	}
 
 	chunker, err := NewChunker(
-		AssetInfo{
-			BasePath:        "test-object",
-			Size:            int64(len(data)),
-			HasUncompressed: true,
-			Uncompressed:    getter,
-		},
+		getter,
+		int64(len(data)),
+		false,
 		testBlockSize,
 		t.TempDir()+"/cache",
 		newTestMetrics(t),
-		newTestFlags(t),
 	)
 	require.NoError(t, err)
 	defer chunker.Close()
@@ -709,16 +599,12 @@ func TestChunker_LastBlockPartial(t *testing.T) {
 				t.Helper()
 				getter := &slowFrameGetter{data: data}
 				c, err := NewChunker(
-					AssetInfo{
-						BasePath:        "test-object",
-						Size:            int64(len(data)),
-						HasUncompressed: true,
-						Uncompressed:    getter,
-					},
+					getter,
+					int64(len(data)),
+					false,
 					testBlockSize,
 					t.TempDir()+"/cache",
 					newTestMetrics(t),
-					newTestFlags(t),
 				)
 				require.NoError(t, err)
 
@@ -731,17 +617,12 @@ func TestChunker_LastBlockPartial(t *testing.T) {
 				t.Helper()
 				ft, getter := makeCompressedTestData(t, data, 0)
 				c, err := NewChunker(
-					AssetInfo{
-						BasePath:     "test-object",
-						Size:         int64(len(data)),
-						HasLZ4:       true,
-						Uncompressed: getter,
-						LZ4:          getter,
-					},
+					getter,
+					int64(len(data)),
+					true,
 					testBlockSize,
 					t.TempDir()+"/cache",
 					newTestMetrics(t),
-					newTestFlags(t),
 				)
 				require.NoError(t, err)
 

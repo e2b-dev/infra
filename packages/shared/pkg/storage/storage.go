@@ -37,6 +37,13 @@ const (
 
 	// MemoryChunkSize must always be bigger or equal to the block size.
 	MemoryChunkSize = 4 * 1024 * 1024 // 4 MB
+
+	// MetadataKeyUncompressedSize is the object-metadata key (GCS/S3) and
+	// sidecar file suffix (local FS) that stores the uncompressed diff file
+	// size. When a diff is uploaded with compression, the storage backends
+	// set this so that Size() returns the uncompressed size (needed by the
+	// Chunker mmap cache) instead of the compressed object size.
+	MetadataKeyUncompressedSize = "uncompressed-size"
 )
 
 // RangeReadFunc is a callback for reading a byte range from storage.
@@ -235,13 +242,15 @@ func ReadFrame(ctx context.Context, rangeRead RangeReadFunc, storageDetails stri
 	return Range{Start: frameStart.C, Length: n}, err
 }
 
+// minProgressiveReadSize is the floor for progressive reads to avoid
+// tiny I/O when the caller's block size is small (e.g. 4 KB rootfs).
+const minProgressiveReadSize = 256 * 1024 // 256 KB
+
 // readProgressive reads from src into buf in readSize-aligned blocks,
 // calling onRead after each block with the cumulative bytes written.
-// When readSize <= 0, MemoryChunkSize is used as the default.
+// readSize is clamped to at least minProgressiveReadSize.
 func readProgressive(src io.Reader, buf []byte, totalSize int, rangeStart int64, readSize int64, onRead func(totalWritten int64)) (Range, error) {
-	if readSize <= 0 {
-		readSize = MemoryChunkSize
-	}
+	readSize = max(readSize, minProgressiveReadSize)
 
 	var total int64
 

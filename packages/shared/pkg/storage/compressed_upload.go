@@ -75,33 +75,18 @@ func GetUploadOptions(ctx context.Context, ff *featureflags.Client) *FramedUploa
 		return nil
 	}
 
-	intOr := func(key string, fallback int) int {
-		if n := v.Get(key).IntValue(); n != 0 {
-			return n
-		}
-
-		return fallback
-	}
-	strOr := func(key, fallback string) string {
-		if s := v.Get(key).StringValue(); s != "" {
-			return s
-		}
-
-		return fallback
-	}
-
-	ct := parseCompressionType(strOr("compressionType", "lz4"))
+	ct := parseCompressionType(v.Get("compressionType").StringValue())
 	if ct == CompressionNone {
 		return nil
 	}
 
 	return &FramedUploadOptions{
 		CompressionType:    ct,
-		Level:              intOr("level", 3),
-		FrameSize:          intOr("frameSizeKB", DefaultCompressFrameSize/kilobyte) * kilobyte,
-		TargetPartSize:     intOr("uploadPartTargetMB", 50) * megabyte,
-		EncodeWorkers:      intOr("encodeWorkers", defaultEncodeWorkers),
-		EncoderConcurrency: intOr("encoderConcurrency", 1),
+		Level:              v.Get("level").IntValue(),
+		FrameSize:          v.Get("frameSizeKB").IntValue() * kilobyte,
+		TargetPartSize:     v.Get("uploadPartTargetMB").IntValue() * megabyte,
+		EncodeWorkers:      v.Get("encodeWorkers").IntValue(),
+		EncoderConcurrency: v.Get("encoderConcurrency").IntValue(),
 	}
 }
 

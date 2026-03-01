@@ -111,6 +111,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	if err != nil {
 		return nil, fmt.Errorf("failed to get template snapshot data: %w", err)
 	}
+
 	// Clone the network config to avoid modifying the original request
 	network := proto.CloneOf(req.GetSandbox().GetNetwork())
 
@@ -609,7 +610,7 @@ func (s *Server) snapshotAndCacheSandbox(
 	errCh := make(chan error, 1)
 
 	go func() {
-		if err := tb.UploadAll(uploadCtx); err != nil {
+		if err := tb.UploadAtOnce(uploadCtx); err != nil {
 			sbxlogger.I(sbx).Error(uploadCtx, "error uploading snapshot", zap.Error(err))
 			errCh <- err
 

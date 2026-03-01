@@ -325,10 +325,6 @@ func BenchmarkBaseImage(b *testing.B) {
 				"encoderConcurrency": 1,
 				"decoderConcurrency": 1,
 			}))
-			featureflags.OverrideJSONFlag(featureflags.ChunkerConfigFlag, ldvalue.FromJSONMarshal(map[string]any{
-				"useCompressedAssets": mode.compressed(),
-				"minReadBatchSizeKB":  16,
-			}))
 
 			b.Logf("mode=%s buildID=%s compressed=%v type=%s level=%d",
 				mode.name, mode.buildID, mode.compressed(), mode.compressionType, mode.level)

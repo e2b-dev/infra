@@ -35,7 +35,7 @@ func TemplateRootfs(ctx context.Context, buildID string) (*BuildDevice, *Cleaner
 		return nil, &cleaner, fmt.Errorf("failed to open object: %w", err)
 	}
 
-	h, err := header.Deserialize(ctx, obj)
+	h, err := header.FromBlob(ctx, obj)
 	if err != nil {
 		id, err := uuid.Parse(buildID)
 		if err != nil {
@@ -112,7 +112,7 @@ func TemplateRootfs(ctx context.Context, buildID string) (*BuildDevice, *Cleaner
 	}
 
 	buildDevice := NewBuildDevice(
-		build.NewFile(h, store, build.Rootfs, s, m, flags),
+		build.NewFile(h, store, build.Rootfs, s, m),
 		h,
 		int64(h.Metadata.BlockSize),
 	)

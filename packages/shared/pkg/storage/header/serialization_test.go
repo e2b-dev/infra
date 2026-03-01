@@ -11,14 +11,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
-func compressLZ4Block(t *testing.T, data []byte) []byte {
-	t.Helper()
-	compressed, err := storage.CompressLZ4(data)
-	require.NoError(t, err)
-
-	return compressed
-}
-
 func TestSerializeDeserialize_V3_RoundTrip(t *testing.T) {
 	t.Parallel()
 
@@ -48,10 +40,10 @@ func TestSerializeDeserialize_V3_RoundTrip(t *testing.T) {
 		},
 	}
 
-	data, err := Serialize(metadata, mappings)
+	data, err := serialize(metadata, mappings)
 	require.NoError(t, err)
 
-	got, err := DeserializeBytes(data)
+	got, err := Deserialize(data)
 	require.NoError(t, err)
 
 	require.Equal(t, metadata, got.Metadata)
@@ -70,9 +62,9 @@ func TestSerializeDeserialize_V3_RoundTrip(t *testing.T) {
 func TestDeserialize_TruncatedMetadata(t *testing.T) {
 	t.Parallel()
 
-	_, err := DeserializeBytes([]byte{0x01, 0x02, 0x03})
+	_, err := Deserialize([]byte{0x01, 0x02, 0x03})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to read metadata")
+	assert.Contains(t, err.Error(), "header too short")
 }
 
 func TestSerializeDeserialize_EmptyMappings_Defaults(t *testing.T) {
@@ -87,10 +79,10 @@ func TestSerializeDeserialize_EmptyMappings_Defaults(t *testing.T) {
 		BaseBuildId: uuid.New(),
 	}
 
-	data, err := Serialize(metadata, nil)
+	data, err := serialize(metadata, nil)
 	require.NoError(t, err)
 
-	got, err := DeserializeBytes(data)
+	got, err := Deserialize(data)
 	require.NoError(t, err)
 
 	// NewHeader creates a default mapping when none provided
@@ -112,10 +104,10 @@ func TestDeserialize_BlockSizeZero(t *testing.T) {
 		BaseBuildId: uuid.New(),
 	}
 
-	data, err := Serialize(metadata, nil)
+	data, err := serialize(metadata, nil)
 	require.NoError(t, err)
 
-	_, err = DeserializeBytes(data)
+	_, err = Deserialize(data)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "block size cannot be zero")
 }
@@ -157,10 +149,11 @@ func TestSerializeDeserialize_V4_WithFrameTable(t *testing.T) {
 		},
 	}
 
-	data, err := Serialize(metadata, mappings)
+	// Test with SerializeHeader + Deserialize (unified path)
+	data, err := SerializeHeader(metadata, mappings)
 	require.NoError(t, err)
 
-	got, err := DeserializeV4(compressLZ4Block(t, data))
+	got, err := Deserialize(data)
 	require.NoError(t, err)
 
 	require.Equal(t, uint64(4), got.Metadata.Version)
@@ -218,10 +211,11 @@ func TestSerializeDeserialize_V4_Zstd_NonZeroStartAt(t *testing.T) {
 		},
 	}
 
-	data, err := Serialize(metadata, mappings)
+	// Test with SerializeHeader + Deserialize (unified path)
+	data, err := SerializeHeader(metadata, mappings)
 	require.NoError(t, err)
 
-	got, err := DeserializeV4(compressLZ4Block(t, data))
+	got, err := Deserialize(data)
 	require.NoError(t, err)
 
 	require.Len(t, got.Mapping, 1)
@@ -274,10 +268,11 @@ func TestSerializeDeserialize_V4_CompressionNone_EmptyFrames(t *testing.T) {
 		},
 	}
 
-	data, err := Serialize(metadata, mappings)
+	// Test with SerializeHeader + Deserialize (unified path)
+	data, err := SerializeHeader(metadata, mappings)
 	require.NoError(t, err)
 
-	got, err := DeserializeV4(compressLZ4Block(t, data))
+	got, err := Deserialize(data)
 	require.NoError(t, err)
 
 	require.Len(t, got.Mapping, 2)
@@ -340,10 +335,11 @@ func TestSerializeDeserialize_V4_ManyFrames(t *testing.T) {
 		},
 	}
 
-	data, err := Serialize(metadata, mappings)
+	// Test with SerializeHeader + Deserialize (unified path)
+	data, err := SerializeHeader(metadata, mappings)
 	require.NoError(t, err)
 
-	got, err := DeserializeV4(compressLZ4Block(t, data))
+	got, err := Deserialize(data)
 	require.NoError(t, err)
 
 	require.Len(t, got.Mapping, 1)
@@ -355,4 +351,48 @@ func TestSerializeDeserialize_V4_ManyFrames(t *testing.T) {
 	assert.Equal(t, int32(2000), got.Mapping[0].FrameTable.Frames[0].C)
 	assert.Equal(t, int32(4096), got.Mapping[0].FrameTable.Frames[numFrames-1].U)
 	assert.Equal(t, int32(2000+numFrames-1), got.Mapping[0].FrameTable.Frames[numFrames-1].C)
+}
+
+func TestSerializeHeader_V3_RoundTrip(t *testing.T) {
+	t.Parallel()
+
+	buildID := uuid.New()
+	metadata := &Metadata{
+		Version:     3,
+		BlockSize:   4096,
+		Size:        4096,
+		Generation:  0,
+		BuildId:     buildID,
+		BaseBuildId: buildID,
+	}
+
+	mappings := []*BuildMap{
+		{
+			Offset:  0,
+			Length:  4096,
+			BuildId: buildID,
+		},
+	}
+
+	// V3: SerializeHeader should return raw bytes identical to serialize
+	unified, err := SerializeHeader(metadata, mappings)
+	require.NoError(t, err)
+
+	raw, err := serialize(metadata, mappings)
+	require.NoError(t, err)
+
+	assert.Equal(t, raw, unified, "V3 SerializeHeader should produce identical bytes to serialize")
+
+	// Deserialize should handle V3 raw bytes
+	got, err := Deserialize(unified)
+	require.NoError(t, err)
+	assert.Equal(t, metadata, got.Metadata)
+}
+
+func TestDeserialize_TooShort(t *testing.T) {
+	t.Parallel()
+
+	_, err := Deserialize([]byte{0x01, 0x02})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "header too short")
 }

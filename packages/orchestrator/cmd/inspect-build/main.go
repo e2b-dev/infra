@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/md5"
+	"hash/crc32"
 	"encoding/hex"
 	"encoding/json"
 	"flag"
@@ -16,6 +17,8 @@ import (
 	"strings"
 	"unsafe"
 
+	"github.com/google/uuid"
+
 	"github.com/e2b-dev/infra/packages/orchestrator/cmd/internal/cmdutil"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -27,7 +30,6 @@ func main() {
 	storagePath := flag.String("storage", ".local-build", "storage: local path or gs://bucket")
 	memfile := flag.Bool("memfile", false, "inspect memfile artifact")
 	rootfs := flag.Bool("rootfs", false, "inspect rootfs artifact")
-	compressed := flag.Bool("compressed", false, "read v4 compressed header (.v4.header)")
 	summary := flag.Bool("summary", false, "show only metadata + summary (skip per-mapping listing)")
 	listFiles := flag.Bool("list-files", false, "list all files for this build with existence and size info")
 	data := flag.Bool("data", false, "inspect data blocks (default: header only)")
@@ -80,7 +82,7 @@ func main() {
 		}
 
 		if *validateAll || *validateRootfs {
-			if err := validateArtifact(ctx, *storagePath, *build, "rootfs.ext4"); err != nil {
+			if err := validateArtifact(ctx, *storagePath, *build, storage.RootfsName); err != nil {
 				fmt.Printf("rootfs validation FAILED: %s\n", err)
 				exitCode = 1
 			} else {
@@ -103,35 +105,19 @@ func main() {
 	if *memfile {
 		artifactName = "memfile"
 	} else {
-		artifactName = "rootfs.ext4"
+		artifactName = storage.RootfsName
 	}
 
-	// Read header (compressed or default)
-	var h *header.Header
-	var headerSource string
+	// Read from unified header path (auto-detects V3/V4)
+	headerFile := artifactName + storage.HeaderSuffix
+	headerData, headerSource, err := cmdutil.ReadFile(ctx, *storagePath, *build, headerFile)
+	if err != nil {
+		log.Fatalf("failed to read header: %s", err)
+	}
 
-	if *compressed {
-		var err error
-		h, headerSource, err = cmdutil.ReadCompressedHeader(ctx, *storagePath, *build, artifactName)
-		if err != nil {
-			log.Fatalf("failed to read compressed header: %s", err)
-		}
-		if h == nil {
-			log.Fatalf("compressed header not found for %s", artifactName)
-		}
-		headerSource += " [compressed header]"
-	} else {
-		headerFile := artifactName + storage.HeaderSuffix
-		headerData, source, err := cmdutil.ReadFile(ctx, *storagePath, *build, headerFile)
-		if err != nil {
-			log.Fatalf("failed to read header: %s", err)
-		}
-
-		h, err = header.DeserializeBytes(headerData)
-		if err != nil {
-			log.Fatalf("failed to deserialize header: %s", err)
-		}
-		headerSource = source
+	h, err := header.Deserialize(headerData)
+	if err != nil {
+		log.Fatalf("failed to deserialize header: %s", err)
 	}
 
 	// Print header info
@@ -145,14 +131,13 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Fprintf(os.Stderr, "Usage: inspect-build (-build <uuid> | -template <id-or-alias>) [-storage <path>] [-memfile|-rootfs] [-compressed] [-summary] [-data [-start N] [-end N]]\n")
+	fmt.Fprintf(os.Stderr, "Usage: inspect-build (-build <uuid> | -template <id-or-alias>) [-storage <path>] [-memfile|-rootfs] [-summary] [-data [-start N] [-end N]]\n")
 	fmt.Fprintf(os.Stderr, "       inspect-build (-build <uuid> | -template <id-or-alias>) [-storage <path>] -validate-all|-validate-memfile|-validate-rootfs\n")
 	fmt.Fprintf(os.Stderr, "       inspect-build (-build <uuid> | -template <id-or-alias>) [-storage <path>] -list-files\n\n")
 	fmt.Fprintf(os.Stderr, "The -template flag requires E2B_API_KEY environment variable.\n")
 	fmt.Fprintf(os.Stderr, "Set E2B_DOMAIN for non-production environments.\n\n")
 	fmt.Fprintf(os.Stderr, "Examples:\n")
 	fmt.Fprintf(os.Stderr, "  inspect-build -build abc123                           # inspect memfile header\n")
-	fmt.Fprintf(os.Stderr, "  inspect-build -build abc123 -compressed               # inspect compressed memfile header\n")
 	fmt.Fprintf(os.Stderr, "  inspect-build -build abc123 -summary                  # metadata + summaries only\n")
 	fmt.Fprintf(os.Stderr, "  inspect-build -build abc123 -list-files               # list all build files\n")
 	fmt.Fprintf(os.Stderr, "  inspect-build -template base -storage gs://bucket     # inspect by template alias\n")
@@ -248,8 +233,8 @@ func printFileList(ctx context.Context, storagePath, buildID string) {
 
 	for _, info := range files {
 		extra := ""
-		if uSize, ok := info.Metadata["uncompressed-size"]; ok {
-			extra = fmt.Sprintf("  (uncompressed-size=%s)", uSize)
+		if uSize, ok := info.Metadata[storage.MetadataKeyUncompressedSize]; ok {
+			extra = fmt.Sprintf("  (%s=%s)", storage.MetadataKeyUncompressedSize, uSize)
 		}
 		fmt.Printf("%-45s  %12s%s\n", info.Name, formatSize(info.Size), extra)
 	}
@@ -348,7 +333,7 @@ func validateArtifact(ctx context.Context, storagePath, buildID, artifactName st
 		return fmt.Errorf("failed to read header: %w", err)
 	}
 
-	h, err := header.DeserializeBytes(headerData)
+	h, err := header.Deserialize(headerData)
 	if err != nil {
 		return fmt.Errorf("failed to deserialize header: %w", err)
 	}
@@ -361,142 +346,252 @@ func validateArtifact(ctx context.Context, storagePath, buildID, artifactName st
 	}
 	fmt.Printf("  Mappings: coverage validated\n")
 
-	// 3. Open data file and check size
-	reader, dataSize, _, err := cmdutil.OpenDataFile(ctx, storagePath, buildID, artifactName)
-	if err != nil {
-		return fmt.Errorf("failed to open data file: %w", err)
-	}
-	defer reader.Close()
-
-	fmt.Printf("  Data file: size=%#x\n", dataSize)
-
-	// 4. Validate mappings for the current build only
-	currentBuildID := h.Metadata.BuildId.String()
-	validatedCount := 0
-	for i, mapping := range h.Mapping {
-		if mapping.BuildId.String() != currentBuildID {
-			continue
+	// 3. Validate FrameTable offset consistency for each mapping
+	if h.Metadata.Version >= header.MetadataVersionCompressed {
+		if err := validateFrameTableOffsets(h); err != nil {
+			return fmt.Errorf("frame table offset validation failed: %w", err)
 		}
-		if err := validateMapping(ctx, storagePath, artifactName, h, mapping, i); err != nil {
-			return fmt.Errorf("mapping[%d] validation failed: %w", i, err)
-		}
-		validatedCount++
-	}
-	fmt.Printf("  %d/%d current-build mappings validated\n", validatedCount, len(h.Mapping))
-
-	// 5. Compute and display MD5 of actual data on storage
-	hash := md5.New()
-	chunkSize := int64(1024 * 1024)
-	buf := make([]byte, chunkSize)
-
-	for offset := int64(0); offset < dataSize; offset += chunkSize {
-		readSize := chunkSize
-		if offset+chunkSize > dataSize {
-			readSize = dataSize - offset
-		}
-		n, err := reader.ReadAt(buf[:readSize], offset)
-		if err != nil && n == 0 {
-			return fmt.Errorf("failed to read at offset %d: %w", offset, err)
-		}
-		hash.Write(buf[:n])
 	}
 
-	dataMD5 := hex.EncodeToString(hash.Sum(nil))
-	fmt.Printf("  Data MD5 (storage): %s\n", dataMD5)
-
-	// 6. Validate compressed header and frames if it exists
-	compressedH, _, compErr := cmdutil.ReadCompressedHeader(ctx, storagePath, buildID, artifactName)
-
-	switch {
-	case compErr != nil:
-		fmt.Printf("  Compressed header: read error: %s\n", compErr)
-	case compressedH != nil:
-		if err := header.ValidateHeader(compressedH); err != nil {
-			return fmt.Errorf("compressed header validation failed: %w", err)
+	// 4. Reconstruct and verify key virtual offsets through the header chain
+	if h.Metadata.Version >= header.MetadataVersionCompressed {
+		if err := validateReconstruction(ctx, storagePath, artifactName, h); err != nil {
+			return fmt.Errorf("reconstruction validation failed: %w", err)
 		}
-		fmt.Printf("  Compressed header: validated (mappings=%d)\n", len(compressedH.Mapping))
+	}
 
-		if err := validateCompressedFrames(ctx, storagePath, artifactName, compressedH); err != nil {
+	// 5. Validate compressed frames if header is V4 (works with compressed-only builds)
+	if h.Metadata.Version >= header.MetadataVersionCompressed {
+		if err := validateCompressedFrames(ctx, storagePath, artifactName, h); err != nil {
 			return fmt.Errorf("compressed frame validation failed: %w", err)
 		}
-	default:
-		fmt.Printf("  Compressed header: not present\n")
-	}
-
-	return nil
-}
-
-// validateMapping validates a single mapping's data integrity.
-func validateMapping(ctx context.Context, storagePath, artifactName string, h *header.Header, mapping *header.BuildMap, _ int) error {
-	if mapping.BuildId.String() == cmdutil.NilUUID {
-		return nil
-	}
-
-	if !storage.IsCompressed(mapping.FrameTable) {
-		reader, _, _, err := cmdutil.OpenDataFile(ctx, storagePath, mapping.BuildId.String(), artifactName)
+	} else {
+		// For uncompressed V3 headers, open data file and compute MD5
+		reader, dataSize, _, err := cmdutil.OpenDataFile(ctx, storagePath, buildID, artifactName)
 		if err != nil {
-			return fmt.Errorf("failed to open data for build %s: %w", mapping.BuildId, err)
+			return fmt.Errorf("failed to open data file: %w", err)
 		}
 		defer reader.Close()
 
-		buf := make([]byte, h.Metadata.BlockSize)
-		_, err = reader.ReadAt(buf, int64(mapping.BuildStorageOffset))
-		if err != nil {
-			return fmt.Errorf("failed to read data at offset %d: %w", mapping.BuildStorageOffset, err)
+		fmt.Printf("  Data file: size=%#x\n", dataSize)
+
+		hash := md5.New()
+		chunkSize := int64(1024 * 1024)
+		buf := make([]byte, chunkSize)
+
+		for offset := int64(0); offset < dataSize; offset += chunkSize {
+			readSize := chunkSize
+			if offset+chunkSize > dataSize {
+				readSize = dataSize - offset
+			}
+			n, err := reader.ReadAt(buf[:readSize], offset)
+			if err != nil && n == 0 {
+				return fmt.Errorf("failed to read at offset %d: %w", offset, err)
+			}
+			hash.Write(buf[:n])
 		}
 
-		return nil
-	}
-
-	ft := mapping.FrameTable
-
-	var totalU int64
-	for _, frame := range ft.Frames {
-		totalU += int64(frame.U)
-	}
-
-	if totalU < int64(mapping.Length) {
-		return fmt.Errorf("frame table covers %#x bytes but mapping length is %#x", totalU, mapping.Length)
-	}
-
-	reader, fileSize, _, err := cmdutil.OpenDataFile(ctx, storagePath, mapping.BuildId.String(), artifactName)
-	if err != nil {
-		return fmt.Errorf("failed to open compressed data for build %s: %w", mapping.BuildId, err)
-	}
-	defer reader.Close()
-
-	var totalC int64
-	for _, frame := range ft.Frames {
-		totalC += int64(frame.C)
-	}
-	expectedSize := ft.StartAt.C + totalC
-
-	if fileSize < expectedSize {
-		return fmt.Errorf("compressed file size %#x is less than expected %#x (startC=%#x + framesC=%#x)",
-			fileSize, expectedSize, ft.StartAt.C, totalC)
-	}
-
-	firstFrameBuf := make([]byte, ft.Frames[0].C)
-	_, err = reader.ReadAt(firstFrameBuf, ft.StartAt.C)
-	if err != nil {
-		return fmt.Errorf("failed to read first compressed frame at C=%#x: %w", ft.StartAt.C, err)
-	}
-
-	if len(ft.Frames) > 1 {
-		lastIdx := len(ft.Frames) - 1
-		lastOffset := calculateCOffset(ft, lastIdx)
-		lastFrameBuf := make([]byte, ft.Frames[lastIdx].C)
-		_, err = reader.ReadAt(lastFrameBuf, lastOffset)
-		if err != nil {
-			return fmt.Errorf("failed to read last compressed frame at C=%#x: %w", lastOffset, err)
-		}
+		dataMD5 := hex.EncodeToString(hash.Sum(nil))
+		fmt.Printf("  Data MD5 (storage): %s\n", dataMD5)
 	}
 
 	return nil
 }
 
-// validateCompressedFrames decompresses every frame described in the compressed
-// header and compares the result with the uncompressed data file byte-for-byte.
+// readVirtualOffset reconstructs bytes at a virtual offset by following the header chain.
+// Returns the bytes and the build/offset info for logging.
+func readVirtualOffset(ctx context.Context, storagePath, artifactName string, h *header.Header, virtualOffset int64, length int) ([]byte, string, error) {
+	mapping, err := h.GetShiftedMapping(ctx, virtualOffset)
+	if err != nil {
+		return nil, "", fmt.Errorf("GetShiftedMapping(%#x): %w", virtualOffset, err)
+	}
+
+	if mapping.BuildId == uuid.Nil {
+		// Zero-fill
+		return make([]byte, length), fmt.Sprintf("zero-fill at %#x", virtualOffset), nil
+	}
+
+	ft := mapping.FrameTable
+	storageOff := int64(mapping.Offset) // This is BuildStorageOffset + shift
+
+	if !storage.IsCompressed(ft) {
+		// Uncompressed — just read directly
+		reader, _, _, err := cmdutil.OpenDataFile(ctx, storagePath, mapping.BuildId.String(), artifactName)
+		if err != nil {
+			return nil, "", fmt.Errorf("open uncompressed %s: %w", mapping.BuildId, err)
+		}
+		defer reader.Close()
+
+		buf := make([]byte, length)
+		_, err = reader.ReadAt(buf, storageOff)
+		if err != nil {
+			return nil, "", fmt.Errorf("read uncompressed at %#x: %w", storageOff, err)
+		}
+
+		return buf, fmt.Sprintf("uncompressed build=%s off=%#x", mapping.BuildId, storageOff), nil
+	}
+
+	// Compressed — find frame, decompress, extract bytes
+	frameStart, frameSize, err := ft.FrameFor(storageOff)
+	if err != nil {
+		return nil, "", fmt.Errorf("FrameFor(%#x): %w", storageOff, err)
+	}
+
+	compressedFile := storage.CompressedDataName(artifactName, ft.CompressionType)
+	compReader, _, _, err := cmdutil.OpenDataFile(ctx, storagePath, mapping.BuildId.String(), compressedFile)
+	if err != nil {
+		return nil, "", fmt.Errorf("open compressed %s: %w", mapping.BuildId, err)
+	}
+	defer compReader.Close()
+
+	compBuf := make([]byte, frameSize.C)
+	_, err = compReader.ReadAt(compBuf, frameStart.C)
+	if err != nil {
+		return nil, "", fmt.Errorf("read compressed at C=%#x: %w", frameStart.C, err)
+	}
+
+	decompressed, err := storage.DecompressFrame(ft.CompressionType, compBuf, frameSize.U)
+	if err != nil {
+		return nil, "", fmt.Errorf("decompress frame: %w", err)
+	}
+
+	// The desired byte is at storageOff within the decompressed frame
+	offsetInFrame := storageOff - frameStart.U
+	if offsetInFrame < 0 || offsetInFrame+int64(length) > int64(len(decompressed)) {
+		return nil, "", fmt.Errorf("offset %#x (in-frame=%#x) out of bounds (frame size=%#x)", storageOff, offsetInFrame, len(decompressed))
+	}
+
+	info := fmt.Sprintf("compressed build=%s storageOff=%#x frameU=%#x offsetInFrame=%#x", mapping.BuildId, storageOff, frameStart.U, offsetInFrame)
+
+	return decompressed[offsetInFrame : offsetInFrame+int64(length)], info, nil
+}
+
+// validateReconstruction simulates the runtime read path by following the header
+// chain for specific virtual offsets and verifying the data.
+func validateReconstruction(ctx context.Context, storagePath, artifactName string, h *header.Header) error {
+	fmt.Printf("  Reconstructing key virtual offsets through header chain\n")
+
+	blockSize := int64(h.Metadata.BlockSize)
+
+	// For rootfs: check ext4 superblock magic at offset 0x438 (byte 56 of superblock at 0x400)
+	// Read from block 0 (block-aligned) and check bytes within the block
+	if artifactName == storage.RootfsName && h.Metadata.Size > 0x1000 {
+		readLen := min(int(blockSize), 4096)
+		buf, info, err := readVirtualOffset(ctx, storagePath, artifactName, h, 0, readLen)
+		if err != nil {
+			return fmt.Errorf("read ext4 superblock block: %w", err)
+		}
+
+		if len(buf) > 0x439 {
+			magic := uint16(buf[0x438]) | uint16(buf[0x439])<<8
+			if magic == 0xEF53 {
+				fmt.Printf("    ext4 superblock at 0x438: magic=0xEF53 OK (%s)\n", info)
+			} else {
+				return fmt.Errorf("ext4 superblock magic at byte 0x438 = %#04x (expected 0xEF53) (%s)", magic, info)
+			}
+		}
+	}
+
+	// Check first block, a middle block, and last block
+	checkOffsets := []int64{0}
+	if h.Metadata.Size > uint64(blockSize*2) {
+		midBlock := int64(h.Metadata.Size) / 2
+		midBlock = (midBlock / blockSize) * blockSize
+		checkOffsets = append(checkOffsets, midBlock)
+	}
+	lastBlock := int64(h.Metadata.Size) - blockSize
+	if lastBlock > 0 {
+		checkOffsets = append(checkOffsets, lastBlock)
+	}
+
+	for _, vOff := range checkOffsets {
+		readLen := min(int(blockSize), 4096)
+		buf, info, err := readVirtualOffset(ctx, storagePath, artifactName, h, vOff, readLen)
+		if err != nil {
+			return fmt.Errorf("read at virtual offset %#x: %w", vOff, err)
+		}
+
+		crc := crc32.ChecksumIEEE(buf)
+		fmt.Printf("    vOff=%#x (%d bytes) crc32=%#08x (%s)\n", vOff, readLen, crc, info)
+	}
+
+	fmt.Printf("  Reconstruction: all checks passed\n")
+
+	return nil
+}
+
+// validateFrameTableOffsets checks that each mapping's FrameTable correctly
+// covers the mapping's BuildStorageOffset range. This catches the "offset mixing"
+// bug where FrameTable U-offsets don't match BuildStorageOffset coordinates.
+func validateFrameTableOffsets(h *header.Header) error {
+	fmt.Printf("  Validating FrameTable offset consistency for %d mappings\n", len(h.Mapping))
+
+	for i, mapping := range h.Mapping {
+		ft := mapping.FrameTable
+		if ft == nil || len(ft.Frames) == 0 {
+			continue
+		}
+
+		// The FrameTable's U range must cover [BuildStorageOffset, BuildStorageOffset+Length)
+		storageStart := int64(mapping.BuildStorageOffset)
+		storageEnd := storageStart + int64(mapping.Length)
+
+		// FrameTable starts at ft.StartAt.U and covers sum of all frame U sizes
+		ftStart := ft.StartAt.U
+		ftEnd := ft.StartAt.U
+		for _, frame := range ft.Frames {
+			ftEnd += int64(frame.U)
+		}
+
+		// The FrameTable must start at or before BuildStorageOffset
+		if ftStart > storageStart {
+			return fmt.Errorf("mapping[%d] build=%s: FrameTable starts at U=%#x but BuildStorageOffset=%#x (FT starts AFTER mapping)",
+				i, mapping.BuildId, ftStart, storageStart)
+		}
+
+		// The FrameTable must extend to or past BuildStorageOffset+Length
+		if ftEnd < storageEnd {
+			return fmt.Errorf("mapping[%d] build=%s: FrameTable ends at U=%#x but mapping ends at %#x (FT too short, gap=%#x)",
+				i, mapping.BuildId, ftEnd, storageEnd, storageEnd-ftEnd)
+		}
+
+		// Verify FrameFor() succeeds for the mapping's start offset
+		frameStart, _, err := ft.FrameFor(storageStart)
+		if err != nil {
+			return fmt.Errorf("mapping[%d] build=%s: FrameFor(%#x) failed: %w",
+				i, mapping.BuildId, storageStart, err)
+		}
+
+		// The frame's U start must be <= BuildStorageOffset
+		if frameStart.U > storageStart {
+			return fmt.Errorf("mapping[%d] build=%s: frame at U=%#x but BuildStorageOffset=%#x (frame starts AFTER mapping data)",
+				i, mapping.BuildId, frameStart.U, storageStart)
+		}
+
+		// Verify FrameFor() succeeds for the mapping's last byte
+		if mapping.Length > 0 {
+			lastByte := storageEnd - 1
+			_, _, err = ft.FrameFor(lastByte)
+			if err != nil {
+				return fmt.Errorf("mapping[%d] build=%s: FrameFor(%#x) failed for last byte: %w",
+					i, mapping.BuildId, lastByte, err)
+			}
+		}
+
+		fmt.Printf("    mapping[%d] build=%s vOff=%#x storageOff=%#x len=%#x ftU=[%#x,%#x) OK\n",
+			i, mapping.BuildId, mapping.Offset, storageStart, mapping.Length, ftStart, ftEnd)
+	}
+
+	fmt.Printf("  FrameTable offsets: all consistent\n")
+
+	return nil
+}
+
+// validateCompressedFrames decompresses every frame described in the V4 header
+// and verifies decompression succeeds. For each build, it reads from the
+// compressed .zstd file, decompresses each frame, and computes CRC32 of the
+// decompressed data. This works with compressed-only builds (no uncompressed
+// original required).
 func validateCompressedFrames(ctx context.Context, storagePath, artifactName string, compressedH *header.Header) error {
 	// Collect unique frames to validate, keyed by (buildID, C-offset).
 	type frameInfo struct {
@@ -551,91 +646,68 @@ func validateCompressedFrames(ctx context.Context, storagePath, artifactName str
 	fmt.Printf("  Validating %d unique compressed frames across %d builds\n", totalFrames, len(buildFrames))
 
 	for bid, frames := range buildFrames {
-		// Open compressed file (e.g., v4.memfile.lz4)
-		compressedFile := storage.V4DataName(artifactName, frames[0].ct)
+		compressedFile := storage.CompressedDataName(artifactName, frames[0].ct)
 		compReader, compSize, _, err := cmdutil.OpenDataFile(ctx, storagePath, bid, compressedFile)
 		if err != nil {
 			return fmt.Errorf("build %s: failed to open %s: %w", bid, compressedFile, err)
 		}
 
-		// Open uncompressed file (e.g., memfile)
-		uncReader, uncSize, _, err := cmdutil.OpenDataFile(ctx, storagePath, bid, artifactName)
-		if err != nil {
-			compReader.Close()
+		fmt.Printf("  Build %s: %d frames, compressed file=%s size=%#x\n", bid, len(frames), compressedFile, compSize)
 
-			return fmt.Errorf("build %s: failed to open %s: %w", bid, artifactName, err)
-		}
-
-		fmt.Printf("  Build %s: %d frames, compressed=%#x uncompressed=%#x\n", bid, len(frames), compSize, uncSize)
+		decompressedHash := md5.New()
+		var totalDecompressed int64
 
 		for i, frame := range frames {
-			// Read compressed bytes from .lz4 at C offset
+			// Read compressed bytes
 			compBuf := make([]byte, frame.size.C)
 			_, err := compReader.ReadAt(compBuf, frame.offset.C)
 			if err != nil {
 				compReader.Close()
-				uncReader.Close()
 
 				return fmt.Errorf("build %s frame[%d]: read compressed at C=%#x size=%#x: %w",
 					bid, i, frame.offset.C, frame.size.C, err)
 			}
 
-			// Decompress
+			// Decompress and verify
 			decompressed, err := storage.DecompressFrame(frame.ct, compBuf, frame.size.U)
 			if err != nil {
 				previewLen := min(32, len(compBuf))
 				compReader.Close()
-				uncReader.Close()
 
 				return fmt.Errorf("build %s frame[%d]: decompress at C=%#x (first %d bytes: %x): %w",
 					bid, i, frame.offset.C, previewLen, compBuf[:previewLen], err)
 			}
 
-			// Read corresponding uncompressed bytes
-			uncBuf := make([]byte, frame.size.U)
-			_, err = uncReader.ReadAt(uncBuf, frame.offset.U)
-			if err != nil {
+			if int32(len(decompressed)) != frame.size.U {
 				compReader.Close()
-				uncReader.Close()
 
-				return fmt.Errorf("build %s frame[%d]: read uncompressed at U=%#x size=%#x: %w",
-					bid, i, frame.offset.U, frame.size.U, err)
+				return fmt.Errorf("build %s frame[%d]: decompressed size %#x != expected %#x",
+					bid, i, len(decompressed), frame.size.U)
 			}
 
-			// Compare
-			if !bytes.Equal(decompressed, uncBuf) {
-				for j := range decompressed {
-					if j < len(uncBuf) && decompressed[j] != uncBuf[j] {
-						compReader.Close()
-						uncReader.Close()
+			decompressedHash.Write(decompressed)
+			totalDecompressed += int64(frame.size.U)
 
-						return fmt.Errorf("build %s frame[%d]: mismatch at U=%#x+%d (byte %d: got %#x want %#x)",
-							bid, i, frame.offset.U, j, j, decompressed[j], uncBuf[j])
-					}
-				}
+			frameCRC := crc32.ChecksumIEEE(decompressed)
+
+			if i < 5 || i == len(frames)-1 {
+				fmt.Printf("    frame[%d] U=%#x C=%#x crc32=%#08x OK (%#x→%#x)\n",
+					i, frame.offset.U, frame.offset.C, frameCRC, frame.size.C, frame.size.U)
+			} else if i == 5 {
+				fmt.Printf("    ... (%d more frames) ...\n", len(frames)-6)
 			}
-
-			fmt.Printf("    frame[%d] U=%#x C=%#x OK (%#x→%#x)\n",
-				i, frame.offset.U, frame.offset.C, frame.size.C, frame.size.U)
 		}
 
 		compReader.Close()
-		uncReader.Close()
+
+		decompressedMD5 := hex.EncodeToString(decompressedHash.Sum(nil))
+		fmt.Printf("  Build %s: all %d frames OK, decompressed=%#x (%d MiB), MD5=%s\n",
+			bid, len(frames), totalDecompressed, totalDecompressed/1024/1024, decompressedMD5)
 	}
 
 	fmt.Printf("  Compressed frames: all %d validated\n", totalFrames)
 
 	return nil
-}
-
-// calculateCOffset calculates the compressed offset for frame at index i.
-func calculateCOffset(ft *storage.FrameTable, frameIdx int) int64 {
-	offset := ft.StartAt.C
-	for i := range frameIdx {
-		offset += int64(ft.Frames[i].C)
-	}
-
-	return offset
 }
 
 // templateInfo represents a template from the E2B API.

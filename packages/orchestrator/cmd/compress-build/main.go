@@ -172,7 +172,7 @@ func compressBuild(ctx context.Context, cfg *compressConfig, buildID string, vis
 				// Check if the dependency already has compressed data.
 				alreadyCompressed := true
 				for _, a := range artifacts {
-					compressedFile := storage.V4DataName(a.file, cfg.compType)
+					compressedFile := storage.CompressedDataName(a.file, cfg.compType)
 					info := cmdutil.ProbeFile(ctx, cfg.storagePath, depBuild, compressedFile)
 					if !info.Exists {
 						alreadyCompressed = false
@@ -220,7 +220,7 @@ func findDependencies(ctx context.Context, storagePath, buildID string) ([]strin
 			continue
 		}
 
-		h, err := header.DeserializeBytes(headerData)
+		h, err := header.Deserialize(headerData)
 		if err != nil {
 			return nil, fmt.Errorf("deserialize %s: %w", headerFile, err)
 		}
@@ -251,7 +251,7 @@ func compressArtifact(ctx context.Context, cfg *compressConfig, buildID, name, f
 		return fmt.Errorf("read header: %w", err)
 	}
 
-	h, err := header.DeserializeBytes(headerData)
+	h, err := header.Deserialize(headerData)
 	if err != nil {
 		return fmt.Errorf("deserialize header: %w", err)
 	}
@@ -259,7 +259,7 @@ func compressArtifact(ctx context.Context, cfg *compressConfig, buildID, name, f
 		h.Metadata.Version, len(h.Mapping), h.Metadata.Size)
 
 	// Check if compressed data already exists
-	compressedFile := storage.V4DataName(file, cfg.compType)
+	compressedFile := storage.CompressedDataName(file, cfg.compType)
 	existing := cmdutil.ProbeFile(ctx, cfg.storagePath, buildID, compressedFile)
 	if existing.Exists {
 		fmt.Printf("  Compressed file already exists: %s (%#x), skipping\n", existing.Path, existing.Size)
@@ -267,18 +267,9 @@ func compressArtifact(ctx context.Context, cfg *compressConfig, buildID, name, f
 		return nil
 	}
 
-	// Check if v4 header already exists
-	compressedHeaderFile := storage.V4HeaderName(file)
-	existingHeader := cmdutil.ProbeFile(ctx, cfg.storagePath, buildID, compressedHeaderFile)
-	if existingHeader.Exists {
-		fmt.Printf("  Compressed header already exists: %s (%#x), skipping\n", existingHeader.Path, existingHeader.Size)
-
-		return nil
-	}
-
 	if cfg.dryRun {
 		fmt.Printf("  [dry-run] Would compress %s -> %s\n", file, compressedFile)
-		fmt.Printf("  [dry-run] Would create compressed header -> %s\n", compressedHeaderFile)
+		fmt.Printf("  [dry-run] Would update header -> %s\n", file+storage.HeaderSuffix)
 
 		return nil
 	}
@@ -365,22 +356,17 @@ func compressArtifact(ctx context.Context, cfg *compressConfig, buildID, name, f
 
 	h.Metadata.Version = header.MetadataVersionCompressed
 
-	// Serialize as v4
-	headerBytes, err := header.Serialize(h.Metadata, h.Mapping)
+	// Serialize header (V4: metadata raw + LZ4-compressed mappings)
+	headerBytes, err := header.SerializeHeader(h.Metadata, h.Mapping)
 	if err != nil {
 		return fmt.Errorf("serialize v4 header: %w", err)
 	}
 
-	// LZ4-block-compress the header
-	compressedHeaderBytes, err := storage.CompressLZ4(headerBytes)
-	if err != nil {
-		return fmt.Errorf("LZ4-compress header: %w", err)
-	}
-
-	// Write compressed header to temp
-	tmpHeaderPath := filepath.Join(tmpDir, compressedHeaderFile)
-	if err := os.WriteFile(tmpHeaderPath, compressedHeaderBytes, 0o644); err != nil {
-		return fmt.Errorf("write compressed header: %w", err)
+	// Write header to temp (unified path: file.header)
+	unifiedHeaderFile := file + storage.HeaderSuffix
+	tmpHeaderPath := filepath.Join(tmpDir, unifiedHeaderFile)
+	if err := os.WriteFile(tmpHeaderPath, headerBytes, 0o644); err != nil {
+		return fmt.Errorf("write header: %w", err)
 	}
 
 	// Upload to destination
@@ -389,14 +375,14 @@ func compressArtifact(ctx context.Context, cfg *compressConfig, buildID, name, f
 
 		fmt.Printf("  Uploading compressed data to %s%s...\n", gcsBase, compressedFile)
 		if err := gcloudCopy(ctx, tmpCompressedPath, gcsBase+compressedFile, map[string]string{
-			"uncompressed-size": strconv.FormatInt(dataSize, 10),
+			storage.MetadataKeyUncompressedSize: strconv.FormatInt(dataSize, 10),
 		}); err != nil {
 			return fmt.Errorf("upload compressed data: %w", err)
 		}
 
-		fmt.Printf("  Uploading compressed header to %s%s...\n", gcsBase, compressedHeaderFile)
-		if err := gcloudCopy(ctx, tmpHeaderPath, gcsBase+compressedHeaderFile, nil); err != nil {
-			return fmt.Errorf("upload compressed header: %w", err)
+		fmt.Printf("  Uploading header to %s%s...\n", gcsBase, unifiedHeaderFile)
+		if err := gcloudCopy(ctx, tmpHeaderPath, gcsBase+unifiedHeaderFile, nil); err != nil {
+			return fmt.Errorf("upload header: %w", err)
 		}
 	} else {
 		// Local storage: move from temp to final location
@@ -411,21 +397,18 @@ func compressArtifact(ctx context.Context, cfg *compressConfig, buildID, name, f
 		}
 		fmt.Printf("  Output: %s\n", finalCompressed)
 
-		// Write uncompressed-size sidecar for local storage
-		sidecarPath := finalCompressed + ".uncompressed-size"
+		// Write uncompressed diff size sidecar for local storage
+		sidecarPath := finalCompressed + "." + storage.MetadataKeyUncompressedSize
 		if err := os.WriteFile(sidecarPath, []byte(strconv.FormatInt(dataSize, 10)), 0o644); err != nil {
 			return fmt.Errorf("write uncompressed-size sidecar: %w", err)
 		}
 
-		finalHeader := filepath.Join(localBase, compressedHeaderFile)
+		finalHeader := filepath.Join(localBase, unifiedHeaderFile)
 		if err := os.Rename(tmpHeaderPath, finalHeader); err != nil {
-			return fmt.Errorf("move compressed header: %w", err)
+			return fmt.Errorf("move header: %w", err)
 		}
-		fmt.Printf("  Compressed header: %s\n", finalHeader)
+		fmt.Printf("  Header: %s\n", finalHeader)
 	}
-
-	fmt.Printf("  Compressed header: %#x (uncompressed: %#x)\n",
-		len(compressedHeaderBytes), len(headerBytes))
 
 	return nil
 }
@@ -458,14 +441,22 @@ func propagateDependencyFrames(ctx context.Context, storagePath string, h *heade
 	}
 
 	for depBuild := range depBuilds {
-		depH, _, err := cmdutil.ReadCompressedHeader(ctx, storagePath, depBuild, artifactFile)
+		headerFile := artifactFile + storage.HeaderSuffix
+		headerData, _, err := cmdutil.ReadFileIfExists(ctx, storagePath, depBuild, headerFile)
 		if err != nil {
-			fmt.Printf("  Warning: could not read compressed header for dependency %s: %s\n", depBuild, err)
+			fmt.Printf("  Warning: could not read header for dependency %s: %s\n", depBuild, err)
 
 			continue
 		}
-		if depH == nil {
-			fmt.Printf("  Warning: no compressed header found for dependency %s (not compressed yet?)\n", depBuild)
+		if headerData == nil {
+			fmt.Printf("  Warning: no header found for dependency %s (not compressed yet?)\n", depBuild)
+
+			continue
+		}
+
+		depH, err := header.Deserialize(headerData)
+		if err != nil {
+			fmt.Printf("  Warning: could not deserialize header for dependency %s: %s\n", depBuild, err)
 
 			continue
 		}

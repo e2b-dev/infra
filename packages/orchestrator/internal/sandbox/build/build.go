@@ -8,7 +8,6 @@ import (
 	"github.com/google/uuid"
 
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -20,7 +19,6 @@ type File struct {
 	fileType    DiffType
 	persistence storage.StorageProvider
 	metrics     blockmetrics.Metrics
-	flags       *featureflags.Client
 }
 
 func NewFile(
@@ -29,7 +27,6 @@ func NewFile(
 	fileType DiffType,
 	persistence storage.StorageProvider,
 	metrics blockmetrics.Metrics,
-	flags *featureflags.Client,
 ) *File {
 	return &File{
 		header:      header,
@@ -37,7 +34,6 @@ func NewFile(
 		fileType:    fileType,
 		persistence: persistence,
 		metrics:     metrics,
-		flags:       flags,
 	}
 }
 
@@ -79,17 +75,15 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 			continue
 		}
 
-		mappedBuild, err := b.getBuild(ctx, mappedToBuild.BuildId)
+		mappedBuild, err := b.getBuild(ctx, mappedToBuild.BuildId, storage.GetCompressionType(mappedToBuild.FrameTable))
 		if err != nil {
 			return 0, fmt.Errorf("failed to get build: %w", err)
 		}
 
-		ft := mappedToBuild.FrameTable
-
 		buildN, err := mappedBuild.ReadBlock(ctx,
 			p[n:int64(n)+readLength],
 			int64(mappedToBuild.Offset),
-			ft,
+			mappedToBuild.FrameTable,
 		)
 		if err != nil {
 			return 0, fmt.Errorf("failed to read from source: %w", err)
@@ -113,15 +107,15 @@ func (b *File) Slice(ctx context.Context, off, _ int64) ([]byte, error) {
 		return header.EmptyHugePage, nil
 	}
 
-	build, err := b.getBuild(ctx, mappedBuild.BuildId)
+	diff, err := b.getBuild(ctx, mappedBuild.BuildId, storage.GetCompressionType(mappedBuild.FrameTable))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get build: %w", err)
 	}
 
-	return build.GetBlock(ctx, int64(mappedBuild.Offset), int64(b.header.Metadata.BlockSize), mappedBuild.FrameTable)
+	return diff.GetBlock(ctx, int64(mappedBuild.Offset), int64(b.header.Metadata.BlockSize), mappedBuild.FrameTable)
 }
 
-func (b *File) getBuild(ctx context.Context, buildID uuid.UUID) (Diff, error) {
+func (b *File) getBuild(ctx context.Context, buildID uuid.UUID, ct storage.CompressionType) (Diff, error) {
 	storageDiff, err := newStorageDiff(
 		b.store.cachePath,
 		buildID.String(),
@@ -129,7 +123,7 @@ func (b *File) getBuild(ctx context.Context, buildID uuid.UUID) (Diff, error) {
 		int64(b.header.Metadata.BlockSize),
 		b.metrics,
 		b.persistence,
-		b.flags,
+		ct,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create storage diff: %w", err)

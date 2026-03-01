@@ -112,8 +112,7 @@ func (c *cachedFramedFile) getFrameCompressed(ctx context.Context, offsetU int64
 	timer := cacheSlabReadTimerFactory.Begin(attribute.String(nfsCacheOperationAttr, nfsCacheOperationAttrGetFrame))
 
 	// Try NFS cache — stream directly from file into the decompressor.
-	f, readErr := os.Open(framePath)
-	if readErr == nil {
+	if f, readErr := os.Open(framePath); readErr == nil {
 		recordCacheRead(ctx, true, int64(frameSize.C), cacheTypeFramedFile, cacheOpGetFrame)
 
 		rangeRead := func(_ context.Context, _ int64, _ int) (io.ReadCloser, error) {
@@ -130,15 +129,29 @@ func (c *cachedFramedFile) getFrameCompressed(ctx context.Context, offsetU int64
 		timer.Success(ctx, int64(r.Length))
 
 		return r, nil
-	}
-
-	if !os.IsNotExist(readErr) {
+	} else if !os.IsNotExist(readErr) {
 		recordCacheReadError(ctx, cacheTypeFramedFile, cacheOpGetFrame, readErr)
 	}
 
-	// Cache miss: fetch compressed data from inner
+	// Cache miss: fetch compressed data from inner.
 	compressedBuf := make([]byte, frameSize.C)
 
+	if decompress && onRead != nil {
+		r, err := c.fetchAndDecompressProgressive(ctx, offsetU, frameTable, compressedBuf, buf, readSize, onRead, frameSize)
+		if err != nil {
+			timer.Failure(ctx, int64(r.Length))
+
+			return r, err
+		}
+
+		recordCacheRead(ctx, false, int64(frameSize.C), cacheTypeFramedFile, cacheOpGetFrame)
+		c.cacheFrameAsync(ctx, framePath, compressedBuf[:frameSize.C])
+		timer.Success(ctx, int64(r.Length))
+
+		return r, nil
+	}
+
+	// Simple (non-progressive) path: download all compressed bytes first.
 	_, err = c.inner.GetFrame(ctx, offsetU, frameTable, false, compressedBuf, readSize, nil)
 	if err != nil {
 		timer.Failure(ctx, 0)
@@ -147,23 +160,21 @@ func (c *cachedFramedFile) getFrameCompressed(ctx context.Context, offsetU int64
 	}
 
 	recordCacheRead(ctx, false, int64(frameSize.C), cacheTypeFramedFile, cacheOpGetFrame)
+	c.cacheFrameAsync(ctx, framePath, compressedBuf[:frameSize.C])
 
-	// Async write-back
-	dataCopy := make([]byte, frameSize.C)
-	copy(dataCopy, compressedBuf)
+	if !decompress {
+		n := copy(buf, compressedBuf[:frameSize.C])
+		timer.Success(ctx, int64(n))
 
-	c.goCtx(ctx, func(ctx context.Context) {
-		if err := c.writeFrameToCache(ctx, framePath, dataCopy); err != nil {
-			recordCacheWriteError(ctx, cacheTypeFramedFile, cacheOpGetFrame, err)
-		}
-	})
+		return Range{Start: frameStart.C, Length: n}, nil
+	}
 
-	// Decompress from the in-memory buffer
+	// Decompress from the in-memory buffer.
 	rangeRead := func(_ context.Context, _ int64, length int) (io.ReadCloser, error) {
 		return io.NopCloser(bytes.NewReader(compressedBuf[:min(int(frameSize.C), length)])), nil
 	}
 
-	r, err := ReadFrame(ctx, rangeRead, "NFS:"+c.path, offsetU, frameTable, decompress, buf, readSize, onRead)
+	r, err := ReadFrame(ctx, rangeRead, "NFS:"+c.path, offsetU, frameTable, true, buf, readSize, onRead)
 	if err != nil {
 		timer.Failure(ctx, int64(r.Length))
 
@@ -173,6 +184,100 @@ func (c *cachedFramedFile) getFrameCompressed(ctx context.Context, offsetU int64
 	timer.Success(ctx, int64(r.Length))
 
 	return r, nil
+}
+
+// fetchAndDecompressProgressive fetches compressed bytes from inner storage
+// while simultaneously piping them through a decompressor for progressive
+// delivery. compressedBuf captures the full compressed frame for later NFS
+// caching.
+//
+// Architecture:
+//
+//	goroutine:  inner.GetFrame(decompress=false) → compressedBuf → pw.Write
+//	main:       pr → zstd/lz4 decoder → readProgressive → buf + onRead
+//
+// The goroutine downloads compressed bytes into compressedBuf and pipes them
+// to the main goroutine's decompressor via io.Pipe. This gives the caller
+// progressive decompressed delivery while capturing compressed bytes for NFS.
+func (c *cachedFramedFile) fetchAndDecompressProgressive(
+	ctx context.Context,
+	offsetU int64,
+	frameTable *FrameTable,
+	compressedBuf []byte,
+	buf []byte,
+	readSize int64,
+	onRead func(totalWritten int64),
+	frameSize FrameSize,
+) (Range, error) {
+	pr, pw := io.Pipe()
+	done := make(chan struct{})
+
+	// Background: fetch compressed bytes from inner, pipe to decompressor.
+	var fetchErr error
+
+	go func() {
+		defer close(done)
+
+		var lastWritten int64
+
+		_, fetchErr = c.inner.GetFrame(ctx, offsetU, frameTable, false, compressedBuf, readSize, func(totalWritten int64) {
+			if totalWritten > lastWritten {
+				if _, err := pw.Write(compressedBuf[lastWritten:totalWritten]); err != nil {
+					return // pipe reader closed; stop writing but let inner.GetFrame finish filling compressedBuf
+				}
+
+				lastWritten = totalWritten
+			}
+		})
+		if fetchErr != nil {
+			pw.CloseWithError(fetchErr)
+
+			return
+		}
+
+		// Flush any trailing bytes not yet piped (e.g. if inner.GetFrame
+		// completed without a final onRead for the last chunk).
+		if lastWritten < int64(frameSize.C) {
+			_, _ = pw.Write(compressedBuf[lastWritten:frameSize.C])
+		}
+
+		pw.Close()
+	}()
+
+	// Foreground: decompress from pipe with progressive delivery.
+	// Return pr directly (not NopCloser) so ReadFrame's defer closes it,
+	// unblocking the goroutine if the decompressor finishes before all
+	// compressed bytes are piped.
+	rangeRead := func(_ context.Context, _ int64, _ int) (io.ReadCloser, error) {
+		return pr, nil
+	}
+
+	r, err := ReadFrame(ctx, rangeRead, "NFS:"+c.path, offsetU, frameTable, true, buf, readSize, onRead)
+
+	// Wait for the goroutine to finish so compressedBuf and fetchErr are safe to read.
+	<-done
+
+	if err != nil {
+		return r, fmt.Errorf("cache GetFrame: progressive decompress for offset %#x: %w", offsetU, err)
+	}
+
+	if fetchErr != nil {
+		return r, fmt.Errorf("cache GetFrame: inner fetch for offset %#x: %w", offsetU, fetchErr)
+	}
+
+	return r, nil
+}
+
+// cacheFrameAsync writes compressed frame data to NFS cache in the background.
+func (c *cachedFramedFile) cacheFrameAsync(ctx context.Context, framePath string, data []byte) {
+	dataCopy := make([]byte, len(data))
+	copy(dataCopy, data)
+
+	c.goCtx(ctx, func(ctx context.Context) {
+		if err := c.writeFrameToCache(ctx, framePath, dataCopy); err != nil {
+			recordCacheWriteError(ctx, cacheTypeFramedFile, cacheOpGetFrame, err)
+		}
+	})
 }
 
 func (c *cachedFramedFile) getFrameUncompressed(ctx context.Context, offsetU int64, buf []byte, readSize int64, onRead func(totalWritten int64)) (_ Range, e error) {

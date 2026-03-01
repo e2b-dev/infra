@@ -229,7 +229,7 @@ func (o *gcpObject) Size(ctx context.Context) (int64, error) {
 
 	timer.Success(ctx, 0)
 
-	if v, ok := attrs.Metadata["uncompressed-size"]; ok {
+	if v, ok := attrs.Metadata[MetadataKeyUncompressedSize]; ok {
 		parsed, parseErr := strconv.ParseInt(v, 10, 64)
 		if parseErr == nil {
 			return parsed, nil
@@ -390,6 +390,7 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, opts *FramedUplo
 		bucketName,
 		objectName,
 		DefaultRetryConfig(),
+		nil,
 	)
 	if err != nil {
 		timer.Failure(ctx, 0)
@@ -426,11 +427,19 @@ func (o *gcpObject) storeFileCompressed(ctx context.Context, localPath string, o
 	}
 	defer file.Close()
 
+	fi, err := file.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("failed to stat local file %s: %w", localPath, err)
+	}
+
 	uploader, err := NewMultipartUploaderWithRetryConfig(
 		ctx,
 		o.storage.bucket.BucketName(),
 		o.path,
 		DefaultRetryConfig(),
+		map[string]string{
+			MetadataKeyUncompressedSize: strconv.FormatInt(fi.Size(), 10),
+		},
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create multipart uploader: %w", err)

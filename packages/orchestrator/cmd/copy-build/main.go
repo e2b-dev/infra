@@ -86,7 +86,7 @@ func NewHeaderFromObject(ctx context.Context, bucketName string, headerPath stri
 		return nil, fmt.Errorf("failed to open object: %w", err)
 	}
 
-	h, err := header.Deserialize(ctx, obj)
+	h, err := header.FromBlob(ctx, obj)
 	if err != nil {
 		return nil, fmt.Errorf("failed to deserialize header: %w", err)
 	}
@@ -118,7 +118,7 @@ func NewHeaderFromPath(ctx context.Context, from, headerPath string) (*header.He
 	}
 	defer f.Close()
 
-	h, err := header.Deserialize(ctx, &osFileBlob{f: f})
+	h, err := header.FromBlob(ctx, &osFileBlob{f: f})
 	if err != nil {
 		return nil, fmt.Errorf("failed to deserialize header: %w", err)
 	}

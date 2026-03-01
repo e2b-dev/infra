@@ -8,8 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 
@@ -69,19 +67,9 @@ type coldSetup struct {
 // to be reinitialized every time).
 type coldSetupF func(tb testing.TB, profile backendProfile, blockSize int64) coldSetup
 
-func newFlags(tb testing.TB) *MockFlagsClient {
+func newChunker(tb testing.TB, file storage.FramedFile, size int64, compressed bool, blockSize int64) *Chunker {
 	tb.Helper()
-	m := NewMockFlagsClient(tb)
-	m.EXPECT().JSONFlag(mock.Anything, mock.Anything).Return(
-		ldvalue.FromJSONMarshal(map[string]any{"minReadBatchSizeKB": 256}),
-	).Maybe()
-
-	return m
-}
-
-func newChunker(tb testing.TB, assets AssetInfo, blockSize int64) *Chunker {
-	tb.Helper()
-	c, err := NewChunker(assets, blockSize, tb.TempDir()+"/cache", newTestMetrics(tb), newFlags(tb))
+	c, err := NewChunker(file, size, compressed, blockSize, tb.TempDir()+"/cache", newTestMetrics(tb))
 	require.NoError(tb, err)
 
 	return c
@@ -241,13 +229,7 @@ func newUncompressedSetup(data []byte, dataSize int64) coldSetupF {
 	return func(tb testing.TB, profile backendProfile, blockSize int64) coldSetup {
 		tb.Helper()
 		slow := &slowFrameGetter{data: data, ttfb: profile.ttfb, bandwidth: profile.bandwidth}
-		assets := AssetInfo{
-			BasePath:        "bench",
-			Size:            dataSize,
-			HasUncompressed: true,
-			Uncompressed:    slow,
-		}
-		c := newChunker(tb, assets, blockSize)
+		c := newChunker(tb, slow, dataSize, false, blockSize)
 
 		return coldSetup{
 			read:       func(ctx context.Context, off, length int64) ([]byte, error) { return c.GetBlock(ctx, off, length, nil) },
@@ -259,7 +241,6 @@ func newUncompressedSetup(data []byte, dataSize int64) coldSetupF {
 }
 
 // newCompressedSetup uses the new Chunker with real compressed data + decompression.
-// The getter is set as both LZ4 and Zstd — the Chunker picks the right one based on the FT.
 func newCompressedSetup(dataSize int64, ft *storage.FrameTable, compressedData []byte) coldSetupF {
 	cBytes := frameTableCompressedSize(ft)
 
@@ -270,14 +251,7 @@ func newCompressedSetup(dataSize int64, ft *storage.FrameTable, compressedData [
 			ttfb:      profile.ttfb,
 			bandwidth: profile.bandwidth,
 		}
-		c := newChunker(tb, AssetInfo{
-			BasePath: "bench",
-			Size:     dataSize,
-			HasLZ4:   true,
-			LZ4:      getter,
-			HasZstd:  true,
-			Zstd:     getter,
-		}, blockSize)
+		c := newChunker(tb, getter, dataSize, true, blockSize)
 
 		return coldSetup{
 			read:       func(ctx context.Context, off, length int64) ([]byte, error) { return c.GetBlock(ctx, off, length, ft) },
@@ -307,8 +281,7 @@ func BenchmarkCacheHit(b *testing.B) {
 
 			b.Run("Uncompressed", func(b *testing.B) {
 				getter := &slowFrameGetter{data: data}
-				assets := AssetInfo{BasePath: "bench", Size: dataSize, HasUncompressed: true, Uncompressed: getter}
-				c := newChunker(b, assets, blockSize)
+				c := newChunker(b, getter, dataSize, false, blockSize)
 				defer c.Close()
 				runCacheHit(b, dataSize, blockSize, func(ctx context.Context, off, length int64) ([]byte, error) {
 					return c.GetBlock(ctx, off, length, nil)

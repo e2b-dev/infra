@@ -117,14 +117,7 @@ func (c *fullFetchChunker) fetchToCache(ctx context.Context, off, length int64) 
 
 				fetchSW := c.metrics.RemoteReadsTimerFactory.Begin()
 
-				// Pass onRead + readSize identical to the branch Chunker so
-				// slowFrameGetter simulates the same bandwidth delay.
-				readSize := int64(defaultMinReadBatchSize)
-				onRead := func(totalWritten int64) {
-					c.cache.setIsCached(fetchOff, totalWritten)
-				}
-
-				_, err = c.upstream.GetFrame(ctx, fetchOff, nil, false, b, readSize, onRead)
+				_, err = c.upstream.GetFrame(ctx, fetchOff, nil, false, b, 0, nil)
 				if err != nil {
 					fetchSW.Failure(ctx, int64(len(b)),
 						attribute.String(failureReason, failureTypeRemoteRead))

@@ -250,7 +250,7 @@ func (o *awsObject) Size(ctx context.Context) (int64, error) {
 		return 0, err
 	}
 
-	if v, ok := resp.Metadata["uncompressed-size"]; ok {
+	if v, ok := resp.Metadata[MetadataKeyUncompressedSize]; ok {
 		parsed, parseErr := strconv.ParseInt(v, 10, 64)
 		if parseErr == nil {
 			return parsed, nil

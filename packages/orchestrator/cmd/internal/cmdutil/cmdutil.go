@@ -45,7 +45,7 @@ func GetHeaderInfo(headerPath string) (totalSize, blockSize uint64) {
 	if err != nil {
 		return 0, 0
 	}
-	h, err := header.DeserializeBytes(data)
+	h, err := header.Deserialize(data)
 	if err != nil {
 		return 0, 0
 	}
@@ -72,11 +72,10 @@ func GetActualFileSize(path string) (int64, error) {
 
 // ArtifactInfo contains information about a build artifact.
 type ArtifactInfo struct {
-	Name                 string
-	File                 string   // e.g., "memfile"
-	HeaderFile           string   // e.g., "memfile.header"
-	CompressedFiles      []string // e.g., ["v4.memfile.lz4", "v4.memfile.zstd"]
-	CompressedHeaderFile string   // e.g., "v4.memfile.header.lz4"
+	Name            string
+	File            string   // e.g., "memfile"
+	HeaderFile      string   // e.g., "memfile.header"
+	CompressedFiles []string // e.g., ["memfile.lz4", "memfile.zstd"]
 }
 
 // allCompressionTypes lists all supported compression types for file probing.
@@ -89,26 +88,24 @@ var allCompressionTypes = []storage.CompressionType{
 func MainArtifacts() []ArtifactInfo {
 	return []ArtifactInfo{
 		{
-			Name:                 "Rootfs",
-			File:                 storage.RootfsName,
-			HeaderFile:           storage.RootfsName + storage.HeaderSuffix,
-			CompressedFiles:      v4DataNames(storage.RootfsName),
-			CompressedHeaderFile: storage.V4HeaderName(storage.RootfsName),
+			Name:            "Rootfs",
+			File:            storage.RootfsName,
+			HeaderFile:      storage.RootfsName + storage.HeaderSuffix,
+			CompressedFiles: compressedDataNames(storage.RootfsName),
 		},
 		{
-			Name:                 "Memfile",
-			File:                 storage.MemfileName,
-			HeaderFile:           storage.MemfileName + storage.HeaderSuffix,
-			CompressedFiles:      v4DataNames(storage.MemfileName),
-			CompressedHeaderFile: storage.V4HeaderName(storage.MemfileName),
+			Name:            "Memfile",
+			File:            storage.MemfileName,
+			HeaderFile:      storage.MemfileName + storage.HeaderSuffix,
+			CompressedFiles: compressedDataNames(storage.MemfileName),
 		},
 	}
 }
 
-func v4DataNames(fileName string) []string {
+func compressedDataNames(fileName string) []string {
 	names := make([]string, len(allCompressionTypes))
 	for i, ct := range allCompressionTypes {
-		names[i] = storage.V4DataName(fileName, ct)
+		names[i] = storage.CompressedDataName(fileName, ct)
 	}
 
 	return names
@@ -118,9 +115,7 @@ func v4DataNames(fileName string) []string {
 func SmallArtifacts() []struct{ Name, File string } {
 	return []struct{ Name, File string }{
 		{"Rootfs header", storage.RootfsName + storage.HeaderSuffix},
-		{"Rootfs v4 header", storage.V4HeaderName(storage.RootfsName)},
 		{"Memfile header", storage.MemfileName + storage.HeaderSuffix},
-		{"Memfile v4 header", storage.V4HeaderName(storage.MemfileName)},
 		{"Snapfile", storage.SnapfileName},
 		{"Metadata", storage.MetadataName},
 	}

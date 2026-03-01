@@ -243,24 +243,13 @@ func GetTrackedTemplatesSet(ctx context.Context, ff *Client) map[string]struct{}
 	return result
 }
 
-// ChunkerConfigFlag is a JSON flag controlling the chunker implementation and tuning.
-//
-// Fields:
-//   - useCompressedAssets (bool): Try loading v4 compressed headers and use
-//     the compressed read path. Restart required — no effect on already-cached templates.
-//   - minReadBatchSizeKB (int): Floor for uncompressed read batch size in KB.
-//     Applied at chunker creation time; restart required for existing chunkers.
-//
-// JSON format: {"useCompressedAssets": false, "minReadBatchSizeKB": 16}
-var ChunkerConfigFlag = newJSONFlag("chunker-config", ldvalue.FromJSONMarshal(map[string]any{
-	"useCompressedAssets": false,
-	"minReadBatchSizeKB":  16,
-}))
-
 // CompressConfigFlag is a JSON flag controlling compression behaviour.
+// When compressBuilds is true, builds upload exclusively compressed data
+// (no uncompressed fallback). When false, builds upload exclusively
+// uncompressed data with V3 headers.
 //
 // Fields:
-//   - compressBuilds (bool): Enable compressed (dual-write) uploads during
+//   - compressBuilds (bool): Enable compressed-only uploads during
 //     template builds. Default false.
 //   - compressionType (string): "lz4" or "zstd". Default "lz4".
 //   - level (int): Compression level. For LZ4 0=fast, higher=better ratio. Default 3.

@@ -71,7 +71,7 @@ func (m *Metadata) NextGeneration(buildID uuid.UUID) *Metadata {
 	}
 }
 
-func Serialize(metadata *Metadata, mappings []*BuildMap) ([]byte, error) {
+func serialize(metadata *Metadata, mappings []*BuildMap) ([]byte, error) {
 	var buf bytes.Buffer
 
 	err := binary.Write(&buf, binary.LittleEndian, metadata)
@@ -131,23 +131,32 @@ func Serialize(metadata *Metadata, mappings []*BuildMap) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func Deserialize(ctx context.Context, in storage.Blob) (*Header, error) {
+// FromBlob reads all bytes from a storage.Blob and auto-detects
+// the header version (V3/V4) for deserialization.
+func FromBlob(ctx context.Context, in storage.Blob) (*Header, error) {
 	data, err := storage.GetBlob(ctx, in)
 	if err != nil {
 		return nil, fmt.Errorf("failed to write to buffer: %w", err)
 	}
 
-	return DeserializeBytes(data)
+	return Deserialize(data)
 }
 
-func DeserializeBytes(data []byte) (*Header, error) {
+// metadataSize is the binary size of the Metadata struct, computed from the struct layout.
+var metadataSize = binary.Size(Metadata{})
+
+func deserializeMetadata(data []byte) (*Metadata, error) {
 	var metadata Metadata
-	reader := bytes.NewReader(data)
-	err := binary.Read(reader, binary.LittleEndian, &metadata)
+
+	err := binary.Read(bytes.NewReader(data), binary.LittleEndian, &metadata)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read metadata: %w", err)
 	}
 
+	return &metadata, nil
+}
+
+func deserializeMappings(metadata *Metadata, reader *bytes.Reader) ([]*BuildMap, error) {
 	mappings := make([]*BuildMap, 0)
 
 MAPPINGS:
@@ -157,7 +166,7 @@ MAPPINGS:
 		switch metadata.Version {
 		case 0, 1, 2, 3:
 			var v3 v3SerializableBuildMap
-			err = binary.Read(reader, binary.LittleEndian, &v3)
+			err := binary.Read(reader, binary.LittleEndian, &v3)
 			if errors.Is(err, io.EOF) {
 				break MAPPINGS
 			}
@@ -172,7 +181,7 @@ MAPPINGS:
 
 		case 4:
 			var v4 v4SerializableBuildMap
-			err = binary.Read(reader, binary.LittleEndian, &v4)
+			err := binary.Read(reader, binary.LittleEndian, &v4)
 			if errors.Is(err, io.EOF) {
 				break MAPPINGS
 			}
@@ -212,17 +221,65 @@ MAPPINGS:
 		mappings = append(mappings, &m)
 	}
 
-	return newValidatedHeader(&metadata, mappings)
+	return mappings, nil
 }
 
-// DeserializeV4 decompresses LZ4-block-compressed data and deserializes a v4 header with frame tables.
-func DeserializeV4(data []byte) (*Header, error) {
-	decompressed, err := storage.DecompressLZ4(data, storage.MaxCompressedHeaderSize)
+// SerializeHeader serializes a header with optional LZ4 compression for V4.
+// For V3 (Version <= 3), returns the raw binary unchanged.
+// For V4 (Version == 4), keeps Metadata prefix raw, LZ4-compresses
+// the rest (mappings with frame tables), and concatenates.
+func SerializeHeader(metadata *Metadata, mappings []*BuildMap) ([]byte, error) {
+	raw, err := serialize(metadata, mappings)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decompress v4 header: %w", err)
+		return nil, err
 	}
 
-	return DeserializeBytes(decompressed)
+	if metadata.Version <= 3 {
+		return raw, nil
+	}
+
+	// V4: keep Metadata prefix raw, LZ4-compress the mappings.
+	compressed, err := storage.CompressLZ4(raw[metadataSize:])
+	if err != nil {
+		return nil, fmt.Errorf("failed to LZ4-compress v4 header mappings: %w", err)
+	}
+
+	result := make([]byte, metadataSize+len(compressed))
+	copy(result, raw[:metadataSize])
+	copy(result[metadataSize:], compressed)
+
+	return result, nil
+}
+
+// Deserialize auto-detects the header version and deserializes accordingly.
+// For V3 (Version <= 3), deserializes the raw binary directly.
+// For V4 (Version == 4), reads the Metadata prefix, then LZ4-decompresses
+// the remaining bytes (mappings with frame tables) and deserializes them.
+func Deserialize(data []byte) (*Header, error) {
+	if len(data) < metadataSize {
+		return nil, fmt.Errorf("header too short: %d bytes", len(data))
+	}
+
+	metadata, err := deserializeMetadata(data[:metadataSize])
+	if err != nil {
+		return nil, err
+	}
+
+	mappingsData := data[metadataSize:]
+
+	if metadata.Version >= 4 {
+		mappingsData, err = storage.DecompressLZ4(mappingsData, storage.MaxCompressedHeaderSize)
+		if err != nil {
+			return nil, fmt.Errorf("failed to LZ4-decompress v4 header mappings: %w", err)
+		}
+	}
+
+	mappings, err := deserializeMappings(metadata, bytes.NewReader(mappingsData))
+	if err != nil {
+		return nil, err
+	}
+
+	return newValidatedHeader(metadata, mappings)
 }
 
 func newValidatedHeader(metadata *Metadata, mappings []*BuildMap) (*Header, error) {

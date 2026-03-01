@@ -11,9 +11,6 @@ import (
 
 	gcsstorage "cloud.google.com/go/storage"
 	"google.golang.org/api/iterator"
-
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 // IsGCSPath checks if the path is a GCS path (gs:// or gs:).
@@ -229,32 +226,6 @@ func ReadFileIfExists(ctx context.Context, storagePath, buildID, filename string
 	}
 
 	return data, source, nil
-}
-
-// ReadCompressedHeader reads a v4 header file (e.g. "v4.memfile.header.lz4"),
-// LZ4-block-decompresses it, and deserializes.
-// Returns nil, "", nil when the v4 header doesn't exist.
-func ReadCompressedHeader(ctx context.Context, storagePath, buildID, artifactName string) (*header.Header, string, error) {
-	filename := storage.V4HeaderName(artifactName)
-	data, source, err := ReadFileIfExists(ctx, storagePath, buildID, filename)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to read compressed header: %w", err)
-	}
-	if data == nil {
-		return nil, "", nil
-	}
-
-	decompressed, err := storage.DecompressLZ4(data, storage.MaxCompressedHeaderSize)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to decompress LZ4 header from %s: %w", source, err)
-	}
-
-	h, err := header.DeserializeBytes(decompressed)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to deserialize compressed header from %s: %w", source, err)
-	}
-
-	return h, source, nil
 }
 
 // FileInfo contains existence and size information about a file.

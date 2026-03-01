@@ -4,11 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"golang.org/x/sync/errgroup"
-
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -23,10 +20,10 @@ type StorageDiff struct {
 	cacheKey    DiffStoreKey
 	storagePath string
 
-	blockSize    int64
-	metrics      blockmetrics.Metrics
-	persistence  storage.StorageProvider
-	featureFlags *featureflags.Client
+	blockSize       int64
+	metrics         blockmetrics.Metrics
+	persistence     storage.StorageProvider
+	compressionType storage.CompressionType
 }
 
 var _ Diff = (*StorageDiff)(nil)
@@ -46,7 +43,7 @@ func newStorageDiff(
 	blockSize int64,
 	metrics blockmetrics.Metrics,
 	persistence storage.StorageProvider,
-	featureFlags *featureflags.Client,
+	ct storage.CompressionType,
 ) (*StorageDiff, error) {
 	storagePath := storagePath(buildId, diffType)
 	if !isKnownDiffType(diffType) {
@@ -56,14 +53,14 @@ func newStorageDiff(
 	cachePath := GenerateDiffCachePath(basePath, buildId, diffType)
 
 	return &StorageDiff{
-		storagePath:  storagePath,
-		cachePath:    cachePath,
-		chunker:      utils.NewSetOnce[*block.Chunker](),
-		blockSize:    blockSize,
-		metrics:      metrics,
-		persistence:  persistence,
-		featureFlags: featureFlags,
-		cacheKey:     GetDiffStoreKey(buildId, diffType),
+		storagePath:     storagePath,
+		cachePath:       cachePath,
+		chunker:         utils.NewSetOnce[*block.Chunker](),
+		blockSize:       blockSize,
+		metrics:         metrics,
+		persistence:     persistence,
+		compressionType: ct,
+		cacheKey:        GetDiffStoreKey(buildId, diffType),
 	}, nil
 }
 
@@ -87,101 +84,47 @@ func (b *StorageDiff) Init(ctx context.Context) error {
 	return b.chunker.SetValue(chunker)
 }
 
-// createChunker probes for available assets and creates a Chunker.
+// createChunker opens the single data file and creates a Chunker.
 func (b *StorageDiff) createChunker(ctx context.Context) (*block.Chunker, error) {
-	assets := b.probeAssets(ctx)
-	if assets.Size == 0 {
-		return nil, fmt.Errorf("no asset found for %s (no uncompressed or compressed with metadata)", b.storagePath)
+	file, size, err := b.openDataFile(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open data file for %s: %w", b.storagePath, err)
 	}
 
-	return block.NewChunker(assets, b.blockSize, b.cachePath, b.metrics, b.featureFlags)
+	if size == 0 {
+		return nil, fmt.Errorf("no asset found for %s (size is 0)", b.storagePath)
+	}
+
+	compressed := b.compressionType != storage.CompressionNone
+
+	return block.NewChunker(file, size, compressed, b.blockSize, b.cachePath, b.metrics)
 }
 
-// probeAssets probes for uncompressed and compressed asset variants in parallel.
-// For compressed objects, Size() returns the uncompressed size from metadata,
-// allowing us to derive the mmap allocation size even when the uncompressed
-// object doesn't exist.
-func (b *StorageDiff) probeAssets(ctx context.Context) block.AssetInfo {
-	assets := block.AssetInfo{BasePath: b.storagePath}
-
-	var (
-		lz4UncompressedSize  int64
-		zstdUncompressedSize int64
-	)
-
-	// Probe all 3 paths in parallel: uncompressed, v4.*.lz4, v4.*.zstd.
-	// Errors are swallowed (missing assets are expected).
-	eg, ctx := errgroup.WithContext(ctx)
-
-	eg.Go(func() error {
-		obj, err := b.persistence.OpenFramedFile(ctx, b.storagePath)
-		if err != nil {
-			return nil //nolint:nilerr // missing asset is expected
-		}
-
-		uncompressedSize, err := obj.Size(ctx)
-		if err != nil {
-			return nil //nolint:nilerr // missing asset is expected
-		}
-
-		assets.Size = uncompressedSize
-		assets.HasUncompressed = true
-		assets.Uncompressed = obj
-
-		return nil
-	})
-
-	eg.Go(func() error {
-		lz4Path := storage.V4DataPath(b.storagePath, storage.CompressionLZ4)
-		obj, err := b.persistence.OpenFramedFile(ctx, lz4Path)
-		if err != nil {
-			return nil //nolint:nilerr // missing asset is expected
-		}
-
-		uncompressedSize, err := obj.Size(ctx)
-		if err != nil {
-			return nil //nolint:nilerr // missing asset is expected
-		}
-
-		assets.HasLZ4 = true
-		assets.LZ4 = obj
-		lz4UncompressedSize = uncompressedSize
-
-		return nil
-	})
-
-	eg.Go(func() error {
-		zstdPath := storage.V4DataPath(b.storagePath, storage.CompressionZstd)
-		obj, err := b.persistence.OpenFramedFile(ctx, zstdPath)
-		if err != nil {
-			return nil //nolint:nilerr // missing asset is expected
-		}
-
-		uncompressedSize, err := obj.Size(ctx)
-		if err != nil {
-			return nil //nolint:nilerr // missing asset is expected
-		}
-
-		assets.HasZstd = true
-		assets.Zstd = obj
-		zstdUncompressedSize = uncompressedSize
-
-		return nil
-	})
-
-	_ = eg.Wait()
-
-	// If no uncompressed object exists, derive the mmap allocation size
-	// from the compressed object's uncompressed-size metadata.
-	if assets.Size == 0 {
-		if lz4UncompressedSize > 0 {
-			assets.Size = lz4UncompressedSize
-		} else if zstdUncompressedSize > 0 {
-			assets.Size = zstdUncompressedSize
-		}
+// openDataFile opens the single data file based on compressionType.
+// For uncompressed builds, opens the raw file (e.g. "buildId/memfile").
+// For compressed builds, opens the compressed variant (e.g. "buildId/memfile.zstd").
+//
+// The returned size is always the uncompressed diff file size (not the full
+// virtual address space, and not the compressed object size). For compressed
+// objects, Size() reads this from the MetadataKeyUncompressedSize object metadata
+// that was set during upload.
+func (b *StorageDiff) openDataFile(ctx context.Context) (storage.FramedFile, int64, error) {
+	path := b.storagePath
+	if b.compressionType != storage.CompressionNone {
+		path = storage.CompressedPath(b.storagePath, b.compressionType)
 	}
 
-	return assets
+	obj, err := b.persistence.OpenFramedFile(ctx, path)
+	if err != nil {
+		return nil, 0, fmt.Errorf("open asset %s: %w", path, err)
+	}
+
+	size, err := obj.Size(ctx)
+	if err != nil {
+		return nil, 0, fmt.Errorf("get size of asset %s: %w", path, err)
+	}
+
+	return obj, size, nil
 }
 
 func (b *StorageDiff) Close() error {

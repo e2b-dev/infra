@@ -15,7 +15,6 @@ import (
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -36,7 +35,6 @@ type storageTemplate struct {
 	localSnapfile File
 	localMetafile File
 
-	flags       *featureflags.Client
 	metrics     blockmetrics.Metrics
 	persistence storage.StorageProvider
 }
@@ -46,7 +44,6 @@ func newTemplateFromStorage(
 	buildId string,
 	memfileHeader *header.Header,
 	rootfsHeader *header.Header,
-	flags *featureflags.Client,
 	persistence storage.StorageProvider,
 	metrics blockmetrics.Metrics,
 	localSnapfile File,
@@ -65,7 +62,6 @@ func newTemplateFromStorage(
 		localMetafile: localMetafile,
 		memfileHeader: memfileHeader,
 		rootfsHeader:  rootfsHeader,
-		flags:         flags,
 		metrics:       metrics,
 		persistence:   persistence,
 		memfile:       utils.NewSetOnce[block.ReadonlyDevice](),
@@ -87,7 +83,6 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			if err := t.snapfile.SetValue(t.localSnapfile); err != nil {
 				return fmt.Errorf("failed to set local snapfile: %w", err)
 			}
-
 			return nil
 		}
 
@@ -179,7 +174,6 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			t.files.BuildID,
 			build.Memfile,
 			t.memfileHeader,
-			t.flags,
 			t.persistence,
 			t.metrics,
 		)
@@ -207,7 +201,6 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			t.files.BuildID,
 			build.Rootfs,
 			t.rootfsHeader,
-			t.flags,
 			t.persistence,
 			t.metrics,
 		)
