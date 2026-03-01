@@ -58,8 +58,7 @@ func (c *fullFetchChunker) Slice(ctx context.Context, off, length int64) ([]byte
 		return b, nil
 	}
 
-	var bytesNotAvailableError BytesNotAvailableError
-	if !errors.As(err, &bytesNotAvailableError) {
+	if !errors.As(err, &BytesNotAvailableError{}) {
 		timer.Failure(ctx, length,
 			attribute.String(pullType, pullTypeLocal),
 			attribute.String(failureReason, failureTypeLocalRead))
@@ -91,8 +90,7 @@ func (c *fullFetchChunker) Slice(ctx context.Context, off, length int64) ([]byte
 	return b, nil
 }
 
-// fetchToCache ensures the MemoryChunkSize-aligned region(s) covering
-// [off, off+length) are present in the cache. Uses WaitMap for dedup.
+// fetchToCache ensures that the data at the given offset and length is available in the cache.
 func (c *fullFetchChunker) fetchToCache(ctx context.Context, off, length int64) error {
 	var eg errgroup.Group
 
