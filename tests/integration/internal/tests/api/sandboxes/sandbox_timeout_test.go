@@ -117,7 +117,8 @@ func TestSandboxSetTimeoutPausingSandbox(t *testing.T) {
 					return err
 				}
 
-				if setTimeoutResp.StatusCode() != http.StatusNotFound {
+				// The sandbox is currently transitioning
+				if setTimeoutResp.StatusCode() != http.StatusConflict && setTimeoutResp.StatusCode() != http.StatusNotFound {
 					return fmt.Errorf("unexpected status code: %d", setTimeoutResp.StatusCode())
 				}
 

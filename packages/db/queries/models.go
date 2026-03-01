@@ -46,6 +46,18 @@ type AuthUser struct {
 	Email string
 }
 
+type BillingSandboxLog struct {
+	SandboxID       string
+	EnvID           string
+	Vcpu            int64
+	RamMb           int64
+	TotalDiskSizeMb int64
+	StartedAt       time.Time
+	StoppedAt       *time.Time
+	CreatedAt       time.Time
+	TeamID          uuid.UUID
+}
+
 type Cluster struct {
 	ID                 uuid.UUID
 	Endpoint           string

@@ -49,7 +49,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		// Check if sandbox belongs to the team
 		if sbx.TeamID != team.ID {
 			telemetry.ReportCriticalError(ctx, fmt.Sprintf("sandbox '%s' doesn't belong to team '%s'", sandboxId, team.ID.String()), nil)
-			a.sendAPIStoreError(c, http.StatusNotFound, sandboxNotFoundMsg(id))
+			a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(id))
 
 			return
 		}
@@ -62,7 +62,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		// Sandbox is being stopped or already is stopped, user can't work with it anymore
 		case sandbox.StateKilling:
 			logger.L().Debug(ctx, "Sandbox is being killed", logger.WithSandboxID(sandboxId))
-			a.sendAPIStoreError(c, http.StatusNotFound, sandboxNotFoundMsg(id))
+			a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(id))
 
 			return
 		}
@@ -100,14 +100,14 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	lastSnapshot, err := a.sqlcDB.GetLastSnapshot(ctx, sandboxId)
 	if err != nil {
 		telemetry.ReportError(ctx, "error getting last snapshot", err)
-		a.sendAPIStoreError(c, http.StatusNotFound, sandboxNotFoundMsg(id))
+		a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(id))
 
 		return
 	}
 
 	if lastSnapshot.Snapshot.TeamID != team.ID {
 		telemetry.ReportError(ctx, fmt.Sprintf("snapshot for sandbox '%s' doesn't belong to team '%s'", sandboxId, team.ID.String()), nil)
-		a.sendAPIStoreError(c, http.StatusNotFound, sandboxNotFoundMsg(id))
+		a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(id))
 
 		return
 	}
