@@ -310,7 +310,7 @@ func (lb *LayerExecutor) PauseAndUpload(
 			return fmt.Errorf("error uploading data files: %w", err)
 		}
 
-		// Wait for all previous layer uploads to complete before saving the cache entry.
+		// Step 2: Wait for all previous layer uploads to complete before saving the cache entry.
 		// This prevents race conditions where another build hits this cache entry
 		// before its dependencies (previous layers) are available in storage.
 		// It also ensures all upstream frame tables are in pending, so that

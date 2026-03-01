@@ -38,11 +38,8 @@ const (
 	// MemoryChunkSize must always be bigger or equal to the block size.
 	MemoryChunkSize = 4 * 1024 * 1024 // 4 MB
 
-	// MetadataKeyUncompressedSize is the object-metadata key (GCS/S3) and
-	// sidecar file suffix (local FS) that stores the uncompressed diff file
-	// size. When a diff is uploaded with compression, the storage backends
-	// set this so that Size() returns the uncompressed size (needed by the
-	// Chunker mmap cache) instead of the compressed object size.
+	// MetadataKeyUncompressedSize stores the original size so that Size()
+	// returns the uncompressed size for compressed objects.
 	MetadataKeyUncompressedSize = "uncompressed-size"
 )
 
@@ -75,26 +72,17 @@ type Blob interface {
 	Exists(ctx context.Context) (bool, error)
 }
 
-// FramedFile represents a storage object that supports frame-based reads.
-// The object knows its own path; callers do not need to supply it.
+// FramedFile supports frame-based reads and compressed/uncompressed uploads.
 type FramedFile interface {
-	// GetFrame reads a single frame from storage into buf. When frameTable is
-	// nil (uncompressed data), reads directly without frame translation. When
-	// onRead is non-nil, data is written in readSize-aligned chunks and onRead
-	// is called after each chunk with the cumulative byte count written so far.
-	// When readSize <= 0, MemoryChunkSize is used as the default.
+	// GetFrame reads a single frame into buf. nil frameTable = uncompressed read.
 	GetFrame(ctx context.Context, offsetU int64, frameTable *FrameTable, decompress bool,
 		buf []byte, readSize int64, onRead func(totalWritten int64)) (Range, error)
 
-	// Size returns the uncompressed size of the object. For compressed objects
-	// with metadata, this returns the original uncompressed size.
+	// Size returns the uncompressed size of the object.
 	Size(ctx context.Context) (int64, error)
 
-	// StoreFile uploads the local file at path, as a multipart upload. When
-	// opts is non-nil with a compression type, compresses the data and returns
-	// the FrameTable describing the compressed frames. When opts is nil,
-	// performs a simple uncompressed upload (returns nil FrameTable).
-	// The returned [32]byte is the SHA-256 of the compressed data (zero for uncompressed uploads).
+	// StoreFile uploads a local file. When opts is non-nil, compresses and
+	// returns the FrameTable + SHA-256 checksum of compressed data.
 	StoreFile(ctx context.Context, path string, opts *FramedUploadOptions) (*FrameTable, [32]byte, error)
 }
 
@@ -174,12 +162,6 @@ func LoadBlob(ctx context.Context, s StorageProvider, path string) ([]byte, erro
 
 // ReadFrame is the shared implementation for reading a single frame from storage.
 // Each backend (GCP, AWS, FS) calls this with their own rangeRead callback.
-//
-// When onRead is non-nil, the output is written to buf in readSize-aligned
-// blocks and onRead is called after each block with the cumulative bytes
-// written. This pipelines network I/O with decompression — the LZ4/zstd reader
-// pulls compressed bytes from the HTTP stream on demand, so fetch and decompress
-// overlap naturally. When readSize <= 0, MemoryChunkSize is used.
 func ReadFrame(ctx context.Context, rangeRead RangeReadFunc, storageDetails string, offsetU int64, frameTable *FrameTable, decompress bool, buf []byte, readSize int64, onRead func(totalWritten int64)) (Range, error) {
 	// Handle uncompressed data (nil frameTable) - read directly without frame translation
 	if !IsCompressed(frameTable) {

@@ -1,18 +1,29 @@
 package storage
 
 import (
+	"context"
 	"io"
 	"sync"
 	"sync/atomic"
 
 	"github.com/klauspost/compress/zstd"
 	lz4 "github.com/pierrec/lz4/v4"
+
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 )
 
 var decoderConcurrency atomic.Int32
 
 func init() {
 	decoderConcurrency.Store(1)
+}
+
+// InitDecoders reads the compress-config feature flag and sets the pooled
+// zstd decoder concurrency. Call once at startup before any reads.
+func InitDecoders(ctx context.Context, ff *featureflags.Client) {
+	v := ff.JSONFlag(ctx, featureflags.CompressConfigFlag).AsValueMap()
+	n := max(v.Get("decoderConcurrency").IntValue(), 1)
+	SetDecoderConcurrency(n)
 }
 
 // SetDecoderConcurrency sets the number of concurrent goroutines used by

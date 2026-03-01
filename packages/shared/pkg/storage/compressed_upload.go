@@ -91,14 +91,6 @@ func GetUploadOptions(ctx context.Context, ff *featureflags.Client) *FramedUploa
 	}
 }
 
-// InitDecoders reads the compress-config feature flag and sets the pooled
-// zstd decoder concurrency. Call once at startup before any reads.
-func InitDecoders(ctx context.Context, ff *featureflags.Client) {
-	v := ff.JSONFlag(ctx, featureflags.CompressConfigFlag).AsValueMap()
-	n := max(v.Get("decoderConcurrency").IntValue(), 1)
-	SetDecoderConcurrency(n)
-}
-
 // ValidateCompressionOptions checks that compression options are valid.
 func ValidateCompressionOptions(opts *FramedUploadOptions) error {
 	if opts == nil || opts.CompressionType == CompressionNone {
