@@ -27,3 +27,15 @@ resource "aws_ecr_repository" "custom_environments" {
   image_tag_mutability = "MUTABLE"
   force_delete         = var.allow_force_destroy
 }
+
+resource "aws_ecr_repository" "dashboard_api" {
+  name                 = "${var.prefix}core/dashboard-api"
+  image_tag_mutability = "MUTABLE"
+  force_delete         = var.allow_force_destroy
+}
+
+resource "aws_ecr_repository" "docker_reverse_proxy" {
+  name                 = "${var.prefix}core/docker-reverse-proxy"
+  image_tag_mutability = "MUTABLE"
+  force_delete         = var.allow_force_destroy
+}
