@@ -61,4 +61,3 @@ fi
 
 # Safely produce a JSON object containing the result value.
 jq -n --arg count "$COUNT" '{"count":$count}'
-

@@ -1,5 +1,4 @@
 job "api" {
-  datacenters = ["${gcp_zone}"]
   node_pool = "${node_pool}"
   priority = 90
 

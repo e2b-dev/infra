@@ -95,10 +95,18 @@ job "template-manager" {
       env {
         NODE_ID                       = "$${node.unique.name}"
         CONSUL_TOKEN                  = "${consul_acl_token}"
-        GOOGLE_SERVICE_ACCOUNT_BASE64 = "${google_service_account_key}"
-        GCP_PROJECT_ID                = "${gcp_project}"
-        GCP_REGION                    = "${gcp_region}"
-        GCP_DOCKER_REPOSITORY_NAME    = "${docker_registry}"
+%{ if provider == "gcp" }
+        GOOGLE_SERVICE_ACCOUNT_BASE64 = "${provider_gcp_config.service_account_key}"
+        GCP_PROJECT_ID                = "${provider_gcp_config.project_id}"
+        GCP_REGION                    = "${provider_gcp_config.region}"
+        GCP_DOCKER_REPOSITORY_NAME    = "${provider_gcp_config.docker_registry}"
+%{ endif }
+%{ if provider == "aws" }
+        ARTIFACTS_REGISTRY_PROVIDER   = "AWS_ECR"
+        STORAGE_PROVIDER              = "AWSBucket"
+        AWS_REGION                    = "${provider_aws_config.region}"
+        AWS_DOCKER_REPOSITORY_NAME    = "${provider_aws_config.docker_repository_name}"
+%{ endif }
         API_SECRET                    = "${api_secret}"
         ENVIRONMENT                   = "${environment}"
         DOMAIN_NAME                   = "${domain_name}"
@@ -126,7 +134,7 @@ job "template-manager" {
       }
 
       artifact {
-        source      = "gcs::https://www.googleapis.com/storage/v1/${bucket_name}/template-manager"
+        source      = "${artifact_source}"
         options {
             checksum    = "md5:${template_manager_checksum}"
         }
