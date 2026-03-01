@@ -42,6 +42,14 @@ job "api" {
       port = "${port_number}"
       task = "start"
 
+      tags = [
+        "traefik.enable=true",
+
+        "traefik.http.routers.api.rule=HostRegexp(`api.{domain:.+}`)",
+        "traefik.http.routers.api.ruleSyntax=v2",
+        "traefik.http.routers.api.priority=500"
+      ]
+
       check {
         type     = "http"
         name     = "health"
