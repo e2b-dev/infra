@@ -18,9 +18,6 @@ type Metrics struct {
 	// BlocksTimerFactory measures page-fault / GetBlock latency.
 	BlocksTimerFactory telemetry.TimerFactory
 
-	// SlicesTimerFactory is the legacy name for BlocksTimerFactory (fullFetchChunker path).
-	SlicesTimerFactory telemetry.TimerFactory
-
 	// RemoteReadsTimerFactory measures the time taken to download chunks from remote storage.
 	RemoteReadsTimerFactory telemetry.TimerFactory
 
@@ -42,8 +39,6 @@ func NewMetrics(meterProvider metric.MeterProvider) (Metrics, error) {
 	); err != nil {
 		return m, fmt.Errorf("error creating slices timer factory: %w", err)
 	}
-
-	m.SlicesTimerFactory = m.BlocksTimerFactory
 
 	if m.RemoteReadsTimerFactory, err = telemetry.NewTimerFactory(
 		blocksMeter, orchestratorBlockChunksFetch,

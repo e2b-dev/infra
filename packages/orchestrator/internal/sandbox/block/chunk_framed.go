@@ -9,8 +9,10 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -211,6 +213,13 @@ func (c *Chunker) getOrCreateSession(ctx context.Context, off int64, ft *storage
 // runFetch fetches data from storage into the mmap cache. Runs in a background goroutine.
 // Works for both compressed (c.compressed=true, ft!=nil) and uncompressed paths.
 func (c *Chunker) runFetch(ctx context.Context, s *fetchSession, offsetU int64, ft *storage.FrameTable) {
+	defer func() {
+		if r := recover(); r != nil {
+			logger.L().Error(ctx, "recovered from panic in the fetch handler", zap.Any("error", r))
+			s.setError(fmt.Errorf("recovered from panic in the fetch handler: %v", r), false)
+		}
+	}()
+
 	ctx, cancel := context.WithTimeout(ctx, decompressFetchTimeout)
 	defer cancel()
 
