@@ -41,19 +41,12 @@ func NewStorage(
 			return nil, build.UnknownDiffTypeError{DiffType: fileType}
 		}
 
-		files := storage.TemplateFiles{BuildID: buildId}
-		path := files.HeaderPath(string(fileType))
+		path := storage.TemplateFiles{BuildID: buildId}.HeaderPath(string(fileType))
 
-		data, err := storage.LoadBlob(ctx, persistence, path)
-		if err != nil {
-			if !errors.Is(err, storage.ErrObjectNotExist) {
-				return nil, err
-			}
-		} else {
-			h, err = header.Deserialize(data)
-			if err != nil {
-				return nil, err
-			}
+		var err error
+		h, err = header.LoadHeader(ctx, persistence, path)
+		if err != nil && !errors.Is(err, storage.ErrObjectNotExist) {
+			return nil, err
 		}
 	}
 

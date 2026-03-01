@@ -307,6 +307,17 @@ func SerializeHeader(h *Header) ([]byte, error) {
 	return result, nil
 }
 
+// LoadHeader fetches a serialized header from storage and deserializes it.
+// Errors (including storage.ErrObjectNotExist) are returned as-is.
+func LoadHeader(ctx context.Context, s storage.StorageProvider, path string) (*Header, error) {
+	data, err := storage.LoadBlob(ctx, s, path)
+	if err != nil {
+		return nil, err
+	}
+
+	return Deserialize(data)
+}
+
 // Deserialize auto-detects the header version and deserializes accordingly.
 // For V3 (Version <= 3), deserializes the raw binary directly.
 // For V4 (Version == 4), reads the Metadata prefix, then LZ4-decompresses

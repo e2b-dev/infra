@@ -76,6 +76,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 		telemetry.WithBuildID(t.files.BuildID),
 	))
 	defer span.End()
+
 	var wg errgroup.Group
 
 	wg.Go(func() error {
@@ -83,6 +84,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			if err := t.snapfile.SetValue(t.localSnapfile); err != nil {
 				return fmt.Errorf("failed to set local snapfile: %w", err)
 			}
+
 			return nil
 		}
 
@@ -177,6 +179,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			t.persistence,
 			t.metrics,
 		)
+
 		if memfileErr != nil {
 			errMsg := fmt.Errorf("failed to create memfile storage: %w", memfileErr)
 
