@@ -23,7 +23,6 @@ const (
 
 	// decompressFetchTimeout is the maximum time a single frame/chunk fetch may take.
 	decompressFetchTimeout = 60 * time.Second
-
 )
 
 type precomputedAttrs struct {

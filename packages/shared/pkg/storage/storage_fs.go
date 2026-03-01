@@ -116,6 +116,7 @@ func (o *fsObject) StoreFile(ctx context.Context, path string, opts *FramedUploa
 	r, err := os.Open(path)
 	if err != nil {
 		e = fmt.Errorf("failed to open file %s: %w", path, err)
+
 		return
 	}
 	defer r.Close()
@@ -123,6 +124,7 @@ func (o *fsObject) StoreFile(ctx context.Context, path string, opts *FramedUploa
 	handle, err := o.getHandle(false)
 	if err != nil {
 		e = err
+
 		return
 	}
 	defer handle.Close()

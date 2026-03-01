@@ -64,7 +64,7 @@ func main() {
 
 	// Resolve build ID
 	if *template != "" && *build != "" {
-		log.Fatal("specify either -build or -template, not both")
+		log.Fatal("specify either -build or -template, not both") //nolint:gocritic // pre-existing: cpu profile defer above
 	}
 	if *template != "" {
 		resolvedBuild, err := resolveTemplateID(*template)

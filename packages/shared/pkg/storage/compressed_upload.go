@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
-	"hash"
 	"io"
 	"slices"
 	"sync"
@@ -358,7 +357,7 @@ func CompressStream(ctx context.Context, in io.Reader, opts *FramedUploadOptions
 	}
 
 	// Running SHA-256 over compressed data for integrity verification.
-	var hasher hash.Hash = sha256.New()
+	hasher := sha256.New()
 
 	uploadEG, uploadCtx := errgroup.WithContext(ctx)
 	uploadEG.SetLimit(4) // max concurrent part uploads

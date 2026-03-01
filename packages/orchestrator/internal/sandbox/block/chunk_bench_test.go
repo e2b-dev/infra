@@ -246,16 +246,20 @@ func BenchmarkCacheHit(b *testing.B) {
 		{
 			name: "Legacy",
 			read: func(b *testing.B, blockSize int64) (benchReadF, func()) {
+				b.Helper()
 				c, err := newFullFetchChunker(dataSize, blockSize, &slowFrameGetter{data: data}, b.TempDir()+"/cache", newTestMetrics(b))
 				require.NoError(b, err)
+
 				return func(ctx context.Context, off, length int64) ([]byte, error) { return c.Slice(ctx, off, length) }, func() { c.Close() }
 			},
 		},
 		{
 			name: "Uncompressed",
 			read: func(b *testing.B, blockSize int64) (benchReadF, func()) {
+				b.Helper()
 				c, err := NewChunker(&slowFrameGetter{data: data}, dataSize, blockSize, b.TempDir()+"/cache", newTestMetrics(b))
 				require.NoError(b, err)
+
 				return func(ctx context.Context, off, length int64) ([]byte, error) { return c.GetBlock(ctx, off, length, nil) }, func() { c.Close() }
 			},
 		},

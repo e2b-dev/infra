@@ -27,7 +27,7 @@ import (
 
 const (
 	testBlockSize = header.PageSize // 4KB
-	testFrameSize = 256 * 1024     // 256 KB per frame for fast tests
+	testFrameSize = 256 * 1024      // 256 KB per frame for fast tests
 	testFileSize  = testFrameSize * 4
 )
 

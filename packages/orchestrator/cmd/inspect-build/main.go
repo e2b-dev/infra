@@ -4,11 +4,11 @@ import (
 	"bytes"
 	"context"
 	"crypto/md5"
-	"hash/crc32"
 	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"log"
 	"net/http"
@@ -484,11 +484,10 @@ func validateReconstruction(ctx context.Context, storagePath, artifactName strin
 
 		if len(buf) > 0x439 {
 			magic := uint16(buf[0x438]) | uint16(buf[0x439])<<8
-			if magic == 0xEF53 {
-				fmt.Printf("    ext4 superblock at 0x438: magic=0xEF53 OK (%s)\n", info)
-			} else {
+			if magic != 0xEF53 {
 				return fmt.Errorf("ext4 superblock magic at byte 0x438 = %#04x (expected 0xEF53) (%s)", magic, info)
 			}
+			fmt.Printf("    ext4 superblock at 0x438: magic=0xEF53 OK (%s)\n", info)
 		}
 	}
 

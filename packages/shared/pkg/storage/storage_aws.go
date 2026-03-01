@@ -163,10 +163,9 @@ func (o *awsObject) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
 	return io.Copy(dst, resp.Body)
 }
 
-func (o *awsObject) StoreFile(ctx context.Context, path string, opts *FramedUploadOptions) (_ *FrameTable, _ [32]byte, e error) {
+func (o *awsObject) StoreFile(ctx context.Context, path string, opts *FramedUploadOptions) (*FrameTable, [32]byte, error) {
 	if opts != nil && opts.CompressionType != CompressionNone {
-		e = fmt.Errorf("compressed uploads are not supported on AWS (builds target GCP only)")
-		return
+		return nil, [32]byte{}, fmt.Errorf("compressed uploads are not supported on AWS (builds target GCP only)")
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, awsWriteTimeout)
@@ -174,8 +173,7 @@ func (o *awsObject) StoreFile(ctx context.Context, path string, opts *FramedUplo
 
 	f, err := os.Open(path)
 	if err != nil {
-		e = fmt.Errorf("failed to open file %s: %w", path, err)
-		return
+		return nil, [32]byte{}, fmt.Errorf("failed to open file %s: %w", path, err)
 	}
 	defer f.Close()
 
@@ -187,7 +185,7 @@ func (o *awsObject) StoreFile(ctx context.Context, path string, opts *FramedUplo
 		},
 	)
 
-	_, e = uploader.Upload(
+	_, err = uploader.Upload(
 		ctx,
 		&s3.PutObjectInput{
 			Bucket: &o.bucketName,
@@ -196,7 +194,7 @@ func (o *awsObject) StoreFile(ctx context.Context, path string, opts *FramedUplo
 		},
 	)
 
-	return
+	return nil, [32]byte{}, err
 }
 
 func (o *awsObject) Put(ctx context.Context, data []byte) error {

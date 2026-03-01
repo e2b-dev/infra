@@ -337,7 +337,8 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, opts *FramedUplo
 	fileInfo, err := os.Stat(path)
 	if err != nil {
 		e = fmt.Errorf("failed to get file size: %w", err)
-		return
+
+		return nil, [32]byte{}, e
 	}
 
 	// If the file is too small, the overhead of writing in parallel isn't worth the effort.
@@ -351,19 +352,21 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, opts *FramedUplo
 		if err != nil {
 			timer.Failure(ctx, 0)
 			e = fmt.Errorf("failed to read file: %w", err)
-			return
+
+			return nil, [32]byte{}, e
 		}
 
 		err = o.Put(ctx, data)
 		if err != nil {
 			timer.Failure(ctx, int64(len(data)))
 			e = fmt.Errorf("failed to write file (%d bytes): %w", len(data), err)
-			return
+
+			return nil, [32]byte{}, e
 		}
 
 		timer.Success(ctx, int64(len(data)))
 
-		return
+		return nil, [32]byte{}, e
 	}
 
 	timer := googleWriteTimerFactory.Begin(
@@ -378,7 +381,8 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, opts *FramedUplo
 			if semaphoreErr != nil {
 				timer.Failure(ctx, 0)
 				e = fmt.Errorf("failed to acquire semaphore: %w", semaphoreErr)
-				return
+
+				return nil, [32]byte{}, e
 			}
 			defer uploadLimiter.Release(1)
 		}
@@ -396,7 +400,8 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, opts *FramedUplo
 	if err != nil {
 		timer.Failure(ctx, 0)
 		e = fmt.Errorf("failed to create multipart uploader: %w", err)
-		return
+
+		return nil, [32]byte{}, e
 	}
 
 	start := time.Now()
@@ -404,7 +409,8 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, opts *FramedUplo
 	if err != nil {
 		timer.Failure(ctx, count)
 		e = fmt.Errorf("failed to upload file in parallel: %w", err)
-		return
+
+		return nil, [32]byte{}, e
 	}
 
 	logger.L().Debug(ctx, "Uploaded file in parallel",
@@ -418,7 +424,7 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, opts *FramedUplo
 
 	timer.Success(ctx, count)
 
-	return
+	return nil, [32]byte{}, e
 }
 
 func (o *gcpObject) storeFileCompressed(ctx context.Context, localPath string, opts *FramedUploadOptions) (*FrameTable, [32]byte, error) {
