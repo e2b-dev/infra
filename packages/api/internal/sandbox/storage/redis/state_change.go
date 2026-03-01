@@ -96,16 +96,19 @@ func (s *Storage) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID
 		return sbx, false, nil, &sandbox.InvalidStateTransitionError{CurrentState: sbx.State, TargetState: newState}
 	}
 
-	// Update sandbox state
-	sbx.State = newState
+	// Build the updated sandbox for Redis without mutating the original.
+	// This ensures that on failure the caller sees the pre-mutation state,
+	// matching the memory implementation's behavior (sbx.Data() snapshot).
+	updated := sbx
+	updated.State = newState
 	if stateAction.Effect == sandbox.TransitionExpires {
 		now := time.Now()
-		if !sbx.IsExpired(now) {
-			sbx.EndTime = now
+		if !updated.IsExpired(now) {
+			updated.EndTime = time.Now()
 		}
 	}
 
-	newData, err := json.Marshal(sbx)
+	newData, err := json.Marshal(updated)
 	if err != nil {
 		return sbx, false, nil, fmt.Errorf("failed to marshal sandbox: %w", err)
 	}
@@ -125,7 +128,7 @@ func (s *Storage) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID
 
 	logger.L().Debug(ctx, "Started state transition", logger.WithSandboxID(sandboxID), zap.String("state", string(newState)), zap.String("transitionID", transitionID))
 
-	return sbx, false, s.createCallback(teamID, sandboxID, transitionKey, resultKey, transitionID, stateAction), nil
+	return updated, false, s.createCallback(teamID, sandboxID, transitionKey, resultKey, transitionID, stateAction), nil
 }
 
 // createCallback returns a callback function for completing a transition.
