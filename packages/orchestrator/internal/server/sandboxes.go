@@ -601,10 +601,7 @@ func (s *Server) snapshotAndCacheSandbox(
 	telemetry.ReportEvent(ctx, "added snapshot to template cache")
 
 	// Start upload in background, return a wait function
-	tb, err := sandbox.NewTemplateBuild(snapshot, s.persistence, storage.TemplateFiles{BuildID: meta.Template.BuildID}, s.featureFlags, nil)
-	if err != nil {
-		return metadata.Template{}, nil, fmt.Errorf("error creating template build: %w", err)
-	}
+	tb := sandbox.NewTemplateBuild(snapshot, s.persistence, storage.TemplateFiles{BuildID: meta.Template.BuildID}, s.featureFlags, nil)
 
 	uploadCtx := context.WithoutCancel(ctx)
 	errCh := make(chan error, 1)

@@ -19,42 +19,11 @@ type TemplateBuild struct {
 	persistence storage.StorageProvider
 	ff          *featureflags.Client
 
-	memfileHeader *headers.Header
-	rootfsHeader  *headers.Header
-
-	memfilePath  *string
-	rootfsPath   *string
-	metadataPath string
-	snapfilePath string
-
-	pending *PendingBuildInfo
+	snapshot *Snapshot
+	pending  *PendingBuildInfo
 }
 
-func NewTemplateBuild(snapshot *Snapshot, persistence storage.StorageProvider, files storage.TemplateFiles, ff *featureflags.Client, pending *PendingBuildInfo) (*TemplateBuild, error) {
-	var memfilePath *string
-	switch r := snapshot.MemfileDiff.(type) {
-	case *build.NoDiff:
-	default:
-		p, err := r.CachePath()
-		if err != nil {
-			return nil, fmt.Errorf("error getting memfile diff path: %w", err)
-		}
-
-		memfilePath = &p
-	}
-
-	var rootfsPath *string
-	switch r := snapshot.RootfsDiff.(type) {
-	case *build.NoDiff:
-	default:
-		p, err := r.CachePath()
-		if err != nil {
-			return nil, fmt.Errorf("error getting rootfs diff path: %w", err)
-		}
-
-		rootfsPath = &p
-	}
-
+func NewTemplateBuild(snapshot *Snapshot, persistence storage.StorageProvider, files storage.TemplateFiles, ff *featureflags.Client, pending *PendingBuildInfo) *TemplateBuild {
 	if pending == nil {
 		pending = &PendingBuildInfo{}
 	}
@@ -63,17 +32,9 @@ func NewTemplateBuild(snapshot *Snapshot, persistence storage.StorageProvider, f
 		persistence: persistence,
 		files:       files,
 		ff:          ff,
-
-		memfileHeader: snapshot.MemfileDiffHeader,
-		rootfsHeader:  snapshot.RootfsDiffHeader,
-
-		memfilePath:  memfilePath,
-		rootfsPath:   rootfsPath,
-		metadataPath: snapshot.Metafile.Path(),
-		snapfilePath: snapshot.Snapfile.Path(),
-
-		pending: pending,
-	}, nil
+		snapshot:    snapshot,
+		pending:     pending,
+	}
 }
 
 func (t *TemplateBuild) Remove(ctx context.Context) error {
@@ -85,22 +46,18 @@ func (t *TemplateBuild) Remove(ctx context.Context) error {
 	return nil
 }
 
-// uploadHeader serializes a header (V3 or V4 based on metadata.Version) and uploads
-// to the unified header path (buildId/fileName.header).
-func (t *TemplateBuild) uploadHeader(ctx context.Context, h *headers.Header, fileType string) error {
-	serialized, err := headers.SerializeHeader(h)
-	if err != nil {
-		return fmt.Errorf("serialize %s header: %w", fileType, err)
+// diffPath returns the cache path for a diff, or nil if the diff is NoDiff.
+func diffPath(d build.Diff) (*string, error) {
+	if _, ok := d.(*build.NoDiff); ok {
+		return nil, nil
 	}
 
-	objectPath := t.files.HeaderPath(fileType)
-
-	blob, err := t.persistence.OpenBlob(ctx, objectPath)
+	p, err := d.CachePath()
 	if err != nil {
-		return fmt.Errorf("open blob for %s header: %w", fileType, err)
+		return nil, err
 	}
 
-	return blob.Put(ctx, serialized)
+	return &p, nil
 }
 
 func (t *TemplateBuild) uploadMemfile(ctx context.Context, memfilePath string) error {
@@ -187,17 +144,27 @@ func uploadFileAsBlob(ctx context.Context, b storage.Blob, path string) error {
 // for later use by UploadV4Header.
 // Returns true if compression was enabled (i.e. V4 headers need uploading).
 func (t *TemplateBuild) UploadExceptV4Headers(ctx context.Context) (hasCompressed bool, err error) {
+	memfilePath, err := diffPath(t.snapshot.MemfileDiff)
+	if err != nil {
+		return false, fmt.Errorf("error getting memfile diff path: %w", err)
+	}
+
+	rootfsPath, err := diffPath(t.snapshot.RootfsDiff)
+	if err != nil {
+		return false, fmt.Errorf("error getting rootfs diff path: %w", err)
+	}
+
 	compressOpts := storage.GetUploadOptions(ctx, t.ff)
 	eg, ctx := errgroup.WithContext(ctx)
 	buildID := t.files.BuildID
 
 	if compressOpts != nil {
 		// COMPRESSED: upload only compressed data (no V3 headers, no uncompressed data)
-		if t.memfilePath != nil {
+		if memfilePath != nil {
 			hasCompressed = true
 
 			eg.Go(func() error {
-				ft, checksum, err := t.uploadCompressedFile(ctx, *t.memfilePath, storage.MemfileName, compressOpts)
+				ft, checksum, err := t.uploadCompressedFile(ctx, *memfilePath, storage.MemfileName, compressOpts)
 				if err != nil {
 					return fmt.Errorf("compressed memfile upload: %w", err)
 				}
@@ -209,11 +176,11 @@ func (t *TemplateBuild) UploadExceptV4Headers(ctx context.Context) (hasCompresse
 			})
 		}
 
-		if t.rootfsPath != nil {
+		if rootfsPath != nil {
 			hasCompressed = true
 
 			eg.Go(func() error {
-				ft, checksum, err := t.uploadCompressedFile(ctx, *t.rootfsPath, storage.RootfsName, compressOpts)
+				ft, checksum, err := t.uploadCompressedFile(ctx, *rootfsPath, storage.RootfsName, compressOpts)
 				if err != nil {
 					return fmt.Errorf("compressed rootfs upload: %w", err)
 				}
@@ -227,45 +194,45 @@ func (t *TemplateBuild) UploadExceptV4Headers(ctx context.Context) (hasCompresse
 	} else {
 		// UNCOMPRESSED: upload V3 headers + uncompressed data only
 		eg.Go(func() error {
-			if t.memfileHeader == nil {
+			if t.snapshot.MemfileDiffHeader == nil {
 				return nil
 			}
 
-			return t.uploadHeader(ctx, t.memfileHeader, storage.MemfileName)
+			return headers.StoreHeader(ctx, t.persistence, t.files.HeaderPath(storage.MemfileName), t.snapshot.MemfileDiffHeader)
 		})
 
 		eg.Go(func() error {
-			if t.rootfsHeader == nil {
+			if t.snapshot.RootfsDiffHeader == nil {
 				return nil
 			}
 
-			return t.uploadHeader(ctx, t.rootfsHeader, storage.RootfsName)
+			return headers.StoreHeader(ctx, t.persistence, t.files.HeaderPath(storage.RootfsName), t.snapshot.RootfsDiffHeader)
 		})
 
 		eg.Go(func() error {
-			if t.memfilePath == nil {
+			if memfilePath == nil {
 				return nil
 			}
 
-			return t.uploadMemfile(ctx, *t.memfilePath)
+			return t.uploadMemfile(ctx, *memfilePath)
 		})
 
 		eg.Go(func() error {
-			if t.rootfsPath == nil {
+			if rootfsPath == nil {
 				return nil
 			}
 
-			return t.uploadRootfs(ctx, *t.rootfsPath)
+			return t.uploadRootfs(ctx, *rootfsPath)
 		})
 	}
 
 	// Snapfile + metadata (always)
 	eg.Go(func() error {
-		return t.uploadSnapfile(ctx, t.snapfilePath)
+		return t.uploadSnapfile(ctx, t.snapshot.Snapfile.Path())
 	})
 
 	eg.Go(func() error {
-		return t.uploadMetadata(ctx, t.metadataPath)
+		return t.uploadMetadata(ctx, t.snapshot.Metafile.Path())
 	})
 
 	if err := eg.Wait(); err != nil {
@@ -297,27 +264,27 @@ func (t *TemplateBuild) uploadCompressedFile(ctx context.Context, localPath, fil
 func (t *TemplateBuild) UploadV4Header(ctx context.Context) error {
 	eg, ctx := errgroup.WithContext(ctx)
 
-	if t.memfileHeader != nil {
+	if t.snapshot.MemfileDiffHeader != nil {
 		eg.Go(func() error {
-			if err := t.pending.applyToHeader(t.memfileHeader, storage.MemfileName); err != nil {
+			if err := t.pending.applyToHeader(t.snapshot.MemfileDiffHeader, storage.MemfileName); err != nil {
 				return fmt.Errorf("apply frames to memfile header: %w", err)
 			}
 
-			t.memfileHeader.Metadata.Version = headers.MetadataVersionCompressed
+			t.snapshot.MemfileDiffHeader.Metadata.Version = headers.MetadataVersionCompressed
 
-			return t.uploadHeader(ctx, t.memfileHeader, storage.MemfileName)
+			return headers.StoreHeader(ctx, t.persistence, t.files.HeaderPath(storage.MemfileName), t.snapshot.MemfileDiffHeader)
 		})
 	}
 
-	if t.rootfsHeader != nil {
+	if t.snapshot.RootfsDiffHeader != nil {
 		eg.Go(func() error {
-			if err := t.pending.applyToHeader(t.rootfsHeader, storage.RootfsName); err != nil {
+			if err := t.pending.applyToHeader(t.snapshot.RootfsDiffHeader, storage.RootfsName); err != nil {
 				return fmt.Errorf("apply frames to rootfs header: %w", err)
 			}
 
-			t.rootfsHeader.Metadata.Version = headers.MetadataVersionCompressed
+			t.snapshot.RootfsDiffHeader.Metadata.Version = headers.MetadataVersionCompressed
 
-			return t.uploadHeader(ctx, t.rootfsHeader, storage.RootfsName)
+			return headers.StoreHeader(ctx, t.persistence, t.files.HeaderPath(storage.RootfsName), t.snapshot.RootfsDiffHeader)
 		})
 	}
 

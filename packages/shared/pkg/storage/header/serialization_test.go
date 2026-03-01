@@ -163,8 +163,8 @@ func TestSerializeDeserialize_V4_WithFrameTable(t *testing.T) {
 	require.NoError(t, err)
 	h.BuildFiles = buildFiles
 
-	// Test with SerializeHeader + Deserialize (unified path)
-	data, err := SerializeHeader(h)
+	// Test with Serialize + Deserialize (unified path)
+	data, err := Serialize(h)
 	require.NoError(t, err)
 
 	got, err := Deserialize(data)
@@ -235,8 +235,8 @@ func TestSerializeDeserialize_V4_Zstd_NonZeroStartAt(t *testing.T) {
 	h, err := NewHeader(metadata, mappings)
 	require.NoError(t, err)
 
-	// Test with SerializeHeader + Deserialize (unified path)
-	data, err := SerializeHeader(h)
+	// Test with Serialize + Deserialize (unified path)
+	data, err := Serialize(h)
 	require.NoError(t, err)
 
 	got, err := Deserialize(data)
@@ -298,8 +298,8 @@ func TestSerializeDeserialize_V4_CompressionNone_EmptyFrames(t *testing.T) {
 	h, err := NewHeader(metadata, mappings)
 	require.NoError(t, err)
 
-	// Test with SerializeHeader + Deserialize (unified path)
-	data, err := SerializeHeader(h)
+	// Test with Serialize + Deserialize (unified path)
+	data, err := Serialize(h)
 	require.NoError(t, err)
 
 	got, err := Deserialize(data)
@@ -368,8 +368,8 @@ func TestSerializeDeserialize_V4_ManyFrames(t *testing.T) {
 	h, err := NewHeader(metadata, mappings)
 	require.NoError(t, err)
 
-	// Test with SerializeHeader + Deserialize (unified path)
-	data, err := SerializeHeader(h)
+	// Test with Serialize + Deserialize (unified path)
+	data, err := Serialize(h)
 	require.NoError(t, err)
 
 	got, err := Deserialize(data)
@@ -386,7 +386,7 @@ func TestSerializeDeserialize_V4_ManyFrames(t *testing.T) {
 	assert.Equal(t, int32(2000+numFrames-1), got.Mapping[0].FrameTable.Frames[numFrames-1].C)
 }
 
-func TestSerializeHeader_V3_RoundTrip(t *testing.T) {
+func TestSerialize_V3_RoundTrip(t *testing.T) {
 	t.Parallel()
 
 	buildID := uuid.New()
@@ -410,14 +410,14 @@ func TestSerializeHeader_V3_RoundTrip(t *testing.T) {
 	h, err := NewHeader(metadata, mappings)
 	require.NoError(t, err)
 
-	// V3: SerializeHeader should return raw bytes identical to serialize
-	unified, err := SerializeHeader(h)
+	// V3: Serialize should return raw bytes identical to serialize
+	unified, err := Serialize(h)
 	require.NoError(t, err)
 
 	raw, err := serialize(metadata, nil, mappings)
 	require.NoError(t, err)
 
-	assert.Equal(t, raw, unified, "V3 SerializeHeader should produce identical bytes to serialize")
+	assert.Equal(t, raw, unified, "V3 Serialize should produce identical bytes to serialize")
 
 	// Deserialize should handle V3 raw bytes
 	got, err := Deserialize(unified)
@@ -458,7 +458,7 @@ func TestSerializeDeserialize_V4_EmptyBuildFiles(t *testing.T) {
 	require.NoError(t, err)
 	// No BuildFiles set (nil map)
 
-	data, err := SerializeHeader(h)
+	data, err := Serialize(h)
 	require.NoError(t, err)
 
 	got, err := Deserialize(data)

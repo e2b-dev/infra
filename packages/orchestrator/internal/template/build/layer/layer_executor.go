@@ -292,12 +292,7 @@ func (lb *LayerExecutor) PauseAndUpload(
 	completeUpload, waitForPreviousUploads := lb.uploadTracker.StartUpload()
 	buildID := meta.Template.BuildID
 
-	tb, err := sandbox.NewTemplateBuild(snapshot, lb.templateStorage, storage.TemplateFiles{BuildID: buildID}, lb.featureFlags, lb.uploadTracker.Pending())
-	if err != nil {
-		completeUpload()
-
-		return fmt.Errorf("error creating template build: %w", err)
-	}
+	tb := sandbox.NewTemplateBuild(snapshot, lb.templateStorage, storage.TemplateFiles{BuildID: buildID}, lb.featureFlags, lb.uploadTracker.Pending())
 
 	lb.UploadErrGroup.Go(func() error {
 		ctx := context.WithoutCancel(ctx)

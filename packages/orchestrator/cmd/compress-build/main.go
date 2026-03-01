@@ -357,7 +357,7 @@ func compressArtifact(ctx context.Context, cfg *compressConfig, buildID, name, f
 	h.Metadata.Version = header.MetadataVersionCompressed
 
 	// Serialize header (V4: metadata raw + LZ4-compressed mappings)
-	headerBytes, err := header.SerializeHeader(h)
+	headerBytes, err := header.Serialize(h)
 	if err != nil {
 		return fmt.Errorf("serialize v4 header: %w", err)
 	}

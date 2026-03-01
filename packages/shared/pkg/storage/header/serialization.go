@@ -280,11 +280,11 @@ func deserializeV4Block(reader *bytes.Reader) (map[uuid.UUID]BuildFileInfo, []*B
 	return buildFiles, mappings, nil
 }
 
-// SerializeHeader serializes a header with optional LZ4 compression for V4.
+// Serialize serializes a header with optional LZ4 compression for V4.
 // For V3 (Version <= 3), returns the raw binary unchanged (BuildFiles ignored).
 // For V4 (Version == 4), keeps Metadata prefix raw, LZ4-compresses
 // the rest (build info + mappings with frame tables), and concatenates.
-func SerializeHeader(h *Header) ([]byte, error) {
+func Serialize(h *Header) ([]byte, error) {
 	raw, err := serialize(h.Metadata, h.BuildFiles, h.Mapping)
 	if err != nil {
 		return nil, err
@@ -316,6 +316,22 @@ func LoadHeader(ctx context.Context, s storage.StorageProvider, path string) (*H
 	}
 
 	return Deserialize(data)
+}
+
+// StoreHeader serializes a header and uploads it to storage.
+// Inverse of LoadHeader.
+func StoreHeader(ctx context.Context, s storage.StorageProvider, path string, h *Header) error {
+	data, err := Serialize(h)
+	if err != nil {
+		return fmt.Errorf("serialize header: %w", err)
+	}
+
+	blob, err := s.OpenBlob(ctx, path)
+	if err != nil {
+		return fmt.Errorf("open blob %s: %w", path, err)
+	}
+
+	return blob.Put(ctx, data)
 }
 
 // Deserialize auto-detects the header version and deserializes accordingly.
