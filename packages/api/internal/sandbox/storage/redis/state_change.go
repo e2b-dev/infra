@@ -98,7 +98,6 @@ func (s *Storage) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID
 
 	// Build the updated sandbox for Redis without mutating the original.
 	// This ensures that on failure the caller sees the pre-mutation state,
-	// matching the memory implementation's behavior (sbx.Data() snapshot).
 	updated := sbx
 	updated.State = newState
 	if stateAction.Effect == sandbox.TransitionExpires {

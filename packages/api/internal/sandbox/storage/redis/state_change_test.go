@@ -280,13 +280,13 @@ func TestStartRemoving_ContextCancellation(t *testing.T) {
 	defer cancel()
 
 	start := time.Now()
-	_, _, callback, err2 := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.StateActionKill)
+	_, alreadyDone2, _, err2 := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.StateActionKill)
 	elapsed := time.Since(start)
 
 	// Should timeout
 	require.Error(t, err2)
 	require.ErrorIs(t, err2, context.DeadlineExceeded)
-	assert.NotNil(t, callback)
+	assert.False(t, alreadyDone2)
 	assert.Greater(t, elapsed, 20*time.Millisecond)
 	assert.Less(t, elapsed, 200*time.Millisecond)
 
