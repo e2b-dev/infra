@@ -299,7 +299,9 @@ func (lb *LayerExecutor) PauseAndUpload(
 		ctx, span := tracer.Start(ctx, "upload layer")
 		defer span.End()
 
-		// Signal completion when done (including on error) to unblock downstream layers.
+		// Always signal completion to unblock waiting goroutines, even on error.
+		// This prevents deadlocks when an earlier layer fails - later layers can
+		// still unblock and the errgroup can properly collect all errors.
 		defer completeUpload()
 
 		// Step 1: Upload everything except V4 headers (parallel across layers)
@@ -308,7 +310,11 @@ func (lb *LayerExecutor) PauseAndUpload(
 			return fmt.Errorf("error uploading data files: %w", err)
 		}
 
-		// Step 2: Wait for all previous layers (data + headers) to complete
+		// Wait for all previous layer uploads to complete before saving the cache entry.
+		// This prevents race conditions where another build hits this cache entry
+		// before its dependencies (previous layers) are available in storage.
+		// It also ensures all upstream frame tables are in pending, so that
+		// V4 headers can cross-pollinate mappings from ancestor layers.
 		if err := waitForPreviousUploads(ctx); err != nil {
 			return fmt.Errorf("error waiting for previous uploads: %w", err)
 		}

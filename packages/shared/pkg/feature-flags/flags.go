@@ -249,32 +249,16 @@ func GetTrackedTemplatesSet(ctx context.Context, ff *Client) map[string]struct{}
 	return result
 }
 
-// CompressConfigFlag is a JSON flag controlling compression behaviour.
-// When compressBuilds is true, builds upload exclusively compressed data
-// (no uncompressed fallback). When false, builds upload exclusively
-// uncompressed data with V3 headers.
-//
-// Fields:
-//   - compressBuilds (bool): Enable compressed-only uploads during
-//     template builds. Default false.
-//   - compressionType (string): "lz4" or "zstd". Default "lz4".
-//   - level (int): Compression level. For LZ4 0=fast, higher=better ratio. Default 3.
-//   - frameSizeKB (int): Fixed uncompressed frame size in KiB. Default 2048 (2 MiB).
-//     Minimum 128 KiB.
-//   - uploadPartTargetMB (int): Target upload part size in MiB. Default 50.
-//   - encodeWorkers (int): Concurrent frame compression workers per file. Default 4.
-//   - encoderConcurrency (int): Goroutines per individual zstd encoder. Default 1.
-//   - decoderConcurrency (int): Goroutines per pooled zstd decoder. Default 1.
-//
-// JSON format: {"compressBuilds": false, "compressionType": "lz4", "level": 3, ...}
 // OverrideJSONFlag updates a JSON flag value in the offline store.
-// The change is visible immediately to all clients created from the offline store.
 // Intended for benchmarks and tests.
 func OverrideJSONFlag(flag JSONFlag, value ldvalue.Value) {
 	builder := launchDarklyOfflineStore.Flag(flag.Key()).ValueForAll(value)
 	launchDarklyOfflineStore.Update(builder)
 }
 
+// CompressConfigFlag controls compression during template builds.
+// When compressBuilds is true, builds upload exclusively compressed data
+// (no uncompressed fallback). When false, exclusively uncompressed with V3 headers.
 var CompressConfigFlag = newJSONFlag("compress-config", ldvalue.FromJSONMarshal(map[string]any{
 	"compressBuilds":     false,
 	"compressionType":    "zstd",
