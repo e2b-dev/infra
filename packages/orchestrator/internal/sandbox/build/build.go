@@ -132,7 +132,7 @@ func (b *File) buildFileSize(buildID uuid.UUID) int64 {
 	return info.Size
 }
 
-func (b *File) getBuild(ctx context.Context, buildID uuid.UUID, fileSize int64, ft *storage.FrameTable) (Diff, error) {
+func (b *File) getBuild(ctx context.Context, buildID uuid.UUID, sizeU int64, ft *storage.FrameTable) (Diff, error) {
 	storageDiff, err := newStorageDiff(
 		b.store.cachePath,
 		buildID.String(),
@@ -140,7 +140,7 @@ func (b *File) getBuild(ctx context.Context, buildID uuid.UUID, fileSize int64, 
 		int64(b.header.Metadata.BlockSize),
 		b.metrics,
 		b.persistence,
-		fileSize,
+		sizeU,
 		ft,
 	)
 	if err != nil {

@@ -8,9 +8,10 @@ import (
 )
 
 type fetchSession struct {
-	chunkOff  int64 // absolute start offset in U-space
-	chunkLen  int64 // total length of this chunk/frame
-	blockSize int64 // progress tracking granularity
+	// chunk is what we are fetching, can be >= 1 block. chunkOff/chunkLen are absolute offsets in U-space.
+	chunkOff  int64
+	chunkLen  int64
+	blockSize int64
 
 	mu       sync.Mutex
 	fetchErr error

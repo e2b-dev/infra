@@ -150,17 +150,10 @@ func (c *Chunker) GetBlock(ctx context.Context, off, length int64, ft *storage.F
 		return nil, fmt.Errorf("failed read from cache at offset %d: %w", off, err)
 	}
 
-	session, sessionErr := c.getOrCreateSession(ctx, off, ft)
-	if sessionErr != nil {
+	if err := c.fetch(ctx, off, length, ft); err != nil {
 		timer.Record(ctx, length, attrs.failRemoteFetch)
 
-		return nil, sessionErr
-	}
-
-	if err := session.registerAndWait(ctx, off, length); err != nil {
-		timer.Record(ctx, length, attrs.failRemoteFetch)
-
-		return nil, fmt.Errorf("failed to fetch data at %#x: %w", off, err)
+		return nil, err
 	}
 
 	b, cacheErr := c.cache.Slice(off, length)
@@ -175,14 +168,10 @@ func (c *Chunker) GetBlock(ctx context.Context, off, length int64, ft *storage.F
 	return b, nil
 }
 
-// getOrCreateSession returns an existing session covering [off, off+...) or
-// creates a new one. Session boundaries are frame-aligned for compressed
-// requests and DefaultCompressFrameSize-aligned for uncompressed requests.
-//
-// Deduplication is handled by the sessionList: if an active session's range
-// contains the requested offset, the caller joins it instead of creating a
-// new fetch.
-func (c *Chunker) getOrCreateSession(ctx context.Context, off int64, ft *storage.FrameTable) (*fetchSession, error) {
+// fetch ensures the frame/chunk covering off is fetched into the mmap cache,
+// then waits until [off, off+length) is available. Deduplicates concurrent
+// requests for the same region via the session list.
+func (c *Chunker) fetch(ctx context.Context, off, length int64, ft *storage.FrameTable) error {
 	var (
 		chunkOff int64
 		chunkLen int64
@@ -191,7 +180,7 @@ func (c *Chunker) getOrCreateSession(ctx context.Context, off int64, ft *storage
 	if storage.IsCompressed(ft) {
 		frameStarts, frameSize, err := ft.FrameFor(off)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get frame for offset %#x: %w", off, err)
+			return fmt.Errorf("failed to get frame for offset %#x: %w", off, err)
 		}
 
 		chunkOff = frameStarts.U
@@ -207,7 +196,7 @@ func (c *Chunker) getOrCreateSession(ctx context.Context, off int64, ft *storage
 		go c.runFetch(context.WithoutCancel(ctx), session, chunkOff, ft)
 	}
 
-	return session, nil
+	return session.registerAndWait(ctx, off, length)
 }
 
 // runFetch fetches data from storage into the mmap cache. Runs in a background goroutine.

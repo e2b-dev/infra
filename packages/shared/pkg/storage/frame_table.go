@@ -87,15 +87,6 @@ type FrameTable struct {
 	Frames          []FrameSize
 }
 
-// CompressionTypeSuffix returns ".lz4", ".zstd", or "" (nil-safe).
-func (ft *FrameTable) CompressionTypeSuffix() string {
-	if ft == nil {
-		return ""
-	}
-
-	return ft.CompressionType.Suffix()
-}
-
 // IsCompressed reports whether ft is non-nil and has a compression type set.
 func IsCompressed(ft *FrameTable) bool {
 	return ft != nil && ft.CompressionType != CompressionNone

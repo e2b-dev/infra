@@ -60,7 +60,9 @@ func makeTestData(t *testing.T, size int) []byte {
 type slowFrameGetter struct {
 	data       []byte
 	ttfb       time.Duration
-	bandwidth  int64 // bytes/sec; 0 = instant
+	bandwidth  int64         // bytes/sec; 0 = instant
+	failAfter  int64         // >0: inject error at this absolute offset; 0 = disabled
+	gate       chan struct{} // if non-nil, GetFrame blocks until closed
 	fetchCount atomic.Int64
 }
 
@@ -77,15 +79,26 @@ func (s *slowFrameGetter) StoreFile(context.Context, string, *storage.FramedUplo
 func (s *slowFrameGetter) GetFrame(ctx context.Context, offsetU int64, frameTable *storage.FrameTable, decompress bool, buf []byte, readSize int64, onRead func(int64)) (storage.Range, error) {
 	s.fetchCount.Add(1)
 
+	if s.gate != nil {
+		<-s.gate
+	}
+
 	if s.ttfb > 0 {
 		time.Sleep(s.ttfb)
 	}
 
 	rangeRead := func(_ context.Context, offset int64, length int) (io.ReadCloser, error) {
+		if s.failAfter > 0 && offset >= s.failAfter {
+			return nil, fmt.Errorf("simulated upstream error at offset %d", offset)
+		}
+
 		end := min(offset+int64(length), int64(len(s.data)))
 		r := io.Reader(bytes.NewReader(s.data[offset:end]))
 		if s.bandwidth > 0 {
 			r = &throttledReader{r: r, bandwidth: s.bandwidth}
+		}
+		if s.failAfter > 0 && offset+int64(length) > s.failAfter {
+			r = &failAfterReader{r: r, remaining: s.failAfter - offset}
 		}
 
 		return io.NopCloser(r), nil
@@ -110,6 +123,25 @@ func (t *throttledReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
+// failAfterReader wraps a reader to return an error after N bytes have been read.
+type failAfterReader struct {
+	r         io.Reader
+	remaining int64
+}
+
+func (f *failAfterReader) Read(p []byte) (int, error) {
+	if f.remaining <= 0 {
+		return 0, fmt.Errorf("simulated upstream error")
+	}
+	if int64(len(p)) > f.remaining {
+		p = p[:f.remaining]
+	}
+	n, err := f.r.Read(p)
+	f.remaining -= int64(n)
+
+	return n, err
+}
+
 // makeCompressedTestData compresses data with LZ4 in testFrameSize frames and
 // returns the frame table + a slowFrameGetter backed by the compressed bytes.
 func makeCompressedTestData(tb testing.TB, data []byte, ttfb time.Duration) (*storage.FrameTable, *slowFrameGetter) {
@@ -126,83 +158,6 @@ func makeCompressedTestData(tb testing.TB, data []byte, ttfb time.Duration) (*st
 	require.NoError(tb, err)
 
 	return ft, &slowFrameGetter{data: up.Assemble(), ttfb: ttfb}
-}
-
-// testProgressiveStorage implements storage.FramedFile with progressive
-// batch delivery and injectable faults.
-type testProgressiveStorage struct {
-	data       []byte
-	batchDelay time.Duration // delay between onRead callbacks
-	failAfter  int64         // absolute U-offset to error at (-1 = disabled)
-	gate       chan struct{} // if non-nil, GetFrame blocks until closed
-	fetchCount atomic.Int64
-}
-
-var _ storage.FramedFile = (*testProgressiveStorage)(nil)
-
-func (p *testProgressiveStorage) Size(_ context.Context) (int64, error) {
-	return int64(len(p.data)), nil
-}
-
-func (p *testProgressiveStorage) StoreFile(_ context.Context, _ string, _ *storage.FramedUploadOptions) (*storage.FrameTable, [32]byte, error) {
-	return nil, [32]byte{}, fmt.Errorf("testProgressiveStorage: StoreFile not supported")
-}
-
-func (p *testProgressiveStorage) GetFrame(_ context.Context, offsetU int64, ft *storage.FrameTable, _ bool, buf []byte, readSize int64, onRead func(int64)) (storage.Range, error) {
-	p.fetchCount.Add(1)
-
-	if p.gate != nil {
-		<-p.gate
-	}
-
-	// Determine the copy region.
-	var srcStart, srcEnd int64
-	if ft != nil {
-		starts, size, err := ft.FrameFor(offsetU)
-		if err != nil {
-			return storage.Range{}, fmt.Errorf("testProgressiveStorage: %w", err)
-		}
-		srcStart = starts.U
-		srcEnd = min(starts.U+int64(size.U), int64(len(p.data)))
-	} else {
-		srcStart = offsetU
-		srcEnd = min(offsetU+int64(len(buf)), int64(len(p.data)))
-	}
-
-	batchSize := int64(testBlockSize)
-	if readSize > 0 {
-		batchSize = readSize
-	}
-
-	var written int64
-	for pos := srcStart; pos < srcEnd; pos += batchSize {
-		end := min(pos+batchSize, srcEnd)
-		relStart := pos - srcStart
-		relEnd := end - srcStart
-
-		// Check fault injection before each batch.
-		if p.failAfter >= 0 && pos >= p.failAfter {
-			// Notify what we have so far, then error.
-			if onRead != nil && written > 0 {
-				onRead(written)
-			}
-
-			return storage.Range{Start: srcStart, Length: int(written)}, fmt.Errorf("simulated upstream error at offset %d", pos)
-		}
-
-		copy(buf[relStart:relEnd], p.data[pos:end])
-		written = relEnd
-
-		if p.batchDelay > 0 {
-			time.Sleep(p.batchDelay)
-		}
-
-		if onRead != nil {
-			onRead(written)
-		}
-	}
-
-	return storage.Range{Start: srcStart, Length: int(written)}, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -271,47 +226,6 @@ func TestChunker_ConcurrentStress(t *testing.T) {
 						if !bytes.Equal(data[off:off+readLen], slice) {
 							return fmt.Errorf("goroutine %d op %d: data mismatch at off=%d", i, j, off)
 						}
-					}
-
-					return nil
-				})
-			}
-
-			require.NoError(t, eg.Wait())
-		})
-	}
-}
-
-func TestChunker_ConcurrentReadBlock_CrossFrame(t *testing.T) {
-	t.Parallel()
-
-	for _, tc := range allChunkerTestCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			data := makeTestData(t, testFileSize)
-			chunker, ft := tc.newChunker(t, data, 50*time.Microsecond)
-			defer chunker.Close()
-
-			const numGoroutines = 10
-
-			readLen := testBlockSize * 2
-			if int64(readLen) > int64(len(data)) {
-				readLen = len(data)
-			}
-
-			var eg errgroup.Group
-
-			for i := range numGoroutines {
-				off := int64(0)
-				eg.Go(func() error {
-					buf := make([]byte, readLen)
-					n, err := chunker.ReadBlock(t.Context(), buf, off, ft)
-					if err != nil {
-						return fmt.Errorf("goroutine %d: %w", i, err)
-					}
-					if !bytes.Equal(data[off:off+int64(n)], buf[:n]) {
-						return fmt.Errorf("goroutine %d: data mismatch", i)
 					}
 
 					return nil
@@ -399,11 +313,10 @@ func TestChunker_EarlyReturn(t *testing.T) {
 	data := makeTestData(t, testFileSize)
 	gate := make(chan struct{})
 
-	getter := &testProgressiveStorage{
-		data:       data,
-		batchDelay: 50 * time.Microsecond,
-		failAfter:  -1,
-		gate:       gate,
+	getter := &slowFrameGetter{
+		data:      data,
+		bandwidth: 50 * 1024 * 1024, // 50 MB/s — progressive reads take ~5ms per 256KB chunk
+		gate:      gate,
 	}
 
 	chunker, err := NewChunker(getter, int64(len(data)), testBlockSize, t.TempDir()+"/cache", newTestMetrics(t))
@@ -453,7 +366,7 @@ func TestChunker_ErrorKeepsPartialData(t *testing.T) {
 
 	data := makeTestData(t, testFileSize)
 
-	getter := &testProgressiveStorage{
+	getter := &slowFrameGetter{
 		data:      data,
 		failAfter: int64(testFileSize / 2),
 	}
@@ -480,10 +393,9 @@ func TestChunker_ContextCancellation(t *testing.T) {
 
 	data := makeTestData(t, testFileSize)
 
-	getter := &testProgressiveStorage{
-		data:       data,
-		batchDelay: 100 * time.Microsecond,
-		failAfter:  -1,
+	getter := &slowFrameGetter{
+		data:      data,
+		bandwidth: 50 * 1024 * 1024, // 50 MB/s — total fetch takes ~20ms
 	}
 
 	chunker, err := NewChunker(getter, int64(len(data)), testBlockSize, t.TempDir()+"/cache", newTestMetrics(t))

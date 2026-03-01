@@ -23,7 +23,7 @@ type StorageDiff struct {
 	blockSize   int64
 	metrics     blockmetrics.Metrics
 	persistence storage.StorageProvider
-	fileSize    int64              // uncompressed; 0 means unknown (fall back to Size() call)
+	sizeU       int64               // uncompressed; 0 means unknown (fall back to Size() call)
 	ft          *storage.FrameTable // nil for uncompressed builds
 }
 
@@ -44,7 +44,7 @@ func newStorageDiff(
 	blockSize int64,
 	metrics blockmetrics.Metrics,
 	persistence storage.StorageProvider,
-	fileSize int64,
+	sizeU int64,
 	ft *storage.FrameTable,
 ) (*StorageDiff, error) {
 	storagePath := storagePath(buildId, diffType)
@@ -61,7 +61,7 @@ func newStorageDiff(
 		blockSize:   blockSize,
 		metrics:     metrics,
 		persistence: persistence,
-		fileSize:    fileSize,
+		sizeU:       sizeU,
 		ft:          ft,
 		cacheKey:    GetDiffStoreKey(buildId, diffType),
 	}, nil
@@ -107,14 +107,17 @@ func (b *StorageDiff) createChunker(ctx context.Context) (*block.Chunker, error)
 // If fileSize was provided at construction (V4 header), it is used directly.
 // Otherwise (V3/legacy), falls back to obj.Size(ctx) which makes a network call.
 func (b *StorageDiff) openDataFile(ctx context.Context) (storage.FramedFile, int64, error) {
-	path := b.storagePath + b.ft.CompressionTypeSuffix()
+	path := b.storagePath
+	if storage.IsCompressed(b.ft) {
+		path = storage.CompressedPath(path, b.ft.CompressionType)
+	}
 
 	obj, err := b.persistence.OpenFramedFile(ctx, path)
 	if err != nil {
 		return nil, 0, fmt.Errorf("open asset %s: %w", path, err)
 	}
 
-	size := b.fileSize
+	size := b.sizeU
 	if size == 0 {
 		// V3/legacy: fall back to network call.
 		size, err = obj.Size(ctx)

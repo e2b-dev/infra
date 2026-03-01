@@ -65,22 +65,6 @@ type coldSetup struct {
 // to be reinitialized every time).
 type coldSetupF func(tb testing.TB, profile backendProfile, blockSize int64) coldSetup
 
-func newChunker(tb testing.TB, file storage.FramedFile, size int64, blockSize int64) *Chunker {
-	tb.Helper()
-	c, err := NewChunker(file, size, blockSize, tb.TempDir()+"/cache", newTestMetrics(tb))
-	require.NoError(tb, err)
-
-	return c
-}
-
-func newLegacyChunker(tb testing.TB, upstream storage.FramedFile, size, blockSize int64) *fullFetchChunker {
-	tb.Helper()
-	c, err := newFullFetchChunker(size, blockSize, upstream, tb.TempDir()+"/cache", newTestMetrics(tb))
-	require.NoError(tb, err)
-
-	return c
-}
-
 func generateSemiRandomData(size int) []byte {
 	data := make([]byte, size)
 	rng := rand.New(rand.NewPCG(1, 2)) //nolint:gosec // deterministic
@@ -153,7 +137,8 @@ func newColdSetup(data []byte, dataSize int64, ft *storage.FrameTable, compresse
 		getter := &slowFrameGetter{data: src, ttfb: profile.ttfb, bandwidth: profile.bandwidth}
 
 		if legacy {
-			c := newLegacyChunker(tb, getter, dataSize, blockSize)
+			c, err := newFullFetchChunker(dataSize, blockSize, getter, tb.TempDir()+"/cache", newTestMetrics(tb))
+			require.NoError(tb, err)
 
 			return coldSetup{
 				read:       func(ctx context.Context, off, length int64) ([]byte, error) { return c.Slice(ctx, off, length) },
@@ -163,7 +148,8 @@ func newColdSetup(data []byte, dataSize int64, ft *storage.FrameTable, compresse
 			}
 		}
 
-		c := newChunker(tb, getter, dataSize, blockSize)
+		c, err := NewChunker(getter, dataSize, blockSize, tb.TempDir()+"/cache", newTestMetrics(tb))
+		require.NoError(tb, err)
 
 		return coldSetup{
 			read:       func(ctx context.Context, off, length int64) ([]byte, error) { return c.GetBlock(ctx, off, length, ft) },
@@ -260,14 +246,16 @@ func BenchmarkCacheHit(b *testing.B) {
 		{
 			name: "Legacy",
 			read: func(b *testing.B, blockSize int64) (benchReadF, func()) {
-				c := newLegacyChunker(b, &slowFrameGetter{data: data}, dataSize, blockSize)
+				c, err := newFullFetchChunker(dataSize, blockSize, &slowFrameGetter{data: data}, b.TempDir()+"/cache", newTestMetrics(b))
+				require.NoError(b, err)
 				return func(ctx context.Context, off, length int64) ([]byte, error) { return c.Slice(ctx, off, length) }, func() { c.Close() }
 			},
 		},
 		{
 			name: "Uncompressed",
 			read: func(b *testing.B, blockSize int64) (benchReadF, func()) {
-				c := newChunker(b, &slowFrameGetter{data: data}, dataSize, blockSize)
+				c, err := NewChunker(&slowFrameGetter{data: data}, dataSize, blockSize, b.TempDir()+"/cache", newTestMetrics(b))
+				require.NoError(b, err)
 				return func(ctx context.Context, off, length int64) ([]byte, error) { return c.GetBlock(ctx, off, length, nil) }, func() { c.Close() }
 			},
 		},
