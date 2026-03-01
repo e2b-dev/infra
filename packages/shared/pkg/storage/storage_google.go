@@ -320,7 +320,7 @@ func (o *gcpObject) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
 	return n, nil
 }
 
-func (o *gcpObject) StoreFile(ctx context.Context, path string, opts *FramedUploadOptions) (_ *FrameTable, e error) {
+func (o *gcpObject) StoreFile(ctx context.Context, path string, opts *FramedUploadOptions) (_ *FrameTable, _ [32]byte, e error) {
 	if opts != nil && opts.CompressionType != CompressionNone {
 		return o.storeFileCompressed(ctx, path, opts)
 	}
@@ -336,7 +336,8 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, opts *FramedUplo
 
 	fileInfo, err := os.Stat(path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get file size: %w", err)
+		e = fmt.Errorf("failed to get file size: %w", err)
+		return
 	}
 
 	// If the file is too small, the overhead of writing in parallel isn't worth the effort.
@@ -349,20 +350,20 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, opts *FramedUplo
 		data, err := os.ReadFile(path)
 		if err != nil {
 			timer.Failure(ctx, 0)
-
-			return nil, fmt.Errorf("failed to read file: %w", err)
+			e = fmt.Errorf("failed to read file: %w", err)
+			return
 		}
 
 		err = o.Put(ctx, data)
 		if err != nil {
 			timer.Failure(ctx, int64(len(data)))
-
-			return nil, fmt.Errorf("failed to write file (%d bytes): %w", len(data), err)
+			e = fmt.Errorf("failed to write file (%d bytes): %w", len(data), err)
+			return
 		}
 
 		timer.Success(ctx, int64(len(data)))
 
-		return nil, nil
+		return
 	}
 
 	timer := googleWriteTimerFactory.Begin(
@@ -376,8 +377,8 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, opts *FramedUplo
 			semaphoreErr := uploadLimiter.Acquire(ctx, 1)
 			if semaphoreErr != nil {
 				timer.Failure(ctx, 0)
-
-				return nil, fmt.Errorf("failed to acquire semaphore: %w", semaphoreErr)
+				e = fmt.Errorf("failed to acquire semaphore: %w", semaphoreErr)
+				return
 			}
 			defer uploadLimiter.Release(1)
 		}
@@ -394,16 +395,16 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, opts *FramedUplo
 	)
 	if err != nil {
 		timer.Failure(ctx, 0)
-
-		return nil, fmt.Errorf("failed to create multipart uploader: %w", err)
+		e = fmt.Errorf("failed to create multipart uploader: %w", err)
+		return
 	}
 
 	start := time.Now()
 	count, err := uploader.UploadFileInParallel(ctx, path, maxConcurrency)
 	if err != nil {
 		timer.Failure(ctx, count)
-
-		return nil, fmt.Errorf("failed to upload file in parallel: %w", err)
+		e = fmt.Errorf("failed to upload file in parallel: %w", err)
+		return
 	}
 
 	logger.L().Debug(ctx, "Uploaded file in parallel",
@@ -417,19 +418,19 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, opts *FramedUplo
 
 	timer.Success(ctx, count)
 
-	return nil, nil
+	return
 }
 
-func (o *gcpObject) storeFileCompressed(ctx context.Context, localPath string, opts *FramedUploadOptions) (*FrameTable, error) {
+func (o *gcpObject) storeFileCompressed(ctx context.Context, localPath string, opts *FramedUploadOptions) (*FrameTable, [32]byte, error) {
 	file, err := os.Open(localPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open local file %s: %w", localPath, err)
+		return nil, [32]byte{}, fmt.Errorf("failed to open local file %s: %w", localPath, err)
 	}
 	defer file.Close()
 
 	fi, err := file.Stat()
 	if err != nil {
-		return nil, fmt.Errorf("failed to stat local file %s: %w", localPath, err)
+		return nil, [32]byte{}, fmt.Errorf("failed to stat local file %s: %w", localPath, err)
 	}
 
 	uploader, err := NewMultipartUploaderWithRetryConfig(
@@ -442,15 +443,10 @@ func (o *gcpObject) storeFileCompressed(ctx context.Context, localPath string, o
 		},
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create multipart uploader: %w", err)
+		return nil, [32]byte{}, fmt.Errorf("failed to create multipart uploader: %w", err)
 	}
 
-	ft, err := CompressStream(ctx, file, opts, uploader)
-	if err != nil {
-		return nil, fmt.Errorf("failed to compress and upload %s: %w", localPath, err)
-	}
-
-	return ft, nil
+	return CompressStream(ctx, file, opts, uploader)
 }
 
 type gcpServiceToken struct {

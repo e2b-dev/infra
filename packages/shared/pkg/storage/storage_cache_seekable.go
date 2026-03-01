@@ -413,7 +413,7 @@ func (c *cachedFramedFile) Size(ctx context.Context) (size int64, e error) {
 	return u, nil
 }
 
-func (c *cachedFramedFile) StoreFile(ctx context.Context, path string, opts *FramedUploadOptions) (_ *FrameTable, e error) {
+func (c *cachedFramedFile) StoreFile(ctx context.Context, path string, opts *FramedUploadOptions) (_ *FrameTable, _ [32]byte, e error) {
 	if opts != nil && opts.CompressionType != CompressionNone {
 		return c.storeFileCompressed(ctx, path, opts)
 	}
@@ -454,7 +454,7 @@ func (c *cachedFramedFile) StoreFile(ctx context.Context, path string, opts *Fra
 
 // storeFileCompressed wraps the inner StoreFile with an OnFrameReady callback
 // that writes each compressed frame to the NFS cache.
-func (c *cachedFramedFile) storeFileCompressed(ctx context.Context, localPath string, opts *FramedUploadOptions) (*FrameTable, error) {
+func (c *cachedFramedFile) storeFileCompressed(ctx context.Context, localPath string, opts *FramedUploadOptions) (*FrameTable, [32]byte, error) {
 	// Copy opts so we don't mutate the caller's value
 	modifiedOpts := *opts
 	modifiedOpts.OnFrameReady = func(offset FrameOffset, size FrameSize, data []byte) error {

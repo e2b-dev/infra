@@ -94,7 +94,8 @@ type FramedFile interface {
 	// opts is non-nil with a compression type, compresses the data and returns
 	// the FrameTable describing the compressed frames. When opts is nil,
 	// performs a simple uncompressed upload (returns nil FrameTable).
-	StoreFile(ctx context.Context, path string, opts *FramedUploadOptions) (*FrameTable, error)
+	// The returned [32]byte is the SHA-256 of the compressed data (zero for uncompressed uploads).
+	StoreFile(ctx context.Context, path string, opts *FramedUploadOptions) (*FrameTable, [32]byte, error)
 }
 
 func GetTemplateStorageProvider(ctx context.Context, limiter *limit.Limiter) (StorageProvider, error) {

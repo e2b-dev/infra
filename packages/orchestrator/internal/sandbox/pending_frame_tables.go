@@ -4,54 +4,82 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/google/uuid"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
-// PendingFrameTables collects FrameTables from compressed data uploads across
-// all layers. After all data files are uploaded, the collected tables are applied
-// to headers before the compressed headers are serialized and uploaded.
-type PendingFrameTables struct {
-	tables sync.Map // key: "buildId/fileType", value: *storage.FrameTable
+// pendingBuildInfo pairs a FrameTable with the uncompressed file size and
+// compressed-data checksum so all can be stored in the header after uploads complete.
+type pendingBuildInfo struct {
+	ft       *storage.FrameTable
+	fileSize int64
+	checksum [32]byte
 }
 
-func pendingFrameTableKey(buildID, fileType string) string {
+// PendingBuildInfo collects FrameTables and file sizes from compressed data
+// uploads across all layers. After all data files are uploaded, the collected
+// tables are applied to headers before the compressed headers are serialized
+// and uploaded.
+type PendingBuildInfo sync.Map
+
+func pendingBuildInfoKey(buildID, fileType string) string {
 	return buildID + "/" + fileType
 }
 
-func (p *PendingFrameTables) add(key string, ft *storage.FrameTable) {
+func (p *PendingBuildInfo) add(key string, ft *storage.FrameTable, fileSize int64, checksum [32]byte) {
 	if ft == nil {
 		return
 	}
 
-	p.tables.Store(key, ft)
+	(*sync.Map)(p).Store(key, pendingBuildInfo{ft: ft, fileSize: fileSize, checksum: checksum})
 }
 
-func (p *PendingFrameTables) get(key string) *storage.FrameTable {
-	v, ok := p.tables.Load(key)
+func (p *PendingBuildInfo) get(key string) *pendingBuildInfo {
+	v, ok := (*sync.Map)(p).Load(key)
 	if !ok {
 		return nil
 	}
 
-	return v.(*storage.FrameTable)
+	info := v.(pendingBuildInfo)
+
+	return &info
 }
 
-func (p *PendingFrameTables) applyToHeader(h *header.Header, fileType string) error {
+func (p *PendingBuildInfo) applyToHeader(h *header.Header, fileType string) error {
 	if h == nil {
 		return nil
 	}
 
 	for _, mapping := range h.Mapping {
-		key := pendingFrameTableKey(mapping.BuildId.String(), fileType)
-		ft := p.get(key)
+		key := pendingBuildInfoKey(mapping.BuildId.String(), fileType)
+		info := p.get(key)
 
-		if ft == nil {
+		if info == nil {
 			continue
 		}
 
-		if err := mapping.AddFrames(ft); err != nil {
+		if err := mapping.AddFrames(info.ft); err != nil {
 			return fmt.Errorf("apply frames to mapping at offset %#x for build %s: %w",
 				mapping.Offset, mapping.BuildId.String(), err)
+		}
+	}
+
+	// Populate BuildFiles with sizes and checksums for this fileType's builds.
+	for _, mapping := range h.Mapping {
+		key := pendingBuildInfoKey(mapping.BuildId.String(), fileType)
+		info := p.get(key)
+		if info == nil {
+			continue
+		}
+
+		if h.BuildFiles == nil {
+			h.BuildFiles = make(map[uuid.UUID]header.BuildFileInfo)
+		}
+		h.BuildFiles[mapping.BuildId] = header.BuildFileInfo{
+			Size:     info.fileSize,
+			Checksum: info.checksum,
 		}
 	}
 

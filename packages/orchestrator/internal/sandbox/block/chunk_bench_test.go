@@ -67,9 +67,9 @@ type coldSetup struct {
 // to be reinitialized every time).
 type coldSetupF func(tb testing.TB, profile backendProfile, blockSize int64) coldSetup
 
-func newChunker(tb testing.TB, file storage.FramedFile, size int64, compressed bool, blockSize int64) *Chunker {
+func newChunker(tb testing.TB, file storage.FramedFile, size int64, blockSize int64) *Chunker {
 	tb.Helper()
-	c, err := NewChunker(file, size, compressed, blockSize, tb.TempDir()+"/cache", newTestMetrics(tb))
+	c, err := NewChunker(file, size, blockSize, tb.TempDir()+"/cache", newTestMetrics(tb))
 	require.NoError(tb, err)
 
 	return c
@@ -229,7 +229,7 @@ func newUncompressedSetup(data []byte, dataSize int64) coldSetupF {
 	return func(tb testing.TB, profile backendProfile, blockSize int64) coldSetup {
 		tb.Helper()
 		slow := &slowFrameGetter{data: data, ttfb: profile.ttfb, bandwidth: profile.bandwidth}
-		c := newChunker(tb, slow, dataSize, false, blockSize)
+		c := newChunker(tb, slow, dataSize, blockSize)
 
 		return coldSetup{
 			read:       func(ctx context.Context, off, length int64) ([]byte, error) { return c.GetBlock(ctx, off, length, nil) },
@@ -251,7 +251,7 @@ func newCompressedSetup(dataSize int64, ft *storage.FrameTable, compressedData [
 			ttfb:      profile.ttfb,
 			bandwidth: profile.bandwidth,
 		}
-		c := newChunker(tb, getter, dataSize, true, blockSize)
+		c := newChunker(tb, getter, dataSize, blockSize)
 
 		return coldSetup{
 			read:       func(ctx context.Context, off, length int64) ([]byte, error) { return c.GetBlock(ctx, off, length, ft) },
@@ -281,7 +281,7 @@ func BenchmarkCacheHit(b *testing.B) {
 
 			b.Run("Uncompressed", func(b *testing.B) {
 				getter := &slowFrameGetter{data: data}
-				c := newChunker(b, getter, dataSize, false, blockSize)
+				c := newChunker(b, getter, dataSize, blockSize)
 				defer c.Close()
 				runCacheHit(b, dataSize, blockSize, func(ctx context.Context, off, length int64) ([]byte, error) {
 					return c.GetBlock(ctx, off, length, nil)
@@ -306,7 +306,7 @@ func BenchmarkColdConcurrent(b *testing.B) {
 
 	for ci, codec := range benchCodecs {
 		up := &storage.MemPartUploader{}
-		ft, err := storage.CompressStream(context.Background(), bytes.NewReader(data), &storage.FramedUploadOptions{
+		ft, _, err := storage.CompressStream(context.Background(), bytes.NewReader(data), &storage.FramedUploadOptions{
 			CompressionType:    codec.compressionType,
 			Level:              codec.level,
 			EncoderConcurrency: 1,

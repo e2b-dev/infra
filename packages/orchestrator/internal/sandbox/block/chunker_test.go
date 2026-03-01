@@ -47,7 +47,7 @@ func (s *slowFrameGetter) Size(_ context.Context) (int64, error) {
 	return int64(len(s.data)), nil
 }
 
-func (s *slowFrameGetter) StoreFile(context.Context, string, *storage.FramedUploadOptions) (*storage.FrameTable, error) {
+func (s *slowFrameGetter) StoreFile(context.Context, string, *storage.FramedUploadOptions) (*storage.FrameTable, [32]byte, error) {
 	panic("slowFrameGetter: StoreFile not used in tests")
 }
 
@@ -93,7 +93,7 @@ func makeCompressedTestData(tb testing.TB, data []byte, ttfb time.Duration) (*st
 	tb.Helper()
 
 	up := &storage.MemPartUploader{}
-	ft, err := storage.CompressStream(context.Background(), bytes.NewReader(data), &storage.FramedUploadOptions{
+	ft, _, err := storage.CompressStream(context.Background(), bytes.NewReader(data), &storage.FramedUploadOptions{
 		CompressionType:    storage.CompressionLZ4,
 		EncoderConcurrency: 1,
 		EncodeWorkers:      1,
@@ -121,8 +121,8 @@ func (p *testProgressiveStorage) Size(_ context.Context) (int64, error) {
 	return int64(len(p.data)), nil
 }
 
-func (p *testProgressiveStorage) StoreFile(_ context.Context, _ string, _ *storage.FramedUploadOptions) (*storage.FrameTable, error) {
-	return nil, fmt.Errorf("testProgressiveStorage: StoreFile not supported")
+func (p *testProgressiveStorage) StoreFile(_ context.Context, _ string, _ *storage.FramedUploadOptions) (*storage.FrameTable, [32]byte, error) {
+	return nil, [32]byte{}, fmt.Errorf("testProgressiveStorage: StoreFile not supported")
 }
 
 func (p *testProgressiveStorage) GetFrame(_ context.Context, offsetU int64, ft *storage.FrameTable, _ bool, buf []byte, readSize int64, onRead func(int64)) (storage.Range, error) {
@@ -201,7 +201,6 @@ func allChunkerTestCases() []chunkerTestCase {
 				c, err := NewChunker(
 					getter,
 					int64(len(data)),
-					true,
 					testBlockSize,
 					t.TempDir()+"/cache",
 					newTestMetrics(t),
@@ -219,7 +218,6 @@ func allChunkerTestCases() []chunkerTestCase {
 				c, err := NewChunker(
 					getter,
 					int64(len(data)),
-					false,
 					testBlockSize,
 					t.TempDir()+"/cache",
 					newTestMetrics(t),
@@ -335,7 +333,6 @@ func TestChunker_FetchDedup(t *testing.T) {
 		chunker, err := NewChunker(
 			getter,
 			int64(len(data)),
-			true,
 			testBlockSize,
 			t.TempDir()+"/cache",
 			newTestMetrics(t),
@@ -381,7 +378,6 @@ func TestChunker_FullChunkCachedAfterPartialRequest(t *testing.T) {
 		chunker, err := NewChunker(
 			getter,
 			int64(len(data)),
-			true,
 			testBlockSize,
 			t.TempDir()+"/cache",
 			newTestMetrics(t),
@@ -418,7 +414,6 @@ func TestChunker_FullChunkCachedAfterPartialRequest(t *testing.T) {
 		chunker, err := NewChunker(
 			getter,
 			int64(len(data)),
-			false,
 			testBlockSize,
 			t.TempDir()+"/cache",
 			newTestMetrics(t),
@@ -462,7 +457,6 @@ func TestChunker_EarlyReturn(t *testing.T) {
 	chunker, err := NewChunker(
 		getter,
 		int64(len(data)),
-		false,
 		testBlockSize,
 		t.TempDir()+"/cache",
 		newTestMetrics(t),
@@ -523,7 +517,6 @@ func TestChunker_ErrorKeepsPartialData(t *testing.T) {
 	chunker, err := NewChunker(
 		getter,
 		int64(len(data)),
-		false,
 		testBlockSize,
 		t.TempDir()+"/cache",
 		newTestMetrics(t),
@@ -558,7 +551,6 @@ func TestChunker_ContextCancellation(t *testing.T) {
 	chunker, err := NewChunker(
 		getter,
 		int64(len(data)),
-		false,
 		testBlockSize,
 		t.TempDir()+"/cache",
 		newTestMetrics(t),
@@ -601,7 +593,6 @@ func TestChunker_LastBlockPartial(t *testing.T) {
 				c, err := NewChunker(
 					getter,
 					int64(len(data)),
-					false,
 					testBlockSize,
 					t.TempDir()+"/cache",
 					newTestMetrics(t),
@@ -619,7 +610,6 @@ func TestChunker_LastBlockPartial(t *testing.T) {
 				c, err := NewChunker(
 					getter,
 					int64(len(data)),
-					true,
 					testBlockSize,
 					t.TempDir()+"/cache",
 					newTestMetrics(t),

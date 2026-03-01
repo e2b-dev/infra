@@ -2,6 +2,7 @@ package header
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"testing"
 
 	"github.com/google/uuid"
@@ -40,7 +41,7 @@ func TestSerializeDeserialize_V3_RoundTrip(t *testing.T) {
 		},
 	}
 
-	data, err := serialize(metadata, mappings)
+	data, err := serialize(metadata, nil, mappings)
 	require.NoError(t, err)
 
 	got, err := Deserialize(data)
@@ -57,6 +58,9 @@ func TestSerializeDeserialize_V3_RoundTrip(t *testing.T) {
 	assert.Equal(t, uint64(4096), got.Mapping[1].Length)
 	assert.Equal(t, baseID, got.Mapping[1].BuildId)
 	assert.Equal(t, uint64(123), got.Mapping[1].BuildStorageOffset)
+
+	// V3 headers have no BuildFiles
+	assert.Nil(t, got.BuildFiles)
 }
 
 func TestDeserialize_TruncatedMetadata(t *testing.T) {
@@ -79,7 +83,7 @@ func TestSerializeDeserialize_EmptyMappings_Defaults(t *testing.T) {
 		BaseBuildId: uuid.New(),
 	}
 
-	data, err := serialize(metadata, nil)
+	data, err := serialize(metadata, nil, nil)
 	require.NoError(t, err)
 
 	got, err := Deserialize(data)
@@ -104,7 +108,7 @@ func TestDeserialize_BlockSizeZero(t *testing.T) {
 		BaseBuildId: uuid.New(),
 	}
 
-	data, err := serialize(metadata, nil)
+	data, err := serialize(metadata, nil, nil)
 	require.NoError(t, err)
 
 	_, err = Deserialize(data)
@@ -149,8 +153,18 @@ func TestSerializeDeserialize_V4_WithFrameTable(t *testing.T) {
 		},
 	}
 
+	checksum := sha256.Sum256([]byte("test-data"))
+	buildFiles := map[uuid.UUID]BuildFileInfo{
+		buildID: {Size: 12345, Checksum: checksum},
+		baseID:  {Size: 67890},
+	}
+
+	h, err := NewHeader(metadata, mappings)
+	require.NoError(t, err)
+	h.BuildFiles = buildFiles
+
 	// Test with SerializeHeader + Deserialize (unified path)
-	data, err := SerializeHeader(metadata, mappings)
+	data, err := SerializeHeader(h)
 	require.NoError(t, err)
 
 	got, err := Deserialize(data)
@@ -180,6 +194,13 @@ func TestSerializeDeserialize_V4_WithFrameTable(t *testing.T) {
 	assert.Equal(t, uint64(4096), m1.Length)
 	assert.Equal(t, baseID, m1.BuildId)
 	assert.Nil(t, m1.FrameTable)
+
+	// BuildFiles round-trip
+	require.Len(t, got.BuildFiles, 2)
+	assert.Equal(t, int64(12345), got.BuildFiles[buildID].Size)
+	assert.Equal(t, checksum, got.BuildFiles[buildID].Checksum)
+	assert.Equal(t, int64(67890), got.BuildFiles[baseID].Size)
+	assert.Equal(t, [32]byte{}, got.BuildFiles[baseID].Checksum)
 }
 
 func TestSerializeDeserialize_V4_Zstd_NonZeroStartAt(t *testing.T) {
@@ -211,8 +232,11 @@ func TestSerializeDeserialize_V4_Zstd_NonZeroStartAt(t *testing.T) {
 		},
 	}
 
+	h, err := NewHeader(metadata, mappings)
+	require.NoError(t, err)
+
 	// Test with SerializeHeader + Deserialize (unified path)
-	data, err := SerializeHeader(metadata, mappings)
+	data, err := SerializeHeader(h)
 	require.NoError(t, err)
 
 	got, err := Deserialize(data)
@@ -227,6 +251,9 @@ func TestSerializeDeserialize_V4_Zstd_NonZeroStartAt(t *testing.T) {
 	require.Len(t, m.FrameTable.Frames, 1)
 	assert.Equal(t, int32(4096), m.FrameTable.Frames[0].U)
 	assert.Equal(t, int32(3500), m.FrameTable.Frames[0].C)
+
+	// No BuildFiles set
+	assert.Nil(t, got.BuildFiles)
 }
 
 // TestSerializeDeserialize_V4_CompressionNone_EmptyFrames verifies that a
@@ -268,8 +295,11 @@ func TestSerializeDeserialize_V4_CompressionNone_EmptyFrames(t *testing.T) {
 		},
 	}
 
+	h, err := NewHeader(metadata, mappings)
+	require.NoError(t, err)
+
 	// Test with SerializeHeader + Deserialize (unified path)
-	data, err := SerializeHeader(metadata, mappings)
+	data, err := SerializeHeader(h)
 	require.NoError(t, err)
 
 	got, err := Deserialize(data)
@@ -335,8 +365,11 @@ func TestSerializeDeserialize_V4_ManyFrames(t *testing.T) {
 		},
 	}
 
+	h, err := NewHeader(metadata, mappings)
+	require.NoError(t, err)
+
 	// Test with SerializeHeader + Deserialize (unified path)
-	data, err := SerializeHeader(metadata, mappings)
+	data, err := SerializeHeader(h)
 	require.NoError(t, err)
 
 	got, err := Deserialize(data)
@@ -374,11 +407,14 @@ func TestSerializeHeader_V3_RoundTrip(t *testing.T) {
 		},
 	}
 
-	// V3: SerializeHeader should return raw bytes identical to serialize
-	unified, err := SerializeHeader(metadata, mappings)
+	h, err := NewHeader(metadata, mappings)
 	require.NoError(t, err)
 
-	raw, err := serialize(metadata, mappings)
+	// V3: SerializeHeader should return raw bytes identical to serialize
+	unified, err := SerializeHeader(h)
+	require.NoError(t, err)
+
+	raw, err := serialize(metadata, nil, mappings)
 	require.NoError(t, err)
 
 	assert.Equal(t, raw, unified, "V3 SerializeHeader should produce identical bytes to serialize")
@@ -395,4 +431,39 @@ func TestDeserialize_TooShort(t *testing.T) {
 	_, err := Deserialize([]byte{0x01, 0x02})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "header too short")
+}
+
+func TestSerializeDeserialize_V4_EmptyBuildFiles(t *testing.T) {
+	t.Parallel()
+
+	buildID := uuid.New()
+	metadata := &Metadata{
+		Version:     4,
+		BlockSize:   4096,
+		Size:        4096,
+		Generation:  0,
+		BuildId:     buildID,
+		BaseBuildId: buildID,
+	}
+
+	mappings := []*BuildMap{
+		{
+			Offset:  0,
+			Length:  4096,
+			BuildId: buildID,
+		},
+	}
+
+	h, err := NewHeader(metadata, mappings)
+	require.NoError(t, err)
+	// No BuildFiles set (nil map)
+
+	data, err := SerializeHeader(h)
+	require.NoError(t, err)
+
+	got, err := Deserialize(data)
+	require.NoError(t, err)
+
+	require.Len(t, got.Mapping, 1)
+	assert.Nil(t, got.BuildFiles) // numBuilds=0 → nil
 }

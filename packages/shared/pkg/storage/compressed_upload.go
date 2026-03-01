@@ -3,8 +3,10 @@ package storage
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 	"slices"
 	"sync"
@@ -246,7 +248,7 @@ func newCompressorPool(opts *FramedUploadOptions) (borrow func() (frameCompresso
 // The pipeline: reader goroutine → compressor worker pool → collector goroutine → uploader.
 // Frames are fixed-size uncompressed (opts.FrameSize, default 2 MiB), compressed concurrently,
 // reordered by the collector, and batched into upload PARTs.
-func CompressStream(ctx context.Context, in io.Reader, opts *FramedUploadOptions, uploader PartUploader) (*FrameTable, error) {
+func CompressStream(ctx context.Context, in io.Reader, opts *FramedUploadOptions, uploader PartUploader) (*FrameTable, [32]byte, error) {
 	targetPartSize := int64(opts.TargetPartSize)
 	if targetPartSize == 0 {
 		targetPartSize = int64(defaultUploadPartSize)
@@ -263,7 +265,7 @@ func CompressStream(ctx context.Context, in io.Reader, opts *FramedUploadOptions
 	}
 
 	if err := uploader.Start(ctx); err != nil {
-		return nil, fmt.Errorf("failed to start framed upload: %w", err)
+		return nil, [32]byte{}, fmt.Errorf("failed to start framed upload: %w", err)
 	}
 
 	// Stage 1: Reader goroutine — reads frameSize frames from input.
@@ -355,6 +357,9 @@ func CompressStream(ctx context.Context, in io.Reader, opts *FramedUploadOptions
 		CompressionType: opts.CompressionType,
 	}
 
+	// Running SHA-256 over compressed data for integrity verification.
+	var hasher hash.Hash = sha256.New()
+
 	uploadEG, uploadCtx := errgroup.WithContext(ctx)
 	uploadEG.SetLimit(4) // max concurrent part uploads
 
@@ -373,6 +378,9 @@ func CompressStream(ctx context.Context, in io.Reader, opts *FramedUploadOptions
 			C: int32(len(cf.data)),
 		}
 		frameTable.Frames = append(frameTable.Frames, fs)
+
+		// Feed compressed bytes to running checksum (piggybacking on existing iteration).
+		hasher.Write(cf.data)
 
 		if opts.OnFrameReady != nil {
 			if err := opts.OnFrameReady(offset, fs, cf.data); err != nil {
@@ -439,30 +447,33 @@ func CompressStream(ctx context.Context, in io.Reader, opts *FramedUploadOptions
 	// Check for errors from earlier stages.
 	select {
 	case err := <-readErrCh:
-		return nil, err
+		return nil, [32]byte{}, err
 	default:
 	}
 	select {
 	case err := <-compressErrCh:
-		return nil, err
+		return nil, [32]byte{}, err
 	default:
 	}
 	if collectErr != nil {
-		return nil, collectErr
+		return nil, [32]byte{}, collectErr
 	}
 
 	// Flush the last part.
 	flushPart(true)
 
 	if err := uploadEG.Wait(); err != nil {
-		return nil, fmt.Errorf("failed to upload frames: %w", err)
+		return nil, [32]byte{}, fmt.Errorf("failed to upload frames: %w", err)
 	}
 
 	if err := uploader.Complete(ctx); err != nil {
-		return nil, fmt.Errorf("failed to finish uploading frames: %w", err)
+		return nil, [32]byte{}, fmt.Errorf("failed to finish uploading frames: %w", err)
 	}
 
-	return frameTable, nil
+	var checksum [32]byte
+	copy(checksum[:], hasher.Sum(nil))
+
+	return frameTable, checksum, nil
 }
 
 // newZstdEncoder creates a zstd encoder for use with EncodeAll.

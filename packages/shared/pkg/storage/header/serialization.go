@@ -71,12 +71,41 @@ func (m *Metadata) NextGeneration(buildID uuid.UUID) *Metadata {
 	}
 }
 
-func serialize(metadata *Metadata, mappings []*BuildMap) ([]byte, error) {
+// v4SerializableBuildFileInfo is the on-disk format for a BuildFileInfo entry.
+type v4SerializableBuildFileInfo struct {
+	BuildId  uuid.UUID
+	Size     int64
+	Checksum [32]byte
+}
+
+func serialize(metadata *Metadata, buildFiles map[uuid.UUID]BuildFileInfo, mappings []*BuildMap) ([]byte, error) {
 	var buf bytes.Buffer
 
 	err := binary.Write(&buf, binary.LittleEndian, metadata)
 	if err != nil {
 		return nil, fmt.Errorf("failed to write metadata: %w", err)
+	}
+
+	if metadata.Version >= 4 {
+		// V4: write build-info section before mappings.
+		if err := binary.Write(&buf, binary.LittleEndian, uint32(len(buildFiles))); err != nil {
+			return nil, fmt.Errorf("failed to write build files count: %w", err)
+		}
+		for id, info := range buildFiles {
+			entry := v4SerializableBuildFileInfo{
+				BuildId:  id,
+				Size:     info.Size,
+				Checksum: info.Checksum,
+			}
+			if err := binary.Write(&buf, binary.LittleEndian, &entry); err != nil {
+				return nil, fmt.Errorf("failed to write build file info: %w", err)
+			}
+		}
+
+		// V4: write mapping count before mappings.
+		if err := binary.Write(&buf, binary.LittleEndian, uint32(len(mappings))); err != nil {
+			return nil, fmt.Errorf("failed to write mappings count: %w", err)
+		}
 	}
 
 	var v any
@@ -156,89 +185,116 @@ func deserializeMetadata(data []byte) (*Metadata, error) {
 	return &metadata, nil
 }
 
-func deserializeMappings(metadata *Metadata, reader *bytes.Reader) ([]*BuildMap, error) {
-	mappings := make([]*BuildMap, 0)
+// deserializeV3Mappings reads V3 mappings until EOF.
+func deserializeV3Mappings(reader *bytes.Reader) ([]*BuildMap, error) {
+	var mappings []*BuildMap
 
-MAPPINGS:
 	for {
-		var m BuildMap
-
-		switch metadata.Version {
-		case 0, 1, 2, 3:
-			var v3 v3SerializableBuildMap
-			err := binary.Read(reader, binary.LittleEndian, &v3)
-			if errors.Is(err, io.EOF) {
-				break MAPPINGS
-			}
-			if err != nil {
-				return nil, fmt.Errorf("failed to read block mapping: %w", err)
-			}
-
-			m.Offset = v3.Offset
-			m.Length = v3.Length
-			m.BuildId = v3.BuildId
-			m.BuildStorageOffset = v3.BuildStorageOffset
-
-		case 4:
-			var v4 v4SerializableBuildMap
-			err := binary.Read(reader, binary.LittleEndian, &v4)
-			if errors.Is(err, io.EOF) {
-				break MAPPINGS
-			}
-			if err != nil {
-				return nil, fmt.Errorf("failed to read block mapping: %w", err)
-			}
-
-			m.Offset = v4.Offset
-			m.Length = v4.Length
-			m.BuildId = v4.BuildId
-			m.BuildStorageOffset = v4.BuildStorageOffset
-
-			if v4.CompressionTypeNumFrames != 0 {
-				m.FrameTable = &storage.FrameTable{
-					CompressionType: storage.CompressionType((v4.CompressionTypeNumFrames >> 24) & 0xFF),
-				}
-				numFrames := v4.CompressionTypeNumFrames & 0xFFFFFF
-
-				var startAt storage.FrameOffset
-				err = binary.Read(reader, binary.LittleEndian, &startAt)
-				if err != nil {
-					return nil, fmt.Errorf("failed to read compression frames starting offset: %w", err)
-				}
-				m.FrameTable.StartAt = startAt
-
-				for range numFrames {
-					var frame storage.FrameSize
-					err = binary.Read(reader, binary.LittleEndian, &frame)
-					if err != nil {
-						return nil, fmt.Errorf("failed to read the expected compression frame: %w", err)
-					}
-					m.FrameTable.Frames = append(m.FrameTable.Frames, frame)
-				}
-			}
+		var v3 v3SerializableBuildMap
+		err := binary.Read(reader, binary.LittleEndian, &v3)
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to read block mapping: %w", err)
 		}
 
-		mappings = append(mappings, &m)
+		mappings = append(mappings, &BuildMap{
+			Offset:             v3.Offset,
+			Length:             v3.Length,
+			BuildId:            v3.BuildId,
+			BuildStorageOffset: v3.BuildStorageOffset,
+		})
 	}
 
 	return mappings, nil
 }
 
+// deserializeV4Block reads the V4 block: build-info section, then counted mappings.
+func deserializeV4Block(reader *bytes.Reader) (map[uuid.UUID]BuildFileInfo, []*BuildMap, error) {
+	// Read build-info section.
+	var numBuilds uint32
+	if err := binary.Read(reader, binary.LittleEndian, &numBuilds); err != nil {
+		return nil, nil, fmt.Errorf("failed to read build files count: %w", err)
+	}
+
+	var buildFiles map[uuid.UUID]BuildFileInfo
+	if numBuilds > 0 {
+		buildFiles = make(map[uuid.UUID]BuildFileInfo, numBuilds)
+		for range numBuilds {
+			var entry v4SerializableBuildFileInfo
+			if err := binary.Read(reader, binary.LittleEndian, &entry); err != nil {
+				return nil, nil, fmt.Errorf("failed to read build file info: %w", err)
+			}
+			buildFiles[entry.BuildId] = BuildFileInfo{
+				Size:     entry.Size,
+				Checksum: entry.Checksum,
+			}
+		}
+	}
+
+	// Read counted mappings.
+	var numMappings uint32
+	if err := binary.Read(reader, binary.LittleEndian, &numMappings); err != nil {
+		return nil, nil, fmt.Errorf("failed to read mappings count: %w", err)
+	}
+
+	mappings := make([]*BuildMap, 0, numMappings)
+	for range numMappings {
+		var v4 v4SerializableBuildMap
+		if err := binary.Read(reader, binary.LittleEndian, &v4); err != nil {
+			return nil, nil, fmt.Errorf("failed to read block mapping: %w", err)
+		}
+
+		m := &BuildMap{
+			Offset:             v4.Offset,
+			Length:             v4.Length,
+			BuildId:            v4.BuildId,
+			BuildStorageOffset: v4.BuildStorageOffset,
+		}
+
+		if v4.CompressionTypeNumFrames != 0 {
+			m.FrameTable = &storage.FrameTable{
+				CompressionType: storage.CompressionType((v4.CompressionTypeNumFrames >> 24) & 0xFF),
+			}
+			numFrames := v4.CompressionTypeNumFrames & 0xFFFFFF
+
+			var startAt storage.FrameOffset
+			if err := binary.Read(reader, binary.LittleEndian, &startAt); err != nil {
+				return nil, nil, fmt.Errorf("failed to read compression frames starting offset: %w", err)
+			}
+			m.FrameTable.StartAt = startAt
+
+			for range numFrames {
+				var frame storage.FrameSize
+				if err := binary.Read(reader, binary.LittleEndian, &frame); err != nil {
+					return nil, nil, fmt.Errorf("failed to read the expected compression frame: %w", err)
+				}
+				m.FrameTable.Frames = append(m.FrameTable.Frames, frame)
+			}
+		}
+
+		mappings = append(mappings, m)
+	}
+
+	return buildFiles, mappings, nil
+}
+
 // SerializeHeader serializes a header with optional LZ4 compression for V4.
-// For V3 (Version <= 3), returns the raw binary unchanged.
+// For V3 (Version <= 3), returns the raw binary unchanged (BuildFiles ignored).
 // For V4 (Version == 4), keeps Metadata prefix raw, LZ4-compresses
-// the rest (mappings with frame tables), and concatenates.
-func SerializeHeader(metadata *Metadata, mappings []*BuildMap) ([]byte, error) {
-	raw, err := serialize(metadata, mappings)
+// the rest (build info + mappings with frame tables), and concatenates.
+func SerializeHeader(h *Header) ([]byte, error) {
+	raw, err := serialize(h.Metadata, h.BuildFiles, h.Mapping)
 	if err != nil {
 		return nil, err
 	}
 
-	if metadata.Version <= 3 {
+	if h.Metadata.Version <= 3 {
 		return raw, nil
 	}
 
-	// V4: keep Metadata prefix raw, LZ4-compress the mappings.
+	// V4: keep Metadata prefix raw, LZ4-compress the rest.
 	compressed, err := storage.CompressLZ4(raw[metadataSize:])
 	if err != nil {
 		return nil, fmt.Errorf("failed to LZ4-compress v4 header mappings: %w", err)
@@ -254,7 +310,7 @@ func SerializeHeader(metadata *Metadata, mappings []*BuildMap) ([]byte, error) {
 // Deserialize auto-detects the header version and deserializes accordingly.
 // For V3 (Version <= 3), deserializes the raw binary directly.
 // For V4 (Version == 4), reads the Metadata prefix, then LZ4-decompresses
-// the remaining bytes (mappings with frame tables) and deserializes them.
+// the remaining bytes (build info + mappings with frame tables) and deserializes them.
 func Deserialize(data []byte) (*Header, error) {
 	if len(data) < metadataSize {
 		return nil, fmt.Errorf("header too short: %d bytes", len(data))
@@ -265,16 +321,29 @@ func Deserialize(data []byte) (*Header, error) {
 		return nil, err
 	}
 
-	mappingsData := data[metadataSize:]
+	blockData := data[metadataSize:]
 
 	if metadata.Version >= 4 {
-		mappingsData, err = storage.DecompressLZ4(mappingsData, storage.MaxCompressedHeaderSize)
+		blockData, err = storage.DecompressLZ4(blockData, storage.MaxCompressedHeaderSize)
 		if err != nil {
-			return nil, fmt.Errorf("failed to LZ4-decompress v4 header mappings: %w", err)
+			return nil, fmt.Errorf("failed to LZ4-decompress v4 header block: %w", err)
 		}
+
+		buildFiles, mappings, err := deserializeV4Block(bytes.NewReader(blockData))
+		if err != nil {
+			return nil, err
+		}
+
+		h, err := newValidatedHeader(metadata, mappings)
+		if err != nil {
+			return nil, err
+		}
+		h.BuildFiles = buildFiles
+
+		return h, nil
 	}
 
-	mappings, err := deserializeMappings(metadata, bytes.NewReader(mappingsData))
+	mappings, err := deserializeV3Mappings(bytes.NewReader(blockData))
 	if err != nil {
 		return nil, err
 	}

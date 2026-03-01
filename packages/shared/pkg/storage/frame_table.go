@@ -101,15 +101,6 @@ func IsCompressed(ft *FrameTable) bool {
 	return ft != nil && ft.CompressionType != CompressionNone
 }
 
-// GetCompressionType returns the compression type from ft, or CompressionNone if ft is nil.
-func GetCompressionType(ft *FrameTable) CompressionType {
-	if ft == nil {
-		return CompressionNone
-	}
-
-	return ft.CompressionType
-}
-
 // Range calls fn for each frame overlapping [start, start+length).
 func (ft *FrameTable) Range(start, length int64, fn func(offset FrameOffset, frame FrameSize) error) error {
 	currentOffset := ft.StartAt

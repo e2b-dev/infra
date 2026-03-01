@@ -80,9 +80,8 @@ func attrs(compressed bool) precomputedAttrs {
 }
 
 type Chunker struct {
-	file       storage.FramedFile // single data file (compressed or uncompressed)
-	size       int64              // uncompressed size
-	compressed bool               // true when the data file is compressed
+	file storage.FramedFile // single data file (compressed or uncompressed)
+	size int64              // uncompressed size
 
 	cache   *Cache
 	metrics metrics.Metrics
@@ -95,11 +94,11 @@ var _ Reader = (*Chunker)(nil)
 
 // NewChunker creates a Chunker backed by a new mmap cache at cachePath.
 // file is the single data file (compressed or uncompressed), size is the
-// uncompressed size, and compressed indicates whether decompression is needed.
+// uncompressed size. Whether decompression is needed is determined per-call
+// from the FrameTable passed to GetBlock/ReadBlock.
 func NewChunker(
 	file storage.FramedFile,
 	size int64,
-	compressed bool,
 	blockSize int64,
 	cachePath string,
 	m metrics.Metrics,
@@ -110,9 +109,8 @@ func NewChunker(
 	}
 
 	return &Chunker{
-		file:       file,
-		size:       size,
-		compressed: compressed,
+		file:    file,
+		size:    size,
 		cache:   cache,
 		metrics: m,
 	}, nil
@@ -130,7 +128,8 @@ func (c *Chunker) ReadBlock(ctx context.Context, b []byte, off int64, ft *storag
 // GetBlock returns a reference to the mmap cache at the given uncompressed
 // offset. On cache miss, fetches from storage into the cache first.
 func (c *Chunker) GetBlock(ctx context.Context, off, length int64, ft *storage.FrameTable) ([]byte, error) {
-	attrs := attrs(c.compressed)
+	compressed := storage.IsCompressed(ft)
+	attrs := attrs(compressed)
 	timer := c.metrics.BlocksTimerFactory.Begin(attrs.begin)
 
 	// Fast path: already in mmap cache. No timer allocation — cache hits
@@ -187,10 +186,7 @@ func (c *Chunker) getOrCreateSession(ctx context.Context, off int64, ft *storage
 		chunkLen int64
 	)
 
-	if c.compressed {
-		if ft == nil {
-			return nil, fmt.Errorf("compressed chunker got nil FrameTable at offset %#x", off)
-		}
+	if storage.IsCompressed(ft) {
 		frameStarts, frameSize, err := ft.FrameFor(off)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get frame for offset %#x: %w", off, err)
@@ -230,8 +226,9 @@ func (c *Chunker) runFetch(ctx context.Context, s *fetchSession, offsetU int64, 
 	}
 	defer releaseLock()
 
+	compressed := storage.IsCompressed(ft)
 	fetchSW := c.metrics.RemoteReadsTimerFactory.Begin(
-		attribute.Bool(compressedAttr, c.compressed),
+		attribute.Bool(compressedAttr, compressed),
 	)
 
 	// Pass blockSize as readSize so each progressive onRead covers at least
@@ -247,7 +244,7 @@ func (c *Chunker) runFetch(ctx context.Context, s *fetchSession, offsetU int64, 
 		prevTotal = totalWritten
 	}
 
-	_, err = c.file.GetFrame(ctx, offsetU, ft, c.compressed, mmapSlice[:s.chunkLen], readSize, onRead)
+	_, err = c.file.GetFrame(ctx, offsetU, ft, compressed, mmapSlice[:s.chunkLen], readSize, onRead)
 	if err != nil {
 		fetchSW.Failure(ctx, s.chunkLen,
 			attribute.String(failureReason, failureTypeRemoteRead))

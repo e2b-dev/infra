@@ -5,16 +5,25 @@ import (
 	"fmt"
 
 	"github.com/bits-and-blooms/bitset"
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
+// BuildFileInfo holds metadata about a build's data file, stored in the header
+// so the read path can avoid network round-trips (e.g. Size() calls to GCS).
+type BuildFileInfo struct {
+	Size     int64    // uncompressed file size
+	Checksum [32]byte // SHA-256 of compressed data; zero value means unknown/uncompressed
+}
+
 const NormalizeFixVersion = 3
 
 type Header struct {
 	Metadata    *Metadata
+	BuildFiles  map[uuid.UUID]BuildFileInfo // V4 only: per-build file size + checksum
 	blockStarts *bitset.BitSet
 	startMap    map[int64]*BuildMap
 

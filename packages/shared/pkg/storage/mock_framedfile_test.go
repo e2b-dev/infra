@@ -194,7 +194,7 @@ func (_c *MockFramedFile_Size_Call) RunAndReturn(run func(ctx context.Context) (
 }
 
 // StoreFile provides a mock function for the type MockFramedFile
-func (_mock *MockFramedFile) StoreFile(ctx context.Context, path string, opts *FramedUploadOptions) (*FrameTable, error) {
+func (_mock *MockFramedFile) StoreFile(ctx context.Context, path string, opts *FramedUploadOptions) (*FrameTable, [32]byte, error) {
 	ret := _mock.Called(ctx, path, opts)
 
 	if len(ret) == 0 {
@@ -202,23 +202,19 @@ func (_mock *MockFramedFile) StoreFile(ctx context.Context, path string, opts *F
 	}
 
 	var r0 *FrameTable
-	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *FramedUploadOptions) (*FrameTable, error)); ok {
+	var r1 [32]byte
+	var r2 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *FramedUploadOptions) (*FrameTable, [32]byte, error)); ok {
 		return returnFunc(ctx, path, opts)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *FramedUploadOptions) *FrameTable); ok {
-		r0 = returnFunc(ctx, path, opts)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*FrameTable)
-		}
+	if ret.Get(0) != nil {
+		r0 = ret.Get(0).(*FrameTable)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, *FramedUploadOptions) error); ok {
-		r1 = returnFunc(ctx, path, opts)
-	} else {
-		r1 = ret.Error(1)
+	if ret.Get(1) != nil {
+		r1 = ret.Get(1).([32]byte)
 	}
-	return r0, r1
+	r2 = ret.Error(2)
+	return r0, r1, r2
 }
 
 // MockFramedFile_StoreFile_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'StoreFile'
@@ -257,12 +253,12 @@ func (_c *MockFramedFile_StoreFile_Call) Run(run func(ctx context.Context, path 
 	return _c
 }
 
-func (_c *MockFramedFile_StoreFile_Call) Return(frameTable *FrameTable, err error) *MockFramedFile_StoreFile_Call {
-	_c.Call.Return(frameTable, err)
+func (_c *MockFramedFile_StoreFile_Call) Return(frameTable *FrameTable, checksum [32]byte, err error) *MockFramedFile_StoreFile_Call {
+	_c.Call.Return(frameTable, checksum, err)
 	return _c
 }
 
-func (_c *MockFramedFile_StoreFile_Call) RunAndReturn(run func(ctx context.Context, path string, opts *FramedUploadOptions) (*FrameTable, error)) *MockFramedFile_StoreFile_Call {
+func (_c *MockFramedFile_StoreFile_Call) RunAndReturn(run func(ctx context.Context, path string, opts *FramedUploadOptions) (*FrameTable, [32]byte, error)) *MockFramedFile_StoreFile_Call {
 	_c.Call.Return(run)
 	return _c
 }

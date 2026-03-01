@@ -108,57 +108,51 @@ func (o *fsObject) Put(_ context.Context, data []byte) error {
 	return err
 }
 
-func (o *fsObject) StoreFile(ctx context.Context, path string, opts *FramedUploadOptions) (*FrameTable, error) {
+func (o *fsObject) StoreFile(ctx context.Context, path string, opts *FramedUploadOptions) (_ *FrameTable, _ [32]byte, e error) {
 	if opts != nil && opts.CompressionType != CompressionNone {
 		return o.storeFileCompressed(ctx, path, opts)
 	}
 
 	r, err := os.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open file %s: %w", path, err)
+		e = fmt.Errorf("failed to open file %s: %w", path, err)
+		return
 	}
 	defer r.Close()
 
 	handle, err := o.getHandle(false)
 	if err != nil {
-		return nil, err
+		e = err
+		return
 	}
 	defer handle.Close()
 
-	_, err = io.Copy(handle, r)
-	if err != nil {
-		return nil, err
-	}
+	_, e = io.Copy(handle, r)
 
-	return nil, nil
+	return
 }
 
-func (o *fsObject) storeFileCompressed(ctx context.Context, localPath string, opts *FramedUploadOptions) (*FrameTable, error) {
+func (o *fsObject) storeFileCompressed(ctx context.Context, localPath string, opts *FramedUploadOptions) (*FrameTable, [32]byte, error) {
 	file, err := os.Open(localPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open local file %s: %w", localPath, err)
+		return nil, [32]byte{}, fmt.Errorf("failed to open local file %s: %w", localPath, err)
 	}
 	defer file.Close()
 
 	fi, err := file.Stat()
 	if err != nil {
-		return nil, fmt.Errorf("failed to stat local file %s: %w", localPath, err)
+		return nil, [32]byte{}, fmt.Errorf("failed to stat local file %s: %w", localPath, err)
 	}
 
 	// Write .uncompressed-size sidecar so Size() returns the correct value.
 	sidecarPath := o.path + "." + MetadataKeyUncompressedSize
 	if writeErr := os.WriteFile(sidecarPath, []byte(strconv.FormatInt(fi.Size(), 10)), 0o644); writeErr != nil {
-		return nil, fmt.Errorf("failed to write uncompressed-size sidecar for %s: %w", o.path, writeErr)
+		return nil, [32]byte{}, fmt.Errorf("failed to write uncompressed-size sidecar for %s: %w", o.path, writeErr)
 	}
 
 	uploader := &fsPartUploader{fullPath: o.path}
 
-	ft, err := CompressStream(ctx, file, opts, uploader)
-	if err != nil {
-		return nil, fmt.Errorf("failed to compress and upload %s: %w", localPath, err)
-	}
-
-	return ft, nil
+	return CompressStream(ctx, file, opts, uploader)
 }
 
 func (o *fsObject) openRangeReader(_ context.Context, off int64, length int) (io.ReadCloser, error) {

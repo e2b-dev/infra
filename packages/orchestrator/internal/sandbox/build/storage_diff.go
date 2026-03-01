@@ -20,10 +20,11 @@ type StorageDiff struct {
 	cacheKey    DiffStoreKey
 	storagePath string
 
-	blockSize       int64
-	metrics         blockmetrics.Metrics
-	persistence     storage.StorageProvider
-	compressionType storage.CompressionType
+	blockSize   int64
+	metrics     blockmetrics.Metrics
+	persistence storage.StorageProvider
+	fileSize    int64              // uncompressed; 0 means unknown (fall back to Size() call)
+	ft          *storage.FrameTable // nil for uncompressed builds
 }
 
 var _ Diff = (*StorageDiff)(nil)
@@ -43,7 +44,8 @@ func newStorageDiff(
 	blockSize int64,
 	metrics blockmetrics.Metrics,
 	persistence storage.StorageProvider,
-	ct storage.CompressionType,
+	fileSize int64,
+	ft *storage.FrameTable,
 ) (*StorageDiff, error) {
 	storagePath := storagePath(buildId, diffType)
 	if !isKnownDiffType(diffType) {
@@ -53,14 +55,15 @@ func newStorageDiff(
 	cachePath := GenerateDiffCachePath(basePath, buildId, diffType)
 
 	return &StorageDiff{
-		storagePath:     storagePath,
-		cachePath:       cachePath,
-		chunker:         utils.NewSetOnce[*block.Chunker](),
-		blockSize:       blockSize,
-		metrics:         metrics,
-		persistence:     persistence,
-		compressionType: ct,
-		cacheKey:        GetDiffStoreKey(buildId, diffType),
+		storagePath: storagePath,
+		cachePath:   cachePath,
+		chunker:     utils.NewSetOnce[*block.Chunker](),
+		blockSize:   blockSize,
+		metrics:     metrics,
+		persistence: persistence,
+		fileSize:    fileSize,
+		ft:          ft,
+		cacheKey:    GetDiffStoreKey(buildId, diffType),
 	}, nil
 }
 
@@ -95,33 +98,29 @@ func (b *StorageDiff) createChunker(ctx context.Context) (*block.Chunker, error)
 		return nil, fmt.Errorf("no asset found for %s (size is 0)", b.storagePath)
 	}
 
-	compressed := b.compressionType != storage.CompressionNone
-
-	return block.NewChunker(file, size, compressed, b.blockSize, b.cachePath, b.metrics)
+	return block.NewChunker(file, size, b.blockSize, b.cachePath, b.metrics)
 }
 
-// openDataFile opens the single data file based on compressionType.
-// For uncompressed builds, opens the raw file (e.g. "buildId/memfile").
-// For compressed builds, opens the compressed variant (e.g. "buildId/memfile.zstd").
+// openDataFile opens the single data file, using the FrameTable to determine
+// the compression suffix. Returns the uncompressed file size.
 //
-// The returned size is always the uncompressed diff file size (not the full
-// virtual address space, and not the compressed object size). For compressed
-// objects, Size() reads this from the MetadataKeyUncompressedSize object metadata
-// that was set during upload.
+// If fileSize was provided at construction (V4 header), it is used directly.
+// Otherwise (V3/legacy), falls back to obj.Size(ctx) which makes a network call.
 func (b *StorageDiff) openDataFile(ctx context.Context) (storage.FramedFile, int64, error) {
-	path := b.storagePath
-	if b.compressionType != storage.CompressionNone {
-		path = storage.CompressedPath(b.storagePath, b.compressionType)
-	}
+	path := b.storagePath + b.ft.CompressionTypeSuffix()
 
 	obj, err := b.persistence.OpenFramedFile(ctx, path)
 	if err != nil {
 		return nil, 0, fmt.Errorf("open asset %s: %w", path, err)
 	}
 
-	size, err := obj.Size(ctx)
-	if err != nil {
-		return nil, 0, fmt.Errorf("get size of asset %s: %w", path, err)
+	size := b.fileSize
+	if size == 0 {
+		// V3/legacy: fall back to network call.
+		size, err = obj.Size(ctx)
+		if err != nil {
+			return nil, 0, fmt.Errorf("get size of asset %s: %w", path, err)
+		}
 	}
 
 	return obj, size, nil

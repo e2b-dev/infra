@@ -12,24 +12,24 @@ import (
 // Each layer's upload proceeds as: data files → wait for previous → compressed headers → save cache.
 // waitForPreviousUploads ensures that by the time layer N finalizes its compressed headers,
 // all upstream layers (0..N-1) have completed both their data uploads and header uploads,
-// so all upstream frame tables are available in the shared PendingFrameTables.
+// so all upstream frame tables are available in the shared PendingBuildInfo.
 type UploadTracker struct {
 	mu      sync.Mutex
 	waitChs []chan struct{}
 
 	// pending collects frame tables from compressed uploads across all layers.
-	pending *sandbox.PendingFrameTables
+	pending *sandbox.PendingBuildInfo
 }
 
 func NewUploadTracker() *UploadTracker {
 	return &UploadTracker{
 		waitChs: make([]chan struct{}, 0),
-		pending: &sandbox.PendingFrameTables{},
+		pending: &sandbox.PendingBuildInfo{},
 	}
 }
 
-// Pending returns the shared PendingFrameTables for collecting frame tables.
-func (t *UploadTracker) Pending() *sandbox.PendingFrameTables {
+// Pending returns the shared PendingBuildInfo for collecting frame tables.
+func (t *UploadTracker) Pending() *sandbox.PendingBuildInfo {
 	return t.pending
 }
 

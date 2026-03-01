@@ -327,7 +327,7 @@ func compressArtifact(ctx context.Context, cfg *compressConfig, buildID, name, f
 
 	// Compress
 	compressStart := time.Now()
-	frameTable, err := storage.CompressStream(ctx, sectionReader, opts, uploader)
+	frameTable, _, err := storage.CompressStream(ctx, sectionReader, opts, uploader)
 	if err != nil {
 		return fmt.Errorf("compress: %w", err)
 	}
@@ -357,7 +357,7 @@ func compressArtifact(ctx context.Context, cfg *compressConfig, buildID, name, f
 	h.Metadata.Version = header.MetadataVersionCompressed
 
 	// Serialize header (V4: metadata raw + LZ4-compressed mappings)
-	headerBytes, err := header.SerializeHeader(h.Metadata, h.Mapping)
+	headerBytes, err := header.SerializeHeader(h)
 	if err != nil {
 		return fmt.Errorf("serialize v4 header: %w", err)
 	}

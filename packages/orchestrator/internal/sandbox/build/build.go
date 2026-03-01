@@ -75,7 +75,8 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 			continue
 		}
 
-		mappedBuild, err := b.getBuild(ctx, mappedToBuild.BuildId, storage.GetCompressionType(mappedToBuild.FrameTable))
+		size := b.buildFileSize(mappedToBuild.BuildId)
+		mappedBuild, err := b.getBuild(ctx, mappedToBuild.BuildId, size, mappedToBuild.FrameTable)
 		if err != nil {
 			return 0, fmt.Errorf("failed to get build: %w", err)
 		}
@@ -107,7 +108,8 @@ func (b *File) Slice(ctx context.Context, off, _ int64) ([]byte, error) {
 		return header.EmptyHugePage, nil
 	}
 
-	diff, err := b.getBuild(ctx, mappedBuild.BuildId, storage.GetCompressionType(mappedBuild.FrameTable))
+	size := b.buildFileSize(mappedBuild.BuildId)
+	diff, err := b.getBuild(ctx, mappedBuild.BuildId, size, mappedBuild.FrameTable)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get build: %w", err)
 	}
@@ -115,7 +117,22 @@ func (b *File) Slice(ctx context.Context, off, _ int64) ([]byte, error) {
 	return diff.GetBlock(ctx, int64(mappedBuild.Offset), int64(b.header.Metadata.BlockSize), mappedBuild.FrameTable)
 }
 
-func (b *File) getBuild(ctx context.Context, buildID uuid.UUID, ct storage.CompressionType) (Diff, error) {
+// buildFileSize returns the uncompressed file size for buildID from the header's
+// BuildFiles map. Returns 0 if unknown (V3/legacy), which signals the read path
+// to fall back to a Size() call.
+func (b *File) buildFileSize(buildID uuid.UUID) int64 {
+	if b.header.BuildFiles == nil {
+		return 0
+	}
+	info, ok := b.header.BuildFiles[buildID]
+	if !ok {
+		return 0
+	}
+
+	return info.Size
+}
+
+func (b *File) getBuild(ctx context.Context, buildID uuid.UUID, fileSize int64, ft *storage.FrameTable) (Diff, error) {
 	storageDiff, err := newStorageDiff(
 		b.store.cachePath,
 		buildID.String(),
@@ -123,7 +140,8 @@ func (b *File) getBuild(ctx context.Context, buildID uuid.UUID, ct storage.Compr
 		int64(b.header.Metadata.BlockSize),
 		b.metrics,
 		b.persistence,
-		ct,
+		fileSize,
+		ft,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create storage diff: %w", err)
