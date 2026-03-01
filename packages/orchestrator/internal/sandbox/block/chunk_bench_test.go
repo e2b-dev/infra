@@ -38,14 +38,12 @@ var profiles = []backendProfile{
 	{name: "NFS", ttfb: 1 * time.Millisecond, bandwidth: 500 * megabyte},
 }
 
-type codecConfig struct {
+var benchCodecs = []struct {
 	name            string
 	compressionType storage.CompressionType
 	level           int
 	frameSize       int
-}
-
-var benchCodecs = []codecConfig{
+}{
 	{name: "LZ4/2MB", compressionType: storage.CompressionLZ4, level: 0, frameSize: 2 * megabyte},
 	{name: "Zstd1/2MB", compressionType: storage.CompressionZstd, level: 1, frameSize: 2 * megabyte},
 	{name: "Zstd2/2MB", compressionType: storage.CompressionZstd, level: 2, frameSize: 2 * megabyte},
@@ -135,6 +133,47 @@ func frameTableCompressedSize(ft *storage.FrameTable) int64 {
 	return total
 }
 
+// newColdSetup creates a coldSetupF for any chunker variant. For compressed
+// runs, pass the pre-compressed data and frame table; for uncompressed/legacy
+// pass nil for both.
+func newColdSetup(data []byte, dataSize int64, ft *storage.FrameTable, compressedData []byte, legacy bool) coldSetupF {
+	storeBytes := dataSize
+	if ft != nil {
+		storeBytes = frameTableCompressedSize(ft)
+	}
+
+	return func(tb testing.TB, profile backendProfile, blockSize int64) coldSetup {
+		tb.Helper()
+
+		src := data
+		if compressedData != nil {
+			src = compressedData
+		}
+
+		getter := &slowFrameGetter{data: src, ttfb: profile.ttfb, bandwidth: profile.bandwidth}
+
+		if legacy {
+			c := newLegacyChunker(tb, getter, dataSize, blockSize)
+
+			return coldSetup{
+				read:       func(ctx context.Context, off, length int64) ([]byte, error) { return c.Slice(ctx, off, length) },
+				close:      func() { c.Close() },
+				fetchCount: func() int64 { return getter.fetchCount.Load() },
+				storeBytes: storeBytes,
+			}
+		}
+
+		c := newChunker(tb, getter, dataSize, blockSize)
+
+		return coldSetup{
+			read:       func(ctx context.Context, off, length int64) ([]byte, error) { return c.GetBlock(ctx, off, length, ft) },
+			close:      func() { c.Close() },
+			fetchCount: func() int64 { return getter.fetchCount.Load() },
+			storeBytes: storeBytes,
+		}
+	}
+}
+
 // runCold benchmarks cold-cache concurrent reads. Each b.N iteration creates
 // a fresh cache and reads all offsets concurrently with benchWorkers goroutines.
 func runCold(b *testing.B, dataSize, blockSize int64, profile backendProfile, newIter coldSetupF) {
@@ -208,85 +247,41 @@ func runCacheHit(b *testing.B, dataSize, blockSize int64, read benchReadF) {
 	}
 }
 
-// newLegacySetup uses the old legacy chunker with a slow uncompressed backend.
-func newLegacySetup(data []byte, dataSize int64) coldSetupF {
-	return func(tb testing.TB, profile backendProfile, blockSize int64) coldSetup {
-		tb.Helper()
-		slow := &slowFrameGetter{data: data, ttfb: profile.ttfb, bandwidth: profile.bandwidth}
-		c := newLegacyChunker(tb, slow, dataSize, blockSize)
-
-		return coldSetup{
-			read:       func(ctx context.Context, off, length int64) ([]byte, error) { return c.Slice(ctx, off, length) },
-			close:      func() { c.Close() },
-			fetchCount: func() int64 { return slow.fetchCount.Load() },
-			storeBytes: benchDataSize,
-		}
-	}
-}
-
-// newUncompressedSetup uses the new Chunker with a slow uncompressed backend.
-func newUncompressedSetup(data []byte, dataSize int64) coldSetupF {
-	return func(tb testing.TB, profile backendProfile, blockSize int64) coldSetup {
-		tb.Helper()
-		slow := &slowFrameGetter{data: data, ttfb: profile.ttfb, bandwidth: profile.bandwidth}
-		c := newChunker(tb, slow, dataSize, blockSize)
-
-		return coldSetup{
-			read:       func(ctx context.Context, off, length int64) ([]byte, error) { return c.GetBlock(ctx, off, length, nil) },
-			close:      func() { c.Close() },
-			fetchCount: func() int64 { return slow.fetchCount.Load() },
-			storeBytes: benchDataSize,
-		}
-	}
-}
-
-// newCompressedSetup uses the new Chunker with real compressed data + decompression.
-func newCompressedSetup(dataSize int64, ft *storage.FrameTable, compressedData []byte) coldSetupF {
-	cBytes := frameTableCompressedSize(ft)
-
-	return func(tb testing.TB, profile backendProfile, blockSize int64) coldSetup {
-		tb.Helper()
-		getter := &slowFrameGetter{
-			data:      compressedData,
-			ttfb:      profile.ttfb,
-			bandwidth: profile.bandwidth,
-		}
-		c := newChunker(tb, getter, dataSize, blockSize)
-
-		return coldSetup{
-			read:       func(ctx context.Context, off, length int64) ([]byte, error) { return c.GetBlock(ctx, off, length, ft) },
-			close:      func() { c.Close() },
-			fetchCount: func() int64 { return getter.fetchCount.Load() },
-			storeBytes: cBytes,
-		}
-	}
-}
-
 // --- BenchmarkCacheHit ------------------------------------------------------
 
 func BenchmarkCacheHit(b *testing.B) {
 	data := generateSemiRandomData(benchDataSize)
 	dataSize := int64(len(data))
 
+	cases := []struct {
+		name string
+		read func(b *testing.B, blockSize int64) (benchReadF, func())
+	}{
+		{
+			name: "Legacy",
+			read: func(b *testing.B, blockSize int64) (benchReadF, func()) {
+				c := newLegacyChunker(b, &slowFrameGetter{data: data}, dataSize, blockSize)
+				return func(ctx context.Context, off, length int64) ([]byte, error) { return c.Slice(ctx, off, length) }, func() { c.Close() }
+			},
+		},
+		{
+			name: "Uncompressed",
+			read: func(b *testing.B, blockSize int64) (benchReadF, func()) {
+				c := newChunker(b, &slowFrameGetter{data: data}, dataSize, blockSize)
+				return func(ctx context.Context, off, length int64) ([]byte, error) { return c.GetBlock(ctx, off, length, nil) }, func() { c.Close() }
+			},
+		},
+	}
+
 	for _, blockSize := range benchBlockSizes {
 		b.Run(fmt.Sprintf("block=%s", fmtSize(blockSize)), func(b *testing.B) {
-			b.Run("Legacy", func(b *testing.B) {
-				getter := &slowFrameGetter{data: data}
-				c := newLegacyChunker(b, getter, dataSize, blockSize)
-				defer c.Close()
-				runCacheHit(b, dataSize, blockSize, func(ctx context.Context, off, length int64) ([]byte, error) {
-					return c.Slice(ctx, off, length)
+			for _, tc := range cases {
+				b.Run(tc.name, func(b *testing.B) {
+					read, cleanup := tc.read(b, blockSize)
+					defer cleanup()
+					runCacheHit(b, dataSize, blockSize, read)
 				})
-			})
-
-			b.Run("Uncompressed", func(b *testing.B) {
-				getter := &slowFrameGetter{data: data}
-				c := newChunker(b, getter, dataSize, blockSize)
-				defer c.Close()
-				runCacheHit(b, dataSize, blockSize, func(ctx context.Context, off, length int64) ([]byte, error) {
-					return c.GetBlock(ctx, off, length, nil)
-				})
-			})
+			}
 		})
 	}
 }
@@ -320,27 +315,27 @@ func BenchmarkColdConcurrent(b *testing.B) {
 
 	for _, profile := range profiles {
 		b.Run(profile.name, func(b *testing.B) {
-			// Uncompressed paths: Legacy and Uncompressed (new Chunker).
+			// Uncompressed paths: Legacy and new Chunker.
 			b.Run("no-frame", func(b *testing.B) {
 				for _, blockSize := range benchBlockSizes {
 					b.Run(fmt.Sprintf("block=%s", fmtSize(blockSize)), func(b *testing.B) {
 						b.Run("Legacy", func(b *testing.B) {
-							runCold(b, dataSize, blockSize, profile, newLegacySetup(data, dataSize))
+							runCold(b, dataSize, blockSize, profile, newColdSetup(data, dataSize, nil, nil, true))
 						})
 						b.Run("Uncompressed", func(b *testing.B) {
-							runCold(b, dataSize, blockSize, profile, newUncompressedSetup(data, dataSize))
+							runCold(b, dataSize, blockSize, profile, newColdSetup(data, dataSize, nil, nil, false))
 						})
 					})
 				}
 			})
 
-			// Compressed paths: all codec options
+			// Compressed paths: all codec options.
 			for ci, codec := range benchCodecs {
 				entry := bundles[ci]
 				b.Run(codec.name, func(b *testing.B) {
 					for _, blockSize := range benchBlockSizes {
 						b.Run(fmt.Sprintf("block=%s", fmtSize(blockSize)), func(b *testing.B) {
-							runCold(b, dataSize, blockSize, profile, newCompressedSetup(dataSize, entry.ft, entry.compressedData))
+							runCold(b, dataSize, blockSize, profile, newColdSetup(data, dataSize, entry.ft, entry.compressedData, false))
 						})
 					}
 				})
