@@ -52,6 +52,14 @@ output "custom_environments_repository_name" {
   value = aws_ecr_repository.custom_environments.name
 }
 
+output "api_repository_name" {
+  value = aws_ecr_repository.api.name
+}
+
+output "db_migrator_repository_name" {
+  value = aws_ecr_repository.db_migrator.name
+}
+
 // ---
 // Cloudflare
 // ---
