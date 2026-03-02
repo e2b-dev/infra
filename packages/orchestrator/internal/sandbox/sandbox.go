@@ -360,7 +360,6 @@ func (f *Factory) CreateSandbox(
 		cgroupFD,
 	)
 
-	releaseCgroupFD(ctx, cgroupHandle, runtime.SandboxID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create FC: %w", err)
 	}
@@ -679,8 +678,6 @@ func (f *Factory) ResumeSandbox(
 			Bandwidth: fc.TokenBucketConfig(resumeThrottleConfig.Bandwidth),
 		},
 	)
-
-	releaseCgroupFD(ctx, cgroupHandle, runtime.SandboxID)
 
 	if fcStartErr != nil {
 		return nil, fmt.Errorf("failed to start FC: %w", fcStartErr)
