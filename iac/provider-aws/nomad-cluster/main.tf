@@ -203,8 +203,8 @@ module "control_server" {
   setup_bucket_name = var.setup_bucket_name
   setup_files_hash  = local.setup_files_hash
 
-  security_group_ids = var.control_server_security_group_ids
-  target_group_arns  = var.control_server_target_group_arns
+  security_group_ids  = var.control_server_security_group_ids
+  target_group_arns   = var.control_server_target_group_arns
   vpc_private_subnets = var.vpc_private_subnets
 
   image_family_prefix = var.control_server_image_family_prefix
@@ -246,7 +246,7 @@ module "api" {
   consul_dns_request_token     = var.consul_dns_request_token_secret
 
   aws_ecr_account_repository_domain = local.aws_ecr_account_repository_domain
-  loki_bucket_arn                    = data.aws_s3_bucket.loki_bucket.arn
+  loki_bucket_arn                   = data.aws_s3_bucket.loki_bucket.arn
 
 }
 
@@ -317,12 +317,12 @@ module "build" {
   fc_versions_bucket_name     = var.fc_versions_bucket_name
   fc_env_pipeline_bucket_name = var.fc_env_pipeline_bucket_name
 
-  fc_env_pipeline_bucket_arn      = data.aws_s3_bucket.fc_env_pipeline.arn
-  fc_kernels_bucket_arn           = data.aws_s3_bucket.fc_kernels.arn
-  fc_versions_bucket_arn          = data.aws_s3_bucket.fc_versions.arn
-  templates_bucket_arn            = data.aws_s3_bucket.templates_bucket.arn
+  fc_env_pipeline_bucket_arn       = data.aws_s3_bucket.fc_env_pipeline.arn
+  fc_kernels_bucket_arn            = data.aws_s3_bucket.fc_kernels.arn
+  fc_versions_bucket_arn           = data.aws_s3_bucket.fc_versions.arn
+  templates_bucket_arn             = data.aws_s3_bucket.templates_bucket.arn
   templates_build_cache_bucket_arn = data.aws_s3_bucket.templates_build_cache_bucket.arn
-  custom_environments_repo_arn    = data.aws_ecr_repository.custom_environments.arn
+  custom_environments_repo_arn     = data.aws_ecr_repository.custom_environments.arn
 }
 
 module "client" {
@@ -359,11 +359,11 @@ module "client" {
   fc_versions_bucket_name     = var.fc_versions_bucket_name
   fc_env_pipeline_bucket_name = var.fc_env_pipeline_bucket_name
 
-  fc_env_pipeline_bucket_arn      = data.aws_s3_bucket.fc_env_pipeline.arn
-  fc_kernels_bucket_arn           = data.aws_s3_bucket.fc_kernels.arn
-  fc_versions_bucket_arn          = data.aws_s3_bucket.fc_versions.arn
-  templates_bucket_arn            = data.aws_s3_bucket.templates_bucket.arn
+  fc_env_pipeline_bucket_arn       = data.aws_s3_bucket.fc_env_pipeline.arn
+  fc_kernels_bucket_arn            = data.aws_s3_bucket.fc_kernels.arn
+  fc_versions_bucket_arn           = data.aws_s3_bucket.fc_versions.arn
+  templates_bucket_arn             = data.aws_s3_bucket.templates_bucket.arn
   templates_build_cache_bucket_arn = data.aws_s3_bucket.templates_build_cache_bucket.arn
-  custom_environments_repo_arn    = data.aws_ecr_repository.custom_environments.arn
+  custom_environments_repo_arn     = data.aws_ecr_repository.custom_environments.arn
 
 }

@@ -52,7 +52,7 @@ module "init" {
   prefix        = var.prefix
   bucket_prefix = var.bucket_prefix
 
-  region                      = data.aws_region.current.name
+  region = data.aws_region.current.name
   endpoint_ingress_subnet_ids = [
     aws_security_group.cluster_node.id
   ]
@@ -180,12 +180,12 @@ module "nomad" {
   clickhouse_node_pool   = local.clickhouse_pool_name
   clickhouse_jobs_prefix = local.clickhouse_jobs_prefix
 
-  api_cluster_size            = var.api_cluster_size
-  api_repository_name         = module.init.api_repository_name
-  db_migrator_repository_name = module.init.db_migrator_repository_name
-  postgres_connection_string  = module.init.postgres_connection_string
-  supabase_jwt_secrets        = module.init.supabase_jwt_secrets
-  admin_token                 = module.init.admin_token
+  api_cluster_size               = var.api_cluster_size
+  api_repository_name            = module.init.api_repository_name
+  db_migrator_repository_name    = module.init.db_migrator_repository_name
+  postgres_connection_string     = module.init.postgres_connection_string
+  supabase_jwt_secrets           = module.init.supabase_jwt_secrets
+  admin_token                    = module.init.admin_token
   sandbox_access_token_hash_seed = module.init.sandbox_access_token_hash_seed
 
   ingress_port  = local.ingress_port

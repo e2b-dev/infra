@@ -87,25 +87,25 @@ module "api" {
   memory_mb = var.api_memory_mb
   cpu_count = var.api_cpu_count
 
-  domain_name                             = var.domain_name
-  orchestrator_port                       = var.orchestrator_port
-  otel_collector_grpc_endpoint            = "localhost:${var.otel_collector_grpc_port}"
-  logs_collector_address                  = "http://localhost:${var.logs_proxy_port}"
-  port_name                               = "api"
-  port_number                             = var.api_port
-  environment                             = var.environment
-  api_docker_image                        = "${var.aws_account_id}.dkr.ecr.${var.aws_region}.amazonaws.com/${var.api_repository_name}:latest"
-  postgres_connection_string              = var.postgres_connection_string
-  supabase_jwt_secrets                    = var.supabase_jwt_secrets
-  nomad_acl_token                         = var.nomad_acl_token
-  admin_token                             = var.admin_token
-  redis_url                               = var.redis_url
-  redis_cluster_url                       = var.redis_cluster_url
-  redis_tls_ca_base64                     = var.redis_tls_ca_base64
-  clickhouse_connection_string            = local.clickhouse_connection_string
-  sandbox_access_token_hash_seed          = var.sandbox_access_token_hash_seed
-  db_migrator_docker_image                = "${var.aws_account_id}.dkr.ecr.${var.aws_region}.amazonaws.com/${var.db_migrator_repository_name}:latest"
-  launch_darkly_api_key                   = var.launch_darkly_api_key
+  domain_name                    = var.domain_name
+  orchestrator_port              = var.orchestrator_port
+  otel_collector_grpc_endpoint   = "localhost:${var.otel_collector_grpc_port}"
+  logs_collector_address         = "http://localhost:${var.logs_proxy_port}"
+  port_name                      = "api"
+  port_number                    = var.api_port
+  environment                    = var.environment
+  api_docker_image               = "${var.aws_account_id}.dkr.ecr.${var.aws_region}.amazonaws.com/${var.api_repository_name}:latest"
+  postgres_connection_string     = var.postgres_connection_string
+  supabase_jwt_secrets           = var.supabase_jwt_secrets
+  nomad_acl_token                = var.nomad_acl_token
+  admin_token                    = var.admin_token
+  redis_url                      = var.redis_url
+  redis_cluster_url              = var.redis_cluster_url
+  redis_tls_ca_base64            = var.redis_tls_ca_base64
+  clickhouse_connection_string   = local.clickhouse_connection_string
+  sandbox_access_token_hash_seed = var.sandbox_access_token_hash_seed
+  db_migrator_docker_image       = "${var.aws_account_id}.dkr.ecr.${var.aws_region}.amazonaws.com/${var.db_migrator_repository_name}:latest"
+  launch_darkly_api_key          = var.launch_darkly_api_key
 }
 
 data "aws_s3_object" "orchestrator" {
