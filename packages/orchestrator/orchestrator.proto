@@ -55,7 +55,6 @@ message SandboxConfig {
 
 message SandboxAutoResumeConfig {
   reserved 1;
-  reserved "policy";
   bool enabled = 2;
 }
 
