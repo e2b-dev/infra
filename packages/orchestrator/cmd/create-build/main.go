@@ -193,7 +193,7 @@ func doBuild(
 		))
 	}
 
-	l, err := logger.NewLogger(ctx, logger.LoggerConfig{
+	l, err := logger.NewLogger(logger.LoggerConfig{
 		ServiceName:   "build-template",
 		IsInternal:    true,
 		IsDebug:       verbose,
