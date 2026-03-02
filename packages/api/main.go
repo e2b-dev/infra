@@ -40,6 +40,7 @@ import (
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+	sharedmiddleware "github.com/e2b-dev/infra/packages/shared/pkg/middleware"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	sharedutils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -163,35 +164,31 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 
 	r.Use(customMiddleware.InitLaunchDarklyContext)
 
-	r.Use(
-		// Request logging must be executed after authorization (if required) is done,
-		// so that we can log team ID.
-		customMiddleware.ExcludeRoutes(
-			func(c *gin.Context) {
-				teamID := ""
+	// Request logging must be executed after authorization (if required) is done,
+	// so that we can log team ID.
+	r.Use(sharedmiddleware.LoggingMiddleware(l, sharedmiddleware.Config{
+		TimeFormat:   time.RFC3339Nano,
+		UTC:          true,
+		DefaultLevel: zap.InfoLevel,
+		Skipper: func(c *gin.Context) bool {
+			switch c.FullPath() {
+			case "/health",
+				"/sandboxes/:sandboxID/refreshes",
+				"/templates/:templateID/builds/:buildID/logs",
+				"/templates/:templateID/builds/:buildID/status":
+				return true
+			}
 
-				// Get team from context, use TeamContextKey
-				if teamInfo, ok := auth.GetTeamInfo(c); ok {
-					teamID = teamInfo.ID.String()
-				}
+			return false
+		},
+		Context: func(c *gin.Context) []zapcore.Field {
+			if teamInfo, ok := auth.GetTeamInfo(c); ok {
+				return []zapcore.Field{logger.WithTeamID(teamInfo.ID.String())}
+			}
 
-				reqLogger := l
-				if teamID != "" {
-					reqLogger = l.With(logger.WithTeamID(teamID))
-				}
-
-				customMiddleware.LoggingMiddleware(reqLogger, customMiddleware.Config{
-					TimeFormat:   time.RFC3339Nano,
-					UTC:          true,
-					DefaultLevel: zap.InfoLevel,
-				})(c)
-			},
-			"/health",
-			"/sandboxes/:sandboxID/refreshes",
-			"/templates/:templateID/builds/:buildID/logs",
-			"/templates/:templateID/builds/:buildID/status",
-		),
-	)
+			return nil
+		},
+	}))
 
 	// We now register our store above as the handler for the interface
 	api.RegisterHandlersWithOptions(r, apiStore, api.GinServerOptions{
