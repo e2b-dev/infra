@@ -2,6 +2,11 @@ variable "prefix" {
   type = string
 }
 
+variable "name" {
+  type    = string
+  default = "client"
+}
+
 variable "aws_account_id" {
   type = string
 }

@@ -23,7 +23,7 @@ locals {
 }
 
 resource "aws_iam_policy" "client_node_policy" {
-  name   = "${var.prefix}client-node-policy"
+  name   = "${var.prefix}${var.name}-node-policy"
   policy = data.aws_iam_policy_document.client_node_policy.json
 }
 
@@ -88,7 +88,7 @@ data "aws_iam_policy_document" "client_node_policy" {
 }
 
 resource "aws_iam_role" "client" {
-  name               = "${var.prefix}client-node"
+  name               = "${var.prefix}${var.name}-node"
   assume_role_policy = var.cluster_node_ec2_policy_json
 }
 
@@ -103,7 +103,7 @@ resource "aws_iam_role_policy_attachment" "client" {
 }
 
 resource "aws_iam_instance_profile" "client" {
-  name = "${var.prefix}client-node"
+  name = "${var.prefix}${var.name}-node"
   role = aws_iam_role.client.name
 }
 
@@ -118,7 +118,7 @@ data "aws_ami" "client" {
 }
 
 resource "aws_launch_template" "client" {
-  name          = "${var.prefix}client-node"
+  name          = "${var.prefix}${var.name}-node"
   image_id      = data.aws_ami.client.id
   instance_type = var.machine_type
   user_data     = base64encode(local.user_data)
@@ -147,7 +147,7 @@ resource "aws_launch_template" "client" {
     resource_type = "instance"
 
     tags = {
-      Name = "${var.prefix}orch-client"
+      Name = "${var.prefix}orch-${var.name}"
 
       // Tag to identify Nomad cluster members so auto-join can work
       (var.cluster_tag_name) = var.cluster_tag_value
@@ -156,7 +156,7 @@ resource "aws_launch_template" "client" {
 }
 
 resource "aws_autoscaling_group" "client" {
-  name                = "${var.prefix}client"
+  name                = "${var.prefix}${var.name}"
   vpc_zone_identifier = var.vpc_private_subnets
   health_check_type   = "EC2"
 
