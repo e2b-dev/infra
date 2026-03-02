@@ -157,43 +157,58 @@ receivers:
           system.processes.created:
             enabled: true
 
+      # PSI (Pressure Stall Information) - tracks kernel stalls
+      # Shows % of time tasks are stalled waiting for resources
+      # Requires Linux 4.20+ with CONFIG_PSI=y
+      pressure:
+        metrics:
+          system.pressure.cpu:
+            enabled: true
+          system.pressure.memory:
+            enabled: true
+          system.pressure.io:
+            enabled: true
+
       # entirely disabled, so we omit the module
       #system:
       #  metrics:
       #    system.uptime:
       #      enabled: false
 
-      # process:
-      #   mute_process_all_errors: true
-      #   metrics:
-      #     process.cpu.time:
-      #       enabled: false
-      #     process.disk.io:
-      #       enabled: false
-      #     process.memory.usage:
-      #       enabled: false
-      #     process.memory.virtual:
-      #       enabled: false
-      #     process.context_switches:
-      #       enabled: true
-      #     process.cpu.utilization:
-      #       enabled: false
-      #     process.disk.operations:
-      #       enabled: false
-      #     process.handles:
-      #       enabled: false
-      #     process.memory.utilization:
-      #       enabled: false
-      #     process.open_file_descriptors:
-      #       enabled: false
-      #     process.paging.faults:
-      #       enabled: false
-      #     process.signals_pending:
-      #       enabled: false
-      #     process.threads:
-      #       enabled: false
-      #     process.uptime:
-      #       enabled: false
+      # FD count for orchestrator only
+      process:
+        mute_process_all_errors: true
+        include:
+          match_type: regexp
+          names:
+            - "^orchestrator$"
+        metrics:
+          process.cpu.time:
+            enabled: true
+          process.disk.io:
+            enabled: true
+          process.memory.usage:
+            enabled: true
+          process.memory.virtual:
+            enabled: false
+          process.context_switches:
+            enabled: true
+          process.cpu.utilization:
+            enabled: false
+          process.disk.operations:
+            enabled: true
+          process.handles:
+            enabled: false
+          process.memory.utilization:
+            enabled: false
+          process.open_file_descriptors:
+            enabled: true
+          process.paging.faults:
+            enabled: true
+          process.signals_pending:
+            enabled: false
+          process.threads:
+            enabled: true
 
 processors:
   batch:
@@ -202,6 +217,33 @@ processors:
   batch/clickhouse:
     timeout: 5s
     send_batch_size: 50000
+
+  resource/host_metrics_node:
+    attributes:
+      - key: node.id
+        value: $${NODE_ID}
+        action: insert
+
+  # Drop redundant process attributes, keep pid and executable.name for identification.
+  # PID is stable since the orchestrator doesn't restart during normal operation.
+  # Uses transform processor to delete at both resource and datapoint levels,
+  # since the process scraper may emit these as either.
+  transform/drop_process_attrs:
+    metric_statements:
+      - context: resource
+        statements:
+          - delete_key(attributes, "process.parent_pid")
+          - delete_key(attributes, "process.command")
+          - delete_key(attributes, "process.command_line")
+          - delete_key(attributes, "process.executable.path")
+          - delete_key(attributes, "process.owner")
+      - context: datapoint
+        statements:
+          - delete_key(attributes, "process.parent_pid")
+          - delete_key(attributes, "process.command")
+          - delete_key(attributes, "process.command_line")
+          - delete_key(attributes, "process.executable.path")
+          - delete_key(attributes, "process.owner")
 
   # keep only metrics that are used
   filter/otlp:
@@ -225,6 +267,11 @@ processors:
           - "otelcol.receiver.refused.*"
           - "pgxpool.*"
           - "traefik.*"
+          # Go runtime metrics - only essentials
+          - "runtime\\.go\\.goroutines"
+          - "runtime\\.go\\.gc\\.pause_total"
+          - "runtime\\.go\\.mem\\.heap_inuse"
+          - "runtime\\.go\\.mem\\.heap_alloc"
 
   filter/only_client_allocs:
     metrics:
@@ -469,6 +516,8 @@ service:
       receivers:
         - hostmetrics
       processors:
+        - resource/host_metrics_node
+        - transform/drop_process_attrs
         - resourcedetection
         - transform/set-name
         - metricstransform/single_cpu
