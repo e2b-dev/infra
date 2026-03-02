@@ -71,6 +71,7 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 
 	if params.Path == nil || *params.Path == "" {
 		jsonError(w, http.StatusBadRequest, fmt.Errorf("path is required"))
+
 		return
 	}
 
@@ -135,7 +136,10 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(UploadInit{UploadId: uploadId})
+
+	if err := json.NewEncoder(w).Encode(UploadInit{UploadId: uploadId}); err != nil {
+		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("failed to encode upload init response")
+	}
 }
 
 func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, uploadId UploadId, params PutFilesUploadUploadIdParams) {
@@ -143,11 +147,13 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 
 	if _, err := a.getUpload(uploadId); err != nil {
 		jsonError(w, http.StatusNotFound, err)
+
 		return
 	}
 
 	if params.PartNumber < 0 {
 		jsonError(w, http.StatusBadRequest, fmt.Errorf("partNumber must be non-negative"))
+
 		return
 	}
 
@@ -157,6 +163,7 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 	if err != nil {
 		if errors.Is(err, syscall.ENOSPC) {
 			jsonError(w, http.StatusInsufficientStorage, fmt.Errorf("not enough disk space available"))
+
 			return
 		}
 
@@ -170,6 +177,7 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 	if err != nil {
 		if errors.Is(err, syscall.ENOSPC) {
 			jsonError(w, http.StatusInsufficientStorage, fmt.Errorf("not enough disk space available"))
+
 			return
 		}
 
@@ -180,10 +188,13 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(UploadPartInfo{
+
+	if err := json.NewEncoder(w).Encode(UploadPartInfo{
 		PartNumber: params.PartNumber,
 		Size:       written,
-	})
+	}); err != nil {
+		a.logger.Error().Err(err).Str("uploadId", uploadId).Msg("failed to encode upload part response")
+	}
 }
 
 func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Request, uploadId UploadId) {
@@ -193,6 +204,7 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 	meta, err := a.claimUpload(uploadId)
 	if err != nil {
 		jsonError(w, http.StatusNotFound, err)
+
 		return
 	}
 
@@ -202,6 +214,7 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error reading parts directory: %w", err))
+
 		return
 	}
 
@@ -217,12 +230,14 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 	sort.Slice(partNames, func(i, j int) bool {
 		ni, _ := strconv.Atoi(partNames[i])
 		nj, _ := strconv.Atoi(partNames[j])
+
 		return ni < nj
 	})
 
 	err = permissions.EnsureDirs(filepath.Dir(meta.Path), meta.UID, meta.GID)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error ensuring directories: %w", err))
+
 		return
 	}
 
@@ -234,6 +249,7 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 	if err != nil {
 		if errors.Is(err, syscall.ENOSPC) {
 			jsonError(w, http.StatusInsufficientStorage, fmt.Errorf("not enough disk space available"))
+
 			return
 		}
 
@@ -272,6 +288,7 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 
 			if errors.Is(err, syscall.ENOSPC) {
 				jsonError(w, http.StatusInsufficientStorage, fmt.Errorf("not enough disk space available"))
+
 				return
 			}
 
@@ -305,10 +322,13 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(UploadComplete{
+
+	if err := json.NewEncoder(w).Encode(UploadComplete{
 		Path: meta.Path,
 		Size: totalSize,
-	})
+	}); err != nil {
+		a.logger.Error().Err(err).Str("uploadId", uploadId).Msg("failed to encode upload complete response")
+	}
 }
 
 func (a *API) DeleteFilesUploadUploadId(w http.ResponseWriter, r *http.Request, uploadId UploadId) {
@@ -316,6 +336,7 @@ func (a *API) DeleteFilesUploadUploadId(w http.ResponseWriter, r *http.Request, 
 
 	if _, err := a.claimUpload(uploadId); err != nil {
 		jsonError(w, http.StatusNotFound, err)
+
 		return
 	}
 
