@@ -271,7 +271,6 @@ components:
       description: The upload session ID
       schema:
         type: string
-        format: uuid
 
   requestBodies:
     File:

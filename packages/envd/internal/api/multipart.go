@@ -9,6 +9,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"syscall"
 
 	"github.com/google/uuid"
@@ -35,6 +36,22 @@ func uploadDir(uploadId string) string {
 
 func (a *API) getUpload(uploadId string) (*uploadMetadata, error) {
 	val, ok := a.uploads.Load(uploadId)
+	if !ok {
+		return nil, fmt.Errorf("upload session not found")
+	}
+
+	meta, ok := val.(*uploadMetadata)
+	if !ok {
+		return nil, fmt.Errorf("invalid upload session data")
+	}
+
+	return meta, nil
+}
+
+// claimUpload atomically loads and deletes the upload session so that only
+// one concurrent caller can proceed (used by Complete and Delete).
+func (a *API) claimUpload(uploadId string) (*uploadMetadata, error) {
+	val, ok := a.uploads.LoadAndDelete(uploadId)
 	if !ok {
 		return nil, fmt.Errorf("upload session not found")
 	}
@@ -172,13 +189,15 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Request, uploadId UploadId) {
 	defer r.Body.Close()
 
-	meta, err := a.getUpload(uploadId)
+	// Atomically claim the session so concurrent Complete calls are serialized.
+	meta, err := a.claimUpload(uploadId)
 	if err != nil {
 		jsonError(w, http.StatusNotFound, err)
 		return
 	}
 
 	dir := uploadDir(uploadId)
+	defer os.RemoveAll(dir)
 
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -193,7 +212,13 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 		}
 	}
 
-	sort.Strings(partNames)
+	// Sort numerically so part ordering is correct even when filenames
+	// have different digit counts (e.g. "999999" vs "1000000").
+	sort.Slice(partNames, func(i, j int) bool {
+		ni, _ := strconv.Atoi(partNames[i])
+		nj, _ := strconv.Atoi(partNames[j])
+		return ni < nj
+	})
 
 	err = permissions.EnsureDirs(filepath.Dir(meta.Path), meta.UID, meta.GID)
 	if err != nil {
@@ -201,7 +226,11 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	destFile, err := os.OpenFile(meta.Path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o666)
+	// Write to a temporary file and rename on success to avoid destroying
+	// any pre-existing file at meta.Path if assembly fails midway.
+	tmpPath := meta.Path + ".e2b-upload.tmp"
+
+	destFile, err := os.OpenFile(tmpPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o666)
 	if err != nil {
 		if errors.Is(err, syscall.ENOSPC) {
 			jsonError(w, http.StatusInsufficientStorage, fmt.Errorf("not enough disk space available"))
@@ -212,11 +241,13 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 
 		return
 	}
-	defer destFile.Close()
 
-	err = os.Chown(meta.Path, meta.UID, meta.GID)
+	err = os.Chown(tmpPath, meta.UID, meta.GID)
 	if err != nil {
+		destFile.Close()
+		os.Remove(tmpPath)
 		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error changing file ownership: %w", err))
+
 		return
 	}
 
@@ -225,7 +256,10 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 	for _, name := range partNames {
 		partFile, err := os.Open(filepath.Join(dir, name))
 		if err != nil {
+			destFile.Close()
+			os.Remove(tmpPath)
 			jsonError(w, http.StatusInternalServerError, fmt.Errorf("error opening part file %s: %w", name, err))
+
 			return
 		}
 
@@ -233,6 +267,9 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 		partFile.Close()
 
 		if err != nil {
+			destFile.Close()
+			os.Remove(tmpPath)
+
 			if errors.Is(err, syscall.ENOSPC) {
 				jsonError(w, http.StatusInsufficientStorage, fmt.Errorf("not enough disk space available"))
 				return
@@ -246,8 +283,19 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 		totalSize += n
 	}
 
-	os.RemoveAll(dir)
-	a.uploads.Delete(uploadId)
+	if err := destFile.Close(); err != nil {
+		os.Remove(tmpPath)
+		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error closing destination file: %w", err))
+
+		return
+	}
+
+	if err := os.Rename(tmpPath, meta.Path); err != nil {
+		os.Remove(tmpPath)
+		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error finalizing upload: %w", err))
+
+		return
+	}
 
 	a.logger.Info().
 		Str("uploadId", uploadId).
@@ -266,13 +314,12 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 func (a *API) DeleteFilesUploadUploadId(w http.ResponseWriter, r *http.Request, uploadId UploadId) {
 	defer r.Body.Close()
 
-	if _, err := a.getUpload(uploadId); err != nil {
+	if _, err := a.claimUpload(uploadId); err != nil {
 		jsonError(w, http.StatusNotFound, err)
 		return
 	}
 
 	os.RemoveAll(uploadDir(uploadId))
-	a.uploads.Delete(uploadId)
 
 	a.logger.Info().
 		Str("uploadId", uploadId).

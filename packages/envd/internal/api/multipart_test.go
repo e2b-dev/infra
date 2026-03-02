@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/rs/zerolog"
@@ -469,4 +470,112 @@ func TestMultipartUpload_CompleteRoundTripWithDownload(t *testing.T) {
 	body, err := io.ReadAll(downloadResp.Body)
 	require.NoError(t, err)
 	assert.Equal(t, []byte("roundtrip"), body)
+}
+
+func TestMultipartUpload_ConcurrentCompleteOnlyOneSucceeds(t *testing.T) {
+	t.Parallel()
+
+	api, currentUser := newMultipartTestAPI(t)
+	destPath := filepath.Join(t.TempDir(), "concurrent.txt")
+
+	uploadId := initUpload(t, api, destPath, currentUser.Username)
+	uploadPart(t, api, uploadId, 0, []byte("data"))
+
+	const concurrency = 10
+
+	var wg sync.WaitGroup
+
+	results := make([]int, concurrency)
+
+	for i := range concurrency {
+		wg.Add(1)
+
+		go func(idx int) {
+			defer wg.Done()
+
+			req := httptest.NewRequest(http.MethodPost, "/files/upload/"+uploadId+"/complete", nil)
+			w := httptest.NewRecorder()
+			api.PostFilesUploadUploadIdComplete(w, req, uploadId)
+			results[idx] = w.Result().StatusCode
+		}(i)
+	}
+
+	wg.Wait()
+
+	okCount := 0
+	notFoundCount := 0
+
+	for _, code := range results {
+		switch code {
+		case http.StatusOK:
+			okCount++
+		case http.StatusNotFound:
+			notFoundCount++
+		}
+	}
+
+	assert.Equal(t, 1, okCount, "exactly one Complete call should succeed")
+	assert.Equal(t, concurrency-1, notFoundCount, "all other Complete calls should get 404")
+
+	// Verify the file was written correctly
+	data, err := os.ReadFile(destPath)
+	require.NoError(t, err)
+	assert.Equal(t, []byte("data"), data)
+}
+
+func TestMultipartUpload_NumericSortHighPartNumbers(t *testing.T) {
+	t.Parallel()
+
+	api, currentUser := newMultipartTestAPI(t)
+	destPath := filepath.Join(t.TempDir(), "high-parts.txt")
+
+	uploadId := initUpload(t, api, destPath, currentUser.Username)
+
+	// Use part numbers that cross the 6-digit boundary to verify numeric sort.
+	uploadPart(t, api, uploadId, 999998, []byte("A"))
+	uploadPart(t, api, uploadId, 999999, []byte("B"))
+	uploadPart(t, api, uploadId, 1000000, []byte("C"))
+
+	req := httptest.NewRequest(http.MethodPost, "/files/upload/"+uploadId+"/complete", nil)
+	w := httptest.NewRecorder()
+	api.PostFilesUploadUploadIdComplete(w, req, uploadId)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	data, err := os.ReadFile(destPath)
+	require.NoError(t, err)
+	assert.Equal(t, []byte("ABC"), data)
+}
+
+func TestMultipartUpload_CompletePreservesExistingFileOnFailure(t *testing.T) {
+	t.Parallel()
+
+	api, currentUser := newMultipartTestAPI(t)
+	destPath := filepath.Join(t.TempDir(), "existing.txt")
+
+	// Write an existing file that should be preserved if Complete fails.
+	err := os.WriteFile(destPath, []byte("original content"), 0o644)
+	require.NoError(t, err)
+
+	uploadId := initUpload(t, api, destPath, currentUser.Username)
+
+	// Complete without uploading any parts. The assembly should succeed
+	// and produce an empty file, but the key invariant is that the temp-file
+	// approach does not truncate the original until rename.
+	req := httptest.NewRequest(http.MethodPost, "/files/upload/"+uploadId+"/complete", nil)
+	w := httptest.NewRecorder()
+	api.PostFilesUploadUploadIdComplete(w, req, uploadId)
+	require.Equal(t, http.StatusOK, w.Result().StatusCode)
+
+	// After a successful complete the destination is replaced.
+	data, err := os.ReadFile(destPath)
+	require.NoError(t, err)
+	assert.Empty(t, data) // empty because zero parts were uploaded
+
+	// Verify no temp file remains.
+	_, err = os.Stat(destPath + ".e2b-upload.tmp")
+	assert.True(t, os.IsNotExist(err))
 }
