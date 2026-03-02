@@ -19,14 +19,14 @@ func (s *Service) UpdateFileMetadata(ctx context.Context, request *orchestrator.
 		setSpanStatus(span, err)
 		span.End()
 	}()
-	fullPath, err := s.buildVolumePath(request.GetVolume(), request.GetPath())
+	paths, err := s.buildPaths(request)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build volume path: %w", err)
 	}
 
 	// record provided fields; keep pointers semantics by checking nil
 	attrs := []attribute.KeyValue{
-		attribute.String("path", fullPath),
+		attribute.String("path", paths.FullPath),
 	}
 	if request.Uid != nil {
 		attrs = append(attrs, attribute.Int64("uid", int64(request.GetUid())))
@@ -40,9 +40,9 @@ func (s *Service) UpdateFileMetadata(ctx context.Context, request *orchestrator.
 	span.AddEvent("updating file metadata", trace.WithAttributes(attrs...))
 
 	if request.Mode != nil {
-		if err = os.Chmod(fullPath, os.FileMode(request.GetMode())); err != nil {
+		if err = os.Chmod(paths.FullPath, os.FileMode(request.GetMode())); err != nil {
 			if os.IsNotExist(err) {
-				return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to chmod: %q not found.", fullPath)
+				return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to chmod: %q not found.", paths.FullPath)
 			}
 
 			return nil, fmt.Errorf("failed to update file mode: %w", err)
@@ -60,19 +60,19 @@ func (s *Service) UpdateFileMetadata(ctx context.Context, request *orchestrator.
 			gid = int(request.GetGid())
 		}
 
-		if err = os.Chown(fullPath, uid, gid); err != nil {
+		if err = os.Chown(paths.FullPath, uid, gid); err != nil {
 			if os.IsNotExist(err) {
-				return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to chown: %q not found.", fullPath)
+				return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to chown: %q not found.", paths.FullPath)
 			}
 
 			return nil, fmt.Errorf("failed to update file ownership: %w", err)
 		}
 	}
 
-	entry, err := toEntryFromPath(fullPath, request.GetPath())
+	entry, err := toEntryFromPaths(paths)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to stat: %q not found.", fullPath)
+			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to stat: %q not found.", paths.FullPath)
 		}
 
 		return nil, fmt.Errorf("failed to stat file: %w", err)

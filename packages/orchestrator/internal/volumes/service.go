@@ -51,58 +51,91 @@ func BuildVolumePathParts(teamID, volumeID uuid.UUID) []string {
 	}
 }
 
-func (s *Service) buildVolumePath(volume *orchestrator.VolumeInfo, subPath string) (string, error) {
+type volumePathRequest interface {
+	GetVolume() *orchestrator.VolumeInfo
+	GetPath() string
+}
+
+type volumeRequest struct {
+	request volumeOnly
+}
+
+var _ volumePathRequest = (*volumeRequest)(nil)
+
+func (v volumeRequest) GetVolume() *orchestrator.VolumeInfo {
+	return v.request.GetVolume()
+}
+
+func (v volumeRequest) GetPath() string {
+	return ""
+}
+
+type volumeOnly interface {
+	GetVolume() *orchestrator.VolumeInfo
+}
+
+func pathlessRequest(request volumeOnly) volumePathRequest {
+	return &volumeRequest{request: request}
+}
+
+type volumePaths struct {
+	BasePath string
+	RelPath  string
+	FullPath string
+}
+
+func (v volumePaths) isRoot() bool {
+	return filepath.Clean(v.BasePath) == filepath.Clean(v.FullPath)
+}
+
+func (s *Service) buildPaths(request volumePathRequest) (volumePaths, error) {
+	volume := request.GetVolume()
+
 	volumeType := volume.GetVolumeType()
 	volTypePath, ok := s.config.PersistentVolumeMounts[volumeType]
 	if !ok {
 		statusErr := status.Newf(codes.NotFound, "volume type %q not found", volumeType)
 		statusErr, _ = statusErr.WithDetails(&orchestrator.UnknownVolumeTypeError{})
 
-		return "", statusErr.Err()
+		return volumePaths{}, statusErr.Err()
 	}
 
 	teamID, ok := tryParseUUID(volume.GetTeamId())
 	if !ok {
-		return "", status.Newf(codes.InvalidArgument, "invalid team ID %q", volume.GetTeamId()).Err()
+		return volumePaths{}, status.Newf(codes.InvalidArgument, "invalid team ID %q", volume.GetTeamId()).Err()
 	}
 
 	volumeID, ok := tryParseUUID(volume.GetVolumeId())
 	if !ok {
-		return "", status.Newf(codes.InvalidArgument, "invalid volume ID %q", volume.GetVolumeId()).Err()
+		return volumePaths{}, status.Newf(codes.InvalidArgument, "invalid volume ID %q", volume.GetVolumeId()).Err()
 	}
 
 	volumeParts := append([]string{volTypePath}, BuildVolumePathParts(teamID, volumeID)...)
-	volumePath := filepath.Join(volumeParts...)
+	basePath := filepath.Join(volumeParts...)
+	fullPath := basePath
+	relPath := ""
+
+	subPath := request.GetPath()
 	if subPath != "" {
 		subPath = strings.TrimPrefix(subPath, "/")
 		subPath = filepath.Clean(subPath)
-		fullPath := filepath.Join(volumePath, subPath)
+		fullPath := filepath.Join(basePath, subPath)
 
-		result, err := filepath.Rel(volumePath, fullPath)
-		if err != nil || strings.HasPrefix(result, "..") {
-			return "", status.Newf(codes.InvalidArgument, "invalid relative path %q (%q)", subPath, result).Err()
+		var err error
+		relPath, err = filepath.Rel(basePath, fullPath)
+		if err != nil || strings.HasPrefix(relPath, "..") {
+			return volumePaths{}, status.Newf(codes.InvalidArgument, "invalid relative path base=%q subpath=%q relpath=%q", basePath, subPath, relPath).Err()
 		}
-
-		volumePath = fullPath
 	}
 
-	return volumePath, nil
+	return volumePaths{
+		BasePath: basePath,
+		RelPath:  relPath,
+		FullPath: fullPath,
+	}, nil
 }
 
-func (s *Service) isVolumeRootHealthy(ctx context.Context, volume *orchestrator.VolumeInfo) bool {
-	basePath, err := s.buildVolumePath(volume, "")
-	if err != nil {
-		logger.L().Warn(ctx, "failed to build volume root path",
-			zap.Error(err),
-			zap.String("path", basePath),
-			zap.String("volume_type", volume.GetVolumeType()),
-			zap.String("volume_id", volume.GetVolumeId()),
-			zap.String("team_id", volume.GetTeamId()),
-		)
-
-		return false
-	}
-
+func (s *Service) isVolumeRootHealthy(ctx context.Context, basePath string, volume *orchestrator.VolumeInfo) bool {
 	stat, err := os.Stat(basePath)
 	if err != nil {
 		logger.L().Warn(ctx, "failed to stat volume root",
@@ -137,20 +170,32 @@ func tryParseUUID(id string) (uuid.UUID, bool) {
 	return val, err == nil && val != uuid.Nil
 }
 
-func toEntryFromOSInfo(absPath, volumeRelPath string, fileInfo os.FileInfo) *orchestrator.EntryInfo {
-	entry := filesystem.GetEntryInfo(absPath, fileInfo)
+func toEntryFromOSInfoAndPaths(paths volumePaths, fileInfo os.FileInfo) *orchestrator.EntryInfo {
+	paths.RelPath = filepath.Join(paths.RelPath, fileInfo.Name())
+	paths.FullPath = filepath.Join(paths.FullPath, fileInfo.Name())
 
-	return toEntry(volumeRelPath, entry)
+	entry := filesystem.GetEntryInfo(paths.FullPath, fileInfo)
+
+	return toEntry(paths, entry)
 }
 
-func toEntry(volumeRelPath string, fileInfo filesystem.EntryInfo) *orchestrator.EntryInfo {
-	if !strings.HasPrefix(volumeRelPath, "/") {
-		volumeRelPath = "/" + volumeRelPath
+func toEntryFromPaths(paths volumePaths) (*orchestrator.EntryInfo, error) {
+	entry, err := filesystem.GetEntryFromPath(paths.FullPath)
+	if err != nil {
+		return nil, err
+	}
+
+	return toEntry(paths, entry), nil
+}
+
+func toEntry(paths volumePaths, fileInfo filesystem.EntryInfo) *orchestrator.EntryInfo {
+	if !strings.HasPrefix(paths.RelPath, "/") {
+		paths.RelPath = "/" + paths.RelPath
 	}
 
 	entry := &orchestrator.EntryInfo{
 		Name:          fileInfo.Name,
-		Path:          volumeRelPath,
+		Path:          paths.RelPath,
 		Size:          fileInfo.Size,
 		Mode:          uint32(fileInfo.Mode & os.ModePerm),
 		Uid:           fileInfo.UID,

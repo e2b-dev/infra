@@ -18,16 +18,16 @@ func (s *Service) Create(ctx context.Context, request *orchestrator.VolumeCreate
 		span.End()
 	}()
 
-	volumePath, err := s.buildVolumePath(request.GetVolume(), "")
+	paths, err := s.buildPaths(pathlessRequest(request))
 	if err != nil {
 		return nil, fmt.Errorf("failed to build volume path: %w", err)
 	}
 
 	span.AddEvent("creating volume", trace.WithAttributes(
-		attribute.String("path", volumePath),
+		attribute.String("path", paths.FullPath),
 	))
 
-	if err := os.MkdirAll(volumePath, 0o700); err != nil {
+	if err := os.MkdirAll(paths.FullPath, 0o700); err != nil {
 		return nil, fmt.Errorf("failed to create volume: %w", err)
 	}
 

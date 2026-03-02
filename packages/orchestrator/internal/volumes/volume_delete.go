@@ -21,16 +21,16 @@ func (s *Service) Delete(
 		span.End()
 	}()
 
-	volumePath, err := s.buildVolumePath(request.GetVolume(), "")
+	paths, err := s.buildPaths(pathlessRequest(request))
 	if err != nil {
 		return nil, fmt.Errorf("failed to build volume path: %w", err)
 	}
 
 	span.AddEvent("deleting directory", trace.WithAttributes(
-		attribute.String("path", volumePath),
+		attribute.String("path", paths.FullPath),
 	))
 
-	if err := os.RemoveAll(volumePath); err != nil {
+	if err := os.RemoveAll(paths.FullPath); err != nil {
 		return nil, fmt.Errorf("failed to delete volume: %w", err)
 	}
 

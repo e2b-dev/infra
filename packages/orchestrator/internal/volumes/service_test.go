@@ -12,6 +12,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 func TestBuildVolumePath(t *testing.T) {
@@ -67,13 +68,13 @@ func TestBuildVolumePath(t *testing.T) {
 		"missing volume type": {
 			teamID:   teamID,
 			volumeID: volumeID,
-			status:   status.New(codes.NotFound, `volume type "" not found`),
+			status:   utils.Must(status.New(codes.NotFound, `volume type "" not found`).WithDetails(&orchestrator.UnknownVolumeTypeError{})),
 		},
 		"volume type not found": {
 			volumeType: "non-existent",
 			teamID:     teamID,
 			volumeID:   volumeID,
-			status:     status.New(codes.NotFound, `volume type "non-existent" not found`),
+			status:     utils.Must(status.New(codes.NotFound, `volume type "non-existent" not found`).WithDetails(&orchestrator.UnknownVolumeTypeError{})),
 		},
 		"prefix attack": {
 			volumeType: "attacker",
@@ -92,9 +93,10 @@ func TestBuildVolumePath(t *testing.T) {
 				TeamId:     tc.teamID,
 				VolumeId:   tc.volumeID,
 			}
-			actualPath, actualStatus := v.buildVolumePath(&volumeInfo, tc.relPath)
+			request := orchestrator.VolumeDirCreateRequest{Volume: &volumeInfo, Path: tc.relPath}
+			paths, actualStatus := v.buildPaths(&request)
 			require.ErrorIs(t, actualStatus, tc.status.Err())
-			assert.Equal(t, tc.expected, actualPath)
+			assert.Equal(t, tc.expected, paths.FullPath)
 		})
 	}
 }
@@ -133,11 +135,15 @@ func TestRelPathTraversal(t *testing.T) {
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			_, err := v.buildVolumePath(&orchestrator.VolumeInfo{
-				VolumeType: "safe",
-				TeamId:     teamID,
-				VolumeId:   volumeID,
-			}, tc.rel)
+			request := orchestrator.VolumeDirCreateRequest{
+				Volume: &orchestrator.VolumeInfo{
+					VolumeType: "safe",
+					TeamId:     teamID,
+					VolumeId:   volumeID,
+				},
+				Path: tc.rel,
+			}
+			_, err := v.buildPaths(&request)
 			if tc.wantErr {
 				require.Error(t, err)
 			} else {

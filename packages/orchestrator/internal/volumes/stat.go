@@ -20,34 +20,25 @@ func (s *Service) Stat(ctx context.Context, request *orchestrator.StatRequest) (
 		setSpanStatus(span, err)
 		span.End()
 	}()
-	fullPath, err := s.buildVolumePath(request.GetVolume(), request.GetPath())
+	paths, err := s.buildPaths(request)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build volume path: %w", err)
 	}
 
 	span.AddEvent("stat", trace.WithAttributes(
-		attribute.String("path", fullPath),
+		attribute.String("path", paths.FullPath),
 	))
 
-	info, err := filesystem.GetEntryFromPath(fullPath)
+	info, err := filesystem.GetEntryFromPath(paths.FullPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to stat: %q not found.", fullPath)
+			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to stat: %q not found.", paths.FullPath)
 		}
 
 		return nil, fmt.Errorf("failed to stat path: %w", err)
 	}
 
-	entry := toEntry(request.GetPath(), info)
+	entry := toEntry(paths, info)
 
 	return &orchestrator.StatResponse{Entry: entry}, nil
-}
-
-func toEntryFromPath(absPath, volumeRelPath string) (*orchestrator.EntryInfo, error) {
-	entry, err := filesystem.GetEntryFromPath(absPath)
-	if err != nil {
-		return nil, err
-	}
-
-	return toEntry(volumeRelPath, entry), nil
 }

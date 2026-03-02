@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"path/filepath"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -14,8 +13,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
-type removeFunc func(path string) error
-
 func (s *Service) DeleteDir(ctx context.Context, request *orchestrator.VolumeDirDeleteRequest) (r *orchestrator.VolumeDirDeleteResponse, err error) {
 	ctx, span := tracer.Start(ctx, "delete directory in volume")
 	defer func() {
@@ -23,32 +20,22 @@ func (s *Service) DeleteDir(ctx context.Context, request *orchestrator.VolumeDir
 		span.End()
 	}()
 
-	relPath := request.GetPath()
-	if relPath == "" || relPath == "/" || relPath == "." {
-		return nil, newAPIError(ctx, codes.InvalidArgument, http.StatusBadRequest, orchestrator.UserErrorCode_CANNOT_DELETE_ROOT, "path cannot be empty")
-	}
-
-	rootPath, err := s.buildVolumePath(request.GetVolume(), "")
+	paths, err := s.buildPaths(request)
 	if err != nil {
 		return nil, err
 	}
 
-	fullPath, err := s.buildVolumePath(request.GetVolume(), relPath)
-	if err != nil {
-		return nil, err
-	}
-
-	if filepath.Clean(rootPath) == filepath.Clean(fullPath) {
+	if paths.isRoot() {
 		return nil, newAPIError(ctx, codes.InvalidArgument, http.StatusBadRequest, orchestrator.UserErrorCode_CANNOT_DELETE_ROOT, "cannot delete root directory")
 	}
 
 	span.AddEvent("removing directory", trace.WithAttributes(
-		attribute.String("path", fullPath),
+		attribute.String("path", paths.FullPath),
 	))
 
-	if err := os.RemoveAll(fullPath); err != nil {
+	if err := os.RemoveAll(paths.FullPath); err != nil {
 		if os.IsNotExist(err) {
-			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to delete: %q not found.", fullPath)
+			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to delete: %q not found.", paths.FullPath)
 		}
 
 		return nil, fmt.Errorf("failed to delete directory: %w", err)

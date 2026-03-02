@@ -19,16 +19,16 @@ func (s *Service) GetFile(request *orchestrator.VolumeFileGetRequest, server orc
 		setSpanStatus(span, err)
 		span.End()
 	}()
-	fullPath, err := s.buildVolumePath(request.GetVolume(), request.GetPath())
+	paths, err := s.buildPaths(request)
 	if err != nil {
 		return fmt.Errorf("failed to build volume path: %w", err)
 	}
 
 	span.AddEvent("retrieving file", trace.WithAttributes(
-		attribute.String("path", fullPath),
+		attribute.String("path", paths.FullPath),
 	))
 
-	f, err := os.Open(fullPath)
+	f, err := os.Open(paths.FullPath)
 	if err != nil {
 		return fmt.Errorf("failed to open file: %w", err)
 	}
