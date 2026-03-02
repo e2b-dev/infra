@@ -35,6 +35,7 @@ func WithSkipCacheWriteback(ctx context.Context) context.Context {
 // skipCacheWriteback reports whether the context has the skip-cache-writeback flag set.
 func skipCacheWriteback(ctx context.Context) bool {
 	v, _ := ctx.Value(skipCacheWritebackKeyType{}).(bool)
+
 	return v
 }
 
