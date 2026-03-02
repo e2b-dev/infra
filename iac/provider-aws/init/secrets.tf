@@ -49,27 +49,73 @@ output "clickhouse" {
 // ---
 // Grafana
 // ---
-resource "aws_secretsmanager_secret" "grafana_api_key" {
-  name = "${var.prefix}grafana-api-key"
+resource "aws_secretsmanager_secret" "grafana" {
+  name = "${var.prefix}grafana"
 }
 
-resource "aws_secretsmanager_secret_version" "grafana_api_key" {
-  secret_id     = aws_secretsmanager_secret.grafana_api_key.id
-  secret_string = " "
+resource "aws_secretsmanager_secret_version" "grafana" {
+  secret_id = aws_secretsmanager_secret.grafana.id
+  secret_string = jsonencode({
+    "API_KEY"              = " ",
+    "OTLP_URL"             = " ",
+    "OTEL_COLLECTOR_TOKEN" = " ",
+    "USERNAME"             = " ",
+  })
 
   lifecycle {
     ignore_changes = [secret_string]
   }
 }
 
-data "aws_secretsmanager_secret_version" "grafana_api_key" {
-  secret_id     = aws_secretsmanager_secret.grafana_api_key.id
+data "aws_secretsmanager_secret_version" "grafana" {
+  secret_id     = aws_secretsmanager_secret.grafana.id
   version_stage = "AWSCURRENT"
-  depends_on    = [aws_secretsmanager_secret_version.grafana_api_key]
+  depends_on    = [aws_secretsmanager_secret_version.grafana]
 }
 
-output "grafana_api_key" {
-  value     = data.aws_secretsmanager_secret_version.grafana_api_key.secret_string
+locals {
+  grafana_raw = jsondecode(data.aws_secretsmanager_secret_version.grafana.secret_string)
+}
+
+output "grafana" {
+  value = {
+    api_key              = local.grafana_raw["API_KEY"]
+    otlp_url             = local.grafana_raw["OTLP_URL"]
+    otel_collector_token = local.grafana_raw["OTEL_COLLECTOR_TOKEN"]
+    username             = local.grafana_raw["USERNAME"]
+  }
+  sensitive = true
+}
+
+// ---
+// API Secret
+// ---
+resource "random_string" "api_secret" {
+  length  = 32
+  special = false
+}
+
+resource "aws_secretsmanager_secret" "api_secret" {
+  name = "${var.prefix}api-secret"
+}
+
+resource "aws_secretsmanager_secret_version" "api_secret" {
+  secret_id     = aws_secretsmanager_secret.api_secret.id
+  secret_string = random_string.api_secret.result
+
+  lifecycle {
+    ignore_changes = [secret_string]
+  }
+}
+
+data "aws_secretsmanager_secret_version" "api_secret" {
+  secret_id     = aws_secretsmanager_secret.api_secret.id
+  version_stage = "AWSCURRENT"
+  depends_on    = [aws_secretsmanager_secret_version.api_secret]
+}
+
+output "api_secret" {
+  value     = data.aws_secretsmanager_secret_version.api_secret.secret_string
   sensitive = true
 }
 
@@ -126,6 +172,11 @@ output "postgres_connection_string_secret_name" {
   value = aws_secretsmanager_secret.postgres_connection_string.name
 }
 
+output "postgres_connection_string" {
+  value     = data.aws_secretsmanager_secret_version.postgres_connection_string.secret_string
+  sensitive = true
+}
+
 // ---
 // Supabase
 // ---
@@ -150,6 +201,75 @@ data "aws_secretsmanager_secret_version" "supabase_jwt_secrets" {
 
 output "supabase_jwt_secret_name" {
   value = aws_secretsmanager_secret.supabase_jwt_secrets.name
+}
+
+output "supabase_jwt_secrets" {
+  value     = data.aws_secretsmanager_secret_version.supabase_jwt_secrets.secret_string
+  sensitive = true
+}
+
+// ---
+// API Admin Token
+// ---
+resource "random_string" "admin_token" {
+  length  = 32
+  special = false
+}
+
+resource "aws_secretsmanager_secret" "admin_token" {
+  name = "${var.prefix}admin-token"
+}
+
+resource "aws_secretsmanager_secret_version" "admin_token" {
+  secret_id     = aws_secretsmanager_secret.admin_token.id
+  secret_string = random_string.admin_token.result
+
+  lifecycle {
+    ignore_changes = [secret_string]
+  }
+}
+
+data "aws_secretsmanager_secret_version" "admin_token" {
+  secret_id     = aws_secretsmanager_secret.admin_token.id
+  version_stage = "AWSCURRENT"
+  depends_on    = [aws_secretsmanager_secret_version.admin_token]
+}
+
+output "admin_token" {
+  value     = data.aws_secretsmanager_secret_version.admin_token.secret_string
+  sensitive = true
+}
+
+// ---
+// Sandbox Access Token Hash Seed
+// ---
+resource "random_string" "sandbox_access_token_hash_seed" {
+  length  = 32
+  special = false
+}
+
+resource "aws_secretsmanager_secret" "sandbox_access_token_hash_seed" {
+  name = "${var.prefix}sandbox-access-token-hash-seed"
+}
+
+resource "aws_secretsmanager_secret_version" "sandbox_access_token_hash_seed" {
+  secret_id     = aws_secretsmanager_secret.sandbox_access_token_hash_seed.id
+  secret_string = random_string.sandbox_access_token_hash_seed.result
+
+  lifecycle {
+    ignore_changes = [secret_string]
+  }
+}
+
+data "aws_secretsmanager_secret_version" "sandbox_access_token_hash_seed" {
+  secret_id     = aws_secretsmanager_secret.sandbox_access_token_hash_seed.id
+  version_stage = "AWSCURRENT"
+  depends_on    = [aws_secretsmanager_secret_version.sandbox_access_token_hash_seed]
+}
+
+output "sandbox_access_token_hash_seed" {
+  value     = data.aws_secretsmanager_secret_version.sandbox_access_token_hash_seed.secret_string
+  sensitive = true
 }
 
 // ---
