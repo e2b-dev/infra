@@ -2074,6 +2074,17 @@ paths:
           schema:
             $ref: "#/components/schemas/LogsDirection"
           description: Direction of the logs that should be returned
+        - in: query
+          name: level
+          schema:
+            $ref: "#/components/schemas/LogLevel"
+          description: Minimum log level to return. Logs below this level are excluded
+        - in: query
+          name: search
+          schema:
+            type: string
+            maxLength: 256
+          description: Case-sensitive substring match on log message content
       responses:
         "200":
           description: Successfully returned the sandbox logs

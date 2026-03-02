@@ -78,13 +78,17 @@ func (l *LokiQueryProvider) QuerySandboxLogs(
 	end time.Time,
 	limit int,
 	direction logproto.Direction,
+	level *logs.LogLevel,
+	search *string,
 ) ([]logs.LogEntry, error) {
-	// https://grafana.com/blog/2021/01/05/how-to-escape-special-characters-with-lokis-logql/
-	// Sanitize inputs by removing backticks and escaping backslashes
 	sandboxIdSanitized := sanitizeLokiLabel(sandboxID)
 	teamIdSanitized := sanitizeLokiLabel(teamID)
 
 	query := fmt.Sprintf("{teamID=`%s`, sandboxID=`%s`, category!=\"metrics\"}", teamIdSanitized, sandboxIdSanitized)
+
+	if search != nil && *search != "" {
+		query += fmt.Sprintf(" |= `%s`", sanitizeLogLineFilter(*search))
+	}
 
 	res, err := l.client.QueryRange(query, limit, start, end, direction, time.Duration(0), time.Duration(0), true)
 	if err != nil {
@@ -94,7 +98,7 @@ func (l *LokiQueryProvider) QuerySandboxLogs(
 		return make([]logs.LogEntry, 0), nil
 	}
 
-	lm, err := ResponseMapper(ctx, res, 0, nil, direction)
+	lm, err := ResponseMapper(ctx, res, 0, level, direction)
 	if err != nil {
 		telemetry.ReportError(ctx, "error when mapping sandbox logs", err)
 		logger.L().Error(ctx, "error when mapping logs for sandbox", zap.Error(err), logger.WithSandboxID(sandboxID))
@@ -105,10 +109,10 @@ func (l *LokiQueryProvider) QuerySandboxLogs(
 	return lm, nil
 }
 
-// sanitizeLokiLabel sanitizes input strings for use in Loki LogQL queries
-// by removing special characters that could enable query injection
 func sanitizeLokiLabel(input string) string {
-	// Remove characters that have special meaning in LogQL
-	// Backticks used to delimit label values
+	return strings.ReplaceAll(input, "`", "")
+}
+
+func sanitizeLogLineFilter(input string) string {
 	return strings.ReplaceAll(input, "`", "")
 }
