@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -13,8 +14,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
-
-type makeDir func(path string, perm os.FileMode) error
 
 func (s *Service) CreateDir(ctx context.Context, request *orchestrator.VolumeDirCreateRequest) (r *orchestrator.VolumeDirCreateResponse, err error) {
 	_, span := tracer.Start(ctx, "create directory in volume")
@@ -39,13 +38,15 @@ func (s *Service) CreateDir(ctx context.Context, request *orchestrator.VolumeDir
 		attribute.Int64("mode", int64(mode)),
 	))
 
-	var fn makeDir
 	if request.GetCreateParents() {
-		fn = os.MkdirAll
-	} else {
-		fn = os.Mkdir
+		// Create only parent directories with defaultDirMode and fix permissions against umask.
+		parent := filepath.Dir(paths.HostFullPath)
+		if err := ensureParentDirs(paths.HostVolumePath, parent, os.FileMode(defaultDirMode)); err != nil {
+			return nil, fmt.Errorf("failed to prepare parent directories: %w", err)
+		}
 	}
-	if err := fn(paths.HostFullPath, os.FileMode(mode)); err != nil {
+
+	if err := os.Mkdir(paths.HostFullPath, os.FileMode(mode)); err != nil {
 		if os.IsNotExist(err) {
 			if !s.isVolumeRootHealthy(ctx, paths.HostVolumePath, request.GetVolume()) {
 				return nil, fmt.Errorf("failed to create directory %q: %w", paths.ClientPath, err)
