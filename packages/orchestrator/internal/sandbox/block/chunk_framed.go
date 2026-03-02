@@ -14,7 +14,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -185,8 +184,8 @@ func (c *Chunker) fetch(ctx context.Context, off, length int64, ft *storage.Fram
 		chunkOff = frameStarts.U
 		chunkLen = int64(frameSize.U)
 	} else {
-		chunkOff = (off / header.HugepageSize) * header.HugepageSize
-		chunkLen = min(int64(header.HugepageSize), c.size-chunkOff)
+		chunkOff = (off / storage.MemoryChunkSize) * storage.MemoryChunkSize
+		chunkLen = min(int64(storage.MemoryChunkSize), c.size-chunkOff)
 	}
 
 	session, isNew := c.getOrCreateFetchSession(chunkOff, chunkLen)
