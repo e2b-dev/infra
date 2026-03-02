@@ -319,11 +319,13 @@ func run(config cfg.Config) (success bool) {
 	}
 
 	peerRegistry := peerstorage.NopRegistry()
-	if redisClient != nil {
-		peerRegistry = peerstorage.NewRedisRegistry(redisClient, config.NodeAddress())
+	peerResolver := peerstorage.NopResolver()
+	if nodeAddress := config.NodeAddress(); redisClient != nil && nodeAddress != nil {
+		peerRegistry = peerstorage.NewRedisRegistry(redisClient, *nodeAddress)
+		peerResolver = peerstorage.NewResolver(peerRegistry, *nodeAddress)
 	}
 
-	templateCache, err := template.NewCache(config, featureFlags, persistence, blockMetrics, peerRegistry)
+	templateCache, err := template.NewCache(config, featureFlags, persistence, blockMetrics, peerResolver)
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create template cache", zap.Error(err))
 	}

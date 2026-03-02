@@ -52,7 +52,7 @@ type Cache struct {
 	buildStore    *build.DiffStore
 	blockMetrics  blockmetrics.Metrics
 	rootCachePath string
-	peers         *peerstorage.Resolver
+	peers         peerstorage.Resolver
 }
 
 // NewCache initializes a template new cache.
@@ -63,13 +63,11 @@ func NewCache(
 	flags *featureflags.Client,
 	persistence storage.StorageProvider,
 	metrics blockmetrics.Metrics,
-	registry peerstorage.Registry,
+	peers peerstorage.Resolver,
 ) (*Cache, error) {
 	cache := ttlcache.New(
 		ttlcache.WithTTL[string, Template](templateExpiration),
 	)
-
-	peers := peerstorage.NewResolver(registry, config.NodeAddress())
 
 	cache.OnEviction(func(ctx context.Context, _ ttlcache.EvictionReason, item *ttlcache.Item[string, Template]) {
 		peers.PurgeUploaded(item.Key())

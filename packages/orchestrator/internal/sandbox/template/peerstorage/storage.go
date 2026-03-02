@@ -56,10 +56,10 @@ var _ storage.StorageProvider = (*routingProvider)(nil)
 // the peer that holds it, rather than routing all layers to a single peer.
 type routingProvider struct {
 	base     storage.StorageProvider
-	resolver *Resolver
+	resolver Resolver
 }
 
-func NewRoutingProvider(base storage.StorageProvider, resolver *Resolver) storage.StorageProvider {
+func NewRoutingProvider(base storage.StorageProvider, resolver Resolver) storage.StorageProvider {
 	return &routingProvider{base: base, resolver: resolver}
 }
 

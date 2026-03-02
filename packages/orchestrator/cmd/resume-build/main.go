@@ -1040,7 +1040,7 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	if verbose {
 		fmt.Println("🔧 Creating template cache...")
 	}
-	cache, err := template.NewCache(config, flags, persistence, blockMetrics, peerstorage.NopRegistry())
+	cache, err := template.NewCache(config, flags, persistence, blockMetrics, peerstorage.NopResolver())
 	if err != nil {
 		return fmt.Errorf("template cache: %w", err)
 	}

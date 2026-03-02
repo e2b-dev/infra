@@ -20,27 +20,53 @@ const peerConnectTimeout = 5 * time.Second
 // Resolver looks up peer addresses for build IDs and manages gRPC connections
 // to peer orchestrators. It is used by the routing provider to decide, per
 // storage path, whether to read from a peer or from the base provider.
-type Resolver struct {
-	registry           Registry
-	excludePeerAddress string
-	peerConns          sync.Map // address → *grpc.ClientConn
-	uploadedBuilds     sync.Map // buildID → *atomic.Bool
-	dialGroup          singleflight.Group
+//
+// The unexported resolve method restricts implementations to this package.
+type Resolver interface {
+	resolve(ctx context.Context, buildID string) (attribute.KeyValue, resolveResult)
+	PurgeUploaded(buildID string)
+	Close()
 }
 
-func NewResolver(registry Registry, excludePeerAddress string) *Resolver {
-	return &Resolver{
-		registry:           registry,
-		excludePeerAddress: excludePeerAddress,
+type resolveResult struct {
+	client   orchestrator.ChunkServiceClient
+	uploaded *atomic.Bool
+	addr     string
+}
+
+// NopResolver returns a Resolver that always falls back to the base provider.
+func NopResolver() Resolver { return nopResolver{} }
+
+type nopResolver struct{}
+
+func (nopResolver) resolve(context.Context, string) (attribute.KeyValue, resolveResult) {
+	return attrResolveNoPeer, resolveResult{}
+}
+func (nopResolver) PurgeUploaded(string) {}
+func (nopResolver) Close()              {}
+
+// peerResolver is the real implementation that looks up peers via the Registry.
+type peerResolver struct {
+	registry       Registry
+	selfAddress    string
+	peerConns      sync.Map // address → *grpc.ClientConn
+	uploadedBuilds sync.Map // buildID → *atomic.Bool
+	dialGroup      singleflight.Group
+}
+
+func NewResolver(registry Registry, selfAddress string) Resolver {
+	return &peerResolver{
+		registry:    registry,
+		selfAddress: selfAddress,
 	}
 }
 
-func (r *Resolver) readPeerAddress(ctx context.Context, buildID string) (string, bool, error) {
+func (r *peerResolver) readPeerAddress(ctx context.Context, buildID string) (string, bool, error) {
 	return r.registry.Lookup(ctx, buildID)
 }
 
 // getOrDialPeer deduplicates concurrent dials via singleflight.
-func (r *Resolver) getOrDialPeer(address string) (*grpc.ClientConn, error) {
+func (r *peerResolver) getOrDialPeer(address string) (*grpc.ClientConn, error) {
 	if conn, ok := r.peerConns.Load(address); ok {
 		return conn.(*grpc.ClientConn), nil
 	}
@@ -69,14 +95,14 @@ func (r *Resolver) getOrDialPeer(address string) (*grpc.ClientConn, error) {
 	return v.(*grpc.ClientConn), nil
 }
 
-func (r *Resolver) isSelfAddress(address string) bool {
-	return address == r.excludePeerAddress
+func (r *peerResolver) isSelfAddress(address string) bool {
+	return address == r.selfAddress
 }
 
 // uploadedFlag returns a shared atomic flag for the given build ID.
 // Once any reader sets the flag (via use_storage), all subsequent opens for
 // that build skip the peer.
-func (r *Resolver) uploadedFlag(buildID string) *atomic.Bool {
+func (r *peerResolver) uploadedFlag(buildID string) *atomic.Bool {
 	if v, ok := r.uploadedBuilds.Load(buildID); ok {
 		return v.(*atomic.Bool)
 	}
@@ -89,20 +115,14 @@ func (r *Resolver) uploadedFlag(buildID string) *atomic.Bool {
 
 // PurgeUploaded removes the uploaded state for a build, called on template
 // cache eviction so the entry doesn't accumulate forever.
-func (r *Resolver) PurgeUploaded(buildID string) {
+func (r *peerResolver) PurgeUploaded(buildID string) {
 	r.uploadedBuilds.Delete(buildID)
-}
-
-type resolveResult struct {
-	client   orchestrator.ChunkServiceClient
-	uploaded *atomic.Bool
-	addr     string
 }
 
 // resolve looks up the peer for the given build and returns a gRPC client if
 // a remote peer is found. Returns a nil client when the base provider should
 // be used instead (uploaded, no peer, self, or error).
-func (r *Resolver) resolve(ctx context.Context, buildID string) (attribute.KeyValue, resolveResult) {
+func (r *peerResolver) resolve(ctx context.Context, buildID string) (attribute.KeyValue, resolveResult) {
 	uploaded := r.uploadedFlag(buildID)
 	if uploaded.Load() {
 		return attrResolveUploaded, resolveResult{}
@@ -133,7 +153,7 @@ func (r *Resolver) resolve(ctx context.Context, buildID string) (attribute.KeyVa
 	}
 }
 
-func (r *Resolver) Close() {
+func (r *peerResolver) Close() {
 	r.peerConns.Range(func(_, value any) bool {
 		_ = value.(*grpc.ClientConn).Close()
 
