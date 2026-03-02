@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -231,8 +232,10 @@ func (o *fsObject) getHandle(checkExistence bool) (*os.File, error) {
 
 // fsPartUploader implements PartUploader for local filesystem.
 type fsPartUploader struct {
-	fullPath string
-	file     *os.File
+	fullPath  string
+	file      *os.File
+	closeOnce sync.Once
+	closeErr  error
 }
 
 func (u *fsPartUploader) Start(_ context.Context) error {
@@ -261,7 +264,17 @@ func (u *fsPartUploader) UploadPart(_ context.Context, _ int, data ...[]byte) er
 }
 
 func (u *fsPartUploader) Complete(_ context.Context) error {
-	return u.file.Close()
+	return u.Close()
+}
+
+func (u *fsPartUploader) Close() error {
+	u.closeOnce.Do(func() {
+		if u.file != nil {
+			u.closeErr = u.file.Close()
+		}
+	})
+
+	return u.closeErr
 }
 
 func (o *fsObject) GetFrame(ctx context.Context, offsetU int64, frameTable *FrameTable, decompress bool, buf []byte, readSize int64, onRead func(totalWritten int64)) (Range, error) {

@@ -189,6 +189,10 @@ func (m *MultipartUploader) Complete(ctx context.Context) error {
 	return m.completeUpload(ctx, m.uploadID, parts)
 }
 
+func (m *MultipartUploader) Close() error {
+	return nil
+}
+
 func NewMultipartUploaderWithRetryConfig(ctx context.Context, bucketName, objectName string, retryConfig RetryConfig, metadata map[string]string) (*MultipartUploader, error) {
 	creds, err := google.FindDefaultCredentials(ctx, "https://www.googleapis.com/auth/cloud-platform")
 	if err != nil {

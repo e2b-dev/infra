@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/cmd/internal/cmdutil"
@@ -23,8 +24,10 @@ import (
 
 // filePartWriter implements storage.PartUploader for local file writes.
 type filePartWriter struct {
-	path string
-	f    *os.File
+	path      string
+	f         *os.File
+	closeOnce sync.Once
+	closeErr  error
 }
 
 func (w *filePartWriter) Start(_ context.Context) error {
@@ -52,7 +55,17 @@ func (w *filePartWriter) UploadPart(_ context.Context, _ int, data ...[]byte) er
 }
 
 func (w *filePartWriter) Complete(_ context.Context) error {
-	return w.f.Close()
+	return w.Close()
+}
+
+func (w *filePartWriter) Close() error {
+	w.closeOnce.Do(func() {
+		if w.f != nil {
+			w.closeErr = w.f.Close()
+		}
+	})
+
+	return w.closeErr
 }
 
 // compressConfig holds the flags for a compression run.

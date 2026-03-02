@@ -39,6 +39,7 @@ type PartUploader interface {
 	Start(ctx context.Context) error
 	UploadPart(ctx context.Context, partIndex int, data ...[]byte) error
 	Complete(ctx context.Context) error
+	Close() error
 }
 
 // FramedUploadOptions configures compression for framed uploads.
@@ -130,6 +131,7 @@ func (m *MemPartUploader) UploadPart(_ context.Context, partIndex int, data ...[
 }
 
 func (m *MemPartUploader) Complete(context.Context) error { return nil }
+func (m *MemPartUploader) Close() error                   { return nil }
 
 // Assemble returns the concatenated parts in index order.
 func (m *MemPartUploader) Assemble() []byte {
@@ -258,6 +260,7 @@ func CompressStream(ctx context.Context, in io.Reader, opts *FramedUploadOptions
 	if err := uploader.Start(ctx); err != nil {
 		return nil, [32]byte{}, fmt.Errorf("failed to start framed upload: %w", err)
 	}
+	defer uploader.Close()
 
 	// Stage 1: Reader goroutine — reads frameSize frames from input.
 	type indexedFrame struct {

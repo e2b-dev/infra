@@ -113,10 +113,12 @@ func (c *cachedFramedFile) getFrameCompressed(ctx context.Context, offsetU int64
 
 	// Try NFS cache — stream directly from file into the decompressor.
 	if f, readErr := os.Open(framePath); readErr == nil {
+		defer f.Close() // ensure close even if ReadFrame never calls rangeRead
+
 		recordCacheRead(ctx, true, int64(frameSize.C), cacheTypeFramedFile, cacheOpGetFrame)
 
 		rangeRead := func(_ context.Context, _ int64, _ int) (io.ReadCloser, error) {
-			return f, nil
+			return io.NopCloser(f), nil
 		}
 
 		r, err := ReadFrame(ctx, rangeRead, "NFS:"+c.path, offsetU, frameTable, decompress, buf, readSize, onRead)
@@ -145,7 +147,7 @@ func (c *cachedFramedFile) getFrameCompressed(ctx context.Context, offsetU int64
 		}
 
 		recordCacheRead(ctx, false, int64(frameSize.C), cacheTypeFramedFile, cacheOpGetFrame)
-		c.cacheFrameAsync(ctx, framePath, compressedBuf[:frameSize.C])
+		c.cacheFrameAsync(ctx, offsetU, framePath, compressedBuf[:frameSize.C])
 		timer.Success(ctx, int64(r.Length))
 
 		return r, nil
@@ -160,7 +162,7 @@ func (c *cachedFramedFile) getFrameCompressed(ctx context.Context, offsetU int64
 	}
 
 	recordCacheRead(ctx, false, int64(frameSize.C), cacheTypeFramedFile, cacheOpGetFrame)
-	c.cacheFrameAsync(ctx, framePath, compressedBuf[:frameSize.C])
+	c.cacheFrameAsync(ctx, offsetU, framePath, compressedBuf[:frameSize.C])
 
 	if !decompress {
 		n := copy(buf, compressedBuf[:frameSize.C])
@@ -269,12 +271,12 @@ func (c *cachedFramedFile) fetchAndDecompressProgressive(
 }
 
 // cacheFrameAsync writes compressed frame data to NFS cache in the background.
-func (c *cachedFramedFile) cacheFrameAsync(ctx context.Context, framePath string, data []byte) {
+func (c *cachedFramedFile) cacheFrameAsync(ctx context.Context, offset int64, framePath string, data []byte) {
 	dataCopy := make([]byte, len(data))
 	copy(dataCopy, data)
 
 	c.goCtx(ctx, func(ctx context.Context) {
-		if err := c.writeFrameToCache(ctx, framePath, dataCopy); err != nil {
+		if err := c.writeToCache(ctx, offset, framePath, dataCopy); err != nil {
 			recordCacheWriteError(ctx, cacheTypeFramedFile, cacheOpGetFrame, err)
 		}
 	})
@@ -298,10 +300,12 @@ func (c *cachedFramedFile) getFrameUncompressed(ctx context.Context, offsetU int
 	// Try NFS cache — stream from file with progressive onRead callbacks.
 	f, readErr := os.Open(chunkPath)
 	if readErr == nil {
+		defer f.Close() // ensure close even if ReadFrame never calls rangeRead
+
 		recordCacheRead(ctx, true, int64(len(buf)), cacheTypeFramedFile, cacheOpGetFrame)
 
 		rangeRead := func(_ context.Context, _ int64, _ int) (io.ReadCloser, error) {
-			return f, nil
+			return io.NopCloser(f), nil
 		}
 
 		r, err := ReadFrame(ctx, rangeRead, "NFS:"+c.path, offsetU, nil, false, buf, readSize, onRead)
@@ -342,7 +346,7 @@ func (c *cachedFramedFile) getFrameUncompressed(ctx context.Context, offsetU int
 	copy(dataCopy, buf[:r.Length])
 
 	c.goCtx(ctx, func(ctx context.Context) {
-		if err := c.writeChunkToCache(ctx, offsetU, chunkPath, dataCopy); err != nil {
+		if err := c.writeToCache(ctx, offsetU, chunkPath, dataCopy); err != nil {
 			recordCacheWriteError(ctx, cacheTypeFramedFile, cacheOpGetFrame, err)
 		}
 	})
@@ -350,21 +354,44 @@ func (c *cachedFramedFile) getFrameUncompressed(ctx context.Context, offsetU int
 	return r, nil
 }
 
-// writeFrameToCache writes compressed frame data to the NFS cache.
-func (c *cachedFramedFile) writeFrameToCache(ctx context.Context, framePath string, data []byte) error {
+// writeToCache writes data to the NFS cache using lock + atomic rename.
+// Used for both compressed frames and uncompressed chunks.
+func (c *cachedFramedFile) writeToCache(ctx context.Context, offset int64, finalPath string, data []byte) error {
 	writeTimer := cacheSlabWriteTimerFactory.Begin()
 
-	dir := filepath.Dir(framePath)
-	if err := os.MkdirAll(dir, cacheDirPermissions); err != nil {
+	lockFile, err := lock.TryAcquireLock(ctx, finalPath)
+	if err != nil {
+		recordCacheWriteError(ctx, cacheTypeFramedFile, cacheOpGetFrame, err)
+
 		writeTimer.Failure(ctx, 0)
 
-		return fmt.Errorf("failed to create frame cache dir: %w", err)
+		return nil
 	}
 
-	if err := os.WriteFile(framePath, data, cacheFilePermissions); err != nil {
+	defer func() {
+		err := lock.ReleaseLock(ctx, lockFile)
+		if err != nil {
+			logger.L().Warn(ctx, "failed to release lock after writing to cache",
+				zap.Int64("offset", offset),
+				zap.String("path", finalPath),
+				zap.Error(err))
+		}
+	}()
+
+	tempPath := finalPath + ".tmp." + uuid.NewString()
+
+	if err := os.WriteFile(tempPath, data, cacheFilePermissions); err != nil {
+		go safelyRemoveFile(ctx, tempPath)
+
 		writeTimer.Failure(ctx, int64(len(data)))
 
-		return fmt.Errorf("failed to write frame to cache: %w", err)
+		return fmt.Errorf("failed to write temp cache file: %w", err)
+	}
+
+	if err := utils.RenameOrDeleteFile(ctx, tempPath, finalPath); err != nil {
+		writeTimer.Failure(ctx, int64(len(data)))
+
+		return fmt.Errorf("failed to rename temp file: %w", err)
 	}
 
 	writeTimer.Success(ctx, int64(len(data)))
@@ -460,21 +487,11 @@ func (c *cachedFramedFile) storeFileCompressed(ctx context.Context, localPath st
 	modifiedOpts.OnFrameReady = func(offset FrameOffset, size FrameSize, data []byte) error {
 		framePath := makeFrameFilename(c.path, offset, size)
 
-		dir := filepath.Dir(framePath)
-		if err := os.MkdirAll(dir, cacheDirPermissions); err != nil {
-			logger.L().Warn(ctx, "failed to create cache directory for compressed frame",
-				zap.String("dir", dir),
-				zap.Error(err))
-
-			return nil // non-fatal: cache write failures should not block uploads
-		}
-
-		if err := os.WriteFile(framePath, data, cacheFilePermissions); err != nil {
-			logger.L().Warn(ctx, "failed to write compressed frame to cache",
+		// Non-fatal: cache write failures should not block uploads.
+		if err := c.writeToCache(ctx, offset.C, framePath, data); err != nil {
+			logger.L().Warn(ctx, "failed to cache compressed frame during upload",
 				zap.String("path", framePath),
 				zap.Error(err))
-
-			return nil // non-fatal
 		}
 
 		return nil
@@ -502,6 +519,7 @@ func makeFrameFilename(cacheBasePath string, offset FrameOffset, size FrameSize)
 	return fmt.Sprintf("%s/%016x-%x.frm", cacheBasePath, offset.C, size.C)
 }
 
+
 func (c *cachedFramedFile) goCtx(ctx context.Context, fn func(context.Context)) {
 	c.wg.Go(func() {
 		fn(context.WithoutCancel(ctx))
@@ -510,12 +528,6 @@ func (c *cachedFramedFile) goCtx(ctx context.Context, fn func(context.Context)) 
 
 func (c *cachedFramedFile) makeChunkFilename(offset int64) string {
 	return fmt.Sprintf("%s/%012d-%d.bin", c.path, offset/c.chunkSize, c.chunkSize)
-}
-
-func (c *cachedFramedFile) makeTempChunkFilename(offset int64) string {
-	tempFilename := uuid.NewString()
-
-	return fmt.Sprintf("%s/.temp.%012d-%d.bin.%s", c.path, offset/c.chunkSize, c.chunkSize, tempFilename)
 }
 
 func (c *cachedFramedFile) sizeFilename() string {
@@ -560,48 +572,6 @@ func (c *cachedFramedFile) validateGetFrameParams(off int64, length int, frameTa
 	if int64(length) > c.chunkSize {
 		return fmt.Errorf("buffer length %d exceeds chunk size %d: %w", length, c.chunkSize, ErrBufferTooLarge)
 	}
-
-	return nil
-}
-
-func (c *cachedFramedFile) writeChunkToCache(ctx context.Context, offset int64, chunkPath string, bytes []byte) error {
-	writeTimer := cacheSlabWriteTimerFactory.Begin()
-
-	lockFile, err := lock.TryAcquireLock(ctx, chunkPath)
-	if err != nil {
-		recordCacheWriteError(ctx, cacheTypeFramedFile, cacheOpGetFrame, err)
-		writeTimer.Failure(ctx, 0)
-
-		return nil
-	}
-
-	defer func() {
-		err := lock.ReleaseLock(ctx, lockFile)
-		if err != nil {
-			logger.L().Warn(ctx, "failed to release lock after writing chunk to cache",
-				zap.Int64("offset", offset),
-				zap.String("path", chunkPath),
-				zap.Error(err))
-		}
-	}()
-
-	tempPath := c.makeTempChunkFilename(offset)
-
-	if err := os.WriteFile(tempPath, bytes, cacheFilePermissions); err != nil {
-		go safelyRemoveFile(ctx, tempPath)
-
-		writeTimer.Failure(ctx, int64(len(bytes)))
-
-		return fmt.Errorf("failed to write temp cache file: %w", err)
-	}
-
-	if err := utils.RenameOrDeleteFile(ctx, tempPath, chunkPath); err != nil {
-		writeTimer.Failure(ctx, int64(len(bytes)))
-
-		return fmt.Errorf("failed to rename temp file: %w", err)
-	}
-
-	writeTimer.Success(ctx, int64(len(bytes)))
 
 	return nil
 }
