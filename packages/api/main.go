@@ -441,21 +441,19 @@ func run() int {
 		}
 	})
 
-	if env.IsDebug() {
-		pprofServer := &http.Server{
-			Addr:    fmt.Sprintf("127.0.0.1:%d", defaultPprofPort),
-			Handler: http.DefaultServeMux,
-		}
-		cleanupFns = append(cleanupFns, pprofServer.Shutdown)
-
-		wg.Go(func() {
-			l.Info(ctx, "pprof server starting", zap.Int("port", defaultPprofPort))
-
-			if err := pprofServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				l.Error(ctx, "pprof server encountered error", zap.Error(err))
-			}
-		})
+	pprofServer := &http.Server{
+		Addr:    fmt.Sprintf("127.0.0.1:%d", defaultPprofPort),
+		Handler: http.DefaultServeMux,
 	}
+	cleanupFns = append(cleanupFns, pprofServer.Shutdown)
+
+	wg.Go(func() {
+		l.Info(ctx, "pprof server starting", zap.Int("port", defaultPprofPort))
+
+		if err := pprofServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			l.Error(ctx, "pprof server encountered error", zap.Error(err))
+		}
+	})
 
 	wg.Go(func() {
 		<-signalCtx.Done()
