@@ -114,7 +114,7 @@ type Signature = string
 type SignatureExpiration = int
 
 // UploadId defines model for UploadId.
-type UploadId = string
+type UploadId = openapi_types.UUID
 
 // User defines model for User.
 type User = string
