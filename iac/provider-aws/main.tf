@@ -61,8 +61,13 @@ locals {
 
   api_pool_name          = "api"
   client_pool_name       = "default"
+  build_pool_name        = "build"
   clickhouse_pool_name   = "clickhouse"
   clickhouse_jobs_prefix = "clickhouse"
+
+  redis_cluster_url   = var.redis_managed ? "rediss://${module.redis[0].endpoint_address}:${local.redis_port}" : ""
+  redis_tls_ca_base64 = var.redis_managed ? module.redis[0].endpoint_ca_pem_base64 : ""
+  redis_url           = local.redis_cluster_url == "" ? "redis.service.consul:${local.redis_port}" : ""
 }
 
 module "redis" {
@@ -126,6 +131,12 @@ module "cluster" {
     aws_lb_target_group.ingress.arn,
     aws_lb_target_group.ingress_grpc.arn,
   ]
+
+  build_node_pool_name               = local.build_pool_name
+  build_cluster_size                 = var.build_cluster_size
+  build_machine_type                 = var.build_server_machine_type
+  build_server_nested_virtualization = var.build_server_nested_virtualization
+  build_security_group_ids           = [aws_security_group.cluster_node.id]
 
   client_node_pool_name               = local.client_pool_name
   client_cluster_size                 = var.client_cluster_size

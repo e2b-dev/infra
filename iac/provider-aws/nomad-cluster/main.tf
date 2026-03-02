@@ -283,6 +283,48 @@ module "clickhouse" {
 
 }
 
+module "build" {
+  source = "../modules/nodepool-client"
+
+  name           = "build"
+  prefix         = var.prefix
+  aws_account_id = var.aws_account_id
+
+  cluster_tag_name  = local.cluster_tag_name
+  cluster_tag_value = local.cluster_tag_value
+
+  cluster_node_policy_arn      = aws_iam_policy.cluster_node_policy.arn
+  cluster_node_ec2_policy_json = data.aws_iam_policy_document.cluster_node_ec2_policy.json
+
+  setup_bucket_name = var.setup_bucket_name
+  setup_files_hash  = local.setup_files_hash
+
+  security_group_ids  = var.build_security_group_ids
+  vpc_private_subnets = var.vpc_private_subnets
+
+  image_family_prefix = var.build_image_family_prefix
+  cluster_size        = var.build_cluster_size
+  machine_type        = var.build_machine_type
+
+  node_pool_name                    = var.build_node_pool_name
+  nested_virtualization             = var.build_server_nested_virtualization
+  consul_acl_token                  = var.consul_acl_token_secret
+  consul_gossip_encryption_key      = var.consul_gossip_encryption_key
+  consul_dns_request_token          = var.consul_dns_request_token_secret
+  aws_ecr_account_repository_domain = local.aws_ecr_account_repository_domain
+
+  fc_kernels_bucket_name      = var.fc_kernels_bucket_name
+  fc_versions_bucket_name     = var.fc_versions_bucket_name
+  fc_env_pipeline_bucket_name = var.fc_env_pipeline_bucket_name
+
+  fc_env_pipeline_bucket_arn      = data.aws_s3_bucket.fc_env_pipeline.arn
+  fc_kernels_bucket_arn           = data.aws_s3_bucket.fc_kernels.arn
+  fc_versions_bucket_arn          = data.aws_s3_bucket.fc_versions.arn
+  templates_bucket_arn            = data.aws_s3_bucket.templates_bucket.arn
+  templates_build_cache_bucket_arn = data.aws_s3_bucket.templates_build_cache_bucket.arn
+  custom_environments_repo_arn    = data.aws_ecr_repository.custom_environments.arn
+}
+
 module "client" {
   source = "../modules/nodepool-client"
 

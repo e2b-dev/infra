@@ -54,6 +54,11 @@ variable "ingress_count" {
   default = 1
 }
 
+variable "client_proxy_count" {
+  type    = number
+  default = 1
+}
+
 variable "clickhouse_cluster_size" {
   type    = number
   default = 1
@@ -97,6 +102,41 @@ variable "control_server_machine_type" {
 variable "control_server_image_family_prefix" {
   type    = string
   default = "e2b-orch-"
+}
+
+variable "orchestrator_port" {
+  type    = number
+  default = 5008
+}
+
+variable "orchestrator_proxy_port" {
+  type    = number
+  default = 5007
+}
+
+variable "allow_sandbox_internet" {
+  type    = bool
+  default = true
+}
+
+variable "envd_timeout" {
+  type    = string
+  default = "40s"
+}
+
+variable "build_cluster_size" {
+  type    = number
+  default = 1
+}
+
+variable "build_server_machine_type" {
+  type    = string
+  default = "m8i.2xlarge"
+}
+
+variable "build_server_nested_virtualization" {
+  type    = bool
+  default = true
 }
 
 variable "control_server_cluster_size" {

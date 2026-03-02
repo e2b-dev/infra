@@ -156,6 +156,36 @@ variable "client_security_group_ids" {
 }
 
 // ---
+// Build (Template Manager)
+// ---
+variable "build_node_pool_name" {
+  type = string
+}
+
+variable "build_image_family_prefix" {
+  type    = string
+  default = "e2b-orch-"
+}
+
+variable "build_cluster_size" {
+  type    = number
+  default = 1
+}
+
+variable "build_machine_type" {
+  type    = string
+  default = "m8i.2xlarge"
+}
+
+variable "build_server_nested_virtualization" {
+  type = bool
+}
+
+variable "build_security_group_ids" {
+  type = list(string)
+}
+
+// ---
 // Buckets and repositories
 // ---
 
