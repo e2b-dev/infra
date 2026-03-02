@@ -7,16 +7,6 @@ packages:
           filename: mocks.go
           pkgname: filesystemconnectmocks
 
-  github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block:
-    interfaces:
-      flagsClient:
-        config:
-          dir: packages/orchestrator/internal/sandbox/block
-          filename: mock_flagsclient_test.go
-          pkgname: block
-          inpackage: true
-          structname: MockFlagsClient
-
   github.com/e2b-dev/infra/packages/shared/pkg/storage:
     interfaces:
       featureFlagsClient:

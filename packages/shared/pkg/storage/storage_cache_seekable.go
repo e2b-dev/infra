@@ -519,7 +519,6 @@ func makeFrameFilename(cacheBasePath string, offset FrameOffset, size FrameSize)
 	return fmt.Sprintf("%s/%016x-%x.frm", cacheBasePath, offset.C, size.C)
 }
 
-
 func (c *cachedFramedFile) goCtx(ctx context.Context, fn func(context.Context)) {
 	c.wg.Go(func() {
 		fn(context.WithoutCancel(ctx))
