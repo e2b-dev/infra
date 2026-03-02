@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"strconv"
@@ -59,7 +60,8 @@ const (
 	// https://cloud.google.com/load-balancing/docs/https#timeouts_and_retries%23:~:text=The%20load%20balancer%27s%20backend%20keepalive,is%20greater%20than%20600%20seconds
 	idleTimeout = 620 * time.Second
 
-	defaultPort = 80
+	defaultPort     = 80
+	defaultPprofPort = 6060
 )
 
 var (
@@ -285,6 +287,18 @@ func run() int {
 	defer sbxLoggerInternal.Sync()
 	sbxlogger.SetSandboxLoggerInternal(sbxLoggerInternal)
 
+	// Start Go runtime metrics collection (goroutines, heap, GC, etc.)
+	stopRuntime, err := tel.StartRuntimeInstrumentation()
+	if err != nil {
+		log.Printf("warning: failed to start runtime instrumentation: %v", err)
+	} else {
+		defer func() {
+			if err := stopRuntime(ctx); err != nil {
+				log.Printf("error while stopping runtime instrumentation: %v", err)
+			}
+		}()
+	}
+
 	// Convert the string expectedMigrationTimestamp  to a int64
 	expectedMigration, err := strconv.ParseInt(expectedMigrationTimestamp, 10, 64)
 	if err != nil {
@@ -434,6 +448,19 @@ func run() int {
 		}
 	})
 
+	pprofServer := &http.Server{
+		Addr:    fmt.Sprintf("0.0.0.0:%d", defaultPprofPort),
+		Handler: http.DefaultServeMux,
+	}
+
+	wg.Go(func() {
+		l.Info(ctx, "pprof server starting", zap.Int("port", defaultPprofPort))
+
+		if err := pprofServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			l.Error(ctx, "pprof server encountered error", zap.Error(err))
+		}
+	})
+
 	wg.Go(func() {
 		<-signalCtx.Done()
 
@@ -459,6 +486,10 @@ func run() int {
 		if err := s.Shutdown(ctx); err != nil {
 			exitCode.Add(1)
 			l.Error(ctx, "Http service shutdown error", zap.Int("port", port), zap.Error(err))
+		}
+
+		if err := pprofServer.Shutdown(ctx); err != nil {
+			l.Error(ctx, "pprof server shutdown error", zap.Error(err))
 		}
 
 		grpcServer.GracefulStop()

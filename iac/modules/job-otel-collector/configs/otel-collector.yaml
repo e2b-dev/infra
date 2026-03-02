@@ -224,6 +224,7 @@ processors:
           - "otelcol.exporter.sent.*"
           - "otelcol.receiver.refused.*"
           - "pgxpool.*"
+          - "runtime\\.go\\..*"
           - "traefik.*"
 
   filter/only_client_allocs:
