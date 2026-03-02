@@ -261,7 +261,8 @@ module "redis" {
   redis_cluster_url_secret_version   = module.init.redis_cluster_url_secret_version
   redis_tls_ca_base64_secret_version = module.init.redis_tls_ca_base64_secret_version
 
-  prefix = var.prefix
+  shard_count = var.redis_shard_count
+  prefix      = var.prefix
 }
 
 module "remote_repository" {
