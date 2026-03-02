@@ -19,7 +19,7 @@ type SandboxConfig struct {
 	metadata            api.SandboxMetadata
 	timeout             int32
 	autoPause           bool
-	autoResumeEnabled   *bool
+	autoResume          *api.SandboxAutoResumeConfig
 	network             *api.SandboxNetworkConfig
 	allowInternetAccess *bool
 	secure              *bool
@@ -53,7 +53,7 @@ func WithAutoPause(autoPause bool) SandboxOption {
 
 func WithAutoResume(enabled bool) SandboxOption {
 	return func(config *SandboxConfig) {
-		config.autoResumeEnabled = &enabled
+		config.autoResume = &api.SandboxAutoResumeConfig{Enabled: enabled}
 	}
 }
 
@@ -111,7 +111,7 @@ func SetupSandboxWithCleanup(t *testing.T, c *api.ClientWithResponses, options .
 			Timeout:             &config.timeout,
 			Metadata:            &config.metadata,
 			AutoPause:           &config.autoPause,
-			AutoResumeEnabled:   config.autoResumeEnabled,
+			AutoResume:          config.autoResume,
 			Network:             config.network,
 			AllowInternetAccess: config.allowInternetAccess,
 			Secure:              config.secure,

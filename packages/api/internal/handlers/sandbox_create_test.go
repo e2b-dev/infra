@@ -20,13 +20,13 @@ import (
 func TestBuildAutoResumeConfig(t *testing.T) {
 	t.Parallel()
 
-	boolPtr := func(v bool) *bool {
-		return &v
+	configPtr := func(v bool) *api.SandboxAutoResumeConfig {
+		return &api.SandboxAutoResumeConfig{Enabled: v}
 	}
 
 	tests := []struct {
 		name       string
-		in         *bool
+		in         *api.SandboxAutoResumeConfig
 		wantNil    bool
 		wantPolicy dbtypes.SandboxAutoResumePolicy
 	}{
@@ -37,12 +37,12 @@ func TestBuildAutoResumeConfig(t *testing.T) {
 		},
 		{
 			name:       "true maps to any policy",
-			in:         boolPtr(true),
+			in:         configPtr(true),
 			wantPolicy: dbtypes.SandboxAutoResumeAny,
 		},
 		{
 			name:       "false maps to off policy",
-			in:         boolPtr(false),
+			in:         configPtr(false),
 			wantPolicy: dbtypes.SandboxAutoResumeOff,
 		},
 	}
