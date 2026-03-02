@@ -153,6 +153,19 @@ components:
             $ref: "#/components/schemas/Error"
 
   schemas:
+    TokenInfo:
+      type: object
+      properties:
+        teamID:
+          type: string
+          format: uuid
+          description: Identifier of the team the user belongs to
+        teamName:
+          type: string
+          description: Name of the team the user belongs to
+      required:
+        - teamID
+        - teamName
     Team:
       required:
         - teamID
@@ -1755,6 +1768,26 @@ paths:
           description: Request was successful
         "401":
           $ref: "#/components/responses/401"
+
+  /me:
+    get:
+      description: Get information about the authenticated user
+      tags: [auth]
+      security:
+        - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+      responses:
+        "200":
+          description: User is authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenInfo"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
 
   /teams:
     get:
