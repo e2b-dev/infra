@@ -4,10 +4,14 @@ import (
 	"context"
 	"errors"
 	"math/rand"
+	"net"
 	"net/http"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"go.uber.org/zap"
+	"google.golang.org/grpc/status"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/clusters"
@@ -94,10 +98,35 @@ func (a *APIStore) executeOnOrchestratorByClusterID(
 
 		c, ctx := node.GetClient(ctx)
 
-		// todo: retry on transient errors such as "failed to connect" or "read timeout", etc.
+		if err := fn(ctx, c); err != nil {
+			if isRetryableError(err) {
+				logger.L().Warn(ctx, "failed to make orchestrator call, retrying ... ", zap.Error(err))
 
-		return fn(ctx, c)
+				continue
+			}
+
+			return err
+		}
+
+		return nil
 	}
 
 	return ErrNoHealthyOrchestratorFound
+}
+
+func isRetryableError(err error) bool {
+	if errors.Is(err, net.ErrClosed) || errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+
+	status, ok := status.FromError(err)
+	if ok {
+		for _, actual := range status.Details() {
+			if _, ok := actual.(*orchestrator.UnknownVolumeTypeError); ok {
+				return true // maybe there's another orchestrator that knows about it?
+			}
+		}
+	}
+
+	return false
 }

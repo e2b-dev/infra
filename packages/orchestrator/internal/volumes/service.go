@@ -55,7 +55,10 @@ func (s *Service) buildVolumePath(volume *orchestrator.VolumeInfo, subPath strin
 	volumeType := volume.GetVolumeType()
 	volTypePath, ok := s.config.PersistentVolumeMounts[volumeType]
 	if !ok {
-		return "", status.Newf(codes.NotFound, "volume type %q not found", volumeType).Err()
+		statusErr := status.Newf(codes.NotFound, "volume type %q not found", volumeType)
+		statusErr, _ = statusErr.WithDetails(&orchestrator.UnknownVolumeTypeError{})
+
+		return "", statusErr.Err()
 	}
 
 	teamID, ok := tryParseUUID(volume.GetTeamId())

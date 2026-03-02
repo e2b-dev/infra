@@ -25,6 +25,8 @@ message EntryInfo {
   google.protobuf.Timestamp accessed_time = 11;
 }
 
+message UnknownVolumeTypeError {}
+
 enum UserErrorCode {
   UNKNOWN_USER_ERROR_CODE = 0;
   PATH_NOT_FOUND = 1;
