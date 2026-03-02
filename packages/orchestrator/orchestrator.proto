@@ -54,6 +54,7 @@ message SandboxConfig {
 }
 
 message SandboxAutoResumeConfig {
+  // Policy values are owned by the API layer today (e.g. "off", "any").
   string policy = 1;
 }
 

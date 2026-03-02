@@ -265,6 +265,7 @@ type SandboxAutoResumeConfig struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
+	// Policy values are owned by the API layer today (e.g. "off", "any").
 	Policy string `protobuf:"bytes,1,opt,name=policy,proto3" json:"policy,omitempty"`
 }
 
