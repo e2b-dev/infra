@@ -285,6 +285,20 @@ func (o *awsObject) Exists(ctx context.Context) (bool, error) {
 	return err == nil, ignoreNotExists(err)
 }
 
+func (o *awsObject) Delete(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, awsOperationTimeout)
+	defer cancel()
+
+	_, err := o.client.DeleteObject(
+		ctx, &s3.DeleteObjectInput{
+			Bucket: aws.String(o.bucketName),
+			Key:    aws.String(o.path),
+		},
+	)
+
+	return err
+}
+
 func ignoreNotExists(err error) error {
 	if errors.Is(err, ErrObjectNotExist) {
 		return nil

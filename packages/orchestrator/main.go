@@ -307,6 +307,7 @@ func run(config cfg.Config) (success bool) {
 		RedisURL:         config.RedisURL,
 		RedisClusterURL:  config.RedisClusterURL,
 		RedisTLSCABase64: config.RedisTLSCABase64,
+		PoolSize:         config.RedisPoolSize,
 	})
 	if err != nil && !errors.Is(err, sharedFactories.ErrRedisDisabled) {
 		logger.L().Fatal(ctx, "Could not connect to Redis", zap.Error(err))
