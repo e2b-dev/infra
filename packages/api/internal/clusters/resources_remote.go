@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -99,7 +100,7 @@ func (r *ClusterResourceProviderImpl) GetSandboxesMetrics(ctx context.Context, t
 	return items, nil
 }
 
-func (r *ClusterResourceProviderImpl) GetSandboxLogs(ctx context.Context, teamID string, sandboxID string, start *int64, end *int64, limit *int32, dr *api.LogsDirection) (api.SandboxLogs, *api.APIError) {
+func (r *ClusterResourceProviderImpl) GetSandboxLogs(ctx context.Context, teamID string, sandboxID string, start *int64, end *int64, limit *int32, dr *api.LogsDirection, level *logs.LogLevel, search *string) (api.SandboxLogs, *api.APIError) {
 	direction := apiLogDirectionToEdgeSandboxLogsDirection(dr)
 	params := &edgeapi.V1SandboxLogsParams{TeamID: teamID, Start: start, End: end, Limit: limit, Direction: direction}
 	res, err := r.client.V1SandboxLogsWithResponse(ctx, sandboxID, params)
@@ -116,22 +117,34 @@ func (r *ClusterResourceProviderImpl) GetSandboxLogs(ctx context.Context, teamID
 	}
 
 	raw := *res.JSON200
-	l := make([]api.SandboxLog, len(raw.Logs))
-	for i, row := range raw.Logs {
-		l[i] = api.SandboxLog{
-			Line:      row.Line,
-			Timestamp: row.Timestamp,
-		}
-	}
 
-	le := make([]api.SandboxLogEntry, len(raw.LogEntries))
-	for i, row := range raw.LogEntries {
-		le[i] = api.SandboxLogEntry{
+	l := make([]api.SandboxLog, 0, len(raw.Logs))
+	le := make([]api.SandboxLogEntry, 0, len(raw.LogEntries))
+
+	for _, row := range raw.LogEntries {
+		entryLevel := api.LogLevel(row.Level)
+
+		// rolling-deploy safety: post-filter by level and search in case edge hasn't been updated yet
+		if level != nil && logs.CompareLevels(string(entryLevel), logs.LevelToString(*level)) < 0 {
+			continue
+		}
+		if search != nil && *search != "" && !strings.Contains(row.Message, *search) {
+			continue
+		}
+
+		le = append(le, api.SandboxLogEntry{
 			Timestamp: row.Timestamp,
-			Level:     api.LogLevel(row.Level),
+			Level:     entryLevel,
 			Message:   row.Message,
 			Fields:    row.Fields,
-		}
+		})
+	}
+
+	for _, row := range raw.Logs {
+		l = append(l, api.SandboxLog{
+			Line:      row.Line,
+			Timestamp: row.Timestamp,
+		})
 	}
 
 	return api.SandboxLogs{Logs: l, LogEntries: le}, nil
