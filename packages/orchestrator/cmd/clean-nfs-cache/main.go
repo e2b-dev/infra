@@ -174,7 +174,7 @@ func preRun(ctx context.Context) (cleaner.Options, logger.Logger, telemetry.LogP
 		cores = append(cores, otelCore)
 	}
 
-	l := utils.Must(logger.NewLogger(ctx, logger.LoggerConfig{
+	l := utils.Must(logger.NewLogger(logger.LoggerConfig{
 		ServiceName:   serviceName,
 		IsInternal:    true,
 		IsDebug:       env.IsDebug(),
