@@ -207,13 +207,25 @@ func (_mock *MockFramedFile) StoreFile(ctx context.Context, path string, opts *F
 	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *FramedUploadOptions) (*FrameTable, [32]byte, error)); ok {
 		return returnFunc(ctx, path, opts)
 	}
-	if ret.Get(0) != nil {
-		r0 = ret.Get(0).(*FrameTable)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *FramedUploadOptions) *FrameTable); ok {
+		r0 = returnFunc(ctx, path, opts)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*FrameTable)
+		}
 	}
-	if ret.Get(1) != nil {
-		r1 = ret.Get(1).([32]byte)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, *FramedUploadOptions) [32]byte); ok {
+		r1 = returnFunc(ctx, path, opts)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).([32]byte)
+		}
 	}
-	r2 = ret.Error(2)
+	if returnFunc, ok := ret.Get(2).(func(context.Context, string, *FramedUploadOptions) error); ok {
+		r2 = returnFunc(ctx, path, opts)
+	} else {
+		r2 = ret.Error(2)
+	}
 	return r0, r1, r2
 }
 
@@ -253,8 +265,8 @@ func (_c *MockFramedFile_StoreFile_Call) Run(run func(ctx context.Context, path 
 	return _c
 }
 
-func (_c *MockFramedFile_StoreFile_Call) Return(frameTable *FrameTable, checksum [32]byte, err error) *MockFramedFile_StoreFile_Call {
-	_c.Call.Return(frameTable, checksum, err)
+func (_c *MockFramedFile_StoreFile_Call) Return(frameTable *FrameTable, bytes [32]byte, err error) *MockFramedFile_StoreFile_Call {
+	_c.Call.Return(frameTable, bytes, err)
 	return _c
 }
 
