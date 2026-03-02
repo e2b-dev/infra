@@ -34,6 +34,12 @@ provider "cloudflare" {
 
 provider "aws" {}
 
+provider "nomad" {
+  address      = "https://nomad.${var.domain_name}"
+  secret_id    = module.init.cluster.nomad_acl_token
+  consul_token = module.init.cluster.consul_acl_token
+}
+
 data "aws_region" "current" {}
 
 data "aws_caller_identity" "current" {}
@@ -153,6 +159,71 @@ module "cluster" {
   clickhouse_security_group_ids    = [aws_security_group.cluster_node.id]
   clickhouse_subnet_id             = module.init.vpc_private_subnet_ids[0]
   clickhouse_job_constraint_prefix = local.clickhouse_jobs_prefix
+}
+
+module "nomad" {
+  source = "./nomad"
+
+  domain_name    = var.domain_name
+  environment    = var.environment
+  aws_region     = data.aws_region.current.name
+  aws_account_id = data.aws_caller_identity.current.account_id
+
+  nomad_acl_token  = module.init.cluster.nomad_acl_token
+  consul_acl_token = module.init.cluster.consul_acl_token
+
+  grafana_otel_collector_token = module.init.grafana.otel_collector_token
+  grafana_otlp_url             = module.init.grafana.otlp_url
+  grafana_username             = module.init.grafana.username
+
+  api_node_pool          = local.api_pool_name
+  clickhouse_node_pool   = local.clickhouse_pool_name
+  clickhouse_jobs_prefix = local.clickhouse_jobs_prefix
+
+  api_cluster_size            = var.api_cluster_size
+  api_repository_name         = module.init.api_repository_name
+  db_migrator_repository_name = module.init.db_migrator_repository_name
+  postgres_connection_string  = module.init.postgres_connection_string
+  supabase_jwt_secrets        = module.init.supabase_jwt_secrets
+  admin_token                 = module.init.admin_token
+  sandbox_access_token_hash_seed = module.init.sandbox_access_token_hash_seed
+
+  ingress_port  = local.ingress_port
+  ingress_count = var.ingress_count
+
+  client_proxy_count           = var.client_proxy_count
+  client_proxy_repository_name = module.init.client_proxy_repository_name
+
+  orchestrator_node_pool              = local.client_pool_name
+  allow_sandbox_internet              = var.allow_sandbox_internet
+  orchestrator_port                   = var.orchestrator_port
+  orchestrator_proxy_port             = var.orchestrator_proxy_port
+  envd_timeout                        = var.envd_timeout
+  fc_env_pipeline_bucket_name         = module.init.fc_env_pipeline_bucket_name
+  template_bucket_name                = module.init.fc_template_bucket_name
+  build_cache_bucket_name             = module.init.fc_template_build_cache_bucket_name
+  custom_environments_repository_name = module.init.custom_environments_repository_name
+
+  build_node_pool    = local.build_pool_name
+  build_cluster_size = var.build_cluster_size
+  api_secret         = module.init.api_secret
+
+  redis_managed       = var.redis_managed
+  redis_port          = local.redis_port
+  redis_url           = local.redis_url
+  redis_cluster_url   = local.redis_cluster_url
+  redis_tls_ca_base64 = local.redis_tls_ca_base64
+
+  loki_bucket_name = module.init.loki_bucket_name
+
+  clickhouse_cluster_size             = var.clickhouse_cluster_size
+  clickhouse_username                 = module.init.clickhouse.username
+  clickhouse_password                 = module.init.clickhouse.password
+  clickhouse_server_secret            = module.init.clickhouse.server_secret
+  clickhouse_backups_bucket_name      = module.init.clickhouse_backups_bucket_name
+  clickhouse_migrator_repository_name = module.init.clickhouse_migrator_repository_name
+
+  launch_darkly_api_key = module.init.launch_darkly_api_key
 }
 
 resource "aws_security_group" "cluster_node" {

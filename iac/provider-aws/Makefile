@@ -32,6 +32,7 @@ tf_vars := AWS_PROFILE=$(AWS_PROFILE) AWS_REGION=$(AWS_REGION) \
 	$(call tfvar, INGRESS_COUNT) \
 	$(call tfvar, BUILD_CLUSTER_SIZE) \
 	$(call tfvar, BUILD_SERVER_MACHINE_TYPE) \
+	$(call tfvar, BUILD_SERVER_NESTED_VIRTUALIZATION) \
 	$(call tfvar, AWS_ACCOUNT_ID) \
 	$(call tfvar, AWS_REGION)
 
