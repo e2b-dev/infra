@@ -21,6 +21,6 @@ resource "nomad_job" "client_proxy" {
 
     otel_collector_grpc_endpoint = var.otel_collector_grpc_endpoint
     logs_collector_address       = var.logs_collector_address
-    launch_darkly_api_key        = var.launch_darkly_api_key
+    launch_darkly_api_key        = trimspace(var.launch_darkly_api_key)
   })
 }

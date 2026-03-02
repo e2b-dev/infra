@@ -18,7 +18,7 @@ locals {
     consul_token            = var.consul_token
     domain_name             = var.domain_name
     shared_chunk_cache_path = var.shared_chunk_cache_path
-    launch_darkly_api_key   = var.launch_darkly_api_key
+    launch_darkly_api_key   = trimspace(var.launch_darkly_api_key)
     orchestrator_services   = var.orchestrator_services
     build_cache_bucket_name = var.build_cache_bucket_name
 

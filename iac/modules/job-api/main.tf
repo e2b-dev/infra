@@ -33,6 +33,6 @@ resource "nomad_job" "api" {
     sandbox_access_token_hash_seed          = var.sandbox_access_token_hash_seed
     sandbox_storage_backend                 = var.sandbox_storage_backend
     db_migrator_docker_image                = var.db_migrator_docker_image
-    launch_darkly_api_key                   = var.launch_darkly_api_key
+    launch_darkly_api_key                   = trimspace(var.launch_darkly_api_key)
   })
 }

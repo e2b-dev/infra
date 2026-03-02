@@ -135,9 +135,11 @@ job "template-manager" {
 
       artifact {
         source      = "${artifact_source}"
+%{ if template_manager_checksum != "" }
         options {
             checksum    = "md5:${template_manager_checksum}"
         }
+%{ endif }
       }
     }
   }

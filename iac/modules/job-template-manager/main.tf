@@ -37,7 +37,7 @@ resource "nomad_job" "template_manager" {
     orchestrator_services           = var.orchestrator_services
     clickhouse_connection_string    = var.clickhouse_connection_string
     dockerhub_remote_repository_url = var.dockerhub_remote_repository_url
-    launch_darkly_api_key           = var.launch_darkly_api_key
+    launch_darkly_api_key           = trimspace(var.launch_darkly_api_key)
     shared_chunk_cache_path         = var.shared_chunk_cache_path
   })
 }
