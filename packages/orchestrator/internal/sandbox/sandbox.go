@@ -321,7 +321,7 @@ func (f *Factory) CreateSandbox(
 		return nil, err
 	}
 
-	cgroupHandle, cgroupFD := createCgroup(ctx, f.cgroupManager, runtime.SandboxID, cleanup)
+	cgroupHandle, cgroupFD := createCgroup(ctx, f.cgroupManager, sandboxFiles.SandboxCgroupName(), cleanup)
 	defer releaseCgroupFD(ctx, cgroupHandle, runtime.SandboxID)
 
 	fcHandle, err := fc.NewProcess(
@@ -615,7 +615,7 @@ func (f *Factory) ResumeSandbox(
 	}
 
 	// Create cgroup for sandbox resource accounting
-	cgroupHandle, cgroupFD := createCgroup(ctx, f.cgroupManager, runtime.SandboxID, cleanup)
+	cgroupHandle, cgroupFD := createCgroup(ctx, f.cgroupManager, sandboxFiles.SandboxCgroupName(), cleanup)
 	defer releaseCgroupFD(ctx, cgroupHandle, runtime.SandboxID)
 
 	fcHandle, fcErr := fc.NewProcess(
