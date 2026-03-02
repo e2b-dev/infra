@@ -84,7 +84,6 @@ message VolumeDirCreateResponse {
 message VolumeDirDeleteRequest {
   VolumeInfo volume = 1;
   string path = 2;
-  bool recursive = 3;
 }
 
 message VolumeDirDeleteResponse {}

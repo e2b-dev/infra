@@ -42,18 +42,11 @@ func (s *Service) DeleteDir(ctx context.Context, request *orchestrator.VolumeDir
 		return nil, newAPIError(ctx, codes.InvalidArgument, http.StatusBadRequest, orchestrator.UserErrorCode_CANNOT_DELETE_ROOT, "cannot delete root directory")
 	}
 
-	var fn removeFunc
-	if request.GetRecursive() {
-		fn = os.RemoveAll
-	} else {
-		fn = os.Remove
-	}
-
 	span.AddEvent("removing directory", trace.WithAttributes(
 		attribute.String("path", fullPath),
 	))
 
-	if err := fn(fullPath); err != nil {
+	if err := os.RemoveAll(fullPath); err != nil {
 		if os.IsNotExist(err) {
 			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to delete: %q not found.", fullPath)
 		}
