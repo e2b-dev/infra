@@ -287,16 +287,9 @@ func run() int {
 	defer sbxLoggerInternal.Sync()
 	sbxlogger.SetSandboxLoggerInternal(sbxLoggerInternal)
 
-	// Start Go runtime metrics collection (goroutines, heap, GC, etc.)
-	stopRuntime, err := tel.StartRuntimeInstrumentation()
-	if err != nil {
-		log.Printf("warning: failed to start runtime instrumentation: %v", err)
-	} else {
-		defer func() {
-			if err := stopRuntime(ctx); err != nil {
-				log.Printf("error while stopping runtime instrumentation: %v", err)
-			}
-		}()
+	// Register Go runtime metric callbacks (goroutines, heap, GC, etc.)
+	if err := tel.StartRuntimeInstrumentation(); err != nil {
+		l.Warn(ctx, "failed to start runtime instrumentation", zap.Error(err))
 	}
 
 	// Convert the string expectedMigrationTimestamp  to a int64
@@ -448,18 +441,21 @@ func run() int {
 		}
 	})
 
-	pprofServer := &http.Server{
-		Addr:    fmt.Sprintf("0.0.0.0:%d", defaultPprofPort),
-		Handler: http.DefaultServeMux,
-	}
-
-	wg.Go(func() {
-		l.Info(ctx, "pprof server starting", zap.Int("port", defaultPprofPort))
-
-		if err := pprofServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			l.Error(ctx, "pprof server encountered error", zap.Error(err))
+	if env.IsDebug() {
+		pprofServer := &http.Server{
+			Addr:    fmt.Sprintf("127.0.0.1:%d", defaultPprofPort),
+			Handler: http.DefaultServeMux,
 		}
-	})
+		cleanupFns = append(cleanupFns, pprofServer.Shutdown)
+
+		wg.Go(func() {
+			l.Info(ctx, "pprof server starting", zap.Int("port", defaultPprofPort))
+
+			if err := pprofServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				l.Error(ctx, "pprof server encountered error", zap.Error(err))
+			}
+		})
+	}
 
 	wg.Go(func() {
 		<-signalCtx.Done()
@@ -486,10 +482,6 @@ func run() int {
 		if err := s.Shutdown(ctx); err != nil {
 			exitCode.Add(1)
 			l.Error(ctx, "Http service shutdown error", zap.Int("port", port), zap.Error(err))
-		}
-
-		if err := pprofServer.Shutdown(ctx); err != nil {
-			l.Error(ctx, "pprof server shutdown error", zap.Error(err))
 		}
 
 		grpcServer.GracefulStop()

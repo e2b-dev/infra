@@ -1,35 +1,26 @@
 package telemetry
 
 import (
-	"context"
-
 	"go.opentelemetry.io/contrib/instrumentation/runtime"
 )
 
-// StartRuntimeInstrumentation starts the standard OTEL Go runtime metrics collection.
-// Uses go.opentelemetry.io/contrib/instrumentation/runtime.
+// StartRuntimeInstrumentation registers OTEL Go runtime metric callbacks.
 //
-// Collected metrics:
-//   - runtime.go.goroutines
-//   - runtime.go.gc.pause_total
-//   - runtime.go.mem.heap_alloc
-//   - runtime.go.mem.heap_idle
-//   - runtime.go.mem.heap_inuse
-//   - runtime.go.mem.heap_objects
-//   - runtime.go.mem.heap_released
-//   - runtime.go.mem.heap_sys
-//   - runtime.go.mem.live_objects
-//   - runtime.go.cgo.calls
+// Collected metrics (semantic-convention names):
+//   - go.memory.used
+//   - go.memory.limit
+//   - go.memory.allocated
+//   - go.memory.allocations
+//   - go.memory.gc.goal
+//   - go.goroutine.count
+//   - go.processor.limit
+//   - go.config.gogc
 //
-// Performance: Uses runtime/metrics (no STW pause), ~50μs per collection.
-func (t *Client) StartRuntimeInstrumentation() (stop func(context.Context) error, err error) {
-	err = runtime.Start(
+// The callbacks are invoked by the MeterProvider and stop automatically
+// when it shuts down — no separate goroutine is spawned.
+func (t *Client) StartRuntimeInstrumentation() error {
+	return runtime.Start(
 		runtime.WithMeterProvider(t.MeterProvider),
 		runtime.WithMinimumReadMemStatsInterval(metricExportPeriod),
 	)
-	if err != nil {
-		return nil, err
-	}
-
-	return func(context.Context) error { return nil }, nil
 }
