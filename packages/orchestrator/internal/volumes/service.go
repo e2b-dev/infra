@@ -26,8 +26,8 @@ import (
 const (
 	defaultDirMode  uint32 = 0o777
 	defaultFileMode uint32 = 0o666
-	defaultOwnerID  uint32 = 1000
-	defaultGroupID  uint32 = 1000
+	defaultOwnerID  uint32 = 9090
+	defaultGroupID  uint32 = 9090
 )
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/volumes")
