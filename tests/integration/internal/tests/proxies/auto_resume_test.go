@@ -23,7 +23,7 @@ func TestSandboxAutoResumeViaExec(t *testing.T) {
 	c := setup.GetAPIClient()
 	ctx := t.Context()
 
-	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(true), utils.WithAutoResume(api.Any))
+	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(true), utils.WithAutoResume(true))
 	envdClient := setup.GetEnvdClient(t, ctx)
 
 	// Run ls before pausing.
@@ -56,7 +56,7 @@ func TestSandboxAutoResumeViaProxy(t *testing.T) {
 	c := setup.GetAPIClient()
 	ctx := t.Context()
 
-	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(true), utils.WithAutoResume(api.Any))
+	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(true), utils.WithAutoResume(true))
 	envdClient := setup.GetEnvdClient(t, ctx)
 
 	// Start an HTTP server inside the sandbox.
