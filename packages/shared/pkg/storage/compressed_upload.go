@@ -483,10 +483,11 @@ func newZstdEncoder(concurrency int, windowSize int, compressionLevel zstd.Encod
 	return zstd.NewWriter(nil, zstdOpts...)
 }
 
-// CompressBytes compresses data as a single stream (no framing) using the
-// given codec and level. Uses the same encoder settings as CompressStream
-// (window size, concurrency) so raw vs framed comparisons are fair.
-func CompressBytes(ct CompressionType, level int, data []byte) ([]byte, error) {
+// CompressRawNoFrames compresses data as a single stream (no framing) using the given
+// codec and level. Uses the same encoder settings as CompressStream (window
+// size, concurrency) so raw vs framed comparisons are fair. It is used only in
+// benchmarks.
+func CompressRawNoFrames(ct CompressionType, level int, data []byte) ([]byte, error) {
 	switch ct {
 	case CompressionLZ4:
 		var buf bytes.Buffer
@@ -502,7 +503,7 @@ func CompressBytes(ct CompressionType, level int, data []byte) ([]byte, error) {
 		return buf.Bytes(), nil
 
 	case CompressionZstd:
-		enc, err := newZstdEncoder(1, DefaultCompressFrameSize, zstd.EncoderLevel(level))
+		enc, err := newZstdEncoder(0, DefaultCompressFrameSize, zstd.EncoderLevel(level))
 		if err != nil {
 			return nil, fmt.Errorf("zstd encoder: %w", err)
 		}

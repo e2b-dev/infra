@@ -16,31 +16,15 @@
   - [Chunker](#chunker-meter-internalsandboxblockmetrics) · [NFS Cache](#nfs-cache-meter-sharedpkgstorage) · [GCS Backend](#gcs-backend-meter-sharedpkgstorage) · [Key Queries](#key-queries)
 - [I. Rollout Strategy](#i-rollout-strategy)
 
-## Key Architectural Decisions
+## Architecture Highlights
+| 3 | **Compressed-only vs uncompressed-only** | `compressBuilds` FF exclusively selects one mode | No dual-write; compressed builds skip uncompressed entirely and vice versa. See [Feature Flags](#feature-flags). |
 
-Decisions to revisit as needed. Each links to the section where it's detailed.
-
-| # | Decision | Current choice | Rationale / tradeoff |
-|---|----------|---------------|---------------------|
-| 1 | **Frame size** | Fixed-size uncompressed (default 2 MiB, FF-configurable via `frameSizeKB`, min 128 KiB) | Simple, matches UFFD hugepage size at default; variable compressed output. See [Storage Format](#storage-format). |
-| 2 | **Compression codec** | Zstd level 1 (recommended), LZ4 as alternative, per-template via FF | Zstd1 is within 0.6% of LZ4 throughput but stores 32% less data. See [Compression Settings Selection](#compression-settings-selection). |
-| 3 | **Dual-write vs compressed-only** | Always dual-write (uncompressed + compressed) | Safe rollback; compressed-only planned (#5 in [Remaining Work](#d-remaining-work)). |
-| 4 | **Single unified Chunker** | One `Chunker` struct for both paths | Replaces 3 prior chunker types; slot-based `regionLock` for dedup. See [Biggest Changes](#b-biggest-changes). |
-| 5 | **V4 header with per-mapping FrameTable** | Each mapping carries only its frames | Avoids loading full frame table; subset per mapping. See [Storage Format](#storage-format). |
-| 6 | **Asset probing at init** | Probe all 3 data variants per build in parallel | Enables mixed compressed/uncompressed stacks. See [Template Loading](#template-loading). |
-| 7 | **Mmap cache granularity** | Whole frames decompressed into mmap (default 2 MiB) | A 4 KB read fetches a full frame; acceptable at default size for memfile locality. See [Memory](#memory). |
-| 8 | **NFS cache for compressed frames** | Raw compressed bytes cached by `(path, offset, size)` | Saves NFS space; decompress on read. See [Biggest Changes](#b-biggest-changes). |
-| 9 | **regionLock fetch dedup** | Concurrent reads for same region coalesced | Prevents thundering herd on cold frames. See [Read Path](#read-path-nbd--uffd--prefetch). |
-| 10 | **Upload lifecycle on TemplateBuild** | TemplateBuild owns paths, frame tables, header serialization | Moved from Snapshot; enables multi-layer coordination. See [Write Paths](#e-write-paths). |
-| 11 | **No fallback on decompression error** | Corrupt frame → read fails (no silent fallback) | Fail-fast; fallback TBD in [Failure Modes](#f-failure-modes). |
-| 12 | **Feature-flag gated rollout** | Two JSON flags: `chunker-config` (read), `compress-config` (write) | Per-team/cluster/template targeting. See [Feature Flags](#feature-flags). |
-| 13 | **Prefetch chunk size** | 1 frame (default 2 MiB) | Matches frame size; no cross-frame prefetch. See [Read Path](#read-path-nbd--uffd--prefetch). |
 
 ---
 
 ## A. Architecture
 
-Templates are stored in GCS as build artifacts. Each build produces two data files (memfile, rootfs) plus a header and metadata. Each data file can have an uncompressed variant (`{buildId}/memfile`) and a compressed variant (`{buildId}/v4.memfile.lz4`), with corresponding v3 and v4 headers.
+Templates are stored in GCS as build artifacts. Each build produces two data files (memfile, rootfs) plus a header and metadata. Each data file can have an uncompressed variant (`{buildId}/memfile`) or a compressed variant (`{buildId}/memfile.zstd`). Both share a unified header path (`{buildId}/memfile.header`) whose version (V3 or V4) is auto-detected from the binary content.
 
 ### Storage Format
 
@@ -55,28 +39,16 @@ The most relevant change is `FramedFile` (returned by `OpenFramedFile`) replaces
 
 ### Feature Flags
 
-Two LaunchDarkly JSON flags control compression, with per-team/cluster/template targeting:
-
-**`chunker-config`** (read path):
-
-```json
-// (restart required for existing chunkers)
-{
-  "useCompressedAssets": false,   // load v4 headers, use compressed read path if available
-  "minReadBatchSizeKB": 16        // floor for read batch size in KB 
-}
-```
-
-**`compress-config`** (write path):
+**`compress-config`** (LaunchDarkly JSON flag, per-team/cluster/template targeting):
 
 ```json
 {
-  "compressBuilds": false,         // enable compressed dual-write uploads
+  "compressBuilds": false,         // exclusively compressed or exclusively uncompressed uploads
   "compressionType": "zstd",       // "lz4" or "zstd"
   "level": 2,                      // compression level (0=fast, higher=better ratio)
   "frameSizeKB": 2048,             // uncompressed frame size in KiB (min 128)
   "uploadPartTargetMB": 50,        // target GCS multipart upload part size in MiB
-  "encodeWorkers": 4,            // concurrent frame compression workers per file
+  "encodeWorkers": 4,              // concurrent frame compression workers per file
   "encoderConcurrency": 1,         // goroutines per individual zstd encoder
   "decoderConcurrency": 1          // goroutines per pooled zstd decoder
 }
@@ -86,9 +58,9 @@ Two LaunchDarkly JSON flags control compression, with per-team/cluster/template 
 
 When an orchestrator loads a template from storage (cache miss):
 
-1. **Header probe**: if `useCompressedAssets`, probes for v4 and v3 headers in parallel, preferring v4. Falls back to v3 if v4 is missing.
-2. **Asset probe**: for each build referenced in header mappings, probes for 3 data variants in parallel (uncompressed, `.lz4`, `.zstd`). Missing variants are silently skipped.
-3. **Chunker creation**: one `Chunker` per `(buildId, fileType)`. The chunker's `AssetInfo` records which variants exist.
+1. **Header load**: loads the unified header from `{buildId}/{fileType}.header` via `header.LoadHeader`. Version (V3/V4) is auto-detected from the binary content. Falls back to legacy headerless path if no header exists.
+2. **Data file open**: for each build referenced in header mappings, opens the single data file. The `FrameTable` from the header determines the compression suffix (e.g. `.zstd`); if no `FrameTable`, opens the uncompressed path.
+3. **Chunker creation**: one `Chunker` per `(buildId, fileType)`, backed by the opened `FramedFile`.
 
 ### Read Path (NBD / UFFD / Prefetch)
 
@@ -114,9 +86,9 @@ GetBlock(offset, length, ft) // was Slice()
 
 - **Unified Chunker**: collapsed `FullFetchChunker`, `StreamingChunker`, and the `Chunker` interface back into a single concrete `Chunker` struct backed by slot-based `regionLock` for fetch deduplication; a single code path handles both compressed and uncompressed data via `GetFrame`.
 
-- **Asset probing at init**: `StorageDiff.Init` now probes for all 3 data variants (uncompressed, lz4, zstd) in parallel via `probeAssets`, constructing an `AssetInfo` that the Chunker uses to route reads. This replaces the previous `OpenSeekable` single-object path.
+- **Data file routing at init**: `StorageDiff.Init` opens a single data file per build. The `FrameTable` from the V4 header determines the compression suffix; builds without a `FrameTable` open the uncompressed path. This replaces the previous `OpenSeekable` single-object path.
 
-- **Upload API on TemplateBuild**: moved the upload lifecycle from `Snapshot` to `TemplateBuild`, which now owns path extraction, `PendingFrameTables` accumulation, and V4 header serialization. `UploadAll` is synchronous (no internal goroutine); multi-layer builds use `UploadExceptV4Headers` + `UploadV4Header` with explicit coordination via `UploadTracker`.
+- **Upload API on TemplateBuild**: moved the upload lifecycle from `Snapshot.Upload` to `TemplateBuild`, which holds a `*Snapshot` reference and coordinates uploads via shared `PendingBuildInfo`. `UploadAtOnce` is synchronous (no internal goroutine); multi-layer builds use `UploadExceptV4Headers` + `UploadV4Header` with explicit coordination via `UploadTracker`. Headers are stored via `header.StoreHeader` (inverse of `header.LoadHeader`).
 
 - **NFS cache for compressed frames**: `GetFrame` on the NFS cache layer stores and retrieves individual compressed frames by `(path, frameStart, frameSize)`, with progressive decompression into mmap. Uncompressed reads use the same `GetFrame` codepath with `ft=nil`.
 
@@ -237,9 +209,9 @@ flowchart TD
 
 ### Compression Modes & Write-Path Timing
 
-5. **Compressed-only write mode**: add a `compress-config` flag (e.g. `"skipUncompressed": true`) that skips the uncompressed upload entirely and writes only compressed data + v4 header. Code: `TemplateBuild.UploadAll` / `UploadExceptV4Headers` currently always uploads uncompressed; gate that behind the flag. Read path: `probeAssets` already handles missing uncompressed variants, so this should work as-is. Saves the dual-write bandwidth and storage cost, but makes rollback to uncompressed reads impossible for those builds.
+5. ~~**Compressed-only write mode**~~: **Done.** `compressBuilds` in `compress-config` exclusively selects compressed or uncompressed uploads — no dual-write. `UploadExceptV4Headers` branches on `compressOpts != nil`.
 
-6. **Purity enforcement (no mixed compressed/uncompressed stacks)**: add a `chunker-config` flag (e.g. `"requirePureCompression": true`) that, at template load time, validates that if the top-layer build has compressed assets then every ancestor build in the header's mappings also has compressed assets (and vice versa). Fail sandbox creation if the check fails rather than silently mixing. This interacts with the write path: when `requirePureCompression` is enabled and a new layer is built on top of an uncompressed parent, the build must either (a) refuse to compress, (b) refuse to start, or (c) trigger background compression of the parent chain first. Today's `probeAssets` per-build routing lets mixed stacks work; purity enforcement would intentionally break that flexibility for correctness guarantees.
+6. **Purity enforcement (no mixed compressed/uncompressed stacks)**: add a flag (e.g. `"requirePureCompression": true`) that, at template load time, validates that if the top-layer build has compressed assets then every ancestor build in the header's mappings also has compressed assets (and vice versa). Fail sandbox creation if the check fails rather than silently mixing. This interacts with the write path: when `requirePureCompression` is enabled and a new layer is built on top of an uncompressed parent, the build must either (a) refuse to compress, (b) refuse to start, or (c) trigger background compression of the parent chain first. Today's per-mapping `FrameTable` routing lets mixed stacks work; purity enforcement would intentionally break that flexibility for correctness guarantees.
 
 7. **Sync vs async layer compression**: today compression is either inline (during `TemplateBuild.Upload*`, blocking the build) or fully async (background `compress-build` CLI, after the fact). Middle ground to explore:
    - **Compress before upload submission**: the snapshot data is already in memory/mmap after Firecracker pause. Compress frames in-process before kicking off the GCS upload, so the upload only sends compressed data (pairs with #5). Tradeoff: adds compression latency to the critical path before the sandbox can be resumed on another server.
@@ -262,9 +234,9 @@ flowchart TD
 
 Triggered by `sbx.Pause()` or initial template build. The orchestrator creates a `Snapshot` (FC memory + rootfs diffs, headers, snapfile, metadata), then constructs a `TemplateBuild` which owns the upload lifecycle:
 
-- **Single-layer** (initial build, simple pause): `TemplateBuild.UploadAll(ctx)` — synchronous, creates its own `PendingFrameTables` internally. Uploads uncompressed data + compressed data (if `compressBuilds` FF enabled) + uncompressed headers + snapfile + metadata concurrently in an errgroup. V4 headers are finalized and uploaded after all data uploads complete (they depend on `FrameTable` results).
+- **Single-layer** (initial build, simple pause): `TemplateBuild.UploadAtOnce(ctx)` — synchronous. Uploads either compressed data + V4 headers or uncompressed data + V3 headers (exclusively, based on `compressBuilds` FF), plus snapfile + metadata, concurrently in an errgroup.
 
-- **Multi-layer** (layered build): `TemplateBuild.UploadExceptV4Headers(ctx)` uploads all data, then returns `hasCompressed`. The caller coordinates with `UploadTracker` to wait for ancestor layers, then calls `TemplateBuild.UploadV4Header(ctx)` which reads accumulated `PendingFrameTables` from all layers and serializes the final v4 header.
+- **Multi-layer** (layered build): `TemplateBuild.UploadExceptV4Headers(ctx)` uploads all data, then returns `hasCompressed`. The caller coordinates with `UploadTracker` to wait for ancestor layers, then calls `TemplateBuild.UploadV4Header(ctx)` which reads accumulated `PendingBuildInfo` from all layers and serializes the final V4 header.
 
 ### Background Compression (`compress-build` CLI)
 
@@ -285,11 +257,11 @@ compress-build -build <uuid> [-storage gs://bucket] [-compression lz4|zstd] [-re
 
 **Corrupted compressed frame in GCS or NFS**: no automatic fallback to uncompressed today. The read fails, `GetBlock` returns an error, and the sandbox page-faults. Unresolved: should the Chunker retry with the uncompressed variant when decompression fails and `HasUncompressed` is true?
 
-**Half-compressed builds** (some layers have v4 header + compressed data, ancestors don't): handled by design. `probeAssets` finds whichever variants exist per build; each Chunker routes independently. A v4 header with a nil FrameTable for an ancestor mapping falls through to uncompressed fetch for that mapping.
+**Half-compressed builds** (some layers have V4 header + compressed data, ancestors don't): handled by design. Each mapping carries its own `FrameTable` (or nil); the Chunker routes each build independently. A nil `FrameTable` for an ancestor mapping falls through to uncompressed fetch for that mapping.
 
 **NFS unavailable**: compressed frames that miss NFS go straight to GCS (existing behavior). Uncompressed reads also use NFS caching with read-through and async write-back. No circuit breaker — repeated NFS timeouts will add latency to every miss until the cache recovers.
 
-**Upload path complexity**: dual-write (uncompressed + compressed), `PendingFrameTables` accumulation, and V4 header serialization add failure surface to the build hot path. Multi-layer builds add `UploadTracker` coordination between layers. A compression failure during upload could fail the entire build. Back-out: set `compressBuilds: false` in `compress-config` — this disables compressed writes entirely; uncompressed uploads continue as before and the read path already handles missing compressed variants. No cleanup of already-written compressed data needed (it becomes inert).
+**Upload path complexity**: `PendingBuildInfo` accumulation and V4 header serialization add failure surface to the build hot path. Multi-layer builds add `UploadTracker` coordination between layers. A compression failure during upload could fail the entire build. Back-out: set `compressBuilds: false` in `compress-config` — this disables compressed writes entirely; uncompressed uploads continue as before and the read path already handles missing compressed variants. No cleanup of already-written compressed data needed (it becomes inert).
 
 ### Unresolved
 
@@ -308,7 +280,7 @@ Sampled from `gs://e2b-staging-lev-fc-templates/` (262 builds, zstd level 2):
 | memfile  | 191 (both variants) | 140 MiB | 35 MiB | **4.0x** |
 | rootfs   | 153 (compressed-only) | unknown | varies | est. 2-10x (diff layers are tiny, full builds ~2x) |
 
-During dual-write, GCS storage increases ~25% for memfile. After dropping uncompressed, net savings are **~75% for memfile**. Rootfs savings depend on the mix of diff vs full builds.
+With compressed-only uploads, net savings are **~75% for memfile**. Rootfs savings depend on the mix of diff vs full builds.
 
 ### Compression Settings Selection
 
@@ -367,7 +339,7 @@ The main cost: **mmap regions are allocated at uncompressed size** but frames ar
 
 ### Net
 
-Smaller GCS reads (4x fewer bytes) and smaller NFS cache entries reduce network bandwidth. Upload path doubles bandwidth during dual-write.
+Smaller GCS reads (4x fewer bytes) and smaller NFS cache entries reduce network bandwidth.
 
 ---
 

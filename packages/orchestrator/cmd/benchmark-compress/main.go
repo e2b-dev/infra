@@ -199,7 +199,7 @@ func benchmarkArtifact(data []byte, iterations, encWorkers, encConcurrency int, 
 
 func rawEncode(data []byte, ct storage.CompressionType, level int) ([]byte, time.Duration) {
 	start := time.Now()
-	compressed, err := storage.CompressBytes(ct, level, data)
+	compressed, err := storage.CompressRawNoFrames(ct, level, data)
 	elapsed := time.Since(start)
 
 	if err != nil {
