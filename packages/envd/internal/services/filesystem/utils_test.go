@@ -7,9 +7,10 @@ import (
 	"strconv"
 	"testing"
 
-	fsmodel "github.com/e2b-dev/infra/packages/shared/pkg/filesystem"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	fsmodel "github.com/e2b-dev/infra/packages/shared/pkg/filesystem"
 )
 
 func TestIsPathOnNetworkMount(t *testing.T) {
@@ -62,6 +63,7 @@ func TestGetFileOwnership_CurrentUser(t *testing.T) {
 	t.Parallel()
 
 	t.Run("current user", func(t *testing.T) {
+		t.Parallel()
 
 		// Get current user running the tests
 		cur, err := osuser.Current()
@@ -98,12 +100,15 @@ func TestGetFileOwnership_CurrentUser(t *testing.T) {
 	})
 
 	t.Run("no user", func(t *testing.T) {
+		t.Parallel()
+
 		// Find a UID that does not exist on this system
 		var unknownUIDStr string
 		for i := 60001; i < 70000; i++ { // search a high range typically unused
 			idStr := strconv.Itoa(i)
 			if _, err := osuser.LookupId(idStr); err != nil {
 				unknownUIDStr = idStr
+
 				break
 			}
 		}
@@ -117,6 +122,7 @@ func TestGetFileOwnership_CurrentUser(t *testing.T) {
 			idStr := strconv.Itoa(i)
 			if _, err := osuser.LookupGroupId(idStr); err != nil {
 				unknownGIDStr = idStr
+
 				break
 			}
 		}
