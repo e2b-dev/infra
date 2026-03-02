@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 
+	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 	"golang.org/x/sync/semaphore"
@@ -25,6 +26,7 @@ import (
 
 type Server struct {
 	orchestrator.UnimplementedSandboxServiceServer
+	orchestrator.UnimplementedChunkServiceServer
 
 	config            cfg.Config
 	sandboxFactory    *sandbox.Factory
@@ -39,6 +41,8 @@ type Server struct {
 	featureFlags      *featureflags.Client
 	sbxEventsService  *events.EventsService
 	startingSandboxes *semaphore.Weighted
+	redis             redis.UniversalClient // may be nil if Redis is disabled
+	uploadedBuilds    sync.Map             // buildID → struct{}: builds whose GCS upload is done
 }
 
 type ServiceConfig struct {
@@ -54,6 +58,7 @@ type ServiceConfig struct {
 	Persistence      storage.StorageProvider
 	FeatureFlags     *featureflags.Client
 	SbxEventsService *events.EventsService
+	Redis            redis.UniversalClient
 }
 
 func New(ctx context.Context, cfg ServiceConfig) *Server {
@@ -70,6 +75,7 @@ func New(ctx context.Context, cfg ServiceConfig) *Server {
 		featureFlags:      cfg.FeatureFlags,
 		sbxEventsService:  cfg.SbxEventsService,
 		startingSandboxes: semaphore.NewWeighted(maxStartingInstancesPerNode),
+		redis:             cfg.Redis,
 	}
 
 	meter := cfg.Tel.MeterProvider.Meter("orchestrator.sandbox")

@@ -8,10 +8,12 @@ WITH new_env AS (
 ),
 
 snapshot_template AS (
-    INSERT INTO "public"."snapshot_templates" (env_id, sandbox_id)
+    INSERT INTO "public"."snapshot_templates" (env_id, sandbox_id, origin_node_id, build_id)
     VALUES (
         (SELECT id FROM new_env),
-        @sandbox_id
+        @sandbox_id,
+        @origin_node_id,
+        @build_id
     )
 ),
 

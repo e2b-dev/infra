@@ -21,6 +21,7 @@ type Snapshot struct {
 	cleanup *Cleanup
 }
 
+// Upload uploads all snapshot files to GCS concurrently.
 func (s *Snapshot) Upload(
 	ctx context.Context,
 	persistence storage.StorageProvider,
@@ -57,18 +58,14 @@ func (s *Snapshot) Upload(
 		templateFiles,
 	)
 
-	uploadErrCh := templateBuild.Upload(
+	if err := templateBuild.Upload(
 		ctx,
 		s.Metafile.Path(),
 		s.Snapfile.Path(),
 		memfilePath,
 		rootfsPath,
-	)
-
-	// Wait for the upload to finish
-	uploadErr := <-uploadErrCh
-	if uploadErr != nil {
-		return fmt.Errorf("error uploading template build: %w", uploadErr)
+	); err != nil {
+		return fmt.Errorf("error uploading template files: %w", err)
 	}
 
 	return nil

@@ -52,7 +52,6 @@ jobs:
       - name: Deploy jobs
         env:
           AUTO_CONFIRM_DEPLOY: true
-          SKIP_FMT: true
         run: |
           # Parse semicolon-separated job names
           IFS=';' read -ra JOBS <<< "${{ inputs.job_names }}"

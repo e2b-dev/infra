@@ -192,16 +192,6 @@ func (s *gcpStorage) OpenBlob(_ context.Context, path string, _ ObjectType) (Blo
 	}, nil
 }
 
-func (o *gcpObject) Delete(ctx context.Context) error {
-	ctx, cancel := context.WithTimeout(ctx, googleOperationTimeout)
-	defer cancel()
-
-	if err := o.handle.Delete(ctx); err != nil {
-		return fmt.Errorf("failed to delete %q: %w", o.path, err)
-	}
-
-	return nil
-}
 
 func (o *gcpObject) Exists(ctx context.Context) (bool, error) {
 	_, err := o.Size(ctx)

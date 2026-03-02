@@ -11,7 +11,6 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -24,21 +23,19 @@ const (
 )
 
 type RedisSandboxCatalog struct {
-	redisClient  redis.UniversalClient
-	cache        *ttlcache.Cache[string, *SandboxInfo]
-	featureFlags *featureflags.Client
+	redisClient redis.UniversalClient
+	cache       *ttlcache.Cache[string, *SandboxInfo]
 }
 
 var _ SandboxesCatalog = (*RedisSandboxCatalog)(nil)
 
-func NewRedisSandboxesCatalog(redisClient redis.UniversalClient, featureFlags *featureflags.Client) *RedisSandboxCatalog {
+func NewRedisSandboxesCatalog(redisClient redis.UniversalClient) *RedisSandboxCatalog {
 	cache := ttlcache.New(ttlcache.WithTTL[string, *SandboxInfo](catalogRedisLocalCacheTtl), ttlcache.WithDisableTouchOnHit[string, *SandboxInfo]())
 	go cache.Start()
 
 	return &RedisSandboxCatalog{
-		redisClient:  redisClient,
-		cache:        cache,
-		featureFlags: featureFlags,
+		redisClient: redisClient,
+		cache:       cache,
 	}
 }
 
@@ -48,13 +45,9 @@ func (c *RedisSandboxCatalog) GetSandbox(ctx context.Context, sandboxID string) 
 	spanCtx, span := tracer.Start(ctx, "sandbox-catalog-get")
 	defer span.End()
 
-	useLocalCache := c.featureFlags.BoolFlag(spanCtx, featureflags.SandboxCatalogLocalCacheFlag)
-
-	if useLocalCache {
-		sandboxInfo := c.cache.Get(sandboxID)
-		if sandboxInfo != nil {
-			return sandboxInfo.Value(), nil
-		}
+	sandboxInfo := c.cache.Get(sandboxID)
+	if sandboxInfo != nil {
+		return sandboxInfo.Value(), nil
 	}
 
 	ctx, ctxCancel := context.WithTimeout(spanCtx, catalogRedisTimeout)
@@ -75,9 +68,8 @@ func (c *RedisSandboxCatalog) GetSandbox(ctx context.Context, sandboxID string) 
 		return nil, fmt.Errorf("failed to unmarshal sandbox info: %w", err)
 	}
 
-	if useLocalCache {
-		c.cache.Set(sandboxID, info, catalogRedisLocalCacheTtl)
-	}
+	// Store in local cache if needed
+	c.cache.Set(sandboxID, info, catalogRedisLocalCacheTtl)
 
 	return info, nil
 }

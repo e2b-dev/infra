@@ -16,6 +16,7 @@ type Template interface {
 	Memfile(ctx context.Context) (block.ReadonlyDevice, error)
 	Rootfs() (block.ReadonlyDevice, error)
 	Snapfile() (File, error)
+	MetadataFile() (File, error)
 	Metadata() (metadata.Template, error)
 	Close(ctx context.Context) error
 }
@@ -42,6 +43,13 @@ func closeTemplate(ctx context.Context, t Template) (e error) {
 		e = errors.Join(e, err)
 	} else {
 		closable = append(closable, snapfile)
+	}
+
+	metafile, err := t.MetadataFile()
+	if err != nil {
+		e = errors.Join(e, err)
+	} else {
+		closable = append(closable, metafile)
 	}
 
 	for _, c := range closable {

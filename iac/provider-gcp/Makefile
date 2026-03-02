@@ -10,11 +10,6 @@ TERRAFORM_STATE_BUCKET ?= $(GCP_PROJECT_ID)-terraform-state
 TEMPLATE_BUCKET_LOCATION ?= $(GCP_REGION)
 BUCKET_PREFIX ?= $(GCP_PROJECT_ID)-
 
-SKIP_FMT ?= false
-define tf_fmt
-$(if $(filter true,$(SKIP_FMT)),,$(TF) fmt -recursive)
-endef
-
 # Set the terraform environment variable only if the environment variable is set
 # Strip the passed variable name (it's space sensitive) and check if the variable is set, if yes return TF_VAR_<variable_name>=<value> with the variable name in lower case
 define tfvar
@@ -117,13 +112,13 @@ destroy:
 .PHONY: plan
 plan:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	@ $(call tf_fmt)
+	@ $(TF) fmt -recursive
 	@ $(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -compact-warnings
 
 .PHONY: terraform
 terraform:
 	@ printf "Terraform command for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	@ $(call tf_fmt)
+	@ $(TF) fmt -recursive
 	@ $(tf_vars) $(TF) $(ARGS)
 
 # Deploy all jobs in Nomad
@@ -132,27 +127,27 @@ terraform:
 .PHONY: plan-only-jobs plan-only-jobs/clickhouse plan-only-jobs/clickhouse_migrator plan-only-jobs/clickhouse_backup plan-only-jobs/clickhouse_backup_restore
 plan-only-jobs/clickhouse:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	$(call tf_fmt)
+	$(TF) fmt -recursive
 	$(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -compact-warnings -target="module.nomad.module.clickhouse.nomad_job.clickhouse"
 plan-only-jobs/clickhouse_migrator:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	$(call tf_fmt)
+	$(TF) fmt -recursive
 	$(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -compact-warnings -target="module.nomad.module.clickhouse.nomad_job.clickhouse_migrator"
 plan-only-jobs/clickhouse_backup:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	$(call tf_fmt)
+	$(TF) fmt -recursive
 	$(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -compact-warnings -target="module.nomad.module.clickhouse.nomad_job.clickhouse_backup"
 plan-only-jobs/clickhouse_backup_restore:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	$(call tf_fmt)
+	$(TF) fmt -recursive
 	$(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -compact-warnings -target="module.nomad.module.clickhouse.nomad_job.clickhouse_backup_restore"
 plan-only-jobs/%:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	$(call tf_fmt)
+	$(TF) fmt -recursive
 	@ $(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -compact-warnings -target=module.nomad.nomad_job.$(subst -,_,$(notdir $@)) -target=module.nomad.module.$(subst -,_,$(notdir $@))
 plan-only-jobs:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	$(call tf_fmt)
+	$(TF) fmt -recursive
 	@ $(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -compact-warnings -target=module.nomad
 
 .PHONY: plan-without-jobs

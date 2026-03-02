@@ -114,18 +114,20 @@ func (c *cachedSeekable) ReadAt(ctx context.Context, buff []byte, offset int64) 
 		return readCount, fmt.Errorf("failed to perform uncached read: %w", err)
 	}
 
-	shadowBuff := make([]byte, readCount)
-	copy(shadowBuff, buff[:readCount])
+	if !skipCacheWriteback(ctx) {
+		shadowBuff := make([]byte, readCount)
+		copy(shadowBuff, buff[:readCount])
 
-	c.goCtx(ctx, func(ctx context.Context) {
-		ctx, span := c.tracer.Start(ctx, "write chunk at offset back to cache")
-		defer span.End()
+		c.goCtx(ctx, func(ctx context.Context) {
+			ctx, span := c.tracer.Start(ctx, "write chunk at offset back to cache")
+			defer span.End()
 
-		if err := c.writeChunkToCache(ctx, offset, chunkPath, shadowBuff); err != nil {
-			recordError(span, err)
-			recordCacheWriteError(ctx, cacheTypeSeekable, cacheOpReadAt, err)
-		}
-	})
+			if err := c.writeChunkToCache(ctx, offset, chunkPath, shadowBuff); err != nil {
+				recordError(span, err)
+				recordCacheWriteError(ctx, cacheTypeSeekable, cacheOpReadAt, err)
+			}
+		})
+	}
 
 	recordCacheRead(ctx, false, int64(readCount), cacheTypeSeekable, cacheOpReadAt)
 
@@ -157,6 +159,11 @@ func (c *cachedSeekable) OpenRangeReader(ctx context.Context, off, length int64)
 	}
 
 	recordCacheRead(ctx, false, length, cacheTypeSeekable, cacheOpOpenRangeReader)
+
+	// Skip write-through when the caller has opted out of cache writeback.
+	if skipCacheWriteback(ctx) {
+		return inner, nil
+	}
 
 	// Wrap in a write-through reader that caches data on Close
 	return &cacheWriteThroughReader{
@@ -235,15 +242,17 @@ func (c *cachedSeekable) Size(ctx context.Context) (n int64, e error) {
 		return size, err
 	}
 
-	c.goCtx(ctx, func(ctx context.Context) {
-		ctx, span := c.tracer.Start(ctx, "write size of object to cache")
-		defer span.End()
+	if !skipCacheWriteback(ctx) {
+		c.goCtx(ctx, func(ctx context.Context) {
+			ctx, span := c.tracer.Start(ctx, "write size of object to cache")
+			defer span.End()
 
-		if err := c.writeLocalSize(ctx, size); err != nil {
-			recordError(span, err)
-			recordCacheWriteError(ctx, cacheTypeSeekable, cacheOpSize, err)
-		}
-	})
+			if err := c.writeLocalSize(ctx, size); err != nil {
+				recordError(span, err)
+				recordCacheWriteError(ctx, cacheTypeSeekable, cacheOpSize, err)
+			}
+		})
+	}
 
 	recordCacheRead(ctx, false, 0, cacheTypeSeekable, cacheOpSize)
 

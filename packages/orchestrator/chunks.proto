@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+option go_package = "https://github.com/e2b-dev/infra/orchestrator";
+
+// ChunkService allows orchestrators to serve snapshot files directly from
+// their local cache to peer orchestrators, bypassing GCS during hot resumes.
+
+message GetBuildFileInfoRequest {
+  string build_id = 1;
+  // file_name is one of: "memfile", "rootfs.ext4", "snapfile",
+  // "metadata.json", "memfile.header", "rootfs.ext4.header"
+  string file_name = 2;
+}
+
+message GetBuildFileInfoResponse {
+  int64 total_size = 1;
+  // not_available is true when the file is not in the local cache.
+  // The caller should fall back to GCS.
+  bool not_available = 2;
+  // use_storage is true when the GCS upload has completed and the caller
+  // should switch to reading from GCS/NFS directly instead of this peer.
+  bool use_storage = 3;
+}
+
+message GetBuildFileRequest {
+  string build_id = 1;
+  string file_name = 2;
+  // offset and length are used for seekable files (memfile, rootfs.ext4).
+  // For blob files, pass offset=0 and length=0 to stream the entire file.
+  int64 offset = 3;
+  int64 length = 4;
+}
+
+message GetBuildFileResponse {
+  bytes data = 1;
+  // not_available is only set in the first message.
+  // When true, no data will follow and the caller should fall back to GCS.
+  bool not_available = 2;
+  // use_storage is true when the GCS upload has completed and the caller
+  // should switch to reading from GCS/NFS directly instead of this peer.
+  bool use_storage = 3;
+}
+
+service ChunkService {
+  rpc GetBuildFileInfo(GetBuildFileInfoRequest) returns (GetBuildFileInfoResponse);
+  rpc GetBuildFile(GetBuildFileRequest) returns (stream GetBuildFileResponse);
+}

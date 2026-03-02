@@ -51,6 +51,10 @@ func (t *LocalTemplate) Snapfile() (File, error) {
 	return &NoopFile{}, errors.New("snapfile not available in local template")
 }
 
+func (t *LocalTemplate) MetadataFile() (File, error) {
+	return &NoopFile{}, errors.New("metadata not available in local template")
+}
+
 func (t *LocalTemplate) Metadata() (metadata.Template, error) {
 	return metadata.Template{}, errors.New("metadata not available in local template")
 }

@@ -39,8 +39,9 @@ import (
 )
 
 const (
-	baseImage = "ubuntu:22.04"
-	proxyPort = 5009
+	baseImage     = "ubuntu:22.04"
+	defaultKernel = "vmlinux-6.1.102"
+	proxyPort     = 5009
 )
 
 // TestSmokeAllFCVersions builds a template and resumes from it for every
@@ -84,7 +85,7 @@ func TestSmokeAllFCVersions(t *testing.T) { //nolint:paralleltest // subtests sh
 					MemoryMB:           512,
 					DiskSizeMB:         512,
 					HugePages:          true,
-					KernelVersion:      featureflags.DefaultKernelVersion,
+					KernelVersion:      defaultKernel,
 					FirecrackerVersion: fcVersion,
 					FromImage:          baseImage,
 				},
@@ -207,7 +208,7 @@ func newTestInfra(t *testing.T, ctx context.Context) *testInfra {
 
 	// Template cache
 	blockMetrics, _ := blockmetrics.NewMetrics(noop.NewMeterProvider())
-	templateCache, err := sbxtemplate.NewCache(orcConfig, flags, persistenceTemplate, blockMetrics)
+	templateCache, err := sbxtemplate.NewCache(orcConfig, flags, persistenceTemplate, blockMetrics, nil)
 	require.NoError(t, err)
 	templateCache.Start(ctx)
 	ti.closers = append(ti.closers, func(_ context.Context) { templateCache.Stop() })
@@ -356,8 +357,8 @@ func setupEnvVars(t *testing.T, dataDir, envdPath string) {
 
 func downloadKernel(t *testing.T, dataDir string) {
 	t.Helper()
-	dst := filepath.Join(dataDir, "kernels", featureflags.DefaultKernelVersion, "vmlinux.bin")
-	url := fmt.Sprintf("https://storage.googleapis.com/e2b-prod-public-builds/kernels/%s/vmlinux.bin", featureflags.DefaultKernelVersion)
+	dst := filepath.Join(dataDir, "kernels", defaultKernel, "vmlinux.bin")
+	url := fmt.Sprintf("https://storage.googleapis.com/e2b-prod-public-builds/kernels/%s/vmlinux.bin", defaultKernel)
 	downloadFile(t, url, dst, 0o644)
 }
 

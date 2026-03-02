@@ -211,6 +211,15 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		return
 	}
 
+	// For snapshot templates, look up the origin node so placement can exclude it,
+	// forcing the sandbox onto a different orchestrator for cross-node peer routing.
+	var nodeID *string
+	if origin, err := a.sqlcDB.GetSnapshotTemplateOriginNode(ctx, env.TemplateID); err == nil && origin.OriginNodeID != nil {
+		nodeID = origin.OriginNodeID
+	}
+
+	isSnapshot := nodeID != nil
+
 	sbx, createErr := a.startSandbox(
 		ctx,
 		sandboxID,
@@ -221,8 +230,8 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		teamInfo,
 		*build,
 		&c.Request.Header,
-		false,
-		nil,
+		isSnapshot,
+		nodeID,
 		env.TemplateID,
 		env.TemplateID,
 		autoPause,

@@ -58,21 +58,6 @@ type ProcessOptions struct {
 	Stderr io.Writer
 }
 
-// TokenBucketConfig holds parameters for a single Firecracker token bucket.
-// BucketSize < 0 disables the bucket.
-type TokenBucketConfig struct {
-	BucketSize   int64
-	OneTimeBurst int64
-	RefillTimeMs int64
-}
-
-// TxRateLimiterConfig holds TX rate limit parameters for a VM's network interface.
-// Mirrors the Firecracker RateLimiter structure: two independent token buckets.
-type TxRateLimiterConfig struct {
-	Ops       TokenBucketConfig // packets; effective rate = BucketSize * 1000 / RefillTimeMs ops/s
-	Bandwidth TokenBucketConfig // bytes;   effective rate = BucketSize * 1000 / RefillTimeMs bytes/s
-}
-
 type Process struct {
 	Versions Config
 
@@ -80,7 +65,6 @@ type Process struct {
 
 	config                cfg.BuilderConfig
 	firecrackerSocketPath string
-	metricsPath           string
 
 	slot           *network.Slot
 	rootfsProvider rootfs.Provider
@@ -147,7 +131,6 @@ func NewProcess(
 		Exit:                  utils.NewErrorOnce(),
 		cmd:                   cmd,
 		firecrackerSocketPath: files.SandboxFirecrackerSocketPath(),
-		metricsPath:           files.SandboxMetricsFifoPath(),
 		config:                config,
 		client:                newApiClient(files.SandboxFirecrackerSocketPath()),
 		rootfsProvider:        rootfsProvider,
@@ -191,18 +174,8 @@ func (p *Process) configure(
 		p.cmd.SysProcAttr.CgroupFD = cgroupFD
 	}
 
-	// Create the metrics FIFO before Firecracker starts.
-	// Firecracker will open the write end once PUT /metrics is called.
-	if err := syscall.Mkfifo(p.metricsPath, 0o600); err != nil {
-		return fmt.Errorf("error creating fc metrics FIFO: %w", err)
-	}
-
 	err := p.cmd.Start()
 	if err != nil {
-		// cmd.Process is nil when Start fails, so Stop() won't reach the FIFO cleanup.
-		// Remove the FIFO here to avoid leaving it behind.
-		_ = os.Remove(p.metricsPath)
-
 		return fmt.Errorf("error starting fc process: %w", err)
 	}
 
@@ -258,7 +231,6 @@ func (p *Process) Create(
 	memoryMB int64,
 	hugePages bool,
 	options ProcessOptions,
-	txRateLimit TxRateLimiterConfig,
 ) error {
 	ctx, childSpan := tracer.Start(ctx, "create-fc")
 	defer childSpan.End()
@@ -281,19 +253,6 @@ func (p *Process) Create(
 
 		return errors.Join(fmt.Errorf("error starting fc process: %w", err), fcStopErr)
 	}
-
-	// Start the metrics reader goroutine before calling setMetrics.
-	// The goroutine blocks on open(O_RDONLY) until Firecracker opens the write end,
-	// which happens when it processes PUT /metrics below.
-	p.startMetricsReader(ctx)
-
-	err = p.client.setMetrics(ctx, p.metricsPath)
-	if err != nil {
-		fcStopErr := p.Stop(ctx)
-
-		return errors.Join(fmt.Errorf("error setting fc metrics: %w", err), fcStopErr)
-	}
-	telemetry.ReportEvent(ctx, "set fc metrics")
 
 	// IPv4 configuration - format: [local_ip]::[gateway_ip]:[netmask]:hostname:iface:dhcp_option:[dns]
 	ipv4 := fmt.Sprintf("%s::%s:%s:instance:%s:off:%s", p.slot.NamespaceIP(), p.slot.TapIPString(), p.slot.TapMaskString(), p.slot.VpeerName(), p.slot.TapName())
@@ -370,7 +329,8 @@ func (p *Process) Create(
 	}
 	telemetry.ReportEvent(ctx, "set fc drivers config")
 
-	err = p.client.setNetworkInterface(ctx, p.slot.VpeerName(), p.slot.TapName(), p.slot.TapMAC(), buildTxRateLimiter(txRateLimit))
+	// Network
+	err = p.client.setNetworkInterface(ctx, p.slot.VpeerName(), p.slot.TapName(), p.slot.TapMAC())
 	if err != nil {
 		fcStopErr := p.Stop(ctx)
 
@@ -414,7 +374,6 @@ func (p *Process) Resume(
 	uffdReady chan struct{},
 	accessToken *string,
 	cgroupFD int,
-	txRateLimit TxRateLimiterConfig,
 ) error {
 	ctx, span := tracer.Start(ctx, "resume-fc")
 	defer span.End()
@@ -479,17 +438,6 @@ func (p *Process) Resume(
 		return errors.Join(fmt.Errorf("error waiting for uffd socket or symlinking rootfs: %w", err), fcStopErr)
 	}
 
-	// Start the metrics reader goroutine before calling setMetrics (same ordering as Create).
-	p.startMetricsReader(ctx)
-
-	err = p.client.setMetrics(ctx, p.metricsPath)
-	if err != nil {
-		fcStopErr := p.Stop(ctx)
-
-		return errors.Join(fmt.Errorf("error setting fc metrics: %w", err), fcStopErr)
-	}
-	telemetry.ReportEvent(ctx, "set fc metrics")
-
 	err = p.client.loadSnapshot(
 		ctx,
 		uffdSocketPath,
@@ -501,15 +449,6 @@ func (p *Process) Resume(
 
 		return errors.Join(fmt.Errorf("error loading snapshot: %w", err), fcStopErr)
 	}
-
-	// Always apply/reset the TX rate limit before resuming so any rate limit
-	// persisted in the snapshot is overwritten by the current config.
-	if setErr := p.client.setTxRateLimit(ctx, p.slot.VpeerName(), txRateLimit); setErr != nil {
-		fcStopErr := p.Stop(ctx)
-
-		return errors.Join(fmt.Errorf("error setting TX rate limit: %w", setErr), fcStopErr)
-	}
-	telemetry.ReportEvent(ctx, "configured tx rate limit")
 
 	err = p.client.resumeVM(ctx)
 	if err != nil {
@@ -570,12 +509,6 @@ func getProcessState(ctx context.Context, pid int) (string, error) {
 func (p *Process) Stop(ctx context.Context) error {
 	if p.cmd.Process == nil {
 		return fmt.Errorf("fc process not started")
-	}
-
-	// Always remove the metrics FIFO, even if the process already exited,
-	// to avoid leaving orphaned files behind.
-	if removeErr := os.Remove(p.metricsPath); removeErr != nil && !os.IsNotExist(removeErr) {
-		logger.L().Warn(ctx, "failed to remove fc metrics FIFO", zap.Error(removeErr), logger.WithSandboxID(p.files.SandboxID))
 	}
 
 	// Check if process has already exited.

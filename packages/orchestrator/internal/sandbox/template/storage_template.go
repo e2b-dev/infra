@@ -240,6 +240,10 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 	}
 }
 
+func (t *storageTemplate) MetadataFile() (File, error) {
+	return t.metafile.Wait()
+}
+
 func (t *storageTemplate) Close(ctx context.Context) error {
 	return closeTemplate(ctx, t)
 }
