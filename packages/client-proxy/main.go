@@ -137,7 +137,14 @@ func run() int {
 
 	var pausedSandboxResumer e2bproxy.PausedSandboxResumer
 	if strings.TrimSpace(config.ApiGrpcAddress) != "" {
-		pausedSandboxResumer, err = e2bproxy.NewGrpcPausedSandboxResumer(config.ApiGrpcAddress)
+		pausedSandboxResumer, err = e2bproxy.NewGrpcPausedSandboxResumer(e2bproxy.GrpcPausedSandboxResumerConfig{
+			Address:          config.ApiGrpcAddress,
+			TLSEnabled:       config.ApiGrpcTLSEnabled,
+			TLSServerName:    config.ApiGrpcTLSServerName,
+			TLSCABase64:      config.ApiGrpcTLSCABase64,
+			TLSClientCertB64: config.ApiGrpcTLSClientCertB64,
+			TLSClientKeyB64:  config.ApiGrpcTLSClientKeyB64,
+		})
 		if err != nil {
 			l.Error(ctx, "Failed to create paused sandbox checker", zap.Error(err))
 

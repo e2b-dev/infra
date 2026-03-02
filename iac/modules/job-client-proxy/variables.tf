@@ -63,6 +63,34 @@ variable "api_grpc_address" {
   default = ""
 }
 
+variable "api_grpc_tls_enabled" {
+  type    = bool
+  default = false
+}
+
+variable "api_grpc_tls_server_name" {
+  type    = string
+  default = ""
+}
+
+variable "api_grpc_tls_ca_base64" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+
+variable "api_grpc_tls_client_cert_base64" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+
+variable "api_grpc_tls_client_key_base64" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+
 variable "otel_collector_grpc_endpoint" {
   type = string
 }

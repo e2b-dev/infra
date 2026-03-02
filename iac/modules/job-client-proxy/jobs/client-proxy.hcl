@@ -115,6 +115,19 @@ job "client-proxy" {
         # used only when client-proxy is deployed directly in the cluster next to the API
         %{ if api_grpc_address != "" }
         API_GRPC_ADDRESS = "${api_grpc_address}"
+        API_GRPC_TLS_ENABLED = "${api_grpc_tls_enabled}"
+        %{ if api_grpc_tls_server_name != "" }
+        API_GRPC_TLS_SERVER_NAME = "${api_grpc_tls_server_name}"
+        %{ endif }
+        %{ if api_grpc_tls_ca_base64 != "" }
+        API_GRPC_TLS_CA_BASE64 = "${api_grpc_tls_ca_base64}"
+        %{ endif }
+        %{ if api_grpc_tls_client_cert_base64 != "" }
+        API_GRPC_TLS_CLIENT_CERT_BASE64 = "${api_grpc_tls_client_cert_base64}"
+        %{ endif }
+        %{ if api_grpc_tls_client_key_base64 != "" }
+        API_GRPC_TLS_CLIENT_KEY_BASE64 = "${api_grpc_tls_client_key_base64}"
+        %{ endif }
 
         %{ endif }
         %{ if launch_darkly_api_key != "" }
