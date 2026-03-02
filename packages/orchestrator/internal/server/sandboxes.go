@@ -539,6 +539,9 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		if err := res.snapshot.Upload(uploadCtx, s.persistence, res.templateFiles); err != nil {
 			telemetry.ReportCriticalError(ctx, "error uploading snapshot for checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
 
+			s.sandboxes.Remove(resumedSbx.Runtime.SandboxID)
+			s.stopSandboxAsync(context.WithoutCancel(ctx), resumedSbx)
+
 			return nil, status.Errorf(codes.Internal, "error uploading snapshot for checkpoint '%s': %s", in.GetSandboxId(), err)
 		}
 	}
