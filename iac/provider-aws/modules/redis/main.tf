@@ -25,8 +25,8 @@ resource "aws_elasticache_replication_group" "instance" {
   replication_group_id = "${var.prefix}${var.name}"
   description          = var.description
 
-  node_type            = var.instance_type
-  num_node_groups      = 1
+  node_type               = var.instance_type
+  num_node_groups         = 1
   replicas_per_node_group = var.replica_size - 1
 
   automatic_failover_enabled = true
