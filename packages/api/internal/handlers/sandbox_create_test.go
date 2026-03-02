@@ -11,6 +11,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	handlersmocks "github.com/e2b-dev/infra/packages/api/internal/handlers/mocks"
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
+	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
@@ -19,11 +20,15 @@ import (
 func TestBuildAutoResumeConfig(t *testing.T) {
 	t.Parallel()
 
+	boolPtr := func(v bool) *bool {
+		return &v
+	}
+
 	tests := []struct {
-		name        string
-		in          *api.SandboxAutoResumeConfig
-		wantNil     bool
-		wantEnabled bool
+		name       string
+		in         *bool
+		wantNil    bool
+		wantPolicy dbtypes.SandboxAutoResumePolicy
 	}{
 		{
 			name:    "nil config returns nil",
@@ -31,18 +36,14 @@ func TestBuildAutoResumeConfig(t *testing.T) {
 			wantNil: true,
 		},
 		{
-			name: "enabled true is accepted",
-			in: &api.SandboxAutoResumeConfig{
-				Enabled: true,
-			},
-			wantEnabled: true,
+			name:       "true maps to any policy",
+			in:         boolPtr(true),
+			wantPolicy: dbtypes.SandboxAutoResumeAny,
 		},
 		{
-			name: "enabled false is accepted",
-			in: &api.SandboxAutoResumeConfig{
-				Enabled: false,
-			},
-			wantEnabled: false,
+			name:       "false maps to off policy",
+			in:         boolPtr(false),
+			wantPolicy: dbtypes.SandboxAutoResumeOff,
 		},
 	}
 
@@ -64,8 +65,8 @@ func TestBuildAutoResumeConfig(t *testing.T) {
 				t.Fatalf("buildAutoResumeConfig() = nil, want non-nil config")
 			}
 
-			if got.Enabled != tt.wantEnabled {
-				t.Fatalf("buildAutoResumeConfig().Enabled = %v, want %v", got.Enabled, tt.wantEnabled)
+			if got.Policy != tt.wantPolicy {
+				t.Fatalf("buildAutoResumeConfig().Policy = %v, want %v", got.Policy, tt.wantPolicy)
 			}
 		})
 	}

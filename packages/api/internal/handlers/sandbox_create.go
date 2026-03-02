@@ -137,7 +137,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		}
 	}
 
-	autoResume := buildAutoResumeConfig(body.AutoResume)
+	autoResume := buildAutoResumeConfig(body.AutoResumeEnabled)
 
 	var envdAccessToken *string = nil
 	if body.Secure != nil && *body.Secure == true {
@@ -237,13 +237,18 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	c.JSON(http.StatusCreated, &sbx)
 }
 
-func buildAutoResumeConfig(autoResume *api.SandboxAutoResumeConfig) *types.SandboxAutoResumeConfig {
-	if autoResume == nil {
+func buildAutoResumeConfig(autoResumeEnabled *bool) *types.SandboxAutoResumeConfig {
+	if autoResumeEnabled == nil {
 		return nil
 	}
 
+	policy := types.SandboxAutoResumeOff
+	if *autoResumeEnabled {
+		policy = types.SandboxAutoResumeAny
+	}
+
 	return &types.SandboxAutoResumeConfig{
-		Enabled: autoResume.Enabled,
+		Policy: policy,
 	}
 }
 

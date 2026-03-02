@@ -215,8 +215,9 @@ func (o *Orchestrator) CreateSandbox(
 
 	var orchAutoResume *orchestrator.SandboxAutoResumeConfig
 	if autoResume != nil {
+		policy := string(autoResume.Policy)
 		orchAutoResume = &orchestrator.SandboxAutoResumeConfig{
-			Enabled: autoResume.Enabled,
+			Policy: policy,
 		}
 	}
 

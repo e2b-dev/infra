@@ -49,13 +49,12 @@ message SandboxConfig {
 
   repeated SandboxVolumeMount volumeMounts = 23;
 
-  // Auto-resume configuration for paused sandboxes.
+  // Auto-resume policy for paused sandboxes.
   optional SandboxAutoResumeConfig auto_resume = 24;
 }
 
 message SandboxAutoResumeConfig {
-  reserved 1;
-  bool enabled = 2;
+  string policy = 1;
 }
 
 message SandboxVolumeMount {

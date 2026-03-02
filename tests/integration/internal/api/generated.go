@@ -404,9 +404,9 @@ type NewSandbox struct {
 	// AutoPause Automatically pauses the sandbox after the timeout
 	AutoPause *bool `json:"autoPause,omitempty"`
 
-	// AutoResume Auto-resume configuration for paused sandboxes. Default false.
-	AutoResume *SandboxAutoResumeConfig `json:"autoResume,omitempty"`
-	EnvVars    *EnvVars                 `json:"envVars,omitempty"`
+	// AutoResumeEnabled Auto-resume configuration for paused sandboxes. Default false.
+	AutoResumeEnabled *SandboxAutoResumeEnabled `json:"autoResumeEnabled,omitempty"`
+	EnvVars           *EnvVars                  `json:"envVars,omitempty"`
 
 	// Mcp MCP configuration for the sandbox
 	Mcp      *Mcp                  `json:"mcp"`
@@ -584,13 +584,7 @@ type Sandbox struct {
 	TrafficAccessToken *string `json:"trafficAccessToken"`
 }
 
-// SandboxAutoResumeConfig Auto-resume configuration for paused sandboxes. Default false.
-type SandboxAutoResumeConfig struct {
-	// Enabled Auto-resume policy for paused sandboxes. Default false.
-	Enabled SandboxAutoResumeEnabled `json:"enabled"`
-}
-
-// SandboxAutoResumeEnabled Auto-resume policy for paused sandboxes. Default false.
+// SandboxAutoResumeEnabled Auto-resume configuration for paused sandboxes. Default false.
 type SandboxAutoResumeEnabled = bool
 
 // SandboxDetail defines model for SandboxDetail.

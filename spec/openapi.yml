@@ -285,17 +285,8 @@ components:
 
     SandboxAutoResumeEnabled:
       type: boolean
-      description: Auto-resume policy for paused sandboxes. Default false.
-      default: false
-
-    SandboxAutoResumeConfig:
-      type: object
       description: Auto-resume configuration for paused sandboxes. Default false.
-      required:
-        - enabled
-      properties:
-        enabled:
-          $ref: "#/components/schemas/SandboxAutoResumeEnabled"
+      default: false
 
     SandboxLog:
       description: Log entry with timestamp and line
@@ -588,8 +579,8 @@ components:
           type: boolean
           default: false
           description: Automatically pauses the sandbox after the timeout
-        autoResume:
-          $ref: "#/components/schemas/SandboxAutoResumeConfig"
+        autoResumeEnabled:
+          $ref: "#/components/schemas/SandboxAutoResumeEnabled"
         secure:
           type: boolean
           description: Secure all system communication with sandbox
