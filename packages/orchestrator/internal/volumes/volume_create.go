@@ -24,10 +24,10 @@ func (s *Service) Create(ctx context.Context, request *orchestrator.VolumeCreate
 	}
 
 	span.AddEvent("creating volume", trace.WithAttributes(
-		attribute.String("path", paths.FullPath),
+		attribute.String("path", paths.HostFullPath),
 	))
 
-	if err := os.MkdirAll(paths.FullPath, 0o700); err != nil {
+	if err := os.MkdirAll(paths.HostFullPath, 0o700); err != nil {
 		return nil, fmt.Errorf("failed to create volume: %w", err)
 	}
 

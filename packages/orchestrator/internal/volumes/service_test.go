@@ -1,11 +1,11 @@
 package volumes
 
 import (
+	"fmt"
 	"path/filepath"
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -18,87 +18,150 @@ import (
 func TestBuildVolumePath(t *testing.T) {
 	t.Parallel()
 
-	const goodVolumeName = "good-vol"
-	const goodVolumePath = "/mnt/shared"
+	const goodVolumeType = "good-vol"
+	const goodVolumeTypePath = "/mnt/shared"
+	teamID := uuid.NewString()
+	volumeID := uuid.NewString()
+	goodVolumeBasePath := filepath.Join(
+		goodVolumeTypePath,
+		fmt.Sprintf("team-%s", teamID),
+		fmt.Sprintf("vol-%s", volumeID),
+	)
 
 	v := Service{
 		config: cfg.Config{
 			PersistentVolumeMounts: map[string]string{
-				goodVolumeName: goodVolumePath,
+				goodVolumeType: goodVolumeTypePath,
 				"attacker":     "/mnt/path",
 			},
 		},
 	}
 
-	teamID := uuid.NewString()
-	volumeID := uuid.NewString()
+	t.Run("success", func(t *testing.T) {
+		t.Parallel()
 
-	testCases := map[string]struct {
-		volumeType string
-		teamID     string
-		volumeID   string
-		relPath    string
+		testCases := map[string]struct {
+			input string
 
-		status   *status.Status
-		expected string
-	}{
-		"valid": {
-			volumeType: goodVolumeName,
-			teamID:     teamID,
-			volumeID:   volumeID,
-			expected:   filepath.Join(goodVolumePath, "team-"+teamID, "vol-"+volumeID),
-		},
-		"invalid team ID": {
-			volumeType: goodVolumeName,
-			teamID:     "invalid",
-			volumeID:   volumeID,
-			status:     status.New(codes.InvalidArgument, `invalid team ID "invalid"`),
-		},
-		"invalid volume ID": {
-			volumeType: goodVolumeName,
-			teamID:     teamID,
-			volumeID:   "invalid",
-			status:     status.New(codes.InvalidArgument, `invalid volume ID "invalid"`),
-		},
-		"missing team ID": {
-			volumeType: goodVolumeName,
-			volumeID:   volumeID,
-			status:     status.New(codes.InvalidArgument, `invalid team ID ""`),
-		},
-		"missing volume type": {
-			teamID:   teamID,
-			volumeID: volumeID,
-			status:   utils.Must(status.New(codes.NotFound, `volume type "" not found`).WithDetails(&orchestrator.UnknownVolumeTypeError{})),
-		},
-		"volume type not found": {
-			volumeType: "non-existent",
-			teamID:     teamID,
-			volumeID:   volumeID,
-			status:     utils.Must(status.New(codes.NotFound, `volume type "non-existent" not found`).WithDetails(&orchestrator.UnknownVolumeTypeError{})),
-		},
-		"prefix attack": {
-			volumeType: "attacker",
-			teamID:     "1/../../path1/23f2e6e1-76f6-4cbb-a936-0dcd9190dd84",
-			volumeID:   volumeID,
-			status:     status.New(codes.InvalidArgument, `invalid team ID "1/../../path1/23f2e6e1-76f6-4cbb-a936-0dcd9190dd84"`),
-		},
-	}
+			expectedFullPath   string
+			expectedJailedPath string
+			expectedBasePath   string
+		}{
+			"valid": {
+				input:              "",
+				expectedBasePath:   goodVolumeBasePath,
+				expectedJailedPath: "/",
+				expectedFullPath:   goodVolumeBasePath,
+			},
+			"single dir": {
+				input:              "dir",
+				expectedBasePath:   goodVolumeBasePath,
+				expectedJailedPath: "/dir",
+				expectedFullPath:   filepath.Join(goodVolumeBasePath, "dir"),
+			},
+			"nested path": {
+				input:              "a/b/c",
+				expectedBasePath:   goodVolumeBasePath,
+				expectedJailedPath: "/a/b/c",
+				expectedFullPath:   filepath.Join(goodVolumeBasePath, "a", "b", "c"),
+			},
+			"leading slash treated as relative": {
+				input:              "/top/level",
+				expectedBasePath:   goodVolumeBasePath,
+				expectedJailedPath: "/top/level",
+				expectedFullPath:   filepath.Join(goodVolumeBasePath, "top", "level"),
+			},
+			"clean dot segments": {
+				input:              "a/./b/../c/./",
+				expectedBasePath:   goodVolumeBasePath,
+				expectedJailedPath: "/a/c",
+				expectedFullPath:   filepath.Join(goodVolumeBasePath, "a", "c"),
+			},
+		}
 
-	for name, tc := range testCases {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
+		for name, tc := range testCases {
+			t.Run(name, func(t *testing.T) {
+				t.Parallel()
 
-			volumeInfo := orchestrator.VolumeInfo{
-				VolumeType: tc.volumeType,
-				TeamId:     tc.teamID,
-				VolumeId:   tc.volumeID,
-			}
-			request := orchestrator.VolumeDirCreateRequest{Volume: &volumeInfo, Path: tc.relPath}
-			paths, actualStatus := v.buildPaths(&request)
-			require.ErrorIs(t, actualStatus, tc.status.Err())
-			assert.Equal(t, tc.expected, paths.FullPath)
-		})
-	}
+				volumeInfo := orchestrator.VolumeInfo{
+					VolumeType: goodVolumeType,
+					TeamId:     teamID,
+					VolumeId:   volumeID,
+				}
+
+				request := orchestrator.VolumeDirCreateRequest{Volume: &volumeInfo, Path: tc.input}
+				results, err := v.buildPaths(&request)
+				require.NoError(t, err)
+
+				require.Equal(t, tc.expectedFullPath, results.HostFullPath)
+				require.Equal(t, tc.expectedJailedPath, results.ClientPath)
+				require.Equal(t, tc.expectedBasePath, results.HostVolumePath)
+			})
+		}
+	})
+
+	t.Run("error scenarios", func(t *testing.T) {
+		t.Parallel()
+
+		testCases := map[string]struct {
+			volumeType string
+			teamID     string
+			volumeID   string
+			relPath    string
+
+			expected *status.Status
+		}{
+			"invalid team ID": {
+				volumeType: goodVolumeType,
+				teamID:     "invalid",
+				volumeID:   volumeID,
+				expected:   status.New(codes.InvalidArgument, `invalid team ID "invalid"`),
+			},
+			"invalid volume ID": {
+				volumeType: goodVolumeType,
+				teamID:     teamID,
+				volumeID:   "invalid",
+				expected:   status.New(codes.InvalidArgument, `invalid volume ID "invalid"`),
+			},
+			"missing team ID": {
+				volumeType: goodVolumeType,
+				volumeID:   volumeID,
+				expected:   status.New(codes.InvalidArgument, `invalid team ID ""`),
+			},
+			"missing volume type": {
+				teamID:   teamID,
+				volumeID: volumeID,
+				expected: utils.Must(status.New(codes.NotFound, `volume type "" not found`).WithDetails(&orchestrator.UnknownVolumeTypeError{})),
+			},
+			"volume type not found": {
+				volumeType: "non-existent",
+				teamID:     teamID,
+				volumeID:   volumeID,
+				expected:   utils.Must(status.New(codes.NotFound, `volume type "non-existent" not found`).WithDetails(&orchestrator.UnknownVolumeTypeError{})),
+			},
+			"prefix attack": {
+				volumeType: "attacker",
+				teamID:     "1/../../path1/23f2e6e1-76f6-4cbb-a936-0dcd9190dd84",
+				volumeID:   volumeID,
+				expected:   status.New(codes.InvalidArgument, `invalid team ID "1/../../path1/23f2e6e1-76f6-4cbb-a936-0dcd9190dd84"`),
+			},
+		}
+
+		for name, tc := range testCases {
+			t.Run(name, func(t *testing.T) {
+				t.Parallel()
+
+				volumeInfo := orchestrator.VolumeInfo{
+					VolumeType: tc.volumeType,
+					TeamId:     tc.teamID,
+					VolumeId:   tc.volumeID,
+				}
+				request := orchestrator.VolumeDirCreateRequest{Volume: &volumeInfo, Path: tc.relPath}
+				_, actualStatus := v.buildPaths(&request)
+				require.ErrorIs(t, actualStatus, tc.expected.Err())
+			})
+		}
+	})
 }
 
 // TestRelPathTraversal demonstrates whether relPath can be used to traverse outside

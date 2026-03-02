@@ -64,10 +64,7 @@ func toTimestamp(time time.Time) *timestamppb.Timestamp {
 		return nil
 	}
 
-	return &timestamppb.Timestamp{
-		Seconds: int64(time.Second()),
-		Nanos:   int32(time.Nanosecond()),
-	}
+	return timestamppb.New(time)
 }
 
 // getFileOwnership returns the owner and group names for a file.

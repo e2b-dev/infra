@@ -25,10 +25,10 @@ func (s *Service) GetFile(request *orchestrator.VolumeFileGetRequest, server orc
 	}
 
 	span.AddEvent("retrieving file", trace.WithAttributes(
-		attribute.String("path", paths.FullPath),
+		attribute.String("path", paths.HostFullPath),
 	))
 
-	f, err := os.Open(paths.FullPath)
+	f, err := os.Open(paths.HostFullPath)
 	if err != nil {
 		return fmt.Errorf("failed to open file: %w", err)
 	}

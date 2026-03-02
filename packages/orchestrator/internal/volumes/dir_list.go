@@ -30,16 +30,16 @@ func (s *Service) ListDir(ctx context.Context, request *orchestrator.VolumeDirLi
 	}
 
 	span.AddEvent("listing directory", trace.WithAttributes(
-		attribute.String("path", paths.FullPath),
+		attribute.String("path", paths.HostFullPath),
 	))
 
-	items, err := os.ReadDir(paths.FullPath)
+	items, err := os.ReadDir(paths.HostFullPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, newAPIError(ctx, codes.NotFound, http.StatusNotFound, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to read: %q not found.", paths.FullPath)
+			return nil, newAPIError(ctx, codes.NotFound, http.StatusNotFound, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to read: %q not found.", paths.HostFullPath)
 		}
 
-		return nil, fmt.Errorf("failed to read directory %q: %w", paths.FullPath, err)
+		return nil, fmt.Errorf("failed to read directory %q: %w", paths.HostFullPath, err)
 	}
 
 	var results []*orchestrator.VolumeDirectoryItem

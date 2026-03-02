@@ -79,13 +79,18 @@ func pathlessRequest(request volumeOnly) volumePathRequest {
 }
 
 type volumePaths struct {
-	BasePath string
-	RelPath  string
-	FullPath string
+	// HostVolumePath is the absolute path to the root of the volume on the host
+	HostVolumePath string
+
+	// ClientPath is the relative path to the file within the volume, prefixed with a "/"
+	ClientPath string
+
+	// HostFullPath is the absolute path on the host server to the file or directory
+	HostFullPath string
 }
 
 func (v volumePaths) isRoot() bool {
-	return filepath.Clean(v.BasePath) == filepath.Clean(v.FullPath)
+	return filepath.Clean(v.HostVolumePath) == filepath.Clean(v.HostFullPath)
 }
 
 func (s *Service) buildPaths(request volumePathRequest) (volumePaths, error) {
@@ -113,25 +118,29 @@ func (s *Service) buildPaths(request volumePathRequest) (volumePaths, error) {
 	volumeParts := append([]string{volTypePath}, BuildVolumePathParts(teamID, volumeID)...)
 	basePath := filepath.Join(volumeParts...)
 	fullPath := basePath
-	relPath := ""
+	clientPath := ""
 
 	subPath := request.GetPath()
 	if subPath != "" {
 		subPath = strings.TrimPrefix(subPath, "/")
 		subPath = filepath.Clean(subPath)
-		fullPath := filepath.Join(basePath, subPath)
+		fullPath = filepath.Join(basePath, subPath)
 
 		var err error
-		relPath, err = filepath.Rel(basePath, fullPath)
-		if err != nil || strings.HasPrefix(relPath, "..") {
-			return volumePaths{}, status.Newf(codes.InvalidArgument, "invalid relative path base=%q subpath=%q relpath=%q", basePath, subPath, relPath).Err()
+		clientPath, err = filepath.Rel(basePath, fullPath)
+		if err != nil || strings.HasPrefix(clientPath, "..") {
+			return volumePaths{}, status.Newf(codes.InvalidArgument, "invalid relative path base=%q subpath=%q relpath=%q", basePath, subPath, clientPath).Err()
 		}
 	}
 
+	if !strings.HasPrefix(clientPath, "/") {
+		clientPath = "/" + clientPath
+	}
+
 	return volumePaths{
-		BasePath: basePath,
-		RelPath:  relPath,
-		FullPath: fullPath,
+		HostVolumePath: basePath,
+		ClientPath:     clientPath,
+		HostFullPath:   fullPath,
 	}, nil
 }
 
@@ -171,16 +180,16 @@ func tryParseUUID(id string) (uuid.UUID, bool) {
 }
 
 func toEntryFromOSInfoAndPaths(paths volumePaths, fileInfo os.FileInfo) *orchestrator.EntryInfo {
-	paths.RelPath = filepath.Join(paths.RelPath, fileInfo.Name())
-	paths.FullPath = filepath.Join(paths.FullPath, fileInfo.Name())
+	paths.ClientPath = filepath.Join(paths.ClientPath, fileInfo.Name())
+	paths.HostFullPath = filepath.Join(paths.HostFullPath, fileInfo.Name())
 
-	entry := filesystem.GetEntryInfo(paths.FullPath, fileInfo)
+	entry := filesystem.GetEntryInfo(paths.HostFullPath, fileInfo)
 
 	return toEntry(paths, entry)
 }
 
 func toEntryFromPaths(paths volumePaths) (*orchestrator.EntryInfo, error) {
-	entry, err := filesystem.GetEntryFromPath(paths.FullPath)
+	entry, err := filesystem.GetEntryFromPath(paths.HostFullPath)
 	if err != nil {
 		return nil, err
 	}
@@ -189,13 +198,9 @@ func toEntryFromPaths(paths volumePaths) (*orchestrator.EntryInfo, error) {
 }
 
 func toEntry(paths volumePaths, fileInfo filesystem.EntryInfo) *orchestrator.EntryInfo {
-	if !strings.HasPrefix(paths.RelPath, "/") {
-		paths.RelPath = "/" + paths.RelPath
-	}
-
 	entry := &orchestrator.EntryInfo{
 		Name:          fileInfo.Name,
-		Path:          paths.RelPath,
+		Path:          paths.ClientPath,
 		Size:          fileInfo.Size,
 		Mode:          uint32(fileInfo.Mode & os.ModePerm),
 		Uid:           fileInfo.UID,

@@ -27,10 +27,10 @@ func (s *Service) Delete(
 	}
 
 	span.AddEvent("deleting directory", trace.WithAttributes(
-		attribute.String("path", paths.FullPath),
+		attribute.String("path", paths.HostFullPath),
 	))
 
-	if err := os.RemoveAll(paths.FullPath); err != nil {
+	if err := os.RemoveAll(paths.HostFullPath); err != nil {
 		return nil, fmt.Errorf("failed to delete volume: %w", err)
 	}
 

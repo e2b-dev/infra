@@ -23,7 +23,7 @@ variable "nfs_version" {
   type        = string
 
   validation {
-    condition     = contains(["", "3", "'4.1"], var.nfs_version)
+    condition     = contains(["", "3", "4.1"], var.nfs_version)
     error_message = "nfs_version must be either 3 or 4.1"
   }
 }

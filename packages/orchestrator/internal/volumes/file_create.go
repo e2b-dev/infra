@@ -46,14 +46,14 @@ func (s *Service) CreateFile(server orchestrator.VolumeService_CreateFileServer)
 	mode := utils.DerefOrDefault(start.Mode, defaultFileMode) //nolint:protogetter
 
 	span.AddEvent("creating file", trace.WithAttributes(
-		attribute.String("path", paths.FullPath),
+		attribute.String("path", paths.HostFullPath),
 		attribute.Int64("uid", int64(uid)),
 		attribute.Int64("gid", int64(gid)),
 		attribute.Int64("mode", int64(mode)),
 	))
 
 	if start.GetForce() {
-		dirName := filepath.Dir(paths.FullPath)
+		dirName := filepath.Dir(paths.HostFullPath)
 		if err := os.MkdirAll(dirName, os.FileMode(defaultDirMode)); err != nil {
 			return fmt.Errorf("failed to create parent directories: %w", err)
 		}
@@ -66,7 +66,7 @@ func (s *Service) CreateFile(server orchestrator.VolumeService_CreateFileServer)
 		flags = os.O_CREATE | os.O_WRONLY | os.O_EXCL
 	}
 
-	file, err := os.OpenFile(paths.FullPath, flags, os.FileMode(mode).Perm())
+	file, err := os.OpenFile(paths.HostFullPath, flags, os.FileMode(mode).Perm())
 	if err != nil {
 		return fmt.Errorf("failed to open file for create: %w", err)
 	}
@@ -95,12 +95,12 @@ func (s *Service) CreateFile(server orchestrator.VolumeService_CreateFileServer)
 				return fmt.Errorf("failed to sync file to disk: %w", err)
 			}
 
-			if err := os.Chown(paths.FullPath, int(uid), int(gid)); err != nil {
+			if err := os.Chown(paths.HostFullPath, int(uid), int(gid)); err != nil {
 				return fmt.Errorf("failed to set file ownership: %w", err)
 			}
 
 			// we do this again to avoid the process' umask from automatically 'fixing' our requests.
-			if err := os.Chmod(paths.FullPath, os.FileMode(mode)); err != nil {
+			if err := os.Chmod(paths.HostFullPath, os.FileMode(mode)); err != nil {
 				return fmt.Errorf("failed to set file mode: %w", err)
 			}
 

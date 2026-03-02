@@ -30,12 +30,12 @@ func (s *Service) DeleteFile(ctx context.Context, request *orchestrator.VolumeFi
 	}
 
 	span.AddEvent("deleting file", trace.WithAttributes(
-		attribute.String("path", paths.FullPath),
+		attribute.String("path", paths.HostFullPath),
 	))
 
-	if err := os.Remove(paths.FullPath); err != nil {
+	if err := os.Remove(paths.HostFullPath); err != nil {
 		if os.IsNotExist(err) {
-			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to delete: %q not found.", paths.FullPath)
+			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to delete: %q not found.", paths.HostFullPath)
 		}
 
 		return nil, fmt.Errorf("failed to delete file: %w", err)

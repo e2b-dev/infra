@@ -26,13 +26,13 @@ func (s *Service) Stat(ctx context.Context, request *orchestrator.StatRequest) (
 	}
 
 	span.AddEvent("stat", trace.WithAttributes(
-		attribute.String("path", paths.FullPath),
+		attribute.String("path", paths.HostFullPath),
 	))
 
-	info, err := filesystem.GetEntryFromPath(paths.FullPath)
+	info, err := filesystem.GetEntryFromPath(paths.HostFullPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to stat: %q not found.", paths.FullPath)
+			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to stat: %q not found.", paths.HostFullPath)
 		}
 
 		return nil, fmt.Errorf("failed to stat path: %w", err)
