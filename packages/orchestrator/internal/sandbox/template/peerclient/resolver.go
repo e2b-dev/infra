@@ -43,7 +43,7 @@ func (nopResolver) resolve(context.Context, string) (attribute.KeyValue, resolve
 	return attrResolveNoPeer, resolveResult{}
 }
 func (nopResolver) Purge(string) {}
-func (nopResolver) Close()               {}
+func (nopResolver) Close()       {}
 
 // peerResolver is the real implementation that looks up peers via the Registry.
 type peerResolver struct {
