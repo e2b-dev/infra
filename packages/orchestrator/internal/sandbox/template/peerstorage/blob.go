@@ -23,9 +23,9 @@ func (b *peerBlob) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
 				BuildId:  b.buildID,
 				FileName: b.fileName,
 			}, b.uploaded)
-		if err != nil {
-			return peerAttempt[int64]{}, fmt.Errorf("failed to open peer blob stream for %q: %w", b.fileName, err)
-		}
+			if err != nil {
+				return peerAttempt[int64]{}, fmt.Errorf("failed to open peer blob stream for %q: %w", b.fileName, err)
+			}
 
 			n, err := io.Copy(dst, newPeerStreamReader(recv, func() {}))
 			if err != nil {
