@@ -6,7 +6,10 @@ import (
 	"io"
 	"sync/atomic"
 
+	"go.uber.org/zap"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
@@ -24,7 +27,9 @@ func (b *peerBlob) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
 				FileName: b.fileName,
 			}, b.uploaded)
 			if err != nil {
-				return peerAttempt[int64]{}, fmt.Errorf("failed to open peer blob stream for %q: %w", b.fileName, err)
+				logger.L().Warn(ctx, "failed to open peer blob stream", logger.WithBuildID(b.buildID), zap.String("file_name", b.fileName), zap.Error(err))
+
+				return peerAttempt[int64]{}, nil
 			}
 
 			n, err := io.Copy(dst, newPeerStreamReader(recv, func() {}))
@@ -50,6 +55,10 @@ func (b *peerBlob) Exists(ctx context.Context) (bool, error) {
 			})
 			if err == nil && checkPeerAvailability(resp.GetAvailability(), b.uploaded) {
 				return peerAttempt[bool]{value: true, hit: true}, nil
+			}
+
+			if err != nil {
+				logger.L().Warn(ctx, "failed to check build file exists from peer", logger.WithBuildID(b.buildID), zap.String("file_name", b.fileName), zap.Error(err))
 			}
 
 			return peerAttempt[bool]{}, nil

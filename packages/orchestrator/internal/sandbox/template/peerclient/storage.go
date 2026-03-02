@@ -256,6 +256,10 @@ func withPeerFallback[Base, T any](
 			return res.value, nil
 		}
 
+		if err != nil {
+			span.RecordError(err)
+		}
+
 		timer.Failure(ctx, 0)
 	}
 
