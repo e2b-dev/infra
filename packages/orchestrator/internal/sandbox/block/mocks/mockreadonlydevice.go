@@ -162,8 +162,8 @@ func (_c *MockReadonlyDevice_Header_Call) Run(run func()) *MockReadonlyDevice_He
 	return _c
 }
 
-func (_c *MockReadonlyDevice_Header_Call) Return(h *header.Header) *MockReadonlyDevice_Header_Call {
-	_c.Call.Return(h)
+func (_c *MockReadonlyDevice_Header_Call) Return(header1 *header.Header) *MockReadonlyDevice_Header_Call {
+	_c.Call.Return(header1)
 	return _c
 }
 
@@ -217,10 +217,18 @@ func (_c *MockReadonlyDevice_ReadAt_Call) Run(run func(ctx context.Context, buff
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
+		var arg1 []byte
+		if args[1] != nil {
+			arg1 = args[1].([]byte)
+		}
+		var arg2 int64
+		if args[2] != nil {
+			arg2 = args[2].(int64)
+		}
 		run(
 			arg0,
-			args[1].([]byte),
-			args[2].(int64),
+			arg1,
+			arg2,
 		)
 	})
 	return _c
@@ -343,17 +351,25 @@ func (_c *MockReadonlyDevice_Slice_Call) Run(run func(ctx context.Context, off i
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
+		var arg1 int64
+		if args[1] != nil {
+			arg1 = args[1].(int64)
+		}
+		var arg2 int64
+		if args[2] != nil {
+			arg2 = args[2].(int64)
+		}
 		run(
 			arg0,
-			args[1].(int64),
-			args[2].(int64),
+			arg1,
+			arg2,
 		)
 	})
 	return _c
 }
 
-func (_c *MockReadonlyDevice_Slice_Call) Return(data []byte, err error) *MockReadonlyDevice_Slice_Call {
-	_c.Call.Return(data, err)
+func (_c *MockReadonlyDevice_Slice_Call) Return(bytes []byte, err error) *MockReadonlyDevice_Slice_Call {
+	_c.Call.Return(bytes, err)
 	return _c
 }
 

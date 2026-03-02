@@ -24,12 +24,12 @@ import (
 )
 
 const (
-	peerOperationAttr          = "operation"
-	peerOperationWriteTo       = "WriteTo"
-	peerOperationExists        = "Exists"
-	peerOperationSize          = "Size"
-	peerOperationReadAt        = "ReadAt"
-	peerOperationRangeReader   = "OpenRangeReader"
+	peerOperationAttr        = "operation"
+	peerOperationWriteTo     = "WriteTo"
+	peerOperationExists      = "Exists"
+	peerOperationSize        = "Size"
+	peerOperationReadAt      = "ReadAt"
+	peerOperationRangeReader = "OpenRangeReader"
 )
 
 var (

@@ -571,9 +571,9 @@ func (s *Server) getSandboxExecutionData(sbx *sandbox.Sandbox) map[string]any {
 // snapshotResult holds the data produced by snapshotAndCacheSandbox that callers
 // need to start the background GCS upload.
 type snapshotResult struct {
-	meta             metadata.Template
-	snapshot         *sandbox.Snapshot
-	templateFiles    storage.TemplateFiles
+	meta           metadata.Template
+	snapshot       *sandbox.Snapshot
+	templateFiles  storage.TemplateFiles
 	completeUpload func(ctx context.Context)
 }
 
@@ -640,9 +640,9 @@ func (s *Server) snapshotAndCacheSandbox(
 	}
 
 	return &snapshotResult{
-		meta:             meta,
-		snapshot:         snapshot,
-		templateFiles:    templateFiles,
+		meta:           meta,
+		snapshot:       snapshot,
+		templateFiles:  templateFiles,
 		completeUpload: closePeerRouting,
 	}, nil
 }
@@ -654,18 +654,18 @@ func (s *Server) uploadSnapshotAsync(ctx context.Context, sbx *sandbox.Sandbox, 
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), uploadTimeout)
 
 	go func() {
-	defer cancel()
+		defer cancel()
 
-	err := res.snapshot.Upload(ctx, s.persistence, res.templateFiles)
-	if err != nil {
-		sbxlogger.I(sbx).Error(ctx, "error uploading snapshot files", zap.Error(err))
+		err := res.snapshot.Upload(ctx, s.persistence, res.templateFiles)
+		if err != nil {
+			sbxlogger.I(sbx).Error(ctx, "error uploading snapshot files", zap.Error(err))
 
-		return
-	}
+			return
+		}
 
-	sbxlogger.E(sbx).Info(ctx, "Snapshot files uploaded to GCS")
+		sbxlogger.E(sbx).Info(ctx, "Snapshot files uploaded to GCS")
 
-	res.completeUpload(ctx)
+		res.completeUpload(ctx)
 	}()
 }
 
@@ -754,4 +754,3 @@ func (s *Server) publishSandboxEvent(ctx context.Context, sbx *sandbox.Sandbox, 
 		},
 	)
 }
-

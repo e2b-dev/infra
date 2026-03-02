@@ -42,7 +42,7 @@ type Server struct {
 	sbxEventsService  *events.EventsService
 	startingSandboxes *semaphore.Weighted
 	redis             redis.UniversalClient // may be nil if Redis is disabled
-	uploadedBuilds    sync.Map             // buildID → struct{}: builds whose GCS upload is done
+	uploadedBuilds    sync.Map              // buildID → struct{}: builds whose GCS upload is done
 }
 
 type ServiceConfig struct {

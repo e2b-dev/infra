@@ -192,7 +192,6 @@ func (s *gcpStorage) OpenBlob(_ context.Context, path string, _ ObjectType) (Blo
 	}, nil
 }
 
-
 func (o *gcpObject) Exists(ctx context.Context) (bool, error) {
 	_, err := o.Size(ctx)
 

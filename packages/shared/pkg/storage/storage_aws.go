@@ -285,7 +285,6 @@ func (o *awsObject) Exists(ctx context.Context) (bool, error) {
 	return err == nil, ignoreNotExists(err)
 }
 
-
 func ignoreNotExists(err error) error {
 	if errors.Is(err, ErrObjectNotExist) {
 		return nil
