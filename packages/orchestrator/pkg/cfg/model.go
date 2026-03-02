@@ -19,6 +19,7 @@ const DefaultBusyboxVersion = "1.36.1"
 
 type BuilderConfig struct {
 	AllowSandboxInternet   bool          `env:"ALLOW_SANDBOX_INTERNET"   envDefault:"true"`
+	AptProxyURL            string        `env:"APT_PROXY_URL"            envDefault:""`
 	DomainName             string        `env:"DOMAIN_NAME"              envDefault:""`
 	EnvdTimeout            time.Duration `env:"ENVD_TIMEOUT"             envDefault:"10s"`
 	FirecrackerVersionsDir string        `env:"FIRECRACKER_VERSIONS_DIR" envDefault:"/fc-versions"`

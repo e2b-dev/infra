@@ -3,12 +3,17 @@ set -eu
 
 BUSYBOX="{{ .BusyBox }}"
 RESULT_PATH="{{ .ResultPath }}"
+APT_PROXY_URL="{{ .AptProxyURL }}"
 
 echo "Starting provisioning script"
 
 {{ if eq .Provider "gcp" }}
 # GCP Specific logic
 {{ end }}
+
+if [ -n "$APT_PROXY_URL" ]; then
+    echo "Using apt cache proxy: $APT_PROXY_URL"
+fi
 
 echo "Making configuration immutable"
 $BUSYBOX chattr +i /etc/resolv.conf

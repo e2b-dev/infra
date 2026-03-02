@@ -114,8 +114,16 @@ services:
     volumes:
       - ./vector.toml:/etc/vector.toml:z
 
+  apt-cache:
+    image: sameersbn/apt-cacher-ng:latest
+    ports:
+      - "3142:3142"
+    volumes:
+      - apt-cache:/var/cache/apt-cacher-ng
+
 
 volumes:
   clickhouse: { }
   postgres: { }
   tempo: { }
+  apt-cache: { }

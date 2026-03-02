@@ -52,7 +52,7 @@ func TestAdditionalOCILayers(t *testing.T) {
 		provisionLogPrefix := "provision.log"
 		provisionResultPath := "provision.result"
 
-		layers, err := additionalOCILayers(buildContext, provisionScript, provisionLogPrefix, provisionResultPath)
+		layers, err := additionalOCILayers(buildContext, provisionScript, provisionLogPrefix, provisionResultPath, "")
 		require.NoError(t, err)
 
 		require.Len(t, layers, 2)

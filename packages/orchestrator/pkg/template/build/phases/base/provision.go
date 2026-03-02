@@ -48,9 +48,10 @@ const (
 )
 
 type ProvisionScriptParams struct {
-	BusyBox    string
-	ResultPath string
-	Provider   string
+	BusyBox     string
+	ResultPath  string
+	Provider    string
+	AptProxyURL string
 }
 
 func getProvisionScript(
