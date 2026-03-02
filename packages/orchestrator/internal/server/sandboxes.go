@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jellydator/ttlcache/v3"
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -642,8 +643,8 @@ func (s *Server) snapshotAndCacheSandbox(
 		}
 
 		completeUpload := func(ctx context.Context) {
-			// Mark in-memory so ChunkService tells peers to switch to GCS.
-			s.uploadedBuilds.Store(meta.Template.BuildID, struct{}{})
+			// Signal in-flight peer streams to switch to GCS.
+			s.uploadedBuilds.Set(meta.Template.BuildID, struct{}{}, ttlcache.DefaultTTL)
 
 			// Remove from Redis so new nodes go directly to GCS.
 			if err := s.peerRegistry.Unregister(ctx, meta.Template.BuildID); err != nil {

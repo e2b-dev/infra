@@ -50,7 +50,7 @@ func toGRPCError(err error) error {
 func (s *Server) GetBuildFileSize(ctx context.Context, req *orchestrator.GetBuildFileSizeRequest) (*orchestrator.GetBuildFileSizeResponse, error) {
 	telemetry.SetAttributes(ctx, telemetry.WithBuildID(req.GetBuildId()), attribute.String("file_name", req.GetFileName()))
 
-	if _, uploaded := s.uploadedBuilds.Load(req.GetBuildId()); uploaded {
+	if s.uploadedBuilds.Get(req.GetBuildId()) != nil {
 		telemetry.SetAttributes(ctx, attribute.Bool("uploaded", true))
 
 		return &orchestrator.GetBuildFileSizeResponse{Availability: peerUseStorage}, nil
@@ -78,7 +78,7 @@ func (s *Server) GetBuildFileSize(ctx context.Context, req *orchestrator.GetBuil
 func (s *Server) GetBuildFileExists(ctx context.Context, req *orchestrator.GetBuildFileExistsRequest) (*orchestrator.GetBuildFileExistsResponse, error) {
 	telemetry.SetAttributes(ctx, telemetry.WithBuildID(req.GetBuildId()), attribute.String("file_name", req.GetFileName()))
 
-	if _, uploaded := s.uploadedBuilds.Load(req.GetBuildId()); uploaded {
+	if s.uploadedBuilds.Get(req.GetBuildId()) != nil {
 		telemetry.SetAttributes(ctx, attribute.Bool("uploaded", true))
 
 		return &orchestrator.GetBuildFileExistsResponse{Availability: peerUseStorage}, nil
@@ -116,7 +116,7 @@ func (s *Server) ReadAtBuildSeekable(req *orchestrator.ReadAtBuildSeekableReques
 		attribute.Int64("length", req.GetLength()),
 	)
 
-	if _, uploaded := s.uploadedBuilds.Load(req.GetBuildId()); uploaded {
+	if s.uploadedBuilds.Get(req.GetBuildId()) != nil {
 		telemetry.SetAttributes(ctx, attribute.Bool("uploaded", true))
 
 		return stream.Send(&orchestrator.ReadAtBuildSeekableResponse{Availability: peerUseStorage})
@@ -151,7 +151,7 @@ func (s *Server) GetBuildBlob(req *orchestrator.GetBuildBlobRequest, stream orch
 		attribute.String("file_name", req.GetFileName()),
 	)
 
-	if _, uploaded := s.uploadedBuilds.Load(req.GetBuildId()); uploaded {
+	if s.uploadedBuilds.Get(req.GetBuildId()) != nil {
 		telemetry.SetAttributes(ctx, attribute.Bool("uploaded", true))
 
 		return stream.Send(&orchestrator.GetBuildBlobResponse{Availability: peerUseStorage})

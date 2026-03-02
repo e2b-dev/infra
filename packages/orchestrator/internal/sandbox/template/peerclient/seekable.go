@@ -33,7 +33,9 @@ func (s *peerSeekable) Size(ctx context.Context) (int64, error) {
 				return peerAttempt[int64]{value: resp.GetTotalSize(), hit: true}, nil
 			}
 
-			logger.L().Warn(ctx, "failed to get build file size from peer", logger.WithBuildID(s.buildID), zap.Error(err))
+			if err != nil {
+				logger.L().Warn(ctx, "failed to get build file size from peer", logger.WithBuildID(s.buildID), zap.Error(err))
+			}
 
 			return peerAttempt[int64]{}, nil
 		},

@@ -3,7 +3,9 @@ package server
 import (
 	"context"
 	"sync"
+	"time"
 
+	"github.com/jellydator/ttlcache/v3"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 	"golang.org/x/sync/semaphore"
@@ -24,6 +26,10 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
+// Matches the template cache TTL so entries live as long as the
+// templates they refer to and are cleaned up automatically.
+const uploadedBuildsTTL = 1 * time.Hour
+
 type Server struct {
 	orchestrator.UnimplementedSandboxServiceServer
 	orchestrator.UnimplementedChunkServiceServer
@@ -42,7 +48,7 @@ type Server struct {
 	sbxEventsService  *events.EventsService
 	startingSandboxes *semaphore.Weighted
 	peerRegistry      peerclient.Registry
-	uploadedBuilds    sync.Map // buildID → struct{}: builds whose GCS upload is done
+	uploadedBuilds    *ttlcache.Cache[string, struct{}]
 }
 
 type ServiceConfig struct {
@@ -62,6 +68,11 @@ type ServiceConfig struct {
 }
 
 func New(ctx context.Context, cfg ServiceConfig) *Server {
+	uploadedBuilds := ttlcache.New[string, struct{}](
+		ttlcache.WithTTL[string, struct{}](uploadedBuildsTTL),
+	)
+	go uploadedBuilds.Start()
+
 	server := &Server{
 		config:            cfg.Config,
 		sandboxFactory:    cfg.SandboxFactory,
@@ -76,6 +87,7 @@ func New(ctx context.Context, cfg ServiceConfig) *Server {
 		sbxEventsService:  cfg.SbxEventsService,
 		startingSandboxes: semaphore.NewWeighted(maxStartingInstancesPerNode),
 		peerRegistry:      cfg.PeerRegistry,
+		uploadedBuilds:    uploadedBuilds,
 	}
 
 	meter := cfg.Tel.MeterProvider.Meter("orchestrator.sandbox")
