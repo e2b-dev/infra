@@ -60,7 +60,7 @@ const (
 	// https://cloud.google.com/load-balancing/docs/https#timeouts_and_retries%23:~:text=The%20load%20balancer%27s%20backend%20keepalive,is%20greater%20than%20600%20seconds
 	idleTimeout = 620 * time.Second
 
-	defaultPort     = 80
+	defaultPort      = 80
 	defaultPprofPort = 6060
 )
 
