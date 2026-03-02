@@ -24,7 +24,7 @@ const peerConnectTimeout = 5 * time.Second
 // The unexported resolve method restricts implementations to this package.
 type Resolver interface {
 	resolve(ctx context.Context, buildID string) (attribute.KeyValue, resolveResult)
-	PurgeUploaded(buildID string)
+	Purge(buildID string)
 	Close()
 }
 
@@ -42,7 +42,7 @@ type nopResolver struct{}
 func (nopResolver) resolve(context.Context, string) (attribute.KeyValue, resolveResult) {
 	return attrResolveNoPeer, resolveResult{}
 }
-func (nopResolver) PurgeUploaded(string) {}
+func (nopResolver) Purge(string) {}
 func (nopResolver) Close()               {}
 
 // peerResolver is the real implementation that looks up peers via the Registry.
@@ -113,9 +113,9 @@ func (r *peerResolver) uploadedFlag(buildID string) *atomic.Bool {
 	return actual.(*atomic.Bool)
 }
 
-// PurgeUploaded removes the uploaded state for a build, called on template
+// Purge removes the uploaded state for a build, called on template
 // cache eviction so the entry doesn't accumulate forever.
-func (r *peerResolver) PurgeUploaded(buildID string) {
+func (r *peerResolver) Purge(buildID string) {
 	r.uploadedBuilds.Delete(buildID)
 }
 

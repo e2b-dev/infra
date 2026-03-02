@@ -37,14 +37,14 @@ message GetBuildFileExistsResponse {
   PeerAvailability availability = 1;
 }
 
-message GetBuildSeekableRequest {
+message ReadAtBuildSeekableRequest {
   string build_id = 1;
   string file_name = 2;
   int64 offset = 3;
   int64 length = 4;
 }
 
-message GetBuildSeekableResponse {
+message ReadAtBuildSeekableResponse {
   bytes data = 1;
   // availability is only set in the first message of the stream.
   PeerAvailability availability = 2;
@@ -67,8 +67,8 @@ service ChunkService {
   rpc GetBuildFileSize(GetBuildFileSizeRequest) returns (GetBuildFileSizeResponse);
   // GetBuildFileExists checks if a blob file is present in the peer's local cache.
   rpc GetBuildFileExists(GetBuildFileExistsRequest) returns (GetBuildFileExistsResponse);
-  // GetBuildSeekable streams a range from a seekable diff file (memfile, rootfs.ext4).
-  rpc GetBuildSeekable(GetBuildSeekableRequest) returns (stream GetBuildSeekableResponse);
+  // ReadAtBuildSeekable streams a range from a seekable diff file (memfile, rootfs.ext4).
+  rpc ReadAtBuildSeekable(ReadAtBuildSeekableRequest) returns (stream ReadAtBuildSeekableResponse);
   // GetBuildBlob streams an entire blob file (snapfile, metadata, headers).
   rpc GetBuildBlob(GetBuildBlobRequest) returns (stream GetBuildBlobResponse);
 }

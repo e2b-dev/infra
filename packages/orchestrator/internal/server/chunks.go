@@ -20,11 +20,11 @@ var (
 
 // seekableStreamSender implements peerprovider.Sender over a gRPC server stream (for seekable files).
 type seekableStreamSender struct {
-	stream orchestrator.ChunkService_GetBuildSeekableServer
+	stream orchestrator.ChunkService_ReadAtBuildSeekableServer
 }
 
 func (s *seekableStreamSender) Send(data []byte) error {
-	return s.stream.Send(&orchestrator.GetBuildSeekableResponse{Data: data})
+	return s.stream.Send(&orchestrator.ReadAtBuildSeekableResponse{Data: data})
 }
 
 // blobStreamSender implements peerprovider.Sender over a gRPC server stream (for blob files).
@@ -105,8 +105,8 @@ func (s *Server) GetBuildFileExists(ctx context.Context, req *orchestrator.GetBu
 	return &orchestrator.GetBuildFileExistsResponse{}, nil
 }
 
-// GetBuildSeekable streams a range from a seekable diff file (memfile, rootfs.ext4).
-func (s *Server) GetBuildSeekable(req *orchestrator.GetBuildSeekableRequest, stream orchestrator.ChunkService_GetBuildSeekableServer) error {
+// ReadAtBuildSeekable streams a range from a seekable diff file (memfile, rootfs.ext4).
+func (s *Server) ReadAtBuildSeekable(req *orchestrator.ReadAtBuildSeekableRequest, stream orchestrator.ChunkService_ReadAtBuildSeekableServer) error {
 	ctx := stream.Context()
 
 	telemetry.SetAttributes(ctx,
@@ -119,13 +119,13 @@ func (s *Server) GetBuildSeekable(req *orchestrator.GetBuildSeekableRequest, str
 	if _, uploaded := s.uploadedBuilds.Load(req.GetBuildId()); uploaded {
 		telemetry.SetAttributes(ctx, attribute.Bool("uploaded", true))
 
-		return stream.Send(&orchestrator.GetBuildSeekableResponse{Availability: peerUseStorage})
+		return stream.Send(&orchestrator.ReadAtBuildSeekableResponse{Availability: peerUseStorage})
 	}
 
 	src, err := peerprovider.ResolveSeekable(s.templateCache, req.GetBuildId(), req.GetFileName())
 	if err != nil {
 		if errors.Is(err, peerprovider.ErrNotAvailable) {
-			return stream.Send(&orchestrator.GetBuildSeekableResponse{Availability: peerNotAvailable})
+			return stream.Send(&orchestrator.ReadAtBuildSeekableResponse{Availability: peerNotAvailable})
 		}
 
 		return toGRPCError(err)
@@ -133,7 +133,7 @@ func (s *Server) GetBuildSeekable(req *orchestrator.GetBuildSeekableRequest, str
 
 	if err := src.Stream(ctx, req.GetOffset(), req.GetLength(), &seekableStreamSender{stream}); err != nil {
 		if errors.Is(err, peerprovider.ErrNotAvailable) {
-			return stream.Send(&orchestrator.GetBuildSeekableResponse{Availability: peerNotAvailable})
+			return stream.Send(&orchestrator.ReadAtBuildSeekableResponse{Availability: peerNotAvailable})
 		}
 
 		return toGRPCError(err)

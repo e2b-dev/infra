@@ -63,12 +63,12 @@ func TestPeerSeekable_ReadAt_PeerSucceeds(t *testing.T) {
 	t.Parallel()
 
 	data := []byte("block data")
-	stream := orchestratormocks.NewMockChunkService_GetBuildSeekableClient(t)
+	stream := orchestratormocks.NewMockChunkService_ReadAtBuildSeekableClient(t)
 	// ReadAt copies the first message directly into buf; the inner loop is skipped when buf is full.
-	stream.EXPECT().Recv().Return(&orchestrator.GetBuildSeekableResponse{Data: data}, nil).Once()
+	stream.EXPECT().Recv().Return(&orchestrator.ReadAtBuildSeekableResponse{Data: data}, nil).Once()
 
 	client := orchestratormocks.NewMockChunkServiceClient(t)
-	client.EXPECT().GetBuildSeekable(mock.Anything, mock.MatchedBy(func(req *orchestrator.GetBuildSeekableRequest) bool {
+	client.EXPECT().ReadAtBuildSeekable(mock.Anything, mock.MatchedBy(func(req *orchestrator.ReadAtBuildSeekableRequest) bool {
 		return req.GetOffset() == 0 && req.GetLength() == int64(len(data))
 	})).Return(stream, nil)
 
@@ -84,11 +84,11 @@ func TestPeerSeekable_ReadAt_PeerNotAvailable_FallsBackToBase(t *testing.T) {
 	t.Parallel()
 
 	baseData := []byte("base data")
-	stream := orchestratormocks.NewMockChunkService_GetBuildSeekableClient(t)
-	stream.EXPECT().Recv().Return(&orchestrator.GetBuildSeekableResponse{Availability: &orchestrator.PeerAvailability{NotAvailable: true}}, nil).Once()
+	stream := orchestratormocks.NewMockChunkService_ReadAtBuildSeekableClient(t)
+	stream.EXPECT().Recv().Return(&orchestrator.ReadAtBuildSeekableResponse{Availability: &orchestrator.PeerAvailability{NotAvailable: true}}, nil).Once()
 
 	client := orchestratormocks.NewMockChunkServiceClient(t)
-	client.EXPECT().GetBuildSeekable(mock.Anything, mock.Anything).Return(stream, nil)
+	client.EXPECT().ReadAtBuildSeekable(mock.Anything, mock.Anything).Return(stream, nil)
 
 	baseSeekable := storagemocks.NewMockSeekable(t)
 	baseSeekable.EXPECT().ReadAt(mock.Anything, mock.Anything, int64(0)).RunAndReturn(func(_ context.Context, buf []byte, _ int64) (int, error) {
@@ -120,13 +120,13 @@ func TestPeerSeekable_OpenRangeReader_PeerSucceeds(t *testing.T) {
 	t.Parallel()
 
 	data := []byte("range data")
-	stream := orchestratormocks.NewMockChunkService_GetBuildSeekableClient(t)
+	stream := orchestratormocks.NewMockChunkService_ReadAtBuildSeekableClient(t)
 	// OpenRangeReader reads the first message; peerStreamReader.Read calls Recv once more for EOF.
-	stream.EXPECT().Recv().Return(&orchestrator.GetBuildSeekableResponse{Data: data}, nil).Once()
+	stream.EXPECT().Recv().Return(&orchestrator.ReadAtBuildSeekableResponse{Data: data}, nil).Once()
 	stream.EXPECT().Recv().Return(nil, io.EOF).Once()
 
 	client := orchestratormocks.NewMockChunkServiceClient(t)
-	client.EXPECT().GetBuildSeekable(mock.Anything, mock.MatchedBy(func(req *orchestrator.GetBuildSeekableRequest) bool {
+	client.EXPECT().ReadAtBuildSeekable(mock.Anything, mock.MatchedBy(func(req *orchestrator.ReadAtBuildSeekableRequest) bool {
 		return req.GetOffset() == 10 && req.GetLength() == int64(len(data))
 	})).Return(stream, nil)
 
@@ -145,7 +145,7 @@ func TestPeerSeekable_OpenRangeReader_PeerError_FallsBackToBase(t *testing.T) {
 
 	baseData := []byte("base range")
 	client := orchestratormocks.NewMockChunkServiceClient(t)
-	client.EXPECT().GetBuildSeekable(mock.Anything, mock.Anything).Return(nil, errors.New("peer unavailable"))
+	client.EXPECT().ReadAtBuildSeekable(mock.Anything, mock.Anything).Return(nil, errors.New("peer unavailable"))
 
 	baseSeekable := storagemocks.NewMockSeekable(t)
 	baseSeekable.EXPECT().OpenRangeReader(mock.Anything, int64(0), int64(len(baseData))).Return(io.NopCloser(bytes.NewReader(baseData)), nil)

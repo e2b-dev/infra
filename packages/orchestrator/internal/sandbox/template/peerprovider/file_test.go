@@ -1,6 +1,7 @@
 package peerprovider
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -95,4 +96,12 @@ func TestFileSource_Stream_FileNotOnDisk(t *testing.T) {
 
 	err = src.Stream(t.Context(), &collectSender{})
 	assert.ErrorIs(t, err, ErrNotAvailable)
+}
+
+func writeTempFile(t *testing.T, content string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "file")
+	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+
+	return path
 }

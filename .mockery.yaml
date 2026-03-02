@@ -14,15 +14,15 @@ packages:
           dir: packages/shared/pkg/grpc/orchestrator/mocks
           filename: mockchunkserviceclient.go
           pkgname: orchestratormocks
-      ChunkService_GetBuildSeekableClient:
+      ChunkService_ReadAtBuildSeekableClient:
         config:
           dir: packages/shared/pkg/grpc/orchestrator/mocks
-          filename: mockchunkservicegetbuildseekableclient.go
+          filename: mockchunkservicereadatbuildseekableclient.go
           pkgname: orchestratormocks
-      ChunkService_GetBuildSeekableServer:
+      ChunkService_ReadAtBuildSeekableServer:
         config:
           dir: packages/shared/pkg/grpc/orchestrator/mocks
-          filename: mockchunkservicegetbuildseekableserver.go
+          filename: mockchunkservicereadatbuildseekableserver.go
           pkgname: orchestratormocks
       ChunkService_GetBuildBlobClient:
         config:

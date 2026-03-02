@@ -46,7 +46,7 @@ func (s *peerSeekable) Size(ctx context.Context) (int64, error) {
 func (s *peerSeekable) ReadAt(ctx context.Context, buf []byte, off int64) (int, error) {
 	return withPeerFallback(ctx, &s.peerHandle, "read-at peer-seekable", attrOpReadAt,
 		func(ctx context.Context) (peerAttempt[int], error) {
-			recv, err := openPeerSeekableStream(ctx, s.client, &orchestrator.GetBuildSeekableRequest{
+			recv, err := openPeerSeekableStream(ctx, s.client, &orchestrator.ReadAtBuildSeekableRequest{
 				BuildId:  s.buildID,
 				FileName: s.fileName,
 				Offset:   off,
@@ -91,7 +91,7 @@ func (s *peerSeekable) OpenRangeReader(ctx context.Context, off, length int64) (
 		func(ctx context.Context) (peerAttempt[io.ReadCloser], error) {
 			streamCtx, cancel := context.WithCancel(ctx)
 
-			recv, err := openPeerSeekableStream(streamCtx, s.client, &orchestrator.GetBuildSeekableRequest{
+			recv, err := openPeerSeekableStream(streamCtx, s.client, &orchestrator.ReadAtBuildSeekableRequest{
 				BuildId:  s.buildID,
 				FileName: s.fileName,
 				Offset:   off,
@@ -125,15 +125,15 @@ func (s *peerSeekable) StoreFile(ctx context.Context, path string) error {
 	return fallback.StoreFile(ctx, path)
 }
 
-// openPeerSeekableStream opens a GetBuildSeekable stream, checks peer availability,
+// openPeerSeekableStream opens a ReadAtBuildSeekable stream, checks peer availability,
 // and returns a recv function that yields data chunks starting with the first message's data.
 func openPeerSeekableStream(
 	ctx context.Context,
 	client orchestrator.ChunkServiceClient,
-	req *orchestrator.GetBuildSeekableRequest,
+	req *orchestrator.ReadAtBuildSeekableRequest,
 	uploaded *atomic.Bool,
 ) (func() ([]byte, error), error) {
-	stream, err := client.GetBuildSeekable(ctx, req)
+	stream, err := client.ReadAtBuildSeekable(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("open seekable stream: %w", err)
 	}

@@ -19,7 +19,7 @@ var (
 	ErrNotAvailable = errors.New("not available in local peer cache")
 )
 
-// Sender receives chunks of file data for streaming to a caller.
+// Sender sends file data representing chunks to a caller.
 type Sender interface {
 	Send(data []byte) error
 }

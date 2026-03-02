@@ -70,7 +70,7 @@ func NewCache(
 	)
 
 	cache.OnEviction(func(ctx context.Context, _ ttlcache.EvictionReason, item *ttlcache.Item[string, Template]) {
-		peers.PurgeUploaded(item.Key())
+		peers.Purge(item.Key())
 
 		template := item.Value()
 
