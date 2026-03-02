@@ -3,6 +3,7 @@ package loki
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -81,14 +82,7 @@ func (l *LokiQueryProvider) QuerySandboxLogs(
 	level *logs.LogLevel,
 	search *string,
 ) ([]logs.LogEntry, error) {
-	sandboxIdSanitized := sanitizeLokiLabel(sandboxID)
-	teamIdSanitized := sanitizeLokiLabel(teamID)
-
-	query := fmt.Sprintf("{teamID=`%s`, sandboxID=`%s`, category!=\"metrics\"}", teamIdSanitized, sandboxIdSanitized)
-
-	if search != nil && *search != "" {
-		query += fmt.Sprintf(" |= `%s`", sanitizeLogLineFilter(*search))
-	}
+	query := buildSandboxLogsQuery(teamID, sandboxID, search)
 
 	res, err := l.client.QueryRange(query, limit, start, end, direction, time.Duration(0), time.Duration(0), true)
 	if err != nil {
@@ -113,6 +107,17 @@ func sanitizeLokiLabel(input string) string {
 	return strings.ReplaceAll(input, "`", "")
 }
 
-func sanitizeLogLineFilter(input string) string {
-	return strings.ReplaceAll(input, "`", "")
+func sanitizeLogMessageRegexFilter(input string) string {
+	return fmt.Sprintf(".*%s.*", regexp.QuoteMeta(strings.ReplaceAll(input, "`", "")))
+}
+
+func buildSandboxLogsQuery(teamID string, sandboxID string, search *string) string {
+	sandboxIDSanitized := sanitizeLokiLabel(sandboxID)
+	teamIDSanitized := sanitizeLokiLabel(teamID)
+	query := fmt.Sprintf("{teamID=`%s`, sandboxID=`%s`, category!=\"metrics\"}", teamIDSanitized, sandboxIDSanitized)
+	if search == nil || *search == "" {
+		return query
+	}
+
+	return query + fmt.Sprintf(" | json | message =~ `%s`", sanitizeLogMessageRegexFilter(*search))
 }
