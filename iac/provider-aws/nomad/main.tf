@@ -105,6 +105,7 @@ module "api" {
   clickhouse_connection_string   = local.clickhouse_connection_string
   sandbox_access_token_hash_seed = var.sandbox_access_token_hash_seed
   db_migrator_docker_image       = "${var.aws_account_id}.dkr.ecr.${var.aws_region}.amazonaws.com/${var.db_migrator_repository_name}:latest"
+  loki_url                       = "http://loki.service.consul:${var.loki_port}"
   launch_darkly_api_key          = var.launch_darkly_api_key
 }
 

@@ -83,10 +83,6 @@ module "redis" {
   prefix            = var.prefix
   vpc_id            = module.init.vpc_id
   subnet_group_name = module.init.vpc_elasticache_subnet_group_name
-  preferred_azs = [
-    "${data.aws_region.current.name}a",
-    "${data.aws_region.current.name}b",
-  ]
 
   port          = local.redis_port
   instance_type = var.redis_instance_type

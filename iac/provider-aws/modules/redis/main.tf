@@ -25,10 +25,9 @@ resource "aws_elasticache_replication_group" "instance" {
   replication_group_id = "${var.prefix}${var.name}"
   description          = var.description
 
-  node_type                   = var.instance_type
-  num_cache_clusters          = var.replica_size
-  preferred_cache_cluster_azs = var.preferred_azs
-  cluster_mode                = "enabled"
+  node_type            = var.instance_type
+  num_node_groups      = 1
+  replicas_per_node_group = var.replica_size - 1
 
   automatic_failover_enabled = true
   transit_encryption_enabled = true

@@ -32,10 +32,6 @@ variable "subnet_group_name" {
   type = string
 }
 
-variable "preferred_azs" {
-  type = list(string)
-}
-
 variable "ingress_security_group_ids" {
   type = list(string)
 }

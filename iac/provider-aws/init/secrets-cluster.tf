@@ -37,6 +37,7 @@ locals {
 }
 
 output "cluster" {
+  sensitive = true
   value = {
     nomad_acl_token              = local.cluster_raw["NOMAD_ACL_TOKEN"]
     consul_acl_token             = local.cluster_raw["CONSUL_ACL_TOKEN"]
