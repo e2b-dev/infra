@@ -9,11 +9,11 @@ import (
 
 	"github.com/caarlos0/env/v11"
 	"github.com/golang-jwt/jwt/v5"
+
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 )
 
 const (
-	DefaultKernelVersion = "vmlinux-6.1.158"
-
 	// SandboxStorageBackendMemory will use memory backend as a primary storage for sandbox data.
 	// It will also keep redis populated to allow for seamless migration to redis.
 	SandboxStorageBackendMemory = "memory"
@@ -98,7 +98,7 @@ func Parse() (Config, error) {
 	}
 
 	if config.DefaultKernelVersion == "" {
-		config.DefaultKernelVersion = DefaultKernelVersion
+		config.DefaultKernelVersion = featureflags.DefaultKernelVersion
 	}
 
 	if config.AuthDBConnectionString == "" {

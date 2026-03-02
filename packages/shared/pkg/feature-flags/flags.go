@@ -93,6 +93,7 @@ var (
 	EdgeProvidedSandboxMetricsFlag      = newBoolFlag("edge-provided-sandbox-metrics", false)
 	CreateStorageCacheSpansFlag         = newBoolFlag("create-storage-cache-spans", env.IsDevelopment())
 	SandboxAutoResumeFlag               = newBoolFlag("sandbox-auto-resume", env.IsDevelopment())
+	SandboxCatalogLocalCacheFlag        = newBoolFlag("sandbox-catalog-local-cache", true)
 	PersistentVolumesFlag               = newBoolFlag("can-use-persistent-volumes", env.IsDevelopment())
 	ExecutionMetricsOnWebhooksFlag      = newBoolFlag("execution-metrics-on-webhooks", false) // TODO: Remove NLT 20250315
 )
@@ -188,6 +189,11 @@ func newStringFlag(name string, fallback string) StringFlag {
 
 	return flag
 }
+
+// This is currently not configurable via feature flags.
+const (
+	DefaultKernelVersion = "vmlinux-6.1.158"
+)
 
 // The Firecracker version the last tag + the short SHA (so we can build our dev previews)
 // TODO: The short tag here has only 7 characters — the one from our build pipeline will likely have exactly 8 so this will break.

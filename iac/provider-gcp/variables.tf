@@ -380,6 +380,11 @@ variable "redis_managed" {
   type    = bool
 }
 
+variable "redis_shard_count" {
+  type    = number
+  default = 1
+}
+
 variable "filestore_cache_enabled" {
   type        = bool
   description = "Set to true to enable Filestore cache. Can be set via TF_VAR_use_filestore_cache or USE_FILESTORE_CACHE env var."
