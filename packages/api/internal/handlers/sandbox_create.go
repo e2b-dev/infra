@@ -143,6 +143,10 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 		return
 	}
+	if autoResume != nil {
+		minAutoResumeTimeout := time.Duration(a.featureFlags.IntFlag(ctx, featureflags.MinAutoResumeTimeoutSeconds)) * time.Second
+		autoResume.Timeout = calculateTimeoutSeconds(timeout, minAutoResumeTimeout, teamInfo)
+	}
 
 	var envdAccessToken *string = nil
 	if body.Secure != nil && *body.Secure == true {
