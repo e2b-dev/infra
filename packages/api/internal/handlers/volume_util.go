@@ -119,9 +119,9 @@ func isRetryableError(err error) bool {
 		return true
 	}
 
-	status, ok := status.FromError(err)
+	grpcStatus, ok := status.FromError(err)
 	if ok {
-		for _, actual := range status.Details() {
+		for _, actual := range grpcStatus.Details() {
 			if _, ok := actual.(*orchestrator.UnknownVolumeTypeError); ok {
 				return true // maybe there's another orchestrator that knows about it?
 			}

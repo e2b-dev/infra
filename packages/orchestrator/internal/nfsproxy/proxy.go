@@ -105,7 +105,7 @@ func getPrefixFromSandbox(sandboxes *sandbox.Map, filesystemsByType map[string]b
 func tryParseUUID(id string) (uuid.UUID, bool) {
 	val, err := uuid.Parse(id)
 
-	return val, err == nil
+	return val, err == nil && val != uuid.Nil
 }
 
 func getChangeFromFilesystem(fs billy.Filesystem) billy.Change {

@@ -36,7 +36,7 @@ func (s *Service) ListDir(ctx context.Context, request *orchestrator.VolumeDirLi
 	items, err := os.ReadDir(paths.HostFullPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, newAPIError(ctx, codes.NotFound, http.StatusNotFound, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to read: %q not found.", paths.HostFullPath)
+			return nil, newAPIError(ctx, codes.NotFound, http.StatusNotFound, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to read: %q not found.", request.GetPath())
 		}
 
 		return nil, fmt.Errorf("failed to read directory %q: %w", paths.HostFullPath, err)
@@ -46,7 +46,7 @@ func (s *Service) ListDir(ctx context.Context, request *orchestrator.VolumeDirLi
 	for _, item := range items {
 		info, err := item.Info()
 		if err != nil {
-			return nil, fmt.Errorf("failed to get info for item %q: %w", item.Name(), err)
+			return nil, fmt.Errorf("failed to get info for item %s/%q: %w", request.GetPath(), item.Name(), err)
 		}
 
 		entry := toEntryFromOSInfoAndPaths(paths, info)

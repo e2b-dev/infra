@@ -48,14 +48,14 @@ func (s *Service) CreateDir(ctx context.Context, request *orchestrator.VolumeDir
 	if err := fn(paths.HostFullPath, os.FileMode(mode)); err != nil {
 		if os.IsNotExist(err) {
 			if !s.isVolumeRootHealthy(ctx, paths.HostVolumePath, request.GetVolume()) {
-				return nil, fmt.Errorf("failed to create directory %q: %w", paths.HostFullPath, err)
+				return nil, fmt.Errorf("failed to create directory %q: %w", paths.ClientPath, err)
 			}
 
-			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to mkdir: parent of %q not found.", paths.HostFullPath)
+			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to mkdir: parent of %q not found.", request.GetPath())
 		}
 
 		if os.IsExist(err) {
-			return nil, newAPIError(ctx, codes.AlreadyExists, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_ALREADY_EXISTS, "failed to mkdir: %q already exists.", paths.HostFullPath)
+			return nil, newAPIError(ctx, codes.AlreadyExists, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_ALREADY_EXISTS, "failed to mkdir: %q already exists.", request.GetPath())
 		}
 
 		return nil, fmt.Errorf("failed to create directory: %w", err)
@@ -63,7 +63,7 @@ func (s *Service) CreateDir(ctx context.Context, request *orchestrator.VolumeDir
 
 	if err := os.Chown(paths.HostFullPath, int(uid), int(gid)); err != nil {
 		if os.IsNotExist(err) {
-			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to chown: %q not found.", paths.HostFullPath)
+			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to chown: %q not found.", request.GetPath())
 		}
 
 		return nil, fmt.Errorf("failed to set directory ownership: %w", err)
@@ -72,7 +72,7 @@ func (s *Service) CreateDir(ctx context.Context, request *orchestrator.VolumeDir
 	// we do this again to avoid the process' umask from automatically 'fixing' our requests.
 	if err := os.Chmod(paths.HostFullPath, os.FileMode(mode)); err != nil {
 		if os.IsNotExist(err) {
-			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to chmod: %q not found.", paths.HostFullPath)
+			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to chmod: %q not found.", request.GetPath())
 		}
 
 		return nil, fmt.Errorf("failed to set directory mode: %w", err)
@@ -81,7 +81,7 @@ func (s *Service) CreateDir(ctx context.Context, request *orchestrator.VolumeDir
 	entry, err := toEntryFromPaths(paths)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to stat: %q not found.", paths.HostFullPath)
+			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to stat: %q not found.", request.GetPath())
 		}
 
 		return nil, fmt.Errorf("failed to stat created directory: %w", err)

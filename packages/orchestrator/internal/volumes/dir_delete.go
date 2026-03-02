@@ -35,7 +35,7 @@ func (s *Service) DeleteDir(ctx context.Context, request *orchestrator.VolumeDir
 
 	if err := os.RemoveAll(paths.HostFullPath); err != nil {
 		if os.IsNotExist(err) {
-			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to delete: %q not found.", paths.HostFullPath)
+			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to delete: %q not found.", request.GetPath())
 		}
 
 		return nil, fmt.Errorf("failed to delete directory: %w", err)

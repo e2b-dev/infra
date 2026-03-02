@@ -42,7 +42,7 @@ func (s *Service) UpdateFileMetadata(ctx context.Context, request *orchestrator.
 	if request.Mode != nil {
 		if err = os.Chmod(paths.HostFullPath, os.FileMode(request.GetMode())); err != nil {
 			if os.IsNotExist(err) {
-				return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to chmod: %q not found.", paths.HostFullPath)
+				return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to chmod: %q not found.", request.GetPath())
 			}
 
 			return nil, fmt.Errorf("failed to update file mode: %w", err)
@@ -62,7 +62,7 @@ func (s *Service) UpdateFileMetadata(ctx context.Context, request *orchestrator.
 
 		if err = os.Chown(paths.HostFullPath, uid, gid); err != nil {
 			if os.IsNotExist(err) {
-				return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to chown: %q not found.", paths.HostFullPath)
+				return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to chown: %q not found.", request.GetPath())
 			}
 
 			return nil, fmt.Errorf("failed to update file ownership: %w", err)
@@ -72,7 +72,7 @@ func (s *Service) UpdateFileMetadata(ctx context.Context, request *orchestrator.
 	entry, err := toEntryFromPaths(paths)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to stat: %q not found.", paths.HostFullPath)
+			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to stat: %q not found.", request.GetPath())
 		}
 
 		return nil, fmt.Errorf("failed to stat file: %w", err)
