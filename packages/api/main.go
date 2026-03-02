@@ -8,7 +8,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"strconv"
@@ -443,7 +442,7 @@ func run() int {
 
 	pprofServer := &http.Server{
 		Addr:    fmt.Sprintf("127.0.0.1:%d", defaultPprofPort),
-		Handler: http.DefaultServeMux,
+		Handler: telemetry.NewPprofMux(),
 	}
 	cleanupFns = append(cleanupFns, pprofServer.Shutdown)
 
