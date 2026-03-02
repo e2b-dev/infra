@@ -1,4 +1,4 @@
-package peerprovider
+package peerserver
 
 import (
 	"context"

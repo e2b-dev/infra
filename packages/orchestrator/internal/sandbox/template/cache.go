@@ -17,7 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/peerstorage"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/peerclient"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -52,7 +52,7 @@ type Cache struct {
 	buildStore    *build.DiffStore
 	blockMetrics  blockmetrics.Metrics
 	rootCachePath string
-	peers         peerstorage.Resolver
+	peers         peerclient.Resolver
 }
 
 // NewCache initializes a template new cache.
@@ -63,7 +63,7 @@ func NewCache(
 	flags *featureflags.Client,
 	persistence storage.StorageProvider,
 	metrics blockmetrics.Metrics,
-	peers peerstorage.Resolver,
+	peers peerclient.Resolver,
 ) (*Cache, error) {
 	cache := ttlcache.New(
 		ttlcache.WithTTL[string, Template](templateExpiration),
@@ -172,7 +172,7 @@ func (c *Cache) GetTemplate(
 	// Each layer's buildID is checked against Redis to find the source orchestrator.
 	// This allows pulling data directly from the peer before GCS upload completes.
 	if c.flags.BoolFlag(ctx, featureflags.PeerToPeerChunkTransferFlag) {
-		persistence = peerstorage.NewRoutingProvider(persistence, c.peers)
+		persistence = peerclient.NewRoutingProvider(persistence, c.peers)
 	}
 
 	storageTemplate, err := newTemplateFromStorage(

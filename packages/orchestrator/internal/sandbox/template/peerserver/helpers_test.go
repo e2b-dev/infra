@@ -1,4 +1,4 @@
-package peerprovider
+package peerserver
 
 // collectSender accumulates all data passed to Send.
 type collectSender struct {

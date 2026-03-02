@@ -40,7 +40,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/peerstorage"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/peerclient"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/server"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service/machineinfo"
@@ -318,11 +318,11 @@ func run(config cfg.Config) (success bool) {
 		}})
 	}
 
-	peerRegistry := peerstorage.NopRegistry()
-	peerResolver := peerstorage.NopResolver()
+	peerRegistry := peerclient.NopRegistry()
+	peerResolver := peerclient.NopResolver()
 	if nodeAddress := config.NodeAddress(); redisClient != nil && nodeAddress != nil {
-		peerRegistry = peerstorage.NewRedisRegistry(redisClient, *nodeAddress)
-		peerResolver = peerstorage.NewResolver(peerRegistry, *nodeAddress)
+		peerRegistry = peerclient.NewRedisRegistry(redisClient, *nodeAddress)
+		peerResolver = peerclient.NewResolver(peerRegistry, *nodeAddress)
 	}
 
 	templateCache, err := template.NewCache(config, featureFlags, persistence, blockMetrics, peerResolver)

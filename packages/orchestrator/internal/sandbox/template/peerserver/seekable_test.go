@@ -1,4 +1,4 @@
-package peerprovider
+package peerserver
 
 import (
 	"testing"
@@ -9,7 +9,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	buildmocks "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build/mocks"
-	peerprovidermocks "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/peerprovider/mocks"
+	peerservermocks "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/peerserver/mocks"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
@@ -19,7 +19,7 @@ func TestSeekableSource_Size(t *testing.T) {
 	diff := buildmocks.NewMockDiff(t)
 	diff.EXPECT().Size(mock.Anything).Return(int64(1234), nil)
 
-	cache := peerprovidermocks.NewMockCache(t)
+	cache := peerservermocks.NewMockCache(t)
 	cache.EXPECT().LookupDiff("build-1", build.DiffType(storage.MemfileName)).Return(diff, true)
 
 	src, err := ResolveSeekable(cache, "build-1", storage.MemfileName)
@@ -39,7 +39,7 @@ func TestSeekableSource_Stream(t *testing.T) {
 	diff.EXPECT().Slice(mock.Anything, int64(0), int64(len(data))).Return(data, nil)
 	diff.EXPECT().BlockSize().Return(int64(len(data)))
 
-	cache := peerprovidermocks.NewMockCache(t)
+	cache := peerservermocks.NewMockCache(t)
 	cache.EXPECT().LookupDiff("build-1", build.DiffType(storage.MemfileName)).Return(diff, true)
 
 	src, err := ResolveSeekable(cache, "build-1", storage.MemfileName)

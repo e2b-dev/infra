@@ -1,4 +1,4 @@
-package peerprovider
+package peerserver
 
 import (
 	"testing"
@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	templatemocks "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/mocks"
-	peerprovidermocks "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/peerprovider/mocks"
+	peerservermocks "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/peerserver/mocks"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
@@ -20,7 +20,7 @@ func TestMetadataSource_Stream(t *testing.T) {
 		Template: metadata.TemplateMetadata{BuildID: "build-1"},
 	}, nil)
 
-	cache := peerprovidermocks.NewMockCache(t)
+	cache := peerservermocks.NewMockCache(t)
 	cache.EXPECT().GetCachedTemplate("build-1").Return(tmplMock, true)
 
 	src, err := ResolveBlob(cache, "build-1", storage.MetadataName)

@@ -24,7 +24,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/peerstorage"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/peerclient"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/tcpfirewall"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
@@ -208,7 +208,7 @@ func newTestInfra(t *testing.T, ctx context.Context) *testInfra {
 
 	// Template cache
 	blockMetrics, _ := blockmetrics.NewMetrics(noop.NewMeterProvider())
-	templateCache, err := sbxtemplate.NewCache(orcConfig, flags, persistenceTemplate, blockMetrics, peerstorage.NopResolver())
+	templateCache, err := sbxtemplate.NewCache(orcConfig, flags, persistenceTemplate, blockMetrics, peerclient.NopResolver())
 	require.NoError(t, err)
 	templateCache.Start(ctx)
 	ti.closers = append(ti.closers, func(_ context.Context) { templateCache.Stop() })

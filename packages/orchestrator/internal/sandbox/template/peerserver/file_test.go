@@ -1,4 +1,4 @@
-package peerprovider
+package peerserver
 
 import (
 	"os"
@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	templatemocks "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/mocks"
-	peerprovidermocks "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/peerprovider/mocks"
+	peerservermocks "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/peerserver/mocks"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
@@ -24,7 +24,7 @@ func TestFileSource_Exists_FileOnDisk(t *testing.T) {
 	tmplMock := templatemocks.NewMockTemplate(t)
 	tmplMock.EXPECT().Snapfile().Return(f, nil)
 
-	cache := peerprovidermocks.NewMockCache(t)
+	cache := peerservermocks.NewMockCache(t)
 	cache.EXPECT().GetCachedTemplate("build-1").Return(tmplMock, true)
 
 	src, err := ResolveBlob(cache, "build-1", storage.SnapfileName)
@@ -44,7 +44,7 @@ func TestFileSource_Exists_FileNotOnDisk(t *testing.T) {
 	tmplMock := templatemocks.NewMockTemplate(t)
 	tmplMock.EXPECT().Snapfile().Return(f, nil)
 
-	cache := peerprovidermocks.NewMockCache(t)
+	cache := peerservermocks.NewMockCache(t)
 	cache.EXPECT().GetCachedTemplate("build-1").Return(tmplMock, true)
 
 	src, err := ResolveBlob(cache, "build-1", storage.SnapfileName)
@@ -67,7 +67,7 @@ func TestFileSource_Stream_FileOnDisk(t *testing.T) {
 	tmplMock := templatemocks.NewMockTemplate(t)
 	tmplMock.EXPECT().Snapfile().Return(f, nil)
 
-	cache := peerprovidermocks.NewMockCache(t)
+	cache := peerservermocks.NewMockCache(t)
 	cache.EXPECT().GetCachedTemplate("build-1").Return(tmplMock, true)
 
 	src, err := ResolveBlob(cache, "build-1", storage.SnapfileName)
@@ -88,7 +88,7 @@ func TestFileSource_Stream_FileNotOnDisk(t *testing.T) {
 	tmplMock := templatemocks.NewMockTemplate(t)
 	tmplMock.EXPECT().Snapfile().Return(f, nil)
 
-	cache := peerprovidermocks.NewMockCache(t)
+	cache := peerservermocks.NewMockCache(t)
 	cache.EXPECT().GetCachedTemplate("build-1").Return(tmplMock, true)
 
 	src, err := ResolveBlob(cache, "build-1", storage.SnapfileName)

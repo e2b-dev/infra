@@ -1,4 +1,4 @@
-package peerprovider
+package peerserver
 
 import (
 	"testing"
@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
-	peerprovidermocks "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/peerprovider/mocks"
+	peerservermocks "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/peerserver/mocks"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
@@ -20,7 +20,7 @@ func TestResolveSeekable_ReturnsErrNotAvailableWhenNotInCache(t *testing.T) {
 		t.Run(fileName, func(t *testing.T) {
 			t.Parallel()
 
-			cache := peerprovidermocks.NewMockCache(t)
+			cache := peerservermocks.NewMockCache(t)
 			cache.EXPECT().LookupDiff(mock.Anything, mock.Anything).Return(nil, false)
 
 			_, err := ResolveSeekable(cache, "build-1", fileName)
@@ -32,7 +32,7 @@ func TestResolveSeekable_ReturnsErrNotAvailableWhenNotInCache(t *testing.T) {
 func TestResolveSeekable_ReturnsErrorForUnknownFile(t *testing.T) {
 	t.Parallel()
 
-	cache := peerprovidermocks.NewMockCache(t)
+	cache := peerservermocks.NewMockCache(t)
 	_, err := ResolveSeekable(cache, "build-1", "unknown.file")
 	assert.ErrorIs(t, err, ErrUnknownFile)
 }
@@ -49,7 +49,7 @@ func TestResolveBlob_ReturnsErrNotAvailableWhenNotInCache(t *testing.T) {
 		t.Run(fileName, func(t *testing.T) {
 			t.Parallel()
 
-			cache := peerprovidermocks.NewMockCache(t)
+			cache := peerservermocks.NewMockCache(t)
 			cache.EXPECT().GetCachedTemplate(mock.Anything).Return(nil, false)
 
 			_, err := ResolveBlob(cache, "build-1", fileName)
@@ -61,7 +61,7 @@ func TestResolveBlob_ReturnsErrNotAvailableWhenNotInCache(t *testing.T) {
 func TestResolveBlob_ReturnsErrorForUnknownFile(t *testing.T) {
 	t.Parallel()
 
-	cache := peerprovidermocks.NewMockCache(t)
+	cache := peerservermocks.NewMockCache(t)
 	cache.EXPECT().GetCachedTemplate("build-1").Return(nil, true)
 
 	_, err := ResolveBlob(cache, "build-1", "unknown.file")

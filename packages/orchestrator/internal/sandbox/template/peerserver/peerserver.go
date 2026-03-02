@@ -1,4 +1,4 @@
-package peerprovider
+package peerserver
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	tmpl "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 )
 
-var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/peerprovider")
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/peerserver")
 
 var (
 	// ErrNotSupported is returned when a source type does not implement an operation.
@@ -24,7 +24,7 @@ type Sender interface {
 	Send(data []byte) error
 }
 
-// Cache is the subset of template.Cache the peerprovider needs.
+// Cache is the subset of template.Cache the peerserver needs.
 type Cache interface {
 	LookupDiff(buildID string, diffType build.DiffType) (build.Diff, bool)
 	GetCachedTemplate(buildID string) (tmpl.Template, bool)
@@ -37,6 +37,7 @@ type BlobSource interface {
 }
 
 // SeekableSource serves random-access reads with offset/length and size queries (memfile, rootfs).
+// The requests need to be aligned to the block size.
 type SeekableSource interface {
 	Stream(ctx context.Context, offset, length int64, sender Sender) error
 	Size(ctx context.Context) (int64, error)

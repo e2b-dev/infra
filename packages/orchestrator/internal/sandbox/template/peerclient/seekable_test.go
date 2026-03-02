@@ -1,4 +1,4 @@
-package peerstorage
+package peerclient
 
 import (
 	"bytes"

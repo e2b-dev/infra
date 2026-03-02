@@ -2,7 +2,7 @@
 // github.com/vektra/mockery
 // template: testify
 
-package peerprovidermocks
+package peerservermocks
 
 import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"

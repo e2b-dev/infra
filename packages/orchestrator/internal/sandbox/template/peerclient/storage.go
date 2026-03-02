@@ -1,4 +1,4 @@
-package peerstorage
+package peerclient
 
 import (
 	"bytes"
@@ -21,8 +21,8 @@ import (
 )
 
 var (
-	tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/peerstorage")
-	meter  = otel.GetMeterProvider().Meter("orchestrator.internal.sandbox.template.peerstorage")
+	tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/peerclient")
+	meter  = otel.GetMeterProvider().Meter("orchestrator.internal.sandbox.template.peerclient")
 
 	peerReadTimerFactory = utils.Must(telemetry.NewTimerFactory(meter,
 		"orchestrator.storage.peer.read",

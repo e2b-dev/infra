@@ -1,4 +1,4 @@
-package peerprovider
+package peerserver
 
 import (
 	"testing"
@@ -9,7 +9,7 @@ import (
 
 	blockmocks "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/mocks"
 	templatemocks "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/mocks"
-	peerprovidermocks "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/peerprovider/mocks"
+	peerservermocks "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/peerserver/mocks"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	storageheader "github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
@@ -26,7 +26,7 @@ func TestHeaderSource_Stream(t *testing.T) {
 	tmplMock := templatemocks.NewMockTemplate(t)
 	tmplMock.EXPECT().Memfile(mock.Anything).Return(dev, nil)
 
-	cache := peerprovidermocks.NewMockCache(t)
+	cache := peerservermocks.NewMockCache(t)
 	cache.EXPECT().GetCachedTemplate("build-1").Return(tmplMock, true)
 
 	src, err := ResolveBlob(cache, "build-1", storage.MemfileName+storage.HeaderSuffix)
@@ -47,7 +47,7 @@ func TestHeaderSource_Stream_NilHeader(t *testing.T) {
 	tmplMock := templatemocks.NewMockTemplate(t)
 	tmplMock.EXPECT().Memfile(mock.Anything).Return(dev, nil)
 
-	cache := peerprovidermocks.NewMockCache(t)
+	cache := peerservermocks.NewMockCache(t)
 	cache.EXPECT().GetCachedTemplate("build-1").Return(tmplMock, true)
 
 	src, err := ResolveBlob(cache, "build-1", storage.MemfileName+storage.HeaderSuffix)
@@ -69,7 +69,7 @@ func TestHeaderSource_Stream_Rootfs(t *testing.T) {
 	tmplMock := templatemocks.NewMockTemplate(t)
 	tmplMock.EXPECT().Rootfs().Return(dev, nil)
 
-	cache := peerprovidermocks.NewMockCache(t)
+	cache := peerservermocks.NewMockCache(t)
 	cache.EXPECT().GetCachedTemplate("build-1").Return(tmplMock, true)
 
 	src, err := ResolveBlob(cache, "build-1", storage.RootfsName+storage.HeaderSuffix)

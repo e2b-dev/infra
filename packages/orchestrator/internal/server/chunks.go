@@ -8,7 +8,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/peerprovider"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/peerserver"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -18,7 +18,7 @@ var (
 	peerUseStorage   = &orchestrator.PeerAvailability{UseStorage: true}
 )
 
-// seekableStreamSender implements peerprovider.Sender over a gRPC server stream (for seekable files).
+// seekableStreamSender implements peerserver.Sender over a gRPC server stream (for seekable files).
 type seekableStreamSender struct {
 	stream orchestrator.ChunkService_ReadAtBuildSeekableServer
 }
@@ -27,7 +27,7 @@ func (s *seekableStreamSender) Send(data []byte) error {
 	return s.stream.Send(&orchestrator.ReadAtBuildSeekableResponse{Data: data})
 }
 
-// blobStreamSender implements peerprovider.Sender over a gRPC server stream (for blob files).
+// blobStreamSender implements peerserver.Sender over a gRPC server stream (for blob files).
 type blobStreamSender struct {
 	stream orchestrator.ChunkService_GetBuildBlobServer
 }
@@ -36,11 +36,11 @@ func (s *blobStreamSender) Send(data []byte) error {
 	return s.stream.Send(&orchestrator.GetBuildBlobResponse{Data: data})
 }
 
-// toGRPCError translates peerprovider errors to gRPC status codes.
+// toGRPCError translates peerserver errors to gRPC status codes.
 func toGRPCError(err error) error {
 	switch {
-	case errors.Is(err, peerprovider.ErrUnknownFile),
-		errors.Is(err, peerprovider.ErrNotSupported):
+	case errors.Is(err, peerserver.ErrUnknownFile),
+		errors.Is(err, peerserver.ErrNotSupported):
 		return status.Errorf(codes.InvalidArgument, "%v", err)
 	default:
 		return status.Errorf(codes.Internal, "%v", err)
@@ -56,9 +56,9 @@ func (s *Server) GetBuildFileSize(ctx context.Context, req *orchestrator.GetBuil
 		return &orchestrator.GetBuildFileSizeResponse{Availability: peerUseStorage}, nil
 	}
 
-	src, err := peerprovider.ResolveSeekable(s.templateCache, req.GetBuildId(), req.GetFileName())
+	src, err := peerserver.ResolveSeekable(s.templateCache, req.GetBuildId(), req.GetFileName())
 	if err != nil {
-		if errors.Is(err, peerprovider.ErrNotAvailable) {
+		if errors.Is(err, peerserver.ErrNotAvailable) {
 			return &orchestrator.GetBuildFileSizeResponse{Availability: peerNotAvailable}, nil
 		}
 
@@ -84,9 +84,9 @@ func (s *Server) GetBuildFileExists(ctx context.Context, req *orchestrator.GetBu
 		return &orchestrator.GetBuildFileExistsResponse{Availability: peerUseStorage}, nil
 	}
 
-	src, err := peerprovider.ResolveBlob(s.templateCache, req.GetBuildId(), req.GetFileName())
+	src, err := peerserver.ResolveBlob(s.templateCache, req.GetBuildId(), req.GetFileName())
 	if err != nil {
-		if errors.Is(err, peerprovider.ErrNotAvailable) {
+		if errors.Is(err, peerserver.ErrNotAvailable) {
 			return &orchestrator.GetBuildFileExistsResponse{Availability: peerNotAvailable}, nil
 		}
 
@@ -122,9 +122,9 @@ func (s *Server) ReadAtBuildSeekable(req *orchestrator.ReadAtBuildSeekableReques
 		return stream.Send(&orchestrator.ReadAtBuildSeekableResponse{Availability: peerUseStorage})
 	}
 
-	src, err := peerprovider.ResolveSeekable(s.templateCache, req.GetBuildId(), req.GetFileName())
+	src, err := peerserver.ResolveSeekable(s.templateCache, req.GetBuildId(), req.GetFileName())
 	if err != nil {
-		if errors.Is(err, peerprovider.ErrNotAvailable) {
+		if errors.Is(err, peerserver.ErrNotAvailable) {
 			return stream.Send(&orchestrator.ReadAtBuildSeekableResponse{Availability: peerNotAvailable})
 		}
 
@@ -132,7 +132,7 @@ func (s *Server) ReadAtBuildSeekable(req *orchestrator.ReadAtBuildSeekableReques
 	}
 
 	if err := src.Stream(ctx, req.GetOffset(), req.GetLength(), &seekableStreamSender{stream}); err != nil {
-		if errors.Is(err, peerprovider.ErrNotAvailable) {
+		if errors.Is(err, peerserver.ErrNotAvailable) {
 			return stream.Send(&orchestrator.ReadAtBuildSeekableResponse{Availability: peerNotAvailable})
 		}
 
@@ -157,9 +157,9 @@ func (s *Server) GetBuildBlob(req *orchestrator.GetBuildBlobRequest, stream orch
 		return stream.Send(&orchestrator.GetBuildBlobResponse{Availability: peerUseStorage})
 	}
 
-	src, err := peerprovider.ResolveBlob(s.templateCache, req.GetBuildId(), req.GetFileName())
+	src, err := peerserver.ResolveBlob(s.templateCache, req.GetBuildId(), req.GetFileName())
 	if err != nil {
-		if errors.Is(err, peerprovider.ErrNotAvailable) {
+		if errors.Is(err, peerserver.ErrNotAvailable) {
 			return stream.Send(&orchestrator.GetBuildBlobResponse{Availability: peerNotAvailable})
 		}
 
@@ -167,7 +167,7 @@ func (s *Server) GetBuildBlob(req *orchestrator.GetBuildBlobRequest, stream orch
 	}
 
 	if err := src.Stream(ctx, &blobStreamSender{stream}); err != nil {
-		if errors.Is(err, peerprovider.ErrNotAvailable) {
+		if errors.Is(err, peerserver.ErrNotAvailable) {
 			return stream.Send(&orchestrator.GetBuildBlobResponse{Availability: peerNotAvailable})
 		}
 

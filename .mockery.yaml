@@ -75,13 +75,13 @@ packages:
           filename: mockreadonlydevice.go
           pkgname: blockmocks
 
-  github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/peerprovider:
+  github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/peerserver:
     interfaces:
       Cache:
         config:
-          dir: packages/orchestrator/internal/sandbox/template/peerprovider/mocks
+          dir: packages/orchestrator/internal/sandbox/template/peerserver/mocks
           filename: mockcache.go
-          pkgname: peerprovidermocks
+          pkgname: peerservermocks
 
   github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template:
     interfaces:

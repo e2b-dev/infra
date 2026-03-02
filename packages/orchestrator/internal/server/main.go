@@ -15,7 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/peerstorage"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/peerclient"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -41,7 +41,7 @@ type Server struct {
 	featureFlags      *featureflags.Client
 	sbxEventsService  *events.EventsService
 	startingSandboxes *semaphore.Weighted
-	peerRegistry      peerstorage.Registry
+	peerRegistry      peerclient.Registry
 	uploadedBuilds    sync.Map // buildID → struct{}: builds whose GCS upload is done
 }
 
@@ -58,7 +58,7 @@ type ServiceConfig struct {
 	Persistence      storage.StorageProvider
 	FeatureFlags     *featureflags.Client
 	SbxEventsService *events.EventsService
-	PeerRegistry     peerstorage.Registry
+	PeerRegistry     peerclient.Registry
 }
 
 func New(ctx context.Context, cfg ServiceConfig) *Server {
