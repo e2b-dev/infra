@@ -110,13 +110,15 @@ func (o *Orchestrator) removeSandboxFromNode(ctx context.Context, sbx sandbox.Sa
 		err := o.pauseSandbox(ctx, node, sbx)
 		if err != nil {
 			if dberrors.IsForeignKeyViolation(err) {
-				logger.L().Warn(ctx, "Failed to pause sandbox due to missing base template, falling back to kill",
+				killErr := o.killSandboxOnNode(ctx, node, sbx)
+				logger.L().Error(ctx, "Pause failed due to missing base template, killed sandbox as fallback",
 					logger.WithSandboxID(sbx.SandboxID),
 					zap.String("base_template_id", sbx.BaseTemplateID),
-					zap.Error(err),
+					zap.NamedError("pause_error", err),
+					zap.NamedError("kill_error", killErr),
 				)
 
-				return o.killSandboxOnNode(ctx, node, sbx)
+				return fmt.Errorf("failed to pause sandbox '%s': base template no longer exists: %w", sbx.SandboxID, err)
 			}
 
 			return fmt.Errorf("failed to auto pause sandbox '%s': %w", sbx.SandboxID, err)
