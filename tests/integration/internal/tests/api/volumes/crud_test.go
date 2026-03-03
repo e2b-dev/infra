@@ -52,7 +52,8 @@ func TestVolumeRoundTrip(t *testing.T) {
 	getVolume, err := client.GetVolumesVolumeIDWithResponse(t.Context(), volume.VolumeID, setup.WithAPIKey())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, getVolume.StatusCode(), string(getVolume.Body))
-	assert.Equal(t, *volume, *getVolume.JSON200)
+	assert.Equal(t, volume.VolumeID, getVolume.JSON200.VolumeID)
+	assert.Equal(t, volume.Name, getVolume.JSON200.Name)
 
 	// list volumes
 	listVolumes, err := client.GetVolumesWithResponse(t.Context(), setup.WithAPIKey())

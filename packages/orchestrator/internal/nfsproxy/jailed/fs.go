@@ -29,32 +29,11 @@ func (j jailedFS) Join(elem ...string) string {
 		return p
 	}
 
-	// Otherwise, force the path to stay within the jail by removing any
-	// leading slashes and any leading ".." segments, then prepend the prefix.
-	s := p
-	// Drop all leading slashes to make it relative.
-	for strings.HasPrefix(s, "/") {
-		s = strings.TrimPrefix(s, "/")
-	}
-	// Drop all leading parent traversals. filepath.Clean already resolves
-	// internal traversals like "a/../b" to "b", so we only need to handle
-	// leading ".." components here.
-	for {
-		if s == ".." {
-			s = ""
+	// Force the path to stay within the jail by cleaning it as an absolute path,
+	// then stripping the leading slash before joining with the prefix.
+	s := filepath.Clean("/" + p)
 
-			break
-		}
-		if after, ok := strings.CutPrefix(s, "../"); ok {
-			s = after
-
-			continue
-		}
-
-		break
-	}
-
-	return filepath.Join(j.prefix, s)
+	return filepath.Join(j.prefix, strings.TrimPrefix(s, "/"))
 }
 
 func (j jailedFS) Unwrap() billy.Filesystem {

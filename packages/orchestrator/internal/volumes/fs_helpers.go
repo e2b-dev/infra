@@ -21,7 +21,6 @@ func ensureParentDirs(volRoot, dirPath string, mode os.FileMode) error {
 	var toChmod []string
 	cur := dirPath
 	for cur != volRoot {
-
 		if fi, err := os.Stat(cur); err == nil {
 			if fi.IsDir() {
 				break // first existing directory reached
