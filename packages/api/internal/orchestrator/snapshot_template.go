@@ -78,7 +78,7 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 		return SnapshotTemplateResult{}, fmt.Errorf("error upserting snapshot: %w", err)
 	}
 
-	snapshotTemplateEnvID, err := o.resolveOrCreateSnapshotTemplate(ctx, sandboxID, teamID, upsertResult.BuildID, opts)
+	snapshotTemplateEnvID, err := o.resolveOrCreateSnapshotTemplate(ctx, sandboxID, teamID, upsertResult.BuildID, sbx.NodeID, opts)
 	if err != nil {
 		o.failSnapshotBuild(ctx, upsertResult.BuildID, err)
 
@@ -145,6 +145,7 @@ func (o *Orchestrator) resolveOrCreateSnapshotTemplate(
 	sandboxID string,
 	teamID uuid.UUID,
 	buildID uuid.UUID,
+	originNodeID string,
 	opts SnapshotTemplateOpts,
 ) (string, error) {
 	// Existing template — just assign the build
@@ -163,11 +164,12 @@ func (o *Orchestrator) resolveOrCreateSnapshotTemplate(
 
 	// Create new snapshot template env
 	envID, err := o.sqlcDB.CreateSnapshotTemplateEnv(ctx, queries.CreateSnapshotTemplateEnvParams{
-		SnapshotID: id.Generate(),
-		TeamID:     teamID,
-		SandboxID:  sandboxID,
-		BuildID:    buildID,
-		Tag:        opts.Tag,
+		SnapshotID:   id.Generate(),
+		TeamID:       teamID,
+		SandboxID:    sandboxID,
+		OriginNodeID: &originNodeID,
+		BuildID:      &buildID,
+		Tag:          opts.Tag,
 	})
 	if err != nil {
 		return "", fmt.Errorf("error creating snapshot template env: %w", err)

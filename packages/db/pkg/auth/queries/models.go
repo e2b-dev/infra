@@ -145,9 +145,11 @@ type Snapshot struct {
 }
 
 type SnapshotTemplate struct {
-	EnvID     string
-	SandboxID string
-	CreatedAt pgtype.Timestamptz
+	EnvID        string
+	SandboxID    string
+	CreatedAt    pgtype.Timestamptz
+	OriginNodeID *string
+	BuildID      *uuid.UUID
 }
 
 type Team struct {
