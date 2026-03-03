@@ -128,16 +128,7 @@ func (r *ClusterResourceProviderImpl) GetSandboxLogs(ctx context.Context, teamID
 	}
 
 	raw := *res.JSON200
-	filtersRequested := level != nil || (search != nil && *search != "")
-	if filtersRequested && (res.HTTPResponse == nil || res.HTTPResponse.Header.Get(consts.EdgeFeatureSandboxLogsLevelTextFilteringEnabledHeader) == "") {
-		logger.L().Warn(
-			ctx,
-			"edge response missing logs level+text filtering enabled header",
-			logger.WithSandboxID(sandboxID),
-			zap.Bool("level_filter", level != nil),
-			zap.Bool("search_filter", search != nil && *search != ""),
-		)
-	}
+	logEdgeLogsFilteringCompatibility(ctx, sandboxID, level, search, res.HTTPResponse)
 
 	l := make([]api.SandboxLog, 0, len(raw.Logs))
 	le := make([]api.SandboxLogEntry, 0, len(raw.LogEntries))
@@ -256,4 +247,21 @@ func handleEdgeErrorResponse(statusCode int, json400, json401, json500 *edgeapi.
 		ClientMsg: clientMsg,
 		Code:      http.StatusInternalServerError,
 	}
+}
+
+func logEdgeLogsFilteringCompatibility(ctx context.Context, sandboxID string, level *logs.LogLevel, search *string, response *http.Response) {
+	filtersRequested := level != nil || (search != nil && *search != "")
+	filtersApplied := response != nil && response.Header.Get(consts.EdgeFeatureSandboxLogsLevelTextFilteringEnabledHeader) != ""
+	if !filtersRequested || filtersApplied {
+		return
+	}
+
+	edgeapi.WarnMissingFeatureHeader(
+		ctx,
+		consts.EdgeFeatureSandboxLogsLevelTextFilteringEnabledHeader,
+		"sandbox logs level+text filtering not supported",
+		logger.WithSandboxID(sandboxID),
+		zap.Bool("level_filter", level != nil),
+		zap.Bool("search_filter", search != nil && *search != ""),
+	)
 }

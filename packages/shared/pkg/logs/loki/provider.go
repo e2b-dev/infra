@@ -14,6 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type LokiQueryProvider struct {
@@ -45,11 +46,7 @@ func (l *LokiQueryProvider) QueryBuildLogs(
 	level *logs.LogLevel,
 	direction logproto.Direction,
 ) ([]logs.LogEntry, error) {
-	// https://grafana.com/blog/2021/01/05/how-to-escape-special-characters-with-lokis-logql/
-	templateIDSanitized := sanitizeLokiLabel(templateID)
-	buildIDSanitized := sanitizeLokiLabel(buildID)
-
-	query := buildBuildLogsQuery(templateIDSanitized, buildIDSanitized, level)
+	query := buildBuildLogsQuery(templateID, buildID, level)
 
 	res, err := l.client.QueryRange(query, limit, start, end, direction, time.Duration(0), time.Duration(0), true)
 	if err != nil {
@@ -102,12 +99,20 @@ func (l *LokiQueryProvider) QuerySandboxLogs(
 	return lm, nil
 }
 
+// sanitizeLokiLabel removes backticks from label values to avoid breaking LogQL selectors.
+// refs:
+// - https://grafana.com/docs/loki/latest/query/log_queries/
+// - https://grafana.com/blog/2021/01/05/how-to-escape-special-characters-with-lokis-logql/
 func sanitizeLokiLabel(input string) string {
 	return strings.ReplaceAll(input, "`", "")
 }
 
+// sanitizeLogMessageRegexFilter quotes user input so search remains a literal substring match.
+// refs:
+// - https://grafana.com/docs/loki/latest/query/log_queries/
+// - https://grafana.com/blog/2021/01/05/how-to-escape-special-characters-with-lokis-logql/
 func sanitizeLogMessageRegexFilter(input string) string {
-	return fmt.Sprintf(".*%s.*", regexp.QuoteMeta(strings.ReplaceAll(input, "`", "")))
+	return fmt.Sprintf(".*%s.*", regexp.QuoteMeta(sanitizeLokiLabel(input)))
 }
 
 func minLevelRegexFilter(level logs.LogLevel) string {
@@ -124,8 +129,12 @@ func minLevelRegexFilter(level logs.LogLevel) string {
 }
 
 func buildBuildLogsQuery(templateID string, buildID string, level *logs.LogLevel) string {
+	// https://grafana.com/blog/2021/01/05/how-to-escape-special-characters-with-lokis-logql/
+	templateIDSanitized := sanitizeLokiLabel(templateID)
+	buildIDSanitized := sanitizeLokiLabel(buildID)
+
 	// todo: service name is different here (because new merged orchestrator)
-	query := fmt.Sprintf("{service=\"template-manager\", buildID=`%s`, envID=`%s`}", buildID, templateID)
+	query := fmt.Sprintf("{service=\"template-manager\", buildID=`%s`, envID=`%s`}", buildIDSanitized, templateIDSanitized)
 	if level == nil {
 		return query
 	}
@@ -134,10 +143,12 @@ func buildBuildLogsQuery(templateID string, buildID string, level *logs.LogLevel
 }
 
 func buildSandboxLogsQuery(teamID string, sandboxID string, level *logs.LogLevel, search *string) string {
+	// https://grafana.com/blog/2021/01/05/how-to-escape-special-characters-with-lokis-logql/
 	sandboxIDSanitized := sanitizeLokiLabel(sandboxID)
 	teamIDSanitized := sanitizeLokiLabel(teamID)
+
 	query := fmt.Sprintf("{teamID=`%s`, sandboxID=`%s`, category!=\"metrics\"}", teamIDSanitized, sandboxIDSanitized)
-	if level == nil && (search == nil || *search == "") {
+	if level == nil && utils.DerefOrDefault(search, "") == "" {
 		return query
 	}
 
@@ -145,7 +156,7 @@ func buildSandboxLogsQuery(teamID string, sandboxID string, level *logs.LogLevel
 	if level != nil {
 		query += fmt.Sprintf(" | level =~ `%s`", minLevelRegexFilter(*level))
 	}
-	if search != nil && *search != "" {
+	if utils.DerefOrDefault(search, "") != "" {
 		query += fmt.Sprintf(" | message =~ `%s`", sanitizeLogMessageRegexFilter(*search))
 	}
 
