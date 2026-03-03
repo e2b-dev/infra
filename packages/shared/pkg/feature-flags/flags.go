@@ -9,6 +9,11 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 )
 
+// JSONFlagSentinel is a JSON object with a unique marker key. When LD returns
+// this value, the code-level fallback is used instead.
+// Value: {"__use_code_default__": true}
+var JSONFlagSentinel = ldvalue.ObjectBuild().Set("__use_code_default__", ldvalue.Bool(true)).Build()
+
 // kinds
 const (
 	SandboxKind                        ldcontext.Kind = "sandbox"
@@ -31,6 +36,11 @@ const (
 type JSONFlag struct {
 	name     string
 	fallback ldvalue.Value
+	sentinel *ldvalue.Value
+}
+
+func (f JSONFlag) shouldUseFallback(value ldvalue.Value) bool {
+	return f.sentinel != nil && value.Equal(*f.sentinel)
 }
 
 func (f JSONFlag) Key() string {
@@ -53,12 +63,22 @@ func newJSONFlag(name string, fallback ldvalue.Value) JSONFlag {
 	return flag
 }
 
+func newJSONFlagWithFallback(name string, fallback ldvalue.Value) JSONFlag {
+	flag := newJSONFlag(name, fallback)
+	sentinel := JSONFlagSentinel
+	flag.sentinel = &sentinel
+
+	return flag
+}
+
 var CleanNFSCache = newJSONFlag("clean-nfs-cache", ldvalue.Null())
 
 type BoolFlag struct {
 	name     string
 	fallback bool
 }
+
+func (f BoolFlag) shouldUseFallback(_ bool) bool { return false }
 
 func (f BoolFlag) Key() string {
 	return f.name
@@ -109,6 +129,8 @@ type IntFlag struct {
 	name     string
 	fallback int
 }
+
+func (f IntFlag) shouldUseFallback(_ int) bool { return false }
 
 func (f IntFlag) Key() string {
 	return f.name
@@ -177,6 +199,8 @@ type StringFlag struct {
 	fallback string
 }
 
+func (f StringFlag) shouldUseFallback(_ string) bool { return false }
+
 func (f StringFlag) Key() string {
 	return f.name
 }
@@ -221,7 +245,7 @@ var (
 	BuildIoEngine               = newStringFlag("build-io-engine", "Sync")
 	DefaultPersistentVolumeType = newStringFlag("default-persistent-volume-type", "")
 	BuildNodeInfo               = newJSONFlag("preferred-build-node", ldvalue.Null())
-	FirecrackerVersions         = newJSONFlag("firecracker-versions", ldvalue.FromJSONMarshal(FirecrackerVersionMap))
+	FirecrackerVersions         = newJSONFlagWithFallback("firecracker-versions", ldvalue.FromJSONMarshal(FirecrackerVersionMap))
 )
 
 // defaultTrackedTemplates is the default map of template aliases tracked for metrics.
