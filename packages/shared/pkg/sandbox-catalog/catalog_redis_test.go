@@ -27,12 +27,6 @@ func TestRedisCatalog_LocalCacheFlagServiceContext(t *testing.T) {
 			VariationForKey(featureflags.ServiceKind, "client-proxy", false),
 	)
 
-	ff, err := featureflags.NewClientWithDatasource(source)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		assert.NoError(t, ff.Close(context.Background()))
-	})
-
 	sbxID := "sbx-service-context"
 	expected := &SandboxInfo{
 		OrchestratorID:   "orch-1",
@@ -50,7 +44,14 @@ func TestRedisCatalog_LocalCacheFlagServiceContext(t *testing.T) {
 		t.Parallel()
 		ctx := t.Context()
 
-		catalog := NewRedisSandboxesCatalog(redisClient, ff, "client-proxy")
+		ff, err := featureflags.NewClientWithDatasource(source)
+		require.NoError(t, err)
+		ff.SetServiceName("client-proxy")
+		t.Cleanup(func() {
+			assert.NoError(t, ff.Close(context.Background()))
+		})
+
+		catalog := NewRedisSandboxesCatalog(redisClient, ff)
 		t.Cleanup(func() {
 			assert.NoError(t, catalog.Close(ctx))
 		})
@@ -67,7 +68,14 @@ func TestRedisCatalog_LocalCacheFlagServiceContext(t *testing.T) {
 		t.Parallel()
 		ctx := t.Context()
 
-		catalog := NewRedisSandboxesCatalog(redisClient, ff, "orchestration-api")
+		ff, err := featureflags.NewClientWithDatasource(source)
+		require.NoError(t, err)
+		ff.SetServiceName("orchestration-api")
+		t.Cleanup(func() {
+			assert.NoError(t, ff.Close(context.Background()))
+		})
+
+		catalog := NewRedisSandboxesCatalog(redisClient, ff)
 		t.Cleanup(func() {
 			assert.NoError(t, catalog.Close(ctx))
 		})

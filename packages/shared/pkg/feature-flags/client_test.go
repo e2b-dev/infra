@@ -1,6 +1,7 @@
 package feature_flags
 
 import (
+	"context"
 	"testing"
 
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
@@ -34,4 +35,23 @@ func TestOfflineDatastore(t *testing.T) {
 	// value is set manually in datastore and should be taken from there
 	flagValue, _ = client.ld.BoolVariation(flagName, clientCtx, false)
 	assert.True(t, flagValue)
+}
+
+func TestAllContextsIncludesServiceAndDeployment(t *testing.T) {
+	t.Parallel()
+
+	client := &Client{}
+	client.SetDeploymentName("dev")
+	client.SetServiceName("orchestration-api")
+
+	merged := mergeContexts(context.Background(), client.allContexts(nil))
+	contexts := merged.GetAllIndividualContexts(nil)
+
+	seen := map[ldcontext.Kind]string{}
+	for _, item := range contexts {
+		seen[item.Kind()] = item.Key()
+	}
+
+	require.Equal(t, "dev", seen[deploymentKind])
+	require.Equal(t, "orchestration-api", seen[ServiceKind])
 }

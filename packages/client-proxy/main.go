@@ -103,6 +103,7 @@ func run() int {
 
 		return 1
 	}
+	featureFlagsClient.SetServiceName(serviceName)
 
 	var catalog e2bcatalog.SandboxesCatalog
 
@@ -118,7 +119,7 @@ func run() int {
 				l.Error(ctx, "Failed to close redis client", zap.Error(err))
 			}
 		}()
-		catalog = e2bcatalog.NewRedisSandboxesCatalog(redisClient, featureFlagsClient, serviceName)
+		catalog = e2bcatalog.NewRedisSandboxesCatalog(redisClient, featureFlagsClient)
 	} else {
 		if !errors.Is(err, factories.ErrRedisDisabled) {
 			l.Error(ctx, "Failed to create redis client", zap.Error(err))
