@@ -30,15 +30,6 @@ type ComposeRequest struct {
 	Username string `json:"username,omitempty"`
 }
 
-// ComposeResponse defines model for ComposeResponse.
-type ComposeResponse struct {
-	// Path Path to the composed file
-	Path string `json:"path"`
-
-	// Size Total size of the composed file in bytes
-	Size int64 `json:"size"`
-}
-
 // EntryInfo defines model for EntryInfo.
 type EntryInfo struct {
 	// Name Name of the file

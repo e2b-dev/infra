@@ -39,15 +39,6 @@ type ComposeRequest struct {
 	Username *string `json:"username,omitempty"`
 }
 
-// ComposeResponse defines model for ComposeResponse.
-type ComposeResponse struct {
-	// Path Path to the composed file
-	Path string `json:"path"`
-
-	// Size Total size of the composed file in bytes
-	Size int64 `json:"size"`
-}
-
 // EntryInfo defines model for EntryInfo.
 type EntryInfo struct {
 	// Name Name of the file
@@ -910,7 +901,7 @@ func (r PostFilesResponse) StatusCode() int {
 type PostFilesComposeResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON200      *ComposeResponse
+	JSON200      *EntryInfo
 	JSON400      *InvalidPath
 	JSON401      *InvalidUser
 	JSON404      *FileNotFound
@@ -1219,7 +1210,7 @@ func ParsePostFilesComposeResponse(rsp *http.Response) (*PostFilesComposeRespons
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest ComposeResponse
+		var dest EntryInfo
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
