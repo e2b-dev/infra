@@ -40,6 +40,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/peerclient"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/server"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service/machineinfo"
@@ -195,7 +196,7 @@ func run(config cfg.Config) (success bool) {
 		}
 	}()
 
-	globalLogger := utils.Must(logger.NewLogger(ctx, logger.LoggerConfig{
+	globalLogger := utils.Must(logger.NewLogger(logger.LoggerConfig{
 		ServiceName:   serviceName,
 		IsInternal:    true,
 		IsDebug:       env.IsDebug(),
@@ -283,9 +284,7 @@ func run(config cfg.Config) (success bool) {
 	}
 	closers = append(closers, closer{"feature flags", featureFlags.Close})
 
-	if config.DomainName != "" {
-		featureFlags.SetDeploymentName(config.DomainName)
-	}
+	featureFlags.SetDeploymentName(config.DomainName)
 
 	// gcp concurrent upload limiter
 	limiter, err := limit.New(ctx, featureFlags)
@@ -304,7 +303,29 @@ func run(config cfg.Config) (success bool) {
 		logger.L().Fatal(ctx, "failed to create metrics provider", zap.Error(err))
 	}
 
-	templateCache, err := template.NewCache(config, featureFlags, persistence, blockMetrics)
+	// redis (initialized before template cache so the peer registry can be passed to NewCache)
+	redisClient, err := sharedFactories.NewRedisClient(ctx, sharedFactories.RedisConfig{
+		RedisURL:         config.RedisURL,
+		RedisClusterURL:  config.RedisClusterURL,
+		RedisTLSCABase64: config.RedisTLSCABase64,
+		PoolSize:         config.RedisPoolSize,
+	})
+	if err != nil && !errors.Is(err, sharedFactories.ErrRedisDisabled) {
+		logger.L().Fatal(ctx, "Could not connect to Redis", zap.Error(err))
+	} else if err == nil {
+		closers = append(closers, closer{"redis client", func(context.Context) error {
+			return sharedFactories.CloseCleanly(redisClient)
+		}})
+	}
+
+	peerRegistry := peerclient.NopRegistry()
+	peerResolver := peerclient.NopResolver()
+	if nodeAddress := config.NodeAddress(); redisClient != nil && nodeAddress != nil {
+		peerRegistry = peerclient.NewRedisRegistry(redisClient, *nodeAddress)
+		peerResolver = peerclient.NewResolver(peerRegistry, *nodeAddress)
+	}
+
+	templateCache, err := template.NewCache(config, featureFlags, persistence, blockMetrics, peerResolver)
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create template cache", zap.Error(err))
 	}
@@ -357,20 +378,6 @@ func run(config cfg.Config) (success bool) {
 	}
 
 	logger.L().Info(ctx, "cgroup accounting enabled", zap.String("root", cgroup.RootCgroupPath))
-
-	// redis
-	redisClient, err := sharedFactories.NewRedisClient(ctx, sharedFactories.RedisConfig{
-		RedisURL:         config.RedisURL,
-		RedisClusterURL:  config.RedisClusterURL,
-		RedisTLSCABase64: config.RedisTLSCABase64,
-	})
-	if err != nil && !errors.Is(err, sharedFactories.ErrRedisDisabled) {
-		logger.L().Fatal(ctx, "Could not connect to Redis", zap.Error(err))
-	} else if err == nil {
-		closers = append(closers, closer{"redis client", func(context.Context) error {
-			return sharedFactories.CloseCleanly(redisClient)
-		}})
-	}
 
 	// Redis sandbox events delivery target
 	if redisClient != nil {
@@ -457,6 +464,7 @@ func run(config cfg.Config) (success bool) {
 		Persistence:      persistence,
 		FeatureFlags:     featureFlags,
 		SbxEventsService: events.NewEventsService(sbxEventsDeliveryTargets),
+		PeerRegistry:     peerRegistry,
 	})
 
 	// template manager sandbox logger
@@ -507,6 +515,7 @@ func run(config cfg.Config) (success bool) {
 	grpcServer := e2bgrpc.NewGRPCServer(tel)
 	orchestrator.RegisterSandboxServiceServer(grpcServer, orchestratorService)
 	orchestrator.RegisterVolumeServiceServer(grpcServer, volumeService)
+	orchestrator.RegisterChunkServiceServer(grpcServer, orchestratorService)
 
 	// template manager
 	var tmpl *tmplserver.ServerStore

@@ -325,6 +325,8 @@ func (f *Factory) CreateSandbox(
 		return nil, fmt.Errorf("failed to init FC: %w", err)
 	}
 
+	throttleConfig := featureflags.GetTCPFirewallEgressThrottleConfig(ctx, f.featureFlags)
+
 	telemetry.ReportEvent(ctx, "created fc client")
 
 	err = fcHandle.Create(
@@ -338,6 +340,10 @@ func (f *Factory) CreateSandbox(
 		config.RamMB,
 		config.HugePages,
 		processOptions,
+		fc.TxRateLimiterConfig{
+			Ops:       fc.TokenBucketConfig(throttleConfig.Ops),
+			Bandwidth: fc.TokenBucketConfig(throttleConfig.Bandwidth),
+		},
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create FC: %w", err)
@@ -347,7 +353,7 @@ func (f *Factory) CreateSandbox(
 	resources := &Resources{
 		Slot:   ips,
 		rootfs: rootfsProvider,
-		memory: uffd.NewNoopMemory(memfileSize, memfile.BlockSize(), fcHandle.MemoryInfo),
+		memory: uffd.NewNoopMemory(memfileSize, memfile.BlockSize()),
 	}
 
 	metadata := &Metadata{
@@ -608,6 +614,8 @@ func (f *Factory) ResumeSandbox(
 		return nil, fmt.Errorf("failed to create FC: %w", fcErr)
 	}
 
+	resumeThrottleConfig := featureflags.GetTCPFirewallEgressThrottleConfig(ctx, f.featureFlags)
+
 	telemetry.ReportEvent(ctx, "created FC process")
 
 	// todo: check if kernel, firecracker, and envd versions exist
@@ -642,6 +650,10 @@ func (f *Factory) ResumeSandbox(
 		fcUffd.Ready(),
 		config.Envd.AccessToken,
 		cgroupFD,
+		fc.TxRateLimiterConfig{
+			Ops:       fc.TokenBucketConfig(resumeThrottleConfig.Ops),
+			Bandwidth: fc.TokenBucketConfig(resumeThrottleConfig.Bandwidth),
+		},
 	)
 
 	// Release the cgroup directory FD — the kernel already used it during clone
@@ -926,7 +938,7 @@ func (s *Sandbox) Pause(
 		return nil, fmt.Errorf("failed to get original rootfs: %w", err)
 	}
 
-	memfileDiffMetadata, err := s.Resources.memory.DiffMetadata(ctx)
+	memfileDiffMetadata, err := s.Resources.memory.DiffMetadata(ctx, s.process)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get memfile metadata: %w", err)
 	}

@@ -7,6 +7,34 @@ packages:
           filename: mocks.go
           pkgname: filesystemconnectmocks
 
+  github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator:
+    interfaces:
+      ChunkServiceClient:
+        config:
+          dir: packages/shared/pkg/grpc/orchestrator/mocks
+          filename: mockchunkserviceclient.go
+          pkgname: orchestratormocks
+      ChunkService_ReadAtBuildSeekableClient:
+        config:
+          dir: packages/shared/pkg/grpc/orchestrator/mocks
+          filename: mockchunkservicereadatbuildseekableclient.go
+          pkgname: orchestratormocks
+      ChunkService_ReadAtBuildSeekableServer:
+        config:
+          dir: packages/shared/pkg/grpc/orchestrator/mocks
+          filename: mockchunkservicereadatbuildseekableserver.go
+          pkgname: orchestratormocks
+      ChunkService_GetBuildBlobClient:
+        config:
+          dir: packages/shared/pkg/grpc/orchestrator/mocks
+          filename: mockchunkservicegetbuildblobclient.go
+          pkgname: orchestratormocks
+      ChunkService_GetBuildBlobServer:
+        config:
+          dir: packages/shared/pkg/grpc/orchestrator/mocks
+          filename: mockchunkservicegetbuildblobserver.go
+          pkgname: orchestratormocks
+
   github.com/e2b-dev/infra/packages/shared/pkg/storage:
     interfaces:
       featureFlagsClient:
@@ -25,6 +53,49 @@ packages:
           dir: packages/shared/pkg/storage/mocks
           filename: mockseekableobjectprovider.go
           pkgname: storagemocks
+      StorageProvider:
+        config:
+          dir: packages/shared/pkg/storage/mocks/provider
+          filename: mockstorageprovider.go
+          pkgname: providermocks
+
+  github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build:
+    interfaces:
+      Diff:
+        config:
+          dir: packages/orchestrator/internal/sandbox/build/mocks
+          filename: mockdiff.go
+          pkgname: buildmocks
+
+  github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block:
+    interfaces:
+      ReadonlyDevice:
+        config:
+          dir: packages/orchestrator/internal/sandbox/block/mocks
+          filename: mockreadonlydevice.go
+          pkgname: blockmocks
+
+  github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/peerserver:
+    interfaces:
+      Cache:
+        config:
+          dir: packages/orchestrator/internal/sandbox/template/peerserver/mocks
+          filename: mockcache.go
+          pkgname: peerservermocks
+
+  github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template:
+    interfaces:
+      Template:
+        config:
+          dir: packages/orchestrator/internal/sandbox/template/mocks
+          filename: mocktemplate.go
+          pkgname: templatemocks
+      File:
+        config:
+          dir: packages/orchestrator/internal/sandbox/template/mocks
+          filename: mockfile.go
+          pkgname: templatemocks
+
 
   io:
     interfaces:

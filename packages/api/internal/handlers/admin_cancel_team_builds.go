@@ -23,7 +23,7 @@ func (a *APIStore) PostAdminTeamsTeamIDBuildsCancel(c *gin.Context, teamID uuid.
 
 	logger.L().Info(ctx, "Admin cancelling all builds for team", logger.WithTeamID(teamID.String()))
 
-	builds, err := a.sqlcDB.GetCancellableTemplateBuildsByTeam(ctx, teamID)
+	builds, err := a.sqlcDB.GetCancellableTemplateBuildsByTeam(ctx, &teamID)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to get builds")
 

@@ -153,20 +153,23 @@ func uploadFileAsBlob(ctx context.Context, b storage.Blob, path string) error {
 	return nil
 }
 
-func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapfilePath string, memfilePath *string, rootfsPath *string) chan error {
+func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapfilePath string, memfilePath *string, rootfsPath *string) error {
 	eg, ctx := errgroup.WithContext(ctx)
+
+	eg.Go(func() error {
+		if t.memfileHeader == nil {
+			return nil
+		}
+
+		return t.uploadMemfileHeader(ctx, t.memfileHeader)
+	})
 
 	eg.Go(func() error {
 		if t.rootfsHeader == nil {
 			return nil
 		}
 
-		err := t.uploadRootfsHeader(ctx, t.rootfsHeader)
-		if err != nil {
-			return err
-		}
-
-		return nil
+		return t.uploadRootfsHeader(ctx, t.rootfsHeader)
 	})
 
 	eg.Go(func() error {
@@ -174,25 +177,7 @@ func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapf
 			return nil
 		}
 
-		err := t.uploadRootfs(ctx, *rootfsPath)
-		if err != nil {
-			return err
-		}
-
-		return nil
-	})
-
-	eg.Go(func() error {
-		if t.memfileHeader == nil {
-			return nil
-		}
-
-		err := t.uploadMemfileHeader(ctx, t.memfileHeader)
-		if err != nil {
-			return err
-		}
-
-		return nil
+		return t.uploadRootfs(ctx, *rootfsPath)
 	})
 
 	eg.Go(func() error {
@@ -200,31 +185,16 @@ func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapf
 			return nil
 		}
 
-		err := t.uploadMemfile(ctx, *memfilePath)
-		if err != nil {
-			return err
-		}
-
-		return nil
+		return t.uploadMemfile(ctx, *memfilePath)
 	})
 
 	eg.Go(func() error {
-		if err := t.uploadSnapfile(ctx, fcSnapfilePath); err != nil {
-			return fmt.Errorf("error when uploading snapfile: %w", err)
-		}
-
-		return nil
+		return t.uploadSnapfile(ctx, fcSnapfilePath)
 	})
 
 	eg.Go(func() error {
 		return t.uploadMetadata(ctx, metadataPath)
 	})
 
-	done := make(chan error)
-
-	go func() {
-		done <- eg.Wait()
-	}()
-
-	return done
+	return eg.Wait()
 }

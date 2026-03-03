@@ -16,9 +16,10 @@ SELECT DISTINCT ON (b.id) b.id as build_id, e.id as template_id, e.cluster_id, b
 FROM public.env_builds b
 JOIN public.env_build_assignments eba ON eba.build_id = b.id
 JOIN public.envs e ON e.id = eba.env_id
-WHERE e.team_id = $1 AND b.status_group IN ('pending', 'in_progress')
+WHERE b.team_id = $1
+  AND b.status_group IN ('pending', 'in_progress')
   AND e.source = 'template'
-ORDER BY b.id, b.created_at DESC
+ORDER BY b.id
 `
 
 type GetCancellableTemplateBuildsByTeamRow struct {
@@ -28,7 +29,7 @@ type GetCancellableTemplateBuildsByTeamRow struct {
 	ClusterNodeID *string
 }
 
-func (q *Queries) GetCancellableTemplateBuildsByTeam(ctx context.Context, teamID uuid.UUID) ([]GetCancellableTemplateBuildsByTeamRow, error) {
+func (q *Queries) GetCancellableTemplateBuildsByTeam(ctx context.Context, teamID *uuid.UUID) ([]GetCancellableTemplateBuildsByTeamRow, error) {
 	rows, err := q.db.Query(ctx, getCancellableTemplateBuildsByTeam, teamID)
 	if err != nil {
 		return nil, err
@@ -138,31 +139,31 @@ func (q *Queries) GetInProgressTemplateBuilds(ctx context.Context) ([]GetInProgr
 	return items, nil
 }
 
-const getInProgressTemplateBuildsByTeam = `-- name: GetInProgressTemplateBuildsByTeam :many
-SELECT DISTINCT ON (b.id) e.id as template_id
+const getInProgressTemplateBuildsByTeam = `-- name: GetInProgressTemplateBuildsByTeam :one
+SELECT COUNT(DISTINCT b.id) as build_count
 FROM public.env_builds b
 JOIN public.env_build_assignments eba ON eba.build_id = b.id
 JOIN public.envs e ON e.id = eba.env_id
-WHERE e.team_id = $1 AND b.status_group IN ('pending', 'in_progress') AND e.source = 'template'
-ORDER BY b.id, b.created_at DESC
+WHERE b.team_id = $1
+  AND b.status_group IN ('pending', 'in_progress')
+  AND e.source = 'template'
+  AND NOT EXISTS (
+    SELECT 1 FROM public.env_build_assignments exc
+    WHERE exc.build_id = b.id
+      AND exc.env_id = $2
+      AND exc.tag = ANY($3::text[])
+  )
 `
 
-func (q *Queries) GetInProgressTemplateBuildsByTeam(ctx context.Context, teamID uuid.UUID) ([]string, error) {
-	rows, err := q.db.Query(ctx, getInProgressTemplateBuildsByTeam, teamID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []string
-	for rows.Next() {
-		var template_id string
-		if err := rows.Scan(&template_id); err != nil {
-			return nil, err
-		}
-		items = append(items, template_id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+type GetInProgressTemplateBuildsByTeamParams struct {
+	TeamID            *uuid.UUID
+	ExcludeTemplateID string
+	ExcludeTags       []string
+}
+
+func (q *Queries) GetInProgressTemplateBuildsByTeam(ctx context.Context, arg GetInProgressTemplateBuildsByTeamParams) (int64, error) {
+	row := q.db.QueryRow(ctx, getInProgressTemplateBuildsByTeam, arg.TeamID, arg.ExcludeTemplateID, arg.ExcludeTags)
+	var build_count int64
+	err := row.Scan(&build_count)
+	return build_count, err
 }

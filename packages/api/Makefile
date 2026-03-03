@@ -1,14 +1,15 @@
 ENV := $(shell cat ../../.last_used_env || echo "not-set")
 -include ../../.env.${ENV}
 PREFIX := $(strip $(subst ",,$(PREFIX)))
-HOSTNAME := $(shell hostname || hostnamectl hostname)
+HOSTNAME := $(shell hostname 2> /dev/null || hostnamectl hostname 2> /dev/null)
+$(if $(HOSTNAME),,$(error Failed to determine hostname: both 'hostname' and 'hostnamectl' failed))
 
 expectedMigration := $(shell ./../../scripts/get-latest-migration.sh)
 
 ifeq ($(PROVIDER),aws)
-	IMAGE_REGISTRY := $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com/$(PREFIX)core/api
+	REGISTRY_PREFIX := $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com/$(PREFIX)core
 else
-	IMAGE_REGISTRY := $(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/$(PREFIX)core/api
+	REGISTRY_PREFIX := $(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/$(PREFIX)core
 endif
 
 .PHONY: generate
@@ -63,14 +64,21 @@ dev:
 # make metric=heap interval=90 profiler
 .PHONY: profiler
 profiler:
-	go tool pprof -http :9991 http://localhost:3000/debug/pprof/$(metric)?seconds=$(interval)\&timeout=120
+	go tool pprof -http :9991 http://localhost:6060/debug/pprof/$(metric)?seconds=$(interval)\&timeout=120
 
 .PHONY: build-and-upload
 build-and-upload:
 	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
 	$(eval EXPECTED_MIGRATION_TIMESTAMP := $(expectedMigration))
-	@ docker buildx build --platform linux/amd64 --tag $(IMAGE_REGISTRY) --push --build-arg COMMIT_SHA="$(COMMIT_SHA)" --build-arg EXPECTED_MIGRATION_TIMESTAMP="$(EXPECTED_MIGRATION_TIMESTAMP)"  -f ./Dockerfile ..
+	cd .. && REGISTRY_PREFIX=$(REGISTRY_PREFIX) \
+		COMMIT_SHA=$(COMMIT_SHA) \
+		EXPECTED_MIGRATION_TIMESTAMP=$(EXPECTED_MIGRATION_TIMESTAMP) \
+		docker buildx bake -f api/docker-bake.hcl --push
 
 .PHONY: test
 test:
 	go test -race -v ./...
+
+.PHONY: lint
+lint:
+	golangci-lint run --fix ./...

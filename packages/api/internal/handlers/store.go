@@ -16,7 +16,6 @@ import (
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/api/internal/clusters"
@@ -60,7 +59,7 @@ type APIStore struct {
 	clusters             *clusters.Pool
 }
 
-func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) *APIStore {
+func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config, serviceName string) *APIStore {
 	logger.L().Info(ctx, "Initializing API store and services")
 
 	sqlcDB, err := sqlcdb.NewClient(ctx, config.PostgresConnectionString, pool.WithMaxConnections(40), pool.WithMinIdle(5))
@@ -130,6 +129,9 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create feature flags client", zap.Error(err))
 	}
+
+	featureFlags.SetServiceName(serviceName)
+	featureFlags.SetDeploymentName(config.DomainName)
 
 	accessTokenGenerator, err := sandbox.NewAccessTokenGenerator(config.SandboxAccessTokenHashSeed)
 	if err != nil {
@@ -285,5 +287,5 @@ func (a *APIStore) GetTeamFromSupabaseToken(ctx context.Context, ginCtx *gin.Con
 	ctx, span := tracer.Start(ctx, "get team from supabase token")
 	defer span.End()
 
-	return a.authService.ValidateSupabaseTeam(ctx, ginCtx, teamID, auth.UserIDContextKey)
+	return a.authService.ValidateSupabaseTeam(ctx, ginCtx, teamID)
 }

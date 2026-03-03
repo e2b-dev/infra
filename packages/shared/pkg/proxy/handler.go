@@ -33,6 +33,13 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 			return
 		}
 
+		if errors.Is(err, ErrInvalidSandboxID) {
+			logger.L().Warn(ctx, "invalid sandbox ID", zap.String("host", r.Host))
+			http.Error(w, "Invalid sandbox ID", http.StatusBadRequest)
+
+			return
+		}
+
 		var invalidPortErr *InvalidSandboxPortError
 		if errors.As(err, &invalidPortErr) {
 			logger.L().Warn(ctx, "invalid sandbox port", zap.String("host", r.Host), zap.String("port", invalidPortErr.Port))
@@ -72,6 +79,25 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 			if err != nil {
 				logger.L().Error(ctx, "failed to handle sandbox resume permission denied error", zap.Error(err), logger.WithSandboxID(resumeDeniedErr.SandboxId))
 				http.Error(w, "Failed to handle sandbox resume permission denied error", http.StatusInternalServerError)
+
+				return
+			}
+
+			return
+		}
+
+		var resourceExhaustedErr *SandboxResourceExhaustedError
+		if errors.As(err, &resourceExhaustedErr) {
+			logger.L().Warn(ctx, "team sandbox limit reached",
+				zap.String("host", r.Host),
+				logger.WithSandboxID(resourceExhaustedErr.SandboxId))
+
+			err := template.
+				NewTeamSandboxLimitError(resourceExhaustedErr.SandboxId, r.Host, resourceExhaustedErr.Message).
+				HandleError(w, r)
+			if err != nil {
+				logger.L().Error(ctx, "failed to handle team sandbox limit error", zap.Error(err), logger.WithSandboxID(resourceExhaustedErr.SandboxId))
+				http.Error(w, "Failed to handle team sandbox limit error", http.StatusInternalServerError)
 
 				return
 			}

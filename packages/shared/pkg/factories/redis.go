@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"runtime"
 	"strings"
 
 	"github.com/redis/go-redis/extra/redisotel/v9"
@@ -16,13 +17,23 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
+const minIdleConnections = 10
+
 var ErrRedisDisabled = errors.New("redis is disabled")
 
 type RedisConfig struct {
 	RedisURL         string
 	RedisClusterURL  string
 	RedisTLSCABase64 string
+	// PoolSize overrides the default connection pool size.
+	// When non-positive, defaults are used (clusterNodeConnectionSizePerCPU * GOMAXPROCS for cluster, go-redis default for standalone).
+	PoolSize int
 }
+
+const (
+	clusterNodeConnectionSizePerCPU = 20
+	minIdleConnectionsPerCPU        = 5
+)
 
 func NewRedisClient(ctx context.Context, config RedisConfig) (redis.UniversalClient, error) {
 	var redisClient redis.UniversalClient
@@ -33,9 +44,19 @@ func NewRedisClient(ctx context.Context, config RedisConfig) (redis.UniversalCli
 		// > Redis node endpoints can change and can be recycled as nodes are added and removed over time.
 		// https://cloud.google.com/memorystore/docs/cluster/cluster-node-specification#cluster_endpoints
 		// https://cloud.google.com/memorystore/docs/cluster/client-library-code-samples#go-redis
+
+		numCPU := runtime.GOMAXPROCS(0)
+		poolSize := clusterNodeConnectionSizePerCPU * numCPU
+		minIdleConns := minIdleConnectionsPerCPU * numCPU
+		if config.PoolSize > 0 {
+			poolSize = max(minIdleConnections, config.PoolSize)
+			minIdleConns = max(minIdleConnections, config.PoolSize/4)
+		}
+
 		clusterOpts := &redis.ClusterOptions{
 			Addrs:        []string{config.RedisClusterURL},
-			MinIdleConns: 1,
+			PoolSize:     poolSize,
+			MinIdleConns: minIdleConns,
 		}
 
 		if config.RedisTLSCABase64 != "" {
@@ -66,10 +87,15 @@ func NewRedisClient(ctx context.Context, config RedisConfig) (redis.UniversalCli
 
 		redisClient = redis.NewClusterClient(clusterOpts)
 	case config.RedisURL != "":
-		redisClient = redis.NewClient(&redis.Options{
+		opts := &redis.Options{
 			Addr:         config.RedisURL,
 			MinIdleConns: 1,
-		})
+		}
+		if config.PoolSize > 0 {
+			opts.PoolSize = config.PoolSize
+		}
+
+		redisClient = redis.NewClient(opts)
 	default:
 		return nil, ErrRedisDisabled
 	}
@@ -79,6 +105,13 @@ func NewRedisClient(ctx context.Context, config RedisConfig) (redis.UniversalCli
 		closeErr := redisClient.Close()
 
 		return nil, errors.Join(fmt.Errorf("failed to enable redis tracing: %w", err), closeErr)
+	}
+
+	// Enable metrics (pool stats, command latency histograms)
+	if err := redisotel.InstrumentMetrics(redisClient); err != nil {
+		closeErr := redisClient.Close()
+
+		return nil, errors.Join(fmt.Errorf("failed to enable redis metrics: %w", err), closeErr)
 	}
 
 	if _, err := redisClient.Ping(ctx).Result(); err != nil {

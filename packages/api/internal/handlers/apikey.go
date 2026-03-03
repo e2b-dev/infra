@@ -14,6 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/team"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -40,7 +41,7 @@ func (a *APIStore) PatchApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 		return
 	}
 
-	teamID := a.GetTeamInfo(c).Team.ID
+	teamID := auth.MustGetTeamInfo(c).Team.ID
 
 	now := time.Now()
 	_, err = a.authDB.Write.UpdateTeamApiKey(ctx, authqueries.UpdateTeamApiKeyParams{
@@ -67,7 +68,7 @@ func (a *APIStore) PatchApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 func (a *APIStore) GetApiKeys(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	teamID := a.GetTeamInfo(c).Team.ID
+	teamID := auth.MustGetTeamInfo(c).Team.ID
 
 	apiKeysDB, err := a.authDB.Read.GetTeamAPIKeysWithCreator(ctx, teamID)
 	if err != nil {
@@ -116,7 +117,7 @@ func (a *APIStore) DeleteApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 		return
 	}
 
-	teamID := a.GetTeamInfo(c).Team.ID
+	teamID := auth.MustGetTeamInfo(c).Team.ID
 
 	ids, err := a.authDB.Write.DeleteTeamAPIKey(ctx, authqueries.DeleteTeamAPIKeyParams{
 		ID:     apiKeyIDParsed,
@@ -141,8 +142,8 @@ func (a *APIStore) DeleteApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 func (a *APIStore) PostApiKeys(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	userID := a.GetUserID(c)
-	teamID := a.GetTeamInfo(c).Team.ID
+	userID := auth.MustGetUserID(c)
+	teamID := auth.MustGetTeamInfo(c).Team.ID
 
 	body, err := utils.ParseBody[api.NewTeamAPIKey](ctx, c)
 	if err != nil {

@@ -12,10 +12,9 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	typesteam "github.com/e2b-dev/infra/packages/auth/pkg/types"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -27,7 +26,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	ctx := c.Request.Context()
 
 	// Get team from context, use TeamContextKey
-	teamInfo := c.Value(auth.TeamContextKey).(*typesteam.Team)
+	teamInfo := auth.MustGetTeamInfo(c)
 
 	span := trace.SpanFromContext(ctx)
 	traceID := span.SpanContext().TraceID().String()
@@ -56,11 +55,19 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	}
 
 	teamID := teamInfo.Team.ID
-	sandboxID = utils.ShortID(sandboxID)
+
+	sandboxID, err = utils.ShortID(sandboxID)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid sandbox ID")
+
+		return
+	}
+
 	sandboxData, err := a.orchestrator.GetSandbox(ctx, teamID, sandboxID)
 	if err == nil {
 		if sandboxData.TeamID != teamID {
-			a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox \"%s\"", sandboxID))
+			logger.L().Debug(ctx, "Sandbox team mismatch on resume", logger.WithSandboxID(sandboxID), logger.WithTeamID(teamID.String()))
+			a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(sandboxID))
 
 			return
 		}
@@ -75,7 +82,8 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 				return
 			}
 		case sandbox.StateKilling:
-			a.sendAPIStoreError(c, http.StatusNotFound, "Sandbox can't be resumed, no snapshot found")
+			logger.L().Debug(ctx, "Sandbox is being killed, cannot resume", logger.WithSandboxID(sandboxID))
+			a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(sandboxID))
 
 			return
 		case sandbox.StateSnapshotting:
@@ -101,11 +109,12 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		}
 	}
 
+	// TODO: ENG-3544 scope GetLastSnapshot query by teamID to avoid post-fetch ownership check.
 	lastSnapshot, err := a.sqlcDB.GetLastSnapshot(ctx, sandboxID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			logger.L().Debug(ctx, "Snapshot not found", logger.WithSandboxID(sandboxID))
-			a.sendAPIStoreError(c, http.StatusNotFound, "Sandbox can't be resumed, no snapshot found")
+			a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(sandboxID))
 
 			return
 		}
@@ -118,7 +127,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 
 	if lastSnapshot.Snapshot.TeamID != teamID {
 		telemetry.ReportError(ctx, fmt.Sprintf("snapshot for sandbox '%s' doesn't belong to team '%s'", sandboxID, teamID.String()), nil)
-		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox \"%s\"", sandboxID))
+		a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(sandboxID))
 
 		return
 	}

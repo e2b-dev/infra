@@ -51,6 +51,11 @@ variable "api_nat_min_ports_per_vm" {
   default     = 170
 }
 
+variable "api_server_count" {
+  type    = number
+  default = 1
+}
+
 variable "api_resources_cpu_count" {
   type    = number
   default = 2
@@ -205,6 +210,11 @@ variable "ingress_port" {
     port        = 8800
     health_path = "/ping"
   }
+}
+
+variable "dashboard_api_count" {
+  type    = number
+  default = 0
 }
 
 variable "docker_reverse_proxy_port" {
@@ -368,6 +378,11 @@ variable "template_bucket_name" {
 variable "redis_managed" {
   default = false
   type    = bool
+}
+
+variable "redis_shard_count" {
+  type    = number
+  default = 1
 }
 
 variable "filestore_cache_enabled" {
@@ -586,6 +601,12 @@ variable "loki_boot_disk_type" {
   description = "The GCE boot disk type for the Loki machines."
   type        = string
   default     = "pd-ssd"
+}
+
+variable "sandbox_storage_backend" {
+  description = "The sandbox storage backend to use. Valid values: 'memory', 'redis'."
+  type        = string
+  default     = ""
 }
 
 variable "loki_use_v13_schema_from" {

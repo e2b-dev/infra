@@ -85,7 +85,10 @@ func denyResumePermission() error {
 }
 
 func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.SandboxResumeRequest) (*proxygrpc.SandboxResumeResponse, error) {
-	sandboxID := utils.ShortID(req.GetSandboxId())
+	sandboxID, err := utils.ShortID(req.GetSandboxId())
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "invalid sandbox ID")
+	}
 
 	snap, err := s.api.sqlcDB.GetLastSnapshot(ctx, sandboxID)
 	if err != nil {
@@ -192,7 +195,7 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		nil, // volumeMounts
 	)
 	if apiErr != nil {
-		return nil, status.Errorf(sharedutils.GRPCCodeFromHTTPStatus(apiErr.Code), "resume failed: %s", apiErr.ClientMsg)
+		return nil, status.Error(sharedutils.GRPCCodeFromHTTPStatus(apiErr.Code), apiErr.ClientMsg)
 	}
 
 	node := s.api.orchestrator.GetNode(sbx.ClusterID, sbx.NodeID)

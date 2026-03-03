@@ -60,6 +60,8 @@ module "ingress" {
 
   nomad_token  = var.nomad_acl_token_secret
   consul_token = var.consul_acl_token_secret
+
+  otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
 }
 
 resource "nomad_job" "api" {
@@ -69,11 +71,13 @@ resource "nomad_job" "api" {
     // We use colocation 2 here to ensure that there are at least 2 nodes for API to do rolling updates.
     // It might be possible there could be problems if we are rolling updates for both API and Loki at the same time., so maybe increasing this to > 3 makes sense.
     prevent_colocation = var.api_machine_count > 2
+    count              = var.api_server_count
 
 
     memory_mb = var.api_resources_memory_mb
     cpu_count = var.api_resources_cpu_count
 
+    domain_name                             = var.domain_name
     orchestrator_port                       = var.orchestrator_port
     otel_collector_grpc_endpoint            = "localhost:${var.otel_collector_grpc_port}"
     logs_collector_address                  = "http://localhost:${var.logs_proxy_port.port}"
@@ -97,9 +101,31 @@ resource "nomad_job" "api" {
     clickhouse_connection_string            = local.clickhouse_connection_string
     loki_url                                = local.loki_url
     sandbox_access_token_hash_seed          = var.sandbox_access_token_hash_seed
+    sandbox_storage_backend                 = var.sandbox_storage_backend
     db_migrator_docker_image                = data.google_artifact_registry_docker_image.db_migrator_image.self_link
     launch_darkly_api_key                   = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
   })
+}
+
+module "dashboard_api" {
+  source = "../../modules/job-dashboard-api"
+  count  = var.dashboard_api_count > 0 ? 1 : 0
+
+  count_instances = var.dashboard_api_count
+  node_pool       = var.api_node_pool
+  update_stanza   = var.dashboard_api_count > 1
+  environment     = var.environment
+
+  image = data.google_artifact_registry_docker_image.dashboard_api_image[0].self_link
+
+  postgres_connection_string             = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
+  auth_db_connection_string              = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
+  auth_db_read_replica_connection_string = trimspace(data.google_secret_manager_secret_version.postgres_read_replica_connection_string.secret_data)
+  clickhouse_connection_string           = local.clickhouse_connection_string
+  supabase_jwt_secrets                   = trimspace(data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data)
+
+  otel_collector_grpc_port = var.otel_collector_grpc_port
+  logs_proxy_port          = var.logs_proxy_port
 }
 
 resource "nomad_job" "redis" {

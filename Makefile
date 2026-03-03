@@ -1,5 +1,5 @@
 ENV := $(shell cat .last_used_env || echo "not-set")
-ENV_FILE := $(PWD)/.env.${ENV}
+ENV_FILE := .env.${ENV}
 PROVIDER ?= gcp
 
 -include ${ENV_FILE}
@@ -69,6 +69,7 @@ build/%:
 .PHONY: build-and-upload
 build-and-upload:build-and-upload/api
 build-and-upload:build-and-upload/client-proxy
+build-and-upload:build-and-upload/dashboard-api
 build-and-upload:build-and-upload/docker-reverse-proxy
 build-and-upload:build-and-upload/clean-nfs-cache
 build-and-upload:build-and-upload/orchestrator
@@ -85,10 +86,6 @@ build-and-upload/template-manager:
 build-and-upload/orchestrator:
 	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/orchestrator build-and-upload/orchestrator
-build-and-upload/api:
-	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
-	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/api build-and-upload
-	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/db build-and-upload
 build-and-upload/clickhouse-migrator:
 	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/clickhouse build-and-upload
@@ -145,7 +142,7 @@ migrate:
 set-env:
 	@ touch .last_used_env
 	@ echo $(ENV) > .last_used_env
-	@ . ${ENV_FILE}
+	@ . ./${ENV_FILE}
 
 .PHONY: switch-env
 switch-env:

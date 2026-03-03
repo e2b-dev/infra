@@ -59,14 +59,14 @@ func TestCatalogResolution_CatalogHit(t *testing.T) {
 	c := catalog.NewMemorySandboxesCatalog()
 	ff := newFF(t, true)
 
-	err := c.StoreSandbox(context.Background(), "sbx", &catalog.SandboxInfo{
+	err := c.StoreSandbox(t.Context(), "sbx", &catalog.SandboxInfo{
 		OrchestratorIP: "10.0.0.1",
 		ExecutionID:    "exec",
 		StartedAt:      time.Now(),
 	}, time.Minute)
 	require.NoError(t, err)
 
-	nodeIP, err := catalogResolution(context.Background(), "sbx", 8000, "", "", c, nil, ff)
+	nodeIP, err := catalogResolution(t.Context(), "sbx", 8000, "", "", c, nil, ff)
 	require.NoError(t, err)
 	require.Equal(t, "10.0.0.1", nodeIP)
 }
@@ -77,14 +77,14 @@ func TestCatalogResolution_CatalogHit_EmptyIPReturnsEmpty(t *testing.T) {
 	c := catalog.NewMemorySandboxesCatalog()
 	ff := newFF(t, true)
 
-	err := c.StoreSandbox(context.Background(), "sbx", &catalog.SandboxInfo{
+	err := c.StoreSandbox(t.Context(), "sbx", &catalog.SandboxInfo{
 		OrchestratorIP: "",
 		ExecutionID:    "exec",
 		StartedAt:      time.Now(),
 	}, time.Minute)
 	require.NoError(t, err)
 
-	nodeIP, err := catalogResolution(context.Background(), "sbx", 8000, "", "", c, nil, ff)
+	nodeIP, err := catalogResolution(t.Context(), "sbx", 8000, "", "", c, nil, ff)
 	require.NoError(t, err)
 	require.Empty(t, nodeIP)
 }
@@ -95,7 +95,7 @@ func TestCatalogResolution_CatalogMiss(t *testing.T) {
 	c := catalog.NewMemorySandboxesCatalog()
 	ff := newFF(t, true)
 
-	_, err := catalogResolution(context.Background(), "sbx", 8000, "", "", c, nil, ff)
+	_, err := catalogResolution(t.Context(), "sbx", 8000, "", "", c, nil, ff)
 	require.ErrorIs(t, err, ErrNodeNotFound)
 }
 
@@ -104,7 +104,7 @@ func TestHandlePausedSandbox_NoResumer_MissingTrafficAccessToken(t *testing.T) {
 
 	ff := newFF(t, true)
 
-	_, res, err := handlePausedSandbox(context.Background(), "sbx", 8000, "", "", nil, ff)
+	_, res, err := handlePausedSandbox(t.Context(), "sbx", 8000, "", "", nil, ff)
 	require.NoError(t, err)
 	require.Equal(t, autoResumeNotAllowed, res)
 }
@@ -114,7 +114,7 @@ func TestHandlePausedSandbox_NoResumer_InvalidTrafficAccessToken(t *testing.T) {
 
 	ff := newFF(t, true)
 
-	_, res, err := handlePausedSandbox(context.Background(), "sbx", 8000, "wrong-token", "", nil, ff)
+	_, res, err := handlePausedSandbox(t.Context(), "sbx", 8000, "wrong-token", "", nil, ff)
 	require.NoError(t, err)
 	require.Equal(t, autoResumeNotAllowed, res)
 }
@@ -124,7 +124,7 @@ func TestHandlePausedSandbox_FlagDisabled(t *testing.T) {
 
 	ff := newFF(t, false)
 
-	_, res, err := handlePausedSandbox(context.Background(), "sbx", 8000, "token", "", stubResumer{nodeIP: "10.0.0.1"}, ff)
+	_, res, err := handlePausedSandbox(t.Context(), "sbx", 8000, "token", "", stubResumer{nodeIP: "10.0.0.1"}, ff)
 	require.NoError(t, err)
 	require.Equal(t, autoResumeNotAllowed, res)
 }
@@ -134,7 +134,7 @@ func TestHandlePausedSandbox_NotFound(t *testing.T) {
 
 	ff := newFF(t, true)
 
-	_, res, err := handlePausedSandbox(context.Background(), "sbx", 8000, "token", "", stubResumer{err: status.Error(codes.NotFound, "not allowed")}, ff)
+	_, res, err := handlePausedSandbox(t.Context(), "sbx", 8000, "token", "", stubResumer{err: status.Error(codes.NotFound, "not allowed")}, ff)
 	require.NoError(t, err)
 	require.Equal(t, autoResumeNotAllowed, res)
 }
@@ -144,11 +144,25 @@ func TestHandlePausedSandbox_PermissionDenied(t *testing.T) {
 
 	ff := newFF(t, true)
 
-	_, res, err := handlePausedSandbox(context.Background(), "sbx", 8000, "token", "", stubResumer{err: status.Error(codes.PermissionDenied, "permission denied")}, ff)
+	_, res, err := handlePausedSandbox(t.Context(), "sbx", 8000, "token", "", stubResumer{err: status.Error(codes.PermissionDenied, "permission denied")}, ff)
 	require.Error(t, err)
 	var deniedErr *reverseproxy.SandboxResumePermissionDeniedError
 	require.ErrorAs(t, err, &deniedErr)
 	require.Equal(t, autoResumePermissionDenied, res)
+}
+
+func TestHandlePausedSandbox_ResourceExhausted(t *testing.T) {
+	t.Parallel()
+
+	ff := newFF(t, true)
+
+	_, res, err := handlePausedSandbox(t.Context(), "sbx", 8000, "token", "", stubResumer{err: status.Error(codes.ResourceExhausted, "rate limit hit")}, ff)
+	require.Error(t, err)
+	var exhaustedErr *reverseproxy.SandboxResourceExhaustedError
+	require.ErrorAs(t, err, &exhaustedErr)
+	require.Equal(t, "sbx", exhaustedErr.SandboxId)
+	require.Equal(t, "rate limit hit", exhaustedErr.Message)
+	require.Equal(t, autoResumeResourceExhausted, res)
 }
 
 func TestHandlePausedSandbox_SnapshotNotFound(t *testing.T) {
@@ -156,7 +170,7 @@ func TestHandlePausedSandbox_SnapshotNotFound(t *testing.T) {
 
 	ff := newFF(t, true)
 
-	_, res, err := handlePausedSandbox(context.Background(), "sbx", 8000, "token", "", stubResumer{err: status.Error(codes.NotFound, "snapshot not found")}, ff)
+	_, res, err := handlePausedSandbox(t.Context(), "sbx", 8000, "token", "", stubResumer{err: status.Error(codes.NotFound, "snapshot not found")}, ff)
 	require.NoError(t, err)
 	require.Equal(t, autoResumeNotAllowed, res)
 }
@@ -166,7 +180,7 @@ func TestHandlePausedSandbox_Error(t *testing.T) {
 
 	ff := newFF(t, true)
 
-	_, res, err := handlePausedSandbox(context.Background(), "sbx", 8000, "token", "", stubResumer{err: status.Error(codes.Unavailable, "boom")}, ff)
+	_, res, err := handlePausedSandbox(t.Context(), "sbx", 8000, "token", "", stubResumer{err: status.Error(codes.Unavailable, "boom")}, ff)
 	require.Error(t, err)
 	require.Equal(t, autoResumeErrored, res)
 }
@@ -176,7 +190,7 @@ func TestHandlePausedSandbox_Succeeded(t *testing.T) {
 
 	ff := newFF(t, true)
 
-	nodeIP, res, err := handlePausedSandbox(context.Background(), "sbx", 8000, "token", "", stubResumer{nodeIP: "10.0.0.1"}, ff)
+	nodeIP, res, err := handlePausedSandbox(t.Context(), "sbx", 8000, "token", "", stubResumer{nodeIP: "10.0.0.1"}, ff)
 	require.NoError(t, err)
 	require.Equal(t, autoResumeSucceeded, res)
 	require.Equal(t, "10.0.0.1", nodeIP)
@@ -187,7 +201,7 @@ func TestHandlePausedSandbox_Succeeded_EmptyIP(t *testing.T) {
 
 	ff := newFF(t, true)
 
-	nodeIP, res, err := handlePausedSandbox(context.Background(), "sbx", 8000, "token", "", stubResumer{nodeIP: ""}, ff)
+	nodeIP, res, err := handlePausedSandbox(t.Context(), "sbx", 8000, "token", "", stubResumer{nodeIP: ""}, ff)
 	require.NoError(t, err)
 	require.Equal(t, autoResumeSucceeded, res)
 	require.Empty(t, nodeIP)
@@ -199,7 +213,7 @@ func TestHandlePausedSandbox_PassesPortAndTokenToResumer(t *testing.T) {
 	ff := newFF(t, true)
 	resumer := &recordingResumer{}
 
-	nodeIP, res, err := handlePausedSandbox(context.Background(), "sbx", 49983, "token", "envd-token", resumer, ff)
+	nodeIP, res, err := handlePausedSandbox(t.Context(), "sbx", 49983, "token", "envd-token", resumer, ff)
 	require.NoError(t, err)
 	require.Equal(t, autoResumeSucceeded, res)
 	require.Equal(t, "10.0.0.1", nodeIP)

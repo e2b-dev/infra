@@ -1,5 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-latest_version=$(git ls-tree --name-only HEAD ../db/migrations/* | sed 's|../db/migrations/||' | sed 's/_.*//' | sort | tail -n 1)
+cd "$(git rev-parse --show-toplevel)"
+
+latest_version=$(git ls-tree --name-only HEAD -- packages/db/migrations/ | sed 's|.*/||' | sed 's/_.*//' | sort | tail -n 1)
 echo "$latest_version"

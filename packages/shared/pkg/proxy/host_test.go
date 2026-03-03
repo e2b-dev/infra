@@ -109,6 +109,24 @@ func TestGetTargetFromRequest(t *testing.T) { //nolint:tparallel // cannot call 
 			wantPort: 8080,
 		},
 		{
+			name: "headers: invalid sandbox id with colon",
+			host: "localhost:1234",
+			headers: http.Header{
+				headerSandboxID:   []string{"sbx:123"},
+				headerSandboxPort: []string{"8080"},
+			},
+			wantErrIs: ErrInvalidSandboxID,
+		},
+		{
+			name: "headers: invalid sandbox id with uppercase",
+			host: "localhost:1234",
+			headers: http.Header{
+				headerSandboxID:   []string{"SBX_UPPER"},
+				headerSandboxPort: []string{"8080"},
+			},
+			wantErrIs: ErrInvalidSandboxID,
+		},
+		{
 			name: "headers: missing sandbox id",
 			host: "localhost:1234",
 			headers: http.Header{

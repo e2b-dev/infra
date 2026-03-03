@@ -2,7 +2,6 @@ package populate_redis
 
 import (
 	"context"
-	"errors"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -19,6 +18,8 @@ type PopulateRedisStorage struct {
 	memoryBackend *memory.Storage
 	redisBackend  *redis.Storage
 }
+
+func (m *PopulateRedisStorage) Name() string { return sandbox.StorageNamePopulateRedis }
 
 func (m *PopulateRedisStorage) Add(ctx context.Context, sandbox sandbox.Sandbox) error {
 	err := m.memoryBackend.Add(ctx, sandbox)
@@ -56,8 +57,8 @@ func (m *PopulateRedisStorage) TeamItems(ctx context.Context, teamID uuid.UUID, 
 	return m.memoryBackend.TeamItems(ctx, teamID, states)
 }
 
-func (m *PopulateRedisStorage) AllItems(ctx context.Context, states []sandbox.State, options ...sandbox.ItemsOption) ([]sandbox.Sandbox, error) {
-	return m.memoryBackend.AllItems(ctx, states, options...)
+func (m *PopulateRedisStorage) ExpiredItems(ctx context.Context) ([]sandbox.Sandbox, error) {
+	return m.memoryBackend.ExpiredItems(ctx)
 }
 
 func (m *PopulateRedisStorage) TeamsWithSandboxCount(ctx context.Context) (map[uuid.UUID]int64, error) {
@@ -72,9 +73,7 @@ func (m *PopulateRedisStorage) Update(ctx context.Context, teamID uuid.UUID, san
 
 	_, err = m.redisBackend.Update(ctx, teamID, sandboxID, updateFunc)
 	if err != nil {
-		if !errors.Is(err, sandbox.ErrCannotShortenTTL) {
-			logger.L().Error(ctx, "failed to update sandbox in redis", zap.Error(err), logger.WithSandboxID(sandboxID))
-		}
+		logger.L().Error(ctx, "failed to update sandbox in redis", zap.Error(err), logger.WithSandboxID(sandboxID))
 	}
 
 	return sbx, nil
