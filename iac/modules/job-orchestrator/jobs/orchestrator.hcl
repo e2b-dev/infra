@@ -62,6 +62,7 @@ job "orchestrator-${latest_orchestrator_job_id}" {
 
       env {
         NODE_ID                      = "$${node.unique.name}"
+        NODE_IP                      = "$${attr.unique.network.ip-address}"
         LOGS_COLLECTOR_ADDRESS       = "${logs_collector_address}"
         ENVIRONMENT                  = "${environment}"
         ENVD_TIMEOUT                 = "${envd_timeout}"

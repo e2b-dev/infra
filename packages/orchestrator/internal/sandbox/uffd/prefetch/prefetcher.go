@@ -14,6 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
@@ -65,6 +66,8 @@ func New(
 // while simultaneously waiting for the uffd handler. Once the handler is ready, it starts
 // copying the fetched pages to guest memory.
 func (p *Prefetcher) Start(ctx context.Context) error {
+	ctx = storage.WithSkipCacheWriteback(ctx)
+
 	ctx, span := tracer.Start(ctx, "start prefetch")
 	defer span.End()
 

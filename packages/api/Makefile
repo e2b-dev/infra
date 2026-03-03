@@ -66,7 +66,7 @@ dev:
 # make metric=heap interval=90 profiler
 .PHONY: profiler
 profiler:
-	go tool pprof -http :9991 http://localhost:3000/debug/pprof/$(metric)?seconds=$(interval)\&timeout=120
+	go tool pprof -http :9991 http://localhost:6060/debug/pprof/$(metric)?seconds=$(interval)\&timeout=120
 
 .PHONY: build-and-upload
 build-and-upload:

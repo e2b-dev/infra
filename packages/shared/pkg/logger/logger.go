@@ -31,7 +31,7 @@ type LoggerConfig struct {
 	EnableConsole bool
 }
 
-func NewLogger(_ context.Context, loggerConfig LoggerConfig) (Logger, error) {
+func NewLogger(loggerConfig LoggerConfig) (Logger, error) {
 	var level zap.AtomicLevel
 	if loggerConfig.IsDebug {
 		level = zap.NewAtomicLevelAt(zap.DebugLevel)

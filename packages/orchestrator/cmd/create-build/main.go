@@ -27,6 +27,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/peerclient"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/tcpfirewall"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
@@ -193,7 +194,7 @@ func doBuild(
 		))
 	}
 
-	l, err := logger.NewLogger(ctx, logger.LoggerConfig{
+	l, err := logger.NewLogger(logger.LoggerConfig{
 		ServiceName:   "build-template",
 		IsInternal:    true,
 		IsDebug:       verbose,
@@ -273,12 +274,16 @@ func doBuild(
 
 	blockMetrics, _ := blockmetrics.NewMetrics(noop.NewMeterProvider())
 
+	if os.Getenv("NODE_IP") == "" {
+		os.Setenv("NODE_IP", "127.0.0.1")
+	}
+
 	c, err := cfg.Parse()
 	if err != nil {
 		return fmt.Errorf("config: %w", err)
 	}
 
-	templateCache, err := sbxtemplate.NewCache(c, featureFlags, persistenceTemplate, blockMetrics)
+	templateCache, err := sbxtemplate.NewCache(c, featureFlags, persistenceTemplate, blockMetrics, peerclient.NopResolver())
 	if err != nil {
 		return fmt.Errorf("template cache: %w", err)
 	}

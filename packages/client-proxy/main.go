@@ -71,15 +71,13 @@ func run() int {
 	}()
 
 	l := utils.Must(
-		logger.NewLogger(
-			ctx, logger.LoggerConfig{
-				ServiceName:   serviceName,
-				IsInternal:    true,
-				IsDebug:       env.IsDebug(),
-				Cores:         []zapcore.Core{logger.GetOTELCore(tel.LogsProvider, serviceName)},
-				EnableConsole: true,
-			},
-		),
+		logger.NewLogger(logger.LoggerConfig{
+			ServiceName:   serviceName,
+			IsInternal:    true,
+			IsDebug:       env.IsDebug(),
+			Cores:         []zapcore.Core{logger.GetOTELCore(tel.LogsProvider, serviceName)},
+			EnableConsole: true,
+		}),
 	)
 
 	defer func() {
@@ -105,6 +103,7 @@ func run() int {
 
 		return 1
 	}
+	featureFlagsClient.SetServiceName(serviceName)
 
 	var catalog e2bcatalog.SandboxesCatalog
 
