@@ -105,7 +105,7 @@ data "cloudflare_zone" "domain" {
 resource "cloudflare_record" "dns_auth" {
   zone_id = data.cloudflare_zone.domain.id
   name    = google_certificate_manager_dns_authorization.dns_auth.dns_resource_record[0].name
-  content = google_certificate_manager_dns_authorization.dns_auth.dns_resource_record[0].data
+  value   = google_certificate_manager_dns_authorization.dns_auth.dns_resource_record[0].data
   type    = google_certificate_manager_dns_authorization.dns_auth.dns_resource_record[0].type
   ttl     = 3600
 }

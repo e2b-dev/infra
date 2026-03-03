@@ -46,7 +46,7 @@ func (s *Service) ListDir(ctx context.Context, request *orchestrator.VolumeDirLi
 	for _, item := range items {
 		info, err := item.Info()
 		if err != nil {
-			return nil, fmt.Errorf("failed to get info for item %s/%q: %w", request.GetPath(), item.Name(), err)
+			return nil, fmt.Errorf("failed to get info for item %s/%q: %w", paths.HostFullPath, item.Name(), err)
 		}
 
 		entry := toEntryFromOSInfoAndPaths(paths, info)
