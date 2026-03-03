@@ -108,7 +108,7 @@ type RuntimeMetadata struct {
 	// TeamID optional, used only for logging
 	TeamID string
 
-	// BuildID is the overall build ID, set for build sandboxes
+	// BuildID is the ID of the associated template build.
 	BuildID string
 	// SandboxType distinguishes build sandboxes from regular sandboxes ("sandbox" or "build")
 	SandboxType string

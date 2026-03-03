@@ -185,6 +185,10 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 						logger.L().Warn(ctx, "unknown sandbox type", logger.WithSandboxID(sbx.Runtime.SandboxID))
 					}
 
+					if sbx.Runtime.BuildID == "" {
+						logger.L().Warn(ctx, "unknown build id", logger.WithSandboxID(sbx.Runtime.SandboxID))
+					}
+
 					attributes := metric.WithAttributes(attribute.String("sandbox_id", sbx.Runtime.SandboxID), attribute.String("team_id", sbx.Runtime.TeamID), attribute.String("build_id", sbx.Runtime.BuildID), attribute.String("sandbox_type", sandboxType))
 
 					ok, err = utils.IsGTEVersion(sbx.Config.Envd.Version, minEnvVersionForMetricsTimestamp)
