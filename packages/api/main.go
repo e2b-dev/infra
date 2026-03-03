@@ -252,7 +252,7 @@ func run() int {
 		}
 	}()
 
-	l := sharedutils.Must(logger.NewLogger(ctx, logger.LoggerConfig{
+	l := sharedutils.Must(logger.NewLogger(logger.LoggerConfig{
 		ServiceName:   serviceName,
 		IsInternal:    true,
 		IsDebug:       env.IsDebug(),
