@@ -3,8 +3,9 @@ package loki
 import (
 	"testing"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 )
 
 func TestBuildSandboxLogsQueryWithoutSearch(t *testing.T) {
