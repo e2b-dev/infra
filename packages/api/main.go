@@ -467,17 +467,19 @@ func run() int {
 			time.Sleep(15 * time.Second)
 		}
 
-		// Derive a non-cancelable context from the root so that server goroutines
-		// calling defer cancel() on ctx don't race with in-progress Shutdown calls.
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second) //nolint:contextcheck // intentionally detached from parent cancellation
-		defer shutdownCancel()
-
-		if err := s.Shutdown(shutdownCtx); err != nil {
+		// if the parent context `ctx` is canceled the
+		// shutdown will return early. This should only happen
+		// if there's an error in starting the http service
+		// (and would be a noop), or if there's an unhandled
+		// panic and defers start running, _probably_ won't
+		// even have a chance to return before the program
+		// returns.
+		if err := s.Shutdown(ctx); err != nil {
 			exitCode.Add(1)
 			l.Error(ctx, "Http service shutdown error", zap.Int("port", port), zap.Error(err))
 		}
 
-		if err := pprofServer.Shutdown(shutdownCtx); err != nil {
+		if err := pprofServer.Shutdown(ctx); err != nil {
 			l.Error(ctx, "pprof server shutdown error", zap.Error(err))
 		}
 
