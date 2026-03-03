@@ -28,7 +28,7 @@ type RedisSandboxCatalog struct {
 	redisClient  redis.UniversalClient
 	cache        *ttlcache.Cache[string, *SandboxInfo]
 	featureFlags *featureflags.Client
-	serviceName  string
+	extraFlagCtx []ldcontext.Context
 }
 
 var _ SandboxesCatalog = (*RedisSandboxCatalog)(nil)
@@ -37,11 +37,16 @@ func NewRedisSandboxesCatalog(redisClient redis.UniversalClient, featureFlags *f
 	cache := ttlcache.New(ttlcache.WithTTL[string, *SandboxInfo](catalogRedisLocalCacheTtl), ttlcache.WithDisableTouchOnHit[string, *SandboxInfo]())
 	go cache.Start()
 
+	var extraFlagCtx []ldcontext.Context
+	if serviceName != "" {
+		extraFlagCtx = []ldcontext.Context{featureflags.ServiceContext(serviceName)}
+	}
+
 	return &RedisSandboxCatalog{
 		redisClient:  redisClient,
 		cache:        cache,
 		featureFlags: featureFlags,
-		serviceName:  serviceName,
+		extraFlagCtx: extraFlagCtx,
 	}
 }
 
@@ -51,12 +56,7 @@ func (c *RedisSandboxCatalog) GetSandbox(ctx context.Context, sandboxID string) 
 	spanCtx, span := tracer.Start(ctx, "sandbox-catalog-get")
 	defer span.End()
 
-	var extraContexts []ldcontext.Context
-	if c.serviceName != "" {
-		extraContexts = append(extraContexts, featureflags.ServiceContext(c.serviceName))
-	}
-
-	useLocalCache := c.featureFlags.BoolFlag(spanCtx, featureflags.SandboxCatalogLocalCacheFlag, extraContexts...)
+	useLocalCache := c.featureFlags.BoolFlag(spanCtx, featureflags.SandboxCatalogLocalCacheFlag, c.extraFlagCtx...)
 
 	if useLocalCache {
 		sandboxInfo := c.cache.Get(sandboxID)
@@ -109,7 +109,9 @@ func (c *RedisSandboxCatalog) StoreSandbox(ctx context.Context, sandboxID string
 		return fmt.Errorf("failed to store sandbox info in redis: %w", status.Err())
 	}
 
-	c.cache.Set(sandboxID, sandboxInfo, catalogRedisLocalCacheTtl)
+	if c.featureFlags.BoolFlag(spanCtx, featureflags.SandboxCatalogLocalCacheFlag, c.extraFlagCtx...) {
+		c.cache.Set(sandboxID, sandboxInfo, catalogRedisLocalCacheTtl)
+	}
 
 	return nil
 }
