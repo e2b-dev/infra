@@ -657,6 +657,59 @@ func TestMultipartUpload_NumericSortHighPartNumbers(t *testing.T) {
 	assert.Equal(t, []byte("ABC"), data)
 }
 
+func TestMultipartUpload_CompleteFailureAllowsRetry(t *testing.T) {
+	t.Parallel()
+
+	api, currentUser := newMultipartTestAPI(t)
+	destDir := t.TempDir()
+	destPath := filepath.Join(destDir, "retry-file.txt")
+
+	uploadId := initUpload(t, api, destPath, currentUser.Username)
+
+	uploadPart(t, api, uploadId, 0, []byte("hello"))
+	uploadPart(t, api, uploadId, 1, []byte(" world"))
+
+	// Make the destination directory read-only so that creating the temp
+	// file fails, triggering the failure path in Complete.
+	require.NoError(t, os.Chmod(destDir, 0o500))
+
+	req := httptest.NewRequest(http.MethodPost, "/files/upload/"+uploadId+"/complete", nil)
+	w := httptest.NewRecorder()
+	api.PostFilesUploadUploadIdComplete(w, req, uploadId)
+	assert.Equal(t, http.StatusInternalServerError, w.Result().StatusCode)
+
+	// Session should be re-registered so the client can retry.
+	_, err := api.getUpload(uploadId)
+	assert.NoError(t, err, "session should be re-registered after failed Complete")
+
+	// Parts directory should still exist.
+	_, err = os.Stat(uploadDir(uploadId))
+	assert.NoError(t, err, "parts directory should be preserved after failed Complete")
+
+	// Fix the destination directory and retry Complete.
+	require.NoError(t, os.Chmod(destDir, 0o755))
+
+	req = httptest.NewRequest(http.MethodPost, "/files/upload/"+uploadId+"/complete", nil)
+	w = httptest.NewRecorder()
+	api.PostFilesUploadUploadIdComplete(w, req, uploadId)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	data, err := os.ReadFile(destPath)
+	require.NoError(t, err)
+	assert.Equal(t, []byte("hello world"), data)
+
+	// After success, session should be gone and parts cleaned up.
+	_, err = api.getUpload(uploadId)
+	assert.Error(t, err, "session should be removed after successful Complete")
+
+	_, err = os.Stat(uploadDir(uploadId))
+	assert.True(t, os.IsNotExist(err), "parts directory should be cleaned up after successful Complete")
+}
+
 func TestMultipartUpload_CompletePreservesExistingFileOnFailure(t *testing.T) {
 	t.Parallel()
 

@@ -240,7 +240,17 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 	defer meta.mu.Unlock()
 
 	dir := uploadDir(uploadId)
-	defer os.RemoveAll(dir)
+
+	// Only clean up the parts directory on success. On failure, re-register
+	// the session so the client can retry Complete without re-uploading.
+	succeeded := false
+	defer func() {
+		if succeeded {
+			os.RemoveAll(dir)
+		} else {
+			a.uploads.Store(uploadId, meta)
+		}
+	}()
 
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -344,6 +354,8 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 
 		return
 	}
+
+	succeeded = true
 
 	a.logger.Info().
 		Str("uploadId", uploadId).
