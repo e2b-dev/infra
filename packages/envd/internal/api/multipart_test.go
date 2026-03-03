@@ -683,6 +683,6 @@ func TestMultipartUpload_CompletePreservesExistingFileOnFailure(t *testing.T) {
 	assert.Empty(t, data) // empty because zero parts were uploaded
 
 	// Verify no temp file remains.
-	_, err = os.Stat(destPath + ".e2b-upload.tmp")
+	_, err = os.Stat(destPath + ".e2b-upload." + uploadId + ".tmp")
 	assert.True(t, os.IsNotExist(err))
 }
