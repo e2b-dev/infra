@@ -444,7 +444,6 @@ func run() int {
 		Addr:    fmt.Sprintf("127.0.0.1:%d", defaultPprofPort),
 		Handler: telemetry.NewPprofMux(),
 	}
-	cleanupFns = append(cleanupFns, pprofServer.Shutdown)
 
 	wg.Go(func() {
 		l.Info(ctx, "pprof server starting", zap.Int("port", defaultPprofPort))
@@ -479,6 +478,10 @@ func run() int {
 		if err := s.Shutdown(ctx); err != nil {
 			exitCode.Add(1)
 			l.Error(ctx, "Http service shutdown error", zap.Int("port", port), zap.Error(err))
+		}
+
+		if err := pprofServer.Shutdown(ctx); err != nil {
+			l.Error(ctx, "pprof server shutdown error", zap.Error(err))
 		}
 
 		grpcServer.GracefulStop()
