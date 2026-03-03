@@ -75,10 +75,12 @@ func (t *PrefetchTracker) Add(off int64, accessType AccessType) {
 
 	// Only add if not already tracked
 	if _, ok := t.blockEntries[idx]; !ok {
+		// To prevent accidentally adding remove before a read or write, we don't allow it to be added.
+		// This should happen only as a race condition in the UFFD.
 		if accessType == Remove {
-			// TODO: Check if having remove here would break things down the line
 			return
 		}
+
 		t.blockEntries[idx] = PrefetchBlockEntry{
 			Index:      idx,
 			Order:      t.orderCounter,
