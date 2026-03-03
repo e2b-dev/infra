@@ -7,7 +7,9 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -107,20 +109,34 @@ func (o *Orchestrator) removeSandboxFromNode(ctx context.Context, sbx sandbox.Sa
 	case sandbox.StateActionPause:
 		err := o.pauseSandbox(ctx, node, sbx)
 		if err != nil {
-			logger.L().Debug(ctx, "failed to create snapshot", logger.WithSandboxID(sbx.SandboxID), zap.String("base_template_id", sbx.BaseTemplateID))
+			if dberrors.IsForeignKeyViolation(err) {
+				logger.L().Warn(ctx, "Failed to pause sandbox due to missing base template, falling back to kill",
+					logger.WithSandboxID(sbx.SandboxID),
+					zap.String("base_template_id", sbx.BaseTemplateID),
+					zap.Error(err),
+				)
+
+				return o.killSandboxOnNode(ctx, node, sbx)
+			}
 
 			return fmt.Errorf("failed to auto pause sandbox '%s': %w", sbx.SandboxID, err)
 		}
 
 		return nil
 	case sandbox.StateActionKill:
-		req := &orchestrator.SandboxDeleteRequest{SandboxId: sbx.SandboxID}
+		return o.killSandboxOnNode(ctx, node, sbx)
+	}
 
-		client, ctx := node.GetSandboxDeleteCtx(ctx, sbx.SandboxID, sbx.ExecutionID)
-		_, err := client.Sandbox.Delete(ctx, req)
-		if err != nil {
-			return fmt.Errorf("failed to delete sandbox '%s': %w", sbx.SandboxID, err)
-		}
+	return nil
+}
+
+func (o *Orchestrator) killSandboxOnNode(ctx context.Context, node *nodemanager.Node, sbx sandbox.Sandbox) error {
+	req := &orchestrator.SandboxDeleteRequest{SandboxId: sbx.SandboxID}
+
+	client, ctx := node.GetSandboxDeleteCtx(ctx, sbx.SandboxID, sbx.ExecutionID)
+	_, err := client.Sandbox.Delete(ctx, req)
+	if err != nil {
+		return fmt.Errorf("failed to delete sandbox '%s': %w", sbx.SandboxID, err)
 	}
 
 	return nil
