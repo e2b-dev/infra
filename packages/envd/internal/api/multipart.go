@@ -373,7 +373,13 @@ func (a *API) DeleteFilesUploadUploadId(w http.ResponseWriter, r *http.Request, 
 	}
 	defer meta.mu.Unlock()
 
-	os.RemoveAll(uploadDir(uploadId))
+	if err := os.RemoveAll(uploadDir(uploadId)); err != nil {
+		a.logger.Error().Err(err).Str("uploadId", uploadId).Msg("failed to remove upload directory on abort")
+
+		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error cleaning up upload directory: %w", err))
+
+		return
+	}
 
 	a.logger.Info().
 		Str("uploadId", uploadId).
