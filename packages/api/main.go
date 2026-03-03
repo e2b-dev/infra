@@ -467,19 +467,18 @@ func run() int {
 			time.Sleep(15 * time.Second)
 		}
 
-		// Use a dedicated context for shutdown so that server goroutines
-		// calling defer cancel() on the root ctx don't race with in-progress
-		// Shutdown calls.
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		// Derive a non-cancelable context from the root so that server goroutines
+		// calling defer cancel() on ctx don't race with in-progress Shutdown calls.
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second) //nolint:contextcheck // intentionally detached from parent cancellation
 		defer shutdownCancel()
 
 		if err := s.Shutdown(shutdownCtx); err != nil {
 			exitCode.Add(1)
-			l.Error(shutdownCtx, "Http service shutdown error", zap.Int("port", port), zap.Error(err))
+			l.Error(ctx, "Http service shutdown error", zap.Int("port", port), zap.Error(err))
 		}
 
 		if err := pprofServer.Shutdown(shutdownCtx); err != nil {
-			l.Error(shutdownCtx, "pprof server shutdown error", zap.Error(err))
+			l.Error(ctx, "pprof server shutdown error", zap.Error(err))
 		}
 
 		grpcServer.GracefulStop()
