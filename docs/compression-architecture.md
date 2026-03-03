@@ -5,10 +5,12 @@
 - [B. Read Path Diagram](#b-read-path-diagram)
 - [C. Write Paths](#c-write-paths)
   - [Inline Build / Pause](#inline-build--pause) · [Background Compression](#background-compression-compress-build-cli)
-- [D. Failure Modes](#d-failure-modes)
-- [E. Cost & Benefit](#e-cost--benefit)
+- [D. Peer-to-Peer Resume](#d-peer-to-peer-resume)
+  - [Overview](#overview) · [Read Path During P2P](#read-path-during-p2p) · [Transition & Header Swap](#transition--header-swap) · [GetFrame Routing](#getframe-routing) · [Header States](#header-states) · [Invariants](#invariants)
+- [E. Failure Modes](#e-failure-modes)
+- [F. Cost & Benefit](#f-cost--benefit)
   - [Storage](#storage) · [CPU](#cpu) · [Memory](#memory) · [Net](#net)
-- [F. Grafana Metrics](#f-grafana-metrics)
+- [G. Grafana Metrics](#g-grafana-metrics)
   - [Chunker](#chunker-meter-internalsandboxblockmetrics) · [NFS Cache](#nfs-cache-meter-sharedpkgstorage) · [GCS Backend](#gcs-backend-meter-sharedpkgstorage) · [Key Queries](#key-queries)
 
 ---
@@ -176,7 +178,170 @@ compress-build -build <uuid> [-storage gs://bucket] [-compression lz4|zstd] [-re
 
 ---
 
-## D. Failure Modes
+## D. Peer-to-Peer Resume
+
+When a sandbox pauses, its snapshot must be uploaded to GCS before other orchestrator nodes can resume it. P2P resume eliminates this wait: the originating node serves snapshot data directly to peers via gRPC while the GCS upload proceeds in the background. Once the upload completes, peers atomically swap their headers and transition to reading compressed data from GCS.
+
+### Overview
+
+The system has three phases:
+
+1. **P2P phase**: Upload in progress. Peers read directly from the origin node's mmap cache via gRPC. All reads are uncompressed (`FrameTable = nil`).
+2. **Transition**: Upload completes. The origin signals `use_storage` with serialized V4 headers containing FrameTables. The peer stores these as transition headers.
+3. **Post-transition**: The peer swaps its header atomically (CAS). Subsequent reads route to GCS via the updated FrameTable. Most reads hit the local mmap cache (already populated during P2P).
+
+```mermaid
+sequenceDiagram
+    participant SBX as Sandbox (Pause)
+    participant Origin as Origin Node
+    participant GCS as GCS
+    participant Peer as Peer Node
+
+    SBX->>Origin: Pause → Snapshot
+    Origin->>Origin: Cache in mmap + register in Redis
+
+    par P2P Phase
+        Peer->>Origin: ReadAtBuildSeekable(offset, length)
+        Origin-->>Peer: Uncompressed bytes (from mmap)
+        Peer->>Peer: Fill local mmap cache
+    and Upload
+        Origin->>GCS: Upload data (compressed)
+        Origin->>GCS: Upload V4 headers (with FrameTables)
+    end
+
+    Note over Origin: Upload complete
+    Origin->>Origin: Store V4 headers in uploadedBuilds
+
+    Peer->>Origin: ReadAtBuildSeekable(offset, length)
+    Origin-->>Peer: PeerAvailability{use_storage, headers}
+
+    Peer->>Peer: Store transition headers
+    Peer->>Peer: Atomic header swap (V3 → V4, CAS)
+    Peer->>GCS: GetFrame (compressed, via FrameTable)
+    Note over Peer: Most reads are mmap cache hits
+```
+
+### Read Path During P2P
+
+During P2P, the receiving node's `peerFramedFile` (implements `storage.FramedFile`) wraps the GCS-backed `FramedFile` with a peer-first strategy:
+
+1. `peerFramedFile.GetFrame(ctx, offsetU, ft=nil, ...)` — FrameTable is nil because the header is V3 (pre-upload, no compression info).
+2. Since `uploaded == false`, opens a `ReadAtBuildSeekable` gRPC stream to the origin.
+3. The origin's `framedSource.Stream()` calls `diff.GetBlock(ctx, offset, length, nil)` — always uncompressed, served from its own mmap cache where all blocks are present from the snapshot.
+4. Data streams back, filling the receiving node's mmap cache.
+5. If the origin signals `use_storage` mid-stream, the current stream completes normally — but `uploaded` is flipped, so subsequent operations go to GCS.
+
+### Transition & Header Swap
+
+When the origin's GCS upload completes (`uploadSnapshotAsync` returns):
+
+1. The origin serializes the final V4 headers (with FrameTables) and stores them in `uploadedBuilds` (TTL cache).
+2. On the next peer request, the origin responds with `PeerAvailability{use_storage: true, memfile_header: ..., rootfs_header: ...}`.
+3. `checkPeerAvailability` on the peer stores these headers in `resolver.transitionHdrs` (atomic pointer per buildID) and sets `uploaded = true`.
+
+The transition headers trigger an atomic header swap in `build.File`:
+
+1. With `uploaded = true`, `peerFramedFile.GetFrame()` falls through to the base provider callback.
+2. The callback detects `ft == nil` (old header) + transition headers available → returns `PeerTransitionedError{headers}`.
+3. `build.File.ReadAt()` catches the error, calls `swapHeader()`:
+   - Deserializes the V4 header from the transition bytes
+   - `header.CompareAndSwap(old, new)` — atomic, only first goroutine wins
+   - Other goroutines CAS-fail (header already swapped) and simply retry
+4. On retry, `header.GetShiftedMapping()` returns mappings with `FrameTable != nil`.
+5. `peerFramedFile.GetFrame()` receives `ft != nil`, routes to the GCS-backed compressed FramedFile.
+
+If the upload was uncompressed (no FrameTables in V4 header), the header swap is a no-op — `ft` stays nil, reads route to base GCS uncompressed. No special handling needed.
+
+### GetFrame Routing
+
+```
+peerFramedFile.GetFrame(ctx, offsetU, ft, decompress, buf, readSize, onRead)
+  │
+  ├─ uploaded == false?
+  │    → Try peer gRPC stream (always ft=nil, uncompressed)
+  │    → Success: return data from peer's mmap cache
+  │    → Failure/not-available: fall through to base
+  │
+  └─ uploaded == true (or peer failed):
+       │
+       ├─ ft != nil (post-swap header)?
+       │    → Delegate to base GCS FramedFile (compressed or uncompressed per ft)
+       │    → Almost always a local mmap cache hit (populated during P2P phase)
+       │
+       └─ ft == nil (pre-swap header)?
+            │
+            ├─ transitionHeaders available?
+            │    → Return PeerTransitionedError{headers}
+            │    → build.File catches → swapHeader(CAS) → retry with new header
+            │
+            └─ No transition headers?
+                 → Delegate to base GCS FramedFile with ft=nil (uncompressed build)
+```
+
+### Header States
+
+```
+┌───────────────┬──────────────┬──────────────────┬──────────────────────────┐
+│ Phase         │ Header       │ FrameTable       │ Data Source              │
+├───────────────┼──────────────┼──────────────────┼──────────────────────────┤
+│ P2P           │ V3 (original)│ nil              │ Peer mmap cache (gRPC)   │
+│ Transition    │ V3 → V4 swap │ nil → populated  │ Last peer stream, then   │
+│               │ (atomic CAS) │                  │ local mmap cache (warm)  │
+│ Post-swap     │ V4           │ per-mapping FTs  │ Local mmap (hit) or      │
+│               │              │                  │ GCS compressed (miss)    │
+│ Uncompressed  │ V3 (no swap) │ always nil       │ GCS uncompressed         │
+│ upload        │              │                  │                          │
+└───────────────┴──────────────┴──────────────────┴──────────────────────────┘
+```
+
+- **Origin node header**: stays V3 throughout. The origin's mmap cache is fully populated from the snapshot — it never reads from GCS. The V4 header is serialized from the upload result and sent to peers only.
+- **Peer node header**: starts V3, swapped to V4 when transition headers arrive. If upload was uncompressed, V4 header has no FrameTables and the swap is effectively a no-op.
+
+### Upload Ordering
+
+```
+uploadSnapshotAsync(ctx, sbx, snapshotResult):
+  go func() {
+    defer completeUpload(ctx)          // runs AFTER UploadAtOnce returns
+    UploadAtOnce(ctx, memOpts, rootOpts)
+      ├─ Upload data files (compressed or uncompressed per opts)
+      ├─ Upload V4 headers (with FrameTables if compressed)
+      └─ Upload snapfile + metadata
+  }
+
+  completeUpload(ctx):
+    ├─ Serialize final V4 headers (FrameTables now populated)
+    ├─ Store in uploadedBuilds TTL cache (with header bytes)
+    └─ Unregister from Redis peer registry
+```
+
+The `defer completeUpload` runs after `UploadAtOnce` returns — headers are serialized AFTER the upload mutates them with final FrameTable data. This ensures peers receive headers that match the data in GCS.
+
+### Invariants
+
+1. **P2P always uncompressed**: The peer serves from its mmap cache — all data is uncompressed. FrameTable is always nil during P2P reads.
+2. **Mmap cache validity**: Whether data came from peer (uncompressed) or GCS (decompressed), cached bytes are identical at the same uncompressed offset. Cache hits remain valid after header swap — no re-fetch needed.
+3. **No diff eviction on swap**: The header swap only changes the `atomic.Pointer[header.Header]`. The `DiffStore`, `Chunker`, and mmap cache are untouched. The `FrameTable` is a per-call parameter, so the same chunker serves both uncompressed (`ft=nil`) and compressed (`ft!=nil`) reads.
+4. **Atomic swap is race-free**: `CompareAndSwap` ensures only one goroutine swaps the header. Others CAS-fail and retry — they read the new header on the next `header.Load()`.
+5. **No infinite retry**: After swap, `GetShiftedMapping()` returns `ft != nil` → `peerFramedFile` routes to GCS base (no `PeerTransitionedError`). If the upload was uncompressed (no FTs), ft stays nil, reads route to base GCS uncompressed — also no error.
+6. **Feature flags**: P2P is gated by `PeerToPeerChunkTransferFlag` (enables peer routing in `template.Cache`) and `PeerToPeerAsyncCheckpointFlag` (enables async checkpoint uploads).
+
+### Key Files
+
+| File | Role |
+|------|------|
+| `peerclient/resolver.go` | Discovers peers via Redis, manages gRPC connections, stores transition headers per build |
+| `peerclient/storage.go` | `peerStorageProvider` wraps base `StorageProvider` with peer-first routing; `checkPeerAvailability` handles `use_storage` signal |
+| `peerclient/framedfile.go` | `peerFramedFile` implements `FramedFile` — peer-first `GetFrame`, transition detection, fallback to base |
+| `peerclient/blob.go` | `peerBlob` implements `Blob` — peer-first `WriteTo`/`Exists`/`Put` for snapfile, metadata, headers |
+| `peerserver/framed.go` | `framedSource` serves random-access reads from origin's mmap cache via `diff.GetBlock(ctx, off, len, nil)` |
+| `peerserver/resolve.go` | `ResolveFramed`/`ResolveBlob` map (buildID, fileName) to source types |
+| `server/chunks.go` | gRPC handlers: `ReadAtBuildSeekable`, `GetBuildBlob`, `GetBuildFileSize`, `GetBuildFileExists` |
+| `build/build.go` | `ReadAt`/`Slice` catch `PeerTransitionedError`, `swapHeader` does atomic CAS |
+
+---
+
+## E. Failure Modes
 
 **Corrupted compressed frame in GCS or NFS**: no automatic fallback to uncompressed today. The read fails, `GetBlock` returns an error, and the sandbox page-faults.
 
@@ -186,6 +351,12 @@ compress-build -build <uuid> [-storage gs://bucket] [-compression lz4|zstd] [-re
 
 **Upload path complexity**: `PendingBuildInfo` accumulation and V4 header serialization add failure surface to the build hot path. Multi-layer builds add `UploadTracker` coordination between layers. A compression failure during upload could fail the entire build. Back-out: set `compressBuilds: false` in `compress-config` — this disables compressed writes entirely; uncompressed uploads continue as before and the read path already handles missing compressed variants. No cleanup of already-written compressed data needed (it becomes inert).
 
+**Peer unavailable during P2P phase**: if the origin node crashes or becomes unreachable mid-stream, `peerFramedFile` falls through to the base GCS provider. If the upload hasn't completed yet, the GCS data doesn't exist — the read fails and the sandbox page-faults. Recovery: the sandbox must wait for the upload to complete (or be re-paused on a healthy node).
+
+**Corrupt transition headers**: if the V4 header bytes in the `PeerAvailability` response are malformed, `header.Deserialize` fails in `swapHeader()`. The CAS is skipped and the old header remains. Subsequent reads retry and hit the same error. The sandbox degrades to reading from GCS with the old V3 header (uncompressed), which works if the upload completed successfully.
+
+**Origin evicted before upload completes**: if the template cache evicts the build on the origin (e.g., memory pressure), the peer gRPC call gets `ErrNotAvailable`. The peer falls through to GCS. If the upload hasn't finished, the read fails — same as peer-unavailable above.
+
 ### Unresolved
 
 - Should Chunker fall back to uncompressed on a corrupt V4 header or a decompression error, when `HasUncompressed` is true?
@@ -193,7 +364,7 @@ compress-build -build <uuid> [-storage gs://bucket] [-compression lz4|zstd] [-re
 
 ---
 
-## E. Cost & Benefit
+## F. Cost & Benefit
 
 ### Storage
 
@@ -267,7 +438,7 @@ Smaller GCS reads (4x fewer bytes) and smaller NFS cache entries reduce network 
 
 ---
 
-## F. Grafana Metrics
+## G. Grafana Metrics
 
 Each `TimerFactory` metric emits three series with the same name but different units: a duration histogram (ms), a bytes counter (By), and an ops counter. All three carry the same attributes listed below plus an automatic `result` = `success` | `failure`.
 

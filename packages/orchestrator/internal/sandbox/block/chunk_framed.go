@@ -223,7 +223,7 @@ func (c *Chunker) runFetch(ctx context.Context, s *fetchSession, offsetU int64, 
 	defer releaseLock()
 
 	compressed := storage.IsCompressed(ft)
-	fetchSW := c.metrics.RemoteReadsTimerFactory.Begin(
+	timer := c.metrics.RemoteReadsTimerFactory.Begin(
 		attribute.Bool(compressedAttr, compressed),
 	)
 
@@ -242,14 +242,14 @@ func (c *Chunker) runFetch(ctx context.Context, s *fetchSession, offsetU int64, 
 
 	_, err = c.file.GetFrame(ctx, offsetU, ft, compressed, mmapSlice[:s.chunkLen], readSize, onRead)
 	if err != nil {
-		fetchSW.Failure(ctx, s.chunkLen,
+		timer.Failure(ctx, s.chunkLen,
 			attribute.String(failureReason, failureTypeRemoteRead))
 		s.setError(fmt.Errorf("failed to fetch data at %#x: %w", offsetU, err), false)
 
 		return
 	}
 
-	fetchSW.Success(ctx, s.chunkLen)
+	timer.Success(ctx, s.chunkLen)
 	s.setDone()
 }
 

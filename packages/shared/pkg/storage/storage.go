@@ -75,6 +75,11 @@ type Blob interface {
 // FramedFile supports frame-based reads and compressed/uncompressed uploads.
 type FramedFile interface {
 	// GetFrame reads a single frame into buf. nil frameTable = uncompressed read.
+	// readSize is the number of uncompressed bytes to fetch (the chunker typically
+	// passes its block size so each progressive callback covers at least one block).
+	// onRead is an optional progressive callback invoked as decompressed bytes
+	// become available — the chunker uses this to mark mmap regions as cached
+	// before the full frame is fetched, enabling concurrent readers to proceed.
 	GetFrame(ctx context.Context, offsetU int64, frameTable *FrameTable, decompress bool,
 		buf []byte, readSize int64, onRead func(totalWritten int64)) (Range, error)
 
@@ -162,6 +167,8 @@ func LoadBlob(ctx context.Context, s StorageProvider, path string) ([]byte, erro
 
 // ReadFrame is the shared implementation for reading a single frame from storage.
 // Each backend (GCP, AWS, FS) calls this with their own rangeRead callback.
+// Exported for use by CLI tools (inspect-build, compress-build) and tests that
+// need to read frames outside the normal StorageProvider stack.
 func ReadFrame(ctx context.Context, rangeRead RangeReadFunc, storageDetails string, offsetU int64, frameTable *FrameTable, decompress bool, buf []byte, readSize int64, onRead func(totalWritten int64)) (Range, error) {
 	// Handle uncompressed data (nil frameTable) - read directly without frame translation
 	if !IsCompressed(frameTable) {
