@@ -139,7 +139,7 @@ func (c *cachedFramedFile) getFrameCompressed(ctx context.Context, offsetU int64
 	compressedBuf := make([]byte, frameSize.C)
 
 	if decompress && onRead != nil {
-		r, err := c.fetchAndDecompressProgressive(ctx, offsetU, frameTable, compressedBuf, buf, readSize, onRead, frameSize)
+		r, err := c.fetchAndDecompressProgressive(ctx, offsetU, frameTable, compressedBuf, buf, readSize, onRead, frameSize, framePath)
 		if err != nil {
 			timer.Failure(ctx, int64(r.Length))
 
@@ -147,7 +147,7 @@ func (c *cachedFramedFile) getFrameCompressed(ctx context.Context, offsetU int64
 		}
 
 		recordCacheRead(ctx, false, int64(frameSize.C), cacheTypeFramedFile, cacheOpGetFrame)
-		c.cacheFrameAsync(ctx, offsetU, framePath, compressedBuf[:frameSize.C])
+		// NFS write-back happens progressively inside fetchAndDecompressProgressive.
 		timer.Success(ctx, int64(r.Length))
 
 		return r, nil
@@ -190,17 +190,18 @@ func (c *cachedFramedFile) getFrameCompressed(ctx context.Context, offsetU int64
 
 // fetchAndDecompressProgressive fetches compressed bytes from inner storage
 // while simultaneously piping them through a decompressor for progressive
-// delivery. compressedBuf captures the full compressed frame for later NFS
-// caching.
+// delivery. compressedBuf captures the full compressed frame. Compressed
+// bytes are streamed to the NFS cache concurrently with decompression via
+// an AtomicImmutableFile (non-fatal if the lock is already held).
 //
 // Architecture:
 //
-//	goroutine:  inner.GetFrame(decompress=false) → compressedBuf → pw.Write
+//	goroutine:  inner.GetFrame(decompress=false) → compressedBuf → pw.Write + atomicFile.Write
 //	main:       pr → zstd/lz4 decoder → readProgressive → buf + onRead
 //
 // The goroutine downloads compressed bytes into compressedBuf and pipes them
 // to the main goroutine's decompressor via io.Pipe. This gives the caller
-// progressive decompressed delivery while capturing compressed bytes for NFS.
+// progressive decompressed delivery while streaming compressed bytes to NFS.
 func (c *cachedFramedFile) fetchAndDecompressProgressive(
 	ctx context.Context,
 	offsetU int64,
@@ -210,11 +211,20 @@ func (c *cachedFramedFile) fetchAndDecompressProgressive(
 	readSize int64,
 	onRead func(totalWritten int64),
 	frameSize FrameSize,
+	framePath string,
 ) (Range, error) {
 	pr, pw := io.Pipe()
 	done := make(chan struct{})
 
-	// Background: fetch compressed bytes from inner, pipe to decompressor.
+	// Try to open an atomic file for progressive NFS write-back.
+	// Non-fatal if lock is held (another goroutine is writing the same frame).
+	atomicFile, lockErr := lock.OpenFile(ctx, framePath)
+	if lockErr != nil {
+		atomicFile = nil // skip caching this frame
+	}
+
+	// Background: fetch compressed bytes from inner, pipe to decompressor,
+	// and stream to NFS cache.
 	var fetchErr error
 
 	go func() {
@@ -224,8 +234,19 @@ func (c *cachedFramedFile) fetchAndDecompressProgressive(
 
 		_, fetchErr = c.inner.GetFrame(ctx, offsetU, frameTable, false, compressedBuf, readSize, func(totalWritten int64) {
 			if totalWritten > lastWritten {
-				if _, err := pw.Write(compressedBuf[lastWritten:totalWritten]); err != nil {
+				chunk := compressedBuf[lastWritten:totalWritten]
+
+				if _, err := pw.Write(chunk); err != nil {
 					return // pipe reader closed; stop writing but let inner.GetFrame finish filling compressedBuf
+				}
+
+				// Progressive NFS write — OS page cache makes this fast.
+				if atomicFile != nil {
+					if _, err := atomicFile.Write(chunk); err != nil {
+						// NFS write failed; abandon caching but continue decompression.
+						_ = atomicFile.Close(ctx)
+						atomicFile = nil
+					}
 				}
 
 				lastWritten = totalWritten
@@ -240,7 +261,15 @@ func (c *cachedFramedFile) fetchAndDecompressProgressive(
 		// Flush any trailing bytes not yet piped (e.g. if inner.GetFrame
 		// completed without a final onRead for the last chunk).
 		if lastWritten < int64(frameSize.C) {
-			_, _ = pw.Write(compressedBuf[lastWritten:frameSize.C])
+			trailing := compressedBuf[lastWritten:frameSize.C]
+			_, _ = pw.Write(trailing)
+
+			if atomicFile != nil {
+				if _, err := atomicFile.Write(trailing); err != nil {
+					_ = atomicFile.Close(ctx)
+					atomicFile = nil
+				}
+			}
 		}
 
 		pw.Close()
@@ -259,6 +288,20 @@ func (c *cachedFramedFile) fetchAndDecompressProgressive(
 	// Wait for the goroutine to finish so compressedBuf and fetchErr are safe to read.
 	<-done
 
+	// Commit the NFS cache file in a fire-and-forget goroutine.
+	// compressedBuf keeps the data alive; atomicFile holds the lock.
+	if atomicFile != nil {
+		if err != nil || fetchErr != nil {
+			_ = atomicFile.Close(ctx)
+		} else {
+			c.goCtx(ctx, func(ctx context.Context) {
+				if commitErr := atomicFile.Commit(ctx); commitErr != nil {
+					recordCacheWriteError(ctx, cacheTypeFramedFile, cacheOpGetFrame, commitErr)
+				}
+			})
+		}
+	}
+
 	if err != nil {
 		return r, fmt.Errorf("cache GetFrame: progressive decompress for offset %#x: %w", offsetU, err)
 	}
@@ -271,12 +314,10 @@ func (c *cachedFramedFile) fetchAndDecompressProgressive(
 }
 
 // cacheFrameAsync writes compressed frame data to NFS cache in the background.
+// data is safe to use directly — callers guarantee it is not modified after this call.
 func (c *cachedFramedFile) cacheFrameAsync(ctx context.Context, offset int64, framePath string, data []byte) {
-	dataCopy := make([]byte, len(data))
-	copy(dataCopy, data)
-
 	c.goCtx(ctx, func(ctx context.Context) {
-		if err := c.writeToCache(ctx, offset, framePath, dataCopy); err != nil {
+		if err := c.writeToCache(ctx, offset, framePath, data); err != nil {
 			recordCacheWriteError(ctx, cacheTypeFramedFile, cacheOpGetFrame, err)
 		}
 	})
