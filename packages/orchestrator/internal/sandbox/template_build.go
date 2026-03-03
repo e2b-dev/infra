@@ -9,7 +9,6 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	headers "github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
@@ -17,13 +16,17 @@ import (
 type TemplateBuild struct {
 	files       storage.TemplateFiles
 	persistence storage.StorageProvider
-	ff          *featureflags.Client
 
 	snapshot *Snapshot
 	pending  *PendingBuildInfo
+
+	// Track which file types were uploaded compressed,
+	// so UploadV4Header knows which headers to finalize.
+	memfileCompressed bool
+	rootfsCompressed  bool
 }
 
-func NewTemplateBuild(snapshot *Snapshot, persistence storage.StorageProvider, files storage.TemplateFiles, ff *featureflags.Client, pending *PendingBuildInfo) *TemplateBuild {
+func NewTemplateBuild(snapshot *Snapshot, persistence storage.StorageProvider, files storage.TemplateFiles, pending *PendingBuildInfo) *TemplateBuild {
 	if pending == nil {
 		pending = &PendingBuildInfo{}
 	}
@@ -31,7 +34,6 @@ func NewTemplateBuild(snapshot *Snapshot, persistence storage.StorageProvider, f
 	return &TemplateBuild{
 		persistence: persistence,
 		files:       files,
-		ff:          ff,
 		snapshot:    snapshot,
 		pending:     pending,
 	}
@@ -60,27 +62,15 @@ func diffPath(d build.Diff) (*string, error) {
 	return &p, nil
 }
 
-func (t *TemplateBuild) uploadMemfile(ctx context.Context, memfilePath string) error {
-	object, err := t.persistence.OpenFramedFile(ctx, t.files.StorageMemfilePath())
+// uploadUncompressedFile uploads a single data file without compression.
+func (t *TemplateBuild) uploadUncompressedFile(ctx context.Context, localPath, fileName string) error {
+	object, err := t.persistence.OpenFramedFile(ctx, t.files.DataPath(fileName))
 	if err != nil {
 		return err
 	}
 
-	if _, _, err := object.StoreFile(ctx, memfilePath, nil); err != nil {
-		return fmt.Errorf("error when uploading memfile: %w", err)
-	}
-
-	return nil
-}
-
-func (t *TemplateBuild) uploadRootfs(ctx context.Context, rootfsPath string) error {
-	object, err := t.persistence.OpenFramedFile(ctx, t.files.StorageRootfsPath())
-	if err != nil {
-		return err
-	}
-
-	if _, _, err := object.StoreFile(ctx, rootfsPath, nil); err != nil {
-		return fmt.Errorf("error when uploading rootfs: %w", err)
+	if _, _, err := object.StoreFile(ctx, localPath, nil); err != nil {
+		return fmt.Errorf("error when uploading %s: %w", fileName, err)
 	}
 
 	return nil
@@ -134,16 +124,64 @@ func uploadFileAsBlob(ctx context.Context, b storage.Blob, path string) error {
 	return nil
 }
 
+// scheduleFileUpload schedules the upload of a single data file (memfile or rootfs).
+// If opts is non-nil, the file is compressed; otherwise it uploads uncompressed with a V3 header.
+func (t *TemplateBuild) scheduleFileUpload(
+	eg *errgroup.Group,
+	ctx context.Context,
+	localPath *string,
+	fileName string,
+	diffHeader *headers.Header,
+	opts *storage.FramedUploadOptions,
+	compressed *bool,
+) {
+	if opts != nil {
+		// COMPRESSED: upload only compressed data
+		if localPath != nil {
+			*compressed = true
+
+			eg.Go(func() error {
+				ft, checksum, err := t.uploadCompressedFile(ctx, *localPath, fileName, opts)
+				if err != nil {
+					return fmt.Errorf("compressed %s upload: %w", fileName, err)
+				}
+
+				uncompressedSize, _ := ft.Size()
+				t.pending.add(pendingBuildInfoKey(t.files.BuildID, fileName), ft, uncompressedSize, checksum)
+
+				return nil
+			})
+		}
+	} else {
+		// UNCOMPRESSED: upload V3 header + uncompressed data
+		eg.Go(func() error {
+			if diffHeader == nil {
+				return nil
+			}
+
+			return headers.StoreHeader(ctx, t.persistence, t.files.HeaderPath(fileName), diffHeader)
+		})
+
+		eg.Go(func() error {
+			if localPath == nil {
+				return nil
+			}
+
+			return t.uploadUncompressedFile(ctx, *localPath, fileName)
+		})
+	}
+}
+
 // UploadExceptV4Headers uploads all template build files except compressed (V4) headers.
-// The compress-config feature flag exclusively controls the format:
-//   - Compressed: uploads only compressed data (no V3 headers, no uncompressed data)
-//   - Uncompressed: uploads V3 headers + uncompressed data only
+// memfileOpts and rootfsOpts independently control compression per file type:
+//   - non-nil opts: uploads only compressed data (no V3 header, no uncompressed data)
+//   - nil opts: uploads V3 header + uncompressed data only
 //
 // Snapfile and metadata are always uploaded.
 // Frame tables from compressed uploads are registered in the shared PendingBuildInfo
 // for later use by UploadV4Header.
-// Returns true if compression was enabled (i.e. V4 headers need uploading).
-func (t *TemplateBuild) UploadExceptV4Headers(ctx context.Context) (hasCompressed bool, err error) {
+// Returns true if any file was compressed (i.e. V4 headers need uploading).
+func (t *TemplateBuild) UploadExceptV4Headers(ctx context.Context, memfileOpts, rootfsOpts *storage.FramedUploadOptions) (hasCompressed bool, err error) {
 	memfilePath, err := diffPath(t.snapshot.MemfileDiff)
 	if err != nil {
 		return false, fmt.Errorf("error getting memfile diff path: %w", err)
@@ -154,77 +192,10 @@ func (t *TemplateBuild) UploadExceptV4Headers(ctx context.Context) (hasCompresse
 		return false, fmt.Errorf("error getting rootfs diff path: %w", err)
 	}
 
-	compressOpts := storage.GetUploadOptions(ctx, t.ff)
 	eg, ctx := errgroup.WithContext(ctx)
-	buildID := t.files.BuildID
 
-	if compressOpts != nil {
-		// COMPRESSED: upload only compressed data (no V3 headers, no uncompressed data)
-		if memfilePath != nil {
-			hasCompressed = true
-
-			eg.Go(func() error {
-				ft, checksum, err := t.uploadCompressedFile(ctx, *memfilePath, storage.MemfileName, compressOpts)
-				if err != nil {
-					return fmt.Errorf("compressed memfile upload: %w", err)
-				}
-
-				uncompressedSize, _ := ft.Size()
-				t.pending.add(pendingBuildInfoKey(buildID, storage.MemfileName), ft, uncompressedSize, checksum)
-
-				return nil
-			})
-		}
-
-		if rootfsPath != nil {
-			hasCompressed = true
-
-			eg.Go(func() error {
-				ft, checksum, err := t.uploadCompressedFile(ctx, *rootfsPath, storage.RootfsName, compressOpts)
-				if err != nil {
-					return fmt.Errorf("compressed rootfs upload: %w", err)
-				}
-
-				uncompressedSize, _ := ft.Size()
-				t.pending.add(pendingBuildInfoKey(buildID, storage.RootfsName), ft, uncompressedSize, checksum)
-
-				return nil
-			})
-		}
-	} else {
-		// UNCOMPRESSED: upload V3 headers + uncompressed data only
-		eg.Go(func() error {
-			if t.snapshot.MemfileDiffHeader == nil {
-				return nil
-			}
-
-			return headers.StoreHeader(ctx, t.persistence, t.files.HeaderPath(storage.MemfileName), t.snapshot.MemfileDiffHeader)
-		})
-
-		eg.Go(func() error {
-			if t.snapshot.RootfsDiffHeader == nil {
-				return nil
-			}
-
-			return headers.StoreHeader(ctx, t.persistence, t.files.HeaderPath(storage.RootfsName), t.snapshot.RootfsDiffHeader)
-		})
-
-		eg.Go(func() error {
-			if memfilePath == nil {
-				return nil
-			}
-
-			return t.uploadMemfile(ctx, *memfilePath)
-		})
-
-		eg.Go(func() error {
-			if rootfsPath == nil {
-				return nil
-			}
-
-			return t.uploadRootfs(ctx, *rootfsPath)
-		})
-	}
+	t.scheduleFileUpload(eg, ctx, memfilePath, storage.MemfileName, t.snapshot.MemfileDiffHeader, memfileOpts, &t.memfileCompressed)
+	t.scheduleFileUpload(eg, ctx, rootfsPath, storage.RootfsName, t.snapshot.RootfsDiffHeader, rootfsOpts, &t.rootfsCompressed)
 
 	// Snapfile + metadata (always)
 	eg.Go(func() error {
@@ -239,7 +210,7 @@ func (t *TemplateBuild) UploadExceptV4Headers(ctx context.Context) (hasCompresse
 		return false, err
 	}
 
-	return hasCompressed, nil
+	return t.memfileCompressed || t.rootfsCompressed, nil
 }
 
 // uploadCompressedFile compresses and uploads a file to the compressed data path.
@@ -261,10 +232,11 @@ func (t *TemplateBuild) uploadCompressedFile(ctx context.Context, localPath, fil
 
 // UploadV4Header applies pending frame tables to headers and uploads them as V4 compressed format.
 // Frame tables must have been registered by a prior UploadExceptV4Headers call.
+// Only files that were uploaded compressed (tracked in compressedFiles) get V4 headers.
 func (t *TemplateBuild) UploadV4Header(ctx context.Context) error {
 	eg, ctx := errgroup.WithContext(ctx)
 
-	if t.snapshot.MemfileDiffHeader != nil {
+	if t.snapshot.MemfileDiffHeader != nil && t.memfileCompressed {
 		eg.Go(func() error {
 			if err := t.pending.applyToHeader(t.snapshot.MemfileDiffHeader, storage.MemfileName); err != nil {
 				return fmt.Errorf("apply frames to memfile header: %w", err)
@@ -276,7 +248,7 @@ func (t *TemplateBuild) UploadV4Header(ctx context.Context) error {
 		})
 	}
 
-	if t.snapshot.RootfsDiffHeader != nil {
+	if t.snapshot.RootfsDiffHeader != nil && t.rootfsCompressed {
 		eg.Go(func() error {
 			if err := t.pending.applyToHeader(t.snapshot.RootfsDiffHeader, storage.RootfsName); err != nil {
 				return fmt.Errorf("apply frames to rootfs header: %w", err)
@@ -294,8 +266,8 @@ func (t *TemplateBuild) UploadV4Header(ctx context.Context) error {
 // UploadAtOnce uploads all template build files including V4 headers for a single-layer build.
 // For multi-layer builds, use UploadExceptV4Headers + UploadV4Header with a shared
 // PendingBuildInfo instead.
-func (t *TemplateBuild) UploadAtOnce(ctx context.Context) error {
-	hasCompressed, err := t.UploadExceptV4Headers(ctx)
+func (t *TemplateBuild) UploadAtOnce(ctx context.Context, memfileOpts, rootfsOpts *storage.FramedUploadOptions) error {
+	hasCompressed, err := t.UploadExceptV4Headers(ctx, memfileOpts, rootfsOpts)
 	if err != nil {
 		return err
 	}

@@ -31,6 +31,14 @@ const (
 	//   - header.HugepageSize (2 MiB) — UFFD huge-page size
 	//   - header.RootfsBlockSize (4 KiB) — NBD / rootfs block size
 	DefaultCompressFrameSize = 2 * 1024 * 1024
+
+	// File type identifiers for per-file-type compression targeting.
+	FileTypeMemfile = "memfile"
+	FileTypeRootfs  = "rootfs"
+
+	// Use case identifiers for per-use-case compression targeting.
+	UseCaseBuild = "build"
+	UseCasePause = "pause"
 )
 
 // PartUploader is the interface for uploading data in parts.
@@ -69,8 +77,26 @@ var DefaultCompressionOptions = &FramedUploadOptions{
 var NoCompression = (*FramedUploadOptions)(nil)
 
 // GetUploadOptions reads the compress-config feature flag and returns
-// FramedUploadOptions. Returns nil when compression is disabled.
-func GetUploadOptions(ctx context.Context, ff *featureflags.Client) *FramedUploadOptions {
+// FramedUploadOptions. Returns nil when compression is disabled or ff is nil.
+//
+// fileType and useCase are added to the LD evaluation context so that
+// LaunchDarkly targeting rules can differentiate (e.g. compress memfile
+// but not rootfs, or compress builds but not pauses). Zero override
+// logic in Go — all differentiation is handled by LD dashboard rules.
+//
+// TODO: compression settings should be part of the core orchestrator
+// deployment config (configurable via deployment options like everything
+// else). FFs remain as the override/experimentation layer on top.
+func GetUploadOptions(ctx context.Context, ff *featureflags.Client, fileType, useCase string) *FramedUploadOptions {
+	if ff == nil {
+		return nil
+	}
+
+	ctx = featureflags.AddToContext(ctx,
+		featureflags.CompressFileTypeContext(fileType),
+		featureflags.CompressUseCaseContext(useCase),
+	)
+
 	v := ff.JSONFlag(ctx, featureflags.CompressConfigFlag).AsValueMap()
 
 	if !v.Get("compressBuilds").BoolValue() {

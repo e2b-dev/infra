@@ -52,6 +52,11 @@ func (t TemplateFiles) StorageMetadataPath() string {
 	return fmt.Sprintf("%s/%s", t.StorageDir(), MetadataName)
 }
 
+// DataPath returns the data storage path for a given file name within this build.
+func (t TemplateFiles) DataPath(fileName string) string {
+	return fmt.Sprintf("%s/%s", t.StorageDir(), fileName)
+}
+
 // HeaderPath returns the header storage path for a given file name within this build.
 func (t TemplateFiles) HeaderPath(fileName string) string {
 	return fmt.Sprintf("%s/%s%s", t.StorageDir(), fileName, HeaderSuffix)

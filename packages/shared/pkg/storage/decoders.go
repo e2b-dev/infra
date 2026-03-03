@@ -20,6 +20,9 @@ func init() {
 
 // InitDecoders reads the compress-config feature flag and sets the pooled
 // zstd decoder concurrency. Call once at startup before any reads.
+//
+// TODO: decoderConcurrency is set once at startup and not re-evaluated.
+// Move to core orchestrator config or re-read periodically.
 func InitDecoders(ctx context.Context, ff *featureflags.Client) {
 	v := ff.JSONFlag(ctx, featureflags.CompressConfigFlag).AsValueMap()
 	n := max(v.Get("decoderConcurrency").IntValue(), 1)

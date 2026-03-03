@@ -163,3 +163,11 @@ func TemplateContext(templateID string) ldcontext.Context {
 func VolumeContext(volumeName string) ldcontext.Context {
 	return ldcontext.NewWithKind(VolumeKind, volumeName)
 }
+
+func CompressFileTypeContext(fileType string) ldcontext.Context {
+	return ldcontext.NewWithKind(CompressFileTypeKind, fileType)
+}
+
+func CompressUseCaseContext(useCase string) ldcontext.Context {
+	return ldcontext.NewWithKind(CompressUseCaseKind, useCase)
+}

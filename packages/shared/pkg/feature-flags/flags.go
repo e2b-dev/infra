@@ -16,14 +16,16 @@ const (
 	SandboxKernelVersionAttribute      string         = "kernel-version"
 	SandboxFirecrackerVersionAttribute string         = "firecracker-version"
 
-	TeamKind       ldcontext.Kind = "team"
-	UserKind       ldcontext.Kind = "user"
-	ClusterKind    ldcontext.Kind = "cluster"
-	deploymentKind ldcontext.Kind = "deployment"
-	TierKind       ldcontext.Kind = "tier"
-	ServiceKind    ldcontext.Kind = "service"
-	TemplateKind   ldcontext.Kind = "template"
-	VolumeKind     ldcontext.Kind = "volume"
+	TeamKind             ldcontext.Kind = "team"
+	UserKind             ldcontext.Kind = "user"
+	ClusterKind          ldcontext.Kind = "cluster"
+	deploymentKind       ldcontext.Kind = "deployment"
+	TierKind             ldcontext.Kind = "tier"
+	ServiceKind          ldcontext.Kind = "service"
+	TemplateKind         ldcontext.Kind = "template"
+	VolumeKind           ldcontext.Kind = "volume"
+	CompressFileTypeKind ldcontext.Kind = "compress-file-type"
+	CompressUseCaseKind  ldcontext.Kind = "compress-use-case"
 )
 
 // All flags must be defined here: https://app.launchdarkly.com/projects/default/flags/

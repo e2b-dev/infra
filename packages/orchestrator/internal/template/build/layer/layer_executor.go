@@ -292,7 +292,9 @@ func (lb *LayerExecutor) PauseAndUpload(
 	completeUpload, waitForPreviousUploads := lb.uploadTracker.StartUpload()
 	buildID := meta.Template.BuildID
 
-	tb := sandbox.NewTemplateBuild(snapshot, lb.templateStorage, storage.TemplateFiles{BuildID: buildID}, lb.featureFlags, lb.uploadTracker.Pending())
+	memfileOpts := storage.GetUploadOptions(ctx, lb.featureFlags, storage.FileTypeMemfile, storage.UseCaseBuild)
+	rootfsOpts := storage.GetUploadOptions(ctx, lb.featureFlags, storage.FileTypeRootfs, storage.UseCaseBuild)
+	tb := sandbox.NewTemplateBuild(snapshot, lb.templateStorage, storage.TemplateFiles{BuildID: buildID}, lb.uploadTracker.Pending())
 
 	lb.UploadErrGroup.Go(func() error {
 		ctx := context.WithoutCancel(ctx)
@@ -305,7 +307,7 @@ func (lb *LayerExecutor) PauseAndUpload(
 		defer completeUpload()
 
 		// Step 1: Upload everything except V4 headers (parallel across layers)
-		hasCompressed, err := tb.UploadExceptV4Headers(ctx)
+		hasCompressed, err := tb.UploadExceptV4Headers(ctx, memfileOpts, rootfsOpts)
 		if err != nil {
 			return fmt.Errorf("error uploading data files: %w", err)
 		}

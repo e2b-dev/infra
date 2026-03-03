@@ -601,13 +601,15 @@ func (s *Server) snapshotAndCacheSandbox(
 	telemetry.ReportEvent(ctx, "added snapshot to template cache")
 
 	// Start upload in background, return a wait function
-	tb := sandbox.NewTemplateBuild(snapshot, s.persistence, storage.TemplateFiles{BuildID: meta.Template.BuildID}, s.featureFlags, nil)
+	memfileOpts := storage.GetUploadOptions(ctx, s.featureFlags, storage.FileTypeMemfile, storage.UseCasePause)
+	rootfsOpts := storage.GetUploadOptions(ctx, s.featureFlags, storage.FileTypeRootfs, storage.UseCasePause)
+	tb := sandbox.NewTemplateBuild(snapshot, s.persistence, storage.TemplateFiles{BuildID: meta.Template.BuildID}, nil)
 
 	uploadCtx := context.WithoutCancel(ctx)
 	errCh := make(chan error, 1)
 
 	go func() {
-		if err := tb.UploadAtOnce(uploadCtx); err != nil {
+		if err := tb.UploadAtOnce(uploadCtx, memfileOpts, rootfsOpts); err != nil {
 			sbxlogger.I(sbx).Error(uploadCtx, "error uploading snapshot", zap.Error(err))
 			errCh <- err
 

@@ -1,24 +1,15 @@
-# Template Compression: Architecture & Status
+# Template Compression: Architecture
 
-- [Key Architectural Decisions](#key-architectural-decisions)
 - [A. Architecture](#a-architecture)
-  - [Storage Format](#storage-format) · [Storage interface](#storage-interface) · [Feature Flags](#feature-flags) · [Template Loading](#template-loading) · [Read Path](#read-path-nbd--uffd--prefetch)
-- [B. Biggest Changes](#b-biggest-changes)
-- [C. Read Path Diagram](#c-read-path-diagram)
-- [D. Remaining Work](#d-remaining-work)
-  - [From This Branch](#from-this-branch) · [From lev-zstd-compression](#from-lev-zstd-compression-unported)
-- [E. Write Paths](#e-write-paths)
+  - [Storage Format](#storage-format) · [Storage Interface](#storage-interface) · [Feature Flags](#feature-flags) · [Template Loading](#template-loading) · [Read Path](#read-path-nbd--uffd--prefetch) · [NFS Caching](#nfs-caching)
+- [B. Read Path Diagram](#b-read-path-diagram)
+- [C. Write Paths](#c-write-paths)
   - [Inline Build / Pause](#inline-build--pause) · [Background Compression](#background-compression-compress-build-cli)
-- [F. Failure Modes](#f-failure-modes)
-- [G. Cost & Benefit](#g-cost--benefit)
+- [D. Failure Modes](#d-failure-modes)
+- [E. Cost & Benefit](#e-cost--benefit)
   - [Storage](#storage) · [CPU](#cpu) · [Memory](#memory) · [Net](#net)
-- [H. Grafana Metrics](#h-grafana-metrics)
+- [F. Grafana Metrics](#f-grafana-metrics)
   - [Chunker](#chunker-meter-internalsandboxblockmetrics) · [NFS Cache](#nfs-cache-meter-sharedpkgstorage) · [GCS Backend](#gcs-backend-meter-sharedpkgstorage) · [Key Queries](#key-queries)
-- [I. Rollout Strategy](#i-rollout-strategy)
-
-## Architecture Highlights
-| 3 | **Compressed-only vs uncompressed-only** | `compressBuilds` FF exclusively selects one mode | No dual-write; compressed builds skip uncompressed entirely and vice versa. See [Feature Flags](#feature-flags). |
-
 
 ---
 
@@ -30,10 +21,11 @@ Templates are stored in GCS as build artifacts. Each build produces two data fil
 
 - Data is broken into **frames** of fixed uncompressed size (default **2 MiB**, configurable via `frameSizeKB` FF, min 128 KiB), each independently decompressible (LZ4 or Zstd). Compressed size varies per frame depending on data entropy.
 - Frames are aligned to `DefaultCompressFrameSize` in uncompressed space. The last frame in a file may be shorter.
-- The **v4 header** embeds a `FrameTable` per mapping: `CompressionType + StartAt + []FrameSize`. The header itself is always LZ4-block-compressed, regardless of data compression type.
+- The **V4 header** embeds a `FrameTable` per mapping: `CompressionType + StartAt + []FrameSize`. The header itself is always LZ4-block-compressed, regardless of data compression type.
 - The `FrameTable` is subset per mapping so each mapping carries only the frames it references.
+- V4 headers also include a `BuildFileInfo` per build: uncompressed file size (`int64`) and a SHA-256 checksum of the **uncompressed** data (`[32]byte`; zero value means unknown). This enables end-to-end integrity verification at read time regardless of whether the data was stored compressed or uncompressed.
 
-### Storage interface
+### Storage Interface
 
 The most relevant change is `FramedFile` (returned by `OpenFramedFile`) replaces the old `Seekable` (returned by `OpenSeekable`). Where `Seekable` had separate `ReadAt`, `OpenRangeReader`, and `StoreFile` methods, `FramedFile` unifies reads into a single `GetFrame(ctx, offsetU, frameTable, decompress, buf, readSize, onRead)` that handles both compressed and uncompressed data, plus `Size` and `StoreFile` (with optional compression via `FramedUploadOptions`). For compressed data, raw compressed frames are cached individually on NFS by `(path, frameStart, frameSize)` key.
 
@@ -72,31 +64,54 @@ GetBlock(offset, length, ft) // was Slice()
   → DiffStore.Get(buildId)              // TTL cache hit → cached Chunker
   → Chunker.GetBlock(offset, length, ft)
       → mmap cache hit? return reference
-      → miss: regionLock dedup → fetchSession → GetFrame → NFS cache → GCS
+      → miss: dedup → fetchSession → GetFrame → NFS cache → GCS
       → decompressed bytes written into mmap, waiters notified
 ```
 
 - Prefetch reads 2 MiB (= 1 frame), UFFD reads 4 KB or 2 MB (hugepage), NBD reads 4 KB.
-- Frames are 2 MiB aligned, so no `GetBlock` call ever crosses a frame boundary.
+- Frames are 2 MiB aligned, so no `GetBlock` call ever crosses a frame boundary. We may choose different frame sizes for rootfs vs memfile files.
 - If the v4 header was loaded, each mapping carries a subset `FrameTable`; this `ft` is threaded through to `GetBlock`, routing to compressed or uncompressed fetch, no header fetch is needed.
 
+### NFS Caching
+
+The NFS cache sits between callers and GCS, providing a local read-through / write-through layer for both compressed frames and uncompressed chunks. Compressed and uncompressed data use different key schemes because compressed frames are variable-size.
+
+**Compressed frames** are cached as `.frm` files keyed by `(compressedOffset, compressedSize)`:
+
+```
+{cacheBasePath}/{016x offset.C}-{x size.C}.frm
+```
+
+On a **cache miss**, `fetchAndDecompressProgressive` launches a goroutine that fetches the compressed bytes from GCS into a buffer while piping them through a pooled zstd/lz4 decoder. The caller receives progressive `onRead` callbacks as decompressed bytes become available — it does not wait for the full frame. As compressed bytes arrive from GCS (concurrent with decompression), they are streamed to NFS via an `AtomicImmutableFile`. The file is committed after the fetch completes.
+
+On a **cache hit**, the compressed `.frm` file is read from disk, then decompressed with the same progressive callback pattern.
+
+**Uncompressed chunks** are cached as `.bin` files keyed by `(chunkIndex, chunkSize)`:
+
+```
+{cacheBasePath}/{012d chunkIndex}-{chunkSize}.bin
+```
+
+On a cache miss, data is fetched from GCS into the caller's buffer, then a copy is written back to NFS asynchronously in a background goroutine.
+
+**Write-through on upload**: during `StoreFile` with compression enabled, the `CompressStream` pipeline invokes an `OnFrameReady` callback for each compressed frame. The NFS cache layer wraps this callback to synchronously write each frame to NFS as it is produced, so the cache is warm before any reader needs the data. Uncompressed uploads use async parallel write-back (gated by `EnableWriteThroughCacheFlag`, with concurrency controlled by `MaxCacheWriterConcurrencyFlag`).
+
+**Atomicity**: all cache writes use a two-phase protocol — acquire a file lock (`{path}.lock`, `O_CREATE|O_EXCL`, 10s stale-lock TTL), write to a temp file (`{path}.tmp.{uuid}`), then atomic rename to the final path. If the rename fails with `EEXIST`, the write is treated as a successful race (another goroutine won). Lock and temp files are cleaned up on failure.
+
+**Feature flags**:
+
+| Flag | Purpose |
+|------|---------|
+| `use-nfs-for-templates` | Enable NFS cache for base template reads |
+| `use-nfs-for-snapshots` | Enable NFS cache for snapshot reads |
+| `write-to-cache-on-writes` | Enable write-through caching on `StoreFile` / `Put` |
+| `use-nfs-for-building-templates` | Enable NFS cache during template builds |
+
+Caching is **disabled during active builds** (`isBuilding` flag): a template being built does not reuse the previous template's data, so caching intermediate layers provides no benefit.
+
 ---
 
-## B. Biggest Changes
-
-- **Unified Chunker**: collapsed `FullFetchChunker`, `StreamingChunker`, and the `Chunker` interface back into a single concrete `Chunker` struct backed by slot-based `regionLock` for fetch deduplication; a single code path handles both compressed and uncompressed data via `GetFrame`.
-
-- **Data file routing at init**: `StorageDiff.Init` opens a single data file per build. The `FrameTable` from the V4 header determines the compression suffix; builds without a `FrameTable` open the uncompressed path. This replaces the previous `OpenSeekable` single-object path.
-
-- **Upload API on TemplateBuild**: moved the upload lifecycle from `Snapshot.Upload` to `TemplateBuild`, which holds a `*Snapshot` reference and coordinates uploads via shared `PendingBuildInfo`. `UploadAtOnce` is synchronous (no internal goroutine); multi-layer builds use `UploadExceptV4Headers` + `UploadV4Header` with explicit coordination via `UploadTracker`. Headers are stored via `header.StoreHeader` (inverse of `header.LoadHeader`).
-
-- **NFS cache for compressed frames**: `GetFrame` on the NFS cache layer stores and retrieves individual compressed frames by `(path, frameStart, frameSize)`, with progressive decompression into mmap. Uncompressed reads use the same `GetFrame` codepath with `ft=nil`.
-
-- **FrameTable validation and testing**: added `validateGetFrameParams` at the `GetFrame` entry point (alignment checks for compressed, bounds checks for uncompressed), fixed `FrameTable.Range` bug (was not initializing from `StartAt`), and added comprehensive `FrameTable` unit tests.
-
----
-
-## C. Read Path Diagram
+## B. Read Path Diagram
 
 ```mermaid
 flowchart TD
@@ -134,109 +149,17 @@ flowchart TD
     WRITE --> REF
 ```
 
-<details>
-<summary>ASCII version</summary>
-
-```
-  NBD (4KB)    UFFD (4KB/2MB)    Prefetch (2MiB)
-      \              |               /
-       `---------.---'--------.-----'
-                 v            v
-    header.GetShiftedMapping(offset)
-                 |
-                 v
-         DiffStore.Get(buildId) ──> cached Chunker
-                 |
-                 v
-    Chunker.GetBlock(offset, length, ft)
-                 |
-          .------+------.
-          v             v
-    [mmap hit]    [mmap miss]
-     return ref        |
-                 regionLock (dedup/wait)
-                       |
-              .--------+--------.
-              v                 v
-        ft != nil?          ft == nil
-        compressed          uncompressed
-        asset exists?
-              |                 |
-              v                 v
-         GetFrame           GetFrame
-       (decompress=T)     (decompress=F)
-              |                 |
-              '--------+-------'
-                       |
-                 NFS cache hit? ──yes──> write to mmap
-                       |                 + notify waiters
-                      no                      |
-                       |                      v
-                 GCS range read          return []byte ref
-                 (C-space / U-space)
-                       |
-                 compressed? ──no──> store in NFS
-                       |                   |
-                      yes                  v
-                       |            write to mmap
-                 zstd/lz4 decode    + notify waiters
-                       |                   |
-                 store in NFS              v
-                       |            return []byte ref
-                       v
-                 write to mmap
-                 + notify waiters
-                       |
-                       v
-                 return []byte ref
-```
-
-</details>
-
 ---
 
-## D. Remaining Work
-
-### From This Branch
-
-1. ~~**Fixed frame compression with concurrent pipeline**~~: **Done.** Variable frame sizing eliminated; frames are fixed-size uncompressed (default 2 MiB, FF-configurable via `frameSizeKB`). Concurrent compression pipeline with `encodeWorkers` workers per file. See **[plan-fixed-frame-compression.md](plan-fixed-frame-compression.md)**.
-
-2. **Verify `getFrame` timer lifecycle**: audit that `Success()`/`Failure()` is always called on every code path in the storage cache's `getFrameCompressed` and `getFrameUncompressed`.
-
-3. **Feature flag to disable progressive `GetBlock` reading**: add a flag that bypasses progressive reading/returning in `GetBlock` and falls back to the original whole-block fetch behavior. Useful as a fault-tolerance lever if progressive reads cause issues in production.
-
-4. **NFS write-through for compressed uploads**: during `StoreFile` with compression, tee out uncompressed chunk data to NFS cache via a callback, so uncompressed `GetFrame` reads can hit cache immediately after upload without a cold GCS fetch.
-
-### Compression Modes & Write-Path Timing
-
-5. ~~**Compressed-only write mode**~~: **Done.** `compressBuilds` in `compress-config` exclusively selects compressed or uncompressed uploads — no dual-write. `UploadExceptV4Headers` branches on `compressOpts != nil`.
-
-6. **Purity enforcement (no mixed compressed/uncompressed stacks)**: add a flag (e.g. `"requirePureCompression": true`) that, at template load time, validates that if the top-layer build has compressed assets then every ancestor build in the header's mappings also has compressed assets (and vice versa). Fail sandbox creation if the check fails rather than silently mixing. This interacts with the write path: when `requirePureCompression` is enabled and a new layer is built on top of an uncompressed parent, the build must either (a) refuse to compress, (b) refuse to start, or (c) trigger background compression of the parent chain first. Today's per-mapping `FrameTable` routing lets mixed stacks work; purity enforcement would intentionally break that flexibility for correctness guarantees.
-
-7. **Sync vs async layer compression**: today compression is either inline (during `TemplateBuild.Upload*`, blocking the build) or fully async (background `compress-build` CLI, after the fact). Middle ground to explore:
-   - **Compress before upload submission**: the snapshot data is already in memory/mmap after Firecracker pause. Compress frames in-process before kicking off the GCS upload, so the upload only sends compressed data (pairs with #5). Tradeoff: adds compression latency to the critical path before the sandbox can be resumed on another server.
-   - **Compress shortly after build completes**: fire an async compression job (in-process goroutine or separate task) that runs after the uncompressed upload finishes. The sandbox is resumable immediately from uncompressed data, and compressed data appears later. But: if another build references this layer before compression finishes, the child gets an uncompressed parent — violating purity (#6). And if the sandbox is resumed from the uncompressed image on a different server while compression is in-flight, we have a race on the GCS objects.
-   - **Implications for purity**: strict purity enforcement (#6) effectively forces synchronous compression of the entire ancestor chain before a compressed child can be built. Async compression is only safe when purity is not enforced, or when there's a coordination mechanism (e.g. a "compression pending" state that blocks child builds until the parent is compressed).
-
-### From `lev-zstd-compression` (Unported)
-
-8. **Storage Provider/Backend layer separation**: decompose `StorageProvider` into distinct Provider (high-level: `FrameGetter`, `FileStorer`, `Blobber`) and Backend (low-level: `Basic`, `RangeGetter`, `MultipartUploaderFactory`) layers. Prerequisite for clean instrumentation wrapping.
-
-9. **OTEL instrumentation middleware** (`instrumented_provider.go`, `instrumented_backend.go`): full span and metrics wrapping at both layers. ~400 lines.
-
-10. **Test coverage** (~4300 lines total): chunker matrix tests (`chunk_test.go` — concurrent access, decompression stats, cross-chunker coverage), compression round-trip tests (`compress_test.go`), NFS cache with compressed data (`storage_cache_seekable_test.go`), template build upload tests (`template_build_test.go`).
-
----
-
-## E. Write Paths
+## C. Write Paths
 
 ### Inline Build / Pause
 
 Triggered by `sbx.Pause()` or initial template build. The orchestrator creates a `Snapshot` (FC memory + rootfs diffs, headers, snapfile, metadata), then constructs a `TemplateBuild` which owns the upload lifecycle:
 
-- **Single-layer** (initial build, simple pause): `TemplateBuild.UploadAtOnce(ctx)` — synchronous. Uploads either compressed data + V4 headers or uncompressed data + V3 headers (exclusively, based on `compressBuilds` FF), plus snapfile + metadata, concurrently in an errgroup.
+- **Single-layer** (initial build, simple pause): `TemplateBuild.UploadAtOnce(ctx, memfileOpts, rootfsOpts)` — synchronous. Each file type (memfile, rootfs) is independently compressed or uncompressed based on the per-file `FramedUploadOptions` (nil = uncompressed + V3 header, non-nil = compressed). Snapfile + metadata are always uploaded. Callers obtain opts via `GetUploadOptions(ctx, ff, fileType, useCase)` which enriches the LD evaluation context with `compress-file-type` and `compress-use-case` kinds, allowing LaunchDarkly targeting rules to differentiate per file type and use case.
 
-- **Multi-layer** (layered build): `TemplateBuild.UploadExceptV4Headers(ctx)` uploads all data, then returns `hasCompressed`. The caller coordinates with `UploadTracker` to wait for ancestor layers, then calls `TemplateBuild.UploadV4Header(ctx)` which reads accumulated `PendingBuildInfo` from all layers and serializes the final V4 header.
+- **Multi-layer** (layered build): `TemplateBuild.UploadExceptV4Headers(ctx, memfileOpts, rootfsOpts)` uploads all data, then returns `hasCompressed`. The caller coordinates with `UploadTracker` to wait for ancestor layers, then calls `TemplateBuild.UploadV4Header(ctx)` which reads accumulated `PendingBuildInfo` from all layers and serializes the final V4 header. Only file types that were uploaded compressed get V4 headers.
 
 ### Background Compression (`compress-build` CLI)
 
@@ -253,9 +176,9 @@ compress-build -build <uuid> [-storage gs://bucket] [-compression lz4|zstd] [-re
 
 ---
 
-## F. Failure Modes
+## D. Failure Modes
 
-**Corrupted compressed frame in GCS or NFS**: no automatic fallback to uncompressed today. The read fails, `GetBlock` returns an error, and the sandbox page-faults. Unresolved: should the Chunker retry with the uncompressed variant when decompression fails and `HasUncompressed` is true?
+**Corrupted compressed frame in GCS or NFS**: no automatic fallback to uncompressed today. The read fails, `GetBlock` returns an error, and the sandbox page-faults.
 
 **Half-compressed builds** (some layers have V4 header + compressed data, ancestors don't): handled by design. Each mapping carries its own `FrameTable` (or nil); the Chunker routes each build independently. A nil `FrameTable` for an ancestor mapping falls through to uncompressed fetch for that mapping.
 
@@ -265,11 +188,12 @@ compress-build -build <uuid> [-storage gs://bucket] [-compression lz4|zstd] [-re
 
 ### Unresolved
 
-- Should Chunker fall back to uncompressed on a corrupt V4 header or  a decompression error?
+- Should Chunker fall back to uncompressed on a corrupt V4 header or a decompression error, when `HasUncompressed` is true?
+- Should a feature flag disable progressive `GetBlock` reading and fall back to whole-block fetch as a fault-tolerance lever?
 
 ---
 
-## G. Cost & Benefit
+## E. Cost & Benefit
 
 ### Storage
 
@@ -343,7 +267,7 @@ Smaller GCS reads (4x fewer bytes) and smaller NFS cache entries reduce network 
 
 ---
 
-## H. Grafana Metrics
+## F. Grafana Metrics
 
 Each `TimerFactory` metric emits three series with the same name but different units: a duration histogram (ms), a bytes counter (By), and an ops counter. All three carry the same attributes listed below plus an automatic `result` = `success` | `failure`.
 
@@ -383,9 +307,3 @@ Each `TimerFactory` metric emits three series with the same name but different u
 - **NFS effectiveness**: `orchestrator.storage.cache.ops` where `op_type=get_frame`, ratio of `cache_hit=true` to total
 - **GCS fetch volume**: `orchestrator.storage.gcs.read` where `operation=GetFrame`, bytes counter
 - **Decompression overhead**: `orchestrator.blocks.chunks.fetch` where `compressed=true`, compare duration histogram to `compressed=false`
-
----
-
-## I. Rollout Strategy
-
-_TBD_
