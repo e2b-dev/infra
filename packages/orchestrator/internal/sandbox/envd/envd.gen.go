@@ -18,6 +18,27 @@ const (
 	File EntryInfoType = "file"
 )
 
+// ComposeRequest defines model for ComposeRequest.
+type ComposeRequest struct {
+	// Destination Destination file path for the composed file
+	Destination string `json:"destination"`
+
+	// SourcePaths Ordered list of source file paths to concatenate
+	SourcePaths []string `json:"source_paths"`
+
+	// Username User for setting ownership and resolving relative paths
+	Username string `json:"username,omitempty"`
+}
+
+// ComposeResponse defines model for ComposeResponse.
+type ComposeResponse struct {
+	// Path Path to the composed file
+	Path string `json:"path"`
+
+	// Size Total size of the composed file in bytes
+	Size int64 `json:"size"`
+}
+
 // EntryInfo defines model for EntryInfo.
 type EntryInfo struct {
 	// Name Name of the file
@@ -69,30 +90,6 @@ type Metrics struct {
 	Ts int64 `json:"ts,omitempty"`
 }
 
-// UploadComplete defines model for UploadComplete.
-type UploadComplete struct {
-	// Path Path to the final assembled file
-	Path string `json:"path"`
-
-	// Size Total size of the assembled file in bytes
-	Size int64 `json:"size"`
-}
-
-// UploadInit defines model for UploadInit.
-type UploadInit struct {
-	// UploadId Unique identifier for the upload session
-	UploadId string `json:"uploadId"`
-}
-
-// UploadPartInfo defines model for UploadPartInfo.
-type UploadPartInfo struct {
-	// PartNumber The part number that was uploaded
-	PartNumber int `json:"partNumber"`
-
-	// Size Size of the uploaded part in bytes
-	Size int64 `json:"size"`
-}
-
 // VolumeMount Volume
 type VolumeMount struct {
 	NfsTarget string `json:"nfs_target"`
@@ -107,9 +104,6 @@ type Signature = string
 
 // SignatureExpiration defines model for SignatureExpiration.
 type SignatureExpiration = int
-
-// UploadId defines model for UploadId.
-type UploadId = string
 
 // User defines model for User.
 type User = string
@@ -128,9 +122,6 @@ type InvalidUser = Error
 
 // NotEnoughDiskSpace defines model for NotEnoughDiskSpace.
 type NotEnoughDiskSpace = Error
-
-// UploadNotFound defines model for UploadNotFound.
-type UploadNotFound = Error
 
 // UploadSuccess defines model for UploadSuccess.
 type UploadSuccess = []EntryInfo
@@ -170,21 +161,6 @@ type PostFilesParams struct {
 	SignatureExpiration SignatureExpiration `form:"signature_expiration,omitempty" json:"signature_expiration,omitempty"`
 }
 
-// PostFilesUploadInitParams defines parameters for PostFilesUploadInit.
-type PostFilesUploadInitParams struct {
-	// Path Path to the file, URL encoded. Can be relative to user's home directory.
-	Path FilePath `form:"path,omitempty" json:"path,omitempty"`
-
-	// Username User used for setting the owner, or resolving relative paths.
-	Username User `form:"username,omitempty" json:"username,omitempty"`
-}
-
-// PutFilesUploadUploadIdParams defines parameters for PutFilesUploadUploadId.
-type PutFilesUploadUploadIdParams struct {
-	// PartNumber The part number for this chunk (0-indexed)
-	PartNumber int `form:"partNumber" json:"partNumber"`
-}
-
 // PostInitJSONBody defines parameters for PostInit.
 type PostInitJSONBody struct {
 	// AccessToken Access token for secure access to envd service
@@ -209,6 +185,9 @@ type PostInitJSONBody struct {
 
 // PostFilesMultipartRequestBody defines body for PostFiles for multipart/form-data ContentType.
 type PostFilesMultipartRequestBody PostFilesMultipartBody
+
+// PostFilesComposeJSONRequestBody defines body for PostFilesCompose for application/json ContentType.
+type PostFilesComposeJSONRequestBody = ComposeRequest
 
 // PostInitJSONRequestBody defines body for PostInit for application/json ContentType.
 type PostInitJSONRequestBody PostInitJSONBody

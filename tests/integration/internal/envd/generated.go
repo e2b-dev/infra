@@ -27,6 +27,27 @@ const (
 	File EntryInfoType = "file"
 )
 
+// ComposeRequest defines model for ComposeRequest.
+type ComposeRequest struct {
+	// Destination Destination file path for the composed file
+	Destination string `json:"destination"`
+
+	// SourcePaths Ordered list of source file paths to concatenate
+	SourcePaths []string `json:"source_paths"`
+
+	// Username User for setting ownership and resolving relative paths
+	Username *string `json:"username,omitempty"`
+}
+
+// ComposeResponse defines model for ComposeResponse.
+type ComposeResponse struct {
+	// Path Path to the composed file
+	Path string `json:"path"`
+
+	// Size Total size of the composed file in bytes
+	Size int64 `json:"size"`
+}
+
 // EntryInfo defines model for EntryInfo.
 type EntryInfo struct {
 	// Name Name of the file
@@ -78,30 +99,6 @@ type Metrics struct {
 	Ts *int64 `json:"ts,omitempty"`
 }
 
-// UploadComplete defines model for UploadComplete.
-type UploadComplete struct {
-	// Path Path to the final assembled file
-	Path string `json:"path"`
-
-	// Size Total size of the assembled file in bytes
-	Size int64 `json:"size"`
-}
-
-// UploadInit defines model for UploadInit.
-type UploadInit struct {
-	// UploadId Unique identifier for the upload session
-	UploadId string `json:"uploadId"`
-}
-
-// UploadPartInfo defines model for UploadPartInfo.
-type UploadPartInfo struct {
-	// PartNumber The part number that was uploaded
-	PartNumber int `json:"partNumber"`
-
-	// Size Size of the uploaded part in bytes
-	Size int64 `json:"size"`
-}
-
 // VolumeMount Volume
 type VolumeMount struct {
 	NfsTarget string `json:"nfs_target"`
@@ -116,9 +113,6 @@ type Signature = string
 
 // SignatureExpiration defines model for SignatureExpiration.
 type SignatureExpiration = int
-
-// UploadId defines model for UploadId.
-type UploadId = string
 
 // User defines model for User.
 type User = string
@@ -137,9 +131,6 @@ type InvalidUser = Error
 
 // NotEnoughDiskSpace defines model for NotEnoughDiskSpace.
 type NotEnoughDiskSpace = Error
-
-// UploadNotFound defines model for UploadNotFound.
-type UploadNotFound = Error
 
 // UploadSuccess defines model for UploadSuccess.
 type UploadSuccess = []EntryInfo
@@ -179,21 +170,6 @@ type PostFilesParams struct {
 	SignatureExpiration *SignatureExpiration `form:"signature_expiration,omitempty" json:"signature_expiration,omitempty"`
 }
 
-// PostFilesUploadInitParams defines parameters for PostFilesUploadInit.
-type PostFilesUploadInitParams struct {
-	// Path Path to the file, URL encoded. Can be relative to user's home directory.
-	Path *FilePath `form:"path,omitempty" json:"path,omitempty"`
-
-	// Username User used for setting the owner, or resolving relative paths.
-	Username *User `form:"username,omitempty" json:"username,omitempty"`
-}
-
-// PutFilesUploadUploadIdParams defines parameters for PutFilesUploadUploadId.
-type PutFilesUploadUploadIdParams struct {
-	// PartNumber The part number for this chunk (0-indexed)
-	PartNumber int `form:"partNumber" json:"partNumber"`
-}
-
 // PostInitJSONBody defines parameters for PostInit.
 type PostInitJSONBody struct {
 	// AccessToken Access token for secure access to envd service
@@ -218,6 +194,9 @@ type PostInitJSONBody struct {
 
 // PostFilesMultipartRequestBody defines body for PostFiles for multipart/form-data ContentType.
 type PostFilesMultipartRequestBody PostFilesMultipartBody
+
+// PostFilesComposeJSONRequestBody defines body for PostFilesCompose for application/json ContentType.
+type PostFilesComposeJSONRequestBody = ComposeRequest
 
 // PostInitJSONRequestBody defines body for PostInit for application/json ContentType.
 type PostInitJSONRequestBody PostInitJSONBody
@@ -304,17 +283,10 @@ type ClientInterface interface {
 	// PostFilesWithBody request with any body
 	PostFilesWithBody(ctx context.Context, params *PostFilesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// PostFilesUploadInit request
-	PostFilesUploadInit(ctx context.Context, params *PostFilesUploadInitParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// PostFilesComposeWithBody request with any body
+	PostFilesComposeWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// DeleteFilesUploadUploadId request
-	DeleteFilesUploadUploadId(ctx context.Context, uploadId UploadId, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// PutFilesUploadUploadIdWithBody request with any body
-	PutFilesUploadUploadIdWithBody(ctx context.Context, uploadId UploadId, params *PutFilesUploadUploadIdParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// PostFilesUploadUploadIdComplete request
-	PostFilesUploadUploadIdComplete(ctx context.Context, uploadId UploadId, reqEditors ...RequestEditorFn) (*http.Response, error)
+	PostFilesCompose(ctx context.Context, body PostFilesComposeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetHealth request
 	GetHealth(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -364,8 +336,8 @@ func (c *Client) PostFilesWithBody(ctx context.Context, params *PostFilesParams,
 	return c.Client.Do(req)
 }
 
-func (c *Client) PostFilesUploadInit(ctx context.Context, params *PostFilesUploadInitParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewPostFilesUploadInitRequest(c.Server, params)
+func (c *Client) PostFilesComposeWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostFilesComposeRequestWithBody(c.Server, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -376,32 +348,8 @@ func (c *Client) PostFilesUploadInit(ctx context.Context, params *PostFilesUploa
 	return c.Client.Do(req)
 }
 
-func (c *Client) DeleteFilesUploadUploadId(ctx context.Context, uploadId UploadId, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewDeleteFilesUploadUploadIdRequest(c.Server, uploadId)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *Client) PutFilesUploadUploadIdWithBody(ctx context.Context, uploadId UploadId, params *PutFilesUploadUploadIdParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewPutFilesUploadUploadIdRequestWithBody(c.Server, uploadId, params, contentType, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *Client) PostFilesUploadUploadIdComplete(ctx context.Context, uploadId UploadId, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewPostFilesUploadUploadIdCompleteRequest(c.Server, uploadId)
+func (c *Client) PostFilesCompose(ctx context.Context, body PostFilesComposeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostFilesComposeRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -683,88 +631,27 @@ func NewPostFilesRequestWithBody(server string, params *PostFilesParams, content
 	return req, nil
 }
 
-// NewPostFilesUploadInitRequest generates requests for PostFilesUploadInit
-func NewPostFilesUploadInitRequest(server string, params *PostFilesUploadInitParams) (*http.Request, error) {
-	var err error
-
-	serverURL, err := url.Parse(server)
+// NewPostFilesComposeRequest calls the generic PostFilesCompose builder with application/json body
+func NewPostFilesComposeRequest(server string, body PostFilesComposeJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
-
-	operationPath := fmt.Sprintf("/files/upload/init")
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	if params != nil {
-		queryValues := queryURL.Query()
-
-		if params.Path != nil {
-
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "path", runtime.ParamLocationQuery, *params.Path); err != nil {
-				return nil, err
-			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-				return nil, err
-			} else {
-				for k, v := range parsed {
-					for _, v2 := range v {
-						queryValues.Add(k, v2)
-					}
-				}
-			}
-
-		}
-
-		if params.Username != nil {
-
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "username", runtime.ParamLocationQuery, *params.Username); err != nil {
-				return nil, err
-			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-				return nil, err
-			} else {
-				for k, v := range parsed {
-					for _, v2 := range v {
-						queryValues.Add(k, v2)
-					}
-				}
-			}
-
-		}
-
-		queryURL.RawQuery = queryValues.Encode()
-	}
-
-	req, err := http.NewRequest("POST", queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
+	bodyReader = bytes.NewReader(buf)
+	return NewPostFilesComposeRequestWithBody(server, "application/json", bodyReader)
 }
 
-// NewDeleteFilesUploadUploadIdRequest generates requests for DeleteFilesUploadUploadId
-func NewDeleteFilesUploadUploadIdRequest(server string, uploadId UploadId) (*http.Request, error) {
+// NewPostFilesComposeRequestWithBody generates requests for PostFilesCompose with any type of body
+func NewPostFilesComposeRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "uploadId", runtime.ParamLocationPath, uploadId)
-	if err != nil {
-		return nil, err
-	}
 
 	serverURL, err := url.Parse(server)
 	if err != nil {
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/files/upload/%s", pathParam0)
+	operationPath := fmt.Sprintf("/files/compose")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -774,98 +661,12 @@ func NewDeleteFilesUploadUploadIdRequest(server string, uploadId UploadId) (*htt
 		return nil, err
 	}
 
-	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-// NewPutFilesUploadUploadIdRequestWithBody generates requests for PutFilesUploadUploadId with any type of body
-func NewPutFilesUploadUploadIdRequestWithBody(server string, uploadId UploadId, params *PutFilesUploadUploadIdParams, contentType string, body io.Reader) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "uploadId", runtime.ParamLocationPath, uploadId)
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/files/upload/%s", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	if params != nil {
-		queryValues := queryURL.Query()
-
-		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "partNumber", runtime.ParamLocationQuery, params.PartNumber); err != nil {
-			return nil, err
-		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-			return nil, err
-		} else {
-			for k, v := range parsed {
-				for _, v2 := range v {
-					queryValues.Add(k, v2)
-				}
-			}
-		}
-
-		queryURL.RawQuery = queryValues.Encode()
-	}
-
-	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	req, err := http.NewRequest("POST", queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
 
 	req.Header.Add("Content-Type", contentType)
-
-	return req, nil
-}
-
-// NewPostFilesUploadUploadIdCompleteRequest generates requests for PostFilesUploadUploadIdComplete
-func NewPostFilesUploadUploadIdCompleteRequest(server string, uploadId UploadId) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "uploadId", runtime.ParamLocationPath, uploadId)
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/files/upload/%s/complete", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("POST", queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
 
 	return req, nil
 }
@@ -1016,17 +817,10 @@ type ClientWithResponsesInterface interface {
 	// PostFilesWithBodyWithResponse request with any body
 	PostFilesWithBodyWithResponse(ctx context.Context, params *PostFilesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostFilesResponse, error)
 
-	// PostFilesUploadInitWithResponse request
-	PostFilesUploadInitWithResponse(ctx context.Context, params *PostFilesUploadInitParams, reqEditors ...RequestEditorFn) (*PostFilesUploadInitResponse, error)
+	// PostFilesComposeWithBodyWithResponse request with any body
+	PostFilesComposeWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostFilesComposeResponse, error)
 
-	// DeleteFilesUploadUploadIdWithResponse request
-	DeleteFilesUploadUploadIdWithResponse(ctx context.Context, uploadId UploadId, reqEditors ...RequestEditorFn) (*DeleteFilesUploadUploadIdResponse, error)
-
-	// PutFilesUploadUploadIdWithBodyWithResponse request with any body
-	PutFilesUploadUploadIdWithBodyWithResponse(ctx context.Context, uploadId UploadId, params *PutFilesUploadUploadIdParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutFilesUploadUploadIdResponse, error)
-
-	// PostFilesUploadUploadIdCompleteWithResponse request
-	PostFilesUploadUploadIdCompleteWithResponse(ctx context.Context, uploadId UploadId, reqEditors ...RequestEditorFn) (*PostFilesUploadUploadIdCompleteResponse, error)
+	PostFilesComposeWithResponse(ctx context.Context, body PostFilesComposeJSONRequestBody, reqEditors ...RequestEditorFn) (*PostFilesComposeResponse, error)
 
 	// GetHealthWithResponse request
 	GetHealthWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetHealthResponse, error)
@@ -1113,65 +907,19 @@ func (r PostFilesResponse) StatusCode() int {
 	return 0
 }
 
-type PostFilesUploadInitResponse struct {
+type PostFilesComposeResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON200      *UploadInit
+	JSON200      *ComposeResponse
 	JSON400      *InvalidPath
 	JSON401      *InvalidUser
-	JSON500      *InternalServerError
-}
-
-// Status returns HTTPResponse.Status
-func (r PostFilesUploadInitResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r PostFilesUploadInitResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-type DeleteFilesUploadUploadIdResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON404      *UploadNotFound
-	JSON500      *InternalServerError
-}
-
-// Status returns HTTPResponse.Status
-func (r DeleteFilesUploadUploadIdResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r DeleteFilesUploadUploadIdResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-type PutFilesUploadUploadIdResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON200      *UploadPartInfo
-	JSON404      *UploadNotFound
+	JSON404      *FileNotFound
 	JSON500      *InternalServerError
 	JSON507      *NotEnoughDiskSpace
 }
 
 // Status returns HTTPResponse.Status
-func (r PutFilesUploadUploadIdResponse) Status() string {
+func (r PostFilesComposeResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -1179,32 +927,7 @@ func (r PutFilesUploadUploadIdResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r PutFilesUploadUploadIdResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-type PostFilesUploadUploadIdCompleteResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON200      *UploadComplete
-	JSON404      *UploadNotFound
-	JSON500      *InternalServerError
-	JSON507      *NotEnoughDiskSpace
-}
-
-// Status returns HTTPResponse.Status
-func (r PostFilesUploadUploadIdCompleteResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r PostFilesUploadUploadIdCompleteResponse) StatusCode() int {
+func (r PostFilesComposeResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -1302,40 +1025,21 @@ func (c *ClientWithResponses) PostFilesWithBodyWithResponse(ctx context.Context,
 	return ParsePostFilesResponse(rsp)
 }
 
-// PostFilesUploadInitWithResponse request returning *PostFilesUploadInitResponse
-func (c *ClientWithResponses) PostFilesUploadInitWithResponse(ctx context.Context, params *PostFilesUploadInitParams, reqEditors ...RequestEditorFn) (*PostFilesUploadInitResponse, error) {
-	rsp, err := c.PostFilesUploadInit(ctx, params, reqEditors...)
+// PostFilesComposeWithBodyWithResponse request with arbitrary body returning *PostFilesComposeResponse
+func (c *ClientWithResponses) PostFilesComposeWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostFilesComposeResponse, error) {
+	rsp, err := c.PostFilesComposeWithBody(ctx, contentType, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParsePostFilesUploadInitResponse(rsp)
+	return ParsePostFilesComposeResponse(rsp)
 }
 
-// DeleteFilesUploadUploadIdWithResponse request returning *DeleteFilesUploadUploadIdResponse
-func (c *ClientWithResponses) DeleteFilesUploadUploadIdWithResponse(ctx context.Context, uploadId UploadId, reqEditors ...RequestEditorFn) (*DeleteFilesUploadUploadIdResponse, error) {
-	rsp, err := c.DeleteFilesUploadUploadId(ctx, uploadId, reqEditors...)
+func (c *ClientWithResponses) PostFilesComposeWithResponse(ctx context.Context, body PostFilesComposeJSONRequestBody, reqEditors ...RequestEditorFn) (*PostFilesComposeResponse, error) {
+	rsp, err := c.PostFilesCompose(ctx, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseDeleteFilesUploadUploadIdResponse(rsp)
-}
-
-// PutFilesUploadUploadIdWithBodyWithResponse request with arbitrary body returning *PutFilesUploadUploadIdResponse
-func (c *ClientWithResponses) PutFilesUploadUploadIdWithBodyWithResponse(ctx context.Context, uploadId UploadId, params *PutFilesUploadUploadIdParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutFilesUploadUploadIdResponse, error) {
-	rsp, err := c.PutFilesUploadUploadIdWithBody(ctx, uploadId, params, contentType, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParsePutFilesUploadUploadIdResponse(rsp)
-}
-
-// PostFilesUploadUploadIdCompleteWithResponse request returning *PostFilesUploadUploadIdCompleteResponse
-func (c *ClientWithResponses) PostFilesUploadUploadIdCompleteWithResponse(ctx context.Context, uploadId UploadId, reqEditors ...RequestEditorFn) (*PostFilesUploadUploadIdCompleteResponse, error) {
-	rsp, err := c.PostFilesUploadUploadIdComplete(ctx, uploadId, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParsePostFilesUploadUploadIdCompleteResponse(rsp)
+	return ParsePostFilesComposeResponse(rsp)
 }
 
 // GetHealthWithResponse request returning *GetHealthResponse
@@ -1500,22 +1204,22 @@ func ParsePostFilesResponse(rsp *http.Response) (*PostFilesResponse, error) {
 	return response, nil
 }
 
-// ParsePostFilesUploadInitResponse parses an HTTP response from a PostFilesUploadInitWithResponse call
-func ParsePostFilesUploadInitResponse(rsp *http.Response) (*PostFilesUploadInitResponse, error) {
+// ParsePostFilesComposeResponse parses an HTTP response from a PostFilesComposeWithResponse call
+func ParsePostFilesComposeResponse(rsp *http.Response) (*PostFilesComposeResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &PostFilesUploadInitResponse{
+	response := &PostFilesComposeResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest UploadInit
+		var dest ComposeResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -1535,121 +1239,8 @@ func ParsePostFilesUploadInitResponse(rsp *http.Response) (*PostFilesUploadInitR
 		}
 		response.JSON401 = &dest
 
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
-		var dest InternalServerError
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON500 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseDeleteFilesUploadUploadIdResponse parses an HTTP response from a DeleteFilesUploadUploadIdWithResponse call
-func ParseDeleteFilesUploadUploadIdResponse(rsp *http.Response) (*DeleteFilesUploadUploadIdResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &DeleteFilesUploadUploadIdResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest UploadNotFound
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON404 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
-		var dest InternalServerError
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON500 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParsePutFilesUploadUploadIdResponse parses an HTTP response from a PutFilesUploadUploadIdWithResponse call
-func ParsePutFilesUploadUploadIdResponse(rsp *http.Response) (*PutFilesUploadUploadIdResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &PutFilesUploadUploadIdResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest UploadPartInfo
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest UploadNotFound
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON404 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
-		var dest InternalServerError
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON500 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 507:
-		var dest NotEnoughDiskSpace
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON507 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParsePostFilesUploadUploadIdCompleteResponse parses an HTTP response from a PostFilesUploadUploadIdCompleteWithResponse call
-func ParsePostFilesUploadUploadIdCompleteResponse(rsp *http.Response) (*PostFilesUploadUploadIdCompleteResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &PostFilesUploadUploadIdCompleteResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest UploadComplete
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest UploadNotFound
+		var dest FileNotFound
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
