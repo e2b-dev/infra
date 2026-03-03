@@ -22,7 +22,6 @@ func TestSanitizeLokiLabel(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			assert.Equal(t, tt.expected, sanitizeLokiLabel(tt.input))
@@ -45,7 +44,6 @@ func TestSanitizeLogMessageRegexFilter(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			assert.Equal(t, tt.expected, sanitizeLogMessageRegexFilter(tt.input))
