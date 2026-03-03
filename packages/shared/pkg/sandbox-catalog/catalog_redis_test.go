@@ -53,7 +53,7 @@ func TestRedisCatalog_LocalCacheFlagServiceContext(t *testing.T) {
 
 		catalog := NewRedisSandboxesCatalog(redisClient, ff)
 		t.Cleanup(func() {
-			assert.NoError(t, catalog.Close(ctx))
+			assert.NoError(t, catalog.Close(context.Background()))
 		})
 
 		got, err := catalog.GetSandbox(ctx, sbxID)
@@ -77,7 +77,7 @@ func TestRedisCatalog_LocalCacheFlagServiceContext(t *testing.T) {
 
 		catalog := NewRedisSandboxesCatalog(redisClient, ff)
 		t.Cleanup(func() {
-			assert.NoError(t, catalog.Close(ctx))
+			assert.NoError(t, catalog.Close(context.Background()))
 		})
 
 		got, err := catalog.GetSandbox(ctx, sbxID)

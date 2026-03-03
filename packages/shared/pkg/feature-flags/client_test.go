@@ -1,7 +1,6 @@
 package feature_flags
 
 import (
-	"context"
 	"testing"
 
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
@@ -44,7 +43,7 @@ func TestAllContextsIncludesServiceAndDeployment(t *testing.T) {
 	client.SetDeploymentName("dev")
 	client.SetServiceName("orchestration-api")
 
-	merged := mergeContexts(context.Background(), client.allContexts(nil))
+	merged := mergeContexts(t.Context(), client.allContexts(nil))
 	contexts := merged.GetAllIndividualContexts(nil)
 
 	seen := map[ldcontext.Kind]string{}
