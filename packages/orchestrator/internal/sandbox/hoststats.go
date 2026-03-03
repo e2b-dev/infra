@@ -45,6 +45,7 @@ func initializeHostStatsCollector(
 	sandboxType := runtime.SandboxType
 	if sandboxType == "" {
 		sandboxType = SandboxTypeSandbox
+		logger.L().Warn(ctx, "unknown sandbox type", logger.WithSandboxID(runtime.SandboxID))
 	}
 
 	var cgroupStats CgroupStatsFunc
