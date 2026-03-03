@@ -59,7 +59,7 @@ func (a *APIStore) generateVolumeContentToken(volume queries.Volume, team *types
 		"sub": team.ID.String(),
 
 		// custom
-		"teamid":  team.ID,
+		"teamid":  team.ID.String(),
 		"volid":   volume.ID.String(),
 		"voltype": volume.VolumeType,
 	}

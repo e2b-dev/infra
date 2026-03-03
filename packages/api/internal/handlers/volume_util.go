@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/rand"
 	"net"
 	"net/http"
@@ -96,16 +97,24 @@ func (a *APIStore) executeOnOrchestratorByClusterID(
 			continue
 		}
 
-		c, ctx := node.GetClient(ctx)
+		c, clientCtx := node.GetClient(ctx)
 
-		if err := fn(ctx, c); err != nil {
-			if isRetryableError(err) {
-				logger.L().Warn(ctx, "failed to make orchestrator call, retrying ... ", zap.Error(err))
+		if clientErr := fn(clientCtx, c); clientErr != nil {
+			if err := ctx.Err(); err != nil {
+				// original context is canceled, bail
+				return errors.Join(
+					fmt.Errorf("orchestrator error: %w", clientErr),
+					fmt.Errorf("request error: %w", err),
+				)
+			}
+
+			if isRetryableError(clientErr) {
+				logger.L().Warn(clientCtx, "failed to make orchestrator call, retrying ... ", zap.Error(clientErr))
 
 				continue
 			}
 
-			return err
+			return clientErr
 		}
 
 		return nil
