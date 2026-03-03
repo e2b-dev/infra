@@ -200,6 +200,11 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 
 	written, err := file.ReadFrom(r.Body)
 	if err != nil {
+		// Close and remove the truncated part file so that a subsequent
+		// Complete call cannot silently assemble corrupt data.
+		file.Close()
+		os.Remove(partPath)
+
 		if errors.Is(err, syscall.ENOSPC) {
 			jsonError(w, http.StatusInsufficientStorage, fmt.Errorf("not enough disk space available"))
 
