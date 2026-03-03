@@ -129,7 +129,7 @@ func (r *ClusterResourceProviderImpl) GetSandboxLogs(ctx context.Context, teamID
 
 	raw := *res.JSON200
 	filtersRequested := level != nil || (search != nil && *search != "")
-	if filtersRequested && (res.HTTPResponse == nil || res.HTTPResponse.Header.Get(consts.EdgeFeatureLogsLevelTextFilteringEnabledHeader) == "") {
+	if filtersRequested && (res.HTTPResponse == nil || res.HTTPResponse.Header.Get(consts.EdgeFeatureSandboxLogsLevelTextFilteringEnabledHeader) == "") {
 		logger.L().Warn(
 			ctx,
 			"edge response missing logs level+text filtering enabled header",

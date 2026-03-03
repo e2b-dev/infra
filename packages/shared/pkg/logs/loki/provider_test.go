@@ -9,7 +9,7 @@ import (
 func TestBuildSandboxLogsQueryWithoutSearch(t *testing.T) {
 	t.Parallel()
 
-	query := buildSandboxLogsQuery("team`id", "sandbox`id", nil)
+	query := buildSandboxLogsQuery("team`id", "sandbox`id", nil, nil)
 
 	assert.Equal(t, "{teamID=`teamid`, sandboxID=`sandboxid`, category!=\"metrics\"}", query)
 }
@@ -18,7 +18,7 @@ func TestBuildSandboxLogsQueryWithMessageSearch(t *testing.T) {
 	t.Parallel()
 
 	search := "hello` (world)+"
-	query := buildSandboxLogsQuery("team-id", "sandbox-id", &search)
+	query := buildSandboxLogsQuery("team-id", "sandbox-id", nil, &search)
 
 	assert.Equal(
 		t,
@@ -26,3 +26,4 @@ func TestBuildSandboxLogsQueryWithMessageSearch(t *testing.T) {
 		query,
 	)
 }
+
