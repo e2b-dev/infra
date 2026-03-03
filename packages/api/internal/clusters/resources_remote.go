@@ -4,14 +4,16 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	edgeapi "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
+	"go.uber.org/zap"
 )
 
 type ClusterResourceProviderImpl struct {
@@ -102,7 +104,15 @@ func (r *ClusterResourceProviderImpl) GetSandboxesMetrics(ctx context.Context, t
 
 func (r *ClusterResourceProviderImpl) GetSandboxLogs(ctx context.Context, teamID string, sandboxID string, start *int64, end *int64, limit *int32, dr *api.LogsDirection, level *logs.LogLevel, search *string) (api.SandboxLogs, *api.APIError) {
 	direction := apiLogDirectionToEdgeSandboxLogsDirection(dr)
-	params := &edgeapi.V1SandboxLogsParams{TeamID: teamID, Start: start, End: end, Limit: limit, Direction: direction}
+	params := &edgeapi.V1SandboxLogsParams{
+		TeamID:    teamID,
+		Start:     start,
+		End:       end,
+		Limit:     limit,
+		Direction: direction,
+		Level:     logToEdgeLevel(level),
+		Search:    search,
+	}
 	res, err := r.client.V1SandboxLogsWithResponse(ctx, sandboxID, params)
 	if err != nil {
 		return api.SandboxLogs{}, &api.APIError{
@@ -117,24 +127,24 @@ func (r *ClusterResourceProviderImpl) GetSandboxLogs(ctx context.Context, teamID
 	}
 
 	raw := *res.JSON200
+	filtersRequested := level != nil || (search != nil && *search != "")
+	if filtersRequested && (res.HTTPResponse == nil || res.HTTPResponse.Header.Get(consts.EdgeFeatureLogsLevelTextFilteringEnabledHeader) == "") {
+		logger.L().Warn(
+			ctx,
+			"edge response missing logs level+text filtering enabled header",
+			logger.WithSandboxID(sandboxID),
+			zap.Bool("level_filter", level != nil),
+			zap.Bool("search_filter", search != nil && *search != ""),
+		)
+	}
 
 	l := make([]api.SandboxLog, 0, len(raw.Logs))
 	le := make([]api.SandboxLogEntry, 0, len(raw.LogEntries))
 
 	for _, row := range raw.LogEntries {
-		entryLevel := api.LogLevel(row.Level)
-
-		// rolling-deploy safety: post-filter by level and search in case edge hasn't been updated yet
-		if level != nil && logs.CompareLevels(string(entryLevel), logs.LevelToString(*level)) < 0 {
-			continue
-		}
-		if search != nil && *search != "" && !strings.Contains(row.Message, *search) {
-			continue
-		}
-
 		le = append(le, api.SandboxLogEntry{
 			Timestamp: row.Timestamp,
-			Level:     entryLevel,
+			Level:     api.LogLevel(row.Level),
 			Message:   row.Message,
 			Fields:    row.Fields,
 		})
