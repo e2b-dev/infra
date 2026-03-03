@@ -48,10 +48,11 @@ func TestRedisCatalog_LocalCacheFlagServiceContext(t *testing.T) {
 
 	t.Run("service-targeted disable prevents local cache write", func(t *testing.T) {
 		t.Parallel()
+		ctx := t.Context()
 
 		catalog := NewRedisSandboxesCatalog(redisClient, ff, "client-proxy")
 		t.Cleanup(func() {
-			assert.NoError(t, catalog.Close(context.Background()))
+			assert.NoError(t, catalog.Close(ctx))
 		})
 
 		got, err := catalog.GetSandbox(ctx, sbxID)
@@ -64,10 +65,11 @@ func TestRedisCatalog_LocalCacheFlagServiceContext(t *testing.T) {
 
 	t.Run("other service uses local cache", func(t *testing.T) {
 		t.Parallel()
+		ctx := t.Context()
 
 		catalog := NewRedisSandboxesCatalog(redisClient, ff, "orchestration-api")
 		t.Cleanup(func() {
-			assert.NoError(t, catalog.Close(context.Background()))
+			assert.NoError(t, catalog.Close(ctx))
 		})
 
 		got, err := catalog.GetSandbox(ctx, sbxID)
