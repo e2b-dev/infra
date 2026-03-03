@@ -26,4 +26,3 @@ func TestBuildSandboxLogsQueryWithMessageSearch(t *testing.T) {
 		query,
 	)
 }
-
