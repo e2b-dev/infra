@@ -60,7 +60,7 @@ func constructLayerFilesFromOCI(
 	if err != nil {
 		return nil, nil, containerregistry.Config{}, fmt.Errorf("error getting provision script: %w", err)
 	}
-	imgConfig, err := rtfs.CreateExt4Filesystem(ctx, userLogger, phaseMetadata, rootfsPath, provisionScript, provisionLogPrefix, provisionScriptResultPath, aptProxyURL)
+	imgConfig, err := rtfs.CreateExt4Filesystem(ctx, userLogger, phaseMetadata, rootfsPath, provisionScript, provisionLogPrefix, provisionScriptResultPath)
 	if err != nil {
 		return nil, nil, containerregistry.Config{}, fmt.Errorf("error creating ext4 filesystem: %w", err)
 	}

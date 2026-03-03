@@ -90,7 +90,6 @@ func (r *Rootfs) CreateExt4Filesystem(
 	provisionScript string,
 	provisionLogPrefix string,
 	provisionResultPath string,
-	aptProxyURL string,
 ) (c containerregistry.Config, e error) {
 	template := r.buildContext.Config
 
@@ -123,7 +122,7 @@ func (r *Rootfs) CreateExt4Filesystem(
 	l.Info(ctx, fmt.Sprintf("Base Docker image size: %s", humanize.Bytes(uint64(imageSize))))
 
 	l.Debug(ctx, "Setting up system files")
-	layers, err := additionalOCILayers(r.buildContext, provisionScript, provisionLogPrefix, provisionResultPath, aptProxyURL)
+	layers, err := additionalOCILayers(r.buildContext, provisionScript, provisionLogPrefix, provisionResultPath)
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error populating filesystem: %w", err)
 	}
@@ -197,7 +196,6 @@ func additionalOCILayers(
 	provisionScript string,
 	provisionLogPrefix string,
 	provisionResultPath string,
-	aptProxyURL string,
 ) ([]containerregistry.Layer, error) {
 	envdFileData, err := os.ReadFile(buildContext.BuilderConfig.HostEnvdPath)
 	if err != nil {
@@ -220,15 +218,6 @@ func additionalOCILayers(
 		// Set to bin/init so it's not in conflict with systemd
 		// Any rewrite of the init file when booted from it will corrupt the filesystem
 		BusyBoxInitPath: {Bytes: busyboxData, Mode: 0o755},
-	}
-
-	// Conditionally add apt proxy configuration
-	if aptProxyURL != "" {
-		aptProxyConfig := fmt.Sprintf("Acquire::http::Proxy \"%s\";\n", aptProxyURL)
-		filesMap["etc/apt/apt.conf.d/01proxy"] = oci.File{
-			Bytes: []byte(aptProxyConfig),
-			Mode:  0o644,
-		}
 	}
 
 	// add templates

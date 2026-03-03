@@ -11,8 +11,11 @@ echo "Starting provisioning script"
 # GCP Specific logic
 {{ end }}
 
+# Configure apt proxy if URL is provided.
 if [ -n "$APT_PROXY_URL" ]; then
-    echo "Using apt cache proxy: $APT_PROXY_URL"
+    echo "Configuring apt cache proxy: $APT_PROXY_URL"
+    mkdir -p /etc/apt/apt.conf.d
+    echo "Acquire::http::Proxy \"$APT_PROXY_URL\";" > /etc/apt/apt.conf.d/01proxy
 fi
 
 echo "Making configuration immutable"
