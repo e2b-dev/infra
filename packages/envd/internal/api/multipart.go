@@ -274,7 +274,7 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 
 	// Write to a temporary file and rename on success to avoid destroying
 	// any pre-existing file at meta.Path if assembly fails midway.
-	tmpPath := meta.Path + ".e2b-upload.tmp"
+	tmpPath := meta.Path + ".e2b-upload." + uploadId + ".tmp"
 
 	destFile, err := os.OpenFile(tmpPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o666)
 	if err != nil {
