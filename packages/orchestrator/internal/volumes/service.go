@@ -17,6 +17,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/shared/pkg/filesystem"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -105,12 +106,12 @@ func (s *Service) buildPaths(request volumePathRequest) (volumePaths, error) {
 		return volumePaths{}, statusErr.Err()
 	}
 
-	teamID, ok := tryParseUUID(volume.GetTeamId())
+	teamID, ok := internal.TryParseUUID(volume.GetTeamId())
 	if !ok {
 		return volumePaths{}, status.Newf(codes.InvalidArgument, "invalid team ID %q", volume.GetTeamId()).Err()
 	}
 
-	volumeID, ok := tryParseUUID(volume.GetVolumeId())
+	volumeID, ok := internal.TryParseUUID(volume.GetVolumeId())
 	if !ok {
 		return volumePaths{}, status.Newf(codes.InvalidArgument, "invalid volume ID %q", volume.GetVolumeId()).Err()
 	}
@@ -171,12 +172,6 @@ func (s *Service) isVolumeRootHealthy(ctx context.Context, basePath string, volu
 	}
 
 	return true
-}
-
-func tryParseUUID(id string) (uuid.UUID, bool) {
-	val, err := uuid.Parse(id)
-
-	return val, err == nil && val != uuid.Nil
 }
 
 func toEntryFromOSInfoAndPaths(paths volumePaths, fileInfo os.FileInfo) *orchestrator.EntryInfo {

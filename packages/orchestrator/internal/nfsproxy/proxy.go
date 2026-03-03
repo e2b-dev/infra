@@ -14,6 +14,7 @@ import (
 	"github.com/willscott/go-nfs"
 	"github.com/willscott/go-nfs/helpers"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy/jailed"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy/logged"
@@ -84,7 +85,7 @@ func getPrefixFromSandbox(sandboxes *sandbox.Map, filesystemsByType map[string]b
 			return nil, "", fmt.Errorf("failed to mount %q (%s): %w", volumeName, volumeMount.Type, ErrVolumeTypeNotSupported)
 		}
 
-		teamID, ok := tryParseUUID(sbx.Metadata.Runtime.TeamID)
+		teamID, ok := internal.TryParseUUID(sbx.Metadata.Runtime.TeamID)
 		if !ok {
 			return nil, "", ErrInvalidTeamID
 		}
@@ -100,12 +101,6 @@ func getPrefixFromSandbox(sandboxes *sandbox.Map, filesystemsByType map[string]b
 
 		return fileSystem, filepath.Join(prefixParts...), nil
 	}
-}
-
-func tryParseUUID(id string) (uuid.UUID, bool) {
-	val, err := uuid.Parse(id)
-
-	return val, err == nil && val != uuid.Nil
 }
 
 func getChangeFromFilesystem(fs billy.Filesystem) billy.Change {
