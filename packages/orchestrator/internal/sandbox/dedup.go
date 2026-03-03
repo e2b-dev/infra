@@ -4,14 +4,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/bits-and-blooms/bitset"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -31,66 +29,85 @@ func writeDedupDiff(
 	originalMemfile storage.SeekableReader,
 	dirtyBlocks *bitset.BitSet,
 	blockSize int64,
+	totalMemorySize int64,
 	outPath string,
-) (*header.DiffMetadata, error) {
+) (*block.Cache, *header.DiffMetadata, error) {
 	ctx, span := tracer.Start(ctx, "write-dedup-diff")
 	defer span.End()
 
-	outFile, err := os.Create(outPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create dedup diff file: %w", err)
-	}
-	defer outFile.Close()
-
-	pageDirty := bitset.New(0)
+	totalPageCount := uint(header.TotalBlocks(totalMemorySize, header.PageSize))
+	pageDirty := bitset.New(totalPageCount)
 
 	srcBuf := make([]byte, blockSize)
 	origBuf := make([]byte, blockSize)
 
+	// First pass: count unique pages to size the output cache
 	var cacheOffset int64
 	var totalPages, dedupedPages uint
+	var uniquePageCount int64
 
 	for i, ok := dirtyBlocks.NextSet(0); ok; i, ok = dirtyBlocks.NextSet(i + 1) {
 		memOffset := int64(i) * blockSize
 
 		_, err := exportedCache.ReadAt(srcBuf, cacheOffset)
 		if err != nil {
-			return nil, fmt.Errorf("failed to read from exported cache at offset %d: %w", cacheOffset, err)
+			return nil, nil, fmt.Errorf("failed to read from exported cache at offset %d: %w", cacheOffset, err)
 		}
 
 		_, err = originalMemfile.ReadAt(ctx, origBuf, memOffset)
 		if err != nil {
-			return nil, fmt.Errorf("failed to read from original memfile at offset %d: %w", memOffset, err)
+			return nil, nil, fmt.Errorf("failed to read from original memfile at offset %d: %w", memOffset, err)
 		}
 
 		for j := int64(0); j < blockSize; j += header.PageSize {
 			totalPages++
-
 			if bytes.Equal(srcBuf[j:j+header.PageSize], origBuf[j:j+header.PageSize]) {
 				dedupedPages++
+
 				continue
 			}
-
 			pageIdx := uint(memOffset+j) / uint(header.PageSize)
 			pageDirty.Set(pageIdx)
-
-			_, err = outFile.Write(srcBuf[j : j+header.PageSize])
-			if err != nil {
-				return nil, fmt.Errorf("failed to write dedup page: %w", err)
-			}
+			uniquePageCount++
 		}
 
 		cacheOffset += blockSize
 	}
 
-	uniquePages := totalPages - dedupedPages
+	// Create output cache with exact size
+	dedupSize := uniquePageCount * header.PageSize
+	dedupCache, err := block.NewCache(dedupSize, header.PageSize, outPath, false)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create dedup cache: %w", err)
+	}
+
+	// Second pass: write unique pages to cache
+	cacheOffset = 0
+	var writeOffset int64
+
+	for i, ok := dirtyBlocks.NextSet(0); ok; i, ok = dirtyBlocks.NextSet(i + 1) {
+		memOffset := int64(i) * blockSize
+
+		exportedCache.ReadAt(srcBuf, cacheOffset)
+		originalMemfile.ReadAt(ctx, origBuf, memOffset)
+
+		for j := int64(0); j < blockSize; j += header.PageSize {
+			if bytes.Equal(srcBuf[j:j+header.PageSize], origBuf[j:j+header.PageSize]) {
+				continue
+			}
+			dedupCache.WriteAt(srcBuf[j:j+header.PageSize], writeOffset)
+			writeOffset += header.PageSize
+		}
+
+		cacheOffset += blockSize
+	}
+
 	exportedSize := int64(dirtyBlocks.Count()) * blockSize
-	dedupSize := int64(uniquePages) * header.PageSize
 
 	telemetry.SetAttributes(ctx,
 		attribute.Int64("dedup.total_pages", int64(totalPages)),
 		attribute.Int64("dedup.deduped_pages", int64(dedupedPages)),
-		attribute.Int64("dedup.unique_pages", int64(uniquePages)),
+		attribute.Int64("dedup.unique_pages", uniquePageCount),
 		attribute.Float64("dedup.ratio", safeDivide(float64(dedupedPages), float64(totalPages))),
 	)
 
@@ -98,38 +115,28 @@ func writeDedupDiff(
 		zap.Uint("dirty_blocks", dirtyBlocks.Count()),
 		zap.Uint("total_4k_pages", totalPages),
 		zap.Uint("deduped_pages", dedupedPages),
-		zap.Uint("unique_pages", uniquePages),
+		zap.Int64("unique_pages", uniquePageCount),
 		zap.Int64("exported_size_bytes", exportedSize),
 		zap.Int64("dedup_size_bytes", dedupSize),
 		zap.String("reduction", fmt.Sprintf("%.1f%%", safeDivide(float64(dedupedPages), float64(totalPages))*100)),
 	)
 
-	return &header.DiffMetadata{
+	// Every page NOT in pageDirty must be mapped to uuid.Nil (zeros)
+	pageEmpty := bitset.New(totalPageCount)
+	pageEmpty.FlipRange(0, totalPageCount)
+	pageEmpty.InPlaceDifference(pageDirty)
+
+	return dedupCache, &header.DiffMetadata{
 		Dirty:     pageDirty,
-		Empty:     bitset.New(0),
+		Empty:     pageEmpty,
 		BlockSize: header.PageSize,
 	}, nil
-}
-
-// newDedupDiffFromFile creates a Diff from a dedup diff file on disk.
-func newDedupDiffFromFile(cacheKey build.DiffStoreKey, filePath string) (build.Diff, error) {
-	info, err := os.Stat(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to stat dedup diff file: %w", err)
-	}
-
-	cache, err := block.NewCache(info.Size(), header.PageSize, filePath, true)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create cache from dedup diff: %w", err)
-	}
-
-	return build.NewLocalDiffFromCache(cacheKey, cache)
 }
 
 func safeDivide(a, b float64) float64 {
 	if b == 0 {
 		return 0
 	}
+
 	return a / b
 }
-

@@ -25,7 +25,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/fdexit"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/memory"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/testutils"
@@ -39,13 +38,17 @@ type MemorySlicer struct {
 	pagesize int64
 }
 
-var _ block.Slicer = (*MemorySlicer)(nil)
+var _ PageReader = (*MemorySlicer)(nil)
 
 func NewMemorySlicer(content []byte, pagesize int64) *MemorySlicer {
 	return &MemorySlicer{
 		content:  content,
 		pagesize: pagesize,
 	}
+}
+
+func (s *MemorySlicer) ReadAt(_ context.Context, p []byte, off int64) (int, error) {
+	return copy(p, s.content[off:off+int64(len(p))]), nil
 }
 
 func (s *MemorySlicer) Slice(_ context.Context, offset, size int64) ([]byte, error) {

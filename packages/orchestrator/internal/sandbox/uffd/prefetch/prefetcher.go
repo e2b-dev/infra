@@ -9,8 +9,8 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/userfaultfd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -35,7 +35,7 @@ type prefetchData struct {
 // Both phases run with their own parallelism limits and don't block each other.
 type Prefetcher struct {
 	logger       logger.Logger
-	source       block.Slicer
+	source       userfaultfd.PageReader
 	uffd         uffd.MemoryBackend
 	mapping      *metadata.MemoryPrefetchMapping
 	featureFlags *featureflags.Client
@@ -43,7 +43,7 @@ type Prefetcher struct {
 
 func New(
 	logger logger.Logger,
-	source block.Slicer,
+	source userfaultfd.PageReader,
 	uffd uffd.MemoryBackend,
 	mapping *metadata.MemoryPrefetchMapping,
 	featureFlags *featureflags.Client,
@@ -201,8 +201,9 @@ func (p *Prefetcher) fetchWorker(
 				return
 			}
 
-			// Fetch from source - this populates the cache
-			data, err := p.source.Slice(ctx, offset, blockSize)
+			data := make([]byte, blockSize)
+
+			_, err := p.source.ReadAt(ctx, data, offset)
 			if err != nil {
 				p.logger.Debug(ctx, "prefetch: failed to fetch page",
 					zap.Int64("offset", offset),
@@ -215,7 +216,6 @@ func (p *Prefetcher) fetchWorker(
 
 			fetchedCount.Add(1)
 
-			// Queue for copy (non-blocking - channel has enough capacity)
 			select {
 			case copyCh <- prefetchData{offset: offset, data: data}:
 			case <-ctx.Done():

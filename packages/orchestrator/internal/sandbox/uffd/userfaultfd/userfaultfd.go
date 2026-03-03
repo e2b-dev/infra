@@ -39,10 +39,10 @@ type PageReader interface {
 	ReadAt(ctx context.Context, p []byte, off int64) (int, error)
 }
 
-// pagePool is shared across all UFFD instances to reuse hugepage-sized buffers.
 var pagePool = sync.Pool{
 	New: func() any {
 		buf := make([]byte, header.HugepageSize)
+
 		return &buf
 	},
 }
@@ -402,6 +402,7 @@ func (u *Userfaultfd) faultPageDirect(
 	copyErr := u.fd.copy(addr, pagesize, data, copyMode)
 	if errors.Is(copyErr, unix.EEXIST) {
 		span.SetAttributes(attribute.Bool("uffd.already_mapped", true))
+
 		return nil
 	}
 

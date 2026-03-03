@@ -67,10 +67,8 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 			return n, io.EOF
 		}
 
-		// Skip reading when the uuid is nil.
-		// We will use this to handle base builds that are already diffs.
-		// The passed slice p must start as empty, otherwise we would need to copy the empty values there.
 		if *buildID == uuid.Nil {
+			clear(p[n : n+int(readLength)])
 			n += int(readLength)
 
 			continue

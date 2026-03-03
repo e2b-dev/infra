@@ -30,13 +30,17 @@ func NewEmpty(size int64, blockSize int64, buildID uuid.UUID) (*Empty, error) {
 	}, nil
 }
 
-func (e *Empty) ReadAt(ctx context.Context, p []byte, off int64) (int, error) {
-	slice, err := e.Slice(ctx, off, int64(len(p)))
-	if err != nil {
-		return 0, fmt.Errorf("failed to slice empty: %w", err)
+func (e *Empty) ReadAt(_ context.Context, p []byte, off int64) (int, error) {
+	end := off + int64(len(p))
+	size := int64(e.header.Metadata.Size)
+	if end > size {
+		end = size
 	}
 
-	return copy(p, slice), nil
+	n := int(end - off)
+	clear(p[:n])
+
+	return n, nil
 }
 
 func (e *Empty) Size(_ context.Context) (int64, error) {
