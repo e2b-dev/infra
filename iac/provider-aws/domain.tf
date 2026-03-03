@@ -19,6 +19,10 @@ resource "aws_acm_certificate" "wildcard" {
   }
 }
 
+resource "aws_acm_certificate_validation" "wildcard" {
+  certificate_arn = aws_acm_certificate.wildcard.arn
+}
+
 resource "cloudflare_record" "cert" {
   for_each = {
     for dvo in aws_acm_certificate.wildcard.domain_validation_options : dvo.domain_name => {
