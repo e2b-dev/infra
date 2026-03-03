@@ -259,6 +259,10 @@ func TestCompose_RoundTripWithDownload(t *testing.T) {
 func TestCompose_PreservesExistingFileOnFailure(t *testing.T) {
 	t.Parallel()
 
+	if os.Getuid() == 0 {
+		t.Skip("test requires non-root to enforce directory permissions")
+	}
+
 	api, currentUser := newComposeTestAPI(t)
 	destDir := t.TempDir()
 	destPath := filepath.Join(destDir, "existing.txt")
