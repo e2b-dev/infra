@@ -91,8 +91,15 @@ func (a *API) PostFilesCompose(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if _, err := os.Stat(resolved); err != nil {
+		info, err := os.Stat(resolved)
+		if err != nil {
 			jsonError(w, http.StatusNotFound, fmt.Errorf("source file not found: %s", src))
+
+			return
+		}
+
+		if !info.Mode().IsRegular() {
+			jsonError(w, http.StatusBadRequest, fmt.Errorf("source path is not a regular file: %s", src))
 
 			return
 		}

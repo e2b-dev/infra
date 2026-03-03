@@ -159,6 +159,20 @@ func TestCompose_SourceEqualsDestination(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
 }
 
+func TestCompose_SourceIsDirectory(t *testing.T) {
+	t.Parallel()
+
+	api, currentUser := newComposeTestAPI(t)
+
+	w := callCompose(t, api, ComposeRequest{
+		SourcePaths: []string{t.TempDir()},
+		Destination: filepath.Join(t.TempDir(), "dest.txt"),
+		Username:    &currentUser.Username,
+	})
+
+	assert.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
+}
+
 func TestCompose_SourceNotFound(t *testing.T) {
 	t.Parallel()
 
