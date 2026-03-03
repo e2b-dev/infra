@@ -23,6 +23,27 @@ const (
 	File EntryInfoType = "file"
 )
 
+// ComposeRequest defines model for ComposeRequest.
+type ComposeRequest struct {
+	// Destination Destination file path for the composed file
+	Destination string `json:"destination"`
+
+	// SourcePaths Ordered list of source file paths to concatenate
+	SourcePaths []string `json:"source_paths"`
+
+	// Username User for setting ownership and resolving relative paths
+	Username *string `json:"username,omitempty"`
+}
+
+// ComposeResponse defines model for ComposeResponse.
+type ComposeResponse struct {
+	// Path Path to the composed file
+	Path string `json:"path"`
+
+	// Size Total size of the composed file in bytes
+	Size int64 `json:"size"`
+}
+
 // EntryInfo defines model for EntryInfo.
 type EntryInfo struct {
 	// Name Name of the file
@@ -74,30 +95,6 @@ type Metrics struct {
 	Ts *int64 `json:"ts,omitempty"`
 }
 
-// UploadComplete defines model for UploadComplete.
-type UploadComplete struct {
-	// Path Path to the final assembled file
-	Path string `json:"path"`
-
-	// Size Total size of the assembled file in bytes
-	Size int64 `json:"size"`
-}
-
-// UploadInit defines model for UploadInit.
-type UploadInit struct {
-	// UploadId Unique identifier for the upload session
-	UploadId string `json:"uploadId"`
-}
-
-// UploadPartInfo defines model for UploadPartInfo.
-type UploadPartInfo struct {
-	// PartNumber The part number that was uploaded
-	PartNumber int `json:"partNumber"`
-
-	// Size Size of the uploaded part in bytes
-	Size int64 `json:"size"`
-}
-
 // VolumeMount Volume
 type VolumeMount struct {
 	NfsTarget string `json:"nfs_target"`
@@ -112,9 +109,6 @@ type Signature = string
 
 // SignatureExpiration defines model for SignatureExpiration.
 type SignatureExpiration = int
-
-// UploadId defines model for UploadId.
-type UploadId = string
 
 // User defines model for User.
 type User = string
@@ -133,9 +127,6 @@ type InvalidUser = Error
 
 // NotEnoughDiskSpace defines model for NotEnoughDiskSpace.
 type NotEnoughDiskSpace = Error
-
-// UploadNotFound defines model for UploadNotFound.
-type UploadNotFound = Error
 
 // UploadSuccess defines model for UploadSuccess.
 type UploadSuccess = []EntryInfo
@@ -175,21 +166,6 @@ type PostFilesParams struct {
 	SignatureExpiration *SignatureExpiration `form:"signature_expiration,omitempty" json:"signature_expiration,omitempty"`
 }
 
-// PostFilesUploadInitParams defines parameters for PostFilesUploadInit.
-type PostFilesUploadInitParams struct {
-	// Path Path to the file, URL encoded. Can be relative to user's home directory.
-	Path *FilePath `form:"path,omitempty" json:"path,omitempty"`
-
-	// Username User used for setting the owner, or resolving relative paths.
-	Username *User `form:"username,omitempty" json:"username,omitempty"`
-}
-
-// PutFilesUploadUploadIdParams defines parameters for PutFilesUploadUploadId.
-type PutFilesUploadUploadIdParams struct {
-	// PartNumber The part number for this chunk (0-indexed)
-	PartNumber int `form:"partNumber" json:"partNumber"`
-}
-
 // PostInitJSONBody defines parameters for PostInit.
 type PostInitJSONBody struct {
 	// AccessToken Access token for secure access to envd service
@@ -215,6 +191,9 @@ type PostInitJSONBody struct {
 // PostFilesMultipartRequestBody defines body for PostFiles for multipart/form-data ContentType.
 type PostFilesMultipartRequestBody PostFilesMultipartBody
 
+// PostFilesComposeJSONRequestBody defines body for PostFilesCompose for application/json ContentType.
+type PostFilesComposeJSONRequestBody = ComposeRequest
+
 // PostInitJSONRequestBody defines body for PostInit for application/json ContentType.
 type PostInitJSONRequestBody PostInitJSONBody
 
@@ -229,18 +208,9 @@ type ServerInterface interface {
 	// Upload a file and ensure the parent directories exist. If the file exists, it will be overwritten.
 	// (POST /files)
 	PostFiles(w http.ResponseWriter, r *http.Request, params PostFilesParams)
-	// Initialize a multipart file upload session
-	// (POST /files/upload/init)
-	PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params PostFilesUploadInitParams)
-	// Abort a multipart file upload and clean up temporary files
-	// (DELETE /files/upload/{uploadId})
-	DeleteFilesUploadUploadId(w http.ResponseWriter, r *http.Request, uploadId UploadId)
-	// Upload a part of a multipart file upload
-	// (PUT /files/upload/{uploadId})
-	PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, uploadId UploadId, params PutFilesUploadUploadIdParams)
-	// Complete a multipart file upload and assemble the final file
-	// (POST /files/upload/{uploadId}/complete)
-	PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Request, uploadId UploadId)
+	// Compose multiple files into a single file using zero-copy concatenation. Source files are deleted after successful composition.
+	// (POST /files/compose)
+	PostFilesCompose(w http.ResponseWriter, r *http.Request)
 	// Check the health of the service
 	// (GET /health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
@@ -274,27 +244,9 @@ func (_ Unimplemented) PostFiles(w http.ResponseWriter, r *http.Request, params 
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// Initialize a multipart file upload session
-// (POST /files/upload/init)
-func (_ Unimplemented) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params PostFilesUploadInitParams) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// Abort a multipart file upload and clean up temporary files
-// (DELETE /files/upload/{uploadId})
-func (_ Unimplemented) DeleteFilesUploadUploadId(w http.ResponseWriter, r *http.Request, uploadId UploadId) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// Upload a part of a multipart file upload
-// (PUT /files/upload/{uploadId})
-func (_ Unimplemented) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, uploadId UploadId, params PutFilesUploadUploadIdParams) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// Complete a multipart file upload and assemble the final file
-// (POST /files/upload/{uploadId}/complete)
-func (_ Unimplemented) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Request, uploadId UploadId) {
+// Compose multiple files into a single file using zero-copy concatenation. Source files are deleted after successful composition.
+// (POST /files/compose)
+func (_ Unimplemented) PostFilesCompose(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -459,60 +411,8 @@ func (siw *ServerInterfaceWrapper) PostFiles(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r)
 }
 
-// PostFilesUploadInit operation middleware
-func (siw *ServerInterfaceWrapper) PostFilesUploadInit(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-
-	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, AccessTokenAuthScopes, []string{})
-
-	r = r.WithContext(ctx)
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params PostFilesUploadInitParams
-
-	// ------------- Optional query parameter "path" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "path", r.URL.Query(), &params.Path)
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "path", Err: err})
-		return
-	}
-
-	// ------------- Optional query parameter "username" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "username", r.URL.Query(), &params.Username)
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "username", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.PostFilesUploadInit(w, r, params)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// DeleteFilesUploadUploadId operation middleware
-func (siw *ServerInterfaceWrapper) DeleteFilesUploadUploadId(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-
-	// ------------- Path parameter "uploadId" -------------
-	var uploadId UploadId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "uploadId", chi.URLParam(r, "uploadId"), &uploadId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "uploadId", Err: err})
-		return
-	}
+// PostFilesCompose operation middleware
+func (siw *ServerInterfaceWrapper) PostFilesCompose(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
@@ -521,87 +421,7 @@ func (siw *ServerInterfaceWrapper) DeleteFilesUploadUploadId(w http.ResponseWrit
 	r = r.WithContext(ctx)
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.DeleteFilesUploadUploadId(w, r, uploadId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// PutFilesUploadUploadId operation middleware
-func (siw *ServerInterfaceWrapper) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-
-	// ------------- Path parameter "uploadId" -------------
-	var uploadId UploadId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "uploadId", chi.URLParam(r, "uploadId"), &uploadId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "uploadId", Err: err})
-		return
-	}
-
-	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, AccessTokenAuthScopes, []string{})
-
-	r = r.WithContext(ctx)
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params PutFilesUploadUploadIdParams
-
-	// ------------- Required query parameter "partNumber" -------------
-
-	if paramValue := r.URL.Query().Get("partNumber"); paramValue != "" {
-
-	} else {
-		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "partNumber"})
-		return
-	}
-
-	err = runtime.BindQueryParameter("form", true, true, "partNumber", r.URL.Query(), &params.PartNumber)
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "partNumber", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.PutFilesUploadUploadId(w, r, uploadId, params)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// PostFilesUploadUploadIdComplete operation middleware
-func (siw *ServerInterfaceWrapper) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-
-	// ------------- Path parameter "uploadId" -------------
-	var uploadId UploadId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "uploadId", chi.URLParam(r, "uploadId"), &uploadId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "uploadId", Err: err})
-		return
-	}
-
-	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, AccessTokenAuthScopes, []string{})
-
-	r = r.WithContext(ctx)
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.PostFilesUploadUploadIdComplete(w, r, uploadId)
+		siw.Handler.PostFilesCompose(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -788,16 +608,7 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/files", wrapper.PostFiles)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/files/upload/init", wrapper.PostFilesUploadInit)
-	})
-	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/files/upload/{uploadId}", wrapper.DeleteFilesUploadUploadId)
-	})
-	r.Group(func(r chi.Router) {
-		r.Put(options.BaseURL+"/files/upload/{uploadId}", wrapper.PutFilesUploadUploadId)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/files/upload/{uploadId}/complete", wrapper.PostFilesUploadUploadIdComplete)
+		r.Post(options.BaseURL+"/files/compose", wrapper.PostFilesCompose)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/health", wrapper.GetHealth)

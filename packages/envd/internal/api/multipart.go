@@ -8,9 +8,6 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
-	"sort"
-	"strconv"
-	"sync"
 	"syscall"
 
 	"github.com/google/uuid"
@@ -20,73 +17,31 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
 )
 
-const (
-	multipartUploadBaseDir = "/tmp/multipart-uploads"
-	partFileFormat         = "%06d"
-)
-
-type uploadSession struct {
-	Path string
-	UID  int
-	GID  int
-
-	// mu guards concurrent access to the upload session. Part uploads hold
-	// an RLock so they can proceed in parallel; Complete and Delete acquire
-	// a write Lock, which blocks until every in-flight part upload finishes.
-	mu sync.RWMutex
-}
-
-func uploadDir(uploadId string) string {
-	return filepath.Join(multipartUploadBaseDir, uploadId)
-}
-
-func (a *API) getUpload(uploadId string) (*uploadSession, error) {
-	val, ok := a.uploads.Load(uploadId)
-	if !ok {
-		return nil, fmt.Errorf("upload session not found")
-	}
-
-	session, ok := val.(*uploadSession)
-	if !ok {
-		return nil, fmt.Errorf("invalid upload session data: %T", val)
-	}
-
-	return session, nil
-}
-
-// claimUpload acquires an exclusive lock on the upload session, waits for any
-// in-flight part uploads to finish, then removes the session from the map.
-// The write lock is held on return — the caller must defer session.mu.Unlock().
-// Only one caller can succeed; others get an error.
-func (a *API) claimUpload(uploadId string) (*uploadSession, error) {
-	session, err := a.getUpload(uploadId)
-	if err != nil {
-		return nil, err
-	}
-
-	session.mu.Lock()
-
-	if _, loaded := a.uploads.LoadAndDelete(uploadId); !loaded {
-		session.mu.Unlock()
-
-		return nil, fmt.Errorf("upload session not found")
-	}
-
-	return session, nil
-}
-
-func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params PostFilesUploadInitParams) {
+func (a *API) PostFilesCompose(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
 	operationID := logs.AssignOperationID()
 
-	if params.Path == nil || *params.Path == "" {
-		jsonError(w, http.StatusBadRequest, fmt.Errorf("path is required"))
+	var req ComposeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, http.StatusBadRequest, fmt.Errorf("invalid request body: %w", err))
 
 		return
 	}
 
-	username, err := execcontext.ResolveDefaultUsername(params.Username, a.defaults.User)
+	if len(req.SourcePaths) == 0 {
+		jsonError(w, http.StatusBadRequest, fmt.Errorf("source_paths must not be empty"))
+
+		return
+	}
+
+	if req.Destination == "" {
+		jsonError(w, http.StatusBadRequest, fmt.Errorf("destination is required"))
+
+		return
+	}
+
+	username, err := execcontext.ResolveDefaultUsername(req.Username, a.defaults.User)
 	if err != nil {
 		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("no user specified")
 		jsonError(w, http.StatusBadRequest, err)
@@ -112,170 +67,34 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 		return
 	}
 
-	filePath, err := permissions.ExpandAndResolve(*params.Path, u, a.defaults.Workdir)
+	destPath, err := permissions.ExpandAndResolve(req.Destination, u, a.defaults.Workdir)
 	if err != nil {
-		errMsg := fmt.Errorf("error resolving path: %w", err)
+		errMsg := fmt.Errorf("error resolving destination path: %w", err)
 		a.logger.Error().Err(errMsg).Str(string(logs.OperationIDKey), operationID).Msg("path resolution failed")
 		jsonError(w, http.StatusBadRequest, errMsg)
 
 		return
 	}
 
-	uploadId := uuid.New().String()
-
-	err = os.MkdirAll(uploadDir(uploadId), 0o700)
-	if err != nil {
-		errMsg := fmt.Errorf("error creating upload directory: %w", err)
-		a.logger.Error().Err(errMsg).Str(string(logs.OperationIDKey), operationID).Msg("failed to create upload dir")
-		jsonError(w, http.StatusInternalServerError, errMsg)
-
-		return
-	}
-
-	a.uploads.Store(uploadId, &uploadSession{
-		Path: filePath,
-		UID:  uid,
-		GID:  gid,
-	})
-
-	a.logger.Info().
-		Str(string(logs.OperationIDKey), operationID).
-		Str("uploadId", uploadId).
-		Str("path", filePath).
-		Str("username", username).
-		Msg("Multipart upload initialized")
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-
-	if err := json.NewEncoder(w).Encode(UploadInit{UploadId: uploadId}); err != nil {
-		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("failed to encode upload init response")
-	}
-}
-
-func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, uploadId UploadId, params PutFilesUploadUploadIdParams) {
-	defer r.Body.Close()
-
-	session, err := a.getUpload(uploadId)
-	if err != nil {
-		jsonError(w, http.StatusNotFound, err)
-
-		return
-	}
-
-	// Hold an RLock for the duration of the write so that a concurrent
-	// Complete or Delete cannot snapshot/remove the parts directory while
-	// this part is still being written.
-	session.mu.RLock()
-	defer session.mu.RUnlock()
-
-	// Re-check: the session may have been claimed while we waited for the lock.
-	if _, err := a.getUpload(uploadId); err != nil {
-		jsonError(w, http.StatusNotFound, err)
-
-		return
-	}
-
-	if params.PartNumber < 0 {
-		jsonError(w, http.StatusBadRequest, fmt.Errorf("partNumber must be non-negative"))
-
-		return
-	}
-
-	partPath := filepath.Join(uploadDir(uploadId), fmt.Sprintf(partFileFormat, params.PartNumber))
-
-	file, err := os.OpenFile(partPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
-	if err != nil {
-		if errors.Is(err, syscall.ENOSPC) {
-			jsonError(w, http.StatusInsufficientStorage, fmt.Errorf("not enough disk space available"))
+	resolvedSources := make([]string, len(req.SourcePaths))
+	for i, src := range req.SourcePaths {
+		resolved, err := permissions.ExpandAndResolve(src, u, a.defaults.Workdir)
+		if err != nil {
+			jsonError(w, http.StatusBadRequest, fmt.Errorf("error resolving source path %q: %w", src, err))
 
 			return
 		}
 
-		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error creating part file: %w", err))
-
-		return
-	}
-	defer file.Close()
-
-	written, err := file.ReadFrom(r.Body)
-	if err != nil {
-		// Close and remove the truncated part file so that a subsequent
-		// Complete call cannot silently assemble corrupt data.
-		file.Close()
-		os.Remove(partPath)
-
-		if errors.Is(err, syscall.ENOSPC) {
-			jsonError(w, http.StatusInsufficientStorage, fmt.Errorf("not enough disk space available"))
+		if _, err := os.Stat(resolved); err != nil {
+			jsonError(w, http.StatusNotFound, fmt.Errorf("source file not found: %s", src))
 
 			return
 		}
 
-		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error writing part file: %w", err))
-
-		return
+		resolvedSources[i] = resolved
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-
-	if err := json.NewEncoder(w).Encode(UploadPartInfo{
-		PartNumber: params.PartNumber,
-		Size:       written,
-	}); err != nil {
-		a.logger.Error().Err(err).Str("uploadId", uploadId).Msg("failed to encode upload part response")
-	}
-}
-
-func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Request, uploadId UploadId) {
-	defer r.Body.Close()
-
-	// Claim the session exclusively — waits for in-flight PUTs to finish.
-	session, err := a.claimUpload(uploadId)
-	if err != nil {
-		jsonError(w, http.StatusNotFound, err)
-
-		return
-	}
-	defer session.mu.Unlock()
-
-	dir := uploadDir(uploadId)
-
-	// Only clean up the parts directory on success. On failure, re-register
-	// the session so the client can retry Complete without re-uploading.
-	succeeded := false
-	defer func() {
-		if succeeded {
-			os.RemoveAll(dir)
-		} else {
-			a.uploads.Store(uploadId, session)
-		}
-	}()
-
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error reading parts directory: %w", err))
-
-		return
-	}
-
-	var partNames []string
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			partNames = append(partNames, entry.Name())
-		}
-	}
-
-	// Sort numerically so part ordering is correct even when filenames
-	// have different digit counts (e.g. "999999" vs "1000000").
-	sort.Slice(partNames, func(i, j int) bool {
-		ni, _ := strconv.Atoi(partNames[i])
-		nj, _ := strconv.Atoi(partNames[j])
-
-		return ni < nj
-	})
-
-	err = permissions.EnsureDirs(filepath.Dir(session.Path), session.UID, session.GID)
+	err = permissions.EnsureDirs(filepath.Dir(destPath), uid, gid)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error ensuring directories: %w", err))
 
@@ -283,8 +102,8 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 	}
 
 	// Write to a temporary file and rename on success to avoid destroying
-	// any pre-existing file at session.Path if assembly fails midway.
-	tmpPath := session.Path + ".e2b-upload." + uploadId + ".tmp"
+	// any pre-existing file at destPath if assembly fails midway.
+	tmpPath := destPath + ".e2b-compose." + uuid.New().String() + ".tmp"
 
 	destFile, err := os.OpenFile(tmpPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o666)
 	if err != nil {
@@ -299,7 +118,7 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	err = os.Chown(tmpPath, session.UID, session.GID)
+	err = os.Chown(tmpPath, uid, gid)
 	if err != nil {
 		destFile.Close()
 		os.Remove(tmpPath)
@@ -310,18 +129,21 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 
 	var totalSize int64
 
-	for _, name := range partNames {
-		partFile, err := os.Open(filepath.Join(dir, name))
+	for _, srcPath := range resolvedSources {
+		srcFile, err := os.Open(srcPath)
 		if err != nil {
 			destFile.Close()
 			os.Remove(tmpPath)
-			jsonError(w, http.StatusInternalServerError, fmt.Errorf("error opening part file %s: %w", name, err))
+			jsonError(w, http.StatusInternalServerError, fmt.Errorf("error opening source file %s: %w", srcPath, err))
 
 			return
 		}
 
-		n, err := destFile.ReadFrom(partFile)
-		partFile.Close()
+		// ReadFrom uses copy_file_range on Linux for zero-copy transfers
+		// between regular files — data moves kernel-side without touching
+		// userspace buffers.
+		n, err := destFile.ReadFrom(srcFile)
+		srcFile.Close()
 
 		if err != nil {
 			destFile.Close()
@@ -333,7 +155,7 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 				return
 			}
 
-			jsonError(w, http.StatusInternalServerError, fmt.Errorf("error assembling part %s: %w", name, err))
+			jsonError(w, http.StatusInternalServerError, fmt.Errorf("error composing source %s: %w", srcPath, err))
 
 			return
 		}
@@ -348,54 +170,31 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	if err := os.Rename(tmpPath, session.Path); err != nil {
+	if err := os.Rename(tmpPath, destPath); err != nil {
 		os.Remove(tmpPath)
-		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error finalizing upload: %w", err))
+		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error finalizing compose: %w", err))
 
 		return
 	}
 
-	succeeded = true
+	for _, srcPath := range resolvedSources {
+		os.Remove(srcPath)
+	}
 
 	a.logger.Info().
-		Str("uploadId", uploadId).
-		Str("path", session.Path).
+		Str(string(logs.OperationIDKey), operationID).
+		Str("path", destPath).
+		Int("sources", len(resolvedSources)).
 		Int64("size", totalSize).
-		Msg("Multipart upload completed")
+		Msg("File compose completed")
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 
-	if err := json.NewEncoder(w).Encode(UploadComplete{
-		Path: session.Path,
+	if err := json.NewEncoder(w).Encode(ComposeResponse{
+		Path: destPath,
 		Size: totalSize,
 	}); err != nil {
-		a.logger.Error().Err(err).Str("uploadId", uploadId).Msg("failed to encode upload complete response")
+		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("failed to encode compose response")
 	}
-}
-
-func (a *API) DeleteFilesUploadUploadId(w http.ResponseWriter, r *http.Request, uploadId UploadId) {
-	defer r.Body.Close()
-
-	session, err := a.claimUpload(uploadId)
-	if err != nil {
-		jsonError(w, http.StatusNotFound, err)
-
-		return
-	}
-	defer session.mu.Unlock()
-
-	if err := os.RemoveAll(uploadDir(uploadId)); err != nil {
-		a.logger.Error().Err(err).Str("uploadId", uploadId).Msg("failed to remove upload directory on abort")
-
-		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error cleaning up upload directory: %w", err))
-
-		return
-	}
-
-	a.logger.Info().
-		Str("uploadId", uploadId).
-		Msg("Multipart upload aborted")
-
-	w.WriteHeader(http.StatusNoContent)
 }
