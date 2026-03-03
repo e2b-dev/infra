@@ -26,6 +26,7 @@ const waitForInit = 5 * time.Second
 type Client struct {
 	ld             *ldclient.LDClient
 	deploymentName string
+	serviceName    string
 }
 
 func NewClientWithDatasource(source *ldtestdata.TestDataSource) (*Client, error) {
@@ -82,6 +83,10 @@ func NewClientWithLogLevel(logLevel ldlog.LogLevel) (*Client, error) {
 
 func (c *Client) SetDeploymentName(deploymentName string) {
 	c.deploymentName = deploymentName
+}
+
+func (c *Client) SetServiceName(serviceName string) {
+	c.serviceName = serviceName
 }
 
 func (c *Client) BoolFlag(ctx context.Context, flag BoolFlag, contexts ...ldcontext.Context) bool {
@@ -144,6 +149,9 @@ func (c *Client) Close(ctx context.Context) error {
 func (c *Client) allContexts(contexts []ldcontext.Context) []ldcontext.Context {
 	if c.deploymentName != "" {
 		contexts = append(contexts, deploymentContext(c.deploymentName))
+	}
+	if c.serviceName != "" {
+		contexts = append(contexts, ServiceContext(c.serviceName))
 	}
 
 	return contexts
