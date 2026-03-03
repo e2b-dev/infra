@@ -207,7 +207,7 @@ func newTestInfra(t *testing.T, ctx context.Context) *testInfra {
 
 	// Template cache
 	blockMetrics, _ := blockmetrics.NewMetrics(noop.NewMeterProvider())
-	templateCache, err := sbxtemplate.NewCache(orcConfig, flags, persistenceTemplate, blockMetrics)
+	templateCache, err := sbxtemplate.NewCache(orcConfig, flags, persistenceTemplate, blockMetrics, nil)
 	require.NoError(t, err)
 	templateCache.Start(ctx)
 	ti.closers = append(ti.closers, func(_ context.Context) { templateCache.Stop() })

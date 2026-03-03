@@ -383,14 +383,16 @@ func (c *cachedFramedFile) getFrameUncompressed(ctx context.Context, offsetU int
 	timer.Success(ctx, int64(r.Length))
 
 	// Async write-back
-	dataCopy := make([]byte, r.Length)
-	copy(dataCopy, buf[:r.Length])
+	if !skipCacheWriteback(ctx) {
+		dataCopy := make([]byte, r.Length)
+		copy(dataCopy, buf[:r.Length])
 
-	c.goCtx(ctx, func(ctx context.Context) {
-		if err := c.writeToCache(ctx, offsetU, chunkPath, dataCopy); err != nil {
-			recordCacheWriteError(ctx, cacheTypeFramedFile, cacheOpGetFrame, err)
-		}
-	})
+		c.goCtx(ctx, func(ctx context.Context) {
+			if err := c.writeToCache(ctx, offsetU, chunkPath, dataCopy); err != nil {
+				recordCacheWriteError(ctx, cacheTypeFramedFile, cacheOpGetFrame, err)
+			}
+		})
+	}
 
 	return r, nil
 }
@@ -466,15 +468,17 @@ func (c *cachedFramedFile) Size(ctx context.Context) (size int64, e error) {
 	}
 
 	finalU := u
-	c.goCtx(ctx, func(ctx context.Context) {
-		ctx, span := c.tracer.Start(ctx, "write size of object to cache")
-		defer span.End()
+	if !skipCacheWriteback(ctx) {
+		c.goCtx(ctx, func(ctx context.Context) {
+			ctx, span := c.tracer.Start(ctx, "write size of object to cache")
+			defer span.End()
 
-		if err := c.writeLocalSize(ctx, finalU); err != nil {
-			recordError(span, err)
-			recordCacheWriteError(ctx, cacheTypeFramedFile, cacheOpSize, err)
-		}
-	})
+			if err := c.writeLocalSize(ctx, finalU); err != nil {
+				recordError(span, err)
+				recordCacheWriteError(ctx, cacheTypeFramedFile, cacheOpSize, err)
+			}
+		})
+	}
 
 	recordCacheRead(ctx, false, 0, cacheTypeFramedFile, cacheOpSize)
 

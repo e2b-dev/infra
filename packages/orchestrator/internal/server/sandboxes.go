@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jellydator/ttlcache/v3"
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -31,6 +32,7 @@ import (
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -600,6 +602,15 @@ func (s *Server) snapshotAndCacheSandbox(
 
 	telemetry.ReportEvent(ctx, "added snapshot to template cache")
 
+	// Register as peer source in Redis so other orchestrators can read from us
+	// while we upload to GCS.
+	if s.featureFlags.BoolFlag(ctx, featureflags.PeerToPeerChunkTransferFlag) {
+		const peerTTL = 30 * time.Minute
+		if regErr := s.peerRegistry.Register(ctx, meta.Template.BuildID, peerTTL); regErr != nil {
+			logger.L().Warn(ctx, "failed to register as peer source", zap.Error(regErr))
+		}
+	}
+
 	// Start upload in background, return a wait function
 	memfileOpts := storage.GetUploadOptions(ctx, s.featureFlags, storage.FileTypeMemfile, storage.UseCasePause)
 	rootfsOpts := storage.GetUploadOptions(ctx, s.featureFlags, storage.FileTypeRootfs, storage.UseCasePause)
@@ -617,6 +628,11 @@ func (s *Server) snapshotAndCacheSandbox(
 		}
 
 		logger.L().Info(uploadCtx, "Snapshot uploaded successfully", logger.WithSandboxID(sbx.Runtime.SandboxID))
+
+		// After upload completes, store the serialized headers and unregister from Redis
+		// so peers transition to GCS reads.
+		s.completeUpload(uploadCtx, meta.Template.BuildID, snapshot)
+
 		errCh <- nil
 	}()
 
@@ -625,6 +641,43 @@ func (s *Server) snapshotAndCacheSandbox(
 	}
 
 	return meta, waitForUpload, nil
+}
+
+// completeUpload stores serialized V4 headers in the uploadedBuilds cache and
+// unregisters from Redis so peers transition from P2P reads to GCS.
+func (s *Server) completeUpload(ctx context.Context, buildID string, snapshot *sandbox.Snapshot) {
+	if !s.featureFlags.BoolFlag(ctx, featureflags.PeerToPeerChunkTransferFlag) {
+		return
+	}
+
+	var memHdrBytes, rootHdrBytes []byte
+
+	if snapshot.MemfileDiffHeader != nil {
+		data, err := header.Serialize(snapshot.MemfileDiffHeader)
+		if err != nil {
+			logger.L().Warn(ctx, "failed to serialize memfile header for peer transition", zap.Error(err))
+		} else {
+			memHdrBytes = data
+		}
+	}
+
+	if snapshot.RootfsDiffHeader != nil {
+		data, err := header.Serialize(snapshot.RootfsDiffHeader)
+		if err != nil {
+			logger.L().Warn(ctx, "failed to serialize rootfs header for peer transition", zap.Error(err))
+		} else {
+			rootHdrBytes = data
+		}
+	}
+
+	s.uploadedBuilds.Set(buildID, &uploadedBuildHeaders{
+		memfileHeader: memHdrBytes,
+		rootfsHeader:  rootHdrBytes,
+	}, ttlcache.DefaultTTL)
+
+	if err := s.peerRegistry.Unregister(ctx, buildID); err != nil {
+		logger.L().Warn(ctx, "failed to unregister peer", zap.Error(err))
+	}
 }
 
 // setupSandboxLifecycle adds the sandbox to the map and sets up the cleanup goroutine.

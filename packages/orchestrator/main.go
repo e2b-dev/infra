@@ -40,6 +40,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/peerclient"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/server"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service/machineinfo"
@@ -303,17 +304,6 @@ func run(config cfg.Config) (success bool) {
 		logger.L().Fatal(ctx, "failed to create metrics provider", zap.Error(err))
 	}
 
-	templateCache, err := template.NewCache(config, featureFlags, persistence, blockMetrics)
-	if err != nil {
-		logger.L().Fatal(ctx, "failed to create template cache", zap.Error(err))
-	}
-	templateCache.Start(ctx)
-	closers = append(closers, closer{"template cache", func(context.Context) error {
-		templateCache.Stop()
-
-		return nil
-	}})
-
 	sbxEventsDeliveryTargets := make([]event.Delivery[event.SandboxEvent], 0)
 
 	var hostStatsDelivery clickhousehoststats.Delivery
@@ -378,6 +368,30 @@ func run(config cfg.Config) (success bool) {
 		sbxEventsDeliveryTargets = append(sbxEventsDeliveryTargets, sbxEventsDeliveryRedis)
 		closers = append(closers, closer{"sandbox events delivery for redis", sbxEventsDeliveryRedis.Close})
 	}
+
+	// peer-to-peer chunk routing
+	var peerRegistry peerclient.Registry
+	var peerResolver peerclient.Resolver
+
+	if redisClient != nil && config.NodeIP != "" {
+		nodeAddr := config.NodeAddress()
+		peerRegistry = peerclient.NewRedisRegistry(redisClient, nodeAddr)
+		peerResolver = peerclient.NewResolver(peerRegistry, nodeAddr)
+	} else {
+		peerRegistry = peerclient.NopRegistry()
+		peerResolver = peerclient.NopResolver()
+	}
+
+	templateCache, err := template.NewCache(config, featureFlags, persistence, blockMetrics, peerResolver)
+	if err != nil {
+		logger.L().Fatal(ctx, "failed to create template cache", zap.Error(err))
+	}
+	templateCache.Start(ctx)
+	closers = append(closers, closer{"template cache", func(context.Context) error {
+		templateCache.Stop()
+
+		return nil
+	}})
 
 	// sandbox observer
 	sandboxObserver, err := metrics.NewSandboxObserver(ctx, nodeID, serviceName, commitSHA, version, serviceInstanceID, sandboxes)
@@ -457,6 +471,7 @@ func run(config cfg.Config) (success bool) {
 		Persistence:      persistence,
 		FeatureFlags:     featureFlags,
 		SbxEventsService: events.NewEventsService(sbxEventsDeliveryTargets),
+		PeerRegistry:     peerRegistry,
 	})
 
 	// template manager sandbox logger
@@ -507,6 +522,7 @@ func run(config cfg.Config) (success bool) {
 	grpcServer := e2bgrpc.NewGRPCServer(tel)
 	orchestrator.RegisterSandboxServiceServer(grpcServer, orchestratorService)
 	orchestrator.RegisterVolumeServiceServer(grpcServer, volumeService)
+	orchestrator.RegisterChunkServiceServer(grpcServer, orchestratorService)
 
 	// template manager
 	var tmpl *tmplserver.ServerStore

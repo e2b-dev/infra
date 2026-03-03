@@ -19,7 +19,6 @@ const (
 )
 
 type Storage struct {
-	header *header.Header
 	source *build.File
 }
 
@@ -101,7 +100,6 @@ func NewStorage(
 
 	return &Storage{
 		source: b,
-		header: h,
 	}, nil
 }
 
@@ -110,11 +108,11 @@ func (d *Storage) ReadAt(ctx context.Context, p []byte, off int64) (int, error) 
 }
 
 func (d *Storage) Size(_ context.Context) (int64, error) {
-	return int64(d.header.Metadata.Size), nil
+	return int64(d.source.Header().Metadata.Size), nil
 }
 
 func (d *Storage) BlockSize() int64 {
-	return int64(d.header.Metadata.BlockSize)
+	return int64(d.source.Header().Metadata.BlockSize)
 }
 
 func (d *Storage) Slice(ctx context.Context, off, length int64) ([]byte, error) {
@@ -122,7 +120,7 @@ func (d *Storage) Slice(ctx context.Context, off, length int64) ([]byte, error) 
 }
 
 func (d *Storage) Header() *header.Header {
-	return d.header
+	return d.source.Header()
 }
 
 func (d *Storage) Close() error {

@@ -2,6 +2,7 @@ package storage
 
 import (
 	"fmt"
+	"strings"
 )
 
 const (
@@ -78,3 +79,26 @@ func (t TemplateFiles) CompressedDataPath(fileName string, ct CompressionType) s
 func CompressedPath(basePath string, ct CompressionType) string {
 	return basePath + ct.Suffix()
 }
+
+// ParseStoragePath splits a storage path of the form "{buildID}/{fileName}"
+// back into its components. This is the inverse of the Storage*Path methods.
+func ParseStoragePath(path string) (buildID, fileName string) {
+	buildID, fileName, _ = strings.Cut(path, "/")
+
+	return buildID, fileName
+}
+
+// BaseFileName strips known compression suffixes from a file name,
+// returning the base name. For example: "memfile.zstd" → "memfile".
+// If no known suffix is present, the name is returned unchanged.
+func BaseFileName(name string) string {
+	for _, suffix := range knownCompressionSuffixes {
+		if before, ok := strings.CutSuffix(name, suffix); ok {
+			return before
+		}
+	}
+
+	return name
+}
+
+var knownCompressionSuffixes = []string{".lz4", ".zstd"}

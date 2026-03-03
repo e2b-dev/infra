@@ -278,7 +278,7 @@ func doBuild(
 		return fmt.Errorf("config: %w", err)
 	}
 
-	templateCache, err := sbxtemplate.NewCache(c, featureFlags, persistenceTemplate, blockMetrics)
+	templateCache, err := sbxtemplate.NewCache(c, featureFlags, persistenceTemplate, blockMetrics, nil)
 	if err != nil {
 		return fmt.Errorf("template cache: %w", err)
 	}

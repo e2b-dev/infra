@@ -17,6 +17,8 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/peerclient"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -50,6 +52,7 @@ type Cache struct {
 	buildStore    *build.DiffStore
 	blockMetrics  blockmetrics.Metrics
 	rootCachePath string
+	peers         peerclient.Resolver
 }
 
 // NewCache initializes a template new cache.
@@ -60,6 +63,7 @@ func NewCache(
 	flags *featureflags.Client,
 	persistence storage.StorageProvider,
 	metrics blockmetrics.Metrics,
+	peers peerclient.Resolver,
 ) (*Cache, error) {
 	cache := ttlcache.New(
 		ttlcache.WithTTL[string, Template](templateExpiration),
@@ -67,6 +71,10 @@ func NewCache(
 
 	cache.OnEviction(func(ctx context.Context, _ ttlcache.EvictionReason, item *ttlcache.Item[string, Template]) {
 		template := item.Value()
+
+		if peers != nil {
+			peers.Purge(item.Key())
+		}
 
 		err := template.Close(ctx)
 		if err != nil {
@@ -99,6 +107,7 @@ func NewCache(
 		cache:         cache,
 		flags:         flags,
 		rootCachePath: config.BuilderConfig.SharedChunkCacheDir,
+		peers:         peers,
 	}, nil
 }
 
@@ -109,6 +118,10 @@ func (c *Cache) Start(ctx context.Context) {
 }
 
 func (c *Cache) Stop() {
+	if c.peers != nil {
+		c.peers.Close()
+	}
+
 	c.buildStore.Close()
 	c.cache.Stop()
 }
@@ -150,6 +163,12 @@ func (c *Cache) GetTemplate(
 		span.SetAttributes(attribute.Bool("use_cache", true))
 	} else {
 		span.SetAttributes(attribute.Bool("use_cache", false))
+	}
+
+	// Wrap with peer routing when P2P chunk transfer is enabled.
+	if c.peers != nil && c.flags.BoolFlag(ctx, featureflags.PeerToPeerChunkTransferFlag) {
+		persistence = peerclient.NewRoutingProvider(persistence, c.peers)
+		span.SetAttributes(attribute.Bool("use_peers", true))
 	}
 
 	storageTemplate, err := newTemplateFromStorage(
@@ -247,6 +266,39 @@ func cleanDir(path string) error {
 		if err := os.RemoveAll(entryPath); err != nil {
 			return fmt.Errorf("removing %q: %w", entryPath, err)
 		}
+	}
+
+	return nil
+}
+
+// GetCachedTemplate returns a cached template by buildID, or (nil, false) if not cached.
+// Used by the peer server to resolve chunk requests.
+func (c *Cache) GetCachedTemplate(buildID string) (Template, bool) {
+	item := c.cache.Get(buildID)
+	if item == nil {
+		return nil, false
+	}
+
+	return item.Value(), true
+}
+
+// LookupDiff returns a cached diff for the given buildID and diff type.
+// Used by the peer server to resolve seekable chunk requests.
+func (c *Cache) LookupDiff(buildID string, diffType build.DiffType) (build.Diff, bool) {
+	return c.buildStore.Lookup(buildID, diffType)
+}
+
+// UpdateMetadata updates the metadata for a cached template.
+func (c *Cache) UpdateMetadata(buildID string, meta metadata.Template) error {
+	t, ok := c.GetCachedTemplate(buildID)
+	if !ok {
+		return fmt.Errorf("template %s not cached", buildID)
+	}
+
+	if ut, ok := t.(interface {
+		UpdateMetadata(meta metadata.Template) error
+	}); ok {
+		return ut.UpdateMetadata(meta)
 	}
 
 	return nil

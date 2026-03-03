@@ -3,7 +3,9 @@ package server
 import (
 	"context"
 	"sync"
+	"time"
 
+	"github.com/jellydator/ttlcache/v3"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 	"golang.org/x/sync/semaphore"
@@ -15,6 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/peerclient"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -23,8 +26,16 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
+// uploadedBuildHeaders stores serialized V4 headers for a completed upload,
+// so that peers can transition from P2P reads to storage reads.
+type uploadedBuildHeaders struct {
+	memfileHeader []byte
+	rootfsHeader  []byte
+}
+
 type Server struct {
 	orchestrator.UnimplementedSandboxServiceServer
+	orchestrator.UnimplementedChunkServiceServer
 
 	config            cfg.Config
 	sandboxFactory    *sandbox.Factory
@@ -39,6 +50,8 @@ type Server struct {
 	featureFlags      *featureflags.Client
 	sbxEventsService  *events.EventsService
 	startingSandboxes *semaphore.Weighted
+	peerRegistry      peerclient.Registry
+	uploadedBuilds    *ttlcache.Cache[string, *uploadedBuildHeaders]
 }
 
 type ServiceConfig struct {
@@ -54,9 +67,15 @@ type ServiceConfig struct {
 	Persistence      storage.StorageProvider
 	FeatureFlags     *featureflags.Client
 	SbxEventsService *events.EventsService
+	PeerRegistry     peerclient.Registry
 }
 
 func New(ctx context.Context, cfg ServiceConfig) *Server {
+	uploadedBuilds := ttlcache.New(
+		ttlcache.WithTTL[string, *uploadedBuildHeaders](30 * time.Minute),
+	)
+	go uploadedBuilds.Start()
+
 	server := &Server{
 		config:            cfg.Config,
 		sandboxFactory:    cfg.SandboxFactory,
@@ -70,6 +89,8 @@ func New(ctx context.Context, cfg ServiceConfig) *Server {
 		featureFlags:      cfg.FeatureFlags,
 		sbxEventsService:  cfg.SbxEventsService,
 		startingSandboxes: semaphore.NewWeighted(maxStartingInstancesPerNode),
+		peerRegistry:      cfg.PeerRegistry,
+		uploadedBuilds:    uploadedBuilds,
 	}
 
 	meter := cfg.Tel.MeterProvider.Meter("orchestrator.sandbox")

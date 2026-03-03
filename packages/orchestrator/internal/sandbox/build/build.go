@@ -2,8 +2,10 @@ package build
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"sync/atomic"
 
 	"github.com/google/uuid"
 
@@ -14,7 +16,7 @@ import (
 )
 
 type File struct {
-	header      *header.Header
+	header      atomic.Pointer[header.Header]
 	store       *DiffStore
 	fileType    DiffType
 	persistence storage.StorageProvider
@@ -22,24 +24,34 @@ type File struct {
 }
 
 func NewFile(
-	header *header.Header,
+	h *header.Header,
 	store *DiffStore,
 	fileType DiffType,
 	persistence storage.StorageProvider,
 	metrics blockmetrics.Metrics,
 ) *File {
-	return &File{
-		header:      header,
+	f := &File{
 		store:       store,
 		fileType:    fileType,
 		persistence: persistence,
 		metrics:     metrics,
 	}
+	f.header.Store(h)
+
+	return f
+}
+
+// Header returns the current header. After a peer transition the header may
+// have been atomically swapped to a V4 header containing FrameTables.
+func (b *File) Header() *header.Header {
+	return b.header.Load()
 }
 
 func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err error) {
 	for n < len(p) {
-		mappedToBuild, err := b.header.GetShiftedMapping(ctx, off+int64(n))
+		h := b.header.Load()
+
+		mappedToBuild, err := h.GetShiftedMapping(ctx, off+int64(n))
 		if err != nil {
 			return 0, fmt.Errorf("failed to get mapping: %w", err)
 		}
@@ -75,8 +87,8 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 			continue
 		}
 
-		size := b.buildFileSize(mappedToBuild.BuildId)
-		mappedBuild, err := b.getBuild(ctx, mappedToBuild.BuildId, size, mappedToBuild.FrameTable)
+		size := b.buildFileSize(h, mappedToBuild.BuildId)
+		mappedBuild, err := b.getBuild(ctx, h, mappedToBuild.BuildId, size, mappedToBuild.FrameTable)
 		if err != nil {
 			return 0, fmt.Errorf("failed to get build: %w", err)
 		}
@@ -87,6 +99,13 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 			mappedToBuild.FrameTable,
 		)
 		if err != nil {
+			var transErr *storage.PeerTransitionedError
+			if errors.As(err, &transErr) {
+				b.swapHeader(transErr)
+
+				continue // retry with the new header
+			}
+
 			return 0, fmt.Errorf("failed to read from source: %w", err)
 		}
 
@@ -98,33 +117,75 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 
 // The slice access must be in the predefined blocksize of the build.
 func (b *File) Slice(ctx context.Context, off, _ int64) ([]byte, error) {
-	mappedBuild, err := b.header.GetShiftedMapping(ctx, off)
+	for {
+		h := b.header.Load()
+
+		mappedBuild, err := h.GetShiftedMapping(ctx, off)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get mapping: %w", err)
+		}
+
+		// Pass empty huge page when the build id is nil.
+		if mappedBuild.BuildId == uuid.Nil {
+			return header.EmptyHugePage, nil
+		}
+
+		size := b.buildFileSize(h, mappedBuild.BuildId)
+		diff, err := b.getBuild(ctx, h, mappedBuild.BuildId, size, mappedBuild.FrameTable)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get build: %w", err)
+		}
+
+		result, err := diff.GetBlock(ctx, int64(mappedBuild.Offset), int64(h.Metadata.BlockSize), mappedBuild.FrameTable)
+		if err != nil {
+			var transErr *storage.PeerTransitionedError
+			if errors.As(err, &transErr) {
+				b.swapHeader(transErr)
+
+				continue // retry with the new header
+			}
+
+			return nil, err
+		}
+
+		return result, nil
+	}
+}
+
+// swapHeader atomically replaces the header when the peer signals upload
+// completion. Only the first goroutine to CAS succeeds; others just retry
+// with the already-swapped header.
+func (b *File) swapHeader(transErr *storage.PeerTransitionedError) {
+	var headerBytes []byte
+
+	switch b.fileType {
+	case Memfile:
+		headerBytes = transErr.MemfileHeader
+	case Rootfs:
+		headerBytes = transErr.RootfsHeader
+	}
+
+	if len(headerBytes) == 0 {
+		return
+	}
+
+	newH, err := header.Deserialize(headerBytes)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get mapping: %w", err)
+		return
 	}
 
-	// Pass empty huge page when the build id is nil.
-	if mappedBuild.BuildId == uuid.Nil {
-		return header.EmptyHugePage, nil
-	}
-
-	size := b.buildFileSize(mappedBuild.BuildId)
-	diff, err := b.getBuild(ctx, mappedBuild.BuildId, size, mappedBuild.FrameTable)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get build: %w", err)
-	}
-
-	return diff.GetBlock(ctx, int64(mappedBuild.Offset), int64(b.header.Metadata.BlockSize), mappedBuild.FrameTable)
+	old := b.header.Load()
+	b.header.CompareAndSwap(old, newH)
 }
 
 // buildFileSize returns the uncompressed file size for buildID from the header's
 // BuildFiles map. Returns 0 if unknown (V3/legacy), which signals the read path
 // to fall back to a Size() call.
-func (b *File) buildFileSize(buildID uuid.UUID) int64 {
-	if b.header.BuildFiles == nil {
+func (b *File) buildFileSize(h *header.Header, buildID uuid.UUID) int64 {
+	if h.BuildFiles == nil {
 		return 0
 	}
-	info, ok := b.header.BuildFiles[buildID]
+	info, ok := h.BuildFiles[buildID]
 	if !ok {
 		return 0
 	}
@@ -132,12 +193,12 @@ func (b *File) buildFileSize(buildID uuid.UUID) int64 {
 	return info.Size
 }
 
-func (b *File) getBuild(ctx context.Context, buildID uuid.UUID, sizeU int64, ft *storage.FrameTable) (Diff, error) {
+func (b *File) getBuild(ctx context.Context, h *header.Header, buildID uuid.UUID, sizeU int64, ft *storage.FrameTable) (Diff, error) {
 	storageDiff, err := newStorageDiff(
 		b.store.cachePath,
 		buildID.String(),
 		b.fileType,
-		int64(b.header.Metadata.BlockSize),
+		int64(h.Metadata.BlockSize),
 		b.metrics,
 		b.persistence,
 		sizeU,
