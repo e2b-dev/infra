@@ -22,6 +22,23 @@ const (
 	cacheDirPermissions  = 0o700
 )
 
+// skipCacheWritebackKeyType is the context key type for skipping NFS cache writeback.
+type skipCacheWritebackKeyType struct{}
+
+// WithSkipCacheWriteback returns a context that signals the NFS cache layer to
+// skip writing fetched data back to the local cache. This is used by the
+// prefetcher to avoid polluting the shared NFS cache with prefetch-specific reads.
+func WithSkipCacheWriteback(ctx context.Context) context.Context {
+	return context.WithValue(ctx, skipCacheWritebackKeyType{}, true)
+}
+
+// skipCacheWriteback reports whether the context has the skip-cache-writeback flag set.
+func skipCacheWriteback(ctx context.Context) bool {
+	v, _ := ctx.Value(skipCacheWritebackKeyType{}).(bool)
+
+	return v
+}
+
 type cache struct {
 	rootPath  string
 	chunkSize int64
