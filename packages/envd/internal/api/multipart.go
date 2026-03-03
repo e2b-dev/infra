@@ -25,7 +25,7 @@ const (
 	partFileFormat         = "%06d"
 )
 
-type uploadMetadata struct {
+type uploadSession struct {
 	Path string
 	UID  int
 	GID  int
@@ -40,39 +40,39 @@ func uploadDir(uploadId string) string {
 	return filepath.Join(multipartUploadBaseDir, uploadId)
 }
 
-func (a *API) getUpload(uploadId string) (*uploadMetadata, error) {
+func (a *API) getUpload(uploadId string) (*uploadSession, error) {
 	val, ok := a.uploads.Load(uploadId)
 	if !ok {
 		return nil, fmt.Errorf("upload session not found")
 	}
 
-	meta, ok := val.(*uploadMetadata)
+	session, ok := val.(*uploadSession)
 	if !ok {
-		return nil, fmt.Errorf("invalid upload session data")
+		return nil, fmt.Errorf("invalid upload session data: %T", val)
 	}
 
-	return meta, nil
+	return session, nil
 }
 
 // claimUpload acquires an exclusive lock on the upload session, waits for any
 // in-flight part uploads to finish, then removes the session from the map.
-// The write lock is held on return — the caller must defer meta.mu.Unlock().
+// The write lock is held on return — the caller must defer session.mu.Unlock().
 // Only one caller can succeed; others get an error.
-func (a *API) claimUpload(uploadId string) (*uploadMetadata, error) {
-	meta, err := a.getUpload(uploadId)
+func (a *API) claimUpload(uploadId string) (*uploadSession, error) {
+	session, err := a.getUpload(uploadId)
 	if err != nil {
 		return nil, err
 	}
 
-	meta.mu.Lock()
+	session.mu.Lock()
 
 	if _, loaded := a.uploads.LoadAndDelete(uploadId); !loaded {
-		meta.mu.Unlock()
+		session.mu.Unlock()
 
 		return nil, fmt.Errorf("upload session not found")
 	}
 
-	return meta, nil
+	return session, nil
 }
 
 func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params PostFilesUploadInitParams) {
@@ -132,7 +132,7 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 		return
 	}
 
-	a.uploads.Store(uploadId, &uploadMetadata{
+	a.uploads.Store(uploadId, &uploadSession{
 		Path: filePath,
 		UID:  uid,
 		GID:  gid,
@@ -156,7 +156,7 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, uploadId UploadId, params PutFilesUploadUploadIdParams) {
 	defer r.Body.Close()
 
-	meta, err := a.getUpload(uploadId)
+	session, err := a.getUpload(uploadId)
 	if err != nil {
 		jsonError(w, http.StatusNotFound, err)
 
@@ -166,11 +166,11 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 	// Hold an RLock for the duration of the write so that a concurrent
 	// Complete or Delete cannot snapshot/remove the parts directory while
 	// this part is still being written.
-	meta.mu.RLock()
-	defer meta.mu.RUnlock()
+	session.mu.RLock()
+	defer session.mu.RUnlock()
 
 	// Re-check: the session may have been claimed while we waited for the lock.
-	if _, err = a.getUpload(uploadId); err != nil {
+	if _, err := a.getUpload(uploadId); err != nil {
 		jsonError(w, http.StatusNotFound, err)
 
 		return
@@ -231,13 +231,13 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 	defer r.Body.Close()
 
 	// Claim the session exclusively — waits for in-flight PUTs to finish.
-	meta, err := a.claimUpload(uploadId)
+	session, err := a.claimUpload(uploadId)
 	if err != nil {
 		jsonError(w, http.StatusNotFound, err)
 
 		return
 	}
-	defer meta.mu.Unlock()
+	defer session.mu.Unlock()
 
 	dir := uploadDir(uploadId)
 
@@ -248,7 +248,7 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 		if succeeded {
 			os.RemoveAll(dir)
 		} else {
-			a.uploads.Store(uploadId, meta)
+			a.uploads.Store(uploadId, session)
 		}
 	}()
 
@@ -275,7 +275,7 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 		return ni < nj
 	})
 
-	err = permissions.EnsureDirs(filepath.Dir(meta.Path), meta.UID, meta.GID)
+	err = permissions.EnsureDirs(filepath.Dir(session.Path), session.UID, session.GID)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error ensuring directories: %w", err))
 
@@ -283,8 +283,8 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 	}
 
 	// Write to a temporary file and rename on success to avoid destroying
-	// any pre-existing file at meta.Path if assembly fails midway.
-	tmpPath := meta.Path + ".e2b-upload." + uploadId + ".tmp"
+	// any pre-existing file at session.Path if assembly fails midway.
+	tmpPath := session.Path + ".e2b-upload." + uploadId + ".tmp"
 
 	destFile, err := os.OpenFile(tmpPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o666)
 	if err != nil {
@@ -299,7 +299,7 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	err = os.Chown(tmpPath, meta.UID, meta.GID)
+	err = os.Chown(tmpPath, session.UID, session.GID)
 	if err != nil {
 		destFile.Close()
 		os.Remove(tmpPath)
@@ -348,7 +348,7 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	if err := os.Rename(tmpPath, meta.Path); err != nil {
+	if err := os.Rename(tmpPath, session.Path); err != nil {
 		os.Remove(tmpPath)
 		jsonError(w, http.StatusInternalServerError, fmt.Errorf("error finalizing upload: %w", err))
 
@@ -359,7 +359,7 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 
 	a.logger.Info().
 		Str("uploadId", uploadId).
-		Str("path", meta.Path).
+		Str("path", session.Path).
 		Int64("size", totalSize).
 		Msg("Multipart upload completed")
 
@@ -367,7 +367,7 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 	w.WriteHeader(http.StatusOK)
 
 	if err := json.NewEncoder(w).Encode(UploadComplete{
-		Path: meta.Path,
+		Path: session.Path,
 		Size: totalSize,
 	}); err != nil {
 		a.logger.Error().Err(err).Str("uploadId", uploadId).Msg("failed to encode upload complete response")
@@ -377,13 +377,13 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 func (a *API) DeleteFilesUploadUploadId(w http.ResponseWriter, r *http.Request, uploadId UploadId) {
 	defer r.Body.Close()
 
-	meta, err := a.claimUpload(uploadId)
+	session, err := a.claimUpload(uploadId)
 	if err != nil {
 		jsonError(w, http.StatusNotFound, err)
 
 		return
 	}
-	defer meta.mu.Unlock()
+	defer session.mu.Unlock()
 
 	if err := os.RemoveAll(uploadDir(uploadId)); err != nil {
 		a.logger.Error().Err(err).Str("uploadId", uploadId).Msg("failed to remove upload directory on abort")
