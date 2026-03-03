@@ -72,3 +72,7 @@ func (c *MaskTemplate) Snapfile() (File, error) {
 func (c *MaskTemplate) Metadata() (metadata.Template, error) {
 	return c.template.Metadata()
 }
+
+func (c *MaskTemplate) UpdateMetadata(meta metadata.Template) error {
+	return c.template.UpdateMetadata(meta)
+}

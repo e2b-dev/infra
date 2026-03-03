@@ -39,7 +39,7 @@ func NewLogger(ctx context.Context, loggerProvider log.LoggerProvider, config Sa
 		enableConsole = true
 	}
 
-	lg, err := logger.NewLogger(ctx, logger.LoggerConfig{
+	lg, err := logger.NewLogger(logger.LoggerConfig{
 		ServiceName:       config.ServiceName,
 		IsInternal:        config.IsInternal,
 		IsDebug:           true,

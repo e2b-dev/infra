@@ -130,6 +130,17 @@ func (s *DiffStore) Has(d Diff) bool {
 	return s.cache.Has(d.CacheKey())
 }
 
+// Lookup returns the cached Diff for the given key without initialising a new one.
+// Returns (nil, false) if the key is not present in the cache.
+func (s *DiffStore) Lookup(key DiffStoreKey) (Diff, bool) {
+	item := s.cache.Get(key)
+	if item == nil {
+		return nil, false
+	}
+
+	return item.Value(), true
+}
+
 func (s *DiffStore) startDiskSpaceEviction(
 	ctx context.Context,
 	config cfg.Config,

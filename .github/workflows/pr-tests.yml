@@ -48,6 +48,11 @@ jobs:
             ${{ matrix.package }}/go.mod
             ${{ matrix.package }}/go.sum
 
+      - name: Warm goose tool
+        working-directory: ${{ matrix.package }}
+        run: go tool goose --version
+        if: matrix.package == 'packages/db'
+
       - name: Setup envd tests
         run: |
           # Install bindfs for FUSE mount tests

@@ -151,7 +151,7 @@ func newRemoteCluster(
 		sandboxDomain,
 		instances,
 		synchronization.NewSynchronize("cluster-instances", "Cluster instances", store),
-		newRemoteClusterResourceProvider(instances, httpClient),
+		newRemoteClusterResourceProvider(clusterID, instances, httpClient),
 	)
 
 	// Periodically sync cluster instances
