@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
+	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
@@ -27,11 +28,12 @@ type RedisSandboxCatalog struct {
 	redisClient  redis.UniversalClient
 	cache        *ttlcache.Cache[string, *SandboxInfo]
 	featureFlags *featureflags.Client
+	serviceName  string
 }
 
 var _ SandboxesCatalog = (*RedisSandboxCatalog)(nil)
 
-func NewRedisSandboxesCatalog(redisClient redis.UniversalClient, featureFlags *featureflags.Client) *RedisSandboxCatalog {
+func NewRedisSandboxesCatalog(redisClient redis.UniversalClient, featureFlags *featureflags.Client, serviceName string) *RedisSandboxCatalog {
 	cache := ttlcache.New(ttlcache.WithTTL[string, *SandboxInfo](catalogRedisLocalCacheTtl), ttlcache.WithDisableTouchOnHit[string, *SandboxInfo]())
 	go cache.Start()
 
@@ -39,6 +41,7 @@ func NewRedisSandboxesCatalog(redisClient redis.UniversalClient, featureFlags *f
 		redisClient:  redisClient,
 		cache:        cache,
 		featureFlags: featureFlags,
+		serviceName:  serviceName,
 	}
 }
 
@@ -48,7 +51,12 @@ func (c *RedisSandboxCatalog) GetSandbox(ctx context.Context, sandboxID string) 
 	spanCtx, span := tracer.Start(ctx, "sandbox-catalog-get")
 	defer span.End()
 
-	useLocalCache := c.featureFlags.BoolFlag(spanCtx, featureflags.SandboxCatalogLocalCacheFlag)
+	var extraContexts []ldcontext.Context
+	if c.serviceName != "" {
+		extraContexts = append(extraContexts, featureflags.ServiceContext(c.serviceName))
+	}
+
+	useLocalCache := c.featureFlags.BoolFlag(spanCtx, featureflags.SandboxCatalogLocalCacheFlag, extraContexts...)
 
 	if useLocalCache {
 		sandboxInfo := c.cache.Get(sandboxID)

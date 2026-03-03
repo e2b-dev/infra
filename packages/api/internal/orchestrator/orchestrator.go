@@ -84,7 +84,7 @@ func New(
 
 	var routingCatalog e2bcatalog.SandboxesCatalog
 	if redisClient != nil {
-		routingCatalog = e2bcatalog.NewRedisSandboxesCatalog(redisClient, featureFlags)
+		routingCatalog = e2bcatalog.NewRedisSandboxesCatalog(redisClient, featureFlags, "orchestration-api")
 	} else {
 		routingCatalog = e2bcatalog.NewMemorySandboxesCatalog()
 	}
