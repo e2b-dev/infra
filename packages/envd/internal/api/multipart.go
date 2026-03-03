@@ -204,9 +204,10 @@ func (a *API) PostFilesCompose(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 
-	if err := json.NewEncoder(w).Encode(ComposeResponse{
+	if err := json.NewEncoder(w).Encode(EntryInfo{
 		Path: destPath,
-		Size: totalSize,
+		Name: filepath.Base(destPath),
+		Type: File,
 	}); err != nil {
 		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("failed to encode compose response")
 	}

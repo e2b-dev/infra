@@ -149,7 +149,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ComposeResponse"
+                $ref: "#/components/schemas/EntryInfo"
         "400":
           $ref: "#/components/responses/InvalidPath"
         "401":
@@ -337,19 +337,6 @@ components:
         username:
           type: string
           description: User for setting ownership and resolving relative paths
-    ComposeResponse:
-      type: object
-      required:
-        - path
-        - size
-      properties:
-        path:
-          type: string
-          description: Path to the composed file
-        size:
-          type: integer
-          format: int64
-          description: Total size of the composed file in bytes
     VolumeMount:
       type: object
       description: Volume

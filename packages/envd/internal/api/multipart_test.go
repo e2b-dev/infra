@@ -81,10 +81,11 @@ func TestCompose_ConcatenatesFiles(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 
-	var result ComposeResponse
+	var result EntryInfo
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
 	assert.Equal(t, destPath, result.Path)
-	assert.Equal(t, int64(13), result.Size)
+	assert.Equal(t, "composed.txt", result.Name)
+	assert.Equal(t, File, result.Type)
 
 	data, err := os.ReadFile(destPath)
 	require.NoError(t, err)
@@ -237,9 +238,10 @@ func TestCompose_LargeFile(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 
-	var result ComposeResponse
+	var result EntryInfo
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
-	assert.Equal(t, expectedTotal, result.Size)
+	assert.Equal(t, destPath, result.Path)
+	assert.Equal(t, File, result.Type)
 
 	data, err := os.ReadFile(destPath)
 	require.NoError(t, err)
@@ -345,9 +347,11 @@ func TestCompose_SingleFile(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 
-	var result ComposeResponse
+	var result EntryInfo
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
-	assert.Equal(t, int64(4), result.Size)
+	assert.Equal(t, destPath, result.Path)
+	assert.Equal(t, "single.txt", result.Name)
+	assert.Equal(t, File, result.Type)
 
 	data, err := os.ReadFile(destPath)
 	require.NoError(t, err)
