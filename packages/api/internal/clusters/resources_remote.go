@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -18,12 +19,14 @@ import (
 )
 
 type ClusterResourceProviderImpl struct {
+	clusterID uuid.UUID
 	instances *smap.Map[*Instance]
 	client    *edgeapi.ClientWithResponses
 }
 
-func newRemoteClusterResourceProvider(instances *smap.Map[*Instance], client *edgeapi.ClientWithResponses) ClusterResource {
+func newRemoteClusterResourceProvider(clusterID uuid.UUID, instances *smap.Map[*Instance], client *edgeapi.ClientWithResponses) ClusterResource {
 	return &ClusterResourceProviderImpl{
+		clusterID: clusterID,
 		instances: instances,
 		client:    client,
 	}
@@ -128,7 +131,7 @@ func (r *ClusterResourceProviderImpl) GetSandboxLogs(ctx context.Context, teamID
 	}
 
 	raw := *res.JSON200
-	logEdgeLogsFilteringCompatibility(ctx, sandboxID, level, search, res.HTTPResponse)
+	r.logEdgeLogsFilteringCompatibility(ctx, sandboxID, level, search, res.HTTPResponse)
 
 	l := make([]api.SandboxLog, 0, len(raw.Logs))
 	le := make([]api.SandboxLogEntry, 0, len(raw.LogEntries))
@@ -249,7 +252,7 @@ func handleEdgeErrorResponse(statusCode int, json400, json401, json500 *edgeapi.
 	}
 }
 
-func logEdgeLogsFilteringCompatibility(ctx context.Context, sandboxID string, level *logs.LogLevel, search *string, response *http.Response) {
+func (r *ClusterResourceProviderImpl) logEdgeLogsFilteringCompatibility(ctx context.Context, sandboxID string, level *logs.LogLevel, search *string, response *http.Response) {
 	filtersRequested := level != nil || (search != nil && *search != "")
 	filtersApplied := response != nil && response.Header.Get(consts.EdgeFeatureSandboxLogsLevelTextFilteringEnabledHeader) != ""
 	if !filtersRequested || filtersApplied {
@@ -260,6 +263,7 @@ func logEdgeLogsFilteringCompatibility(ctx context.Context, sandboxID string, le
 		ctx,
 		consts.EdgeFeatureSandboxLogsLevelTextFilteringEnabledHeader,
 		"sandbox logs level+text filtering not supported",
+		logger.WithClusterID(r.clusterID),
 		logger.WithSandboxID(sandboxID),
 		zap.Bool("level_filter", level != nil),
 		zap.Bool("search_filter", search != nil && *search != ""),
