@@ -85,6 +85,12 @@ func (a *API) PostFilesCompose(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		if resolved == destPath {
+			jsonError(w, http.StatusBadRequest, fmt.Errorf("source path %q cannot be the same as destination", src))
+
+			return
+		}
+
 		if _, err := os.Stat(resolved); err != nil {
 			jsonError(w, http.StatusNotFound, fmt.Errorf("source file not found: %s", src))
 
