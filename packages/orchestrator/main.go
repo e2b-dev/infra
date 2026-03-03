@@ -196,7 +196,7 @@ func run(config cfg.Config) (success bool) {
 		}
 	}()
 
-	globalLogger := utils.Must(logger.NewLogger(ctx, logger.LoggerConfig{
+	globalLogger := utils.Must(logger.NewLogger(logger.LoggerConfig{
 		ServiceName:   serviceName,
 		IsInternal:    true,
 		IsDebug:       env.IsDebug(),

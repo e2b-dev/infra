@@ -36,9 +36,9 @@ type BlobSource interface {
 	Exists(ctx context.Context) (bool, error)
 }
 
-// SeekableSource serves random-access reads with offset/length and size queries (memfile, rootfs).
+// FramedSource serves random-access reads with offset/length and size queries (memfile, rootfs).
 // The requests need to be aligned to the block size.
-type SeekableSource interface {
+type FramedSource interface {
 	Stream(ctx context.Context, offset, length int64, sender Sender) error
 	Size(ctx context.Context) (int64, error)
 }

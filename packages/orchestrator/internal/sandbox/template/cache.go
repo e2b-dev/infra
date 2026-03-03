@@ -283,7 +283,7 @@ func (c *Cache) GetCachedTemplate(buildID string) (Template, bool) {
 }
 
 // LookupDiff returns a cached diff for the given buildID and diff type.
-// Used by the peer server to resolve seekable chunk requests.
+// Used by the peer server to resolve framed chunk requests.
 func (c *Cache) LookupDiff(buildID string, diffType build.DiffType) (build.Diff, bool) {
 	return c.buildStore.Lookup(buildID, diffType)
 }

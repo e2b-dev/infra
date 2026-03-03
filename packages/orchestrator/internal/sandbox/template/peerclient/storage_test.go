@@ -1,0 +1,76 @@
+package peerclient
+
+import (
+	"bytes"
+	"context"
+	"io"
+	"sync/atomic"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	orchestratormocks "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator/mocks"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	providermocks "github.com/e2b-dev/infra/packages/shared/pkg/storage/mocks/provider"
+)
+
+func TestPeerStorageProvider_OpenBlob_ExtractsFileName(t *testing.T) {
+	t.Parallel()
+
+	stream := orchestratormocks.NewMockChunkService_GetBuildBlobClient(t)
+	stream.EXPECT().Recv().Return(&orchestrator.GetBuildBlobResponse{Data: []byte("data")}, nil).Once()
+	stream.EXPECT().Recv().Return(nil, io.EOF).Once()
+
+	client := orchestratormocks.NewMockChunkServiceClient(t)
+	client.EXPECT().GetBuildBlob(mock.Anything, mock.MatchedBy(func(req *orchestrator.GetBuildBlobRequest) bool {
+		return req.GetBuildId() == "build-1" && req.GetFileName() == "snapfile"
+	})).Return(stream, nil)
+
+	base := providermocks.NewMockStorageProvider(t)
+
+	p := newPeerStorageProvider(base, client, &atomic.Bool{}, nil)
+	blob, err := p.OpenBlob(t.Context(), "build-1/snapfile")
+	require.NoError(t, err)
+
+	var buf bytes.Buffer
+	_, err = blob.WriteTo(t.Context(), &buf)
+	require.NoError(t, err)
+	assert.Equal(t, "data", buf.String())
+}
+
+func TestPeerStorageProvider_OpenFramedFile_ExtractsFileName(t *testing.T) {
+	t.Parallel()
+
+	client := orchestratormocks.NewMockChunkServiceClient(t)
+	client.EXPECT().GetBuildFileSize(mock.Anything, mock.MatchedBy(func(req *orchestrator.GetBuildFileSizeRequest) bool {
+		return req.GetBuildId() == "build-1" && req.GetFileName() == "memfile"
+	})).Return(&orchestrator.GetBuildFileSizeResponse{TotalSize: 512}, nil)
+
+	base := providermocks.NewMockStorageProvider(t)
+
+	p := newPeerStorageProvider(base, client, &atomic.Bool{}, nil)
+	ff, err := p.OpenFramedFile(t.Context(), "build-1/memfile")
+	require.NoError(t, err)
+
+	size, err := ff.Size(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, int64(512), size)
+}
+
+// testFramedFile is a minimal FramedFile implementation for tests.
+type testFramedFile struct {
+	size func(ctx context.Context) (int64, error)
+}
+
+func (f *testFramedFile) GetFrame(_ context.Context, _ int64, _ *storage.FrameTable, _ bool, _ []byte, _ int64, _ func(int64)) (storage.Range, error) {
+	return storage.Range{}, nil
+}
+func (f *testFramedFile) Size(ctx context.Context) (int64, error) { return f.size(ctx) }
+func (f *testFramedFile) StoreFile(_ context.Context, _ string, _ *storage.FramedUploadOptions) (*storage.FrameTable, [32]byte, error) {
+	return nil, [32]byte{}, nil
+}
+
+var _ storage.FramedFile = (*testFramedFile)(nil)

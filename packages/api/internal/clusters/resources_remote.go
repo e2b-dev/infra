@@ -6,20 +6,27 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
+	"go.uber.org/zap"
+
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	edgeapi "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type ClusterResourceProviderImpl struct {
+	clusterID uuid.UUID
 	instances *smap.Map[*Instance]
 	client    *edgeapi.ClientWithResponses
 }
 
-func newRemoteClusterResourceProvider(instances *smap.Map[*Instance], client *edgeapi.ClientWithResponses) ClusterResource {
+func newRemoteClusterResourceProvider(clusterID uuid.UUID, instances *smap.Map[*Instance], client *edgeapi.ClientWithResponses) ClusterResource {
 	return &ClusterResourceProviderImpl{
+		clusterID: clusterID,
 		instances: instances,
 		client:    client,
 	}
@@ -99,9 +106,17 @@ func (r *ClusterResourceProviderImpl) GetSandboxesMetrics(ctx context.Context, t
 	return items, nil
 }
 
-func (r *ClusterResourceProviderImpl) GetSandboxLogs(ctx context.Context, teamID string, sandboxID string, start *int64, end *int64, limit *int32, dr *api.LogsDirection) (api.SandboxLogs, *api.APIError) {
+func (r *ClusterResourceProviderImpl) GetSandboxLogs(ctx context.Context, teamID string, sandboxID string, start *int64, end *int64, limit *int32, dr *api.LogsDirection, level *logs.LogLevel, search *string) (api.SandboxLogs, *api.APIError) {
 	direction := apiLogDirectionToEdgeSandboxLogsDirection(dr)
-	params := &edgeapi.V1SandboxLogsParams{TeamID: teamID, Start: start, End: end, Limit: limit, Direction: direction}
+	params := &edgeapi.V1SandboxLogsParams{
+		TeamID:    teamID,
+		Start:     start,
+		End:       end,
+		Limit:     limit,
+		Direction: direction,
+		Level:     logToEdgeLevel(level),
+		Search:    search,
+	}
 	res, err := r.client.V1SandboxLogsWithResponse(ctx, sandboxID, params)
 	if err != nil {
 		return api.SandboxLogs{}, &api.APIError{
@@ -116,22 +131,25 @@ func (r *ClusterResourceProviderImpl) GetSandboxLogs(ctx context.Context, teamID
 	}
 
 	raw := *res.JSON200
-	l := make([]api.SandboxLog, len(raw.Logs))
-	for i, row := range raw.Logs {
-		l[i] = api.SandboxLog{
-			Line:      row.Line,
-			Timestamp: row.Timestamp,
-		}
-	}
+	r.logEdgeLogsFilteringCompatibility(ctx, sandboxID, level, search, res.HTTPResponse)
 
-	le := make([]api.SandboxLogEntry, len(raw.LogEntries))
-	for i, row := range raw.LogEntries {
-		le[i] = api.SandboxLogEntry{
+	l := make([]api.SandboxLog, 0, len(raw.Logs))
+	le := make([]api.SandboxLogEntry, 0, len(raw.LogEntries))
+
+	for _, row := range raw.LogEntries {
+		le = append(le, api.SandboxLogEntry{
 			Timestamp: row.Timestamp,
 			Level:     api.LogLevel(row.Level),
 			Message:   row.Message,
 			Fields:    row.Fields,
-		}
+		})
+	}
+
+	for _, row := range raw.Logs {
+		l = append(l, api.SandboxLog{
+			Line:      row.Line,
+			Timestamp: row.Timestamp,
+		})
 	}
 
 	return api.SandboxLogs{Logs: l, LogEntries: le}, nil
@@ -232,4 +250,22 @@ func handleEdgeErrorResponse(statusCode int, json400, json401, json500 *edgeapi.
 		ClientMsg: clientMsg,
 		Code:      http.StatusInternalServerError,
 	}
+}
+
+func (r *ClusterResourceProviderImpl) logEdgeLogsFilteringCompatibility(ctx context.Context, sandboxID string, level *logs.LogLevel, search *string, response *http.Response) {
+	filtersRequested := level != nil || (search != nil && *search != "")
+	filtersApplied := response != nil && response.Header.Get(consts.EdgeFeatureSandboxLogsLevelTextFilteringEnabledHeader) != ""
+	if !filtersRequested || filtersApplied {
+		return
+	}
+
+	edgeapi.WarnMissingFeatureHeader(
+		ctx,
+		consts.EdgeFeatureSandboxLogsLevelTextFilteringEnabledHeader,
+		"sandbox logs level+text filtering not supported",
+		logger.WithClusterID(r.clusterID),
+		logger.WithSandboxID(sandboxID),
+		zap.Bool("level_filter", level != nil),
+		zap.Bool("search_filter", search != nil && *search != ""),
+	)
 }
