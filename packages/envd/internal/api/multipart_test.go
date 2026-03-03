@@ -523,6 +523,113 @@ func TestMultipartUpload_ConcurrentCompleteOnlyOneSucceeds(t *testing.T) {
 	assert.Equal(t, []byte("data"), data)
 }
 
+func TestMultipartUpload_ConcurrentPutAndComplete(t *testing.T) {
+	t.Parallel()
+
+	api, currentUser := newMultipartTestAPI(t)
+	destPath := filepath.Join(t.TempDir(), "concurrent-put-complete.txt")
+
+	uploadId := initUpload(t, api, destPath, currentUser.Username)
+
+	// Upload initial parts that will definitely be included.
+	uploadPart(t, api, uploadId, 0, []byte("part0"))
+	uploadPart(t, api, uploadId, 1, []byte("part1"))
+
+	// Fire a PUT and Complete concurrently. The per-session RWMutex
+	// guarantees that either:
+	//  (a) PUT finishes before Complete snapshots → part is included, or
+	//  (b) Complete claims first → PUT gets 404 and part is excluded.
+	// In no case should Complete return 200 while silently dropping a
+	// part whose PUT also returned 200.
+	var wg sync.WaitGroup
+
+	var putStatus int
+
+	var completeStatus int
+
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+
+		req := httptest.NewRequest(http.MethodPut, "/files/upload/"+uploadId, bytes.NewReader([]byte("part2")))
+		w := httptest.NewRecorder()
+		api.PutFilesUploadUploadId(w, req, uploadId, PutFilesUploadUploadIdParams{PartNumber: 2})
+		putStatus = w.Result().StatusCode
+	}()
+
+	go func() {
+		defer wg.Done()
+
+		req := httptest.NewRequest(http.MethodPost, "/files/upload/"+uploadId+"/complete", nil)
+		w := httptest.NewRecorder()
+		api.PostFilesUploadUploadIdComplete(w, req, uploadId)
+		completeStatus = w.Result().StatusCode
+	}()
+
+	wg.Wait()
+
+	require.Equal(t, http.StatusOK, completeStatus, "Complete should succeed")
+
+	data, err := os.ReadFile(destPath)
+	require.NoError(t, err)
+
+	if putStatus == http.StatusOK {
+		// PUT finished before Complete snapshotted → part2 must be included.
+		assert.Equal(t, []byte("part0part1part2"), data)
+	} else {
+		// Complete claimed first → only the two pre-existing parts.
+		assert.Equal(t, []byte("part0part1"), data)
+	}
+}
+
+func TestMultipartUpload_ConcurrentPutAndDelete(t *testing.T) {
+	t.Parallel()
+
+	api, currentUser := newMultipartTestAPI(t)
+	destPath := filepath.Join(t.TempDir(), "concurrent-put-delete.txt")
+
+	uploadId := initUpload(t, api, destPath, currentUser.Username)
+	uploadPart(t, api, uploadId, 0, []byte("existing"))
+
+	var wg sync.WaitGroup
+
+	var putStatus int
+
+	var deleteStatus int
+
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+
+		req := httptest.NewRequest(http.MethodPut, "/files/upload/"+uploadId, bytes.NewReader([]byte("part1")))
+		w := httptest.NewRecorder()
+		api.PutFilesUploadUploadId(w, req, uploadId, PutFilesUploadUploadIdParams{PartNumber: 1})
+		putStatus = w.Result().StatusCode
+	}()
+
+	go func() {
+		defer wg.Done()
+
+		req := httptest.NewRequest(http.MethodDelete, "/files/upload/"+uploadId, nil)
+		w := httptest.NewRecorder()
+		api.DeleteFilesUploadUploadId(w, req, uploadId)
+		deleteStatus = w.Result().StatusCode
+	}()
+
+	wg.Wait()
+
+	assert.Equal(t, http.StatusNoContent, deleteStatus, "Delete should succeed")
+
+	// PUT should get either 200 (wrote before delete) or 404 (delete claimed first).
+	assert.Contains(t, []int{http.StatusOK, http.StatusNotFound}, putStatus)
+
+	// Upload dir should be cleaned up regardless.
+	_, err := os.Stat(uploadDir(uploadId))
+	assert.True(t, os.IsNotExist(err), "upload directory should be removed after delete")
+}
+
 func TestMultipartUpload_NumericSortHighPartNumbers(t *testing.T) {
 	t.Parallel()
 

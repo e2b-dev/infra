@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"sync"
 	"syscall"
 
 	"github.com/google/uuid"
@@ -28,6 +29,11 @@ type uploadMetadata struct {
 	Path string
 	UID  int
 	GID  int
+
+	// mu guards concurrent access to the upload session. Part uploads hold
+	// an RLock so they can proceed in parallel; Complete and Delete acquire
+	// a write Lock, which blocks until every in-flight part upload finishes.
+	mu sync.RWMutex
 }
 
 func uploadDir(uploadId string) string {
@@ -48,17 +54,22 @@ func (a *API) getUpload(uploadId string) (*uploadMetadata, error) {
 	return meta, nil
 }
 
-// claimUpload atomically loads and deletes the upload session so that only
-// one concurrent caller can proceed (used by Complete and Delete).
+// claimUpload acquires an exclusive lock on the upload session, waits for any
+// in-flight part uploads to finish, then removes the session from the map.
+// The write lock is held on return — the caller must defer meta.mu.Unlock().
+// Only one caller can succeed; others get an error.
 func (a *API) claimUpload(uploadId string) (*uploadMetadata, error) {
-	val, ok := a.uploads.LoadAndDelete(uploadId)
-	if !ok {
-		return nil, fmt.Errorf("upload session not found")
+	meta, err := a.getUpload(uploadId)
+	if err != nil {
+		return nil, err
 	}
 
-	meta, ok := val.(*uploadMetadata)
-	if !ok {
-		return nil, fmt.Errorf("invalid upload session data")
+	meta.mu.Lock()
+
+	if _, loaded := a.uploads.LoadAndDelete(uploadId); !loaded {
+		meta.mu.Unlock()
+
+		return nil, fmt.Errorf("upload session not found")
 	}
 
 	return meta, nil
@@ -145,7 +156,21 @@ func (a *API) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params
 func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, uploadId UploadId, params PutFilesUploadUploadIdParams) {
 	defer r.Body.Close()
 
-	if _, err := a.getUpload(uploadId); err != nil {
+	meta, err := a.getUpload(uploadId)
+	if err != nil {
+		jsonError(w, http.StatusNotFound, err)
+
+		return
+	}
+
+	// Hold an RLock for the duration of the write so that a concurrent
+	// Complete or Delete cannot snapshot/remove the parts directory while
+	// this part is still being written.
+	meta.mu.RLock()
+	defer meta.mu.RUnlock()
+
+	// Re-check: the session may have been claimed while we waited for the lock.
+	if _, err = a.getUpload(uploadId); err != nil {
 		jsonError(w, http.StatusNotFound, err)
 
 		return
@@ -200,13 +225,14 @@ func (a *API) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, upl
 func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Request, uploadId UploadId) {
 	defer r.Body.Close()
 
-	// Atomically claim the session so concurrent Complete calls are serialized.
+	// Claim the session exclusively — waits for in-flight PUTs to finish.
 	meta, err := a.claimUpload(uploadId)
 	if err != nil {
 		jsonError(w, http.StatusNotFound, err)
 
 		return
 	}
+	defer meta.mu.Unlock()
 
 	dir := uploadDir(uploadId)
 	defer os.RemoveAll(dir)
@@ -334,11 +360,13 @@ func (a *API) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Req
 func (a *API) DeleteFilesUploadUploadId(w http.ResponseWriter, r *http.Request, uploadId UploadId) {
 	defer r.Body.Close()
 
-	if _, err := a.claimUpload(uploadId); err != nil {
+	meta, err := a.claimUpload(uploadId)
+	if err != nil {
 		jsonError(w, http.StatusNotFound, err)
 
 		return
 	}
+	defer meta.mu.Unlock()
 
 	os.RemoveAll(uploadDir(uploadId))
 
