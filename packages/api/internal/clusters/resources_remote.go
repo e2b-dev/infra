@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	edgeapi "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
@@ -13,7 +15,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
-	"go.uber.org/zap"
 )
 
 type ClusterResourceProviderImpl struct {
