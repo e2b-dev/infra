@@ -11,7 +11,7 @@ import (
 )
 
 // pendingBuildInfo pairs a FrameTable with the uncompressed file size and
-// compressed-data checksum so all can be stored in the header after uploads complete.
+// uncompressed-data checksum so all can be stored in the header after uploads complete.
 type pendingBuildInfo struct {
 	ft       *storage.FrameTable
 	fileSize int64

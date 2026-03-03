@@ -16,7 +16,7 @@ import (
 // so the read path can avoid network round-trips (e.g. Size() calls to GCS).
 type BuildFileInfo struct {
 	Size     int64    // uncompressed file size
-	Checksum [32]byte // SHA-256 of compressed data; zero value means unknown/uncompressed
+	Checksum [32]byte // SHA-256 of uncompressed data; zero value means unknown
 }
 
 const NormalizeFixVersion = 3

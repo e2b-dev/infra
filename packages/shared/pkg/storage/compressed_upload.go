@@ -269,9 +269,16 @@ func CompressStream(ctx context.Context, in io.Reader, opts *FramedUploadOptions
 	}
 	frameCh := make(chan indexedFrame, workers)
 	readErrCh := make(chan error, 1)
+	checksumCh := make(chan [32]byte, 1)
 
 	go func() {
 		defer close(frameCh)
+		hasher := sha256.New()
+		defer func() {
+			var sum [32]byte
+			copy(sum[:], hasher.Sum(nil))
+			checksumCh <- sum
+		}()
 		for i := 0; ; i++ {
 			buf := make([]byte, frameSize)
 			n, err := io.ReadFull(in, buf)
@@ -282,6 +289,7 @@ func CompressStream(ctx context.Context, in io.Reader, opts *FramedUploadOptions
 
 					return
 				}
+				hasher.Write(buf[:n])
 				frameCh <- indexedFrame{index: i, data: buf[:n]}
 
 				continue
@@ -289,6 +297,7 @@ func CompressStream(ctx context.Context, in io.Reader, opts *FramedUploadOptions
 
 			if errors.Is(err, io.ErrUnexpectedEOF) {
 				if n > 0 {
+					hasher.Write(buf[:n])
 					frameCh <- indexedFrame{index: i, data: buf[:n]}
 				}
 
@@ -351,9 +360,6 @@ func CompressStream(ctx context.Context, in io.Reader, opts *FramedUploadOptions
 		CompressionType: opts.CompressionType,
 	}
 
-	// Running SHA-256 over compressed data for integrity verification.
-	hasher := sha256.New()
-
 	uploadEG, uploadCtx := errgroup.WithContext(ctx)
 	uploadEG.SetLimit(4) // max concurrent part uploads
 
@@ -372,9 +378,6 @@ func CompressStream(ctx context.Context, in io.Reader, opts *FramedUploadOptions
 			C: int32(len(cf.data)),
 		}
 		frameTable.Frames = append(frameTable.Frames, fs)
-
-		// Feed compressed bytes to running checksum (piggybacking on existing iteration).
-		hasher.Write(cf.data)
 
 		if opts.OnFrameReady != nil {
 			if err := opts.OnFrameReady(offset, fs, cf.data); err != nil {
@@ -464,8 +467,7 @@ func CompressStream(ctx context.Context, in io.Reader, opts *FramedUploadOptions
 		return nil, [32]byte{}, fmt.Errorf("failed to finish uploading frames: %w", err)
 	}
 
-	var checksum [32]byte
-	copy(checksum[:], hasher.Sum(nil))
+	checksum := <-checksumCh
 
 	return frameTable, checksum, nil
 }

@@ -3,8 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
-	"crypto/md5"
-	"encoding/hex"
+	"crypto/sha256"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -366,7 +365,7 @@ func validateArtifact(ctx context.Context, storagePath, buildID, artifactName st
 			return fmt.Errorf("compressed frame validation failed: %w", err)
 		}
 	} else {
-		// For uncompressed V3 headers, open data file and compute MD5
+		// For uncompressed headers, open data file and compute SHA-256
 		reader, dataSize, _, err := cmdutil.OpenDataFile(ctx, storagePath, buildID, artifactName)
 		if err != nil {
 			return fmt.Errorf("failed to open data file: %w", err)
@@ -375,7 +374,7 @@ func validateArtifact(ctx context.Context, storagePath, buildID, artifactName st
 
 		fmt.Printf("  Data file: size=%#x\n", dataSize)
 
-		hash := md5.New()
+		hash := sha256.New()
 		chunkSize := int64(1024 * 1024)
 		buf := make([]byte, chunkSize)
 
@@ -391,8 +390,21 @@ func validateArtifact(ctx context.Context, storagePath, buildID, artifactName st
 			hash.Write(buf[:n])
 		}
 
-		dataMD5 := hex.EncodeToString(hash.Sum(nil))
-		fmt.Printf("  Data MD5 (storage): %s\n", dataMD5)
+		var computedChecksum [32]byte
+		copy(computedChecksum[:], hash.Sum(nil))
+		fmt.Printf("  Data SHA-256: %x\n", computedChecksum)
+
+		buildUUID, _ := uuid.Parse(buildID)
+		if h.BuildFiles != nil {
+			if info, ok := h.BuildFiles[buildUUID]; ok && info.Checksum != [32]byte{} {
+				if computedChecksum != info.Checksum {
+					return fmt.Errorf("build %s: SHA-256 mismatch: computed %x, header says %x",
+						buildID, computedChecksum, info.Checksum)
+				}
+
+				fmt.Printf("  Build %s: SHA-256 checksum VERIFIED\n", buildID)
+			}
+		}
 	}
 
 	return nil
@@ -653,7 +665,7 @@ func validateCompressedFrames(ctx context.Context, storagePath, artifactName str
 
 		fmt.Printf("  Build %s: %d frames, compressed file=%s size=%#x\n", bid, len(frames), compressedFile, compSize)
 
-		decompressedHash := md5.New()
+		decompressedHash := sha256.New()
 		var totalDecompressed int64
 
 		for i, frame := range frames {
@@ -699,9 +711,21 @@ func validateCompressedFrames(ctx context.Context, storagePath, artifactName str
 
 		compReader.Close()
 
-		decompressedMD5 := hex.EncodeToString(decompressedHash.Sum(nil))
-		fmt.Printf("  Build %s: all %d frames OK, decompressed=%#x (%d MiB), MD5=%s\n",
-			bid, len(frames), totalDecompressed, totalDecompressed/1024/1024, decompressedMD5)
+		var computedChecksum [32]byte
+		copy(computedChecksum[:], decompressedHash.Sum(nil))
+
+		fmt.Printf("  Build %s: all %d frames OK, decompressed=%#x (%d MiB), SHA256=%x\n",
+			bid, len(frames), totalDecompressed, totalDecompressed/1024/1024, computedChecksum)
+
+		buildUUID, _ := uuid.Parse(bid)
+		if info, ok := compressedH.BuildFiles[buildUUID]; ok && info.Checksum != [32]byte{} {
+			if computedChecksum != info.Checksum {
+				return fmt.Errorf("build %s: SHA-256 mismatch: computed %x, header says %x",
+					bid, computedChecksum, info.Checksum)
+			}
+
+			fmt.Printf("  Build %s: SHA-256 checksum VERIFIED\n", bid)
+		}
 	}
 
 	fmt.Printf("  Compressed frames: all %d validated\n", totalFrames)
