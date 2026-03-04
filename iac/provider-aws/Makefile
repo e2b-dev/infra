@@ -68,9 +68,6 @@ apply:
 .PHONY: state-migrate
 state-migrate:
 	@ printf "Running Terraform state migrations for env: $(ENV)\n\n"
-	@ $(tf_vars) $(TF) state mv 'module.nomad.nomad_job.api' 'module.nomad.module.api.nomad_job.api' 2>/dev/null || true
-	@ $(tf_vars) $(TF) state mv 'module.nomad.nomad_job.template_manager' 'module.nomad.module.template_manager.nomad_job.template_manager' 2>/dev/null || true
-	@ $(tf_vars) $(TF) state mv 'module.nomad.module.redis[0].nomad_job.redis[0]' 'module.nomad.module.redis[0].nomad_job.redis' 2>/dev/null || true
 
 .PHONY: apply-init
 apply-init:
