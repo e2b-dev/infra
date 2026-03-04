@@ -32,26 +32,30 @@ source "googlecompute" "orch" {
   use_iap    = true
 }
 
+locals {
+  shared_setup_dir = "${path.root}/../../nomad-cluster-disk-image/setup"
+}
+
 build {
   sources = ["source.googlecompute.orch"]
 
   provisioner "file" {
-    source      = "${path.root}/setup/supervisord.conf"
+    source      = "${local.shared_setup_dir}/supervisord.conf"
     destination = "/tmp/supervisord.conf"
   }
 
   provisioner "file" {
-    source      = "${path.root}/setup"
+    source      = "${local.shared_setup_dir}"
     destination = "/tmp"
   }
 
   provisioner "file" {
-    source      = "${path.root}/setup/daemon.json"
+    source      = "${local.shared_setup_dir}/daemon.json"
     destination = "/tmp/daemon.json"
   }
 
   provisioner "file" {
-    source      = "${path.root}/setup/limits.conf"
+    source      = "${local.shared_setup_dir}/limits.conf"
     destination = "/tmp/limits.conf"
   }
 
@@ -109,17 +113,17 @@ build {
   }
 
   provisioner "shell" {
-    script          = "${path.root}/setup/install-consul.sh"
+    script          = "${local.shared_setup_dir}/install-consul.sh"
     execute_command = "chmod +x {{ .Path }}; {{ .Vars }} {{ .Path }} --version ${var.consul_version}"
   }
 
   provisioner "shell" {
-    script          = "${path.root}/setup/install-nomad.sh"
+    script          = "${local.shared_setup_dir}/install-nomad.sh"
     execute_command = "chmod +x {{ .Path }}; {{ .Vars }} {{ .Path }} --version ${var.nomad_version}"
   }
 
   provisioner "shell" {
-    script          = "${path.root}/setup/install-vault.sh"
+    script          = "${local.shared_setup_dir}/install-vault.sh"
     execute_command = "chmod +x {{ .Path }}; {{ .Vars }} {{ .Path }} --version ${var.vault_version}"
   }
 
