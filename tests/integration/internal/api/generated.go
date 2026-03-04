@@ -70,12 +70,6 @@ const (
 	NodeStatusUnhealthy  NodeStatus = "unhealthy"
 )
 
-// Defines values for SandboxAutoResumePolicy.
-const (
-	Any SandboxAutoResumePolicy = "any"
-	Off SandboxAutoResumePolicy = "off"
-)
-
 // Defines values for SandboxState.
 const (
 	Paused  SandboxState = "paused"
@@ -410,7 +404,7 @@ type NewSandbox struct {
 	// AutoPause Automatically pauses the sandbox after the timeout
 	AutoPause *bool `json:"autoPause,omitempty"`
 
-	// AutoResume Auto-resume configuration for paused sandboxes. Default is off.
+	// AutoResume Auto-resume configuration for paused sandboxes.
 	AutoResume *SandboxAutoResumeConfig `json:"autoResume,omitempty"`
 	EnvVars    *EnvVars                 `json:"envVars,omitempty"`
 
@@ -590,14 +584,14 @@ type Sandbox struct {
 	TrafficAccessToken *string `json:"trafficAccessToken"`
 }
 
-// SandboxAutoResumeConfig Auto-resume configuration for paused sandboxes. Default is off.
+// SandboxAutoResumeConfig Auto-resume configuration for paused sandboxes.
 type SandboxAutoResumeConfig struct {
-	// Policy Auto-resume policy for paused sandboxes. Default is off.
-	Policy SandboxAutoResumePolicy `json:"policy"`
+	// Enabled Auto-resume enabled flag for paused sandboxes. Default false.
+	Enabled SandboxAutoResumeEnabled `json:"enabled"`
 }
 
-// SandboxAutoResumePolicy Auto-resume policy for paused sandboxes. Default is off.
-type SandboxAutoResumePolicy string
+// SandboxAutoResumeEnabled Auto-resume enabled flag for paused sandboxes. Default false.
+type SandboxAutoResumeEnabled = bool
 
 // SandboxDetail defines model for SandboxDetail.
 type SandboxDetail struct {
@@ -1366,6 +1360,12 @@ type GetV2SandboxesSandboxIDLogsParams struct {
 
 	// Direction Direction of the logs that should be returned
 	Direction *LogsDirection `form:"direction,omitempty" json:"direction,omitempty"`
+
+	// Level Minimum log level to return. Logs below this level are excluded
+	Level *LogLevel `form:"level,omitempty" json:"level,omitempty"`
+
+	// Search Case-sensitive substring match on log message content
+	Search *string `form:"search,omitempty" json:"search,omitempty"`
 }
 
 // PostAccessTokensJSONRequestBody defines body for PostAccessTokens for application/json ContentType.
@@ -4924,6 +4924,38 @@ func NewGetV2SandboxesSandboxIDLogsRequest(server string, sandboxID SandboxID, p
 		if params.Direction != nil {
 
 			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "direction", runtime.ParamLocationQuery, *params.Direction); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Level != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "level", runtime.ParamLocationQuery, *params.Level); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Search != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "search", runtime.ParamLocationQuery, *params.Search); err != nil {
 				return nil, err
 			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
 				return nil, err

@@ -284,9 +284,6 @@ func (o *Orchestrator) CreateSandbox(
 	}
 	o.createdSandboxesCounter.Add(ctx, 1, metric.WithAttributes(attributes...))
 
-	// The build should be cached on the node now
-	node.InsertBuild(build.ID.String())
-
 	telemetry.SetAttributes(ctx, attribute.String("node.id", node.ID))
 	telemetry.ReportEvent(ctx, "Created sandbox")
 

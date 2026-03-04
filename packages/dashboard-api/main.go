@@ -73,7 +73,7 @@ func run() int {
 		}
 	}()
 
-	l, err := logger.NewLogger(ctx, logger.LoggerConfig{
+	l, err := logger.NewLogger(logger.LoggerConfig{
 		ServiceName:   serviceName,
 		IsInternal:    true,
 		IsDebug:       e2benv.IsDebug(),

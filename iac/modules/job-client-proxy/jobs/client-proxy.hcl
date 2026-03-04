@@ -112,11 +112,11 @@ job "client-proxy" {
         REDIS_CLUSTER_URL   = "${redis_cluster_url}"
         REDIS_TLS_CA_BASE64 = "${redis_tls_ca_base64}"
 
-        # used only when client-proxy is deployed directly in the cluster next to the API
         %{ if api_grpc_address != "" }
+        # used only when client-proxy is deployed directly in the cluster next to the API
         API_GRPC_ADDRESS = "${api_grpc_address}"
-
         %{ endif }
+
         %{ if launch_darkly_api_key != "" }
         LAUNCH_DARKLY_API_KEY         = "${launch_darkly_api_key}"
         %{ endif }

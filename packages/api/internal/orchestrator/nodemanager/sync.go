@@ -64,13 +64,4 @@ func (n *Node) Sync(ctx context.Context, store *sandbox.Store) {
 
 		return
 	}
-
-	builds, buildsErr := n.listCachedBuilds(ctx)
-	if buildsErr != nil {
-		logger.L().Error(ctx, "Error listing cached builds", zap.Error(buildsErr), logger.WithNodeID(n.ID))
-
-		return
-	}
-
-	n.SyncBuilds(builds)
 }

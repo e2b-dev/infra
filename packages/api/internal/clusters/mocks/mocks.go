@@ -159,8 +159,8 @@ func (_c *MockClusterResource_GetBuildLogs_Call) RunAndReturn(run func(ctx conte
 }
 
 // GetSandboxLogs provides a mock function for the type MockClusterResource
-func (_mock *MockClusterResource) GetSandboxLogs(ctx context.Context, teamID string, sandboxID string, start *int64, end *int64, limit *int32, direction *api.LogsDirection) (api.SandboxLogs, *api.APIError) {
-	ret := _mock.Called(ctx, teamID, sandboxID, start, end, limit, direction)
+func (_mock *MockClusterResource) GetSandboxLogs(ctx context.Context, teamID string, sandboxID string, start *int64, end *int64, limit *int32, direction *api.LogsDirection, level *logs.LogLevel, search *string) (api.SandboxLogs, *api.APIError) {
+	ret := _mock.Called(ctx, teamID, sandboxID, start, end, limit, direction, level, search)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetSandboxLogs")
@@ -168,16 +168,16 @@ func (_mock *MockClusterResource) GetSandboxLogs(ctx context.Context, teamID str
 
 	var r0 api.SandboxLogs
 	var r1 *api.APIError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, *int64, *int64, *int32, *api.LogsDirection) (api.SandboxLogs, *api.APIError)); ok {
-		return returnFunc(ctx, teamID, sandboxID, start, end, limit, direction)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, *int64, *int64, *int32, *api.LogsDirection, *logs.LogLevel, *string) (api.SandboxLogs, *api.APIError)); ok {
+		return returnFunc(ctx, teamID, sandboxID, start, end, limit, direction, level, search)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, *int64, *int64, *int32, *api.LogsDirection) api.SandboxLogs); ok {
-		r0 = returnFunc(ctx, teamID, sandboxID, start, end, limit, direction)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, *int64, *int64, *int32, *api.LogsDirection, *logs.LogLevel, *string) api.SandboxLogs); ok {
+		r0 = returnFunc(ctx, teamID, sandboxID, start, end, limit, direction, level, search)
 	} else {
 		r0 = ret.Get(0).(api.SandboxLogs)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, *int64, *int64, *int32, *api.LogsDirection) *api.APIError); ok {
-		r1 = returnFunc(ctx, teamID, sandboxID, start, end, limit, direction)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, *int64, *int64, *int32, *api.LogsDirection, *logs.LogLevel, *string) *api.APIError); ok {
+		r1 = returnFunc(ctx, teamID, sandboxID, start, end, limit, direction, level, search)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*api.APIError)
@@ -199,11 +199,13 @@ type MockClusterResource_GetSandboxLogs_Call struct {
 //   - end *int64
 //   - limit *int32
 //   - direction *api.LogsDirection
-func (_e *MockClusterResource_Expecter) GetSandboxLogs(ctx interface{}, teamID interface{}, sandboxID interface{}, start interface{}, end interface{}, limit interface{}, direction interface{}) *MockClusterResource_GetSandboxLogs_Call {
-	return &MockClusterResource_GetSandboxLogs_Call{Call: _e.mock.On("GetSandboxLogs", ctx, teamID, sandboxID, start, end, limit, direction)}
+//   - level *logs.LogLevel
+//   - search *string
+func (_e *MockClusterResource_Expecter) GetSandboxLogs(ctx interface{}, teamID interface{}, sandboxID interface{}, start interface{}, end interface{}, limit interface{}, direction interface{}, level interface{}, search interface{}) *MockClusterResource_GetSandboxLogs_Call {
+	return &MockClusterResource_GetSandboxLogs_Call{Call: _e.mock.On("GetSandboxLogs", ctx, teamID, sandboxID, start, end, limit, direction, level, search)}
 }
 
-func (_c *MockClusterResource_GetSandboxLogs_Call) Run(run func(ctx context.Context, teamID string, sandboxID string, start *int64, end *int64, limit *int32, direction *api.LogsDirection)) *MockClusterResource_GetSandboxLogs_Call {
+func (_c *MockClusterResource_GetSandboxLogs_Call) Run(run func(ctx context.Context, teamID string, sandboxID string, start *int64, end *int64, limit *int32, direction *api.LogsDirection, level *logs.LogLevel, search *string)) *MockClusterResource_GetSandboxLogs_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -233,6 +235,14 @@ func (_c *MockClusterResource_GetSandboxLogs_Call) Run(run func(ctx context.Cont
 		if args[6] != nil {
 			arg6 = args[6].(*api.LogsDirection)
 		}
+		var arg7 *logs.LogLevel
+		if args[7] != nil {
+			arg7 = args[7].(*logs.LogLevel)
+		}
+		var arg8 *string
+		if args[8] != nil {
+			arg8 = args[8].(*string)
+		}
 		run(
 			arg0,
 			arg1,
@@ -241,6 +251,8 @@ func (_c *MockClusterResource_GetSandboxLogs_Call) Run(run func(ctx context.Cont
 			arg4,
 			arg5,
 			arg6,
+			arg7,
+			arg8,
 		)
 	})
 	return _c
@@ -251,7 +263,7 @@ func (_c *MockClusterResource_GetSandboxLogs_Call) Return(sandboxLogs api.Sandbo
 	return _c
 }
 
-func (_c *MockClusterResource_GetSandboxLogs_Call) RunAndReturn(run func(ctx context.Context, teamID string, sandboxID string, start *int64, end *int64, limit *int32, direction *api.LogsDirection) (api.SandboxLogs, *api.APIError)) *MockClusterResource_GetSandboxLogs_Call {
+func (_c *MockClusterResource_GetSandboxLogs_Call) RunAndReturn(run func(ctx context.Context, teamID string, sandboxID string, start *int64, end *int64, limit *int32, direction *api.LogsDirection, level *logs.LogLevel, search *string) (api.SandboxLogs, *api.APIError)) *MockClusterResource_GetSandboxLogs_Call {
 	_c.Call.Return(run)
 	return _c
 }

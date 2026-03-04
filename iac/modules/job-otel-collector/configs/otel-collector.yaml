@@ -224,6 +224,7 @@ processors:
           - "otelcol.exporter.sent.*"
           - "otelcol.receiver.refused.*"
           - "pgxpool.*"
+          - "go\\..*"
           - "traefik.*"
 
   filter/only_client_allocs:
@@ -311,7 +312,7 @@ processors:
         host.name:
           enabled: true
         gcp.gce.instance.name:
-          enabled: true
+          enabled: false
         gcp.gce.instance_group_manager.region:
           enabled: false
         gcp.gce.instance_group_manager.zone:
@@ -326,6 +327,10 @@ processors:
       resource_attributes:
         cloud.account.id:
           enabled: true
+        cloud.region:
+          enabled: false
+        cloud.availability_zone:
+          enabled: false
         host.name:
           enabled: true
         host.id:
@@ -337,12 +342,7 @@ processors:
   transform/set-name:
     metric_statements:
       # We have to set the service instance here as it's necessary to set it as a datapoint attribute
-%{ if provider_name == "gcp" }
-      - set(datapoint.attributes["service.instance.id"], resource.attributes["gcp.gce.instance.name"])
-%{ endif }
-%{ if provider_name == "aws" }
       - set(datapoint.attributes["service.instance.id"], resource.attributes["host.name"])
-%{ endif }
       - set(datapoint.attributes["deployment.environment"], resource.attributes["cloud.account.id"])
       - delete_key(datapoint.attributes, "datacenter")
       - delete_key(datapoint.attributes, "instance")
