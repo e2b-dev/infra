@@ -283,6 +283,7 @@ func run(config cfg.Config) (success bool) {
 		logger.L().Fatal(ctx, "failed to create feature flags client", zap.Error(err))
 	}
 	closers = append(closers, closer{"feature flags", featureFlags.Close})
+
 	featureFlags.SetDeploymentName(config.DomainName)
 
 	storage.InitDecoders(ctx, featureFlags)
@@ -303,6 +304,39 @@ func run(config cfg.Config) (success bool) {
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create metrics provider", zap.Error(err))
 	}
+
+	// redis (initialized before template cache so the peer registry can be passed to NewCache)
+	redisClient, err := sharedFactories.NewRedisClient(ctx, sharedFactories.RedisConfig{
+		RedisURL:         config.RedisURL,
+		RedisClusterURL:  config.RedisClusterURL,
+		RedisTLSCABase64: config.RedisTLSCABase64,
+		PoolSize:         config.RedisPoolSize,
+	})
+	if err != nil && !errors.Is(err, sharedFactories.ErrRedisDisabled) {
+		logger.L().Fatal(ctx, "Could not connect to Redis", zap.Error(err))
+	} else if err == nil {
+		closers = append(closers, closer{"redis client", func(context.Context) error {
+			return sharedFactories.CloseCleanly(redisClient)
+		}})
+	}
+
+	peerRegistry := peerclient.NopRegistry()
+	peerResolver := peerclient.NopResolver()
+	if nodeAddress := config.NodeAddress(); redisClient != nil && nodeAddress != nil {
+		peerRegistry = peerclient.NewRedisRegistry(redisClient, *nodeAddress)
+		peerResolver = peerclient.NewResolver(peerRegistry, *nodeAddress)
+	}
+
+	templateCache, err := template.NewCache(config, featureFlags, persistence, blockMetrics, peerResolver)
+	if err != nil {
+		logger.L().Fatal(ctx, "failed to create template cache", zap.Error(err))
+	}
+	templateCache.Start(ctx)
+	closers = append(closers, closer{"template cache", func(context.Context) error {
+		templateCache.Stop()
+
+		return nil
+	}})
 
 	sbxEventsDeliveryTargets := make([]event.Delivery[event.SandboxEvent], 0)
 
@@ -347,50 +381,12 @@ func run(config cfg.Config) (success bool) {
 
 	logger.L().Info(ctx, "cgroup accounting enabled", zap.String("root", cgroup.RootCgroupPath))
 
-	// redis
-	redisClient, err := sharedFactories.NewRedisClient(ctx, sharedFactories.RedisConfig{
-		RedisURL:         config.RedisURL,
-		RedisClusterURL:  config.RedisClusterURL,
-		RedisTLSCABase64: config.RedisTLSCABase64,
-		PoolSize:         config.RedisPoolSize,
-	})
-	if err != nil && !errors.Is(err, sharedFactories.ErrRedisDisabled) {
-		logger.L().Fatal(ctx, "Could not connect to Redis", zap.Error(err))
-	} else if err == nil {
-		closers = append(closers, closer{"redis client", func(context.Context) error {
-			return sharedFactories.CloseCleanly(redisClient)
-		}})
-	}
-
 	// Redis sandbox events delivery target
 	if redisClient != nil {
 		sbxEventsDeliveryRedis := event.NewRedisStreamsDelivery[event.SandboxEvent](redisClient, event.SandboxEventsStreamName)
 		sbxEventsDeliveryTargets = append(sbxEventsDeliveryTargets, sbxEventsDeliveryRedis)
 		closers = append(closers, closer{"sandbox events delivery for redis", sbxEventsDeliveryRedis.Close})
 	}
-
-	// peer-to-peer chunk routing
-	var peerRegistry peerclient.Registry
-	var peerResolver peerclient.Resolver
-
-	if nodeAddr := config.NodeAddress(); redisClient != nil && nodeAddr != nil {
-		peerRegistry = peerclient.NewRedisRegistry(redisClient, *nodeAddr)
-		peerResolver = peerclient.NewResolver(peerRegistry, *nodeAddr)
-	} else {
-		peerRegistry = peerclient.NopRegistry()
-		peerResolver = peerclient.NopResolver()
-	}
-
-	templateCache, err := template.NewCache(config, featureFlags, persistence, blockMetrics, peerResolver)
-	if err != nil {
-		logger.L().Fatal(ctx, "failed to create template cache", zap.Error(err))
-	}
-	templateCache.Start(ctx)
-	closers = append(closers, closer{"template cache", func(context.Context) error {
-		templateCache.Stop()
-
-		return nil
-	}})
 
 	// sandbox observer
 	sandboxObserver, err := metrics.NewSandboxObserver(ctx, nodeID, serviceName, commitSHA, version, serviceInstanceID, sandboxes)
