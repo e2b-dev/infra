@@ -1,6 +1,3 @@
-//go:build bench
-// +build bench
-
 package memory
 
 import (
