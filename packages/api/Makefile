@@ -86,3 +86,25 @@ test:
 .PHONY: lint
 lint:
 	golangci-lint run --fix ./...
+
+.PHONY: generate-key
+generate-local-key:
+	# Generate a new ECDSA key pair (P-256)
+	openssl ecparam -name prime256v1 -genkey -noout -out private.pem
+	openssl ec -in private.pem -pubout -out public.pem
+	# Update .env.local with the new private key and name stamped with today's date
+	KEY=$$(base64 -w0 private.pem); \
+	NAME=local-dev-$$(date +%F); \
+	if grep -q '^VOLUME_TOKEN_SIGNING_KEY=' .env.local; then \
+		sed -i "s|^VOLUME_TOKEN_SIGNING_KEY=.*|VOLUME_TOKEN_SIGNING_KEY=ECDSA:$${KEY}|" .env.local; \
+	else \
+		echo "VOLUME_TOKEN_SIGNING_KEY=ECDSA:$${KEY}" >> .env.local; \
+	fi; \
+	if grep -q '^VOLUME_TOKEN_SIGNING_KEY_NAME=' .env.local; then \
+		sed -i "s|^VOLUME_TOKEN_SIGNING_KEY_NAME=.*|VOLUME_TOKEN_SIGNING_KEY_NAME=$${NAME}|" .env.local; \
+	else \
+		echo "VOLUME_TOKEN_SIGNING_KEY_NAME=$${NAME}" >> .env.local; \
+	fi
+
+	echo "Use the following base64 encoded private key to validate the token's signature:"
+	echo "local-dev:ECDSA:$$(base64 -w0 public.pem)"
