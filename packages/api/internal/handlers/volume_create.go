@@ -133,9 +133,18 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 		return
 	}
 
-	result := api.Volume{
+	token, err := generateVolumeContentToken(a.config.VolumesToken, volume, team)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to generate volume content token")
+		telemetry.ReportCriticalError(ctx, "Failed to generate volume content token", err)
+
+		return
+	}
+
+	result := api.VolumeAndToken{
 		VolumeID: volume.ID.String(),
 		Name:     volume.Name,
+		Token:    token,
 	}
 
 	c.JSON(http.StatusCreated, result)

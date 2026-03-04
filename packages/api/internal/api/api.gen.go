@@ -6792,7 +6792,7 @@ func (r GetVolumesResponse) StatusCode() int {
 type PostVolumesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON201      *Volume
+	JSON201      *VolumeAndToken
 	JSON400      *N400
 	JSON401      *N401
 	JSON500      *N500
@@ -9746,7 +9746,7 @@ func ParsePostVolumesResponse(rsp *http.Response) (*PostVolumesResponse, error) 
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
-		var dest Volume
+		var dest VolumeAndToken
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -12013,9 +12013,9 @@ var swaggerSpec = []string{
 	"xiCY+fMSWBG+PyXxTB7w/Z9/2a4rpZWB8fP+amq9HzoX42K/HKKwfqfyz/tP4Vb+ef+5m1c1Jn60ghTV",
 	"N6lNgDU/tvaahe2eKBbdfd++KBsBopmRvjq7rIO6O5wOhroYOIn96ZwMNszjASODOPzz8nHYIDd923Sd",
 	"r3h5v32Sy/vtU13eGgDD/wwgr/d4N+UlYRaRvnXfTWvXWz3/tHmdr5prsLo3BL1PfTUvcR8N7EMKwKs+",
-	"boZh7d5G6syZLdtuDIs9awthmJx/dVx97+ygICOLGYy/qX8MqhjfQFyqkSavz3rYwUKNgadnSEppc004",
-	"Cq5v7HesMLD5Q4vPTo6QRoedTW7d3poP+mEcaCNEtyIJ0ob8uFShZmELs4sZC70Dby5Eyg/GY5zSXbI/",
-	"2cVp6ln9vxV5Koo0Dd8qqfrKP0JODftv2IUdIQEvNzS17K3ftCU2/zu/sG8e/n8AAAD//721BWJrHAEA",
+	"boZh7d5G6syZLdtuDIua9TAOtG6yg0BM7r86zr53tlCQk8UUxt/UPwZVjm8gMtVIk9lnPexg4cbA0zM0",
+	"pbS5JiwF1zf2O1Yc2HyixXcnR0ij484mt27vqQ68SR/y41KFmoUtzC5mLPQOvLkQKT8Yj3FKd8n+ZBen",
+	"qWf1/1bkqyjSNXyrpOwr/wi5Ney/YRd2hAS83NDUtLd+0xbZ/O/84r55+P8BAAD//9wxosZzHAEA",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file
