@@ -45,22 +45,28 @@ packages:
           inpackage: true
           structname: MockFeatureFlagsClient
       Blob:
-        config:
-          dir: packages/shared/pkg/storage
-          filename: mock_blob_test.go
-          pkgname: storage
-          inpackage: true
+        configs:
+          - dir: packages/shared/pkg/storage
+            filename: mock_blob_test.go
+            pkgname: storage
+            inpackage: true
+          - dir: packages/shared/pkg/storage/mocks
+            filename: mockblob.go
+            pkgname: storagemocks
       FramedFile:
-        config:
-          dir: packages/shared/pkg/storage
-          filename: mock_framedfile_test.go
-          pkgname: storage
-          inpackage: true
+        configs:
+          - dir: packages/shared/pkg/storage
+            filename: mock_framedfile_test.go
+            pkgname: storage
+            inpackage: true
+          - dir: packages/shared/pkg/storage/mocks
+            filename: mockframedfile.go
+            pkgname: storagemocks
       StorageProvider:
         config:
-          dir: packages/shared/pkg/storage/mocks/provider
+          dir: packages/shared/pkg/storage/mocks
           filename: mockstorageprovider.go
-          pkgname: providermocks
+          pkgname: storagemocks
 
   github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build:
     interfaces:
