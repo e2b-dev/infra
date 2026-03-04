@@ -18,10 +18,20 @@ import (
 )
 
 const (
-	compressedAttr = "compressed"
-
 	// decompressFetchTimeout is the maximum time a single frame/chunk fetch may take.
 	decompressFetchTimeout = 60 * time.Second
+
+	compressedAttr = "compressed"
+	pullType       = "pull-type"
+	pullTypeLocal  = "local"
+	pullTypeRemote = "remote"
+
+	failureReason = "failure-reason"
+
+	failureTypeLocalRead      = "local-read"
+	failureTypeLocalReadAgain = "local-read-again"
+	failureTypeRemoteRead     = "remote-read"
+	failureTypeCacheFetch     = "cache-fetch"
 )
 
 type precomputedAttrs struct {
@@ -31,6 +41,10 @@ type precomputedAttrs struct {
 	failCacheRead      metric.MeasurementOption
 	failRemoteFetch    metric.MeasurementOption
 	failLocalReadAgain metric.MeasurementOption
+
+	// RemoteReads timer (runFetch)
+	remoteSuccess metric.MeasurementOption
+	remoteFailure metric.MeasurementOption
 
 	begin attribute.KeyValue
 }
@@ -61,6 +75,13 @@ func precomputeAttributes(isCompressed bool) precomputedAttrs {
 			telemetry.Failure, compressed,
 			attribute.String(pullType, pullTypeLocal),
 			attribute.String(failureReason, failureTypeLocalReadAgain)),
+
+		remoteSuccess: telemetry.PrecomputeAttrs(
+			telemetry.Success, compressed),
+
+		remoteFailure: telemetry.PrecomputeAttrs(
+			telemetry.Failure, compressed,
+			attribute.String(failureReason, failureTypeRemoteRead)),
 
 		begin: compressed,
 	}
@@ -132,8 +153,7 @@ func (c *Chunker) GetBlock(ctx context.Context, off, length int64, ft *storage.F
 	attrs := precomputedGetFrameAttrs(compressed)
 	timer := c.metrics.BlocksTimerFactory.Begin(attrs.begin)
 
-	// Fast path: already in mmap cache. No timer allocation — cache hits
-	// record only counters (zero-alloc precomputed attributes).
+	// Fast path: already in mmap cache.
 	b, err := c.cache.Slice(off, length)
 	if err == nil {
 		timer.Record(ctx, length, attrs.successFromCache)
@@ -199,11 +219,11 @@ func (c *Chunker) fetch(ctx context.Context, off int64, ft *storage.FrameTable) 
 
 // runFetch fetches data from storage into the mmap cache. Runs in a background goroutine.
 // Works for both compressed (c.compressed=true, ft!=nil) and uncompressed paths.
-func (c *Chunker) runFetch(ctx context.Context, s *fetchSession, offsetU int64, ft *storage.FrameTable) {
+func (c *Chunker) runFetch(ctx context.Context, session *fetchSession, offsetU int64, ft *storage.FrameTable) {
 	defer func() {
 		if r := recover(); r != nil {
 			logger.L().Error(ctx, "recovered from panic in the fetch handler", zap.Any("error", r))
-			s.setError(fmt.Errorf("recovered from panic in the fetch handler: %v", r), false)
+			session.setError(fmt.Errorf("recovered from panic in the fetch handler: %v", r), false)
 		}
 	}()
 
@@ -211,21 +231,20 @@ func (c *Chunker) runFetch(ctx context.Context, s *fetchSession, offsetU int64, 
 	defer cancel()
 
 	// Remove session from active list after completion.
-	defer c.releaseFetchSession(s)
+	defer c.releaseFetchSession(session)
 
 	// Get mmap region for the fetch target.
-	mmapSlice, releaseLock, err := c.cache.addressBytes(s.chunkOff, s.chunkLen)
+	mmapSlice, releaseLock, err := c.cache.addressBytes(session.chunkOff, session.chunkLen)
 	if err != nil {
-		s.setError(err, false)
+		session.setError(err, false)
 
 		return
 	}
 	defer releaseLock()
 
 	compressed := storage.IsCompressed(ft)
-	timer := c.metrics.RemoteReadsTimerFactory.Begin(
-		attribute.Bool(compressedAttr, compressed),
-	)
+	attrs := precomputedGetFrameAttrs(compressed)
+	timer := c.metrics.RemoteReadsTimerFactory.Begin(attrs.begin)
 
 	// Pass blockSize as readSize so each progressive onRead covers at least
 	// one complete block. readProgressive applies a floor internally to avoid
@@ -235,22 +254,21 @@ func (c *Chunker) runFetch(ctx context.Context, s *fetchSession, offsetU int64, 
 	var prevTotal int64
 	onRead := func(totalWritten int64) {
 		newBytes := totalWritten - prevTotal
-		c.cache.markBlockRangeCached(s.chunkOff+prevTotal, newBytes)
-		s.advance(totalWritten)
+		c.cache.markBlockRangeCached(session.chunkOff+prevTotal, newBytes)
+		session.advance(totalWritten)
 		prevTotal = totalWritten
 	}
 
-	_, err = c.file.GetFrame(ctx, offsetU, ft, compressed, mmapSlice[:s.chunkLen], readSize, onRead)
+	_, err = c.file.GetFrame(ctx, offsetU, ft, compressed, mmapSlice[:session.chunkLen], readSize, onRead)
 	if err != nil {
-		timer.Failure(ctx, s.chunkLen,
-			attribute.String(failureReason, failureTypeRemoteRead))
-		s.setError(fmt.Errorf("failed to fetch data at %#x: %w", offsetU, err), false)
+		timer.Record(ctx, session.chunkLen, attrs.remoteFailure)
+		session.setError(fmt.Errorf("failed to fetch data at %#x: %w", offsetU, err), false)
 
 		return
 	}
 
-	timer.Success(ctx, s.chunkLen)
-	s.setDone()
+	timer.Record(ctx, session.chunkLen, attrs.remoteSuccess)
+	session.setDone()
 }
 
 func (c *Chunker) Close() error {
@@ -295,16 +313,3 @@ func (c *Chunker) releaseFetchSession(s *fetchSession) {
 		}
 	}
 }
-
-const (
-	pullType       = "pull-type"
-	pullTypeLocal  = "local"
-	pullTypeRemote = "remote"
-
-	failureReason = "failure-reason"
-
-	failureTypeLocalRead      = "local-read"
-	failureTypeLocalReadAgain = "local-read-again"
-	failureTypeRemoteRead     = "remote-read"
-	failureTypeCacheFetch     = "cache-fetch"
-)
