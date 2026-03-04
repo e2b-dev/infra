@@ -117,33 +117,36 @@ func (a *APIStore) executeOnOrchestratorByClusterID(
 
 		c, clientCtx := node.GetClient(ctx)
 
-		if clientErr := fn(clientCtx, c); clientErr != nil {
-			if err := ctx.Err(); err != nil {
-				// original context is canceled, bail
-				return errors.Join(
-					fmt.Errorf("orchestrator error: %w", clientErr),
-					fmt.Errorf("request error: %w", err),
-				)
-			}
-
-			// we want to retry these, but we don't want to flood the logs with reports
-			if volumeType, ok := isUnknownVolumeTypeError(clientErr); ok {
-				unknownVolumeType = volumeType
-				receivedUnknownVolumeTypeErrors++
-
-				continue
-			}
-
-			if isRetryableError(clientErr) {
-				logger.L().Warn(clientCtx, "failed to make orchestrator call, retrying ... ", zap.Error(clientErr))
-
-				continue
-			}
-
-			return clientErr
+		err := fn(clientCtx, c)
+		if err == nil { // inverted guard clause, the rest of the function is chunky
+			return nil
 		}
 
-		return nil
+		// the rest is all error handling
+
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			// original context is canceled, bail
+			return errors.Join(
+				fmt.Errorf("orchestrator error: %w", err),
+				fmt.Errorf("request error: %w", ctxErr),
+			)
+		}
+
+		// we want to retry these, but we don't want to flood the logs with reports
+		if volumeType, ok := isUnknownVolumeTypeError(err); ok {
+			unknownVolumeType = volumeType
+			receivedUnknownVolumeTypeErrors++
+
+			continue
+		}
+
+		if isRetryableError(err) {
+			logger.L().Warn(clientCtx, "failed to make orchestrator call, retrying ... ", zap.Error(err))
+
+			continue
+		}
+
+		return err
 	}
 
 	return ErrNoHealthyOrchestratorFound
@@ -154,7 +157,7 @@ func isUnknownVolumeTypeError(err error) (string, bool) {
 	if ok {
 		for _, actual := range grpcStatus.Details() {
 			if vterr, ok := actual.(*orchestrator.UnknownVolumeTypeError); ok {
-				return vterr.VolumeType, true // maybe there's another orchestrator that knows about it?
+				return vterr.GetVolumeType(), true // maybe there's another orchestrator that knows about it?
 			}
 		}
 	}

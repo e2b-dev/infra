@@ -27,7 +27,7 @@ func TestGenerateVolumeContentToken_SetsTokidHeader(t *testing.T) {
 		SigningMethod:  jwt.SigningMethodHS256,
 		SigningKey:     secret,
 		// not required for the header test, but set to a small value
-		Expiration: time.Hour,
+		Duration: time.Hour,
 	}
 
 	// Arrange a team and volume

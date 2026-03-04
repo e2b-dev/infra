@@ -1,7 +1,6 @@
 package cfg
 
 import (
-	"crypto/ed25519"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -80,7 +79,7 @@ type VolumesTokenConfig struct {
 	SigningMethod  jwt.SigningMethod `env:"VOLUME_TOKEN_SIGNING_METHOD,required"`
 	SigningKey     JWTSigningKey     `env:"VOLUME_TOKEN_SIGNING_KEY,required"`
 	SigningKeyName string            `env:"VOLUME_TOKEN_SIGNING_KEY_NAME,required"`
-	Expiration     time.Duration     `env:"VOLUME_TOKEN_EXPIRATION"           envDefault:"1h"`
+	Duration       time.Duration     `env:"VOLUME_TOKEN_DURATION"                  envDefault:"1h"`
 }
 
 var (
@@ -111,7 +110,7 @@ func Parse() (Config, error) {
 				case "HMAC":
 					return keyValue, nil
 				case "ED25519":
-					return ed25519.PrivateKey(keyValue), nil
+					return jwt.ParseEdPrivateKeyFromPEM(keyValue)
 				default:
 					return nil, fmt.Errorf("%s: %w", keyType, ErrUnknownKeyType)
 				}

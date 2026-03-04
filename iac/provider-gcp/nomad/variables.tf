@@ -441,6 +441,10 @@ variable "volume_token_signing_key" {
   type = string
 }
 
+variable "volume_token_signing_key_name" {
+  type = string
+}
+
 variable "volume_token_signing_method" {
   type = string
 }

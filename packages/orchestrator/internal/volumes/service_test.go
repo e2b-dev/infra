@@ -159,7 +159,8 @@ func TestBuildVolumePath(t *testing.T) {
 				}
 				request := orchestrator.VolumeDirCreateRequest{Volume: &volumeInfo, Path: tc.relPath}
 				_, actualStatus := v.buildPaths(&request)
-				require.ErrorIs(t, actualStatus, tc.expected.Err())
+				require.Error(t, actualStatus)
+				require.Equal(t, actualStatus.Error(), tc.expected.Err().Error())
 			})
 		}
 	})

@@ -277,21 +277,13 @@ module "nomad" {
   filestore_cache_cleanup_max_concurrent_delete = var.filestore_cache_cleanup_max_concurrent_delete
   filestore_cache_cleanup_max_retries           = var.filestore_cache_cleanup_max_retries
 
-  volume_token_issuer         = var.domain_name
-  volume_token_signing_key    = local.volume_token_signing_key
-  volume_token_signing_method = var.volume_token.signing_method
-  volume_token_expiration     = var.volume_token.expiration
+  volume_token_issuer           = local.volume_token_issuer
+  volume_token_signing_key      = local.volume_token_signing_key
+  volume_token_signing_key_name = local.volume_token_signature_name
+  volume_token_signing_method   = local.volume_token_signature_method
+  volume_token_expiration       = var.volume_token_valid_for
 }
 
-locals {
-  should_generate_volume_token_signing_key = var.volume_token.signing_key == null
-  volume_token_signing_key                 = local.should_generate_volume_token_signing_key ? random_bytes.volume_token_signing_key[0].base64 : var.volume_token.signing_key
-}
-
-resource "random_bytes" "volume_token_signing_key" {
-  count  = local.should_generate_volume_token_signing_key ? 1 : 0
-  length = 32
-}
 
 module "redis" {
   source = "./redis"

@@ -651,12 +651,21 @@ variable "network_name" {
   default = "default"
 }
 
-variable "volume_token" {
+variable "volume_token_issuer" {
+  type    = string
+  default = ""
+}
+
+variable "volume_token_valid_for" {
+  type    = string
+  default = ""
+}
+
+variable "volume_token_signature" {
   type = object({
-    issuer         = optional(string)
-    signing_key    = optional(string)
-    signing_method = optional(string)
-    expiration     = optional(string)
+    key    = string
+    name   = string
+    method = string
   })
-  default = {}
+  default = null
 }

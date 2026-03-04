@@ -17,8 +17,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-const gracePeriod = time.Minute
-
 func (a *APIStore) GetVolumesVolumeID(c *gin.Context, volumeID api.VolumeID) {
 	volume, team, ok := a.getVolume(c, volumeID)
 	if !ok {
@@ -46,8 +44,7 @@ func generateVolumeContentToken(config cfg.VolumesTokenConfig, volume queries.Vo
 	clusterID := clusters.WithClusterFallback(team.ClusterID)
 
 	now := time.Now()
-	notBefore := now.Add(-1 * gracePeriod)
-	expiration := now.Add(config.Expiration)
+	expiration := now.Add(config.Duration)
 
 	claims := jwt.MapClaims{
 		// registered
@@ -56,7 +53,7 @@ func generateVolumeContentToken(config cfg.VolumesTokenConfig, volume queries.Vo
 		"iat": jwt.NewNumericDate(now),
 		"iss": config.Issuer,
 		"jti": uuid.NewString(),
-		"nbf": jwt.NewNumericDate(notBefore),
+		"nbf": jwt.NewNumericDate(now),
 		"sub": team.ID.String(),
 
 		// custom

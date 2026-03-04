@@ -101,7 +101,7 @@ func (s *Service) buildPaths(request volumePathRequest) (volumePaths, error) {
 	volTypePath, ok := s.config.PersistentVolumeMounts[volume.GetVolumeType()]
 	if !ok {
 		st, _ := status.Newf(codes.NotFound, "volume type %q not found", volume.GetVolumeType()).
-			WithDetails(&orchestrator.UnknownVolumeTypeError{})
+			WithDetails(&orchestrator.UnknownVolumeTypeError{VolumeType: volume.GetVolumeType()})
 
 		return volumePaths{}, st.Err()
 	}
