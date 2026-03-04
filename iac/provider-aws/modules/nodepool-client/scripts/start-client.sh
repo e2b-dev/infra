@@ -116,14 +116,6 @@ DNSStubListenerExtra=172.17.0.1
 EOF
 sync  # Ensure file is written to disk
 
-# Remove GCE's DNS config to prevent it from competing with Consul DNS (GCP-specific fix)
-# We don't need routing domains since Consul handles ALL DNS:
-#   - .consul queries: served directly by Consul
-#   - other queries: forwarded to GCE DNS via Consul's recursor config
-if [ -f /etc/systemd/resolved.conf.d/gce-resolved.conf ]; then
-  mv /etc/systemd/resolved.conf.d/gce-resolved.conf /etc/systemd/resolved.conf.d/gce-resolved.conf.disabled
-fi
-
 # Set up huge pages
 # We are not enabling Transparent Huge Pages for now, as they are not swappable and may result in slowdowns + we are not using swap right now.
 # The THP are by default set to madvise
