@@ -232,8 +232,8 @@ func TestSetIsCached_OverlappingRanges(t *testing.T) {
 	c := newTestCache(t, 128, blockSize)
 
 	// Two overlapping ranges.
-	c.markBlockRangeCached(5*blockSize, 5*blockSize)  // blocks 5..9
-	c.markBlockRangeCached(8*blockSize, 5*blockSize)  // blocks 8..12
+	c.markBlockRangeCached(5*blockSize, 5*blockSize) // blocks 5..9
+	c.markBlockRangeCached(8*blockSize, 5*blockSize) // blocks 8..12
 
 	// Union should be blocks 5..12.
 	for i := int64(5); i <= 12; i++ {
