@@ -64,5 +64,5 @@ func (s *SandboxFiles) SandboxMetricsFifoPath() string {
 }
 
 func (s *SandboxFiles) SandboxCgroupName() string {
-	return fmt.Sprintf("%s-%s", s.SandboxID, s.randomID)
+	return fmt.Sprintf("sbx-%s-%s", s.SandboxID, s.randomID)
 }

@@ -1111,9 +1111,9 @@ func pauseProcessRootfs(
 //
 // Returns the CgroupHandle and the cgroup directory FD to pass to the
 // Firecracker process. If cgroup accounting is disabled, returns (nil, cgroup.NoCgroupFD).
-func createCgroup(ctx context.Context, cgroupManager cgroup.Manager, sandboxID string, cleanup *Cleanup) (*cgroup.CgroupHandle, int) {
+func createCgroup(ctx context.Context, cgroupManager cgroup.Manager, cgroupName string, cleanup *Cleanup) (*cgroup.CgroupHandle, int) {
 	ctx, span := tracer.Start(ctx, "sandbox-create-cgroup", trace.WithAttributes(
-		telemetry.WithSandboxID(sandboxID),
+		attribute.String("cgroup_name", cgroupName),
 	))
 	defer span.End()
 
@@ -1121,10 +1121,10 @@ func createCgroup(ctx context.Context, cgroupManager cgroup.Manager, sandboxID s
 		return nil, cgroup.NoCgroupFD
 	}
 
-	handle, err := cgroupManager.Create(ctx, sandboxID)
+	handle, err := cgroupManager.Create(ctx, cgroupName)
 	if err != nil {
 		logger.L().Warn(ctx, "failed to create cgroup, continuing without cgroup accounting",
-			logger.WithSandboxID(sandboxID),
+			zap.String("cgroup_name", cgroupName),
 			zap.Error(err))
 
 		telemetry.ReportEvent(ctx, "cgroup creation failed, continuing without accounting")
