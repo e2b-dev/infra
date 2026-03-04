@@ -276,9 +276,10 @@ func (u *Userfaultfd) Serve(
 			switch state := u.pageTracker.get(addr); state {
 			case faulted:
 				// TODO: Can we skip faulting pages that are already faulted? How does that play with prefaulting?
+				// Skip faulting the page.
 				continue
 			case removed:
-				continue
+				// Fault the page as empty.
 			case unfaulted:
 				source = u.src
 			default:
