@@ -97,54 +97,40 @@ func (v volumePaths) isRoot() bool {
 func (s *Service) buildPaths(request volumePathRequest) (volumePaths, error) {
 	volume := request.GetVolume()
 
-	volumeType := volume.GetVolumeType()
-	volTypePath, ok := s.config.PersistentVolumeMounts[volumeType]
+	// 1. Resolve Volume Type Path
+	volTypePath, ok := s.config.PersistentVolumeMounts[volume.GetVolumeType()]
 	if !ok {
-		statusErr := status.Newf(codes.NotFound, "volume type %q not found", volumeType)
-		statusErr, _ = statusErr.WithDetails(&orchestrator.UnknownVolumeTypeError{})
-
-		return volumePaths{}, statusErr.Err()
+		st, _ := status.Newf(codes.NotFound, "volume type %q not found", volume.GetVolumeType()).
+			WithDetails(&orchestrator.UnknownVolumeTypeError{})
+		return volumePaths{}, st.Err()
 	}
 
+	// 2. Parse UUIDs
 	teamID, ok := internal.TryParseUUID(volume.GetTeamId())
 	if !ok {
 		return volumePaths{}, status.Newf(codes.InvalidArgument, "invalid team ID %q", volume.GetTeamId()).Err()
 	}
-
 	volumeID, ok := internal.TryParseUUID(volume.GetVolumeId())
 	if !ok {
 		return volumePaths{}, status.Newf(codes.InvalidArgument, "invalid volume ID %q", volume.GetVolumeId()).Err()
 	}
 
-	volumeParts := append([]string{volTypePath}, BuildVolumePathParts(teamID, volumeID)...)
-	basePath := filepath.Join(volumeParts...)
-	fullPath := basePath
-	clientPath := ""
+	// 3. Construct Base Path
+	basePath := filepath.Join(append([]string{volTypePath}, BuildVolumePathParts(teamID, volumeID)...)...)
 
-	subPath := request.GetPath()
-	if subPath != "" {
-		subPath = strings.TrimPrefix(subPath, "/")
-		subPath = filepath.Clean(subPath)
-		fullPath = filepath.Join(basePath, subPath)
+	// 4. Sanitize Subpath & Build Full Path
+	subPath := filepath.Clean("/" + request.GetPath()) // Forces absolute-style cleaning
+	fullPath := filepath.Join(basePath, subPath)
 
-		var err error
-		clientPath, err = filepath.Rel(basePath, fullPath)
-		if err != nil || strings.HasPrefix(clientPath, "..") {
-			return volumePaths{}, status.Newf(codes.InvalidArgument, "invalid relative path base=%q subpath=%q relpath=%q", basePath, subPath, clientPath).Err()
-		}
-	}
-
-	if !strings.HasPrefix(clientPath, "/") {
-		clientPath = "/" + clientPath
-	}
-
-	if clientPath == "/." {
-		clientPath = "/"
+	// 5. Security Check (Directory Traversal)
+	relPath, err := filepath.Rel(basePath, fullPath)
+	if err != nil || strings.HasPrefix(relPath, "..") {
+		return volumePaths{}, status.Errorf(codes.InvalidArgument, "invalid path: traversal detected")
 	}
 
 	return volumePaths{
 		HostVolumePath: basePath,
-		ClientPath:     clientPath,
+		ClientPath:     filepath.Join("/", relPath), // Ensures leading slash
 		HostFullPath:   fullPath,
 	}, nil
 }

@@ -189,21 +189,20 @@ func TestRelPathTraversal(t *testing.T) {
 
 	tests := map[string]struct {
 		rel                string
-		expectErr          bool
 		expectIsRoot       bool
 		expectedClientPath string
 		expectedHostPath   string
 	}{
-		"root":                         {rel: "/", expectErr: false, expectIsRoot: true, expectedClientPath: "/", expectedHostPath: volumeRoot},
-		"dot":                          {rel: ".", expectErr: false, expectIsRoot: true, expectedClientPath: "/", expectedHostPath: volumeRoot},
-		"empty string":                 {rel: "", expectErr: false, expectIsRoot: true, expectedClientPath: "/", expectedHostPath: volumeRoot},
-		"simple traversal":             {rel: "../", expectErr: true},
-		"another case":                 {rel: "./a/.././", expectErr: false, expectIsRoot: true, expectedHostPath: volumeRoot, expectedClientPath: "/"},
-		"simple child":                 {rel: "dir/file.txt", expectErr: false, expectedHostPath: volumeRoot + "/dir/file.txt", expectedClientPath: "/dir/file.txt"},
-		"parent traversal one level":   {rel: "../escape1", expectErr: true},
-		"parent traversal many levels": {rel: "../../../../escape2", expectErr: true},
-		"mixed clean/traverse":         {rel: "./a/.././../escape3", expectErr: true},
-		"absolute path":                {rel: "/etc/passwd", expectErr: false, expectedHostPath: volumeRoot + "/etc/passwd", expectedClientPath: "/etc/passwd"},
+		"root":                         {rel: "/", expectIsRoot: true},
+		"dot":                          {rel: ".", expectIsRoot: true},
+		"empty string":                 {rel: "", expectIsRoot: true},
+		"simple traversal":             {rel: "../", expectIsRoot: true},
+		"another case":                 {rel: "./a/.././", expectIsRoot: true},
+		"simple child":                 {rel: "dir/file.txt", expectedHostPath: volumeRoot + "/dir/file.txt", expectedClientPath: "/dir/file.txt"},
+		"parent traversal one level":   {rel: "../escape1", expectedClientPath: "/escape1", expectedHostPath: volumeRoot + "/escape1"},
+		"parent traversal many levels": {rel: "../../../../escape2", expectedClientPath: "/escape2", expectedHostPath: volumeRoot + "/escape2"},
+		"mixed clean/traverse":         {rel: "./a/.././../escape3", expectedClientPath: "/escape3", expectedHostPath: volumeRoot + "/escape3"},
+		"absolute path":                {rel: "/etc/passwd", expectedHostPath: volumeRoot + "/etc/passwd", expectedClientPath: "/etc/passwd"},
 	}
 
 	for name, tc := range tests {
@@ -219,15 +218,26 @@ func TestRelPathTraversal(t *testing.T) {
 			}
 			paths, err := v.buildPaths(&request)
 			if tc.expectErr {
-				require.Error(t, err)
+				require.Error(t, err, "result: %v", paths)
 
 				return
 			}
 
 			require.NoError(t, err)
-			assert.Equal(t, tc.expectIsRoot, paths.isRoot())
-			assert.Equal(t, tc.expectedClientPath, paths.ClientPath)
-			assert.Equal(t, tc.expectedHostPath, paths.HostFullPath)
+			assert.Equal(t, volumeRoot, paths.HostVolumePath)
+
+			if tc.expectIsRoot {
+				assert.Empty(t, tc.expectedClientPath)
+				assert.Empty(t, tc.expectedHostPath)
+
+				assert.True(t, paths.isRoot(), "result: %v", paths)
+				assert.Equal(t, volumeRoot, paths.HostFullPath)
+				assert.Equal(t, "/", paths.ClientPath)
+			} else {
+				assert.False(t, paths.isRoot(), "result: %v", paths)
+				assert.Equal(t, tc.expectedClientPath, paths.ClientPath)
+				assert.Equal(t, tc.expectedHostPath, paths.HostFullPath)
+			}
 		})
 	}
 }
