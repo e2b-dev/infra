@@ -65,6 +65,10 @@ plan-without-jobs:
 apply:
 	$(tf_vars) $(TF) apply -auto-approve -input=false -compact-warnings -parallelism=20 .tfplan.$(ENV)
 
+.PHONY: state-migrate
+state-migrate:
+	@ printf "Running Terraform state migrations for env: $(ENV)\n\n"
+
 .PHONY: apply-init
 apply-init:
 	$(tf_vars) $(TF) apply -target=module.init -auto-approve -input=false -compact-warnings

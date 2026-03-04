@@ -43,6 +43,10 @@ plan-only-jobs/%:
 plan-without-jobs:
 	$(MAKE) -C iac/provider-$(PROVIDER) plan-without-jobs
 
+.PHONY: state-migrate
+state-migrate:
+	$(MAKE) -C iac/provider-$(PROVIDER) state-migrate
+
 .PHONY: apply-init
 apply-init:
 	$(MAKE) -C iac/provider-$(PROVIDER) apply-init
