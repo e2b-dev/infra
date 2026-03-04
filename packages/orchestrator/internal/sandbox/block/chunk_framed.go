@@ -67,16 +67,16 @@ func precomputeAttributes(isCompressed bool) precomputedAttrs {
 }
 
 var (
-	precomputedCompressed   = precomputeAttributes(true)
-	precomputedUncompressed = precomputeAttributes(false)
+	precomputedGetFrameCompressed   = precomputeAttributes(true)
+	precomputedGetFrameUncompressed = precomputeAttributes(false)
 )
 
-func attrs(compressed bool) precomputedAttrs {
+func precomputedGetFrameAttrs(compressed bool) precomputedAttrs {
 	if compressed {
-		return precomputedCompressed
+		return precomputedGetFrameCompressed
 	}
 
-	return precomputedUncompressed
+	return precomputedGetFrameUncompressed
 }
 
 type Chunker struct {
@@ -129,7 +129,7 @@ func (c *Chunker) ReadBlock(ctx context.Context, b []byte, off int64, ft *storag
 // offset. On cache miss, fetches from storage into the cache first.
 func (c *Chunker) GetBlock(ctx context.Context, off, length int64, ft *storage.FrameTable) ([]byte, error) {
 	compressed := storage.IsCompressed(ft)
-	attrs := attrs(compressed)
+	attrs := precomputedGetFrameAttrs(compressed)
 	timer := c.metrics.BlocksTimerFactory.Begin(attrs.begin)
 
 	// Fast path: already in mmap cache. No timer allocation — cache hits
