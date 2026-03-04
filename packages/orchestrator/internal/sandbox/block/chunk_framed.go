@@ -235,7 +235,7 @@ func (c *Chunker) runFetch(ctx context.Context, s *fetchSession, offsetU int64, 
 	var prevTotal int64
 	onRead := func(totalWritten int64) {
 		newBytes := totalWritten - prevTotal
-		c.cache.setIsCached(s.chunkOff+prevTotal, newBytes)
+		c.cache.markBlockRangeCached(s.chunkOff+prevTotal, newBytes)
 		s.advance(totalWritten)
 		prevTotal = totalWritten
 	}

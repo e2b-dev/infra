@@ -132,7 +132,7 @@ func (c *fullFetchChunker) fetchToCache(ctx context.Context, off, length int64) 
 					return fmt.Errorf("failed to read chunk from upstream at %d: %w", fetchOff, err)
 				}
 
-				c.cache.setIsCached(fetchOff, int64(len(b)))
+				c.cache.markBlockRangeCached(fetchOff, int64(len(b)))
 				fetchSW.Success(ctx, int64(len(b)))
 
 				return nil
