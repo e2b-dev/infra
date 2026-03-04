@@ -20,27 +20,27 @@ func (s *Storage) Sync(sandboxes []sandbox.Sandbox, nodeID string) []sandbox.San
 	}
 
 	// Remove sandboxes that are not in Orchestrator anymore
-	for _, item := range s.items.Items() {
+	s.items.IterCb(func(_ string, item *memorySandbox) {
 		data := item.Data()
 		if data.IsExpired() {
-			continue
+			return
 		}
 
 		if data.NodeID != nodeID {
-			continue
+			return
 		}
 
 		if time.Since(data.StartTime) <= syncSandboxRemoveGracePeriod {
-			continue
+			return
 		}
 
 		_, found := sandboxMap[data.SandboxID]
 		if !found {
 			item.SetExpired()
 		}
-	}
+	})
 
-	var toBeAdded []sandbox.Sandbox
+	toBeAdded := make([]sandbox.Sandbox, 0, len(sandboxes))
 	// Add sandboxes that are not in the cache with the default TTL
 	for _, sandbox := range sandboxes {
 		if s.exists(sandbox.SandboxID) {
