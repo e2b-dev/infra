@@ -101,8 +101,8 @@ init:
 	@ TERRAFORM_STATE_BUCKET="$(TERRAFORM_STATE_BUCKET)" $(MAKE) -C nomad-cluster-disk-image init build
 	@ gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
 
-.PHONY: migrate
-migrate:
+.PHONY: state-migrate
+state-migrate:
 	@ printf "Running Terraform state migrations for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	@ $(tf_vars) $(TF) state mv 'module.nomad.nomad_job.api' 'module.nomad.module.api.nomad_job.api' 2>/dev/null || true
 	@ $(tf_vars) $(TF) state mv 'module.nomad.nomad_job.template_manager' 'module.nomad.module.template_manager.nomad_job.template_manager' 2>/dev/null || true

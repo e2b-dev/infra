@@ -50,7 +50,7 @@ jobs:
       - name: Run Terraform state migrations
         if: inputs.plan_only == 'false'
         run: |
-          make migrate || true
+          make state-migrate || true
 
       - name: Apply init module
         if: inputs.plan_only == 'false'

@@ -43,9 +43,9 @@ plan-only-jobs/%:
 plan-without-jobs:
 	$(MAKE) -C iac/provider-$(PROVIDER) plan-without-jobs
 
-.PHONY: migrate
-migrate:
-	$(MAKE) -C iac/provider-$(PROVIDER) migrate
+.PHONY: state-migrate
+state-migrate:
+	$(MAKE) -C iac/provider-$(PROVIDER) state-migrate
 
 .PHONY: apply-init
 apply-init:
@@ -144,8 +144,8 @@ generate-tests/%:
 	$(MAKE) -C tests/$(notdir $@) generate
 	@printf "\n\n"
 
-.PHONY: db-migrate
-db-migrate:
+.PHONY: migrate
+migrate:
 	$(MAKE) -C packages/db migrate
 
 .PHONY: set-env
