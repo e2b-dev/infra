@@ -253,20 +253,6 @@ func (c *Cache) isBlockCached(blockIdx int64) bool {
 	return c.dirty[blockIdx/64].Load()&(1<<uint(blockIdx%64)) != 0
 }
 
-// isCached reports whether all blocks in [off, off+length) are cached.
-func (c *Cache) isCached(off, length int64) bool {
-	startIdx := off / c.blockSize
-	endIdx := (off + length + c.blockSize - 1) / c.blockSize
-
-	for idx := startIdx; idx < endIdx; idx++ {
-		if !c.isBlockCached(idx) {
-			return false
-		}
-	}
-
-	return true
-}
-
 // markBlockRangeCached marks all blocks in [off, off+length) as cached.
 // Uses atomic OR so concurrent callers for disjoint ranges are safe.
 func (c *Cache) markBlockRangeCached(off, length int64) {

@@ -9,9 +9,9 @@ import (
 
 type fetchSession struct {
 	// chunk is what we are fetching, can be >= 1 block. chunkOff/chunkLen are absolute offsets in U-space.
-	chunkOff  int64
-	chunkLen  int64
-	blockSize int64
+	chunkOff int64
+	chunkLen int64
+	cache    *Cache
 
 	mu       sync.Mutex
 	fetchErr error
@@ -21,9 +21,6 @@ type fetchSession struct {
 	// are fully written and marked cached. Atomic so registerAndWait can
 	// do a lock-free fast-path check: bytesReady only increases.
 	bytesReady atomic.Int64
-
-	// isCachedFn checks persistent cache for data from previous sessions.
-	isCachedFn func(off, length int64) bool
 }
 
 // terminated reports whether the session reached a terminal state.
@@ -32,28 +29,24 @@ func (s *fetchSession) terminated() bool {
 	return s.fetchErr != nil || s.bytesReady.Load() == s.chunkLen
 }
 
-func newFetchSession(chunkOff, chunkLen, blockSize int64, isCachedFn func(off, length int64) bool) *fetchSession {
+func newFetchSession(chunkOff, chunkLen int64, cache *Cache) *fetchSession {
 	return &fetchSession{
-		chunkOff:   chunkOff,
-		chunkLen:   chunkLen,
-		blockSize:  blockSize,
-		isCachedFn: isCachedFn,
-		signal:     make(chan struct{}),
+		chunkOff: chunkOff,
+		chunkLen: chunkLen,
+		cache:    cache,
+		signal:   make(chan struct{}),
 	}
 }
 
-// registerAndWait blocks until [off, off+length) is cached, the session
-// terminates, or ctx is cancelled.
-func (s *fetchSession) registerAndWait(ctx context.Context, off, length int64) error {
-	relEnd := off + length - s.chunkOff
+// registerAndWait blocks until the block at blockOff is cached, the session
+// terminates, or ctx is cancelled. Each caller requests exactly one block.
+func (s *fetchSession) registerAndWait(ctx context.Context, blockOff int64) error {
+	blockSize := s.cache.blockSize
 
-	var endByte int64
-	if s.blockSize > 0 {
-		lastBlockIdx := (relEnd - 1) / s.blockSize
-		endByte = min((lastBlockIdx+1)*s.blockSize, s.chunkLen)
-	} else {
-		endByte = s.chunkLen
-	}
+	// endByte is the byte offset (relative to chunkOff) that must be ready
+	// for our block to be fully written.
+	relEnd := blockOff + blockSize - s.chunkOff
+	endByte := min(relEnd, s.chunkLen)
 
 	for {
 		// Lock-free fast path: bytesReady only increases, so >= endByte
@@ -71,13 +64,13 @@ func (s *fetchSession) registerAndWait(ctx context.Context, off, length int64) e
 			return nil
 		}
 
-		// Terminal but range not covered — only happens on error
+		// Terminal but block not covered — only happens on error
 		// (setDone sets bytesReady=chunkLen). Check cache for prior session data.
 		if s.terminated() {
 			fetchErr := s.fetchErr
 			s.mu.Unlock()
 
-			if s.isCachedFn != nil && s.isCachedFn(off, length) {
+			if s.cache.isBlockCached(blockOff / blockSize) {
 				return nil
 			}
 

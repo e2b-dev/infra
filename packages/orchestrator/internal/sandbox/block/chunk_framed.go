@@ -148,7 +148,7 @@ func (c *Chunker) GetBlock(ctx context.Context, off, length int64, ft *storage.F
 		return nil, fmt.Errorf("failed read from cache at offset %d: %w", off, err)
 	}
 
-	if err := c.fetch(ctx, off, length, ft); err != nil {
+	if err := c.fetch(ctx, off, ft); err != nil {
 		timer.Record(ctx, length, attrs.failRemoteFetch)
 
 		return nil, err
@@ -167,9 +167,9 @@ func (c *Chunker) GetBlock(ctx context.Context, off, length int64, ft *storage.F
 }
 
 // fetch ensures the frame/chunk covering off is fetched into the mmap cache,
-// then waits until [off, off+length) is available. Deduplicates concurrent
+// then waits until the block at off is available. Deduplicates concurrent
 // requests for the same region via the session list.
-func (c *Chunker) fetch(ctx context.Context, off, length int64, ft *storage.FrameTable) error {
+func (c *Chunker) fetch(ctx context.Context, off int64, ft *storage.FrameTable) error {
 	var (
 		chunkOff int64
 		chunkLen int64
@@ -194,7 +194,7 @@ func (c *Chunker) fetch(ctx context.Context, off, length int64, ft *storage.Fram
 		go c.runFetch(context.WithoutCancel(ctx), session, chunkOff, ft)
 	}
 
-	return session.registerAndWait(ctx, off, length)
+	return session.registerAndWait(ctx, off)
 }
 
 // runFetch fetches data from storage into the mmap cache. Runs in a background goroutine.
@@ -274,7 +274,7 @@ func (c *Chunker) getOrCreateFetchSession(off, length int64) (*fetchSession, boo
 		}
 	}
 
-	s := newFetchSession(off, length, c.cache.BlockSize(), c.cache.isCached)
+	s := newFetchSession(off, length, c.cache)
 	c.sessions = append(c.sessions, s)
 
 	return s, true

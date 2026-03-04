@@ -373,10 +373,9 @@ func run(config cfg.Config) (success bool) {
 	var peerRegistry peerclient.Registry
 	var peerResolver peerclient.Resolver
 
-	if redisClient != nil && config.NodeIP != "" {
-		nodeAddr := config.NodeAddress()
-		peerRegistry = peerclient.NewRedisRegistry(redisClient, nodeAddr)
-		peerResolver = peerclient.NewResolver(peerRegistry, nodeAddr)
+	if nodeAddr := config.NodeAddress(); redisClient != nil && nodeAddr != nil {
+		peerRegistry = peerclient.NewRedisRegistry(redisClient, *nodeAddr)
+		peerResolver = peerclient.NewResolver(peerRegistry, *nodeAddr)
 	} else {
 		peerRegistry = peerclient.NopRegistry()
 		peerResolver = peerclient.NopResolver()
