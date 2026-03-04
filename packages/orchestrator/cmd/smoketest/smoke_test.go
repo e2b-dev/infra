@@ -24,6 +24,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/peerclient"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/tcpfirewall"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
@@ -60,7 +61,7 @@ func TestSmokeAllFCVersions(t *testing.T) { //nolint:paralleltest // subtests sh
 		downloadFC(t, dataDir, fcVersion)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Minute)
 	defer cancel()
 
 	infra := newTestInfra(t, ctx)
@@ -207,7 +208,7 @@ func newTestInfra(t *testing.T, ctx context.Context) *testInfra {
 
 	// Template cache
 	blockMetrics, _ := blockmetrics.NewMetrics(noop.NewMeterProvider())
-	templateCache, err := sbxtemplate.NewCache(orcConfig, flags, persistenceTemplate, blockMetrics, nil)
+	templateCache, err := sbxtemplate.NewCache(orcConfig, flags, persistenceTemplate, blockMetrics, peerclient.NopResolver())
 	require.NoError(t, err)
 	templateCache.Start(ctx)
 	ti.closers = append(ti.closers, func(_ context.Context) { templateCache.Stop() })
@@ -281,7 +282,7 @@ func findOrBuildEnvd(t *testing.T) string {
 	t.Logf("building envd from %s", envdDir)
 	require.NoError(t, os.MkdirAll(filepath.Join(envdDir, "bin"), 0o755))
 
-	cmd := exec.CommandContext(context.Background(), "go", "build", "-o", binPath, ".") //nolint:gosec // trusted input
+	cmd := exec.CommandContext(t.Context(), "go", "build", "-o", binPath, ".") //nolint:gosec // trusted input
 	cmd.Dir = envdDir
 	cmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS=linux", "GOARCH=amd64")
 	out, err := cmd.CombinedOutput()
@@ -378,7 +379,7 @@ func downloadFile(t *testing.T, url, dst string, perm os.FileMode) {
 	require.NoError(t, os.MkdirAll(filepath.Dir(dst), 0o755))
 
 	t.Logf("downloading %s", url)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
