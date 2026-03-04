@@ -103,6 +103,7 @@ func run() int {
 
 		return 1
 	}
+	featureFlagsClient.SetServiceName(serviceName)
 
 	var catalog e2bcatalog.SandboxesCatalog
 

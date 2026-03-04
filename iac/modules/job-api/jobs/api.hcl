@@ -1,5 +1,4 @@
 job "api" {
-  datacenters = ["${gcp_zone}"]
   node_pool = "${node_pool}"
   priority = 90
 
@@ -42,6 +41,14 @@ job "api" {
       name = "api"
       port = "${port_number}"
       task = "start"
+
+      tags = [
+        "traefik.enable=true",
+
+        "traefik.http.routers.api.rule=HostRegexp(`api.{domain:.+}`)",
+        "traefik.http.routers.api.ruleSyntax=v2",
+        "traefik.http.routers.api.priority=500"
+      ]
 
       check {
         type     = "http"

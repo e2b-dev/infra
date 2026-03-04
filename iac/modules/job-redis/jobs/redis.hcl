@@ -1,5 +1,4 @@
 job "redis" {
-  datacenters = ["${gcp_zone}"]
   node_pool = "${node_pool}"
   type = "service"
   priority = 95

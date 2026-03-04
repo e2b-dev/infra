@@ -15,7 +15,7 @@ is_package_installed() {
 }
 
 # Install required packages if not already installed
-PACKAGES="systemd systemd-sysv openssh-server sudo chrony linuxptp socat curl ca-certificates fuse3 iptables git nfs-common"
+PACKAGES="systemd systemd-sysv openssh-server sudo chrony socat curl ca-certificates fuse3 iptables git nfs-common"
 echo "Checking presence of the following packages: $PACKAGES"
 
 MISSING=""
@@ -54,16 +54,6 @@ EOF
 
 # Add a proxy config, as some environments expects it there (e.g. timemaster in Node Dockerimage)
 echo "include /etc/chrony/chrony.conf" >/etc/chrony.conf
-
-# Set chrony to run as root
-mkdir -p /etc/systemd/system/chrony.service.d
-cat <<EOF >/etc/systemd/system/chrony.service.d/override.conf
-[Service]
-ExecStart=
-ExecStart=/usr/sbin/chronyd
-User=root
-Group=root
-EOF
 
 echo "Setting up SSH"
 mkdir -p /etc/ssh

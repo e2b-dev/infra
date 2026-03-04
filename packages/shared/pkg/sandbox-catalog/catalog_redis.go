@@ -101,7 +101,9 @@ func (c *RedisSandboxCatalog) StoreSandbox(ctx context.Context, sandboxID string
 		return fmt.Errorf("failed to store sandbox info in redis: %w", status.Err())
 	}
 
-	c.cache.Set(sandboxID, sandboxInfo, catalogRedisLocalCacheTtl)
+	if c.featureFlags.BoolFlag(spanCtx, featureflags.SandboxCatalogLocalCacheFlag) {
+		c.cache.Set(sandboxID, sandboxInfo, catalogRedisLocalCacheTtl)
+	}
 
 	return nil
 }

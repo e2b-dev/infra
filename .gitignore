@@ -2,7 +2,8 @@
 .idea
 .DS_Store
 .env*
-!.env.template
+!.env.aws.template
+!.env.gcp.template
 .last_used_env
 .tfplan.*
 *.tfvars
