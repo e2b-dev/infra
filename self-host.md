@@ -1,4 +1,4 @@
-# Self-hosting E2B on Google Cloud
+# Self-hosting E2B
 
 ## Prerequisites
 
@@ -18,14 +18,6 @@
       tfenv use 1.5.7
       ```
 
-- [Google Cloud CLI](https://cloud.google.com/sdk/docs/install)
-  - Used for managing the infrastructure on Google Cloud
-  - Be sure to authenticate:
-    ```sh
-    gcloud auth login
-    gcloud auth application-default login
-    ```
-
 - [Golang](https://go.dev/doc/install)
 
 - [Docker](https://docs.docker.com/engine/install/)
@@ -36,7 +28,6 @@
 
 - Cloudflare account
 - Domain on Cloudflare
-- GCP account + project
 - PostgreSQL database (Supabase's DB only supported for now)
 
 **Optional**
@@ -45,7 +36,22 @@ Recommended for monitoring and logging
 - Grafana Account & Stack
 - Posthog Account
 
-## Steps
+---
+
+## Google Cloud
+
+### Additional Prerequisites
+
+- [Google Cloud CLI](https://cloud.google.com/sdk/docs/install)
+  - Used for managing the infrastructure on Google Cloud
+  - Be sure to authenticate:
+    ```sh
+    gcloud auth login
+    gcloud auth application-default login
+    ```
+- GCP account + project
+
+### Steps
 
 Check if you can use config for terraform state management
 
@@ -79,6 +85,100 @@ Check if you can use config for terraform state management
 11. Setup data in the cluster by running `make prep-cluster` in `packages/shared` to create an initial user, team, and build a base template.
   - You can also run `make seed-db` in `packages/db` to create more users and teams.
 
+### GCP Troubleshooting
+
+**Quotas not available**
+
+If you can't find the quota in `All Quotas` in GCP's Console, then create and delete a dummy VM before proceeding to step 2 in self-deploy guide. This will create additional quotas and policies in GCP
+```
+gcloud compute instances create dummy-init   --project=YOUR-PROJECT-ID   --zone=YOUR-ZONE   --machine-type=e2-medium   --boot-disk-type=pd-ssd   --no-address
+```
+Wait a minute and destroy the VM:
+```
+gcloud compute instances delete dummy-init --zone=YOUR-ZONE --quiet
+```
+Now, you should see the right quota options in `All Quotas` and be able to request the correct size.
+
+---
+
+## AWS
+
+### Additional Prerequisites
+
+- [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)
+  - Used for managing the infrastructure on AWS
+  - Be sure to configure a profile:
+    ```sh
+    aws configure --profile <your-profile>
+    ```
+- [gsutil](https://cloud.google.com/storage/docs/gsutil_install) (for copying public Firecracker builds)
+- AWS account
+
+### Steps
+
+1. Create `.env.prod`, `.env.staging`, or `.env.dev` from [`.env.template`](.env.template). Make sure to fill in the AWS-specific values:
+    - `PROVIDER=aws`
+    - `AWS_PROFILE` - your AWS CLI profile name
+    - `AWS_ACCOUNT_ID` - your AWS account ID
+    - `AWS_REGION` - the AWS region to deploy to (must support bare metal instances for Firecracker)
+    - `PREFIX` - name prefix for all resources (e.g. `e2b-`)
+    - `DOMAIN_NAME` - your domain managed by Cloudflare
+    - `TERRAFORM_ENVIRONMENT` - one of `prod`, `staging`, `dev`
+2. Run `make set-env ENV={prod,staging,dev}` to start using your env
+3. Run `make provider-login` to authenticate with AWS ECR
+4. Run `make init`. This creates:
+    - S3 bucket for Terraform state
+    - VPC, subnets, and networking
+    - ECR repositories for container images
+    - S3 buckets for templates, kernels, builds, and backups
+    - Secrets in AWS Secrets Manager (with placeholder values)
+    - Cloudflare DNS records and TLS certificates
+5. Update the following secrets in [AWS Secrets Manager](https://console.aws.amazon.com/secretsmanager) with actual values:
+    - `{prefix}cloudflare` - JSON with `TOKEN` key
+        > Get Cloudflare API Token: go to the [Cloudflare dashboard](https://dash.cloudflare.com/) -> Manage Account -> Account API Tokens -> Create Token -> Edit Zone DNS -> in "Zone Resources" select your domain and generate the token
+    - `{prefix}postgres-connection-string` - your PostgreSQL connection string (**required**)
+    - `{prefix}supabase-jwt-secrets` - Supabase JWT secret (optional / required for the [E2B dashboard](https://github.com/e2b-dev/dashboard))
+    - `{prefix}grafana` - JSON with `API_KEY`, `OTLP_URL`, `OTEL_COLLECTOR_TOKEN`, `USERNAME` keys (optional, for monitoring)
+    - `{prefix}launch-darkly-api-key` - LaunchDarkly SDK key (optional, for feature flags)
+6. Build Packer AMIs for the cluster nodes:
+    ```sh
+    cd iac/provider-aws/packer
+    # Build AMIs for control server, API, client, clickhouse, and build nodes
+    ```
+7. Run `make build-and-upload` to build and push container images and binaries
+8. Run `make copy-public-builds` to copy Firecracker kernels and rootfs to your S3 buckets
+    > This requires `gsutil` to download from the public GCS bucket and `aws` CLI to upload to your S3 buckets
+9. Run `make plan-without-jobs` and then `make apply` to provision the cluster infrastructure
+10. Run `make plan` and then `make apply` to deploy all Nomad jobs
+11. Setup data in the cluster by running `make prep-cluster` in `packages/shared` to create an initial user, team, and build a base template
+
+### AWS Architecture
+
+The AWS deployment provisions the following:
+
+**Node Pools (EC2 Auto Scaling Groups):**
+- **Control Server** - Nomad/Consul servers (default: 3x `t3.medium`)
+- **API** - API server, ingress, client proxy, otel, loki, logs collector (default: `t3.xlarge`)
+- **Client** - Firecracker orchestrator nodes with nested virtualization (default: `m8i.4xlarge`)
+- **Build** - Template manager for building sandbox templates (default: `m8i.2xlarge`)
+- **ClickHouse** - Analytics database (default: `t3.xlarge`)
+
+**Managed Services (optional):**
+- ElastiCache Redis (set `REDIS_MANAGED=true`)
+
+### AWS Troubleshooting
+
+**Bare metal instances not available**
+
+Firecracker requires bare metal or nested virtualization support. Make sure your region supports the instance types you've selected (e.g. `m8i.4xlarge` with nested virtualization). You may need to request a service quota increase for the instance type.
+
+**ECR authentication errors**
+
+Run `make provider-login` to refresh your ECR authentication token. Tokens expire after 12 hours.
+
+---
+
+## Common
 
 ### Interacting with the cluster
 
@@ -108,9 +208,7 @@ E2B_DOMAIN=<your-domain> e2b <command>
 
 #### Monitoring and logging jobs
 
-To access the nomad web UI, go to https://nomad.<your-domain.com>. Go to sign in, and when prompted for an API token, you can find this in GCP Secrets Manager. From here, you can see nomad jobs and tasks for both client and server, including logging.
-
-To update jobs running in the cluster look inside `iac/provider-gcp/nomad/jobs/` for config files. This can be useful for setting your logging and monitoring agents.
+To access the nomad web UI, go to https://nomad.<your-domain.com>. Go to sign in, and when prompted for an API token, you can find this in your cloud provider's secrets manager (GCP Secrets Manager or AWS Secrets Manager). From here, you can see nomad jobs and tasks for both client and server, including logging.
 
 ### Troubleshooting
 
@@ -142,18 +240,3 @@ You can build your own kernel and Firecracker version from source by running `ma
 - `make import TARGET={resource} ID={resource_id}` - imports the already created resources into the terraform state
 - `make setup-ssh` - sets up the ssh key for the environment (useful for remote-debugging)
 - `make connect-orchestrator` - establish the ssh connection to the remote orchestrator (for testing API locally)
-
----
-
-## Google Cloud Troubleshooting
-**Quotas not available** 
-
-If you can't find the quota in `All Quotas` in GCP's Console, then create and delete a dummy VM before proceeding to step 2 in self-deploy guide. This will create additional quotas and policies in GCP 
-```
-gcloud compute instances create dummy-init   --project=YOUR-PROJECT-ID   --zone=YOUR-ZONE   --machine-type=e2-medium   --boot-disk-type=pd-ssd   --no-address
-```
-Wait a minute and destroy the VM:
-```
-gcloud compute instances delete dummy-init --zone=YOUR-ZONE --quiet
-```
-Now, you should see the right quota options in `All Quotas` and be able to request the correct size. 
