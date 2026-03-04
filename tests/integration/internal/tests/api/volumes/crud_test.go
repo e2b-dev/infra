@@ -3,6 +3,7 @@ package volumes
 import (
 	"net/http"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -52,13 +53,22 @@ func TestVolumeRoundTrip(t *testing.T) {
 	getVolume, err := client.GetVolumesVolumeIDWithResponse(t.Context(), volume.VolumeID, setup.WithAPIKey())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, getVolume.StatusCode(), string(getVolume.Body))
-	assert.Equal(t, *volume, *getVolume.JSON200)
+	assert.Equal(t, volume.VolumeID, getVolume.JSON200.VolumeID)
+	assert.Equal(t, volume.Name, getVolume.JSON200.Name)
 
 	// list volumes
 	listVolumes, err := client.GetVolumesWithResponse(t.Context(), setup.WithAPIKey())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, listVolumes.StatusCode(), string(listVolumes.Body))
-	assert.Contains(t, *listVolumes.JSON200, *getVolume.JSON200)
+	assertContains(t, *listVolumes.JSON200, func(item api.Volume) bool {
+		if item.VolumeID != volume.VolumeID {
+			return false
+		}
+
+		assert.Equal(t, volume.Name, item.Name)
+
+		return true
+	})
 
 	// paths
 	volumeMountPath := "/home/user/vol"
@@ -219,4 +229,14 @@ func TestVolumeRoundTrip(t *testing.T) {
 	deleteVolume, err = client.DeleteVolumesVolumeIDWithResponse(t.Context(), volume.VolumeID, setup.WithAPIKey())
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusNotFound, deleteVolume.StatusCode(), string(deleteVolume.Body))
+}
+
+func assertContains[T any](t *testing.T, items []T, f func(item T) bool) {
+	t.Helper()
+
+	if slices.ContainsFunc(items, f) {
+		return
+	}
+
+	assert.Fail(t, "no items in list match")
 }

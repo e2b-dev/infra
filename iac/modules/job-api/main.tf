@@ -34,5 +34,7 @@ resource "nomad_job" "api" {
     sandbox_storage_backend                 = var.sandbox_storage_backend
     db_migrator_docker_image                = var.db_migrator_docker_image
     launch_darkly_api_key                   = trimspace(var.launch_darkly_api_key)
+    default_persistent_volume_type          = var.default_persistent_volume_type
+    job_env_vars                            = var.job_env_vars
   })
 }

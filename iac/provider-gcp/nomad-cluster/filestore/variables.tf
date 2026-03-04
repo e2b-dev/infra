@@ -17,3 +17,13 @@ variable "capacity_gb" {
   description = "The capacity of the Filestore cache in GB"
   type        = number
 }
+
+variable "nfs_version" {
+  description = "NFS version"
+  type        = string
+
+  validation {
+    condition     = contains(["", "3", "4.1"], var.nfs_version)
+    error_message = "nfs_version must be either 3 or 4.1"
+  }
+}

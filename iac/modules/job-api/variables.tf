@@ -149,3 +149,13 @@ variable "launch_darkly_api_key" {
   default   = ""
   sensitive = true
 }
+
+variable "default_persistent_volume_type" {
+  type    = string
+  default = ""
+}
+
+variable "job_env_vars" {
+  type    = map(string)
+  default = {}
+}

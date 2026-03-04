@@ -81,7 +81,7 @@ type Config struct {
 }
 
 type VolumeMountConfig struct {
-	ID   string
+	ID   uuid.UUID
 	Name string
 	Path string
 	Type string

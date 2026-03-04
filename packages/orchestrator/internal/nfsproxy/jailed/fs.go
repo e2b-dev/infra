@@ -14,21 +14,26 @@ type jailedFS struct {
 	inner  billy.Filesystem
 }
 
-func (j jailedFS) String() string {
-	return fmt.Sprintf("jailedFS{prefix=%s, inner=%v}", j.prefix, j.inner)
-}
-
 var _ billy.Filesystem = (*jailedFS)(nil)
 
-func tryWrapFS(fs billy.Filesystem, prefix string) billy.Filesystem {
-	if fs == nil {
-		return nil
+// Join expands the request into the chrooted filesystem. It is called by willscott/go-nfs
+// on every request, and is responsible for making sure that the request is not escaping into the rest of the OS.
+func (j jailedFS) Join(elem ...string) string {
+	// Start with inner's join and normalize separators and dots.
+	p := j.inner.Join(elem...)
+	p = filepath.Clean(p)
+
+	// If the cleaned path is already inside the jail prefix, keep it as-is to
+	// avoid duplicating the prefix (e.g., Join("/jail", "a")).
+	if p == j.prefix || strings.HasPrefix(p, j.prefix+"/") {
+		return p
 	}
 
-	return jailedFS{
-		prefix: prefix,
-		inner:  fs,
-	}
+	// Force the path to stay within the jail by cleaning it as an absolute path,
+	// then stripping the leading slash before joining with the prefix.
+	s := filepath.Clean("/" + p)
+
+	return filepath.Join(j.prefix, strings.TrimPrefix(s, "/"))
 }
 
 func (j jailedFS) Unwrap() billy.Filesystem {
@@ -45,6 +50,10 @@ func (j jailedFS) Open(filename string) (billy.File, error) {
 	f, err := j.inner.Open(filename)
 
 	return tryWrapBillyFile(f, j.prefix), err
+}
+
+func (j jailedFS) String() string {
+	return fmt.Sprintf("jailedFS{prefix=%s, inner=%v}", j.prefix, j.inner)
 }
 
 func (j jailedFS) OpenFile(filename string, flag int, perm os.FileMode) (billy.File, error) {
@@ -65,22 +74,6 @@ func (j jailedFS) Rename(oldpath, newpath string) error {
 
 func (j jailedFS) Remove(filename string) error {
 	return j.inner.Remove(filename)
-}
-
-func (j jailedFS) Join(elem ...string) string {
-	path := j.inner.Join(elem...)
-
-	// prevent directory traversal
-	path = filepath.ToSlash(path)
-	path = filepath.Clean(path)
-
-	if len(elem) > 0 {
-		if !strings.HasPrefix(elem[0], j.prefix+"/") {
-			path = filepath.Join(j.prefix, path)
-		}
-	}
-
-	return path
 }
 
 func (j jailedFS) TempFile(dir, prefix string) (billy.File, error) {
@@ -129,4 +122,15 @@ func (j jailedFS) Chroot(path string) (billy.Filesystem, error) {
 
 func (j jailedFS) Root() string {
 	return j.inner.Root()
+}
+
+func tryWrapFS(fs billy.Filesystem, prefix string) billy.Filesystem {
+	if fs == nil {
+		return nil
+	}
+
+	return jailedFS{
+		prefix: prefix,
+		inner:  fs,
+	}
 }

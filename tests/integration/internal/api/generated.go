@@ -343,8 +343,8 @@ type ListedSandbox struct {
 	State SandboxState `json:"state"`
 
 	// TemplateID Identifier of the template from which is the sandbox created
-	TemplateID   string               `json:"templateID"`
-	VolumeMounts []SandboxVolumeMount `json:"volumeMounts"`
+	TemplateID   string                `json:"templateID"`
+	VolumeMounts *[]SandboxVolumeMount `json:"volumeMounts,omitempty"`
 }
 
 // LogLevel State of the sandbox
@@ -634,8 +634,8 @@ type SandboxDetail struct {
 	State SandboxState `json:"state"`
 
 	// TemplateID Identifier of the template from which is the sandbox created
-	TemplateID   string               `json:"templateID"`
-	VolumeMounts []SandboxVolumeMount `json:"volumeMounts"`
+	TemplateID   string                `json:"templateID"`
+	VolumeMounts *[]SandboxVolumeMount `json:"volumeMounts,omitempty"`
 }
 
 // SandboxLog Log entry with timestamp and line
@@ -1161,6 +1161,18 @@ type UpdateTeamAPIKey struct {
 type Volume struct {
 	// Name Name of the volume
 	Name string `json:"name"`
+
+	// VolumeID ID of the volume
+	VolumeID string `json:"volumeID"`
+}
+
+// VolumeAndToken defines model for VolumeAndToken.
+type VolumeAndToken struct {
+	// Name Name of the volume
+	Name string `json:"name"`
+
+	// Token Auth token to use for interacting with volume content
+	Token string `json:"token"`
 
 	// VolumeID ID of the volume
 	VolumeID string `json:"volumeID"`
@@ -6775,7 +6787,7 @@ func (r GetVolumesResponse) StatusCode() int {
 type PostVolumesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON201      *Volume
+	JSON201      *VolumeAndToken
 	JSON400      *N400
 	JSON401      *N401
 	JSON500      *N500
@@ -6824,7 +6836,7 @@ func (r DeleteVolumesVolumeIDResponse) StatusCode() int {
 type GetVolumesVolumeIDResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON200      *Volume
+	JSON200      *VolumeAndToken
 	JSON401      *N401
 	JSON404      *N404
 	JSON500      *N500
@@ -9729,7 +9741,7 @@ func ParsePostVolumesResponse(rsp *http.Response) (*PostVolumesResponse, error) 
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
-		var dest Volume
+		var dest VolumeAndToken
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -9816,7 +9828,7 @@ func ParseGetVolumesVolumeIDResponse(rsp *http.Response) (*GetVolumesVolumeIDRes
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest Volume
+		var dest VolumeAndToken
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
