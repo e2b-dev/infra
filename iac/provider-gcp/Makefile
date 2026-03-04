@@ -186,6 +186,11 @@ import:
 	@ printf "Importing resources for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	@ $(tf_vars) $(TF) import $(TF_VAR_FILE_ARG) "$(TARGET)" "$(ID)" -no-color
 
+.PHONY: move
+move:
+	@ printf "Moving resource for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	@ $(tf_vars) $(TF) state mv "$(SOURCE)" "$(TARGET)" -no-color
+
 # Login for Packer and Docker (uses gcloud user creds)
 # Login for Terraform (uses application default creds)
 .PHONY: provider-login

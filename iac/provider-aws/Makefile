@@ -69,6 +69,11 @@ apply:
 apply-init:
 	$(tf_vars) $(TF) apply -target=module.init -auto-approve -input=false -compact-warnings
 
+.PHONY: move
+move:
+	@ printf "Moving resource for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	@ $(tf_vars) $(TF) state mv "$(SOURCE)" "$(TARGET)" -no-color
+
 .PHONY: destroy
 destroy:
 	$(tf_vars) $(TF) destroy
