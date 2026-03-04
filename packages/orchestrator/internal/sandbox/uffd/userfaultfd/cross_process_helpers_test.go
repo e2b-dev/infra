@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -307,8 +308,19 @@ func crossProcessServe() error {
 			case <-ctx.Done():
 				return
 			case <-offsetsSignal:
-				for offset := range uffd.faulted().Offsets() {
-					writeErr := binary.Write(offsetsFile, binary.LittleEndian, uint64(offset))
+				faultedOffsets, faultedErr := uffd.faulted()
+				if faultedErr != nil {
+					msg := fmt.Errorf("error getting faulted offsets: %w", faultedErr)
+
+					fmt.Fprint(os.Stderr, msg.Error())
+
+					cancel(msg)
+
+					return
+				}
+
+				for _, offset := range faultedOffsets {
+					writeErr := binary.Write(offsetsFile, binary.LittleEndian, offset)
 					if writeErr != nil {
 						msg := fmt.Errorf("error writing offsets to file: %w", writeErr)
 
@@ -384,12 +396,30 @@ func crossProcessServe() error {
 	}
 }
 
-func (u *Userfaultfd) faulted() *block.Tracker {
+func (u *Userfaultfd) faulted() ([]uint64, error) {
 	// This will be at worst cancelled when the uffd is closed.
 	u.settleRequests.Lock()
-	// The locking here would work even without using defer (just lock-then-unlock the mutex), but at this point let's make it lock to the clone,
-	// so it is consistent even if there is a another uffd call after.
-	defer u.settleRequests.Unlock()
+	u.settleRequests.Unlock() //nolint:staticcheck // SA2001: intentional — we just need to settle the read locks.
 
-	return u.missingRequests.Clone()
+	return u.pageTracker.faultedOffsets(u.ma)
+}
+
+func (pt *pageTracker) faultedOffsets(ma *memory.Mapping) ([]uint64, error) {
+	pt.mu.RLock()
+	defer pt.mu.RUnlock()
+
+	offsets := make([]uint64, 0, len(pt.m))
+	for addr := range pt.m {
+		offset, err := ma.GetOffset(addr)
+		if err != nil {
+			return nil, fmt.Errorf("address %#x not in mapping: %w", addr, err)
+		}
+		offsets = append(offsets, uint64(offset))
+	}
+
+	if len(offsets) > 1 {
+		slices.Sort(offsets)
+	}
+
+	return offsets, nil
 }
