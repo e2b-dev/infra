@@ -26,9 +26,6 @@ const (
 	Write AccessType = "write"
 	// Prefetch indicates a proactively prefetched block, not a real fault.
 	Prefetch AccessType = "prefetch"
-	// Remove indicates a block that was removed from the memory.
-	// As there must have been a read or write before remove, the prefetch will correctly not overwrite these with "remove" by default.
-	Remove AccessType = "remove"
 )
 
 // BlockEntry holds metadata about a tracked block.
@@ -75,12 +72,6 @@ func (t *PrefetchTracker) Add(off int64, accessType AccessType) {
 
 	// Only add if not already tracked
 	if _, ok := t.blockEntries[idx]; !ok {
-		// To prevent accidentally adding remove before a read or write, we don't allow it to be added.
-		// This should happen only as a race condition in the UFFD.
-		if accessType == Remove {
-			return
-		}
-
 		t.blockEntries[idx] = PrefetchBlockEntry{
 			Index:      idx,
 			Order:      t.orderCounter,
