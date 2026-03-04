@@ -95,10 +95,22 @@ type EnvdMetadata struct {
 	Version        string
 }
 
+// SandboxType distinguishes build sandboxes from regular sandboxes.
+type SandboxType string
+
 const (
-	SandboxTypeSandbox = "sandbox"
-	SandboxTypeBuild   = "build"
+	SandboxTypeSandbox SandboxType = "sandbox"
+	SandboxTypeBuild   SandboxType = "build"
 )
+
+// String returns the sandbox type as a string, defaulting to "sandbox" if empty.
+func (t SandboxType) String() string {
+	if t == "" {
+		return string(SandboxTypeSandbox)
+	}
+
+	return string(t)
+}
 
 type RuntimeMetadata struct {
 	TemplateID  string
@@ -109,9 +121,8 @@ type RuntimeMetadata struct {
 	TeamID string
 
 	// BuildID is the ID of the associated template build.
-	BuildID string
-	// SandboxType distinguishes build sandboxes from regular sandboxes ("sandbox" or "build")
-	SandboxType string
+	BuildID     string
+	SandboxType SandboxType
 }
 
 type Resources struct {

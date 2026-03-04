@@ -42,11 +42,6 @@ func initializeHostStatsCollector(
 		logger.L().Error(ctx, "error parsing team ID", logger.WithTeamID(runtime.TeamID), zap.Error(err))
 	}
 
-	sandboxType := runtime.SandboxType
-	if sandboxType == "" {
-		sandboxType = SandboxTypeSandbox
-	}
-
 	var cgroupStats CgroupStatsFunc
 	if sbx.cgroupHandle != nil {
 		cgroupStats = sbx.cgroupHandle.GetStats
@@ -61,7 +56,7 @@ func initializeHostStatsCollector(
 			TeamID:      teamID,
 			VCPUCount:   config.Vcpu,
 			MemoryMB:    config.RamMB,
-			SandboxType: sandboxType,
+			SandboxType: runtime.SandboxType,
 		},
 		int32(firecrackerPID),
 		hostStatsDelivery,
