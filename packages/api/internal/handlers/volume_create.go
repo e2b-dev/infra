@@ -114,6 +114,13 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 			return
 		}
 
+		if errors.Is(err, ErrUnknownVolumeType) {
+			a.sendAPIStoreError(c, http.StatusInternalServerError, "Unknown volume type")
+			telemetry.ReportError(ctx, "Unknown volume type", err)
+
+			return
+		}
+
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when creating directory")
 		telemetry.ReportCriticalError(ctx, "error when creating directory", err)
 
@@ -135,7 +142,7 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 
 	token, err := generateVolumeContentToken(a.config.VolumesToken, volume, team)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to generate volume content token")
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Volume created, but failed to generate volume content token")
 		telemetry.ReportCriticalError(ctx, "Failed to generate volume content token", err)
 
 		return

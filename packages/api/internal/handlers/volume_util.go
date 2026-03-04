@@ -79,6 +79,8 @@ var ErrClusterNotFound = errors.New("cluster not found")
 
 var ErrNoHealthyOrchestratorFound = errors.New("no healthy orchestrator found")
 
+var ErrUnknownVolumeType = errors.New("unknown volume type")
+
 func (a *APIStore) executeOnOrchestratorByClusterID(
 	ctx context.Context,
 	clusterID uuid.UUID,
@@ -95,6 +97,7 @@ func (a *APIStore) executeOnOrchestratorByClusterID(
 	var (
 		receivedUnknownVolumeTypeErrors int
 		unknownVolumeType               string
+		notReadyNodeCount               int
 	)
 	defer func() {
 		if receivedUnknownVolumeTypeErrors != 0 {
@@ -112,6 +115,7 @@ func (a *APIStore) executeOnOrchestratorByClusterID(
 		}
 
 		if node.Status() != api.NodeStatusReady {
+			notReadyNodeCount++
 			continue
 		}
 
@@ -147,6 +151,10 @@ func (a *APIStore) executeOnOrchestratorByClusterID(
 		}
 
 		return err
+	}
+
+	if receivedUnknownVolumeTypeErrors == len(nodes)-notReadyNodeCount {
+		return fmt.Errorf("%w: %s", ErrUnknownVolumeType, unknownVolumeType)
 	}
 
 	return ErrNoHealthyOrchestratorFound
