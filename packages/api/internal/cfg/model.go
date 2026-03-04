@@ -85,45 +85,47 @@ type VolumesTokenConfig struct {
 var (
 	ErrInvalidJWTSigningKey = errors.New("JWT signing key must be in the format '$TYPE:base64($VALUE)'")
 	ErrUnknownKeyType       = errors.New("unknown JWT signing key type")
+
+	parserFuncs = map[reflect.Type]env.ParserFunc{
+		reflect.TypeFor[JWTSigningKey](): func(v string) (any, error) {
+			keyPieces := strings.SplitN(v, ":", 2)
+			if len(keyPieces) != 2 {
+				return nil, ErrInvalidJWTSigningKey
+			}
+
+			keyType := keyPieces[0]
+			keyValue, err := base64.StdEncoding.DecodeString(keyPieces[1])
+			if err != nil {
+				return nil, errors.New("JWT signing key must be base64 encoded")
+			}
+
+			switch strings.ToUpper(keyType) {
+			case "ECDSA":
+				return jwt.ParseECPrivateKeyFromPEM(keyValue)
+			case "RSA":
+				return jwt.ParseRSAPrivateKeyFromPEM(keyValue)
+			case "HMAC":
+				return keyValue, nil
+			case "ED25519":
+				return jwt.ParseEdPrivateKeyFromPEM(keyValue)
+			default:
+				return nil, fmt.Errorf("%s: %w", keyType, ErrUnknownKeyType)
+			}
+		},
+		reflect.TypeFor[jwt.SigningMethod](): func(v string) (any, error) {
+			method := jwt.GetSigningMethod(v)
+			if method == nil {
+				return nil, fmt.Errorf("unknown signing method: %s", v)
+			}
+
+			return method, nil
+		},
+	}
 )
 
 func Parse() (Config, error) {
 	config, err := env.ParseAsWithOptions[Config](env.Options{
-		FuncMap: map[reflect.Type]env.ParserFunc{
-			reflect.TypeFor[JWTSigningKey](): func(v string) (any, error) {
-				keyPieces := strings.SplitN(v, ":", 2)
-				if len(keyPieces) != 2 {
-					return nil, ErrInvalidJWTSigningKey
-				}
-
-				keyType := keyPieces[0]
-				keyValue, err := base64.StdEncoding.DecodeString(keyPieces[1])
-				if err != nil {
-					return nil, errors.New("JWT signing key must be base64 encoded")
-				}
-
-				switch strings.ToUpper(keyType) {
-				case "ECDSA":
-					return jwt.ParseECPrivateKeyFromPEM(keyValue)
-				case "RSA":
-					return jwt.ParseRSAPrivateKeyFromPEM(keyValue)
-				case "HMAC":
-					return keyValue, nil
-				case "ED25519":
-					return jwt.ParseEdPrivateKeyFromPEM(keyValue)
-				default:
-					return nil, fmt.Errorf("%s: %w", keyType, ErrUnknownKeyType)
-				}
-			},
-			reflect.TypeFor[jwt.SigningMethod](): func(v string) (any, error) {
-				method := jwt.GetSigningMethod(v)
-				if method == nil {
-					return nil, fmt.Errorf("unknown signing method: %s", v)
-				}
-
-				return method, nil
-			},
-		},
+		FuncMap: parserFuncs,
 	})
 	if err != nil {
 		return Config{}, err

@@ -52,6 +52,7 @@ func TestGenerateVolumeContentToken_SetsTokidHeader(t *testing.T) {
 	parsed, err := jwt.ParseWithClaims(tokenStr, jwt.MapClaims{}, func(token *jwt.Token) (any, error) {
 		// ensure the expected alg is used
 		assert.Equal(t, jwt.SigningMethodHS256.Alg(), token.Method.Alg())
+
 		return secret, nil
 	})
 	require.NoError(t, err)

@@ -15,7 +15,7 @@ locals {
   )
   volume_token_signature_method = (
     local.should_generate_volume_token_signing_key
-    ? "ES384"
+    ? "EdDSA"
     : var.volume_token_signature.method
   )
 }
