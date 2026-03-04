@@ -151,11 +151,11 @@ variable "launch_darkly_api_key" {
 }
 
 variable "default_persistent_volume_type" {
-  type = string
+  type    = string
   default = ""
 }
 
 variable "job_env_vars" {
-  type = map(string)
+  type    = map(string)
   default = {}
 }
