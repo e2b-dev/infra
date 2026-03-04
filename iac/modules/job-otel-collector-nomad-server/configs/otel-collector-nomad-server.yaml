@@ -85,9 +85,9 @@ processors:
         host.id:
           enabled: false
         host.name:
-          enabled: false
-        gcp.gce.instance.name:
           enabled: true
+        gcp.gce.instance.name:
+          enabled: false
         gcp.gce.instance_group_manager.region:
           enabled: false
         gcp.gce.instance_group_manager.zone:
@@ -102,6 +102,10 @@ processors:
       resource_attributes:
         cloud.account.id:
           enabled: true
+        cloud.region:
+          enabled: false
+        cloud.availability_zone:
+          enabled: false
         host.id:
           enabled: false
         host.name:
@@ -110,12 +114,7 @@ processors:
 
   transform/set-name:
     metric_statements:
-%{ if provider_name == "gcp" }
-      - set(datapoint.attributes["service.instance.id"], resource.attributes["gcp.gce.instance.name"])
-%{ endif }
-%{ if provider_name == "aws" }
       - set(datapoint.attributes["service.instance.id"], resource.attributes["host.name"])
-%{ endif }
       - set(datapoint.attributes["deployment.environment"], resource.attributes["cloud.account.id"])
       - delete_key(resource.attributes, "service.name")
 

@@ -62,3 +62,23 @@ moved {
   from = nomad_variable.orchestrator_hash
   to   = module.orchestrator.nomad_variable.orchestrator_hash
 }
+
+moved {
+  from = nomad_job.api
+  to   = module.api.nomad_job.api
+}
+
+moved {
+  from = nomad_job.redis[0]
+  to   = module.redis[0].nomad_job.redis
+}
+
+moved {
+  from = nomad_job.template_manager
+  to   = module.template_manager.nomad_job.template_manager
+}
+
+moved {
+  from = nomad_job.nomad_nodepool_apm[0]
+  to   = module.template_manager_autoscaler[0].nomad_job.nomad_nodepool_apm
+}
