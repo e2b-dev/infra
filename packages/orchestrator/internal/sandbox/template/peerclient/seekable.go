@@ -24,6 +24,29 @@ type peerFramedFile struct {
 	peerHandle[storage.FramedFile]
 }
 
+func (f *peerFramedFile) Size(ctx context.Context) (int64, error) {
+	return withPeerFallback(ctx, &f.peerHandle, "size peer-framedfile", attrOpSize,
+		func(ctx context.Context) (peerAttempt[int64], error) {
+			resp, err := f.client.GetBuildFileSize(ctx, &orchestrator.GetBuildFileSizeRequest{
+				BuildId:  f.buildID,
+				FileName: f.fileName,
+			})
+			if err == nil && checkPeerAvailability(resp.GetAvailability(), f.uploaded, f.transitionHeaders) {
+				return peerAttempt[int64]{value: resp.GetTotalSize(), hit: true}, nil
+			}
+
+			if err != nil {
+				logger.L().Warn(ctx, "failed to get build file size from peer", logger.WithBuildID(f.buildID), zap.Error(err))
+			}
+
+			return peerAttempt[int64]{}, nil
+		},
+		func(ctx context.Context, base storage.FramedFile) (int64, error) {
+			return base.Size(ctx)
+		},
+	)
+}
+
 func (f *peerFramedFile) GetFrame(ctx context.Context, offsetU int64, frameTable *storage.FrameTable, decompress bool,
 	buf []byte, readSize int64, onRead func(totalWritten int64),
 ) (storage.Range, error) {
@@ -85,29 +108,6 @@ func (f *peerFramedFile) GetFrame(ctx context.Context, offsetU int64, frameTable
 			}
 
 			return base.GetFrame(ctx, offsetU, frameTable, decompress, buf, readSize, onRead)
-		},
-	)
-}
-
-func (f *peerFramedFile) Size(ctx context.Context) (int64, error) {
-	return withPeerFallback(ctx, &f.peerHandle, "size peer-framedfile", attrOpSize,
-		func(ctx context.Context) (peerAttempt[int64], error) {
-			resp, err := f.client.GetBuildFileSize(ctx, &orchestrator.GetBuildFileSizeRequest{
-				BuildId:  f.buildID,
-				FileName: f.fileName,
-			})
-			if err == nil && checkPeerAvailability(resp.GetAvailability(), f.uploaded, f.transitionHeaders) {
-				return peerAttempt[int64]{value: resp.GetTotalSize(), hit: true}, nil
-			}
-
-			if err != nil {
-				logger.L().Warn(ctx, "failed to get build file size from peer", logger.WithBuildID(f.buildID), zap.Error(err))
-			}
-
-			return peerAttempt[int64]{}, nil
-		},
-		func(ctx context.Context, base storage.FramedFile) (int64, error) {
-			return base.Size(ctx)
 		},
 	)
 }
