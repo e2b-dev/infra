@@ -2,6 +2,7 @@ package cfg
 
 import (
 	"encoding/base64"
+	"fmt"
 	"os"
 	"testing"
 
@@ -14,7 +15,9 @@ func TestParse(t *testing.T) {
 	t.Setenv("POSTGRES_CONNECTION_STRING", "postgres-connection-string")
 	t.Setenv("LOKI_URL", "http://loki:3100")
 	t.Setenv("VOLUME_TOKEN_ISSUER", "local.e2b-dev.com")
-	t.Setenv("VOLUME_TOKEN_SIGNING_KEY", base64.StdEncoding.EncodeToString([]byte("secret")))
+	t.Setenv("VOLUME_TOKEN_SIGNING_METHOD", "HS256")
+	t.Setenv("VOLUME_TOKEN_SIGNING_KEY", fmt.Sprintf("HMAC:%s", base64.StdEncoding.EncodeToString([]byte("secret"))))
+	t.Setenv("VOLUME_TOKEN_SIGNING_KEY_NAME", "my-key-name")
 
 	t.Run("postgres connection string is required", func(t *testing.T) { //nolint:paralleltest // cannot call t.Setenv and t.Parallel
 		removeEnv(t, "POSTGRES_CONNECTION_STRING")
@@ -40,7 +43,7 @@ func TestParse(t *testing.T) {
 	t.Run("base64 signing key can be parsed", func(t *testing.T) {
 		content := []byte{1, 2, 3, 4, 5, 6}
 		encoded := base64.StdEncoding.EncodeToString(content)
-		t.Setenv("VOLUME_TOKEN_SIGNING_KEY", encoded)
+		t.Setenv("VOLUME_TOKEN_SIGNING_KEY", fmt.Sprintf("HMAC:%s", encoded))
 
 		result, err := Parse()
 		require.NoError(t, err)
