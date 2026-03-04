@@ -72,7 +72,7 @@ type Config struct {
 	ForceStop                  bool              `env:"FORCE_STOP"`
 	GRPCPort                   uint16            `env:"GRPC_PORT"                    envDefault:"5008"`
 	LaunchDarklyAPIKey         string            `env:"LAUNCH_DARKLY_API_KEY"`
-	NodeIP                     string            `env:"NODE_IP"`
+	NodeIP                     string            `env:"NODE_IP"                      envDefault:"localhost"`
 	OrchestratorLockPath       string            `env:"ORCHESTRATOR_LOCK_PATH"       envDefault:"/orchestrator.lock"`
 	ProxyPort                  uint16            `env:"PROXY_PORT"                   envDefault:"5007"`
 	RedisClusterURL            string            `env:"REDIS_CLUSTER_URL"`
@@ -83,9 +83,14 @@ type Config struct {
 	PersistentVolumeMounts     map[string]string `env:"PERSISTENT_VOLUME_MOUNTS"`
 }
 
-// NodeAddress returns the gRPC dial address for this node (ip:port).
-func (c Config) NodeAddress() string {
-	return fmt.Sprintf("%s:%d", c.NodeIP, c.GRPCPort)
+func (c Config) NodeAddress() *string {
+	if c.NodeIP == "localhost" {
+		return nil
+	}
+
+	addr := fmt.Sprintf("%s:%d", c.NodeIP, c.GRPCPort)
+
+	return &addr
 }
 
 func Parse() (Config, error) {
