@@ -280,7 +280,6 @@ func (u *Userfaultfd) Serve(
 				continue
 			case removed:
 				// Fault the page as empty.
-				break
 			case unfaulted:
 				source = u.src
 			default:
