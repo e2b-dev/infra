@@ -3,6 +3,7 @@ package volumes
 import (
 	"net/http"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -65,6 +66,7 @@ func TestVolumeRoundTrip(t *testing.T) {
 		}
 
 		assert.Equal(t, volume.Name, item.Name)
+
 		return true
 	})
 
@@ -230,10 +232,10 @@ func TestVolumeRoundTrip(t *testing.T) {
 }
 
 func assertContains[T any](t *testing.T, items []T, f func(item T) bool) {
-	for _, item := range items {
-		if f(item) {
-			return
-		}
+	t.Helper()
+
+	if slices.ContainsFunc(items, f) {
+		return
 	}
 
 	assert.Fail(t, "no items in list match")
