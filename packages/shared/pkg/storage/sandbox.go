@@ -62,3 +62,7 @@ func (s *SandboxFiles) SandboxCacheRootfsLinkPath(config Config) string {
 func (s *SandboxFiles) SandboxMetricsFifoPath() string {
 	return filepath.Join(s.tmpDir, fmt.Sprintf("fc-metrics-%s-%s.fifo", s.SandboxID, s.randomID))
 }
+
+func (s *SandboxFiles) SandboxCgroupName() string {
+	return fmt.Sprintf("sbx-%s-%s", s.SandboxID, s.randomID)
+}
