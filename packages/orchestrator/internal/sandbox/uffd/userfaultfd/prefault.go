@@ -3,8 +3,6 @@ package userfaultfd
 import (
 	"context"
 	"fmt"
-
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 )
 
 // Prefault proactively copies a page to guest memory at the given offset.
@@ -29,7 +27,8 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) e
 		offset,
 		directDataSource{data, int64(u.pageSize)},
 		nil,
-		block.Prefetch,
+		// TODO: What mode should we pass here?
+		0,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to fault page: %w", err)
