@@ -57,8 +57,8 @@ func (h *recovery) PMAPPROC_CALLIT(args rfc1057.Call_args) rfc1057.Call_result {
 	return h.inner.PMAPPROC_CALLIT(args)
 }
 
-func (h *recovery) tryRecovery(name string) { //nolint:revive // recover works fine — always called via defer
-	if r := recover(); r != nil {
+func (h *recovery) tryRecovery(name string) {
+	if r := recover(); r != nil { //nolint:revive // recover works fine — always called via defer
 		logger.L().Error(h.ctx, fmt.Sprintf("panic in %q portmap handler", name), zap.Any("panic", r))
 	}
 }
