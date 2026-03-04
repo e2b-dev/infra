@@ -449,6 +449,6 @@ variable "volume_token_signing_method" {
   type = string
 }
 
-variable "volume_token_expiration" {
+variable "volume_token_duration" {
   type = string
 }

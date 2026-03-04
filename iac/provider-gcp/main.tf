@@ -281,7 +281,7 @@ module "nomad" {
   volume_token_signing_key      = local.volume_token_signing_key
   volume_token_signing_key_name = local.volume_token_signature_name
   volume_token_signing_method   = local.volume_token_signature_method
-  volume_token_expiration       = var.volume_token_valid_for
+  volume_token_duration         = var.volume_token_valid_for
 }
 
 
