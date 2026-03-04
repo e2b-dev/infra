@@ -92,7 +92,25 @@ func (a *APIStore) executeOnOrchestratorByClusterID(
 
 	rand.Shuffle(len(nodes), func(i, j int) { nodes[i], nodes[j] = nodes[j], nodes[i] })
 
+	var (
+		receivedUnknownVolumeTypeErrors int
+		unknownVolumeType               string
+	)
+	defer func() {
+		if receivedUnknownVolumeTypeErrors != 0 {
+			logger.L().Warn(ctx, "received unknown volume type errors",
+				zap.String("volume_type", unknownVolumeType),
+				zap.Int("total_nodes", len(nodes)),
+				zap.Int("unknown_type_errors", receivedUnknownVolumeTypeErrors),
+			)
+		}
+	}()
+
 	for _, node := range nodes {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("context error: %w", err)
+		}
+
 		if node.Status() != api.NodeStatusReady {
 			continue
 		}
@@ -106,6 +124,14 @@ func (a *APIStore) executeOnOrchestratorByClusterID(
 					fmt.Errorf("orchestrator error: %w", clientErr),
 					fmt.Errorf("request error: %w", err),
 				)
+			}
+
+			// we want to retry these, but we don't want to flood the logs with reports
+			if volumeType, ok := isUnknownVolumeTypeError(clientErr); ok {
+				unknownVolumeType = volumeType
+				receivedUnknownVolumeTypeErrors++
+
+				continue
 			}
 
 			if isRetryableError(clientErr) {
@@ -123,18 +149,22 @@ func (a *APIStore) executeOnOrchestratorByClusterID(
 	return ErrNoHealthyOrchestratorFound
 }
 
-func isRetryableError(err error) bool {
-	if errors.Is(err, net.ErrClosed) || errors.Is(err, context.DeadlineExceeded) {
-		return true
-	}
-
+func isUnknownVolumeTypeError(err error) (string, bool) {
 	grpcStatus, ok := status.FromError(err)
 	if ok {
 		for _, actual := range grpcStatus.Details() {
-			if _, ok := actual.(*orchestrator.UnknownVolumeTypeError); ok {
-				return true // maybe there's another orchestrator that knows about it?
+			if vterr, ok := actual.(*orchestrator.UnknownVolumeTypeError); ok {
+				return vterr.VolumeType, true // maybe there's another orchestrator that knows about it?
 			}
 		}
+	}
+
+	return "", false
+}
+
+func isRetryableError(err error) bool {
+	if errors.Is(err, net.ErrClosed) || errors.Is(err, context.DeadlineExceeded) {
+		return true
 	}
 
 	return false

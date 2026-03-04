@@ -138,6 +138,10 @@ func (s *Service) buildPaths(request volumePathRequest) (volumePaths, error) {
 		clientPath = "/" + clientPath
 	}
 
+	if clientPath == "/." {
+		clientPath = "/"
+	}
+
 	return volumePaths{
 		HostVolumePath: basePath,
 		ClientPath:     clientPath,

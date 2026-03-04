@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -181,18 +182,28 @@ func TestRelPathTraversal(t *testing.T) {
 		},
 	}
 
-	teamID := uuid.NewString()
-	volumeID := uuid.NewString()
+	teamID := uuid.New()
+	volumeID := uuid.New()
+	volumeRootPathParts := append([]string{mountRoot}, BuildVolumePathParts(teamID, volumeID)...)
+	volumeRoot := filepath.Join(volumeRootPathParts...)
 
 	tests := map[string]struct {
-		rel     string
-		wantErr bool
+		rel                string
+		expectErr          bool
+		expectIsRoot       bool
+		expectedClientPath string
+		expectedHostPath   string
 	}{
-		"simple child":                 {rel: "dir/file.txt", wantErr: false},
-		"parent traversal one level":   {rel: "../escape1", wantErr: true},
-		"parent traversal many levels": {rel: "../../../../escape2", wantErr: true},
-		"mixed clean/traverse":         {rel: "./a/.././../escape3", wantErr: true},
-		"absolute path":                {rel: "/etc/passwd", wantErr: false},
+		"root":                         {rel: "/", expectErr: false, expectIsRoot: true, expectedClientPath: "/", expectedHostPath: volumeRoot},
+		"dot":                          {rel: ".", expectErr: false, expectIsRoot: true, expectedClientPath: "/", expectedHostPath: volumeRoot},
+		"empty string":                 {rel: "", expectErr: false, expectIsRoot: true, expectedClientPath: "/", expectedHostPath: volumeRoot},
+		"simple traversal":             {rel: "../", expectErr: true},
+		"another case":                 {rel: "./a/.././", expectErr: false, expectIsRoot: true, expectedHostPath: volumeRoot, expectedClientPath: "/"},
+		"simple child":                 {rel: "dir/file.txt", expectErr: false, expectedHostPath: volumeRoot + "/dir/file.txt", expectedClientPath: "/dir/file.txt"},
+		"parent traversal one level":   {rel: "../escape1", expectErr: true},
+		"parent traversal many levels": {rel: "../../../../escape2", expectErr: true},
+		"mixed clean/traverse":         {rel: "./a/.././../escape3", expectErr: true},
+		"absolute path":                {rel: "/etc/passwd", expectErr: false, expectedHostPath: volumeRoot + "/etc/passwd", expectedClientPath: "/etc/passwd"},
 	}
 
 	for name, tc := range tests {
@@ -201,17 +212,22 @@ func TestRelPathTraversal(t *testing.T) {
 			request := orchestrator.VolumeDirCreateRequest{
 				Volume: &orchestrator.VolumeInfo{
 					VolumeType: "safe",
-					TeamId:     teamID,
-					VolumeId:   volumeID,
+					TeamId:     teamID.String(),
+					VolumeId:   volumeID.String(),
 				},
 				Path: tc.rel,
 			}
-			_, err := v.buildPaths(&request)
-			if tc.wantErr {
+			paths, err := v.buildPaths(&request)
+			if tc.expectErr {
 				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
+
+				return
 			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tc.expectIsRoot, paths.isRoot())
+			assert.Equal(t, tc.expectedClientPath, paths.ClientPath)
+			assert.Equal(t, tc.expectedHostPath, paths.HostFullPath)
 		})
 	}
 }

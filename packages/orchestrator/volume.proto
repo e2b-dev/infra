@@ -25,7 +25,9 @@ message EntryInfo {
   google.protobuf.Timestamp accessed_time = 11;
 }
 
-message UnknownVolumeTypeError {}
+message UnknownVolumeTypeError {
+  string volume_type = 1;
+}
 
 enum UserErrorCode {
   UNKNOWN_USER_ERROR_CODE = 0;
@@ -38,7 +40,7 @@ enum UserErrorCode {
 message UserError {
   UserErrorCode code = 1;
   string message = 2;
-  uint32 httpStatus = 3;
+  uint32 http_status = 3;
 }
 
 message VolumeCreateRequest {
@@ -149,7 +151,7 @@ message VolumeFileDeleteResponse {}
 message StatRequest {
   VolumeInfo volume = 1;
   string path = 2;
-  bool followSymlinks = 3;
+  bool follow_symlinks = 3;
 }
 
 message StatResponse {
