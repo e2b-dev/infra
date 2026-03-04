@@ -18,7 +18,10 @@ type pageTracker struct {
 }
 
 func newPageTracker(pageSize uintptr) pageTracker {
-	return pageTracker{pageSize: pageSize}
+	return pageTracker{
+		pageSize: pageSize,
+		m:        make(map[uintptr]pageState),
+	}
 }
 
 func (pt *pageTracker) get(addr uintptr) pageState {

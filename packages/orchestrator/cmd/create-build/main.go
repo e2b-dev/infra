@@ -24,7 +24,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
-	sandboxfc "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
@@ -328,10 +327,16 @@ func doBuild(
 		})
 	}
 
-	// Default FPR to enabled when the FC version supports it; explicit flag overrides.
-	fprEnabled := sandboxfc.Config{FirecrackerVersion: fcVersion}.SupportsFreePageReporting()
+	// Default FPR to enabled when the FC version supports it (v1.14+); explicit flag overrides.
+	var fprEnabled bool
 	if freePageReporting != nil {
 		fprEnabled = *freePageReporting
+	} else {
+		versionOnly, _, _ := strings.Cut(fcVersion, "_")
+		supported, err := utils.IsGTEVersion(versionOnly, "v1.14.0")
+		if err == nil {
+			fprEnabled = supported
+		}
 	}
 
 	tmpl := config.TemplateConfig{
