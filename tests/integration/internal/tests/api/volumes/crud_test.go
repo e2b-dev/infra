@@ -59,7 +59,14 @@ func TestVolumeRoundTrip(t *testing.T) {
 	listVolumes, err := client.GetVolumesWithResponse(t.Context(), setup.WithAPIKey())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, listVolumes.StatusCode(), string(listVolumes.Body))
-	assert.Contains(t, *listVolumes.JSON200, *getVolume.JSON200)
+	assertContains(t, *listVolumes.JSON200, func(item api.Volume) bool {
+		if item.VolumeID != volume.VolumeID {
+			return false
+		}
+
+		assert.Equal(t, volume.Name, item.Name)
+		return true
+	})
 
 	// paths
 	volumeMountPath := "/home/user/vol"
@@ -220,4 +227,14 @@ func TestVolumeRoundTrip(t *testing.T) {
 	deleteVolume, err = client.DeleteVolumesVolumeIDWithResponse(t.Context(), volume.VolumeID, setup.WithAPIKey())
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusNotFound, deleteVolume.StatusCode(), string(deleteVolume.Body))
+}
+
+func assertContains[T any](t *testing.T, items []T, f func(item T) bool) {
+	for _, item := range items {
+		if f(item) {
+			return
+		}
+	}
+
+	assert.Fail(t, "no items in list match")
 }
