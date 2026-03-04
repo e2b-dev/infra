@@ -58,6 +58,12 @@ import:
 	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	$(MAKE) -C iac/provider-$(PROVIDER) import
 
+# Shortcut to moving resources in Terraform state
+.PHONY: move
+move:
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
+	$(MAKE) -C iac/provider-$(PROVIDER) move
+
 .PHONY: version
 version:
 	./scripts/increment-version.sh
