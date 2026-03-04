@@ -25,13 +25,13 @@ func buildFixture(total int) benchFixture {
 
 	const teamCount = 128
 	teamIDs := make([]uuid.UUID, teamCount)
-	for i := 0; i < teamCount; i++ {
+	for i := range teamCount {
 		teamIDs[i] = uuid.New()
 	}
 
 	const nodeCount = 16
 	nodeIDs := make([]string, nodeCount)
-	for i := 0; i < nodeCount; i++ {
+	for i := range nodeCount {
 		nodeIDs[i] = fmt.Sprintf("node-%02d", i)
 	}
 
@@ -39,7 +39,7 @@ func buildFixture(total int) benchFixture {
 	syncNodeID := nodeIDs[0]
 	syncInput := make([]sandbox.Sandbox, 0, total/nodeCount+1)
 
-	for i := 0; i < total; i++ {
+	for i := range total {
 		teamID := teamIDs[i%teamCount]
 		nodeID := nodeIDs[i%nodeCount]
 
@@ -82,6 +82,8 @@ func buildFixture(total int) benchFixture {
 }
 
 func benchmarkSizes(b *testing.B, fn func(b *testing.B, f benchFixture)) {
+	b.Helper()
+
 	for _, size := range []int{5000, 10000, 25000, 50000} {
 		b.Run(fmt.Sprintf("items=%d", size), func(b *testing.B) {
 			fixture := buildFixture(size)
@@ -94,7 +96,9 @@ func benchmarkSizes(b *testing.B, fn func(b *testing.B, f benchFixture)) {
 
 func BenchmarkStorageGetItemsRunningByTeam(b *testing.B) {
 	benchmarkSizes(b, func(b *testing.B, f benchFixture) {
-		for i := 0; i < b.N; i++ {
+		b.Helper()
+
+		for range b.N {
 			_ = f.storage.getItems(&f.runningTeam, []sandbox.State{sandbox.StateRunning})
 		}
 	})
@@ -103,7 +107,9 @@ func BenchmarkStorageGetItemsRunningByTeam(b *testing.B) {
 func BenchmarkStorageExpiredItems(b *testing.B) {
 	ctx := context.Background()
 	benchmarkSizes(b, func(b *testing.B, f benchFixture) {
-		for i := 0; i < b.N; i++ {
+		b.Helper()
+
+		for range b.N {
 			_, _ = f.storage.ExpiredItems(ctx)
 		}
 	})
@@ -112,7 +118,9 @@ func BenchmarkStorageExpiredItems(b *testing.B) {
 func BenchmarkStorageTeamsWithSandboxCount(b *testing.B) {
 	ctx := context.Background()
 	benchmarkSizes(b, func(b *testing.B, f benchFixture) {
-		for i := 0; i < b.N; i++ {
+		b.Helper()
+
+		for range b.N {
 			_, _ = f.storage.TeamsWithSandboxCount(ctx)
 		}
 	})
@@ -120,7 +128,9 @@ func BenchmarkStorageTeamsWithSandboxCount(b *testing.B) {
 
 func BenchmarkStorageSyncRemoveScan(b *testing.B) {
 	benchmarkSizes(b, func(b *testing.B, f benchFixture) {
-		for i := 0; i < b.N; i++ {
+		b.Helper()
+
+		for range b.N {
 			_ = f.storage.Sync(f.syncInput, f.syncNodeID)
 		}
 	})
