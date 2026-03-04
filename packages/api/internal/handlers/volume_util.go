@@ -116,6 +116,7 @@ func (a *APIStore) executeOnOrchestratorByClusterID(
 
 		if node.Status() != api.NodeStatusReady {
 			notReadyNodeCount++
+
 			continue
 		}
 
@@ -153,7 +154,7 @@ func (a *APIStore) executeOnOrchestratorByClusterID(
 		return err
 	}
 
-	if receivedUnknownVolumeTypeErrors == len(nodes)-notReadyNodeCount {
+	if receivedUnknownVolumeTypeErrors == len(nodes)-notReadyNodeCount && receivedUnknownVolumeTypeErrors > 0 {
 		return fmt.Errorf("%w: %s", ErrUnknownVolumeType, unknownVolumeType)
 	}
 
