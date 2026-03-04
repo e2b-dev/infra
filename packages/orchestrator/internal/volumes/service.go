@@ -102,6 +102,7 @@ func (s *Service) buildPaths(request volumePathRequest) (volumePaths, error) {
 	if !ok {
 		st, _ := status.Newf(codes.NotFound, "volume type %q not found", volume.GetVolumeType()).
 			WithDetails(&orchestrator.UnknownVolumeTypeError{})
+
 		return volumePaths{}, st.Err()
 	}
 
