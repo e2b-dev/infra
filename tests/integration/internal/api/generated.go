@@ -6787,7 +6787,7 @@ func (r GetVolumesResponse) StatusCode() int {
 type PostVolumesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON201      *Volume
+	JSON201      *VolumeAndToken
 	JSON400      *N400
 	JSON401      *N401
 	JSON500      *N500
@@ -9741,7 +9741,7 @@ func ParsePostVolumesResponse(rsp *http.Response) (*PostVolumesResponse, error) 
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
-		var dest Volume
+		var dest VolumeAndToken
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
