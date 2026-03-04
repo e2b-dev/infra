@@ -1,0 +1,245 @@
+package block
+
+import (
+	"sort"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
+
+// newTestCache creates a minimal Cache for testing dirty-bit operations.
+// It uses a small blockSize and does NOT create a real mmap — only the dirty
+// array and blockSize are initialized.
+func newTestCache(t *testing.T, numBlocks int64, blockSize int64) *Cache {
+	t.Helper()
+
+	size := numBlocks * blockSize
+
+	c, err := NewCache(size, blockSize, t.TempDir()+"/cache", false)
+	require.NoError(t, err)
+
+	t.Cleanup(func() { c.Close() })
+
+	return c
+}
+
+func TestSetIsCached_SingleBlock(t *testing.T) {
+	t.Parallel()
+
+	const blockSize int64 = 4096
+	c := newTestCache(t, 128, blockSize)
+
+	// Block 0 should not be cached initially.
+	require.False(t, c.isCached(0, blockSize))
+
+	// Mark block 0 cached.
+	c.setIsCached(0, blockSize)
+	require.True(t, c.isCached(0, blockSize))
+
+	// Other blocks should still be uncached.
+	require.False(t, c.isCached(blockSize, blockSize))
+	require.False(t, c.isCached(2*blockSize, blockSize))
+}
+
+func TestSetIsCached_MultipleBlocks(t *testing.T) {
+	t.Parallel()
+
+	const blockSize int64 = 4096
+	c := newTestCache(t, 128, blockSize)
+
+	// Mark blocks 2..5 (4 blocks) cached.
+	c.setIsCached(2*blockSize, 4*blockSize)
+
+	// Blocks 2..5 should all be cached.
+	for i := int64(2); i < 6; i++ {
+		require.True(t, c.isCached(i*blockSize, blockSize), "block %d should be cached", i)
+	}
+
+	// Blocks outside the range should not be cached.
+	require.False(t, c.isCached(0, blockSize))
+	require.False(t, c.isCached(blockSize, blockSize))
+	require.False(t, c.isCached(6*blockSize, blockSize))
+	require.False(t, c.isCached(7*blockSize, blockSize))
+
+	// Range query spanning the entire cached range should succeed.
+	require.True(t, c.isCached(2*blockSize, 4*blockSize))
+
+	// Range including an uncached block should fail.
+	require.False(t, c.isCached(blockSize, 5*blockSize))
+}
+
+func TestSetIsCached_BoundaryCrossing(t *testing.T) {
+	t.Parallel()
+
+	const blockSize int64 = 4096
+	// Use 256 blocks to ensure we span word boundaries (word = 64 blocks).
+	c := newTestCache(t, 256, blockSize)
+
+	// Mark blocks 60..67 (crosses the 64-block word boundary).
+	c.setIsCached(60*blockSize, 8*blockSize)
+
+	for i := int64(60); i < 68; i++ {
+		require.True(t, c.isCached(i*blockSize, blockSize), "block %d should be cached", i)
+	}
+
+	// Boundary neighbors should not be cached.
+	require.False(t, c.isCached(59*blockSize, blockSize))
+	require.False(t, c.isCached(68*blockSize, blockSize))
+
+	// Range query spanning the boundary.
+	require.True(t, c.isCached(60*blockSize, 8*blockSize))
+}
+
+func TestSetIsCached_LargeRange(t *testing.T) {
+	t.Parallel()
+
+	const blockSize int64 = 4096
+	const numBlocks int64 = 512
+	c := newTestCache(t, numBlocks, blockSize)
+
+	// Mark 200 blocks starting at block 50.
+	c.setIsCached(50*blockSize, 200*blockSize)
+
+	for i := int64(50); i < 250; i++ {
+		require.True(t, c.isCached(i*blockSize, blockSize), "block %d should be cached", i)
+	}
+
+	require.False(t, c.isCached(49*blockSize, blockSize))
+	require.False(t, c.isCached(250*blockSize, blockSize))
+
+	// Full range query.
+	require.True(t, c.isCached(50*blockSize, 200*blockSize))
+}
+
+func TestSetIsCached_FirstBlock(t *testing.T) {
+	t.Parallel()
+
+	const blockSize int64 = 4096
+	c := newTestCache(t, 128, blockSize)
+
+	c.setIsCached(0, blockSize)
+	require.True(t, c.isCached(0, blockSize))
+	require.False(t, c.isCached(blockSize, blockSize))
+}
+
+func TestSetIsCached_LastBlock(t *testing.T) {
+	t.Parallel()
+
+	const blockSize int64 = 4096
+	const numBlocks int64 = 128
+	c := newTestCache(t, numBlocks, blockSize)
+
+	c.setIsCached((numBlocks-1)*blockSize, blockSize)
+	require.True(t, c.isCached((numBlocks-1)*blockSize, blockSize))
+	require.False(t, c.isCached((numBlocks-2)*blockSize, blockSize))
+}
+
+func TestSetIsCached_EntireCache(t *testing.T) {
+	t.Parallel()
+
+	const blockSize int64 = 4096
+	const numBlocks int64 = 256
+	c := newTestCache(t, numBlocks, blockSize)
+
+	c.setIsCached(0, numBlocks*blockSize)
+
+	for i := int64(0); i < numBlocks; i++ {
+		require.True(t, c.isCached(i*blockSize, blockSize), "block %d should be cached", i)
+	}
+
+	require.True(t, c.isCached(0, numBlocks*blockSize))
+}
+
+func TestDirtySortedKeys_Empty(t *testing.T) {
+	t.Parallel()
+
+	const blockSize int64 = 4096
+	c := newTestCache(t, 128, blockSize)
+
+	keys := c.dirtySortedKeys()
+	require.Empty(t, keys)
+}
+
+func TestDirtySortedKeys_Sorted(t *testing.T) {
+	t.Parallel()
+
+	const blockSize int64 = 4096
+	c := newTestCache(t, 256, blockSize)
+
+	// Mark blocks in non-sequential order.
+	c.setIsCached(100*blockSize, blockSize)
+	c.setIsCached(5*blockSize, blockSize)
+	c.setIsCached(200*blockSize, blockSize)
+	c.setIsCached(63*blockSize, blockSize)
+	c.setIsCached(64*blockSize, blockSize)
+
+	keys := c.dirtySortedKeys()
+
+	expected := []int64{
+		5 * blockSize,
+		63 * blockSize,
+		64 * blockSize,
+		100 * blockSize,
+		200 * blockSize,
+	}
+
+	require.Equal(t, expected, keys)
+	require.True(t, sort.SliceIsSorted(keys, func(i, j int) bool { return keys[i] < keys[j] }))
+}
+
+func TestDirtySortedKeys_Range(t *testing.T) {
+	t.Parallel()
+
+	const blockSize int64 = 4096
+	c := newTestCache(t, 128, blockSize)
+
+	// Mark blocks 10..14.
+	c.setIsCached(10*blockSize, 5*blockSize)
+
+	keys := c.dirtySortedKeys()
+
+	expected := []int64{
+		10 * blockSize,
+		11 * blockSize,
+		12 * blockSize,
+		13 * blockSize,
+		14 * blockSize,
+	}
+
+	require.Equal(t, expected, keys)
+}
+
+func TestSetIsCached_Idempotent(t *testing.T) {
+	t.Parallel()
+
+	const blockSize int64 = 4096
+	c := newTestCache(t, 128, blockSize)
+
+	// Mark same block twice.
+	c.setIsCached(5*blockSize, blockSize)
+	c.setIsCached(5*blockSize, blockSize)
+
+	require.True(t, c.isCached(5*blockSize, blockSize))
+
+	keys := c.dirtySortedKeys()
+	require.Equal(t, []int64{5 * blockSize}, keys)
+}
+
+func TestSetIsCached_OverlappingRanges(t *testing.T) {
+	t.Parallel()
+
+	const blockSize int64 = 4096
+	c := newTestCache(t, 128, blockSize)
+
+	// Two overlapping ranges.
+	c.setIsCached(5*blockSize, 5*blockSize)  // blocks 5..9
+	c.setIsCached(8*blockSize, 5*blockSize)  // blocks 8..12
+
+	// Union should be blocks 5..12.
+	for i := int64(5); i <= 12; i++ {
+		require.True(t, c.isCached(i*blockSize, blockSize), "block %d should be cached", i)
+	}
+
+	require.False(t, c.isCached(4*blockSize, blockSize))
+	require.False(t, c.isCached(13*blockSize, blockSize))
+}
