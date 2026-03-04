@@ -13,6 +13,7 @@ const syncSandboxRemoveGracePeriod = 10 * time.Second
 
 func (s *Storage) Sync(sandboxes []sandbox.Sandbox, nodeID string) []sandbox.Sandbox {
 	sandboxMap := make(map[string]sandbox.Sandbox)
+	now := time.Now()
 
 	// Use a map for faster lookup
 	for _, sandbox := range sandboxes {
@@ -22,7 +23,7 @@ func (s *Storage) Sync(sandboxes []sandbox.Sandbox, nodeID string) []sandbox.San
 	// Remove sandboxes that are not in Orchestrator anymore
 	s.items.IterCb(func(_ string, item *memorySandbox) {
 		data := item.Data()
-		if data.IsExpired() {
+		if data.IsExpired(now) {
 			return
 		}
 

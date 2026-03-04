@@ -104,7 +104,7 @@ func (s *Storage) ExpiredItems(_ context.Context) ([]sandbox.Sandbox, error) {
 			return
 		}
 
-		if now.After(sbx.EndTime) {
+		if sbx.IsExpired(now) {
 			expired = append(expired, sbx)
 		}
 	})

@@ -129,6 +129,6 @@ func (s Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
 	}
 }
 
-func (s Sandbox) IsExpired() bool {
-	return time.Now().After(s.EndTime)
+func (s Sandbox) IsExpired(now time.Time) bool {
+	return now.After(s.EndTime)
 }
