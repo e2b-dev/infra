@@ -371,7 +371,7 @@ func run() int {
 	// Create an instance of our handler which satisfies the generated interface
 	//  (use the outer context rather than the signal handling
 	//   context so it doesn't exit first.)
-	apiStore := handlers.NewAPIStore(ctx, tel, config)
+	apiStore := handlers.NewAPIStore(ctx, tel, config, serviceName)
 	cleanupFns = append(cleanupFns, apiStore.Close)
 
 	grpcAddr := fmt.Sprintf("0.0.0.0:%d", config.APIGrpcPort)
