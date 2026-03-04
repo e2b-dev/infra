@@ -19,10 +19,10 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ChunkService_GetBuildFileSize_FullMethodName    = "/ChunkService/GetBuildFileSize"
-	ChunkService_GetBuildFileExists_FullMethodName  = "/ChunkService/GetBuildFileExists"
-	ChunkService_ReadAtBuildSeekable_FullMethodName = "/ChunkService/ReadAtBuildSeekable"
-	ChunkService_GetBuildBlob_FullMethodName        = "/ChunkService/GetBuildBlob"
+	ChunkService_GetBuildFileSize_FullMethodName   = "/ChunkService/GetBuildFileSize"
+	ChunkService_GetBuildFileExists_FullMethodName = "/ChunkService/GetBuildFileExists"
+	ChunkService_GetBuildFrame_FullMethodName      = "/ChunkService/GetBuildFrame"
+	ChunkService_GetBuildBlob_FullMethodName       = "/ChunkService/GetBuildBlob"
 )
 
 // ChunkServiceClient is the client API for ChunkService service.
@@ -33,8 +33,8 @@ type ChunkServiceClient interface {
 	GetBuildFileSize(ctx context.Context, in *GetBuildFileSizeRequest, opts ...grpc.CallOption) (*GetBuildFileSizeResponse, error)
 	// GetBuildFileExists checks if a blob file is present in the peer's local cache.
 	GetBuildFileExists(ctx context.Context, in *GetBuildFileExistsRequest, opts ...grpc.CallOption) (*GetBuildFileExistsResponse, error)
-	// ReadAtBuildSeekable streams a range from a seekable diff file (memfile, rootfs.ext4).
-	ReadAtBuildSeekable(ctx context.Context, in *ReadAtBuildSeekableRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ReadAtBuildSeekableResponse], error)
+	// GetBuildFrame streams a range from a framed diff file (memfile, rootfs.ext4).
+	GetBuildFrame(ctx context.Context, in *GetBuildFrameRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[GetBuildFrameResponse], error)
 	// GetBuildBlob streams an entire blob file (snapfile, metadata, headers).
 	GetBuildBlob(ctx context.Context, in *GetBuildBlobRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[GetBuildBlobResponse], error)
 }
@@ -67,13 +67,13 @@ func (c *chunkServiceClient) GetBuildFileExists(ctx context.Context, in *GetBuil
 	return out, nil
 }
 
-func (c *chunkServiceClient) ReadAtBuildSeekable(ctx context.Context, in *ReadAtBuildSeekableRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ReadAtBuildSeekableResponse], error) {
+func (c *chunkServiceClient) GetBuildFrame(ctx context.Context, in *GetBuildFrameRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[GetBuildFrameResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &ChunkService_ServiceDesc.Streams[0], ChunkService_ReadAtBuildSeekable_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &ChunkService_ServiceDesc.Streams[0], ChunkService_GetBuildFrame_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &grpc.GenericClientStream[ReadAtBuildSeekableRequest, ReadAtBuildSeekableResponse]{ClientStream: stream}
+	x := &grpc.GenericClientStream[GetBuildFrameRequest, GetBuildFrameResponse]{ClientStream: stream}
 	if err := x.ClientStream.SendMsg(in); err != nil {
 		return nil, err
 	}
@@ -84,7 +84,7 @@ func (c *chunkServiceClient) ReadAtBuildSeekable(ctx context.Context, in *ReadAt
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type ChunkService_ReadAtBuildSeekableClient = grpc.ServerStreamingClient[ReadAtBuildSeekableResponse]
+type ChunkService_GetBuildFrameClient = grpc.ServerStreamingClient[GetBuildFrameResponse]
 
 func (c *chunkServiceClient) GetBuildBlob(ctx context.Context, in *GetBuildBlobRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[GetBuildBlobResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
@@ -113,8 +113,8 @@ type ChunkServiceServer interface {
 	GetBuildFileSize(context.Context, *GetBuildFileSizeRequest) (*GetBuildFileSizeResponse, error)
 	// GetBuildFileExists checks if a blob file is present in the peer's local cache.
 	GetBuildFileExists(context.Context, *GetBuildFileExistsRequest) (*GetBuildFileExistsResponse, error)
-	// ReadAtBuildSeekable streams a range from a seekable diff file (memfile, rootfs.ext4).
-	ReadAtBuildSeekable(*ReadAtBuildSeekableRequest, grpc.ServerStreamingServer[ReadAtBuildSeekableResponse]) error
+	// GetBuildFrame streams a range from a framed diff file (memfile, rootfs.ext4).
+	GetBuildFrame(*GetBuildFrameRequest, grpc.ServerStreamingServer[GetBuildFrameResponse]) error
 	// GetBuildBlob streams an entire blob file (snapfile, metadata, headers).
 	GetBuildBlob(*GetBuildBlobRequest, grpc.ServerStreamingServer[GetBuildBlobResponse]) error
 	mustEmbedUnimplementedChunkServiceServer()
@@ -133,8 +133,8 @@ func (UnimplementedChunkServiceServer) GetBuildFileSize(context.Context, *GetBui
 func (UnimplementedChunkServiceServer) GetBuildFileExists(context.Context, *GetBuildFileExistsRequest) (*GetBuildFileExistsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetBuildFileExists not implemented")
 }
-func (UnimplementedChunkServiceServer) ReadAtBuildSeekable(*ReadAtBuildSeekableRequest, grpc.ServerStreamingServer[ReadAtBuildSeekableResponse]) error {
-	return status.Error(codes.Unimplemented, "method ReadAtBuildSeekable not implemented")
+func (UnimplementedChunkServiceServer) GetBuildFrame(*GetBuildFrameRequest, grpc.ServerStreamingServer[GetBuildFrameResponse]) error {
+	return status.Error(codes.Unimplemented, "method GetBuildFrame not implemented")
 }
 func (UnimplementedChunkServiceServer) GetBuildBlob(*GetBuildBlobRequest, grpc.ServerStreamingServer[GetBuildBlobResponse]) error {
 	return status.Error(codes.Unimplemented, "method GetBuildBlob not implemented")
@@ -196,16 +196,16 @@ func _ChunkService_GetBuildFileExists_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
-func _ChunkService_ReadAtBuildSeekable_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(ReadAtBuildSeekableRequest)
+func _ChunkService_GetBuildFrame_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(GetBuildFrameRequest)
 	if err := stream.RecvMsg(m); err != nil {
 		return err
 	}
-	return srv.(ChunkServiceServer).ReadAtBuildSeekable(m, &grpc.GenericServerStream[ReadAtBuildSeekableRequest, ReadAtBuildSeekableResponse]{ServerStream: stream})
+	return srv.(ChunkServiceServer).GetBuildFrame(m, &grpc.GenericServerStream[GetBuildFrameRequest, GetBuildFrameResponse]{ServerStream: stream})
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type ChunkService_ReadAtBuildSeekableServer = grpc.ServerStreamingServer[ReadAtBuildSeekableResponse]
+type ChunkService_GetBuildFrameServer = grpc.ServerStreamingServer[GetBuildFrameResponse]
 
 func _ChunkService_GetBuildBlob_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(GetBuildBlobRequest)
@@ -236,8 +236,8 @@ var ChunkService_ServiceDesc = grpc.ServiceDesc{
 	},
 	Streams: []grpc.StreamDesc{
 		{
-			StreamName:    "ReadAtBuildSeekable",
-			Handler:       _ChunkService_ReadAtBuildSeekable_Handler,
+			StreamName:    "GetBuildFrame",
+			Handler:       _ChunkService_GetBuildFrame_Handler,
 			ServerStreams: true,
 		},
 		{

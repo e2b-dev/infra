@@ -45,7 +45,7 @@ var (
 )
 
 type Cache struct {
-	config        cfg.BuilderConfig
+	config        cfg.Config
 	flags         *featureflags.Client
 	cache         *ttlcache.Cache[string, Template]
 	persistence   storage.StorageProvider
@@ -70,11 +70,11 @@ func NewCache(
 	)
 
 	cache.OnEviction(func(ctx context.Context, _ ttlcache.EvictionReason, item *ttlcache.Item[string, Template]) {
-		template := item.Value()
-
 		if peers != nil {
 			peers.Purge(item.Key())
 		}
+
+		template := item.Value()
 
 		err := template.Close(ctx)
 		if err != nil {
@@ -101,7 +101,7 @@ func NewCache(
 
 	return &Cache{
 		blockMetrics:  metrics,
-		config:        config.BuilderConfig,
+		config:        config,
 		persistence:   persistence,
 		buildStore:    buildStore,
 		cache:         cache,
@@ -128,6 +128,14 @@ func (c *Cache) Stop() {
 
 func (c *Cache) Items() map[string]*ttlcache.Item[string, Template] {
 	return c.cache.Items()
+}
+
+// LookupDiff returns the locally-cached diff for the given build and file name.
+// Returns (nil, false) if the diff is not cached locally.
+func (c *Cache) LookupDiff(buildID string, diffType build.DiffType) (build.Diff, bool) {
+	key := build.GetDiffStoreKey(buildID, diffType)
+
+	return c.buildStore.Lookup(key)
 }
 
 // Invalidate removes a template from the cache, forcing a refetch on next access.
@@ -165,14 +173,15 @@ func (c *Cache) GetTemplate(
 		span.SetAttributes(attribute.Bool("use_cache", false))
 	}
 
-	// Wrap with peer routing when P2P chunk transfer is enabled.
+	// Wrap persistence with per-buildID peer routing.
+	// Each layer's buildID is checked against Redis to find the source orchestrator.
+	// This allows pulling data directly from the peer before GCS upload completes.
 	if c.peers != nil && c.flags.BoolFlag(ctx, featureflags.PeerToPeerChunkTransferFlag) {
 		persistence = peerclient.NewRoutingProvider(persistence, c.peers)
-		span.SetAttributes(attribute.Bool("use_peers", true))
 	}
 
 	storageTemplate, err := newTemplateFromStorage(
-		c.config,
+		c.config.BuilderConfig,
 		buildID,
 		nil,
 		nil,
@@ -211,7 +220,7 @@ func (c *Cache) AddSnapshot(
 	}
 
 	storageTemplate, err := newTemplateFromStorage(
-		c.config,
+		c.config.BuilderConfig,
 		buildId,
 		memfileHeader,
 		rootfsHeader,
@@ -227,6 +236,29 @@ func (c *Cache) AddSnapshot(
 	c.getTemplateWithFetch(ctx, storageTemplate)
 
 	return nil
+}
+
+// GetCachedTemplate returns the template for buildID if it is currently in the cache.
+func (c *Cache) GetCachedTemplate(buildID string) (Template, bool) {
+	item := c.cache.Get(buildID)
+	if item == nil {
+		return nil, false
+	}
+
+	return item.Value(), true
+}
+
+// UpdateMetadata overwrites the local metadata file for a cached template so that
+// subsequent calls to Template.Metadata() on this node return the updated data
+// (e.g. with freshly computed prefetch mappings) without requiring a cache
+// invalidation or GCS round-trip.
+func (c *Cache) UpdateMetadata(buildID string, meta metadata.Template) error {
+	t, ok := c.GetCachedTemplate(buildID)
+	if !ok {
+		return fmt.Errorf("template %q not in cache", buildID)
+	}
+
+	return t.UpdateMetadata(meta)
 }
 
 func (c *Cache) useNFSCache(ctx context.Context, isBuilding bool, isSnapshot bool) (string, bool) {
@@ -271,43 +303,10 @@ func cleanDir(path string) error {
 	return nil
 }
 
-// GetCachedTemplate returns a cached template by buildID, or (nil, false) if not cached.
-// Used by the peer server to resolve chunk requests.
-func (c *Cache) GetCachedTemplate(buildID string) (Template, bool) {
-	item := c.cache.Get(buildID)
-	if item == nil {
-		return nil, false
-	}
-
-	return item.Value(), true
-}
-
-// LookupDiff returns a cached diff for the given buildID and diff type.
-// Used by the peer server to resolve framed chunk requests.
-func (c *Cache) LookupDiff(buildID string, diffType build.DiffType) (build.Diff, bool) {
-	return c.buildStore.Lookup(build.GetDiffStoreKey(buildID, diffType))
-}
-
-// UpdateMetadata updates the metadata for a cached template.
-func (c *Cache) UpdateMetadata(buildID string, meta metadata.Template) error {
-	t, ok := c.GetCachedTemplate(buildID)
-	if !ok {
-		return fmt.Errorf("template %s not cached", buildID)
-	}
-
-	if ut, ok := t.(interface {
-		UpdateMetadata(meta metadata.Template) error
-	}); ok {
-		return ut.UpdateMetadata(meta)
-	}
-
-	return nil
-}
-
-func (c *Cache) getTemplateWithFetch(ctx context.Context, storageTemplate *storageTemplate) Template {
+func (c *Cache) getTemplateWithFetch(ctx context.Context, tmpl *storageTemplate) Template {
 	t, found := c.cache.GetOrSet(
-		storageTemplate.Files().CacheKey(),
-		storageTemplate,
+		tmpl.Files().CacheKey(),
+		tmpl,
 		ttlcache.WithTTL[string, Template](templateExpiration),
 	)
 
@@ -315,7 +314,7 @@ func (c *Cache) getTemplateWithFetch(ctx context.Context, storageTemplate *stora
 		missesMetric.Add(ctx, 1)
 		// We don't want to cancel the request if the request was canceled, because it can be used by other templates
 		// It's a little bit problematic, because shutdown won't cancel the fetch
-		go storageTemplate.Fetch(context.WithoutCancel(ctx), c.buildStore)
+		go tmpl.Fetch(context.WithoutCancel(ctx), c.buildStore)
 	} else {
 		hitsMetric.Add(ctx, 1)
 	}

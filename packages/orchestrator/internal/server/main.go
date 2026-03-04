@@ -28,6 +28,8 @@ import (
 
 // uploadedBuildHeaders stores serialized V4 headers for a completed upload,
 // so that peers can transition from P2P reads to storage reads.
+const uploadedBuildsTTL = 1 * time.Hour
+
 type uploadedBuildHeaders struct {
 	memfileHeader []byte
 	rootfsHeader  []byte
@@ -72,7 +74,7 @@ type ServiceConfig struct {
 
 func New(ctx context.Context, cfg ServiceConfig) *Server {
 	uploadedBuilds := ttlcache.New(
-		ttlcache.WithTTL[string, *uploadedBuildHeaders](30 * time.Minute),
+		ttlcache.WithTTL[string, *uploadedBuildHeaders](uploadedBuildsTTL),
 	)
 	go uploadedBuilds.Start()
 

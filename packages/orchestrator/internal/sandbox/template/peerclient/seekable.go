@@ -52,7 +52,7 @@ func (f *peerFramedFile) GetFrame(ctx context.Context, offsetU int64, frameTable
 ) (storage.Range, error) {
 	return withPeerFallback(ctx, &f.peerHandle, "get-frame peer-framedfile", attrOpGetFrame,
 		func(ctx context.Context) (peerAttempt[storage.Range], error) {
-			recv, err := openPeerFramedStream(ctx, f.client, &orchestrator.ReadAtBuildSeekableRequest{
+			recv, err := openPeerFramedStream(ctx, f.client, &orchestrator.GetBuildFrameRequest{
 				BuildId:  f.buildID,
 				FileName: f.fileName,
 				Offset:   offsetU,
@@ -122,16 +122,16 @@ func (f *peerFramedFile) StoreFile(ctx context.Context, path string, opts *stora
 	return fallback.StoreFile(ctx, path, opts)
 }
 
-// openPeerFramedStream opens a ReadAtBuildSeekable stream, checks peer availability,
+// openPeerFramedStream opens a GetBuildFrame stream, checks peer availability,
 // and returns a recv function that yields data chunks starting with the first message's data.
 func openPeerFramedStream(
 	ctx context.Context,
 	client orchestrator.ChunkServiceClient,
-	req *orchestrator.ReadAtBuildSeekableRequest,
+	req *orchestrator.GetBuildFrameRequest,
 	uploaded *atomic.Bool,
 	transitionHeaders *atomic.Pointer[TransitionHeaders],
 ) (func() ([]byte, error), error) {
-	stream, err := client.ReadAtBuildSeekable(ctx, req)
+	stream, err := client.GetBuildFrame(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("open framed stream: %w", err)
 	}

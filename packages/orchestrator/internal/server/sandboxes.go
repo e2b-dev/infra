@@ -22,7 +22,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/events"
@@ -45,6 +44,12 @@ const (
 	acquireTimeout              = 15 * time.Second
 	maxStartingInstancesPerNode = 3
 
+	// uploadTimeout is the max time allowed for uploading snapshot files to GCS.
+	uploadTimeout = 20 * time.Minute
+	// redisPeerKeyTTL is slightly longer than uploadTimeout so the key is still
+	// valid for the entire upload window before being cleaned up.
+	redisPeerKeyTTL = uploadTimeout + 2*time.Minute
+
 	// executionEventDataKey is the key used in webhook event data for sandbox execution metrics.
 	executionEventDataKey = "execution"
 )
@@ -57,6 +62,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	// set up tracing
 	ctx, childSpan := tracer.Start(ctx, "sandbox-create")
 	defer childSpan.End()
+
 	childSpan.SetAttributes(
 		telemetry.WithTemplateID(req.GetSandbox().GetTemplateId()),
 		attribute.String("kernel.version", req.GetSandbox().GetKernelVersion()),
@@ -393,13 +399,15 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	// Stop the old sandbox in background after we're done
 	defer s.stopSandboxAsync(context.WithoutCancel(ctx), sbx)
 
-	// Fire and forget - don't wait for upload to complete
-	_, _, err = s.snapshotAndCacheSandbox(ctx, sbx, in.GetBuildId())
+	// Fire and forget - upload completes in the background
+	res, err := s.snapshotAndCacheSandbox(ctx, sbx, in.GetBuildId())
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error snapshotting sandbox", err, telemetry.WithSandboxID(in.GetSandboxId()))
 
 		return nil, status.Errorf(codes.Internal, "error snapshotting sandbox '%s': %s", in.GetSandboxId(), err)
 	}
+
+	s.uploadSnapshotAsync(ctx, sbx, res)
 
 	teamID, buildId, eventData := s.prepareSandboxEventData(ctx, sbx)
 	if s.featureFlags.BoolFlag(ctx, featureflags.ExecutionMetricsOnWebhooksFlag) {
@@ -457,8 +465,7 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 
 	sbxlogger.E(sbx).Info(ctx, "Checkpointing sandbox")
 
-	// Start snapshot and upload async - we'll wait for upload at the end
-	meta, waitForUpload, err := s.snapshotAndCacheSandbox(ctx, sbx, in.GetBuildId())
+	res, err := s.snapshotAndCacheSandbox(ctx, sbx, in.GetBuildId())
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error snapshotting sandbox for checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
 
@@ -506,22 +513,39 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 	// Setup lifecycle for the resumed sandbox
 	s.setupSandboxLifecycle(ctx, resumedSbx)
 
-	// Upload prefetch mapping in background
+	// Embed prefetch data into the metadata so it's uploaded with the snapshot files in a single pass.
 	if prefetchErr == nil {
-		s.uploadPrefetchMappingAsync(ctx, resumedSbx, meta, prefetchData)
+		prefetchMapping := metadata.PrefetchEntriesToMapping(slices.Collect(maps.Values(prefetchData.BlockEntries)), prefetchData.BlockSize)
+		if prefetchMapping != nil {
+			res.meta = res.meta.WithPrefetch(&metadata.Prefetch{
+				Memory: prefetchMapping,
+			})
+
+			if err := s.templateCache.UpdateMetadata(in.GetBuildId(), res.meta); err != nil {
+				sbxlogger.I(resumedSbx).Warn(ctx, "failed to update local metadata with prefetch", zap.Error(err))
+			}
+		}
 	}
 
-	// Wait for snapshot upload to complete before returning.
-	// If the upload fails, kill the resumed sandbox — without a persisted
-	// snapshot it cannot be paused/resumed later. We handle the kill here
-	// rather than relying on the caller's Delete round-trip.
-	if err := waitForUpload(); err != nil {
-		telemetry.ReportCriticalError(ctx, "error uploading snapshot for checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
+	if s.featureFlags.BoolFlag(ctx, featureflags.PeerToPeerAsyncCheckpointFlag) {
+		// Async: return immediately; peer nodes can pull chunks from us during the upload window.
+		s.uploadSnapshotAsync(ctx, resumedSbx, res)
+	} else {
+		// Sync: wait for upload before returning so a failed upload is surfaced to the caller.
+		// On failure, tear down the resumed sandbox — without a persisted snapshot it cannot
+		// be paused or resumed later.
+		uploadCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), uploadTimeout)
+		defer cancel()
+		defer res.completeUpload(uploadCtx)
 
-		s.sandboxes.Remove(resumedSbx.Runtime.SandboxID)
-		s.stopSandboxAsync(context.WithoutCancel(ctx), resumedSbx)
+		if err := res.uploadSnapshot(uploadCtx, s.persistence, s.featureFlags); err != nil {
+			telemetry.ReportCriticalError(ctx, "error uploading snapshot for checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
 
-		return nil, status.Errorf(codes.Internal, "error uploading snapshot for checkpoint '%s': %s", in.GetSandboxId(), err)
+			s.sandboxes.Remove(resumedSbx.Runtime.SandboxID)
+			s.stopSandboxAsync(context.WithoutCancel(ctx), resumedSbx)
+
+			return nil, status.Errorf(codes.Internal, "error uploading snapshot for checkpoint '%s': %s", in.GetSandboxId(), err)
+		}
 	}
 
 	s.publishSandboxEvent(ctx, resumedSbx, events.SandboxCheckpointedEvent)
@@ -562,17 +586,35 @@ func (s *Server) getSandboxExecutionData(sbx *sandbox.Sandbox) map[string]any {
 	}
 }
 
-// snapshotAndCacheSandbox creates a snapshot of a sandbox, adds it to cache, and starts uploading async.
-// Returns the metadata and a wait function. Call the wait function to block until upload completes.
-// If you don't need to wait for the upload, simply don't call the wait function (fire and forget).
+// snapshotResult holds the data produced by snapshotAndCacheSandbox that callers
+// need to start the background GCS upload.
+type snapshotResult struct {
+	meta           metadata.Template
+	snapshot       *sandbox.Snapshot
+	templateFiles  storage.TemplateFiles
+	completeUpload func(ctx context.Context)
+}
+
+// uploadSnapshot uploads snapshot files to GCS using TemplateBuild.
+func (r *snapshotResult) uploadSnapshot(ctx context.Context, persistence storage.StorageProvider, flags *featureflags.Client) error {
+	memfileOpts := storage.GetUploadOptions(ctx, flags, storage.FileTypeMemfile, storage.UseCasePause)
+	rootfsOpts := storage.GetUploadOptions(ctx, flags, storage.FileTypeRootfs, storage.UseCasePause)
+	tb := sandbox.NewTemplateBuild(r.snapshot, persistence, r.templateFiles, nil)
+
+	return tb.UploadAtOnce(ctx, memfileOpts, rootfsOpts)
+}
+
+// snapshotAndCacheSandbox creates a snapshot of a sandbox and adds it to the local
+// template cache. The caller is responsible for starting the GCS upload via
+// uploadSnapshotAsync.
 func (s *Server) snapshotAndCacheSandbox(
 	ctx context.Context,
 	sbx *sandbox.Sandbox,
 	buildID string,
-) (metadata.Template, func() error, error) {
+) (*snapshotResult, error) {
 	meta, err := sbx.Template.Metadata()
 	if err != nil {
-		return metadata.Template{}, nil, fmt.Errorf("no metadata found in template: %w", err)
+		return nil, fmt.Errorf("no metadata found in template: %w", err)
 	}
 
 	meta = meta.SameVersionTemplate(metadata.TemplateMetadata{
@@ -583,7 +625,7 @@ func (s *Server) snapshotAndCacheSandbox(
 
 	snapshot, err := sbx.Pause(ctx, meta)
 	if err != nil {
-		return metadata.Template{}, nil, fmt.Errorf("error snapshotting sandbox: %w", err)
+		return nil, fmt.Errorf("error snapshotting sandbox: %w", err)
 	}
 
 	err = s.templateCache.AddSnapshot(
@@ -597,87 +639,87 @@ func (s *Server) snapshotAndCacheSandbox(
 		snapshot.RootfsDiff,
 	)
 	if err != nil {
-		return metadata.Template{}, nil, fmt.Errorf("error adding snapshot to template cache: %w", err)
+		return nil, fmt.Errorf("error adding snapshot to template cache: %w", err)
 	}
 
 	telemetry.ReportEvent(ctx, "added snapshot to template cache")
 
-	// Register as peer source in Redis so other orchestrators can read from us
-	// while we upload to GCS.
+	templateFiles := storage.TemplateFiles{BuildID: meta.Template.BuildID}
+
+	// Register in Redis so other orchestrators can find us for peer routing.
 	if s.featureFlags.BoolFlag(ctx, featureflags.PeerToPeerChunkTransferFlag) {
-		const peerTTL = 30 * time.Minute
-		if regErr := s.peerRegistry.Register(ctx, meta.Template.BuildID, peerTTL); regErr != nil {
-			logger.L().Warn(ctx, "failed to register as peer source", zap.Error(regErr))
-		}
-	}
-
-	// Start upload in background, return a wait function
-	memfileOpts := storage.GetUploadOptions(ctx, s.featureFlags, storage.FileTypeMemfile, storage.UseCasePause)
-	rootfsOpts := storage.GetUploadOptions(ctx, s.featureFlags, storage.FileTypeRootfs, storage.UseCasePause)
-	tb := sandbox.NewTemplateBuild(snapshot, s.persistence, storage.TemplateFiles{BuildID: meta.Template.BuildID}, nil)
-
-	uploadCtx := context.WithoutCancel(ctx)
-	errCh := make(chan error, 1)
-
-	go func() {
-		if err := tb.UploadAtOnce(uploadCtx, memfileOpts, rootfsOpts); err != nil {
-			sbxlogger.I(sbx).Error(uploadCtx, "error uploading snapshot", zap.Error(err))
-			errCh <- err
-
-			return
+		if err := s.peerRegistry.Register(ctx, meta.Template.BuildID, redisPeerKeyTTL); err != nil {
+			logger.L().Warn(ctx, "failed to register peer address for routing", zap.String("build_id", meta.Template.BuildID), zap.Error(err))
 		}
 
-		logger.L().Info(uploadCtx, "Snapshot uploaded successfully", logger.WithSandboxID(sbx.Runtime.SandboxID))
+		completeUpload := func(ctx context.Context) {
+			// Signal in-flight peer streams to switch to GCS, including
+			// serialized V4 headers so peers can transition to compressed reads.
+			s.uploadedBuilds.Set(meta.Template.BuildID, serializeUploadedHeaders(snapshot), ttlcache.DefaultTTL)
 
-		// After upload completes, store the serialized headers and unregister from Redis
-		// so peers transition to GCS reads.
-		s.completeUpload(uploadCtx, meta.Template.BuildID, snapshot)
+			// Remove from Redis so new nodes go directly to GCS.
+			if err := s.peerRegistry.Unregister(ctx, meta.Template.BuildID); err != nil {
+				logger.L().Warn(ctx, "failed to unregister peer address from routing", zap.String("build_id", meta.Template.BuildID), zap.Error(err))
+			}
+		}
 
-		errCh <- nil
-	}()
-
-	waitForUpload := func() error {
-		return <-errCh
+		return &snapshotResult{
+			meta:           meta,
+			snapshot:       snapshot,
+			templateFiles:  templateFiles,
+			completeUpload: completeUpload,
+		}, nil
 	}
 
-	return meta, waitForUpload, nil
+	return &snapshotResult{
+		meta:           meta,
+		snapshot:       snapshot,
+		templateFiles:  templateFiles,
+		completeUpload: func(context.Context) {},
+	}, nil
 }
 
-// completeUpload stores serialized V4 headers in the uploadedBuilds cache and
-// unregisters from Redis so peers transition from P2P reads to GCS.
-func (s *Server) completeUpload(ctx context.Context, buildID string, snapshot *sandbox.Snapshot) {
-	if !s.featureFlags.BoolFlag(ctx, featureflags.PeerToPeerChunkTransferFlag) {
-		return
-	}
-
+// serializeUploadedHeaders extracts and serializes V4 headers from a snapshot
+// for the peer transition protocol.
+func serializeUploadedHeaders(snapshot *sandbox.Snapshot) *uploadedBuildHeaders {
 	var memHdrBytes, rootHdrBytes []byte
 
 	if snapshot.MemfileDiffHeader != nil {
-		data, err := header.Serialize(snapshot.MemfileDiffHeader)
-		if err != nil {
-			logger.L().Warn(ctx, "failed to serialize memfile header for peer transition", zap.Error(err))
-		} else {
+		if data, err := header.Serialize(snapshot.MemfileDiffHeader); err == nil {
 			memHdrBytes = data
 		}
 	}
 
 	if snapshot.RootfsDiffHeader != nil {
-		data, err := header.Serialize(snapshot.RootfsDiffHeader)
-		if err != nil {
-			logger.L().Warn(ctx, "failed to serialize rootfs header for peer transition", zap.Error(err))
-		} else {
+		if data, err := header.Serialize(snapshot.RootfsDiffHeader); err == nil {
 			rootHdrBytes = data
 		}
 	}
 
-	s.uploadedBuilds.Set(buildID, &uploadedBuildHeaders{
+	return &uploadedBuildHeaders{
 		memfileHeader: memHdrBytes,
 		rootfsHeader:  rootHdrBytes,
-	}, ttlcache.DefaultTTL)
-
-	if err := s.peerRegistry.Unregister(ctx, buildID); err != nil {
-		logger.L().Warn(ctx, "failed to unregister peer", zap.Error(err))
 	}
+}
+
+// uploadSnapshotAsync uploads snapshot files to GCS in the background and
+// cleans up the Redis peer key once done. Used by the Pause handler where no
+// prefetch data is available.
+func (s *Server) uploadSnapshotAsync(ctx context.Context, sbx *sandbox.Sandbox, res *snapshotResult) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), uploadTimeout)
+
+	go func() {
+		defer cancel()
+		defer res.completeUpload(ctx)
+
+		if err := res.uploadSnapshot(ctx, s.persistence, s.featureFlags); err != nil {
+			sbxlogger.I(sbx).Error(ctx, "error uploading snapshot files", zap.Error(err))
+
+			return
+		}
+
+		sbxlogger.E(sbx).Info(ctx, "Snapshot files uploaded to GCS")
+	}()
 }
 
 // setupSandboxLifecycle adds the sandbox to the map and sets up the cleanup goroutine.
@@ -764,37 +806,4 @@ func (s *Server) publishSandboxEvent(ctx context.Context, sbx *sandbox.Sandbox, 
 			SandboxTeamID:      teamID,
 		},
 	)
-}
-
-// uploadPrefetchMappingAsync uploads prefetch mapping to metadata in background.
-func (s *Server) uploadPrefetchMappingAsync(ctx context.Context, sbx *sandbox.Sandbox, meta metadata.Template, prefetchData block.PrefetchData) {
-	ctx = context.WithoutCancel(ctx)
-
-	go func() {
-		ctx, childSpan := tracer.Start(ctx, "upload-prefetch-mapping", trace.WithNewRoot())
-		defer childSpan.End()
-
-		prefetchMapping := metadata.PrefetchEntriesToMapping(slices.Collect(maps.Values(prefetchData.BlockEntries)), prefetchData.BlockSize)
-		if prefetchMapping == nil {
-			sbxlogger.I(sbx).Debug(ctx, "no prefetch mapping collected")
-
-			return
-		}
-
-		updatedMeta := meta.WithPrefetch(&metadata.Prefetch{
-			Memory: prefetchMapping,
-		})
-
-		err := metadata.UploadMetadata(ctx, s.persistence, updatedMeta)
-		if err != nil {
-			sbxlogger.I(sbx).Warn(ctx, "failed to upload prefetch metadata", zap.Error(err))
-
-			return
-		}
-
-		s.templateCache.Invalidate(meta.Template.BuildID)
-
-		sbxlogger.I(sbx).Info(ctx, "prefetch mapping uploaded",
-			zap.Int("block_count", prefetchMapping.Count()))
-	}()
 }

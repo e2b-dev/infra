@@ -67,11 +67,11 @@ func TestPeerFramedFile_GetFrame_PeerSucceeds(t *testing.T) {
 	t.Parallel()
 
 	data := []byte("block data")
-	stream := orchestratormocks.NewMockChunkService_ReadAtBuildSeekableClient(t)
-	stream.EXPECT().Recv().Return(&orchestrator.ReadAtBuildSeekableResponse{Data: data}, nil).Once()
+	stream := orchestratormocks.NewMockChunkService_GetBuildFrameClient(t)
+	stream.EXPECT().Recv().Return(&orchestrator.GetBuildFrameResponse{Data: data}, nil).Once()
 
 	client := orchestratormocks.NewMockChunkServiceClient(t)
-	client.EXPECT().ReadAtBuildSeekable(mock.Anything, mock.MatchedBy(func(req *orchestrator.ReadAtBuildSeekableRequest) bool {
+	client.EXPECT().GetBuildFrame(mock.Anything, mock.MatchedBy(func(req *orchestrator.GetBuildFrameRequest) bool {
 		return req.GetOffset() == 0 && req.GetLength() == int64(len(data))
 	})).Return(stream, nil)
 
@@ -92,12 +92,12 @@ func TestPeerFramedFile_GetFrame_PeerNotAvailable_FallsBackToBase(t *testing.T) 
 	t.Parallel()
 
 	baseData := []byte("base data")
-	stream := orchestratormocks.NewMockChunkService_ReadAtBuildSeekableClient(t)
+	stream := orchestratormocks.NewMockChunkService_GetBuildFrameClient(t)
 	stream.EXPECT().Recv().Return(
-		&orchestrator.ReadAtBuildSeekableResponse{Availability: &orchestrator.PeerAvailability{NotAvailable: true}}, nil).Once()
+		&orchestrator.GetBuildFrameResponse{Availability: &orchestrator.PeerAvailability{NotAvailable: true}}, nil).Once()
 
 	client := orchestratormocks.NewMockChunkServiceClient(t)
-	client.EXPECT().ReadAtBuildSeekable(mock.Anything, mock.Anything).Return(stream, nil)
+	client.EXPECT().GetBuildFrame(mock.Anything, mock.Anything).Return(stream, nil)
 
 	baseFF := storagemocks.NewMockFramedFile(t)
 	baseFF.EXPECT().GetFrame(mock.Anything, int64(0), (*storage.FrameTable)(nil), false, mock.Anything, int64(len(baseData)), mock.Anything).
@@ -134,7 +134,7 @@ func TestPeerFramedFile_GetFrame_PeerError_FallsBackToBase(t *testing.T) {
 
 	baseData := []byte("fallback")
 	client := orchestratormocks.NewMockChunkServiceClient(t)
-	client.EXPECT().ReadAtBuildSeekable(mock.Anything, mock.Anything).Return(nil, errors.New("peer unavailable"))
+	client.EXPECT().GetBuildFrame(mock.Anything, mock.Anything).Return(nil, errors.New("peer unavailable"))
 
 	baseFF := storagemocks.NewMockFramedFile(t)
 	baseFF.EXPECT().GetFrame(mock.Anything, int64(0), (*storage.FrameTable)(nil), false, mock.Anything, int64(len(baseData)), mock.Anything).
@@ -170,11 +170,11 @@ func TestPeerFramedFile_GetFrame_OnReadCallback(t *testing.T) {
 	t.Parallel()
 
 	data := []byte("callback test")
-	stream := orchestratormocks.NewMockChunkService_ReadAtBuildSeekableClient(t)
-	stream.EXPECT().Recv().Return(&orchestrator.ReadAtBuildSeekableResponse{Data: data}, nil).Once()
+	stream := orchestratormocks.NewMockChunkService_GetBuildFrameClient(t)
+	stream.EXPECT().Recv().Return(&orchestrator.GetBuildFrameResponse{Data: data}, nil).Once()
 
 	client := orchestratormocks.NewMockChunkServiceClient(t)
-	client.EXPECT().ReadAtBuildSeekable(mock.Anything, mock.Anything).Return(stream, nil)
+	client.EXPECT().GetBuildFrame(mock.Anything, mock.Anything).Return(stream, nil)
 
 	f := &peerFramedFile{peerHandle: peerHandle[storage.FramedFile]{
 		client:   client,
@@ -194,12 +194,12 @@ func TestPeerFramedFile_GetFrame_OnReadCallback(t *testing.T) {
 func TestPeerFramedFile_GetFrame_PartialStreamError(t *testing.T) {
 	t.Parallel()
 
-	stream := orchestratormocks.NewMockChunkService_ReadAtBuildSeekableClient(t)
-	stream.EXPECT().Recv().Return(&orchestrator.ReadAtBuildSeekableResponse{Data: []byte("part")}, nil).Once()
+	stream := orchestratormocks.NewMockChunkService_GetBuildFrameClient(t)
+	stream.EXPECT().Recv().Return(&orchestrator.GetBuildFrameResponse{Data: []byte("part")}, nil).Once()
 	stream.EXPECT().Recv().Return(nil, fmt.Errorf("connection reset")).Once()
 
 	client := orchestratormocks.NewMockChunkServiceClient(t)
-	client.EXPECT().ReadAtBuildSeekable(mock.Anything, mock.Anything).Return(stream, nil)
+	client.EXPECT().GetBuildFrame(mock.Anything, mock.Anything).Return(stream, nil)
 
 	f := &peerFramedFile{peerHandle: peerHandle[storage.FramedFile]{
 		client:   client,

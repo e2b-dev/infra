@@ -201,7 +201,7 @@ sequenceDiagram
     Origin->>Origin: Cache in mmap + register in Redis
 
     par P2P Phase
-        Peer->>Origin: ReadAtBuildSeekable(offset, length)
+        Peer->>Origin: GetBuildFrame(offset, length)
         Origin-->>Peer: Uncompressed bytes (from mmap)
         Peer->>Peer: Fill local mmap cache
     and Upload
@@ -212,7 +212,7 @@ sequenceDiagram
     Note over Origin: Upload complete
     Origin->>Origin: Store V4 headers in uploadedBuilds
 
-    Peer->>Origin: ReadAtBuildSeekable(offset, length)
+    Peer->>Origin: GetBuildFrame(offset, length)
     Origin-->>Peer: PeerAvailability{use_storage, headers}
 
     Peer->>Peer: Store transition headers
@@ -226,7 +226,7 @@ sequenceDiagram
 During P2P, the receiving node's `peerFramedFile` (implements `storage.FramedFile`) wraps the GCS-backed `FramedFile` with a peer-first strategy:
 
 1. `peerFramedFile.GetFrame(ctx, offsetU, ft=nil, ...)` — FrameTable is nil because the header is V3 (pre-upload, no compression info).
-2. Since `uploaded == false`, opens a `ReadAtBuildSeekable` gRPC stream to the origin.
+2. Since `uploaded == false`, opens a `GetBuildFrame` gRPC stream to the origin.
 3. The origin's `framedSource.Stream()` calls `diff.GetBlock(ctx, offset, length, nil)` — always uncompressed, served from its own mmap cache where all blocks are present from the snapshot.
 4. Data streams back, filling the receiving node's mmap cache.
 5. If the origin signals `use_storage` mid-stream, the current stream completes normally — but `uploaded` is flipped, so subsequent operations go to GCS.
@@ -336,7 +336,7 @@ The `defer completeUpload` runs after `UploadAtOnce` returns — headers are ser
 | `peerclient/blob.go` | `peerBlob` implements `Blob` — peer-first `WriteTo`/`Exists`/`Put` for snapfile, metadata, headers |
 | `peerserver/framed.go` | `framedSource` serves random-access reads from origin's mmap cache via `diff.GetBlock(ctx, off, len, nil)` |
 | `peerserver/resolve.go` | `ResolveFramed`/`ResolveBlob` map (buildID, fileName) to source types |
-| `server/chunks.go` | gRPC handlers: `ReadAtBuildSeekable`, `GetBuildBlob`, `GetBuildFileSize`, `GetBuildFileExists` |
+| `server/chunks.go` | gRPC handlers: `GetBuildFrame`, `GetBuildBlob`, `GetBuildFileSize`, `GetBuildFileExists` |
 | `build/build.go` | `ReadAt`/`Slice` catch `PeerTransitionedError`, `swapHeader` does atomic CAS |
 
 ---
