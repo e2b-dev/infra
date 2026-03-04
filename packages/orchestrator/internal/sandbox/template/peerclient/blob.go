@@ -53,7 +53,7 @@ func (b *peerBlob) Exists(ctx context.Context) (bool, error) {
 				BuildId:  b.buildID,
 				FileName: b.fileName,
 			})
-			if err == nil && checkPeerAvailability(resp.GetAvailability(), b.uploaded, b.transitionHeaders) {
+			if err == nil && checkPeerAvailability(resp.GetAvailability(), b.uploaded, nil) {
 				return peerAttempt[bool]{value: true, hit: true}, nil
 			}
 

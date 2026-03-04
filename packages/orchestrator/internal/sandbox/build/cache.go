@@ -130,9 +130,9 @@ func (s *DiffStore) Has(d Diff) bool {
 	return s.cache.Has(d.CacheKey())
 }
 
-// Lookup returns a cached diff by buildID and diff type, or (nil, false) if not cached.
-func (s *DiffStore) Lookup(buildID string, diffType DiffType) (Diff, bool) {
-	key := GetDiffStoreKey(buildID, diffType)
+// Lookup returns the cached Diff for the given key without initialising a new one.
+// Returns (nil, false) if the key is not present in the cache.
+func (s *DiffStore) Lookup(key DiffStoreKey) (Diff, bool) {
 	item := s.cache.Get(key)
 	if item == nil {
 		return nil, false

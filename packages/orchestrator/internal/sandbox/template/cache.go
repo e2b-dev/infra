@@ -285,7 +285,7 @@ func (c *Cache) GetCachedTemplate(buildID string) (Template, bool) {
 // LookupDiff returns a cached diff for the given buildID and diff type.
 // Used by the peer server to resolve framed chunk requests.
 func (c *Cache) LookupDiff(buildID string, diffType build.DiffType) (build.Diff, bool) {
-	return c.buildStore.Lookup(buildID, diffType)
+	return c.buildStore.Lookup(build.GetDiffStoreKey(buildID, diffType))
 }
 
 // UpdateMetadata updates the metadata for a cached template.
