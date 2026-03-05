@@ -126,10 +126,8 @@ module "cluster" {
   google_service_account_email = module.init.service_account_email
   domain_name                  = var.domain_name
 
-  additional_domains = local.additional_domains
-  additional_api_services = (var.additional_api_services_json != "" ?
-    jsondecode(var.additional_api_services_json) :
-  [])
+  additional_domains      = local.additional_domains
+  additional_api_services = var.additional_api_services_json
 
   docker_contexts_bucket_name = module.init.envs_docker_context_bucket_name
   cluster_setup_bucket_name   = module.init.cluster_setup_bucket_name
