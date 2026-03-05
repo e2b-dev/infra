@@ -189,7 +189,7 @@ function generate_consul_config {
   else
     retry_join_json=$(
       cat <<EOF
-"retry_join": ["provider=gce project_name=$project_id tag_value=$cluster_tag_name"],
+"retry_join": ["provider=gce project_name=$project_id tag_value=$cluster_tag_name zone_pattern=$instance_region-.*"],
 EOF
     )
   fi
