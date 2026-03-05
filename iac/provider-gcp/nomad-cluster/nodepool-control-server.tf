@@ -37,7 +37,7 @@ resource "google_compute_region_instance_group_manager" "server_pool" {
 
   target_pools                     = []
   target_size                      = var.server_cluster_size
-  distribution_policy_target_shape = "EVEN"
+  distribution_policy_target_shape = "BALANCED"
 
   version {
     instance_template = google_compute_instance_template.server.id
@@ -56,10 +56,9 @@ resource "google_compute_region_instance_group_manager" "server_pool" {
 
     // We want to keep the instance distribution even
     instance_redistribution_type = "PROACTIVE"
-    // Remove old servers one at a time to avoid quorum loss
-    max_unavailable_fixed = 1
-    // The number has to be a multiple of the number of zones in the region
-    max_surge_fixed = length(data.google_compute_zones.region_zones.names)
+    max_unavailable_fixed = 0
+    // Replace one server at a time to avoid quorum loss
+    max_surge_fixed = 1
   }
 
   auto_healing_policies {
