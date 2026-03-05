@@ -10,9 +10,6 @@ locals {
     RUN_NOMAD_FILE_HASH          = local.file_hash["scripts/run-nomad.sh"]
     RUN_HEALTH_CHECK_FILE_HASH   = local.file_hash["scripts/run-health-check.sh"]
     CONSUL_GOSSIP_ENCRYPTION_KEY = google_secret_manager_secret_version.consul_gossip_encryption_key.secret_data
-    NOMAD_PORT                   = var.nomad_port
-    CONSUL_PORT                  = local.consul_port
-    HEALTH_CHECK_PORT            = local.health_check_port
   })
 }
 

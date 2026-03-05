@@ -22,4 +22,4 @@ chmod +x /opt/consul/bin/run-consul.sh /opt/nomad/bin/run-nomad.sh /opt/health-c
 /opt/consul/bin/run-consul.sh --server --cluster-tag-name "${CLUSTER_TAG_NAME}" --consul-token "${CONSUL_TOKEN}" --enable-gossip-encryption --gossip-encryption-key "${CONSUL_GOSSIP_ENCRYPTION_KEY}"
 /opt/nomad/bin/run-nomad.sh --server --num-servers "${NUM_SERVERS}" --consul-token "${CONSUL_TOKEN}" --nomad-token "${NOMAD_TOKEN}"
 
-/opt/health-check/run-health-check.sh --port ${HEALTH_CHECK_PORT} --nomad-port ${NOMAD_PORT} --consul-port ${CONSUL_PORT}
+/opt/health-check/run-health-check.sh

@@ -73,4 +73,4 @@ systemctl restart systemd-resolved
 
 /opt/nomad/bin/run-nomad.sh --client --consul-token "${CONSUL_TOKEN}" --node-pool "${NODE_POOL}" &
 
-/opt/health-check/run-health-check.sh --port ${HEALTH_CHECK_PORT} --nomad-port ${NOMAD_PORT} --consul-port ${CONSUL_PORT}
+/opt/health-check/run-health-check.sh

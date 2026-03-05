@@ -10,8 +10,9 @@ locals {
     CONSUL_TOKEN                 = var.consul_acl_token
     CONSUL_GOSSIP_ENCRYPTION_KEY = var.consul_gossip_encryption_key
 
-    RUN_CONSUL_FILE_HASH = var.setup_files_hash["run-consul"]
-    RUN_NOMAD_FILE_HASH  = var.setup_files_hash["run-nomad"]
+    RUN_CONSUL_FILE_HASH       = var.setup_files_hash["run-consul"]
+    RUN_NOMAD_FILE_HASH        = var.setup_files_hash["run-nomad"]
+    RUN_HEALTH_CHECK_FILE_HASH = var.setup_files_hash["run-health-check"]
   })
 }
 

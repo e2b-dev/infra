@@ -27,9 +27,6 @@ locals {
     LOCAL_SSD                         = local.has_local_ssd ? "true" : "false"
     SET_ORCHESTRATOR_VERSION_METADATA = var.set_orchestrator_version_metadata ? "true" : "false"
     PERSISTENT_VOLUME_TYPES           = var.persistent_volume_types
-    NOMAD_PORT                        = var.nomad_port
-    CONSUL_PORT                       = var.consul_port
-    HEALTH_CHECK_PORT                 = var.health_check_port
   })
 }
 

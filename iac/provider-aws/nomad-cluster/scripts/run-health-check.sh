@@ -1,24 +1,19 @@
 #!/bin/bash
 # This script configures and starts a composite health check using goss (https://github.com/goss-org/goss).
 # goss validates that both Nomad and Consul are healthy, and exposes the result as an HTTP endpoint.
-# GCP auto-healing health checks probe this endpoint to detect and replace unhealthy instances.
+# AWS auto-scaling health checks can probe this endpoint to detect and replace unhealthy instances.
 #
-# iptables transparently redirects GCP health check probes from the Nomad port to goss,
-# so the GCP health check definition doesn't need to change (avoiding downtime during rollout).
-# Only traffic from GCP's health check prober IP ranges is redirected; all other traffic
-# (Nomad inter-node communication, CLI, etc.) reaches Nomad normally.
+# Unlike GCP, AWS does not have fixed health check prober IP ranges, so no iptables redirect is used.
+# Instead, the health check is exposed directly on its own port and can be referenced by
+# ALB target group health checks or custom CloudWatch alarms.
 #
 # goss is a battle-tested Go binary that handles concurrency, caching, and HTTP serving natively.
 # The --cache flag ensures upstream checks are not re-run on every probe, preventing slow services
-# from causing GCP health check timeouts.
+# from causing health check timeouts.
 
 set -e
 
 readonly SCRIPT_NAME="$(basename "$0")"
-
-# GCP health check prober IP ranges
-# https://cloud.google.com/load-balancing/docs/health-check-concepts#ip-ranges
-readonly GCP_HC_RANGES=("130.211.0.0/22" "35.191.0.0/16")
 
 function log_info {
   local readonly message="$1"
@@ -137,10 +132,4 @@ for i in $(seq 1 "$STARTUP_TIMEOUT"); do
   sleep 1
 done
 
-# Redirect GCP health check probes from the Nomad port to goss.
-# PREROUTING only affects external traffic; localhost traffic (goss -> Nomad) is unaffected.
-for cidr in "${GCP_HC_RANGES[@]}"; do
-  iptables -t nat -A PREROUTING -s "$cidr" -p tcp --dport "$NOMAD_PORT" -j REDIRECT --to-port "$LISTEN_PORT"
-done
-
-log_info "iptables redirect active: GCP health check probes on port $NOMAD_PORT -> $LISTEN_PORT"
+log_info "Composite health check active on port $LISTEN_PORT"

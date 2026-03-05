@@ -129,7 +129,7 @@ curl -L -o cni-plugins.tgz "https://github.com/containernetworking/plugins/relea
 
 /opt/nomad/bin/run-nomad.sh --client --consul-token "${CONSUL_TOKEN}" --node-pool "${NODE_POOL}" &
 
-/opt/health-check/run-health-check.sh --port ${HEALTH_CHECK_PORT} --nomad-port ${NOMAD_PORT} --consul-port ${CONSUL_PORT}
+/opt/health-check/run-health-check.sh
 
 # Install clickhouse client to make it easier to interact with the ClickHouse server
 cd /usr/local/bin && curl https://clickhouse.com/ | sh && sudo ./clickhouse install &

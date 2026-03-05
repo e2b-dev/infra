@@ -1,12 +1,14 @@
 locals {
   setup_files = {
-    "scripts/run-consul.sh" = "run-consul",
-    "scripts/run-nomad.sh"  = "run-nomad"
+    "scripts/run-consul.sh"       = "run-consul",
+    "scripts/run-nomad.sh"        = "run-nomad",
+    "scripts/run-health-check.sh" = "run-health-check"
   }
 
   setup_files_hash = {
-    "run-consul" = substr(filesha256("${path.module}/scripts/run-consul.sh"), 0, 5)
-    "run-nomad"  = substr(filesha256("${path.module}/scripts/run-nomad.sh"), 0, 5)
+    "run-consul"       = substr(filesha256("${path.module}/scripts/run-consul.sh"), 0, 5)
+    "run-nomad"        = substr(filesha256("${path.module}/scripts/run-nomad.sh"), 0, 5)
+    "run-health-check" = substr(filesha256("${path.module}/scripts/run-health-check.sh"), 0, 5)
   }
 
   // The tag name the Compute Instances will look for to automatically discover each other and form a cluster.
@@ -214,7 +216,6 @@ module "control_server" {
   nomad_acl_token              = var.nomad_acl_token_secret
   consul_acl_token             = var.consul_acl_token_secret
   consul_gossip_encryption_key = var.consul_gossip_encryption_key
-
 }
 
 module "api" {
@@ -247,7 +248,6 @@ module "api" {
 
   aws_ecr_account_repository_domain = local.aws_ecr_account_repository_domain
   loki_bucket_arn                   = data.aws_s3_bucket.loki_bucket.arn
-
 }
 
 module "clickhouse" {
@@ -280,7 +280,6 @@ module "clickhouse" {
   consul_gossip_encryption_key      = var.consul_gossip_encryption_key
   consul_dns_request_token          = var.consul_dns_request_token_secret
   aws_ecr_account_repository_domain = local.aws_ecr_account_repository_domain
-
 }
 
 module "build" {
@@ -365,5 +364,4 @@ module "client" {
   templates_bucket_arn             = data.aws_s3_bucket.templates_bucket.arn
   templates_build_cache_bucket_arn = data.aws_s3_bucket.templates_build_cache_bucket.arn
   custom_environments_repo_arn     = data.aws_ecr_repository.custom_environments.arn
-
 }

@@ -25,6 +25,11 @@ variable "vault_version" {
   default = "1.20.3"
 }
 
+variable "goss_version" {
+  type    = string
+  default = "0.4.9"
+}
+
 variable "base_instance_type" {
   type    = string
   default = "t3.large"
