@@ -9,7 +9,7 @@ type Config struct {
 	RedisURL             string `env:"REDIS_URL"`
 	RedisClusterURL      string `env:"REDIS_CLUSTER_URL"`
 	RedisTLSCABase64     string `env:"REDIS_TLS_CA_BASE64"`
-	RedisClusterPoolSize int    `env:"REDIS_CLUSTER_POOL_SIZE" envDefault:"40"`
+	RedisPoolSize int    `env:"REDIS_POOL_SIZE" envDefault:"40"`
 
 	ApiGrpcAddress string `env:"API_GRPC_ADDRESS"`
 }

@@ -68,8 +68,6 @@ module "client_proxy" {
   redis_url               = var.redis_url
   redis_cluster_url       = var.redis_cluster_url
   redis_tls_ca_base64     = var.redis_tls_ca_base64
-  redis_cluster_pool_size = var.client_proxy_redis_cluster_pool_size
-
   image = "${var.aws_account_id}.dkr.ecr.${var.aws_region}.amazonaws.com/${var.client_proxy_repository_name}:latest"
 
   otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
@@ -103,7 +101,6 @@ module "api" {
   redis_url                      = var.redis_url
   redis_cluster_url              = var.redis_cluster_url
   redis_tls_ca_base64            = var.redis_tls_ca_base64
-  redis_cluster_pool_size        = var.api_redis_cluster_pool_size
   clickhouse_connection_string   = local.clickhouse_connection_string
   sandbox_access_token_hash_seed = var.sandbox_access_token_hash_seed
   db_migrator_docker_image       = "${var.aws_account_id}.dkr.ecr.${var.aws_region}.amazonaws.com/${var.db_migrator_repository_name}:latest"
@@ -142,7 +139,6 @@ module "orchestrator" {
   redis_url                    = var.redis_url
   redis_cluster_url            = var.redis_cluster_url
   redis_tls_ca_base64          = var.redis_tls_ca_base64
-  redis_cluster_pool_size      = var.orchestrator_redis_cluster_pool_size
 
   consul_token            = var.consul_acl_token
   domain_name             = var.domain_name

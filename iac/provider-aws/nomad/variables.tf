@@ -64,21 +64,6 @@ variable "client_proxy_repository_name" {
 }
 
 # Redis
-variable "api_redis_cluster_pool_size" {
-  type    = number
-  default = 80
-}
-
-variable "orchestrator_redis_cluster_pool_size" {
-  type    = number
-  default = 10
-}
-
-variable "client_proxy_redis_cluster_pool_size" {
-  type    = number
-  default = 40
-}
-
 variable "redis_managed" {
   type = bool
 }

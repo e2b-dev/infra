@@ -11,6 +11,11 @@ terraform {
       version = "6.50.0"
     }
 
+    google-beta = {
+      source  = "hashicorp/google-beta"
+      version = "6.50.0"
+    }
+
     cloudflare = {
       source  = "cloudflare/cloudflare"
       version = "4.52.5"
@@ -29,6 +34,12 @@ terraform {
 }
 
 provider "google" {
+  project = var.gcp_project_id
+  region  = var.gcp_region
+  zone    = var.gcp_zone
+}
+
+provider "google-beta" {
   project = var.gcp_project_id
   region  = var.gcp_region
   zone    = var.gcp_zone
@@ -261,11 +272,8 @@ module "nomad" {
   dockerhub_remote_repository_url     = var.remote_repository_enabled ? module.remote_repository[0].dockerhub_remote_repository_url : ""
 
   # Redis
-  redis_managed                        = var.redis_managed
-  redis_port                           = var.redis_port
-  api_redis_cluster_pool_size          = var.api_redis_cluster_pool_size
-  orchestrator_redis_cluster_pool_size = var.orchestrator_redis_cluster_pool_size
-  client_proxy_redis_cluster_pool_size = var.client_proxy_redis_cluster_pool_size
+  redis_managed = var.redis_managed
+  redis_port    = var.redis_port
 
   launch_darkly_api_key_secret_name = module.init.launch_darkly_api_key_secret_version.secret
 

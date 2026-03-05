@@ -113,6 +113,11 @@ variable "dockerhub_remote_repository_url" {
   default = ""
 }
 
+variable "redis_pool_size" {
+  type    = number
+  default = 10
+}
+
 variable "launch_darkly_api_key" {
   type      = string
   default   = ""

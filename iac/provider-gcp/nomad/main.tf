@@ -97,7 +97,6 @@ module "api" {
   redis_url                               = local.redis_url
   redis_cluster_url                       = local.redis_cluster_url
   redis_tls_ca_base64                     = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
-  redis_cluster_pool_size                 = var.api_redis_cluster_pool_size
   clickhouse_connection_string            = local.clickhouse_connection_string
   loki_url                                = local.loki_url
   sandbox_access_token_hash_seed          = var.sandbox_access_token_hash_seed
@@ -182,8 +181,6 @@ module "client_proxy" {
   redis_url               = local.redis_url
   redis_cluster_url       = local.redis_cluster_url
   redis_tls_ca_base64     = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
-  redis_cluster_pool_size = var.client_proxy_redis_cluster_pool_size
-
   image            = data.google_artifact_registry_docker_image.client_proxy_image.self_link
   api_grpc_address = "api-grpc.service.consul:${var.api_grpc_port}"
 
@@ -423,7 +420,6 @@ module "orchestrator" {
   redis_url                    = local.redis_url
   redis_cluster_url            = local.redis_cluster_url
   redis_tls_ca_base64          = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
-  redis_cluster_pool_size      = var.orchestrator_redis_cluster_pool_size
   persistent_volume_mounts     = var.persistent_volume_mounts
 
   consul_token            = var.consul_acl_token_secret

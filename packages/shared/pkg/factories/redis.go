@@ -22,7 +22,8 @@ type RedisConfig struct {
 	RedisURL         string
 	RedisClusterURL  string
 	RedisTLSCABase64 string
-	// PoolSize overrides the default connection pool size (40).
+	// PoolSize overrides the default connection pool size.
+	// When non-positive, defaults to 40.
 	PoolSize int
 }
 
@@ -83,13 +84,15 @@ func NewRedisClient(ctx context.Context, config RedisConfig) (redis.UniversalCli
 		redisClient = redis.NewClusterClient(clusterOpts)
 	case config.RedisURL != "":
 		poolSize := defaultPoolSize
+		minIdleConns := defaultMinIdleConns
 		if config.PoolSize > 0 {
 			poolSize = config.PoolSize
+			minIdleConns = max(defaultMinIdleConns, config.PoolSize/4)
 		}
 		opts := &redis.Options{
 			Addr:         config.RedisURL,
 			PoolSize:     poolSize,
-			MinIdleConns: defaultMinIdleConns,
+			MinIdleConns: minIdleConns,
 		}
 
 		redisClient = redis.NewClient(opts)

@@ -110,7 +110,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config, 
 		RedisURL:         config.RedisURL,
 		RedisClusterURL:  config.RedisClusterURL,
 		RedisTLSCABase64: config.RedisTLSCABase64,
-		PoolSize:         config.RedisClusterPoolSize,
+		PoolSize:         config.RedisPoolSize,
 	})
 	if err != nil {
 		logger.L().Fatal(ctx, "Initializing Redis client", zap.Error(err))
