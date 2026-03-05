@@ -68,8 +68,7 @@ module "client_proxy" {
   redis_url           = var.redis_url
   redis_cluster_url   = var.redis_cluster_url
   redis_tls_ca_base64 = var.redis_tls_ca_base64
-
-  image = "${var.aws_account_id}.dkr.ecr.${var.aws_region}.amazonaws.com/${var.client_proxy_repository_name}:latest"
+  image               = "${var.aws_account_id}.dkr.ecr.${var.aws_region}.amazonaws.com/${var.client_proxy_repository_name}:latest"
 
   otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
   logs_collector_address       = "http://localhost:${var.logs_proxy_port}"
