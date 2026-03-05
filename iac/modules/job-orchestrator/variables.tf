@@ -88,6 +88,11 @@ variable "redis_tls_ca_base64" {
   sensitive = true
 }
 
+variable "redis_cluster_pool_size" {
+  type    = number
+  default = 10
+}
+
 variable "consul_token" {
   type      = string
   sensitive = true

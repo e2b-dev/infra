@@ -132,9 +132,10 @@ job "api" {
         LOGS_COLLECTOR_ADDRESS         = "${logs_collector_address}"
         OTEL_COLLECTOR_GRPC_ENDPOINT   = "${otel_collector_grpc_endpoint}"
 
-        REDIS_URL                      = "${redis_url}"
+        REDIS_CLUSTER_POOL_SIZE        = "${redis_cluster_pool_size}"
         REDIS_CLUSTER_URL              = "${redis_cluster_url}"
         REDIS_TLS_CA_BASE64            = "${redis_tls_ca_base64}"
+        REDIS_URL                      = "${redis_url}"
 
         SANDBOX_STORAGE_BACKEND        = "${sandbox_storage_backend}"
 

@@ -14,6 +14,7 @@ locals {
     redis_url                    = var.redis_url
     redis_cluster_url            = var.redis_cluster_url
     redis_tls_ca_base64          = var.redis_tls_ca_base64
+    redis_cluster_pool_size      = var.redis_cluster_pool_size
 
     consul_token             = var.consul_token
     domain_name              = var.domain_name

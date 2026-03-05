@@ -261,8 +261,11 @@ module "nomad" {
   dockerhub_remote_repository_url     = var.remote_repository_enabled ? module.remote_repository[0].dockerhub_remote_repository_url : ""
 
   # Redis
-  redis_managed = var.redis_managed
-  redis_port    = var.redis_port
+  redis_managed                        = var.redis_managed
+  redis_port                           = var.redis_port
+  api_redis_cluster_pool_size          = var.api_redis_cluster_pool_size
+  orchestrator_redis_cluster_pool_size = var.orchestrator_redis_cluster_pool_size
+  client_proxy_redis_cluster_pool_size = var.client_proxy_redis_cluster_pool_size
 
   launch_darkly_api_key_secret_name = module.init.launch_darkly_api_key_secret_version.secret
 

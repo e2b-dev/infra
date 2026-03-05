@@ -28,6 +28,7 @@ resource "nomad_job" "api" {
     redis_url                               = var.redis_url
     redis_cluster_url                       = var.redis_cluster_url
     redis_tls_ca_base64                     = var.redis_tls_ca_base64
+    redis_cluster_pool_size                 = var.redis_cluster_pool_size
     clickhouse_connection_string            = var.clickhouse_connection_string
     loki_url                                = var.loki_url
     sandbox_access_token_hash_seed          = var.sandbox_access_token_hash_seed

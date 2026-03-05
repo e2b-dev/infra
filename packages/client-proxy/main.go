@@ -111,6 +111,7 @@ func run() int {
 		RedisURL:         config.RedisURL,
 		RedisClusterURL:  config.RedisClusterURL,
 		RedisTLSCABase64: config.RedisTLSCABase64,
+		PoolSize:         config.RedisClusterPoolSize,
 	})
 	if err == nil {
 		defer func() {

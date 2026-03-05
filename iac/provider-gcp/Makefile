@@ -60,6 +60,9 @@ tf_vars := \
 	$(call tfvar, TEMPLATE_BUCKET_NAME) \
 	$(call tfvar, TEMPLATE_BUCKET_LOCATION) \
 	$(call tfvar, ENVD_TIMEOUT) \
+	$(call tfvar, API_REDIS_CLUSTER_POOL_SIZE) \
+	$(call tfvar, CLIENT_PROXY_REDIS_CLUSTER_POOL_SIZE) \
+	$(call tfvar, ORCHESTRATOR_REDIS_CLUSTER_POOL_SIZE) \
 	$(call tfvar, REDIS_MANAGED) \
 	$(call tfvar, REDIS_SHARD_COUNT) \
 	$(call tfvar, GRAFANA_MANAGED) \

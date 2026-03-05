@@ -24,6 +24,21 @@ variable "redis_managed" {
   default = false
 }
 
+variable "api_redis_cluster_pool_size" {
+  type    = number
+  default = 80
+}
+
+variable "orchestrator_redis_cluster_pool_size" {
+  type    = number
+  default = 10
+}
+
+variable "client_proxy_redis_cluster_pool_size" {
+  type    = number
+  default = 40
+}
+
 variable "redis_instance_type" {
   type    = string
   default = "cache.t2.small"
