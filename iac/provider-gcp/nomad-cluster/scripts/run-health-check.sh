@@ -39,6 +39,7 @@ LISTEN_PORT=""
 NOMAD_PORT=""
 CONSUL_PORT=""
 CACHE_DURATION="5s"
+STARTUP_TIMEOUT=30
 
 while [[ $# -gt 0 ]]; do
   key="$1"
@@ -57,6 +58,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --cache)
       CACHE_DURATION="$2"
+      shift 2
+      ;;
+    --startup-timeout)
+      STARTUP_TIMEOUT="$2"
       shift 2
       ;;
     *)
@@ -84,13 +89,6 @@ log_info "Setting up composite health check (goss) on port $LISTEN_PORT"
 log_info "  Nomad endpoint: http://localhost:$NOMAD_PORT/v1/agent/health"
 log_info "  Consul endpoint: http://localhost:$CONSUL_PORT/v1/agent/self"
 log_info "  Cache duration: $CACHE_DURATION"
-
-# Redirect GCP health check probes from the Nomad port to goss.
-# PREROUTING only affects external traffic; localhost traffic (goss -> Nomad) is unaffected.
-for cidr in "${GCP_HC_RANGES[@]}"; do
-  iptables -t nat -A PREROUTING -s "$cidr" -p tcp --dport "$NOMAD_PORT" -j REDIRECT --to-port "$LISTEN_PORT"
-done
-log_info "iptables redirect: GCP health check probes on port $NOMAD_PORT -> $LISTEN_PORT"
 
 mkdir -p /opt/health-check
 
@@ -125,4 +123,24 @@ systemctl daemon-reload
 systemctl enable health-check
 systemctl start health-check
 
-log_info "Composite health check started on port $LISTEN_PORT (endpoint: /v1/agent/health)"
+# Wait for goss to be listening before redirecting health check probes.
+# Until the redirect is active, GCP probes hit Nomad directly (the old behavior), so there's no risk.
+for i in $(seq 1 "$STARTUP_TIMEOUT"); do
+  if ss -tlnp | grep -q ":${LISTEN_PORT}"; then
+    log_info "goss is listening on port $LISTEN_PORT"
+    break
+  fi
+  if [ "$i" -eq "$STARTUP_TIMEOUT" ]; then
+    log_info "ERROR: goss did not start within ${STARTUP_TIMEOUT}s"
+    exit 1
+  fi
+  sleep 1
+done
+
+# Redirect GCP health check probes from the Nomad port to goss.
+# PREROUTING only affects external traffic; localhost traffic (goss -> Nomad) is unaffected.
+for cidr in "${GCP_HC_RANGES[@]}"; do
+  iptables -t nat -A PREROUTING -s "$cidr" -p tcp --dport "$NOMAD_PORT" -j REDIRECT --to-port "$LISTEN_PORT"
+done
+
+log_info "iptables redirect active: GCP health check probes on port $NOMAD_PORT -> $LISTEN_PORT"
