@@ -127,7 +127,7 @@ variable "redis_tls_ca_base64" {
 
 variable "redis_pool_size" {
   type    = number
-  default = 80
+  default = 160
 }
 
 variable "clickhouse_connection_string" {
