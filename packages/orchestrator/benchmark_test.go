@@ -8,6 +8,8 @@
 //	sudo ./packages/orchestrator/bench.sh "*" -timeout=60m
 //
 // BENCH_COMPRESS values: "lz4:0", "zstd:1", "zstd:2", "zstd:3", or "" (uncompressed).
+// Zstd levels map to zstd.EncoderLevel constants:
+// 1=SpeedFastest, 2=SpeedDefault, 3=SpeedBetterCompression, 4=SpeedBestCompression.
 package main
 
 import (

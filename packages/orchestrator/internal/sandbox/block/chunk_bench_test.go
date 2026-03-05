@@ -38,6 +38,8 @@ var profiles = []backendProfile{
 	{name: "NFS", ttfb: 1 * time.Millisecond, bandwidth: 500 * megabyte},
 }
 
+// Levels map to zstd.EncoderLevel constants:
+// 1=SpeedFastest, 2=SpeedDefault, 3=SpeedBetterCompression, 4=SpeedBestCompression.
 var benchCodecs = []struct {
 	name            string
 	compressionType storage.CompressionType

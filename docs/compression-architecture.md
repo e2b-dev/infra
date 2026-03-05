@@ -345,18 +345,18 @@ With compressed-only uploads, net savings are **~75% for memfile**. Rootfs savin
 
 Benchmarked on 100 MiB of semi-random data (short runs mimicking VM memory), 4 concurrent workers, frame size = 2 MiB. GCS simulated at 50 ms TTFB + 100 MB/s; NFS at 1 ms TTFB + 500 MB/s.
 
-**Cold concurrent read throughput** (100 MiB, 16 threads, 10 iterations; GCS simulated 50ms TTFB + 100 MB/s, NFS 1ms TTFB + 500 MB/s):
+**Cold concurrent read latency** (100 MiB, 10 iterations, 4 workers; GCS simulated 50ms TTFB + 100 MB/s, NFS 1ms TTFB + 500 MB/s):
 
-| Codec | GCS 4KB | GCS 2MB | NFS 4KB | NFS 2MB | C-MB | Ratio |
+| Codec | GCS 4KB | GCS 2MB | NFS 4KB | NFS 2MB | Stored | Ratio |
 |---|---|---|---|---|---|---|
-| Legacy (4 MiB) | 132 | 131 | 907 | 957 | 100.0 | 1.0x |
-| Uncompressed | 155 | 152 | 884 | 1168 | 100.0 | 1.0x |
-| LZ4 | 101 | 116 | 965 | 1059 | 52.7 | 1.9x |
-| Zstd1 | 94 | 98 | 984 | 750 | 35.6 | 2.8x |
-| Zstd2 | 105 | 112 | 1121 | 825 | 27.9 | 3.6x |
-| Zstd3 | 103 | 108 | 1127 | 806 | 30.0 | 3.3x |
+| Legacy (4 MiB) | 709 ms | 708 ms | 107 ms | 103 ms | 100.0 MiB | 1.0x |
+| Uncompressed | 562 ms | 587 ms | 63 ms | 74 ms | 100.0 MiB | 1.0x |
+| LZ4 | 983 ms | 861 ms | 103 ms | 95 ms | 52.7 MiB | 1.9x |
+| Zstd level 1 | 818 ms | 738 ms | 57 ms | 72 ms | 35.6 MiB | 2.8x |
+| Zstd level 2 | 820 ms | 740 ms | 58 ms | 71 ms | 27.9 MiB | 3.6x |
+| Zstd level 3 | 815 ms | 731 ms | 55 ms | 66 ms | 30.0 MiB | 3.3x |
 
-All values in U-MB/s (uncompressed megabytes per second).
+Values are ms/iteration (wall-clock time to read all 100 MiB). Lower is better. Levels map to `zstd.EncoderLevel` constants: 1=`SpeedFastest`, 2=`SpeedDefault`, 3=`SpeedBetterCompression` (4 discrete strategies, not a continuous range). Level 3 stored size > level 2 because `SpeedBetterCompression` trades short-match efficiency for long-match chain tracking — a tradeoff that doesn't benefit this synthetic run-length data.
 
 **Cache-hit latency** (auto-calibrated iterations):
 
@@ -365,31 +365,20 @@ All values in U-MB/s (uncompressed megabytes per second).
 | Legacy | 276 ns/op | 269 ns/op |
 | New Chunker | **132 ns/op** | **130 ns/op** |
 
-**Weighted throughput (70% NFS, 30% GCS):**
-
-| Codec | Rootfs (4KB) | Memfile (2MB) |
-|---|---|---|
-| Legacy (4 MiB) | 674 MB/s | 710 MB/s |
-| LZ4 | 706 MB/s (+5%) | 776 MB/s (+9%) |
-| Zstd1 | 717 MB/s (+6%) | 554 MB/s (-22%) |
-| Zstd2 | 816 MB/s (+21%) | 611 MB/s (-14%) |
-| Zstd3 | 820 MB/s (+22%) | 597 MB/s (-16%) |
-
 **Storage cost per 100 MiB uncompressed:**
 
 | Codec | Stored | vs Uncomp | vs LZ4 |
 |---|---|---|---|
 | Legacy / Uncompressed | 100 MiB | — | — |
 | LZ4 | 52.7 MiB | -47% | — |
-| Zstd1 | 35.6 MiB | -64% | -32% smaller |
-| Zstd2 | 27.9 MiB | -72% | -47% smaller |
-| Zstd3 | 30.0 MiB | -70% | -43% smaller |
+| Zstd level 1 | 35.6 MiB | -64% | -32% smaller |
+| Zstd level 2 | 27.9 MiB | -72% | -47% smaller |
 
 **Recommendation: Zstd level 1, 2 MiB frames.**
 
 - Cache-hit path is **2.1x faster** than legacy (132 vs 276 ns/op).
-- Rootfs (4KB reads): Zstd1 NFS throughput (984 MB/s) comparable to LZ4 (965 MB/s), both ahead of legacy (907 MB/s).
-- Memfile (2MB reads): NFS throughput lower than LZ4 (750 vs 1059 MB/s) due to decoder overhead on large blocks — but memfile reads are dominated by cache hits (2.1x faster), not cold fetches.
+- NFS cold reads (the common case): Zstd1 4KB at 57 ms vs legacy 107 ms — **1.9x faster**. 2MB at 72 ms vs legacy 103 ms — **1.4x faster**.
+- GCS cold reads: Zstd1 at 818 ms vs LZ4 983 ms — **17% faster** (less data to transfer outweighs decode cost).
 - Stores 32% less data than LZ4 (35.6 vs 52.7 MiB per 100 MiB). At scale across thousands of templates this meaningfully reduces GCS storage and egress costs.
 - Frame size = 2 MiB aligns with HugepageSize so each UFFD fault triggers exactly one fetch.
 

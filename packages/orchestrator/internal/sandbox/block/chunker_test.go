@@ -94,11 +94,11 @@ func (s *slowFrameGetter) GetFrame(ctx context.Context, offsetU int64, frameTabl
 
 		end := min(offset+int64(length), int64(len(s.data)))
 		r := io.Reader(bytes.NewReader(s.data[offset:end]))
-		if s.bandwidth > 0 {
-			r = &throttledReader{r: r, bandwidth: s.bandwidth}
-		}
 		if s.failAfter > 0 && offset+int64(length) > s.failAfter {
 			r = &failAfterReader{r: r, remaining: s.failAfter - offset}
+		}
+		if s.bandwidth > 0 {
+			return pipelinedReader(r, s.bandwidth), nil
 		}
 
 		return io.NopCloser(r), nil
@@ -107,20 +107,42 @@ func (s *slowFrameGetter) GetFrame(ctx context.Context, offsetU int64, frameTabl
 	return storage.ReadFrame(ctx, rangeRead, "test", offsetU, frameTable, decompress, buf, readSize, onRead)
 }
 
-// throttledReader simulates network bandwidth by sleeping after each Read.
-type throttledReader struct {
-	r         io.Reader
-	bandwidth int64
-}
+// pipelinedReader returns an io.ReadCloser that delivers bytes from src at the
+// given bandwidth using an io.Pipe. A writer goroutine reads from src, writes
+// to the pipe, then sleeps to simulate the transfer delay. Because the sleep
+// happens AFTER the bytes are handed to the reader, the consumer (e.g. a zstd
+// decoder) can process already-received bytes concurrently with the simulated
+// transfer of the next chunk — matching real network I/O behavior.
+func pipelinedReader(src io.Reader, bandwidth int64) io.ReadCloser {
+	pr, pw := io.Pipe()
 
-func (t *throttledReader) Read(p []byte) (int, error) {
-	n, err := t.r.Read(p)
-	if n > 0 && t.bandwidth > 0 {
-		delay := time.Duration(float64(n) / float64(t.bandwidth) * float64(time.Second))
-		time.Sleep(delay)
-	}
+	go func() {
+		defer pw.Close()
 
-	return n, err
+		buf := make([]byte, 1024*1024) // 1 MiB write chunks — large enough to keep time.Sleep count low
+
+		for {
+			n, readErr := src.Read(buf)
+			if n > 0 {
+				if _, err := pw.Write(buf[:n]); err != nil {
+					return // reader closed
+				}
+
+				delay := time.Duration(float64(n) / float64(bandwidth) * float64(time.Second))
+				time.Sleep(delay)
+			}
+
+			if readErr != nil {
+				if readErr != io.EOF {
+					pw.CloseWithError(readErr)
+				}
+
+				return
+			}
+		}
+	}()
+
+	return pr
 }
 
 // failAfterReader wraps a reader to return an error after N bytes have been read.
