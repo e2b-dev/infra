@@ -68,7 +68,7 @@ GetBlock(offset, length, ft) // was Slice()
   → DiffStore.Get(ctx, diff)             // TTL cache hit → cached Chunker
   → Chunker.GetBlock(offset, length, ft)
       → mmap cache hit? return reference
-      → miss: dedup → fetchSession → GetFrame → NFS cache → GCS
+      → miss: fetchSession (dedup) → GetFrame → NFS cache → GCS
       → decompressed bytes written into mmap, waiters notified
 ```
 
@@ -117,40 +117,22 @@ Caching is **disabled during active builds** (`isBuilding` flag): a template bei
 
 ## B. Read Path Diagram
 
-```mermaid
-flowchart TD
-    subgraph Consumers
-        NBD["NBD (4 KB)"]
-        UFFD["UFFD (4 KB / 2 MB)"]
-        PF["Prefetch (2 MiB)"]
-    end
-
-    NBD & UFFD & PF --> GM["header.GetShiftedMapping(offset)"]
-    GM -->|"BuildMap + FrameTable"| DS["DiffStore.Get(buildId)"]
-    DS -->|"cached Chunker"| GB["Chunker.GetBlock(offset, length, ft)"]
-
-    GB --> MC{"mmap cache hit?"}
-    MC -->|"hit"| REF["return []byte (reference to mmap)"]
-    MC -->|"miss"| RL["regionLock (dedup / wait)"]
-
-    RL --> ROUTE{"matching compressed asset exists?"}
-
-    ROUTE -->|"compressed"| GFC["GetFrame (ft, decompress=true)"]
-    ROUTE -->|"uncompressed"| GFU["GetFrame (ft=nil, decompress=false)"]
-
-    GFC --> NFS{"NFS cache hit?"}
-    GFU --> NFS
-
-    NFS -->|"hit"| WRITE["write to mmap + notify waiters"]
-    NFS -->|"miss"| GCS["GCS range read (C-space or U-space)"]
-
-    GCS --> DEC{"compressed?"}
-    DEC -->|"yes"| DECOMP["pooled zstd/lz4 decoder"]
-    DEC -->|"no"| STORE_NFS
-
-    DECOMP --> STORE_NFS["store frame in NFS cache"]
-    STORE_NFS --> WRITE
-    WRITE --> REF
+```
+NBD (4KB) / UFFD (4KB or 2MB) / Prefetch (2 MiB)
+  → header.GetShiftedMapping(offset) → BuildMap{buildId, offset, length, FrameTable}
+  → DiffStore.Get(ctx, diff)         → cached Chunker (TTL cache, one per buildId+fileType)
+  → Chunker.GetBlock(offset, length, ft)
+      → mmap cache hit? return []byte reference
+      → miss: fetchSession (dedup/wait)
+          ├─ ft != nil (compressed)?
+          │   → GetFrame(ft, decompress=true) → NFS .frm cache
+          │       → hit: read .frm from disk → zstd/lz4 decode → buf
+          │       → miss: GCS range read (compressed space) → decode → buf + NFS write-back
+          └─ ft == nil (uncompressed)?
+              → GetFrame(ft=nil) → NFS .bin cache
+                  → hit: read .bin from disk → buf
+                  → miss: GCS range read → buf + async NFS write-back
+      → write decompressed bytes into mmap → notify waiters
 ```
 
 ---
@@ -192,35 +174,22 @@ The system has three phases:
 2. **Transition**: Upload completes. The origin signals `use_storage` with serialized V4 headers containing FrameTables. The peer stores these as transition headers.
 3. **Post-transition**: The peer swaps its header atomically (CAS). Subsequent reads route to GCS via the updated FrameTable. Most reads hit the local mmap cache (already populated during P2P).
 
-```mermaid
-sequenceDiagram
-    participant SBX as Sandbox (Pause)
-    participant Origin as Origin Node
-    participant GCS as GCS
-    participant Peer as Peer Node
+```
+Origin (pause):
+  snapshot → cache in mmap → register buildID in Redis
+  ├─ serve peers: GetBuildFrame(off, len) → diff.GetBlock(off, len, nil) → mmap bytes
+  └─ background upload: data (compressed) + V4 headers → GCS
+       on completion: uploadedBuilds.Set(buildID, {serialized V4 headers})
+                    → peerRegistry.Unregister(buildID)
 
-    SBX->>Origin: Pause → Snapshot
-    Origin->>Origin: Cache in mmap + register in Redis
-
-    par P2P Phase
-        Peer->>Origin: GetBuildFrame(offset, length)
-        Origin-->>Peer: Uncompressed bytes (from mmap)
-        Peer->>Peer: Fill local mmap cache
-    and Upload
-        Origin->>GCS: Upload data (compressed)
-        Origin->>GCS: Upload V4 headers (with FrameTables)
-    end
-
-    Note over Origin: Upload complete
-    Origin->>Origin: Store V4 headers in uploadedBuilds
-
-    Peer->>Origin: GetBuildFrame(offset, length)
-    Origin-->>Peer: PeerAvailability{use_storage, headers}
-
-    Peer->>Peer: Store transition headers
-    Peer->>Peer: Atomic header swap (V3 → V4, CAS)
-    Peer->>GCS: GetFrame (compressed, via FrameTable)
-    Note over Peer: Most reads are mmap cache hits
+Peer (resume):
+  P2P phase:    GetFrame(ft=nil) → gRPC stream → origin mmap (uncompressed) → fill local mmap
+  Transition:   origin signals use_storage + V4 header bytes
+                → checkPeerAvailability() stores transitionHeaders, sets uploaded=true
+  Header swap:  next GetFrame(ft=nil) detects transitionHeaders → PeerTransitionedError
+                → build.File.swapHeader(): Deserialize → CompareAndSwap(old, new)
+                  first goroutine wins CAS; others see V4 on retry
+  Post-swap:    GetFrame(ft!=nil) → NFS/GCS compressed (mmap mostly warm from P2P)
 ```
 
 ### Read Path During P2P
@@ -282,19 +251,12 @@ peerFramedFile.GetFrame(ctx, offsetU, ft, decompress, buf, readSize, onRead)
 
 ### Header States
 
-```
-┌───────────────┬──────────────┬──────────────────┬──────────────────────────┐
-│ Phase         │ Header       │ FrameTable       │ Data Source              │
-├───────────────┼──────────────┼──────────────────┼──────────────────────────┤
-│ P2P           │ V3 (original)│ nil              │ Peer mmap cache (gRPC)   │
-│ Transition    │ V3 → V4 swap │ nil → populated  │ Last peer stream, then   │
-│               │ (atomic CAS) │                  │ local mmap cache (warm)  │
-│ Post-swap     │ V4           │ per-mapping FTs  │ Local mmap (hit) or      │
-│               │              │                  │ GCS compressed (miss)    │
-│ Uncompressed  │ V3 (no swap) │ always nil       │ GCS uncompressed         │
-│ upload        │              │                  │                          │
-└───────────────┴──────────────┴──────────────────┴──────────────────────────┘
-```
+| Phase | Header | FrameTable | Data Source |
+|-------|--------|------------|-------------|
+| P2P | V3 (original) | nil | Peer mmap cache (gRPC) |
+| Transition | V3 → V4 swap (atomic CAS) | nil → populated | Last peer stream, then local mmap (warm) |
+| Post-swap | V4 | per-mapping FTs | Local mmap (hit) or GCS compressed (miss) |
+| Uncompressed upload | V3 (no swap) | always nil | GCS uncompressed |
 
 - **Origin node header**: stays V3 throughout. The origin's mmap cache is fully populated from the snapshot — it never reads from GCS. The V4 header is serialized from the upload result and sent to peers only.
 - **Peer node header**: starts V3, swapped to V4 when transition headers arrive. If upload was uncompressed, V4 header has no FrameTables and the swap is effectively a no-op.
@@ -448,86 +410,60 @@ This section diagrams the most intricate multi-goroutine, multi-node interaction
 
 The header switchover is the most complex coordination path. It spans two nodes, involves atomic state transitions, and must handle concurrent goroutines racing to swap the header. The diagram traces a single read through the full lifecycle: P2P phase → `use_storage` signal → `PeerTransitionedError` → CAS swap → retry with new header.
 
-```mermaid
-sequenceDiagram
-    participant R as build.File.Slice()<br/>(peer node)
-    participant PFF as peerFramedFile<br/>.GetFrame()
-    participant WPF as withPeerFallback
-    participant Stream as gRPC stream<br/>(to origin)
-    participant Origin as Origin node
-    participant Resolver as peerResolver
+```
+Phase 1 — P2P read (uploaded=false, ft=nil):
+  build.File.Slice():
+    h = header.Load() [V3]
+    → h.GetShiftedMapping(off) → ft=nil
+    → peerFramedFile.GetFrame(off, ft=nil)
+      → withPeerFallback: uploaded.Load() == false → try peer
+        → openPeerFramedStream(req) → gRPC to origin
+          origin: diff.GetBlock(off, len, nil) → mmap bytes → stream back
+        → recv() → buf filled → return Range{off, n}
+    → data fills mmap cache
 
-    Note over R,Origin: ── Phase 1: P2P read (uploaded=false, ft=nil) ──
+Phase 2 — Origin upload completes:
+  uploadSnapshotAsync goroutine:
+    UploadAtOnce(memOpts, rootOpts) returns
+    → defer completeUpload():
+        header.Serialize(memH), header.Serialize(rootH) → bytes
+        → uploadedBuilds.Set(buildID, {memBytes, rootBytes})
+        → peerRegistry.Unregister(buildID)
 
-    R->>R: h = header.Load() [V3]
-    R->>R: mapping = h.GetShiftedMapping(off) → ft=nil
-    R->>PFF: GetFrame(ctx, off, ft=nil, ...)
-    PFF->>WPF: uploaded.Load() == false → try peer
+Phase 3 — Next peer read hits use_storage:
+  build.File.Slice():
+    h = header.Load() [still V3]
+    → h.GetShiftedMapping(off2) → ft=nil
+    → peerFramedFile.GetFrame(off2, ft=nil)
+      → withPeerFallback: uploaded.Load() == false → try peer
+        → openPeerFramedStream(req) → gRPC to origin
+          origin responds: PeerAvailability{use_storage, memH, rootH}
+        → checkPeerAvailability():
+            transitionHeaders.Store({memH, rootH})
+            uploaded.Store(true)
+        → peer not available → fall through to base
+      → useBase: ft==nil AND transitionHeaders.Load() != nil
+        → return PeerTransitionedError{memH, rootH}
 
-    WPF->>Stream: openPeerFramedStream(req)
-    Stream->>Origin: GetBuildFrame(off, len)
-    Origin->>Origin: diff.GetBlock(off, len, nil) [from mmap]
-    Origin-->>Stream: data chunks
-    Stream-->>WPF: recv() → buf filled
-    WPF-->>PFF: Range{off, n}
-    PFF-->>R: data (fills mmap cache)
+Phase 4 — Atomic header swap:
+  build.File.Slice() catches PeerTransitionedError:
+    → swapHeader(transErr):
+        headerBytes = transErr.MemfileHeader (or RootfsHeader per fileType)
+        newH = header.Deserialize(headerBytes)
+        old = header.Load() [V3]
+        header.CompareAndSwap(old, newH)
+          first CAS wins → header now V4
+          concurrent goroutines CAS-fail → see V4 on retry
+    → continue (retry loop)
 
-    Note over R,Origin: ── Phase 2: Origin upload completes ──
-
-    Origin->>Origin: UploadAtOnce() returns
-    Origin->>Origin: defer completeUpload()
-    Origin->>Origin: header.Serialize(memH, rootH) → bytes
-    Origin->>Origin: uploadedBuilds.Set(buildID, headers)
-    Origin->>Origin: peerRegistry.Unregister(buildID)
-
-    Note over R,Origin: ── Phase 3: Next read hits use_storage ──
-
-    R->>R: h = header.Load() [still V3]
-    R->>R: mapping = h.GetShiftedMapping(off2) → ft=nil
-    R->>PFF: GetFrame(ctx, off2, ft=nil, ...)
-    PFF->>WPF: uploaded.Load() == false → try peer
-
-    WPF->>Stream: openPeerFramedStream(req)
-    Stream->>Origin: GetBuildFrame(off2, len)
-    Origin-->>Stream: PeerAvailability{use_storage, memH, rootH}
-
-    Stream->>Stream: checkPeerAvailability()
-    Stream->>Resolver: transitionHeaders.Store({memH, rootH})
-    Stream->>WPF: uploaded.Store(true)
-    Stream-->>WPF: error: "peer not available"
-
-    Note over WPF: peer attempt failed (hit=false)<br/>fall through to base
-
-    WPF->>PFF: useBase callback
-    PFF->>PFF: ft==nil AND transitionHeaders.Load() != nil
-
-    PFF-->>R: PeerTransitionedError{memH, rootH}
-
-    Note over R: ── Phase 4: Atomic header swap ──
-
-    R->>R: errors.As(err, &transErr) ✓
-    R->>R: swapHeader(transErr)
-
-    Note over R: swapHeader detail:
-    R->>R: headerBytes = transErr.MemfileHeader
-    R->>R: newH = header.Deserialize(headerBytes)
-    R->>R: old = header.Load() [V3]
-    R->>R: header.CompareAndSwap(old, newH)
-    Note over R: CAS succeeds → header is now V4<br/>(concurrent goroutines CAS-fail, see V4 on retry)
-
-    R->>R: continue (retry loop)
-
-    Note over R,Origin: ── Phase 5: Retry with V4 header ──
-
-    R->>R: h = header.Load() [V4 ✓]
-    R->>R: mapping = h.GetShiftedMapping(off2) → ft!=nil
-    R->>PFF: GetFrame(ctx, off2, ft!=nil, ...)
-    PFF->>WPF: uploaded.Load() == true → skip peer
-
-    WPF->>PFF: useBase callback
-    PFF->>PFF: ft!=nil → delegate to base GCS
-
-    Note over PFF: base.GetFrame(off2, ft, decompress=true)<br/>→ NFS cache → GCS compressed<br/>→ most reads are mmap cache hits (warm from P2P)
+Phase 5 — Retry with V4 header:
+  build.File.Slice():
+    h = header.Load() [V4]
+    → h.GetShiftedMapping(off2) → ft!=nil
+    → peerFramedFile.GetFrame(off2, ft!=nil)
+      → withPeerFallback: uploaded.Load() == true → skip peer
+      → useBase: ft!=nil → delegate to base GCS FramedFile
+        → NFS cache → GCS compressed (mmap mostly warm from P2P)
 ```
 
 **Key files**: `build/build.go:50-179` (ReadAt/Slice retry loop + swapHeader), `peerclient/framed.go:50-113` (GetFrame routing + PeerTransitionedError), `peerclient/storage.go:179-202` (checkPeerAvailability), `server/sandboxes.go:673-741` (completeUpload + uploadSnapshotAsync).
@@ -538,48 +474,22 @@ sequenceDiagram
 
 When a compressed frame misses the NFS cache and the caller wants progressive `onRead` callbacks (the common path for prefetch/UFFD), `fetchAndDecompressProgressive` runs a concurrent pipeline: one goroutine fetches compressed bytes from GCS while the main goroutine decompresses them through a pipe.
 
-```mermaid
-flowchart LR
-    subgraph "Background goroutine"
-        INNER["inner.GetFrame()<br/>(GCS, decompress=false)"]
-        CB["compressedBuf<br/>(captures raw bytes)"]
-        PW["pw (pipe writer)"]
-    end
-
-    subgraph "Main goroutine"
-        PR["pr (pipe reader)"]
-        DEC["zstd/lz4 decoder<br/>(ReadFrame)"]
-        BUF["buf<br/>(caller's output)"]
-        ONREAD["onRead callback<br/>(progressive)"]
-    end
-
-    INNER -->|"onRead: write delta"| CB
-    CB -->|"pw.Write(delta)"| PW
-    PW -.->|"io.Pipe"| PR
-    PR -->|"decompressed bytes"| DEC
-    DEC -->|"copy"| BUF
-    DEC -->|"bytes delivered"| ONREAD
-
-    subgraph "After ←done"
-        NFS["cacheFrameAsync()<br/>→ NFS write-back<br/>(from compressedBuf)"]
-    end
-
-    CB -->|"full frame"| NFS
 ```
+fetchAndDecompressProgressive(offsetU, ft, compressedBuf, buf, readSize, onRead):
 
-```
-Timeline:
+  goroutine:
+    inner.GetFrame(ctx, offsetU, ft, decompress=false, compressedBuf, readSize, onRead=...)
+      GCS range read → compressedBuf
+      onRead(n): pw.Write(compressedBuf[prev:n])  // pipe compressed bytes as they arrive
+    → pw.Close() → close(done)
 
-  goroutine:  inner.GetFrame(decompress=false)
-              │─── GCS range read ──────────────────────│
-              │  onRead(n)──→ pw.Write(buf[prev:n]) ──→ │ pw.Close()
-              │                                         │ close(done)
-              ▼                                         ▼
-  main:       pr → ReadFrame(decompress=true)
-              │─── zstd decode ── onRead(m) ──────────│
-              │                                       │ ←done
-              │                                       │ cacheFrameAsync(compressedBuf)
-              ▼                                       ▼
+  main (concurrent):
+    ReadFrame(ctx, pr, offsetU, ft, decompress=true, buf, readSize, onRead)
+      pr (pipe reader) → zstd/lz4 decode → buf
+      onRead(m) callbacks as decompressed bytes become available
+
+  after ←done:
+    cacheFrameAsync(compressedBuf[:frameSize.C])  // NFS write-back from fully-populated buffer
 ```
 
 **Key file**: `storage_cache_seekable.go:199-267`
@@ -590,45 +500,27 @@ Timeline:
 
 The `cachedFramedFile.GetFrame` method is the central dispatch point that routes every read through the cache layer. It handles four distinct paths depending on compression state and cache status.
 
-```mermaid
-flowchart TD
-    ENTRY["cachedFramedFile.GetFrame(ctx, offsetU, ft, decompress, buf, readSize, onRead)"]
-
-    ENTRY --> VALIDATE["validateGetFrameParams()"]
-    VALIDATE --> COMPRESSED{"IsCompressed(ft)?"}
-
-    COMPRESSED -->|"yes"| FRAME_LOOKUP["ft.FrameFor(offsetU)<br/>→ frameStart, frameSize"]
-    COMPRESSED -->|"no"| UCHUNK_PATH["makeChunkFilename(offsetU)<br/>→ /cache/000000000042-2097152.bin"]
-
-    FRAME_LOOKUP --> FRAME_PATH["makeFrameFilename()<br/>→ /cache/0000000000abc000-1a3f.frm"]
-    FRAME_PATH --> CNFS{"os.Open(framePath)?"}
-
-    CNFS -->|"hit"| CDEC_NFS["ReadFrame(file→decompress→buf)<br/>compressed bytes from NFS disk"]
-    CNFS -->|"miss"| CPROG{"onRead != nil<br/>AND decompress?"}
-
-    CPROG -->|"yes"| PROGRESSIVE["fetchAndDecompressProgressive()<br/>(pipe + goroutine, see above)"]
-    CPROG -->|"no: simple"| SIMPLE_FETCH["inner.GetFrame(decompress=false)<br/>→ compressedBuf"]
-    SIMPLE_FETCH --> CACHE_ASYNC["cacheFrameAsync(compressedBuf)"]
-    CACHE_ASYNC --> NEED_DEC{"decompress?"}
-    NEED_DEC -->|"no"| COPY_RAW["copy compressed → buf"]
-    NEED_DEC -->|"yes"| DEC_MEM["ReadFrame(memReader→decompress→buf)"]
-
-    PROGRESSIVE --> CACHE_ASYNC2["cacheFrameAsync(compressedBuf)<br/>(after ←done)"]
-
-    UCHUNK_PATH --> UNFS{"os.Open(chunkPath)?"}
-    UNFS -->|"hit"| UREAD["ReadFrame(file→buf)<br/>uncompressed bytes from NFS disk"]
-    UNFS -->|"miss"| UFETCH["inner.GetFrame(ft=nil)<br/>→ buf filled directly"]
-    UFETCH --> UCACHE{"skipCacheWriteback?"}
-    UCACHE -->|"no"| UWRITEBACK["async: copy buf → writeToCache()"]
-    UCACHE -->|"yes"| DONE["return Range"]
-
-    CDEC_NFS --> DONE
-    COPY_RAW --> DONE
-    DEC_MEM --> DONE
-    PROGRESSIVE --> DONE
-    CACHE_ASYNC2 --> DONE
-    UREAD --> DONE
-    UWRITEBACK --> DONE
+```
+cachedFramedFile.GetFrame(ctx, offsetU, ft, decompress, buf, readSize, onRead):
+  validateGetFrameParams()
+  ├─ IsCompressed(ft)?
+  │   → ft.FrameFor(offsetU) → frameStart, frameSize
+  │   → framePath = {cache}/{016x offset.C}-{x size.C}.frm
+  │   → os.Open(framePath)?
+  │       → hit: ReadFrame(file → decompress → buf)
+  │       → miss:
+  │           ├─ onRead != nil AND decompress?
+  │           │   → fetchAndDecompressProgressive() → cacheFrameAsync() after ←done
+  │           └─ simple path:
+  │               inner.GetFrame(decompress=false) → compressedBuf
+  │               → cacheFrameAsync(compressedBuf)
+  │               → decompress? ReadFrame(memReader → buf) : copy compressed → buf
+  └─ uncompressed (ft == nil)?
+      → chunkPath = {cache}/{012d chunkIndex}-{chunkSize}.bin
+      → os.Open(chunkPath)?
+          → hit: ReadFrame(file → buf)
+          → miss: inner.GetFrame(ft=nil) → buf
+              → skipCacheWriteback? done : async copy buf → writeToCache()
 ```
 
 **Key file**: `storage_cache_seekable.go:82-351`
@@ -637,34 +529,27 @@ flowchart TD
 
 The upload completion signal propagates from the origin to all peer nodes through a chain of state stores and checks. This diagram shows the data flow from `UploadAtOnce` returning to a peer node receiving the signal.
 
-```mermaid
-sequenceDiagram
-    participant Upload as uploadSnapshot<br/>(origin goroutine)
-    participant Complete as completeUpload<br/>(origin, deferred)
-    participant TTL as uploadedBuilds<br/>(TTL cache)
-    participant gRPC as ChunkService<br/>.GetBuildFrame()
-    participant Check as checkPeerAvailability<br/>(peer node)
-    participant Flags as uploaded + transitionHeaders<br/>(per-buildID atomics)
+```
+Origin (upload goroutine):
+  tb.UploadAtOnce(memOpts, rootOpts)     // data + V4 headers now in GCS
+  → defer completeUpload(ctx):
+      header.Serialize(memH) → memBytes
+      header.Serialize(rootH) → rootBytes
+      → uploadedBuilds.Set(buildID, {memBytes, rootBytes})  // TTL cache
+      → peerRegistry.Unregister(buildID)
 
-    Upload->>Upload: tb.UploadAtOnce(memOpts, rootOpts)
-    Note over Upload: Data + V4 headers now in GCS<br/>FrameTables populated in snapshot headers
+Origin (next peer gRPC request):
+  ChunkService.GetBuildFrame handler:
+    uploadedBuilds.Get(buildID) → {memBytes, rootBytes}
+    → respond PeerAvailability{use_storage=true, memfile_header, rootfs_header}
 
-    Upload->>Complete: defer completeUpload(ctx)
-    Complete->>Complete: header.Serialize(memH) → memBytes
-    Complete->>Complete: header.Serialize(rootH) → rootBytes
-    Complete->>TTL: Set(buildID, {memBytes, rootBytes})
-    Complete->>Complete: peerRegistry.Unregister(buildID)
-
-    Note over gRPC: Next peer request for this buildID
-
-    gRPC->>TTL: Get(buildID)
-    TTL-->>gRPC: {memBytes, rootBytes}
-    gRPC-->>Check: PeerAvailability{use_storage=true,<br/>memfile_header=memBytes,<br/>rootfs_header=rootBytes}
-
-    Check->>Flags: transitionHeaders.Store({memBytes, rootBytes})
-    Check->>Flags: uploaded.Store(true)
-
-    Note over Flags: All subsequent peerFramedFile.GetFrame() calls<br/>skip peer (uploaded=true), check transitionHeaders,<br/>return PeerTransitionedError → header swap
+Peer:
+  checkPeerAvailability():
+    → transitionHeaders.Store({memBytes, rootBytes})  // atomic pointer per buildID
+    → uploaded.Store(true)                              // atomic bool per buildID
+  all subsequent peerFramedFile.GetFrame() calls:
+    skip peer (uploaded=true), detect transitionHeaders
+    → PeerTransitionedError → header swap
 ```
 
 **Key files**: `server/sandboxes.go:673-741` (completeUpload, serializeUploadedHeaders, uploadSnapshotAsync), `server/chunks.go` (gRPC handler reads uploadedBuilds), `peerclient/storage.go:179-202` (checkPeerAvailability stores transition headers), `peerclient/framed.go:98-108` (PeerTransitionedError returned on fallback).
