@@ -9,6 +9,7 @@ WHERE b.status_group IN ('pending', 'in_progress')
 ORDER BY b.id, b.created_at DESC;
 
 -- name: GetInProgressTemplateBuildsByTeam :one
+-- Relies on idx_env_builds_team_active partial index (migration 20260305120000).
 SELECT COUNT(DISTINCT b.id) as build_count
 FROM public.env_builds b
 JOIN public.env_build_assignments eba ON eba.build_id = b.id
