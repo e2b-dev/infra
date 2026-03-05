@@ -108,6 +108,7 @@ type StorageConfig struct {
 // WithLimiter returns a copy of the config with the given limiter set.
 func (c StorageConfig) WithLimiter(limiter *limit.Limiter) StorageConfig {
 	c.limiter = limiter
+
 	return c
 }
 
