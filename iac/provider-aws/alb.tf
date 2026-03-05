@@ -172,6 +172,7 @@ resource "aws_lb_target_group" "nomad" {
   deregistration_delay = 30
 
   health_check {
+    port                = 8888
     path                = "/v1/agent/health"
     protocol            = "HTTP"
     matcher             = "200"
