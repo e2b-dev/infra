@@ -179,10 +179,10 @@ func newTestInfra(t *testing.T, ctx context.Context) *testInfra {
 	ti := &testInfra{}
 
 	// Storage
-	persistenceTemplate, err := storage.GetStorageProvider(ctx, storage.TemplateStorageConfig, nil)
+	persistenceTemplate, err := storage.GetStorageProvider(ctx, storage.TemplateStorageConfig)
 	require.NoError(t, err)
 
-	persistenceBuild, err := storage.GetStorageProvider(ctx, storage.BuildCacheStorageConfig, nil)
+	persistenceBuild, err := storage.GetStorageProvider(ctx, storage.BuildCacheStorageConfig)
 	require.NoError(t, err)
 
 	// NBD

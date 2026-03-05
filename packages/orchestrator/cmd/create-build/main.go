@@ -237,11 +237,11 @@ func doBuild(
 	go tcpFirewall.Start(ctx)
 	defer tcpFirewall.Close(parentCtx)
 
-	persistenceTemplate, err := storage.GetStorageProvider(ctx, storage.TemplateStorageConfig, nil)
+	persistenceTemplate, err := storage.GetStorageProvider(ctx, storage.TemplateStorageConfig)
 	if err != nil {
 		return fmt.Errorf("template storage: %w", err)
 	}
-	persistenceBuild, err := storage.GetStorageProvider(ctx, storage.BuildCacheStorageConfig, nil)
+	persistenceBuild, err := storage.GetStorageProvider(ctx, storage.BuildCacheStorageConfig)
 	if err != nil {
 		return fmt.Errorf("build storage: %w", err)
 	}

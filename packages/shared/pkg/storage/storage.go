@@ -102,6 +102,13 @@ type StorageConfig struct {
 	// so callers can safely use utils.RequiredEnv inside the closure without
 	// panicking when the local provider is active.
 	GetBucketName func() string
+	limiter       *limit.Limiter
+}
+
+// WithLimiter returns a copy of the config with the given limiter set.
+func (c StorageConfig) WithLimiter(limiter *limit.Limiter) StorageConfig {
+	c.limiter = limiter
+	return c
 }
 
 var TemplateStorageConfig = StorageConfig{
@@ -118,7 +125,7 @@ var BuildCacheStorageConfig = StorageConfig{
 	},
 }
 
-func GetStorageProvider(ctx context.Context, cfg StorageConfig, limiter *limit.Limiter) (StorageProvider, error) {
+func GetStorageProvider(ctx context.Context, cfg StorageConfig) (StorageProvider, error) {
 	provider := Provider(env.GetEnv(storageProviderEnv, string(DefaultStorageProvider)))
 
 	if provider == LocalStorageProvider {
@@ -132,7 +139,7 @@ func GetStorageProvider(ctx context.Context, cfg StorageConfig, limiter *limit.L
 	case AWSStorageProvider:
 		return newAWSStorage(ctx, bucketName)
 	case GCPStorageProvider:
-		return NewGCP(ctx, bucketName, limiter)
+		return NewGCP(ctx, bucketName, cfg.limiter)
 	}
 
 	return nil, fmt.Errorf("unknown storage provider: %s", provider)
