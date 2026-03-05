@@ -56,7 +56,7 @@ resource "google_compute_region_instance_group_manager" "server_pool" {
 
     // We want to keep the instance distribution even
     instance_redistribution_type = "PROACTIVE"
-    max_unavailable_fixed = 0
+    max_unavailable_fixed        = 0
     // Replace one server at a time to avoid quorum loss
     max_surge_fixed = 1
   }
