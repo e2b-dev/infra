@@ -553,7 +553,10 @@ func CompressRawNoFrames(ct CompressionType, level int, data []byte) ([]byte, er
 
 func newLZ4Encoder(out io.Writer, level int) io.WriteCloser {
 	w := lz4.NewWriter(out)
-	opts := []lz4.Option{lz4.ConcurrencyOption(1)}
+	opts := []lz4.Option{
+		lz4.ConcurrencyOption(1),
+		lz4.BlockChecksumOption(true),
+	}
 	if level > 0 {
 		opts = append(opts, lz4.CompressionLevelOption(lz4.CompressionLevel(1<<(8+level))))
 	}
