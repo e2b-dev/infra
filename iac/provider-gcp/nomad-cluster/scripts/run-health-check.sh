@@ -3,8 +3,8 @@
 # goss validates that both Nomad and Consul are healthy, and exposes the result as an HTTP endpoint.
 # GCP auto-healing health checks probe this endpoint to detect and replace unhealthy instances.
 #
-# To avoid changing the GCP health check definition (which would cause downtime during rollout),
-# we use iptables to transparently redirect GCP health check probes from the Nomad port to goss.
+# iptables transparently redirects GCP health check probes from the Nomad port to goss,
+# so the GCP health check definition doesn't need to change (avoiding downtime during rollout).
 # Only traffic from GCP's health check prober IP ranges is redirected; all other traffic
 # (Nomad inter-node communication, CLI, etc.) reaches Nomad normally.
 #
@@ -76,18 +76,20 @@ assert_not_empty "--nomad-port" "$NOMAD_PORT"
 assert_not_empty "--consul-port" "$CONSUL_PORT"
 
 readonly GOSS_VERSION="0.4.9"
+readonly GOSS_SHA256="87dd36cfa1b8b50554e6e2ca29168272e26755b19ba5438341f7c66b36decc19"
 readonly GOSS_PATH="/usr/local/bin/goss"
 
 if ! command -v goss &>/dev/null; then
   log_info "goss not found, installing v${GOSS_VERSION}..."
   curl -fsSL "https://github.com/goss-org/goss/releases/download/v${GOSS_VERSION}/goss-linux-amd64" -o "$GOSS_PATH"
+  echo "${GOSS_SHA256}  ${GOSS_PATH}" | sha256sum --check
   chmod +x "$GOSS_PATH"
   log_info "goss installed: $(goss --version)"
 fi
 
 log_info "Setting up composite health check (goss) on port $LISTEN_PORT"
 log_info "  Nomad endpoint: http://localhost:$NOMAD_PORT/v1/agent/health"
-log_info "  Consul endpoint: http://localhost:$CONSUL_PORT/v1/agent/self"
+log_info "  Consul endpoint: http://localhost:$CONSUL_PORT/v1/status/leader"
 log_info "  Cache duration: $CACHE_DURATION"
 
 mkdir -p /opt/health-check
@@ -98,7 +100,7 @@ http:
     status: 200
     timeout: 2000
     allow-insecure: true
-  http://localhost:${CONSUL_PORT}/v1/agent/self:
+  http://localhost:${CONSUL_PORT}/v1/status/leader:
     status: 200
     timeout: 2000
     allow-insecure: true
@@ -123,8 +125,6 @@ systemctl daemon-reload
 systemctl enable health-check
 systemctl start health-check
 
-# Wait for goss to be listening before redirecting health check probes.
-# Until the redirect is active, GCP probes hit Nomad directly (the old behavior), so there's no risk.
 for i in $(seq 1 "$STARTUP_TIMEOUT"); do
   if ss -tlnp | grep -q ":${LISTEN_PORT}"; then
     log_info "goss is listening on port $LISTEN_PORT"
