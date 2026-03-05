@@ -7,7 +7,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"runtime"
 	"strings"
 
 	"github.com/redis/go-redis/extra/redisotel/v9"
@@ -17,22 +16,19 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-const minIdleConnections = 10
-
 var ErrRedisDisabled = errors.New("redis is disabled")
 
 type RedisConfig struct {
 	RedisURL         string
 	RedisClusterURL  string
 	RedisTLSCABase64 string
-	// PoolSize overrides the default connection pool size.
-	// When non-positive, defaults are used (clusterNodeConnectionSizePerCPU * GOMAXPROCS for cluster, go-redis default for standalone).
+	// PoolSize overrides the default connection pool size (40).
 	PoolSize int
 }
 
 const (
-	clusterNodeConnectionSizePerCPU = 20
-	minIdleConnectionsPerCPU        = 5
+	defaultPoolSize     = 40
+	defaultMinIdleConns = 10
 )
 
 func NewRedisClient(ctx context.Context, config RedisConfig) (redis.UniversalClient, error) {
@@ -45,12 +41,11 @@ func NewRedisClient(ctx context.Context, config RedisConfig) (redis.UniversalCli
 		// https://cloud.google.com/memorystore/docs/cluster/cluster-node-specification#cluster_endpoints
 		// https://cloud.google.com/memorystore/docs/cluster/client-library-code-samples#go-redis
 
-		numCPU := runtime.GOMAXPROCS(0)
-		poolSize := clusterNodeConnectionSizePerCPU * numCPU
-		minIdleConns := minIdleConnectionsPerCPU * numCPU
+		poolSize := defaultPoolSize
+		minIdleConns := defaultMinIdleConns
 		if config.PoolSize > 0 {
-			poolSize = max(minIdleConnections, config.PoolSize)
-			minIdleConns = max(minIdleConnections, config.PoolSize/4)
+			poolSize = config.PoolSize
+			minIdleConns = max(defaultMinIdleConns, config.PoolSize/4)
 		}
 
 		clusterOpts := &redis.ClusterOptions{
@@ -87,12 +82,14 @@ func NewRedisClient(ctx context.Context, config RedisConfig) (redis.UniversalCli
 
 		redisClient = redis.NewClusterClient(clusterOpts)
 	case config.RedisURL != "":
+		poolSize := defaultPoolSize
+		if config.PoolSize > 0 {
+			poolSize = config.PoolSize
+		}
 		opts := &redis.Options{
 			Addr:         config.RedisURL,
-			MinIdleConns: 1,
-		}
-		if config.PoolSize > 0 {
-			opts.PoolSize = config.PoolSize
+			PoolSize:     poolSize,
+			MinIdleConns: defaultMinIdleConns,
 		}
 
 		redisClient = redis.NewClient(opts)
