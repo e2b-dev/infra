@@ -29,7 +29,7 @@ func main() {
 	storagePath := flag.String("storage", ".local-build", "storage: local path or gs://bucket")
 	memfile := flag.Bool("memfile", false, "inspect memfile artifact")
 	rootfs := flag.Bool("rootfs", false, "inspect rootfs artifact")
-	summary := flag.Bool("summary", false, "show only metadata + summary (skip per-mapping listing)")
+	mappings := flag.Bool("mappings", false, "show per-mapping listing (hidden by default)")
 	listFiles := flag.Bool("list-files", false, "list all files for this build with existence and size info")
 	data := flag.Bool("data", false, "inspect data blocks (default: header only)")
 	start := flag.Int64("start", 0, "start block (only with -data)")
@@ -120,7 +120,7 @@ func main() {
 	}
 
 	// Print header info
-	printHeader(h, headerSource, *summary)
+	printHeader(h, headerSource, *mappings)
 
 	// If -data flag, also inspect data blocks
 	if *data {
@@ -130,14 +130,14 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Fprintf(os.Stderr, "Usage: inspect-build (-build <uuid> | -template <id-or-alias>) [-storage <path>] [-memfile|-rootfs] [-summary] [-data [-start N] [-end N]]\n")
+	fmt.Fprintf(os.Stderr, "Usage: inspect-build (-build <uuid> | -template <id-or-alias>) [-storage <path>] [-memfile|-rootfs] [-mappings] [-data [-start N] [-end N]]\n")
 	fmt.Fprintf(os.Stderr, "       inspect-build (-build <uuid> | -template <id-or-alias>) [-storage <path>] -validate-all|-validate-memfile|-validate-rootfs\n")
 	fmt.Fprintf(os.Stderr, "       inspect-build (-build <uuid> | -template <id-or-alias>) [-storage <path>] -list-files\n\n")
 	fmt.Fprintf(os.Stderr, "The -template flag requires E2B_API_KEY environment variable.\n")
 	fmt.Fprintf(os.Stderr, "Set E2B_DOMAIN for non-production environments.\n\n")
 	fmt.Fprintf(os.Stderr, "Examples:\n")
 	fmt.Fprintf(os.Stderr, "  inspect-build -build abc123                           # inspect memfile header\n")
-	fmt.Fprintf(os.Stderr, "  inspect-build -build abc123 -summary                  # metadata + summaries only\n")
+	fmt.Fprintf(os.Stderr, "  inspect-build -build abc123 -mappings                 # include per-mapping listing\n")
 	fmt.Fprintf(os.Stderr, "  inspect-build -build abc123 -list-files               # list all build files\n")
 	fmt.Fprintf(os.Stderr, "  inspect-build -template base -storage gs://bucket     # inspect by template alias\n")
 	fmt.Fprintf(os.Stderr, "  inspect-build -template gtjfpksmxd9ct81x1f8e          # inspect by template ID\n")
@@ -149,7 +149,7 @@ func printUsage() {
 	fmt.Fprintf(os.Stderr, "  inspect-build -build abc123 -validate-memfile         # validate memfile integrity\n")
 }
 
-func printHeader(h *header.Header, source string, summaryOnly bool) {
+func printHeader(h *header.Header, source string, showMappings bool) {
 	// Validate mappings
 	err := header.ValidateMappings(h.Mapping, h.Metadata.Size, h.Metadata.BlockSize)
 	if err != nil {
@@ -167,7 +167,7 @@ func printHeader(h *header.Header, source string, summaryOnly bool) {
 	fmt.Printf("Block size         %#x\n", h.Metadata.BlockSize)
 	fmt.Printf("Blocks             %d\n", (h.Metadata.Size+h.Metadata.BlockSize-1)/h.Metadata.BlockSize)
 
-	if !summaryOnly {
+	if showMappings {
 		totalSize := int64(unsafe.Sizeof(header.BuildMap{})) * int64(len(h.Mapping)) / 1024
 		var sizeMessage string
 		if totalSize == 0 {
@@ -203,6 +203,26 @@ func printHeader(h *header.Header, source string, summaryOnly bool) {
 			additionalInfo = " (sparse)"
 		}
 		fmt.Printf("%s%s: %d blocks, %d MiB (%0.2f%%)\n", buildID, additionalInfo, uint64(size)/h.Metadata.BlockSize, uint64(size)/1024/1024, float64(size)/float64(h.Metadata.Size)*100)
+	}
+
+	// Print build file info (V4 only)
+	if len(h.BuildFiles) > 0 {
+		fmt.Printf("\nBUILD INFO\n")
+		fmt.Printf("==========\n")
+		for buildID, info := range h.BuildFiles {
+			var label string
+			switch buildID.String() {
+			case h.Metadata.BuildId.String():
+				label = " (current)"
+			case h.Metadata.BaseBuildId.String():
+				label = " (parent)"
+			}
+			checksumStr := "(none)"
+			if info.Checksum != [32]byte{} {
+				checksumStr = fmt.Sprintf("%x", info.Checksum)
+			}
+			fmt.Printf("%s%s: size=%d (%s), checksum=%s\n", buildID, label, info.Size, formatSize(info.Size), checksumStr)
+		}
 	}
 
 	// Print compression summary
@@ -604,94 +624,108 @@ func validateFrameTableOffsets(h *header.Header) error {
 // decompressed data. This works with compressed-only builds (no uncompressed
 // original required).
 func validateCompressedFrames(ctx context.Context, storagePath, artifactName string, compressedH *header.Header) error {
-	// Collect unique frames to validate, keyed by (buildID, C-offset).
-	type frameInfo struct {
-		offset storage.FrameOffset
-		size   storage.FrameSize
-		ct     storage.CompressionType
+	// Collect unique builds referenced by compressed mappings.
+	type buildEntry struct {
+		ct storage.CompressionType
 	}
-	type frameKey struct {
-		buildID string
-		cOffset int64
-	}
-
-	buildFrames := make(map[string][]frameInfo)
-	seen := make(map[frameKey]bool)
-
+	builds := make(map[string]buildEntry)
 	for _, mapping := range compressedH.Mapping {
 		ft := mapping.FrameTable
 		if !storage.IsCompressed(ft) {
 			continue
 		}
-
 		bid := mapping.BuildId.String()
 		if bid == cmdutil.NilUUID {
 			continue
 		}
-
-		currentOffset := ft.StartAt
-		for _, frame := range ft.Frames {
-			key := frameKey{bid, currentOffset.C}
-			if !seen[key] {
-				seen[key] = true
-				buildFrames[bid] = append(buildFrames[bid], frameInfo{
-					offset: currentOffset,
-					size:   frame,
-					ct:     ft.CompressionType,
-				})
-			}
-			currentOffset.Add(frame)
-		}
+		builds[bid] = buildEntry{ct: ft.CompressionType}
 	}
 
-	if len(buildFrames) == 0 {
+	if len(builds) == 0 {
 		fmt.Printf("  No compressed frames to validate\n")
-
 		return nil
 	}
 
-	totalFrames := 0
-	for _, frames := range buildFrames {
-		totalFrames += len(frames)
-	}
-	fmt.Printf("  Validating %d unique compressed frames across %d builds\n", totalFrames, len(buildFrames))
+	fmt.Printf("  Validating compressed data for %d builds\n", len(builds))
 
-	for bid, frames := range buildFrames {
-		compressedFile := storage.CompressedDataName(artifactName, frames[0].ct)
+	for bid, entry := range builds {
+		// Read this build's OWN header to get the complete frame table.
+		// The current header may only have partial FTs for parent builds
+		// (frames overwritten by child builds are not referenced).
+		buildHeaderFile := artifactName + storage.HeaderSuffix
+		buildHeaderData, _, err := cmdutil.ReadFile(ctx, storagePath, bid, buildHeaderFile)
+		if err != nil {
+			return fmt.Errorf("build %s: failed to read own header: %w", bid, err)
+		}
+		buildH, err := header.Deserialize(buildHeaderData)
+		if err != nil {
+			return fmt.Errorf("build %s: failed to deserialize own header: %w", bid, err)
+		}
+
+		// Collect ALL frames from the build's own header for this build ID.
+		type frameInfo struct {
+			offset storage.FrameOffset
+			size   storage.FrameSize
+		}
+		type frameKey struct{ c int64 }
+		var frames []frameInfo
+		seen := make(map[frameKey]bool)
+		for _, mapping := range buildH.Mapping {
+			ft := mapping.FrameTable
+			if !storage.IsCompressed(ft) || mapping.BuildId.String() != bid {
+				continue
+			}
+			currentOffset := ft.StartAt
+			for _, frame := range ft.Frames {
+				key := frameKey{currentOffset.C}
+				if !seen[key] {
+					seen[key] = true
+					frames = append(frames, frameInfo{offset: currentOffset, size: frame})
+				}
+				currentOffset.Add(frame)
+			}
+		}
+
+		slices.SortFunc(frames, func(a, b frameInfo) int {
+			if a.offset.C < b.offset.C {
+				return -1
+			}
+			if a.offset.C > b.offset.C {
+				return 1
+			}
+			return 0
+		})
+
+		compressedFile := storage.CompressedDataName(artifactName, entry.ct)
 		compReader, compSize, _, err := cmdutil.OpenDataFile(ctx, storagePath, bid, compressedFile)
 		if err != nil {
 			return fmt.Errorf("build %s: failed to open %s: %w", bid, compressedFile, err)
 		}
 
-		fmt.Printf("  Build %s: %d frames, compressed file=%s size=%#x\n", bid, len(frames), compressedFile, compSize)
+		fmt.Printf("  Build %s: %d frames (from own header), compressed file=%s size=%#x\n", bid, len(frames), compressedFile, compSize)
 
 		decompressedHash := sha256.New()
 		var totalDecompressed int64
 
 		for i, frame := range frames {
-			// Read compressed bytes
 			compBuf := make([]byte, frame.size.C)
 			_, err := compReader.ReadAt(compBuf, frame.offset.C)
 			if err != nil {
 				compReader.Close()
-
 				return fmt.Errorf("build %s frame[%d]: read compressed at C=%#x size=%#x: %w",
 					bid, i, frame.offset.C, frame.size.C, err)
 			}
 
-			// Decompress and verify
-			decompressed, err := storage.DecompressFrame(frame.ct, compBuf, frame.size.U)
+			decompressed, err := storage.DecompressFrame(entry.ct, compBuf, frame.size.U)
 			if err != nil {
 				previewLen := min(32, len(compBuf))
 				compReader.Close()
-
 				return fmt.Errorf("build %s frame[%d]: decompress at C=%#x (first %d bytes: %x): %w",
 					bid, i, frame.offset.C, previewLen, compBuf[:previewLen], err)
 			}
 
 			if int32(len(decompressed)) != frame.size.U {
 				compReader.Close()
-
 				return fmt.Errorf("build %s frame[%d]: decompressed size %#x != expected %#x",
 					bid, i, len(decompressed), frame.size.U)
 			}
@@ -700,7 +734,6 @@ func validateCompressedFrames(ctx context.Context, storagePath, artifactName str
 			totalDecompressed += int64(frame.size.U)
 
 			frameCRC := crc32.ChecksumIEEE(decompressed)
-
 			if i < 5 || i == len(frames)-1 {
 				fmt.Printf("    frame[%d] U=%#x C=%#x crc32=%#08x OK (%#x→%#x)\n",
 					i, frame.offset.U, frame.offset.C, frameCRC, frame.size.C, frame.size.U)
@@ -723,13 +756,11 @@ func validateCompressedFrames(ctx context.Context, storagePath, artifactName str
 				return fmt.Errorf("build %s: SHA-256 mismatch: computed %x, header says %x",
 					bid, computedChecksum, info.Checksum)
 			}
-
 			fmt.Printf("  Build %s: SHA-256 checksum VERIFIED\n", bid)
 		}
 	}
 
-	fmt.Printf("  Compressed frames: all %d validated\n", totalFrames)
-
+	fmt.Printf("  Compressed frames: all builds validated\n")
 	return nil
 }
 

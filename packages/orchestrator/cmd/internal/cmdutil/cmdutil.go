@@ -72,43 +72,17 @@ func GetActualFileSize(path string) (int64, error) {
 
 // ArtifactInfo contains information about a build artifact.
 type ArtifactInfo struct {
-	Name            string
-	File            string   // e.g., "memfile"
-	HeaderFile      string   // e.g., "memfile.header"
-	CompressedFiles []string // e.g., ["memfile.lz4", "memfile.zstd"]
-}
-
-// allCompressionTypes lists all supported compression types for file probing.
-var allCompressionTypes = []storage.CompressionType{
-	storage.CompressionLZ4,
-	storage.CompressionZstd,
+	Name       string
+	File       string
+	HeaderFile string
 }
 
 // MainArtifacts returns the list of main artifacts (rootfs, memfile).
 func MainArtifacts() []ArtifactInfo {
 	return []ArtifactInfo{
-		{
-			Name:            "Rootfs",
-			File:            storage.RootfsName,
-			HeaderFile:      storage.RootfsName + storage.HeaderSuffix,
-			CompressedFiles: compressedDataNames(storage.RootfsName),
-		},
-		{
-			Name:            "Memfile",
-			File:            storage.MemfileName,
-			HeaderFile:      storage.MemfileName + storage.HeaderSuffix,
-			CompressedFiles: compressedDataNames(storage.MemfileName),
-		},
+		{"Rootfs", storage.RootfsName, storage.RootfsName + storage.HeaderSuffix},
+		{"Memfile", storage.MemfileName, storage.MemfileName + storage.HeaderSuffix},
 	}
-}
-
-func compressedDataNames(fileName string) []string {
-	names := make([]string, len(allCompressionTypes))
-	for i, ct := range allCompressionTypes {
-		names[i] = storage.CompressedDataName(fileName, ct)
-	}
-
-	return names
 }
 
 // SmallArtifacts returns the list of small artifacts (headers, snapfile, metadata).
