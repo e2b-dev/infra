@@ -54,9 +54,9 @@ resource "google_compute_region_instance_group_manager" "server_pool" {
     type           = "PROACTIVE"
     minimal_action = "REPLACE"
 
-    // We want to keep the instance distribution even
-    instance_redistribution_type = "PROACTIVE"
-    max_unavailable_fixed        = 0
+    // BALANCED distribution does not support PROACTIVE redistribution
+    instance_redistribution_type = "NONE"
+    max_unavailable_fixed = 0
     // Replace one server at a time to avoid quorum loss
     max_surge_fixed = 1
   }
