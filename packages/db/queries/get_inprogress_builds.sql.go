@@ -29,6 +29,7 @@ type GetCancellableTemplateBuildsByTeamRow struct {
 	ClusterNodeID *string
 }
 
+// Relies on idx_env_builds_team_active partial index (migration 20260305120000).
 func (q *Queries) GetCancellableTemplateBuildsByTeam(ctx context.Context, teamID *uuid.UUID) ([]GetCancellableTemplateBuildsByTeamRow, error) {
 	rows, err := q.db.Query(ctx, getCancellableTemplateBuildsByTeam, teamID)
 	if err != nil {
@@ -161,6 +162,7 @@ type GetInProgressTemplateBuildsByTeamParams struct {
 	ExcludeTags       []string
 }
 
+// Relies on idx_env_builds_team_active partial index (migration 20260305120000).
 func (q *Queries) GetInProgressTemplateBuildsByTeam(ctx context.Context, arg GetInProgressTemplateBuildsByTeamParams) (int64, error) {
 	row := q.db.QueryRow(ctx, getInProgressTemplateBuildsByTeam, arg.TeamID, arg.ExcludeTemplateID, arg.ExcludeTags)
 	var build_count int64
