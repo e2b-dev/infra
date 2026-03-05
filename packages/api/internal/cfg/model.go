@@ -46,10 +46,10 @@ type Config struct {
 
 	PosthogAPIKey string `env:"POSTHOG_API_KEY"`
 
-	RedisURL             string `env:"REDIS_URL"`
-	RedisClusterURL      string `env:"REDIS_CLUSTER_URL"`
-	RedisTLSCABase64     string `env:"REDIS_TLS_CA_BASE64"`
-	RedisPoolSize int    `env:"REDIS_POOL_SIZE" envDefault:"160"`
+	RedisURL         string `env:"REDIS_URL"`
+	RedisClusterURL  string `env:"REDIS_CLUSTER_URL"`
+	RedisTLSCABase64 string `env:"REDIS_TLS_CA_BASE64"`
+	RedisPoolSize    int    `env:"REDIS_POOL_SIZE"     envDefault:"160"`
 
 	APIGrpcPort uint16 `env:"API_GRPC_PORT" envDefault:"5009"`
 

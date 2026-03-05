@@ -12,10 +12,10 @@ resource "nomad_job" "client_proxy" {
     proxy_port  = var.proxy_port
     health_port = var.health_port
 
-    redis_url               = var.redis_url
-    redis_cluster_url       = var.redis_cluster_url
-    redis_tls_ca_base64     = var.redis_tls_ca_base64
-    redis_pool_size = var.redis_pool_size
+    redis_url           = var.redis_url
+    redis_cluster_url   = var.redis_cluster_url
+    redis_tls_ca_base64 = var.redis_tls_ca_base64
+    redis_pool_size     = var.redis_pool_size
 
     image            = var.image
     api_grpc_address = trimspace(var.api_grpc_address)
