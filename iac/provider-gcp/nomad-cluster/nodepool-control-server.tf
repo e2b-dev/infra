@@ -56,7 +56,8 @@ resource "google_compute_region_instance_group_manager" "server_pool" {
 
     // We want to keep the instance distribution even
     instance_redistribution_type = "PROACTIVE"
-    max_unavailable_fixed        = 0
+    // Remove old servers one at a time to avoid quorum loss
+    max_unavailable_fixed = 1
     // The number has to be a multiple of the number of zones in the region
     max_surge_fixed = length(data.google_compute_zones.region_zones.names)
   }
