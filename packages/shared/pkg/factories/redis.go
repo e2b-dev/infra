@@ -86,7 +86,7 @@ func NewRedisClient(ctx context.Context, config RedisConfig) (redis.UniversalCli
 		poolSize := defaultPoolSize
 		minIdleConns := defaultMinIdleConns
 		if config.PoolSize > 0 {
-			poolSize = config.PoolSize
+			poolSize = max(defaultMinIdleConns, config.PoolSize)
 			minIdleConns = max(defaultMinIdleConns, config.PoolSize/4)
 		}
 		opts := &redis.Options{
