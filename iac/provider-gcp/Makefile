@@ -101,6 +101,14 @@ init:
 	@ TERRAFORM_STATE_BUCKET="$(TERRAFORM_STATE_BUCKET)" $(MAKE) -C nomad-cluster-disk-image init build
 	@ gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
 
+.PHONY: state-migrate
+state-migrate:
+	@ printf "Running Terraform state migrations for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	@ $(tf_vars) $(TF) state mv 'module.nomad.nomad_job.api' 'module.nomad.module.api.nomad_job.api' || true
+	@ $(tf_vars) $(TF) state mv 'module.nomad.nomad_job.template_manager' 'module.nomad.module.template_manager.nomad_job.template_manager' || true
+	@ $(tf_vars) $(TF) state mv 'module.nomad.nomad_job.nomad_nodepool_apm[0]' 'module.nomad.module.template_manager_autoscaler[0].nomad_job.nomad_nodepool_apm' || true
+	@ $(tf_vars) $(TF) state mv 'module.nomad.nomad_job.redis[0]' 'module.nomad.module.redis[0].nomad_job.redis' || true
+
 .PHONY: apply-init
 apply-init:
 	@ $(tf_vars) $(TF) apply $(TF_VAR_FILE_ARG) -target=module.init -auto-approve -input=false -compact-warnings
@@ -185,6 +193,11 @@ apply:
 import:
 	@ printf "Importing resources for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	@ $(tf_vars) $(TF) import $(TF_VAR_FILE_ARG) "$(TARGET)" "$(ID)" -no-color
+
+.PHONY: move
+move:
+	@ printf "Moving resource for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	@ $(tf_vars) $(TF) state mv "$(SOURCE)" "$(TARGET)" -no-color
 
 # Login for Packer and Docker (uses gcloud user creds)
 # Login for Terraform (uses application default creds)

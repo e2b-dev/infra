@@ -1,5 +1,4 @@
 job "api" {
-  datacenters = ["${gcp_zone}"]
   node_pool = "${node_pool}"
   priority = 90
 
@@ -42,6 +41,14 @@ job "api" {
       name = "api"
       port = "${port_number}"
       task = "start"
+
+      tags = [
+        "traefik.enable=true",
+
+        "traefik.http.routers.api.rule=HostRegexp(`api.{domain:.+}`)",
+        "traefik.http.routers.api.ruleSyntax=v2",
+        "traefik.http.routers.api.priority=500"
+      ]
 
       check {
         type     = "http"
@@ -137,6 +144,16 @@ job "api" {
 
         # This is here just because it is required in some part of our code which is transitively imported
         TEMPLATE_BUCKET_NAME          = "skip"
+
+%{ if default_persistent_volume_type != "" }
+        DEFAULT_PERSISTENT_VOLUME_TYPE = "${ default_persistent_volume_type }"
+%{ endif }
+
+%{ for key, value in job_env_vars }
+  %{ if value != "" }
+        ${ key } = "${ value }"
+  %{ endif }
+%{ endfor }
       }
 
       config {

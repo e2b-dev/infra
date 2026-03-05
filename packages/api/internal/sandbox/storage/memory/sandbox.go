@@ -31,8 +31,9 @@ func (i *memorySandbox) SetExpired() {
 }
 
 func (i *memorySandbox) setExpired() {
-	if !i._data.IsExpired() {
-		i._data.EndTime = time.Now()
+	now := time.Now()
+	if !i._data.IsExpired(now) {
+		i._data.EndTime = now
 	}
 }
 

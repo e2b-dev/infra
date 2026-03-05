@@ -2,10 +2,8 @@ package filesystem
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 
@@ -88,12 +86,13 @@ func (s Service) MakeDir(ctx context.Context, req *connect.Request[rpc.MakeDirRe
 		return nil, connect.NewError(connect.CodeInternal, userErr)
 	}
 
+	entry, err := entryInfo(dirPath)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+
 	return connect.NewResponse(&rpc.MakeDirResponse{
-		Entry: &rpc.EntryInfo{
-			Name: path.Base(dirPath),
-			Type: rpc.FileType_FILE_TYPE_DIRECTORY,
-			Path: dirPath,
-		},
+		Entry: entry,
 	}), nil
 }
 
@@ -159,8 +158,7 @@ func walkDir(requestedPath string, dirPath string, depth int) (entries []*rpc.En
 
 		entryInfo, err := entryInfo(path)
 		if err != nil {
-			var notFoundErr *connect.Error
-			if errors.As(err, &notFoundErr) && notFoundErr.Code() == connect.CodeNotFound {
+			if os.IsNotExist(err) {
 				// Skip entries that don't exist anymore
 				return nil
 			}

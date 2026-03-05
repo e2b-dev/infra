@@ -7,7 +7,6 @@ import (
 	"sync/atomic"
 
 	"github.com/google/uuid"
-	"github.com/jellydator/ttlcache/v3"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -48,8 +47,6 @@ type Node struct {
 	machineInfo machineinfo.MachineInfo
 	meta        NodeMetadata
 
-	buildCache *ttlcache.Cache[string, any]
-
 	PlacementMetrics PlacementMetrics
 
 	mutex sync.RWMutex
@@ -79,9 +76,6 @@ func New(
 		nodeStatus = api.NodeStatusUnhealthy
 	}
 
-	buildCache := ttlcache.New[string, any]()
-	go buildCache.Start()
-
 	nodeMetadata := NodeMetadata{
 		ServiceInstanceID: nodeInfo.GetServiceId(),
 		Commit:            nodeInfo.GetServiceCommit(),
@@ -99,7 +93,6 @@ func New(
 		status: nodeStatus,
 		meta:   nodeMetadata,
 
-		buildCache: buildCache,
 		PlacementMetrics: PlacementMetrics{
 			sandboxesInProgress: smap.New[SandboxResources](),
 			createSuccess:       atomic.Uint64{},
@@ -119,9 +112,6 @@ func NewClusterNode(ctx context.Context, client *clusters.GRPCClient, clusterID 
 		logger.L().Error(ctx, "Unknown service info status", zap.String("status", info.Status.String()), logger.WithNodeID(i.NodeID))
 		status = api.NodeStatusUnhealthy
 	}
-
-	buildCache := ttlcache.New[string, any]()
-	go buildCache.Start()
 
 	nodeMetadata := NodeMetadata{
 		ServiceInstanceID: info.ServiceInstanceID,
@@ -145,8 +135,6 @@ func NewClusterNode(ctx context.Context, client *clusters.GRPCClient, clusterID 
 		client: client,
 		status: status,
 		meta:   nodeMetadata,
-
-		buildCache: buildCache,
 	}
 
 	nodeClient, ctx := n.GetClient(ctx)
@@ -173,7 +161,6 @@ func (n *Node) Close(ctx context.Context) error {
 		logger.L().Info(ctx, "Closing cluster node", logger.WithNodeID(n.ID), logger.WithClusterID(n.ClusterID))
 		// We are not closing grpc client, because it is managed by cluster instance
 	}
-	n.buildCache.Stop()
 
 	return nil
 }

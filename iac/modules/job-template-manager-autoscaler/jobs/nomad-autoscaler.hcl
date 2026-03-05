@@ -24,11 +24,11 @@ job "nomad-autoscaler" {
 
       # Custom nodepool APM plugin
       artifact {
-        source      = "gcs::https://www.googleapis.com/storage/v1/${bucket_name}/nomad-nodepool-apm"
+        source      = "${apm_plugin_artifact_source}"
         destination = "local/plugins/nomad-nodepool-apm"
         mode        = "file"
         options {
-          checksum = "md5:${nomad_nodepool_apm_checksum}"
+          checksum = "md5:${apm_plugin_checksum}"
         }
       }
 

@@ -322,7 +322,7 @@ func instanceInfoToPaginatedSandboxes(runningSandboxes []sandbox.Sandbox) []util
 	return sandboxes
 }
 
-func convertFromDBMountsToAPIMounts(mounts []*dbtypes.SandboxVolumeMountConfig) []api.SandboxVolumeMount {
+func convertFromDBMountsToAPIMounts(mounts []*dbtypes.SandboxVolumeMountConfig) *[]api.SandboxVolumeMount {
 	results := make([]api.SandboxVolumeMount, 0, len(mounts))
 
 	for _, item := range mounts {
@@ -332,5 +332,7 @@ func convertFromDBMountsToAPIMounts(mounts []*dbtypes.SandboxVolumeMountConfig) 
 		})
 	}
 
-	return results
+	// this intentionally returns a pointer to the slice.
+	// generated code adds `omitempty` for backwards compatibility reasons; we should always return a slice here.
+	return &results
 }

@@ -1,0 +1,194 @@
+syntax = "proto3";
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "https://github.com/e2b-dev/infra/orchestrator";
+
+message VolumeInfo {
+  string volume_id = 1;
+  string volume_type = 2;
+  string team_id = 3;
+}
+
+message EntryInfo {
+  string name = 1;
+  FileType type = 2;
+  string path = 3;
+  int64 size = 4;
+  uint32 mode = 5;
+  uint32 uid = 6;
+  uint32 gid = 7;
+  google.protobuf.Timestamp modified_time = 8;
+  // If the entry is a symlink, this field contains the target of the symlink.
+  optional string symlink_target = 9;
+  google.protobuf.Timestamp created_time = 10;
+  google.protobuf.Timestamp accessed_time = 11;
+}
+
+message UnknownVolumeTypeError {
+  string volume_type = 1;
+}
+
+enum UserErrorCode {
+  UNKNOWN_USER_ERROR_CODE = 0;
+  PATH_NOT_FOUND = 1;
+  PATH_ALREADY_EXISTS = 2;
+  CANNOT_DELETE_ROOT = 3;
+  NOT_SUPPORTED = 4;
+}
+
+message UserError {
+  UserErrorCode code = 1;
+  string message = 2;
+  uint32 http_status = 3;
+}
+
+message VolumeCreateRequest {
+  VolumeInfo volume = 1;
+}
+
+message VolumeCreateResponse {
+}
+
+message VolumeDeleteRequest {
+  VolumeInfo volume = 1;
+}
+
+message VolumeDeleteResponse {}
+
+message VolumeDirectoryItem {
+  EntryInfo entry = 1;
+}
+
+message VolumeDirListRequest {
+  VolumeInfo volume = 1;
+  string path = 2;
+  uint32 depth = 3;
+}
+
+message VolumeDirListResponse {
+  repeated VolumeDirectoryItem files = 1;
+}
+
+message VolumeDirCreateRequest {
+  VolumeInfo volume = 1;
+  string path = 2;
+  optional uint32 mode = 3;
+  optional uint32 uid = 4;
+  optional uint32 gid = 5;
+  bool create_parents = 6;
+}
+
+message VolumeDirCreateResponse {
+  EntryInfo entry = 1;
+}
+
+message VolumeDirDeleteRequest {
+  VolumeInfo volume = 1;
+  string path = 2;
+}
+
+message VolumeDirDeleteResponse {}
+
+message VolumeFileGetRequest {
+  VolumeInfo volume = 1;
+  string path = 2;
+}
+
+message VolumeFileGetResponseStart {
+  int64 size = 1;
+}
+
+message VolumeFileGetResponseContent {
+  bytes content = 1;
+}
+
+message VolumeFileGetResponseFinish {}
+
+message VolumeFileGetResponse {
+  oneof message {
+    VolumeFileGetResponseStart start = 1;
+    VolumeFileGetResponseContent content = 2;
+    VolumeFileGetResponseFinish finish = 3;
+  }
+}
+
+message VolumeFileCreateStart {
+  VolumeInfo volume = 1;
+  string path = 2;
+  optional uint32 mode = 3;
+  optional uint32 uid = 4;
+  optional uint32 gid = 5;
+  bool force = 6;
+}
+
+message VolumeFileCreateContent {
+  bytes content = 1;
+}
+
+message VolumeFileCreateFinish {
+}
+
+message VolumeFileCreateRequest {
+  oneof message {
+    VolumeFileCreateStart start = 1;
+    VolumeFileCreateContent content = 2;
+    VolumeFileCreateFinish finish = 3;
+  }
+}
+
+message VolumeFileCreateResponse {
+  EntryInfo entry = 1;
+}
+
+message VolumeFileDeleteRequest {
+  VolumeInfo volume = 1;
+  string path = 2;
+}
+
+message VolumeFileDeleteResponse {}
+
+message StatRequest {
+  VolumeInfo volume = 1;
+  string path = 2;
+  bool follow_symlinks = 3;
+}
+
+message StatResponse {
+  EntryInfo entry = 1;
+}
+
+enum FileType {
+  FILE_TYPE_UNSPECIFIED = 0;
+  FILE_TYPE_FILE = 1;
+  FILE_TYPE_DIRECTORY = 2;
+  FILE_TYPE_SYMLINK = 3;
+}
+
+message VolumeFileUpdateRequest {
+  VolumeInfo volume = 1;
+  string path = 2;
+  optional uint32 mode = 3;
+  optional uint32 uid = 4;
+  optional uint32 gid = 5;
+}
+
+message VolumeFileUpdateResponse {
+  EntryInfo entry = 1;
+}
+
+service VolumeService {
+  rpc Create(VolumeCreateRequest) returns (VolumeCreateResponse);
+  rpc Delete(VolumeDeleteRequest) returns (VolumeDeleteResponse);
+
+  rpc ListDir(VolumeDirListRequest) returns (VolumeDirListResponse);
+  rpc CreateDir(VolumeDirCreateRequest) returns (VolumeDirCreateResponse);
+  rpc DeleteDir(VolumeDirDeleteRequest) returns (VolumeDirDeleteResponse);
+
+  rpc GetFile(VolumeFileGetRequest) returns (stream VolumeFileGetResponse);
+  rpc CreateFile(stream VolumeFileCreateRequest) returns (VolumeFileCreateResponse);
+  rpc DeleteFile(VolumeFileDeleteRequest) returns (VolumeFileDeleteResponse);
+  rpc UpdateFileMetadata(VolumeFileUpdateRequest) returns (VolumeFileUpdateResponse);
+
+  rpc Stat(StatRequest) returns (StatResponse);
+}

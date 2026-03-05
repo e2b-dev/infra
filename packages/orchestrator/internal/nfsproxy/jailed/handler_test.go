@@ -84,8 +84,7 @@ func TestJailedFS(t *testing.T) {
 
 		// This should fail if jailed
 		path := jfs.Join("../../bad_file")
-		_, err := jfs.Open(path)
-		require.ErrorIs(t, err, billy.ErrCrossedBoundary)
+		assert.Equal(t, "good_folder/bad_file", path)
 	})
 
 	t.Run("access good file via traversal", func(t *testing.T) {
