@@ -643,6 +643,7 @@ func validateCompressedFrames(ctx context.Context, storagePath, artifactName str
 
 	if len(builds) == 0 {
 		fmt.Printf("  No compressed frames to validate\n")
+
 		return nil
 	}
 
@@ -693,6 +694,7 @@ func validateCompressedFrames(ctx context.Context, storagePath, artifactName str
 			if a.offset.C > b.offset.C {
 				return 1
 			}
+
 			return 0
 		})
 
@@ -712,6 +714,7 @@ func validateCompressedFrames(ctx context.Context, storagePath, artifactName str
 			_, err := compReader.ReadAt(compBuf, frame.offset.C)
 			if err != nil {
 				compReader.Close()
+
 				return fmt.Errorf("build %s frame[%d]: read compressed at C=%#x size=%#x: %w",
 					bid, i, frame.offset.C, frame.size.C, err)
 			}
@@ -720,12 +723,14 @@ func validateCompressedFrames(ctx context.Context, storagePath, artifactName str
 			if err != nil {
 				previewLen := min(32, len(compBuf))
 				compReader.Close()
+
 				return fmt.Errorf("build %s frame[%d]: decompress at C=%#x (first %d bytes: %x): %w",
 					bid, i, frame.offset.C, previewLen, compBuf[:previewLen], err)
 			}
 
 			if int32(len(decompressed)) != frame.size.U {
 				compReader.Close()
+
 				return fmt.Errorf("build %s frame[%d]: decompressed size %#x != expected %#x",
 					bid, i, len(decompressed), frame.size.U)
 			}
@@ -761,6 +766,7 @@ func validateCompressedFrames(ctx context.Context, storagePath, artifactName str
 	}
 
 	fmt.Printf("  Compressed frames: all builds validated\n")
+
 	return nil
 }
 
