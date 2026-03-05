@@ -25,6 +25,7 @@ WHERE b.team_id = @team_id
   );
 
 -- name: GetCancellableTemplateBuildsByTeam :many
+-- Relies on idx_env_builds_team_active partial index (migration 20260305120000).
 SELECT DISTINCT ON (b.id) b.id as build_id, e.id as template_id, e.cluster_id, b.cluster_node_id
 FROM public.env_builds b
 JOIN public.env_build_assignments eba ON eba.build_id = b.id
