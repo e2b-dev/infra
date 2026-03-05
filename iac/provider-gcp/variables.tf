@@ -335,7 +335,6 @@ variable "additional_api_services" {
   }))
   description = "Additional path rules to add to the API path matcher."
   default     = []
-
 }
 
 variable "prefix" {
