@@ -18,7 +18,8 @@ const expiredItemsBatchSize = 256
 // ExpiredItems returns running sandboxes whose EndTime has passed.
 // It bounds per-cycle work via LIMIT and cleans up orphaned ZSET entries.
 func (s *Storage) ExpiredItems(ctx context.Context) ([]sandbox.Sandbox, error) {
-	nowMs := float64(time.Now().UnixMilli())
+	now := time.Now()
+	nowMs := float64(now.UnixMilli())
 
 	// Fetch members whose score (EndTime in ms) is <= now, bounded to 256 per cycle.
 	expiredMembers, err := s.redisClient.ZRangeByScore(ctx, globalExpirationSet, &redis.ZRangeBy{
@@ -105,7 +106,7 @@ func (s *Storage) ExpiredItems(ctx context.Context) ([]sandbox.Sandbox, error) {
 			}
 
 			// In case that index have failed to be updated
-			if !sbx.IsExpired() {
+			if !sbx.IsExpired(now) {
 				logger.L().Debug(ctx, "ExpiredItems: Sandbox marked as expried in index, but state say otherwise", logger.WithSandboxID(sbx.SandboxID), zap.Time("end_time", sbx.EndTime))
 
 				continue

@@ -25,6 +25,7 @@ locals {
     CACHE_DISK_COUNT                  = var.cache_disks.count
     LOCAL_SSD                         = local.has_local_ssd ? "true" : "false"
     SET_ORCHESTRATOR_VERSION_METADATA = var.set_orchestrator_version_metadata ? "true" : "false"
+    PERSISTENT_VOLUME_TYPES           = var.persistent_volume_types
   })
 }
 

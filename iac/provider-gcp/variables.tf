@@ -403,6 +403,12 @@ variable "filestore_cache_capacity_gb" {
   default     = 0
 }
 
+variable "filestore_nfs_version" {
+  type        = string
+  description = "The NFS protocol version to use"
+  default     = ""
+}
+
 variable "filestore_cache_cleanup_disk_usage_target" {
   type        = number
   description = "The max disk usage target of the Filestore"
@@ -618,4 +624,48 @@ variable "loki_use_v13_schema_from" {
     condition     = var.loki_use_v13_schema_from == "" || can(regex("\\d{4}-\\d{2}-\\d{2}", var.loki_use_v13_schema_from))
     error_message = "must be YYYY-MM-DD"
   }
+}
+
+variable "persistent_volume_types" {
+  description = "Persistence layer for volumes"
+
+  type = map(object({
+    allow_deletion = optional(bool)
+    tier           = string
+    location       = optional(string)
+    capacity_gb    = number
+    protocol       = optional(string)
+    nfs_version    = optional(string)
+  }))
+
+  default = {}
+}
+
+variable "default_persistent_volume_type" {
+  type    = string
+  default = ""
+}
+
+variable "network_name" {
+  type    = string
+  default = "default"
+}
+
+variable "volume_token_issuer" {
+  type    = string
+  default = ""
+}
+
+variable "volume_token_valid_for" {
+  type    = string
+  default = ""
+}
+
+variable "volume_token_signature" {
+  type = object({
+    key    = string
+    name   = string
+    method = string
+  })
+  default = null
 }

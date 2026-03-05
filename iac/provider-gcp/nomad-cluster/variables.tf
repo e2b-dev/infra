@@ -178,8 +178,7 @@ variable "gcp_zone" {
 }
 
 variable "network_name" {
-  type    = string
-  default = "default"
+  type = string
 }
 
 variable "google_service_account_email" {
@@ -299,6 +298,10 @@ variable "filestore_cache_capacity_gb" {
   default = 0
 }
 
+variable "filestore_nfs_version" {
+  type = string
+}
+
 variable "api_node_pool" {
   description = "The name of the Nomad pool."
   type        = string
@@ -362,4 +365,13 @@ variable "clickhouse_boot_disk_type" {
 variable "loki_boot_disk_type" {
   description = "The GCE boot disk type for the Loki machines."
   type        = string
+}
+
+variable "persistent_volume_types" {
+  description = "Persistent volume mount information"
+  type = map(object({
+    local_mount_path = string
+    nfs_location     = string
+    nfs_mount_opts   = string
+  }))
 }

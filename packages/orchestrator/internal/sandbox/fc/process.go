@@ -259,6 +259,7 @@ func (p *Process) Create(
 	hugePages bool,
 	options ProcessOptions,
 	txRateLimit TxRateLimiterConfig,
+	cgroupFD int,
 ) error {
 	ctx, childSpan := tracer.Start(ctx, "create-fc")
 	defer childSpan.End()
@@ -274,7 +275,7 @@ func (p *Process) Create(
 		sbxMetadata,
 		options.Stdout,
 		options.Stderr,
-		cgroup.NoCgroupFD,
+		cgroupFD,
 	)
 	if err != nil {
 		fcStopErr := p.Stop(ctx)
