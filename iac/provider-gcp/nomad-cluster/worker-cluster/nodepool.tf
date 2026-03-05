@@ -13,6 +13,7 @@ locals {
     CONSUL_TOKEN                      = var.consul_acl_token_secret
     RUN_CONSUL_FILE_HASH              = var.file_hash["scripts/run-consul.sh"]
     RUN_NOMAD_FILE_HASH               = var.file_hash["scripts/run-nomad.sh"]
+    RUN_HEALTH_CHECK_FILE_HASH        = var.file_hash["scripts/run-health-check.sh"]
     CONSUL_GOSSIP_ENCRYPTION_KEY      = var.consul_gossip_encryption_key_secret_data
     CONSUL_DNS_REQUEST_TOKEN          = var.consul_dns_request_token_secret_data
     NFS_IP_ADDRESS                    = var.filestore_cache_enabled ? join(",", var.nfs_ip_addresses) : ""
@@ -26,6 +27,9 @@ locals {
     LOCAL_SSD                         = local.has_local_ssd ? "true" : "false"
     SET_ORCHESTRATOR_VERSION_METADATA = var.set_orchestrator_version_metadata ? "true" : "false"
     PERSISTENT_VOLUME_TYPES           = var.persistent_volume_types
+    NOMAD_PORT                        = var.nomad_port
+    CONSUL_PORT                       = var.consul_port
+    HEALTH_CHECK_PORT                 = var.health_check_port
   })
 }
 

@@ -25,9 +25,13 @@ locals {
     "wsize=1048576",        // receive 1 MB per write request
   ])
 
+  health_check_port = 8888
+  consul_port       = 8500
+
   file_hash = {
-    "scripts/run-consul.sh" = substr(filesha256("${path.module}/scripts/run-consul.sh"), 0, 5)
-    "scripts/run-nomad.sh"  = substr(filesha256("${path.module}/scripts/run-nomad.sh"), 0, 5)
+    "scripts/run-consul.sh"       = substr(filesha256("${path.module}/scripts/run-consul.sh"), 0, 5)
+    "scripts/run-nomad.sh"        = substr(filesha256("${path.module}/scripts/run-nomad.sh"), 0, 5)
+    "scripts/run-health-check.sh" = substr(filesha256("${path.module}/scripts/run-health-check.sh"), 0, 5)
   }
 }
 
@@ -84,8 +88,9 @@ resource "google_project_iam_member" "logging_writer" {
 variable "setup_files" {
   type = map(string)
   default = {
-    "scripts/run-nomad.sh"  = "run-nomad",
-    "scripts/run-consul.sh" = "run-consul"
+    "scripts/run-nomad.sh"        = "run-nomad",
+    "scripts/run-consul.sh"       = "run-consul",
+    "scripts/run-health-check.sh" = "run-health-check"
   }
 }
 
@@ -179,6 +184,8 @@ module "build_cluster" {
   cluster_tag_name                         = var.cluster_tag_name
   node_pool                                = var.build_node_pool
   nomad_port                               = var.nomad_port
+  consul_port                              = local.consul_port
+  health_check_port                        = local.health_check_port
   consul_acl_token_secret                  = var.consul_acl_token_secret
   nomad_acl_token_secret                   = var.nomad_acl_token_secret
   consul_gossip_encryption_key_secret_data = google_secret_manager_secret_version.consul_gossip_encryption_key.secret_data
@@ -206,7 +213,8 @@ module "build_cluster" {
 
   depends_on = [
     google_storage_bucket_object.setup_config_objects["scripts/run-nomad.sh"],
-    google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"]
+    google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"],
+    google_storage_bucket_object.setup_config_objects["scripts/run-health-check.sh"]
   ]
 }
 
@@ -236,6 +244,8 @@ module "client_cluster" {
   cluster_tag_name                         = var.cluster_tag_name
   node_pool                                = var.orchestrator_node_pool
   nomad_port                               = var.nomad_port
+  consul_port                              = local.consul_port
+  health_check_port                        = local.health_check_port
   consul_acl_token_secret                  = var.consul_acl_token_secret
   nomad_acl_token_secret                   = var.nomad_acl_token_secret
   consul_gossip_encryption_key_secret_data = google_secret_manager_secret_version.consul_gossip_encryption_key.secret_data
@@ -263,6 +273,7 @@ module "client_cluster" {
 
   depends_on = [
     google_storage_bucket_object.setup_config_objects["scripts/run-nomad.sh"],
-    google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"]
+    google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"],
+    google_storage_bucket_object.setup_config_objects["scripts/run-health-check.sh"]
   ]
 }

@@ -113,6 +113,16 @@ variable "nomad_port" {
   type        = number
 }
 
+variable "health_check_port" {
+  description = "Port for the composite health check server (checks both Nomad and Consul)"
+  type        = number
+}
+
+variable "consul_port" {
+  description = "Port number for the Consul HTTP API"
+  type        = number
+}
+
 variable "nomad_acl_token_secret" {
   description = "Nomad ACL token for client authentication"
   type        = string
