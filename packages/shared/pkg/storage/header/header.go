@@ -3,6 +3,7 @@ package header
 import (
 	"context"
 	"fmt"
+	"maps"
 
 	"github.com/bits-and-blooms/bitset"
 	"github.com/google/uuid"
@@ -28,6 +29,29 @@ type Header struct {
 	startMap    map[int64]*BuildMap
 
 	Mapping []*BuildMap
+}
+
+// CloneForUpload returns a clone with copied Mapping and BuildFiles, safe to
+// mutate for serialization without racing with concurrent readers of the
+// original. Only serialization-relevant fields are populated (Metadata,
+// Mapping, BuildFiles); lookup indices (blockStarts, startMap) are left nil.
+func (t *Header) CloneForUpload() *Header {
+	mappings := make([]*BuildMap, len(t.Mapping))
+	for i, m := range t.Mapping {
+		mappings[i] = m.Copy()
+	}
+
+	clone := &Header{
+		Metadata: t.Metadata,
+		Mapping:  mappings,
+	}
+
+	if t.BuildFiles != nil {
+		clone.BuildFiles = make(map[uuid.UUID]BuildFileInfo, len(t.BuildFiles))
+		maps.Copy(clone.BuildFiles, t.BuildFiles)
+	}
+
+	return clone
 }
 
 func NewHeader(metadata *Metadata, mapping []*BuildMap) (*Header, error) {

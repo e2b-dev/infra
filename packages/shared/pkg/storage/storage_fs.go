@@ -234,6 +234,7 @@ func (o *fsObject) getHandle(checkExistence bool) (*os.File, error) {
 // then writes atomically on Complete.
 type fsPartUploader struct {
 	MemPartUploader
+
 	fullPath string
 }
 

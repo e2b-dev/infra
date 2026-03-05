@@ -233,30 +233,38 @@ func (t *TemplateBuild) uploadCompressedFile(ctx context.Context, localPath, fil
 // UploadV4Header applies pending frame tables to headers and uploads them as V4 compressed format.
 // Frame tables must have been registered by a prior UploadExceptV4Headers call.
 // Only files that were uploaded compressed (tracked in compressedFiles) get V4 headers.
+//
+// The snapshot headers are cloned before mutation because the originals may be
+// concurrently read by sandboxes resumed from the template cache (e.g. the
+// optimize phase's UFFD handlers).
 func (t *TemplateBuild) UploadV4Header(ctx context.Context) error {
 	eg, ctx := errgroup.WithContext(ctx)
 
 	if t.snapshot.MemfileDiffHeader != nil && t.memfileCompressed {
 		eg.Go(func() error {
-			if err := t.pending.applyToHeader(t.snapshot.MemfileDiffHeader, storage.MemfileName); err != nil {
+			h := t.snapshot.MemfileDiffHeader.CloneForUpload()
+
+			if err := t.pending.applyToHeader(h, storage.MemfileName); err != nil {
 				return fmt.Errorf("apply frames to memfile header: %w", err)
 			}
 
-			t.snapshot.MemfileDiffHeader.Metadata.Version = headers.MetadataVersionCompressed
+			h.Metadata.Version = headers.MetadataVersionCompressed
 
-			return headers.StoreHeader(ctx, t.persistence, t.files.HeaderPath(storage.MemfileName), t.snapshot.MemfileDiffHeader)
+			return headers.StoreHeader(ctx, t.persistence, t.files.HeaderPath(storage.MemfileName), h)
 		})
 	}
 
 	if t.snapshot.RootfsDiffHeader != nil && t.rootfsCompressed {
 		eg.Go(func() error {
-			if err := t.pending.applyToHeader(t.snapshot.RootfsDiffHeader, storage.RootfsName); err != nil {
+			h := t.snapshot.RootfsDiffHeader.CloneForUpload()
+
+			if err := t.pending.applyToHeader(h, storage.RootfsName); err != nil {
 				return fmt.Errorf("apply frames to rootfs header: %w", err)
 			}
 
-			t.snapshot.RootfsDiffHeader.Metadata.Version = headers.MetadataVersionCompressed
+			h.Metadata.Version = headers.MetadataVersionCompressed
 
-			return headers.StoreHeader(ctx, t.persistence, t.files.HeaderPath(storage.RootfsName), t.snapshot.RootfsDiffHeader)
+			return headers.StoreHeader(ctx, t.persistence, t.files.HeaderPath(storage.RootfsName), h)
 		})
 	}
 
