@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -231,50 +230,19 @@ func (o *fsObject) getHandle(checkExistence bool) (*os.File, error) {
 }
 
 // fsPartUploader implements PartUploader for local filesystem.
+// Embeds MemPartUploader for concurrent-safe part collection,
+// then writes atomically on Complete.
 type fsPartUploader struct {
-	fullPath  string
-	file      *os.File
-	closeOnce sync.Once
-	closeErr  error
+	MemPartUploader
+	fullPath string
 }
 
-func (u *fsPartUploader) Start(_ context.Context) error {
+func (u *fsPartUploader) Complete(_ context.Context) error {
 	if err := os.MkdirAll(filepath.Dir(u.fullPath), 0o755); err != nil {
 		return fmt.Errorf("failed to create directory: %w", err)
 	}
 
-	f, err := os.OpenFile(u.fullPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o644)
-	if err != nil {
-		return fmt.Errorf("failed to create file: %w", err)
-	}
-
-	u.file = f
-
-	return nil
-}
-
-func (u *fsPartUploader) UploadPart(_ context.Context, _ int, data ...[]byte) error {
-	for _, d := range data {
-		if _, err := u.file.Write(d); err != nil {
-			return fmt.Errorf("failed to write part: %w", err)
-		}
-	}
-
-	return nil
-}
-
-func (u *fsPartUploader) Complete(_ context.Context) error {
-	return u.Close()
-}
-
-func (u *fsPartUploader) Close() error {
-	u.closeOnce.Do(func() {
-		if u.file != nil {
-			u.closeErr = u.file.Close()
-		}
-	})
-
-	return u.closeErr
+	return os.WriteFile(u.fullPath, u.Assemble(), 0o644)
 }
 
 func (o *fsObject) GetFrame(ctx context.Context, offsetU int64, frameTable *FrameTable, decompress bool, buf []byte, readSize int64, onRead func(totalWritten int64)) (Range, error) {
