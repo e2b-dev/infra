@@ -70,6 +70,16 @@ assert_not_empty "--port" "$LISTEN_PORT"
 assert_not_empty "--nomad-port" "$NOMAD_PORT"
 assert_not_empty "--consul-port" "$CONSUL_PORT"
 
+readonly GOSS_VERSION="0.4.9"
+readonly GOSS_PATH="/usr/local/bin/goss"
+
+if ! command -v goss &>/dev/null; then
+  log_info "goss not found, installing v${GOSS_VERSION}..."
+  curl -fsSL "https://github.com/goss-org/goss/releases/download/v${GOSS_VERSION}/goss-linux-amd64" -o "$GOSS_PATH"
+  chmod +x "$GOSS_PATH"
+  log_info "goss installed: $(goss --version)"
+fi
+
 log_info "Setting up composite health check (goss) on port $LISTEN_PORT"
 log_info "  Nomad endpoint: http://localhost:$NOMAD_PORT/v1/agent/health"
 log_info "  Consul endpoint: http://localhost:$CONSUL_PORT/v1/agent/self"
