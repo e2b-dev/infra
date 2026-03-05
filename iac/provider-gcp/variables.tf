@@ -131,6 +131,11 @@ variable "ingress_count" {
   default = 1
 }
 
+variable "additional_traefik_arguments" {
+  type    = list(string)
+  default = []
+}
+
 variable "client_proxy_resources_memory_mb" {
   type    = number
   default = 1024
