@@ -96,13 +96,13 @@ type Seekable interface {
 }
 
 // StorageConfig holds the configuration for creating a storage provider.
+// Both GetLocalBasePath and GetBucketName are evaluated lazily so that
+// callers who set environment variables at runtime (e.g. via os.Setenv
+// or t.Setenv in tests) see their overrides respected.
 type StorageConfig struct {
-	LocalBasePath string
-	// GetBucketName is called lazily, only when a cloud provider is selected,
-	// so callers can safely use utils.RequiredEnv inside the closure without
-	// panicking when the local provider is active.
-	GetBucketName func() string
-	limiter       *limit.Limiter
+	GetLocalBasePath func() string
+	GetBucketName    func() string
+	limiter          *limit.Limiter
 }
 
 // WithLimiter returns a copy of the config with the given limiter set.
@@ -112,14 +112,18 @@ func (c StorageConfig) WithLimiter(limiter *limit.Limiter) StorageConfig {
 }
 
 var TemplateStorageConfig = StorageConfig{
-	LocalBasePath: env.GetEnv("LOCAL_TEMPLATE_STORAGE_BASE_PATH", "/tmp/templates"),
+	GetLocalBasePath: func() string {
+		return env.GetEnv("LOCAL_TEMPLATE_STORAGE_BASE_PATH", "/tmp/templates")
+	},
 	GetBucketName: func() string {
 		return utils.RequiredEnv("TEMPLATE_BUCKET_NAME", "Bucket for storing template files")
 	},
 }
 
 var BuildCacheStorageConfig = StorageConfig{
-	LocalBasePath: env.GetEnv("LOCAL_BUILD_CACHE_STORAGE_BASE_PATH", "/tmp/build-cache"),
+	GetLocalBasePath: func() string {
+		return env.GetEnv("LOCAL_BUILD_CACHE_STORAGE_BASE_PATH", "/tmp/build-cache")
+	},
 	GetBucketName: func() string {
 		return utils.RequiredEnv("BUILD_CACHE_BUCKET_NAME", "Bucket for storing build cache files")
 	},
@@ -129,7 +133,7 @@ func GetStorageProvider(ctx context.Context, cfg StorageConfig) (StorageProvider
 	provider := Provider(env.GetEnv(storageProviderEnv, string(DefaultStorageProvider)))
 
 	if provider == LocalStorageProvider {
-		return newFileSystemStorage(cfg.LocalBasePath), nil
+		return newFileSystemStorage(cfg.GetLocalBasePath()), nil
 	}
 
 	bucketName := cfg.GetBucketName()
