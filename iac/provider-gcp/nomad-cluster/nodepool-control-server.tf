@@ -56,7 +56,7 @@ resource "google_compute_region_instance_group_manager" "server_pool" {
 
     // BALANCED distribution does not support PROACTIVE redistribution
     instance_redistribution_type = "NONE"
-    max_unavailable_fixed = 0
+    max_unavailable_fixed        = 0
     // Replace one server at a time to avoid quorum loss
     max_surge_fixed = 1
   }
