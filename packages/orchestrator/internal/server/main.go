@@ -33,6 +33,7 @@ const uploadedBuildsTTL = 1 * time.Hour
 type Server struct {
 	orchestrator.UnimplementedSandboxServiceServer
 	orchestrator.UnimplementedChunkServiceServer
+	orchestrator.UnimplementedMigrationServiceServer
 
 	config            cfg.Config
 	sandboxFactory    *sandbox.Factory

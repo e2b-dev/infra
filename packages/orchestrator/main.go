@@ -516,6 +516,7 @@ func run(config cfg.Config) (success bool) {
 	orchestrator.RegisterSandboxServiceServer(grpcServer, orchestratorService)
 	orchestrator.RegisterVolumeServiceServer(grpcServer, volumeService)
 	orchestrator.RegisterChunkServiceServer(grpcServer, orchestratorService)
+	orchestrator.RegisterMigrationServiceServer(grpcServer, orchestratorService)
 
 	// template manager
 	var tmpl *tmplserver.ServerStore

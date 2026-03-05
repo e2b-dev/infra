@@ -192,6 +192,39 @@ func (c *Cache) GetTemplate(
 	return c.getTemplateWithFetch(ctx, storageTemplate), nil
 }
 
+// GetTemplateWithPeerRouting is like GetTemplate but always enables peer routing,
+// regardless of the PeerToPeerChunkTransferFlag. Used by migration where the
+// snapshot only exists on the source peer.
+func (c *Cache) GetTemplateWithPeerRouting(
+	ctx context.Context,
+	buildID string,
+) (Template, error) {
+	ctx, span := tracer.Start(ctx, "get template (peer-routed)", trace.WithAttributes(
+		attribute.Bool("is_snapshot", true),
+		attribute.Bool("peer_forced", true),
+	))
+	defer span.End()
+
+	persistence := c.persistence
+	persistence = peerclient.NewRoutingProvider(persistence, c.peers)
+
+	storageTemplate, err := newTemplateFromStorage(
+		c.config.BuilderConfig,
+		buildID,
+		nil,
+		nil,
+		persistence,
+		c.blockMetrics,
+		nil,
+		nil,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create template cache from storage: %w", err)
+	}
+
+	return c.getTemplateWithFetch(ctx, storageTemplate), nil
+}
+
 func (c *Cache) AddSnapshot(
 	ctx context.Context,
 	buildId string,

@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+import "google/protobuf/timestamp.proto";
+import "orchestrator.proto";
+
+option go_package = "https://github.com/e2b-dev/infra/orchestrator";
+
+message MigrationInitRequest {
+  string sandbox_id = 1;
+  string dest_address = 2;
+}
+
+message MigrationInitResponse {
+  string build_id = 1;
+}
+
+message MigrationReceiveRequest {
+  string build_id = 1;
+  string source_address = 2;
+  SandboxConfig sandbox = 3;
+  google.protobuf.Timestamp start_time = 4;
+  google.protobuf.Timestamp end_time = 5;
+}
+
+message MigrationReceiveResponse {
+  string client_id = 1;
+}
+
+message MigrationCompleteRequest {
+  string build_id = 1;
+}
+
+message MigrationCompleteResponse {}
+
+service MigrationService {
+  // InitMigration pauses a sandbox on this (source) node, then calls
+  // ReceiveMigration on the destination to resume it there. Memory and
+  // rootfs are served from the source via ChunkService until the
+  // destination pulls all chunks and calls CompleteMigration.
+  rpc InitMigration(MigrationInitRequest) returns (MigrationInitResponse);
+
+  // ReceiveMigration resumes a sandbox from a peer snapshot. Called by
+  // the source node on the destination.
+  rpc ReceiveMigration(MigrationReceiveRequest) returns (MigrationReceiveResponse);
+
+  // CompleteMigration signals the source that all chunks have been
+  // pulled. The source cleans up its local cache and peer registration.
+  rpc CompleteMigration(MigrationCompleteRequest) returns (MigrationCompleteResponse);
+}
