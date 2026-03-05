@@ -89,7 +89,7 @@ func New(
 	}
 	closers = append(closers, dockerhubRepository)
 
-	buildPersistence, err := storage.GetBuildCacheStorageProvider(ctx, limiter)
+	buildPersistence, err := storage.GetStorageProvider(ctx, storage.BuildCacheStorageConfig, limiter)
 	if err != nil {
 		return nil, fmt.Errorf("error getting build cache storage provider: %w", err)
 	}
