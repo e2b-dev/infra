@@ -108,12 +108,18 @@ func (s *Server) GetBuildFileExists(ctx context.Context, req *orchestrator.GetBu
 // ReadAtBuildSeekable streams a range from a seekable diff file (memfile, rootfs.ext4).
 func (s *Server) ReadAtBuildSeekable(req *orchestrator.ReadAtBuildSeekableRequest, stream orchestrator.ChunkService_ReadAtBuildSeekableServer) error {
 	ctx := stream.Context()
+	offset := req.GetOffset()
+	length := req.GetLength()
+
+	if offset < 0 || length < 0 {
+		return status.Error(codes.InvalidArgument, "offset and length must be non-negative")
+	}
 
 	telemetry.SetAttributes(ctx,
 		telemetry.WithBuildID(req.GetBuildId()),
 		attribute.String("file_name", req.GetFileName()),
-		attribute.Int64("offset", req.GetOffset()),
-		attribute.Int64("length", req.GetLength()),
+		attribute.Int64("offset", offset),
+		attribute.Int64("length", length),
 	)
 
 	if s.uploadedBuilds.Get(req.GetBuildId()) != nil {
@@ -131,7 +137,7 @@ func (s *Server) ReadAtBuildSeekable(req *orchestrator.ReadAtBuildSeekableReques
 		return toGRPCError(err)
 	}
 
-	if err := src.Stream(ctx, req.GetOffset(), req.GetLength(), &seekableStreamSender{stream}); err != nil {
+	if err := src.Stream(ctx, offset, length, &seekableStreamSender{stream}); err != nil {
 		if errors.Is(err, peerserver.ErrNotAvailable) {
 			return stream.Send(&orchestrator.ReadAtBuildSeekableResponse{Availability: peerNotAvailable})
 		}
