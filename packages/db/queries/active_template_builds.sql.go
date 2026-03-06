@@ -16,14 +16,12 @@ INSERT INTO public.active_template_builds (
     build_id,
     team_id,
     template_id,
-    tags,
-    cluster_id
+    tags
 ) VALUES (
     $1,
     $2,
     $3,
-    $4::text[],
-    $5
+    $4::text[]
 )
 `
 
@@ -32,7 +30,6 @@ type CreateActiveTemplateBuildParams struct {
 	TeamID     uuid.UUID
 	TemplateID string
 	Tags       []string
-	ClusterID  *uuid.UUID
 }
 
 func (q *Queries) CreateActiveTemplateBuild(ctx context.Context, arg CreateActiveTemplateBuildParams) error {
@@ -41,7 +38,6 @@ func (q *Queries) CreateActiveTemplateBuild(ctx context.Context, arg CreateActiv
 		arg.TeamID,
 		arg.TemplateID,
 		arg.Tags,
-		arg.ClusterID,
 	)
 	return err
 }
@@ -53,21 +49,5 @@ WHERE build_id = $1
 
 func (q *Queries) DeleteActiveTemplateBuild(ctx context.Context, buildID uuid.UUID) error {
 	_, err := q.db.Exec(ctx, deleteActiveTemplateBuild, buildID)
-	return err
-}
-
-const updateActiveTemplateBuildNode = `-- name: UpdateActiveTemplateBuildNode :exec
-UPDATE public.active_template_builds
-SET cluster_node_id = $1
-WHERE build_id = $2
-`
-
-type UpdateActiveTemplateBuildNodeParams struct {
-	ClusterNodeID *string
-	BuildID       uuid.UUID
-}
-
-func (q *Queries) UpdateActiveTemplateBuildNode(ctx context.Context, arg UpdateActiveTemplateBuildNodeParams) error {
-	_, err := q.db.Exec(ctx, updateActiveTemplateBuildNode, arg.ClusterNodeID, arg.BuildID)
 	return err
 }

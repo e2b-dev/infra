@@ -26,13 +26,11 @@ type AccessToken struct {
 }
 
 type ActiveTemplateBuild struct {
-	BuildID       uuid.UUID
-	TeamID        uuid.UUID
-	TemplateID    string
-	Tags          []string
-	ClusterID     *uuid.UUID
-	ClusterNodeID *string
-	CreatedAt     time.Time
+	BuildID    uuid.UUID
+	TeamID     uuid.UUID
+	TemplateID string
+	Tags       []string
+	CreatedAt  time.Time
 }
 
 type Addon struct {
