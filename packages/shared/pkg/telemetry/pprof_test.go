@@ -11,6 +11,8 @@ import (
 
 // This should test the removal inside the same package, which should be more struct than the external package test.
 func TestDefaultServeMuxHasNoPprof(t *testing.T) {
+	t.Parallel()
+
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/debug/pprof/", nil)
 
