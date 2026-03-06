@@ -84,7 +84,7 @@ func main() {
 	template := flag.String("template", "", "template ID or alias (requires E2B_API_KEY)")
 	storagePath := flag.String("storage", ".local-build", "storage: local path or gs://bucket")
 	compression := flag.String("compression", "lz4", "compression type: lz4 or zstd")
-	level := flag.Int("level", storage.DefaultCompressionOptions.CompressionLevel, "compression level (0=default)")
+	level := flag.Int("level", 0, "compression level (0=default)")
 	frameSize := flag.Int("frame-size", storage.DefaultCompressFrameSize, "uncompressed frame size in bytes")
 	dryRun := flag.Bool("dry-run", false, "show what would be done without making changes")
 	recursive := flag.Bool("recursive", false, "recursively compress dependencies (referenced builds)")
@@ -296,18 +296,20 @@ func compressArtifact(ctx context.Context, cfg *compressConfig, buildID, name, f
 
 	fmt.Printf("  Data: %s (%#x, %.1f MiB)\n", dataSource, dataSize, float64(dataSize)/1024/1024)
 
-	// Set up compression options
-	opts := &storage.FramedUploadOptions{
-		CompressionType:     cfg.compType,
-		CompressionLevel:    cfg.level,
-		FrameSize:           cfg.frameSize,
+	// Set up compression config
+	compressCfg := &storage.CompressConfig{
+		Enabled:             true,
+		Type:                cfg.compType.String(),
+		Level:               cfg.level,
+		FrameSizeKB:         cfg.frameSize / 1024,
 		FramesPerUploadPart: 25,
 	}
 
+	var onFrameReady storage.OnFrameReady
 	if cfg.verbose {
 		frameIdx := 0
 		lastFrameTime := time.Now()
-		opts.OnFrameReady = func(offset storage.FrameOffset, size storage.FrameSize, _ []byte) error {
+		onFrameReady = func(offset storage.FrameOffset, size storage.FrameSize, _ []byte) error {
 			now := time.Now()
 			elapsed := now.Sub(lastFrameTime)
 			mbps := float64(size.U) / elapsed.Seconds() / (1024 * 1024)
@@ -340,7 +342,7 @@ func compressArtifact(ctx context.Context, cfg *compressConfig, buildID, name, f
 
 	// Compress
 	compressStart := time.Now()
-	frameTable, _, err := storage.CompressStream(ctx, sectionReader, opts, uploader)
+	frameTable, _, err := storage.CompressStream(ctx, sectionReader, compressCfg, onFrameReady, uploader)
 	if err != nil {
 		return fmt.Errorf("compress: %w", err)
 	}
@@ -499,7 +501,7 @@ func propagateDependencyFrames(ctx context.Context, storagePath string, h *heade
 		}
 		if applied > 0 {
 			fmt.Printf("  Propagated %d FrameTable(s) from dependency %s (%d frames, %s)\n",
-				applied, depBuild, len(fullFT.Frames), fullFT.CompressionType)
+				applied, depBuild, len(fullFT.Frames), fullFT.CompressionType())
 		}
 	}
 }
@@ -517,11 +519,9 @@ func reconstructFullFrameTable(h *header.Header, buildID string) *storage.FrameT
 		ft := m.FrameTable
 		if result == nil {
 			// First FrameTable — start with a copy
-			result = &storage.FrameTable{
-				CompressionType: ft.CompressionType,
-				StartAt:         ft.StartAt,
-				Frames:          make([]storage.FrameSize, len(ft.Frames)),
-			}
+			result = storage.NewFrameTable(ft.CompressionType())
+			result.StartAt = ft.StartAt
+			result.Frames = make([]storage.FrameSize, len(ft.Frames))
 			copy(result.Frames, ft.Frames)
 
 			continue

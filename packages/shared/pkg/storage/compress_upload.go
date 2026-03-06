@@ -13,8 +13,6 @@ import (
 	"github.com/klauspost/compress/zstd"
 	lz4 "github.com/pierrec/lz4/v4"
 	"golang.org/x/sync/errgroup"
-
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 )
 
 // MaxCompressedHeaderSize is the maximum allowed decompressed header size (64 MiB).
@@ -41,13 +39,11 @@ func CompressLZ4(data []byte) ([]byte, error) {
 }
 
 const (
-	defaultLZ4CompressionLevel = 0  // lz4 compression level (0=fast/default, higher=better ratio)
-	defaultEncoderConcurrency  = 0  // use default compression concurrency settings
 	defaultFrameEncodeWorkers  = 4  // concurrent frame-level compression workers per CompressStream call
 	defaultFramesPerUploadPart = 25 // frames per upload part (25 × 2 MiB = 50 MiB uncompressed per part)
 
 	// DefaultCompressFrameSize is the default uncompressed size of each compression
-	// frame (2 MiB). Overridable via the frameSizeKB feature flag field.
+	// frame (2 MiB). Overridable via CompressConfig.FrameSizeKB.
 	// The last frame in a file may be shorter.
 	//
 	// The chunker fetches one frame at a time from storage on a cache miss.
@@ -77,82 +73,17 @@ type PartUploader interface {
 	Close() error
 }
 
-// FramedUploadOptions configures compression for framed uploads.
-// Each frame is FrameSize bytes of uncompressed data (default 2 MiB,
-// last frame may be shorter), compressed independently.
-type FramedUploadOptions struct {
-	CompressionType     CompressionType
-	CompressionLevel    int // codec-specific level (zstd: 1=fastest..4=best; lz4: 0=default, higher=better ratio)
-	EncoderConcurrency  int // goroutines per individual zstd/lz4 encoder
-	FrameEncodeWorkers  int // concurrent frame-level compression workers (parallel frames per CompressStream call)
-	FrameSize           int // uncompressed frame size in bytes; 0 = DefaultCompressFrameSize
-	FramesPerUploadPart int // frames per upload part; 0 = defaultFramesPerUploadPart (25)
+// OnFrameReady is a callback invoked for each compressed frame during CompressStream/StoreFile.
+type OnFrameReady = func(offset FrameOffset, size FrameSize, data []byte) error
 
-	OnFrameReady func(offset FrameOffset, size FrameSize, data []byte) error
-}
-
-// DefaultCompressionOptions is the default compression configuration (LZ4).
-var DefaultCompressionOptions = &FramedUploadOptions{
-	CompressionType:     CompressionLZ4,
-	CompressionLevel:    defaultLZ4CompressionLevel,
-	EncoderConcurrency:  defaultEncoderConcurrency,
-	FrameEncodeWorkers:  defaultFrameEncodeWorkers,
-	FramesPerUploadPart: defaultFramesPerUploadPart,
-}
-
-// NoCompression indicates no compression should be applied.
-var NoCompression = (*FramedUploadOptions)(nil)
-
-// GetUploadOptions reads the compress-config feature flag and returns
-// FramedUploadOptions. Returns nil when compression is disabled or ff is nil.
-//
-// fileType and useCase are added to the LD evaluation context so that
-// LaunchDarkly targeting rules can differentiate (e.g. compress memfile
-// but not rootfs, or compress builds but not pauses). Zero override
-// logic in Go — all differentiation is handled by LD dashboard rules.
-//
-// TODO: compression settings should be part of the core orchestrator
-// deployment config (configurable via deployment options like everything
-// else). FFs remain as the override/experimentation layer on top.
-func GetUploadOptions(ctx context.Context, ff *featureflags.Client, fileType, useCase string) *FramedUploadOptions {
-	if ff == nil {
+// ValidateCompressConfig checks that compression config is valid for use.
+func ValidateCompressConfig(cfg *CompressConfig) error {
+	if cfg == nil || !cfg.IsEnabled() {
 		return nil
 	}
 
-	ctx = featureflags.AddToContext(ctx,
-		featureflags.CompressFileTypeContext(fileType),
-		featureflags.CompressUseCaseContext(useCase),
-	)
-
-	v := ff.JSONFlag(ctx, featureflags.CompressConfigFlag).AsValueMap()
-
-	if !v.Get("compressBuilds").BoolValue() {
-		return nil
-	}
-
-	ct := parseCompressionType(v.Get("compressionType").StringValue())
-	if ct == CompressionNone {
-		return nil
-	}
-
-	return &FramedUploadOptions{
-		CompressionType:     ct,
-		CompressionLevel:    v.Get("compressionLevel").IntValue(),
-		FrameSize:           v.Get("frameSizeKB").IntValue() * kilobyte,
-		FramesPerUploadPart: v.Get("framesPerUploadPart").IntValue(),
-		FrameEncodeWorkers:  v.Get("frameEncodeWorkers").IntValue(),
-		EncoderConcurrency:  v.Get("encoderConcurrency").IntValue(),
-	}
-}
-
-// ValidateCompressionOptions checks that compression options are valid.
-func ValidateCompressionOptions(opts *FramedUploadOptions) error {
-	if opts == nil || opts.CompressionType == CompressionNone {
-		return nil
-	}
-
-	if opts.FrameSize <= 0 {
-		return fmt.Errorf("frame size must be set, got %d", opts.FrameSize)
+	if cfg.FrameSize() <= 0 {
+		return fmt.Errorf("frame size must be set, got %d KB", cfg.FrameSizeKB)
 	}
 
 	return nil
@@ -247,13 +178,13 @@ func (l *lz4FrameCompressor) release() {
 
 // newCompressorPool returns a function that borrows a frameCompressor from a pool
 // and a release function to return it. All compressors in the pool share the same
-// settings from opts. For zstd, encoders are created once and reused via EncodeAll.
-func newCompressorPool(opts *FramedUploadOptions) (borrow func() (frameCompressor, error), release func(frameCompressor)) {
-	switch opts.CompressionType {
+// settings from cfg. For zstd, encoders are created once and reused via EncodeAll.
+func newCompressorPool(cfg *CompressConfig) (borrow func() (frameCompressor, error), release func(frameCompressor)) {
+	switch cfg.CompressionType() {
 	case CompressionZstd:
 		pool := &sync.Pool{}
 		pool.New = func() any {
-			enc, err := newZstdEncoder(opts.EncoderConcurrency, opts.FrameSize, zstd.EncoderLevel(opts.CompressionLevel))
+			enc, err := newZstdEncoder(cfg.EncoderConcurrency, cfg.FrameSize(), zstd.EncoderLevel(cfg.Level))
 			if err != nil {
 				// Pool.New cannot return errors; store nil and check on borrow.
 				return err
@@ -291,33 +222,30 @@ func newCompressorPool(opts *FramedUploadOptions) (borrow func() (frameCompresso
 	}
 }
 
-// CompressStream reads from in, compresses using opts, and writes parts through uploader.
+// CompressStream reads from in, compresses using cfg, and writes parts through uploader.
 // Returns the resulting FrameTable describing the compressed frames.
 //
 // Design: single-loop, batch-parallel. Each iteration reads a batch of frames
 // (one batch = one upload part), compresses them in parallel, emits in order,
 // and uploads asynchronously. Upload of part K overlaps with read+compress of
 // batch K+1. No channels, no reorder buffer.
-func CompressStream(ctx context.Context, in io.Reader, opts *FramedUploadOptions, uploader PartUploader) (*FrameTable, [32]byte, error) {
-	workers := opts.FrameEncodeWorkers
+func CompressStream(ctx context.Context, in io.Reader, cfg *CompressConfig, onFrameReady OnFrameReady, uploader PartUploader) (*FrameTable, [32]byte, error) {
+	workers := cfg.FrameEncodeWorkers
 	if workers <= 0 {
 		workers = defaultFrameEncodeWorkers
 	}
 
-	frameSize := opts.FrameSize
-	if frameSize <= 0 {
-		frameSize = DefaultCompressFrameSize
-	}
+	frameSize := cfg.FrameSize()
 
 	if err := uploader.Start(ctx); err != nil {
 		return nil, [32]byte{}, fmt.Errorf("failed to start framed upload: %w", err)
 	}
 	defer uploader.Close()
 
-	borrow, release := newCompressorPool(opts)
+	borrow, release := newCompressorPool(cfg)
 	hasher := sha256.New()
 
-	frameTable := &FrameTable{CompressionType: opts.CompressionType}
+	frameTable := &FrameTable{compressionType: cfg.CompressionType()}
 	uploadEG, uploadCtx := errgroup.WithContext(ctx)
 	uploadEG.SetLimit(4) // max concurrent part uploads
 
@@ -326,7 +254,7 @@ func CompressStream(ctx context.Context, in io.Reader, opts *FramedUploadOptions
 		partIndex int
 	)
 
-	framesPerPart := opts.FramesPerUploadPart
+	framesPerPart := cfg.FramesPerUploadPart
 	if framesPerPart <= 0 {
 		framesPerPart = defaultFramesPerUploadPart
 	}
@@ -393,14 +321,14 @@ func CompressStream(ctx context.Context, in io.Reader, opts *FramedUploadOptions
 			return nil, [32]byte{}, err
 		}
 
-		// --- Emit in order, call OnFrameReady ---
+		// --- Emit in order, call onFrameReady ---
 		partData := make([][]byte, batchLen)
 		for i := range batchLen {
 			fs := FrameSize{U: int32(sizes[i]), C: int32(len(compressed[i]))}
 			frameTable.Frames = append(frameTable.Frames, fs)
 
-			if opts.OnFrameReady != nil {
-				if err := opts.OnFrameReady(offset, fs, compressed[i]); err != nil {
+			if onFrameReady != nil {
+				if err := onFrameReady(offset, fs, compressed[i]); err != nil {
 					return nil, [32]byte{}, err
 				}
 			}

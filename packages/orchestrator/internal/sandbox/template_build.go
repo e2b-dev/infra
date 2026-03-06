@@ -69,7 +69,7 @@ func (t *TemplateBuild) uploadUncompressedFile(ctx context.Context, localPath, f
 		return err
 	}
 
-	if _, _, err := object.StoreFile(ctx, localPath, nil); err != nil {
+	if _, _, err := object.StoreFile(ctx, localPath, nil, nil); err != nil {
 		return fmt.Errorf("error when uploading %s: %w", fileName, err)
 	}
 
@@ -125,23 +125,23 @@ func uploadFileAsBlob(ctx context.Context, b storage.Blob, path string) error {
 }
 
 // scheduleFileUpload schedules the upload of a single data file (memfile or rootfs).
-// If opts is non-nil, the file is compressed; otherwise it uploads uncompressed with a V3 header.
+// If cfg is non-nil, the file is compressed; otherwise it uploads uncompressed with a V3 header.
 func (t *TemplateBuild) scheduleFileUpload(
 	eg *errgroup.Group,
 	ctx context.Context,
 	localPath *string,
 	fileName string,
 	diffHeader *headers.Header,
-	opts *storage.FramedUploadOptions,
+	cfg *storage.CompressConfig,
 	compressed *bool,
 ) {
-	if opts != nil {
+	if cfg != nil {
 		// COMPRESSED: upload only compressed data
 		if localPath != nil {
 			*compressed = true
 
 			eg.Go(func() error {
-				ft, checksum, err := t.uploadCompressedFile(ctx, *localPath, fileName, opts)
+				ft, checksum, err := t.uploadCompressedFile(ctx, *localPath, fileName, cfg)
 				if err != nil {
 					return fmt.Errorf("compressed %s upload: %w", fileName, err)
 				}
@@ -181,7 +181,7 @@ func (t *TemplateBuild) scheduleFileUpload(
 // Frame tables from compressed uploads are registered in the shared PendingBuildInfo
 // for later use by UploadV4Header.
 // Returns true if any file was compressed (i.e. V4 headers need uploading).
-func (t *TemplateBuild) UploadExceptV4Headers(ctx context.Context, memfileOpts, rootfsOpts *storage.FramedUploadOptions) (hasCompressed bool, err error) {
+func (t *TemplateBuild) UploadExceptV4Headers(ctx context.Context, memfileCfg, rootfsCfg *storage.CompressConfig) (hasCompressed bool, err error) {
 	memfilePath, err := diffPath(t.snapshot.MemfileDiff)
 	if err != nil {
 		return false, fmt.Errorf("error getting memfile diff path: %w", err)
@@ -194,8 +194,8 @@ func (t *TemplateBuild) UploadExceptV4Headers(ctx context.Context, memfileOpts, 
 
 	eg, ctx := errgroup.WithContext(ctx)
 
-	t.scheduleFileUpload(eg, ctx, memfilePath, storage.MemfileName, t.snapshot.MemfileDiffHeader, memfileOpts, &t.memfileCompressed)
-	t.scheduleFileUpload(eg, ctx, rootfsPath, storage.RootfsName, t.snapshot.RootfsDiffHeader, rootfsOpts, &t.rootfsCompressed)
+	t.scheduleFileUpload(eg, ctx, memfilePath, storage.MemfileName, t.snapshot.MemfileDiffHeader, memfileCfg, &t.memfileCompressed)
+	t.scheduleFileUpload(eg, ctx, rootfsPath, storage.RootfsName, t.snapshot.RootfsDiffHeader, rootfsCfg, &t.rootfsCompressed)
 
 	// Snapfile + metadata (always)
 	eg.Go(func() error {
@@ -214,15 +214,15 @@ func (t *TemplateBuild) UploadExceptV4Headers(ctx context.Context, memfileOpts, 
 }
 
 // uploadCompressedFile compresses and uploads a file to the compressed data path.
-func (t *TemplateBuild) uploadCompressedFile(ctx context.Context, localPath, fileName string, opts *storage.FramedUploadOptions) (*storage.FrameTable, [32]byte, error) {
-	objectPath := t.files.CompressedDataPath(fileName, opts.CompressionType)
+func (t *TemplateBuild) uploadCompressedFile(ctx context.Context, localPath, fileName string, cfg *storage.CompressConfig) (*storage.FrameTable, [32]byte, error) {
+	objectPath := t.files.CompressedDataPath(fileName, cfg.CompressionType())
 
 	object, err := t.persistence.OpenFramedFile(ctx, objectPath)
 	if err != nil {
 		return nil, [32]byte{}, fmt.Errorf("error opening framed file for %s: %w", objectPath, err)
 	}
 
-	ft, checksum, err := object.StoreFile(ctx, localPath, opts)
+	ft, checksum, err := object.StoreFile(ctx, localPath, cfg, nil)
 	if err != nil {
 		return nil, [32]byte{}, fmt.Errorf("error compressing %s to %s: %w", fileName, objectPath, err)
 	}
@@ -274,8 +274,8 @@ func (t *TemplateBuild) UploadV4Header(ctx context.Context) error {
 // UploadAtOnce uploads all template build files including V4 headers for a single-layer build.
 // For multi-layer builds, use UploadExceptV4Headers + UploadV4Header with a shared
 // PendingBuildInfo instead.
-func (t *TemplateBuild) UploadAtOnce(ctx context.Context, memfileOpts, rootfsOpts *storage.FramedUploadOptions) error {
-	hasCompressed, err := t.UploadExceptV4Headers(ctx, memfileOpts, rootfsOpts)
+func (t *TemplateBuild) UploadAtOnce(ctx context.Context, memfileCfg, rootfsCfg *storage.CompressConfig) error {
+	hasCompressed, err := t.UploadExceptV4Headers(ctx, memfileCfg, rootfsCfg)
 	if err != nil {
 		return err
 	}

@@ -26,8 +26,9 @@ type BuilderConfig struct {
 
 	DefaultCacheDir string `env:"DEFAULT_CACHE_DIR,expand" envDefault:"${ORCHESTRATOR_BASE_PATH}/build"`
 
-	StorageConfig storage.Config
-	NetworkConfig network.Config
+	StorageConfig  storage.Config
+	CompressConfig storage.CompressConfig
+	NetworkConfig  network.Config
 }
 
 func makePathsAbsolute(c *BuilderConfig) error {

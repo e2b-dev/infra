@@ -12,6 +12,15 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
+// newFT creates a FrameTable for test fixtures.
+func newFT(ct storage.CompressionType, startAt storage.FrameOffset, frames []storage.FrameSize) *storage.FrameTable {
+	ft := storage.NewFrameTable(ct)
+	ft.StartAt = startAt
+	ft.Frames = frames
+
+	return ft
+}
+
 func TestSerializeDeserialize_V3_RoundTrip(t *testing.T) {
 	t.Parallel()
 
@@ -136,14 +145,10 @@ func TestSerializeDeserialize_V4_WithFrameTable(t *testing.T) {
 			Length:             4096,
 			BuildId:            buildID,
 			BuildStorageOffset: 0,
-			FrameTable: &storage.FrameTable{
-				CompressionType: storage.CompressionLZ4,
-				StartAt:         storage.FrameOffset{U: 0, C: 0},
-				Frames: []storage.FrameSize{
-					{U: 2048, C: 1024},
-					{U: 2048, C: 900},
-				},
-			},
+			FrameTable: newFT(storage.CompressionLZ4, storage.FrameOffset{U: 0, C: 0}, []storage.FrameSize{
+				{U: 2048, C: 1024},
+				{U: 2048, C: 900},
+			}),
 		},
 		{
 			Offset:             4096,
@@ -179,7 +184,7 @@ func TestSerializeDeserialize_V4_WithFrameTable(t *testing.T) {
 	assert.Equal(t, uint64(4096), m0.Length)
 	assert.Equal(t, buildID, m0.BuildId)
 	require.NotNil(t, m0.FrameTable)
-	assert.Equal(t, storage.CompressionLZ4, m0.FrameTable.CompressionType)
+	assert.Equal(t, storage.CompressionLZ4, m0.FrameTable.CompressionType())
 	assert.Equal(t, int64(0), m0.FrameTable.StartAt.U)
 	assert.Equal(t, int64(0), m0.FrameTable.StartAt.C)
 	require.Len(t, m0.FrameTable.Frames, 2)
@@ -222,13 +227,9 @@ func TestSerializeDeserialize_V4_Zstd_NonZeroStartAt(t *testing.T) {
 			Length:             4096,
 			BuildId:            buildID,
 			BuildStorageOffset: 8192,
-			FrameTable: &storage.FrameTable{
-				CompressionType: storage.CompressionZstd,
-				StartAt:         storage.FrameOffset{U: 8192, C: 4000},
-				Frames: []storage.FrameSize{
-					{U: 4096, C: 3500},
-				},
-			},
+			FrameTable: newFT(storage.CompressionZstd, storage.FrameOffset{U: 8192, C: 4000}, []storage.FrameSize{
+				{U: 4096, C: 3500},
+			}),
 		},
 	}
 
@@ -245,7 +246,7 @@ func TestSerializeDeserialize_V4_Zstd_NonZeroStartAt(t *testing.T) {
 	require.Len(t, got.Mapping, 1)
 	m := got.Mapping[0]
 	require.NotNil(t, m.FrameTable)
-	assert.Equal(t, storage.CompressionZstd, m.FrameTable.CompressionType)
+	assert.Equal(t, storage.CompressionZstd, m.FrameTable.CompressionType())
 	assert.Equal(t, int64(8192), m.FrameTable.StartAt.U)
 	assert.Equal(t, int64(4000), m.FrameTable.StartAt.C)
 	require.Len(t, m.FrameTable.Frames, 1)
@@ -281,11 +282,7 @@ func TestSerializeDeserialize_V4_CompressionNone_EmptyFrames(t *testing.T) {
 			BuildId:            buildID,
 			BuildStorageOffset: 0,
 			// FrameTable with CompressionNone and no frames — packed value is 0.
-			FrameTable: &storage.FrameTable{
-				CompressionType: storage.CompressionNone,
-				StartAt:         storage.FrameOffset{U: 100, C: 50},
-				Frames:          nil,
-			},
+			FrameTable: newFT(storage.CompressionNone, storage.FrameOffset{U: 100, C: 50}, nil),
 		},
 		{
 			Offset:             4096,
@@ -357,11 +354,7 @@ func TestSerializeDeserialize_V4_ManyFrames(t *testing.T) {
 			Length:             4096 * numFrames,
 			BuildId:            buildID,
 			BuildStorageOffset: 0,
-			FrameTable: &storage.FrameTable{
-				CompressionType: storage.CompressionLZ4,
-				StartAt:         storage.FrameOffset{U: 0, C: 0},
-				Frames:          frames,
-			},
+			FrameTable:         newFT(storage.CompressionLZ4, storage.FrameOffset{U: 0, C: 0}, frames),
 		},
 	}
 

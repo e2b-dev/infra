@@ -84,7 +84,7 @@ func (c *cachedFramedFile) GetFrame(ctx context.Context, offsetU int64, frameTab
 		return Range{}, err
 	}
 
-	if IsCompressed(frameTable) {
+	if frameTable.IsCompressed() {
 		return c.getFrameCompressed(ctx, offsetU, frameTable, decompress, buf, readSize, onRead)
 	}
 
@@ -141,7 +141,7 @@ func (c *cachedFramedFile) getFrameCompressed(ctx context.Context, offsetU int64
 	// Progressive streaming path: only useful for zstd where we can stream
 	// through the decoder. LZ4 uses block decompression (all-at-once), so
 	// progressive piping adds overhead without benefit.
-	if decompress && onRead != nil && frameTable.CompressionType == CompressionZstd {
+	if decompress && onRead != nil && frameTable.CompressionType() == CompressionZstd {
 		r, err := c.fetchAndDecompressProgressive(ctx, offsetU, frameTable, compressedBuf, buf, readSize, onRead, frameSize, framePath)
 		if err != nil {
 			timer.Failure(ctx, int64(r.Length))
@@ -441,9 +441,9 @@ func (c *cachedFramedFile) Size(ctx context.Context) (size int64, e error) {
 	return u, nil
 }
 
-func (c *cachedFramedFile) StoreFile(ctx context.Context, path string, opts *FramedUploadOptions) (_ *FrameTable, _ [32]byte, e error) {
-	if opts != nil && opts.CompressionType != CompressionNone {
-		return c.storeFileCompressed(ctx, path, opts)
+func (c *cachedFramedFile) StoreFile(ctx context.Context, path string, cfg *CompressConfig, _ OnFrameReady) (_ *FrameTable, _ [32]byte, e error) {
+	if cfg.IsEnabled() {
+		return c.storeFileCompressed(ctx, path, cfg)
 	}
 
 	ctx, span := c.tracer.Start(ctx, "write object from file system",
@@ -477,26 +477,17 @@ func (c *cachedFramedFile) StoreFile(ctx context.Context, path string, opts *Fra
 		})
 	}
 
-	return c.inner.StoreFile(ctx, path, nil)
+	return c.inner.StoreFile(ctx, path, nil, nil) // uncompressed path — no callback
 }
 
 // storeFileCompressed delegates to inner, optionally writing compressed frames
 // to the NFS cache via the OnFrameReady callback (gated by EnableWriteThroughCacheFlag).
-func (c *cachedFramedFile) storeFileCompressed(ctx context.Context, localPath string, opts *FramedUploadOptions) (*FrameTable, [32]byte, error) {
+func (c *cachedFramedFile) storeFileCompressed(ctx context.Context, localPath string, cfg *CompressConfig) (*FrameTable, [32]byte, error) {
 	if !c.flags.BoolFlag(ctx, featureflags.EnableWriteThroughCacheFlag) {
-		return c.inner.StoreFile(ctx, localPath, opts)
+		return c.inner.StoreFile(ctx, localPath, cfg, nil)
 	}
 
-	modifiedOpts := *opts
-	origOnFrameReady := opts.OnFrameReady
-
-	modifiedOpts.OnFrameReady = func(offset FrameOffset, size FrameSize, data []byte) error {
-		if origOnFrameReady != nil {
-			if err := origOnFrameReady(offset, size, data); err != nil {
-				return err
-			}
-		}
-
+	onFrameReady := func(offset FrameOffset, size FrameSize, data []byte) error {
 		// data is a freshly allocated slice from Compress(), safe to use without copying.
 		framePath := makeFrameFilename(c.path, offset, size)
 
@@ -509,7 +500,7 @@ func (c *cachedFramedFile) storeFileCompressed(ctx context.Context, localPath st
 		return nil
 	}
 
-	return c.inner.StoreFile(ctx, localPath, &modifiedOpts)
+	return c.inner.StoreFile(ctx, localPath, cfg, onFrameReady)
 }
 
 // makeFrameFilename returns the NFS cache path for a compressed frame.
@@ -558,7 +549,7 @@ func (c *cachedFramedFile) validateGetFrameParams(off int64, length int, frameTa
 	}
 
 	// Compressed reads: the frame table handles alignment, no chunk checks needed.
-	if IsCompressed(frameTable) {
+	if frameTable.IsCompressed() {
 		return nil
 	}
 

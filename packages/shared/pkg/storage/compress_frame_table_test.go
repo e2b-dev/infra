@@ -11,8 +11,8 @@ import (
 // threeFrameFT returns a FrameTable with three 1MB uncompressed frames
 // and varying compressed sizes, starting at the given offset.
 func threeFrameFT(startU, startC int64) *FrameTable {
-	return &FrameTable{
-		CompressionType: CompressionLZ4,
+	ft := &FrameTable{
+		compressionType: CompressionLZ4,
 		StartAt:         FrameOffset{U: startU, C: startC},
 		Frames: []FrameSize{
 			{U: 1 << 20, C: 500_000}, // frame 0
@@ -20,6 +20,8 @@ func threeFrameFT(startU, startC int64) *FrameTable {
 			{U: 1 << 20, C: 400_000}, // frame 2
 		},
 	}
+
+	return ft
 }
 
 // collectRange calls ft.Range and returns the offsets visited.
@@ -123,7 +125,7 @@ func TestSubset(t *testing.T) {
 		t.Parallel()
 		sub, err := ft.Subset(Range{Start: 0, Length: 1 << 20})
 		require.NoError(t, err)
-		assert.Equal(t, CompressionLZ4, sub.CompressionType)
+		assert.Equal(t, CompressionLZ4, sub.CompressionType())
 	})
 
 	t.Run("nil table returns nil", func(t *testing.T) {
@@ -236,7 +238,7 @@ func TestGetFetchRange(t *testing.T) {
 
 	t.Run("uncompressed table returns input unchanged", func(t *testing.T) {
 		t.Parallel()
-		uncompressed := &FrameTable{CompressionType: CompressionNone}
+		uncompressed := &FrameTable{compressionType: CompressionNone}
 		input := Range{Start: 42, Length: 100}
 		r, err := uncompressed.GetFetchRange(input)
 		require.NoError(t, err)
@@ -254,8 +256,8 @@ func TestSize(t *testing.T) {
 
 func TestIsCompressed(t *testing.T) {
 	t.Parallel()
-	assert.False(t, IsCompressed(nil))
-	assert.False(t, IsCompressed(&FrameTable{CompressionType: CompressionNone}))
-	assert.True(t, IsCompressed(&FrameTable{CompressionType: CompressionLZ4}))
-	assert.True(t, IsCompressed(&FrameTable{CompressionType: CompressionZstd}))
+	assert.False(t, (*FrameTable)(nil).IsCompressed())
+	assert.False(t, (&FrameTable{compressionType: CompressionNone}).IsCompressed())
+	assert.True(t, (&FrameTable{compressionType: CompressionLZ4}).IsCompressed())
+	assert.True(t, (&FrameTable{compressionType: CompressionZstd}).IsCompressed())
 }

@@ -112,14 +112,14 @@ func (f *peerFramedFile) GetFrame(ctx context.Context, offsetU int64, frameTable
 	)
 }
 
-func (f *peerFramedFile) StoreFile(ctx context.Context, path string, opts *storage.FramedUploadOptions) (*storage.FrameTable, [32]byte, error) {
+func (f *peerFramedFile) StoreFile(ctx context.Context, path string, cfg *storage.CompressConfig, onFrameReady storage.OnFrameReady) (*storage.FrameTable, [32]byte, error) {
 	// Writes always go to the base provider (GCS/S3); the peer is read-only.
 	fallback, err := f.getOrOpenBase(ctx)
 	if err != nil {
 		return nil, [32]byte{}, err
 	}
 
-	return fallback.StoreFile(ctx, path, opts)
+	return fallback.StoreFile(ctx, path, cfg, onFrameReady)
 }
 
 // openPeerFramedStream opens a GetBuildFrame stream, checks peer availability,

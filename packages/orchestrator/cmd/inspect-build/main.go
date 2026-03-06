@@ -446,7 +446,7 @@ func readVirtualOffset(ctx context.Context, storagePath, artifactName string, h 
 	ft := mapping.FrameTable
 	storageOff := int64(mapping.Offset) // This is BuildStorageOffset + shift
 
-	if !storage.IsCompressed(ft) {
+	if !ft.IsCompressed() {
 		// Uncompressed — just read directly
 		reader, _, _, err := cmdutil.OpenDataFile(ctx, storagePath, mapping.BuildId.String(), artifactName)
 		if err != nil {
@@ -469,7 +469,7 @@ func readVirtualOffset(ctx context.Context, storagePath, artifactName string, h 
 		return nil, "", fmt.Errorf("FrameFor(%#x): %w", storageOff, err)
 	}
 
-	compressedFile := storage.CompressedDataName(artifactName, ft.CompressionType)
+	compressedFile := storage.CompressedDataName(artifactName, ft.CompressionType())
 	compReader, _, _, err := cmdutil.OpenDataFile(ctx, storagePath, mapping.BuildId.String(), compressedFile)
 	if err != nil {
 		return nil, "", fmt.Errorf("open compressed %s: %w", mapping.BuildId, err)
@@ -482,7 +482,7 @@ func readVirtualOffset(ctx context.Context, storagePath, artifactName string, h 
 		return nil, "", fmt.Errorf("read compressed at C=%#x: %w", frameStart.C, err)
 	}
 
-	decompressed, err := storage.DecompressFrame(ft.CompressionType, compBuf, frameSize.U)
+	decompressed, err := storage.DecompressFrame(ft.CompressionType(), compBuf, frameSize.U)
 	if err != nil {
 		return nil, "", fmt.Errorf("decompress frame: %w", err)
 	}
@@ -631,14 +631,14 @@ func validateCompressedFrames(ctx context.Context, storagePath, artifactName str
 	builds := make(map[string]buildEntry)
 	for _, mapping := range compressedH.Mapping {
 		ft := mapping.FrameTable
-		if !storage.IsCompressed(ft) {
+		if !ft.IsCompressed() {
 			continue
 		}
 		bid := mapping.BuildId.String()
 		if bid == cmdutil.NilUUID {
 			continue
 		}
-		builds[bid] = buildEntry{ct: ft.CompressionType}
+		builds[bid] = buildEntry{ct: ft.CompressionType()}
 	}
 
 	if len(builds) == 0 {
@@ -673,7 +673,7 @@ func validateCompressedFrames(ctx context.Context, storagePath, artifactName str
 		seen := make(map[frameKey]bool)
 		for _, mapping := range buildH.Mapping {
 			ft := mapping.FrameTable
-			if !storage.IsCompressed(ft) || mapping.BuildId.String() != bid {
+			if !ft.IsCompressed() || mapping.BuildId.String() != bid {
 				continue
 			}
 			currentOffset := ft.StartAt

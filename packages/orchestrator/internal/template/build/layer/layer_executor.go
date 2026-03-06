@@ -36,6 +36,7 @@ type LayerExecutor struct {
 	index           cache.Index
 	uploadTracker   *UploadTracker
 	featureFlags    *featureflags.Client
+	compressConfig  storage.CompressConfig
 }
 
 func NewLayerExecutor(
@@ -49,6 +50,7 @@ func NewLayerExecutor(
 	index cache.Index,
 	uploadTracker *UploadTracker,
 	featureFlags *featureflags.Client,
+	compressConfig storage.CompressConfig,
 ) *LayerExecutor {
 	return &LayerExecutor{
 		BuildContext: buildContext,
@@ -63,6 +65,7 @@ func NewLayerExecutor(
 		index:           index,
 		uploadTracker:   uploadTracker,
 		featureFlags:    featureFlags,
+		compressConfig:  compressConfig,
 	}
 }
 
@@ -292,8 +295,8 @@ func (lb *LayerExecutor) PauseAndUpload(
 	completeUpload, waitForPreviousUploads := lb.uploadTracker.StartUpload()
 	buildID := meta.Template.BuildID
 
-	memfileOpts := storage.GetUploadOptions(ctx, lb.featureFlags, storage.FileTypeMemfile, storage.UseCaseBuild)
-	rootfsOpts := storage.GetUploadOptions(ctx, lb.featureFlags, storage.FileTypeRootfs, storage.UseCaseBuild)
+	memfileCfg := storage.ResolveCompressConfig(ctx, lb.compressConfig, lb.featureFlags, storage.FileTypeMemfile, storage.UseCaseBuild)
+	rootfsCfg := storage.ResolveCompressConfig(ctx, lb.compressConfig, lb.featureFlags, storage.FileTypeRootfs, storage.UseCaseBuild)
 	tb := sandbox.NewTemplateBuild(snapshot, lb.templateStorage, storage.TemplateFiles{BuildID: buildID}, lb.uploadTracker.Pending())
 
 	lb.UploadErrGroup.Go(func() error {
@@ -307,7 +310,7 @@ func (lb *LayerExecutor) PauseAndUpload(
 		defer completeUpload()
 
 		// Step 1: Upload everything except V4 headers (parallel across layers)
-		hasCompressed, err := tb.UploadExceptV4Headers(ctx, memfileOpts, rootfsOpts)
+		hasCompressed, err := tb.UploadExceptV4Headers(ctx, memfileCfg, rootfsCfg)
 		if err != nil {
 			return fmt.Errorf("error uploading data files: %w", err)
 		}

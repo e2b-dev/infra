@@ -34,9 +34,9 @@ func (ct CompressionType) String() string {
 	}
 }
 
-// parseCompressionType converts a string to CompressionType.
+// ParseCompressionType converts a string to CompressionType.
 // Returns CompressionNone for unrecognised values.
-func parseCompressionType(s string) CompressionType {
+func ParseCompressionType(s string) CompressionType {
 	switch s {
 	case "lz4":
 		return CompressionLZ4
@@ -80,14 +80,28 @@ func (r Range) String() string {
 }
 
 type FrameTable struct {
-	CompressionType CompressionType
+	compressionType CompressionType
 	StartAt         FrameOffset
 	Frames          []FrameSize
 }
 
+// NewFrameTable creates a FrameTable with the given compression type.
+func NewFrameTable(ct CompressionType) *FrameTable {
+	return &FrameTable{compressionType: ct}
+}
+
+// CompressionType returns the compression type. Nil-safe: returns CompressionNone for nil.
+func (ft *FrameTable) CompressionType() CompressionType {
+	if ft == nil {
+		return CompressionNone
+	}
+
+	return ft.compressionType
+}
+
 // IsCompressed reports whether ft is non-nil and has a compression type set.
-func IsCompressed(ft *FrameTable) bool {
-	return ft != nil && ft.CompressionType != CompressionNone
+func (ft *FrameTable) IsCompressed() bool {
+	return ft != nil && ft.compressionType != CompressionNone
 }
 
 // Range calls fn for each frame overlapping [start, start+length).
@@ -135,7 +149,7 @@ func (ft *FrameTable) Subset(r Range) (*FrameTable, error) {
 		return nil, fmt.Errorf("requested range starts before the beginning of the frame table")
 	}
 	newFrameTable := &FrameTable{
-		CompressionType: ft.CompressionType,
+		compressionType: ft.compressionType,
 	}
 
 	startSet := false
@@ -188,7 +202,7 @@ func (ft *FrameTable) FrameFor(offset int64) (starts FrameOffset, size FrameSize
 // GetFetchRange translates a U-space range to C-space using the frame table.
 func (ft *FrameTable) GetFetchRange(rangeU Range) (Range, error) {
 	fetchRange := rangeU
-	if ft != nil && ft.CompressionType != CompressionNone {
+	if ft.IsCompressed() {
 		start, size, err := ft.FrameFor(rangeU.Start)
 		if err != nil {
 			return Range{}, fmt.Errorf("getting frame for offset %#x: %w", rangeU.Start, err)

@@ -212,20 +212,21 @@ func rawEncode(data []byte, ct storage.CompressionType, level int) ([]byte, time
 func framedEncode(data []byte, ct storage.CompressionType, level, encWorkers, encConcurrency int) ([]byte, *storage.FrameTable, time.Duration) {
 	uploader := &storage.MemPartUploader{}
 
-	opts := &storage.FramedUploadOptions{
-		CompressionType:     ct,
-		CompressionLevel:    level,
-		EncoderConcurrency:  encConcurrency,
-		FrameEncodeWorkers:  encWorkers,
-		FrameSize:           storage.DefaultCompressFrameSize,
+	cfg := &storage.CompressConfig{
+		Enabled:             true,
+		Type:                ct.String(),
+		Level:               level,
+		FrameSizeKB:         storage.DefaultCompressFrameSize / 1024,
 		FramesPerUploadPart: 25,
+		FrameEncodeWorkers:  encWorkers,
+		EncoderConcurrency:  encConcurrency,
 	}
 
 	ctx := context.Background()
 	reader := bytes.NewReader(data)
 
 	start := time.Now()
-	ft, _, err := storage.CompressStream(ctx, reader, opts, uploader)
+	ft, _, err := storage.CompressStream(ctx, reader, cfg, nil, uploader)
 	elapsed := time.Since(start)
 
 	if err != nil {
@@ -255,7 +256,7 @@ func framedDecode(compressed []byte, ft *storage.FrameTable) time.Duration {
 	var cOffset int64
 	for _, frame := range ft.Frames {
 		frameData := compressed[cOffset : cOffset+int64(frame.C)]
-		if _, err := storage.DecompressFrame(ft.CompressionType, frameData, frame.U); err != nil {
+		if _, err := storage.DecompressFrame(ft.CompressionType(), frameData, frame.U); err != nil {
 			log.Fatalf("framed decode failed: %s", err)
 		}
 		cOffset += int64(frame.C)

@@ -149,7 +149,7 @@ func (c *Chunker) ReadBlock(ctx context.Context, b []byte, off int64, ft *storag
 // GetBlock returns a reference to the mmap cache at the given uncompressed
 // offset. On cache miss, fetches from storage into the cache first.
 func (c *Chunker) GetBlock(ctx context.Context, off, length int64, ft *storage.FrameTable) ([]byte, error) {
-	compressed := storage.IsCompressed(ft)
+	compressed := ft.IsCompressed()
 	attrs := precomputedGetFrameAttrs(compressed)
 	timer := c.metrics.BlocksTimerFactory.Begin(attrs.begin)
 
@@ -195,7 +195,7 @@ func (c *Chunker) fetch(ctx context.Context, off int64, ft *storage.FrameTable) 
 		chunkLen int64
 	)
 
-	if storage.IsCompressed(ft) {
+	if ft.IsCompressed() {
 		frameStarts, frameSize, err := ft.FrameFor(off)
 		if err != nil {
 			return fmt.Errorf("failed to get frame for offset %#x: %w", off, err)
@@ -242,7 +242,7 @@ func (c *Chunker) runFetch(ctx context.Context, session *fetchSession, offsetU i
 	}
 	defer releaseLock()
 
-	compressed := storage.IsCompressed(ft)
+	compressed := ft.IsCompressed()
 	attrs := precomputedGetFrameAttrs(compressed)
 	timer := c.metrics.RemoteReadsTimerFactory.Begin(attrs.begin)
 

@@ -270,6 +270,7 @@ func runBuild(
 		index,
 		uploadTracker,
 		builder.featureFlags,
+		builder.config.CompressConfig,
 	)
 
 	baseBuilder := base.New(

@@ -86,9 +86,10 @@ type FramedFile interface {
 	// Size returns the uncompressed size of the object.
 	Size(ctx context.Context) (int64, error)
 
-	// StoreFile uploads a local file. When opts is non-nil, compresses and
+	// StoreFile uploads a local file. When cfg is non-nil, compresses and
 	// returns the FrameTable + SHA-256 checksum of compressed data.
-	StoreFile(ctx context.Context, path string, opts *FramedUploadOptions) (*FrameTable, [32]byte, error)
+	// onFrameReady is an optional callback invoked for each compressed frame.
+	StoreFile(ctx context.Context, path string, cfg *CompressConfig, onFrameReady OnFrameReady) (*FrameTable, [32]byte, error)
 }
 
 func GetTemplateStorageProvider(ctx context.Context, limiter *limit.Limiter) (StorageProvider, error) {
@@ -177,7 +178,7 @@ func ReadFrame(ctx context.Context, rangeRead RangeReadFunc, storageDetails stri
 		fetchSize   int
 	)
 
-	compressed := IsCompressed(frameTable)
+	compressed := frameTable.IsCompressed()
 	if !compressed {
 		fetchOffset = offsetU
 		fetchSize = len(buf)
@@ -212,7 +213,7 @@ func ReadFrame(ctx context.Context, rangeRead RangeReadFunc, storageDetails stri
 
 	_, frameSize, _ := frameTable.FrameFor(offsetU) // already validated above
 
-	switch frameTable.CompressionType {
+	switch frameTable.CompressionType() {
 	case CompressionLZ4:
 		cbuf := make([]byte, frameSize.C)
 
@@ -244,7 +245,7 @@ func ReadFrame(ctx context.Context, rangeRead RangeReadFunc, storageDetails stri
 		return readInto(dec, buf, int(frameSize.U), fetchOffset, readSize, onRead)
 
 	default:
-		return Range{}, fmt.Errorf("unsupported compression type: %s", frameTable.CompressionType)
+		return Range{}, fmt.Errorf("unsupported compression type: %s", frameTable.CompressionType())
 	}
 }
 

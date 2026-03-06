@@ -73,7 +73,7 @@ func decompressAll(ft *FrameTable, compressed []byte) ([]byte, error) {
 			return nil, fmt.Errorf("frame %d: compressed data truncated (need %d, have %d)", i, cOff+int64(fs.C), len(compressed))
 		}
 
-		frame, err := DecompressFrame(ft.CompressionType, compressed[cOff:cOff+int64(fs.C)], fs.U)
+		frame, err := DecompressFrame(ft.CompressionType(), compressed[cOff:cOff+int64(fs.C)], fs.U)
 		if err != nil {
 			return nil, fmt.Errorf("frame %d: %w", i, err)
 		}
@@ -84,19 +84,20 @@ func decompressAll(ft *FrameTable, compressed []byte) ([]byte, error) {
 	return result, nil
 }
 
-// defaultOpts returns FramedUploadOptions with the given overrides applied.
-func defaultOpts(ct CompressionType, workers, frameSize int) *FramedUploadOptions {
+// defaultCfg returns a CompressConfig with the given overrides applied.
+func defaultCfg(ct CompressionType, workers, frameSize int) *CompressConfig {
 	level := 2 // zstd default
 	if ct == CompressionLZ4 {
 		level = 0
 	}
 
-	return &FramedUploadOptions{
-		CompressionType:     ct,
-		CompressionLevel:    level,
+	return &CompressConfig{
+		Enabled:             true,
+		Type:                ct.String(),
+		Level:               level,
 		EncoderConcurrency:  1,
 		FrameEncodeWorkers:  workers,
-		FrameSize:           frameSize,
+		FrameSizeKB:         frameSize / 1024,
 		FramesPerUploadPart: 25,
 	}
 }
@@ -136,12 +137,13 @@ func TestCompressStreamRoundTrip(t *testing.T) {
 			}
 
 			up := &MemPartUploader{}
-			opts := defaultOpts(tc.codec, tc.workers, tc.frameSize)
+			cfg := defaultCfg(tc.codec, tc.workers, tc.frameSize)
 
 			ft, checksum, err := CompressStream(
 				context.Background(),
 				bytes.NewReader(original),
-				opts,
+				cfg,
+				nil,
 				up,
 			)
 			require.NoError(t, err)
@@ -185,15 +187,15 @@ func TestCompressStreamOnFrameReady(t *testing.T) {
 	}
 
 	var records []record
-	opts := defaultOpts(CompressionZstd, 4, 2*megabyte)
-	opts.OnFrameReady = func(offset FrameOffset, size FrameSize, d []byte) error {
+	cfg := defaultCfg(CompressionZstd, 4, 2*megabyte)
+	onFrameReady := func(offset FrameOffset, size FrameSize, d []byte) error {
 		records = append(records, record{offset: offset, size: size, dataLen: len(d)})
 
 		return nil
 	}
 
 	up := &MemPartUploader{}
-	ft, _, err := CompressStream(context.Background(), bytes.NewReader(data), opts, up)
+	ft, _, err := CompressStream(context.Background(), bytes.NewReader(data), cfg, onFrameReady, up)
 	require.NoError(t, err)
 
 	require.Len(t, records, len(ft.Frames))
@@ -224,9 +226,9 @@ func TestCompressStreamContextCancel(t *testing.T) {
 	}()
 
 	up := &MemPartUploader{}
-	opts := defaultOpts(CompressionZstd, 4, 2*megabyte)
+	cfg := defaultCfg(CompressionZstd, 4, 2*megabyte)
 
-	_, _, err := CompressStream(ctx, bytes.NewReader(data), opts, up)
+	_, _, err := CompressStream(ctx, bytes.NewReader(data), cfg, nil, up)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, context.Canceled)
 }
@@ -261,10 +263,10 @@ func TestCompressStreamPartCount(t *testing.T) {
 
 			data := generateSemiRandomData(tc.dataSize)
 			up := &MemPartUploader{}
-			opts := defaultOpts(CompressionZstd, 4, tc.frameSize)
-			opts.FramesPerUploadPart = tc.framesPerPart
+			cfg := defaultCfg(CompressionZstd, 4, tc.frameSize)
+			cfg.FramesPerUploadPart = tc.framesPerPart
 
-			_, _, err := CompressStream(context.Background(), bytes.NewReader(data), opts, up)
+			_, _, err := CompressStream(context.Background(), bytes.NewReader(data), cfg, nil, up)
 			require.NoError(t, err)
 
 			assert.Len(t, up.parts, tc.expectedParts, "part count")
@@ -303,13 +305,13 @@ func TestCompressStreamRace(t *testing.T) {
 
 		eg.Go(func() error {
 			up := &MemPartUploader{}
-			opts := defaultOpts(codec, workers, frameSize)
-			opts.FramesPerUploadPart = framesPerPart
+			cfg := defaultCfg(codec, workers, frameSize)
+			cfg.FramesPerUploadPart = framesPerPart
 			if codec == CompressionZstd {
-				opts.EncoderConcurrency = 4 // multi-threaded zstd encoders for more contention
+				cfg.EncoderConcurrency = 4 // multi-threaded zstd encoders for more contention
 			}
 
-			ft, checksum, err := CompressStream(ctx, bytes.NewReader(data), opts, up)
+			ft, checksum, err := CompressStream(ctx, bytes.NewReader(data), cfg, nil, up)
 			if err != nil {
 				return fmt.Errorf("stream %d: compress: %w", i, err)
 			}
@@ -355,14 +357,15 @@ func BenchmarkCompressStream(b *testing.B) {
 		{"w4_100MBs", 4, 100 * megabyte},
 	}
 
-	for _, cfg := range configs {
-		b.Run(cfg.name, func(b *testing.B) {
-			opts := &FramedUploadOptions{
-				CompressionType:     CompressionZstd,
-				CompressionLevel:    2,
+	for _, bcfg := range configs {
+		b.Run(bcfg.name, func(b *testing.B) {
+			compCfg := &CompressConfig{
+				Enabled:             true,
+				Type:                "zstd",
+				Level:               2,
 				EncoderConcurrency:  1,
-				FrameEncodeWorkers:  cfg.workers,
-				FrameSize:           2 * megabyte,
+				FrameEncodeWorkers:  bcfg.workers,
+				FrameSizeKB:         2 * 1024,
 				FramesPerUploadPart: 25,
 			}
 
@@ -372,12 +375,13 @@ func BenchmarkCompressStream(b *testing.B) {
 			b.SetBytes(int64(dataSize))
 
 			for range b.N {
-				up := &ThrottledPartUploader{bandwidth: cfg.bandwidth}
+				up := &ThrottledPartUploader{bandwidth: bcfg.bandwidth}
 
 				ft, _, err := CompressStream(
 					context.Background(),
 					bytes.NewReader(data),
-					opts,
+					compCfg,
+					nil,
 					up,
 				)
 				if err != nil {
@@ -428,12 +432,13 @@ func BenchmarkStoreFile(b *testing.B) {
 		for _, workers := range workerCounts {
 			name := fmt.Sprintf("%s/w%d", codec.name, workers)
 			b.Run(name, func(b *testing.B) {
-				opts := &FramedUploadOptions{
-					CompressionType:     codec.codec,
-					CompressionLevel:    codec.level,
+				compCfg := &CompressConfig{
+					Enabled:             true,
+					Type:                codec.codec.String(),
+					Level:               codec.level,
 					EncoderConcurrency:  1,
 					FrameEncodeWorkers:  workers,
-					FrameSize:           2 * megabyte,
+					FrameSizeKB:         2 * 1024,
 					FramesPerUploadPart: 25,
 				}
 
@@ -445,7 +450,7 @@ func BenchmarkStoreFile(b *testing.B) {
 					outPath := filepath.Join(outDir, "output.dat")
 					obj := &fsObject{path: outPath}
 
-					ft, _, err := obj.StoreFile(b.Context(), inputPath, opts)
+					ft, _, err := obj.StoreFile(b.Context(), inputPath, compCfg, nil)
 					if err != nil {
 						b.Fatal(err)
 					}

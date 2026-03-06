@@ -556,7 +556,7 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		defer cancel()
 		defer res.completeUpload(uploadCtx)
 
-		if err := res.uploadSnapshot(uploadCtx, s.persistence, s.featureFlags); err != nil {
+		if err := res.uploadSnapshot(uploadCtx, s.persistence, s.config.CompressConfig, s.featureFlags); err != nil {
 			telemetry.ReportCriticalError(ctx, "error uploading snapshot for checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
 
 			s.sandboxes.Remove(resumedSbx.Runtime.SandboxID)
@@ -614,12 +614,12 @@ type snapshotResult struct {
 }
 
 // uploadSnapshot uploads snapshot files to GCS using TemplateBuild.
-func (r *snapshotResult) uploadSnapshot(ctx context.Context, persistence storage.StorageProvider, flags *featureflags.Client) error {
-	memfileOpts := storage.GetUploadOptions(ctx, flags, storage.FileTypeMemfile, storage.UseCasePause)
-	rootfsOpts := storage.GetUploadOptions(ctx, flags, storage.FileTypeRootfs, storage.UseCasePause)
+func (r *snapshotResult) uploadSnapshot(ctx context.Context, persistence storage.StorageProvider, baseCompressCfg storage.CompressConfig, flags *featureflags.Client) error {
+	memfileCfg := storage.ResolveCompressConfig(ctx, baseCompressCfg, flags, storage.FileTypeMemfile, storage.UseCasePause)
+	rootfsCfg := storage.ResolveCompressConfig(ctx, baseCompressCfg, flags, storage.FileTypeRootfs, storage.UseCasePause)
 	tb := sandbox.NewTemplateBuild(r.snapshot, persistence, r.templateFiles, nil)
 
-	return tb.UploadAtOnce(ctx, memfileOpts, rootfsOpts)
+	return tb.UploadAtOnce(ctx, memfileCfg, rootfsCfg)
 }
 
 // snapshotAndCacheSandbox creates a snapshot of a sandbox and adds it to the local
@@ -730,7 +730,7 @@ func (s *Server) uploadSnapshotAsync(ctx context.Context, sbx *sandbox.Sandbox, 
 		defer cancel()
 		defer res.completeUpload(ctx)
 
-		if err := res.uploadSnapshot(ctx, s.persistence, s.featureFlags); err != nil {
+		if err := res.uploadSnapshot(ctx, s.persistence, s.config.CompressConfig, s.featureFlags); err != nil {
 			sbxlogger.I(sbx).Error(ctx, "error uploading snapshot files", zap.Error(err))
 
 			return

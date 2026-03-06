@@ -108,8 +108,8 @@ func (b *StorageDiff) createChunker(ctx context.Context) (*block.Chunker, error)
 // Otherwise (V3/legacy), falls back to obj.Size(ctx) which makes a network call.
 func (b *StorageDiff) openDataFile(ctx context.Context) (storage.FramedFile, int64, error) {
 	path := b.storagePath
-	if storage.IsCompressed(b.ft) {
-		path = storage.CompressedPath(path, b.ft.CompressionType)
+	if b.ft.IsCompressed() {
+		path = storage.CompressedPath(path, b.ft.CompressionType())
 	}
 
 	obj, err := b.persistence.OpenFramedFile(ctx, path)

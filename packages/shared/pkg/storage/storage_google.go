@@ -320,9 +320,9 @@ func (o *gcpObject) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
 	return n, nil
 }
 
-func (o *gcpObject) StoreFile(ctx context.Context, path string, opts *FramedUploadOptions) (_ *FrameTable, _ [32]byte, e error) {
-	if opts != nil && opts.CompressionType != CompressionNone {
-		return o.storeFileCompressed(ctx, path, opts)
+func (o *gcpObject) StoreFile(ctx context.Context, path string, cfg *CompressConfig, onFrameReady OnFrameReady) (_ *FrameTable, _ [32]byte, e error) {
+	if cfg.IsEnabled() {
+		return o.storeFileCompressed(ctx, path, cfg, onFrameReady)
 	}
 
 	ctx, span := tracer.Start(ctx, "write to gcp from file system")
@@ -427,7 +427,7 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, opts *FramedUplo
 	return nil, [32]byte{}, e
 }
 
-func (o *gcpObject) storeFileCompressed(ctx context.Context, localPath string, opts *FramedUploadOptions) (*FrameTable, [32]byte, error) {
+func (o *gcpObject) storeFileCompressed(ctx context.Context, localPath string, cfg *CompressConfig, onFrameReady OnFrameReady) (*FrameTable, [32]byte, error) {
 	file, err := os.Open(localPath)
 	if err != nil {
 		return nil, [32]byte{}, fmt.Errorf("failed to open local file %s: %w", localPath, err)
@@ -452,7 +452,7 @@ func (o *gcpObject) storeFileCompressed(ctx context.Context, localPath string, o
 		return nil, [32]byte{}, fmt.Errorf("failed to create multipart uploader: %w", err)
 	}
 
-	return CompressStream(ctx, file, opts, uploader)
+	return CompressStream(ctx, file, cfg, onFrameReady, uploader)
 }
 
 type gcpServiceToken struct {

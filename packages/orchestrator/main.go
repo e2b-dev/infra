@@ -286,7 +286,7 @@ func run(config cfg.Config) (success bool) {
 
 	featureFlags.SetDeploymentName(config.DomainName)
 
-	storage.InitDecoders(ctx, featureFlags)
+	storage.SetDecoderConcurrency(config.CompressConfig.DecoderConcurrency)
 
 	// gcp concurrent upload limiter
 	limiter, err := limit.New(ctx, featureFlags)

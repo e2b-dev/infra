@@ -374,11 +374,11 @@ func mergeFrameTables(ft1, ft2 *storage.FrameTable) *storage.FrameTable {
 		copy(newFrames, ft1.Frames)
 		newFrames = append(newFrames, ft2.Frames[startIdx:]...)
 
-		return &storage.FrameTable{
-			CompressionType: ft1.CompressionType,
-			StartAt:         ft1.StartAt,
-			Frames:          newFrames,
-		}
+		result := storage.NewFrameTable(ft1.CompressionType())
+		result.StartAt = ft1.StartAt
+		result.Frames = newFrames
+
+		return result
 	}
 
 	// All of ft2's frames were already covered by ft1

@@ -69,7 +69,7 @@ func TestCachedFramedFile_WriteFromFileSystem(t *testing.T) {
 
 		inner := NewMockFramedFile(t)
 		inner.EXPECT().
-			StoreFile(mock.Anything, mock.Anything, mock.Anything).
+			StoreFile(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(nil, [32]byte{}, nil)
 
 		featureFlags := NewMockFeatureFlagsClient(t)
@@ -79,7 +79,7 @@ func TestCachedFramedFile_WriteFromFileSystem(t *testing.T) {
 		c := cachedFramedFile{path: cacheDir, inner: inner, chunkSize: 1024, flags: featureFlags, tracer: noopTracer}
 
 		// write temp file
-		_, _, err = c.StoreFile(t.Context(), tempFilename, nil)
+		_, _, err = c.StoreFile(t.Context(), tempFilename, nil, nil)
 		require.NoError(t, err)
 
 		// file is written asynchronously, wait for it to finish

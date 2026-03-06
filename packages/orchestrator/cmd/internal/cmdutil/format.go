@@ -65,7 +65,7 @@ func FormatMappingWithCompression(mapping *header.BuildMap, blockSize uint64) st
 	ratio := float64(totalU) / float64(totalC)
 
 	return fmt.Sprintf("%s [%s: %d frames, U=%#x C=%#x ratio=%s]",
-		base, ft.CompressionType.String(), len(ft.Frames), totalU, totalC, FormatRatio(ratio))
+		base, ft.CompressionType().String(), len(ft.Frames), totalU, totalC, FormatRatio(ratio))
 }
 
 // PrintCompressionSummary prints compression statistics for a header.
@@ -93,7 +93,7 @@ func PrintCompressionSummary(h *header.Header) {
 		}
 		stats := buildCompressionStats[buildID]
 
-		if mapping.FrameTable != nil && mapping.FrameTable.CompressionType != storage.CompressionNone {
+		if mapping.FrameTable.IsCompressed() {
 			compressedMappings++
 			stats.compressed = true
 
