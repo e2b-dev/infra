@@ -13,6 +13,7 @@ locals {
     FC_KERNELS_BUCKET_NAME      = var.fc_kernels_bucket_name
     FC_VERSIONS_BUCKET_NAME     = var.fc_versions_bucket_name
     FC_ENV_PIPELINE_BUCKET_NAME = var.fc_env_pipeline_bucket_name
+    NODE_LABELS                 = join(",", var.node_labels)
     BASE_HUGEPAGES_PERCENTAGE   = var.base_hugepages_percentage
 
     AWS_ECR_ACCOUNT_REPOSITORY_DOMAIN = var.aws_ecr_account_repository_domain

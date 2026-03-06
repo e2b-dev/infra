@@ -238,7 +238,7 @@ done
 echo "- Flushing DNS caches"
 resolvectl flush-caches
 
-/opt/nomad/bin/run-nomad.sh --client --consul-token "${CONSUL_TOKEN}" --node-pool "${NODE_POOL}" &
+/opt/nomad/bin/run-nomad.sh --client --consul-token "${CONSUL_TOKEN}" --node-pool "${NODE_POOL}" --node-labels "${NODE_LABELS}" &
 
 # Add alias for ssh-ing to sbx
 echo '_sbx_ssh() {

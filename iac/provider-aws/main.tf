@@ -139,6 +139,7 @@ module "cluster" {
   build_machine_type                 = var.build_server_machine_type
   build_server_nested_virtualization = var.build_server_nested_virtualization
   build_security_group_ids           = [aws_security_group.cluster_node.id]
+  build_node_labels                  = var.build_node_labels
 
   client_node_pool_name               = local.client_pool_name
   client_cluster_size                 = var.client_cluster_size
@@ -146,6 +147,7 @@ module "cluster" {
   client_machine_type                 = var.client_server_machine_type
   client_security_group_ids           = [aws_security_group.cluster_node.id]
   client_server_nested_virtualization = var.client_server_nested_virtualization
+  client_node_labels                  = var.client_node_labels
 
   clickhouse_az                    = "${data.aws_region.current.name}a"
   clickhouse_cluster_size          = var.clickhouse_cluster_size
