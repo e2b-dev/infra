@@ -351,7 +351,7 @@ func Deserialize(data []byte) (*Header, error) {
 	blockData := data[metadataSize:]
 
 	if metadata.Version >= 4 {
-		blockData, err = storage.DecompressLZ4(blockData, storage.MaxCompressedHeaderSize)
+		blockData, err = storage.DecompressLZ4(blockData, make([]byte, storage.MaxCompressedHeaderSize))
 		if err != nil {
 			return nil, fmt.Errorf("failed to LZ4-decompress v4 header block: %w", err)
 		}

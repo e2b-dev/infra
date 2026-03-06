@@ -296,11 +296,11 @@ func BenchmarkColdConcurrent(b *testing.B) {
 	for ci, codec := range benchCodecs {
 		up := &storage.MemPartUploader{}
 		ft, _, err := storage.CompressStream(context.Background(), bytes.NewReader(data), &storage.FramedUploadOptions{
-			CompressionType:    codec.compressionType,
-			CompressionLevel:   codec.level,
-			EncoderConcurrency: 1,
-			FrameEncodeWorkers:      1,
-			FrameSize:          codec.frameSize,
+			CompressionType:     codec.compressionType,
+			CompressionLevel:    codec.level,
+			EncoderConcurrency:  1,
+			FrameEncodeWorkers:  1,
+			FrameSize:           codec.frameSize,
 			FramesPerUploadPart: 25,
 		}, up)
 		require.NoError(b, err)

@@ -327,7 +327,7 @@ func TestCompressDecompressLZ4_RoundTrip(t *testing.T) {
 	compressed, err := storage.CompressLZ4(data)
 	require.NoError(t, err)
 
-	decompressed, err := storage.DecompressLZ4(compressed, storage.MaxCompressedHeaderSize)
+	decompressed, err := storage.DecompressLZ4(compressed, make([]byte, storage.MaxCompressedHeaderSize))
 	require.NoError(t, err)
 	assert.Equal(t, data, decompressed)
 }

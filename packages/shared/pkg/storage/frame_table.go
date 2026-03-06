@@ -1,9 +1,7 @@
 package storage
 
 import (
-	"bytes"
 	"fmt"
-	"io"
 )
 
 type CompressionType byte
@@ -207,44 +205,4 @@ func (ft *FrameTable) GetFetchRange(rangeU Range) (Range, error) {
 	}
 
 	return fetchRange, nil
-}
-
-// DecompressReader decompresses from r into a new buffer of uncompressedSize.
-func DecompressReader(ct CompressionType, r io.Reader, uncompressedSize int) ([]byte, error) {
-	buf := make([]byte, uncompressedSize)
-
-	switch ct {
-	case CompressionZstd:
-		dec, err := getZstdDecoder(r)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create zstd reader: %w", err)
-		}
-		defer putZstdDecoder(dec)
-
-		n, err := io.ReadFull(dec, buf)
-		if err != nil {
-			return nil, fmt.Errorf("zstd decompress: %w", err)
-		}
-
-		return buf[:n], nil
-
-	case CompressionLZ4:
-		rd := getLZ4Reader(r)
-		defer putLZ4Reader(rd)
-
-		n, err := io.ReadFull(rd, buf)
-		if err != nil {
-			return nil, fmt.Errorf("lz4 decompress: %w", err)
-		}
-
-		return buf[:n], nil
-
-	default:
-		return nil, fmt.Errorf("unsupported compression type: %d", ct)
-	}
-}
-
-// DecompressFrame decompresses an in-memory compressed byte slice.
-func DecompressFrame(ct CompressionType, compressed []byte, uncompressedSize int32) ([]byte, error) {
-	return DecompressReader(ct, bytes.NewReader(compressed), int(uncompressedSize))
 }

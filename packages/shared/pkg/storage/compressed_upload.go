@@ -17,6 +17,29 @@ import (
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 )
 
+// MaxCompressedHeaderSize is the maximum allowed decompressed header size (64 MiB).
+// Headers are typically a few hundred KiB; this is a safety bound.
+const MaxCompressedHeaderSize = 64 << 20
+
+// CompressLZ4 compresses data using LZ4 block compression.
+// Returns an error if the data is incompressible (CompressBlock returns 0),
+// since callers store the result as ".lz4" and DecompressLZ4 would fail on raw data.
+func CompressLZ4(data []byte) ([]byte, error) {
+	bound := lz4.CompressBlockBound(len(data))
+	dst := make([]byte, bound)
+
+	n, err := lz4.CompressBlock(data, dst, nil)
+	if err != nil {
+		return nil, fmt.Errorf("lz4 compress: %w", err)
+	}
+
+	if n == 0 {
+		return nil, fmt.Errorf("lz4 compress: data is incompressible (%d bytes)", len(data))
+	}
+
+	return dst[:n], nil
+}
+
 const (
 	defaultLZ4CompressionLevel = 0  // lz4 compression level (0=fast/default, higher=better ratio)
 	defaultEncoderConcurrency  = 0  // use default compression concurrency settings
@@ -201,24 +224,25 @@ func (z *zstdFrameCompressor) release() {
 	z.pool.Put(z)
 }
 
-// lz4FrameCompressor uses streaming LZ4 (no EncodeAll equivalent in pierrec/lz4).
+// lz4FrameCompressor uses raw LZ4 block compression (no frame headers/checksums).
 type lz4FrameCompressor struct {
-	level       int
-	concurrency int
+	pool *sync.Pool
 }
 
 func (l *lz4FrameCompressor) Compress(src []byte) ([]byte, error) {
-	var buf bytes.Buffer
-	buf.Grow(len(src))
-	enc := newLZ4Encoder(&buf, l.level, l.concurrency)
-	if _, err := enc.Write(src); err != nil {
-		return nil, fmt.Errorf("lz4 write: %w", err)
-	}
-	if err := enc.Close(); err != nil {
-		return nil, fmt.Errorf("lz4 close: %w", err)
+	// CompressBlockBound guarantees enough space — n == 0 cannot happen.
+	dst := make([]byte, lz4.CompressBlockBound(len(src)))
+
+	n, err := lz4.CompressBlock(src, dst, nil)
+	if err != nil {
+		return nil, fmt.Errorf("lz4 block compress: %w", err)
 	}
 
-	return buf.Bytes(), nil
+	return dst[:n], nil
+}
+
+func (l *lz4FrameCompressor) release() {
+	l.pool.Put(l)
 }
 
 // newCompressorPool returns a function that borrows a frameCompressor from a pool
@@ -251,11 +275,19 @@ func newCompressorPool(opts *FramedUploadOptions) (borrow func() (frameCompresso
 				}
 			}
 	default:
-		// LZ4 (and any future codecs): lightweight, no pooling needed.
-		c := &lz4FrameCompressor{level: opts.CompressionLevel, concurrency: opts.EncoderConcurrency}
+		// LZ4: CompressBlock uses internal hash tables, not goroutine-safe — pool them.
+		pool := &sync.Pool{}
+		pool.New = func() any {
+			return &lz4FrameCompressor{pool: pool}
+		}
 
-		return func() (frameCompressor, error) { return c, nil },
-			func(frameCompressor) {}
+		return func() (frameCompressor, error) {
+				return pool.Get().(*lz4FrameCompressor), nil
+			}, func(c frameCompressor) {
+				if l, ok := c.(*lz4FrameCompressor); ok {
+					l.release()
+				}
+			}
 	}
 }
 
@@ -309,7 +341,7 @@ func CompressStream(ctx context.Context, in io.Reader, opts *FramedUploadOptions
 		compressEG.SetLimit(workers)
 		eof := false
 
-		for i := 0; i < framesPerPart; i++ {
+		for i := range framesPerPart {
 			if err := ctx.Err(); err != nil {
 				return nil, [32]byte{}, err
 			}
@@ -363,7 +395,7 @@ func CompressStream(ctx context.Context, in io.Reader, opts *FramedUploadOptions
 
 		// --- Emit in order, call OnFrameReady ---
 		partData := make([][]byte, batchLen)
-		for i := 0; i < batchLen; i++ {
+		for i := range batchLen {
 			fs := FrameSize{U: int32(sizes[i]), C: int32(len(compressed[i]))}
 			frameTable.Frames = append(frameTable.Frames, fs)
 
@@ -426,17 +458,13 @@ func newZstdEncoder(concurrency int, windowSize int, compressionLevel zstd.Encod
 func CompressRawNoFrames(ct CompressionType, level int, data []byte) ([]byte, error) {
 	switch ct {
 	case CompressionLZ4:
-		var buf bytes.Buffer
-		buf.Grow(len(data))
-		w := newLZ4Encoder(&buf, level, 0)
-		if _, err := w.Write(data); err != nil {
-			return nil, fmt.Errorf("lz4 compress: %w", err)
-		}
-		if err := w.Close(); err != nil {
-			return nil, fmt.Errorf("lz4 close: %w", err)
+		dst := make([]byte, lz4.CompressBlockBound(len(data)))
+		n, err := lz4.CompressBlock(data, dst, nil)
+		if err != nil {
+			return nil, fmt.Errorf("lz4 block compress: %w", err)
 		}
 
-		return buf.Bytes(), nil
+		return dst[:n], nil
 
 	case CompressionZstd:
 		enc, err := newZstdEncoder(0, DefaultCompressFrameSize, zstd.EncoderLevel(level))
@@ -450,21 +478,4 @@ func CompressRawNoFrames(ct CompressionType, level int, data []byte) ([]byte, er
 	default:
 		return nil, fmt.Errorf("unsupported compression type: %s", ct)
 	}
-}
-
-func newLZ4Encoder(out io.Writer, level, concurrency int) io.WriteCloser {
-	w := lz4.NewWriter(out)
-	if concurrency <= 0 {
-		concurrency = 1
-	}
-	opts := []lz4.Option{
-		lz4.ConcurrencyOption(concurrency),
-		lz4.BlockChecksumOption(true),
-	}
-	if level > 0 {
-		opts = append(opts, lz4.CompressionLevelOption(lz4.CompressionLevel(1<<(8+level))))
-	}
-	_ = w.Apply(opts...)
-
-	return w
 }

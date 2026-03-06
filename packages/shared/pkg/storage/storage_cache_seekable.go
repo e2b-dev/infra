@@ -138,7 +138,10 @@ func (c *cachedFramedFile) getFrameCompressed(ctx context.Context, offsetU int64
 	// Cache miss: fetch compressed data from inner.
 	compressedBuf := make([]byte, frameSize.C)
 
-	if decompress && onRead != nil {
+	// Progressive streaming path: only useful for zstd where we can stream
+	// through the decoder. LZ4 uses block decompression (all-at-once), so
+	// progressive piping adds overhead without benefit.
+	if decompress && onRead != nil && frameTable.CompressionType == CompressionZstd {
 		r, err := c.fetchAndDecompressProgressive(ctx, offsetU, frameTable, compressedBuf, buf, readSize, onRead, frameSize, framePath)
 		if err != nil {
 			timer.Failure(ctx, int64(r.Length))
@@ -152,7 +155,7 @@ func (c *cachedFramedFile) getFrameCompressed(ctx context.Context, offsetU int64
 		return r, nil
 	}
 
-	// Simple (non-progressive) path: download all compressed bytes first.
+	// Simple path: download all compressed bytes first, then decompress.
 	_, err = c.inner.GetFrame(ctx, offsetU, frameTable, false, compressedBuf, readSize, nil)
 	if err != nil {
 		timer.Failure(ctx, 0)
@@ -195,7 +198,7 @@ func (c *cachedFramedFile) getFrameCompressed(ctx context.Context, offsetU int64
 // Architecture:
 //
 //	goroutine:  inner.GetFrame(decompress=false) → compressedBuf → pw.Write
-//	main:       pr → zstd/lz4 decoder → readProgressive → buf + onRead
+//	main:       pr → zstd decoder → readInto → buf + onRead
 func (c *cachedFramedFile) fetchAndDecompressProgressive(
 	ctx context.Context,
 	offsetU int64,

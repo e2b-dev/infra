@@ -170,76 +170,102 @@ func LoadBlob(ctx context.Context, s StorageProvider, path string) ([]byte, erro
 // Exported for use by CLI tools (inspect-build, compress-build) and tests that
 // need to read frames outside the normal StorageProvider stack.
 func ReadFrame(ctx context.Context, rangeRead RangeReadFunc, storageDetails string, offsetU int64, frameTable *FrameTable, decompress bool, buf []byte, readSize int64, onRead func(totalWritten int64)) (Range, error) {
-	// Handle uncompressed data (nil frameTable) - read directly without frame translation
-	if !IsCompressed(frameTable) {
-		return getFrameUncompressed(ctx, rangeRead, storageDetails, offsetU, buf, readSize, onRead)
+	// Resolve fetch coordinates: for uncompressed data (nil frameTable) they
+	// map 1:1; for compressed data we translate U → C via the frame table.
+	var (
+		fetchOffset int64
+		fetchSize   int
+	)
+
+	compressed := IsCompressed(frameTable)
+	if !compressed {
+		fetchOffset = offsetU
+		fetchSize = len(buf)
+	} else {
+		frameStart, frameSize, err := frameTable.FrameFor(offsetU)
+		if err != nil {
+			return Range{}, fmt.Errorf("get frame for offset %#x, %s: %w", offsetU, storageDetails, err)
+		}
+
+		expectedSize := int(frameSize.C)
+		if decompress {
+			expectedSize = int(frameSize.U)
+		}
+		if len(buf) < expectedSize {
+			return Range{}, fmt.Errorf("buffer too small: got %d bytes, need %d bytes for frame", len(buf), expectedSize)
+		}
+
+		fetchOffset = frameStart.C
+		fetchSize = int(frameSize.C)
 	}
 
-	// Get the frame info: translate U offset -> C offset for fetching
-	frameStart, frameSize, err := frameTable.FrameFor(offsetU)
+	respBody, err := rangeRead(ctx, fetchOffset, fetchSize)
 	if err != nil {
-		return Range{}, fmt.Errorf("get frame for offset %#x, %s: %w", offsetU, storageDetails, err)
-	}
-
-	// Validate buffer size
-	expectedSize := int(frameSize.C)
-	if decompress {
-		expectedSize = int(frameSize.U)
-	}
-	if len(buf) < expectedSize {
-		return Range{}, fmt.Errorf("buffer too small: got %d bytes, need %d bytes for frame", len(buf), expectedSize)
-	}
-
-	// Fetch the compressed data from storage
-	respBody, err := rangeRead(ctx, frameStart.C, int(frameSize.C))
-	if err != nil {
-		return Range{}, fmt.Errorf("getting frame at %#x from %s: %w", frameStart.C, storageDetails, err)
+		return Range{}, fmt.Errorf("reading at %#x from %s: %w", fetchOffset, storageDetails, err)
 	}
 	defer respBody.Close()
 
-	var from io.Reader = respBody
-	totalSize := int(frameSize.C)
+	// No decompression needed: stream raw bytes (uncompressed or compressed passthrough).
+	if !compressed || !decompress {
+		return readInto(respBody, buf, fetchSize, fetchOffset, readSize, onRead)
+	}
 
-	if decompress {
-		totalSize = int(frameSize.U)
+	_, frameSize, _ := frameTable.FrameFor(offsetU) // already validated above
 
-		switch frameTable.CompressionType {
-		case CompressionZstd:
-			dec, err := getZstdDecoder(respBody)
-			if err != nil {
-				return Range{}, fmt.Errorf("failed to create zstd decoder: %w", err)
-			}
-			defer putZstdDecoder(dec)
-			from = dec
+	switch frameTable.CompressionType {
+	case CompressionLZ4:
+		cbuf := make([]byte, frameSize.C)
 
-		case CompressionLZ4:
-			rd := getLZ4Reader(respBody)
-			defer putLZ4Reader(rd)
-			from = rd
-
-		default:
-			return Range{}, fmt.Errorf("unsupported compression type: %s", frameTable.CompressionType)
+		_, err = io.ReadFull(respBody, cbuf)
+		if err != nil {
+			return Range{}, fmt.Errorf("reading compressed lz4 frame: %w", err)
 		}
+
+		out, err := DecompressLZ4(cbuf, buf[:frameSize.U])
+		if err != nil {
+			return Range{}, err
+		}
+		if len(out) != int(frameSize.U) {
+			return Range{}, fmt.Errorf("lz4 frame decompress: expected %d bytes, got %d", frameSize.U, len(out))
+		}
+		if onRead != nil {
+			onRead(int64(len(out)))
+		}
+
+		return Range{Start: fetchOffset, Length: len(out)}, nil
+
+	case CompressionZstd:
+		dec, err := getZstdDecoder(respBody)
+		if err != nil {
+			return Range{}, fmt.Errorf("failed to create zstd decoder: %w", err)
+		}
+		defer putZstdDecoder(dec)
+
+		return readInto(dec, buf, int(frameSize.U), fetchOffset, readSize, onRead)
+
+	default:
+		return Range{}, fmt.Errorf("unsupported compression type: %s", frameTable.CompressionType)
 	}
-
-	// Progressive mode: read in readSize blocks, call onRead after each.
-	if onRead != nil {
-		return readProgressive(from, buf, totalSize, frameStart.C, readSize, onRead)
-	}
-
-	n, err := io.ReadFull(from, buf[:totalSize])
-
-	return Range{Start: frameStart.C, Length: n}, err
 }
 
 // minProgressiveReadSize is the floor for progressive reads to avoid
 // tiny I/O when the caller's block size is small (e.g. 4 KB rootfs).
 const minProgressiveReadSize = 256 * 1024 // 256 KB
 
-// readProgressive reads from src into buf in readSize-aligned blocks,
-// calling onRead after each block with the cumulative bytes written.
-// readSize is clamped to at least minProgressiveReadSize.
-func readProgressive(src io.Reader, buf []byte, totalSize int, rangeStart int64, readSize int64, onRead func(totalWritten int64)) (Range, error) {
+// readInto reads totalSize bytes from src into buf, returning the range read.
+// When onRead is non-nil, reads in readSize-aligned blocks and calls onRead
+// after each block with cumulative bytes written. When onRead is nil, reads
+// all totalSize bytes at once.
+func readInto(src io.Reader, buf []byte, totalSize int, rangeStart int64, readSize int64, onRead func(totalWritten int64)) (Range, error) {
+	if onRead == nil {
+		n, err := io.ReadFull(src, buf[:totalSize])
+		if errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.EOF) {
+			err = nil
+		}
+
+		return Range{Start: rangeStart, Length: n}, err
+	}
+
 	readSize = max(readSize, minProgressiveReadSize)
 
 	var total int64
@@ -263,25 +289,4 @@ func readProgressive(src io.Reader, buf []byte, totalSize int, rangeStart int64,
 	}
 
 	return Range{Start: rangeStart, Length: int(total)}, nil
-}
-
-// getFrameUncompressed reads uncompressed data directly from storage.
-// When onRead is non-nil, uses readProgressive for progressive delivery.
-func getFrameUncompressed(ctx context.Context, rangeRead RangeReadFunc, storageDetails string, offset int64, buf []byte, readSize int64, onRead func(totalWritten int64)) (Range, error) {
-	respBody, err := rangeRead(ctx, offset, len(buf))
-	if err != nil {
-		return Range{}, fmt.Errorf("getting uncompressed data at %#x from %s: %w", offset, storageDetails, err)
-	}
-	defer respBody.Close()
-
-	if onRead != nil {
-		return readProgressive(respBody, buf, len(buf), offset, readSize, onRead)
-	}
-
-	n, err := io.ReadFull(respBody, buf)
-	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, io.EOF) {
-		return Range{}, fmt.Errorf("reading uncompressed data from %s: %w", storageDetails, err)
-	}
-
-	return Range{Start: offset, Length: n}, nil
 }

@@ -267,14 +267,14 @@ func OverrideJSONFlag(flag JSONFlag, value ldvalue.Value) {
 // When compressBuilds is true, builds upload exclusively compressed data
 // (no uncompressed fallback). When false, exclusively uncompressed with V3 headers.
 var CompressConfigFlag = newJSONFlag("compress-config", ldvalue.FromJSONMarshal(map[string]any{
-	"compressBuilds":       false,
-	"compressionType":      "zstd",
-	"compressionLevel":     2,
-	"frameSizeKB":          2048,
+	"compressBuilds":      false,
+	"compressionType":     "zstd",
+	"compressionLevel":    2,
+	"frameSizeKB":         2048,
 	"framesPerUploadPart": 25,
-	"frameEncodeWorkers":   4,
-	"encoderConcurrency":   1,
-	"decoderConcurrency":   1,
+	"frameEncodeWorkers":  4,
+	"encoderConcurrency":  1,
+	"decoderConcurrency":  1,
 }))
 
 // TCPFirewallEgressThrottleConfig controls per-sandbox egress throttling via Firecracker's

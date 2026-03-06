@@ -46,6 +46,7 @@ func generateSemiRandomData(size int) []byte {
 // ThrottledPartUploader wraps MemPartUploader with simulated upload bandwidth.
 type ThrottledPartUploader struct {
 	MemPartUploader
+
 	bandwidth int64 // bytes/sec; 0 = unlimited
 }
 
@@ -91,11 +92,11 @@ func defaultOpts(ct CompressionType, workers, frameSize int) *FramedUploadOption
 	}
 
 	return &FramedUploadOptions{
-		CompressionType:    ct,
-		CompressionLevel:              level,
-		EncoderConcurrency: 1,
-		FrameEncodeWorkers:      workers,
-		FrameSize:          frameSize,
+		CompressionType:     ct,
+		CompressionLevel:    level,
+		EncoderConcurrency:  1,
+		FrameEncodeWorkers:  workers,
+		FrameSize:           frameSize,
 		FramesPerUploadPart: 25,
 	}
 }
@@ -105,6 +106,8 @@ func defaultOpts(ct CompressionType, workers, frameSize int) *FramedUploadOption
 // ---------------------------------------------------------------------------
 
 func TestCompressStreamRoundTrip(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name      string
 		dataSize  int
@@ -125,6 +128,8 @@ func TestCompressStreamRoundTrip(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			var original []byte
 			if tc.dataSize > 0 {
 				original = generateSemiRandomData(tc.dataSize)
@@ -169,6 +174,8 @@ func TestCompressStreamRoundTrip(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestCompressStreamOnFrameReady(t *testing.T) {
+	t.Parallel()
+
 	data := generateSemiRandomData(10 * megabyte)
 
 	type record struct {
@@ -206,6 +213,8 @@ func TestCompressStreamOnFrameReady(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestCompressStreamContextCancel(t *testing.T) {
+	t.Parallel()
+
 	data := generateSemiRandomData(100 * megabyte)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -227,12 +236,14 @@ func TestCompressStreamContextCancel(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestCompressStreamPartCount(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
-		name              string
-		dataSize          int
-		frameSize         int
-		framesPerPart     int
-		expectedParts     int
+		name          string
+		dataSize      int
+		frameSize     int
+		framesPerPart int
+		expectedParts int
 	}{
 		// 100MB / 2MB = 50 frames. 50 / 25 = 2 parts.
 		{"two_parts", 100 * megabyte, 2 * megabyte, 25, 2},
@@ -246,6 +257,8 @@ func TestCompressStreamPartCount(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			data := generateSemiRandomData(tc.dataSize)
 			up := &MemPartUploader{}
 			opts := defaultOpts(CompressionZstd, 4, tc.frameSize)
@@ -254,7 +267,7 @@ func TestCompressStreamPartCount(t *testing.T) {
 			_, _, err := CompressStream(context.Background(), bytes.NewReader(data), opts, up)
 			require.NoError(t, err)
 
-			assert.Equal(t, tc.expectedParts, len(up.parts), "part count")
+			assert.Len(t, up.parts, tc.expectedParts, "part count")
 		})
 	}
 }
@@ -267,6 +280,8 @@ func TestCompressStreamPartCount(t *testing.T) {
 // worker counts to shake out data races in the compressor pool, MemPartUploader,
 // and errgroup coordination. Run with -race.
 func TestCompressStreamRace(t *testing.T) {
+	t.Parallel()
+
 	const (
 		streams       = 8            // concurrent CompressStream calls
 		dataSize      = 4 * megabyte // small enough to be fast, big enough to exercise batching
@@ -343,11 +358,11 @@ func BenchmarkCompressStream(b *testing.B) {
 	for _, cfg := range configs {
 		b.Run(cfg.name, func(b *testing.B) {
 			opts := &FramedUploadOptions{
-				CompressionType:    CompressionZstd,
-				CompressionLevel:              2,
-				EncoderConcurrency: 1,
-				FrameEncodeWorkers:      cfg.workers,
-				FrameSize:          2 * megabyte,
+				CompressionType:     CompressionZstd,
+				CompressionLevel:    2,
+				EncoderConcurrency:  1,
+				FrameEncodeWorkers:  cfg.workers,
+				FrameSize:           2 * megabyte,
 				FramesPerUploadPart: 25,
 			}
 
@@ -395,7 +410,7 @@ func BenchmarkStoreFile(b *testing.B) {
 	inputDir := b.TempDir()
 	inputPath := filepath.Join(inputDir, "input.bin")
 	require.NoError(b, os.WriteFile(inputPath, data, 0o644))
-	data = nil // free memory, StoreFile reads from disk
+	data = nil //nolint:ineffassign,wastedassign // hint GC to free 1GB before benchmark loop
 
 	codecs := []struct {
 		name  string

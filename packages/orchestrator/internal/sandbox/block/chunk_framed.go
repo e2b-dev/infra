@@ -247,7 +247,7 @@ func (c *Chunker) runFetch(ctx context.Context, session *fetchSession, offsetU i
 	timer := c.metrics.RemoteReadsTimerFactory.Begin(attrs.begin)
 
 	// Pass blockSize as readSize so each progressive onRead covers at least
-	// one complete block. readProgressive applies a floor internally to avoid
+	// one complete block. readInto applies a floor internally to avoid
 	// tiny I/O for small block sizes (e.g. 4 KB rootfs).
 	readSize := c.cache.BlockSize()
 

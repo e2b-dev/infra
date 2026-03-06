@@ -298,9 +298,9 @@ func compressArtifact(ctx context.Context, cfg *compressConfig, buildID, name, f
 
 	// Set up compression options
 	opts := &storage.FramedUploadOptions{
-		CompressionType: cfg.compType,
-		CompressionLevel: cfg.level,
-		FrameSize:        cfg.frameSize,
+		CompressionType:     cfg.compType,
+		CompressionLevel:    cfg.level,
+		FrameSize:           cfg.frameSize,
 		FramesPerUploadPart: 25,
 	}
 
