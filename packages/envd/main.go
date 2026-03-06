@@ -265,7 +265,7 @@ func createCgroupManager() (m cgroups.Manager) {
 		cgroups.WithCgroup2ProcessType(cgroups.ProcessTypePTY, "ptys", map[string]string{
 			"cpu.weight":  "200", // gets much preferred cpu access, to help keep these real time
 			"memory.high": fmt.Sprintf("%d", metrics.MemTotal-maxMemoryReserved),
-			"memory.max":  fmt.Sprintf("%d", metrics.MemTotal-(maxMemoryReserved/8)), // more generous than user — killing interactive sessions is more disruptive
+			"memory.max":  fmt.Sprintf("%d", metrics.MemTotal-maxMemoryReserved), // same as memory.high — OOM-kill immediately when throttling can't reclaim enough
 		}),
 		cgroups.WithCgroup2ProcessType(cgroups.ProcessTypeSocat, "socats", map[string]string{
 			"cpu.weight": "150", // gets slightly preferred cpu access
@@ -274,8 +274,8 @@ func createCgroupManager() (m cgroups.Manager) {
 		}),
 		cgroups.WithCgroup2ProcessType(cgroups.ProcessTypeUser, "user", map[string]string{
 			"memory.high": fmt.Sprintf("%d", metrics.MemTotal-maxMemoryReserved),
-			"memory.max":  fmt.Sprintf("%d", metrics.MemTotal-(maxMemoryReserved/4)), // hard limit — cgroup OOM killer fires, protecting envd/socat
-			"cpu.weight":  "50",                                                      // less than envd, and less than core processes that default to 100
+			"memory.max":  fmt.Sprintf("%d", metrics.MemTotal-maxMemoryReserved), // same as memory.high — OOM-kill immediately when throttling can't reclaim enough
+			"cpu.weight":  "50",                                                  // less than envd, and less than core processes that default to 100
 		}),
 	}
 	if cgroupRoot != "" {
