@@ -1,7 +1,7 @@
 openapi: 3.0.0
 info:
   title: envd
-  version: 0.1.1
+  version: 0.1.2
   description: API for managing files' content and controlling envd
 
 tags:
