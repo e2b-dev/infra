@@ -74,6 +74,7 @@ func (s *Server) ServiceInfo(ctx context.Context, _ *emptypb.Empty) (*orchestrat
 		ServiceStartup: timestamppb.New(info.Startup),
 		ServiceRoles:   info.Roles,
 		MachineInfo:    convertMachineInfo(info.MachineInfo),
+		Labels:         info.Labels,
 
 		// Allocated resources to sandboxes
 		MetricCpuAllocated:         sandboxVCpuAllocated,
