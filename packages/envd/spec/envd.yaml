@@ -178,6 +178,11 @@ components:
               file:
                 type: string
                 format: binary
+        application/octet-stream:
+          schema:
+            type: string
+            format: binary
+            description: Raw file content. The 'path' query parameter is required when using this content type.
 
   responses:
     UploadSuccess:
