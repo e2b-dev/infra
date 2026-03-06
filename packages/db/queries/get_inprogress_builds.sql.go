@@ -12,10 +12,8 @@ import (
 )
 
 const getCancellableTemplateBuildsByTeam = `-- name: GetCancellableTemplateBuildsByTeam :many
-SELECT atb.build_id, atb.template_id, e.cluster_id, b.cluster_node_id
+SELECT atb.build_id, atb.template_id, atb.cluster_id, atb.cluster_node_id
 FROM public.active_template_builds atb
-JOIN public.env_builds b ON b.id = atb.build_id
-JOIN public.envs e ON e.id = atb.template_id
 WHERE atb.team_id = $1
   AND atb.created_at > NOW() - INTERVAL '1 day'
 ORDER BY atb.build_id

@@ -162,6 +162,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		return
 	}
 
+
 	// Call the Template Manager to build the environment
 	err = a.templateManager.CreateTemplate(
 		ctx,

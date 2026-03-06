@@ -66,6 +66,8 @@ func RegisterBuild(
 		tags = []string{id.DefaultTag}
 	}
 
+	// This is a simple implementation of concurrency limit
+	// It does not guarantee that the limit is not exceeded, but it should be good enough for now (considering overall low number of total builds)
 	otherBuildCount, err := db.GetInProgressTemplateBuildsByTeam(ctx, queries.GetInProgressTemplateBuildsByTeamParams{
 		TeamID:            data.Team.ID,
 		ExcludeTemplateID: data.TemplateID,

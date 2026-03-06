@@ -271,7 +271,7 @@ func (tm *TemplateManager) SetStatus(ctx context.Context, buildID uuid.UUID, sta
 	now := time.Now()
 
 	var err error
-	if statusGroup == types.BuildStatusGroupFailed {
+	if statusGroup.IsTerminal() {
 		err = tm.sqlcDB.FailTemplateBuildAndDeactivate(ctx, queries.FailTemplateBuildAndDeactivateParams{
 			Status:     buildStatus(statusGroup),
 			FinishedAt: &now,
