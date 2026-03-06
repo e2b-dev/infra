@@ -132,8 +132,9 @@ module "cluster" {
   google_service_account_email = module.init.service_account_email
   domain_name                  = var.domain_name
 
-  additional_domains      = local.additional_domains
-  additional_api_services = local.additional_api_services
+  additional_domains                      = local.additional_domains
+  additional_api_services                 = local.additional_api_services
+  additional_api_paths_handled_by_ingress = var.additional_api_paths_handled_by_ingress
 
   docker_contexts_bucket_name = module.init.envs_docker_context_bucket_name
   cluster_setup_bucket_name   = module.init.cluster_setup_bucket_name

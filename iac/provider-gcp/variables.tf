@@ -131,6 +131,12 @@ variable "ingress_count" {
   default = 1
 }
 
+variable "additional_api_paths_handled_by_ingress" {
+  type        = list(string)
+  description = "Additional paths to forward to nomad's ingress"
+  default     = []
+}
+
 variable "additional_traefik_arguments" {
   type    = list(string)
   default = []
