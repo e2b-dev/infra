@@ -409,7 +409,11 @@ func (pt *pageTracker) faultedOffsets(ma *memory.Mapping) ([]uint64, error) {
 	defer pt.mu.RUnlock()
 
 	offsets := make([]uint64, 0, len(pt.m))
-	for addr := range pt.m {
+	for addr, state := range pt.m {
+		if state != faulted {
+			continue
+		}
+
 		offset, err := ma.GetOffset(addr)
 		if err != nil {
 			return nil, fmt.Errorf("address %#x not in mapping: %w", addr, err)

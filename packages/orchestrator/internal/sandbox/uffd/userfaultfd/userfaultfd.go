@@ -360,6 +360,8 @@ func (u *Userfaultfd) faultPage(
 		writeErr = u.fd.zero(addr, u.pageSize, mode)
 	case source == nil && u.pageSize == header.HugepageSize:
 		writeErr = u.fd.copy(addr, u.pageSize, header.EmptyHugePage, mode)
+	case source == nil:
+		writeErr = u.fd.zero(addr, u.pageSize, mode)
 	default:
 		b, dataErr := source.Slice(ctx, offset, int64(u.pageSize))
 		if dataErr != nil {

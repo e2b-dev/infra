@@ -35,7 +35,10 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) e
 	}
 
 	if !handled {
-		span.RecordError(fmt.Errorf("page already faulted"))
+		err = fmt.Errorf("page fault was deferred and not mapped")
+		span.RecordError(err)
+
+		return err
 	}
 
 	return nil
