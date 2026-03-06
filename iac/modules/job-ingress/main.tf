@@ -6,8 +6,8 @@ resource "nomad_job" "ingress" {
     cpu_count     = var.ingress_cpu_count
     memory_mb     = var.ingress_memory_mb
 
-    ingress_port                 = var.ingress_proxy_port
-    control_port                 = var.ingress_control_port
+    ingress_port    = var.ingress_proxy_port
+    control_port    = var.ingress_control_port
     additional_args = var.additional_traefik_arguments
 
     nomad_endpoint = var.nomad_endpoint
