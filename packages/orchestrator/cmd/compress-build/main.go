@@ -84,7 +84,7 @@ func main() {
 	template := flag.String("template", "", "template ID or alias (requires E2B_API_KEY)")
 	storagePath := flag.String("storage", ".local-build", "storage: local path or gs://bucket")
 	compression := flag.String("compression", "lz4", "compression type: lz4 or zstd")
-	level := flag.Int("level", storage.DefaultCompressionOptions.Level, "compression level (0=default)")
+	level := flag.Int("level", storage.DefaultCompressionOptions.CompressionLevel, "compression level (0=default)")
 	frameSize := flag.Int("frame-size", storage.DefaultCompressFrameSize, "uncompressed frame size in bytes")
 	dryRun := flag.Bool("dry-run", false, "show what would be done without making changes")
 	recursive := flag.Bool("recursive", false, "recursively compress dependencies (referenced builds)")
@@ -299,9 +299,9 @@ func compressArtifact(ctx context.Context, cfg *compressConfig, buildID, name, f
 	// Set up compression options
 	opts := &storage.FramedUploadOptions{
 		CompressionType: cfg.compType,
-		Level:           cfg.level,
-		FrameSize:       cfg.frameSize,
-		TargetPartSize:  50 * 1024 * 1024,
+		CompressionLevel: cfg.level,
+		FrameSize:        cfg.frameSize,
+		FramesPerUploadPart: 25,
 	}
 
 	if cfg.verbose {

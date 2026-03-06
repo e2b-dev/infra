@@ -297,11 +297,11 @@ func BenchmarkColdConcurrent(b *testing.B) {
 		up := &storage.MemPartUploader{}
 		ft, _, err := storage.CompressStream(context.Background(), bytes.NewReader(data), &storage.FramedUploadOptions{
 			CompressionType:    codec.compressionType,
-			Level:              codec.level,
+			CompressionLevel:   codec.level,
 			EncoderConcurrency: 1,
-			EncodeWorkers:      1,
+			FrameEncodeWorkers:      1,
 			FrameSize:          codec.frameSize,
-			TargetPartSize:     50 * 1024 * 1024,
+			FramesPerUploadPart: 25,
 		}, up)
 		require.NoError(b, err)
 		bundles[ci] = compressedBundle{ft, up.Assemble()}

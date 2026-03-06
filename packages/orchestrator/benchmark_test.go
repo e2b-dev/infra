@@ -103,10 +103,10 @@ func BenchmarkBaseImage(b *testing.B) {
 		featureflags.OverrideJSONFlag(featureflags.CompressConfigFlag, ldvalue.FromJSONMarshal(map[string]any{
 			"compressBuilds":     true,
 			"compressionType":    compType,
-			"level":              compLevel,
-			"frameSizeKB":        2048,
-			"uploadPartTargetMB": 50,
-			"encodeWorkers":      4,
+			"compressionLevel":    compLevel,
+			"frameSizeKB":         2048,
+			"framesPerUploadPart": 25,
+			"frameEncodeWorkers": 4,
 			"encoderConcurrency": 1,
 			"decoderConcurrency": 1,
 		}))

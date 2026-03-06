@@ -41,10 +41,10 @@ The most relevant change is `FramedFile` (returned by `OpenFramedFile`) replaces
 {
   "compressBuilds": false,         // exclusively compressed or exclusively uncompressed uploads
   "compressionType": "zstd",       // "lz4" or "zstd"
-  "level": 2,                      // compression level (0=fast, higher=better ratio)
+  "compressionLevel": 2,            // compression level (0=fast, higher=better ratio)
   "frameSizeKB": 2048,             // uncompressed frame size in KiB (min 128)
-  "uploadPartTargetMB": 50,        // target GCS multipart upload part size in MiB
-  "encodeWorkers": 4,              // concurrent frame compression workers per file
+  "framesPerUploadPart": 25,       // compressed frames per GCS multipart upload part
+  "frameEncodeWorkers": 4,         // concurrent frame-level compression workers per file
   "encoderConcurrency": 1,         // goroutines per individual zstd encoder
   "decoderConcurrency": 1          // goroutines per pooled zstd decoder
 }
@@ -374,7 +374,7 @@ Values are ms/iteration (wall-clock time to read all 100 MiB). Lower is better. 
 | Zstd level 1 | 35.6 MiB | -64% | -32% smaller |
 | Zstd level 2 | 27.9 MiB | -72% | -47% smaller |
 
-**Recommendation: Zstd level 1, 2 MiB frames.**
+**Read-path recommendation: Zstd level 1, 2 MiB frames.**
 
 - Cache-hit path is **2.1x faster** than legacy (132 vs 276 ns/op).
 - NFS cold reads (the common case): Zstd1 4KB at 57 ms vs legacy 107 ms — **1.9x faster**. 2MB at 72 ms vs legacy 103 ms — **1.4x faster**.
@@ -382,9 +382,29 @@ Values are ms/iteration (wall-clock time to read all 100 MiB). Lower is better. 
 - Stores 32% less data than LZ4 (35.6 vs 52.7 MiB per 100 MiB). At scale across thousands of templates this meaningfully reduces GCS storage and egress costs.
 - Frame size = 2 MiB aligns with HugepageSize so each UFFD fault triggers exactly one fetch.
 
+**Write-path throughput** (1 GB semi-random data, 2 MiB frames, FS-backed StoreFile, AMD Ryzen 7 8845HS):
+
+| Codec | w1 | w2 | w4 | w8 | Ratio |
+|---|---|---|---|---|---|
+| Zstd level 1 | 216 MB/s | 376 MB/s | 591 MB/s | 757 MB/s | 0.356 |
+| Zstd level 2 | 198 MB/s | 349 MB/s | 559 MB/s | 690 MB/s | 0.279 |
+| Zstd level 3 | 128 MB/s | 210 MB/s | 251 MB/s | 310 MB/s | 0.300 |
+| LZ4 level 0 | 229 MB/s | 381 MB/s | 557 MB/s | 683 MB/s | 0.527 |
+| Uncompressed | 3344 MB/s | — | — | — | 1.000 |
+
+Worker scaling is consistent across codecs: w1→w2 ~1.7x, w1→w4 ~2.8x, w1→w8 ~3.5x. Encoder concurrency (per-encoder internal parallelism) had no measurable effect for either codec at 2 MiB frame sizes — kept at 1.
+
+**Write-path recommendation: Zstd level 2, 4 workers.**
+
+- **Zstd:2 is the best balance**: only ~10% slower than zstd:1 but 21% better compression ratio (0.279 vs 0.356). Less data to upload to GCS, less to store, less to transfer on reads.
+- **Zstd:1** is the throughput king (757 MB/s at w8) and a good choice when write speed matters more than storage savings.
+- **Zstd:3 is a trap at 2 MiB frames**: 2x slower than zstd:2 at w1, poor worker scaling (only 310 MB/s at w8), and *worse* ratio than zstd:2 (0.300 vs 0.279). Zstd levels 3-4 (`SpeedBetterCompression` / `SpeedBestCompression`) use long-match chain strategies that need larger windows to pay off — they perform better on large frames (e.g. 8-16 MiB) or whole-file compression, but underperform zstd:2 at our 2 MiB frame size.
+- **LZ4** matches zstd:2 in throughput but with nearly 2x worse ratio (0.527 vs 0.279). No advantage over zstd for this workload.
+- **4 workers** (default) gives ~2.8x speedup over single-threaded — good parallelism without saturating the machine. w8 gives diminishing returns (~3.5x).
+
 ### CPU
 
-New per-orchestrator CPU cost: decompressing every GCS-fetched frame. At ~35 MiB compressed per cold memfile load and zstd level 2 decode throughput of ~1-2 GB/s, each cold load burns ~20-40 ms of CPU. Scales with cold template load rate, not sandbox count. Encode cost is write-path only (build/pause), parallelized across `encodeWorkers` goroutines per file (default 4).
+New per-orchestrator CPU cost: decompressing every GCS-fetched frame. At ~35 MiB compressed per cold memfile load and zstd level 2 decode throughput of ~1-2 GB/s, each cold load burns ~20-40 ms of CPU. Scales with cold template load rate, not sandbox count. Encode cost is write-path only (build/pause), parallelized across `FrameEncodeWorkers` goroutines per file (default 4).
 
 ### Memory
 

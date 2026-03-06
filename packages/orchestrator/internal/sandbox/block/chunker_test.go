@@ -171,11 +171,11 @@ func makeCompressedTestData(tb testing.TB, data []byte, ttfb time.Duration) (*st
 
 	up := &storage.MemPartUploader{}
 	ft, _, err := storage.CompressStream(context.Background(), bytes.NewReader(data), &storage.FramedUploadOptions{
-		CompressionType:    storage.CompressionLZ4,
-		EncoderConcurrency: 1,
-		EncodeWorkers:      1,
-		FrameSize:          testFrameSize,
-		TargetPartSize:     50 * 1024 * 1024,
+		CompressionType:     storage.CompressionLZ4,
+		EncoderConcurrency:  1,
+		FrameEncodeWorkers:  1,
+		FrameSize:           testFrameSize,
+		FramesPerUploadPart: 25,
 	}, up)
 	require.NoError(tb, err)
 
