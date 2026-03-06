@@ -25,6 +25,14 @@ type AccessToken struct {
 	AccessTokenMaskSuffix string
 }
 
+type ActiveTemplateBuild struct {
+	BuildID    uuid.UUID
+	TeamID     uuid.UUID
+	TemplateID string
+	Tags       []string
+	CreatedAt  time.Time
+}
+
 type Addon struct {
 	ID                            uuid.UUID
 	TeamID                        uuid.UUID

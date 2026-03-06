@@ -9,19 +9,14 @@ WHERE b.status_group IN ('pending', 'in_progress')
 ORDER BY b.id, b.created_at DESC;
 
 -- name: GetInProgressTemplateBuildsByTeam :one
--- Relies on idx_env_builds_team_active partial index (migration 20260305120000).
-SELECT COUNT(DISTINCT b.id) as build_count
-FROM public.env_builds b
-JOIN public.env_build_assignments eba ON eba.build_id = b.id
-JOIN public.envs e ON e.id = eba.env_id
-WHERE b.team_id = @team_id
-  AND b.status_group IN ('pending', 'in_progress')
-  AND e.source = 'template'
-  AND NOT EXISTS (
-    SELECT 1 FROM public.env_build_assignments exc
-    WHERE exc.build_id = b.id
-      AND exc.env_id = @exclude_template_id
-      AND exc.tag = ANY(@exclude_tags::text[])
+-- Relies on active_template_builds table (migration 20260305130000).
+SELECT COUNT(*) as build_count
+FROM public.active_template_builds atb
+WHERE atb.team_id = sqlc.arg(team_id)::uuid
+  AND atb.created_at > NOW() - INTERVAL '1 day'
+  AND NOT (
+    atb.template_id = sqlc.arg(exclude_template_id)::text
+    AND atb.tags && sqlc.arg(exclude_tags)::text[]
   );
 
 -- name: GetCancellableTemplateBuildsByTeam :many
