@@ -88,6 +88,12 @@ func WithCPUInfo(cpuArch, cpuFamily, cpuModel string) TestOptions {
 	}
 }
 
+func WithLabels(labels []string) TestOptions {
+	return func(node *TestNode) {
+		node.labels = labels
+	}
+}
+
 // mockSandboxClientWithError implements orchestrator.SandboxServiceClient that returns an error
 type mockSandboxClientWithError struct {
 	orchestrator.SandboxServiceClient
