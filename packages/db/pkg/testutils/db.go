@@ -111,7 +111,7 @@ func runDatabaseMigrations(t *testing.T, connStr string) {
 	require.NoError(t, err, "Failed to find git root")
 	repoRoot := strings.TrimSpace(string(output))
 
-	db, err := goose.OpenDBWithDriver("postgres", connStr)
+	db, err := goose.OpenDBWithDriver("pgx", connStr)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		err := db.Close()

@@ -30,7 +30,7 @@ func TestRun(t *testing.T) {
 	require.NoError(t, err)
 	t.Setenv("POSTGRES_CONNECTION_STRING", connectionString)
 
-	db, err := goose.OpenDBWithDriver("postgres", connectionString)
+	db, err := goose.OpenDBWithDriver("pgx", connectionString)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		err := db.Close()
