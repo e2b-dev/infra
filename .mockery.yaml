@@ -14,15 +14,15 @@ packages:
           dir: packages/shared/pkg/grpc/orchestrator/mocks
           filename: mockchunkserviceclient.go
           pkgname: orchestratormocks
-      ChunkService_ReadAtBuildSeekableClient:
+      ChunkService_GetBuildFrameClient:
         config:
           dir: packages/shared/pkg/grpc/orchestrator/mocks
-          filename: mockchunkservicereadatbuildseekableclient.go
+          filename: mockchunkservicegetbuildframeclient.go
           pkgname: orchestratormocks
-      ChunkService_ReadAtBuildSeekableServer:
+      ChunkService_GetBuildFrameServer:
         config:
           dir: packages/shared/pkg/grpc/orchestrator/mocks
-          filename: mockchunkservicereadatbuildseekableserver.go
+          filename: mockchunkservicegetbuildframeserver.go
           pkgname: orchestratormocks
       ChunkService_GetBuildBlobClient:
         config:
@@ -39,25 +39,34 @@ packages:
     interfaces:
       featureFlagsClient:
         config:
-          dir: packages/shared/pkg/storage/mocks
-          filename: mockfeatureflagsclient.go
-          pkgname: storagemocks
+          dir: packages/shared/pkg/storage
+          filename: mock_featureflagsclient_test.go
+          pkgname: storage
+          inpackage: true
           structname: MockFeatureFlagsClient
       Blob:
-        config:
-          dir: packages/shared/pkg/storage/mocks
-          filename: mockobjectprovider.go
-          pkgname: storagemocks
-      Seekable:
-        config:
-          dir: packages/shared/pkg/storage/mocks
-          filename: mockseekableobjectprovider.go
-          pkgname: storagemocks
+        configs:
+          - dir: packages/shared/pkg/storage
+            filename: mock_blob_test.go
+            pkgname: storage
+            inpackage: true
+          - dir: packages/shared/pkg/storage/mocks
+            filename: mockblob.go
+            pkgname: storagemocks
+      FramedFile:
+        configs:
+          - dir: packages/shared/pkg/storage
+            filename: mock_framedfile_test.go
+            pkgname: storage
+            inpackage: true
+          - dir: packages/shared/pkg/storage/mocks
+            filename: mockframedfile.go
+            pkgname: storagemocks
       StorageProvider:
         config:
-          dir: packages/shared/pkg/storage/mocks/provider
+          dir: packages/shared/pkg/storage/mocks
           filename: mockstorageprovider.go
-          pkgname: providermocks
+          pkgname: storagemocks
 
   github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build:
     interfaces:
@@ -96,14 +105,14 @@ packages:
           filename: mockfile.go
           pkgname: templatemocks
 
-
   io:
     interfaces:
       Reader:
         config:
-          dir: packages/shared/pkg/storage/mocks
-          filename: mockioreader.go
-          pkgname: storagemocks
+          dir: packages/shared/pkg/storage
+          filename: mock_ioreader_test.go
+          pkgname: storage
+          inpackage: true
 
   github.com/e2b-dev/infra/packages/shared/pkg/utils:
     interfaces:

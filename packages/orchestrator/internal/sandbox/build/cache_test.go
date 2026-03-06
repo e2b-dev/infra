@@ -13,8 +13,10 @@ package build
 // causing a race when closing the cancel channel.
 
 import (
+	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -25,6 +27,8 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -494,6 +498,105 @@ func TestDiffStoreResetDeleteRace(t *testing.T) {
 
 	// Allow cleanup to complete
 	time.Sleep(delay * 2)
+}
+
+// concurrentTestDiff mimics StorageDiff's SetOnce pattern for testing
+// concurrent Init + access through DiffStore.
+type concurrentTestDiff struct {
+	data      *utils.SetOnce[[]byte]
+	key       DiffStoreKey
+	initCount *atomic.Int32
+	testData  []byte
+}
+
+var _ Diff = (*concurrentTestDiff)(nil)
+
+func (d *concurrentTestDiff) Init(_ context.Context) error {
+	d.initCount.Add(1)
+	time.Sleep(50 * time.Millisecond) // simulate slow probe + chunker creation
+
+	return d.data.SetValue(d.testData)
+}
+
+func (d *concurrentTestDiff) ReadBlock(_ context.Context, p []byte, off int64, _ *storage.FrameTable) (int, error) {
+	data, err := d.data.Wait()
+	if err != nil {
+		return 0, err
+	}
+
+	return copy(p, data[off:]), nil
+}
+
+func (d *concurrentTestDiff) GetBlock(_ context.Context, off, length int64, _ *storage.FrameTable) ([]byte, error) {
+	data, err := d.data.Wait()
+	if err != nil {
+		return nil, err
+	}
+
+	return data[off : off+length], nil
+}
+
+func (d *concurrentTestDiff) CacheKey() DiffStoreKey     { return d.key }
+func (d *concurrentTestDiff) CachePath() (string, error) { return "", nil }
+func (d *concurrentTestDiff) FileSize() (int64, error)   { return int64(len(d.testData)), nil }
+func (d *concurrentTestDiff) BlockSize() int64           { return 4096 }
+func (d *concurrentTestDiff) Close() error               { return nil }
+
+// TestDiffStoreConcurrentInitAndAccess simulates multiple UFFD handlers
+// concurrently calling getBuild → DiffStore.Get for the same build.
+// Only the first caller triggers Init; others block on SetOnce.Wait()
+// until init completes, then all read correct data.
+func TestDiffStoreConcurrentInitAndAccess(t *testing.T) {
+	t.Parallel()
+
+	cachePath := t.TempDir()
+	c, err := cfg.Parse()
+	require.NoError(t, err)
+	flags := flagsWithMaxBuildCachePercentage(t, 100)
+
+	store, err := NewDiffStore(c, flags, cachePath, 60*time.Second, 60*time.Second)
+	require.NoError(t, err)
+	store.Start(t.Context())
+	t.Cleanup(store.Close)
+
+	const numGoroutines = 50
+	const dataSize = 4096
+
+	testData := make([]byte, dataSize)
+	for i := range testData {
+		testData[i] = byte(i % 256)
+	}
+
+	var initCount atomic.Int32
+	var wg sync.WaitGroup
+
+	for range numGoroutines {
+		wg.Go(func() {
+			// Each goroutine creates its own diff instance (mimicking getBuild),
+			// but all share the same cache key. GetOrSet stores only the first.
+			diff := &concurrentTestDiff{
+				data:      utils.NewSetOnce[[]byte](),
+				key:       "concurrent-test/memfile",
+				initCount: &initCount,
+				testData:  testData,
+			}
+
+			result, err := store.Get(t.Context(), diff)
+			require.NoError(t, err)
+
+			// Read — blocks until the winning goroutine's Init completes.
+			buf := make([]byte, 256)
+			n, err := result.ReadBlock(t.Context(), buf, 0, nil)
+			require.NoError(t, err)
+			assert.Equal(t, 256, n)
+			assert.Equal(t, testData[:256], buf)
+		})
+	}
+
+	wg.Wait()
+
+	// Init must have been called exactly once.
+	assert.Equal(t, int32(1), initCount.Load())
 }
 
 func flagsWithMaxBuildCachePercentage(tb testing.TB, maxBuildCachePercentage int) *featureflags.Client {

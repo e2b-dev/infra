@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 
 	"github.com/bits-and-blooms/bitset"
 	"github.com/google/uuid"
@@ -92,6 +93,9 @@ func (d *DiffMetadata) ToDiffHeader(
 	if err != nil {
 		return nil, fmt.Errorf("failed to create header: %w", err)
 	}
+
+	// Inherit upstream build file info (sizes + checksums).
+	header.BuildFiles = maps.Clone(originalHeader.BuildFiles)
 
 	err = ValidateMappings(header.Mapping, header.Metadata.Size, header.Metadata.BlockSize)
 	if err != nil {

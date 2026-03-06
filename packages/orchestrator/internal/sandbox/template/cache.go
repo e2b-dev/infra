@@ -70,7 +70,9 @@ func NewCache(
 	)
 
 	cache.OnEviction(func(ctx context.Context, _ ttlcache.EvictionReason, item *ttlcache.Item[string, Template]) {
-		peers.Purge(item.Key())
+		if peers != nil {
+			peers.Purge(item.Key())
+		}
 
 		template := item.Value()
 
@@ -116,9 +118,12 @@ func (c *Cache) Start(ctx context.Context) {
 }
 
 func (c *Cache) Stop() {
+	if c.peers != nil {
+		c.peers.Close()
+	}
+
 	c.buildStore.Close()
 	c.cache.Stop()
-	c.peers.Close()
 }
 
 func (c *Cache) Items() map[string]*ttlcache.Item[string, Template] {
@@ -171,7 +176,7 @@ func (c *Cache) GetTemplate(
 	// Wrap persistence with per-buildID peer routing.
 	// Each layer's buildID is checked against Redis to find the source orchestrator.
 	// This allows pulling data directly from the peer before GCS upload completes.
-	if c.flags.BoolFlag(ctx, featureflags.PeerToPeerChunkTransferFlag) {
+	if c.peers != nil && c.flags.BoolFlag(ctx, featureflags.PeerToPeerChunkTransferFlag) {
 		persistence = peerclient.NewRoutingProvider(persistence, c.peers)
 	}
 

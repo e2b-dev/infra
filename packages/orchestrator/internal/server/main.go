@@ -26,9 +26,14 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-// Matches the template cache TTL so entries live as long as the
-// templates they refer to and are cleaned up automatically.
+// uploadedBuildHeaders stores serialized V4 headers for a completed upload,
+// so that peers can transition from P2P reads to storage reads.
 const uploadedBuildsTTL = 1 * time.Hour
+
+type uploadedBuildHeaders struct {
+	memfileHeader []byte
+	rootfsHeader  []byte
+}
 
 type Server struct {
 	orchestrator.UnimplementedSandboxServiceServer
@@ -48,7 +53,7 @@ type Server struct {
 	sbxEventsService  *events.EventsService
 	startingSandboxes *semaphore.Weighted
 	peerRegistry      peerclient.Registry
-	uploadedBuilds    *ttlcache.Cache[string, struct{}]
+	uploadedBuilds    *ttlcache.Cache[string, *uploadedBuildHeaders]
 }
 
 type ServiceConfig struct {
@@ -68,8 +73,8 @@ type ServiceConfig struct {
 }
 
 func New(ctx context.Context, cfg ServiceConfig) *Server {
-	uploadedBuilds := ttlcache.New[string, struct{}](
-		ttlcache.WithTTL[string, struct{}](uploadedBuildsTTL),
+	uploadedBuilds := ttlcache.New(
+		ttlcache.WithTTL[string, *uploadedBuildHeaders](uploadedBuildsTTL),
 	)
 	go uploadedBuilds.Start()
 

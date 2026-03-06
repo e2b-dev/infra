@@ -10,34 +10,35 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 )
 
-var _ SeekableSource = &seekableSource{}
+var _ FramedSource = &framedSource{}
 
-// seekableSource serves seekable diff files (memfile, rootfs.ext4).
+// framedSource serves framed diff files (memfile, rootfs.ext4).
 // Supports Size and random-access streaming via offset/length.
-type seekableSource struct {
+type framedSource struct {
 	diff build.Diff
 }
 
-func (f *seekableSource) Size(ctx context.Context) (int64, error) {
-	return f.diff.Size(ctx)
+func (f *framedSource) Size(_ context.Context) (int64, error) {
+	return f.diff.FileSize()
 }
 
-func (f *seekableSource) Exists(_ context.Context) (bool, error) {
+func (f *framedSource) Exists(_ context.Context) (bool, error) {
 	return false, ErrNotSupported
 }
 
-func (f *seekableSource) Stream(ctx context.Context, offset, length int64, sender Sender) error {
-	ctx, span := tracer.Start(ctx, "stream-seekable-file", trace.WithAttributes(
+func (f *framedSource) Stream(ctx context.Context, offset, length int64, sender Sender) error {
+	ctx, span := tracer.Start(ctx, "stream-framed-file", trace.WithAttributes(
 		attribute.Int64("offset", offset),
 		attribute.Int64("length", length),
 	))
 	defer span.End()
 
-	data, err := f.diff.Slice(ctx, offset, length)
+	// P2P always serves uncompressed bytes — pass nil FrameTable.
+	data, err := f.diff.GetBlock(ctx, offset, length, nil)
 	if err != nil {
 		span.RecordError(err)
 
-		return fmt.Errorf("slice diff at offset %d: %w", offset, err)
+		return fmt.Errorf("get block at offset %d: %w", offset, err)
 	}
 
 	blockSize := int(f.diff.BlockSize())

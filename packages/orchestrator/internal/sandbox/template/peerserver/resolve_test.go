@@ -10,7 +10,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
-func TestResolveSeekable_ReturnsErrNotAvailableWhenNotInCache(t *testing.T) {
+func TestResolveFramed_ReturnsErrNotAvailableWhenNotInCache(t *testing.T) {
 	t.Parallel()
 
 	for _, fileName := range []string{
@@ -23,17 +23,17 @@ func TestResolveSeekable_ReturnsErrNotAvailableWhenNotInCache(t *testing.T) {
 			cache := peerservermocks.NewMockCache(t)
 			cache.EXPECT().LookupDiff(mock.Anything, mock.Anything).Return(nil, false)
 
-			_, err := ResolveSeekable(cache, "build-1", fileName)
+			_, err := ResolveFramed(cache, "build-1", fileName)
 			assert.ErrorIs(t, err, ErrNotAvailable)
 		})
 	}
 }
 
-func TestResolveSeekable_ReturnsErrorForUnknownFile(t *testing.T) {
+func TestResolveFramed_ReturnsErrorForUnknownFile(t *testing.T) {
 	t.Parallel()
 
 	cache := peerservermocks.NewMockCache(t)
-	_, err := ResolveSeekable(cache, "build-1", "unknown.file")
+	_, err := ResolveFramed(cache, "build-1", "unknown.file")
 	assert.ErrorIs(t, err, ErrUnknownFile)
 }
 

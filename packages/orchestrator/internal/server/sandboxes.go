@@ -31,6 +31,7 @@ import (
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -555,7 +556,7 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		defer cancel()
 		defer res.completeUpload(uploadCtx)
 
-		if err := res.snapshot.Upload(uploadCtx, s.persistence, res.templateFiles); err != nil {
+		if err := res.uploadSnapshot(uploadCtx, s.persistence, s.featureFlags); err != nil {
 			telemetry.ReportCriticalError(ctx, "error uploading snapshot for checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
 
 			s.sandboxes.Remove(resumedSbx.Runtime.SandboxID)
@@ -612,9 +613,18 @@ type snapshotResult struct {
 	completeUpload func(ctx context.Context)
 }
 
+// uploadSnapshot uploads snapshot files to GCS using TemplateBuild.
+func (r *snapshotResult) uploadSnapshot(ctx context.Context, persistence storage.StorageProvider, flags *featureflags.Client) error {
+	memfileOpts := storage.GetUploadOptions(ctx, flags, storage.FileTypeMemfile, storage.UseCasePause)
+	rootfsOpts := storage.GetUploadOptions(ctx, flags, storage.FileTypeRootfs, storage.UseCasePause)
+	tb := sandbox.NewTemplateBuild(r.snapshot, persistence, r.templateFiles, nil)
+
+	return tb.UploadAtOnce(ctx, memfileOpts, rootfsOpts)
+}
+
 // snapshotAndCacheSandbox creates a snapshot of a sandbox and adds it to the local
 // template cache. The caller is responsible for starting the GCS upload via
-// startSnapshotUploadAsync or uploadSnapshotWithPrefetchAsync.
+// uploadSnapshotAsync.
 func (s *Server) snapshotAndCacheSandbox(
 	ctx context.Context,
 	sbx *sandbox.Sandbox,
@@ -661,8 +671,9 @@ func (s *Server) snapshotAndCacheSandbox(
 		}
 
 		completeUpload := func(ctx context.Context) {
-			// Signal in-flight peer streams to switch to GCS.
-			s.uploadedBuilds.Set(meta.Template.BuildID, struct{}{}, ttlcache.DefaultTTL)
+			// Signal in-flight peer streams to switch to GCS, including
+			// serialized V4 headers so peers can transition to compressed reads.
+			s.uploadedBuilds.Set(meta.Template.BuildID, serializeUploadedHeaders(snapshot), ttlcache.DefaultTTL)
 
 			// Remove from Redis so new nodes go directly to GCS.
 			if err := s.peerRegistry.Unregister(ctx, meta.Template.BuildID); err != nil {
@@ -686,6 +697,29 @@ func (s *Server) snapshotAndCacheSandbox(
 	}, nil
 }
 
+// serializeUploadedHeaders extracts and serializes V4 headers from a snapshot
+// for the peer transition protocol.
+func serializeUploadedHeaders(snapshot *sandbox.Snapshot) *uploadedBuildHeaders {
+	var memHdrBytes, rootHdrBytes []byte
+
+	if snapshot.MemfileDiffHeader != nil {
+		if data, err := header.Serialize(snapshot.MemfileDiffHeader); err == nil {
+			memHdrBytes = data
+		}
+	}
+
+	if snapshot.RootfsDiffHeader != nil {
+		if data, err := header.Serialize(snapshot.RootfsDiffHeader); err == nil {
+			rootHdrBytes = data
+		}
+	}
+
+	return &uploadedBuildHeaders{
+		memfileHeader: memHdrBytes,
+		rootfsHeader:  rootHdrBytes,
+	}
+}
+
 // uploadSnapshotAsync uploads snapshot files to GCS in the background and
 // cleans up the Redis peer key once done. Used by the Pause handler where no
 // prefetch data is available.
@@ -696,8 +730,7 @@ func (s *Server) uploadSnapshotAsync(ctx context.Context, sbx *sandbox.Sandbox, 
 		defer cancel()
 		defer res.completeUpload(ctx)
 
-		err := res.snapshot.Upload(ctx, s.persistence, res.templateFiles)
-		if err != nil {
+		if err := res.uploadSnapshot(ctx, s.persistence, s.featureFlags); err != nil {
 			sbxlogger.I(sbx).Error(ctx, "error uploading snapshot files", zap.Error(err))
 
 			return

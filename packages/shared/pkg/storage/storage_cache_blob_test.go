@@ -13,8 +13,6 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/trace/noop"
-
-	storagemocks "github.com/e2b-dev/infra/packages/shared/pkg/storage/mocks"
 )
 
 var noopTracer = noop.TracerProvider{}.Tracer("")
@@ -32,12 +30,12 @@ func TestCachedObjectProvider_Put(t *testing.T) {
 		err := os.MkdirAll(cacheDir, os.ModePerm)
 		require.NoError(t, err)
 
-		inner := storagemocks.NewMockBlob(t)
+		inner := NewMockBlob(t)
 		inner.EXPECT().
 			Put(mock.Anything, mock.Anything).
 			Return(nil)
 
-		featureFlags := storagemocks.NewMockFeatureFlagsClient(t)
+		featureFlags := NewMockFeatureFlagsClient(t)
 		featureFlags.EXPECT().BoolFlag(mock.Anything, mock.Anything).Return(true)
 
 		c := cachedBlob{path: cacheDir, inner: inner, chunkSize: 1024, flags: featureFlags, tracer: noopTracer}
@@ -68,7 +66,7 @@ func TestCachedObjectProvider_Put(t *testing.T) {
 		const dataSize = 10 * megabyte
 		actualData := generateData(t, dataSize)
 
-		inner := storagemocks.NewMockBlob(t)
+		inner := NewMockBlob(t)
 		inner.EXPECT().
 			WriteTo(mock.Anything, mock.Anything).
 			RunAndReturn(func(_ context.Context, dst io.Writer) (int64, error) {
@@ -101,7 +99,7 @@ func TestCachedObjectProvider_WriteFileToCache(t *testing.T) {
 		tracer: noopTracer,
 	}
 	errTarget := errors.New("find me")
-	reader := storagemocks.NewMockReader(t)
+	reader := NewMockReader(t)
 	reader.EXPECT().Read(mock.Anything).Return(4, nil).Once()
 	reader.EXPECT().Read(mock.Anything).Return(0, errTarget).Once()
 

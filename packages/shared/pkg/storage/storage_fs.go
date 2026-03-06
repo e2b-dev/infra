@@ -7,6 +7,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -22,9 +24,8 @@ type fsObject struct {
 }
 
 var (
-	_ Seekable        = (*fsObject)(nil)
-	_ Blob            = (*fsObject)(nil)
-	_ StreamingReader = (*fsObject)(nil)
+	_ FramedFile = (*fsObject)(nil)
+	_ Blob       = (*fsObject)(nil)
 )
 
 type fsRangeReadCloser struct {
@@ -58,7 +59,7 @@ func (s *fsStorage) UploadSignedURL(_ context.Context, _ string, _ time.Duration
 	return "", fmt.Errorf("file system storage does not support signed URLs")
 }
 
-func (s *fsStorage) OpenSeekable(_ context.Context, path string, _ SeekableObjectType) (Seekable, error) {
+func (s *fsStorage) OpenFramedFile(_ context.Context, path string) (FramedFile, error) {
 	dir := filepath.Dir(s.getPath(path))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
@@ -69,7 +70,7 @@ func (s *fsStorage) OpenSeekable(_ context.Context, path string, _ SeekableObjec
 	}, nil
 }
 
-func (s *fsStorage) OpenBlob(_ context.Context, path string, _ ObjectType) (Blob, error) {
+func (s *fsStorage) OpenBlob(_ context.Context, path string) (Blob, error) {
 	dir := filepath.Dir(s.getPath(path))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
@@ -107,47 +108,65 @@ func (o *fsObject) Put(_ context.Context, data []byte) error {
 	return err
 }
 
-func (o *fsObject) StoreFile(_ context.Context, path string) error {
+func (o *fsObject) StoreFile(ctx context.Context, path string, opts *FramedUploadOptions) (_ *FrameTable, _ [32]byte, e error) {
+	if opts != nil && opts.CompressionType != CompressionNone {
+		return o.storeFileCompressed(ctx, path, opts)
+	}
+
 	r, err := os.Open(path)
 	if err != nil {
-		return fmt.Errorf("failed to open file %s: %w", path, err)
+		e = fmt.Errorf("failed to open file %s: %w", path, err)
+
+		return
 	}
 	defer r.Close()
 
 	handle, err := o.getHandle(false)
 	if err != nil {
-		return err
+		e = err
+
+		return
 	}
 	defer handle.Close()
 
-	_, err = io.Copy(handle, r)
-	if err != nil {
-		return err
-	}
+	_, e = io.Copy(handle, r)
 
-	return nil
+	return
 }
 
-func (o *fsObject) OpenRangeReader(_ context.Context, off, length int64) (io.ReadCloser, error) {
+func (o *fsObject) storeFileCompressed(ctx context.Context, localPath string, opts *FramedUploadOptions) (*FrameTable, [32]byte, error) {
+	file, err := os.Open(localPath)
+	if err != nil {
+		return nil, [32]byte{}, fmt.Errorf("failed to open local file %s: %w", localPath, err)
+	}
+	defer file.Close()
+
+	fi, err := file.Stat()
+	if err != nil {
+		return nil, [32]byte{}, fmt.Errorf("failed to stat local file %s: %w", localPath, err)
+	}
+
+	// Write .uncompressed-size sidecar so Size() returns the correct value.
+	sidecarPath := o.path + "." + MetadataKeyUncompressedSize
+	if writeErr := os.WriteFile(sidecarPath, []byte(strconv.FormatInt(fi.Size(), 10)), 0o644); writeErr != nil {
+		return nil, [32]byte{}, fmt.Errorf("failed to write uncompressed-size sidecar for %s: %w", o.path, writeErr)
+	}
+
+	uploader := &fsPartUploader{fullPath: o.path}
+
+	return CompressStream(ctx, file, opts, uploader)
+}
+
+func (o *fsObject) openRangeReader(_ context.Context, off int64, length int) (io.ReadCloser, error) {
 	f, err := o.getHandle(true)
 	if err != nil {
 		return nil, err
 	}
 
 	return &fsRangeReadCloser{
-		Reader: io.NewSectionReader(f, off, length),
+		Reader: io.NewSectionReader(f, off, int64(length)),
 		file:   f,
 	}, nil
-}
-
-func (o *fsObject) ReadAt(_ context.Context, buff []byte, off int64) (n int, err error) {
-	handle, err := o.getHandle(true)
-	if err != nil {
-		return 0, err
-	}
-	defer handle.Close()
-
-	return handle.ReadAt(buff, off)
 }
 
 func (o *fsObject) Exists(_ context.Context) (bool, error) {
@@ -169,6 +188,14 @@ func (o *fsObject) Size(_ context.Context) (int64, error) {
 	fileInfo, err := handle.Stat()
 	if err != nil {
 		return 0, err
+	}
+
+	// Check for .uncompressed-size sidecar file
+	sidecarPath := o.path + "." + MetadataKeyUncompressedSize
+	if sidecarData, sidecarErr := os.ReadFile(sidecarPath); sidecarErr == nil {
+		if parsed, parseErr := strconv.ParseInt(strings.TrimSpace(string(sidecarData)), 10, 64); parseErr == nil {
+			return parsed, nil
+		}
 	}
 
 	return fileInfo.Size(), nil
@@ -200,4 +227,25 @@ func (o *fsObject) getHandle(checkExistence bool) (*os.File, error) {
 	}
 
 	return handle, nil
+}
+
+// fsPartUploader implements PartUploader for local filesystem.
+// Embeds MemPartUploader for concurrent-safe part collection,
+// then writes atomically on Complete.
+type fsPartUploader struct {
+	MemPartUploader
+
+	fullPath string
+}
+
+func (u *fsPartUploader) Complete(_ context.Context) error {
+	if err := os.MkdirAll(filepath.Dir(u.fullPath), 0o755); err != nil {
+		return fmt.Errorf("failed to create directory: %w", err)
+	}
+
+	return os.WriteFile(u.fullPath, u.Assemble(), 0o644)
+}
+
+func (o *fsObject) GetFrame(ctx context.Context, offsetU int64, frameTable *FrameTable, decompress bool, buf []byte, readSize int64, onRead func(totalWritten int64)) (Range, error) {
+	return ReadFrame(ctx, o.openRangeReader, "FS:"+o.path, offsetU, frameTable, decompress, buf, readSize, onRead)
 }

@@ -286,6 +286,8 @@ func run(config cfg.Config) (success bool) {
 
 	featureFlags.SetDeploymentName(config.DomainName)
 
+	storage.InitDecoders(ctx, featureFlags)
+
 	// gcp concurrent upload limiter
 	limiter, err := limit.New(ctx, featureFlags)
 	if err != nil {

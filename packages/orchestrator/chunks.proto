@@ -14,6 +14,12 @@ message PeerAvailability {
   // use_storage is true when the GCS upload has completed and the caller
   // should switch to reading from GCS/NFS directly instead of this peer.
   bool use_storage = 2;
+  // memfile_header contains the serialized V4 header (with FrameTables)
+  // for the memfile, included when use_storage is true and the upload was compressed.
+  bytes memfile_header = 3;
+  // rootfs_header contains the serialized V4 header (with FrameTables)
+  // for the rootfs, included when use_storage is true and the upload was compressed.
+  bytes rootfs_header = 4;
 }
 
 message GetBuildFileSizeRequest {
@@ -37,14 +43,14 @@ message GetBuildFileExistsResponse {
   PeerAvailability availability = 1;
 }
 
-message ReadAtBuildSeekableRequest {
+message GetBuildFrameRequest {
   string build_id = 1;
   string file_name = 2;
   int64 offset = 3;
   int64 length = 4;
 }
 
-message ReadAtBuildSeekableResponse {
+message GetBuildFrameResponse {
   bytes data = 1;
   // availability is only set in the first message of the stream.
   PeerAvailability availability = 2;
@@ -67,8 +73,8 @@ service ChunkService {
   rpc GetBuildFileSize(GetBuildFileSizeRequest) returns (GetBuildFileSizeResponse);
   // GetBuildFileExists checks if a blob file is present in the peer's local cache.
   rpc GetBuildFileExists(GetBuildFileExistsRequest) returns (GetBuildFileExistsResponse);
-  // ReadAtBuildSeekable streams a range from a seekable diff file (memfile, rootfs.ext4).
-  rpc ReadAtBuildSeekable(ReadAtBuildSeekableRequest) returns (stream ReadAtBuildSeekableResponse);
+  // GetBuildFrame streams a range from a framed diff file (memfile, rootfs.ext4).
+  rpc GetBuildFrame(GetBuildFrameRequest) returns (stream GetBuildFrameResponse);
   // GetBuildBlob streams an entire blob file (snapfile, metadata, headers).
   rpc GetBuildBlob(GetBuildBlobRequest) returns (stream GetBuildBlobResponse);
 }

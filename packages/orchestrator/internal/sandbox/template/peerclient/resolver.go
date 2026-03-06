@@ -28,10 +28,19 @@ type Resolver interface {
 	Close()
 }
 
+// TransitionHeaders holds the serialized V4 headers received from the peer's
+// use_storage response. These are used by build.File to atomically swap headers
+// when transitioning from P2P to compressed GCS reads.
+type TransitionHeaders struct {
+	MemfileHeader []byte
+	RootfsHeader  []byte
+}
+
 type resolveResult struct {
-	client   orchestrator.ChunkServiceClient
-	uploaded *atomic.Bool
-	addr     string
+	client            orchestrator.ChunkServiceClient
+	uploaded          *atomic.Bool
+	transitionHeaders *atomic.Pointer[TransitionHeaders]
+	addr              string
 }
 
 // NopResolver returns a Resolver that always falls back to the base provider.
@@ -51,6 +60,7 @@ type peerResolver struct {
 	selfAddress    string
 	peerConns      sync.Map // address → *grpc.ClientConn
 	uploadedBuilds sync.Map // buildID → *atomic.Bool
+	transitionHdrs sync.Map // buildID → *atomic.Pointer[TransitionHeaders]
 	dialGroup      singleflight.Group
 }
 
@@ -113,10 +123,24 @@ func (r *peerResolver) uploadedFlag(buildID string) *atomic.Bool {
 	return actual.(*atomic.Bool)
 }
 
+// transitionHeadersPtr returns a shared atomic pointer for the given build ID.
+// Used to store serialized V4 headers when the peer signals upload completion.
+func (r *peerResolver) transitionHeadersPtr(buildID string) *atomic.Pointer[TransitionHeaders] {
+	if v, ok := r.transitionHdrs.Load(buildID); ok {
+		return v.(*atomic.Pointer[TransitionHeaders])
+	}
+
+	ptr := &atomic.Pointer[TransitionHeaders]{}
+	actual, _ := r.transitionHdrs.LoadOrStore(buildID, ptr)
+
+	return actual.(*atomic.Pointer[TransitionHeaders])
+}
+
 // Purge removes the uploaded state for a build, called on template
 // cache eviction so the entry doesn't accumulate forever.
 func (r *peerResolver) Purge(buildID string) {
 	r.uploadedBuilds.Delete(buildID)
+	r.transitionHdrs.Delete(buildID)
 }
 
 // resolve looks up the peer for the given build and returns a gRPC client if
@@ -147,9 +171,10 @@ func (r *peerResolver) resolve(ctx context.Context, buildID string) (attribute.K
 	}
 
 	return attrResolvePeer, resolveResult{
-		client:   orchestrator.NewChunkServiceClient(conn),
-		uploaded: uploaded,
-		addr:     addr,
+		client:            orchestrator.NewChunkServiceClient(conn),
+		uploaded:          uploaded,
+		transitionHeaders: r.transitionHeadersPtr(buildID),
+		addr:              addr,
 	}
 }
 

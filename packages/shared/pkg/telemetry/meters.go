@@ -409,6 +409,12 @@ const (
 	resultTypeFailure = "failure"
 )
 
+var (
+	// pre-allocated
+	Success = attribute.String(resultAttr, resultTypeSuccess)
+	Failure = attribute.String(resultAttr, resultTypeFailure)
+)
+
 func (t Stopwatch) Success(ctx context.Context, total int64, kv ...attribute.KeyValue) {
 	t.end(ctx, resultTypeSuccess, total, kv...)
 }
@@ -422,7 +428,24 @@ func (t Stopwatch) end(ctx context.Context, result string, total int64, kv ...at
 	kv = append(t.kv, kv...)
 
 	amount := time.Since(t.start).Milliseconds()
-	t.histogram.Record(ctx, amount, metric.WithAttributes(kv...))
-	t.sum.Add(ctx, total, metric.WithAttributes(kv...))
-	t.count.Add(ctx, 1, metric.WithAttributes(kv...))
+	opt := metric.WithAttributeSet(attribute.NewSet(kv...))
+	t.histogram.Record(ctx, amount, opt)
+	t.sum.Add(ctx, total, opt)
+	t.count.Add(ctx, 1, opt)
+}
+
+// PrecomputeAttrs builds a reusable MeasurementOption from the given attribute
+// key-values. The option must include all attributes (including "result").
+// Use with Stopwatch.Record to avoid per-call attribute allocation.
+func PrecomputeAttrs(kv ...attribute.KeyValue) metric.MeasurementOption {
+	return metric.WithAttributeSet(attribute.NewSet(kv...))
+}
+
+// FastOK records an operation using a precomputed attribute
+// option. Zero-allocation alternative to Success for hot paths.
+func (t Stopwatch) Record(ctx context.Context, total int64, precomputedAttrs metric.MeasurementOption) {
+	amount := time.Since(t.start).Milliseconds()
+	t.histogram.Record(ctx, amount, precomputedAttrs)
+	t.sum.Add(ctx, total, precomputedAttrs)
+	t.count.Add(ctx, 1, precomputedAttrs)
 }

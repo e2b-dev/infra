@@ -53,7 +53,7 @@ func (b *peerBlob) Exists(ctx context.Context) (bool, error) {
 				BuildId:  b.buildID,
 				FileName: b.fileName,
 			})
-			if err == nil && checkPeerAvailability(resp.GetAvailability(), b.uploaded) {
+			if err == nil && checkPeerAvailability(resp.GetAvailability(), b.uploaded, nil) {
 				return peerAttempt[bool]{value: true, hit: true}, nil
 			}
 
@@ -97,7 +97,7 @@ func openPeerBlobStream(
 		return nil, fmt.Errorf("recv first blob message: %w", err)
 	}
 
-	if !checkPeerAvailability(msg.GetAvailability(), uploaded) {
+	if !checkPeerAvailability(msg.GetAvailability(), uploaded, nil) {
 		return nil, fmt.Errorf("peer not available for blob stream")
 	}
 
@@ -119,7 +119,7 @@ func openPeerBlobStream(
 		// Flip the uploaded flag if the peer signals use_storage; the current
 		// stream keeps reading from the peer, but subsequent operations will
 		// go directly to GCS.
-		checkPeerAvailability(m.GetAvailability(), uploaded)
+		checkPeerAvailability(m.GetAvailability(), uploaded, nil)
 
 		return m.GetData(), nil
 	}, nil

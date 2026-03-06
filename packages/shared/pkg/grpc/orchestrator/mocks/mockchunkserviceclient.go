@@ -288,8 +288,8 @@ func (_c *MockChunkServiceClient_GetBuildFileSize_Call) RunAndReturn(run func(ct
 	return _c
 }
 
-// ReadAtBuildSeekable provides a mock function for the type MockChunkServiceClient
-func (_mock *MockChunkServiceClient) ReadAtBuildSeekable(ctx context.Context, in *orchestrator.ReadAtBuildSeekableRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[orchestrator.ReadAtBuildSeekableResponse], error) {
+// GetBuildFrame provides a mock function for the type MockChunkServiceClient
+func (_mock *MockChunkServiceClient) GetBuildFrame(ctx context.Context, in *orchestrator.GetBuildFrameRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[orchestrator.GetBuildFrameResponse], error) {
 	var tmpRet mock.Arguments
 	if len(opts) > 0 {
 		tmpRet = _mock.Called(ctx, in, opts)
@@ -299,22 +299,22 @@ func (_mock *MockChunkServiceClient) ReadAtBuildSeekable(ctx context.Context, in
 	ret := tmpRet
 
 	if len(ret) == 0 {
-		panic("no return value specified for ReadAtBuildSeekable")
+		panic("no return value specified for GetBuildFrame")
 	}
 
-	var r0 grpc.ServerStreamingClient[orchestrator.ReadAtBuildSeekableResponse]
+	var r0 grpc.ServerStreamingClient[orchestrator.GetBuildFrameResponse]
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *orchestrator.ReadAtBuildSeekableRequest, ...grpc.CallOption) (grpc.ServerStreamingClient[orchestrator.ReadAtBuildSeekableResponse], error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *orchestrator.GetBuildFrameRequest, ...grpc.CallOption) (grpc.ServerStreamingClient[orchestrator.GetBuildFrameResponse], error)); ok {
 		return returnFunc(ctx, in, opts...)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *orchestrator.ReadAtBuildSeekableRequest, ...grpc.CallOption) grpc.ServerStreamingClient[orchestrator.ReadAtBuildSeekableResponse]); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *orchestrator.GetBuildFrameRequest, ...grpc.CallOption) grpc.ServerStreamingClient[orchestrator.GetBuildFrameResponse]); ok {
 		r0 = returnFunc(ctx, in, opts...)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(grpc.ServerStreamingClient[orchestrator.ReadAtBuildSeekableResponse])
+			r0 = ret.Get(0).(grpc.ServerStreamingClient[orchestrator.GetBuildFrameResponse])
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, *orchestrator.ReadAtBuildSeekableRequest, ...grpc.CallOption) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *orchestrator.GetBuildFrameRequest, ...grpc.CallOption) error); ok {
 		r1 = returnFunc(ctx, in, opts...)
 	} else {
 		r1 = ret.Error(1)
@@ -322,29 +322,29 @@ func (_mock *MockChunkServiceClient) ReadAtBuildSeekable(ctx context.Context, in
 	return r0, r1
 }
 
-// MockChunkServiceClient_ReadAtBuildSeekable_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ReadAtBuildSeekable'
-type MockChunkServiceClient_ReadAtBuildSeekable_Call struct {
+// MockChunkServiceClient_GetBuildFrame_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetBuildFrame'
+type MockChunkServiceClient_GetBuildFrame_Call struct {
 	*mock.Call
 }
 
-// ReadAtBuildSeekable is a helper method to define mock.On call
+// GetBuildFrame is a helper method to define mock.On call
 //   - ctx context.Context
-//   - in *orchestrator.ReadAtBuildSeekableRequest
+//   - in *orchestrator.GetBuildFrameRequest
 //   - opts ...grpc.CallOption
-func (_e *MockChunkServiceClient_Expecter) ReadAtBuildSeekable(ctx interface{}, in interface{}, opts ...interface{}) *MockChunkServiceClient_ReadAtBuildSeekable_Call {
-	return &MockChunkServiceClient_ReadAtBuildSeekable_Call{Call: _e.mock.On("ReadAtBuildSeekable",
+func (_e *MockChunkServiceClient_Expecter) GetBuildFrame(ctx interface{}, in interface{}, opts ...interface{}) *MockChunkServiceClient_GetBuildFrame_Call {
+	return &MockChunkServiceClient_GetBuildFrame_Call{Call: _e.mock.On("GetBuildFrame",
 		append([]interface{}{ctx, in}, opts...)...)}
 }
 
-func (_c *MockChunkServiceClient_ReadAtBuildSeekable_Call) Run(run func(ctx context.Context, in *orchestrator.ReadAtBuildSeekableRequest, opts ...grpc.CallOption)) *MockChunkServiceClient_ReadAtBuildSeekable_Call {
+func (_c *MockChunkServiceClient_GetBuildFrame_Call) Run(run func(ctx context.Context, in *orchestrator.GetBuildFrameRequest, opts ...grpc.CallOption)) *MockChunkServiceClient_GetBuildFrame_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 *orchestrator.ReadAtBuildSeekableRequest
+		var arg1 *orchestrator.GetBuildFrameRequest
 		if args[1] != nil {
-			arg1 = args[1].(*orchestrator.ReadAtBuildSeekableRequest)
+			arg1 = args[1].(*orchestrator.GetBuildFrameRequest)
 		}
 		var arg2 []grpc.CallOption
 		var variadicArgs []grpc.CallOption
@@ -361,12 +361,12 @@ func (_c *MockChunkServiceClient_ReadAtBuildSeekable_Call) Run(run func(ctx cont
 	return _c
 }
 
-func (_c *MockChunkServiceClient_ReadAtBuildSeekable_Call) Return(serverStreamingClient grpc.ServerStreamingClient[orchestrator.ReadAtBuildSeekableResponse], err error) *MockChunkServiceClient_ReadAtBuildSeekable_Call {
+func (_c *MockChunkServiceClient_GetBuildFrame_Call) Return(serverStreamingClient grpc.ServerStreamingClient[orchestrator.GetBuildFrameResponse], err error) *MockChunkServiceClient_GetBuildFrame_Call {
 	_c.Call.Return(serverStreamingClient, err)
 	return _c
 }
 
-func (_c *MockChunkServiceClient_ReadAtBuildSeekable_Call) RunAndReturn(run func(ctx context.Context, in *orchestrator.ReadAtBuildSeekableRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[orchestrator.ReadAtBuildSeekableResponse], error)) *MockChunkServiceClient_ReadAtBuildSeekable_Call {
+func (_c *MockChunkServiceClient_GetBuildFrame_Call) RunAndReturn(run func(ctx context.Context, in *orchestrator.GetBuildFrameRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[orchestrator.GetBuildFrameResponse], error)) *MockChunkServiceClient_GetBuildFrame_Call {
 	_c.Call.Return(run)
 	return _c
 }

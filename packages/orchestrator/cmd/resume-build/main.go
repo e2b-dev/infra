@@ -30,7 +30,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/peerclient"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/tcpfirewall"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
@@ -640,16 +639,17 @@ func (r *runner) pauseOnce(ctx context.Context, opts pauseOptions, verbose bool)
 
 	// Only upload when not in benchmark mode (verbose = true means single run)
 	if verbose {
-		templateFiles := storage.TemplateFiles{BuildID: opts.newBuildID}
+		tb := sandbox.NewTemplateBuild(snapshot, r.storage, storage.TemplateFiles{BuildID: opts.newBuildID}, nil)
+
 		if opts.isRemoteStorage {
 			fmt.Println("📤 Uploading snapshot...")
-			if err := snapshot.Upload(ctx, r.storage, templateFiles); err != nil {
+			if err := tb.UploadAtOnce(ctx, nil, nil); err != nil {
 				return timings, fmt.Errorf("failed to upload snapshot: %w", err)
 			}
 			fmt.Println("✅ Snapshot uploaded successfully")
 		} else {
 			fmt.Println("💾 Saving snapshot to local storage...")
-			if err := snapshot.Upload(ctx, r.storage, templateFiles); err != nil {
+			if err := tb.UploadAtOnce(ctx, nil, nil); err != nil {
 				return timings, fmt.Errorf("failed to save snapshot: %w", err)
 			}
 			fmt.Println("✅ Snapshot saved successfully")
@@ -972,10 +972,6 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	}
 	sbxlogger.SetSandboxLoggerInternal(logger.NewNopLogger())
 
-	if os.Getenv("NODE_IP") == "" {
-		os.Setenv("NODE_IP", "127.0.0.1")
-	}
-
 	if verbose {
 		fmt.Println("🔧 Parsing config...")
 	}
@@ -1040,7 +1036,7 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	if verbose {
 		fmt.Println("🔧 Creating template cache...")
 	}
-	cache, err := template.NewCache(config, flags, persistence, blockMetrics, peerclient.NopResolver())
+	cache, err := template.NewCache(config, flags, persistence, blockMetrics, nil)
 	if err != nil {
 		return fmt.Errorf("template cache: %w", err)
 	}

@@ -13,16 +13,16 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
-func TestSeekableSource_Size(t *testing.T) {
+func TestFramedSource_Size(t *testing.T) {
 	t.Parallel()
 
 	diff := buildmocks.NewMockDiff(t)
-	diff.EXPECT().Size(mock.Anything).Return(int64(1234), nil)
+	diff.EXPECT().FileSize().Return(int64(1234), nil)
 
 	cache := peerservermocks.NewMockCache(t)
 	cache.EXPECT().LookupDiff("build-1", build.DiffType(storage.MemfileName)).Return(diff, true)
 
-	src, err := ResolveSeekable(cache, "build-1", storage.MemfileName)
+	src, err := ResolveFramed(cache, "build-1", storage.MemfileName)
 	require.NoError(t, err)
 
 	size, err := src.Size(t.Context())
@@ -30,19 +30,19 @@ func TestSeekableSource_Size(t *testing.T) {
 	assert.Equal(t, int64(1234), size)
 }
 
-func TestSeekableSource_Stream(t *testing.T) {
+func TestFramedSource_Stream(t *testing.T) {
 	t.Parallel()
 
 	data := []byte("diff bytes")
 
 	diff := buildmocks.NewMockDiff(t)
-	diff.EXPECT().Slice(mock.Anything, int64(0), int64(len(data))).Return(data, nil)
+	diff.EXPECT().GetBlock(mock.Anything, int64(0), int64(len(data)), (*storage.FrameTable)(nil)).Return(data, nil)
 	diff.EXPECT().BlockSize().Return(int64(len(data)))
 
 	cache := peerservermocks.NewMockCache(t)
 	cache.EXPECT().LookupDiff("build-1", build.DiffType(storage.MemfileName)).Return(diff, true)
 
-	src, err := ResolveSeekable(cache, "build-1", storage.MemfileName)
+	src, err := ResolveFramed(cache, "build-1", storage.MemfileName)
 	require.NoError(t, err)
 
 	sender := &collectSender{}

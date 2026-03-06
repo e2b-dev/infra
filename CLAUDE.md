@@ -73,6 +73,12 @@ make migrate
 
 # Run single test
 cd packages/<package> && go test -v -run TestName ./path/to/package
+
+# Run chunker benchmarks (cache hit / cold concurrent)
+# Use auto-calibrated N (no -benchtime=Nx) for the cache-hit benchmark;
+# each read is sub-microsecond so low iteration counts produce noisy results.
+go test -bench=BenchmarkCacheHit -timeout=10m ./packages/orchestrator/internal/sandbox/block/ -run=^$
+go test -bench=BenchmarkColdConcurrent -benchtime=3x -timeout=30m ./packages/orchestrator/internal/sandbox/block/ -run=^$
 ```
 
 ### Deployment
@@ -272,6 +278,11 @@ Key steps:
 
 ## Debugging
 
+### Debug Logging
+- ALWAYS use `fmt.Printf` for temporary debug logging when instrumenting code for investigation
+- Do NOT use zap/structured logging (logger.Error, logger.Debug, etc.) for debug instrumentation — it's too verbose and may not print to stderr reliably
+- Remove all `fmt.Printf` debug lines before merging
+
 ### Remote Development (VSCode)
 - See `DEV.md` for remote SSH setup via GCP
 - Supports Go debugger attachment to remote instances
@@ -286,6 +297,11 @@ make connect-orchestrator
 - Access: `https://nomad.<your-domain>`
 - Token: GCP Secrets Manager
 
-### Logs
+### Nomad Logs
+- Use `nomad alloc logs -job <job-name>` to fetch service logs (e.g., `nomad alloc logs -job orchestrator-dev`)
+- Use `-stderr` flag for stderr output: `nomad alloc logs -job orchestrator-dev -stderr`
+- Use `-tail` for live tailing: `nomad alloc logs -job orchestrator-dev -tail`
+- The orchestrator job in dev is called `orchestrator-dev`
+- Integration test failures should be diagnosed by checking these logs first
 - Local: Docker logs in `make local-infra`
 - Production: Grafana Loki or Nomad UI

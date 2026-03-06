@@ -27,7 +27,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/peerclient"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/tcpfirewall"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
@@ -274,16 +273,12 @@ func doBuild(
 
 	blockMetrics, _ := blockmetrics.NewMetrics(noop.NewMeterProvider())
 
-	if os.Getenv("NODE_IP") == "" {
-		os.Setenv("NODE_IP", "127.0.0.1")
-	}
-
 	c, err := cfg.Parse()
 	if err != nil {
 		return fmt.Errorf("config: %w", err)
 	}
 
-	templateCache, err := sbxtemplate.NewCache(c, featureFlags, persistenceTemplate, blockMetrics, peerclient.NopResolver())
+	templateCache, err := sbxtemplate.NewCache(c, featureFlags, persistenceTemplate, blockMetrics, nil)
 	if err != nil {
 		return fmt.Errorf("template cache: %w", err)
 	}
@@ -366,7 +361,7 @@ func printArtifactSizes(ctx context.Context, persistence storage.StorageProvider
 		printLocalFileSizes(basePath, buildID)
 	} else {
 		// For remote storage, get sizes from storage provider
-		if memfile, err := persistence.OpenSeekable(ctx, files.StorageMemfilePath(), storage.MemfileObjectType); err == nil {
+		if memfile, err := persistence.OpenFramedFile(ctx, files.StorageMemfilePath()); err == nil {
 			if size, err := memfile.Size(ctx); err == nil {
 				fmt.Printf("   Memfile: %d MB\n", size>>20)
 			}

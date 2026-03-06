@@ -12,11 +12,11 @@ import (
 // ErrUnknownFile is returned when the requested file name is not recognised.
 var ErrUnknownFile = fmt.Errorf("unknown file")
 
-// ResolveSeekable maps (buildID, fileName) to a SeekableSource.
+// ResolveFramed maps (buildID, fileName) to a FramedSource.
 // Supported file names: memfile, rootfs.ext4.
 // Returns ErrNotAvailable when the build is not in the local cache.
 // Returns ErrUnknownFile for unrecognised file names.
-func ResolveSeekable(cache Cache, buildID, fileName string) (SeekableSource, error) {
+func ResolveFramed(cache Cache, buildID, fileName string) (FramedSource, error) {
 	switch fileName {
 	case storage.MemfileName, storage.RootfsName:
 		diff, ok := cache.LookupDiff(buildID, build.DiffType(fileName))
@@ -24,7 +24,7 @@ func ResolveSeekable(cache Cache, buildID, fileName string) (SeekableSource, err
 			return nil, ErrNotAvailable
 		}
 
-		return &seekableSource{diff: diff}, nil
+		return &framedSource{diff: diff}, nil
 
 	default:
 		return nil, fmt.Errorf("%w: %q", ErrUnknownFile, fileName)

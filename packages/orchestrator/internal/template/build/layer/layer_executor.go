@@ -16,6 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
@@ -34,6 +35,7 @@ type LayerExecutor struct {
 	buildStorage    storage.StorageProvider
 	index           cache.Index
 	uploadTracker   *UploadTracker
+	featureFlags    *featureflags.Client
 }
 
 func NewLayerExecutor(
@@ -46,6 +48,7 @@ func NewLayerExecutor(
 	buildStorage storage.StorageProvider,
 	index cache.Index,
 	uploadTracker *UploadTracker,
+	featureFlags *featureflags.Client,
 ) *LayerExecutor {
 	return &LayerExecutor{
 		BuildContext: buildContext,
@@ -59,6 +62,7 @@ func NewLayerExecutor(
 		buildStorage:    buildStorage,
 		index:           index,
 		uploadTracker:   uploadTracker,
+		featureFlags:    featureFlags,
 	}
 }
 
@@ -280,12 +284,21 @@ func (lb *LayerExecutor) PauseAndUpload(
 	// Upload snapshot async, it's added to the template cache immediately
 	userLogger.Debug(ctx, fmt.Sprintf("Saving: %s", meta.Template.BuildID))
 
-	// Register this upload and get functions to signal completion and wait for previous uploads
+	// Pipeline per layer:
+	//  1. Upload all files (uncompressed + compressed, except the V4 headers) — parallel across layers
+	//  2. Wait for previous layers to complete (data + headers)
+	//  3. Finalize compressed headers — all upstream FTs now available
+	//  4. Signal complete, save cache index
 	completeUpload, waitForPreviousUploads := lb.uploadTracker.StartUpload()
+	buildID := meta.Template.BuildID
+
+	memfileOpts := storage.GetUploadOptions(ctx, lb.featureFlags, storage.FileTypeMemfile, storage.UseCaseBuild)
+	rootfsOpts := storage.GetUploadOptions(ctx, lb.featureFlags, storage.FileTypeRootfs, storage.UseCaseBuild)
+	tb := sandbox.NewTemplateBuild(snapshot, lb.templateStorage, storage.TemplateFiles{BuildID: buildID}, lb.uploadTracker.Pending())
 
 	lb.UploadErrGroup.Go(func() error {
 		ctx := context.WithoutCancel(ctx)
-		ctx, span := tracer.Start(ctx, "upload snapshot")
+		ctx, span := tracer.Start(ctx, "upload layer")
 		defer span.End()
 
 		// Always signal completion to unblock waiting goroutines, even on error.
@@ -293,33 +306,38 @@ func (lb *LayerExecutor) PauseAndUpload(
 		// still unblock and the errgroup can properly collect all errors.
 		defer completeUpload()
 
-		err := snapshot.Upload(
-			ctx,
-			lb.templateStorage,
-			storage.TemplateFiles{BuildID: meta.Template.BuildID},
-		)
+		// Step 1: Upload everything except V4 headers (parallel across layers)
+		hasCompressed, err := tb.UploadExceptV4Headers(ctx, memfileOpts, rootfsOpts)
 		if err != nil {
-			return fmt.Errorf("error uploading snapshot: %w", err)
+			return fmt.Errorf("error uploading data files: %w", err)
 		}
 
-		// Wait for all previous layer uploads to complete before saving the cache entry.
+		// Step 2: Wait for all previous layer uploads to complete before saving the cache entry.
 		// This prevents race conditions where another build hits this cache entry
 		// before its dependencies (previous layers) are available in storage.
-		err = waitForPreviousUploads(ctx)
-		if err != nil {
+		// It also ensures all upstream frame tables are in pending, so that
+		// V4 headers can cross-pollinate mappings from ancestor layers.
+		if err := waitForPreviousUploads(ctx); err != nil {
 			return fmt.Errorf("error waiting for previous uploads: %w", err)
 		}
 
-		err = lb.index.SaveLayerMeta(ctx, hash, cache.LayerMetadata{
+		// Step 3: Finalize V4 compressed headers — all upstream FTs are now in pending
+		if hasCompressed {
+			if err := tb.UploadV4Header(ctx); err != nil {
+				return fmt.Errorf("error uploading compressed headers: %w", err)
+			}
+		}
+
+		// Step 4: Save cache index
+		if err := lb.index.SaveLayerMeta(ctx, hash, cache.LayerMetadata{
 			Template: cache.Template{
-				BuildID: meta.Template.BuildID,
+				BuildID: buildID,
 			},
-		})
-		if err != nil {
+		}); err != nil {
 			return fmt.Errorf("error saving UUID to hash mapping: %w", err)
 		}
 
-		userLogger.Debug(ctx, fmt.Sprintf("Saved: %s", meta.Template.BuildID))
+		userLogger.Debug(ctx, fmt.Sprintf("Saved: %s", buildID))
 
 		return nil
 	})

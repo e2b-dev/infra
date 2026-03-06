@@ -27,7 +27,7 @@ type skipCacheWritebackKeyType struct{}
 
 // WithSkipCacheWriteback returns a context that signals the NFS cache layer to
 // skip writing fetched data back to the local cache. This is used by the
-// prefetcher to avoid polluting the shared NFS cache with prefetch-specific reads.
+// peer prefetcher to avoid polluting the shared NFS cache with peer-specific reads.
 func WithSkipCacheWriteback(ctx context.Context) context.Context {
 	return context.WithValue(ctx, skipCacheWritebackKeyType{}, true)
 }
@@ -85,8 +85,8 @@ func (c cache) UploadSignedURL(ctx context.Context, path string, ttl time.Durati
 	return c.inner.UploadSignedURL(ctx, path, ttl)
 }
 
-func (c cache) OpenBlob(ctx context.Context, path string, objectType ObjectType) (Blob, error) {
-	innerObject, err := c.inner.OpenBlob(ctx, path, objectType)
+func (c cache) OpenBlob(ctx context.Context, path string) (Blob, error) {
+	innerObject, err := c.inner.OpenBlob(ctx, path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open object: %w", err)
 	}
@@ -105,8 +105,8 @@ func (c cache) OpenBlob(ctx context.Context, path string, objectType ObjectType)
 	}, nil
 }
 
-func (c cache) OpenSeekable(ctx context.Context, path string, objectType SeekableObjectType) (Seekable, error) {
-	innerObject, err := c.inner.OpenSeekable(ctx, path, objectType)
+func (c cache) OpenFramedFile(ctx context.Context, path string) (FramedFile, error) {
+	innerObject, err := c.inner.OpenFramedFile(ctx, path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open object: %w", err)
 	}
@@ -116,7 +116,7 @@ func (c cache) OpenSeekable(ctx context.Context, path string, objectType Seekabl
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
 	}
 
-	return &cachedSeekable{
+	return &cachedFramedFile{
 		path:      localPath,
 		chunkSize: c.chunkSize,
 		inner:     innerObject,

@@ -3,20 +3,37 @@ package layer
 import (
 	"context"
 	"sync"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 )
 
 // UploadTracker tracks in-flight uploads and allows waiting for all previous uploads to complete.
 // This prevents race conditions where a layer's cache entry is saved before its
 // dependencies (previous layers) are fully uploaded.
+//
+// It also owns a shared PendingBuildInfo that collects frame tables from compressed
+// uploads across all layers. waitForPreviousUploads guarantees that by the time
+// layer N finalizes its compressed headers, all upstream layers (0..N-1) have
+// completed both their data and header uploads, so all upstream frame tables
+// are available for cross-pollination.
 type UploadTracker struct {
 	mu      sync.Mutex
 	waitChs []chan struct{}
+
+	// pending collects frame tables from compressed uploads across all layers.
+	pending *sandbox.PendingBuildInfo
 }
 
 func NewUploadTracker() *UploadTracker {
 	return &UploadTracker{
 		waitChs: make([]chan struct{}, 0),
+		pending: &sandbox.PendingBuildInfo{},
 	}
+}
+
+// Pending returns the shared PendingBuildInfo for collecting frame tables.
+func (t *UploadTracker) Pending() *sandbox.PendingBuildInfo {
+	return t.pending
 }
 
 // StartUpload registers that a new upload has started.
