@@ -29,6 +29,10 @@ const (
 	testPassword      = "test_password"
 )
 
+func init() {
+	goose.SetTableName("_migrations")
+}
+
 // Database encapsulates the test database container and clients
 type Database struct {
 	SqlcClient  *db.Client
@@ -117,8 +121,6 @@ func runDatabaseMigrations(t *testing.T, connStr string) {
 		err := db.Close()
 		assert.NoError(t, err)
 	})
-
-	goose.SetTableName("_migrations")
 
 	// run the db migration
 	err = goose.RunWithOptionsContext(

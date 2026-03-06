@@ -12,6 +12,10 @@ import (
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 )
 
+func init() {
+	goose.SetTableName("_migrations")
+}
+
 func TestRun(t *testing.T) {
 	postgresContainer, err := postgres.Run(t.Context(),
 		"postgres:16-alpine",
@@ -36,8 +40,6 @@ func TestRun(t *testing.T) {
 		err := db.Close()
 		assert.NoError(t, err)
 	})
-
-	goose.SetTableName("_migrations")
 
 	// run the db migration
 	err = goose.RunWithOptionsContext(
