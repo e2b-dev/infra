@@ -69,7 +69,7 @@ func RegisterBuild(
 	// This is a simple implementation of concurrency limit
 	// It does not guarantee that the limit is not exceeded, but it should be good enough for now (considering overall low number of total builds)
 	otherBuildCount, err := db.GetInProgressTemplateBuildsByTeam(ctx, queries.GetInProgressTemplateBuildsByTeamParams{
-		TeamID:            &data.Team.ID,
+		TeamID:            data.Team.ID,
 		ExcludeTemplateID: data.TemplateID,
 		ExcludeTags:       tags,
 	})
@@ -181,7 +181,7 @@ func RegisterBuild(
 	}
 	telemetry.ReportEvent(ctx, "created or update template")
 
-	// Mark the previous not started builds as failed for all tags
+	// Mark the previous not started builds as failed and remove their active-build rows
 	err = client.InvalidateUnstartedTemplateBuilds(ctx, queries.InvalidateUnstartedTemplateBuildsParams{
 		Reason: dbtypes.BuildReason{
 			Message: "The build was canceled because it was superseded by a newer one.",
@@ -337,6 +337,22 @@ func RegisterBuild(
 				ClientMsg: fmt.Sprintf("Error when adding tag '%s' to build: %s", tag, err),
 				Code:      http.StatusInternalServerError,
 			}
+		}
+	}
+
+	err = client.CreateActiveTemplateBuild(ctx, queries.CreateActiveTemplateBuildParams{
+		BuildID:    buildID,
+		TeamID:     data.Team.ID,
+		TemplateID: data.TemplateID,
+		Tags:       tags,
+	})
+	if err != nil {
+		telemetry.ReportCriticalError(ctx, "error when inserting active build", err)
+
+		return nil, &api.APIError{
+			Err:       err,
+			ClientMsg: fmt.Sprintf("Error when updating active builds: %s", err),
+			Code:      http.StatusInternalServerError,
 		}
 	}
 
