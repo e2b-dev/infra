@@ -263,10 +263,14 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 
 	var paths UploadSuccess
 
-	if mediaType == "application/octet-stream" {
+	switch {
+	case mediaType == "application/octet-stream":
 		paths, errorCode, errMsg = a.handleRawUpload(r, u, uid, gid, operationID, params)
-	} else {
+	case strings.HasPrefix(mediaType, "multipart/"):
 		paths, errorCode, errMsg = a.handleMultipartUpload(r, u, uid, gid, operationID, params)
+	default:
+		errorCode = http.StatusBadRequest
+		errMsg = fmt.Errorf("unsupported content type: %s, expected multipart/form-data or application/octet-stream", contentType)
 	}
 
 	if errMsg != nil {

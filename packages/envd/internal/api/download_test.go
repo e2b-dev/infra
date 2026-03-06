@@ -508,6 +508,38 @@ func TestPostFiles_RawBodyGzipUpload(t *testing.T) {
 	assert.Equal(t, originalContent, data)
 }
 
+func TestPostFiles_UnsupportedContentType(t *testing.T) {
+	t.Parallel()
+
+	currentUser, err := user.Current()
+	require.NoError(t, err)
+
+	logger := zerolog.Nop()
+	defaults := &execcontext.Defaults{
+		EnvVars: utils.NewMap[string, string](),
+		User:    currentUser.Username,
+	}
+	api := New(&logger, defaults, nil, false)
+
+	tempDir := t.TempDir()
+	destPath := filepath.Join(tempDir, "test.txt")
+
+	req := httptest.NewRequest(http.MethodPost, "/files?path="+url.QueryEscape(destPath), bytes.NewReader([]byte(`{"key":"value"}`)))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	params := PostFilesParams{
+		Path:     &destPath,
+		Username: &currentUser.Username,
+	}
+	api.PostFiles(w, req, params)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+}
+
 func TestPostFiles_MultipartStillWorksWithoutContentType(t *testing.T) {
 	t.Parallel()
 
