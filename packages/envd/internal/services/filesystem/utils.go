@@ -2,10 +2,12 @@ package filesystem
 
 import (
 	"fmt"
+	"os"
 	"os/user"
 	"syscall"
 	"time"
 
+	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem"
@@ -40,7 +42,11 @@ func IsPathOnNetworkMount(path string) (bool, error) {
 func entryInfo(path string) (*rpc.EntryInfo, error) {
 	info, err := filesystem.GetEntryFromPath(path)
 	if err != nil {
-		return nil, err
+		if os.IsNotExist(err) {
+			return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("file not found: %w", err))
+		}
+
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error getting file info: %w", err))
 	}
 
 	owner, group := getFileOwnership(info)
