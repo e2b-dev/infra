@@ -81,6 +81,9 @@ func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logge
 // readEvents reads all available UFFD events from the file descriptor,
 // returning removes and pagefaults separately.
 func (u *Userfaultfd) readEvents(ctx context.Context) ([]*UffdRemove, []*UffdPagefault, error) {
+	// We are reusing the same buffer for all events, but that's fine,
+	// because getMsgArg, will make a copy of the actual event from `buf`
+	// and it's a pointer to this copy that we are returning to caller.
 	buf := make([]byte, unsafe.Sizeof(UffdMsg{}))
 
 	var removes []*UffdRemove
@@ -275,8 +278,10 @@ func (u *Userfaultfd) Serve(
 
 			switch state := u.pageTracker.get(addr); state {
 			case faulted:
-				// TODO: Can we skip faulting pages that are already faulted? How does that play with prefaulting?
-				// Skip faulting the page.
+				// Skip faulting the page. This has already been faulted, either during pre-faulting
+				// or because we handled another page fault on the same address in the current
+				// iteration. It can only be removed via a a UFFD_EVENT_REMOVE, which will mark the
+				// page as `unfaulted`.
 				continue
 			case removed:
 				// Fault the page as empty.
@@ -320,11 +325,10 @@ func (u *Userfaultfd) Serve(
 
 				if handled {
 					u.pageTracker.setState(addr, addr+u.pageSize, faulted)
+					u.prefetchTracker.Add(offset, accessType)
 				} else {
 					deferred.push(pf)
 				}
-
-				u.prefetchTracker.Add(offset, accessType)
 
 				return nil
 			})
