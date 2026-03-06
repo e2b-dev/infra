@@ -91,3 +91,24 @@ func TestStat(t *testing.T) {
 		})
 	}
 }
+
+func TestStatMissingPathReturnsNotFound(t *testing.T) {
+	t.Parallel()
+
+	u, err := user.Current()
+	require.NoError(t, err)
+
+	svc := mockService()
+	ctx := authn.SetInfo(t.Context(), u)
+
+	req := connect.NewRequest(&filesystem.StatRequest{
+		Path: filepath.Join(t.TempDir(), "missing.txt"),
+	})
+
+	_, err = svc.Stat(ctx, req)
+	require.Error(t, err)
+
+	var connectErr *connect.Error
+	require.ErrorAs(t, err, &connectErr)
+	assert.Equal(t, connect.CodeNotFound, connectErr.Code())
+}

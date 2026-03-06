@@ -125,6 +125,11 @@ variable "redis_tls_ca_base64" {
   sensitive = true
 }
 
+variable "redis_pool_size" {
+  type    = number
+  default = 160
+}
+
 variable "clickhouse_connection_string" {
   type      = string
   default   = ""

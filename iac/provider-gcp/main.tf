@@ -11,6 +11,11 @@ terraform {
       version = "6.50.0"
     }
 
+    google-beta = {
+      source  = "hashicorp/google-beta"
+      version = "6.50.0"
+    }
+
     cloudflare = {
       source  = "cloudflare/cloudflare"
       version = "4.52.5"
@@ -29,6 +34,12 @@ terraform {
 }
 
 provider "google" {
+  project = var.gcp_project_id
+  region  = var.gcp_region
+  zone    = var.gcp_zone
+}
+
+provider "google-beta" {
   project = var.gcp_project_id
   region  = var.gcp_region
   zone    = var.gcp_zone

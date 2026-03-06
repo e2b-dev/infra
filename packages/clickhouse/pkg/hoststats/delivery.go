@@ -31,9 +31,10 @@ const InsertSandboxHostStatQuery = `INSERT INTO sandbox_host_stats
     cgroup_cpu_user_usec,
     cgroup_cpu_system_usec,
     cgroup_memory_usage_bytes,
-    cgroup_memory_peak_bytes
+    cgroup_memory_peak_bytes,
+    sandbox_type
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 type ClickhouseDelivery struct {
 	batcher *batcher.Batcher[SandboxHostStat]
@@ -123,6 +124,7 @@ func (c *ClickhouseDelivery) batchInserter(ctx context.Context, stats []SandboxH
 			stat.CgroupCPUSystemUsec,
 			stat.CgroupMemoryUsage,
 			stat.CgroupMemoryPeak,
+			stat.SandboxType,
 		)
 		if err != nil {
 			return fmt.Errorf("error appending %d host stat to batch: %w", len(stats), err)

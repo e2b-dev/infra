@@ -14,6 +14,10 @@ import (
 
 const trackingTable = "_migrations"
 
+func init() {
+	goose.SetTableName(trackingTable)
+}
+
 func CheckMigrationVersion(ctx context.Context, connectionString string, expectedMigration int64) error {
 	db, err := sql.Open("postgres", connectionString)
 	if err != nil {
@@ -25,8 +29,6 @@ func CheckMigrationVersion(ctx context.Context, connectionString string, expecte
 			logger.L().Error(ctx, "Failed to close database connection", zap.Error(dbErr))
 		}
 	}()
-
-	goose.SetTableName(trackingTable)
 
 	version, err := goose.GetDBVersion(db)
 	if err != nil {

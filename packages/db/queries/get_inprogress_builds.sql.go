@@ -12,14 +12,13 @@ import (
 )
 
 const getCancellableTemplateBuildsByTeam = `-- name: GetCancellableTemplateBuildsByTeam :many
-SELECT DISTINCT ON (b.id) b.id as build_id, e.id as template_id, e.cluster_id, b.cluster_node_id
-FROM public.env_builds b
-JOIN public.env_build_assignments eba ON eba.build_id = b.id
-JOIN public.envs e ON e.id = eba.env_id
-WHERE b.team_id = $1
-  AND b.status_group IN ('pending', 'in_progress')
-  AND e.source = 'template'
-ORDER BY b.id
+SELECT atb.build_id, atb.template_id, e.cluster_id, b.cluster_node_id
+FROM public.active_template_builds atb
+JOIN public.env_builds b ON b.id = atb.build_id
+JOIN public.envs e ON e.id = atb.template_id
+WHERE atb.team_id = $1
+  AND atb.created_at > NOW() - INTERVAL '1 day'
+ORDER BY atb.build_id
 `
 
 type GetCancellableTemplateBuildsByTeamRow struct {
@@ -29,7 +28,8 @@ type GetCancellableTemplateBuildsByTeamRow struct {
 	ClusterNodeID *string
 }
 
-func (q *Queries) GetCancellableTemplateBuildsByTeam(ctx context.Context, teamID *uuid.UUID) ([]GetCancellableTemplateBuildsByTeamRow, error) {
+// Relies on active_template_builds table (migration 20260305130000).
+func (q *Queries) GetCancellableTemplateBuildsByTeam(ctx context.Context, teamID uuid.UUID) ([]GetCancellableTemplateBuildsByTeamRow, error) {
 	rows, err := q.db.Query(ctx, getCancellableTemplateBuildsByTeam, teamID)
 	if err != nil {
 		return nil, err
@@ -140,27 +140,23 @@ func (q *Queries) GetInProgressTemplateBuilds(ctx context.Context) ([]GetInProgr
 }
 
 const getInProgressTemplateBuildsByTeam = `-- name: GetInProgressTemplateBuildsByTeam :one
-SELECT COUNT(DISTINCT b.id) as build_count
-FROM public.env_builds b
-JOIN public.env_build_assignments eba ON eba.build_id = b.id
-JOIN public.envs e ON e.id = eba.env_id
-WHERE b.team_id = $1
-  AND b.status_group IN ('pending', 'in_progress')
-  AND e.source = 'template'
-  AND NOT EXISTS (
-    SELECT 1 FROM public.env_build_assignments exc
-    WHERE exc.build_id = b.id
-      AND exc.env_id = $2
-      AND exc.tag = ANY($3::text[])
+SELECT COUNT(*) as build_count
+FROM public.active_template_builds atb
+WHERE atb.team_id = $1::uuid
+  AND atb.created_at > NOW() - INTERVAL '1 day'
+  AND NOT (
+    atb.template_id = $2::text
+    AND atb.tags && $3::text[]
   )
 `
 
 type GetInProgressTemplateBuildsByTeamParams struct {
-	TeamID            *uuid.UUID
+	TeamID            uuid.UUID
 	ExcludeTemplateID string
 	ExcludeTags       []string
 }
 
+// Relies on active_template_builds table (migration 20260305130000).
 func (q *Queries) GetInProgressTemplateBuildsByTeam(ctx context.Context, arg GetInProgressTemplateBuildsByTeamParams) (int64, error) {
 	row := q.db.QueryRow(ctx, getInProgressTemplateBuildsByTeam, arg.TeamID, arg.ExcludeTemplateID, arg.ExcludeTags)
 	var build_count int64

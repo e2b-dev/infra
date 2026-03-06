@@ -45,7 +45,7 @@ type Stats struct {
 // whether Start succeeded or failed). Remove() closes the memory.peak FD and
 // deletes the cgroup directory — it does not release the cgroup directory FD.
 type CgroupHandle struct {
-	sandboxID      string
+	cgroupName     string
 	path           string
 	file           *os.File // Open FD to the cgroup directory (nil after ReleaseCgroupFD)
 	memoryPeakFile *os.File // Open FD to memory.peak for per-FD reset (nil after Remove or if not available)
@@ -126,7 +126,7 @@ func (h *CgroupHandle) Remove(ctx context.Context) error {
 	}
 
 	logger.L().Debug(ctx, "removed cgroup for sandbox",
-		logger.WithSandboxID(h.sandboxID),
+		zap.String("cgroup_name", h.cgroupName),
 		zap.String("path", h.path))
 
 	return nil
@@ -141,13 +141,13 @@ func (h *CgroupHandle) Path() string {
 	return h.path
 }
 
-// SandboxID returns the sandbox ID this cgroup is for
-func (h *CgroupHandle) SandboxID() string {
+// CgroupName returns the name of the cgroup
+func (h *CgroupHandle) CgroupName() string {
 	if h == nil {
 		return ""
 	}
 
-	return h.sandboxID
+	return h.cgroupName
 }
 
 // Manager handles initialization and creation of cgroups
@@ -157,10 +157,10 @@ type Manager interface {
 	// Should be called once at orchestrator startup
 	Initialize(ctx context.Context) error
 
-	// Create creates a cgroup for a sandbox and returns a handle
+	// Create creates a cgroup with the given name and returns a handle
 	// The handle provides access to the cgroup's FD, stats, and cleanup
 	// Returns error if cgroup creation fails
-	Create(ctx context.Context, sandboxID string) (*CgroupHandle, error)
+	Create(ctx context.Context, cgroupName string) (*CgroupHandle, error)
 }
 
 type managerImpl struct{}
@@ -190,8 +190,8 @@ func (m *managerImpl) Initialize(ctx context.Context) error {
 	return nil
 }
 
-func (m *managerImpl) Create(ctx context.Context, sandboxID string) (*CgroupHandle, error) {
-	cgroupPath := m.sandboxCgroupPath(sandboxID)
+func (m *managerImpl) Create(ctx context.Context, cgroupName string) (*CgroupHandle, error) {
+	cgroupPath := m.cgroupPath(cgroupName)
 
 	if err := os.MkdirAll(cgroupPath, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create cgroup directory: %w", err)
@@ -211,14 +211,14 @@ func (m *managerImpl) Create(ctx context.Context, sandboxID string) (*CgroupHand
 	if peakErr != nil {
 		// Not fatal — memory.peak may not exist on older kernels
 		logger.L().Debug(ctx, "failed to open memory.peak",
-			logger.WithSandboxID(sandboxID),
+			zap.String("cgroup_name", cgroupName),
 			zap.String("path", memPeakPath),
 			zap.Error(peakErr))
 		memoryPeakFile = nil
 	}
 
 	handle := &CgroupHandle{
-		sandboxID:      sandboxID,
+		cgroupName:     cgroupName,
 		path:           cgroupPath,
 		file:           file,
 		memoryPeakFile: memoryPeakFile,
@@ -226,7 +226,7 @@ func (m *managerImpl) Create(ctx context.Context, sandboxID string) (*CgroupHand
 	}
 
 	logger.L().Debug(ctx, "created cgroup for sandbox",
-		logger.WithSandboxID(sandboxID),
+		zap.String("cgroup_name", cgroupName),
 		zap.String("path", cgroupPath),
 		zap.Int("fd", handle.GetFD()))
 
@@ -304,7 +304,7 @@ func (m *managerImpl) readMemoryPeak(memoryPeakFile *os.File) (uint64, error) {
 	return peakBytes, nil
 }
 
-// sandboxCgroupPath returns the filesystem path for a sandbox's cgroup
-func (m *managerImpl) sandboxCgroupPath(sandboxID string) string {
-	return filepath.Join(RootCgroupPath, fmt.Sprintf("sbx-%s", sandboxID))
+// cgroupPath returns the filesystem path for a sandbox's cgroup
+func (m *managerImpl) cgroupPath(cgroupName string) string {
+	return filepath.Join(RootCgroupPath, cgroupName)
 }

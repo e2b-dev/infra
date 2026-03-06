@@ -243,7 +243,7 @@ resource "google_certificate_manager_certificate_map_entry" "subdomains_map_entr
 # Load balancers
 resource "google_compute_url_map" "orch_map" {
   name            = "${var.prefix}orch-map"
-  default_service = google_compute_backend_service.default["nomad"].self_link
+  default_service = google_compute_backend_service.default["session"].self_link
 
   host_rule {
     hosts        = concat(["api.${var.domain_name}"], [for d in var.additional_domains : "api.${d}"])
