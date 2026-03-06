@@ -1,6 +1,7 @@
 package fc
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -33,6 +35,24 @@ import (
 )
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc")
+
+// fcLogFilter wraps an io.Writer and suppresses Firecracker FlushMetrics
+// request/response log line pairs.
+type fcLogFilter struct {
+	w            io.Writer
+	skipResponse atomic.Bool
+}
+
+func (f *fcLogFilter) Write(p []byte) (n int, err error) {
+	if bytes.Contains(p, []byte("FlushMetrics")) {
+		f.skipResponse.Store(true)
+		return len(p), nil
+	}
+	if f.skipResponse.Swap(false) && bytes.Contains(p, []byte("The request was executed successfully")) {
+		return len(p), nil
+	}
+	return f.w.Write(p)
+}
 
 type ProcessOptions struct {
 	// IoEngine is the io engine to use for the rootfs drive.
@@ -174,7 +194,7 @@ func (p *Process) configure(
 	if stdoutExternal != nil {
 		stdoutWriters = append(stdoutWriters, stdoutExternal)
 	}
-	p.cmd.Stdout = io.MultiWriter(stdoutWriters...)
+	p.cmd.Stdout = &fcLogFilter{w: io.MultiWriter(stdoutWriters...)}
 
 	stderrWriter := &zapio.Writer{Log: sbxlogger.I(sbxMetadata).Logger.Detach(ctx), Level: zap.ErrorLevel}
 	stderrWriters := []io.Writer{stderrWriter}
