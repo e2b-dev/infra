@@ -2,12 +2,14 @@ package testutils
 
 import (
 	"context"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/pressly/goose/v3"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -108,14 +110,24 @@ func runDatabaseMigrations(t *testing.T, connStr string) {
 	cmd := exec.CommandContext(t.Context(), "git", "rev-parse", "--show-toplevel")
 	output, err := cmd.Output()
 	require.NoError(t, err, "Failed to find git root")
-
 	repoRoot := strings.TrimSpace(string(output))
-	dbPath := filepath.Join(repoRoot, "packages", "db")
 
-	cmd = exec.CommandContext(t.Context(), "go", "tool", "goose", "-table", "_migrations", "-dir", "migrations", "postgres", "up")
-	cmd.Env = append(os.Environ(), "GOOSE_DBSTRING="+connStr)
-	cmd.Dir = dbPath
+	db, err := goose.OpenDBWithDriver("postgres", connStr)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		err := db.Close()
+		assert.NoError(t, err)
+	})
 
-	output, err = cmd.CombinedOutput()
-	require.NoError(t, err, "Migration failed: %s", string(output))
+	goose.SetTableName("_migrations")
+
+	// run the db migration
+	err = goose.RunWithOptionsContext(
+		t.Context(),
+		"up",
+		db,
+		filepath.Join(repoRoot, "packages", "db", "migrations"),
+		nil,
+	)
+	require.NoError(t, err)
 }
