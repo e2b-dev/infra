@@ -59,8 +59,7 @@ const (
 	// https://cloud.google.com/load-balancing/docs/https#timeouts_and_retries%23:~:text=The%20load%20balancer%27s%20backend%20keepalive,is%20greater%20than%20600%20seconds
 	idleTimeout = 620 * time.Second
 
-	defaultPort      = 80
-	defaultPprofPort = 6060
+	defaultPort = 80
 )
 
 var (
@@ -440,13 +439,10 @@ func run() int {
 		}
 	})
 
-	pprofServer := &http.Server{
-		Addr:    fmt.Sprintf("127.0.0.1:%d", defaultPprofPort),
-		Handler: telemetry.NewPprofMux(),
-	}
+	pprofServer := telemetry.NewPprofServer()
 
 	wg.Go(func() {
-		l.Info(ctx, "pprof server starting", zap.Int("port", defaultPprofPort))
+		l.Info(ctx, "pprof server starting", zap.Int("port", telemetry.DefaultPprofPort))
 
 		if err := pprofServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			l.Error(ctx, "pprof server encountered error", zap.Error(err))

@@ -196,6 +196,10 @@ func run(config cfg.Config) (success bool) {
 		}
 	}()
 
+	if err := tel.StartRuntimeInstrumentation(); err != nil {
+		log.Printf("failed to start runtime instrumentation: %v", err)
+	}
+
 	globalLogger := utils.Must(logger.NewLogger(logger.LoggerConfig{
 		ServiceName:   serviceName,
 		IsInternal:    true,
@@ -575,6 +579,17 @@ func run(config cfg.Config) (success bool) {
 
 		return nil
 	}})
+
+	pprofServer := telemetry.NewPprofServer()
+	// We handle the pprof in a separate goroutine to prevent any interaction with the main server.
+	go func() {
+		logger.L().Info(ctx, "pprof server starting", zap.Int("port", telemetry.DefaultPprofPort))
+
+		if err := pprofServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.L().Error(ctx, "pprof server encountered error", zap.Error(err))
+		}
+	}()
+	closers = append(closers, closer{"pprof server", pprofServer.Shutdown})
 
 	// http server
 	healthcheck, err := e2bhealthcheck.NewHealthcheck(serviceInfo)

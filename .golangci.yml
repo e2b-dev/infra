@@ -17,7 +17,6 @@ linters:
     # todo: determine if we want this
     - canonicalheader
     - cyclop
-    - depguard
     - dupl
     - dupword
     - errcheck
@@ -94,6 +93,16 @@ linters:
           pkg: ^github\.com/hashicorp/go-retryablehttp$
           msg: "Use github.com/hashicorp/go-retryablehttp.NewRequestWithContext instead of retryablehttp.NewRequest"
       analyze-types: true
+
+    depguard:
+      rules:
+        no-pprof-default-mux:
+          files:
+            - $all
+            - "!**/packages/shared/pkg/telemetry/**"
+          deny:
+            - pkg: "net/http/pprof"
+              desc: "Importing net/http/pprof registers on DefaultServeMux via init(). Use telemetry.NewPprofMux() instead."
 
     gocritic:
       disabled-checks:
