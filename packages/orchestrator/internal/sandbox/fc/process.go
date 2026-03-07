@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -37,20 +36,13 @@ import (
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc")
 
 // fcLogFilter wraps an io.Writer and suppresses Firecracker FlushMetrics
-// request/response log line pairs.
+// request log lines that fire every few seconds and create excessive noise.
 type fcLogFilter struct {
-	w            io.Writer
-	skipResponse atomic.Bool
+	w io.Writer
 }
 
 func (f *fcLogFilter) Write(p []byte) (n int, err error) {
 	if bytes.Contains(p, []byte("FlushMetrics")) {
-		f.skipResponse.Store(true)
-
-		return len(p), nil
-	}
-
-	if f.skipResponse.Swap(false) && bytes.Contains(p, []byte("The request was executed successfully")) {
 		return len(p), nil
 	}
 
