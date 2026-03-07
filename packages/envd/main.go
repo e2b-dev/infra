@@ -257,14 +257,19 @@ func createCgroupManager() (m cgroups.Manager) {
 		return nil
 	}
 
-	// try to keep 1/8 of the memory free, but no more than 128 MB
-	maxMemoryReserved := min(metrics.MemTotal/8, uint64(128)*megabyte)
+	// Reserve memory for system services (envd, socat, pty infrastructure).
+	// At most 1/8 of total memory, capped at 128 MB.
+	memoryReserved := min(metrics.MemTotal/8, uint64(128)*megabyte)
+
+	// Hard ceiling for user and PTY processes.
+	userMemoryMax := metrics.MemTotal - memoryReserved
+	ptyMemoryMax := metrics.MemTotal - memoryReserved/2 // more generous — killing interactive sessions is more disruptive
 
 	opts := []cgroups.Cgroup2ManagerOption{
 		cgroups.WithCgroup2ProcessType(cgroups.ProcessTypePTY, "ptys", map[string]string{
-			"cpu.weight":  "200", // gets much preferred cpu access, to help keep these real time
-			"memory.high": fmt.Sprintf("%d", metrics.MemTotal-maxMemoryReserved),
-			"memory.max":  fmt.Sprintf("%d", metrics.MemTotal-(maxMemoryReserved/8)), // more generous than user — killing interactive sessions is more disruptive
+			"cpu.weight":  "200",                                // gets much preferred cpu access, to help keep these real time
+			"memory.high": fmt.Sprintf("%d", ptyMemoryMax*9/10), // start throttling at 90% of hard limit
+			"memory.max":  fmt.Sprintf("%d", ptyMemoryMax),
 		}),
 		cgroups.WithCgroup2ProcessType(cgroups.ProcessTypeSocat, "socats", map[string]string{
 			"cpu.weight": "150", // gets slightly preferred cpu access
@@ -272,9 +277,9 @@ func createCgroupManager() (m cgroups.Manager) {
 			"memory.low": fmt.Sprintf("%d", 8*megabyte),
 		}),
 		cgroups.WithCgroup2ProcessType(cgroups.ProcessTypeUser, "user", map[string]string{
-			"memory.high": fmt.Sprintf("%d", metrics.MemTotal-maxMemoryReserved),
-			"memory.max":  fmt.Sprintf("%d", metrics.MemTotal-maxMemoryReserved), // same as memory.high — OOM-kill immediately when throttling can't reclaim enough
-			"cpu.weight":  "50",                                                  // less than envd, and less than core processes that default to 100
+			"memory.high": fmt.Sprintf("%d", userMemoryMax*9/10), // start throttling at 90% of hard limit
+			"memory.max":  fmt.Sprintf("%d", userMemoryMax),
+			"cpu.weight":  "50", // less than envd, and less than core processes that default to 100
 		}),
 	}
 	if cgroupRoot != "" {
