@@ -78,6 +78,30 @@ type Metrics struct {
 	Ts *int64 `json:"ts,omitempty"`
 }
 
+// MultipartUploadComplete defines model for MultipartUploadComplete.
+type MultipartUploadComplete struct {
+	// Path Path to the final assembled file
+	Path string `json:"path"`
+
+	// Size Total size of the assembled file in bytes
+	Size int64 `json:"size"`
+}
+
+// MultipartUploadInit defines model for MultipartUploadInit.
+type MultipartUploadInit struct {
+	// UploadId Unique identifier for the upload session
+	UploadId string `json:"uploadId"`
+}
+
+// MultipartUploadPart defines model for MultipartUploadPart.
+type MultipartUploadPart struct {
+	// PartNumber The part number that was uploaded
+	PartNumber int `json:"partNumber"`
+
+	// Size Size of the uploaded part in bytes
+	Size int64 `json:"size"`
+}
+
 // VolumeMount Volume
 type VolumeMount struct {
 	NfsTarget string `json:"nfs_target"`
@@ -96,6 +120,9 @@ type SignatureExpiration = int
 // User defines model for User.
 type User = string
 
+// Conflict defines model for Conflict.
+type Conflict = Error
+
 // FileNotFound defines model for FileNotFound.
 type FileNotFound = Error
 
@@ -110,6 +137,12 @@ type InvalidUser = Error
 
 // NotEnoughDiskSpace defines model for NotEnoughDiskSpace.
 type NotEnoughDiskSpace = Error
+
+// TooManyRequests defines model for TooManyRequests.
+type TooManyRequests = Error
+
+// UploadNotFound defines model for UploadNotFound.
+type UploadNotFound = Error
 
 // UploadSuccess defines model for UploadSuccess.
 type UploadSuccess = []EntryInfo
@@ -149,6 +182,30 @@ type PostFilesParams struct {
 	SignatureExpiration *SignatureExpiration `form:"signature_expiration,omitempty" json:"signature_expiration,omitempty"`
 }
 
+// PostFilesUploadInitJSONBody defines parameters for PostFilesUploadInit.
+type PostFilesUploadInitJSONBody struct {
+	// PartSize Size of each part in bytes (last part may be smaller)
+	PartSize int64 `json:"partSize"`
+
+	// Path Path to the file to upload
+	Path string `json:"path"`
+
+	// TotalSize Total size of the file in bytes
+	TotalSize int64 `json:"totalSize"`
+}
+
+// PostFilesUploadInitParams defines parameters for PostFilesUploadInit.
+type PostFilesUploadInitParams struct {
+	// Username User used for setting the owner, or resolving relative paths.
+	Username *User `form:"username,omitempty" json:"username,omitempty"`
+}
+
+// PutFilesUploadUploadIdParams defines parameters for PutFilesUploadUploadId.
+type PutFilesUploadUploadIdParams struct {
+	// Part The part number (0-indexed)
+	Part int `form:"part" json:"part"`
+}
+
 // PostInitJSONBody defines parameters for PostInit.
 type PostInitJSONBody struct {
 	// AccessToken Access token for secure access to envd service
@@ -173,6 +230,9 @@ type PostInitJSONBody struct {
 
 // PostFilesMultipartRequestBody defines body for PostFiles for multipart/form-data ContentType.
 type PostFilesMultipartRequestBody PostFilesMultipartBody
+
+// PostFilesUploadInitJSONRequestBody defines body for PostFilesUploadInit for application/json ContentType.
+type PostFilesUploadInitJSONRequestBody PostFilesUploadInitJSONBody
 
 // PostInitJSONRequestBody defines body for PostInit for application/json ContentType.
 type PostInitJSONRequestBody PostInitJSONBody
@@ -259,6 +319,20 @@ type ClientInterface interface {
 	// PostFilesWithBody request with any body
 	PostFilesWithBody(ctx context.Context, params *PostFilesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// PostFilesUploadInitWithBody request with any body
+	PostFilesUploadInitWithBody(ctx context.Context, params *PostFilesUploadInitParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PostFilesUploadInit(ctx context.Context, params *PostFilesUploadInitParams, body PostFilesUploadInitJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteFilesUploadUploadId request
+	DeleteFilesUploadUploadId(ctx context.Context, uploadId string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PutFilesUploadUploadIdWithBody request with any body
+	PutFilesUploadUploadIdWithBody(ctx context.Context, uploadId string, params *PutFilesUploadUploadIdParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostFilesUploadUploadIdComplete request
+	PostFilesUploadUploadIdComplete(ctx context.Context, uploadId string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetHealth request
 	GetHealth(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -297,6 +371,66 @@ func (c *Client) GetFiles(ctx context.Context, params *GetFilesParams, reqEditor
 
 func (c *Client) PostFilesWithBody(ctx context.Context, params *PostFilesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPostFilesRequestWithBody(c.Server, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostFilesUploadInitWithBody(ctx context.Context, params *PostFilesUploadInitParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostFilesUploadInitRequestWithBody(c.Server, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostFilesUploadInit(ctx context.Context, params *PostFilesUploadInitParams, body PostFilesUploadInitJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostFilesUploadInitRequest(c.Server, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteFilesUploadUploadId(ctx context.Context, uploadId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteFilesUploadUploadIdRequest(c.Server, uploadId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PutFilesUploadUploadIdWithBody(ctx context.Context, uploadId string, params *PutFilesUploadUploadIdParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutFilesUploadUploadIdRequestWithBody(c.Server, uploadId, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostFilesUploadUploadIdComplete(ctx context.Context, uploadId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostFilesUploadUploadIdCompleteRequest(c.Server, uploadId)
 	if err != nil {
 		return nil, err
 	}
@@ -578,6 +712,190 @@ func NewPostFilesRequestWithBody(server string, params *PostFilesParams, content
 	return req, nil
 }
 
+// NewPostFilesUploadInitRequest calls the generic PostFilesUploadInit builder with application/json body
+func NewPostFilesUploadInitRequest(server string, params *PostFilesUploadInitParams, body PostFilesUploadInitJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPostFilesUploadInitRequestWithBody(server, params, "application/json", bodyReader)
+}
+
+// NewPostFilesUploadInitRequestWithBody generates requests for PostFilesUploadInit with any type of body
+func NewPostFilesUploadInitRequestWithBody(server string, params *PostFilesUploadInitParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/files/upload/init")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Username != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "username", runtime.ParamLocationQuery, *params.Username); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteFilesUploadUploadIdRequest generates requests for DeleteFilesUploadUploadId
+func NewDeleteFilesUploadUploadIdRequest(server string, uploadId string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "uploadId", runtime.ParamLocationPath, uploadId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/files/upload/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPutFilesUploadUploadIdRequestWithBody generates requests for PutFilesUploadUploadId with any type of body
+func NewPutFilesUploadUploadIdRequestWithBody(server string, uploadId string, params *PutFilesUploadUploadIdParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "uploadId", runtime.ParamLocationPath, uploadId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/files/upload/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "part", runtime.ParamLocationQuery, params.Part); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewPostFilesUploadUploadIdCompleteRequest generates requests for PostFilesUploadUploadIdComplete
+func NewPostFilesUploadUploadIdCompleteRequest(server string, uploadId string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "uploadId", runtime.ParamLocationPath, uploadId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/files/upload/%s/complete", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetHealthRequest generates requests for GetHealth
 func NewGetHealthRequest(server string) (*http.Request, error) {
 	var err error
@@ -724,6 +1042,20 @@ type ClientWithResponsesInterface interface {
 	// PostFilesWithBodyWithResponse request with any body
 	PostFilesWithBodyWithResponse(ctx context.Context, params *PostFilesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostFilesResponse, error)
 
+	// PostFilesUploadInitWithBodyWithResponse request with any body
+	PostFilesUploadInitWithBodyWithResponse(ctx context.Context, params *PostFilesUploadInitParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostFilesUploadInitResponse, error)
+
+	PostFilesUploadInitWithResponse(ctx context.Context, params *PostFilesUploadInitParams, body PostFilesUploadInitJSONRequestBody, reqEditors ...RequestEditorFn) (*PostFilesUploadInitResponse, error)
+
+	// DeleteFilesUploadUploadIdWithResponse request
+	DeleteFilesUploadUploadIdWithResponse(ctx context.Context, uploadId string, reqEditors ...RequestEditorFn) (*DeleteFilesUploadUploadIdResponse, error)
+
+	// PutFilesUploadUploadIdWithBodyWithResponse request with any body
+	PutFilesUploadUploadIdWithBodyWithResponse(ctx context.Context, uploadId string, params *PutFilesUploadUploadIdParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutFilesUploadUploadIdResponse, error)
+
+	// PostFilesUploadUploadIdCompleteWithResponse request
+	PostFilesUploadUploadIdCompleteWithResponse(ctx context.Context, uploadId string, reqEditors ...RequestEditorFn) (*PostFilesUploadUploadIdCompleteResponse, error)
+
 	// GetHealthWithResponse request
 	GetHealthWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetHealthResponse, error)
 
@@ -803,6 +1135,111 @@ func (r PostFilesResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r PostFilesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PostFilesUploadInitResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *MultipartUploadInit
+	JSON400      *InvalidPath
+	JSON401      *InvalidUser
+	JSON409      *Conflict
+	JSON429      *TooManyRequests
+	JSON500      *InternalServerError
+	JSON507      *NotEnoughDiskSpace
+}
+
+// Status returns HTTPResponse.Status
+func (r PostFilesUploadInitResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostFilesUploadInitResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DeleteFilesUploadUploadIdResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON404      *UploadNotFound
+	JSON409      *Conflict
+	JSON500      *InternalServerError
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteFilesUploadUploadIdResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteFilesUploadUploadIdResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PutFilesUploadUploadIdResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *MultipartUploadPart
+	JSON400      *InvalidPath
+	JSON404      *UploadNotFound
+	JSON409      *Conflict
+	JSON500      *InternalServerError
+	JSON507      *NotEnoughDiskSpace
+}
+
+// Status returns HTTPResponse.Status
+func (r PutFilesUploadUploadIdResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PutFilesUploadUploadIdResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PostFilesUploadUploadIdCompleteResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *MultipartUploadComplete
+	JSON400      *InvalidPath
+	JSON404      *UploadNotFound
+	JSON409      *Conflict
+	JSON500      *InternalServerError
+}
+
+// Status returns HTTPResponse.Status
+func (r PostFilesUploadUploadIdCompleteResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostFilesUploadUploadIdCompleteResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -898,6 +1335,50 @@ func (c *ClientWithResponses) PostFilesWithBodyWithResponse(ctx context.Context,
 		return nil, err
 	}
 	return ParsePostFilesResponse(rsp)
+}
+
+// PostFilesUploadInitWithBodyWithResponse request with arbitrary body returning *PostFilesUploadInitResponse
+func (c *ClientWithResponses) PostFilesUploadInitWithBodyWithResponse(ctx context.Context, params *PostFilesUploadInitParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostFilesUploadInitResponse, error) {
+	rsp, err := c.PostFilesUploadInitWithBody(ctx, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostFilesUploadInitResponse(rsp)
+}
+
+func (c *ClientWithResponses) PostFilesUploadInitWithResponse(ctx context.Context, params *PostFilesUploadInitParams, body PostFilesUploadInitJSONRequestBody, reqEditors ...RequestEditorFn) (*PostFilesUploadInitResponse, error) {
+	rsp, err := c.PostFilesUploadInit(ctx, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostFilesUploadInitResponse(rsp)
+}
+
+// DeleteFilesUploadUploadIdWithResponse request returning *DeleteFilesUploadUploadIdResponse
+func (c *ClientWithResponses) DeleteFilesUploadUploadIdWithResponse(ctx context.Context, uploadId string, reqEditors ...RequestEditorFn) (*DeleteFilesUploadUploadIdResponse, error) {
+	rsp, err := c.DeleteFilesUploadUploadId(ctx, uploadId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteFilesUploadUploadIdResponse(rsp)
+}
+
+// PutFilesUploadUploadIdWithBodyWithResponse request with arbitrary body returning *PutFilesUploadUploadIdResponse
+func (c *ClientWithResponses) PutFilesUploadUploadIdWithBodyWithResponse(ctx context.Context, uploadId string, params *PutFilesUploadUploadIdParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutFilesUploadUploadIdResponse, error) {
+	rsp, err := c.PutFilesUploadUploadIdWithBody(ctx, uploadId, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutFilesUploadUploadIdResponse(rsp)
+}
+
+// PostFilesUploadUploadIdCompleteWithResponse request returning *PostFilesUploadUploadIdCompleteResponse
+func (c *ClientWithResponses) PostFilesUploadUploadIdCompleteWithResponse(ctx context.Context, uploadId string, reqEditors ...RequestEditorFn) (*PostFilesUploadUploadIdCompleteResponse, error) {
+	rsp, err := c.PostFilesUploadUploadIdComplete(ctx, uploadId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostFilesUploadUploadIdCompleteResponse(rsp)
 }
 
 // GetHealthWithResponse request returning *GetHealthResponse
@@ -1056,6 +1537,229 @@ func ParsePostFilesResponse(rsp *http.Response) (*PostFilesResponse, error) {
 			return nil, err
 		}
 		response.JSON507 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePostFilesUploadInitResponse parses an HTTP response from a PostFilesUploadInitWithResponse call
+func ParsePostFilesUploadInitResponse(rsp *http.Response) (*PostFilesUploadInitResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostFilesUploadInitResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest MultipartUploadInit
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest InvalidPath
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest InvalidUser
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest TooManyRequests
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalServerError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 507:
+		var dest NotEnoughDiskSpace
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON507 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteFilesUploadUploadIdResponse parses an HTTP response from a DeleteFilesUploadUploadIdWithResponse call
+func ParseDeleteFilesUploadUploadIdResponse(rsp *http.Response) (*DeleteFilesUploadUploadIdResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteFilesUploadUploadIdResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest UploadNotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalServerError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePutFilesUploadUploadIdResponse parses an HTTP response from a PutFilesUploadUploadIdWithResponse call
+func ParsePutFilesUploadUploadIdResponse(rsp *http.Response) (*PutFilesUploadUploadIdResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PutFilesUploadUploadIdResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest MultipartUploadPart
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest InvalidPath
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest UploadNotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalServerError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 507:
+		var dest NotEnoughDiskSpace
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON507 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePostFilesUploadUploadIdCompleteResponse parses an HTTP response from a PostFilesUploadUploadIdCompleteWithResponse call
+func ParsePostFilesUploadUploadIdCompleteResponse(rsp *http.Response) (*PostFilesUploadUploadIdCompleteResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostFilesUploadUploadIdCompleteResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest MultipartUploadComplete
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest InvalidPath
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest UploadNotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalServerError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
 
 	}
 

@@ -74,6 +74,30 @@ type Metrics struct {
 	Ts *int64 `json:"ts,omitempty"`
 }
 
+// MultipartUploadComplete defines model for MultipartUploadComplete.
+type MultipartUploadComplete struct {
+	// Path Path to the final assembled file
+	Path string `json:"path"`
+
+	// Size Total size of the assembled file in bytes
+	Size int64 `json:"size"`
+}
+
+// MultipartUploadInit defines model for MultipartUploadInit.
+type MultipartUploadInit struct {
+	// UploadId Unique identifier for the upload session
+	UploadId string `json:"uploadId"`
+}
+
+// MultipartUploadPart defines model for MultipartUploadPart.
+type MultipartUploadPart struct {
+	// PartNumber The part number that was uploaded
+	PartNumber int `json:"partNumber"`
+
+	// Size Size of the uploaded part in bytes
+	Size int64 `json:"size"`
+}
+
 // VolumeMount Volume
 type VolumeMount struct {
 	NfsTarget string `json:"nfs_target"`
@@ -92,6 +116,9 @@ type SignatureExpiration = int
 // User defines model for User.
 type User = string
 
+// Conflict defines model for Conflict.
+type Conflict = Error
+
 // FileNotFound defines model for FileNotFound.
 type FileNotFound = Error
 
@@ -106,6 +133,12 @@ type InvalidUser = Error
 
 // NotEnoughDiskSpace defines model for NotEnoughDiskSpace.
 type NotEnoughDiskSpace = Error
+
+// TooManyRequests defines model for TooManyRequests.
+type TooManyRequests = Error
+
+// UploadNotFound defines model for UploadNotFound.
+type UploadNotFound = Error
 
 // UploadSuccess defines model for UploadSuccess.
 type UploadSuccess = []EntryInfo
@@ -145,6 +178,30 @@ type PostFilesParams struct {
 	SignatureExpiration *SignatureExpiration `form:"signature_expiration,omitempty" json:"signature_expiration,omitempty"`
 }
 
+// PostFilesUploadInitJSONBody defines parameters for PostFilesUploadInit.
+type PostFilesUploadInitJSONBody struct {
+	// PartSize Size of each part in bytes (last part may be smaller)
+	PartSize int64 `json:"partSize"`
+
+	// Path Path to the file to upload
+	Path string `json:"path"`
+
+	// TotalSize Total size of the file in bytes
+	TotalSize int64 `json:"totalSize"`
+}
+
+// PostFilesUploadInitParams defines parameters for PostFilesUploadInit.
+type PostFilesUploadInitParams struct {
+	// Username User used for setting the owner, or resolving relative paths.
+	Username *User `form:"username,omitempty" json:"username,omitempty"`
+}
+
+// PutFilesUploadUploadIdParams defines parameters for PutFilesUploadUploadId.
+type PutFilesUploadUploadIdParams struct {
+	// Part The part number (0-indexed)
+	Part int `form:"part" json:"part"`
+}
+
 // PostInitJSONBody defines parameters for PostInit.
 type PostInitJSONBody struct {
 	// AccessToken Access token for secure access to envd service
@@ -170,6 +227,9 @@ type PostInitJSONBody struct {
 // PostFilesMultipartRequestBody defines body for PostFiles for multipart/form-data ContentType.
 type PostFilesMultipartRequestBody PostFilesMultipartBody
 
+// PostFilesUploadInitJSONRequestBody defines body for PostFilesUploadInit for application/json ContentType.
+type PostFilesUploadInitJSONRequestBody PostFilesUploadInitJSONBody
+
 // PostInitJSONRequestBody defines body for PostInit for application/json ContentType.
 type PostInitJSONRequestBody PostInitJSONBody
 
@@ -184,6 +244,18 @@ type ServerInterface interface {
 	// Upload a file and ensure the parent directories exist. If the file exists, it will be overwritten.
 	// (POST /files)
 	PostFiles(w http.ResponseWriter, r *http.Request, params PostFilesParams)
+	// Initialize a multipart file upload session
+	// (POST /files/upload/init)
+	PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params PostFilesUploadInitParams)
+	// Abort a multipart file upload and clean up temporary files
+	// (DELETE /files/upload/{uploadId})
+	DeleteFilesUploadUploadId(w http.ResponseWriter, r *http.Request, uploadId string)
+	// Upload a part of a multipart file upload
+	// (PUT /files/upload/{uploadId})
+	PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, uploadId string, params PutFilesUploadUploadIdParams)
+	// Complete a multipart file upload and assemble the final file
+	// (POST /files/upload/{uploadId}/complete)
+	PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Request, uploadId string)
 	// Check the health of the service
 	// (GET /health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
@@ -214,6 +286,30 @@ func (_ Unimplemented) GetFiles(w http.ResponseWriter, r *http.Request, params G
 // Upload a file and ensure the parent directories exist. If the file exists, it will be overwritten.
 // (POST /files)
 func (_ Unimplemented) PostFiles(w http.ResponseWriter, r *http.Request, params PostFilesParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Initialize a multipart file upload session
+// (POST /files/upload/init)
+func (_ Unimplemented) PostFilesUploadInit(w http.ResponseWriter, r *http.Request, params PostFilesUploadInitParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Abort a multipart file upload and clean up temporary files
+// (DELETE /files/upload/{uploadId})
+func (_ Unimplemented) DeleteFilesUploadUploadId(w http.ResponseWriter, r *http.Request, uploadId string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Upload a part of a multipart file upload
+// (PUT /files/upload/{uploadId})
+func (_ Unimplemented) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request, uploadId string, params PutFilesUploadUploadIdParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Complete a multipart file upload and assemble the final file
+// (POST /files/upload/{uploadId}/complete)
+func (_ Unimplemented) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Request, uploadId string) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -369,6 +465,150 @@ func (siw *ServerInterfaceWrapper) PostFiles(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostFiles(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostFilesUploadInit operation middleware
+func (siw *ServerInterfaceWrapper) PostFilesUploadInit(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, AccessTokenAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PostFilesUploadInitParams
+
+	// ------------- Optional query parameter "username" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "username", r.URL.Query(), &params.Username)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "username", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostFilesUploadInit(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteFilesUploadUploadId operation middleware
+func (siw *ServerInterfaceWrapper) DeleteFilesUploadUploadId(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "uploadId" -------------
+	var uploadId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "uploadId", chi.URLParam(r, "uploadId"), &uploadId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "uploadId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, AccessTokenAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteFilesUploadUploadId(w, r, uploadId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutFilesUploadUploadId operation middleware
+func (siw *ServerInterfaceWrapper) PutFilesUploadUploadId(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "uploadId" -------------
+	var uploadId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "uploadId", chi.URLParam(r, "uploadId"), &uploadId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "uploadId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, AccessTokenAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PutFilesUploadUploadIdParams
+
+	// ------------- Required query parameter "part" -------------
+
+	if paramValue := r.URL.Query().Get("part"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "part"})
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "part", r.URL.Query(), &params.Part)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "part", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutFilesUploadUploadId(w, r, uploadId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostFilesUploadUploadIdComplete operation middleware
+func (siw *ServerInterfaceWrapper) PostFilesUploadUploadIdComplete(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "uploadId" -------------
+	var uploadId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "uploadId", chi.URLParam(r, "uploadId"), &uploadId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "uploadId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, AccessTokenAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostFilesUploadUploadIdComplete(w, r, uploadId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -553,6 +793,18 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/files", wrapper.PostFiles)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/files/upload/init", wrapper.PostFilesUploadInit)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/files/upload/{uploadId}", wrapper.DeleteFilesUploadUploadId)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/files/upload/{uploadId}", wrapper.PutFilesUploadUploadId)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/files/upload/{uploadId}/complete", wrapper.PostFilesUploadUploadIdComplete)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/health", wrapper.GetHealth)
