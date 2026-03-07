@@ -8,7 +8,7 @@ import (
 )
 
 func init() {
-	// Wrap DefaultServeMux so that /debug/* paths are blocked even if
+	// Wrap DefaultServeMux so that /debug/pprof* paths are blocked even if
 	// net/http/pprof (or anything else) registered handlers via init().
 	// The original mux is preserved for non-debug paths so legitimate
 	// registrations by third-party libraries still work.
