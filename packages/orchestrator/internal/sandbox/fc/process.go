@@ -46,11 +46,14 @@ type fcLogFilter struct {
 func (f *fcLogFilter) Write(p []byte) (n int, err error) {
 	if bytes.Contains(p, []byte("FlushMetrics")) {
 		f.skipResponse.Store(true)
+
 		return len(p), nil
 	}
+
 	if f.skipResponse.Swap(false) && bytes.Contains(p, []byte("The request was executed successfully")) {
 		return len(p), nil
 	}
+
 	return f.w.Write(p)
 }
 
