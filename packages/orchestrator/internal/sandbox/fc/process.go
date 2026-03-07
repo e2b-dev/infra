@@ -47,17 +47,31 @@ type fcLogFilter struct {
 }
 
 func (f *fcLogFilter) Write(p []byte) (n int, err error) {
-	if bytes.Contains(p, []byte("FlushMetrics")) {
-		f.skipResponse.Store(true)
+	var filtered []byte
 
-		return len(p), nil
+	for _, line := range bytes.SplitAfter(p, []byte("\n")) {
+		if len(line) == 0 {
+			continue
+		}
+
+		if bytes.Contains(line, []byte("FlushMetrics")) {
+			f.skipResponse.Store(true)
+
+			continue
+		}
+
+		if f.skipResponse.Swap(false) {
+			continue
+		}
+
+		filtered = append(filtered, line...)
 	}
 
-	if f.skipResponse.Swap(false) {
-		return len(p), nil
+	if len(filtered) > 0 {
+		_, err = f.w.Write(filtered)
 	}
 
-	return f.w.Write(p)
+	return len(p), err
 }
 
 type ProcessOptions struct {
