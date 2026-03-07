@@ -11,20 +11,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-func TestNewPprofMuxServesPprof(t *testing.T) {
-	t.Parallel()
-
-	mux := telemetry.NewPprofMux()
-
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/debug/pprof/", nil)
-
-	mux.ServeHTTP(rec, req)
-
-	assert.Equal(t, http.StatusOK, rec.Code)
-}
-
-func TestDefaultServeMuxBlocksDebugPaths(t *testing.T) {
+func TestDefaultServeMuxBlocksPprofPaths(t *testing.T) {
 	t.Parallel()
 
 	paths := []string{
@@ -47,16 +34,20 @@ func TestDefaultServeMuxBlocksDebugPaths(t *testing.T) {
 	}
 }
 
-func TestDefaultServeMuxPassesThroughNonDebugPaths(t *testing.T) {
+func TestDefaultServeMuxPassesThroughNonPprofPaths(t *testing.T) {
 	t.Parallel()
 
 	paths := []string{
-		"/",
 		"/health",
 		"/api/v1/resource",
 		"/v2/token",
-		"/debugger",
 		"/debug/other",
+	}
+
+	for _, path := range paths {
+		http.DefaultServeMux.HandleFunc(path, func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		})
 	}
 
 	for _, path := range paths {
@@ -65,6 +56,27 @@ func TestDefaultServeMuxPassesThroughNonDebugPaths(t *testing.T) {
 
 		http.DefaultServeMux.ServeHTTP(rec, req)
 
-		assert.NotEqual(t, http.StatusForbidden, rec.Code, "non-debug path %s should not be blocked", path)
+		assert.Equal(t, http.StatusOK, rec.Code, "non-pprof path %s should pass through", path)
+	}
+}
+
+func TestDedicatedPprofMuxServes(t *testing.T) {
+	t.Parallel()
+
+	mux := telemetry.NewPprofMux()
+
+	paths := []string{
+		"/debug/pprof/",
+		"/debug/pprof/cmdline",
+		"/debug/pprof/symbol",
+	}
+
+	for _, path := range paths {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+
+		mux.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusOK, rec.Code, "dedicated pprof mux should serve %s", path)
 	}
 }
