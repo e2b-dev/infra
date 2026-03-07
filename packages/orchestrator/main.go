@@ -297,7 +297,7 @@ func run(config cfg.Config) (success bool) {
 	}
 	closers = append(closers, closer{"limiter", limiter.Close})
 
-	persistence, err := storage.GetTemplateStorageProvider(ctx, limiter)
+	persistence, err := storage.GetStorageProvider(ctx, storage.TemplateStorageConfig.WithLimiter(limiter))
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create template storage provider", zap.Error(err))
 	}
