@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -36,13 +37,23 @@ import (
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc")
 
 // fcLogFilter wraps an io.Writer and suppresses Firecracker FlushMetrics
-// request log lines that fire every few seconds and create excessive noise.
+// request/response log line pairs that fire every few seconds and create
+// excessive noise. The stateful flag is safe because Firecracker's API server
+// is single-threaded: request and response logs are always adjacent with no
+// interleaving from other actions.
 type fcLogFilter struct {
-	w io.Writer
+	w            io.Writer
+	skipResponse atomic.Bool
 }
 
 func (f *fcLogFilter) Write(p []byte) (n int, err error) {
 	if bytes.Contains(p, []byte("FlushMetrics")) {
+		f.skipResponse.Store(true)
+
+		return len(p), nil
+	}
+
+	if f.skipResponse.Swap(false) {
 		return len(p), nil
 	}
 
