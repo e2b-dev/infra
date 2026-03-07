@@ -43,7 +43,7 @@ resource "google_compute_backend_service" "ingress" {
   session_affinity = null
   health_checks    = [google_compute_health_check.ingress.id]
 
-  timeout_sec = 65
+  timeout_sec = 80
 
   load_balancing_scheme = "EXTERNAL_MANAGED"
   locality_lb_policy    = "ROUND_ROBIN"
