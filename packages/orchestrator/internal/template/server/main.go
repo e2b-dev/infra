@@ -130,6 +130,12 @@ func New(
 	return store, nil
 }
 
+// GetBuildStorage returns the build storage provider.
+// This is used to configure local upload support for filesystem storage.
+func (s *ServerStore) GetBuildStorage() storage.StorageProvider {
+	return s.buildStorage
+}
+
 func (s *ServerStore) Close(ctx context.Context) error {
 	select {
 	case <-ctx.Done():

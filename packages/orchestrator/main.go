@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"log"
@@ -30,6 +31,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/factories"
 	e2bhealthcheck "github.com/e2b-dev/infra/packages/orchestrator/internal/healthcheck"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/hyperloopserver"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/localupload"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/portmap"
@@ -597,8 +599,39 @@ func run(config cfg.Config) (success bool) {
 		logger.L().Fatal(ctx, "failed to create healthcheck", zap.Error(err))
 	}
 
+	httpMux := http.NewServeMux()
+	httpMux.Handle("/health", healthcheck.CreateHandler())
+
+	// Configure local upload endpoint when using filesystem storage.
+	// This allows COPY instructions in Dockerfiles to work with local storage
+	// by providing an HTTP endpoint that the client SDK can PUT files to.
+	storageProviderType := storage.Provider(env.GetEnv("STORAGE_PROVIDER", string(storage.DefaultStorageProvider)))
+	if storageProviderType == storage.LocalStorageProvider && tmpl != nil {
+		hmacKey := make([]byte, 32)
+		if _, err := rand.Read(hmacKey); err != nil {
+			logger.L().Fatal(ctx, "failed to generate HMAC key for local upload", zap.Error(err))
+		}
+
+		buildStorage := tmpl.GetBuildStorage()
+		basePath, ok := storage.GetFSBasePath(buildStorage)
+		if !ok {
+			basePath = env.GetEnv("LOCAL_BUILD_CACHE_STORAGE_BASE_PATH", "/tmp/build-cache")
+		}
+
+		uploadBaseURL := env.GetEnv("LOCAL_UPLOAD_BASE_URL", fmt.Sprintf("http://localhost:%d", config.GRPCPort))
+
+		uploadHandler := localupload.NewHandler(basePath, hmacKey)
+		httpMux.Handle("/upload", uploadHandler)
+
+		storage.ConfigureLocalUpload(buildStorage, uploadBaseURL, hmacKey)
+
+		logger.L().Info(ctx, "Local upload endpoint enabled for filesystem storage",
+			zap.String("upload_base_url", uploadBaseURL),
+			zap.String("base_path", basePath))
+	}
+
 	httpServer := factories.NewHTTPServer()
-	httpServer.Handler = healthcheck.CreateHandler()
+	httpServer.Handler = httpMux
 
 	startService("http server", func() error {
 		err := httpServer.Serve(httpListener)
