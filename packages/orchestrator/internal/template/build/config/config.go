@@ -41,6 +41,9 @@ type TemplateConfig struct {
 	// HugePages sets whether the VM use huge pages.
 	HugePages bool
 
+	// FreePageReporting enables the corresponding feature in Firecracker
+	FreePageReporting bool
+
 	// Command to run to check if the template is ready.
 	ReadyCmd string
 

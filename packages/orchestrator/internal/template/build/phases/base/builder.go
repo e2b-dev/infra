@@ -200,9 +200,10 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 	userLogger.Info(ctx, "Provisioning sandbox template")
 
 	baseSbxConfig := sandbox.Config{
-		Vcpu:      bb.Config.VCpuCount,
-		RamMB:     bb.Config.MemoryMB,
-		HugePages: bb.Config.HugePages,
+		Vcpu:              bb.Config.VCpuCount,
+		RamMB:             bb.Config.MemoryMB,
+		HugePages:         bb.Config.HugePages,
+		FreePageReporting: bb.Config.FreePageReporting,
 
 		// Allow sandbox internet access during provisioning
 		Network: &orchestrator.SandboxNetworkConfig{},
