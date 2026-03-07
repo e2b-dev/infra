@@ -143,3 +143,8 @@ variable "control_server_cluster_size" {
   type    = number
   default = 3
 }
+
+variable "additional_traefik_arguments" {
+  type    = list(string)
+  default = []
+}

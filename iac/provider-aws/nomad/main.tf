@@ -44,8 +44,9 @@ module "redis" {
 module "ingress" {
   source = "../../modules/job-ingress"
 
-  ingress_count      = var.ingress_count
-  ingress_proxy_port = var.ingress_port
+  ingress_count                = var.ingress_count
+  ingress_proxy_port           = var.ingress_port
+  additional_traefik_arguments = var.additional_traefik_arguments
 
   node_pool     = var.api_node_pool
   update_stanza = var.api_cluster_size > 1

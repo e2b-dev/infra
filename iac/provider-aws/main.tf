@@ -184,8 +184,9 @@ module "nomad" {
   admin_token                    = module.init.admin_token
   sandbox_access_token_hash_seed = module.init.sandbox_access_token_hash_seed
 
-  ingress_port  = local.ingress_port
-  ingress_count = var.ingress_count
+  ingress_port                 = local.ingress_port
+  ingress_count                = var.ingress_count
+  additional_traefik_arguments = var.additional_traefik_arguments
 
   client_proxy_count           = var.client_proxy_count
   client_proxy_repository_name = module.init.client_proxy_repository_name
