@@ -25,12 +25,17 @@ var errSandboxCreateFailed = fmt.Errorf("failed to create a new sandbox, if the 
 // Implementations should choose an optimal node based on available resources
 // and current load distribution.
 type Algorithm interface {
-	chooseNode(ctx context.Context, nodes []*nodemanager.Node, nodesExcluded map[string]struct{}, requested nodemanager.SandboxResources, buildMachineInfo machineinfo.MachineInfo) (*nodemanager.Node, error)
+	chooseNode(ctx context.Context, nodes []*nodemanager.Node, nodesExcluded map[string]struct{}, requested nodemanager.SandboxResources, buildMachineInfo machineinfo.MachineInfo, requiredLabels []string) (*nodemanager.Node, error)
 }
+
+// todo: resolve requiredLabels from team/sandbox scheduling config instead of hardcoding
+var defaultRequiredLabels = []string{"default"}
 
 func PlaceSandbox(ctx context.Context, algorithm Algorithm, clusterNodes []*nodemanager.Node, preferredNode *nodemanager.Node, sbxRequest *orchestrator.SandboxCreateRequest, buildMachineInfo machineinfo.MachineInfo) (*nodemanager.Node, error) {
 	ctx, span := tracer.Start(ctx, "place-sandbox")
 	defer span.End()
+
+	requiredLabels := defaultRequiredLabels
 
 	nodesExcluded := make(map[string]struct{})
 	var err error
@@ -56,7 +61,7 @@ func PlaceSandbox(ctx context.Context, algorithm Algorithm, clusterNodes []*node
 				return nil, fmt.Errorf("no nodes available")
 			}
 
-			node, err = algorithm.chooseNode(ctx, clusterNodes, nodesExcluded, nodemanager.SandboxResources{CPUs: sbxRequest.GetSandbox().GetVcpu(), MiBMemory: sbxRequest.GetSandbox().GetRamMb()}, buildMachineInfo)
+			node, err = algorithm.chooseNode(ctx, clusterNodes, nodesExcluded, nodemanager.SandboxResources{CPUs: sbxRequest.GetSandbox().GetVcpu(), MiBMemory: sbxRequest.GetSandbox().GetRamMb()}, buildMachineInfo, requiredLabels)
 			if err != nil {
 				return nil, err
 			}

@@ -155,6 +155,12 @@ variable "client_security_group_ids" {
   type = list(string)
 }
 
+variable "client_node_labels" {
+  description = "Labels to assign to client nodes for scheduling purposes"
+  type        = list(string)
+  default     = []
+}
+
 // ---
 // Build (Template Manager)
 // ---
@@ -183,6 +189,12 @@ variable "build_server_nested_virtualization" {
 
 variable "build_security_group_ids" {
   type = list(string)
+}
+
+variable "build_node_labels" {
+  description = "Labels to assign to build nodes for scheduling purposes"
+  type        = list(string)
+  default     = []
 }
 
 // ---
