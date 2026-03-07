@@ -13,6 +13,7 @@ locals {
     CONSUL_TOKEN                      = var.consul_acl_token_secret
     RUN_CONSUL_FILE_HASH              = var.file_hash["scripts/run-consul.sh"]
     RUN_NOMAD_FILE_HASH               = var.file_hash["scripts/run-nomad.sh"]
+    RUN_HEALTH_CHECK_FILE_HASH        = var.file_hash["scripts/run-health-check.sh"]
     CONSUL_GOSSIP_ENCRYPTION_KEY      = var.consul_gossip_encryption_key_secret_data
     CONSUL_DNS_REQUEST_TOKEN          = var.consul_dns_request_token_secret_data
     NFS_IP_ADDRESS                    = var.filestore_cache_enabled ? join(",", var.nfs_ip_addresses) : ""

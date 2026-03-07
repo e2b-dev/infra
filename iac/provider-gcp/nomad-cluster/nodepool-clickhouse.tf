@@ -13,6 +13,7 @@ locals {
     CONSUL_TOKEN                 = var.consul_acl_token_secret
     RUN_CONSUL_FILE_HASH         = local.file_hash["scripts/run-consul.sh"]
     RUN_NOMAD_FILE_HASH          = local.file_hash["scripts/run-nomad.sh"]
+    RUN_HEALTH_CHECK_FILE_HASH   = local.file_hash["scripts/run-health-check.sh"]
     CONSUL_GOSSIP_ENCRYPTION_KEY = google_secret_manager_secret_version.consul_gossip_encryption_key.secret_data
     CONSUL_DNS_REQUEST_TOKEN     = google_secret_manager_secret_version.consul_dns_request_token.secret_data
     NODE_POOL                    = var.clickhouse_node_pool
@@ -165,6 +166,8 @@ resource "google_compute_instance_template" "clickhouse" {
   }
 
   depends_on = [
-    google_storage_bucket_object.setup_config_objects
+    google_storage_bucket_object.setup_config_objects["scripts/run-nomad.sh"],
+    google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"],
+    google_storage_bucket_object.setup_config_objects["scripts/run-health-check.sh"]
   ]
 }

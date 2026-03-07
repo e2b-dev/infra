@@ -24,3 +24,8 @@ variable "vault_version" {
   type    = string
   default = "1.20.3"
 }
+
+variable "goss_version" {
+  type    = string
+  default = "0.4.9"
+}

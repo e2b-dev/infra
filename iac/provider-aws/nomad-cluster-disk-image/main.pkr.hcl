@@ -129,6 +129,11 @@ build {
   }
 
   provisioner "shell" {
+    script          = "${local.shared_setup_dir}/install-goss.sh"
+    execute_command = "chmod +x {{ .Path }}; {{ .Vars }} {{ .Path }} --version ${var.goss_version}"
+  }
+
+  provisioner "shell" {
     inline = [
       "sudo mkdir -p /opt/nomad/plugins",
     ]

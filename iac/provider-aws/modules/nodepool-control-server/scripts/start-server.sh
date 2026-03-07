@@ -14,8 +14,12 @@ export GOMAXPROCS=$(nproc)
 
 aws s3 cp "s3://${SCRIPTS_BUCKET}/run-consul-${RUN_CONSUL_FILE_HASH}.sh" /opt/consul/bin/run-consul.sh
 aws s3 cp "s3://${SCRIPTS_BUCKET}/run-nomad-${RUN_NOMAD_FILE_HASH}.sh" /opt/nomad/bin/run-nomad.sh
+mkdir -p /opt/health-check
+aws s3 cp "s3://${SCRIPTS_BUCKET}/run-health-check-${RUN_HEALTH_CHECK_FILE_HASH}.sh" /opt/health-check/run-health-check.sh
 
-chmod +x /opt/consul/bin/run-consul.sh /opt/nomad/bin/run-nomad.sh
+chmod +x /opt/consul/bin/run-consul.sh /opt/nomad/bin/run-nomad.sh /opt/health-check/run-health-check.sh
 
 /opt/consul/bin/run-consul.sh --server --cluster-tag-name "${CLUSTER_TAG_NAME}" --cluster-tag-value "${CLUSTER_TAG_VALUE}" --consul-token "${CONSUL_TOKEN}" --enable-gossip-encryption --gossip-encryption-key "${CONSUL_GOSSIP_ENCRYPTION_KEY}"
 /opt/nomad/bin/run-nomad.sh --server --num-servers "${NUM_SERVERS}" --consul-token "${CONSUL_TOKEN}" --nomad-token "${NOMAD_TOKEN}"
+
+/opt/health-check/run-health-check.sh

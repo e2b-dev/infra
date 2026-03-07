@@ -12,8 +12,9 @@ locals {
 
     AWS_ECR_ACCOUNT_REPOSITORY_DOMAIN = var.aws_ecr_account_repository_domain
 
-    RUN_CONSUL_FILE_HASH = var.setup_files_hash["run-consul"]
-    RUN_NOMAD_FILE_HASH  = var.setup_files_hash["run-nomad"]
+    RUN_CONSUL_FILE_HASH       = var.setup_files_hash["run-consul"]
+    RUN_NOMAD_FILE_HASH        = var.setup_files_hash["run-nomad"]
+    RUN_HEALTH_CHECK_FILE_HASH = var.setup_files_hash["run-health-check"]
   })
 }
 

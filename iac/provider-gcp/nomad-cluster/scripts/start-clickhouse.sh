@@ -52,7 +52,9 @@ sudo sysctl -p
 # These variables are passed in via Terraform template interpolation
 gsutil cp "gs://${SCRIPTS_BUCKET}/run-consul-${RUN_CONSUL_FILE_HASH}.sh" /opt/consul/bin/run-consul.sh
 gsutil cp "gs://${SCRIPTS_BUCKET}/run-nomad-${RUN_NOMAD_FILE_HASH}.sh" /opt/nomad/bin/run-nomad.sh
-chmod +x /opt/consul/bin/run-consul.sh /opt/nomad/bin/run-nomad.sh
+mkdir -p /opt/health-check
+gsutil cp "gs://${SCRIPTS_BUCKET}/run-health-check-${RUN_HEALTH_CHECK_FILE_HASH}.sh" /opt/health-check/run-health-check.sh
+chmod +x /opt/consul/bin/run-consul.sh /opt/nomad/bin/run-nomad.sh /opt/health-check/run-health-check.sh
 
 mkdir -p /root/docker
 touch /root/docker/config.json
@@ -126,6 +128,8 @@ curl -L -o cni-plugins.tgz "https://github.com/containernetworking/plugins/relea
     --dns-request-token "${CONSUL_DNS_REQUEST_TOKEN}" &
 
 /opt/nomad/bin/run-nomad.sh --client --consul-token "${CONSUL_TOKEN}" --node-pool "${NODE_POOL}" &
+
+/opt/health-check/run-health-check.sh
 
 # Install clickhouse client to make it easier to interact with the ClickHouse server
 cd /usr/local/bin && curl https://clickhouse.com/ | sh && sudo ./clickhouse install &

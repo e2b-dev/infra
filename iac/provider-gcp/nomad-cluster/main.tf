@@ -26,8 +26,9 @@ locals {
   ])
 
   file_hash = {
-    "scripts/run-consul.sh" = substr(filesha256("${path.module}/scripts/run-consul.sh"), 0, 5)
-    "scripts/run-nomad.sh"  = substr(filesha256("${path.module}/scripts/run-nomad.sh"), 0, 5)
+    "scripts/run-consul.sh"       = substr(filesha256("${path.module}/scripts/run-consul.sh"), 0, 5)
+    "scripts/run-nomad.sh"        = substr(filesha256("${path.module}/scripts/run-nomad.sh"), 0, 5)
+    "scripts/run-health-check.sh" = substr(filesha256("${path.module}/scripts/run-health-check.sh"), 0, 5)
   }
 }
 
@@ -84,8 +85,9 @@ resource "google_project_iam_member" "logging_writer" {
 variable "setup_files" {
   type = map(string)
   default = {
-    "scripts/run-nomad.sh"  = "run-nomad",
-    "scripts/run-consul.sh" = "run-consul"
+    "scripts/run-nomad.sh"        = "run-nomad",
+    "scripts/run-consul.sh"       = "run-consul",
+    "scripts/run-health-check.sh" = "run-health-check"
   }
 }
 
@@ -206,7 +208,8 @@ module "build_cluster" {
 
   depends_on = [
     google_storage_bucket_object.setup_config_objects["scripts/run-nomad.sh"],
-    google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"]
+    google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"],
+    google_storage_bucket_object.setup_config_objects["scripts/run-health-check.sh"]
   ]
 }
 
@@ -263,6 +266,7 @@ module "client_cluster" {
 
   depends_on = [
     google_storage_bucket_object.setup_config_objects["scripts/run-nomad.sh"],
-    google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"]
+    google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"],
+    google_storage_bucket_object.setup_config_objects["scripts/run-health-check.sh"]
   ]
 }

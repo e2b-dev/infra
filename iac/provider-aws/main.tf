@@ -258,6 +258,16 @@ resource "aws_security_group" "cluster_node" {
   }
 
   ingress {
+    from_port   = 8888
+    to_port     = 8888
+    protocol    = "TCP"
+    description = "Composite health check (goss) from load balancer"
+    security_groups = [
+      aws_security_group.ingress.id
+    ]
+  }
+
+  ingress {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
