@@ -9,7 +9,7 @@ import (
 	"maps"
 	"math"
 	"net/http"
-	_ "net/http/pprof"
+	_ "net/http/pprof" //nolint:depguard // we want to use the pprof package
 	"os"
 	"slices"
 	"sync"
