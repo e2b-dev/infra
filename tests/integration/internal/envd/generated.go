@@ -27,6 +27,18 @@ const (
 	File EntryInfoType = "file"
 )
 
+// ComposeRequest defines model for ComposeRequest.
+type ComposeRequest struct {
+	// Destination Destination file path for the composed file
+	Destination string `json:"destination"`
+
+	// SourcePaths Ordered list of source file paths to concatenate
+	SourcePaths []string `json:"source_paths"`
+
+	// Username User for setting ownership and resolving relative paths
+	Username *string `json:"username,omitempty"`
+}
+
 // EntryInfo defines model for EntryInfo.
 type EntryInfo struct {
 	// Name Name of the file
@@ -174,6 +186,9 @@ type PostInitJSONBody struct {
 // PostFilesMultipartRequestBody defines body for PostFiles for multipart/form-data ContentType.
 type PostFilesMultipartRequestBody PostFilesMultipartBody
 
+// PostFilesComposeJSONRequestBody defines body for PostFilesCompose for application/json ContentType.
+type PostFilesComposeJSONRequestBody = ComposeRequest
+
 // PostInitJSONRequestBody defines body for PostInit for application/json ContentType.
 type PostInitJSONRequestBody PostInitJSONBody
 
@@ -259,6 +274,11 @@ type ClientInterface interface {
 	// PostFilesWithBody request with any body
 	PostFilesWithBody(ctx context.Context, params *PostFilesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// PostFilesComposeWithBody request with any body
+	PostFilesComposeWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PostFilesCompose(ctx context.Context, body PostFilesComposeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetHealth request
 	GetHealth(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -297,6 +317,30 @@ func (c *Client) GetFiles(ctx context.Context, params *GetFilesParams, reqEditor
 
 func (c *Client) PostFilesWithBody(ctx context.Context, params *PostFilesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPostFilesRequestWithBody(c.Server, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostFilesComposeWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostFilesComposeRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostFilesCompose(ctx context.Context, body PostFilesComposeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostFilesComposeRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -578,6 +622,46 @@ func NewPostFilesRequestWithBody(server string, params *PostFilesParams, content
 	return req, nil
 }
 
+// NewPostFilesComposeRequest calls the generic PostFilesCompose builder with application/json body
+func NewPostFilesComposeRequest(server string, body PostFilesComposeJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPostFilesComposeRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewPostFilesComposeRequestWithBody generates requests for PostFilesCompose with any type of body
+func NewPostFilesComposeRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/files/compose")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewGetHealthRequest generates requests for GetHealth
 func NewGetHealthRequest(server string) (*http.Request, error) {
 	var err error
@@ -724,6 +808,11 @@ type ClientWithResponsesInterface interface {
 	// PostFilesWithBodyWithResponse request with any body
 	PostFilesWithBodyWithResponse(ctx context.Context, params *PostFilesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostFilesResponse, error)
 
+	// PostFilesComposeWithBodyWithResponse request with any body
+	PostFilesComposeWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostFilesComposeResponse, error)
+
+	PostFilesComposeWithResponse(ctx context.Context, body PostFilesComposeJSONRequestBody, reqEditors ...RequestEditorFn) (*PostFilesComposeResponse, error)
+
 	// GetHealthWithResponse request
 	GetHealthWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetHealthResponse, error)
 
@@ -803,6 +892,33 @@ func (r PostFilesResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r PostFilesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PostFilesComposeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *EntryInfo
+	JSON400      *InvalidPath
+	JSON401      *InvalidUser
+	JSON404      *FileNotFound
+	JSON500      *InternalServerError
+	JSON507      *NotEnoughDiskSpace
+}
+
+// Status returns HTTPResponse.Status
+func (r PostFilesComposeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostFilesComposeResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -898,6 +1014,23 @@ func (c *ClientWithResponses) PostFilesWithBodyWithResponse(ctx context.Context,
 		return nil, err
 	}
 	return ParsePostFilesResponse(rsp)
+}
+
+// PostFilesComposeWithBodyWithResponse request with arbitrary body returning *PostFilesComposeResponse
+func (c *ClientWithResponses) PostFilesComposeWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostFilesComposeResponse, error) {
+	rsp, err := c.PostFilesComposeWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostFilesComposeResponse(rsp)
+}
+
+func (c *ClientWithResponses) PostFilesComposeWithResponse(ctx context.Context, body PostFilesComposeJSONRequestBody, reqEditors ...RequestEditorFn) (*PostFilesComposeResponse, error) {
+	rsp, err := c.PostFilesCompose(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostFilesComposeResponse(rsp)
 }
 
 // GetHealthWithResponse request returning *GetHealthResponse
@@ -1042,6 +1175,67 @@ func ParsePostFilesResponse(rsp *http.Response) (*PostFilesResponse, error) {
 			return nil, err
 		}
 		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalServerError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 507:
+		var dest NotEnoughDiskSpace
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON507 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePostFilesComposeResponse parses an HTTP response from a PostFilesComposeWithResponse call
+func ParsePostFilesComposeResponse(rsp *http.Response) (*PostFilesComposeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostFilesComposeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest EntryInfo
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest InvalidPath
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest InvalidUser
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest FileNotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest InternalServerError
