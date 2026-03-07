@@ -60,7 +60,9 @@ func (f *fcLogFilter) Write(p []byte) (n int, err error) {
 			continue
 		}
 
-		if f.skipResponse.Swap(false) {
+		if f.skipResponse.Load() && bytes.Contains(line, []byte("The request was executed successfully")) {
+			f.skipResponse.Store(false)
+
 			continue
 		}
 
