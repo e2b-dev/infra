@@ -296,3 +296,8 @@ variable "launch_darkly_api_key" {
   default   = ""
   sensitive = true
 }
+
+variable "additional_traefik_arguments" {
+  type    = list(string)
+  default = []
+}
