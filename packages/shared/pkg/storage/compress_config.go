@@ -11,14 +11,14 @@ import (
 // variables at startup. Feature flags can override individual fields at runtime
 // via ResolveCompressConfig.
 type CompressConfig struct {
-	Enabled             bool   `env:"COMPRESS_ENABLED"              envDefault:"false"`
-	Type                string `env:"COMPRESS_TYPE"                 envDefault:"zstd"`
-	Level               int    `env:"COMPRESS_LEVEL"                envDefault:"2"`
-	FrameSizeKB         int    `env:"COMPRESS_FRAME_SIZE_KB"        envDefault:"2048"`
-	FramesPerUploadPart int    `env:"COMPRESS_FRAMES_PER_PART"      envDefault:"25"`
-	FrameEncodeWorkers  int    `env:"COMPRESS_FRAME_ENCODE_WORKERS" envDefault:"4"`
-	EncoderConcurrency  int    `env:"COMPRESS_ENCODER_CONCURRENCY"  envDefault:"1"`
-	DecoderConcurrency  int    `env:"COMPRESS_DECODER_CONCURRENCY"  envDefault:"1"`
+	Enabled            bool   `env:"COMPRESS_ENABLED"              envDefault:"false"`
+	Type               string `env:"COMPRESS_TYPE"                 envDefault:"zstd"`
+	Level              int    `env:"COMPRESS_LEVEL"                envDefault:"2"`
+	FrameSizeKB        int    `env:"COMPRESS_FRAME_SIZE_KB"        envDefault:"2048"`
+	TargetPartSizeMB   int    `env:"COMPRESS_TARGET_PART_SIZE_MB"  envDefault:"50"`
+	FrameEncodeWorkers int    `env:"COMPRESS_FRAME_ENCODE_WORKERS" envDefault:"4"`
+	EncoderConcurrency int    `env:"COMPRESS_ENCODER_CONCURRENCY"  envDefault:"1"`
+	DecoderConcurrency int    `env:"COMPRESS_DECODER_CONCURRENCY"  envDefault:"1"`
 }
 
 // CompressionType returns the parsed CompressionType.
@@ -90,14 +90,14 @@ func CompressConfigFromLDValue(ff *featureflags.Client, ctx context.Context) *Co
 	}
 
 	return &CompressConfig{
-		Enabled:             true,
-		Type:                ct,
-		Level:               v.Get("compressionLevel").IntValue(),
-		FrameSizeKB:         v.Get("frameSizeKB").IntValue(),
-		FramesPerUploadPart: v.Get("framesPerUploadPart").IntValue(),
-		FrameEncodeWorkers:  v.Get("frameEncodeWorkers").IntValue(),
-		EncoderConcurrency:  v.Get("encoderConcurrency").IntValue(),
-		DecoderConcurrency:  v.Get("decoderConcurrency").IntValue(),
+		Enabled:            true,
+		Type:               ct,
+		Level:              v.Get("compressionLevel").IntValue(),
+		FrameSizeKB:        v.Get("frameSizeKB").IntValue(),
+		TargetPartSizeMB:   v.Get("targetPartSizeMB").IntValue(),
+		FrameEncodeWorkers: v.Get("frameEncodeWorkers").IntValue(),
+		EncoderConcurrency: v.Get("encoderConcurrency").IntValue(),
+		DecoderConcurrency: v.Get("decoderConcurrency").IntValue(),
 	}
 }
 

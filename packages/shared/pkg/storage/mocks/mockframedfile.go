@@ -195,8 +195,8 @@ func (_c *MockFramedFile_Size_Call) RunAndReturn(run func(ctx context.Context) (
 }
 
 // StoreFile provides a mock function for the type MockFramedFile
-func (_mock *MockFramedFile) StoreFile(ctx context.Context, path string, cfg *storage.CompressConfig, onFrameReady storage.OnFrameReady) (*storage.FrameTable, [32]byte, error) {
-	ret := _mock.Called(ctx, path, cfg, onFrameReady)
+func (_mock *MockFramedFile) StoreFile(ctx context.Context, path string, cfg *storage.CompressConfig) (*storage.FrameTable, [32]byte, error) {
+	ret := _mock.Called(ctx, path, cfg)
 
 	if len(ret) == 0 {
 		panic("no return value specified for StoreFile")
@@ -205,25 +205,25 @@ func (_mock *MockFramedFile) StoreFile(ctx context.Context, path string, cfg *st
 	var r0 *storage.FrameTable
 	var r1 [32]byte
 	var r2 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *storage.CompressConfig, storage.OnFrameReady) (*storage.FrameTable, [32]byte, error)); ok {
-		return returnFunc(ctx, path, cfg, onFrameReady)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *storage.CompressConfig) (*storage.FrameTable, [32]byte, error)); ok {
+		return returnFunc(ctx, path, cfg)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *storage.CompressConfig, storage.OnFrameReady) *storage.FrameTable); ok {
-		r0 = returnFunc(ctx, path, cfg, onFrameReady)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *storage.CompressConfig) *storage.FrameTable); ok {
+		r0 = returnFunc(ctx, path, cfg)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*storage.FrameTable)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, *storage.CompressConfig, storage.OnFrameReady) [32]byte); ok {
-		r1 = returnFunc(ctx, path, cfg, onFrameReady)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, *storage.CompressConfig) [32]byte); ok {
+		r1 = returnFunc(ctx, path, cfg)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).([32]byte)
 		}
 	}
-	if returnFunc, ok := ret.Get(2).(func(context.Context, string, *storage.CompressConfig, storage.OnFrameReady) error); ok {
-		r2 = returnFunc(ctx, path, cfg, onFrameReady)
+	if returnFunc, ok := ret.Get(2).(func(context.Context, string, *storage.CompressConfig) error); ok {
+		r2 = returnFunc(ctx, path, cfg)
 	} else {
 		r2 = ret.Error(2)
 	}
@@ -239,12 +239,11 @@ type MockFramedFile_StoreFile_Call struct {
 //   - ctx context.Context
 //   - path string
 //   - cfg *storage.CompressConfig
-//   - onFrameReady storage.OnFrameReady
-func (_e *MockFramedFile_Expecter) StoreFile(ctx interface{}, path interface{}, cfg interface{}, onFrameReady interface{}) *MockFramedFile_StoreFile_Call {
-	return &MockFramedFile_StoreFile_Call{Call: _e.mock.On("StoreFile", ctx, path, cfg, onFrameReady)}
+func (_e *MockFramedFile_Expecter) StoreFile(ctx interface{}, path interface{}, cfg interface{}) *MockFramedFile_StoreFile_Call {
+	return &MockFramedFile_StoreFile_Call{Call: _e.mock.On("StoreFile", ctx, path, cfg)}
 }
 
-func (_c *MockFramedFile_StoreFile_Call) Run(run func(ctx context.Context, path string, cfg *storage.CompressConfig, onFrameReady storage.OnFrameReady)) *MockFramedFile_StoreFile_Call {
+func (_c *MockFramedFile_StoreFile_Call) Run(run func(ctx context.Context, path string, cfg *storage.CompressConfig)) *MockFramedFile_StoreFile_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -258,15 +257,10 @@ func (_c *MockFramedFile_StoreFile_Call) Run(run func(ctx context.Context, path 
 		if args[2] != nil {
 			arg2 = args[2].(*storage.CompressConfig)
 		}
-		var arg3 storage.OnFrameReady
-		if args[3] != nil {
-			arg3 = args[3].(storage.OnFrameReady)
-		}
 		run(
 			arg0,
 			arg1,
 			arg2,
-			arg3,
 		)
 	})
 	return _c
@@ -277,7 +271,7 @@ func (_c *MockFramedFile_StoreFile_Call) Return(frameTable *storage.FrameTable, 
 	return _c
 }
 
-func (_c *MockFramedFile_StoreFile_Call) RunAndReturn(run func(ctx context.Context, path string, cfg *storage.CompressConfig, onFrameReady storage.OnFrameReady) (*storage.FrameTable, [32]byte, error)) *MockFramedFile_StoreFile_Call {
+func (_c *MockFramedFile_StoreFile_Call) RunAndReturn(run func(ctx context.Context, path string, cfg *storage.CompressConfig) (*storage.FrameTable, [32]byte, error)) *MockFramedFile_StoreFile_Call {
 	_c.Call.Return(run)
 	return _c
 }

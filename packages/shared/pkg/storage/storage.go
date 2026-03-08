@@ -88,8 +88,7 @@ type FramedFile interface {
 
 	// StoreFile uploads a local file. When cfg is non-nil, compresses and
 	// returns the FrameTable + SHA-256 checksum of compressed data.
-	// onFrameReady is an optional callback invoked for each compressed frame.
-	StoreFile(ctx context.Context, path string, cfg *CompressConfig, onFrameReady OnFrameReady) (*FrameTable, [32]byte, error)
+	StoreFile(ctx context.Context, path string, cfg *CompressConfig) (*FrameTable, [32]byte, error)
 }
 
 func GetTemplateStorageProvider(ctx context.Context, limiter *limit.Limiter) (StorageProvider, error) {

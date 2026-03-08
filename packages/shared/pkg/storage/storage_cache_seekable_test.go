@@ -53,7 +53,7 @@ func TestCachedFramedFile_Size(t *testing.T) {
 func TestCachedFramedFile_WriteFromFileSystem(t *testing.T) {
 	t.Parallel()
 
-	t.Run("can be cached successfully", func(t *testing.T) {
+	t.Run("delegates to inner", func(t *testing.T) {
 		t.Parallel()
 
 		tempDir := t.TempDir()
@@ -69,28 +69,15 @@ func TestCachedFramedFile_WriteFromFileSystem(t *testing.T) {
 
 		inner := NewMockFramedFile(t)
 		inner.EXPECT().
-			StoreFile(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			StoreFile(mock.Anything, mock.Anything, mock.Anything).
 			Return(nil, [32]byte{}, nil)
 
 		featureFlags := NewMockFeatureFlagsClient(t)
-		featureFlags.EXPECT().BoolFlag(mock.Anything, mock.Anything).Return(true)
-		featureFlags.EXPECT().IntFlag(mock.Anything, mock.Anything).Return(10)
 
 		c := cachedFramedFile{path: cacheDir, inner: inner, chunkSize: 1024, flags: featureFlags, tracer: noopTracer}
 
-		// write temp file
-		_, _, err = c.StoreFile(t.Context(), tempFilename, nil, nil)
+		_, _, err = c.StoreFile(t.Context(), tempFilename, nil)
 		require.NoError(t, err)
-
-		// file is written asynchronously, wait for it to finish
-		c.wg.Wait()
-
-		c.inner = nil
-
-		// size should be cached
-		size, err := c.Size(t.Context())
-		require.NoError(t, err)
-		assert.Equal(t, int64(len(data)), size)
 	})
 }
 

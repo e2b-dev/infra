@@ -9,6 +9,7 @@ import (
 	"io"
 	"slices"
 	"sync"
+	"sync/atomic"
 
 	"github.com/klauspost/compress/zstd"
 	lz4 "github.com/pierrec/lz4/v4"
@@ -39,8 +40,8 @@ func CompressLZ4(data []byte) ([]byte, error) {
 }
 
 const (
-	defaultFrameEncodeWorkers  = 4  // concurrent frame-level compression workers per CompressStream call
-	defaultFramesPerUploadPart = 25 // frames per upload part (25 × 2 MiB = 50 MiB uncompressed per part)
+	defaultFrameEncodeWorkers = 4        // concurrent frame-level compression workers per CompressStream call
+	defaultTargetPartSize     = 50 << 20 // 50 MiB compressed target per upload part
 
 	// DefaultCompressFrameSize is the default uncompressed size of each compression
 	// frame (2 MiB). Overridable via CompressConfig.FrameSizeKB.
@@ -73,8 +74,10 @@ type PartUploader interface {
 	Close() error
 }
 
-// OnFrameReady is a callback invoked for each compressed frame during CompressStream/StoreFile.
-type OnFrameReady = func(offset FrameOffset, size FrameSize, data []byte) error
+// OnFrameCompressed is an optional progress callback invoked for each compressed frame
+// during CompressStream. Used by tools (e.g. compress-build) for progress reporting.
+// Not part of the StoreFile interface — only available when calling CompressStream directly.
+type OnFrameCompressed = func(frameIndex int, offset FrameOffset, size FrameSize)
 
 // ValidateCompressConfig checks that compression config is valid for use.
 func ValidateCompressConfig(cfg *CompressConfig) error {
@@ -225,17 +228,34 @@ func newCompressorPool(cfg *CompressConfig) (borrow func() (frameCompressor, err
 // CompressStream reads from in, compresses using cfg, and writes parts through uploader.
 // Returns the resulting FrameTable describing the compressed frames.
 //
-// Design: single-loop, batch-parallel. Each iteration reads a batch of frames
-// (one batch = one upload part), compresses them in parallel, emits in order,
-// and uploads asynchronously. Upload of part K overlaps with read+compress of
-// batch K+1. No channels, no reorder buffer.
-func CompressStream(ctx context.Context, in io.Reader, cfg *CompressConfig, onFrameReady OnFrameReady, uploader PartUploader) (*FrameTable, [32]byte, error) {
+// Design: frame-at-a-time with target part size accumulation.
+//
+// The main goroutine reads frames one at a time from in, submits each to a
+// concurrency-limited compress worker pool (errgroup with SetLimit). When a
+// worker finishes it atomically adds its compressed size to a running counter.
+// errgroup.Go() blocks when all workers are busy, so the main goroutine
+// naturally checks the counter after each completion.
+//
+// When the accumulated compressed size reaches targetPartSize, the current
+// part is "closed": a background goroutine waits for the part's remaining
+// in-flight workers, then emits frames and uploads. The main goroutine
+// immediately starts a new part and continues reading, borrowing compressors
+// from the shared pool as they become available.
+//
+// Part emission is chained: part K+1 waits for part K's emission to complete,
+// ensuring frameTable and offset are updated in order.
+func CompressStream(ctx context.Context, in io.Reader, cfg *CompressConfig, onFrame OnFrameCompressed, uploader PartUploader) (*FrameTable, [32]byte, error) {
 	workers := cfg.FrameEncodeWorkers
 	if workers <= 0 {
 		workers = defaultFrameEncodeWorkers
 	}
 
 	frameSize := cfg.FrameSize()
+
+	targetPartSize := int64(cfg.TargetPartSizeMB) * (1 << 20)
+	if targetPartSize <= 0 {
+		targetPartSize = int64(defaultTargetPartSize)
+	}
 
 	if err := uploader.Start(ctx); err != nil {
 		return nil, [32]byte{}, fmt.Errorf("failed to start framed upload: %w", err)
@@ -249,104 +269,147 @@ func CompressStream(ctx context.Context, in io.Reader, cfg *CompressConfig, onFr
 	uploadEG, uploadCtx := errgroup.WithContext(ctx)
 	uploadEG.SetLimit(4) // max concurrent part uploads
 
-	var (
-		offset    FrameOffset
-		partIndex int
-	)
-
-	framesPerPart := cfg.FramesPerUploadPart
-	if framesPerPart <= 0 {
-		framesPerPart = defaultFramesPerUploadPart
+	// pendingFrame tracks one frame submitted to the compress workers.
+	// The main goroutine allocates and appends; the worker writes compressed via the captured pointer.
+	type pendingFrame struct {
+		uncompressedSize int
+		compressed       []byte
 	}
 
-	for {
-		// --- Read frames and submit to compress workers immediately ---
-		// While the main goroutine reads frame K, workers compress frames 0..K-1.
-		batchLen := 0
-		sizes := make([]int, framesPerPart)
-		compressed := make([][]byte, framesPerPart)
-		compressEG, compressCtx := errgroup.WithContext(ctx)
-		compressEG.SetLimit(workers)
-		eof := false
+	var (
+		offset     FrameOffset
+		partIndex  int
+		frameIndex int
+	)
 
-		for i := range framesPerPart {
-			if err := ctx.Err(); err != nil {
-				return nil, [32]byte{}, err
-			}
+	// Per-part state. Reset when a part is flushed.
+	var partFrames []*pendingFrame
+	var partCompressedSize atomic.Int64
+	compressEG, compressCtx := errgroup.WithContext(ctx)
+	compressEG.SetLimit(workers)
 
-			buf := make([]byte, frameSize)
-			n, err := io.ReadFull(in, buf)
+	// Emission chain: each part's background goroutine waits for the previous
+	// part to finish emitting before it emits, ensuring frameTable/offset order.
+	var prevEmitDone chan struct{}
 
-			if n > 0 {
-				hasher.Write(buf[:n])
-				sizes[i] = n
-				batchLen++
+	// flushPart closes the current part: launches a background goroutine that
+	// waits for compression, emits frames in order, and uploads.
+	// The main goroutine can immediately continue reading for the next part.
+	flushPart := func() {
+		frames := partFrames
+		eg := compressEG
+		prev := prevEmitDone
+		emitDone := make(chan struct{})
+		prevEmitDone = emitDone
 
-				frameData := buf[:n]
-				idx := i
-				compressEG.Go(func() error {
-					if err := compressCtx.Err(); err != nil {
-						return err
-					}
-					c, err := borrow()
-					if err != nil {
-						return err
-					}
-					out, err := c.Compress(frameData)
-					release(c)
-					if err != nil {
-						return err
-					}
-					compressed[idx] = out
-
-					return nil
-				})
-			}
-
-			if err != nil {
-				if !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, io.EOF) {
-					return nil, [32]byte{}, fmt.Errorf("read frame: %w", err)
-				}
-				eof = true
-
-				break
-			}
-		}
-
-		if batchLen == 0 {
-			break
-		}
-
-		if err := compressEG.Wait(); err != nil {
-			return nil, [32]byte{}, err
-		}
-
-		// --- Emit in order, call onFrameReady ---
-		partData := make([][]byte, batchLen)
-		for i := range batchLen {
-			fs := FrameSize{U: int32(sizes[i]), C: int32(len(compressed[i]))}
-			frameTable.Frames = append(frameTable.Frames, fs)
-
-			if onFrameReady != nil {
-				if err := onFrameReady(offset, fs, compressed[i]); err != nil {
-					return nil, [32]byte{}, err
-				}
-			}
-
-			offset.Add(fs)
-			partData[i] = compressed[i]
-		}
-
-		// --- Upload part asynchronously ---
 		partIndex++
 		pi := partIndex
+
 		uploadEG.Go(func() error {
+			// Wait for all compression workers for this part.
+			if err := eg.Wait(); err != nil {
+				close(emitDone)
+
+				return err
+			}
+
+			// Wait for previous part's emission to complete (ordering).
+			if prev != nil {
+				select {
+				case <-prev:
+				case <-uploadCtx.Done():
+					close(emitDone)
+
+					return uploadCtx.Err()
+				}
+			}
+
+			// Emit frames in order — safe: only one goroutine emits at a time.
+			partData := make([][]byte, len(frames))
+			var partBytes int
+			for i, f := range frames {
+				fs := FrameSize{U: int32(f.uncompressedSize), C: int32(len(f.compressed))}
+				frameTable.Frames = append(frameTable.Frames, fs)
+
+				if onFrame != nil {
+					onFrame(frameIndex, offset, fs)
+				}
+
+				frameIndex++
+				offset.Add(fs)
+				partData[i] = f.compressed
+				partBytes += len(f.compressed)
+			}
+
+			close(emitDone)
+
 			return uploader.UploadPart(uploadCtx, pi, partData...)
 		})
 
-		if eof {
+		// Reset per-part state for the next part.
+		partFrames = nil
+		partCompressedSize.Store(0)
+		compressEG, compressCtx = errgroup.WithContext(ctx)
+		compressEG.SetLimit(workers)
+	}
+
+	// --- Main read loop: one frame at a time ---
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, [32]byte{}, err
+		}
+
+		buf := make([]byte, frameSize)
+		n, readErr := io.ReadFull(in, buf)
+
+		if n > 0 {
+			hasher.Write(buf[:n])
+			frameData := buf[:n]
+
+			pf := &pendingFrame{uncompressedSize: n}
+			partFrames = append(partFrames, pf)
+
+			cCtx := compressCtx // capture for closure
+			compressEG.Go(func() error {
+				if err := cCtx.Err(); err != nil {
+					return err
+				}
+				c, err := borrow()
+				if err != nil {
+					return err
+				}
+				out, err := c.Compress(frameData)
+				release(c)
+				if err != nil {
+					return err
+				}
+				pf.compressed = out
+				partCompressedSize.Add(int64(len(out)))
+
+				return nil
+			})
+
+			// Check if we've accumulated enough for this part.
+			// errgroup.Go blocks when workers are full, so by the time
+			// we get here a worker may have finished and updated the counter.
+			eof := readErr != nil
+			if !eof && partCompressedSize.Load() >= targetPartSize {
+				flushPart()
+			}
+		}
+
+		if readErr != nil {
+			if !errors.Is(readErr, io.ErrUnexpectedEOF) && !errors.Is(readErr, io.EOF) {
+				return nil, [32]byte{}, fmt.Errorf("read frame: %w", readErr)
+			}
+
 			break
 		}
+	}
+
+	// Flush final part (no minimum size constraint).
+	if len(partFrames) > 0 {
+		flushPart()
 	}
 
 	if err := uploadEG.Wait(); err != nil {

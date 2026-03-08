@@ -32,8 +32,7 @@ const (
 	cacheOpGetFrame cacheOp = "get_frame"
 	cacheOpSize     cacheOp = "size"
 
-	cacheOpPut       cacheOp = "put"
-	cacheOpStoreFile cacheOp = "store_file"
+	cacheOpPut cacheOp = "put"
 )
 
 type cacheType string

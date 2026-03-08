@@ -69,7 +69,7 @@ func (t *TemplateBuild) uploadUncompressedFile(ctx context.Context, localPath, f
 		return err
 	}
 
-	if _, _, err := object.StoreFile(ctx, localPath, nil, nil); err != nil {
+	if _, _, err := object.StoreFile(ctx, localPath, nil); err != nil {
 		return fmt.Errorf("error when uploading %s: %w", fileName, err)
 	}
 
@@ -222,7 +222,7 @@ func (t *TemplateBuild) uploadCompressedFile(ctx context.Context, localPath, fil
 		return nil, [32]byte{}, fmt.Errorf("error opening framed file for %s: %w", objectPath, err)
 	}
 
-	ft, checksum, err := object.StoreFile(ctx, localPath, cfg, nil)
+	ft, checksum, err := object.StoreFile(ctx, localPath, cfg)
 	if err != nil {
 		return nil, [32]byte{}, fmt.Errorf("error compressing %s to %s: %w", fileName, objectPath, err)
 	}

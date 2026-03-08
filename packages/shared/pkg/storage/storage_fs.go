@@ -108,9 +108,9 @@ func (o *fsObject) Put(_ context.Context, data []byte) error {
 	return err
 }
 
-func (o *fsObject) StoreFile(ctx context.Context, path string, cfg *CompressConfig, onFrameReady OnFrameReady) (_ *FrameTable, _ [32]byte, e error) {
+func (o *fsObject) StoreFile(ctx context.Context, path string, cfg *CompressConfig) (_ *FrameTable, _ [32]byte, e error) {
 	if cfg.IsEnabled() {
-		return o.storeFileCompressed(ctx, path, cfg, onFrameReady)
+		return o.storeFileCompressed(ctx, path, cfg)
 	}
 
 	r, err := os.Open(path)
@@ -134,7 +134,7 @@ func (o *fsObject) StoreFile(ctx context.Context, path string, cfg *CompressConf
 	return
 }
 
-func (o *fsObject) storeFileCompressed(ctx context.Context, localPath string, cfg *CompressConfig, onFrameReady OnFrameReady) (*FrameTable, [32]byte, error) {
+func (o *fsObject) storeFileCompressed(ctx context.Context, localPath string, cfg *CompressConfig) (*FrameTable, [32]byte, error) {
 	file, err := os.Open(localPath)
 	if err != nil {
 		return nil, [32]byte{}, fmt.Errorf("failed to open local file %s: %w", localPath, err)
@@ -154,7 +154,7 @@ func (o *fsObject) storeFileCompressed(ctx context.Context, localPath string, cf
 
 	uploader := &fsPartUploader{fullPath: o.path}
 
-	return CompressStream(ctx, file, cfg, onFrameReady, uploader)
+	return CompressStream(ctx, file, cfg, nil, uploader)
 }
 
 func (o *fsObject) openRangeReader(_ context.Context, off int64, length int) (io.ReadCloser, error) {

@@ -213,13 +213,13 @@ func framedEncode(data []byte, ct storage.CompressionType, level, encWorkers, en
 	uploader := &storage.MemPartUploader{}
 
 	cfg := &storage.CompressConfig{
-		Enabled:             true,
-		Type:                ct.String(),
-		Level:               level,
-		FrameSizeKB:         storage.DefaultCompressFrameSize / 1024,
-		FramesPerUploadPart: 25,
-		FrameEncodeWorkers:  encWorkers,
-		EncoderConcurrency:  encConcurrency,
+		Enabled:            true,
+		Type:               ct.String(),
+		Level:              level,
+		FrameSizeKB:        storage.DefaultCompressFrameSize / 1024,
+		TargetPartSizeMB:   50,
+		FrameEncodeWorkers: encWorkers,
+		EncoderConcurrency: encConcurrency,
 	}
 
 	ctx := context.Background()

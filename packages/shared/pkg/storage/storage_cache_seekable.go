@@ -441,66 +441,8 @@ func (c *cachedFramedFile) Size(ctx context.Context) (size int64, e error) {
 	return u, nil
 }
 
-func (c *cachedFramedFile) StoreFile(ctx context.Context, path string, cfg *CompressConfig, _ OnFrameReady) (_ *FrameTable, _ [32]byte, e error) {
-	if cfg.IsEnabled() {
-		return c.storeFileCompressed(ctx, path, cfg)
-	}
-
-	ctx, span := c.tracer.Start(ctx, "write object from file system",
-		trace.WithAttributes(attribute.String("path", path)),
-	)
-	defer func() {
-		recordError(span, e)
-		span.End()
-	}()
-
-	if c.flags.BoolFlag(ctx, featureflags.EnableWriteThroughCacheFlag) {
-		c.goCtx(ctx, func(ctx context.Context) {
-			ctx, span := c.tracer.Start(ctx, "write cache object from file system",
-				trace.WithAttributes(attribute.String("path", path)))
-			defer span.End()
-
-			size, err := c.createCacheBlocksFromFile(ctx, path)
-			if err != nil {
-				recordError(span, err)
-				recordCacheWriteError(ctx, cacheTypeFramedFile, cacheOpStoreFile, fmt.Errorf("failed to create cache blocks: %w", err))
-
-				return
-			}
-
-			recordCacheWrite(ctx, size, cacheTypeFramedFile, cacheOpStoreFile)
-
-			if err := c.writeLocalSize(ctx, size); err != nil {
-				recordError(span, err)
-				recordCacheWriteError(ctx, cacheTypeFramedFile, cacheOpStoreFile, fmt.Errorf("failed to write local file size: %w", err))
-			}
-		})
-	}
-
-	return c.inner.StoreFile(ctx, path, nil, nil) // uncompressed path — no callback
-}
-
-// storeFileCompressed delegates to inner, optionally writing compressed frames
-// to the NFS cache via the OnFrameReady callback (gated by EnableWriteThroughCacheFlag).
-func (c *cachedFramedFile) storeFileCompressed(ctx context.Context, localPath string, cfg *CompressConfig) (*FrameTable, [32]byte, error) {
-	if !c.flags.BoolFlag(ctx, featureflags.EnableWriteThroughCacheFlag) {
-		return c.inner.StoreFile(ctx, localPath, cfg, nil)
-	}
-
-	onFrameReady := func(offset FrameOffset, size FrameSize, data []byte) error {
-		// data is a freshly allocated slice from Compress(), safe to use without copying.
-		framePath := makeFrameFilename(c.path, offset, size)
-
-		c.goCtx(ctx, func(ctx context.Context) {
-			if err := c.writeToCache(ctx, offset.U, framePath, data); err != nil {
-				recordCacheWriteError(ctx, cacheTypeFramedFile, cacheOpStoreFile, err)
-			}
-		})
-
-		return nil
-	}
-
-	return c.inner.StoreFile(ctx, localPath, cfg, onFrameReady)
+func (c *cachedFramedFile) StoreFile(ctx context.Context, path string, cfg *CompressConfig) (_ *FrameTable, _ [32]byte, e error) {
+	return c.inner.StoreFile(ctx, path, cfg)
 }
 
 // makeFrameFilename returns the NFS cache path for a compressed frame.
@@ -594,85 +536,6 @@ func (c *cachedFramedFile) writeLocalSize(ctx context.Context, size int64) error
 	if err := utils.RenameOrDeleteFile(ctx, tempFilename, finalFilename); err != nil {
 		return fmt.Errorf("failed to rename local size temp file: %w", err)
 	}
-
-	return nil
-}
-
-func (c *cachedFramedFile) createCacheBlocksFromFile(ctx context.Context, inputPath string) (count int64, err error) {
-	ctx, span := c.tracer.Start(ctx, "create cache blocks from filesystem")
-	defer func() {
-		recordError(span, err)
-		span.End()
-	}()
-
-	input, err := os.Open(inputPath)
-	if err != nil {
-		return 0, fmt.Errorf("failed to open input file: %w", err)
-	}
-	defer utils.Cleanup(ctx, "failed to close file", input.Close)
-
-	stat, err := input.Stat()
-	if err != nil {
-		return 0, fmt.Errorf("failed to stat input file: %w", err)
-	}
-
-	totalSize := stat.Size()
-
-	maxConcurrency := c.flags.IntFlag(ctx, featureflags.MaxCacheWriterConcurrencyFlag)
-	if maxConcurrency <= 0 {
-		logger.L().Warn(ctx, "max cache writer concurrency is too low, falling back to 1",
-			zap.Int("max_concurrency", maxConcurrency))
-		maxConcurrency = 1
-	}
-
-	ec := utils.NewErrorCollector(maxConcurrency)
-	for offset := int64(0); offset < totalSize; offset += c.chunkSize {
-		ec.Go(ctx, func() error {
-			if err := c.writeChunkFromFile(ctx, offset, input); err != nil {
-				return fmt.Errorf("failed to write chunk file at offset %d: %w", offset, err)
-			}
-
-			return nil
-		})
-	}
-
-	err = ec.Wait()
-
-	return totalSize, err
-}
-
-func (c *cachedFramedFile) writeChunkFromFile(ctx context.Context, offset int64, input *os.File) (err error) {
-	_, span := c.tracer.Start(ctx, "write chunk from file at offset", trace.WithAttributes(
-		attribute.Int64("offset", offset),
-	))
-	defer func() {
-		recordError(span, err)
-		span.End()
-	}()
-
-	writeTimer := cacheSlabWriteTimerFactory.Begin()
-
-	chunkPath := c.makeChunkFilename(offset)
-	span.SetAttributes(attribute.String("chunk_path", chunkPath))
-
-	output, err := os.OpenFile(chunkPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, cacheFilePermissions)
-	if err != nil {
-		writeTimer.Failure(ctx, 0)
-
-		return fmt.Errorf("failed to open file %s: %w", chunkPath, err)
-	}
-	defer utils.Cleanup(ctx, "failed to close file", output.Close)
-
-	offsetReader := newOffsetReader(input, offset)
-	count, err := io.CopyN(output, offsetReader, c.chunkSize)
-	if ignoreEOF(err) != nil {
-		writeTimer.Failure(ctx, count)
-		safelyRemoveFile(ctx, chunkPath)
-
-		return fmt.Errorf("failed to copy chunk: %w", err)
-	}
-
-	writeTimer.Success(ctx, count)
 
 	return nil
 }

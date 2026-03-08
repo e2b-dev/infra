@@ -298,18 +298,17 @@ func compressArtifact(ctx context.Context, cfg *compressConfig, buildID, name, f
 
 	// Set up compression config
 	compressCfg := &storage.CompressConfig{
-		Enabled:             true,
-		Type:                cfg.compType.String(),
-		Level:               cfg.level,
-		FrameSizeKB:         cfg.frameSize / 1024,
-		FramesPerUploadPart: 25,
+		Enabled:          true,
+		Type:             cfg.compType.String(),
+		Level:            cfg.level,
+		FrameSizeKB:      cfg.frameSize / 1024,
+		TargetPartSizeMB: 50,
 	}
 
-	var onFrameReady storage.OnFrameReady
+	var onFrame storage.OnFrameCompressed
 	if cfg.verbose {
-		frameIdx := 0
 		lastFrameTime := time.Now()
-		onFrameReady = func(offset storage.FrameOffset, size storage.FrameSize, _ []byte) error {
+		onFrame = func(frameIdx int, offset storage.FrameOffset, size storage.FrameSize) {
 			now := time.Now()
 			elapsed := now.Sub(lastFrameTime)
 			mbps := float64(size.U) / elapsed.Seconds() / (1024 * 1024)
@@ -318,9 +317,6 @@ func compressArtifact(ctx context.Context, cfg *compressConfig, buildID, name, f
 			fmt.Printf("    frame[%d] U=%#x+%#x C=%#x+%#x ratio=%s %v %.0f MB/s\n",
 				frameIdx, offset.U, size.U, offset.C, size.C,
 				cmdutil.FormatRatio(ratio), elapsed.Round(time.Millisecond), mbps)
-			frameIdx++
-
-			return nil
 		}
 	}
 
@@ -342,7 +338,7 @@ func compressArtifact(ctx context.Context, cfg *compressConfig, buildID, name, f
 
 	// Compress
 	compressStart := time.Now()
-	frameTable, _, err := storage.CompressStream(ctx, sectionReader, compressCfg, onFrameReady, uploader)
+	frameTable, _, err := storage.CompressStream(ctx, sectionReader, compressCfg, onFrame, uploader)
 	if err != nil {
 		return fmt.Errorf("compress: %w", err)
 	}

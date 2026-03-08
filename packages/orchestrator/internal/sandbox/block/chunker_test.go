@@ -72,7 +72,7 @@ func (s *slowFrameGetter) Size(_ context.Context) (int64, error) {
 	return int64(len(s.data)), nil
 }
 
-func (s *slowFrameGetter) StoreFile(context.Context, string, *storage.CompressConfig, storage.OnFrameReady) (*storage.FrameTable, [32]byte, error) {
+func (s *slowFrameGetter) StoreFile(context.Context, string, *storage.CompressConfig) (*storage.FrameTable, [32]byte, error) {
 	panic("slowFrameGetter: StoreFile not used in tests")
 }
 
@@ -171,12 +171,12 @@ func makeCompressedTestData(tb testing.TB, data []byte, ttfb time.Duration) (*st
 
 	up := &storage.MemPartUploader{}
 	ft, _, err := storage.CompressStream(context.Background(), bytes.NewReader(data), &storage.CompressConfig{
-		Enabled:             true,
-		Type:                "lz4",
-		EncoderConcurrency:  1,
-		FrameEncodeWorkers:  1,
-		FrameSizeKB:         testFrameSize / 1024,
-		FramesPerUploadPart: 25,
+		Enabled:            true,
+		Type:               "lz4",
+		EncoderConcurrency: 1,
+		FrameEncodeWorkers: 1,
+		FrameSizeKB:        testFrameSize / 1024,
+		TargetPartSizeMB:   50,
 	}, nil, up)
 	require.NoError(tb, err)
 
