@@ -211,6 +211,82 @@ func TestUpdateNetworkConfig_PauseResume(t *testing.T) {
 	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "1.1.1.1 should still be blocked after resume")
 }
 
+// TestUpdateNetworkConfig_AllowDomain dynamically allows a domain through
+// a deny-all policy and verifies connectivity by hostname (TLS SNI).
+func TestUpdateNetworkConfig_AllowDomain(t *testing.T) {
+	t.Parallel()
+
+	templateID := ensureNetworkTestTemplate(t)
+	ctx := t.Context()
+	client := setup.GetAPIClient()
+	envdClient := setup.GetEnvdClient(t, ctx)
+
+	// Create sandbox with deny-all egress
+	sbx := utils.SetupSandboxWithCleanup(t, client,
+		utils.WithTemplateID(templateID),
+		utils.WithTimeout(60),
+		utils.WithNetwork(&api.SandboxNetworkConfig{
+			DenyOut: &[]string{sandbox_network.AllInternetTrafficCIDR},
+		}),
+	)
+
+	// Verify all traffic blocked
+	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://google.com", "Should be blocked before domain allow")
+
+	// Dynamically allow google.com domain
+	resp, err := client.PutSandboxesSandboxIDNetworkWithResponse(ctx, sbx.SandboxID,
+		api.PutSandboxesSandboxIDNetworkJSONRequestBody{
+			AllowOut: &[]string{"google.com"},
+			DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
+		},
+		setup.WithAPIKey(),
+	)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode())
+
+	// Verify allowed domain is reachable, other domains still blocked
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://google.com", "Allowed domain should be reachable")
+	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://cloudflare.com", "Non-allowed domain should still be blocked")
+}
+
+// TestUpdateNetworkConfig_RemoveDomain dynamically adds a domain allow rule,
+// then removes it by replacing with an empty config, and verifies the domain
+// becomes unreachable again.
+func TestUpdateNetworkConfig_RemoveDomain(t *testing.T) {
+	t.Parallel()
+
+	templateID := ensureNetworkTestTemplate(t)
+	ctx := t.Context()
+	client := setup.GetAPIClient()
+	envdClient := setup.GetEnvdClient(t, ctx)
+
+	// Create sandbox with deny-all + allow google.com
+	sbx := utils.SetupSandboxWithCleanup(t, client,
+		utils.WithTemplateID(templateID),
+		utils.WithTimeout(60),
+		utils.WithNetwork(&api.SandboxNetworkConfig{
+			AllowOut: &[]string{"google.com"},
+			DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
+		}),
+	)
+
+	// Verify google.com reachable
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://google.com", "google.com should be reachable initially")
+
+	// Replace with deny-all only (no domain allow)
+	resp, err := client.PutSandboxesSandboxIDNetworkWithResponse(ctx, sbx.SandboxID,
+		api.PutSandboxesSandboxIDNetworkJSONRequestBody{
+			DenyOut: &[]string{sandbox_network.AllInternetTrafficCIDR},
+		},
+		setup.WithAPIKey(),
+	)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode())
+
+	// Verify google.com is now blocked
+	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://google.com", "google.com should be blocked after removing domain allow")
+}
+
 // TestUpdateNetworkConfig_MultipleUpdates verifies that multiple sequential
 // updates each change actual network behavior (not just API response).
 func TestUpdateNetworkConfig_MultipleUpdates(t *testing.T) {
