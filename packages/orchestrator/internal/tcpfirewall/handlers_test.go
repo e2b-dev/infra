@@ -389,6 +389,8 @@ func TestIsEgressAllowed(t *testing.T) {
 					},
 				},
 			}
+			// Mirror the constructor: initialize networkEgress from config.
+			sbx.SetNetworkEgress(tt.network.GetEgress())
 
 			got, _, err := isEgressAllowed(sbx, tt.hostname, tt.ip)
 
