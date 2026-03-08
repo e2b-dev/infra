@@ -297,6 +297,7 @@ func clearAndReplaceCIDRs(conn *nftables.Conn, s set.Set, cidrs []string) error 
 		if err := conn.SetAddElements(s.Set(), elems); err != nil {
 			return fmt.Errorf("add all-traffic elements: %w", err)
 		}
+
 		return nil
 	}
 
