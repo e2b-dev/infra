@@ -72,7 +72,7 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 				return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)
 			}
 
-			ingress := sbx.GetNetwork().Ingress
+			ingress := sbx.GetNetwork().GetIngress()
 			accessToken := ingress.TrafficAccessToken
 
 			isNonEnvdTraffic := int64(port) != consts.DefaultEnvdServerPort

@@ -140,7 +140,7 @@ type Metadata struct {
 	Config         Config
 	Runtime        RuntimeMetadata
 
-	rwmu     sync.RWMutex // protects startedAt, endAt, networkEgress
+	rwmu          sync.RWMutex // protects startedAt, endAt, networkEgress
 	startedAt     time.Time
 	endAt         time.Time
 	networkEgress *orchestrator.SandboxNetworkEgressConfig

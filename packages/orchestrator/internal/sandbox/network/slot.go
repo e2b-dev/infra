@@ -304,6 +304,20 @@ func (s *Slot) UpdateInternet(ctx context.Context, allowedCIDRs, deniedCIDRs []s
 	))
 	defer span.End()
 
+	// Validate all CIDRs before touching the firewall to avoid a partial
+	// state where rules have been reset but new ones fail to apply.
+	for _, cidr := range allowedCIDRs {
+		if _, _, err := net.ParseCIDR(cidr); err != nil {
+			return fmt.Errorf("invalid allowed CIDR %q: %w", cidr, err)
+		}
+	}
+
+	for _, cidr := range deniedCIDRs {
+		if _, _, err := net.ParseCIDR(cidr); err != nil {
+			return fmt.Errorf("invalid denied CIDR %q: %w", cidr, err)
+		}
+	}
+
 	n, err := ns.GetNS(filepath.Join(netNamespacesDir, s.NamespaceID()))
 	if err != nil {
 		return fmt.Errorf("failed to get slot network namespace '%s': %w", s.NamespaceID(), err)
