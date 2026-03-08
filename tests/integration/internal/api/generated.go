@@ -709,13 +709,13 @@ type SandboxMetric struct {
 
 // SandboxNetworkConfig defines model for SandboxNetworkConfig.
 type SandboxNetworkConfig struct {
-	// AllowOut List of allowed CIDR blocks or IP addresses for egress traffic. Allowed addresses always take precedence over blocked addresses.
+	// AllowOut List of allowed destinations for egress traffic. Each entry can be a CIDR block (e.g. "8.8.8.8/32"), a bare IP address (e.g. "8.8.8.8"), or a domain name (e.g. "example.com", "*.example.com"). Allowed entries always take precedence over denied entries.
 	AllowOut *[]string `json:"allowOut,omitempty"`
 
 	// AllowPublicTraffic Specify if the sandbox URLs should be accessible only with authentication.
 	AllowPublicTraffic *bool `json:"allowPublicTraffic,omitempty"`
 
-	// DenyOut List of denied CIDR blocks or IP addresses for egress traffic
+	// DenyOut List of denied CIDR blocks or IP addresses for egress traffic. Domain names are not supported for deny rules.
 	DenyOut *[]string `json:"denyOut,omitempty"`
 
 	// MaskRequestHost Specify host mask which will be used for all sandbox requests
@@ -1262,10 +1262,10 @@ type GetSandboxesSandboxIDMetricsParams struct {
 
 // PutSandboxesSandboxIDNetworkJSONBody defines parameters for PutSandboxesSandboxIDNetwork.
 type PutSandboxesSandboxIDNetworkJSONBody struct {
-	// AllowOut List of allowed CIDR blocks or IP addresses for egress traffic. Allowed addresses always take precedence over blocked addresses.
+	// AllowOut List of allowed destinations for egress traffic. Each entry can be a CIDR block (e.g. "8.8.8.8/32"), a bare IP address (e.g. "8.8.8.8"), or a domain name (e.g. "example.com", "*.example.com"). Allowed entries always take precedence over denied entries.
 	AllowOut *[]string `json:"allowOut,omitempty"`
 
-	// DenyOut List of denied CIDR blocks or IP addresses for egress traffic
+	// DenyOut List of denied CIDR blocks or IP addresses for egress traffic. Domain names are not supported for deny rules.
 	DenyOut *[]string `json:"denyOut,omitempty"`
 }
 
@@ -6140,6 +6140,7 @@ type PutSandboxesSandboxIDNetworkResponse struct {
 	HTTPResponse *http.Response
 	JSON401      *N401
 	JSON404      *N404
+	JSON409      *N409
 	JSON500      *N500
 }
 
@@ -8533,6 +8534,13 @@ func ParsePutSandboxesSandboxIDNetworkResponse(rsp *http.Response) (*PutSandboxe
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest N409
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest N500
