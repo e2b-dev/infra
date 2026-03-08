@@ -2332,6 +2332,43 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
+  /sandboxes/{sandboxID}/network:
+    put:
+      description: Update the network configuration for a running sandbox. Replaces the current egress rules with the provided configuration. Omitting both fields clears all egress rules.
+      security:
+        - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+      tags: [sandboxes]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                allowOut:
+                  type: array
+                  description: List of allowed CIDR blocks or IP addresses for egress traffic. Allowed addresses always take precedence over blocked addresses.
+                  items:
+                    type: string
+                denyOut:
+                  type: array
+                  description: List of denied CIDR blocks or IP addresses for egress traffic
+                  items:
+                    type: string
+      parameters:
+        - $ref: "#/components/parameters/sandboxID"
+      responses:
+        "204":
+          description: Successfully updated the sandbox network configuration
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+
   /sandboxes/{sandboxID}/refreshes:
     post:
       description: Refresh the sandbox extending its time to live
