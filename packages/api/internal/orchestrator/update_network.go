@@ -41,11 +41,30 @@ func (o *Orchestrator) UpdateSandboxNetworkConfig(
 	allowedCIDRs := sandbox_network.AddressStringsToCIDRs(allowedAddresses)
 	deniedCIDRs := sandbox_network.AddressStringsToCIDRs(deniedEntries)
 
-	updateFunc := func(sbx sandbox.Sandbox) (sandbox.Sandbox, error) {
-		if sbx.State != sandbox.StateRunning {
-			return sbx, &sandbox.NotRunningError{SandboxID: sandboxID, State: sbx.State}
+	// Read the sandbox first to validate state and get routing info,
+	// without mutating the store yet.
+	sbx, err := o.sandboxStore.Get(ctx, teamID, sandboxID)
+	if err != nil {
+		var sbxNotFoundErr *sandbox.NotFoundError
+		if errors.As(err, &sbxNotFoundErr) {
+			return &api.APIError{Code: http.StatusNotFound, ClientMsg: utils.SandboxNotFoundMsg(sandboxID), Err: err}
 		}
 
+		return &api.APIError{Code: http.StatusInternalServerError, ClientMsg: "Error reading sandbox", Err: err}
+	}
+
+	if sbx.State != sandbox.StateRunning {
+		return &api.APIError{Code: http.StatusConflict, ClientMsg: utils.SandboxChangingStateMsg(sandboxID, sbx.State), Err: fmt.Errorf("sandbox '%s' is not running (state: %s)", sandboxID, sbx.State)}
+	}
+
+	// Apply the network update on the orchestrator node first.
+	// Only persist to the store after the node update succeeds.
+	if apiErr := o.updateSandboxNetworkOnNode(ctx, sbx, allowedCIDRs, deniedCIDRs, allowedDomains); apiErr != nil {
+		return apiErr
+	}
+
+	// Node update succeeded — now persist the new config in the store.
+	updateFunc := func(sbx sandbox.Sandbox) (sandbox.Sandbox, error) {
 		if sbx.Network == nil {
 			sbx.Network = &types.SandboxNetworkConfig{}
 		}
@@ -58,22 +77,13 @@ func (o *Orchestrator) UpdateSandboxNetworkConfig(
 		return sbx, nil
 	}
 
-	var sbxNotFoundErr *sandbox.NotFoundError
-	var sbxNotRunningErr *sandbox.NotRunningError
+	if _, err := o.sandboxStore.Update(ctx, teamID, sandboxID, updateFunc); err != nil {
+		telemetry.ReportError(ctx, "network updated on node but failed to persist in store", err)
 
-	sbx, err := o.sandboxStore.Update(ctx, teamID, sandboxID, updateFunc)
-	if err != nil {
-		switch {
-		case errors.As(err, &sbxNotRunningErr):
-			return &api.APIError{Code: http.StatusConflict, ClientMsg: utils.SandboxChangingStateMsg(sandboxID, sbxNotRunningErr.State), Err: err}
-		case errors.As(err, &sbxNotFoundErr):
-			return &api.APIError{Code: http.StatusNotFound, ClientMsg: utils.SandboxNotFoundMsg(sandboxID), Err: err}
-		default:
-			return &api.APIError{Code: http.StatusInternalServerError, ClientMsg: "Error updating sandbox network config", Err: err}
-		}
+		return &api.APIError{Code: http.StatusInternalServerError, ClientMsg: "Network rules applied but failed to persist config", Err: err}
 	}
 
-	return o.updateSandboxNetworkOnNode(ctx, sbx, allowedCIDRs, deniedCIDRs, allowedDomains)
+	return nil
 }
 
 func (o *Orchestrator) updateSandboxNetworkOnNode(
