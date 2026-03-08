@@ -104,6 +104,7 @@ message SandboxUpdateNetworkRequest {
 
   repeated string allowed_cidrs = 2;
   repeated string denied_cidrs = 3;
+  repeated string allowed_domains = 4;
 }
 
 message SandboxDeleteRequest {

@@ -25,13 +25,22 @@ func (o *Orchestrator) UpdateSandboxNetworkConfig(
 	ctx context.Context,
 	teamID uuid.UUID,
 	sandboxID string,
-	allowedCIDRs []string,
-	deniedCIDRs []string,
+	allowedEntries []string,
+	deniedEntries []string,
 ) *api.APIError {
-	// Normalize bare IPs to CIDR notation (e.g. "8.8.8.8" → "8.8.8.8/32"),
-	// matching the creation path in buildNetworkConfig.
-	allowedCIDRs = sandbox_network.AddressStringsToCIDRs(allowedCIDRs)
-	deniedCIDRs = sandbox_network.AddressStringsToCIDRs(deniedCIDRs)
+	// Split allowed entries into CIDRs/IPs and domains, matching the creation
+	// path in buildNetworkConfig.
+	allowedAddresses, allowedDomains := sandbox_network.ParseAddressesAndDomains(allowedEntries)
+
+	// If allowed domains are provided, add the default nameserver so the sandbox
+	// can resolve domain names — same as the creation path.
+	if len(allowedDomains) > 0 {
+		allowedAddresses = append(allowedAddresses, sandbox_network.DefaultNameserver)
+	}
+
+	allowedCIDRs := sandbox_network.AddressStringsToCIDRs(allowedAddresses)
+	deniedCIDRs := sandbox_network.AddressStringsToCIDRs(deniedEntries)
+
 	updateFunc := func(sbx sandbox.Sandbox) (sandbox.Sandbox, error) {
 		if sbx.State != sandbox.StateRunning {
 			return sbx, &sandbox.NotRunningError{SandboxID: sandboxID, State: sbx.State}
@@ -42,8 +51,8 @@ func (o *Orchestrator) UpdateSandboxNetworkConfig(
 		}
 
 		sbx.Network.Egress = &types.SandboxNetworkEgressConfig{
-			AllowedAddresses: allowedCIDRs,
-			DeniedAddresses:  deniedCIDRs,
+			AllowedAddresses: allowedEntries,
+			DeniedAddresses:  deniedEntries,
 		}
 
 		return sbx, nil
@@ -64,7 +73,7 @@ func (o *Orchestrator) UpdateSandboxNetworkConfig(
 		}
 	}
 
-	if apiErr := o.updateSandboxNetworkOnNode(ctx, sbx, allowedCIDRs, deniedCIDRs); apiErr != nil {
+	if apiErr := o.updateSandboxNetworkOnNode(ctx, sbx, allowedCIDRs, deniedCIDRs, allowedDomains); apiErr != nil {
 		return apiErr
 	}
 
@@ -76,6 +85,7 @@ func (o *Orchestrator) updateSandboxNetworkOnNode(
 	sbx sandbox.Sandbox,
 	allowedCIDRs []string,
 	deniedCIDRs []string,
+	allowedDomains []string,
 ) *api.APIError {
 	ctx, span := tracer.Start(ctx, "update-sandbox-network-on-node",
 		trace.WithAttributes(
@@ -95,9 +105,10 @@ func (o *Orchestrator) updateSandboxNetworkOnNode(
 
 	client, ctx := node.GetClient(ctx)
 	_, err := client.Sandbox.UpdateNetwork(ctx, &orchestratorgrpc.SandboxUpdateNetworkRequest{
-		SandboxId:    sbx.SandboxID,
-		AllowedCidrs: allowedCIDRs,
-		DeniedCidrs:  deniedCIDRs,
+		SandboxId:      sbx.SandboxID,
+		AllowedCidrs:   allowedCIDRs,
+		DeniedCidrs:    deniedCIDRs,
+		AllowedDomains: allowedDomains,
 	})
 	if err != nil {
 		grpcErr, ok := status.FromError(err)

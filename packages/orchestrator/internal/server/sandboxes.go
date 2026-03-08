@@ -317,12 +317,13 @@ func (s *Server) UpdateNetwork(ctx context.Context, req *orchestrator.SandboxUpd
 	}
 
 	// Update in-memory network config so the TCP proxy also sees the new rules.
-	if len(req.GetAllowedCidrs()) == 0 && len(req.GetDeniedCidrs()) == 0 {
+	if len(req.GetAllowedCidrs()) == 0 && len(req.GetDeniedCidrs()) == 0 && len(req.GetAllowedDomains()) == 0 {
 		sbx.SetNetworkEgress(nil)
 	} else {
 		sbx.SetNetworkEgress(&orchestrator.SandboxNetworkEgressConfig{
-			AllowedCidrs: req.GetAllowedCidrs(),
-			DeniedCidrs:  req.GetDeniedCidrs(),
+			AllowedCidrs:   req.GetAllowedCidrs(),
+			DeniedCidrs:    req.GetDeniedCidrs(),
+			AllowedDomains: req.GetAllowedDomains(),
 		})
 	}
 
