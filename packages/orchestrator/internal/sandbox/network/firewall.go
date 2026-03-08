@@ -302,4 +302,3 @@ func cidrsToSetData(cidrs []string) ([]set.SetData, error) {
 
 	return set.AddressStringsToSetData(cidrs)
 }
-
