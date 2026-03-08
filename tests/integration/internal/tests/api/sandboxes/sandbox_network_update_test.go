@@ -161,6 +161,56 @@ func TestUpdateNetworkConfig_Unauthorized(t *testing.T) {
 	require.Equal(t, http.StatusUnauthorized, resp.StatusCode())
 }
 
+// TestUpdateNetworkConfig_PauseResume verifies that dynamically updated
+// network rules survive a pause/resume cycle.
+func TestUpdateNetworkConfig_PauseResume(t *testing.T) {
+	t.Parallel()
+
+	templateID := ensureNetworkTestTemplate(t)
+	ctx := t.Context()
+	client := setup.GetAPIClient()
+	envdClient := setup.GetEnvdClient(t, ctx)
+
+	// Create sandbox with no restrictions and auto-pause disabled
+	sbx := utils.SetupSandboxWithCleanup(t, client,
+		utils.WithTemplateID(templateID),
+		utils.WithTimeout(90),
+		utils.WithAutoPause(false),
+	)
+
+	// Dynamically add deny-all + allow 8.8.8.8
+	resp, err := client.PutSandboxesSandboxIDNetworkWithResponse(ctx, sbx.SandboxID,
+		api.PutSandboxesSandboxIDNetworkJSONRequestBody{
+			AllowOut: &[]string{"8.8.8.8"},
+			DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
+		},
+		setup.WithAPIKey(),
+	)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode())
+
+	// Verify rules work before pause
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "8.8.8.8 should be allowed before pause")
+	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "1.1.1.1 should be blocked before pause")
+
+	// Pause
+	pauseResp, err := client.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
+	require.NoError(t, err)
+	require.Equal(t, http.StatusNoContent, pauseResp.StatusCode())
+
+	// Resume
+	resumeResp, err := client.PostSandboxesSandboxIDResumeWithResponse(ctx, sbx.SandboxID,
+		api.PostSandboxesSandboxIDResumeJSONRequestBody{},
+		setup.WithAPIKey(),
+	)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusCreated, resumeResp.StatusCode())
+
+	// Verify rules survived pause/resume
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "8.8.8.8 should still be allowed after resume")
+	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "1.1.1.1 should still be blocked after resume")
+}
+
 // TestUpdateNetworkConfig_MultipleUpdates verifies that multiple sequential
 // updates each change actual network behavior (not just API response).
 func TestUpdateNetworkConfig_MultipleUpdates(t *testing.T) {
