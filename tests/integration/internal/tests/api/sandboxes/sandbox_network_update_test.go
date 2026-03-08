@@ -116,7 +116,7 @@ func TestUpdateNetworkConfig_NotFound(t *testing.T) {
 	ctx := t.Context()
 	client := setup.GetAPIClient()
 
-	resp, err := client.PutSandboxesSandboxIDNetworkWithResponse(ctx, "nonexistent-sandbox-id",
+	resp, err := client.PutSandboxesSandboxIDNetworkWithResponse(ctx, "ixxxxxxxxxxxxxxxxxx0",
 		api.PutSandboxesSandboxIDNetworkJSONRequestBody{
 			AllowOut: &[]string{"8.8.8.8"},
 		},
