@@ -3,6 +3,7 @@ package network
 import (
 	"fmt"
 	"net/netip"
+	"slices"
 
 	"github.com/google/nftables"
 	"github.com/google/nftables/binaryutil"
@@ -94,7 +95,7 @@ func NewFirewall(tapIf string, orchestratorInternalIP string) (*Firewall, error)
 	}
 
 	// Populate the sets with initial data
-	err = fw.Reset()
+	err = fw.ReplaceUserRules(nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error while configuring initial data: %w", err)
 	}
@@ -240,120 +241,65 @@ func (fw *Firewall) installRules() error {
 	return nil
 }
 
-// AddDeniedCIDR adds a single CIDR to the deny set at runtime.
-func (fw *Firewall) AddDeniedCIDR(cidr string) error {
-	err := addCIDRToSet(fw.conn, fw.userDenySet, cidr)
-	if err != nil {
-		return fmt.Errorf("add denied CIDR to set: %w", err)
-	}
-
-	err = fw.conn.Flush()
-	if err != nil {
-		return fmt.Errorf("flush add denied changes: %w", err)
-	}
-
-	return nil
-}
-
-// AddAllowedCIDR adds a single CIDR to the allow set at runtime.
-func (fw *Firewall) AddAllowedCIDR(cidr string) error {
-	err := addCIDRToSet(fw.conn, fw.userAllowSet, cidr)
-	if err != nil {
-		return fmt.Errorf("add allowed CIDR to set: %w", err)
-	}
-
-	err = fw.conn.Flush()
-	if err != nil {
-		return fmt.Errorf("flush add allowed changes: %w", err)
-	}
-
-	return nil
-}
-
-func (fw *Firewall) Reset() error {
-	if err := fw.ResetDeniedSets(); err != nil {
-		return fmt.Errorf("clear denied set: %w", err)
-	}
-	if err := fw.ResetAllowedSets(); err != nil {
-		return fmt.Errorf("clear allow set: %w", err)
-	}
-
-	return nil
-}
-
-// ResetDeniedSets resets the deny set back to original ranges.
-func (fw *Firewall) ResetDeniedSets() error {
-	// Always deny the default ranges
+// ReplaceUserRules atomically replaces all firewall sets in a single flush.
+// This avoids any window where rules are partially applied.
+func (fw *Firewall) ReplaceUserRules(allowedCIDRs, deniedCIDRs []string) error {
+	// 1. Reset predefined deny set to default blocked ranges (buffered, no flush).
 	if err := fw.predefinedDenySet.ClearAndAddElements(fw.conn, sandbox_network.DeniedSandboxSetData); err != nil {
-		return err
+		return fmt.Errorf("reset predefined deny set: %w", err)
 	}
 
-	// User defined denied ranges
-	if err := fw.userDenySet.ClearAndAddElements(fw.conn, nil); err != nil {
-		return err
-	}
-
-	return fw.conn.Flush()
-}
-
-// ResetAllowedSets resets allow set back to original ranges.
-func (fw *Firewall) ResetAllowedSets() error {
-	// Always allowed ranges
-	initData, err := set.AddressStringsToSetData(fw.allowedRanges)
+	// 2. Reset predefined allow set to allowedRanges (buffered, no flush).
+	allowedSetData, err := set.AddressStringsToSetData(fw.allowedRanges)
 	if err != nil {
 		return fmt.Errorf("parse initial allowed CIDRs: %w", err)
 	}
-	if err := fw.predefinedAllowSet.ClearAndAddElements(fw.conn, initData); err != nil {
-		return err
+	if err := fw.predefinedAllowSet.ClearAndAddElements(fw.conn, allowedSetData); err != nil {
+		return fmt.Errorf("reset predefined allow set: %w", err)
 	}
 
-	// User defined allowed ranges
-	if err := fw.userAllowSet.ClearAndAddElements(fw.conn, nil); err != nil {
-		return err
+	// 3. Replace user deny set with new denied CIDRs (buffered, no flush).
+	userDenyData, err := cidrsToSetData(deniedCIDRs)
+	if err != nil {
+		return fmt.Errorf("convert denied CIDRs to set data: %w", err)
+	}
+	if err := fw.userDenySet.ClearAndAddElements(fw.conn, userDenyData); err != nil {
+		return fmt.Errorf("replace user deny set: %w", err)
 	}
 
-	return fw.conn.Flush()
+	// 4. Replace user allow set with new allowed CIDRs (buffered, no flush).
+	userAllowData, err := cidrsToSetData(allowedCIDRs)
+	if err != nil {
+		return fmt.Errorf("convert allowed CIDRs to set data: %w", err)
+	}
+	if err := fw.userAllowSet.ClearAndAddElements(fw.conn, userAllowData); err != nil {
+		return fmt.Errorf("replace user allow set: %w", err)
+	}
+
+	// 5. Single atomic flush.
+	if err := fw.conn.Flush(); err != nil {
+		return fmt.Errorf("flush atomic rule replacement: %w", err)
+	}
+
+	return nil
 }
 
-func addCIDRToSet(conn *nftables.Conn, ipset set.Set, cidr string) error {
-	current, err := ipset.Elements(conn)
-	if err != nil {
-		return err
+// cidrsToSetData converts a slice of CIDR strings to nftables set data.
+// Handles the special 0.0.0.0/0 case (all internet traffic).
+func cidrsToSetData(cidrs []string) ([]set.SetData, error) {
+	if len(cidrs) == 0 {
+		return nil, nil
 	}
 
-	// The checked range is 0.0.0.0 to 255.255.255.254, because when 255.255.255.255 is added, it's then requested as 255.255.255.254.
-	if len(current) == 1 && current[0].AddressRangeStart == netip.MustParseAddr("0.0.0.0") && current[0].AddressRangeEnd == netip.MustParseAddr("255.255.255.254") {
-		// Because 0.0.0.0/0 is not valid IP per GoLang, we can't add new addresses to the set.
-		return nil
-	}
-
-	// 0.0.0.0/0 is not valid IP per GoLang, so we handle it as a special case
-	if cidr == sandbox_network.AllInternetTrafficCIDR {
-		conn.FlushSet(ipset.Set())
-
-		toAppend := []nftables.SetElement{
+	if slices.Contains(cidrs, sandbox_network.AllInternetTrafficCIDR) {
+		return []set.SetData{
 			{
-				Key: netip.MustParseAddr("0.0.0.0").AsSlice(),
+				AddressRangeStart: netip.MustParseAddr("0.0.0.0"),
+				AddressRangeEnd:   netip.MustParseAddr("255.255.255.255"),
 			},
-			{
-				Key:         netip.MustParseAddr("255.255.255.255").AsSlice(),
-				IntervalEnd: true,
-			},
-		}
-
-		if err := conn.SetAddElements(ipset.Set(), toAppend); err != nil {
-			return fmt.Errorf("add elements to denied set: %w", err)
-		}
-
-		return nil
+		}, nil
 	}
 
-	data, err := set.AddressStringsToSetData([]string{cidr})
-	if err != nil {
-		return err
-	}
-
-	merged := append(current, data...)
-
-	return ipset.ClearAndAddElements(conn, merged)
+	return set.AddressStringsToSetData(cidrs)
 }
+

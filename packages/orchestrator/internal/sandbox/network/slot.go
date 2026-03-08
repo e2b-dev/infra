@@ -274,21 +274,7 @@ func (s *Slot) ConfigureInternet(ctx context.Context, network *orchestrator.Sand
 	defer n.Close()
 
 	err = n.Do(func(_ ns.NetNS) error {
-		for _, cidr := range network.GetEgress().GetAllowedCidrs() {
-			err := s.Firewall.AddAllowedCIDR(cidr)
-			if err != nil {
-				return fmt.Errorf("error setting firewall rules: %w", err)
-			}
-		}
-
-		for _, cidr := range network.GetEgress().GetDeniedCidrs() {
-			err := s.Firewall.AddDeniedCIDR(cidr)
-			if err != nil {
-				return fmt.Errorf("error setting firewall rules: %w", err)
-			}
-		}
-
-		return nil
+		return s.Firewall.ReplaceUserRules(egress.GetAllowedCidrs(), egress.GetDeniedCidrs())
 	})
 	if err != nil {
 		return fmt.Errorf("failed execution in network namespace '%s': %w", s.NamespaceID(), err)
@@ -297,26 +283,12 @@ func (s *Slot) ConfigureInternet(ctx context.Context, network *orchestrator.Sand
 	return nil
 }
 
-// UpdateInternet replaces all user firewall rules atomically (reset + re-add).
+// UpdateInternet replaces all user firewall rules atomically in a single nftables flush.
 func (s *Slot) UpdateInternet(ctx context.Context, allowedCIDRs, deniedCIDRs []string) error {
 	_, span := tracer.Start(ctx, "slot-internet-update", trace.WithAttributes(
 		attribute.String("namespace_id", s.NamespaceID()),
 	))
 	defer span.End()
-
-	// Validate all CIDRs before touching the firewall to avoid a partial
-	// state where rules have been reset but new ones fail to apply.
-	for _, cidr := range allowedCIDRs {
-		if _, _, err := net.ParseCIDR(cidr); err != nil {
-			return fmt.Errorf("invalid allowed CIDR %q: %w", cidr, err)
-		}
-	}
-
-	for _, cidr := range deniedCIDRs {
-		if _, _, err := net.ParseCIDR(cidr); err != nil {
-			return fmt.Errorf("invalid denied CIDR %q: %w", cidr, err)
-		}
-	}
 
 	n, err := ns.GetNS(filepath.Join(netNamespacesDir, s.NamespaceID()))
 	if err != nil {
@@ -325,23 +297,7 @@ func (s *Slot) UpdateInternet(ctx context.Context, allowedCIDRs, deniedCIDRs []s
 	defer n.Close()
 
 	err = n.Do(func(_ ns.NetNS) error {
-		if err := s.Firewall.Reset(); err != nil {
-			return fmt.Errorf("error resetting firewall rules: %w", err)
-		}
-
-		for _, cidr := range allowedCIDRs {
-			if err := s.Firewall.AddAllowedCIDR(cidr); err != nil {
-				return fmt.Errorf("error adding allowed CIDR: %w", err)
-			}
-		}
-
-		for _, cidr := range deniedCIDRs {
-			if err := s.Firewall.AddDeniedCIDR(cidr); err != nil {
-				return fmt.Errorf("error adding denied CIDR: %w", err)
-			}
-		}
-
-		return nil
+		return s.Firewall.ReplaceUserRules(allowedCIDRs, deniedCIDRs)
 	})
 	if err != nil {
 		return fmt.Errorf("failed execution in network namespace '%s': %w", s.NamespaceID(), err)
@@ -370,12 +326,7 @@ func (s *Slot) ResetInternet(ctx context.Context) error {
 	defer n.Close()
 
 	err = n.Do(func(_ ns.NetNS) error {
-		err := s.Firewall.Reset()
-		if err != nil {
-			return fmt.Errorf("error cleaning firewall rules: %w", err)
-		}
-
-		return nil
+		return s.Firewall.ReplaceUserRules(nil, nil)
 	})
 	if err != nil {
 		return fmt.Errorf("failed execution in network namespace '%s': %w", s.NamespaceID(), err)
