@@ -63,6 +63,10 @@ sudo GOOGLE_APPLICATION_CREDENTIALS=$HOME/.config/gcloud/application_default_cre
 # Pause mode: resume, run command, then snapshot
 sudo go run ./cmd/resume-build -from-build <uuid> -to-build <new-uuid> \
   -storage .local-build -cmd-pause "pip install numpy"
+
+# Pause mode: start command through envd, then wait for SIGUSR1 before snapshot
+sudo go run ./cmd/resume-build -from-build <uuid> -to-build <new-uuid> \
+  -storage .local-build -cmd-signal-pause "python3 /home/user/workspace/job.py"
 ```
 
 Flags:
@@ -77,6 +81,7 @@ Flags:
 - `-pause` - Start and immediately pause (create snapshot)
 - `-signal-pause <signal>` - Wait for signal before pause (e.g., `SIGTERM`, `SIGUSR1`)
 - `-cmd-pause <cmd>` - Execute command in sandbox, then pause on success
+- `-cmd-signal-pause <cmd>` - Execute command in sandbox, then wait for `SIGUSR1` before pause
 
 **Pause mode example:**
 
@@ -87,6 +92,13 @@ sudo go run ./cmd/resume-build -from-build $BUILD1 -to-build $BUILD2 \
 
 sudo go run ./cmd/resume-build -from-build $BUILD2 -to-build $BUILD3 \
   -storage .local-build -cmd-pause "pip install requests"
+
+# Start a long-running command through envd, then trigger pause from the host
+sudo go run ./cmd/resume-build -from-build $BUILD3 -to-build $BUILD4 \
+  -storage .local-build -cmd-signal-pause "python3 /home/user/workspace/job.py"
+# In another shell:
+ps -ef | grep 'cmd/resume-build' | grep -v grep
+sudo kill -SIGUSR1 <resume-build-pid>
 ```
 
 ### Copy Build
