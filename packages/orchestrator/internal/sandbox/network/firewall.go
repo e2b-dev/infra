@@ -259,20 +259,12 @@ func (fw *Firewall) ReplaceUserRules(allowedCIDRs, deniedCIDRs []string) error {
 	}
 
 	// 3. Replace user deny set with new denied CIDRs (buffered, no flush).
-	userDenyData, err := cidrsToSetData(deniedCIDRs)
-	if err != nil {
-		return fmt.Errorf("convert denied CIDRs to set data: %w", err)
-	}
-	if err := fw.userDenySet.ClearAndAddElements(fw.conn, userDenyData); err != nil {
+	if err := clearAndReplaceCIDRs(fw.conn, fw.userDenySet, deniedCIDRs); err != nil {
 		return fmt.Errorf("replace user deny set: %w", err)
 	}
 
 	// 4. Replace user allow set with new allowed CIDRs (buffered, no flush).
-	userAllowData, err := cidrsToSetData(allowedCIDRs)
-	if err != nil {
-		return fmt.Errorf("convert allowed CIDRs to set data: %w", err)
-	}
-	if err := fw.userAllowSet.ClearAndAddElements(fw.conn, userAllowData); err != nil {
+	if err := clearAndReplaceCIDRs(fw.conn, fw.userAllowSet, allowedCIDRs); err != nil {
 		return fmt.Errorf("replace user allow set: %w", err)
 	}
 
@@ -284,21 +276,36 @@ func (fw *Firewall) ReplaceUserRules(allowedCIDRs, deniedCIDRs []string) error {
 	return nil
 }
 
-// cidrsToSetData converts a slice of CIDR strings to nftables set data.
-// Handles the special 0.0.0.0/0 case (all internet traffic).
-func cidrsToSetData(cidrs []string) ([]set.SetData, error) {
+// clearAndReplaceCIDRs flushes a set and repopulates it with the given CIDRs.
+// Handles the special 0.0.0.0/0 case which the firewall_toolkit validation
+// rejects (0.0.0.0 is "unspecified") by directly creating nftables elements.
+func clearAndReplaceCIDRs(conn *nftables.Conn, s set.Set, cidrs []string) error {
+	conn.FlushSet(s.Set())
+
 	if len(cidrs) == 0 {
-		return nil, nil
+		return nil
 	}
 
+	// 0.0.0.0/0 must be handled specially: the firewall_toolkit's
+	// ValidateAddress rejects 0.0.0.0 as "unspecified", so we bypass
+	// the toolkit and create raw nftables interval elements directly.
 	if slices.Contains(cidrs, sandbox_network.AllInternetTrafficCIDR) {
-		return []set.SetData{
-			{
-				AddressRangeStart: netip.MustParseAddr("0.0.0.0"),
-				AddressRangeEnd:   netip.MustParseAddr("255.255.255.255"),
-			},
-		}, nil
+		elems := []nftables.SetElement{
+			{Key: netip.MustParseAddr("0.0.0.0").AsSlice()},
+			{Key: netip.MustParseAddr("255.255.255.255").AsSlice(), IntervalEnd: true},
+		}
+		if err := conn.SetAddElements(s.Set(), elems); err != nil {
+			return fmt.Errorf("add all-traffic elements: %w", err)
+		}
+		return nil
 	}
 
-	return set.AddressStringsToSetData(cidrs)
+	data, err := set.AddressStringsToSetData(cidrs)
+	if err != nil {
+		return err
+	}
+	// We already flushed the set above, so just add the new elements.
+	// Using ClearAndAddElements would flush again which is fine (FlushSet is idempotent
+	// when buffered), but this is more direct.
+	return s.ClearAndAddElements(conn, data)
 }
