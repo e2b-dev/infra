@@ -73,11 +73,7 @@ func (o *Orchestrator) UpdateSandboxNetworkConfig(
 		}
 	}
 
-	if apiErr := o.updateSandboxNetworkOnNode(ctx, sbx, allowedCIDRs, deniedCIDRs, allowedDomains); apiErr != nil {
-		return apiErr
-	}
-
-	return nil
+	return o.updateSandboxNetworkOnNode(ctx, sbx, allowedCIDRs, deniedCIDRs, allowedDomains)
 }
 
 func (o *Orchestrator) updateSandboxNetworkOnNode(
