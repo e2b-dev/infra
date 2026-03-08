@@ -27,7 +27,7 @@ func (o *Orchestrator) UpdateSandboxNetworkConfig(
 	sandboxID string,
 	allowedCIDRs []string,
 	deniedCIDRs []string,
-) (*sandbox.Sandbox, *api.APIError) {
+) *api.APIError {
 	// Normalize bare IPs to CIDR notation (e.g. "8.8.8.8" → "8.8.8.8/32"),
 	// matching the creation path in buildNetworkConfig.
 	allowedCIDRs = sandbox_network.AddressStringsToCIDRs(allowedCIDRs)
@@ -56,19 +56,19 @@ func (o *Orchestrator) UpdateSandboxNetworkConfig(
 	if err != nil {
 		switch {
 		case errors.As(err, &sbxNotRunningErr):
-			return nil, &api.APIError{Code: http.StatusConflict, ClientMsg: utils.SandboxChangingStateMsg(sandboxID, sbxNotRunningErr.State), Err: err}
+			return &api.APIError{Code: http.StatusConflict, ClientMsg: utils.SandboxChangingStateMsg(sandboxID, sbxNotRunningErr.State), Err: err}
 		case errors.As(err, &sbxNotFoundErr):
-			return nil, &api.APIError{Code: http.StatusNotFound, ClientMsg: utils.SandboxNotFoundMsg(sandboxID), Err: err}
+			return &api.APIError{Code: http.StatusNotFound, ClientMsg: utils.SandboxNotFoundMsg(sandboxID), Err: err}
 		default:
-			return nil, &api.APIError{Code: http.StatusInternalServerError, ClientMsg: "Error updating sandbox network config", Err: err}
+			return &api.APIError{Code: http.StatusInternalServerError, ClientMsg: "Error updating sandbox network config", Err: err}
 		}
 	}
 
 	if apiErr := o.updateSandboxNetworkOnNode(ctx, sbx, allowedCIDRs, deniedCIDRs); apiErr != nil {
-		return nil, apiErr
+		return apiErr
 	}
 
-	return &sbx, nil
+	return nil
 }
 
 func (o *Orchestrator) updateSandboxNetworkOnNode(

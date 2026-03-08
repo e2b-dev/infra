@@ -46,8 +46,7 @@ func (a *APIStore) PutSandboxesSandboxIDNetwork(
 		deniedCIDRs = *body.DenyOut
 	}
 
-	_, apiErr := a.orchestrator.UpdateSandboxNetworkConfig(ctx, team.ID, sandboxID, allowedCIDRs, deniedCIDRs)
-	if apiErr != nil {
+	if apiErr := a.orchestrator.UpdateSandboxNetworkConfig(ctx, team.ID, sandboxID, allowedCIDRs, deniedCIDRs); apiErr != nil {
 		telemetry.ReportError(ctx, "error updating sandbox network config", apiErr.Err)
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
