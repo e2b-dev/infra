@@ -145,6 +145,9 @@ type Metadata struct {
 
 	endAtMu sync.RWMutex // protects endAt
 	endAt   time.Time
+
+	networkEgressMu sync.RWMutex // protects networkEgress
+	networkEgress   *orchestrator.SandboxNetworkEgressConfig
 }
 
 // GetEndAt returns the sandbox end time in a thread-safe manner.
@@ -161,6 +164,41 @@ func (m *Metadata) SetEndAt(t time.Time) {
 	defer m.endAtMu.Unlock()
 
 	m.endAt = t
+}
+
+// GetNetworkEgress returns the sandbox network egress config in a thread-safe manner.
+func (m *Metadata) GetNetworkEgress() *orchestrator.SandboxNetworkEgressConfig {
+	m.networkEgressMu.RLock()
+	defer m.networkEgressMu.RUnlock()
+
+	return m.networkEgress
+}
+
+// GetNetwork returns the sandbox network config in a thread-safe manner.
+func (m *Metadata) GetNetwork() *orchestrator.SandboxNetworkConfig {
+	egress := m.GetNetworkEgress()
+
+	net := m.Config.Network
+	if net == nil {
+		if egress == nil {
+			return nil
+		}
+
+		return &orchestrator.SandboxNetworkConfig{Egress: egress}
+	}
+
+	return &orchestrator.SandboxNetworkConfig{
+		Egress:  egress,
+		Ingress: net.GetIngress(),
+	}
+}
+
+// SetNetworkEgress updates the sandbox network egress config in a thread-safe manner.
+func (m *Metadata) SetNetworkEgress(egress *orchestrator.SandboxNetworkEgressConfig) {
+	m.networkEgressMu.Lock()
+	defer m.networkEgressMu.Unlock()
+
+	m.networkEgress = egress
 }
 
 type Sandbox struct {
@@ -389,8 +427,9 @@ func (f *Factory) CreateSandbox(
 		Config:  config,
 		Runtime: runtime,
 
-		startedAt: time.Now(),
-		endAt:     time.Now().Add(sandboxTimeout),
+		startedAt:     time.Now(),
+		endAt:         time.Now().Add(sandboxTimeout),
+		networkEgress: config.Network.GetEgress(),
 	}
 
 	sbx := &Sandbox{
@@ -709,8 +748,9 @@ func (f *Factory) ResumeSandbox(
 		Config:  config,
 		Runtime: runtime,
 
-		startedAt: startedAt,
-		endAt:     endAt,
+		startedAt:     startedAt,
+		endAt:         endAt,
+		networkEgress: config.Network.GetEgress(),
 	}
 
 	sbx := &Sandbox{

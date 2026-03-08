@@ -16,14 +16,15 @@ import (
 // PUT /sandboxes/{sandboxID}/network — Dynamic network config update tests
 // =============================================================================
 
-// TestUpdateNetworkConfig_Success creates a sandbox with restrictive egress,
-// then updates the network config and verifies 204.
+// TestUpdateNetworkConfig_Success creates a sandbox with deny-all egress,
+// then dynamically allows a specific IP and verifies connectivity changes.
 func TestUpdateNetworkConfig_Success(t *testing.T) {
 	t.Parallel()
 
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
+	envdClient := setup.GetEnvdClient(t, ctx)
 
 	// Create sandbox with deny-all egress
 	sbx := utils.SetupSandboxWithCleanup(t, client,
@@ -33,6 +34,9 @@ func TestUpdateNetworkConfig_Success(t *testing.T) {
 			DenyOut: &[]string{sandbox_network.AllInternetTrafficCIDR},
 		}),
 	)
+
+	// Verify traffic is blocked before update
+	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Should be blocked before update")
 
 	// Update to allow a specific IP
 	resp, err := client.PutSandboxesSandboxIDNetworkWithResponse(ctx, sbx.SandboxID,
@@ -44,16 +48,22 @@ func TestUpdateNetworkConfig_Success(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode())
+
+	// Verify the allowed IP is now reachable
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Allowed IP should be reachable after update")
+	// Verify other IPs are still blocked
+	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "Non-allowed IP should still be blocked")
 }
 
-// TestUpdateNetworkConfig_ClearRules creates a sandbox with restrictive egress,
-// then sends an empty body to clear all rules.
+// TestUpdateNetworkConfig_ClearRules creates a sandbox with deny-all egress,
+// then clears all rules and verifies traffic flows freely.
 func TestUpdateNetworkConfig_ClearRules(t *testing.T) {
 	t.Parallel()
 
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
+	envdClient := setup.GetEnvdClient(t, ctx)
 
 	// Create sandbox with deny-all egress
 	sbx := utils.SetupSandboxWithCleanup(t, client,
@@ -64,6 +74,9 @@ func TestUpdateNetworkConfig_ClearRules(t *testing.T) {
 		}),
 	)
 
+	// Verify traffic is blocked before update
+	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Should be blocked before clearing rules")
+
 	// Clear all egress rules by omitting both fields
 	resp, err := client.PutSandboxesSandboxIDNetworkWithResponse(ctx, sbx.SandboxID,
 		api.PutSandboxesSandboxIDNetworkJSONRequestBody{},
@@ -71,6 +84,10 @@ func TestUpdateNetworkConfig_ClearRules(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode())
+
+	// Verify traffic flows freely after clearing rules
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Traffic should flow after clearing rules")
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "Traffic should flow after clearing rules")
 }
 
 // TestUpdateNetworkConfig_ReplaceRules verifies PUT semantics: the new config
@@ -81,6 +98,7 @@ func TestUpdateNetworkConfig_ReplaceRules(t *testing.T) {
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
+	envdClient := setup.GetEnvdClient(t, ctx)
 
 	// Create sandbox allowing 8.8.8.8
 	sbx := utils.SetupSandboxWithCleanup(t, client,
@@ -91,6 +109,10 @@ func TestUpdateNetworkConfig_ReplaceRules(t *testing.T) {
 			DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
 		}),
 	)
+
+	// Verify initial config: 8.8.8.8 allowed, 1.1.1.1 blocked
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "8.8.8.8 should be allowed initially")
+	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "1.1.1.1 should be blocked initially")
 
 	// Replace: now allow 1.1.1.1 instead
 	resp, err := client.PutSandboxesSandboxIDNetworkWithResponse(ctx, sbx.SandboxID,
@@ -103,10 +125,9 @@ func TestUpdateNetworkConfig_ReplaceRules(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode())
 
-	// TODO(stage-3): verify actual network behavior:
-	// envdClient := setup.GetEnvdClient(t, ctx)
-	// assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "New allow rule should work")
-	// assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Old allow rule should be gone")
+	// Verify replacement: 1.1.1.1 now allowed, 8.8.8.8 now blocked
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "New allow rule should work")
+	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Old allow rule should be gone")
 }
 
 // TestUpdateNetworkConfig_NotFound returns 404 for a nonexistent sandbox.
@@ -141,18 +162,22 @@ func TestUpdateNetworkConfig_Unauthorized(t *testing.T) {
 }
 
 // TestUpdateNetworkConfig_MultipleUpdates verifies that multiple sequential
-// updates all succeed (each fully replacing the previous config).
+// updates each change actual network behavior (not just API response).
 func TestUpdateNetworkConfig_MultipleUpdates(t *testing.T) {
 	t.Parallel()
 
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
+	envdClient := setup.GetEnvdClient(t, ctx)
 
 	sbx := utils.SetupSandboxWithCleanup(t, client,
 		utils.WithTemplateID(templateID),
-		utils.WithTimeout(60),
+		utils.WithTimeout(90),
 	)
+
+	// Initially no restrictions — traffic should flow
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Should have internet before any updates")
 
 	// First update: deny all
 	resp, err := client.PutSandboxesSandboxIDNetworkWithResponse(ctx, sbx.SandboxID,
@@ -163,6 +188,9 @@ func TestUpdateNetworkConfig_MultipleUpdates(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode())
+
+	// Verify all traffic is blocked
+	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Should be blocked after deny-all")
 
 	// Second update: allow specific IP
 	resp, err = client.PutSandboxesSandboxIDNetworkWithResponse(ctx, sbx.SandboxID,
@@ -175,6 +203,10 @@ func TestUpdateNetworkConfig_MultipleUpdates(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode())
 
+	// Verify only allowed IP works
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "8.8.8.8 should be allowed")
+	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "1.1.1.1 should still be blocked")
+
 	// Third update: clear all rules
 	resp, err = client.PutSandboxesSandboxIDNetworkWithResponse(ctx, sbx.SandboxID,
 		api.PutSandboxesSandboxIDNetworkJSONRequestBody{},
@@ -182,4 +214,8 @@ func TestUpdateNetworkConfig_MultipleUpdates(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode())
+
+	// Verify all traffic flows again
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Should have internet after clearing rules")
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "Should have internet after clearing rules")
 }

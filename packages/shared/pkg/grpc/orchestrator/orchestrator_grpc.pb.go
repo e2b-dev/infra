@@ -27,6 +27,7 @@ const (
 	SandboxService_Pause_FullMethodName            = "/SandboxService/Pause"
 	SandboxService_Checkpoint_FullMethodName       = "/SandboxService/Checkpoint"
 	SandboxService_ListCachedBuilds_FullMethodName = "/SandboxService/ListCachedBuilds"
+	SandboxService_UpdateNetwork_FullMethodName    = "/SandboxService/UpdateNetwork"
 )
 
 // SandboxServiceClient is the client API for SandboxService service.
@@ -40,6 +41,7 @@ type SandboxServiceClient interface {
 	Pause(ctx context.Context, in *SandboxPauseRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	Checkpoint(ctx context.Context, in *SandboxCheckpointRequest, opts ...grpc.CallOption) (*SandboxCheckpointResponse, error)
 	ListCachedBuilds(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*SandboxListCachedBuildsResponse, error)
+	UpdateNetwork(ctx context.Context, in *SandboxUpdateNetworkRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type sandboxServiceClient struct {
@@ -120,6 +122,16 @@ func (c *sandboxServiceClient) ListCachedBuilds(ctx context.Context, in *emptypb
 	return out, nil
 }
 
+func (c *sandboxServiceClient) UpdateNetwork(ctx context.Context, in *SandboxUpdateNetworkRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, SandboxService_UpdateNetwork_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // SandboxServiceServer is the server API for SandboxService service.
 // All implementations must embed UnimplementedSandboxServiceServer
 // for forward compatibility.
@@ -131,6 +143,7 @@ type SandboxServiceServer interface {
 	Pause(context.Context, *SandboxPauseRequest) (*emptypb.Empty, error)
 	Checkpoint(context.Context, *SandboxCheckpointRequest) (*SandboxCheckpointResponse, error)
 	ListCachedBuilds(context.Context, *emptypb.Empty) (*SandboxListCachedBuildsResponse, error)
+	UpdateNetwork(context.Context, *SandboxUpdateNetworkRequest) (*emptypb.Empty, error)
 	mustEmbedUnimplementedSandboxServiceServer()
 }
 
@@ -161,6 +174,9 @@ func (UnimplementedSandboxServiceServer) Checkpoint(context.Context, *SandboxChe
 }
 func (UnimplementedSandboxServiceServer) ListCachedBuilds(context.Context, *emptypb.Empty) (*SandboxListCachedBuildsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListCachedBuilds not implemented")
+}
+func (UnimplementedSandboxServiceServer) UpdateNetwork(context.Context, *SandboxUpdateNetworkRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateNetwork not implemented")
 }
 func (UnimplementedSandboxServiceServer) mustEmbedUnimplementedSandboxServiceServer() {}
 func (UnimplementedSandboxServiceServer) testEmbeddedByValue()                        {}
@@ -309,6 +325,24 @@ func _SandboxService_ListCachedBuilds_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SandboxService_UpdateNetwork_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SandboxUpdateNetworkRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SandboxServiceServer).UpdateNetwork(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SandboxService_UpdateNetwork_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SandboxServiceServer).UpdateNetwork(ctx, req.(*SandboxUpdateNetworkRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // SandboxService_ServiceDesc is the grpc.ServiceDesc for SandboxService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -343,6 +377,10 @@ var SandboxService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListCachedBuilds",
 			Handler:    _SandboxService_ListCachedBuilds_Handler,
+		},
+		{
+			MethodName: "UpdateNetwork",
+			Handler:    _SandboxService_UpdateNetwork_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

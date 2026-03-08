@@ -294,6 +294,41 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 	return &emptypb.Empty{}, nil
 }
 
+func (s *Server) UpdateNetwork(ctx context.Context, req *orchestrator.SandboxUpdateNetworkRequest) (*emptypb.Empty, error) {
+	ctx, childSpan := tracer.Start(ctx, "sandbox-update-network")
+	defer childSpan.End()
+
+	childSpan.SetAttributes(
+		telemetry.WithSandboxID(req.GetSandboxId()),
+		attribute.String("client.id", s.info.ClientId),
+	)
+
+	sbx, ok := s.sandboxes.Get(req.GetSandboxId())
+	if !ok {
+		telemetry.ReportCriticalError(ctx, "sandbox not found", nil)
+
+		return nil, status.Error(codes.NotFound, "sandbox not found")
+	}
+
+	if err := sbx.Slot.UpdateInternet(ctx, req.GetAllowedCidrs(), req.GetDeniedCidrs()); err != nil {
+		telemetry.ReportCriticalError(ctx, "failed to update sandbox network", err)
+
+		return nil, status.Errorf(codes.Internal, "failed to update sandbox network: %s", err)
+	}
+
+	// Update in-memory network config so the TCP proxy also sees the new rules.
+	if len(req.GetAllowedCidrs()) == 0 && len(req.GetDeniedCidrs()) == 0 {
+		sbx.SetNetworkEgress(nil)
+	} else {
+		sbx.SetNetworkEgress(&orchestrator.SandboxNetworkEgressConfig{
+			AllowedCidrs: req.GetAllowedCidrs(),
+			DeniedCidrs:  req.GetDeniedCidrs(),
+		})
+	}
+
+	return &emptypb.Empty{}, nil
+}
+
 func (s *Server) List(ctx context.Context, _ *emptypb.Empty) (*orchestrator.SandboxListResponse, error) {
 	_, childSpan := tracer.Start(ctx, "sandbox-list")
 	defer childSpan.End()

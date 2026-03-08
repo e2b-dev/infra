@@ -73,7 +73,8 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 			}
 
 			var accessToken *string = nil
-			if net := sbx.Config.Network; net != nil && net.GetIngress() != nil {
+			net := sbx.GetNetwork()
+			if net != nil && net.GetIngress() != nil {
 				accessToken = net.GetIngress().TrafficAccessToken
 			}
 
@@ -92,7 +93,7 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 
 			// Handle request host masking only for non-envd traffic.
 			var maskRequestHost *string = nil
-			if h := sbx.Config.Network.GetIngress().GetMaskRequestHost(); isNonEnvdTraffic && h != "" {
+			if h := net.GetIngress().GetMaskRequestHost(); isNonEnvdTraffic && h != "" {
 				h = strings.ReplaceAll(h, pool.MaskRequestHostPortPlaceholder, strconv.FormatUint(port, 10))
 				maskRequestHost = &h
 			}

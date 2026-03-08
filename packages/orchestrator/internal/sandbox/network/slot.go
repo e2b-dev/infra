@@ -297,6 +297,48 @@ func (s *Slot) ConfigureInternet(ctx context.Context, network *orchestrator.Sand
 	return nil
 }
 
+// UpdateInternet replaces all user firewall rules atomically (reset + re-add).
+func (s *Slot) UpdateInternet(ctx context.Context, allowedCIDRs, deniedCIDRs []string) error {
+	_, span := tracer.Start(ctx, "slot-internet-update", trace.WithAttributes(
+		attribute.String("namespace_id", s.NamespaceID()),
+	))
+	defer span.End()
+
+	n, err := ns.GetNS(filepath.Join(netNamespacesDir, s.NamespaceID()))
+	if err != nil {
+		return fmt.Errorf("failed to get slot network namespace '%s': %w", s.NamespaceID(), err)
+	}
+	defer n.Close()
+
+	err = n.Do(func(_ ns.NetNS) error {
+		if err := s.Firewall.Reset(); err != nil {
+			return fmt.Errorf("error resetting firewall rules: %w", err)
+		}
+
+		for _, cidr := range allowedCIDRs {
+			if err := s.Firewall.AddAllowedCIDR(cidr); err != nil {
+				return fmt.Errorf("error adding allowed CIDR: %w", err)
+			}
+		}
+
+		for _, cidr := range deniedCIDRs {
+			if err := s.Firewall.AddDeniedCIDR(cidr); err != nil {
+				return fmt.Errorf("error adding denied CIDR: %w", err)
+			}
+		}
+
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed execution in network namespace '%s': %w", s.NamespaceID(), err)
+	}
+
+	hasRules := len(allowedCIDRs) > 0 || len(deniedCIDRs) > 0
+	s.firewallCustomRules.Store(hasRules)
+
+	return nil
+}
+
 func (s *Slot) ResetInternet(ctx context.Context) error {
 	_, span := tracer.Start(ctx, "slot-internet-reset", trace.WithAttributes(
 		attribute.String("namespace_id", s.NamespaceID()),
