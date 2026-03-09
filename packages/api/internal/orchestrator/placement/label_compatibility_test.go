@@ -9,6 +9,52 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 )
 
+func TestEffectiveNodeLabels(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		input    []string
+		expected []string
+	}{
+		{name: "nil returns default", input: nil, expected: []string{defaultLabel}},
+		{name: "empty returns default", input: []string{}, expected: []string{defaultLabel}},
+		{name: "non-empty forwarded", input: []string{"gpu-support"}, expected: []string{"gpu-support"}},
+		{name: "multiple forwarded", input: []string{"gpu-support", "h100"}, expected: []string{"gpu-support", "h100"}},
+		{name: "default and gpu forwarded", input: []string{"default", "gpu-support"}, expected: []string{"default", "gpu-support"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.expected, effectiveNodeLabels(tt.input))
+		})
+	}
+}
+
+func TestEffectiveSandboxLabels(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		input    []string
+		expected []string
+	}{
+		{name: "nil returns default", input: nil, expected: []string{defaultLabel}},
+		{name: "empty returns default", input: []string{}, expected: []string{defaultLabel}},
+		{name: "non-empty forwarded", input: []string{"gpu-support"}, expected: []string{"gpu-support"}},
+		{name: "multiple forwarded", input: []string{"gpu-support", "h100"}, expected: []string{"gpu-support", "h100"}},
+		{name: "default and gpu forwarded", input: []string{"default", "gpu-support"}, expected: []string{"default", "gpu-support"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.expected, effectiveSandboxLabels(tt.input))
+		})
+	}
+}
+
 func TestIsNodeLabelsCompatible(t *testing.T) {
 	t.Parallel()
 
@@ -94,7 +140,7 @@ func TestIsNodeLabelsCompatible(t *testing.T) {
 			name:           "default labeled node rejects unlabeled sandbox",
 			nodeLabels:     []string{"default"},
 			requiredLabels: nil,
-			expected:       false,
+			expected:       true,
 		},
 	}
 

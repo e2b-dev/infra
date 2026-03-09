@@ -4,39 +4,40 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 )
 
+const defaultLabel = "default"
+
+// effectiveNodeLabels returns the node's labels, defaulting to ["default"] if empty.
+func effectiveNodeLabels(nodeLabels []string) []string {
+	if len(nodeLabels) == 0 {
+		return []string{defaultLabel}
+	}
+
+	return nodeLabels
+}
+
+// effectiveSandboxLabels returns the sandbox's required labels, defaulting to ["default"] if empty.
+func effectiveSandboxLabels(requiredLabels []string) []string {
+	if len(requiredLabels) == 0 {
+		return []string{defaultLabel}
+	}
+
+	return requiredLabels
+}
+
 // isNodeLabelsCompatible checks if a node is compatible with the required scheduling labels.
-//
-// Matching rules (subset with dedicated pool protection):
-//   - Both empty → match (default pool)
-//   - Node has labels, sandbox has none → reject (protect dedicated nodes)
-//   - Sandbox requires labels, node has none → reject (can't satisfy)
-//   - Both have labels → required must be a subset of node labels
+// Empty labels on either side are normalized to ["default"] before comparison.
+// After normalization, all required labels must be a subset of node labels.
 func isNodeLabelsCompatible(node *nodemanager.Node, requiredLabels []string) bool {
-	nodeLabels := node.Labels()
+	nodeLabels := effectiveNodeLabels(node.Labels())
+	required := effectiveSandboxLabels(requiredLabels)
 
-	// Both empty → default pool match
-	if len(requiredLabels) == 0 && len(nodeLabels) == 0 {
-		return true
-	}
-
-	// Dedicated node protection: don't place unlabeled sandboxes on labeled nodes
-	if len(requiredLabels) == 0 && len(nodeLabels) > 0 {
-		return false
-	}
-
-	// Can't satisfy label requirements on an unlabeled node
-	if len(requiredLabels) > 0 && len(nodeLabels) == 0 {
-		return false
-	}
-
-	// Subset check: all required labels must be present on the node
 	nodeLabelsSet := make(map[string]struct{}, len(nodeLabels))
 	for _, l := range nodeLabels {
 		nodeLabelsSet[l] = struct{}{}
 	}
 
-	for _, required := range requiredLabels {
-		if _, ok := nodeLabelsSet[required]; !ok {
+	for _, req := range required {
+		if _, ok := nodeLabelsSet[req]; !ok {
 			return false
 		}
 	}
