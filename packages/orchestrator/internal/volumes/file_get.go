@@ -81,6 +81,7 @@ func (s *Service) GetFile(request *orchestrator.VolumeFileGetRequest, server orc
 		}
 
 		span.AddEvent("file read complete")
+
 		break
 	}
 
