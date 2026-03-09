@@ -308,6 +308,33 @@ func MountOverlayFS(ctx context.Context, layers []string, mountPoint string) err
 	return nil
 }
 
+// SetReservedBlocks sets the number of reserved filesystem blocks based on the desired reserved space in MB.
+// Reserved blocks are only usable by root (uid 0).
+func SetReservedBlocks(ctx context.Context, rootfsPath string, reservedSpaceMB int64, blockSize int64) error {
+	if reservedSpaceMB <= 0 {
+		return nil
+	}
+
+	ctx, span := tracer.Start(ctx, "set-reserved-blocks")
+	defer span.End()
+
+	blocks := (reservedSpaceMB << ToMBShift) / blockSize
+
+	cmd := exec.CommandContext(ctx, "tune2fs", "-r", strconv.FormatInt(blocks, 10), rootfsPath)
+
+	stdoutWriter := telemetry.NewEventWriter(ctx, "stdout")
+	cmd.Stdout = stdoutWriter
+
+	stderrWriter := telemetry.NewEventWriter(ctx, "stderr")
+	cmd.Stderr = stderrWriter
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("error setting reserved blocks: %w", err)
+	}
+
+	return nil
+}
+
 func LogMetadata(ctx context.Context, rootfsPath string, extraFields ...zap.Field) {
 	cmd := exec.CommandContext(ctx, "tune2fs", "-l", rootfsPath)
 	output, err := cmd.CombinedOutput()
