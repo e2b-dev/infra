@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"connectrpc.com/connect"
 	"github.com/creack/pty"
@@ -95,41 +96,80 @@ func New(
 	// User command string for logging (without the internal wrapper details).
 	userCmd := strings.Join(append([]string{req.GetProcess().GetCmd()}, req.GetProcess().GetArgs()...), " ")
 
-	// Wrap the command in a shell that sets the OOM score and nice value before exec-ing the actual command.
-	// This eliminates the race window where grandchildren could inherit the parent's protected OOM score (-1000)
-	// or high CPU priority (nice -20) before the post-start calls had a chance to correct them.
-	// nice(1) applies a relative adjustment, so we compute the delta from the current (inherited) nice to the target.
-	niceDelta := defaultNice - currentNice()
-	oomWrapperScript := fmt.Sprintf(`echo %d > /proc/$$/oom_score_adj && exec /usr/bin/nice -n %d "${@}"`, defaultOomScore, niceDelta)
-	wrapperArgs := append([]string{"-c", oomWrapperScript, "--", req.GetProcess().GetCmd()}, req.GetProcess().GetArgs()...)
-	cmd := exec.CommandContext(ctx, "/bin/sh", wrapperArgs...)
+	var cmd *exec.Cmd
 
-	uid, gid, err := permissions.GetUserIdUints(user)
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err)
-	}
+	if oomMode == "systemd-oomd" {
+		// In systemd-oomd mode, wrap the command with systemd-run --scope so that
+		// each process gets its own transient scope unit placed into the appropriate
+		// slice. systemd-oomd monitors pressure on the slices and kills the
+		// highest-memory scope when the configured threshold is exceeded.
+		sliceName := "e2b-user.slice"
+		procTypeStr := "user"
+		if req.GetPty() != nil {
+			sliceName = "e2b-pty.slice"
+			procTypeStr = "pty"
+		}
+		unitName := fmt.Sprintf("e2b-%s-%d.scope", procTypeStr, time.Now().UnixNano())
 
-	groups := []uint32{gid}
-	if gids, err := user.GroupIds(); err != nil {
-		logger.Warn().Err(err).Str("user", user.Username).Msg("failed to get supplementary groups")
+		cmdArgs := []string{
+			"--scope",
+			"--quiet",
+			"--unit=" + unitName,
+			"--slice=" + sliceName,
+			"-p", fmt.Sprintf("OOMScoreAdjust=%d", defaultOomScore),
+			"-p", fmt.Sprintf("Nice=%d", defaultNice),
+			"--uid=" + user.Uid,
+			"--gid=" + user.Gid,
+			"--",
+			req.GetProcess().GetCmd(),
+		}
+		cmdArgs = append(cmdArgs, req.GetProcess().GetArgs()...)
+		cmd = exec.CommandContext(ctx, "systemd-run", cmdArgs...)
+
+		// systemd-run needs root to register the scope, so do NOT set
+		// SysProcAttr.Credential -- let systemd-run handle user switching
+		// via --uid/--gid.
+		cmd.SysProcAttr = &syscall.SysProcAttr{}
 	} else {
-		for _, g := range gids {
-			if parsed, err := strconv.ParseUint(g, 10, 32); err == nil {
-				groups = append(groups, uint32(parsed))
+		// Default cgroup mode: wrap the command in a shell that sets the OOM score
+		// and nice value before exec-ing the actual command.
+		// This eliminates the race window where grandchildren could inherit the parent's
+		// protected OOM score (-1000) or high CPU priority (nice -20) before the
+		// post-start calls had a chance to correct them.
+		// nice(1) applies a relative adjustment, so we compute the delta from the
+		// current (inherited) nice to the target.
+		niceDelta := defaultNice - currentNice()
+		oomWrapperScript := fmt.Sprintf(`echo %d > /proc/$$/oom_score_adj && exec /usr/bin/nice -n %d "${@}"`, defaultOomScore, niceDelta)
+		wrapperArgs := append([]string{"-c", oomWrapperScript, "--", req.GetProcess().GetCmd()}, req.GetProcess().GetArgs()...)
+		cmd = exec.CommandContext(ctx, "/bin/sh", wrapperArgs...)
+
+		uid, gid, err := permissions.GetUserIdUints(user)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, err)
+		}
+
+		groups := []uint32{gid}
+		if gids, err := user.GroupIds(); err != nil {
+			logger.Warn().Err(err).Str("user", user.Username).Msg("failed to get supplementary groups")
+		} else {
+			for _, g := range gids {
+				if parsed, err := strconv.ParseUint(g, 10, 32); err == nil {
+					groups = append(groups, uint32(parsed))
+				}
 			}
 		}
-	}
 
-	cgroupFD, ok := cgroupManager.GetFileDescriptor(getProcType(req))
+		cgroupFD, ok := cgroupManager.GetFileDescriptor(getProcType(req))
 
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		UseCgroupFD: ok,
-		CgroupFD:    cgroupFD,
-		Credential: &syscall.Credential{
-			Uid:    uid,
-			Gid:    gid,
-			Groups: groups,
-		},
+		cmd.SysProcAttr = &syscall.SysProcAttr{
+			UseCgroupFD: ok,
+			CgroupFD:    cgroupFD,
+			Credential: &syscall.Credential{
+				Uid:    uid,
+				Gid:    gid,
+				Groups: groups,
+			},
+		}
 	}
 
 	resolvedPath, err := permissions.ExpandAndResolve(req.GetProcess().GetCwd(), user, defaults.Workdir)
