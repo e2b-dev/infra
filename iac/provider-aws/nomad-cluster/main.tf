@@ -286,7 +286,7 @@ module "clickhouse" {
 module "build" {
   source = "../modules/nodepool-client"
 
-  name           = "build"
+  name           = "orch-build"
   prefix         = var.prefix
   aws_account_id = var.aws_account_id
 
@@ -328,6 +328,7 @@ module "build" {
 module "client" {
   source = "../modules/nodepool-client"
 
+  name           = "orch-client"
   prefix         = var.prefix
   aws_account_id = var.aws_account_id
 
