@@ -42,11 +42,13 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) e
 		nil,
 	)
 	if err != nil {
+		span.RecordError(fmt.Errorf("could not prefault page"))
+
 		return fmt.Errorf("failed to fault page: %w", err)
 	}
 
 	if !handled {
-		span.RecordError(fmt.Errorf("page already faulted"))
+		span.AddEvent("prefault: page already faulted or write returned EAGAIN")
 	}
 
 	return nil
