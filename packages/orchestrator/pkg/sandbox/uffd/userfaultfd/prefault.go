@@ -3,6 +3,8 @@ package userfaultfd
 import (
 	"context"
 	"fmt"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 )
 
 // Prefault proactively copies a page to guest memory at the given offset.
@@ -24,22 +26,15 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) e
 		return fmt.Errorf("data length (%d) does not match pagesize (%d)", len(data), u.pageSize)
 	}
 
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-=======
-	// If page has already been faulted in due to on-demand page fault handling skip it.
-	if u.pageTracker.get(addr) == faulted {
-=======
 	// If page has already been faulted in due to on-demand page fault handling or removed because
 	// Firecracker called madvise() on it, skip it.
 	state := u.pageTracker.get(addr)
 	if state == faulted || state == removed {
->>>>>>> Stashed changes
 		return nil
 	}
 
 	// We're treating prefault handling as if it was caused by a read access.
-	// This way, we will fault the page with UFFD_COPY_MODE_WP which will set
+	// This way, we will fault the page with UFFD_COPY_MODE_WP which will preserve
 	// the WP bit for the page. This works even in the case of a race with a
 	// concurrent on-demand write access.
 	//
@@ -48,14 +43,13 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) e
 	//
 	// In both cases, the WP bit will be cleared because it is handled asynchronously
 	// by the kernel.
->>>>>>> Stashed changes
 	handled, err := u.faultPage(
 		ctx,
 		addr,
 		offset,
+		block.Read,
 		directDataSource{data, int64(u.pageSize)},
 		nil,
-		UFFDIO_COPY_MODE_WP,
 	)
 	if err != nil {
 		span.RecordError(fmt.Errorf("could not prefault page"))
