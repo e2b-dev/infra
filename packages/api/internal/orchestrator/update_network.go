@@ -77,11 +77,7 @@ func (o *Orchestrator) UpdateSandboxNetworkConfig(
 	}
 
 	// Apply the network update on the orchestrator node.
-	if apiErr := o.updateSandboxNetworkOnNode(ctx, sbx, egress); apiErr != nil {
-		return apiErr
-	}
-
-	return nil
+	return o.updateSandboxNetworkOnNode(ctx, sbx, egress)
 }
 
 func (o *Orchestrator) updateSandboxNetworkOnNode(
