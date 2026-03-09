@@ -221,6 +221,11 @@ module "nomad" {
   clickhouse_migrator_repository_name = module.init.clickhouse_migrator_repository_name
 
   launch_darkly_api_key = module.init.launch_darkly_api_key
+
+  db_max_open_connections      = var.db_max_open_connections
+  db_min_idle_connections      = var.db_min_idle_connections
+  auth_db_max_open_connections = var.auth_db_max_open_connections
+  auth_db_min_idle_connections = var.auth_db_min_idle_connections
 }
 
 resource "aws_security_group" "cluster_node" {

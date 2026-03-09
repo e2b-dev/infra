@@ -6,12 +6,13 @@ import (
 
 	"github.com/exaring/otelpgx"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/e2b-dev/infra/packages/db/pkg/retry"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 )
 
-func New(ctx context.Context, databaseURL string, options ...Option) (types.DBTX, *pgxpool.Pool, error) {
+func New(ctx context.Context, databaseURL string, poolName string, options ...Option) (types.DBTX, *pgxpool.Pool, error) {
 	// Parse the connection pool configuration
 	config, err := pgxpool.ParseConfig(databaseURL)
 	if err != nil {
@@ -34,7 +35,7 @@ func New(ctx context.Context, databaseURL string, options ...Option) (types.DBTX
 	}
 
 	// expose otel metrics
-	if err = otelpgx.RecordStats(pool); err != nil {
+	if err = otelpgx.RecordStats(pool, otelpgx.WithStatsAttributes(attribute.String("pool.name", poolName))); err != nil {
 		pool.Close()
 
 		return nil, nil, fmt.Errorf("failed to record stats: %w", err)
