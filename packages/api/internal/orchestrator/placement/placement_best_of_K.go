@@ -24,6 +24,8 @@ type BestOfKConfig struct {
 	TooManyStarting bool
 	// CanFit determines whether to skip the node CanFit check
 	CanFit bool
+	// LabelFiltering determines whether to filter nodes by label compatibility
+	LabelFiltering bool
 }
 
 // DefaultBestOfKConfig returns the default placement configuration
@@ -171,7 +173,7 @@ func (b *BestOfK) sample(items []*nodemanager.Node, config BestOfKConfig, exclud
 		}
 
 		// Skip if node doesn't have the required labels
-		if !isNodeLabelsCompatible(n, requiredLabels) {
+		if config.LabelFiltering && !isNodeLabelsCompatible(n, requiredLabels) {
 			continue
 		}
 
