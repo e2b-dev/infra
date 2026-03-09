@@ -147,7 +147,7 @@ resource "aws_launch_template" "client" {
     resource_type = "instance"
 
     tags = {
-      Name = "${var.prefix}orch-${var.name}"
+      Name = "${var.prefix}${var.name}"
 
       // Tag to identify Nomad cluster members so auto-join can work
       (var.cluster_tag_name) = var.cluster_tag_value
