@@ -158,7 +158,6 @@ variable "client_security_group_ids" {
 variable "client_node_labels" {
   description = "Labels to assign to client nodes for scheduling purposes"
   type        = list(string)
-  default     = []
 }
 
 // ---
@@ -194,7 +193,6 @@ variable "build_security_group_ids" {
 variable "build_node_labels" {
   description = "Labels to assign to build nodes for scheduling purposes"
   type        = list(string)
-  default     = []
 }
 
 // ---

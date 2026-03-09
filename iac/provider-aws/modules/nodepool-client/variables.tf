@@ -68,7 +68,6 @@ variable "node_pool_name" {
 variable "node_labels" {
   description = "Labels to assign to nodes for scheduling purposes"
   type        = list(string)
-  default     = []
 }
 
 variable "base_hugepages_percentage" {
