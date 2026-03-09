@@ -101,6 +101,10 @@ module "api" {
   loki_url                                = local.loki_url
   sandbox_access_token_hash_seed          = var.sandbox_access_token_hash_seed
   sandbox_storage_backend                 = var.sandbox_storage_backend
+  db_max_open_connections                 = var.db_max_open_connections
+  db_min_idle_connections                 = var.db_min_idle_connections
+  auth_db_max_open_connections            = var.auth_db_max_open_connections
+  auth_db_min_idle_connections            = var.auth_db_min_idle_connections
   db_migrator_docker_image                = data.google_artifact_registry_docker_image.db_migrator_image.self_link
   launch_darkly_api_key                   = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
   default_persistent_volume_type          = var.default_persistent_volume_type
