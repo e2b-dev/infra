@@ -90,7 +90,12 @@ func WithCPUInfo(cpuArch, cpuFamily, cpuModel string) TestOptions {
 
 func WithLabels(labels []string) TestOptions {
 	return func(node *TestNode) {
-		node.labels = labels
+		labelsSet := make(map[string]struct{}, len(labels))
+		for _, l := range labels {
+			labelsSet[l] = struct{}{}
+		}
+
+		node.labels = labelsSet
 	}
 }
 

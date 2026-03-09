@@ -45,7 +45,7 @@ type Node struct {
 	metricsMu sync.RWMutex
 
 	machineInfo machineinfo.MachineInfo
-	labels      []string
+	labels      map[string]struct{}
 	meta        NodeMetadata
 
 	PlacementMetrics PlacementMetrics

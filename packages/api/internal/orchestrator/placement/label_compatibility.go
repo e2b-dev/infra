@@ -7,9 +7,9 @@ import (
 const defaultLabel = "default"
 
 // effectiveNodeLabels returns the node's labels, defaulting to ["default"] if empty.
-func effectiveNodeLabels(nodeLabels []string) []string {
+func effectiveNodeLabels(nodeLabels map[string]struct{}) map[string]struct{} {
 	if len(nodeLabels) == 0 {
-		return []string{defaultLabel}
+		return map[string]struct{}{defaultLabel: {}}
 	}
 
 	return nodeLabels
@@ -29,15 +29,10 @@ func effectiveSandboxLabels(requiredLabels []string) []string {
 // After normalization, all required labels must be a subset of node labels.
 func isNodeLabelsCompatible(node *nodemanager.Node, requiredLabels []string) bool {
 	nodeLabels := effectiveNodeLabels(node.Labels())
-	required := effectiveSandboxLabels(requiredLabels)
+	sbxExpectedLabels := effectiveSandboxLabels(requiredLabels)
 
-	nodeLabelsSet := make(map[string]struct{}, len(nodeLabels))
-	for _, l := range nodeLabels {
-		nodeLabelsSet[l] = struct{}{}
-	}
-
-	for _, req := range required {
-		if _, ok := nodeLabelsSet[req]; !ok {
+	for _, req := range sbxExpectedLabels {
+		if _, ok := nodeLabels[req]; !ok {
 			return false
 		}
 	}

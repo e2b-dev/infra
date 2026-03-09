@@ -28,14 +28,9 @@ type Algorithm interface {
 	chooseNode(ctx context.Context, nodes []*nodemanager.Node, nodesExcluded map[string]struct{}, requested nodemanager.SandboxResources, buildMachineInfo machineinfo.MachineInfo, requiredLabels []string) (*nodemanager.Node, error)
 }
 
-// todo: resolve requiredLabels from team/sandbox scheduling config instead of hardcoding
-var defaultRequiredLabels = []string{"default"}
-
-func PlaceSandbox(ctx context.Context, algorithm Algorithm, clusterNodes []*nodemanager.Node, preferredNode *nodemanager.Node, sbxRequest *orchestrator.SandboxCreateRequest, buildMachineInfo machineinfo.MachineInfo) (*nodemanager.Node, error) {
+func PlaceSandbox(ctx context.Context, algorithm Algorithm, clusterNodes []*nodemanager.Node, preferredNode *nodemanager.Node, sbxRequest *orchestrator.SandboxCreateRequest, buildMachineInfo machineinfo.MachineInfo, requiredLabels []string) (*nodemanager.Node, error) {
 	ctx, span := tracer.Start(ctx, "place-sandbox")
 	defer span.End()
-
-	requiredLabels := defaultRequiredLabels
 
 	nodesExcluded := make(map[string]struct{})
 	var err error

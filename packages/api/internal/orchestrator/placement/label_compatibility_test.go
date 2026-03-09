@@ -9,19 +9,28 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 )
 
+func labelsSet(labels ...string) map[string]struct{} {
+	s := make(map[string]struct{}, len(labels))
+	for _, l := range labels {
+		s[l] = struct{}{}
+	}
+
+	return s
+}
+
 func TestEffectiveNodeLabels(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name     string
-		input    []string
-		expected []string
+		input    map[string]struct{}
+		expected map[string]struct{}
 	}{
-		{name: "nil returns default", input: nil, expected: []string{defaultLabel}},
-		{name: "empty returns default", input: []string{}, expected: []string{defaultLabel}},
-		{name: "non-empty forwarded", input: []string{"gpu-support"}, expected: []string{"gpu-support"}},
-		{name: "multiple forwarded", input: []string{"gpu-support", "h100"}, expected: []string{"gpu-support", "h100"}},
-		{name: "default and gpu forwarded", input: []string{"default", "gpu-support"}, expected: []string{"default", "gpu-support"}},
+		{name: "nil returns default", input: nil, expected: labelsSet(defaultLabel)},
+		{name: "empty returns default", input: map[string]struct{}{}, expected: labelsSet(defaultLabel)},
+		{name: "non-empty forwarded", input: labelsSet("gpu-support"), expected: labelsSet("gpu-support")},
+		{name: "multiple forwarded", input: labelsSet("gpu-support", "h100"), expected: labelsSet("gpu-support", "h100")},
+		{name: "default and gpu forwarded", input: labelsSet("default", "gpu-support"), expected: labelsSet("default", "gpu-support")},
 	}
 
 	for _, tt := range tests {
