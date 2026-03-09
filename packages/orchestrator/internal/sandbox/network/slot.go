@@ -306,8 +306,7 @@ func (s *Slot) UpdateInternet(ctx context.Context, egress *orchestrator.SandboxN
 		return fmt.Errorf("failed execution in network namespace '%s': %w", s.NamespaceID(), err)
 	}
 
-	hasRules := len(allowedCIDRs) > 0 || len(deniedCIDRs) > 0
-	s.firewallCustomRules.Store(hasRules)
+	s.firewallCustomRules.Store(true)
 
 	return nil
 }
