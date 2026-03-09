@@ -13,7 +13,10 @@ import (
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 )
 
-const poolName = "auth"
+const (
+	poolName = "auth"
+	replica  = "replica"
+)
 
 type Client struct {
 	Read      *authqueries.Queries
@@ -34,7 +37,7 @@ func NewClient(ctx context.Context, databaseURL, replicaURL string, options ...p
 
 	if strings.TrimSpace(replicaURL) != "" {
 		var readClient types.DBTX
-		readClient, readPool, err = pool.New(ctx, replicaURL, options...)
+		readClient, readPool, err = pool.New(ctx, replicaURL, strings.Join([]string{poolName, replica}, "-"), options...)
 		if err != nil {
 			writePool.Close()
 
