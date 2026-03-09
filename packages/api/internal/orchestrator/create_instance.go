@@ -267,7 +267,9 @@ func (o *Orchestrator) CreateSandbox(
 	nodeClusterID := clusters.WithClusterFallback(team.ClusterID)
 	clusterNodes := o.GetClusterNodes(nodeClusterID)
 
-	node, err = placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, builds.ToMachineInfo(build), team.SandboxSchedulingLabels)
+	labelFilteringEnabled := o.featureFlagsClient.BoolFlag(ctx, feature_flags.SandboxLabelBasedSchedulingFlag, feature_flags.TeamContext(team.ID.String()))
+
+	node, err = placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, builds.ToMachineInfo(build), labelFilteringEnabled, team.SandboxSchedulingLabels)
 	if err != nil {
 		return sandbox.Sandbox{}, &api.APIError{
 			Code:      http.StatusInternalServerError,

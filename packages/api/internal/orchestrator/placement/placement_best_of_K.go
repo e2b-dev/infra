@@ -24,8 +24,6 @@ type BestOfKConfig struct {
 	TooManyStarting bool
 	// CanFit determines whether to skip the node CanFit check
 	CanFit bool
-	// LabelFiltering determines whether to filter nodes by label compatibility
-	LabelFiltering bool
 }
 
 // DefaultBestOfKConfig returns the default placement configuration
@@ -105,12 +103,12 @@ func (b *BestOfK) UpdateConfig(config BestOfKConfig) {
 }
 
 // chooseNode selects the best node for placing a VM with the given quota
-func (b *BestOfK) chooseNode(_ context.Context, nodes []*nodemanager.Node, excludedNodes map[string]struct{}, resources nodemanager.SandboxResources, buildMachineInfo machineinfo.MachineInfo, requiredLabels []string) (bestNode *nodemanager.Node, err error) {
+func (b *BestOfK) chooseNode(_ context.Context, nodes []*nodemanager.Node, excludedNodes map[string]struct{}, resources nodemanager.SandboxResources, buildMachineInfo machineinfo.MachineInfo, filterByLabels bool, requiredLabels []string) (bestNode *nodemanager.Node, err error) {
 	// Fix the config, we want to dynamically update it
 	config := b.getConfig()
 
 	// Filter eligible nodes
-	candidates := b.sample(nodes, config, excludedNodes, resources, buildMachineInfo, requiredLabels)
+	candidates := b.sample(nodes, config, excludedNodes, resources, buildMachineInfo, filterByLabels, requiredLabels)
 
 	// Find the best node among candidates
 	bestScore := math.MaxFloat64
@@ -133,7 +131,7 @@ func (b *BestOfK) chooseNode(_ context.Context, nodes []*nodemanager.Node, exclu
 }
 
 // sample returns up to k items chosen uniformly from those passing ok.
-func (b *BestOfK) sample(items []*nodemanager.Node, config BestOfKConfig, excludedNodes map[string]struct{}, resources nodemanager.SandboxResources, buildMachineInfo machineinfo.MachineInfo, requiredLabels []string) []*nodemanager.Node {
+func (b *BestOfK) sample(items []*nodemanager.Node, config BestOfKConfig, excludedNodes map[string]struct{}, resources nodemanager.SandboxResources, buildMachineInfo machineinfo.MachineInfo, filterByLabels bool, requiredLabels []string) []*nodemanager.Node {
 	if config.K <= 0 || len(items) == 0 {
 		return nil
 	}
@@ -173,7 +171,7 @@ func (b *BestOfK) sample(items []*nodemanager.Node, config BestOfKConfig, exclud
 		}
 
 		// Skip if node doesn't have the required labels
-		if config.LabelFiltering && !isNodeLabelsCompatible(n, requiredLabels) {
+		if filterByLabels && !isNodeLabelsCompatible(n, requiredLabels) {
 			continue
 		}
 

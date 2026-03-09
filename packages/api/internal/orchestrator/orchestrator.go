@@ -286,8 +286,6 @@ func getBestOfKConfig(ctx context.Context, featureFlagsClient *featureflags.Clie
 
 	tooManyStarting := featureFlagsClient.BoolFlag(ctx, featureflags.BestOfKTooManyStartingFlag)
 
-	labelFiltering := featureFlagsClient.BoolFlag(ctx, featureflags.SandboxLabelBasedSchedulingFlag)
-
 	// Convert percentage to decimal
 	alpha := float64(alphaPercent) / 100.0
 	maxOvercommit := float64(maxOvercommitPercent) / 100.0
@@ -298,6 +296,5 @@ func getBestOfKConfig(ctx context.Context, featureFlagsClient *featureflags.Clie
 		Alpha:           alpha,
 		CanFit:          canFit,
 		TooManyStarting: tooManyStarting,
-		LabelFiltering:  labelFiltering,
 	}
 }
