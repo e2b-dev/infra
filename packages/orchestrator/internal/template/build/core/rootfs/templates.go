@@ -33,6 +33,7 @@ type templateModel struct {
 	ProvisionResultPath string
 	ProvisionExitPrefix string
 	Nameserver          string
+	UseSystemdOOMD      bool
 
 	paths []struct {
 		path string
