@@ -267,62 +267,90 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 		return nil, status.Error(codes.NotFound, "sandbox not found")
 	}
 
-	sbx.SetEndAt(req.GetEndTime().AsTime())
+	var updates []func(ctx context.Context, sbx *sandbox.Sandbox) (rollback func(), err error)
 
-	teamID, buildId, eventData := s.prepareSandboxEventData(ctx, sbx)
-	eventData["set_timeout"] = req.GetEndTime().AsTime().Format(time.RFC3339)
-	eventType := events.SandboxUpdatedEventPair
+	if req.GetEndTime() != nil {
+		updates = append(updates, func(_ context.Context, sbx *sandbox.Sandbox) (func(), error) {
+			old := sbx.GetEndAt()
+			rollback := func() { sbx.SetEndAt(old) }
 
-	go s.sbxEventsService.Publish(
-		context.WithoutCancel(ctx),
-		teamID,
-		events.SandboxEvent{
-			Version:   events.StructureVersionV2,
-			ID:        uuid.New(),
-			Type:      eventType.Type,
-			Timestamp: time.Now().UTC(),
+			sbx.SetEndAt(req.GetEndTime().AsTime())
 
-			EventData:          eventData,
-			SandboxID:          sbx.Runtime.SandboxID,
-			SandboxExecutionID: sbx.Runtime.ExecutionID,
-			SandboxTemplateID:  sbx.Config.BaseTemplateID,
-			SandboxBuildID:     buildId,
-			SandboxTeamID:      teamID,
-		},
-	)
-
-	return &emptypb.Empty{}, nil
-}
-
-func (s *Server) UpdateNetwork(ctx context.Context, req *orchestrator.SandboxUpdateNetworkRequest) (*emptypb.Empty, error) {
-	ctx, childSpan := tracer.Start(ctx, "sandbox-update-network")
-	defer childSpan.End()
-
-	childSpan.SetAttributes(
-		telemetry.WithSandboxID(req.GetSandboxId()),
-		attribute.String("client.id", s.info.ClientId),
-	)
-
-	sbx, ok := s.sandboxes.Get(req.GetSandboxId())
-	if !ok {
-		telemetry.ReportCriticalError(ctx, "sandbox not found", nil)
-
-		return nil, status.Error(codes.NotFound, "sandbox not found")
+			return rollback, nil
+		})
 	}
 
-	egress := req.GetEgress()
+	if req.GetEgress() != nil {
+		updates = append(updates, func(ctx context.Context, sbx *sandbox.Sandbox) (func(), error) {
+			oldEgress := sbx.GetNetworkEgress()
+			rollback := func() {
+				_ = sbx.Slot.UpdateInternet(ctx, oldEgress)
+				sbx.SetNetworkEgress(oldEgress)
+			}
 
-	if err := sbx.Slot.UpdateInternet(ctx, egress); err != nil {
-		telemetry.ReportCriticalError(ctx, "failed to update sandbox network", err)
+			if err := sbx.Slot.UpdateInternet(ctx, req.GetEgress()); err != nil {
+				return nil, fmt.Errorf("failed to update sandbox network: %w", err)
+			}
 
-		return nil, status.Errorf(codes.Internal, "failed to update sandbox network: %s", err)
+			egress := req.GetEgress()
+			if len(egress.GetAllowedCidrs()) == 0 && len(egress.GetDeniedCidrs()) == 0 && len(egress.GetAllowedDomains()) == 0 {
+				sbx.SetNetworkEgress(nil)
+			} else {
+				sbx.SetNetworkEgress(egress)
+			}
+
+			return rollback, nil
+		})
 	}
 
-	// Update in-memory network config so the TCP proxy also sees the new rules.
-	if len(egress.GetAllowedCidrs()) == 0 && len(egress.GetDeniedCidrs()) == 0 && len(egress.GetAllowedDomains()) == 0 {
-		sbx.SetNetworkEgress(nil)
-	} else {
-		sbx.SetNetworkEgress(egress)
+	// Apply updates sequentially. On failure, revert already-applied updates in reverse order.
+	var rollbacks []func()
+	for _, update := range updates {
+		rollback, err := update(ctx, sbx)
+		if err != nil {
+			for i := len(rollbacks) - 1; i >= 0; i-- {
+				rollbacks[i]()
+			}
+
+			telemetry.ReportCriticalError(ctx, "failed to update sandbox", err)
+
+			return nil, status.Errorf(codes.Internal, "failed to update sandbox: %s", err)
+		}
+
+		rollbacks = append(rollbacks, rollback)
+	}
+
+	// Publish event if any updates were applied.
+	if len(updates) > 0 {
+		teamID, buildId, eventData := s.prepareSandboxEventData(ctx, sbx)
+		if req.GetEndTime() != nil {
+			eventData["set_timeout"] = req.GetEndTime().AsTime().Format(time.RFC3339)
+		}
+		if egress := req.GetEgress(); egress != nil {
+			eventData["network_egress"] = map[string]any{
+				"allowed_cidrs":   egress.GetAllowedCidrs(),
+				"denied_cidrs":    egress.GetDeniedCidrs(),
+				"allowed_domains": egress.GetAllowedDomains(),
+			}
+		}
+
+		go s.sbxEventsService.Publish(
+			context.WithoutCancel(ctx),
+			teamID,
+			events.SandboxEvent{
+				Version:   events.StructureVersionV2,
+				ID:        uuid.New(),
+				Type:      events.SandboxUpdatedEventPair.Type,
+				Timestamp: time.Now().UTC(),
+
+				EventData:          eventData,
+				SandboxID:          sbx.Runtime.SandboxID,
+				SandboxExecutionID: sbx.Runtime.ExecutionID,
+				SandboxTemplateID:  sbx.Config.BaseTemplateID,
+				SandboxBuildID:     buildId,
+				SandboxTeamID:      teamID,
+			},
+		)
 	}
 
 	return &emptypb.Empty{}, nil

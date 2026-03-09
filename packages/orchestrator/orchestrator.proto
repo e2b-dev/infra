@@ -96,13 +96,9 @@ message SandboxCreateResponse {
 message SandboxUpdateRequest {
   string sandbox_id = 1;
 
-  google.protobuf.Timestamp end_time = 2;
-}
-
-message SandboxUpdateNetworkRequest {
-  string sandbox_id = 1;
-
-  SandboxNetworkEgressConfig egress = 2;
+  // All fields are optional — only set fields are applied.
+  optional google.protobuf.Timestamp end_time = 2;
+  optional SandboxNetworkEgressConfig egress = 3;
 }
 
 message SandboxDeleteRequest {
@@ -153,6 +149,4 @@ service SandboxService {
   rpc Checkpoint(SandboxCheckpointRequest) returns (SandboxCheckpointResponse);
 
   rpc ListCachedBuilds(google.protobuf.Empty) returns (SandboxListCachedBuildsResponse);
-
-  rpc UpdateNetwork(SandboxUpdateNetworkRequest) returns (google.protobuf.Empty);
 }
