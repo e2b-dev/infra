@@ -15,7 +15,7 @@ is_package_installed() {
 }
 
 # Install required packages if not already installed
-PACKAGES="systemd systemd-sysv openssh-server sudo chrony socat curl ca-certificates fuse3 iptables git nfs-common"
+PACKAGES="systemd systemd-oomd systemd-sysv openssh-server sudo chrony socat curl ca-certificates fuse3 iptables git nfs-common"
 echo "Checking presence of the following packages: $PACKAGES"
 
 MISSING=""
@@ -33,6 +33,15 @@ if [ -n "$MISSING" ]; then
 else
     echo "All required packages are already installed."
 fi
+
+echo "Configuring systemd-oomd"
+mkdir -p /etc/systemd
+cat <<EOF >/etc/systemd/oomd.conf
+[OOM]
+DefaultMemoryPressureDurationUSec=2s
+EOF
+# Mask oomd by default -- envd will unmask and start it when oom-mode=systemd-oomd.
+systemctl mask systemd-oomd.service
 
 echo "Setting up shell"
 echo "export SHELL='/bin/bash'" >/etc/profile.d/shell.sh
