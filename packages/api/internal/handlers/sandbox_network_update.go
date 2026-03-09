@@ -3,12 +3,14 @@ package handlers
 import (
 	"fmt"
 	"net/http"
+	"slices"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
+	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -36,17 +38,37 @@ func (a *APIStore) PutSandboxesSandboxIDNetwork(
 		return
 	}
 
-	var allowedCIDRs []string
+	var allowedEntries []string
 	if body.AllowOut != nil {
-		allowedCIDRs = *body.AllowOut
+		allowedEntries = *body.AllowOut
 	}
 
-	var deniedCIDRs []string
+	var deniedEntries []string
 	if body.DenyOut != nil {
-		deniedCIDRs = *body.DenyOut
+		deniedEntries = *body.DenyOut
 	}
 
-	if apiErr := a.orchestrator.UpdateSandboxNetworkConfig(ctx, team.ID, sandboxID, allowedCIDRs, deniedCIDRs); apiErr != nil {
+	// Validate denyOut entries are valid IPs/CIDRs (not domains).
+	for _, entry := range deniedEntries {
+		if !sandbox_network.IsIPOrCIDR(entry) {
+			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("invalid denied CIDR %s", entry))
+			return
+		}
+	}
+
+	// When specifying domains in allowOut, require deny-all (0.0.0.0/0) in denyOut.
+	// Without it, domain filtering is meaningless since traffic is allowed by default.
+	if len(allowedEntries) > 0 {
+		_, allowedDomains := sandbox_network.ParseAddressesAndDomains(allowedEntries)
+		hasBlockAll := slices.Contains(deniedEntries, sandbox_network.AllInternetTrafficCIDR)
+
+		if len(allowedDomains) > 0 && !hasBlockAll {
+			a.sendAPIStoreError(c, http.StatusBadRequest, ErrMsgDomainsRequireBlockAll)
+			return
+		}
+	}
+
+	if apiErr := a.orchestrator.UpdateSandboxNetworkConfig(ctx, team.ID, sandboxID, allowedEntries, deniedEntries); apiErr != nil {
 		telemetry.ReportError(ctx, "error updating sandbox network config", apiErr.Err)
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 

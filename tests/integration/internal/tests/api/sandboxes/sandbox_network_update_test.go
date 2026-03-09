@@ -161,6 +161,65 @@ func TestUpdateNetworkConfig_Unauthorized(t *testing.T) {
 	require.Equal(t, http.StatusUnauthorized, resp.StatusCode())
 }
 
+// TestUpdateNetworkConfig_InvalidDenyCIDR returns 400 when denyOut contains
+// a non-IP/CIDR value (e.g. a domain name).
+func TestUpdateNetworkConfig_InvalidDenyCIDR(t *testing.T) {
+	t.Parallel()
+
+	templateID := ensureNetworkTestTemplate(t)
+	ctx := t.Context()
+	client := setup.GetAPIClient()
+
+	sbx := utils.SetupSandboxWithCleanup(t, client,
+		utils.WithTemplateID(templateID),
+		utils.WithTimeout(60),
+	)
+
+	resp, err := client.PutSandboxesSandboxIDNetworkWithResponse(ctx, sbx.SandboxID,
+		api.PutSandboxesSandboxIDNetworkJSONRequestBody{
+			DenyOut: &[]string{"example.com"},
+		},
+		setup.WithAPIKey(),
+	)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode())
+}
+
+// TestUpdateNetworkConfig_DomainWithoutDenyAll returns 400 when allowOut
+// contains a domain but denyOut does not include the block-all CIDR.
+func TestUpdateNetworkConfig_DomainWithoutDenyAll(t *testing.T) {
+	t.Parallel()
+
+	templateID := ensureNetworkTestTemplate(t)
+	ctx := t.Context()
+	client := setup.GetAPIClient()
+
+	sbx := utils.SetupSandboxWithCleanup(t, client,
+		utils.WithTemplateID(templateID),
+		utils.WithTimeout(60),
+	)
+
+	resp, err := client.PutSandboxesSandboxIDNetworkWithResponse(ctx, sbx.SandboxID,
+		api.PutSandboxesSandboxIDNetworkJSONRequestBody{
+			AllowOut: &[]string{"google.com"},
+		},
+		setup.WithAPIKey(),
+	)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode())
+
+	// Also verify that adding deny-all makes it succeed
+	resp, err = client.PutSandboxesSandboxIDNetworkWithResponse(ctx, sbx.SandboxID,
+		api.PutSandboxesSandboxIDNetworkJSONRequestBody{
+			AllowOut: &[]string{"google.com"},
+			DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
+		},
+		setup.WithAPIKey(),
+	)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode())
+}
+
 // TestUpdateNetworkConfig_PauseResume verifies that dynamically updated
 // network rules survive a pause/resume cycle.
 func TestUpdateNetworkConfig_PauseResume(t *testing.T) {
