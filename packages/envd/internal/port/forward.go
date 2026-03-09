@@ -12,6 +12,7 @@ import (
 	"net"
 	"os/exec"
 	"syscall"
+	"time"
 
 	"github.com/rs/zerolog"
 
@@ -40,6 +41,7 @@ type PortToForward struct {
 type Forwarder struct {
 	logger        *zerolog.Logger
 	cgroupManager cgroups.Manager
+	oomMode       string
 	// Map of ports that are being currently forwarded.
 	ports             map[string]*PortToForward
 	scannerSubscriber *ScannerSubscriber
@@ -50,6 +52,7 @@ func NewForwarder(
 	logger *zerolog.Logger,
 	scanner *Scanner,
 	cgroupManager cgroups.Manager,
+	oomMode string,
 ) *Forwarder {
 	scannerSub := scanner.AddSubscriber(
 		logger,
@@ -67,6 +70,7 @@ func NewForwarder(
 		ports:             make(map[string]*PortToForward),
 		scannerSubscriber: scannerSub,
 		cgroupManager:     cgroupManager,
+		oomMode:           oomMode,
 	}
 }
 
@@ -135,18 +139,35 @@ func (f *Forwarder) startPortForwarding(ctx context.Context, p *PortToForward) {
 	// https://unix.stackexchange.com/questions/311492/redirect-application-listening-on-localhost-to-listening-on-external-interface
 	// socat -d -d TCP4-LISTEN:4000,bind=169.254.0.21,fork TCP4:localhost:4000
 	// reuseaddr is used to fix the "Address already in use" error when restarting socat quickly.
-	cmd := exec.CommandContext(ctx,
-		"socat", "-d", "-d", "-d",
-		fmt.Sprintf("TCP4-LISTEN:%v,bind=%s,reuseaddr,fork", p.port, f.sourceIP.To4()),
-		fmt.Sprintf("TCP%d:localhost:%v", p.family, p.port),
-	)
+	var cmd *exec.Cmd
 
-	cgroupFD, ok := f.cgroupManager.GetFileDescriptor(cgroups.ProcessTypeSocat)
+	if f.oomMode == "systemd-oomd" {
+		unitName := fmt.Sprintf("e2b-socat-%d.scope", time.Now().UnixNano())
+		cmd = exec.CommandContext(ctx,
+			"systemd-run", "--scope", "--quiet",
+			"--unit="+unitName,
+			"--slice=e2b-socat.slice",
+			"--",
+			"socat", "-d", "-d", "-d",
+			fmt.Sprintf("TCP4-LISTEN:%v,bind=%s,reuseaddr,fork", p.port, f.sourceIP.To4()),
+			fmt.Sprintf("TCP%d:localhost:%v", p.family, p.port),
+		)
+		// No Credential -- socat runs as root via systemd-run.
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	} else {
+		cmd = exec.CommandContext(ctx,
+			"socat", "-d", "-d", "-d",
+			fmt.Sprintf("TCP4-LISTEN:%v,bind=%s,reuseaddr,fork", p.port, f.sourceIP.To4()),
+			fmt.Sprintf("TCP%d:localhost:%v", p.family, p.port),
+		)
 
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Setpgid:     true,
-		CgroupFD:    cgroupFD,
-		UseCgroupFD: ok,
+		cgroupFD, ok := f.cgroupManager.GetFileDescriptor(cgroups.ProcessTypeSocat)
+
+		cmd.SysProcAttr = &syscall.SysProcAttr{
+			Setpgid:     true,
+			CgroupFD:    cgroupFD,
+			UseCgroupFD: ok,
+		}
 	}
 
 	f.logger.Debug().

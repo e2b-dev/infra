@@ -240,7 +240,7 @@ func main() {
 	defer portScanner.Destroy()
 
 	portLogger := l.With().Str("logger", "port-forwarder").Logger()
-	portForwarder := publicport.NewForwarder(&portLogger, portScanner, cgroupManager)
+	portForwarder := publicport.NewForwarder(&portLogger, portScanner, cgroupManager, oomMode)
 	go portForwarder.StartForwarding(ctx)
 
 	go portScanner.ScanAndBroadcast()
