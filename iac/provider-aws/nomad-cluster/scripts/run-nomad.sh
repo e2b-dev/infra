@@ -195,8 +195,8 @@ client {
   node_pool = "$node_pool"
   meta {
     "node_pool" = "$node_pool"
+    "node_labels" = "${node_labels:-}"
     ${job_constraint:+"\"job_constraint\"" = "\"$job_constraint\""}
-    ${node_labels:+"\"node_labels\"" = "\"$node_labels\""}
   }
   max_kill_timeout = "24h"
 }
