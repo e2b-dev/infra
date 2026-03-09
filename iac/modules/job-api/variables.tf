@@ -125,6 +125,16 @@ variable "redis_tls_ca_base64" {
   sensitive = true
 }
 
+variable "db_max_open_connections" {
+  type    = number
+  default = 40
+}
+
+variable "db_min_idle_connections" {
+  type    = number
+  default = 5
+}
+
 variable "redis_pool_size" {
   type    = number
   default = 160

@@ -119,6 +119,8 @@ job "api" {
         SANDBOX_ACCESS_TOKEN_HASH_SEED = "${sandbox_access_token_hash_seed}"
 
         POSTGRES_CONNECTION_STRING              = "${postgres_connection_string}"
+        DB_MAX_OPEN_CONNECTIONS                = "${db_max_open_connections}"
+        DB_MIN_IDLE_CONNECTIONS                = "${db_min_idle_connections}"
         AUTH_DB_CONNECTION_STRING               = "${postgres_connection_string}"
         AUTH_DB_READ_REPLICA_CONNECTION_STRING  = "${postgres_read_replica_connection_string}"
         SUPABASE_JWT_SECRETS                    = "${supabase_jwt_secrets}"
