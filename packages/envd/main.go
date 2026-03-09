@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"time"
@@ -58,6 +59,7 @@ var (
 	commitFlag   bool
 	startCmdFlag string
 	cgroupRoot   string
+	oomMode      string
 )
 
 func parseFlags() {
@@ -101,6 +103,13 @@ func parseFlags() {
 		"cgroup-root",
 		"/sys/fs/cgroup",
 		"cgroup root directory",
+	)
+
+	flag.StringVar(
+		&oomMode,
+		"oom-mode",
+		"cgroup",
+		`OOM management mode: "cgroup" (default) uses manual cgroup2 limits, "systemd-oomd" delegates to systemd-oomd via slice units`,
 	)
 
 	flag.Parse()
@@ -249,6 +258,20 @@ func createCgroupManager() (m cgroups.Manager) {
 			m = cgroups.NewNoopManager()
 		}
 	}()
+
+	if oomMode == "systemd-oomd" {
+		// Unmask and start systemd-oomd -- the service was masked during provisioning.
+		if out, err := exec.Command("systemctl", "unmask", "systemd-oomd").CombinedOutput(); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to unmask systemd-oomd: %v: %s\n", err, out)
+		}
+		if out, err := exec.Command("systemctl", "start", "systemd-oomd").CombinedOutput(); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to start systemd-oomd: %v: %s\n", err, out)
+		}
+
+		// No manual cgroup management needed -- systemd slices handle resource
+		// limits and systemd-oomd handles OOM killing.
+		return cgroups.NewNoopManager()
+	}
 
 	metrics, err := host.GetMetrics()
 	if err != nil {
