@@ -93,7 +93,9 @@ job "template-manager" {
       }
 
       env {
-        NODE_ID                       = "$${node.unique.name}"
+        NODE_ID     = "$${node.unique.name}"
+        NODE_LABELS = "$${meta.node_labels}"
+
         CONSUL_TOKEN                  = "${consul_acl_token}"
 %{ if provider == "gcp" }
         GOOGLE_SERVICE_ACCOUNT_BASE64 = "${provider_gcp_config.service_account_key}"
