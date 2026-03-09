@@ -11,7 +11,7 @@ import (
 	database "github.com/e2b-dev/infra/packages/db/queries"
 )
 
-const poolName = "sandboxes"
+const poolName = "main"
 
 type Client struct {
 	*database.Queries
