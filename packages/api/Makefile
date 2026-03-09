@@ -7,9 +7,9 @@ $(if $(HOSTNAME),,$(error Failed to determine hostname: both 'hostname' and 'hos
 expectedMigration := $(shell ./../../scripts/get-latest-migration.sh)
 
 ifeq ($(PROVIDER),aws)
-	IMAGE_REGISTRY := $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com/$(PREFIX)core/api
+	REGISTRY_PREFIX := $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com/$(PREFIX)core
 else
-	IMAGE_REGISTRY := $(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/$(PREFIX)core/api
+	REGISTRY_PREFIX := $(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/$(PREFIX)core
 endif
 
 .PHONY: generate
@@ -42,6 +42,10 @@ run:
 	ORCHESTRATOR_PORT=5008 \
 	NODE_ID=integration-tests \
 	LOKI_URL=unset \
+	VOLUME_TOKEN_ISSUER=local.e2b.dev \
+	VOLUME_TOKEN_SIGNING_METHOD=ES256 \
+	VOLUME_TOKEN_SIGNING_KEY=ECDSA:LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1JR0hBZ0VBTUJNR0J5cUdTTTQ5QWdFR0NDcUdTTTQ5QXdFSEJHMHdhd0lCQVFRZ2xwTHZaNnZmSGNYanBvMFYKUzVncW5JM21kdTNBSGJ0UnhmcU1CNWViT3I2aFJBTkNBQVQ3MHBiSE5NY015eFRxTVJiRjN0bXNwemZQTDIwQQpldk1lWGN5MFVDMkRiRXJ2bXBuT2hDamxFT2l4TXVDRzdUekJDdllLNUM0bGdxY0FjVnZVclBwZgotLS0tLUVORCBQUklWQVRFIEtFWS0tLS0tCg== \
+	VOLUME_TOKEN_SIGNING_KEY_NAME=local-dev-2026-03-03 \
 	./bin/api --port 3000
 
 define setup_local_env
@@ -64,13 +68,16 @@ dev:
 # make metric=heap interval=90 profiler
 .PHONY: profiler
 profiler:
-	go tool pprof -http :9991 http://localhost:3000/debug/pprof/$(metric)?seconds=$(interval)\&timeout=120
+	go tool pprof -http :9991 http://localhost:6060/debug/pprof/$(metric)?seconds=$(interval)\&timeout=120
 
 .PHONY: build-and-upload
 build-and-upload:
 	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
 	$(eval EXPECTED_MIGRATION_TIMESTAMP := $(expectedMigration))
-	@ docker buildx build --platform linux/amd64 --tag $(IMAGE_REGISTRY) --push --build-arg COMMIT_SHA="$(COMMIT_SHA)" --build-arg EXPECTED_MIGRATION_TIMESTAMP="$(EXPECTED_MIGRATION_TIMESTAMP)"  -f ./Dockerfile ..
+	cd .. && REGISTRY_PREFIX=$(REGISTRY_PREFIX) \
+		COMMIT_SHA=$(COMMIT_SHA) \
+		EXPECTED_MIGRATION_TIMESTAMP=$(EXPECTED_MIGRATION_TIMESTAMP) \
+		docker buildx bake -f api/docker-bake.hcl --push
 
 .PHONY: test
 test:
@@ -79,3 +86,25 @@ test:
 .PHONY: lint
 lint:
 	golangci-lint run --fix ./...
+
+.PHONY: generate-key
+generate-local-key:
+	# Generate a new ECDSA key pair (P-256)
+	openssl ecparam -name prime256v1 -genkey -noout -out private.pem
+	openssl ec -in private.pem -pubout -out public.pem
+	# Update .env.local with the new private key and name stamped with today's date
+	KEY=$$(base64 -w0 private.pem); \
+	NAME=local-dev-$$(date +%F); \
+	if grep -q '^VOLUME_TOKEN_SIGNING_KEY=' .env.local; then \
+		sed -i "s|^VOLUME_TOKEN_SIGNING_KEY=.*|VOLUME_TOKEN_SIGNING_KEY=ECDSA:$${KEY}|" .env.local; \
+	else \
+		echo "VOLUME_TOKEN_SIGNING_KEY=ECDSA:$${KEY}" >> .env.local; \
+	fi; \
+	if grep -q '^VOLUME_TOKEN_SIGNING_KEY_NAME=' .env.local; then \
+		sed -i "s|^VOLUME_TOKEN_SIGNING_KEY_NAME=.*|VOLUME_TOKEN_SIGNING_KEY_NAME=$${NAME}|" .env.local; \
+	else \
+		echo "VOLUME_TOKEN_SIGNING_KEY_NAME=$${NAME}" >> .env.local; \
+	fi
+
+	echo "Use the following base64 encoded private key to validate the token's signature:"
+	echo "local-dev:ECDSA:$$(base64 -w0 public.pem)"

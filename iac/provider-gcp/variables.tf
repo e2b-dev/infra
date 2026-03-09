@@ -380,6 +380,11 @@ variable "redis_managed" {
   type    = bool
 }
 
+variable "redis_shard_count" {
+  type    = number
+  default = 1
+}
+
 variable "filestore_cache_enabled" {
   type        = bool
   description = "Set to true to enable Filestore cache. Can be set via TF_VAR_use_filestore_cache or USE_FILESTORE_CACHE env var."
@@ -396,6 +401,12 @@ variable "filestore_cache_capacity_gb" {
   type        = number
   description = "The capacity of the Filestore cache in GB"
   default     = 0
+}
+
+variable "filestore_nfs_version" {
+  type        = string
+  description = "The NFS protocol version to use"
+  default     = ""
 }
 
 variable "filestore_cache_cleanup_disk_usage_target" {
@@ -613,4 +624,48 @@ variable "loki_use_v13_schema_from" {
     condition     = var.loki_use_v13_schema_from == "" || can(regex("\\d{4}-\\d{2}-\\d{2}", var.loki_use_v13_schema_from))
     error_message = "must be YYYY-MM-DD"
   }
+}
+
+variable "persistent_volume_types" {
+  description = "Persistence layer for volumes"
+
+  type = map(object({
+    allow_deletion = optional(bool)
+    tier           = string
+    location       = optional(string)
+    capacity_gb    = number
+    protocol       = optional(string)
+    nfs_version    = optional(string)
+  }))
+
+  default = {}
+}
+
+variable "default_persistent_volume_type" {
+  type    = string
+  default = ""
+}
+
+variable "network_name" {
+  type    = string
+  default = "default"
+}
+
+variable "volume_token_issuer" {
+  type    = string
+  default = ""
+}
+
+variable "volume_token_valid_for" {
+  type    = string
+  default = ""
+}
+
+variable "volume_token_signature" {
+  type = object({
+    key    = string
+    name   = string
+    method = string
+  })
+  default = null
 }

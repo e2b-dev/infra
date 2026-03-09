@@ -918,10 +918,9 @@ func TestChangeResponseHeader(t *testing.T) {
 	}
 
 	require.NotNil(t, rsp, "response should not be nil")
-	assert.Equal(t, 200, rsp.StatusCode)
-
 	body, err := io.ReadAll(rsp.Body)
 	require.NoError(t, err)
+	require.Equal(t, 200, rsp.StatusCode, string(body))
 
 	var data data
 	err = json.Unmarshal(body, &data)

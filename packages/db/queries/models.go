@@ -25,6 +25,14 @@ type AccessToken struct {
 	AccessTokenMaskSuffix string
 }
 
+type ActiveTemplateBuild struct {
+	BuildID    uuid.UUID
+	TeamID     uuid.UUID
+	TemplateID string
+	Tags       []string
+	CreatedAt  time.Time
+}
+
 type Addon struct {
 	ID                            uuid.UUID
 	TeamID                        uuid.UUID
@@ -44,6 +52,18 @@ type Addon struct {
 type AuthUser struct {
 	ID    uuid.UUID
 	Email string
+}
+
+type BillingSandboxLog struct {
+	SandboxID       string
+	EnvID           string
+	Vcpu            int64
+	RamMb           int64
+	TotalDiskSizeMb int64
+	StartedAt       time.Time
+	StoppedAt       *time.Time
+	CreatedAt       time.Time
+	TeamID          uuid.UUID
 }
 
 type Cluster struct {
@@ -133,9 +153,11 @@ type Snapshot struct {
 }
 
 type SnapshotTemplate struct {
-	EnvID     string
-	SandboxID string
-	CreatedAt pgtype.Timestamptz
+	EnvID        string
+	SandboxID    string
+	CreatedAt    pgtype.Timestamptz
+	OriginNodeID *string
+	BuildID      *uuid.UUID
 }
 
 type Team struct {

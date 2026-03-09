@@ -35,6 +35,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/pkg/pool"
 	e2benv "github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	sharedmiddleware "github.com/e2b-dev/infra/packages/shared/pkg/middleware"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -72,7 +73,7 @@ func run() int {
 		}
 	}()
 
-	l, err := logger.NewLogger(ctx, logger.LoggerConfig{
+	l, err := logger.NewLogger(logger.LoggerConfig{
 		ServiceName:   serviceName,
 		IsInternal:    true,
 		IsDebug:       e2benv.IsDebug(),
@@ -164,6 +165,20 @@ func run() int {
 		sharedauth.HeaderSupabaseTeam,
 	}
 	r.Use(cors.New(corsConfig))
+
+	r.Use(sharedmiddleware.LoggingMiddleware(l, sharedmiddleware.Config{
+		TimeFormat:   time.RFC3339Nano,
+		UTC:          true,
+		DefaultLevel: zap.InfoLevel,
+		SkipPaths:    []string{"/health"},
+		Context: func(c *gin.Context) []zapcore.Field {
+			if teamInfo, ok := sharedauth.GetTeamInfo(c); ok {
+				return []zapcore.Field{logger.WithTeamID(teamInfo.ID.String())}
+			}
+
+			return nil
+		},
+	}))
 
 	r.Use(
 		middleware.OapiRequestValidatorWithOptions(swagger,

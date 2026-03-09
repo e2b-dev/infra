@@ -189,7 +189,7 @@ function generate_consul_config {
   else
     retry_join_json=$(
       cat <<EOF
-"retry_join": ["provider=gce project_name=$project_id tag_value=$cluster_tag_name"],
+"retry_join": ["provider=gce project_name=$project_id tag_value=$cluster_tag_name zone_pattern=$instance_region-.*"],
 EOF
     )
   fi
@@ -430,7 +430,7 @@ service_prefix "" {
 }
 EOF
       consul acl policy create -name "dns-request-policy" -rules @dns-request-policy.hcl -token="${consul_token}"
-      consul acl policy create -name "register-service-policy" -rules @register-service-policy.hcl -token="a59fafb6-6829-9e31-9787-6a07c8ea586d"
+      consul acl policy create -name "register-service-policy" -rules @register-service-policy.hcl -token="${consul_token}"
       consul acl token create -secret "${dns_request_token}" -description "Client Token" -policy-name "dns-request-policy" -policy-name "register-service-policy" -token="${consul_token}"
       rm dns-request-policy.hcl
       rm register-service-policy.hcl

@@ -82,6 +82,12 @@ type BuildsStatusesResponse struct {
 	BuildStatuses []BuildStatusItem `json:"buildStatuses"`
 }
 
+// CPUCount CPU cores for the sandbox
+type CPUCount = int64
+
+// DiskSizeMB Disk size for the sandbox in MiB
+type DiskSizeMB = int64
+
 // Error defines model for Error.
 type Error struct {
 	// Code Error code.
@@ -121,6 +127,39 @@ type ListedBuild struct {
 	TemplateId string `json:"templateId"`
 }
 
+// MemoryMB Memory for the sandbox in MiB
+type MemoryMB = int64
+
+// SandboxRecord defines model for SandboxRecord.
+type SandboxRecord struct {
+	// Alias Alias of the template
+	Alias *string `json:"alias,omitempty"`
+
+	// CpuCount CPU cores for the sandbox
+	CpuCount CPUCount `json:"cpuCount"`
+
+	// DiskSizeMB Disk size for the sandbox in MiB
+	DiskSizeMB DiskSizeMB `json:"diskSizeMB"`
+
+	// Domain Base domain where the sandbox traffic is accessible
+	Domain *string `json:"domain"`
+
+	// MemoryMB Memory for the sandbox in MiB
+	MemoryMB MemoryMB `json:"memoryMB"`
+
+	// SandboxID Identifier of the sandbox
+	SandboxID string `json:"sandboxID"`
+
+	// StartedAt Time when the sandbox was started
+	StartedAt time.Time `json:"startedAt"`
+
+	// StoppedAt Time when the sandbox was stopped
+	StoppedAt *time.Time `json:"stoppedAt"`
+
+	// TemplateID Identifier of the template from which is the sandbox created
+	TemplateID string `json:"templateID"`
+}
+
 // BuildId defines model for build_id.
 type BuildId = openapi_types.UUID
 
@@ -138,6 +177,9 @@ type BuildsCursor = string
 
 // BuildsLimit defines model for builds_limit.
 type BuildsLimit = int32
+
+// SandboxID defines model for sandboxID.
+type SandboxID = string
 
 // N400 defines model for 400.
 type N400 = Error
@@ -189,6 +231,9 @@ type ServerInterface interface {
 	// Health check
 	// (GET /health)
 	GetHealth(c *gin.Context)
+	// Get sandbox record
+	// (GET /sandboxes/{sandboxID}/record)
+	GetSandboxesSandboxIDRecord(c *gin.Context, sandboxID SandboxID)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -332,6 +377,34 @@ func (siw *ServerInterfaceWrapper) GetHealth(c *gin.Context) {
 	siw.Handler.GetHealth(c)
 }
 
+// GetSandboxesSandboxIDRecord operation middleware
+func (siw *ServerInterfaceWrapper) GetSandboxesSandboxIDRecord(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "sandboxID" -------------
+	var sandboxID SandboxID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sandboxID", c.Param("sandboxID"), &sandboxID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter sandboxID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetSandboxesSandboxIDRecord(c, sandboxID)
+}
+
 // GinServerOptions provides options for the Gin server.
 type GinServerOptions struct {
 	BaseURL      string
@@ -363,36 +436,43 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/builds/statuses", wrapper.GetBuildsStatuses)
 	router.GET(options.BaseURL+"/builds/:build_id", wrapper.GetBuildsBuildId)
 	router.GET(options.BaseURL+"/health", wrapper.GetHealth)
+	router.GET(options.BaseURL+"/sandboxes/:sandboxID/record", wrapper.GetSandboxesSandboxIDRecord)
 }
 
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"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",
+	"IwAA",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

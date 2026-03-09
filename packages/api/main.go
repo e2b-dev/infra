@@ -40,6 +40,7 @@ import (
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+	sharedmiddleware "github.com/e2b-dev/infra/packages/shared/pkg/middleware"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	sharedutils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -163,35 +164,31 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 
 	r.Use(customMiddleware.InitLaunchDarklyContext)
 
-	r.Use(
-		// Request logging must be executed after authorization (if required) is done,
-		// so that we can log team ID.
-		customMiddleware.ExcludeRoutes(
-			func(c *gin.Context) {
-				teamID := ""
+	// Request logging must be executed after authorization (if required) is done,
+	// so that we can log team ID.
+	r.Use(sharedmiddleware.LoggingMiddleware(l, sharedmiddleware.Config{
+		TimeFormat:   time.RFC3339Nano,
+		UTC:          true,
+		DefaultLevel: zap.InfoLevel,
+		Skipper: func(c *gin.Context) bool {
+			switch c.FullPath() {
+			case "/health",
+				"/sandboxes/:sandboxID/refreshes",
+				"/templates/:templateID/builds/:buildID/logs",
+				"/templates/:templateID/builds/:buildID/status":
+				return true
+			}
 
-				// Get team from context, use TeamContextKey
-				if teamInfo, ok := auth.GetTeamInfo(c); ok {
-					teamID = teamInfo.ID.String()
-				}
+			return false
+		},
+		Context: func(c *gin.Context) []zapcore.Field {
+			if teamInfo, ok := auth.GetTeamInfo(c); ok {
+				return []zapcore.Field{logger.WithTeamID(teamInfo.ID.String())}
+			}
 
-				reqLogger := l
-				if teamID != "" {
-					reqLogger = l.With(logger.WithTeamID(teamID))
-				}
-
-				customMiddleware.LoggingMiddleware(reqLogger, customMiddleware.Config{
-					TimeFormat:   time.RFC3339Nano,
-					UTC:          true,
-					DefaultLevel: zap.InfoLevel,
-				})(c)
-			},
-			"/health",
-			"/sandboxes/:sandboxID/refreshes",
-			"/templates/:templateID/builds/:buildID/logs",
-			"/templates/:templateID/builds/:buildID/status",
-		),
-	)
+			return nil
+		},
+	}))
 
 	// We now register our store above as the handler for the interface
 	api.RegisterHandlersWithOptions(r, apiStore, api.GinServerOptions{
@@ -254,7 +251,7 @@ func run() int {
 		}
 	}()
 
-	l := sharedutils.Must(logger.NewLogger(ctx, logger.LoggerConfig{
+	l := sharedutils.Must(logger.NewLogger(logger.LoggerConfig{
 		ServiceName:   serviceName,
 		IsInternal:    true,
 		IsDebug:       env.IsDebug(),
@@ -287,6 +284,11 @@ func run() int {
 	)
 	defer sbxLoggerInternal.Sync()
 	sbxlogger.SetSandboxLoggerInternal(sbxLoggerInternal)
+
+	// Register Go runtime metric callbacks (goroutines, heap, GC, etc.)
+	if err := tel.StartRuntimeInstrumentation(); err != nil {
+		l.Warn(ctx, "failed to start runtime instrumentation", zap.Error(err))
+	}
 
 	// Convert the string expectedMigrationTimestamp  to a int64
 	expectedMigration, err := strconv.ParseInt(expectedMigrationTimestamp, 10, 64)
@@ -368,7 +370,7 @@ func run() int {
 	// Create an instance of our handler which satisfies the generated interface
 	//  (use the outer context rather than the signal handling
 	//   context so it doesn't exit first.)
-	apiStore := handlers.NewAPIStore(ctx, tel, config)
+	apiStore := handlers.NewAPIStore(ctx, tel, config, serviceName)
 	cleanupFns = append(cleanupFns, apiStore.Close)
 
 	grpcAddr := fmt.Sprintf("0.0.0.0:%d", config.APIGrpcPort)
@@ -437,6 +439,16 @@ func run() int {
 		}
 	})
 
+	pprofServer := telemetry.NewPprofServer()
+
+	wg.Go(func() {
+		l.Info(ctx, "pprof server starting", zap.Int("port", telemetry.DefaultPprofPort))
+
+		if err := pprofServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			l.Error(ctx, "pprof server encountered error", zap.Error(err))
+		}
+	})
+
 	wg.Go(func() {
 		<-signalCtx.Done()
 
@@ -458,10 +470,13 @@ func run() int {
 		// panic and defers start running, _probably_ won't
 		// even have a chance to return before the program
 		// returns.
-
 		if err := s.Shutdown(ctx); err != nil {
 			exitCode.Add(1)
 			l.Error(ctx, "Http service shutdown error", zap.Int("port", port), zap.Error(err))
+		}
+
+		if err := pprofServer.Shutdown(ctx); err != nil {
+			l.Error(ctx, "pprof server shutdown error", zap.Error(err))
 		}
 
 		grpcServer.GracefulStop()

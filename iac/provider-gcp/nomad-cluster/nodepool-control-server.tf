@@ -30,10 +30,11 @@ data "google_compute_zones" "region_zones" {
 }
 
 resource "google_compute_region_instance_group_manager" "server_pool" {
+  provider = google-beta
+
   region             = var.gcp_region
   name               = "${local.server_pool_name}-rig"
   base_instance_name = local.server_pool_name
-
 
   target_pools                     = []
   target_size                      = var.server_cluster_size
@@ -57,8 +58,13 @@ resource "google_compute_region_instance_group_manager" "server_pool" {
     // We want to keep the instance distribution even
     instance_redistribution_type = "PROACTIVE"
     max_unavailable_fixed        = 0
+
     // The number has to be a multiple of the number of zones in the region
     max_surge_fixed = length(data.google_compute_zones.region_zones.names)
+
+    // Wait 120s after instance is "healthy" before considering it truly ready
+    // Gives Consul time to join Raft before GCP proceeds to kill old instances
+    min_ready_sec = 120
   }
 
   auto_healing_policies {

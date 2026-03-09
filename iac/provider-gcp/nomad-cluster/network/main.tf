@@ -56,7 +56,7 @@ locals {
       protocol                        = "HTTP"
       port                            = var.api_port.port
       port_name                       = var.api_port.name
-      timeout_sec                     = 65
+      timeout_sec                     = 80
       connection_draining_timeout_sec = 1
       http_health_check = {
         request_path       = var.api_port.health_path
@@ -243,7 +243,7 @@ resource "google_certificate_manager_certificate_map_entry" "subdomains_map_entr
 # Load balancers
 resource "google_compute_url_map" "orch_map" {
   name            = "${var.prefix}orch-map"
-  default_service = google_compute_backend_service.default["nomad"].self_link
+  default_service = google_compute_backend_service.default["session"].self_link
 
   host_rule {
     hosts        = concat(["api.${var.domain_name}"], [for d in var.additional_domains : "api.${d}"])

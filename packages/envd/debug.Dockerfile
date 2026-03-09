@@ -55,15 +55,6 @@ RUN echo ' \n\
 makestep 1 -1 \n\
 ' >/etc/chrony/chrony.conf
 
-RUN mkdir -p /etc/systemd/system/chrony.service.d
-RUN echo ' \n\
-[Service] \n\
-ExecStart= \n\
-ExecStart=/usr/sbin/chronyd \n\
-User=root \n\
-Group=root \n\
-' >/etc/systemd/system/chrony.service.d/override.conf
-
 RUN systemctl enable chrony 2>&1
 
 COPY bin/envd /usr/bin/envd

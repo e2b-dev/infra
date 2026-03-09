@@ -4,3 +4,5 @@ mkfcenv.tar.gz
 /.clickhouse
 /.db
 /.shared
+/private.pem
+/public.pem

@@ -54,6 +54,7 @@ endef
 .PHONY: run-local
 run-local:
 	$(call setup_local_env)
+	mkdir -p ./.data/test-volume
 	NODE_ID=$(HOSTNAME) ./bin/orchestrator
 
 .PHONY: upload/clean-nfs-cache

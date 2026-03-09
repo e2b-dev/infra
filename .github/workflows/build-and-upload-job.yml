@@ -20,6 +20,9 @@ on:
         required: true
         type: string
 
+permissions:
+  contents: read
+
 concurrency:
   group: deploy-${{ inputs.environment }}
   cancel-in-progress: false
@@ -44,6 +47,7 @@ jobs:
           environment: ${{ inputs.environment }}
           infisical_client_id: ${{ secrets.INFISICAL_CLIENT_ID }}
           infisical_client_secret: ${{ secrets.INFISICAL_CLIENT_SECRET }}
+          install_gcloud: "true"
 
       - name: Set up Docker
         env:

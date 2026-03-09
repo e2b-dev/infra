@@ -78,3 +78,7 @@ const (
 	BuildStatusGroupReady      BuildStatusGroup = "ready"
 	BuildStatusGroupFailed     BuildStatusGroup = "failed"
 )
+
+func (g BuildStatusGroup) IsTerminal() bool {
+	return g == BuildStatusGroupReady || g == BuildStatusGroupFailed
+}

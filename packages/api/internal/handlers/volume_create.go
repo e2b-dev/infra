@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -106,6 +107,20 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 	}
 
 	if err := a.createVolume(ctx, clusterID, volume); err != nil {
+		if errors.Is(err, ErrClusterNotFound) {
+			a.sendAPIStoreError(c, http.StatusServiceUnavailable, "Cluster not found")
+			telemetry.ReportError(ctx, "cluster not found", err)
+
+			return
+		}
+
+		if errors.Is(err, ErrUnknownVolumeType) {
+			a.sendAPIStoreError(c, http.StatusInternalServerError, "Unknown volume type")
+			telemetry.ReportError(ctx, "Unknown volume type", err)
+
+			return
+		}
+
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when creating directory")
 		telemetry.ReportCriticalError(ctx, "error when creating directory", err)
 
@@ -125,9 +140,18 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 		return
 	}
 
-	result := api.Volume{
+	token, err := generateVolumeContentToken(a.config.VolumesToken, volume, team)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Volume created, but failed to generate volume content token")
+		telemetry.ReportCriticalError(ctx, "Failed to generate volume content token", err)
+
+		return
+	}
+
+	result := api.VolumeAndToken{
 		VolumeID: volume.ID.String(),
 		Name:     volume.Name,
+		Token:    token,
 	}
 
 	c.JSON(http.StatusCreated, result)
@@ -149,11 +173,9 @@ func isValidVolumeName(name string) bool {
 }
 
 func (a *APIStore) createVolume(ctx context.Context, clusterID uuid.UUID, volume queries.Volume) error {
-	return a.executeOnOrchestrator(ctx, clusterID, func(ctx context.Context, client *clusters.GRPCClient) error {
+	return a.executeOnOrchestratorByClusterID(ctx, clusterID, func(ctx context.Context, client *clusters.GRPCClient) error {
 		_, err := client.Volumes.Create(ctx, &orchestrator.VolumeCreateRequest{
-			VolumeId:   volume.ID.String(),
-			VolumeType: volume.VolumeType,
-			TeamId:     volume.TeamID.String(),
+			Volume: toVolumeKey(volume),
 		})
 
 		return err
