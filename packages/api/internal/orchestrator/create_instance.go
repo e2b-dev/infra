@@ -267,7 +267,7 @@ func (o *Orchestrator) CreateSandbox(
 	nodeClusterID := clusters.WithClusterFallback(team.ClusterID)
 	clusterNodes := o.GetClusterNodes(nodeClusterID)
 
-	labelFilteringEnabled := o.featureFlagsClient.BoolFlag(ctx, feature_flags.SandboxLabelBasedSchedulingFlag, feature_flags.TeamContext(team.ID.String()))
+	labelFilteringEnabled := o.featureFlagsClient.BoolFlag(ctx, feature_flags.SandboxLabelBasedSchedulingFlag, feature_flags.TeamContext(team.ID.String()), feature_flags.SandboxContext(sandboxID))
 
 	node, err = placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, builds.ToMachineInfo(build), labelFilteringEnabled, team.SandboxSchedulingLabels)
 	if err != nil {
