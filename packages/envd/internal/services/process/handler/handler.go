@@ -89,6 +89,7 @@ func New(
 	logger *zerolog.Logger,
 	defaults *execcontext.Defaults,
 	cgroupManager cgroups.Manager,
+	oomMode string,
 	cancel context.CancelFunc,
 ) (*Handler, error) {
 	// User command string for logging (without the internal wrapper details).

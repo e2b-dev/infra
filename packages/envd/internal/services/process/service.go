@@ -21,19 +21,21 @@ type Service struct {
 	logger        *zerolog.Logger
 	defaults      *execcontext.Defaults
 	cgroupManager cgroups.Manager
+	oomMode       string
 }
 
-func newService(l *zerolog.Logger, defaults *execcontext.Defaults, cgroupManager cgroups.Manager) *Service {
+func newService(l *zerolog.Logger, defaults *execcontext.Defaults, cgroupManager cgroups.Manager, oomMode string) *Service {
 	return &Service{
 		logger:        l,
 		processes:     utils.NewMap[uint32, *handler.Handler](),
 		defaults:      defaults,
 		cgroupManager: cgroupManager,
+		oomMode:       oomMode,
 	}
 }
 
-func Handle(server *chi.Mux, l *zerolog.Logger, defaults *execcontext.Defaults, cgroupManager cgroups.Manager) *Service {
-	service := newService(l, defaults, cgroupManager)
+func Handle(server *chi.Mux, l *zerolog.Logger, defaults *execcontext.Defaults, cgroupManager cgroups.Manager, oomMode string) *Service {
+	service := newService(l, defaults, cgroupManager, oomMode)
 
 	interceptors := connect.WithInterceptors(logs.NewUnaryLogInterceptor(l))
 

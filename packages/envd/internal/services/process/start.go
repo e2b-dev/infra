@@ -31,7 +31,7 @@ func (s *Service) InitializeStartProcess(ctx context.Context, user *user.User, r
 	handlerL := s.logger.With().Str(string(logs.OperationIDKey), ctx.Value(logs.OperationIDKey).(string)).Logger()
 
 	startProcCtx, startProcCancel := context.WithCancel(ctx)
-	proc, err := handler.New(startProcCtx, user, req, &handlerL, s.defaults, s.cgroupManager, startProcCancel)
+	proc, err := handler.New(startProcCtx, user, req, &handlerL, s.defaults, s.cgroupManager, s.oomMode, startProcCancel)
 	if err != nil {
 		return err
 	}
@@ -86,6 +86,7 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 		&handlerL,
 		s.defaults,
 		s.cgroupManager,
+		s.oomMode,
 		cancelProc,
 	)
 	if err != nil {

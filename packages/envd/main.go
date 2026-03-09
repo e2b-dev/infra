@@ -194,7 +194,7 @@ func main() {
 	}()
 
 	processLogger := l.With().Str("logger", "process").Logger()
-	processService := processRpc.Handle(m, &processLogger, defaults, cgroupManager)
+	processService := processRpc.Handle(m, &processLogger, defaults, cgroupManager, oomMode)
 
 	service := api.New(&envLogger, defaults, mmdsChan, isNotFC)
 	handler := api.HandlerFromMux(service, m)
