@@ -298,14 +298,9 @@ func (u *Userfaultfd) Serve(
 				u.settleRequests.RLock()
 				defer u.settleRequests.RUnlock()
 
-				var copyMode CULong
 				var accessType block.AccessType
 
-				// Performing copy() on UFFD clears the WP bit unless we explicitly tell
-				// it not to. We do that for faults caused by a read access. Write accesses
-				// would anyways cause clear the write-protection bit.
 				if pf.flags&UFFD_PAGEFAULT_FLAG_WRITE == 0 {
-					copyMode = UFFDIO_COPY_MODE_WP
 					accessType = block.Read
 				} else {
 					accessType = block.Write
@@ -315,9 +310,9 @@ func (u *Userfaultfd) Serve(
 					ctx,
 					addr,
 					offset,
+					accessType,
 					source,
 					fdExit.SignalExit,
-					copyMode,
 				)
 				if err != nil {
 					return err
@@ -340,9 +335,9 @@ func (u *Userfaultfd) faultPage(
 	ctx context.Context,
 	addr uintptr,
 	offset int64,
+	accessType block.AccessType,
 	source block.Slicer,
 	onFailure func() error,
-	mode CULong,
 ) (bool, error) {
 	span := trace.SpanFromContext(ctx)
 
@@ -353,11 +348,21 @@ func (u *Userfaultfd) faultPage(
 	}()
 
 	var writeErr error
+	var mode CULong
+
+	// Performing copy() on UFFD clears the WP bit unless we explicitly tell
+	// it not to. We do that for faults caused by a read access. Write accesses
+	// would anyways clear the write-protection bit.
+	if accessType == block.Read {
+		mode = UFFDIO_COPY_MODE_WP
+	}
 
 	// Write to guest memory. nil data means zero-fill
 	switch {
 	case source == nil && u.pageSize == header.PageSize:
-		writeErr = u.fd.zero(addr, u.pageSize, mode)
+		// Here, `mode` is always 0. The only mode `userfaultfd_zeropage()` understands
+		// is UFFDIO_ZEROPAGE_DONT_WAKE, which we never use.
+		writeErr = u.fd.zero(addr, u.pageSize, 0)
 	case source == nil && u.pageSize == header.HugepageSize:
 		writeErr = u.fd.copy(addr, u.pageSize, header.EmptyHugePage, mode)
 	default:
