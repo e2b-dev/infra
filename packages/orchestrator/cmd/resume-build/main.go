@@ -1242,7 +1242,6 @@ func waitForPauseSignal(ctx context.Context, sbx *sandbox.Sandbox, signalName st
 			return nil
 		case err, ok := <-cmdErrCh:
 			if cmdErrCh == nil {
-
 				continue
 			}
 			if !ok {
