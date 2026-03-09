@@ -79,8 +79,11 @@ func PrintCompressionSummary(h *header.Header) {
 		compressedBytes   int64
 		frames            []storage.FrameSize
 		compressed        bool
+		compressionType   storage.CompressionType
 	}
 	buildCompressionStats := make(map[string]*buildStats)
+
+	compressionTypes := make(map[storage.CompressionType]bool)
 
 	for _, mapping := range h.Mapping {
 		buildID := mapping.BuildId.String()
@@ -96,6 +99,8 @@ func PrintCompressionSummary(h *header.Header) {
 		if mapping.FrameTable.IsCompressed() {
 			compressedMappings++
 			stats.compressed = true
+			stats.compressionType = mapping.FrameTable.CompressionType()
+			compressionTypes[stats.compressionType] = true
 
 			for _, frame := range mapping.FrameTable.Frames {
 				totalUncompressedBytes += int64(frame.U)
@@ -122,6 +127,17 @@ func PrintCompressionSummary(h *header.Header) {
 	}
 
 	fmt.Printf("Mappings:          %d compressed, %d uncompressed\n", compressedMappings, uncompressedMappings)
+
+	if len(compressionTypes) > 0 {
+		types := make([]string, 0, len(compressionTypes))
+		for ct := range compressionTypes {
+			types = append(types, ct.String())
+		}
+		fmt.Printf("Compression:       %s\n", types[0])
+		for _, t := range types[1:] {
+			fmt.Printf("                   %s\n", t)
+		}
+	}
 
 	if compressedMappings > 0 {
 		ratio := float64(totalUncompressedBytes) / float64(totalCompressedBytes)
@@ -160,8 +176,8 @@ func PrintCompressionSummary(h *header.Header) {
 			}
 
 			ratio := float64(stats.uncompressedBytes) / float64(stats.compressedBytes)
-			fmt.Printf("  %s: %d frames, U=%#x C=%#x (%s)\n",
-				label, len(stats.frames), stats.uncompressedBytes, stats.compressedBytes, FormatRatio(ratio))
+			fmt.Printf("  %s: %s, %d frames, U=%#x C=%#x (%s)\n",
+				label, stats.compressionType, len(stats.frames), stats.uncompressedBytes, stats.compressedBytes, FormatRatio(ratio))
 
 			// Frame stats
 			if len(stats.frames) > 0 {
