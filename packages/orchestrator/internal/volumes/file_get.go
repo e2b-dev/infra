@@ -1,8 +1,6 @@
 package volumes
 
 import (
-	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -90,20 +88,8 @@ func (s *Service) GetFile(request *orchestrator.VolumeFileGetRequest, server orc
 		Message: &orchestrator.VolumeFileGetResponse_Finish{
 			Finish: &orchestrator.VolumeFileGetResponseFinish{},
 		},
-	}); ignoreCanceledErr(err) != nil { // calling Send cancels the context
+	}); err != nil {
 		return fmt.Errorf("failed to send file finish: %w", err)
-	}
-
-	return nil
-}
-
-func ignoreCanceledErr(err error) error {
-	if err == nil {
-		return nil
-	}
-
-	if errors.Is(err, context.Canceled) {
-		return nil
 	}
 
 	return nil
