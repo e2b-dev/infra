@@ -11,6 +11,8 @@ import (
 	database "github.com/e2b-dev/infra/packages/db/queries"
 )
 
+const poolName = "sandboxes"
+
 type Client struct {
 	*database.Queries
 
@@ -18,7 +20,7 @@ type Client struct {
 }
 
 func NewClient(ctx context.Context, databaseURL string, options ...pool.Option) (*Client, error) {
-	dbClient, connPool, err := pool.New(ctx, databaseURL, options...)
+	dbClient, connPool, err := pool.New(ctx, databaseURL, poolName, options...)
 	if err != nil {
 		return nil, err
 	}

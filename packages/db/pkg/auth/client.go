@@ -8,10 +8,12 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/lib/pq" //nolint:blank-imports
 
-	"github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
+	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/db/pkg/pool"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 )
+
+const poolName = "auth"
 
 type Client struct {
 	Read      *authqueries.Queries
@@ -21,7 +23,7 @@ type Client struct {
 }
 
 func NewClient(ctx context.Context, databaseURL, replicaURL string, options ...pool.Option) (*Client, error) {
-	writeClient, writePool, err := pool.New(ctx, databaseURL, options...)
+	writeClient, writePool, err := pool.New(ctx, databaseURL, poolName, options...)
 	if err != nil {
 		return nil, err
 	}
