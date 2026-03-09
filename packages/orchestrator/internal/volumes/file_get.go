@@ -1,6 +1,8 @@
 package volumes
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -24,7 +26,7 @@ func (s *Service) GetFile(request *orchestrator.VolumeFileGetRequest, server orc
 		return fmt.Errorf("failed to build volume path: %w", err)
 	}
 
-	span.AddEvent("retrieving file", trace.WithAttributes(
+	span.AddEvent("opening file", trace.WithAttributes(
 		attribute.String("path", paths.HostFullPath),
 	))
 
@@ -34,37 +36,75 @@ func (s *Service) GetFile(request *orchestrator.VolumeFileGetRequest, server orc
 	}
 	defer f.Close()
 
+	span.AddEvent("getting file info")
 	info, err := f.Stat()
 	if err != nil {
 		return fmt.Errorf("failed to stat file: %w", err)
 	}
 
+	span.AddEvent("sending file start", trace.WithAttributes(
+		attribute.Int64("size", info.Size()),
+	))
 	if err := server.Send(&orchestrator.VolumeFileGetResponse{
-		Message: &orchestrator.VolumeFileGetResponse_Start{Start: &orchestrator.VolumeFileGetResponseStart{Size: info.Size()}},
+		Message: &orchestrator.VolumeFileGetResponse_Start{
+			Start: &orchestrator.VolumeFileGetResponseStart{
+				Size: info.Size(),
+			},
+		},
 	}); err != nil {
 		return fmt.Errorf("failed to send file start: %w", err)
 	}
 
 	buf := make([]byte, fileStreamChunkSize)
 	for {
+		span.AddEvent("reading file chunk")
 		n, err := f.Read(buf)
 		if n > 0 {
+			span.AddEvent("send file chunk", trace.WithAttributes(
+				attribute.Int("size", n),
+			))
 			if err := server.Send(&orchestrator.VolumeFileGetResponse{
-				Message: &orchestrator.VolumeFileGetResponse_Content{Content: &orchestrator.VolumeFileGetResponseContent{Content: buf[:n]}},
+				Message: &orchestrator.VolumeFileGetResponse_Content{
+					Content: &orchestrator.VolumeFileGetResponseContent{
+						Content: buf[:n],
+					},
+				},
 			}); err != nil {
 				return fmt.Errorf("failed to send file content: %w", err)
 			}
 		}
-		if err != nil {
-			if err == io.EOF {
-				return server.Send(&orchestrator.VolumeFileGetResponse{
-					Message: &orchestrator.VolumeFileGetResponse_Finish{
-						Finish: &orchestrator.VolumeFileGetResponseFinish{},
-					},
-				})
-			}
+		if err == nil {
+			// go grab another chunk
+			continue
+		}
 
+		if err != io.EOF {
 			return fmt.Errorf("failed to read file: %w", err)
 		}
+
+		span.AddEvent("file read complete")
+		break
 	}
+
+	if err := server.Send(&orchestrator.VolumeFileGetResponse{
+		Message: &orchestrator.VolumeFileGetResponse_Finish{
+			Finish: &orchestrator.VolumeFileGetResponseFinish{},
+		},
+	}); ignoreCanceledErr(err) != nil { // calling Send cancels the context
+		return fmt.Errorf("failed to send file finish: %w", err)
+	}
+
+	return nil
+}
+
+func ignoreCanceledErr(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	if errors.Is(err, context.Canceled) {
+		return nil
+	}
+
+	return nil
 }
