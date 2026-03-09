@@ -277,9 +277,10 @@ func createCgroupManager() (m cgroups.Manager) {
 			"memory.low": fmt.Sprintf("%d", 8*megabyte),
 		}),
 		cgroups.WithCgroup2ProcessType(cgroups.ProcessTypeUser, "user", map[string]string{
-			"memory.high": fmt.Sprintf("%d", userMemoryMax*9/10), // start throttling at 90% of hard limit
-			"memory.max":  fmt.Sprintf("%d", userMemoryMax),
-			"cpu.weight":  "50", // less than envd, and less than core processes that default to 100
+			"memory.high":      fmt.Sprintf("%d", userMemoryMax*9/10), // start throttling at 90% of hard limit
+			"memory.max":       fmt.Sprintf("%d", userMemoryMax),
+			"memory.oom.group": "1",  // kill all user processes at once for a clean failure state
+			"cpu.weight":       "50", // less than envd, and less than core processes that default to 100
 		}),
 	}
 	if cgroupRoot != "" {
