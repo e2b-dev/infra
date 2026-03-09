@@ -27,8 +27,7 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) e
 		offset,
 		directDataSource{data, int64(u.pageSize)},
 		nil,
-		// TODO: What mode should we pass here?
-		0,
+		UFFDIO_COPY_MODE_WP,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to fault page: %w", err)
