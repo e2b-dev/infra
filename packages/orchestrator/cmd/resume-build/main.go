@@ -563,7 +563,8 @@ func (r *runner) pauseOnce(ctx context.Context, opts pauseOptions, verbose bool)
 	}
 
 	// Handle pause trigger based on options
-	if opts.command != "" {
+	switch {
+	case opts.command != "":
 		if verbose {
 			fmt.Printf("🔧 Running command: %s\n", opts.command)
 		}
@@ -573,7 +574,7 @@ func (r *runner) pauseOnce(ctx context.Context, opts pauseOptions, verbose bool)
 		if verbose {
 			fmt.Println("✅ Command completed successfully")
 		}
-	} else if opts.commandSignal != "" {
+	case opts.commandSignal != "":
 		if verbose {
 			fmt.Printf("🔧 Starting command: %s\n", opts.commandSignal)
 		}
@@ -581,7 +582,7 @@ func (r *runner) pauseOnce(ctx context.Context, opts pauseOptions, verbose bool)
 		if err := waitForPauseSignal(ctx, sbx, "SIGUSR1", cmdErrCh); err != nil {
 			return pauseTimings{resume: resumeDur, err: err}, err
 		}
-	} else if opts.signalName != "" {
+	case opts.signalName != "":
 		if err := waitForPauseSignal(ctx, sbx, opts.signalName, nil); err != nil {
 			return pauseTimings{resume: resumeDur, err: err}, err
 		}
@@ -1237,13 +1238,16 @@ func waitForPauseSignal(ctx context.Context, sbx *sandbox.Sandbox, signalName st
 			return ctx.Err()
 		case <-sigCh:
 			fmt.Printf("📨 Received %s signal\n", signalName)
+
 			return nil
 		case err, ok := <-cmdErrCh:
 			if cmdErrCh == nil {
+
 				continue
 			}
 			if !ok {
 				cmdErrCh = nil
+
 				continue
 			}
 			if err != nil {
