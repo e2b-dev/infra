@@ -223,6 +223,8 @@ module "nomad" {
   sandbox_storage_backend                                = var.sandbox_storage_backend
   db_max_open_connections                                = var.db_max_open_connections
   db_min_idle_connections                                = var.db_min_idle_connections
+  auth_db_max_open_connections                           = var.auth_db_max_open_connections
+  auth_db_min_idle_connections                           = var.auth_db_min_idle_connections
 
   # Click Proxy
   client_proxy_count               = var.client_proxy_count

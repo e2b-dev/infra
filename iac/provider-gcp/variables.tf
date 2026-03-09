@@ -625,6 +625,16 @@ variable "db_min_idle_connections" {
   default = 5
 }
 
+variable "auth_db_max_open_connections" {
+  type    = number
+  default = 20
+}
+
+variable "auth_db_min_idle_connections" {
+  type    = number
+  default = 5
+}
+
 variable "loki_use_v13_schema_from" {
   type        = string
   description = "This should be a date soon after you deploy. Format = YYYY-MM-DD"

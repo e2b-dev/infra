@@ -79,7 +79,9 @@ tf_vars := \
 	$(call tfvar, DEFAULT_PERSISTENT_VOLUME_TYPE) \
 	$(call tfvar, PERSISTENT_VOLUME_TYPES) \
 	$(call tfvar, DB_MAX_OPEN_CONNECTIONS) \
-	$(call tfvar, DB_MIN_IDLE_CONNECTIONS)
+	$(call tfvar, DB_MIN_IDLE_CONNECTIONS) \
+	$(call tfvar, AUTH_DB_MAX_OPEN_CONNECTIONS) \
+	$(call tfvar, AUTH_DB_MIN_IDLE_CONNECTIONS)
 
 .PHONY: init
 init:
