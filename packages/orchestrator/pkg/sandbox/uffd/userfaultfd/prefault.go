@@ -34,7 +34,7 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) e
 	}
 
 	// We're treating prefault handling as if it was caused by a read access.
-	// This way, we will fault the page with UFFD_COPY_MODE_WP which will set
+	// This way, we will fault the page with UFFD_COPY_MODE_WP which will preserve
 	// the WP bit for the page. This works even in the case of a race with a
 	// concurrent on-demand write access.
 	//
@@ -47,9 +47,9 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) e
 		ctx,
 		addr,
 		offset,
+		block.Read,
 		directDataSource{data, int64(u.pageSize)},
 		nil,
-		UFFDIO_COPY_MODE_WP,
 	)
 	if err != nil {
 		span.RecordError(fmt.Errorf("could not prefault page"))
