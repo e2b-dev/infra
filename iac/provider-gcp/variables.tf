@@ -615,6 +615,16 @@ variable "sandbox_storage_backend" {
   default     = ""
 }
 
+variable "db_max_open_connections" {
+  type    = number
+  default = 40
+}
+
+variable "db_min_idle_connections" {
+  type    = number
+  default = 5
+}
+
 variable "loki_use_v13_schema_from" {
   type        = string
   description = "This should be a date soon after you deploy. Format = YYYY-MM-DD"

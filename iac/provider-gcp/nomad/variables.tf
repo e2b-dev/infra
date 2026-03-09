@@ -102,6 +102,14 @@ variable "sandbox_storage_backend" {
   default = "memory"
 }
 
+variable "db_max_open_connections" {
+  type = number
+}
+
+variable "db_min_idle_connections" {
+  type = number
+}
+
 variable "environment" {
   type = string
 }
