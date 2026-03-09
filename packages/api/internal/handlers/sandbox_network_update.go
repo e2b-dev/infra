@@ -52,6 +52,7 @@ func (a *APIStore) PutSandboxesSandboxIDNetwork(
 	for _, entry := range deniedEntries {
 		if !sandbox_network.IsIPOrCIDR(entry) {
 			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("invalid denied CIDR %s", entry))
+
 			return
 		}
 	}
@@ -64,6 +65,7 @@ func (a *APIStore) PutSandboxesSandboxIDNetwork(
 
 		if len(allowedDomains) > 0 && !hasBlockAll {
 			a.sendAPIStoreError(c, http.StatusBadRequest, ErrMsgDomainsRequireBlockAll)
+
 			return
 		}
 	}

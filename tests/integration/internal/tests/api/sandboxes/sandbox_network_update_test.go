@@ -1,6 +1,7 @@
 package sandboxes
 
 import (
+	"context"
 	"net/http"
 	"testing"
 
@@ -16,9 +17,53 @@ import (
 // PUT /sandboxes/{sandboxID}/network — Dynamic network config update tests
 // =============================================================================
 
-// TestUpdateNetworkConfig_Success creates a sandbox with deny-all egress,
-// then dynamically allows a specific IP and verifies connectivity changes.
-func TestUpdateNetworkConfig_Success(t *testing.T) {
+const blockAll = sandbox_network.AllInternetTrafficCIDR
+
+func ptrS(s ...string) *[]string { return &s }
+
+// putNetwork is a helper to call the update network endpoint.
+func putNetwork(
+	t *testing.T,
+	ctx context.Context,
+	client *api.ClientWithResponses,
+	sandboxID string,
+	body api.PutSandboxesSandboxIDNetworkJSONRequestBody,
+) *api.PutSandboxesSandboxIDNetworkResponse {
+	t.Helper()
+	resp, err := client.PutSandboxesSandboxIDNetworkWithResponse(
+		ctx, sandboxID, body, setup.WithAPIKey(),
+	)
+	require.NoError(t, err)
+
+	return resp
+}
+
+// connectivityCheck describes a URL that should be reachable or blocked.
+type connectivityCheck struct {
+	url     string
+	allowed bool
+}
+
+func verifyConnectivity(
+	t *testing.T,
+	ctx context.Context,
+	sbx *api.Sandbox,
+	envdClient *setup.EnvdClient,
+	checks []connectivityCheck,
+) {
+	t.Helper()
+	for _, c := range checks {
+		if c.allowed {
+			assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, c.url, c.url+" should be reachable")
+		} else {
+			assertBlockedHTTPRequest(t, ctx, sbx, envdClient, c.url, c.url+" should be blocked")
+		}
+	}
+}
+
+// TestUpdateNetworkConfig exercises all update scenarios using a single sandbox.
+// Subtests run sequentially — each PUT fully replaces the previous config.
+func TestUpdateNetworkConfig(t *testing.T) { //nolint:tparallel // subtests are sequential
 	t.Parallel()
 
 	templateID := ensureNetworkTestTemplate(t)
@@ -26,381 +71,268 @@ func TestUpdateNetworkConfig_Success(t *testing.T) {
 	client := setup.GetAPIClient()
 	envdClient := setup.GetEnvdClient(t, ctx)
 
-	// Create sandbox with deny-all egress
 	sbx := utils.SetupSandboxWithCleanup(t, client,
 		utils.WithTemplateID(templateID),
-		utils.WithTimeout(60),
-		utils.WithNetwork(&api.SandboxNetworkConfig{
-			DenyOut: &[]string{sandbox_network.AllInternetTrafficCIDR},
-		}),
-	)
-
-	// Verify traffic is blocked before update
-	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Should be blocked before update")
-
-	// Update to allow a specific IP
-	resp, err := client.PutSandboxesSandboxIDNetworkWithResponse(ctx, sbx.SandboxID,
-		api.PutSandboxesSandboxIDNetworkJSONRequestBody{
-			AllowOut: &[]string{"8.8.8.8"},
-			DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
-		},
-		setup.WithAPIKey(),
-	)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusNoContent, resp.StatusCode())
-
-	// Verify the allowed IP is now reachable
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Allowed IP should be reachable after update")
-	// Verify other IPs are still blocked
-	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "Non-allowed IP should still be blocked")
-}
-
-// TestUpdateNetworkConfig_ClearRules creates a sandbox with deny-all egress,
-// then clears all rules and verifies traffic flows freely.
-func TestUpdateNetworkConfig_ClearRules(t *testing.T) {
-	t.Parallel()
-
-	templateID := ensureNetworkTestTemplate(t)
-	ctx := t.Context()
-	client := setup.GetAPIClient()
-	envdClient := setup.GetEnvdClient(t, ctx)
-
-	// Create sandbox with deny-all egress
-	sbx := utils.SetupSandboxWithCleanup(t, client,
-		utils.WithTemplateID(templateID),
-		utils.WithTimeout(60),
-		utils.WithNetwork(&api.SandboxNetworkConfig{
-			DenyOut: &[]string{sandbox_network.AllInternetTrafficCIDR},
-		}),
-	)
-
-	// Verify traffic is blocked before update
-	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Should be blocked before clearing rules")
-
-	// Clear all egress rules by omitting both fields
-	resp, err := client.PutSandboxesSandboxIDNetworkWithResponse(ctx, sbx.SandboxID,
-		api.PutSandboxesSandboxIDNetworkJSONRequestBody{},
-		setup.WithAPIKey(),
-	)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusNoContent, resp.StatusCode())
-
-	// Verify traffic flows freely after clearing rules
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Traffic should flow after clearing rules")
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "Traffic should flow after clearing rules")
-}
-
-// TestUpdateNetworkConfig_ReplaceRules verifies PUT semantics: the new config
-// fully replaces the old one (not additive).
-func TestUpdateNetworkConfig_ReplaceRules(t *testing.T) {
-	t.Parallel()
-
-	templateID := ensureNetworkTestTemplate(t)
-	ctx := t.Context()
-	client := setup.GetAPIClient()
-	envdClient := setup.GetEnvdClient(t, ctx)
-
-	// Create sandbox allowing 8.8.8.8
-	sbx := utils.SetupSandboxWithCleanup(t, client,
-		utils.WithTemplateID(templateID),
-		utils.WithTimeout(60),
-		utils.WithNetwork(&api.SandboxNetworkConfig{
-			AllowOut: &[]string{"8.8.8.8"},
-			DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
-		}),
-	)
-
-	// Verify initial config: 8.8.8.8 allowed, 1.1.1.1 blocked
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "8.8.8.8 should be allowed initially")
-	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "1.1.1.1 should be blocked initially")
-
-	// Replace: now allow 1.1.1.1 instead
-	resp, err := client.PutSandboxesSandboxIDNetworkWithResponse(ctx, sbx.SandboxID,
-		api.PutSandboxesSandboxIDNetworkJSONRequestBody{
-			AllowOut: &[]string{"1.1.1.1"},
-			DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
-		},
-		setup.WithAPIKey(),
-	)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusNoContent, resp.StatusCode())
-
-	// Verify replacement: 1.1.1.1 now allowed, 8.8.8.8 now blocked
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "New allow rule should work")
-	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Old allow rule should be gone")
-}
-
-// TestUpdateNetworkConfig_NotFound returns 404 for a nonexistent sandbox.
-func TestUpdateNetworkConfig_NotFound(t *testing.T) {
-	t.Parallel()
-
-	ctx := t.Context()
-	client := setup.GetAPIClient()
-
-	resp, err := client.PutSandboxesSandboxIDNetworkWithResponse(ctx, "ixxxxxxxxxxxxxxxxxx0",
-		api.PutSandboxesSandboxIDNetworkJSONRequestBody{
-			AllowOut: &[]string{"8.8.8.8"},
-		},
-		setup.WithAPIKey(),
-	)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusNotFound, resp.StatusCode())
-}
-
-// TestUpdateNetworkConfig_Unauthorized returns 401 without an API key.
-func TestUpdateNetworkConfig_Unauthorized(t *testing.T) {
-	t.Parallel()
-
-	ctx := t.Context()
-	client := setup.GetAPIClient()
-
-	resp, err := client.PutSandboxesSandboxIDNetworkWithResponse(ctx, "any-sandbox-id",
-		api.PutSandboxesSandboxIDNetworkJSONRequestBody{},
-	)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusUnauthorized, resp.StatusCode())
-}
-
-// TestUpdateNetworkConfig_InvalidDenyCIDR returns 400 when denyOut contains
-// a non-IP/CIDR value (e.g. a domain name).
-func TestUpdateNetworkConfig_InvalidDenyCIDR(t *testing.T) {
-	t.Parallel()
-
-	templateID := ensureNetworkTestTemplate(t)
-	ctx := t.Context()
-	client := setup.GetAPIClient()
-
-	sbx := utils.SetupSandboxWithCleanup(t, client,
-		utils.WithTemplateID(templateID),
-		utils.WithTimeout(60),
-	)
-
-	resp, err := client.PutSandboxesSandboxIDNetworkWithResponse(ctx, sbx.SandboxID,
-		api.PutSandboxesSandboxIDNetworkJSONRequestBody{
-			DenyOut: &[]string{"example.com"},
-		},
-		setup.WithAPIKey(),
-	)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusBadRequest, resp.StatusCode())
-}
-
-// TestUpdateNetworkConfig_DomainWithoutDenyAll returns 400 when allowOut
-// contains a domain but denyOut does not include the block-all CIDR.
-func TestUpdateNetworkConfig_DomainWithoutDenyAll(t *testing.T) {
-	t.Parallel()
-
-	templateID := ensureNetworkTestTemplate(t)
-	ctx := t.Context()
-	client := setup.GetAPIClient()
-
-	sbx := utils.SetupSandboxWithCleanup(t, client,
-		utils.WithTemplateID(templateID),
-		utils.WithTimeout(60),
-	)
-
-	resp, err := client.PutSandboxesSandboxIDNetworkWithResponse(ctx, sbx.SandboxID,
-		api.PutSandboxesSandboxIDNetworkJSONRequestBody{
-			AllowOut: &[]string{"google.com"},
-		},
-		setup.WithAPIKey(),
-	)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusBadRequest, resp.StatusCode())
-
-	// Also verify that adding deny-all makes it succeed
-	resp, err = client.PutSandboxesSandboxIDNetworkWithResponse(ctx, sbx.SandboxID,
-		api.PutSandboxesSandboxIDNetworkJSONRequestBody{
-			AllowOut: &[]string{"google.com"},
-			DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
-		},
-		setup.WithAPIKey(),
-	)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusNoContent, resp.StatusCode())
-}
-
-// TestUpdateNetworkConfig_PauseResume verifies that dynamically updated
-// network rules survive a pause/resume cycle.
-func TestUpdateNetworkConfig_PauseResume(t *testing.T) {
-	t.Parallel()
-
-	templateID := ensureNetworkTestTemplate(t)
-	ctx := t.Context()
-	client := setup.GetAPIClient()
-	envdClient := setup.GetEnvdClient(t, ctx)
-
-	// Create sandbox with no restrictions and auto-pause disabled
-	sbx := utils.SetupSandboxWithCleanup(t, client,
-		utils.WithTemplateID(templateID),
-		utils.WithTimeout(90),
+		utils.WithTimeout(120),
 		utils.WithAutoPause(false),
 	)
 
-	// Dynamically add deny-all + allow 8.8.8.8
-	resp, err := client.PutSandboxesSandboxIDNetworkWithResponse(ctx, sbx.SandboxID,
-		api.PutSandboxesSandboxIDNetworkJSONRequestBody{
-			AllowOut: &[]string{"8.8.8.8"},
-			DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
+	// ── Error responses (no sandbox needed) ──────────────────────────────
+
+	t.Run("not_found", func(t *testing.T) { //nolint:paralleltest // sequential
+		resp := putNetwork(t, ctx, client, "ixxxxxxxxxxxxxxxxxx0",
+			api.PutSandboxesSandboxIDNetworkJSONRequestBody{AllowOut: ptrS("8.8.8.8")},
+		)
+		require.Equal(t, http.StatusNotFound, resp.StatusCode())
+	})
+
+	t.Run("unauthorized", func(t *testing.T) { //nolint:paralleltest // sequential
+		resp, err := client.PutSandboxesSandboxIDNetworkWithResponse(
+			ctx, "any-sandbox-id", api.PutSandboxesSandboxIDNetworkJSONRequestBody{},
+		)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusUnauthorized, resp.StatusCode())
+	})
+
+	// ── Input validation: rejected (400) ─────────────────────────────────
+
+	rejectedCases := []struct {
+		name     string
+		allowOut *[]string
+		denyOut  *[]string
+	}{
+		// denyOut must be IPs/CIDRs only
+		{"domain_in_deny_out", nil, ptrS("example.com")},
+		{"garbage_in_deny_out", nil, ptrS("not-a-cidr")},
+		{"domain_in_deny_out_alongside_block_all", nil, ptrS(blockAll, "example.com")},
+		// domains in allowOut require deny-all in denyOut
+		{"domain_allow_without_deny", ptrS("google.com"), nil},
+		{"domain_allow_with_partial_deny", ptrS("google.com"), ptrS("10.0.0.0/8")},
+		{"wildcard_domain_without_deny_all", ptrS("*.example.com"), nil},
+		{"wildcard_domain_with_partial_deny", ptrS("*.example.com"), ptrS("10.0.0.0/8")},
+		{"mixed_domain_ip_without_deny_all", ptrS("example.com", "8.8.8.8"), ptrS("10.0.0.0/8")},
+	}
+	for _, tc := range rejectedCases {
+		t.Run("reject/"+tc.name, func(t *testing.T) {
+			resp := putNetwork(t, ctx, client, sbx.SandboxID, api.PutSandboxesSandboxIDNetworkJSONRequestBody{
+				AllowOut: tc.allowOut,
+				DenyOut:  tc.denyOut,
+			})
+			require.Equal(t, http.StatusBadRequest, resp.StatusCode())
+		})
+	}
+
+	// ── Input validation: accepted (204, no connectivity check) ──────────
+
+	acceptedCases := []struct {
+		name     string
+		allowOut *[]string
+		denyOut  *[]string
+	}{
+		{"empty_body", nil, nil},
+		{"ip_allow_without_deny", ptrS("8.8.8.8"), nil},
+		{"ip_allow_with_partial_deny", ptrS("8.8.8.8"), ptrS("10.0.0.0/8")},
+		{"cidr_allow_without_deny", ptrS("8.8.0.0/16"), nil},
+		{"deny_all_only", nil, ptrS(blockAll)},
+		{"ip_allow_with_deny_all", ptrS("8.8.8.8"), ptrS(blockAll)},
+		{"domain_with_deny_all", ptrS("google.com"), ptrS(blockAll)},
+		{"wildcard_domain_with_deny_all", ptrS("*.example.com"), ptrS(blockAll)},
+		{"mixed_domain_ip_with_deny_all", ptrS("example.com", "8.8.8.8"), ptrS(blockAll)},
+		{"multiple_cidrs_in_deny", nil, ptrS("10.0.0.0/8", "192.168.0.0/16")},
+	}
+	for _, tc := range acceptedCases {
+		t.Run("accept/"+tc.name, func(t *testing.T) {
+			resp := putNetwork(t, ctx, client, sbx.SandboxID, api.PutSandboxesSandboxIDNetworkJSONRequestBody{
+				AllowOut: tc.allowOut,
+				DenyOut:  tc.denyOut,
+			})
+			require.Equal(t, http.StatusNoContent, resp.StatusCode())
+		})
+	}
+
+	// Reset to clean state before firewall steps.
+	t.Run("reset_before_firewall_steps", func(t *testing.T) { //nolint:paralleltest // sequential
+		resp := putNetwork(t, ctx, client, sbx.SandboxID, api.PutSandboxesSandboxIDNetworkJSONRequestBody{})
+		require.Equal(t, http.StatusNoContent, resp.StatusCode())
+		verifyConnectivity(t, ctx, sbx, envdClient, []connectivityCheck{
+			{"https://8.8.8.8", true},
+			{"https://1.1.1.1", true},
+		})
+	})
+
+	// ── Firewall rule updates (table-driven, apply + verify connectivity) ─
+
+	type step struct {
+		name     string
+		allowOut *[]string
+		denyOut  *[]string
+		checks   []connectivityCheck
+	}
+
+	// Steps execute sequentially. Each PUT fully replaces the previous config.
+	// The order tests that rule sets (allow, deny) interact correctly:
+	//   nftables rule evaluation order:
+	//     1. ESTABLISHED/RELATED → accept
+	//     2. predefinedAllowSet → accept
+	//     3. predefinedDenySet → drop
+	//     4. userAllowSet (non-TCP) → accept  | TCP → proxy (allow/deny by SNI/IP)
+	//     5. userDenySet  (non-TCP) → drop    |
+	//     6. default: accept
+	steps := []step{
+		// ── deny-only rules ──────────────────────────────────────────
+		{
+			name:    "1_deny_all_blocks_everything",
+			denyOut: ptrS(blockAll),
+			checks: []connectivityCheck{
+				{"https://8.8.8.8", false},
+				{"https://1.1.1.1", false},
+			},
 		},
-		setup.WithAPIKey(),
-	)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusNoContent, resp.StatusCode())
-
-	// Verify rules work before pause
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "8.8.8.8 should be allowed before pause")
-	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "1.1.1.1 should be blocked before pause")
-
-	// Pause
-	pauseResp, err := client.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
-	require.NoError(t, err)
-	require.Equal(t, http.StatusNoContent, pauseResp.StatusCode())
-
-	// Resume
-	resumeResp, err := client.PostSandboxesSandboxIDResumeWithResponse(ctx, sbx.SandboxID,
-		api.PostSandboxesSandboxIDResumeJSONRequestBody{},
-		setup.WithAPIKey(),
-	)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusCreated, resumeResp.StatusCode())
-
-	// Verify rules survived pause/resume
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "8.8.8.8 should still be allowed after resume")
-	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "1.1.1.1 should still be blocked after resume")
-}
-
-// TestUpdateNetworkConfig_AllowDomain dynamically allows a domain through
-// a deny-all policy and verifies connectivity by hostname (TLS SNI).
-func TestUpdateNetworkConfig_AllowDomain(t *testing.T) {
-	t.Parallel()
-
-	templateID := ensureNetworkTestTemplate(t)
-	ctx := t.Context()
-	client := setup.GetAPIClient()
-	envdClient := setup.GetEnvdClient(t, ctx)
-
-	// Create sandbox with deny-all egress
-	sbx := utils.SetupSandboxWithCleanup(t, client,
-		utils.WithTemplateID(templateID),
-		utils.WithTimeout(60),
-		utils.WithNetwork(&api.SandboxNetworkConfig{
-			DenyOut: &[]string{sandbox_network.AllInternetTrafficCIDR},
-		}),
-	)
-
-	// Verify all traffic blocked
-	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://google.com", "Should be blocked before domain allow")
-
-	// Dynamically allow google.com domain
-	resp, err := client.PutSandboxesSandboxIDNetworkWithResponse(ctx, sbx.SandboxID,
-		api.PutSandboxesSandboxIDNetworkJSONRequestBody{
-			AllowOut: &[]string{"google.com"},
-			DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
+		// ── allow + deny-all (allow takes precedence over deny) ──────
+		{
+			name:     "2_allow_single_ip_through_deny_all",
+			allowOut: ptrS("8.8.8.8"),
+			denyOut:  ptrS(blockAll),
+			checks: []connectivityCheck{
+				{"https://8.8.8.8", true},
+				{"https://1.1.1.1", false},
+			},
 		},
-		setup.WithAPIKey(),
-	)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusNoContent, resp.StatusCode())
-
-	// Verify allowed domain is reachable, other domains still blocked
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://google.com", "Allowed domain should be reachable")
-	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://cloudflare.com", "Non-allowed domain should still be blocked")
-}
-
-// TestUpdateNetworkConfig_RemoveDomain dynamically adds a domain allow rule,
-// then removes it by replacing with an empty config, and verifies the domain
-// becomes unreachable again.
-func TestUpdateNetworkConfig_RemoveDomain(t *testing.T) {
-	t.Parallel()
-
-	templateID := ensureNetworkTestTemplate(t)
-	ctx := t.Context()
-	client := setup.GetAPIClient()
-	envdClient := setup.GetEnvdClient(t, ctx)
-
-	// Create sandbox with deny-all + allow google.com
-	sbx := utils.SetupSandboxWithCleanup(t, client,
-		utils.WithTemplateID(templateID),
-		utils.WithTimeout(60),
-		utils.WithNetwork(&api.SandboxNetworkConfig{
-			AllowOut: &[]string{"google.com"},
-			DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
-		}),
-	)
-
-	// Verify google.com reachable
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://google.com", "google.com should be reachable initially")
-
-	// Replace with deny-all only (no domain allow)
-	resp, err := client.PutSandboxesSandboxIDNetworkWithResponse(ctx, sbx.SandboxID,
-		api.PutSandboxesSandboxIDNetworkJSONRequestBody{
-			DenyOut: &[]string{sandbox_network.AllInternetTrafficCIDR},
+		{
+			name:     "3_replace_allowed_ip",
+			allowOut: ptrS("1.1.1.1"),
+			denyOut:  ptrS(blockAll),
+			checks: []connectivityCheck{
+				{"https://1.1.1.1", true},
+				{"https://8.8.8.8", false},
+			},
 		},
-		setup.WithAPIKey(),
-	)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusNoContent, resp.StatusCode())
-
-	// Verify google.com is now blocked
-	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://google.com", "google.com should be blocked after removing domain allow")
-}
-
-// TestUpdateNetworkConfig_MultipleUpdates verifies that multiple sequential
-// updates each change actual network behavior (not just API response).
-func TestUpdateNetworkConfig_MultipleUpdates(t *testing.T) {
-	t.Parallel()
-
-	templateID := ensureNetworkTestTemplate(t)
-	ctx := t.Context()
-	client := setup.GetAPIClient()
-	envdClient := setup.GetEnvdClient(t, ctx)
-
-	sbx := utils.SetupSandboxWithCleanup(t, client,
-		utils.WithTemplateID(templateID),
-		utils.WithTimeout(90),
-	)
-
-	// Initially no restrictions — traffic should flow
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Should have internet before any updates")
-
-	// First update: deny all
-	resp, err := client.PutSandboxesSandboxIDNetworkWithResponse(ctx, sbx.SandboxID,
-		api.PutSandboxesSandboxIDNetworkJSONRequestBody{
-			DenyOut: &[]string{sandbox_network.AllInternetTrafficCIDR},
+		{
+			name:     "4_allow_multiple_ips",
+			allowOut: ptrS("8.8.8.8", "1.1.1.1"),
+			denyOut:  ptrS(blockAll),
+			checks: []connectivityCheck{
+				{"https://8.8.8.8", true},
+				{"https://1.1.1.1", true},
+			},
 		},
-		setup.WithAPIKey(),
-	)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusNoContent, resp.StatusCode())
-
-	// Verify all traffic is blocked
-	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Should be blocked after deny-all")
-
-	// Second update: allow specific IP
-	resp, err = client.PutSandboxesSandboxIDNetworkWithResponse(ctx, sbx.SandboxID,
-		api.PutSandboxesSandboxIDNetworkJSONRequestBody{
-			AllowOut: &[]string{"8.8.8.8"},
-			DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
+		{
+			name:     "5_allow_cidr_range",
+			allowOut: ptrS("8.8.8.0/24"),
+			denyOut:  ptrS(blockAll),
+			checks: []connectivityCheck{
+				{"https://8.8.8.8", true},  // 8.8.8.8 is in 8.8.8.0/24
+				{"https://1.1.1.1", false}, // 1.1.1.1 is not
+			},
 		},
-		setup.WithAPIKey(),
-	)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusNoContent, resp.StatusCode())
+		// ── domain-based rules (TCP proxy SNI matching) ──────────────
+		{
+			name:     "6_allow_domain",
+			allowOut: ptrS("google.com"),
+			denyOut:  ptrS(blockAll),
+			checks: []connectivityCheck{
+				{"https://google.com", true},
+				{"https://cloudflare.com", false},
+			},
+		},
+		{
+			name:     "7_allow_domain_and_ip",
+			allowOut: ptrS("google.com", "1.1.1.1"),
+			denyOut:  ptrS(blockAll),
+			checks: []connectivityCheck{
+				{"https://google.com", true},
+				{"https://1.1.1.1", true},
+				{"https://cloudflare.com", false},
+			},
+		},
+		// ── replacement semantics: PUT replaces, not appends ─────────
+		{
+			name:    "8_remove_allow_keep_deny",
+			denyOut: ptrS(blockAll),
+			checks: []connectivityCheck{
+				{"https://google.com", false}, // previously allowed domain now blocked
+				{"https://8.8.8.8", false},
+			},
+		},
+		// ── clear all rules: back to default-allow ───────────────────
+		{
+			name: "9_clear_all_rules_restores_access",
+			checks: []connectivityCheck{
+				{"https://8.8.8.8", true},
+				{"https://1.1.1.1", true},
+			},
+		},
+		// ── re-apply after clear: sets can be repopulated ────────────
+		{
+			name:     "10_reapply_rules_after_clear",
+			allowOut: ptrS("1.1.1.1"),
+			denyOut:  ptrS(blockAll),
+			checks: []connectivityCheck{
+				{"https://1.1.1.1", true},
+				{"https://8.8.8.8", false},
+			},
+		},
+		// ── allow IP without deny: no blocking, allow set is no-op ───
+		{
+			name:     "11_allow_ip_without_deny_no_blocking",
+			allowOut: ptrS("8.8.8.8"),
+			checks: []connectivityCheck{
+				{"https://8.8.8.8", true},
+				{"https://1.1.1.1", true}, // no deny → default accept
+			},
+		},
+		// ── final clear ──────────────────────────────────────────────
+		{
+			name: "12_final_clear",
+			checks: []connectivityCheck{
+				{"https://8.8.8.8", true},
+				{"https://1.1.1.1", true},
+			},
+		},
+	}
 
-	// Verify only allowed IP works
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "8.8.8.8 should be allowed")
-	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "1.1.1.1 should still be blocked")
+	for _, s := range steps { //nolint:paralleltest // subtests are sequential
+		t.Run(s.name, func(t *testing.T) {
+			resp := putNetwork(t, ctx, client, sbx.SandboxID, api.PutSandboxesSandboxIDNetworkJSONRequestBody{
+				AllowOut: s.allowOut,
+				DenyOut:  s.denyOut,
+			})
+			require.Equal(t, http.StatusNoContent, resp.StatusCode())
+			verifyConnectivity(t, ctx, sbx, envdClient, s.checks)
+		})
+	}
 
-	// Third update: clear all rules
-	resp, err = client.PutSandboxesSandboxIDNetworkWithResponse(ctx, sbx.SandboxID,
-		api.PutSandboxesSandboxIDNetworkJSONRequestBody{},
-		setup.WithAPIKey(),
-	)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusNoContent, resp.StatusCode())
+	// ── Pause/resume (must be last — changes sandbox lifecycle) ───────────
 
-	// Verify all traffic flows again
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Should have internet after clearing rules")
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "Should have internet after clearing rules")
+	t.Run("pause_resume_preserves_rules", func(t *testing.T) { //nolint:paralleltest // sequential
+		// Apply rules
+		resp := putNetwork(t, ctx, client, sbx.SandboxID, api.PutSandboxesSandboxIDNetworkJSONRequestBody{
+			AllowOut: ptrS("8.8.8.8"),
+			DenyOut:  ptrS(blockAll),
+		})
+		require.Equal(t, http.StatusNoContent, resp.StatusCode())
+		verifyConnectivity(t, ctx, sbx, envdClient, []connectivityCheck{
+			{"https://8.8.8.8", true},
+			{"https://1.1.1.1", false},
+		})
+
+		// Pause
+		pauseResp, err := client.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
+		require.NoError(t, err)
+		require.Equal(t, http.StatusNoContent, pauseResp.StatusCode())
+
+		// Resume
+		resumeResp, err := client.PostSandboxesSandboxIDResumeWithResponse(ctx, sbx.SandboxID,
+			api.PostSandboxesSandboxIDResumeJSONRequestBody{},
+			setup.WithAPIKey(),
+		)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusCreated, resumeResp.StatusCode())
+
+		// Verify rules survived
+		verifyConnectivity(t, ctx, sbx, envdClient, []connectivityCheck{
+			{"https://8.8.8.8", true},
+			{"https://1.1.1.1", false},
+		})
+	})
 }
