@@ -16,6 +16,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/soheilhy/cmux"
+	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
@@ -184,7 +185,15 @@ func run(config cfg.Config) (success bool) {
 	}(&g)
 
 	// Setup telemetry
-	tel, err := telemetry.New(ctx, nodeID, serviceName, commitSHA, version, serviceInstanceID)
+	tel, err := telemetry.New(
+		ctx,
+		nodeID,
+		serviceName,
+		commitSHA,
+		version,
+		serviceInstanceID,
+		attribute.Key("host.labels").StringSlice(config.NodeLabels),
+	)
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to init telemetry", zap.Error(err))
 	}
@@ -248,7 +257,12 @@ func run(config cfg.Config) (success bool) {
 	}(sbxLoggerInternal)
 	sbxlogger.SetSandboxLoggerInternal(sbxLoggerInternal)
 
-	globalLogger.Info(ctx, "Starting orchestrator", zap.String("version", version), zap.String("commit", commitSHA), logger.WithServiceInstanceID(serviceInstanceID))
+	globalLogger.Info(ctx, "Starting orchestrator",
+		zap.String("version", version),
+		zap.String("commit", commitSHA),
+		zap.Strings("labels", config.NodeLabels),
+		logger.WithServiceInstanceID(serviceInstanceID),
+	)
 
 	startService := func(name string, f func() error) {
 		g.Go(func() error {
