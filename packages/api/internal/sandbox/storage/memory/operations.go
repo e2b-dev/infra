@@ -148,7 +148,7 @@ func (s *Storage) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID
 
 	alreadyDone, callback, err := startRemoving(ctx, sbx, stateAction)
 
-	return data, alreadyDone, callback, err
+	return sbx.Data(), alreadyDone, callback, err
 }
 
 func startRemoving(ctx context.Context, sbx *memorySandbox, stateAction sandbox.StateAction) (alreadyDone bool, callback func(ctx context.Context, err error), err error) {
