@@ -3,6 +3,8 @@ package userfaultfd
 import (
 	"context"
 	"fmt"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 )
 
 // Prefault proactively copies a page to guest memory at the given offset.
@@ -21,13 +23,23 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) e
 		return fmt.Errorf("data length (%d) does not match pagesize (%d)", len(data), u.pageSize)
 	}
 
+	// We're treating prefault handling as if it was caused by a read access.
+	// This way, we will fault the page with UFFD_COPY_MODE_WP which will preserve
+	// the WP bit for the page. This works even in the case of a race with a
+	// concurrent on-demand write access.
+	//
+	// If the on-demand fault handler beats us, we will get an EEXIST here.
+	// If we beat the on-demand handler, it will get the EEXIST.
+	//
+	// In both cases, the WP bit will be cleared because it is handled asynchronously
+	// by the kernel.
 	handled, err := u.faultPage(
 		ctx,
 		addr,
 		offset,
+		block.Read,
 		directDataSource{data, int64(u.pageSize)},
 		nil,
-		UFFDIO_COPY_MODE_WP,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to fault page: %w", err)
