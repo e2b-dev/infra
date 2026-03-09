@@ -38,8 +38,11 @@ func (o *Orchestrator) UpdateSandboxNetworkConfig(
 		allowedAddresses = append(allowedAddresses, sandbox_network.DefaultNameserver)
 	}
 
-	allowedCIDRs := sandbox_network.AddressStringsToCIDRs(allowedAddresses)
-	deniedCIDRs := sandbox_network.AddressStringsToCIDRs(deniedEntries)
+	egress := &orchestratorgrpc.SandboxNetworkEgressConfig{
+		AllowedCidrs:   sandbox_network.AddressStringsToCIDRs(allowedAddresses),
+		DeniedCidrs:    sandbox_network.AddressStringsToCIDRs(deniedEntries),
+		AllowedDomains: allowedDomains,
+	}
 
 	// Read the sandbox first to validate state and get routing info,
 	// without mutating the store yet.
@@ -59,7 +62,7 @@ func (o *Orchestrator) UpdateSandboxNetworkConfig(
 
 	// Apply the network update on the orchestrator node first.
 	// Only persist to the store after the node update succeeds.
-	if apiErr := o.updateSandboxNetworkOnNode(ctx, sbx, allowedCIDRs, deniedCIDRs, allowedDomains); apiErr != nil {
+	if apiErr := o.updateSandboxNetworkOnNode(ctx, sbx, egress); apiErr != nil {
 		return apiErr
 	}
 
@@ -89,9 +92,7 @@ func (o *Orchestrator) UpdateSandboxNetworkConfig(
 func (o *Orchestrator) updateSandboxNetworkOnNode(
 	ctx context.Context,
 	sbx sandbox.Sandbox,
-	allowedCIDRs []string,
-	deniedCIDRs []string,
-	allowedDomains []string,
+	egress *orchestratorgrpc.SandboxNetworkEgressConfig,
 ) *api.APIError {
 	ctx, span := tracer.Start(ctx, "update-sandbox-network-on-node",
 		trace.WithAttributes(
@@ -111,10 +112,8 @@ func (o *Orchestrator) updateSandboxNetworkOnNode(
 
 	client, ctx := node.GetClient(ctx)
 	_, err := client.Sandbox.UpdateNetwork(ctx, &orchestratorgrpc.SandboxUpdateNetworkRequest{
-		SandboxId:      sbx.SandboxID,
-		AllowedCidrs:   allowedCIDRs,
-		DeniedCidrs:    deniedCIDRs,
-		AllowedDomains: allowedDomains,
+		SandboxId: sbx.SandboxID,
+		Egress:    egress,
 	})
 	if err != nil {
 		grpcErr, ok := status.FromError(err)

@@ -310,21 +310,19 @@ func (s *Server) UpdateNetwork(ctx context.Context, req *orchestrator.SandboxUpd
 		return nil, status.Error(codes.NotFound, "sandbox not found")
 	}
 
-	if err := sbx.Slot.UpdateInternet(ctx, req.GetAllowedCidrs(), req.GetDeniedCidrs()); err != nil {
+	egress := req.GetEgress()
+
+	if err := sbx.Slot.UpdateInternet(ctx, egress); err != nil {
 		telemetry.ReportCriticalError(ctx, "failed to update sandbox network", err)
 
 		return nil, status.Errorf(codes.Internal, "failed to update sandbox network: %s", err)
 	}
 
 	// Update in-memory network config so the TCP proxy also sees the new rules.
-	if len(req.GetAllowedCidrs()) == 0 && len(req.GetDeniedCidrs()) == 0 && len(req.GetAllowedDomains()) == 0 {
+	if len(egress.GetAllowedCidrs()) == 0 && len(egress.GetDeniedCidrs()) == 0 && len(egress.GetAllowedDomains()) == 0 {
 		sbx.SetNetworkEgress(nil)
 	} else {
-		sbx.SetNetworkEgress(&orchestrator.SandboxNetworkEgressConfig{
-			AllowedCidrs:   req.GetAllowedCidrs(),
-			DeniedCidrs:    req.GetDeniedCidrs(),
-			AllowedDomains: req.GetAllowedDomains(),
-		})
+		sbx.SetNetworkEgress(egress)
 	}
 
 	return &emptypb.Empty{}, nil

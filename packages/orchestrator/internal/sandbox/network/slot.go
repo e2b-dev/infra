@@ -284,11 +284,14 @@ func (s *Slot) ConfigureInternet(ctx context.Context, network *orchestrator.Sand
 }
 
 // UpdateInternet replaces all user firewall rules atomically in a single nftables flush.
-func (s *Slot) UpdateInternet(ctx context.Context, allowedCIDRs, deniedCIDRs []string) error {
+func (s *Slot) UpdateInternet(ctx context.Context, egress *orchestrator.SandboxNetworkEgressConfig) error {
 	_, span := tracer.Start(ctx, "slot-internet-update", trace.WithAttributes(
 		attribute.String("namespace_id", s.NamespaceID()),
 	))
 	defer span.End()
+
+	allowedCIDRs := egress.GetAllowedCidrs()
+	deniedCIDRs := egress.GetDeniedCidrs()
 
 	n, err := ns.GetNS(filepath.Join(netNamespacesDir, s.NamespaceID()))
 	if err != nil {

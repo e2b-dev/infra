@@ -102,9 +102,7 @@ message SandboxUpdateRequest {
 message SandboxUpdateNetworkRequest {
   string sandbox_id = 1;
 
-  repeated string allowed_cidrs = 2;
-  repeated string denied_cidrs = 3;
-  repeated string allowed_domains = 4;
+  SandboxNetworkEgressConfig egress = 2;
 }
 
 message SandboxDeleteRequest {
