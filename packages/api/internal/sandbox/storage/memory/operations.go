@@ -135,13 +135,20 @@ func (s *Storage) Update(_ context.Context, teamID uuid.UUID, sandboxID string, 
 	return sbx, nil
 }
 
-func (s *Storage) StartRemoving(ctx context.Context, _ uuid.UUID, sandboxID string, stateAction sandbox.StateAction) (alreadyDone bool, callback func(context.Context, error), err error) {
+func (s *Storage) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID string, stateAction sandbox.StateAction) (sandbox.Sandbox, bool, func(context.Context, error), error) {
 	sbx, err := s.get(sandboxID)
 	if err != nil {
-		return false, nil, err
+		return sandbox.Sandbox{}, false, nil, &sandbox.NotFoundError{SandboxID: sandboxID}
 	}
 
-	return startRemoving(ctx, sbx, stateAction)
+	data := sbx.Data()
+	if data.TeamID != teamID {
+		return sandbox.Sandbox{}, false, nil, &sandbox.NotFoundError{SandboxID: sandboxID}
+	}
+
+	alreadyDone, callback, err := startRemoving(ctx, sbx, stateAction)
+
+	return sbx.Data(), alreadyDone, callback, err
 }
 
 func startRemoving(ctx context.Context, sbx *memorySandbox, stateAction sandbox.StateAction) (alreadyDone bool, callback func(ctx context.Context, err error), err error) {

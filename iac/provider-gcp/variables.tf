@@ -488,6 +488,7 @@ variable "client_clusters_config" {
 
     hugepages_percentage   = optional(number)
     network_interface_type = optional(string)
+    node_labels            = optional(list(string), [])
   }))
 
   description = <<EOT
@@ -547,6 +548,7 @@ variable "build_clusters_config" {
 
     hugepages_percentage   = optional(number)
     network_interface_type = optional(string)
+    node_labels            = optional(list(string), [])
   }))
   description = <<EOT
 Configuration for the build clusters.

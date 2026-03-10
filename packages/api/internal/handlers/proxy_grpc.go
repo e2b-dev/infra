@@ -3,7 +3,6 @@ package handlers
 import (
 	"context"
 	"crypto/subtle"
-	"database/sql"
 	"errors"
 	"net/http"
 	"strconv"
@@ -14,6 +13,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
+	snapshotcache "github.com/e2b-dev/infra/packages/api/internal/cache/snapshots"
 	dbapi "github.com/e2b-dev/infra/packages/api/internal/db"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
@@ -90,9 +90,9 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		return nil, status.Error(codes.InvalidArgument, "invalid sandbox ID")
 	}
 
-	snap, err := s.api.sqlcDB.GetLastSnapshot(ctx, sandboxID)
+	snap, err := s.api.snapshotCache.Get(ctx, sandboxID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, snapshotcache.ErrSnapshotNotFound) {
 			return nil, status.Error(codes.NotFound, "snapshot not found")
 		}
 

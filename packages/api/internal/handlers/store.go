@@ -16,6 +16,7 @@ import (
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	snapshotcache "github.com/e2b-dev/infra/packages/api/internal/cache/snapshots"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/api/internal/clusters"
@@ -51,6 +52,7 @@ type APIStore struct {
 	redisClient          redis.UniversalClient
 	templateCache        *templatecache.TemplateCache
 	templateBuildsCache  *templatecache.TemplatesBuildCache
+	snapshotCache        *snapshotcache.SnapshotCache
 	authService          *sharedauth.AuthService[*types.Team]
 	templateSpawnCounter *utils.TemplateSpawnCounter
 	clickhouseStore      clickhouse.Clickhouse
@@ -139,7 +141,9 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config, 
 		logger.L().Fatal(ctx, "Initializing access token generator failed", zap.Error(err))
 	}
 
-	orch, err := orchestrator.New(ctx, config, tel, nomadClient, posthogClient, redisClient, sqlcDB, clusters, featureFlags, accessTokenGenerator)
+	snapshotCache := snapshotcache.NewSnapshotCache(sqlcDB, redisClient)
+
+	orch, err := orchestrator.New(ctx, config, tel, nomadClient, posthogClient, redisClient, sqlcDB, clusters, featureFlags, accessTokenGenerator, snapshotCache)
 	if err != nil {
 		logger.L().Fatal(ctx, "Initializing Orchestrator client", zap.Error(err))
 	}
@@ -169,6 +173,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config, 
 		posthog:              posthogClient,
 		templateCache:        templateCache,
 		templateBuildsCache:  templateBuildsCache,
+		snapshotCache:        snapshotCache,
 		authService:          authService,
 		templateSpawnCounter: templateSpawnCounter,
 		clickhouseStore:      clickhouseStore,
@@ -237,6 +242,10 @@ func (a *APIStore) Close(ctx context.Context) error {
 		if err := a.templateBuildsCache.Close(ctx); err != nil {
 			errs = append(errs, fmt.Errorf("closing template build cache: %w", err))
 		}
+	}
+
+	if err := a.snapshotCache.Close(ctx); err != nil {
+		errs = append(errs, fmt.Errorf("closing snapshot cache: %w", err))
 	}
 
 	if a.redisClient != nil {

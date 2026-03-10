@@ -101,8 +101,9 @@ var (
 	// of synchronous. Only safe to enable after PeerToPeerChunkTransferFlag is ON.
 	PeerToPeerAsyncCheckpointFlag = newBoolFlag("peer-to-peer-async-checkpoint", false)
 
-	PersistentVolumesFlag          = newBoolFlag("can-use-persistent-volumes", env.IsDevelopment())
-	ExecutionMetricsOnWebhooksFlag = newBoolFlag("execution-metrics-on-webhooks", false) // TODO: Remove NLT 20250315
+	PersistentVolumesFlag           = newBoolFlag("can-use-persistent-volumes", env.IsDevelopment())
+	ExecutionMetricsOnWebhooksFlag  = newBoolFlag("execution-metrics-on-webhooks", false) // TODO: Remove NLT 20250315
+	SandboxLabelBasedSchedulingFlag = newBoolFlag("sandbox-label-based-scheduling", false)
 )
 
 type IntFlag struct {
