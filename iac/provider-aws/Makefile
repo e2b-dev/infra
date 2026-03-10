@@ -34,7 +34,11 @@ tf_vars := AWS_PROFILE=$(AWS_PROFILE) AWS_REGION=$(AWS_REGION) \
 	$(call tfvar, BUILD_SERVER_MACHINE_TYPE) \
 	$(call tfvar, BUILD_SERVER_NESTED_VIRTUALIZATION) \
 	$(call tfvar, AWS_ACCOUNT_ID) \
-	$(call tfvar, AWS_REGION)
+	$(call tfvar, AWS_REGION) \
+	$(call tfvar, DB_MAX_OPEN_CONNECTIONS) \
+	$(call tfvar, DB_MIN_IDLE_CONNECTIONS) \
+	$(call tfvar, AUTH_DB_MAX_OPEN_CONNECTIONS) \
+	$(call tfvar, AUTH_DB_MIN_IDLE_CONNECTIONS)
 
 .PHONY: provider-login
 provider-login:

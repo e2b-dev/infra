@@ -143,3 +143,23 @@ variable "control_server_cluster_size" {
   type    = number
   default = 3
 }
+
+variable "db_max_open_connections" {
+  type    = number
+  default = 40
+}
+
+variable "db_min_idle_connections" {
+  type    = number
+  default = 5
+}
+
+variable "auth_db_max_open_connections" {
+  type    = number
+  default = 20
+}
+
+variable "auth_db_min_idle_connections" {
+  type    = number
+  default = 5
+}

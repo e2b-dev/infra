@@ -38,6 +38,8 @@ type Config struct {
 	NomadToken   string `env:"NOMAD_TOKEN"`
 
 	PostgresConnectionString string `env:"POSTGRES_CONNECTION_STRING,required,notEmpty"`
+	DBMaxOpenConnections     int32  `env:"DB_MAX_OPEN_CONNECTIONS"                      envDefault:"40"`
+	DBMinIdleConnections     int32  `env:"DB_MIN_IDLE_CONNECTIONS"                      envDefault:"5"`
 
 	AuthDBConnectionString            string `env:"AUTH_DB_CONNECTION_STRING"`
 	AuthDBReadReplicaConnectionString string `env:"AUTH_DB_READ_REPLICA_CONNECTION_STRING"`
