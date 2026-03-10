@@ -19,14 +19,21 @@ type SnapshotWithBuildAndAliases struct {
 }
 
 // GetSnapshotsWithSplitQueries replaces the monolithic GetSnapshotsWithCursor query
-// by splitting into 3 focused queries:
+// by splitting into 3 focused queries inside a single read-only repeatable-read
+// transaction (consistent snapshot, no cross-query races):
 //  1. Fetch base snapshots (with EXISTS check for ready builds)
 //  2. Batch-fetch the latest ready build per env_id
 //  3. Batch-fetch aliases per base_env_id
 //
-// Steps 2 and 3 run concurrently.
+// Steps 2 and 3 run concurrently over the same transaction snapshot.
 func GetSnapshotsWithSplitQueries(ctx context.Context, db *sqlcdb.Client, params queries.GetSnapshotsBaseParams) ([]SnapshotWithBuildAndAliases, error) {
-	baseRows, err := db.GetSnapshotsBase(ctx, params)
+	txClient, tx, err := db.WithReadOnlyTx(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("starting read-only transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	baseRows, err := txClient.GetSnapshotsBase(ctx, params)
 	if err != nil {
 		return nil, fmt.Errorf("fetching base snapshots: %w", err)
 	}
@@ -61,7 +68,7 @@ func GetSnapshotsWithSplitQueries(ctx context.Context, db *sqlcdb.Client, params
 
 	g.Go(func() error {
 		var err error
-		buildRows, err = db.GetLatestReadyBuildsByEnvIDs(gctx, envIDs)
+		buildRows, err = txClient.GetLatestReadyBuildsByEnvIDs(gctx, envIDs)
 		if err != nil {
 			return fmt.Errorf("fetching builds: %w", err)
 		}
@@ -71,7 +78,7 @@ func GetSnapshotsWithSplitQueries(ctx context.Context, db *sqlcdb.Client, params
 
 	g.Go(func() error {
 		var err error
-		aliasRows, err = db.GetEnvAliasesByEnvIDs(gctx, baseEnvIDs)
+		aliasRows, err = txClient.GetEnvAliasesByEnvIDs(gctx, baseEnvIDs)
 		if err != nil {
 			return fmt.Errorf("fetching aliases: %w", err)
 		}
@@ -101,12 +108,7 @@ func GetSnapshotsWithSplitQueries(ctx context.Context, db *sqlcdb.Client, params
 	results := make([]SnapshotWithBuildAndAliases, 0, len(baseRows))
 
 	for _, row := range baseRows {
-		build, ok := buildByEnvID[row.Snapshot.EnvID]
-		if !ok {
-			// EXISTS guaranteed a ready build exists, but it may have changed
-			// between the two queries. Skip this snapshot.
-			continue
-		}
+		build := buildByEnvID[row.Snapshot.EnvID]
 
 		var aliases []string
 		var names []string
