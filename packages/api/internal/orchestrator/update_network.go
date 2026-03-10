@@ -17,7 +17,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	orchestratorgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -28,21 +27,7 @@ func (o *Orchestrator) UpdateSandboxNetworkConfig(
 	allowedEntries []string,
 	deniedEntries []string,
 ) *api.APIError {
-	// Split allowed entries into CIDRs/IPs and domains, matching the creation
-	// path in buildNetworkConfig.
-	allowedAddresses, allowedDomains := sandbox_network.ParseAddressesAndDomains(allowedEntries)
-
-	// If allowed domains are provided, add the default nameserver so the sandbox
-	// can resolve domain names — same as the creation path.
-	if len(allowedDomains) > 0 {
-		allowedAddresses = append(allowedAddresses, sandbox_network.DefaultNameserver)
-	}
-
-	egress := &orchestratorgrpc.SandboxNetworkEgressConfig{
-		AllowedCidrs:   sandbox_network.AddressStringsToCIDRs(allowedAddresses),
-		DeniedCidrs:    sandbox_network.AddressStringsToCIDRs(deniedEntries),
-		AllowedDomains: allowedDomains,
-	}
+	egress := buildEgressConfig(allowedEntries, deniedEntries)
 
 	updateFunc := func(sbx sandbox.Sandbox) (sandbox.Sandbox, error) {
 		if sbx.State != sandbox.StateRunning {

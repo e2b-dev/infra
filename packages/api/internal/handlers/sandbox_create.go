@@ -509,6 +509,7 @@ func validateNetworkConfig(network *api.SandboxNetworkConfig) *api.APIError {
 
 // validateEgressRules validates egress allow/deny rules:
 // - denyOut entries must be valid IPs or CIDRs (not domains)
+// - allowOut entries must be valid IPs, CIDRs, or domain names
 // - when allowOut contains domains, denyOut must include 0.0.0.0/0
 func validateEgressRules(allowOut, denyOut []string) *api.APIError {
 	for _, cidr := range denyOut {
@@ -523,6 +524,17 @@ func validateEgressRules(allowOut, denyOut []string) *api.APIError {
 
 	if len(allowOut) > 0 {
 		_, allowedDomains := sandbox_network.ParseAddressesAndDomains(allowOut)
+
+		for _, domain := range allowedDomains {
+			if _, err := idna.Lookup.ToASCII(domain); err != nil {
+				return &api.APIError{
+					Code:      http.StatusBadRequest,
+					Err:       fmt.Errorf("invalid allowed domain %q: %w", domain, err),
+					ClientMsg: fmt.Sprintf("invalid allowed domain: %s", domain),
+				}
+			}
+		}
+
 		hasBlockAll := slices.Contains(denyOut, sandbox_network.AllInternetTrafficCIDR)
 
 		if len(allowedDomains) > 0 && !hasBlockAll {
