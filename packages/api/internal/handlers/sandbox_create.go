@@ -526,11 +526,20 @@ func validateEgressRules(allowOut, denyOut []string) *api.APIError {
 		_, allowedDomains := sandbox_network.ParseAddressesAndDomains(allowOut)
 
 		for _, domain := range allowedDomains {
-			if _, err := idna.Lookup.ToASCII(domain); err != nil {
-				return &api.APIError{
-					Code:      http.StatusBadRequest,
-					Err:       fmt.Errorf("invalid allowed domain %q: %w", domain, err),
-					ClientMsg: fmt.Sprintf("invalid allowed domain: %s", domain),
+			// Strip wildcard prefix for IDNA validation (*.example.com → example.com).
+			// The "*" label is not a valid IDNA label, but we support it as a wildcard.
+			validateDomain := domain
+			if strings.HasPrefix(domain, "*.") {
+				validateDomain = domain[2:]
+			}
+
+			if validateDomain != "*" {
+				if _, err := idna.Lookup.ToASCII(validateDomain); err != nil {
+					return &api.APIError{
+						Code:      http.StatusBadRequest,
+						Err:       fmt.Errorf("invalid allowed domain %q: %w", domain, err),
+						ClientMsg: fmt.Sprintf("invalid allowed domain: %s", domain),
+					}
 				}
 			}
 		}
