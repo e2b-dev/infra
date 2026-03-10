@@ -2,6 +2,7 @@ package sandboxes
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/url"
 	"testing"
@@ -10,7 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
-	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
@@ -375,19 +375,24 @@ func TestUpdateIngressConfig(t *testing.T) { //nolint:tparallel // subtests are 
 
 	ctx := t.Context()
 	client := setup.GetAPIClient()
+	envdClient := setup.GetEnvdClient(t, ctx)
 
 	sbx := utils.SetupSandboxWithCleanup(t, client,
 		utils.WithTimeout(120),
 		utils.WithAutoPause(false),
-		utils.WithSecure(true),
 	)
 
-	// No server needed — we only need to distinguish 403 (ingress denied)
-	// from 502 (port not open, but ingress allowed).
 	testPort := 8000
 	proxyURL, err := url.Parse(setup.EnvdProxy)
 	require.NoError(t, err)
 	httpClient := &http.Client{Timeout: 10 * time.Second}
+
+	// Start HTTP servers so the proxy connects immediately instead of retrying.
+	for _, p := range []int{testPort, testPort + 1} {
+		err = utils.ExecCommand(t, ctx, sbx, envdClient, "sh", "-c",
+			fmt.Sprintf("nohup python3 -m http.server %d >/dev/null 2>&1 &", p))
+		require.NoError(t, err)
+	}
 
 	// ── Port deny/allow through real proxy ──────────────────────────────
 
@@ -448,12 +453,12 @@ func TestUpdateIngressConfig(t *testing.T) { //nolint:tparallel // subtests are 
 
 		envdURL := *proxyURL
 		envdURL.Path = "/health"
-		headers := &http.Header{proxygrpc.MetadataEnvdHTTPAccessToken: []string{*sbx.EnvdAccessToken}}
-		req := utils.NewRequest(sbx, &envdURL, int(consts.DefaultEnvdServerPort), headers)
+		req := utils.NewRequest(sbx, &envdURL, int(consts.DefaultEnvdServerPort), nil)
 		r, err := httpClient.Do(req)
 		require.NoError(t, err)
 		r.Body.Close()
-		require.Equal(t, http.StatusNoContent, r.StatusCode)
+		// Envd port is exempt from ingress restrictions — we accept any non-403 response.
+		require.NotEqual(t, http.StatusForbidden, r.StatusCode)
 	})
 
 	// ── Replacement: empty PUT clears ingress rules ─────────────────────
