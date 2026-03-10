@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"unsafe"
 
@@ -49,6 +50,7 @@ type Userfaultfd struct {
 	wg errgroup.Group
 
 	logger logger.Logger
+	closed atomic.Bool
 }
 
 // NewUserfaultfdFromFd creates a new userfaultfd instance with optional configuration.
@@ -79,6 +81,14 @@ func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logge
 }
 
 func (u *Userfaultfd) Close() error {
+	u.closed.Store(true)
+
+	// Wait for all in-flight faultPage() calls to complete.
+	// faultPage() holds settleRequests.RLock() during the ioctl,
+	// so acquiring the write lock here ensures no concurrent ioctls.
+	u.settleRequests.Lock()
+	defer u.settleRequests.Unlock()
+
 	return u.fd.close()
 }
 
@@ -324,6 +334,10 @@ func (u *Userfaultfd) faultPage(
 	// The Firecracker pause should return only after the requested memory is faulted in, so we don't need to guard the pagefault from the moment it is created.
 	u.settleRequests.RLock()
 	defer u.settleRequests.RUnlock()
+
+	if u.closed.Load() {
+		return nil
+	}
 
 	defer func() {
 		if r := recover(); r != nil {
