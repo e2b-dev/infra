@@ -39,6 +39,18 @@ const (
 	MemoryChunkSize = 4 * 1024 * 1024 // 4 MB
 )
 
+// GetProviderType returns the configured storage provider type from the
+// STORAGE_PROVIDER environment variable, defaulting to GCPBucket.
+func GetProviderType() Provider {
+	return Provider(env.GetEnv(storageProviderEnv, string(DefaultStorageProvider)))
+}
+
+// IsLocal reports whether the configured storage provider is the local
+// filesystem backend.
+func IsLocal() bool {
+	return GetProviderType() == LocalStorageProvider
+}
+
 type SeekableObjectType int
 
 const (
@@ -143,7 +155,7 @@ var BuildCacheStorageConfig = StorageConfig{
 }
 
 func GetStorageProvider(ctx context.Context, cfg StorageConfig) (StorageProvider, error) {
-	provider := Provider(env.GetEnv(storageProviderEnv, string(DefaultStorageProvider)))
+	provider := GetProviderType()
 
 	if provider == LocalStorageProvider {
 		return newFileSystemStorage(cfg.GetLocalBasePath(), cfg.UploadBaseURL, cfg.HMACKey), nil

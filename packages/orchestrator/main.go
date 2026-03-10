@@ -770,8 +770,7 @@ func setupBuildStorage(ctx context.Context, limiter *limit.Limiter, grpcPort uin
 
 	var uploadHandler *localupload.Handler
 
-	providerType := storage.Provider(env.GetEnv("STORAGE_PROVIDER", string(storage.DefaultStorageProvider)))
-	if providerType == storage.LocalStorageProvider {
+	if storage.IsLocal() {
 		hmacKey := make([]byte, 32)
 		if _, err := rand.Read(hmacKey); err != nil {
 			return nil, nil, fmt.Errorf("generate HMAC key: %w", err)
