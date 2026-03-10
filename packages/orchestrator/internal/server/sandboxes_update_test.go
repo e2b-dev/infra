@@ -25,6 +25,7 @@ func newTestSandbox(t *testing.T, withSlot bool) *sandbox.Sandbox {
 
 	sbx := &sandbox.Sandbox{
 		Metadata: &sandbox.Metadata{
+			Config: &sandbox.Config{},
 			Runtime: sandbox.RuntimeMetadata{
 				SandboxID: id.Generate(),
 			},
@@ -125,8 +126,11 @@ func TestUpdate_EndTimeAndEgress_EgressFails_RevertsEndTime(t *testing.T) {
 	assert.Equal(t, codes.Internal, status.Code(err))
 	// end_time must be reverted to original since egress failed.
 	assert.Equal(t, originalEnd, sbx.GetEndAt())
-	// Network egress should not have been set.
-	assert.Nil(t, sbx.Config.GetNetwork().GetEgress())
+	// Network egress should not have been set (GetNetwork returns empty defaults).
+	egress := sbx.Config.GetNetwork().GetEgress()
+	assert.Empty(t, egress.GetAllowedCidrs())
+	assert.Empty(t, egress.GetDeniedCidrs())
+	assert.Empty(t, egress.GetAllowedDomains())
 }
 
 func TestUpdate_NoFieldsSet(t *testing.T) {

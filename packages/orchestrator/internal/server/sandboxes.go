@@ -301,7 +301,7 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 		})
 	}
 
-	if err := utils.ApplyAllOrRollback(ctx, updates); err != nil {
+	if err := utils.ApplyAllOrNone(ctx, updates); err != nil {
 		telemetry.ReportCriticalError(ctx, "failed to update sandbox", err)
 
 		return nil, status.Errorf(codes.Internal, "failed to update sandbox: %s", err)

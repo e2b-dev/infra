@@ -6,11 +6,11 @@ import "context"
 // The rollback receives a context that is guaranteed not to be canceled.
 type UpdateFunc = func(ctx context.Context) (rollback func(ctx context.Context), err error)
 
-// ApplyAllOrRollback applies updates sequentially. If any update fails,
-// already-applied updates are reverted in reverse order. Rollbacks receive
+// ApplyAllOrNone applies updates sequentially. If any update fails,
+// already-applied updates are rolled back in reverse order. Rollbacks receive
 // a non-cancelable context to ensure they complete even if the original
 // request context has been canceled.
-func ApplyAllOrRollback(ctx context.Context, updates []UpdateFunc) error {
+func ApplyAllOrNone(ctx context.Context, updates []UpdateFunc) error {
 	var rollbacks []func(ctx context.Context)
 
 	for _, update := range updates {
