@@ -260,7 +260,7 @@ type runner struct {
 	factory    *sandbox.Factory
 	sandboxes  *sandbox.Map
 	tmpl       template.Template
-	sbxConfig  sandbox.Config
+	sbxConfig  *sandbox.Config
 	buildID    string
 	cache      *template.Cache
 	coldStart  bool
@@ -1091,11 +1091,10 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 		noPrefetch: noPrefetch,
 		config:     config.BuilderConfig,
 		storage:    persistence,
-		sbxConfig: sandbox.Config{
+		sbxConfig: &sandbox.Config{
 			BaseTemplateID: buildID,
 			Vcpu:           1,
 			RamMB:          512,
-			Network:        &orchestrator.SandboxNetworkConfig{},
 			Envd:           sandbox.EnvdMetadata{Vars: map[string]string{}, AccessToken: &token, Version: "1.0.0"},
 			FirecrackerConfig: fc.Config{
 				KernelVersion:      meta.Template.KernelVersion,
@@ -1103,6 +1102,7 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 			},
 		},
 	}
+	r.sbxConfig.SetNetwork(&orchestrator.SandboxNetworkConfig{})
 
 	if runOpts.enabled() {
 		return r.cmdMode(ctx, runOpts)

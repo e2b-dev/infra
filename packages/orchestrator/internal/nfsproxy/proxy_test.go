@@ -69,7 +69,7 @@ func TestRoundTrip(t *testing.T) {
 	sandboxes := sandbox.NewSandboxesMap()
 	sandboxes.Insert(&sandbox.Sandbox{
 		Metadata: &sandbox.Metadata{
-			Config: sandbox.Config{
+			Config: &sandbox.Config{
 				VolumeMounts: []sandbox.VolumeMountConfig{
 					{ID: volID1, Name: volName1, Path: "/mnt/vol1", Type: volType1},
 					{ID: volID2, Name: volName2, Path: "/mnt/vol2", Type: volType2},
@@ -297,7 +297,7 @@ func TestGetPrefixFromSandbox(t *testing.T) {
 	happySlot := &network.Slot{Key: "abc", HostIP: happyIP}
 	happySandbox := &sandbox.Sandbox{
 		Metadata: &sandbox.Metadata{
-			Config: sandbox.Config{
+			Config: &sandbox.Config{
 				VolumeMounts: []sandbox.VolumeMountConfig{
 					{ID: happyVolumeID, Name: happyVolumeName, Path: "/volume", Type: happyVolumeType},
 				},

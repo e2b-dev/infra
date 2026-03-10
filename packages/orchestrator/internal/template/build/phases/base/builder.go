@@ -199,13 +199,10 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 	// Provision sandbox with systemd and other vital parts
 	userLogger.Info(ctx, "Provisioning sandbox template")
 
-	baseSbxConfig := sandbox.Config{
+	baseSbxConfig := &sandbox.Config{
 		Vcpu:      bb.Config.VCpuCount,
 		RamMB:     bb.Config.MemoryMB,
 		HugePages: bb.Config.HugePages,
-
-		// Allow sandbox internet access during provisioning
-		Network: &orchestrator.SandboxNetworkConfig{},
 
 		Envd: sandbox.EnvdMetadata{
 			Version: bb.EnvdVersion,
@@ -216,6 +213,8 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 			FirecrackerVersion: bb.Config.FirecrackerVersion,
 		},
 	}
+	// Allow sandbox internet access during provisioning
+	baseSbxConfig.SetNetwork(&orchestrator.SandboxNetworkConfig{})
 	err = bb.provisionSandbox(
 		ctx,
 		userLogger,

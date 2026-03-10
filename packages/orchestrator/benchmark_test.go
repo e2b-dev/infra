@@ -195,13 +195,12 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	})
 
 	accessToken := "access-token"
-	sandboxConfig := sandbox.Config{
+	sandboxConfig := &sandbox.Config{
 		BaseTemplateID:  templateID,
 		Vcpu:            2,
 		RamMB:           512,
 		TotalDiskSizeMB: 2 * 1024,
 		HugePages:       useHugePages,
-		Network:         sbxNetwork,
 		Envd: sandbox.EnvdMetadata{
 			Vars:        map[string]string{"HELLO": "WORLD"},
 			AccessToken: &accessToken,
@@ -212,6 +211,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 			FirecrackerVersion: fcVersion,
 		},
 	}
+	sandboxConfig.SetNetwork(sbxNetwork)
 
 	runtime := sandbox.RuntimeMetadata{
 		TemplateID:  templateID,
@@ -348,7 +348,7 @@ type testContainer struct {
 	testType       testCycle
 	sandboxFactory *sandbox.Factory
 	tmpl           template.Template
-	sandboxConfig  sandbox.Config
+	sandboxConfig  *sandbox.Config
 	runtime        sandbox.RuntimeMetadata
 }
 

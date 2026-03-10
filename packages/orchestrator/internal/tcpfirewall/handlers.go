@@ -166,7 +166,7 @@ func proxyWithIPVerification(ctx context.Context, conn net.Conn, upstreamAddr st
 //  2. Deny domain / Deny CIDR (if either matches → deny)
 //  3. Default: allow
 func isEgressAllowed(sbx *sandbox.Sandbox, hostname string, ip net.IP) (bool, MatchType, error) {
-	egress := sbx.GetNetwork().GetEgress()
+	egress := sbx.Config.GetNetwork().GetEgress()
 	if egress == nil {
 		// No egress configuration, allow all traffic.
 		return true, MatchTypeNone, nil

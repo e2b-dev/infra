@@ -187,7 +187,7 @@ func (pb *OptimizeBuilder) collectMemoryPrefetchMapping(
 	defer span.End()
 
 	// Configure sandbox for prefetch collection
-	sbxConfig := sandbox.Config{
+	sbxConfig := &sandbox.Config{
 		Vcpu:      pb.Config.VCpuCount,
 		RamMB:     pb.Config.MemoryMB,
 		HugePages: pb.Config.HugePages,

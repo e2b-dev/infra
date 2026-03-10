@@ -148,7 +148,7 @@ func (ppb *PostProcessingBuilder) Build(
 	}
 
 	// Configure sandbox for final layer
-	sbxConfig := sandbox.Config{
+	sbxConfig := &sandbox.Config{
 		Vcpu:      ppb.Config.VCpuCount,
 		RamMB:     ppb.Config.MemoryMB,
 		HugePages: ppb.Config.HugePages,

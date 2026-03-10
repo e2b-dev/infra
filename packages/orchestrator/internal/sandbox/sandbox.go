@@ -71,13 +71,64 @@ type Config struct {
 	TotalDiskSizeMB int64
 	HugePages       bool
 
-	Network *orchestrator.SandboxNetworkConfig
-
 	Envd EnvdMetadata
 
 	FirecrackerConfig fc.Config
 
 	VolumeMounts []VolumeMountConfig
+
+	// mu protects the mutable settings (currently just network).
+	mu      sync.RWMutex
+	network *orchestrator.SandboxNetworkConfig
+}
+
+// GetNetwork returns the sandbox network config in a thread-safe manner.
+// The returned value is never nil; Egress and Ingress are always set (possibly empty).
+func (c *Config) GetNetwork() *orchestrator.SandboxNetworkConfig {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if c.network == nil {
+		return &orchestrator.SandboxNetworkConfig{
+			Egress:  &orchestrator.SandboxNetworkEgressConfig{},
+			Ingress: &orchestrator.SandboxNetworkIngressConfig{},
+		}
+	}
+
+	egress := c.network.GetEgress()
+	if egress == nil {
+		egress = &orchestrator.SandboxNetworkEgressConfig{}
+	}
+
+	ingress := c.network.GetIngress()
+	if ingress == nil {
+		ingress = &orchestrator.SandboxNetworkIngressConfig{}
+	}
+
+	return &orchestrator.SandboxNetworkConfig{
+		Egress:  egress,
+		Ingress: ingress,
+	}
+}
+
+// SetNetworkEgress updates the sandbox network egress config in a thread-safe manner.
+func (c *Config) SetNetworkEgress(egress *orchestrator.SandboxNetworkEgressConfig) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.network == nil {
+		c.network = &orchestrator.SandboxNetworkConfig{}
+	}
+
+	c.network.Egress = egress
+}
+
+// SetNetwork sets the full network config. Used at construction time.
+func (c *Config) SetNetwork(net *orchestrator.SandboxNetworkConfig) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.network = net
 }
 
 type VolumeMountConfig struct {
@@ -137,13 +188,12 @@ type internalConfig struct {
 
 type Metadata struct {
 	internalConfig internalConfig
-	Config         Config
+	Config         *Config
 	Runtime        RuntimeMetadata
 
-	rwmu          sync.RWMutex // protects startedAt, endAt, networkEgress
-	startedAt     time.Time
-	endAt         time.Time
-	networkEgress *orchestrator.SandboxNetworkEgressConfig
+	rwmu      sync.RWMutex // protects startedAt, endAt
+	startedAt time.Time
+	endAt     time.Time
 }
 
 // GetEndAt returns the sandbox end time in a thread-safe manner.
@@ -160,46 +210,6 @@ func (m *Metadata) SetEndAt(t time.Time) {
 	defer m.rwmu.Unlock()
 
 	m.endAt = t
-}
-
-// GetNetworkEgress returns the sandbox network egress config in a thread-safe manner.
-func (m *Metadata) GetNetworkEgress() *orchestrator.SandboxNetworkEgressConfig {
-	m.rwmu.RLock()
-	defer m.rwmu.RUnlock()
-
-	return m.networkEgress
-}
-
-// GetNetwork returns the sandbox network config in a thread-safe manner.
-// The returned value is never nil; Ingress is always set (possibly empty).
-func (m *Metadata) GetNetwork() *orchestrator.SandboxNetworkConfig {
-	egress := m.GetNetworkEgress()
-
-	net := m.Config.Network
-	if net == nil {
-		return &orchestrator.SandboxNetworkConfig{
-			Egress:  egress,
-			Ingress: &orchestrator.SandboxNetworkIngressConfig{},
-		}
-	}
-
-	ingress := net.GetIngress()
-	if ingress == nil {
-		ingress = &orchestrator.SandboxNetworkIngressConfig{}
-	}
-
-	return &orchestrator.SandboxNetworkConfig{
-		Egress:  egress,
-		Ingress: ingress,
-	}
-}
-
-// SetNetworkEgress updates the sandbox network egress config in a thread-safe manner.
-func (m *Metadata) SetNetworkEgress(egress *orchestrator.SandboxNetworkEgressConfig) {
-	m.rwmu.Lock()
-	defer m.rwmu.Unlock()
-
-	m.networkEgress = egress
 }
 
 type Sandbox struct {
@@ -290,7 +300,7 @@ func NewFactory(
 // IMPORTANT: You must Close() the sandbox after you are done with it.
 func (f *Factory) CreateSandbox(
 	ctx context.Context,
-	config Config,
+	config *Config,
 	runtime RuntimeMetadata,
 	template template.Template,
 	sandboxTimeout time.Duration,
@@ -316,7 +326,7 @@ func (f *Factory) CreateSandbox(
 		}
 	}()
 
-	ipsPromise := getNetworkSlot(ctx, f.networkPool, cleanup, config.Network)
+	ipsPromise := getNetworkSlot(ctx, f.networkPool, cleanup, config.GetNetwork())
 
 	sandboxFiles := template.Files().NewSandboxFiles(runtime.SandboxID)
 	cleanup.Add(ctx, cleanupFiles(f.config, sandboxFiles))
@@ -428,9 +438,8 @@ func (f *Factory) CreateSandbox(
 		Config:  config,
 		Runtime: runtime,
 
-		startedAt:     time.Now(),
-		endAt:         time.Now().Add(sandboxTimeout),
-		networkEgress: config.Network.GetEgress(),
+		startedAt: time.Now(),
+		endAt:     time.Now().Add(sandboxTimeout),
 	}
 
 	sbx := &Sandbox{
@@ -493,7 +502,7 @@ func handleSpanError(span trace.Span, err *error) {
 func (f *Factory) ResumeSandbox(
 	ctx context.Context,
 	t template.Template,
-	config Config,
+	config *Config,
 	runtime RuntimeMetadata,
 	startedAt time.Time,
 	endAt time.Time,
@@ -577,7 +586,7 @@ func (f *Factory) ResumeSandbox(
 	}()
 
 	// Slot initialization
-	ipsPromise := getNetworkSlot(ctx, f.networkPool, cleanup, config.Network)
+	ipsPromise := getNetworkSlot(ctx, f.networkPool, cleanup, config.GetNetwork())
 
 	// Rootfs initialization
 	overlayPromise := utils.NewPromise(func() (rootfs.Provider, error) {
@@ -749,9 +758,8 @@ func (f *Factory) ResumeSandbox(
 		Config:  config,
 		Runtime: runtime,
 
-		startedAt:     startedAt,
-		endAt:         endAt,
-		networkEgress: config.Network.GetEgress(),
+		startedAt: startedAt,
+		endAt:     endAt,
 	}
 
 	sbx := &Sandbox{

@@ -126,7 +126,7 @@ func TestUpdate_EndTimeAndEgress_EgressFails_RevertsEndTime(t *testing.T) {
 	// end_time must be reverted to original since egress failed.
 	assert.Equal(t, originalEnd, sbx.GetEndAt())
 	// Network egress should not have been set.
-	assert.Nil(t, sbx.GetNetworkEgress())
+	assert.Nil(t, sbx.Config.GetNetwork().GetEgress())
 }
 
 func TestUpdate_NoFieldsSet(t *testing.T) {

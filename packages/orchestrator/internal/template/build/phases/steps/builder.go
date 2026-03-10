@@ -158,7 +158,7 @@ func (sb *StepBuilder) Build(
 
 	step := sb.step
 
-	sbxConfig := sandbox.Config{
+	sbxConfig := &sandbox.Config{
 		Vcpu:      sb.Config.VCpuCount,
 		RamMB:     sb.Config.MemoryMB,
 		HugePages: sb.Config.HugePages,
