@@ -79,4 +79,3 @@ func TestTemplateBuildReservedDiskSpace(t *testing.T) {
 
 	t.Logf("tune2fs verification passed: %d reserved blocks (%d MB reserved)", reservedBlocks, reservedSpaceMB)
 }
-
