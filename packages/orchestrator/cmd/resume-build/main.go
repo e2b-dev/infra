@@ -1022,7 +1022,7 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	if verbose {
 		fmt.Println("🔧 Creating storage provider...")
 	}
-	persistence, err := storage.GetTemplateStorageProvider(ctx, nil)
+	persistence, err := storage.GetStorageProvider(ctx, storage.TemplateStorageConfig)
 	if verbose {
 		fmt.Println("🔧 Storage provider created, err:", err)
 	}
