@@ -76,7 +76,7 @@ func SetupDatabase(t *testing.T) *Database {
 	runDatabaseMigrations(t, connStr)
 
 	// create test queries client
-	dbClient, connPool, err := pool.New(t.Context(), connStr)
+	dbClient, connPool, err := pool.New(t.Context(), connStr, "tests")
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		connPool.Close()

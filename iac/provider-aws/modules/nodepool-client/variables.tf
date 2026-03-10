@@ -3,8 +3,7 @@ variable "prefix" {
 }
 
 variable "name" {
-  type    = string
-  default = "client"
+  type = string
 }
 
 variable "aws_account_id" {

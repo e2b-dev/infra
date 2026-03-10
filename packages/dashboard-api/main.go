@@ -108,13 +108,22 @@ func run() int {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
-	db, err := sqlcdb.NewClient(ctx, config.PostgresConnectionString, pool.WithMaxConnections(8))
+	db, err := sqlcdb.NewClient(
+		ctx,
+		config.PostgresConnectionString,
+		pool.WithMaxConnections(8),
+	)
 	if err != nil {
 		l.Fatal(ctx, "Initializing database client", zap.Error(err))
 	}
 	defer db.Close()
 
-	authDB, err := authdb.NewClient(ctx, config.AuthDBConnectionString, config.AuthDBReadReplicaConnectionString, pool.WithMaxConnections(8))
+	authDB, err := authdb.NewClient(
+		ctx,
+		config.AuthDBConnectionString,
+		config.AuthDBReadReplicaConnectionString,
+		pool.WithMaxConnections(8),
+	)
 	if err != nil {
 		l.Fatal(ctx, "Initializing auth database client", zap.Error(err))
 	}
