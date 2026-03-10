@@ -58,7 +58,6 @@ func New(
 	buildLogger logger.Logger,
 	sandboxFactory *sandbox.Factory,
 	proxy *proxy.SandboxProxy,
-	sandboxes *sandbox.Map,
 	templateCache *sbxtemplate.Cache,
 	templatePersistence storage.StorageProvider,
 	limiter *limit.Limiter,
@@ -110,7 +109,7 @@ func New(
 		artifactsRegistry,
 		dockerhubRepository,
 		proxy,
-		sandboxes,
+		sandboxFactory.Sandboxes,
 		templateCache,
 		buildMetrics,
 	)

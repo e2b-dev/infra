@@ -37,6 +37,10 @@ func WithServiceInstanceID(instanceID string) zap.Field {
 	return zap.String("service.instance.id", instanceID)
 }
 
+func WithSandboxIP(sandboxIP string) zap.Field {
+	return zap.String("sandbox.ip", sandboxIP)
+}
+
 func WithEnvdVersion(envdVersion string) zap.Field {
 	return zap.String("envd.version", envdVersion)
 }
