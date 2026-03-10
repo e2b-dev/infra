@@ -6,6 +6,7 @@ import (
 	"github.com/bits-and-blooms/bitset"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -14,22 +15,16 @@ type NoopMemory struct {
 	size      int64
 	blockSize int64
 
-	exit            *utils.ErrorOnce
-	getDiffMetadata func(ctx context.Context, blockSize int64) (*header.DiffMetadata, error)
+	exit *utils.ErrorOnce
 }
 
 var _ MemoryBackend = (*NoopMemory)(nil)
 
-func NewNoopMemory(
-	size,
-	blockSize int64,
-	getDiffMetadata func(ctx context.Context, blockSize int64) (*header.DiffMetadata, error),
-) *NoopMemory {
+func NewNoopMemory(size, blockSize int64) *NoopMemory {
 	return &NoopMemory{
-		size:            size,
-		blockSize:       blockSize,
-		exit:            utils.NewErrorOnce(),
-		getDiffMetadata: getDiffMetadata,
+		size:      size,
+		blockSize: blockSize,
+		exit:      utils.NewErrorOnce(),
 	}
 }
 
@@ -37,20 +32,32 @@ func (m *NoopMemory) Prefault(_ context.Context, _ int64, _ []byte) error {
 	return nil
 }
 
-func (m *NoopMemory) DiffMetadata(ctx context.Context) (*header.DiffMetadata, error) {
-	diffInfo, err := m.getDiffMetadata(ctx, m.blockSize)
+func (m *NoopMemory) DiffMetadata(ctx context.Context, f *fc.Process) (*header.DiffMetadata, error) {
+	diffInfo, err := f.MemoryInfo(ctx, m.blockSize)
 	if err != nil {
 		return nil, err
 	}
 
-	dirty := diffInfo.Dirty.Difference(diffInfo.Empty)
-
 	numberOfPages := header.TotalBlocks(m.size, m.blockSize)
 
-	empty := bitset.New(uint(numberOfPages))
-	empty.FlipRange(0, uint(numberOfPages))
+	// diffInfo.Dirty = Resident pages (via mincore)
+	// diffInfo.Empty = Resident AND all-zero pages (subset of Resident)
+	//
+	// For a fresh-boot VM, non-resident pages may still contain data written by
+	// Firecracker (kernel image, virtio ring buffers, boot parameters) or by the
+	// guest kernel before those pages were evicted from host memory. These pages
+	// MUST be exported via process_vm_readv (which transparently handles swapped-out
+	// pages) rather than being assumed empty.
+	//
+	// dirty  = all pages that are NOT confirmed empty (resident non-zero + non-resident)
+	// empty  = only pages confirmed to be resident AND all-zeros
 
-	empty = empty.Difference(dirty)
+	empty := diffInfo.Empty.Clone()
+
+	allPages := bitset.New(uint(numberOfPages))
+	allPages.FlipRange(0, uint(numberOfPages))
+
+	dirty := allPages.Difference(empty)
 
 	return &header.DiffMetadata{
 		Dirty:     dirty,
