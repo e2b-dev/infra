@@ -276,7 +276,8 @@ func (u *Userfaultfd) Serve(
 
 			var source block.Slicer
 
-			switch state := u.pageTracker.get(addr); state {
+			state, version := u.pageTracker.getWithVersion(addr)
+			switch state {
 			case faulted:
 				// Skip faulting the page. This has already been faulted, either during pre-faulting
 				// or because we handled another page fault on the same address in the current
@@ -319,7 +320,7 @@ func (u *Userfaultfd) Serve(
 				}
 
 				if handled {
-					u.pageTracker.setState(addr, addr+u.pageSize, faulted)
+					u.pageTracker.setStateIfVersion(addr, faulted, version)
 					u.prefetchTracker.Add(offset, accessType)
 				} else {
 					deferred.push(pf)

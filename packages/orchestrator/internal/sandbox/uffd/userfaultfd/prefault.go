@@ -23,6 +23,8 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) e
 		return fmt.Errorf("data length (%d) does not match pagesize (%d)", len(data), u.pageSize)
 	}
 
+	_, version := u.pageTracker.getWithVersion(addr)
+
 	// We're treating prefault handling as if it was caused by a read access.
 	// This way, we will fault the page with UFFD_COPY_MODE_WP which will preserve
 	// the WP bit for the page. This works even in the case of a race with a
@@ -33,6 +35,9 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) e
 	//
 	// In both cases, the WP bit will be cleared because it is handled asynchronously
 	// by the kernel.
+	u.settleRequests.RLock()
+	defer u.settleRequests.RUnlock()
+
 	handled, err := u.faultPage(
 		ctx,
 		addr,
@@ -49,7 +54,12 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) e
 
 	if !handled {
 		span.AddEvent("prefault: page already faulted or write returned EAGAIN")
+
+		return nil
 	}
+
+	u.pageTracker.setStateIfVersion(addr, faulted, version)
+	u.prefetchTracker.Add(offset, block.Read)
 
 	return nil
 }
