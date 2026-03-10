@@ -14,6 +14,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	dbapi "github.com/e2b-dev/infra/packages/api/internal/db"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
@@ -44,8 +45,8 @@ func (a *APIStore) getPausedSandboxes(
 		queryMetadata = *metadataFilter
 	}
 
-	snapshots, err := a.sqlcDB.GetSnapshotsWithCursor(
-		ctx, queries.GetSnapshotsWithCursorParams{
+	snapshots, err := dbapi.GetSnapshotsWithSplitQueries(
+		ctx, a.sqlcDB, queries.GetSnapshotsBaseParams{
 			Limit:                 queryLimit,
 			TeamID:                teamID,
 			Metadata:              queryMetadata,
@@ -223,7 +224,7 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 	c.JSON(http.StatusOK, sandboxes)
 }
 
-func snapshotsToPaginatedSandboxes(ctx context.Context, snapshots []queries.GetSnapshotsWithCursorRow) []utils.PaginatedSandbox {
+func snapshotsToPaginatedSandboxes(ctx context.Context, snapshots []dbapi.SnapshotWithBuildAndAliases) []utils.PaginatedSandbox {
 	sandboxes := make([]utils.PaginatedSandbox, 0)
 
 	// Add snapshots to results
