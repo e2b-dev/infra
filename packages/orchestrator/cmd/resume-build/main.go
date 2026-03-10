@@ -62,6 +62,7 @@ func main() {
 	pause := flag.Bool("pause", false, "start and immediately pause (snapshot)")
 	signalPause := flag.String("signal-pause", "", "wait for signal before pause (e.g., SIGTERM, SIGUSR1)")
 	cmdPause := flag.String("cmd-pause", "", "execute command in sandbox, then pause on success")
+	cmdSignalPause := flag.String("cmd-signal-pause", "", "execute command in sandbox, then wait for SIGUSR1 before pausing")
 	optimize := flag.Bool("optimize", false, "collect fresh prefetch mapping after pause (resumes snapshot to record page faults)")
 
 	flag.Parse()
@@ -85,8 +86,11 @@ func main() {
 	if *cmdPause != "" {
 		pauseCount++
 	}
+	if *cmdSignalPause != "" {
+		pauseCount++
+	}
 	if pauseCount > 1 {
-		log.Fatal("only one of -pause, -signal-pause, or -cmd-pause can be specified")
+		log.Fatal("only one of -pause, -signal-pause, -cmd-pause, or -cmd-signal-pause can be specified")
 	}
 
 	// -cmd is incompatible with pause flags
@@ -97,18 +101,18 @@ func main() {
 
 	isPauseMode := pauseCount > 0
 
-	// -signal-pause and -cmd-pause are incompatible with iterations (they require interaction)
-	if *iterations > 0 && (*signalPause != "" || *cmdPause != "") {
-		log.Fatal("-signal-pause and -cmd-pause are incompatible with -iterations")
+	// Interactive pause modes are incompatible with iterations.
+	if *iterations > 0 && (*signalPause != "" || *cmdPause != "" || *cmdSignalPause != "") {
+		log.Fatal("-signal-pause, -cmd-pause, and -cmd-signal-pause are incompatible with -iterations")
 	}
 
 	// -to-build only makes sense with pause
 	if *toBuild != "" && !isPauseMode {
-		log.Fatal("-to-build requires a pause flag (-pause, -signal-pause, or -cmd-pause)")
+		log.Fatal("-to-build requires a pause flag (-pause, -signal-pause, -cmd-pause, or -cmd-signal-pause)")
 	}
 
 	if *optimize && !isPauseMode {
-		log.Fatal("-optimize requires a pause flag (-pause, -signal-pause, or -cmd-pause)")
+		log.Fatal("-optimize requires a pause flag (-pause, -signal-pause, -cmd-pause, or -cmd-signal-pause)")
 	}
 	if *optimize && *iterations > 0 {
 		log.Fatal("-optimize is incompatible with -iterations (benchmarking doesn't upload)")
@@ -135,6 +139,7 @@ func main() {
 		immediate:       *pause,
 		signalName:      *signalPause,
 		command:         *cmdPause,
+		commandSignal:   *cmdSignalPause,
 		storagePath:     *storagePath,
 		isRemoteStorage: isRemoteStorage,
 		newBuildID:      outputBuildID,
@@ -163,6 +168,7 @@ type pauseOptions struct {
 	immediate       bool
 	signalName      string
 	command         string
+	commandSignal   string
 	storagePath     string
 	isRemoteStorage bool
 	newBuildID      string
@@ -171,7 +177,7 @@ type pauseOptions struct {
 }
 
 func (p pauseOptions) enabled() bool {
-	return p.immediate || p.signalName != "" || p.command != ""
+	return p.immediate || p.signalName != "" || p.command != "" || p.commandSignal != ""
 }
 
 // pauseTimings holds timing breakdown for a pause operation
@@ -557,7 +563,8 @@ func (r *runner) pauseOnce(ctx context.Context, opts pauseOptions, verbose bool)
 	}
 
 	// Handle pause trigger based on options
-	if opts.command != "" {
+	switch {
+	case opts.command != "":
 		if verbose {
 			fmt.Printf("🔧 Running command: %s\n", opts.command)
 		}
@@ -567,23 +574,17 @@ func (r *runner) pauseOnce(ctx context.Context, opts pauseOptions, verbose bool)
 		if verbose {
 			fmt.Println("✅ Command completed successfully")
 		}
-	} else if opts.signalName != "" {
-		sig := parseSignal(opts.signalName)
-		if sig == nil {
-			err := fmt.Errorf("unknown signal: %s", opts.signalName)
-
+	case opts.commandSignal != "":
+		if verbose {
+			fmt.Printf("🔧 Starting command: %s\n", opts.commandSignal)
+		}
+		cmdErrCh := runCommandInSandboxAsync(ctx, sbx, opts.commandSignal)
+		if err := waitForPauseSignal(ctx, sbx, "SIGUSR1", cmdErrCh); err != nil {
 			return pauseTimings{resume: resumeDur, err: err}, err
 		}
-		fmt.Printf("⏳ Waiting for %s signal...\n", opts.signalName)
-		fmt.Printf("   sudo nsenter --net=/var/run/netns/%s ssh -o StrictHostKeyChecking=no root@169.254.0.21\n", sbx.Slot.NamespaceID())
-
-		sigCh := make(chan os.Signal, 1)
-		signal.Notify(sigCh, sig)
-		select {
-		case <-ctx.Done():
-			return pauseTimings{resume: resumeDur, err: ctx.Err()}, ctx.Err()
-		case <-sigCh:
-			fmt.Printf("📨 Received %s signal\n", opts.signalName)
+	case opts.signalName != "":
+		if err := waitForPauseSignal(ctx, sbx, opts.signalName, nil); err != nil {
+			return pauseTimings{resume: resumeDur, err: err}, err
 		}
 	}
 	// For opts.immediate, we proceed directly to pause
@@ -1206,6 +1207,53 @@ func runCommandInSandbox(ctx context.Context, sbx *sandbox.Sandbox, command stri
 	}
 
 	return nil
+}
+
+func runCommandInSandboxAsync(ctx context.Context, sbx *sandbox.Sandbox, command string) <-chan error {
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- runCommandInSandbox(ctx, sbx, command)
+		close(errCh)
+	}()
+
+	return errCh
+}
+
+func waitForPauseSignal(ctx context.Context, sbx *sandbox.Sandbox, signalName string, cmdErrCh <-chan error) error {
+	sig := parseSignal(signalName)
+	if sig == nil {
+		return fmt.Errorf("unknown signal: %s", signalName)
+	}
+
+	fmt.Printf("⏳ Waiting for %s signal...\n", signalName)
+	fmt.Printf("   sudo nsenter --net=/var/run/netns/%s ssh -o StrictHostKeyChecking=no root@169.254.0.21\n", sbx.Slot.NamespaceID())
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, sig)
+	defer signal.Stop(sigCh)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-sigCh:
+			fmt.Printf("📨 Received %s signal\n", signalName)
+
+			return nil
+		case err, ok := <-cmdErrCh:
+			if !ok {
+				cmdErrCh = nil
+
+				continue
+			}
+			if err != nil {
+				fmt.Printf("⚠️  Command exited before pause signal: %v\n", err)
+			} else {
+				fmt.Println("ℹ️  Command completed before pause signal")
+			}
+			cmdErrCh = nil
+		}
+	}
 }
 
 // syncAndDropCaches syncs filesystem and drops caches before snapshot
