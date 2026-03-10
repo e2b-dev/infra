@@ -749,9 +749,8 @@ func (f *Factory) ResumeSandbox(
 		Config:  config,
 		Runtime: runtime,
 
-		startedAt:     startedAt,
-		endAt:         endAt,
-		networkEgress: config.Network.GetEgress(),
+		startedAt: startedAt,
+		endAt:     endAt,
 	}
 
 	sbx := &Sandbox{
