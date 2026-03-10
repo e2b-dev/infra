@@ -286,7 +286,7 @@ module "clickhouse" {
 module "build" {
   source = "../modules/nodepool-client"
 
-  name           = "build"
+  name           = "orch-build"
   prefix         = var.prefix
   aws_account_id = var.aws_account_id
 
@@ -307,6 +307,7 @@ module "build" {
   machine_type        = var.build_machine_type
 
   node_pool_name                    = var.build_node_pool_name
+  node_labels                       = var.build_node_labels
   nested_virtualization             = var.build_server_nested_virtualization
   consul_acl_token                  = var.consul_acl_token_secret
   consul_gossip_encryption_key      = var.consul_gossip_encryption_key
@@ -328,6 +329,7 @@ module "build" {
 module "client" {
   source = "../modules/nodepool-client"
 
+  name           = "orch-client"
   prefix         = var.prefix
   aws_account_id = var.aws_account_id
 
@@ -348,6 +350,7 @@ module "client" {
   machine_type        = var.client_machine_type
 
   node_pool_name                    = var.client_node_pool_name
+  node_labels                       = var.client_node_labels
   base_hugepages_percentage         = var.client_base_hugepages_percentage
   nested_virtualization             = var.client_server_nested_virtualization
   consul_acl_token                  = var.consul_acl_token_secret

@@ -488,6 +488,7 @@ variable "client_clusters_config" {
 
     hugepages_percentage   = optional(number)
     network_interface_type = optional(string)
+    node_labels            = optional(list(string), [])
   }))
 
   description = <<EOT
@@ -547,6 +548,7 @@ variable "build_clusters_config" {
 
     hugepages_percentage   = optional(number)
     network_interface_type = optional(string)
+    node_labels            = optional(list(string), [])
   }))
   description = <<EOT
 Configuration for the build clusters.
@@ -613,6 +615,26 @@ variable "sandbox_storage_backend" {
   description = "The sandbox storage backend to use. Valid values: 'memory', 'redis'."
   type        = string
   default     = ""
+}
+
+variable "db_max_open_connections" {
+  type    = number
+  default = 40
+}
+
+variable "db_min_idle_connections" {
+  type    = number
+  default = 5
+}
+
+variable "auth_db_max_open_connections" {
+  type    = number
+  default = 20
+}
+
+variable "auth_db_min_idle_connections" {
+  type    = number
+  default = 5
 }
 
 variable "loki_use_v13_schema_from" {

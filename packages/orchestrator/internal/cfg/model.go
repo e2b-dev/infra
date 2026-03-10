@@ -74,6 +74,7 @@ type Config struct {
 	GRPCPort                   uint16            `env:"GRPC_PORT"                    envDefault:"5008"`
 	LaunchDarklyAPIKey         string            `env:"LAUNCH_DARKLY_API_KEY"`
 	NodeIP                     string            `env:"NODE_IP"                      envDefault:"localhost"`
+	NodeLabels                 []string          `env:"NODE_LABELS"                  envSeparator:","`
 	OrchestratorLockPath       string            `env:"ORCHESTRATOR_LOCK_PATH"       envDefault:"/orchestrator.lock"`
 	ProxyPort                  uint16            `env:"PROXY_PORT"                   envDefault:"5007"`
 	RedisClusterURL            string            `env:"REDIS_CLUSTER_URL"`

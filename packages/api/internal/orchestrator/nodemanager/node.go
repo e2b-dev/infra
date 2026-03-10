@@ -45,6 +45,7 @@ type Node struct {
 	metricsMu sync.RWMutex
 
 	machineInfo machineinfo.MachineInfo
+	labels      map[string]struct{}
 	meta        NodeMetadata
 
 	PlacementMetrics PlacementMetrics
@@ -99,8 +100,10 @@ func New(
 			createFails:         atomic.Uint64{},
 		},
 	}
+
 	n.UpdateMetricsFromServiceInfoResponse(nodeInfo)
 	n.setMachineInfo(nodeInfo.GetMachineInfo())
+	n.setLabels(nodeInfo.GetLabels())
 
 	return n, nil
 }
@@ -147,6 +150,7 @@ func NewClusterNode(ctx context.Context, client *clusters.GRPCClient, clusterID 
 
 	n.UpdateMetricsFromServiceInfoResponse(nodeInfo)
 	n.setMachineInfo(nodeInfo.GetMachineInfo())
+	n.setLabels(nodeInfo.GetLabels())
 
 	return n, nil
 }

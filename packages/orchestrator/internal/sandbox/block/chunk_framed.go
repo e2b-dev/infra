@@ -209,6 +209,10 @@ func (c *Chunker) fetch(ctx context.Context, off int64, ft *storage.FrameTable) 
 	}
 
 	session, isNew := c.getOrCreateFetchSession(chunkOff, chunkLen)
+	if session == nil {
+		// Already cached (detected under lock). Nothing to wait for.
+		return nil
+	}
 
 	if isNew {
 		go c.runFetch(context.WithoutCancel(ctx), session, chunkOff, ft)
@@ -280,8 +284,10 @@ func (c *Chunker) FileSize() (int64, error) {
 }
 
 // getOrCreateFetchSession returns an existing session whose range contains
-// [off, off+len) or creates a new one. At most ~4-8 sessions are active at
-// a time so a linear scan is sufficient.
+// [off, off+len) or creates a new one. Returns (nil, false) if the data
+// was found to be already cached under the lock (closing the TOCTOU race
+// between the lock-free cache check in GetBlock and the session lookup here).
+// At most ~4-8 sessions are active at a time so a linear scan is sufficient.
 func (c *Chunker) getOrCreateFetchSession(off, length int64) (*fetchSession, bool) {
 	c.sessionsMu.Lock()
 	defer c.sessionsMu.Unlock()
@@ -290,6 +296,14 @@ func (c *Chunker) getOrCreateFetchSession(off, length int64) (*fetchSession, boo
 		if s.chunkOff <= off && s.chunkOff+s.chunkLen >= off+length {
 			return s, false
 		}
+	}
+
+	// Re-check cache under sessionsMu. A fetch can finish (marking blocks
+	// cached via markBlockRangeCached) and remove itself from sessions between
+	// the lock-free Slice() in GetBlock and the session scan above. The lock
+	// provides a happens-before guarantee that the bitmap writes are visible.
+	if c.cache.isCached(off, length) {
+		return nil, false
 	}
 
 	s := newFetchSession(off, length, c.cache)

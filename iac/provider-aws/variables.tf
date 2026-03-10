@@ -89,6 +89,12 @@ variable "client_server_nested_virtualization" {
   default = true
 }
 
+variable "client_node_labels" {
+  description = "Labels to assign to client nodes for scheduling purposes"
+  type        = list(string)
+  default     = []
+}
+
 variable "client_image_family_prefix" {
   type    = string
   default = "e2b-orch-"
@@ -139,7 +145,33 @@ variable "build_server_nested_virtualization" {
   default = true
 }
 
+variable "build_node_labels" {
+  description = "Labels to assign to build nodes for scheduling purposes"
+  type        = list(string)
+  default     = []
+}
+
 variable "control_server_cluster_size" {
   type    = number
   default = 3
+}
+
+variable "db_max_open_connections" {
+  type    = number
+  default = 40
+}
+
+variable "db_min_idle_connections" {
+  type    = number
+  default = 5
+}
+
+variable "auth_db_max_open_connections" {
+  type    = number
+  default = 20
+}
+
+variable "auth_db_min_idle_connections" {
+  type    = number
+  default = 5
 }

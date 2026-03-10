@@ -120,12 +120,18 @@ func (s *Server) GetBuildFileExists(ctx context.Context, req *orchestrator.GetBu
 // GetBuildFrame streams a range from a framed diff file (memfile, rootfs.ext4).
 func (s *Server) GetBuildFrame(req *orchestrator.GetBuildFrameRequest, stream orchestrator.ChunkService_GetBuildFrameServer) error {
 	ctx := stream.Context()
+	offset := req.GetOffset()
+	length := req.GetLength()
+
+	if offset < 0 || length < 0 {
+		return status.Error(codes.InvalidArgument, "offset and length must be non-negative")
+	}
 
 	telemetry.SetAttributes(ctx,
 		telemetry.WithBuildID(req.GetBuildId()),
 		attribute.String("file_name", req.GetFileName()),
-		attribute.Int64("offset", req.GetOffset()),
-		attribute.Int64("length", req.GetLength()),
+		attribute.Int64("offset", offset),
+		attribute.Int64("length", length),
 	)
 
 	if avail := s.buildUploadedResponse(req.GetBuildId()); avail != nil {
@@ -143,7 +149,7 @@ func (s *Server) GetBuildFrame(req *orchestrator.GetBuildFrameRequest, stream or
 		return toGRPCError(err)
 	}
 
-	if err := src.Stream(ctx, req.GetOffset(), req.GetLength(), &framedStreamSender{stream}); err != nil {
+	if err := src.Stream(ctx, offset, length, &framedStreamSender{stream}); err != nil {
 		if errors.Is(err, peerserver.ErrNotAvailable) {
 			return stream.Send(&orchestrator.GetBuildFrameResponse{Availability: peerNotAvailable})
 		}

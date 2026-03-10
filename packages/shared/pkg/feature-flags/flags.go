@@ -103,6 +103,7 @@ var (
 	// PeerToPeerAsyncCheckpointFlag makes Checkpoint upload fire-and-forget instead
 	// of synchronous. Only safe to enable after PeerToPeerChunkTransferFlag is ON.
 	PeerToPeerAsyncCheckpointFlag = newBoolFlag("peer-to-peer-async-checkpoint", false)
+	SandboxLabelBasedSchedulingFlag = newBoolFlag("sandbox-label-based-scheduling", false)
 )
 
 type IntFlag struct {

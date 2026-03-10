@@ -9,10 +9,10 @@ packer {
 }
 
 source "googlecompute" "orch" {
-  image_family = "e2b-orch"
+  image_family = "${var.prefix}orch"
 
   # TODO: Overwrite the image instead of creating timestamped images every time we build its
-  image_name    = "e2b-orch-${formatdate("YYYY-MM-DD-hh-mm-ss", timestamp())}"
+  image_name    = "${var.prefix}orch-${formatdate("YYYY-MM-DD-hh-mm-ss", timestamp())}"
   project_id    = var.gcp_project_id
   source_image  = "ubuntu-2204-jammy-v20251023"
   ssh_username  = "ubuntu"
