@@ -52,7 +52,7 @@ func buildEgressConfig(allowedEntries, deniedEntries []string) *orchestrator.San
 // buildNetworkConfig constructs the orchestrator network configuration from the input parameters
 func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess *bool, trafficAccessToken *string) *orchestrator.SandboxNetworkConfig {
 	orchNetwork := &orchestrator.SandboxNetworkConfig{
-		Egress:  &orchestrator.SandboxNetworkEgressConfig{},
+		Egress: &orchestrator.SandboxNetworkEgressConfig{},
 		Ingress: &orchestrator.SandboxNetworkIngressConfig{
 			TrafficAccessToken: trafficAccessToken,
 		},

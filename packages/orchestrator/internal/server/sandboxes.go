@@ -267,26 +267,20 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 		return nil, status.Error(codes.NotFound, "sandbox not found")
 	}
 
-	var updates []func(ctx context.Context, sbx *sandbox.Sandbox) (rollback func(), err error)
+	var updates []utils.UpdateFunc
 
 	if req.GetEndTime() != nil {
-		updates = append(updates, func(_ context.Context, sbx *sandbox.Sandbox) (func(), error) {
+		updates = append(updates, func(_ context.Context) (func(context.Context), error) {
 			old := sbx.GetEndAt()
-			rollback := func() { sbx.SetEndAt(old) }
-
 			sbx.SetEndAt(req.GetEndTime().AsTime())
 
-			return rollback, nil
+			return func(_ context.Context) { sbx.SetEndAt(old) }, nil
 		})
 	}
 
 	if req.GetEgress() != nil {
-		updates = append(updates, func(ctx context.Context, sbx *sandbox.Sandbox) (func(), error) {
+		updates = append(updates, func(ctx context.Context) (func(context.Context), error) {
 			oldEgress := sbx.GetNetworkEgress()
-			rollback := func() {
-				_ = sbx.Slot.UpdateInternet(ctx, oldEgress)
-				sbx.SetNetworkEgress(oldEgress)
-			}
 
 			if err := sbx.Slot.UpdateInternet(ctx, req.GetEgress()); err != nil {
 				return nil, fmt.Errorf("failed to update sandbox network: %w", err)
@@ -299,25 +293,17 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 				sbx.SetNetworkEgress(egress)
 			}
 
-			return rollback, nil
+			return func(ctx context.Context) {
+				_ = sbx.Slot.UpdateInternet(ctx, oldEgress)
+				sbx.SetNetworkEgress(oldEgress)
+			}, nil
 		})
 	}
 
-	// Apply updates sequentially. On failure, revert already-applied updates in reverse order.
-	var rollbacks []func()
-	for _, update := range updates {
-		rollback, err := update(ctx, sbx)
-		if err != nil {
-			for i := len(rollbacks) - 1; i >= 0; i-- {
-				rollbacks[i]()
-			}
+	if err := utils.ApplyAllOrRollback(ctx, updates); err != nil {
+		telemetry.ReportCriticalError(ctx, "failed to update sandbox", err)
 
-			telemetry.ReportCriticalError(ctx, "failed to update sandbox", err)
-
-			return nil, status.Errorf(codes.Internal, "failed to update sandbox: %s", err)
-		}
-
-		rollbacks = append(rollbacks, rollback)
+		return nil, status.Errorf(codes.Internal, "failed to update sandbox: %s", err)
 	}
 
 	// Publish event if any updates were applied.
