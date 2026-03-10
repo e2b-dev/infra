@@ -75,6 +75,7 @@ require (
 	google.golang.org/grpc v1.78.0
 	google.golang.org/protobuf v1.36.11
 	k8s.io/utils v0.0.0-20250604170112-4c0f3b243397
+	kernel.org/pub/linux/libs/security/libcap/cap v1.2.77
 )
 
 require (
@@ -298,4 +299,5 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260128011058-8636f8732409 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
+	kernel.org/pub/linux/libs/security/libcap/psx v1.2.77 // indirect
 )

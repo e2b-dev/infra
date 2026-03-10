@@ -137,7 +137,8 @@ func TestIntegrationTest(t *testing.T) {
 		},
 	}
 
-	s := NewProxy(t.Context(), sandboxes, config)
+	s, err := NewProxy(t.Context(), sandboxes, config)
+	require.NoError(t, err)
 	go func() {
 		err := s.Serve(nfsListener)
 		assert.NoError(t, err)

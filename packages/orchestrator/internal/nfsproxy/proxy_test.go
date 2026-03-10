@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/go-git/go-billy/v5"
@@ -41,6 +42,10 @@ func createVolumeDir(t *testing.T, volumeTypePath string, teamID, volumeID uuid.
 
 func TestRoundTrip(t *testing.T) {
 	t.Parallel()
+
+	if syscall.Geteuid() != 0 {
+		t.Skip("skipping test as it requires root privileges")
+	}
 
 	// setup logging
 	logCfg := zap.NewDevelopmentConfig()
@@ -100,7 +105,8 @@ func TestRoundTrip(t *testing.T) {
 		},
 	}
 
-	nfsProxy := NewProxy(t.Context(), sandboxes, config)
+	nfsProxy, err := NewProxy(t.Context(), sandboxes, config)
+	require.NoError(t, err)
 	go func() {
 		err := nfsProxy.Serve(nfsListener)
 		assert.NoError(t, err)
@@ -501,14 +507,16 @@ func TestGetPrefixFromSandbox(t *testing.T) {
 
 			handler := getPrefixFromSandbox(sandboxes, fsByType)
 
-			fs, prefix, err := handler(t.Context(), tc.remoteAddr, request)
-			assert.Equal(t, tc.expected.fs, fs)
-			assert.Equal(t, tc.expected.prefix, prefix)
+			path, err := handler(tc.remoteAddr, request)
 			if tc.expected.err != nil {
-				assert.EqualError(t, err, tc.expected.err.Error())
-			} else {
-				assert.NoError(t, err)
+				require.EqualError(t, err, tc.expected.err.Error())
+
+				return
 			}
+
+			require.NoError(t, err)
+			fullExpected := filepath.Join(tc.expected.fs.Root(), tc.expected.prefix)
+			assert.Equal(t, fullExpected, path)
 		})
 	}
 }

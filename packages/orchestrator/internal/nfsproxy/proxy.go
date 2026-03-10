@@ -16,9 +16,8 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy/jailed"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy/chroot"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy/logged"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy/oschange"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy/recovery"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/volumes"
@@ -39,11 +38,11 @@ var (
 	ErrVolumeID               = errors.New("invalid volume ID")
 )
 
-func getPrefixFromSandbox(sandboxes *sandbox.Map, filesystemsByType map[string]billy.Filesystem) jailed.GetPrefix {
-	return func(_ context.Context, remoteAddr net.Addr, request nfs.MountRequest) (billy.Filesystem, string, error) {
+func getPrefixFromSandbox(sandboxes *sandbox.Map, filesystemsByType map[string]billy.Filesystem) chroot.GetPath {
+	return func(remoteAddr net.Addr, request nfs.MountRequest) (string, error) {
 		sbx, err := sandboxes.GetByHostPort(remoteAddr.String())
 		if err != nil {
-			return nil, "", err
+			return "", err
 		}
 
 		// normalize the mount path
@@ -52,18 +51,18 @@ func getPrefixFromSandbox(sandboxes *sandbox.Map, filesystemsByType map[string]b
 
 		// at this point it must have at least a slash
 		if !filepath.IsAbs(requestedPath) {
-			return nil, "", ErrMustMountAbsolutePath
+			return "", ErrMustMountAbsolutePath
 		}
 
 		// get the mount name from the path
 		if requestedPath == "/" {
-			return nil, "", ErrCannotMountRoot
+			return "", ErrCannotMountRoot
 		}
 
 		requestedPathParts := strings.Split(requestedPath, "/")
 		volumeName := requestedPathParts[1]
 		if volumeName == "" {
-			return nil, "", ErrCannotMountRoot
+			return "", ErrCannotMountRoot
 		}
 
 		// find the local volume mount
@@ -76,53 +75,42 @@ func getPrefixFromSandbox(sandboxes *sandbox.Map, filesystemsByType map[string]b
 			}
 		}
 		if volumeMount == nil {
-			return nil, "", fmt.Errorf("failed to mount %q: %w", volumeName, ErrVolumeNotFound)
+			return "", fmt.Errorf("failed to mount %q: %w", volumeName, ErrVolumeNotFound)
 		}
 
 		// get the filesystem for the mount type
 		fileSystem, ok := filesystemsByType[volumeMount.Type]
 		if !ok {
-			return nil, "", fmt.Errorf("failed to mount %q (%s): %w", volumeName, volumeMount.Type, ErrVolumeTypeNotSupported)
+			return "", fmt.Errorf("failed to mount %q (%s): %w", volumeName, volumeMount.Type, ErrVolumeTypeNotSupported)
 		}
 
 		teamID, ok := internal.TryParseUUID(sbx.Metadata.Runtime.TeamID)
 		if !ok {
-			return nil, "", ErrInvalidTeamID
+			return "", ErrInvalidTeamID
 		}
 
 		if volumeMount.ID == uuid.Nil {
-			return nil, "", ErrVolumeID
+			return "", ErrVolumeID
 		}
 
-		prefixParts := volumes.BuildVolumePathParts(teamID, volumeMount.ID)
+		pathParts := volumes.BuildVolumePathParts(teamID, volumeMount.ID)
+		pathParts = append([]string{fileSystem.Root()}, pathParts...)
 		if len(requestedPathParts) > 2 {
-			prefixParts = append(prefixParts, requestedPathParts[2:]...)
+			pathParts = append(pathParts, requestedPathParts[2:]...)
 		}
 
-		return fileSystem, filepath.Join(prefixParts...), nil
+		return filepath.Join(pathParts...), nil
 	}
 }
 
-func getChangeFromFilesystem(fs billy.Filesystem) billy.Change {
-	if ch, ok := fs.(billy.Chroot); ok {
-		return oschange.NewChange(ch.Root())
-	}
-
-	panic(fmt.Sprintf("unexpected filesystem type: %v", fs))
-}
-
-func NewProxy(ctx context.Context, sandboxes *sandbox.Map, config cfg.Config) *Proxy {
+func NewProxy(ctx context.Context, sandboxes *sandbox.Map, config cfg.Config) (*Proxy, error) {
 	filesystemsByType := make(map[string]billy.Filesystem)
 
 	for name, path := range config.PersistentVolumeMounts {
 		filesystemsByType[name] = osfs.New(path)
 	}
 
-	var handler nfs.Handler
-	handler = jailed.NewNFSHandler(
-		getPrefixFromSandbox(sandboxes, filesystemsByType),
-		getChangeFromFilesystem,
-	)
+	handler := chroot.NewNFSHandler(getPrefixFromSandbox(sandboxes, filesystemsByType))
 	handler = helpers.NewCachingHandler(handler, cacheLimit)
 	handler = logged.WrapWithLogging(ctx, handler)
 	handler = recovery.WrapWithRecovery(ctx, handler)
@@ -132,7 +120,7 @@ func NewProxy(ctx context.Context, sandboxes *sandbox.Map, config cfg.Config) *P
 		Context: ctx,
 	}
 
-	return &Proxy{server: s}
+	return &Proxy{server: s}, nil
 }
 
 func (p *Proxy) Serve(lis net.Listener) error {

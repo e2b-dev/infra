@@ -136,3 +136,7 @@ func (l loggedFS) Chroot(path string) (fs billy.Filesystem, err error) {
 func (l loggedFS) Root() string {
 	return l.inner.Root()
 }
+
+func (l loggedFS) Unwrap() billy.Filesystem {
+	return l.inner
+}
