@@ -108,11 +108,11 @@ func main() {
 
 	// -to-build only makes sense with pause
 	if *toBuild != "" && !isPauseMode {
-		log.Fatal("-to-build requires a pause flag (-pause, -signal-pause, or -cmd-pause)")
+		log.Fatal("-to-build requires a pause flag (-pause, -signal-pause, -cmd-pause, or -cmd-signal-pause)")
 	}
 
 	if *optimize && !isPauseMode {
-		log.Fatal("-optimize requires a pause flag (-pause, -signal-pause, or -cmd-pause)")
+		log.Fatal("-optimize requires a pause flag (-pause, -signal-pause, -cmd-pause, or -cmd-signal-pause)")
 	}
 	if *optimize && *iterations > 0 {
 		log.Fatal("-optimize is incompatible with -iterations (benchmarking doesn't upload)")
@@ -1241,9 +1241,6 @@ func waitForPauseSignal(ctx context.Context, sbx *sandbox.Sandbox, signalName st
 
 			return nil
 		case err, ok := <-cmdErrCh:
-			if cmdErrCh == nil {
-				continue
-			}
 			if !ok {
 				cmdErrCh = nil
 
