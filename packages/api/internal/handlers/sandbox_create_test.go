@@ -190,7 +190,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 			},
 			wantErr:    true,
 			wantCode:   http.StatusBadRequest,
-			wantErrMsg: "invalid port 0: must be between 1 and 65535",
+			wantErrMsg: "invalid allowPorts port 0: must be between 1 and 65535",
 		},
 		{
 			name: "allowPorts with port > 65535 is invalid",
@@ -199,7 +199,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 			},
 			wantErr:    true,
 			wantCode:   http.StatusBadRequest,
-			wantErrMsg: "invalid port 70000: must be between 1 and 65535",
+			wantErrMsg: "invalid allowPorts port 70000: must be between 1 and 65535",
 		},
 		{
 			name: "valid denyPorts",
@@ -215,7 +215,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 			},
 			wantErr:    true,
 			wantCode:   http.StatusBadRequest,
-			wantErrMsg: "invalid port 0: must be between 1 and 65535",
+			wantErrMsg: "invalid denyPorts port 0: must be between 1 and 65535",
 		},
 		// Ingress CIDR validation tests
 		{

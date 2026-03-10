@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"fmt"
-	"net"
 	"net/http"
 	"slices"
 	"strings"
@@ -16,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	sutils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 func (a *APIStore) PutSandboxesSandboxIDNetwork(
@@ -42,25 +42,17 @@ func (a *APIStore) PutSandboxesSandboxIDNetwork(
 		return
 	}
 
-	derefSlice := func(p *[]string) []string {
-		if p == nil {
-			return nil
-		}
-
-		return *p
-	}
-
 	egressUpdate := &types.SandboxNetworkEgressConfig{
-		AllowedAddresses: derefSlice(body.AllowOut),
-		DeniedAddresses:  derefSlice(body.DenyOut),
+		AllowedAddresses: sutils.DerefOrDefault(body.AllowOut, nil),
+		DeniedAddresses:  sutils.DerefOrDefault(body.DenyOut, nil),
 	}
 
 	ingressUpdate := &types.SandboxNetworkIngressConfig{
 		MaskRequestHost:    body.MaskRequestHost,
 		AllowedPorts:       intsToUint32s(body.AllowPorts),
 		DeniedPorts:        intsToUint32s(body.DenyPorts),
-		AllowedClientCIDRs: derefSlice(body.AllowIn),
-		DeniedClientCIDRs:  derefSlice(body.DenyIn),
+		AllowedClientCIDRs: sutils.DerefOrDefault(body.AllowIn, nil),
+		DeniedClientCIDRs:  sutils.DerefOrDefault(body.DenyIn, nil),
 	}
 
 	if apiErr := validateEgressRules(egressUpdate.AllowedAddresses, egressUpdate.DeniedAddresses); apiErr != nil {
@@ -150,46 +142,42 @@ func validateEgressRules(allowOut, denyOut []string) *api.APIError {
 }
 
 func validateIngressRules(ingress *types.SandboxNetworkIngressConfig) *api.APIError {
-	for _, p := range ingress.AllowedPorts {
+	if apiErr := validatePortList(ingress.AllowedPorts, "allowPorts"); apiErr != nil {
+		return apiErr
+	}
+
+	if apiErr := validatePortList(ingress.DeniedPorts, "denyPorts"); apiErr != nil {
+		return apiErr
+	}
+
+	if apiErr := validateCIDRList(ingress.AllowedClientCIDRs, "allowIn"); apiErr != nil {
+		return apiErr
+	}
+
+	return validateCIDRList(ingress.DeniedClientCIDRs, "denyIn")
+}
+
+func validatePortList(ports []uint32, fieldName string) *api.APIError {
+	for _, p := range ports {
 		if p == 0 || p > 65535 {
 			return &api.APIError{
 				Code:      http.StatusBadRequest,
-				Err:       fmt.Errorf("invalid port %d", p),
-				ClientMsg: fmt.Sprintf("invalid port %d: must be between 1 and 65535", p),
+				Err:       fmt.Errorf("invalid %s port %d", fieldName, p),
+				ClientMsg: fmt.Sprintf("invalid %s port %d: must be between 1 and 65535", fieldName, p),
 			}
 		}
 	}
 
-	for _, p := range ingress.DeniedPorts {
-		if p == 0 || p > 65535 {
+	return nil
+}
+
+func validateCIDRList(cidrs []string, fieldName string) *api.APIError {
+	for _, cidr := range cidrs {
+		if !sandbox_network.IsIPOrCIDR(cidr) {
 			return &api.APIError{
 				Code:      http.StatusBadRequest,
-				Err:       fmt.Errorf("invalid port %d", p),
-				ClientMsg: fmt.Sprintf("invalid port %d: must be between 1 and 65535", p),
-			}
-		}
-	}
-
-	for _, cidr := range ingress.AllowedClientCIDRs {
-		if _, _, err := net.ParseCIDR(cidr); err != nil {
-			if ip := net.ParseIP(cidr); ip == nil {
-				return &api.APIError{
-					Code:      http.StatusBadRequest,
-					Err:       fmt.Errorf("invalid allowIn CIDR %s", cidr),
-					ClientMsg: fmt.Sprintf("invalid allowIn CIDR %s", cidr),
-				}
-			}
-		}
-	}
-
-	for _, cidr := range ingress.DeniedClientCIDRs {
-		if _, _, err := net.ParseCIDR(cidr); err != nil {
-			if ip := net.ParseIP(cidr); ip == nil {
-				return &api.APIError{
-					Code:      http.StatusBadRequest,
-					Err:       fmt.Errorf("invalid denyIn CIDR %s", cidr),
-					ClientMsg: fmt.Sprintf("invalid denyIn CIDR %s", cidr),
-				}
+				Err:       fmt.Errorf("invalid %s CIDR %s", fieldName, cidr),
+				ClientMsg: fmt.Sprintf("invalid %s CIDR %s", fieldName, cidr),
 			}
 		}
 	}
