@@ -105,6 +105,46 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 			return
 		}
 
+		var portNotAllowedErr *PortNotAllowedError
+		if errors.As(err, &portNotAllowedErr) {
+			logger.L().Warn(ctx, "port not allowed",
+				zap.String("host", r.Host),
+				logger.WithSandboxID(portNotAllowedErr.SandboxId),
+				zap.Uint64("port", portNotAllowedErr.Port))
+
+			err = template.
+				NewPortNotAllowedError(portNotAllowedErr.SandboxId, r.Host, portNotAllowedErr.Port).
+				HandleError(w, r)
+			if err != nil {
+				logger.L().Error(ctx, "failed to handle port not allowed error", zap.Error(err), logger.WithSandboxID(portNotAllowedErr.SandboxId))
+				http.Error(w, "Failed to handle port not allowed error", http.StatusInternalServerError)
+
+				return
+			}
+
+			return
+		}
+
+		var clientIPNotAllowedErr *ClientIPNotAllowedError
+		if errors.As(err, &clientIPNotAllowedErr) {
+			logger.L().Warn(ctx, "client IP not allowed",
+				zap.String("host", r.Host),
+				logger.WithSandboxID(clientIPNotAllowedErr.SandboxId),
+				zap.String("client_ip", clientIPNotAllowedErr.ClientIP))
+
+			err = template.
+				NewClientIPNotAllowedError(clientIPNotAllowedErr.SandboxId, r.Host, clientIPNotAllowedErr.ClientIP).
+				HandleError(w, r)
+			if err != nil {
+				logger.L().Error(ctx, "failed to handle client IP not allowed error", zap.Error(err), logger.WithSandboxID(clientIPNotAllowedErr.SandboxId))
+				http.Error(w, "Failed to handle client IP not allowed error", http.StatusInternalServerError)
+
+				return
+			}
+
+			return
+		}
+
 		var trafficMissingTokenErr *MissingTrafficAccessTokenError
 		if errors.As(err, &trafficMissingTokenErr) {
 			logger.L().Warn(ctx, "traffic access token is missing", zap.String("host", r.Host))

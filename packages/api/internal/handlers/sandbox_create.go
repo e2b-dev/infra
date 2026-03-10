@@ -7,7 +7,6 @@ import (
 	"net"
 	"net/http"
 	"path/filepath"
-	"slices"
 	"strings"
 	"time"
 
@@ -32,7 +31,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
-	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -165,8 +163,12 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 		network = &types.SandboxNetworkConfig{
 			Ingress: &types.SandboxNetworkIngressConfig{
-				AllowPublicAccess: n.AllowPublicTraffic,
-				MaskRequestHost:   n.MaskRequestHost,
+				AllowPublicAccess:  n.AllowPublicTraffic,
+				MaskRequestHost:    n.MaskRequestHost,
+				AllowedPorts:       intsToUint32s(n.AllowPorts),
+				DeniedPorts:        intsToUint32s(n.DenyPorts),
+				AllowedClientCIDRs: sharedUtils.DerefOrDefault(n.AllowIn, nil),
+				DeniedClientCIDRs:  sharedUtils.DerefOrDefault(n.DenyIn, nil),
 			},
 			Egress: &types.SandboxNetworkEgressConfig{
 				AllowedAddresses: sharedUtils.DerefOrDefault(n.AllowOut, nil),
@@ -504,56 +506,15 @@ func validateNetworkConfig(network *api.SandboxNetworkConfig) *api.APIError {
 	denyOut := sharedUtils.DerefOrDefault(network.DenyOut, nil)
 	allowOut := sharedUtils.DerefOrDefault(network.AllowOut, nil)
 
-	return validateEgressRules(allowOut, denyOut)
-}
-
-// validateEgressRules validates egress allow/deny rules:
-// - denyOut entries must be valid IPs or CIDRs (not domains)
-// - allowOut entries must be valid IPs, CIDRs, or domain names
-// - when allowOut contains domains, denyOut must include 0.0.0.0/0
-func validateEgressRules(allowOut, denyOut []string) *api.APIError {
-	for _, cidr := range denyOut {
-		if !sandbox_network.IsIPOrCIDR(cidr) {
-			return &api.APIError{
-				Code:      http.StatusBadRequest,
-				Err:       fmt.Errorf("invalid denied CIDR %s", cidr),
-				ClientMsg: fmt.Sprintf("invalid denied CIDR %s", cidr),
-			}
-		}
+	if apiErr := validateEgressRules(allowOut, denyOut); apiErr != nil {
+		return apiErr
 	}
 
-	if len(allowOut) > 0 {
-		_, allowedDomains := sandbox_network.ParseAddressesAndDomains(allowOut)
-
-		for _, domain := range allowedDomains {
-			// Strip wildcard prefix for IDNA validation (*.example.com → example.com).
-			// The "*" label is not a valid IDNA label, but we support it as a wildcard.
-			validateDomain := domain
-			if strings.HasPrefix(domain, "*.") {
-				validateDomain = domain[2:]
-			}
-
-			if validateDomain != "*" {
-				if _, err := idna.Lookup.ToASCII(validateDomain); err != nil {
-					return &api.APIError{
-						Code:      http.StatusBadRequest,
-						Err:       fmt.Errorf("invalid allowed domain %q: %w", domain, err),
-						ClientMsg: fmt.Sprintf("invalid allowed domain: %s", domain),
-					}
-				}
-			}
-		}
-
-		hasBlockAll := slices.Contains(denyOut, sandbox_network.AllInternetTrafficCIDR)
-
-		if len(allowedDomains) > 0 && !hasBlockAll {
-			return &api.APIError{
-				Code:      http.StatusBadRequest,
-				Err:       fmt.Errorf("allow out contains domains but deny out is missing 0.0.0.0/0 (ALL_TRAFFIC)"),
-				ClientMsg: ErrMsgDomainsRequireBlockAll,
-			}
-		}
-	}
-
-	return nil
+	return validateIngressRules(&types.SandboxNetworkIngressConfig{
+		AllowedPorts:       intsToUint32s(network.AllowPorts),
+		DeniedPorts:        intsToUint32s(network.DenyPorts),
+		AllowedClientCIDRs: sharedUtils.DerefOrDefault(network.AllowIn, nil),
+		DeniedClientCIDRs:  sharedUtils.DerefOrDefault(network.DenyIn, nil),
+	})
 }
+

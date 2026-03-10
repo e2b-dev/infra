@@ -82,6 +82,38 @@ func NewErrInvalidTrafficAccessToken(sandboxId string, header string) *InvalidTr
 	}
 }
 
+type PortNotAllowedError struct {
+	SandboxId string
+	Port      uint64
+}
+
+func NewErrPortNotAllowed(sandboxId string, port uint64) *PortNotAllowedError {
+	return &PortNotAllowedError{
+		SandboxId: sandboxId,
+		Port:      port,
+	}
+}
+
+func (e PortNotAllowedError) Error() string {
+	return "port not allowed"
+}
+
+type ClientIPNotAllowedError struct {
+	SandboxId string
+	ClientIP  string
+}
+
+func NewErrClientIPNotAllowed(sandboxId string, clientIP string) *ClientIPNotAllowedError {
+	return &ClientIPNotAllowedError{
+		SandboxId: sandboxId,
+		ClientIP:  clientIP,
+	}
+}
+
+func (e ClientIPNotAllowedError) Error() string {
+	return "client IP not allowed"
+}
+
 type SandboxResourceExhaustedError struct {
 	SandboxId string
 	Message   string

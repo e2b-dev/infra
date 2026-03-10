@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -123,6 +124,18 @@ func (c *Config) SetNetworkEgress(egress *orchestrator.SandboxNetworkEgressConfi
 	c.network.Egress = egress
 }
 
+// SetNetworkIngress updates the sandbox network ingress config in a thread-safe manner.
+func (c *Config) SetNetworkIngress(ingress *orchestrator.SandboxNetworkIngressConfig) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.network == nil {
+		c.network = &orchestrator.SandboxNetworkConfig{}
+	}
+
+	c.network.Ingress = ingress
+}
+
 // SetNetwork sets the full network config. Used at construction time.
 func (c *Config) SetNetwork(net *orchestrator.SandboxNetworkConfig) {
 	c.mu.Lock()
@@ -191,9 +204,15 @@ type Metadata struct {
 	Config         *Config
 	Runtime        RuntimeMetadata
 
-	rwmu      sync.RWMutex // protects startedAt, endAt
+	rwmu      sync.RWMutex // protects startedAt, endAt, ingress CIDRs
 	startedAt time.Time
 	endAt     time.Time
+
+	// Pre-parsed ingress CIDRs for fast matching on the proxy hot path.
+	allowedClientNets []*net.IPNet
+	allowedClientIPs  []net.IP
+	deniedClientNets  []*net.IPNet
+	deniedClientIPs   []net.IP
 }
 
 // GetEndAt returns the sandbox end time in a thread-safe manner.
@@ -210,6 +229,109 @@ func (m *Metadata) SetEndAt(t time.Time) {
 	defer m.rwmu.Unlock()
 
 	m.endAt = t
+}
+
+// SetNetworkIngress updates the sandbox network ingress config in a thread-safe manner.
+// It updates the Config and also pre-parses CIDRs for fast matching on the proxy hot path.
+func (m *Metadata) SetNetworkIngress(ingress *orchestrator.SandboxNetworkIngressConfig) {
+	if m.Config != nil {
+		m.Config.SetNetworkIngress(ingress)
+	}
+
+	m.rwmu.Lock()
+	defer m.rwmu.Unlock()
+
+	m.rebuildIngressCIDRs(ingress)
+}
+
+// rebuildIngressCIDRs parses CIDR strings from the given ingress config into net.IPNet/net.IP.
+// Must be called with rwmu held.
+func (m *Metadata) rebuildIngressCIDRs(ingress *orchestrator.SandboxNetworkIngressConfig) {
+	m.allowedClientNets = nil
+	m.allowedClientIPs = nil
+	m.deniedClientNets = nil
+	m.deniedClientIPs = nil
+
+	if ingress == nil {
+		return
+	}
+
+	m.allowedClientNets, m.allowedClientIPs = parseCIDRList(ingress.GetAllowedClientCidrs())
+	m.deniedClientNets, m.deniedClientIPs = parseCIDRList(ingress.GetDeniedClientCidrs())
+}
+
+// buildParsedIngressCIDRs reads the current ingress config from Config and parses CIDRs.
+// Must be called with rwmu held.
+func (m *Metadata) buildParsedIngressCIDRs() {
+	if m.Config == nil {
+		m.rebuildIngressCIDRs(nil)
+
+		return
+	}
+
+	m.rebuildIngressCIDRs(m.Config.GetNetwork().Ingress)
+}
+
+// IngressAllowsClientIP returns true if the IP matches any allowed CIDR/IP.
+func (m *Metadata) IngressAllowsClientIP(ip net.IP) bool {
+	m.rwmu.RLock()
+	defer m.rwmu.RUnlock()
+
+	return ipMatchesList(ip, m.allowedClientNets, m.allowedClientIPs)
+}
+
+// IngressDeniesClientIP returns true if the IP matches any denied CIDR/IP.
+func (m *Metadata) IngressDeniesClientIP(ip net.IP) bool {
+	m.rwmu.RLock()
+	defer m.rwmu.RUnlock()
+
+	return ipMatchesList(ip, m.deniedClientNets, m.deniedClientIPs)
+}
+
+// HasIngressClientCIDRs returns true if any client CIDR rules are configured.
+func (m *Metadata) HasIngressClientCIDRs() bool {
+	m.rwmu.RLock()
+	defer m.rwmu.RUnlock()
+
+	return len(m.allowedClientNets) > 0 || len(m.allowedClientIPs) > 0 ||
+		len(m.deniedClientNets) > 0 || len(m.deniedClientIPs) > 0
+}
+
+func ipMatchesList(ip net.IP, nets []*net.IPNet, ips []net.IP) bool {
+	for _, n := range nets {
+		if n.Contains(ip) {
+			return true
+		}
+	}
+
+	for _, addr := range ips {
+		if addr.Equal(ip) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// parseCIDRList parses a list of CIDR/IP strings into nets and bare IPs.
+func parseCIDRList(cidrs []string) ([]*net.IPNet, []net.IP) {
+	var nets []*net.IPNet
+	var ips []net.IP
+
+	for _, cidr := range cidrs {
+		_, ipNet, err := net.ParseCIDR(cidr)
+		if err != nil {
+			if parsed := net.ParseIP(cidr); parsed != nil {
+				ips = append(ips, parsed)
+			}
+
+			continue
+		}
+
+		nets = append(nets, ipNet)
+	}
+
+	return nets, ips
 }
 
 type Sandbox struct {
@@ -441,6 +563,7 @@ func (f *Factory) CreateSandbox(
 		startedAt: time.Now(),
 		endAt:     time.Now().Add(sandboxTimeout),
 	}
+	metadata.buildParsedIngressCIDRs()
 
 	sbx := &Sandbox{
 		LifecycleID: uuid.NewString(),
@@ -761,6 +884,7 @@ func (f *Factory) ResumeSandbox(
 		startedAt: startedAt,
 		endAt:     endAt,
 	}
+	metadata.buildParsedIngressCIDRs()
 
 	sbx := &Sandbox{
 		LifecycleID: uuid.NewString(),

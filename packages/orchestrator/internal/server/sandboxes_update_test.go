@@ -133,6 +133,76 @@ func TestUpdate_EndTimeAndEgress_EgressFails_RevertsEndTime(t *testing.T) {
 	assert.Empty(t, egress.GetAllowedDomains())
 }
 
+func TestUpdate_IngressOnly(t *testing.T) {
+	t.Parallel()
+
+	sbx := newTestSandbox(t, false)
+	s := newTestServer(sbx)
+
+	_, err := s.Update(t.Context(), &orchestrator.SandboxUpdateRequest{
+		SandboxId: sbx.Runtime.SandboxID,
+		Ingress: &orchestrator.SandboxNetworkIngressConfig{
+			AllowedPorts:       []uint32{80, 443},
+			DeniedClientCidrs:  []string{"10.0.0.0/8"},
+		},
+	})
+
+	require.NoError(t, err)
+
+	ingress := sbx.Config.GetNetwork().Ingress
+	require.NotNil(t, ingress)
+	assert.Equal(t, []uint32{80, 443}, ingress.GetAllowedPorts())
+	assert.Equal(t, []string{"10.0.0.0/8"}, ingress.GetDeniedClientCidrs())
+}
+
+func TestUpdate_EndTimeAndIngress(t *testing.T) {
+	t.Parallel()
+
+	sbx := newTestSandbox(t, false)
+	s := newTestServer(sbx)
+
+	newEnd := time.Now().Add(2 * time.Hour)
+	_, err := s.Update(t.Context(), &orchestrator.SandboxUpdateRequest{
+		SandboxId: sbx.Runtime.SandboxID,
+		EndTime:   timestamppb.New(newEnd),
+		Ingress: &orchestrator.SandboxNetworkIngressConfig{
+			DeniedPorts: []uint32{22},
+		},
+	})
+
+	require.NoError(t, err)
+	assert.WithinDuration(t, newEnd, sbx.GetEndAt(), time.Second)
+	assert.Equal(t, []uint32{22}, sbx.Config.GetNetwork().Ingress.GetDeniedPorts())
+}
+
+func TestUpdate_IngressRollsBackOnEgressFailure(t *testing.T) {
+	t.Parallel()
+
+	// Sandbox with a Slot but no real namespace — UpdateInternet will fail.
+	sbx := newTestSandbox(t, true)
+	s := newTestServer(sbx)
+
+	// Set initial ingress.
+	sbx.SetNetworkIngress(&orchestrator.SandboxNetworkIngressConfig{
+		AllowedPorts: []uint32{80},
+	})
+
+	_, err := s.Update(t.Context(), &orchestrator.SandboxUpdateRequest{
+		SandboxId: sbx.Runtime.SandboxID,
+		Ingress: &orchestrator.SandboxNetworkIngressConfig{
+			AllowedPorts: []uint32{443},
+		},
+		// Egress comes after ingress in the update order — it will fail.
+		Egress: &orchestrator.SandboxNetworkEgressConfig{
+			DeniedCidrs: []string{"0.0.0.0/0"},
+		},
+	})
+
+	require.Error(t, err)
+	// Ingress should be reverted to original.
+	assert.Equal(t, []uint32{80}, sbx.Config.GetNetwork().Ingress.GetAllowedPorts())
+}
+
 func TestUpdate_NoFieldsSet(t *testing.T) {
 	t.Parallel()
 

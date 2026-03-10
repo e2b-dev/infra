@@ -175,70 +175,87 @@ func TestValidateNetworkConfig(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		// Ingress port validation tests
 		{
-			name: "allow_out with IP and deny_out block-all is valid",
+			name: "valid allowPorts",
 			network: &api.SandboxNetworkConfig{
-				AllowOut: &[]string{"8.8.8.8"},
-				DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
-			},
-			wantErr: false,
-		},
-		// CIDR intersection validation tests
-		{
-			name: "allow_out CIDR not covered by deny_out CIDR is valid (no intersection check)",
-			network: &api.SandboxNetworkConfig{
-				AllowOut: &[]string{"10.0.0.0/8"},
-				DenyOut:  &[]string{"192.168.0.0/16"}, // No intersection, but still valid
+				AllowPorts: &[]int{80, 443, 8080},
 			},
 			wantErr: false,
 		},
 		{
-			name: "allow_out CIDR covered by intersecting deny_out CIDR is valid",
+			name: "allowPorts with port 0 is invalid",
 			network: &api.SandboxNetworkConfig{
-				AllowOut: &[]string{"10.1.0.0/16"},
-				DenyOut:  &[]string{"10.0.0.0/8"}, // Deny covers allow
+				AllowPorts: &[]int{0},
+			},
+			wantErr:    true,
+			wantCode:   http.StatusBadRequest,
+			wantErrMsg: "invalid port 0: must be between 1 and 65535",
+		},
+		{
+			name: "allowPorts with port > 65535 is invalid",
+			network: &api.SandboxNetworkConfig{
+				AllowPorts: &[]int{70000},
+			},
+			wantErr:    true,
+			wantCode:   http.StatusBadRequest,
+			wantErrMsg: "invalid port 70000: must be between 1 and 65535",
+		},
+		{
+			name: "valid denyPorts",
+			network: &api.SandboxNetworkConfig{
+				DenyPorts: &[]int{22, 3306},
 			},
 			wantErr: false,
 		},
 		{
-			name: "allow_out CIDR covers deny_out CIDR is valid (intersection exists)",
+			name: "denyPorts with port 0 is invalid",
 			network: &api.SandboxNetworkConfig{
-				AllowOut: &[]string{"10.0.0.0/8"},
-				DenyOut:  &[]string{"10.1.0.0/16"}, // Allow covers deny - still valid intersection
+				DenyPorts: &[]int{0},
+			},
+			wantErr:    true,
+			wantCode:   http.StatusBadRequest,
+			wantErrMsg: "invalid port 0: must be between 1 and 65535",
+		},
+		// Ingress CIDR validation tests
+		{
+			name: "valid allowIn CIDR",
+			network: &api.SandboxNetworkConfig{
+				AllowIn: &[]string{"10.0.0.0/8"},
 			},
 			wantErr: false,
 		},
 		{
-			name: "allow_out IP covered by deny_out CIDR is valid",
+			name: "valid allowIn bare IP",
 			network: &api.SandboxNetworkConfig{
-				AllowOut: &[]string{"10.1.2.3"},
-				DenyOut:  &[]string{"10.0.0.0/8"},
+				AllowIn: &[]string{"1.2.3.4"},
 			},
 			wantErr: false,
 		},
 		{
-			name: "allow_out IP not covered by deny_out CIDR is valid (no intersection check)",
+			name: "invalid allowIn entry",
 			network: &api.SandboxNetworkConfig{
-				AllowOut: &[]string{"8.8.8.8"},
-				DenyOut:  &[]string{"10.0.0.0/8"},
+				AllowIn: &[]string{"not-a-cidr"},
+			},
+			wantErr:    true,
+			wantCode:   http.StatusBadRequest,
+			wantErrMsg: "invalid allowIn CIDR not-a-cidr",
+		},
+		{
+			name: "valid denyIn CIDR",
+			network: &api.SandboxNetworkConfig{
+				DenyIn: &[]string{"192.168.0.0/16"},
 			},
 			wantErr: false,
 		},
 		{
-			name: "multiple allow_out CIDRs partial deny_out coverage is valid (no intersection check)",
+			name: "invalid denyIn entry",
 			network: &api.SandboxNetworkConfig{
-				AllowOut: &[]string{"10.0.0.0/8", "192.168.0.0/16"},
-				DenyOut:  &[]string{"10.0.0.0/8"}, // Only covers first, but still valid
+				DenyIn: &[]string{"bad"},
 			},
-			wantErr: false,
-		},
-		{
-			name: "multiple allow_out CIDRs covered by multiple deny_out CIDRs is valid",
-			network: &api.SandboxNetworkConfig{
-				AllowOut: &[]string{"10.0.0.0/8", "192.168.0.0/16"},
-				DenyOut:  &[]string{"10.0.0.0/8", "192.168.0.0/16"},
-			},
-			wantErr: false,
+			wantErr:    true,
+			wantCode:   http.StatusBadRequest,
+			wantErrMsg: "invalid denyIn CIDR bad",
 		},
 		// Mixed domain and CIDR tests
 		{

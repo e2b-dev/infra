@@ -80,6 +80,10 @@ message SandboxNetworkEgressConfig {
 message SandboxNetworkIngressConfig {
   optional string traffic_access_token = 1;
   optional string mask_request_host = 2;
+  repeated uint32 allowed_ports = 3;
+  repeated uint32 denied_ports = 4;
+  repeated string allowed_client_cidrs = 5;
+  repeated string denied_client_cidrs = 6;
 }
 
 message SandboxCreateRequest {
@@ -99,6 +103,7 @@ message SandboxUpdateRequest {
   // All fields are optional — only set fields are applied.
   optional google.protobuf.Timestamp end_time = 2;
   optional SandboxNetworkEgressConfig egress = 3;
+  optional SandboxNetworkIngressConfig ingress = 4;
 }
 
 message SandboxDeleteRequest {

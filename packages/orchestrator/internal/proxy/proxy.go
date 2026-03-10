@@ -3,6 +3,7 @@ package proxy
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -85,6 +86,31 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 					return nil, reverseproxy.NewErrMissingTrafficAccessToken(sandboxId, trafficAccessTokenHeader)
 				} else if accessTokenRaw != *accessToken {
 					return nil, reverseproxy.NewErrInvalidTrafficAccessToken(sandboxId, trafficAccessTokenHeader)
+				}
+			}
+
+			if isNonEnvdTraffic {
+				// Handle port allowlist/denylist for non-envd traffic.
+				// Priority: allow wins → deny → default allow (matches egress
+				// semantics).
+				if allowed := ingress.GetAllowedPorts(); containsPort(allowed, port) {
+					// Explicitly allowed — skip deny check.
+				} else if denied := ingress.GetDeniedPorts(); containsPort(denied, port) {
+					return nil, reverseproxy.NewErrPortNotAllowed(sandboxId, port)
+				}
+
+				// Handle client IP allowlist/denylist for non-envd traffic.
+				// Priority: allow wins → deny → default allow (matches egress
+				// semantics). Uses pre-parsed CIDRs for performance.
+				if sbx.HasIngressClientCIDRs() {
+					clientIP := extractClientIP(r)
+					if ip := net.ParseIP(clientIP); ip != nil {
+						if sbx.IngressAllowsClientIP(ip) {
+							// Explicitly allowed — skip deny check.
+						} else if sbx.IngressDeniesClientIP(ip) {
+							return nil, reverseproxy.NewErrClientIPNotAllowed(sandboxId, clientIP)
+						}
+					}
 				}
 			}
 
@@ -206,3 +232,36 @@ func (p *SandboxProxy) OnInsert(_ *sandbox.Sandbox) {}
 func (p *SandboxProxy) OnRemove(sandboxID string) {
 	p.limiter.Remove(sandboxID)
 }
+
+// containsPort checks if a port is in the given list of ports.
+func containsPort(ports []uint32, port uint64) bool {
+	for _, p := range ports {
+		if uint64(p) == port {
+			return true
+		}
+	}
+
+	return false
+}
+
+// extractClientIP returns the client IP from the request, preferring X-Forwarded-For
+// (set by GCP Load Balancer) over RemoteAddr.
+func extractClientIP(r *http.Request) string {
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		// GCP LB sets the first entry; take it.
+		if idx := strings.IndexByte(xff, ','); idx != -1 {
+			return strings.TrimSpace(xff[:idx])
+		}
+
+		return strings.TrimSpace(xff)
+	}
+
+	// Fall back to RemoteAddr, stripping the port.
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+
+	return host
+}
+
