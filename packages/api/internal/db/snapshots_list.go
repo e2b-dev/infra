@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"golang.org/x/sync/errgroup"
-
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/queries"
 )
@@ -25,7 +23,8 @@ type SnapshotWithBuildAndAliases struct {
 //  2. Batch-fetch the latest ready build per env_id
 //  3. Batch-fetch aliases per base_env_id
 //
-// Steps 2 and 3 run concurrently over the same transaction snapshot.
+// All queries run sequentially on the same transaction (pgx transactions are
+// single-connection and do not support concurrent queries).
 func GetSnapshotsWithSplitQueries(ctx context.Context, db *sqlcdb.Client, params queries.GetSnapshotsBaseParams) ([]SnapshotWithBuildAndAliases, error) {
 	txClient, tx, err := db.WithReadOnlyTx(ctx)
 	if err != nil {
@@ -59,35 +58,14 @@ func GetSnapshotsWithSplitQueries(ctx context.Context, db *sqlcdb.Client, params
 		}
 	}
 
-	var (
-		buildRows []queries.GetLatestReadyBuildsByEnvIDsRow
-		aliasRows []queries.GetEnvAliasesByEnvIDsRow
-	)
+	buildRows, err := txClient.GetLatestReadyBuildsByEnvIDs(ctx, envIDs)
+	if err != nil {
+		return nil, fmt.Errorf("fetching builds: %w", err)
+	}
 
-	g, gctx := errgroup.WithContext(ctx)
-
-	g.Go(func() error {
-		var err error
-		buildRows, err = txClient.GetLatestReadyBuildsByEnvIDs(gctx, envIDs)
-		if err != nil {
-			return fmt.Errorf("fetching builds: %w", err)
-		}
-
-		return nil
-	})
-
-	g.Go(func() error {
-		var err error
-		aliasRows, err = txClient.GetEnvAliasesByEnvIDs(gctx, baseEnvIDs)
-		if err != nil {
-			return fmt.Errorf("fetching aliases: %w", err)
-		}
-
-		return nil
-	})
-
-	if err := g.Wait(); err != nil {
-		return nil, err
+	aliasRows, err := txClient.GetEnvAliasesByEnvIDs(ctx, baseEnvIDs)
+	if err != nil {
+		return nil, fmt.Errorf("fetching aliases: %w", err)
 	}
 
 	buildByEnvID := make(map[string]queries.EnvBuild, len(buildRows))
