@@ -47,10 +47,16 @@ const (
 
 	UFFDIO_COPY_MODE_WP = C.UFFDIO_COPY_MODE_WP
 
-	UFFDIO_API      = C.UFFDIO_API
-	UFFDIO_REGISTER = C.UFFDIO_REGISTER
-	UFFDIO_COPY     = C.UFFDIO_COPY
-	UFFDIO_ZEROPAGE = C.UFFDIO_ZEROPAGE
+	UFFDIO_WRITEPROTECT_MODE_WP = C.UFFDIO_WRITEPROTECT_MODE_WP
+
+	UFFDIO_ZEROPAGE_MODE_DONTWAKE = C.UFFDIO_ZEROPAGE_MODE_DONTWAKE
+
+	UFFDIO_API          = C.UFFDIO_API
+	UFFDIO_REGISTER     = C.UFFDIO_REGISTER
+	UFFDIO_COPY         = C.UFFDIO_COPY
+	UFFDIO_ZEROPAGE     = C.UFFDIO_ZEROPAGE
+	UFFDIO_WRITEPROTECT = C.UFFDIO_WRITEPROTECT
+	UFFDIO_WAKE         = C.UFFDIO_WAKE
 
 	UFFD_PAGEFAULT_FLAG_WRITE = C.UFFD_PAGEFAULT_FLAG_WRITE
 	UFFD_PAGEFAULT_FLAG_MINOR = C.UFFD_PAGEFAULT_FLAG_MINOR
@@ -116,6 +122,13 @@ func newUffdioZero(address, pagesize, mode CULong) UffdioZero {
 	}
 }
 
+func newUffdioWriteProtect(address, pagesize, mode CULong) UffdioWriteProtect {
+	return UffdioWriteProtect{
+		_range: newUffdioRange(address, pagesize),
+		mode:   mode,
+	}
+}
+
 func getMsgEvent(msg *UffdMsg) CUChar {
 	return msg.event
 }
@@ -158,6 +171,26 @@ func (f Fd) zero(addr, pagesize uintptr, mode CULong) error {
 	// Check if the bytes actually zeroed out by the kernel match the page size
 	if zero.zeropage != CLong(pagesize) {
 		return fmt.Errorf("UFFDIO_ZEROPAGE copied %d bytes, expected %d", zero.zeropage, pagesize)
+	}
+
+	return nil
+}
+
+func (f Fd) writeProtect(addr, pagesize uintptr, mode CULong) error {
+	writeProtect := newUffdioWriteProtect(CULong(addr), CULong(pagesize), mode)
+
+	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(f), UFFDIO_WRITEPROTECT, uintptr(unsafe.Pointer(&writeProtect))); errno != 0 {
+		return errno
+	}
+
+	return nil
+}
+
+func (f Fd) wake(addr, pagesize uintptr) error {
+	uffdRange := newUffdioRange(CULong(addr), CULong(pagesize))
+
+	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(f), UFFDIO_WAKE, uintptr(unsafe.Pointer(&uffdRange))); errno != 0 {
+		return errno
 	}
 
 	return nil
