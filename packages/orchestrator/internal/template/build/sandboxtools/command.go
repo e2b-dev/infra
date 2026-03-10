@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
@@ -235,9 +236,11 @@ func logStream(ctx context.Context, logger logger.Logger, lvl zapcore.Level, id 
 
 // SetReservedDiskSpace sets the reserved disk space on the guest filesystem inside the sandbox.
 // Reserved blocks are only usable by root (uid 0), protecting the guest OS from disk-full conditions.
+// Requires e2fsprogs (tune2fs) installed in the guest image (standard on Debian-based images).
 func SetReservedDiskSpace(
 	ctx context.Context,
 	proxy *proxy.SandboxProxy,
+	logger logger.Logger,
 	sandboxID string,
 	reservedSpaceMB int64,
 	blockSize int64,
@@ -249,9 +252,12 @@ func SetReservedDiskSpace(
 	blocks := (reservedSpaceMB << constants.ToMBShift) / blockSize
 	tuneCmd := fmt.Sprintf("tune2fs -r %d /dev/vda", blocks)
 
-	return RunCommand(
+	return RunCommandWithLogger(
 		ctx,
 		proxy,
+		logger,
+		zap.DebugLevel,
+		"set-reserved-disk-space",
 		sandboxID,
 		tuneCmd,
 		metadata.Context{
