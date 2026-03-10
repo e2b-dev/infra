@@ -89,6 +89,12 @@ variable "client_server_nested_virtualization" {
   default = true
 }
 
+variable "client_node_labels" {
+  description = "Labels to assign to client nodes for scheduling purposes"
+  type        = list(string)
+  default     = []
+}
+
 variable "client_image_family_prefix" {
   type    = string
   default = "e2b-orch-"
@@ -137,6 +143,12 @@ variable "build_server_machine_type" {
 variable "build_server_nested_virtualization" {
   type    = bool
   default = true
+}
+
+variable "build_node_labels" {
+  description = "Labels to assign to build nodes for scheduling purposes"
+  type        = list(string)
+  default     = []
 }
 
 variable "control_server_cluster_size" {
