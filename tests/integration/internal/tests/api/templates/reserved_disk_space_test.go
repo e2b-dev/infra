@@ -4,7 +4,6 @@ import (
 	"context"
 	"regexp"
 	"strconv"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -71,11 +70,11 @@ func TestTemplateBuildReservedDiskSpace(t *testing.T) {
 	// Verify the reserved blocks are set (if the feature flag is enabled)
 	// When BuildReservedDiskSpaceMB > 0, reserved blocks should be non-zero
 	if reservedBlocks > 0 {
-		assert.Greater(t, reservedSpaceMB, int64(0), "reserved space should be positive when reserved blocks are set")
+		assert.Positive(t, reservedSpaceMB, "reserved space should be positive when reserved blocks are set")
 	}
 
 	// Verify tune2fs output contains expected fields
-	assert.True(t, strings.Contains(output, "Filesystem volume name:"), "tune2fs output should contain filesystem metadata")
+	assert.Contains(t, output, "Filesystem volume name:", "tune2fs output should contain filesystem metadata")
 
 	t.Logf("tune2fs verification passed: %d reserved blocks (%d MB reserved)", reservedBlocks, reservedSpaceMB)
 }
