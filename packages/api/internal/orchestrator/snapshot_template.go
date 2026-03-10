@@ -120,7 +120,7 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 		return SnapshotTemplateResult{}, fmt.Errorf("error updating build status: %w", err)
 	}
 
-	o.snapshotCache.Invalidate(ctx, sandboxID)
+	o.snapshotCache.Invalidate(context.WithoutCancel(ctx), sandboxID)
 
 	telemetry.ReportEvent(ctx, "Snapshot template completed")
 

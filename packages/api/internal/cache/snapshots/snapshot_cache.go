@@ -43,7 +43,7 @@ type SnapshotCache struct {
 }
 
 func NewSnapshotCache(db *sqlcdb.Client, redisClient redis.UniversalClient) *SnapshotCache {
-	rc := cache.NewRedisCache[*SnapshotInfo](cache.RedisConfig[*SnapshotInfo]{
+	rc := cache.NewRedisCache(cache.RedisConfig[*SnapshotInfo]{
 		TTL:             snapshotCacheTTL,
 		RefreshInterval: snapshotCacheRefreshInterval,
 		RedisClient:     redisClient,
