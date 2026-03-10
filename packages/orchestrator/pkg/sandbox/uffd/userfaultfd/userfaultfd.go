@@ -359,9 +359,26 @@ func (u *Userfaultfd) faultPage(
 
 	// Write to guest memory. nil data means zero-fill
 	switch {
-	case source == nil && u.pageSize == header.PageSize:
-		// Here, `mode` is always 0. The only mode `userfaultfd_zeropage()` understands
-		// is UFFDIO_ZEROPAGE_DONT_WAKE, which we never use.
+	case source == nil && u.pageSize == header.PageSize && accessType == block.Read:
+		// Firecracker uses anonymous mappings for 4K pages. Anonymous mappings can only
+		// be write protected once pages are populated. We need to enable write-protection
+		// *after* we serve the page fault.
+		//
+		// To avoid the race condition, first serve the page without waking the thread
+		writeErr = u.fd.zero(addr, u.pageSize, UFFDIO_ZEROPAGE_MODE_DONTWAKE)
+		if writeErr != nil {
+			break
+		}
+		// Then, write-protect the page
+		writeErr = u.fd.writeProtect(addr, u.pageSize, UFFDIO_WRITEPROTECT_MODE_WP)
+		if writeErr != nil {
+			break
+		}
+		// And, finally, wake up the faulting thread
+		writeErr = u.fd.wake(addr, u.pageSize)
+	case source == nil && u.pageSize == header.PageSize && accessType == block.Write:
+		// If this was a write access to a 4K page simply provide the zero page (clearing the WP bit)
+		// and wake up the thread in one step.
 		writeErr = u.fd.zero(addr, u.pageSize, 0)
 	case source == nil && u.pageSize == header.HugepageSize:
 		writeErr = u.fd.copy(addr, u.pageSize, header.EmptyHugePage, mode)
