@@ -38,7 +38,7 @@ func (h NFSHandler) Mount(
 		return nfs.MountStatusErrAcces, mountFailedFS{}, nil
 	}
 
-	fs, err := IsolateFileSystem(path)
+	fs, err := IsolateFileSystem(ctx, path)
 	if err != nil {
 		logger.L().Error(ctx, "failed to chroot",
 			zap.String("request", string(request.Dirpath)),

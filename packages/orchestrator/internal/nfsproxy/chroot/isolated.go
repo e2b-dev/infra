@@ -1,6 +1,7 @@
 package chroot
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -12,15 +13,15 @@ import (
 )
 
 type IsolatedFS struct {
-	ns MountNS
+	ns *mountNS
 
 	act func(func(billy.Filesystem) error) error
 }
 
 var _ billy.Filesystem = (*IsolatedFS)(nil)
 
-func IsolateFileSystem(source string) (*IsolatedFS, error) {
-	mountNS, err := TempMountNS()
+func IsolateFileSystem(ctx context.Context, source string) (*IsolatedFS, error) {
+	mountNS, err := tempMountNS(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temporary mount namespace: %w", err)
 	}

@@ -17,7 +17,7 @@ func TestFileSystemsAreIsolated(t *testing.T) {
 	}
 
 	oneSrc := t.TempDir()
-	one, err := IsolateFileSystem(oneSrc)
+	one, err := IsolateFileSystem(t.Context(), oneSrc)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		err := one.Close()
@@ -52,7 +52,7 @@ func TestFileSystemsAreIsolated(t *testing.T) {
 	assert.Equal(t, fileName, results[0].Name())
 
 	twoSrc := t.TempDir()
-	two, err := IsolateFileSystem(twoSrc)
+	two, err := IsolateFileSystem(t.Context(), twoSrc)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		err := two.Close()

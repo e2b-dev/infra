@@ -1,12 +1,16 @@
 package chroot
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"runtime"
 	"sync"
 
+	"go.uber.org/zap"
 	"golang.org/x/sys/unix"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 type NSPathNotExistError struct{ msg string }
@@ -18,14 +22,6 @@ const (
 	NSFS_MAGIC   = unix.NSFS_MAGIC
 	PROCFS_MAGIC = unix.PROC_SUPER_MAGIC
 )
-
-type MountNS interface {
-	Do(toRun func() error) error
-	Set() error
-	Path() string
-	Fd() uintptr
-	Close() error
-}
 
 type mountNS struct {
 	file   *os.File
@@ -169,14 +165,7 @@ func IsNSorErr(nspath string) error {
 	}
 }
 
-func GetCurrentNS() (MountNS, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-
-	return getCurrentNSNoLock()
-}
-
-func GetNS(nspath string) (MountNS, error) {
+func getNS(nspath string) (*mountNS, error) {
 	err := IsNSorErr(nspath)
 	if err != nil {
 		return nil, err
@@ -190,15 +179,15 @@ func GetNS(nspath string) (MountNS, error) {
 	return &mountNS{file: fd}, nil
 }
 
-func getCurrentNSNoLock() (MountNS, error) {
-	return GetNS(getCurrentThreadMountNSPath())
+func getCurrentNSNoLock() (*mountNS, error) {
+	return getNS(getCurrentThreadMountNSPath())
 }
 
 func getCurrentThreadMountNSPath() string {
 	return fmt.Sprintf("/proc/%d/task/%d/ns/mnt", os.Getpid(), unix.Gettid())
 }
 
-func TempMountNS() (MountNS, error) {
+func tempMountNS(ctx context.Context) (*mountNS, error) {
 	type result struct {
 		ns  *mountNS
 		err error
@@ -207,8 +196,10 @@ func TempMountNS() (MountNS, error) {
 	resultCh := make(chan result, 1)
 
 	go func() {
+		// take ownership of this os thread so we don't have to keep swapping mount namespaces
 		runtime.LockOSThread()
 
+		// get the original mount namespace
 		threadNS, err := getCurrentNSNoLock()
 		if err != nil {
 			resultCh <- result{err: fmt.Errorf("failed to open current namespace: %w", err)}
@@ -216,8 +207,15 @@ func TempMountNS() (MountNS, error) {
 
 			return
 		}
-		defer func() { _ = threadNS.Close() }()
 
+		// close the thread when we're done
+		defer func() {
+			if err := threadNS.Close(); err != nil {
+				logger.L().Error(ctx, "failed to close current namespace", zap.Error(err))
+			}
+		}()
+
+		// create a new mount namespace
 		if err := unix.Unshare(unix.CLONE_NEWNS); err != nil {
 			resultCh <- result{err: fmt.Errorf("failed to unshare namespace: %w", err)}
 			runtime.UnlockOSThread()
@@ -225,36 +223,11 @@ func TempMountNS() (MountNS, error) {
 			return
 		}
 
-		tempNSHandle, err := getCurrentNSNoLock()
+		// get the mount namespace that we just created
+		tempNS, err := getCurrentNSNoLock()
 		if err != nil {
 			_ = threadNS.Set()
 			resultCh <- result{err: fmt.Errorf("failed to open temporary mount namespace: %w", err)}
-			runtime.UnlockOSThread()
-
-			return
-		}
-
-		tempNS, ok := tempNSHandle.(*mountNS)
-		if !ok {
-			_ = tempNSHandle.Close()
-			_ = threadNS.Set()
-			resultCh <- result{err: fmt.Errorf("unexpected mount namespace implementation %T", tempNSHandle)}
-			runtime.UnlockOSThread()
-
-			return
-		}
-
-		if err := threadNS.Set(); err != nil {
-			_ = tempNS.file.Close()
-			resultCh <- result{err: fmt.Errorf("failed to switch back to original mount namespace: %w", err)}
-
-			return
-		}
-
-		if err := tempNS.Set(); err != nil {
-			_ = tempNS.file.Close()
-			_ = threadNS.Set()
-			resultCh <- result{err: fmt.Errorf("failed to switch worker to temporary mount namespace: %w", err)}
 			runtime.UnlockOSThread()
 
 			return
