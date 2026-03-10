@@ -103,7 +103,7 @@ func (s *Storage) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID
 	if stateAction.Effect == sandbox.TransitionExpires {
 		now := time.Now()
 		if !updated.IsExpired(now) {
-			updated.EndTime = time.Now()
+			updated.EndTime = now
 		}
 	}
 
