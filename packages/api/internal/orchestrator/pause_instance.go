@@ -64,6 +64,8 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 		return fmt.Errorf("error pausing sandbox: %w", err)
 	}
 
+	o.snapshotCache.Invalidate(context.WithoutCancel(ctx), sbx.SandboxID)
+
 	return nil
 }
 

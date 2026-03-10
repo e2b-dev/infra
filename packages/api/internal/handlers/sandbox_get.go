@@ -1,12 +1,14 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	snapshotcache "github.com/e2b-dev/infra/packages/api/internal/cache/snapshots"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
@@ -97,10 +99,17 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 
 	// If sandbox not found try to get the latest snapshot
 	// TODO: ENG-3544 scope GetLastSnapshot query by teamID to avoid post-fetch ownership check.
-	lastSnapshot, err := a.sqlcDB.GetLastSnapshot(ctx, sandboxId)
+	lastSnapshot, err := a.snapshotCache.Get(ctx, sandboxId)
 	if err != nil {
-		telemetry.ReportError(ctx, "error getting last snapshot", err)
-		a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(id))
+		if errors.Is(err, snapshotcache.ErrSnapshotNotFound) {
+			telemetry.ReportError(ctx, "snapshot not found", err, telemetry.WithSandboxID(sandboxId))
+			a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(id))
+
+			return
+		}
+
+		telemetry.ReportCriticalError(ctx, "error getting last snapshot", err)
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error getting sandbox")
 
 		return
 	}
