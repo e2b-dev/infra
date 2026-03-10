@@ -102,14 +102,14 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	lastSnapshot, err := a.snapshotCache.Get(ctx, sandboxId)
 	if err != nil {
 		if errors.Is(err, snapshotcache.ErrSnapshotNotFound) {
-			logger.L().Debug(ctx, "Snapshot not found", logger.WithSandboxID(sandboxId))
+			telemetry.ReportError(ctx, "snapshot not found", err, telemetry.WithSandboxID(sandboxId))
 			a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(id))
 
 			return
 		}
 
-		telemetry.ReportError(ctx, "error getting last snapshot", err)
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error getting sandbox: %s", err))
+		telemetry.ReportCriticalError(ctx, "error getting last snapshot", err)
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error getting sandbox")
 
 		return
 	}
