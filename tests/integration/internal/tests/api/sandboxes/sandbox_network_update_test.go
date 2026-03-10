@@ -3,10 +3,14 @@ package sandboxes
 import (
 	"context"
 	"net/http"
+	"net/url"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
@@ -20,6 +24,7 @@ import (
 const blockAll = sandbox_network.AllInternetTrafficCIDR
 
 func ptrS(s ...string) *[]string { return &s }
+func ptrI(i ...int) *[]int       { return &i }
 
 // putNetwork is a helper to call the update network endpoint.
 func putNetwork(
@@ -334,5 +339,157 @@ func TestUpdateNetworkConfig(t *testing.T) { //nolint:tparallel // subtests are 
 			{"https://8.8.8.8", true},
 			{"https://1.1.1.1", false},
 		})
+	})
+}
+
+// =============================================================================
+// TestUpdateIngressConfig exercises ingress control (port + client IP filtering)
+// via the PUT /sandboxes/{sandboxID}/network endpoint.
+// Subtests run sequentially — each PUT fully replaces the previous config.
+// =============================================================================
+
+// proxyRequest makes an HTTP request to the sandbox proxy on the given port
+// and returns the status code. The response body is drained and closed.
+func proxyRequest(
+	t *testing.T,
+	sbx *api.Sandbox,
+	port int,
+	extraHeaders *http.Header,
+) int {
+	t.Helper()
+
+	proxyURL, err := url.Parse(setup.EnvdProxy)
+	require.NoError(t, err)
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	req := utils.NewRequest(sbx, proxyURL, port, extraHeaders)
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	resp.Body.Close()
+
+	return resp.StatusCode
+}
+
+func TestUpdateIngressConfig(t *testing.T) { //nolint:tparallel // subtests are sequential
+	t.Parallel()
+
+	ctx := t.Context()
+	client := setup.GetAPIClient()
+
+	sbx := utils.SetupSandboxWithCleanup(t, client,
+		utils.WithTimeout(120),
+		utils.WithAutoPause(false),
+		utils.WithSecure(true),
+	)
+
+	// No server needed — we only need to distinguish 403 (ingress denied)
+	// from 502 (port not open, but ingress allowed).
+	testPort := 8000
+	proxyURL, err := url.Parse(setup.EnvdProxy)
+	require.NoError(t, err)
+	httpClient := &http.Client{Timeout: 10 * time.Second}
+
+	// ── Port deny/allow through real proxy ──────────────────────────────
+
+	t.Run("port_deny_blocks_access", func(t *testing.T) { //nolint:paralleltest // sequential
+		resp := putNetwork(t, ctx, client, sbx.SandboxID, api.PutSandboxesSandboxIDNetworkJSONRequestBody{
+			DenyPorts: ptrI(testPort),
+		})
+		require.Equal(t, http.StatusNoContent, resp.StatusCode())
+
+		// Denied port → 403.
+		require.Equal(t, http.StatusForbidden, proxyRequest(t, sbx, testPort, nil))
+		// Other port is still reachable (not 403).
+		require.NotEqual(t, http.StatusForbidden, proxyRequest(t, sbx, testPort+1, nil))
+	})
+
+	t.Run("port_allow_overrides_deny", func(t *testing.T) { //nolint:paralleltest // sequential
+		resp := putNetwork(t, ctx, client, sbx.SandboxID, api.PutSandboxesSandboxIDNetworkJSONRequestBody{
+			AllowPorts: ptrI(testPort),
+			DenyPorts:  ptrI(testPort),
+		})
+		require.Equal(t, http.StatusNoContent, resp.StatusCode())
+
+		// Allow wins over deny — not 403.
+		require.NotEqual(t, http.StatusForbidden, proxyRequest(t, sbx, testPort, nil))
+	})
+
+	// ── Client IP deny/allow through real proxy ─────────────────────────
+
+	t.Run("client_ip_deny_blocks_access", func(t *testing.T) { //nolint:paralleltest // sequential
+		resp := putNetwork(t, ctx, client, sbx.SandboxID, api.PutSandboxesSandboxIDNetworkJSONRequestBody{
+			DenyIn: ptrS("0.0.0.0/0"),
+		})
+		require.Equal(t, http.StatusNoContent, resp.StatusCode())
+
+		require.Equal(t, http.StatusForbidden, proxyRequest(t, sbx, testPort, nil))
+	})
+
+	t.Run("client_ip_allow_overrides_deny", func(t *testing.T) { //nolint:paralleltest // sequential
+		resp := putNetwork(t, ctx, client, sbx.SandboxID, api.PutSandboxesSandboxIDNetworkJSONRequestBody{
+			AllowIn: ptrS("0.0.0.0/0"),
+			DenyIn:  ptrS("0.0.0.0/0"),
+		})
+		require.Equal(t, http.StatusNoContent, resp.StatusCode())
+
+		// Allow wins over deny — not 403.
+		require.NotEqual(t, http.StatusForbidden, proxyRequest(t, sbx, testPort, nil))
+	})
+
+	// ── Envd port exempt from both port deny and client IP deny ─────────
+
+	t.Run("envd_exempt_from_ingress_restrictions", func(t *testing.T) { //nolint:paralleltest // sequential
+		// Both port deny and client IP deny active — envd should still work.
+		resp := putNetwork(t, ctx, client, sbx.SandboxID, api.PutSandboxesSandboxIDNetworkJSONRequestBody{
+			DenyPorts: ptrI(int(consts.DefaultEnvdServerPort)),
+			DenyIn:    ptrS("0.0.0.0/0"),
+		})
+		require.Equal(t, http.StatusNoContent, resp.StatusCode())
+
+		envdURL := *proxyURL
+		envdURL.Path = "/health"
+		headers := &http.Header{proxygrpc.MetadataEnvdHTTPAccessToken: []string{*sbx.EnvdAccessToken}}
+		req := utils.NewRequest(sbx, &envdURL, int(consts.DefaultEnvdServerPort), headers)
+		r, err := httpClient.Do(req)
+		require.NoError(t, err)
+		r.Body.Close()
+		require.Equal(t, http.StatusNoContent, r.StatusCode)
+	})
+
+	// ── Replacement: empty PUT clears ingress rules ─────────────────────
+
+	t.Run("clear_restores_access", func(t *testing.T) { //nolint:paralleltest // sequential
+		resp := putNetwork(t, ctx, client, sbx.SandboxID, api.PutSandboxesSandboxIDNetworkJSONRequestBody{})
+		require.Equal(t, http.StatusNoContent, resp.StatusCode())
+
+		// No longer 403 — port is accessible again (502 = nothing listening, but ingress allowed).
+		require.NotEqual(t, http.StatusForbidden, proxyRequest(t, sbx, testPort, nil))
+	})
+
+	// ── Pause/resume preserves ingress rules (must be last) ─────────────
+
+	t.Run("pause_resume_preserves_ingress_rules", func(t *testing.T) { //nolint:paralleltest // sequential
+		resp := putNetwork(t, ctx, client, sbx.SandboxID, api.PutSandboxesSandboxIDNetworkJSONRequestBody{
+			DenyPorts: ptrI(testPort),
+		})
+		require.Equal(t, http.StatusNoContent, resp.StatusCode())
+
+		require.Equal(t, http.StatusForbidden, proxyRequest(t, sbx, testPort, nil))
+
+		// Pause
+		pauseResp, err := client.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
+		require.NoError(t, err)
+		require.Equal(t, http.StatusNoContent, pauseResp.StatusCode())
+
+		// Resume
+		resumeResp, err := client.PostSandboxesSandboxIDResumeWithResponse(ctx, sbx.SandboxID,
+			api.PostSandboxesSandboxIDResumeJSONRequestBody{},
+			setup.WithAPIKey(),
+		)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusCreated, resumeResp.StatusCode())
+
+		// Port deny should survive pause/resume.
+		require.Equal(t, http.StatusForbidden, proxyRequest(t, sbx, testPort, nil))
 	})
 }
