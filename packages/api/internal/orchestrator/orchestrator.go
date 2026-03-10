@@ -38,6 +38,11 @@ const statusLogInterval = time.Second * 20
 
 var ErrNodeNotFound = errors.New("node not found")
 
+// SnapshotCacheInvalidator invalidates cached snapshot entries.
+type SnapshotCacheInvalidator interface {
+	Invalidate(ctx context.Context, sandboxID string)
+}
+
 type Orchestrator struct {
 	httpClient              *http.Client
 	nomadClient             *nomadapi.Client
@@ -57,6 +62,7 @@ type Orchestrator struct {
 	accessTokenGenerator    *sandbox.AccessTokenGenerator
 	sandboxCounter          metric.Int64UpDownCounter
 	createdCounter          metric.Int64Counter
+	snapshotCache           SnapshotCacheInvalidator
 }
 
 func New(
@@ -70,6 +76,7 @@ func New(
 	clusters *clusters.Pool,
 	featureFlags *featureflags.Client,
 	accessTokenGenerator *sandbox.AccessTokenGenerator,
+	snapshotCache SnapshotCacheInvalidator,
 ) (*Orchestrator, error) {
 	analyticsInstance, err := analyticscollector.NewAnalytics(
 		ctx,
@@ -123,6 +130,7 @@ func New(
 		accessTokenGenerator: accessTokenGenerator,
 		routingCatalog:       routingCatalog,
 		sqlcDB:               sqlcDB,
+		snapshotCache:        snapshotCache,
 		tel:                  tel,
 		clusters:             clusters,
 
