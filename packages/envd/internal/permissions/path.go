@@ -100,11 +100,21 @@ func EnsureDirsForce(path string, uid, gid int) error {
 	for _, subpath := range subpaths {
 		err := os.Mkdir(subpath, 0o755)
 		if err != nil {
-			if os.IsExist(err) {
-				continue
+			if !os.IsExist(err) {
+				return fmt.Errorf("failed to create directory: %w", err)
 			}
 
-			return fmt.Errorf("failed to create directory: %w", err)
+			// Path exists — verify it's a directory, not a file.
+			info, statErr := os.Stat(subpath)
+			if statErr != nil {
+				return fmt.Errorf("failed to stat existing path: %w", statErr)
+			}
+
+			if !info.IsDir() {
+				return fmt.Errorf("path is a file: %s", subpath)
+			}
+
+			continue
 		}
 
 		// Only chown directories we actually created.
