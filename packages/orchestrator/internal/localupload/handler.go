@@ -1,7 +1,6 @@
 package localupload
 
 import (
-	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -72,7 +71,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Create parent directories
 	dir := filepath.Dir(fullPath)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		http.Error(w, fmt.Sprintf("failed to create directory: %v", err), http.StatusInternalServerError)
+		http.Error(w, "failed to create directory", http.StatusInternalServerError)
 
 		return
 	}
