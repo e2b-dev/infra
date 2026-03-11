@@ -62,5 +62,5 @@ func getTransitionResultKey(teamID, sandboxID, transitionID string) string {
 // payload of messages published to globalTransitionNotifyChannel. The
 // subscriptionManager uses it to fan out signals to the correct in-process waiters.
 func getTransitionRoutingKey(teamID, sandboxID string) string {
-	return redis_utils.CreateKey(GetTeamPrefix(teamID), transitionKeyPrefix, sandboxID, transitionNotifySuffix)
+	return redis_utils.CreateKey(GetTeamPrefix(teamID), transitionKeyPrefix, sandboxID, notifySuffix)
 }

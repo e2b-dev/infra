@@ -16,7 +16,7 @@ import (
 // routing key as its payload; the manager uses that to wake only the goroutines
 // waiting on that specific sandbox.
 type subscriptionManager struct {
-	mu      sync.Mutex
+	mu      sync.RWMutex
 	waiters map[string][]chan struct{} // routingKey → registered waiters
 
 	ps *redis.PubSub
@@ -91,11 +91,11 @@ func (m *subscriptionManager) run() {
 
 // dispatch signals all waiters registered for the given routing key.
 func (m *subscriptionManager) dispatch(routingKey string) {
-	m.mu.Lock()
+	m.mu.RLock()
 	waiters := m.waiters[routingKey]
 	snapshot := make([]chan struct{}, len(waiters))
 	copy(snapshot, waiters)
-	m.mu.Unlock()
+	m.mu.RUnlock()
 
 	for _, w := range snapshot {
 		select {
