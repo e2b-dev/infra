@@ -142,14 +142,14 @@ func TestUpdate_IngressOnly(t *testing.T) {
 	_, err := s.Update(t.Context(), &orchestrator.SandboxUpdateRequest{
 		SandboxId: sbx.Runtime.SandboxID,
 		Ingress: &orchestrator.SandboxNetworkIngressConfig{
-			AllowedPorts:       []uint32{80, 443},
-			DeniedClientCidrs:  []string{"10.0.0.0/8"},
+			AllowedPorts:      []uint32{80, 443},
+			DeniedClientCidrs: []string{"10.0.0.0/8"},
 		},
 	})
 
 	require.NoError(t, err)
 
-	ingress := sbx.Config.GetNetwork().Ingress
+	ingress := sbx.Config.GetNetwork().GetIngress()
 	require.NotNil(t, ingress)
 	assert.Equal(t, []uint32{80, 443}, ingress.GetAllowedPorts())
 	assert.Equal(t, []string{"10.0.0.0/8"}, ingress.GetDeniedClientCidrs())
@@ -172,7 +172,7 @@ func TestUpdate_EndTimeAndIngress(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.WithinDuration(t, newEnd, sbx.GetEndAt(), time.Second)
-	assert.Equal(t, []uint32{22}, sbx.Config.GetNetwork().Ingress.GetDeniedPorts())
+	assert.Equal(t, []uint32{22}, sbx.Config.GetNetwork().GetIngress().GetDeniedPorts())
 }
 
 func TestUpdate_IngressRollsBackOnEgressFailure(t *testing.T) {
@@ -200,7 +200,7 @@ func TestUpdate_IngressRollsBackOnEgressFailure(t *testing.T) {
 
 	require.Error(t, err)
 	// Ingress should be reverted to original.
-	assert.Equal(t, []uint32{80}, sbx.Config.GetNetwork().Ingress.GetAllowedPorts())
+	assert.Equal(t, []uint32{80}, sbx.Config.GetNetwork().GetIngress().GetAllowedPorts())
 }
 
 func TestUpdate_NoFieldsSet(t *testing.T) {

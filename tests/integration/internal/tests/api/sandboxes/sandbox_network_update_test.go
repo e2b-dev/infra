@@ -354,7 +354,6 @@ func proxyRequest(
 	t *testing.T,
 	sbx *api.Sandbox,
 	port int,
-	extraHeaders *http.Header,
 ) int {
 	t.Helper()
 
@@ -362,7 +361,7 @@ func proxyRequest(
 	require.NoError(t, err)
 
 	client := &http.Client{Timeout: 10 * time.Second}
-	req := utils.NewRequest(sbx, proxyURL, port, extraHeaders)
+	req := utils.NewRequest(sbx, proxyURL, port, nil)
 	resp, err := client.Do(req)
 	require.NoError(t, err)
 	resp.Body.Close()
@@ -403,9 +402,9 @@ func TestUpdateIngressConfig(t *testing.T) { //nolint:tparallel // subtests are 
 		require.Equal(t, http.StatusNoContent, resp.StatusCode())
 
 		// Denied port → 403.
-		require.Equal(t, http.StatusForbidden, proxyRequest(t, sbx, testPort, nil))
+		require.Equal(t, http.StatusForbidden, proxyRequest(t, sbx, testPort))
 		// Other port is still reachable (not 403).
-		require.NotEqual(t, http.StatusForbidden, proxyRequest(t, sbx, testPort+1, nil))
+		require.NotEqual(t, http.StatusForbidden, proxyRequest(t, sbx, testPort+1))
 	})
 
 	t.Run("port_allow_overrides_deny", func(t *testing.T) { //nolint:paralleltest // sequential
@@ -416,7 +415,7 @@ func TestUpdateIngressConfig(t *testing.T) { //nolint:tparallel // subtests are 
 		require.Equal(t, http.StatusNoContent, resp.StatusCode())
 
 		// Allow wins over deny — not 403.
-		require.NotEqual(t, http.StatusForbidden, proxyRequest(t, sbx, testPort, nil))
+		require.NotEqual(t, http.StatusForbidden, proxyRequest(t, sbx, testPort))
 	})
 
 	// ── Client IP deny/allow through real proxy ─────────────────────────
@@ -427,7 +426,7 @@ func TestUpdateIngressConfig(t *testing.T) { //nolint:tparallel // subtests are 
 		})
 		require.Equal(t, http.StatusNoContent, resp.StatusCode())
 
-		require.Equal(t, http.StatusForbidden, proxyRequest(t, sbx, testPort, nil))
+		require.Equal(t, http.StatusForbidden, proxyRequest(t, sbx, testPort))
 	})
 
 	t.Run("client_ip_allow_overrides_deny", func(t *testing.T) { //nolint:paralleltest // sequential
@@ -438,7 +437,7 @@ func TestUpdateIngressConfig(t *testing.T) { //nolint:tparallel // subtests are 
 		require.Equal(t, http.StatusNoContent, resp.StatusCode())
 
 		// Allow wins over deny — not 403.
-		require.NotEqual(t, http.StatusForbidden, proxyRequest(t, sbx, testPort, nil))
+		require.NotEqual(t, http.StatusForbidden, proxyRequest(t, sbx, testPort))
 	})
 
 	// ── Envd port exempt from both port deny and client IP deny ─────────
@@ -468,7 +467,7 @@ func TestUpdateIngressConfig(t *testing.T) { //nolint:tparallel // subtests are 
 		require.Equal(t, http.StatusNoContent, resp.StatusCode())
 
 		// No longer 403 — port is accessible again (502 = nothing listening, but ingress allowed).
-		require.NotEqual(t, http.StatusForbidden, proxyRequest(t, sbx, testPort, nil))
+		require.NotEqual(t, http.StatusForbidden, proxyRequest(t, sbx, testPort))
 	})
 
 	// ── Pause/resume preserves ingress rules (must be last) ─────────────
@@ -479,7 +478,7 @@ func TestUpdateIngressConfig(t *testing.T) { //nolint:tparallel // subtests are 
 		})
 		require.Equal(t, http.StatusNoContent, resp.StatusCode())
 
-		require.Equal(t, http.StatusForbidden, proxyRequest(t, sbx, testPort, nil))
+		require.Equal(t, http.StatusForbidden, proxyRequest(t, sbx, testPort))
 
 		// Pause
 		pauseResp, err := client.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
@@ -495,6 +494,6 @@ func TestUpdateIngressConfig(t *testing.T) { //nolint:tparallel // subtests are 
 		require.Equal(t, http.StatusCreated, resumeResp.StatusCode())
 
 		// Port deny should survive pause/resume.
-		require.Equal(t, http.StatusForbidden, proxyRequest(t, sbx, testPort, nil))
+		require.Equal(t, http.StatusForbidden, proxyRequest(t, sbx, testPort))
 	})
 }

@@ -55,7 +55,7 @@ func TestIngressClientCIDRs_AllowDenyPriority(t *testing.T) {
 			wantDenied:  true,
 		},
 		{
-			name: "IP in neither",
+			name:    "IP in neither",
 			allowed: []string{"192.168.0.0/16"},
 			denied:  []string{"172.16.0.0/12"},
 			ip:      "10.1.2.3",

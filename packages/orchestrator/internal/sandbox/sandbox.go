@@ -269,7 +269,7 @@ func (m *Metadata) buildParsedIngressCIDRs() {
 		return
 	}
 
-	m.rebuildIngressCIDRs(m.Config.GetNetwork().Ingress)
+	m.rebuildIngressCIDRs(m.Config.GetNetwork().GetIngress())
 }
 
 // IngressAllowsClientIP returns true if the IP matches any allowed CIDR/IP.

@@ -73,7 +73,7 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 				return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)
 			}
 
-			ingress := sbx.Config.GetNetwork().Ingress
+			ingress := sbx.Config.GetNetwork().GetIngress()
 			accessToken := ingress.TrafficAccessToken
 
 			isNonEnvdTraffic := int64(port) != consts.DefaultEnvdServerPort
@@ -91,23 +91,20 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 
 			if isNonEnvdTraffic {
 				// Handle port allowlist/denylist for non-envd traffic.
-				// Priority: allow wins → deny → default allow (matches egress
-				// semantics).
-				if allowed := ingress.GetAllowedPorts(); containsPort(allowed, port) {
-					// Explicitly allowed — skip deny check.
-				} else if denied := ingress.GetDeniedPorts(); containsPort(denied, port) {
-					return nil, reverseproxy.NewErrPortNotAllowed(sandboxId, port)
+				// Priority: allow wins → deny → default allow.
+				if !containsPort(ingress.GetAllowedPorts(), port) {
+					if containsPort(ingress.GetDeniedPorts(), port) {
+						return nil, reverseproxy.NewErrPortNotAllowed(sandboxId, port)
+					}
 				}
 
 				// Handle client IP allowlist/denylist for non-envd traffic.
-				// Priority: allow wins → deny → default allow (matches egress
-				// semantics). Uses pre-parsed CIDRs for performance.
+				// Priority: allow wins → deny → default allow.
+				// Uses pre-parsed CIDRs for performance.
 				if sbx.HasIngressClientCIDRs() {
 					clientIP := extractClientIP(r)
 					if ip := net.ParseIP(clientIP); ip != nil {
-						if sbx.IngressAllowsClientIP(ip) {
-							// Explicitly allowed — skip deny check.
-						} else if sbx.IngressDeniesClientIP(ip) {
+						if !sbx.IngressAllowsClientIP(ip) && sbx.IngressDeniesClientIP(ip) {
 							return nil, reverseproxy.NewErrClientIPNotAllowed(sandboxId, clientIP)
 						}
 					}
@@ -249,8 +246,8 @@ func containsPort(ports []uint32, port uint64) bool {
 func extractClientIP(r *http.Request) string {
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 		// GCP LB sets the first entry; take it.
-		if idx := strings.IndexByte(xff, ','); idx != -1 {
-			return strings.TrimSpace(xff[:idx])
+		if first, _, ok := strings.Cut(xff, ","); ok {
+			return strings.TrimSpace(first)
 		}
 
 		return strings.TrimSpace(xff)
@@ -264,4 +261,3 @@ func extractClientIP(r *http.Request) string {
 
 	return host
 }
-
