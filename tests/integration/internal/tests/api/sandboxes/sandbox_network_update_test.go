@@ -608,7 +608,8 @@ func TestUpdateCombinedEgressAndIngress(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wait for the server to be reachable.
-	utils.WaitForStatus(t, httpClient, sbx, proxyURL, testPort, nil, http.StatusOK)
+	waitResp := utils.WaitForStatus(t, httpClient, sbx, proxyURL, testPort, nil, http.StatusOK)
+	waitResp.Body.Close()
 
 	// Single PUT: deny all egress + deny port for ingress.
 	resp := putNetwork(t, ctx, client, sbx.SandboxID, api.PutSandboxesSandboxIDNetworkJSONRequestBody{
