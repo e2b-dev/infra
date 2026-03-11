@@ -200,6 +200,7 @@ func (o *fsObject) Delete(_ context.Context) error {
 func ComputeUploadHMAC(key []byte, path string, expires int64) string {
 	mac := hmac.New(sha256.New, key)
 	mac.Write([]byte(path))
+	mac.Write([]byte{0}) // delimiter to prevent path/expires boundary ambiguity
 	mac.Write([]byte(strconv.FormatInt(expires, 10)))
 
 	return hex.EncodeToString(mac.Sum(nil))
