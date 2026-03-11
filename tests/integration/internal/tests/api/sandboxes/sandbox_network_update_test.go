@@ -603,7 +603,7 @@ func TestUpdateMaskRequestHost(t *testing.T) { //nolint:tparallel // subtests ar
 	httpClient := &http.Client{Timeout: 10 * time.Second}
 
 	// Start a Python server that echoes the Host header in the response body.
-	echoServer := `
+	echoServer := fmt.Sprintf(`
 import http.server, socketserver
 class H(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
@@ -611,11 +611,15 @@ class H(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(self.headers.get("Host","").encode())
     def log_message(self, *a): pass
-socketserver.TCPServer(("",` + fmt.Sprintf("%d", testPort) + `),H).serve_forever()
-`
+socketserver.TCPServer(("", %d), H).serve_forever()
+`, testPort)
 	err = utils.ExecCommand(t, ctx, sbx, envdClient, "sh", "-c",
-		fmt.Sprintf("nohup python3 -c %q >/dev/null 2>&1 &", echoServer))
+		"nohup python3 -c '"+echoServer+"' >/dev/null 2>&1 &")
 	require.NoError(t, err)
+
+	// Wait for the echo server to be ready.
+	resp := utils.WaitForStatus(t, httpClient, sbx, proxyURL, testPort, nil, http.StatusOK)
+	resp.Body.Close()
 
 	// Returns the Host header as seen by the server inside the sandbox.
 	getHost := func() string {
