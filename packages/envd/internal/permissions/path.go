@@ -105,6 +105,7 @@ func EnsureDirsForce(path string, uid, gid int) error {
 		_, err := os.Stat(subpath)
 		if os.IsNotExist(err) {
 			firstNew = i
+
 			break
 		}
 	}
