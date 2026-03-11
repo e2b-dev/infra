@@ -73,6 +73,7 @@ func (s *Service) listRecursive(ctx context.Context, paths volumePaths, depth in
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
 				logger.L().Warn(ctx, "item deleted during traversal", zap.String("path", filepath.Join(paths.HostFullPath, item.Name())))
+
 				continue
 			}
 
@@ -94,6 +95,7 @@ func (s *Service) listRecursive(ctx context.Context, paths volumePaths, depth in
 			if err != nil {
 				if errors.Is(err, os.ErrNotExist) {
 					logger.L().Warn(ctx, "directory deleted during traversal", zap.String("path", childPaths.HostFullPath))
+
 					continue
 				}
 
