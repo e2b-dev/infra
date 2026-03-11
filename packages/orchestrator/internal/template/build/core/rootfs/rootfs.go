@@ -120,8 +120,10 @@ func (r *Rootfs) CreateExt4Filesystem(
 	}
 	l.Info(ctx, fmt.Sprintf("Base Docker image size: %s", humanize.Bytes(uint64(imageSize))))
 
+	useSystemdOOMD := r.featureFlags.BoolFlag(ctx, featureflags.UseSystemdOOMDFlag)
+
 	l.Debug(ctx, "Setting up system files")
-	layers, err := additionalOCILayers(r.buildContext, provisionScript, provisionLogPrefix, provisionResultPath)
+	layers, err := additionalOCILayers(r.buildContext, provisionScript, provisionLogPrefix, provisionResultPath, useSystemdOOMD)
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error populating filesystem: %w", err)
 	}
@@ -195,6 +197,7 @@ func additionalOCILayers(
 	provisionScript string,
 	provisionLogPrefix string,
 	provisionResultPath string,
+	useSystemdOOMD bool,
 ) ([]containerregistry.Layer, error) {
 	envdFileData, err := os.ReadFile(buildContext.BuilderConfig.HostEnvdPath)
 	if err != nil {
@@ -215,7 +218,7 @@ func additionalOCILayers(
 
 	// add templates
 	for _, t := range fileTemplates.Templates() {
-		model := newTemplateModel(buildContext, provisionLogPrefix, provisionResultPath)
+		model := newTemplateModel(buildContext, provisionLogPrefix, provisionResultPath, useSystemdOOMD)
 		data, err := generateFile(t, model)
 		if err != nil {
 			return nil, fmt.Errorf("error generating file from %q: %w", t.Name(), err)

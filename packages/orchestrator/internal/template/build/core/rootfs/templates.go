@@ -41,7 +41,7 @@ type templateModel struct {
 	}
 }
 
-func newTemplateModel(buildContext buildcontext.BuildContext, provisionLogPrefix, provisionResultPath string) *templateModel {
+func newTemplateModel(buildContext buildcontext.BuildContext, provisionLogPrefix, provisionResultPath string, useSystemdOOMD bool) *templateModel {
 	return &templateModel{
 		Context:             buildContext,
 		Hostname:            "e2b.local",
@@ -49,6 +49,7 @@ func newTemplateModel(buildContext buildcontext.BuildContext, provisionLogPrefix
 		ProvisionExitPrefix: ProvisioningExitPrefix,
 		ProvisionResultPath: provisionResultPath,
 		Nameserver:          sandbox_network.DefaultNameserver,
+		UseSystemdOOMD:      useSystemdOOMD,
 	}
 }
 

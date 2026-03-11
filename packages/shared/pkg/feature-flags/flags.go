@@ -103,6 +103,10 @@ var (
 
 	PersistentVolumesFlag          = newBoolFlag("can-use-persistent-volumes", env.IsDevelopment())
 	ExecutionMetricsOnWebhooksFlag = newBoolFlag("execution-metrics-on-webhooks", false) // TODO: Remove NLT 20250315
+
+	// UseSystemdOOMDFlag enables systemd-oomd based OOM management in the VM
+	// instead of manual cgroup2 limits.
+	UseSystemdOOMDFlag = newBoolFlag("use-systemd-oomd", false)
 )
 
 type IntFlag struct {
