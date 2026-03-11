@@ -113,4 +113,3 @@ func TestIngressClientCIDRs_SetNetworkIngress_Replaces(t *testing.T) {
 		t.Error("expected 10.1.2.3 to be denied after replacement")
 	}
 }
-
