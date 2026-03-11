@@ -2,6 +2,7 @@ package nfsproxy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"path/filepath"
@@ -50,6 +51,7 @@ func (c *FilesystemsCache) Start(ctx context.Context) error {
 	c.mu.Unlock()
 
 	ticker := time.NewTicker(gcLoopInterval)
+	defer ticker.Stop()
 
 	for {
 		select {
@@ -61,11 +63,24 @@ func (c *FilesystemsCache) Start(ctx context.Context) error {
 	}
 }
 
-func (c *FilesystemsCache) Stop() {
+func (c *FilesystemsCache) Stop() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	var errs []error
+	for path, fs := range c.cache {
+		if err := fs.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("failed to close %q: %w", path, err))
+		}
+	}
+
 	c.cancel()
+
+	if len(errs) > 0 {
+		return errors.Join(errs...)
+	}
+
+	return nil
 }
 
 func (c *FilesystemsCache) gc(ctx context.Context) {

@@ -731,9 +731,7 @@ func startNFSProxy(
 		return nil
 	})
 	closers = append(closers, closer{"nfs proxy filesystems cache", func(_ context.Context) error {
-		fsCache.Stop()
-
-		return nil
+		return fsCache.Stop()
 	}})
 
 	// nfs proxy implementation
