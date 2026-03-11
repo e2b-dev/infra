@@ -3,6 +3,7 @@ package envd
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"path"
 	"strings"
 	"testing"
@@ -13,6 +14,8 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/filesystem"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process"
+	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
+	envdAPI "github.com/e2b-dev/infra/tests/integration/internal/envd"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 )
@@ -384,17 +387,37 @@ func TestConcurrentFileUploadForce(t *testing.T) {
 
 	// Upload multiple files concurrently to the same nested directory using force mode.
 	// Without force, this would race on directory creation.
+	// Note: we avoid calling require/assert from goroutines since FailNow
+	// calls runtime.Goexit which cannot be caught by recover, causing deadlocks.
 	errs := make(chan error, 4)
 	for i := 1; i <= 4; i++ {
 		go func(i int) {
-			defer func() {
-				if r := recover(); r != nil {
-					errs <- fmt.Errorf("panic: %v", r)
-				}
-			}()
 			filePath := fmt.Sprintf("%s/test_%d.txt", baseDir, i)
 			content := fmt.Sprintf("content of test_%d\n", i)
-			utils.UploadFileForce(t, ctx, sbx, envdClient, filePath, content)
+
+			buffer, contentType := utils.CreateTextFile(t, filePath, content)
+			force := true
+			reqEditors := []envdAPI.RequestEditorFn{setup.WithSandbox(t, sbx.SandboxID)}
+
+			writeRes, err := envdClient.HTTPClient.PostFilesWithBodyWithResponse(
+				ctx,
+				&envdAPI.PostFilesParams{Path: &filePath, Username: sharedUtils.ToPtr("user"), Force: &force},
+				contentType,
+				buffer,
+				reqEditors...,
+			)
+			if err != nil {
+				errs <- fmt.Errorf("test_%d.txt: %w", i, err)
+
+				return
+			}
+
+			if writeRes.StatusCode() != http.StatusOK {
+				errs <- fmt.Errorf("test_%d.txt: unexpected status %d: %s", i, writeRes.StatusCode(), string(writeRes.Body))
+
+				return
+			}
+
 			errs <- nil
 		}(i)
 	}
