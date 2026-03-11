@@ -103,6 +103,10 @@ func EnsureDirsForce(path string, uid, gid int) error {
 	firstNew := len(subpaths) // index of the first directory we need to create
 	for i, subpath := range subpaths {
 		_, err := os.Stat(subpath)
+		if err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("failed to stat directory: %w", err)
+		}
+
 		if os.IsNotExist(err) {
 			firstNew = i
 
