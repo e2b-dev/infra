@@ -192,6 +192,20 @@ func (s *Storage) createCallback(teamID uuid.UUID, sandboxID, transitionKey, res
 		if delErr != nil {
 			logger.L().Warn(cbCtx, "Failed to delete transition key", logger.WithSandboxID(sandboxID), zap.Error(delErr))
 		}
+
+		// Notify subscribers that the transition is complete so waitForTransition
+		// goroutines wake up immediately rather than waiting for the next poll tick.
+		// The routing key is published as the payload so the single global channel
+		// can serve all sandboxes across all teams.
+		routingKey := getTransitionRoutingKey(teamID.String(), sandboxID)
+		pubErr := s.redisClient.Publish(cbCtx, getGlobalTransitionNotifyChannel(), routingKey).Err()
+		if pubErr != nil {
+			logger.L().Warn(cbCtx, "Failed to publish transition notification",
+				logger.WithSandboxID(sandboxID),
+				zap.String("transitionID", transitionID),
+				zap.Error(pubErr),
+			)
+		}
 	}
 }
 
@@ -226,30 +240,55 @@ func (s *Storage) WaitForStateChange(ctx context.Context, teamID uuid.UUID, sand
 }
 
 // waitForTransition waits for a specific transition to complete.
+// It registers with the central subscriptionManager to receive an immediate
+// signal via the fan-out PubSub channel when the transition completes.
+// A 1-second ticker acts as a safety-net fallback in case a PubSub message
+// is missed (e.g. during a Redis failover or transient connection drop).
 func (s *Storage) waitForTransition(
 	ctx context.Context,
 	teamID uuid.UUID,
 	sandboxID,
 	transitionID string,
 ) error {
+	routingKey := getTransitionRoutingKey(teamID.String(), sandboxID)
 	transitionKey := getTransitionKey(teamID.String(), sandboxID)
+	resultKey := getTransitionResultKey(teamID.String(), sandboxID, transitionID)
+
+	// Register with the central subscription manager before checking the
+	// transition key so we cannot miss a publish that fires between the
+	// check and the select below.
+	ch, cleanup := s.subManager.subscribe(routingKey)
+	defer cleanup()
+
+	// Initial check: the transition may have completed before we subscribed.
+	currentID, err := s.redisClient.Get(ctx, transitionKey).Result()
+	if errors.Is(err, redis.Nil) || currentID != transitionID {
+		return s.checkTransitionResult(ctx, resultKey)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to check transition key: %w", err)
+	}
+
+	// 1-second fallback ticker in case a PubSub message is missed.
+	ticker := time.NewTicker(retryInterval)
+	defer ticker.Stop()
 
 	for {
-		currentTransitionID, err := s.redisClient.Get(ctx, transitionKey).Result()
-		if errors.Is(err, redis.Nil) || transitionID != currentTransitionID {
-			// Transition key gone or new transition started - check the result
-			return s.checkTransitionResult(ctx, getTransitionResultKey(teamID.String(), sandboxID, transitionID))
-		}
-		if err != nil {
-			return fmt.Errorf("failed to check transition key: %w", err)
-		}
-
-		// Wait before the next poll
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(retryInterval):
-			// Continue polling
+		case <-ch:
+			// Signalled by the central subscription manager — check the result.
+			return s.checkTransitionResult(ctx, resultKey)
+		case <-ticker.C:
+			// Fallback poll: check whether the transition key is still present.
+			currentID, err := s.redisClient.Get(ctx, transitionKey).Result()
+			if errors.Is(err, redis.Nil) || currentID != transitionID {
+				return s.checkTransitionResult(ctx, resultKey)
+			}
+			if err != nil {
+				return fmt.Errorf("failed to check transition key: %w", err)
+			}
 		}
 	}
 }
