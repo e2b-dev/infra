@@ -201,3 +201,10 @@ tidy:
 .PHONY: local-infra
 local-infra:
 	$(MAKE) -C packages/local-dev local-infra
+
+.PHONY: gcloud-ingress-dashboard
+gcloud-ingress-dashboard:
+ifndef INSTANCE
+	$(error usage: make gcloud-ingress-dashboard INSTANCE=<instance>)
+endif
+	gcloud compute ssh $(INSTANCE) -- -NL 8900:localhost:8900
