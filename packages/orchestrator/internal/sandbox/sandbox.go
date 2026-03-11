@@ -342,6 +342,7 @@ func (f *Factory) CreateSandbox(
 	if err != nil {
 		return nil, err
 	}
+
 	cgroupHandle, cgroupFD := createCgroup(ctx, f.cgroupManager, sandboxFiles.SandboxCgroupName(), cleanup)
 	defer releaseCgroupFD(ctx, cgroupHandle, runtime.SandboxID)
 
