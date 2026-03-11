@@ -94,3 +94,20 @@ func EnsureDirs(path string, uid, gid int) error {
 
 	return nil
 }
+
+func EnsureDirsForce(path string, uid, gid int) error {
+	err := os.MkdirAll(path, 0o755)
+	if err != nil {
+		return fmt.Errorf("failed to create directories: %w", err)
+	}
+
+	subpaths := getSubpaths(path)
+	for _, subpath := range subpaths {
+		err = os.Chown(subpath, uid, gid)
+		if err != nil {
+			return fmt.Errorf("failed to chown directory: %w", err)
+		}
+	}
+
+	return nil
+}

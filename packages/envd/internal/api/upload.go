@@ -23,12 +23,17 @@ import (
 
 var ErrNoDiskSpace = fmt.Errorf("not enough disk space available")
 
-func processFile(r *http.Request, path string, part io.Reader, uid, gid int, logger zerolog.Logger) (int, error) {
+func processFile(r *http.Request, path string, part io.Reader, uid, gid int, force bool, logger zerolog.Logger) (int, error) {
 	logger.Debug().
 		Str("path", path).
 		Msg("File processing")
 
-	err := permissions.EnsureDirs(filepath.Dir(path), uid, gid)
+	var err error
+	if force {
+		err = permissions.EnsureDirsForce(filepath.Dir(path), uid, gid)
+	} else {
+		err = permissions.EnsureDirs(filepath.Dir(path), uid, gid)
+	}
 	if err != nil {
 		err := fmt.Errorf("error ensuring directories: %w", err)
 
@@ -166,7 +171,8 @@ func (a *API) handlePart(r *http.Request, part *multipart.Part, paths UploadSucc
 		Str("event_type", "file_processing").
 		Logger()
 
-	status, err := processFile(r, filePath, part, uid, gid, logger)
+	force := params.Force != nil && *params.Force
+	status, err := processFile(r, filePath, part, uid, gid, force, logger)
 	if err != nil {
 		return nil, status, err
 	}

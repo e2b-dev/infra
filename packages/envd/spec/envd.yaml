@@ -116,6 +116,7 @@ paths:
         - $ref: "#/components/parameters/User"
         - $ref: "#/components/parameters/Signature"
         - $ref: "#/components/parameters/SignatureExpiration"
+        - $ref: "#/components/parameters/Force"
       requestBody:
         $ref: "#/components/requestBodies/File"
       responses:
@@ -166,6 +167,13 @@ components:
       description: Signature expiration used for defining the expiration time of the signature.
       schema:
         type: integer
+    Force:
+      name: force
+      in: query
+      required: false
+      description: Force write, creating parent directories without checking if they exist. Use this when uploading files concurrently to avoid race conditions.
+      schema:
+        type: boolean
 
   requestBodies:
     File:

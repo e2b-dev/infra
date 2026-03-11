@@ -83,6 +83,9 @@ type VolumeMount struct {
 // FilePath defines model for FilePath.
 type FilePath = string
 
+// Force defines model for Force.
+type Force = bool
+
 // Signature defines model for Signature.
 type Signature = string
 
@@ -143,6 +146,9 @@ type PostFilesParams struct {
 
 	// SignatureExpiration Signature expiration used for defining the expiration time of the signature.
 	SignatureExpiration *SignatureExpiration `form:"signature_expiration,omitempty" json:"signature_expiration,omitempty"`
+
+	// Force Force write, creating parent directories without checking if they exist. Use this when uploading files concurrently to avoid race conditions.
+	Force *Force `form:"force,omitempty" json:"force,omitempty"`
 }
 
 // PostInitJSONBody defines parameters for PostInit.
@@ -364,6 +370,14 @@ func (siw *ServerInterfaceWrapper) PostFiles(w http.ResponseWriter, r *http.Requ
 	err = runtime.BindQueryParameter("form", true, false, "signature_expiration", r.URL.Query(), &params.SignatureExpiration)
 	if err != nil {
 		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "signature_expiration", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "force" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "force", r.URL.Query(), &params.Force)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "force", Err: err})
 		return
 	}
 
