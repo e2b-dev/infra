@@ -17,7 +17,6 @@ import (
 
 type fsStorage struct {
 	basePath  string
-	opened    map[string]*os.File
 	uploadURL string // base URL for local upload endpoint (e.g. "http://localhost:5008")
 	hmacKey   []byte // HMAC key for signing upload tokens
 }
@@ -47,7 +46,6 @@ func (r *fsRangeReadCloser) Close() error {
 func newFileSystemStorage(basePath string, uploadBaseURL string, hmacKey []byte) *fsStorage {
 	return &fsStorage{
 		basePath:  basePath,
-		opened:    make(map[string]*os.File),
 		uploadURL: uploadBaseURL,
 		hmacKey:   hmacKey,
 	}
