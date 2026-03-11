@@ -32,8 +32,6 @@ import (
 // The callback is critical: it deletes the transition key
 // and sets the result value with short TTL to notify waiters of the outcome.
 func (s *Storage) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID string, stateAction sandbox.StateAction) (sandbox.Sandbox, bool, func(context.Context, error), error) {
-	newState := stateAction.TargetState
-
 	key := getSandboxKey(teamID.String(), sandboxID)
 	transitionKey := getTransitionKey(teamID.String(), sandboxID)
 
@@ -74,6 +72,27 @@ func (s *Storage) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID
 	if err != nil && !errors.Is(err, redis.Nil) {
 		return sbx, false, nil, fmt.Errorf("failed to check transition key: %w", err)
 	}
+
+	// Resolve StateActionEvict under the distributed lock: re-check expiry and pick Kill or Pause.
+	if stateAction == sandbox.StateActionEvict {
+		// if there's a transition already in place, don't do anything
+		if transactionID != "" {
+			return sbx, false, nil, sandbox.ErrNotExpirable
+		}
+
+		// if sandbox isn't expired (e.g. race condtition with SetTimeout)
+		if !sbx.IsExpired(time.Now()) {
+			return sbx, false, nil, sandbox.ErrNotExpirable
+		}
+
+		if sbx.AutoPause {
+			stateAction = sandbox.StateActionPause
+		} else {
+			stateAction = sandbox.StateActionKill
+		}
+	}
+
+	newState := stateAction.TargetState
 
 	if transactionID != "" {
 		releaseErr := releaseFunc()

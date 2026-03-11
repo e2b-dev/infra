@@ -2,6 +2,7 @@ package evictor
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -53,15 +54,15 @@ func (e *Evictor) Start(ctx context.Context) {
 
 			for _, item := range sbxs {
 				g.Go(func() error {
-					stateAction := sandbox.StateActionKill
-					if item.AutoPause {
-						stateAction = sandbox.StateActionPause
+					if err := e.removeSandbox(context.WithoutCancel(ctx), item.TeamID, item.SandboxID, sandbox.StateActionEvict); err != nil {
+						if !errors.Is(err, sandbox.ErrNotExpirable) {
+							logger.L().Debug(ctx, "Evicting sandbox failed", zap.Error(err), logger.WithSandboxID(item.SandboxID))
+						}
+
+						return nil
 					}
 
-					logger.L().Debug(ctx, "Evicting sandbox", logger.WithSandboxID(item.SandboxID), zap.String("state_action", stateAction.Name))
-					if err := e.removeSandbox(context.WithoutCancel(ctx), item.TeamID, item.SandboxID, stateAction); err != nil {
-						logger.L().Debug(ctx, "Evicting sandbox failed", zap.Error(err), logger.WithSandboxID(item.SandboxID))
-					}
+					logger.L().Debug(ctx, "Sandbox evicted", logger.WithSandboxID(item.SandboxID))
 
 					return nil
 				})

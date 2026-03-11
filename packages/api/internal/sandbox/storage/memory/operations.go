@@ -152,10 +152,34 @@ func (s *Storage) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID
 }
 
 func startRemoving(ctx context.Context, sbx *memorySandbox, stateAction sandbox.StateAction) (alreadyDone bool, callback func(ctx context.Context, err error), err error) {
-	newState := stateAction.TargetState
-
 	sbx.mu.Lock()
 	transition := sbx.transition
+
+	// Resolve StateActionEvict under the lock: re-check expiry and pick Kill or Pause.
+	if stateAction == sandbox.StateActionEvict {
+		// If there's a transition already in place, don't evict.
+		if transition != nil {
+			sbx.mu.Unlock()
+
+			return false, nil, sandbox.ErrNotExpirable
+		}
+
+		// If sandbox isn't expired (e.g. race condition with KeepAliveFor), skip.
+		if !sbx._data.IsExpired(time.Now()) {
+			sbx.mu.Unlock()
+
+			return false, nil, sandbox.ErrNotExpirable
+		}
+
+		if sbx._data.AutoPause {
+			stateAction = sandbox.StateActionPause
+		} else {
+			stateAction = sandbox.StateActionKill
+		}
+	}
+
+	newState := stateAction.TargetState
+
 	if transition != nil {
 		currentState := sbx._data.State
 		sbx.mu.Unlock()

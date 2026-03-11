@@ -23,6 +23,11 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, teamID uuid.UUID, sand
 
 	sbx, alreadyDone, finish, err := o.sandboxStore.StartRemoving(ctx, teamID, sandboxID, stateAction)
 	if err != nil {
+		if errors.Is(err, sandbox.ErrNotExpirable) {
+			// Propagate to evictor
+			return err
+		}
+
 		switch stateAction {
 		case sandbox.StateActionKill:
 			var notFoundErr *sandbox.NotFoundError
@@ -65,6 +70,14 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, teamID uuid.UUID, sand
 
 			return ErrSandboxOperationFailed
 		default:
+			// StateActionEvict errors (other than ErrNotExpirable handled above)
+			var notFoundErr *sandbox.NotFoundError
+			if errors.As(err, &notFoundErr) {
+				logger.L().Debug(ctx, "Eviction skipped: sandbox already removed", logger.WithSandboxID(sandboxID))
+
+				return nil
+			}
+
 			logger.L().Error(ctx, "Invalid state action", logger.WithSandboxID(sandboxID), zap.String("state_action", stateAction.Name))
 
 			return ErrSandboxOperationFailed
@@ -73,6 +86,18 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, teamID uuid.UUID, sand
 	defer func() {
 		finish(ctx, err)
 	}()
+
+	// Resolve the actual action from the sandbox state when evicting.
+	// StartRemoving already resolved Evict to Kill or Pause internally,
+	// so we can determine which one from the resulting sandbox state.
+	if stateAction == sandbox.StateActionEvict {
+		switch sbx.State {
+		case sandbox.StatePausing:
+			stateAction = sandbox.StateActionPause
+		default:
+			stateAction = sandbox.StateActionKill
+		}
+	}
 
 	if alreadyDone {
 		logger.L().Info(ctx, "Sandbox was already in the process of being removed", logger.WithSandboxID(sandboxID), zap.String("state", string(sbx.State)))
