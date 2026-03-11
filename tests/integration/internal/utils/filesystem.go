@@ -19,6 +19,17 @@ import (
 
 func UploadFile(tb testing.TB, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, path string, content string) {
 	tb.Helper()
+	uploadFile(tb, ctx, sbx, envdClient, path, content, nil)
+}
+
+func UploadFileForce(tb testing.TB, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, path string, content string) {
+	tb.Helper()
+	force := true
+	uploadFile(tb, ctx, sbx, envdClient, path, content, &force)
+}
+
+func uploadFile(tb testing.TB, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, path string, content string, force *bool) {
+	tb.Helper()
 
 	buffer, contentType := CreateTextFile(tb, path, content)
 
@@ -29,7 +40,7 @@ func UploadFile(tb testing.TB, ctx context.Context, sbx *api.Sandbox, envdClient
 
 	writeRes, err := envdClient.HTTPClient.PostFilesWithBodyWithResponse(
 		ctx,
-		&envd.PostFilesParams{Path: &path, Username: utils.ToPtr("user")},
+		&envd.PostFilesParams{Path: &path, Username: utils.ToPtr("user"), Force: force},
 		contentType,
 		buffer,
 		reqEditors...,

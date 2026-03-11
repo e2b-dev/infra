@@ -13,6 +13,8 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/filesystem"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process"
+	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
+	envdAPI "github.com/e2b-dev/infra/tests/integration/internal/envd"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 )
@@ -369,4 +371,70 @@ func TestRelativePath(t *testing.T) {
 	assert.Len(t, folderListResp.Msg.GetEntries(), 1)
 
 	assert.Equal(t, path.Join(userHome, relativeTestFolder, "test.txt"), folderListResp.Msg.GetEntries()[0].GetPath())
+}
+
+func TestConcurrentFileUploadForce(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	c := setup.GetAPIClient()
+	sbx := utils.SetupSandboxWithCleanup(t, c)
+	envdClient := setup.GetEnvdClient(t, ctx)
+
+	baseDir := "/home/user/concurrent-test/nested/dir"
+
+	// Upload multiple files concurrently to the same nested directory using force mode.
+	// Without force, this would race on directory creation.
+	errs := make(chan error, 4)
+	for i := 1; i <= 4; i++ {
+		go func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					errs <- fmt.Errorf("panic: %v", r)
+				}
+			}()
+			filePath := fmt.Sprintf("%s/test_%d.txt", baseDir, i)
+			content := fmt.Sprintf("content of test_%d\n", i)
+
+			buffer, contentType := utils.CreateTextFile(t, filePath, content)
+			force := true
+			reqEditors := []envdAPI.RequestEditorFn{setup.WithSandbox(t, sbx.SandboxID)}
+
+			writeRes, err := envdClient.HTTPClient.PostFilesWithBodyWithResponse(
+				ctx,
+				&envdAPI.PostFilesParams{Path: &filePath, Username: sharedUtils.ToPtr("user"), Force: &force},
+				contentType,
+				buffer,
+				reqEditors...,
+			)
+			if err != nil {
+				errs <- err
+
+				return
+			}
+			if writeRes.StatusCode() != 200 {
+				errs <- fmt.Errorf("unexpected status %d for test_%d.txt: %s", writeRes.StatusCode(), i, string(writeRes.Body))
+
+				return
+			}
+			errs <- nil
+		}(i)
+	}
+
+	for range 4 {
+		err := <-errs
+		require.NoError(t, err)
+	}
+
+	// Verify all files exist
+	req := connect.NewRequest(&filesystem.ListDirRequest{
+		Path:  baseDir,
+		Depth: 1,
+	})
+	setup.SetSandboxHeader(t, req.Header(), sbx.SandboxID)
+	setup.SetUserHeader(t, req.Header(), "user")
+	listResp, err := envdClient.FilesystemClient.ListDir(ctx, req)
+	require.NoError(t, err)
+	require.Len(t, listResp.Msg.GetEntries(), 4)
 }
