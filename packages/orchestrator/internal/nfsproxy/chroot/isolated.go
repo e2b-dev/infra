@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"sync"
 	"syscall"
 
 	"github.com/go-git/go-billy/v5"
@@ -17,6 +18,7 @@ type IsolatedFS struct {
 	ActualRoot string
 	Metadata   map[string]string
 
+	mu  sync.RWMutex
 	ns  *mountNS
 	act func(func(billy.Filesystem) error) error
 }
@@ -47,11 +49,15 @@ func IsolateFileSystem(ctx context.Context, source string, opts ...Option) (*Iso
 	fs := &IsolatedFS{
 		ActualRoot: source,
 		ns:         mountNS,
-		act: func(f func(billy.Filesystem) error) error {
-			return mountNS.Do(func() error {
-				return f(inner)
-			})
-		},
+	}
+
+	fs.act = func(f func(billy.Filesystem) error) error {
+		fs.mu.RLock()
+		defer fs.mu.RUnlock()
+
+		return mountNS.Do(func() error {
+			return f(inner)
+		})
 	}
 
 	if err = fs.chroot(source); err != nil {
@@ -86,7 +92,7 @@ func (fs *IsolatedFS) chroot(path string) error {
 			randomDirName := fmt.Sprintf(".old-root.%d", rand.Intn(1000000))
 
 			oldRootPath := filepath.Join(path, randomDirName)
-			if err = os.MkdirAll(oldRootPath, 0o755); err != nil {
+			if err = os.Mkdir(oldRootPath, 0o755); err != nil {
 				if os.IsExist(err) {
 					// collided somehow?? retry
 					continue
@@ -119,5 +125,8 @@ func (fs *IsolatedFS) chroot(path string) error {
 }
 
 func (fs *IsolatedFS) Close() error {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+
 	return fs.ns.Close()
 }

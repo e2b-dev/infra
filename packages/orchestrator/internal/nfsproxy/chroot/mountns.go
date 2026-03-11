@@ -33,12 +33,14 @@ type mountNS struct {
 	doneCh chan struct{}
 }
 
+var ErrNamespaceClosed = fmt.Errorf("namespace is closed")
+
 func (ns *mountNS) errorIfClosed() error {
 	ns.mu.Lock()
 	defer ns.mu.Unlock()
 
 	if ns.closed {
-		return fmt.Errorf("%q has already been closed", ns.file.Name())
+		return fmt.Errorf("%w: %q has already been closed", ErrNamespaceClosed, ns.file.Name())
 	}
 
 	return nil
@@ -61,7 +63,7 @@ func (ns *mountNS) Close() error {
 	if ns.closed {
 		ns.mu.Unlock()
 
-		return fmt.Errorf("%q has already been closed", ns.file.Name())
+		return fmt.Errorf("%w: %q has already been closed", ErrNamespaceClosed, ns.file.Name())
 	}
 	ns.closed = true
 	stopCh := ns.stopCh
