@@ -40,7 +40,7 @@ cat <<EOF >/etc/systemd/oomd.conf
 [OOM]
 DefaultMemoryPressureDurationUSec=2s
 EOF
-# Mask oomd by default -- envd will unmask and start it when oom-mode=systemd-oomd.
+# Mask oomd by default -- envd will unmask and start it when -use-systemd-oomd is set.
 systemctl mask systemd-oomd.service
 
 echo "Setting up shell"
