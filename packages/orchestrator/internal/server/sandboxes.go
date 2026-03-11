@@ -268,28 +268,22 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 		return nil, status.Error(codes.NotFound, "sandbox not found")
 	}
 
-	type updateFunc func(ctx context.Context, sbx *sandbox.Sandbox, eventData map[string]any) (rollback func(), err error)
-
-	var updates []updateFunc
+	teamID, buildId, eventData := s.prepareSandboxEventData(ctx, sbx)
+	var updates []utils.UpdateFunc
 
 	if req.GetEndTime() != nil {
-		updates = append(updates, func(_ context.Context, sbx *sandbox.Sandbox, eventData map[string]any) (func(), error) {
+		updates = append(updates, func(_ context.Context) (func(context.Context), error) {
 			old := sbx.GetEndAt()
 			sbx.SetEndAt(req.GetEndTime().AsTime())
 			eventData["set_timeout"] = req.GetEndTime().AsTime().Format(time.RFC3339)
 
-			return func() { sbx.SetEndAt(old) }, nil
+			return func(_ context.Context) { sbx.SetEndAt(old) }, nil
 		})
 	}
 
 	if req.GetEgress() != nil {
-		updates = append(updates, func(ctx context.Context, sbx *sandbox.Sandbox, eventData map[string]any) (func(), error) {
+		updates = append(updates, func(ctx context.Context) (func(context.Context), error) {
 			oldEgress := sbx.Config.GetNetwork().GetEgress()
-			rollbackCtx := context.WithoutCancel(ctx)
-			rollback := func() {
-				_ = sbx.Slot.UpdateInternet(rollbackCtx, oldEgress)
-				sbx.Config.SetNetworkEgress(oldEgress)
-			}
 
 			if err := sbx.Slot.UpdateInternet(ctx, req.GetEgress()); err != nil {
 				return nil, fmt.Errorf("failed to update sandbox network: %w", err)
@@ -308,15 +302,16 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 				"allowed_domains": egress.GetAllowedDomains(),
 			}
 
-			return rollback, nil
+			return func(ctx context.Context) {
+				_ = sbx.Slot.UpdateInternet(ctx, oldEgress)
+				sbx.Config.SetNetworkEgress(oldEgress)
+			}, nil
 		})
 	}
 
 	if req.GetIngress() != nil {
-		updates = append(updates, func(_ context.Context, sbx *sandbox.Sandbox, eventData map[string]any) (func(), error) {
+		updates = append(updates, func(_ context.Context) (func(context.Context), error) {
 			oldIngress := sbx.Config.GetNetwork().GetIngress()
-			rollback := func() { sbx.SetNetworkIngress(oldIngress) }
-
 			sbx.SetNetworkIngress(req.GetIngress())
 
 			ingress := req.GetIngress()
@@ -327,25 +322,14 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 				"denied_client_cidrs":  ingress.GetDeniedClientCidrs(),
 			}
 
-			return rollback, nil
+			return func(_ context.Context) { sbx.SetNetworkIngress(oldIngress) }, nil
 		})
 	}
 
-	// Apply updates sequentially, threading eventData through each.
-	// On failure, revert already-applied updates in reverse order.
-	teamID, buildId, eventData := s.prepareSandboxEventData(ctx, sbx)
-	var rollbacks []func()
-	for _, update := range updates {
-		rollback, err := update(ctx, sbx, eventData)
-		if err != nil {
-			for i := len(rollbacks) - 1; i >= 0; i-- {
-				rollbacks[i]()
-			}
+	if err := utils.ApplyAllOrNone(ctx, updates); err != nil {
+		telemetry.ReportCriticalError(ctx, "failed to update sandbox", err)
 
-			return nil, status.Errorf(codes.Internal, "failed to update sandbox: %s", err)
-		}
-
-		rollbacks = append(rollbacks, rollback)
+		return nil, status.Errorf(codes.Internal, "failed to update sandbox: %s", err)
 	}
 
 	// Publish event if any updates were applied.
