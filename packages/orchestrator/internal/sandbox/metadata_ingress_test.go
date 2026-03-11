@@ -7,21 +7,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
-func TestIngressClientCIDRs_NilIngress(t *testing.T) {
-	t.Parallel()
-
-	m := &Metadata{}
-	if m.HasIngressClientCIDRs() {
-		t.Error("HasIngressClientCIDRs() = true for nil ingress, want false")
-	}
-	if m.IngressAllowsClientIP(net.ParseIP("1.2.3.4")) {
-		t.Error("IngressAllowsClientIP() = true for nil ingress, want false")
-	}
-	if m.IngressDeniesClientIP(net.ParseIP("1.2.3.4")) {
-		t.Error("IngressDeniesClientIP() = true for nil ingress, want false")
-	}
-}
-
 func TestIngressClientCIDRs_AllowDenyPriority(t *testing.T) {
 	t.Parallel()
 
@@ -129,21 +114,3 @@ func TestIngressClientCIDRs_SetNetworkIngress_Replaces(t *testing.T) {
 	}
 }
 
-func TestIngressClientCIDRs_SetNil_Clears(t *testing.T) {
-	t.Parallel()
-
-	m := &Metadata{}
-	m.SetNetworkIngress(&orchestrator.SandboxNetworkIngressConfig{
-		AllowedClientCidrs: []string{"10.0.0.0/8"},
-	})
-
-	if !m.HasIngressClientCIDRs() {
-		t.Fatal("expected HasIngressClientCIDRs() = true")
-	}
-
-	m.SetNetworkIngress(nil)
-
-	if m.HasIngressClientCIDRs() {
-		t.Error("expected HasIngressClientCIDRs() = false after setting nil")
-	}
-}

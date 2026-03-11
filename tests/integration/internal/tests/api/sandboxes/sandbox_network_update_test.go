@@ -581,6 +581,72 @@ func TestUpdateIngressConfig(t *testing.T) { //nolint:tparallel // subtests are 
 }
 
 // =============================================================================
+// TestUpdateCombinedEgressAndIngress verifies that egress and ingress rules
+// can be set in a single PUT and both take effect simultaneously.
+// =============================================================================
+
+func TestUpdateCombinedEgressAndIngress(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	client := setup.GetAPIClient()
+	envdClient := setup.GetEnvdClient(t, ctx)
+
+	sbx := utils.SetupSandboxWithCleanup(t, client,
+		utils.WithTimeout(120),
+		utils.WithAutoPause(false),
+	)
+
+	testPort := 8000
+	proxyURL, err := url.Parse(setup.EnvdProxy)
+	require.NoError(t, err)
+	httpClient := &http.Client{Timeout: 10 * time.Second}
+
+	// Start an HTTP server so the proxy connects.
+	err = utils.ExecCommand(t, ctx, sbx, envdClient, "sh", "-c",
+		fmt.Sprintf("nohup python3 -m http.server %d >/dev/null 2>&1 &", testPort))
+	require.NoError(t, err)
+
+	// Wait for the server to be reachable.
+	utils.WaitForStatus(t, httpClient, sbx, proxyURL, testPort, nil, http.StatusOK)
+
+	// Single PUT: deny all egress + deny port for ingress.
+	resp := putNetwork(t, ctx, client, sbx.SandboxID, api.PutSandboxesSandboxIDNetworkJSONRequestBody{
+		DenyOut:   ptrS(blockAll),
+		DenyPorts: &[]int{testPort},
+	})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode())
+
+	// Egress: outbound blocked.
+	verifyConnectivity(t, ctx, sbx, envdClient, []connectivityCheck{
+		{"https://8.8.8.8", false},
+	})
+
+	// Ingress: port blocked.
+	req := utils.NewRequest(sbx, proxyURL, testPort, nil)
+	proxyResp, err := httpClient.Do(req)
+	require.NoError(t, err)
+	proxyResp.Body.Close()
+	require.Equal(t, http.StatusForbidden, proxyResp.StatusCode)
+
+	// Clear both: empty body restores defaults.
+	resp = putNetwork(t, ctx, client, sbx.SandboxID, api.PutSandboxesSandboxIDNetworkJSONRequestBody{})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode())
+
+	// Egress: outbound restored.
+	verifyConnectivity(t, ctx, sbx, envdClient, []connectivityCheck{
+		{"https://8.8.8.8", true},
+	})
+
+	// Ingress: port restored.
+	req = utils.NewRequest(sbx, proxyURL, testPort, nil)
+	proxyResp, err = httpClient.Do(req)
+	require.NoError(t, err)
+	proxyResp.Body.Close()
+	require.NotEqual(t, http.StatusForbidden, proxyResp.StatusCode)
+}
+
+// =============================================================================
 // TestUpdateMaskRequestHost exercises dynamic MaskRequestHost updates.
 // A Python server echoes the Host header back so we can verify masking.
 // =============================================================================

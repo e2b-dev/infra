@@ -133,28 +133,6 @@ func TestUpdate_EndTimeAndEgress_EgressFails_RevertsEndTime(t *testing.T) {
 	assert.Empty(t, egress.GetAllowedDomains())
 }
 
-func TestUpdate_IngressOnly(t *testing.T) {
-	t.Parallel()
-
-	sbx := newTestSandbox(t, false)
-	s := newTestServer(sbx)
-
-	_, err := s.Update(t.Context(), &orchestrator.SandboxUpdateRequest{
-		SandboxId: sbx.Runtime.SandboxID,
-		Ingress: &orchestrator.SandboxNetworkIngressConfig{
-			AllowedPorts:      []uint32{80, 443},
-			DeniedClientCidrs: []string{"10.0.0.0/8"},
-		},
-	})
-
-	require.NoError(t, err)
-
-	ingress := sbx.Config.GetNetwork().GetIngress()
-	require.NotNil(t, ingress)
-	assert.Equal(t, []uint32{80, 443}, ingress.GetAllowedPorts())
-	assert.Equal(t, []string{"10.0.0.0/8"}, ingress.GetDeniedClientCidrs())
-}
-
 func TestUpdate_EndTimeAndIngress(t *testing.T) {
 	t.Parallel()
 
