@@ -285,8 +285,9 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 	if req.GetEgress() != nil {
 		updates = append(updates, func(ctx context.Context, sbx *sandbox.Sandbox, eventData map[string]any) (func(), error) {
 			oldEgress := sbx.Config.GetNetwork().GetEgress()
+			rollbackCtx := context.WithoutCancel(ctx)
 			rollback := func() {
-				_ = sbx.Slot.UpdateInternet(ctx, oldEgress)
+				_ = sbx.Slot.UpdateInternet(rollbackCtx, oldEgress)
 				sbx.Config.SetNetworkEgress(oldEgress)
 			}
 
