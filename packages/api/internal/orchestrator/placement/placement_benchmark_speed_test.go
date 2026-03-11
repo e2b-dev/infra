@@ -51,7 +51,7 @@ func BenchmarkChooseNode(b *testing.B) {
 				b.ReportAllocs()
 				b.ResetTimer()
 				for range b.N {
-					_, _ = alg.chooseNode(ctx, nodes, exclude, resources, machineinfo.MachineInfo{})
+					_, _ = alg.chooseNode(ctx, nodes, exclude, resources, machineinfo.MachineInfo{}, false, nil)
 				}
 			})
 		}

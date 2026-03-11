@@ -64,6 +64,11 @@ variable "node_pool_name" {
   description = "Nomad node pool name for client nodes"
 }
 
+variable "node_labels" {
+  description = "Labels to assign to nodes for scheduling purposes"
+  type        = list(string)
+}
+
 variable "base_hugepages_percentage" {
   description = "The percentage of memory to use for preallocated hugepages."
   type        = number

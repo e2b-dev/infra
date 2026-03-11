@@ -131,6 +131,17 @@ variable "ingress_count" {
   default = 1
 }
 
+variable "additional_api_paths_handled_by_ingress" {
+  type        = list(string)
+  description = "Additional paths to forward to nomad's ingress"
+  default     = []
+}
+
+variable "additional_traefik_arguments" {
+  type    = list(string)
+  default = []
+}
+
 variable "client_proxy_resources_memory_mb" {
   type    = number
   default = 1024
@@ -309,6 +320,8 @@ variable "domain_name" {
 variable "additional_api_services_json" {
   type        = string
   description = <<EOT
+Deprecated. Use `additional_api_services` instead.
+
 Additional path rules to add to the API path matcher.
 Format: json string of an array of objects with 'path' and 'service' keys.
 Example:
@@ -322,6 +335,17 @@ Example:
 ]
 EOT
   default     = ""
+}
+
+variable "additional_api_services" {
+  type = list(object({
+    paths                    = list(string)
+    service_id               = string
+    api_node_group_port_name = string
+    api_node_group_port      = number
+  }))
+  description = "Additional path rules to add to the API path matcher."
+  default     = []
 }
 
 variable "prefix" {
@@ -488,6 +512,7 @@ variable "client_clusters_config" {
 
     hugepages_percentage   = optional(number)
     network_interface_type = optional(string)
+    node_labels            = optional(list(string), [])
   }))
 
   description = <<EOT
@@ -547,6 +572,7 @@ variable "build_clusters_config" {
 
     hugepages_percentage   = optional(number)
     network_interface_type = optional(string)
+    node_labels            = optional(list(string), [])
   }))
   description = <<EOT
 Configuration for the build clusters.

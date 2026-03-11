@@ -130,6 +130,7 @@ variable "client_clusters_config" {
     })
     hugepages_percentage   = optional(number)
     network_interface_type = optional(string)
+    node_labels            = optional(list(string), [])
   }))
 }
 
@@ -162,6 +163,7 @@ variable "build_clusters_config" {
     })
     hugepages_percentage   = optional(number)
     network_interface_type = optional(string)
+    node_labels            = optional(list(string), [])
   }))
 }
 
@@ -374,4 +376,8 @@ variable "persistent_volume_types" {
     nfs_location     = string
     nfs_mount_opts   = string
   }))
+}
+
+variable "additional_api_paths_handled_by_ingress" {
+  type = list(string)
 }
