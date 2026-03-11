@@ -73,7 +73,7 @@ func (s *Storage) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID
 		return sbx, false, nil, fmt.Errorf("failed to check transition key: %w", err)
 	}
 
-	// Resolve eviction under the distributed lock: re-check expiry and pick Kill or Pause.
+	// Resolve eviction under the lock + re-check expiry
 	if opts.Eviction {
 		// if there's a transition already in place, don't do anything
 		if transactionID != "" {

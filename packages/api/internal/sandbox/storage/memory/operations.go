@@ -155,7 +155,7 @@ func startRemoving(ctx context.Context, sbx *memorySandbox, opts sandbox.RemoveO
 	sbx.mu.Lock()
 	transition := sbx.transition
 
-	// Resolve eviction under the lock: re-check expiry and pick Kill or Pause.
+	// Resolve eviction under the lock + re-check expiry
 	if opts.Eviction {
 		// If there's a transition already in place, don't evict.
 		if transition != nil {
