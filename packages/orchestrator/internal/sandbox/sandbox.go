@@ -373,28 +373,6 @@ func (f *Factory) CreateSandbox(
 
 	telemetry.ReportEvent(ctx, "created fc client")
 
-	err = fcHandle.Create(
-		ctx,
-		sbxlogger.SandboxMetadata{
-			SandboxID:  runtime.SandboxID,
-			TemplateID: runtime.TemplateID,
-			TeamID:     runtime.TeamID,
-		},
-		config.Vcpu,
-		config.RamMB,
-		config.HugePages,
-		processOptions,
-		fc.TxRateLimiterConfig{
-			Ops:       fc.TokenBucketConfig(throttleConfig.Ops),
-			Bandwidth: fc.TokenBucketConfig(throttleConfig.Bandwidth),
-		},
-		cgroupFD,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create FC: %w", err)
-	}
-	telemetry.ReportEvent(ctx, "created fc process")
-
 	resources := &Resources{
 		Slot:   ips,
 		rootfs: rootfsProvider,
@@ -431,6 +409,29 @@ func (f *Factory) CreateSandbox(
 
 		exit: exit,
 	}
+	f.Sandboxes.Insert(ctx, sbx)
+
+	err = fcHandle.Create(
+		ctx,
+		sbxlogger.SandboxMetadata{
+			SandboxID:  runtime.SandboxID,
+			TemplateID: runtime.TemplateID,
+			TeamID:     runtime.TeamID,
+		},
+		config.Vcpu,
+		config.RamMB,
+		config.HugePages,
+		processOptions,
+		fc.TxRateLimiterConfig{
+			Ops:       fc.TokenBucketConfig(throttleConfig.Ops),
+			Bandwidth: fc.TokenBucketConfig(throttleConfig.Bandwidth),
+		},
+		cgroupFD,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create FC: %w", err)
+	}
+	telemetry.ReportEvent(ctx, "created fc process")
 
 	useClickhouseMetrics := f.featureFlags.BoolFlag(ctx, featureflags.MetricsWriteFlag)
 	sbx.Checks = NewChecks(sbx, useClickhouseMetrics)
@@ -456,7 +457,6 @@ func (f *Factory) CreateSandbox(
 		exit.SetError(errors.Join(err, fcErr))
 	}()
 
-	f.Sandboxes.Insert(ctx, sbx)
 	f.Sandboxes.MarkRunning(sbx)
 
 	return sbx, nil
