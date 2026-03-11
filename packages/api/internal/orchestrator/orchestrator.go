@@ -66,6 +66,7 @@ type Orchestrator struct {
 	snapshotCache           SnapshotCacheInvalidator
 
 	snapshotUpsertSem *utils.AdjustableSemaphore
+	redisStorage      *redisbackend.Storage
 }
 
 func New(
@@ -147,6 +148,7 @@ func New(
 	var reservationStorage sandbox.ReservationStorage
 	var sandboxStorage sandbox.Storage
 	redisStorage := redisbackend.NewStorage(redisClient)
+	o.redisStorage = redisStorage
 
 	switch config.SandboxStorageBackend {
 	case cfg.SandboxStorageBackendMemory:
@@ -267,6 +269,8 @@ func (o *Orchestrator) Close(ctx context.Context) error {
 	if err := o.routingCatalog.Close(ctx); err != nil {
 		errs = append(errs, err)
 	}
+
+	o.redisStorage.Close()
 
 	return errors.Join(errs...)
 }

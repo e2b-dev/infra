@@ -41,6 +41,11 @@ func NewStorage(
 	}
 }
 
+// Close shuts down the subscription manager and its background goroutine.
+func (s *Storage) Close() {
+	s.subManager.close()
+}
+
 // Sync is here only for legacy reasons, redis backend doesn't need any sync
 func (s *Storage) Sync(_ []sandbox.Sandbox, _ string) []sandbox.Sandbox {
 	return nil
