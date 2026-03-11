@@ -24,13 +24,13 @@ func TestListDir_Depth(t *testing.T) {
 	// /mnt/shared/team-<teamID>/vol-<volumeID>/dir/deep/test.txt
 
 	basePath := filepath.Join(tmpDir, "team-"+teamID, "vol-"+volumeID)
-	err := os.MkdirAll(filepath.Join(basePath, "dir", "deep"), 0755)
+	err := os.MkdirAll(filepath.Join(basePath, "dir", "deep"), 0o755)
 	require.NoError(t, err)
 
-	err = os.WriteFile(filepath.Join(basePath, "dir", "test.txt"), []byte("test"), 0644)
+	err = os.WriteFile(filepath.Join(basePath, "dir", "test.txt"), []byte("test"), 0o644)
 	require.NoError(t, err)
 
-	err = os.WriteFile(filepath.Join(basePath, "dir", "deep", "test.txt"), []byte("deep test"), 0644)
+	err = os.WriteFile(filepath.Join(basePath, "dir", "deep", "test.txt"), []byte("deep test"), 0o644)
 	require.NoError(t, err)
 
 	s := &Service{
@@ -92,7 +92,7 @@ func TestListDir_Depth(t *testing.T) {
 
 	t.Run("depth 3", func(t *testing.T) {
 		// Create another level
-		err = os.MkdirAll(filepath.Join(basePath, "dir", "deep", "deeper"), 0755)
+		err = os.MkdirAll(filepath.Join(basePath, "dir", "deep", "deeper"), 0o755)
 		require.NoError(t, err)
 
 		req := &orchestrator.VolumeDirListRequest{
