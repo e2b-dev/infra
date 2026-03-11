@@ -12,24 +12,24 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-type GetPath func(conn net.Addr, request nfs.MountRequest) (string, error)
+type GetFilesystem func(ctx context.Context, conn net.Addr, request nfs.MountRequest) (billy.Filesystem, error)
 
 type NFSHandler struct {
-	fn GetPath
+	fn GetFilesystem
 }
 
 var _ nfs.Handler = (*NFSHandler)(nil)
 
-func NewNFSHandler(fn GetPath) nfs.Handler {
+func NewNFSHandler(fn GetFilesystem) *NFSHandler {
 	return &NFSHandler{fn: fn}
 }
 
-func (h NFSHandler) Mount(
+func (h *NFSHandler) Mount(
 	ctx context.Context,
 	conn net.Conn,
 	request nfs.MountRequest,
 ) (nfs.MountStatus, billy.Filesystem, []nfs.AuthFlavor) {
-	path, err := h.fn(conn.RemoteAddr(), request)
+	fs, err := h.fn(ctx, conn.RemoteAddr(), request)
 	if err != nil {
 		logger.L().Warn(ctx, "failed to get path",
 			zap.String("request", string(request.Dirpath)),
@@ -38,20 +38,10 @@ func (h NFSHandler) Mount(
 		return nfs.MountStatusErrAcces, mountFailedFS{}, nil
 	}
 
-	fs, err := IsolateFileSystem(ctx, path)
-	if err != nil {
-		logger.L().Error(ctx, "failed to chroot",
-			zap.String("request", string(request.Dirpath)),
-			zap.String("path", path),
-			zap.Error(err))
-
-		return nfs.MountStatusErrAcces, mountFailedFS{}, nil
-	}
-
 	return nfs.MountStatusOk, fs, nil
 }
 
-func (h NFSHandler) Change(filesystem billy.Filesystem) billy.Change {
+func (h *NFSHandler) Change(filesystem billy.Filesystem) billy.Change {
 	for {
 		isolated, ok := filesystem.(*IsolatedFS)
 		if ok {
@@ -67,22 +57,22 @@ func (h NFSHandler) Change(filesystem billy.Filesystem) billy.Change {
 	}
 }
 
-func (h NFSHandler) FSStat(_ context.Context, _ billy.Filesystem, _ *nfs.FSStat) error {
+func (h *NFSHandler) FSStat(_ context.Context, _ billy.Filesystem, _ *nfs.FSStat) error {
 	return nil
 }
 
-func (h NFSHandler) ToHandle(_ billy.Filesystem, _ []string) []byte {
+func (h *NFSHandler) ToHandle(_ billy.Filesystem, _ []string) []byte {
 	panic("this should be intercepted by the caching handler")
 }
 
-func (h NFSHandler) FromHandle(_ []byte) (billy.Filesystem, []string, error) {
+func (h *NFSHandler) FromHandle(_ []byte) (billy.Filesystem, []string, error) {
 	panic("this should be intercepted by the caching handler")
 }
 
-func (h NFSHandler) InvalidateHandle(_ billy.Filesystem, _ []byte) error {
+func (h *NFSHandler) InvalidateHandle(_ billy.Filesystem, _ []byte) error {
 	panic("this should be intercepted by the caching handler")
 }
 
-func (h NFSHandler) HandleLimit() int {
+func (h *NFSHandler) HandleLimit() int {
 	panic("this should be intercepted by the caching handler")
 }

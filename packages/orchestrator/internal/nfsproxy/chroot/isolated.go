@@ -13,14 +13,28 @@ import (
 )
 
 type IsolatedFS struct {
-	ns *mountNS
+	ActualRoot string
+	Metadata   map[string]string
 
+	ns  *mountNS
 	act func(func(billy.Filesystem) error) error
 }
 
 var _ billy.Filesystem = (*IsolatedFS)(nil)
 
-func IsolateFileSystem(ctx context.Context, source string) (*IsolatedFS, error) {
+type Option func(*IsolatedFS)
+
+func WithMetadata(key, value string) Option {
+	return func(fs *IsolatedFS) {
+		if fs.Metadata == nil {
+			fs.Metadata = make(map[string]string)
+		}
+
+		fs.Metadata[key] = value
+	}
+}
+
+func IsolateFileSystem(ctx context.Context, source string, opts ...Option) (*IsolatedFS, error) {
 	mountNS, err := tempMountNS(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temporary mount namespace: %w", err)
@@ -30,7 +44,8 @@ func IsolateFileSystem(ctx context.Context, source string) (*IsolatedFS, error) 
 	inner := osfs.New("/")
 
 	fs := &IsolatedFS{
-		ns: mountNS,
+		ActualRoot: source,
+		ns:         mountNS,
 		act: func(f func(billy.Filesystem) error) error {
 			return mountNS.Do(func() error {
 				return f(inner)
@@ -45,6 +60,10 @@ func IsolateFileSystem(ctx context.Context, source string) (*IsolatedFS, error) 
 		}
 
 		return nil, err
+	}
+
+	for _, opt := range opts {
+		opt(fs)
 	}
 
 	return fs, nil

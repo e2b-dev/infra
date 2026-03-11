@@ -709,8 +709,21 @@ func startNFSProxy(
 		return nil, fmt.Errorf("failed to listen on nfs port: %w", err)
 	}
 
+	// isolated filesystems cache (for nfs proxy)
+	fsCache := nfsproxy.NewFilesystemsCache(sandboxes, config)
+	startService("nfs proxy filesystems cache", func() error {
+		fsCache.Start(ctx)
+
+		return nil
+	})
+	closers = append(closers, closer{"nfs proxy filesystems cache", func(_ context.Context) error {
+		fsCache.Stop()
+
+		return nil
+	}})
+
 	// nfs proxy implementation
-	nfsServer, err := nfsproxy.NewProxy(ctx, sandboxes, config)
+	nfsServer, err := nfsproxy.NewProxy(ctx, fsCache)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create nfs proxy: %w", err)
 	}

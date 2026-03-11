@@ -137,7 +137,9 @@ func TestIntegrationTest(t *testing.T) {
 		},
 	}
 
-	s, err := NewProxy(t.Context(), sandboxes, config)
+	cache := NewFilesystemsCache(sandboxes, config)
+
+	s, err := NewProxy(t.Context(), cache)
 	require.NoError(t, err)
 	go func() {
 		err := s.Serve(nfsListener)
