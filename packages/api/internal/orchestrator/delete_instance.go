@@ -17,16 +17,20 @@ import (
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 )
 
-func (o *Orchestrator) RemoveSandbox(ctx context.Context, teamID uuid.UUID, sandboxID string, stateAction sandbox.StateAction) error {
+func (o *Orchestrator) RemoveSandbox(ctx context.Context, teamID uuid.UUID, sandboxID string, stateAction sandbox.StateAction, eviction bool) error {
 	ctx, span := tracer.Start(ctx, "remove-sandbox")
 	defer span.End()
 
-	sbx, alreadyDone, finish, err := o.sandboxStore.StartRemoving(ctx, teamID, sandboxID, stateAction)
+	sbx, alreadyDone, finish, err := o.sandboxStore.StartRemoving(ctx, teamID, sandboxID, stateAction, eviction)
 	if err != nil {
+		// For eviction, propagate all errors to the evictor.
+		if eviction {
+			return err
+		}
+
 		switch stateAction {
 		case sandbox.StateActionKill:
-			var notFoundErr *sandbox.NotFoundError
-			if errors.As(err, &notFoundErr) {
+			if errors.Is(err, sandbox.ErrNotFound) {
 				logger.L().Info(ctx, "Sandbox not found, already removed", logger.WithSandboxID(sandboxID))
 
 				return ErrSandboxNotFound
@@ -43,8 +47,7 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, teamID uuid.UUID, sand
 				return ErrSandboxOperationFailed
 			}
 		case sandbox.StateActionPause:
-			var notFoundErrPause *sandbox.NotFoundError
-			if errors.As(err, &notFoundErrPause) {
+			if errors.Is(err, sandbox.ErrNotFound) {
 				logger.L().Info(ctx, "Sandbox not found for pause", logger.WithSandboxID(sandboxID))
 
 				return ErrSandboxNotFound
@@ -65,14 +68,9 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, teamID uuid.UUID, sand
 
 			return ErrSandboxOperationFailed
 		default:
-			var notFoundErr *sandbox.NotFoundError
-			if errors.As(err, &notFoundErr) {
-				logger.L().Debug(ctx, "Eviction skipped: sandbox already removed", logger.WithSandboxID(sandboxID))
+			logger.L().Error(ctx, "Invalid state action", logger.WithSandboxID(sandboxID), zap.String("state_action", stateAction.Name))
 
-				return nil
-			}
-
-			return err
+			return ErrSandboxOperationFailed
 		}
 	}
 	defer func() {
@@ -80,9 +78,9 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, teamID uuid.UUID, sand
 	}()
 
 	// Resolve the actual action from the sandbox state when evicting.
-	// StartRemoving already resolved Evict to Kill or Pause internally,
+	// StartRemoving already resolved the action to Kill or Pause internally,
 	// so we can determine which one from the resulting sandbox state.
-	if stateAction == sandbox.StateActionEvict {
+	if eviction {
 		switch sbx.State {
 		case sandbox.StatePausing:
 			stateAction = sandbox.StateActionPause

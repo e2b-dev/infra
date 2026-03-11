@@ -43,7 +43,7 @@ func (a *APIStore) PostAdminTeamsTeamIDSandboxesKill(c *gin.Context, teamID uuid
 	// Kill each sandbox
 	for _, sbx := range sandboxes {
 		wg.Go(func() error {
-			err := a.orchestrator.RemoveSandbox(ctx, sbx.TeamID, sbx.SandboxID, sandbox.StateActionKill)
+			err := a.orchestrator.RemoveSandbox(ctx, sbx.TeamID, sbx.SandboxID, sandbox.StateActionKill, false)
 			if err != nil {
 				logger.L().Error(ctx, "Failed to kill sandbox",
 					logger.WithSandboxID(sbx.SandboxID),

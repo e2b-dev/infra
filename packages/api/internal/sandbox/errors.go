@@ -15,13 +15,7 @@ func (e *LimitExceededError) Error() string {
 	return fmt.Sprintf("team %s has exceeded the limit", e.TeamID.String())
 }
 
-type NotFoundError struct {
-	SandboxID string
-}
-
-func (e *NotFoundError) Error() string {
-	return fmt.Sprintf("sandbox %s not found", e.SandboxID)
-}
+var ErrNotFound = errors.New("sandbox not found")
 
 type InvalidStateTransitionError struct {
 	CurrentState State

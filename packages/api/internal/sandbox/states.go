@@ -40,11 +40,6 @@ var (
 		TargetState: StateSnapshotting,
 		Effect:      TransitionTransient,
 	}
-	// StateActionEvict is a marker action used by the evictor.
-	// It is resolved to Kill or Pause inside StartRemoving
-	StateActionEvict = StateAction{
-		Name: "evict",
-	}
 )
 
 var AllowedTransitions = map[State]map[State]bool{

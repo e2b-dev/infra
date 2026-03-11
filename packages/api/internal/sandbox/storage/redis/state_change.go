@@ -31,7 +31,7 @@ import (
 //
 // The callback is critical: it deletes the transition key
 // and sets the result value with short TTL to notify waiters of the outcome.
-func (s *Storage) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID string, stateAction sandbox.StateAction) (sandbox.Sandbox, bool, func(context.Context, error), error) {
+func (s *Storage) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID string, stateAction sandbox.StateAction, eviction bool) (sandbox.Sandbox, bool, func(context.Context, error), error) {
 	key := getSandboxKey(teamID.String(), sandboxID)
 	transitionKey := getTransitionKey(teamID.String(), sandboxID)
 
@@ -56,7 +56,7 @@ func (s *Storage) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID
 	// Get current sandbox state first
 	data, err := s.redisClient.Get(ctx, key).Bytes()
 	if errors.Is(err, redis.Nil) {
-		return sandbox.Sandbox{}, false, nil, &sandbox.NotFoundError{SandboxID: sandboxID}
+		return sandbox.Sandbox{}, false, nil, fmt.Errorf("sandbox %q: %w", sandboxID, sandbox.ErrNotFound)
 	}
 	if err != nil {
 		return sandbox.Sandbox{}, false, nil, fmt.Errorf("failed to get sandbox from Redis: %w", err)
@@ -73,14 +73,14 @@ func (s *Storage) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID
 		return sbx, false, nil, fmt.Errorf("failed to check transition key: %w", err)
 	}
 
-	// Resolve StateActionEvict under the distributed lock: re-check expiry and pick Kill or Pause.
-	if stateAction == sandbox.StateActionEvict {
+	// Resolve eviction under the distributed lock: re-check expiry and pick Kill or Pause.
+	if eviction {
 		// if there's a transition already in place, don't do anything
 		if transactionID != "" {
 			return sbx, false, nil, sandbox.ErrNotEvictable
 		}
 
-		// if sandbox isn't expired (e.g. race condtition with SetTimeout)
+		// if sandbox isn't expired (e.g. race condition with SetTimeout)
 		if !sbx.IsExpired(time.Now()) {
 			return sbx, false, nil, sandbox.ErrNotEvictable
 		}
@@ -311,5 +311,5 @@ func (s *Storage) handleExistingTransition(
 	}
 
 	// Retry with new state after transition completes
-	return s.StartRemoving(ctx, teamID, sbx.SandboxID, stateAction)
+	return s.StartRemoving(ctx, teamID, sbx.SandboxID, stateAction, false)
 }
