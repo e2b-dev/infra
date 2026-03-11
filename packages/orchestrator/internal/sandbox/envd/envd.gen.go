@@ -78,6 +78,9 @@ type VolumeMount struct {
 // FilePath defines model for FilePath.
 type FilePath = string
 
+// Force defines model for Force.
+type Force = bool
+
 // Signature defines model for Signature.
 type Signature = string
 
@@ -138,6 +141,9 @@ type PostFilesParams struct {
 
 	// SignatureExpiration Signature expiration used for defining the expiration time of the signature.
 	SignatureExpiration SignatureExpiration `form:"signature_expiration,omitempty" json:"signature_expiration,omitempty"`
+
+	// Force Force write, creating parent directories without checking if they exist. Use this when uploading files concurrently to avoid race conditions.
+	Force Force `form:"force,omitempty" json:"force,omitempty"`
 }
 
 // PostInitJSONBody defines parameters for PostInit.
