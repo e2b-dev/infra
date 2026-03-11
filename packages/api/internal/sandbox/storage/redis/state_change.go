@@ -270,7 +270,7 @@ func (s *Storage) waitForTransition(
 	}
 
 	// 1-second fallback ticker in case a PubSub message is missed.
-	ticker := time.NewTicker(retryInterval)
+	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 
 	for {

@@ -13,7 +13,8 @@ const (
 	lockTimeout            = time.Minute
 	transitionKeyTTL       = 70 * time.Second // Should be longer than the longest expected state transition time
 	transitionResultKeyTTL = 30 * time.Second
-	retryInterval          = 1 * time.Second // fallback polling interval; PubSub is the primary notification mechanism
+	lockRetryInterval      = 20 * time.Millisecond
+	pollInterval           = 1 * time.Second // fallback polling interval; PubSub is the primary notification mechanism
 )
 
 var _ sandbox.Storage = (*Storage)(nil)
@@ -34,7 +35,7 @@ func NewStorage(
 		redisClient: redisClient,
 		lockService: redislock.New(redisClient),
 		lockOption: &redislock.Options{
-			RetryStrategy: newConstantBackoff(retryInterval),
+			RetryStrategy: newConstantBackoff(lockRetryInterval),
 		},
 		subManager: newSubscriptionManager(redisClient),
 	}
