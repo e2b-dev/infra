@@ -26,7 +26,6 @@ const (
 	TeamSandboxCreated CounterType = "e2b.team.sandbox.created"
 
 	EnvdInitCalls CounterType = "orchestrator.sandbox.envd.init.calls"
-
 )
 
 const (
@@ -134,9 +133,9 @@ var counterDesc = map[CounterType]string{
 	BuildCacheResultCounterName:     "Number of build cache results",
 	TeamSandboxCreated:              "Counter of started sandboxes for the team in the interval",
 	EnvdInitCalls:                   "Number of envd initialization calls",
-	TCPFirewallConnectionsTotal: "Total number of TCP firewall connections processed",
-	TCPFirewallErrorsTotal:      "Total number of TCP firewall errors",
-	TCPFirewallDecisionsTotal:   "Total number of TCP firewall allow/block decisions",
+	TCPFirewallConnectionsTotal:     "Total number of TCP firewall connections processed",
+	TCPFirewallErrorsTotal:          "Total number of TCP firewall errors",
+	TCPFirewallDecisionsTotal:       "Total number of TCP firewall allow/block decisions",
 
 	IngressProxyConnectionsBlockedTotal: "Total number of ingress proxy connections blocked by connection limit",
 
@@ -152,9 +151,9 @@ var counterUnits = map[CounterType]string{
 	BuildCacheResultCounterName:     "{layer}",
 	TeamSandboxCreated:              "{sandbox}",
 	EnvdInitCalls:                   "1",
-	TCPFirewallConnectionsTotal: "{connection}",
-	TCPFirewallErrorsTotal:      "{error}",
-	TCPFirewallDecisionsTotal:   "{decision}",
+	TCPFirewallConnectionsTotal:     "{connection}",
+	TCPFirewallErrorsTotal:          "{error}",
+	TCPFirewallDecisionsTotal:       "{decision}",
 
 	IngressProxyConnectionsBlockedTotal: "{connection}",
 
@@ -298,10 +297,10 @@ func GetGaugeInt(meter metric.Meter, name GaugeIntType) (metric.Int64ObservableG
 }
 
 var histogramDesc = map[HistogramType]string{
-	BuildDurationHistogramName:       "Time taken to build a template",
-	BuildPhaseDurationHistogramName:  "Time taken to build each phase of a template",
-	BuildStepDurationHistogramName:   "Time taken to build each step of a template",
-	BuildRootfsSizeHistogramName:     "Size of the built template rootfs in bytes",
+	BuildDurationHistogramName:            "Time taken to build a template",
+	BuildPhaseDurationHistogramName:       "Time taken to build each phase of a template",
+	BuildStepDurationHistogramName:        "Time taken to build each step of a template",
+	BuildRootfsSizeHistogramName:          "Size of the built template rootfs in bytes",
 	OrchestratorSandboxCreateDurationName: "Time taken to create a sandbox",
 	WaitForEnvdDurationHistogramName:      "Time taken for Envd to initialize successfully",
 
