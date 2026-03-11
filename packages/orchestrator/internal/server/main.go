@@ -67,7 +67,7 @@ type ServiceConfig struct {
 	PeerRegistry     peerclient.Registry
 }
 
-func New(_ context.Context, cfg ServiceConfig) (*Server, error) {
+func New(cfg ServiceConfig) (*Server, error) {
 	uploadedBuilds := ttlcache.New[string, struct{}](
 		ttlcache.WithTTL[string, struct{}](uploadedBuildsTTL),
 	)
