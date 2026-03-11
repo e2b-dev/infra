@@ -13,8 +13,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/filesystem"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process"
-	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
-	envdAPI "github.com/e2b-dev/infra/tests/integration/internal/envd"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 )
@@ -396,28 +394,7 @@ func TestConcurrentFileUploadForce(t *testing.T) {
 			}()
 			filePath := fmt.Sprintf("%s/test_%d.txt", baseDir, i)
 			content := fmt.Sprintf("content of test_%d\n", i)
-
-			buffer, contentType := utils.CreateTextFile(t, filePath, content)
-			force := true
-			reqEditors := []envdAPI.RequestEditorFn{setup.WithSandbox(t, sbx.SandboxID)}
-
-			writeRes, err := envdClient.HTTPClient.PostFilesWithBodyWithResponse(
-				ctx,
-				&envdAPI.PostFilesParams{Path: &filePath, Username: sharedUtils.ToPtr("user"), Force: &force},
-				contentType,
-				buffer,
-				reqEditors...,
-			)
-			if err != nil {
-				errs <- err
-
-				return
-			}
-			if writeRes.StatusCode() != 200 {
-				errs <- fmt.Errorf("unexpected status %d for test_%d.txt: %s", writeRes.StatusCode(), i, string(writeRes.Body))
-
-				return
-			}
+			utils.UploadFileForce(t, ctx, sbx, envdClient, filePath, content)
 			errs <- nil
 		}(i)
 	}
