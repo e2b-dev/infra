@@ -123,10 +123,6 @@ func (m *Map) Remove(ctx context.Context, sandboxID string) {
 }
 
 func (m *Map) RemoveByLifecycleID(ctx context.Context, sandboxID, lifecycleID string) {
-	logger.L().Info(ctx, "removing sandbox from map by lifecycle ID",
-		logger.WithSandboxID(sandboxID),
-	)
-
 	removed := m.sandboxes.RemoveCb(sandboxID, func(_ string, v *Sandbox, exists bool) bool {
 		if !exists {
 			return false
@@ -140,6 +136,10 @@ func (m *Map) RemoveByLifecycleID(ctx context.Context, sandboxID, lifecycleID st
 	})
 
 	if removed {
+		logger.L().Info(ctx, "removing sandbox from map by lifecycle ID",
+			logger.WithSandboxID(sandboxID),
+		)
+
 		go m.trigger(func(s MapSubscriber) {
 			s.OnRemove(sandboxID)
 		})
