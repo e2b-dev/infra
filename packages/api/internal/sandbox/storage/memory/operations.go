@@ -161,14 +161,14 @@ func startRemoving(ctx context.Context, sbx *memorySandbox, stateAction sandbox.
 		if transition != nil {
 			sbx.mu.Unlock()
 
-			return false, nil, sandbox.ErrNotExpirable
+			return false, nil, sandbox.ErrNotEvictable
 		}
 
 		// If sandbox isn't expired (e.g. race condition with KeepAliveFor), skip.
 		if !sbx._data.IsExpired(time.Now()) {
 			sbx.mu.Unlock()
 
-			return false, nil, sandbox.ErrNotExpirable
+			return false, nil, sandbox.ErrNotEvictable
 		}
 
 		if sbx._data.AutoPause {

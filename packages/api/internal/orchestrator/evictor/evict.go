@@ -55,7 +55,7 @@ func (e *Evictor) Start(ctx context.Context) {
 			for _, item := range sbxs {
 				g.Go(func() error {
 					if err := e.removeSandbox(context.WithoutCancel(ctx), item.TeamID, item.SandboxID, sandbox.StateActionEvict); err != nil {
-						if !errors.Is(err, sandbox.ErrNotExpirable) {
+						if !errors.Is(err, sandbox.ErrNotEvictable) {
 							logger.L().Debug(ctx, "Evicting sandbox failed", zap.Error(err), logger.WithSandboxID(item.SandboxID))
 						}
 
