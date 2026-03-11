@@ -467,15 +467,16 @@ func TestUpdateIngressConfig(t *testing.T) { //nolint:tparallel // subtests are 
 		},
 		// ── Client IP deny/allow ─────────────────────────────────────
 		{
+			// Both IPv4 and IPv6 "match all" CIDRs — CI may use ::1 (IPv6 loopback).
 			name:  "client_ip_deny_all_blocks",
-			rules: ingress().denyIn("0.0.0.0/0"),
+			rules: ingress().denyIn("0.0.0.0/0", "::/0"),
 			checks: []check{
 				{testPort, "", true},
 			},
 		},
 		{
 			name:  "client_ip_allow_all_overrides_deny_all",
-			rules: ingress().allowIn("0.0.0.0/0").denyIn("0.0.0.0/0"),
+			rules: ingress().allowIn("0.0.0.0/0", "::/0").denyIn("0.0.0.0/0", "::/0"),
 			checks: []check{
 				{testPort, "", false},
 			},
@@ -490,16 +491,16 @@ func TestUpdateIngressConfig(t *testing.T) { //nolint:tparallel // subtests are 
 			},
 		},
 		{
-			// Deny both halves of IPv4 space to cover every possible real IP.
+			// Deny both halves of IPv4 + IPv6 space to cover every possible real IP.
 			name:  "client_ip_deny_both_halves_blocks",
-			rules: ingress().denyIn("0.0.0.0/1", "128.0.0.0/1"),
+			rules: ingress().denyIn("0.0.0.0/1", "128.0.0.0/1", "::/1", "8000::/1"),
 			checks: []check{
 				{testPort, "", true},
 			},
 		},
 		{
 			name:  "client_ip_allow_both_overrides_deny_both",
-			rules: ingress().allowIn("0.0.0.0/1", "128.0.0.0/1").denyIn("0.0.0.0/1", "128.0.0.0/1"),
+			rules: ingress().allowIn("0.0.0.0/1", "128.0.0.0/1", "::/1", "8000::/1").denyIn("0.0.0.0/1", "128.0.0.0/1", "::/1", "8000::/1"),
 			checks: []check{
 				{testPort, "", false},
 			},
