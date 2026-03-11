@@ -20,8 +20,8 @@ func TestComputeHMAC(t *testing.T) {
 		path := "templates/abc/layer.tar"
 		expires := int64(1700000000)
 
-		h1 := computeHMAC(key, path, expires)
-		h2 := computeHMAC(key, path, expires)
+		h1 := ComputeUploadHMAC(key, path, expires)
+		h2 := ComputeUploadHMAC(key, path, expires)
 
 		assert.Equal(t, h1, h2)
 		assert.NotEmpty(t, h1)
@@ -33,16 +33,16 @@ func TestComputeHMAC(t *testing.T) {
 		key := []byte("test-key")
 		expires := int64(1700000000)
 
-		h1 := computeHMAC(key, "path-a", expires)
-		h2 := computeHMAC(key, "path-b", expires)
+		h1 := ComputeUploadHMAC(key, "path-a", expires)
+		h2 := ComputeUploadHMAC(key, "path-b", expires)
 
 		assert.NotEqual(t, h1, h2, "different paths should produce different HMACs")
 
-		h3 := computeHMAC(key, "path-a", expires+1)
+		h3 := ComputeUploadHMAC(key, "path-a", expires+1)
 
 		assert.NotEqual(t, h1, h3, "different expires should produce different HMACs")
 
-		h4 := computeHMAC([]byte("other-key"), "path-a", expires)
+		h4 := ComputeUploadHMAC([]byte("other-key"), "path-a", expires)
 
 		assert.NotEqual(t, h1, h4, "different keys should produce different HMACs")
 	})
@@ -54,10 +54,10 @@ func TestValidateUploadToken(t *testing.T) {
 	validKey := []byte("secret")
 	validPath := "file.txt"
 	validExpires := time.Now().Add(5 * time.Minute).Unix()
-	validToken := computeHMAC(validKey, validPath, validExpires)
+	validToken := ComputeUploadHMAC(validKey, validPath, validExpires)
 
 	expiredExpires := time.Now().Add(-1 * time.Minute).Unix()
-	expiredToken := computeHMAC(validKey, validPath, expiredExpires)
+	expiredToken := ComputeUploadHMAC(validKey, validPath, expiredExpires)
 
 	tests := []struct {
 		name    string

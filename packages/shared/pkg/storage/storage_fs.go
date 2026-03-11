@@ -69,7 +69,7 @@ func (s *fsStorage) UploadSignedURL(_ context.Context, path string, ttl time.Dur
 	}
 
 	expires := time.Now().Add(ttl).Unix()
-	token := computeHMAC(s.hmacKey, path, expires)
+	token := ComputeUploadHMAC(s.hmacKey, path, expires)
 
 	u := fmt.Sprintf("%s/upload?path=%s&expires=%d&token=%s",
 		s.uploadURL, url.QueryEscape(path), expires, url.QueryEscape(token))
@@ -197,7 +197,7 @@ func (o *fsObject) Delete(_ context.Context) error {
 	return os.Remove(o.path)
 }
 
-func computeHMAC(key []byte, path string, expires int64) string {
+func ComputeUploadHMAC(key []byte, path string, expires int64) string {
 	mac := hmac.New(sha256.New, key)
 	mac.Write([]byte(path))
 	mac.Write([]byte(strconv.FormatInt(expires, 10)))
@@ -212,7 +212,7 @@ func ValidateUploadToken(key []byte, path string, expires int64, token string) b
 		return false
 	}
 
-	expected := computeHMAC(key, path, expires)
+	expected := ComputeUploadHMAC(key, path, expires)
 
 	return hmac.Equal([]byte(expected), []byte(token))
 }
