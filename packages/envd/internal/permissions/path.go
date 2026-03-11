@@ -96,35 +96,18 @@ func EnsureDirs(path string, uid, gid int) error {
 }
 
 func EnsureDirsForce(path string, uid, gid int) error {
-	// Record which directories already exist before creating anything,
-	// so we only chown directories we actually create.
 	subpaths := getSubpaths(path)
+	for _, subpath := range subpaths {
+		err := os.Mkdir(subpath, 0o755)
+		if err != nil {
+			if os.IsExist(err) {
+				continue
+			}
 
-	firstNew := len(subpaths) // index of the first directory we need to create
-	for i, subpath := range subpaths {
-		_, err := os.Stat(subpath)
-		if err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("failed to stat directory: %w", err)
+			return fmt.Errorf("failed to create directory: %w", err)
 		}
 
-		if os.IsNotExist(err) {
-			firstNew = i
-
-			break
-		}
-	}
-
-	if firstNew == len(subpaths) {
-		// All directories already exist.
-		return nil
-	}
-
-	err := os.MkdirAll(path, 0o755)
-	if err != nil {
-		return fmt.Errorf("failed to create directories: %w", err)
-	}
-
-	for _, subpath := range subpaths[firstNew:] {
+		// Only chown directories we actually created.
 		err = os.Chown(subpath, uid, gid)
 		if err != nil {
 			return fmt.Errorf("failed to chown directory: %w", err)
