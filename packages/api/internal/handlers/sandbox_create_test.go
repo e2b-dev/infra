@@ -175,6 +175,71 @@ func TestValidateNetworkConfig(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name: "allow_out with IP and deny_out block-all is valid",
+			network: &api.SandboxNetworkConfig{
+				AllowOut: &[]string{"8.8.8.8"},
+				DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
+			},
+			wantErr: false,
+		},
+		// CIDR intersection validation tests
+		{
+			name: "allow_out CIDR not covered by deny_out CIDR is valid (no intersection check)",
+			network: &api.SandboxNetworkConfig{
+				AllowOut: &[]string{"10.0.0.0/8"},
+				DenyOut:  &[]string{"192.168.0.0/16"}, // No intersection, but still valid
+			},
+			wantErr: false,
+		},
+		{
+			name: "allow_out CIDR covered by intersecting deny_out CIDR is valid",
+			network: &api.SandboxNetworkConfig{
+				AllowOut: &[]string{"10.1.0.0/16"},
+				DenyOut:  &[]string{"10.0.0.0/8"}, // Deny covers allow
+			},
+			wantErr: false,
+		},
+		{
+			name: "allow_out CIDR covers deny_out CIDR is valid (intersection exists)",
+			network: &api.SandboxNetworkConfig{
+				AllowOut: &[]string{"10.0.0.0/8"},
+				DenyOut:  &[]string{"10.1.0.0/16"}, // Allow covers deny - still valid intersection
+			},
+			wantErr: false,
+		},
+		{
+			name: "allow_out IP covered by deny_out CIDR is valid",
+			network: &api.SandboxNetworkConfig{
+				AllowOut: &[]string{"10.1.2.3"},
+				DenyOut:  &[]string{"10.0.0.0/8"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "allow_out IP not covered by deny_out CIDR is valid (no intersection check)",
+			network: &api.SandboxNetworkConfig{
+				AllowOut: &[]string{"8.8.8.8"},
+				DenyOut:  &[]string{"10.0.0.0/8"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "multiple allow_out CIDRs partial deny_out coverage is valid (no intersection check)",
+			network: &api.SandboxNetworkConfig{
+				AllowOut: &[]string{"10.0.0.0/8", "192.168.0.0/16"},
+				DenyOut:  &[]string{"10.0.0.0/8"}, // Only covers first, but still valid
+			},
+			wantErr: false,
+		},
+		{
+			name: "multiple allow_out CIDRs covered by multiple deny_out CIDRs is valid",
+			network: &api.SandboxNetworkConfig{
+				AllowOut: &[]string{"10.0.0.0/8", "192.168.0.0/16"},
+				DenyOut:  &[]string{"10.0.0.0/8", "192.168.0.0/16"},
+			},
+			wantErr: false,
+		},
 		// Ingress port validation tests
 		{
 			name: "valid allowPorts",
