@@ -45,10 +45,7 @@ type Userfaultfd struct {
 	settleRequests  sync.RWMutex
 	prefetchTracker *block.PrefetchTracker
 
-	// defaultCopyMode overrides the UFFDIO_COPY mode for all faults.
-	// Zero means use the default behavior (WP for reads, no WP for writes).
-	// Set to UFFDIO_COPY_MODE_WP to always write-protect — used in tests to
-	// verify WP_ASYNC handles write-first faults correctly for prefaulting.
+	// defaultCopyMode overrides the UFFDIO_COPY mode for all faults when non-zero.
 	defaultCopyMode CULong
 
 	wg errgroup.Group
@@ -288,6 +285,7 @@ func (u *Userfaultfd) Serve(
 				// or because we handled another page fault on the same address in the current
 				// iteration. It can only be removed via a a UFFD_EVENT_REMOVE, which will mark the
 				// page as `unfaulted`.
+				// For this to work correctly, the used pages cannot be swappable.
 				continue
 			case removed:
 				// Fault the page as empty.
