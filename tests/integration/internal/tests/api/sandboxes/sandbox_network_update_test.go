@@ -3,6 +3,7 @@ package sandboxes
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
+	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
@@ -379,6 +381,12 @@ func (r *ingressRules) allowIn(cidrs ...string) *ingressRules {
 	return r
 }
 
+func (r *ingressRules) maskHost(h string) *ingressRules {
+	r.body.MaskRequestHost = &h
+
+	return r
+}
+
 func TestUpdateIngressConfig(t *testing.T) { //nolint:tparallel // subtests are sequential
 	t.Parallel()
 
@@ -568,5 +576,95 @@ func TestUpdateIngressConfig(t *testing.T) { //nolint:tparallel // subtests are 
 		require.Equal(t, http.StatusCreated, resumeResp.StatusCode())
 
 		require.Equal(t, http.StatusForbidden, proxyStatus(testPort, ""))
+	})
+}
+
+// =============================================================================
+// TestUpdateMaskRequestHost exercises dynamic MaskRequestHost updates.
+// A Python server echoes the Host header back so we can verify masking.
+// =============================================================================
+
+func TestUpdateMaskRequestHost(t *testing.T) { //nolint:tparallel // subtests are sequential
+	t.Parallel()
+
+	ctx := t.Context()
+	client := setup.GetAPIClient()
+	envdClient := setup.GetEnvdClient(t, ctx)
+
+	sbx := utils.SetupSandboxWithCleanup(t, client,
+		utils.WithTimeout(120),
+		utils.WithAutoPause(false),
+	)
+
+	testPort := 8000
+	proxyURL, err := url.Parse(setup.EnvdProxy)
+	require.NoError(t, err)
+	httpClient := &http.Client{Timeout: 10 * time.Second}
+
+	// Start a Python server that echoes the Host header in the response body.
+	echoServer := `
+import http.server, socketserver
+class H(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(self.headers.get("Host","").encode())
+    def log_message(self, *a): pass
+socketserver.TCPServer(("",` + fmt.Sprintf("%d", testPort) + `),H).serve_forever()
+`
+	err = utils.ExecCommand(t, ctx, sbx, envdClient, "sh", "-c",
+		fmt.Sprintf("nohup python3 -c %q >/dev/null 2>&1 &", echoServer))
+	require.NoError(t, err)
+
+	// Returns the Host header as seen by the server inside the sandbox.
+	getHost := func() string {
+		t.Helper()
+		req := utils.NewRequest(sbx, proxyURL, testPort, nil)
+		resp, err := httpClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		return string(body)
+	}
+
+	apply := func(r *ingressRules) {
+		t.Helper()
+		resp := putNetwork(t, ctx, client, sbx.SandboxID, r.body)
+		require.Equal(t, http.StatusNoContent, resp.StatusCode())
+	}
+
+	// Verify baseline — Host should contain the sandbox routing domain, not a mask.
+	t.Run("baseline_no_mask", func(t *testing.T) { //nolint:paralleltest // sequential
+		host := getHost()
+		require.NotEmpty(t, host)
+		require.NotContains(t, host, "masked-host")
+	})
+
+	maskedTemplate := fmt.Sprintf("masked-host:%s", pool.MaskRequestHostPortPlaceholder)
+	maskedExpected := fmt.Sprintf("masked-host:%d", testPort)
+
+	t.Run("set_mask_with_port_placeholder", func(t *testing.T) { //nolint:paralleltest // sequential
+		apply(ingress().maskHost(maskedTemplate))
+		require.Equal(t, maskedExpected, getHost())
+	})
+
+	t.Run("update_mask", func(t *testing.T) { //nolint:paralleltest // sequential
+		apply(ingress().maskHost("other-host:9999"))
+		require.Equal(t, "other-host:9999", getHost())
+	})
+
+	t.Run("clear_mask", func(t *testing.T) { //nolint:paralleltest // sequential
+		// Empty ingress() sets MaskRequestHost to nil — clears the mask.
+		apply(ingress())
+		host := getHost()
+		require.NotEqual(t, "other-host:9999", host)
+		require.NotContains(t, host, "masked-host")
+	})
+
+	t.Run("set_mask_again", func(t *testing.T) { //nolint:paralleltest // sequential
+		apply(ingress().maskHost(maskedTemplate))
+		require.Equal(t, maskedExpected, getHost())
 	})
 }
