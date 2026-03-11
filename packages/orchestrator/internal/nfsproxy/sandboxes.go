@@ -72,6 +72,7 @@ func (c *FilesystemsCache) Stop() error {
 		if err := fs.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("failed to close %q: %w", path, err))
 		}
+		delete(c.cache, path)
 	}
 
 	c.cancel()
