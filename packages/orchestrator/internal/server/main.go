@@ -2,12 +2,12 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
 	"go.opentelemetry.io/otel/metric"
-	"go.uber.org/zap"
 	"golang.org/x/sync/semaphore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
@@ -21,7 +21,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -68,7 +67,7 @@ type ServiceConfig struct {
 	PeerRegistry     peerclient.Registry
 }
 
-func New(ctx context.Context, cfg ServiceConfig) *Server {
+func New(ctx context.Context, cfg ServiceConfig) (*Server, error) {
 	uploadedBuilds := ttlcache.New[string, struct{}](
 		ttlcache.WithTTL[string, struct{}](uploadedBuildsTTL),
 	)
@@ -95,7 +94,7 @@ func New(ctx context.Context, cfg ServiceConfig) *Server {
 
 	sandboxCreateDuration, err := telemetry.GetHistogram(meter, telemetry.OrchestratorSandboxCreateDurationName)
 	if err != nil {
-		logger.L().Error(ctx, "Error registering sandbox create duration histogram", zap.String("metric_name", string(telemetry.OrchestratorSandboxCreateDurationName)), zap.Error(err))
+		return nil, fmt.Errorf("failed to register sandbox create duration histogram: %w", err)
 	}
 	server.sandboxCreateDuration = sandboxCreateDuration
 
@@ -105,8 +104,8 @@ func New(ctx context.Context, cfg ServiceConfig) *Server {
 		return nil
 	})
 	if err != nil {
-		logger.L().Error(ctx, "Error registering sandbox count metric", zap.String("metric_name", string(telemetry.OrchestratorSandboxCountMeterName)), zap.Error(err))
+		return nil, fmt.Errorf("failed to register sandbox count metric: %w", err)
 	}
 
-	return server
+	return server, nil
 }
