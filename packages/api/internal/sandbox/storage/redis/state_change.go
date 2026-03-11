@@ -31,7 +31,7 @@ import (
 //
 // The callback is critical: it deletes the transition key
 // and sets the result value with short TTL to notify waiters of the outcome.
-func (s *Storage) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID string, stateAction sandbox.StateAction, eviction bool) (sandbox.Sandbox, bool, func(context.Context, error), error) {
+func (s *Storage) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID string, opts sandbox.RemoveOpts) (sandbox.Sandbox, bool, func(context.Context, error), error) {
 	key := getSandboxKey(teamID.String(), sandboxID)
 	transitionKey := getTransitionKey(teamID.String(), sandboxID)
 
@@ -74,7 +74,7 @@ func (s *Storage) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID
 	}
 
 	// Resolve eviction under the distributed lock: re-check expiry and pick Kill or Pause.
-	if eviction {
+	if opts.Eviction {
 		// if there's a transition already in place, don't do anything
 		if transactionID != "" {
 			return sbx, false, nil, sandbox.ErrNotEvictable
@@ -86,13 +86,13 @@ func (s *Storage) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID
 		}
 
 		if sbx.AutoPause {
-			stateAction = sandbox.StateActionPause
+			opts.Action = sandbox.StateActionPause
 		} else {
-			stateAction = sandbox.StateActionKill
+			opts.Action = sandbox.StateActionKill
 		}
 	}
 
-	newState := stateAction.TargetState
+	newState := opts.Action.TargetState
 
 	if transactionID != "" {
 		releaseErr := releaseFunc()
@@ -100,7 +100,7 @@ func (s *Storage) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID
 			logger.L().Warn(ctx, "Failed to release lock before waiting", zap.Error(releaseErr))
 		}
 
-		return s.handleExistingTransition(ctx, teamID, sbx, stateAction, newState, transactionID)
+		return s.handleExistingTransition(ctx, teamID, sbx, opts.Action, newState, transactionID)
 	}
 
 	// Check if already in target state
@@ -119,7 +119,7 @@ func (s *Storage) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID
 	// This ensures that on failure the caller sees the pre-mutation state,
 	updated := sbx
 	updated.State = newState
-	if stateAction.Effect == sandbox.TransitionExpires {
+	if opts.Action.Effect == sandbox.TransitionExpires {
 		now := time.Now()
 		if !updated.IsExpired(now) {
 			updated.EndTime = now
@@ -146,7 +146,7 @@ func (s *Storage) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID
 
 	logger.L().Debug(ctx, "Started state transition", logger.WithSandboxID(sandboxID), zap.String("state", string(newState)), zap.String("transitionID", transitionID))
 
-	return updated, false, s.createCallback(teamID, sandboxID, transitionKey, resultKey, transitionID, stateAction), nil
+	return updated, false, s.createCallback(teamID, sandboxID, transitionKey, resultKey, transitionID, opts.Action), nil
 }
 
 // createCallback returns a callback function for completing a transition.
@@ -311,5 +311,5 @@ func (s *Storage) handleExistingTransition(
 	}
 
 	// Retry with new state after transition completes
-	return s.StartRemoving(ctx, teamID, sbx.SandboxID, stateAction, false)
+	return s.StartRemoving(ctx, teamID, sbx.SandboxID, sandbox.RemoveOpts{Action: stateAction})
 }

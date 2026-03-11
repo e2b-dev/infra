@@ -67,7 +67,7 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 
 	killedOrRemoved := false
 
-	err = a.orchestrator.RemoveSandbox(ctx, teamID, sandboxID, sandbox.StateActionKill, false)
+	err = a.orchestrator.RemoveSandbox(ctx, teamID, sandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionKill})
 	switch {
 	case err == nil:
 		killedOrRemoved = true
