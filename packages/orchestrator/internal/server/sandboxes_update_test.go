@@ -142,8 +142,8 @@ func TestUpdate_IngressOnly(t *testing.T) {
 	_, err := s.Update(t.Context(), &orchestrator.SandboxUpdateRequest{
 		SandboxId: sbx.Runtime.SandboxID,
 		Ingress: &orchestrator.SandboxNetworkIngressConfig{
-			AllowedPorts:       []uint32{80, 443},
-			DeniedClientCidrs:  []string{"10.0.0.0/8"},
+			AllowedPorts:      []uint32{80, 443},
+			DeniedClientCidrs: []string{"10.0.0.0/8"},
 		},
 	})
 
