@@ -45,6 +45,12 @@ type Userfaultfd struct {
 	settleRequests  sync.RWMutex
 	prefetchTracker *block.PrefetchTracker
 
+	// defaultCopyMode overrides the UFFDIO_COPY mode for all faults.
+	// Zero means use the default behavior (WP for reads, no WP for writes).
+	// Set to UFFDIO_COPY_MODE_WP to always write-protect — used in tests to
+	// verify WP_ASYNC handles write-first faults correctly for prefaulting.
+	defaultCopyMode CULong
+
 	wg errgroup.Group
 
 	logger logger.Logger
@@ -348,11 +354,8 @@ func (u *Userfaultfd) faultPage(
 	}()
 
 	var writeErr error
-	var mode CULong
 
-	// Performing copy() on UFFD clears the WP bit unless we explicitly tell
-	// it not to. We do that for faults caused by a read access. Write accesses
-	// would anyways clear the write-protection bit.
+	mode := u.defaultCopyMode
 	if accessType == block.Read {
 		mode = UFFDIO_COPY_MODE_WP
 	}
