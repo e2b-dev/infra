@@ -17,7 +17,7 @@ import (
 // waiting on that specific sandbox.
 type subscriptionManager struct {
 	mu      sync.RWMutex
-	waiters map[string][]chan struct{} // routingKey → registered waiters
+	waiters map[string]map[chan struct{}]struct{} // routingKey → registered waiters
 
 	ps *redis.PubSub
 
@@ -29,7 +29,7 @@ func newSubscriptionManager(redisClient redis.UniversalClient) *subscriptionMana
 	ctx, cancel := context.WithCancel(context.Background())
 
 	m := &subscriptionManager{
-		waiters: make(map[string][]chan struct{}),
+		waiters: make(map[string]map[chan struct{}]struct{}),
 		ps:      redisClient.Subscribe(ctx, getGlobalTransitionNotifyChannel()),
 		ctx:     ctx,
 		cancel:  cancel,
@@ -45,30 +45,26 @@ func newSubscriptionManager(redisClient redis.UniversalClient) *subscriptionMana
 // arrives for that sandbox. The caller MUST invoke the returned cleanup function
 // when done to avoid a memory leak.
 func (m *subscriptionManager) subscribe(routingKey string) (<-chan struct{}, func()) {
-	ch := make(chan struct{}, 1) // buffered so dispatch never blocks
+	channel := make(chan struct{}, 1) // buffered so dispatch never blocks
 
 	m.mu.Lock()
-	m.waiters[routingKey] = append(m.waiters[routingKey], ch)
+	if m.waiters[routingKey] == nil {
+		m.waiters[routingKey] = make(map[chan struct{}]struct{})
+	}
+	m.waiters[routingKey][channel] = struct{}{}
 	m.mu.Unlock()
 
 	cleanup := func() {
 		m.mu.Lock()
 		defer m.mu.Unlock()
 
-		waiters := m.waiters[routingKey]
-		for i, w := range waiters {
-			if w == ch {
-				m.waiters[routingKey] = append(waiters[:i], waiters[i+1:]...)
-				break
-			}
-		}
-
+		delete(m.waiters[routingKey], channel)
 		if len(m.waiters[routingKey]) == 0 {
 			delete(m.waiters, routingKey)
 		}
 	}
 
-	return ch, cleanup
+	return channel, cleanup
 }
 
 // run reads from the single global PubSub channel and dispatches signals to
@@ -92,14 +88,11 @@ func (m *subscriptionManager) run() {
 // dispatch signals all waiters registered for the given routing key.
 func (m *subscriptionManager) dispatch(routingKey string) {
 	m.mu.RLock()
-	waiters := m.waiters[routingKey]
-	snapshot := make([]chan struct{}, len(waiters))
-	copy(snapshot, waiters)
-	m.mu.RUnlock()
+	defer m.mu.RUnlock()
 
-	for _, w := range snapshot {
+	for waiter := range m.waiters[routingKey] {
 		select {
-		case w <- struct{}{}:
+		case waiter <- struct{}{}:
 		default:
 			// Waiter already has a pending signal; skip.
 		}
