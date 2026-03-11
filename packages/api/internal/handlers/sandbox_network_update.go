@@ -154,7 +154,21 @@ func validateIngressRules(ingress *types.SandboxNetworkIngressConfig) *api.APIEr
 		return apiErr
 	}
 
-	return validateCIDRList(ingress.DeniedClientCIDRs, "denyIn")
+	if apiErr := validateCIDRList(ingress.DeniedClientCIDRs, "denyIn"); apiErr != nil {
+		return apiErr
+	}
+
+	// Consistent with egress: allowIn without deny-all is a no-op (default is allow-all),
+	// so require 0.0.0.0/0 in denyIn to prevent a silent misconfiguration.
+	if len(ingress.AllowedClientCIDRs) > 0 && !slices.Contains(ingress.DeniedClientCIDRs, sandbox_network.AllInternetTrafficCIDR) {
+		return &api.APIError{
+			Code:      http.StatusBadRequest,
+			Err:       fmt.Errorf("allowIn is set but denyIn is missing 0.0.0.0/0 (ALL_TRAFFIC)"),
+			ClientMsg: "When specifying allowed CIDRs in allowIn, you must include '0.0.0.0/0' in denyIn to block all other traffic.",
+		}
+	}
+
+	return nil
 }
 
 func validatePortList(ports []uint32, fieldName string) *api.APIError {

@@ -284,18 +284,39 @@ func TestValidateNetworkConfig(t *testing.T) {
 		},
 		// Ingress CIDR validation tests
 		{
-			name: "valid allowIn CIDR",
+			name: "valid allowIn CIDR with deny-all",
 			network: &api.SandboxNetworkConfig{
 				AllowIn: &[]string{"10.0.0.0/8"},
+				DenyIn:  &[]string{"0.0.0.0/0"},
 			},
 			wantErr: false,
 		},
 		{
-			name: "valid allowIn bare IP",
+			name: "valid allowIn bare IP with deny-all",
 			network: &api.SandboxNetworkConfig{
 				AllowIn: &[]string{"1.2.3.4"},
+				DenyIn:  &[]string{"0.0.0.0/0"},
 			},
 			wantErr: false,
+		},
+		{
+			name: "allowIn without deny-all is rejected",
+			network: &api.SandboxNetworkConfig{
+				AllowIn: &[]string{"10.0.0.0/8"},
+			},
+			wantErr:    true,
+			wantCode:   http.StatusBadRequest,
+			wantErrMsg: "When specifying allowed CIDRs in allowIn, you must include '0.0.0.0/0' in denyIn to block all other traffic.",
+		},
+		{
+			name: "allowIn with partial denyIn is rejected",
+			network: &api.SandboxNetworkConfig{
+				AllowIn: &[]string{"10.0.0.0/8"},
+				DenyIn:  &[]string{"192.168.0.0/16"},
+			},
+			wantErr:    true,
+			wantCode:   http.StatusBadRequest,
+			wantErrMsg: "When specifying allowed CIDRs in allowIn, you must include '0.0.0.0/0' in denyIn to block all other traffic.",
 		},
 		{
 			name: "invalid allowIn entry",

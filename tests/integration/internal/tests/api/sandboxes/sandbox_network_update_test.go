@@ -69,9 +69,9 @@ func verifyConnectivity(
 	}
 }
 
-// TestUpdateNetworkConfig exercises all update scenarios using a single sandbox.
+// TestUpdateEgressConfig exercises all update scenarios using a single sandbox.
 // Subtests run sequentially — each PUT fully replaces the previous config.
-func TestUpdateNetworkConfig(t *testing.T) { //nolint:tparallel // subtests are sequential
+func TestUpdateEgressConfig(t *testing.T) { //nolint:tparallel // subtests are sequential
 	t.Parallel()
 
 	templateID := ensureNetworkTestTemplate(t)
@@ -189,7 +189,7 @@ func TestUpdateNetworkConfig(t *testing.T) { //nolint:tparallel // subtests are 
 	steps := []step{
 		// ── deny-only rules ──────────────────────────────────────────
 		{
-			name:    "1_deny_all_blocks_everything",
+			name:    "deny_all_blocks_everything",
 			denyOut: ptrS(blockAll),
 			checks: []connectivityCheck{
 				{"https://8.8.8.8", false},
@@ -198,7 +198,7 @@ func TestUpdateNetworkConfig(t *testing.T) { //nolint:tparallel // subtests are 
 		},
 		// ── allow + deny-all (allow takes precedence over deny) ──────
 		{
-			name:     "2_allow_single_ip_through_deny_all",
+			name:     "allow_single_ip_through_deny_all",
 			allowOut: ptrS("8.8.8.8"),
 			denyOut:  ptrS(blockAll),
 			checks: []connectivityCheck{
@@ -207,7 +207,7 @@ func TestUpdateNetworkConfig(t *testing.T) { //nolint:tparallel // subtests are 
 			},
 		},
 		{
-			name:     "3_replace_allowed_ip",
+			name:     "replace_allowed_ip",
 			allowOut: ptrS("1.1.1.1"),
 			denyOut:  ptrS(blockAll),
 			checks: []connectivityCheck{
@@ -216,7 +216,7 @@ func TestUpdateNetworkConfig(t *testing.T) { //nolint:tparallel // subtests are 
 			},
 		},
 		{
-			name:     "4_allow_multiple_ips",
+			name:     "allow_multiple_ips",
 			allowOut: ptrS("8.8.8.8", "1.1.1.1"),
 			denyOut:  ptrS(blockAll),
 			checks: []connectivityCheck{
@@ -225,7 +225,7 @@ func TestUpdateNetworkConfig(t *testing.T) { //nolint:tparallel // subtests are 
 			},
 		},
 		{
-			name:     "5_allow_cidr_range",
+			name:     "allow_cidr_range",
 			allowOut: ptrS("8.8.8.0/24"),
 			denyOut:  ptrS(blockAll),
 			checks: []connectivityCheck{
@@ -235,7 +235,7 @@ func TestUpdateNetworkConfig(t *testing.T) { //nolint:tparallel // subtests are 
 		},
 		// ── domain-based rules (TCP proxy SNI matching) ──────────────
 		{
-			name:     "6_allow_domain",
+			name:     "allow_domain",
 			allowOut: ptrS("google.com"),
 			denyOut:  ptrS(blockAll),
 			checks: []connectivityCheck{
@@ -244,7 +244,7 @@ func TestUpdateNetworkConfig(t *testing.T) { //nolint:tparallel // subtests are 
 			},
 		},
 		{
-			name:     "7_allow_domain_and_ip",
+			name:     "allow_domain_and_ip",
 			allowOut: ptrS("google.com", "1.1.1.1"),
 			denyOut:  ptrS(blockAll),
 			checks: []connectivityCheck{
@@ -255,7 +255,7 @@ func TestUpdateNetworkConfig(t *testing.T) { //nolint:tparallel // subtests are 
 		},
 		// ── replacement semantics: PUT replaces, not appends ─────────
 		{
-			name:    "8_remove_allow_keep_deny",
+			name:    "remove_allow_keep_deny",
 			denyOut: ptrS(blockAll),
 			checks: []connectivityCheck{
 				{"https://google.com", false}, // previously allowed domain now blocked
@@ -264,7 +264,7 @@ func TestUpdateNetworkConfig(t *testing.T) { //nolint:tparallel // subtests are 
 		},
 		// ── clear all rules: back to default-allow ───────────────────
 		{
-			name: "9_clear_all_rules_restores_access",
+			name: "clear_all_restores_access",
 			checks: []connectivityCheck{
 				{"https://8.8.8.8", true},
 				{"https://1.1.1.1", true},
@@ -272,7 +272,7 @@ func TestUpdateNetworkConfig(t *testing.T) { //nolint:tparallel // subtests are 
 		},
 		// ── re-apply after clear: sets can be repopulated ────────────
 		{
-			name:     "10_reapply_rules_after_clear",
+			name:     "reapply_after_clear",
 			allowOut: ptrS("1.1.1.1"),
 			denyOut:  ptrS(blockAll),
 			checks: []connectivityCheck{
@@ -282,7 +282,7 @@ func TestUpdateNetworkConfig(t *testing.T) { //nolint:tparallel // subtests are 
 		},
 		// ── allow IP without deny: no blocking, allow set is no-op ───
 		{
-			name:     "11_allow_ip_without_deny_no_blocking",
+			name:     "allow_ip_without_deny_no_blocking",
 			allowOut: ptrS("8.8.8.8"),
 			checks: []connectivityCheck{
 				{"https://8.8.8.8", true},
@@ -291,7 +291,7 @@ func TestUpdateNetworkConfig(t *testing.T) { //nolint:tparallel // subtests are 
 		},
 		// ── final clear ──────────────────────────────────────────────
 		{
-			name: "12_final_clear",
+			name: "final_clear",
 			checks: []connectivityCheck{
 				{"https://8.8.8.8", true},
 				{"https://1.1.1.1", true},
@@ -499,8 +499,8 @@ func TestUpdateIngressConfig(t *testing.T) { //nolint:tparallel // subtests are 
 			},
 		},
 		{
-			name:  "client_ip_allow_both_overrides_deny_both",
-			rules: ingress().allowIn("0.0.0.0/1", "128.0.0.0/1", "::/1", "8000::/1").denyIn("0.0.0.0/1", "128.0.0.0/1", "::/1", "8000::/1"),
+			name:  "client_ip_allow_overrides_deny_all",
+			rules: ingress().allowIn("0.0.0.0/1", "128.0.0.0/1", "::/1", "8000::/1").denyIn("0.0.0.0/0", "::/0"),
 			checks: []check{
 				{testPort, "", false},
 			},
@@ -518,7 +518,7 @@ func TestUpdateIngressConfig(t *testing.T) { //nolint:tparallel // subtests are 
 		{
 			name:   "spoofed_ip_allow_overrides_deny",
 			ciOnly: true,
-			rules:  ingress().allowIn("203.0.113.42/32").denyIn("203.0.113.0/24"),
+			rules:  ingress().allowIn("203.0.113.42/32").denyIn("0.0.0.0/0", "203.0.113.0/24"),
 			checks: []check{
 				{testPort, "203.0.113.42", false},
 				{testPort, "203.0.113.99", true},
