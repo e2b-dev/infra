@@ -465,7 +465,7 @@ func run(config cfg.Config) (success bool) {
 	closers = append(closers, closer{"network pool", networkPool.Close})
 
 	// sandbox factory
-	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags, hostStatsDelivery, cgroupManager)
+	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags, hostStatsDelivery, cgroupManager, sandboxes)
 
 	volumeService := volumes.New(config)
 
@@ -478,7 +478,6 @@ func run(config cfg.Config) (success bool) {
 		TemplateCache:    templateCache,
 		Info:             serviceInfo,
 		Proxy:            sandboxProxy,
-		Sandboxes:        sandboxes,
 		Persistence:      persistence,
 		FeatureFlags:     featureFlags,
 		SbxEventsService: events.NewEventsService(sbxEventsDeliveryTargets),
@@ -547,7 +546,6 @@ func run(config cfg.Config) (success bool) {
 			tmplSbxLoggerExternal,
 			sandboxFactory,
 			sandboxProxy,
-			sandboxes,
 			templateCache,
 			persistence,
 			limiter,
