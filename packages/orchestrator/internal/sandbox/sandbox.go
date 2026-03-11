@@ -288,6 +288,15 @@ func (f *Factory) CreateSandbox(
 		}
 	}()
 
+	lifecycleID := uuid.NewString()
+	// Add map removal to cleanup early as we want to do it as last thing in clean up
+	// It's save as it's
+	cleanup.Add(ctx, func(ctx context.Context) error {
+		f.Sandboxes.RemoveByLifecycleID(ctx, runtime.SandboxID, lifecycleID)
+
+		return nil
+	})
+
 	ipsPromise := getNetworkSlot(ctx, f.networkPool, cleanup, config.Network)
 
 	sandboxFiles := template.Files().NewSandboxFiles(runtime.SandboxID)
@@ -405,7 +414,7 @@ func (f *Factory) CreateSandbox(
 	}
 
 	sbx := &Sandbox{
-		LifecycleID: uuid.NewString(),
+		LifecycleID: lifecycleID,
 
 		Resources:    resources,
 		Metadata:     metadata,
@@ -428,15 +437,6 @@ func (f *Factory) CreateSandbox(
 
 	// Stop the sandbox first if it is still running, otherwise do nothing
 	cleanup.AddPriority(ctx, sbx.Stop)
-
-	// Add map removal to cleanup — uses RemoveByLifecycleID for safety
-	// so that during checkpoint the old sandbox's cleanup won't evict the
-	// new sandbox that reuses the same sandboxID.
-	cleanup.Add(ctx, func(ctx context.Context) error {
-		f.Sandboxes.RemoveByLifecycleID(ctx, runtime.SandboxID, sbx.LifecycleID)
-
-		return nil
-	})
 
 	if f.featureFlags.BoolFlag(execCtx, featureflags.HostStatsEnabled) {
 		samplingInterval := time.Duration(f.featureFlags.IntFlag(execCtx, featureflags.HostStatsSamplingInterval)) * time.Millisecond
@@ -499,6 +499,15 @@ func (f *Factory) ResumeSandbox(
 			execSpan.End()
 		}
 	}()
+
+	lifecycleID := uuid.NewString()
+	// Add map removal to cleanup early as we want to do it as last thing in clean up
+	// It's save as it's
+	cleanup.Add(ctx, func(ctx context.Context) error {
+		f.Sandboxes.RemoveByLifecycleID(ctx, runtime.SandboxID, lifecycleID)
+
+		return nil
+	})
 
 	sandboxFiles := t.Files().NewSandboxFiles(runtime.SandboxID)
 	cleanup.Add(ctx, cleanupFiles(f.config, sandboxFiles))
@@ -706,7 +715,7 @@ func (f *Factory) ResumeSandbox(
 	}
 
 	sbx := &Sandbox{
-		LifecycleID: uuid.NewString(),
+		LifecycleID: lifecycleID,
 
 		Resources:    resources,
 		Metadata:     metadata,
@@ -729,15 +738,6 @@ func (f *Factory) ResumeSandbox(
 	// Part of the sandbox as we need to stop Checks before pausing the sandbox
 	// This is to prevent race condition of reporting unhealthy sandbox
 	sbx.Checks = NewChecks(sbx, useClickhouseMetrics)
-
-	// Add map removal to cleanup — uses RemoveByLifecycleID for safety
-	// so that during checkpoint the old sandbox's cleanup won't evict the
-	// new sandbox that reuses the same sandboxID.
-	cleanup.Add(ctx, func(ctx context.Context) error {
-		f.Sandboxes.RemoveByLifecycleID(ctx, runtime.SandboxID, sbx.LifecycleID)
-
-		return nil
-	})
 
 	cleanup.AddPriority(ctx, func(ctx context.Context) error {
 		// Stop the sandbox first if it is still running, otherwise do nothing
