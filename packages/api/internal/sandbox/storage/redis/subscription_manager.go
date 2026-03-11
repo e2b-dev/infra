@@ -19,23 +19,20 @@ type subscriptionManager struct {
 	mu      sync.RWMutex
 	waiters map[string]map[chan struct{}]struct{} // routingKey → registered waiters
 
-	ps *redis.PubSub
-
-	ctx    context.Context
+	ps     *redis.PubSub
 	cancel context.CancelFunc
 }
 
-func newSubscriptionManager(redisClient redis.UniversalClient) *subscriptionManager {
-	ctx, cancel := context.WithCancel(context.Background())
+func newSubscriptionManager(ctx context.Context, redisClient redis.UniversalClient) *subscriptionManager {
+	ctx, cancel := context.WithCancel(ctx)
 
 	m := &subscriptionManager{
 		waiters: make(map[string]map[chan struct{}]struct{}),
 		ps:      redisClient.Subscribe(ctx, getGlobalTransitionNotifyChannel()),
-		ctx:     ctx,
 		cancel:  cancel,
 	}
 
-	go m.run()
+	go m.run(ctx)
 
 	return m
 }
@@ -70,11 +67,11 @@ func (m *subscriptionManager) subscribe(routingKey string) (<-chan struct{}, fun
 // run reads from the single global PubSub channel and dispatches signals to
 // all waiters whose routing key matches the message payload.
 // Runs for the lifetime of the subscriptionManager.
-func (m *subscriptionManager) run() {
+func (m *subscriptionManager) run(ctx context.Context) {
 	ch := m.ps.Channel()
 	for {
 		select {
-		case <-m.ctx.Done():
+		case <-ctx.Done():
 			return
 		case msg, ok := <-ch:
 			if !ok {

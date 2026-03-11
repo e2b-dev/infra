@@ -1,6 +1,7 @@
 package redis
 
 import (
+	"context"
 	"time"
 
 	"github.com/bsm/redislock"
@@ -29,6 +30,7 @@ type Storage struct {
 func (s *Storage) Name() string { return sandbox.StorageNameRedis }
 
 func NewStorage(
+	ctx context.Context,
 	redisClient redis.UniversalClient,
 ) *Storage {
 	return &Storage{
@@ -37,7 +39,7 @@ func NewStorage(
 		lockOption: &redislock.Options{
 			RetryStrategy: newConstantBackoff(lockRetryInterval),
 		},
-		subManager: newSubscriptionManager(redisClient),
+		subManager: newSubscriptionManager(ctx, redisClient),
 	}
 }
 

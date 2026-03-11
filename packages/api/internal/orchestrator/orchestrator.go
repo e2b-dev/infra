@@ -147,7 +147,7 @@ func New(
 
 	var reservationStorage sandbox.ReservationStorage
 	var sandboxStorage sandbox.Storage
-	redisStorage := redisbackend.NewStorage(redisClient)
+	redisStorage := redisbackend.NewStorage(ctx, redisClient)
 	o.redisStorage = redisStorage
 
 	switch config.SandboxStorageBackend {
