@@ -45,18 +45,3 @@ func (db *Client) WithTx(ctx context.Context) (*Client, pgx.Tx, error) {
 
 	return client, tx, nil
 }
-
-// WithReadOnlyTx starts a read-only, repeatable-read transaction and returns a transactional Client.
-func (db *Client) WithReadOnlyTx(ctx context.Context) (*Client, pgx.Tx, error) {
-	tx, err := db.conn.BeginTx(ctx, pgx.TxOptions{
-		AccessMode: pgx.ReadOnly,
-		IsoLevel:   pgx.RepeatableRead,
-	})
-	if err != nil {
-		return nil, nil, err
-	}
-
-	client := &Client{Queries: db.Queries.WithTx(tx), conn: db.conn}
-
-	return client, tx, nil
-}

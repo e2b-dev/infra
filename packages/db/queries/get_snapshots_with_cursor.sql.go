@@ -37,7 +37,7 @@ JOIN LATERAL (
 WHERE
     s.team_id = $2
     -- The order here is important, we want started_at descending, but sandbox_id ascending
-    AND s.metadata @> $3::jsonb
+    AND s.metadata @> $3
     AND (s.sandbox_started_at, $4::text) < ($5, s.sandbox_id)
 ORDER BY s.sandbox_started_at DESC, s.sandbox_id ASC
 LIMIT $1
