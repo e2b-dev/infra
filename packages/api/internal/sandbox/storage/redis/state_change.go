@@ -84,12 +84,6 @@ func (s *Storage) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID
 		if !sbx.IsExpired(time.Now()) {
 			return sbx, false, nil, sandbox.ErrNotEvictable
 		}
-
-		if sbx.AutoPause {
-			opts.Action = sandbox.StateActionPause
-		} else {
-			opts.Action = sandbox.StateActionKill
-		}
 	}
 
 	newState := opts.Action.TargetState

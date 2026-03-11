@@ -54,7 +54,12 @@ func (e *Evictor) Start(ctx context.Context) {
 
 			for _, item := range sbxs {
 				g.Go(func() error {
-					if err := e.removeSandbox(context.WithoutCancel(ctx), item.TeamID, item.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionKill, Eviction: true}); err != nil {
+					action := sandbox.StateActionKill
+					if item.AutoPause {
+						action = sandbox.StateActionPause
+					}
+
+					if err := e.removeSandbox(context.WithoutCancel(ctx), item.TeamID, item.SandboxID, sandbox.RemoveOpts{Action: action, Eviction: true}); err != nil {
 						if !errors.Is(err, sandbox.ErrNotEvictable) && !errors.Is(err, sandbox.ErrNotFound) {
 							logger.L().Debug(ctx, "Evicting sandbox failed", zap.Error(err), logger.WithSandboxID(item.SandboxID))
 						}

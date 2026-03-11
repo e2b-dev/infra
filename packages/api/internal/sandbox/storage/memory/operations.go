@@ -170,12 +170,6 @@ func startRemoving(ctx context.Context, sbx *memorySandbox, opts sandbox.RemoveO
 
 			return false, nil, sandbox.ErrNotEvictable
 		}
-
-		if sbx._data.AutoPause {
-			opts.Action = sandbox.StateActionPause
-		} else {
-			opts.Action = sandbox.StateActionKill
-		}
 	}
 
 	newState := opts.Action.TargetState

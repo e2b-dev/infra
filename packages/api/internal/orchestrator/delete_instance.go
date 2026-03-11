@@ -77,18 +77,6 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, teamID uuid.UUID, sand
 		finish(ctx, err)
 	}()
 
-	// Resolve the actual action from the sandbox state when evicting.
-	// StartRemoving already resolved the action to Kill or Pause internally,
-	// so we can determine which one from the resulting sandbox state.
-	if opts.Eviction {
-		switch sbx.State {
-		case sandbox.StatePausing:
-			opts.Action = sandbox.StateActionPause
-		default:
-			opts.Action = sandbox.StateActionKill
-		}
-	}
-
 	if alreadyDone {
 		logger.L().Info(ctx, "Sandbox was already in the process of being removed", logger.WithSandboxID(sandboxID), zap.String("state", string(sbx.State)))
 
