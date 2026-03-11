@@ -2,6 +2,7 @@ package volumes
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -12,6 +13,11 @@ import (
 	"google.golang.org/grpc/codes"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+)
+
+const (
+	minDepth = 1
+	maxDepth = 10
 )
 
 func (s *Service) ListDir(ctx context.Context, request *orchestrator.VolumeDirListRequest) (r *orchestrator.VolumeDirListResponse, err error) {
@@ -30,14 +36,16 @@ func (s *Service) ListDir(ctx context.Context, request *orchestrator.VolumeDirLi
 		attribute.String("path", paths.HostFullPath),
 	))
 
-	maxDepth := int(request.GetDepth())
-	if maxDepth == 0 {
-		maxDepth = 1
+	depth := int(request.GetDepth())
+	depth = max(depth, minDepth)
+
+	if depth > maxDepth {
+		return nil, newAPIError(ctx, codes.InvalidArgument, http.StatusBadRequest, orchestrator.UserErrorCode_DEPTH_OUT_OF_RANGE, "depth must be between %d and %d", minDepth, maxDepth)
 	}
 
-	results, err := s.listRecursive(paths, maxDepth)
+	results, err := s.listRecursive(paths, depth)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return nil, newAPIError(ctx, codes.NotFound, http.StatusNotFound, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to read: %q not found.", request.GetPath())
 		}
 
