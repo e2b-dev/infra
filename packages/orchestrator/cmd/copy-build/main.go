@@ -202,13 +202,17 @@ func main() {
 	from := flag.String("from", "", "from destination")
 	to := flag.String("to", "", "to destination")
 	teamID := flag.String("team", "", "team UUID (if set, prints SQL to populate DB on stdout)")
-	envdVersion := flag.String("envd-version", "", "envd version (used in SQL output)")
+	envdVersion := flag.String("envd-version", "", "envd version (required)")
 	vcpu := flag.Int("vcpu", 2, "vCPUs")
 	memory := flag.Int("memory", 1024, "memory MB")
 	disk := flag.Int("disk", 1024, "disk MB")
 	tag := flag.String("tag", "default", "build assignment tag")
 
 	flag.Parse()
+
+	if *teamID != "" && *envdVersion == "" {
+		log.Fatal("-envd-version is required when -team is set")
+	}
 
 	fmt.Fprintf(os.Stderr, "Copying build '%s' from '%s' to '%s'\n", *buildId, *from, *to)
 

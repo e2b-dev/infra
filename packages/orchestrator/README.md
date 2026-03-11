@@ -122,7 +122,7 @@ Flags:
 - `-from <path>` - Source: local path or `gs://bucket`
 - `-to <path>` - Destination: local path or `gs://bucket`
 - `-team <uuid>` - Team UUID (if set, prints SQL to populate DB on stdout)
-- `-envd-version <version>` - Envd version (used in SQL output)
+- `-envd-version <version>` - Envd version (required)
 - `-vcpu <n>` - vCPUs (default: `2`)
 - `-memory <mb>` - Memory in MB (default: `1024`)
 - `-disk <mb>` - Disk in MB (default: `1024`)
