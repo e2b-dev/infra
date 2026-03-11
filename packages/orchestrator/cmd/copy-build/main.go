@@ -202,7 +202,7 @@ func main() {
 	from := flag.String("from", "", "from destination")
 	to := flag.String("to", "", "to destination")
 	teamID := flag.String("team", "", "team UUID (if set, prints SQL to populate DB on stdout)")
-	envdVersion := flag.String("envd-version", "", "envd version (required)")
+	envdVersion := flag.String("envd-version", "", "envd version (required if team provided) — must match the version present in the template")
 	vcpu := flag.Int("vcpu", 2, "vCPUs")
 	memory := flag.Int("memory", 1024, "memory MB")
 	disk := flag.Int("disk", 1024, "disk MB")
