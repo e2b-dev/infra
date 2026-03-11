@@ -517,4 +517,3 @@ func validateNetworkConfig(network *api.SandboxNetworkConfig) *api.APIError {
 		DeniedClientCIDRs:  sharedUtils.DerefOrDefault(network.DenyIn, nil),
 	})
 }
-

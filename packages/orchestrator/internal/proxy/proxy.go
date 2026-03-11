@@ -102,7 +102,7 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 				// Priority: allow wins → deny → default allow.
 				// Uses pre-parsed CIDRs for performance.
 				if sbx.HasIngressClientCIDRs() {
-					clientIP := extractClientIP(r)
+					clientIP := reverseproxy.ExtractClientIP(r)
 					if ip := net.ParseIP(clientIP); ip != nil {
 						if !sbx.IngressAllowsClientIP(ip) && sbx.IngressDeniesClientIP(ip) {
 							return nil, reverseproxy.NewErrClientIPNotAllowed(sandboxId, clientIP)
@@ -110,6 +110,10 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 					}
 				}
 			}
+
+			// Strip the internal client IP header so it never reaches the sandbox.
+			// Must happen after extractClientIP reads it, and before Rewrite clones r into r.Out.
+			r.Header.Del(reverseproxy.ClientIPHeader)
 
 			// Handle request host masking only for non-envd traffic.
 			var maskRequestHost *string = nil
@@ -239,25 +243,4 @@ func containsPort(ports []uint32, port uint64) bool {
 	}
 
 	return false
-}
-
-// extractClientIP returns the client IP from the request, preferring X-Forwarded-For
-// (set by GCP Load Balancer) over RemoteAddr.
-func extractClientIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		// GCP LB sets the first entry; take it.
-		if first, _, ok := strings.Cut(xff, ","); ok {
-			return strings.TrimSpace(first)
-		}
-
-		return strings.TrimSpace(xff)
-	}
-
-	// Fall back to RemoteAddr, stripping the port.
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-
-	return host
 }

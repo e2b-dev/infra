@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -106,4 +107,38 @@ func (p *Proxy) ListenAndServe(ctx context.Context) error {
 
 func (p *Proxy) Serve(l net.Listener) error {
 	return p.Server.Serve(tracking.NewListener(l, &p.currentServerConnsCounter))
+}
+
+// ClientIPHeader is an internal header set by client-proxy to forward
+// the real client IP to the orchestrator proxy. It is always stripped
+// before the request is forwarded to the sandbox.
+const ClientIPHeader = "X-E2B-Client-IP"
+
+// ExtractClientIP returns the real client IP from an HTTP request.
+// Priority: X-E2B-Client-IP (internal, set by client-proxy) → X-Forwarded-For → RemoteAddr.
+//
+// GCP external HTTPS LB appends two entries to X-Forwarded-For:
+//
+//	X-Forwarded-For: <client-supplied>, <real-client-IP>, <GCP-LB-IP>
+//
+// We take the second-to-last entry, which is the real client IP added by
+// the load balancer. Taking the first entry would be spoofable.
+
+func ExtractClientIP(r *http.Request) string {
+	if clientIP := r.Header.Get(ClientIPHeader); clientIP != "" {
+		return clientIP
+	}
+
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		parts := strings.Split(xff, ",")
+
+		return strings.TrimSpace(parts[max(len(parts)-2, 0)])
+	}
+
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+
+	return host
 }
