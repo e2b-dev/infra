@@ -51,6 +51,12 @@ data "google_secret_manager_secret_version" "routing_domains" {
 
 locals {
   additional_domains = nonsensitive(jsondecode(data.google_secret_manager_secret_version.routing_domains.secret_data))
+  additional_api_services = (
+    length(var.additional_api_services) > 0 ? var.additional_api_services :
+    var.additional_api_services_json != "" ? jsondecode(var.additional_api_services_json) :
+    []
+  )
+
 
   // Check if all clusters has size greater than 1
   template_manages_clusters_size_gt_1 = alltrue([for c in var.build_clusters_config : (c.cluster_size > 1)])
@@ -137,10 +143,9 @@ module "cluster" {
   google_service_account_email = module.init.service_account_email
   domain_name                  = var.domain_name
 
-  additional_domains = local.additional_domains
-  additional_api_services = (var.additional_api_services_json != "" ?
-    jsondecode(var.additional_api_services_json) :
-  [])
+  additional_domains                      = local.additional_domains
+  additional_api_services                 = local.additional_api_services
+  additional_api_paths_handled_by_ingress = var.additional_api_paths_handled_by_ingress
 
   docker_contexts_bucket_name = module.init.envs_docker_context_bucket_name
   cluster_setup_bucket_name   = module.init.cluster_setup_bucket_name
@@ -196,8 +201,9 @@ module "nomad" {
   clickhouse_node_pool             = var.clickhouse_node_pool
 
   # Ingress
-  ingress_port  = var.ingress_port
-  ingress_count = var.ingress_count
+  ingress_port                 = var.ingress_port
+  ingress_count                = var.ingress_count
+  additional_traefik_arguments = var.additional_traefik_arguments
 
   # API
   api_server_count                                       = var.api_server_count
