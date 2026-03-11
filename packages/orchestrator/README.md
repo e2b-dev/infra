@@ -130,7 +130,7 @@ Flags:
 
 **Print DB seed SQL:**
 
-When `-team-id` is set, the command reads `metadata.json` from the destination to get `kernel_version` and `firecracker_version`, generates a new env ID, and prints SQL statements (`BEGIN`/`COMMIT` wrapped) to stdout. Pipe directly to `psql` to populate the database:
+When `-team` is set, the command reads `metadata.json` from the destination to get `kernel_version` and `firecracker_version`, generates a new env ID, and prints SQL statements (`BEGIN`/`COMMIT` wrapped) to stdout. Pipe directly to `psql` to populate the database:
 
 ```bash
 go run ./cmd/copy-build -build <uuid> -from .local-build -to gs://bucket \

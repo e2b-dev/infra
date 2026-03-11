@@ -411,6 +411,7 @@ func main() {
 		envID := id.Generate()
 		fmt.Fprintf(os.Stderr, "\n\nGenerated env ID: %s\n\n", envID)
 
+		fmt.Printf("BEGIN;\n")
 		fmt.Printf("INSERT INTO public.envs (id, team_id, updated_at, public, source)\n")
 		fmt.Printf("VALUES ('%s', '%s', NOW(), FALSE, 'template');\n\n", envID, *teamID)
 		fmt.Printf("INSERT INTO public.env_builds (id, env_id, updated_at, finished_at, status, ram_mb, vcpu, kernel_version, firecracker_version, envd_version, free_disk_size_mb, total_disk_size_mb)\n")
@@ -418,5 +419,6 @@ func main() {
 			*buildId, envID, *memory, *vcpu, meta.Template.KernelVersion, meta.Template.FirecrackerVersion, *envdVersion, *disk, *disk)
 		fmt.Printf("INSERT INTO public.env_build_assignments (env_id, build_id, tag)\n")
 		fmt.Printf("VALUES ('%s', '%s', '%s');\n", envID, *buildId, *tag)
+		fmt.Printf("COMMIT;\n")
 	}
 }
