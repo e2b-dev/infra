@@ -106,7 +106,7 @@ var (
 
 	// UseSystemdOOMDFlag enables systemd-oomd based OOM management in the VM
 	// instead of manual cgroup2 limits.
-	UseSystemdOOMDFlag = newBoolFlag("use-systemd-oomd", false)
+	UseSystemdOOMDFlag = newBoolFlag("use-systemd-oomd", env.IsDevelopment())
 )
 
 type IntFlag struct {
