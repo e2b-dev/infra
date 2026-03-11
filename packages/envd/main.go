@@ -55,12 +55,11 @@ var (
 	isNotFC bool
 	port    int64
 
-	versionFlag   bool
-	commitFlag    bool
-	startCmdFlag  string
-	cgroupRoot    string
-	oomModeFlag   string
-	parsedOOMMode cgroups.OOMMode
+	versionFlag    bool
+	commitFlag     bool
+	startCmdFlag   string
+	cgroupRoot     string
+	useSystemdOOMD bool
 )
 
 func parseFlags() {
@@ -106,16 +105,14 @@ func parseFlags() {
 		"cgroup root directory",
 	)
 
-	flag.StringVar(
-		&oomModeFlag,
-		"oom-mode",
-		string(cgroups.OOMModeCgroup),
-		`OOM management mode: "cgroup" (default) uses manual cgroup2 limits, "systemd-oomd" delegates to systemd-oomd via slice units`,
+	flag.BoolVar(
+		&useSystemdOOMD,
+		"use-systemd-oomd",
+		false,
+		"use systemd-oomd for OOM management instead of manual cgroup2 limits",
 	)
 
 	flag.Parse()
-
-	parsedOOMMode = cgroups.OOMMode(oomModeFlag)
 }
 
 func withCORS(h http.Handler) http.Handler {
@@ -197,7 +194,7 @@ func main() {
 	}()
 
 	processLogger := l.With().Str("logger", "process").Logger()
-	processService := processRpc.Handle(m, &processLogger, defaults, cgroupManager, parsedOOMMode)
+	processService := processRpc.Handle(m, &processLogger, defaults, cgroupManager, useSystemdOOMD)
 
 	service := api.New(&envLogger, defaults, mmdsChan, isNotFC)
 	handler := api.HandlerFromMux(service, m)
@@ -243,7 +240,7 @@ func main() {
 	defer portScanner.Destroy()
 
 	portLogger := l.With().Str("logger", "port-forwarder").Logger()
-	portForwarder := publicport.NewForwarder(&portLogger, portScanner, cgroupManager, parsedOOMMode)
+	portForwarder := publicport.NewForwarder(&portLogger, portScanner, cgroupManager, useSystemdOOMD)
 	go portForwarder.StartForwarding(ctx)
 
 	go portScanner.ScanAndBroadcast()
@@ -262,7 +259,7 @@ func createCgroupManager() (m cgroups.Manager) {
 		}
 	}()
 
-	if parsedOOMMode == cgroups.OOMModeSystemdOOMD {
+	if useSystemdOOMD {
 		// Unmask and start systemd-oomd -- the service was masked during provisioning.
 		if out, err := exec.Command("systemctl", "unmask", "systemd-oomd").CombinedOutput(); err != nil {
 			fmt.Fprintf(os.Stderr, "failed to unmask systemd-oomd: %v: %s\n", err, out)

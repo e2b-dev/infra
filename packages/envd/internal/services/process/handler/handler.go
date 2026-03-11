@@ -90,7 +90,7 @@ func New(
 	logger *zerolog.Logger,
 	defaults *execcontext.Defaults,
 	cgroupManager cgroups.Manager,
-	oomMode cgroups.OOMMode,
+	useSystemdOOMD bool,
 	cancel context.CancelFunc,
 ) (*Handler, error) {
 	// User command string for logging (without the internal wrapper details).
@@ -98,7 +98,7 @@ func New(
 
 	var cmd *exec.Cmd
 
-	if oomMode == cgroups.OOMModeSystemdOOMD {
+	if useSystemdOOMD {
 		// In systemd-oomd mode, wrap the command with systemd-run --scope so that
 		// each process gets its own transient scope unit placed into the appropriate
 		// slice. systemd-oomd monitors pressure on the slices and kills the

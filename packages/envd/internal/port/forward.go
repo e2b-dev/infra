@@ -39,9 +39,9 @@ type PortToForward struct {
 }
 
 type Forwarder struct {
-	logger        *zerolog.Logger
-	cgroupManager cgroups.Manager
-	oomMode       cgroups.OOMMode
+	logger         *zerolog.Logger
+	cgroupManager  cgroups.Manager
+	useSystemdOOMD bool
 	// Map of ports that are being currently forwarded.
 	ports             map[string]*PortToForward
 	scannerSubscriber *ScannerSubscriber
@@ -52,7 +52,7 @@ func NewForwarder(
 	logger *zerolog.Logger,
 	scanner *Scanner,
 	cgroupManager cgroups.Manager,
-	oomMode cgroups.OOMMode,
+	useSystemdOOMD bool,
 ) *Forwarder {
 	scannerSub := scanner.AddSubscriber(
 		logger,
@@ -70,7 +70,7 @@ func NewForwarder(
 		ports:             make(map[string]*PortToForward),
 		scannerSubscriber: scannerSub,
 		cgroupManager:     cgroupManager,
-		oomMode:           oomMode,
+		useSystemdOOMD:    useSystemdOOMD,
 	}
 }
 
@@ -141,7 +141,7 @@ func (f *Forwarder) startPortForwarding(ctx context.Context, p *PortToForward) {
 	// reuseaddr is used to fix the "Address already in use" error when restarting socat quickly.
 	var cmd *exec.Cmd
 
-	if f.oomMode == cgroups.OOMModeSystemdOOMD {
+	if f.useSystemdOOMD {
 		unitName := fmt.Sprintf("e2b-socat-%d.scope", time.Now().UnixNano())
 		cmd = exec.CommandContext(ctx,
 			"systemd-run", "--scope", "--quiet",

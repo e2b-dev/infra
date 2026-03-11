@@ -12,7 +12,7 @@ User=root
 Group=root
 Environment=GOTRACEBACK=all
 LimitCORE=infinity
-ExecStart=/bin/bash -l -c "/usr/bin/envd{{ if .UseSystemdOOMD }} -oom-mode=systemd-oomd{{ end }}"
+ExecStart=/bin/bash -l -c "/usr/bin/envd{{ if .UseSystemdOOMD }} -use-systemd-oomd{{ end }}"
 Nice=-20
 OOMPolicy=continue
 OOMScoreAdjust=-1000
