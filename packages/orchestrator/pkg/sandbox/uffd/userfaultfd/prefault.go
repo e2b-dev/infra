@@ -24,7 +24,7 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) e
 	}
 
 	// We're treating prefault handling as if it was caused by a read access.
-	// This way, we will fault the page with UFFD_COPY_MODE_WP which will preserve
+	// This way, we will fault the page with UFFD_COPY_MODE_WP which will set
 	// the WP bit for the page. This works even in the case of a race with a
 	// concurrent on-demand write access.
 	//
