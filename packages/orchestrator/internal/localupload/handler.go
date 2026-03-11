@@ -77,20 +77,52 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Write the request body to the file
-	f, err := os.OpenFile(fullPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	// Write to a temp file in the same directory, then atomically rename on
+	// success. This avoids leaving partial/corrupt files on disk if the write
+	// fails (e.g. client disconnect, disk full).
+	tmpFile, err := os.CreateTemp(dir, ".upload-*")
 	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to create file: %v", err), http.StatusInternalServerError)
+		http.Error(w, "failed to create temporary file", http.StatusInternalServerError)
 
 		return
 	}
-	defer f.Close()
 
-	if _, err := io.Copy(f, r.Body); err != nil {
-		http.Error(w, fmt.Sprintf("failed to write file: %v", err), http.StatusInternalServerError)
+	tmpPath := tmpFile.Name()
+
+	// Clean up the temp file on any failure path.
+	defer func() {
+		if tmpPath != "" {
+			os.Remove(tmpPath)
+		}
+	}()
+
+	if _, err := io.Copy(tmpFile, r.Body); err != nil {
+		tmpFile.Close()
+		http.Error(w, "failed to write file", http.StatusInternalServerError)
 
 		return
 	}
+
+	if err := tmpFile.Close(); err != nil {
+		http.Error(w, "failed to finalize file", http.StatusInternalServerError)
+
+		return
+	}
+
+	if err := os.Chmod(tmpPath, 0o644); err != nil {
+		http.Error(w, "failed to set file permissions", http.StatusInternalServerError)
+
+		return
+	}
+
+	if err := os.Rename(tmpPath, fullPath); err != nil {
+		http.Error(w, "failed to store file", http.StatusInternalServerError)
+
+		return
+	}
+
+	// Rename succeeded — prevent deferred cleanup from removing the final file.
+	tmpPath = ""
 
 	w.WriteHeader(http.StatusOK)
 }
