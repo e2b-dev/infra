@@ -434,6 +434,7 @@ func (f *Factory) CreateSandbox(
 	// new sandbox that reuses the same sandboxID.
 	cleanup.Add(ctx, func(ctx context.Context) error {
 		f.Sandboxes.RemoveByLifecycleID(ctx, runtime.SandboxID, sbx.LifecycleID)
+
 		return nil
 	})
 
@@ -734,6 +735,7 @@ func (f *Factory) ResumeSandbox(
 	// new sandbox that reuses the same sandboxID.
 	cleanup.Add(ctx, func(ctx context.Context) error {
 		f.Sandboxes.RemoveByLifecycleID(ctx, runtime.SandboxID, sbx.LifecycleID)
+
 		return nil
 	})
 
