@@ -13,6 +13,8 @@ import (
 	"google.golang.org/grpc/codes"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"go.uber.org/zap"
 )
 
 const (
@@ -43,7 +45,7 @@ func (s *Service) ListDir(ctx context.Context, request *orchestrator.VolumeDirLi
 		return nil, newAPIError(ctx, codes.InvalidArgument, http.StatusBadRequest, orchestrator.UserErrorCode_DEPTH_OUT_OF_RANGE, "depth must be between %d and %d", minDepth, maxDepth)
 	}
 
-	results, err := s.listRecursive(paths, depth)
+	results, err := s.listRecursive(ctx, paths, depth)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, newAPIError(ctx, codes.NotFound, http.StatusNotFound, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to read: %q not found.", request.GetPath())
@@ -55,7 +57,7 @@ func (s *Service) ListDir(ctx context.Context, request *orchestrator.VolumeDirLi
 	return &orchestrator.VolumeDirListResponse{Files: results}, nil
 }
 
-func (s *Service) listRecursive(paths volumePaths, depth int) ([]*orchestrator.VolumeDirectoryItem, error) {
+func (s *Service) listRecursive(ctx context.Context, paths volumePaths, depth int) ([]*orchestrator.VolumeDirectoryItem, error) {
 	if depth <= 0 {
 		return nil, nil
 	}
@@ -69,6 +71,11 @@ func (s *Service) listRecursive(paths volumePaths, depth int) ([]*orchestrator.V
 	for _, item := range items {
 		info, err := item.Info()
 		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				logger.L().Warn(ctx, "item deleted during traversal", zap.String("path", filepath.Join(paths.HostFullPath, item.Name())))
+				continue
+			}
+
 			return nil, fmt.Errorf("failed to get info for item %s/%q: %w", paths.HostFullPath, item.Name(), err)
 		}
 
@@ -83,8 +90,13 @@ func (s *Service) listRecursive(paths volumePaths, depth int) ([]*orchestrator.V
 			childPaths.ClientPath = entry.GetPath()
 			childPaths.HostFullPath = filepath.Join(paths.HostFullPath, item.Name())
 
-			children, err := s.listRecursive(childPaths, depth-1)
+			children, err := s.listRecursive(ctx, childPaths, depth-1)
 			if err != nil {
+				if errors.Is(err, os.ErrNotExist) {
+					logger.L().Warn(ctx, "directory deleted during traversal", zap.String("path", childPaths.HostFullPath))
+					continue
+				}
+
 				return nil, err
 			}
 
