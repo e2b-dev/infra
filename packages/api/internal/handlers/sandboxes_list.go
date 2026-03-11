@@ -14,7 +14,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	dbapi "github.com/e2b-dev/infra/packages/api/internal/db"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
@@ -45,18 +44,42 @@ func (a *APIStore) getPausedSandboxes(
 		queryMetadata = *metadataFilter
 	}
 
-	snapshots, err := dbapi.GetSnapshotsWithSplitQueries(
-		ctx, a.sqlcDB, queries.GetSnapshotsBaseParams{
-			Limit:                 queryLimit,
-			TeamID:                teamID,
-			Metadata:              queryMetadata,
-			CursorTime:            pgtype.Timestamptz{Time: cursorTime, Valid: true},
-			CursorID:              cursorID,
-			SnapshotExcludeSbxIds: runningSandboxesIDs,
+	// Over-fetch to account for rows filtered out by the exclude set below.
+	// This replaces the SQL-side NOT (sandbox_id = ANY(array)) which is
+	// O(rows × array_size) and caused 40s+ query times with large arrays.
+	dbLimit := queryLimit + int32(len(runningSandboxesIDs))
+
+	snapshots, err := a.sqlcDB.GetSnapshotsWithCursor(
+		ctx, queries.GetSnapshotsWithCursorParams{
+			Limit:      dbLimit,
+			TeamID:     teamID,
+			Metadata:   queryMetadata,
+			CursorTime: pgtype.Timestamptz{Time: cursorTime, Valid: true},
+			CursorID:   cursorID,
 		},
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error getting team snapshots: %w", err)
+	}
+
+	if len(runningSandboxesIDs) > 0 {
+		excludeSet := make(map[string]struct{}, len(runningSandboxesIDs))
+		for _, id := range runningSandboxesIDs {
+			excludeSet[id] = struct{}{}
+		}
+
+		filtered := snapshots[:0]
+		for _, s := range snapshots {
+			if _, excluded := excludeSet[s.Snapshot.SandboxID]; !excluded {
+				filtered = append(filtered, s)
+			}
+		}
+
+		snapshots = filtered
+	}
+
+	if int32(len(snapshots)) > queryLimit {
+		snapshots = snapshots[:queryLimit]
 	}
 
 	sandboxes := snapshotsToPaginatedSandboxes(ctx, snapshots)
@@ -224,7 +247,7 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 	c.JSON(http.StatusOK, sandboxes)
 }
 
-func snapshotsToPaginatedSandboxes(ctx context.Context, snapshots []dbapi.SnapshotWithBuildAndAliases) []utils.PaginatedSandbox {
+func snapshotsToPaginatedSandboxes(ctx context.Context, snapshots []queries.GetSnapshotsWithCursorRow) []utils.PaginatedSandbox {
 	sandboxes := make([]utils.PaginatedSandbox, 0)
 
 	// Add snapshots to results

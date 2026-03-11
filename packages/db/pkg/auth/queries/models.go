@@ -116,7 +116,7 @@ type EnvBuild struct {
 	EnvdVersion        *string
 	ReadyCmd           *string
 	ClusterNodeID      *string
-	Reason             []byte
+	Reason             types.JSONBStringMap
 	Version            *string
 	CpuArchitecture    *string
 	CpuFamily          *string

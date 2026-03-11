@@ -58,7 +58,7 @@ type GetTeamBuildsPageParams struct {
 type GetTeamBuildsPageRow struct {
 	ID            uuid.UUID
 	StatusGroup   types.BuildStatusGroup
-	Reason        []byte
+	Reason        types.JSONBStringMap
 	CreatedAt     time.Time
 	FinishedAt    *time.Time
 	TemplateID    string
@@ -146,7 +146,7 @@ type GetTeamBuildsPageByBuildIDParams struct {
 type GetTeamBuildsPageByBuildIDRow struct {
 	ID            uuid.UUID
 	StatusGroup   types.BuildStatusGroup
-	Reason        []byte
+	Reason        types.JSONBStringMap
 	CreatedAt     time.Time
 	FinishedAt    *time.Time
 	TemplateID    string
@@ -240,7 +240,7 @@ type GetTeamBuildsPageByTemplateAliasParams struct {
 type GetTeamBuildsPageByTemplateAliasRow struct {
 	ID            uuid.UUID
 	StatusGroup   types.BuildStatusGroup
-	Reason        []byte
+	Reason        types.JSONBStringMap
 	CreatedAt     time.Time
 	FinishedAt    *time.Time
 	TemplateID    string
@@ -329,7 +329,7 @@ type GetTeamBuildsPageByTemplateIDParams struct {
 type GetTeamBuildsPageByTemplateIDRow struct {
 	ID            uuid.UUID
 	StatusGroup   types.BuildStatusGroup
-	Reason        []byte
+	Reason        types.JSONBStringMap
 	CreatedAt     time.Time
 	FinishedAt    *time.Time
 	TemplateID    string

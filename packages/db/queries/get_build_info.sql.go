@@ -53,7 +53,7 @@ type GetBuildInfoByTeamAndBuildIDRow struct {
 	CreatedAt  time.Time
 	FinishedAt *time.Time
 	Status     types.BuildStatus
-	Reason     []byte
+	Reason     types.JSONBStringMap
 	Names      []string
 }
 

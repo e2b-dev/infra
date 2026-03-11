@@ -17,7 +17,7 @@ const getSnapshotsWithCursor = `-- name: GetSnapshotsWithCursor :many
 SELECT COALESCE(ea.aliases, ARRAY[]::text[])::text[] AS aliases, COALESCE(ea.names, ARRAY[]::text[])::text[] AS names, s.created_at, s.env_id, s.sandbox_id, s.id, s.metadata, s.base_env_id, s.sandbox_started_at, s.env_secure, s.origin_node_id, s.allow_internet_access, s.auto_pause, s.team_id, s.config, eb.id, eb.created_at, eb.updated_at, eb.finished_at, eb.status, eb.dockerfile, eb.start_cmd, eb.vcpu, eb.ram_mb, eb.free_disk_size_mb, eb.total_disk_size_mb, eb.kernel_version, eb.firecracker_version, eb.env_id, eb.envd_version, eb.ready_cmd, eb.cluster_node_id, eb.reason, eb.version, eb.cpu_architecture, eb.cpu_family, eb.cpu_model, eb.cpu_model_name, eb.cpu_flags, eb.status_group, eb.team_id
 FROM "public"."snapshots" s
 LEFT JOIN LATERAL (
-    SELECT 
+    SELECT
         ARRAY_AGG(alias ORDER BY alias) AS aliases,
         ARRAY_AGG(CASE WHEN namespace IS NOT NULL THEN namespace || '/' || alias ELSE alias END ORDER BY alias) AS names
     FROM "public"."env_aliases"
@@ -36,25 +36,19 @@ JOIN LATERAL (
 ) eb ON TRUE
 WHERE
     s.team_id = $2
-    AND (
-        -- When metadata arg is empty json, accept all as row metadata column can be empty json or NULL
-        -- And NULL does not match with empty json
-        s.metadata @> $3 OR $3 = '{}'::jsonb
-    )
     -- The order here is important, we want started_at descending, but sandbox_id ascending
+    AND s.metadata @> $3::jsonb
     AND (s.sandbox_started_at, $4::text) < ($5, s.sandbox_id)
-    AND NOT (s.sandbox_id = ANY ($6::text[]))
 ORDER BY s.sandbox_started_at DESC, s.sandbox_id ASC
 LIMIT $1
 `
 
 type GetSnapshotsWithCursorParams struct {
-	Limit                 int32
-	TeamID                uuid.UUID
-	Metadata              types.JSONBStringMap
-	CursorID              string
-	CursorTime            pgtype.Timestamptz
-	SnapshotExcludeSbxIds []string
+	Limit      int32
+	TeamID     uuid.UUID
+	Metadata   types.JSONBStringMap
+	CursorID   string
+	CursorTime pgtype.Timestamptz
 }
 
 type GetSnapshotsWithCursorRow struct {
@@ -71,7 +65,6 @@ func (q *Queries) GetSnapshotsWithCursor(ctx context.Context, arg GetSnapshotsWi
 		arg.Metadata,
 		arg.CursorID,
 		arg.CursorTime,
-		arg.SnapshotExcludeSbxIds,
 	)
 	if err != nil {
 		return nil, err

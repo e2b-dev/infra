@@ -32,7 +32,7 @@ type GetBuildsStatusesByTeamParams struct {
 type GetBuildsStatusesByTeamRow struct {
 	ID          uuid.UUID
 	StatusGroup types.BuildStatusGroup
-	Reason      []byte
+	Reason      types.JSONBStringMap
 	FinishedAt  *time.Time
 }
 

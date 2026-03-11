@@ -53,6 +53,8 @@ sql:
           - db_type: "jsonb"
             go_type: "github.com/e2b-dev/infra/packages/db/pkg/types.JSONBStringMap"
             nullable: true
+          - db_type: "jsonb"
+            go_type: "github.com/e2b-dev/infra/packages/db/pkg/types.JSONBStringMap"
   - engine: "postgresql"
     queries: "pkg/auth/sql_queries/**"
     schema:
@@ -94,6 +96,8 @@ sql:
           - db_type: "jsonb"
             go_type: "github.com/e2b-dev/infra/packages/db/pkg/types.JSONBStringMap"
             nullable: true
+          - db_type: "jsonb"
+            go_type: "github.com/e2b-dev/infra/packages/db/pkg/types.JSONBStringMap"
 
   - engine: "postgresql"
     queries: "pkg/testutils/*.sql"
