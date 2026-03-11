@@ -1081,6 +1081,7 @@ func createTarWithFile(tb testing.TB, fileName string, content string) []byte {
 
 func computeSHA256Hex(data []byte) string {
 	h := sha256.Sum256(data)
+
 	return fmt.Sprintf("%x", h[:])
 }
 
@@ -1151,6 +1152,7 @@ func TestTemplateBuildCOPY(t *testing.T) {
 
 	assert.True(t, buildTemplate(t, "test-ubuntu-copy", buildConfig, defaultBuildLogHandler(t),
 		func(tb testing.TB, ctx context.Context, templateID string) {
+			tb.Helper()
 			uploadFileForTemplate(tb, ctx, templateID, filesHash, tarData)
 		},
 	))
