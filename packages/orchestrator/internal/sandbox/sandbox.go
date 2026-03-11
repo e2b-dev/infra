@@ -290,7 +290,7 @@ func (f *Factory) CreateSandbox(
 
 	lifecycleID := uuid.NewString()
 	// Add map removal to cleanup early as we want to do it as last thing in clean up
-	// It's save as it's
+	// It's save as we delete only if lifecycleID matches
 	cleanup.Add(ctx, func(ctx context.Context) error {
 		f.Sandboxes.RemoveByLifecycleID(ctx, runtime.SandboxID, lifecycleID)
 
@@ -502,7 +502,7 @@ func (f *Factory) ResumeSandbox(
 
 	lifecycleID := uuid.NewString()
 	// Add map removal to cleanup early as we want to do it as last thing in clean up
-	// It's save as it's
+	// It's save as we delete only if lifecycleID matches
 	cleanup.Add(ctx, func(ctx context.Context) error {
 		f.Sandboxes.RemoveByLifecycleID(ctx, runtime.SandboxID, lifecycleID)
 
