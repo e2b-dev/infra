@@ -282,6 +282,10 @@ func mkdir(t *testing.T, target *nfs.Target, path string, perm os.FileMode) []by
 func TestGetPrefixFromSandbox(t *testing.T) {
 	t.Parallel()
 
+	if os.Geteuid() != 0 {
+		t.Skip("skipping test because it requires root privileges")
+	}
+
 	sandboxes := sandbox.NewSandboxesMap()
 
 	// happy path variables

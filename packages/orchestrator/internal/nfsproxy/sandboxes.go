@@ -44,8 +44,10 @@ func NewFilesystemsCache(sandboxes *sandbox.Map, config cfg.Config) *Filesystems
 const gcLoopInterval = time.Minute
 
 func (c *FilesystemsCache) Start(ctx context.Context) error {
+	c.mu.Lock()
 	ctx, c.cancel = context.WithCancel(ctx)
 	defer c.cancel()
+	c.mu.Unlock()
 
 	ticker := time.NewTicker(gcLoopInterval)
 

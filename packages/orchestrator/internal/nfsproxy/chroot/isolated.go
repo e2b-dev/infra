@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -81,25 +82,36 @@ func (fs *IsolatedFS) chroot(path string) error {
 			return fmt.Errorf("failed to bind mount %q: %w", path, err)
 		}
 
-		oldRootPath := filepath.Join(path, "old-path")
-		if err = os.MkdirAll(oldRootPath, 0o755); err != nil {
-			return fmt.Errorf("failed to create %q: %w", oldRootPath, err)
-		}
+		for {
+			randomDirName := fmt.Sprintf(".old-root.%d", rand.Intn(1000000))
 
-		if err = syscall.PivotRoot(path, oldRootPath); err != nil {
-			return fmt.Errorf("failed to pivot root: %w", err)
-		}
+			oldRootPath := filepath.Join(path, randomDirName)
+			if err = os.MkdirAll(oldRootPath, 0o755); err != nil {
+				if os.IsExist(err) {
+					// collided somehow?? retry
+					continue
+				}
 
-		if err = syscall.Chdir("/"); err != nil {
-			return fmt.Errorf("failed to chdir: %w", err)
-		}
+				return fmt.Errorf("failed to create %q: %w", oldRootPath, err)
+			}
 
-		if err = syscall.Unmount("/old-path", syscall.MNT_DETACH); err != nil {
-			return fmt.Errorf("failed to unmount: %w", err)
-		}
+			if err = syscall.PivotRoot(path, oldRootPath); err != nil {
+				return fmt.Errorf("failed to pivot root: %w", err)
+			}
 
-		if err = os.RemoveAll("/old-path"); err != nil {
-			return fmt.Errorf("failed to remove %q: %w", oldRootPath, err)
+			if err = syscall.Chdir("/"); err != nil {
+				return fmt.Errorf("failed to chdir: %w", err)
+			}
+
+			if err = syscall.Unmount("/"+randomDirName, syscall.MNT_DETACH); err != nil {
+				return fmt.Errorf("failed to unmount: %w", err)
+			}
+
+			if err = os.Remove("/" + randomDirName); err != nil {
+				return fmt.Errorf("failed to remove %q: %w", oldRootPath, err)
+			}
+
+			break
 		}
 
 		return nil
