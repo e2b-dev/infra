@@ -49,6 +49,7 @@ type Server struct {
 	startingSandboxes *semaphore.Weighted
 	peerRegistry      peerclient.Registry
 	uploadedBuilds    *ttlcache.Cache[string, struct{}]
+	sandboxCreateDuration metric.Int64Histogram
 }
 
 type ServiceConfig struct {
@@ -91,7 +92,14 @@ func New(ctx context.Context, cfg ServiceConfig) *Server {
 	}
 
 	meter := cfg.Tel.MeterProvider.Meter("orchestrator.sandbox")
-	_, err := telemetry.GetObservableUpDownCounter(meter, telemetry.OrchestratorSandboxCountMeterName, func(_ context.Context, observer metric.Int64Observer) error {
+
+	sandboxCreateDuration, err := telemetry.GetHistogram(meter, telemetry.OrchestratorSandboxCreateDurationName)
+	if err != nil {
+		logger.L().Error(ctx, "Error registering sandbox create duration histogram", zap.String("metric_name", string(telemetry.OrchestratorSandboxCreateDurationName)), zap.Error(err))
+	}
+	server.sandboxCreateDuration = sandboxCreateDuration
+
+	_, err = telemetry.GetObservableUpDownCounter(meter, telemetry.OrchestratorSandboxCountMeterName, func(_ context.Context, observer metric.Int64Observer) error {
 		observer.Observe(int64(server.sandboxes.Count()))
 
 		return nil
