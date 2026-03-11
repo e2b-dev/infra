@@ -36,6 +36,7 @@ func TestAsyncWriteProtection(t *testing.T) {
 		operations    []operation
 		expectedDirty []int
 		expectedClean []int
+		alwaysWP      bool
 	}{
 		{
 			name:          "4k read then write same page",
@@ -224,6 +225,59 @@ func TestAsyncWriteProtection(t *testing.T) {
 			expectedDirty: []int{0, 2},
 			expectedClean: []int{1, 3},
 		},
+
+		// alwaysWP tests: handler copies with UFFDIO_COPY_MODE_WP for all faults,
+		// including writes. WP_ASYNC must automatically clear the WP bit when the
+		// original access was a write. This validates the assumption that independent
+		// prefaulting (always copy with WP) works correctly.
+		{
+			name:          "4k alwaysWP write to missing page",
+			pagesize:      header.PageSize,
+			numberOfPages: 4,
+			alwaysWP:      true,
+			operations: []operation{
+				{offset: 0, mode: operationModeWrite},
+			},
+			expectedDirty: []int{0},
+		},
+		{
+			name:          "4k alwaysWP mixed writes and reads",
+			pagesize:      header.PageSize,
+			numberOfPages: 4,
+			alwaysWP:      true,
+			operations: []operation{
+				{offset: 0 * header.PageSize, mode: operationModeWrite},
+				{offset: 1 * header.PageSize, mode: operationModeRead},
+				{offset: 2 * header.PageSize, mode: operationModeWrite},
+				{offset: 3 * header.PageSize, mode: operationModeRead},
+			},
+			expectedDirty: []int{0, 2},
+			expectedClean: []int{1, 3},
+		},
+		{
+			name:          "hugepage alwaysWP write to missing page",
+			pagesize:      header.HugepageSize,
+			numberOfPages: 4,
+			alwaysWP:      true,
+			operations: []operation{
+				{offset: 0, mode: operationModeWrite},
+			},
+			expectedDirty: []int{0},
+		},
+		{
+			name:          "hugepage alwaysWP mixed writes and reads",
+			pagesize:      header.HugepageSize,
+			numberOfPages: 4,
+			alwaysWP:      true,
+			operations: []operation{
+				{offset: 0 * header.HugepageSize, mode: operationModeWrite},
+				{offset: 1 * header.HugepageSize, mode: operationModeRead},
+				{offset: 2 * header.HugepageSize, mode: operationModeWrite},
+				{offset: 3 * header.HugepageSize, mode: operationModeRead},
+			},
+			expectedDirty: []int{0, 2},
+			expectedClean: []int{1, 3},
+		},
 	}
 
 	for _, tt := range tests {
@@ -233,6 +287,7 @@ func TestAsyncWriteProtection(t *testing.T) {
 			h, err := configureCrossProcessTest(t, testConfig{
 				pagesize:      tt.pagesize,
 				numberOfPages: tt.numberOfPages,
+				alwaysWP:      tt.alwaysWP,
 			})
 			require.NoError(t, err)
 

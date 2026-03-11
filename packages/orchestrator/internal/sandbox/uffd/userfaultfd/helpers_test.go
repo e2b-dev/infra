@@ -20,6 +20,8 @@ type testConfig struct {
 	numberOfPages uint64
 	// Operations to trigger on the memory area.
 	operations []operation
+	// alwaysWP makes the handler copy with UFFDIO_COPY_MODE_WP for all faults.
+	alwaysWP bool
 }
 
 type operationMode uint32
