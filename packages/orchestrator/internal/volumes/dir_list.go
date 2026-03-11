@@ -72,7 +72,7 @@ func (s *Service) listRecursive(paths volumePaths, depth int) ([]*orchestrator.V
 
 		if item.IsDir() && depth > 1 {
 			childPaths := paths
-			childPaths.ClientPath = entry.Path
+			childPaths.ClientPath = entry.GetPath()
 			childPaths.HostFullPath = filepath.Join(paths.HostFullPath, item.Name())
 
 			children, err := s.listRecursive(childPaths, depth-1)

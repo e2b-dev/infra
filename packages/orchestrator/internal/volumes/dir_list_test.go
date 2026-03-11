@@ -14,6 +14,8 @@ import (
 )
 
 func TestListDir_Depth(t *testing.T) {
+	t.Parallel()
+
 	tmpDir := t.TempDir()
 
 	teamID := uuid.NewString()
@@ -33,6 +35,12 @@ func TestListDir_Depth(t *testing.T) {
 	err = os.WriteFile(filepath.Join(basePath, "dir", "deep", "test.txt"), []byte("deep test"), 0o644)
 	require.NoError(t, err)
 
+	err = os.MkdirAll(filepath.Join(basePath, "dir", "deep", "deeper"), 0o755)
+	require.NoError(t, err)
+
+	err = os.WriteFile(filepath.Join(basePath, "dir", "deep", "deeper", "test.txt"), []byte("deeper test"), 0o644)
+	require.NoError(t, err)
+
 	s := &Service{
 		config: cfg.Config{
 			PersistentVolumeMounts: map[string]string{
@@ -49,6 +57,8 @@ func TestListDir_Depth(t *testing.T) {
 	}
 
 	t.Run("depth 0", func(t *testing.T) {
+		t.Parallel()
+
 		req := &orchestrator.VolumeDirListRequest{
 			Volume: volumeInfo,
 			Path:   "dir",
@@ -58,11 +68,13 @@ func TestListDir_Depth(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 
-		paths := getPaths(resp.Files)
+		paths := getPaths(t, resp.GetFiles())
 		require.ElementsMatch(t, []string{"/dir/test.txt", "/dir/deep"}, paths)
 	})
 
 	t.Run("depth 1", func(t *testing.T) {
+		t.Parallel()
+
 		req := &orchestrator.VolumeDirListRequest{
 			Volume: volumeInfo,
 			Path:   "dir",
@@ -72,11 +84,13 @@ func TestListDir_Depth(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 
-		paths := getPaths(resp.Files)
+		paths := getPaths(t, resp.GetFiles())
 		require.ElementsMatch(t, []string{"/dir/test.txt", "/dir/deep"}, paths)
 	})
 
 	t.Run("depth 2", func(t *testing.T) {
+		t.Parallel()
+
 		req := &orchestrator.VolumeDirListRequest{
 			Volume: volumeInfo,
 			Path:   "dir",
@@ -86,14 +100,12 @@ func TestListDir_Depth(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 
-		paths := getPaths(resp.Files)
-		require.ElementsMatch(t, []string{"/dir/test.txt", "/dir/deep", "/dir/deep/test.txt"}, paths)
+		paths := getPaths(t, resp.GetFiles())
+		require.ElementsMatch(t, []string{"/dir/test.txt", "/dir/deep", "/dir/deep/test.txt", "/dir/deep/deeper"}, paths)
 	})
 
 	t.Run("depth 3", func(t *testing.T) {
-		// Create another level
-		err = os.MkdirAll(filepath.Join(basePath, "dir", "deep", "deeper"), 0o755)
-		require.NoError(t, err)
+		t.Parallel()
 
 		req := &orchestrator.VolumeDirListRequest{
 			Volume: volumeInfo,
@@ -104,15 +116,18 @@ func TestListDir_Depth(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 
-		paths := getPaths(resp.Files)
-		require.ElementsMatch(t, []string{"/dir/test.txt", "/dir/deep", "/dir/deep/test.txt", "/dir/deep/deeper"}, paths)
+		paths := getPaths(t, resp.GetFiles())
+		require.ElementsMatch(t, []string{"/dir/test.txt", "/dir/deep", "/dir/deep/test.txt", "/dir/deep/deeper", "/dir/deep/deeper/test.txt"}, paths)
 	})
 }
 
-func getPaths(items []*orchestrator.VolumeDirectoryItem) []string {
+func getPaths(t *testing.T, items []*orchestrator.VolumeDirectoryItem) []string {
+	t.Helper()
+
 	paths := make([]string, 0, len(items))
 	for _, item := range items {
-		paths = append(paths, item.Entry.Path)
+		paths = append(paths, item.GetEntry().GetPath())
 	}
+
 	return paths
 }
