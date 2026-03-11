@@ -13,13 +13,15 @@ DECLARE
   current_max_id UUID;
 BEGIN
   LOOP
-    SELECT max(id) INTO current_max_id
+    SELECT id INTO current_max_id
     FROM (
       SELECT id FROM public.snapshots
       WHERE id > last_id AND metadata IS NULL
       ORDER BY id
       LIMIT batch_size
-    ) sub;
+    ) sub
+    ORDER BY id DESC
+    LIMIT 1;
 
     EXIT WHEN current_max_id IS NULL;
 
