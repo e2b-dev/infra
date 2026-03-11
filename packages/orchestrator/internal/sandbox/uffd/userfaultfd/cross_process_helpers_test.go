@@ -93,10 +93,6 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	uffdFd, err := newFd(syscall.O_CLOEXEC | syscall.O_NONBLOCK)
 	require.NoError(t, err)
 
-	t.Cleanup(func() {
-		uffdFd.close()
-	})
-
 	err = configureApi(uffdFd, tt.pagesize)
 	require.NoError(t, err)
 
@@ -109,6 +105,9 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	cmd.Env = append(cmd.Env, fmt.Sprintf("GO_MMAP_PAGE_SIZE=%d", tt.pagesize))
 	if tt.alwaysWP {
 		cmd.Env = append(cmd.Env, "GO_ALWAYS_WP=1")
+	}
+	if tt.gated {
+		cmd.Env = append(cmd.Env, "GO_GATED=1")
 	}
 
 	dup, err := syscall.Dup(int(uffdFd))
@@ -153,12 +152,34 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 		readySignal <- struct{}{}
 	}()
 
-	cmd.ExtraFiles = []*os.File{
+	extraFiles := []*os.File{
 		uffdFile,
 		contentReader,
 		offsetsWriter,
 		readyWriter,
 	}
+
+	var gateCmdWriter *os.File
+	var gateSyncReader *os.File
+	if tt.gated {
+		var gateCmdReader *os.File
+		gateCmdReader, gateCmdWriter, err = os.Pipe()
+		require.NoError(t, err)
+
+		var gateSyncWriter *os.File
+		gateSyncReader, gateSyncWriter, err = os.Pipe()
+		require.NoError(t, err)
+
+		t.Cleanup(func() {
+			gateCmdWriter.Close()
+			gateSyncReader.Close()
+		})
+
+		extraFiles = append(extraFiles, gateCmdReader)  // fd 7
+		extraFiles = append(extraFiles, gateSyncWriter) // fd 8
+	}
+
+	cmd.ExtraFiles = extraFiles
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
@@ -169,6 +190,10 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	offsetsWriter.Close()
 	readyWriter.Close()
 	uffdFile.Close()
+	if tt.gated {
+		extraFiles[4].Close() // gateCmdReader
+		extraFiles[5].Close() // gateSyncWriter
+	}
 
 	t.Cleanup(func() {
 		signalErr := cmd.Process.Signal(syscall.SIGUSR1)
@@ -187,30 +212,46 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 				waitErr == nil,
 			"unexpected error: %v", waitErr,
 		)
+
+		// Unregister the uffd range so munmap won't block on REMOVE events.
+		unregister(uffdFd, memoryStart, uint64(size))
+		uffdFd.close()
 	})
 
-	offsetsOnce := func() ([]uint, error) {
+	pageStatesOnce := func() (handlerPageStates, error) {
 		err := cmd.Process.Signal(syscall.SIGUSR2)
 		if err != nil {
-			return nil, err
+			return handlerPageStates{}, err
 		}
 
-		offsetsBytes, err := io.ReadAll(offsetsReader)
+		data, err := io.ReadAll(offsetsReader)
 		if err != nil {
-			return nil, err
+			return handlerPageStates{}, err
 		}
 
-		var offsetList []uint
-
-		if len(offsetsBytes)%8 != 0 {
-			return nil, fmt.Errorf("invalid offsets bytes length: %d", len(offsetsBytes))
+		const entrySize = 1 + 8 // uint8 state + uint64 offset
+		if len(data)%entrySize != 0 {
+			return handlerPageStates{}, fmt.Errorf("invalid page state data length: %d", len(data))
 		}
 
-		for i := 0; i < len(offsetsBytes); i += 8 {
-			offsetList = append(offsetList, uint(binary.LittleEndian.Uint64(offsetsBytes[i:i+8])))
+		var result handlerPageStates
+
+		for i := 0; i < len(data); i += entrySize {
+			state := pageState(data[i])
+			offset := uint(binary.LittleEndian.Uint64(data[i+1 : i+entrySize]))
+
+			switch state {
+			case faulted:
+				result.faulted = append(result.faulted, offset)
+			case removed:
+				result.removed = append(result.removed, offset)
+			}
 		}
 
-		return offsetList, nil
+		slices.Sort(result.faulted)
+		slices.Sort(result.removed)
+
+		return result, nil
 	}
 
 	select {
@@ -219,12 +260,31 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	case <-readySignal:
 	}
 
-	return &testHandler{
-		memoryArea:  &memoryArea,
-		pagesize:    tt.pagesize,
-		data:        data,
-		offsetsOnce: offsetsOnce,
-	}, nil
+	h := &testHandler{
+		memoryArea:     &memoryArea,
+		pagesize:       tt.pagesize,
+		data:           data,
+		pageStatesOnce: pageStatesOnce,
+	}
+
+	if tt.gated {
+		h.servePause = func() error {
+			if _, err := gateCmdWriter.Write([]byte{'P'}); err != nil {
+				return err
+			}
+			var buf [1]byte
+			_, err := gateSyncReader.Read(buf[:])
+
+			return err
+		}
+		h.serveResume = func() error {
+			_, err := gateCmdWriter.Write([]byte{'R'})
+
+			return err
+		}
+	}
+
+	return h, nil
 }
 
 // Secondary process, orchestrator in our case
@@ -284,9 +344,6 @@ func crossProcessServe() error {
 		},
 	})
 
-	exitUffd := make(chan struct{}, 1)
-	defer close(exitUffd)
-
 	l, err := logger.NewDevelopmentLogger()
 	if err != nil {
 		return fmt.Errorf("exit creating logger: %w", err)
@@ -315,9 +372,9 @@ func crossProcessServe() error {
 			case <-ctx.Done():
 				return
 			case <-offsetsSignal:
-				faultedOffsets, faultedErr := uffd.faulted()
-				if faultedErr != nil {
-					msg := fmt.Errorf("error getting faulted offsets: %w", faultedErr)
+				entries, entriesErr := uffd.pageStateEntries()
+				if entriesErr != nil {
+					msg := fmt.Errorf("error getting page state entries: %w", entriesErr)
 
 					fmt.Fprint(os.Stderr, msg.Error())
 
@@ -326,10 +383,10 @@ func crossProcessServe() error {
 					return
 				}
 
-				for _, offset := range faultedOffsets {
-					writeErr := binary.Write(offsetsFile, binary.LittleEndian, offset)
+				for _, entry := range entries {
+					writeErr := binary.Write(offsetsFile, binary.LittleEndian, entry)
 					if writeErr != nil {
-						msg := fmt.Errorf("error writing offsets to file: %w", writeErr)
+						msg := fmt.Errorf("error writing page state entry: %w", writeErr)
 
 						fmt.Fprint(os.Stderr, msg.Error())
 
@@ -350,39 +407,78 @@ func crossProcessServe() error {
 	}
 	defer fdExit.Close()
 
+	exitUffd := make(chan struct{}, 1)
+
 	go func() {
-		defer func() {
-			exitUffd <- struct{}{}
-		}()
+		defer func() { exitUffd <- struct{}{} }()
 
 		serverErr := uffd.Serve(ctx, fdExit)
 		if serverErr != nil {
 			msg := fmt.Errorf("error serving: %w", serverErr)
-
 			fmt.Fprint(os.Stderr, msg.Error())
-
 			cancel(msg)
-
-			return
 		}
 	}()
 
 	cleanup := func() {
-		err := fdExit.SignalExit()
-		if err != nil {
-			msg := fmt.Errorf("error signaling exit: %w", err)
-
-			fmt.Fprint(os.Stderr, msg.Error())
-
-			cancel(msg)
-
-			return
-		}
-
+		fdExit.SignalExit()
 		<-exitUffd
 	}
-
 	defer cleanup()
+
+	if os.Getenv("GO_GATED") == "1" {
+		gateCmdFile := os.NewFile(uintptr(7), "gate-cmd")
+		defer gateCmdFile.Close()
+
+		gateSyncFile := os.NewFile(uintptr(8), "gate-sync")
+		defer gateSyncFile.Close()
+
+		startServe := func() func() {
+			newExit, fdErr := fdexit.New()
+			if fdErr != nil {
+				cancel(fmt.Errorf("error creating fd exit: %w", fdErr))
+
+				return func() {}
+			}
+
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				if err := uffd.Serve(ctx, newExit); err != nil {
+					cancel(fmt.Errorf("error serving: %w", err))
+				}
+			}()
+
+			return func() {
+				newExit.SignalExit()
+				<-done
+				newExit.Close()
+			}
+		}
+
+		stopServe := func() {
+			cleanup()
+		}
+
+		go func() {
+			var buf [1]byte
+			for {
+				if _, err := gateCmdFile.Read(buf[:]); err != nil {
+					return
+				}
+
+				switch buf[0] {
+				case 'P':
+					stopServe()
+					gateSyncFile.Write([]byte{1})
+				case 'R':
+					newStop := startServe()
+					stopServe = newStop
+					cleanup = newStop
+				}
+			}
+		}()
+	}
 
 	exitSignal := make(chan os.Signal, 1)
 	signal.Notify(exitSignal, syscall.SIGUSR1)
@@ -403,30 +499,26 @@ func crossProcessServe() error {
 	}
 }
 
-func (u *Userfaultfd) faulted() ([]uint64, error) {
-	// This will be at worst cancelled when the uffd is closed.
-	u.settleRequests.Lock()
-	u.settleRequests.Unlock() //nolint:staticcheck // SA2001: intentional — we just need to settle the read locks.
-
-	return u.pageTracker.faultedOffsets(u.ma)
+type pageStateEntry struct {
+	State  uint8
+	Offset uint64
 }
 
-func (pt *pageTracker) faultedOffsets(ma *memory.Mapping) ([]uint64, error) {
-	pt.mu.RLock()
-	defer pt.mu.RUnlock()
+func (u *Userfaultfd) pageStateEntries() ([]pageStateEntry, error) {
+	u.settleRequests.Lock()
+	u.settleRequests.Unlock() //nolint:staticcheck // SA2001: intentional — settle the read locks.
 
-	offsets := make([]uint64, 0, len(pt.m))
-	for addr := range pt.m {
-		offset, err := ma.GetOffset(addr)
+	u.pageTracker.mu.RLock()
+	defer u.pageTracker.mu.RUnlock()
+
+	var entries []pageStateEntry
+	for addr, state := range u.pageTracker.m {
+		offset, err := u.ma.GetOffset(addr)
 		if err != nil {
 			return nil, fmt.Errorf("address %#x not in mapping: %w", addr, err)
 		}
-		offsets = append(offsets, uint64(offset))
+		entries = append(entries, pageStateEntry{uint8(state), uint64(offset)})
 	}
 
-	if len(offsets) > 1 {
-		slices.Sort(offsets)
-	}
-
-	return offsets, nil
+	return entries, nil
 }

@@ -291,16 +291,7 @@ func TestAsyncWriteProtection(t *testing.T) {
 			})
 			require.NoError(t, err)
 
-			for i, op := range tt.operations {
-				switch op.mode {
-				case operationModeRead:
-					err := h.executeRead(t.Context(), op)
-					require.NoError(t, err, "step %d: read at offset %d", i, op.offset)
-				case operationModeWrite:
-					err := h.executeWrite(t.Context(), op)
-					require.NoError(t, err, "step %d: write at offset %d", i, op.offset)
-				}
-			}
+			h.executeAll(t, tt.operations)
 
 			pagemap, err := testutils.NewPagemapReader()
 			require.NoError(t, err)
