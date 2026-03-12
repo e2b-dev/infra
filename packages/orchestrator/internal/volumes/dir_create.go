@@ -51,10 +51,6 @@ func (s *Service) CreateDir(ctx context.Context, request *orchestrator.VolumeDir
 			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to mkdir: parent of %q not found.", request.GetPath())
 		}
 
-		if os.IsExist(err) {
-			return nil, newAPIError(ctx, codes.AlreadyExists, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_ALREADY_EXISTS, "failed to mkdir: %q already exists.", request.GetPath())
-		}
-
 		return nil, fmt.Errorf("failed to create directory: %w", err)
 	}
 

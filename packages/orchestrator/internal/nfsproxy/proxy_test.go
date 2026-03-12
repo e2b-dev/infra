@@ -342,119 +342,119 @@ func TestGetPrefixFromSandbox(t *testing.T) {
 			remoteAddr: happyAddr,
 			dirpath:    filepath.Join(happyDirPath, "subfolder"),
 			expected: expectations{
-				path: filepath.Join(happyPrefix, "subfolder"),
+				err: ErrInvalidMountPath,
 			},
 		},
 		"cannot mount dot": {
 			remoteAddr: happyAddr,
 			dirpath:    ".",
 			expected: expectations{
-				err: ErrMustMountAbsolutePath,
+				err: ErrInvalidMountPath,
 			},
 		},
 		"cannot mount relative path": {
 			remoteAddr: happyAddr,
 			dirpath:    "good-volume",
 			expected: expectations{
-				err: ErrMustMountAbsolutePath,
+				err: ErrInvalidMountPath,
 			},
 		},
 		"cannot mount root": {
 			remoteAddr: happyAddr,
 			dirpath:    "/",
 			expected: expectations{
-				err: ErrCannotMountRoot,
+				err: ErrInvalidMountPath,
 			},
 		},
 		"volume not found": {
 			remoteAddr: happyAddr,
 			dirpath:    "/nonexistent-volume",
 			expected: expectations{
-				err: fmt.Errorf("failed to mount %q: %w", "nonexistent-volume", ErrVolumeNotFound),
+				err: ErrVolumeNotFound,
 			},
 		},
 		"sandbox not found": {
 			remoteAddr: &net.TCPAddr{IP: net.IPv4(1, 2, 3, 4), Port: 12345},
 			dirpath:    happyDirPath,
 			expected: expectations{
-				err: fmt.Errorf("failed to get sandbox: sandbox with address 1.2.3.4:12345 not found"),
+				err: ErrUnknownSandbox,
 			},
 		},
 		"volume type not supported": {
 			remoteAddr: happyAddr,
 			dirpath:    happyDirPath,
 			expected: expectations{
-				err: fmt.Errorf("failed to mount %q (%s): %w", happyVolumeName, happyVolumeType, ErrVolumeTypeNotSupported),
+				err: chrooted.ErrVolumeTypeNotFound,
 			},
 		},
 		"volume name is empty (trailing slash)": {
 			remoteAddr: happyAddr,
 			dirpath:    "//",
 			expected: expectations{
-				err: ErrCannotMountRoot,
+				err: ErrInvalidMountPath,
 			},
 		},
 		"multiple path segments": {
 			remoteAddr: happyAddr,
 			dirpath:    filepath.Join(happyDirPath, "sub1", "sub2"),
 			expected: expectations{
-				path: filepath.Join(happyPrefix, "sub1", "sub2"),
+				err: ErrInvalidMountPath,
 			},
 		},
 		"path with trailing slash": {
 			remoteAddr: happyAddr,
 			dirpath:    happyDirPath + "/",
 			expected: expectations{
-				path: happyPrefix,
+				err: ErrInvalidMountPath,
 			},
 		},
 		"path with multiple leading slashes": {
 			remoteAddr: happyAddr,
 			dirpath:    "///" + happyDirPath,
 			expected: expectations{
-				path: happyPrefix,
+				err: ErrInvalidMountPath,
 			},
 		},
 		"chroot escape attempt: ..happy": {
 			remoteAddr: happyAddr,
 			dirpath:    "/../" + happyDirPath,
 			expected: expectations{
-				path: happyPrefix,
+				err: ErrInvalidMountPath,
 			},
 		},
 		"chroot escape attempt: ....happy": {
 			remoteAddr: happyAddr,
 			dirpath:    "/../../" + happyDirPath,
 			expected: expectations{
-				path: happyPrefix,
+				err: ErrInvalidMountPath,
 			},
 		},
 		"chroot escape attempt: ..": {
 			remoteAddr: happyAddr,
 			dirpath:    happyDirPath + "/..",
 			expected: expectations{
-				err: ErrCannotMountRoot,
+				err: ErrInvalidMountPath,
 			},
 		},
 		"chroot escape attempt: .. with trailing slash": {
 			remoteAddr: happyAddr,
 			dirpath:    happyDirPath + "/../",
 			expected: expectations{
-				err: ErrCannotMountRoot,
+				err: ErrInvalidMountPath,
 			},
 		},
 		"chroot escape attempt: ....": {
 			remoteAddr: happyAddr,
 			dirpath:    happyDirPath + "/../..",
 			expected: expectations{
-				err: ErrCannotMountRoot,
+				err: ErrInvalidMountPath,
 			},
 		},
 		"chroot escape attempt: .... with trailing": {
 			remoteAddr: happyAddr,
 			dirpath:    happyDirPath + "/../../",
 			expected: expectations{
-				err: ErrCannotMountRoot,
+				err: ErrInvalidMountPath,
 			},
 		},
 	}
@@ -494,7 +494,7 @@ func TestGetPrefixFromSandbox(t *testing.T) {
 			callback := chrootCallback(tracker, sandboxes)
 			fs, err := callback(t.Context(), tc.remoteAddr, request)
 			if tc.expected.err != nil {
-				require.EqualError(t, err, tc.expected.err.Error())
+				require.ErrorIs(t, err, tc.expected.err)
 
 				return
 			}

@@ -28,12 +28,9 @@ type Proxy struct {
 }
 
 var (
-	ErrCannotMountRoot        = errors.New("cannot mount root")
-	ErrVolumeTypeNotSupported = errors.New("volume type not supported")
-	ErrVolumeNotFound         = errors.New("volume not found")
-	ErrMustMountAbsolutePath  = errors.New("must mount absolute path")
-	ErrInvalidTeamID          = errors.New("invalid team ID")
-	ErrVolumeID               = errors.New("invalid volume ID")
+	ErrVolumeNotFound = errors.New("volume not found")
+	ErrInvalidTeamID  = errors.New("invalid team ID")
+	ErrVolumeID       = errors.New("invalid volume ID")
 )
 
 func NewProxy(ctx context.Context, cache *chrooted.Tracker, sandboxes *sandbox.Map) (*Proxy, error) {
@@ -67,18 +64,23 @@ func (p *Proxy) Serve(lis net.Listener) error {
 
 var mountPath = regexp.MustCompile(`^/[^/]+$`)
 
+var (
+	ErrInvalidMountPath = errors.New("invalid mount path")
+	ErrUnknownSandbox   = errors.New("unknown sandbox")
+)
+
 func chrootCallback(tracker *chrooted.Tracker, sandboxes *sandbox.Map) chroot.GetFilesystem {
 	return func(ctx context.Context, remoteAddr net.Addr, request nfs.MountRequest) (billy.Filesystem, error) {
 		sbx, err := sandboxes.GetByHostPort(remoteAddr.String())
 		if err != nil {
-			return nil, fmt.Errorf("failed to get sandbox: %w", err)
+			return nil, fmt.Errorf("%w: %w", ErrUnknownSandbox, err)
 		}
 
 		// normalize the mount path
 		requestedPath := string(request.Dirpath)
 		regexpMatch := mountPath.MatchString(requestedPath)
 		if !regexpMatch {
-			return nil, fmt.Errorf(`invalid mount path (expected "/volume_name", got %q)`, requestedPath)
+			return nil, fmt.Errorf(`%w: expected "/volume_name", got %q`, ErrInvalidMountPath, requestedPath)
 		}
 
 		volumeName := requestedPath[1:]
