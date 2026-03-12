@@ -6,11 +6,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/chrooted"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/chrooted"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
