@@ -41,7 +41,6 @@ receivers:
           system.cpu.utilization: # percentage utilized in the moment
             enabled: true
 
-      # entirely disabled, so we omit the module
       disk:
         include:
           devices:
