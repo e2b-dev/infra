@@ -12,9 +12,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func init() {
+	gin.SetMode(gin.TestMode)
+}
+
 func TestRequestTimeout_SetsDeadline(t *testing.T) {
 	t.Parallel()
-	gin.SetMode(gin.TestMode)
 
 	r := gin.New()
 	r.Use(RequestTimeout(500 * time.Millisecond))
@@ -32,9 +35,29 @@ func TestRequestTimeout_SetsDeadline(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 }
 
+func TestRequestTimeout_Returns503WhenHandlerDoesNotWrite(t *testing.T) {
+	t.Parallel()
+
+	r := gin.New()
+	r.Use(RequestTimeout(100 * time.Millisecond))
+	r.GET("/slow", func(c *gin.Context) {
+		<-c.Request.Context().Done()
+	})
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, "/slow", nil)
+
+	start := time.Now()
+	r.ServeHTTP(w, req)
+	elapsed := time.Since(start)
+
+	assert.Less(t, elapsed, 500*time.Millisecond, "should have timed out promptly")
+	require.Equal(t, http.StatusServiceUnavailable, w.Code)
+	assert.Equal(t, "request timed out", w.Body.String())
+}
+
 func TestRequestTimeout_CancelsBlockingHandler(t *testing.T) {
 	t.Parallel()
-	gin.SetMode(gin.TestMode)
 
 	r := gin.New()
 	r.Use(RequestTimeout(100 * time.Millisecond))
@@ -59,7 +82,6 @@ func TestRequestTimeout_CancelsBlockingHandler(t *testing.T) {
 
 func TestRequestTimeout_ExcludedRouteHasNoDeadline(t *testing.T) {
 	t.Parallel()
-	gin.SetMode(gin.TestMode)
 
 	r := gin.New()
 	r.Use(RequestTimeout(500*time.Millisecond, "/health"))
@@ -78,7 +100,6 @@ func TestRequestTimeout_ExcludedRouteHasNoDeadline(t *testing.T) {
 
 func TestRequestTimeout_ExcludedRouteWithParam(t *testing.T) {
 	t.Parallel()
-	gin.SetMode(gin.TestMode)
 
 	r := gin.New()
 	r.Use(RequestTimeout(500*time.Millisecond, "/templates/:templateID/builds/:buildID/logs"))

@@ -85,7 +85,32 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 	// Param values are still unescaped before reaching handlers (UnescapePathValues defaults to true).
 	r.UseRawPath = true
 
+	r.Use(gin.Recovery())
+
 	r.Use(
+		sharedmiddleware.LoggingMiddleware(l, sharedmiddleware.Config{
+			TimeFormat:   time.RFC3339Nano,
+			UTC:          true,
+			DefaultLevel: zap.InfoLevel,
+			Skipper: func(c *gin.Context) bool {
+				switch c.FullPath() {
+				case "/health",
+					"/sandboxes/:sandboxID/refreshes",
+					"/templates/:templateID/builds/:buildID/logs",
+					"/templates/:templateID/builds/:buildID/status":
+					return true
+				}
+
+				return false
+			},
+			Context: func(c *gin.Context) []zapcore.Field {
+				if teamInfo, ok := auth.GetTeamInfo(c); ok {
+					return []zapcore.Field{logger.WithTeamID(teamInfo.ID.String())}
+				}
+
+				return nil
+			},
+		}),
 		// We use custom otel gin middleware because we want to log 4xx errors in the otel
 		customMiddleware.ExcludeRoutes(
 			tracingMiddleware.Middleware(tel.TracerProvider, serviceName), //nolint:contextcheck // TODO: fix this later
@@ -104,7 +129,7 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 			"/sandboxes/:sandboxID/snapshots",
 		),
 		gin.Recovery(),
-		customMiddleware.RequestTimeout(requestTimeout), //nolint:contextcheck // context comes from gin request
+		customMiddleware.RequestTimeout(requestTimeout),
 	)
 
 	corsConfig := cors.DefaultConfig()
@@ -136,30 +161,6 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 		"system",
 	}
 	r.Use(cors.New(corsConfig))
-
-	r.Use(sharedmiddleware.LoggingMiddleware(l, sharedmiddleware.Config{
-		TimeFormat:   time.RFC3339Nano,
-		UTC:          true,
-		DefaultLevel: zap.InfoLevel,
-		Skipper: func(c *gin.Context) bool {
-			switch c.FullPath() {
-			case "/health",
-				"/sandboxes/:sandboxID/refreshes",
-				"/templates/:templateID/builds/:buildID/logs",
-				"/templates/:templateID/builds/:buildID/status":
-				return true
-			}
-
-			return false
-		},
-		Context: func(c *gin.Context) []zapcore.Field {
-			if teamInfo, ok := auth.GetTeamInfo(c); ok {
-				return []zapcore.Field{logger.WithTeamID(teamInfo.ID.String())}
-			}
-
-			return nil
-		},
-	}))
 
 	// Create a team API Key auth validator
 	AuthenticationFunc := auth.CreateAuthenticationFunc(
