@@ -4,9 +4,10 @@ package cleaner
 
 import (
 	"fmt"
-	"golang.org/x/sys/unix"
 	"os"
 	"path/filepath"
+
+	"golang.org/x/sys/unix"
 )
 
 func (c *Cleaner) stat(path string) (*Candidate, error) {
