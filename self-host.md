@@ -81,13 +81,8 @@ Check if you can use config for terraform state management
       > Get Supabase JWT Secret: go to the [Supabase dashboard](https://supabase.com/dashboard) -> Select your Project -> Project Settings -> Data API -> JWT Settings
   - e2b-posthog-api-key (optional, for monitoring)
 9. Run `make plan-without-jobs` and then `make apply`
-10. Run `make plan` and then `make apply`. Note: This will work after the TLS certificates was issued. It can take some time; you can check the status in the Google Cloud Console
-11. Run database migrations: `cd packages/db && make migrate`
-    > If using Supabase, the first migration (`20000101000000_auth.sql`) will fail because Supabase already provides the `auth` schema, `authenticated` role, and `auth.users` table. To skip it, manually mark it as applied before running `make migrate`:
-    > ```sh
-    > psql "$POSTGRES_CONNECTION_STRING" -c "INSERT INTO _migrations (version_id, is_applied) VALUES (20000101000000, true);"
-    > ```
-12. Setup data in the cluster by running `make prep-cluster` in `packages/shared` to create an initial user, team, and build a base template.
+10. Run `make plan` and then `make apply`. Note: This will work after the TLS certificates was issued. It can take some time; you can check the status in the Google Cloud Console. Database migrations run automatically via the API's db-migrator task.
+11. Setup data in the cluster by running `make prep-cluster` in `packages/shared` to create an initial user, team, and build a base template.
   - You can also run `make seed-db` in `packages/db` to create more users and teams.
 
 ### GCP Troubleshooting
@@ -159,35 +154,24 @@ Now, you should see the right quota options in `All Quotas` and be able to reque
     make copy-public-builds
     ```
 
-    **Option B** — Without `gsutil` (download from public GCS bucket via HTTPS, then upload to S3):
+    **Option B** — Without `gsutil` (uses `aws` CLI with GCS S3-compatible endpoint):
     ```sh
     # Set your bucket prefix (PREFIX + AWS_ACCOUNT_ID + "-")
     BUCKET_PREFIX="e2b-YOUR_ACCOUNT_ID-"
 
-    # Download kernels and firecrackers
-    mkdir -p .kernels .firecrackers
-    for name in $(curl -s "https://storage.googleapis.com/storage/v1/b/e2b-prod-public-builds/o?prefix=kernels/" | python3 -c "import sys,json; [print(i['name']) for i in json.load(sys.stdin).get('items',[]) if int(i.get('size',0))>0]"); do
-      mkdir -p ".kernels/$(dirname "${name#kernels/}")"
-      curl -sL "https://storage.googleapis.com/e2b-prod-public-builds/$name" -o ".kernels/${name#kernels/}"
-    done
-    for name in $(curl -s "https://storage.googleapis.com/storage/v1/b/e2b-prod-public-builds/o?prefix=firecrackers/" | python3 -c "import sys,json; [print(i['name']) for i in json.load(sys.stdin).get('items',[]) if int(i.get('size',0))>0]"); do
-      mkdir -p ".firecrackers/$(dirname "${name#firecrackers/}")"
-      curl -sL "https://storage.googleapis.com/e2b-prod-public-builds/$name" -o ".firecrackers/${name#firecrackers/}"
-    done
+    # Download from public GCS bucket via S3-compatible API
+    mkdir -p ./.kernels ./.firecrackers
+    aws s3 cp s3://e2b-prod-public-builds/kernels/ ./.kernels/ --recursive --no-sign-request --endpoint-url https://storage.googleapis.com
+    aws s3 cp s3://e2b-prod-public-builds/firecrackers/ ./.firecrackers/ --recursive --no-sign-request --endpoint-url https://storage.googleapis.com
 
-    # Upload to S3
-    aws s3 cp .kernels/ "s3://${BUCKET_PREFIX}fc-kernels/" --recursive --profile default
-    aws s3 cp .firecrackers/ "s3://${BUCKET_PREFIX}fc-versions/" --recursive --profile default
-    rm -rf .kernels .firecrackers
+    # Upload to your S3 buckets
+    aws s3 cp ./.kernels/ s3://${BUCKET_PREFIX}fc-kernels/ --recursive --profile ${AWS_PROFILE}
+    aws s3 cp ./.firecrackers/ s3://${BUCKET_PREFIX}fc-versions/ --recursive --profile ${AWS_PROFILE}
+    rm -rf ./.kernels ./.firecrackers
     ```
 9. Run `make plan-without-jobs` and then `make apply` to provision the cluster infrastructure
-10. Run `make plan` and then `make apply` to deploy all Nomad jobs
-11. Run database migrations: `cd packages/db && make migrate`
-    > If using Supabase, the first migration (`20000101000000_auth.sql`) will fail because Supabase already provides the `auth` schema, `authenticated` role, and `auth.users` table. To skip it, manually mark it as applied before running `make migrate`:
-    > ```sh
-    > psql "$POSTGRES_CONNECTION_STRING" -c "INSERT INTO _migrations (version_id, is_applied) VALUES (20000101000000, true);"
-    > ```
-12. Setup data in the cluster by running `make prep-cluster` in `packages/shared` to create an initial user, team, and build a base template
+10. Run `make plan` and then `make apply` to deploy all Nomad jobs (this also runs database migrations automatically via the API's db-migrator task)
+11. Setup data in the cluster by running `make prep-cluster` in `packages/shared` to create an initial user, team, and build a base template
 
 ### AWS Architecture
 
