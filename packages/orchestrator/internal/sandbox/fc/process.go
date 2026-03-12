@@ -368,6 +368,12 @@ func (p *Process) Create(
 		args["clocksource"] = "kvm-clock"
 	}
 
+	// Enable PSI (Pressure Stall Information) so /proc/pressure/memory is available.
+	// The kernel is compiled with CONFIG_PSI_DEFAULT_DISABLED=y, so PSI must be
+	// explicitly enabled via the boot arg. Without this, systemd-oomd cannot start
+	// because its ConditionPathExists=/proc/pressure/memory check fails.
+	args["psi"] = "1"
+
 	if options.SystemdToKernelLogs {
 		args["systemd.journald.forward_to_console"] = ""
 	}
