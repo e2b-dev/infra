@@ -8,9 +8,11 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 func (s *Service) DeleteDir(ctx context.Context, request *orchestrator.VolumeDirDeleteRequest) (r *orchestrator.VolumeDirDeleteResponse, err error) {
@@ -32,6 +34,16 @@ func (s *Service) DeleteDir(ctx context.Context, request *orchestrator.VolumeDir
 	span.AddEvent("removing directory", trace.WithAttributes(
 		attribute.String("path", path),
 	))
+
+	if _, _, err := fs.Stat(path); err != nil {
+		if os.IsNotExist(err) {
+			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to delete: %q not found.", request.GetPath())
+		}
+
+		logger.L().Error(ctx, "failed to stat directory", zap.String("path", path), zap.Error(err))
+
+		return nil, newAPIError(ctx, codes.Internal, http.StatusInternalServerError, orchestrator.UserErrorCode_UNKNOWN_USER_ERROR_CODE, "failed to stat directory")
+	}
 
 	// we can skip the "is not exist" errors, b/c that's what we're trying to do anyway
 	if err := fs.RemoveAll(path); err != nil && !os.IsNotExist(err) {
