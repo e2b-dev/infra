@@ -67,6 +67,7 @@ func Middleware(tracerProvider oteltrace.TracerProvider, service string) gin.Han
 		tracerName,
 		oteltrace.WithInstrumentationVersion(otelgin.Version()),
 	)
+
 	return func(c *gin.Context) {
 		c.Set(tracerKey, tracer)
 		ctx := c.Request.Context()

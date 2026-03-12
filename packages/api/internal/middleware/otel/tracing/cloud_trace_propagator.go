@@ -15,6 +15,7 @@ func parseEdgeTraceID(gcpHeader, awsHeader string) (string, bool) {
 	if id, ok := parseGCPTraceID(gcpHeader); ok {
 		return id, true
 	}
+
 	return parseAWSTraceID(awsHeader)
 }
 
@@ -40,7 +41,7 @@ func parseAWSTraceID(header string) (string, bool) {
 		return "", false
 	}
 
-	for _, field := range strings.Split(header, ";") {
+	for field := range strings.SplitSeq(header, ";") {
 		key, val, ok := strings.Cut(strings.TrimSpace(field), "=")
 		if !ok || key != "Root" {
 			continue
@@ -64,5 +65,6 @@ func parseAWSTraceID(header string) (string, bool) {
 
 func isHexOfLen(s string, byteLen int) bool {
 	b, err := hex.DecodeString(s)
+
 	return err == nil && len(b) == byteLen
 }
