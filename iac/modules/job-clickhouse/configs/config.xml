@@ -75,10 +75,6 @@
 
     <processors_profile_log remove="1"/>
 
-    <asynchronous_metric_log>
-        <ttl>event_date + INTERVAL 1 DAY</ttl>
-    </asynchronous_metric_log>
-
     <part_log>
         <ttl>event_date + INTERVAL 1 DAY</ttl>
     </part_log>
