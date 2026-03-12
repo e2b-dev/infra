@@ -159,6 +159,14 @@ build {
     ]
   }
 
+  // Install SSM Agent for remote shell access
+  provisioner "shell" {
+    inline = [
+      "sudo snap install amazon-ssm-agent --classic",
+      "sudo systemctl enable snap.amazon-ssm-agent.amazon-ssm-agent.service",
+    ]
+  }
+
   provisioner "shell" {
     inline = [
       # Increase the maximum number of open files

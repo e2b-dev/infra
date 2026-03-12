@@ -170,6 +170,19 @@ data "aws_iam_policy_document" "cluster_node_policy" {
     ]
     resources = ["*"]
   }
+
+  // SSM Session Manager for remote shell access
+  statement {
+    effect = "Allow"
+    actions = [
+      "ssmmessages:CreateControlChannel",
+      "ssmmessages:CreateDataChannel",
+      "ssmmessages:OpenControlChannel",
+      "ssmmessages:OpenDataChannel",
+      "ssm:UpdateInstanceInformation",
+    ]
+    resources = ["*"]
+  }
 }
 
 data "aws_iam_policy_document" "cluster_node_ec2_policy" {
