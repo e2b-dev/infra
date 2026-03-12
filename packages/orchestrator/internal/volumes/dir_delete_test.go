@@ -5,10 +5,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
 func TestDirDelete(t *testing.T) {
@@ -18,7 +19,7 @@ func TestDirDelete(t *testing.T) {
 
 	t.Run("delete dir", func(t *testing.T) {
 		// create directory
-		err := os.Mkdir(filepath.Join(tmpdir, dirname), 0755)
+		err := os.Mkdir(filepath.Join(tmpdir, dirname), 0o755)
 		require.NoError(t, err)
 
 		// delete directory

@@ -5,10 +5,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 func TestDirCreate(t *testing.T) {
@@ -53,7 +54,7 @@ func TestDirCreate(t *testing.T) {
 
 	t.Run("create dir with custom mode and ownership", func(t *testing.T) {
 		dirname := "custom-dir"
-		mode := uint32(0700)
+		mode := uint32(0o700)
 		uid := uint32(1000)
 		gid := uint32(1000)
 
@@ -73,7 +74,7 @@ func TestDirCreate(t *testing.T) {
 
 	t.Run("create dir that already exists", func(t *testing.T) {
 		dirname := "existing-dir"
-		err := os.Mkdir(filepath.Join(tmpdir, dirname), 0755)
+		err := os.Mkdir(filepath.Join(tmpdir, dirname), 0o755)
 		require.NoError(t, err)
 
 		_, err = s.CreateDir(t.Context(), &orchestrator.VolumeDirCreateRequest{

@@ -4,9 +4,10 @@ import (
 	"os"
 	"testing"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
 func TestVolume(t *testing.T) {

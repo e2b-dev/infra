@@ -6,10 +6,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
 type mockGetFileServer struct {
@@ -33,7 +34,7 @@ func TestFileGet(t *testing.T) {
 	t.Run("get file", func(t *testing.T) {
 		filename := "test-get.txt"
 		content := []byte("hello world")
-		err := os.WriteFile(filepath.Join(tmpdir, filename), content, 0644)
+		err := os.WriteFile(filepath.Join(tmpdir, filename), content, 0o644)
 		require.NoError(t, err)
 
 		mockServer := new(mockGetFileServer)

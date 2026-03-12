@@ -5,9 +5,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
 func TestStat(t *testing.T) {
@@ -15,7 +16,7 @@ func TestStat(t *testing.T) {
 
 	t.Run("stat file", func(t *testing.T) {
 		filename := "test.txt"
-		err := os.WriteFile(filepath.Join(tmpdir, filename), []byte("test"), 0644)
+		err := os.WriteFile(filepath.Join(tmpdir, filename), []byte("test"), 0o644)
 		require.NoError(t, err)
 
 		resp, err := s.Stat(t.Context(), &orchestrator.StatRequest{
@@ -29,7 +30,7 @@ func TestStat(t *testing.T) {
 
 	t.Run("stat dir", func(t *testing.T) {
 		dirname := "test-dir"
-		err := os.Mkdir(filepath.Join(tmpdir, dirname), 0755)
+		err := os.Mkdir(filepath.Join(tmpdir, dirname), 0o755)
 		require.NoError(t, err)
 
 		resp, err := s.Stat(t.Context(), &orchestrator.StatRequest{
@@ -51,7 +52,7 @@ func TestStat(t *testing.T) {
 	t.Run("stat symlink", func(t *testing.T) {
 		target := "target.txt"
 		link := "link.txt"
-		err := os.WriteFile(filepath.Join(tmpdir, target), []byte("test"), 0644)
+		err := os.WriteFile(filepath.Join(tmpdir, target), []byte("test"), 0o644)
 		require.NoError(t, err)
 		err = os.Symlink(target, filepath.Join(tmpdir, link))
 		require.NoError(t, err)

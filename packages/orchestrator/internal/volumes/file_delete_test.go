@@ -5,9 +5,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
 func TestFileDelete(t *testing.T) {
@@ -15,7 +16,7 @@ func TestFileDelete(t *testing.T) {
 
 	t.Run("delete file", func(t *testing.T) {
 		filename := "test-delete.txt"
-		err := os.WriteFile(filepath.Join(tmpdir, filename), []byte("test"), 0644)
+		err := os.WriteFile(filepath.Join(tmpdir, filename), []byte("test"), 0o644)
 		require.NoError(t, err)
 
 		_, err = s.DeleteFile(t.Context(), &orchestrator.VolumeFileDeleteRequest{

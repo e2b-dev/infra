@@ -5,9 +5,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
 func TestFileUpdateMetadata(t *testing.T) {
@@ -15,10 +16,10 @@ func TestFileUpdateMetadata(t *testing.T) {
 
 	t.Run("update mode", func(t *testing.T) {
 		filename := "test-update-mode.txt"
-		err := os.WriteFile(filepath.Join(tmpdir, filename), []byte("test"), 0644)
+		err := os.WriteFile(filepath.Join(tmpdir, filename), []byte("test"), 0o644)
 		require.NoError(t, err)
 
-		newMode := uint32(0755)
+		newMode := uint32(0o755)
 		_, err = s.UpdateFileMetadata(t.Context(), &orchestrator.VolumeFileUpdateRequest{
 			Volume: volumeInfo,
 			Path:   filename,
@@ -33,7 +34,7 @@ func TestFileUpdateMetadata(t *testing.T) {
 
 	t.Run("update uid/gid", func(t *testing.T) {
 		filename := "test-update-owner.txt"
-		err := os.WriteFile(filepath.Join(tmpdir, filename), []byte("test"), 0644)
+		err := os.WriteFile(filepath.Join(tmpdir, filename), []byte("test"), 0o644)
 		require.NoError(t, err)
 
 		newUid := uint32(1001)
@@ -49,7 +50,7 @@ func TestFileUpdateMetadata(t *testing.T) {
 	})
 
 	t.Run("update non-existent file", func(t *testing.T) {
-		newMode := uint32(0755)
+		newMode := uint32(0o755)
 		_, err := s.UpdateFileMetadata(t.Context(), &orchestrator.VolumeFileUpdateRequest{
 			Volume: volumeInfo,
 			Path:   "non-existent",
