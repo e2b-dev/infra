@@ -260,6 +260,15 @@ func createCgroupManager() (m cgroups.Manager) {
 	}()
 
 	if useSystemdOOMD {
+		// Verify D-Bus system bus is available -- systemd-run --scope (used to
+		// place every user process into a transient scope unit) communicates
+		// with PID 1 over D-Bus and will fail without it.
+		const dbusSocketPath = "/run/dbus/system_bus_socket"
+		if _, err := os.Stat(dbusSocketPath); err != nil {
+			fmt.Fprintf(os.Stderr, "WARNING: D-Bus system bus socket not found at %s: %v\n", dbusSocketPath, err)
+			fmt.Fprintf(os.Stderr, "WARNING: systemd-run --scope will fail; ensure the 'dbus' package is installed\n")
+		}
+
 		// Unmask and start systemd-oomd -- the service was masked during provisioning.
 		if out, err := exec.Command("systemctl", "unmask", "systemd-oomd").CombinedOutput(); err != nil {
 			fmt.Fprintf(os.Stderr, "failed to unmask systemd-oomd: %v: %s\n", err, out)
