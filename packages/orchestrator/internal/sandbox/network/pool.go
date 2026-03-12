@@ -67,6 +67,9 @@ type Config struct {
 	SandboxTCPFirewallHTTPPort  uint16 `env:"SANDBOX_TCP_FIREWALL_HTTP_PORT"  envDefault:"5016"`
 	SandboxTCPFirewallTLSPort   uint16 `env:"SANDBOX_TCP_FIREWALL_TLS_PORT"   envDefault:"5017"`
 	SandboxTCPFirewallOtherPort uint16 `env:"SANDBOX_TCP_FIREWALL_OTHER_PORT" envDefault:"5018"`
+
+	// NetworkVersion selects v1 (iptables per-sandbox) or v2 (nftables verdict maps).
+	NetworkVersion int `env:"NETWORK_VERSION" envDefault:"1"`
 }
 
 func ParseConfig() (Config, error) {

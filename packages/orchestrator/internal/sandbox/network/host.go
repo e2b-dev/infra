@@ -17,6 +17,9 @@ const loopbackInterface = "lo"
 // Host default gateway name
 var defaultGateway = utils.Must(getDefaultGateway(context.Background()))
 
+// DefaultGateway returns the detected host default gateway interface name.
+func DefaultGateway() string { return defaultGateway }
+
 //	func getDefaultGateway() (string, error) {
 //		route, err := exec.Command(
 //			"sh",

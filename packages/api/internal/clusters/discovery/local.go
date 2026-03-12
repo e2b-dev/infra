@@ -3,6 +3,7 @@ package discovery
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 	nomadapi "github.com/hashicorp/nomad/api"
@@ -33,7 +34,9 @@ func (sd *LocalServiceDiscovery) Query(ctx context.Context) ([]Item, error) {
 	ctx, span := tracer.Start(ctx, "query-local-cluster-nodes", trace.WithAttributes(telemetry.WithClusterID(sd.clusterID)))
 	defer span.End()
 
-	// Static discovery for local environment
+	// Static discovery for local environment.
+	// Supports comma-separated hosts for multi-node local setups,
+	// e.g. TESTS_ORCH_INSTANCE_HOST=localhost,192.168.100.253
 	if env.IsLocal() {
 		if testsInstanceHost == "" {
 			logger.L().Debug(ctx, "Service discovery is disabled in local environment")
@@ -41,15 +44,27 @@ func (sd *LocalServiceDiscovery) Query(ctx context.Context) ([]Item, error) {
 			return []Item{}, nil
 		}
 
-		return []Item{
-			{
-				UniqueIdentifier:     "local",
-				NodeID:               "local",
+		hosts := strings.Split(testsInstanceHost, ",")
+		items := make([]Item, 0, len(hosts))
+		for i, host := range hosts {
+			host = strings.TrimSpace(host)
+			if host == "" {
+				continue
+			}
+			nodeID := fmt.Sprintf("local-%d", i)
+			if i == 0 {
+				nodeID = "local"
+			}
+			items = append(items, Item{
+				UniqueIdentifier:     nodeID,
+				NodeID:               nodeID,
 				InstanceID:           "unknown",
-				LocalIPAddress:       testsInstanceHost,
+				LocalIPAddress:       host,
 				LocalInstanceApiPort: consts.OrchestratorAPIPort,
-			},
-		}, nil
+			})
+		}
+
+		return items, nil
 	}
 
 	// For now, we want to search only for template builders as local orchestrators are still discovered

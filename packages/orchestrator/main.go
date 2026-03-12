@@ -40,6 +40,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/cgroup"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
+	networkv2 "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network/v2"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/peerclient"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/server"
@@ -456,12 +457,28 @@ func run(config cfg.Config) (success bool) {
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create network pool", zap.Error(err))
 	}
-	networkPool := network.NewPool(network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, slotStorage, config.NetworkConfig)
-	startService("network pool", func() error {
-		networkPool.Populate(ctx)
-
-		return nil
-	})
+	var networkPool network.PoolInterface
+	if config.NetworkConfig.NetworkVersion == 2 {
+		logger.L().Info(ctx, "Using v2 network pool (nftables, zero iptables)")
+		hostFw, hfErr := networkv2.NewHostFirewall(network.DefaultGateway(), config.NetworkConfig)
+		if hfErr != nil {
+			logger.L().Fatal(ctx, "failed to create v2 host firewall", zap.Error(hfErr))
+		}
+		observer, _ := networkv2.NewVethObserver() // best-effort
+		v2Pool := networkv2.NewV2Pool(slotStorage, config.NetworkConfig, hostFw, observer)
+		startService("network pool", func() error {
+			v2Pool.Populate(ctx)
+			return nil
+		})
+		networkPool = v2Pool
+	} else {
+		v1Pool := network.NewPool(network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, slotStorage, config.NetworkConfig)
+		startService("network pool", func() error {
+			v1Pool.Populate(ctx)
+			return nil
+		})
+		networkPool = v1Pool
+	}
 	closers = append(closers, closer{"network pool", networkPool.Close})
 
 	// sandbox factory
