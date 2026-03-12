@@ -47,7 +47,7 @@ type Server struct {
 	startingSandboxes *semaphore.Weighted
 	peerRegistry      peerclient.Registry
 	uploadedBuilds    *ttlcache.Cache[string, struct{}]
-  sandboxCreateDuration metric.Int64Histogram
+	sandboxCreateDuration metric.Int64Histogram
 }
 
 type ServiceConfig struct {
