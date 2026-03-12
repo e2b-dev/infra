@@ -144,7 +144,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		return nil, fmt.Errorf("failed to convert volume mounts: %w", err)
 	}
 
-	sbxConfig := &sandbox.Config{
+	sbxConfig := sandbox.NewConfig(sandbox.Config{
 		BaseTemplateID: req.GetSandbox().GetBaseTemplateId(),
 
 		Vcpu:            req.GetSandbox().GetVcpu(),
@@ -164,8 +164,8 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		},
 
 		VolumeMounts: volumeMounts,
-	}
-	sbxConfig.SetNetwork(network)
+		Network:      network,
+	})
 
 	sbx, err := s.sandboxFactory.ResumeSandbox(
 		ctx,

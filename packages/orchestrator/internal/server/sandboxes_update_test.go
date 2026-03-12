@@ -25,7 +25,7 @@ func newTestSandbox(t *testing.T, withSlot bool) *sandbox.Sandbox {
 
 	sbx := &sandbox.Sandbox{
 		Metadata: &sandbox.Metadata{
-			Config: &sandbox.Config{},
+			Config: sandbox.NewConfig(sandbox.Config{}),
 			Runtime: sandbox.RuntimeMetadata{
 				SandboxID: id.Generate(),
 			},

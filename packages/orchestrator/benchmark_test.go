@@ -195,7 +195,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	})
 
 	accessToken := "access-token"
-	sandboxConfig := &sandbox.Config{
+	sandboxConfig := sandbox.NewConfig(sandbox.Config{
 		BaseTemplateID:  templateID,
 		Vcpu:            2,
 		RamMB:           512,
@@ -210,8 +210,8 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 			KernelVersion:      kernelVersion,
 			FirecrackerVersion: fcVersion,
 		},
-	}
-	sandboxConfig.SetNetwork(sbxNetwork)
+		Network: sbxNetwork,
+	})
 
 	runtime := sandbox.RuntimeMetadata{
 		TemplateID:  templateID,

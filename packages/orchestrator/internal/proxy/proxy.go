@@ -73,17 +73,17 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 			}
 
 			ingress := sbx.Config.GetNetwork().GetIngress()
-			accessToken := ingress.TrafficAccessToken
+			accessToken := ingress.GetTrafficAccessToken()
 
 			isNonEnvdTraffic := int64(port) != consts.DefaultEnvdServerPort
 
 			// Handle traffic access token validation.
 			// We are skipping envd port as it has its own access validation mechanism.
-			if accessToken != nil && isNonEnvdTraffic {
+			if accessToken != "" && isNonEnvdTraffic {
 				accessTokenRaw := r.Header.Get(trafficAccessTokenHeader)
 				if accessTokenRaw == "" {
 					return nil, reverseproxy.NewErrMissingTrafficAccessToken(sandboxId, trafficAccessTokenHeader)
-				} else if accessTokenRaw != *accessToken {
+				} else if accessTokenRaw != accessToken {
 					return nil, reverseproxy.NewErrInvalidTrafficAccessToken(sandboxId, trafficAccessTokenHeader)
 				}
 			}

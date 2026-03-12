@@ -78,37 +78,30 @@ type Config struct {
 	VolumeMounts []VolumeMountConfig
 
 	// mu protects the mutable settings (currently just network).
-	mu      sync.RWMutex
-	network *orchestrator.SandboxNetworkConfig
+	mu      *sync.RWMutex
+	Network *orchestrator.SandboxNetworkConfig
+}
+
+// NewConfig creates a Config, normalizing a nil Network to an empty config
+// so that GetNetwork() never returns nil.
+func NewConfig(c Config) *Config {
+	if c.Network == nil {
+		c.Network = &orchestrator.SandboxNetworkConfig{}
+	}
+
+	c.mu = &sync.RWMutex{}
+
+	return &c
 }
 
 // GetNetwork returns the sandbox network config in a thread-safe manner.
-// The returned value is never nil; Egress and Ingress are always set (possibly empty).
+// The returned proto is never nil (guaranteed by NewConfig / SetNetwork).
+// Sub-fields (Egress, Ingress) may be nil — use proto's nil-safe getters.
 func (c *Config) GetNetwork() *orchestrator.SandboxNetworkConfig {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	if c.network == nil {
-		return &orchestrator.SandboxNetworkConfig{
-			Egress:  &orchestrator.SandboxNetworkEgressConfig{},
-			Ingress: &orchestrator.SandboxNetworkIngressConfig{},
-		}
-	}
-
-	egress := c.network.GetEgress()
-	if egress == nil {
-		egress = &orchestrator.SandboxNetworkEgressConfig{}
-	}
-
-	ingress := c.network.GetIngress()
-	if ingress == nil {
-		ingress = &orchestrator.SandboxNetworkIngressConfig{}
-	}
-
-	return &orchestrator.SandboxNetworkConfig{
-		Egress:  egress,
-		Ingress: ingress,
-	}
+	return c.Network
 }
 
 // SetNetworkEgress updates the sandbox network egress config in a thread-safe manner.
@@ -116,19 +109,20 @@ func (c *Config) SetNetworkEgress(egress *orchestrator.SandboxNetworkEgressConfi
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if c.network == nil {
-		c.network = &orchestrator.SandboxNetworkConfig{}
-	}
-
-	c.network.Egress = egress
+	c.Network.Egress = egress
 }
 
-// SetNetwork sets the full network config. Used at construction time.
+// SetNetwork sets the full network config.
+// A nil value is normalized to an empty config so that GetNetwork() never returns nil.
 func (c *Config) SetNetwork(net *orchestrator.SandboxNetworkConfig) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.network = net
+	if net == nil {
+		net = &orchestrator.SandboxNetworkConfig{}
+	}
+
+	c.Network = net
 }
 
 type VolumeMountConfig struct {
