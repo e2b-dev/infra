@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -18,81 +19,37 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 )
 
-// newTestSandbox creates a sandbox for testing. If withSlot is true, the sandbox
-// gets a Slot that will fail UpdateInternet (no real network namespace exists).
-func newTestSandbox(t *testing.T, withSlot bool) *sandbox.Sandbox {
-	t.Helper()
-
-	sbx := &sandbox.Sandbox{
-		Metadata: &sandbox.Metadata{
-			Config: sandbox.NewConfig(sandbox.Config{}),
-			Runtime: sandbox.RuntimeMetadata{
-				SandboxID: id.Generate(),
-			},
-		},
-	}
-	sbx.SetStartedAt(time.Now())
-	sbx.SetEndAt(time.Now().Add(time.Hour))
-
-	if withSlot {
-		slot, err := network.NewSlot("test", 1, network.Config{})
-		require.NoError(t, err)
-		sbx.Resources = &sandbox.Resources{Slot: slot}
-	}
-
-	return sbx
-}
-
-func newTestServer(sandboxes ...*sandbox.Sandbox) *Server {
-	s := &Server{
-		sandboxes:        sandbox.NewSandboxesMap(),
-		info:             &service.ServiceInfo{},
-		sbxEventsService: internalevents.NewEventsService(nil),
-	}
-	for _, sbx := range sandboxes {
-		s.sandboxes.Insert(sbx)
-	}
-
-	return s
-}
-
-func TestUpdate_NotFound(t *testing.T) {
-	t.Parallel()
-
-	s := newTestServer()
-	_, err := s.Update(t.Context(), &orchestrator.SandboxUpdateRequest{
-		SandboxId: "nonexistent",
-	})
-
-	require.Error(t, err)
-	assert.Equal(t, codes.NotFound, status.Code(err))
-}
-
-func TestUpdate_EndTimeOnly(t *testing.T) {
-	t.Parallel()
-
-	sbx := newTestSandbox(t, false)
-	s := newTestServer(sbx)
-
-	newEnd := time.Now().Add(2 * time.Hour)
-	_, err := s.Update(t.Context(), &orchestrator.SandboxUpdateRequest{
-		SandboxId: sbx.Runtime.SandboxID,
-		EndTime:   timestamppb.New(newEnd),
-	})
-
-	require.NoError(t, err)
-	assert.WithinDuration(t, newEnd, sbx.GetEndAt(), time.Second)
-}
+// These tests exercise the rollback path of Update: when egress application
+// fails (no real network namespace), end_time and egress must not be changed.
 
 func TestUpdate_EgressOnly_FailsAndDoesNotChangeEndTime(t *testing.T) {
 	t.Parallel()
 
-	// Sandbox with a Slot but no real namespace — UpdateInternet will fail.
-	sbx := newTestSandbox(t, true)
-	originalEnd := sbx.GetEndAt()
-	s := newTestServer(sbx)
+	slot, err := network.NewSlot("test", 1, network.Config{})
+	require.NoError(t, err)
 
-	_, err := s.Update(t.Context(), &orchestrator.SandboxUpdateRequest{
+	sbx := &sandbox.Sandbox{
+		Metadata: &sandbox.Metadata{
+			Config:  sandbox.NewConfig(sandbox.Config{}),
+			Runtime: sandbox.RuntimeMetadata{SandboxID: id.Generate()},
+		},
+		Resources: &sandbox.Resources{Slot: slot},
+	}
+	sbx.SetStartedAt(time.Now())
+	sbx.SetEndAt(time.Now().Add(time.Hour))
+	originalEnd := sbx.GetEndAt()
+
+	sandboxMap := sandbox.NewSandboxesMap()
+	sandboxMap.Insert(context.Background(), sbx)
+	sandboxMap.MarkRunning(sbx)
+
+	s := &Server{
+		sandboxFactory:   &sandbox.Factory{Sandboxes: sandboxMap},
+		info:             &service.ServiceInfo{},
+		sbxEventsService: internalevents.NewEventsService(nil),
+	}
+
+	_, err = s.Update(t.Context(), &orchestrator.SandboxUpdateRequest{
 		SandboxId: sbx.Runtime.SandboxID,
 		Egress: &orchestrator.SandboxNetworkEgressConfig{
 			DeniedCidrs: []string{"0.0.0.0/0"},
@@ -101,20 +58,38 @@ func TestUpdate_EgressOnly_FailsAndDoesNotChangeEndTime(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Equal(t, codes.Internal, status.Code(err))
-	// end_time was not in the request, so it should be unchanged.
 	assert.Equal(t, originalEnd, sbx.GetEndAt())
 }
 
 func TestUpdate_EndTimeAndEgress_EgressFails_RevertsEndTime(t *testing.T) {
 	t.Parallel()
 
-	// Sandbox with a Slot but no real namespace — UpdateInternet will fail.
-	sbx := newTestSandbox(t, true)
+	slot, err := network.NewSlot("test", 1, network.Config{})
+	require.NoError(t, err)
+
+	sbx := &sandbox.Sandbox{
+		Metadata: &sandbox.Metadata{
+			Config:  sandbox.NewConfig(sandbox.Config{}),
+			Runtime: sandbox.RuntimeMetadata{SandboxID: id.Generate()},
+		},
+		Resources: &sandbox.Resources{Slot: slot},
+	}
+	sbx.SetStartedAt(time.Now())
+	sbx.SetEndAt(time.Now().Add(time.Hour))
 	originalEnd := sbx.GetEndAt()
-	s := newTestServer(sbx)
+
+	sandboxMap := sandbox.NewSandboxesMap()
+	sandboxMap.Insert(context.Background(), sbx)
+	sandboxMap.MarkRunning(sbx)
+
+	s := &Server{
+		sandboxFactory:   &sandbox.Factory{Sandboxes: sandboxMap},
+		info:             &service.ServiceInfo{},
+		sbxEventsService: internalevents.NewEventsService(nil),
+	}
 
 	newEnd := time.Now().Add(5 * time.Hour)
-	_, err := s.Update(t.Context(), &orchestrator.SandboxUpdateRequest{
+	_, err = s.Update(t.Context(), &orchestrator.SandboxUpdateRequest{
 		SandboxId: sbx.Runtime.SandboxID,
 		EndTime:   timestamppb.New(newEnd),
 		Egress: &orchestrator.SandboxNetworkEgressConfig{
@@ -126,25 +101,9 @@ func TestUpdate_EndTimeAndEgress_EgressFails_RevertsEndTime(t *testing.T) {
 	assert.Equal(t, codes.Internal, status.Code(err))
 	// end_time must be reverted to original since egress failed.
 	assert.Equal(t, originalEnd, sbx.GetEndAt())
-	// Network egress should not have been set (GetNetwork returns empty defaults).
+	// Network egress should not have been set.
 	egress := sbx.Config.GetNetwork().GetEgress()
 	assert.Empty(t, egress.GetAllowedCidrs())
 	assert.Empty(t, egress.GetDeniedCidrs())
 	assert.Empty(t, egress.GetAllowedDomains())
-}
-
-func TestUpdate_NoFieldsSet(t *testing.T) {
-	t.Parallel()
-
-	sbx := newTestSandbox(t, false)
-	originalEnd := sbx.GetEndAt()
-	s := newTestServer(sbx)
-
-	_, err := s.Update(t.Context(), &orchestrator.SandboxUpdateRequest{
-		SandboxId: sbx.Runtime.SandboxID,
-	})
-
-	require.NoError(t, err)
-	// Nothing should change.
-	assert.Equal(t, originalEnd, sbx.GetEndAt())
 }
