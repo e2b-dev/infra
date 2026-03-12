@@ -65,6 +65,10 @@
         <ttl>event_date + INTERVAL 1 DAY</ttl>
     </query_log>
 
+    <query_views_log>
+        <ttl>event_date + INTERVAL 1 DAY</ttl>
+    </query_views_log>
+
     <metric_log>
         <ttl>event_date + INTERVAL 1 DAY</ttl>
     </metric_log>
