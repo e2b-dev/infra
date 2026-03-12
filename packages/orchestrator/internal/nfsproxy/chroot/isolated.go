@@ -76,6 +76,8 @@ func IsolateFileSystem(ctx context.Context, source string, opts ...Option) (*Iso
 	return fs, nil
 }
 
+const maxMountAttempts = 10
+
 func (fs *IsolatedFS) chroot(path string) error {
 	return fs.ns.Do(func() error {
 		var err error
@@ -88,7 +90,7 @@ func (fs *IsolatedFS) chroot(path string) error {
 			return fmt.Errorf("failed to bind mount %q: %w", path, err)
 		}
 
-		for {
+		for range maxMountAttempts {
 			randomDirName := fmt.Sprintf(".old-root.%d", rand.Intn(1000000))
 
 			oldRootPath := filepath.Join(path, randomDirName)
