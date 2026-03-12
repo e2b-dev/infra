@@ -283,7 +283,7 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 
 	if req.GetEgress() != nil {
 		updates = append(updates, func(ctx context.Context) (func(context.Context), error) {
-			oldEgress := sbx.Config.GetNetwork().GetEgress()
+			oldEgress := sbx.Config.GetNetworkEgress()
 
 			if err := sbx.Slot.UpdateInternet(ctx, req.GetEgress()); err != nil {
 				return nil, fmt.Errorf("failed to update sandbox network: %w", err)
@@ -311,7 +311,7 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 
 	if req.GetIngress() != nil {
 		updates = append(updates, func(_ context.Context) (func(context.Context), error) {
-			oldIngress := sbx.Config.GetNetwork().GetIngress()
+			oldIngress := sbx.Config.GetNetworkIngress()
 			sbx.SetNetworkIngress(req.GetIngress())
 
 			ingress := req.GetIngress()
