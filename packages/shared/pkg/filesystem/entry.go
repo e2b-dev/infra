@@ -3,6 +3,7 @@ package filesystem
 import (
 	"os"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -55,17 +56,48 @@ func GetEntryInfo(path string, fileInfo os.FileInfo) EntryInfo {
 		SymlinkTarget: symlinkTarget,
 	}
 
-	if base := getBase(fileInfo.Sys()); base != nil {
-		entry.AccessedTime = toTimestamp(base.Atim)
-		entry.CreatedTime = toTimestamp(base.Ctim)
-		entry.ModifiedTime = toTimestamp(base.Mtim)
-		entry.UID = base.Uid
-		entry.GID = base.Gid
-	} else if !fileInfo.ModTime().IsZero() {
+	if !fillFromBase(fileInfo.Sys(), &entry) {
+		// don't know what the base is, fill what little we can
 		entry.ModifiedTime = fileInfo.ModTime()
 	}
 
 	return entry
+}
+
+func fillFromBase(sys any, entry *EntryInfo) bool {
+	if sys == nil {
+		return false
+	}
+
+	st, ok := sys.(*syscall.Stat_t)
+	if ok {
+		if st == nil {
+			return false
+		}
+		entry.AccessedTime = toTimestampFromSyscall(st.Atim)
+		entry.CreatedTime = toTimestampFromSyscall(st.Ctim)
+		entry.ModifiedTime = toTimestampFromSyscall(st.Mtim)
+		entry.UID = st.Uid
+		entry.GID = st.Gid
+
+		return true
+	}
+
+	uxt, ok := sys.(*unix.Stat_t)
+	if ok {
+		if uxt == nil {
+			return false
+		}
+		entry.AccessedTime = toTimestampFromUnix(uxt.Atim)
+		entry.CreatedTime = toTimestampFromUnix(uxt.Ctim)
+		entry.ModifiedTime = toTimestampFromUnix(uxt.Mtim)
+		entry.UID = uxt.Uid
+		entry.GID = uxt.Gid
+
+		return true
+	}
+
+	return false
 }
 
 // getEntryType determines the type of file entry based on its mode and path.
@@ -94,7 +126,7 @@ func followSymlink(path string) string {
 	return resolvedPath
 }
 
-func toTimestamp(spec unix.Timespec) time.Time {
+func toTimestampFromSyscall(spec syscall.Timespec) time.Time {
 	if spec.Sec == 0 && spec.Nsec == 0 {
 		return time.Time{}
 	}
@@ -102,8 +134,10 @@ func toTimestamp(spec unix.Timespec) time.Time {
 	return time.Unix(spec.Sec, spec.Nsec)
 }
 
-func getBase(sys any) *unix.Stat_t {
-	st, _ := sys.(*unix.Stat_t)
+func toTimestampFromUnix(spec unix.Timespec) time.Time {
+	if spec.Sec == 0 && spec.Nsec == 0 {
+		return time.Time{}
+	}
 
-	return st
+	return time.Unix(spec.Sec, spec.Nsec)
 }

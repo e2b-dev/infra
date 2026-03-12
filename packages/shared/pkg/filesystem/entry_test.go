@@ -5,11 +5,13 @@ import (
 	"os/user"
 	"path/filepath"
 	"strconv"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sys/unix"
 )
 
 func TestGetEntryType(t *testing.T) {
@@ -205,8 +207,10 @@ func TestEntryInfoFromFileInfo(t *testing.T) {
 	assert.Equal(t, FileFileType, result.Type)
 	assert.Equal(t, os.FileMode(0o644), result.Mode)
 	assert.Contains(t, result.Permissions, "-rw-r--r--")
-	assert.Equal(t, currentUser.Uid, strconv.Itoa(int(result.UID)))
-	assert.Equal(t, currentUser.Gid, strconv.Itoa(int(result.GID)))
+	uid, _ := strconv.Atoi(currentUser.Uid)
+	gid, _ := strconv.Atoi(currentUser.Gid)
+	assert.Equal(t, uint32(uid), result.UID)
+	assert.Equal(t, uint32(gid), result.GID)
 	assert.NotNil(t, result.ModifiedTime)
 	assert.Empty(t, result.SymlinkTarget)
 
@@ -261,4 +265,63 @@ func TestEntryInfoFromFileInfo_Symlink(t *testing.T) {
 	expectedTarget, err := filepath.EvalSymlinks(symlinkPath)
 	require.NoError(t, err)
 	assert.Equal(t, expectedTarget, *result.SymlinkTarget)
+}
+
+func TestFillFromBase(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns stat for unix stat", func(t *testing.T) {
+		t.Parallel()
+
+		expected := &unix.Stat_t{Uid: 123, Gid: 456}
+
+		result := &EntryInfo{}
+		ok := fillFromBase(expected, result)
+		require.True(t, ok)
+
+		assert.Equal(t, uint32(123), result.UID)
+		assert.Equal(t, uint32(456), result.GID)
+	})
+
+	t.Run("returns stat for syscall stat", func(t *testing.T) {
+		t.Parallel()
+
+		expected := &syscall.Stat_t{Uid: 123, Gid: 456}
+
+		result := &EntryInfo{}
+		ok := fillFromBase(expected, result)
+		require.True(t, ok)
+
+		assert.Equal(t, uint32(123), result.UID)
+		assert.Equal(t, uint32(456), result.GID)
+	})
+
+	t.Run("returns typed nil for nil unix stat pointer", func(t *testing.T) {
+		t.Parallel()
+
+		var stat *unix.Stat_t
+
+		result := &EntryInfo{}
+		ok := fillFromBase(stat, result)
+
+		assert.False(t, ok)
+	})
+
+	t.Run("returns nil for unrelated type", func(t *testing.T) {
+		t.Parallel()
+
+		result := &EntryInfo{}
+		ok := fillFromBase(struct{}{}, result)
+
+		assert.False(t, ok)
+	})
+
+	t.Run("returns nil for untyped nil", func(t *testing.T) {
+		t.Parallel()
+
+		result := &EntryInfo{}
+		ok := fillFromBase(nil, result)
+
+		assert.False(t, ok)
+	})
 }
