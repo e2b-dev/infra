@@ -131,6 +131,17 @@ variable "ingress_count" {
   default = 1
 }
 
+variable "additional_api_paths_handled_by_ingress" {
+  type        = list(string)
+  description = "Additional paths to forward to nomad's ingress"
+  default     = []
+}
+
+variable "additional_traefik_arguments" {
+  type    = list(string)
+  default = []
+}
+
 variable "client_proxy_resources_memory_mb" {
   type    = number
   default = 1024
@@ -309,6 +320,8 @@ variable "domain_name" {
 variable "additional_api_services_json" {
   type        = string
   description = <<EOT
+Deprecated. Use `additional_api_services` instead.
+
 Additional path rules to add to the API path matcher.
 Format: json string of an array of objects with 'path' and 'service' keys.
 Example:
@@ -322,6 +335,17 @@ Example:
 ]
 EOT
   default     = ""
+}
+
+variable "additional_api_services" {
+  type = list(object({
+    paths                    = list(string)
+    service_id               = string
+    api_node_group_port_name = string
+    api_node_group_port      = number
+  }))
+  description = "Additional path rules to add to the API path matcher."
+  default     = []
 }
 
 variable "prefix" {
@@ -380,6 +404,11 @@ variable "redis_managed" {
   type    = bool
 }
 
+variable "redis_shard_count" {
+  type    = number
+  default = 1
+}
+
 variable "filestore_cache_enabled" {
   type        = bool
   description = "Set to true to enable Filestore cache. Can be set via TF_VAR_use_filestore_cache or USE_FILESTORE_CACHE env var."
@@ -396,6 +425,12 @@ variable "filestore_cache_capacity_gb" {
   type        = number
   description = "The capacity of the Filestore cache in GB"
   default     = 0
+}
+
+variable "filestore_nfs_version" {
+  type        = string
+  description = "The NFS protocol version to use"
+  default     = ""
 }
 
 variable "filestore_cache_cleanup_disk_usage_target" {
@@ -477,6 +512,7 @@ variable "client_clusters_config" {
 
     hugepages_percentage   = optional(number)
     network_interface_type = optional(string)
+    node_labels            = optional(list(string), [])
   }))
 
   description = <<EOT
@@ -536,6 +572,7 @@ variable "build_clusters_config" {
 
     hugepages_percentage   = optional(number)
     network_interface_type = optional(string)
+    node_labels            = optional(list(string), [])
   }))
   description = <<EOT
 Configuration for the build clusters.
@@ -604,6 +641,26 @@ variable "sandbox_storage_backend" {
   default     = ""
 }
 
+variable "db_max_open_connections" {
+  type    = number
+  default = 40
+}
+
+variable "db_min_idle_connections" {
+  type    = number
+  default = 5
+}
+
+variable "auth_db_max_open_connections" {
+  type    = number
+  default = 20
+}
+
+variable "auth_db_min_idle_connections" {
+  type    = number
+  default = 5
+}
+
 variable "loki_use_v13_schema_from" {
   type        = string
   description = "This should be a date soon after you deploy. Format = YYYY-MM-DD"
@@ -613,4 +670,48 @@ variable "loki_use_v13_schema_from" {
     condition     = var.loki_use_v13_schema_from == "" || can(regex("\\d{4}-\\d{2}-\\d{2}", var.loki_use_v13_schema_from))
     error_message = "must be YYYY-MM-DD"
   }
+}
+
+variable "persistent_volume_types" {
+  description = "Persistence layer for volumes"
+
+  type = map(object({
+    allow_deletion = optional(bool)
+    tier           = string
+    location       = optional(string)
+    capacity_gb    = number
+    protocol       = optional(string)
+    nfs_version    = optional(string)
+  }))
+
+  default = {}
+}
+
+variable "default_persistent_volume_type" {
+  type    = string
+  default = ""
+}
+
+variable "network_name" {
+  type    = string
+  default = "default"
+}
+
+variable "volume_token_issuer" {
+  type    = string
+  default = ""
+}
+
+variable "volume_token_valid_for" {
+  type    = string
+  default = ""
+}
+
+variable "volume_token_signature" {
+  type = object({
+    key    = string
+    name   = string
+    method = string
+  })
+  default = null
 }

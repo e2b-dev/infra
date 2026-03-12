@@ -88,6 +88,11 @@ variable "redis_tls_ca_base64" {
   sensitive = true
 }
 
+variable "redis_pool_size" {
+  type    = number
+  default = 10
+}
+
 variable "consul_token" {
   type      = string
   sensitive = true
@@ -121,4 +126,9 @@ variable "build_cache_bucket_name" {
 variable "use_local_namespace_storage" {
   type    = bool
   default = false
+}
+
+variable "persistent_volume_mounts" {
+  type    = map(string)
+  default = {}
 }

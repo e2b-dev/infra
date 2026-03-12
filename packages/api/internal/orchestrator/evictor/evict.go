@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
@@ -17,12 +18,12 @@ const (
 
 type Evictor struct {
 	store         *sandbox.Store
-	removeSandbox func(ctx context.Context, sandbox sandbox.Sandbox, stateAction sandbox.StateAction) error
+	removeSandbox func(ctx context.Context, teamID uuid.UUID, sandboxID string, stateAction sandbox.StateAction) error
 }
 
 func New(
 	store *sandbox.Store,
-	removeSandbox func(ctx context.Context, sandbox sandbox.Sandbox, stateAction sandbox.StateAction) error,
+	removeSandbox func(ctx context.Context, teamID uuid.UUID, sandboxID string, stateAction sandbox.StateAction) error,
 ) *Evictor {
 	return &Evictor{
 		store:         store,
@@ -58,7 +59,7 @@ func (e *Evictor) Start(ctx context.Context) {
 					}
 
 					logger.L().Debug(ctx, "Evicting sandbox", logger.WithSandboxID(item.SandboxID), zap.String("state_action", stateAction.Name))
-					if err := e.removeSandbox(context.WithoutCancel(ctx), item, stateAction); err != nil {
+					if err := e.removeSandbox(context.WithoutCancel(ctx), item.TeamID, item.SandboxID, stateAction); err != nil {
 						logger.L().Debug(ctx, "Evicting sandbox failed", zap.Error(err), logger.WithSandboxID(item.SandboxID))
 					}
 

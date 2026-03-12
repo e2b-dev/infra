@@ -1014,7 +1014,6 @@ func TestTemplateBuildInstalledPackagesAvailable(t *testing.T) {
 		"openssh-server",
 		"sudo",
 		"chrony",
-		"linuxptp",
 		"socat",
 		"curl",
 		"ca-certificates",

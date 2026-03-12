@@ -2,6 +2,7 @@ package storage
 
 import (
 	"fmt"
+	"strings"
 )
 
 const (
@@ -50,4 +51,12 @@ func (t TemplateFiles) StorageSnapfilePath() string {
 
 func (t TemplateFiles) StorageMetadataPath() string {
 	return fmt.Sprintf("%s/%s", t.StorageDir(), MetadataName)
+}
+
+// ParseStoragePath splits a storage path of the form "{buildID}/{fileName}"
+// back into its components. This is the inverse of the Storage*Path methods.
+func ParseStoragePath(path string) (buildID, fileName string) {
+	buildID, fileName, _ = strings.Cut(path, "/")
+
+	return buildID, fileName
 }

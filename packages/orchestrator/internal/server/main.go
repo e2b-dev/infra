@@ -3,7 +3,9 @@ package server
 import (
 	"context"
 	"sync"
+	"time"
 
+	"github.com/jellydator/ttlcache/v3"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 	"golang.org/x/sync/semaphore"
@@ -15,6 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/peerclient"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -23,13 +26,17 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
+// Matches the template cache TTL so entries live as long as the
+// templates they refer to and are cleaned up automatically.
+const uploadedBuildsTTL = 1 * time.Hour
+
 type Server struct {
 	orchestrator.UnimplementedSandboxServiceServer
+	orchestrator.UnimplementedChunkServiceServer
 
 	config            cfg.Config
 	sandboxFactory    *sandbox.Factory
 	info              *service.ServiceInfo
-	sandboxes         *sandbox.Map
 	proxy             *proxy.SandboxProxy
 	networkPool       *network.Pool
 	templateCache     *template.Cache
@@ -39,6 +46,8 @@ type Server struct {
 	featureFlags      *featureflags.Client
 	sbxEventsService  *events.EventsService
 	startingSandboxes *semaphore.Weighted
+	peerRegistry      peerclient.Registry
+	uploadedBuilds    *ttlcache.Cache[string, struct{}]
 }
 
 type ServiceConfig struct {
@@ -50,19 +59,23 @@ type ServiceConfig struct {
 	Info             *service.ServiceInfo
 	Proxy            *proxy.SandboxProxy
 	SandboxFactory   *sandbox.Factory
-	Sandboxes        *sandbox.Map
 	Persistence      storage.StorageProvider
 	FeatureFlags     *featureflags.Client
 	SbxEventsService *events.EventsService
+	PeerRegistry     peerclient.Registry
 }
 
 func New(ctx context.Context, cfg ServiceConfig) *Server {
+	uploadedBuilds := ttlcache.New[string, struct{}](
+		ttlcache.WithTTL[string, struct{}](uploadedBuildsTTL),
+	)
+	go uploadedBuilds.Start()
+
 	server := &Server{
 		config:            cfg.Config,
 		sandboxFactory:    cfg.SandboxFactory,
 		info:              cfg.Info,
 		proxy:             cfg.Proxy,
-		sandboxes:         cfg.Sandboxes,
 		networkPool:       cfg.NetworkPool,
 		templateCache:     cfg.TemplateCache,
 		devicePool:        cfg.DevicePool,
@@ -70,11 +83,13 @@ func New(ctx context.Context, cfg ServiceConfig) *Server {
 		featureFlags:      cfg.FeatureFlags,
 		sbxEventsService:  cfg.SbxEventsService,
 		startingSandboxes: semaphore.NewWeighted(maxStartingInstancesPerNode),
+		peerRegistry:      cfg.PeerRegistry,
+		uploadedBuilds:    uploadedBuilds,
 	}
 
 	meter := cfg.Tel.MeterProvider.Meter("orchestrator.sandbox")
 	_, err := telemetry.GetObservableUpDownCounter(meter, telemetry.OrchestratorSandboxCountMeterName, func(_ context.Context, observer metric.Int64Observer) error {
-		observer.Observe(int64(server.sandboxes.Count()))
+		observer.Observe(int64(server.sandboxFactory.Sandboxes.Count()))
 
 		return nil
 	})

@@ -14,13 +14,15 @@ locals {
     redis_url                    = var.redis_url
     redis_cluster_url            = var.redis_cluster_url
     redis_tls_ca_base64          = var.redis_tls_ca_base64
+    redis_pool_size              = var.redis_pool_size
 
-    consul_token            = var.consul_token
-    domain_name             = var.domain_name
-    shared_chunk_cache_path = var.shared_chunk_cache_path
-    launch_darkly_api_key   = var.launch_darkly_api_key
-    orchestrator_services   = var.orchestrator_services
-    build_cache_bucket_name = var.build_cache_bucket_name
+    consul_token             = var.consul_token
+    domain_name              = var.domain_name
+    shared_chunk_cache_path  = var.shared_chunk_cache_path
+    launch_darkly_api_key    = trimspace(var.launch_darkly_api_key)
+    orchestrator_services    = var.orchestrator_services
+    build_cache_bucket_name  = var.build_cache_bucket_name
+    persistent_volume_mounts = join(",", [for key, value in var.persistent_volume_mounts : format("%s:%s", key, value)])
 
     provider            = var.provider_name
     provider_aws_config = var.provider_aws_config

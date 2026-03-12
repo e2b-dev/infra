@@ -43,6 +43,10 @@ plan-only-jobs/%:
 plan-without-jobs:
 	$(MAKE) -C iac/provider-$(PROVIDER) plan-without-jobs
 
+.PHONY: state-migrate
+state-migrate:
+	$(MAKE) -C iac/provider-$(PROVIDER) state-migrate
+
 .PHONY: apply-init
 apply-init:
 	$(MAKE) -C iac/provider-$(PROVIDER) apply-init
@@ -57,6 +61,12 @@ apply:
 import:
 	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	$(MAKE) -C iac/provider-$(PROVIDER) import
+
+# Shortcut to moving resources in Terraform state
+.PHONY: move
+move:
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
+	$(MAKE) -C iac/provider-$(PROVIDER) move
 
 .PHONY: version
 version:
@@ -191,3 +201,10 @@ tidy:
 .PHONY: local-infra
 local-infra:
 	$(MAKE) -C packages/local-dev local-infra
+
+.PHONY: gcloud-ingress-dashboard
+gcloud-ingress-dashboard:
+ifndef INSTANCE
+	$(error usage: make gcloud-ingress-dashboard INSTANCE=<instance>)
+endif
+	gcloud compute ssh $(INSTANCE) -- -NL 8900:localhost:8900

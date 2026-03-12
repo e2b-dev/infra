@@ -271,3 +271,12 @@ func (t *storageTemplate) Metadata() (metadata.Template, error) {
 
 	return metadata.FromFile(metafile.Path())
 }
+
+func (t *storageTemplate) UpdateMetadata(meta metadata.Template) error {
+	metafile, err := t.metafile.Wait()
+	if err != nil {
+		return fmt.Errorf("failed to get metafile: %w", err)
+	}
+
+	return meta.ToFile(metafile.Path())
+}

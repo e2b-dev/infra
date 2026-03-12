@@ -94,8 +94,16 @@ var (
 	CreateStorageCacheSpansFlag         = newBoolFlag("create-storage-cache-spans", env.IsDevelopment())
 	SandboxAutoResumeFlag               = newBoolFlag("sandbox-auto-resume", env.IsDevelopment())
 	SandboxCatalogLocalCacheFlag        = newBoolFlag("sandbox-catalog-local-cache", true)
-	PersistentVolumesFlag               = newBoolFlag("can-use-persistent-volumes", env.IsDevelopment())
-	ExecutionMetricsOnWebhooksFlag      = newBoolFlag("execution-metrics-on-webhooks", false) // TODO: Remove NLT 20250315
+
+	// PeerToPeerChunkTransferFlag enables peer-to-peer chunk routing.
+	PeerToPeerChunkTransferFlag = newBoolFlag("peer-to-peer-chunk-transfer", false)
+	// PeerToPeerAsyncCheckpointFlag makes Checkpoint upload fire-and-forget instead
+	// of synchronous. Only safe to enable after PeerToPeerChunkTransferFlag is ON.
+	PeerToPeerAsyncCheckpointFlag = newBoolFlag("peer-to-peer-async-checkpoint", false)
+
+	PersistentVolumesFlag           = newBoolFlag("can-use-persistent-volumes", env.IsDevelopment())
+	ExecutionMetricsOnWebhooksFlag  = newBoolFlag("execution-metrics-on-webhooks", false) // TODO: Remove NLT 20250315
+	SandboxLabelBasedSchedulingFlag = newBoolFlag("sandbox-label-based-scheduling", false)
 )
 
 type IntFlag struct {

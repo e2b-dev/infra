@@ -22,6 +22,7 @@ type ServiceInfo struct {
 
 	Startup     time.Time
 	Roles       []orchestratorinfo.ServiceInfoRole
+	Labels      []string
 	MachineInfo machineinfo.MachineInfo
 
 	status   orchestratorinfo.ServiceInfoStatus
@@ -61,10 +62,12 @@ func NewInfoContainer(ctx context.Context, clientId string, version string, comm
 	}
 
 	serviceInfo := &ServiceInfo{
-		ClientId:    clientId,
-		ServiceId:   instanceID,
+		ClientId:  clientId,
+		ServiceId: instanceID,
+
 		Startup:     time.Now(),
 		Roles:       serviceRoles,
+		Labels:      config.NodeLabels,
 		MachineInfo: machineInfo,
 
 		SourceVersion: version,

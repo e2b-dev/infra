@@ -66,20 +66,22 @@ func (b *cachedBlob) WriteTo(ctx context.Context, dst io.Writer) (n int64, e err
 	// store the byte slice before calling `buffer.Read`, which moves the offset.
 	data := buffer.Bytes()
 
-	b.goCtxWithoutCancel(ctx, func(ctx context.Context) {
-		ctx, span := b.tracer.Start(ctx, "write file back to cache")
-		defer span.End()
+	if !skipCacheWriteback(ctx) {
+		b.goCtxWithoutCancel(ctx, func(ctx context.Context) {
+			ctx, span := b.tracer.Start(ctx, "write file back to cache")
+			defer span.End()
 
-		count, err := b.writeFileToCache(ctx, buffer)
-		if err != nil {
-			recordCacheWriteError(ctx, cacheTypeObject, cacheOpWriteTo, err)
-			recordError(span, err)
+			count, err := b.writeFileToCache(ctx, buffer)
+			if err != nil {
+				recordCacheWriteError(ctx, cacheTypeObject, cacheOpWriteTo, err)
+				recordError(span, err)
 
-			return
-		}
+				return
+			}
 
-		recordCacheWrite(ctx, count, cacheTypeObject, cacheOpWriteTo)
-	})
+			recordCacheWrite(ctx, count, cacheTypeObject, cacheOpWriteTo)
+		})
+	}
 
 	written, err := dst.Write(data)
 	if ignoreEOF(err) != nil {

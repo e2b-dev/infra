@@ -27,6 +27,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/peerclient"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/tcpfirewall"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
@@ -61,6 +62,7 @@ func main() {
 	startCmd := flag.String("start-cmd", "", "start command")
 	setupCmd := flag.String("setup-cmd", "", "setup command to run during build (e.g., install deps)")
 	readyCmd := flag.String("ready-cmd", "", "ready check command")
+	timeout := flag.Int("timeout", 5, "build timeout in minutes")
 	verbose := flag.Bool("v", false, "verbose output")
 	flag.Parse()
 
@@ -94,7 +96,7 @@ func main() {
 		log.Fatalf("network config: %v", err)
 	}
 
-	err = doBuild(ctx, *templateID, *toBuild, *fromBuild, *kernel, *fc, *vcpu, *memory, *disk, *hugePages, *startCmd, *setupCmd, *readyCmd, localMode, *verbose, builderConfig, networkConfig)
+	err = doBuild(ctx, *templateID, *toBuild, *fromBuild, *kernel, *fc, *vcpu, *memory, *disk, *hugePages, *startCmd, *setupCmd, *readyCmd, localMode, *verbose, *timeout, builderConfig, networkConfig)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -177,10 +179,11 @@ func doBuild(
 	hugePages bool,
 	startCmd, setupCmd, readyCmd string,
 	localMode, verbose bool,
+	timeout int,
 	builderConfig cfg.BuilderConfig,
 	networkConfig network.Config,
 ) error {
-	ctx, cancel := context.WithTimeout(parentCtx, 5*time.Minute)
+	ctx, cancel := context.WithTimeout(parentCtx, time.Duration(timeout)*time.Minute)
 	defer cancel()
 
 	var cores []zapcore.Core
@@ -193,7 +196,7 @@ func doBuild(
 		))
 	}
 
-	l, err := logger.NewLogger(ctx, logger.LoggerConfig{
+	l, err := logger.NewLogger(logger.LoggerConfig{
 		ServiceName:   "build-template",
 		IsInternal:    true,
 		IsDebug:       verbose,
@@ -236,11 +239,11 @@ func doBuild(
 	go tcpFirewall.Start(ctx)
 	defer tcpFirewall.Close(parentCtx)
 
-	persistenceTemplate, err := storage.GetTemplateStorageProvider(ctx, nil)
+	persistenceTemplate, err := storage.GetStorageProvider(ctx, storage.TemplateStorageConfig)
 	if err != nil {
 		return fmt.Errorf("template storage: %w", err)
 	}
-	persistenceBuild, err := storage.GetBuildCacheStorageProvider(ctx, nil)
+	persistenceBuild, err := storage.GetStorageProvider(ctx, storage.BuildCacheStorageConfig)
 	if err != nil {
 		return fmt.Errorf("build storage: %w", err)
 	}
@@ -273,12 +276,16 @@ func doBuild(
 
 	blockMetrics, _ := blockmetrics.NewMetrics(noop.NewMeterProvider())
 
+	if os.Getenv("NODE_IP") == "" {
+		os.Setenv("NODE_IP", "127.0.0.1")
+	}
+
 	c, err := cfg.Parse()
 	if err != nil {
 		return fmt.Errorf("config: %w", err)
 	}
 
-	templateCache, err := sbxtemplate.NewCache(c, featureFlags, persistenceTemplate, blockMetrics)
+	templateCache, err := sbxtemplate.NewCache(c, featureFlags, persistenceTemplate, blockMetrics, peerclient.NopResolver())
 	if err != nil {
 		return fmt.Errorf("template cache: %w", err)
 	}
@@ -286,7 +293,7 @@ func doBuild(
 	defer templateCache.Stop()
 
 	buildMetrics, _ := metrics.NewBuildMetrics(noop.MeterProvider{})
-	sandboxFactory := sandbox.NewFactory(c.BuilderConfig, networkPool, devicePool, featureFlags, nil, nil)
+	sandboxFactory := sandbox.NewFactory(c.BuilderConfig, networkPool, devicePool, featureFlags, nil, nil, sandboxes)
 
 	builder := build.NewBuilder(
 		builderConfig, l, featureFlags, sandboxFactory,

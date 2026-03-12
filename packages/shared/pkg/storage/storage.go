@@ -95,45 +95,56 @@ type Seekable interface {
 	StreamingReader
 }
 
-func GetTemplateStorageProvider(ctx context.Context, limiter *limit.Limiter) (StorageProvider, error) {
-	provider := Provider(env.GetEnv(storageProviderEnv, string(DefaultStorageProvider)))
-
-	if provider == LocalStorageProvider {
-		basePath := env.GetEnv("LOCAL_TEMPLATE_STORAGE_BASE_PATH", "/tmp/templates")
-
-		return newFileSystemStorage(basePath), nil
-	}
-
-	bucketName := utils.RequiredEnv("TEMPLATE_BUCKET_NAME", "Bucket for storing template files")
-
-	// cloud bucket-based storage
-	switch provider {
-	case AWSStorageProvider:
-		return newAWSStorage(ctx, bucketName)
-	case GCPStorageProvider:
-		return NewGCP(ctx, bucketName, limiter)
-	}
-
-	return nil, fmt.Errorf("unknown storage provider: %s", provider)
+// StorageConfig holds the configuration for creating a storage provider.
+// Both GetLocalBasePath and GetBucketName are evaluated lazily so that
+// callers who set environment variables at runtime (e.g. via os.Setenv
+// or t.Setenv in tests) see their overrides respected.
+type StorageConfig struct {
+	GetLocalBasePath func() string
+	GetBucketName    func() string
+	limiter          *limit.Limiter
 }
 
-func GetBuildCacheStorageProvider(ctx context.Context, limiter *limit.Limiter) (StorageProvider, error) {
+// WithLimiter returns a copy of the config with the given limiter set.
+func (c StorageConfig) WithLimiter(limiter *limit.Limiter) StorageConfig {
+	c.limiter = limiter
+
+	return c
+}
+
+var TemplateStorageConfig = StorageConfig{
+	GetLocalBasePath: func() string {
+		return env.GetEnv("LOCAL_TEMPLATE_STORAGE_BASE_PATH", "/tmp/templates")
+	},
+	GetBucketName: func() string {
+		return utils.RequiredEnv("TEMPLATE_BUCKET_NAME", "Bucket for storing template files")
+	},
+}
+
+var BuildCacheStorageConfig = StorageConfig{
+	GetLocalBasePath: func() string {
+		return env.GetEnv("LOCAL_BUILD_CACHE_STORAGE_BASE_PATH", "/tmp/build-cache")
+	},
+	GetBucketName: func() string {
+		return utils.RequiredEnv("BUILD_CACHE_BUCKET_NAME", "Bucket for storing build cache files")
+	},
+}
+
+func GetStorageProvider(ctx context.Context, cfg StorageConfig) (StorageProvider, error) {
 	provider := Provider(env.GetEnv(storageProviderEnv, string(DefaultStorageProvider)))
 
 	if provider == LocalStorageProvider {
-		basePath := env.GetEnv("LOCAL_BUILD_CACHE_STORAGE_BASE_PATH", "/tmp/build-cache")
-
-		return newFileSystemStorage(basePath), nil
+		return newFileSystemStorage(cfg.GetLocalBasePath()), nil
 	}
 
-	bucketName := utils.RequiredEnv("BUILD_CACHE_BUCKET_NAME", "Bucket for storing template files")
+	bucketName := cfg.GetBucketName()
 
 	// cloud bucket-based storage
 	switch provider {
 	case AWSStorageProvider:
 		return newAWSStorage(ctx, bucketName)
 	case GCPStorageProvider:
-		return NewGCP(ctx, bucketName, limiter)
+		return NewGCP(ctx, bucketName, cfg.limiter)
 	}
 
 	return nil, fmt.Errorf("unknown storage provider: %s", provider)

@@ -225,7 +225,7 @@ func TestSandboxWithTrafficAccessTokenAutoResumeViaProxy(t *testing.T) {
 		utils.WithNetwork(sbxNet),
 		utils.WithSecure(true),
 		utils.WithAutoPause(true),
-		utils.WithAutoResume(api.Any),
+		utils.WithAutoResume(true),
 	)
 	require.NotNil(t, sbx.TrafficAccessToken)
 	require.NotNil(t, sbx.EnvdAccessToken)
@@ -310,7 +310,7 @@ func TestEnvdAccessTokenAutoResumeViaProxy(t *testing.T) {
 		c,
 		utils.WithSecure(true),
 		utils.WithAutoPause(true),
-		utils.WithAutoResume(api.Any),
+		utils.WithAutoResume(true),
 	)
 	require.NotNil(t, sbx.EnvdAccessToken)
 

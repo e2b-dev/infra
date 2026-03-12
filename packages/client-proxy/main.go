@@ -71,15 +71,13 @@ func run() int {
 	}()
 
 	l := utils.Must(
-		logger.NewLogger(
-			ctx, logger.LoggerConfig{
-				ServiceName:   serviceName,
-				IsInternal:    true,
-				IsDebug:       env.IsDebug(),
-				Cores:         []zapcore.Core{logger.GetOTELCore(tel.LogsProvider, serviceName)},
-				EnableConsole: true,
-			},
-		),
+		logger.NewLogger(logger.LoggerConfig{
+			ServiceName:   serviceName,
+			IsInternal:    true,
+			IsDebug:       env.IsDebug(),
+			Cores:         []zapcore.Core{logger.GetOTELCore(tel.LogsProvider, serviceName)},
+			EnableConsole: true,
+		}),
 	)
 
 	defer func() {
@@ -105,6 +103,7 @@ func run() int {
 
 		return 1
 	}
+	featureFlagsClient.SetServiceName(serviceName)
 
 	var catalog e2bcatalog.SandboxesCatalog
 
@@ -112,6 +111,7 @@ func run() int {
 		RedisURL:         config.RedisURL,
 		RedisClusterURL:  config.RedisClusterURL,
 		RedisTLSCABase64: config.RedisTLSCABase64,
+		PoolSize:         config.RedisPoolSize,
 	})
 	if err == nil {
 		defer func() {

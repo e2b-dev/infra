@@ -25,6 +25,14 @@ type AccessToken struct {
 	AccessTokenMaskSuffix string
 }
 
+type ActiveTemplateBuild struct {
+	BuildID    uuid.UUID
+	TeamID     uuid.UUID
+	TemplateID string
+	Tags       []string
+	CreatedAt  time.Time
+}
+
 type Addon struct {
 	ID                            uuid.UUID
 	TeamID                        uuid.UUID
@@ -145,22 +153,25 @@ type Snapshot struct {
 }
 
 type SnapshotTemplate struct {
-	EnvID     string
-	SandboxID string
-	CreatedAt pgtype.Timestamptz
+	EnvID        string
+	SandboxID    string
+	CreatedAt    pgtype.Timestamptz
+	OriginNodeID *string
+	BuildID      *uuid.UUID
 }
 
 type Team struct {
-	ID            uuid.UUID
-	CreatedAt     time.Time
-	IsBlocked     bool
-	Name          string
-	Tier          string
-	Email         string
-	IsBanned      bool
-	BlockedReason *string
-	ClusterID     *uuid.UUID
-	Slug          string
+	ID                      uuid.UUID
+	CreatedAt               time.Time
+	IsBlocked               bool
+	Name                    string
+	Tier                    string
+	Email                   string
+	IsBanned                bool
+	BlockedReason           *string
+	ClusterID               *uuid.UUID
+	SandboxSchedulingLabels []string
+	Slug                    string
 }
 
 type TeamApiKey struct {

@@ -15,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	clustersshared "github.com/e2b-dev/infra/packages/shared/pkg/clusters"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	sharedutils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -37,7 +38,7 @@ func (a *APIStore) GetSandboxesSandboxIDLogs(c *gin.Context, sandboxID string, p
 		telemetry.WithTeamID(team.ID.String()),
 	)
 
-	logs, apiErr := a.getSandboxLogs(ctx, team, sandboxID, params.Start, nil, params.Limit, nil)
+	logs, apiErr := a.getSandboxLogs(ctx, team, sandboxID, params.Start, nil, params.Limit, nil, nil, nil)
 	if apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 		telemetry.ReportErrorByCode(ctx, apiErr.Code, "error when returning logs for sandbox", apiErr.Err)
@@ -81,7 +82,7 @@ func (a *APIStore) GetV2SandboxesSandboxIDLogs(c *gin.Context, sandboxID api.San
 	startMs := start.UnixMilli()
 	endMs := end.UnixMilli()
 
-	logs, apiErr := a.getSandboxLogs(ctx, team, sandboxID, &startMs, &endMs, params.Limit, &direction)
+	logs, apiErr := a.getSandboxLogs(ctx, team, sandboxID, &startMs, &endMs, params.Limit, &direction, apiToLogLevel(params.Level), params.Search)
 	if apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 		telemetry.ReportErrorByCode(ctx, apiErr.Code, "error when returning logs for sandbox", apiErr.Err)
@@ -100,6 +101,8 @@ func (a *APIStore) getSandboxLogs(
 	end *int64,
 	limit *int32,
 	direction *api.LogsDirection,
+	level *logs.LogLevel,
+	search *string,
 ) (api.SandboxLogs, *api.APIError) {
 	clusterID := clustersshared.WithClusterFallback(team.ClusterID)
 	cluster, ok := a.clusters.GetClusterById(clusterID)
@@ -111,7 +114,7 @@ func (a *APIStore) getSandboxLogs(
 		}
 	}
 
-	logs, apiErr := cluster.GetResources().GetSandboxLogs(ctx, team.ID.String(), sandboxID, start, end, limit, direction)
+	logs, apiErr := cluster.GetResources().GetSandboxLogs(ctx, team.ID.String(), sandboxID, start, end, limit, direction, level, search)
 	if apiErr != nil {
 		return api.SandboxLogs{}, apiErr
 	}

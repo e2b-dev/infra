@@ -11,6 +11,8 @@ import (
 	database "github.com/e2b-dev/infra/packages/db/queries"
 )
 
+const poolName = "main"
+
 type Client struct {
 	*database.Queries
 
@@ -18,7 +20,7 @@ type Client struct {
 }
 
 func NewClient(ctx context.Context, databaseURL string, options ...pool.Option) (*Client, error) {
-	dbClient, connPool, err := pool.New(ctx, databaseURL, options...)
+	dbClient, connPool, err := pool.New(ctx, databaseURL, poolName, options...)
 	if err != nil {
 		return nil, err
 	}
@@ -32,7 +34,7 @@ func (db *Client) Close() error {
 	return nil
 }
 
-// WithTx runs the given function in a transaction.
+// WithTx starts a read-write transaction and returns a transactional Client.
 func (db *Client) WithTx(ctx context.Context) (*Client, pgx.Tx, error) {
 	tx, err := db.conn.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {

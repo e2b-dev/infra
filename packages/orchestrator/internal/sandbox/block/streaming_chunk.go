@@ -259,7 +259,10 @@ func (c *StreamingChunker) Slice(ctx context.Context, off, length int64) ([]byte
 				return nil
 			}
 
-			session := c.getOrCreateSession(ctx, fetchOff)
+			session, justGotCached := c.getOrCreateSession(ctx, fetchOff)
+			if justGotCached {
+				return nil
+			}
 
 			return session.registerAndWait(ctx, clippedOff, clippedLen)
 		})
@@ -288,18 +291,37 @@ func (c *StreamingChunker) Slice(ctx context.Context, off, length int64) ([]byte
 	return b, nil
 }
 
-func (c *StreamingChunker) getOrCreateSession(ctx context.Context, fetchOff int64) *fetchSession {
-	s := &fetchSession{
-		chunkOff: fetchOff,
-		chunkLen: min(int64(storage.MemoryChunkSize), c.size-fetchOff),
-		cache:    c.cache,
-	}
+// getOrCreateSession returns a fetch session for the chunk at fetchOff, or
+// (nil, true) if the data is already fully cached.
+//
+// Slice() checks isCached() before calling this method as a lock-free fast
+// path. A TOCTOU race exists between that check and the fetchMap lookup:
+// a fetch can finish (writing the dirty bitmap) and delete itself from
+// fetchMap in between, so the caller misses both. To close this we re-check
+// isCached under fetchMu. This is safe because runFetch calls setIsCached
+// before acquiring fetchMu to delete, so the lock provides a happens-before
+// guarantee that the bitmap writes are visible here.
+func (c *StreamingChunker) getOrCreateSession(ctx context.Context, fetchOff int64) (_ *fetchSession, cached bool) {
+	chunkLen := min(int64(storage.MemoryChunkSize), c.size-fetchOff)
 
 	c.fetchMu.Lock()
+
 	if existing, ok := c.fetchMap[fetchOff]; ok {
 		c.fetchMu.Unlock()
 
-		return existing
+		return existing, false
+	}
+
+	if c.cache.isCached(fetchOff, chunkLen) {
+		c.fetchMu.Unlock()
+
+		return nil, true
+	}
+
+	s := &fetchSession{
+		chunkOff: fetchOff,
+		chunkLen: chunkLen,
+		cache:    c.cache,
 	}
 	c.fetchMap[fetchOff] = s
 	c.fetchMu.Unlock()
@@ -309,7 +331,7 @@ func (c *StreamingChunker) getOrCreateSession(ctx context.Context, fetchOff int6
 	// context is preserved for metrics.
 	go c.runFetch(context.WithoutCancel(ctx), s)
 
-	return s
+	return s, false
 }
 
 func (s *fetchSession) setDone() {
