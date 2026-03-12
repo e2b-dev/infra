@@ -7,11 +7,11 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/chrooted"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/chrooted"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
