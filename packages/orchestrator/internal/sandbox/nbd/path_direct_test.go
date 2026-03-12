@@ -172,9 +172,11 @@ func TestPathLargeRead(t *testing.T) {
 func setupNBDDevice(t *testing.T, featureFlags *featureflags.Client, size int64, flags int) *os.File {
 	t.Helper()
 
-	const blockSize = header.RootfsBlockSize
+	if os.Geteuid() != 0 {
+		t.Skip("the nbd requires root privileges to run")
+	}
 
-	require.Equal(t, 0, os.Geteuid(), "the nbd requires root privileges to run")
+	const blockSize = header.RootfsBlockSize
 
 	emptyDevice, err := testutils.NewZeroDevice(size, blockSize)
 	require.NoError(t, err, "failed to create zero device")

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -24,32 +25,27 @@ func (s *Service) ListDir(ctx context.Context, request *orchestrator.VolumeDirLi
 		return nil, newAPIError(ctx, codes.InvalidArgument, http.StatusNotImplemented, orchestrator.UserErrorCode_NOT_SUPPORTED, "depth must be zero")
 	}
 
-	paths, err := s.buildPaths(request)
+	fs, path, err := s.getFilesystemAndPath(ctx, request)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to build volume path: %w", err)
 	}
 
 	span.AddEvent("listing directory", trace.WithAttributes(
-		attribute.String("path", paths.HostFullPath),
+		attribute.String("path", path),
 	))
 
-	items, err := os.ReadDir(paths.HostFullPath)
+	items, err := fs.ReadDir(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, newAPIError(ctx, codes.NotFound, http.StatusNotFound, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to read: %q not found.", request.GetPath())
 		}
 
-		return nil, fmt.Errorf("failed to read directory %q: %w", paths.HostFullPath, err)
+		return nil, fmt.Errorf("failed to read directory %q: %w", path, err)
 	}
 
 	var results []*orchestrator.VolumeDirectoryItem
-	for _, item := range items {
-		info, err := item.Info()
-		if err != nil {
-			return nil, fmt.Errorf("failed to get info for item %s/%q: %w", paths.HostFullPath, item.Name(), err)
-		}
-
-		entry := toEntryFromOSInfoAndPaths(paths, info)
+	for _, info := range items {
+		entry := toEntry(filepath.Join(path, info.Name()), info)
 
 		results = append(results, &orchestrator.VolumeDirectoryItem{
 			Entry: entry,

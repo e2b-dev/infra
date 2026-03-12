@@ -3,15 +3,22 @@ package nfsproxy
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
+	"regexp"
 	"strings"
 
+	"github.com/go-git/go-billy/v5"
+	"github.com/google/uuid"
 	"github.com/willscott/go-nfs"
 	"github.com/willscott/go-nfs/helpers"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/chrooted"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy/chroot"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy/logged"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy/recovery"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 )
 
 const cacheLimit = 1024
@@ -29,9 +36,9 @@ var (
 	ErrVolumeID               = errors.New("invalid volume ID")
 )
 
-func NewProxy(ctx context.Context, cache *FilesystemsCache) (*Proxy, error) {
+func NewProxy(ctx context.Context, cache *chrooted.Tracker, sandboxes *sandbox.Map) (*Proxy, error) {
 	// actual nfs handler
-	var handler nfs.Handler = chroot.NewNFSHandler(cache.chrootCallback)
+	var handler nfs.Handler = chroot.NewNFSHandler(chrootCallback(cache, sandboxes))
 
 	// wrap the handler in middleware
 	handler = helpers.NewCachingHandler(handler, cacheLimit)
@@ -56,4 +63,48 @@ func (p *Proxy) Serve(lis net.Listener) error {
 	}
 
 	return nil
+}
+
+var mountPath = regexp.MustCompile(`^/[^/]+$`)
+
+func chrootCallback(tracker *chrooted.Tracker, sandboxes *sandbox.Map) chroot.GetFilesystem {
+	return func(ctx context.Context, remoteAddr net.Addr, request nfs.MountRequest) (billy.Filesystem, error) {
+		sbx, err := sandboxes.GetByHostPort(remoteAddr.String())
+		if err != nil {
+			return nil, fmt.Errorf("failed to get sandbox: %w", err)
+		}
+
+		// normalize the mount path
+		requestedPath := string(request.Dirpath)
+		regexpMatch := mountPath.MatchString(requestedPath)
+		if !regexpMatch {
+			return nil, fmt.Errorf(`invalid mount path (expected "/volume_name", got %q)`, requestedPath)
+		}
+
+		volumeName := requestedPath[1:]
+
+		// find the local volume mount
+		var volumeMount *sandbox.VolumeMountConfig
+		for _, sbxVolumeMount := range sbx.Config.VolumeMounts {
+			if sbxVolumeMount.Name == volumeName {
+				volumeMount = &sbxVolumeMount
+
+				break
+			}
+		}
+		if volumeMount == nil {
+			return nil, fmt.Errorf("failed to mount %q: %w", volumeName, ErrVolumeNotFound)
+		}
+
+		teamID, ok := internal.TryParseUUID(sbx.Metadata.Runtime.TeamID)
+		if !ok {
+			return nil, ErrInvalidTeamID
+		}
+
+		if volumeMount.ID == uuid.Nil {
+			return nil, ErrVolumeID
+		}
+
+		return tracker.Get(ctx, volumeMount.Type, teamID, volumeMount.ID)
+	}
 }

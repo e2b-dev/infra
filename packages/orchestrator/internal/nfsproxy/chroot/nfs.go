@@ -9,6 +9,7 @@ import (
 	"github.com/willscott/go-nfs"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/chrooted"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -43,14 +44,14 @@ func (h *NFSHandler) Mount(
 
 func (h *NFSHandler) Change(filesystem billy.Filesystem) billy.Change {
 	for {
-		isolated, ok := filesystem.(*IsolatedFS)
+		isolated, ok := filesystem.(*chrooted.Chrooted)
 		if ok {
 			return isolated
 		}
 
 		unwrappable, ok := filesystem.(interface{ Unwrap() billy.Filesystem })
 		if !ok {
-			panic(fmt.Sprintf("no idea how to find an *IsolatedFS from this filesystem: %T", filesystem))
+			panic(fmt.Sprintf("no idea how to find an *Chrooted from this filesystem: %T", filesystem))
 		}
 
 		filesystem = unwrappable.Unwrap()

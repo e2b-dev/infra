@@ -1,4 +1,4 @@
-package chroot
+package chrooted
 
 import (
 	"context"
@@ -163,7 +163,7 @@ func IsNSorErr(nspath string) error {
 	case PROCFS_MAGIC, NSFS_MAGIC:
 		return nil
 	default:
-		return NSPathNotNSError{msg: fmt.Sprintf("unknown FS magic on %q: %x", nspath, stat.Type)}
+		return NSPathNotNSError{msg: fmt.Sprintf("unknown Chroot magic on %q: %x", nspath, stat.Type)}
 	}
 }
 

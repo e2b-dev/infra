@@ -19,14 +19,15 @@ func (s *Service) UpdateFileMetadata(ctx context.Context, request *orchestrator.
 		setSpanStatus(span, err)
 		span.End()
 	}()
-	paths, err := s.buildPaths(request)
+
+	fs, path, err := s.getFilesystemAndPath(ctx, request)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build volume path: %w", err)
 	}
 
 	// record provided fields; keep pointers semantics by checking nil
 	attrs := []attribute.KeyValue{
-		attribute.String("path", paths.HostFullPath),
+		attribute.String("path", path),
 	}
 	if request.Uid != nil {
 		attrs = append(attrs, attribute.Int64("uid", int64(request.GetUid())))
@@ -40,7 +41,7 @@ func (s *Service) UpdateFileMetadata(ctx context.Context, request *orchestrator.
 	span.AddEvent("updating file metadata", trace.WithAttributes(attrs...))
 
 	if request.Mode != nil {
-		if err = os.Chmod(paths.HostFullPath, os.FileMode(request.GetMode())); err != nil {
+		if err = fs.Chmod(path, os.FileMode(request.GetMode())); err != nil {
 			if os.IsNotExist(err) {
 				return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to chmod: %q not found.", request.GetPath())
 			}
@@ -60,7 +61,7 @@ func (s *Service) UpdateFileMetadata(ctx context.Context, request *orchestrator.
 			gid = int(request.GetGid())
 		}
 
-		if err = os.Chown(paths.HostFullPath, uid, gid); err != nil {
+		if err = fs.Chown(path, uid, gid); err != nil {
 			if os.IsNotExist(err) {
 				return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to chown: %q not found.", request.GetPath())
 			}
@@ -69,7 +70,7 @@ func (s *Service) UpdateFileMetadata(ctx context.Context, request *orchestrator.
 		}
 	}
 
-	entry, err := toEntryFromPaths(paths)
+	fi, err := fs.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to stat: %q not found.", request.GetPath())
@@ -77,6 +78,8 @@ func (s *Service) UpdateFileMetadata(ctx context.Context, request *orchestrator.
 
 		return nil, fmt.Errorf("failed to stat file: %w", err)
 	}
+
+	entry := toEntry(path, fi)
 
 	return &orchestrator.VolumeFileUpdateResponse{Entry: entry}, nil
 }

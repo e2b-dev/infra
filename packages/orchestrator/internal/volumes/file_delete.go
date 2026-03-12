@@ -20,20 +20,20 @@ func (s *Service) DeleteFile(ctx context.Context, request *orchestrator.VolumeFi
 		span.End()
 	}()
 
-	paths, err := s.buildPaths(request)
+	fs, path, err := s.getFilesystemAndPath(ctx, request)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build volume path: %w", err)
 	}
 
-	if paths.isRoot() {
-		return nil, newAPIError(ctx, codes.InvalidArgument, http.StatusBadRequest, orchestrator.UserErrorCode_CANNOT_DELETE_ROOT, "cannot delete root directory")
+	if s.isRoot(path) {
+		return nil, newAPIError(ctx, codes.InvalidArgument, http.StatusBadRequest, orchestrator.UserErrorCode_CANNOT_DELETE_ROOT, "cannot delete root")
 	}
 
 	span.AddEvent("deleting file", trace.WithAttributes(
-		attribute.String("path", paths.HostFullPath),
+		attribute.String("path", path),
 	))
 
-	if err := os.Remove(paths.HostFullPath); err != nil {
+	if err = fs.Remove(path); err != nil {
 		if os.IsNotExist(err) {
 			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to delete: %q not found.", request.GetPath())
 		}

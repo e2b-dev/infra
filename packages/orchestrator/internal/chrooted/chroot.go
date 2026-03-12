@@ -1,4 +1,4 @@
-package chroot
+package chrooted
 
 import (
 	"context"
@@ -14,7 +14,7 @@ import (
 	"github.com/go-git/go-billy/v5/osfs"
 )
 
-type IsolatedFS struct {
+type Chrooted struct {
 	ActualRoot string
 	Metadata   map[string]string
 
@@ -23,12 +23,10 @@ type IsolatedFS struct {
 	act func(func(billy.Filesystem) error) error
 }
 
-var _ billy.Filesystem = (*IsolatedFS)(nil)
-
-type Option func(*IsolatedFS)
+type Option func(*Chrooted)
 
 func WithMetadata(key, value string) Option {
-	return func(fs *IsolatedFS) {
+	return func(fs *Chrooted) {
 		if fs.Metadata == nil {
 			fs.Metadata = make(map[string]string)
 		}
@@ -37,7 +35,7 @@ func WithMetadata(key, value string) Option {
 	}
 }
 
-func IsolateFileSystem(ctx context.Context, source string, opts ...Option) (*IsolatedFS, error) {
+func Chroot(ctx context.Context, source string, opts ...Option) (*Chrooted, error) {
 	mountNS, err := tempMountNS(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temporary mount namespace: %w", err)
@@ -46,7 +44,7 @@ func IsolateFileSystem(ctx context.Context, source string, opts ...Option) (*Iso
 	// use a closure to ensure all requests are executed in the correct namespace
 	inner := osfs.New("/")
 
-	fs := &IsolatedFS{
+	fs := &Chrooted{
 		ActualRoot: source,
 		ns:         mountNS,
 	}
@@ -78,7 +76,9 @@ func IsolateFileSystem(ctx context.Context, source string, opts ...Option) (*Iso
 
 const maxMountAttempts = 10
 
-func (fs *IsolatedFS) chroot(path string) error {
+var ErrFailedToMount = errors.New("retries exhausted")
+
+func (fs *Chrooted) chroot(path string) error {
 	return fs.ns.Do(func() error {
 		var err error
 
@@ -119,14 +119,14 @@ func (fs *IsolatedFS) chroot(path string) error {
 				return fmt.Errorf("failed to remove %q: %w", oldRootPath, err)
 			}
 
-			break
+			return nil
 		}
 
-		return nil
+		return ErrFailedToMount
 	})
 }
 
-func (fs *IsolatedFS) Close() error {
+func (fs *Chrooted) Close() error {
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
 

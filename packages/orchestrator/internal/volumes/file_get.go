@@ -1,9 +1,9 @@
 package volumes
 
 import (
+	"errors"
 	"fmt"
 	"io"
-	"os"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -14,28 +14,29 @@ import (
 const fileStreamChunkSize = 1024 * 1024 // 1MB
 
 func (s *Service) GetFile(request *orchestrator.VolumeFileGetRequest, server orchestrator.VolumeService_GetFileServer) (err error) {
-	_, span := tracer.Start(server.Context(), "get file from volume")
+	ctx, span := tracer.Start(server.Context(), "get file from volume")
 	defer func() {
 		setSpanStatus(span, err)
 		span.End()
 	}()
-	paths, err := s.buildPaths(request)
+
+	fs, path, err := s.getFilesystemAndPath(ctx, request)
 	if err != nil {
 		return fmt.Errorf("failed to build volume path: %w", err)
 	}
 
 	span.AddEvent("opening file", trace.WithAttributes(
-		attribute.String("path", paths.HostFullPath),
+		attribute.String("path", path),
 	))
 
-	f, err := os.Open(paths.HostFullPath)
+	f, err := fs.Open(path)
 	if err != nil {
 		return fmt.Errorf("failed to open file: %w", err)
 	}
 	defer f.Close()
 
 	span.AddEvent("getting file info")
-	info, err := f.Stat()
+	info, err := fs.Stat(path)
 	if err != nil {
 		return fmt.Errorf("failed to stat file: %w", err)
 	}
@@ -76,7 +77,7 @@ func (s *Service) GetFile(request *orchestrator.VolumeFileGetRequest, server orc
 			continue
 		}
 
-		if err != io.EOF {
+		if !errors.Is(err, io.EOF) {
 			return fmt.Errorf("failed to read file: %w", err)
 		}
 

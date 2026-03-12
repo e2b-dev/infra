@@ -22,6 +22,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/chrooted"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/portmap"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
@@ -137,9 +138,9 @@ func TestIntegrationTest(t *testing.T) {
 		},
 	}
 
-	cache := NewFilesystemsCache(sandboxes, config)
+	cache := chrooted.NewTracker(sandboxes, config)
 
-	s, err := NewProxy(t.Context(), cache)
+	s, err := NewProxy(t.Context(), cache, sandboxes)
 	require.NoError(t, err)
 	go func() {
 		err := s.Serve(nfsListener)

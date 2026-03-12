@@ -27,6 +27,7 @@ import (
 	clickhouseevents "github.com/e2b-dev/infra/packages/clickhouse/pkg/events"
 	clickhousehoststats "github.com/e2b-dev/infra/packages/clickhouse/pkg/hoststats"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/chrooted"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/events"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/factories"
 	e2bhealthcheck "github.com/e2b-dev/infra/packages/orchestrator/internal/healthcheck"
@@ -724,7 +725,7 @@ func startNFSProxy(
 	}
 
 	// isolated filesystems cache (for nfs proxy)
-	fsCache := nfsproxy.NewFilesystemsCache(sandboxes, config)
+	fsCache := chrooted.NewTracker(sandboxes, config)
 	startService("nfs proxy filesystems cache", func() error {
 		fsCache.Start(ctx)
 
@@ -735,7 +736,7 @@ func startNFSProxy(
 	}})
 
 	// nfs proxy implementation
-	nfsServer, err := nfsproxy.NewProxy(ctx, fsCache)
+	nfsServer, err := nfsproxy.NewProxy(ctx, fsCache, sandboxes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create nfs proxy: %w", err)
 	}

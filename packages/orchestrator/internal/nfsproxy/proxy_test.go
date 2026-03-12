@@ -22,18 +22,16 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy/chroot"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/chrooted"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/portmap"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/volumes"
 )
 
 func createVolumeDir(t *testing.T, volumeTypePath string, teamID, volumeID uuid.UUID) {
 	t.Helper()
 
-	fullVolumePathParts := append([]string{volumeTypePath}, volumes.BuildVolumePathParts(teamID, volumeID)...)
-	fullVolumePath := filepath.Join(fullVolumePathParts...)
+	fullVolumePath := chrooted.BuildVolumeRootPath(volumeTypePath, teamID, volumeID)
 	t.Logf("creating volume dir: %s", fullVolumePath)
 	err := os.MkdirAll(fullVolumePath, 0o755)
 	require.NoError(t, err)
@@ -104,9 +102,9 @@ func TestRoundTrip(t *testing.T) {
 		},
 	}
 
-	cache := NewFilesystemsCache(sandboxes, config)
+	cache := chrooted.NewTracker(sandboxes, config)
 
-	nfsProxy, err := NewProxy(t.Context(), cache)
+	nfsProxy, err := NewProxy(t.Context(), cache, sandboxes)
 	require.NoError(t, err)
 	go func() {
 		err := nfsProxy.Serve(nfsListener)
@@ -483,7 +481,9 @@ func TestGetPrefixFromSandbox(t *testing.T) {
 				tc.expected.path = filepath.Join(happyRoot, tc.expected.path)
 			}
 
-			cache := NewFilesystemsCache(sandboxes, cfg.Config{PersistentVolumeMounts: fsByType})
+			config := cfg.Config{PersistentVolumeMounts: fsByType}
+
+			tracker := chrooted.NewTracker(sandboxes, config)
 
 			if tc.expected.path != "" {
 				t.Logf("expected path: %s", tc.expected.path)
@@ -491,7 +491,8 @@ func TestGetPrefixFromSandbox(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			fs, err := cache.chrootCallback(t.Context(), tc.remoteAddr, request)
+			callback := chrootCallback(tracker, sandboxes)
+			fs, err := callback(t.Context(), tc.remoteAddr, request)
 			if tc.expected.err != nil {
 				require.EqualError(t, err, tc.expected.err.Error())
 
@@ -500,8 +501,8 @@ func TestGetPrefixFromSandbox(t *testing.T) {
 
 			require.NoError(t, err)
 
-			chfs, ok := fs.(*chroot.IsolatedFS)
-			require.Truef(t, ok, "expected *chroot.IsolatedFS, got %T", fs)
+			chfs, ok := fs.(*chrooted.Chrooted)
+			require.Truef(t, ok, "expected *chroot.Chrooted, got %T", fs)
 			t.Cleanup(func() {
 				err = chfs.Close()
 				assert.NoError(t, err)

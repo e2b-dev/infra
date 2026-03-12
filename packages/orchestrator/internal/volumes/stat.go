@@ -10,7 +10,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/filesystem"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
@@ -20,16 +19,17 @@ func (s *Service) Stat(ctx context.Context, request *orchestrator.StatRequest) (
 		setSpanStatus(span, err)
 		span.End()
 	}()
-	paths, err := s.buildPaths(request)
+
+	fs, path, err := s.getFilesystemAndPath(ctx, request)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build volume path: %w", err)
 	}
 
 	span.AddEvent("stat", trace.WithAttributes(
-		attribute.String("path", paths.HostFullPath),
+		attribute.String("path", path),
 	))
 
-	info, err := filesystem.GetEntryFromPath(paths.HostFullPath)
+	info, err := fs.Lstat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to stat: %q not found.", request.GetPath())
@@ -38,7 +38,7 @@ func (s *Service) Stat(ctx context.Context, request *orchestrator.StatRequest) (
 		return nil, fmt.Errorf("failed to stat path: %w", err)
 	}
 
-	entry := toEntry(paths, info)
+	entry := toEntry(path, info)
 
 	return &orchestrator.StatResponse{Entry: entry}, nil
 }
