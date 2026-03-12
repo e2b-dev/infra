@@ -38,7 +38,7 @@ echo "Configuring systemd-oomd"
 mkdir -p /etc/systemd
 cat <<EOF >/etc/systemd/oomd.conf
 [OOM]
-DefaultMemoryPressureDurationUSec=2s
+DefaultMemoryPressureDurationSec=2s
 EOF
 # Mask oomd by default -- envd will unmask and start it when -use-systemd-oomd is set.
 systemctl mask systemd-oomd.service
