@@ -90,6 +90,10 @@ func maskedToken(prefix string, token string) string {
 
 // clientIP extracts the real client IP from the request.
 // It reads the first entry from X-Forwarded-For, falling back to RemoteAddr with the port stripped.
+//
+// This assumes a trusted upstream proxy overwrites the
+// X-Forwarded-For header with the real client IP. The header value is NOT
+// client-controllable in this setup because the LB always replaces it.
 func clientIP(r *http.Request) string {
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 		if ip := strings.TrimSpace(strings.SplitN(xff, ",", 2)[0]); ip != "" {
