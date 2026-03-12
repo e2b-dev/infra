@@ -7,7 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"os/user"
+	osuser "os/user"
 	"strconv"
 	"strings"
 	"sync"
@@ -85,7 +85,7 @@ func currentNice() int {
 
 func New(
 	ctx context.Context,
-	user *user.User,
+	user *osuser.User,
 	req *rpc.StartRequest,
 	logger *zerolog.Logger,
 	defaults *execcontext.Defaults,
@@ -96,6 +96,41 @@ func New(
 	// User command string for logging (without the internal wrapper details).
 	userCmd := strings.Join(append([]string{req.GetProcess().GetCmd()}, req.GetProcess().GetArgs()...), " ")
 
+	// Resolve the working directory for the process.
+	resolvedPath, err := permissions.ExpandAndResolve(req.GetProcess().GetCwd(), user, defaults.Workdir)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+
+	// Check if the cwd resolved path exists
+	if _, err := os.Stat(resolvedPath); errors.Is(err, os.ErrNotExist) {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("cwd '%s' does not exist", resolvedPath))
+	}
+
+	// Build the environment variables list for the process.
+	var formattedVars []string
+
+	// Take only 'PATH' variable from the current environment
+	// The 'PATH' should ideally be set in the environment
+	formattedVars = append(formattedVars, "PATH="+os.Getenv("PATH"))
+	formattedVars = append(formattedVars, "HOME="+user.HomeDir)
+	formattedVars = append(formattedVars, "USER="+user.Username)
+	formattedVars = append(formattedVars, "LOGNAME="+user.Username)
+
+	// Add the environment variables from the global environment
+	if defaults.EnvVars != nil {
+		defaults.EnvVars.Range(func(key string, value string) bool {
+			formattedVars = append(formattedVars, key+"="+value)
+
+			return true
+		})
+	}
+
+	// Only the last values of the env vars are used - this allows for overwriting defaults
+	for key, value := range req.GetProcess().GetEnvs() {
+		formattedVars = append(formattedVars, key+"="+value)
+	}
+
 	var cmd *exec.Cmd
 
 	if useSystemdOOMD {
@@ -103,6 +138,11 @@ func New(
 		// transient service unit placed into the appropriate slice. systemd-oomd
 		// monitors pressure on the slices and kills the highest-memory unit when
 		// the configured threshold is exceeded.
+		//
+		// The transient service runs in systemd's execution context (PID 1), so
+		// environment variables, working directory, and supplementary groups must
+		// be passed as systemd unit properties — they are NOT inherited from the
+		// systemd-run client process.
 		sliceName := "e2b-user.slice"
 		procTypeStr := "user"
 		if req.GetPty() != nil {
@@ -120,9 +160,34 @@ func New(
 			"-p", fmt.Sprintf("Nice=%d", defaultNice),
 			"-p", "User=" + user.Username,
 			"-p", "Group=" + user.Gid,
+			"-p", "WorkingDirectory=" + resolvedPath,
+		}
+
+		// Add supplementary groups so the service process gets the same
+		// group memberships (e.g. sudo, users) as the non-systemd path.
+		if gids, err := user.GroupIds(); err != nil {
+			logger.Warn().Err(err).Str("user", user.Username).Msg("failed to get supplementary groups")
+		} else {
+			var groupNames []string
+			for _, g := range gids {
+				if grp, err := osuser.LookupGroupId(g); err == nil {
+					groupNames = append(groupNames, grp.Name)
+				}
+			}
+			if len(groupNames) > 0 {
+				cmdArgs = append(cmdArgs, "-p", "SupplementaryGroups="+strings.Join(groupNames, " "))
+			}
+		}
+
+		// Pass environment variables as systemd properties.
+		for _, envVar := range formattedVars {
+			cmdArgs = append(cmdArgs, "-p", "Environment="+envVar)
+		}
+
+		cmdArgs = append(cmdArgs,
 			"--",
 			req.GetProcess().GetCmd(),
-		}
+		)
 		cmdArgs = append(cmdArgs, req.GetProcess().GetArgs()...)
 		cmd = exec.CommandContext(ctx, "systemd-run", cmdArgs...)
 
@@ -170,44 +235,10 @@ func New(
 				Groups: groups,
 			},
 		}
+
+		cmd.Dir = resolvedPath
+		cmd.Env = formattedVars
 	}
-
-	resolvedPath, err := permissions.ExpandAndResolve(req.GetProcess().GetCwd(), user, defaults.Workdir)
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, err)
-	}
-
-	// Check if the cwd resolved path exists
-	if _, err := os.Stat(resolvedPath); errors.Is(err, os.ErrNotExist) {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("cwd '%s' does not exist", resolvedPath))
-	}
-
-	cmd.Dir = resolvedPath
-
-	var formattedVars []string
-
-	// Take only 'PATH' variable from the current environment
-	// The 'PATH' should ideally be set in the environment
-	formattedVars = append(formattedVars, "PATH="+os.Getenv("PATH"))
-	formattedVars = append(formattedVars, "HOME="+user.HomeDir)
-	formattedVars = append(formattedVars, "USER="+user.Username)
-	formattedVars = append(formattedVars, "LOGNAME="+user.Username)
-
-	// Add the environment variables from the global environment
-	if defaults.EnvVars != nil {
-		defaults.EnvVars.Range(func(key string, value string) bool {
-			formattedVars = append(formattedVars, key+"="+value)
-
-			return true
-		})
-	}
-
-	// Only the last values of the env vars are used - this allows for overwriting defaults
-	for key, value := range req.GetProcess().GetEnvs() {
-		formattedVars = append(formattedVars, key+"="+value)
-	}
-
-	cmd.Env = formattedVars
 
 	outMultiplex := NewMultiplexedChannel[rpc.ProcessEvent_Data](outputBufferSize)
 
@@ -237,7 +268,7 @@ func New(
 			Rows: uint16(req.GetPty().GetSize().GetRows()),
 		})
 		if err != nil {
-			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("error starting pty with command '%s' in dir '%s' with '%d' cols and '%d' rows: %w", userCmd, cmd.Dir, req.GetPty().GetSize().GetCols(), req.GetPty().GetSize().GetRows(), err))
+			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("error starting pty with command '%s' in dir '%s' with '%d' cols and '%d' rows: %w", userCmd, resolvedPath, req.GetPty().GetSize().GetCols(), req.GetPty().GetSize().GetRows(), err))
 		}
 
 		outWg.Go(func() {
