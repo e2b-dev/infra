@@ -2,17 +2,16 @@ package volumes
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
-	"path/filepath"
-
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
-	"google.golang.org/grpc/codes"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/grpc/codes"
 )
 
 func (s *Service) CreateDir(ctx context.Context, request *orchestrator.VolumeDirCreateRequest) (r *orchestrator.VolumeDirCreateResponse, err error) {
@@ -40,39 +39,43 @@ func (s *Service) CreateDir(ctx context.Context, request *orchestrator.VolumeDir
 
 	if request.GetCreateParents() {
 		if err := fs.MkdirAll(path, os.FileMode(mode)); err != nil {
-			return nil, fmt.Errorf("failed to prepare parent directories: %w", err)
+			return nil, processError(ctx, "failed to create directory (with parents)", err)
 		}
-	} else if err := fs.Mkdir(filepath.Dir(path), os.FileMode(mode)); err != nil {
-		return nil, fmt.Errorf("failed to prepare parent directories: %w", err)
+	} else if err := fs.Mkdir(path, os.FileMode(mode)); err != nil {
+		return nil, processError(ctx, "failed to create directory", err)
 	}
 
 	if err := fs.Chown(path, int(uid), int(gid)); err != nil {
-		if os.IsNotExist(err) {
-			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to chown: %q not found.", request.GetPath())
-		}
-
-		return nil, fmt.Errorf("failed to set directory ownership: %w", err)
+		return nil, processError(ctx, "failed to chown directory", err)
 	}
 
 	// we do this again to avoid the process' umask from automatically 'fixing' our requests.
 	if err := fs.Chmod(path, os.FileMode(mode)); err != nil {
-		if os.IsNotExist(err) {
-			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to chmod: %q not found.", request.GetPath())
-		}
-
-		return nil, fmt.Errorf("failed to set directory mode: %w", err)
+		return nil, processError(ctx, "failed to chmod directory", err)
 	}
 
 	fi, err := fs.Stat(path)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to stat: %q not found.", request.GetPath())
-		}
-
-		return nil, fmt.Errorf("failed to stat created directory: %w", err)
+		return nil, processError(ctx, "failed to stat directory", err)
 	}
 
 	entry := toEntry(path, fi)
 
 	return &orchestrator.VolumeDirCreateResponse{Entry: entry}, nil
+}
+
+func processError(ctx context.Context, s string, err error) error {
+	if err == nil {
+		return nil
+	}
+
+	if errors.Is(err, os.ErrExist) {
+		return newAPIError(ctx, codes.AlreadyExists, http.StatusConflict, orchestrator.UserErrorCode_PATH_ALREADY_EXISTS, "%s: %s", s, err.Error())
+	}
+
+	if errors.Is(err, os.ErrNotExist) {
+		return newAPIError(ctx, codes.NotFound, http.StatusNotFound, orchestrator.UserErrorCode_PATH_NOT_FOUND, "%s: %s", s, err.Error())
+	}
+
+	return fmt.Errorf("%s: %w", s, err)
 }

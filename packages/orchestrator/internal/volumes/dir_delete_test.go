@@ -46,6 +46,8 @@ func TestDirDelete(t *testing.T) {
 func requireGRPCError(t *testing.T, err error, expectedGRPCCode codes.Code, expectedUserErrorCode orchestrator.UserErrorCode) {
 	t.Helper()
 
+	require.Error(t, err)
+
 	status, ok := status.FromError(err)
 	require.True(t, ok)
 

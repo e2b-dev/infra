@@ -1,0 +1,85 @@
+package volumes
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+)
+
+func TestDirCreate(t *testing.T) {
+	s, tmpdir, volumeInfo := setupTestService(t)
+
+	t.Run("create dir", func(t *testing.T) {
+		dirname := "test-dir"
+		_, err := s.CreateDir(t.Context(), &orchestrator.VolumeDirCreateRequest{
+			Volume: volumeInfo,
+			Path:   dirname,
+		})
+		require.NoError(t, err)
+
+		fi, err := os.Stat(filepath.Join(tmpdir, dirname))
+		require.NoError(t, err)
+		require.True(t, fi.IsDir())
+	})
+
+	t.Run("create nested dir with CreateParents=true", func(t *testing.T) {
+		dirname := "parent/child"
+		_, err := s.CreateDir(t.Context(), &orchestrator.VolumeDirCreateRequest{
+			Volume:        volumeInfo,
+			Path:          dirname,
+			CreateParents: true,
+		})
+		require.NoError(t, err)
+
+		fi, err := os.Stat(filepath.Join(tmpdir, dirname))
+		require.NoError(t, err)
+		require.True(t, fi.IsDir())
+	})
+
+	t.Run("create nested dir without CreateParents (should fail)", func(t *testing.T) {
+		dirname := "another-parent/child"
+		_, err := s.CreateDir(t.Context(), &orchestrator.VolumeDirCreateRequest{
+			Volume:        volumeInfo,
+			Path:          dirname,
+			CreateParents: false,
+		})
+		requireGRPCError(t, err, codes.NotFound, orchestrator.UserErrorCode_PATH_NOT_FOUND)
+	})
+
+	t.Run("create dir with custom mode and ownership", func(t *testing.T) {
+		dirname := "custom-dir"
+		mode := uint32(0700)
+		uid := uint32(1000)
+		gid := uint32(1000)
+
+		_, err := s.CreateDir(t.Context(), &orchestrator.VolumeDirCreateRequest{
+			Volume: volumeInfo,
+			Path:   dirname,
+			Mode:   utils.ToPtr(mode),
+			Uid:    utils.ToPtr(uid),
+			Gid:    utils.ToPtr(gid),
+		})
+		require.NoError(t, err)
+
+		fi, err := os.Stat(filepath.Join(tmpdir, dirname))
+		require.NoError(t, err)
+		require.Equal(t, os.FileMode(mode), fi.Mode().Perm())
+	})
+
+	t.Run("create dir that already exists", func(t *testing.T) {
+		dirname := "existing-dir"
+		err := os.Mkdir(filepath.Join(tmpdir, dirname), 0755)
+		require.NoError(t, err)
+
+		_, err = s.CreateDir(t.Context(), &orchestrator.VolumeDirCreateRequest{
+			Volume: volumeInfo,
+			Path:   dirname,
+		})
+		requireGRPCError(t, err, codes.AlreadyExists, orchestrator.UserErrorCode_PATH_ALREADY_EXISTS)
+	})
+}
