@@ -12,9 +12,13 @@ import (
 )
 
 func TestFileDelete(t *testing.T) {
+	t.Parallel()
+
 	s, tmpdir, volumeInfo := setupTestService(t)
 
 	t.Run("delete file", func(t *testing.T) {
+		t.Parallel()
+
 		filename := "test-delete.txt"
 		err := os.WriteFile(filepath.Join(tmpdir, filename), []byte("test"), 0o644)
 		require.NoError(t, err)
@@ -30,6 +34,8 @@ func TestFileDelete(t *testing.T) {
 	})
 
 	t.Run("delete non-existent file", func(t *testing.T) {
+		t.Parallel()
+
 		_, err := s.DeleteFile(t.Context(), &orchestrator.VolumeFileDeleteRequest{
 			Volume: volumeInfo,
 			Path:   "non-existent-file",
@@ -38,6 +44,8 @@ func TestFileDelete(t *testing.T) {
 	})
 
 	t.Run("delete root (should fail)", func(t *testing.T) {
+		t.Parallel()
+
 		_, err := s.DeleteFile(t.Context(), &orchestrator.VolumeFileDeleteRequest{
 			Volume: volumeInfo,
 			Path:   "/",

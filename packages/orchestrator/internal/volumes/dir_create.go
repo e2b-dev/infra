@@ -55,12 +55,12 @@ func (s *Service) CreateDir(ctx context.Context, request *orchestrator.VolumeDir
 		return nil, processError(ctx, "failed to chmod directory", err)
 	}
 
-	fi, err := fs.Stat(path)
+	fi, finalPath, err := fs.Stat(path)
 	if err != nil {
 		return nil, processError(ctx, "failed to stat directory", err)
 	}
 
-	entry := toEntry(path, fi)
+	entry := toEntry(path, finalPath, fi)
 
 	return &orchestrator.VolumeDirCreateResponse{Entry: entry}, nil
 }

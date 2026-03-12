@@ -72,7 +72,7 @@ func (s *Service) listRecursive(ctx context.Context, fs *chrooted.Chrooted, path
 	for _, item := range items {
 		itemPath := filepath.Join(path, item.Name())
 		results = append(results, &orchestrator.VolumeDirectoryItem{
-			Entry: toEntry(itemPath, item),
+			Entry: toEntry(itemPath, "", item),
 		})
 
 		if item.IsDir() && depth > 1 {

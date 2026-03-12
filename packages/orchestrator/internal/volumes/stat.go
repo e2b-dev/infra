@@ -29,7 +29,7 @@ func (s *Service) Stat(ctx context.Context, request *orchestrator.StatRequest) (
 		attribute.String("path", path),
 	))
 
-	info, err := fs.Lstat(path)
+	info, finalPath, err := fs.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to stat: %q not found.", request.GetPath())
@@ -38,7 +38,7 @@ func (s *Service) Stat(ctx context.Context, request *orchestrator.StatRequest) (
 		return nil, fmt.Errorf("failed to stat path: %w", err)
 	}
 
-	entry := toEntry(path, info)
+	entry := toEntry(path, finalPath, info)
 
 	return &orchestrator.StatResponse{Entry: entry}, nil
 }

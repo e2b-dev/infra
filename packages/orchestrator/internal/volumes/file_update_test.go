@@ -12,9 +12,13 @@ import (
 )
 
 func TestFileUpdateMetadata(t *testing.T) {
+	t.Parallel()
+
 	s, tmpdir, volumeInfo := setupTestService(t)
 
 	t.Run("update mode", func(t *testing.T) {
+		t.Parallel()
+
 		filename := "test-update-mode.txt"
 		err := os.WriteFile(filepath.Join(tmpdir, filename), []byte("test"), 0o644)
 		require.NoError(t, err)
@@ -33,6 +37,8 @@ func TestFileUpdateMetadata(t *testing.T) {
 	})
 
 	t.Run("update uid/gid", func(t *testing.T) {
+		t.Parallel()
+
 		filename := "test-update-owner.txt"
 		err := os.WriteFile(filepath.Join(tmpdir, filename), []byte("test"), 0o644)
 		require.NoError(t, err)
@@ -50,6 +56,8 @@ func TestFileUpdateMetadata(t *testing.T) {
 	})
 
 	t.Run("update non-existent file", func(t *testing.T) {
+		t.Parallel()
+
 		newMode := uint32(0o755)
 		_, err := s.UpdateFileMetadata(t.Context(), &orchestrator.VolumeFileUpdateRequest{
 			Volume: volumeInfo,

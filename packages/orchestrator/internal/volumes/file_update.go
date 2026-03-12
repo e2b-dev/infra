@@ -70,7 +70,7 @@ func (s *Service) UpdateFileMetadata(ctx context.Context, request *orchestrator.
 		}
 	}
 
-	fi, err := fs.Stat(path)
+	fi, finalPath, err := fs.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to stat: %q not found.", request.GetPath())
@@ -79,7 +79,7 @@ func (s *Service) UpdateFileMetadata(ctx context.Context, request *orchestrator.
 		return nil, fmt.Errorf("failed to stat file: %w", err)
 	}
 
-	entry := toEntry(path, fi)
+	entry := toEntry(path, finalPath, fi)
 
 	return &orchestrator.VolumeFileUpdateResponse{Entry: entry}, nil
 }

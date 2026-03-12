@@ -11,6 +11,8 @@ import (
 )
 
 func TestVolume(t *testing.T) {
+	t.Parallel()
+
 	s, _, _ := setupTestService(t)
 
 	teamID := uuid.New().String()
@@ -22,6 +24,8 @@ func TestVolume(t *testing.T) {
 	}
 
 	t.Run("create volume", func(t *testing.T) {
+		t.Parallel()
+
 		_, err := s.Create(t.Context(), &orchestrator.VolumeCreateRequest{
 			Volume: volumeInfo,
 		})
@@ -35,6 +39,8 @@ func TestVolume(t *testing.T) {
 	})
 
 	t.Run("delete volume", func(t *testing.T) {
+		t.Parallel()
+
 		_, err := s.Delete(t.Context(), &orchestrator.VolumeDeleteRequest{
 			Volume: volumeInfo,
 		})

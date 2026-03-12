@@ -13,9 +13,13 @@ import (
 )
 
 func TestDirCreate(t *testing.T) {
+	t.Parallel()
+
 	s, tmpdir, volumeInfo := setupTestService(t)
 
 	t.Run("create dir", func(t *testing.T) {
+		t.Parallel()
+
 		dirname := "test-dir"
 		_, err := s.CreateDir(t.Context(), &orchestrator.VolumeDirCreateRequest{
 			Volume: volumeInfo,
@@ -29,6 +33,8 @@ func TestDirCreate(t *testing.T) {
 	})
 
 	t.Run("create nested dir with CreateParents=true", func(t *testing.T) {
+		t.Parallel()
+
 		dirname := "parent/child"
 		_, err := s.CreateDir(t.Context(), &orchestrator.VolumeDirCreateRequest{
 			Volume:        volumeInfo,
@@ -43,6 +49,8 @@ func TestDirCreate(t *testing.T) {
 	})
 
 	t.Run("create nested dir without CreateParents (should fail)", func(t *testing.T) {
+		t.Parallel()
+
 		dirname := "another-parent/child"
 		_, err := s.CreateDir(t.Context(), &orchestrator.VolumeDirCreateRequest{
 			Volume:        volumeInfo,
@@ -53,6 +61,8 @@ func TestDirCreate(t *testing.T) {
 	})
 
 	t.Run("create dir with custom mode and ownership", func(t *testing.T) {
+		t.Parallel()
+
 		dirname := "custom-dir"
 		mode := uint32(0o700)
 		uid := uint32(1000)
@@ -73,6 +83,8 @@ func TestDirCreate(t *testing.T) {
 	})
 
 	t.Run("create dir that already exists", func(t *testing.T) {
+		t.Parallel()
+
 		dirname := "existing-dir"
 		err := os.Mkdir(filepath.Join(tmpdir, dirname), 0o755)
 		require.NoError(t, err)

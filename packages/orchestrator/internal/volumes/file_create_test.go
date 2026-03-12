@@ -24,25 +24,32 @@ func (m *mockCreateFileServer) Recv() (*orchestrator.VolumeFileCreateRequest, er
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
+
 	return args.Get(0).(*orchestrator.VolumeFileCreateRequest), args.Error(1)
 }
 
 func (m *mockCreateFileServer) SendAndClose(resp *orchestrator.VolumeFileCreateResponse) error {
 	args := m.Called(resp)
+
 	return args.Error(0)
 }
 
 func (m *mockCreateFileServer) Context() context.Context {
 	args := m.Called()
+
 	return args.Get(0).(context.Context)
 }
 
 func TestFileCreate(t *testing.T) {
+	t.Parallel()
+
 	s, tmpdir, volumeInfo := setupTestService(t)
 
 	t.Run("create file", func(t *testing.T) {
+		t.Parallel()
+
 		filename := "test-create.txt"
-		mockServer := new(mockCreateFileServer)
+		mockServer := &mockCreateFileServer{}
 		mockServer.On("Context").Return(t.Context())
 
 		// 1. Send Start
@@ -83,8 +90,10 @@ func TestFileCreate(t *testing.T) {
 	})
 
 	t.Run("create file with force", func(t *testing.T) {
+		t.Parallel()
+
 		filename := "nested/dir/test-create.txt"
-		mockServer := new(mockCreateFileServer)
+		mockServer := &mockCreateFileServer{}
 		mockServer.On("Context").Return(t.Context())
 
 		mockServer.On("Recv").Return(&orchestrator.VolumeFileCreateRequest{
@@ -114,7 +123,9 @@ func TestFileCreate(t *testing.T) {
 	})
 
 	t.Run("unexpected EOF", func(t *testing.T) {
-		mockServer := new(mockCreateFileServer)
+		t.Parallel()
+
+		mockServer := &mockCreateFileServer{}
 		mockServer.On("Context").Return(t.Context())
 		mockServer.On("Recv").Return(nil, io.EOF).Once()
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -17,7 +18,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/chrooted"
-	"github.com/e2b-dev/infra/packages/shared/pkg/filesystem"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
@@ -122,45 +122,66 @@ func (s *Service) isRoot(path string) bool {
 	return path == "/"
 }
 
-func toEntry(fullVolumePath string, osfi os.FileInfo) *orchestrator.EntryInfo {
-	fileInfo := filesystem.GetEntryInfo(fullVolumePath, osfi)
-
+func toEntry(fullVolumePath, symlinkDest string, fileInfo os.FileInfo) *orchestrator.EntryInfo {
 	entry := &orchestrator.EntryInfo{
-		Name:          fileInfo.Name,
-		Path:          fullVolumePath,
-		Size:          fileInfo.Size,
-		Mode:          uint32(fileInfo.Mode & os.ModePerm),
-		Uid:           fileInfo.UID,
-		Gid:           fileInfo.GID,
-		ModifiedTime:  toTimestamp(fileInfo.ModifiedTime),
-		SymlinkTarget: fileInfo.SymlinkTarget,
-		CreatedTime:   toTimestamp(fileInfo.CreatedTime),
-		AccessedTime:  toTimestamp(fileInfo.AccessedTime),
-		Type:          toType(fileInfo.Type),
+		Name: fileInfo.Name(),
+		Path: fullVolumePath,
+		Size: fileInfo.Size(),
+		Mode: uint32(fileInfo.Mode() & os.ModePerm),
+		Type: toType(fileInfo.Mode()),
+	}
+
+	if symlinkDest != "" && symlinkDest != fullVolumePath {
+		entry.Name = filepath.Base(fullVolumePath)
+		entry.SymlinkTarget = &symlinkDest
+	}
+
+	if base := getBase(fileInfo.Sys()); base != nil {
+		entry.AccessedTime = toTimestampFromSpec(base.Atim)
+		entry.CreatedTime = toTimestampFromSpec(base.Ctim)
+		entry.ModifiedTime = toTimestampFromSpec(base.Mtim)
+		entry.Uid = base.Uid
+		entry.Gid = base.Gid
+	} else if !fileInfo.ModTime().IsZero() {
+		entry.ModifiedTime = toTimestampFromTime(fileInfo.ModTime())
 	}
 
 	return entry
 }
 
-func toType(fileType filesystem.FileType) orchestrator.FileType {
-	switch fileType {
-	case filesystem.DirectoryFileType:
+func getBase(sys any) *syscall.Stat_t {
+	st, _ := sys.(*syscall.Stat_t)
+
+	return st
+}
+
+func toType(fileType os.FileMode) orchestrator.FileType {
+	switch {
+	case fileType.IsDir():
 		return orchestrator.FileType_FILE_TYPE_DIRECTORY
-	case filesystem.FileFileType:
+	case fileType.IsRegular():
 		return orchestrator.FileType_FILE_TYPE_FILE
-	case filesystem.SymlinkFileType:
+	case fileType&os.ModeSymlink == os.ModeSymlink:
 		return orchestrator.FileType_FILE_TYPE_SYMLINK
 	default:
 		return orchestrator.FileType_FILE_TYPE_UNSPECIFIED
 	}
 }
 
-func toTimestamp(spec time.Time) *timestamppb.Timestamp {
-	if spec.IsZero() {
+func toTimestampFromTime(t time.Time) *timestamppb.Timestamp {
+	if t.IsZero() {
 		return nil
 	}
 
-	return timestamppb.New(spec)
+	return timestamppb.New(t)
+}
+
+func toTimestampFromSpec(spec syscall.Timespec) *timestamppb.Timestamp {
+	if spec.Sec == 0 && spec.Nsec == 0 {
+		return nil
+	}
+
+	return timestamppb.New(time.Unix(spec.Sec, spec.Nsec))
 }
 
 func setSpanStatus(span trace.Span, err error) {

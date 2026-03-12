@@ -13,11 +13,15 @@ import (
 )
 
 func TestDirDelete(t *testing.T) {
+	t.Parallel()
+
 	s, tmpdir, volumeInfo := setupTestService(t)
 
 	dirname := "test-dir"
 
 	t.Run("delete dir", func(t *testing.T) {
+		t.Parallel()
+
 		// create directory
 		err := os.Mkdir(filepath.Join(tmpdir, dirname), 0o755)
 		require.NoError(t, err)
@@ -35,6 +39,8 @@ func TestDirDelete(t *testing.T) {
 	})
 
 	t.Run("delete non-existent dir", func(t *testing.T) {
+		t.Parallel()
+
 		_, err := s.DeleteDir(t.Context(), &orchestrator.VolumeDirDeleteRequest{
 			Volume: volumeInfo,
 			Path:   "non-existent-dir",
@@ -52,11 +58,12 @@ func requireGRPCError(t *testing.T, err error, expectedGRPCCode codes.Code, expe
 	status, ok := status.FromError(err)
 	require.True(t, ok)
 
-	require.Equal(t, status.Code(), expectedGRPCCode)
+	require.Equal(t, expectedGRPCCode, status.Code())
 
 	for _, detail := range status.Details() {
 		if userError, ok := detail.(*orchestrator.UserError); ok {
-			require.Equal(t, userError.Code, expectedUserErrorCode)
+			require.Equal(t, expectedUserErrorCode, userError.GetCode())
+
 			return
 		}
 	}

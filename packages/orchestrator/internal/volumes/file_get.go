@@ -36,7 +36,7 @@ func (s *Service) GetFile(request *orchestrator.VolumeFileGetRequest, server orc
 	defer f.Close()
 
 	span.AddEvent("getting file info")
-	info, err := fs.Stat(path)
+	info, _, err := fs.Stat(path)
 	if err != nil {
 		return fmt.Errorf("failed to stat file: %w", err)
 	}
