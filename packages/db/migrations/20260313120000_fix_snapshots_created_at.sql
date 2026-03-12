@@ -37,11 +37,5 @@ $$ LANGUAGE plpgsql;
 CALL backfill_snapshots_created_at();
 DROP PROCEDURE backfill_snapshots_created_at();
 
--- Fallback for orphaned snapshots whose env row was deleted.
-UPDATE public.snapshots SET created_at = now() WHERE created_at IS NULL;
-
-ALTER TABLE public.snapshots ALTER COLUMN created_at SET NOT NULL;
-
 -- +goose Down
-ALTER TABLE public.snapshots ALTER COLUMN created_at DROP NOT NULL;
 ALTER TABLE public.snapshots ALTER COLUMN created_at DROP DEFAULT;
