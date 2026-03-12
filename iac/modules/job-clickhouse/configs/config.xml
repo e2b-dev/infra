@@ -51,9 +51,7 @@
         <ttl>event_date + INTERVAL 1 DAY</ttl>
     </asynchronous_metric_log>
 
-    <trace_log>
-        <ttl>event_date + INTERVAL 1 DAY</ttl>
-    </trace_log>
+    <trace_log remove="1"/>
 
     <text_log>
         <ttl>event_date + INTERVAL 1 DAY</ttl>
@@ -71,9 +69,7 @@
         <ttl>event_date + INTERVAL 1 DAY</ttl>
     </metric_log>
 
-    <processors_profile_log>
-        <ttl>event_date + INTERVAL 1 DAY</ttl>
-    </processors_profile_log>
+    <processors_profile_log remove="1"/>
 
     <asynchronous_metric_log>
         <ttl>event_date + INTERVAL 1 DAY</ttl>
