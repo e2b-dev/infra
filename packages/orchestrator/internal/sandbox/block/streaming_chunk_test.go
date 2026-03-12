@@ -261,45 +261,76 @@ func (c *countingUpstream) OpenRangeReader(ctx context.Context, off, length int6
 func TestStreamingChunker_FullChunkCachedAfterPartialRequest(t *testing.T) {
 	t.Parallel()
 
-	data := makeTestData(t, storage.MemoryChunkSize)
-	openCount := atomic.Int64{}
+	runTest := func(t *testing.T, useEventually bool) { //nolint:thelper // not a helper, it's the test body
+		data := makeTestData(t, storage.MemoryChunkSize)
+		openCount := atomic.Int64{}
 
-	upstream := &countingUpstream{
-		inner:     &fastUpstream{data: data, blockSize: testBlockSize},
-		readCount: &openCount,
-	}
-
-	chunker, err := NewStreamingChunker(
-		int64(len(data)), testBlockSize,
-		upstream, t.TempDir()+"/cache",
-		newTestMetrics(t),
-		0, nil,
-	)
-	require.NoError(t, err)
-	defer chunker.Close()
-
-	// Request only the FIRST block of the 4MB chunk.
-	_, err = chunker.Slice(t.Context(), 0, testBlockSize)
-	require.NoError(t, err)
-
-	// The background goroutine should continue fetching the remaining data.
-	// Wait for it to complete.
-	require.Eventually(t, func() bool {
-		// Try reading the LAST block — if the full chunk is cached this
-		// will succeed without opening another range reader.
-		lastOff := int64(storage.MemoryChunkSize) - testBlockSize
-		slice, err := chunker.Slice(t.Context(), lastOff, testBlockSize)
-		if err != nil {
-			return false
+		upstream := &countingUpstream{
+			inner:     &fastUpstream{data: data, blockSize: testBlockSize},
+			readCount: &openCount,
 		}
 
-		return bytes.Equal(data[lastOff:], slice)
-	}, 5*time.Second, 10*time.Millisecond)
+		chunker, err := NewStreamingChunker(
+			int64(len(data)), testBlockSize,
+			upstream, t.TempDir()+"/cache",
+			newTestMetrics(t),
+			0, nil,
+		)
+		require.NoError(t, err)
+		defer chunker.Close()
 
-	// Exactly one OpenRangeReader call should have been made for the entire
-	// chunk, not one per requested block.
-	assert.Equal(t, int64(1), openCount.Load(),
-		"expected 1 OpenRangeReader call (full chunk fetched in background), got %d", openCount.Load())
+		// Request only the FIRST block of the 4MB chunk.
+		_, err = chunker.Slice(t.Context(), 0, testBlockSize)
+		require.NoError(t, err)
+
+		lastOff := int64(storage.MemoryChunkSize) - testBlockSize
+
+		if useEventually {
+			var lastErr error
+			var lastMismatch bool
+			require.Eventually(t, func() bool {
+				slice, err := chunker.Slice(t.Context(), lastOff, testBlockSize)
+				if err != nil {
+					lastErr = err
+					t.Logf("Slice(%d) error: %v", lastOff, err)
+
+					return false
+				}
+				if !bytes.Equal(data[lastOff:], slice) {
+					lastMismatch = true
+					t.Logf("data mismatch at offset %d", lastOff)
+
+					return false
+				}
+
+				return true
+			}, 5*time.Second, 10*time.Millisecond)
+			if lastErr != nil {
+				t.Logf("last error from Slice: %v", lastErr)
+			}
+			if lastMismatch {
+				t.Logf("last attempt had data mismatch")
+			}
+		} else {
+			// Direct blocking call — Slice blocks via registerAndWait
+			// until the background fetch reaches this offset.
+			slice, err := chunker.Slice(t.Context(), lastOff, testBlockSize)
+			require.NoError(t, err)
+			require.True(t, bytes.Equal(data[lastOff:], slice), "data mismatch at offset %d", lastOff)
+		}
+
+		assert.Equal(t, int64(1), openCount.Load(),
+			"expected 1 OpenRangeReader call (full chunk fetched in background), got %d", openCount.Load())
+	}
+
+	t.Run("eventually", func(t *testing.T) {
+		t.Parallel()
+		runTest(t, true)
+	})
+	t.Run("direct", func(t *testing.T) {
+		t.Parallel()
+		runTest(t, false)
+	})
 }
 
 func TestStreamingChunker_ConcurrentSameChunk(t *testing.T) {
