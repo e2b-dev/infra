@@ -48,20 +48,20 @@ receivers:
             - "^nvme[0-9]+n[0-9]+$"
           match_type: regexp
         metrics:
-         system.disk.io:
-           enabled: true
-         system.disk.io_time:
-           enabled: true
-         system.disk.merged:
-           enabled: false
-         system.disk.operation_time:
-           enabled: false
-         system.disk.operations:
-           enabled: true
-         system.disk.pending_operations:
-           enabled: true
-         system.disk.weighted_io_time:
-           enabled: false
+          system.disk.io:
+            enabled: true
+          system.disk.io_time:
+            enabled: true
+          system.disk.merged:
+            enabled: false
+          system.disk.operation_time:
+            enabled: false
+          system.disk.operations:
+            enabled: true
+          system.disk.pending_operations:
+            enabled: true
+          system.disk.weighted_io_time:
+            enabled: false
 
       load:
         metrics:
