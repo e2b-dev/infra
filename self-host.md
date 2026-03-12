@@ -147,8 +147,34 @@ Now, you should see the right quota options in `All Quotas` and be able to reque
     make build  # build the AMI (~5 min, launches a t3.large)
     ```
 7. Run `make build-and-upload` to build and push container images and binaries
-8. Run `make copy-public-builds` to copy Firecracker kernels and rootfs to your S3 buckets
-    > This requires `gsutil` to download from the public GCS bucket and `aws` CLI to upload to your S3 buckets
+8. Copy Firecracker kernels and rootfs to your S3 buckets. You have two options:
+
+    **Option A** — Using `make` (requires [`gsutil`](https://cloud.google.com/storage/docs/gsutil_install)):
+    ```sh
+    make copy-public-builds
+    ```
+
+    **Option B** — Without `gsutil` (download from public GCS bucket via HTTPS, then upload to S3):
+    ```sh
+    # Set your bucket prefix (PREFIX + AWS_ACCOUNT_ID + "-")
+    BUCKET_PREFIX="e2b-YOUR_ACCOUNT_ID-"
+
+    # Download kernels and firecrackers
+    mkdir -p .kernels .firecrackers
+    for name in $(curl -s "https://storage.googleapis.com/storage/v1/b/e2b-prod-public-builds/o?prefix=kernels/" | python3 -c "import sys,json; [print(i['name']) for i in json.load(sys.stdin).get('items',[]) if int(i.get('size',0))>0]"); do
+      mkdir -p ".kernels/$(dirname "${name#kernels/}")"
+      curl -sL "https://storage.googleapis.com/e2b-prod-public-builds/$name" -o ".kernels/${name#kernels/}"
+    done
+    for name in $(curl -s "https://storage.googleapis.com/storage/v1/b/e2b-prod-public-builds/o?prefix=firecrackers/" | python3 -c "import sys,json; [print(i['name']) for i in json.load(sys.stdin).get('items',[]) if int(i.get('size',0))>0]"); do
+      mkdir -p ".firecrackers/$(dirname "${name#firecrackers/}")"
+      curl -sL "https://storage.googleapis.com/e2b-prod-public-builds/$name" -o ".firecrackers/${name#firecrackers/}"
+    done
+
+    # Upload to S3
+    aws s3 cp .kernels/ "s3://${BUCKET_PREFIX}fc-kernels/" --recursive --profile default
+    aws s3 cp .firecrackers/ "s3://${BUCKET_PREFIX}fc-versions/" --recursive --profile default
+    rm -rf .kernels .firecrackers
+    ```
 9. Run `make plan-without-jobs` and then `make apply` to provision the cluster infrastructure
 10. Run `make plan` and then `make apply` to deploy all Nomad jobs
 11. Setup data in the cluster by running `make prep-cluster` in `packages/shared` to create an initial user, team, and build a base template
