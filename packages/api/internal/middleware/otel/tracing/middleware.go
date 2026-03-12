@@ -83,7 +83,7 @@ func Middleware(tracerProvider oteltrace.TracerProvider, service string) gin.Han
 		if c.Request.Header.Get("traceparent") != "" {
 			c.Request.Header.Del("traceparent")
 		}
-		if edgeTraceID, ok := parseEdgeTraceID(c.Request.Header.Get(cloudTraceContextHeader)); ok {
+		if edgeTraceID, ok := parseEdgeTraceID(c.Request.Header.Get(gcpTraceContextHeader), c.Request.Header.Get(awsTraceContextHeader)); ok {
 			ctx = logger.ContextWithEdgeTraceID(ctx, edgeTraceID)
 		}
 		opts := []oteltrace.SpanStartOption{
