@@ -80,6 +80,7 @@ func (s *AuthService[T]) ValidateAPIKey(ctx context.Context, ginCtx *gin.Context
 		}
 	}
 
+	//nolint:contextcheck // We use the gin request context to set attributes on the parent span.
 	telemetry.SetAttributes(ginCtx.Request.Context(), telemetry.WithAPIKey(keys.ApiKeyPrefix, apiKey))
 
 	return result, nil
