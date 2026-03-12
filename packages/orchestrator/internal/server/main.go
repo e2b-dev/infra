@@ -33,22 +33,21 @@ type Server struct {
 	orchestrator.UnimplementedSandboxServiceServer
 	orchestrator.UnimplementedChunkServiceServer
 
-	config                cfg.Config
-	sandboxFactory        *sandbox.Factory
-	info                  *service.ServiceInfo
-	sandboxes             *sandbox.Map
-	proxy                 *proxy.SandboxProxy
-	networkPool           *network.Pool
-	templateCache         *template.Cache
-	pauseMu               sync.Mutex
-	devicePool            *nbd.DevicePool
-	persistence           storage.StorageProvider
-	featureFlags          *featureflags.Client
-	sbxEventsService      *events.EventsService
-	startingSandboxes     *semaphore.Weighted
-	peerRegistry          peerclient.Registry
-	uploadedBuilds        *ttlcache.Cache[string, struct{}]
-	sandboxCreateDuration metric.Int64Histogram
+	config            cfg.Config
+	sandboxFactory    *sandbox.Factory
+	info              *service.ServiceInfo
+	proxy             *proxy.SandboxProxy
+	networkPool       *network.Pool
+	templateCache     *template.Cache
+	pauseMu           sync.Mutex
+	devicePool        *nbd.DevicePool
+	persistence       storage.StorageProvider
+	featureFlags      *featureflags.Client
+	sbxEventsService  *events.EventsService
+	startingSandboxes *semaphore.Weighted
+	peerRegistry      peerclient.Registry
+	uploadedBuilds    *ttlcache.Cache[string, struct{}]
+  sandboxCreateDuration metric.Int64Histogram
 }
 
 type ServiceConfig struct {
@@ -60,7 +59,6 @@ type ServiceConfig struct {
 	Info             *service.ServiceInfo
 	Proxy            *proxy.SandboxProxy
 	SandboxFactory   *sandbox.Factory
-	Sandboxes        *sandbox.Map
 	Persistence      storage.StorageProvider
 	FeatureFlags     *featureflags.Client
 	SbxEventsService *events.EventsService
@@ -78,7 +76,6 @@ func New(cfg ServiceConfig) (*Server, error) {
 		sandboxFactory:    cfg.SandboxFactory,
 		info:              cfg.Info,
 		proxy:             cfg.Proxy,
-		sandboxes:         cfg.Sandboxes,
 		networkPool:       cfg.NetworkPool,
 		templateCache:     cfg.TemplateCache,
 		devicePool:        cfg.DevicePool,
@@ -99,7 +96,7 @@ func New(cfg ServiceConfig) (*Server, error) {
 	server.sandboxCreateDuration = sandboxCreateDuration
 
 	_, err = telemetry.GetObservableUpDownCounter(meter, telemetry.OrchestratorSandboxCountMeterName, func(_ context.Context, observer metric.Int64Observer) error {
-		observer.Observe(int64(server.sandboxes.Count()))
+		observer.Observe(int64(server.sandboxFactory.Sandboxes.Count()))
 
 		return nil
 	})

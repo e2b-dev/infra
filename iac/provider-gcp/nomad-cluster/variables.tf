@@ -377,3 +377,7 @@ variable "persistent_volume_types" {
     nfs_mount_opts   = string
   }))
 }
+
+variable "additional_api_paths_handled_by_ingress" {
+  type = list(string)
+}

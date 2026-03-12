@@ -36,7 +36,8 @@ snapshot as (
        allow_internet_access,
        origin_node_id,
        auto_pause,
-       config
+       config,
+       created_at
     )
     VALUES (
             $3,
@@ -50,7 +51,8 @@ snapshot as (
             $8,
             $9,
             $10,
-            $11
+            $11,
+            now()
    )
     ON CONFLICT (sandbox_id) DO UPDATE SET
         metadata = excluded.metadata,

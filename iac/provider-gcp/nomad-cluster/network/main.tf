@@ -270,6 +270,15 @@ resource "google_compute_url_map" "orch_map" {
     default_service = google_compute_backend_service.default["api"].self_link
 
     dynamic "path_rule" {
+      for_each = length(var.additional_api_paths_handled_by_ingress) > 0 ? [{}] : []
+
+      content {
+        paths   = var.additional_api_paths_handled_by_ingress
+        service = google_compute_backend_service.ingress.self_link
+      }
+    }
+
+    dynamic "path_rule" {
       for_each = var.additional_api_path_rules
       content {
         paths   = path_rule.value.paths
