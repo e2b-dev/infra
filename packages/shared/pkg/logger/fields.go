@@ -28,6 +28,10 @@ func WithExecutionID(executionID string) zap.Field {
 	return zap.String("execution.id", executionID)
 }
 
+func WithUserID(userID string) zap.Field {
+	return zap.String("user.id", userID)
+}
+
 func WithTeamID(teamID string) zap.Field {
 	return zap.String("team.id", teamID)
 }
