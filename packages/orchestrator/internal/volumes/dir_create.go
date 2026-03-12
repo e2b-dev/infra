@@ -53,23 +53,6 @@ func (s *Service) CreateDir(ctx context.Context, request *orchestrator.VolumeDir
 		return nil, err
 	}
 
-	if err := fs.Chown(path, int(uid), int(gid)); err != nil {
-		if os.IsNotExist(err) {
-			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to chown: %q not found.", request.GetPath())
-		}
-
-		return nil, fmt.Errorf("failed to set directory ownership: %w", err)
-	}
-
-	// we do this again to avoid the process' umask from automatically 'fixing' our requests.
-	if err := fs.Chmod(path, os.FileMode(mode)); err != nil {
-		if os.IsNotExist(err) {
-			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to chmod: %q not found.", request.GetPath())
-		}
-
-		return nil, fmt.Errorf("failed to set directory mode: %w", err)
-	}
-
 	stat, symlink, err := fs.Stat(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to stat directory: %w", err)
@@ -95,13 +78,10 @@ func (s *Service) mkdirWithParents(ctx context.Context, fs *chrooted.Chrooted, p
 
 	// Create only parent directories with defaultDirMode and fix permissions against umask.
 	parent := filepath.Dir(path)
-	if err := ensureParentDirs(fs, path, parent, os.FileMode(defaultDirMode)); err != nil {
+	if err := ensureParentDirs(fs, parent, os.FileMode(defaultDirMode)); err != nil {
 		return false, fmt.Errorf("failed to prepare parent directories: %w", err)
 	}
 
-	if !errors.Is(err, os.ErrNotExist) {
-		return false, processError(ctx, "failed to check directory existence", err)
-	}
 	if err := fs.MkdirAll(path, os.FileMode(mode)); err != nil {
 		return false, processError(ctx, "failed to create directory (with parents)", err)
 	}
@@ -151,18 +131,15 @@ func processError(ctx context.Context, s string, err error) error {
 	return fmt.Errorf("%s: %w", s, err)
 }
 
-func ensureParentDirs(fs *chrooted.Chrooted, volRoot, dirPath string, mode os.FileMode) error {
+func ensureParentDirs(fs *chrooted.Chrooted, dirPath string, mode os.FileMode) error {
 	if dirPath == "" {
 		return nil
 	}
 
-	volRoot = filepath.Clean(volRoot)
-	dirPath = filepath.Clean(dirPath)
-
 	// Determine which parent directories do not exist yet, up to the volume root.
 	var toChmod []string
 	cur := dirPath
-	for cur != volRoot {
+	for cur != dirPath {
 		if fi, _, err := fs.Stat(cur); err == nil {
 			if fi.IsDir() {
 				break // first existing directory reached

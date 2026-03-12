@@ -49,20 +49,6 @@ type volumePathRequest interface {
 	GetPath() string
 }
 
-type volumeRequest struct {
-	request volumeOnly
-}
-
-var _ volumePathRequest = (*volumeRequest)(nil)
-
-func (v volumeRequest) GetVolume() *orchestrator.VolumeInfo {
-	return v.request.GetVolume()
-}
-
-func (v volumeRequest) GetPath() string {
-	return ""
-}
-
 type volumeOnly interface {
 	GetVolume() *orchestrator.VolumeInfo
 }

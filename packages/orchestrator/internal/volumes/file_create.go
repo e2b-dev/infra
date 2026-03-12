@@ -52,7 +52,9 @@ func (s *Service) CreateFile(server orchestrator.VolumeService_CreateFileServer)
 		attribute.Int64("mode", int64(mode)),
 	))
 
+	dirName := filepath.Dir(path)
 	if start.GetForce() {
+		ensureParentDirs(fs, dirName, os.FileMode(defaultDirMode))
 		if err := fs.MkdirAll(filepath.Dir(path), os.FileMode(defaultDirMode)); err != nil {
 			return err
 		}
