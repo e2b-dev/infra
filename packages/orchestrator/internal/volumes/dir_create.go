@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/chrooted"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
@@ -39,20 +40,12 @@ func (s *Service) CreateDir(ctx context.Context, request *orchestrator.VolumeDir
 	))
 
 	if request.GetCreateParents() {
-		if err := fs.MkdirAll(path, os.FileMode(mode)); err != nil {
-			return nil, processError(ctx, "failed to create directory (with parents)", err)
-		}
-	} else if err := fs.Mkdir(path, os.FileMode(mode)); err != nil {
-		return nil, processError(ctx, "failed to create directory", err)
+		err = s.mkdirWithParents(ctx, fs, path, mode, uid, gid)
+	} else {
+		err = s.mkdir(ctx, fs, path, mode, uid, gid)
 	}
-
-	if err := fs.Chown(path, int(uid), int(gid)); err != nil {
-		return nil, processError(ctx, "failed to chown directory", err)
-	}
-
-	// we do this again to avoid the process' umask from automatically 'fixing' our requests.
-	if err := fs.Chmod(path, os.FileMode(mode)); err != nil {
-		return nil, processError(ctx, "failed to chmod directory", err)
+	if err != nil {
+		return nil, err
 	}
 
 	fi, finalPath, err := fs.Stat(path)
@@ -63,6 +56,53 @@ func (s *Service) CreateDir(ctx context.Context, request *orchestrator.VolumeDir
 	entry := toEntry(path, finalPath, fi)
 
 	return &orchestrator.VolumeDirCreateResponse{Entry: entry}, nil
+}
+
+func (s *Service) mkdirWithParents(ctx context.Context, fs *chrooted.Chrooted, path string, mode uint32, uid uint32, gid uint32) error {
+	stat, err := fs.Lstat(path)
+	if err == nil {
+		if stat.IsDir() {
+			// directory already exists, no need to create it
+			return nil
+		}
+
+		return processError(ctx, "path exists and is not a directory", os.ErrExist)
+	}
+
+	if !errors.Is(err, os.ErrNotExist) {
+		return processError(ctx, "failed to check directory existence", err)
+	}
+	if err := fs.MkdirAll(path, os.FileMode(mode)); err != nil {
+		return processError(ctx, "failed to create directory (with parents)", err)
+	}
+
+	if err := fs.Chown(path, int(uid), int(gid)); err != nil {
+		return processError(ctx, "failed to chown directory", err)
+	}
+
+	// we do this again to avoid the process' umask from automatically 'fixing' our requests.
+	if err := fs.Chmod(path, os.FileMode(mode)); err != nil {
+		return processError(ctx, "failed to chmod directory", err)
+	}
+
+	return nil
+}
+
+func (s *Service) mkdir(ctx context.Context, fs *chrooted.Chrooted, path string, mode uint32, uid uint32, gid uint32) error {
+	if err := fs.Mkdir(path, os.FileMode(mode)); err != nil {
+		return processError(ctx, "failed to create directory", err)
+	}
+
+	if err := fs.Chown(path, int(uid), int(gid)); err != nil {
+		return processError(ctx, "failed to chown directory", err)
+	}
+
+	// we do this again to avoid the process' umask from automatically 'fixing' our requests.
+	if err := fs.Chmod(path, os.FileMode(mode)); err != nil {
+		return processError(ctx, "failed to chmod directory", err)
+	}
+
+	return nil
 }
 
 func processError(ctx context.Context, s string, err error) error {
