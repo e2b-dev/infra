@@ -24,11 +24,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/propagation"
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
 	oteltrace "go.opentelemetry.io/otel/trace"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const (
@@ -53,7 +54,6 @@ func GetRequestStartTime(ctx context.Context) (time.Time, bool) {
 
 type config struct {
 	TracerProvider oteltrace.TracerProvider
-	Propagators    propagation.TextMapPropagator
 }
 
 // Middleware returns middleware that will trace incoming requests.
@@ -68,9 +68,6 @@ func Middleware(tracerProvider oteltrace.TracerProvider, service string) gin.Han
 		tracerName,
 		oteltrace.WithInstrumentationVersion(otelgin.Version()),
 	)
-	if cfg.Propagators == nil {
-		cfg.Propagators = otel.GetTextMapPropagator()
-	}
 
 	return func(c *gin.Context) {
 		c.Set(tracerKey, tracer)
@@ -88,9 +85,12 @@ func Middleware(tracerProvider oteltrace.TracerProvider, service string) gin.Han
 		if c.Request.Header.Get("traceparent") != "" {
 			c.Request.Header.Del("traceparent")
 		}
-		// No need for calling Extract, as we are not expecting any incoming trace
-		// ctx := cfg.Propagators.Extract(savedCtx, propagation.HeaderCarrier(c.Request.Header))
-
+		if edgeTraceID, ok := telemetry.ParseEdgeTraceID(
+			c.Request.Header.Get(telemetry.GCPTraceContextHeader),
+			c.Request.Header.Get(telemetry.AWSTraceContextHeader),
+		); ok {
+			ctx = logger.ContextWithEdgeTraceID(ctx, edgeTraceID)
+		}
 		opts := []oteltrace.SpanStartOption{
 			oteltrace.WithAttributes(semconv.NetAttributesFromHTTPRequest("tcp", c.Request)...),
 			oteltrace.WithAttributes(semconv.EndUserAttributesFromHTTPRequest(c.Request)...),
