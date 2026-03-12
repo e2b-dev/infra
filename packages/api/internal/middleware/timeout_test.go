@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -25,7 +26,7 @@ func TestRequestTimeout_SetsDeadline(t *testing.T) {
 	})
 
 	w := httptest.NewRecorder()
-	req, _ := http.NewRequest(http.MethodGet, "/test", nil)
+	req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	r.ServeHTTP(w, req)
 
 	require.Equal(t, http.StatusOK, w.Code)
@@ -46,7 +47,7 @@ func TestRequestTimeout_CancelsBlockingHandler(t *testing.T) {
 	})
 
 	w := httptest.NewRecorder()
-	req, _ := http.NewRequest(http.MethodGet, "/slow", nil)
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, "/slow", nil)
 
 	start := time.Now()
 	r.ServeHTTP(w, req)
@@ -69,7 +70,7 @@ func TestRequestTimeout_ExcludedRouteHasNoDeadline(t *testing.T) {
 	})
 
 	w := httptest.NewRecorder()
-	req, _ := http.NewRequest(http.MethodGet, "/health", nil)
+	req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "/health", nil)
 	r.ServeHTTP(w, req)
 
 	require.Equal(t, http.StatusOK, w.Code)
@@ -88,7 +89,7 @@ func TestRequestTimeout_ExcludedRouteWithParam(t *testing.T) {
 	})
 
 	w := httptest.NewRecorder()
-	req, _ := http.NewRequest(http.MethodGet, "/templates/abc123/builds/build456/logs", nil)
+	req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "/templates/abc123/builds/build456/logs", nil)
 	r.ServeHTTP(w, req)
 
 	require.Equal(t, http.StatusOK, w.Code)
