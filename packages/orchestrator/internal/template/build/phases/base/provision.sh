@@ -35,8 +35,12 @@ else
 fi
 
 echo "Configuring systemd-oomd"
-mkdir -p /etc/systemd
-cat <<EOF >/etc/systemd/oomd.conf
+# The systemd-oomd package ships a vendor drop-in at
+# /usr/lib/systemd/oomd.conf.d/10-oomd-defaults.conf that sets the duration
+# to 20s. Drop-ins in *.conf.d/ override the main oomd.conf, so we must use
+# a higher-priority drop-in to set our 2s duration.
+mkdir -p /etc/systemd/oomd.conf.d
+cat <<EOF >/etc/systemd/oomd.conf.d/99-e2b.conf
 [OOM]
 DefaultMemoryPressureDurationSec=2s
 EOF
