@@ -92,7 +92,7 @@ func (c *Checks) Healthcheck(ctx context.Context, alwaysReport bool) {
 
 	if !ok && c.healthy.CompareAndSwap(true, false) {
 		sbxlogger.E(c.sandbox).Healthcheck(ctx, sbxlogger.Fail)
-		sbxlogger.I(c.sandbox).Error(ctx, "healthcheck failed", zap.Error(err))
+		sbxlogger.I(c.sandbox).Warn(ctx, "healthcheck failed", zap.Error(err))
 
 		return
 	}
