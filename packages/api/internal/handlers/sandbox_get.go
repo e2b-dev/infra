@@ -161,7 +161,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		CpuCount:        cpuCount,
 		MemoryMB:        memoryMB,
 		DiskSizeMB:      diskSize,
-		EndAt:           lastSnapshot.Snapshot.CreatedAt.Time, // Snapshot is created when sandbox is paused
+		EndAt:           lastSnapshot.EnvBuild.CreatedAt, // Latest build created_at represents last pause time
 		State:           api.Paused,
 		EnvdVersion:     envdVersion,
 		EnvdAccessToken: sbxAccessToken,
