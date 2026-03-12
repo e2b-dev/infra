@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -31,6 +32,10 @@ func (s *Service) DeleteDir(ctx context.Context, request *orchestrator.VolumeDir
 	span.AddEvent("removing directory", trace.WithAttributes(
 		attribute.String("path", path),
 	))
+
+	if _, err := fs.Stat(path); os.IsNotExist(err) {
+		return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to delete: %q not found.", request.GetPath())
+	}
 
 	if err := fs.RemoveAll(path); err != nil {
 		return nil, fmt.Errorf("failed to delete directory: %w", err)

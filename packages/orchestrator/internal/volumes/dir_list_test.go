@@ -1,32 +1,24 @@
 package volumes
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/chrooted"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
 func TestListDir_Depth(t *testing.T) {
 	t.Parallel()
 
-	tmpDir := t.TempDir()
-
-	teamID := uuid.NewString()
-	volumeID := uuid.NewString()
+	s, basePath, volumeInfo := setupTestService(t)
 
 	// Prepare directory structure:
 	// /mnt/shared/team-<teamID>/vol-<volumeID>/dir/test.txt
 	// /mnt/shared/team-<teamID>/vol-<volumeID>/dir/deep/test.txt
 
-	basePath := filepath.Join(tmpDir, "team-"+teamID, "vol-"+volumeID)
 	err := os.MkdirAll(filepath.Join(basePath, "dir", "deep"), 0o755)
 	require.NoError(t, err)
 
@@ -42,23 +34,7 @@ func TestListDir_Depth(t *testing.T) {
 	err = os.WriteFile(filepath.Join(basePath, "dir", "deep", "deeper", "test.txt"), []byte("deeper test"), 0o644)
 	require.NoError(t, err)
 
-	config := cfg.Config{
-		PersistentVolumeMounts: map[string]string{
-			"shared": tmpDir,
-		},
-	}
-
-	s := &Service{
-		tracker: chrooted.NewTracker(nil, config),
-		config:  config,
-	}
-
-	ctx := context.Background()
-	volumeInfo := &orchestrator.VolumeInfo{
-		VolumeType: "shared",
-		TeamId:     teamID,
-		VolumeId:   volumeID,
-	}
+	ctx := t.Context()
 
 	t.Run("depth 0", func(t *testing.T) {
 		t.Parallel()
