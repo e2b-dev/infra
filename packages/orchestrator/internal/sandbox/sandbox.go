@@ -78,13 +78,14 @@ type Config struct {
 
 	VolumeMounts []VolumeMountConfig
 
-	// mu protects the mutable settings (currently just network).
+	// mu protects mutable sub-fields of Network (Egress, Ingress).
+	// The Network pointer itself is set once at construction and never replaced.
 	mu      *sync.RWMutex
 	Network *orchestrator.SandboxNetworkConfig
 }
 
 // NewConfig creates a Config, normalizing a nil Network to an empty config
-// so that GetNetwork() never returns nil.
+// so that Network is never nil.
 func NewConfig(c Config) *Config {
 	if c.Network == nil {
 		c.Network = &orchestrator.SandboxNetworkConfig{}
@@ -95,17 +96,15 @@ func NewConfig(c Config) *Config {
 	return &c
 }
 
-// GetNetwork returns the sandbox network config in a thread-safe manner.
-// The returned proto is never nil (guaranteed by NewConfig / SetNetwork).
-// Sub-fields (Egress, Ingress) may be nil — use proto's nil-safe getters.
-func (c *Config) GetNetwork() *orchestrator.SandboxNetworkConfig {
+// GetNetworkEgress returns the egress config in a thread-safe manner.
+func (c *Config) GetNetworkEgress() *orchestrator.SandboxNetworkEgressConfig {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	return c.Network
+	return c.Network.GetEgress()
 }
 
-// SetNetworkEgress updates the sandbox network egress config in a thread-safe manner.
+// SetNetworkEgress updates the egress config in a thread-safe manner.
 func (c *Config) SetNetworkEgress(egress *orchestrator.SandboxNetworkEgressConfig) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -113,17 +112,12 @@ func (c *Config) SetNetworkEgress(egress *orchestrator.SandboxNetworkEgressConfi
 	c.Network.Egress = egress
 }
 
-// SetNetwork sets the full network config.
-// A nil value is normalized to an empty config so that GetNetwork() never returns nil.
-func (c *Config) SetNetwork(net *orchestrator.SandboxNetworkConfig) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+// GetNetworkIngress returns the ingress config in a thread-safe manner.
+func (c *Config) GetNetworkIngress() *orchestrator.SandboxNetworkIngressConfig {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 
-	if net == nil {
-		net = &orchestrator.SandboxNetworkConfig{}
-	}
-
-	c.Network = net
+	return c.Network.GetIngress()
 }
 
 type VolumeMountConfig struct {
@@ -340,7 +334,7 @@ func (f *Factory) CreateSandbox(
 		return nil
 	})
 
-	ipsPromise := getNetworkSlot(ctx, f.networkPool, cleanup, config.GetNetwork())
+	ipsPromise := getNetworkSlot(ctx, f.networkPool, cleanup, config.Network)
 
 	sandboxFiles := template.Files().NewSandboxFiles(runtime.SandboxID)
 	cleanup.Add(ctx, cleanupFiles(f.config, sandboxFiles))
@@ -612,7 +606,7 @@ func (f *Factory) ResumeSandbox(
 	}()
 
 	// Slot initialization
-	ipsPromise := getNetworkSlot(ctx, f.networkPool, cleanup, config.GetNetwork())
+	ipsPromise := getNetworkSlot(ctx, f.networkPool, cleanup, config.Network)
 
 	// Rootfs initialization
 	overlayPromise := utils.NewPromise(func() (rootfs.Provider, error) {
