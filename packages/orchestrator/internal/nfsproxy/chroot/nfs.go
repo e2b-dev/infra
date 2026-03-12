@@ -13,7 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-type GetFilesystem func(ctx context.Context, conn net.Addr, request nfs.MountRequest) (billy.Filesystem, error)
+type GetFilesystem func(ctx context.Context, conn net.Addr, request nfs.MountRequest) (*chrooted.Chrooted, error)
 
 type NFSHandler struct {
 	fn GetFilesystem
@@ -39,14 +39,14 @@ func (h *NFSHandler) Mount(
 		return nfs.MountStatusErrAcces, mountFailedFS{}, nil
 	}
 
-	return nfs.MountStatusOk, fs, nil
+	return nfs.MountStatusOk, wrapChrooted(fs), nil
 }
 
 func (h *NFSHandler) Change(filesystem billy.Filesystem) billy.Change {
 	for {
-		isolated, ok := filesystem.(*chrooted.Chrooted)
+		isolated, ok := filesystem.(*wrappedFS)
 		if ok {
-			return isolated
+			return wrapChange(isolated.chroot)
 		}
 
 		unwrappable, ok := filesystem.(interface{ Unwrap() billy.Filesystem })

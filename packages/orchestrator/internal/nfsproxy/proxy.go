@@ -8,7 +8,6 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/go-git/go-billy/v5"
 	"github.com/google/uuid"
 	"github.com/willscott/go-nfs"
 	"github.com/willscott/go-nfs/helpers"
@@ -70,7 +69,7 @@ var (
 )
 
 func chrootCallback(tracker *chrooted.Tracker, sandboxes *sandbox.Map) chroot.GetFilesystem {
-	return func(ctx context.Context, remoteAddr net.Addr, request nfs.MountRequest) (billy.Filesystem, error) {
+	return func(ctx context.Context, remoteAddr net.Addr, request nfs.MountRequest) (*chrooted.Chrooted, error) {
 		sbx, err := sandboxes.GetByHostPort(remoteAddr.String())
 		if err != nil {
 			return nil, fmt.Errorf("%w: %w", ErrUnknownSandbox, err)

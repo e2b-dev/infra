@@ -5,25 +5,21 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/go-git/go-billy/v5"
 )
 
-var _ billy.Filesystem = (*Chrooted)(nil)
+func (fs *Chrooted) Create(filename string) (f *os.File, err error) {
+	err = fs.act(func() error {
+		f, err = os.Create(filename)
 
-func (fs *Chrooted) Create(filename string) (f billy.File, e error) {
-	e = fs.act(func(fs billy.Filesystem) error {
-		f, e = fs.Create(filename)
-
-		return e
+		return err
 	})
 
-	return
+	return f, err
 }
 
-func (fs *Chrooted) Open(filename string) (f billy.File, err error) {
-	err = fs.act(func(fs billy.Filesystem) error {
-		f, err = fs.Open(filename)
+func (fs *Chrooted) Open(filename string) (f *os.File, err error) {
+	err = fs.act(func() error {
+		f, err = os.Open(filename)
 
 		return err
 	})
@@ -31,9 +27,9 @@ func (fs *Chrooted) Open(filename string) (f billy.File, err error) {
 	return
 }
 
-func (fs *Chrooted) OpenFile(filename string, flag int, perm os.FileMode) (f billy.File, err error) {
-	err = fs.act(func(fs billy.Filesystem) error {
-		f, err = fs.OpenFile(filename, flag, perm)
+func (fs *Chrooted) OpenFile(filename string, flag int, perm os.FileMode) (f *os.File, err error) {
+	err = fs.act(func() error {
+		f, err = os.OpenFile(filename, flag, perm)
 
 		return err
 	})
@@ -42,8 +38,8 @@ func (fs *Chrooted) OpenFile(filename string, flag int, perm os.FileMode) (f bil
 }
 
 func (fs *Chrooted) Stat(filename string) (info os.FileInfo, err error) {
-	err = fs.act(func(fs billy.Filesystem) error {
-		info, err = fs.Stat(filename)
+	err = fs.act(func() error {
+		info, err = os.Stat(filename)
 
 		return err
 	})
@@ -52,16 +48,24 @@ func (fs *Chrooted) Stat(filename string) (info os.FileInfo, err error) {
 }
 
 func (fs *Chrooted) Rename(oldpath, newpath string) (err error) {
-	err = fs.act(func(fs billy.Filesystem) error {
-		return fs.Rename(oldpath, newpath)
+	err = fs.act(func() error {
+		return os.Rename(oldpath, newpath)
 	})
 
 	return
 }
 
 func (fs *Chrooted) Remove(filename string) (err error) {
-	err = fs.act(func(fs billy.Filesystem) error {
-		return fs.Remove(filename)
+	err = fs.act(func() error {
+		return os.Remove(filename)
+	})
+
+	return
+}
+
+func (fs *Chrooted) RemoveAll(filename string) (err error) {
+	err = fs.act(func() error {
+		return os.RemoveAll(filename)
 	})
 
 	return
@@ -76,9 +80,9 @@ func (fs *Chrooted) Join(elem ...string) string {
 	return path
 }
 
-func (fs *Chrooted) TempFile(dir, prefix string) (f billy.File, err error) {
-	err = fs.act(func(fs billy.Filesystem) error {
-		f, err = fs.TempFile(dir, prefix)
+func (fs *Chrooted) TempFile(dir, prefix string) (f *os.File, err error) {
+	err = fs.act(func() error {
+		f, err = os.CreateTemp(dir, prefix)
 
 		return err
 	})
@@ -87,26 +91,47 @@ func (fs *Chrooted) TempFile(dir, prefix string) (f billy.File, err error) {
 }
 
 func (fs *Chrooted) ReadDir(path string) (info []os.FileInfo, err error) {
-	err = fs.act(func(fs billy.Filesystem) error {
-		info, err = fs.ReadDir(path)
+	err = fs.act(func() error {
+		entries, err := os.ReadDir(path)
+		if err != nil {
+			return err
+		}
 
-		return err
+		info = make([]os.FileInfo, 0, len(entries))
+		for _, entry := range entries {
+			fi, err := entry.Info()
+			if err != nil {
+				return err
+			}
+
+			info = append(info, fi)
+		}
+
+		return nil
+	})
+
+	return
+}
+
+func (fs *Chrooted) Mkdir(filename string, perm os.FileMode) (err error) {
+	err = fs.act(func() error {
+		return os.Mkdir(filename, perm)
 	})
 
 	return
 }
 
 func (fs *Chrooted) MkdirAll(filename string, perm os.FileMode) (err error) {
-	err = fs.act(func(fs billy.Filesystem) error {
-		return fs.MkdirAll(filename, perm)
+	err = fs.act(func() error {
+		return os.MkdirAll(filename, perm)
 	})
 
 	return
 }
 
 func (fs *Chrooted) Lstat(filename string) (info os.FileInfo, err error) {
-	err = fs.act(func(fs billy.Filesystem) error {
-		info, err = fs.Lstat(filename)
+	err = fs.act(func() error {
+		info, err = os.Lstat(filename)
 
 		return err
 	})
@@ -115,16 +140,16 @@ func (fs *Chrooted) Lstat(filename string) (info os.FileInfo, err error) {
 }
 
 func (fs *Chrooted) Symlink(target, link string) (err error) {
-	err = fs.act(func(fs billy.Filesystem) error {
-		return fs.Symlink(target, link)
+	err = fs.act(func() error {
+		return os.Symlink(target, link)
 	})
 
 	return
 }
 
 func (fs *Chrooted) Readlink(link string) (target string, err error) {
-	err = fs.act(func(fs billy.Filesystem) error {
-		target, err = fs.Readlink(link)
+	err = fs.act(func() error {
+		target, err = os.Readlink(link)
 
 		return err
 	})
@@ -132,7 +157,7 @@ func (fs *Chrooted) Readlink(link string) (target string, err error) {
 	return
 }
 
-func (fs *Chrooted) Chroot(_ string) (billy.Filesystem, error) {
+func (fs *Chrooted) Chroot(_ string) (*Chrooted, error) {
 	return nil, fmt.Errorf("chroot not supported")
 }
 

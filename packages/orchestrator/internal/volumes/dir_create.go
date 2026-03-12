@@ -42,16 +42,8 @@ func (s *Service) CreateDir(ctx context.Context, request *orchestrator.VolumeDir
 		if err := fs.MkdirAll(path, os.FileMode(mode)); err != nil {
 			return nil, fmt.Errorf("failed to prepare parent directories: %w", err)
 		}
-	} else if err := fs.MkdirAll(filepath.Dir(path), os.FileMode(defaultDirMode)); err != nil {
+	} else if err := fs.Mkdir(filepath.Dir(path), os.FileMode(mode)); err != nil {
 		return nil, fmt.Errorf("failed to prepare parent directories: %w", err)
-	}
-
-	if err := fs.MkdirAll(path, os.FileMode(mode)); err != nil {
-		if os.IsNotExist(err) {
-			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to mkdir: parent of %q not found.", request.GetPath())
-		}
-
-		return nil, fmt.Errorf("failed to create directory: %w", err)
 	}
 
 	if err := fs.Chown(path, int(uid), int(gid)); err != nil {

@@ -492,7 +492,7 @@ func TestGetPrefixFromSandbox(t *testing.T) {
 			}
 
 			callback := chrootCallback(tracker, sandboxes)
-			fs, err := callback(t.Context(), tc.remoteAddr, request)
+			chfs, err := callback(t.Context(), tc.remoteAddr, request)
 			if tc.expected.err != nil {
 				require.ErrorIs(t, err, tc.expected.err)
 
@@ -501,8 +501,6 @@ func TestGetPrefixFromSandbox(t *testing.T) {
 
 			require.NoError(t, err)
 
-			chfs, ok := fs.(*chrooted.Chrooted)
-			require.Truef(t, ok, "expected *chroot.Chrooted, got %T", fs)
 			t.Cleanup(func() {
 				err = chfs.Close()
 				assert.NoError(t, err)

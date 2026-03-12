@@ -4,9 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"os"
 
-	"github.com/go-git/go-billy/v5"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
@@ -34,42 +32,9 @@ func (s *Service) DeleteDir(ctx context.Context, request *orchestrator.VolumeDir
 		attribute.String("path", path),
 	))
 
-	if err := s.removeAll(fs, path); err != nil {
+	if err := fs.RemoveAll(path); err != nil {
 		return nil, fmt.Errorf("failed to delete directory: %w", err)
 	}
 
 	return &orchestrator.VolumeDirDeleteResponse{}, nil
-}
-
-func (s *Service) removeAll(fs billy.Filesystem, path string) error {
-	if path == "/" {
-		return fmt.Errorf("cannot remove root")
-	}
-
-	fi, err := fs.Lstat(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-
-		return err
-	}
-
-	if !fi.IsDir() {
-		return fs.Remove(path)
-	}
-
-	entries, err := fs.ReadDir(path)
-	if err != nil {
-		return err
-	}
-
-	for _, entry := range entries {
-		err := s.removeAll(fs, fs.Join(path, entry.Name()))
-		if err != nil {
-			return err
-		}
-	}
-
-	return fs.Remove(path)
 }

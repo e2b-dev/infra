@@ -9,9 +9,6 @@ import (
 	"path/filepath"
 	"sync"
 	"syscall"
-
-	"github.com/go-git/go-billy/v5"
-	"github.com/go-git/go-billy/v5/osfs"
 )
 
 type Chrooted struct {
@@ -20,7 +17,7 @@ type Chrooted struct {
 
 	mu  sync.RWMutex
 	ns  *mountNS
-	act func(func(billy.Filesystem) error) error
+	act func(func() error) error
 }
 
 type Option func(*Chrooted)
@@ -41,20 +38,17 @@ func Chroot(ctx context.Context, source string, opts ...Option) (*Chrooted, erro
 		return nil, fmt.Errorf("failed to create temporary mount namespace: %w", err)
 	}
 
-	// use a closure to ensure all requests are executed in the correct namespace
-	inner := osfs.New("/")
-
 	fs := &Chrooted{
 		ActualRoot: source,
 		ns:         mountNS,
 	}
 
-	fs.act = func(f func(billy.Filesystem) error) error {
+	fs.act = func(f func() error) error {
 		fs.mu.RLock()
 		defer fs.mu.RUnlock()
 
 		return mountNS.Do(func() error {
-			return f(inner)
+			return f()
 		})
 	}
 
