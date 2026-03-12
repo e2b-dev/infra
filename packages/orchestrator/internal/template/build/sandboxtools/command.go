@@ -232,7 +232,7 @@ func logStream(ctx context.Context, logger logger.Logger, lvl zapcore.Level, id 
 	}
 }
 
-// syncChangesToDisk synchronizes filesystem changes to the filesystem
+// SyncChangesToDisk synchronizes filesystem changes to the filesystem.
 // This is useful to ensure that all changes made in the sandbox are written to disk
 // to be able to re-create the sandbox without resume.
 func SyncChangesToDisk(
@@ -240,7 +240,9 @@ func SyncChangesToDisk(
 	proxy *proxy.SandboxProxy,
 	sandboxID string,
 ) error {
-	return RunCommand(
+	var stderrBuf strings.Builder
+
+	err := RunCommandWithOutput(
 		ctx,
 		proxy,
 		sandboxID,
@@ -248,5 +250,13 @@ func SyncChangesToDisk(
 		metadata.Context{
 			User: "root",
 		},
+		func(_, stderr string) {
+			stderrBuf.WriteString(stderr)
+		},
 	)
+	if err != nil && stderrBuf.Len() > 0 {
+		return fmt.Errorf("%w (stderr: %s)", err, strings.TrimSpace(stderrBuf.String()))
+	}
+
+	return err
 }
