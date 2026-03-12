@@ -8,34 +8,23 @@ CREATE OR REPLACE PROCEDURE fix_snapshots_jsonb_null_metadata() AS $$
 DECLARE
   batch_size INT := 50000;
   rows_updated INT;
-  last_id UUID := '00000000-0000-0000-0000-000000000000';
-  current_max_id UUID;
 BEGIN
   LOOP
-    SELECT id INTO current_max_id
-    FROM (
-      SELECT id FROM public.snapshots
-      WHERE id > last_id AND metadata = 'null'::jsonb
-      ORDER BY id
-      LIMIT batch_size
-    ) sub
-    ORDER BY id DESC
-    LIMIT 1;
-
-    EXIT WHEN current_max_id IS NULL;
-
     UPDATE public.snapshots
     SET metadata = '{}'::jsonb
-    WHERE id > last_id AND id <= current_max_id AND metadata = 'null'::jsonb;
+    WHERE id IN (
+      SELECT id FROM public.snapshots
+      WHERE metadata = 'null'::jsonb
+      LIMIT batch_size
+      FOR UPDATE SKIP LOCKED
+    );
 
     GET DIAGNOSTICS rows_updated = ROW_COUNT;
-    last_id := current_max_id;
+    EXIT WHEN rows_updated = 0;
 
     COMMIT;
-    RAISE NOTICE 'fix_snapshots_jsonb_null_metadata: updated % rows up to id %', rows_updated, last_id;
-    IF rows_updated > 0 THEN
-      PERFORM pg_sleep(10);
-    END IF;
+    RAISE NOTICE 'fix_snapshots_jsonb_null_metadata: updated % rows, sleeping 10s...', rows_updated;
+    PERFORM pg_sleep(10);
   END LOOP;
 END;
 $$ LANGUAGE plpgsql;
@@ -44,13 +33,26 @@ $$ LANGUAGE plpgsql;
 CALL fix_snapshots_jsonb_null_metadata();
 DROP PROCEDURE fix_snapshots_jsonb_null_metadata();
 
--- Also add a CHECK constraint to prevent both SQL NULL and JSON null going forward.
-ALTER TABLE public.snapshots
-  ADD CONSTRAINT chk_snapshots_metadata_not_json_null
-  CHECK (metadata != 'null'::jsonb) NOT VALID;
+-- Add a trigger that silently converts JSON null to '{}' on insert/update,
+-- so old code that still writes 'null'::jsonb won't break.
+-- +goose StatementBegin
+CREATE OR REPLACE FUNCTION fix_snapshots_metadata_json_null()
+RETURNS trigger AS $$
+BEGIN
+  IF NEW.metadata = 'null'::jsonb THEN
+    NEW.metadata := '{}'::jsonb;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+-- +goose StatementEnd
 
-ALTER TABLE public.snapshots
-  VALIDATE CONSTRAINT chk_snapshots_metadata_not_json_null;
+DROP TRIGGER IF EXISTS trg_snapshots_fix_json_null_metadata ON public.snapshots;
+CREATE TRIGGER trg_snapshots_fix_json_null_metadata
+  BEFORE INSERT OR UPDATE OF metadata ON public.snapshots
+  FOR EACH ROW
+  EXECUTE FUNCTION fix_snapshots_metadata_json_null();
 
 -- +goose Down
-ALTER TABLE public.snapshots DROP CONSTRAINT IF EXISTS chk_snapshots_metadata_not_json_null;
+DROP TRIGGER IF EXISTS trg_snapshots_fix_json_null_metadata ON public.snapshots;
+DROP FUNCTION IF EXISTS fix_snapshots_metadata_json_null();
