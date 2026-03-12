@@ -261,8 +261,9 @@ func (c *countingUpstream) OpenRangeReader(ctx context.Context, off, length int6
 func TestStreamingChunker_FullChunkCachedAfterPartialRequest(t *testing.T) {
 	t.Parallel()
 
+	data := makeTestData(t, storage.MemoryChunkSize)
+
 	runTest := func(t *testing.T, useEventually bool) { //nolint:thelper // not a helper, it's the test body
-		data := makeTestData(t, storage.MemoryChunkSize)
 		openCount := atomic.Int64{}
 
 		upstream := &countingUpstream{
@@ -323,14 +324,16 @@ func TestStreamingChunker_FullChunkCachedAfterPartialRequest(t *testing.T) {
 			"expected 1 OpenRangeReader call (full chunk fetched in background), got %d", openCount.Load())
 	}
 
-	t.Run("eventually", func(t *testing.T) {
-		t.Parallel()
-		runTest(t, true)
-	})
-	t.Run("direct", func(t *testing.T) {
-		t.Parallel()
-		runTest(t, false)
-	})
+	for i := range 100 {
+		t.Run(fmt.Sprintf("eventually/%d", i), func(t *testing.T) {
+			t.Parallel()
+			runTest(t, true)
+		})
+		t.Run(fmt.Sprintf("direct/%d", i), func(t *testing.T) {
+			t.Parallel()
+			runTest(t, false)
+		})
+	}
 }
 
 func TestStreamingChunker_ConcurrentSameChunk(t *testing.T) {
