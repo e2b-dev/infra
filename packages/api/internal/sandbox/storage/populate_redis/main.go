@@ -87,8 +87,8 @@ func (m *PopulateRedisStorage) WaitForStateChange(ctx context.Context, teamID uu
 	return m.memoryBackend.WaitForStateChange(ctx, teamID, sandboxID)
 }
 
-func (m *PopulateRedisStorage) Sync(sandboxes []sandbox.Sandbox, nodeID string) []sandbox.Sandbox {
-	return m.memoryBackend.Sync(sandboxes, nodeID)
+func (m *PopulateRedisStorage) Sync(ctx context.Context, sandboxes []sandbox.Sandbox, nodeID string) []sandbox.Sandbox {
+	return m.memoryBackend.Sync(ctx, sandboxes, nodeID)
 }
 
 func NewStorage(
