@@ -73,9 +73,10 @@ func (s *Service) listRecursive(ctx context.Context, fs *chrooted.Chrooted, path
 		itemPath := filepath.Join(path, item.Name())
 		symlinkDest := ""
 		if item.Mode()&os.ModeSymlink != 0 {
+			// try, but if it fails to resolve, no big deal
 			symlinkDest, err = fs.EvalSymlinks(itemPath)
 			if err != nil {
-				return nil, fmt.Errorf("failed to read symlink %q: %w", itemPath, err)
+				logger.L().Warn(ctx, "failed to resolve symlink", zap.String("path", itemPath), zap.Error(err))
 			}
 		}
 		results = append(results, &orchestrator.VolumeDirectoryItem{
