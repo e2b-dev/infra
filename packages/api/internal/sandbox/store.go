@@ -11,8 +11,10 @@ import (
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 )
 
-type InsertCallback func(ctx context.Context, sbx Sandbox)
-type RemoveCallback func(ctx context.Context, sbx Sandbox)
+type (
+	InsertCallback func(ctx context.Context, sbx Sandbox)
+	RemoveCallback func(ctx context.Context, sbx Sandbox)
+)
 
 const (
 	StorageNameMemory        = "memory"
