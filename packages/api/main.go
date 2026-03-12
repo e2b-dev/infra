@@ -129,7 +129,7 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 			"/sandboxes/:sandboxID/snapshots",
 		),
 		gin.Recovery(),
-		customMiddleware.RequestTimeout(requestTimeout),
+		customMiddleware.RequestTimeout(requestTimeout), //nolint:contextcheck // Gin middleware sets context via c.Request.WithContext
 	)
 
 	corsConfig := cors.DefaultConfig()
