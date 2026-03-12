@@ -99,36 +99,36 @@ func New(
 	var cmd *exec.Cmd
 
 	if useSystemdOOMD {
-		// In systemd-oomd mode, wrap the command with systemd-run --scope so that
-		// each process gets its own transient scope unit placed into the appropriate
-		// slice. systemd-oomd monitors pressure on the slices and kills the
-		// highest-memory scope when the configured threshold is exceeded.
+		// In systemd-oomd mode, wrap the command with systemd-run to create a
+		// transient service unit placed into the appropriate slice. systemd-oomd
+		// monitors pressure on the slices and kills the highest-memory unit when
+		// the configured threshold is exceeded.
 		sliceName := "e2b-user.slice"
 		procTypeStr := "user"
 		if req.GetPty() != nil {
 			sliceName = "e2b-pty.slice"
 			procTypeStr = "pty"
 		}
-		unitName := fmt.Sprintf("e2b-%s-%d.scope", procTypeStr, time.Now().UnixNano())
+		unitName := fmt.Sprintf("e2b-%s-%d.service", procTypeStr, time.Now().UnixNano())
 
 		cmdArgs := []string{
-			"--scope",
+			"--pipe",
 			"--quiet",
 			"--unit=" + unitName,
 			"--slice=" + sliceName,
-			//"-p", fmt.Sprintf("OOMScoreAdjust=%d", defaultOomScore),
-			//"-p", fmt.Sprintf("Nice=%d", defaultNice),
-			"--uid=" + user.Uid,
-			"--gid=" + user.Gid,
+			"-p", fmt.Sprintf("OOMScoreAdjust=%d", defaultOomScore),
+			"-p", fmt.Sprintf("Nice=%d", defaultNice),
+			"-p", "User=" + user.Username,
+			"-p", "Group=" + user.Gid,
 			"--",
 			req.GetProcess().GetCmd(),
 		}
 		cmdArgs = append(cmdArgs, req.GetProcess().GetArgs()...)
 		cmd = exec.CommandContext(ctx, "systemd-run", cmdArgs...)
 
-		// systemd-run needs root to register the scope, so do NOT set
-		// SysProcAttr.Credential -- let systemd-run handle user switching
-		// via --uid/--gid.
+		// systemd-run needs root to register the service, so do NOT set
+		// SysProcAttr.Credential -- let systemd handle user switching
+		// via the User=/Group= properties.
 		cmd.SysProcAttr = &syscall.SysProcAttr{}
 	} else {
 		// Default cgroup mode: wrap the command in a shell that sets the OOM score
