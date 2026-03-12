@@ -37,6 +37,16 @@ func (fs *Chrooted) OpenFile(filename string, flag int, perm os.FileMode) (f *os
 	return
 }
 
+func (fs *Chrooted) EvalSymlinks(filename string) (p string, e error) {
+	e = fs.act(func() error {
+		p, e = filepath.EvalSymlinks(filename)
+
+		return e
+	})
+
+	return
+}
+
 func (fs *Chrooted) Stat(filename string) (info os.FileInfo, finalPath string, err error) {
 	err = fs.act(func() error {
 		info, err = os.Lstat(filename)

@@ -71,8 +71,15 @@ func (s *Service) listRecursive(ctx context.Context, fs *chrooted.Chrooted, path
 	var results []*orchestrator.VolumeDirectoryItem
 	for _, item := range items {
 		itemPath := filepath.Join(path, item.Name())
+		symlinkDest := ""
+		if item.Mode()&os.ModeSymlink != 0 {
+			symlinkDest, err = fs.EvalSymlinks(itemPath)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read symlink %q: %w", itemPath, err)
+			}
+		}
 		results = append(results, &orchestrator.VolumeDirectoryItem{
-			Entry: toEntry(itemPath, "", item),
+			Entry: toEntry(itemPath, symlinkDest, item),
 		})
 
 		if item.IsDir() && depth > 1 {

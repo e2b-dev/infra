@@ -89,6 +89,8 @@ func (s *Service) mkdirWithParents(ctx context.Context, fs *chrooted.Chrooted, p
 		}
 
 		return false, processError(ctx, "path exists and is not a directory", os.ErrExist)
+	} else if !os.IsNotExist(err) {
+		return false, processError(ctx, "failed to stat directory", err)
 	}
 
 	// Create only parent directories with defaultDirMode and fix permissions against umask.
@@ -188,7 +190,7 @@ func ensureParentDirs(fs *chrooted.Chrooted, volRoot, dirPath string, mode os.Fi
 	// Iterate from highest parent to deepest child for determinism.
 	for i := len(toChmod) - 1; i >= 0; i-- {
 		p := toChmod[i]
-		if err := os.Chmod(p, mode); err != nil {
+		if err := fs.Chmod(p, mode); err != nil {
 			if os.IsNotExist(err) {
 				// Race or unexpected removal; treat as an error to be explicit.
 				return fmt.Errorf("failed to chmod created parent directory %q: %w", p, err)
