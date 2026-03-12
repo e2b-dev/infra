@@ -11,9 +11,9 @@ import (
 	"os/user"
 	"path/filepath"
 	"strings"
-	"syscall"
 
 	"github.com/rs/zerolog"
+	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/execcontext"
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
@@ -66,7 +66,7 @@ func processFile(r *http.Request, path string, part io.Reader, uid, gid int, log
 
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o666)
 	if err != nil {
-		if errors.Is(err, syscall.ENOSPC) {
+		if errors.Is(err, unix.ENOSPC) {
 			err = fmt.Errorf("not enough inodes available: %w", err)
 
 			return http.StatusInsufficientStorage, err
@@ -90,7 +90,7 @@ func processFile(r *http.Request, path string, part io.Reader, uid, gid int, log
 
 	_, err = file.ReadFrom(part)
 	if err != nil {
-		if errors.Is(err, syscall.ENOSPC) {
+		if errors.Is(err, unix.ENOSPC) {
 			err = ErrNoDiskSpace
 			if r.ContentLength > 0 {
 				err = fmt.Errorf("attempted to write %d bytes: %w", r.ContentLength, err)

@@ -6,10 +6,10 @@ import (
 	"io"
 	"net"
 	"strings"
-	"syscall"
 
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5/pgconn"
+	"golang.org/x/sys/unix"
 )
 
 // IsRetriable determines if an error is retriable.
@@ -43,9 +43,9 @@ func IsRetriable(err error) bool {
 	}
 
 	// Check for specific syscall errors
-	if errors.Is(err, syscall.ECONNRESET) ||
-		errors.Is(err, syscall.ECONNREFUSED) ||
-		errors.Is(err, syscall.EPIPE) ||
+	if errors.Is(err, unix.ECONNRESET) ||
+		errors.Is(err, unix.ECONNREFUSED) ||
+		errors.Is(err, unix.EPIPE) ||
 		errors.Is(err, io.EOF) ||
 		errors.Is(err, io.ErrUnexpectedEOF) {
 		return true

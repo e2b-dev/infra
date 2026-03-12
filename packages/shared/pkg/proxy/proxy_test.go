@@ -11,13 +11,13 @@ import (
 	"net/url"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
+	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/connlimit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -908,7 +908,7 @@ func TestChangeResponseHeader(t *testing.T) {
 			break
 		}
 
-		if errors.Is(err, syscall.ECONNREFUSED) {
+		if errors.Is(err, unix.ECONNREFUSED) {
 			time.Sleep(100 * time.Millisecond)
 
 			continue

@@ -2,16 +2,17 @@ package userfaultfd
 
 import (
 	"fmt"
-	"syscall"
 	"unsafe"
+
+	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 // Used for testing.
-// flags: syscall.O_CLOEXEC|syscall.O_NONBLOCK
+// flags: unix.O_CLOEXEC|unix.O_NONBLOCK
 func newFd(flags uintptr) (Fd, error) {
-	uffd, _, errno := syscall.Syscall(NR_userfaultfd, flags, 0, 0)
+	uffd, _, errno := unix.Syscall(NR_userfaultfd, flags, 0, 0)
 	if errno != 0 {
 		return 0, fmt.Errorf("userfaultfd syscall failed: %w", errno)
 	}
@@ -33,7 +34,7 @@ func configureApi(f Fd, pagesize uint64) error {
 	features |= UFFD_FEATURE_WP_ASYNC
 
 	api := newUffdioAPI(UFFD_API, features)
-	ret, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(f), UFFDIO_API, uintptr(unsafe.Pointer(&api)))
+	ret, _, errno := unix.Syscall(unix.SYS_IOCTL, uintptr(f), UFFDIO_API, uintptr(unsafe.Pointer(&api)))
 	if errno != 0 {
 		return fmt.Errorf("UFFDIO_API ioctl failed: %w (ret=%d)", errno, ret)
 	}
@@ -47,7 +48,7 @@ func configureApi(f Fd, pagesize uint64) error {
 func register(f Fd, addr uintptr, size uint64, mode CULong) error {
 	register := newUffdioRegister(CULong(addr), CULong(size), mode)
 
-	ret, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(f), UFFDIO_REGISTER, uintptr(unsafe.Pointer(&register)))
+	ret, _, errno := unix.Syscall(unix.SYS_IOCTL, uintptr(f), UFFDIO_REGISTER, uintptr(unsafe.Pointer(&register)))
 	if errno != 0 {
 		return fmt.Errorf("UFFDIO_REGISTER ioctl failed: %w (ret=%d)", errno, ret)
 	}

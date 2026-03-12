@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"syscall"
 	"unsafe"
 
 	"go.opentelemetry.io/otel"
@@ -168,7 +167,7 @@ outerLoop:
 			// - https://docs.kernel.org/admin-guide/mm/userfaultfd.html
 			// - https://elixir.bootlin.com/linux/v6.8.12/source/fs/userfaultfd.c
 			// - https://man7.org/linux/man-pages/man2/userfaultfd.2.html
-			// It might be possible to just check for data != 0 in the syscall.Read loop
+			// It might be possible to just check for data != 0 in the unix.Read loop
 			// but I don't feel confident about doing that.
 			noDataCounter.Increase("POLLIN")
 
@@ -178,8 +177,8 @@ outerLoop:
 		buf := make([]byte, unsafe.Sizeof(UffdMsg{}))
 
 		for {
-			_, err := syscall.Read(int(u.fd), buf)
-			if err == syscall.EINTR {
+			_, err := unix.Read(int(u.fd), buf)
+			if err == unix.EINTR {
 				u.logger.Debug(ctx, "uffd: interrupted read, reading again")
 
 				continue
@@ -194,7 +193,7 @@ outerLoop:
 				break
 			}
 
-			if err == syscall.EAGAIN {
+			if err == unix.EAGAIN {
 				eagainCounter.Increase("EAGAIN")
 
 				// Continue polling the fd.

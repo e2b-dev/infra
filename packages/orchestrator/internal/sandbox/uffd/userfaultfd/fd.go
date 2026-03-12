@@ -26,8 +26,9 @@ import "C"
 
 import (
 	"fmt"
-	"syscall"
 	"unsafe"
+
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -118,7 +119,7 @@ type Fd uintptr
 func (f Fd) copy(addr, pagesize uintptr, data []byte, mode CULong) error {
 	cpy := newUffdioCopy(data, CULong(addr)&^CULong(pagesize-1), CULong(pagesize), mode, 0)
 
-	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(f), UFFDIO_COPY, uintptr(unsafe.Pointer(&cpy))); errno != 0 {
+	if _, _, errno := unix.Syscall(unix.SYS_IOCTL, uintptr(f), UFFDIO_COPY, uintptr(unsafe.Pointer(&cpy))); errno != 0 {
 		return errno
 	}
 
@@ -131,5 +132,5 @@ func (f Fd) copy(addr, pagesize uintptr, data []byte, mode CULong) error {
 }
 
 func (f Fd) close() error {
-	return syscall.Close(int(f))
+	return unix.Close(int(f))
 }

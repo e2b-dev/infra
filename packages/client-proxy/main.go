@@ -12,12 +12,12 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/proxy/internal"
 	"github.com/e2b-dev/infra/packages/proxy/internal/cfg"
@@ -92,7 +92,7 @@ func run() int {
 
 	wg := sync.WaitGroup{}
 
-	signalCtx, sigCancel := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)
+	signalCtx, sigCancel := signal.NotifyContext(ctx, unix.SIGTERM, unix.SIGINT)
 	defer sigCancel()
 
 	l.Info(ctx, "Starting client proxy", zap.String("commit", commitSHA), zap.String("instance_id", instanceID))

@@ -16,6 +16,7 @@ import (
 	"connectrpc.com/connect"
 	"github.com/creack/pty"
 	"github.com/rs/zerolog"
+	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/execcontext"
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
@@ -73,7 +74,7 @@ func (p *Handler) userCommand() string {
 
 // currentNice returns the nice value of the current process.
 func currentNice() int {
-	prio, err := syscall.Getpriority(syscall.PRIO_PROCESS, 0)
+	prio, err := unix.Getpriority(unix.PRIO_PROCESS, 0)
 	if err != nil {
 		return 0
 	}
@@ -121,7 +122,7 @@ func New(
 
 	cgroupFD, ok := cgroupManager.GetFileDescriptor(getProcType(req))
 
-	cmd.SysProcAttr = &syscall.SysProcAttr{
+	cmd.SysProcAttr = &unix.SysProcAttr{
 		UseCgroupFD: ok,
 		CgroupFD:    cgroupFD,
 		Credential: &syscall.Credential{
@@ -344,12 +345,12 @@ func getProcType(req *rpc.StartRequest) cgroups.ProcessType {
 	return cgroups.ProcessTypeUser
 }
 
-func (p *Handler) SendSignal(signal syscall.Signal) error {
+func (p *Handler) SendSignal(signal unix.Signal) error {
 	if p.cmd.Process == nil {
 		return fmt.Errorf("process not started")
 	}
 
-	if signal == syscall.SIGKILL || signal == syscall.SIGTERM {
+	if signal == unix.SIGKILL || signal == unix.SIGTERM {
 		p.outCancel()
 	}
 

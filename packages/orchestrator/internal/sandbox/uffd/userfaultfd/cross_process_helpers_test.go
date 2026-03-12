@@ -18,7 +18,6 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
-	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -89,7 +88,7 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	require.NoError(t, err)
 
 	// We can pass mapping nil as the serve is used only in the helper process.
-	uffdFd, err := newFd(syscall.O_CLOEXEC | syscall.O_NONBLOCK)
+	uffdFd, err := newFd(unix.O_CLOEXEC | unix.O_NONBLOCK)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
@@ -107,7 +106,7 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	cmd.Env = append(cmd.Env, fmt.Sprintf("GO_MMAP_START=%d", memoryStart))
 	cmd.Env = append(cmd.Env, fmt.Sprintf("GO_MMAP_PAGE_SIZE=%d", tt.pagesize))
 
-	dup, err := syscall.Dup(int(uffdFd))
+	dup, err := unix.Dup(int(uffdFd))
 	require.NoError(t, err)
 
 	// clear FD_CLOEXEC on the dup we pass across exec
@@ -167,7 +166,7 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	uffdFile.Close()
 
 	t.Cleanup(func() {
-		signalErr := cmd.Process.Signal(syscall.SIGUSR1)
+		signalErr := cmd.Process.Signal(unix.SIGUSR1)
 		assert.NoError(t, signalErr)
 
 		waitErr := cmd.Wait()
@@ -186,7 +185,7 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	})
 
 	offsetsOnce := func() ([]uint, error) {
-		err := cmd.Process.Signal(syscall.SIGUSR2)
+		err := cmd.Process.Signal(unix.SIGUSR2)
 		if err != nil {
 			return nil, err
 		}
@@ -296,7 +295,7 @@ func crossProcessServe() error {
 	offsetsFile := os.NewFile(uintptr(5), "offsets")
 
 	offsetsSignal := make(chan os.Signal, 1)
-	signal.Notify(offsetsSignal, syscall.SIGUSR2)
+	signal.Notify(offsetsSignal, unix.SIGUSR2)
 	defer signal.Stop(offsetsSignal)
 
 	go func() {
@@ -366,7 +365,7 @@ func crossProcessServe() error {
 	defer cleanup()
 
 	exitSignal := make(chan os.Signal, 1)
-	signal.Notify(exitSignal, syscall.SIGUSR1)
+	signal.Notify(exitSignal, unix.SIGUSR1)
 	defer signal.Stop(exitSignal)
 
 	readyFile := os.NewFile(uintptr(6), "ready")

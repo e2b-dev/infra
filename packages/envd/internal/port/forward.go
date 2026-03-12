@@ -11,9 +11,9 @@ import (
 	"fmt"
 	"net"
 	"os/exec"
-	"syscall"
 
 	"github.com/rs/zerolog"
+	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/services/cgroups"
 )
@@ -143,7 +143,7 @@ func (f *Forwarder) startPortForwarding(ctx context.Context, p *PortToForward) {
 
 	cgroupFD, ok := f.cgroupManager.GetFileDescriptor(cgroups.ProcessTypeSocat)
 
-	cmd.SysProcAttr = &syscall.SysProcAttr{
+	cmd.SysProcAttr = &unix.SysProcAttr{
 		Setpgid:     true,
 		CgroupFD:    cgroupFD,
 		UseCgroupFD: ok,
@@ -197,7 +197,7 @@ func (f *Forwarder) stopPortForwarding(p *PortToForward) {
 
 	logger.Debug().Msg("Stopping port forwarding")
 
-	if err := syscall.Kill(-p.socat.Process.Pid, syscall.SIGKILL); err != nil {
+	if err := unix.Kill(-p.socat.Process.Pid, unix.SIGKILL); err != nil {
 		logger.Error().Err(err).Msg("Failed to kill process group")
 
 		return
@@ -208,9 +208,9 @@ func (f *Forwarder) stopPortForwarding(p *PortToForward) {
 
 func familyToIPVersion(family uint32) uint32 {
 	switch family {
-	case syscall.AF_INET:
+	case unix.AF_INET:
 		return 4
-	case syscall.AF_INET6:
+	case unix.AF_INET6:
 		return 6
 	default:
 		return 0 // Unknown or unsupported family

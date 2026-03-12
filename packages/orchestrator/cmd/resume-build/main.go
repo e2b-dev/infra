@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"syscall"
 	"time"
 
 	"connectrpc.com/connect"
@@ -1261,14 +1260,14 @@ func syncAndDropCaches(ctx context.Context, sbx *sandbox.Sandbox) error {
 func parseSignal(name string) os.Signal {
 	name = strings.ToUpper(strings.TrimPrefix(name, "SIG"))
 	signals := map[string]os.Signal{
-		"TERM":  syscall.SIGTERM,
-		"USR1":  syscall.SIGUSR1,
-		"USR2":  syscall.SIGUSR2,
-		"HUP":   syscall.SIGHUP,
-		"INT":   syscall.SIGINT,
-		"QUIT":  syscall.SIGQUIT,
-		"CONT":  syscall.SIGCONT,
-		"WINCH": syscall.SIGWINCH,
+		"TERM":  unix.SIGTERM,
+		"USR1":  unix.SIGUSR1,
+		"USR2":  unix.SIGUSR2,
+		"HUP":   unix.SIGHUP,
+		"INT":   unix.SIGINT,
+		"QUIT":  unix.SIGQUIT,
+		"CONT":  unix.SIGCONT,
+		"WINCH": unix.SIGWINCH,
 	}
 
 	return signals[name]

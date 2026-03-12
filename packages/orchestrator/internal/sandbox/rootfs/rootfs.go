@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"syscall"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -41,7 +41,7 @@ func flush(ctx context.Context, path string) error {
 		}
 	}()
 
-	err = syscall.Fsync(int(file.Fd()))
+	err = unix.Fsync(int(file.Fd()))
 	if err != nil {
 		return fmt.Errorf("failed to fsync path: %w", err)
 	}

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"syscall"
 	"testing"
 	"unsafe"
 
@@ -446,12 +445,12 @@ func BenchmarkCopyFromHugepagesFile(b *testing.B) {
 	b.StopTimer()
 	for {
 		l := int(math.Ceil(float64(size)/float64(pageSize)) * float64(pageSize))
-		mem, err := syscall.Mmap(
+		mem, err := unix.Mmap(
 			-1,
 			0,
 			l,
-			syscall.PROT_READ|syscall.PROT_WRITE,
-			syscall.MAP_PRIVATE|syscall.MAP_ANONYMOUS|unix.MAP_HUGETLB|unix.MAP_HUGE_2MB,
+			unix.PROT_READ|unix.PROT_WRITE,
+			unix.MAP_PRIVATE|unix.MAP_ANONYMOUS|unix.MAP_HUGETLB|unix.MAP_HUGE_2MB,
 		)
 
 		require.NoError(b, err)
@@ -495,7 +494,7 @@ func BenchmarkCopyFromHugepagesFile(b *testing.B) {
 			b.StopTimer()
 			err = cache.Close()
 			require.NoError(b, err)
-			err = syscall.Munmap(mem)
+			err = unix.Munmap(mem)
 			require.NoError(b, err)
 
 			break
@@ -509,7 +508,7 @@ func BenchmarkCopyFromHugepagesFile(b *testing.B) {
 		err = cache.Close()
 		require.NoError(b, err)
 
-		err = syscall.Munmap(mem)
+		err = unix.Munmap(mem)
 		require.NoError(b, err)
 
 		b.SetBytes(GetSize(ranges))

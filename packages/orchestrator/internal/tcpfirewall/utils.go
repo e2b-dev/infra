@@ -3,8 +3,9 @@ package tcpfirewall
 import (
 	"fmt"
 	"net"
-	"syscall"
 	"unsafe"
+
+	"golang.org/x/sys/unix"
 )
 
 // getOriginalDst retrieves the original destination IP and port before DNAT was applied.
@@ -32,9 +33,9 @@ func getOriginalDst(conn net.Conn) (net.IP, int, error) {
 		var addr [16]byte
 		addrLen := uint32(len(addr))
 
-		_, _, errno := syscall.Syscall6(
-			syscall.SYS_GETSOCKOPT, fd,
-			syscall.SOL_IP, soOriginalDst,
+		_, _, errno := unix.Syscall6(
+			unix.SYS_GETSOCKOPT, fd,
+			unix.SOL_IP, soOriginalDst,
 			uintptr(unsafe.Pointer(&addr)), uintptr(unsafe.Pointer(&addrLen)), 0,
 		)
 		if errno != 0 {

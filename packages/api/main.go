@@ -13,7 +13,6 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/getkin/kin-openapi/openapi3"
@@ -25,6 +24,7 @@ import (
 	middleware "github.com/oapi-codegen/gin-middleware"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
@@ -395,7 +395,7 @@ func run() int {
 	// after the HTTP service returns, to avoid terminating
 	// connections to databases and other upstream services before
 	// the HTTP server has shut down.
-	signalCtx, sigCancel := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)
+	signalCtx, sigCancel := signal.NotifyContext(ctx, unix.SIGTERM, unix.SIGINT)
 	defer sigCancel()
 
 	wg := &sync.WaitGroup{}

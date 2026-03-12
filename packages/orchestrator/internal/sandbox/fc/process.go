@@ -10,7 +10,6 @@ import (
 	"os/exec"
 	"strings"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -19,6 +18,7 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapio"
 	"golang.org/x/sync/errgroup"
+	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/cgroup"
@@ -180,7 +180,7 @@ func NewProcess(
 		startScript.Value,
 	)
 
-	cmd.SysProcAttr = &syscall.SysProcAttr{
+	cmd.SysProcAttr = &unix.SysProcAttr{
 		Setsid: true, // Create a new session
 	}
 
@@ -235,7 +235,7 @@ func (p *Process) configure(
 
 	// Create the metrics FIFO before Firecracker starts.
 	// Firecracker will open the write end once PUT /metrics is called.
-	if err := syscall.Mkfifo(p.metricsPath, 0o600); err != nil {
+	if err := unix.Mkfifo(p.metricsPath, 0o600); err != nil {
 		return fmt.Errorf("error creating fc metrics FIFO: %w", err)
 	}
 
@@ -260,7 +260,7 @@ func (p *Process) configure(
 			var exitErr *exec.ExitError
 			if errors.As(waitErr, &exitErr) {
 				// Check if the process was killed by a signal
-				if status, ok := exitErr.Sys().(syscall.WaitStatus); ok && status.Signaled() && (status.Signal() == syscall.SIGKILL || status.Signal() == syscall.SIGTERM) {
+				if status, ok := exitErr.Sys().(unix.WaitStatus); ok && status.Signaled() && (status.Signal() == unix.SIGKILL || status.Signal() == unix.SIGTERM) {
 					p.Exit.SetError(nil)
 
 					return
@@ -640,7 +640,7 @@ func (p *Process) Stop(ctx context.Context) error {
 		logger.L().Info(ctx, "fc process is in the D state before we call SIGTERM", logger.WithSandboxID(p.files.SandboxID))
 	}
 
-	err = p.cmd.Process.Signal(syscall.SIGTERM)
+	err = p.cmd.Process.Signal(unix.SIGTERM)
 	if err != nil {
 		if errors.Is(err, os.ErrProcessDone) {
 			logger.L().Info(ctx, "fc process already exited", logger.WithSandboxID(p.files.SandboxID))

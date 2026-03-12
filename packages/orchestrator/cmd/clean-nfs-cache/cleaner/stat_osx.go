@@ -4,9 +4,9 @@ package cleaner
 
 import (
 	"fmt"
+	"golang.org/x/sys/unix"
 	"os"
 	"path/filepath"
-	"syscall"
 )
 
 func (c *Cleaner) stat(path string) (*Candidate, error) {
@@ -16,9 +16,9 @@ func (c *Cleaner) stat(path string) (*Candidate, error) {
 		return nil, fmt.Errorf("could not stat info: %w", err)
 	}
 
-	actualStruct, ok := stat.Sys().(*syscall.Stat_t)
+	actualStruct, ok := stat.Sys().(*unix.Stat_t)
 	if !ok {
-		return nil, fmt.Errorf("stat did not return a syscall.Stat_t for %q: %T",
+		return nil, fmt.Errorf("stat did not return a unix.Stat_t for %q: %T",
 			stat.Name(), stat.Sys())
 	}
 

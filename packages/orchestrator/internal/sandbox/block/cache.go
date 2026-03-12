@@ -11,7 +11,6 @@ import (
 	"slices"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/bits-and-blooms/bitset"
@@ -298,14 +297,14 @@ func (c *Cache) dirtySortedKeys() []int64 {
 // FileSize returns the size of the cache on disk.
 // The size might differ from the dirty size, as it may not be fully on disk.
 func (c *Cache) FileSize() (int64, error) {
-	var stat syscall.Stat_t
-	err := syscall.Stat(c.filePath, &stat)
+	var stat unix.Stat_t
+	err := unix.Stat(c.filePath, &stat)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get file stats: %w", err)
 	}
 
-	var fsStat syscall.Statfs_t
-	err = syscall.Statfs(c.filePath, &fsStat)
+	var fsStat unix.Statfs_t
+	err = unix.Statfs(c.filePath, &fsStat)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get disk stats for path %s: %w", c.filePath, err)
 	}

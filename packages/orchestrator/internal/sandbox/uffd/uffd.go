@@ -8,11 +8,11 @@ import (
 	"net"
 	"os"
 	"sync"
-	"syscall"
 	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
+	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
@@ -128,7 +128,7 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string, fdExit *fdexit.FdEx
 	unixConn := conn.(*net.UnixConn)
 
 	regionMappingsBuf := make([]byte, regionMappingsSize)
-	uffdBuf := make([]byte, syscall.CmsgSpace(fdSize))
+	uffdBuf := make([]byte, unix.CmsgSpace(fdSize))
 
 	numBytesMappings, numBytesFd, _, _, err := unixConn.ReadMsgUnix(regionMappingsBuf, uffdBuf)
 	if err != nil {
@@ -144,7 +144,7 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string, fdExit *fdexit.FdEx
 		return fmt.Errorf("failed parsing memory mapping data: %w", err)
 	}
 
-	controlMsgs, err := syscall.ParseSocketControlMessage(uffdBuf[:numBytesFd])
+	controlMsgs, err := unix.ParseSocketControlMessage(uffdBuf[:numBytesFd])
 	if err != nil {
 		return fmt.Errorf("failed parsing control messages: %w", err)
 	}
@@ -153,7 +153,7 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string, fdExit *fdexit.FdEx
 		return fmt.Errorf("expected 1 control message containing UFFD: found %d", len(controlMsgs))
 	}
 
-	fds, err := syscall.ParseUnixRights(&controlMsgs[0])
+	fds, err := unix.ParseUnixRights(&controlMsgs[0])
 	if err != nil {
 		return fmt.Errorf("failed parsing unix write: %w", err)
 	}

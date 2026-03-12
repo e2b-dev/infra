@@ -3,8 +3,9 @@ package filesystem
 import (
 	"os"
 	"path/filepath"
-	"syscall"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 func GetEntryFromPath(path string) (EntryInfo, error) {
@@ -93,7 +94,7 @@ func followSymlink(path string) string {
 	return resolvedPath
 }
 
-func toTimestamp(spec syscall.Timespec) time.Time {
+func toTimestamp(spec unix.Timespec) time.Time {
 	if spec.Sec == 0 && spec.Nsec == 0 {
 		return time.Time{}
 	}
@@ -101,8 +102,8 @@ func toTimestamp(spec syscall.Timespec) time.Time {
 	return time.Unix(spec.Sec, spec.Nsec)
 }
 
-func getBase(sys any) *syscall.Stat_t {
-	st, _ := sys.(*syscall.Stat_t)
+func getBase(sys any) *unix.Stat_t {
+	st, _ := sys.(*unix.Stat_t)
 
 	return st
 }

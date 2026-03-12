@@ -7,12 +7,12 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
-	"syscall"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -81,9 +81,9 @@ func TestCgroupRoundTrip(t *testing.T) {
 		assert.Equal(t, -1, exitErr.ExitCode())
 
 		// dig a little deeper
-		ws, ok := exitErr.Sys().(syscall.WaitStatus)
+		ws, ok := exitErr.Sys().(unix.WaitStatus)
 		require.True(t, ok)
-		assert.Equal(t, syscall.SIGKILL, ws.Signal())
+		assert.Equal(t, unix.SIGKILL, ws.Signal())
 		assert.True(t, ws.Signaled())
 		assert.False(t, ws.Stopped())
 		assert.False(t, ws.Continued())
@@ -125,9 +125,9 @@ func TestCgroupRoundTrip(t *testing.T) {
 		assert.Equal(t, 253, exitErr.ExitCode())
 
 		// dig a little deeper
-		ws, ok := exitErr.Sys().(syscall.WaitStatus)
+		ws, ok := exitErr.Sys().(unix.WaitStatus)
 		require.True(t, ok)
-		assert.Equal(t, syscall.Signal(-1), ws.Signal())
+		assert.Equal(t, unix.Signal(-1), ws.Signal())
 		assert.False(t, ws.Signaled())
 		assert.False(t, ws.Stopped())
 		assert.False(t, ws.Continued())
@@ -152,7 +152,7 @@ func startProcess(t *testing.T, m *Cgroup2Manager, pt ProcessType) *exec.Cmd {
 	cmd := exec.CommandContext(t.Context(), cmdName, args...)
 
 	fd, ok := m.GetFileDescriptor(pt)
-	cmd.SysProcAttr = &syscall.SysProcAttr{
+	cmd.SysProcAttr = &unix.SysProcAttr{
 		UseCgroupFD: ok,
 		CgroupFD:    fd,
 	}

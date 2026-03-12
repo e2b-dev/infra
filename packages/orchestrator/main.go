@@ -11,7 +11,6 @@ import (
 	"os/signal"
 	"slices"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/google/uuid"
@@ -20,6 +19,7 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
+	"golang.org/x/sys/unix"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
@@ -153,7 +153,7 @@ func run(config cfg.Config) (success bool) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	sig, sigCancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1)
+	sig, sigCancel := signal.NotifyContext(ctx, unix.SIGINT, unix.SIGTERM, unix.SIGUSR1)
 	defer sigCancel()
 
 	nodeID := env.GetNodeID()
@@ -497,7 +497,7 @@ func run(config cfg.Config) (success bool) {
 	closers = append(closers, closer{
 		"template manager sandbox logger", func(context.Context) error {
 			// Sync returns EINVAL when path is /dev/stdout (for example)
-			if err := tmplSbxLoggerExternal.Sync(); err != nil && !errors.Is(err, syscall.EINVAL) {
+			if err := tmplSbxLoggerExternal.Sync(); err != nil && !errors.Is(err, unix.EINVAL) {
 				return err
 			}
 

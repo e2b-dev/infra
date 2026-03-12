@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"net"
-	"syscall"
 	"time"
 
 	"go.uber.org/zap"
+	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
@@ -50,8 +50,8 @@ func isTransientAcceptError(err error) bool {
 		return false
 	}
 
-	return errors.Is(err, syscall.EMFILE) || // too many open files (per-process)
-		errors.Is(err, syscall.ENFILE) || // too many open files (system-wide)
-		errors.Is(err, syscall.EAGAIN) || // resource temporarily unavailable
-		errors.Is(err, syscall.ECONNABORTED) // client closed before accept
+	return errors.Is(err, unix.EMFILE) || // too many open files (per-process)
+		errors.Is(err, unix.ENFILE) || // too many open files (system-wide)
+		errors.Is(err, unix.EAGAIN) || // resource temporarily unavailable
+		errors.Is(err, unix.ECONNABORTED) // client closed before accept
 }

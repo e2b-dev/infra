@@ -3,9 +3,9 @@ package process
 import (
 	"context"
 	"fmt"
-	"syscall"
 
 	"connectrpc.com/connect"
+	"golang.org/x/sys/unix"
 
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process"
 )
@@ -19,12 +19,12 @@ func (s *Service) SendSignal(
 		return nil, err
 	}
 
-	var signal syscall.Signal
+	var signal unix.Signal
 	switch req.Msg.GetSignal() {
 	case rpc.Signal_SIGNAL_SIGKILL:
-		signal = syscall.SIGKILL
+		signal = unix.SIGKILL
 	case rpc.Signal_SIGNAL_SIGTERM:
-		signal = syscall.SIGTERM
+		signal = unix.SIGTERM
 	default:
 		return nil, connect.NewError(connect.CodeUnimplemented, fmt.Errorf("invalid signal: %s", req.Msg.GetSignal()))
 	}

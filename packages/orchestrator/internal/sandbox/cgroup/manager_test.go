@@ -7,12 +7,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sys/unix"
 )
 
 func TestNewManager(t *testing.T) {
@@ -120,7 +120,7 @@ func TestCgroupHandleWithProcessCreation(t *testing.T) {
 	assert.Positive(t, handle.GetFD())
 
 	cmd := exec.CommandContext(ctx, "sleep", "5")
-	cmd.SysProcAttr = &syscall.SysProcAttr{
+	cmd.SysProcAttr = &unix.SysProcAttr{
 		UseCgroupFD: true,
 		CgroupFD:    handle.GetFD(),
 	}
@@ -169,7 +169,7 @@ func TestCgroupHandleNoRaceOnQuickExit(t *testing.T) {
 	defer handle.ReleaseCgroupFD()
 
 	cmd := exec.CommandContext(ctx, "bash", "-c", "exit 0")
-	cmd.SysProcAttr = &syscall.SysProcAttr{
+	cmd.SysProcAttr = &unix.SysProcAttr{
 		UseCgroupFD: true,
 		CgroupFD:    handle.GetFD(),
 	}
@@ -206,7 +206,7 @@ func TestCgroupHandleGetStats(t *testing.T) {
 	defer handle.ReleaseCgroupFD()
 
 	cmd := exec.CommandContext(ctx, "bash", "-c", "for i in {1..1000}; do echo test > /dev/null; done; sleep 5")
-	cmd.SysProcAttr = &syscall.SysProcAttr{
+	cmd.SysProcAttr = &unix.SysProcAttr{
 		UseCgroupFD: true,
 		CgroupFD:    handle.GetFD(),
 	}
@@ -349,7 +349,7 @@ func TestCgroupHandleLifetimePeak(t *testing.T) {
 	// Allocate memory gradually to observe lifetime peak behavior
 	cmd := exec.CommandContext(ctx, "bash", "-c",
 		"x=''; for i in {1..10}; do x=$x$(head -c 5M /dev/zero | tr '\\0' 'x'); sleep 0.5; done; sleep 5")
-	cmd.SysProcAttr = &syscall.SysProcAttr{
+	cmd.SysProcAttr = &unix.SysProcAttr{
 		UseCgroupFD: true,
 		CgroupFD:    handle.GetFD(),
 	}

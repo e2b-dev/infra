@@ -7,7 +7,6 @@ import (
 	"io"
 	"net"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -16,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
+	"golang.org/x/sys/unix"
 )
 
 func dial(ctx context.Context, addr string) (net.Conn, error) {
@@ -197,14 +197,14 @@ func TestIsTransientAcceptError(t *testing.T) {
 		want bool
 	}{
 		{"nil error", nil, false},
-		{"EMFILE", syscall.EMFILE, true},
-		{"ENFILE", syscall.ENFILE, true},
-		{"EAGAIN", syscall.EAGAIN, true},
-		{"ECONNABORTED", syscall.ECONNABORTED, true},
-		{"wrapped EMFILE", &net.OpError{Op: "accept", Err: syscall.EMFILE}, true},
-		{"wrapped ENFILE", &net.OpError{Op: "accept", Err: syscall.ENFILE}, true},
-		{"wrapped ECONNABORTED", &net.OpError{Op: "accept", Err: syscall.ECONNABORTED}, true},
-		{"ECONNRESET", syscall.ECONNRESET, false},
+		{"EMFILE", unix.EMFILE, true},
+		{"ENFILE", unix.ENFILE, true},
+		{"EAGAIN", unix.EAGAIN, true},
+		{"ECONNABORTED", unix.ECONNABORTED, true},
+		{"wrapped EMFILE", &net.OpError{Op: "accept", Err: unix.EMFILE}, true},
+		{"wrapped ENFILE", &net.OpError{Op: "accept", Err: unix.ENFILE}, true},
+		{"wrapped ECONNABORTED", &net.OpError{Op: "accept", Err: unix.ECONNABORTED}, true},
+		{"ECONNRESET", unix.ECONNRESET, false},
 		{"generic error", errors.New("some error"), false},
 	}
 

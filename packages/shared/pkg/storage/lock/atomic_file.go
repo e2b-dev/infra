@@ -7,9 +7,9 @@ import (
 	"io"
 	"os"
 	"sync"
-	"syscall"
 
 	"github.com/google/uuid"
+	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -75,7 +75,7 @@ func (f *AtomicImmutableFile) close(ctx context.Context, success bool) error {
 		if success {
 			if err = utils.RenameOrDeleteFile(ctx, f.tempFile.Name(), f.filename); err != nil {
 				// someone else may have written the file successfully
-				if !errors.Is(err, syscall.EEXIST) {
+				if !errors.Is(err, unix.EEXIST) {
 					// if not, report the error
 					errs = append(errs, fmt.Errorf("failed to commit file: %w", err))
 				}

@@ -10,12 +10,12 @@ import (
 	"os"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/Merovius/nbd/nbdnl"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
+	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
@@ -96,7 +96,7 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 
 		for i := range connections {
 			// Create the socket pairs
-			sockPair, err := syscall.Socketpair(syscall.AF_UNIX, syscall.SOCK_STREAM, 0)
+			sockPair, err := unix.Socketpair(unix.AF_UNIX, unix.SOCK_STREAM, 0)
 			if err != nil {
 				closeErr := closeSocketPairs(d.socksClient, d.socksServer)
 				releaseErr := d.devicePool.ReleaseDevice(ctx, deviceIndex)

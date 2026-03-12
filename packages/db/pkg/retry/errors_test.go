@@ -5,11 +5,11 @@ import (
 	"errors"
 	"io"
 	"net"
-	"syscall"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/assert"
+	"golang.org/x/sys/unix"
 )
 
 func TestIsRetriable_NilError(t *testing.T) {
@@ -93,9 +93,9 @@ func TestIsRetriable_NetworkErrors(t *testing.T) {
 		err       error
 		retriable bool
 	}{
-		{"connection reset", syscall.ECONNRESET, true},
-		{"connection refused", syscall.ECONNREFUSED, true},
-		{"broken pipe", syscall.EPIPE, true},
+		{"connection reset", unix.ECONNRESET, true},
+		{"connection refused", unix.ECONNREFUSED, true},
+		{"broken pipe", unix.EPIPE, true},
 		{"EOF", io.EOF, true},
 		{"unexpected EOF", io.ErrUnexpectedEOF, true},
 	}
@@ -161,6 +161,6 @@ func TestIsRetriable_WrappedErrors(t *testing.T) {
 	assert.True(t, IsRetriable(wrappedPgErr))
 
 	// Wrapped syscall error
-	wrappedSyscall := errors.Join(errors.New("network error"), syscall.ECONNRESET)
+	wrappedSyscall := errors.Join(errors.New("network error"), unix.ECONNRESET)
 	assert.True(t, IsRetriable(wrappedSyscall))
 }

@@ -5,10 +5,10 @@ import (
 	"io"
 	"log"
 	"os"
-	"syscall"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -55,8 +55,8 @@ func GetHeaderInfo(headerPath string) (totalSize, blockSize uint64) {
 
 // GetFileSizes returns the logical size and actual on-disk size of a file.
 func GetFileSizes(path string) (logical, actual int64, err error) {
-	var stat syscall.Stat_t
-	if err := syscall.Stat(path, &stat); err != nil {
+	var stat unix.Stat_t
+	if err := unix.Stat(path, &stat); err != nil {
 		return 0, 0, err
 	}
 

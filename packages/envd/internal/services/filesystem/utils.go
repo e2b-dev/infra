@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"os"
 	"os/user"
-	"syscall"
 	"time"
 
 	"connectrpc.com/connect"
+	"golang.org/x/sys/unix"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem"
@@ -26,8 +26,8 @@ const (
 // IsPathOnNetworkMount checks if the given path is on a network filesystem mount.
 // Returns true if the path is on NFS, CIFS, SMB, or FUSE filesystem.
 func IsPathOnNetworkMount(path string) (bool, error) {
-	var statfs syscall.Statfs_t
-	if err := syscall.Statfs(path, &statfs); err != nil {
+	var statfs unix.Statfs_t
+	if err := unix.Statfs(path, &statfs); err != nil {
 		return false, fmt.Errorf("failed to statfs %s: %w", path, err)
 	}
 

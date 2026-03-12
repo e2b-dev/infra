@@ -3,7 +3,6 @@ package testutils
 import (
 	"fmt"
 	"math"
-	"syscall"
 	"testing"
 	"unsafe"
 
@@ -33,19 +32,19 @@ func newMmap(t *testing.T, size, pagesize uint64, flags int) ([]byte, uintptr, e
 	t.Helper()
 
 	l := int(math.Ceil(float64(size)/float64(pagesize)) * float64(pagesize))
-	b, err := syscall.Mmap(
+	b, err := unix.Mmap(
 		-1,
 		0,
 		l,
-		syscall.PROT_READ|syscall.PROT_WRITE,
-		syscall.MAP_PRIVATE|syscall.MAP_ANONYMOUS|flags,
+		unix.PROT_READ|unix.PROT_WRITE,
+		unix.MAP_PRIVATE|unix.MAP_ANONYMOUS|flags,
 	)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to mmap: %w", err)
 	}
 
 	t.Cleanup(func() {
-		syscall.Munmap(b)
+		unix.Munmap(b)
 	})
 
 	return b, uintptr(unsafe.Pointer(&b[0])), nil

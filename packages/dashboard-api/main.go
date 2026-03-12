@@ -12,7 +12,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/getkin/kin-openapi/openapi3"
@@ -23,6 +22,7 @@ import (
 	middleware "github.com/oapi-codegen/gin-middleware"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"golang.org/x/sys/unix"
 
 	sharedauth "github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
@@ -224,7 +224,7 @@ func run() int {
 		IdleTimeout:       idleTimeout,
 	}
 
-	signalCtx, sigCancel := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)
+	signalCtx, sigCancel := signal.NotifyContext(ctx, unix.SIGTERM, unix.SIGINT)
 	defer sigCancel()
 
 	wg := sync.WaitGroup{}
