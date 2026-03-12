@@ -82,6 +82,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		ldcontext.NewBuilder(req.GetSandbox().GetTeamId()).
 			Kind(featureflags.TeamKind).
 			Build(),
+		featureflags.VersionContext(s.info.ClientId, s.info.SourceCommit),
 	)
 
 	maxRunningSandboxesPerNode := s.featureFlags.IntFlag(ctx, featureflags.MaxSandboxesPerNode)
@@ -139,38 +140,39 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		network.Egress.DeniedCidrs = []string{sandbox_network.AllInternetTrafficCIDR}
 	}
 
+	resolvedFCVersion := featureflags.ResolveFirecrackerVersion(ctx, s.featureFlags, req.GetSandbox().GetFirecrackerVersion())
+
 	volumeMounts, err := createVolumeMountModelsFromAPI(req.GetSandbox().GetVolumeMounts())
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert volume mounts: %w", err)
 	}
 
-	sbxConfig := sandbox.NewConfig(sandbox.Config{
-		BaseTemplateID: req.GetSandbox().GetBaseTemplateId(),
-
-		Vcpu:            req.GetSandbox().GetVcpu(),
-		RamMB:           req.GetSandbox().GetRamMb(),
-		TotalDiskSizeMB: req.GetSandbox().GetTotalDiskSizeMb(),
-		HugePages:       req.GetSandbox().GetHugePages(),
-
-		Envd: sandbox.EnvdMetadata{
-			Version:     req.GetSandbox().GetEnvdVersion(),
-			AccessToken: req.GetSandbox().EnvdAccessToken,
-			Vars:        req.GetSandbox().GetEnvVars(),
-		},
-
-		FirecrackerConfig: fc.Config{
-			KernelVersion:      req.GetSandbox().GetKernelVersion(),
-			FirecrackerVersion: req.GetSandbox().GetFirecrackerVersion(),
-		},
-
-		VolumeMounts: volumeMounts,
-		Network:      network,
-	})
-
 	sbx, err := s.sandboxFactory.ResumeSandbox(
 		ctx,
 		template,
-		sbxConfig,
+		sandbox.NewConfig(sandbox.Config{
+			BaseTemplateID: req.GetSandbox().GetBaseTemplateId(),
+
+			Vcpu:            req.GetSandbox().GetVcpu(),
+			RamMB:           req.GetSandbox().GetRamMb(),
+			TotalDiskSizeMB: req.GetSandbox().GetTotalDiskSizeMb(),
+			HugePages:       req.GetSandbox().GetHugePages(),
+
+			Network: network,
+
+			Envd: sandbox.EnvdMetadata{
+				Version:     req.GetSandbox().GetEnvdVersion(),
+				AccessToken: req.GetSandbox().EnvdAccessToken,
+				Vars:        req.GetSandbox().GetEnvVars(),
+			},
+
+			FirecrackerConfig: fc.Config{
+				KernelVersion:      req.GetSandbox().GetKernelVersion(),
+				FirecrackerVersion: resolvedFCVersion,
+			},
+
+			VolumeMounts: volumeMounts,
+		}),
 		sandbox.RuntimeMetadata{
 			TemplateID:  req.GetSandbox().GetTemplateId(),
 			SandboxID:   req.GetSandbox().GetSandboxId(),

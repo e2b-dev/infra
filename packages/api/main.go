@@ -130,6 +130,30 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 	}
 	r.Use(cors.New(corsConfig))
 
+	r.Use(sharedmiddleware.LoggingMiddleware(l, sharedmiddleware.Config{
+		TimeFormat:   time.RFC3339Nano,
+		UTC:          true,
+		DefaultLevel: zap.InfoLevel,
+		Skipper: func(c *gin.Context) bool {
+			switch c.FullPath() {
+			case "/health",
+				"/sandboxes/:sandboxID/refreshes",
+				"/templates/:templateID/builds/:buildID/logs",
+				"/templates/:templateID/builds/:buildID/status":
+				return true
+			}
+
+			return false
+		},
+		Context: func(c *gin.Context) []zapcore.Field {
+			if teamInfo, ok := auth.GetTeamInfo(c); ok {
+				return []zapcore.Field{logger.WithTeamID(teamInfo.ID.String())}
+			}
+
+			return nil
+		},
+	}))
+
 	// Create a team API Key auth validator
 	AuthenticationFunc := auth.CreateAuthenticationFunc(
 		[]auth.Authenticator{
@@ -163,32 +187,6 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 	)
 
 	r.Use(customMiddleware.InitLaunchDarklyContext)
-
-	// Request logging must be executed after authorization (if required) is done,
-	// so that we can log team ID.
-	r.Use(sharedmiddleware.LoggingMiddleware(l, sharedmiddleware.Config{
-		TimeFormat:   time.RFC3339Nano,
-		UTC:          true,
-		DefaultLevel: zap.InfoLevel,
-		Skipper: func(c *gin.Context) bool {
-			switch c.FullPath() {
-			case "/health",
-				"/sandboxes/:sandboxID/refreshes",
-				"/templates/:templateID/builds/:buildID/logs",
-				"/templates/:templateID/builds/:buildID/status":
-				return true
-			}
-
-			return false
-		},
-		Context: func(c *gin.Context) []zapcore.Field {
-			if teamInfo, ok := auth.GetTeamInfo(c); ok {
-				return []zapcore.Field{logger.WithTeamID(teamInfo.ID.String())}
-			}
-
-			return nil
-		},
-	}))
 
 	// We now register our store above as the handler for the interface
 	api.RegisterHandlersWithOptions(r, apiStore, api.GinServerOptions{
