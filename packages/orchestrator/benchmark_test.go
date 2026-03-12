@@ -185,7 +185,8 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	templateCache.Start(b.Context())
 	b.Cleanup(templateCache.Stop)
 
-	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags, nil, nil)
+	sandboxes := sandbox.NewSandboxesMap()
+	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags, nil, nil, sandboxes)
 
 	dockerhubRepository, err := dockerhub.GetRemoteRepository(b.Context())
 	require.NoError(b, err)
@@ -195,7 +196,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	})
 
 	accessToken := "access-token"
-	sandboxConfig := &sandbox.Config{
+	sandboxConfig := sandbox.NewConfig(sandbox.Config{
 		BaseTemplateID:  templateID,
 		Vcpu:            2,
 		RamMB:           512,
@@ -210,8 +211,8 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 			KernelVersion:      kernelVersion,
 			FirecrackerVersion: fcVersion,
 		},
-	}
-	sandboxConfig.SetNetwork(sbxNetwork)
+		Network: sbxNetwork,
+	})
 
 	runtime := sandbox.RuntimeMetadata{
 		TemplateID:  templateID,
@@ -230,8 +231,6 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	require.NoError(b, err)
 
 	var proxyPort uint16 = 5007
-
-	sandboxes := sandbox.NewSandboxesMap()
 
 	tcpFirewall := tcpfirewall.New(
 		l,

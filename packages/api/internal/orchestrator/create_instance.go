@@ -73,6 +73,7 @@ func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess
 	// Handle the case where internet access is explicitly disabled
 	// This should be applied after copying the network config to preserve allowed addresses
 	if allowInternetAccess != nil && !*allowInternetAccess {
+		// Block all internet access - this overrides any other blocked addresses
 		orchNetwork.Egress.DeniedCidrs = []string{sandbox_network.AllInternetTrafficCIDR}
 	}
 

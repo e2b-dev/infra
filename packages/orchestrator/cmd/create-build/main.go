@@ -293,7 +293,7 @@ func doBuild(
 	defer templateCache.Stop()
 
 	buildMetrics, _ := metrics.NewBuildMetrics(noop.MeterProvider{})
-	sandboxFactory := sandbox.NewFactory(c.BuilderConfig, networkPool, devicePool, featureFlags, nil, nil)
+	sandboxFactory := sandbox.NewFactory(c.BuilderConfig, networkPool, devicePool, featureFlags, nil, nil, sandboxes)
 
 	builder := build.NewBuilder(
 		builderConfig, l, featureFlags, sandboxFactory,

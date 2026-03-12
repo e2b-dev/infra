@@ -74,17 +74,17 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 			}
 
 			ingress := sbx.Config.GetNetwork().GetIngress()
-			accessToken := ingress.TrafficAccessToken
+			accessToken := ingress.GetTrafficAccessToken()
 
 			isNonEnvdTraffic := int64(port) != consts.DefaultEnvdServerPort
 
 			// Handle traffic access token validation.
 			// We are skipping envd port as it has its own access validation mechanism.
-			if accessToken != nil && isNonEnvdTraffic {
+			if accessToken != "" && isNonEnvdTraffic {
 				accessTokenRaw := r.Header.Get(trafficAccessTokenHeader)
 				if accessTokenRaw == "" {
 					return nil, reverseproxy.NewErrMissingTrafficAccessToken(sandboxId, trafficAccessTokenHeader)
-				} else if accessTokenRaw != *accessToken {
+				} else if accessTokenRaw != accessToken {
 					return nil, reverseproxy.NewErrInvalidTrafficAccessToken(sandboxId, trafficAccessTokenHeader)
 				}
 			}
@@ -131,7 +131,7 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 				zap.String("origin_host", r.Host),
 				logger.WithSandboxID(sbx.Runtime.SandboxID),
 				logger.WithTeamID(sbx.Runtime.TeamID),
-				zap.String("sandbox_ip", sbx.Slot.HostIPString()),
+				logger.WithSandboxIP(sbx.Slot.HostIPString()),
 				zap.Uint64("sandbox_req_port", port),
 				zap.String("sandbox_req_path", r.URL.Path),
 				zap.String("sandbox_req_method", r.Method),

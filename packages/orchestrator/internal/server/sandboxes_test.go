@@ -1,6 +1,7 @@
 package server
 
 import (
+	"net"
 	"reflect"
 	"testing"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
@@ -49,6 +51,9 @@ func Test_server_List(t *testing.T) {
 							SandboxID: id.Generate(),
 						},
 					},
+					Resources: &sandbox.Resources{
+						Slot: &network.Slot{HostIP: net.IPv4(127, 0, 0, 1)},
+					},
 				},
 			},
 			endAt: endTime,
@@ -69,17 +74,16 @@ func Test_server_List(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
+			sandboxes := sandbox.NewSandboxesMap()
+			s := &Server{
+				sandboxFactory: &sandbox.Factory{Sandboxes: sandboxes},
+				info:           &service.ServiceInfo{},
+			}
 			for _, sbx := range tt.data {
 				sbx.SetStartedAt(startTime)
 				sbx.SetEndAt(tt.endAt)
-			}
-
-			s := &Server{
-				sandboxes: sandbox.NewSandboxesMap(),
-				info:      &service.ServiceInfo{},
-			}
-			for _, sbx := range tt.data {
-				s.sandboxes.Insert(sbx)
+				sandboxes.Insert(t.Context(), sbx)
+				sandboxes.MarkRunning(sbx)
 			}
 			got, err := s.List(t.Context(), tt.args.in1)
 			if (err != nil) != tt.wantErr {
@@ -101,10 +105,10 @@ func TestGetSandboxExecutionData(t *testing.T) {
 
 	sbx := &sandbox.Sandbox{
 		Metadata: &sandbox.Metadata{
-			Config: &sandbox.Config{
+			Config: sandbox.NewConfig(sandbox.Config{
 				Vcpu:  2,
 				RamMB: 512,
-			},
+			}),
 			Runtime: sandbox.RuntimeMetadata{
 				SandboxID: id.Generate(),
 			},

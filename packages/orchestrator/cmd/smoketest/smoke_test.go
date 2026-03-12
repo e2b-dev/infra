@@ -32,7 +32,6 @@ import (
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -107,26 +106,21 @@ func TestSmokeAllFCVersions(t *testing.T) { //nolint:paralleltest // subtests sh
 			sbx, err := infra.factory.ResumeSandbox(
 				ctx,
 				tmpl,
-				func() *sandbox.Config {
-					cfg := &sandbox.Config{
-						BaseTemplateID: "smoke-" + fcMajor,
-						Vcpu:           2,
-						RamMB:          512,
-						HugePages:      true,
-						Envd: sandbox.EnvdMetadata{
-							Vars:        map[string]string{},
-							AccessToken: &token,
-							Version:     "1.0.0",
-						},
-						FirecrackerConfig: fc.Config{
-							KernelVersion:      meta.Template.KernelVersion,
-							FirecrackerVersion: meta.Template.FirecrackerVersion,
-						},
-					}
-					cfg.SetNetwork(&orchestrator.SandboxNetworkConfig{})
-
-					return cfg
-				}(),
+				sandbox.NewConfig(sandbox.Config{
+					BaseTemplateID: "smoke-" + fcMajor,
+					Vcpu:           2,
+					RamMB:          512,
+					HugePages:      true,
+					Envd: sandbox.EnvdMetadata{
+						Vars:        map[string]string{},
+						AccessToken: &token,
+						Version:     "1.0.0",
+					},
+					FirecrackerConfig: fc.Config{
+						KernelVersion:      meta.Template.KernelVersion,
+						FirecrackerVersion: meta.Template.FirecrackerVersion,
+					},
+				}),
 				sandbox.RuntimeMetadata{
 					TemplateID:  "smoke-" + fcMajor,
 					TeamID:      "smoke",
@@ -231,7 +225,7 @@ func newTestInfra(t *testing.T, ctx context.Context) *testInfra {
 	ti.closers = append(ti.closers, func(ctx context.Context) { tcpFw.Close(ctx) })
 
 	// Factory + Builder
-	factory := sandbox.NewFactory(orcConfig.BuilderConfig, networkPool, devicePool, flags, nil, nil)
+	factory := sandbox.NewFactory(orcConfig.BuilderConfig, networkPool, devicePool, flags, nil, nil, sandboxes)
 	ti.factory = factory
 
 	buildMetrics, _ := metrics.NewBuildMetrics(noop.MeterProvider{})

@@ -107,6 +107,11 @@ func (o *Orchestrator) WaitForStateChange(ctx context.Context, teamID uuid.UUID,
 func buildUpsertSnapshotParams(sbx sandbox.Sandbox, node *nodemanager.Node) queries.UpsertSnapshotParams {
 	machineInfo := node.MachineInfo()
 
+	metadata := types.JSONBStringMap(sbx.Metadata)
+	if metadata == nil {
+		metadata = types.JSONBStringMap{}
+	}
+
 	return queries.UpsertSnapshotParams{
 		// Used if there's no snapshot for this sandbox yet
 		TemplateID:     id.Generate(),
@@ -119,7 +124,7 @@ func buildUpsertSnapshotParams(sbx sandbox.Sandbox, node *nodemanager.Node) quer
 		// We don't know this information
 		FreeDiskSizeMb:      0,
 		TotalDiskSizeMb:     &sbx.TotalDiskSizeMB,
-		Metadata:            sbx.Metadata,
+		Metadata:            metadata,
 		KernelVersion:       sbx.KernelVersion,
 		FirecrackerVersion:  sbx.FirecrackerVersion,
 		EnvdVersion:         &sbx.EnvdVersion,

@@ -1,8 +1,6 @@
 package utils
 
 import (
-	"encoding/json"
-
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 )
@@ -78,34 +76,26 @@ func MapBuildStatusFromDBStatusGroup(status dbtypes.BuildStatusGroup) api.BuildS
 	}
 }
 
-func MapBuildStatusMessageFromDBStatus(status dbtypes.BuildStatus, reason []byte) *string {
+func MapBuildStatusMessageFromDBStatus(status dbtypes.BuildStatus, reason dbtypes.BuildReason) *string {
 	if status != dbtypes.BuildStatusFailed {
 		return nil
 	}
 
-	return mapBuildStatusMessage(reason)
+	if reason.Message == "" {
+		return nil
+	}
+
+	return &reason.Message
 }
 
-func MapBuildStatusMessageFromDBStatusGroup(status dbtypes.BuildStatusGroup, reason []byte) *string {
+func MapBuildStatusMessageFromDBStatusGroup(status dbtypes.BuildStatusGroup, reason dbtypes.BuildReason) *string {
 	if status != dbtypes.BuildStatusGroupFailed {
 		return nil
 	}
 
-	return mapBuildStatusMessage(reason)
-}
-
-func mapBuildStatusMessage(reason []byte) *string {
-	if len(reason) == 0 {
+	if reason.Message == "" {
 		return nil
 	}
 
-	var buildReason dbtypes.BuildReason
-	if err := json.Unmarshal(reason, &buildReason); err != nil {
-		return nil
-	}
-	if buildReason.Message == "" {
-		return nil
-	}
-
-	return &buildReason.Message
+	return &reason.Message
 }

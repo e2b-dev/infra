@@ -86,7 +86,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 
 	maxRunningSandboxesPerNode := s.featureFlags.IntFlag(ctx, featureflags.MaxSandboxesPerNode)
 
-	runningSandboxes := s.sandboxes.Count()
+	runningSandboxes := s.sandboxFactory.Sandboxes.Count()
 	if runningSandboxes >= maxRunningSandboxesPerNode {
 		telemetry.ReportEvent(ctx, "max number of running sandboxes reached")
 
@@ -144,7 +144,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		return nil, fmt.Errorf("failed to convert volume mounts: %w", err)
 	}
 
-	sbxConfig := &sandbox.Config{
+	sbxConfig := sandbox.NewConfig(sandbox.Config{
 		BaseTemplateID: req.GetSandbox().GetBaseTemplateId(),
 
 		Vcpu:            req.GetSandbox().GetVcpu(),
@@ -164,8 +164,8 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		},
 
 		VolumeMounts: volumeMounts,
-	}
-	sbxConfig.SetNetwork(network)
+		Network:      network,
+	})
 
 	sbx, err := s.sandboxFactory.ResumeSandbox(
 		ctx,
@@ -261,7 +261,7 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 		attribute.String("client.id", s.info.ClientId),
 	)
 
-	sbx, ok := s.sandboxes.Get(req.GetSandboxId())
+	sbx, ok := s.sandboxFactory.Sandboxes.Get(req.GetSandboxId())
 	if !ok {
 		telemetry.ReportCriticalError(ctx, "sandbox not found", nil)
 
@@ -360,7 +360,7 @@ func (s *Server) List(ctx context.Context, _ *emptypb.Empty) (*orchestrator.Sand
 	_, childSpan := tracer.Start(ctx, "sandbox-list")
 	defer childSpan.End()
 
-	items := s.sandboxes.Items()
+	items := s.sandboxFactory.Sandboxes.Items()
 
 	sandboxes := make([]*orchestrator.RunningSandbox, 0, len(items))
 
@@ -399,7 +399,7 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 		attribute.String("client.id", s.info.ClientId),
 	)
 
-	sbx, ok := s.sandboxes.Get(in.GetSandboxId())
+	sbx, ok := s.sandboxFactory.Sandboxes.Get(in.GetSandboxId())
 	if !ok {
 		telemetry.ReportCriticalError(ctx, "sandbox not found", nil, telemetry.WithSandboxID(in.GetSandboxId()))
 
@@ -413,7 +413,7 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	// 	Ensure the sandbox is removed from cache.
 	// 	Ideally we would rely only on the goroutine defer.
 	// Don't allow connecting to the sandbox anymore.
-	s.sandboxes.Remove(in.GetSandboxId())
+	s.sandboxFactory.Sandboxes.Remove(ctx, in.GetSandboxId())
 
 	// Check health metrics before stopping the sandbox
 	sbx.Checks.Healthcheck(ctx, true)
@@ -620,7 +620,7 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		if err := res.snapshot.Upload(uploadCtx, s.persistence, res.templateFiles); err != nil {
 			telemetry.ReportCriticalError(ctx, "error uploading snapshot for checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
 
-			s.sandboxes.Remove(resumedSbx.Runtime.SandboxID)
+			s.sandboxFactory.Sandboxes.Remove(ctx, resumedSbx.Runtime.SandboxID)
 			s.stopSandboxAsync(context.WithoutCancel(ctx), resumedSbx)
 
 			return nil, status.Errorf(codes.Internal, "error uploading snapshot for checkpoint '%s': %s", in.GetSandboxId(), err)
@@ -769,13 +769,8 @@ func (s *Server) uploadSnapshotAsync(ctx context.Context, sbx *sandbox.Sandbox, 
 	}()
 }
 
-// setupSandboxLifecycle adds the sandbox to the map and sets up the cleanup goroutine.
+// setupSandboxLifecycle sets up the cleanup goroutine for a sandbox.
 func (s *Server) setupSandboxLifecycle(ctx context.Context, sbx *sandbox.Sandbox) {
-	ctx, span := tracer.Start(ctx, "setup sandbox-lifecycle")
-	defer span.End()
-
-	s.sandboxes.Insert(sbx)
-
 	go func() {
 		ctx, childSpan := tracer.Start(context.WithoutCancel(ctx), "stop sandbox-lifecycle", trace.WithNewRoot())
 		defer childSpan.End()
@@ -789,8 +784,6 @@ func (s *Server) setupSandboxLifecycle(ctx context.Context, sbx *sandbox.Sandbox
 		if cleanupErr != nil {
 			sbxlogger.I(sbx).Error(ctx, "failed to cleanup sandbox, will remove from cache", zap.Error(cleanupErr))
 		}
-
-		s.sandboxes.RemoveByLifecycleID(sbx.Runtime.SandboxID, sbx.LifecycleID)
 
 		closeErr := s.proxy.RemoveFromPool(sbx.LifecycleID)
 		if closeErr != nil {
@@ -807,14 +800,14 @@ func (s *Server) acquireSandboxForSnapshot(ctx context.Context, sandboxID string
 	s.pauseMu.Lock()
 	defer s.pauseMu.Unlock()
 
-	sbx, ok := s.sandboxes.Get(sandboxID)
+	sbx, ok := s.sandboxFactory.Sandboxes.Get(sandboxID)
 	if !ok {
 		telemetry.ReportCriticalError(ctx, "sandbox not found", nil)
 
 		return nil, status.Error(codes.NotFound, "sandbox not found")
 	}
 
-	s.sandboxes.Remove(sandboxID)
+	s.sandboxFactory.Sandboxes.Remove(ctx, sandboxID)
 
 	return sbx, nil
 }

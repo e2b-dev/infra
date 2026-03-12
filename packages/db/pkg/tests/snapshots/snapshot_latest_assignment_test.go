@@ -106,17 +106,16 @@ func TestGetSnapshotsWithCursor_ReturnsLatestAssignment(t *testing.T) {
 
 	// Execute GetSnapshotsWithCursor
 	results, err := db.SqlcClient.GetSnapshotsWithCursor(ctx, queries.GetSnapshotsWithCursorParams{
-		TeamID:                teamID,
-		Metadata:              types.JSONBStringMap{},
-		CursorID:              "",
-		CursorTime:            pgtype.Timestamptz{Time: time.Now().Add(time.Hour), Valid: true},
-		SnapshotExcludeSbxIds: []string{},
-		Limit:                 10,
+		TeamID:     teamID,
+		Metadata:   types.JSONBStringMap{},
+		CursorID:   "",
+		CursorTime: pgtype.Timestamptz{Time: time.Now().Add(time.Hour), Valid: true},
+		Limit:      10,
 	})
 	require.NoError(t, err)
 	require.Len(t, results, 1, "Should return 1 snapshot")
 
-	assert.Equal(t, latestBuildID, results[0].EnvBuild.ID,
+	assert.Equal(t, latestBuildID, results[0].BuildID,
 		"GetSnapshotsWithCursor should return the build from the latest assignment")
 }
 

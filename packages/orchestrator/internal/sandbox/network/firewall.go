@@ -276,13 +276,17 @@ func (fw *Firewall) ReplaceUserRules(allowedCIDRs, deniedCIDRs []string) error {
 	return nil
 }
 
-// clearAndReplaceCIDRs flushes a set and repopulates it with the given CIDRs.
+// clearAndReplaceCIDRs clears a set and repopulates it with the given CIDRs.
+// All operations are buffered — nothing is sent to the kernel until conn.Flush().
 // Handles the special 0.0.0.0/0 case which the firewall_toolkit validation
 // rejects (0.0.0.0 is "unspecified") by directly creating nftables elements.
 func clearAndReplaceCIDRs(conn *nftables.Conn, s set.Set, cidrs []string) error {
-	conn.FlushSet(s.Set())
-
 	if len(cidrs) == 0 {
+		// Buffer a "clear set" command. Note: conn.FlushSet only appends to the
+		// message buffer, it does NOT commit to the kernel. The actual kernel
+		// commit happens in ReplaceUserRules via conn.Flush().
+		conn.FlushSet(s.Set())
+
 		return nil
 	}
 
@@ -290,6 +294,8 @@ func clearAndReplaceCIDRs(conn *nftables.Conn, s set.Set, cidrs []string) error 
 	// ValidateAddress rejects 0.0.0.0 as "unspecified", so we bypass
 	// the toolkit and create raw nftables interval elements directly.
 	if slices.Contains(cidrs, sandbox_network.AllInternetTrafficCIDR) {
+		conn.FlushSet(s.Set())
+
 		elems := []nftables.SetElement{
 			{Key: netip.MustParseAddr("0.0.0.0").AsSlice()},
 			{Key: netip.MustParseAddr("255.255.255.255").AsSlice(), IntervalEnd: true},
@@ -301,12 +307,12 @@ func clearAndReplaceCIDRs(conn *nftables.Conn, s set.Set, cidrs []string) error 
 		return nil
 	}
 
+	// ClearAndAddElements buffers both a FlushSet and SetAddElements — no kernel
+	// commit happens here, only when ReplaceUserRules calls conn.Flush().
 	data, err := set.AddressStringsToSetData(cidrs)
 	if err != nil {
 		return err
 	}
-	// We already flushed the set above, so just add the new elements.
-	// Using ClearAndAddElements would flush again which is fine (FlushSet is idempotent
-	// when buffered), but this is more direct.
+
 	return s.ClearAndAddElements(conn, data)
 }

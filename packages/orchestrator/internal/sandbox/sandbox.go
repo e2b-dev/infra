@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -79,37 +80,30 @@ type Config struct {
 	VolumeMounts []VolumeMountConfig
 
 	// mu protects the mutable settings (currently just network).
-	mu      sync.RWMutex
-	network *orchestrator.SandboxNetworkConfig
+	mu      *sync.RWMutex
+	Network *orchestrator.SandboxNetworkConfig
+}
+
+// NewConfig creates a Config, normalizing a nil Network to an empty config
+// so that GetNetwork() never returns nil.
+func NewConfig(c Config) *Config {
+	if c.Network == nil {
+		c.Network = &orchestrator.SandboxNetworkConfig{}
+	}
+
+	c.mu = &sync.RWMutex{}
+
+	return &c
 }
 
 // GetNetwork returns the sandbox network config in a thread-safe manner.
-// The returned value is never nil; Egress and Ingress are always set (possibly empty).
+// The returned proto is never nil (guaranteed by NewConfig / SetNetwork).
+// Sub-fields (Egress, Ingress) may be nil — use proto's nil-safe getters.
 func (c *Config) GetNetwork() *orchestrator.SandboxNetworkConfig {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	if c.network == nil {
-		return &orchestrator.SandboxNetworkConfig{
-			Egress:  &orchestrator.SandboxNetworkEgressConfig{},
-			Ingress: &orchestrator.SandboxNetworkIngressConfig{},
-		}
-	}
-
-	egress := c.network.GetEgress()
-	if egress == nil {
-		egress = &orchestrator.SandboxNetworkEgressConfig{}
-	}
-
-	ingress := c.network.GetIngress()
-	if ingress == nil {
-		ingress = &orchestrator.SandboxNetworkIngressConfig{}
-	}
-
-	return &orchestrator.SandboxNetworkConfig{
-		Egress:  egress,
-		Ingress: ingress,
-	}
+	return c.Network
 }
 
 // SetNetworkEgress updates the sandbox network egress config in a thread-safe manner.
@@ -117,11 +111,7 @@ func (c *Config) SetNetworkEgress(egress *orchestrator.SandboxNetworkEgressConfi
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if c.network == nil {
-		c.network = &orchestrator.SandboxNetworkConfig{}
-	}
-
-	c.network.Egress = egress
+	c.Network.Egress = egress
 }
 
 // SetNetworkIngress updates the sandbox network ingress config in a thread-safe manner.
@@ -129,19 +119,20 @@ func (c *Config) SetNetworkIngress(ingress *orchestrator.SandboxNetworkIngressCo
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if c.network == nil {
-		c.network = &orchestrator.SandboxNetworkConfig{}
-	}
-
-	c.network.Ingress = ingress
+	c.Network.Ingress = ingress
 }
 
-// SetNetwork sets the full network config. Used at construction time.
+// SetNetwork sets the full network config.
+// A nil value is normalized to an empty config so that GetNetwork() never returns nil.
 func (c *Config) SetNetwork(net *orchestrator.SandboxNetworkConfig) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.network = net
+	if net == nil {
+		net = &orchestrator.SandboxNetworkConfig{}
+	}
+
+	c.Network = net
 }
 
 type VolumeMountConfig struct {
@@ -365,6 +356,8 @@ type Sandbox struct {
 	exit *utils.ErrorOnce
 
 	stop utils.Lazy[error]
+
+	started atomic.Bool
 }
 
 func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
@@ -373,6 +366,11 @@ func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
 		TemplateID: s.Runtime.TemplateID,
 		TeamID:     s.Runtime.TeamID,
 	}
+}
+
+// IsRunning returns whether the sandbox has finished starting and is running.
+func (s *Sandbox) IsRunning() bool {
+	return s.started.Load()
 }
 
 // GetStartedAt returns the sandbox start time in a thread-safe manner.
@@ -392,6 +390,7 @@ func (m *Metadata) SetStartedAt(t time.Time) {
 }
 
 type Factory struct {
+	Sandboxes         *Map
 	config            cfg.BuilderConfig
 	networkPool       *network.Pool
 	devicePool        *nbd.DevicePool
@@ -407,8 +406,10 @@ func NewFactory(
 	featureFlags *featureflags.Client,
 	hostStatsDelivery hoststats.Delivery,
 	cgroupManager cgroup.Manager,
+	sandboxes *Map,
 ) *Factory {
 	return &Factory{
+		Sandboxes:         sandboxes,
 		config:            config,
 		networkPool:       networkPool,
 		devicePool:        devicePool,
@@ -447,6 +448,15 @@ func (f *Factory) CreateSandbox(
 			execSpan.End()
 		}
 	}()
+
+	lifecycleID := uuid.NewString()
+	// Add map removal to cleanup early as we want to do it as last thing in clean up
+	// It's save as we delete only if lifecycleID matches
+	cleanup.Add(ctx, func(ctx context.Context) error {
+		f.Sandboxes.RemoveByLifecycleID(ctx, runtime.SandboxID, lifecycleID)
+
+		return nil
+	})
 
 	ipsPromise := getNetworkSlot(ctx, f.networkPool, cleanup, config.GetNetwork())
 
@@ -524,6 +534,45 @@ func (f *Factory) CreateSandbox(
 
 	telemetry.ReportEvent(ctx, "created fc client")
 
+	resources := &Resources{
+		Slot:   ips,
+		rootfs: rootfsProvider,
+		memory: uffd.NewNoopMemory(memfileSize, memfile.BlockSize()),
+	}
+
+	metadata := &Metadata{
+		internalConfig: internalConfig{
+			EnvdInitRequestTimeout: f.GetEnvdInitRequestTimeout(ctx),
+		},
+
+		Config:  config,
+		Runtime: runtime,
+
+		startedAt: time.Now(),
+		endAt:     time.Now().Add(sandboxTimeout),
+	}
+	metadata.buildParsedIngressCIDRs()
+
+	sbx := &Sandbox{
+		LifecycleID: lifecycleID,
+
+		Resources:    resources,
+		Metadata:     metadata,
+		cgroupHandle: cgroupHandle,
+
+		Template: template,
+		config:   f.config,
+		files:    sandboxFiles,
+		process:  fcHandle,
+
+		cleanup: cleanup,
+
+		APIStoredConfig: apiConfigToStore,
+
+		exit: exit,
+	}
+	f.Sandboxes.Insert(ctx, sbx)
+
 	err = fcHandle.Create(
 		ctx,
 		sbxlogger.SandboxMetadata{
@@ -545,44 +594,6 @@ func (f *Factory) CreateSandbox(
 		return nil, fmt.Errorf("failed to create FC: %w", err)
 	}
 	telemetry.ReportEvent(ctx, "created fc process")
-
-	resources := &Resources{
-		Slot:   ips,
-		rootfs: rootfsProvider,
-		memory: uffd.NewNoopMemory(memfileSize, memfile.BlockSize()),
-	}
-
-	metadata := &Metadata{
-		internalConfig: internalConfig{
-			EnvdInitRequestTimeout: f.GetEnvdInitRequestTimeout(ctx),
-		},
-
-		Config:  config,
-		Runtime: runtime,
-
-		startedAt: time.Now(),
-		endAt:     time.Now().Add(sandboxTimeout),
-	}
-	metadata.buildParsedIngressCIDRs()
-
-	sbx := &Sandbox{
-		LifecycleID: uuid.NewString(),
-
-		Resources:    resources,
-		Metadata:     metadata,
-		cgroupHandle: cgroupHandle,
-
-		Template: template,
-		config:   f.config,
-		files:    sandboxFiles,
-		process:  fcHandle,
-
-		cleanup: cleanup,
-
-		APIStoredConfig: apiConfigToStore,
-
-		exit: exit,
-	}
 
 	useClickhouseMetrics := f.featureFlags.BoolFlag(ctx, featureflags.MetricsWriteFlag)
 	sbx.Checks = NewChecks(sbx, useClickhouseMetrics)
@@ -607,6 +618,8 @@ func (f *Factory) CreateSandbox(
 
 		exit.SetError(errors.Join(err, fcErr))
 	}()
+
+	f.Sandboxes.MarkRunning(sbx)
 
 	return sbx, nil
 }
@@ -648,6 +661,15 @@ func (f *Factory) ResumeSandbox(
 			execSpan.End()
 		}
 	}()
+
+	lifecycleID := uuid.NewString()
+	// Add map removal to cleanup early as we want to do it as last thing in clean up
+	// It's save as we delete only if lifecycleID matches
+	cleanup.Add(ctx, func(ctx context.Context) error {
+		f.Sandboxes.RemoveByLifecycleID(ctx, runtime.SandboxID, lifecycleID)
+
+		return nil
+	})
 
 	sandboxFiles := t.Files().NewSandboxFiles(runtime.SandboxID)
 	cleanup.Add(ctx, cleanupFiles(f.config, sandboxFiles))
@@ -836,6 +858,60 @@ func (f *Factory) ResumeSandbox(
 		return nil, fmt.Errorf("failed to get uffd: %w", err)
 	}
 
+	resources := &Resources{
+		Slot:   ips,
+		rootfs: overlay,
+		memory: fcUffd,
+	}
+
+	metadata := &Metadata{
+		internalConfig: internalConfig{
+			EnvdInitRequestTimeout: f.GetEnvdInitRequestTimeout(ctx),
+		},
+
+		Config:  config,
+		Runtime: runtime,
+
+		startedAt: startedAt,
+		endAt:     endAt,
+	}
+	metadata.buildParsedIngressCIDRs()
+
+	sbx := &Sandbox{
+		LifecycleID: lifecycleID,
+
+		Resources:    resources,
+		Metadata:     metadata,
+		cgroupHandle: cgroupHandle,
+
+		Template: t,
+		config:   f.config,
+		files:    sandboxFiles,
+		process:  fcHandle,
+
+		cleanup: cleanup,
+
+		APIStoredConfig: apiConfigToStore,
+
+		exit: exit,
+	}
+
+	useClickhouseMetrics := f.featureFlags.BoolFlag(ctx, featureflags.MetricsWriteFlag)
+
+	// Part of the sandbox as we need to stop Checks before pausing the sandbox
+	// This is to prevent race condition of reporting unhealthy sandbox
+	sbx.Checks = NewChecks(sbx, useClickhouseMetrics)
+
+	cleanup.AddPriority(ctx, func(ctx context.Context) error {
+		// Stop the sandbox first if it is still running, otherwise do nothing
+		return sbx.Stop(ctx)
+	})
+
+	// Insert the sandbox into the map before Resume so it is findable by source address
+	// during the resume (e.g. for TCP firewall lookups). On failure the deferred cleanup
+	// will remove it.
+	f.Sandboxes.Insert(ctx, sbx)
+
 	uffdStartCtx, cancelUffdStartCtx := context.WithCancelCause(ctx)
 	defer cancelUffdStartCtx(fmt.Errorf("uffd finished starting"))
 	go func() {
@@ -867,55 +943,6 @@ func (f *Factory) ResumeSandbox(
 
 	telemetry.ReportEvent(ctx, "initialized FC")
 
-	resources := &Resources{
-		Slot:   ips,
-		rootfs: overlay,
-		memory: fcUffd,
-	}
-
-	metadata := &Metadata{
-		internalConfig: internalConfig{
-			EnvdInitRequestTimeout: f.GetEnvdInitRequestTimeout(ctx),
-		},
-
-		Config:  config,
-		Runtime: runtime,
-
-		startedAt: startedAt,
-		endAt:     endAt,
-	}
-	metadata.buildParsedIngressCIDRs()
-
-	sbx := &Sandbox{
-		LifecycleID: uuid.NewString(),
-
-		Resources:    resources,
-		Metadata:     metadata,
-		cgroupHandle: cgroupHandle,
-
-		Template: t,
-		config:   f.config,
-		files:    sandboxFiles,
-		process:  fcHandle,
-
-		cleanup: cleanup,
-
-		APIStoredConfig: apiConfigToStore,
-
-		exit: exit,
-	}
-
-	useClickhouseMetrics := f.featureFlags.BoolFlag(ctx, featureflags.MetricsWriteFlag)
-
-	// Part of the sandbox as we need to stop Checks before pausing the sandbox
-	// This is to prevent race condition of reporting unhealthy sandbox
-	sbx.Checks = NewChecks(sbx, useClickhouseMetrics)
-
-	cleanup.AddPriority(ctx, func(ctx context.Context) error {
-		// Stop the sandbox first if it is still running, otherwise do nothing
-		return sbx.Stop(ctx)
-	})
-
 	telemetry.ReportEvent(execCtx, "waiting for envd")
 
 	err = sbx.WaitForEnvd(
@@ -925,6 +952,8 @@ func (f *Factory) ResumeSandbox(
 	if err != nil {
 		return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
 	}
+
+	f.Sandboxes.MarkRunning(sbx)
 
 	telemetry.ReportEvent(execCtx, "envd initialized")
 

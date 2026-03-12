@@ -148,7 +148,7 @@ func (ppb *PostProcessingBuilder) Build(
 	}
 
 	// Configure sandbox for final layer
-	sbxConfig := &sandbox.Config{
+	sbxConfig := sandbox.NewConfig(sandbox.Config{
 		Vcpu:      ppb.Config.VCpuCount,
 		RamMB:     ppb.Config.MemoryMB,
 		HugePages: ppb.Config.HugePages,
@@ -163,7 +163,7 @@ func (ppb *PostProcessingBuilder) Build(
 			KernelVersion:      ppb.Config.KernelVersion,
 			FirecrackerVersion: ppb.Config.FirecrackerVersion,
 		},
-	}
+	})
 
 	// Select the IO Engine to use for the rootfs drive
 	ioEngine := ppb.featureFlags.StringFlag(
