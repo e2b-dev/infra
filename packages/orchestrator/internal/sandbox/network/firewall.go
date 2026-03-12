@@ -286,6 +286,7 @@ func clearAndReplaceCIDRs(conn *nftables.Conn, s set.Set, cidrs []string) error 
 		// message buffer, it does NOT commit to the kernel. The actual kernel
 		// commit happens in ReplaceUserRules via conn.Flush().
 		conn.FlushSet(s.Set())
+
 		return nil
 	}
 
