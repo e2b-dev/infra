@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
-	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
@@ -414,7 +413,12 @@ func TestUpdateIngressConfig(t *testing.T) { //nolint:tparallel // subtests are 
 		t.Helper()
 		var headers *http.Header
 		if fromIP != "" {
-			headers = &http.Header{reverseproxy.ClientIPHeader: []string{fromIP}}
+			// Spoof via X-Forwarded-For so the request flows through the real
+			// client-proxy → orchestrator-proxy path. Client-proxy strips any
+			// incoming X-E2B-Client-IP and derives the client IP from XFF.
+			// ExtractClientIP takes the second-to-last XFF entry (the one a
+			// real GCP LB would append), so we add a dummy trailing entry.
+			headers = &http.Header{"X-Forwarded-For": []string{fromIP + ", 0.0.0.0"}}
 		}
 		req := utils.NewRequest(sbx, proxyURL, port, headers)
 		resp, err := httpClient.Do(req)
