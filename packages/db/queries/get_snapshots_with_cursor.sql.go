@@ -7,6 +7,7 @@ package queries
 
 import (
 	"context"
+	"time"
 
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/google/uuid"
@@ -20,7 +21,8 @@ SELECT COALESCE(ea.aliases, ARRAY[]::text[])::text[] AS aliases, COALESCE(ea.nam
     eb.vcpu AS build_vcpu,
     eb.ram_mb AS build_ram_mb,
     eb.total_disk_size_mb AS build_total_disk_size_mb,
-    eb.envd_version AS build_envd_version
+    eb.envd_version AS build_envd_version,
+    eb.created_at AS build_created_at
 FROM "public"."snapshots" s
 LEFT JOIN LATERAL (
     SELECT
@@ -30,7 +32,7 @@ LEFT JOIN LATERAL (
     WHERE env_id = s.base_env_id
 ) ea ON TRUE
 JOIN LATERAL (
-    SELECT eb.id, eb.vcpu, eb.ram_mb, eb.total_disk_size_mb, eb.envd_version
+    SELECT eb.id, eb.vcpu, eb.ram_mb, eb.total_disk_size_mb, eb.envd_version, eb.created_at
     FROM "public"."env_build_assignments" eba
     JOIN "public"."env_builds" eb ON eb.id = eba.build_id
     WHERE
@@ -66,6 +68,7 @@ type GetSnapshotsWithCursorRow struct {
 	BuildRamMb           int64
 	BuildTotalDiskSizeMb *int64
 	BuildEnvdVersion     *string
+	BuildCreatedAt       time.Time
 }
 
 func (q *Queries) GetSnapshotsWithCursor(ctx context.Context, arg GetSnapshotsWithCursorParams) ([]GetSnapshotsWithCursorRow, error) {
@@ -104,6 +107,7 @@ func (q *Queries) GetSnapshotsWithCursor(ctx context.Context, arg GetSnapshotsWi
 			&i.BuildRamMb,
 			&i.BuildTotalDiskSizeMb,
 			&i.BuildEnvdVersion,
+			&i.BuildCreatedAt,
 		); err != nil {
 			return nil, err
 		}

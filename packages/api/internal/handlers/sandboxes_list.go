@@ -283,7 +283,7 @@ func snapshotsToPaginatedSandboxes(ctx context.Context, snapshots []queries.GetS
 				CpuCount:    int32(record.BuildVcpu),
 				MemoryMB:    int32(record.BuildRamMb),
 				DiskSizeMB:  diskSize,
-				EndAt:       snapshot.CreatedAt.Time,
+				EndAt:       record.BuildCreatedAt,
 				State:       api.Paused,
 				EnvdVersion: envdVersion,
 			},
