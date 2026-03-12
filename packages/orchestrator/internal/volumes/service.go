@@ -39,8 +39,8 @@ type Service struct {
 
 var _ orchestrator.VolumeServiceServer = (*Service)(nil)
 
-func New(config cfg.Config) *Service {
-	return &Service{config: config}
+func New(config cfg.Config, tracker *chrooted.Tracker) *Service {
+	return &Service{config: config, tracker: tracker}
 }
 
 type volumePathRequest interface {
@@ -123,7 +123,7 @@ func (s *Service) isRoot(path string) bool {
 }
 
 func toEntry(fullVolumePath string, osfi os.FileInfo) *orchestrator.EntryInfo {
-	fileInfo := filesystem.GetEntryInfo("/", osfi)
+	fileInfo := filesystem.GetEntryInfo(fullVolumePath, osfi)
 
 	entry := &orchestrator.EntryInfo{
 		Name:          fileInfo.Name,
