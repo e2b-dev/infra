@@ -1,6 +1,9 @@
 package tracing
 
-import "strings"
+import (
+	"encoding/hex"
+	"strings"
+)
 
 const cloudTraceContextHeader = "X-Cloud-Trace-Context"
 
@@ -12,7 +15,12 @@ func parseEdgeTraceID(header string) (string, bool) {
 	}
 
 	traceID, _, ok := strings.Cut(header, "/")
-	if !ok || len(traceID) != 32 {
+	if !ok {
+		return "", false
+	}
+
+	b, err := hex.DecodeString(traceID)
+	if err != nil || len(b) != 16 {
 		return "", false
 	}
 
