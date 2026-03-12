@@ -29,6 +29,7 @@ import (
 	oteltrace "go.opentelemetry.io/otel/trace"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const (
@@ -84,7 +85,10 @@ func Middleware(tracerProvider oteltrace.TracerProvider, service string) gin.Han
 		if c.Request.Header.Get("traceparent") != "" {
 			c.Request.Header.Del("traceparent")
 		}
-		if edgeTraceID, ok := parseEdgeTraceID(c.Request.Header.Get(gcpTraceContextHeader), c.Request.Header.Get(awsTraceContextHeader)); ok {
+		if edgeTraceID, ok := telemetry.ParseEdgeTraceID(
+			c.Request.Header.Get(telemetry.GCPTraceContextHeader),
+			c.Request.Header.Get(telemetry.AWSTraceContextHeader),
+		); ok {
 			ctx = logger.ContextWithEdgeTraceID(ctx, edgeTraceID)
 		}
 		opts := []oteltrace.SpanStartOption{

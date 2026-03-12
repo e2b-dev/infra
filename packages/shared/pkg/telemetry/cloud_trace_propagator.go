@@ -1,4 +1,4 @@
-package tracing
+package telemetry
 
 import (
 	"encoding/hex"
@@ -6,12 +6,13 @@ import (
 )
 
 const (
-	gcpTraceContextHeader = "X-Cloud-Trace-Context"
-	awsTraceContextHeader = "X-Amzn-Trace-Id"
+	GCPTraceContextHeader = "X-Cloud-Trace-Context"
+	AWSTraceContextHeader = "X-Amzn-Trace-Id"
 )
 
-// these are untrusted headers to help with trace correlation across services
-func parseEdgeTraceID(gcpHeader, awsHeader string) (string, bool) {
+// ParseEdgeTraceID extracts a trace ID from cloud-provider trace headers.
+// These headers are untrusted and are only used for cross-service correlation.
+func ParseEdgeTraceID(gcpHeader, awsHeader string) (string, bool) {
 	if id, ok := parseGCPTraceID(gcpHeader); ok {
 		return id, true
 	}
