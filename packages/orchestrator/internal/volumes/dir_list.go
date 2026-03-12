@@ -2,6 +2,7 @@ package volumes
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -9,9 +10,17 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/chrooted"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+)
+
+const (
+	minDepth = 1
+	maxDepth = 10
 )
 
 func (s *Service) ListDir(ctx context.Context, request *orchestrator.VolumeDirListRequest) (r *orchestrator.VolumeDirListResponse, err error) {
@@ -20,10 +29,6 @@ func (s *Service) ListDir(ctx context.Context, request *orchestrator.VolumeDirLi
 		setSpanStatus(span, err)
 		span.End()
 	}()
-
-	if request.GetDepth() != 0 {
-		return nil, newAPIError(ctx, codes.InvalidArgument, http.StatusNotImplemented, orchestrator.UserErrorCode_NOT_SUPPORTED, "depth must be zero")
-	}
 
 	fs, path, err := s.getFilesystemAndPath(ctx, request)
 	if err != nil {
@@ -34,23 +39,57 @@ func (s *Service) ListDir(ctx context.Context, request *orchestrator.VolumeDirLi
 		attribute.String("path", path),
 	))
 
-	items, err := fs.ReadDir(path)
+	depth := int(request.GetDepth())
+	depth = max(depth, minDepth)
+
+	if depth > maxDepth {
+		return nil, newAPIError(ctx, codes.InvalidArgument, http.StatusBadRequest, orchestrator.UserErrorCode_DEPTH_OUT_OF_RANGE, "depth must be between %d and %d", minDepth, maxDepth)
+	}
+
+	results, err := s.listRecursive(ctx, fs, path, depth)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return nil, newAPIError(ctx, codes.NotFound, http.StatusNotFound, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to read: %q not found.", request.GetPath())
 		}
 
 		return nil, fmt.Errorf("failed to read directory %q: %w", path, err)
 	}
 
-	var results []*orchestrator.VolumeDirectoryItem
-	for _, info := range items {
-		entry := toEntry(filepath.Join(path, info.Name()), info)
+	return &orchestrator.VolumeDirListResponse{Files: results}, nil
+}
 
-		results = append(results, &orchestrator.VolumeDirectoryItem{
-			Entry: entry,
-		})
+func (s *Service) listRecursive(ctx context.Context, fs *chrooted.Chrooted, path string, depth int) ([]*orchestrator.VolumeDirectoryItem, error) {
+	if depth <= 0 {
+		return nil, nil
 	}
 
-	return &orchestrator.VolumeDirListResponse{Files: results}, nil
+	items, err := fs.ReadDir(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read directory %q: %w", path, err)
+	}
+
+	var results []*orchestrator.VolumeDirectoryItem
+	for _, item := range items {
+		itemPath := filepath.Join(path, item.Name())
+		results = append(results, &orchestrator.VolumeDirectoryItem{
+			Entry: toEntry(itemPath, item),
+		})
+
+		if item.IsDir() && depth > 1 {
+			children, err := s.listRecursive(ctx, fs, itemPath, depth-1)
+			if err != nil {
+				if errors.Is(err, os.ErrNotExist) {
+					logger.L().Warn(ctx, "directory deleted during traversal", zap.String("path", itemPath))
+
+					continue
+				}
+
+				return nil, err
+			}
+
+			results = append(results, children...)
+		}
+	}
+
+	return results, nil
 }

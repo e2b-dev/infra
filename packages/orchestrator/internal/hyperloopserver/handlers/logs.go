@@ -3,6 +3,7 @@ package handlers
 import (
 	"bytes"
 	"encoding/json"
+	"net"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -16,7 +17,8 @@ func (h *APIStore) Logs(c *gin.Context) {
 	sbx, err := h.sandboxes.GetByHostPort(c.Request.RemoteAddr)
 	if err != nil {
 		h.sendAPIStoreError(c, http.StatusBadRequest, "Error when finding source sandbox")
-		h.logger.Error(ctx, "error finding sandbox for source addr", zap.String("addr", c.Request.RemoteAddr), zap.Error(err))
+		ip, _, _ := net.SplitHostPort(c.Request.RemoteAddr)
+		h.logger.Error(ctx, "error finding sandbox for source addr", logger.WithSandboxIP(ip), zap.Error(err))
 
 		return
 	}
