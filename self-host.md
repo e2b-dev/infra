@@ -140,10 +140,11 @@ Now, you should see the right quota options in `All Quotas` and be able to reque
     - `{prefix}supabase-jwt-secrets` - Supabase JWT secret (optional / required for the [E2B dashboard](https://github.com/e2b-dev/dashboard))
     - `{prefix}grafana` - JSON with `API_KEY`, `OTLP_URL`, `OTEL_COLLECTOR_TOKEN`, `USERNAME` keys (optional, for monitoring)
     - `{prefix}launch-darkly-api-key` - LaunchDarkly SDK key (optional, for feature flags)
-6. Build Packer AMIs for the cluster nodes:
+6. Build the Packer AMI for cluster nodes (a single shared AMI used by all node types):
     ```sh
-    cd iac/provider-aws/packer
-    # Build AMIs for control server, API, client, clickhouse, and build nodes
+    cd iac/provider-aws/nomad-cluster-disk-image
+    make init   # install Packer plugins
+    make build  # build the AMI (~5 min, launches a t3.large)
     ```
 7. Run `make build-and-upload` to build and push container images and binaries
 8. Run `make copy-public-builds` to copy Firecracker kernels and rootfs to your S3 buckets
