@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
@@ -54,12 +55,12 @@ func WithClientIP(clientIP string) zap.Field {
 	return zap.String("http.client_ip", clientIP)
 }
 
-func WithAPIKey(prefix, apiKey string) zap.Field {
-	return zap.String("auth.api_key", tokenHint(prefix, apiKey))
+func WithAPIKey(apiKey string) zap.Field {
+	return zap.String("auth.api_key", maskedToken(keys.ApiKeyPrefix, apiKey))
 }
 
-func WithAccessToken(prefix, accessToken string) zap.Field {
-	return zap.String("auth.access_token", tokenHint(prefix, accessToken))
+func WithAccessToken(accessToken string) zap.Field {
+	return zap.String("auth.access_token", maskedToken(keys.AccessTokenPrefix, accessToken))
 }
 
 // ProxyRequestFields returns the common logger fields for a proxied HTTP request.
@@ -77,15 +78,14 @@ func ProxyRequestFields(r *http.Request, sandboxID string, sandboxPort uint64) [
 	}
 }
 
-// tokenHint returns a masked version of the token value for debugging.
-// It strips the prefix and shows the first 2 and last 2 characters (e.g. "<prefix>ab...9f").
-func tokenHint(prefix string, token string) string {
-	value := strings.TrimPrefix(token, prefix)
-	if len(value) < 5 {
-		return fmt.Sprintf("%s...", prefix)
+func maskedToken(prefix string, token string) string {
+	tokenWithoutPrefix := strings.TrimPrefix(token, prefix)
+	masked, err := keys.MaskKey(prefix, tokenWithoutPrefix)
+	if err != nil {
+		return "invalid_token_format"
 	}
 
-	return fmt.Sprintf("%s%s...%s", prefix, value[:2], value[len(value)-2:])
+	return fmt.Sprintf("%s%s...%s", masked.Prefix, masked.MaskedValuePrefix, masked.MaskedValueSuffix)
 }
 
 // clientIP extracts the real client IP from the request.
