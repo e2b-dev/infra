@@ -3,6 +3,7 @@ package volumes
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -12,7 +13,6 @@ import (
 	otelcodes "go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal"
@@ -66,21 +66,21 @@ type volumeOnly interface {
 	GetVolume() *orchestrator.VolumeInfo
 }
 
-func (s *Service) getVolumeRootPath(volume *orchestrator.VolumeInfo) (string, error) {
+func (s *Service) getVolumeRootPath(ctx context.Context, volume *orchestrator.VolumeInfo) (string, error) {
 	volumeType := volume.GetVolumeType()
 	volTypePath, ok := s.config.PersistentVolumeMounts[volumeType]
 	if !ok {
-		return "", fmt.Errorf("%w: %q", chrooted.ErrVolumeTypeNotFound, volumeType)
+		return "", newAPIError(ctx, codes.Internal, http.StatusInternalServerError, orchestrator.UserErrorCode_NOT_SUPPORTED, "unknown volume type")
 	}
 
 	teamID, ok := internal.TryParseUUID(volume.GetTeamId())
 	if !ok {
-		return "", status.Newf(codes.InvalidArgument, "invalid team ID %q", volume.GetTeamId()).Err()
+		return "", newAPIError(ctx, codes.InvalidArgument, http.StatusBadRequest, orchestrator.UserErrorCode_INVALID_REQUEST, "invalid team ID %q", volume.GetTeamId())
 	}
 
 	volumeID, ok := internal.TryParseUUID(volume.GetVolumeId())
 	if !ok {
-		return "", status.Newf(codes.InvalidArgument, "invalid volume ID %q", volume.GetVolumeId()).Err()
+		return "", newAPIError(ctx, codes.InvalidArgument, http.StatusBadRequest, orchestrator.UserErrorCode_INVALID_REQUEST, "invalid volume ID %q", volume.GetVolumeId())
 	}
 
 	return chrooted.BuildVolumeRootPath(volTypePath, teamID, volumeID), nil
@@ -92,12 +92,12 @@ func (s *Service) getFilesystem(ctx context.Context, request volumeOnly) (*chroo
 
 	teamID, ok := internal.TryParseUUID(volume.GetTeamId())
 	if !ok {
-		return nil, status.Newf(codes.InvalidArgument, "invalid team ID %q", volume.GetTeamId()).Err()
+		return nil, newAPIError(ctx, codes.InvalidArgument, http.StatusBadRequest, orchestrator.UserErrorCode_INVALID_REQUEST, "invalid team ID %q", volume.GetTeamId())
 	}
 
 	volumeID, ok := internal.TryParseUUID(volume.GetVolumeId())
 	if !ok {
-		return nil, status.Newf(codes.InvalidArgument, "invalid volume ID %q", volume.GetVolumeId()).Err()
+		return nil, newAPIError(ctx, codes.InvalidArgument, http.StatusBadRequest, orchestrator.UserErrorCode_INVALID_REQUEST, "invalid volume ID %q", volume.GetVolumeId())
 	}
 
 	return s.tracker.Get(ctx, volumeType, teamID, volumeID)

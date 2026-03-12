@@ -18,7 +18,7 @@ func (s *Service) Create(ctx context.Context, request *orchestrator.VolumeCreate
 		span.End()
 	}()
 
-	fullPath, err := s.getVolumeRootPath(request.GetVolume())
+	fullPath, err := s.getVolumeRootPath(ctx, request.GetVolume())
 	if err != nil {
 		return nil, fmt.Errorf("failed to build volume path: %w", err)
 	}

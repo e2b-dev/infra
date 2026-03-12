@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -43,7 +44,7 @@ func TestGetVolumeRootPath(t *testing.T) {
 			VolumeId:   volumeID,
 		}
 
-		path, err := v.getVolumeRootPath(&volumeInfo)
+		path, err := v.getVolumeRootPath(t.Context(), &volumeInfo)
 		require.NoError(t, err)
 		require.Equal(t, goodVolumeBasePath, path)
 	})
@@ -51,35 +52,52 @@ func TestGetVolumeRootPath(t *testing.T) {
 	t.Run("error scenarios", func(t *testing.T) {
 		t.Parallel()
 
+		type expected struct {
+			grpcCode  codes.Code
+			userError orchestrator.UserErrorCode
+		}
+
 		testCases := map[string]struct {
 			volumeType string
 			teamID     string
 			volumeID   string
 
-			expectedError string
+			expected expected
 		}{
 			"invalid team ID": {
-				volumeType:    goodVolumeType,
-				teamID:        "invalid",
-				volumeID:      volumeID,
-				expectedError: "rpc error: code = InvalidArgument desc = invalid team ID \"invalid\"",
+				volumeType: goodVolumeType,
+				teamID:     "invalid",
+				volumeID:   volumeID,
+				expected: expected{
+					grpcCode:  codes.InvalidArgument,
+					userError: orchestrator.UserErrorCode_INVALID_REQUEST,
+				},
 			},
 			"invalid volume ID": {
-				volumeType:    goodVolumeType,
-				teamID:        teamID,
-				volumeID:      "invalid",
-				expectedError: "rpc error: code = InvalidArgument desc = invalid volume ID \"invalid\"",
+				volumeType: goodVolumeType,
+				teamID:     teamID,
+				volumeID:   "invalid",
+				expected: expected{
+					grpcCode:  codes.InvalidArgument,
+					userError: orchestrator.UserErrorCode_INVALID_REQUEST,
+				},
 			},
 			"missing team ID": {
-				volumeType:    goodVolumeType,
-				volumeID:      volumeID,
-				expectedError: "rpc error: code = InvalidArgument desc = invalid team ID \"\"",
+				volumeType: goodVolumeType,
+				volumeID:   volumeID,
+				expected: expected{
+					grpcCode:  codes.InvalidArgument,
+					userError: orchestrator.UserErrorCode_INVALID_REQUEST,
+				},
 			},
 			"volume type not found": {
-				volumeType:    "non-existent",
-				teamID:        teamID,
-				volumeID:      volumeID,
-				expectedError: "volume type not found: \"non-existent\"",
+				volumeType: "non-existent",
+				teamID:     teamID,
+				volumeID:   volumeID,
+				expected: expected{
+					grpcCode:  codes.Internal,
+					userError: orchestrator.UserErrorCode_NOT_SUPPORTED,
+				},
 			},
 		}
 
@@ -92,9 +110,9 @@ func TestGetVolumeRootPath(t *testing.T) {
 					TeamId:     tc.teamID,
 					VolumeId:   tc.volumeID,
 				}
-				_, err := v.getVolumeRootPath(&volumeInfo)
+				_, err := v.getVolumeRootPath(t.Context(), &volumeInfo)
 				require.Error(t, err)
-				require.Equal(t, tc.expectedError, err.Error())
+				requireGRPCError(t, err, tc.expected.grpcCode, tc.expected.userError)
 			})
 		}
 	})

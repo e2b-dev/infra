@@ -48,7 +48,7 @@ func setupTestService(t *testing.T) (*Service, string, *orchestrator.VolumeInfo)
 		VolumeId:   volumeID.String(),
 	}
 
-	rootPath, err := s.getVolumeRootPath(volumeInfo)
+	rootPath, err := s.getVolumeRootPath(t.Context(), volumeInfo)
 	require.NoError(t, err)
 
 	err = os.MkdirAll(rootPath, 0o755)

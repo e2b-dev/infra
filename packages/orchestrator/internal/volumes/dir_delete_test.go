@@ -58,11 +58,11 @@ func requireGRPCError(t *testing.T, err error, expectedGRPCCode codes.Code, expe
 	status, ok := status.FromError(err)
 	require.True(t, ok)
 
-	require.Equal(t, expectedGRPCCode, status.Code())
+	require.Equalf(t, expectedGRPCCode, status.Code(), "expected %s, got %s", expectedGRPCCode, status.Code())
 
 	for _, detail := range status.Details() {
 		if userError, ok := detail.(*orchestrator.UserError); ok {
-			require.Equal(t, expectedUserErrorCode, userError.GetCode())
+			require.Equalf(t, expectedUserErrorCode, userError.GetCode(), "expected %s, got %s", expectedUserErrorCode, userError.GetCode())
 
 			return
 		}

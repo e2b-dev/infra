@@ -4,7 +4,6 @@ import (
 	"os"
 	"testing"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -13,43 +12,23 @@ import (
 func TestVolume(t *testing.T) {
 	t.Parallel()
 
-	s, _, _ := setupTestService(t)
+	s, rootPath, volumeInfo := setupTestService(t)
 
-	teamID := uuid.New().String()
-	volumeID := uuid.New().String()
-	volumeInfo := &orchestrator.VolumeInfo{
-		VolumeType: volumeType,
-		TeamId:     teamID,
-		VolumeId:   volumeID,
-	}
-
-	t.Run("create volume", func(t *testing.T) {
-		t.Parallel()
-
-		_, err := s.Create(t.Context(), &orchestrator.VolumeCreateRequest{
-			Volume: volumeInfo,
-		})
-		require.NoError(t, err)
-
-		rootPath, err := s.getVolumeRootPath(volumeInfo)
-		require.NoError(t, err)
-
-		_, err = os.Stat(rootPath)
-		require.NoError(t, err)
+	// create volume
+	_, err := s.Create(t.Context(), &orchestrator.VolumeCreateRequest{
+		Volume: volumeInfo,
 	})
+	require.NoError(t, err)
 
-	t.Run("delete volume", func(t *testing.T) {
-		t.Parallel()
+	_, err = os.Stat(rootPath)
+	require.NoError(t, err)
 
-		_, err := s.Delete(t.Context(), &orchestrator.VolumeDeleteRequest{
-			Volume: volumeInfo,
-		})
-		require.NoError(t, err)
-
-		rootPath, err := s.getVolumeRootPath(volumeInfo)
-		require.NoError(t, err)
-
-		_, err = os.Stat(rootPath)
-		require.ErrorIs(t, err, os.ErrNotExist)
+	// delete volume
+	_, err = s.Delete(t.Context(), &orchestrator.VolumeDeleteRequest{
+		Volume: volumeInfo,
 	})
+	require.NoError(t, err)
+
+	_, err = os.Stat(rootPath)
+	require.ErrorIs(t, err, os.ErrNotExist)
 }

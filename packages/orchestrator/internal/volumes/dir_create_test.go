@@ -97,6 +97,8 @@ func TestDirCreate(t *testing.T) {
 	})
 
 	t.Run("CreateDir with CreateParents=true should not change existing directory", func(t *testing.T) {
+		t.Parallel()
+
 		dirname := "existing-dir-to-preserve"
 		fullPath := filepath.Join(tmpdir, dirname)
 
