@@ -104,6 +104,12 @@ linters:
             - pkg: "net/http/pprof"
               desc: "Importing net/http/pprof registers on DefaultServeMux via init(). Use telemetry.NewPprofMux() instead."
 
+    nolintlint:
+      # We are temporarily allowing unused nolints due to apparently
+      # false failures in CI. See
+      # https://github.com/golangci/golangci-lint/issues/3228
+      allow-unused: true
+
     gocritic:
       disabled-checks:
         - appendAssign
