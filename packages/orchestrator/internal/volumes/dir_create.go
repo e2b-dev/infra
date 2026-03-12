@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"path/filepath"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -29,9 +28,9 @@ func (s *Service) CreateDir(ctx context.Context, request *orchestrator.VolumeDir
 		return nil, fmt.Errorf("failed to build volume path: %w", err)
 	}
 
-	uid := utils.DerefOrDefault(request.Uid, defaultOwnerID)   //nolint:protogetter
-	gid := utils.DerefOrDefault(request.Gid, defaultGroupID)   //nolint:protogetter
-	mode := utils.DerefOrDefault(request.Mode, defaultDirMode) //nolint:protogetter
+	uid := utils.DerefOrDefault(request.Uid, defaultOwnerID)                        //nolint:protogetter
+	gid := utils.DerefOrDefault(request.Gid, defaultGroupID)                        //nolint:protogetter
+	mode := os.FileMode(utils.DerefOrDefault(request.Mode, uint32(defaultDirMode))) //nolint:protogetter
 
 	span.AddEvent("creating directory", trace.WithAttributes(
 		attribute.String("path", path),
@@ -63,7 +62,7 @@ func (s *Service) CreateDir(ctx context.Context, request *orchestrator.VolumeDir
 	return &orchestrator.VolumeDirCreateResponse{Entry: entry}, nil
 }
 
-func (s *Service) mkdirWithParents(ctx context.Context, fs *chrooted.Chrooted, path string, mode uint32, uid uint32, gid uint32) (done bool, err error) {
+func (s *Service) mkdirWithParents(ctx context.Context, fs *chrooted.Chrooted, path string, mode os.FileMode, uid, gid uint32) (done bool, err error) {
 	stat, err := fs.Lstat(path)
 	if err == nil {
 		if stat.IsDir() {
@@ -77,13 +76,8 @@ func (s *Service) mkdirWithParents(ctx context.Context, fs *chrooted.Chrooted, p
 	}
 
 	// Create only parent directories with defaultDirMode and fix permissions against umask.
-	parent := filepath.Dir(path)
-	if err := ensureParentDirs(fs, parent, os.FileMode(defaultDirMode)); err != nil {
+	if err := ensureParentDirs(fs, path, uid, gid, defaultDirMode); err != nil {
 		return false, fmt.Errorf("failed to prepare parent directories: %w", err)
-	}
-
-	if err := fs.MkdirAll(path, os.FileMode(mode)); err != nil {
-		return false, processError(ctx, "failed to create directory (with parents)", err)
 	}
 
 	if err := fs.Chown(path, int(uid), int(gid)); err != nil {
@@ -91,15 +85,15 @@ func (s *Service) mkdirWithParents(ctx context.Context, fs *chrooted.Chrooted, p
 	}
 
 	// we do this again to avoid the process' umask from automatically 'fixing' our requests.
-	if err := fs.Chmod(path, os.FileMode(mode)); err != nil {
+	if err := fs.Chmod(path, mode); err != nil {
 		return false, processError(ctx, "failed to chmod directory", err)
 	}
 
 	return false, nil
 }
 
-func (s *Service) mkdir(ctx context.Context, fs *chrooted.Chrooted, path string, mode uint32, uid uint32, gid uint32) error {
-	if err := fs.Mkdir(path, os.FileMode(mode)); err != nil {
+func (s *Service) mkdir(ctx context.Context, fs *chrooted.Chrooted, path string, mode os.FileMode, uid, gid uint32) error {
+	if err := fs.Mkdir(path, mode); err != nil {
 		return processError(ctx, "failed to create directory", err)
 	}
 
@@ -108,7 +102,7 @@ func (s *Service) mkdir(ctx context.Context, fs *chrooted.Chrooted, path string,
 	}
 
 	// we do this again to avoid the process' umask from automatically 'fixing' our requests.
-	if err := fs.Chmod(path, os.FileMode(mode)); err != nil {
+	if err := fs.Chmod(path, mode); err != nil {
 		return processError(ctx, "failed to chmod directory", err)
 	}
 

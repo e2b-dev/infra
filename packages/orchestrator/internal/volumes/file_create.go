@@ -41,9 +41,9 @@ func (s *Service) CreateFile(server orchestrator.VolumeService_CreateFileServer)
 		return fmt.Errorf("failed to build volume path: %w", err)
 	}
 
-	uid := utils.DerefOrDefault(start.Uid, defaultOwnerID)    //nolint:protogetter
-	gid := utils.DerefOrDefault(start.Gid, defaultGroupID)    //nolint:protogetter
-	mode := utils.DerefOrDefault(start.Mode, defaultFileMode) //nolint:protogetter
+	uid := utils.DerefOrDefault(start.Uid, defaultOwnerID)            //nolint:protogetter
+	gid := utils.DerefOrDefault(start.Gid, defaultGroupID)            //nolint:protogetter
+	mode := utils.DerefOrDefault(start.Mode, uint32(defaultFileMode)) //nolint:protogetter
 
 	span.AddEvent("creating file", trace.WithAttributes(
 		attribute.String("path", path),
@@ -54,7 +54,7 @@ func (s *Service) CreateFile(server orchestrator.VolumeService_CreateFileServer)
 
 	dirName := filepath.Dir(path)
 	if start.GetForce() {
-		if err = ensureParentDirs(fs, dirName, os.FileMode(defaultDirMode)); err != nil {
+		if err = ensureParentDirs(fs, dirName, uid, gid, defaultDirMode); err != nil {
 			return fmt.Errorf("failed to prepare parent directories: %w", err)
 		}
 	}

@@ -23,10 +23,10 @@ import (
 )
 
 const (
-	defaultDirMode  uint32 = 0o777
-	defaultFileMode uint32 = 0o666
-	defaultOwnerID  uint32 = 9090
-	defaultGroupID  uint32 = 9090
+	defaultDirMode  os.FileMode = 0o777
+	defaultFileMode os.FileMode = 0o666
+	defaultOwnerID  uint32      = 9090
+	defaultGroupID  uint32      = 9090
 )
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/volumes")
@@ -191,26 +191,27 @@ func setSpanStatus(span trace.Span, err error) {
 	span.SetStatus(otelcodes.Ok, "")
 }
 
-func ensureParentDirs(fs *chrooted.Chrooted, dirPath string, mode os.FileMode) error {
+func ensureParentDirs(fs *chrooted.Chrooted, dirPath string, uid, gid uint32, mode os.FileMode) error {
 	if dirPath == "" {
 		return nil
 	}
 
 	// Determine which parent directories do not exist yet, up to the volume root.
-	var toChmod []string
+	var needsUpdates []string
 	cur := dirPath
-	for cur != dirPath {
-		if fi, _, err := fs.Stat(cur); err == nil {
-			if fi.IsDir() {
-				break // first existing directory reached
+	for {
+		if _, _, err := fs.Stat(cur); err == nil {
+			if cur == dirPath {
+				// there's nothing for us to do here
+				return nil
 			}
-			// exists but not a directory – let MkdirAll surface an error later
+
 			break
 		} else if !os.IsNotExist(err) {
 			return fmt.Errorf("failed to stat parent directory %q: %w", cur, err)
 		}
 
-		toChmod = append(toChmod, cur)
+		needsUpdates = append(needsUpdates, cur)
 
 		next := filepath.Clean(filepath.Dir(cur))
 		if next == cur { // reached filesystem root just in case
@@ -225,15 +226,14 @@ func ensureParentDirs(fs *chrooted.Chrooted, dirPath string, mode os.FileMode) e
 
 	// Only chmod the directories that were created by this call (precomputed above).
 	// Iterate from highest parent to deepest child for determinism.
-	for i := len(toChmod) - 1; i >= 0; i-- {
-		p := toChmod[i]
+	for i := len(needsUpdates) - 1; i >= 0; i-- {
+		p := needsUpdates[i]
 		if err := fs.Chmod(p, mode); err != nil {
-			if os.IsNotExist(err) {
-				// Race or unexpected removal; treat as an error to be explicit.
-				return fmt.Errorf("failed to chmod created parent directory %q: %w", p, err)
-			}
+			return fmt.Errorf("failed chmod for created parent directory %q: %w", p, err)
+		}
 
-			return fmt.Errorf("failed to set mode for created parent directory %q: %w", p, err)
+		if err := fs.Chown(p, int(uid), int(gid)); err != nil {
+			return fmt.Errorf("failed chown for created parent directory %q: %w", p, err)
 		}
 	}
 

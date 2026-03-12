@@ -2,6 +2,7 @@ package volumes
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -11,6 +12,7 @@ import (
 	"google.golang.org/grpc/codes"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/chrooted"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
@@ -150,4 +152,109 @@ func TestRelPath(t *testing.T) {
 			assert.Equal(t, tc.expectedPath, path)
 		})
 	}
+}
+
+func TestEnsureParentDirs(t *testing.T) {
+	t.Parallel()
+
+	// These tests require sudo to run as they use mount namespaces via Chrooted.
+	// Since we are instructed not to run them, this is a skeleton for the requested verification.
+	if os.Geteuid() != 0 {
+		t.Skip("skipping test that requires root privileges")
+	}
+
+	tmpDir := t.TempDir()
+
+	ctx := t.Context()
+	fs, err := chrooted.Chroot(ctx, tmpDir)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		err = fs.Close()
+		assert.NoError(t, err)
+	})
+
+	t.Run("empty path", func(t *testing.T) {
+		t.Parallel()
+
+		err := ensureParentDirs(fs, "", 0o755, 1006, 1007)
+		require.NoError(t, err)
+	})
+
+	t.Run("single level", func(t *testing.T) {
+		t.Parallel()
+
+		err := ensureParentDirs(fs, "/a", 1005, 1006, 0o700)
+		require.NoError(t, err)
+
+		assertDir(t, fs, "/a", 1005, 1006, 0o700)
+	})
+
+	t.Run("multiple levels", func(t *testing.T) {
+		t.Parallel()
+
+		err := ensureParentDirs(fs, "/b/c/d", 800, 900, 0o750)
+		require.NoError(t, err)
+
+		assertDir(t, fs, "/b", 800, 900, 0o750)
+		assertDir(t, fs, "/b/c", 800, 900, 0o750)
+		assertDir(t, fs, "/b/c/d", 800, 900, 0o750)
+	})
+
+	t.Run("existing directory", func(t *testing.T) {
+		t.Parallel()
+
+		// setup
+		err := fs.Mkdir("/e", 0o766)
+		require.NoError(t, err)
+
+		err = fs.Chmod("/e", 0o766) // run twice to defeat umask
+		require.NoError(t, err)
+
+		err = fs.Chown("/e", 1000, 1000)
+		require.NoError(t, err)
+
+		// run test
+		err = ensureParentDirs(fs, "/e", 2000, 2001, 0o700)
+		require.NoError(t, err)
+
+		// verify results
+		assertDir(t, fs, "/e", 1000, 1000, 0o766)
+	})
+
+	t.Run("partial existing", func(t *testing.T) {
+		t.Parallel()
+
+		// setup
+		err := fs.MkdirAll("/q/f", 0o700)
+		require.NoError(t, err)
+
+		err = fs.Chmod("/q", 0o700) // run twice to defeat umask
+		require.NoError(t, err)
+
+		err = fs.Chmod("/q/f", 0o700) // run twice to defeat umask
+		require.NoError(t, err)
+
+		// run test
+		err = ensureParentDirs(fs, "/q/f/g", 2020, 2021, 0o711)
+		require.NoError(t, err)
+
+		// verify results
+		assertDir(t, fs, "/q", 0, 0, 0o700)
+		assertDir(t, fs, "/q/f", 0, 0, 0o700)
+		assertDir(t, fs, "/q/f/g", 2020, 2021, 0o711)
+	})
+}
+
+func assertDir(t *testing.T, fs *chrooted.Chrooted, path string, uid, gid uint32, mode os.FileMode) {
+	t.Helper()
+
+	info, _, err := fs.Stat(path)
+	require.NoError(t, err)
+
+	assert.Equal(t, mode.Perm(), info.Mode().Perm())
+
+	osInfo := getBase(info.Sys())
+	require.NotNil(t, osInfo)
+	assert.Equal(t, uid, osInfo.Uid)
+	assert.Equal(t, gid, osInfo.Gid)
 }
