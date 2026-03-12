@@ -15,7 +15,7 @@ is_package_installed() {
 }
 
 # Install required packages if not already installed
-PACKAGES="systemd systemd-oomd systemd-sysv openssh-server sudo chrony socat curl ca-certificates fuse3 iptables git nfs-common"
+PACKAGES="systemd systemd-oomd systemd-sysv dbus openssh-server sudo chrony socat curl ca-certificates fuse3 iptables git nfs-common"
 echo "Checking presence of the following packages: $PACKAGES"
 
 MISSING=""
