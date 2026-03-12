@@ -53,6 +53,8 @@ sql:
           - db_type: "jsonb"
             go_type: "github.com/e2b-dev/infra/packages/db/pkg/types.JSONBStringMap"
             nullable: true
+          - db_type: "jsonb"
+            go_type: "github.com/e2b-dev/infra/packages/db/pkg/types.JSONBStringMap"
   - engine: "postgresql"
     queries: "pkg/auth/sql_queries/**"
     schema:
@@ -65,6 +67,12 @@ sql:
         out: "pkg/auth/queries/"
         sql_package: "pgx/v5"
         overrides:
+          - column: "public.env_builds.status"
+            go_type: "github.com/e2b-dev/infra/packages/db/pkg/types.BuildStatus"
+          - column: "public.env_builds.status_group"
+            go_type: "github.com/e2b-dev/infra/packages/db/pkg/types.BuildStatusGroup"
+          - column: "public.env_builds.reason"
+            go_type: "github.com/e2b-dev/infra/packages/db/pkg/types.BuildReason"
           - db_type: "uuid"
             go_type:
               import: "github.com/google/uuid"
@@ -94,6 +102,8 @@ sql:
           - db_type: "jsonb"
             go_type: "github.com/e2b-dev/infra/packages/db/pkg/types.JSONBStringMap"
             nullable: true
+          - db_type: "jsonb"
+            go_type: "github.com/e2b-dev/infra/packages/db/pkg/types.JSONBStringMap"
 
   - engine: "postgresql"
     queries: "pkg/testutils/*.sql"

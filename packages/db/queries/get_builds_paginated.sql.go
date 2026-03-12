@@ -17,7 +17,7 @@ const getTeamBuildsPage = `-- name: GetTeamBuildsPage :many
 SELECT
   b.id,
   b.status_group,
-  b.reason::jsonb AS reason,
+  b.reason,
   b.created_at,
   b.finished_at,
   eba.env_id AS template_id,
@@ -58,7 +58,7 @@ type GetTeamBuildsPageParams struct {
 type GetTeamBuildsPageRow struct {
 	ID            uuid.UUID
 	StatusGroup   types.BuildStatusGroup
-	Reason        []byte
+	Reason        types.BuildReason
 	CreatedAt     time.Time
 	FinishedAt    *time.Time
 	TemplateID    string
@@ -103,7 +103,7 @@ const getTeamBuildsPageByBuildID = `-- name: GetTeamBuildsPageByBuildID :many
 SELECT
   b.id,
   b.status_group,
-  b.reason::jsonb AS reason,
+  b.reason,
   b.created_at,
   b.finished_at,
   eba.env_id AS template_id,
@@ -146,7 +146,7 @@ type GetTeamBuildsPageByBuildIDParams struct {
 type GetTeamBuildsPageByBuildIDRow struct {
 	ID            uuid.UUID
 	StatusGroup   types.BuildStatusGroup
-	Reason        []byte
+	Reason        types.BuildReason
 	CreatedAt     time.Time
 	FinishedAt    *time.Time
 	TemplateID    string
@@ -192,7 +192,7 @@ const getTeamBuildsPageByTemplateAlias = `-- name: GetTeamBuildsPageByTemplateAl
 SELECT
   b.id,
   b.status_group,
-  b.reason::jsonb AS reason,
+  b.reason,
   b.created_at,
   b.finished_at,
   eba.env_id AS template_id,
@@ -240,7 +240,7 @@ type GetTeamBuildsPageByTemplateAliasParams struct {
 type GetTeamBuildsPageByTemplateAliasRow struct {
 	ID            uuid.UUID
 	StatusGroup   types.BuildStatusGroup
-	Reason        []byte
+	Reason        types.BuildReason
 	CreatedAt     time.Time
 	FinishedAt    *time.Time
 	TemplateID    string
@@ -286,7 +286,7 @@ const getTeamBuildsPageByTemplateID = `-- name: GetTeamBuildsPageByTemplateID :m
 SELECT
   b.id,
   b.status_group,
-  b.reason::jsonb AS reason,
+  b.reason,
   b.created_at,
   b.finished_at,
   eba.env_id AS template_id,
@@ -329,7 +329,7 @@ type GetTeamBuildsPageByTemplateIDParams struct {
 type GetTeamBuildsPageByTemplateIDRow struct {
 	ID            uuid.UUID
 	StatusGroup   types.BuildStatusGroup
-	Reason        []byte
+	Reason        types.BuildReason
 	CreatedAt     time.Time
 	FinishedAt    *time.Time
 	TemplateID    string

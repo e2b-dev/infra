@@ -156,6 +156,11 @@ variable "control_server_cluster_size" {
   default = 3
 }
 
+variable "additional_traefik_arguments" {
+  type    = list(string)
+  default = []
+}
+
 variable "db_max_open_connections" {
   type    = number
   default = 40
