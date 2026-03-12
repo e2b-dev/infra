@@ -52,8 +52,9 @@ data "google_secret_manager_secret_version" "redis_tls_ca_base64" {
 module "ingress" {
   source = "../../modules/job-ingress"
 
-  ingress_count      = var.ingress_count
-  ingress_proxy_port = var.ingress_port.port
+  ingress_count                = var.ingress_count
+  ingress_proxy_port           = var.ingress_port.port
+  additional_traefik_arguments = var.additional_traefik_arguments
 
   node_pool     = var.api_node_pool
   update_stanza = var.api_machine_count > 1
@@ -101,6 +102,10 @@ module "api" {
   loki_url                                = local.loki_url
   sandbox_access_token_hash_seed          = var.sandbox_access_token_hash_seed
   sandbox_storage_backend                 = var.sandbox_storage_backend
+  db_max_open_connections                 = var.db_max_open_connections
+  db_min_idle_connections                 = var.db_min_idle_connections
+  auth_db_max_open_connections            = var.auth_db_max_open_connections
+  auth_db_min_idle_connections            = var.auth_db_min_idle_connections
   db_migrator_docker_image                = data.google_artifact_registry_docker_image.db_migrator_image.self_link
   launch_darkly_api_key                   = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
   default_persistent_volume_type          = var.default_persistent_volume_type

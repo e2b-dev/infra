@@ -1,3 +1,12 @@
+resource "random_password" "volume_token_key" {
+  length  = 32
+  special = false
+
+  lifecycle {
+    ignore_changes = [length, special]
+  }
+}
+
 locals {
   clickhouse_connection_string = var.clickhouse_cluster_size > 0 ? "clickhouse://${var.clickhouse_username}:${var.clickhouse_password}@clickhouse.service.consul:${var.clickhouse_port}/${var.clickhouse_database}" : ""
   orchestrator_artifact_source = "s3::https://${var.fc_env_pipeline_bucket_name}.s3.${var.aws_region}.amazonaws.com/orchestrator?etag=${data.aws_s3_object.orchestrator.etag}"
@@ -44,8 +53,9 @@ module "redis" {
 module "ingress" {
   source = "../../modules/job-ingress"
 
-  ingress_count      = var.ingress_count
-  ingress_proxy_port = var.ingress_port
+  ingress_count                = var.ingress_count
+  ingress_proxy_port           = var.ingress_port
+  additional_traefik_arguments = var.additional_traefik_arguments
 
   node_pool     = var.api_node_pool
   update_stanza = var.api_cluster_size > 1
@@ -106,6 +116,18 @@ module "api" {
   db_migrator_docker_image       = "${var.aws_account_id}.dkr.ecr.${var.aws_region}.amazonaws.com/${var.db_migrator_repository_name}:latest"
   loki_url                       = "http://loki.service.consul:${var.loki_port}"
   launch_darkly_api_key          = var.launch_darkly_api_key
+  db_max_open_connections        = var.db_max_open_connections
+  db_min_idle_connections        = var.db_min_idle_connections
+  auth_db_max_open_connections   = var.auth_db_max_open_connections
+  auth_db_min_idle_connections   = var.auth_db_min_idle_connections
+
+  job_env_vars = {
+    VOLUME_TOKEN_ISSUER           = var.domain_name
+    VOLUME_TOKEN_SIGNING_KEY      = "HMAC:${base64encode(random_password.volume_token_key.result)}"
+    VOLUME_TOKEN_SIGNING_KEY_NAME = "e2b-volume-token-key"
+    VOLUME_TOKEN_DURATION         = "1h"
+    VOLUME_TOKEN_SIGNING_METHOD   = "HS256"
+  }
 }
 
 data "aws_s3_object" "orchestrator" {

@@ -296,3 +296,24 @@ variable "launch_darkly_api_key" {
   default   = ""
   sensitive = true
 }
+
+variable "additional_traefik_arguments" {
+  type    = list(string)
+  default = []
+}
+
+variable "db_max_open_connections" {
+  type = number
+}
+
+variable "db_min_idle_connections" {
+  type = number
+}
+
+variable "auth_db_max_open_connections" {
+  type = number
+}
+
+variable "auth_db_min_idle_connections" {
+  type = number
+}

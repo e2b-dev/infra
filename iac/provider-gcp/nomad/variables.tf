@@ -73,6 +73,10 @@ variable "ingress_port" {
   })
 }
 
+variable "additional_traefik_arguments" {
+  type = list(string)
+}
+
 variable "ingress_count" {
   type = number
 }
@@ -100,6 +104,22 @@ variable "sandbox_access_token_hash_seed" {
 variable "sandbox_storage_backend" {
   type    = string
   default = "memory"
+}
+
+variable "db_max_open_connections" {
+  type = number
+}
+
+variable "db_min_idle_connections" {
+  type = number
+}
+
+variable "auth_db_max_open_connections" {
+  type = number
+}
+
+variable "auth_db_min_idle_connections" {
+  type = number
 }
 
 variable "environment" {

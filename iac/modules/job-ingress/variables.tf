@@ -53,3 +53,7 @@ variable "otel_collector_grpc_endpoint" {
   type        = string
   description = "OpenTelemetry collector gRPC endpoint (e.g., localhost:4317)"
 }
+
+variable "additional_traefik_arguments" {
+  type = list(string)
+}

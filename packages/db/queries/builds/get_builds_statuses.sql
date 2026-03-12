@@ -2,7 +2,7 @@
 SELECT
   b.id,
   b.status_group,
-  b.reason::jsonb AS reason,
+  b.reason,
   b.finished_at
 FROM public.env_builds b
 WHERE b.team_id = sqlc.arg(team_id)::uuid
