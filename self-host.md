@@ -147,28 +147,7 @@ Now, you should see the right quota options in `All Quotas` and be able to reque
     make build  # build the AMI (~5 min, launches a t3.large)
     ```
 7. Run `make build-and-upload` to build and push container images and binaries
-8. Copy Firecracker kernels and rootfs to your S3 buckets. You have two options:
-
-    **Option A** — Using `make` (requires [`gsutil`](https://cloud.google.com/storage/docs/gsutil_install)):
-    ```sh
-    make copy-public-builds
-    ```
-
-    **Option B** — Without `gsutil` (uses `aws` CLI with GCS S3-compatible endpoint):
-    ```sh
-    # Set your bucket prefix (PREFIX + AWS_ACCOUNT_ID + "-")
-    BUCKET_PREFIX="e2b-YOUR_ACCOUNT_ID-"
-
-    # Download from public GCS bucket via S3-compatible API
-    mkdir -p ./.kernels ./.firecrackers
-    aws s3 cp s3://e2b-prod-public-builds/kernels/ ./.kernels/ --recursive --no-sign-request --endpoint-url https://storage.googleapis.com
-    aws s3 cp s3://e2b-prod-public-builds/firecrackers/ ./.firecrackers/ --recursive --no-sign-request --endpoint-url https://storage.googleapis.com
-
-    # Upload to your S3 buckets
-    aws s3 cp ./.kernels/ s3://${BUCKET_PREFIX}fc-kernels/ --recursive --profile ${AWS_PROFILE}
-    aws s3 cp ./.firecrackers/ s3://${BUCKET_PREFIX}fc-versions/ --recursive --profile ${AWS_PROFILE}
-    rm -rf ./.kernels ./.firecrackers
-    ```
+8. Run `make copy-public-builds` to copy Firecracker kernels and rootfs to your S3 buckets
 9. Run `make plan-without-jobs` and then `make apply` to provision the cluster infrastructure
 10. Run `make plan` and then `make apply` to deploy all Nomad jobs (this also runs database migrations automatically via the API's db-migrator task)
 11. Setup data in the cluster by running `make prep-cluster` in `packages/shared` to create an initial user, team, and build a base template
