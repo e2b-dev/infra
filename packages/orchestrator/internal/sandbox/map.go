@@ -134,7 +134,8 @@ func (m *Map) RemoveByLifecycleID(ctx context.Context, sandboxID, lifecycleID st
 		}
 
 		sbx = v
-		return v.LifecycleID == lifecycleID
+
+				return v.LifecycleID == lifecycleID
 	})
 
 	if removed {
