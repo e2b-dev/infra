@@ -6,9 +6,10 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 )
 
 func WithSandboxID(sandboxID string) zap.Field {
