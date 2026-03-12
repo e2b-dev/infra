@@ -115,7 +115,7 @@ func TestGetSnapshotsWithCursor_ReturnsLatestAssignment(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, results, 1, "Should return 1 snapshot")
 
-	assert.Equal(t, latestBuildID, results[0].EnvBuild.ID,
+	assert.Equal(t, latestBuildID, results[0].BuildID,
 		"GetSnapshotsWithCursor should return the build from the latest assignment")
 }
 

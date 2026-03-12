@@ -253,7 +253,6 @@ func snapshotsToPaginatedSandboxes(ctx context.Context, snapshots []queries.GetS
 	// Add snapshots to results
 	for _, record := range snapshots {
 		snapshot := record.Snapshot
-		build := record.EnvBuild
 
 		var alias *string
 		if len(record.Aliases) > 0 {
@@ -261,15 +260,15 @@ func snapshotsToPaginatedSandboxes(ctx context.Context, snapshots []queries.GetS
 		}
 
 		diskSize := int32(0)
-		if build.TotalDiskSizeMb != nil {
-			diskSize = int32(*build.TotalDiskSizeMb)
+		if record.BuildTotalDiskSizeMb != nil {
+			diskSize = int32(*record.BuildTotalDiskSizeMb)
 		} else {
 			logger.L().Error(ctx, "disk size is not set for the sandbox", logger.WithSandboxID(snapshot.SandboxID))
 		}
 
 		envdVersion := ""
-		if build.EnvdVersion != nil {
-			envdVersion = *build.EnvdVersion
+		if record.BuildEnvdVersion != nil {
+			envdVersion = *record.BuildEnvdVersion
 		} else {
 			logger.L().Error(ctx, "envd version is not set for the sandbox", logger.WithSandboxID(snapshot.SandboxID))
 		}
@@ -281,8 +280,8 @@ func snapshotsToPaginatedSandboxes(ctx context.Context, snapshots []queries.GetS
 				TemplateID:  snapshot.BaseEnvID,
 				SandboxID:   snapshot.SandboxID,
 				StartedAt:   snapshot.SandboxStartedAt.Time,
-				CpuCount:    int32(build.Vcpu),
-				MemoryMB:    int32(build.RamMb),
+				CpuCount:    int32(record.BuildVcpu),
+				MemoryMB:    int32(record.BuildRamMb),
 				DiskSizeMB:  diskSize,
 				EndAt:       snapshot.CreatedAt.Time,
 				State:       api.Paused,
