@@ -22,7 +22,8 @@ snapshot as (
        allow_internet_access,
        origin_node_id,
        auto_pause,
-       config
+       config,
+       created_at
     )
     VALUES (
             @sandbox_id,
@@ -36,7 +37,8 @@ snapshot as (
             @allow_internet_access,
             @origin_node_id,
             @auto_pause,
-            @config
+            @config,
+            now()
    )
     ON CONFLICT (sandbox_id) DO UPDATE SET
         metadata = excluded.metadata,
