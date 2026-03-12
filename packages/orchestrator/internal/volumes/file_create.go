@@ -90,10 +90,9 @@ func (s *Service) CreateFile(server orchestrator.VolumeService_CreateFileServer)
 			}
 
 		case *orchestrator.VolumeFileCreateRequest_Finish:
-			// Sync is not supported by billy.File (usually)
-			// if err = file.Sync(); err != nil {
-			// 	return fmt.Errorf("failed to sync file to disk: %w", err)
-			// }
+			if err = file.Sync(); err != nil {
+				return fmt.Errorf("failed to sync file to disk: %w", err)
+			}
 
 			if err := fs.Chown(path, int(uid), int(gid)); err != nil {
 				return fmt.Errorf("failed to set file ownership: %w", err)
