@@ -56,18 +56,21 @@ func (o *Orchestrator) KeepAliveFor(ctx context.Context, teamID uuid.UUID, sandb
 				logger.WithTeamID(teamID.String()),
 				zap.String("state", string(sbxNotRunningErr.State)),
 			)
+
 			return nil, &api.APIError{Code: http.StatusConflict, ClientMsg: utils.SandboxChangingStateMsg(sandboxID, sbxNotRunningErr.State), Err: err}
 		case errors.As(err, &sbxNotFoundErr):
 			logger.L().Warn(ctx, "Sandbox not found in store during keep alive",
 				logger.WithSandboxID(sandboxID),
 				logger.WithTeamID(teamID.String()),
 			)
+
 			return nil, &api.APIError{Code: http.StatusNotFound, ClientMsg: utils.SandboxNotFoundMsg(sandboxID), Err: err}
 		case errors.Is(err, errMaxInstanceLengthExceeded):
 			logger.L().Warn(ctx, "Sandbox max instance length exceeded during keep alive",
 				logger.WithSandboxID(sandboxID),
 				logger.WithTeamID(teamID.String()),
 			)
+
 			return nil, &api.APIError{Code: http.StatusBadRequest, ClientMsg: "Max instance length exceeded", Err: err}
 		default:
 			logger.L().Error(ctx, "Error updating sandbox during keep alive",
@@ -75,6 +78,7 @@ func (o *Orchestrator) KeepAliveFor(ctx context.Context, teamID uuid.UUID, sandb
 				logger.WithSandboxID(sandboxID),
 				logger.WithTeamID(teamID.String()),
 			)
+
 			return nil, &api.APIError{Code: http.StatusInternalServerError, ClientMsg: "Error when setting sandbox timeout", Err: err}
 		}
 	}
@@ -87,6 +91,7 @@ func (o *Orchestrator) KeepAliveFor(ctx context.Context, teamID uuid.UUID, sandb
 				logger.WithNodeID(sbx.NodeID),
 				logger.WithClusterID(sbx.ClusterID),
 			)
+
 			return nil, &api.APIError{Code: http.StatusNotFound, ClientMsg: utils.SandboxNotFoundMsg(sandboxID), Err: err}
 		}
 
@@ -97,6 +102,7 @@ func (o *Orchestrator) KeepAliveFor(ctx context.Context, teamID uuid.UUID, sandb
 			logger.WithNodeID(sbx.NodeID),
 			logger.WithClusterID(sbx.ClusterID),
 		)
+
 		return nil, &api.APIError{Code: http.StatusInternalServerError, ClientMsg: "Error when setting sandbox timeout", Err: err}
 	}
 
