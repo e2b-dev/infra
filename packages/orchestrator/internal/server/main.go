@@ -37,7 +37,6 @@ type Server struct {
 	config            cfg.Config
 	sandboxFactory    *sandbox.Factory
 	info              *service.ServiceInfo
-	sandboxes         *sandbox.Map
 	proxy             *proxy.SandboxProxy
 	networkPool       *network.Pool
 	templateCache     *template.Cache
@@ -60,7 +59,6 @@ type ServiceConfig struct {
 	Info             *service.ServiceInfo
 	Proxy            *proxy.SandboxProxy
 	SandboxFactory   *sandbox.Factory
-	Sandboxes        *sandbox.Map
 	Persistence      storage.StorageProvider
 	FeatureFlags     *featureflags.Client
 	SbxEventsService *events.EventsService
@@ -78,7 +76,6 @@ func New(ctx context.Context, cfg ServiceConfig) *Server {
 		sandboxFactory:    cfg.SandboxFactory,
 		info:              cfg.Info,
 		proxy:             cfg.Proxy,
-		sandboxes:         cfg.Sandboxes,
 		networkPool:       cfg.NetworkPool,
 		templateCache:     cfg.TemplateCache,
 		devicePool:        cfg.DevicePool,
@@ -92,7 +89,7 @@ func New(ctx context.Context, cfg ServiceConfig) *Server {
 
 	meter := cfg.Tel.MeterProvider.Meter("orchestrator.sandbox")
 	_, err := telemetry.GetObservableUpDownCounter(meter, telemetry.OrchestratorSandboxCountMeterName, func(_ context.Context, observer metric.Int64Observer) error {
-		observer.Observe(int64(server.sandboxes.Count()))
+		observer.Observe(int64(server.sandboxFactory.Sandboxes.Count()))
 
 		return nil
 	})

@@ -185,7 +185,8 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	templateCache.Start(b.Context())
 	b.Cleanup(templateCache.Stop)
 
-	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags, nil, nil)
+	sandboxes := sandbox.NewSandboxesMap()
+	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags, nil, nil, sandboxes)
 
 	dockerhubRepository, err := dockerhub.GetRemoteRepository(b.Context())
 	require.NoError(b, err)
@@ -230,8 +231,6 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	require.NoError(b, err)
 
 	var proxyPort uint16 = 5007
-
-	sandboxes := sandbox.NewSandboxesMap()
 
 	tcpFirewall := tcpfirewall.New(
 		l,

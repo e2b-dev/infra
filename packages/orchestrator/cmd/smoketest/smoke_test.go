@@ -225,7 +225,7 @@ func newTestInfra(t *testing.T, ctx context.Context) *testInfra {
 	ti.closers = append(ti.closers, func(ctx context.Context) { tcpFw.Close(ctx) })
 
 	// Factory + Builder
-	factory := sandbox.NewFactory(orcConfig.BuilderConfig, networkPool, devicePool, flags, nil, nil)
+	factory := sandbox.NewFactory(orcConfig.BuilderConfig, networkPool, devicePool, flags, nil, nil, sandboxes)
 	ti.factory = factory
 
 	buildMetrics, _ := metrics.NewBuildMetrics(noop.MeterProvider{})

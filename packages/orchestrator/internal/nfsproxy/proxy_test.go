@@ -67,7 +67,7 @@ func TestRoundTrip(t *testing.T) {
 	require.Equal(t, "127.0.0.1", slot.HostIP.String(), "required for the test to work")
 
 	sandboxes := sandbox.NewSandboxesMap()
-	sandboxes.Insert(&sandbox.Sandbox{
+	sandboxes.Insert(t.Context(), &sandbox.Sandbox{
 		Metadata: &sandbox.Metadata{
 			Config: sandbox.NewConfig(sandbox.Config{
 				VolumeMounts: []sandbox.VolumeMountConfig{
@@ -311,7 +311,7 @@ func TestGetPrefixFromSandbox(t *testing.T) {
 		},
 	}
 
-	sandboxes.Insert(happySandbox)
+	sandboxes.Insert(t.Context(), happySandbox)
 
 	filesystemsByType := map[string]billy.Filesystem{
 		happyVolumeType: happyFS,

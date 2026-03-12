@@ -17,7 +17,7 @@ const getBuildsStatusesByTeam = `-- name: GetBuildsStatusesByTeam :many
 SELECT
   b.id,
   b.status_group,
-  b.reason::jsonb AS reason,
+  b.reason,
   b.finished_at
 FROM public.env_builds b
 WHERE b.team_id = $1::uuid
@@ -32,7 +32,7 @@ type GetBuildsStatusesByTeamParams struct {
 type GetBuildsStatusesByTeamRow struct {
 	ID          uuid.UUID
 	StatusGroup types.BuildStatusGroup
-	Reason      []byte
+	Reason      types.BuildReason
 	FinishedAt  *time.Time
 }
 
