@@ -191,7 +191,7 @@ func setSpanStatus(span trace.Span, err error) {
 	span.SetStatus(otelcodes.Ok, "")
 }
 
-func ensureParentDirs(fs *chrooted.Chrooted, dirPath string, uid, gid uint32, mode os.FileMode) error {
+func ensureDirs(fs *chrooted.Chrooted, dirPath string, uid, gid uint32, mode os.FileMode) error {
 	if dirPath == "" {
 		return nil
 	}

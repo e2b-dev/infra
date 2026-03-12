@@ -110,16 +110,27 @@ func TestDirCreate(t *testing.T) {
 		err = os.Chmod(fullPath, originalMode)
 		require.NoError(t, err)
 
+		// Ensure the user doesn't change either
+		err = os.Chown(fullPath, 1500, 1600)
+		require.NoError(t, err)
+
 		// Now call CreateDir with CreateParents=true and a different mode
 		newMode := uint32(0o777)
-		_, err = s.CreateDir(t.Context(), &orchestrator.VolumeDirCreateRequest{
+		request := &orchestrator.VolumeDirCreateRequest{
 			Volume:        volumeInfo,
 			Path:          dirname,
 			CreateParents: true,
 			Mode:          utils.ToPtr(newMode),
-		})
+			Uid:           utils.ToPtr(uint32(1100)),
+			Gid:           utils.ToPtr(uint32(1200)),
+		}
+		_, err = s.CreateDir(t.Context(), request)
 		require.NoError(t, err)
 
+		fs, err := s.getFilesystem(t.Context(), request)
+		require.NoError(t, err)
+
+		assertDir(t, fs, dirname, 1500, 1600, originalMode)
 		// Check if the mode was changed
 		fi, err := os.Stat(fullPath)
 		require.NoError(t, err)

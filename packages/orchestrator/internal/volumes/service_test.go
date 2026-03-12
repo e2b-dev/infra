@@ -176,14 +176,14 @@ func TestEnsureParentDirs(t *testing.T) {
 	t.Run("empty path", func(t *testing.T) {
 		t.Parallel()
 
-		err := ensureParentDirs(fs, "", 0o755, 1006, 1007)
+		err := ensureDirs(fs, "", 0o755, 1006, 1007)
 		require.NoError(t, err)
 	})
 
 	t.Run("single level", func(t *testing.T) {
 		t.Parallel()
 
-		err := ensureParentDirs(fs, "/a", 1005, 1006, 0o700)
+		err := ensureDirs(fs, "/a", 1005, 1006, 0o700)
 		require.NoError(t, err)
 
 		assertDir(t, fs, "/a", 1005, 1006, 0o700)
@@ -192,7 +192,7 @@ func TestEnsureParentDirs(t *testing.T) {
 	t.Run("multiple levels", func(t *testing.T) {
 		t.Parallel()
 
-		err := ensureParentDirs(fs, "/b/c/d", 800, 900, 0o750)
+		err := ensureDirs(fs, "/b/c/d", 800, 900, 0o750)
 		require.NoError(t, err)
 
 		assertDir(t, fs, "/b", 800, 900, 0o750)
@@ -214,7 +214,7 @@ func TestEnsureParentDirs(t *testing.T) {
 		require.NoError(t, err)
 
 		// run test
-		err = ensureParentDirs(fs, "/e", 2000, 2001, 0o700)
+		err = ensureDirs(fs, "/e", 2000, 2001, 0o700)
 		require.NoError(t, err)
 
 		// verify results
@@ -235,7 +235,7 @@ func TestEnsureParentDirs(t *testing.T) {
 		require.NoError(t, err)
 
 		// run test
-		err = ensureParentDirs(fs, "/q/f/g", 2020, 2021, 0o711)
+		err = ensureDirs(fs, "/q/f/g", 2020, 2021, 0o711)
 		require.NoError(t, err)
 
 		// verify results

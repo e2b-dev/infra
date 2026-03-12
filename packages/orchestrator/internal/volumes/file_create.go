@@ -54,7 +54,7 @@ func (s *Service) CreateFile(server orchestrator.VolumeService_CreateFileServer)
 
 	dirName := filepath.Dir(path)
 	if start.GetForce() {
-		if err = ensureParentDirs(fs, dirName, uid, gid, defaultDirMode); err != nil {
+		if err = ensureDirs(fs, dirName, uid, gid, defaultDirMode); err != nil {
 			return fmt.Errorf("failed to prepare parent directories: %w", err)
 		}
 	}
