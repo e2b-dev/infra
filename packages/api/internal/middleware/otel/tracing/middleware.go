@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"go.opentelemetry.io/otel"
@@ -87,6 +88,13 @@ func Middleware(tracerProvider oteltrace.TracerProvider, service string) gin.Han
 		// Remove traceparent (it's coming from our users and it can cause multiple calls share the same trace ID)
 		if c.Request.Header.Get("traceparent") != "" {
 			c.Request.Header.Del("traceparent")
+		}
+		extractedCtx := propagation.NewCompositeTextMapPropagator(cfg.Propagators, cloudTracePropagator{}).
+			Extract(ctx, propagation.HeaderCarrier(c.Request.Header))
+		if edgeSpanContext := oteltrace.SpanContextFromContext(extractedCtx); edgeSpanContext.HasTraceID() {
+			// Keep the incoming edge trace ID around for request logging without changing local span parenting.
+			edgeTraceID := edgeSpanContext.TraceID().String()
+			ctx = logger.ContextWithEdgeTraceID(ctx, edgeTraceID)
 		}
 		// No need for calling Extract, as we are not expecting any incoming trace
 		// ctx := cfg.Propagators.Extract(savedCtx, propagation.HeaderCarrier(c.Request.Header))
