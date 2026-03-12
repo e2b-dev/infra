@@ -135,6 +135,21 @@ type EnvdMetadata struct {
 	Version        string
 }
 
+// SandboxStatus represents the lifecycle state of a sandbox.
+type SandboxStatus int32
+
+const (
+	// StatusStarting is the initial state: the sandbox is being created but
+	// is not yet ready to serve traffic.
+	StatusStarting SandboxStatus = 0
+	// StatusRunning means the sandbox is fully initialised and healthy.
+	StatusRunning SandboxStatus = 1
+	// StatusDead means the sandbox has been killed or paused. It remains in
+	// the map briefly so that IP-based lookups (logs, NFS, TCP firewall)
+	// still resolve, but it is excluded from all "live" queries.
+	StatusDead SandboxStatus = 2
+)
+
 // SandboxType distinguishes build sandboxes from regular sandboxes.
 type SandboxType string
 
@@ -233,7 +248,7 @@ type Sandbox struct {
 
 	stop utils.Lazy[error]
 
-	started atomic.Bool
+	status atomic.Int32
 }
 
 func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
@@ -246,7 +261,7 @@ func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
 
 // IsRunning returns whether the sandbox has finished starting and is running.
 func (s *Sandbox) IsRunning() bool {
-	return s.started.Load()
+	return SandboxStatus(s.status.Load()) == StatusRunning
 }
 
 // GetStartedAt returns the sandbox start time in a thread-safe manner.
