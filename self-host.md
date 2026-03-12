@@ -82,7 +82,12 @@ Check if you can use config for terraform state management
   - e2b-posthog-api-key (optional, for monitoring)
 9. Run `make plan-without-jobs` and then `make apply`
 10. Run `make plan` and then `make apply`. Note: This will work after the TLS certificates was issued. It can take some time; you can check the status in the Google Cloud Console
-11. Setup data in the cluster by running `make prep-cluster` in `packages/shared` to create an initial user, team, and build a base template.
+11. Run database migrations: `cd packages/db && make migrate`
+    > If using Supabase, the first migration (`20000101000000_auth.sql`) will fail because Supabase already provides the `auth` schema, `authenticated` role, and `auth.users` table. To skip it, manually mark it as applied before running `make migrate`:
+    > ```sh
+    > psql "$POSTGRES_CONNECTION_STRING" -c "INSERT INTO _migrations (version_id, is_applied) VALUES (20000101000000, true);"
+    > ```
+12. Setup data in the cluster by running `make prep-cluster` in `packages/shared` to create an initial user, team, and build a base template.
   - You can also run `make seed-db` in `packages/db` to create more users and teams.
 
 ### GCP Troubleshooting
@@ -177,7 +182,12 @@ Now, you should see the right quota options in `All Quotas` and be able to reque
     ```
 9. Run `make plan-without-jobs` and then `make apply` to provision the cluster infrastructure
 10. Run `make plan` and then `make apply` to deploy all Nomad jobs
-11. Setup data in the cluster by running `make prep-cluster` in `packages/shared` to create an initial user, team, and build a base template
+11. Run database migrations: `cd packages/db && make migrate`
+    > If using Supabase, the first migration (`20000101000000_auth.sql`) will fail because Supabase already provides the `auth` schema, `authenticated` role, and `auth.users` table. To skip it, manually mark it as applied before running `make migrate`:
+    > ```sh
+    > psql "$POSTGRES_CONNECTION_STRING" -c "INSERT INTO _migrations (version_id, is_applied) VALUES (20000101000000, true);"
+    > ```
+12. Setup data in the cluster by running `make prep-cluster` in `packages/shared` to create an initial user, team, and build a base template
 
 ### AWS Architecture
 
