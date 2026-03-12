@@ -28,6 +28,10 @@ func WithNodeID(nodeID string) attribute.KeyValue {
 	return zapFieldToOTELAttribute(logger.WithNodeID(nodeID))
 }
 
+func WithServiceInstanceID(serviceInstanceID string) attribute.KeyValue {
+	return zapFieldToOTELAttribute(logger.WithServiceInstanceID(serviceInstanceID))
+}
+
 func WithClusterID(clusterID uuid.UUID) attribute.KeyValue {
 	return zapFieldToOTELAttribute(logger.WithClusterID(clusterID))
 }
