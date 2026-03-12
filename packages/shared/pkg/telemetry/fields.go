@@ -44,6 +44,14 @@ func WithEnvdVersion(envdVersion string) attribute.KeyValue {
 	return zapFieldToOTELAttribute(logger.WithEnvdVersion(envdVersion))
 }
 
+func WithAPIKey(prefix, apiKey string) attribute.KeyValue {
+	return zapFieldToOTELAttribute(logger.WithAPIKey(prefix, apiKey))
+}
+
+func WithAccessToken(prefix, accessToken string) attribute.KeyValue {
+	return zapFieldToOTELAttribute(logger.WithAccessToken(prefix, accessToken))
+}
+
 func zapFieldToOTELAttribute(f zap.Field) attribute.KeyValue {
 	e := &ZapFieldToOTELAttributeEncoder{}
 	f.AddTo(e)

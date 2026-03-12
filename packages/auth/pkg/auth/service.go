@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 // AuthStore abstracts the DB operations needed for auth validation.
@@ -36,7 +37,7 @@ func NewAuthService[T any](store AuthStore[T], teamCache *AuthCache[T], jwtSecre
 }
 
 // ValidateAPIKey verifies the API key format and fetches the associated team via cache + store.
-func (s *AuthService[T]) ValidateAPIKey(ctx context.Context, apiKey string) (T, *APIError) {
+func (s *AuthService[T]) ValidateAPIKey(ctx context.Context, ginCtx *gin.Context, apiKey string) (T, *APIError) {
 	hashedKey, err := keys.VerifyKey(keys.ApiKeyPrefix, apiKey)
 	if err != nil {
 		var zero T
@@ -79,11 +80,13 @@ func (s *AuthService[T]) ValidateAPIKey(ctx context.Context, apiKey string) (T, 
 		}
 	}
 
+	telemetry.SetAttributes(ginCtx.Request.Context(), telemetry.WithAPIKey(keys.ApiKeyPrefix, apiKey))
+
 	return result, nil
 }
 
 // ValidateAccessToken verifies the access token format and fetches the associated user ID.
-func (s *AuthService[T]) ValidateAccessToken(ctx context.Context, accessToken string) (uuid.UUID, *APIError) {
+func (s *AuthService[T]) ValidateAccessToken(ctx context.Context, ginCtx *gin.Context, accessToken string) (uuid.UUID, *APIError) {
 	hashedToken, err := keys.VerifyKey(keys.AccessTokenPrefix, accessToken)
 	if err != nil {
 		return uuid.UUID{}, &APIError{
@@ -101,6 +104,9 @@ func (s *AuthService[T]) ValidateAccessToken(ctx context.Context, accessToken st
 			Code:      http.StatusUnauthorized,
 		}
 	}
+
+	//nolint:contextcheck // We use the gin request context to set attributes on the parent span.
+	telemetry.SetAttributes(ginCtx.Request.Context(), telemetry.WithAccessToken(keys.AccessTokenPrefix, accessToken))
 
 	return userID, nil
 }

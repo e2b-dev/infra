@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	logpkg "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 // Based on https://github.com/gin-contrib/zap
@@ -32,7 +32,7 @@ type Config struct {
 	Skipper Skipper
 }
 
-func LoggingMiddleware(logger logger.Logger, conf Config) gin.HandlerFunc {
+func LoggingMiddleware(logger logpkg.Logger, conf Config) gin.HandlerFunc {
 	skipPaths := make(map[string]bool, len(conf.SkipPaths))
 	for _, path := range conf.SkipPaths {
 		skipPaths[path] = true
