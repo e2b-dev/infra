@@ -144,7 +144,12 @@ func (m *Map) MarkDead(ctx context.Context, sandboxID string) {
 		return
 	}
 
-	sbx.status.Store(int32(StatusDead))
+	// CAS ensures idempotency: if two goroutines race (e.g. concurrent
+	// Delete RPCs for the same sandbox), only the winner fires OnRemove
+	// and schedules the eviction timer.
+	if !sbx.status.CompareAndSwap(int32(StatusRunning), int32(StatusDead)) {
+		return
+	}
 
 	logger.L().Info(ctx, "marking sandbox as dead",
 		logger.WithSandboxID(sandboxID),
