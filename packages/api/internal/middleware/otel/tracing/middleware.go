@@ -22,12 +22,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"go.opentelemetry.io/otel/attribute"
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
 	oteltrace "go.opentelemetry.io/otel/trace"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 const (
