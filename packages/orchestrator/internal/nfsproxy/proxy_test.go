@@ -54,7 +54,7 @@ func TestRoundTrip(t *testing.T) {
 	// setup data
 	sandboxID := uuid.NewString()
 	teamID := uuid.New()
-	volPath1 := os.TempDir()
+	volPath1 := t.TempDir()
 	volType1 := "volume-type-1"
 	volID1 := uuid.New()
 	volName1 := "volume-1"
