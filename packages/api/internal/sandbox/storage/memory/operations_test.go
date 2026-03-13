@@ -619,6 +619,202 @@ func TestStartRemoving_DuringSnapshotting(t *testing.T) {
 	})
 }
 
+// Eviction-specific tests: verify the Eviction flag in RemoveOpts
+// re-checks expiry and transition state under the lock.
+func TestStartRemoving_Eviction(t *testing.T) {
+	t.Parallel()
+
+	t.Run("expired sandbox with no transition is evicted", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		storage := NewStorage()
+
+		sbx := sandbox.Sandbox{
+			SandboxID:         "evict-ok",
+			TemplateID:        "test-template",
+			ClientID:          "test-client",
+			TeamID:            uuid.New(),
+			StartTime:         time.Now().Add(-2 * time.Hour),
+			EndTime:           time.Now().Add(-time.Second), // already expired
+			MaxInstanceLength: time.Hour,
+			State:             sandbox.StateRunning,
+		}
+
+		err := storage.Add(ctx, sbx)
+		require.NoError(t, err)
+
+		_, alreadyDone, finish, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionKill, Eviction: true})
+		require.NoError(t, err)
+		assert.False(t, alreadyDone)
+		require.NotNil(t, finish)
+
+		got, getErr := storage.Get(ctx, sbx.TeamID, sbx.SandboxID)
+		require.NoError(t, getErr)
+		assert.Equal(t, sandbox.StateKilling, got.State)
+
+		finish(ctx, nil)
+	})
+
+	t.Run("non-expired sandbox is not evictable", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		storage := NewStorage()
+
+		sbx := sandbox.Sandbox{
+			SandboxID:         "evict-not-expired",
+			TemplateID:        "test-template",
+			ClientID:          "test-client",
+			TeamID:            uuid.New(),
+			StartTime:         time.Now(),
+			EndTime:           time.Now().Add(time.Hour), // not expired
+			MaxInstanceLength: time.Hour,
+			State:             sandbox.StateRunning,
+		}
+
+		err := storage.Add(ctx, sbx)
+		require.NoError(t, err)
+
+		_, alreadyDone, finish, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionKill, Eviction: true})
+		require.ErrorIs(t, err, sandbox.ErrNotEvictable)
+		assert.False(t, alreadyDone)
+		assert.Nil(t, finish)
+
+		// State must remain Running — sandbox was not touched.
+		got, getErr := storage.Get(ctx, sbx.TeamID, sbx.SandboxID)
+		require.NoError(t, getErr)
+		assert.Equal(t, sandbox.StateRunning, got.State)
+	})
+
+	t.Run("expired sandbox with active transition is not evictable", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		storage := NewStorage()
+
+		sbx := sandbox.Sandbox{
+			SandboxID:         "evict-in-transition",
+			TemplateID:        "test-template",
+			ClientID:          "test-client",
+			TeamID:            uuid.New(),
+			StartTime:         time.Now().Add(-2 * time.Hour),
+			EndTime:           time.Now().Add(-time.Second), // expired
+			MaxInstanceLength: time.Hour,
+			State:             sandbox.StateRunning,
+		}
+
+		err := storage.Add(ctx, sbx)
+		require.NoError(t, err)
+
+		// Start a non-eviction pause transition to occupy the transition slot.
+		_, _, pauseFinish, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
+		require.NoError(t, err)
+		require.NotNil(t, pauseFinish)
+
+		// Eviction should be rejected immediately (not block).
+		start := time.Now()
+		_, alreadyDone, finish, evictErr := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionKill, Eviction: true})
+		elapsed := time.Since(start)
+
+		require.ErrorIs(t, evictErr, sandbox.ErrNotEvictable)
+		assert.False(t, alreadyDone)
+		assert.Nil(t, finish)
+		assert.Less(t, elapsed, 50*time.Millisecond, "eviction should return immediately, not wait for the transition")
+
+		// Clean up
+		pauseFinish(ctx, nil)
+	})
+
+	t.Run("expired sandbox evicted with auto-pause action", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		storage := NewStorage()
+
+		sbx := sandbox.Sandbox{
+			SandboxID:         "evict-autopause",
+			TemplateID:        "test-template",
+			ClientID:          "test-client",
+			TeamID:            uuid.New(),
+			StartTime:         time.Now().Add(-2 * time.Hour),
+			EndTime:           time.Now().Add(-time.Second), // expired
+			MaxInstanceLength: time.Hour,
+			AutoPause:         true,
+			State:             sandbox.StateRunning,
+		}
+
+		err := storage.Add(ctx, sbx)
+		require.NoError(t, err)
+
+		_, alreadyDone, finish, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause, Eviction: true})
+		require.NoError(t, err)
+		assert.False(t, alreadyDone)
+		require.NotNil(t, finish)
+
+		got, getErr := storage.Get(ctx, sbx.TeamID, sbx.SandboxID)
+		require.NoError(t, getErr)
+		assert.Equal(t, sandbox.StatePausing, got.State)
+
+		finish(ctx, nil)
+	})
+
+	t.Run("eviction flag is not propagated on retry after waiting", func(t *testing.T) {
+		t.Parallel()
+
+		// This tests that when a non-eviction request waits for an
+		// existing transition and retries, the retry path works correctly
+		// even when the sandbox EndTime has been extended mid-flight.
+		// An eviction in the same situation would bail out, but a regular
+		// kill must proceed regardless of expiry.
+		ctx := t.Context()
+
+		sbx := createTestSandbox()
+		// Make sandbox expired so the initial state matches what the
+		// evictor would have seen before adding it to the eviction list.
+		sbx._data.EndTime = time.Now().Add(-time.Second)
+
+		// Start a non-eviction pause.
+		alreadyDone, pauseFinish, err := startRemoving(ctx, sbx, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
+		require.NoError(t, err)
+		assert.False(t, alreadyDone)
+		require.NotNil(t, pauseFinish)
+
+		// A non-eviction kill will wait for the pause, then retry.
+		killDone := make(chan struct{})
+		var killErr error
+		var killAlreadyDone bool
+		var killFinish func(context.Context, error)
+
+		go func() {
+			defer close(killDone)
+			killAlreadyDone, killFinish, killErr = startRemoving(ctx, sbx, sandbox.RemoveOpts{Action: sandbox.StateActionKill})
+		}()
+
+		time.Sleep(50 * time.Millisecond)
+
+		// Extend the sandbox timeout while the pause is in progress
+		// (simulating KeepAliveFor extending EndTime).
+		sbx.mu.Lock()
+		sbx._data.EndTime = time.Now().Add(time.Hour)
+		sbx.mu.Unlock()
+
+		// Complete the pause.
+		pauseFinish(ctx, nil)
+
+		<-killDone
+
+		// The kill should succeed because it's NOT an eviction — the
+		// non-expired EndTime doesn't block a regular kill.
+		require.NoError(t, killErr)
+		assert.False(t, killAlreadyDone)
+		require.NotNil(t, killFinish)
+		assert.Equal(t, sandbox.StateKilling, sbx.State())
+
+		killFinish(ctx, nil)
+	})
+}
+
 // Stress test with random operations
 func TestConcurrency_StressTest(t *testing.T) {
 	t.Parallel()
