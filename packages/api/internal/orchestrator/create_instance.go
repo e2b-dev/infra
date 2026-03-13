@@ -324,7 +324,7 @@ func (o *Orchestrator) CreateSandbox(
 		go func() {
 			killErr := o.removeSandboxFromNode(context.WithoutCancel(ctx), sbxToRemove, sandbox.StateActionKill)
 			if killErr != nil {
-				logger.L().Error(ctx, "Error pausing sandbox", zap.Error(killErr), logger.WithSandboxID(sbxToRemove.SandboxID))
+				logger.L().Error(ctx, "Error removing sandbox", zap.Error(killErr), logger.WithSandboxID(sbxToRemove.SandboxID))
 			}
 		}()
 
