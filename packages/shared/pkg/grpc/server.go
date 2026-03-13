@@ -1,14 +1,12 @@
 package grpc
 
 import (
-	"context"
 	"time"
 
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/selector"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
-	"go.opentelemetry.io/otel/attribute"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
 
@@ -44,7 +42,6 @@ func NewGRPCServer(tel *telemetry.Client) *grpc.Server {
 				otelgrpc.NewServerHandler(
 					otelgrpc.WithTracerProvider(tel.TracerProvider),
 					otelgrpc.WithMeterProvider(tel.MeterProvider),
-					otelgrpc.WithMetricAttributesFn(extractIsResume),
 				))),
 		grpc.ChainUnaryInterceptor(
 			recovery.UnaryServerInterceptor(),
@@ -60,14 +57,4 @@ func NewGRPCServer(tel *telemetry.Client) *grpc.Server {
 			),
 		),
 	)
-}
-
-func extractIsResume(ctx context.Context) []attribute.KeyValue {
-	if holder, ok := ctx.Value(isResumeHolderKey{}).(*IsResumeHolder); ok {
-		return []attribute.KeyValue{
-			attribute.Bool("sandbox.resume", holder.Value),
-		}
-	}
-
-	return nil
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
@@ -53,7 +54,7 @@ const (
 	executionEventDataKey = "execution"
 )
 
-func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequest) (*orchestrator.SandboxCreateResponse, error) {
+func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequest) (_ *orchestrator.SandboxCreateResponse, createErr error) {
 	// set max request timeout for this request
 	ctx, cancel := context.WithTimeoutCause(ctx, requestTimeout, fmt.Errorf("request timed out"))
 	defer cancel()
@@ -61,6 +62,20 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	// set up tracing
 	ctx, childSpan := tracer.Start(ctx, "sandbox-create")
 	defer childSpan.End()
+
+	isResume := req.GetSandbox().GetSnapshot()
+	createStart := time.Now()
+	defer func() {
+		if createErr != nil {
+			return
+		}
+
+		s.sandboxCreateDuration.Record(ctx, time.Since(createStart).Milliseconds(),
+			metric.WithAttributes(
+				attribute.Bool("sandbox.resume", isResume),
+			),
+		)
+	}()
 
 	childSpan.SetAttributes(
 		telemetry.WithTemplateID(req.GetSandbox().GetTemplateId()),
