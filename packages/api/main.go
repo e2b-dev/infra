@@ -129,7 +129,7 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 			},
 		}),
 		gin.Recovery(),
-		customMiddleware.RequestTimeout(requestTimeout), //nolint:contextcheck // Gin middleware sets context via c.Request.WithContext
+		// customMiddleware.RequestTimeout(requestTimeout), //nolint:contextcheck // Gin middleware sets context via c.Request.WithContext
 	)
 
 	corsConfig := cors.DefaultConfig()
