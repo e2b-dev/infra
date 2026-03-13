@@ -43,11 +43,11 @@ func (r *fsRangeReadCloser) Close() error {
 	return r.file.Close()
 }
 
-func newFileSystemStorage(basePath string, uploadBaseURL string, hmacKey []byte) *fsStorage {
+func newFileSystemStorage(cfg StorageConfig) *fsStorage {
 	return &fsStorage{
-		basePath:  basePath,
-		uploadURL: uploadBaseURL,
-		hmacKey:   hmacKey,
+		basePath:  cfg.GetLocalBasePath(),
+		uploadURL: cfg.uploadBaseURL,
+		hmacKey:   cfg.hmacKey,
 	}
 }
 

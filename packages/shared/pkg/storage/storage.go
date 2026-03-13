@@ -158,7 +158,7 @@ func GetStorageProvider(ctx context.Context, cfg StorageConfig) (StorageProvider
 	provider := GetProviderType()
 
 	if provider == LocalStorageProvider {
-		return newFileSystemStorage(cfg.GetLocalBasePath(), cfg.uploadBaseURL, cfg.hmacKey), nil
+		return newFileSystemStorage(cfg), nil
 	}
 
 	bucketName := cfg.GetBucketName()
