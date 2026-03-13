@@ -46,7 +46,7 @@ variable "api_server_machine_type" {
 
 variable "api_image_family_prefix" {
   type    = string
-  default = "e2b-orch-"
+  default = ""
 }
 
 variable "ingress_count" {
@@ -71,7 +71,7 @@ variable "clickhouse_server_machine_type" {
 
 variable "clickhouse_image_family_prefix" {
   type    = string
-  default = "e2b-orch-"
+  default = ""
 }
 
 variable "client_cluster_size" {
@@ -97,7 +97,7 @@ variable "client_node_labels" {
 
 variable "client_image_family_prefix" {
   type    = string
-  default = "e2b-orch-"
+  default = ""
 }
 
 variable "control_server_machine_type" {
@@ -107,7 +107,7 @@ variable "control_server_machine_type" {
 
 variable "control_server_image_family_prefix" {
   type    = string
-  default = "e2b-orch-"
+  default = ""
 }
 
 variable "orchestrator_port" {

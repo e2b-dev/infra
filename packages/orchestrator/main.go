@@ -53,7 +53,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	event "github.com/e2b-dev/infra/packages/shared/pkg/events"
 	sharedFactories "github.com/e2b-dev/infra/packages/shared/pkg/factories"
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
@@ -472,7 +472,7 @@ func run(config cfg.Config) (success bool) {
 	builder := chrooted.NewBuilder(config)
 	volumeService := volumes.New(config, builder)
 
-	orchestratorService := server.New(ctx, server.ServiceConfig{
+	orchestratorService, err := server.New(server.ServiceConfig{
 		Config:           config,
 		SandboxFactory:   sandboxFactory,
 		Tel:              tel,
@@ -486,6 +486,9 @@ func run(config cfg.Config) (success bool) {
 		SbxEventsService: events.NewEventsService(sbxEventsDeliveryTargets),
 		PeerRegistry:     peerRegistry,
 	})
+	if err != nil {
+		logger.L().Fatal(ctx, "failed to create orchestrator server", zap.Error(err))
+	}
 
 	// template manager sandbox logger
 	tmplSbxLoggerExternal := sbxlogger.NewLogger(

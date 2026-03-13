@@ -2,7 +2,7 @@
 SELECT
   b.id,
   b.status_group,
-  b.reason::jsonb AS reason,
+  b.reason,
   b.created_at,
   b.finished_at,
   eba.env_id AS template_id,
@@ -35,7 +35,7 @@ LIMIT sqlc.arg(limit_plus_one)::int;
 SELECT
   b.id,
   b.status_group,
-  b.reason::jsonb AS reason,
+  b.reason,
   b.created_at,
   b.finished_at,
   eba.env_id AS template_id,
@@ -69,7 +69,7 @@ LIMIT sqlc.arg(limit_plus_one)::int;
 SELECT
   b.id,
   b.status_group,
-  b.reason::jsonb AS reason,
+  b.reason,
   b.created_at,
   b.finished_at,
   eba.env_id AS template_id,
@@ -103,7 +103,7 @@ LIMIT sqlc.arg(limit_plus_one)::int;
 SELECT
   b.id,
   b.status_group,
-  b.reason::jsonb AS reason,
+  b.reason,
   b.created_at,
   b.finished_at,
   eba.env_id AS template_id,
