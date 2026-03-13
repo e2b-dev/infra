@@ -101,6 +101,13 @@ func (h *HashIndex) SaveLayerMeta(ctx context.Context, hash string, template Lay
 
 	err = obj.Put(ctx, marshaled)
 	if err != nil {
+		// Content-addressed: if Put fails (e.g. GCS per-object rate limit)
+		// but the object already exists, another concurrent writer succeeded
+		// with the same data, so the error is harmless.
+		if exists, _ := obj.Exists(ctx); exists {
+			return nil
+		}
+
 		return fmt.Errorf("error writing layer metadata to object: %w", err)
 	}
 
