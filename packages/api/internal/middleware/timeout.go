@@ -15,7 +15,7 @@ import (
 // when the connection pool is saturated.
 //
 // If the deadline is exceeded and the handler has not yet written a response,
-// the middleware responds with 503 Service Unavailable.
+// the middleware responds with 408 Request Timeout.
 //
 // Routes matching any of the excludedRoutes patterns are skipped (useful for
 // health checks and long-polling endpoints).
@@ -34,7 +34,7 @@ func RequestTimeout(timeout time.Duration, excludedRoutes ...string) gin.Handler
 		c.Next()
 
 		if ctx.Err() == context.DeadlineExceeded && !c.Writer.Written() {
-			c.String(http.StatusServiceUnavailable, "request timed out")
+			c.String(http.StatusRequestTimeout, "request timed out")
 			c.Abort()
 		}
 	}
