@@ -137,7 +137,7 @@ func TestIntegrationTest(t *testing.T) {
 	}
 	builder := chrooted.NewBuilder(config)
 
-	createVolumeDir(t, builder, volumeTypePath, teamID, volumeID)
+	createVolumeDir(t, builder, volumeType, teamID, volumeID)
 
 	s, err := NewProxy(t.Context(), builder, sandboxes)
 	require.NoError(t, err)
