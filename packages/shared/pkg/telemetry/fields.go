@@ -48,12 +48,12 @@ func WithEnvdVersion(envdVersion string) attribute.KeyValue {
 	return zapFieldToOTELAttribute(logger.WithEnvdVersion(envdVersion))
 }
 
-func WithAPIKey(apiKey string) attribute.KeyValue {
-	return zapFieldToOTELAttribute(logger.WithAPIKey(apiKey))
+func WithMaskedAPIKey(apiKey string) attribute.KeyValue {
+	return zapFieldToOTELAttribute(logger.WithMaskedAPIKey(apiKey))
 }
 
-func WithAccessToken(accessToken string) attribute.KeyValue {
-	return zapFieldToOTELAttribute(logger.WithAccessToken(accessToken))
+func WithMaskedAccessToken(accessToken string) attribute.KeyValue {
+	return zapFieldToOTELAttribute(logger.WithMaskedAccessToken(accessToken))
 }
 
 func zapFieldToOTELAttribute(f zap.Field) attribute.KeyValue {

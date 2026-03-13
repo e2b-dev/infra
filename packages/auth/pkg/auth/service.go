@@ -86,7 +86,7 @@ func (s *AuthService[T]) ValidateAPIKey(ctx context.Context, ginCtx *gin.Context
 
 	//nolint:contextcheck // We use the gin request context to set attributes on the parent span.
 	telemetry.SetAttributes(ginCtx.Request.Context(),
-		telemetry.WithAPIKey(apiKey),
+		telemetry.WithMaskedAPIKey(apiKey),
 		telemetry.WithTeamID(result.TeamID()),
 	)
 
@@ -115,7 +115,7 @@ func (s *AuthService[T]) ValidateAccessToken(ctx context.Context, ginCtx *gin.Co
 
 	//nolint:contextcheck // We use the gin request context to set attributes on the parent span.
 	telemetry.SetAttributes(ginCtx.Request.Context(),
-		telemetry.WithAccessToken(accessToken),
+		telemetry.WithMaskedAccessToken(accessToken),
 		telemetry.WithUserID(userID.String()),
 	)
 

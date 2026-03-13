@@ -60,11 +60,11 @@ func WithClientIP(clientIP string) zap.Field {
 	return zap.String("http.client_ip", clientIP)
 }
 
-func WithAPIKey(apiKey string) zap.Field {
+func WithMaskedAPIKey(apiKey string) zap.Field {
 	return zap.String("auth.api_key", maskedToken(keys.ApiKeyPrefix, apiKey))
 }
 
-func WithAccessToken(accessToken string) zap.Field {
+func WithMaskedAccessToken(accessToken string) zap.Field {
 	return zap.String("auth.access_token", maskedToken(keys.AccessTokenPrefix, accessToken))
 }
 
