@@ -288,15 +288,6 @@ func (f *Factory) CreateSandbox(
 		}
 	}()
 
-	lifecycleID := uuid.NewString()
-	// Add map removal to cleanup early as we want to do it as last thing in clean up
-	// It's save as we delete only if lifecycleID matches
-	cleanup.Add(ctx, func(ctx context.Context) error {
-		f.Sandboxes.RemoveByLifecycleID(ctx, runtime.SandboxID, lifecycleID)
-
-		return nil
-	})
-
 	ipsPromise := getNetworkSlot(ctx, f.networkPool, cleanup, config.Network)
 
 	sandboxFiles := template.Files().NewSandboxFiles(runtime.SandboxID)
@@ -392,7 +383,7 @@ func (f *Factory) CreateSandbox(
 	}
 
 	sbx := &Sandbox{
-		LifecycleID: lifecycleID,
+		LifecycleID: uuid.NewString(),
 
 		Resources:    resources,
 		Metadata:     metadata,
@@ -409,7 +400,13 @@ func (f *Factory) CreateSandbox(
 
 		exit: exit,
 	}
+
 	f.Sandboxes.Insert(ctx, sbx)
+	cleanup.Add(ctx, func(ctx context.Context) error {
+		f.Sandboxes.RemoveByLifecycleID(ctx, runtime.SandboxID, sbx.LifecycleID)
+
+		return nil
+	})
 
 	err = fcHandle.Create(
 		ctx,
@@ -499,15 +496,6 @@ func (f *Factory) ResumeSandbox(
 			execSpan.End()
 		}
 	}()
-
-	lifecycleID := uuid.NewString()
-	// Add map removal to cleanup early as we want to do it as last thing in clean up
-	// It's save as we delete only if lifecycleID matches
-	cleanup.Add(ctx, func(ctx context.Context) error {
-		f.Sandboxes.RemoveByLifecycleID(ctx, runtime.SandboxID, lifecycleID)
-
-		return nil
-	})
 
 	sandboxFiles := t.Files().NewSandboxFiles(runtime.SandboxID)
 	cleanup.Add(ctx, cleanupFiles(f.config, sandboxFiles))
@@ -715,7 +703,7 @@ func (f *Factory) ResumeSandbox(
 	}
 
 	sbx := &Sandbox{
-		LifecycleID: lifecycleID,
+		LifecycleID: uuid.NewString(),
 
 		Resources:    resources,
 		Metadata:     metadata,
@@ -748,6 +736,11 @@ func (f *Factory) ResumeSandbox(
 	// during the resume (e.g. for TCP firewall lookups). On failure the deferred cleanup
 	// will remove it.
 	f.Sandboxes.Insert(ctx, sbx)
+	cleanup.Add(ctx, func(ctx context.Context) error {
+		f.Sandboxes.RemoveByLifecycleID(ctx, runtime.SandboxID, sbx.LifecycleID)
+
+		return nil
+	})
 
 	uffdStartCtx, cancelUffdStartCtx := context.WithCancelCause(ctx)
 	defer cancelUffdStartCtx(fmt.Errorf("uffd finished starting"))
