@@ -7,7 +7,7 @@ package storagemocks
 import (
 	"context"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	mock "github.com/stretchr/testify/mock"
 )
@@ -40,7 +40,7 @@ func (_m *MockFeatureFlagsClient) EXPECT() *MockFeatureFlagsClient_Expecter {
 }
 
 // BoolFlag provides a mock function for the type MockFeatureFlagsClient
-func (_mock *MockFeatureFlagsClient) BoolFlag(ctx context.Context, flag feature_flags.BoolFlag, ldctx ...ldcontext.Context) bool {
+func (_mock *MockFeatureFlagsClient) BoolFlag(ctx context.Context, flag featureflags.BoolFlag, ldctx ...ldcontext.Context) bool {
 	var tmpRet mock.Arguments
 	if len(ldctx) > 0 {
 		tmpRet = _mock.Called(ctx, flag, ldctx)
@@ -54,7 +54,7 @@ func (_mock *MockFeatureFlagsClient) BoolFlag(ctx context.Context, flag feature_
 	}
 
 	var r0 bool
-	if returnFunc, ok := ret.Get(0).(func(context.Context, feature_flags.BoolFlag, ...ldcontext.Context) bool); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, featureflags.BoolFlag, ...ldcontext.Context) bool); ok {
 		r0 = returnFunc(ctx, flag, ldctx...)
 	} else {
 		r0 = ret.Get(0).(bool)
@@ -69,22 +69,22 @@ type MockFeatureFlagsClient_BoolFlag_Call struct {
 
 // BoolFlag is a helper method to define mock.On call
 //   - ctx context.Context
-//   - flag feature_flags.BoolFlag
+//   - flag featureflags.BoolFlag
 //   - ldctx ...ldcontext.Context
 func (_e *MockFeatureFlagsClient_Expecter) BoolFlag(ctx interface{}, flag interface{}, ldctx ...interface{}) *MockFeatureFlagsClient_BoolFlag_Call {
 	return &MockFeatureFlagsClient_BoolFlag_Call{Call: _e.mock.On("BoolFlag",
 		append([]interface{}{ctx, flag}, ldctx...)...)}
 }
 
-func (_c *MockFeatureFlagsClient_BoolFlag_Call) Run(run func(ctx context.Context, flag feature_flags.BoolFlag, ldctx ...ldcontext.Context)) *MockFeatureFlagsClient_BoolFlag_Call {
+func (_c *MockFeatureFlagsClient_BoolFlag_Call) Run(run func(ctx context.Context, flag featureflags.BoolFlag, ldctx ...ldcontext.Context)) *MockFeatureFlagsClient_BoolFlag_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 feature_flags.BoolFlag
+		var arg1 featureflags.BoolFlag
 		if args[1] != nil {
-			arg1 = args[1].(feature_flags.BoolFlag)
+			arg1 = args[1].(featureflags.BoolFlag)
 		}
 		var arg2 []ldcontext.Context
 		var variadicArgs []ldcontext.Context
@@ -106,13 +106,13 @@ func (_c *MockFeatureFlagsClient_BoolFlag_Call) Return(b bool) *MockFeatureFlags
 	return _c
 }
 
-func (_c *MockFeatureFlagsClient_BoolFlag_Call) RunAndReturn(run func(ctx context.Context, flag feature_flags.BoolFlag, ldctx ...ldcontext.Context) bool) *MockFeatureFlagsClient_BoolFlag_Call {
+func (_c *MockFeatureFlagsClient_BoolFlag_Call) RunAndReturn(run func(ctx context.Context, flag featureflags.BoolFlag, ldctx ...ldcontext.Context) bool) *MockFeatureFlagsClient_BoolFlag_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // IntFlag provides a mock function for the type MockFeatureFlagsClient
-func (_mock *MockFeatureFlagsClient) IntFlag(ctx context.Context, flag feature_flags.IntFlag, ldctx ...ldcontext.Context) int {
+func (_mock *MockFeatureFlagsClient) IntFlag(ctx context.Context, flag featureflags.IntFlag, ldctx ...ldcontext.Context) int {
 	var tmpRet mock.Arguments
 	if len(ldctx) > 0 {
 		tmpRet = _mock.Called(ctx, flag, ldctx)
@@ -126,7 +126,7 @@ func (_mock *MockFeatureFlagsClient) IntFlag(ctx context.Context, flag feature_f
 	}
 
 	var r0 int
-	if returnFunc, ok := ret.Get(0).(func(context.Context, feature_flags.IntFlag, ...ldcontext.Context) int); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, featureflags.IntFlag, ...ldcontext.Context) int); ok {
 		r0 = returnFunc(ctx, flag, ldctx...)
 	} else {
 		r0 = ret.Get(0).(int)
@@ -141,22 +141,22 @@ type MockFeatureFlagsClient_IntFlag_Call struct {
 
 // IntFlag is a helper method to define mock.On call
 //   - ctx context.Context
-//   - flag feature_flags.IntFlag
+//   - flag featureflags.IntFlag
 //   - ldctx ...ldcontext.Context
 func (_e *MockFeatureFlagsClient_Expecter) IntFlag(ctx interface{}, flag interface{}, ldctx ...interface{}) *MockFeatureFlagsClient_IntFlag_Call {
 	return &MockFeatureFlagsClient_IntFlag_Call{Call: _e.mock.On("IntFlag",
 		append([]interface{}{ctx, flag}, ldctx...)...)}
 }
 
-func (_c *MockFeatureFlagsClient_IntFlag_Call) Run(run func(ctx context.Context, flag feature_flags.IntFlag, ldctx ...ldcontext.Context)) *MockFeatureFlagsClient_IntFlag_Call {
+func (_c *MockFeatureFlagsClient_IntFlag_Call) Run(run func(ctx context.Context, flag featureflags.IntFlag, ldctx ...ldcontext.Context)) *MockFeatureFlagsClient_IntFlag_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 feature_flags.IntFlag
+		var arg1 featureflags.IntFlag
 		if args[1] != nil {
-			arg1 = args[1].(feature_flags.IntFlag)
+			arg1 = args[1].(featureflags.IntFlag)
 		}
 		var arg2 []ldcontext.Context
 		var variadicArgs []ldcontext.Context
@@ -178,7 +178,7 @@ func (_c *MockFeatureFlagsClient_IntFlag_Call) Return(n int) *MockFeatureFlagsCl
 	return _c
 }
 
-func (_c *MockFeatureFlagsClient_IntFlag_Call) RunAndReturn(run func(ctx context.Context, flag feature_flags.IntFlag, ldctx ...ldcontext.Context) int) *MockFeatureFlagsClient_IntFlag_Call {
+func (_c *MockFeatureFlagsClient_IntFlag_Call) RunAndReturn(run func(ctx context.Context, flag featureflags.IntFlag, ldctx ...ldcontext.Context) int) *MockFeatureFlagsClient_IntFlag_Call {
 	_c.Call.Return(run)
 	return _c
 }

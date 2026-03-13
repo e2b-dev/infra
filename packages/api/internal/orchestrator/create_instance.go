@@ -22,7 +22,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
-	feature_flags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
@@ -169,7 +169,7 @@ func (o *Orchestrator) CreateSandbox(
 	}
 
 	hasHugePages := fcSemver.HasHugePages()
-	firecrackerVersion := feature_flags.ResolveFirecrackerVersion(ctx, o.featureFlagsClient, build.FirecrackerVersion)
+	firecrackerVersion := featureflags.ResolveFirecrackerVersion(ctx, o.featureFlagsClient, build.FirecrackerVersion)
 	telemetry.ReportEvent(ctx, "Got FC info")
 
 	var sbxDomain *string
@@ -256,7 +256,7 @@ func (o *Orchestrator) CreateSandbox(
 	nodeClusterID := clusters.WithClusterFallback(team.ClusterID)
 	clusterNodes := o.GetClusterNodes(nodeClusterID)
 
-	labelFilteringEnabled := o.featureFlagsClient.BoolFlag(ctx, feature_flags.SandboxLabelBasedSchedulingFlag, feature_flags.TeamContext(team.ID.String()), feature_flags.SandboxContext(sandboxID))
+	labelFilteringEnabled := o.featureFlagsClient.BoolFlag(ctx, featureflags.SandboxLabelBasedSchedulingFlag, featureflags.TeamContext(team.ID.String()), featureflags.SandboxContext(sandboxID))
 
 	node, err = placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, builds.ToMachineInfo(build), labelFilteringEnabled, team.SandboxSchedulingLabels)
 	if err != nil {
