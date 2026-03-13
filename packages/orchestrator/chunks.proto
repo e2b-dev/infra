@@ -1,0 +1,74 @@
+syntax = "proto3";
+
+option go_package = "https://github.com/e2b-dev/infra/orchestrator";
+
+// ChunkService allows orchestrators to serve snapshot files directly from
+// their local cache to peer orchestrators, bypassing GCS during hot resumes.
+
+// PeerAvailability carries the routing decision included in every response.
+// When neither flag is set, the file is available in the peer's local cache.
+message PeerAvailability {
+  // not_available is true when the file is not in the local cache.
+  // The caller should fall back to GCS.
+  bool not_available = 1;
+  // use_storage is true when the GCS upload has completed and the caller
+  // should switch to reading from GCS/NFS directly instead of this peer.
+  bool use_storage = 2;
+}
+
+message GetBuildFileSizeRequest {
+  string build_id = 1;
+  // file_name is one of the seekable diff files: "memfile", "rootfs.ext4"
+  string file_name = 2;
+}
+
+message GetBuildFileSizeResponse {
+  int64 total_size = 1;
+  PeerAvailability availability = 2;
+}
+
+message GetBuildFileExistsRequest {
+  string build_id = 1;
+  // file_name is one of: "snapfile", "metadata.json"
+  string file_name = 2;
+}
+
+message GetBuildFileExistsResponse {
+  PeerAvailability availability = 1;
+}
+
+message ReadAtBuildSeekableRequest {
+  string build_id = 1;
+  string file_name = 2;
+  int64 offset = 3;
+  int64 length = 4;
+}
+
+message ReadAtBuildSeekableResponse {
+  bytes data = 1;
+  // availability is only set in the first message of the stream.
+  PeerAvailability availability = 2;
+}
+
+message GetBuildBlobRequest {
+  string build_id = 1;
+  // file_name is one of: "snapfile", "metadata.json", "memfile.header", "rootfs.ext4.header"
+  string file_name = 2;
+}
+
+message GetBuildBlobResponse {
+  bytes data = 1;
+  // availability is only set in the first message of the stream.
+  PeerAvailability availability = 2;
+}
+
+service ChunkService {
+  // GetBuildFileSize returns the total size of a seekable diff file (memfile, rootfs.ext4).
+  rpc GetBuildFileSize(GetBuildFileSizeRequest) returns (GetBuildFileSizeResponse);
+  // GetBuildFileExists checks if a blob file is present in the peer's local cache.
+  rpc GetBuildFileExists(GetBuildFileExistsRequest) returns (GetBuildFileExistsResponse);
+  // ReadAtBuildSeekable streams a range from a seekable diff file (memfile, rootfs.ext4).
+  rpc ReadAtBuildSeekable(ReadAtBuildSeekableRequest) returns (stream ReadAtBuildSeekableResponse);
+  // GetBuildBlob streams an entire blob file (snapfile, metadata, headers).
+  rpc GetBuildBlob(GetBuildBlobRequest) returns (stream GetBuildBlobResponse);
+}

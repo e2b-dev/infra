@@ -10,6 +10,10 @@ inputs:
   infisical_client_secret:
     description: "Infisical client secret for accessing secrets"
     required: true
+  install_gcloud:
+    description: "Whether to install the gcloud CLI (needed for gsutil/docker auth)"
+    required: false
+    default: "false"
 
 runs:
   using: "composite"
@@ -47,6 +51,7 @@ runs:
         workload_identity_provider: ${{ env.GH_WORKLOAD_IDENTITY_PROVIDER }}
 
     - name: Set up Cloud SDK
+      if: inputs.install_gcloud == 'true'
       uses: google-github-actions/setup-gcloud@v2
 
     - name: Setup Terraform
@@ -54,8 +59,18 @@ runs:
       with:
         terraform_version: 1.5.7
 
+    - name: Cache Terraform providers
+      uses: actions/cache@v4
+      with:
+        path: ~/.terraform.d/plugin-cache
+        key: terraform-providers-${{ hashFiles('iac/provider-gcp/.terraform.lock.hcl') }}
+        restore-keys: |
+          terraform-providers-
+
     - name: Terraform init
       working-directory: iac/provider-gcp
       run: |
+        mkdir -p ~/.terraform.d/plugin-cache
+        export TF_PLUGIN_CACHE_DIR=~/.terraform.d/plugin-cache
         terraform init -input=false -reconfigure -backend-config="bucket=${TERRAFORM_STATE_BUCKET}"
       shell: bash

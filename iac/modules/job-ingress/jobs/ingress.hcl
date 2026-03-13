@@ -1,8 +1,5 @@
 job "ingress" {
-  meta {
-    git_commit_sha = "${git_commit_sha}"
-  }
-  node_pool = "${node_pool}"
+node_pool = "${node_pool}"
   priority  = 90
 
   group "ingress" {
@@ -96,8 +93,14 @@ job "ingress" {
           "--ping=true",
           "--ping.entryPoint=web",
           "--metrics=true",
-          "--metrics.prometheus=true",
-          "--metrics.prometheus.entryPoint=traefik",
+          "--metrics.otlp=true",
+          "--metrics.otlp.grpc=true",
+          "--metrics.otlp.grpc.endpoint=${otel_collector_grpc_endpoint}",
+          "--metrics.otlp.grpc.insecure=true",
+
+          %{ for arg in additional_args }
+          "${ arg }",
+          %{ endfor }
 
           # Traefik Nomad provider
           "--providers.nomad=true",

@@ -14,15 +14,9 @@ locals {
 
 resource "nomad_job" "otel_collector_nomad_server" {
   jobspec = templatefile("${path.module}/jobs/otel-collector-nomad-server.hcl", {
-    git_commit_sha        = var.git_commit_sha
     node_pool             = var.node_pool
     otel_collector_config = local.otel_collector_config
   })
-}
-
-variable "git_commit_sha" {
-  description = "Git commit SHA of the deployment"
-  type        = string
 }
 
 variable "provider_name" {

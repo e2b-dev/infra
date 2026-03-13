@@ -3,7 +3,6 @@ package handlers
 import (
 	"context"
 	"crypto/subtle"
-	"database/sql"
 	"errors"
 	"net/http"
 	"strconv"
@@ -14,6 +13,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
+	snapshotcache "github.com/e2b-dev/infra/packages/api/internal/cache/snapshots"
 	dbapi "github.com/e2b-dev/infra/packages/api/internal/db"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
@@ -85,11 +85,14 @@ func denyResumePermission() error {
 }
 
 func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.SandboxResumeRequest) (*proxygrpc.SandboxResumeResponse, error) {
-	sandboxID := utils.ShortID(req.GetSandboxId())
-
-	snap, err := s.api.sqlcDB.GetLastSnapshot(ctx, sandboxID)
+	sandboxID, err := utils.ShortID(req.GetSandboxId())
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		return nil, status.Error(codes.InvalidArgument, "invalid sandbox ID")
+	}
+
+	snap, err := s.api.snapshotCache.Get(ctx, sandboxID)
+	if err != nil {
+		if errors.Is(err, snapshotcache.ErrSnapshotNotFound) {
 			return nil, status.Error(codes.NotFound, "snapshot not found")
 		}
 
@@ -192,7 +195,7 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		nil, // volumeMounts
 	)
 	if apiErr != nil {
-		return nil, status.Errorf(sharedutils.GRPCCodeFromHTTPStatus(apiErr.Code), "resume failed: %s", apiErr.ClientMsg)
+		return nil, status.Error(sharedutils.GRPCCodeFromHTTPStatus(apiErr.Code), apiErr.ClientMsg)
 	}
 
 	node := s.api.orchestrator.GetNode(sbx.ClusterID, sbx.NodeID)

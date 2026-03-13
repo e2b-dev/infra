@@ -45,6 +45,12 @@ jobs:
           environment: ${{ inputs.environment }}
           infisical_client_id: ${{ secrets.INFISICAL_CLIENT_ID }}
           infisical_client_secret: ${{ secrets.INFISICAL_CLIENT_SECRET }}
+          install_gcloud: "true"
+
+      - name: Run Terraform state migrations
+        if: inputs.plan_only == 'false'
+        run: |
+          make state-migrate || true
 
       - name: Apply init module
         if: inputs.plan_only == 'false'

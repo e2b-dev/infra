@@ -1,8 +1,5 @@
 job "clickhouse" {
-  meta {
-    git_commit_sha = "${git_commit_sha}"
-  }
-  type        = "service"
+type        = "service"
   node_pool   = "${node_pool}"
 
 %{ for i in range("${server_count}") }

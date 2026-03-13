@@ -54,3 +54,7 @@ func (t *LocalTemplate) Snapfile() (File, error) {
 func (t *LocalTemplate) Metadata() (metadata.Template, error) {
 	return metadata.Template{}, errors.New("metadata not available in local template")
 }
+
+func (t *LocalTemplate) UpdateMetadata(_ metadata.Template) error {
+	return errors.New("metadata not available in local template")
+}

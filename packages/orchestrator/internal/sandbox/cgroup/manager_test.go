@@ -75,7 +75,7 @@ func TestCgroupHandleLifecycle(t *testing.T) {
 	require.NotNil(t, handle)
 	defer handle.Remove(ctx)
 
-	assert.Equal(t, testSandboxID, handle.SandboxID())
+	assert.Equal(t, testSandboxID, handle.CgroupName())
 	assert.Contains(t, handle.Path(), testSandboxID)
 	assert.Positive(t, handle.GetFD())
 
@@ -141,7 +141,7 @@ func TestCgroupHandleWithProcessCreation(t *testing.T) {
 	procCgroupPath := fmt.Sprintf("/proc/%d/cgroup", cmd.Process.Pid)
 	cgroupData, err := os.ReadFile(procCgroupPath)
 	require.NoError(t, err)
-	assert.Contains(t, string(cgroupData), fmt.Sprintf("e2b/sbx-%s", testSandboxID))
+	assert.Contains(t, string(cgroupData), fmt.Sprintf("e2b/%s", testSandboxID))
 
 	cmd.Process.Kill()
 	cmd.Wait()
@@ -292,7 +292,7 @@ func TestStatsParsing(t *testing.T) {
 	t.Parallel()
 
 	tmpDir := t.TempDir()
-	cgroupPath := filepath.Join(tmpDir, "sbx-test-parse-sandbox")
+	cgroupPath := filepath.Join(tmpDir, "test-parse-sandbox")
 	err := os.MkdirAll(cgroupPath, 0o755)
 	require.NoError(t, err)
 

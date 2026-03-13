@@ -5,11 +5,6 @@ PREFIX := $(strip $(subst ",,$(PREFIX)))
 goose := GOOSE_DRIVER=postgres GOOSE_DBSTRING=$(POSTGRES_CONNECTION_STRING) go tool goose -table "_migrations" -dir "migrations"
 goose-local := GOOSE_DBSTRING=postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable go tool goose -table "_migrations" -dir "migrations" postgres
 
-ifeq ($(PROVIDER),aws)
-	IMAGE_REGISTRY := $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com/$(PREFIX)core/db-migrator
-else
-	IMAGE_REGISTRY := $(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/$(PREFIX)core/db-migrator
-endif
 
 .PHONY: migrate
 migrate:
@@ -61,10 +56,6 @@ build-tools:
 .PHONY: test
 test: build-tools
 	go test -v ./tests/...
-
-.PHONY: build-and-upload
-build-and-upload:
-	@docker build --platform linux/amd64 --tag $(IMAGE_REGISTRY) --push -f ./Dockerfile ..
 
 .PHONY: seed-db
 seed-db:

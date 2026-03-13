@@ -1,8 +1,5 @@
 job "clickhouse-migrator" {
-  meta {
-    git_commit_sha = "${git_commit_sha}"
-  }
-  type        = "batch"
+type        = "batch"
   node_pool   = "${node_pool}"
 
 %{ for i in range("${server_count}") }

@@ -8,9 +8,8 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/e2b-dev/infra/packages/auth/pkg/types"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -19,9 +18,16 @@ func (a *APIStore) PostSandboxesSandboxIDTimeout(
 	sandboxID string,
 ) {
 	ctx := c.Request.Context()
-	sandboxID = utils.ShortID(sandboxID)
 
-	team := c.Value(auth.TeamContextKey).(*types.Team)
+	var err error
+	sandboxID, err = utils.ShortID(sandboxID)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid sandbox ID")
+
+		return
+	}
+
+	team := auth.MustGetTeamInfo(c)
 
 	var duration time.Duration
 
@@ -40,20 +46,7 @@ func (a *APIStore) PostSandboxesSandboxIDTimeout(
 		duration = time.Duration(body.Timeout) * time.Second
 	}
 
-	sandboxData, err := a.orchestrator.GetSandbox(ctx, team.ID, sandboxID)
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusNotFound, "Sandbox not found")
-
-		return
-	}
-
-	if sandboxData.TeamID != team.ID {
-		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox \"%s\"", sandboxID))
-
-		return
-	}
-
-	apiErr := a.orchestrator.KeepAliveFor(ctx, team.ID, sandboxID, duration, true)
+	_, apiErr := a.orchestrator.KeepAliveFor(ctx, team.ID, sandboxID, duration, true)
 	if apiErr != nil {
 		telemetry.ReportError(ctx, "error when setting timeout", apiErr.Err)
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)

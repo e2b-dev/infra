@@ -1,7 +1,4 @@
-variable "git_commit_sha" {
-  description = "Git commit SHA of the deployment"
-  type        = string
-}
+
 
 variable "update_stanza" {
   type = bool
@@ -57,6 +54,11 @@ variable "redis_cluster_url" {
 variable "redis_tls_ca_base64" {
   type      = string
   sensitive = true
+}
+
+variable "redis_pool_size" {
+  type    = number
+  default = 40
 }
 
 variable "image" {

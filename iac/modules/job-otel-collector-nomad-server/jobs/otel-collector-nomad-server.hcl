@@ -1,8 +1,5 @@
 job "otel-collector-nomad-server" {
-  meta {
-    git_commit_sha = "${git_commit_sha}"
-  }
-  type        = "service"
+type        = "service"
   node_pool   = "${node_pool}"
 
   priority = 95

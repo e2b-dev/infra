@@ -15,7 +15,6 @@ resource "nomad_job" "clean_nfs_cache" {
   count = var.shared_chunk_cache_path != "" ? 1 : 0
 
   jobspec = templatefile("${path.module}/jobs/clean-nfs-cache.hcl", {
-    git_commit_sha               = var.git_commit_sha
     node_pool                    = var.builder_node_pool
     bucket_name                  = var.fc_env_pipeline_bucket_name
     environment                  = var.environment

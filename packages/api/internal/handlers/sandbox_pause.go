@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"net/http"
@@ -13,10 +12,11 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	snapshotcache "github.com/e2b-dev/infra/packages/api/internal/cache/snapshots"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -25,36 +25,27 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 	ctx := c.Request.Context()
 	// Get team from context, use TeamContextKey
 
-	teamID := a.GetTeamInfo(c).Team.ID
+	teamID := auth.MustGetTeamInfo(c).Team.ID
 
-	sandboxID = utils.ShortID(sandboxID)
+	var err error
+	sandboxID, err = utils.ShortID(sandboxID)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid sandbox ID")
+
+		return
+	}
 
 	span := trace.SpanFromContext(ctx)
 	traceID := span.SpanContext().TraceID().String()
 	c.Set("traceID", traceID)
 
-	sbx, err := a.orchestrator.GetSandbox(ctx, teamID, sandboxID)
-	if err != nil {
-		apiErr := pauseHandleNotRunningSandbox(ctx, a.sqlcDB, sandboxID, teamID)
-		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
-
-		return
-	}
-
-	if sbx.TeamID != teamID {
-		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox \"%s\"", sandboxID))
-
-		return
-	}
-
-	err = a.orchestrator.RemoveSandbox(ctx, sbx, sandbox.StateActionPause)
-
+	err = a.orchestrator.RemoveSandbox(ctx, teamID, sandboxID, sandbox.StateActionPause)
 	var transErr *sandbox.InvalidStateTransitionError
 
 	switch {
 	case err == nil:
 	case errors.Is(err, orchestrator.ErrSandboxNotFound):
-		apiErr := pauseHandleNotRunningSandbox(ctx, a.sqlcDB, sandboxID, teamID)
+		apiErr := pauseHandleNotRunningSandbox(ctx, a.snapshotCache, sandboxID, teamID)
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return
@@ -73,13 +64,16 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 	c.Status(http.StatusNoContent)
 }
 
-func pauseHandleNotRunningSandbox(ctx context.Context, sqlcDB *sqlcdb.Client, sandboxID string, teamID uuid.UUID) api.APIError {
-	snap, err := sqlcDB.GetLastSnapshot(ctx, sandboxID)
+func pauseHandleNotRunningSandbox(ctx context.Context, cache *snapshotcache.SnapshotCache, sandboxID string, teamID uuid.UUID) api.APIError {
+	// TODO: ENG-3544 scope GetLastSnapshot query by teamID to avoid post-fetch ownership check.
+	snap, err := cache.Get(ctx, sandboxID)
 	if err == nil {
 		if snap.Snapshot.TeamID != teamID {
+			logger.L().Debug(ctx, "Snapshot team mismatch on pause", logger.WithSandboxID(sandboxID), logger.WithTeamID(teamID.String()))
+
 			return api.APIError{
-				Code:      http.StatusForbidden,
-				ClientMsg: fmt.Sprintf("You don't have access to sandbox '%s'", sandboxID),
+				Code:      http.StatusNotFound,
+				ClientMsg: utils.SandboxNotFoundMsg(sandboxID),
 			}
 		}
 
@@ -91,12 +85,12 @@ func pauseHandleNotRunningSandbox(ctx context.Context, sqlcDB *sqlcdb.Client, sa
 		}
 	}
 
-	if errors.Is(err, sql.ErrNoRows) {
+	if errors.Is(err, snapshotcache.ErrSnapshotNotFound) {
 		logger.L().Debug(ctx, "Snapshot not found", logger.WithSandboxID(sandboxID))
 
 		return api.APIError{
 			Code:      http.StatusNotFound,
-			ClientMsg: fmt.Sprintf("Error pausing sandbox - snapshot for sandbox '%s' was not found", sandboxID),
+			ClientMsg: utils.SandboxNotFoundMsg(sandboxID),
 		}
 	}
 

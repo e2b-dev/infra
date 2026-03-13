@@ -179,7 +179,7 @@ func (so *SandboxObserver) startObserving() (metric.Registration, error) {
 						return err
 					}
 
-					attributes := metric.WithAttributes(attribute.String("sandbox_id", sbx.Runtime.SandboxID), attribute.String("team_id", sbx.Runtime.TeamID))
+					attributes := metric.WithAttributes(attribute.String("sandbox_id", sbx.Runtime.SandboxID), attribute.String("team_id", sbx.Runtime.TeamID), attribute.String("build_id", sbx.Runtime.BuildID), attribute.String("sandbox_type", sbx.Runtime.SandboxType.String()))
 
 					ok, err = utils.IsGTEVersion(sbx.Config.Envd.Version, minEnvVersionForMetricsTimestamp)
 					if err != nil {

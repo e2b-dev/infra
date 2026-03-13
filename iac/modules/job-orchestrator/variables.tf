@@ -1,7 +1,4 @@
-variable "git_commit_sha" {
-  description = "Git commit SHA of the deployment"
-  type        = string
-}
+
 
 variable "provider_name" {
   type        = string
@@ -21,6 +18,15 @@ variable "provider_aws_config" {
   default = {
     region                 = ""
     docker_repository_name = ""
+  }
+}
+
+variable "provider_gcp_config" {
+  type = object({
+    service_account_key = string
+  })
+  default = {
+    service_account_key = ""
   }
 }
 
@@ -93,6 +99,11 @@ variable "redis_tls_ca_base64" {
   sensitive = true
 }
 
+variable "redis_pool_size" {
+  type    = number
+  default = 10
+}
+
 variable "consul_token" {
   type      = string
   sensitive = true
@@ -126,4 +137,9 @@ variable "build_cache_bucket_name" {
 variable "use_local_namespace_storage" {
   type    = bool
   default = false
+}
+
+variable "persistent_volume_mounts" {
+  type    = map(string)
+  default = {}
 }

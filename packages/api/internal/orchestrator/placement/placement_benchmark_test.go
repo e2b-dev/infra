@@ -298,7 +298,7 @@ func runBenchmark(b *testing.B, algorithm Algorithm, config BenchmarkConfig) *Be
 						node, err := PlaceSandbox(ctx, algorithm, nodes, nil, &orchestratorgrpc.SandboxCreateRequest{Sandbox: &orchestratorgrpc.SandboxConfig{
 							Vcpu:  sbx.RequestedCPU,
 							RamMb: sbx.RequestedMemory,
-						}}, machineinfo.MachineInfo{})
+						}}, machineinfo.MachineInfo{}, false, nil)
 
 						placementTime := time.Since(placementStart)
 						sbx.PlacementLatency = placementTime

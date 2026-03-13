@@ -78,6 +78,10 @@ variable "ingress_port" {
   })
 }
 
+variable "additional_traefik_arguments" {
+  type = list(string)
+}
+
 variable "ingress_count" {
   type = number
 }
@@ -102,8 +106,33 @@ variable "sandbox_access_token_hash_seed" {
   type = string
 }
 
+variable "sandbox_storage_backend" {
+  type    = string
+  default = "memory"
+}
+
+variable "db_max_open_connections" {
+  type = number
+}
+
+variable "db_min_idle_connections" {
+  type = number
+}
+
+variable "auth_db_max_open_connections" {
+  type = number
+}
+
+variable "auth_db_min_idle_connections" {
+  type = number
+}
+
 variable "environment" {
   type = string
+}
+
+variable "api_server_count" {
+  type = number
 }
 
 variable "api_machine_count" {
@@ -411,5 +440,40 @@ variable "filestore_cache_cleanup_max_retries" {
 }
 
 variable "dockerhub_remote_repository_url" {
+  type = string
+}
+
+variable "persistent_volume_mounts" {
+  type = map(string)
+}
+
+variable "default_persistent_volume_type" {
+  type    = string
+  default = ""
+}
+
+# Dashboard API
+variable "dashboard_api_count" {
+  type    = number
+  default = 0
+}
+
+variable "volume_token_issuer" {
+  type = string
+}
+
+variable "volume_token_signing_key" {
+  type = string
+}
+
+variable "volume_token_signing_key_name" {
+  type = string
+}
+
+variable "volume_token_signing_method" {
+  type = string
+}
+
+variable "volume_token_duration" {
   type = string
 }

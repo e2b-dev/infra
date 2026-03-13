@@ -269,15 +269,25 @@ func (tm *TemplateManager) SetStatus(ctx context.Context, buildID uuid.UUID, sta
 	}
 
 	now := time.Now()
-	// first do database update to prevent race condition while calling status
-	err := tm.sqlcDB.UpdateEnvBuildStatus(ctx, queries.UpdateEnvBuildStatusParams{
-		Status:     buildStatus(statusGroup),
-		FinishedAt: &now,
-		Reason:     buildReason,
-		BuildID:    buildID,
-	})
 
-	tm.buildCache.SetStatus(ctx, buildID, statusGroup, buildReason)
+	var err error
+	if statusGroup.IsTerminal() {
+		err = tm.sqlcDB.FailTemplateBuildAndDeactivate(ctx, queries.FailTemplateBuildAndDeactivateParams{
+			Status:     buildStatus(statusGroup),
+			FinishedAt: &now,
+			Reason:     buildReason,
+			BuildID:    buildID,
+		})
+	} else {
+		err = tm.sqlcDB.UpdateEnvBuildStatus(ctx, queries.UpdateEnvBuildStatusParams{
+			Status:     buildStatus(statusGroup),
+			FinishedAt: &now,
+			Reason:     buildReason,
+			BuildID:    buildID,
+		})
+	}
+
+	tm.buildCache.Invalidate(ctx, buildID)
 
 	return err
 }
@@ -291,17 +301,10 @@ func (tm *TemplateManager) SetFinished(ctx context.Context, buildID uuid.UUID, r
 		EnvdVersion:     &envdVersion,
 		BuildID:         buildID,
 	})
-	if err != nil {
-		tm.buildCache.SetStatus(ctx, buildID, types.BuildStatusGroupFailed, types.BuildReason{
-			Message: fmt.Sprintf("error when finishing build: %s", err.Error()),
-		})
 
-		return err
-	}
+	tm.buildCache.Invalidate(ctx, buildID)
 
-	tm.buildCache.SetStatus(ctx, buildID, types.BuildStatusGroupReady, types.BuildReason{})
-
-	return nil
+	return err
 }
 
 // buildStatus maps a status group to a default build status for the database.

@@ -187,7 +187,7 @@ func TestSandboxResume_CrossTeamAccess_Paused(t *testing.T) {
 	// Try to resume the first team's sandbox using the second team's API key
 	resumeResp, err := c.PostSandboxesSandboxIDResumeWithResponse(t.Context(), sbx.SandboxID, api.PostSandboxesSandboxIDResumeJSONRequestBody{}, setup.WithAPIKey(foreignAPIKey))
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusForbidden, resumeResp.StatusCode(), "Should return 403 Forbidden when trying to connect to a sandbox owned by a different team")
+	assert.Equal(t, http.StatusNotFound, resumeResp.StatusCode(), "Should return 404 Not Found when trying to resume a paused sandbox owned by a different team")
 }
 
 func TestSandboxResume_CrossTeamAccess_Running(t *testing.T) {
@@ -206,5 +206,5 @@ func TestSandboxResume_CrossTeamAccess_Running(t *testing.T) {
 	// Try to resume the first team's sandbox using the second team's API key
 	resumeResp, err := c.PostSandboxesSandboxIDResumeWithResponse(t.Context(), sbx.SandboxID, api.PostSandboxesSandboxIDResumeJSONRequestBody{}, setup.WithAPIKey(foreignAPIKey))
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusForbidden, resumeResp.StatusCode(), "Should return 403 Forbidden when trying to connect to a sandbox owned by a different team")
+	assert.Equal(t, http.StatusNotFound, resumeResp.StatusCode(), "Should return 404 Not Found when trying to resume a sandbox owned by a different team")
 }

@@ -93,6 +93,42 @@ echo "Used memory after tmpfs mount and file fill: ${USED_MEM_MB_AFTER} MB"
 		}
 	})
 
+	t.Run("write after read survives pause", func(t *testing.T) {
+		t.Parallel()
+
+		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false))
+		sbxId := sbx.SandboxID
+		envdClient := setup.GetEnvdClient(t, t.Context())
+
+		exec := func(cmd string) string {
+			t.Helper()
+			out, err := utils.ExecCommandAsRootWithOutput(t, t.Context(), sbx, envdClient, "bash", "-c", cmd)
+			require.NoError(t, err)
+
+			return strings.TrimSpace(out)
+		}
+		pause := func() {
+			t.Helper()
+			resp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxId, setup.WithAPIKey())
+			require.NoError(t, err)
+			require.Equal(t, http.StatusNoContent, resp.StatusCode())
+		}
+		resume := func() {
+			t.Helper()
+			r, err := c.PostSandboxesSandboxIDResumeWithResponse(t.Context(), sbxId, api.PostSandboxesSandboxIDResumeJSONRequestBody{}, setup.WithAPIKey())
+			require.NoError(t, err)
+			require.Equal(t, http.StatusCreated, r.StatusCode())
+		}
+
+		exec(`echo -n A > /tmp/v`)
+		pause()
+		resume()
+		exec(`cat /tmp/v > /dev/null && echo -n B > /tmp/v`)
+		pause()
+		resume()
+		assert.Equal(t, "B", exec(`cat /tmp/v`))
+	})
+
 	t.Run("stress-ng verify", func(t *testing.T) {
 		t.Parallel()
 

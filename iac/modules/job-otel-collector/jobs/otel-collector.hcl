@@ -1,8 +1,5 @@
 job "otel-collector" {
-  meta {
-    git_commit_sha = "${git_commit_sha}"
-  }
-  type        = "system"
+type        = "system"
   node_pool   = "all"
 
   priority = 95

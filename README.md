@@ -13,6 +13,6 @@ Read the [self-hosting guide](./self-host.md) to learn how to set up the infrast
 
 Supported cloud providers:
 - 🟢 GCP
-- 🚧 AWS
+- 🟢 AWS (Beta)
 - [ ] Azure
 - [ ] General linux machine

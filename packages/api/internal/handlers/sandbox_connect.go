@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"database/sql"
 	"errors"
 	"fmt"
 	"net/http"
@@ -12,10 +11,10 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/auth"
+	snapshotcache "github.com/e2b-dev/infra/packages/api/internal/cache/snapshots"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	typesteam "github.com/e2b-dev/infra/packages/auth/pkg/types"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -26,7 +25,7 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 	ctx := c.Request.Context()
 
 	// Get team from context, use TeamContextKey
-	teamInfo := c.Value(auth.TeamContextKey).(*typesteam.Team)
+	teamInfo := auth.MustGetTeamInfo(c)
 
 	span := trace.SpanFromContext(ctx)
 	traceID := span.SpanContext().TraceID().String()
@@ -51,60 +50,68 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 	}
 
 	teamID := teamInfo.Team.ID
-	sandboxID = utils.ShortID(sandboxID)
-	sandboxData, err := a.orchestrator.GetSandbox(ctx, teamID, sandboxID)
-	if err == nil {
-		if sandboxData.TeamID != teamID {
-			a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox \"%s\"", sandboxID))
 
-			return
-		}
+	sandboxID, err = utils.ShortID(sandboxID)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid sandbox ID")
 
-		switch sandboxData.State {
-		case sandbox.StatePausing:
-			logger.L().Debug(ctx, "Waiting for sandbox to pause", logger.WithSandboxID(sandboxID))
-			err = a.orchestrator.WaitForStateChange(ctx, teamID, sandboxID)
-			if err != nil {
-				a.sendAPIStoreError(c, http.StatusInternalServerError, "Error waiting for sandbox to pause")
-
-				return
-			}
-		case sandbox.StateKilling:
-			a.sendAPIStoreError(c, http.StatusNotFound, "Sandbox can't be resumed, no snapshot found")
-
-			return
-		case sandbox.StateRunning:
-			logger.L().Debug(ctx, "Sandbox is already running",
-				logger.WithSandboxID(sandboxID),
-				zap.Time("end_time", sandboxData.EndTime),
-				zap.Time("start_time", sandboxData.StartTime),
-				zap.String("node_id", sandboxData.NodeID),
-			)
-
-			apiErr := a.orchestrator.KeepAliveFor(ctx, teamID, sandboxID, timeout, false)
-			if apiErr != nil {
-				logger.L().Error(ctx, "Error when resuming sandbox", zap.Error(apiErr.Err))
-				a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
-
-				return
-			}
-
-			c.JSON(http.StatusOK, sandboxData.ToAPISandbox())
-
-			return
-		default:
-			logger.L().Error(ctx, "Sandbox is in an unknown state", logger.WithSandboxID(sandboxID), zap.String("state", string(sandboxData.State)))
-			a.sendAPIStoreError(c, http.StatusInternalServerError, "Sandbox is in an unknown state")
-
-			return
-		}
+		return
 	}
 
-	lastSnapshot, err := a.sqlcDB.GetLastSnapshot(ctx, sandboxID)
+	// It could happen that after sandbox transition, it'll be again transitioning, retry up to maxConnectRetries times.
+	const maxConnectRetries = 3
+
+	for attempt := range maxConnectRetries {
+		sbx, apiErr := a.orchestrator.KeepAliveFor(ctx, teamID, sandboxID, timeout, false)
+		if apiErr == nil {
+			c.JSON(http.StatusOK, sbx.ToAPISandbox())
+
+			return
+		}
+
+		// Sandbox not in store at all → fall through to snapshot resume.
+		var notFoundErr *sandbox.NotFoundError
+		if errors.As(apiErr.Err, &notFoundErr) {
+			break
+		}
+
+		// Sandbox exists but isn't running → check which transitional state.
+		var notRunningErr *sandbox.NotRunningError
+		if !errors.As(apiErr.Err, &notRunningErr) {
+			a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+
+			return
+		}
+
+		if notRunningErr.State == sandbox.StateKilling {
+			a.sendAPIStoreError(c, http.StatusConflict, utils.SandboxChangingStateMsg(sandboxID, notRunningErr.State))
+
+			return
+		}
+
+		logger.L().Info(ctx, "Sandbox not running, waiting for state change",
+			logger.WithSandboxID(sandboxID),
+			zap.String("state", string(notRunningErr.State)),
+			zap.Int("attempt", attempt+1),
+		)
+
+		err = a.orchestrator.WaitForStateChange(ctx, teamID, sandboxID)
+		if err != nil {
+			a.sendAPIStoreError(c, http.StatusInternalServerError,
+				"Error waiting for sandbox state change")
+
+			return
+		}
+
+		continue
+	}
+
+	// TODO: ENG-3544 scope GetLastSnapshot query by teamID to avoid post-fetch ownership check.
+	lastSnapshot, err := a.snapshotCache.Get(ctx, sandboxID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, snapshotcache.ErrSnapshotNotFound) {
 			logger.L().Debug(ctx, "Snapshot not found", logger.WithSandboxID(sandboxID))
-			a.sendAPIStoreError(c, http.StatusNotFound, "Sandbox can't be resumed, no snapshot found")
+			a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(sandboxID))
 
 			return
 		}
@@ -117,7 +124,7 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 
 	if lastSnapshot.Snapshot.TeamID != teamID {
 		telemetry.ReportError(ctx, fmt.Sprintf("snapshot for sandbox '%s' doesn't belong to team '%s'", sandboxID, teamID.String()), nil)
-		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox \"%s\"", sandboxID))
+		a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(sandboxID))
 
 		return
 	}

@@ -435,6 +435,7 @@ func TestAdd_ConcurrentCalls(t *testing.T) {
 		}
 		store := sandbox.NewStore(storage, reservations, callbacks)
 
+		teamID := uuid.New()
 		var wg sync.WaitGroup
 		errorsChan := make(chan error, numGoroutines)
 
@@ -445,6 +446,7 @@ func TestAdd_ConcurrentCalls(t *testing.T) {
 				defer wg.Done()
 				sbx := createTestSandbox()
 				sbx.SandboxID = fmt.Sprintf("concurrent-sandbox-%d", id)
+				sbx.TeamID = teamID
 				err := store.Add(ctx, sbx, true)
 				if err != nil {
 					errorsChan <- err
@@ -473,7 +475,7 @@ func TestAdd_ConcurrentCalls(t *testing.T) {
 		// Verify all sandboxes are in storage
 		for i := range numGoroutines {
 			sandboxID := fmt.Sprintf("concurrent-sandbox-%d", i)
-			_, err := storage.Get(ctx, uuid.UUID{}, sandboxID)
+			_, err := storage.Get(ctx, teamID, sandboxID)
 			assert.NoError(t, err, "expected sandbox %s to be in storage", sandboxID)
 		}
 	})

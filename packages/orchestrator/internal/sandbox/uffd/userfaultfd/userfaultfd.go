@@ -253,7 +253,7 @@ outerLoop:
 	}
 }
 
-func (u *Userfaultfd) Dirty() *block.Tracker {
+func (u *Userfaultfd) faulted() *block.Tracker {
 	// This will be at worst cancelled when the uffd is closed.
 	u.settleRequests.Lock()
 	// The locking here would work even without using defer (just lock-then-unlock the mutex), but at this point let's make it lock to the clone,
@@ -348,6 +348,13 @@ func (u *Userfaultfd) faultPage(
 
 	var copyMode CULong
 
+	// Performing copy() on UFFD clears the WP bit unless we explicitly tell
+	// it not to. We do that for faults caused by a read access. Write accesses
+	// would anyways cause clear the write-protection bit.
+	if accessType != block.Write {
+		copyMode |= UFFDIO_COPY_MODE_WP
+	}
+
 	copyErr := u.fd.copy(addr, pagesize, b, copyMode)
 	if errors.Is(copyErr, unix.EEXIST) {
 		// Page is already mapped
@@ -367,7 +374,7 @@ func (u *Userfaultfd) faultPage(
 		span.RecordError(joinedErr)
 		u.logger.Error(ctx, "UFFD serve uffdio copy error", zap.Error(joinedErr))
 
-		return fmt.Errorf("failed uffdio copy %w", joinedErr)
+		return fmt.Errorf("failed uffdio copy: %w", joinedErr)
 	}
 
 	// Add the offset to the missing requests tracker with metadata.

@@ -17,6 +17,7 @@ type Template interface {
 	Rootfs() (block.ReadonlyDevice, error)
 	Snapfile() (File, error)
 	Metadata() (metadata.Template, error)
+	UpdateMetadata(meta metadata.Template) error
 	Close(ctx context.Context) error
 }
 

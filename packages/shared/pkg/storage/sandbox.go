@@ -58,3 +58,11 @@ func (s *SandboxFiles) SandboxUffdSocketPath() string {
 func (s *SandboxFiles) SandboxCacheRootfsLinkPath(config Config) string {
 	return filepath.Join(config.SandboxCacheDir, fmt.Sprintf("rootfs-%s-%s.link", s.SandboxID, s.randomID))
 }
+
+func (s *SandboxFiles) SandboxMetricsFifoPath() string {
+	return filepath.Join(s.tmpDir, fmt.Sprintf("fc-metrics-%s-%s.fifo", s.SandboxID, s.randomID))
+}
+
+func (s *SandboxFiles) SandboxCgroupName() string {
+	return fmt.Sprintf("sbx-%s-%s", s.SandboxID, s.randomID)
+}

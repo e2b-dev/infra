@@ -13,7 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 )
 
-func ResponseMapper(ctx context.Context, res *loghttp.QueryResponse, offset int32, level *logs.LogLevel, direction logproto.Direction) ([]logs.LogEntry, error) {
+func ResponseMapper(ctx context.Context, res *loghttp.QueryResponse, offset int32, direction logproto.Direction) ([]logs.LogEntry, error) {
 	logsCrawled := int32(0)
 	logEntries := make([]logs.LogEntry, 0)
 
@@ -31,11 +31,6 @@ func ResponseMapper(ctx context.Context, res *loghttp.QueryResponse, offset int3
 			levelName := "info"
 			if ll, ok := fields["level"]; ok {
 				levelName = ll
-			}
-
-			// Skip logs that are below the specified level
-			if level != nil && logs.CompareLevels(levelName, logs.LevelToString(*level)) < 0 {
-				continue
 			}
 
 			// loki does not support offset pagination, so we need to skip logs manually

@@ -14,10 +14,9 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/e2b-dev/infra/packages/auth/pkg/types"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
@@ -45,18 +44,42 @@ func (a *APIStore) getPausedSandboxes(
 		queryMetadata = *metadataFilter
 	}
 
+	// Over-fetch to account for rows filtered out by the exclude set below.
+	// This replaces the SQL-side NOT (sandbox_id = ANY(array)) which is
+	// O(rows × array_size) and caused 40s+ query times with large arrays.
+	dbLimit := queryLimit + int32(len(runningSandboxesIDs))
+
 	snapshots, err := a.sqlcDB.GetSnapshotsWithCursor(
 		ctx, queries.GetSnapshotsWithCursorParams{
-			Limit:                 queryLimit,
-			TeamID:                teamID,
-			Metadata:              queryMetadata,
-			CursorTime:            pgtype.Timestamptz{Time: cursorTime, Valid: true},
-			CursorID:              cursorID,
-			SnapshotExcludeSbxIds: runningSandboxesIDs,
+			Limit:      dbLimit,
+			TeamID:     teamID,
+			Metadata:   queryMetadata,
+			CursorTime: pgtype.Timestamptz{Time: cursorTime, Valid: true},
+			CursorID:   cursorID,
 		},
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error getting team snapshots: %w", err)
+	}
+
+	if len(runningSandboxesIDs) > 0 {
+		excludeSet := make(map[string]struct{}, len(runningSandboxesIDs))
+		for _, id := range runningSandboxesIDs {
+			excludeSet[id] = struct{}{}
+		}
+
+		filtered := snapshots[:0]
+		for _, s := range snapshots {
+			if _, excluded := excludeSet[s.Snapshot.SandboxID]; !excluded {
+				filtered = append(filtered, s)
+			}
+		}
+
+		snapshots = filtered
+	}
+
+	if int32(len(snapshots)) > queryLimit {
+		snapshots = snapshots[:queryLimit]
 	}
 
 	sandboxes := snapshotsToPaginatedSandboxes(ctx, snapshots)
@@ -78,7 +101,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 	ctx := c.Request.Context()
 	telemetry.ReportEvent(ctx, "list sandboxes")
 
-	teamInfo := c.Value(auth.TeamContextKey).(*types.Team)
+	teamInfo := auth.MustGetTeamInfo(c)
 	team := teamInfo.Team
 
 	a.posthog.IdentifyAnalyticsTeam(ctx, team.ID.String(), team.Name)
@@ -113,7 +136,7 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 	ctx := c.Request.Context()
 	telemetry.ReportEvent(ctx, "list sandboxes")
 
-	teamInfo := c.Value(auth.TeamContextKey).(*types.Team)
+	teamInfo := auth.MustGetTeamInfo(c)
 	team := teamInfo.Team
 
 	a.posthog.IdentifyAnalyticsTeam(ctx, team.ID.String(), team.Name)
@@ -192,10 +215,10 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 		// Running Sandbox IDs
 		runningSandboxesIDs := make([]string, 0)
 		for _, info := range runningSandboxes {
-			runningSandboxesIDs = append(runningSandboxesIDs, utils.ShortID(info.SandboxID))
+			runningSandboxesIDs = append(runningSandboxesIDs, info.SandboxID)
 		}
 		for _, info := range pausingSandboxes {
-			runningSandboxesIDs = append(runningSandboxesIDs, utils.ShortID(info.SandboxID))
+			runningSandboxesIDs = append(runningSandboxesIDs, info.SandboxID)
 		}
 
 		pausedSandboxList, err := a.getPausedSandboxes(ctx, team.ID, runningSandboxesIDs, metadataFilter, pagination.QueryLimit(), pagination.CursorTime(), pagination.CursorID())
@@ -230,7 +253,6 @@ func snapshotsToPaginatedSandboxes(ctx context.Context, snapshots []queries.GetS
 	// Add snapshots to results
 	for _, record := range snapshots {
 		snapshot := record.Snapshot
-		build := record.EnvBuild
 
 		var alias *string
 		if len(record.Aliases) > 0 {
@@ -238,15 +260,15 @@ func snapshotsToPaginatedSandboxes(ctx context.Context, snapshots []queries.GetS
 		}
 
 		diskSize := int32(0)
-		if build.TotalDiskSizeMb != nil {
-			diskSize = int32(*build.TotalDiskSizeMb)
+		if record.BuildTotalDiskSizeMb != nil {
+			diskSize = int32(*record.BuildTotalDiskSizeMb)
 		} else {
 			logger.L().Error(ctx, "disk size is not set for the sandbox", logger.WithSandboxID(snapshot.SandboxID))
 		}
 
 		envdVersion := ""
-		if build.EnvdVersion != nil {
-			envdVersion = *build.EnvdVersion
+		if record.BuildEnvdVersion != nil {
+			envdVersion = *record.BuildEnvdVersion
 		} else {
 			logger.L().Error(ctx, "envd version is not set for the sandbox", logger.WithSandboxID(snapshot.SandboxID))
 		}
@@ -258,10 +280,10 @@ func snapshotsToPaginatedSandboxes(ctx context.Context, snapshots []queries.GetS
 				TemplateID:  snapshot.BaseEnvID,
 				SandboxID:   snapshot.SandboxID,
 				StartedAt:   snapshot.SandboxStartedAt.Time,
-				CpuCount:    int32(build.Vcpu),
-				MemoryMB:    int32(build.RamMb),
+				CpuCount:    int32(record.BuildVcpu),
+				MemoryMB:    int32(record.BuildRamMb),
 				DiskSizeMB:  diskSize,
-				EndAt:       snapshot.CreatedAt.Time,
+				EndAt:       record.BuildCreatedAt,
 				State:       api.Paused,
 				EnvdVersion: envdVersion,
 			},
@@ -323,7 +345,7 @@ func instanceInfoToPaginatedSandboxes(runningSandboxes []sandbox.Sandbox) []util
 	return sandboxes
 }
 
-func convertFromDBMountsToAPIMounts(mounts []*dbtypes.SandboxVolumeMountConfig) []api.SandboxVolumeMount {
+func convertFromDBMountsToAPIMounts(mounts []*dbtypes.SandboxVolumeMountConfig) *[]api.SandboxVolumeMount {
 	results := make([]api.SandboxVolumeMount, 0, len(mounts))
 
 	for _, item := range mounts {
@@ -333,5 +355,7 @@ func convertFromDBMountsToAPIMounts(mounts []*dbtypes.SandboxVolumeMountConfig) 
 		})
 	}
 
-	return results
+	// this intentionally returns a pointer to the slice.
+	// generated code adds `omitempty` for backwards compatibility reasons; we should always return a slice here.
+	return &results
 }

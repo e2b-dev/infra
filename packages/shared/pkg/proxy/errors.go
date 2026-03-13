@@ -4,7 +4,10 @@ import (
 	"errors"
 )
 
-var ErrInvalidHost = errors.New("invalid url host")
+var (
+	ErrInvalidHost      = errors.New("invalid url host")
+	ErrInvalidSandboxID = errors.New("invalid sandbox ID")
+)
 
 type InvalidSandboxPortError struct {
 	Port    string
@@ -77,4 +80,20 @@ func NewErrInvalidTrafficAccessToken(sandboxId string, header string) *InvalidTr
 		SandboxId: sandboxId,
 		Header:    header,
 	}
+}
+
+type SandboxResourceExhaustedError struct {
+	SandboxId string
+	Message   string
+}
+
+func NewErrSandboxResourceExhausted(sandboxId string, message string) *SandboxResourceExhaustedError {
+	return &SandboxResourceExhaustedError{
+		SandboxId: sandboxId,
+		Message:   message,
+	}
+}
+
+func (e SandboxResourceExhaustedError) Error() string {
+	return "sandbox resource exhausted"
 }

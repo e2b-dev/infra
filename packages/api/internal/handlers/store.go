@@ -16,7 +16,7 @@ import (
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/auth"
+	snapshotcache "github.com/e2b-dev/infra/packages/api/internal/cache/snapshots"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/api/internal/clusters"
@@ -32,7 +32,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/pkg/pool"
 	"github.com/e2b-dev/infra/packages/shared/pkg/apierrors"
 	"github.com/e2b-dev/infra/packages/shared/pkg/factories"
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs/loki"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -52,6 +52,7 @@ type APIStore struct {
 	redisClient          redis.UniversalClient
 	templateCache        *templatecache.TemplateCache
 	templateBuildsCache  *templatecache.TemplatesBuildCache
+	snapshotCache        *snapshotcache.SnapshotCache
 	authService          *sharedauth.AuthService[*types.Team]
 	templateSpawnCounter *utils.TemplateSpawnCounter
 	clickhouseStore      clickhouse.Clickhouse
@@ -60,10 +61,10 @@ type APIStore struct {
 	clusters             *clusters.Pool
 }
 
-func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) *APIStore {
+func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config, serviceName string) *APIStore {
 	logger.L().Info(ctx, "Initializing API store and services")
 
-	sqlcDB, err := sqlcdb.NewClient(ctx, config.PostgresConnectionString, pool.WithMaxConnections(40), pool.WithMinIdle(5))
+	sqlcDB, err := sqlcdb.NewClient(ctx, config.PostgresConnectionString, pool.WithMaxConnections(config.DBMaxOpenConnections), pool.WithMinIdle(config.DBMinIdleConnections))
 	if err != nil {
 		logger.L().Fatal(ctx, "Initializing SQLC client", zap.Error(err))
 	}
@@ -111,6 +112,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 		RedisURL:         config.RedisURL,
 		RedisClusterURL:  config.RedisClusterURL,
 		RedisTLSCABase64: config.RedisTLSCABase64,
+		PoolSize:         config.RedisPoolSize,
 	})
 	if err != nil {
 		logger.L().Fatal(ctx, "Initializing Redis client", zap.Error(err))
@@ -131,12 +133,17 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 		logger.L().Fatal(ctx, "failed to create feature flags client", zap.Error(err))
 	}
 
+	featureFlags.SetServiceName(serviceName)
+	featureFlags.SetDeploymentName(config.DomainName)
+
 	accessTokenGenerator, err := sandbox.NewAccessTokenGenerator(config.SandboxAccessTokenHashSeed)
 	if err != nil {
 		logger.L().Fatal(ctx, "Initializing access token generator failed", zap.Error(err))
 	}
 
-	orch, err := orchestrator.New(ctx, config, tel, nomadClient, posthogClient, redisClient, sqlcDB, clusters, featureFlags, accessTokenGenerator)
+	snapshotCache := snapshotcache.NewSnapshotCache(sqlcDB, redisClient)
+
+	orch, err := orchestrator.New(ctx, config, tel, nomadClient, posthogClient, redisClient, sqlcDB, clusters, featureFlags, accessTokenGenerator, snapshotCache)
 	if err != nil {
 		logger.L().Fatal(ctx, "Initializing Orchestrator client", zap.Error(err))
 	}
@@ -166,6 +173,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 		posthog:              posthogClient,
 		templateCache:        templateCache,
 		templateBuildsCache:  templateBuildsCache,
+		snapshotCache:        snapshotCache,
 		authService:          authService,
 		templateSpawnCounter: templateSpawnCounter,
 		clickhouseStore:      clickhouseStore,
@@ -236,6 +244,10 @@ func (a *APIStore) Close(ctx context.Context) error {
 		}
 	}
 
+	if err := a.snapshotCache.Close(ctx); err != nil {
+		errs = append(errs, fmt.Errorf("closing snapshot cache: %w", err))
+	}
+
 	if a.redisClient != nil {
 		if err := a.redisClient.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("closing redis client: %w", err))
@@ -285,5 +297,5 @@ func (a *APIStore) GetTeamFromSupabaseToken(ctx context.Context, ginCtx *gin.Con
 	ctx, span := tracer.Start(ctx, "get team from supabase token")
 	defer span.End()
 
-	return a.authService.ValidateSupabaseTeam(ctx, ginCtx, teamID, auth.UserIDContextKey)
+	return a.authService.ValidateSupabaseTeam(ctx, ginCtx, teamID)
 }
