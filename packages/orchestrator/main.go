@@ -541,7 +541,7 @@ func run(config cfg.Config) (success bool) {
 	var tmpl *tmplserver.ServerStore
 	var localUploadHandler *localupload.Handler
 	if slices.Contains(services, cfg.TemplateManager) {
-		buildPersistence, uploadHandler, err := setupBuildStorage(ctx, limiter, config.GRPCPort)
+		buildPersistence, uploadHandler, err := setupBuildStorage(ctx, limiter, config)
 		if err != nil {
 			logger.L().Fatal(ctx, "failed to setup build storage", zap.Error(err))
 		}
@@ -765,7 +765,7 @@ func (e serviceDoneError) Error() string {
 // setupBuildStorage creates the build cache storage provider and, when using
 // local filesystem storage, the HTTP upload handler that accepts file uploads
 // for COPY instructions. The returned handler is nil for non-local providers.
-func setupBuildStorage(ctx context.Context, limiter *limit.Limiter, grpcPort uint16) (storage.StorageProvider, *localupload.Handler, error) {
+func setupBuildStorage(ctx context.Context, limiter *limit.Limiter, orchConfig cfg.Config) (storage.StorageProvider, *localupload.Handler, error) {
 	cfg := storage.BuildCacheStorageConfig.WithLimiter(limiter)
 
 	var uploadHandler *localupload.Handler
@@ -776,7 +776,11 @@ func setupBuildStorage(ctx context.Context, limiter *limit.Limiter, grpcPort uin
 			return nil, nil, fmt.Errorf("generate HMAC key: %w", err)
 		}
 
-		uploadBaseURL := env.GetEnv("LOCAL_UPLOAD_BASE_URL", fmt.Sprintf("http://localhost:%d", grpcPort))
+		uploadBaseURL := orchConfig.LocalUploadBaseURL
+		if uploadBaseURL == "" {
+			uploadBaseURL = fmt.Sprintf("http://localhost:%d", orchConfig.GRPCPort)
+		}
+
 		cfg = cfg.WithLocalUpload(uploadBaseURL, hmacKey)
 
 		basePath := cfg.GetLocalBasePath()
