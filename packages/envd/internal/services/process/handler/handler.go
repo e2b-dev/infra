@@ -151,8 +151,17 @@ func New(
 		}
 		unitName := fmt.Sprintf("e2b-%s-%d.service", procTypeStr, time.Now().UnixNano())
 
+		// Use --pty for PTY requests so the service gets a real terminal,
+		// and --pipe for non-PTY requests where stdin/stdout are plain streams.
+		// With --pipe, the service's stdio are pipes which breaks terminal
+		// features (job control, tty detection) when envd allocates a PTY.
+		stdioPipe := "--pipe"
+		if req.GetPty() != nil {
+			stdioPipe = "--pty"
+		}
+
 		cmdArgs := []string{
-			"--pipe",
+			stdioPipe,
 			"--quiet",
 			"--unit=" + unitName,
 			"--slice=" + sliceName,
