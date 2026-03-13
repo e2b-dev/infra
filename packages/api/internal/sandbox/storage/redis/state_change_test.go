@@ -940,6 +940,7 @@ func TestStartRemoving_Eviction(t *testing.T) {
 		// (simulating KeepAliveFor extending EndTime).
 		_, updateErr := storage.Update(ctx, sbx.TeamID, sbx.SandboxID, func(s sandbox.Sandbox) (sandbox.Sandbox, error) {
 			s.EndTime = time.Now().Add(time.Hour)
+
 			return s, nil
 		})
 		require.NoError(t, updateErr)
