@@ -37,4 +37,4 @@ func (e *NotRunningError) Error() string {
 
 var ErrAlreadyExists = errors.New("sandbox already exists")
 
-var ErrNotEvictable = errors.New("sandbox is not expirable")
+var ErrNotEvictable = errors.New("sandbox is not evictable")
