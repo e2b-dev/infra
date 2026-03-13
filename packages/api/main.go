@@ -88,6 +88,23 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 	r.Use(gin.Recovery())
 
 	r.Use(
+		// We use custom otel gin middleware because we want to log 4xx errors in the otel
+		customMiddleware.ExcludeRoutes(
+			tracingMiddleware.Middleware(tel.TracerProvider, serviceName), //nolint:contextcheck // TODO: fix this later
+			"/health",
+			"/sandboxes/:sandboxID/refreshes",
+			"/templates/:templateID/builds/:buildID/logs",
+			"/templates/:templateID/builds/:buildID/status",
+		),
+		customMiddleware.IncludeRoutes(
+			metricsMiddleware.Middleware(tel.MeterProvider, serviceName), //nolint:contextcheck // TODO: fix this later
+			"/sandboxes",
+			"/sandboxes/:sandboxID",
+			"/sandboxes/:sandboxID/pause",
+			"/sandboxes/:sandboxID/connect",
+			"/sandboxes/:sandboxID/resume",
+			"/sandboxes/:sandboxID/snapshots",
+		),
 		sharedmiddleware.LoggingMiddleware(l, sharedmiddleware.Config{
 			TimeFormat:   time.RFC3339Nano,
 			UTC:          true,
@@ -111,23 +128,6 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 				return nil
 			},
 		}),
-		// We use custom otel gin middleware because we want to log 4xx errors in the otel
-		customMiddleware.ExcludeRoutes(
-			tracingMiddleware.Middleware(tel.TracerProvider, serviceName), //nolint:contextcheck // TODO: fix this later
-			"/health",
-			"/sandboxes/:sandboxID/refreshes",
-			"/templates/:templateID/builds/:buildID/logs",
-			"/templates/:templateID/builds/:buildID/status",
-		),
-		customMiddleware.IncludeRoutes(
-			metricsMiddleware.Middleware(tel.MeterProvider, serviceName), //nolint:contextcheck // TODO: fix this later
-			"/sandboxes",
-			"/sandboxes/:sandboxID",
-			"/sandboxes/:sandboxID/pause",
-			"/sandboxes/:sandboxID/connect",
-			"/sandboxes/:sandboxID/resume",
-			"/sandboxes/:sandboxID/snapshots",
-		),
 		gin.Recovery(),
 		customMiddleware.RequestTimeout(requestTimeout), //nolint:contextcheck // Gin middleware sets context via c.Request.WithContext
 	)

@@ -35,7 +35,7 @@ func TestRequestTimeout_SetsDeadline(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 }
 
-func TestRequestTimeout_Returns503WhenHandlerDoesNotWrite(t *testing.T) {
+func TestRequestTimeout_Returns408WhenHandlerDoesNotWrite(t *testing.T) {
 	t.Parallel()
 
 	r := gin.New()
@@ -52,7 +52,7 @@ func TestRequestTimeout_Returns503WhenHandlerDoesNotWrite(t *testing.T) {
 	elapsed := time.Since(start)
 
 	assert.Less(t, elapsed, 500*time.Millisecond, "should have timed out promptly")
-	require.Equal(t, http.StatusServiceUnavailable, w.Code)
+	require.Equal(t, http.StatusRequestTimeout, w.Code)
 	assert.Equal(t, "request timed out", w.Body.String())
 }
 
