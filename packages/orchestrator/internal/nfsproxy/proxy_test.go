@@ -26,10 +26,10 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 )
 
-func createVolumeDir(t *testing.T, builder *chrooted.Builder, volumeTypePath string, teamID, volumeID uuid.UUID) {
+func createVolumeDir(t *testing.T, builder *chrooted.Builder, volumeType string, teamID, volumeID uuid.UUID) {
 	t.Helper()
 
-	fullVolumePath, err := builder.BuildVolumePath(volumeTypePath, teamID, volumeID)
+	fullVolumePath, err := builder.BuildVolumePath(volumeType, teamID, volumeID)
 	require.NoError(t, err)
 
 	t.Logf("creating volume dir: %s", fullVolumePath)
@@ -71,8 +71,8 @@ func TestRoundTrip(t *testing.T) {
 
 	builder := chrooted.NewBuilder(config)
 
-	createVolumeDir(t, builder, volPath1, teamID, volID1)
-	createVolumeDir(t, builder, volPath1, teamID, volID2)
+	createVolumeDir(t, builder, volType1, teamID, volID1)
+	createVolumeDir(t, builder, volType1, teamID, volID2)
 
 	slot := &network.Slot{Key: "abc", HostIP: net.IPv4(127, 0, 0, 1)}
 	require.Equal(t, "127.0.0.1", slot.HostIP.String(), "required for the test to work")
