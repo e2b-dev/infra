@@ -52,7 +52,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	event "github.com/e2b-dev/infra/packages/shared/pkg/events"
 	sharedFactories "github.com/e2b-dev/infra/packages/shared/pkg/factories"
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
