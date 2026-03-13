@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
@@ -34,13 +33,8 @@ func setupTestService(t *testing.T) (*Service, string, *orchestrator.VolumeInfo)
 		},
 	}
 
-	tracker := chrooted.NewTracker(nil, config)
-	t.Cleanup(func() {
-		err := tracker.Stop()
-		assert.NoError(t, err)
-	})
-
-	s := New(config, tracker)
+	builder := chrooted.NewBuilder(config)
+	s := New(config, builder)
 
 	volumeInfo := &orchestrator.VolumeInfo{
 		VolumeType: volumeType,

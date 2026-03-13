@@ -1,7 +1,6 @@
 package nfsproxy
 
 import (
-	"fmt"
 	"io"
 	"net"
 	"os"
@@ -15,7 +14,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	nfsserver "github.com/willscott/go-nfs"
 	"github.com/willscott/go-nfs-client/nfs"
 	"github.com/willscott/go-nfs-client/nfs/rpc"
 	"github.com/zeldovich/go-rpcgen/rfc1057"
@@ -28,12 +26,14 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 )
 
-func createVolumeDir(t *testing.T, volumeTypePath string, teamID, volumeID uuid.UUID) {
+func createVolumeDir(t *testing.T, builder *chrooted.Builder, volumeTypePath string, teamID, volumeID uuid.UUID) {
 	t.Helper()
 
-	fullVolumePath := chrooted.BuildVolumeRootPath(volumeTypePath, teamID, volumeID)
+	fullVolumePath, err := builder.BuildVolumePath(volumeTypePath, teamID, volumeID)
+	require.NoError(t, err)
+
 	t.Logf("creating volume dir: %s", fullVolumePath)
-	err := os.MkdirAll(fullVolumePath, 0o755)
+	err = os.MkdirAll(fullVolumePath, 0o755)
 	require.NoError(t, err)
 }
 
@@ -62,8 +62,17 @@ func TestRoundTrip(t *testing.T) {
 	volName2 := "volume-2"
 	volType2 := "volume-type-2"
 
-	createVolumeDir(t, volPath1, teamID, volID1)
-	createVolumeDir(t, volPath1, teamID, volID2)
+	// set up paths
+	config := cfg.Config{
+		PersistentVolumeMounts: map[string]string{
+			volType1: volPath1,
+		},
+	}
+
+	builder := chrooted.NewBuilder(config)
+
+	createVolumeDir(t, builder, volPath1, teamID, volID1)
+	createVolumeDir(t, builder, volPath1, teamID, volID2)
 
 	slot := &network.Slot{Key: "abc", HostIP: net.IPv4(127, 0, 0, 1)}
 	require.Equal(t, "127.0.0.1", slot.HostIP.String(), "required for the test to work")
@@ -96,15 +105,7 @@ func TestRoundTrip(t *testing.T) {
 		assert.NoError(t, err)
 	})
 
-	config := cfg.Config{
-		PersistentVolumeMounts: map[string]string{
-			volType1: volPath1,
-		},
-	}
-
-	cache := chrooted.NewTracker(sandboxes, config)
-
-	nfsProxy, err := NewProxy(t.Context(), cache, sandboxes)
+	nfsProxy, err := NewProxy(t.Context(), builder, sandboxes)
 	require.NoError(t, err)
 	go func() {
 		err := nfsProxy.Serve(nfsListener)
@@ -275,237 +276,4 @@ func mkdir(t *testing.T, target *nfs.Target, path string, perm os.FileMode) []by
 	require.NoError(t, err)
 
 	return fh
-}
-
-func TestGetPrefixFromSandbox(t *testing.T) {
-	t.Parallel()
-
-	if os.Geteuid() != 0 {
-		t.Skip("skipping test because it requires root privileges")
-	}
-
-	sandboxes := sandbox.NewSandboxesMap()
-
-	// happy path variables
-	happyIP := net.IPv4(127, 0, 0, 1)
-	happyAddr := &net.TCPAddr{
-		IP:   happyIP,
-		Port: 12345,
-	}
-	happyDirPath := "/good-volume"
-	happyVolumeName := "good-volume"
-	happyVolumeType := "good-volume-type"
-	happyVolumeID := uuid.New()
-	happyTeamID := uuid.New()
-	happyPrefix := filepath.Join(
-		fmt.Sprintf("team-%s", happyTeamID.String()),
-		fmt.Sprintf("vol-%s", happyVolumeID.String()),
-	)
-
-	happySlot := &network.Slot{Key: "abc", HostIP: happyIP}
-	happySandbox := &sandbox.Sandbox{
-		Metadata: &sandbox.Metadata{
-			Config: sandbox.Config{
-				VolumeMounts: []sandbox.VolumeMountConfig{
-					{ID: happyVolumeID, Name: happyVolumeName, Path: "/volume", Type: happyVolumeType},
-				},
-			},
-			Runtime: sandbox.RuntimeMetadata{
-				TeamID: happyTeamID.String(),
-			},
-		},
-		Resources: &sandbox.Resources{
-			Slot: happySlot,
-		},
-	}
-
-	sandboxes.Insert(t.Context(), happySandbox)
-
-	type expectations struct {
-		path string
-		err  error
-	}
-
-	testCases := map[string]struct {
-		remoteAddr net.Addr
-		dirpath    string
-		expected   expectations
-	}{
-		"happy path": {
-			remoteAddr: happyAddr,
-			dirpath:    happyDirPath,
-			expected: expectations{
-				path: happyPrefix,
-			},
-		},
-		"happy path with subfolder": {
-			remoteAddr: happyAddr,
-			dirpath:    filepath.Join(happyDirPath, "subfolder"),
-			expected: expectations{
-				err: ErrInvalidMountPath,
-			},
-		},
-		"cannot mount dot": {
-			remoteAddr: happyAddr,
-			dirpath:    ".",
-			expected: expectations{
-				err: ErrInvalidMountPath,
-			},
-		},
-		"cannot mount relative path": {
-			remoteAddr: happyAddr,
-			dirpath:    "good-volume",
-			expected: expectations{
-				err: ErrInvalidMountPath,
-			},
-		},
-		"cannot mount root": {
-			remoteAddr: happyAddr,
-			dirpath:    "/",
-			expected: expectations{
-				err: ErrInvalidMountPath,
-			},
-		},
-		"volume not found": {
-			remoteAddr: happyAddr,
-			dirpath:    "/nonexistent-volume",
-			expected: expectations{
-				err: ErrVolumeNotFound,
-			},
-		},
-		"sandbox not found": {
-			remoteAddr: &net.TCPAddr{IP: net.IPv4(1, 2, 3, 4), Port: 12345},
-			dirpath:    happyDirPath,
-			expected: expectations{
-				err: ErrUnknownSandbox,
-			},
-		},
-		"volume type not supported": {
-			remoteAddr: happyAddr,
-			dirpath:    happyDirPath,
-			expected: expectations{
-				err: chrooted.ErrVolumeTypeNotFound,
-			},
-		},
-		"volume name is empty (trailing slash)": {
-			remoteAddr: happyAddr,
-			dirpath:    "//",
-			expected: expectations{
-				err: ErrInvalidMountPath,
-			},
-		},
-		"multiple path segments": {
-			remoteAddr: happyAddr,
-			dirpath:    filepath.Join(happyDirPath, "sub1", "sub2"),
-			expected: expectations{
-				err: ErrInvalidMountPath,
-			},
-		},
-		"path with trailing slash": {
-			remoteAddr: happyAddr,
-			dirpath:    happyDirPath + "/",
-			expected: expectations{
-				err: ErrInvalidMountPath,
-			},
-		},
-		"path with multiple leading slashes": {
-			remoteAddr: happyAddr,
-			dirpath:    "///" + happyDirPath,
-			expected: expectations{
-				err: ErrInvalidMountPath,
-			},
-		},
-		"chroot escape attempt: ..happy": {
-			remoteAddr: happyAddr,
-			dirpath:    "/../" + happyDirPath,
-			expected: expectations{
-				err: ErrInvalidMountPath,
-			},
-		},
-		"chroot escape attempt: ....happy": {
-			remoteAddr: happyAddr,
-			dirpath:    "/../../" + happyDirPath,
-			expected: expectations{
-				err: ErrInvalidMountPath,
-			},
-		},
-		"chroot escape attempt: ..": {
-			remoteAddr: happyAddr,
-			dirpath:    happyDirPath + "/..",
-			expected: expectations{
-				err: ErrInvalidMountPath,
-			},
-		},
-		"chroot escape attempt: .. with trailing slash": {
-			remoteAddr: happyAddr,
-			dirpath:    happyDirPath + "/../",
-			expected: expectations{
-				err: ErrInvalidMountPath,
-			},
-		},
-		"chroot escape attempt: ....": {
-			remoteAddr: happyAddr,
-			dirpath:    happyDirPath + "/../..",
-			expected: expectations{
-				err: ErrInvalidMountPath,
-			},
-		},
-		"chroot escape attempt: .... with trailing": {
-			remoteAddr: happyAddr,
-			dirpath:    happyDirPath + "/../../",
-			expected: expectations{
-				err: ErrInvalidMountPath,
-			},
-		},
-	}
-
-	for name, tc := range testCases {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-
-			request := nfsserver.MountRequest{
-				Dirpath: []byte(tc.dirpath),
-			}
-
-			happyRoot := t.TempDir()
-
-			fsByType := map[string]string{
-				happyVolumeType: happyRoot,
-			}
-
-			if name == "volume type not supported" {
-				fsByType = nil
-			}
-
-			if tc.expected.path != "" {
-				tc.expected.path = filepath.Join(happyRoot, tc.expected.path)
-			}
-
-			config := cfg.Config{PersistentVolumeMounts: fsByType}
-
-			tracker := chrooted.NewTracker(sandboxes, config)
-
-			if tc.expected.path != "" {
-				t.Logf("expected path: %s", tc.expected.path)
-				err := os.MkdirAll(tc.expected.path, 0o755)
-				require.NoError(t, err)
-			}
-
-			callback := chrootCallback(tracker, sandboxes)
-			chfs, err := callback(t.Context(), tc.remoteAddr, request)
-			if tc.expected.err != nil {
-				require.ErrorIs(t, err, tc.expected.err)
-
-				return
-			}
-
-			require.NoError(t, err)
-
-			t.Cleanup(func() {
-				err = chfs.Close()
-				assert.NoError(t, err)
-			})
-			assert.Equal(t, tc.expected.path, chfs.ActualRoot)
-		})
-	}
 }

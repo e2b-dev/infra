@@ -27,6 +27,7 @@ func (s *Service) CreateDir(ctx context.Context, request *orchestrator.VolumeDir
 	if err != nil {
 		return nil, fmt.Errorf("failed to build volume path: %w", err)
 	}
+	defer fs.Close()
 
 	uid := utils.DerefOrDefault(request.Uid, defaultOwnerID)                        //nolint:protogetter
 	gid := utils.DerefOrDefault(request.Gid, defaultGroupID)                        //nolint:protogetter

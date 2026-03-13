@@ -40,6 +40,7 @@ func (s *Service) CreateFile(server orchestrator.VolumeService_CreateFileServer)
 	if err != nil {
 		return fmt.Errorf("failed to build volume path: %w", err)
 	}
+	defer fs.Close()
 
 	uid := utils.DerefOrDefault(start.Uid, defaultOwnerID)            //nolint:protogetter
 	gid := utils.DerefOrDefault(start.Gid, defaultGroupID)            //nolint:protogetter

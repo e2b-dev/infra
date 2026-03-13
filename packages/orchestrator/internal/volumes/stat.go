@@ -24,6 +24,7 @@ func (s *Service) Stat(ctx context.Context, request *orchestrator.StatRequest) (
 	if err != nil {
 		return nil, fmt.Errorf("failed to build volume path: %w", err)
 	}
+	defer fs.Close()
 
 	span.AddEvent("stat", trace.WithAttributes(
 		attribute.String("path", path),

@@ -24,6 +24,7 @@ func (s *Service) DeleteFile(ctx context.Context, request *orchestrator.VolumeFi
 	if err != nil {
 		return nil, fmt.Errorf("failed to build volume path: %w", err)
 	}
+	defer fs.Close()
 
 	if s.isRoot(path) {
 		return nil, newAPIError(ctx, codes.InvalidArgument, http.StatusBadRequest, orchestrator.UserErrorCode_CANNOT_DELETE_ROOT, "cannot delete root")

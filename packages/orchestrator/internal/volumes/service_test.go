@@ -29,12 +29,15 @@ func TestGetVolumeRootPath(t *testing.T) {
 		fmt.Sprintf("vol-%s", volumeID),
 	)
 
-	v := Service{
-		config: cfg.Config{
-			PersistentVolumeMounts: map[string]string{
-				goodVolumeType: goodVolumeTypePath,
-			},
+	config := cfg.Config{
+		PersistentVolumeMounts: map[string]string{
+			goodVolumeType: goodVolumeTypePath,
 		},
+	}
+
+	v := Service{
+		builder: chrooted.NewBuilder(config),
+		config:  config,
 	}
 
 	t.Run("success", func(t *testing.T) {

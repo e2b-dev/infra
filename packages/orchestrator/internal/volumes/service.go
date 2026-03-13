@@ -34,14 +34,14 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/interna
 type Service struct {
 	orchestrator.UnimplementedVolumeServiceServer
 
+	builder *chrooted.Builder
 	config  cfg.Config
-	tracker *chrooted.Tracker
 }
 
 var _ orchestrator.VolumeServiceServer = (*Service)(nil)
 
-func New(config cfg.Config, tracker *chrooted.Tracker) *Service {
-	return &Service{config: config, tracker: tracker}
+func New(config cfg.Config, builder *chrooted.Builder) *Service {
+	return &Service{config: config, builder: builder}
 }
 
 type volumePathRequest interface {
@@ -55,10 +55,6 @@ type volumeOnly interface {
 
 func (s *Service) getVolumeRootPath(ctx context.Context, volume *orchestrator.VolumeInfo) (string, error) {
 	volumeType := volume.GetVolumeType()
-	volTypePath, ok := s.config.PersistentVolumeMounts[volumeType]
-	if !ok {
-		return "", newAPIError(ctx, codes.Internal, http.StatusInternalServerError, orchestrator.UserErrorCode_NOT_SUPPORTED, "unknown volume type")
-	}
 
 	teamID, ok := internal.TryParseUUID(volume.GetTeamId())
 	if !ok {
@@ -70,7 +66,16 @@ func (s *Service) getVolumeRootPath(ctx context.Context, volume *orchestrator.Vo
 		return "", newAPIError(ctx, codes.InvalidArgument, http.StatusBadRequest, orchestrator.UserErrorCode_INVALID_REQUEST, "invalid volume ID %q", volume.GetVolumeId())
 	}
 
-	return chrooted.BuildVolumeRootPath(volTypePath, teamID, volumeID), nil
+	path, err := s.builder.BuildVolumePath(volumeType, teamID, volumeID)
+	if err != nil {
+		if errors.Is(err, chrooted.ErrVolumeTypeNotFound) {
+			return "", newAPIError(ctx, codes.Internal, http.StatusInternalServerError, orchestrator.UserErrorCode_NOT_SUPPORTED, "unknown volume type")
+		}
+
+		return "", newAPIError(ctx, codes.Internal, http.StatusInternalServerError, orchestrator.UserErrorCode_UNKNOWN_USER_ERROR_CODE, "failed to build volume path: %v", err)
+	}
+
+	return path, nil
 }
 
 func (s *Service) getFilesystem(ctx context.Context, request volumeOnly) (*chrooted.Chrooted, error) {
@@ -87,7 +92,7 @@ func (s *Service) getFilesystem(ctx context.Context, request volumeOnly) (*chroo
 		return nil, newAPIError(ctx, codes.InvalidArgument, http.StatusInternalServerError, orchestrator.UserErrorCode_INVALID_REQUEST, "invalid volume ID %q", volume.GetVolumeId())
 	}
 
-	chroot, err := s.tracker.Get(ctx, volumeType, teamID, volumeID)
+	chroot, err := s.builder.Chroot(ctx, volumeType, teamID, volumeID)
 	if err != nil {
 		if errors.Is(err, chrooted.ErrVolumeTypeNotFound) {
 			return nil, newAPIError(ctx, codes.Internal, http.StatusInternalServerError, orchestrator.UserErrorCode_NOT_SUPPORTED, "volume type not found")

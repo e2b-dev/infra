@@ -34,6 +34,7 @@ func (s *Service) ListDir(ctx context.Context, request *orchestrator.VolumeDirLi
 	if err != nil {
 		return nil, fmt.Errorf("failed to build volume path: %w", err)
 	}
+	defer fs.Close()
 
 	span.AddEvent("listing directory", trace.WithAttributes(
 		attribute.String("path", path),

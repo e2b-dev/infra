@@ -56,7 +56,7 @@ func requireGRPCError(t *testing.T, err error, expectedGRPCCode codes.Code, expe
 	require.Error(t, err)
 
 	status, ok := status.FromError(err)
-	require.True(t, ok)
+	require.Truef(t, ok, "expected error to be a gRPC status error, got %T: %s", err, err.Error())
 
 	require.Equalf(t, expectedGRPCCode, status.Code(), "expected %s, got %s", expectedGRPCCode, status.Code())
 

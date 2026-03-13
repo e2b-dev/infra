@@ -24,6 +24,7 @@ func (s *Service) UpdateFileMetadata(ctx context.Context, request *orchestrator.
 	if err != nil {
 		return nil, fmt.Errorf("failed to build volume path: %w", err)
 	}
+	defer fs.Close()
 
 	// record provided fields; keep pointers semantics by checking nil
 	attrs := []attribute.KeyValue{

@@ -130,17 +130,16 @@ func TestIntegrationTest(t *testing.T) {
 	volumeTypePath := t.TempDir()
 
 	// make volume dir
-	createVolumeDir(t, volumeTypePath, teamID, volumeID)
-
 	config := cfg.Config{
 		PersistentVolumeMounts: map[string]string{
 			volumeType: volumeTypePath,
 		},
 	}
+	builder := chrooted.NewBuilder(config)
 
-	cache := chrooted.NewTracker(sandboxes, config)
+	createVolumeDir(t, builder, volumeTypePath, teamID, volumeID)
 
-	s, err := NewProxy(t.Context(), cache, sandboxes)
+	s, err := NewProxy(t.Context(), builder, sandboxes)
 	require.NoError(t, err)
 	go func() {
 		err := s.Serve(nfsListener)

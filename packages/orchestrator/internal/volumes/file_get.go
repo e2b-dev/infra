@@ -24,6 +24,7 @@ func (s *Service) GetFile(request *orchestrator.VolumeFileGetRequest, server orc
 	if err != nil {
 		return fmt.Errorf("failed to build volume path: %w", err)
 	}
+	defer fs.Close()
 
 	span.AddEvent("opening file", trace.WithAttributes(
 		attribute.String("path", path),

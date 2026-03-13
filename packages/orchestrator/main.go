@@ -469,17 +469,8 @@ func run(config cfg.Config) (success bool) {
 	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags, hostStatsDelivery, cgroupManager, sandboxes)
 
 	// isolated filesystems cache (for nfs proxy)
-	fsCache := chrooted.NewTracker(sandboxes, config)
-	startService("nfs proxy filesystems cache", func() error {
-		fsCache.Start(ctx)
-
-		return nil
-	})
-	closers = append(closers, closer{"nfs proxy filesystems cache", func(_ context.Context) error {
-		return fsCache.Stop()
-	}})
-
-	volumeService := volumes.New(config, fsCache)
+	builder := chrooted.NewBuilder(config)
+	volumeService := volumes.New(config, builder)
 
 	orchestratorService := server.New(ctx, server.ServiceConfig{
 		Config:           config,
@@ -519,7 +510,7 @@ func run(config cfg.Config) (success bool) {
 
 	// nfs proxy server
 	if len(config.PersistentVolumeMounts) > 0 {
-		nfsClosers, err := startNFSProxy(ctx, config, fsCache, startService, sandboxes)
+		nfsClosers, err := startNFSProxy(ctx, config, builder, startService, sandboxes)
 		if err != nil {
 			logger.L().Fatal(ctx, "failed to start nfs proxy", zap.Error(err))
 		}
@@ -706,7 +697,7 @@ func run(config cfg.Config) (success bool) {
 func startNFSProxy(
 	ctx context.Context,
 	config cfg.Config,
-	fsCache *chrooted.Tracker,
+	builder *chrooted.Builder,
 	startService func(name string, f func() error),
 	sandboxes *sandbox.Map,
 ) ([]closer, error) {
@@ -735,7 +726,7 @@ func startNFSProxy(
 	}
 
 	// nfs proxy implementation
-	nfsServer, err := nfsproxy.NewProxy(ctx, fsCache, sandboxes)
+	nfsServer, err := nfsproxy.NewProxy(ctx, builder, sandboxes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create nfs proxy: %w", err)
 	}
