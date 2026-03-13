@@ -23,9 +23,9 @@ func (s *Service) CreateDir(ctx context.Context, request *orchestrator.VolumeDir
 		span.End()
 	}()
 
-	fs, path, err := s.getFilesystemAndPath(ctx, request)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build volume path: %w", err)
+	fs, path, errResponse := s.getFilesystemAndPath(ctx, request)
+	if errResponse != nil {
+		return nil, errResponse.Err()
 	}
 	defer fs.Close()
 
@@ -41,7 +41,7 @@ func (s *Service) CreateDir(ctx context.Context, request *orchestrator.VolumeDir
 	))
 
 	if request.GetCreateParents() {
-		if err = ensureDirs(fs, filepath.Dir(path), uid, gid, mode); err != nil {
+		if err = ensureDirs(fs, filepath.Dir(path), uid, gid); err != nil {
 			return nil, fmt.Errorf("failed to prepare parent directories: %w", err)
 		}
 	}
@@ -83,11 +83,11 @@ func processError(ctx context.Context, s string, err error) error {
 	}
 
 	if errors.Is(err, os.ErrExist) {
-		return newAPIError(ctx, codes.AlreadyExists, http.StatusConflict, orchestrator.UserErrorCode_PATH_ALREADY_EXISTS, "%s: %s", s, err.Error())
+		return newAPIError(ctx, codes.AlreadyExists, http.StatusConflict, orchestrator.UserErrorCode_PATH_ALREADY_EXISTS, "%s: %s", s, err.Error()).Err()
 	}
 
 	if errors.Is(err, os.ErrNotExist) {
-		return newAPIError(ctx, codes.NotFound, http.StatusNotFound, orchestrator.UserErrorCode_PATH_NOT_FOUND, "%s: %s", s, err.Error())
+		return newAPIError(ctx, codes.NotFound, http.StatusNotFound, orchestrator.UserErrorCode_PATH_NOT_FOUND, "%s: %s", s, err.Error()).Err()
 	}
 
 	return fmt.Errorf("%s: %w", s, err)

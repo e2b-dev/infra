@@ -14,6 +14,7 @@ import (
 	otelcodes "go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal"
@@ -49,65 +50,52 @@ type volumePathRequest interface {
 	GetPath() string
 }
 
-type volumeOnly interface {
-	GetVolume() *orchestrator.VolumeInfo
-}
-
 func (s *Service) getVolumeRootPath(ctx context.Context, volume *orchestrator.VolumeInfo) (string, error) {
 	volumeType := volume.GetVolumeType()
 
 	teamID, ok := internal.TryParseUUID(volume.GetTeamId())
 	if !ok {
-		return "", newAPIError(ctx, codes.InvalidArgument, http.StatusBadRequest, orchestrator.UserErrorCode_INVALID_REQUEST, "invalid team ID %q", volume.GetTeamId())
+		return "", newAPIError(ctx, codes.InvalidArgument, http.StatusBadRequest, orchestrator.UserErrorCode_INVALID_REQUEST, "invalid team ID %q", volume.GetTeamId()).Err()
 	}
 
 	volumeID, ok := internal.TryParseUUID(volume.GetVolumeId())
 	if !ok {
-		return "", newAPIError(ctx, codes.InvalidArgument, http.StatusBadRequest, orchestrator.UserErrorCode_INVALID_REQUEST, "invalid volume ID %q", volume.GetVolumeId())
+		return "", newAPIError(ctx, codes.InvalidArgument, http.StatusBadRequest, orchestrator.UserErrorCode_INVALID_REQUEST, "invalid volume ID %q", volume.GetVolumeId()).Err()
 	}
 
 	path, err := s.builder.BuildVolumePath(volumeType, teamID, volumeID)
 	if err != nil {
 		if errors.Is(err, chrooted.ErrVolumeTypeNotFound) {
-			return "", newAPIError(ctx, codes.Internal, http.StatusInternalServerError, orchestrator.UserErrorCode_NOT_SUPPORTED, "unknown volume type")
+			return "", newAPIError(ctx, codes.Internal, http.StatusInternalServerError, orchestrator.UserErrorCode_NOT_SUPPORTED, "unknown volume type").Err()
 		}
 
-		return "", newAPIError(ctx, codes.Internal, http.StatusInternalServerError, orchestrator.UserErrorCode_UNKNOWN_USER_ERROR_CODE, "failed to build volume path: %v", err)
+		return "", newAPIError(ctx, codes.Internal, http.StatusInternalServerError, orchestrator.UserErrorCode_UNKNOWN_USER_ERROR_CODE, "failed to build volume path: %v", err).Err()
 	}
 
 	return path, nil
 }
 
-func (s *Service) getFilesystem(ctx context.Context, request volumeOnly) (*chrooted.Chrooted, error) {
+func (s *Service) getFilesystemAndPath(ctx context.Context, request volumePathRequest) (*chrooted.Chrooted, string, *status.Status) {
 	volume := request.GetVolume()
 	volumeType := volume.GetVolumeType()
 
 	teamID, ok := internal.TryParseUUID(volume.GetTeamId())
 	if !ok {
-		return nil, newAPIError(ctx, codes.InvalidArgument, http.StatusInternalServerError, orchestrator.UserErrorCode_INVALID_REQUEST, "invalid team ID %q", volume.GetTeamId())
+		return nil, "", newAPIError(ctx, codes.InvalidArgument, http.StatusInternalServerError, orchestrator.UserErrorCode_INVALID_REQUEST, "invalid team ID %q", volume.GetTeamId())
 	}
 
 	volumeID, ok := internal.TryParseUUID(volume.GetVolumeId())
 	if !ok {
-		return nil, newAPIError(ctx, codes.InvalidArgument, http.StatusInternalServerError, orchestrator.UserErrorCode_INVALID_REQUEST, "invalid volume ID %q", volume.GetVolumeId())
+		return nil, "", newAPIError(ctx, codes.InvalidArgument, http.StatusInternalServerError, orchestrator.UserErrorCode_INVALID_REQUEST, "invalid volume ID %q", volume.GetVolumeId())
 	}
 
 	chroot, err := s.builder.Chroot(ctx, volumeType, teamID, volumeID)
 	if err != nil {
 		if errors.Is(err, chrooted.ErrVolumeTypeNotFound) {
-			return nil, newAPIError(ctx, codes.Internal, http.StatusInternalServerError, orchestrator.UserErrorCode_NOT_SUPPORTED, "volume type not found")
+			return nil, "", newAPIError(ctx, codes.Internal, http.StatusInternalServerError, orchestrator.UserErrorCode_NOT_SUPPORTED, "volume type not found")
 		}
 
-		return nil, newAPIError(ctx, codes.Internal, http.StatusInternalServerError, orchestrator.UserErrorCode_UNKNOWN_USER_ERROR_CODE, "failed to get chroot: %v", err)
-	}
-
-	return chroot, nil
-}
-
-func (s *Service) getFilesystemAndPath(ctx context.Context, request volumePathRequest) (*chrooted.Chrooted, string, error) {
-	fs, err := s.getFilesystem(ctx, request)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to build volume path: %w", err)
+		return nil, "", newAPIError(ctx, codes.Internal, http.StatusInternalServerError, orchestrator.UserErrorCode_UNKNOWN_USER_ERROR_CODE, "failed to get chroot: %v", err)
 	}
 
 	path := request.GetPath()
@@ -116,7 +104,7 @@ func (s *Service) getFilesystemAndPath(ctx context.Context, request volumePathRe
 	}
 	path = filepath.Clean(path)
 
-	return fs, path, nil
+	return chroot, path, nil
 }
 
 func (s *Service) isRoot(path string) bool {
@@ -196,7 +184,7 @@ func setSpanStatus(span trace.Span, err error) {
 	span.SetStatus(otelcodes.Ok, "")
 }
 
-func ensureDirs(fs *chrooted.Chrooted, dirPath string, uid, gid uint32, mode os.FileMode) error {
+func ensureDirs(fs *chrooted.Chrooted, dirPath string, uid, gid uint32) error {
 	if dirPath == "" {
 		return nil
 	}
@@ -225,7 +213,7 @@ func ensureDirs(fs *chrooted.Chrooted, dirPath string, uid, gid uint32, mode os.
 		cur = next
 	}
 
-	if err := fs.MkdirAll(dirPath, mode); err != nil {
+	if err := fs.MkdirAll(dirPath, defaultDirMode); err != nil {
 		return fmt.Errorf("failed to create parent directories: %w", err)
 	}
 
@@ -233,7 +221,7 @@ func ensureDirs(fs *chrooted.Chrooted, dirPath string, uid, gid uint32, mode os.
 	// Iterate from highest parent to deepest child for determinism.
 	for i := len(needsUpdates) - 1; i >= 0; i-- {
 		p := needsUpdates[i]
-		if err := fs.Chmod(p, mode); err != nil {
+		if err := fs.Chmod(p, defaultDirMode); err != nil {
 			return fmt.Errorf("failed chmod for created parent directory %q: %w", p, err)
 		}
 

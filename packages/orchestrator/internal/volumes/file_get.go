@@ -20,9 +20,9 @@ func (s *Service) GetFile(request *orchestrator.VolumeFileGetRequest, server orc
 		span.End()
 	}()
 
-	fs, path, err := s.getFilesystemAndPath(ctx, request)
-	if err != nil {
-		return fmt.Errorf("failed to build volume path: %w", err)
+	fs, path, errResponse := s.getFilesystemAndPath(ctx, request)
+	if errResponse != nil {
+		return errResponse.Err()
 	}
 	defer fs.Close()
 

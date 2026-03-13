@@ -20,9 +20,9 @@ func (s *Service) UpdateFileMetadata(ctx context.Context, request *orchestrator.
 		span.End()
 	}()
 
-	fs, path, err := s.getFilesystemAndPath(ctx, request)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build volume path: %w", err)
+	fs, path, errResponse := s.getFilesystemAndPath(ctx, request)
+	if errResponse != nil {
+		return nil, errResponse.Err()
 	}
 	defer fs.Close()
 
@@ -44,7 +44,7 @@ func (s *Service) UpdateFileMetadata(ctx context.Context, request *orchestrator.
 	if request.Mode != nil {
 		if err = fs.Chmod(path, os.FileMode(request.GetMode())); err != nil {
 			if os.IsNotExist(err) {
-				return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to chmod: %q not found.", request.GetPath())
+				return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to chmod: %q not found.", request.GetPath()).Err()
 			}
 
 			return nil, fmt.Errorf("failed to update file mode: %w", err)
@@ -64,7 +64,7 @@ func (s *Service) UpdateFileMetadata(ctx context.Context, request *orchestrator.
 
 		if err = fs.Chown(path, uid, gid); err != nil {
 			if os.IsNotExist(err) {
-				return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to chown: %q not found.", request.GetPath())
+				return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to chown: %q not found.", request.GetPath()).Err()
 			}
 
 			return nil, fmt.Errorf("failed to update file ownership: %w", err)
@@ -74,7 +74,7 @@ func (s *Service) UpdateFileMetadata(ctx context.Context, request *orchestrator.
 	fi, finalPath, err := fs.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to stat: %q not found.", request.GetPath())
+			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to stat: %q not found.", request.GetPath()).Err()
 		}
 
 		return nil, fmt.Errorf("failed to stat file: %w", err)

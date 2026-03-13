@@ -20,9 +20,9 @@ func (s *Service) Stat(ctx context.Context, request *orchestrator.StatRequest) (
 		span.End()
 	}()
 
-	fs, path, err := s.getFilesystemAndPath(ctx, request)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build volume path: %w", err)
+	fs, path, errResponse := s.getFilesystemAndPath(ctx, request)
+	if errResponse != nil {
+		return nil, errResponse.Err()
 	}
 	defer fs.Close()
 
@@ -33,7 +33,7 @@ func (s *Service) Stat(ctx context.Context, request *orchestrator.StatRequest) (
 	info, finalPath, err := fs.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to stat: %q not found.", request.GetPath())
+			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to stat: %q not found.", request.GetPath()).Err()
 		}
 
 		return nil, fmt.Errorf("failed to stat path: %w", err)

@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 
@@ -127,8 +128,9 @@ func TestDirCreate(t *testing.T) {
 		_, err = s.CreateDir(t.Context(), request)
 		require.NoError(t, err)
 
-		fs, err := s.getFilesystem(t.Context(), request)
-		require.NoError(t, err)
+		fs, path, errResponse := s.getFilesystemAndPath(t.Context(), request)
+		require.Nil(t, errResponse)
+		assert.Equal(t, "/existing-dir-to-preserve", path)
 
 		assertDir(t, fs, dirname, 1500, 1600, originalMode)
 		// Check if the mode was changed

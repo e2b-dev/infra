@@ -30,9 +30,9 @@ func (s *Service) ListDir(ctx context.Context, request *orchestrator.VolumeDirLi
 		span.End()
 	}()
 
-	fs, path, err := s.getFilesystemAndPath(ctx, request)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build volume path: %w", err)
+	fs, path, errResponse := s.getFilesystemAndPath(ctx, request)
+	if errResponse != nil {
+		return nil, errResponse.Err()
 	}
 	defer fs.Close()
 
@@ -44,13 +44,13 @@ func (s *Service) ListDir(ctx context.Context, request *orchestrator.VolumeDirLi
 	depth = max(depth, minDepth)
 
 	if depth > maxDepth {
-		return nil, newAPIError(ctx, codes.InvalidArgument, http.StatusBadRequest, orchestrator.UserErrorCode_DEPTH_OUT_OF_RANGE, "depth must be between %d and %d", minDepth, maxDepth)
+		return nil, newAPIError(ctx, codes.InvalidArgument, http.StatusBadRequest, orchestrator.UserErrorCode_DEPTH_OUT_OF_RANGE, "depth must be between %d and %d", minDepth, maxDepth).Err()
 	}
 
 	results, err := s.listRecursive(ctx, fs, path, depth)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return nil, newAPIError(ctx, codes.NotFound, http.StatusNotFound, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to read: %q not found.", request.GetPath())
+			return nil, newAPIError(ctx, codes.NotFound, http.StatusNotFound, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to read: %q not found.", request.GetPath()).Err()
 		}
 
 		return nil, fmt.Errorf("failed to read directory %q: %w", path, err)

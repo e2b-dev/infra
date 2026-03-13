@@ -36,9 +36,9 @@ func (s *Service) CreateFile(server orchestrator.VolumeService_CreateFileServer)
 		return ErrExpectedStart
 	}
 
-	fs, path, err := s.getFilesystemAndPath(ctx, start)
-	if err != nil {
-		return fmt.Errorf("failed to build volume path: %w", err)
+	fs, path, errResponse := s.getFilesystemAndPath(ctx, start)
+	if errResponse != nil {
+		return errResponse.Err()
 	}
 	defer fs.Close()
 
@@ -55,7 +55,7 @@ func (s *Service) CreateFile(server orchestrator.VolumeService_CreateFileServer)
 
 	dirName := filepath.Dir(path)
 	if start.GetForce() {
-		if err = ensureDirs(fs, dirName, uid, gid, defaultDirMode); err != nil {
+		if err = ensureDirs(fs, dirName, uid, gid); err != nil {
 			return fmt.Errorf("failed to prepare parent directories: %w", err)
 		}
 	}
