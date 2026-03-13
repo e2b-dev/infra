@@ -115,8 +115,8 @@ type StorageConfig struct {
 	GetLocalBasePath func() string
 	GetBucketName    func() string
 	limiter          *limit.Limiter
-	UploadBaseURL    string
-	HMACKey          []byte
+	uploadBaseURL    string
+	hmacKey          []byte
 }
 
 // WithLimiter returns a copy of the config with the given limiter set.
@@ -130,8 +130,8 @@ func (c StorageConfig) WithLimiter(limiter *limit.Limiter) StorageConfig {
 // parameters set. These are only used when STORAGE_PROVIDER=Local to let the
 // filesystem storage provider generate signed URLs for file uploads.
 func (c StorageConfig) WithLocalUpload(uploadBaseURL string, hmacKey []byte) StorageConfig {
-	c.UploadBaseURL = uploadBaseURL
-	c.HMACKey = hmacKey
+	c.uploadBaseURL = uploadBaseURL
+	c.hmacKey = hmacKey
 
 	return c
 }
@@ -158,7 +158,7 @@ func GetStorageProvider(ctx context.Context, cfg StorageConfig) (StorageProvider
 	provider := GetProviderType()
 
 	if provider == LocalStorageProvider {
-		return newFileSystemStorage(cfg.GetLocalBasePath(), cfg.UploadBaseURL, cfg.HMACKey), nil
+		return newFileSystemStorage(cfg.GetLocalBasePath(), cfg.uploadBaseURL, cfg.hmacKey), nil
 	}
 
 	bucketName := cfg.GetBucketName()
