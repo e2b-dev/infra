@@ -86,12 +86,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tmpPath := tmpFile.Name()
-
-	// Clean up the temp file on any failure path.
+	stored := false
 	defer func() {
-		if tmpPath != "" {
-			os.Remove(tmpPath)
+		if !stored {
+			os.Remove(tmpFile.Name())
 		}
 	}()
 
@@ -108,20 +106,19 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := os.Chmod(tmpPath, 0o644); err != nil {
+	if err := os.Chmod(tmpFile.Name(), 0o644); err != nil {
 		http.Error(w, "failed to set file permissions", http.StatusInternalServerError)
 
 		return
 	}
 
-	if err := os.Rename(tmpPath, fullPath); err != nil {
+	if err := os.Rename(tmpFile.Name(), fullPath); err != nil {
 		http.Error(w, "failed to store file", http.StatusInternalServerError)
 
 		return
 	}
 
-	// Rename succeeded — prevent deferred cleanup from removing the final file.
-	tmpPath = ""
+	stored = true
 
 	w.WriteHeader(http.StatusOK)
 }
