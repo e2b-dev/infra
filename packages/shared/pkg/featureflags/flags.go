@@ -183,6 +183,9 @@ var (
 	// MaxConcurrentSandboxListQueries limits concurrent GetSnapshotsWithCursor calls in the sandbox list path.
 	// 0 or negative disables throttling (unlimited concurrency).
 	MaxConcurrentSandboxListQueries = newIntFlag("max-concurrent-sandbox-list-queries", 5)
+	// MaxConcurrentSnapshotBuildQueries limits concurrent GetSnapshotBuilds calls (e.g. sandbox delete).
+	// 0 or negative disables throttling (unlimited concurrency).
+	MaxConcurrentSnapshotBuildQueries = newIntFlag("max-concurrent-snapshot-build-queries", 5)
 )
 
 type StringFlag struct {

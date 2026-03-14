@@ -61,8 +61,9 @@ type APIStore struct {
 	accessTokenGenerator *sandbox.AccessTokenGenerator
 	featureFlags         *featureflags.Client
 	clusters             *clusters.Pool
-	snapshotUpsertSem    *sharedutils.AdjustableSemaphore
-	sandboxListSem       *sharedutils.AdjustableSemaphore
+	snapshotUpsertSem      *sharedutils.AdjustableSemaphore
+	sandboxListSem         *sharedutils.AdjustableSemaphore
+	snapshotBuildQuerySem  *sharedutils.AdjustableSemaphore
 }
 
 func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config, serviceName string) *APIStore {
@@ -157,6 +158,11 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config, 
 		logger.L().Fatal(ctx, "failed to create sandbox list semaphore", zap.Error(err))
 	}
 
+	snapshotBuildQuerySem, err := sharedutils.NewAdjustableSemaphore(dbThrottleLimit(featureFlags.IntFlag(ctx, featureflags.MaxConcurrentSnapshotBuildQueries)))
+	if err != nil {
+		logger.L().Fatal(ctx, "failed to create snapshot build query semaphore", zap.Error(err))
+	}
+
 	orch, err := orchestrator.New(ctx, config, tel, nomadClient, posthogClient, redisClient, sqlcDB, clusters, featureFlags, accessTokenGenerator, snapshotCache, snapshotUpsertSem)
 	if err != nil {
 		logger.L().Fatal(ctx, "Initializing Orchestrator client", zap.Error(err))
@@ -195,8 +201,9 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config, 
 		clusters:             clusters,
 		featureFlags:         featureFlags,
 		redisClient:          redisClient,
-		snapshotUpsertSem:    snapshotUpsertSem,
-		sandboxListSem:       sandboxListSem,
+		snapshotUpsertSem:     snapshotUpsertSem,
+		sandboxListSem:        sandboxListSem,
+		snapshotBuildQuerySem: snapshotBuildQuerySem,
 	}
 
 	go a.updateDBThrottleLimits(ctx)
@@ -297,6 +304,7 @@ func (a *APIStore) updateDBThrottleLimits(ctx context.Context) {
 		case <-ticker.C:
 			_ = a.snapshotUpsertSem.SetLimit(dbThrottleLimit(a.featureFlags.IntFlag(ctx, featureflags.MaxConcurrentSnapshotUpserts)))
 			_ = a.sandboxListSem.SetLimit(dbThrottleLimit(a.featureFlags.IntFlag(ctx, featureflags.MaxConcurrentSandboxListQueries)))
+			_ = a.snapshotBuildQuerySem.SetLimit(dbThrottleLimit(a.featureFlags.IntFlag(ctx, featureflags.MaxConcurrentSnapshotBuildQueries)))
 		}
 	}
 }
