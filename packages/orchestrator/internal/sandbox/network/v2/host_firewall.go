@@ -56,6 +56,10 @@ type HostFirewall struct {
 	defaultGw string
 	config    network.Config
 	mu        sync.Mutex
+
+	// migrationRules tracks active migration DNAT/forward rules by old host IP.
+	// Protected by mu.
+	migrationRules map[string]*migrationDNATEntry
 }
 
 const (
@@ -80,10 +84,11 @@ func NewHostFirewall(defaultGw string, config network.Config) (*HostFirewall, er
 	})
 
 	hf := &HostFirewall{
-		conn:      conn,
-		table:     table,
-		defaultGw: defaultGw,
-		config:    config,
+		conn:           conn,
+		table:          table,
+		defaultGw:      defaultGw,
+		config:         config,
+		migrationRules: make(map[string]*migrationDNATEntry),
 	}
 
 	if err := hf.initSets(); err != nil {
