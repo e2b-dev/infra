@@ -720,4 +720,9 @@ variable "gcs_grpc_connection_pool_size" {
   description = "Number of gRPC connections in the GCS connection pool for storage-heavy services"
   type        = number
   default     = 4
+
+  validation {
+    condition     = floor(var.gcs_grpc_connection_pool_size) == var.gcs_grpc_connection_pool_size && var.gcs_grpc_connection_pool_size >= 1
+    error_message = "gcs_grpc_connection_pool_size must be a positive integer."
+  }
 }
