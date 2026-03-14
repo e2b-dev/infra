@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"sync/atomic"
 	"time"
@@ -274,6 +275,16 @@ func (a *APIStore) Close(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
+// dbThrottleLimit returns the semaphore limit for a feature flag value.
+// A non-positive value means "disabled" and maps to math.MaxInt32 to effectively bypass throttling.
+func dbThrottleLimit(flagValue int) int64 {
+	if flagValue <= 0 {
+		return math.MaxInt32
+	}
+
+	return int64(flagValue)
+}
+
 // updateDBThrottleLimits periodically syncs DB throttle semaphore limits from feature flags.
 func (a *APIStore) updateDBThrottleLimits(ctx context.Context) {
 	ticker := time.NewTicker(30 * time.Second)
@@ -284,12 +295,8 @@ func (a *APIStore) updateDBThrottleLimits(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if limit := a.featureFlags.IntFlag(ctx, featureflags.MaxConcurrentSnapshotUpserts); limit > 0 {
-				_ = a.snapshotUpsertSem.SetLimit(int64(limit))
-			}
-			if limit := a.featureFlags.IntFlag(ctx, featureflags.MaxConcurrentSandboxListQueries); limit > 0 {
-				_ = a.sandboxListSem.SetLimit(int64(limit))
-			}
+			_ = a.snapshotUpsertSem.SetLimit(dbThrottleLimit(a.featureFlags.IntFlag(ctx, featureflags.MaxConcurrentSnapshotUpserts)))
+			_ = a.sandboxListSem.SetLimit(dbThrottleLimit(a.featureFlags.IntFlag(ctx, featureflags.MaxConcurrentSandboxListQueries)))
 		}
 	}
 }
