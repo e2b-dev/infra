@@ -42,8 +42,8 @@ import (
 var _ api.ServerInterface = (*APIStore)(nil)
 
 type APIStore struct {
-	Healthy atomic.Bool
-	config  cfg.Config
+	Healthy              atomic.Bool
+	config               cfg.Config
 	posthog              *analyticscollector.PosthogClient
 	Telemetry            *telemetry.Client
 	orchestrator         *orchestrator.Orchestrator
