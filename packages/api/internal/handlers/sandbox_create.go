@@ -508,25 +508,69 @@ func validateNetworkConfig(network *api.SandboxNetworkConfig) *api.APIError {
 }
 
 // validateEgressRules validates egress allow/deny rules:
-// - denyOut entries must be valid IPs or CIDRs (not domains)
-// - allowOut entries must be valid IPs, CIDRs, or domain names
+// - entries must be valid host[:port] strings
+// - denyOut hosts must be valid IPs or CIDRs (not domains)
+// - allowOut hosts can be IPs, CIDRs, or domain names
 // - when allowOut contains domains, denyOut must include 0.0.0.0/0
+// - port-specific rules are not yet supported and will return an error
 func validateEgressRules(allowOut, denyOut []string) *api.APIError {
-	for _, cidr := range denyOut {
-		if !sandbox_network.IsIPOrCIDR(cidr) {
+	denyRules, err := sandbox_network.ParseRules(denyOut)
+	if err != nil {
+		return &api.APIError{
+			Code:      http.StatusBadRequest,
+			Err:       fmt.Errorf("invalid deny out entry: %w", err),
+			ClientMsg: fmt.Sprintf("invalid deny out entry: %s", err),
+		}
+	}
+
+	for _, rule := range denyRules {
+		if rule.IsDomain {
 			return &api.APIError{
 				Code:      http.StatusBadRequest,
-				Err:       fmt.Errorf("invalid denied CIDR %s", cidr),
-				ClientMsg: fmt.Sprintf("invalid denied CIDR %s", cidr),
+				Err:       fmt.Errorf("invalid denied CIDR %s", rule.Host),
+				ClientMsg: fmt.Sprintf("invalid denied CIDR %s", rule.Host),
+			}
+		}
+
+		if !rule.AllPorts() {
+			return &api.APIError{
+				Code:      http.StatusBadRequest,
+				Err:       fmt.Errorf("port-specific deny rules are not yet supported"),
+				ClientMsg: "port-specific deny rules are not yet supported",
 			}
 		}
 	}
 
-	if len(allowOut) > 0 {
-		_, allowedDomains := sandbox_network.ParseAddressesAndDomains(allowOut)
-		hasBlockAll := slices.Contains(denyOut, sandbox_network.AllInternetTrafficCIDR)
+	allowRules, err := sandbox_network.ParseRules(allowOut)
+	if err != nil {
+		return &api.APIError{
+			Code:      http.StatusBadRequest,
+			Err:       fmt.Errorf("invalid allow out entry: %w", err),
+			ClientMsg: fmt.Sprintf("invalid allow out entry: %s", err),
+		}
+	}
 
-		if len(allowedDomains) > 0 && !hasBlockAll {
+	hasDomains := false
+	for _, rule := range allowRules {
+		if rule.IsDomain {
+			hasDomains = true
+		}
+
+		if !rule.AllPorts() {
+			return &api.APIError{
+				Code:      http.StatusBadRequest,
+				Err:       fmt.Errorf("port-specific allow rules are not yet supported"),
+				ClientMsg: "port-specific allow rules are not yet supported",
+			}
+		}
+	}
+
+	if hasDomains {
+		hasBlockAll := slices.ContainsFunc(denyRules, func(r sandbox_network.Rule) bool {
+			return r.Host == sandbox_network.AllInternetTrafficCIDR && r.AllPorts()
+		})
+
+		if !hasBlockAll {
 			return &api.APIError{
 				Code:      http.StatusBadRequest,
 				Err:       fmt.Errorf("allow out contains domains but deny out is missing 0.0.0.0/0 (ALL_TRAFFIC)"),

@@ -259,6 +259,44 @@ func TestValidateNetworkConfig(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		// Port-specific rules (not yet supported)
+		{
+			name: "allow_out with port is rejected",
+			network: &api.SandboxNetworkConfig{
+				AllowOut: &[]string{"8.8.8.8:80"},
+				DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
+			},
+			wantErr:    true,
+			wantCode:   http.StatusBadRequest,
+			wantErrMsg: "port-specific allow rules are not yet supported",
+		},
+		{
+			name: "deny_out with port is rejected",
+			network: &api.SandboxNetworkConfig{
+				DenyOut: &[]string{"10.0.0.0/8:22"},
+			},
+			wantErr:    true,
+			wantCode:   http.StatusBadRequest,
+			wantErrMsg: "port-specific deny rules are not yet supported",
+		},
+		{
+			name: "allow_out with port range is rejected",
+			network: &api.SandboxNetworkConfig{
+				AllowOut: &[]string{"8.8.8.8:1-1024"},
+			},
+			wantErr:    true,
+			wantCode:   http.StatusBadRequest,
+			wantErrMsg: "port-specific allow rules are not yet supported",
+		},
+		{
+			name: "deny_out with invalid port is rejected",
+			network: &api.SandboxNetworkConfig{
+				DenyOut: &[]string{"10.0.0.0/8:abc"},
+			},
+			wantErr:    true,
+			wantCode:   http.StatusBadRequest,
+			wantErrMsg: `invalid deny out entry: invalid entry "10.0.0.0/8:abc": invalid port "abc": strconv.ParseUint: parsing "abc": invalid syntax`,
+		},
 	}
 
 	for _, tt := range tests {
