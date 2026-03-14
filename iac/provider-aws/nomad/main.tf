@@ -166,6 +166,8 @@ module "orchestrator" {
   domain_name             = var.domain_name
   build_cache_bucket_name = var.build_cache_bucket_name
   launch_darkly_api_key   = var.launch_darkly_api_key
+
+  gcs_grpc_connection_pool_size = var.gcs_grpc_connection_pool_size
 }
 
 data "aws_s3_object" "template_manager" {
@@ -199,6 +201,8 @@ module "template_manager" {
   logs_collector_address       = "http://localhost:${var.logs_proxy_port}"
   clickhouse_connection_string = local.clickhouse_connection_string
   launch_darkly_api_key        = var.launch_darkly_api_key
+
+  gcs_grpc_connection_pool_size = var.gcs_grpc_connection_pool_size
 
   nomad_addr  = "https://nomad.${var.domain_name}"
   nomad_token = var.nomad_acl_token
