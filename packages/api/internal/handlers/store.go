@@ -36,13 +36,14 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs/loki"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	sharedutils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 var _ api.ServerInterface = (*APIStore)(nil)
 
 type APIStore struct {
-	Healthy              atomic.Bool
-	config               cfg.Config
+	Healthy atomic.Bool
+	config  cfg.Config
 	posthog              *analyticscollector.PosthogClient
 	Telemetry            *telemetry.Client
 	orchestrator         *orchestrator.Orchestrator
@@ -59,6 +60,8 @@ type APIStore struct {
 	accessTokenGenerator *sandbox.AccessTokenGenerator
 	featureFlags         *featureflags.Client
 	clusters             *clusters.Pool
+	snapshotUpsertSem    *sharedutils.AdjustableSemaphore
+	sandboxListSem       *sharedutils.AdjustableSemaphore
 }
 
 func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config, serviceName string) *APIStore {
@@ -143,7 +146,17 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config, 
 
 	snapshotCache := snapshotcache.NewSnapshotCache(sqlcDB, redisClient)
 
-	orch, err := orchestrator.New(ctx, config, tel, nomadClient, posthogClient, redisClient, sqlcDB, clusters, featureFlags, accessTokenGenerator, snapshotCache)
+	snapshotUpsertSem, err := sharedutils.NewAdjustableSemaphore(int64(featureFlags.IntFlag(ctx, featureflags.MaxConcurrentSnapshotUpserts)))
+	if err != nil {
+		logger.L().Fatal(ctx, "failed to create snapshot upsert semaphore", zap.Error(err))
+	}
+
+	sandboxListSem, err := sharedutils.NewAdjustableSemaphore(int64(featureFlags.IntFlag(ctx, featureflags.MaxConcurrentSandboxListQueries)))
+	if err != nil {
+		logger.L().Fatal(ctx, "failed to create sandbox list semaphore", zap.Error(err))
+	}
+
+	orch, err := orchestrator.New(ctx, config, tel, nomadClient, posthogClient, redisClient, sqlcDB, clusters, featureFlags, accessTokenGenerator, snapshotCache, snapshotUpsertSem)
 	if err != nil {
 		logger.L().Fatal(ctx, "Initializing Orchestrator client", zap.Error(err))
 	}
@@ -181,7 +194,11 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config, 
 		clusters:             clusters,
 		featureFlags:         featureFlags,
 		redisClient:          redisClient,
+		snapshotUpsertSem:    snapshotUpsertSem,
+		sandboxListSem:       sandboxListSem,
 	}
+
+	go a.updateDBThrottleLimits(ctx)
 
 	// Wait till there's at least one, otherwise we can't create sandboxes yet
 	go func() {
@@ -255,6 +272,26 @@ func (a *APIStore) Close(ctx context.Context) error {
 	}
 
 	return errors.Join(errs...)
+}
+
+// updateDBThrottleLimits periodically syncs DB throttle semaphore limits from feature flags.
+func (a *APIStore) updateDBThrottleLimits(ctx context.Context) {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if limit := a.featureFlags.IntFlag(ctx, featureflags.MaxConcurrentSnapshotUpserts); limit > 0 {
+				_ = a.snapshotUpsertSem.SetLimit(int64(limit))
+			}
+			if limit := a.featureFlags.IntFlag(ctx, featureflags.MaxConcurrentSandboxListQueries); limit > 0 {
+				_ = a.sandboxListSem.SetLimit(int64(limit))
+			}
+		}
+	}
 }
 
 // sendAPIStoreError wraps sending of an error in the Error format.

@@ -176,6 +176,13 @@ var (
 
 	// BuildBaseRootfsSizeLimitMB is the maximum size of the base rootfs filesystem created from the OCI image, in MB.
 	BuildBaseRootfsSizeLimitMB = newIntFlag("build-base-rootfs-size-limit-mb", 25000)
+
+	// MaxConcurrentSnapshotUpserts limits concurrent UpsertSnapshot calls (pause + snapshot template paths).
+	// 0 disables throttling.
+	MaxConcurrentSnapshotUpserts = newIntFlag("max-concurrent-snapshot-upserts", 5)
+	// MaxConcurrentSandboxListQueries limits concurrent GetSnapshotsWithCursor calls in the sandbox list path.
+	// 0 disables throttling.
+	MaxConcurrentSandboxListQueries = newIntFlag("max-concurrent-sandbox-list-queries", 5)
 )
 
 type StringFlag struct {
