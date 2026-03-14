@@ -178,10 +178,10 @@ var (
 	BuildBaseRootfsSizeLimitMB = newIntFlag("build-base-rootfs-size-limit-mb", 25000)
 
 	// MaxConcurrentSnapshotUpserts limits concurrent UpsertSnapshot calls (pause + snapshot template paths).
-	// 0 disables throttling.
+	// 0 or negative disables throttling (unlimited concurrency).
 	MaxConcurrentSnapshotUpserts = newIntFlag("max-concurrent-snapshot-upserts", 5)
 	// MaxConcurrentSandboxListQueries limits concurrent GetSnapshotsWithCursor calls in the sandbox list path.
-	// 0 disables throttling.
+	// 0 or negative disables throttling (unlimited concurrency).
 	MaxConcurrentSandboxListQueries = newIntFlag("max-concurrent-sandbox-list-queries", 5)
 )
 

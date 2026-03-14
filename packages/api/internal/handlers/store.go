@@ -147,12 +147,12 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config, 
 
 	snapshotCache := snapshotcache.NewSnapshotCache(sqlcDB, redisClient)
 
-	snapshotUpsertSem, err := sharedutils.NewAdjustableSemaphore(int64(featureFlags.IntFlag(ctx, featureflags.MaxConcurrentSnapshotUpserts)))
+	snapshotUpsertSem, err := sharedutils.NewAdjustableSemaphore(dbThrottleLimit(featureFlags.IntFlag(ctx, featureflags.MaxConcurrentSnapshotUpserts)))
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create snapshot upsert semaphore", zap.Error(err))
 	}
 
-	sandboxListSem, err := sharedutils.NewAdjustableSemaphore(int64(featureFlags.IntFlag(ctx, featureflags.MaxConcurrentSandboxListQueries)))
+	sandboxListSem, err := sharedutils.NewAdjustableSemaphore(dbThrottleLimit(featureFlags.IntFlag(ctx, featureflags.MaxConcurrentSandboxListQueries)))
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create sandbox list semaphore", zap.Error(err))
 	}
