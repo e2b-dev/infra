@@ -51,7 +51,12 @@ switch:
 .PHONY: init
 init:
 	# Create S3 bucket for Terraform state if it doesn't exist
-	aws s3api create-bucket --bucket $(TERRAFORM_STATE_BUCKET) --region $(TEMPLATE_BUCKET_LOCATION) --profile $(AWS_PROFILE) --create-bucket-configuration LocationConstraint=$(TEMPLATE_BUCKET_LOCATION) >/dev/null 2>&1 || true
+	# us-east-1 requires omitting LocationConstraint; all other regions require it
+	@if [ "$(TEMPLATE_BUCKET_LOCATION)" = "us-east-1" ]; then \
+		aws s3api create-bucket --bucket $(TERRAFORM_STATE_BUCKET) --region $(TEMPLATE_BUCKET_LOCATION) --profile $(AWS_PROFILE) 2>/dev/null || true; \
+	else \
+		aws s3api create-bucket --bucket $(TERRAFORM_STATE_BUCKET) --region $(TEMPLATE_BUCKET_LOCATION) --profile $(AWS_PROFILE) --create-bucket-configuration LocationConstraint=$(TEMPLATE_BUCKET_LOCATION) 2>/dev/null || true; \
+	fi
 	$(tf_vars) $(TF) init -upgrade -reconfigure -backend-config="bucket=${TERRAFORM_STATE_BUCKET}"
 	$(tf_vars) $(TF) apply -target=module.init -input=false -compact-warnings
 

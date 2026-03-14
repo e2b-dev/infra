@@ -4,6 +4,26 @@
 -- Set default first so new rows never get NULL metadata while backfill runs.
 ALTER TABLE public.snapshots ALTER COLUMN metadata SET DEFAULT '{}'::jsonb;
 
+-- Install a trigger that converts SQL NULL and JSON 'null' to '{}' on insert/update,
+-- so concurrent writes during the backfill can't re-introduce NULLs.
+-- +goose StatementBegin
+CREATE OR REPLACE FUNCTION fix_snapshots_metadata_json_null()
+RETURNS trigger AS $$
+BEGIN
+  IF NEW.metadata IS NULL OR NEW.metadata = 'null'::jsonb THEN
+    NEW.metadata := '{}'::jsonb;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+-- +goose StatementEnd
+
+DROP TRIGGER IF EXISTS trg_snapshots_fix_json_null_metadata ON public.snapshots;
+CREATE TRIGGER trg_snapshots_fix_json_null_metadata
+  BEFORE INSERT OR UPDATE OF metadata ON public.snapshots
+  FOR EACH ROW
+  EXECUTE FUNCTION fix_snapshots_metadata_json_null();
+
 -- Backfill NULL metadata to empty jsonb in batches.
 -- Each iteration picks an arbitrary batch of NULLs (no ordering on random UUIDs).
 -- +goose StatementBegin
@@ -48,3 +68,6 @@ DROP INDEX CONCURRENTLY IF EXISTS idx_snapshots_team_metadata_gin;
 
 ALTER TABLE public.snapshots ALTER COLUMN metadata DROP NOT NULL;
 ALTER TABLE public.snapshots ALTER COLUMN metadata DROP DEFAULT;
+
+DROP TRIGGER IF EXISTS trg_snapshots_fix_json_null_metadata ON public.snapshots;
+DROP FUNCTION IF EXISTS fix_snapshots_metadata_json_null();

@@ -16,7 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	clustershared "github.com/e2b-dev/infra/packages/shared/pkg/clusters"
-	feature_flags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -37,7 +37,7 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 		telemetry.WithTeamID(team.ID.String()),
 	)
 
-	if !a.featureFlags.BoolFlag(ctx, feature_flags.PersistentVolumesFlag) {
+	if !a.featureFlags.BoolFlag(ctx, featureflags.PersistentVolumesFlag) {
 		a.sendAPIStoreError(c, http.StatusForbidden, "use of volumes is not enabled")
 
 		return
@@ -63,7 +63,7 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 		return
 	}
 
-	ctx = feature_flags.AddToContext(ctx, feature_flags.VolumeContext(body.Name))
+	ctx = featureflags.AddToContext(ctx, featureflags.VolumeContext(body.Name))
 
 	volumeType := a.getVolumeType(ctx)
 	if volumeType == "" {
@@ -158,7 +158,7 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 }
 
 func (a *APIStore) getVolumeType(ctx context.Context) string {
-	volumeType := a.featureFlags.StringFlag(ctx, feature_flags.DefaultPersistentVolumeType)
+	volumeType := a.featureFlags.StringFlag(ctx, featureflags.DefaultPersistentVolumeType)
 	if volumeType == "" {
 		volumeType = a.config.DefaultPersistentVolumeType
 	}
