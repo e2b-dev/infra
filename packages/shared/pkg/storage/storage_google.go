@@ -21,6 +21,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -35,6 +36,7 @@ const (
 	googleMaxBackoff               = 10 * time.Second
 	googleBackoffMultiplier        = 2
 	googleMaxAttempts              = 10
+	defaultGRPCConnectionPoolSize  = 4
 	gcloudDefaultUploadConcurrency = 16
 
 	gcsOperationAttr                           = "operation"
@@ -85,8 +87,13 @@ var (
 )
 
 func NewGCP(ctx context.Context, bucketName string, limiter *limit.Limiter) (StorageProvider, error) {
+	grpcPoolSize, err := env.GetEnvAsInt("GCS_GRPC_CONNECTION_POOL_SIZE", defaultGRPCConnectionPoolSize)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse GCS_GRPC_CONNECTION_POOL_SIZE: %w", err)
+	}
+
 	client, err := storage.NewGRPCClient(ctx,
-		option.WithGRPCConnectionPool(4),
+		option.WithGRPCConnectionPool(grpcPoolSize),
 		option.WithGRPCDialOption(grpc.WithInitialConnWindowSize(32*megabyte)),
 		option.WithGRPCDialOption(grpc.WithInitialWindowSize(4*megabyte)),
 	)
