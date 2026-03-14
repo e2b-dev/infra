@@ -118,6 +118,7 @@ job "template-manager" {
         LOGS_COLLECTOR_ADDRESS           = "${logs_collector_address}"
         ORCHESTRATOR_SERVICES            = "${orchestrator_services}"
         REDIS_POOL_SIZE                  = "${redis_pool_size}"
+        GCS_GRPC_CONNECTION_POOL_SIZE    = "${gcs_grpc_connection_pool_size}"
         SHARED_CHUNK_CACHE_PATH       = "${shared_chunk_cache_path}"
         CLICKHOUSE_CONNECTION_STRING  = "${clickhouse_connection_string}"
         DOCKERHUB_REMOTE_REPOSITORY_URL  = "${dockerhub_remote_repository_url}"

@@ -427,10 +427,11 @@ module "orchestrator" {
   redis_tls_ca_base64          = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
   persistent_volume_mounts     = var.persistent_volume_mounts
 
-  consul_token            = var.consul_acl_token_secret
-  domain_name             = var.domain_name
-  shared_chunk_cache_path = var.shared_chunk_cache_path
-  launch_darkly_api_key   = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
+  consul_token                  = var.consul_acl_token_secret
+  domain_name                   = var.domain_name
+  shared_chunk_cache_path       = var.shared_chunk_cache_path
+  launch_darkly_api_key         = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
+  gcs_grpc_connection_pool_size = var.gcs_grpc_connection_pool_size
 }
 
 data "google_storage_bucket_object" "template_manager" {
@@ -494,6 +495,7 @@ module "template_manager" {
   dockerhub_remote_repository_url = var.dockerhub_remote_repository_url
   launch_darkly_api_key           = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
   shared_chunk_cache_path         = var.shared_chunk_cache_path
+  gcs_grpc_connection_pool_size   = var.gcs_grpc_connection_pool_size
 
   nomad_addr  = "https://nomad.${var.domain_name}"
   nomad_token = var.nomad_acl_token_secret

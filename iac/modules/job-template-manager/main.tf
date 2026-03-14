@@ -38,6 +38,7 @@ resource "nomad_job" "template_manager" {
     clickhouse_connection_string    = var.clickhouse_connection_string
     dockerhub_remote_repository_url = var.dockerhub_remote_repository_url
     redis_pool_size                 = var.redis_pool_size
+    gcs_grpc_connection_pool_size   = var.gcs_grpc_connection_pool_size
     launch_darkly_api_key           = trimspace(var.launch_darkly_api_key)
     shared_chunk_cache_path         = var.shared_chunk_cache_path
   })

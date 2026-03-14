@@ -4,17 +4,18 @@ locals {
     port       = var.port
     proxy_port = var.proxy_port
 
-    environment                  = var.environment
-    logs_collector_address       = var.logs_collector_address
-    otel_collector_grpc_endpoint = var.otel_collector_grpc_endpoint
-    envd_timeout                 = var.envd_timeout
-    template_bucket_name         = var.template_bucket_name
-    allow_sandbox_internet       = var.allow_sandbox_internet
-    clickhouse_connection_string = var.clickhouse_connection_string
-    redis_url                    = var.redis_url
-    redis_cluster_url            = var.redis_cluster_url
-    redis_tls_ca_base64          = var.redis_tls_ca_base64
-    redis_pool_size              = var.redis_pool_size
+    environment                   = var.environment
+    logs_collector_address        = var.logs_collector_address
+    otel_collector_grpc_endpoint  = var.otel_collector_grpc_endpoint
+    envd_timeout                  = var.envd_timeout
+    template_bucket_name          = var.template_bucket_name
+    allow_sandbox_internet        = var.allow_sandbox_internet
+    clickhouse_connection_string  = var.clickhouse_connection_string
+    redis_url                     = var.redis_url
+    redis_cluster_url             = var.redis_cluster_url
+    redis_tls_ca_base64           = var.redis_tls_ca_base64
+    redis_pool_size               = var.redis_pool_size
+    gcs_grpc_connection_pool_size = var.gcs_grpc_connection_pool_size
 
     consul_token             = var.consul_token
     domain_name              = var.domain_name

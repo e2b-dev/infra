@@ -73,6 +73,7 @@ job "orchestrator-${latest_orchestrator_job_id}" {
         ALLOW_SANDBOX_INTERNET       = "${allow_sandbox_internet}"
         CLICKHOUSE_CONNECTION_STRING = "${clickhouse_connection_string}"
         REDIS_POOL_SIZE              = "${redis_pool_size}"
+        GCS_GRPC_CONNECTION_POOL_SIZE = "${gcs_grpc_connection_pool_size}"
         REDIS_CLUSTER_URL            = "${redis_cluster_url}"
         REDIS_TLS_CA_BASE64          = "${redis_tls_ca_base64}"
         REDIS_URL                    = "${redis_url}"
