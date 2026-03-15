@@ -23,7 +23,10 @@ const (
 	maxDepth = 10
 )
 
-func (s *Service) ListDir(ctx context.Context, request *orchestrator.VolumeDirListRequest) (r *orchestrator.VolumeDirListResponse, err error) {
+func (s *Service) ListDir(
+	ctx context.Context,
+	request *orchestrator.VolumeDirListRequest,
+) (r *orchestrator.VolumeDirListResponse, err error) {
 	ctx, span := tracer.Start(ctx, "list directory in volume")
 	defer func() {
 		setSpanStatus(span, err)
@@ -44,13 +47,24 @@ func (s *Service) ListDir(ctx context.Context, request *orchestrator.VolumeDirLi
 	depth = max(depth, minDepth)
 
 	if depth > maxDepth {
-		return nil, newAPIError(ctx, codes.InvalidArgument, http.StatusBadRequest, orchestrator.UserErrorCode_DEPTH_OUT_OF_RANGE, "depth must be between %d and %d", minDepth, maxDepth).Err()
+		return nil, newAPIError(ctx,
+			codes.InvalidArgument,
+			http.StatusBadRequest,
+			orchestrator.UserErrorCode_DEPTH_OUT_OF_RANGE,
+			"depth must be between %d and %d", minDepth, maxDepth,
+		).Err()
 	}
 
 	results, err := s.listRecursive(ctx, fs, path, depth)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return nil, newAPIError(ctx, codes.NotFound, http.StatusNotFound, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to read: %q not found.", request.GetPath()).Err()
+			return nil, newAPIError(ctx,
+				codes.NotFound,
+				http.StatusNotFound,
+				orchestrator.UserErrorCode_PATH_NOT_FOUND,
+				"failed to read: %q not found.",
+				request.GetPath(),
+			).Err()
 		}
 
 		return nil, fmt.Errorf("failed to read directory %q: %w", path, err)
@@ -59,7 +73,12 @@ func (s *Service) ListDir(ctx context.Context, request *orchestrator.VolumeDirLi
 	return &orchestrator.VolumeDirListResponse{Files: results}, nil
 }
 
-func (s *Service) listRecursive(ctx context.Context, fs *chrooted.Chrooted, path string, depth int) ([]*orchestrator.VolumeDirectoryItem, error) {
+func (s *Service) listRecursive(
+	ctx context.Context,
+	fs *chrooted.Chrooted,
+	path string,
+	depth int,
+) ([]*orchestrator.VolumeDirectoryItem, error) {
 	if depth <= 0 {
 		return nil, nil
 	}
@@ -77,7 +96,10 @@ func (s *Service) listRecursive(ctx context.Context, fs *chrooted.Chrooted, path
 			// try, but if it fails to resolve, no big deal
 			symlinkDest, err = fs.EvalSymlinks(itemPath)
 			if err != nil {
-				logger.L().Warn(ctx, "failed to resolve symlink", zap.String("path", itemPath), zap.Error(err))
+				logger.L().Warn(ctx, "failed to resolve symlink",
+					zap.String("path", itemPath),
+					zap.Error(err),
+				)
 			}
 		}
 		results = append(results, &orchestrator.VolumeDirectoryItem{
@@ -88,7 +110,9 @@ func (s *Service) listRecursive(ctx context.Context, fs *chrooted.Chrooted, path
 			children, err := s.listRecursive(ctx, fs, itemPath, depth-1)
 			if err != nil {
 				if errors.Is(err, os.ErrNotExist) {
-					logger.L().Warn(ctx, "directory deleted during traversal", zap.String("path", itemPath))
+					logger.L().Warn(ctx, "directory deleted during traversal",
+						zap.String("path", itemPath),
+					)
 
 					continue
 				}

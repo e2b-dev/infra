@@ -10,6 +10,8 @@ type wrappedFile struct {
 	file *os.File
 }
 
+var _ billy.File = (*wrappedFile)(nil)
+
 func (w *wrappedFile) Name() string {
 	return w.file.Name()
 }
@@ -35,18 +37,16 @@ func (w *wrappedFile) Close() error {
 }
 
 func (w *wrappedFile) Lock() error {
-	return nil
+	return nil // todo: implement me
 }
 
 func (w *wrappedFile) Unlock() error {
-	return nil
+	return nil // todo: implement me
 }
 
 func (w *wrappedFile) Truncate(size int64) error {
 	return w.file.Truncate(size)
 }
-
-var _ billy.File = (*wrappedFile)(nil)
 
 func maybeWrap(f *os.File) *wrappedFile {
 	if f == nil {

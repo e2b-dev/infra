@@ -29,7 +29,12 @@ func (s *Service) DeleteDir(ctx context.Context, request *orchestrator.VolumeDir
 	defer fs.Close()
 
 	if s.isRoot(path) {
-		return nil, newAPIError(ctx, codes.InvalidArgument, http.StatusBadRequest, orchestrator.UserErrorCode_CANNOT_DELETE_ROOT, "cannot delete root directory").Err()
+		return nil, newAPIError(ctx,
+			codes.InvalidArgument,
+			http.StatusBadRequest,
+			orchestrator.UserErrorCode_CANNOT_DELETE_ROOT,
+			"cannot delete root directory",
+		).Err()
 	}
 
 	span.AddEvent("removing directory", trace.WithAttributes(
@@ -38,12 +43,23 @@ func (s *Service) DeleteDir(ctx context.Context, request *orchestrator.VolumeDir
 
 	if _, _, err := fs.Stat(path); err != nil {
 		if os.IsNotExist(err) {
-			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to delete: %q not found.", request.GetPath()).Err()
+			return nil, newAPIError(ctx,
+				codes.NotFound,
+				http.StatusBadRequest,
+				orchestrator.UserErrorCode_PATH_NOT_FOUND,
+				"failed to delete: %q not found.",
+				request.GetPath(),
+			).Err()
 		}
 
 		logger.L().Error(ctx, "failed to stat directory", zap.String("path", path), zap.Error(err))
 
-		return nil, newAPIError(ctx, codes.Internal, http.StatusInternalServerError, orchestrator.UserErrorCode_UNKNOWN_USER_ERROR_CODE, "failed to stat directory").Err()
+		return nil, newAPIError(ctx,
+			codes.Internal,
+			http.StatusInternalServerError,
+			orchestrator.UserErrorCode_UNKNOWN_USER_ERROR_CODE,
+			"failed to stat directory",
+		).Err()
 	}
 
 	// we can skip the "is not exist" errors, b/c that's what we're trying to do anyway

@@ -81,21 +81,41 @@ func (s *Service) getFilesystemAndPath(ctx context.Context, request volumePathRe
 
 	teamID, ok := internal.TryParseUUID(volume.GetTeamId())
 	if !ok {
-		return nil, "", newAPIError(ctx, codes.InvalidArgument, http.StatusInternalServerError, orchestrator.UserErrorCode_INVALID_REQUEST, "invalid team ID %q", volume.GetTeamId())
+		return nil, "", newAPIError(ctx,
+			codes.InvalidArgument,
+			http.StatusBadRequest,
+			orchestrator.UserErrorCode_INVALID_REQUEST,
+			"invalid team ID %q", volume.GetTeamId(),
+		)
 	}
 
 	volumeID, ok := internal.TryParseUUID(volume.GetVolumeId())
 	if !ok {
-		return nil, "", newAPIError(ctx, codes.InvalidArgument, http.StatusInternalServerError, orchestrator.UserErrorCode_INVALID_REQUEST, "invalid volume ID %q", volume.GetVolumeId())
+		return nil, "", newAPIError(ctx,
+			codes.InvalidArgument,
+			http.StatusBadRequest,
+			orchestrator.UserErrorCode_INVALID_REQUEST,
+			"invalid volume ID %q", volume.GetVolumeId(),
+		)
 	}
 
 	chroot, err := s.builder.Chroot(ctx, volumeType, teamID, volumeID)
 	if err != nil {
 		if errors.Is(err, chrooted.ErrVolumeTypeNotFound) {
-			return nil, "", newAPIError(ctx, codes.Internal, http.StatusInternalServerError, orchestrator.UserErrorCode_NOT_SUPPORTED, "volume type not found")
+			return nil, "", newAPIError(ctx,
+				codes.Internal,
+				http.StatusInternalServerError,
+				orchestrator.UserErrorCode_NOT_SUPPORTED,
+				"volume type not found",
+			)
 		}
 
-		return nil, "", newAPIError(ctx, codes.Internal, http.StatusInternalServerError, orchestrator.UserErrorCode_UNKNOWN_USER_ERROR_CODE, "failed to get chroot: %v", err)
+		return nil, "", newAPIError(ctx,
+			codes.Internal,
+			http.StatusInternalServerError,
+			orchestrator.UserErrorCode_UNKNOWN_USER_ERROR_CODE,
+			"failed to get chroot: %v", err,
+		)
 	}
 
 	path := request.GetPath()
