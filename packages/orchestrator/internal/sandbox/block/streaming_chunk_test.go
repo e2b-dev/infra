@@ -263,75 +263,59 @@ func TestStreamingChunker_FullChunkCachedAfterPartialRequest(t *testing.T) {
 
 	data := makeTestData(t, storage.MemoryChunkSize)
 
-	runTest := func(t *testing.T, useEventually bool) { //nolint:thelper // not a helper, it's the test body
-		openCount := atomic.Int64{}
-
-		upstream := &countingUpstream{
-			inner:     &fastUpstream{data: data, blockSize: testBlockSize},
-			readCount: &openCount,
-		}
-
-		chunker, err := NewStreamingChunker(
-			int64(len(data)), testBlockSize,
-			upstream, t.TempDir()+"/cache",
-			newTestMetrics(t),
-			0, nil,
-		)
-		require.NoError(t, err)
-		defer chunker.Close()
-
-		// Request only the FIRST block of the 4MB chunk.
-		_, err = chunker.Slice(t.Context(), 0, testBlockSize)
-		require.NoError(t, err)
-
-		lastOff := int64(storage.MemoryChunkSize) - testBlockSize
-
-		if useEventually {
-			var lastErr error
-			var lastMismatch bool
-			require.Eventually(t, func() bool {
-				slice, err := chunker.Slice(t.Context(), lastOff, testBlockSize)
-				if err != nil {
-					lastErr = err
-					t.Logf("Slice(%d) error: %v", lastOff, err)
-
-					return false
-				}
-				if !bytes.Equal(data[lastOff:], slice) {
-					lastMismatch = true
-					t.Logf("data mismatch at offset %d", lastOff)
-
-					return false
-				}
-
-				return true
-			}, 5*time.Second, 10*time.Millisecond)
-			if lastErr != nil {
-				t.Logf("last error from Slice: %v", lastErr)
-			}
-			if lastMismatch {
-				t.Logf("last attempt had data mismatch")
-			}
-		} else {
-			// Direct blocking call — Slice blocks via registerAndWait
-			// until the background fetch reaches this offset.
-			slice, err := chunker.Slice(t.Context(), lastOff, testBlockSize)
-			require.NoError(t, err)
-			require.True(t, bytes.Equal(data[lastOff:], slice), "data mismatch at offset %d", lastOff)
-		}
-
-		assert.Equal(t, int64(1), openCount.Load(),
-			"expected 1 OpenRangeReader call (full chunk fetched in background), got %d", openCount.Load())
-	}
+	// Expected fetch time math:
+	// - 4MB data, reader yields 4KB per Read() call → 1024 reads
+	// - readBatch = max(4KB, 16KB) = 16KB, but each Read returns 4KB → 1024 lock/notify cycles
+	// - All in-memory, no I/O → should complete in single-digit milliseconds locally
+	// - 10s timeout is generous to account for CI resource contention
+	const sliceTimeout = 10 * time.Second
 
 	for i := range 100 {
-		t.Run(fmt.Sprintf("eventually/%d", i), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
 			t.Parallel()
-			runTest(t, true)
-		})
-		t.Run(fmt.Sprintf("direct/%d", i), func(t *testing.T) {
-			t.Parallel()
-			runTest(t, false)
+
+			openCount := atomic.Int64{}
+
+			upstream := &countingUpstream{
+				inner:     &fastUpstream{data: data, blockSize: testBlockSize},
+				readCount: &openCount,
+			}
+
+			chunker, err := NewStreamingChunker(
+				int64(len(data)), testBlockSize,
+				upstream, t.TempDir()+"/cache",
+				newTestMetrics(t),
+				0, nil,
+			)
+			require.NoError(t, err)
+			defer chunker.Close()
+
+			// Request only the FIRST block of the 4MB chunk.
+			_, err = chunker.Slice(t.Context(), 0, testBlockSize)
+			require.NoError(t, err)
+
+			lastOff := int64(storage.MemoryChunkSize) - testBlockSize
+
+			// Slice blocks via registerAndWait until the background fetch
+			// reaches this offset. Use an explicit timeout context so we
+			// get a clear failure instead of hanging forever.
+			ctx, cancel := context.WithTimeout(t.Context(), sliceTimeout)
+			defer cancel()
+
+			start := time.Now()
+			slice, err := chunker.Slice(ctx, lastOff, testBlockSize)
+			elapsed := time.Since(start)
+
+			require.NoError(t, err, "Slice(%d) failed after %v", lastOff, elapsed)
+			require.True(t, bytes.Equal(data[lastOff:lastOff+testBlockSize], slice),
+				"data mismatch at offset %d", lastOff)
+
+			if elapsed > time.Second {
+				t.Logf("WARNING: Slice(%d) took %v (expected <100ms)", lastOff, elapsed)
+			}
+
+			assert.Equal(t, int64(1), openCount.Load(),
+				"expected 1 OpenRangeReader call (full chunk fetched in background), got %d", openCount.Load())
 		})
 	}
 }
