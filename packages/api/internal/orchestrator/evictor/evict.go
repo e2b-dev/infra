@@ -58,18 +58,18 @@ func (e *Evictor) Start(ctx context.Context) {
 					action := sandbox.StateActionKill
 					if item.AutoPause {
 						action = sandbox.StateActionPause
-						pause.LogInitiated(ctx, item.SandboxID, item.TeamID.String(), "timeout")
+						pause.LogInitiated(ctx, item.SandboxID, item.TeamID.String(), pause.ReasonTimeout)
 					}
 
 					if err := e.removeSandbox(context.WithoutCancel(ctx), item.TeamID, item.SandboxID, sandbox.RemoveOpts{Action: action, Eviction: true}); err != nil {
 						if action == sandbox.StateActionPause {
 							switch {
 							case errors.Is(err, sandbox.ErrNotEvictable):
-								pause.LogSkipped(ctx, item.SandboxID, item.TeamID.String(), "timeout", "not_evictable")
+								pause.LogSkipped(ctx, item.SandboxID, item.TeamID.String(), pause.ReasonTimeout, pause.SkipReasonNotEvictable)
 							case errors.Is(err, sandbox.ErrNotFound):
-								pause.LogSkipped(ctx, item.SandboxID, item.TeamID.String(), "timeout", "not_found")
+								pause.LogSkipped(ctx, item.SandboxID, item.TeamID.String(), pause.ReasonTimeout, pause.SkipReasonNotFound)
 							default:
-								pause.LogFailure(ctx, item.SandboxID, item.TeamID.String(), "timeout", err)
+								pause.LogFailure(ctx, item.SandboxID, item.TeamID.String(), pause.ReasonTimeout, err)
 							}
 						} else if !errors.Is(err, sandbox.ErrNotEvictable) && !errors.Is(err, sandbox.ErrNotFound) {
 							logger.L().Debug(ctx, "Evicting sandbox failed",
@@ -81,7 +81,7 @@ func (e *Evictor) Start(ctx context.Context) {
 
 						return nil
 					} else if action == sandbox.StateActionPause {
-						pause.LogSuccess(ctx, item.SandboxID, item.TeamID.String(), "timeout")
+						pause.LogSuccess(ctx, item.SandboxID, item.TeamID.String(), pause.ReasonTimeout)
 					}
 
 					if action != sandbox.StateActionPause {

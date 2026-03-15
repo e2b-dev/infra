@@ -40,31 +40,31 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 	traceID := span.SpanContext().TraceID().String()
 	c.Set("traceID", traceID)
 
-	pause.LogInitiated(ctx, sandboxID, teamID.String(), "request")
+	pause.LogInitiated(ctx, sandboxID, teamID.String(), pause.ReasonRequest)
 
 	err = a.orchestrator.RemoveSandbox(ctx, teamID, sandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
 	var transErr *sandbox.InvalidStateTransitionError
 
 	switch {
 	case err == nil:
-		pause.LogSuccess(ctx, sandboxID, teamID.String(), "request")
+		pause.LogSuccess(ctx, sandboxID, teamID.String(), pause.ReasonRequest)
 	case errors.Is(err, orchestrator.ErrSandboxNotFound):
 		apiErr := pauseHandleNotRunningSandbox(ctx, a.snapshotCache, sandboxID, teamID)
 		if apiErr.Code == http.StatusConflict {
-			pause.LogSkipped(ctx, sandboxID, teamID.String(), "request", "already_paused")
+			pause.LogSkipped(ctx, sandboxID, teamID.String(), pause.ReasonRequest, pause.SkipReasonAlreadyPaused)
 		} else {
-			pause.LogFailure(ctx, sandboxID, teamID.String(), "request", err)
+			pause.LogFailure(ctx, sandboxID, teamID.String(), pause.ReasonRequest, err)
 		}
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return
 	case errors.As(err, &transErr):
-		pause.LogFailure(ctx, sandboxID, teamID.String(), "request", err)
+		pause.LogFailure(ctx, sandboxID, teamID.String(), pause.ReasonRequest, err)
 		a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Sandbox '%s' cannot be paused while in '%s' state", sandboxID, transErr.CurrentState))
 
 		return
 	default:
-		pause.LogFailure(ctx, sandboxID, teamID.String(), "request", err)
+		pause.LogFailure(ctx, sandboxID, teamID.String(), pause.ReasonRequest, err)
 		telemetry.ReportError(ctx, "error pausing sandbox", err)
 
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error pausing sandbox")
