@@ -61,6 +61,7 @@ func TestTimingSliceAfterPartialRequest(t *testing.T) {
 					m, 0, nil,
 				)
 				require.NoError(t, err)
+
 				return c
 			},
 		},
@@ -74,6 +75,7 @@ func TestTimingSliceAfterPartialRequest(t *testing.T) {
 					m,
 				)
 				require.NoError(t, err)
+
 				return c
 			},
 		},
