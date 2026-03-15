@@ -259,34 +259,37 @@ func TestValidateNetworkConfig(t *testing.T) {
 			},
 			wantErr: false,
 		},
-		// Port-specific rules (not yet supported)
+		// Port-specific rules
 		{
-			name: "allow_out with port is rejected",
+			name: "allow_out with port is accepted",
 			network: &api.SandboxNetworkConfig{
 				AllowOut: &[]string{"8.8.8.8:80"},
 				DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
 			},
-			wantErr:    true,
-			wantCode:   http.StatusBadRequest,
-			wantErrMsg: "port-specific allow rules are not yet supported",
+			wantErr: false,
 		},
 		{
-			name: "deny_out with port is rejected",
+			name: "deny_out with port is accepted",
 			network: &api.SandboxNetworkConfig{
 				DenyOut: &[]string{"10.0.0.0/8:22"},
 			},
-			wantErr:    true,
-			wantCode:   http.StatusBadRequest,
-			wantErrMsg: "port-specific deny rules are not yet supported",
+			wantErr: false,
 		},
 		{
-			name: "allow_out with port range is rejected",
+			name: "allow_out with port range is accepted",
 			network: &api.SandboxNetworkConfig{
 				AllowOut: &[]string{"8.8.8.8:1-1024"},
 			},
+			wantErr: false,
+		},
+		{
+			name: "deny_out with domain is rejected",
+			network: &api.SandboxNetworkConfig{
+				DenyOut: &[]string{"example.com"},
+			},
 			wantErr:    true,
 			wantCode:   http.StatusBadRequest,
-			wantErrMsg: "port-specific allow rules are not yet supported",
+			wantErrMsg: "invalid denied CIDR example.com",
 		},
 		{
 			name: "deny_out with invalid port is rejected",

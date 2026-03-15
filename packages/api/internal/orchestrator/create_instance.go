@@ -31,20 +31,33 @@ import (
 )
 
 // buildEgressConfig constructs the orchestrator egress configuration from
-// allow/deny entry lists. It splits allowed entries into CIDRs and domains,
-// and adds the default nameserver when domains are present so the sandbox can
-// resolve them.
+// allow/deny entry lists. Entries may include IPs, CIDRs, domains, and
+// optional port ranges (e.g. "8.8.8.8:53", "example.com:443"). Raw entry
+// strings are passed through to the orchestrator, which re-parses them for
+// nftables and TCP proxy enforcement.
+//
+// When any allowed entry is a domain, the default nameserver is injected so
+// the sandbox can resolve domain names.
 func buildEgressConfig(allowedEntries, deniedEntries []string) *orchestrator.SandboxNetworkEgressConfig {
-	allowedAddresses, allowedDomains := sandbox_network.ParseAddressesAndDomains(allowedEntries)
+	allowed := allowedEntries
 
-	if len(allowedDomains) > 0 {
-		allowedAddresses = append(allowedAddresses, sandbox_network.DefaultNameserver)
+	hasDomains := false
+	for _, entry := range allowedEntries {
+		rule, err := sandbox_network.ParseRule(entry)
+		if err == nil && rule.IsDomain {
+			hasDomains = true
+
+			break
+		}
+	}
+
+	if hasDomains {
+		allowed = append(append([]string{}, allowedEntries...), sandbox_network.DefaultNameserver)
 	}
 
 	return &orchestrator.SandboxNetworkEgressConfig{
-		AllowedCidrs:   sandbox_network.AddressStringsToCIDRs(allowedAddresses),
-		DeniedCidrs:    sandbox_network.AddressStringsToCIDRs(deniedEntries),
-		AllowedDomains: allowedDomains,
+		Allowed: allowed,
+		Denied:  deniedEntries,
 	}
 }
 
@@ -69,7 +82,7 @@ func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess
 	// This should be applied after copying the network config to preserve allowed addresses
 	if allowInternetAccess != nil && !*allowInternetAccess {
 		// Block all internet access - this overrides any other blocked addresses
-		orchNetwork.Egress.DeniedCidrs = []string{sandbox_network.AllInternetTrafficCIDR}
+		orchNetwork.Egress.Denied = []string{sandbox_network.AllInternetTrafficCIDR}
 	}
 
 	return orchNetwork

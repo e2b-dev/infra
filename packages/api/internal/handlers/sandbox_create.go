@@ -512,7 +512,6 @@ func validateNetworkConfig(network *api.SandboxNetworkConfig) *api.APIError {
 // - denyOut hosts must be valid IPs or CIDRs (not domains)
 // - allowOut hosts can be IPs, CIDRs, or domain names
 // - when allowOut contains domains, denyOut must include 0.0.0.0/0
-// - port-specific rules are not yet supported and will return an error
 func validateEgressRules(allowOut, denyOut []string) *api.APIError {
 	denyRules, err := sandbox_network.ParseRules(denyOut)
 	if err != nil {
@@ -531,14 +530,6 @@ func validateEgressRules(allowOut, denyOut []string) *api.APIError {
 				ClientMsg: fmt.Sprintf("invalid denied CIDR %s", rule.Host),
 			}
 		}
-
-		if !rule.AllPorts() {
-			return &api.APIError{
-				Code:      http.StatusBadRequest,
-				Err:       fmt.Errorf("port-specific deny rules are not yet supported"),
-				ClientMsg: "port-specific deny rules are not yet supported",
-			}
-		}
 	}
 
 	allowRules, err := sandbox_network.ParseRules(allowOut)
@@ -554,14 +545,6 @@ func validateEgressRules(allowOut, denyOut []string) *api.APIError {
 	for _, rule := range allowRules {
 		if rule.IsDomain {
 			hasDomains = true
-		}
-
-		if !rule.AllPorts() {
-			return &api.APIError{
-				Code:      http.StatusBadRequest,
-				Err:       fmt.Errorf("port-specific allow rules are not yet supported"),
-				ClientMsg: "port-specific allow rules are not yet supported",
-			}
 		}
 	}
 

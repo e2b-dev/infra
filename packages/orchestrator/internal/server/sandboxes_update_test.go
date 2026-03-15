@@ -52,7 +52,7 @@ func TestUpdate_EgressOnly_FailsAndDoesNotChangeEndTime(t *testing.T) {
 	_, err = s.Update(t.Context(), &orchestrator.SandboxUpdateRequest{
 		SandboxId: sbx.Runtime.SandboxID,
 		Egress: &orchestrator.SandboxNetworkEgressConfig{
-			DeniedCidrs: []string{"0.0.0.0/0"},
+			Denied: []string{"0.0.0.0/0"},
 		},
 	})
 
@@ -93,7 +93,7 @@ func TestUpdate_EndTimeAndEgress_EgressFails_RevertsEndTime(t *testing.T) {
 		SandboxId: sbx.Runtime.SandboxID,
 		EndTime:   timestamppb.New(newEnd),
 		Egress: &orchestrator.SandboxNetworkEgressConfig{
-			DeniedCidrs: []string{"0.0.0.0/0"},
+			Denied: []string{"0.0.0.0/0"},
 		},
 	})
 
@@ -103,7 +103,6 @@ func TestUpdate_EndTimeAndEgress_EgressFails_RevertsEndTime(t *testing.T) {
 	assert.Equal(t, originalEnd, sbx.GetEndAt())
 	// Network egress should not have been set.
 	egress := sbx.Config.GetNetworkEgress()
-	assert.Empty(t, egress.GetAllowedCidrs())
-	assert.Empty(t, egress.GetDeniedCidrs())
-	assert.Empty(t, egress.GetAllowedDomains())
+	assert.Empty(t, egress.GetAllowed())
+	assert.Empty(t, egress.GetDenied())
 }

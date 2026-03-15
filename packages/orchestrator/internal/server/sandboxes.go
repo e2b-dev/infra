@@ -152,7 +152,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		if network.GetEgress() == nil {
 			network.Egress = &orchestrator.SandboxNetworkEgressConfig{}
 		}
-		network.Egress.DeniedCidrs = []string{sandbox_network.AllInternetTrafficCIDR}
+		network.Egress.Denied = []string{sandbox_network.AllInternetTrafficCIDR}
 	}
 
 	resolvedFCVersion := featureflags.ResolveFirecrackerVersion(ctx, s.featureFlags, req.GetSandbox().GetFirecrackerVersion())
@@ -305,7 +305,7 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 			}
 
 			egress := req.GetEgress()
-			if len(egress.GetAllowedCidrs()) == 0 && len(egress.GetDeniedCidrs()) == 0 && len(egress.GetAllowedDomains()) == 0 {
+			if len(egress.GetAllowed()) == 0 && len(egress.GetDenied()) == 0 {
 				sbx.Config.SetNetworkEgress(nil)
 			} else {
 				sbx.Config.SetNetworkEgress(egress)
@@ -332,9 +332,8 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 		}
 		if egress := req.GetEgress(); egress != nil {
 			eventData["network_egress"] = map[string]any{
-				"allowed_cidrs":   egress.GetAllowedCidrs(),
-				"denied_cidrs":    egress.GetDeniedCidrs(),
-				"allowed_domains": egress.GetAllowedDomains(),
+				"allowed": egress.GetAllowed(),
+				"denied":  egress.GetDenied(),
 			}
 		}
 

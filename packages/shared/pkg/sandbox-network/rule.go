@@ -20,6 +20,12 @@ func (r Rule) AllPorts() bool {
 	return r.PortStart == 0 && r.PortEnd == 0
 }
 
+// PortInRange returns true if the given port falls within the rule's port range,
+// or if the rule matches all ports.
+func (r Rule) PortInRange(port uint16) bool {
+	return r.AllPorts() || (port >= r.PortStart && port <= r.PortEnd)
+}
+
 // ParseRule parses a string entry into a Rule.
 // Supported formats:
 //   - "8.8.8.8"           → IP, all ports
