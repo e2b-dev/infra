@@ -58,9 +58,41 @@ func (e *Evictor) Start(ctx context.Context) {
 						stateAction = sandbox.StateActionPause
 					}
 
-					logger.L().Debug(ctx, "Evicting sandbox", logger.WithSandboxID(item.SandboxID), zap.String("state_action", stateAction.Name))
+					logger.L().Debug(ctx, "Evicting sandbox",
+						logger.WithSandboxID(item.SandboxID),
+						logger.WithTeamID(item.TeamID.String()),
+						zap.String("state_action", stateAction.Name),
+					)
+					if stateAction == sandbox.StateActionPause {
+						logger.L().Info(ctx, "sandbox_pause_initiated",
+							logger.WithSandboxID(item.SandboxID),
+							logger.WithTeamID(item.TeamID.String()),
+							zap.String("pause_reason", "timeout"),
+						)
+					}
 					if err := e.removeSandbox(context.WithoutCancel(ctx), item.TeamID, item.SandboxID, stateAction); err != nil {
-						logger.L().Debug(ctx, "Evicting sandbox failed", zap.Error(err), logger.WithSandboxID(item.SandboxID))
+						if stateAction == sandbox.StateActionPause {
+							logger.L().Warn(ctx, "sandbox_pause_result",
+								logger.WithSandboxID(item.SandboxID),
+								logger.WithTeamID(item.TeamID.String()),
+								zap.String("pause_reason", "timeout"),
+								zap.String("pause_result", "failure"),
+								zap.Error(err),
+							)
+						} else {
+							logger.L().Debug(ctx, "Evicting sandbox failed",
+								zap.Error(err),
+								logger.WithSandboxID(item.SandboxID),
+								logger.WithTeamID(item.TeamID.String()),
+							)
+						}
+					} else if stateAction == sandbox.StateActionPause {
+						logger.L().Info(ctx, "sandbox_pause_result",
+							logger.WithSandboxID(item.SandboxID),
+							logger.WithTeamID(item.TeamID.String()),
+							zap.String("pause_reason", "timeout"),
+							zap.String("pause_result", "success"),
+						)
 					}
 
 					return nil
