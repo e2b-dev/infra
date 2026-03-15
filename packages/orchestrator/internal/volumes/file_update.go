@@ -44,7 +44,12 @@ func (s *Service) UpdateFileMetadata(ctx context.Context, request *orchestrator.
 	if request.Mode != nil {
 		if err = fs.Chmod(path, os.FileMode(request.GetMode())); err != nil {
 			if os.IsNotExist(err) {
-				return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to chmod: %q not found.", request.GetPath()).Err()
+				return nil, newAPIError(ctx,
+					codes.NotFound,
+					http.StatusNotFound,
+					orchestrator.UserErrorCode_PATH_NOT_FOUND,
+					"failed to chmod: %q not found.", request.GetPath(),
+				).Err()
 			}
 
 			return nil, fmt.Errorf("failed to update file mode: %w", err)
