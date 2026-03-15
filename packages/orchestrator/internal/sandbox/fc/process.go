@@ -554,13 +554,6 @@ func (p *Process) Resume(
 	}
 	telemetry.ReportEvent(ctx, "configured tx rate limit")
 
-	err = p.client.resumeVM(ctx)
-	if err != nil {
-		fcStopErr := p.Stop(ctx)
-
-		return errors.Join(fmt.Errorf("error resuming vm: %w", err), fcStopErr)
-	}
-
 	meta := &MmdsMetadata{
 		SandboxID:            sbxMetadata.SandboxID,
 		TemplateID:           sbxMetadata.TemplateID,
@@ -573,11 +566,19 @@ func (p *Process) Resume(
 		meta.AccessTokenHash = keys.HashAccessToken("")
 	}
 
+	// Set mmds before resuming the VM so the data are available as soon as the VM is up
 	err = p.client.setMmds(ctx, meta)
 	if err != nil {
 		fcStopErr := p.Stop(ctx)
 
 		return errors.Join(fmt.Errorf("error setting mmds: %w", err), fcStopErr)
+	}
+
+	err = p.client.resumeVM(ctx)
+	if err != nil {
+		fcStopErr := p.Stop(ctx)
+
+		return errors.Join(fmt.Errorf("error resuming vm: %w", err), fcStopErr)
 	}
 
 	telemetry.SetAttributes(
