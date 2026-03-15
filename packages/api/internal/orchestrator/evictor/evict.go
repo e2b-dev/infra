@@ -82,10 +82,11 @@ func (e *Evictor) Start(ctx context.Context) {
 						return nil
 					} else if action == sandbox.StateActionPause {
 						pause.LogSuccess(ctx, item.SandboxID, item.TeamID.String(), "timeout")
-						return nil
 					}
 
-					logger.L().Debug(ctx, "Sandbox evicted", logger.WithSandboxID(item.SandboxID))
+					if action != sandbox.StateActionPause {
+						logger.L().Debug(ctx, "Sandbox evicted", logger.WithSandboxID(item.SandboxID))
+					}
 
 					return nil
 				})
