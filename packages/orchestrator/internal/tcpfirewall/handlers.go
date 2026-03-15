@@ -20,7 +20,6 @@ const (
 	// upstreamDialTimeout is the maximum time to wait for upstream connections.
 	// This prevents goroutine leaks from slow/unresponsive DNS or connections.
 	upstreamDialTimeout = 30 * time.Second
-
 )
 
 // domainHandler handles connections with hostname information (HTTP Host header or TLS SNI).
