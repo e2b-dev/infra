@@ -291,7 +291,9 @@ func TestStreamingChunker_FullChunkCachedAfterPartialRequest(t *testing.T) {
 			defer chunker.Close()
 
 			// Request only the FIRST block of the 4MB chunk.
+			t0 := time.Now()
 			_, err = chunker.Slice(t.Context(), 0, testBlockSize)
+			firstSlice := time.Since(t0)
 			require.NoError(t, err)
 
 			lastOff := int64(storage.MemoryChunkSize) - testBlockSize
@@ -306,12 +308,15 @@ func TestStreamingChunker_FullChunkCachedAfterPartialRequest(t *testing.T) {
 			slice, err := chunker.Slice(ctx, lastOff, testBlockSize)
 			elapsed := time.Since(start)
 
-			require.NoError(t, err, "Slice(%d) failed after %v", lastOff, elapsed)
+			if err != nil {
+				t.Fatalf("Slice(%d) failed after %v (first Slice took %v): %v",
+					lastOff, elapsed, firstSlice, err)
+			}
 			require.True(t, bytes.Equal(data[lastOff:lastOff+testBlockSize], slice),
 				"data mismatch at offset %d", lastOff)
 
-			if elapsed > time.Second {
-				t.Logf("WARNING: Slice(%d) took %v (expected <100ms)", lastOff, elapsed)
+			if elapsed > 100*time.Millisecond {
+				t.Logf("SLOW: first_slice=%v second_slice=%v", firstSlice, elapsed)
 			}
 
 			assert.Equal(t, int64(1), openCount.Load(),

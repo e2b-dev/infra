@@ -92,7 +92,9 @@ func TestTimingSliceAfterPartialRequest(t *testing.T) {
 
 					// First Slice: triggers the fetch (background goroutine
 					// for streaming, synchronous ReadAt for full-fetch).
+					t0 := time.Now()
 					_, err := chunker.Slice(t.Context(), 0, blockSize)
+					firstSlice := time.Since(t0)
 					require.NoError(t, err)
 
 					lastOff := int64(storage.MemoryChunkSize) - blockSize
@@ -104,12 +106,16 @@ func TestTimingSliceAfterPartialRequest(t *testing.T) {
 					slice, err := chunker.Slice(ctx, lastOff, blockSize)
 					elapsed := time.Since(start)
 
-					require.NoError(t, err, "Slice(%d) failed after %v", lastOff, elapsed)
+					if err != nil {
+						t.Fatalf("%s: Slice(%d) failed after %v (first Slice took %v): %v",
+							f.name, lastOff, elapsed, firstSlice, err)
+					}
 					require.True(t, bytes.Equal(data[lastOff:lastOff+blockSize], slice),
 						"data mismatch at offset %d", lastOff)
 
-					if elapsed > time.Second {
-						t.Logf("WARNING: %s Slice(%d) took %v", f.name, lastOff, elapsed)
+					if elapsed > 100*time.Millisecond {
+						t.Logf("SLOW: %s first_slice=%v second_slice=%v",
+							f.name, firstSlice, elapsed)
 					}
 				})
 			}
