@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
@@ -40,6 +39,38 @@ func putNetwork(
 	return resp
 }
 
+// requireTCPAllowed asserts that an HTTP/HTTPS request succeeds.
+func requireTCPAllowed(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, url, msg string) {
+	t.Helper()
+	err := utils.ExecCommand(t, ctx, sbx, envdClient, "curl", "--connect-timeout", "5", "--max-time", "10", "-Iks", url)
+	require.NoError(t, err, msg)
+}
+
+// requireTCPBlocked asserts that an HTTP/HTTPS request is blocked.
+// RES_OPTIONS caps glibc DNS timeout so blocked-domain curls fail in ~2 s
+// instead of curl's default ~20 s DNS retry cycle.
+func requireTCPBlocked(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, url, msg string) {
+	t.Helper()
+	err := utils.ExecCommand(t, ctx, sbx, envdClient,
+		"sh", "-c", `RES_OPTIONS="timeout:1 attempts:1" curl --connect-timeout 1 --max-time 2 -Iks `+url)
+	require.Error(t, err, msg)
+}
+
+// requireDNSAllowed asserts that a UDP DNS query to the given server succeeds.
+func requireDNSAllowed(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, server, msg string) {
+	t.Helper()
+	err := utils.ExecCommand(t, ctx, sbx, envdClient, "dig", "+short", fmt.Sprintf("@%s", server), "google.com")
+	require.NoError(t, err, msg)
+}
+
+// requireDNSBlocked asserts that a UDP DNS query to the given server is blocked.
+// No retry — nftables DROP is deterministic. 1 s timeout keeps the test fast.
+func requireDNSBlocked(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, server, msg string) {
+	t.Helper()
+	err := utils.ExecCommand(t, ctx, sbx, envdClient, "dig", "+short", "+timeout=1", "+retry=0", fmt.Sprintf("@%s", server), "google.com")
+	require.Error(t, err, msg)
+}
+
 // connectivityCheck describes a URL that should be reachable or blocked.
 type connectivityCheck struct {
 	url     string
@@ -56,9 +87,9 @@ func verifyConnectivity(
 	t.Helper()
 	for _, c := range checks {
 		if c.allowed {
-			assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, c.url, c.url+" should be reachable")
+			requireTCPAllowed(t, ctx, sbx, envdClient, c.url, c.url+" should be reachable")
 		} else {
-			assertBlockedHTTPRequest(t, ctx, sbx, envdClient, c.url, c.url+" should be blocked")
+			requireTCPBlocked(t, ctx, sbx, envdClient, c.url, c.url+" should be blocked")
 		}
 	}
 }
@@ -355,8 +386,6 @@ func TestEgressPortRules(t *testing.T) {
 		utils.WithAutoPause(false),
 	)
 
-	passed, failed := 0, 0
-
 	update := func(allow, deny []string) {
 		var a, d *[]string
 		if allow != nil {
@@ -372,120 +401,59 @@ func TestEgressPortRules(t *testing.T) {
 		require.Equal(t, http.StatusNoContent, resp.StatusCode())
 	}
 
-	// tcpOK asserts HTTPS/HTTP succeeds (fast: real servers respond quickly).
-	tcpOK := func(url, desc string) {
-		err := utils.ExecCommand(t, ctx, sbx, envdClient, "curl", "--connect-timeout", "5", "--max-time", "10", "-Iks", url)
-		if assert.NoError(t, err, desc) {
-			fmt.Printf("  ✓ %s\n", desc)
-			passed++
-		} else {
-			fmt.Printf("  ✗ %s\n", desc)
-			failed++
-		}
-	}
-
-	// tcpBlocked asserts HTTPS/HTTP is blocked (short timeout — proxy closes fast).
-	tcpBlocked := func(url, desc string) {
-		err := utils.ExecCommand(t, ctx, sbx, envdClient, "curl", "--connect-timeout", "2", "--max-time", "3", "-Iks", url)
-		if assert.Error(t, err, desc) {
-			fmt.Printf("  ✓ %s\n", desc)
-			passed++
-		} else {
-			fmt.Printf("  ✗ %s\n", desc)
-			failed++
-		}
-	}
-
-	// dnsOK asserts a UDP DNS query succeeds.
-	dnsOK := func(server, desc string) {
-		err := utils.ExecCommand(t, ctx, sbx, envdClient, "dig", "+short", "+timeout=3", "+retry=0", fmt.Sprintf("@%s", server), "google.com")
-		if assert.NoError(t, err, desc) {
-			fmt.Printf("  ✓ %s\n", desc)
-			passed++
-		} else {
-			fmt.Printf("  ✗ %s\n", desc)
-			failed++
-		}
-	}
-
-	// dnsBlocked asserts a UDP DNS query is blocked (1s timeout).
-	dnsBlocked := func(server, desc string) {
-		err := utils.ExecCommand(t, ctx, sbx, envdClient, "dig", "+short", "+timeout=1", "+retry=0", fmt.Sprintf("@%s", server), "google.com")
-		if assert.Error(t, err, desc) {
-			fmt.Printf("  ✓ %s\n", desc)
-			passed++
-		} else {
-			fmt.Printf("  ✗ %s\n", desc)
-			failed++
-		}
-	}
-
 	// ── 1. Allow IP:443 only ─────────────────────────────────────────────
-	fmt.Println("── allow 8.8.8.8:443, deny all ──")
 	update([]string{"8.8.8.8:443"}, []string{blockAll})
-	tcpOK("https://8.8.8.8", "HTTPS 8.8.8.8:443 allowed")
-	dnsBlocked("8.8.8.8", "DNS 8.8.8.8:53 blocked (port not allowed)")
+	requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "HTTPS 8.8.8.8:443 allowed")
+	requireDNSBlocked(t, ctx, sbx, envdClient, "8.8.8.8", "DNS 8.8.8.8:53 blocked (port not allowed)")
 
 	// ── 2. Allow IP:53 only (UDP port test) ──────────────────────────────
-	fmt.Println("── allow 8.8.8.8:53, deny all ──")
 	update([]string{"8.8.8.8:53"}, []string{blockAll})
-	dnsOK("8.8.8.8", "DNS 8.8.8.8:53 allowed")
-	tcpBlocked("https://8.8.8.8", "HTTPS 8.8.8.8:443 blocked (port not allowed)")
+	requireDNSAllowed(t, ctx, sbx, envdClient, "8.8.8.8", "DNS 8.8.8.8:53 allowed")
+	requireTCPBlocked(t, ctx, sbx, envdClient, "https://8.8.8.8", "HTTPS 8.8.8.8:443 blocked (port not allowed)")
 
 	// ── 3. Port range: allow 53–443 ─────────────────────────────────────
-	fmt.Println("── allow 8.8.8.8:53-443, deny all ──")
 	update([]string{"8.8.8.8:53-443"}, []string{blockAll})
-	dnsOK("8.8.8.8", "DNS 8.8.8.8:53 allowed (in range)")
-	tcpOK("https://8.8.8.8", "HTTPS 8.8.8.8:443 allowed (in range)")
+	requireDNSAllowed(t, ctx, sbx, envdClient, "8.8.8.8", "DNS 8.8.8.8:53 allowed (in range)")
+	requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "HTTPS 8.8.8.8:443 allowed (in range)")
 
 	// ── 4. CIDR with port ────────────────────────────────────────────────
-	fmt.Println("── allow 8.8.8.0/24:443, deny all ──")
 	update([]string{"8.8.8.0/24:443"}, []string{blockAll})
-	tcpOK("https://8.8.8.8", "HTTPS 8.8.8.8:443 allowed (CIDR+port)")
-	dnsBlocked("8.8.8.8", "DNS 8.8.8.8:53 blocked (port not in rule)")
-	tcpBlocked("https://1.1.1.1", "HTTPS 1.1.1.1 blocked (not in CIDR)")
+	requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "HTTPS 8.8.8.8:443 allowed (CIDR+port)")
+	requireDNSBlocked(t, ctx, sbx, envdClient, "8.8.8.8", "DNS 8.8.8.8:53 blocked (port not in rule)")
+	requireTCPBlocked(t, ctx, sbx, envdClient, "https://1.1.1.1", "HTTPS 1.1.1.1 blocked (not in CIDR)")
 
 	// ── 5. Deny specific port (allow-all default) ────────────────────────
-	fmt.Println("── deny 8.8.8.8:443 (no allow, default-allow) ──")
 	update(nil, []string{"8.8.8.8:443"})
-	dnsOK("8.8.8.8", "DNS 8.8.8.8:53 allowed (port not denied)")
-	tcpBlocked("https://8.8.8.8", "HTTPS 8.8.8.8:443 blocked (port denied)")
-	tcpOK("https://1.1.1.1", "HTTPS 1.1.1.1:443 allowed (IP not denied)")
+	requireDNSAllowed(t, ctx, sbx, envdClient, "8.8.8.8", "DNS 8.8.8.8:53 allowed (port not denied)")
+	requireTCPBlocked(t, ctx, sbx, envdClient, "https://8.8.8.8", "HTTPS 8.8.8.8:443 blocked (port denied)")
+	requireTCPAllowed(t, ctx, sbx, envdClient, "https://1.1.1.1", "HTTPS 1.1.1.1:443 allowed (IP not denied)")
 
 	// ── 6. Domain with port ──────────────────────────────────────────────
-	fmt.Println("── allow google.com:443, deny all ──")
 	update([]string{"google.com:443"}, []string{blockAll})
-	tcpOK("https://google.com", "HTTPS google.com:443 allowed")
-	tcpBlocked("http://google.com", "HTTP google.com:80 blocked (only 443 allowed)")
+	requireTCPAllowed(t, ctx, sbx, envdClient, "https://google.com", "HTTPS google.com:443 allowed")
+	requireTCPBlocked(t, ctx, sbx, envdClient, "http://google.com", "HTTP google.com:80 blocked (only 443 allowed)")
 
 	// ── 7. Multiple port-specific rules, different IPs ───────────────────
-	fmt.Println("── allow 8.8.8.8:53, 1.1.1.1:443, deny all ──")
 	update([]string{"8.8.8.8:53", "1.1.1.1:443"}, []string{blockAll})
-	dnsOK("8.8.8.8", "DNS 8.8.8.8:53 allowed")
-	tcpOK("https://1.1.1.1", "HTTPS 1.1.1.1:443 allowed")
-	tcpBlocked("https://8.8.8.8", "HTTPS 8.8.8.8:443 blocked (only :53 allowed)")
-	dnsBlocked("1.1.1.1", "DNS 1.1.1.1:53 blocked (only :443 allowed)")
+	requireDNSAllowed(t, ctx, sbx, envdClient, "8.8.8.8", "DNS 8.8.8.8:53 allowed")
+	requireTCPAllowed(t, ctx, sbx, envdClient, "https://1.1.1.1", "HTTPS 1.1.1.1:443 allowed")
+	requireTCPBlocked(t, ctx, sbx, envdClient, "https://8.8.8.8", "HTTPS 8.8.8.8:443 blocked (only :53 allowed)")
+	requireDNSBlocked(t, ctx, sbx, envdClient, "1.1.1.1", "DNS 1.1.1.1:53 blocked (only :443 allowed)")
 
 	// ── 8. Mix port-specific + all-port rules ────────────────────────────
-	fmt.Println("── allow 8.8.8.8 (all ports), 1.1.1.1:443, deny all ──")
 	update([]string{"8.8.8.8", "1.1.1.1:443"}, []string{blockAll})
-	tcpOK("https://8.8.8.8", "HTTPS 8.8.8.8 allowed (all ports)")
-	dnsOK("8.8.8.8", "DNS 8.8.8.8 allowed (all ports)")
-	tcpOK("https://1.1.1.1", "HTTPS 1.1.1.1:443 allowed")
-	dnsBlocked("1.1.1.1", "DNS 1.1.1.1:53 blocked (only :443 allowed)")
+	requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "HTTPS 8.8.8.8 allowed (all ports)")
+	requireDNSAllowed(t, ctx, sbx, envdClient, "8.8.8.8", "DNS 8.8.8.8 allowed (all ports)")
+	requireTCPAllowed(t, ctx, sbx, envdClient, "https://1.1.1.1", "HTTPS 1.1.1.1:443 allowed")
+	requireDNSBlocked(t, ctx, sbx, envdClient, "1.1.1.1", "DNS 1.1.1.1:53 blocked (only :443 allowed)")
 
 	// ── 9. Allow takes precedence: allow IP:443, deny IP (all ports) ─────
-	fmt.Println("── allow 8.8.8.8:443, deny 8.8.8.8 ──")
 	update([]string{"8.8.8.8:443"}, []string{"8.8.8.8"})
-	tcpOK("https://8.8.8.8", "HTTPS 8.8.8.8:443 allowed (allow > deny)")
-	dnsBlocked("8.8.8.8", "DNS 8.8.8.8:53 blocked (not in allow, caught by deny)")
+	requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "HTTPS 8.8.8.8:443 allowed (allow > deny)")
+	requireDNSBlocked(t, ctx, sbx, envdClient, "8.8.8.8", "DNS 8.8.8.8:53 blocked (not in allow, caught by deny)")
 
 	// ── 10. Clear rules — back to default allow ──────────────────────────
-	fmt.Println("── clear all rules ──")
 	update(nil, nil)
-	tcpOK("https://8.8.8.8", "HTTPS 8.8.8.8 allowed (default)")
-	tcpOK("https://1.1.1.1", "HTTPS 1.1.1.1 allowed (default)")
-
-	fmt.Printf("\n── Port rules: %d passed, %d failed ──\n", passed, failed)
-	require.Zero(t, failed, "some port rule checks failed")
+	requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "HTTPS 8.8.8.8 allowed (default)")
+	requireTCPAllowed(t, ctx, sbx, envdClient, "https://1.1.1.1", "HTTPS 1.1.1.1 allowed (default)")
 }
