@@ -14,6 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	snapshotcache "github.com/e2b-dev/infra/packages/api/internal/cache/snapshots"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
+	"github.com/e2b-dev/infra/packages/api/internal/pause"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
@@ -39,54 +40,27 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 	traceID := span.SpanContext().TraceID().String()
 	c.Set("traceID", traceID)
 
-	logger.L().Info(ctx, "sandbox_pause_initiated",
-		logger.WithSandboxID(sandboxID),
-		logger.WithTeamID(teamID.String()),
-		zap.String("pause_reason", "request"),
-	)
+	pause.LogInitiated(ctx, sandboxID, teamID.String(), "request")
 
 	err = a.orchestrator.RemoveSandbox(ctx, teamID, sandboxID, sandbox.StateActionPause)
 	var transErr *sandbox.InvalidStateTransitionError
 
 	switch {
 	case err == nil:
-		logger.L().Info(ctx, "sandbox_pause_result",
-			logger.WithSandboxID(sandboxID),
-			logger.WithTeamID(teamID.String()),
-			zap.String("pause_reason", "request"),
-			zap.String("pause_result", "success"),
-		)
+		pause.LogResult(ctx, sandboxID, teamID.String(), "request", true, nil)
 	case errors.Is(err, orchestrator.ErrSandboxNotFound):
-		logger.L().Warn(ctx, "sandbox_pause_result",
-			logger.WithSandboxID(sandboxID),
-			logger.WithTeamID(teamID.String()),
-			zap.String("pause_reason", "request"),
-			zap.String("pause_result", "failure"),
-			zap.Error(err),
-		)
+		pause.LogResult(ctx, sandboxID, teamID.String(), "request", false, err)
 		apiErr := pauseHandleNotRunningSandbox(ctx, a.snapshotCache, sandboxID, teamID)
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return
 	case errors.As(err, &transErr):
-		logger.L().Warn(ctx, "sandbox_pause_result",
-			logger.WithSandboxID(sandboxID),
-			logger.WithTeamID(teamID.String()),
-			zap.String("pause_reason", "request"),
-			zap.String("pause_result", "failure"),
-			zap.Error(err),
-		)
+		pause.LogResult(ctx, sandboxID, teamID.String(), "request", false, err)
 		a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Sandbox '%s' cannot be paused while in '%s' state", sandboxID, transErr.CurrentState))
 
 		return
 	default:
-		logger.L().Error(ctx, "sandbox_pause_result",
-			logger.WithSandboxID(sandboxID),
-			logger.WithTeamID(teamID.String()),
-			zap.String("pause_reason", "request"),
-			zap.String("pause_result", "failure"),
-			zap.Error(err),
-		)
+		pause.LogResult(ctx, sandboxID, teamID.String(), "request", false, err)
 		telemetry.ReportError(ctx, "error pausing sandbox", err)
 
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error pausing sandbox")

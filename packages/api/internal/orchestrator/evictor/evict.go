@@ -8,6 +8,7 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/e2b-dev/infra/packages/api/internal/pause"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
@@ -64,21 +65,11 @@ func (e *Evictor) Start(ctx context.Context) {
 						zap.String("state_action", stateAction.Name),
 					)
 					if stateAction == sandbox.StateActionPause {
-						logger.L().Info(ctx, "sandbox_pause_initiated",
-							logger.WithSandboxID(item.SandboxID),
-							logger.WithTeamID(item.TeamID.String()),
-							zap.String("pause_reason", "timeout"),
-						)
+						pause.LogInitiated(ctx, item.SandboxID, item.TeamID.String(), "timeout")
 					}
 					if err := e.removeSandbox(context.WithoutCancel(ctx), item.TeamID, item.SandboxID, stateAction); err != nil {
 						if stateAction == sandbox.StateActionPause {
-							logger.L().Warn(ctx, "sandbox_pause_result",
-								logger.WithSandboxID(item.SandboxID),
-								logger.WithTeamID(item.TeamID.String()),
-								zap.String("pause_reason", "timeout"),
-								zap.String("pause_result", "failure"),
-								zap.Error(err),
-							)
+							pause.LogResult(ctx, item.SandboxID, item.TeamID.String(), "timeout", false, err)
 						} else {
 							logger.L().Debug(ctx, "Evicting sandbox failed",
 								zap.Error(err),
@@ -87,12 +78,7 @@ func (e *Evictor) Start(ctx context.Context) {
 							)
 						}
 					} else if stateAction == sandbox.StateActionPause {
-						logger.L().Info(ctx, "sandbox_pause_result",
-							logger.WithSandboxID(item.SandboxID),
-							logger.WithTeamID(item.TeamID.String()),
-							zap.String("pause_reason", "timeout"),
-							zap.String("pause_result", "success"),
-						)
+						pause.LogResult(ctx, item.SandboxID, item.TeamID.String(), "timeout", true, nil)
 					}
 
 					return nil
