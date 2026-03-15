@@ -53,6 +53,14 @@ func (s *Service) CreateDir(ctx context.Context, request *orchestrator.VolumeDir
 			return nil, processError(ctx, "failed to create directory", err)
 		}
 
+		stat, _, statErr := fs.Stat(path)
+		if statErr != nil {
+			return nil, fmt.Errorf("failed to verify existing path %q: %w", path, statErr)
+		}
+		if !stat.IsDir() {
+			return nil, processError(ctx, "failed to create directory", err)
+		}
+
 		updateDir = false
 	}
 

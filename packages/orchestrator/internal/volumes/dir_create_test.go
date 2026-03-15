@@ -97,6 +97,22 @@ func TestDirCreate(t *testing.T) {
 		requireGRPCError(t, err, codes.AlreadyExists, orchestrator.UserErrorCode_PATH_ALREADY_EXISTS)
 	})
 
+	t.Run("CreateDir with CreateParents=true should fail when path is a file", func(t *testing.T) {
+		t.Parallel()
+
+		filename := "existing-file"
+		fullPath := filepath.Join(tmpdir, filename)
+		err := os.WriteFile(fullPath, []byte("test"), 0o644)
+		require.NoError(t, err)
+
+		_, err = s.CreateDir(t.Context(), &orchestrator.VolumeDirCreateRequest{
+			Volume:        volumeInfo,
+			Path:          filename,
+			CreateParents: true,
+		})
+		requireGRPCError(t, err, codes.AlreadyExists, orchestrator.UserErrorCode_PATH_ALREADY_EXISTS)
+	})
+
 	t.Run("CreateDir with CreateParents=true should not change existing directory", func(t *testing.T) {
 		t.Parallel()
 
