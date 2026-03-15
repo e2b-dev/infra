@@ -30,11 +30,9 @@ func (o *Orchestrator) UpdateSandboxNetworkConfig(
 	egressProto := buildEgressConfig(egressUpdate.AllowedAddresses, egressUpdate.DeniedAddresses)
 
 	ingressProto := &orchestratorgrpc.SandboxNetworkIngressConfig{
-		MaskRequestHost:    ingressUpdate.MaskRequestHost,
-		AllowedPorts:       ingressUpdate.AllowedPorts,
-		DeniedPorts:        ingressUpdate.DeniedPorts,
-		AllowedClientCidrs: ingressUpdate.AllowedClientCIDRs,
-		DeniedClientCidrs:  ingressUpdate.DeniedClientCIDRs,
+		MaskRequestHost: ingressUpdate.MaskRequestHost,
+		Allowed:         ingressUpdate.AllowedAddresses,
+		Denied:          ingressUpdate.DeniedAddresses,
 	}
 
 	updateFunc := func(sbx sandbox.Sandbox) (sandbox.Sandbox, error) {
@@ -54,7 +52,6 @@ func (o *Orchestrator) UpdateSandboxNetworkConfig(
 		return sbx, nil
 	}
 
-	var sbxNotFoundErr *sandbox.NotFoundError
 	var sbxNotRunningErr *sandbox.NotRunningError
 
 	sbx, err := o.sandboxStore.Update(ctx, teamID, sandboxID, updateFunc)
@@ -62,7 +59,7 @@ func (o *Orchestrator) UpdateSandboxNetworkConfig(
 		switch {
 		case errors.As(err, &sbxNotRunningErr):
 			return &api.APIError{Code: http.StatusConflict, ClientMsg: utils.SandboxChangingStateMsg(sandboxID, sbxNotRunningErr.State), Err: err}
-		case errors.As(err, &sbxNotFoundErr):
+		case errors.Is(err, sandbox.ErrNotFound):
 			return &api.APIError{Code: http.StatusNotFound, ClientMsg: utils.SandboxNotFoundMsg(sandboxID), Err: err}
 		default:
 			return &api.APIError{Code: http.StatusInternalServerError, ClientMsg: "Error updating sandbox network config", Err: err}

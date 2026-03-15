@@ -17,7 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/connlimit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
@@ -89,24 +89,11 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 				}
 			}
 
-			if isNonEnvdTraffic {
-				// Handle port allowlist/denylist for non-envd traffic.
-				// Priority: allow wins → deny → default allow.
-				if !containsPort(ingress.GetAllowedPorts(), port) {
-					if containsPort(ingress.GetDeniedPorts(), port) {
-						return nil, reverseproxy.NewErrPortNotAllowed(sandboxId, port)
-					}
-				}
-
-				// Handle client IP allowlist/denylist for non-envd traffic.
-				// Priority: allow wins → deny → default allow.
-				// Uses pre-parsed CIDRs for performance.
-				if sbx.HasIngressClientCIDRs() {
-					clientIP := reverseproxy.ExtractClientIP(r)
-					if ip := net.ParseIP(clientIP); ip != nil {
-						if !sbx.IngressAllowsClientIP(ip) && sbx.IngressDeniesClientIP(ip) {
-							return nil, reverseproxy.NewErrClientIPNotAllowed(sandboxId, clientIP)
-						}
+			if isNonEnvdTraffic && sbx.HasIngressRules() {
+				clientIP := reverseproxy.ExtractClientIP(r)
+				if ip := net.ParseIP(clientIP); ip != nil {
+					if !sbx.IsIngressAllowed(ip, uint16(port)) {
+						return nil, reverseproxy.NewErrClientIPNotAllowed(sandboxId, clientIP)
 					}
 				}
 			}
@@ -232,15 +219,4 @@ func (p *SandboxProxy) OnInsert(_ *sandbox.Sandbox) {}
 // It cleans up the connection limiter entry for the sandbox.
 func (p *SandboxProxy) OnRemove(sandboxID string) {
 	p.limiter.Remove(sandboxID)
-}
-
-// containsPort checks if a port is in the given list of ports.
-func containsPort(ports []uint32, port uint64) bool {
-	for _, p := range ports {
-		if uint64(p) == port {
-			return true
-		}
-	}
-
-	return false
 }

@@ -27,7 +27,7 @@ import (
 	redisbackend "github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/redis"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"

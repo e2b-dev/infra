@@ -240,47 +240,29 @@ func TestValidateNetworkConfig(t *testing.T) {
 			},
 			wantErr: false,
 		},
-		// Ingress port validation tests
+		// Ingress port validation tests (unified CIDR:port format)
 		{
-			name: "valid allowPorts",
+			name: "valid allowIn with port",
 			network: &api.SandboxNetworkConfig{
-				AllowPorts: &[]int{80, 443, 8080},
+				AllowIn: &[]string{"0.0.0.0/0:80", "0.0.0.0/0:443"},
+				DenyIn:  &[]string{"0.0.0.0/0"},
 			},
 			wantErr: false,
 		},
 		{
-			name: "allowPorts with port 0 is invalid",
+			name: "valid allowIn with port range",
 			network: &api.SandboxNetworkConfig{
-				AllowPorts: &[]int{0},
-			},
-			wantErr:    true,
-			wantCode:   http.StatusBadRequest,
-			wantErrMsg: "invalid allowPorts port 0: must be between 1 and 65535",
-		},
-		{
-			name: "allowPorts with port > 65535 is invalid",
-			network: &api.SandboxNetworkConfig{
-				AllowPorts: &[]int{70000},
-			},
-			wantErr:    true,
-			wantCode:   http.StatusBadRequest,
-			wantErrMsg: "invalid allowPorts port 70000: must be between 1 and 65535",
-		},
-		{
-			name: "valid denyPorts",
-			network: &api.SandboxNetworkConfig{
-				DenyPorts: &[]int{22, 3306},
+				AllowIn: &[]string{"10.0.0.0/8:80-443"},
+				DenyIn:  &[]string{"0.0.0.0/0"},
 			},
 			wantErr: false,
 		},
 		{
-			name: "denyPorts with port 0 is invalid",
+			name: "valid denyIn with port",
 			network: &api.SandboxNetworkConfig{
-				DenyPorts: &[]int{0},
+				DenyIn: &[]string{"0.0.0.0/0:22", "0.0.0.0/0:3306"},
 			},
-			wantErr:    true,
-			wantCode:   http.StatusBadRequest,
-			wantErrMsg: "invalid denyPorts port 0: must be between 1 and 65535",
+			wantErr: false,
 		},
 		// Ingress CIDR validation tests
 		{
@@ -361,6 +343,47 @@ func TestValidateNetworkConfig(t *testing.T) {
 				DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
 			},
 			wantErr: false,
+		},
+		// Port-specific rules
+		{
+			name: "allow_out with port is accepted",
+			network: &api.SandboxNetworkConfig{
+				AllowOut: &[]string{"8.8.8.8:80"},
+				DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
+			},
+			wantErr: false,
+		},
+		{
+			name: "deny_out with port is accepted",
+			network: &api.SandboxNetworkConfig{
+				DenyOut: &[]string{"10.0.0.0/8:22"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "allow_out with port range is accepted",
+			network: &api.SandboxNetworkConfig{
+				AllowOut: &[]string{"8.8.8.8:1-1024"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "deny_out with domain is rejected",
+			network: &api.SandboxNetworkConfig{
+				DenyOut: &[]string{"example.com"},
+			},
+			wantErr:    true,
+			wantCode:   http.StatusBadRequest,
+			wantErrMsg: "invalid denied CIDR example.com",
+		},
+		{
+			name: "deny_out with invalid port is rejected",
+			network: &api.SandboxNetworkConfig{
+				DenyOut: &[]string{"10.0.0.0/8:abc"},
+			},
+			wantErr:    true,
+			wantCode:   http.StatusBadRequest,
+			wantErrMsg: `invalid deny out entry: invalid entry "10.0.0.0/8:abc": invalid port "abc": strconv.ParseUint: parsing "abc": invalid syntax`,
 		},
 	}
 

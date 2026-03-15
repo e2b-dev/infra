@@ -32,10 +32,11 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd/prefetch"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -193,11 +194,9 @@ type Metadata struct {
 	startedAt time.Time
 	endAt     time.Time
 
-	// Pre-parsed ingress CIDRs for fast matching on the proxy hot path.
-	allowedClientNets []*net.IPNet
-	allowedClientIPs  []net.IP
-	deniedClientNets  []*net.IPNet
-	deniedClientIPs   []net.IP
+	// Pre-parsed ingress rules for fast matching on the proxy hot path.
+	allowedIngressRules []parsedIngressRule
+	deniedIngressRules  []parsedIngressRule
 }
 
 // GetEndAt returns the sandbox end time in a thread-safe manner.
@@ -226,97 +225,132 @@ func (m *Metadata) SetNetworkIngress(ingress *orchestrator.SandboxNetworkIngress
 	m.rwmu.Lock()
 	defer m.rwmu.Unlock()
 
-	m.rebuildIngressCIDRs(ingress)
+	m.rebuildIngressRules(ingress)
 }
 
-// rebuildIngressCIDRs parses CIDR strings from the given ingress config into net.IPNet/net.IP.
+// parsedIngressRule is a pre-parsed ingress rule for fast matching on the proxy hot path.
+type parsedIngressRule struct {
+	ipNet     *net.IPNet // nil when the rule is a bare IP
+	ip        net.IP     // set for bare IPs (no CIDR mask)
+	portStart uint16     // 0 means all ports
+	portEnd   uint16     // 0 means all ports
+}
+
+func (r *parsedIngressRule) matchesIP(ip net.IP) bool {
+	if r.ipNet != nil {
+		return r.ipNet.Contains(ip)
+	}
+
+	return r.ip.Equal(ip)
+}
+
+func (r *parsedIngressRule) matchesPort(port uint16) bool {
+	if r.portStart == 0 && r.portEnd == 0 {
+		return true // all ports
+	}
+
+	return port >= r.portStart && port <= r.portEnd
+}
+
+func (r *parsedIngressRule) matches(ip net.IP, port uint16) bool {
+	return r.matchesIP(ip) && r.matchesPort(port)
+}
+
+// rebuildIngressRules parses rule strings from the given ingress config.
 // Must be called with rwmu held.
-func (m *Metadata) rebuildIngressCIDRs(ingress *orchestrator.SandboxNetworkIngressConfig) {
-	m.allowedClientNets = nil
-	m.allowedClientIPs = nil
-	m.deniedClientNets = nil
-	m.deniedClientIPs = nil
+func (m *Metadata) rebuildIngressRules(ingress *orchestrator.SandboxNetworkIngressConfig) {
+	m.allowedIngressRules = nil
+	m.deniedIngressRules = nil
 
 	if ingress == nil {
 		return
 	}
 
-	m.allowedClientNets, m.allowedClientIPs = parseCIDRList(ingress.GetAllowedClientCidrs())
-	m.deniedClientNets, m.deniedClientIPs = parseCIDRList(ingress.GetDeniedClientCidrs())
+	m.allowedIngressRules = parseIngressRules(ingress.GetAllowed())
+	m.deniedIngressRules = parseIngressRules(ingress.GetDenied())
 }
 
-// buildParsedIngressCIDRs reads the current ingress config from Config and parses CIDRs.
+// buildParsedIngressRules reads the current ingress config from Config and parses rules.
 // Must be called with rwmu held.
-func (m *Metadata) buildParsedIngressCIDRs() {
+func (m *Metadata) buildParsedIngressRules() {
 	if m.Config == nil {
-		m.rebuildIngressCIDRs(nil)
+		m.rebuildIngressRules(nil)
 
 		return
 	}
 
-	m.rebuildIngressCIDRs(m.Config.GetNetworkIngress())
+	m.rebuildIngressRules(m.Config.GetNetworkIngress())
 }
 
-// IngressAllowsClientIP returns true if the IP matches any allowed CIDR/IP.
-func (m *Metadata) IngressAllowsClientIP(ip net.IP) bool {
+// IsIngressAllowed checks if a client IP + destination port is allowed by ingress rules.
+// Priority: allow wins → deny → default allow.
+func (m *Metadata) IsIngressAllowed(clientIP net.IP, port uint16) bool {
 	m.rwmu.RLock()
 	defer m.rwmu.RUnlock()
 
-	return ipMatchesList(ip, m.allowedClientNets, m.allowedClientIPs)
-}
+	if len(m.allowedIngressRules) == 0 && len(m.deniedIngressRules) == 0 {
+		return true // no rules → default allow
+	}
 
-// IngressDeniesClientIP returns true if the IP matches any denied CIDR/IP.
-func (m *Metadata) IngressDeniesClientIP(ip net.IP) bool {
-	m.rwmu.RLock()
-	defer m.rwmu.RUnlock()
-
-	return ipMatchesList(ip, m.deniedClientNets, m.deniedClientIPs)
-}
-
-// HasIngressClientCIDRs returns true if any client CIDR rules are configured.
-func (m *Metadata) HasIngressClientCIDRs() bool {
-	m.rwmu.RLock()
-	defer m.rwmu.RUnlock()
-
-	return len(m.allowedClientNets) > 0 || len(m.allowedClientIPs) > 0 ||
-		len(m.deniedClientNets) > 0 || len(m.deniedClientIPs) > 0
-}
-
-func ipMatchesList(ip net.IP, nets []*net.IPNet, ips []net.IP) bool {
-	for _, n := range nets {
-		if n.Contains(ip) {
+	for i := range m.allowedIngressRules {
+		if m.allowedIngressRules[i].matches(clientIP, port) {
 			return true
 		}
 	}
 
-	for _, addr := range ips {
-		if addr.Equal(ip) {
-			return true
+	for i := range m.deniedIngressRules {
+		if m.deniedIngressRules[i].matches(clientIP, port) {
+			return false
 		}
 	}
 
-	return false
+	return true // default allow
 }
 
-// parseCIDRList parses a list of CIDR/IP strings into nets and bare IPs.
-func parseCIDRList(cidrs []string) ([]*net.IPNet, []net.IP) {
-	var nets []*net.IPNet
-	var ips []net.IP
+// HasIngressRules returns true if any ingress rules are configured.
+func (m *Metadata) HasIngressRules() bool {
+	m.rwmu.RLock()
+	defer m.rwmu.RUnlock()
 
-	for _, cidr := range cidrs {
+	return len(m.allowedIngressRules) > 0 || len(m.deniedIngressRules) > 0
+}
+
+// parseIngressRules parses rule strings into pre-parsed rules for fast matching.
+func parseIngressRules(entries []string) []parsedIngressRule {
+	rules, err := sandbox_network.ParseRules(entries)
+	if err != nil {
+		return nil
+	}
+
+	var parsed []parsedIngressRule
+	for _, r := range rules {
+		if r.IsDomain {
+			continue // domains not supported for ingress
+		}
+
+		cidr := sandbox_network.AddressStringToCIDR(r.Host)
 		_, ipNet, err := net.ParseCIDR(cidr)
+
+		pr := parsedIngressRule{
+			portStart: r.PortStart,
+			portEnd:   r.PortEnd,
+		}
+
 		if err != nil {
-			if parsed := net.ParseIP(cidr); parsed != nil {
-				ips = append(ips, parsed)
+			ip := net.ParseIP(r.Host)
+			if ip == nil {
+				continue
 			}
 
-			continue
+			pr.ip = ip
+		} else {
+			pr.ipNet = ipNet
 		}
 
-		nets = append(nets, ipNet)
+		parsed = append(parsed, pr)
 	}
 
-	return nets, ips
+	return parsed
 }
 
 type Sandbox struct {
@@ -443,15 +477,6 @@ func (f *Factory) CreateSandbox(
 		}
 	}()
 
-	lifecycleID := uuid.NewString()
-	// Add map removal to cleanup early as we want to do it as last thing in clean up
-	// It's save as we delete only if lifecycleID matches
-	cleanup.Add(ctx, func(ctx context.Context) error {
-		f.Sandboxes.RemoveByLifecycleID(ctx, runtime.SandboxID, lifecycleID)
-
-		return nil
-	})
-
 	ipsPromise := getNetworkSlot(ctx, f.networkPool, cleanup, config.Network)
 
 	sandboxFiles := template.Files().NewSandboxFiles(runtime.SandboxID)
@@ -545,10 +570,10 @@ func (f *Factory) CreateSandbox(
 		startedAt: time.Now(),
 		endAt:     time.Now().Add(sandboxTimeout),
 	}
-	metadata.buildParsedIngressCIDRs()
+	metadata.buildParsedIngressRules()
 
 	sbx := &Sandbox{
-		LifecycleID: lifecycleID,
+		LifecycleID: uuid.NewString(),
 
 		Resources:    resources,
 		Metadata:     metadata,
@@ -565,7 +590,13 @@ func (f *Factory) CreateSandbox(
 
 		exit: exit,
 	}
+
 	f.Sandboxes.Insert(ctx, sbx)
+	cleanup.Add(ctx, func(ctx context.Context) error {
+		f.Sandboxes.RemoveByLifecycleID(ctx, runtime.SandboxID, sbx.LifecycleID)
+
+		return nil
+	})
 
 	err = fcHandle.Create(
 		ctx,
@@ -655,15 +686,6 @@ func (f *Factory) ResumeSandbox(
 			execSpan.End()
 		}
 	}()
-
-	lifecycleID := uuid.NewString()
-	// Add map removal to cleanup early as we want to do it as last thing in clean up
-	// It's save as we delete only if lifecycleID matches
-	cleanup.Add(ctx, func(ctx context.Context) error {
-		f.Sandboxes.RemoveByLifecycleID(ctx, runtime.SandboxID, lifecycleID)
-
-		return nil
-	})
 
 	sandboxFiles := t.Files().NewSandboxFiles(runtime.SandboxID)
 	cleanup.Add(ctx, cleanupFiles(f.config, sandboxFiles))
@@ -869,10 +891,10 @@ func (f *Factory) ResumeSandbox(
 		startedAt: startedAt,
 		endAt:     endAt,
 	}
-	metadata.buildParsedIngressCIDRs()
+	metadata.buildParsedIngressRules()
 
 	sbx := &Sandbox{
-		LifecycleID: lifecycleID,
+		LifecycleID: uuid.NewString(),
 
 		Resources:    resources,
 		Metadata:     metadata,
@@ -905,6 +927,11 @@ func (f *Factory) ResumeSandbox(
 	// during the resume (e.g. for TCP firewall lookups). On failure the deferred cleanup
 	// will remove it.
 	f.Sandboxes.Insert(ctx, sbx)
+	cleanup.Add(ctx, func(ctx context.Context) error {
+		f.Sandboxes.RemoveByLifecycleID(ctx, runtime.SandboxID, sbx.LifecycleID)
+
+		return nil
+	})
 
 	uffdStartCtx, cancelUffdStartCtx := context.WithCancelCause(ctx)
 	defer cancelUffdStartCtx(fmt.Errorf("uffd finished starting"))

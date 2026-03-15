@@ -4,10 +4,8 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
-	"strings"
 
 	"github.com/gin-gonic/gin"
-	"golang.org/x/net/idna"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
@@ -48,11 +46,9 @@ func (a *APIStore) PutSandboxesSandboxIDNetwork(
 	}
 
 	ingressUpdate := &types.SandboxNetworkIngressConfig{
-		MaskRequestHost:    body.MaskRequestHost,
-		AllowedPorts:       intsToUint32s(body.AllowPorts),
-		DeniedPorts:        intsToUint32s(body.DenyPorts),
-		AllowedClientCIDRs: sutils.DerefOrDefault(body.AllowIn, nil),
-		DeniedClientCIDRs:  sutils.DerefOrDefault(body.DenyIn, nil),
+		MaskRequestHost:  body.MaskRequestHost,
+		AllowedAddresses: sutils.DerefOrDefault(body.AllowIn, nil),
+		DeniedAddresses:  sutils.DerefOrDefault(body.DenyIn, nil),
 	}
 
 	if apiErr := validateEgressRules(egressUpdate.AllowedAddresses, egressUpdate.DeniedAddresses); apiErr != nil {
@@ -61,7 +57,7 @@ func (a *APIStore) PutSandboxesSandboxIDNetwork(
 		return
 	}
 
-	if apiErr := validateIngressRules(ingressUpdate); apiErr != nil {
+	if apiErr := validateIngressRules(ingressUpdate.AllowedAddresses, ingressUpdate.DeniedAddresses); apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return
@@ -77,59 +73,53 @@ func (a *APIStore) PutSandboxesSandboxIDNetwork(
 	c.Status(http.StatusNoContent)
 }
 
-func intsToUint32s(ints *[]int) []uint32 {
-	if ints == nil {
-		return nil
-	}
-
-	result := make([]uint32, len(*ints))
-	for i, v := range *ints {
-		result[i] = uint32(v)
-	}
-
-	return result
-}
-
 // validateEgressRules validates egress allow/deny rules:
-// - denyOut entries must be valid IPs or CIDRs (not domains)
-// - allowOut entries must be valid IPs, CIDRs, or domain names
+// - entries must be valid host[:port] strings
+// - denyOut hosts must be valid IPs or CIDRs (not domains)
+// - allowOut hosts can be IPs, CIDRs, or domain names
 // - when allowOut contains domains, denyOut must include 0.0.0.0/0
 func validateEgressRules(allowOut, denyOut []string) *api.APIError {
-	for _, cidr := range denyOut {
-		if !sandbox_network.IsIPOrCIDR(cidr) {
+	denyRules, err := sandbox_network.ParseRules(denyOut)
+	if err != nil {
+		return &api.APIError{
+			Code:      http.StatusBadRequest,
+			Err:       fmt.Errorf("invalid deny out entry: %w", err),
+			ClientMsg: fmt.Sprintf("invalid deny out entry: %s", err),
+		}
+	}
+
+	for _, rule := range denyRules {
+		if rule.IsDomain {
 			return &api.APIError{
 				Code:      http.StatusBadRequest,
-				Err:       fmt.Errorf("invalid denied CIDR %s", cidr),
-				ClientMsg: fmt.Sprintf("invalid denied CIDR %s", cidr),
+				Err:       fmt.Errorf("invalid denied CIDR %s", rule.Host),
+				ClientMsg: fmt.Sprintf("invalid denied CIDR %s", rule.Host),
 			}
 		}
 	}
 
-	if len(allowOut) > 0 {
-		_, allowedDomains := sandbox_network.ParseAddressesAndDomains(allowOut)
-
-		for _, domain := range allowedDomains {
-			// Strip wildcard prefix for IDNA validation (*.example.com -> example.com).
-			// The "*" label is not a valid IDNA label, but we support it as a wildcard.
-			validateDomain := domain
-			if strings.HasPrefix(domain, "*.") {
-				validateDomain = domain[2:]
-			}
-
-			if validateDomain != "*" {
-				if _, err := idna.Lookup.ToASCII(validateDomain); err != nil {
-					return &api.APIError{
-						Code:      http.StatusBadRequest,
-						Err:       fmt.Errorf("invalid allowed domain %q: %w", domain, err),
-						ClientMsg: fmt.Sprintf("invalid allowed domain: %s", domain),
-					}
-				}
-			}
+	allowRules, err := sandbox_network.ParseRules(allowOut)
+	if err != nil {
+		return &api.APIError{
+			Code:      http.StatusBadRequest,
+			Err:       fmt.Errorf("invalid allow out entry: %w", err),
+			ClientMsg: fmt.Sprintf("invalid allow out entry: %s", err),
 		}
+	}
 
-		hasBlockAll := slices.Contains(denyOut, sandbox_network.AllInternetTrafficCIDR)
+	hasDomains := false
+	for _, rule := range allowRules {
+		if rule.IsDomain {
+			hasDomains = true
+		}
+	}
 
-		if len(allowedDomains) > 0 && !hasBlockAll {
+	if hasDomains {
+		hasBlockAll := slices.ContainsFunc(denyRules, func(r sandbox_network.Rule) bool {
+			return r.Host == sandbox_network.AllInternetTrafficCIDR && r.AllPorts()
+		})
+
+		if !hasBlockAll {
 			return &api.APIError{
 				Code:      http.StatusBadRequest,
 				Err:       fmt.Errorf("allow out contains domains but deny out is missing 0.0.0.0/0 (ALL_TRAFFIC)"),
@@ -141,57 +131,60 @@ func validateEgressRules(allowOut, denyOut []string) *api.APIError {
 	return nil
 }
 
-func validateIngressRules(ingress *types.SandboxNetworkIngressConfig) *api.APIError {
-	if apiErr := validatePortList(ingress.AllowedPorts, "allowPorts"); apiErr != nil {
-		return apiErr
-	}
-
-	if apiErr := validatePortList(ingress.DeniedPorts, "denyPorts"); apiErr != nil {
-		return apiErr
-	}
-
-	if apiErr := validateCIDRList(ingress.AllowedClientCIDRs, "allowIn"); apiErr != nil {
-		return apiErr
-	}
-
-	if apiErr := validateCIDRList(ingress.DeniedClientCIDRs, "denyIn"); apiErr != nil {
-		return apiErr
-	}
-
-	// Consistent with egress: allowIn without deny-all is a no-op (default is allow-all),
-	// so require 0.0.0.0/0 in denyIn to prevent a silent misconfiguration.
-	if len(ingress.AllowedClientCIDRs) > 0 && !slices.Contains(ingress.DeniedClientCIDRs, sandbox_network.AllInternetTrafficCIDR) {
+// validateIngressRules validates ingress allow/deny rules:
+// - entries must be valid CIDR[:port] strings (no domains)
+// - when allowIn is set, denyIn must include 0.0.0.0/0
+func validateIngressRules(allowIn, denyIn []string) *api.APIError {
+	denyRules, err := sandbox_network.ParseRules(denyIn)
+	if err != nil {
 		return &api.APIError{
 			Code:      http.StatusBadRequest,
-			Err:       fmt.Errorf("allowIn is set but denyIn is missing 0.0.0.0/0 (ALL_TRAFFIC)"),
-			ClientMsg: "When specifying allowed CIDRs in allowIn, you must include '0.0.0.0/0' in denyIn to block all other traffic.",
+			Err:       fmt.Errorf("invalid deny in entry: %w", err),
+			ClientMsg: fmt.Sprintf("invalid deny in entry: %s", err),
 		}
 	}
 
-	return nil
-}
-
-func validatePortList(ports []uint32, fieldName string) *api.APIError {
-	for _, p := range ports {
-		if p == 0 || p > 65535 {
+	for _, rule := range denyRules {
+		if rule.IsDomain {
 			return &api.APIError{
 				Code:      http.StatusBadRequest,
-				Err:       fmt.Errorf("invalid %s port %d", fieldName, p),
-				ClientMsg: fmt.Sprintf("invalid %s port %d: must be between 1 and 65535", fieldName, p),
+				Err:       fmt.Errorf("invalid deny in entry %s: domains are not supported", rule.Host),
+				ClientMsg: fmt.Sprintf("invalid deny in entry %s: domains are not supported for ingress rules", rule.Host),
 			}
 		}
 	}
 
-	return nil
-}
+	allowRules, err := sandbox_network.ParseRules(allowIn)
+	if err != nil {
+		return &api.APIError{
+			Code:      http.StatusBadRequest,
+			Err:       fmt.Errorf("invalid allow in entry: %w", err),
+			ClientMsg: fmt.Sprintf("invalid allow in entry: %s", err),
+		}
+	}
 
-func validateCIDRList(cidrs []string, fieldName string) *api.APIError {
-	for _, cidr := range cidrs {
-		if !sandbox_network.IsIPOrCIDR(cidr) {
+	for _, rule := range allowRules {
+		if rule.IsDomain {
 			return &api.APIError{
 				Code:      http.StatusBadRequest,
-				Err:       fmt.Errorf("invalid %s CIDR %s", fieldName, cidr),
-				ClientMsg: fmt.Sprintf("invalid %s CIDR %s", fieldName, cidr),
+				Err:       fmt.Errorf("invalid allow in entry %s: domains are not supported", rule.Host),
+				ClientMsg: fmt.Sprintf("invalid allow in entry %s: domains are not supported for ingress rules", rule.Host),
+			}
+		}
+	}
+
+	// Consistent with egress: allowIn without deny-all is a no-op (default is allow-all),
+	// so require 0.0.0.0/0 in denyIn to prevent a silent misconfiguration.
+	if len(allowRules) > 0 {
+		hasBlockAll := slices.ContainsFunc(denyRules, func(r sandbox_network.Rule) bool {
+			return r.Host == sandbox_network.AllInternetTrafficCIDR && r.AllPorts()
+		})
+
+		if !hasBlockAll {
+			return &api.APIError{
+				Code:      http.StatusBadRequest,
+				Err:       fmt.Errorf("allowIn is set but denyIn is missing 0.0.0.0/0 (ALL_TRAFFIC)"),
+				ClientMsg: "When specifying allowed entries in allowIn, you must include '0.0.0.0/0' in denyIn to block all other traffic.",
 			}
 		}
 	}

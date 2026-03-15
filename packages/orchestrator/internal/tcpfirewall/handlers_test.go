@@ -134,6 +134,7 @@ func TestIsEgressAllowed(t *testing.T) {
 		network   *orchestrator.SandboxNetworkConfig
 		hostname  string
 		ip        net.IP
+		dstPort   uint16
 		want      bool
 		wantError bool
 	}{
@@ -173,7 +174,7 @@ func TestIsEgressAllowed(t *testing.T) {
 			name: "denied CIDR blocks traffic",
 			network: &orchestrator.SandboxNetworkConfig{
 				Egress: &orchestrator.SandboxNetworkEgressConfig{
-					DeniedCidrs: []string{"10.0.0.0/8"},
+					Denied: []string{"10.0.0.0/8"},
 				},
 			},
 			hostname: "",
@@ -184,7 +185,7 @@ func TestIsEgressAllowed(t *testing.T) {
 			name: "denied CIDR exact IP blocks",
 			network: &orchestrator.SandboxNetworkConfig{
 				Egress: &orchestrator.SandboxNetworkEgressConfig{
-					DeniedCidrs: []string{"1.2.3.4/32"},
+					Denied: []string{"1.2.3.4/32"},
 				},
 			},
 			hostname: "",
@@ -195,7 +196,7 @@ func TestIsEgressAllowed(t *testing.T) {
 			name: "IP not in denied CIDR allows",
 			network: &orchestrator.SandboxNetworkConfig{
 				Egress: &orchestrator.SandboxNetworkEgressConfig{
-					DeniedCidrs: []string{"10.0.0.0/8"},
+					Denied: []string{"10.0.0.0/8"},
 				},
 			},
 			hostname: "",
@@ -210,8 +211,8 @@ func TestIsEgressAllowed(t *testing.T) {
 			name: "whitelist mode: deny all with domain bypass",
 			network: &orchestrator.SandboxNetworkConfig{
 				Egress: &orchestrator.SandboxNetworkEgressConfig{
-					AllowedDomains: []string{"example.com"},
-					DeniedCidrs:    []string{"0.0.0.0/0"}, // Required to block by default
+					Allowed: []string{"example.com"},
+					Denied:  []string{"0.0.0.0/0"}, // Required to block by default
 				},
 			},
 			hostname: "example.com",
@@ -222,8 +223,8 @@ func TestIsEgressAllowed(t *testing.T) {
 			name: "whitelist mode: deny all with CIDR bypass",
 			network: &orchestrator.SandboxNetworkConfig{
 				Egress: &orchestrator.SandboxNetworkEgressConfig{
-					AllowedCidrs: []string{"10.0.0.0/8"},
-					DeniedCidrs:  []string{"0.0.0.0/0"}, // Required to block by default
+					Allowed: []string{"10.0.0.0/8"},
+					Denied:  []string{"0.0.0.0/0"}, // Required to block by default
 				},
 			},
 			hostname: "",
@@ -234,8 +235,8 @@ func TestIsEgressAllowed(t *testing.T) {
 			name: "whitelist mode: traffic blocked when no bypass matches",
 			network: &orchestrator.SandboxNetworkConfig{
 				Egress: &orchestrator.SandboxNetworkEgressConfig{
-					AllowedDomains: []string{"example.com"},
-					DeniedCidrs:    []string{"0.0.0.0/0"},
+					Allowed: []string{"example.com"},
+					Denied:  []string{"0.0.0.0/0"},
 				},
 			},
 			hostname: "other.com", // Domain doesn't match bypass
@@ -252,8 +253,8 @@ func TestIsEgressAllowed(t *testing.T) {
 			// IP 10.1.1.1 matches allowed 10.0.0.0/8 -> bypass, never checks denied.
 			network: &orchestrator.SandboxNetworkConfig{
 				Egress: &orchestrator.SandboxNetworkEgressConfig{
-					AllowedCidrs: []string{"10.0.0.0/8"},
-					DeniedCidrs:  []string{"10.1.1.1/32"},
+					Allowed: []string{"10.0.0.0/8"},
+					Denied:  []string{"10.1.1.1/32"},
 				},
 			},
 			hostname: "",
@@ -264,8 +265,8 @@ func TestIsEgressAllowed(t *testing.T) {
 			name: "bypass: specific allowed CIDR bypasses broad denied CIDR",
 			network: &orchestrator.SandboxNetworkConfig{
 				Egress: &orchestrator.SandboxNetworkEgressConfig{
-					AllowedCidrs: []string{"10.1.1.1/32"},
-					DeniedCidrs:  []string{"10.0.0.0/8"},
+					Allowed: []string{"10.1.1.1/32"},
+					Denied:  []string{"10.0.0.0/8"},
 				},
 			},
 			hostname: "",
@@ -276,8 +277,8 @@ func TestIsEgressAllowed(t *testing.T) {
 			name: "bypass: domain bypass skips denied CIDR check entirely",
 			network: &orchestrator.SandboxNetworkConfig{
 				Egress: &orchestrator.SandboxNetworkEgressConfig{
-					AllowedDomains: []string{"example.com"},
-					DeniedCidrs:    []string{sandbox_network.AllInternetTrafficCIDR},
+					Allowed: []string{"example.com"},
+					Denied:  []string{sandbox_network.AllInternetTrafficCIDR},
 				},
 			},
 			hostname: "example.com",
@@ -288,9 +289,8 @@ func TestIsEgressAllowed(t *testing.T) {
 			name: "no bypass match: denied CIDR blocks traffic",
 			network: &orchestrator.SandboxNetworkConfig{
 				Egress: &orchestrator.SandboxNetworkEgressConfig{
-					AllowedDomains: []string{"allowed.com"},
-					AllowedCidrs:   []string{"192.168.0.0/16"},
-					DeniedCidrs:    []string{sandbox_network.AllInternetTrafficCIDR},
+					Allowed: []string{"allowed.com", "192.168.0.0/16"},
+					Denied:  []string{sandbox_network.AllInternetTrafficCIDR},
 				},
 			},
 			hostname: "other.com",
@@ -305,8 +305,8 @@ func TestIsEgressAllowed(t *testing.T) {
 			name: "multiple allowed domains second matches",
 			network: &orchestrator.SandboxNetworkConfig{
 				Egress: &orchestrator.SandboxNetworkEgressConfig{
-					AllowedDomains: []string{"first.com", "second.com", "third.com"},
-					DeniedCidrs:    []string{sandbox_network.AllInternetTrafficCIDR},
+					Allowed: []string{"first.com", "second.com", "third.com"},
+					Denied:  []string{sandbox_network.AllInternetTrafficCIDR},
 				},
 			},
 			hostname: "second.com",
@@ -317,8 +317,8 @@ func TestIsEgressAllowed(t *testing.T) {
 			name: "multiple allowed CIDRs second matches",
 			network: &orchestrator.SandboxNetworkConfig{
 				Egress: &orchestrator.SandboxNetworkEgressConfig{
-					AllowedCidrs: []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"},
-					DeniedCidrs:  []string{sandbox_network.AllInternetTrafficCIDR},
+					Allowed: []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"},
+					Denied:  []string{sandbox_network.AllInternetTrafficCIDR},
 				},
 			},
 			hostname: "",
@@ -329,7 +329,7 @@ func TestIsEgressAllowed(t *testing.T) {
 			name: "multiple denied CIDRs second matches",
 			network: &orchestrator.SandboxNetworkConfig{
 				Egress: &orchestrator.SandboxNetworkEgressConfig{
-					DeniedCidrs: []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"},
+					Denied: []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"},
 				},
 			},
 			hostname: "",
@@ -338,38 +338,183 @@ func TestIsEgressAllowed(t *testing.T) {
 		},
 
 		// ---------------------------------------------------------------------
+		// Port-Specific Rules
+		// ---------------------------------------------------------------------
+		{
+			name: "allowed CIDR with matching port",
+			network: &orchestrator.SandboxNetworkConfig{
+				Egress: &orchestrator.SandboxNetworkEgressConfig{
+					Allowed: []string{"8.8.8.8:53"},
+					Denied:  []string{"0.0.0.0/0"},
+				},
+			},
+			hostname: "",
+			ip:       net.ParseIP("8.8.8.8"),
+			dstPort:  53,
+			want:     true,
+		},
+		{
+			name: "allowed CIDR with non-matching port",
+			network: &orchestrator.SandboxNetworkConfig{
+				Egress: &orchestrator.SandboxNetworkEgressConfig{
+					Allowed: []string{"8.8.8.8:53"},
+					Denied:  []string{"0.0.0.0/0"},
+				},
+			},
+			hostname: "",
+			ip:       net.ParseIP("8.8.8.8"),
+			dstPort:  80,
+			want:     false, // Port 80 not in allowed range, falls through to deny-all
+		},
+		{
+			name: "allowed CIDR with port range",
+			network: &orchestrator.SandboxNetworkConfig{
+				Egress: &orchestrator.SandboxNetworkEgressConfig{
+					Allowed: []string{"8.8.8.8:80-443"},
+					Denied:  []string{"0.0.0.0/0"},
+				},
+			},
+			hostname: "",
+			ip:       net.ParseIP("8.8.8.8"),
+			dstPort:  443,
+			want:     true,
+		},
+		{
+			name: "allowed CIDR with port range excludes out-of-range",
+			network: &orchestrator.SandboxNetworkConfig{
+				Egress: &orchestrator.SandboxNetworkEgressConfig{
+					Allowed: []string{"8.8.8.8:80-443"},
+					Denied:  []string{"0.0.0.0/0"},
+				},
+			},
+			hostname: "",
+			ip:       net.ParseIP("8.8.8.8"),
+			dstPort:  8080,
+			want:     false,
+		},
+		{
+			name: "denied CIDR with matching port",
+			network: &orchestrator.SandboxNetworkConfig{
+				Egress: &orchestrator.SandboxNetworkEgressConfig{
+					Denied: []string{"8.8.8.8:80"},
+				},
+			},
+			hostname: "",
+			ip:       net.ParseIP("8.8.8.8"),
+			dstPort:  80,
+			want:     false,
+		},
+		{
+			name: "denied CIDR with non-matching port allows",
+			network: &orchestrator.SandboxNetworkConfig{
+				Egress: &orchestrator.SandboxNetworkEgressConfig{
+					Denied: []string{"8.8.8.8:80"},
+				},
+			},
+			hostname: "",
+			ip:       net.ParseIP("8.8.8.8"),
+			dstPort:  443,
+			want:     true, // Port 443 not in deny range, default allow
+		},
+		{
+			name: "allowed domain with matching port",
+			network: &orchestrator.SandboxNetworkConfig{
+				Egress: &orchestrator.SandboxNetworkEgressConfig{
+					Allowed: []string{"example.com:443"},
+					Denied:  []string{"0.0.0.0/0"},
+				},
+			},
+			hostname: "example.com",
+			ip:       net.ParseIP("1.2.3.4"),
+			dstPort:  443,
+			want:     true,
+		},
+		{
+			name: "allowed domain with non-matching port",
+			network: &orchestrator.SandboxNetworkConfig{
+				Egress: &orchestrator.SandboxNetworkEgressConfig{
+					Allowed: []string{"example.com:443"},
+					Denied:  []string{"0.0.0.0/0"},
+				},
+			},
+			hostname: "example.com",
+			ip:       net.ParseIP("1.2.3.4"),
+			dstPort:  80,
+			want:     false, // Domain matches but port doesn't
+		},
+		{
+			name: "all-ports allow wins over port-specific deny (same IP)",
+			network: &orchestrator.SandboxNetworkConfig{
+				Egress: &orchestrator.SandboxNetworkEgressConfig{
+					Allowed: []string{"8.8.8.8"},
+					Denied:  []string{"8.8.8.8:80"},
+				},
+			},
+			hostname: "",
+			ip:       net.ParseIP("8.8.8.8"),
+			dstPort:  80,
+			want:     true, // All-ports allow checked before port-specific deny
+		},
+		{
+			name: "port-specific allow with all-ports deny",
+			network: &orchestrator.SandboxNetworkConfig{
+				Egress: &orchestrator.SandboxNetworkEgressConfig{
+					Allowed: []string{"8.8.8.8:53"},
+					Denied:  []string{"8.8.8.8"},
+				},
+			},
+			hostname: "",
+			ip:       net.ParseIP("8.8.8.8"),
+			dstPort:  53,
+			want:     true, // Port-specific allow checked before all-ports deny
+		},
+		{
+			name: "port-specific allow does not cover other ports",
+			network: &orchestrator.SandboxNetworkConfig{
+				Egress: &orchestrator.SandboxNetworkEgressConfig{
+					Allowed: []string{"8.8.8.8:53"},
+					Denied:  []string{"8.8.8.8"},
+				},
+			},
+			hostname: "",
+			ip:       net.ParseIP("8.8.8.8"),
+			dstPort:  80,
+			want:     false, // Port 80 not in allow, falls to all-ports deny
+		},
+
+		// ---------------------------------------------------------------------
 		// Error Handling
 		// ---------------------------------------------------------------------
 		{
-			name: "invalid allowed CIDR returns error",
+			name: "non-IP allowed entry treated as domain, no error",
 			network: &orchestrator.SandboxNetworkConfig{
 				Egress: &orchestrator.SandboxNetworkEgressConfig{
-					AllowedCidrs: []string{"invalid-cidr"},
+					Allowed: []string{"invalid-cidr"},
 				},
 			},
 			hostname:  "",
 			ip:        net.ParseIP("1.2.3.4"),
-			want:      false,
-			wantError: true,
+			want:      true, // Treated as domain, no hostname match, default allow
+			wantError: false,
 		},
 		{
-			name: "invalid denied CIDR returns error",
+			name: "non-IP denied entry treated as domain and skipped",
 			network: &orchestrator.SandboxNetworkConfig{
 				Egress: &orchestrator.SandboxNetworkEgressConfig{
-					DeniedCidrs: []string{"not-a-cidr"},
+					Denied: []string{"not-a-cidr"},
 				},
 			},
 			hostname:  "",
 			ip:        net.ParseIP("1.2.3.4"),
-			want:      false,
-			wantError: true,
+			want:      true, // Parsed as domain, skipped in deny (no domain matching), default allow
+			wantError: false,
 		},
 		{
 			name: "allowed CIDR checked before invalid denied CIDR",
 			network: &orchestrator.SandboxNetworkConfig{
 				Egress: &orchestrator.SandboxNetworkEgressConfig{
-					AllowedCidrs: []string{"1.2.3.0/24"},
-					DeniedCidrs:  []string{"invalid"},
+					Allowed: []string{"1.2.3.0/24"},
+					Denied:  []string{"invalid"},
 				},
 			},
 			hostname:  "",
@@ -378,6 +523,8 @@ func TestIsEgressAllowed(t *testing.T) {
 			wantError: false,
 		},
 	}
+
+	const portNotRelevant uint16 = 6666
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -388,7 +535,12 @@ func TestIsEgressAllowed(t *testing.T) {
 				},
 			}
 
-			got, _, err := isEgressAllowed(sbx, tt.hostname, tt.ip)
+			dstPort := tt.dstPort
+			if dstPort == 0 {
+				dstPort = portNotRelevant
+			}
+
+			got, _, err := isEgressAllowed(sbx, tt.hostname, tt.ip, dstPort)
 
 			if tt.wantError {
 				if err == nil {

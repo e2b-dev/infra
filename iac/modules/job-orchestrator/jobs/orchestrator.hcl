@@ -100,6 +100,10 @@ job "orchestrator-${latest_orchestrator_job_id}" {
 %{ if provider == "gcp" }
         ARTIFACTS_REGISTRY_PROVIDER  = "GCP_ARTIFACTS"
         STORAGE_PROVIDER             = "GCPBucket"
+
+        %{ if provider_gcp_config.service_account_key != "" }
+        GOOGLE_SERVICE_ACCOUNT_BASE64 = "${provider_gcp_config.service_account_key}"
+        %{ endif }
 %{ endif }
 %{ if provider == "aws" }
         ARTIFACTS_REGISTRY_PROVIDER  = "AWS_ECR"

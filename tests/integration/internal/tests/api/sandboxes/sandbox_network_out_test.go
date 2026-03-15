@@ -348,6 +348,34 @@ func TestEgressFirewallAllowOverridesBlock(t *testing.T) {
 	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Expected curl to other IP (8.8.8.8) to succeed")
 }
 
+// TestEgressFirewallPartialAllowDenyDefaultAllow tests that traffic to IPs
+// in neither the allow nor deny list is allowed by default.
+// allowOut: ["8.8.8.8"], denyOut: ["1.1.1.1"]
+// → 8.8.8.8 allowed (explicit allow)
+// → 1.1.1.1 blocked (explicit deny)
+// → 9.9.9.9 allowed (default-allow fallthrough, in neither list)
+func TestEgressFirewallPartialAllowDenyDefaultAllow(t *testing.T) {
+	t.Parallel()
+	templateID := ensureNetworkTestTemplate(t)
+	ctx := t.Context()
+	client := setup.GetAPIClient()
+
+	sbx := utils.SetupSandboxWithCleanup(t, client,
+		utils.WithTemplateID(templateID),
+		utils.WithTimeout(60),
+		utils.WithNetwork(&api.SandboxNetworkConfig{
+			AllowOut: &[]string{"8.8.8.8"},
+			DenyOut:  &[]string{"1.1.1.1"},
+		}),
+	)
+
+	envdClient := setup.GetEnvdClient(t, ctx)
+
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Expected curl to explicitly allowed IP (8.8.8.8) to succeed")
+	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "Expected curl to explicitly denied IP (1.1.1.1) to fail")
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://9.9.9.9", "Expected curl to IP in neither list (9.9.9.9) to succeed (default-allow)")
+}
+
 // TestEgressFirewallMultipleAllowedIPs tests multiple allowed IPs
 func TestEgressFirewallMultipleAllowedIPs(t *testing.T) {
 	t.Parallel()

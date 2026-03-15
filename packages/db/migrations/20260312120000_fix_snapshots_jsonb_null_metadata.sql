@@ -39,7 +39,7 @@ DROP PROCEDURE fix_snapshots_jsonb_null_metadata();
 CREATE OR REPLACE FUNCTION fix_snapshots_metadata_json_null()
 RETURNS trigger AS $$
 BEGIN
-  IF NEW.metadata = 'null'::jsonb THEN
+  IF NEW.metadata IS NULL OR NEW.metadata = 'null'::jsonb THEN
     NEW.metadata := '{}'::jsonb;
   END IF;
   RETURN NEW;

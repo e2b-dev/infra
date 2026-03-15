@@ -45,6 +45,38 @@ func putNetwork(
 	return resp
 }
 
+// requireTCPAllowed asserts that an HTTP/HTTPS request succeeds.
+func requireTCPAllowed(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, url, msg string) {
+	t.Helper()
+	err := utils.ExecCommand(t, ctx, sbx, envdClient, "curl", "--connect-timeout", "5", "--max-time", "10", "-Iks", url)
+	require.NoError(t, err, msg)
+}
+
+// requireTCPBlocked asserts that an HTTP/HTTPS request is blocked.
+// RES_OPTIONS caps glibc DNS timeout so blocked-domain curls fail in ~2 s
+// instead of curl's default ~20 s DNS retry cycle.
+func requireTCPBlocked(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, url, msg string) {
+	t.Helper()
+	err := utils.ExecCommand(t, ctx, sbx, envdClient,
+		"sh", "-c", `RES_OPTIONS="timeout:1 attempts:1" curl --connect-timeout 1 --max-time 2 -Iks `+url)
+	require.Error(t, err, msg)
+}
+
+// requireDNSAllowed asserts that a UDP DNS query to 8.8.8.8 succeeds.
+func requireDNSAllowed(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, msg string) {
+	t.Helper()
+	err := utils.ExecCommand(t, ctx, sbx, envdClient, "dig", "+short", "@8.8.8.8", "google.com")
+	require.NoError(t, err, msg)
+}
+
+// requireDNSBlocked asserts that a UDP DNS query to the given server is blocked.
+// No retry — nftables DROP is deterministic. 1 s timeout keeps the test fast.
+func requireDNSBlocked(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, server, msg string) {
+	t.Helper()
+	err := utils.ExecCommand(t, ctx, sbx, envdClient, "dig", "+short", "+timeout=1", "+retry=0", fmt.Sprintf("@%s", server), "google.com")
+	require.Error(t, err, msg)
+}
+
 // connectivityCheck describes a URL that should be reachable or blocked.
 type connectivityCheck struct {
 	url     string
@@ -61,9 +93,9 @@ func verifyConnectivity(
 	t.Helper()
 	for _, c := range checks {
 		if c.allowed {
-			assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, c.url, c.url+" should be reachable")
+			requireTCPAllowed(t, ctx, sbx, envdClient, c.url, c.url+" should be reachable")
 		} else {
-			assertBlockedHTTPRequest(t, ctx, sbx, envdClient, c.url, c.url+" should be blocked")
+			requireTCPBlocked(t, ctx, sbx, envdClient, c.url, c.url+" should be blocked")
 		}
 	}
 }
@@ -356,17 +388,6 @@ type ingressRules struct {
 }
 
 func ingress() *ingressRules { return &ingressRules{} }
-func (r *ingressRules) denyPorts(ports ...int) *ingressRules {
-	r.body.DenyPorts = &ports
-
-	return r
-}
-
-func (r *ingressRules) allowPorts(ports ...int) *ingressRules {
-	r.body.AllowPorts = &ports
-
-	return r
-}
 
 func (r *ingressRules) denyIn(cidrs ...string) *ingressRules {
 	r.body.DenyIn = &cidrs
@@ -406,6 +427,10 @@ func TestUpdateIngressConfig(t *testing.T) { //nolint:tparallel // subtests are 
 	apply := func(r *ingressRules) {
 		t.Helper()
 		resp := putNetwork(t, ctx, client, sbx.SandboxID, r.body)
+		if resp.StatusCode() != http.StatusNoContent {
+			t.Logf("PUT body: %+v", r.body)
+			t.Logf("Response status: %d, body: %s", resp.StatusCode(), string(resp.Body))
+		}
 		require.Equal(t, http.StatusNoContent, resp.StatusCode())
 	}
 
@@ -453,10 +478,10 @@ func TestUpdateIngressConfig(t *testing.T) { //nolint:tparallel // subtests are 
 	isCI := strings.Contains(setup.EnvdProxy, "localhost") || strings.Contains(setup.EnvdProxy, "127.0.0.1")
 
 	steps := []step{
-		// ── Port deny/allow ──────────────────────────────────────────
+		// ── Port deny/allow (unified format: CIDR:port) ──────────────
 		{
 			name:  "port_deny_blocks_access",
-			rules: ingress().denyPorts(testPort),
+			rules: ingress().denyIn(fmt.Sprintf("0.0.0.0/0:%d", testPort)),
 			checks: []check{
 				{testPort, "", true},
 				{testPort + 1, "", false},
@@ -464,14 +489,15 @@ func TestUpdateIngressConfig(t *testing.T) { //nolint:tparallel // subtests are 
 		},
 		{
 			name:  "port_allow_overrides_deny",
-			rules: ingress().allowPorts(testPort).denyPorts(testPort),
+			rules: ingress().allowIn(fmt.Sprintf("0.0.0.0/0:%d", testPort)).denyIn("0.0.0.0/0"),
 			checks: []check{
 				{testPort, "", false},
+				{testPort + 1, "", true},
 			},
 		},
 		// ── Client IP deny/allow ─────────────────────────────────────
 		{
-			// Both IPv4 and IPv6 "match all" CIDRs — CI may use ::1 (IPv6 loopback).
+			// Both IPv4 and IPv6 "match all" CIDRs for completeness.
 			name:  "client_ip_deny_all_blocks",
 			rules: ingress().denyIn("0.0.0.0/0", "::/0"),
 			checks: []check{
@@ -528,10 +554,10 @@ func TestUpdateIngressConfig(t *testing.T) { //nolint:tparallel // subtests are 
 				{testPort, "203.0.113.99", true},
 			},
 		},
-		// ── Envd port exempt from both port deny and client IP deny ──
+		// ── Port-specific deny with CIDR (envd port is exempt from ingress) ──
 		{
 			name:  "envd_exempt_from_ingress_restrictions",
-			rules: ingress().denyPorts(envdPort).denyIn("0.0.0.0/0"),
+			rules: ingress().denyIn("0.0.0.0/0"),
 			checks: []check{
 				{envdPort, "", false},
 			},
@@ -566,7 +592,7 @@ func TestUpdateIngressConfig(t *testing.T) { //nolint:tparallel // subtests are 
 	// ── Pause/resume preserves ingress rules (must be last) ─────────────
 
 	t.Run("pause_resume_preserves_ingress_rules", func(t *testing.T) {
-		apply(ingress().denyPorts(testPort))
+		apply(ingress().denyIn(fmt.Sprintf("0.0.0.0/0:%d", testPort)))
 		require.Equal(t, http.StatusForbidden, proxyStatus(testPort, ""))
 
 		pauseResp, err := client.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
@@ -617,8 +643,8 @@ func TestUpdateCombinedEgressAndIngress(t *testing.T) {
 
 	// Single PUT: deny all egress + deny port for ingress.
 	resp := putNetwork(t, ctx, client, sbx.SandboxID, api.PutSandboxesSandboxIDNetworkJSONRequestBody{
-		DenyOut:   ptrS(blockAll),
-		DenyPorts: &[]int{testPort},
+		DenyOut: ptrS(blockAll),
+		DenyIn:  ptrS(fmt.Sprintf("0.0.0.0/0:%d", testPort)),
 	})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode())
 
@@ -743,4 +769,92 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 		apply(ingress().maskHost(maskedTemplate))
 		require.Equal(t, maskedExpected, getHost())
 	})
+}
+
+// TestEgressPortRules exercises port-specific allow/deny rules across TCP and UDP.
+// Uses a single sandbox with sequential putNetwork updates — no subtests.
+func TestEgressPortRules(t *testing.T) {
+	t.Parallel()
+
+	templateID := ensureNetworkTestTemplate(t)
+	ctx := t.Context()
+	client := setup.GetAPIClient()
+	envdClient := setup.GetEnvdClient(t, ctx)
+
+	sbx := utils.SetupSandboxWithCleanup(t, client,
+		utils.WithTemplateID(templateID),
+		utils.WithTimeout(120),
+		utils.WithAutoPause(false),
+	)
+
+	update := func(allow, deny []string) {
+		var a, d *[]string
+		if allow != nil {
+			a = &allow
+		}
+		if deny != nil {
+			d = &deny
+		}
+		resp := putNetwork(t, ctx, client, sbx.SandboxID, api.PutSandboxesSandboxIDNetworkJSONRequestBody{
+			AllowOut: a,
+			DenyOut:  d,
+		})
+		require.Equal(t, http.StatusNoContent, resp.StatusCode())
+	}
+
+	// ── 1. Allow IP:443 only ─────────────────────────────────────────────
+	update([]string{"8.8.8.8:443"}, []string{blockAll})
+	requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "HTTPS 8.8.8.8:443 allowed")
+	requireDNSBlocked(t, ctx, sbx, envdClient, "8.8.8.8", "DNS 8.8.8.8:53 blocked (port not allowed)")
+
+	// ── 2. Allow IP:53 only (UDP port test) ──────────────────────────────
+	update([]string{"8.8.8.8:53"}, []string{blockAll})
+	requireDNSAllowed(t, ctx, sbx, envdClient, "DNS 8.8.8.8:53 allowed")
+	requireTCPBlocked(t, ctx, sbx, envdClient, "https://8.8.8.8", "HTTPS 8.8.8.8:443 blocked (port not allowed)")
+
+	// ── 3. Port range: allow 53–443 ─────────────────────────────────────
+	update([]string{"8.8.8.8:53-443"}, []string{blockAll})
+	requireDNSAllowed(t, ctx, sbx, envdClient, "DNS 8.8.8.8:53 allowed (in range)")
+	requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "HTTPS 8.8.8.8:443 allowed (in range)")
+
+	// ── 4. CIDR with port ────────────────────────────────────────────────
+	update([]string{"8.8.8.0/24:443"}, []string{blockAll})
+	requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "HTTPS 8.8.8.8:443 allowed (CIDR+port)")
+	requireDNSBlocked(t, ctx, sbx, envdClient, "8.8.8.8", "DNS 8.8.8.8:53 blocked (port not in rule)")
+	requireTCPBlocked(t, ctx, sbx, envdClient, "https://1.1.1.1", "HTTPS 1.1.1.1 blocked (not in CIDR)")
+
+	// ── 5. Deny specific port (allow-all default) ────────────────────────
+	update(nil, []string{"8.8.8.8:443"})
+	requireDNSAllowed(t, ctx, sbx, envdClient, "DNS 8.8.8.8:53 allowed (port not denied)")
+	requireTCPBlocked(t, ctx, sbx, envdClient, "https://8.8.8.8", "HTTPS 8.8.8.8:443 blocked (port denied)")
+	requireTCPAllowed(t, ctx, sbx, envdClient, "https://1.1.1.1", "HTTPS 1.1.1.1:443 allowed (IP not denied)")
+
+	// ── 6. Domain with port ──────────────────────────────────────────────
+	update([]string{"google.com:443"}, []string{blockAll})
+	requireTCPAllowed(t, ctx, sbx, envdClient, "https://google.com", "HTTPS google.com:443 allowed")
+	requireTCPBlocked(t, ctx, sbx, envdClient, "http://google.com", "HTTP google.com:80 blocked (only 443 allowed)")
+
+	// ── 7. Multiple port-specific rules, different IPs ───────────────────
+	update([]string{"8.8.8.8:53", "1.1.1.1:443"}, []string{blockAll})
+	requireDNSAllowed(t, ctx, sbx, envdClient, "DNS 8.8.8.8:53 allowed")
+	requireTCPAllowed(t, ctx, sbx, envdClient, "https://1.1.1.1", "HTTPS 1.1.1.1:443 allowed")
+	requireTCPBlocked(t, ctx, sbx, envdClient, "https://8.8.8.8", "HTTPS 8.8.8.8:443 blocked (only :53 allowed)")
+	requireDNSBlocked(t, ctx, sbx, envdClient, "1.1.1.1", "DNS 1.1.1.1:53 blocked (only :443 allowed)")
+
+	// ── 8. Mix port-specific + all-port rules ────────────────────────────
+	update([]string{"8.8.8.8", "1.1.1.1:443"}, []string{blockAll})
+	requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "HTTPS 8.8.8.8 allowed (all ports)")
+	requireDNSAllowed(t, ctx, sbx, envdClient, "DNS 8.8.8.8 allowed (all ports)")
+	requireTCPAllowed(t, ctx, sbx, envdClient, "https://1.1.1.1", "HTTPS 1.1.1.1:443 allowed")
+	requireDNSBlocked(t, ctx, sbx, envdClient, "1.1.1.1", "DNS 1.1.1.1:53 blocked (only :443 allowed)")
+
+	// ── 9. Allow takes precedence: allow IP:443, deny IP (all ports) ─────
+	update([]string{"8.8.8.8:443"}, []string{"8.8.8.8"})
+	requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "HTTPS 8.8.8.8:443 allowed (allow > deny)")
+	requireDNSBlocked(t, ctx, sbx, envdClient, "8.8.8.8", "DNS 8.8.8.8:53 blocked (not in allow, caught by deny)")
+
+	// ── 10. Clear rules — back to default allow ──────────────────────────
+	update(nil, nil)
+	requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "HTTPS 8.8.8.8 allowed (default)")
+	requireTCPAllowed(t, ctx, sbx, envdClient, "https://1.1.1.1", "HTTPS 1.1.1.1 allowed (default)")
 }

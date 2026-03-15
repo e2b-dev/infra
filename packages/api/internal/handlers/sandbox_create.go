@@ -27,7 +27,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -163,12 +163,10 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 		network = &types.SandboxNetworkConfig{
 			Ingress: &types.SandboxNetworkIngressConfig{
-				AllowPublicAccess:  n.AllowPublicTraffic,
-				MaskRequestHost:    n.MaskRequestHost,
-				AllowedPorts:       intsToUint32s(n.AllowPorts),
-				DeniedPorts:        intsToUint32s(n.DenyPorts),
-				AllowedClientCIDRs: sharedUtils.DerefOrDefault(n.AllowIn, nil),
-				DeniedClientCIDRs:  sharedUtils.DerefOrDefault(n.DenyIn, nil),
+				AllowPublicAccess: n.AllowPublicTraffic,
+				MaskRequestHost:   n.MaskRequestHost,
+				AllowedAddresses:  sharedUtils.DerefOrDefault(n.AllowIn, nil),
+				DeniedAddresses:   sharedUtils.DerefOrDefault(n.DenyIn, nil),
 			},
 			Egress: &types.SandboxNetworkEgressConfig{
 				AllowedAddresses: sharedUtils.DerefOrDefault(n.AllowOut, nil),
@@ -510,10 +508,8 @@ func validateNetworkConfig(network *api.SandboxNetworkConfig) *api.APIError {
 		return apiErr
 	}
 
-	return validateIngressRules(&types.SandboxNetworkIngressConfig{
-		AllowedPorts:       intsToUint32s(network.AllowPorts),
-		DeniedPorts:        intsToUint32s(network.DenyPorts),
-		AllowedClientCIDRs: sharedUtils.DerefOrDefault(network.AllowIn, nil),
-		DeniedClientCIDRs:  sharedUtils.DerefOrDefault(network.DenyIn, nil),
-	})
+	denyIn := sharedUtils.DerefOrDefault(network.DenyIn, nil)
+	allowIn := sharedUtils.DerefOrDefault(network.AllowIn, nil)
+
+	return validateIngressRules(allowIn, denyIn)
 }

@@ -5,7 +5,7 @@ import (
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 )
 
 func InitLaunchDarklyContext(c *gin.Context) {

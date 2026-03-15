@@ -13,6 +13,7 @@ import (
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
@@ -25,7 +26,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/events"
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -53,7 +54,7 @@ const (
 	executionEventDataKey = "execution"
 )
 
-func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequest) (*orchestrator.SandboxCreateResponse, error) {
+func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequest) (_ *orchestrator.SandboxCreateResponse, createErr error) {
 	// set max request timeout for this request
 	ctx, cancel := context.WithTimeoutCause(ctx, requestTimeout, fmt.Errorf("request timed out"))
 	defer cancel()
@@ -61,6 +62,20 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	// set up tracing
 	ctx, childSpan := tracer.Start(ctx, "sandbox-create")
 	defer childSpan.End()
+
+	isResume := req.GetSandbox().GetSnapshot()
+	createStart := time.Now()
+	defer func() {
+		if createErr != nil {
+			return
+		}
+
+		s.sandboxCreateDuration.Record(ctx, time.Since(createStart).Milliseconds(),
+			metric.WithAttributes(
+				attribute.Bool("sandbox.resume", isResume),
+			),
+		)
+	}()
 
 	childSpan.SetAttributes(
 		telemetry.WithTemplateID(req.GetSandbox().GetTemplateId()),
@@ -82,6 +97,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		ldcontext.NewBuilder(req.GetSandbox().GetTeamId()).
 			Kind(featureflags.TeamKind).
 			Build(),
+		featureflags.VersionContext(s.info.ClientId, s.info.SourceCommit),
 	)
 
 	maxRunningSandboxesPerNode := s.featureFlags.IntFlag(ctx, featureflags.MaxSandboxesPerNode)
@@ -136,41 +152,42 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		if network.GetEgress() == nil {
 			network.Egress = &orchestrator.SandboxNetworkEgressConfig{}
 		}
-		network.Egress.DeniedCidrs = []string{sandbox_network.AllInternetTrafficCIDR}
+		network.Egress.Denied = []string{sandbox_network.AllInternetTrafficCIDR}
 	}
+
+	resolvedFCVersion := featureflags.ResolveFirecrackerVersion(ctx, s.featureFlags, req.GetSandbox().GetFirecrackerVersion())
 
 	volumeMounts, err := createVolumeMountModelsFromAPI(req.GetSandbox().GetVolumeMounts())
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert volume mounts: %w", err)
 	}
 
-	sbxConfig := sandbox.NewConfig(sandbox.Config{
-		BaseTemplateID: req.GetSandbox().GetBaseTemplateId(),
-
-		Vcpu:            req.GetSandbox().GetVcpu(),
-		RamMB:           req.GetSandbox().GetRamMb(),
-		TotalDiskSizeMB: req.GetSandbox().GetTotalDiskSizeMb(),
-		HugePages:       req.GetSandbox().GetHugePages(),
-
-		Envd: sandbox.EnvdMetadata{
-			Version:     req.GetSandbox().GetEnvdVersion(),
-			AccessToken: req.GetSandbox().EnvdAccessToken,
-			Vars:        req.GetSandbox().GetEnvVars(),
-		},
-
-		FirecrackerConfig: fc.Config{
-			KernelVersion:      req.GetSandbox().GetKernelVersion(),
-			FirecrackerVersion: req.GetSandbox().GetFirecrackerVersion(),
-		},
-
-		VolumeMounts: volumeMounts,
-		Network:      network,
-	})
-
 	sbx, err := s.sandboxFactory.ResumeSandbox(
 		ctx,
 		template,
-		sbxConfig,
+		sandbox.NewConfig(sandbox.Config{
+			BaseTemplateID: req.GetSandbox().GetBaseTemplateId(),
+
+			Vcpu:            req.GetSandbox().GetVcpu(),
+			RamMB:           req.GetSandbox().GetRamMb(),
+			TotalDiskSizeMB: req.GetSandbox().GetTotalDiskSizeMb(),
+			HugePages:       req.GetSandbox().GetHugePages(),
+
+			Network: network,
+
+			Envd: sandbox.EnvdMetadata{
+				Version:     req.GetSandbox().GetEnvdVersion(),
+				AccessToken: req.GetSandbox().EnvdAccessToken,
+				Vars:        req.GetSandbox().GetEnvVars(),
+			},
+
+			FirecrackerConfig: fc.Config{
+				KernelVersion:      req.GetSandbox().GetKernelVersion(),
+				FirecrackerVersion: resolvedFCVersion,
+			},
+
+			VolumeMounts: volumeMounts,
+		}),
 		sandbox.RuntimeMetadata{
 			TemplateID:  req.GetSandbox().GetTemplateId(),
 			SandboxID:   req.GetSandbox().GetSandboxId(),
@@ -290,16 +307,15 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 			}
 
 			egress := req.GetEgress()
-			if len(egress.GetAllowedCidrs()) == 0 && len(egress.GetDeniedCidrs()) == 0 && len(egress.GetAllowedDomains()) == 0 {
+			if len(egress.GetAllowed()) == 0 && len(egress.GetDenied()) == 0 {
 				sbx.Config.SetNetworkEgress(nil)
 			} else {
 				sbx.Config.SetNetworkEgress(egress)
 			}
 
 			eventData["network_egress"] = map[string]any{
-				"allowed_cidrs":   egress.GetAllowedCidrs(),
-				"denied_cidrs":    egress.GetDeniedCidrs(),
-				"allowed_domains": egress.GetAllowedDomains(),
+				"allowed": egress.GetAllowed(),
+				"denied":  egress.GetDenied(),
 			}
 
 			return func(ctx context.Context) {
@@ -316,10 +332,8 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 
 			ingress := req.GetIngress()
 			eventData["network_ingress"] = map[string]any{
-				"allowed_ports":        ingress.GetAllowedPorts(),
-				"denied_ports":         ingress.GetDeniedPorts(),
-				"allowed_client_cidrs": ingress.GetAllowedClientCidrs(),
-				"denied_client_cidrs":  ingress.GetDeniedClientCidrs(),
+				"allowed": ingress.GetAllowed(),
+				"denied":  ingress.GetDenied(),
 			}
 
 			return func(_ context.Context) { sbx.SetNetworkIngress(oldIngress) }, nil

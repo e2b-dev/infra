@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/Masterminds/semver/v3"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
@@ -23,7 +22,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
-	feature_flags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
@@ -32,20 +31,33 @@ import (
 )
 
 // buildEgressConfig constructs the orchestrator egress configuration from
-// allow/deny entry lists. It splits allowed entries into CIDRs and domains,
-// and adds the default nameserver when domains are present so the sandbox can
-// resolve them.
+// allow/deny entry lists. Entries may include IPs, CIDRs, domains, and
+// optional port ranges (e.g. "8.8.8.8:53", "example.com:443"). Raw entry
+// strings are passed through to the orchestrator, which re-parses them for
+// nftables and TCP proxy enforcement.
+//
+// When any allowed entry is a domain, the default nameserver is injected so
+// the sandbox can resolve domain names.
 func buildEgressConfig(allowedEntries, deniedEntries []string) *orchestrator.SandboxNetworkEgressConfig {
-	allowedAddresses, allowedDomains := sandbox_network.ParseAddressesAndDomains(allowedEntries)
+	allowed := allowedEntries
 
-	if len(allowedDomains) > 0 {
-		allowedAddresses = append(allowedAddresses, sandbox_network.DefaultNameserver)
+	hasDomains := false
+	for _, entry := range allowedEntries {
+		rule, err := sandbox_network.ParseRule(entry)
+		if err == nil && rule.IsDomain {
+			hasDomains = true
+
+			break
+		}
+	}
+
+	if hasDomains {
+		allowed = append(append([]string{}, allowedEntries...), sandbox_network.DefaultNameserver)
 	}
 
 	return &orchestrator.SandboxNetworkEgressConfig{
-		AllowedCidrs:   sandbox_network.AddressStringsToCIDRs(allowedAddresses),
-		DeniedCidrs:    sandbox_network.AddressStringsToCIDRs(deniedEntries),
-		AllowedDomains: allowedDomains,
+		Allowed: allowed,
+		Denied:  deniedEntries,
 	}
 }
 
@@ -64,30 +76,18 @@ func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess
 
 	if network != nil && network.Ingress != nil {
 		orchNetwork.Ingress.MaskRequestHost = network.Ingress.MaskRequestHost
-		orchNetwork.Ingress.AllowedPorts = network.Ingress.AllowedPorts
-		orchNetwork.Ingress.DeniedPorts = network.Ingress.DeniedPorts
-		orchNetwork.Ingress.AllowedClientCidrs = network.Ingress.AllowedClientCIDRs
-		orchNetwork.Ingress.DeniedClientCidrs = network.Ingress.DeniedClientCIDRs
+		orchNetwork.Ingress.Allowed = network.Ingress.AllowedAddresses
+		orchNetwork.Ingress.Denied = network.Ingress.DeniedAddresses
 	}
 
 	// Handle the case where internet access is explicitly disabled
 	// This should be applied after copying the network config to preserve allowed addresses
 	if allowInternetAccess != nil && !*allowInternetAccess {
 		// Block all internet access - this overrides any other blocked addresses
-		orchNetwork.Egress.DeniedCidrs = []string{sandbox_network.AllInternetTrafficCIDR}
+		orchNetwork.Egress.Denied = []string{sandbox_network.AllInternetTrafficCIDR}
 	}
 
 	return orchNetwork
-}
-
-func getFirecrackerVersion(ctx context.Context, featureFlags *feature_flags.Client, version semver.Version, fallback string) string {
-	firecrackerVersions := featureFlags.JSONFlag(ctx, feature_flags.FirecrackerVersions).AsValueMap()
-	fcVersion, ok := firecrackerVersions.Get(fmt.Sprintf("v%d.%d", version.Major(), version.Minor())).AsOptionalString().Get()
-	if !ok {
-		return fallback
-	}
-
-	return fcVersion
 }
 
 func (o *Orchestrator) CreateSandbox(
@@ -189,7 +189,7 @@ func (o *Orchestrator) CreateSandbox(
 	}
 
 	hasHugePages := fcSemver.HasHugePages()
-	firecrackerVersion := getFirecrackerVersion(ctx, o.featureFlagsClient, fcSemver.Version(), build.FirecrackerVersion)
+	firecrackerVersion := featureflags.ResolveFirecrackerVersion(ctx, o.featureFlagsClient, build.FirecrackerVersion)
 	telemetry.ReportEvent(ctx, "Got FC info")
 
 	var sbxDomain *string
@@ -276,7 +276,7 @@ func (o *Orchestrator) CreateSandbox(
 	nodeClusterID := clusters.WithClusterFallback(team.ClusterID)
 	clusterNodes := o.GetClusterNodes(nodeClusterID)
 
-	labelFilteringEnabled := o.featureFlagsClient.BoolFlag(ctx, feature_flags.SandboxLabelBasedSchedulingFlag, feature_flags.TeamContext(team.ID.String()), feature_flags.SandboxContext(sandboxID))
+	labelFilteringEnabled := o.featureFlagsClient.BoolFlag(ctx, featureflags.SandboxLabelBasedSchedulingFlag, featureflags.TeamContext(team.ID.String()), featureflags.SandboxContext(sandboxID))
 
 	node, err = placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, builds.ToMachineInfo(build), labelFilteringEnabled, team.SandboxSchedulingLabels)
 	if err != nil {
@@ -344,7 +344,7 @@ func (o *Orchestrator) CreateSandbox(
 		go func() {
 			killErr := o.removeSandboxFromNode(context.WithoutCancel(ctx), sbxToRemove, sandbox.StateActionKill)
 			if killErr != nil {
-				logger.L().Error(ctx, "Error pausing sandbox", zap.Error(killErr), logger.WithSandboxID(sbxToRemove.SandboxID))
+				logger.L().Error(ctx, "Error removing sandbox", zap.Error(killErr), logger.WithSandboxID(sbxToRemove.SandboxID))
 			}
 		}()
 

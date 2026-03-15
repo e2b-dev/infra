@@ -14,7 +14,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
