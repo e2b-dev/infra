@@ -56,10 +56,10 @@ func requireTCPBlocked(t *testing.T, ctx context.Context, sbx *api.Sandbox, envd
 	require.Error(t, err, msg)
 }
 
-// requireDNSAllowed asserts that a UDP DNS query to the given server succeeds.
-func requireDNSAllowed(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, server, msg string) {
+// requireDNSAllowed asserts that a UDP DNS query to 8.8.8.8 succeeds.
+func requireDNSAllowed(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, msg string) {
 	t.Helper()
-	err := utils.ExecCommand(t, ctx, sbx, envdClient, "dig", "+short", fmt.Sprintf("@%s", server), "google.com")
+	err := utils.ExecCommand(t, ctx, sbx, envdClient, "dig", "+short", "@8.8.8.8", "google.com")
 	require.NoError(t, err, msg)
 }
 
@@ -408,12 +408,12 @@ func TestEgressPortRules(t *testing.T) {
 
 	// ── 2. Allow IP:53 only (UDP port test) ──────────────────────────────
 	update([]string{"8.8.8.8:53"}, []string{blockAll})
-	requireDNSAllowed(t, ctx, sbx, envdClient, "8.8.8.8", "DNS 8.8.8.8:53 allowed")
+	requireDNSAllowed(t, ctx, sbx, envdClient, "DNS 8.8.8.8:53 allowed")
 	requireTCPBlocked(t, ctx, sbx, envdClient, "https://8.8.8.8", "HTTPS 8.8.8.8:443 blocked (port not allowed)")
 
 	// ── 3. Port range: allow 53–443 ─────────────────────────────────────
 	update([]string{"8.8.8.8:53-443"}, []string{blockAll})
-	requireDNSAllowed(t, ctx, sbx, envdClient, "8.8.8.8", "DNS 8.8.8.8:53 allowed (in range)")
+	requireDNSAllowed(t, ctx, sbx, envdClient, "DNS 8.8.8.8:53 allowed (in range)")
 	requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "HTTPS 8.8.8.8:443 allowed (in range)")
 
 	// ── 4. CIDR with port ────────────────────────────────────────────────
@@ -424,7 +424,7 @@ func TestEgressPortRules(t *testing.T) {
 
 	// ── 5. Deny specific port (allow-all default) ────────────────────────
 	update(nil, []string{"8.8.8.8:443"})
-	requireDNSAllowed(t, ctx, sbx, envdClient, "8.8.8.8", "DNS 8.8.8.8:53 allowed (port not denied)")
+	requireDNSAllowed(t, ctx, sbx, envdClient, "DNS 8.8.8.8:53 allowed (port not denied)")
 	requireTCPBlocked(t, ctx, sbx, envdClient, "https://8.8.8.8", "HTTPS 8.8.8.8:443 blocked (port denied)")
 	requireTCPAllowed(t, ctx, sbx, envdClient, "https://1.1.1.1", "HTTPS 1.1.1.1:443 allowed (IP not denied)")
 
@@ -435,7 +435,7 @@ func TestEgressPortRules(t *testing.T) {
 
 	// ── 7. Multiple port-specific rules, different IPs ───────────────────
 	update([]string{"8.8.8.8:53", "1.1.1.1:443"}, []string{blockAll})
-	requireDNSAllowed(t, ctx, sbx, envdClient, "8.8.8.8", "DNS 8.8.8.8:53 allowed")
+	requireDNSAllowed(t, ctx, sbx, envdClient, "DNS 8.8.8.8:53 allowed")
 	requireTCPAllowed(t, ctx, sbx, envdClient, "https://1.1.1.1", "HTTPS 1.1.1.1:443 allowed")
 	requireTCPBlocked(t, ctx, sbx, envdClient, "https://8.8.8.8", "HTTPS 8.8.8.8:443 blocked (only :53 allowed)")
 	requireDNSBlocked(t, ctx, sbx, envdClient, "1.1.1.1", "DNS 1.1.1.1:53 blocked (only :443 allowed)")
@@ -443,7 +443,7 @@ func TestEgressPortRules(t *testing.T) {
 	// ── 8. Mix port-specific + all-port rules ────────────────────────────
 	update([]string{"8.8.8.8", "1.1.1.1:443"}, []string{blockAll})
 	requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "HTTPS 8.8.8.8 allowed (all ports)")
-	requireDNSAllowed(t, ctx, sbx, envdClient, "8.8.8.8", "DNS 8.8.8.8 allowed (all ports)")
+	requireDNSAllowed(t, ctx, sbx, envdClient, "DNS 8.8.8.8 allowed (all ports)")
 	requireTCPAllowed(t, ctx, sbx, envdClient, "https://1.1.1.1", "HTTPS 1.1.1.1:443 allowed")
 	requireDNSBlocked(t, ctx, sbx, envdClient, "1.1.1.1", "DNS 1.1.1.1:53 blocked (only :443 allowed)")
 
