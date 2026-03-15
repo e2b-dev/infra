@@ -45,14 +45,13 @@ func (o *Orchestrator) KeepAliveFor(ctx context.Context, teamID uuid.UUID, sandb
 		return sbx, nil
 	}
 
-	var sbxNotFoundErr *sandbox.NotFoundError
 	var sbxNotRunningErr *sandbox.NotRunningError
 	sbx, err := o.sandboxStore.Update(ctx, teamID, sandboxID, updateFunc)
 	if err != nil {
 		switch {
 		case errors.As(err, &sbxNotRunningErr):
 			return nil, &api.APIError{Code: http.StatusConflict, ClientMsg: utils.SandboxChangingStateMsg(sandboxID, sbxNotRunningErr.State), Err: err}
-		case errors.As(err, &sbxNotFoundErr):
+		case errors.Is(err, sandbox.ErrNotFound):
 			return nil, &api.APIError{Code: http.StatusNotFound, ClientMsg: utils.SandboxNotFoundMsg(sandboxID), Err: err}
 		case errors.Is(err, errMaxInstanceLengthExceeded):
 			return nil, &api.APIError{Code: http.StatusBadRequest, ClientMsg: "Max instance length exceeded", Err: err}

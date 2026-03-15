@@ -42,7 +42,7 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 
 	pause.LogInitiated(ctx, sandboxID, teamID.String(), "request")
 
-	err = a.orchestrator.RemoveSandbox(ctx, teamID, sandboxID, sandbox.StateActionPause)
+	err = a.orchestrator.RemoveSandbox(ctx, teamID, sandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
 	var transErr *sandbox.InvalidStateTransitionError
 
 	switch {

@@ -36,7 +36,7 @@ type Storage interface { //nolint: interfacebloat
 	TeamsWithSandboxCount(ctx context.Context) (map[uuid.UUID]int64, error)
 
 	Update(ctx context.Context, teamID uuid.UUID, sandboxID string, updateFunc func(sandbox Sandbox) (Sandbox, error)) (Sandbox, error)
-	StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID string, stateAction StateAction) (Sandbox, bool, func(context.Context, error), error)
+	StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID string, opts RemoveOpts) (Sandbox, bool, func(context.Context, error), error)
 	WaitForStateChange(ctx context.Context, teamID uuid.UUID, sandboxID string) error
 	Sync(sandboxes []Sandbox, nodeID string) []Sandbox
 }
@@ -150,8 +150,8 @@ func (s *Store) Update(ctx context.Context, teamID uuid.UUID, sandboxID string, 
 	return s.storage.Update(ctx, teamID, sandboxID, updateFunc)
 }
 
-func (s *Store) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID string, stateAction StateAction) (Sandbox, bool, func(context.Context, error), error) {
-	return s.storage.StartRemoving(ctx, teamID, sandboxID, stateAction)
+func (s *Store) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID string, opts RemoveOpts) (Sandbox, bool, func(context.Context, error), error) {
+	return s.storage.StartRemoving(ctx, teamID, sandboxID, opts)
 }
 
 func (s *Store) WaitForStateChange(ctx context.Context, teamID uuid.UUID, sandboxID string) error {

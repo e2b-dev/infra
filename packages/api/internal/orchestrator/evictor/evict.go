@@ -2,6 +2,7 @@ package evictor
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -19,12 +20,12 @@ const (
 
 type Evictor struct {
 	store         *sandbox.Store
-	removeSandbox func(ctx context.Context, teamID uuid.UUID, sandboxID string, stateAction sandbox.StateAction) error
+	removeSandbox func(ctx context.Context, teamID uuid.UUID, sandboxID string, opts sandbox.RemoveOpts) error
 }
 
 func New(
 	store *sandbox.Store,
-	removeSandbox func(ctx context.Context, teamID uuid.UUID, sandboxID string, stateAction sandbox.StateAction) error,
+	removeSandbox func(ctx context.Context, teamID uuid.UUID, sandboxID string, opts sandbox.RemoveOpts) error,
 ) *Evictor {
 	return &Evictor{
 		store:         store,
@@ -54,32 +55,43 @@ func (e *Evictor) Start(ctx context.Context) {
 
 			for _, item := range sbxs {
 				g.Go(func() error {
-					stateAction := sandbox.StateActionKill
+					action := sandbox.StateActionKill
 					if item.AutoPause {
-						stateAction = sandbox.StateActionPause
+						action = sandbox.StateActionPause
 					}
 
 					logger.L().Debug(ctx, "Evicting sandbox",
 						logger.WithSandboxID(item.SandboxID),
 						logger.WithTeamID(item.TeamID.String()),
-						zap.String("state_action", stateAction.Name),
+						zap.String("state_action", action.Name),
 					)
-					if stateAction == sandbox.StateActionPause {
+					if action == sandbox.StateActionPause {
 						pause.LogInitiated(ctx, item.SandboxID, item.TeamID.String(), "timeout")
 					}
-					if err := e.removeSandbox(context.WithoutCancel(ctx), item.TeamID, item.SandboxID, stateAction); err != nil {
-						if stateAction == sandbox.StateActionPause {
-							pause.LogResult(ctx, item.SandboxID, item.TeamID.String(), "timeout", false, err)
-						} else {
+					if err := e.removeSandbox(context.WithoutCancel(ctx), item.TeamID, item.SandboxID, sandbox.RemoveOpts{Action: action, Eviction: true}); err != nil {
+						if action == sandbox.StateActionPause {
+							switch {
+							case errors.Is(err, sandbox.ErrNotEvictable):
+								pause.LogSkipped(ctx, item.SandboxID, item.TeamID.String(), "timeout", "not_evictable")
+							case errors.Is(err, sandbox.ErrNotFound):
+								pause.LogSkipped(ctx, item.SandboxID, item.TeamID.String(), "timeout", "not_found")
+							default:
+								pause.LogResult(ctx, item.SandboxID, item.TeamID.String(), "timeout", false, err)
+							}
+						} else if !errors.Is(err, sandbox.ErrNotEvictable) && !errors.Is(err, sandbox.ErrNotFound) {
 							logger.L().Debug(ctx, "Evicting sandbox failed",
 								zap.Error(err),
 								logger.WithSandboxID(item.SandboxID),
 								logger.WithTeamID(item.TeamID.String()),
 							)
 						}
-					} else if stateAction == sandbox.StateActionPause {
+
+						return nil
+					} else if action == sandbox.StateActionPause {
 						pause.LogResult(ctx, item.SandboxID, item.TeamID.String(), "timeout", true, nil)
 					}
+
+					logger.L().Debug(ctx, "Sandbox evicted", logger.WithSandboxID(item.SandboxID))
 
 					return nil
 				})

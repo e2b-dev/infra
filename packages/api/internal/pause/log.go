@@ -37,3 +37,13 @@ func LogResult(ctx context.Context, sandboxID string, teamID string, reason stri
 
 	logger.L().Warn(ctx, "sandbox_pause_result", fields...)
 }
+
+func LogSkipped(ctx context.Context, sandboxID string, teamID string, reason string, skipReason string) {
+	logger.L().Info(ctx, "sandbox_pause_result",
+		logger.WithSandboxID(sandboxID),
+		logger.WithTeamID(teamID),
+		zap.String("pause_reason", reason),
+		zap.String("pause_result", "skipped"),
+		zap.String("pause_skip_reason", skipReason),
+	)
+}
