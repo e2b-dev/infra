@@ -47,20 +47,20 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 
 	switch {
 	case err == nil:
-		pause.LogResult(ctx, sandboxID, teamID.String(), "request", true, nil)
+		pause.LogSuccess(ctx, sandboxID, teamID.String(), "request")
 	case errors.Is(err, orchestrator.ErrSandboxNotFound):
-		pause.LogResult(ctx, sandboxID, teamID.String(), "request", false, err)
+		pause.LogFailure(ctx, sandboxID, teamID.String(), "request", err)
 		apiErr := pauseHandleNotRunningSandbox(ctx, a.snapshotCache, sandboxID, teamID)
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return
 	case errors.As(err, &transErr):
-		pause.LogResult(ctx, sandboxID, teamID.String(), "request", false, err)
+		pause.LogFailure(ctx, sandboxID, teamID.String(), "request", err)
 		a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Sandbox '%s' cannot be paused while in '%s' state", sandboxID, transErr.CurrentState))
 
 		return
 	default:
-		pause.LogResult(ctx, sandboxID, teamID.String(), "request", false, err)
+		pause.LogFailure(ctx, sandboxID, teamID.String(), "request", err)
 		telemetry.ReportError(ctx, "error pausing sandbox", err)
 
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error pausing sandbox")

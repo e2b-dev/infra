@@ -16,21 +16,22 @@ func LogInitiated(ctx context.Context, sandboxID string, teamID string, reason s
 	)
 }
 
-func LogResult(ctx context.Context, sandboxID string, teamID string, reason string, success bool, err error) {
+func LogSuccess(ctx context.Context, sandboxID string, teamID string, reason string) {
+	logger.L().Info(ctx, "sandbox_pause_result",
+		logger.WithSandboxID(sandboxID),
+		logger.WithTeamID(teamID),
+		zap.String("pause_reason", reason),
+		zap.String("pause_result", "success"),
+	)
+}
+
+func LogFailure(ctx context.Context, sandboxID string, teamID string, reason string, err error) {
 	fields := []zap.Field{
 		logger.WithSandboxID(sandboxID),
 		logger.WithTeamID(teamID),
 		zap.String("pause_reason", reason),
+		zap.String("pause_result", "failure"),
 	}
-
-	if success {
-		fields = append(fields, zap.String("pause_result", "success"))
-		logger.L().Info(ctx, "sandbox_pause_result", fields...)
-
-		return
-	}
-
-	fields = append(fields, zap.String("pause_result", "failure"))
 	if err != nil {
 		fields = append(fields, zap.Error(err))
 	}

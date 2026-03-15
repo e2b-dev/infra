@@ -58,16 +58,9 @@ func (e *Evictor) Start(ctx context.Context) {
 					action := sandbox.StateActionKill
 					if item.AutoPause {
 						action = sandbox.StateActionPause
-					}
-
-					logger.L().Debug(ctx, "Evicting sandbox",
-						logger.WithSandboxID(item.SandboxID),
-						logger.WithTeamID(item.TeamID.String()),
-						zap.String("state_action", action.Name),
-					)
-					if action == sandbox.StateActionPause {
 						pause.LogInitiated(ctx, item.SandboxID, item.TeamID.String(), "timeout")
 					}
+
 					if err := e.removeSandbox(context.WithoutCancel(ctx), item.TeamID, item.SandboxID, sandbox.RemoveOpts{Action: action, Eviction: true}); err != nil {
 						if action == sandbox.StateActionPause {
 							switch {
@@ -76,7 +69,7 @@ func (e *Evictor) Start(ctx context.Context) {
 							case errors.Is(err, sandbox.ErrNotFound):
 								pause.LogSkipped(ctx, item.SandboxID, item.TeamID.String(), "timeout", "not_found")
 							default:
-								pause.LogResult(ctx, item.SandboxID, item.TeamID.String(), "timeout", false, err)
+								pause.LogFailure(ctx, item.SandboxID, item.TeamID.String(), "timeout", err)
 							}
 						} else if !errors.Is(err, sandbox.ErrNotEvictable) && !errors.Is(err, sandbox.ErrNotFound) {
 							logger.L().Debug(ctx, "Evicting sandbox failed",
@@ -88,7 +81,8 @@ func (e *Evictor) Start(ctx context.Context) {
 
 						return nil
 					} else if action == sandbox.StateActionPause {
-						pause.LogResult(ctx, item.SandboxID, item.TeamID.String(), "timeout", true, nil)
+						pause.LogSuccess(ctx, item.SandboxID, item.TeamID.String(), "timeout")
+						return nil
 					}
 
 					logger.L().Debug(ctx, "Sandbox evicted", logger.WithSandboxID(item.SandboxID))
