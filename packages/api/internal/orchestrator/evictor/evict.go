@@ -2,6 +2,7 @@ package evictor
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,12 +19,12 @@ const (
 
 type Evictor struct {
 	store         *sandbox.Store
-	removeSandbox func(ctx context.Context, teamID uuid.UUID, sandboxID string, stateAction sandbox.StateAction) error
+	removeSandbox func(ctx context.Context, teamID uuid.UUID, sandboxID string, opts sandbox.RemoveOpts) error
 }
 
 func New(
 	store *sandbox.Store,
-	removeSandbox func(ctx context.Context, teamID uuid.UUID, sandboxID string, stateAction sandbox.StateAction) error,
+	removeSandbox func(ctx context.Context, teamID uuid.UUID, sandboxID string, opts sandbox.RemoveOpts) error,
 ) *Evictor {
 	return &Evictor{
 		store:         store,
@@ -53,15 +54,20 @@ func (e *Evictor) Start(ctx context.Context) {
 
 			for _, item := range sbxs {
 				g.Go(func() error {
-					stateAction := sandbox.StateActionKill
+					action := sandbox.StateActionKill
 					if item.AutoPause {
-						stateAction = sandbox.StateActionPause
+						action = sandbox.StateActionPause
 					}
 
-					logger.L().Debug(ctx, "Evicting sandbox", logger.WithSandboxID(item.SandboxID), zap.String("state_action", stateAction.Name))
-					if err := e.removeSandbox(context.WithoutCancel(ctx), item.TeamID, item.SandboxID, stateAction); err != nil {
-						logger.L().Debug(ctx, "Evicting sandbox failed", zap.Error(err), logger.WithSandboxID(item.SandboxID))
+					if err := e.removeSandbox(context.WithoutCancel(ctx), item.TeamID, item.SandboxID, sandbox.RemoveOpts{Action: action, Eviction: true}); err != nil {
+						if !errors.Is(err, sandbox.ErrNotEvictable) && !errors.Is(err, sandbox.ErrNotFound) {
+							logger.L().Debug(ctx, "Evicting sandbox failed", zap.Error(err), logger.WithSandboxID(item.SandboxID))
+						}
+
+						return nil
 					}
+
+					logger.L().Debug(ctx, "Sandbox evicted", logger.WithSandboxID(item.SandboxID))
 
 					return nil
 				})
