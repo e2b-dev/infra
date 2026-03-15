@@ -50,9 +50,12 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 		pause.LogSuccess(ctx, sandboxID, teamID.String(), pause.ReasonRequest)
 	case errors.Is(err, orchestrator.ErrSandboxNotFound):
 		apiErr := pauseHandleNotRunningSandbox(ctx, a.snapshotCache, sandboxID, teamID)
-		if apiErr.Code == http.StatusConflict {
+		switch apiErr.Code {
+		case http.StatusConflict:
 			pause.LogSkipped(ctx, sandboxID, teamID.String(), pause.ReasonRequest, pause.SkipReasonAlreadyPaused)
-		} else {
+		case http.StatusNotFound:
+			pause.LogSkipped(ctx, sandboxID, teamID.String(), pause.ReasonRequest, pause.SkipReasonNotFound)
+		default:
 			pause.LogFailure(ctx, sandboxID, teamID.String(), pause.ReasonRequest, err)
 		}
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
