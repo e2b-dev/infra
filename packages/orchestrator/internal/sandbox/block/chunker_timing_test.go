@@ -34,7 +34,7 @@ func TestTimingSliceAfterPartialRequest(t *testing.T) {
 
 	const (
 		blockSize    = header.PageSize // 4KB
-		sliceTimeout = 10 * time.Second
+		sliceTimeout = 500 * time.Millisecond
 		iterations   = 100
 	)
 

@@ -267,8 +267,8 @@ func TestStreamingChunker_FullChunkCachedAfterPartialRequest(t *testing.T) {
 	// - 4MB data, reader yields 4KB per Read() call → 1024 reads
 	// - readBatch = max(4KB, 16KB) = 16KB, but each Read returns 4KB → 1024 lock/notify cycles
 	// - All in-memory, no I/O → should complete in single-digit milliseconds locally
-	// - 10s timeout is generous to account for CI resource contention
-	const sliceTimeout = 10 * time.Second
+	// - 500ms timeout to aggressively detect goroutine starvation on CI
+	const sliceTimeout = 500 * time.Millisecond
 
 	for i := range 100 {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
