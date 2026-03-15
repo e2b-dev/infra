@@ -709,13 +709,19 @@ type SandboxMetric struct {
 
 // SandboxNetworkConfig defines model for SandboxNetworkConfig.
 type SandboxNetworkConfig struct {
-	// AllowOut List of allowed destinations for egress traffic. Each entry can be a CIDR block (e.g. "8.8.8.8/32"), a bare IP address (e.g. "8.8.8.8"), or a domain name (e.g. "example.com", "*.example.com"). Allowed entries always take precedence over denied entries.
+	// AllowOut List of allowed destinations for egress traffic. Each entry is a host with an optional port or port range.
+	// Host can be an IP ("8.8.8.8"), CIDR ("8.8.8.0/24"), domain ("example.com"), or wildcard ("*.example.com"). Port is appended after a colon: "8.8.8.8:80", "10.0.0.0/8:1-1024", "example.com:443". Omitting the port means all ports. A trailing colon also means all ports: "8.8.8.8:".
+	// Allowed entries always take precedence over denied entries.
+	// When using domain names, denyOut must include "0.0.0.0/0" to block all other traffic first. Domain names are only supported in allowOut, not denyOut.
+	// Note: traffic to destinations not matching any allowOut or denyOut entry is allowed by default. To restrict traffic to only allowed destinations, include "0.0.0.0/0" in denyOut.
 	AllowOut *[]string `json:"allowOut,omitempty"`
 
 	// AllowPublicTraffic Specify if the sandbox URLs should be accessible only with authentication.
 	AllowPublicTraffic *bool `json:"allowPublicTraffic,omitempty"`
 
-	// DenyOut List of denied CIDR blocks or IP addresses for egress traffic. Domain names are not supported for deny rules.
+	// DenyOut List of denied destinations for egress traffic. Each entry is a host with an optional port or port range.
+	// Host can be an IP ("8.8.8.8") or CIDR ("10.0.0.0/8"). Domain names are not supported for deny rules. Port is appended after a colon: "8.8.8.8:22", "10.0.0.0/8:1-1024". Omitting the port means all ports.
+	// Note: traffic to destinations not in this list is allowed by default unless blocked by "0.0.0.0/0".
 	DenyOut *[]string `json:"denyOut,omitempty"`
 
 	// MaskRequestHost Specify host mask which will be used for all sandbox requests
@@ -1262,10 +1268,16 @@ type GetSandboxesSandboxIDMetricsParams struct {
 
 // PutSandboxesSandboxIDNetworkJSONBody defines parameters for PutSandboxesSandboxIDNetwork.
 type PutSandboxesSandboxIDNetworkJSONBody struct {
-	// AllowOut List of allowed destinations for egress traffic. Each entry can be a CIDR block (e.g. "8.8.8.8/32"), a bare IP address (e.g. "8.8.8.8"), or a domain name (e.g. "example.com", "*.example.com"). Allowed entries always take precedence over denied entries.
+	// AllowOut List of allowed destinations for egress traffic. Each entry is a host with an optional port or port range.
+	// Host can be an IP ("8.8.8.8"), CIDR ("8.8.8.0/24"), domain ("example.com"), or wildcard ("*.example.com"). Port is appended after a colon: "8.8.8.8:80", "10.0.0.0/8:1-1024", "example.com:443". Omitting the port means all ports. A trailing colon also means all ports: "8.8.8.8:".
+	// Allowed entries always take precedence over denied entries.
+	// When using domain names, denyOut must include "0.0.0.0/0" to block all other traffic first. Domain names are only supported in allowOut, not denyOut.
+	// Note: traffic to destinations not matching any allowOut or denyOut entry is allowed by default. To restrict traffic to only allowed destinations, include "0.0.0.0/0" in denyOut.
 	AllowOut *[]string `json:"allowOut,omitempty"`
 
-	// DenyOut List of denied CIDR blocks or IP addresses for egress traffic. Domain names are not supported for deny rules.
+	// DenyOut List of denied destinations for egress traffic. Each entry is a host with an optional port or port range.
+	// Host can be an IP ("8.8.8.8") or CIDR ("10.0.0.0/8"). Domain names are not supported for deny rules. Port is appended after a colon: "8.8.8.8:22", "10.0.0.0/8:1-1024". Omitting the port means all ports.
+	// Note: traffic to destinations not in this list is allowed by default unless blocked by "0.0.0.0/0".
 	DenyOut *[]string `json:"denyOut,omitempty"`
 }
 
