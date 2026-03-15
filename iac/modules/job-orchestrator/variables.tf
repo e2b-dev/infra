@@ -19,6 +19,15 @@ variable "provider_aws_config" {
   }
 }
 
+variable "provider_gcp_config" {
+  type = object({
+    service_account_key = string
+  })
+  default = {
+    service_account_key = ""
+  }
+}
+
 variable "node_pool" {
   type = string
 }

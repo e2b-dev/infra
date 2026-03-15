@@ -99,8 +99,7 @@ func (a *APIStore) PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID api
 
 	result, err := a.orchestrator.CreateSnapshotTemplate(ctx, teamID, sandboxID, opts)
 	if err != nil {
-		var notFoundErr *sandbox.NotFoundError
-		if errors.As(err, &notFoundErr) {
+		if errors.Is(err, sandbox.ErrNotFound) {
 			logger.L().Debug(ctx, "Sandbox not found for snapshot", logger.WithSandboxID(sandboxID))
 			a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(sandboxID))
 

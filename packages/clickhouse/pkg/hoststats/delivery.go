@@ -9,7 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/clickhouse/pkg/batcher"
-	flags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -44,11 +44,11 @@ type ClickhouseDelivery struct {
 func NewDefaultClickhouseHostStatsDelivery(
 	ctx context.Context,
 	conn driver.Conn,
-	featureFlags *flags.Client,
+	featureFlags *featureflags.Client,
 ) (*ClickhouseDelivery, error) {
-	maxBatchSize := featureFlags.IntFlag(ctx, flags.ClickhouseBatcherMaxBatchSize)
-	maxDelay := time.Duration(featureFlags.IntFlag(ctx, flags.ClickhouseBatcherMaxDelay)) * time.Millisecond
-	batcherQueueSize := featureFlags.IntFlag(ctx, flags.ClickhouseBatcherQueueSize)
+	maxBatchSize := featureFlags.IntFlag(ctx, featureflags.ClickhouseBatcherMaxBatchSize)
+	maxDelay := time.Duration(featureFlags.IntFlag(ctx, featureflags.ClickhouseBatcherMaxDelay)) * time.Millisecond
+	batcherQueueSize := featureFlags.IntFlag(ctx, featureflags.ClickhouseBatcherQueueSize)
 
 	return NewClickhouseHostStatsDelivery(
 		ctx, conn, batcher.BatcherOptions{

@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	catalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 )
