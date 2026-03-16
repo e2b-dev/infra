@@ -45,6 +45,7 @@ const (
 // Defines values for LogLevel.
 const (
 	LogLevelDebug LogLevel = "debug"
+	LogLevelEmpty LogLevel = ""
 	LogLevelError LogLevel = "error"
 	LogLevelInfo  LogLevel = "info"
 	LogLevelWarn  LogLevel = "warn"
@@ -79,8 +80,11 @@ const (
 // Defines values for TemplateBuildStatus.
 const (
 	TemplateBuildStatusBuilding TemplateBuildStatus = "building"
+	TemplateBuildStatusEmpty    TemplateBuildStatus = ""
 	TemplateBuildStatusError    TemplateBuildStatus = "error"
+	TemplateBuildStatusFailed   TemplateBuildStatus = "failed"
 	TemplateBuildStatusReady    TemplateBuildStatus = "ready"
+	TemplateBuildStatusUploaded TemplateBuildStatus = "uploaded"
 	TemplateBuildStatusWaiting  TemplateBuildStatus = "waiting"
 )
 
@@ -1027,6 +1031,9 @@ type TemplateLegacy struct {
 	// BuildID Identifier of the last successful build for given template
 	BuildID string `json:"buildID"`
 
+	// BuildStatus Status of the template build
+	BuildStatus *TemplateBuildStatus `json:"buildStatus,omitempty"`
+
 	// CpuCount CPU cores for the sandbox
 	CpuCount CPUCount `json:"cpuCount"`
 
@@ -1044,7 +1051,8 @@ type TemplateLegacy struct {
 	LastSpawnedAt *time.Time `json:"lastSpawnedAt"`
 
 	// MemoryMB Memory for the sandbox in MiB
-	MemoryMB MemoryMB `json:"memoryMB"`
+	MemoryMB MemoryMB  `json:"memoryMB"`
+	Names    *[]string `json:"names"`
 
 	// Public Whether the template is public or only accessible by the team
 	Public bool `json:"public"`
