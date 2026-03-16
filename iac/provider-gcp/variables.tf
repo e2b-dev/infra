@@ -715,3 +715,26 @@ variable "volume_token_signature" {
   })
   default = null
 }
+
+variable "gcs_grpc_connection_pool_size" {
+  description = "Number of gRPC connections in the GCS connection pool for storage-heavy services"
+  type        = number
+  default     = 0
+
+  validation {
+    condition     = floor(var.gcs_grpc_connection_pool_size) == var.gcs_grpc_connection_pool_size && var.gcs_grpc_connection_pool_size >= 0
+    error_message = "gcs_grpc_connection_pool_size must be a positive integer or 0 for using default specified in code."
+  }
+}
+
+variable "gcs_enable_direct_path" {
+  description = "Enable DirectPath for GCS gRPC client"
+  type        = bool
+  default     = true
+}
+
+variable "gcs_disable_telemetry" {
+  description = "Disable telemetry for GCS gRPC client"
+  type        = bool
+  default     = true
+}
