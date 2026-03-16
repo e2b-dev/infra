@@ -110,12 +110,13 @@ module "network" {
   api_nat_ips              = var.api_nat_ips
   api_nat_min_ports_per_vm = var.api_nat_min_ports_per_vm
 
-  ingress_port              = var.ingress_port
-  api_port                  = var.api_port
-  docker_reverse_proxy_port = var.docker_reverse_proxy_port
-  network_name              = var.network_name
-  domain_name               = var.domain_name
-  additional_domains        = var.additional_domains
+  ingress_port                            = var.ingress_port
+  api_port                                = var.api_port
+  docker_reverse_proxy_port               = var.docker_reverse_proxy_port
+  network_name                            = var.network_name
+  domain_name                             = var.domain_name
+  additional_domains                      = var.additional_domains
+  additional_api_paths_handled_by_ingress = var.additional_api_paths_handled_by_ingress
 
   client_proxy_port        = var.client_proxy_port
   client_proxy_health_port = var.client_proxy_health_port

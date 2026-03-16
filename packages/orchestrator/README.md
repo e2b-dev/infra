@@ -107,20 +107,36 @@ Copy a build between storage locations (local or GCS).
 
 ```bash
 # Local to local
-go run ./cmd/copy-build -build <uuid> -from-storage .local-build -to-storage /other/path
+go run ./cmd/copy-build -build <uuid> -from .local-build -to /other/path
 
 # Local to GCS
-go run ./cmd/copy-build -build <uuid> -from-storage .local-build -to-storage gs://bucket
+go run ./cmd/copy-build -build <uuid> -from .local-build -to gs://bucket
 
 # GCS to GCS
-go run ./cmd/copy-build -build <uuid> -from-storage gs://bucket1 -to-storage gs://bucket2
+go run ./cmd/copy-build -build <uuid> -from gs://bucket1 -to gs://bucket2
 ```
 
 Flags:
 
 - `-build <uuid>` - Build ID (UUID, required)
-- `-from-storage <path>` - Source: local path or `gs://bucket`
-- `-to-storage <path>` - Destination: local path or `gs://bucket`
+- `-from <path>` - Source: local path or `gs://bucket`
+- `-to <path>` - Destination: local path or `gs://bucket`
+- `-team <uuid>` - Team UUID (if set, prints SQL to populate DB on stdout)
+- `-envd-version <version>` - Envd version (required if team provided) — must match the version present in the template
+- `-vcpu <n>` - vCPUs (default: `2`)
+- `-memory <mb>` - Memory in MB (default: `1024`)
+- `-disk <mb>` - Disk in MB (default: `1024`)
+- `-tag <name>` - Build assignment tag (default: `default`)
+
+**Print DB seed SQL:**
+
+When `-team` is set, the command reads `metadata.json` from the destination to get `kernel_version` and `firecracker_version`, generates a new env ID, and prints SQL statements (`BEGIN`/`COMMIT` wrapped) to stdout. Pipe directly to `psql` to populate the database:
+
+```bash
+go run ./cmd/copy-build -build <uuid> -from .local-build -to gs://bucket \
+  -team <team-uuid> -envd-version 0.2.11 -vcpu 2 -memory 1024 -disk 1024 \
+  | psql $POSTGRES_CONNECTION_STRING
+```
 
 ### Mount Build Rootfs
 

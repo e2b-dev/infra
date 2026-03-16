@@ -35,7 +35,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process/processconnect"
@@ -258,7 +258,6 @@ func setupEnv(from string) error {
 
 type runner struct {
 	factory    *sandbox.Factory
-	sandboxes  *sandbox.Map
 	tmpl       template.Template
 	sbxConfig  sandbox.Config
 	buildID    string
@@ -303,12 +302,8 @@ func (r *runner) interactive(ctx context.Context) error {
 		return err
 	}
 
-	// Register sandbox in map for TCP firewall to find
-	r.sandboxes.Insert(sbx)
-	defer r.sandboxes.Remove(runtime.SandboxID)
-
 	fmt.Printf("✅ Running (resumed in %s)\n", time.Since(t0))
-	fmt.Printf("   sudo nsenter --net=/var/run/netns/%s ssh -o StrictHostKeyChecking=no root@169.254.0.21\n", sbx.Slot.NamespaceID())
+	fmt.Printf("   sudo nsenter --net=/var/run/netns/%s ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no root@169.254.0.21\n", sbx.Slot.NamespaceID())
 	fmt.Println("Ctrl+C to stop")
 
 	<-ctx.Done()
@@ -346,10 +341,6 @@ func (r *runner) cmdOnce(ctx context.Context, opts runOptions, verbose bool) (cm
 		return cmdTimings{resume: resumeDur, err: err}, err
 	}
 	defer sbx.Close(context.WithoutCancel(ctx))
-
-	// Register sandbox in map for TCP firewall to find
-	r.sandboxes.Insert(sbx)
-	defer r.sandboxes.Remove(runtime.SandboxID)
 
 	if verbose {
 		fmt.Printf("✅ Sandbox resumed in %s\n", resumeDur)
@@ -553,10 +544,6 @@ func (r *runner) pauseOnce(ctx context.Context, opts pauseOptions, verbose bool)
 		return pauseTimings{resume: resumeDur, err: err}, err
 	}
 	defer sbx.Close(context.WithoutCancel(ctx))
-
-	// Register sandbox in map for TCP firewall to find
-	r.sandboxes.Insert(sbx)
-	defer r.sandboxes.Remove(runtime.SandboxID)
 
 	if verbose {
 		fmt.Printf("✅ Sandbox resumed in %s\n", resumeDur)
@@ -1052,7 +1039,7 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 		fmt.Println("🔧 Creating sandbox factory...")
 	}
 	sandboxes := sandbox.NewSandboxesMap()
-	factory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, flags, nil, nil)
+	factory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, flags, nil, nil, sandboxes)
 
 	if verbose {
 		fmt.Println("🔧 Starting TCP firewall...")
@@ -1083,7 +1070,6 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	token := "local"
 	r := &runner{
 		factory:    factory,
-		sandboxes:  sandboxes,
 		tmpl:       tmpl,
 		buildID:    buildID,
 		cache:      cache,
@@ -1226,7 +1212,7 @@ func waitForPauseSignal(ctx context.Context, sbx *sandbox.Sandbox, signalName st
 	}
 
 	fmt.Printf("⏳ Waiting for %s signal...\n", signalName)
-	fmt.Printf("   sudo nsenter --net=/var/run/netns/%s ssh -o StrictHostKeyChecking=no root@169.254.0.21\n", sbx.Slot.NamespaceID())
+	fmt.Printf("   sudo nsenter --net=/var/run/netns/%s ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no root@169.254.0.21\n", sbx.Slot.NamespaceID())
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, sig)

@@ -13,7 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/connlimit"
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -166,8 +166,9 @@ func (t *connectionHandler) HandleConn(conn net.Conn) {
 	sourceAddr := rawConn.RemoteAddr().String()
 	sbx, err := t.sandboxes.GetByHostPort(sourceAddr)
 	if err != nil {
+		sourceIP, _, _ := net.SplitHostPort(sourceAddr)
 		t.logger.Error(ctx, "failed to find sandbox for connection",
-			zap.String("source", sourceAddr),
+			logger.WithSandboxIP(sourceIP),
 			zap.Error(err))
 		t.metrics.RecordError(ctx, ErrorTypeSandboxLookup, t.protocol)
 		conn.Close()

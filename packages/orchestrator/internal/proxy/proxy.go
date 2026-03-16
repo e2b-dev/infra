@@ -16,7 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/connlimit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
@@ -106,7 +106,7 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 				zap.String("origin_host", r.Host),
 				logger.WithSandboxID(sbx.Runtime.SandboxID),
 				logger.WithTeamID(sbx.Runtime.TeamID),
-				zap.String("sandbox_ip", sbx.Slot.HostIPString()),
+				logger.WithSandboxIP(sbx.Slot.HostIPString()),
 				zap.Uint64("sandbox_req_port", port),
 				zap.String("sandbox_req_path", r.URL.Path),
 				zap.String("sandbox_req_method", r.Method),

@@ -18,7 +18,7 @@ SELECT
   b.created_at,
   b.finished_at,
   b.status,
-  b.reason::jsonb AS reason,
+  b.reason,
   COALESCE(ea.names, ARRAY[]::text[])::text[] AS names
 FROM public.env_builds b
 JOIN LATERAL (
@@ -53,7 +53,7 @@ type GetBuildInfoByTeamAndBuildIDRow struct {
 	CreatedAt  time.Time
 	FinishedAt *time.Time
 	Status     types.BuildStatus
-	Reason     []byte
+	Reason     types.BuildReason
 	Names      []string
 }
 
