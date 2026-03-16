@@ -38,10 +38,8 @@ func SetupEgressGateway(cfg EgressGatewayConfig) error {
 	}
 	defer conn.CloseLasting()
 
-	// Clean up existing table
-	conn.DelTable(&nftables.Table{Name: egressGwTableName, Family: nftables.TableFamilyINet})
-	_ = conn.Flush()
-
+	// Ensure table exists (idempotent). We do NOT delete the existing table
+	// to avoid disrupting live gateway traffic during restarts.
 	table := conn.AddTable(&nftables.Table{
 		Name:   egressGwTableName,
 		Family: nftables.TableFamilyINet,
@@ -60,6 +58,7 @@ func SetupEgressGateway(cfg EgressGatewayConfig) error {
 		Priority: nftables.ChainPriorityFilter,
 		Policy:   &fwdPolicy,
 	})
+	conn.FlushChain(fwdChain) // refresh rules with current config
 
 	// wg0 → external: accept
 	conn.AddRule(&nftables.Rule{
@@ -102,6 +101,7 @@ func SetupEgressGateway(cfg EgressGatewayConfig) error {
 		Hooknum:  nftables.ChainHookPostrouting,
 		Priority: nftables.ChainPriorityNATSource,
 	})
+	conn.FlushChain(postChain)
 
 	for _, rule := range cfg.SNATRules {
 		_, srcNet, err := net.ParseCIDR(rule.SourceCIDR)

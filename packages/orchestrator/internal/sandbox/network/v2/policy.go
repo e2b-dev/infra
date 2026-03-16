@@ -93,24 +93,25 @@ func TeardownPolicyRoute(fwmark uint32, tableID int) error {
 // The mark is set in prerouting (mangle priority) so it takes effect
 // BEFORE the routing decision — required for forwarded traffic to be
 // rerouted via policy rules.
+//
+// The rule handle is tracked so it can be surgically removed later.
 func SetupFwmarkInNftables(hf *HostFirewall, vethName string, fwmark uint32) error {
 	hf.mu.Lock()
 	defer hf.mu.Unlock()
 
-	// Create or reuse a mangle-priority prerouting chain for marking.
-	// Prerouting runs before the routing decision, so fwmark-based
-	// policy routing works for forwarded traffic.
-	mangleChain := hf.conn.AddChain(&nftables.Chain{
-		Name:     "mangle_prerouting",
-		Table:    hf.table,
-		Type:     nftables.ChainTypeFilter,
-		Hooknum:  nftables.ChainHookPrerouting,
-		Priority: nftables.ChainPriorityMangle,
-	})
+	// Remove existing rule for this veth if present (idempotent reassign)
+	if handle, ok := hf.fwmarkRules[vethName]; ok {
+		hf.conn.DelRule(&nftables.Rule{
+			Table:  hf.table,
+			Chain:  hf.mangleChain,
+			Handle: handle,
+		})
+		delete(hf.fwmarkRules, vethName)
+	}
 
 	hf.conn.AddRule(&nftables.Rule{
 		Table: hf.table,
-		Chain: mangleChain,
+		Chain: hf.mangleChain,
 		Exprs: []expr.Any{
 			// Match iifname == vethName
 			&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
@@ -125,11 +126,71 @@ func SetupFwmarkInNftables(hf *HostFirewall, vethName string, fwmark uint32) err
 		return fmt.Errorf("flush fwmark rule: %w", err)
 	}
 
+	// Retrieve the rule handle for later removal.
+	// The rule we just added is the last one in the chain for this veth.
+	rules, err := hf.conn.GetRules(hf.table, hf.mangleChain)
+	if err != nil {
+		return fmt.Errorf("get mangle rules to track handle: %w", err)
+	}
+	for _, r := range rules {
+		if matchesFwmarkRule(r, vethName) {
+			hf.fwmarkRules[vethName] = r.Handle
+			break
+		}
+	}
+
 	return nil
 }
 
-// RemoveFwmarkInNftables is a placeholder — in production, we'd track and remove
-// per-veth mark rules. For the PoC, the table teardown in Close() cleans everything.
-func RemoveFwmarkInNftables(_ *HostFirewall, _ string) error {
+// matchesFwmarkRule checks if a rule is the fwmark rule for the given veth
+// by inspecting its expressions for an iifname match.
+func matchesFwmarkRule(r *nftables.Rule, vethName string) bool {
+	expected := ifnameBytes(vethName)
+	for i, e := range r.Exprs {
+		cmp, ok := e.(*expr.Cmp)
+		if !ok || i == 0 {
+			continue
+		}
+		// Check if previous expr is MetaKeyIIFNAME and this Cmp matches our veth
+		if meta, ok := r.Exprs[i-1].(*expr.Meta); ok && meta.Key == expr.MetaKeyIIFNAME {
+			if len(cmp.Data) == len(expected) {
+				match := true
+				for j := range cmp.Data {
+					if cmp.Data[j] != expected[j] {
+						match = false
+						break
+					}
+				}
+				if match {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// RemoveFwmarkInNftables removes the per-veth fwmark rule by its tracked handle.
+// Idempotent: returns nil if no rule exists for the veth.
+func RemoveFwmarkInNftables(hf *HostFirewall, vethName string) error {
+	hf.mu.Lock()
+	defer hf.mu.Unlock()
+
+	handle, ok := hf.fwmarkRules[vethName]
+	if !ok {
+		return nil // already removed or never set
+	}
+
+	hf.conn.DelRule(&nftables.Rule{
+		Table:  hf.table,
+		Chain:  hf.mangleChain,
+		Handle: handle,
+	})
+
+	if err := hf.conn.Flush(); err != nil {
+		return fmt.Errorf("flush remove fwmark rule for %s: %w", vethName, err)
+	}
+
+	delete(hf.fwmarkRules, vethName)
 	return nil
 }

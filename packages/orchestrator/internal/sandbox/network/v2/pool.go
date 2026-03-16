@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"strings"
 	"sync"
 
 	"go.opentelemetry.io/otel"
@@ -58,6 +60,35 @@ type V2Pool struct {
 
 // Compile-time check that V2Pool satisfies network.PoolInterface.
 var _ network.PoolInterface = (*V2Pool)(nil)
+
+// ValidateV2Prerequisites checks that required kernel parameters are set for v2 networking.
+// Returns an error if any prerequisite is missing. Call before NewV2Pool.
+func ValidateV2Prerequisites() error {
+	checks := []struct {
+		path     string
+		expected string
+		desc     string
+	}{
+		{"/proc/sys/net/ipv4/ip_forward", "1", "IPv4 forwarding"},
+		{"/proc/sys/net/ipv4/conf/all/src_valid_mark", "1", "src_valid_mark (required for fwmark-based policy routing)"},
+	}
+
+	var errs []error
+	for _, c := range checks {
+		val, err := os.ReadFile(c.path)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("cannot read %s: %w", c.path, err))
+			continue
+		}
+		if strings.TrimSpace(string(val)) != c.expected {
+			errs = append(errs, fmt.Errorf("%s: %s must be %s, got %q", c.desc, c.path, c.expected, strings.TrimSpace(string(val))))
+		}
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("v2 networking prerequisites not met: %w", errors.Join(errs...))
+	}
+	return nil
+}
 
 func NewV2Pool(storage network.Storage, config network.Config, hostFw *HostFirewall, observer *VethObserver) *V2Pool {
 	return &V2Pool{

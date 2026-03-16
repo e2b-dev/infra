@@ -60,24 +60,36 @@ type HostFirewall struct {
 	// migrationRules tracks active migration DNAT/forward rules by old host IP.
 	// Protected by mu.
 	migrationRules map[string]*migrationDNATEntry
+
+	// mangleChain is the prerouting mangle chain used for fwmark rules.
+	// Stored here so fwmark rules can be added/removed without re-creating the chain.
+	mangleChain *nftables.Chain
+
+	// fwmarkRules tracks per-veth fwmark rule handles for surgical removal.
+	// Protected by mu.
+	fwmarkRules map[string]uint64
 }
 
 const (
 	hostFwTableName = "v2-host-firewall"
 )
 
-// NewHostFirewall creates the singleton host firewall table with all
+// NewHostFirewall creates or opens the singleton host firewall table with all
 // required sets and chains. Call once per orchestrator process.
+//
+// Restart-safe: if the table already exists from a previous run (e.g., orchestrator
+// restart with live sandboxes), existing set elements are preserved. Only chain rules
+// are refreshed with current config. This prevents connectivity loss for sandboxes
+// that survived the restart.
 func NewHostFirewall(defaultGw string, config network.Config) (*HostFirewall, error) {
 	conn, err := nftables.New(nftables.AsLasting())
 	if err != nil {
 		return nil, fmt.Errorf("new nftables conn: %w", err)
 	}
 
-	// Delete table if it exists from a previous run
-	conn.DelTable(&nftables.Table{Name: hostFwTableName, Family: nftables.TableFamilyINet})
-	_ = conn.Flush() // ignore error — table may not exist
-
+	// Ensure table exists — idempotent: creates if new, opens if existing.
+	// We do NOT delete the table on startup. Existing set elements represent
+	// live sandboxes whose connectivity must be preserved across restarts.
 	table := conn.AddTable(&nftables.Table{
 		Name:   hostFwTableName,
 		Family: nftables.TableFamilyINet,
@@ -89,21 +101,24 @@ func NewHostFirewall(defaultGw string, config network.Config) (*HostFirewall, er
 		defaultGw:      defaultGw,
 		config:         config,
 		migrationRules: make(map[string]*migrationDNATEntry),
+		fwmarkRules:    make(map[string]uint64),
 	}
 
-	if err := hf.initSets(); err != nil {
-		return nil, fmt.Errorf("init sets: %w", err)
+	if err := hf.ensureSets(); err != nil {
+		return nil, fmt.Errorf("ensure sets: %w", err)
 	}
 
-	if err := hf.initChains(); err != nil {
-		return nil, fmt.Errorf("init chains: %w", err)
+	if err := hf.ensureChains(); err != nil {
+		return nil, fmt.Errorf("ensure chains: %w", err)
 	}
 
 	return hf, nil
 }
 
-func (hf *HostFirewall) initSets() error {
-	// Set of veth interface names
+// ensureSets creates sets if they don't exist, or opens handles to existing ones.
+// Existing set elements (active sandbox veth names and host CIDRs) are preserved.
+func (hf *HostFirewall) ensureSets() error {
+	// Set of veth interface names — AddSet is idempotent for existing sets
 	hf.vethSet = &nftables.Set{
 		Table:   hf.table,
 		Name:    "v2_veths",
@@ -131,7 +146,12 @@ func (hf *HostFirewall) initSets() error {
 	return nil
 }
 
-func (hf *HostFirewall) initChains() error {
+// ensureChains creates or refreshes all chains with current config.
+// Chains are flushed and re-populated — this is safe because chain rules are
+// config-dependent (ports, gateway interface), not state-dependent.
+// Set elements (which represent live sandboxes) are NOT touched.
+// The entire operation is atomic via nftables batching.
+func (hf *HostFirewall) ensureChains() error {
 	gwBytes := ifnameBytes(hf.defaultGw)
 	orchIP := net.ParseIP(hf.config.OrchestratorInSandboxIPAddress).To4()
 
@@ -145,6 +165,7 @@ func (hf *HostFirewall) initChains() error {
 		Priority: nftables.ChainPriorityFilter,
 		Policy:   &fwdPolicy,
 	})
+	hf.conn.FlushChain(fwdChain) // clear stale rules from previous config
 
 	// iifname @v2_veths oifname <gw> accept
 	hf.conn.AddRule(&nftables.Rule{
@@ -187,6 +208,7 @@ func (hf *HostFirewall) initChains() error {
 		Hooknum:  nftables.ChainHookPrerouting,
 		Priority: nftables.ChainPriorityRef(-100),
 	})
+	hf.conn.FlushChain(preChain)
 
 	// Service redirects: iifname @v2_veths + ip daddr <orchIP> + tcp dport X → redirect to :port
 	svcRedirects := []struct {
@@ -239,6 +261,7 @@ func (hf *HostFirewall) initChains() error {
 		Hooknum:  nftables.ChainHookPostrouting,
 		Priority: nftables.ChainPriorityNATSource,
 	})
+	hf.conn.FlushChain(postChain)
 
 	// ip saddr @v2_host_cidrs oifname <gw> masquerade
 	hf.conn.AddRule(&nftables.Rule{
@@ -253,8 +276,98 @@ func (hf *HostFirewall) initChains() error {
 		},
 	})
 
+	// --- MANGLE PREROUTING chain (for fwmark rules) ---
+	hf.mangleChain = hf.conn.AddChain(&nftables.Chain{
+		Name:     "mangle_prerouting",
+		Table:    hf.table,
+		Type:     nftables.ChainTypeFilter,
+		Hooknum:  nftables.ChainHookPrerouting,
+		Priority: nftables.ChainPriorityMangle,
+	})
+	// NOTE: we do NOT flush the mangle chain here. Fwmark rules are per-veth
+	// state, not config. They are managed individually via Add/RemoveFwmark.
+	// On restart, stale fwmark rules are cleaned up by ReconcileSlots.
+
 	if err := hf.conn.Flush(); err != nil {
 		return fmt.Errorf("flush chains: %w", err)
+	}
+
+	return nil
+}
+
+// ReconcileSlots reconciles host firewall set membership with actual active slots.
+// Call on startup after rebuilding the in-memory slot registry from surviving sandboxes.
+// - Slots in the registry but missing from sets are added.
+// - Set entries not in the registry are removed (stale leftovers from crashed sandboxes).
+// - Stale fwmark rules in the mangle chain are flushed.
+func (hf *HostFirewall) ReconcileSlots(activeSlots []*SlotV2) error {
+	hf.mu.Lock()
+	defer hf.mu.Unlock()
+
+	// Build desired state from active slots
+	desiredVeths := make(map[string]bool)
+	desiredCIDRs := make(map[string]bool) // key = hostIP string
+	for _, sv2 := range activeSlots {
+		desiredVeths[sv2.Slot.VethName()] = true
+		desiredCIDRs[sv2.Slot.HostIP.To4().String()] = true
+	}
+
+	// Read current veth set elements
+	currentVeths, err := hf.conn.GetSetElements(hf.vethSet)
+	if err != nil {
+		return fmt.Errorf("get veth set elements: %w", err)
+	}
+
+	// Remove stale veths (in set but not in active slots)
+	var staleVethElems []nftables.SetElement
+	for _, elem := range currentVeths {
+		name := string(elem.Key[:len(elem.Key)-1]) // strip null terminator
+		if !desiredVeths[name] {
+			staleVethElems = append(staleVethElems, elem)
+		}
+	}
+	if len(staleVethElems) > 0 {
+		hf.conn.SetDeleteElements(hf.vethSet, staleVethElems)
+	}
+
+	// Add missing veths (in active slots but not in set)
+	currentVethNames := make(map[string]bool)
+	for _, elem := range currentVeths {
+		name := string(elem.Key[:len(elem.Key)-1])
+		currentVethNames[name] = true
+	}
+	for _, sv2 := range activeSlots {
+		veth := sv2.Slot.VethName()
+		if !currentVethNames[veth] {
+			if err := hf.conn.SetAddElements(hf.vethSet, []nftables.SetElement{
+				{Key: ifnameBytes(veth)},
+			}); err != nil {
+				return fmt.Errorf("add missing veth %s: %w", veth, err)
+			}
+		}
+	}
+
+	// Reconcile CIDR set: flush and rebuild (interval sets don't support
+	// element-level comparison easily, so rebuild is simpler and correct)
+	hf.conn.FlushSet(hf.cidrSet)
+	for _, sv2 := range activeSlots {
+		hostIP := sv2.Slot.HostIP.To4()
+		nextIP := incrementIP(hostIP)
+		if err := hf.conn.SetAddElements(hf.cidrSet, []nftables.SetElement{
+			{Key: hostIP},
+			{Key: nextIP, IntervalEnd: true},
+		}); err != nil {
+			return fmt.Errorf("add host cidr for slot %d: %w", sv2.Slot.Idx, err)
+		}
+	}
+
+	// Flush stale fwmark rules: we lost in-memory handles on restart,
+	// so flush the mangle chain and let egress profile re-assignment
+	// re-create needed rules.
+	hf.conn.FlushChain(hf.mangleChain)
+
+	if err := hf.conn.Flush(); err != nil {
+		return fmt.Errorf("flush reconcile: %w", err)
 	}
 
 	return nil

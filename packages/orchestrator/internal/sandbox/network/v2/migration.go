@@ -169,6 +169,12 @@ type MigrationCoordinator struct {
 	targetConn   *grpc.ClientConn
 	sourceClient orchestrator.SandboxServiceClient
 	targetClient orchestrator.SandboxServiceClient
+
+	// EnableDebugForwarding gates SetupForwarding/TeardownForwarding.
+	// These methods use WireGuard IP forwarding which bypasses the TCP firewall
+	// proxy. They must NOT be used as the production migration path.
+	// Set to true only for lab recovery and debugging.
+	EnableDebugForwarding bool
 }
 
 // NewMigrationCoordinator creates a coordinator connected to both nodes.
@@ -401,12 +407,18 @@ func (mc *MigrationCoordinator) Migrate(ctx context.Context, req MigrationReques
 // and on the target node to DNAT to the new slot.
 //
 // SECURITY NOTE: WireGuard-forwarded traffic bypasses the TCP firewall proxy
-// because it arrives on wg0 (not a v2 veth). This is acceptable for the PoC
-// because IP forwarding is a stopgap — production uses edge/egress service
-// cutover which routes through the normal proxy path (§7.3 step 11).
+// because it arrives on wg0 (not a v2 veth). This is NOT acceptable for production.
+// Production migration must use control-plane catalog cutover so new traffic routes
+// through the normal proxy path on the target node.
+//
+// This method is gated behind EnableDebugForwarding. It must NOT be used as the
+// default production migration path. It exists only for lab recovery and debugging.
 //
 // targetHF is the host firewall on the target node (can be nil if running on source only).
 func (mc *MigrationCoordinator) SetupForwarding(ctx context.Context, req MigrationRequest, domain *MigrationDomain, targetHF *HostFirewall) error {
+	if !mc.EnableDebugForwarding {
+		return fmt.Errorf("WireGuard IP forwarding is disabled in production; use control-plane catalog cutover instead (set EnableDebugForwarding=true for lab/debug)")
+	}
 	if domain.OldHostIP == nil || domain.NewHostIP == nil {
 		return fmt.Errorf("forwarding IPs not set on domain (old=%v, new=%v)", domain.OldHostIP, domain.NewHostIP)
 	}
