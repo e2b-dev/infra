@@ -92,9 +92,9 @@ type Metrics struct {
 	Ts *int64 `json:"ts,omitempty"`
 }
 
-// VolumeMount NFS volume mount configuration
+// VolumeMount Volume mount configuration
 type VolumeMount struct {
-	// NfsTarget NFS server target address
+	// NfsTarget Server target address
 	NfsTarget string `json:"nfs_target"`
 
 	// Path Mount path inside the sandbox
