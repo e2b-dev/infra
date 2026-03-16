@@ -43,27 +43,27 @@ import (
 var _ api.ServerInterface = (*APIStore)(nil)
 
 type APIStore struct {
-	Healthy              atomic.Bool
-	config               cfg.Config
-	posthog              *analyticscollector.PosthogClient
-	Telemetry            *telemetry.Client
-	orchestrator         *orchestrator.Orchestrator
-	templateManager      *template_manager.TemplateManager
-	sqlcDB               *sqlcdb.Client
-	authDB               *authdb.Client
-	redisClient          redis.UniversalClient
-	templateCache        *templatecache.TemplateCache
-	templateBuildsCache  *templatecache.TemplatesBuildCache
-	snapshotCache        *snapshotcache.SnapshotCache
-	authService          *sharedauth.AuthService[*types.Team]
-	templateSpawnCounter *utils.TemplateSpawnCounter
-	clickhouseStore      clickhouse.Clickhouse
-	accessTokenGenerator *sandbox.AccessTokenGenerator
-	featureFlags         *featureflags.Client
-	clusters             *clusters.Pool
-	snapshotUpsertSem      *sharedutils.AdjustableSemaphore
-	sandboxListSem         *sharedutils.AdjustableSemaphore
-	snapshotBuildQuerySem  *sharedutils.AdjustableSemaphore
+	Healthy               atomic.Bool
+	config                cfg.Config
+	posthog               *analyticscollector.PosthogClient
+	Telemetry             *telemetry.Client
+	orchestrator          *orchestrator.Orchestrator
+	templateManager       *template_manager.TemplateManager
+	sqlcDB                *sqlcdb.Client
+	authDB                *authdb.Client
+	redisClient           redis.UniversalClient
+	templateCache         *templatecache.TemplateCache
+	templateBuildsCache   *templatecache.TemplatesBuildCache
+	snapshotCache         *snapshotcache.SnapshotCache
+	authService           *sharedauth.AuthService[*types.Team]
+	templateSpawnCounter  *utils.TemplateSpawnCounter
+	clickhouseStore       clickhouse.Clickhouse
+	accessTokenGenerator  *sandbox.AccessTokenGenerator
+	featureFlags          *featureflags.Client
+	clusters              *clusters.Pool
+	snapshotUpsertSem     *sharedutils.AdjustableSemaphore
+	sandboxListSem        *sharedutils.AdjustableSemaphore
+	snapshotBuildQuerySem *sharedutils.AdjustableSemaphore
 }
 
 func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config, serviceName string) *APIStore {
@@ -184,23 +184,23 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config, 
 	go templateManager.BuildsStatusPeriodicalSync(ctx)
 
 	a := &APIStore{
-		config:               config,
-		orchestrator:         orch,
-		templateManager:      templateManager,
-		sqlcDB:               sqlcDB,
-		authDB:               authDB,
-		Telemetry:            tel,
-		posthog:              posthogClient,
-		templateCache:        templateCache,
-		templateBuildsCache:  templateBuildsCache,
-		snapshotCache:        snapshotCache,
-		authService:          authService,
-		templateSpawnCounter: templateSpawnCounter,
-		clickhouseStore:      clickhouseStore,
-		accessTokenGenerator: accessTokenGenerator,
-		clusters:             clusters,
-		featureFlags:         featureFlags,
-		redisClient:          redisClient,
+		config:                config,
+		orchestrator:          orch,
+		templateManager:       templateManager,
+		sqlcDB:                sqlcDB,
+		authDB:                authDB,
+		Telemetry:             tel,
+		posthog:               posthogClient,
+		templateCache:         templateCache,
+		templateBuildsCache:   templateBuildsCache,
+		snapshotCache:         snapshotCache,
+		authService:           authService,
+		templateSpawnCounter:  templateSpawnCounter,
+		clickhouseStore:       clickhouseStore,
+		accessTokenGenerator:  accessTokenGenerator,
+		clusters:              clusters,
+		featureFlags:          featureFlags,
+		redisClient:           redisClient,
 		snapshotUpsertSem:     snapshotUpsertSem,
 		sandboxListSem:        sandboxListSem,
 		snapshotBuildQuerySem: snapshotBuildQuerySem,
