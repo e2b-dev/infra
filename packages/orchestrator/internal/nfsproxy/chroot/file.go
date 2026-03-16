@@ -4,6 +4,7 @@ import (
 	"os"
 
 	"github.com/go-git/go-billy/v5"
+	"golang.org/x/sys/unix"
 )
 
 type wrappedFile struct {
@@ -37,11 +38,11 @@ func (w *wrappedFile) Close() error {
 }
 
 func (w *wrappedFile) Lock() error {
-	return nil // todo: implement me
+	return unix.Flock(int(w.file.Fd()), unix.LOCK_EX)
 }
 
 func (w *wrappedFile) Unlock() error {
-	return nil // todo: implement me
+	return unix.Flock(int(w.file.Fd()), unix.LOCK_UN)
 }
 
 func (w *wrappedFile) Truncate(size int64) error {
