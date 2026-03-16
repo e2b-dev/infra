@@ -18,7 +18,6 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
-	"google.golang.org/api/option/internaloption"
 	"google.golang.org/grpc"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
@@ -98,7 +97,6 @@ func NewGCP(ctx context.Context, bucketName string, limiter *limit.Limiter) (Sto
 		option.WithGRPCDialOption(grpc.WithInitialConnWindowSize(32*megabyte)),
 		option.WithGRPCDialOption(grpc.WithInitialWindowSize(4*megabyte)),
 		option.WithTelemetryDisabled(),
-		internaloption.EnableDirectPath(false),
 		storage.WithDisabledClientMetrics(),
 	)
 	if err != nil {
