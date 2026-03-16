@@ -102,8 +102,6 @@ job "orchestrator-${latest_orchestrator_job_id}" {
         ARTIFACTS_REGISTRY_PROVIDER  = "GCP_ARTIFACTS"
         STORAGE_PROVIDER             = "GCPBucket"
 
-        GOOGLE_CLOUD_DISABLE_DIRECT_PATH = "true"
-
         %{ if provider_gcp_config.service_account_key != "" }
         GOOGLE_SERVICE_ACCOUNT_BASE64 = "${provider_gcp_config.service_account_key}"
         %{ endif }
