@@ -77,7 +77,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 			logger.L().Debug(ctx, "Waiting for sandbox to pause", logger.WithSandboxID(sandboxID))
 			err = a.orchestrator.WaitForStateChange(ctx, teamID, sandboxID)
 			if err != nil {
-				logger.L().Error(ctx, "Error waiting for sandbox to pause",
+				logger.L().Debug(ctx, "Error waiting for sandbox to pause",
 					logger.WithSandboxID(sandboxID),
 					logger.WithTeamID(teamID.String()),
 					zap.Error(err),
