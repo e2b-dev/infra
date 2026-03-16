@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"log"
@@ -31,6 +32,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/factories"
 	e2bhealthcheck "github.com/e2b-dev/infra/packages/orchestrator/internal/healthcheck"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/hyperloopserver"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/localupload"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/portmap"
@@ -539,7 +541,15 @@ func run(config cfg.Config) (success bool) {
 
 	// template manager
 	var tmpl *tmplserver.ServerStore
+	var localUploadHandler *localupload.Handler
 	if slices.Contains(services, cfg.TemplateManager) {
+		buildPersistence, uploadHandler, err := setupBuildStorage(ctx, limiter, config)
+		if err != nil {
+			logger.L().Fatal(ctx, "failed to setup build storage", zap.Error(err))
+		}
+
+		localUploadHandler = uploadHandler
+
 		tmpl, err = tmplserver.New(
 			ctx,
 			config,
@@ -551,7 +561,7 @@ func run(config cfg.Config) (success bool) {
 			sandboxProxy,
 			templateCache,
 			persistence,
-			limiter,
+			buildPersistence,
 		)
 		if err != nil {
 			logger.L().Fatal(ctx, "failed to create template manager", zap.Error(err))
@@ -612,8 +622,15 @@ func run(config cfg.Config) (success bool) {
 		logger.L().Fatal(ctx, "failed to create healthcheck", zap.Error(err))
 	}
 
+	httpMux := http.NewServeMux()
+	httpMux.Handle("/health", healthcheck.CreateHandler())
+
+	if localUploadHandler != nil {
+		httpMux.Handle("/upload", localUploadHandler)
+	}
+
 	httpServer := factories.NewHTTPServer()
-	httpServer.Handler = healthcheck.CreateHandler()
+	httpServer.Handler = httpMux
 
 	startService("http server", func() error {
 		err := httpServer.Serve(httpListener)
@@ -744,6 +761,43 @@ type serviceDoneError struct {
 
 func (e serviceDoneError) Error() string {
 	return fmt.Sprintf("service %s finished", e.name)
+}
+
+// setupBuildStorage creates the build cache storage provider and, when using
+// local filesystem storage, the HTTP upload handler that accepts file uploads
+// for COPY instructions. The returned handler is nil for non-local providers.
+func setupBuildStorage(ctx context.Context, limiter *limit.Limiter, orchConfig cfg.Config) (storage.StorageProvider, *localupload.Handler, error) {
+	cfg := storage.BuildCacheStorageConfig.WithLimiter(limiter)
+
+	var uploadHandler *localupload.Handler
+
+	if storage.IsLocal() {
+		hmacKey := make([]byte, 32)
+		if _, err := rand.Read(hmacKey); err != nil {
+			return nil, nil, fmt.Errorf("generate HMAC key: %w", err)
+		}
+
+		uploadBaseURL := orchConfig.LocalUploadBaseURL
+		if uploadBaseURL == "" {
+			uploadBaseURL = fmt.Sprintf("http://localhost:%d", orchConfig.GRPCPort)
+		}
+
+		cfg = cfg.WithLocalUpload(uploadBaseURL, hmacKey)
+
+		basePath := cfg.GetLocalBasePath()
+		uploadHandler = localupload.NewHandler(basePath, hmacKey)
+
+		logger.L().Info(ctx, "Local upload endpoint enabled for filesystem storage",
+			zap.String("upload_base_url", uploadBaseURL),
+			zap.String("base_path", basePath))
+	}
+
+	provider, err := storage.GetStorageProvider(ctx, cfg)
+	if err != nil {
+		return nil, nil, fmt.Errorf("create build cache storage provider: %w", err)
+	}
+
+	return provider, uploadHandler, nil
 }
 
 // NewStorage creates a new slot storage based on the environment, we are ok with using a memory storage for local
