@@ -36,10 +36,25 @@ ALTER TABLE public.addons
   ADD CONSTRAINT addons_users_addons
     FOREIGN KEY (added_by) REFERENCES public.users(id) ON UPDATE NO ACTION ON DELETE NO ACTION;
 
+-- PostgreSQL fires AFTER triggers alphabetically by name.
+-- The post_user_signup trigger (p) must run AFTER the sync trigger
+-- copies the user to public.users, since users_teams now has a FK to public.users.
+-- Rename the sync trigger so it sorts before post_user_signup.
+DROP TRIGGER IF EXISTS sync_inserts_to_public_users ON auth.users;
+CREATE TRIGGER a0_sync_inserts_to_public_users
+    AFTER INSERT ON auth.users
+    FOR EACH ROW EXECUTE FUNCTION public.sync_insert_auth_users_to_public_users_trigger();
+
 -- +goose StatementEnd
 
 -- +goose Down
 -- +goose StatementBegin
+
+-- Restore original sync trigger name
+DROP TRIGGER IF EXISTS a0_sync_inserts_to_public_users ON auth.users;
+CREATE TRIGGER sync_inserts_to_public_users
+    AFTER INSERT ON auth.users
+    FOR EACH ROW EXECUTE FUNCTION public.sync_insert_auth_users_to_public_users_trigger();
 
 ALTER TABLE public.users
   ADD CONSTRAINT users_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id) ON DELETE CASCADE;
