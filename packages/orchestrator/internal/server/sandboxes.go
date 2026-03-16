@@ -162,32 +162,37 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		return nil, fmt.Errorf("failed to convert volume mounts: %w", err)
 	}
 
+	sbxConfig, err := sandbox.NewConfig(sandbox.Config{
+		BaseTemplateID: req.GetSandbox().GetBaseTemplateId(),
+
+		Vcpu:            req.GetSandbox().GetVcpu(),
+		RamMB:           req.GetSandbox().GetRamMb(),
+		TotalDiskSizeMB: req.GetSandbox().GetTotalDiskSizeMb(),
+		HugePages:       req.GetSandbox().GetHugePages(),
+
+		Network: network,
+
+		Envd: sandbox.EnvdMetadata{
+			Version:     req.GetSandbox().GetEnvdVersion(),
+			AccessToken: req.GetSandbox().EnvdAccessToken,
+			Vars:        req.GetSandbox().GetEnvVars(),
+		},
+
+		FirecrackerConfig: fc.Config{
+			KernelVersion:      req.GetSandbox().GetKernelVersion(),
+			FirecrackerVersion: resolvedFCVersion,
+		},
+
+		VolumeMounts: volumeMounts,
+	})
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid network config: %s", err)
+	}
+
 	sbx, err := s.sandboxFactory.ResumeSandbox(
 		ctx,
 		template,
-		sandbox.NewConfig(sandbox.Config{
-			BaseTemplateID: req.GetSandbox().GetBaseTemplateId(),
-
-			Vcpu:            req.GetSandbox().GetVcpu(),
-			RamMB:           req.GetSandbox().GetRamMb(),
-			TotalDiskSizeMB: req.GetSandbox().GetTotalDiskSizeMb(),
-			HugePages:       req.GetSandbox().GetHugePages(),
-
-			Network: network,
-
-			Envd: sandbox.EnvdMetadata{
-				Version:     req.GetSandbox().GetEnvdVersion(),
-				AccessToken: req.GetSandbox().EnvdAccessToken,
-				Vars:        req.GetSandbox().GetEnvVars(),
-			},
-
-			FirecrackerConfig: fc.Config{
-				KernelVersion:      req.GetSandbox().GetKernelVersion(),
-				FirecrackerVersion: resolvedFCVersion,
-			},
-
-			VolumeMounts: volumeMounts,
-		}),
+		sbxConfig,
 		sandbox.RuntimeMetadata{
 			TemplateID:  req.GetSandbox().GetTemplateId(),
 			SandboxID:   req.GetSandbox().GetSandboxId(),
@@ -306,14 +311,18 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 
 			egress := req.GetEgress()
 			if len(egress.GetAllowed()) == 0 && len(egress.GetDenied()) == 0 {
-				sbx.Config.SetNetworkEgress(nil)
+				if err := sbx.Config.SetNetworkEgress(nil); err != nil {
+					return nil, fmt.Errorf("failed to clear egress config: %w", err)
+				}
 			} else {
-				sbx.Config.SetNetworkEgress(egress)
+				if err := sbx.Config.SetNetworkEgress(egress); err != nil {
+					return nil, fmt.Errorf("failed to set egress config: %w", err)
+				}
 			}
 
 			return func(ctx context.Context) {
 				_ = sbx.Slot.UpdateInternet(ctx, oldEgress)
-				sbx.Config.SetNetworkEgress(oldEgress)
+				_ = sbx.Config.SetNetworkEgress(oldEgress)
 			}, nil
 		})
 	}

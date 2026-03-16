@@ -28,9 +28,11 @@ func TestUpdate_EgressOnly_FailsAndDoesNotChangeEndTime(t *testing.T) {
 	slot, err := network.NewSlot("test", 1, network.Config{})
 	require.NoError(t, err)
 
+	sbxConfig, err := sandbox.NewConfig(sandbox.Config{})
+	require.NoError(t, err)
 	sbx := &sandbox.Sandbox{
 		Metadata: &sandbox.Metadata{
-			Config:  sandbox.NewConfig(sandbox.Config{}),
+			Config:  sbxConfig,
 			Runtime: sandbox.RuntimeMetadata{SandboxID: id.Generate()},
 		},
 		Resources: &sandbox.Resources{Slot: slot},
@@ -67,9 +69,11 @@ func TestUpdate_EndTimeAndEgress_EgressFails_RevertsEndTime(t *testing.T) {
 	slot, err := network.NewSlot("test", 1, network.Config{})
 	require.NoError(t, err)
 
+	sbxConfig2, err := sandbox.NewConfig(sandbox.Config{})
+	require.NoError(t, err)
 	sbx := &sandbox.Sandbox{
 		Metadata: &sandbox.Metadata{
-			Config:  sandbox.NewConfig(sandbox.Config{}),
+			Config:  sbxConfig2,
 			Runtime: sandbox.RuntimeMetadata{SandboxID: id.Generate()},
 		},
 		Resources: &sandbox.Resources{Slot: slot},

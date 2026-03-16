@@ -35,6 +35,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -78,25 +79,50 @@ type Config struct {
 
 	VolumeMounts []VolumeMountConfig
 
-	// mu protects mutable sub-fields of Network (Egress, Ingress).
+	// mu protects mutable sub-fields of Network and egressACL.
 	// The Network pointer itself is set once at construction and never replaced.
-	mu      *sync.RWMutex
-	Network *orchestrator.SandboxNetworkConfig
+	mu        *sync.RWMutex
+	Network   *orchestrator.SandboxNetworkConfig
+	egressACL *EgressACL // pre-parsed egress rules, nil when no egress config
+}
+
+// EgressACL holds pre-parsed egress allow/deny rules.
+// Computed once at config set time to avoid per-connection parsing.
+type EgressACL struct {
+	Raw     *orchestrator.SandboxNetworkEgressConfig
+	Allowed []sandbox_network.Rule
+	Denied  []sandbox_network.Rule
 }
 
 // NewConfig creates a Config, normalizing a nil Network to an empty config
-// so that Network is never nil.
-func NewConfig(c Config) *Config {
+// so that Network is never nil. Pre-parses egress rules.
+func NewConfig(c Config) (*Config, error) {
 	if c.Network == nil {
 		c.Network = &orchestrator.SandboxNetworkConfig{}
 	}
 
 	c.mu = &sync.RWMutex{}
 
-	return &c
+	acl, err := parseEgressACL(c.Network.GetEgress())
+	if err != nil {
+		return nil, fmt.Errorf("invalid egress rules: %w", err)
+	}
+
+	c.egressACL = acl
+
+	return &c, nil
 }
 
-// GetNetworkEgress returns the egress config in a thread-safe manner.
+// GetEgressACL returns the pre-parsed egress ACL in a thread-safe manner.
+// Returns nil when no egress configuration is set.
+func (c *Config) GetEgressACL() *EgressACL {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	return c.egressACL
+}
+
+// GetNetworkEgress returns the raw egress protobuf config in a thread-safe manner.
 func (c *Config) GetNetworkEgress() *orchestrator.SandboxNetworkEgressConfig {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -104,12 +130,45 @@ func (c *Config) GetNetworkEgress() *orchestrator.SandboxNetworkEgressConfig {
 	return c.Network.GetEgress()
 }
 
-// SetNetworkEgress updates the egress config in a thread-safe manner.
-func (c *Config) SetNetworkEgress(egress *orchestrator.SandboxNetworkEgressConfig) {
+// SetNetworkEgress updates the egress config and pre-parses rules.
+// Returns an error if the rules are malformed.
+func (c *Config) SetNetworkEgress(egress *orchestrator.SandboxNetworkEgressConfig) error {
+	acl, err := parseEgressACL(egress)
+	if err != nil {
+		return err
+	}
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	c.Network.Egress = egress
+	c.egressACL = acl
+
+	return nil
+}
+
+// parseEgressACL parses an egress config into an EgressACL.
+// Returns nil for nil config (no egress rules).
+func parseEgressACL(egress *orchestrator.SandboxNetworkEgressConfig) (*EgressACL, error) {
+	if egress == nil {
+		return nil, nil //nolint:nilnil // nil means no egress config
+	}
+
+	allowed, err := sandbox_network.ParseRules(egress.GetAllowed())
+	if err != nil {
+		return nil, fmt.Errorf("allowed rules: %w", err)
+	}
+
+	denied, err := sandbox_network.ParseRules(egress.GetDenied())
+	if err != nil {
+		return nil, fmt.Errorf("denied rules: %w", err)
+	}
+
+	return &EgressACL{
+		Raw:     egress,
+		Allowed: allowed,
+		Denied:  denied,
+	}, nil
 }
 
 // GetNetworkIngress returns the ingress config in a thread-safe manner.

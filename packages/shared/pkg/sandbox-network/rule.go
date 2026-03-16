@@ -2,6 +2,7 @@ package sandbox_network
 
 import (
 	"fmt"
+	"net"
 	"strconv"
 	"strings"
 )
@@ -9,10 +10,17 @@ import (
 // Rule represents a parsed allow/deny entry with an optional port range.
 // Used for both ingress and egress rules.
 type Rule struct {
-	Host      string // IP, CIDR, or domain
-	PortStart uint16 // 0 means all ports
-	PortEnd   uint16 // 0 means all ports
+	Host      string     // IP, CIDR, or domain
+	IPNet     *net.IPNet // parsed CIDR; nil for domain rules
+	PortStart uint16     // 0 means all ports
+	PortEnd   uint16     // 0 means all ports
 	IsDomain  bool
+}
+
+// ContainsIP returns true if the rule's CIDR contains the given IP.
+// Always returns false for domain rules.
+func (r Rule) ContainsIP(ip net.IP) bool {
+	return r.IPNet != nil && r.IPNet.Contains(ip)
 }
 
 // AllPorts returns true if the rule matches all ports.
@@ -48,8 +56,22 @@ func ParseRule(s string) (Rule, error) {
 
 	isDomain := !IsIPOrCIDR(host)
 
+	var ipNet *net.IPNet
+	if !isDomain {
+		cidr := host
+		if !strings.Contains(cidr, "/") {
+			cidr += "/32"
+		}
+
+		_, ipNet, err = net.ParseCIDR(cidr)
+		if err != nil {
+			return Rule{}, fmt.Errorf("invalid IP/CIDR %q: %w", host, err)
+		}
+	}
+
 	return Rule{
 		Host:      host,
+		IPNet:     ipNet,
 		PortStart: portStart,
 		PortEnd:   portEnd,
 		IsDomain:  isDomain,

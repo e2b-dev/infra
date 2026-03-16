@@ -44,7 +44,6 @@ type ErrorType string
 const (
 	ErrorTypeOrigDst           ErrorType = "original_dst"
 	ErrorTypeSandboxLookup     ErrorType = "sandbox_lookup"
-	ErrorTypeEgressCheck       ErrorType = "egress_check"
 	ErrorTypeUpstreamDial      ErrorType = "upstream_dial"
 	ErrorTypeConnectionMeta    ErrorType = "connection_meta"
 	ErrorTypeResolvedIPBlocked ErrorType = "resolved_ip_blocked"

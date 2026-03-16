@@ -193,7 +193,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	})
 
 	accessToken := "access-token"
-	sandboxConfig := sandbox.NewConfig(sandbox.Config{
+	sandboxConfig, err := sandbox.NewConfig(sandbox.Config{
 		BaseTemplateID:  templateID,
 		Vcpu:            2,
 		RamMB:           512,
@@ -209,6 +209,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 			FirecrackerVersion: fcVersion,
 		},
 	})
+	require.NoError(b, err)
 
 	runtime := sandbox.RuntimeMetadata{
 		TemplateID:  templateID,

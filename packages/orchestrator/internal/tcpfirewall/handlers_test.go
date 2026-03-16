@@ -4,6 +4,8 @@ import (
 	"net"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
@@ -130,13 +132,12 @@ func TestMatchDomain(t *testing.T) {
 func TestIsEgressAllowed(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name      string
-		network   *orchestrator.SandboxNetworkConfig
-		hostname  string
-		ip        net.IP
-		dstPort   uint16
-		want      bool
-		wantError bool
+		name     string
+		network  *orchestrator.SandboxNetworkConfig
+		hostname string
+		ip       net.IP
+		dstPort  uint16
+		want     bool
 	}{
 		// ---------------------------------------------------------------------
 		// Default Allow Behavior
@@ -492,10 +493,9 @@ func TestIsEgressAllowed(t *testing.T) {
 					Allowed: []string{"invalid-cidr"},
 				},
 			},
-			hostname:  "",
-			ip:        net.ParseIP("1.2.3.4"),
-			want:      true, // Treated as domain, no hostname match, default allow
-			wantError: false,
+			hostname: "",
+			ip:       net.ParseIP("1.2.3.4"),
+			want:     true, // Treated as domain, no hostname match, default allow
 		},
 		{
 			name: "non-IP denied entry treated as domain and skipped",
@@ -504,10 +504,9 @@ func TestIsEgressAllowed(t *testing.T) {
 					Denied: []string{"not-a-cidr"},
 				},
 			},
-			hostname:  "",
-			ip:        net.ParseIP("1.2.3.4"),
-			want:      true, // Parsed as domain, skipped in deny (no domain matching), default allow
-			wantError: false,
+			hostname: "",
+			ip:       net.ParseIP("1.2.3.4"),
+			want:     true, // Parsed as domain, skipped in deny (no domain matching), default allow
 		},
 		{
 			name: "allowed CIDR checked before invalid denied CIDR",
@@ -517,10 +516,9 @@ func TestIsEgressAllowed(t *testing.T) {
 					Denied:  []string{"invalid"},
 				},
 			},
-			hostname:  "",
-			ip:        net.ParseIP("1.2.3.4"),
-			want:      true,
-			wantError: false,
+			hostname: "",
+			ip:       net.ParseIP("1.2.3.4"),
+			want:     true,
 		},
 	}
 
@@ -529,9 +527,11 @@ func TestIsEgressAllowed(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+			sbxConfig, err := sandbox.NewConfig(sandbox.Config{Network: tt.network})
+			require.NoError(t, err)
 			sbx := &sandbox.Sandbox{
 				Metadata: &sandbox.Metadata{
-					Config: sandbox.NewConfig(sandbox.Config{Network: tt.network}),
+					Config: sbxConfig,
 				},
 			}
 
@@ -540,21 +540,7 @@ func TestIsEgressAllowed(t *testing.T) {
 				dstPort = portNotRelevant
 			}
 
-			got, _, err := isEgressAllowed(sbx, tt.hostname, tt.ip, dstPort)
-
-			if tt.wantError {
-				if err == nil {
-					t.Errorf("isEgressAllowed() expected error, got nil")
-				}
-
-				return
-			}
-
-			if err != nil {
-				t.Errorf("isEgressAllowed() unexpected error: %v", err)
-
-				return
-			}
+			got, _ := isEgressAllowed(sbx, tt.hostname, tt.ip, dstPort)
 
 			if got != tt.want {
 				t.Errorf("isEgressAllowed() = %v, want %v", got, tt.want)
