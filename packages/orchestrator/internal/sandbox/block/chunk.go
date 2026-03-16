@@ -187,6 +187,11 @@ func (c *FullFetchChunker) fetchToCache(ctx context.Context, off, length int64) 
 			key := strconv.FormatInt(fetchOff, 10)
 
 			_, err, _ = c.fetchers.Do(key, func() (interface{}, error) {
+				// Check early to prevent overwriting data, Slice requires thread safety
+				if c.cache.isCached(fetchOff, length) {
+					return nil, nil
+				}
+
 				select {
 				case <-ctx.Done():
 					return nil, fmt.Errorf("error fetching range %d-%d: %w", fetchOff, fetchOff+storage.MemoryChunkSize, ctx.Err())
