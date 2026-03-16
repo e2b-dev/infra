@@ -375,12 +375,12 @@ components:
           description: User for setting ownership and resolving relative paths
     VolumeMount:
       type: object
-      description: NFS volume mount configuration
+      description: Volume mount configuration
       additionalProperties: false
       properties:
         nfs_target:
           type: string
-          description: NFS server target address
+          description: Server target address
         path:
           type: string
           description: Mount path inside the sandbox

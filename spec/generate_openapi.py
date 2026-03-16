@@ -12,7 +12,7 @@ Combines multiple sources into a single e2b-openapi.yml:
     - Main E2B API spec (spec/openapi.yml)
 
 Usage:
-    python3 scripts/generate-openapi/envd.py
+    python3 spec/generate_openapi.py
 
 Outputs e2b-openapi.yml in the current working directory.
 Requires: Docker, PyYAML (pip install pyyaml).
