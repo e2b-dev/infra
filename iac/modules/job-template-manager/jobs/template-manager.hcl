@@ -103,7 +103,7 @@ job "template-manager" {
         GCP_REGION                    = "${provider_gcp_config.region}"
         GCP_DOCKER_REPOSITORY_NAME    = "${provider_gcp_config.docker_registry}"
 
-        GOOGLE_CLOUD_ENABLE_DIRECT_PATH = "false"
+        GOOGLE_CLOUD_DISABLE_DIRECT_PATH = "true"
 %{ endif }
 %{ if provider == "aws" }
         ARTIFACTS_REGISTRY_PROVIDER   = "AWS_ECR"
