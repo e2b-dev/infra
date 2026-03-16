@@ -194,6 +194,7 @@ func (r *cacheWriteThroughReader) Read(p []byte) (int, error) {
 		r.buf.Write(p[:n])
 	}
 
+	// Mark the error, so we don't write back to cache
 	if err != nil && !errors.Is(err, io.EOF) {
 		r.readErr = true
 	}
