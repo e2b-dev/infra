@@ -94,7 +94,7 @@ func requireTCPAllowed(t *testing.T, ctx context.Context, sbx *api.Sandbox, envd
 func requireTCPBlocked(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, url, msg string) {
 	t.Helper()
 	err := utils.ExecCommand(t, ctx, sbx, envdClient,
-		"sh", "-c", `RES_OPTIONS="timeout:1 attempts:1" curl --connect-timeout 1 --max-time 2 -Iks `+url)
+		"sh", "-c", `RES_OPTIONS="timeout:1 attempts:1" curl --connect-timeout 0.3 --max-time 0.5 -Iks `+url)
 	require.Error(t, err, msg)
 }
 
