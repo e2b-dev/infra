@@ -18,6 +18,7 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
+	"google.golang.org/api/option/internaloption"
 	"google.golang.org/grpc"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
@@ -37,6 +38,8 @@ const (
 	googleBackoffMultiplier        = 2
 	googleMaxAttempts              = 10
 	defaultGRPCConnectionPoolSize  = 4
+	defaultGCSEnableDirectPath     = "true"
+	defaultGCSDisableTelemetry     = "true"
 	gcloudDefaultUploadConcurrency = 16
 
 	gcsOperationAttr                           = "operation"
@@ -92,12 +95,24 @@ func NewGCP(ctx context.Context, bucketName string, limiter *limit.Limiter) (Sto
 		return nil, fmt.Errorf("failed to parse GCS_GRPC_CONNECTION_POOL_SIZE: %w", err)
 	}
 
-	client, err := storage.NewGRPCClient(ctx,
+	enableDirectPath := env.GetEnv("GCS_ENABLE_DIRECT_PATH", defaultGCSEnableDirectPath) == "true"
+	disableTelemetry := env.GetEnv("GCS_DISABLE_TELEMETRY", defaultGCSDisableTelemetry) == "true"
+
+	opts := []option.ClientOption{
 		option.WithGRPCConnectionPool(grpcPoolSize),
-		option.WithGRPCDialOption(grpc.WithInitialConnWindowSize(32*megabyte)),
-		option.WithGRPCDialOption(grpc.WithInitialWindowSize(4*megabyte)),
-		option.WithTelemetryDisabled(),
-	)
+		option.WithGRPCDialOption(grpc.WithInitialConnWindowSize(32 * megabyte)),
+		option.WithGRPCDialOption(grpc.WithInitialWindowSize(4 * megabyte)),
+		internaloption.EnableDirectPath(enableDirectPath),
+	}
+
+	if disableTelemetry {
+		opts = append(opts,
+			option.WithTelemetryDisabled(),
+			storage.WithDisabledClientMetrics(),
+		)
+	}
+
+	client, err := storage.NewGRPCClient(ctx, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GCS client: %w", err)
 	}
