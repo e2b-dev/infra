@@ -98,7 +98,12 @@ func (a *APIStore) PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID api
 
 	sbx, err := a.orchestrator.GetSandbox(ctx, teamID, sandboxID)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(sandboxID))
+		if errors.Is(err, sandbox.ErrNotFound) {
+			a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(sandboxID))
+		} else {
+			telemetry.ReportError(ctx, "error getting sandbox for snapshot", err)
+			a.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to get sandbox")
+		}
 
 		return
 	}

@@ -18,7 +18,11 @@ func sanitizeVersion(version string) string {
 
 func CheckEnvdVersionForSnapshot(envdVersion string) error {
 	ok, err := IsGTEVersion(envdVersion, MinEnvdVersionForSnapshot)
-	if err != nil || !ok {
+	if err != nil {
+		return fmt.Errorf("invalid envd version %q: %w", envdVersion, err)
+	}
+
+	if !ok {
 		return fmt.Errorf("sandbox envd version must be at least %s to create snapshots, current version: %s", MinEnvdVersionForSnapshot, envdVersion)
 	}
 
