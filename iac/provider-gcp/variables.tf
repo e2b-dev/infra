@@ -728,13 +728,13 @@ variable "gcs_grpc_connection_pool_size" {
 }
 
 variable "gcs_enable_direct_path" {
-  description = "Enable DirectPath for GCS gRPC client (true/false), empty uses code default"
-  type        = string
-  default     = ""
+  description = "Enable DirectPath for GCS gRPC client"
+  type        = bool
+  default     = true
 }
 
 variable "gcs_disable_telemetry" {
-  description = "Disable telemetry for GCS gRPC client (true/false), empty uses code default"
-  type        = string
-  default     = ""
+  description = "Disable telemetry for GCS gRPC client"
+  type        = bool
+  default     = true
 }

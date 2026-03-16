@@ -107,12 +107,12 @@ job "template-manager" {
         GCS_GRPC_CONNECTION_POOL_SIZE = "${provider_gcp_config.gcs_grpc_connection_pool_size}"
         %{ endif }
 
-        %{ if provider_gcp_config.gcs_enable_direct_path != "" }
-        GCS_ENABLE_DIRECT_PATH = "${provider_gcp_config.gcs_enable_direct_path}"
+        %{ if !provider_gcp_config.gcs_enable_direct_path }
+        GCS_ENABLE_DIRECT_PATH = "false"
         %{ endif }
 
-        %{ if provider_gcp_config.gcs_disable_telemetry != "" }
-        GCS_DISABLE_TELEMETRY = "${provider_gcp_config.gcs_disable_telemetry}"
+        %{ if !provider_gcp_config.gcs_disable_telemetry }
+        GCS_DISABLE_TELEMETRY = "false"
         %{ endif }
 %{ endif }
 %{ if provider == "aws" }
