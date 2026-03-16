@@ -283,22 +283,19 @@ components:
           type: string
           description: Specify host mask which will be used for all sandbox requests
 
-    SandboxAutoResumePolicy:
-      type: string
-      description: Auto-resume policy for paused sandboxes. Default is off.
-      default: "off"
-      enum:
-        - any
-        - "off"
+    SandboxAutoResumeEnabled:
+      type: boolean
+      description: Auto-resume enabled flag for paused sandboxes. Default false.
+      default: false
 
     SandboxAutoResumeConfig:
       type: object
-      description: Auto-resume configuration for paused sandboxes. Default is off.
+      description: Auto-resume configuration for paused sandboxes.
       required:
-        - policy
+        - enabled
       properties:
-        policy:
-          $ref: "#/components/schemas/SandboxAutoResumePolicy"
+        enabled:
+          $ref: "#/components/schemas/SandboxAutoResumeEnabled"
 
     SandboxLog:
       description: Log entry with timestamp and line
@@ -693,6 +690,26 @@ components:
         failedCount:
           type: integer
           description: Number of sandboxes that failed to kill
+
+    AdminBuildCancelResult:
+      required:
+        - cancelledCount
+        - failedCount
+      properties:
+        cancelledCount:
+          type: integer
+          description: Number of builds successfully cancelled
+        failedCount:
+          type: integer
+          description: Number of builds that failed to cancel
+
+    VolumeToken:
+      type: object
+      properties:
+        token:
+          type: string
+      required:
+        - token
 
     Template:
       required:
@@ -1724,6 +1741,23 @@ components:
         - volumeID
         - name
 
+    VolumeAndToken:
+      type: object
+      properties:
+        volumeID:
+          type: string
+          description: ID of the volume
+        name:
+          type: string
+          description: Name of the volume
+        token:
+          type: string
+          description: Auth token to use for interacting with volume content
+      required:
+        - volumeID
+        - name
+        - token
+
     NewVolume:
       type: object
       properties:
@@ -2071,6 +2105,17 @@ paths:
           schema:
             $ref: "#/components/schemas/LogsDirection"
           description: Direction of the logs that should be returned
+        - in: query
+          name: level
+          schema:
+            $ref: "#/components/schemas/LogLevel"
+          description: Minimum log level to return. Logs below this level are excluded
+        - in: query
+          name: search
+          schema:
+            type: string
+            maxLength: 256
+          description: Case-sensitive substring match on log message content
       responses:
         "200":
           description: Successfully returned the sandbox logs
@@ -3032,6 +3077,35 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
+  /admin/teams/{teamID}/builds/cancel:
+    post:
+      summary: Cancel all builds for a team
+      description: Cancels all in-progress and pending builds for the specified team
+      tags: [admin]
+      security:
+        - AdminTokenAuth: []
+      parameters:
+        - name: teamID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Team ID
+      responses:
+        "200":
+          description: Successfully cancelled builds
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminBuildCancelResult"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+
   /access-tokens:
     post:
       description: Create a new access token
@@ -3165,7 +3239,6 @@ paths:
       description: List all team volumes
       tags: [volumes]
       security:
-        - AccessTokenAuth: []
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
@@ -3187,7 +3260,6 @@ paths:
       description: Create a new team volume
       tags: [volumes]
       security:
-        - AccessTokenAuth: []
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
@@ -3203,7 +3275,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Volume"
+                $ref: "#/components/schemas/VolumeAndToken"
         "400":
           $ref: "#/components/responses/400"
         "401":
@@ -3216,7 +3288,6 @@ paths:
       description: Get team volume info
       tags: [volumes]
       security:
-        - AccessTokenAuth: []
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
@@ -3228,7 +3299,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Volume"
+                $ref: "#/components/schemas/VolumeAndToken"
         "401":
           $ref: "#/components/responses/401"
         "404":
@@ -3240,7 +3311,6 @@ paths:
       description: Delete a team volume
       tags: [volumes]
       security:
-        - AccessTokenAuth: []
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []

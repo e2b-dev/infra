@@ -14,14 +14,17 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 func (a *APIStore) PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID api.SandboxID) {
 	ctx := c.Request.Context()
 
-	teamInfo := a.GetTeamInfo(c)
+	teamInfo := auth.MustGetTeamInfo(c)
 	teamID := teamInfo.Team.ID
 
 	span := trace.SpanFromContext(ctx)
@@ -33,7 +36,13 @@ func (a *APIStore) PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID api
 		telemetry.WithSandboxID(sandboxID),
 	)
 
-	sandboxID = utils.ShortID(sandboxID)
+	var err error
+	sandboxID, err = utils.ShortID(sandboxID)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid sandbox ID")
+
+		return
+	}
 
 	body, err := utils.ParseBody[api.PostSandboxesSandboxIDSnapshotsJSONRequestBody](ctx, c)
 	if err != nil {
@@ -89,19 +98,18 @@ func (a *APIStore) PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID api
 
 	sbx, err := a.orchestrator.GetSandbox(ctx, teamID, sandboxID)
 	if err != nil {
-		var notFoundErr *sandbox.NotFoundError
-		if errors.As(err, &notFoundErr) {
-			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Sandbox '%s' not found or not running", sandboxID))
-
-			return
+		if errors.Is(err, sandbox.ErrNotFound) {
+			a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(sandboxID))
+		} else {
+			telemetry.ReportError(ctx, "error getting sandbox for snapshot", err)
+			a.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to get sandbox")
 		}
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error getting sandbox")
 
 		return
 	}
 
-	if sbx.TeamID != teamID {
-		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox '%s'", sandboxID))
+	if err := sharedUtils.CheckEnvdVersionForSnapshot(sbx.EnvdVersion); err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, err.Error())
 
 		return
 	}
@@ -110,6 +118,13 @@ func (a *APIStore) PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID api
 
 	result, err := a.orchestrator.CreateSnapshotTemplate(ctx, teamID, sandboxID, opts)
 	if err != nil {
+		if errors.Is(err, sandbox.ErrNotFound) {
+			logger.L().Debug(ctx, "Sandbox not found for snapshot", logger.WithSandboxID(sandboxID))
+			a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(sandboxID))
+
+			return
+		}
+
 		var transErr *sandbox.InvalidStateTransitionError
 		if errors.As(err, &transErr) {
 			a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Sandbox '%s' cannot be snapshotted while in '%s' state", sandboxID, transErr.CurrentState))

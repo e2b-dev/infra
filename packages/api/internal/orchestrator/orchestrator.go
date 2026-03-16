@@ -21,12 +21,13 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox/reservations"
+	redisreservations "github.com/e2b-dev/infra/packages/api/internal/sandbox/reservations/redis"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/memory"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/populate_redis"
 	redisbackend "github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/redis"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
@@ -36,6 +37,11 @@ import (
 const statusLogInterval = time.Second * 20
 
 var ErrNodeNotFound = errors.New("node not found")
+
+// SnapshotCacheInvalidator invalidates cached snapshot entries.
+type SnapshotCacheInvalidator interface {
+	Invalidate(ctx context.Context, sandboxID string)
+}
 
 type Orchestrator struct {
 	httpClient              *http.Client
@@ -56,6 +62,7 @@ type Orchestrator struct {
 	accessTokenGenerator    *sandbox.AccessTokenGenerator
 	sandboxCounter          metric.Int64UpDownCounter
 	createdCounter          metric.Int64Counter
+	snapshotCache           SnapshotCacheInvalidator
 }
 
 func New(
@@ -69,6 +76,7 @@ func New(
 	clusters *clusters.Pool,
 	featureFlags *featureflags.Client,
 	accessTokenGenerator *sandbox.AccessTokenGenerator,
+	snapshotCache SnapshotCacheInvalidator,
 ) (*Orchestrator, error) {
 	analyticsInstance, err := analyticscollector.NewAnalytics(
 		ctx,
@@ -83,7 +91,7 @@ func New(
 
 	var routingCatalog e2bcatalog.SandboxesCatalog
 	if redisClient != nil {
-		routingCatalog = e2bcatalog.NewRedisSandboxesCatalog(redisClient)
+		routingCatalog = e2bcatalog.NewRedisSandboxesCatalog(redisClient, featureFlags)
 	} else {
 		routingCatalog = e2bcatalog.NewMemorySandboxesCatalog()
 	}
@@ -122,6 +130,7 @@ func New(
 		accessTokenGenerator: accessTokenGenerator,
 		routingCatalog:       routingCatalog,
 		sqlcDB:               sqlcDB,
+		snapshotCache:        snapshotCache,
 		tel:                  tel,
 		clusters:             clusters,
 
@@ -129,17 +138,22 @@ func New(
 		createdCounter: createdCounter,
 	}
 
+	var reservationStorage sandbox.ReservationStorage
 	var sandboxStorage sandbox.Storage
-	memoryStorage := memory.NewStorage()
+	redisStorage := redisbackend.NewStorage(redisClient)
 
-	if redisClient != nil {
-		redisStorage := redisbackend.NewStorage(redisClient)
-		sandboxStorage = populate_redis.NewStorage(memoryStorage, redisStorage)
-	} else {
-		sandboxStorage = memoryStorage
+	switch config.SandboxStorageBackend {
+	case cfg.SandboxStorageBackendMemory:
+		reservationStorage = reservations.NewReservationStorage()
+		sandboxStorage = populate_redis.NewStorage(memory.NewStorage(), redisStorage)
+		logger.L().Info(ctx, "Using populate_redis sandbox storage backend")
+	case cfg.SandboxStorageBackendRedis:
+		reservationStorage = redisreservations.NewReservationStorage(redisClient)
+		sandboxStorage = redisStorage
+		logger.L().Info(ctx, "Using redis sandbox storage backend")
+	default:
+		return nil, fmt.Errorf("invalid sandbox storage backend: %s", config.SandboxStorageBackend)
 	}
-
-	reservationStorage := reservations.NewReservationStorage()
 
 	o.sandboxStore = sandbox.NewStore(
 		sandboxStorage,

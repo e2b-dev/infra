@@ -70,12 +70,6 @@ const (
 	NodeStatusUnhealthy  NodeStatus = "unhealthy"
 )
 
-// Defines values for SandboxAutoResumePolicy.
-const (
-	Any SandboxAutoResumePolicy = "any"
-	Off SandboxAutoResumePolicy = "off"
-)
-
 // Defines values for SandboxState.
 const (
 	Paused  SandboxState = "paused"
@@ -113,6 +107,15 @@ type AWSRegistry struct {
 
 // AWSRegistryType Type of registry authentication
 type AWSRegistryType string
+
+// AdminBuildCancelResult defines model for AdminBuildCancelResult.
+type AdminBuildCancelResult struct {
+	// CancelledCount Number of builds successfully cancelled
+	CancelledCount int `json:"cancelledCount"`
+
+	// FailedCount Number of builds that failed to cancel
+	FailedCount int `json:"failedCount"`
+}
 
 // AdminSandboxKillResult defines model for AdminSandboxKillResult.
 type AdminSandboxKillResult struct {
@@ -340,8 +343,8 @@ type ListedSandbox struct {
 	State SandboxState `json:"state"`
 
 	// TemplateID Identifier of the template from which is the sandbox created
-	TemplateID   string               `json:"templateID"`
-	VolumeMounts []SandboxVolumeMount `json:"volumeMounts"`
+	TemplateID   string                `json:"templateID"`
+	VolumeMounts *[]SandboxVolumeMount `json:"volumeMounts,omitempty"`
 }
 
 // LogLevel State of the sandbox
@@ -401,7 +404,7 @@ type NewSandbox struct {
 	// AutoPause Automatically pauses the sandbox after the timeout
 	AutoPause *bool `json:"autoPause,omitempty"`
 
-	// AutoResume Auto-resume configuration for paused sandboxes. Default is off.
+	// AutoResume Auto-resume configuration for paused sandboxes.
 	AutoResume *SandboxAutoResumeConfig `json:"autoResume,omitempty"`
 	EnvVars    *EnvVars                 `json:"envVars,omitempty"`
 
@@ -581,14 +584,14 @@ type Sandbox struct {
 	TrafficAccessToken *string `json:"trafficAccessToken"`
 }
 
-// SandboxAutoResumeConfig Auto-resume configuration for paused sandboxes. Default is off.
+// SandboxAutoResumeConfig Auto-resume configuration for paused sandboxes.
 type SandboxAutoResumeConfig struct {
-	// Policy Auto-resume policy for paused sandboxes. Default is off.
-	Policy SandboxAutoResumePolicy `json:"policy"`
+	// Enabled Auto-resume enabled flag for paused sandboxes. Default false.
+	Enabled SandboxAutoResumeEnabled `json:"enabled"`
 }
 
-// SandboxAutoResumePolicy Auto-resume policy for paused sandboxes. Default is off.
-type SandboxAutoResumePolicy string
+// SandboxAutoResumeEnabled Auto-resume enabled flag for paused sandboxes. Default false.
+type SandboxAutoResumeEnabled = bool
 
 // SandboxDetail defines model for SandboxDetail.
 type SandboxDetail struct {
@@ -631,8 +634,8 @@ type SandboxDetail struct {
 	State SandboxState `json:"state"`
 
 	// TemplateID Identifier of the template from which is the sandbox created
-	TemplateID   string               `json:"templateID"`
-	VolumeMounts []SandboxVolumeMount `json:"volumeMounts"`
+	TemplateID   string                `json:"templateID"`
+	VolumeMounts *[]SandboxVolumeMount `json:"volumeMounts,omitempty"`
 }
 
 // SandboxLog Log entry with timestamp and line
@@ -1163,6 +1166,18 @@ type Volume struct {
 	VolumeID string `json:"volumeID"`
 }
 
+// VolumeAndToken defines model for VolumeAndToken.
+type VolumeAndToken struct {
+	// Name Name of the volume
+	Name string `json:"name"`
+
+	// Token Auth token to use for interacting with volume content
+	Token string `json:"token"`
+
+	// VolumeID ID of the volume
+	VolumeID string `json:"volumeID"`
+}
+
 // AccessTokenID defines model for accessTokenID.
 type AccessTokenID = string
 
@@ -1357,6 +1372,12 @@ type GetV2SandboxesSandboxIDLogsParams struct {
 
 	// Direction Direction of the logs that should be returned
 	Direction *LogsDirection `form:"direction,omitempty" json:"direction,omitempty"`
+
+	// Level Minimum log level to return. Logs below this level are excluded
+	Level *LogLevel `form:"level,omitempty" json:"level,omitempty"`
+
+	// Search Case-sensitive substring match on log message content
+	Search *string `form:"search,omitempty" json:"search,omitempty"`
 }
 
 // PostAccessTokensJSONRequestBody defines body for PostAccessTokens for application/json ContentType.
@@ -1619,6 +1640,9 @@ type ClientInterface interface {
 	// DeleteAccessTokensAccessTokenID request
 	DeleteAccessTokensAccessTokenID(ctx context.Context, accessTokenID AccessTokenID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// PostAdminTeamsTeamIDBuildsCancel request
+	PostAdminTeamsTeamIDBuildsCancel(ctx context.Context, teamID openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// PostAdminTeamsTeamIDSandboxesKill request
 	PostAdminTeamsTeamIDSandboxesKill(ctx context.Context, teamID openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -1834,6 +1858,18 @@ func (c *Client) PostAccessTokens(ctx context.Context, body PostAccessTokensJSON
 
 func (c *Client) DeleteAccessTokensAccessTokenID(ctx context.Context, accessTokenID AccessTokenID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewDeleteAccessTokensAccessTokenIDRequest(c.Server, accessTokenID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostAdminTeamsTeamIDBuildsCancel(ctx context.Context, teamID openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostAdminTeamsTeamIDBuildsCancelRequest(c.Server, teamID)
 	if err != nil {
 		return nil, err
 	}
@@ -2739,6 +2775,40 @@ func NewDeleteAccessTokensAccessTokenIDRequest(server string, accessTokenID Acce
 	}
 
 	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPostAdminTeamsTeamIDBuildsCancelRequest generates requests for PostAdminTeamsTeamIDBuildsCancel
+func NewPostAdminTeamsTeamIDBuildsCancelRequest(server string, teamID openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "teamID", runtime.ParamLocationPath, teamID)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/teams/%s/builds/cancel", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -4879,6 +4949,38 @@ func NewGetV2SandboxesSandboxIDLogsRequest(server string, sandboxID SandboxID, p
 
 		}
 
+		if params.Level != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "level", runtime.ParamLocationQuery, *params.Level); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Search != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "search", runtime.ParamLocationQuery, *params.Search); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
 		queryURL.RawQuery = queryValues.Encode()
 	}
 
@@ -5257,6 +5359,9 @@ type ClientWithResponsesInterface interface {
 	// DeleteAccessTokensAccessTokenIDWithResponse request
 	DeleteAccessTokensAccessTokenIDWithResponse(ctx context.Context, accessTokenID AccessTokenID, reqEditors ...RequestEditorFn) (*DeleteAccessTokensAccessTokenIDResponse, error)
 
+	// PostAdminTeamsTeamIDBuildsCancelWithResponse request
+	PostAdminTeamsTeamIDBuildsCancelWithResponse(ctx context.Context, teamID openapi_types.UUID, reqEditors ...RequestEditorFn) (*PostAdminTeamsTeamIDBuildsCancelResponse, error)
+
 	// PostAdminTeamsTeamIDSandboxesKillWithResponse request
 	PostAdminTeamsTeamIDSandboxesKillWithResponse(ctx context.Context, teamID openapi_types.UUID, reqEditors ...RequestEditorFn) (*PostAdminTeamsTeamIDSandboxesKillResponse, error)
 
@@ -5488,6 +5593,31 @@ func (r DeleteAccessTokensAccessTokenIDResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r DeleteAccessTokensAccessTokenIDResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PostAdminTeamsTeamIDBuildsCancelResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AdminBuildCancelResult
+	JSON401      *N401
+	JSON404      *N404
+	JSON500      *N500
+}
+
+// Status returns HTTPResponse.Status
+func (r PostAdminTeamsTeamIDBuildsCancelResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostAdminTeamsTeamIDBuildsCancelResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -6657,7 +6787,7 @@ func (r GetVolumesResponse) StatusCode() int {
 type PostVolumesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON201      *Volume
+	JSON201      *VolumeAndToken
 	JSON400      *N400
 	JSON401      *N401
 	JSON500      *N500
@@ -6706,7 +6836,7 @@ func (r DeleteVolumesVolumeIDResponse) StatusCode() int {
 type GetVolumesVolumeIDResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON200      *Volume
+	JSON200      *VolumeAndToken
 	JSON401      *N401
 	JSON404      *N404
 	JSON500      *N500
@@ -6752,6 +6882,15 @@ func (c *ClientWithResponses) DeleteAccessTokensAccessTokenIDWithResponse(ctx co
 		return nil, err
 	}
 	return ParseDeleteAccessTokensAccessTokenIDResponse(rsp)
+}
+
+// PostAdminTeamsTeamIDBuildsCancelWithResponse request returning *PostAdminTeamsTeamIDBuildsCancelResponse
+func (c *ClientWithResponses) PostAdminTeamsTeamIDBuildsCancelWithResponse(ctx context.Context, teamID openapi_types.UUID, reqEditors ...RequestEditorFn) (*PostAdminTeamsTeamIDBuildsCancelResponse, error) {
+	rsp, err := c.PostAdminTeamsTeamIDBuildsCancel(ctx, teamID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostAdminTeamsTeamIDBuildsCancelResponse(rsp)
 }
 
 // PostAdminTeamsTeamIDSandboxesKillWithResponse request returning *PostAdminTeamsTeamIDSandboxesKillResponse
@@ -7410,6 +7549,53 @@ func ParseDeleteAccessTokensAccessTokenIDResponse(rsp *http.Response) (*DeleteAc
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePostAdminTeamsTeamIDBuildsCancelResponse parses an HTTP response from a PostAdminTeamsTeamIDBuildsCancelWithResponse call
+func ParsePostAdminTeamsTeamIDBuildsCancelResponse(rsp *http.Response) (*PostAdminTeamsTeamIDBuildsCancelResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostAdminTeamsTeamIDBuildsCancelResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AdminBuildCancelResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest N401
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -9555,7 +9741,7 @@ func ParsePostVolumesResponse(rsp *http.Response) (*PostVolumesResponse, error) 
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
-		var dest Volume
+		var dest VolumeAndToken
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -9642,7 +9828,7 @@ func ParseGetVolumesVolumeIDResponse(rsp *http.Response) (*GetVolumesVolumeIDRes
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest Volume
+		var dest VolumeAndToken
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

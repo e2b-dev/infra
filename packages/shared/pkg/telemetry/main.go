@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/metric"
 	noopMetric "go.opentelemetry.io/otel/metric/noop"
@@ -28,7 +29,7 @@ type Client struct {
 	LogsProvider    LogProvider
 }
 
-func New(ctx context.Context, nodeID, serviceName, serviceCommit, serviceVersion, serviceInstanceID string) (*Client, error) {
+func New(ctx context.Context, nodeID, serviceName, serviceCommit, serviceVersion, serviceInstanceID string, additional ...attribute.KeyValue) (*Client, error) {
 	if otelCollectorGRPCEndpoint == "" {
 		return NewNoopClient(), nil
 	}
@@ -50,7 +51,7 @@ func New(ctx context.Context, nodeID, serviceName, serviceCommit, serviceVersion
 		return nil, fmt.Errorf("failed to create metrics exporter: %w", err)
 	}
 
-	res, err := GetResource(ctx, nodeID, serviceName, serviceCommit, serviceVersion, serviceInstanceID)
+	res, err := GetResource(ctx, nodeID, serviceName, serviceCommit, serviceVersion, serviceInstanceID, additional...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create resource: %w", err)
 	}

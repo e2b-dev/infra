@@ -2,10 +2,12 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"sync"
+	"time"
 
+	"github.com/jellydator/ttlcache/v3"
 	"go.opentelemetry.io/otel/metric"
-	"go.uber.org/zap"
 	"golang.org/x/sync/semaphore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
@@ -15,30 +17,37 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/peerclient"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
+// Matches the template cache TTL so entries live as long as the
+// templates they refer to and are cleaned up automatically.
+const uploadedBuildsTTL = 1 * time.Hour
+
 type Server struct {
 	orchestrator.UnimplementedSandboxServiceServer
+	orchestrator.UnimplementedChunkServiceServer
 
-	config            cfg.Config
-	sandboxFactory    *sandbox.Factory
-	info              *service.ServiceInfo
-	sandboxes         *sandbox.Map
-	proxy             *proxy.SandboxProxy
-	networkPool       *network.Pool
-	templateCache     *template.Cache
-	pauseMu           sync.Mutex
-	devicePool        *nbd.DevicePool
-	persistence       storage.StorageProvider
-	featureFlags      *featureflags.Client
-	sbxEventsService  *events.EventsService
-	startingSandboxes *semaphore.Weighted
+	config                cfg.Config
+	sandboxFactory        *sandbox.Factory
+	info                  *service.ServiceInfo
+	proxy                 *proxy.SandboxProxy
+	networkPool           *network.Pool
+	templateCache         *template.Cache
+	pauseMu               sync.Mutex
+	devicePool            *nbd.DevicePool
+	persistence           storage.StorageProvider
+	featureFlags          *featureflags.Client
+	sbxEventsService      *events.EventsService
+	startingSandboxes     *semaphore.Weighted
+	peerRegistry          peerclient.Registry
+	uploadedBuilds        *ttlcache.Cache[string, struct{}]
+	sandboxCreateDuration metric.Int64Histogram
 }
 
 type ServiceConfig struct {
@@ -50,19 +59,23 @@ type ServiceConfig struct {
 	Info             *service.ServiceInfo
 	Proxy            *proxy.SandboxProxy
 	SandboxFactory   *sandbox.Factory
-	Sandboxes        *sandbox.Map
 	Persistence      storage.StorageProvider
 	FeatureFlags     *featureflags.Client
 	SbxEventsService *events.EventsService
+	PeerRegistry     peerclient.Registry
 }
 
-func New(ctx context.Context, cfg ServiceConfig) *Server {
+func New(cfg ServiceConfig) (*Server, error) {
+	uploadedBuilds := ttlcache.New[string, struct{}](
+		ttlcache.WithTTL[string, struct{}](uploadedBuildsTTL),
+	)
+	go uploadedBuilds.Start()
+
 	server := &Server{
 		config:            cfg.Config,
 		sandboxFactory:    cfg.SandboxFactory,
 		info:              cfg.Info,
 		proxy:             cfg.Proxy,
-		sandboxes:         cfg.Sandboxes,
 		networkPool:       cfg.NetworkPool,
 		templateCache:     cfg.TemplateCache,
 		devicePool:        cfg.DevicePool,
@@ -70,17 +83,26 @@ func New(ctx context.Context, cfg ServiceConfig) *Server {
 		featureFlags:      cfg.FeatureFlags,
 		sbxEventsService:  cfg.SbxEventsService,
 		startingSandboxes: semaphore.NewWeighted(maxStartingInstancesPerNode),
+		peerRegistry:      cfg.PeerRegistry,
+		uploadedBuilds:    uploadedBuilds,
 	}
 
 	meter := cfg.Tel.MeterProvider.Meter("orchestrator.sandbox")
-	_, err := telemetry.GetObservableUpDownCounter(meter, telemetry.OrchestratorSandboxCountMeterName, func(_ context.Context, observer metric.Int64Observer) error {
-		observer.Observe(int64(server.sandboxes.Count()))
+
+	sandboxCreateDuration, err := telemetry.GetHistogram(meter, telemetry.OrchestratorSandboxCreateDurationName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to register sandbox create duration histogram: %w", err)
+	}
+	server.sandboxCreateDuration = sandboxCreateDuration
+
+	_, err = telemetry.GetObservableUpDownCounter(meter, telemetry.OrchestratorSandboxCountMeterName, func(_ context.Context, observer metric.Int64Observer) error {
+		observer.Observe(int64(server.sandboxFactory.Sandboxes.Count()))
 
 		return nil
 	})
 	if err != nil {
-		logger.L().Error(ctx, "Error registering sandbox count metric", zap.String("metric_name", string(telemetry.OrchestratorSandboxCountMeterName)), zap.Error(err))
+		return nil, fmt.Errorf("failed to register sandbox count metric: %w", err)
 	}
 
-	return server
+	return server, nil
 }

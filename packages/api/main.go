@@ -27,19 +27,20 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
-	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/handlers"
 	customMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware"
 	metricsMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics"
 	tracingMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware/otel/tracing"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
+	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+	sharedmiddleware "github.com/e2b-dev/infra/packages/shared/pkg/middleware"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	sharedutils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -53,6 +54,12 @@ const (
 	maxReadHeaderTimeout = 5 * time.Second
 	maxReadTimeout       = 10 * time.Second
 	maxWriteTimeout      = 75 * time.Second
+
+	// requestTimeout is the context deadline applied to each request.
+	// Must be less than maxWriteTimeout so the context cancels before the
+	// server's write deadline kills the connection (WriteTimeout does NOT
+	// cancel r.Context(); see https://github.com/golang/go/issues/59602).
+	requestTimeout = 60 * time.Second
 
 	// This timeout should be > 600 (GCP LB upstream idle timeout) to prevent race condition
 	// https://cloud.google.com/load-balancing/docs/https#timeouts_and_retries%23:~:text=The%20load%20balancer%27s%20backend%20keepalive,is%20greater%20than%20600%20seconds
@@ -78,6 +85,8 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 	// Param values are still unescaped before reaching handlers (UnescapePathValues defaults to true).
 	r.UseRawPath = true
 
+	r.Use(gin.Recovery())
+
 	r.Use(
 		// We use custom otel gin middleware because we want to log 4xx errors in the otel
 		customMiddleware.ExcludeRoutes(
@@ -94,8 +103,33 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 			"/sandboxes/:sandboxID/pause",
 			"/sandboxes/:sandboxID/connect",
 			"/sandboxes/:sandboxID/resume",
+			"/sandboxes/:sandboxID/snapshots",
 		),
+		sharedmiddleware.LoggingMiddleware(l, sharedmiddleware.Config{
+			TimeFormat:   time.RFC3339Nano,
+			UTC:          true,
+			DefaultLevel: zap.InfoLevel,
+			Skipper: func(c *gin.Context) bool {
+				switch c.FullPath() {
+				case "/health",
+					"/sandboxes/:sandboxID/refreshes",
+					"/templates/:templateID/builds/:buildID/logs",
+					"/templates/:templateID/builds/:buildID/status":
+					return true
+				}
+
+				return false
+			},
+			Context: func(c *gin.Context) []zapcore.Field {
+				if teamInfo, ok := auth.GetTeamInfo(c); ok {
+					return []zapcore.Field{logger.WithTeamID(teamInfo.ID.String())}
+				}
+
+				return nil
+			},
+		}),
 		gin.Recovery(),
+		customMiddleware.RequestTimeout(requestTimeout), //nolint:contextcheck // Gin middleware sets context via c.Request.WithContext
 	)
 
 	corsConfig := cors.DefaultConfig()
@@ -111,8 +145,8 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 		"Authorization",
 		"X-API-Key",
 		// Supabase headers
-		"X-Supabase-Token",
-		"X-Supabase-Team",
+		auth.HeaderSupabaseToken,
+		auth.HeaderSupabaseTeam,
 		// Custom headers sent from SDK
 		"browser",
 		"lang",
@@ -130,11 +164,14 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 
 	// Create a team API Key auth validator
 	AuthenticationFunc := auth.CreateAuthenticationFunc(
-		config,
-		apiStore.GetTeamFromAPIKey,
-		apiStore.GetUserFromAccessToken,
-		apiStore.GetUserIDFromSupabaseToken,
-		apiStore.GetTeamFromSupabaseToken,
+		[]auth.Authenticator{
+			auth.NewApiKeyAuthenticator(apiStore.GetTeamFromAPIKey),
+			auth.NewAccessTokenAuthenticator(apiStore.GetUserFromAccessToken),
+			auth.NewSupabaseTokenAuthenticator(apiStore.GetUserIDFromSupabaseToken),
+			auth.NewSupabaseTeamAuthenticator(apiStore.GetTeamFromSupabaseToken),
+			auth.NewAdminTokenAuthenticator(config.AdminToken),
+		},
+		metricsMiddleware.SetProcessingStartTime,
 	)
 
 	// Use our validation middleware to check all requests against the
@@ -158,37 +195,6 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 	)
 
 	r.Use(customMiddleware.InitLaunchDarklyContext)
-
-	r.Use(
-		// Request logging must be executed after authorization (if required) is done,
-		// so that we can log team ID.
-		customMiddleware.ExcludeRoutes(
-			func(c *gin.Context) {
-				teamID := ""
-
-				// Get team from context, use TeamContextKey
-				teamInfo := c.Value(auth.TeamContextKey)
-				if teamInfo != nil {
-					teamID = teamInfo.(*types.Team).ID.String()
-				}
-
-				reqLogger := l
-				if teamID != "" {
-					reqLogger = l.With(logger.WithTeamID(teamID))
-				}
-
-				customMiddleware.LoggingMiddleware(reqLogger, customMiddleware.Config{
-					TimeFormat:   time.RFC3339Nano,
-					UTC:          true,
-					DefaultLevel: zap.InfoLevel,
-				})(c)
-			},
-			"/health",
-			"/sandboxes/:sandboxID/refreshes",
-			"/templates/:templateID/builds/:buildID/logs",
-			"/templates/:templateID/builds/:buildID/status",
-		),
-	)
 
 	// We now register our store above as the handler for the interface
 	api.RegisterHandlersWithOptions(r, apiStore, api.GinServerOptions{
@@ -251,7 +257,7 @@ func run() int {
 		}
 	}()
 
-	l := sharedutils.Must(logger.NewLogger(ctx, logger.LoggerConfig{
+	l := sharedutils.Must(logger.NewLogger(logger.LoggerConfig{
 		ServiceName:   serviceName,
 		IsInternal:    true,
 		IsDebug:       env.IsDebug(),
@@ -285,6 +291,11 @@ func run() int {
 	defer sbxLoggerInternal.Sync()
 	sbxlogger.SetSandboxLoggerInternal(sbxLoggerInternal)
 
+	// Register Go runtime metric callbacks (goroutines, heap, GC, etc.)
+	if err := tel.StartRuntimeInstrumentation(); err != nil {
+		l.Warn(ctx, "failed to start runtime instrumentation", zap.Error(err))
+	}
+
 	// Convert the string expectedMigrationTimestamp  to a int64
 	expectedMigration, err := strconv.ParseInt(expectedMigrationTimestamp, 10, 64)
 	if err != nil {
@@ -298,7 +309,7 @@ func run() int {
 		logger.L().Fatal(ctx, "Error parsing config", zap.Error(err))
 	}
 
-	err = utils.CheckMigrationVersion(ctx, config.PostgresConnectionString, expectedMigration)
+	err = sqlcdb.CheckMigrationVersion(ctx, config.PostgresConnectionString, expectedMigration)
 	if err != nil {
 		l.Fatal(ctx, "failed to check migration version", zap.Error(err))
 	}
@@ -365,7 +376,7 @@ func run() int {
 	// Create an instance of our handler which satisfies the generated interface
 	//  (use the outer context rather than the signal handling
 	//   context so it doesn't exit first.)
-	apiStore := handlers.NewAPIStore(ctx, tel, config)
+	apiStore := handlers.NewAPIStore(ctx, tel, config, serviceName)
 	cleanupFns = append(cleanupFns, apiStore.Close)
 
 	grpcAddr := fmt.Sprintf("0.0.0.0:%d", config.APIGrpcPort)
@@ -434,6 +445,16 @@ func run() int {
 		}
 	})
 
+	pprofServer := telemetry.NewPprofServer()
+
+	wg.Go(func() {
+		l.Info(ctx, "pprof server starting", zap.Int("port", telemetry.DefaultPprofPort))
+
+		if err := pprofServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			l.Error(ctx, "pprof server encountered error", zap.Error(err))
+		}
+	})
+
 	wg.Go(func() {
 		<-signalCtx.Done()
 
@@ -455,10 +476,13 @@ func run() int {
 		// panic and defers start running, _probably_ won't
 		// even have a chance to return before the program
 		// returns.
-
 		if err := s.Shutdown(ctx); err != nil {
 			exitCode.Add(1)
 			l.Error(ctx, "Http service shutdown error", zap.Int("port", port), zap.Error(err))
+		}
+
+		if err := pprofServer.Shutdown(ctx); err != nil {
+			l.Error(ctx, "pprof server shutdown error", zap.Error(err))
 		}
 
 		grpcServer.GracefulStop()

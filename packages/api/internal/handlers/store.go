@@ -16,24 +16,23 @@ import (
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
+	snapshotcache "github.com/e2b-dev/infra/packages/api/internal/cache/snapshots"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/api/internal/clusters"
-	dbapi "github.com/e2b-dev/infra/packages/api/internal/db"
-	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	sharedauth "github.com/e2b-dev/infra/packages/auth/pkg/auth"
+	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/pkg/pool"
-	sharedauth "github.com/e2b-dev/infra/packages/shared/pkg/auth"
+	"github.com/e2b-dev/infra/packages/shared/pkg/apierrors"
 	"github.com/e2b-dev/infra/packages/shared/pkg/factories"
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
-	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs/loki"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -53,7 +52,8 @@ type APIStore struct {
 	redisClient          redis.UniversalClient
 	templateCache        *templatecache.TemplateCache
 	templateBuildsCache  *templatecache.TemplatesBuildCache
-	authCache            *authcache.TeamAuthCache
+	snapshotCache        *snapshotcache.SnapshotCache
+	authService          *sharedauth.AuthService[*types.Team]
 	templateSpawnCounter *utils.TemplateSpawnCounter
 	clickhouseStore      clickhouse.Clickhouse
 	accessTokenGenerator *sandbox.AccessTokenGenerator
@@ -61,10 +61,10 @@ type APIStore struct {
 	clusters             *clusters.Pool
 }
 
-func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) *APIStore {
+func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config, serviceName string) *APIStore {
 	logger.L().Info(ctx, "Initializing API store and services")
 
-	sqlcDB, err := sqlcdb.NewClient(ctx, config.PostgresConnectionString, pool.WithMaxConnections(40), pool.WithMinIdle(5))
+	sqlcDB, err := sqlcdb.NewClient(ctx, config.PostgresConnectionString, pool.WithMaxConnections(config.DBMaxOpenConnections), pool.WithMinIdle(config.DBMinIdleConnections))
 	if err != nil {
 		logger.L().Fatal(ctx, "Initializing SQLC client", zap.Error(err))
 	}
@@ -112,6 +112,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 		RedisURL:         config.RedisURL,
 		RedisClusterURL:  config.RedisClusterURL,
 		RedisTLSCABase64: config.RedisTLSCABase64,
+		PoolSize:         config.RedisPoolSize,
 	})
 	if err != nil {
 		logger.L().Fatal(ctx, "Initializing Redis client", zap.Error(err))
@@ -132,17 +133,24 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 		logger.L().Fatal(ctx, "failed to create feature flags client", zap.Error(err))
 	}
 
+	featureFlags.SetServiceName(serviceName)
+	featureFlags.SetDeploymentName(config.DomainName)
+
 	accessTokenGenerator, err := sandbox.NewAccessTokenGenerator(config.SandboxAccessTokenHashSeed)
 	if err != nil {
 		logger.L().Fatal(ctx, "Initializing access token generator failed", zap.Error(err))
 	}
 
-	orch, err := orchestrator.New(ctx, config, tel, nomadClient, posthogClient, redisClient, sqlcDB, clusters, featureFlags, accessTokenGenerator)
+	snapshotCache := snapshotcache.NewSnapshotCache(sqlcDB, redisClient)
+
+	orch, err := orchestrator.New(ctx, config, tel, nomadClient, posthogClient, redisClient, sqlcDB, clusters, featureFlags, accessTokenGenerator, snapshotCache)
 	if err != nil {
 		logger.L().Fatal(ctx, "Initializing Orchestrator client", zap.Error(err))
 	}
 
-	authCache := authcache.NewTeamAuthCache()
+	authCache := sharedauth.NewAuthCache[*types.Team]()
+	authStore := sharedauth.NewAuthStore(authDB)
+	authService := sharedauth.NewAuthService[*types.Team](authStore, authCache, config.SupabaseJWTSecrets)
 	templateCache := templatecache.NewTemplateCache(sqlcDB, redisClient)
 	templateSpawnCounter := utils.NewTemplateSpawnCounter(ctx, time.Minute, sqlcDB)
 
@@ -165,7 +173,8 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config) 
 		posthog:              posthogClient,
 		templateCache:        templateCache,
 		templateBuildsCache:  templateBuildsCache,
-		authCache:            authCache,
+		snapshotCache:        snapshotCache,
+		authService:          authService,
 		templateSpawnCounter: templateSpawnCounter,
 		clickhouseStore:      clickhouseStore,
 		accessTokenGenerator: accessTokenGenerator,
@@ -213,9 +222,9 @@ func (a *APIStore) Close(ctx context.Context) error {
 		}
 	}
 
-	if a.authCache != nil {
-		if err := a.authCache.Close(ctx); err != nil {
-			errs = append(errs, fmt.Errorf("closing auth cache: %w", err))
+	if a.authService != nil {
+		if err := a.authService.Close(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("closing auth service: %w", err))
 		}
 	}
 
@@ -235,6 +244,10 @@ func (a *APIStore) Close(ctx context.Context) error {
 		}
 	}
 
+	if err := a.snapshotCache.Close(ctx); err != nil {
+		errs = append(errs, fmt.Errorf("closing snapshot cache: %w", err))
+	}
+
 	if a.redisClient != nil {
 		if err := a.redisClient.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("closing redis client: %w", err))
@@ -244,16 +257,9 @@ func (a *APIStore) Close(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-// This function wraps sending of an error in the Error format, and
-// handling the failure to marshal that.
+// sendAPIStoreError wraps sending of an error in the Error format.
 func (a *APIStore) sendAPIStoreError(c *gin.Context, code int, message string) {
-	apiErr := api.Error{
-		Code:    int32(code),
-		Message: message,
-	}
-
-	c.Error(errors.New(message))
-	c.JSON(code, apiErr)
+	apierrors.SendAPIStoreError(c, code, message)
 }
 
 func (a *APIStore) GetHealth(c *gin.Context) {
@@ -270,123 +276,26 @@ func (a *APIStore) GetTeamFromAPIKey(ctx context.Context, _ *gin.Context, apiKey
 	ctx, span := tracer.Start(ctx, "get team from api key")
 	defer span.End()
 
-	hashedApiKey, err := keys.VerifyKey(keys.ApiKeyPrefix, apiKey)
-	if err != nil {
-		return nil, &api.APIError{
-			Err:       fmt.Errorf("failed to verify api key: %w", err),
-			ClientMsg: "Invalid API key format",
-			Code:      http.StatusUnauthorized,
-		}
-	}
-
-	team, err := a.authCache.GetOrSet(ctx, hashedApiKey, func(ctx context.Context, key string) (*types.Team, error) {
-		return dbapi.GetTeamAuth(ctx, a.authDB, key)
-	})
-	if err != nil {
-		var usageErr *dbapi.TeamForbiddenError
-		if errors.As(err, &usageErr) {
-			return nil, &api.APIError{
-				Err:       err,
-				ClientMsg: err.Error(),
-				Code:      http.StatusForbidden,
-			}
-		}
-
-		var blockedErr *dbapi.TeamBlockedError
-		if errors.As(err, &blockedErr) {
-			return nil, &api.APIError{
-				Err:       err,
-				ClientMsg: err.Error(),
-				Code:      http.StatusForbidden,
-			}
-		}
-
-		return nil, &api.APIError{
-			Err:       fmt.Errorf("failed to get the team from db for an api key: %w", err),
-			ClientMsg: "Cannot get the team for the given API key",
-			Code:      http.StatusUnauthorized,
-		}
-	}
-
-	return team, nil
+	return a.authService.ValidateAPIKey(ctx, apiKey)
 }
 
 func (a *APIStore) GetUserFromAccessToken(ctx context.Context, _ *gin.Context, accessToken string) (uuid.UUID, *api.APIError) {
 	ctx, span := tracer.Start(ctx, "get user from access token")
 	defer span.End()
 
-	hashedToken, err := keys.VerifyKey(keys.AccessTokenPrefix, accessToken)
-	if err != nil {
-		return uuid.UUID{}, &api.APIError{
-			Err:       fmt.Errorf("failed to verify access token: %w", err),
-			ClientMsg: "Invalid access token format",
-			Code:      http.StatusUnauthorized,
-		}
-	}
-
-	userID, err := a.authDB.Read.GetUserIDFromAccessToken(ctx, hashedToken)
-	if err != nil {
-		return uuid.UUID{}, &api.APIError{
-			Err:       fmt.Errorf("failed to get the user from db for an access token: %w", err),
-			ClientMsg: "Cannot get the user for the given access token",
-			Code:      http.StatusUnauthorized,
-		}
-	}
-
-	return userID, nil
+	return a.authService.ValidateAccessToken(ctx, accessToken)
 }
 
 func (a *APIStore) GetUserIDFromSupabaseToken(ctx context.Context, _ *gin.Context, supabaseToken string) (uuid.UUID, *api.APIError) {
 	ctx, span := tracer.Start(ctx, "get user id from supabase token")
 	defer span.End()
 
-	userID, err := sharedauth.ParseUserIDFromToken(ctx, a.config.SupabaseJWTSecrets, supabaseToken)
-	if err != nil {
-		return uuid.UUID{}, &api.APIError{
-			Err:       err,
-			ClientMsg: "Backend authentication failed",
-			Code:      http.StatusUnauthorized,
-		}
-	}
-
-	return userID, nil
+	return a.authService.ValidateSupabaseToken(ctx, supabaseToken)
 }
 
 func (a *APIStore) GetTeamFromSupabaseToken(ctx context.Context, ginCtx *gin.Context, teamID string) (*types.Team, *api.APIError) {
 	ctx, span := tracer.Start(ctx, "get team from supabase token")
 	defer span.End()
 
-	userID := a.GetUserID(ginCtx)
-
-	cacheKey := fmt.Sprintf("%s-%s", userID.String(), teamID)
-	team, err := a.authCache.GetOrSet(ctx, cacheKey, func(ctx context.Context, _ string) (*types.Team, error) {
-		return dbapi.GetTeamByIDAndUserIDAuth(ctx, a.authDB, teamID, userID)
-	})
-	if err != nil {
-		var usageErr *dbapi.TeamForbiddenError
-		if errors.As(err, &usageErr) {
-			return nil, &api.APIError{
-				Err:       fmt.Errorf("failed getting team: %w", err),
-				ClientMsg: fmt.Sprintf("Forbidden: %s", err.Error()),
-				Code:      http.StatusForbidden,
-			}
-		}
-
-		var blockedErr *dbapi.TeamBlockedError
-		if errors.As(err, &blockedErr) {
-			return nil, &api.APIError{
-				Err:       fmt.Errorf("failed getting team: %w", err),
-				ClientMsg: fmt.Sprintf("Blocked: %s", err.Error()),
-				Code:      http.StatusForbidden,
-			}
-		}
-
-		return nil, &api.APIError{
-			Err:       fmt.Errorf("failed getting team: %w", err),
-			ClientMsg: "Backend authentication failed",
-			Code:      http.StatusUnauthorized,
-		}
-	}
-
-	return team, nil
+	return a.authService.ValidateSupabaseTeam(ctx, ginCtx, teamID)
 }

@@ -33,7 +33,7 @@ type Stats struct {
 	CPUSystemUsec uint64 // microseconds
 
 	MemoryUsageBytes uint64 // bytes
-	MemoryPeakBytes  uint64 // bytes, reset after each GetStats() call
+	MemoryPeakBytes  uint64 // bytes, lifetime peak
 }
 
 // CgroupHandle represents a created cgroup for a sandbox.
@@ -42,10 +42,10 @@ type Stats struct {
 // Lifecycle: Create → GetFD → cmd.Start() → ReleaseCgroupFD → GetStats (repeatedly) → Remove
 //
 // The caller MUST call ReleaseCgroupFD() right after cmd.Start() (regardless of
-// whether Start succeeded or failed). Remove() only closes the memory.peak FD
-// and deletes the cgroup directory — it does not release the cgroup directory FD.
+// whether Start succeeded or failed). Remove() closes the memory.peak FD and
+// deletes the cgroup directory — it does not release the cgroup directory FD.
 type CgroupHandle struct {
-	sandboxID      string
+	cgroupName     string
 	path           string
 	file           *os.File // Open FD to the cgroup directory (nil after ReleaseCgroupFD)
 	memoryPeakFile *os.File // Open FD to memory.peak for per-FD reset (nil after Remove or if not available)
@@ -68,8 +68,8 @@ func (h *CgroupHandle) GetFD() int {
 // Call this after cmd.Start() — the kernel has already placed the process in
 // the cgroup atomically during clone, so the directory FD is no longer needed.
 //
-// The memory.peak FD is intentionally kept open because the per-FD reset
-// mechanism requires the same FD for the lifetime of stats collection.
+// The memory.peak FD is intentionally kept open for the lifetime of stats
+// collection. It will be needed for per-FD reset when kernel 6.12+ is available.
 // That FD is closed later by Remove().
 //
 // Safe to call multiple times.
@@ -126,7 +126,7 @@ func (h *CgroupHandle) Remove(ctx context.Context) error {
 	}
 
 	logger.L().Debug(ctx, "removed cgroup for sandbox",
-		logger.WithSandboxID(h.sandboxID),
+		zap.String("cgroup_name", h.cgroupName),
 		zap.String("path", h.path))
 
 	return nil
@@ -141,13 +141,13 @@ func (h *CgroupHandle) Path() string {
 	return h.path
 }
 
-// SandboxID returns the sandbox ID this cgroup is for
-func (h *CgroupHandle) SandboxID() string {
+// CgroupName returns the name of the cgroup
+func (h *CgroupHandle) CgroupName() string {
 	if h == nil {
 		return ""
 	}
 
-	return h.sandboxID
+	return h.cgroupName
 }
 
 // Manager handles initialization and creation of cgroups
@@ -157,10 +157,10 @@ type Manager interface {
 	// Should be called once at orchestrator startup
 	Initialize(ctx context.Context) error
 
-	// Create creates a cgroup for a sandbox and returns a handle
+	// Create creates a cgroup with the given name and returns a handle
 	// The handle provides access to the cgroup's FD, stats, and cleanup
 	// Returns error if cgroup creation fails
-	Create(ctx context.Context, sandboxID string) (*CgroupHandle, error)
+	Create(ctx context.Context, cgroupName string) (*CgroupHandle, error)
 }
 
 type managerImpl struct{}
@@ -190,8 +190,8 @@ func (m *managerImpl) Initialize(ctx context.Context) error {
 	return nil
 }
 
-func (m *managerImpl) Create(ctx context.Context, sandboxID string) (*CgroupHandle, error) {
-	cgroupPath := m.sandboxCgroupPath(sandboxID)
+func (m *managerImpl) Create(ctx context.Context, cgroupName string) (*CgroupHandle, error) {
+	cgroupPath := m.cgroupPath(cgroupName)
 
 	if err := os.MkdirAll(cgroupPath, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create cgroup directory: %w", err)
@@ -205,20 +205,20 @@ func (m *managerImpl) Create(ctx context.Context, sandboxID string) (*CgroupHand
 		return nil, fmt.Errorf("failed to open cgroup directory: %w", err)
 	}
 
-	// O_RDWR FD must stay open for per-FD peak reset across GetStats() calls
+	// TODO: Change to os.O_RDWR when per-FD peak reset is re-enabled.
 	memPeakPath := filepath.Join(cgroupPath, "memory.peak")
-	memoryPeakFile, peakErr := os.OpenFile(memPeakPath, os.O_RDWR, 0)
+	memoryPeakFile, peakErr := os.OpenFile(memPeakPath, os.O_RDONLY, 0)
 	if peakErr != nil {
 		// Not fatal — memory.peak may not exist on older kernels
-		logger.L().Debug(ctx, "failed to open memory.peak for reset (will track lifetime peak)",
-			logger.WithSandboxID(sandboxID),
+		logger.L().Debug(ctx, "failed to open memory.peak",
+			zap.String("cgroup_name", cgroupName),
 			zap.String("path", memPeakPath),
 			zap.Error(peakErr))
 		memoryPeakFile = nil
 	}
 
 	handle := &CgroupHandle{
-		sandboxID:      sandboxID,
+		cgroupName:     cgroupName,
 		path:           cgroupPath,
 		file:           file,
 		memoryPeakFile: memoryPeakFile,
@@ -226,10 +226,9 @@ func (m *managerImpl) Create(ctx context.Context, sandboxID string) (*CgroupHand
 	}
 
 	logger.L().Debug(ctx, "created cgroup for sandbox",
-		logger.WithSandboxID(sandboxID),
+		zap.String("cgroup_name", cgroupName),
 		zap.String("path", cgroupPath),
-		zap.Int("fd", handle.GetFD()),
-		zap.Bool("peak_reset_available", memoryPeakFile != nil))
+		zap.Int("fd", handle.GetFD()))
 
 	return handle, nil
 }
@@ -271,7 +270,7 @@ func (m *managerImpl) getStatsForPath(ctx context.Context, cgroupPath string, me
 	stats.MemoryUsageBytes, _ = strconv.ParseUint(strings.TrimSpace(string(memData)), 10, 64)
 
 	if memoryPeakFile != nil {
-		peakBytes, err := m.readAndResetMemoryPeak(ctx, memoryPeakFile)
+		peakBytes, err := m.readMemoryPeak(memoryPeakFile)
 		if err != nil {
 			logger.L().Debug(ctx, "failed to read memory.peak", zap.Error(err))
 		} else {
@@ -282,13 +281,12 @@ func (m *managerImpl) getStatsForPath(ctx context.Context, cgroupPath string, me
 	return stats, nil
 }
 
-// readAndResetMemoryPeak reads the current peak memory value and resets it for the next interval.
-// It uses the persistent FD kept open in CgroupHandle for per-FD reset tracking.
-// The cgroups v2 kernel interface works as follows:
-//   - Read requires file position 0 (seq_file), so we seek before reading.
-//   - Write resets the per-FD peak to current memory usage. The kernel ignores
-//     both the written content and the file offset, so no seek before write is needed.
-func (m *managerImpl) readAndResetMemoryPeak(ctx context.Context, memoryPeakFile *os.File) (uint64, error) {
+// readMemoryPeak reads the current peak memory value from the persistent FD.
+// Read requires file position 0 (seq_file), so we seek before reading.
+//
+// TODO: When per-FD peak reset is available-enabled, this function
+// should also write to the FD to reset the peak for the next interval.
+func (m *managerImpl) readMemoryPeak(memoryPeakFile *os.File) (uint64, error) {
 	if _, err := memoryPeakFile.Seek(0, io.SeekStart); err != nil {
 		return 0, fmt.Errorf("failed to seek memory.peak for read: %w", err)
 	}
@@ -301,15 +299,12 @@ func (m *managerImpl) readAndResetMemoryPeak(ctx context.Context, memoryPeakFile
 
 	peakBytes, _ := strconv.ParseUint(strings.TrimSpace(string(buf[:n])), 10, 64)
 
-	// Reset per-FD peak for next interval
-	if _, err := memoryPeakFile.WriteString("0"); err != nil {
-		logger.L().Debug(ctx, "failed to reset memory.peak", zap.Error(err))
-	}
+	// TODO:The write for Per-FD peak reset introduced in kernel 6.12 belongs here.
 
 	return peakBytes, nil
 }
 
-// sandboxCgroupPath returns the filesystem path for a sandbox's cgroup
-func (m *managerImpl) sandboxCgroupPath(sandboxID string) string {
-	return filepath.Join(RootCgroupPath, fmt.Sprintf("sbx-%s", sandboxID))
+// cgroupPath returns the filesystem path for a sandbox's cgroup
+func (m *managerImpl) cgroupPath(cgroupName string) string {
+	return filepath.Join(RootCgroupPath, cgroupName)
 }

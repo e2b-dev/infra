@@ -143,7 +143,7 @@ Client → Client-Proxy → API (REST) ⟷ PostgreSQL
 - Database: `pkg/db/` (ent ORM)
 - Models: `pkg/models/`
 - Storage: `pkg/storage/` (GCS/S3 clients)
-- Feature flags: `pkg/feature-flags/` (LaunchDarkly)
+- Feature flags: `pkg/featureflags/` (LaunchDarkly)
 
 **Database (`packages/db/`)** - PostgreSQL layer
 - Migrations: `migrations/*.sql` (goose)

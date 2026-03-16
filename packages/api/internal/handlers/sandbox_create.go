@@ -19,17 +19,16 @@ import (
 	"golang.org/x/net/idna"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
-	typesteam "github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -51,7 +50,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	// Get team from context, use TeamContextKey
-	teamInfo := c.Value(auth.TeamContextKey).(*typesteam.Team)
+	teamInfo := auth.MustGetTeamInfo(c)
 
 	c.Set("teamID", teamInfo.Team.ID.String())
 
@@ -138,12 +137,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		}
 	}
 
-	autoResume, autoResumeErr := buildAutoResumeConfig(body.AutoResume)
-	if autoResumeErr != nil {
-		a.sendAPIStoreError(c, autoResumeErr.Code, autoResumeErr.ClientMsg)
-
-		return
-	}
+	autoResume := buildAutoResumeConfig(body.AutoResume)
 
 	var envdAccessToken *string = nil
 	if body.Secure != nil && *body.Secure == true {
@@ -243,27 +237,19 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	c.JSON(http.StatusCreated, &sbx)
 }
 
-func buildAutoResumeConfig(autoResume *api.SandboxAutoResumeConfig) (*types.SandboxAutoResumeConfig, *api.APIError) {
+func buildAutoResumeConfig(autoResume *api.SandboxAutoResumeConfig) *types.SandboxAutoResumeConfig {
 	if autoResume == nil {
-		return nil, nil
+		return nil
 	}
 
-	policy := api.SandboxAutoResumePolicy(strings.TrimSpace(string(autoResume.Policy)))
-
-	switch policy {
-	case api.Any, api.Off:
-		// ok
-	default:
-		return nil, &api.APIError{
-			Code:      http.StatusBadRequest,
-			ClientMsg: fmt.Sprintf("invalid autoResume.policy: %q", string(policy)),
-			Err:       fmt.Errorf("invalid autoResume.policy: %q", string(policy)),
-		}
+	policy := types.SandboxAutoResumeOff
+	if autoResume.Enabled {
+		policy = types.SandboxAutoResumeAny
 	}
 
 	return &types.SandboxAutoResumeConfig{
-		Policy: types.SandboxAutoResumePolicy(policy),
-	}, nil
+		Policy: policy,
+	}
 }
 
 func dedupeVolumeNames(items []api.SandboxVolumeMount) []string {

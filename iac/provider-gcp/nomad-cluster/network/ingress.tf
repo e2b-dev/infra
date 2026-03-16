@@ -1,3 +1,25 @@
+locals {
+  subdomains = ["dashboard-api"]
+
+  ingress_zones = toset([for info in local.domain_info : info.root_domain])
+
+  // Create matrix for each domain and subdomain combination.
+  // record_name combines the subdomain with the domain prefix so the DNS record
+  // is created under the correct Cloudflare zone.
+  // e.g. domain "sub.example.com", subdomain "dashboard-api"
+  //      -> record_name = "dashboard-api.sub" in zone "example.com"
+  //      -> FQDN: dashboard-api.sub.example.com
+  routing_matrix = {
+    for p in setproduct(local.domains, local.subdomains) :
+    "${p[0]}|${p[1]}" => {
+      domain      = p[0]
+      subdomain   = p[1]
+      root_domain = local.domain_info[p[0]].root_domain
+      record_name = join(".", compact([p[1], local.domain_info[p[0]].prefix]))
+    }
+  }
+}
+
 resource "google_compute_health_check" "ingress" {
   name = "${var.prefix}ingress"
 
@@ -21,7 +43,7 @@ resource "google_compute_backend_service" "ingress" {
   session_affinity = null
   health_checks    = [google_compute_health_check.ingress.id]
 
-  timeout_sec = 65
+  timeout_sec = 80
 
   load_balancing_scheme = "EXTERNAL_MANAGED"
   locality_lb_policy    = "ROUND_ROBIN"
@@ -75,4 +97,19 @@ resource "google_compute_target_https_proxy" "ingress" {
   ssl_policy = google_compute_ssl_policy.ingress.self_link
 
   certificate_map = "//certificatemanager.googleapis.com/${google_certificate_manager_certificate_map.certificate_map.id}"
+}
+
+data "cloudflare_zone" "zone" {
+  for_each = local.ingress_zones
+  name     = each.value
+}
+
+resource "cloudflare_record" "records" {
+  for_each = local.routing_matrix
+
+  zone_id = data.cloudflare_zone.zone[each.value.root_domain].id
+  name    = each.value.record_name
+  content = google_compute_global_forwarding_rule.ingress.ip_address
+  type    = "A"
+  comment = var.gcp_project_id
 }

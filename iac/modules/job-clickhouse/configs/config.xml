@@ -48,43 +48,39 @@
     <listen_host>0.0.0.0</listen_host>
 
     <asynchronous_metric_log>
-        <ttl>event_date + INTERVAL 7 DAY</ttl>
+        <ttl>event_date + INTERVAL 1 DAY</ttl>
     </asynchronous_metric_log>
 
-    <trace_log>
-        <ttl>event_date + INTERVAL 7 DAY</ttl>
-    </trace_log>
+    <trace_log remove="1"/>
 
     <text_log>
-        <ttl>event_date + INTERVAL 7 DAY</ttl>
+        <ttl>event_date + INTERVAL 1 DAY</ttl>
     </text_log>
 
     <latency_log>
-        <ttl>event_date + INTERVAL 7 DAY</ttl>
+        <ttl>event_date + INTERVAL 1 DAY</ttl>
     </latency_log>
 
     <query_log>
-        <ttl>event_date + INTERVAL 7 DAY</ttl>
+        <ttl>event_date + INTERVAL 1 DAY</ttl>
     </query_log>
 
+    <query_views_log>
+        <ttl>event_date + INTERVAL 1 DAY</ttl>
+    </query_views_log>
+
     <metric_log>
-        <ttl>event_date + INTERVAL 7 DAY</ttl>
+        <ttl>event_date + INTERVAL 1 DAY</ttl>
     </metric_log>
 
-    <processors_profile_log>
-        <ttl>event_date + INTERVAL 7 DAY</ttl>
-    </processors_profile_log>
-
-    <asynchronous_metric_log>
-        <ttl>event_date + INTERVAL 7 DAY</ttl>
-    </asynchronous_metric_log>
+    <processors_profile_log remove="1"/>
 
     <part_log>
-        <ttl>event_date + INTERVAL 7 DAY</ttl>
+        <ttl>event_date + INTERVAL 1 DAY</ttl>
     </part_log>
 
     <query_metrics_log>
-        <ttl>event_date + INTERVAL 7 DAY</ttl>
+        <ttl>event_date + INTERVAL 1 DAY</ttl>
     </query_metrics_log>
 
     <error_log>

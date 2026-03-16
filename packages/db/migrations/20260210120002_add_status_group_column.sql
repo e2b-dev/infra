@@ -16,7 +16,7 @@ END;
 $$ LANGUAGE plpgsql;
 -- +goose StatementEnd
 
-CREATE TRIGGER trg_compute_status_group
+CREATE OR REPLACE TRIGGER trg_compute_status_group
   BEFORE INSERT OR UPDATE OF status ON public.env_builds
   FOR EACH ROW EXECUTE FUNCTION compute_status_group();
 
@@ -42,6 +42,8 @@ BEGIN
     GET DIAGNOSTICS rows_updated = ROW_COUNT;
     COMMIT;
     EXIT WHEN rows_updated = 0;
+    RAISE NOTICE 'backfill_status_group: updated % rows, sleeping 10s before next batch...', rows_updated;
+    PERFORM pg_sleep(10);
   END LOOP;
 END;
 $$ LANGUAGE plpgsql;

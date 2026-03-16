@@ -13,7 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
@@ -25,7 +25,7 @@ func TemplateRootfs(ctx context.Context, buildID string) (*BuildDevice, *Cleaner
 		BuildID: buildID,
 	}
 
-	s, err := storage.GetTemplateStorageProvider(ctx, nil)
+	s, err := storage.GetStorageProvider(ctx, storage.TemplateStorageConfig)
 	if err != nil {
 		return nil, &cleaner, fmt.Errorf("failed to get storage provider: %w", err)
 	}

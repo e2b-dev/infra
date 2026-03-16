@@ -49,9 +49,15 @@ jobs:
           infisical_client_id: ${{ secrets.INFISICAL_CLIENT_ID }}
           infisical_client_secret: ${{ secrets.INFISICAL_CLIENT_SECRET }}
 
+      - name: Run Terraform state migrations
+        if: inputs.plan_only == 'false'
+        run: |
+          make state-migrate || true
+
       - name: Deploy jobs
         env:
           AUTO_CONFIRM_DEPLOY: true
+          SKIP_FMT: true
         run: |
           # Parse semicolon-separated job names
           IFS=';' read -ra JOBS <<< "${{ inputs.job_names }}"

@@ -75,7 +75,7 @@ func TestCgroupHandleLifecycle(t *testing.T) {
 	require.NotNil(t, handle)
 	defer handle.Remove(ctx)
 
-	assert.Equal(t, testSandboxID, handle.SandboxID())
+	assert.Equal(t, testSandboxID, handle.CgroupName())
 	assert.Contains(t, handle.Path(), testSandboxID)
 	assert.Positive(t, handle.GetFD())
 
@@ -141,7 +141,7 @@ func TestCgroupHandleWithProcessCreation(t *testing.T) {
 	procCgroupPath := fmt.Sprintf("/proc/%d/cgroup", cmd.Process.Pid)
 	cgroupData, err := os.ReadFile(procCgroupPath)
 	require.NoError(t, err)
-	assert.Contains(t, string(cgroupData), fmt.Sprintf("e2b/sbx-%s", testSandboxID))
+	assert.Contains(t, string(cgroupData), fmt.Sprintf("e2b/%s", testSandboxID))
 
 	cmd.Process.Kill()
 	cmd.Wait()
@@ -292,7 +292,7 @@ func TestStatsParsing(t *testing.T) {
 	t.Parallel()
 
 	tmpDir := t.TempDir()
-	cgroupPath := filepath.Join(tmpDir, "sbx-test-parse-sandbox")
+	cgroupPath := filepath.Join(tmpDir, "test-parse-sandbox")
 	err := os.MkdirAll(cgroupPath, 0o755)
 	require.NoError(t, err)
 
@@ -325,7 +325,7 @@ burst_usec 0`
 	assert.Equal(t, uint64(0), stats.MemoryPeakBytes, "MemoryPeakBytes should be 0 without peak FD")
 }
 
-func TestCgroupHandlePeakReset(t *testing.T) {
+func TestCgroupHandleLifetimePeak(t *testing.T) {
 	t.Parallel()
 
 	if os.Geteuid() != 0 {
@@ -339,14 +339,14 @@ func TestCgroupHandlePeakReset(t *testing.T) {
 	err = mgr.Initialize(ctx)
 	require.NoError(t, err)
 
-	testSandboxID := "test-peak-reset"
+	testSandboxID := "test-lifetime-peak"
 
 	handle, err := mgr.Create(ctx, testSandboxID)
 	require.NoError(t, err)
 	defer handle.Remove(ctx)
 	defer handle.ReleaseCgroupFD()
 
-	// Allocate memory gradually so we can sample the peak reset behavior
+	// Allocate memory gradually to observe lifetime peak behavior
 	cmd := exec.CommandContext(ctx, "bash", "-c",
 		"x=''; for i in {1..10}; do x=$x$(head -c 5M /dev/zero | tr '\\0' 'x'); sleep 0.5; done; sleep 5")
 	cmd.SysProcAttr = &syscall.SysProcAttr{
@@ -365,30 +365,33 @@ func TestCgroupHandlePeakReset(t *testing.T) {
 	require.NoError(t, err)
 	peak1 := stats1.MemoryPeakBytes
 	require.Positive(t, peak1, "First peak should be non-zero")
+	assert.GreaterOrEqual(t, peak1, stats1.MemoryUsageBytes,
+		"Peak should be >= current memory")
 	t.Logf("First sample - peak: %d bytes, current: %d bytes", peak1, stats1.MemoryUsageBytes)
 
-	// Peak should represent interval peak (since last GetStats), not lifetime
 	time.Sleep(2 * time.Second)
 	stats2, err := handle.GetStats(ctx)
 	require.NoError(t, err)
 	peak2 := stats2.MemoryPeakBytes
 	require.Positive(t, peak2, "Second peak should be non-zero")
-	t.Logf("Second sample - peak: %d bytes, current: %d bytes", peak2, stats2.MemoryUsageBytes)
-
+	assert.GreaterOrEqual(t, peak2, peak1,
+		"Lifetime peak should be monotonically non-decreasing")
 	assert.GreaterOrEqual(t, peak2, stats2.MemoryUsageBytes,
-		"Peak memory should be >= current memory within the interval")
+		"Peak should be >= current memory")
+	t.Logf("Second sample - peak: %d bytes, current: %d bytes", peak2, stats2.MemoryUsageBytes)
 
 	time.Sleep(2 * time.Second)
 	stats3, err := handle.GetStats(ctx)
 	require.NoError(t, err)
 	peak3 := stats3.MemoryPeakBytes
 	require.Positive(t, peak3, "Third peak should be non-zero")
+	assert.GreaterOrEqual(t, peak3, peak2,
+		"Lifetime peak should be monotonically non-decreasing")
+	assert.GreaterOrEqual(t, peak3, stats3.MemoryUsageBytes,
+		"Peak should be >= current memory")
 	t.Logf("Third sample - peak: %d bytes, current: %d bytes", peak3, stats3.MemoryUsageBytes)
 
-	assert.GreaterOrEqual(t, peak3, stats3.MemoryUsageBytes,
-		"Peak memory should be >= current memory within the interval")
-
-	t.Logf("Reset test complete - peaks tracked per interval: %d, %d, %d bytes",
+	t.Logf("Lifetime peak test complete - peaks: %d, %d, %d bytes",
 		peak1, peak2, peak3)
 
 	cmd.Process.Kill()

@@ -24,6 +24,7 @@ CREATE OR REPLACE TRIGGER trigger_backfill_team_id
 -- +goose StatementBegin
 -- Cursor-based backfill: walks env_builds by (created_at, id) so each batch only scans
 -- forward, giving O(N) total work without needing a temporary index.
+-- Resumable: on restart, skips to the first unprocessed row instead of re-scanning from epoch.
 -- Uses env_build_assignments -> envs to resolve team_id (NOT the legacy env_builds.env_id column).
 CREATE OR REPLACE PROCEDURE backfill_env_builds_team_id() AS $$
 DECLARE
@@ -34,8 +35,44 @@ DECLARE
   last_id UUID := '00000000-0000-0000-0000-000000000000';
   current_max_created_at TIMESTAMP WITH TIME ZONE;
   current_max_id UUID;
+  resume_at TIMESTAMP WITH TIME ZONE;
+  resume_id UUID;
 BEGIN
   RAISE NOTICE 'backfill_env_builds_team_id: starting backfill with batch_size %', batch_size;
+
+  -- Resume: skip rows already backfilled by a previous (interrupted) run.
+  -- Uses idx_env_builds_created_at (backward scan) + idx_env_build_assignments_build.
+  SELECT eb.created_at, eb.id INTO resume_at, resume_id
+  FROM public.env_builds eb
+  WHERE eb.team_id IS NULL
+    AND EXISTS (
+      SELECT 1 FROM public.env_build_assignments eba
+      JOIN public.envs e ON e.id = eba.env_id
+      WHERE eba.build_id = eb.id
+    )
+  ORDER BY eb.created_at, eb.id
+  LIMIT 1;
+
+  IF resume_at IS NULL THEN
+    RAISE NOTICE 'backfill_env_builds_team_id: no rows to backfill';
+    RETURN;
+  END IF;
+
+  -- Position cursor to the row immediately before the first unprocessed row
+  -- so the loop's > comparison includes it.
+  SELECT eb.created_at, eb.id INTO last_created_at, last_id
+  FROM public.env_builds eb
+  WHERE (eb.created_at, eb.id) < (resume_at, resume_id)
+  ORDER BY eb.created_at DESC, eb.id DESC
+  LIMIT 1;
+
+  IF NOT FOUND THEN
+    last_created_at := '1970-01-01 00:00:00+00';
+    last_id := '00000000-0000-0000-0000-000000000000';
+  END IF;
+
+  RAISE NOTICE 'backfill_env_builds_team_id: resuming from cursor (%, %)', last_created_at, last_id;
+
   LOOP
     SELECT created_at, id INTO current_max_created_at, current_max_id
     FROM (
@@ -72,6 +109,10 @@ BEGIN
     COMMIT;
     RAISE NOTICE 'backfill_env_builds_team_id: updated % rows in batch, total: %, up to created_at: %, id: %',
       rows_updated, total_updated, last_created_at, last_id;
+    IF rows_updated > 0 THEN
+      RAISE NOTICE 'backfill_env_builds_team_id: sleeping 10s before next batch...';
+      PERFORM pg_sleep(10);
+    END IF;
   END LOOP;
   RAISE NOTICE 'backfill_env_builds_team_id: complete, % rows updated', total_updated;
 END;

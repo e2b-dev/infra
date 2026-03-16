@@ -10,12 +10,13 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/template"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
+	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
@@ -25,7 +26,7 @@ func (a *APIStore) PostTemplates(c *gin.Context) {
 	ctx := c.Request.Context()
 	span := trace.SpanFromContext(ctx)
 
-	userID := a.GetUserID(c)
+	userID := auth.MustGetUserID(c)
 
 	body, err := utils.ParseBody[api.TemplateBuildRequest](ctx, c)
 	if err != nil {
@@ -77,7 +78,7 @@ func (a *APIStore) PostTemplatesTemplateID(c *gin.Context, rawTemplateID api.Tem
 	ctx := c.Request.Context()
 	span := trace.SpanFromContext(ctx)
 
-	userID := a.GetUserID(c)
+	userID := auth.MustGetUserID(c)
 
 	body, err := utils.ParseBody[api.TemplateBuildRequest](ctx, c)
 	if err != nil {

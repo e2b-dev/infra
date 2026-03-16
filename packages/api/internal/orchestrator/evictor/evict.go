@@ -2,22 +2,29 @@ package evictor
 
 import (
 	"context"
+	"errors"
 	"time"
 
+	"github.com/google/uuid"
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
+const (
+	pollInterval = 50 * time.Millisecond
+)
+
 type Evictor struct {
 	store         *sandbox.Store
-	removeSandbox func(ctx context.Context, sandbox sandbox.Sandbox, stateAction sandbox.StateAction) error
+	removeSandbox func(ctx context.Context, teamID uuid.UUID, sandboxID string, opts sandbox.RemoveOpts) error
 }
 
 func New(
 	store *sandbox.Store,
-	removeSandbox func(ctx context.Context, sandbox sandbox.Sandbox, stateAction sandbox.StateAction) error,
+	removeSandbox func(ctx context.Context, teamID uuid.UUID, sandboxID string, opts sandbox.RemoveOpts) error,
 ) *Evictor {
 	return &Evictor{
 		store:         store,
@@ -26,12 +33,19 @@ func New(
 }
 
 func (e *Evictor) Start(ctx context.Context) {
+	g := errgroup.Group{}
+	ticker := time.NewTicker(pollInterval)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
+			// Wait for in-flight evictions to finish for graceful shutdown.
+			g.Wait()
+
 			return
-		case <-time.After(50 * time.Millisecond):
-			sbxs, err := e.store.AllItems(ctx, []sandbox.State{sandbox.StateRunning}, sandbox.WithOnlyExpired(true))
+		case <-ticker.C:
+			sbxs, err := e.store.ExpiredItems(ctx)
 			if err != nil {
 				logger.L().Error(ctx, "Failed to get expired sandboxes", zap.Error(err))
 
@@ -39,17 +53,24 @@ func (e *Evictor) Start(ctx context.Context) {
 			}
 
 			for _, item := range sbxs {
-				go func() {
-					stateAction := sandbox.StateActionKill
+				g.Go(func() error {
+					action := sandbox.StateActionKill
 					if item.AutoPause {
-						stateAction = sandbox.StateActionPause
+						action = sandbox.StateActionPause
 					}
 
-					logger.L().Debug(ctx, "Evicting sandbox", logger.WithSandboxID(item.SandboxID), zap.String("state_action", stateAction.Name))
-					if err := e.removeSandbox(ctx, item, stateAction); err != nil {
-						logger.L().Debug(ctx, "Evicting sandbox failed", zap.Error(err), logger.WithSandboxID(item.SandboxID))
+					if err := e.removeSandbox(context.WithoutCancel(ctx), item.TeamID, item.SandboxID, sandbox.RemoveOpts{Action: action, Eviction: true}); err != nil {
+						if !errors.Is(err, sandbox.ErrNotEvictable) && !errors.Is(err, sandbox.ErrNotFound) {
+							logger.L().Debug(ctx, "Evicting sandbox failed", zap.Error(err), logger.WithSandboxID(item.SandboxID))
+						}
+
+						return nil
 					}
-				}()
+
+					logger.L().Debug(ctx, "Sandbox evicted", logger.WithSandboxID(item.SandboxID))
+
+					return nil
+				})
 			}
 		}
 	}

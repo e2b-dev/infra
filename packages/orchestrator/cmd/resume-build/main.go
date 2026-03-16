@@ -24,15 +24,18 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/cmd/internal/cmdutil"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/peerclient"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/tcpfirewall"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process/processconnect"
@@ -59,6 +62,8 @@ func main() {
 	pause := flag.Bool("pause", false, "start and immediately pause (snapshot)")
 	signalPause := flag.String("signal-pause", "", "wait for signal before pause (e.g., SIGTERM, SIGUSR1)")
 	cmdPause := flag.String("cmd-pause", "", "execute command in sandbox, then pause on success")
+	cmdSignalPause := flag.String("cmd-signal-pause", "", "execute command in sandbox, then wait for SIGUSR1 before pausing")
+	optimize := flag.Bool("optimize", false, "collect fresh prefetch mapping after pause (resumes snapshot to record page faults)")
 
 	flag.Parse()
 
@@ -81,8 +86,11 @@ func main() {
 	if *cmdPause != "" {
 		pauseCount++
 	}
+	if *cmdSignalPause != "" {
+		pauseCount++
+	}
 	if pauseCount > 1 {
-		log.Fatal("only one of -pause, -signal-pause, or -cmd-pause can be specified")
+		log.Fatal("only one of -pause, -signal-pause, -cmd-pause, or -cmd-signal-pause can be specified")
 	}
 
 	// -cmd is incompatible with pause flags
@@ -93,14 +101,21 @@ func main() {
 
 	isPauseMode := pauseCount > 0
 
-	// -signal-pause and -cmd-pause are incompatible with iterations (they require interaction)
-	if *iterations > 0 && (*signalPause != "" || *cmdPause != "") {
-		log.Fatal("-signal-pause and -cmd-pause are incompatible with -iterations")
+	// Interactive pause modes are incompatible with iterations.
+	if *iterations > 0 && (*signalPause != "" || *cmdPause != "" || *cmdSignalPause != "") {
+		log.Fatal("-signal-pause, -cmd-pause, and -cmd-signal-pause are incompatible with -iterations")
 	}
 
 	// -to-build only makes sense with pause
 	if *toBuild != "" && !isPauseMode {
-		log.Fatal("-to-build requires a pause flag (-pause, -signal-pause, or -cmd-pause)")
+		log.Fatal("-to-build requires a pause flag (-pause, -signal-pause, -cmd-pause, or -cmd-signal-pause)")
+	}
+
+	if *optimize && !isPauseMode {
+		log.Fatal("-optimize requires a pause flag (-pause, -signal-pause, -cmd-pause, or -cmd-signal-pause)")
+	}
+	if *optimize && *iterations > 0 {
+		log.Fatal("-optimize is incompatible with -iterations (benchmarking doesn't upload)")
 	}
 
 	// Generate new build ID if not specified and pause mode is enabled
@@ -124,10 +139,12 @@ func main() {
 		immediate:       *pause,
 		signalName:      *signalPause,
 		command:         *cmdPause,
+		commandSignal:   *cmdSignalPause,
 		storagePath:     *storagePath,
 		isRemoteStorage: isRemoteStorage,
 		newBuildID:      outputBuildID,
 		iterations:      *iterations,
+		optimize:        *optimize,
 	}
 
 	runOpts := runOptions{
@@ -151,14 +168,16 @@ type pauseOptions struct {
 	immediate       bool
 	signalName      string
 	command         string
+	commandSignal   string
 	storagePath     string
 	isRemoteStorage bool
 	newBuildID      string
 	iterations      int // for benchmarking pause (only with immediate)
+	optimize        bool
 }
 
 func (p pauseOptions) enabled() bool {
-	return p.immediate || p.signalName != "" || p.command != ""
+	return p.immediate || p.signalName != "" || p.command != "" || p.commandSignal != ""
 }
 
 // pauseTimings holds timing breakdown for a pause operation
@@ -239,7 +258,6 @@ func setupEnv(from string) error {
 
 type runner struct {
 	factory    *sandbox.Factory
-	sandboxes  *sandbox.Map
 	tmpl       template.Template
 	sbxConfig  sandbox.Config
 	buildID    string
@@ -284,12 +302,8 @@ func (r *runner) interactive(ctx context.Context) error {
 		return err
 	}
 
-	// Register sandbox in map for TCP firewall to find
-	r.sandboxes.Insert(sbx)
-	defer r.sandboxes.Remove(runtime.SandboxID)
-
 	fmt.Printf("✅ Running (resumed in %s)\n", time.Since(t0))
-	fmt.Printf("   sudo nsenter --net=/var/run/netns/%s ssh -o StrictHostKeyChecking=no root@169.254.0.21\n", sbx.Slot.NamespaceID())
+	fmt.Printf("   sudo nsenter --net=/var/run/netns/%s ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no root@169.254.0.21\n", sbx.Slot.NamespaceID())
 	fmt.Println("Ctrl+C to stop")
 
 	<-ctx.Done()
@@ -327,10 +341,6 @@ func (r *runner) cmdOnce(ctx context.Context, opts runOptions, verbose bool) (cm
 		return cmdTimings{resume: resumeDur, err: err}, err
 	}
 	defer sbx.Close(context.WithoutCancel(ctx))
-
-	// Register sandbox in map for TCP firewall to find
-	r.sandboxes.Insert(sbx)
-	defer r.sandboxes.Remove(runtime.SandboxID)
 
 	if verbose {
 		fmt.Printf("✅ Sandbox resumed in %s\n", resumeDur)
@@ -535,16 +545,13 @@ func (r *runner) pauseOnce(ctx context.Context, opts pauseOptions, verbose bool)
 	}
 	defer sbx.Close(context.WithoutCancel(ctx))
 
-	// Register sandbox in map for TCP firewall to find
-	r.sandboxes.Insert(sbx)
-	defer r.sandboxes.Remove(runtime.SandboxID)
-
 	if verbose {
 		fmt.Printf("✅ Sandbox resumed in %s\n", resumeDur)
 	}
 
 	// Handle pause trigger based on options
-	if opts.command != "" {
+	switch {
+	case opts.command != "":
 		if verbose {
 			fmt.Printf("🔧 Running command: %s\n", opts.command)
 		}
@@ -554,23 +561,17 @@ func (r *runner) pauseOnce(ctx context.Context, opts pauseOptions, verbose bool)
 		if verbose {
 			fmt.Println("✅ Command completed successfully")
 		}
-	} else if opts.signalName != "" {
-		sig := parseSignal(opts.signalName)
-		if sig == nil {
-			err := fmt.Errorf("unknown signal: %s", opts.signalName)
-
+	case opts.commandSignal != "":
+		if verbose {
+			fmt.Printf("🔧 Starting command: %s\n", opts.commandSignal)
+		}
+		cmdErrCh := runCommandInSandboxAsync(ctx, sbx, opts.commandSignal)
+		if err := waitForPauseSignal(ctx, sbx, "SIGUSR1", cmdErrCh); err != nil {
 			return pauseTimings{resume: resumeDur, err: err}, err
 		}
-		fmt.Printf("⏳ Waiting for %s signal...\n", opts.signalName)
-		fmt.Printf("   sudo nsenter --net=/var/run/netns/%s ssh -o StrictHostKeyChecking=no root@169.254.0.21\n", sbx.Slot.NamespaceID())
-
-		sigCh := make(chan os.Signal, 1)
-		signal.Notify(sigCh, sig)
-		select {
-		case <-ctx.Done():
-			return pauseTimings{resume: resumeDur, err: ctx.Err()}, ctx.Err()
-		case <-sigCh:
-			fmt.Printf("📨 Received %s signal\n", opts.signalName)
+	case opts.signalName != "":
+		if err := waitForPauseSignal(ctx, sbx, opts.signalName, nil); err != nil {
+			return pauseTimings{resume: resumeDur, err: err}, err
 		}
 	}
 	// For opts.immediate, we proceed directly to pause
@@ -592,6 +593,12 @@ func (r *runner) pauseOnce(ctx context.Context, opts pauseOptions, verbose bool)
 
 	newMeta := origMeta
 	newMeta.Template.BuildID = opts.newBuildID
+
+	// Strip stale prefetch data — it corresponds to the parent build, not this snapshot.
+	// Fresh prefetch will be collected in the optimize step if -optimize is set.
+	if opts.optimize {
+		newMeta.Prefetch = nil
+	}
 
 	// Pause and create snapshot
 	pauseStart := time.Now()
@@ -638,6 +645,12 @@ func (r *runner) pauseOnce(ctx context.Context, opts pauseOptions, verbose bool)
 
 		fmt.Printf("\n✅ Build finished: %s\n", opts.newBuildID)
 		printArtifactSizes(opts.storagePath, opts.newBuildID)
+
+		if opts.optimize {
+			if err := r.collectAndUploadPrefetch(ctx, opts); err != nil {
+				return timings, fmt.Errorf("prefetch optimization: %w", err)
+			}
+		}
 	}
 
 	return timings, nil
@@ -777,6 +790,122 @@ func printPauseResults(results []pauseTimings) {
 	}
 }
 
+const prefetchCollectionIterations = 2
+
+// collectAndUploadPrefetch resumes the snapshot to collect fresh page fault data,
+// then updates the metadata with the resulting prefetch mapping.
+func (r *runner) collectAndUploadPrefetch(ctx context.Context, opts pauseOptions) error {
+	fmt.Println("\n🔍 Collecting prefetch mapping...")
+
+	r.cache.Invalidate(opts.newBuildID)
+	tmpl, err := r.cache.GetTemplate(ctx, opts.newBuildID, false, false)
+	if err != nil {
+		return fmt.Errorf("load template: %w", err)
+	}
+
+	// Disable any leftover prefetch during collection runs
+	tmpl = &noPrefetchTemplate{tmpl}
+
+	var allPrefetchData []block.PrefetchData
+	for i := range prefetchCollectionIterations {
+		fmt.Printf("   Run %d/%d...", i+1, prefetchCollectionIterations)
+
+		runtime := sandbox.RuntimeMetadata{
+			TemplateID:  opts.newBuildID,
+			TeamID:      "local",
+			SandboxID:   fmt.Sprintf("prefetch-%d-%d", time.Now().UnixNano(), i),
+			ExecutionID: fmt.Sprintf("prefetch-exec-%d-%d", time.Now().UnixNano(), i),
+		}
+
+		t0 := time.Now()
+		sbx, err := r.factory.ResumeSandbox(ctx, tmpl, r.sbxConfig, runtime, t0, t0.Add(5*time.Minute), nil)
+		if err != nil {
+			fmt.Println()
+
+			return fmt.Errorf("resume sandbox (run %d): %w", i+1, err)
+		}
+
+		data, dataErr := sbx.MemoryPrefetchData(ctx)
+		sbx.Close(context.WithoutCancel(ctx))
+		if dataErr != nil {
+			return fmt.Errorf("collect prefetch (run %d): %w", i+1, dataErr)
+		}
+
+		fmt.Printf(" %d blocks (%s)\n", len(data.BlockEntries), fmtDur(time.Since(t0)))
+		allPrefetchData = append(allPrefetchData, data)
+	}
+
+	commonEntries := computeCommonPrefetchEntries(allPrefetchData)
+	if len(commonEntries) == 0 {
+		fmt.Println("⚠️  No common prefetch blocks found")
+
+		return nil
+	}
+
+	mapping := metadata.PrefetchEntriesToMapping(commonEntries, allPrefetchData[0].BlockSize)
+	fmt.Printf("   Common: %d blocks\n", mapping.Count())
+
+	existingMeta, err := metadata.FromBuildID(ctx, r.storage, opts.newBuildID)
+	if err != nil {
+		return fmt.Errorf("load metadata: %w", err)
+	}
+
+	updatedMeta := existingMeta.WithPrefetch(&metadata.Prefetch{
+		Memory: mapping,
+	})
+
+	if err := metadata.UploadMetadata(ctx, r.storage, updatedMeta); err != nil {
+		return fmt.Errorf("upload metadata: %w", err)
+	}
+
+	r.cache.Invalidate(opts.newBuildID)
+
+	fmt.Printf("✅ Prefetch mapping saved: %d blocks\n", mapping.Count())
+
+	return nil
+}
+
+// computeCommonPrefetchEntries computes the intersection of multiple prefetch data sets.
+// Only pages present in ALL runs are included, with averaged ordering.
+func computeCommonPrefetchEntries(allData []block.PrefetchData) []block.PrefetchBlockEntry {
+	if len(allData) == 0 {
+		return nil
+	}
+
+	var commonEntries []block.PrefetchBlockEntry
+
+	for idx, entry1 := range allData[0].BlockEntries {
+		totalOrder := entry1.Order
+		accessType := entry1.AccessType
+		allMatch := true
+
+		for i := 1; i < len(allData); i++ {
+			entry, exists := allData[i].BlockEntries[idx]
+			if !exists {
+				allMatch = false
+
+				break
+			}
+			totalOrder += entry.Order
+			if entry.AccessType != accessType {
+				accessType = block.Read
+			}
+		}
+
+		if !allMatch {
+			continue
+		}
+
+		commonEntries = append(commonEntries, block.PrefetchBlockEntry{
+			Index:      idx,
+			Order:      totalOrder / uint64(len(allData)),
+			AccessType: accessType,
+		})
+	}
+
+	return commonEntries
+}
+
 func (r *runner) benchmark(ctx context.Context, n int) error {
 	results := make([]benchResult, 0, n)
 	var lastErr error
@@ -831,6 +960,10 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	}
 	sbxlogger.SetSandboxLoggerInternal(logger.NewNopLogger())
 
+	if os.Getenv("NODE_IP") == "" {
+		os.Setenv("NODE_IP", "127.0.0.1")
+	}
+
 	if verbose {
 		fmt.Println("🔧 Parsing config...")
 	}
@@ -876,7 +1009,7 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	if verbose {
 		fmt.Println("🔧 Creating storage provider...")
 	}
-	persistence, err := storage.GetTemplateStorageProvider(ctx, nil)
+	persistence, err := storage.GetStorageProvider(ctx, storage.TemplateStorageConfig)
 	if verbose {
 		fmt.Println("🔧 Storage provider created, err:", err)
 	}
@@ -895,7 +1028,7 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	if verbose {
 		fmt.Println("🔧 Creating template cache...")
 	}
-	cache, err := template.NewCache(config, flags, persistence, blockMetrics)
+	cache, err := template.NewCache(config, flags, persistence, blockMetrics, peerclient.NopResolver())
 	if err != nil {
 		return fmt.Errorf("template cache: %w", err)
 	}
@@ -906,7 +1039,7 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 		fmt.Println("🔧 Creating sandbox factory...")
 	}
 	sandboxes := sandbox.NewSandboxesMap()
-	factory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, flags, nil, nil)
+	factory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, flags, nil, nil, sandboxes)
 
 	if verbose {
 		fmt.Println("🔧 Starting TCP firewall...")
@@ -937,7 +1070,6 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	token := "local"
 	r := &runner{
 		factory:    factory,
-		sandboxes:  sandboxes,
 		tmpl:       tmpl,
 		buildID:    buildID,
 		cache:      cache,
@@ -1063,10 +1195,57 @@ func runCommandInSandbox(ctx context.Context, sbx *sandbox.Sandbox, command stri
 	return nil
 }
 
+func runCommandInSandboxAsync(ctx context.Context, sbx *sandbox.Sandbox, command string) <-chan error {
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- runCommandInSandbox(ctx, sbx, command)
+		close(errCh)
+	}()
+
+	return errCh
+}
+
+func waitForPauseSignal(ctx context.Context, sbx *sandbox.Sandbox, signalName string, cmdErrCh <-chan error) error {
+	sig := parseSignal(signalName)
+	if sig == nil {
+		return fmt.Errorf("unknown signal: %s", signalName)
+	}
+
+	fmt.Printf("⏳ Waiting for %s signal...\n", signalName)
+	fmt.Printf("   sudo nsenter --net=/var/run/netns/%s ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no root@169.254.0.21\n", sbx.Slot.NamespaceID())
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, sig)
+	defer signal.Stop(sigCh)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-sigCh:
+			fmt.Printf("📨 Received %s signal\n", signalName)
+
+			return nil
+		case err, ok := <-cmdErrCh:
+			if !ok {
+				cmdErrCh = nil
+
+				continue
+			}
+			if err != nil {
+				fmt.Printf("⚠️  Command exited before pause signal: %v\n", err)
+			} else {
+				fmt.Println("ℹ️  Command completed before pause signal")
+			}
+			cmdErrCh = nil
+		}
+	}
+}
+
 // syncAndDropCaches syncs filesystem and drops caches before snapshot
 func syncAndDropCaches(ctx context.Context, sbx *sandbox.Sandbox) error {
 	// Run sync command
-	if err := runCommandInSandbox(ctx, sbx, "/usr/bin/busybox sync"); err != nil {
+	if err := runCommandInSandbox(ctx, sbx, rootfs.SandboxBusyBoxPath+" sync"); err != nil {
 		return fmt.Errorf("sync failed: %w", err)
 	}
 

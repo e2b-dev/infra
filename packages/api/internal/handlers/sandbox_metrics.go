@@ -7,11 +7,10 @@ import (
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/auth"
-	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -20,9 +19,15 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(c *gin.Context, sandboxID string
 	ctx := c.Request.Context()
 	ctx, span := tracer.Start(ctx, "sandbox-metrics")
 	defer span.End()
-	sandboxID = utils.ShortID(sandboxID)
+	var err error
+	sandboxID, err = utils.ShortID(sandboxID)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid sandbox ID")
 
-	team := c.Value(auth.TeamContextKey).(*types.Team)
+		return
+	}
+
+	team := auth.MustGetTeamInfo(c)
 
 	// Build the context for feature flags
 	ctx = featureflags.AddToContext(

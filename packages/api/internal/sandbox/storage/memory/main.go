@@ -12,6 +12,8 @@ type Storage struct {
 	items cmap.ConcurrentMap[string, *memorySandbox]
 }
 
+func (s *Storage) Name() string { return sandbox.StorageNameMemory }
+
 func NewStorage() *Storage {
 	instanceCache := &Storage{
 		items: cmap.New[*memorySandbox](),

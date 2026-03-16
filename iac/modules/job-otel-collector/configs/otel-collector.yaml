@@ -41,23 +41,27 @@ receivers:
           system.cpu.utilization: # percentage utilized in the moment
             enabled: true
 
-      # entirely disabled, so we omit the module
-      #disk:
-      #  metrics:
-      #    system.disk.io:
-      #      enabled: false
-      #    system.disk.io_time:
-      #      enabled: false
-      #    system.disk.merged:
-      #      enabled: false
-      #    system.disk.operation_time:
-      #      enabled: false
-      #    system.disk.operations:
-      #      enabled: false
-      #    system.disk.pending_operations:
-      #      enabled: false
-      #    system.disk.weighted_io_time:
-      #      enabled: false
+      disk:
+        include:
+          devices:
+            - "^sd[a-z]$"
+            - "^nvme[0-9]+n[0-9]+$"
+          match_type: regexp
+        metrics:
+          system.disk.io:
+            enabled: true
+          system.disk.io_time:
+            enabled: true
+          system.disk.merged:
+            enabled: false
+          system.disk.operation_time:
+            enabled: false
+          system.disk.operations:
+            enabled: true
+          system.disk.pending_operations:
+            enabled: true
+          system.disk.weighted_io_time:
+            enabled: false
 
       load:
         metrics:
@@ -98,17 +102,19 @@ receivers:
           system.memory.utilization:
             enabled: true
 
-          # Huge pages metrics added as part of temporal patch
-          # https://github.com/e2b-dev/opentelemetry-collector-contrib/pull/1
-          system.linux.memory.huge_pages.free:
+          # Huge pages metrics (upstream support added in v0.146.0)
+          # https://github.com/open-telemetry/opentelemetry-collector-contrib/pull/44125
+          system.memory.linux.hugepages.usage:
             enabled: true
-          system.linux.memory.huge_pages.page_size:
+          system.memory.linux.hugepages.utilization:
             enabled: true
-          system.linux.memory.huge_pages.reserved:
+          system.memory.linux.hugepages.limit:
             enabled: true
-          system.linux.memory.huge_pages.surplus:
+          system.memory.linux.hugepages.page_size:
             enabled: true
-          system.linux.memory.huge_pages.total:
+          system.memory.linux.hugepages.reserved:
+            enabled: true
+          system.memory.linux.hugepages.surplus:
             enabled: true
 
       # Scraping traffic going in/out of network interfaces
@@ -212,6 +218,7 @@ processors:
           - "template.*"
           - "api.*"
           - "db.sql.connection.*"
+          - "db.client.*"
           - "vault.*"
           - "client_proxy.*"
           - "Click*"
@@ -221,6 +228,8 @@ processors:
           - "otelcol.exporter.sent.*"
           - "otelcol.receiver.refused.*"
           - "pgxpool.*"
+          - "go\\..*"
+          - "traefik.*"
 
   filter/only_client_allocs:
     metrics:
@@ -282,6 +291,25 @@ processors:
             new_value: blocked
             aggregation_type: sum
 
+  transform/aggregate_nvme:
+    metric_statements:
+      - context: datapoint
+        statements:
+          - replace_pattern(attributes["device"], "^nvme.*$$", "nvme")
+
+  metricstransform/aggregate_disks:
+    transforms:
+      - include: "system.disk.*"
+        match_type: regexp
+        action: update
+        operations:
+          - action: aggregate_labels
+            label_set:
+              - service.instance.id
+              - device
+              - direction
+              - deployment.environment
+            aggregation_type: sum
 
   resourcedetection:
     # https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/processor/resourcedetectionprocessor
@@ -307,7 +335,7 @@ processors:
         host.name:
           enabled: true
         gcp.gce.instance.name:
-          enabled: true
+          enabled: false
         gcp.gce.instance_group_manager.region:
           enabled: false
         gcp.gce.instance_group_manager.zone:
@@ -320,8 +348,16 @@ processors:
     override: true
     ec2:
       resource_attributes:
+        cloud.provider:
+          enabled: false
+        cloud.platform:
+          enabled: false
         cloud.account.id:
           enabled: true
+        cloud.region:
+          enabled: false
+        cloud.availability_zone:
+          enabled: false
         host.name:
           enabled: true
         host.id:
@@ -333,12 +369,7 @@ processors:
   transform/set-name:
     metric_statements:
       # We have to set the service instance here as it's necessary to set it as a datapoint attribute
-%{ if provider_name == "gcp" }
-      - set(datapoint.attributes["service.instance.id"], resource.attributes["gcp.gce.instance.name"])
-%{ endif }
-%{ if provider_name == "aws" }
       - set(datapoint.attributes["service.instance.id"], resource.attributes["host.name"])
-%{ endif }
       - set(datapoint.attributes["deployment.environment"], resource.attributes["cloud.account.id"])
       - delete_key(datapoint.attributes, "datacenter")
       - delete_key(datapoint.attributes, "instance")
@@ -397,7 +428,7 @@ exporters:
   debug:
     verbosity: detailed
     use_internal_logger: false
-  otlphttp/grafana_cloud:
+  otlp_http/grafana_cloud:
     # https://github.com/open-telemetry/opentelemetry-collector/tree/main/exporter/otlpexporter
     endpoint: "${grafana_otlp_url}/otlp"
     auth:
@@ -439,7 +470,7 @@ service:
         - transform/set-name
         - batch
       exporters:
-        - otlphttp/grafana_cloud
+        - otlp_http/grafana_cloud
     metrics/prometheus:
       receivers:
         - prometheus
@@ -449,7 +480,7 @@ service:
         - transform/set-name
         - batch
       exporters:
-        - otlphttp/grafana_cloud
+        - otlp_http/grafana_cloud
     metrics/rpc_only:
       receivers:
         - otlp
@@ -460,7 +491,7 @@ service:
         - transform/set-name
         - batch
       exporters:
-        - otlphttp/grafana_cloud
+        - otlp_http/grafana_cloud
     metrics/host:
       receivers:
         - hostmetrics
@@ -468,9 +499,11 @@ service:
         - resourcedetection
         - transform/set-name
         - metricstransform/single_cpu
+        - transform/aggregate_nvme
+        - metricstransform/aggregate_disks
         - batch
       exporters:
-        - otlphttp/grafana_cloud
+        - otlp_http/grafana_cloud
     metrics/external:
       receivers:
         - otlp
@@ -487,7 +520,7 @@ service:
         - resource/set_attributes
         - batch
       exporters:
-        - otlphttp/grafana_cloud
+        - otlp_http/grafana_cloud
     logs:
       receivers:
         - otlp
@@ -496,4 +529,4 @@ service:
         - resource/set_attributes
         - batch
       exporters:
-        - otlphttp/grafana_cloud
+        - otlp_http/grafana_cloud

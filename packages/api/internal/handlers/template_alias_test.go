@@ -11,9 +11,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	apispec "github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
-	"github.com/e2b-dev/infra/packages/api/internal/db/types"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
+	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
@@ -39,15 +39,12 @@ func TestQueryNotExistingTemplateAlias(t *testing.T) {
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/templates/aliases/%s", alias), nil)
-	c.Set(
-		auth.TeamContextKey,
-		&types.Team{
-			Team: &authqueries.Team{
-				ID:   teamID,
-				Slug: teamSlug,
-			},
+	auth.SetTeamInfo(c, &types.Team{
+		Team: &authqueries.Team{
+			ID:   teamID,
+			Slug: teamSlug,
 		},
-	)
+	})
 
 	store.GetTemplatesAliasesAlias(c, alias)
 
@@ -79,15 +76,12 @@ func TestQueryExistingTemplateAlias(t *testing.T) {
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/templates/aliases/%s", alias), nil)
-	c.Set(
-		auth.TeamContextKey,
-		&types.Team{
-			Team: &authqueries.Team{
-				ID:   teamID,
-				Slug: teamSlug,
-			},
+	auth.SetTeamInfo(c, &types.Team{
+		Team: &authqueries.Team{
+			ID:   teamID,
+			Slug: teamSlug,
 		},
-	)
+	})
 
 	store.GetTemplatesAliasesAlias(c, alias)
 
@@ -127,8 +121,7 @@ func TestQueryExistingTemplateAliasAsNotOwnerTeam(t *testing.T) {
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/templates/aliases/%s", alias), nil)
-	c.Set(
-		auth.TeamContextKey,
+	auth.SetTeamInfo(c,
 		&types.Team{
 			Team: &authqueries.Team{
 				ID:   foreignTeamID,

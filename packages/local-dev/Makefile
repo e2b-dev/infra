@@ -9,3 +9,7 @@ local-infra: clickhouse-config-generated.xml
 .PHONY: seed-database
 seed-database:
 	go run seed-local-database.go
+
+.PHONY: stop-infra
+stop-infra:
+	docker compose --file ./docker-compose.yaml down

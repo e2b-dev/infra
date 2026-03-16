@@ -23,6 +23,18 @@ const (
 	File EntryInfoType = "file"
 )
 
+// ComposeRequest defines model for ComposeRequest.
+type ComposeRequest struct {
+	// Destination Destination file path for the composed file
+	Destination string `json:"destination"`
+
+	// SourcePaths Ordered list of source file paths to concatenate
+	SourcePaths []string `json:"source_paths"`
+
+	// Username User for setting ownership and resolving relative paths
+	Username *string `json:"username,omitempty"`
+}
+
 // EntryInfo defines model for EntryInfo.
 type EntryInfo struct {
 	// Name Name of the file
@@ -182,6 +194,9 @@ type PostInitJSONBody struct {
 // PostFilesMultipartRequestBody defines body for PostFiles for multipart/form-data ContentType.
 type PostFilesMultipartRequestBody PostFilesMultipartBody
 
+// PostFilesComposeJSONRequestBody defines body for PostFilesCompose for application/json ContentType.
+type PostFilesComposeJSONRequestBody = ComposeRequest
+
 // PostInitJSONRequestBody defines body for PostInit for application/json ContentType.
 type PostInitJSONRequestBody PostInitJSONBody
 
@@ -196,6 +211,9 @@ type ServerInterface interface {
 	// Upload a file and ensure the parent directories exist. If the file exists, it will be overwritten.
 	// (POST /files)
 	PostFiles(w http.ResponseWriter, r *http.Request, params PostFilesParams)
+	// Compose multiple files into a single file using zero-copy concatenation. Source files are deleted after successful composition.
+	// (POST /files/compose)
+	PostFilesCompose(w http.ResponseWriter, r *http.Request)
 	// Check the health of the service
 	// (GET /health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
@@ -226,6 +244,12 @@ func (_ Unimplemented) GetFiles(w http.ResponseWriter, r *http.Request, params G
 // Upload a file and ensure the parent directories exist. If the file exists, it will be overwritten.
 // (POST /files)
 func (_ Unimplemented) PostFiles(w http.ResponseWriter, r *http.Request, params PostFilesParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Compose multiple files into a single file using zero-copy concatenation. Source files are deleted after successful composition.
+// (POST /files/compose)
+func (_ Unimplemented) PostFilesCompose(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -381,6 +405,26 @@ func (siw *ServerInterfaceWrapper) PostFiles(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostFiles(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostFilesCompose operation middleware
+func (siw *ServerInterfaceWrapper) PostFilesCompose(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, AccessTokenAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostFilesCompose(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -565,6 +609,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/files", wrapper.PostFiles)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/files/compose", wrapper.PostFilesCompose)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/health", wrapper.GetHealth)

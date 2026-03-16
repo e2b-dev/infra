@@ -9,6 +9,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -46,6 +47,23 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		telemetry.WithTemplateID(templateID),
 	)
 
+	// Check if there are running sandboxes that use this template as their base
+	sandboxes, err := a.orchestrator.GetSandboxes(ctx, team.ID, []sandbox.State{sandbox.StateRunning, sandbox.StatePausing, sandbox.StateSnapshotting})
+	if err != nil {
+		telemetry.ReportError(ctx, "error when checking for running sandboxes", err)
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when checking for running sandboxes")
+
+		return
+	}
+
+	for _, sbx := range sandboxes {
+		if sbx.BaseTemplateID == templateID {
+			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("cannot delete template '%s' because there are running sandboxes using it", templateID))
+
+			return
+		}
+	}
+
 	// check if base template has snapshots
 	hasSnapshots, err := a.sqlcDB.ExistsTemplateSnapshots(ctx, templateID)
 	if err != nil {
@@ -63,10 +81,11 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 	}
 
 	// Delete the template from DB (cascades to env_build_assignments, env_aliases, snapshot_templates).
+	// Returns alias cache keys captured before cascade deletion for cache invalidation.
 	// Build artifacts are intentionally NOT deleted from storage here because builds are layered diffs
 	// that may be referenced by other builds' header mappings.
 	// [ENG-3477] a future GC mechanism will handle orphaned storage.
-	err = a.sqlcDB.DeleteTemplate(ctx, queries.DeleteTemplateParams{
+	aliasKeys, err := a.sqlcDB.DeleteTemplate(ctx, queries.DeleteTemplateParams{
 		TemplateID: templateID,
 		TeamID:     team.ID,
 	})
@@ -78,6 +97,7 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 	}
 
 	a.templateCache.InvalidateAllTags(context.WithoutCancel(ctx), templateID)
+	a.templateCache.InvalidateAliasesByTemplateID(context.WithoutCancel(ctx), templateID, aliasKeys)
 
 	telemetry.ReportEvent(ctx, "deleted template from db")
 

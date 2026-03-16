@@ -16,6 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -28,6 +29,7 @@ func constructLayerFilesFromOCI(
 	baseBuildID string,
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
 	dockerhubRepository dockerhub.RemoteRepository,
+	featureFlags *featureflags.Client,
 	rootfsPath string,
 ) (r *block.Local, m block.ReadonlyDevice, c containerregistry.Config, e error) {
 	ctx, span := tracer.Start(ctx, "template-build")
@@ -38,9 +40,10 @@ func constructLayerFilesFromOCI(
 		artifactRegistry,
 		dockerhubRepository,
 		buildContext,
+		featureFlags,
 	)
 	provisionScript, err := getProvisionScript(ctx, ProvisionScriptParams{
-		BusyBox:    "/" + rootfs.BusyBoxPath,
+		BusyBox:    rootfs.SandboxBusyBoxPath,
 		ResultPath: provisionScriptResultPath,
 	})
 	if err != nil {

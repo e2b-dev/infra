@@ -11,8 +11,8 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
-	"github.com/e2b-dev/infra/packages/api/internal/db/types"
 	"github.com/e2b-dev/infra/packages/api/internal/team"
+	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
@@ -60,9 +60,19 @@ func RegisterBuild(
 	ctx, span := tracer.Start(ctx, "register build")
 	defer span.End()
 
+	// Add default tag if no tags are present
+	tags := data.Tags
+	if len(tags) == 0 {
+		tags = []string{id.DefaultTag}
+	}
+
 	// This is a simple implementation of concurrency limit
 	// It does not guarantee that the limit is not exceeded, but it should be good enough for now (considering overall low number of total builds)
-	templateIDs, err := db.GetInProgressTemplateBuildsByTeam(ctx, data.Team.ID)
+	otherBuildCount, err := db.GetInProgressTemplateBuildsByTeam(ctx, queries.GetInProgressTemplateBuildsByTeamParams{
+		TeamID:            data.Team.ID,
+		ExcludeTemplateID: data.TemplateID,
+		ExcludeTags:       tags,
+	})
 	if err != nil {
 		return nil, &api.APIError{
 			Err:       err,
@@ -71,13 +81,8 @@ func RegisterBuild(
 		}
 	}
 
-	// Exclude the current build if it's a rebuild (it will be canceled)
-	teamBuildsExcludingCurrent := gutils.Filter(templateIDs, func(templateID string) bool {
-		return templateID != data.TemplateID
-	})
-
 	totalConcurrentTemplateBuilds := data.Team.Limits.BuildConcurrency
-	if len(teamBuildsExcludingCurrent) >= int(totalConcurrentTemplateBuilds) {
+	if otherBuildCount >= totalConcurrentTemplateBuilds {
 		telemetry.ReportError(ctx, "team has reached max concurrent template builds", nil, telemetry.WithTeamID(data.Team.ID.String()), attribute.Int64("total.concurrent_template_builds", totalConcurrentTemplateBuilds))
 
 		return nil, &api.APIError{
@@ -99,12 +104,6 @@ func RegisterBuild(
 			ClientMsg: "Failed to generate build id",
 			Code:      http.StatusInternalServerError,
 		}
-	}
-
-	// Add default tag if no tags are present
-	tags := data.Tags
-	if len(tags) == 0 {
-		tags = []string{id.DefaultTag}
 	}
 
 	telemetry.SetAttributes(ctx,
@@ -182,7 +181,7 @@ func RegisterBuild(
 	}
 	telemetry.ReportEvent(ctx, "created or update template")
 
-	// Mark the previous not started builds as failed for all tags
+	// Mark the previous not started builds as failed and remove their active-build rows
 	err = client.InvalidateUnstartedTemplateBuilds(ctx, queries.InvalidateUnstartedTemplateBuildsParams{
 		Reason: dbtypes.BuildReason{
 			Message: "The build was canceled because it was superseded by a newer one.",
@@ -274,7 +273,7 @@ func RegisterBuild(
 				}
 			}
 
-			aliases, err := client.DeleteOtherTemplateAliases(ctx, data.TemplateID)
+			aliasKeys, err := client.DeleteOtherTemplateAliases(ctx, data.TemplateID)
 			if err != nil {
 				telemetry.ReportCriticalError(ctx, "error when deleting template alias", err, attribute.String("alias", alias))
 
@@ -285,9 +284,9 @@ func RegisterBuild(
 				}
 			}
 
-			count := len(aliases)
-			if count > 0 {
-				telemetry.ReportEvent(ctx, "deleted old aliases", attribute.Int("env.alias.count", count))
+			templateCache.InvalidateAliasesByTemplateID(context.WithoutCancel(ctx), data.TemplateID, aliasKeys)
+			for _, key := range aliasKeys {
+				telemetry.ReportEvent(ctx, "deleted old alias", attribute.String("env.alias", key))
 			}
 
 			err = client.
@@ -338,6 +337,22 @@ func RegisterBuild(
 				ClientMsg: fmt.Sprintf("Error when adding tag '%s' to build: %s", tag, err),
 				Code:      http.StatusInternalServerError,
 			}
+		}
+	}
+
+	err = client.CreateActiveTemplateBuild(ctx, queries.CreateActiveTemplateBuildParams{
+		BuildID:    buildID,
+		TeamID:     data.Team.ID,
+		TemplateID: data.TemplateID,
+		Tags:       tags,
+	})
+	if err != nil {
+		telemetry.ReportCriticalError(ctx, "error when inserting active build", err)
+
+		return nil, &api.APIError{
+			Err:       err,
+			ClientMsg: fmt.Sprintf("Error when updating active builds: %s", err),
+			Code:      http.StatusInternalServerError,
 		}
 	}
 

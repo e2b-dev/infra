@@ -12,7 +12,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -128,6 +128,17 @@ func (s *DiffStore) Add(d Diff) {
 
 func (s *DiffStore) Has(d Diff) bool {
 	return s.cache.Has(d.CacheKey())
+}
+
+// Lookup returns the cached Diff for the given key without initialising a new one.
+// Returns (nil, false) if the key is not present in the cache.
+func (s *DiffStore) Lookup(key DiffStoreKey) (Diff, bool) {
+	item := s.cache.Get(key)
+	if item == nil {
+		return nil, false
+	}
+
+	return item.Value(), true
 }
 
 func (s *DiffStore) startDiskSpaceEviction(

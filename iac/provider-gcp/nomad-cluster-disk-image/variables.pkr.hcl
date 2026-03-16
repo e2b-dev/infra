@@ -10,6 +10,11 @@ variable "network_name" {
   type = string
 }
 
+variable "prefix" {
+  type    = string
+  default = "e2b-"
+}
+
 variable "consul_version" {
   type    = string
   default = "1.16.2"

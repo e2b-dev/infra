@@ -13,6 +13,37 @@ import (
 	"github.com/google/uuid"
 )
 
+const failTemplateBuildAndDeactivate = `-- name: FailTemplateBuildAndDeactivate :exec
+WITH deactivated AS (
+    DELETE FROM public.active_template_builds WHERE build_id = $5
+)
+UPDATE "public"."env_builds"
+SET status = $1,
+    finished_at = $2,
+    reason = $3,
+    version = $4
+WHERE id = $5
+`
+
+type FailTemplateBuildAndDeactivateParams struct {
+	Status     types.BuildStatus
+	FinishedAt *time.Time
+	Reason     types.BuildReason
+	Version    *string
+	BuildID    uuid.UUID
+}
+
+func (q *Queries) FailTemplateBuildAndDeactivate(ctx context.Context, arg FailTemplateBuildAndDeactivateParams) error {
+	_, err := q.db.Exec(ctx, failTemplateBuildAndDeactivate,
+		arg.Status,
+		arg.FinishedAt,
+		arg.Reason,
+		arg.Version,
+		arg.BuildID,
+	)
+	return err
+}
+
 const updateEnvBuildStatus = `-- name: UpdateEnvBuildStatus :exec
 UPDATE "public"."env_builds"
 SET status = $1,

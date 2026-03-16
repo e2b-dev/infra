@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"log"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/soheilhy/cmux"
+	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
@@ -30,6 +32,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/factories"
 	e2bhealthcheck "github.com/e2b-dev/infra/packages/orchestrator/internal/healthcheck"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/hyperloopserver"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/localupload"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/portmap"
@@ -40,6 +43,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/peerclient"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/server"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service/machineinfo"
@@ -50,7 +54,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	event "github.com/e2b-dev/infra/packages/shared/pkg/events"
 	sharedFactories "github.com/e2b-dev/infra/packages/shared/pkg/factories"
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
@@ -183,7 +187,15 @@ func run(config cfg.Config) (success bool) {
 	}(&g)
 
 	// Setup telemetry
-	tel, err := telemetry.New(ctx, nodeID, serviceName, commitSHA, version, serviceInstanceID)
+	tel, err := telemetry.New(
+		ctx,
+		nodeID,
+		serviceName,
+		commitSHA,
+		version,
+		serviceInstanceID,
+		attribute.Key("host.labels").StringSlice(config.NodeLabels),
+	)
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to init telemetry", zap.Error(err))
 	}
@@ -195,7 +207,11 @@ func run(config cfg.Config) (success bool) {
 		}
 	}()
 
-	globalLogger := utils.Must(logger.NewLogger(ctx, logger.LoggerConfig{
+	if err := tel.StartRuntimeInstrumentation(); err != nil {
+		log.Printf("failed to start runtime instrumentation: %v", err)
+	}
+
+	globalLogger := utils.Must(logger.NewLogger(logger.LoggerConfig{
 		ServiceName:   serviceName,
 		IsInternal:    true,
 		IsDebug:       env.IsDebug(),
@@ -247,7 +263,12 @@ func run(config cfg.Config) (success bool) {
 	}(sbxLoggerInternal)
 	sbxlogger.SetSandboxLoggerInternal(sbxLoggerInternal)
 
-	globalLogger.Info(ctx, "Starting orchestrator", zap.String("version", version), zap.String("commit", commitSHA), logger.WithServiceInstanceID(serviceInstanceID))
+	globalLogger.Info(ctx, "Starting orchestrator",
+		zap.String("version", version),
+		zap.String("commit", commitSHA),
+		zap.Strings("labels", config.NodeLabels),
+		logger.WithServiceInstanceID(serviceInstanceID),
+	)
 
 	startService := func(name string, f func() error) {
 		g.Go(func() error {
@@ -283,9 +304,7 @@ func run(config cfg.Config) (success bool) {
 	}
 	closers = append(closers, closer{"feature flags", featureFlags.Close})
 
-	if config.DomainName != "" {
-		featureFlags.SetDeploymentName(config.DomainName)
-	}
+	featureFlags.SetDeploymentName(config.DomainName)
 
 	// gcp concurrent upload limiter
 	limiter, err := limit.New(ctx, featureFlags)
@@ -294,7 +313,7 @@ func run(config cfg.Config) (success bool) {
 	}
 	closers = append(closers, closer{"limiter", limiter.Close})
 
-	persistence, err := storage.GetTemplateStorageProvider(ctx, limiter)
+	persistence, err := storage.GetStorageProvider(ctx, storage.TemplateStorageConfig.WithLimiter(limiter))
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create template storage provider", zap.Error(err))
 	}
@@ -304,7 +323,29 @@ func run(config cfg.Config) (success bool) {
 		logger.L().Fatal(ctx, "failed to create metrics provider", zap.Error(err))
 	}
 
-	templateCache, err := template.NewCache(config, featureFlags, persistence, blockMetrics)
+	// redis (initialized before template cache so the peer registry can be passed to NewCache)
+	redisClient, err := sharedFactories.NewRedisClient(ctx, sharedFactories.RedisConfig{
+		RedisURL:         config.RedisURL,
+		RedisClusterURL:  config.RedisClusterURL,
+		RedisTLSCABase64: config.RedisTLSCABase64,
+		PoolSize:         config.RedisPoolSize,
+	})
+	if err != nil && !errors.Is(err, sharedFactories.ErrRedisDisabled) {
+		logger.L().Fatal(ctx, "Could not connect to Redis", zap.Error(err))
+	} else if err == nil {
+		closers = append(closers, closer{"redis client", func(context.Context) error {
+			return sharedFactories.CloseCleanly(redisClient)
+		}})
+	}
+
+	peerRegistry := peerclient.NopRegistry()
+	peerResolver := peerclient.NopResolver()
+	if nodeAddress := config.NodeAddress(); redisClient != nil && nodeAddress != nil {
+		peerRegistry = peerclient.NewRedisRegistry(redisClient, *nodeAddress)
+		peerResolver = peerclient.NewResolver(peerRegistry, *nodeAddress)
+	}
+
+	templateCache, err := template.NewCache(config, featureFlags, persistence, blockMetrics, peerResolver)
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create template cache", zap.Error(err))
 	}
@@ -357,20 +398,6 @@ func run(config cfg.Config) (success bool) {
 	}
 
 	logger.L().Info(ctx, "cgroup accounting enabled", zap.String("root", cgroup.RootCgroupPath))
-
-	// redis
-	redisClient, err := sharedFactories.NewRedisClient(ctx, sharedFactories.RedisConfig{
-		RedisURL:         config.RedisURL,
-		RedisClusterURL:  config.RedisClusterURL,
-		RedisTLSCABase64: config.RedisTLSCABase64,
-	})
-	if err != nil && !errors.Is(err, sharedFactories.ErrRedisDisabled) {
-		logger.L().Fatal(ctx, "Could not connect to Redis", zap.Error(err))
-	} else if err == nil {
-		closers = append(closers, closer{"redis client", func(context.Context) error {
-			return sharedFactories.CloseCleanly(redisClient)
-		}})
-	}
 
 	// Redis sandbox events delivery target
 	if redisClient != nil {
@@ -440,11 +467,11 @@ func run(config cfg.Config) (success bool) {
 	closers = append(closers, closer{"network pool", networkPool.Close})
 
 	// sandbox factory
-	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags, hostStatsDelivery, cgroupManager)
+	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags, hostStatsDelivery, cgroupManager, sandboxes)
 
 	volumeService := volumes.New(config)
 
-	orchestratorService := server.New(ctx, server.ServiceConfig{
+	orchestratorService, err := server.New(server.ServiceConfig{
 		Config:           config,
 		SandboxFactory:   sandboxFactory,
 		Tel:              tel,
@@ -453,11 +480,14 @@ func run(config cfg.Config) (success bool) {
 		TemplateCache:    templateCache,
 		Info:             serviceInfo,
 		Proxy:            sandboxProxy,
-		Sandboxes:        sandboxes,
 		Persistence:      persistence,
 		FeatureFlags:     featureFlags,
 		SbxEventsService: events.NewEventsService(sbxEventsDeliveryTargets),
+		PeerRegistry:     peerRegistry,
 	})
+	if err != nil {
+		logger.L().Fatal(ctx, "failed to create orchestrator server", zap.Error(err))
+	}
 
 	// template manager sandbox logger
 	tmplSbxLoggerExternal := sbxlogger.NewLogger(
@@ -507,10 +537,19 @@ func run(config cfg.Config) (success bool) {
 	grpcServer := e2bgrpc.NewGRPCServer(tel)
 	orchestrator.RegisterSandboxServiceServer(grpcServer, orchestratorService)
 	orchestrator.RegisterVolumeServiceServer(grpcServer, volumeService)
+	orchestrator.RegisterChunkServiceServer(grpcServer, orchestratorService)
 
 	// template manager
 	var tmpl *tmplserver.ServerStore
+	var localUploadHandler *localupload.Handler
 	if slices.Contains(services, cfg.TemplateManager) {
+		buildPersistence, uploadHandler, err := setupBuildStorage(ctx, limiter, config)
+		if err != nil {
+			logger.L().Fatal(ctx, "failed to setup build storage", zap.Error(err))
+		}
+
+		localUploadHandler = uploadHandler
+
 		tmpl, err = tmplserver.New(
 			ctx,
 			config,
@@ -520,10 +559,9 @@ func run(config cfg.Config) (success bool) {
 			tmplSbxLoggerExternal,
 			sandboxFactory,
 			sandboxProxy,
-			sandboxes,
 			templateCache,
 			persistence,
-			limiter,
+			buildPersistence,
 		)
 		if err != nil {
 			logger.L().Fatal(ctx, "failed to create template manager", zap.Error(err))
@@ -567,14 +605,32 @@ func run(config cfg.Config) (success bool) {
 		return nil
 	}})
 
+	pprofServer := telemetry.NewPprofServer()
+	// We handle the pprof in a separate goroutine to prevent any interaction with the main server.
+	go func() {
+		logger.L().Info(ctx, "pprof server starting", zap.Int("port", telemetry.DefaultPprofPort))
+
+		if err := pprofServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.L().Error(ctx, "pprof server encountered error", zap.Error(err))
+		}
+	}()
+	closers = append(closers, closer{"pprof server", pprofServer.Shutdown})
+
 	// http server
 	healthcheck, err := e2bhealthcheck.NewHealthcheck(serviceInfo)
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create healthcheck", zap.Error(err))
 	}
 
+	httpMux := http.NewServeMux()
+	httpMux.Handle("/health", healthcheck.CreateHandler())
+
+	if localUploadHandler != nil {
+		httpMux.Handle("/upload", localUploadHandler)
+	}
+
 	httpServer := factories.NewHTTPServer()
-	httpServer.Handler = healthcheck.CreateHandler()
+	httpServer.Handler = httpMux
 
 	startService("http server", func() error {
 		err := httpServer.Serve(httpListener)
@@ -705,6 +761,43 @@ type serviceDoneError struct {
 
 func (e serviceDoneError) Error() string {
 	return fmt.Sprintf("service %s finished", e.name)
+}
+
+// setupBuildStorage creates the build cache storage provider and, when using
+// local filesystem storage, the HTTP upload handler that accepts file uploads
+// for COPY instructions. The returned handler is nil for non-local providers.
+func setupBuildStorage(ctx context.Context, limiter *limit.Limiter, orchConfig cfg.Config) (storage.StorageProvider, *localupload.Handler, error) {
+	cfg := storage.BuildCacheStorageConfig.WithLimiter(limiter)
+
+	var uploadHandler *localupload.Handler
+
+	if storage.IsLocal() {
+		hmacKey := make([]byte, 32)
+		if _, err := rand.Read(hmacKey); err != nil {
+			return nil, nil, fmt.Errorf("generate HMAC key: %w", err)
+		}
+
+		uploadBaseURL := orchConfig.LocalUploadBaseURL
+		if uploadBaseURL == "" {
+			uploadBaseURL = fmt.Sprintf("http://localhost:%d", orchConfig.GRPCPort)
+		}
+
+		cfg = cfg.WithLocalUpload(uploadBaseURL, hmacKey)
+
+		basePath := cfg.GetLocalBasePath()
+		uploadHandler = localupload.NewHandler(basePath, hmacKey)
+
+		logger.L().Info(ctx, "Local upload endpoint enabled for filesystem storage",
+			zap.String("upload_base_url", uploadBaseURL),
+			zap.String("base_path", basePath))
+	}
+
+	provider, err := storage.GetStorageProvider(ctx, cfg)
+	if err != nil {
+		return nil, nil, fmt.Errorf("create build cache storage provider: %w", err)
+	}
+
+	return provider, uploadHandler, nil
 }
 
 // NewStorage creates a new slot storage based on the environment, we are ok with using a memory storage for local

@@ -11,8 +11,51 @@ import (
 	"github.com/google/uuid"
 )
 
+const getCancellableTemplateBuildsByTeam = `-- name: GetCancellableTemplateBuildsByTeam :many
+SELECT atb.build_id, atb.template_id, e.cluster_id, b.cluster_node_id
+FROM public.active_template_builds atb
+JOIN public.env_builds b ON b.id = atb.build_id
+JOIN public.envs e ON e.id = atb.template_id
+WHERE atb.team_id = $1
+  AND atb.created_at > NOW() - INTERVAL '1 day'
+ORDER BY atb.build_id
+`
+
+type GetCancellableTemplateBuildsByTeamRow struct {
+	BuildID       uuid.UUID
+	TemplateID    string
+	ClusterID     *uuid.UUID
+	ClusterNodeID *string
+}
+
+// Relies on active_template_builds table (migration 20260305130000).
+func (q *Queries) GetCancellableTemplateBuildsByTeam(ctx context.Context, teamID uuid.UUID) ([]GetCancellableTemplateBuildsByTeamRow, error) {
+	rows, err := q.db.Query(ctx, getCancellableTemplateBuildsByTeam, teamID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetCancellableTemplateBuildsByTeamRow
+	for rows.Next() {
+		var i GetCancellableTemplateBuildsByTeamRow
+		if err := rows.Scan(
+			&i.BuildID,
+			&i.TemplateID,
+			&i.ClusterID,
+			&i.ClusterNodeID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getInProgressTemplateBuilds = `-- name: GetInProgressTemplateBuilds :many
-SELECT DISTINCT ON (b.id) t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t.blocked_reason, t.cluster_id, t.slug, e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count, e.last_spawned_at, e.team_id, e.created_by, e.cluster_id, e.source, b.id, b.created_at, b.updated_at, b.finished_at, b.status, b.dockerfile, b.start_cmd, b.vcpu, b.ram_mb, b.free_disk_size_mb, b.total_disk_size_mb, b.kernel_version, b.firecracker_version, b.env_id, b.envd_version, b.ready_cmd, b.cluster_node_id, b.reason, b.version, b.cpu_architecture, b.cpu_family, b.cpu_model, b.cpu_model_name, b.cpu_flags, b.status_group, b.team_id
+SELECT DISTINCT ON (b.id) t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t.blocked_reason, t.cluster_id, t.sandbox_scheduling_labels, t.slug, e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count, e.last_spawned_at, e.team_id, e.created_by, e.cluster_id, e.source, b.id, b.created_at, b.updated_at, b.finished_at, b.status, b.dockerfile, b.start_cmd, b.vcpu, b.ram_mb, b.free_disk_size_mb, b.total_disk_size_mb, b.kernel_version, b.firecracker_version, b.env_id, b.envd_version, b.ready_cmd, b.cluster_node_id, b.reason, b.version, b.cpu_architecture, b.cpu_family, b.cpu_model, b.cpu_model_name, b.cpu_flags, b.status_group, b.team_id
 FROM public.env_builds b
 JOIN public.env_build_assignments eba ON eba.build_id = b.id
 JOIN public.envs e ON e.id = eba.env_id
@@ -47,6 +90,7 @@ func (q *Queries) GetInProgressTemplateBuilds(ctx context.Context) ([]GetInProgr
 			&i.Team.IsBanned,
 			&i.Team.BlockedReason,
 			&i.Team.ClusterID,
+			&i.Team.SandboxSchedulingLabels,
 			&i.Team.Slug,
 			&i.Env.ID,
 			&i.Env.CreatedAt,
@@ -96,31 +140,27 @@ func (q *Queries) GetInProgressTemplateBuilds(ctx context.Context) ([]GetInProgr
 	return items, nil
 }
 
-const getInProgressTemplateBuildsByTeam = `-- name: GetInProgressTemplateBuildsByTeam :many
-SELECT DISTINCT ON (b.id) e.id as template_id
-FROM public.env_builds b
-JOIN public.env_build_assignments eba ON eba.build_id = b.id
-JOIN public.envs e ON e.id = eba.env_id
-WHERE e.team_id = $1 AND b.status_group IN ('pending', 'in_progress') AND e.source = 'template'
-ORDER BY b.id, b.created_at DESC
+const getInProgressTemplateBuildsByTeam = `-- name: GetInProgressTemplateBuildsByTeam :one
+SELECT COUNT(*) as build_count
+FROM public.active_template_builds atb
+WHERE atb.team_id = $1::uuid
+  AND atb.created_at > NOW() - INTERVAL '1 day'
+  AND NOT (
+    atb.template_id = $2::text
+    AND atb.tags && $3::text[]
+  )
 `
 
-func (q *Queries) GetInProgressTemplateBuildsByTeam(ctx context.Context, teamID uuid.UUID) ([]string, error) {
-	rows, err := q.db.Query(ctx, getInProgressTemplateBuildsByTeam, teamID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []string
-	for rows.Next() {
-		var template_id string
-		if err := rows.Scan(&template_id); err != nil {
-			return nil, err
-		}
-		items = append(items, template_id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+type GetInProgressTemplateBuildsByTeamParams struct {
+	TeamID            uuid.UUID
+	ExcludeTemplateID string
+	ExcludeTags       []string
+}
+
+// Relies on active_template_builds table (migration 20260305130000).
+func (q *Queries) GetInProgressTemplateBuildsByTeam(ctx context.Context, arg GetInProgressTemplateBuildsByTeamParams) (int64, error) {
+	row := q.db.QueryRow(ctx, getInProgressTemplateBuildsByTeam, arg.TeamID, arg.ExcludeTemplateID, arg.ExcludeTags)
+	var build_count int64
+	err := row.Scan(&build_count)
+	return build_count, err
 }

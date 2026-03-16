@@ -100,6 +100,12 @@ mount "${NFS_MOUNT_PATH}"
 mkdir -p "${NFS_MOUNT_PATH}/${NFS_MOUNT_SUBDIR}" && chmod +w "${NFS_MOUNT_PATH}/${NFS_MOUNT_SUBDIR}"
 %{ endif }
 
+%{ for name, config in PERSISTENT_VOLUME_TYPES }
+mkdir -p "${config.local_mount_path}"
+echo "${config.nfs_location} ${config.local_mount_path} nfs ${config.nfs_mount_opts} 0 0" | tee -a /etc/fstab
+mount "${config.local_mount_path}"
+%{ endfor }
+
 # Add tmpfs for snapshotting
 # TODO: Parametrize this
 mkdir -p /mnt/snapshot-cache
@@ -298,13 +304,13 @@ GCE_DNS=$(curl -s -H 'Metadata-Flavor: Google' http://metadata.google.internal/c
 
 # Give Consul a moment to start its DNS server on port 8600
 echo "- Waiting for Consul DNS to start on port 8600..."
-for i in {1..10}; do
+for i in {1..60}; do
   if nc -z 127.0.0.1 8600 2>/dev/null; then
-    echo "- Consul DNS is ready (attempt $i/10)"
+    echo "- Consul DNS is ready (attempt $i/60)"
     break
   fi
-  if [ $i -eq 10 ]; then
-    echo "- ERROR: Consul DNS not responding after 10 seconds, exiting..."
+  if [ $i -eq 60 ]; then
+    echo "- ERROR: Consul DNS not responding after 60 seconds, exiting..."
     exit 1
   fi
   sleep 1
@@ -321,13 +327,13 @@ echo "- Waiting for systemd-resolved to settle"
 
 # Give Consul a moment to start its DNS server on port 8600
 echo "- Waiting for Systemd-resolved to start..."
-for i in {1..10}; do
+for i in {1..60}; do
   if host google.com 2>/dev/null; then
-    echo "- DNS resolving is ready (attempt $i/10)"
+    echo "- DNS resolving is ready (attempt $i/60)"
     break
   fi
-  if [ $i -eq 10 ]; then
-    echo "- ERROR: Systemd-resolved not responding after 10 seconds, exiting..."
+  if [ $i -eq 60 ]; then
+    echo "- ERROR: Systemd-resolved not responding after 60 seconds, exiting..."
     exit 1
   fi
   sleep 1
@@ -370,9 +376,9 @@ for i in $(seq 1 $FETCH_MAX_ATTEMPTS); do
   sleep $FETCH_INTERVAL_SECONDS
 done
 
-/opt/nomad/bin/run-nomad.sh --client --consul-token "${CONSUL_TOKEN}" --node-pool "${NODE_POOL}" --orchestrator-job-version "$ORCHESTRATOR_VERSION" &
+/opt/nomad/bin/run-nomad.sh --client --consul-token "${CONSUL_TOKEN}" --node-pool "${NODE_POOL}" --node-labels "${NODE_LABELS}" --orchestrator-job-version "$ORCHESTRATOR_VERSION" &
 %{ else }
-/opt/nomad/bin/run-nomad.sh --client --consul-token "${CONSUL_TOKEN}" --node-pool "${NODE_POOL}" &
+/opt/nomad/bin/run-nomad.sh --client --consul-token "${CONSUL_TOKEN}" --node-pool "${NODE_POOL}" --node-labels "${NODE_LABELS}" &
 %{ endif }
 
 # Add alias for ssh-ing to sbx
