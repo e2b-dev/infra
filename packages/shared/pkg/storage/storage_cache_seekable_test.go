@@ -284,3 +284,173 @@ func TestCachedSeekableObjectProvider_ReadAt(t *testing.T) {
 		assert.Equal(t, 5, count)
 	})
 }
+
+// failingReadCloser returns data from the first Read, then an error on the second.
+type failingReadCloser struct {
+	data    []byte
+	pos     int
+	failAt  int // byte offset at which to return an error
+	failErr error
+}
+
+func (f *failingReadCloser) Read(p []byte) (int, error) {
+	if f.pos >= f.failAt {
+		return 0, f.failErr
+	}
+
+	end := min(f.pos+len(p), f.failAt)
+
+	n := copy(p, f.data[f.pos:end])
+	f.pos += n
+
+	if f.pos >= f.failAt {
+		return n, f.failErr
+	}
+
+	return n, nil
+}
+
+func (f *failingReadCloser) Close() error { return nil }
+
+func TestCacheWriteThroughReader_SkipsCacheOnReadError(t *testing.T) {
+	t.Parallel()
+
+	chunkSize := int64(1024)
+	cacheDir := t.TempDir()
+
+	inner := storagemocks.NewMockSeekable(t)
+	inner.EXPECT().
+		OpenRangeReader(mock.Anything, int64(0), chunkSize).
+		Return(&failingReadCloser{
+			data:    make([]byte, 512),
+			failAt:  256,
+			failErr: errors.New("connection reset"),
+		}, nil)
+
+	c := cachedSeekable{
+		path:      cacheDir,
+		chunkSize: chunkSize,
+		inner:     inner,
+		tracer:    noopTracer,
+	}
+
+	reader, err := c.OpenRangeReader(t.Context(), 0, chunkSize)
+	require.NoError(t, err)
+
+	buf := make([]byte, chunkSize)
+	_, err = reader.Read(buf)
+	require.Error(t, err)
+
+	err = reader.Close()
+	require.NoError(t, err)
+
+	// Wait for any async cache writes to complete
+	c.wg.Wait()
+
+	// Verify no cache file was written
+	chunkPath := c.makeChunkFilename(0)
+	_, err = os.Stat(chunkPath)
+	assert.True(t, os.IsNotExist(err), "cache file should not exist after a read error")
+}
+
+func TestCacheWriteThroughReader_RetrySucceedsAfterFailure(t *testing.T) {
+	t.Parallel()
+
+	chunkSize := int64(16)
+	cacheDir := t.TempDir()
+	correctData := []byte("correct_data!!!!") // exactly 16 bytes
+
+	inner := storagemocks.NewMockSeekable(t)
+
+	// First call: fail mid-stream after 8 bytes
+	inner.EXPECT().
+		OpenRangeReader(mock.Anything, int64(0), chunkSize).
+		Return(&failingReadCloser{
+			data:    make([]byte, 16),
+			failAt:  8,
+			failErr: errors.New("connection reset"),
+		}, nil).
+		Once()
+
+	// Second call: succeed with correct data
+	inner.EXPECT().
+		OpenRangeReader(mock.Anything, int64(0), chunkSize).
+		Return(io.NopCloser(io.NewSectionReader(
+			readerAtFromBytes(correctData), 0, chunkSize,
+		)), nil).
+		Once()
+
+	c := cachedSeekable{
+		path:      cacheDir,
+		chunkSize: chunkSize,
+		inner:     inner,
+		tracer:    noopTracer,
+	}
+
+	// --- First attempt: fails ---
+	reader, err := c.OpenRangeReader(t.Context(), 0, chunkSize)
+	require.NoError(t, err)
+
+	buf := make([]byte, chunkSize)
+	_, err = reader.Read(buf)
+	require.Error(t, err)
+
+	err = reader.Close()
+	require.NoError(t, err)
+	c.wg.Wait()
+
+	// No cache file should exist
+	chunkPath := c.makeChunkFilename(0)
+	_, err = os.Stat(chunkPath)
+	require.True(t, os.IsNotExist(err), "cache file should not exist after failed read")
+
+	// --- Second attempt: succeeds, self-corrects ---
+	reader, err = c.OpenRangeReader(t.Context(), 0, chunkSize)
+	require.NoError(t, err)
+
+	buf = make([]byte, chunkSize)
+	n, err := io.ReadFull(reader, buf)
+	require.NoError(t, err)
+	assert.Equal(t, int(chunkSize), n)
+	assert.Equal(t, correctData, buf)
+
+	err = reader.Close()
+	require.NoError(t, err)
+	c.wg.Wait()
+
+	// Cache file should now contain the correct data
+	cached, err := os.ReadFile(chunkPath)
+	require.NoError(t, err)
+	assert.Equal(t, correctData, cached)
+
+	// --- Third attempt: served from cache (no more inner calls expected) ---
+	reader, err = c.OpenRangeReader(t.Context(), 0, chunkSize)
+	require.NoError(t, err)
+
+	buf = make([]byte, chunkSize)
+	n, err = io.ReadFull(reader, buf)
+	require.NoError(t, err)
+	assert.Equal(t, int(chunkSize), n)
+	assert.Equal(t, correctData, buf)
+
+	err = reader.Close()
+	require.NoError(t, err)
+}
+
+// readerAtFromBytes wraps a byte slice as an io.ReaderAt.
+type readerAtBytes []byte
+
+func readerAtFromBytes(b []byte) io.ReaderAt { return readerAtBytes(b) }
+
+func (r readerAtBytes) ReadAt(p []byte, off int64) (int, error) {
+	if off >= int64(len(r)) {
+		return 0, io.EOF
+	}
+
+	n := copy(p, r[off:])
+	if n < len(p) {
+		return n, io.EOF
+	}
+
+	return n, nil
+}

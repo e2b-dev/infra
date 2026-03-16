@@ -185,6 +185,7 @@ type cacheWriteThroughReader struct {
 	ctx       context.Context //nolint:containedctx // needed for async cache write-back in Close
 	off       int64
 	chunkPath string
+	readErr   bool // true if any Read() returned a non-EOF error
 }
 
 func (r *cacheWriteThroughReader) Read(p []byte) (int, error) {
@@ -193,13 +194,17 @@ func (r *cacheWriteThroughReader) Read(p []byte) (int, error) {
 		r.buf.Write(p[:n])
 	}
 
+	if err != nil && !errors.Is(err, io.EOF) {
+		r.readErr = true
+	}
+
 	return n, err
 }
 
 func (r *cacheWriteThroughReader) Close() error {
 	closeErr := r.inner.Close()
 
-	if r.buf.Len() > 0 {
+	if r.buf.Len() > 0 && !r.readErr {
 		data := make([]byte, r.buf.Len())
 		copy(data, r.buf.Bytes())
 
