@@ -17,12 +17,20 @@ import (
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 )
 
+// =============================================================================
+// Shared helpers and template setup
+// =============================================================================
+
 var (
 	networkTestTemplateID   string
 	networkTestTemplateOnce sync.Once
 )
 
-// ensureNetworkTestTemplate builds the custom template for network tests (called once)
+const blockAll = sandbox_network.AllInternetTrafficCIDR
+
+func ptrS(s ...string) *[]string { return &s }
+
+// ensureNetworkTestTemplate builds the custom template for network tests (called once).
 func ensureNetworkTestTemplate(t *testing.T) string {
 	t.Helper()
 
@@ -56,41 +64,55 @@ func ensureNetworkTestTemplate(t *testing.T) string {
 	return networkTestTemplateID
 }
 
-// =============================================================================
-// Test helper functions for network egress assertions
-// =============================================================================
+// putNetwork calls the update network endpoint.
+func putNetwork(
+	t *testing.T,
+	ctx context.Context,
+	client *api.ClientWithResponses,
+	sandboxID string,
+	body api.PutSandboxesSandboxIDNetworkJSONRequestBody,
+) *api.PutSandboxesSandboxIDNetworkResponse {
+	t.Helper()
+	resp, err := client.PutSandboxesSandboxIDNetworkWithResponse(
+		ctx, sandboxID, body, setup.WithAPIKey(),
+	)
+	require.NoError(t, err)
 
-// assertSuccessfulHTTPRequest asserts that an HTTP/HTTPS request to the given URL succeeds
-func assertSuccessfulHTTPRequest(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, url string, msg string) {
+	return resp
+}
+
+// requireTCPAllowed asserts that an HTTP/HTTPS request succeeds.
+func requireTCPAllowed(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, url, msg string) {
 	t.Helper()
 	err := utils.ExecCommand(t, ctx, sbx, envdClient, "curl", "--connect-timeout", "5", "--max-time", "10", "-Iks", url)
 	require.NoError(t, err, msg)
 }
 
-// assertBlockedHTTPRequest asserts that an HTTP/HTTPS request to the given URL is blocked
-func assertBlockedHTTPRequest(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, url string, msg string) {
+// requireTCPBlocked asserts that an HTTP/HTTPS request is blocked.
+// RES_OPTIONS caps glibc DNS timeout so blocked-domain curls fail in ~2 s
+// instead of curl's default ~20 s DNS retry cycle.
+func requireTCPBlocked(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, url, msg string) {
 	t.Helper()
-	err := utils.ExecCommand(t, ctx, sbx, envdClient, "curl", "--connect-timeout", "3", "--max-time", "5", "-Iks", url)
+	err := utils.ExecCommand(t, ctx, sbx, envdClient,
+		"sh", "-c", `RES_OPTIONS="timeout:1 attempts:1" curl --connect-timeout 1 --max-time 2 -Iks `+url)
 	require.Error(t, err, msg)
-	require.Contains(t, err.Error(), "failed with exit code", "Expected connection failure message")
 }
 
-// assertSuccessfulDNSQuery asserts that a DNS query to the given server succeeds
-func assertSuccessfulDNSQuery(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, dnsServer, domain string, msg string) {
+// requireDNSAllowed asserts that a UDP DNS query to 8.8.8.8 succeeds.
+func requireDNSAllowed(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, msg string) {
 	t.Helper()
-	err := utils.ExecCommand(t, ctx, sbx, envdClient, "dig", "+short", "+timeout=3", fmt.Sprintf("@%s", dnsServer), domain)
+	err := utils.ExecCommand(t, ctx, sbx, envdClient, "dig", "+short", "@8.8.8.8", "google.com")
 	require.NoError(t, err, msg)
 }
 
-// assertBlockedDNSQuery asserts that a DNS query to the given server is blocked
-func assertBlockedDNSQuery(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, dnsServer, domain string, msg string) {
+// requireDNSBlocked asserts that a UDP DNS query to the given server is blocked.
+func requireDNSBlocked(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, server, msg string) {
 	t.Helper()
-	err := utils.ExecCommand(t, ctx, sbx, envdClient, "dig", "+short", "+timeout=3", fmt.Sprintf("@%s", dnsServer), domain)
+	err := utils.ExecCommand(t, ctx, sbx, envdClient, "dig", "+short", "+timeout=1", "+retry=0", fmt.Sprintf("@%s", server), "google.com")
 	require.Error(t, err, msg)
 }
 
-// assertHTTPResponseFromServer asserts that an HTTPS request returns a response from the expected server
-// This is used to verify that DNS spoofing redirection worked correctly
+// assertHTTPResponseFromServer asserts that an HTTPS request returns a response from the expected server.
 func assertHTTPResponseFromServer(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, url, expectedServerHeader, msg string) {
 	t.Helper()
 	output, err := utils.ExecCommandWithOutput(t, ctx, sbx, envdClient, nil, "user", "curl", "--connect-timeout", "5", "--max-time", "10", "-Iks", url)
@@ -99,966 +121,584 @@ func assertHTTPResponseFromServer(t *testing.T, ctx context.Context, sbx *api.Sa
 		"%s - expected server header to contain %q, got response: %s", msg, expectedServerHeader, output)
 }
 
+type connectivityCheck struct {
+	url     string
+	allowed bool
+}
+
+func verifyConnectivity(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, checks []connectivityCheck) {
+	t.Helper()
+	for _, c := range checks {
+		if c.allowed {
+			requireTCPAllowed(t, ctx, sbx, envdClient, c.url, c.url+" should be reachable")
+		} else {
+			requireTCPBlocked(t, ctx, sbx, envdClient, c.url, c.url+" should be blocked")
+		}
+	}
+}
+
 // =============================================================================
-// IP and CIDR-based filtering tests
+// TestNetworkEgress — single shared sandbox, all egress tests sequential.
 // =============================================================================
 
-// TestEgressFirewallAllowSpecificIP tests that only allowed IPs can be accessed
-func TestEgressFirewallAllowSpecificIP(t *testing.T) {
+func TestNetworkEgress(t *testing.T) { //nolint:tparallel // subtests are sequential
 	t.Parallel()
 
 	templateID := ensureNetworkTestTemplate(t)
 	ctx := t.Context()
 	client := setup.GetAPIClient()
-
-	// Use Google's DNS IP (8.8.8.8) as allowed, and Cloudflare's (1.1.1.1) as implicitly blocked
-	allowedIPs := []string{"8.8.8.8"}
+	envdClient := setup.GetEnvdClient(t, ctx)
 
 	sbx := utils.SetupSandboxWithCleanup(t, client,
 		utils.WithTemplateID(templateID),
-		utils.WithTimeout(60),
-		utils.WithNetwork(&api.SandboxNetworkConfig{
-			AllowOut: &allowedIPs,
-			DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
-		}),
+		utils.WithTimeout(300),
+		utils.WithAutoPause(false),
 	)
 
-	envdClient := setup.GetEnvdClient(t, ctx)
-
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Expected curl to allowed IP 8.8.8.8 to succeed")
-	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "Expected curl to non-allowed IP 1.1.1.1 to fail")
-}
-
-// TestEgressFirewallBlockSpecificIP tests that blocked IPs cannot be accessed
-func TestEgressFirewallBlockSpecificIP(t *testing.T) {
-	t.Parallel()
-
-	templateID := ensureNetworkTestTemplate(t)
-	ctx := t.Context()
-	client := setup.GetAPIClient()
-
-	// Block Cloudflare's DNS IP
-	blockedIPs := []string{"1.1.1.1"}
-
-	sbx := utils.SetupSandboxWithCleanup(t, client,
-		utils.WithTemplateID(templateID),
-		utils.WithTimeout(60),
-		utils.WithNetwork(&api.SandboxNetworkConfig{
-			DenyOut: &blockedIPs,
-		}),
-	)
-
-	envdClient := setup.GetEnvdClient(t, ctx)
-
-	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "Expected curl to blocked IP 1.1.1.1 to fail")
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Expected curl to non-blocked IP 8.8.8.8 to succeed")
-}
-
-// TestEgressFirewallAllowCIDRRange tests that CIDR ranges work for allowing IPs
-func TestEgressFirewallAllowCIDRRange(t *testing.T) {
-	t.Parallel()
-
-	templateID := ensureNetworkTestTemplate(t)
-	ctx := t.Context()
-	client := setup.GetAPIClient()
-
-	// Allow Cloudflare's range (1.1.1.0/24) which includes 1.1.1.1
-	allowedRanges := []string{"1.1.1.0/24"}
-
-	sbx := utils.SetupSandboxWithCleanup(t, client,
-		utils.WithTemplateID(templateID),
-		utils.WithTimeout(60),
-		utils.WithNetwork(&api.SandboxNetworkConfig{
-			AllowOut: &allowedRanges,
-			DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
-		}),
-	)
-
-	envdClient := setup.GetEnvdClient(t, ctx)
-
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "Expected curl to IP within allowed CIDR range (1.1.1.1) to succeed")
-	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Expected curl to IP outside allowed CIDR range (8.8.8.8) to fail")
-}
-
-// TestEgressFirewallBlockCIDRRange tests that CIDR ranges work for blocking IPs
-func TestEgressFirewallBlockCIDRRange(t *testing.T) {
-	t.Parallel()
-	templateID := ensureNetworkTestTemplate(t)
-	ctx := t.Context()
-	client := setup.GetAPIClient()
-
-	// Block Cloudflare's DNS range (1.1.1.0/24)
-	blockedRanges := []string{"1.1.1.0/24"}
-
-	sbx := utils.SetupSandboxWithCleanup(t, client,
-		utils.WithTemplateID(templateID),
-		utils.WithTimeout(60),
-		utils.WithNetwork(&api.SandboxNetworkConfig{
-			DenyOut: &blockedRanges,
-		}),
-	)
-
-	envdClient := setup.GetEnvdClient(t, ctx)
-
-	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "Expected curl to IP within blocked CIDR range (1.1.1.1) to fail")
-	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.2", "Expected curl to IP within blocked CIDR range (1.1.1.2) to fail")
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Expected curl to IP outside blocked CIDR range (8.8.8.8) to succeed")
-}
-
-// TestEgressFirewallAllowAndBlockCombination tests that allowOut takes precedence over blockOut
-func TestEgressFirewallAllowAndBlockCombination(t *testing.T) {
-	t.Parallel()
-	templateID := ensureNetworkTestTemplate(t)
-	ctx := t.Context()
-	client := setup.GetAPIClient()
-
-	// Block all internet but explicitly allow one IP - allowOut should take precedence
-	allowedIPs := []string{"8.8.8.8"}
-	blockAll := []string{sandbox_network.AllInternetTrafficCIDR}
-
-	sbx := utils.SetupSandboxWithCleanup(t, client,
-		utils.WithTemplateID(templateID),
-		utils.WithTimeout(60),
-		utils.WithNetwork(&api.SandboxNetworkConfig{
-			AllowOut: &allowedIPs,
-			DenyOut:  &blockAll,
-		}),
-	)
-
-	envdClient := setup.GetEnvdClient(t, ctx)
-
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Expected curl to explicitly allowed IP (8.8.8.8) to succeed even though 0.0.0.0/0 is blocked")
-	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "Expected curl to non-allowed IP (1.1.1.1) to fail")
-}
-
-// TestEgressFirewallPersistsAfterResume tests that network config persists after pause/resume
-func TestEgressFirewallPersistsAfterResume(t *testing.T) {
-	t.Parallel()
-	templateID := ensureNetworkTestTemplate(t)
-	ctx := t.Context()
-	sbxTimeout := int32(60)
-	client := setup.GetAPIClient()
-
-	// Allow only specific IPs
-	allowedIPs := []string{"8.8.8.8", "8.8.4.4"}
-
-	sbx := utils.SetupSandboxWithCleanup(t, client,
-		utils.WithTemplateID(templateID),
-		utils.WithTimeout(60),
-		utils.WithNetwork(&api.SandboxNetworkConfig{
-			AllowOut: &allowedIPs,
-			DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
-		}),
-	)
-
-	envdClient := setup.GetEnvdClient(t, ctx)
-
-	// Test before pause
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Expected curl to allowed IP (8.8.8.8) to succeed before pause")
-	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "Expected curl to non-allowed IP (1.1.1.1) to fail before pause")
-
-	// Pause the sandbox
-	respPause, err := client.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
-	require.NoError(t, err, "Expected to pause sandbox without error")
-	require.Equal(t, http.StatusNoContent, respPause.StatusCode(), "Expected status code 204 No Content, got %d", respPause.StatusCode())
-
-	// Resume the sandbox
-	respResume, err := client.PostSandboxesSandboxIDResumeWithResponse(ctx, sbx.SandboxID, api.PostSandboxesSandboxIDResumeJSONRequestBody{
-		Timeout: &sbxTimeout,
-	}, setup.WithAPIKey())
-	require.NoError(t, err, "Expected to resume sandbox without error")
-	require.Equal(t, http.StatusCreated, respResume.StatusCode(), "Expected status code 201 Created, got %d", respResume.StatusCode())
-
-	// Test after resume
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Expected curl to allowed IP (8.8.8.8) to succeed after resume")
-	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "Expected curl to non-allowed IP (1.1.1.1) to fail after resume")
-}
-
-// TestEgressFirewallEmptyConfig tests that empty allowOut list is treated as no restriction
-func TestEgressFirewallEmptyConfig(t *testing.T) {
-	t.Parallel()
-	templateID := ensureNetworkTestTemplate(t)
-	ctx := t.Context()
-	client := setup.GetAPIClient()
-
-	// Create sandbox with empty allowOut list - should be treated as no restriction
-	emptyAllowList := []string{}
-
-	sbx := utils.SetupSandboxWithCleanup(t, client,
-		utils.WithTemplateID(templateID),
-		utils.WithTimeout(60),
-		utils.WithNetwork(&api.SandboxNetworkConfig{
-			AllowOut: &emptyAllowList,
-		}),
-	)
-
-	envdClient := setup.GetEnvdClient(t, ctx)
-
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Expected curl to succeed with empty allowOut list")
-}
-
-// TestEgressFirewallAllowAll tests that 0.0.0.0/0 allows all traffic
-func TestEgressFirewallAllowAll(t *testing.T) {
-	t.Parallel()
-	templateID := ensureNetworkTestTemplate(t)
-	ctx := t.Context()
-	client := setup.GetAPIClient()
-
-	// Allow all IPs using 0.0.0.0/0
-	allowAll := []string{"0.0.0.0/0"}
-
-	sbx := utils.SetupSandboxWithCleanup(t, client,
-		utils.WithTemplateID(templateID),
-		utils.WithTimeout(60),
-		utils.WithNetwork(&api.SandboxNetworkConfig{
-			AllowOut: &allowAll,
-			DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
-		}),
-	)
-
-	envdClient := setup.GetEnvdClient(t, ctx)
-
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Expected curl to 8.8.8.8 to succeed with 0.0.0.0/0 allow")
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "Expected curl to 1.1.1.1 to succeed with 0.0.0.0/0 allow")
-}
-
-// TestEgressFirewallAllowOverridesBlock tests that allowOut takes precedence over blockOut
-func TestEgressFirewallAllowOverridesBlock(t *testing.T) {
-	t.Parallel()
-	templateID := ensureNetworkTestTemplate(t)
-	ctx := t.Context()
-	client := setup.GetAPIClient()
-
-	// Block specific IP but also allow it - allow should take precedence
-	allowedIPs := []string{"1.1.1.1"}
-	blockedIPs := []string{"1.1.1.1"}
-
-	sbx := utils.SetupSandboxWithCleanup(t, client,
-		utils.WithTemplateID(templateID),
-		utils.WithTimeout(60),
-		utils.WithNetwork(&api.SandboxNetworkConfig{
-			AllowOut: &allowedIPs,
-			DenyOut:  &blockedIPs,
-		}),
-	)
-
-	envdClient := setup.GetEnvdClient(t, ctx)
-
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "Expected curl to allowed IP (1.1.1.1) to succeed since allow takes precedence over block")
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Expected curl to other IP (8.8.8.8) to succeed")
-}
-
-// TestEgressFirewallPartialAllowDenyDefaultAllow tests that traffic to IPs
-// in neither the allow nor deny list is allowed by default.
-// allowOut: ["8.8.8.8"], denyOut: ["1.1.1.1"]
-// → 8.8.8.8 allowed (explicit allow)
-// → 1.1.1.1 blocked (explicit deny)
-// → 9.9.9.9 allowed (default-allow fallthrough, in neither list)
-func TestEgressFirewallPartialAllowDenyDefaultAllow(t *testing.T) {
-	t.Parallel()
-	templateID := ensureNetworkTestTemplate(t)
-	ctx := t.Context()
-	client := setup.GetAPIClient()
-
-	sbx := utils.SetupSandboxWithCleanup(t, client,
-		utils.WithTemplateID(templateID),
-		utils.WithTimeout(60),
-		utils.WithNetwork(&api.SandboxNetworkConfig{
-			AllowOut: &[]string{"8.8.8.8"},
-			DenyOut:  &[]string{"1.1.1.1"},
-		}),
-	)
-
-	envdClient := setup.GetEnvdClient(t, ctx)
-
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Expected curl to explicitly allowed IP (8.8.8.8) to succeed")
-	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "Expected curl to explicitly denied IP (1.1.1.1) to fail")
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://9.9.9.9", "Expected curl to IP in neither list (9.9.9.9) to succeed (default-allow)")
-}
-
-// TestEgressFirewallMultipleAllowedIPs tests multiple allowed IPs
-func TestEgressFirewallMultipleAllowedIPs(t *testing.T) {
-	t.Parallel()
-	templateID := ensureNetworkTestTemplate(t)
-	ctx := t.Context()
-	client := setup.GetAPIClient()
-
-	// Allow multiple specific IPs
-	allowedIPs := []string{"8.8.8.8", "8.8.4.4", "1.1.1.1"}
-
-	sbx := utils.SetupSandboxWithCleanup(t, client,
-		utils.WithTemplateID(templateID),
-		utils.WithTimeout(60),
-		utils.WithNetwork(&api.SandboxNetworkConfig{
-			AllowOut: &allowedIPs,
-			DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
-		}),
-	)
-
-	envdClient := setup.GetEnvdClient(t, ctx)
-
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Expected curl to allowed IP (8.8.8.8) to succeed")
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.4.4", "Expected curl to allowed IP (8.8.4.4) to succeed")
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "Expected curl to allowed IP (1.1.1.1) to succeed")
-	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://9.9.9.9", "Expected curl to non-allowed IP (9.9.9.9) to fail")
-}
-
-// TestEgressFirewallWithInternetAccessFalse tests that network config takes precedence over allow_internet_access
-func TestEgressFirewallWithInternetAccessFalse(t *testing.T) {
-	t.Parallel()
-	templateID := ensureNetworkTestTemplate(t)
-	ctx := t.Context()
-	client := setup.GetAPIClient()
-
-	// Set both network config and allow_internet_access=false
-	// Network config should take precedence - allowed IPs should still work
-	allowedIPs := []string{"8.8.8.8"}
-
-	sbx := utils.SetupSandboxWithCleanup(t, client,
-		utils.WithTemplateID(templateID),
-		utils.WithTimeout(60),
-		utils.WithAllowInternetAccess(false),
-		utils.WithNetwork(&api.SandboxNetworkConfig{
-			AllowOut: &allowedIPs,
-		}),
-	)
-
-	envdClient := setup.GetEnvdClient(t, ctx)
-
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Expected curl to succeed for allowed IP even with allow_internet_access=false (network config takes precedence)")
-	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "Expected curl to non-allowed IP to fail")
-}
-
-// TestEgressFirewallPrivateIPRangesAlwaysBlocked tests that private IP ranges cannot be allowed
-// Note: Private IP ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16) are always blocked
-// by the orchestrator for security reasons. Attempting to specify them in allowOut should result in
-// a sandbox creation failure.
-func TestEgressFirewallPrivateIPRangesAlwaysBlocked(t *testing.T) {
-	t.Parallel()
-	templateID := ensureNetworkTestTemplate(t)
-	client := setup.GetAPIClient()
-	timeout := int32(60)
-
-	testCases := []struct {
-		name      string
-		allowedIP string
-		testIP    string
-		testDesc  string
-	}{
-		{
-			name:      "private_range_10.0.0.0/8",
-			allowedIP: "10.0.0.0/8",
-			testIP:    "10.0.0.1",
-			testDesc:  "10.0.0.0/8 range",
-		},
-		{
-			name:      "private_range_192.168.0.0/16",
-			allowedIP: "192.168.0.0/16",
-			testIP:    "192.168.0.1",
-			testDesc:  "192.168.0.0/16 range",
-		},
-		{
-			name:      "private_range_172.16.0.0/12",
-			allowedIP: "172.16.0.0/12",
-			testIP:    "172.16.0.1",
-			testDesc:  "172.16.0.0/12 range",
-		},
-		{
-			name:      "link_local_169.254.0.0/16",
-			allowedIP: "169.254.0.0/16",
-			testIP:    "169.254.0.1",
-			testDesc:  "169.254.0.0/16 range (link-local)",
-		},
+	update := func(allow, deny []string) {
+		t.Helper()
+		var a, d *[]string
+		if allow != nil {
+			a = &allow
+		}
+		if deny != nil {
+			d = &deny
+		}
+		resp := putNetwork(t, ctx, client, sbx.SandboxID, api.PutSandboxesSandboxIDNetworkJSONRequestBody{
+			AllowOut: a,
+			DenyOut:  d,
+		})
+		require.Equal(t, http.StatusNoContent, resp.StatusCode())
 	}
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			ctx := t.Context()
-			// Try to create a sandbox with a private IP range in allowOut
-			allowedIPs := []string{tc.allowedIP}
+	clear := func() {
+		t.Helper()
+		update(nil, nil)
+	}
 
-			sbx := utils.SetupSandboxWithCleanup(t, client,
-				utils.WithTemplateID(templateID),
-				utils.WithTimeout(timeout),
-				utils.WithNetwork(&api.SandboxNetworkConfig{
-					AllowOut: &allowedIPs,
-				}),
-			)
+	// ── API validation: error responses ──────────────────────────────────
 
-			envdClient := setup.GetEnvdClient(t, ctx)
+	t.Run("api/not_found", func(t *testing.T) { //nolint:paralleltest // sequential
+		resp := putNetwork(t, ctx, client, "ixxxxxxxxxxxxxxxxxx0",
+			api.PutSandboxesSandboxIDNetworkJSONRequestBody{AllowOut: ptrS("8.8.8.8")},
+		)
+		require.Equal(t, http.StatusNotFound, resp.StatusCode())
+	})
 
-			assertBlockedHTTPRequest(t, ctx, sbx, envdClient, tc.testIP, fmt.Sprintf("Expected curl to private IP %s to fail", tc.testIP))
+	t.Run("api/unauthorized", func(t *testing.T) { //nolint:paralleltest // sequential
+		resp, err := client.PutSandboxesSandboxIDNetworkWithResponse(
+			ctx, "any-sandbox-id", api.PutSandboxesSandboxIDNetworkJSONRequestBody{},
+		)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusUnauthorized, resp.StatusCode())
+	})
+
+	// ── API validation: rejected (400) ──────────────────────────────────
+
+	rejectedCases := []struct {
+		name     string
+		allowOut *[]string
+		denyOut  *[]string
+	}{
+		{"domain_in_deny_out", nil, ptrS("example.com")},
+		{"garbage_in_deny_out", nil, ptrS("not-a-cidr")},
+		{"domain_in_deny_out_alongside_block_all", nil, ptrS(blockAll, "example.com")},
+		{"domain_allow_without_deny", ptrS("google.com"), nil},
+		{"domain_allow_with_partial_deny", ptrS("google.com"), ptrS("10.0.0.0/8")},
+		{"wildcard_domain_without_deny_all", ptrS("*.example.com"), nil},
+		{"wildcard_domain_with_partial_deny", ptrS("*.example.com"), ptrS("10.0.0.0/8")},
+		{"mixed_domain_ip_without_deny_all", ptrS("example.com", "8.8.8.8"), ptrS("10.0.0.0/8")},
+	}
+	for _, tc := range rejectedCases {
+		t.Run("api/reject/"+tc.name, func(t *testing.T) { //nolint:paralleltest // sequential
+			resp := putNetwork(t, ctx, client, sbx.SandboxID, api.PutSandboxesSandboxIDNetworkJSONRequestBody{
+				AllowOut: tc.allowOut,
+				DenyOut:  tc.denyOut,
+			})
+			require.Equal(t, http.StatusBadRequest, resp.StatusCode())
 		})
 	}
-}
-
-// TestEgressFirewallAllowAllDuplicate tests that adding 0.0.0.0/0 twice works correctly
-func TestEgressFirewallAllowAllDuplicate(t *testing.T) {
-	t.Parallel()
-	templateID := ensureNetworkTestTemplate(t)
-	ctx := t.Context()
-	client := setup.GetAPIClient()
-
-	// Add 0.0.0.0/0 twice in the allowOut list
-	allowAll := []string{"0.0.0.0/0", "0.0.0.0/0"}
-
-	sbx := utils.SetupSandboxWithCleanup(t, client,
-		utils.WithTemplateID(templateID),
-		utils.WithTimeout(60),
-		utils.WithNetwork(&api.SandboxNetworkConfig{
-			AllowOut: &allowAll,
-			DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
-		}),
-	)
-
-	envdClient := setup.GetEnvdClient(t, ctx)
-
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Expected curl to 8.8.8.8 to succeed with duplicate 0.0.0.0/0 allow")
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "Expected curl to 1.1.1.1 to succeed with duplicate 0.0.0.0/0 allow")
-}
-
-// TestEgressFirewallRegularIPThenAllowAll tests that adding a regular IP and then 0.0.0.0/0 works correctly
-func TestEgressFirewallRegularIPThenAllowAll(t *testing.T) {
-	t.Parallel()
-	templateID := ensureNetworkTestTemplate(t)
-	ctx := t.Context()
-	client := setup.GetAPIClient()
-
-	// Add a specific IP followed by 0.0.0.0/0
-	allowList := []string{"8.8.8.8", "0.0.0.0/0"}
-
-	sbx := utils.SetupSandboxWithCleanup(t, client,
-		utils.WithTemplateID(templateID),
-		utils.WithTimeout(60),
-		utils.WithNetwork(&api.SandboxNetworkConfig{
-			AllowOut: &allowList,
-			DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
-		}),
-	)
-
-	envdClient := setup.GetEnvdClient(t, ctx)
-
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.8.8", "Expected curl to 8.8.8.8 to succeed")
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "Expected curl to 1.1.1.1 to succeed (0.0.0.0/0 allows all)")
-}
-
-// TestEgressFirewallAllowDomainThroughBlockedInternet tests that a specific domain can be allowed
-// when all internet traffic is blocked via 0.0.0.0/0
-func TestEgressFirewallAllowDomainThroughBlockedInternet(t *testing.T) {
-	t.Parallel()
-	templateID := ensureNetworkTestTemplate(t)
-	ctx := t.Context()
-	client := setup.GetAPIClient()
-
-	// Block all internet but allow google.com domain
-	allowList := []string{"google.com"}
-	blockAll := []string{sandbox_network.AllInternetTrafficCIDR}
-
-	sbx := utils.SetupSandboxWithCleanup(t, client,
-		utils.WithTemplateID(templateID),
-		utils.WithTimeout(60),
-		utils.WithNetwork(&api.SandboxNetworkConfig{
-			AllowOut: &allowList,
-			DenyOut:  &blockAll,
-		}),
-	)
-
-	envdClient := setup.GetEnvdClient(t, ctx)
-
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://google.com", "Expected curl to allowed domain (google.com) to succeed")
-	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://cloudflare.com", "Expected curl to non-allowed domain (cloudflare.com) to fail")
-}
-
-// TestEgressFirewallAllowWildcardDomainThroughBlockedInternet tests that wildcard domain patterns work
-func TestEgressFirewallAllowWildcardDomainThroughBlockedInternet(t *testing.T) {
-	t.Parallel()
-	templateID := ensureNetworkTestTemplate(t)
-	ctx := t.Context()
-	client := setup.GetAPIClient()
-
-	// Block all internet but allow *.google.com wildcard domain
-	allowList := []string{"*.google.com"}
-	blockAll := []string{sandbox_network.AllInternetTrafficCIDR}
-
-	sbx := utils.SetupSandboxWithCleanup(t, client,
-		utils.WithTemplateID(templateID),
-		utils.WithTimeout(60),
-		utils.WithNetwork(&api.SandboxNetworkConfig{
-			AllowOut: &allowList,
-			DenyOut:  &blockAll,
-		}),
-	)
-
-	envdClient := setup.GetEnvdClient(t, ctx)
-
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://www.google.com", "Expected curl to subdomain (www.google.com) matching wildcard (*.google.com) to succeed")
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://maps.google.com", "Expected curl to subdomain (maps.google.com) matching wildcard (*.google.com) to succeed")
-	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://cloudflare.com", "Expected curl to non-matching domain (cloudflare.com) to fail")
-}
-
-// TestEgressFirewallExactDomainMatchVsSubdomain tests that exact domain match does not include subdomains
-func TestEgressFirewallExactDomainMatchVsSubdomain(t *testing.T) {
-	t.Parallel()
-	templateID := ensureNetworkTestTemplate(t)
-	ctx := t.Context()
-	client := setup.GetAPIClient()
-
-	// Block all internet but allow only exact "google.com" (not subdomains)
-	allowList := []string{"google.com"}
-	blockAll := []string{sandbox_network.AllInternetTrafficCIDR}
-
-	sbx := utils.SetupSandboxWithCleanup(t, client,
-		utils.WithTemplateID(templateID),
-		utils.WithTimeout(60),
-		utils.WithNetwork(&api.SandboxNetworkConfig{
-			AllowOut: &allowList,
-			DenyOut:  &blockAll,
-		}),
-	)
-
-	envdClient := setup.GetEnvdClient(t, ctx)
-
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://google.com", "Expected curl to exact domain (google.com) to succeed")
-	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://www.google.com", "Expected curl to subdomain (www.google.com) to fail when only exact domain (google.com) is allowed")
-}
-
-// TestEgressFirewallAllowAllDomainsWildcard tests that "*" wildcard allows all domains
-func TestEgressFirewallAllowAllDomainsWildcard(t *testing.T) {
-	t.Parallel()
-	templateID := ensureNetworkTestTemplate(t)
-	ctx := t.Context()
-	client := setup.GetAPIClient()
-
-	// Block all internet but allow all domains with "*" wildcard
-	allowList := []string{"*"}
-	blockAll := []string{sandbox_network.AllInternetTrafficCIDR}
-
-	sbx := utils.SetupSandboxWithCleanup(t, client,
-		utils.WithTemplateID(templateID),
-		utils.WithTimeout(60),
-		utils.WithNetwork(&api.SandboxNetworkConfig{
-			AllowOut: &allowList,
-			DenyOut:  &blockAll,
-		}),
-	)
-
-	envdClient := setup.GetEnvdClient(t, ctx)
-
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://google.com", "Expected curl to google.com to succeed with '*' wildcard")
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://cloudflare.com", "Expected curl to cloudflare.com to succeed with '*' wildcard")
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://github.com", "Expected curl to github.com to succeed with '*' wildcard")
-}
-
-// TestEgressFirewallDomainCaseInsensitive tests that domain matching is case-insensitive
-func TestEgressFirewallDomainCaseInsensitive(t *testing.T) {
-	t.Parallel()
-	templateID := ensureNetworkTestTemplate(t)
-	ctx := t.Context()
-	client := setup.GetAPIClient()
-
-	// Block all internet but allow domain with mixed case
-	allowList := []string{"Google.COM"}
-	blockAll := []string{sandbox_network.AllInternetTrafficCIDR}
-
-	sbx := utils.SetupSandboxWithCleanup(t, client,
-		utils.WithTemplateID(templateID),
-		utils.WithTimeout(60),
-		utils.WithNetwork(&api.SandboxNetworkConfig{
-			AllowOut: &allowList,
-			DenyOut:  &blockAll,
-		}),
-	)
-
-	envdClient := setup.GetEnvdClient(t, ctx)
-
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://google.com", "Expected curl to google.com to succeed when Google.COM is allowed (case-insensitive)")
-	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://cloudflare.com", "Expected curl to non-allowed domain (cloudflare.com) to fail")
-}
-
-// TestEgressFirewallAllowDomainAndIP tests mixed domain and IP allowlist
-func TestEgressFirewallAllowDomainAndIP(t *testing.T) {
-	t.Parallel()
-	templateID := ensureNetworkTestTemplate(t)
-	ctx := t.Context()
-	client := setup.GetAPIClient()
-
-	// Block all internet but allow both a domain and an IP
-	allowList := []string{"google.com", "1.1.1.1"}
-	blockAll := []string{sandbox_network.AllInternetTrafficCIDR}
-
-	sbx := utils.SetupSandboxWithCleanup(t, client,
-		utils.WithTemplateID(templateID),
-		utils.WithTimeout(60),
-		utils.WithNetwork(&api.SandboxNetworkConfig{
-			AllowOut: &allowList,
-			DenyOut:  &blockAll,
-		}),
-	)
-
-	envdClient := setup.GetEnvdClient(t, ctx)
-
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://google.com", "Expected curl to allowed domain (google.com) to succeed")
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "Expected curl to allowed IP (1.1.1.1) to succeed")
-	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://cloudflare.com", "Expected curl to non-allowed domain (cloudflare.com) to fail")
-	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://8.8.4.4", "Expected curl to non-allowed IP (8.8.4.4) to fail")
-}
-
-// TestEgressFirewallHTTPSByIPNoHostname tests that HTTPS requests by IP (no SNI hostname)
-// fall back to CIDR rules when domain filtering is configured
-func TestEgressFirewallHTTPSByIPNoHostname(t *testing.T) {
-	t.Parallel()
-	templateID := ensureNetworkTestTemplate(t)
-	ctx := t.Context()
-	client := setup.GetAPIClient()
-
-	// Block all internet but allow only a domain (not an IP)
-	allowList := []string{"cloudflare.com"}
-	blockAll := []string{sandbox_network.AllInternetTrafficCIDR}
-
-	sbx := utils.SetupSandboxWithCleanup(t, client,
-		utils.WithTemplateID(templateID),
-		utils.WithTimeout(60),
-		utils.WithNetwork(&api.SandboxNetworkConfig{
-			AllowOut: &allowList,
-			DenyOut:  &blockAll,
-		}),
-	)
-
-	envdClient := setup.GetEnvdClient(t, ctx)
-
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://cloudflare.com", "Expected curl to allowed domain (cloudflare.com) to succeed")
-	// HTTPS request by IP (1.1.1.1 is Cloudflare's IP) is blocked because there's no hostname/SNI to match
-	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://1.1.1.1", "Expected curl to IP (https://1.1.1.1) to fail when only domain is allowed (no SNI hostname)")
-}
-
-// TestEgressFirewallDomainPersistsAfterResume tests that domain-based network config persists after pause/resume
-func TestEgressFirewallDomainPersistsAfterResume(t *testing.T) {
-	t.Parallel()
-	templateID := ensureNetworkTestTemplate(t)
-	ctx := t.Context()
-	sbxTimeout := int32(60)
-	client := setup.GetAPIClient()
-
-	// Block all internet but allow specific domain
-	allowList := []string{"google.com"}
-	blockAll := []string{sandbox_network.AllInternetTrafficCIDR}
-
-	sbx := utils.SetupSandboxWithCleanup(t, client,
-		utils.WithTemplateID(templateID),
-		utils.WithTimeout(60),
-		utils.WithNetwork(&api.SandboxNetworkConfig{
-			AllowOut: &allowList,
-			DenyOut:  &blockAll,
-		}),
-	)
-
-	envdClient := setup.GetEnvdClient(t, ctx)
-
-	// Test before pause
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://google.com", "Expected curl to allowed domain (google.com) to succeed before pause")
-	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://cloudflare.com", "Expected curl to non-allowed domain (cloudflare.com) to fail before pause")
-
-	// Pause the sandbox
-	respPause, err := client.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
-	require.NoError(t, err, "Expected to pause sandbox without error")
-	require.Equal(t, http.StatusNoContent, respPause.StatusCode(), "Expected status code 204 No Content, got %d", respPause.StatusCode())
-
-	// Resume the sandbox
-	respResume, err := client.PostSandboxesSandboxIDResumeWithResponse(ctx, sbx.SandboxID, api.PostSandboxesSandboxIDResumeJSONRequestBody{
-		Timeout: &sbxTimeout,
-	}, setup.WithAPIKey())
-	require.NoError(t, err, "Expected to resume sandbox without error")
-	require.Equal(t, http.StatusCreated, respResume.StatusCode(), "Expected status code 201 Created, got %d", respResume.StatusCode())
-
-	// Test after resume
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://google.com", "Expected curl to allowed domain (google.com) to succeed after resume")
-	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://cloudflare.com", "Expected curl to non-allowed domain (cloudflare.com) to fail after resume")
-}
-
-// =============================================================================
-// HTTP (non-HTTPS) protocol tests
-// =============================================================================
-
-// TestEgressFirewallHTTPDomainFiltering tests that HTTP (non-HTTPS) traffic is filtered by Host header
-func TestEgressFirewallHTTPDomainFiltering(t *testing.T) {
-	t.Parallel()
-	templateID := ensureNetworkTestTemplate(t)
-	ctx := t.Context()
-	client := setup.GetAPIClient()
-
-	// Block all internet but allow postman-echo.com domain (supports HTTP)
-	allowList := []string{"postman-echo.com"}
-	blockAll := []string{sandbox_network.AllInternetTrafficCIDR}
-
-	sbx := utils.SetupSandboxWithCleanup(t, client,
-		utils.WithTemplateID(templateID),
-		utils.WithTimeout(60),
-		utils.WithNetwork(&api.SandboxNetworkConfig{
-			AllowOut: &allowList,
-			DenyOut:  &blockAll,
-		}),
-	)
-
-	envdClient := setup.GetEnvdClient(t, ctx)
-
-	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "http://postman-echo.com/get", "Expected HTTP curl to allowed domain (httpbin.org) to succeed")
-	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "http://example.com", "Expected HTTP curl to non-allowed domain (example.com) to fail")
-}
-
-// =============================================================================
-// UDP protocol tests (DNS queries to specific servers)
-// =============================================================================
-
-// TestEgressFirewallUDPAllowedIP tests that UDP traffic (DNS) to allowed IPs works
-func TestEgressFirewallUDPAllowedIP(t *testing.T) {
-	t.Parallel()
-	templateID := ensureNetworkTestTemplate(t)
-	ctx := t.Context()
-	client := setup.GetAPIClient()
-
-	// Block all internet but allow Google DNS IP
-	allowList := []string{"8.8.8.8"}
-	blockAll := []string{sandbox_network.AllInternetTrafficCIDR}
-
-	sbx := utils.SetupSandboxWithCleanup(t, client,
-		utils.WithTemplateID(templateID),
-		utils.WithTimeout(60),
-		utils.WithNetwork(&api.SandboxNetworkConfig{
-			AllowOut: &allowList,
-			DenyOut:  &blockAll,
-		}),
-	)
-
-	envdClient := setup.GetEnvdClient(t, ctx)
-
-	assertSuccessfulDNSQuery(t, ctx, sbx, envdClient, "8.8.8.8", "google.com", "Expected DNS query (UDP) to allowed IP (8.8.8.8) to succeed")
-	assertBlockedDNSQuery(t, ctx, sbx, envdClient, "1.1.1.1", "google.com", "Expected DNS query (UDP) to non-allowed IP (1.1.1.1) to fail")
-}
-
-// TestEgressFirewallUDPAllowedCIDR tests that UDP traffic to allowed CIDR range works
-func TestEgressFirewallUDPAllowedCIDR(t *testing.T) {
-	t.Parallel()
-	templateID := ensureNetworkTestTemplate(t)
-	ctx := t.Context()
-	client := setup.GetAPIClient()
-
-	// Block all internet but allow Google DNS CIDR range
-	allowList := []string{"8.8.8.0/24"}
-	blockAll := []string{sandbox_network.AllInternetTrafficCIDR}
-
-	sbx := utils.SetupSandboxWithCleanup(t, client,
-		utils.WithTemplateID(templateID),
-		utils.WithTimeout(60),
-		utils.WithNetwork(&api.SandboxNetworkConfig{
-			AllowOut: &allowList,
-			DenyOut:  &blockAll,
-		}),
-	)
-
-	envdClient := setup.GetEnvdClient(t, ctx)
-
-	assertSuccessfulDNSQuery(t, ctx, sbx, envdClient, "8.8.8.8", "google.com", "Expected DNS query (UDP) to IP within allowed CIDR (8.8.8.0/24) to succeed")
-	assertBlockedDNSQuery(t, ctx, sbx, envdClient, "1.1.1.1", "google.com", "Expected DNS query (UDP) to IP outside allowed CIDR to fail")
-}
-
-// TestEgressFirewallDNSSpoofingNeutralized tests that DNS spoofing attacks are neutralized.
-// This simulates an attack where:
-// 1. The firewall allows traffic to "google.com"
-// 2. An attacker modifies /etc/hosts to make google.com resolve to 1.1.1.1 (Cloudflare's IP)
-// 3. The attacker tries to access 1.1.1.1 claiming the hostname is "google.com"
-// 4. The firewall IGNORES the spoofed IP and resolves google.com itself, redirecting to the real Google IP
-// 5. The connection SUCCEEDS to the real Google server (not to 1.1.1.1)
-func TestEgressFirewallDNSSpoofingNeutralized(t *testing.T) {
-	t.Parallel()
-	templateID := ensureNetworkTestTemplate(t)
-	ctx := t.Context()
-	client := setup.GetAPIClient()
-
-	sbx := utils.SetupSandboxWithCleanup(t, client,
-		utils.WithTemplateID(templateID),
-		utils.WithTimeout(60),
-		utils.WithNetwork(&api.SandboxNetworkConfig{
-			// Block all internet but allow google.com domain
-			AllowOut: &[]string{"google.com"},
-			DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
-		}),
-	)
-
-	envdClient := setup.GetEnvdClient(t, ctx)
-
-	// First, verify normal access to google.com works and response is from Google (server: gws)
-	assertHTTPResponseFromServer(t, ctx, sbx, envdClient, "https://google.com", "server: gws",
-		"Expected curl to google.com to succeed and return Google server header before DNS spoofing")
-
-	// Now simulate DNS spoofing by adding an /etc/hosts entry that maps google.com to 1.1.1.1 (Cloudflare's IP)
-	// This simulates what would happen if an attacker modified DNS resolution
-	// If the spoofing worked (i.e., if we connected to 1.1.1.1), we would see "server: cloudflare"
-	err := utils.ExecCommandAsRoot(t, ctx, sbx, envdClient, "sh", "-c", "echo '1.1.1.1 google.com' >> /etc/hosts")
-	require.NoError(t, err, "Expected to modify /etc/hosts without error")
-
-	// Now try to access google.com - this should STILL SUCCEED and return Google's response because:
-	// - The sandbox resolves google.com to 1.1.1.1 (via /etc/hosts)
-	// - The firewall sees a connection to 1.1.1.1 with hostname "google.com"
-	// - The firewall resolves google.com itself and gets the real Google IPs
-	// - The firewall REDIRECTS the connection to a real Google IP (ignoring 1.1.1.1)
-	// - The connection succeeds to the real Google server
-	//
-	// We verify this by checking the "server" header in the response:
-	// - If we reached Google: "server: gws"
-	// - If we reached Cloudflare (spoofing worked): "server: cloudflare"
-	assertHTTPResponseFromServer(t, ctx, sbx, envdClient, "https://google.com", "server: gws",
-		"Expected response from Google (server: gws), NOT Cloudflare - firewall should redirect to real Google IP")
-
-	t.Log("SUCCESS: DNS spoofing attack neutralized")
-	t.Log("  - google.com was allowed in the firewall rules")
-	t.Log("  - /etc/hosts was modified to make google.com resolve to 1.1.1.1 (Cloudflare)")
-	t.Log("  - Firewall resolved google.com itself and redirected to a real Google IP")
-	t.Log("  - Response came from Google (server: gws), NOT Cloudflare - spoofing was bypassed!")
-}
-
-// TestNoNetworkConfig_SSHWorks tests that SSH connections work when no network config is set.
-// This is a regression test for the issue where the TCP firewall redirect rule would
-// break SSH connections even when no egress filtering was configured.
-// Expected: SSH connection to GitHub should succeed (TCP handshake completes),
-// though we'll get "Permission denied (publickey)" since we don't have valid credentials.
-func TestNoNetworkConfig_SSHWorks(t *testing.T) {
-	t.Parallel()
-
-	templateID := ensureNetworkTestTemplate(t)
-	ctx := t.Context()
-	client := setup.GetAPIClient()
-
-	// Create sandbox WITHOUT any network configuration
-	// This tests the default behavior - all traffic should be allowed
-	sbx := utils.SetupSandboxWithCleanup(t, client,
-		utils.WithTemplateID(templateID),
-		utils.WithTimeout(60),
-		// No network config - this is the key part of the test
-	)
-
-	envdClient := setup.GetEnvdClient(t, ctx)
-
-	// Test SSH connection to GitHub
-	// Expected output: "git@github.com: Permission denied (publickey)."
-	// This shows the TCP connection succeeded (SSH handshake completed),
-	// even though we don't have valid credentials for authentication.
-	t.Log("Testing SSH connection to github.com (port 22)...")
-	output, err := utils.ExecCommandWithOutput(t, ctx, sbx, envdClient, nil, "user",
-		"ssh", "-T", "-o", "StrictHostKeyChecking=accept-new",
-		"-o", "ConnectTimeout=5", "git@github.com")
-	require.Error(t, err, "Expected SSH command to exit with non-zero status due to lack of credentials")
-	require.Contains(t, output, "Permission denied (publickey)")
-}
-
-// TestWithNetworkConfig_SSHWorks tests that SSH connections work when network config IS defined.
-// This tests that SSH traffic (which is non-HTTP/HTTPS) is correctly handled by the firewall
-// when IP-based filtering is enabled. SSH doesn't use SNI or Host headers, so we must allow
-// by IP address rather than domain name.
-// Expected: SSH connection to GitHub should succeed (TCP handshake completes),
-// though we'll get "Permission denied (publickey)" since we don't have valid credentials.
-func TestWithNetworkConfig_SSHWorks(t *testing.T) {
-	t.Parallel()
-
-	templateID := ensureNetworkTestTemplate(t)
-	ctx := t.Context()
-	client := setup.GetAPIClient()
-
-	// Create sandbox WITH network configuration that allows all IPs
-	// SSH is a plain TCP protocol without hostname information (no SNI/Host header),
-	// so domain-based filtering won't work for SSH - we need IP-based rules.
-	// Using 0.0.0.0/0 in allowOut to allow all traffic, but with denyOut set to prove
-	// network config is being processed (not just bypassed).
-	sbx := utils.SetupSandboxWithCleanup(t, client,
-		utils.WithTemplateID(templateID),
-		utils.WithTimeout(60),
-		utils.WithNetwork(&api.SandboxNetworkConfig{
-			AllowOut: &[]string{sandbox_network.AllInternetTrafficCIDR}, // Allow all IPs
-			DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR}, // Would block all, but allowOut takes precedence
-		}),
-	)
-
-	envdClient := setup.GetEnvdClient(t, ctx)
-
-	// Test SSH connection to GitHub
-	// Expected output: "git@github.com: Permission denied (publickey)."
-	// This shows the TCP connection succeeded (SSH handshake completed),
-	// even though we don't have valid credentials for authentication.
-	t.Log("Testing SSH connection to github.com (port 22) with network config defined...")
-	output, err := utils.ExecCommandWithOutput(t, ctx, sbx, envdClient, nil, "user",
-		"ssh", "-T", "-o", "StrictHostKeyChecking=accept-new",
-		"-o", "ConnectTimeout=5", "git@github.com")
-	require.Error(t, err, "Expected SSH command to exit with non-zero status due to lack of credentials")
-	require.Contains(t, output, "Permission denied (publickey)",
-		"Expected 'Permission denied (publickey)' indicating SSH handshake succeeded but auth failed")
-}
-
-// TestGPGKeyserverWorks tests that GPG keyserver connections work correctly.
-// GPG keyservers use the HKP protocol (HTTP Keyserver Protocol) typically on port 11371.
-// This test is important for verifying TCP half-close handling in the firewall proxy.
-// GPG's HKP client may half-close the connection after sending the request (FIN from client),
-// while still waiting for the server's response. If the proxy doesn't handle half-close correctly,
-// the connection would freeze waiting indefinitely and the key retrieval would fail.
-// Expected: GPG should successfully receive the key from the keyserver.
-func TestGPGKeyserverWorks(t *testing.T) {
-	t.Parallel()
-
-	templateID := ensureNetworkTestTemplate(t)
-	client := setup.GetAPIClient()
-
-	t.Run("without network config", func(t *testing.T) {
-		t.Parallel()
-		ctx := t.Context()
-
-		// Create sandbox WITHOUT any network configuration
-		// This tests the default behavior - all traffic should be allowed
-		sbx := utils.SetupSandboxWithCleanup(t, client,
-			utils.WithTemplateID(templateID),
-			utils.WithTimeout(60),
-			// No network config - this is the key part of the test
-		)
-
-		envdClient := setup.GetEnvdClient(t, ctx)
-
-		// Test GPG keyserver connection to Ubuntu's keyserver
-		// This tests that:
-		// 1. Non-standard TCP ports (11371) work correctly through the firewall
-		// 2. TCP half-close is properly handled (GPG may FIN after request but expects response)
-		t.Log("Testing GPG keyserver connection to hkp://keyserver.ubuntu.com...")
+
+	// ── API validation: accepted (204) ──────────────────────────────────
+
+	acceptedCases := []struct {
+		name     string
+		allowOut *[]string
+		denyOut  *[]string
+	}{
+		{"empty_body", nil, nil},
+		{"ip_allow_without_deny", ptrS("8.8.8.8"), nil},
+		{"ip_allow_with_partial_deny", ptrS("8.8.8.8"), ptrS("10.0.0.0/8")},
+		{"cidr_allow_without_deny", ptrS("8.8.0.0/16"), nil},
+		{"deny_all_only", nil, ptrS(blockAll)},
+		{"ip_allow_with_deny_all", ptrS("8.8.8.8"), ptrS(blockAll)},
+		{"domain_with_deny_all", ptrS("google.com"), ptrS(blockAll)},
+		{"wildcard_domain_with_deny_all", ptrS("*.example.com"), ptrS(blockAll)},
+		{"mixed_domain_ip_with_deny_all", ptrS("example.com", "8.8.8.8"), ptrS(blockAll)},
+		{"multiple_cidrs_in_deny", nil, ptrS("10.0.0.0/8", "192.168.0.0/16")},
+	}
+	for _, tc := range acceptedCases {
+		t.Run("api/accept/"+tc.name, func(t *testing.T) { //nolint:paralleltest // sequential
+			resp := putNetwork(t, ctx, client, sbx.SandboxID, api.PutSandboxesSandboxIDNetworkJSONRequestBody{
+				AllowOut: tc.allowOut,
+				DenyOut:  tc.denyOut,
+			})
+			require.Equal(t, http.StatusNoContent, resp.StatusCode())
+		})
+	}
+
+	// ── IP/CIDR filtering ───────────────────────────────────────────────
+
+	t.Run("ip/allow_specific", func(t *testing.T) { //nolint:paralleltest // sequential
+		update([]string{"8.8.8.8"}, []string{blockAll})
+		requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "allowed IP reachable")
+		requireTCPBlocked(t, ctx, sbx, envdClient, "https://1.1.1.1", "non-allowed IP blocked")
+	})
+
+	t.Run("ip/block_specific", func(t *testing.T) { //nolint:paralleltest // sequential
+		update(nil, []string{"8.8.8.8"})
+		requireTCPBlocked(t, ctx, sbx, envdClient, "https://8.8.8.8", "denied IP blocked")
+		requireTCPAllowed(t, ctx, sbx, envdClient, "https://1.1.1.1", "non-denied IP allowed")
+	})
+
+	t.Run("ip/allow_cidr", func(t *testing.T) { //nolint:paralleltest // sequential
+		update([]string{"8.8.8.0/24"}, []string{blockAll})
+		requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "IP in allowed CIDR")
+		requireTCPBlocked(t, ctx, sbx, envdClient, "https://1.1.1.1", "IP outside CIDR blocked")
+	})
+
+	t.Run("ip/block_cidr", func(t *testing.T) { //nolint:paralleltest // sequential
+		update(nil, []string{"8.8.8.0/24"})
+		requireTCPBlocked(t, ctx, sbx, envdClient, "https://8.8.8.8", "IP in denied CIDR blocked")
+		requireTCPAllowed(t, ctx, sbx, envdClient, "https://1.1.1.1", "IP outside CIDR allowed")
+	})
+
+	t.Run("ip/allow_overrides_block", func(t *testing.T) { //nolint:paralleltest // sequential
+		update([]string{"8.8.8.8"}, []string{"8.8.8.0/24"})
+		requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "allow takes precedence")
+	})
+
+	t.Run("ip/partial_allow_deny_default_allow", func(t *testing.T) { //nolint:paralleltest // sequential
+		update([]string{"8.8.8.8"}, []string{"1.1.1.1"})
+		requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "explicitly allowed")
+		requireTCPBlocked(t, ctx, sbx, envdClient, "https://1.1.1.1", "explicitly denied")
+		requireTCPAllowed(t, ctx, sbx, envdClient, "https://1.0.0.1", "default allow for unmatched")
+	})
+
+	t.Run("ip/multiple_allowed", func(t *testing.T) { //nolint:paralleltest // sequential
+		update([]string{"8.8.8.8", "1.1.1.1"}, []string{blockAll})
+		requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "first allowed IP")
+		requireTCPAllowed(t, ctx, sbx, envdClient, "https://1.1.1.1", "second allowed IP")
+	})
+
+	t.Run("ip/allow_all_cidr", func(t *testing.T) { //nolint:paralleltest // sequential
+		update([]string{blockAll}, []string{blockAll})
+		requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "0.0.0.0/0 allow overrides deny")
+	})
+
+	t.Run("ip/empty_config_allows_all", func(t *testing.T) { //nolint:paralleltest // sequential
+		clear()
+		requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "reachable with no rules")
+		requireTCPAllowed(t, ctx, sbx, envdClient, "https://1.1.1.1", "reachable with no rules")
+	})
+
+	t.Run("ip/private_ranges_always_blocked", func(t *testing.T) { //nolint:paralleltest // sequential
+		for _, pr := range []struct{ cidr, ip, desc string }{
+			{"10.0.0.0/8", "10.0.0.1", "10/8"},
+			{"192.168.0.0/16", "192.168.0.1", "192.168/16"},
+			{"172.16.0.0/12", "172.16.0.1", "172.16/12"},
+			{"169.254.0.0/16", "169.254.0.1", "169.254/16 (link-local)"},
+		} {
+			update([]string{pr.cidr}, nil)
+			requireTCPBlocked(t, ctx, sbx, envdClient, pr.ip, fmt.Sprintf("private IP %s always blocked", pr.desc))
+		}
+	})
+
+	// ── Domain filtering ────────────────────────────────────────────────
+
+	t.Run("domain/allow_through_blocked_internet", func(t *testing.T) { //nolint:paralleltest // sequential
+		update([]string{"google.com"}, []string{blockAll})
+		requireTCPAllowed(t, ctx, sbx, envdClient, "https://google.com", "allowed domain reachable")
+		requireTCPBlocked(t, ctx, sbx, envdClient, "https://cloudflare.com", "non-allowed domain blocked")
+	})
+
+	t.Run("domain/wildcard", func(t *testing.T) { //nolint:paralleltest // sequential
+		update([]string{"*.google.com"}, []string{blockAll})
+		requireTCPAllowed(t, ctx, sbx, envdClient, "https://www.google.com", "subdomain matches wildcard")
+		requireTCPBlocked(t, ctx, sbx, envdClient, "https://cloudflare.com", "non-matching blocked")
+	})
+
+	t.Run("domain/exact_vs_subdomain", func(t *testing.T) { //nolint:paralleltest // sequential
+		update([]string{"google.com"}, []string{blockAll})
+		requireTCPAllowed(t, ctx, sbx, envdClient, "https://google.com", "exact match")
+		requireTCPBlocked(t, ctx, sbx, envdClient, "https://mail.google.com", "subdomain not matched by exact rule")
+	})
+
+	t.Run("domain/wildcard_star", func(t *testing.T) { //nolint:paralleltest // sequential
+		update([]string{"*"}, []string{blockAll})
+		requireTCPAllowed(t, ctx, sbx, envdClient, "https://google.com", "* matches any domain")
+		requireTCPAllowed(t, ctx, sbx, envdClient, "https://github.com", "* matches any domain")
+	})
+
+	t.Run("domain/case_insensitive", func(t *testing.T) { //nolint:paralleltest // sequential
+		update([]string{"Google.Com"}, []string{blockAll})
+		requireTCPAllowed(t, ctx, sbx, envdClient, "https://google.com", "case insensitive")
+		requireTCPBlocked(t, ctx, sbx, envdClient, "https://cloudflare.com", "non-matching blocked")
+	})
+
+	t.Run("domain/and_ip_combined", func(t *testing.T) { //nolint:paralleltest // sequential
+		update([]string{"google.com", "1.1.1.1"}, []string{blockAll})
+		requireTCPAllowed(t, ctx, sbx, envdClient, "https://google.com", "domain allowed")
+		requireTCPAllowed(t, ctx, sbx, envdClient, "https://1.1.1.1", "IP allowed")
+		requireTCPBlocked(t, ctx, sbx, envdClient, "https://cloudflare.com", "non-allowed domain blocked")
+	})
+
+	t.Run("domain/https_by_ip_no_hostname", func(t *testing.T) { //nolint:paralleltest // sequential
+		update([]string{"8.8.8.8"}, []string{blockAll})
+		requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "HTTPS by IP uses CIDR rule")
+		requireTCPBlocked(t, ctx, sbx, envdClient, "https://1.1.1.1", "non-allowed IP blocked")
+	})
+
+	t.Run("domain/http_host_header", func(t *testing.T) { //nolint:paralleltest // sequential
+		update([]string{"google.com"}, []string{blockAll})
+		requireTCPAllowed(t, ctx, sbx, envdClient, "http://google.com", "HTTP domain via Host header")
+		requireTCPBlocked(t, ctx, sbx, envdClient, "http://cloudflare.com", "non-allowed HTTP domain blocked")
+	})
+
+	// ── Port rules ──────────────────────────────────────────────────────
+
+	t.Run("port/ip_single", func(t *testing.T) { //nolint:paralleltest // sequential
+		update([]string{"8.8.8.8:443"}, []string{blockAll})
+		requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "HTTPS 8.8.8.8:443 allowed")
+		requireDNSBlocked(t, ctx, sbx, envdClient, "8.8.8.8", "DNS 8.8.8.8:53 blocked (port not allowed)")
+	})
+
+	t.Run("port/udp_only", func(t *testing.T) { //nolint:paralleltest // sequential
+		update([]string{"8.8.8.8:53"}, []string{blockAll})
+		requireDNSAllowed(t, ctx, sbx, envdClient, "DNS 8.8.8.8:53 allowed")
+		requireTCPBlocked(t, ctx, sbx, envdClient, "https://8.8.8.8", "HTTPS blocked (only :53)")
+	})
+
+	t.Run("port/range", func(t *testing.T) { //nolint:paralleltest // sequential
+		update([]string{"8.8.8.8:53-443"}, []string{blockAll})
+		requireDNSAllowed(t, ctx, sbx, envdClient, "DNS 8.8.8.8:53 in range")
+		requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "HTTPS 8.8.8.8:443 in range")
+	})
+
+	t.Run("port/cidr_with_port", func(t *testing.T) { //nolint:paralleltest // sequential
+		update([]string{"8.8.8.0/24:443"}, []string{blockAll})
+		requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "CIDR+port allowed")
+		requireDNSBlocked(t, ctx, sbx, envdClient, "8.8.8.8", "DNS blocked (port not in rule)")
+		requireTCPBlocked(t, ctx, sbx, envdClient, "https://1.1.1.1", "IP not in CIDR blocked")
+	})
+
+	t.Run("port/deny_specific", func(t *testing.T) { //nolint:paralleltest // sequential
+		update(nil, []string{"8.8.8.8:443"})
+		requireDNSAllowed(t, ctx, sbx, envdClient, "DNS 8.8.8.8:53 allowed (port not denied)")
+		requireTCPBlocked(t, ctx, sbx, envdClient, "https://8.8.8.8", "HTTPS 8.8.8.8:443 denied")
+		requireTCPAllowed(t, ctx, sbx, envdClient, "https://1.1.1.1", "other IP allowed")
+	})
+
+	t.Run("port/domain_with_port", func(t *testing.T) { //nolint:paralleltest // sequential
+		update([]string{"google.com:443"}, []string{blockAll})
+		requireTCPAllowed(t, ctx, sbx, envdClient, "https://google.com", "HTTPS google.com:443")
+		requireTCPBlocked(t, ctx, sbx, envdClient, "http://google.com", "HTTP :80 blocked (only 443)")
+	})
+
+	t.Run("port/multiple_ips_different_ports", func(t *testing.T) { //nolint:paralleltest // sequential
+		update([]string{"8.8.8.8:53", "1.1.1.1:443"}, []string{blockAll})
+		requireDNSAllowed(t, ctx, sbx, envdClient, "DNS 8.8.8.8:53 allowed")
+		requireTCPAllowed(t, ctx, sbx, envdClient, "https://1.1.1.1", "HTTPS 1.1.1.1:443 allowed")
+		requireTCPBlocked(t, ctx, sbx, envdClient, "https://8.8.8.8", "HTTPS 8.8.8.8:443 blocked (only :53)")
+		requireDNSBlocked(t, ctx, sbx, envdClient, "1.1.1.1", "DNS 1.1.1.1:53 blocked (only :443)")
+	})
+
+	t.Run("port/mix_port_and_allport", func(t *testing.T) { //nolint:paralleltest // sequential
+		update([]string{"8.8.8.8", "1.1.1.1:443"}, []string{blockAll})
+		requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "8.8.8.8 all ports")
+		requireDNSAllowed(t, ctx, sbx, envdClient, "DNS 8.8.8.8 all ports")
+		requireTCPAllowed(t, ctx, sbx, envdClient, "https://1.1.1.1", "1.1.1.1:443 allowed")
+		requireDNSBlocked(t, ctx, sbx, envdClient, "1.1.1.1", "1.1.1.1:53 blocked (only :443)")
+	})
+
+	t.Run("port/allow_overrides_deny", func(t *testing.T) { //nolint:paralleltest // sequential
+		update([]string{"8.8.8.8:443"}, []string{"8.8.8.8"})
+		requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "allow:443 > deny all ports")
+		requireDNSBlocked(t, ctx, sbx, envdClient, "8.8.8.8", "DNS blocked (not in allow, caught by deny)")
+	})
+
+	// ── UDP (DNS) ───────────────────────────────────────────────────────
+
+	t.Run("udp/allowed_ip", func(t *testing.T) { //nolint:paralleltest // sequential
+		update([]string{"8.8.8.8"}, []string{blockAll})
+		requireDNSAllowed(t, ctx, sbx, envdClient, "DNS to allowed IP 8.8.8.8")
+		requireDNSBlocked(t, ctx, sbx, envdClient, "1.1.1.1", "DNS to non-allowed IP 1.1.1.1")
+	})
+
+	t.Run("udp/allowed_cidr", func(t *testing.T) { //nolint:paralleltest // sequential
+		update([]string{"8.8.8.0/24"}, []string{blockAll})
+		requireDNSAllowed(t, ctx, sbx, envdClient, "DNS to IP in allowed CIDR")
+		requireDNSBlocked(t, ctx, sbx, envdClient, "1.1.1.1", "DNS to IP outside CIDR")
+	})
+
+	// ── Sequential update lifecycle ─────────────────────────────────────
+
+	type step struct {
+		name     string
+		allowOut *[]string
+		denyOut  *[]string
+		checks   []connectivityCheck
+	}
+
+	steps := []step{
+		{
+			name:    "lifecycle/1_deny_all",
+			denyOut: ptrS(blockAll),
+			checks:  []connectivityCheck{{"https://8.8.8.8", false}, {"https://1.1.1.1", false}},
+		},
+		{
+			name:     "lifecycle/2_allow_ip_through_deny",
+			allowOut: ptrS("8.8.8.8"), denyOut: ptrS(blockAll),
+			checks: []connectivityCheck{{"https://8.8.8.8", true}, {"https://1.1.1.1", false}},
+		},
+		{
+			name:     "lifecycle/3_replace_allowed_ip",
+			allowOut: ptrS("1.1.1.1"), denyOut: ptrS(blockAll),
+			checks: []connectivityCheck{{"https://1.1.1.1", true}, {"https://8.8.8.8", false}},
+		},
+		{
+			name:     "lifecycle/4_allow_multiple",
+			allowOut: ptrS("8.8.8.8", "1.1.1.1"), denyOut: ptrS(blockAll),
+			checks: []connectivityCheck{{"https://8.8.8.8", true}, {"https://1.1.1.1", true}},
+		},
+		{
+			name:     "lifecycle/5_allow_cidr",
+			allowOut: ptrS("8.8.8.0/24"), denyOut: ptrS(blockAll),
+			checks: []connectivityCheck{{"https://8.8.8.8", true}, {"https://1.1.1.1", false}},
+		},
+		{
+			name:     "lifecycle/6_allow_domain",
+			allowOut: ptrS("google.com"), denyOut: ptrS(blockAll),
+			checks: []connectivityCheck{{"https://google.com", true}, {"https://cloudflare.com", false}},
+		},
+		{
+			name:     "lifecycle/7_allow_domain_and_ip",
+			allowOut: ptrS("google.com", "1.1.1.1"), denyOut: ptrS(blockAll),
+			checks: []connectivityCheck{{"https://google.com", true}, {"https://1.1.1.1", true}, {"https://cloudflare.com", false}},
+		},
+		{
+			name:    "lifecycle/8_remove_allow_keep_deny",
+			denyOut: ptrS(blockAll),
+			checks:  []connectivityCheck{{"https://google.com", false}, {"https://8.8.8.8", false}},
+		},
+		{
+			name:   "lifecycle/9_clear_restores_access",
+			checks: []connectivityCheck{{"https://8.8.8.8", true}, {"https://1.1.1.1", true}},
+		},
+		{
+			name:     "lifecycle/10_reapply_after_clear",
+			allowOut: ptrS("1.1.1.1"), denyOut: ptrS(blockAll),
+			checks: []connectivityCheck{{"https://1.1.1.1", true}, {"https://8.8.8.8", false}},
+		},
+		{
+			name:     "lifecycle/11_allow_without_deny",
+			allowOut: ptrS("8.8.8.8"),
+			checks:   []connectivityCheck{{"https://8.8.8.8", true}, {"https://1.1.1.1", true}},
+		},
+		{
+			name:   "lifecycle/12_final_clear",
+			checks: []connectivityCheck{{"https://8.8.8.8", true}, {"https://1.1.1.1", true}},
+		},
+	}
+
+	for _, s := range steps {
+		t.Run(s.name, func(t *testing.T) { //nolint:paralleltest // sequential
+			resp := putNetwork(t, ctx, client, sbx.SandboxID, api.PutSandboxesSandboxIDNetworkJSONRequestBody{
+				AllowOut: s.allowOut,
+				DenyOut:  s.denyOut,
+			})
+			require.Equal(t, http.StatusNoContent, resp.StatusCode())
+			verifyConnectivity(t, ctx, sbx, envdClient, s.checks)
+		})
+	}
+
+	// ── Non-HTTP protocols ──────────────────────────────────────────────
+
+	t.Run("proto/ssh_no_config", func(t *testing.T) { //nolint:paralleltest // sequential
+		clear()
+		output, err := utils.ExecCommandWithOutput(t, ctx, sbx, envdClient, nil, "user",
+			"ssh", "-T", "-o", "StrictHostKeyChecking=accept-new",
+			"-o", "ConnectTimeout=5", "git@github.com")
+		require.Error(t, err, "SSH exits non-zero (no credentials)")
+		require.Contains(t, output, "Permission denied (publickey)")
+	})
+
+	t.Run("proto/ssh_with_config", func(t *testing.T) { //nolint:paralleltest // sequential
+		update([]string{blockAll}, []string{blockAll})
+		output, err := utils.ExecCommandWithOutput(t, ctx, sbx, envdClient, nil, "user",
+			"ssh", "-T", "-o", "StrictHostKeyChecking=accept-new",
+			"-o", "ConnectTimeout=5", "git@github.com")
+		require.Error(t, err, "SSH exits non-zero (no credentials)")
+		require.Contains(t, output, "Permission denied (publickey)")
+	})
+
+	t.Run("proto/gpg_keyserver_no_config", func(t *testing.T) { //nolint:paralleltest // sequential
+		clear()
 		output, err := utils.ExecCommandWithOutput(t, ctx, sbx, envdClient, nil, "user",
 			"gpg", "--keyserver", "hkp://keyserver.ubuntu.com",
 			"--recv-key", "95C0FAF38DB3CCAD0C080A7BDC78B2DDEABC47B7")
-		require.NoError(t, err, "Expected GPG keyserver command to succeed, got error: %v, output: %s", err, output)
-		t.Logf("GPG keyserver output: %s", output)
+		require.NoError(t, err, "GPG keyserver should succeed, output: %s", output)
 	})
 
-	t.Run("with network config", func(t *testing.T) {
-		t.Parallel()
-		ctx := t.Context()
+	t.Run("proto/gpg_keyserver_with_config", func(t *testing.T) { //nolint:paralleltest // sequential
+		update([]string{blockAll}, []string{blockAll})
+		output, err := utils.ExecCommandWithOutput(t, ctx, sbx, envdClient, nil, "user",
+			"gpg", "--keyserver", "hkp://keyserver.ubuntu.com",
+			"--recv-key", "95C0FAF38DB3CCAD0C080A7BDC78B2DDEABC47B7")
+		require.NoError(t, err, "GPG keyserver should succeed, output: %s", output)
+	})
 
-		// Create sandbox WITH network configuration that allows all IPs
-		// Using 0.0.0.0/0 in allowOut to allow all traffic, but with denyOut set to prove
-		// network config is being processed (not just bypassed).
+	// ── Pause/resume (last — changes sandbox lifecycle) ─────────────────
+
+	t.Run("persistence/pause_resume_update_rules", func(t *testing.T) { //nolint:paralleltest // sequential
+		update([]string{"8.8.8.8"}, []string{blockAll})
+		verifyConnectivity(t, ctx, sbx, envdClient, []connectivityCheck{
+			{"https://8.8.8.8", true},
+			{"https://1.1.1.1", false},
+		})
+
+		pauseResp, err := client.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
+		require.NoError(t, err)
+		require.Equal(t, http.StatusNoContent, pauseResp.StatusCode())
+
+		resumeResp, err := client.PostSandboxesSandboxIDResumeWithResponse(ctx, sbx.SandboxID,
+			api.PostSandboxesSandboxIDResumeJSONRequestBody{}, setup.WithAPIKey())
+		require.NoError(t, err)
+		require.Equal(t, http.StatusCreated, resumeResp.StatusCode())
+
+		verifyConnectivity(t, ctx, sbx, envdClient, []connectivityCheck{
+			{"https://8.8.8.8", true},
+			{"https://1.1.1.1", false},
+		})
+	})
+}
+
+// =============================================================================
+// Tests requiring dedicated sandboxes (destructive or creation-time config)
+// =============================================================================
+
+// TestNetworkEgressPersistence tests that creation-time rules survive pause/resume.
+func TestNetworkEgressPersistence(t *testing.T) {
+	t.Parallel()
+
+	templateID := ensureNetworkTestTemplate(t)
+	ctx := t.Context()
+	client := setup.GetAPIClient()
+	envdClient := setup.GetEnvdClient(t, ctx)
+
+	t.Run("ip_rules", func(t *testing.T) { //nolint:paralleltest // sequential within group
+		t.Parallel()
+
 		sbx := utils.SetupSandboxWithCleanup(t, client,
 			utils.WithTemplateID(templateID),
 			utils.WithTimeout(60),
 			utils.WithNetwork(&api.SandboxNetworkConfig{
-				AllowOut: &[]string{sandbox_network.AllInternetTrafficCIDR}, // Allow all IPs
-				DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR}, // Would block all, but allowOut takes precedence
+				AllowOut: &[]string{"8.8.8.8"},
+				DenyOut:  &[]string{blockAll},
 			}),
 		)
 
-		envdClient := setup.GetEnvdClient(t, ctx)
+		requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "before pause")
+		requireTCPBlocked(t, ctx, sbx, envdClient, "https://1.1.1.1", "before pause")
 
-		// Test GPG keyserver connection to Ubuntu's keyserver
-		// This tests that:
-		// 1. Non-standard TCP ports (11371) work correctly through the firewall when network config is active
-		// 2. TCP half-close is properly handled (GPG may FIN after request but expects response)
-		t.Log("Testing GPG keyserver connection to hkp://keyserver.ubuntu.com with network config defined...")
-		output, err := utils.ExecCommandWithOutput(t, ctx, sbx, envdClient, nil, "user",
-			"gpg", "--keyserver", "hkp://keyserver.ubuntu.com",
-			"--recv-key", "95C0FAF38DB3CCAD0C080A7BDC78B2DDEABC47B7")
-		require.NoError(t, err, "Expected GPG keyserver command to succeed, got error: %v, output: %s", err, output)
-		t.Logf("GPG keyserver output: %s", output)
+		respPause, err := client.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
+		require.NoError(t, err)
+		require.Equal(t, http.StatusNoContent, respPause.StatusCode())
+
+		respResume, err := client.PostSandboxesSandboxIDResumeWithResponse(ctx, sbx.SandboxID,
+			api.PostSandboxesSandboxIDResumeJSONRequestBody{Timeout: sharedutils.ToPtr(int32(60))}, setup.WithAPIKey())
+		require.NoError(t, err)
+		require.Equal(t, http.StatusCreated, respResume.StatusCode())
+
+		requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "after resume")
+		requireTCPBlocked(t, ctx, sbx, envdClient, "https://1.1.1.1", "after resume")
+	})
+
+	t.Run("domain_rules", func(t *testing.T) { //nolint:paralleltest // sequential within group
+		t.Parallel()
+
+		sbx := utils.SetupSandboxWithCleanup(t, client,
+			utils.WithTemplateID(templateID),
+			utils.WithTimeout(60),
+			utils.WithNetwork(&api.SandboxNetworkConfig{
+				AllowOut: &[]string{"google.com"},
+				DenyOut:  &[]string{blockAll},
+			}),
+		)
+
+		requireTCPAllowed(t, ctx, sbx, envdClient, "https://google.com", "before pause")
+		requireTCPBlocked(t, ctx, sbx, envdClient, "https://cloudflare.com", "before pause")
+
+		respPause, err := client.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
+		require.NoError(t, err)
+		require.Equal(t, http.StatusNoContent, respPause.StatusCode())
+
+		respResume, err := client.PostSandboxesSandboxIDResumeWithResponse(ctx, sbx.SandboxID,
+			api.PostSandboxesSandboxIDResumeJSONRequestBody{Timeout: sharedutils.ToPtr(int32(60))}, setup.WithAPIKey())
+		require.NoError(t, err)
+		require.Equal(t, http.StatusCreated, respResume.StatusCode())
+
+		requireTCPAllowed(t, ctx, sbx, envdClient, "https://google.com", "after resume")
+		requireTCPBlocked(t, ctx, sbx, envdClient, "https://cloudflare.com", "after resume")
+	})
+}
+
+// TestNetworkEgressSpecial tests scenarios requiring creation-time config or destructive actions.
+func TestNetworkEgressSpecial(t *testing.T) {
+	t.Parallel()
+
+	templateID := ensureNetworkTestTemplate(t)
+	ctx := t.Context()
+	client := setup.GetAPIClient()
+	envdClient := setup.GetEnvdClient(t, ctx)
+
+	t.Run("internet_access_false", func(t *testing.T) {
+		t.Parallel()
+
+		sbx := utils.SetupSandboxWithCleanup(t, client,
+			utils.WithTemplateID(templateID),
+			utils.WithTimeout(60),
+			utils.WithAllowInternetAccess(false),
+			utils.WithNetwork(&api.SandboxNetworkConfig{
+				AllowOut: &[]string{"8.8.8.8"},
+			}),
+		)
+
+		requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "allowed IP reachable despite AllowInternetAccess=false")
+		requireTCPBlocked(t, ctx, sbx, envdClient, "https://1.1.1.1", "blocked by AllowInternetAccess=false")
+	})
+
+	t.Run("dns_spoofing_neutralized", func(t *testing.T) {
+		t.Parallel()
+
+		sbx := utils.SetupSandboxWithCleanup(t, client,
+			utils.WithTemplateID(templateID),
+			utils.WithTimeout(60),
+			utils.WithNetwork(&api.SandboxNetworkConfig{
+				AllowOut: &[]string{"google.com"},
+				DenyOut:  &[]string{blockAll},
+			}),
+		)
+
+		assertHTTPResponseFromServer(t, ctx, sbx, envdClient,
+			"https://google.com", "server: gws",
+			"google.com returns Google server before spoofing")
+
+		err := utils.ExecCommandAsRoot(t, ctx, sbx, envdClient, "sh", "-c", "echo '1.1.1.1 google.com' >> /etc/hosts")
+		require.NoError(t, err, "modify /etc/hosts")
+
+		assertHTTPResponseFromServer(t, ctx, sbx, envdClient,
+			"https://google.com", "server: gws",
+			"DNS spoofing neutralized — still returns Google server")
 	})
 }
