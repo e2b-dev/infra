@@ -195,6 +195,13 @@ func tempMountNS(ctx context.Context) (*mountNS, error) {
 		err error
 	}
 
+	// Lock the calling goroutine to its current OS thread so that the new
+	// goroutine cannot be scheduled on it.  Without this, the Go scheduler
+	// may run the spawned goroutine on the caller's thread; the subsequent
+	// Unshare(CLONE_NEWNS) would then modify the caller's mount namespace.
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
 	resultCh := make(chan result, 1)
 
 	go func() {

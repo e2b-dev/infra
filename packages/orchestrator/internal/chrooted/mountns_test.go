@@ -2,6 +2,7 @@ package chrooted
 
 import (
 	"os"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -13,6 +14,11 @@ func TestMountNS_Basic(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Skip("skipping test because it requires root privileges")
 	}
+
+	// Pin the test goroutine to a single OS thread so that all namespace
+	// checks observe the same thread's mount namespace.
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 
 	// Verify thread isolation and namespace switching
 	// We'll check the mount namespace ID
@@ -111,9 +117,10 @@ func TestIsNSorErr(t *testing.T) {
 
 func getMountNSID(t *testing.T) uint64 {
 	t.Helper()
-	// Using Stat_t.Ino for the inode number of the mount namespace file
+	// Use the thread-specific path so we read the calling thread's mount
+	// namespace, not the thread-group leader's.
 	var stat unix.Stat_t
-	err := unix.Stat("/proc/self/ns/mnt", &stat)
+	err := unix.Stat(getCurrentThreadMountNSPath(), &stat)
 	require.NoError(t, err)
 	return stat.Ino
 }
