@@ -313,6 +313,34 @@ func TestCachedSeekableObjectProvider_ReadAt(t *testing.T) {
 		assert.True(t, os.IsNotExist(err), "zero-byte read should not be cached")
 	})
 
+	t.Run("zero byte read without EOF is not cached", func(t *testing.T) {
+		t.Parallel()
+
+		tempDir := t.TempDir()
+		mockSeeker := storagemocks.NewMockSeekable(t)
+		mockSeeker.EXPECT().
+			ReadAt(mock.Anything, mock.Anything, mock.Anything).
+			Return(0, nil)
+
+		c := cachedSeekable{
+			path:      tempDir,
+			chunkSize: 10,
+			inner:     mockSeeker,
+			tracer:    noopTracer,
+		}
+
+		buff := make([]byte, 10)
+		count, err := c.ReadAt(t.Context(), buff, 0)
+		require.NoError(t, err)
+		assert.Equal(t, 0, count)
+
+		c.wg.Wait()
+
+		chunkPath := c.makeChunkFilename(0)
+		_, err = os.Stat(chunkPath)
+		assert.True(t, os.IsNotExist(err), "zero-byte read should not be cached")
+	})
+
 	t.Run("short read without EOF is not cached", func(t *testing.T) {
 		t.Parallel()
 
