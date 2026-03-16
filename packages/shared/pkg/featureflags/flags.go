@@ -179,13 +179,13 @@ var (
 
 	// MaxConcurrentSnapshotUpserts limits concurrent UpsertSnapshot calls (pause + snapshot template paths).
 	// 0 or negative disables throttling (unlimited concurrency).
-	MaxConcurrentSnapshotUpserts = newIntFlag("max-concurrent-snapshot-upserts", 5)
+	MaxConcurrentSnapshotUpserts = newIntFlag("max-concurrent-snapshot-upserts", 0)
 	// MaxConcurrentSandboxListQueries limits concurrent GetSnapshotsWithCursor calls in the sandbox list path.
 	// 0 or negative disables throttling (unlimited concurrency).
-	MaxConcurrentSandboxListQueries = newIntFlag("max-concurrent-sandbox-list-queries", 5)
+	MaxConcurrentSandboxListQueries = newIntFlag("max-concurrent-sandbox-list-queries", 0)
 	// MaxConcurrentSnapshotBuildQueries limits concurrent GetSnapshotBuilds calls (e.g. sandbox delete).
 	// 0 or negative disables throttling (unlimited concurrency).
-	MaxConcurrentSnapshotBuildQueries = newIntFlag("max-concurrent-snapshot-build-queries", 5)
+	MaxConcurrentSnapshotBuildQueries = newIntFlag("max-concurrent-snapshot-build-queries", 0)
 )
 
 type StringFlag struct {
