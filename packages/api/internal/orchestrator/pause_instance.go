@@ -31,7 +31,7 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 	ctx, span := tracer.Start(ctx, "pause-sandbox")
 	defer span.End()
 
-	result, err := o.throttledUpsertSnapshot(ctx, buildUpsertSnapshotParams(sbx, node), o.snapshotUpsertSem)
+	result, err := o.throttledUpsertSnapshot(ctx, buildUpsertSnapshotParams(sbx, node))
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error inserting snapshot for env", err)
 
@@ -147,12 +147,12 @@ func buildUpsertSnapshotParams(sbx sandbox.Sandbox, node *nodemanager.Node) quer
 	}
 }
 
-// throttledUpsertSnapshot runs UpsertSnapshot gated by the given semaphore.
-func (o *Orchestrator) throttledUpsertSnapshot(ctx context.Context, params queries.UpsertSnapshotParams, sem *utils.AdjustableSemaphore) (queries.UpsertSnapshotRow, error) {
-	if err := sem.Acquire(ctx, 1); err != nil {
+// throttledUpsertSnapshot runs UpsertSnapshot gated by the snapshot upsert semaphore.
+func (o *Orchestrator) throttledUpsertSnapshot(ctx context.Context, params queries.UpsertSnapshotParams) (queries.UpsertSnapshotRow, error) {
+	if err := o.snapshotUpsertSem.Acquire(ctx, 1); err != nil {
 		return queries.UpsertSnapshotRow{}, err
 	}
-	defer sem.Release(1)
+	defer o.snapshotUpsertSem.Release(1)
 
 	return o.sqlcDB.UpsertSnapshot(ctx, params)
 }
