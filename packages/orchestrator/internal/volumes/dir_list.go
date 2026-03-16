@@ -94,11 +94,12 @@ func (s *Service) listRecursive(
 		symlinkDest := ""
 		if item.Mode()&os.ModeSymlink != 0 {
 			// try, but if it fails to resolve, no big deal
-			symlinkDest, err = fs.EvalSymlinks(itemPath)
-			if err != nil {
+			var errSL error
+			symlinkDest, errSL = fs.EvalSymlinks(itemPath)
+			if errSL != nil {
 				logger.L().Warn(ctx, "failed to resolve symlink",
 					zap.String("path", itemPath),
-					zap.Error(err),
+					zap.Error(errSL),
 				)
 			}
 		}
