@@ -35,7 +35,7 @@ func TestWrappedFile_LockUnlock(t *testing.T) {
 	err = w1.Lock()
 	assert.NoError(t, err)
 
-	f2, err := os.OpenFile(filePath, os.O_RDWR, 0666)
+	f2, err := os.OpenFile(filePath, os.O_RDWR, 0o666)
 	require.NoError(t, err)
 	defer f2.Close()
 
