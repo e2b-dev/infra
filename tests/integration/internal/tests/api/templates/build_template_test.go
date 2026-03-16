@@ -1,7 +1,13 @@
 package api_templates
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
 	"context"
+	"crypto/sha256"
+	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"testing"
@@ -24,11 +30,16 @@ const (
 
 type BuildLogHandler func(alias string, entry api.BuildLogEntry)
 
+// PreBuildFunc is called after the template build is requested but before it is started.
+// It receives the templateID, allowing callers to upload files or perform other setup.
+type PreBuildFunc func(tb testing.TB, ctx context.Context, templateID string)
+
 func buildTemplate(
 	tb testing.TB,
 	templateName string,
 	data api.TemplateBuildStartV2,
 	logHandler BuildLogHandler,
+	preBuildFns ...PreBuildFunc,
 ) bool {
 	tb.Helper()
 
@@ -46,6 +57,11 @@ func buildTemplate(
 	require.NoError(tb, err)
 	require.Equal(tb, http.StatusAccepted, resp.StatusCode())
 	require.NotNil(tb, resp.JSON202)
+
+	// Run pre-build hooks (e.g. file uploads for COPY steps)
+	for _, fn := range preBuildFns {
+		fn(tb, ctx, resp.JSON202.TemplateID)
+	}
 
 	// Start build
 	startResp, err := c.PostV2TemplatesTemplateIDBuildsBuildIDWithResponse(
@@ -1039,4 +1055,105 @@ func TestTemplateBuildInstalledPackagesAvailable(t *testing.T) {
 	}
 
 	assert.True(t, buildTemplate(t, "test-ubuntu-packages-available", buildConfig, defaultBuildLogHandler(t)))
+}
+
+func createTarWithFile(tb testing.TB, fileName string, content string) []byte {
+	tb.Helper()
+
+	var buf bytes.Buffer
+	gw := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gw)
+
+	err := tw.WriteHeader(&tar.Header{
+		Name: fileName,
+		Mode: 0o644,
+		Size: int64(len(content)),
+	})
+	require.NoError(tb, err)
+
+	_, err = tw.Write([]byte(content))
+	require.NoError(tb, err)
+	require.NoError(tb, tw.Close())
+	require.NoError(tb, gw.Close())
+
+	return buf.Bytes()
+}
+
+func computeSHA256Hex(data []byte) string {
+	h := sha256.Sum256(data)
+
+	return fmt.Sprintf("%x", h[:])
+}
+
+// uploadFileForTemplate gets a signed upload URL for the given template and hash,
+// then uploads the data to that URL.
+func uploadFileForTemplate(
+	tb testing.TB,
+	ctx context.Context,
+	templateID string,
+	hash string,
+	data []byte,
+) {
+	tb.Helper()
+
+	c := setup.GetAPIClient()
+
+	// Get the signed upload URL
+	resp, err := c.GetTemplatesTemplateIDFilesHashWithResponse(
+		ctx,
+		templateID,
+		hash,
+		setup.WithAPIKey(),
+		setup.WithTestsUserAgent(),
+	)
+	require.NoError(tb, err)
+	require.Equal(tb, http.StatusCreated, resp.StatusCode(), string(resp.Body))
+	require.NotNil(tb, resp.JSON201)
+	require.NotNil(tb, resp.JSON201.Url, "Expected a signed upload URL")
+
+	// Upload the tar data to the signed URL
+	uploadReq, err := http.NewRequestWithContext(ctx, http.MethodPut, *resp.JSON201.Url, bytes.NewReader(data))
+	require.NoError(tb, err)
+	uploadReq.Header.Set("Content-Type", "application/octet-stream")
+
+	uploadResp, err := http.DefaultClient.Do(uploadReq)
+	require.NoError(tb, err)
+	defer uploadResp.Body.Close()
+	io.ReadAll(uploadResp.Body)
+
+	require.Less(tb, uploadResp.StatusCode, 300, "Upload failed with status %d", uploadResp.StatusCode)
+}
+
+func TestTemplateBuildCOPY(t *testing.T) {
+	t.Parallel()
+
+	fileContent := "Hello from COPY!"
+	tarData := createTarWithFile(t, "hello.txt", fileContent)
+	filesHash := computeSHA256Hex(tarData)
+
+	buildConfig := api.TemplateBuildStartV2{
+		Force:     utils.ToPtr(ForceBaseBuild),
+		FromImage: utils.ToPtr("ubuntu:24.04"),
+		Steps: utils.ToPtr([]api.TemplateStep{
+			{
+				Type:      "COPY",
+				Force:     utils.ToPtr(true),
+				Args:      utils.ToPtr([]string{".", "/app/"}),
+				FilesHash: utils.ToPtr(filesHash),
+			},
+			{
+				Type: "RUN",
+				Args: utils.ToPtr([]string{
+					fmt.Sprintf(`cat /app/hello.txt | grep '%s'`, fileContent),
+				}),
+			},
+		}),
+	}
+
+	assert.True(t, buildTemplate(t, "test-ubuntu-copy", buildConfig, defaultBuildLogHandler(t),
+		func(tb testing.TB, ctx context.Context, templateID string) {
+			tb.Helper()
+			uploadFileForTemplate(tb, ctx, templateID, filesHash, tarData)
+		},
+	))
 }

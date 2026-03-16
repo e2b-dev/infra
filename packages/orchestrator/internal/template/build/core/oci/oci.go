@@ -427,6 +427,7 @@ func createExport(ctx context.Context, logger logger.Logger, srcImage containerr
 
 			err = archive.Untar(rc, layerPath, &archive.TarOptions{
 				IgnoreChownErrors: true,
+				WhiteoutFormat:    archive.OverlayWhiteoutFormat,
 			})
 			if err != nil {
 				return fmt.Errorf("failed to untar layer %d: %w", i, err)

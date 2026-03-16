@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"sync/atomic"
 	"time"
@@ -36,29 +37,33 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs/loki"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	sharedutils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 var _ api.ServerInterface = (*APIStore)(nil)
 
 type APIStore struct {
-	Healthy              atomic.Bool
-	config               cfg.Config
-	posthog              *analyticscollector.PosthogClient
-	Telemetry            *telemetry.Client
-	orchestrator         *orchestrator.Orchestrator
-	templateManager      *template_manager.TemplateManager
-	sqlcDB               *sqlcdb.Client
-	authDB               *authdb.Client
-	redisClient          redis.UniversalClient
-	templateCache        *templatecache.TemplateCache
-	templateBuildsCache  *templatecache.TemplatesBuildCache
-	snapshotCache        *snapshotcache.SnapshotCache
-	authService          *sharedauth.AuthService[*types.Team]
-	templateSpawnCounter *utils.TemplateSpawnCounter
-	clickhouseStore      clickhouse.Clickhouse
-	accessTokenGenerator *sandbox.AccessTokenGenerator
-	featureFlags         *featureflags.Client
-	clusters             *clusters.Pool
+	Healthy               atomic.Bool
+	config                cfg.Config
+	posthog               *analyticscollector.PosthogClient
+	Telemetry             *telemetry.Client
+	orchestrator          *orchestrator.Orchestrator
+	templateManager       *template_manager.TemplateManager
+	sqlcDB                *sqlcdb.Client
+	authDB                *authdb.Client
+	redisClient           redis.UniversalClient
+	templateCache         *templatecache.TemplateCache
+	templateBuildsCache   *templatecache.TemplatesBuildCache
+	snapshotCache         *snapshotcache.SnapshotCache
+	authService           *sharedauth.AuthService[*types.Team]
+	templateSpawnCounter  *utils.TemplateSpawnCounter
+	clickhouseStore       clickhouse.Clickhouse
+	accessTokenGenerator  *sandbox.AccessTokenGenerator
+	featureFlags          *featureflags.Client
+	clusters              *clusters.Pool
+	snapshotUpsertSem     *sharedutils.AdjustableSemaphore
+	sandboxListSem        *sharedutils.AdjustableSemaphore
+	snapshotBuildQuerySem *sharedutils.AdjustableSemaphore
 }
 
 func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config, serviceName string) *APIStore {
@@ -143,7 +148,22 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config, 
 
 	snapshotCache := snapshotcache.NewSnapshotCache(sqlcDB, redisClient)
 
-	orch, err := orchestrator.New(ctx, config, tel, nomadClient, posthogClient, redisClient, sqlcDB, clusters, featureFlags, accessTokenGenerator, snapshotCache)
+	snapshotUpsertSem, err := sharedutils.NewAdjustableSemaphore(dbThrottleLimit(featureFlags.IntFlag(ctx, featureflags.MaxConcurrentSnapshotUpserts)))
+	if err != nil {
+		logger.L().Fatal(ctx, "failed to create snapshot upsert semaphore", zap.Error(err))
+	}
+
+	sandboxListSem, err := sharedutils.NewAdjustableSemaphore(dbThrottleLimit(featureFlags.IntFlag(ctx, featureflags.MaxConcurrentSandboxListQueries)))
+	if err != nil {
+		logger.L().Fatal(ctx, "failed to create sandbox list semaphore", zap.Error(err))
+	}
+
+	snapshotBuildQuerySem, err := sharedutils.NewAdjustableSemaphore(dbThrottleLimit(featureFlags.IntFlag(ctx, featureflags.MaxConcurrentSnapshotBuildQueries)))
+	if err != nil {
+		logger.L().Fatal(ctx, "failed to create snapshot build query semaphore", zap.Error(err))
+	}
+
+	orch, err := orchestrator.New(ctx, config, tel, nomadClient, posthogClient, redisClient, sqlcDB, clusters, featureFlags, accessTokenGenerator, snapshotCache, snapshotUpsertSem)
 	if err != nil {
 		logger.L().Fatal(ctx, "Initializing Orchestrator client", zap.Error(err))
 	}
@@ -164,24 +184,29 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config, 
 	go templateManager.BuildsStatusPeriodicalSync(ctx)
 
 	a := &APIStore{
-		config:               config,
-		orchestrator:         orch,
-		templateManager:      templateManager,
-		sqlcDB:               sqlcDB,
-		authDB:               authDB,
-		Telemetry:            tel,
-		posthog:              posthogClient,
-		templateCache:        templateCache,
-		templateBuildsCache:  templateBuildsCache,
-		snapshotCache:        snapshotCache,
-		authService:          authService,
-		templateSpawnCounter: templateSpawnCounter,
-		clickhouseStore:      clickhouseStore,
-		accessTokenGenerator: accessTokenGenerator,
-		clusters:             clusters,
-		featureFlags:         featureFlags,
-		redisClient:          redisClient,
+		config:                config,
+		orchestrator:          orch,
+		templateManager:       templateManager,
+		sqlcDB:                sqlcDB,
+		authDB:                authDB,
+		Telemetry:             tel,
+		posthog:               posthogClient,
+		templateCache:         templateCache,
+		templateBuildsCache:   templateBuildsCache,
+		snapshotCache:         snapshotCache,
+		authService:           authService,
+		templateSpawnCounter:  templateSpawnCounter,
+		clickhouseStore:       clickhouseStore,
+		accessTokenGenerator:  accessTokenGenerator,
+		clusters:              clusters,
+		featureFlags:          featureFlags,
+		redisClient:           redisClient,
+		snapshotUpsertSem:     snapshotUpsertSem,
+		sandboxListSem:        sandboxListSem,
+		snapshotBuildQuerySem: snapshotBuildQuerySem,
 	}
+
+	go a.updateDBThrottleLimits(ctx)
 
 	// Wait till there's at least one, otherwise we can't create sandboxes yet
 	go func() {
@@ -255,6 +280,33 @@ func (a *APIStore) Close(ctx context.Context) error {
 	}
 
 	return errors.Join(errs...)
+}
+
+// dbThrottleLimit returns the semaphore limit for a feature flag value.
+// A non-positive value means "disabled" and maps to math.MaxInt32 to effectively bypass throttling.
+func dbThrottleLimit(flagValue int) int64 {
+	if flagValue <= 0 {
+		return math.MaxInt32
+	}
+
+	return int64(flagValue)
+}
+
+// updateDBThrottleLimits periodically syncs DB throttle semaphore limits from feature flags.
+func (a *APIStore) updateDBThrottleLimits(ctx context.Context) {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			_ = a.snapshotUpsertSem.SetLimit(dbThrottleLimit(a.featureFlags.IntFlag(ctx, featureflags.MaxConcurrentSnapshotUpserts)))
+			_ = a.sandboxListSem.SetLimit(dbThrottleLimit(a.featureFlags.IntFlag(ctx, featureflags.MaxConcurrentSandboxListQueries)))
+			_ = a.snapshotBuildQuerySem.SetLimit(dbThrottleLimit(a.featureFlags.IntFlag(ctx, featureflags.MaxConcurrentSnapshotBuildQueries)))
+		}
+	}
 }
 
 // sendAPIStoreError wraps sending of an error in the Error format.

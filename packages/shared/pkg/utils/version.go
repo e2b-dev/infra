@@ -6,12 +6,27 @@ import (
 	"golang.org/x/mod/semver"
 )
 
+const MinEnvdVersionForSnapshot = "0.5.0"
+
 func sanitizeVersion(version string) string {
 	if len(version) > 0 && version[0] != 'v' {
 		version = "v" + version
 	}
 
 	return version
+}
+
+func CheckEnvdVersionForSnapshot(envdVersion string) error {
+	ok, err := IsGTEVersion(envdVersion, MinEnvdVersionForSnapshot)
+	if err != nil {
+		return fmt.Errorf("invalid envd version %q: %w", envdVersion, err)
+	}
+
+	if !ok {
+		return fmt.Errorf("sandbox envd version must be at least %s to create snapshots, current version: %s", MinEnvdVersionForSnapshot, envdVersion)
+	}
+
+	return nil
 }
 
 func IsGTEVersion(curVersion, minVersion string) (bool, error) {

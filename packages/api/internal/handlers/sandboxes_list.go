@@ -49,15 +49,13 @@ func (a *APIStore) getPausedSandboxes(
 	// O(rows × array_size) and caused 40s+ query times with large arrays.
 	dbLimit := queryLimit + int32(len(runningSandboxesIDs))
 
-	snapshots, err := a.sqlcDB.GetSnapshotsWithCursor(
-		ctx, queries.GetSnapshotsWithCursorParams{
-			Limit:      dbLimit,
-			TeamID:     teamID,
-			Metadata:   queryMetadata,
-			CursorTime: pgtype.Timestamptz{Time: cursorTime, Valid: true},
-			CursorID:   cursorID,
-		},
-	)
+	snapshots, err := a.throttledGetSnapshots(ctx, queries.GetSnapshotsWithCursorParams{
+		Limit:      dbLimit,
+		TeamID:     teamID,
+		Metadata:   queryMetadata,
+		CursorTime: pgtype.Timestamptz{Time: cursorTime, Valid: true},
+		CursorID:   cursorID,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("error getting team snapshots: %w", err)
 	}
@@ -358,4 +356,14 @@ func convertFromDBMountsToAPIMounts(mounts []*dbtypes.SandboxVolumeMountConfig) 
 	// this intentionally returns a pointer to the slice.
 	// generated code adds `omitempty` for backwards compatibility reasons; we should always return a slice here.
 	return &results
+}
+
+// throttledGetSnapshots runs GetSnapshotsWithCursor gated by the sandbox list semaphore.
+func (a *APIStore) throttledGetSnapshots(ctx context.Context, params queries.GetSnapshotsWithCursorParams) ([]queries.GetSnapshotsWithCursorRow, error) {
+	if err := a.sandboxListSem.Acquire(ctx, 1); err != nil {
+		return nil, err
+	}
+	defer a.sandboxListSem.Release(1)
+
+	return a.sqlcDB.GetSnapshotsWithCursor(ctx, params)
 }

@@ -21,7 +21,7 @@ import (
 )
 
 func (a *APIStore) deleteSnapshot(ctx context.Context, sandboxID string, teamID uuid.UUID) error {
-	snapshot, err := db.GetSnapshotBuilds(ctx, a.sqlcDB, teamID, sandboxID)
+	snapshot, err := a.throttledGetSnapshotBuilds(ctx, teamID, sandboxID)
 	if err != nil {
 		return err
 	}
@@ -104,4 +104,14 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 		logger.L().Debug(ctx, "Sandbox not found for deletion", logger.WithSandboxID(sandboxID))
 		a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(sandboxID))
 	}
+}
+
+// throttledGetSnapshotBuilds runs GetSnapshotBuilds gated by the snapshot build query semaphore.
+func (a *APIStore) throttledGetSnapshotBuilds(ctx context.Context, teamID uuid.UUID, sandboxID string) (db.SnapshotBuilds, error) {
+	if err := a.snapshotBuildQuerySem.Acquire(ctx, 1); err != nil {
+		return db.SnapshotBuilds{}, err
+	}
+	defer a.snapshotBuildQuerySem.Release(1)
+
+	return db.GetSnapshotBuilds(ctx, a.sqlcDB, teamID, sandboxID)
 }

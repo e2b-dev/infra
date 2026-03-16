@@ -21,10 +21,16 @@ variable "provider_aws_config" {
 
 variable "provider_gcp_config" {
   type = object({
-    service_account_key = string
+    service_account_key           = optional(string, "")
+    gcs_grpc_connection_pool_size = optional(number, 0)
+    gcs_enable_direct_path        = optional(bool, true)
+    gcs_disable_telemetry         = optional(bool, true)
   })
   default = {
-    service_account_key = ""
+    service_account_key           = ""
+    gcs_grpc_connection_pool_size = 0
+    gcs_enable_direct_path        = true
+    gcs_disable_telemetry         = true
   }
 }
 
