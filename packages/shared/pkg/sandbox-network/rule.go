@@ -73,13 +73,17 @@ func ParseRules(entries []string) ([]Rule, error) {
 
 // splitHostPort splits a rule string into host and port range components.
 // Returns portStart=0, portEnd=0 for "all ports".
+// IPv6 addresses are not supported and will be rejected.
 func splitHostPort(s string) (host string, portStart, portEnd uint16, err error) {
-	// A CIDR like "10.0.0.0/8" contains no colon, so no port.
-	// A CIDR with port like "10.0.0.0/8:80" has a colon after the slash.
-	// A bare IP like "8.8.8.8" has no colon.
-	// An IP with port like "8.8.8.8:80" has exactly one colon.
-	// A domain like "example.com" has no colon.
-	// A domain with port like "example.com:443" has one colon.
+	// Reject IPv6 addresses: bracketed like [::1] or [::1]:80, or bare with multiple colons.
+	// IPv6 is out of scope — only IPv4 addresses, CIDRs, and domains are supported.
+	if strings.HasPrefix(s, "[") {
+		return "", 0, 0, fmt.Errorf("IPv6 addresses are not supported: %q", s)
+	}
+
+	if strings.Count(s, ":") > 1 {
+		return "", 0, 0, fmt.Errorf("IPv6 addresses are not supported: %q", s)
+	}
 
 	idx := strings.LastIndex(s, ":")
 	if idx < 0 {

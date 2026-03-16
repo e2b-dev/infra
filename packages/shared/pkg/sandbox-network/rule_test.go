@@ -160,6 +160,32 @@ func TestParseRule(t *testing.T) {
 			wantErr:   true,
 			errSubstr: "port must be between 1 and 65535",
 		},
+
+		// IPv6 rejection
+		{
+			name:      "bare IPv6",
+			input:     "::1",
+			wantErr:   true,
+			errSubstr: "IPv6",
+		},
+		{
+			name:      "bare IPv6 full",
+			input:     "2001:db8::1",
+			wantErr:   true,
+			errSubstr: "IPv6",
+		},
+		{
+			name:      "bracketed IPv6",
+			input:     "[::1]:80",
+			wantErr:   true,
+			errSubstr: "IPv6",
+		},
+		{
+			name:      "bracketed IPv6 no port",
+			input:     "[2001:db8::1]",
+			wantErr:   true,
+			errSubstr: "IPv6",
+		},
 	}
 
 	for _, tt := range tests {
