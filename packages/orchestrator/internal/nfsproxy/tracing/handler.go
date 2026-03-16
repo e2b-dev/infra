@@ -59,7 +59,7 @@ func (e *tracingHandler) Change(filesystem billy.Filesystem) billy.Change {
 
 func (e *tracingHandler) FSStat(ctx context.Context, filesystem billy.Filesystem, stat *nfs.FSStat) (err error) {
 	ctx, finish := startSpan(ctx, "NFS.FSStat")
-	defer finish(err)
+	defer func() { finish(err) }()
 
 	return e.inner.FSStat(ctx, filesystem, stat)
 }
@@ -81,7 +81,7 @@ func (e *tracingHandler) FromHandle(fh []byte) (fs billy.Filesystem, paths []str
 	// This is a bit tricky for tracing if we want to link it to a parent span.
 	// For now, we'll use Background.
 	ctx, finish := startSpan(context.Background(), "NFS.FromHandle")
-	defer finish(err)
+	defer func() { finish(err) }()
 
 	fs, paths, err = e.inner.FromHandle(fh)
 	if fs != nil {
@@ -97,7 +97,7 @@ func (e *tracingHandler) InvalidateHandle(filesystem billy.Filesystem, bytes []b
 	}
 
 	ctx, finish := startSpan(ctx, "NFS.InvalidateHandle")
-	defer finish(err)
+	defer func() { finish(err) }()
 
 	return e.inner.InvalidateHandle(filesystem, bytes)
 }

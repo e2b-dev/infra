@@ -24,7 +24,7 @@ func (l *tracingChange) Chmod(name string, mode os.FileMode) (err error) {
 	_, finish := startSpan(l.ctx, "Change.Chmod",
 		attribute.String("nfs.name", name),
 		attribute.String("nfs.mode", mode.String()))
-	defer finish(err)
+	defer func() { finish(err) }()
 
 	return l.inner.Chmod(name, mode)
 }
@@ -34,7 +34,7 @@ func (l *tracingChange) Lchown(name string, uid, gid int) (err error) {
 		attribute.String("nfs.name", name),
 		attribute.Int("nfs.uid", uid),
 		attribute.Int("nfs.gid", gid))
-	defer finish(err)
+	defer func() { finish(err) }()
 
 	return l.inner.Lchown(name, uid, gid)
 }
@@ -44,7 +44,7 @@ func (l *tracingChange) Chown(name string, uid, gid int) (err error) {
 		attribute.String("nfs.name", name),
 		attribute.Int("nfs.uid", uid),
 		attribute.Int("nfs.gid", gid))
-	defer finish(err)
+	defer func() { finish(err) }()
 
 	return l.inner.Chown(name, uid, gid)
 }
@@ -54,7 +54,7 @@ func (l *tracingChange) Chtimes(name string, atime time.Time, mtime time.Time) (
 		attribute.String("nfs.name", name),
 		attribute.String("nfs.atime", atime.String()),
 		attribute.String("nfs.mtime", mtime.String()))
-	defer finish(err)
+	defer func() { finish(err) }()
 
 	return l.inner.Chtimes(name, atime, mtime)
 }

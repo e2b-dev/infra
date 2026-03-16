@@ -682,6 +682,9 @@ variable "persistent_volume_types" {
     capacity_gb    = number
     protocol       = optional(string)
     nfs_version    = optional(string)
+    performance_config = object({
+      max_iops = optional(number)
+    })
   }))
 
   default = {}

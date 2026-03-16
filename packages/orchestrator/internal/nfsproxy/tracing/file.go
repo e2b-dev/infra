@@ -24,14 +24,14 @@ func (l *tracingFile) Name() string {
 
 func (l *tracingFile) Write(p []byte) (n int, err error) {
 	_, finish := startSpan(l.ctx, "File.Write", attribute.Int("nfs.len", len(p)))
-	defer finish(err, attribute.Int("nfs.n", n))
+	defer func() { finish(err, attribute.Int("nfs.n", n)) }()
 
 	return l.inner.Write(p)
 }
 
 func (l *tracingFile) Read(p []byte) (n int, err error) {
 	_, finish := startSpan(l.ctx, "File.Read", attribute.Int("nfs.len", len(p)))
-	defer finish(err, attribute.Int("nfs.n", n))
+	defer func() { finish(err, attribute.Int("nfs.n", n)) }()
 
 	return l.inner.Read(p)
 }
@@ -40,7 +40,7 @@ func (l *tracingFile) ReadAt(p []byte, off int64) (n int, err error) {
 	_, finish := startSpan(l.ctx, "File.ReadAt",
 		attribute.Int("nfs.len", len(p)),
 		attribute.Int64("nfs.offset", off))
-	defer finish(err, attribute.Int("nfs.n", n))
+	defer func() { finish(err, attribute.Int("nfs.n", n)) }()
 
 	return l.inner.ReadAt(p, off)
 }
@@ -49,35 +49,35 @@ func (l *tracingFile) Seek(offset int64, whence int) (n int64, err error) {
 	_, finish := startSpan(l.ctx, "File.Seek",
 		attribute.Int64("nfs.offset", offset),
 		attribute.Int("nfs.whence", whence))
-	defer finish(err, attribute.Int64("nfs.n", n))
+	defer func() { finish(err, attribute.Int64("nfs.n", n)) }()
 
 	return l.inner.Seek(offset, whence)
 }
 
 func (l *tracingFile) Close() (err error) {
 	_, finish := startSpan(l.ctx, "File.Close")
-	defer finish(err)
+	defer func() { finish(err) }()
 
 	return l.inner.Close()
 }
 
 func (l *tracingFile) Lock() (err error) {
 	_, finish := startSpan(l.ctx, "File.Lock")
-	defer finish(err)
+	defer func() { finish(err) }()
 
 	return l.inner.Lock()
 }
 
 func (l *tracingFile) Unlock() (err error) {
 	_, finish := startSpan(l.ctx, "File.Unlock")
-	defer finish(err)
+	defer func() { finish(err) }()
 
 	return l.inner.Unlock()
 }
 
 func (l *tracingFile) Truncate(size int64) (err error) {
 	_, finish := startSpan(l.ctx, "File.Truncate", attribute.Int64("nfs.size", size))
-	defer finish(err)
+	defer func() { finish(err) }()
 
 	return l.inner.Truncate(size)
 }

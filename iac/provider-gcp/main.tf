@@ -67,18 +67,21 @@ locals {
       nfs_location     = module.persistent-volume-types[key].nfs_location
       nfs_mount_opts = join(",", [ // for more docs, see https://linux.die.net/man/5/nfs
         format("nfsvers=%s", module.persistent-volume-types[key].nfs_version),
-        "sync",             // write immediately
-        "hard",             // retry nfs requests indefinitely until they succeed, never fail
-        "lookupcache=none", // disable the lookup cache
-        "nconnect=7",       // use multiple connections
-        "noac",             // disable attribute cache
-        "noacl",            // do not use an acl
-        "cto",              // enable "close-to-open" attribute checks
-        "nolock",           // do not use locking
-        "noresvport",       // use a non-privileged source port
-        "retrans=2",        // retry two times before performing recovery actions
-        "sec=sys",          // use AUTH_SYS for all requests
-        "timeo=600",        // wait 60 seconds (measured in deci-seconds) before retrying a failed request
+        "actimeo=10",           // cache directory and regular file attributes for exactly 10 seconds
+        "async",                // write eventually
+        "fg",                   // wait for mounts to finish before exiting
+        "hard",                 // retry nfs requests indefinitely until they succeed, never fail
+        "lookupcache=positive", // only add positive results to the lookup cache
+        "nconnect=7",           // use multiple connections
+        "ac",                   // enable attribute cache
+        "noacl",                // do not use an acl
+        "cto",                  // enable "close-to-open" attribute checks
+        "lock",                 // enable network locking
+        "local_lock=none",      // all locks are network locks
+        "noresvport",           // use a non-privileged source port
+        "retrans=3",            // retry two times before performing recovery actions
+        "sec=sys",              // use AUTH_SYS for all requests
+        "timeo=600",            // wait 60 seconds (measured in deci-seconds) before retrying a failed request
       ])
     }
   }

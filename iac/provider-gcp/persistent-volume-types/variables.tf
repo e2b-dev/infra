@@ -37,3 +37,10 @@ variable "capacity_gb" {
 variable "network_name" {
   type = string
 }
+
+variable "performance_config" {
+  type = object({
+    max_iops = optional(number)
+  })
+  default = null
+}
