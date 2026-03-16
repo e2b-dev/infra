@@ -79,7 +79,7 @@ func EnsureDirs(path string, uid, gid int) error {
 				return fmt.Errorf("failed to create directory: %w", err)
 			}
 			if os.IsExist(err) {
-				info, statErr := os.Stat(subpath)
+				info, statErr := os.Stat(filepath.Clean(subpath))
 				if statErr != nil || !info.IsDir() {
 					return fmt.Errorf("path is not a directory: %s", subpath)
 				}
