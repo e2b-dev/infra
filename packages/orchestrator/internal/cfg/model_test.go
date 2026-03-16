@@ -76,5 +76,4 @@ func TestParse(t *testing.T) {
 		require.NoError(t, err)
 		assert.False(t, config.NFSProxyTracing)
 	})
-
 }
