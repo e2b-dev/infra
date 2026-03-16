@@ -483,7 +483,7 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 	// Check envd version before acquiring (which removes the sandbox from the map).
 	if preSbx, ok := s.sandboxFactory.Sandboxes.Get(in.GetSandboxId()); ok {
 		if err := utils.CheckEnvdVersionForSnapshot(preSbx.Config.Envd.Version); err != nil {
-			return nil, status.Errorf(codes.FailedPrecondition, err.Error())
+			return nil, status.Errorf(codes.FailedPrecondition, "%s", err.Error())
 		}
 	}
 
