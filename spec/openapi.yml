@@ -885,13 +885,6 @@ components:
           description: Number of times the template was built
         envdVersion:
           $ref: "#/components/schemas/EnvdVersion"
-        buildStatus:
-          $ref: "#/components/schemas/TemplateBuildStatus"
-        names:
-          type: array
-          nullable: true
-          items:
-            type: string
 
     TemplateBuild:
       required:
@@ -1191,7 +1184,6 @@ components:
         - info
         - warn
         - error
-        - ""
 
     BuildLogEntry:
       required:
@@ -1237,9 +1229,6 @@ components:
         - waiting
         - ready
         - error
-        - uploaded
-        - failed
-        - ""
 
     TemplateBuildInfo:
       required:
