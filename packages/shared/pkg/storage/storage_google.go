@@ -39,7 +39,7 @@ const (
 	googleMaxAttempts              = 10
 	defaultGRPCConnectionPoolSize  = 4
 	defaultGCSEnableDirectPath     = "true"
-	defaultGCSDisableTelemetry     = "true"
+	defaultGCSDisableTelemetry     = "false"
 	gcloudDefaultUploadConcurrency = 16
 
 	gcsOperationAttr                           = "operation"
