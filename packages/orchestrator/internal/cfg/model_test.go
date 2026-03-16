@@ -62,4 +62,19 @@ func TestParse(t *testing.T) {
 		assert.Equal(t, "/a/b/c/build", config.DefaultCacheDir)
 		assert.Equal(t, "/a/b/c/sandbox", config.StorageConfig.SandboxCacheDir)
 	})
+
+	t.Run("nfs proxy tracing is enabled by default", func(t *testing.T) {
+		config, err := Parse()
+		require.NoError(t, err)
+		assert.True(t, config.NFSProxyTracing)
+	})
+
+	t.Run("nfs proxy tracing can be disabled", func(t *testing.T) {
+		t.Setenv("NFS_PROXY_TRACING", "false")
+
+		config, err := Parse()
+		require.NoError(t, err)
+		assert.False(t, config.NFSProxyTracing)
+	})
+
 }

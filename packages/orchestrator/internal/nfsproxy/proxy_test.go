@@ -105,7 +105,7 @@ func TestRoundTrip(t *testing.T) {
 		assert.NoError(t, err)
 	})
 
-	nfsProxy, err := NewProxy(t.Context(), builder, sandboxes)
+	nfsProxy, err := NewProxy(t.Context(), builder, sandboxes, Config{})
 	require.NoError(t, err)
 	go func() {
 		err := nfsProxy.Serve(nfsListener)
