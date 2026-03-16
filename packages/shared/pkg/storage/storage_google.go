@@ -97,7 +97,6 @@ func NewGCP(ctx context.Context, bucketName string, limiter *limit.Limiter) (Sto
 		option.WithGRPCDialOption(grpc.WithInitialConnWindowSize(32*megabyte)),
 		option.WithGRPCDialOption(grpc.WithInitialWindowSize(4*megabyte)),
 		option.WithTelemetryDisabled(),
-		storage.WithDisabledClientMetrics(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GCS client: %w", err)
