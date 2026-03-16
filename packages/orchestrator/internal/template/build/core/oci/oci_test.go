@@ -108,6 +108,7 @@ func createLayerWithWhiteout(t *testing.T, whiteoutPath string) *bytes.Buffer {
 	})
 	require.NoError(t, err)
 	require.NoError(t, tw.Close())
+
 	return &buf
 }
 
@@ -158,7 +159,7 @@ func TestCreateExportHandlesOCIWhiteout(t *testing.T) {
 	upperWhiteoutPath := filepath.Join(upperLayerDir, "stale-file.txt")
 	info, err := os.Stat(upperWhiteoutPath)
 	require.NoError(t, err, "upper layer must contain whiteout device at stale-file.txt so overlay merge hides lower layer's file")
-	assert.True(t, info.Mode()&os.ModeCharDevice != 0, "stale-file.txt in upper layer must be a character device (OCI whiteout), got %s", info.Mode())
+	assert.NotEqual(t, os.FileMode(0), info.Mode()&os.ModeCharDevice, "stale-file.txt in upper layer must be a character device (OCI whiteout), got %s", info.Mode())
 }
 
 // authHandler wraps a registry handler with basic authentication
