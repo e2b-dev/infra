@@ -202,8 +202,6 @@ module "template_manager" {
   clickhouse_connection_string = local.clickhouse_connection_string
   launch_darkly_api_key        = var.launch_darkly_api_key
 
-  gcs_grpc_connection_pool_size = var.gcs_grpc_connection_pool_size
-
   nomad_addr  = "https://nomad.${var.domain_name}"
   nomad_token = var.nomad_acl_token
 }

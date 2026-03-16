@@ -21,11 +21,10 @@ variable "provider_aws_config" {
 
 variable "provider_gcp_config" {
   type = object({
-    service_account_key = string
+    service_account_key           = optional(string, "")
+    gcs_grpc_connection_pool_size = optional(number, 0)
   })
-  default = {
-    service_account_key = ""
-  }
+  default = {}
 }
 
 variable "node_pool" {
@@ -140,9 +139,4 @@ variable "use_local_namespace_storage" {
 variable "persistent_volume_mounts" {
   type    = map(string)
   default = {}
-}
-
-variable "gcs_grpc_connection_pool_size" {
-  description = "Number of gRPC connections in the GCS connection pool"
-  type        = number
 }

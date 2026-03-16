@@ -102,6 +102,10 @@ job "template-manager" {
         GCP_PROJECT_ID                = "${provider_gcp_config.project_id}"
         GCP_REGION                    = "${provider_gcp_config.region}"
         GCP_DOCKER_REPOSITORY_NAME    = "${provider_gcp_config.docker_registry}"
+
+        %{ if provider_gcp_config.gcs_grpc_connection_pool_size != 0 }
+        GCS_GRPC_CONNECTION_POOL_SIZE = "${provider_gcp_config.gcs_grpc_connection_pool_size}"
+        %{ endif }
 %{ endif }
 %{ if provider == "aws" }
         ARTIFACTS_REGISTRY_PROVIDER   = "AWS_ECR"
@@ -118,7 +122,6 @@ job "template-manager" {
         LOGS_COLLECTOR_ADDRESS           = "${logs_collector_address}"
         ORCHESTRATOR_SERVICES            = "${orchestrator_services}"
         REDIS_POOL_SIZE                  = "${redis_pool_size}"
-        GCS_GRPC_CONNECTION_POOL_SIZE    = "${gcs_grpc_connection_pool_size}"
         SHARED_CHUNK_CACHE_PATH       = "${shared_chunk_cache_path}"
         CLICKHOUSE_CONNECTION_STRING  = "${clickhouse_connection_string}"
         DOCKERHUB_REMOTE_REPOSITORY_URL  = "${dockerhub_remote_repository_url}"
