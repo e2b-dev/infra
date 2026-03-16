@@ -16,7 +16,13 @@ variable "provider_gcp_config" {
     docker_registry               = optional(string, "")
     gcs_grpc_connection_pool_size = optional(number, 0)
   })
-  default = {}
+  default = {
+    service_account_key           = ""
+    project_id                    = ""
+    region                        = ""
+    docker_registry               = ""
+    gcs_grpc_connection_pool_size = 0
+  }
 }
 
 variable "provider_aws_config" {
