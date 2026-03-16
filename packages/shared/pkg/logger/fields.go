@@ -1,15 +1,12 @@
 package logger
 
 import (
-	"fmt"
 	"net"
 	"net/http"
 	"strings"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
-
-	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 )
 
 func WithSandboxID(sandboxID string) zap.Field {
@@ -60,12 +57,12 @@ func WithClientIP(clientIP string) zap.Field {
 	return zap.String("http.client_ip", clientIP)
 }
 
-func WithMaskedAPIKey(apiKey string) zap.Field {
-	return zap.String("auth.api_key", maskedToken(keys.ApiKeyPrefix, apiKey))
+func WithMaskedAPIKey(maskedAPIKey string) zap.Field {
+	return zap.String("auth.api_key", maskedAPIKey)
 }
 
-func WithMaskedAccessToken(accessToken string) zap.Field {
-	return zap.String("auth.access_token", maskedToken(keys.AccessTokenPrefix, accessToken))
+func WithMaskedAccessToken(maskedAccessToken string) zap.Field {
+	return zap.String("auth.access_token", maskedAccessToken)
 }
 
 // ProxyRequestFields returns the common logger fields for a proxied HTTP request.
@@ -81,16 +78,6 @@ func ProxyRequestFields(r *http.Request, sandboxID string, sandboxPort uint64) [
 		WithClientIP(clientIP(r)),
 		zap.Int64("content_length", r.ContentLength),
 	}
-}
-
-func maskedToken(prefix string, token string) string {
-	tokenWithoutPrefix := strings.TrimPrefix(token, prefix)
-	masked, err := keys.MaskKey(prefix, tokenWithoutPrefix)
-	if err != nil {
-		return "invalid_token_format"
-	}
-
-	return fmt.Sprintf("%s%s...%s", masked.Prefix, masked.MaskedValuePrefix, masked.MaskedValueSuffix)
 }
 
 // clientIP extracts the real client IP from the request.
