@@ -188,5 +188,5 @@ func (fs *Chrooted) Chroot(_ string) (*Chrooted, error) {
 }
 
 func (fs *Chrooted) Root() string {
-	return "/"
+	return fs.ActualRoot
 }
