@@ -96,7 +96,10 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 
 		err = a.orchestrator.WaitForStateChange(ctx, teamID, sandboxID)
 		if err != nil {
-			telemetry.ReportError(ctx, "error waiting for sandbox state change", err)
+			telemetry.ReportError(ctx, "error waiting for sandbox state change", err,
+				telemetry.WithSandboxID(sandboxID),
+				telemetry.WithTeamID(teamID.String()),
+			)
 			a.sendAPIStoreError(c, http.StatusInternalServerError,
 				"Error waiting for sandbox state change")
 
