@@ -33,6 +33,11 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) e
 	//
 	// In both cases, the WP bit will be cleared because it is handled asynchronously
 	// by the kernel.
+	//
+	// Keep prefault requests synchronized with PrefetchData() collection.
+	u.settleRequests.RLock()
+	defer u.settleRequests.RUnlock()
+
 	handled, err := u.faultPage(
 		ctx,
 		addr,
@@ -49,7 +54,12 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) e
 
 	if !handled {
 		span.AddEvent("prefault: page already faulted or write returned EAGAIN")
+
+		return nil
 	}
+
+	u.pageTracker.setState(addr, addr+u.pageSize, faulted)
+	u.prefetchTracker.Add(offset, block.Prefetch)
 
 	return nil
 }
