@@ -114,7 +114,7 @@ func (c *cachedSeekable) ReadAt(ctx context.Context, buff []byte, offset int64) 
 		return readCount, fmt.Errorf("failed to perform uncached read: %w", err)
 	}
 
-	if !skipCacheWriteback(ctx) {
+	if !skipCacheWriteback(ctx) && isCompleteRead(readCount, len(buff), err) {
 		shadowBuff := make([]byte, readCount)
 		copy(shadowBuff, buff[:readCount])
 
@@ -167,24 +167,27 @@ func (c *cachedSeekable) OpenRangeReader(ctx context.Context, off, length int64)
 
 	// Wrap in a write-through reader that caches data on Close
 	return &cacheWriteThroughReader{
-		inner:     inner,
-		buf:       bytes.NewBuffer(make([]byte, 0, length)),
-		cache:     c,
-		ctx:       ctx,
-		off:       off,
-		chunkPath: chunkPath,
+		inner:       inner,
+		buf:         bytes.NewBuffer(make([]byte, 0, length)),
+		cache:       c,
+		ctx:         ctx,
+		off:         off,
+		expectedLen: length,
+		chunkPath:   chunkPath,
 	}, nil
 }
 
 // cacheWriteThroughReader wraps an inner reader, buffering all data read through it.
-// On Close, it asynchronously writes the buffered data to the NFS cache.
+// On Close, it asynchronously writes the buffered data to the NFS cache only
+// if the total bytes read match the expected length (to avoid caching truncated data).
 type cacheWriteThroughReader struct {
-	inner     io.ReadCloser
-	buf       *bytes.Buffer
-	cache     *cachedSeekable
-	ctx       context.Context //nolint:containedctx // needed for async cache write-back in Close
-	off       int64
-	chunkPath string
+	inner       io.ReadCloser
+	buf         *bytes.Buffer
+	cache       *cachedSeekable
+	ctx         context.Context //nolint:containedctx // needed for async cache write-back in Close
+	off         int64
+	expectedLen int64
+	chunkPath   string
 }
 
 func (r *cacheWriteThroughReader) Read(p []byte) (int, error) {
@@ -199,7 +202,11 @@ func (r *cacheWriteThroughReader) Read(p []byte) (int, error) {
 func (r *cacheWriteThroughReader) Close() error {
 	closeErr := r.inner.Close()
 
-	if r.buf.Len() > 0 {
+	// Only cache when the total bytes read match the expected length.
+	// Unlike ReadAt where io.EOF can justify a short read (last chunk),
+	// a streaming reader always ends with EOF regardless of whether the
+	// data was truncated, so the byte count is the only reliable check.
+	if r.buf.Len() > 0 && int64(r.buf.Len()) == r.expectedLen {
 		data := make([]byte, r.buf.Len())
 		copy(data, r.buf.Bytes())
 
