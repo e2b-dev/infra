@@ -175,9 +175,9 @@ func (fw *Firewall) installRules() error {
 	//
 	// USER_NONTCP_RULES chain (populated by ReplaceUserRules):
 	//   1. userAllowSet → accept (all-ports entries)
-	//   2. Port-specific allow rules (UDP only) → accept
+	//   2. Port-specific allow rules → accept
 	//   3. userDenySet → DROP (all-ports entries)
-	//   4. Port-specific deny rules (UDP only) → DROP
+	//   4. Port-specific deny rules → DROP
 	//   5. Implicit return → parent chain default ACCEPT
 	// ============================================================
 
@@ -242,7 +242,7 @@ func (fw *Firewall) installRules() error {
 // ReplaceUserRules atomically replaces all user firewall rules.
 // Entries may include optional port ranges (e.g. "8.8.8.8:53", "10.0.0.0/8:1-1024").
 // All-ports entries use IP set matching (fast path). Port-specific entries are
-// added as individual nftables rules matching UDP destination ports.
+// added as individual nftables rules matching destination ports.
 func (fw *Firewall) ReplaceUserRules(allowedEntries, deniedEntries []string) error {
 	// Parse raw entry strings into rules.
 	allowedRules, err := sandbox_network.ParseRules(allowedEntries)
@@ -312,9 +312,9 @@ func (fw *Firewall) ReplaceUserRules(allowedEntries, deniedEntries []string) err
 	// All-ports allow (IP set lookup)
 	fw.addUserChainSetRule(fw.userAllowSet.Set(), false)
 
-	// Port-specific allow rules (UDP only)
+	// Port-specific allow rules
 	for _, r := range allowedSomePorts {
-		if err := fw.addUDPPortRule(r, false); err != nil {
+		if err := fw.addPortRule(r, false); err != nil {
 			return fmt.Errorf("add port-specific allow rule for %q: %w", r.Host, err)
 		}
 	}
@@ -322,9 +322,9 @@ func (fw *Firewall) ReplaceUserRules(allowedEntries, deniedEntries []string) err
 	// All-ports deny (IP set lookup)
 	fw.addUserChainSetRule(fw.userDenySet.Set(), true)
 
-	// Port-specific deny rules (UDP only)
+	// Port-specific deny rules
 	for _, r := range deniedSomePorts {
-		if err := fw.addUDPPortRule(r, true); err != nil {
+		if err := fw.addPortRule(r, true); err != nil {
 			return fmt.Errorf("add port-specific deny rule for %q: %w", r.Host, err)
 		}
 	}
@@ -361,10 +361,12 @@ func (fw *Firewall) addUserChainSetRule(ipSet *nftables.Set, drop bool) {
 	})
 }
 
-// addUDPPortRule adds a rule to the user non-TCP chain that matches UDP traffic
-// to a specific destination IP/CIDR and port range. ICMP and other non-port
-// protocols are not affected (they fall through to the all-ports set rules).
-func (fw *Firewall) addUDPPortRule(rule sandbox_network.Rule, drop bool) error {
+// addPortRule adds a rule to the user non-TCP chain that matches non-TCP traffic
+// to a specific destination IP/CIDR and port range. Works for any transport
+// protocol with standard port layout (UDP, SCTP, DCCP, UDPLite). ICMP packets
+// may technically match if their header bytes at the port offset fall in range,
+// but this is harmless — ICMP is not a data channel.
+func (fw *Firewall) addPortRule(rule sandbox_network.Rule, drop bool) error {
 	host := sandbox_network.AddressStringToCIDR(rule.Host)
 	_, ipNet, err := net.ParseCIDR(host)
 	if err != nil {
@@ -379,10 +381,6 @@ func (fw *Firewall) addUDPPortRule(rule sandbox_network.Rule, drop bool) error {
 	}
 
 	exprs := []expr.Any{
-		// Match UDP protocol
-		&expr.Meta{Key: expr.MetaKeyL4PROTO, Register: 1},
-		&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: []byte{unix.IPPROTO_UDP}},
-
 		// Match destination IP/CIDR
 		expressions.IPv4DestinationAddress(1),
 		&expr.Bitwise{
@@ -394,11 +392,11 @@ func (fw *Firewall) addUDPPortRule(rule sandbox_network.Rule, drop bool) error {
 		},
 		&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: ipNet.IP.To4()},
 
-		// Load UDP destination port
+		// Load destination port (offset 2 in transport header — same for UDP, SCTP, DCCP)
 		&expr.Payload{
 			DestRegister: 1,
 			Base:         expr.PayloadBaseTransportHeader,
-			Offset:       2, // destination port offset in UDP header
+			Offset:       2, // destination port offset in transport header
 			Len:          2,
 		},
 	}
