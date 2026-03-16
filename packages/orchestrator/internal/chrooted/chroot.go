@@ -98,6 +98,10 @@ func (fs *Chrooted) chroot(path string) error {
 			}
 
 			if err = syscall.PivotRoot(path, oldRootPath); err != nil {
+				if errRm := os.Remove(oldRootPath); errRm != nil {
+					err = errors.Join(err, fmt.Errorf("failed to remove %q: %w", oldRootPath, errRm))
+				}
+
 				return fmt.Errorf("failed to pivot root: %w", err)
 			}
 

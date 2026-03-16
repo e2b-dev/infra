@@ -49,7 +49,7 @@ func (w *wrappedFile) Truncate(size int64) error {
 	return w.file.Truncate(size)
 }
 
-func maybeWrap(f *os.File) *wrappedFile {
+func maybeWrap(f *os.File) billy.File {
 	if f == nil {
 		return nil
 	}
