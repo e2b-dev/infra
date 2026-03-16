@@ -145,14 +145,14 @@ func proxyWithIPVerification(ctx context.Context, conn net.Conn, upstreamAddr st
 
 // isEgressAllowed checks if egress is allowed based on domain, CIDR, and port rules.
 // Returns the allowed status and the match type for metrics.
-// Rules are pre-parsed at config load time (see sandbox.EgressACL), so this
+// Rules are pre-parsed at config load time (see sandbox_network.ACL), so this
 // function performs no string parsing or allocations on the hot path.
 // Priority order:
 //  1. Allow entries (if domain or CIDR matches host AND port → allow)
 //  2. Deny entries (if CIDR matches host AND port → deny)
 //  3. Default: allow
 func isEgressAllowed(sbx *sandbox.Sandbox, hostname string, toIP net.IP, toPort uint16) (bool, MatchType) {
-	acl := sbx.Config.GetEgressACL()
+	acl := sbx.Config.GetParsedEgress()
 	if acl == nil {
 		// No egress configuration, allow all traffic.
 		return true, MatchTypeNone

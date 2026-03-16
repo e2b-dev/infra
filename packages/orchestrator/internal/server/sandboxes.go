@@ -303,26 +303,30 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 
 	if req.GetEgress() != nil {
 		updates = append(updates, func(ctx context.Context) (func(context.Context), error) {
+			oldACL := sbx.Config.GetParsedEgress()
 			oldEgress := sbx.Config.GetNetworkEgress()
-
-			if err := sbx.Slot.UpdateInternet(ctx, req.GetEgress()); err != nil {
-				return nil, fmt.Errorf("failed to update sandbox network: %w", err)
-			}
 
 			egress := req.GetEgress()
 			if len(egress.GetAllowed()) == 0 && len(egress.GetDenied()) == 0 {
-				if err := sbx.Config.SetNetworkEgress(nil); err != nil {
-					return nil, fmt.Errorf("failed to clear egress config: %w", err)
-				}
-			} else {
-				if err := sbx.Config.SetNetworkEgress(egress); err != nil {
-					return nil, fmt.Errorf("failed to set egress config: %w", err)
-				}
+				egress = nil
+			}
+
+			// Parse and store new config.
+			if err := sbx.Config.SetNetworkEgress(egress); err != nil {
+				return nil, fmt.Errorf("invalid egress config: %w", err)
+			}
+
+			// Apply parsed rules to nftables.
+			if err := sbx.Slot.UpdateInternet(ctx, sbx.Config.GetParsedEgress()); err != nil {
+				// Rollback config on nftables failure.
+				sbx.Config.RestoreNetworkEgress(oldEgress, oldACL)
+
+				return nil, fmt.Errorf("failed to update sandbox network: %w", err)
 			}
 
 			return func(ctx context.Context) {
-				_ = sbx.Slot.UpdateInternet(ctx, oldEgress)
-				_ = sbx.Config.SetNetworkEgress(oldEgress)
+				sbx.Config.RestoreNetworkEgress(oldEgress, oldACL)
+				_ = sbx.Slot.UpdateInternet(ctx, oldACL)
 			}, nil
 		})
 	}

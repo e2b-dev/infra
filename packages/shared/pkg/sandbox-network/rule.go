@@ -78,6 +78,54 @@ func ParseRule(s string) (Rule, error) {
 	}, nil
 }
 
+// ACL holds pre-parsed network access control rules.
+// Computed once at config set time to avoid per-connection parsing.
+type ACL struct {
+	Allowed []Rule
+	Denied  []Rule
+}
+
+// GetAllowed returns the allowed rules, nil-safe.
+func (a *ACL) GetAllowed() []Rule {
+	if a == nil {
+		return nil
+	}
+
+	return a.Allowed
+}
+
+// GetDenied returns the denied rules, nil-safe.
+func (a *ACL) GetDenied() []Rule {
+	if a == nil {
+		return nil
+	}
+
+	return a.Denied
+}
+
+// NewEgressACL parses allowed and denied string entries into an ACL.
+// Returns nil for empty inputs (no rules).
+func NewEgressACL(allowed, denied []string) (*ACL, error) {
+	if len(allowed) == 0 && len(denied) == 0 {
+		return nil, nil //nolint:nilnil // nil means no rules configured
+	}
+
+	allowedRules, err := ParseRules(allowed)
+	if err != nil {
+		return nil, fmt.Errorf("allowed rules: %w", err)
+	}
+
+	deniedRules, err := ParseRules(denied)
+	if err != nil {
+		return nil, fmt.Errorf("denied rules: %w", err)
+	}
+
+	return &ACL{
+		Allowed: allowedRules,
+		Denied:  deniedRules,
+	}, nil
+}
+
 // ParseRules parses a list of string entries into Rules.
 func ParseRules(entries []string) ([]Rule, error) {
 	rules := make([]Rule, 0, len(entries))
