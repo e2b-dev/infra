@@ -15,6 +15,8 @@ variable "provider_gcp_config" {
     region                        = optional(string, "")
     docker_registry               = optional(string, "")
     gcs_grpc_connection_pool_size = optional(number, 0)
+    gcs_enable_direct_path        = optional(string, "")
+    gcs_disable_telemetry         = optional(string, "")
   })
   default = {
     service_account_key           = ""
@@ -22,6 +24,8 @@ variable "provider_gcp_config" {
     region                        = ""
     docker_registry               = ""
     gcs_grpc_connection_pool_size = 0
+    gcs_enable_direct_path        = ""
+    gcs_disable_telemetry         = ""
   }
 }
 

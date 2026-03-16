@@ -409,6 +409,8 @@ module "orchestrator" {
   provider_name = "gcp"
   provider_gcp_config = {
     gcs_grpc_connection_pool_size = var.gcs_grpc_connection_pool_size
+    gcs_enable_direct_path        = var.gcs_enable_direct_path
+    gcs_disable_telemetry         = var.gcs_disable_telemetry
   }
 
   node_pool  = var.orchestrator_node_pool
@@ -477,6 +479,8 @@ module "template_manager" {
     region                        = var.gcp_region
     docker_registry               = var.custom_envs_repository_name
     gcs_grpc_connection_pool_size = var.gcs_grpc_connection_pool_size
+    gcs_enable_direct_path        = var.gcs_enable_direct_path
+    gcs_disable_telemetry         = var.gcs_disable_telemetry
   }
 
   update_stanza = var.template_manages_clusters_size_gt_1

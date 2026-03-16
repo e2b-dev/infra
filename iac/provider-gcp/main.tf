@@ -305,6 +305,8 @@ module "nomad" {
   volume_token_duration         = var.volume_token_valid_for
 
   gcs_grpc_connection_pool_size = var.gcs_grpc_connection_pool_size
+  gcs_enable_direct_path        = var.gcs_enable_direct_path
+  gcs_disable_telemetry         = var.gcs_disable_telemetry
 }
 
 

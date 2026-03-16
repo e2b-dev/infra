@@ -82,7 +82,9 @@ tf_vars := \
 	$(call tfvar, DB_MIN_IDLE_CONNECTIONS) \
 	$(call tfvar, AUTH_DB_MAX_OPEN_CONNECTIONS) \
 	$(call tfvar, AUTH_DB_MIN_IDLE_CONNECTIONS) \
-	$(call tfvar, GCS_GRPC_CONNECTION_POOL_SIZE)
+	$(call tfvar, GCS_GRPC_CONNECTION_POOL_SIZE) \
+	$(call tfvar, GCS_ENABLE_DIRECT_PATH) \
+	$(call tfvar, GCS_DISABLE_TELEMETRY)
 
 .PHONY: init
 init:
