@@ -11,6 +11,7 @@ import (
 	"connectrpc.com/connect"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/filesystem"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process"
@@ -388,11 +389,9 @@ func TestConcurrentFileUpload(t *testing.T) {
 	// Upload multiple files concurrently to the same nested directory.
 	// This exercises the race condition fix in EnsureDirs where concurrent
 	// Mkdir calls are tolerated via os.IsExist checks.
-	// Note: we avoid calling require/assert from goroutines since FailNow
-	// calls runtime.Goexit which cannot be caught by recover, causing deadlocks.
-	errs := make(chan error, 4)
+	g, gCtx := errgroup.WithContext(ctx)
 	for i := 1; i <= 4; i++ {
-		go func(i int) {
+		g.Go(func() error {
 			filePath := fmt.Sprintf("%s/test_%d.txt", baseDir, i)
 			content := fmt.Sprintf("content of test_%d\n", i)
 
@@ -400,32 +399,25 @@ func TestConcurrentFileUpload(t *testing.T) {
 			reqEditors := []envdAPI.RequestEditorFn{setup.WithSandbox(t, sbx.SandboxID)}
 
 			writeRes, err := envdClient.HTTPClient.PostFilesWithBodyWithResponse(
-				ctx,
+				gCtx,
 				&envdAPI.PostFilesParams{Path: &filePath, Username: sharedUtils.ToPtr("user")},
 				contentType,
 				buffer,
 				reqEditors...,
 			)
 			if err != nil {
-				errs <- fmt.Errorf("test_%d.txt: %w", i, err)
-
-				return
+				return fmt.Errorf("test_%d.txt: %w", i, err)
 			}
 
 			if writeRes.StatusCode() != http.StatusOK {
-				errs <- fmt.Errorf("test_%d.txt: unexpected status %d: %s", i, writeRes.StatusCode(), string(writeRes.Body))
-
-				return
+				return fmt.Errorf("test_%d.txt: unexpected status %d: %s", i, writeRes.StatusCode(), string(writeRes.Body))
 			}
 
-			errs <- nil
-		}(i)
+			return nil
+		})
 	}
 
-	for range 4 {
-		err := <-errs
-		require.NoError(t, err)
-	}
+	require.NoError(t, g.Wait())
 
 	// Verify all files exist
 	req := connect.NewRequest(&filesystem.ListDirRequest{
