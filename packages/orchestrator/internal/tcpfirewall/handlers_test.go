@@ -384,9 +384,7 @@ func TestIsEgressAllowed(t *testing.T) {
 			t.Parallel()
 			sbx := &sandbox.Sandbox{
 				Metadata: &sandbox.Metadata{
-					Config: sandbox.Config{
-						Network: tt.network,
-					},
+					Config: sandbox.NewConfig(sandbox.Config{Network: tt.network}),
 				},
 			}
 

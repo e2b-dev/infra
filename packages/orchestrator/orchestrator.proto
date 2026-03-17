@@ -96,7 +96,9 @@ message SandboxCreateResponse {
 message SandboxUpdateRequest {
   string sandbox_id = 1;
 
-  google.protobuf.Timestamp end_time = 2;
+  // All fields are optional — only set fields are applied.
+  optional google.protobuf.Timestamp end_time = 2;
+  optional SandboxNetworkEgressConfig egress = 3;
 }
 
 message SandboxDeleteRequest {

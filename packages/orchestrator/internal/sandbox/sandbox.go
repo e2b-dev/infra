@@ -72,13 +72,52 @@ type Config struct {
 	TotalDiskSizeMB int64
 	HugePages       bool
 
-	Network *orchestrator.SandboxNetworkConfig
-
 	Envd EnvdMetadata
 
 	FirecrackerConfig fc.Config
 
 	VolumeMounts []VolumeMountConfig
+
+	// mu protects mutable sub-fields of Network (Egress, Ingress).
+	// The Network pointer itself is set once at construction and never replaced.
+	mu      *sync.RWMutex
+	Network *orchestrator.SandboxNetworkConfig
+}
+
+// NewConfig creates a Config, normalizing a nil Network to an empty config
+// so that Network is never nil.
+func NewConfig(c Config) *Config {
+	if c.Network == nil {
+		c.Network = &orchestrator.SandboxNetworkConfig{}
+	}
+
+	c.mu = &sync.RWMutex{}
+
+	return &c
+}
+
+// GetNetworkEgress returns the egress config in a thread-safe manner.
+func (c *Config) GetNetworkEgress() *orchestrator.SandboxNetworkEgressConfig {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	return c.Network.GetEgress()
+}
+
+// SetNetworkEgress updates the egress config in a thread-safe manner.
+func (c *Config) SetNetworkEgress(egress *orchestrator.SandboxNetworkEgressConfig) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.Network.Egress = egress
+}
+
+// GetNetworkIngress returns the ingress config in a thread-safe manner.
+func (c *Config) GetNetworkIngress() *orchestrator.SandboxNetworkIngressConfig {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	return c.Network.GetIngress()
 }
 
 type VolumeMountConfig struct {
@@ -138,28 +177,26 @@ type internalConfig struct {
 
 type Metadata struct {
 	internalConfig internalConfig
-	Config         Config
+	Config         *Config
 	Runtime        RuntimeMetadata
 
-	startedAtMu sync.RWMutex // protects startedAt
-	startedAt   time.Time
-
-	endAtMu sync.RWMutex // protects endAt
-	endAt   time.Time
+	rwmu      sync.RWMutex // protects startedAt, endAt
+	startedAt time.Time
+	endAt     time.Time
 }
 
 // GetEndAt returns the sandbox end time in a thread-safe manner.
 func (m *Metadata) GetEndAt() time.Time {
-	m.endAtMu.RLock()
-	defer m.endAtMu.RUnlock()
+	m.rwmu.RLock()
+	defer m.rwmu.RUnlock()
 
 	return m.endAt
 }
 
 // SetEndAt sets the sandbox end time in a thread-safe manner.
 func (m *Metadata) SetEndAt(t time.Time) {
-	m.endAtMu.Lock()
-	defer m.endAtMu.Unlock()
+	m.rwmu.Lock()
+	defer m.rwmu.Unlock()
 
 	m.endAt = t
 }
@@ -214,16 +251,16 @@ func (s *Sandbox) IsRunning() bool {
 
 // GetStartedAt returns the sandbox start time in a thread-safe manner.
 func (m *Metadata) GetStartedAt() time.Time {
-	m.startedAtMu.RLock()
-	defer m.startedAtMu.RUnlock()
+	m.rwmu.RLock()
+	defer m.rwmu.RUnlock()
 
 	return m.startedAt
 }
 
 // SetStartedAt sets the sandbox start time in a thread-safe manner.
 func (m *Metadata) SetStartedAt(t time.Time) {
-	m.startedAtMu.Lock()
-	defer m.startedAtMu.Unlock()
+	m.rwmu.Lock()
+	defer m.rwmu.Unlock()
 
 	m.startedAt = t
 }
@@ -262,7 +299,7 @@ func NewFactory(
 // IMPORTANT: You must Close() the sandbox after you are done with it.
 func (f *Factory) CreateSandbox(
 	ctx context.Context,
-	config Config,
+	config *Config,
 	runtime RuntimeMetadata,
 	template template.Template,
 	sandboxTimeout time.Duration,
@@ -473,7 +510,7 @@ func handleSpanError(span trace.Span, err *error) {
 func (f *Factory) ResumeSandbox(
 	ctx context.Context,
 	t template.Template,
-	config Config,
+	config *Config,
 	runtime RuntimeMetadata,
 	startedAt time.Time,
 	endAt time.Time,

@@ -113,11 +113,11 @@ func TestIntegrationTest(t *testing.T) {
 				SandboxID: sandboxID,
 				TeamID:    teamID.String(),
 			},
-			Config: sandbox.Config{
+			Config: sandbox.NewConfig(sandbox.Config{
 				VolumeMounts: []sandbox.VolumeMountConfig{
 					{ID: volumeID, Name: volumeName, Path: "/mnt/volume", Type: volumeType},
 				},
-			},
+			}),
 		},
 		Resources: &sandbox.Resources{
 			Slot: slot,
