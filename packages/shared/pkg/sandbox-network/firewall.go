@@ -30,7 +30,6 @@ var DeniedSandboxCIDRs = []string{
 
 var DeniedSandboxSetData = utils.Must(set.AddressStringsToSetData(DeniedSandboxCIDRs))
 
-
 // AddressStringToCIDR converts a string address to the CIDR format.
 // Supports only IPv4 addresses.
 func AddressStringToCIDR(addressString string) string {
