@@ -34,7 +34,7 @@ var (
 const blockAll = sandbox_network.AllInternetTrafficCIDR
 
 func ptrS(s ...string) *[]string { return &s }
-	
+
 // ensureNetworkTestTemplate builds the custom template for network tests (called once).
 func ensureNetworkTestTemplate(t *testing.T) string {
 	t.Helper()
