@@ -8,9 +8,9 @@ import (
 )
 
 type tracingFile struct {
-	ctx         context.Context //nolint:containedctx
-	inner       billy.File
-	finishOpen  finishFunc
+	ctx        context.Context //nolint:containedctx
+	inner      billy.File
+	finishOpen finishFunc
 }
 
 var _ billy.File = (*tracingFile)(nil)

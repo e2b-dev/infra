@@ -10,7 +10,9 @@ import (
 )
 
 func TestIsUserError(t *testing.T) {
-	var testCases = map[string]struct {
+	t.Parallel()
+
+	testCases := map[string]struct {
 		err      error
 		expected bool
 	}{
@@ -46,6 +48,8 @@ func TestIsUserError(t *testing.T) {
 
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
 			actual := isUserError(tc.err)
 			assert.Equal(t, tc.expected, actual)
 		})

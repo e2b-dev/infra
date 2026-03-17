@@ -3,7 +3,6 @@ package tracing
 import (
 	"context"
 	"errors"
-	"io/fs"
 	"os"
 
 	"go.opentelemetry.io/otel"
@@ -34,9 +33,6 @@ func startSpan(ctx context.Context, name string, attrs ...attribute.KeyValue) (c
 }
 
 func isUserError(err error) bool {
-	if errors.Is(err, fs.ErrNotExist) {
-	}
-
 	if errors.Is(err, os.ErrNotExist) {
 		return true
 	}
