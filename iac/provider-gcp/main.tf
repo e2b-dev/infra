@@ -275,6 +275,7 @@ module "nomad" {
   envd_timeout                   = var.envd_timeout
   persistent_volume_mounts       = { for key, config in local.persistent_volume_types : key => config["local_mount_path"] }
   default_persistent_volume_type = var.default_persistent_volume_type
+  orchestrator_env_vars          = var.orchestrator_env_vars
 
   # Template manager
   builder_node_pool                   = var.build_node_pool

@@ -147,3 +147,8 @@ variable "persistent_volume_mounts" {
   type    = map(string)
   default = {}
 }
+
+variable "job_env_vars" {
+  type    = map(string)
+  default = {}
+}

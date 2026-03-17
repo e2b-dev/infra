@@ -741,3 +741,8 @@ variable "gcs_disable_telemetry" {
   type        = bool
   default     = true
 }
+
+variable "orchestrator_env_vars" {
+  type    = map(string)
+  default = {}
+}

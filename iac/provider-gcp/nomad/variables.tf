@@ -487,3 +487,8 @@ variable "gcs_disable_telemetry" {
   description = "Disable telemetry for GCS gRPC client"
   type        = bool
 }
+
+variable "orchestrator_env_vars" {
+  type    = map(string)
+  default = {}
+}

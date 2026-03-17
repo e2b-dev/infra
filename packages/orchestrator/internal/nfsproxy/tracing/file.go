@@ -8,14 +8,15 @@ import (
 )
 
 type tracingFile struct {
-	ctx   context.Context //nolint:containedctx
-	inner billy.File
+	ctx         context.Context //nolint:containedctx
+	inner       billy.File
+	finishOpen  finishFunc
 }
 
 var _ billy.File = (*tracingFile)(nil)
 
-func wrapFile(ctx context.Context, f billy.File) billy.File {
-	return &tracingFile{ctx: ctx, inner: f}
+func wrapFile(ctx context.Context, f billy.File, finish finishFunc) billy.File {
+	return &tracingFile{ctx: ctx, inner: f, finishOpen: finish}
 }
 
 func (l *tracingFile) Name() string {
@@ -56,7 +57,13 @@ func (l *tracingFile) Seek(offset int64, whence int) (n int64, err error) {
 
 func (l *tracingFile) Close() (err error) {
 	_, finish := startSpan(l.ctx, "File.Close")
-	defer func() { finish(err) }()
+	defer func() {
+		finish(err)
+		// End the open span when the file is closed
+		if l.finishOpen != nil {
+			l.finishOpen(err)
+		}
+	}()
 
 	return l.inner.Close()
 }

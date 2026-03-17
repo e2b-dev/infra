@@ -436,6 +436,8 @@ module "orchestrator" {
   domain_name             = var.domain_name
   shared_chunk_cache_path = var.shared_chunk_cache_path
   launch_darkly_api_key   = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
+
+  job_env_vars = var.orchestrator_env_vars
 }
 
 data "google_storage_bucket_object" "template_manager" {
