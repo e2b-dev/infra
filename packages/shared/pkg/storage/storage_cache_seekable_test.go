@@ -131,39 +131,26 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 		assert.Equal(t, 3, read)
 	})
 
-	t.Run("truncated cache file falls back to remote", func(t *testing.T) {
+	t.Run("short cache file returns EOF via ReadAt", func(t *testing.T) {
 		t.Parallel()
 
 		tempDir := t.TempDir()
-		fullData := []byte{1, 2, 3, 4, 5}
 
-		mockSeeker := storagemocks.NewMockSeekable(t)
-		mockSeeker.EXPECT().
-			ReadAt(mock.Anything, mock.Anything, mock.Anything).
-			RunAndReturn(func(_ context.Context, buff []byte, _ int64) (int, error) {
-				copy(buff, fullData)
+		c := cachedSeekable{path: tempDir, chunkSize: 10, tracer: noopTracer}
 
-				return len(fullData), nil
-			})
-
-		c := cachedSeekable{
-			path:      tempDir,
-			chunkSize: 5,
-			inner:     mockSeeker,
-			tracer:    noopTracer,
-		}
-
-		// Plant a truncated cache file (2 of 5 bytes).
+		// Plant a 3-byte cache file (valid last chunk).
 		chunkPath := c.makeChunkFilename(0)
 		require.NoError(t, os.MkdirAll(filepath.Dir(chunkPath), 0o755))
-		require.NoError(t, os.WriteFile(chunkPath, []byte{0xAA, 0xBB}, 0o600))
+		require.NoError(t, os.WriteFile(chunkPath, []byte{1, 2, 3}, 0o600))
 
-		// ReadAt should detect the short cache read and fall back to remote.
-		buffer := make([]byte, 5)
+		// ReadAt on a file shorter than the buffer returns (n, io.EOF)
+		// per the io.ReaderAt contract. This is a cache hit — the caller
+		// sees the data with EOF indicating end of file.
+		buffer := make([]byte, 10)
 		read, err := c.ReadAt(t.Context(), buffer, 0)
-		require.NoError(t, err)
-		assert.Equal(t, 5, read)
-		assert.Equal(t, fullData, buffer)
+		require.ErrorIs(t, err, io.EOF)
+		assert.Equal(t, 3, read)
+		assert.Equal(t, []byte{1, 2, 3}, buffer[:read])
 	})
 
 	t.Run("consecutive ReadAt calls should cache", func(t *testing.T) {
@@ -563,6 +550,8 @@ func TestCachedSeekable_ReadAt_PreservesEOF(t *testing.T) {
 		n, err := c.ReadAt(t.Context(), buff, 0)
 		assert.Equal(t, 10, n)
 		require.NoError(t, err, "cachedSeekable must not inject errors on full read")
+
+		c.wg.Wait()
 	})
 }
 

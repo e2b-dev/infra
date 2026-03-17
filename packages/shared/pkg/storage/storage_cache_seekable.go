@@ -92,14 +92,10 @@ func (c *cachedSeekable) ReadAt(ctx context.Context, buff []byte, offset int64) 
 	readTimer := cacheSlabReadTimerFactory.Begin(attribute.String(nfsCacheOperationAttr, nfsCacheOperationAttrReadAt))
 	count, err := c.readAtFromCache(ctx, chunkPath, buff)
 	if ignoreEOF(err) == nil {
-		if isCompleteRead(count, len(buff), err) {
-			recordCacheRead(ctx, true, int64(count), cacheTypeSeekable, cacheOpReadAt)
-			readTimer.Success(ctx, int64(count))
+		recordCacheRead(ctx, true, int64(count), cacheTypeSeekable, cacheOpReadAt)
+		readTimer.Success(ctx, int64(count))
 
-			return count, err // return `err` in case it's io.EOF
-		}
-
-		err = fmt.Errorf("cached chunk is truncated: got %d bytes, expected %d", count, len(buff))
+		return count, err // return `err` in case it's io.EOF
 	}
 	readTimer.Failure(ctx, int64(count))
 
@@ -338,7 +334,11 @@ func (c *cachedSeekable) readAtFromCache(ctx context.Context, chunkPath string, 
 
 	defer utils.Cleanup(ctx, "failed to close chunk", fp.Close)
 
-	count, err := fp.Read(buff)
+	// ReadAt (pread) is used instead of Read so that short reads from cache
+	// files (e.g. last chunk) return io.EOF per the io.ReaderAt contract.
+	// Plain Read on Linux returns (n, nil) for short reads and only
+	// signals EOF on a subsequent call, which would hide truncation.
+	count, err := fp.ReadAt(buff, 0)
 	if ignoreEOF(err) != nil {
 		return 0, fmt.Errorf("failed to read from chunk: %w", err)
 	}
