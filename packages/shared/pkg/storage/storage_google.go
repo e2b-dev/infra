@@ -38,8 +38,7 @@ const (
 	googleBackoffMultiplier        = 2
 	googleMaxAttempts              = 10
 	defaultGRPCConnectionPoolSize  = 4
-	defaultGCSEnableDirectPath     = "true"
-	defaultGCSDisableTelemetry     = "false"
+	defaultGCSEnableDirectPath     = false
 	gcloudDefaultUploadConcurrency = 16
 
 	gcsOperationAttr                           = "operation"
@@ -95,21 +94,11 @@ func NewGCP(ctx context.Context, bucketName string, limiter *limit.Limiter) (Sto
 		return nil, fmt.Errorf("failed to parse GCS_GRPC_CONNECTION_POOL_SIZE: %w", err)
 	}
 
-	enableDirectPath := env.GetEnv("GCS_ENABLE_DIRECT_PATH", defaultGCSEnableDirectPath) == "true"
-	disableTelemetry := env.GetEnv("GCS_DISABLE_TELEMETRY", defaultGCSDisableTelemetry) == "true"
-
 	opts := []option.ClientOption{
 		option.WithGRPCConnectionPool(grpcPoolSize),
 		option.WithGRPCDialOption(grpc.WithInitialConnWindowSize(32 * megabyte)),
 		option.WithGRPCDialOption(grpc.WithInitialWindowSize(4 * megabyte)),
-		internaloption.EnableDirectPath(enableDirectPath),
-	}
-
-	if disableTelemetry {
-		opts = append(opts,
-			option.WithTelemetryDisabled(),
-			storage.WithDisabledClientMetrics(),
-		)
+		internaloption.EnableDirectPath(defaultGCSEnableDirectPath),
 	}
 
 	client, err := storage.NewGRPCClient(ctx, opts...)
