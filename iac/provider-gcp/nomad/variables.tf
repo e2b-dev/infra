@@ -478,16 +478,6 @@ variable "gcs_grpc_connection_pool_size" {
   type        = number
 }
 
-variable "gcs_enable_direct_path" {
-  description = "Enable DirectPath for GCS gRPC client"
-  type        = bool
-}
-
-variable "gcs_disable_telemetry" {
-  description = "Disable telemetry for GCS gRPC client"
-  type        = bool
-}
-
 variable "orchestrator_env_vars" {
   type    = map(string)
   default = {}

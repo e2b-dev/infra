@@ -730,18 +730,6 @@ variable "gcs_grpc_connection_pool_size" {
   }
 }
 
-variable "gcs_enable_direct_path" {
-  description = "Enable DirectPath for GCS gRPC client"
-  type        = bool
-  default     = true
-}
-
-variable "gcs_disable_telemetry" {
-  description = "Disable telemetry for GCS gRPC client"
-  type        = bool
-  default     = true
-}
-
 variable "orchestrator_env_vars" {
   type    = map(string)
   default = {}
