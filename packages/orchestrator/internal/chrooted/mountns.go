@@ -101,46 +101,18 @@ func (ns *mountNS) Do(toRun func() error) error {
 	stopCh := ns.stopCh
 	ns.mu.Unlock()
 
-	if reqCh != nil {
-		done := make(chan error, 1)
-
-		select {
-		case reqCh <- nsRequest{fn: toRun, done: done}:
-			return <-done
-		case <-stopCh:
-			return fmt.Errorf("mount namespace %q is closed", ns.file.Name())
-		}
+	if reqCh == nil {
+		return ErrNamespaceClosed
 	}
 
-	containedCall := func() error {
-		threadNS, err := getCurrentNSNoLock()
-		if err != nil {
-			return fmt.Errorf("failed to open current mountns: %w", err)
-		}
-		defer func() { _ = threadNS.Close() }()
+	done := make(chan error, 1)
 
-		if err = ns.Set(); err != nil {
-			return fmt.Errorf("error switching to ns %v: %w", ns.file.Name(), err)
-		}
-		defer func() {
-			if err := threadNS.Set(); err == nil {
-				runtime.UnlockOSThread()
-			}
-		}()
-
-		return toRun()
+	select {
+	case reqCh <- nsRequest{fn: toRun, done: done}:
+		return <-done
+	case <-stopCh:
+		return fmt.Errorf("mount namespace %q is closed", ns.file.Name())
 	}
-
-	var wg sync.WaitGroup
-	var innerError error
-
-	wg.Go(func() {
-		runtime.LockOSThread()
-		innerError = containedCall()
-	})
-	wg.Wait()
-
-	return innerError
 }
 
 type NSPathNotNSError struct{ msg string }
