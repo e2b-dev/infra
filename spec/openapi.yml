@@ -1300,11 +1300,13 @@ components:
         - draining
         - connecting
         - unhealthy
+        - scaling_down
       x-enum-varnames:
         - NodeStatusReady
         - NodeStatusDraining
         - NodeStatusConnecting
         - NodeStatusUnhealthy
+        - NodeStatusScalingDown
 
     NodeStatusChange:
       required:

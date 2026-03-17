@@ -69,10 +69,11 @@ const (
 
 // Defines values for NodeStatus.
 const (
-	NodeStatusConnecting NodeStatus = "connecting"
-	NodeStatusDraining   NodeStatus = "draining"
-	NodeStatusReady      NodeStatus = "ready"
-	NodeStatusUnhealthy  NodeStatus = "unhealthy"
+	NodeStatusConnecting  NodeStatus = "connecting"
+	NodeStatusDraining    NodeStatus = "draining"
+	NodeStatusReady       NodeStatus = "ready"
+	NodeStatusScalingDown NodeStatus = "scaling_down"
+	NodeStatusUnhealthy   NodeStatus = "unhealthy"
 )
 
 // Defines values for SandboxState.

@@ -10,6 +10,7 @@ enum ServiceInfoStatus {
   Healthy = 0;
   Draining = 1;
   Unhealthy = 2;
+  ScalingDown = 3;
 }
 
 enum ServiceInfoRole {

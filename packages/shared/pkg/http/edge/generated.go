@@ -22,9 +22,10 @@ const (
 
 // Defines values for ClusterNodeStatus.
 const (
-	Draining  ClusterNodeStatus = "draining"
-	Healthy   ClusterNodeStatus = "healthy"
-	Unhealthy ClusterNodeStatus = "unhealthy"
+	Draining    ClusterNodeStatus = "draining"
+	Healthy     ClusterNodeStatus = "healthy"
+	ScalingDown ClusterNodeStatus = "scaling_down"
+	Unhealthy   ClusterNodeStatus = "unhealthy"
 )
 
 // Defines values for ClusterOrchestratorRole.
