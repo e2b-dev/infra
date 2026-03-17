@@ -97,12 +97,14 @@ paths:
       responses:
         "200":
           $ref: "#/components/responses/DownloadSuccess"
-        "401":
-          $ref: "#/components/responses/InvalidUser"
         "400":
           $ref: "#/components/responses/InvalidPath"
+        "401":
+          $ref: "#/components/responses/InvalidUser"
         "404":
           $ref: "#/components/responses/FileNotFound"
+        "406":
+          $ref: "#/components/responses/NotAcceptable"
         "500":
           $ref: "#/components/responses/InternalServerError"
     post:
@@ -173,14 +175,14 @@ components:
       name: path
       in: query
       required: false
-      description: Path to the file, URL encoded. Can be relative to user's home directory.
+      description: Path to the file, URL encoded. Can be relative to the user's home directory (e.g. "file.txt" resolves to ~/file.txt).
       schema:
         type: string
     User:
       name: username
       in: query
       required: false
-      description: User used for setting the owner, or resolving relative paths.
+      description: User for setting file ownership and resolving relative paths. Defaults to the sandbox's default user.
       schema:
         type: string
     Signature:
@@ -194,7 +196,7 @@ components:
       name: signature_expiration
       in: query
       required: false
-      description: Signature expiration used for defining the expiration time of the signature.
+      description: Unix timestamp (seconds) after which the signature expires. Only used with the signature parameter.
       schema:
         type: integer
 
@@ -219,6 +221,10 @@ components:
             type: array
             items:
               $ref: "#/components/schemas/EntryInfo"
+          example:
+            - path: "/home/user/hello.txt"
+              name: "hello.txt"
+              type: "file"
 
     DownloadSuccess:
       description: Entire file downloaded successfully.
@@ -227,37 +233,61 @@ components:
           schema:
             type: string
             format: binary
-            description: The file content
+            description: The raw file content
+    NotAcceptable:
+      description: Requested encoding is not supported
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            message: "no acceptable encoding found, supported: [identity, gzip]"
+            code: 406
     InvalidPath:
       description: Invalid path
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+          example:
+            message: "path '/home/user/docs' is a directory"
+            code: 400
     InternalServerError:
       description: Internal server error
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+          example:
+            message: "error opening file '/home/user/file.txt': permission denied"
+            code: 500
     FileNotFound:
       description: File not found
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+          example:
+            message: "path '/home/user/missing.txt' does not exist"
+            code: 404
     InvalidUser:
       description: Invalid user
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+          example:
+            message: "error looking up user 'nonexistent': user: unknown user nonexistent"
+            code: 401
     NotEnoughDiskSpace:
       description: Not enough disk space
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+          example:
+            message: "not enough disk space available"
+            code: 507
 
   schemas:
     Error:
@@ -314,6 +344,12 @@ components:
         mem_used:
           type: integer
           description: Used virtual memory in bytes
+        mem_total_mib:
+          type: integer
+          description: Total virtual memory in MiB
+        mem_used_mib:
+          type: integer
+          description: Used virtual memory in MiB
         disk_used:
           type: integer
           description: Used disk space in bytes
@@ -339,13 +375,15 @@ components:
           description: User for setting ownership and resolving relative paths
     VolumeMount:
       type: object
-      description: Volume
+      description: Volume mount configuration
       additionalProperties: false
       properties:
         nfs_target:
           type: string
+          description: Server target address
         path:
           type: string
+          description: Mount path inside the sandbox
       required:
         - nfs_target
         - path

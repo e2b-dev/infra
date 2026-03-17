@@ -1771,8 +1771,8 @@ paths:
     get:
       description: Health check
       responses:
-        "200":
-          description: Request was successful
+        "204":
+          description: The service is healthy
         "401":
           $ref: "#/components/responses/401"
 
