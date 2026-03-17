@@ -77,6 +77,10 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 		// Sandbox exists but isn't running → check which transitional state.
 		var notRunningErr *sandbox.NotRunningError
 		if !errors.As(apiErr.Err, &notRunningErr) {
+			telemetry.ReportError(ctx, "error keeping sandbox alive", apiErr.Err,
+				telemetry.WithSandboxID(sandboxID),
+				telemetry.WithTeamID(teamID.String()),
+			)
 			a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 			return
@@ -119,7 +123,7 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 			return
 		}
 
-		logger.L().Error(ctx, "Error getting last snapshot", logger.WithSandboxID(sandboxID), zap.Error(err))
+		telemetry.ReportError(ctx, "Error getting last snapshot", err, telemetry.WithSandboxID(sandboxID), telemetry.WithTeamID(teamID.String()))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting snapshot")
 
 		return
@@ -153,7 +157,12 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 	if snap.EnvSecure {
 		accessToken, tokenErr := a.getEnvdAccessToken(build.EnvdVersion, sandboxID)
 		if tokenErr != nil {
-			logger.L().Error(ctx, "Secure envd access token error", zap.Error(tokenErr.Err), logger.WithTemplateID(snap.EnvID), logger.WithBuildID(build.ID.String()), logger.WithSandboxID(sandboxID))
+			telemetry.ReportError(ctx, "Secure envd access token error", tokenErr.Err,
+				telemetry.WithTemplateID(snap.EnvID),
+				telemetry.WithBuildID(build.ID.String()),
+				telemetry.WithSandboxID(sandboxID),
+				telemetry.WithTeamID(teamID.String()),
+			)
 			a.sendAPIStoreError(c, tokenErr.Code, tokenErr.ClientMsg)
 
 			return
