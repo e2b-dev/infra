@@ -14,6 +14,7 @@ import (
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/exec"
@@ -58,7 +59,7 @@ func getListener(t *testing.T, port int32) net.Listener {
 
 	t.Cleanup(func() {
 		err := listener.Close()
-		require.NoError(t, err)
+		assert.NoError(t, err)
 	})
 
 	return listener
@@ -140,7 +141,7 @@ func TestIntegrationTest(t *testing.T) {
 	s := NewProxy(t.Context(), sandboxes, config)
 	go func() {
 		err := s.Serve(nfsListener)
-		require.NoError(t, err)
+		assert.NoError(t, err)
 	}()
 
 	_, nfsListenPortStr, err := net.SplitHostPort(nfsListener.Addr().String())
@@ -154,7 +155,7 @@ func TestIntegrationTest(t *testing.T) {
 	pm := portmap.NewPortMap(t.Context())
 	go func() {
 		err := pm.Serve(t.Context(), pmListener)
-		require.NoError(t, err)
+		assert.NoError(t, err)
 	}()
 
 	// this spawns a container, runs our script, then exits
@@ -193,7 +194,7 @@ func TestIntegrationTest(t *testing.T) {
 	t.Cleanup(func() {
 		ctx := context.WithoutCancel(t.Context())
 		err := testCtr.Terminate(ctx, testcontainers.StopTimeout(time.Second))
-		require.NoError(t, err)
+		assert.NoError(t, err)
 	})
 
 	// run the actual test
@@ -208,5 +209,5 @@ func TestIntegrationTest(t *testing.T) {
 	require.NoError(t, err)
 	output, err := io.ReadAll(out)
 	require.NoError(t, err)
-	require.Equal(t, 0, code, string(output))
+	assert.Equal(t, 0, code, string(output))
 }

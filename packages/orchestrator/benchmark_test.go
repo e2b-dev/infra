@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
@@ -85,7 +86,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		b.Cleanup(func() {
 			ctx := context.WithoutCancel(b.Context())
 			err := spanExporter.Shutdown(ctx)
-			require.NoError(b, err)
+			assert.NoError(b, err)
 		})
 
 		require.NoError(b, err)
@@ -139,7 +140,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	b.Cleanup(func() {
 		ctx := context.WithoutCancel(b.Context())
 		err := networkPool.Close(ctx)
-		require.NoError(b, err)
+		assert.NoError(b, err)
 	})
 
 	devicePool, err := nbd.NewDevicePool()
@@ -151,7 +152,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	b.Cleanup(func() {
 		ctx := context.WithoutCancel(b.Context())
 		err := devicePool.Close(ctx)
-		require.NoError(b, err)
+		assert.NoError(b, err)
 	})
 
 	featureFlags, err := featureflags.NewClient()
@@ -159,7 +160,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	b.Cleanup(func() {
 		ctx := context.WithoutCancel(b.Context())
 		err := featureFlags.Close(ctx)
-		require.NoError(b, err)
+		assert.NoError(b, err)
 	})
 
 	limiter, err := limit.New(b.Context(), featureFlags)
@@ -188,7 +189,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	require.NoError(b, err)
 	b.Cleanup(func() {
 		err := dockerhubRepository.Close()
-		require.NoError(b, err)
+		assert.NoError(b, err)
 	})
 
 	accessToken := "access-token"
@@ -236,24 +237,24 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	)
 	go func() {
 		err := tcpFirewall.Start(b.Context())
-		require.NoError(b, err)
+		assert.NoError(b, err)
 	}()
 	b.Cleanup(func() {
 		ctx := context.WithoutCancel(b.Context())
 		err := tcpFirewall.Close(ctx)
-		require.NoError(b, err)
+		assert.NoError(b, err)
 	})
 
 	sandboxProxy, err := proxy.NewSandboxProxy(noop.MeterProvider{}, proxyPort, sandboxes, featureFlags)
 	require.NoError(b, err)
 	go func() {
 		err := sandboxProxy.Start(b.Context())
-		require.ErrorIs(b, http.ErrServerClosed, err)
+		assert.ErrorIs(b, http.ErrServerClosed, err)
 	}()
 	b.Cleanup(func() {
 		ctx := context.WithoutCancel(b.Context())
 		err := sandboxProxy.Close(ctx)
-		require.NoError(b, err)
+		assert.NoError(b, err)
 	})
 
 	buildMetrics, err := metrics.NewBuildMetrics(noop.MeterProvider{})
