@@ -189,7 +189,7 @@ components:
       name: signature
       in: query
       required: false
-      description: HMAC signature for access verification. Required when no X-Access-Token header is provided. Format is "v1_<sha256hash>".
+      description: Signature used for file access permission verification.
       schema:
         type: string
     SignatureExpiration:
@@ -227,7 +227,7 @@ components:
               type: "file"
 
     DownloadSuccess:
-      description: File content. Content-Type is detected from the file extension (defaults to application/octet-stream). Content-Disposition header contains the filename.
+      description: Entire file downloaded successfully.
       content:
         application/octet-stream:
           schema:
