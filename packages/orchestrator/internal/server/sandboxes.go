@@ -162,32 +162,37 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		return nil, fmt.Errorf("failed to convert volume mounts: %w", err)
 	}
 
+	sbxConfig, err := sandbox.NewConfig(sandbox.Config{
+		BaseTemplateID: req.GetSandbox().GetBaseTemplateId(),
+
+		Vcpu:            req.GetSandbox().GetVcpu(),
+		RamMB:           req.GetSandbox().GetRamMb(),
+		TotalDiskSizeMB: req.GetSandbox().GetTotalDiskSizeMb(),
+		HugePages:       req.GetSandbox().GetHugePages(),
+
+		Network: network,
+
+		Envd: sandbox.EnvdMetadata{
+			Version:     req.GetSandbox().GetEnvdVersion(),
+			AccessToken: req.GetSandbox().EnvdAccessToken,
+			Vars:        req.GetSandbox().GetEnvVars(),
+		},
+
+		FirecrackerConfig: fc.Config{
+			KernelVersion:      req.GetSandbox().GetKernelVersion(),
+			FirecrackerVersion: resolvedFCVersion,
+		},
+
+		VolumeMounts: volumeMounts,
+	})
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid network config: %s", err)
+	}
+
 	sbx, err := s.sandboxFactory.ResumeSandbox(
 		ctx,
 		template,
-		sandbox.NewConfig(sandbox.Config{
-			BaseTemplateID: req.GetSandbox().GetBaseTemplateId(),
-
-			Vcpu:            req.GetSandbox().GetVcpu(),
-			RamMB:           req.GetSandbox().GetRamMb(),
-			TotalDiskSizeMB: req.GetSandbox().GetTotalDiskSizeMb(),
-			HugePages:       req.GetSandbox().GetHugePages(),
-
-			Network: network,
-
-			Envd: sandbox.EnvdMetadata{
-				Version:     req.GetSandbox().GetEnvdVersion(),
-				AccessToken: req.GetSandbox().EnvdAccessToken,
-				Vars:        req.GetSandbox().GetEnvVars(),
-			},
-
-			FirecrackerConfig: fc.Config{
-				KernelVersion:      req.GetSandbox().GetKernelVersion(),
-				FirecrackerVersion: resolvedFCVersion,
-			},
-
-			VolumeMounts: volumeMounts,
-		}),
+		sbxConfig,
 		sandbox.RuntimeMetadata{
 			TemplateID:  req.GetSandbox().GetTemplateId(),
 			SandboxID:   req.GetSandbox().GetSandboxId(),
@@ -300,17 +305,25 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 
 	if req.GetEgress() != nil {
 		updates = append(updates, func(ctx context.Context) (func(context.Context), error) {
+			oldACL := sbx.Config.GetParsedEgress()
 			oldEgress := sbx.Config.GetNetworkEgress()
-
-			if err := sbx.Slot.UpdateInternet(ctx, req.GetEgress()); err != nil {
-				return nil, fmt.Errorf("failed to update sandbox network: %w", err)
-			}
 
 			egress := req.GetEgress()
 			if len(egress.GetAllowed()) == 0 && len(egress.GetDenied()) == 0 {
-				sbx.Config.SetNetworkEgress(nil)
-			} else {
-				sbx.Config.SetNetworkEgress(egress)
+				egress = nil
+			}
+
+			// Parse and store new config.
+			if err := sbx.Config.SetNetworkEgress(egress); err != nil {
+				return nil, fmt.Errorf("invalid egress config: %w", err)
+			}
+
+			// Apply parsed rules to nftables.
+			if err := sbx.Slot.UpdateInternet(ctx, sbx.Config.GetParsedEgress()); err != nil {
+				// Rollback config on nftables failure.
+				sbx.Config.RestoreNetworkEgress(oldEgress, oldACL)
+
+				return nil, fmt.Errorf("failed to update sandbox network: %w", err)
 			}
 
 			eventData["network_egress"] = map[string]any{
@@ -319,8 +332,8 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 			}
 
 			return func(ctx context.Context) {
-				_ = sbx.Slot.UpdateInternet(ctx, oldEgress)
-				sbx.Config.SetNetworkEgress(oldEgress)
+				sbx.Config.RestoreNetworkEgress(oldEgress, oldACL)
+				_ = sbx.Slot.UpdateInternet(ctx, oldACL)
 			}, nil
 		})
 	}
@@ -537,6 +550,13 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 			Kind(featureflags.SandboxKind).
 			Build(),
 	)
+
+	// Check envd version before acquiring (which removes the sandbox from the map).
+	if preSbx, ok := s.sandboxFactory.Sandboxes.Get(in.GetSandboxId()); ok {
+		if err := utils.CheckEnvdVersionForSnapshot(preSbx.Config.Envd.Version); err != nil {
+			return nil, status.Errorf(codes.FailedPrecondition, "%s", err.Error())
+		}
+	}
 
 	sbx, err := s.acquireSandboxForSnapshot(ctx, in.GetSandboxId())
 	if err != nil {

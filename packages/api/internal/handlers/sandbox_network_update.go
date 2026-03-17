@@ -173,21 +173,5 @@ func validateIngressRules(allowIn, denyIn []string) *api.APIError {
 		}
 	}
 
-	// Consistent with egress: allowIn without deny-all is a no-op (default is allow-all),
-	// so require 0.0.0.0/0 in denyIn to prevent a silent misconfiguration.
-	if len(allowRules) > 0 {
-		hasBlockAll := slices.ContainsFunc(denyRules, func(r sandbox_network.Rule) bool {
-			return r.Host == sandbox_network.AllInternetTrafficCIDR && r.AllPorts()
-		})
-
-		if !hasBlockAll {
-			return &api.APIError{
-				Code:      http.StatusBadRequest,
-				Err:       fmt.Errorf("allowIn is set but denyIn is missing 0.0.0.0/0 (ALL_TRAFFIC)"),
-				ClientMsg: "When specifying allowed entries in allowIn, you must include '0.0.0.0/0' in denyIn to block all other traffic.",
-			}
-		}
-	}
-
 	return nil
 }

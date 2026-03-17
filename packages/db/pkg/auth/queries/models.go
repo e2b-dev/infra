@@ -227,6 +227,7 @@ type UsersTeam struct {
 	IsDefault bool
 	AddedBy   *uuid.UUID
 	CreatedAt pgtype.Timestamp
+	UuidID    uuid.UUID
 }
 
 type Volume struct {

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -103,12 +104,14 @@ func TestGetSandboxExecutionData(t *testing.T) {
 
 	sbxStartedAt := time.Now().Add(-5 * time.Minute)
 
+	sbxConfig, err := sandbox.NewConfig(sandbox.Config{
+		Vcpu:  2,
+		RamMB: 512,
+	})
+	require.NoError(t, err)
 	sbx := &sandbox.Sandbox{
 		Metadata: &sandbox.Metadata{
-			Config: sandbox.NewConfig(sandbox.Config{
-				Vcpu:  2,
-				RamMB: 512,
-			}),
+			Config: sbxConfig,
 			Runtime: sandbox.RuntimeMetadata{
 				SandboxID: id.Generate(),
 			},

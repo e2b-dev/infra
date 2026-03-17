@@ -106,17 +106,19 @@ func TestIntegrationTest(t *testing.T) {
 	volumeName := "test-volume-1"
 	volumeID := uuid.New()
 	sandboxes := sandbox.NewSandboxesMap()
+	sbxConfig, err := sandbox.NewConfig(sandbox.Config{
+		VolumeMounts: []sandbox.VolumeMountConfig{
+			{ID: volumeID, Name: volumeName, Path: "/mnt/volume", Type: volumeType},
+		},
+	})
+	require.NoError(t, err)
 	sandboxes.Insert(t.Context(), &sandbox.Sandbox{
 		Metadata: &sandbox.Metadata{
 			Runtime: sandbox.RuntimeMetadata{
 				SandboxID: sandboxID,
 				TeamID:    teamID.String(),
 			},
-			Config: sandbox.NewConfig(sandbox.Config{
-				VolumeMounts: []sandbox.VolumeMountConfig{
-					{ID: volumeID, Name: volumeName, Path: "/mnt/volume", Type: volumeType},
-				},
-			}),
+			Config: sbxConfig,
 		},
 		Resources: &sandbox.Resources{
 			Slot: slot,

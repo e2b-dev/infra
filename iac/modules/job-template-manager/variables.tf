@@ -10,16 +10,22 @@ variable "provider_name" {
 
 variable "provider_gcp_config" {
   type = object({
-    service_account_key = string
-    project_id          = string
-    region              = string
-    docker_registry     = string
+    service_account_key           = optional(string, "")
+    project_id                    = optional(string, "")
+    region                        = optional(string, "")
+    docker_registry               = optional(string, "")
+    gcs_grpc_connection_pool_size = optional(number, 0)
+    gcs_enable_direct_path        = optional(bool, true)
+    gcs_disable_telemetry         = optional(bool, true)
   })
   default = {
-    service_account_key = ""
-    project_id          = ""
-    region              = ""
-    docker_registry     = ""
+    service_account_key           = ""
+    project_id                    = ""
+    region                        = ""
+    docker_registry               = ""
+    gcs_grpc_connection_pool_size = 0
+    gcs_enable_direct_path        = true
+    gcs_disable_telemetry         = true
   }
 }
 
@@ -134,4 +140,3 @@ variable "nomad_token" {
   type      = string
   sensitive = true
 }
-

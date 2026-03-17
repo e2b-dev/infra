@@ -80,25 +80,43 @@ type Config struct {
 
 	VolumeMounts []VolumeMountConfig
 
-	// mu protects mutable sub-fields of Network (Egress, Ingress).
+	// mu protects mutable sub-fields of Network and networkParsedEgress.
 	// The Network pointer itself is set once at construction and never replaced.
-	mu      *sync.RWMutex
-	Network *orchestrator.SandboxNetworkConfig
+	mu                  *sync.RWMutex
+	Network             *orchestrator.SandboxNetworkConfig
+	networkParsedEgress *sandbox_network.ACL // pre-parsed egress rules, nil when no egress config
 }
 
 // NewConfig creates a Config, normalizing a nil Network to an empty config
-// so that Network is never nil.
-func NewConfig(c Config) *Config {
+// so that Network is never nil. Pre-parses egress rules.
+func NewConfig(c Config) (*Config, error) {
 	if c.Network == nil {
 		c.Network = &orchestrator.SandboxNetworkConfig{}
 	}
 
 	c.mu = &sync.RWMutex{}
 
-	return &c
+	egress := c.Network.GetEgress()
+	acl, err := sandbox_network.NewEgressACL(egress.GetAllowed(), egress.GetDenied())
+	if err != nil {
+		return nil, fmt.Errorf("invalid egress rules: %w", err)
+	}
+
+	c.networkParsedEgress = acl
+
+	return &c, nil
 }
 
-// GetNetworkEgress returns the egress config in a thread-safe manner.
+// GetParsedEgress returns the pre-parsed egress ACL in a thread-safe manner.
+// Returns nil when no egress configuration is set.
+func (c *Config) GetParsedEgress() *sandbox_network.ACL {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	return c.networkParsedEgress
+}
+
+// GetNetworkEgress returns the raw egress protobuf config in a thread-safe manner.
 func (c *Config) GetNetworkEgress() *orchestrator.SandboxNetworkEgressConfig {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -106,12 +124,30 @@ func (c *Config) GetNetworkEgress() *orchestrator.SandboxNetworkEgressConfig {
 	return c.Network.GetEgress()
 }
 
-// SetNetworkEgress updates the egress config in a thread-safe manner.
-func (c *Config) SetNetworkEgress(egress *orchestrator.SandboxNetworkEgressConfig) {
+// SetNetworkEgress parses and stores egress rules atomically.
+func (c *Config) SetNetworkEgress(egress *orchestrator.SandboxNetworkEgressConfig) error {
+	acl, err := sandbox_network.NewEgressACL(egress.GetAllowed(), egress.GetDenied())
+	if err != nil {
+		return err
+	}
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	c.Network.Egress = egress
+	c.networkParsedEgress = acl
+
+	return nil
+}
+
+// RestoreNetworkEgress restores a previously saved egress config and ACL without re-parsing.
+// Used for rollback only.
+func (c *Config) RestoreNetworkEgress(egress *orchestrator.SandboxNetworkEgressConfig, acl *sandbox_network.ACL) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.Network.Egress = egress
+	c.networkParsedEgress = acl
 }
 
 // SetNetworkIngress updates the sandbox network ingress config in a thread-safe manner.
@@ -190,13 +226,12 @@ type Metadata struct {
 	Config         *Config
 	Runtime        RuntimeMetadata
 
-	rwmu      sync.RWMutex // protects startedAt, endAt, ingress CIDRs
+	rwmu      sync.RWMutex // protects startedAt, endAt, ingress ACL
 	startedAt time.Time
 	endAt     time.Time
 
-	// Pre-parsed ingress rules for fast matching on the proxy hot path.
-	allowedIngressRules []parsedIngressRule
-	deniedIngressRules  []parsedIngressRule
+	// Pre-parsed ingress ACL for fast matching on the proxy hot path.
+	ingressACL *sandbox_network.ACL
 }
 
 // GetEndAt returns the sandbox end time in a thread-safe manner.
@@ -216,70 +251,41 @@ func (m *Metadata) SetEndAt(t time.Time) {
 }
 
 // SetNetworkIngress updates the sandbox network ingress config in a thread-safe manner.
-// It updates the Config and also pre-parses CIDRs for fast matching on the proxy hot path.
+// It updates the Config and pre-parses rules into an ACL for fast matching on the proxy hot path.
 func (m *Metadata) SetNetworkIngress(ingress *orchestrator.SandboxNetworkIngressConfig) {
 	if m.Config != nil {
 		m.Config.SetNetworkIngress(ingress)
 	}
 
+	var acl *sandbox_network.ACL
+	if ingress != nil {
+		// Errors are silently ignored here because validation happens at the API layer.
+		acl, _ = sandbox_network.NewIngressACL(ingress.GetAllowed(), ingress.GetDenied())
+	}
+
 	m.rwmu.Lock()
 	defer m.rwmu.Unlock()
 
-	m.rebuildIngressRules(ingress)
-}
-
-// parsedIngressRule is a pre-parsed ingress rule for fast matching on the proxy hot path.
-type parsedIngressRule struct {
-	ipNet     *net.IPNet // nil when the rule is a bare IP
-	ip        net.IP     // set for bare IPs (no CIDR mask)
-	portStart uint16     // 0 means all ports
-	portEnd   uint16     // 0 means all ports
-}
-
-func (r *parsedIngressRule) matchesIP(ip net.IP) bool {
-	if r.ipNet != nil {
-		return r.ipNet.Contains(ip)
-	}
-
-	return r.ip.Equal(ip)
-}
-
-func (r *parsedIngressRule) matchesPort(port uint16) bool {
-	if r.portStart == 0 && r.portEnd == 0 {
-		return true // all ports
-	}
-
-	return port >= r.portStart && port <= r.portEnd
-}
-
-func (r *parsedIngressRule) matches(ip net.IP, port uint16) bool {
-	return r.matchesIP(ip) && r.matchesPort(port)
-}
-
-// rebuildIngressRules parses rule strings from the given ingress config.
-// Must be called with rwmu held.
-func (m *Metadata) rebuildIngressRules(ingress *orchestrator.SandboxNetworkIngressConfig) {
-	m.allowedIngressRules = nil
-	m.deniedIngressRules = nil
-
-	if ingress == nil {
-		return
-	}
-
-	m.allowedIngressRules = parseIngressRules(ingress.GetAllowed())
-	m.deniedIngressRules = parseIngressRules(ingress.GetDenied())
+	m.ingressACL = acl
 }
 
 // buildParsedIngressRules reads the current ingress config from Config and parses rules.
 // Must be called with rwmu held.
 func (m *Metadata) buildParsedIngressRules() {
 	if m.Config == nil {
-		m.rebuildIngressRules(nil)
+		m.ingressACL = nil
 
 		return
 	}
 
-	m.rebuildIngressRules(m.Config.GetNetworkIngress())
+	ingress := m.Config.GetNetworkIngress()
+	if ingress == nil {
+		m.ingressACL = nil
+
+		return
+	}
+
+	m.ingressACL, _ = sandbox_network.NewIngressACL(ingress.GetAllowed(), ingress.GetDenied())
 }
 
 // IsIngressAllowed checks if a client IP + destination port is allowed by ingress rules.
@@ -288,23 +294,7 @@ func (m *Metadata) IsIngressAllowed(clientIP net.IP, port uint16) bool {
 	m.rwmu.RLock()
 	defer m.rwmu.RUnlock()
 
-	if len(m.allowedIngressRules) == 0 && len(m.deniedIngressRules) == 0 {
-		return true // no rules → default allow
-	}
-
-	for i := range m.allowedIngressRules {
-		if m.allowedIngressRules[i].matches(clientIP, port) {
-			return true
-		}
-	}
-
-	for i := range m.deniedIngressRules {
-		if m.deniedIngressRules[i].matches(clientIP, port) {
-			return false
-		}
-	}
-
-	return true // default allow
+	return m.ingressACL.IsAllowed(clientIP, port)
 }
 
 // HasIngressRules returns true if any ingress rules are configured.
@@ -312,45 +302,7 @@ func (m *Metadata) HasIngressRules() bool {
 	m.rwmu.RLock()
 	defer m.rwmu.RUnlock()
 
-	return len(m.allowedIngressRules) > 0 || len(m.deniedIngressRules) > 0
-}
-
-// parseIngressRules parses rule strings into pre-parsed rules for fast matching.
-func parseIngressRules(entries []string) []parsedIngressRule {
-	rules, err := sandbox_network.ParseRules(entries)
-	if err != nil {
-		return nil
-	}
-
-	var parsed []parsedIngressRule
-	for _, r := range rules {
-		if r.IsDomain {
-			continue // domains not supported for ingress
-		}
-
-		cidr := sandbox_network.AddressStringToCIDR(r.Host)
-		_, ipNet, err := net.ParseCIDR(cidr)
-
-		pr := parsedIngressRule{
-			portStart: r.PortStart,
-			portEnd:   r.PortEnd,
-		}
-
-		if err != nil {
-			ip := net.ParseIP(r.Host)
-			if ip == nil {
-				continue
-			}
-
-			pr.ip = ip
-		} else {
-			pr.ipNet = ipNet
-		}
-
-		parsed = append(parsed, pr)
-	}
-
-	return parsed
+	return m.ingressACL.HasRules()
 }
 
 type Sandbox struct {
@@ -477,7 +429,7 @@ func (f *Factory) CreateSandbox(
 		}
 	}()
 
-	ipsPromise := getNetworkSlot(ctx, f.networkPool, cleanup, config.Network)
+	ipsPromise := getNetworkSlot(ctx, f.networkPool, cleanup, config.GetParsedEgress())
 
 	sandboxFiles := template.Files().NewSandboxFiles(runtime.SandboxID)
 	cleanup.Add(ctx, cleanupFiles(f.config, sandboxFiles))
@@ -747,7 +699,7 @@ func (f *Factory) ResumeSandbox(
 	}()
 
 	// Slot initialization
-	ipsPromise := getNetworkSlot(ctx, f.networkPool, cleanup, config.Network)
+	ipsPromise := getNetworkSlot(ctx, f.networkPool, cleanup, config.GetParsedEgress())
 
 	// Rootfs initialization
 	overlayPromise := utils.NewPromise(func() (rootfs.Provider, error) {
@@ -1366,13 +1318,13 @@ func getNetworkSlot(
 	ctx context.Context,
 	networkPool *network.Pool,
 	cleanup *Cleanup,
-	networkConfig *orchestrator.SandboxNetworkConfig,
+	acl *sandbox_network.ACL,
 ) *utils.Promise[*network.Slot] {
 	return utils.NewPromise(func() (*network.Slot, error) {
 		ctx, span := tracer.Start(ctx, "get network-slot")
 		defer span.End()
 
-		slot, err := networkPool.Get(ctx, networkConfig)
+		slot, err := networkPool.Get(ctx, acl)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get network slot: %w", err)
 		}

@@ -2,6 +2,7 @@ package sandbox_network
 
 import (
 	"fmt"
+	"net"
 	"strconv"
 	"strings"
 )
@@ -9,10 +10,17 @@ import (
 // Rule represents a parsed allow/deny entry with an optional port range.
 // Used for both ingress and egress rules.
 type Rule struct {
-	Host      string // IP, CIDR, or domain
-	PortStart uint16 // 0 means all ports
-	PortEnd   uint16 // 0 means all ports
+	Host      string     // IP, CIDR, or domain
+	IPNet     *net.IPNet // parsed CIDR; nil for domain rules
+	PortStart uint16     // 0 means all ports
+	PortEnd   uint16     // 0 means all ports
 	IsDomain  bool
+}
+
+// ContainsIP returns true if the rule's CIDR contains the given IP.
+// Always returns false for domain rules.
+func (r Rule) ContainsIP(ip net.IP) bool {
+	return r.IPNet != nil && r.IPNet.Contains(ip)
 }
 
 // AllPorts returns true if the rule matches all ports.
@@ -48,11 +56,168 @@ func ParseRule(s string) (Rule, error) {
 
 	isDomain := !IsIPOrCIDR(host)
 
+	var ipNet *net.IPNet
+	if !isDomain {
+		cidr := host
+		if !strings.Contains(cidr, "/") {
+			// Bare IP: use /32 for IPv4, /128 for IPv6.
+			if ip := net.ParseIP(host); ip != nil && ip.To4() == nil {
+				cidr += "/128"
+			} else {
+				cidr += "/32"
+			}
+		}
+
+		_, ipNet, err = net.ParseCIDR(cidr)
+		if err != nil {
+			return Rule{}, fmt.Errorf("invalid IP/CIDR %q: %w", host, err)
+		}
+	}
+
 	return Rule{
 		Host:      host,
+		IPNet:     ipNet,
 		PortStart: portStart,
 		PortEnd:   portEnd,
 		IsDomain:  isDomain,
+	}, nil
+}
+
+// ACL holds pre-parsed network access control rules.
+// Computed once at config set time to avoid per-connection parsing.
+type ACL struct {
+	Allowed []Rule
+	Denied  []Rule
+}
+
+// GetAllowed returns the allowed rules, nil-safe.
+func (a *ACL) GetAllowed() []Rule {
+	if a == nil {
+		return nil
+	}
+
+	return a.Allowed
+}
+
+// GetDenied returns the denied rules, nil-safe.
+func (a *ACL) GetDenied() []Rule {
+	if a == nil {
+		return nil
+	}
+
+	return a.Denied
+}
+
+// IsAllowed checks if an IP + port combination is allowed by the ACL.
+// Priority: allow wins → deny → default allow.
+// Returns true when the ACL is nil (no rules).
+func (a *ACL) IsAllowed(ip net.IP, port uint16) bool {
+	if a == nil {
+		return true
+	}
+
+	for i := range a.Allowed {
+		if a.Allowed[i].ContainsIP(ip) && a.Allowed[i].PortInRange(port) {
+			return true
+		}
+	}
+
+	for i := range a.Denied {
+		if a.Denied[i].ContainsIP(ip) && a.Denied[i].PortInRange(port) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// HasRules returns true if any rules are configured.
+func (a *ACL) HasRules() bool {
+	return a != nil && (len(a.Allowed) > 0 || len(a.Denied) > 0)
+}
+
+// isIPv6 returns true if a parsed rule contains an IPv6 address or CIDR.
+func (r Rule) isIPv6() bool {
+	if r.IPNet == nil {
+		return false
+	}
+
+	return r.IPNet.IP.To4() == nil
+}
+
+// NewEgressACL parses allowed and denied string entries into an ACL.
+// Returns nil for empty inputs (no rules).
+// Rejects IPv6 addresses (egress firewall rules are IPv4-only).
+func NewEgressACL(allowed, denied []string) (*ACL, error) {
+	if len(allowed) == 0 && len(denied) == 0 {
+		return nil, nil //nolint:nilnil // nil means no rules configured
+	}
+
+	allowedRules, err := ParseRules(allowed)
+	if err != nil {
+		return nil, fmt.Errorf("allowed rules: %w", err)
+	}
+
+	deniedRules, err := ParseRules(denied)
+	if err != nil {
+		return nil, fmt.Errorf("denied rules: %w", err)
+	}
+
+	for _, rule := range deniedRules {
+		if rule.IsDomain {
+			return nil, fmt.Errorf("denied rules: domain entries are not supported: %q", rule.Host)
+		}
+
+		if rule.isIPv6() {
+			return nil, fmt.Errorf("denied rules: IPv6 addresses are not supported for egress: %q", rule.Host)
+		}
+	}
+
+	for _, rule := range allowedRules {
+		if !rule.IsDomain && rule.isIPv6() {
+			return nil, fmt.Errorf("allowed rules: IPv6 addresses are not supported for egress: %q", rule.Host)
+		}
+	}
+
+	return &ACL{
+		Allowed: allowedRules,
+		Denied:  deniedRules,
+	}, nil
+}
+
+// NewIngressACL parses allowed and denied string entries into an ACL.
+// Returns nil for empty inputs (no rules).
+// Rejects domain entries (ingress rules are IP/CIDR-only).
+func NewIngressACL(allowed, denied []string) (*ACL, error) {
+	if len(allowed) == 0 && len(denied) == 0 {
+		return nil, nil //nolint:nilnil // nil means no rules configured
+	}
+
+	allowedRules, err := ParseRules(allowed)
+	if err != nil {
+		return nil, fmt.Errorf("allowed rules: %w", err)
+	}
+
+	deniedRules, err := ParseRules(denied)
+	if err != nil {
+		return nil, fmt.Errorf("denied rules: %w", err)
+	}
+
+	for _, rule := range allowedRules {
+		if rule.IsDomain {
+			return nil, fmt.Errorf("allowed rules: domain entries are not supported for ingress: %q", rule.Host)
+		}
+	}
+
+	for _, rule := range deniedRules {
+		if rule.IsDomain {
+			return nil, fmt.Errorf("denied rules: domain entries are not supported for ingress: %q", rule.Host)
+		}
+	}
+
+	return &ACL{
+		Allowed: allowedRules,
+		Denied:  deniedRules,
 	}, nil
 }
 
@@ -124,6 +289,11 @@ func splitHostPort(s string) (host string, portStart, portEnd uint16, err error)
 
 	host = s[:idx]
 	portPart := s[idx+1:]
+
+	// Empty host means "all IPs" — e.g. ":443" means port 443 on 0.0.0.0/0.
+	if host == "" {
+		host = "0.0.0.0/0"
+	}
 
 	// Explicit "all ports" — trailing colon with nothing after it.
 	if portPart == "" {

@@ -472,3 +472,18 @@ variable "volume_token_signing_method" {
 variable "volume_token_duration" {
   type = string
 }
+
+variable "gcs_grpc_connection_pool_size" {
+  description = "Number of gRPC connections in the GCS connection pool"
+  type        = number
+}
+
+variable "gcs_enable_direct_path" {
+  description = "Enable DirectPath for GCS gRPC client"
+  type        = bool
+}
+
+variable "gcs_disable_telemetry" {
+  description = "Disable telemetry for GCS gRPC client"
+  type        = bool
+}

@@ -282,23 +282,19 @@ func TestValidateNetworkConfig(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "allowIn without deny-all is rejected",
+			name: "allowIn without deny-all is accepted",
 			network: &api.SandboxNetworkConfig{
 				AllowIn: &[]string{"10.0.0.0/8"},
 			},
-			wantErr:    true,
-			wantCode:   http.StatusBadRequest,
-			wantErrMsg: "When specifying allowed CIDRs in allowIn, you must include '0.0.0.0/0' in denyIn to block all other traffic.",
+			wantErr: false,
 		},
 		{
-			name: "allowIn with partial denyIn is rejected",
+			name: "allowIn with partial denyIn is accepted",
 			network: &api.SandboxNetworkConfig{
 				AllowIn: &[]string{"10.0.0.0/8"},
 				DenyIn:  &[]string{"192.168.0.0/16"},
 			},
-			wantErr:    true,
-			wantCode:   http.StatusBadRequest,
-			wantErrMsg: "When specifying allowed CIDRs in allowIn, you must include '0.0.0.0/0' in denyIn to block all other traffic.",
+			wantErr: false,
 		},
 		{
 			name: "invalid allowIn entry",
@@ -307,7 +303,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 			},
 			wantErr:    true,
 			wantCode:   http.StatusBadRequest,
-			wantErrMsg: "invalid allowIn CIDR not-a-cidr",
+			wantErrMsg: "invalid allow in entry not-a-cidr: domains are not supported for ingress rules",
 		},
 		{
 			name: "valid denyIn CIDR",
@@ -323,7 +319,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 			},
 			wantErr:    true,
 			wantCode:   http.StatusBadRequest,
-			wantErrMsg: "invalid denyIn CIDR bad",
+			wantErrMsg: "invalid deny in entry bad: domains are not supported for ingress rules",
 		},
 		// Mixed domain and CIDR tests
 		{

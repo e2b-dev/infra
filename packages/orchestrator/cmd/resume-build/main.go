@@ -1067,7 +1067,7 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	}
 
 	token := "local"
-	sbxCfg := sandbox.NewConfig(sandbox.Config{
+	sbxCfg, err := sandbox.NewConfig(sandbox.Config{
 		BaseTemplateID: buildID,
 		Vcpu:           1,
 		RamMB:          512,
@@ -1077,6 +1077,9 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 			FirecrackerVersion: meta.Template.FirecrackerVersion,
 		},
 	})
+	if err != nil {
+		return fmt.Errorf("creating sandbox config: %w", err)
+	}
 
 	r := &runner{
 		factory:    factory,

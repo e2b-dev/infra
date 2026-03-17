@@ -32,6 +32,7 @@ import (
 	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const statusLogInterval = time.Second * 20
@@ -63,6 +64,8 @@ type Orchestrator struct {
 	sandboxCounter          metric.Int64UpDownCounter
 	createdCounter          metric.Int64Counter
 	snapshotCache           SnapshotCacheInvalidator
+
+	snapshotUpsertSem *utils.AdjustableSemaphore
 }
 
 func New(
@@ -77,6 +80,7 @@ func New(
 	featureFlags *featureflags.Client,
 	accessTokenGenerator *sandbox.AccessTokenGenerator,
 	snapshotCache SnapshotCacheInvalidator,
+	snapshotUpsertSem *utils.AdjustableSemaphore,
 ) (*Orchestrator, error) {
 	analyticsInstance, err := analyticscollector.NewAnalytics(
 		ctx,
@@ -136,6 +140,8 @@ func New(
 
 		sandboxCounter: sandboxCounter,
 		createdCounter: createdCounter,
+
+		snapshotUpsertSem: snapshotUpsertSem,
 	}
 
 	var reservationStorage sandbox.ReservationStorage

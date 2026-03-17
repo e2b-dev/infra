@@ -103,24 +103,27 @@ func TestSmokeAllFCVersions(t *testing.T) { //nolint:paralleltest // subtests sh
 
 			token := "smoke-test"
 			t0 := time.Now()
+			sbxConfig, err := sandbox.NewConfig(sandbox.Config{
+				BaseTemplateID: "smoke-" + fcMajor,
+				Vcpu:           2,
+				RamMB:          512,
+				HugePages:      true,
+				Envd: sandbox.EnvdMetadata{
+					Vars:        map[string]string{},
+					AccessToken: &token,
+					Version:     "1.0.0",
+				},
+				FirecrackerConfig: fc.Config{
+					KernelVersion:      meta.Template.KernelVersion,
+					FirecrackerVersion: meta.Template.FirecrackerVersion,
+				},
+			})
+			require.NoError(t, err)
+
 			sbx, err := infra.factory.ResumeSandbox(
 				ctx,
 				tmpl,
-				sandbox.NewConfig(sandbox.Config{
-					BaseTemplateID: "smoke-" + fcMajor,
-					Vcpu:           2,
-					RamMB:          512,
-					HugePages:      true,
-					Envd: sandbox.EnvdMetadata{
-						Vars:        map[string]string{},
-						AccessToken: &token,
-						Version:     "1.0.0",
-					},
-					FirecrackerConfig: fc.Config{
-						KernelVersion:      meta.Template.KernelVersion,
-						FirecrackerVersion: meta.Template.FirecrackerVersion,
-					},
-				}),
+				sbxConfig,
 				sandbox.RuntimeMetadata{
 					TemplateID:  "smoke-" + fcMajor,
 					TeamID:      "smoke",

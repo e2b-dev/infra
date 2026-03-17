@@ -16,7 +16,7 @@ import (
 	netutils "k8s.io/utils/net"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 )
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network")
@@ -253,14 +253,13 @@ func (s *Slot) CloseFirewall() error {
 	return nil
 }
 
-func (s *Slot) ConfigureInternet(ctx context.Context, network *orchestrator.SandboxNetworkConfig) (e error) {
+func (s *Slot) ConfigureInternet(ctx context.Context, acl *sandbox_network.ACL) (e error) {
 	_, span := tracer.Start(ctx, "slot-internet-configure", trace.WithAttributes(
 		attribute.String("namespace_id", s.NamespaceID()),
 	))
 	defer span.End()
 
-	egress := network.GetEgress()
-	if len(egress.GetAllowed()) == 0 && len(egress.GetDenied()) == 0 {
+	if len(acl.GetAllowed()) == 0 && len(acl.GetDenied()) == 0 {
 		// Internet access is allowed by default.
 		return nil
 	}
@@ -274,7 +273,7 @@ func (s *Slot) ConfigureInternet(ctx context.Context, network *orchestrator.Sand
 	defer n.Close()
 
 	err = n.Do(func(_ ns.NetNS) error {
-		return s.Firewall.ReplaceUserRules(egress.GetAllowed(), egress.GetDenied())
+		return s.Firewall.ReplaceUserRules(acl)
 	})
 	if err != nil {
 		return fmt.Errorf("failed execution in network namespace '%s': %w", s.NamespaceID(), err)
@@ -284,14 +283,11 @@ func (s *Slot) ConfigureInternet(ctx context.Context, network *orchestrator.Sand
 }
 
 // UpdateInternet replaces all user firewall rules atomically in a single nftables flush.
-func (s *Slot) UpdateInternet(ctx context.Context, egress *orchestrator.SandboxNetworkEgressConfig) error {
+func (s *Slot) UpdateInternet(ctx context.Context, acl *sandbox_network.ACL) error {
 	_, span := tracer.Start(ctx, "slot-internet-update", trace.WithAttributes(
 		attribute.String("namespace_id", s.NamespaceID()),
 	))
 	defer span.End()
-
-	allowedCIDRs := egress.GetAllowed()
-	deniedCIDRs := egress.GetDenied()
 
 	n, err := ns.GetNS(filepath.Join(netNamespacesDir, s.NamespaceID()))
 	if err != nil {
@@ -300,7 +296,7 @@ func (s *Slot) UpdateInternet(ctx context.Context, egress *orchestrator.SandboxN
 	defer n.Close()
 
 	err = n.Do(func(_ ns.NetNS) error {
-		return s.Firewall.ReplaceUserRules(allowedCIDRs, deniedCIDRs)
+		return s.Firewall.ReplaceUserRules(acl)
 	})
 	if err != nil {
 		return fmt.Errorf("failed execution in network namespace '%s': %w", s.NamespaceID(), err)
@@ -328,7 +324,7 @@ func (s *Slot) ResetInternet(ctx context.Context) error {
 	defer n.Close()
 
 	err = n.Do(func(_ ns.NetNS) error {
-		return s.Firewall.ReplaceUserRules(nil, nil)
+		return s.Firewall.ReplaceUserRules(nil)
 	})
 	if err != nil {
 		return fmt.Errorf("failed execution in network namespace '%s': %w", s.NamespaceID(), err)
