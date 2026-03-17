@@ -142,10 +142,7 @@ func verifyHTTPOut(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClie
 	}
 }
 
-// =============================================================================
 // TestUpdateNetworkConfig exercises all update scenarios using a single sandbox.
-// =============================================================================
-
 func TestUpdateNetworkConfig(t *testing.T) { //nolint:tparallel // subtests are sequential
 	t.Parallel()
 
@@ -159,8 +156,6 @@ func TestUpdateNetworkConfig(t *testing.T) { //nolint:tparallel // subtests are 
 		utils.WithTimeout(120),
 		utils.WithAutoPause(false),
 	)
-
-	// ── Egress helpers ──────────────────────────────────────────────────
 
 	updateEgress := func(allow, deny []string) {
 		t.Helper()
@@ -205,15 +200,13 @@ func TestUpdateNetworkConfig(t *testing.T) { //nolint:tparallel // subtests are 
 		updateAll(api.PutSandboxesSandboxIDNetworkJSONRequestBody{})
 	}
 
-	// ── Ingress helpers ─────────────────────────────────────────────────
-
 	testPort := 8000
 	echoPort := 8002
 	proxyURL, err := url.Parse(setup.EnvdProxy)
 	require.NoError(t, err)
 	httpClient := &http.Client{Timeout: 10 * time.Second}
 
-	proxyStatus := func(port int, fromIP string) int {
+	request := func(port int, fromIP string) int {
 		t.Helper()
 		var headers *http.Header
 		if fromIP != "" {
@@ -392,6 +385,18 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 	t.Run("egress/ip/allow_all_cidr", func(t *testing.T) { //nolint:paralleltest // sequential
 		updateEgress([]string{blockAll}, []string{blockAll})
 		requireHTTPOutAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "0.0.0.0/0 allow overrides deny")
+	})
+
+	t.Run("egress/ip/allow_all_duplicate", func(t *testing.T) { //nolint:paralleltest // sequential
+		updateEgress([]string{blockAll, blockAll}, []string{blockAll})
+		requireHTTPOutAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "duplicate 0.0.0.0/0 allow works")
+		requireHTTPOutAllowed(t, ctx, sbx, envdClient, "https://1.1.1.1", "duplicate 0.0.0.0/0 allow works")
+	})
+
+	t.Run("egress/ip/specific_ip_then_allow_all", func(t *testing.T) { //nolint:paralleltest // sequential
+		updateEgress([]string{"8.8.8.8", blockAll}, []string{blockAll})
+		requireHTTPOutAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "specific IP still works")
+		requireHTTPOutAllowed(t, ctx, sbx, envdClient, "https://1.1.1.1", "0.0.0.0/0 allows all")
 	})
 
 	t.Run("egress/ip/empty_config_allows_all", func(t *testing.T) { //nolint:paralleltest // sequential
@@ -693,7 +698,7 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 		t.Run("ingress/"+s.name, func(t *testing.T) {
 			updateIngress(s.allowIn, s.denyIn)
 			for _, c := range s.checks {
-				got := proxyStatus(c.port, c.fromIP)
+				got := request(c.port, c.fromIP)
 				if c.blocked {
 					require.Equal(t, http.StatusForbidden, got, "port=%d fromIP=%q should be blocked", c.port, c.fromIP)
 				} else {
@@ -760,8 +765,8 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 			{"https://1.1.1.1", false},
 		})
 		// Ingress: denied port blocked, other port still open.
-		require.Equal(t, http.StatusForbidden, proxyStatus(testPort, ""))
-		require.NotEqual(t, http.StatusForbidden, proxyStatus(testPort+1, ""))
+		require.Equal(t, http.StatusForbidden, request(testPort, ""))
+		require.NotEqual(t, http.StatusForbidden, request(testPort+1, ""))
 	})
 
 	t.Run("combined/clear_restores_both", func(t *testing.T) { //nolint:paralleltest // sequential
@@ -770,8 +775,8 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 			{"https://8.8.8.8", true},
 			{"https://1.1.1.1", true},
 		})
-		require.NotEqual(t, http.StatusForbidden, proxyStatus(testPort, ""))
-		require.NotEqual(t, http.StatusForbidden, proxyStatus(testPort+1, ""))
+		require.NotEqual(t, http.StatusForbidden, request(testPort, ""))
+		require.NotEqual(t, http.StatusForbidden, request(testPort+1, ""))
 	})
 
 	t.Run("combined/egress_allow_with_ingress_deny", func(t *testing.T) { //nolint:paralleltest // sequential
@@ -789,8 +794,8 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 			{"https://cloudflare.com", false},
 		})
 		// Ingress: all blocked.
-		require.Equal(t, http.StatusForbidden, proxyStatus(testPort, ""))
-		require.Equal(t, http.StatusForbidden, proxyStatus(testPort+1, ""))
+		require.Equal(t, http.StatusForbidden, request(testPort, ""))
+		require.Equal(t, http.StatusForbidden, request(testPort+1, ""))
 	})
 
 	t.Run("combined/clear_again", func(t *testing.T) { //nolint:paralleltest // sequential
@@ -799,8 +804,8 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 			{"https://8.8.8.8", true},
 			{"https://1.1.1.1", true},
 		})
-		require.NotEqual(t, http.StatusForbidden, proxyStatus(testPort, ""))
-		require.NotEqual(t, http.StatusForbidden, proxyStatus(testPort+1, ""))
+		require.NotEqual(t, http.StatusForbidden, request(testPort, ""))
+		require.NotEqual(t, http.StatusForbidden, request(testPort+1, ""))
 	})
 
 	// =====================================================================
@@ -824,8 +829,8 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 			{"https://1.1.1.1", false},
 			{"https://cloudflare.com", false},
 		})
-		require.Equal(t, http.StatusForbidden, proxyStatus(testPort, ""))
-		require.NotEqual(t, http.StatusForbidden, proxyStatus(testPort+1, ""))
+		require.Equal(t, http.StatusForbidden, request(testPort, ""))
+		require.NotEqual(t, http.StatusForbidden, request(testPort+1, ""))
 
 		// Pause.
 		pauseResp, err := client.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
@@ -845,8 +850,8 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 			{"https://1.1.1.1", false},
 			{"https://cloudflare.com", false},
 		})
-		require.Equal(t, http.StatusForbidden, proxyStatus(testPort, ""))
-		require.NotEqual(t, http.StatusForbidden, proxyStatus(testPort+1, ""))
+		require.Equal(t, http.StatusForbidden, request(testPort, ""))
+		require.NotEqual(t, http.StatusForbidden, request(testPort+1, ""))
 	})
 }
 
