@@ -29,6 +29,7 @@ var deniedSandboxNets = func() []*net.IPNet {
 		_, ipNet, _ := net.ParseCIDR(cidr) // CIDRs are compile-time constants; parse cannot fail.
 		nets = append(nets, ipNet)
 	}
+
 	return nets
 }()
 
