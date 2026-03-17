@@ -17,7 +17,7 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Build Packages
         uses: ./.github/actions/build-packages
@@ -73,14 +73,14 @@ jobs:
 
       - name: Upload Test Results
         if: ${{ always() && inputs.publish == true }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: Integration Tests Results
           path: ./tests/integration/test-results.xml
 
       - name: Upload Service Logs
         if: ${{ always() && inputs.publish == true }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: Service Logs
           path: ~/logs/*.log
