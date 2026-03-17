@@ -36,12 +36,24 @@ func WithClusterID(clusterID uuid.UUID) attribute.KeyValue {
 	return zapFieldToOTELAttribute(logger.WithClusterID(clusterID))
 }
 
+func WithUserID(userID string) attribute.KeyValue {
+	return zapFieldToOTELAttribute(logger.WithUserID(userID))
+}
+
 func WithTeamID(teamID string) attribute.KeyValue {
 	return zapFieldToOTELAttribute(logger.WithTeamID(teamID))
 }
 
 func WithEnvdVersion(envdVersion string) attribute.KeyValue {
 	return zapFieldToOTELAttribute(logger.WithEnvdVersion(envdVersion))
+}
+
+func WithMaskedAPIKey(maskedAPIKey string) attribute.KeyValue {
+	return zapFieldToOTELAttribute(logger.WithMaskedAPIKey(maskedAPIKey))
+}
+
+func WithMaskedAccessToken(maskedAccessToken string) attribute.KeyValue {
+	return zapFieldToOTELAttribute(logger.WithMaskedAccessToken(maskedAccessToken))
 }
 
 func zapFieldToOTELAttribute(f zap.Field) attribute.KeyValue {
