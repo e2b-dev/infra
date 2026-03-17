@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -28,8 +27,7 @@ func TestUpdate_EgressOnly_FailsAndDoesNotChangeEndTime(t *testing.T) {
 	slot, err := network.NewSlot("test", 1, network.Config{})
 	require.NoError(t, err)
 
-	sbxConfig, err := sandbox.NewConfig(sandbox.Config{})
-	require.NoError(t, err)
+	sbxConfig := sandbox.NewConfig(sandbox.Config{})
 	sbx := &sandbox.Sandbox{
 		Metadata: &sandbox.Metadata{
 			Config:  sbxConfig,
@@ -54,13 +52,13 @@ func TestUpdate_EgressOnly_FailsAndDoesNotChangeEndTime(t *testing.T) {
 	_, err = s.Update(t.Context(), &orchestrator.SandboxUpdateRequest{
 		SandboxId: sbx.Runtime.SandboxID,
 		Egress: &orchestrator.SandboxNetworkEgressConfig{
-			Denied: []string{"0.0.0.0/0"},
+			DeniedCidrs: []string{"0.0.0.0/0"},
 		},
 	})
 
 	require.Error(t, err)
-	assert.Equal(t, codes.Internal, status.Code(err))
-	assert.Equal(t, originalEnd, sbx.GetEndAt())
+	require.Equal(t, codes.Internal, status.Code(err))
+	require.Equal(t, originalEnd, sbx.GetEndAt())
 }
 
 func TestUpdate_EndTimeAndEgress_EgressFails_RevertsEndTime(t *testing.T) {
@@ -69,8 +67,7 @@ func TestUpdate_EndTimeAndEgress_EgressFails_RevertsEndTime(t *testing.T) {
 	slot, err := network.NewSlot("test", 1, network.Config{})
 	require.NoError(t, err)
 
-	sbxConfig2, err := sandbox.NewConfig(sandbox.Config{})
-	require.NoError(t, err)
+	sbxConfig2 := sandbox.NewConfig(sandbox.Config{})
 	sbx := &sandbox.Sandbox{
 		Metadata: &sandbox.Metadata{
 			Config:  sbxConfig2,
@@ -97,17 +94,16 @@ func TestUpdate_EndTimeAndEgress_EgressFails_RevertsEndTime(t *testing.T) {
 		SandboxId: sbx.Runtime.SandboxID,
 		EndTime:   timestamppb.New(newEnd),
 		Egress: &orchestrator.SandboxNetworkEgressConfig{
-			Denied: []string{"0.0.0.0/0"},
+			DeniedCidrs: []string{"0.0.0.0/0"},
 		},
 	})
 
 	require.Error(t, err)
-	assert.Equal(t, codes.Internal, status.Code(err))
+	require.Equal(t, codes.Internal, status.Code(err))
 	// end_time must be reverted to original since egress failed.
-	assert.Equal(t, originalEnd, sbx.GetEndAt())
+	require.Equal(t, originalEnd, sbx.GetEndAt())
 	// Network egress should not have been set.
-	acl := sbx.Config.GetParsedEgress()
-	assert.Nil(t, acl)
+	require.Nil(t, sbx.Config.GetNetworkEgress())
 }
 
 func TestUpdate_EgressAndIngress_EgressFails_RevertsIngress(t *testing.T) {
@@ -116,8 +112,7 @@ func TestUpdate_EgressAndIngress_EgressFails_RevertsIngress(t *testing.T) {
 	slot, err := network.NewSlot("test", 1, network.Config{})
 	require.NoError(t, err)
 
-	sbxConfig, err := sandbox.NewConfig(sandbox.Config{})
-	require.NoError(t, err)
+	sbxConfig := sandbox.NewConfig(sandbox.Config{})
 	sbx := &sandbox.Sandbox{
 		Metadata: &sandbox.Metadata{
 			Config:  sbxConfig,
@@ -141,16 +136,18 @@ func TestUpdate_EgressAndIngress_EgressFails_RevertsIngress(t *testing.T) {
 	_, err = s.Update(t.Context(), &orchestrator.SandboxUpdateRequest{
 		SandboxId: sbx.Runtime.SandboxID,
 		Egress: &orchestrator.SandboxNetworkEgressConfig{
-			Denied: []string{"0.0.0.0/0"},
+			DeniedCidrs: []string{"0.0.0.0/0"},
 		},
 		Ingress: &orchestrator.SandboxNetworkIngressConfig{
-			Denied: []string{"10.0.0.0/8"},
+			Denied: []*orchestrator.IngressRule{
+				{Cidr: "10.0.0.0/8"},
+			},
 		},
 	})
 
 	require.Error(t, err)
-	assert.Equal(t, codes.Internal, status.Code(err))
+	require.Equal(t, codes.Internal, status.Code(err))
 	// Ingress must not be applied when egress fails.
-	assert.False(t, sbx.Config.HasIngressRules())
-	assert.Nil(t, sbx.Config.GetParsedIngress())
+	require.False(t, sbx.Config.HasIngressRules())
+	require.Nil(t, sbx.Config.GetNetworkIngress().GetAllowed())
 }

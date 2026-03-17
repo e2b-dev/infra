@@ -187,7 +187,7 @@ func (pb *OptimizeBuilder) collectMemoryPrefetchMapping(
 	defer span.End()
 
 	// Configure sandbox for prefetch collection
-	sbxConfig, err := sandbox.NewConfig(sandbox.Config{
+	sbxConfig := sandbox.NewConfig(sandbox.Config{
 		Vcpu:      pb.Config.VCpuCount,
 		RamMB:     pb.Config.MemoryMB,
 		HugePages: pb.Config.HugePages,
@@ -201,9 +201,6 @@ func (pb *OptimizeBuilder) collectMemoryPrefetchMapping(
 			FirecrackerVersion: pb.Config.FirecrackerVersion,
 		},
 	})
-	if err != nil {
-		return nil, fmt.Errorf("creating sandbox config for prefetch collection: %w", err)
-	}
 
 	// Create sandbox creator for resuming
 	sandboxCreator := layer.NewResumeSandbox(sbxConfig, pb.sandboxFactory, prefetchTimeout)

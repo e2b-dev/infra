@@ -4,7 +4,6 @@ import (
 	"net"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -201,16 +200,16 @@ func TestParseRule(t *testing.T) {
 			}
 
 			require.NoError(t, err)
-			assert.Equal(t, tt.wantHost, got.Host)
-			assert.Equal(t, tt.wantPort[0], got.PortStart)
-			assert.Equal(t, tt.wantPort[1], got.PortEnd)
-			assert.Equal(t, tt.wantDomain, got.IsDomain)
+			require.Equal(t, tt.wantHost, got.Host)
+			require.Equal(t, tt.wantPort[0], got.PortStart)
+			require.Equal(t, tt.wantPort[1], got.PortEnd)
+			require.Equal(t, tt.wantDomain, got.IsDomain)
 
 			if tt.wantDomain {
-				assert.Nil(t, got.IPNet)
+				require.Nil(t, got.IPNet)
 			} else {
 				require.NotNil(t, got.IPNet)
-				assert.Equal(t, tt.wantCIDR, got.IPNet.String())
+				require.Equal(t, tt.wantCIDR, got.IPNet.String())
 			}
 		})
 	}
@@ -230,17 +229,17 @@ func TestParseRules(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, rules, 3)
 
-		assert.Equal(t, "8.8.8.8", rules[0].Host)
-		assert.Equal(t, uint16(53), rules[0].PortStart)
-		assert.False(t, rules[0].IsDomain)
+		require.Equal(t, "8.8.8.8", rules[0].Host)
+		require.Equal(t, uint16(53), rules[0].PortStart)
+		require.False(t, rules[0].IsDomain)
 
-		assert.Equal(t, "10.0.0.0/8", rules[1].Host)
-		assert.True(t, rules[1].AllPorts())
-		assert.False(t, rules[1].IsDomain)
+		require.Equal(t, "10.0.0.0/8", rules[1].Host)
+		require.True(t, rules[1].AllPorts())
+		require.False(t, rules[1].IsDomain)
 
-		assert.Equal(t, "example.com", rules[2].Host)
-		assert.Equal(t, uint16(443), rules[2].PortStart)
-		assert.True(t, rules[2].IsDomain)
+		require.Equal(t, "example.com", rules[2].Host)
+		require.Equal(t, uint16(443), rules[2].PortStart)
+		require.True(t, rules[2].IsDomain)
 	})
 
 	t.Run("empty list", func(t *testing.T) {
@@ -342,7 +341,7 @@ func TestACL_IsAllowed(t *testing.T) {
 		t.Parallel()
 
 		var acl *ACL
-		assert.True(t, acl.IsAllowed(net.ParseIP("1.2.3.4"), 80))
+		require.True(t, acl.IsAllowed(net.ParseIP("1.2.3.4"), 80))
 	})
 
 	t.Run("allow wins over deny", func(t *testing.T) {
@@ -351,8 +350,8 @@ func TestACL_IsAllowed(t *testing.T) {
 		acl, err := NewIngressACL([]string{"10.0.0.0/8"}, []string{"0.0.0.0/0"})
 		require.NoError(t, err)
 
-		assert.True(t, acl.IsAllowed(net.ParseIP("10.1.2.3"), 80))
-		assert.False(t, acl.IsAllowed(net.ParseIP("192.168.1.1"), 80))
+		require.True(t, acl.IsAllowed(net.ParseIP("10.1.2.3"), 80))
+		require.False(t, acl.IsAllowed(net.ParseIP("192.168.1.1"), 80))
 	})
 
 	t.Run("port-specific rules", func(t *testing.T) {
@@ -361,8 +360,8 @@ func TestACL_IsAllowed(t *testing.T) {
 		acl, err := NewIngressACL([]string{"0.0.0.0/0:443"}, []string{"0.0.0.0/0"})
 		require.NoError(t, err)
 
-		assert.True(t, acl.IsAllowed(net.ParseIP("1.2.3.4"), 443))
-		assert.False(t, acl.IsAllowed(net.ParseIP("1.2.3.4"), 80))
+		require.True(t, acl.IsAllowed(net.ParseIP("1.2.3.4"), 443))
+		require.False(t, acl.IsAllowed(net.ParseIP("1.2.3.4"), 80))
 	})
 
 	t.Run("IPv6 matching", func(t *testing.T) {
@@ -371,8 +370,8 @@ func TestACL_IsAllowed(t *testing.T) {
 		acl, err := NewIngressACL([]string{"2001:db8::/32"}, []string{"::/0"})
 		require.NoError(t, err)
 
-		assert.True(t, acl.IsAllowed(net.ParseIP("2001:db8::1"), 80))
-		assert.False(t, acl.IsAllowed(net.ParseIP("2001:db9::1"), 80))
+		require.True(t, acl.IsAllowed(net.ParseIP("2001:db8::1"), 80))
+		require.False(t, acl.IsAllowed(net.ParseIP("2001:db9::1"), 80))
 	})
 }
 
@@ -390,11 +389,11 @@ func TestRule_ContainsIP(t *testing.T) {
 	rule, err := ParseRule("10.0.0.0/8")
 	require.NoError(t, err)
 
-	assert.True(t, rule.ContainsIP(net.ParseIP("10.1.2.3")))
-	assert.False(t, rule.ContainsIP(net.ParseIP("192.168.1.1")))
+	require.True(t, rule.ContainsIP(net.ParseIP("10.1.2.3")))
+	require.False(t, rule.ContainsIP(net.ParseIP("192.168.1.1")))
 
 	// Domain rules never contain IPs.
 	domainRule, err := ParseRule("example.com")
 	require.NoError(t, err)
-	assert.False(t, domainRule.ContainsIP(net.ParseIP("1.2.3.4")))
+	require.False(t, domainRule.ContainsIP(net.ParseIP("1.2.3.4")))
 }

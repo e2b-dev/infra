@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
@@ -171,14 +170,14 @@ func TestValidateNetworkConfig(t *testing.T) {
 		{
 			name: "allow_out with IP without deny_out is valid",
 			network: &api.SandboxNetworkConfig{
-				AllowOut: &[]string{"8.8.8.8"},
+				AllowOut: &[]string{"8.8.8.8/32"},
 			},
 			wantErr: false,
 		},
 		{
 			name: "allow_out with IP and deny_out block-all is valid",
 			network: &api.SandboxNetworkConfig{
-				AllowOut: &[]string{"8.8.8.8"},
+				AllowOut: &[]string{"8.8.8.8/32"},
 				DenyOut:  &[]string{sandboxnetwork.AllInternetTrafficCIDR},
 			},
 			wantErr: false,
@@ -211,7 +210,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 		{
 			name: "allow_out IP covered by deny_out CIDR is valid",
 			network: &api.SandboxNetworkConfig{
-				AllowOut: &[]string{"10.1.2.3"},
+				AllowOut: &[]string{"10.1.2.3/32"},
 				DenyOut:  &[]string{"10.0.0.0/8"},
 			},
 			wantErr: false,
@@ -219,7 +218,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 		{
 			name: "allow_out IP not covered by deny_out CIDR is valid (no intersection check)",
 			network: &api.SandboxNetworkConfig{
-				AllowOut: &[]string{"8.8.8.8"},
+				AllowOut: &[]string{"8.8.8.8/32"},
 				DenyOut:  &[]string{"10.0.0.0/8"},
 			},
 			wantErr: false,
@@ -274,9 +273,9 @@ func TestValidateNetworkConfig(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "valid allowIn bare IP with deny-all",
+			name: "valid allowIn CIDR from IP with deny-all",
 			network: &api.SandboxNetworkConfig{
-				AllowIn: &[]string{"1.2.3.4"},
+				AllowIn: &[]string{"1.2.3.4/32"},
 				DenyIn:  &[]string{"0.0.0.0/0"},
 			},
 			wantErr: false,
@@ -329,7 +328,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 		{
 			name: "allow_out with domain and CIDR without deny_out block-all is invalid",
 			network: &api.SandboxNetworkConfig{
-				AllowOut: &[]string{"example.com", "8.8.8.8"},
+				AllowOut: &[]string{"example.com", "8.8.8.8/32"},
 				DenyOut:  &[]string{"10.0.0.0/8"},
 			},
 			wantErr:    true,
@@ -339,7 +338,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 		{
 			name: "allow_out with domain and CIDR with deny_out block-all is valid",
 			network: &api.SandboxNetworkConfig{
-				AllowOut: &[]string{"example.com", "8.8.8.8"},
+				AllowOut: &[]string{"example.com", "8.8.8.8/32"},
 				DenyOut:  &[]string{sandboxnetwork.AllInternetTrafficCIDR},
 			},
 			wantErr: false,
@@ -348,7 +347,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 		{
 			name: "allow_out with port is accepted",
 			network: &api.SandboxNetworkConfig{
-				AllowOut: &[]string{"8.8.8.8:80"},
+				AllowOut: &[]string{"8.8.8.8/32:80"},
 				DenyOut:  &[]string{sandboxnetwork.AllInternetTrafficCIDR},
 			},
 			wantErr: false,
@@ -363,7 +362,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 		{
 			name: "allow_out with port range is accepted",
 			network: &api.SandboxNetworkConfig{
-				AllowOut: &[]string{"8.8.8.8:1-1024"},
+				AllowOut: &[]string{"8.8.8.8/32:1-1024"},
 			},
 			wantErr: false,
 		},
@@ -426,7 +425,7 @@ func TestOrchestrator_convertVolumeMounts(t *testing.T) {
 			{2, "reason2"},
 		}}
 		expected := "invalid mounts:\n\t- volume mount #0: reason1\n\t- volume mount #2: reason2"
-		assert.Equal(t, expected, err.Error())
+		require.Equal(t, expected, err.Error())
 	})
 
 	testCases := map[string]struct {
@@ -581,8 +580,8 @@ func TestOrchestrator_convertVolumeMounts(t *testing.T) {
 				t.Context(), db.SqlcClient, ffClient,
 				teamID, tc.input,
 			)
-			assert.Equal(t, tc.err, err)
-			assert.Equal(t, tc.expected, actual)
+			require.Equal(t, tc.err, err)
+			require.Equal(t, tc.expected, actual)
 		})
 	}
 
@@ -612,7 +611,7 @@ func TestOrchestrator_convertVolumeMounts(t *testing.T) {
 			},
 		)
 		require.NoError(t, err)
-		assert.Equal(t, []*orchestrator.SandboxVolumeMount{
+		require.Equal(t, []*orchestrator.SandboxVolumeMount{
 			{Id: dbVolume.ID.String(), Name: "vol1", Path: "/vol1", Type: "local"},
 		}, actual)
 	})

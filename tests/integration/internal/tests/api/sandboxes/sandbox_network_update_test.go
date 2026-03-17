@@ -276,7 +276,7 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 
 	t.Run("api/not_found", func(t *testing.T) { //nolint:paralleltest // sequential
 		resp := putNetwork(t, ctx, client, "ixxxxxxxxxxxxxxxxxx0",
-			api.PutSandboxesSandboxIDNetworkJSONRequestBody{AllowOut: stringSlicePtr("8.8.8.8")},
+			api.PutSandboxesSandboxIDNetworkJSONRequestBody{AllowOut: stringSlicePtr("8.8.8.8/32")},
 		)
 		require.Equal(t, http.StatusNotFound, resp.StatusCode())
 	})
@@ -303,7 +303,7 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 		{"domain_allow_with_partial_deny", stringSlicePtr("google.com"), stringSlicePtr("10.0.0.0/8")},
 		{"wildcard_domain_without_deny_all", stringSlicePtr("*.example.com"), nil},
 		{"wildcard_domain_with_partial_deny", stringSlicePtr("*.example.com"), stringSlicePtr("10.0.0.0/8")},
-		{"mixed_domain_ip_without_deny_all", stringSlicePtr("example.com", "8.8.8.8"), stringSlicePtr("10.0.0.0/8")},
+		{"mixed_domain_ip_without_deny_all", stringSlicePtr("example.com", "8.8.8.8/32"), stringSlicePtr("10.0.0.0/8")},
 	}
 	for _, tc := range rejectedCases {
 		t.Run("api/reject/"+tc.name, func(t *testing.T) { //nolint:paralleltest // sequential
@@ -323,18 +323,15 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 		denyOut  *[]string
 	}{
 		{"empty_body", nil, nil},
-		{"ip_allow_without_deny", stringSlicePtr("8.8.8.8"), nil},
-		{"ip_allow_with_partial_deny", stringSlicePtr("8.8.8.8"), stringSlicePtr("10.0.0.0/8")},
+		{"cidr_allow_without_deny", stringSlicePtr("8.8.8.8/32"), nil},
+		{"cidr_allow_with_partial_deny", stringSlicePtr("8.8.8.8/32"), stringSlicePtr("10.0.0.0/8")},
 		{"cidr_allow_without_deny", stringSlicePtr("8.8.0.0/16"), nil},
 		{"deny_all_only", nil, stringSlicePtr(blockAll)},
-		{"ip_allow_with_deny_all", stringSlicePtr("8.8.8.8"), stringSlicePtr(blockAll)},
+		{"cidr_allow_with_deny_all", stringSlicePtr("8.8.8.8/32"), stringSlicePtr(blockAll)},
 		{"domain_with_deny_all", stringSlicePtr("google.com"), stringSlicePtr(blockAll)},
 		{"wildcard_domain_with_deny_all", stringSlicePtr("*.example.com"), stringSlicePtr(blockAll)},
-		{"mixed_domain_ip_with_deny_all", stringSlicePtr("example.com", "8.8.8.8"), stringSlicePtr(blockAll)},
+		{"mixed_domain_cidr_with_deny_all", stringSlicePtr("example.com", "8.8.8.8/32"), stringSlicePtr(blockAll)},
 		{"multiple_cidrs_in_deny", nil, stringSlicePtr("10.0.0.0/8", "192.168.0.0/16")},
-		{"port_only_in_deny", nil, stringSlicePtr(":443")},
-		{"port_only_in_allow_with_deny_all", stringSlicePtr(":443"), stringSlicePtr(blockAll)},
-		{"port_range_only_in_deny", nil, stringSlicePtr(":80-443")},
 	}
 	for _, tc := range acceptedCases {
 		t.Run("api/accept/"+tc.name, func(t *testing.T) { //nolint:paralleltest // sequential
@@ -351,13 +348,13 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 	// =====================================================================
 
 	t.Run("egress/ip/allow_specific", func(t *testing.T) { //nolint:paralleltest // sequential
-		updateEgress([]string{"8.8.8.8"}, []string{blockAll})
+		updateEgress([]string{"8.8.8.8/32"}, []string{blockAll})
 		requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "allowed IP reachable")
 		requireTCPBlocked(t, ctx, sbx, envdClient, "https://1.1.1.1", "non-allowed IP blocked")
 	})
 
 	t.Run("egress/ip/block_specific", func(t *testing.T) { //nolint:paralleltest // sequential
-		updateEgress(nil, []string{"8.8.8.8"})
+		updateEgress(nil, []string{"8.8.8.8/32"})
 		requireTCPBlocked(t, ctx, sbx, envdClient, "https://8.8.8.8", "denied IP blocked")
 		requireTCPAllowed(t, ctx, sbx, envdClient, "https://1.1.1.1", "non-denied IP allowed")
 	})
@@ -375,19 +372,19 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 	})
 
 	t.Run("egress/ip/allow_overrides_block", func(t *testing.T) { //nolint:paralleltest // sequential
-		updateEgress([]string{"8.8.8.8"}, []string{"8.8.8.0/24"})
+		updateEgress([]string{"8.8.8.8/32"}, []string{"8.8.8.0/24"})
 		requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "allow takes precedence")
 	})
 
 	t.Run("egress/ip/partial_allow_deny_default_allow", func(t *testing.T) { //nolint:paralleltest // sequential
-		updateEgress([]string{"8.8.8.8"}, []string{"1.1.1.1"})
+		updateEgress([]string{"8.8.8.8/32"}, []string{"1.1.1.1/32"})
 		requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "explicitly allowed")
 		requireTCPBlocked(t, ctx, sbx, envdClient, "https://1.1.1.1", "explicitly denied")
 		requireTCPAllowed(t, ctx, sbx, envdClient, "https://1.0.0.1", "default allow for unmatched")
 	})
 
 	t.Run("egress/ip/multiple_allowed", func(t *testing.T) { //nolint:paralleltest // sequential
-		updateEgress([]string{"8.8.8.8", "1.1.1.1"}, []string{blockAll})
+		updateEgress([]string{"8.8.8.8/32", "1.1.1.1/32"}, []string{blockAll})
 		requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "first allowed IP")
 		requireTCPAllowed(t, ctx, sbx, envdClient, "https://1.1.1.1", "second allowed IP")
 	})
@@ -448,14 +445,14 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 	})
 
 	t.Run("egress/domain/and_ip_combined", func(t *testing.T) { //nolint:paralleltest // sequential
-		updateEgress([]string{"google.com", "1.1.1.1"}, []string{blockAll})
+		updateEgress([]string{"google.com", "1.1.1.1/32"}, []string{blockAll})
 		requireTCPAllowed(t, ctx, sbx, envdClient, "https://google.com", "domain allowed")
 		requireTCPAllowed(t, ctx, sbx, envdClient, "https://1.1.1.1", "IP allowed")
 		requireTCPBlocked(t, ctx, sbx, envdClient, "https://cloudflare.com", "non-allowed domain blocked")
 	})
 
 	t.Run("egress/domain/https_by_ip_no_hostname", func(t *testing.T) { //nolint:paralleltest // sequential
-		updateEgress([]string{"8.8.8.8"}, []string{blockAll})
+		updateEgress([]string{"8.8.8.8/32"}, []string{blockAll})
 		requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "HTTPS by IP uses CIDR rule")
 		requireTCPBlocked(t, ctx, sbx, envdClient, "https://1.1.1.1", "non-allowed IP blocked")
 	})
@@ -466,86 +463,10 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 		requireTCPBlocked(t, ctx, sbx, envdClient, "http://cloudflare.com", "non-allowed HTTP domain blocked")
 	})
 
-	// ── Egress: port rules ──────────────────────────────────────────────
-
-	t.Run("egress/port/ip_single", func(t *testing.T) { //nolint:paralleltest // sequential
-		updateEgress([]string{"8.8.8.8:443"}, []string{blockAll})
-		requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "HTTPS 8.8.8.8:443 allowed")
-		requireDNSBlocked(t, ctx, sbx, envdClient, "8.8.8.8", "DNS 8.8.8.8:53 blocked (port not allowed)")
-	})
-
-	t.Run("egress/port/udp_only", func(t *testing.T) { //nolint:paralleltest // sequential
-		updateEgress([]string{"8.8.8.8:53"}, []string{blockAll})
-		requireDNSAllowed(t, ctx, sbx, envdClient, "DNS 8.8.8.8:53 allowed")
-		requireTCPBlocked(t, ctx, sbx, envdClient, "https://8.8.8.8", "HTTPS blocked (only :53)")
-	})
-
-	t.Run("egress/port/range", func(t *testing.T) { //nolint:paralleltest // sequential
-		updateEgress([]string{"8.8.8.8:53-443"}, []string{blockAll})
-		requireDNSAllowed(t, ctx, sbx, envdClient, "DNS 8.8.8.8:53 in range")
-		requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "HTTPS 8.8.8.8:443 in range")
-	})
-
-	t.Run("egress/port/cidr_with_port", func(t *testing.T) { //nolint:paralleltest // sequential
-		updateEgress([]string{"8.8.8.0/24:443"}, []string{blockAll})
-		requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "CIDR+port allowed")
-		requireDNSBlocked(t, ctx, sbx, envdClient, "8.8.8.8", "DNS blocked (port not in rule)")
-		requireTCPBlocked(t, ctx, sbx, envdClient, "https://1.1.1.1", "IP not in CIDR blocked")
-	})
-
-	t.Run("egress/port/deny_specific", func(t *testing.T) { //nolint:paralleltest // sequential
-		updateEgress(nil, []string{"8.8.8.8:443"})
-		requireDNSAllowed(t, ctx, sbx, envdClient, "DNS 8.8.8.8:53 allowed (port not denied)")
-		requireTCPBlocked(t, ctx, sbx, envdClient, "https://8.8.8.8", "HTTPS 8.8.8.8:443 denied")
-		requireTCPAllowed(t, ctx, sbx, envdClient, "https://1.1.1.1", "other IP allowed")
-	})
-
-	t.Run("egress/port/domain_with_port", func(t *testing.T) { //nolint:paralleltest // sequential
-		updateEgress([]string{"google.com:443"}, []string{blockAll})
-		requireTCPAllowed(t, ctx, sbx, envdClient, "https://google.com", "HTTPS google.com:443")
-		requireTCPBlocked(t, ctx, sbx, envdClient, "http://google.com", "HTTP :80 blocked (only 443)")
-	})
-
-	t.Run("egress/port/multiple_ips_different_ports", func(t *testing.T) { //nolint:paralleltest // sequential
-		updateEgress([]string{"8.8.8.8:53", "1.1.1.1:443"}, []string{blockAll})
-		requireDNSAllowed(t, ctx, sbx, envdClient, "DNS 8.8.8.8:53 allowed")
-		requireTCPAllowed(t, ctx, sbx, envdClient, "https://1.1.1.1", "HTTPS 1.1.1.1:443 allowed")
-		requireTCPBlocked(t, ctx, sbx, envdClient, "https://8.8.8.8", "HTTPS 8.8.8.8:443 blocked (only :53)")
-		requireDNSBlocked(t, ctx, sbx, envdClient, "1.1.1.1", "DNS 1.1.1.1:53 blocked (only :443)")
-	})
-
-	t.Run("egress/port/mix_port_and_allport", func(t *testing.T) { //nolint:paralleltest // sequential
-		updateEgress([]string{"8.8.8.8", "1.1.1.1:443"}, []string{blockAll})
-		requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "8.8.8.8 all ports")
-		requireDNSAllowed(t, ctx, sbx, envdClient, "DNS 8.8.8.8 all ports")
-		requireTCPAllowed(t, ctx, sbx, envdClient, "https://1.1.1.1", "1.1.1.1:443 allowed")
-		requireDNSBlocked(t, ctx, sbx, envdClient, "1.1.1.1", "1.1.1.1:53 blocked (only :443)")
-	})
-
-	t.Run("egress/port/deny_port_all_ips", func(t *testing.T) { //nolint:paralleltest // sequential
-		updateEgress(nil, []string{":443"})
-		requireTCPBlocked(t, ctx, sbx, envdClient, "https://8.8.8.8", "HTTPS blocked (port 443 denied on all IPs)")
-		requireTCPBlocked(t, ctx, sbx, envdClient, "https://1.1.1.1", "HTTPS blocked (port 443 denied on all IPs)")
-		requireDNSAllowed(t, ctx, sbx, envdClient, "DNS allowed (port 53 not denied)")
-	})
-
-	t.Run("egress/port/allow_port_all_ips", func(t *testing.T) { //nolint:paralleltest // sequential
-		updateEgress([]string{":443"}, []string{blockAll})
-		requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "HTTPS allowed (port 443 on all IPs)")
-		requireTCPAllowed(t, ctx, sbx, envdClient, "https://1.1.1.1", "HTTPS allowed (port 443 on all IPs)")
-		requireDNSBlocked(t, ctx, sbx, envdClient, "8.8.8.8", "DNS blocked (port 53 not in allow)")
-	})
-
-	t.Run("egress/port/allow_overrides_deny", func(t *testing.T) { //nolint:paralleltest // sequential
-		updateEgress([]string{"8.8.8.8:443"}, []string{"8.8.8.8"})
-		requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "allow:443 > deny all ports")
-		requireDNSBlocked(t, ctx, sbx, envdClient, "8.8.8.8", "DNS blocked (not in allow, caught by deny)")
-	})
-
 	// ── Egress: UDP (DNS) ───────────────────────────────────────────────
 
 	t.Run("egress/udp/allowed_ip", func(t *testing.T) { //nolint:paralleltest // sequential
-		updateEgress([]string{"8.8.8.8"}, []string{blockAll})
+		updateEgress([]string{"8.8.8.8/32"}, []string{blockAll})
 		requireDNSAllowed(t, ctx, sbx, envdClient, "DNS to allowed IP 8.8.8.8")
 		requireDNSBlocked(t, ctx, sbx, envdClient, "1.1.1.1", "DNS to non-allowed IP 1.1.1.1")
 	})
@@ -571,15 +492,15 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 			checks: []connectivityCheck{{"https://8.8.8.8", false}, {"https://1.1.1.1", false}},
 		},
 		{
-			name: "lifecycle/2_allow_ip_through_deny", allowOut: stringSlicePtr("8.8.8.8"), denyOut: stringSlicePtr(blockAll),
+			name: "lifecycle/2_allow_ip_through_deny", allowOut: stringSlicePtr("8.8.8.8/32"), denyOut: stringSlicePtr(blockAll),
 			checks: []connectivityCheck{{"https://8.8.8.8", true}, {"https://1.1.1.1", false}},
 		},
 		{
-			name: "lifecycle/3_replace_allowed_ip", allowOut: stringSlicePtr("1.1.1.1"), denyOut: stringSlicePtr(blockAll),
+			name: "lifecycle/3_replace_allowed_ip", allowOut: stringSlicePtr("1.1.1.1/32"), denyOut: stringSlicePtr(blockAll),
 			checks: []connectivityCheck{{"https://1.1.1.1", true}, {"https://8.8.8.8", false}},
 		},
 		{
-			name: "lifecycle/4_allow_multiple", allowOut: stringSlicePtr("8.8.8.8", "1.1.1.1"), denyOut: stringSlicePtr(blockAll),
+			name: "lifecycle/4_allow_multiple", allowOut: stringSlicePtr("8.8.8.8/32", "1.1.1.1/32"), denyOut: stringSlicePtr(blockAll),
 			checks: []connectivityCheck{{"https://8.8.8.8", true}, {"https://1.1.1.1", true}},
 		},
 		{
@@ -591,7 +512,7 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 			checks: []connectivityCheck{{"https://google.com", true}, {"https://cloudflare.com", false}},
 		},
 		{
-			name: "lifecycle/7_allow_domain_and_ip", allowOut: stringSlicePtr("google.com", "1.1.1.1"), denyOut: stringSlicePtr(blockAll),
+			name: "lifecycle/7_allow_domain_and_ip", allowOut: stringSlicePtr("google.com", "1.1.1.1/32"), denyOut: stringSlicePtr(blockAll),
 			checks: []connectivityCheck{{"https://google.com", true}, {"https://1.1.1.1", true}, {"https://cloudflare.com", false}},
 		},
 		{
@@ -603,11 +524,11 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 			checks: []connectivityCheck{{"https://8.8.8.8", true}, {"https://1.1.1.1", true}},
 		},
 		{
-			name: "lifecycle/10_reapply_after_clear", allowOut: stringSlicePtr("1.1.1.1"), denyOut: stringSlicePtr(blockAll),
+			name: "lifecycle/10_reapply_after_clear", allowOut: stringSlicePtr("1.1.1.1/32"), denyOut: stringSlicePtr(blockAll),
 			checks: []connectivityCheck{{"https://1.1.1.1", true}, {"https://8.8.8.8", false}},
 		},
 		{
-			name: "lifecycle/11_allow_without_deny", allowOut: stringSlicePtr("8.8.8.8"),
+			name: "lifecycle/11_allow_without_deny", allowOut: stringSlicePtr("8.8.8.8/32"),
 			checks: []connectivityCheck{{"https://8.8.8.8", true}, {"https://1.1.1.1", true}},
 		},
 		{
@@ -835,7 +756,7 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 
 	t.Run("combined/egress_allow_with_ingress_deny", func(t *testing.T) { //nolint:paralleltest // sequential
 		updateAll(api.PutSandboxesSandboxIDNetworkJSONRequestBody{
-			AllowOut: stringSlicePtr("8.8.8.8", "google.com"),
+			AllowOut: stringSlicePtr("8.8.8.8/32", "google.com"),
 			DenyOut:  stringSlicePtr(blockAll),
 			DenyIn:   stringSlicePtr("0.0.0.0/0", "::/0"),
 		})
@@ -871,7 +792,7 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 		denyInPortV4 := fmt.Sprintf("0.0.0.0/0:%d", testPort)
 		denyInPortV6 := fmt.Sprintf("[::/0]:%d", testPort)
 		updateAll(api.PutSandboxesSandboxIDNetworkJSONRequestBody{
-			AllowOut: stringSlicePtr("8.8.8.8", "google.com"),
+			AllowOut: stringSlicePtr("8.8.8.8/32", "google.com"),
 			DenyOut:  stringSlicePtr(blockAll),
 			DenyIn:   stringSlicePtr(denyInPortV4, denyInPortV6),
 		})
@@ -927,7 +848,7 @@ func TestNetworkEgressInternetAccessFalse(t *testing.T) {
 		utils.WithTimeout(60),
 		utils.WithAllowInternetAccess(false),
 		utils.WithNetwork(&api.SandboxNetworkConfig{
-			AllowOut: &[]string{"8.8.8.8"},
+			AllowOut: &[]string{"8.8.8.8/32"},
 		}),
 	)
 

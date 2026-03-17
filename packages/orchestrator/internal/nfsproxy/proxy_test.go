@@ -14,7 +14,6 @@ import (
 	"github.com/go-git/go-billy/v5"
 	"github.com/go-git/go-billy/v5/memfs"
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	nfsserver "github.com/willscott/go-nfs"
 	"github.com/willscott/go-nfs-client/nfs"
@@ -67,13 +66,12 @@ func TestRoundTrip(t *testing.T) {
 	require.Equal(t, "127.0.0.1", slot.HostIP.String(), "required for the test to work")
 
 	sandboxes := sandbox.NewSandboxesMap()
-	sbxConfig, err := sandbox.NewConfig(sandbox.Config{
+	sbxConfig := sandbox.NewConfig(sandbox.Config{
 		VolumeMounts: []sandbox.VolumeMountConfig{
 			{ID: volID1, Name: volName1, Path: "/mnt/vol1", Type: volType1},
 			{ID: volID2, Name: volName2, Path: "/mnt/vol2", Type: volType2},
 		},
 	})
-	require.NoError(t, err)
 	sandboxes.Insert(t.Context(), &sandbox.Sandbox{
 		Metadata: &sandbox.Metadata{
 			Config: sbxConfig,
@@ -93,7 +91,7 @@ func TestRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		err := nfsListener.Close()
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	})
 
 	config := cfg.Config{
@@ -105,7 +103,7 @@ func TestRoundTrip(t *testing.T) {
 	nfsProxy := NewProxy(t.Context(), sandboxes, config)
 	go func() {
 		err := nfsProxy.Serve(nfsListener)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}()
 
 	// get nfs server's dynamic port
@@ -121,14 +119,14 @@ func TestRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		err := pmListener.Close()
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	})
 
 	pm := portmap.NewPortMap(t.Context())
 	pm.RegisterPort(t.Context(), uint32(port))
 	go func() {
 		err := pm.Serve(t.Context(), pmListener)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}()
 
 	// connect via nfs client
@@ -172,7 +170,7 @@ func TestRoundTrip(t *testing.T) {
 		data := []byte(sandboxID)
 		n, err := fp.Write(data)
 		require.NoError(t, err)
-		assert.Equal(t, len(data), n)
+		require.Equal(t, len(data), n)
 		err = fp.Close()
 		require.NoError(t, err)
 
@@ -184,12 +182,12 @@ func TestRoundTrip(t *testing.T) {
 		// verify metadata
 		stat, err := object.Stat()
 		require.NoError(t, err)
-		assert.Equal(t, perms, stat.Mode().Perm(), "wrong permissions for %s", objectName)
+		require.Equal(t, perms, stat.Mode().Perm(), "wrong permissions for %s", objectName)
 
 		// verify contents
 		data, err = io.ReadAll(object)
 		require.NoError(t, err)
-		assert.Equal(t, sandboxID, string(data))
+		require.Equal(t, sandboxID, string(data))
 	})
 
 	t.Run("mkdir", func(t *testing.T) {
@@ -198,7 +196,7 @@ func TestRoundTrip(t *testing.T) {
 		path := uuid.NewString()
 		fh, err := target.Mkdir(path, 0o755)
 		require.NoError(t, err)
-		assert.NotNil(t, fh)
+		require.NotNil(t, fh)
 	})
 
 	t.Run("list file in nfs", func(t *testing.T) {
@@ -222,10 +220,10 @@ func TestRoundTrip(t *testing.T) {
 			return strings.Compare(a.Name(), b.Name())
 		})
 
-		assert.Equal(t, "file.txt", items[0].Name())
-		assert.Equal(t, os.FileMode(0o644), items[0].Mode())
-		assert.Equal(t, "file2.txt", items[1].Name())
-		assert.Equal(t, os.FileMode(0o755), items[1].Mode())
+		require.Equal(t, "file.txt", items[0].Name())
+		require.Equal(t, os.FileMode(0o644), items[0].Mode())
+		require.Equal(t, "file2.txt", items[1].Name())
+		require.Equal(t, os.FileMode(0o755), items[1].Mode())
 	})
 
 	t.Run("access", func(t *testing.T) {
@@ -236,7 +234,7 @@ func TestRoundTrip(t *testing.T) {
 		writeFile(t, target, filepath.Join(path, "file.txt"), "file.txt contents", 0o644)
 		mode, err := target.Access(filepath.Join(path, "file.txt"), 0o644)
 		require.NoError(t, err)
-		assert.Equal(t, uint32(0o644), mode)
+		require.Equal(t, uint32(0o644), mode)
 	})
 
 	t.Run("lookup missing file", func(t *testing.T) {
@@ -246,8 +244,8 @@ func TestRoundTrip(t *testing.T) {
 		path := uuid.NewString()
 		stat1, fh1, err := target.Lookup(path)
 		require.ErrorIs(t, err, os.ErrNotExist)
-		assert.Nil(t, fh1)
-		assert.Nil(t, stat1)
+		require.Nil(t, fh1)
+		require.Nil(t, stat1)
 	})
 }
 
@@ -259,7 +257,7 @@ func writeFile(t *testing.T, target *nfs.Target, path string, content string, pe
 
 	n, err := fp.Write([]byte(content))
 	require.NoError(t, err)
-	assert.Equal(t, len(content), n, "wrong number of bytes written")
+	require.Equal(t, len(content), n, "wrong number of bytes written")
 
 	err = fp.Close()
 	require.NoError(t, err)
@@ -297,12 +295,11 @@ func TestGetPrefixFromSandbox(t *testing.T) {
 	)
 
 	happySlot := &network.Slot{Key: "abc", HostIP: happyIP}
-	happyConfig, err := sandbox.NewConfig(sandbox.Config{
+	happyConfig := sandbox.NewConfig(sandbox.Config{
 		VolumeMounts: []sandbox.VolumeMountConfig{
 			{ID: happyVolumeID, Name: happyVolumeName, Path: "/volume", Type: happyVolumeType},
 		},
 	})
-	require.NoError(t, err)
 	happySandbox := &sandbox.Sandbox{
 		Metadata: &sandbox.Metadata{
 			Config: happyConfig,
@@ -506,12 +503,12 @@ func TestGetPrefixFromSandbox(t *testing.T) {
 			handler := getPrefixFromSandbox(sandboxes, fsByType)
 
 			fs, prefix, err := handler(t.Context(), tc.remoteAddr, request)
-			assert.Equal(t, tc.expected.fs, fs)
-			assert.Equal(t, tc.expected.prefix, prefix)
+			require.Equal(t, tc.expected.fs, fs)
+			require.Equal(t, tc.expected.prefix, prefix)
 			if tc.expected.err != nil {
-				assert.EqualError(t, err, tc.expected.err.Error())
+				require.EqualError(t, err, tc.expected.err.Error())
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 		})
 	}

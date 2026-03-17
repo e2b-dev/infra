@@ -199,7 +199,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 	userLogger.Info(ctx, "Provisioning sandbox template")
 
 	// Allow sandbox internet access during provisioning (nil network = no restrictions).
-	baseSbxConfig, err := sandbox.NewConfig(sandbox.Config{
+	baseSbxConfig := sandbox.NewConfig(sandbox.Config{
 		Vcpu:      bb.Config.VCpuCount,
 		RamMB:     bb.Config.MemoryMB,
 		HugePages: bb.Config.HugePages,
@@ -213,9 +213,6 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 			FirecrackerVersion: bb.Config.FirecrackerVersion,
 		},
 	})
-	if err != nil {
-		return metadata.Template{}, fmt.Errorf("creating sandbox config for base: %w", err)
-	}
 	err = bb.provisionSandbox(
 		ctx,
 		userLogger,

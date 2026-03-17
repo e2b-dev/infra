@@ -46,6 +46,7 @@ const (
 	ErrorTypeSandboxLookup     ErrorType = "sandbox_lookup"
 	ErrorTypeUpstreamDial      ErrorType = "upstream_dial"
 	ErrorTypeConnectionMeta    ErrorType = "connection_meta"
+	ErrorTypeEgressCheck       ErrorType = "egress_check"
 	ErrorTypeResolvedIPBlocked ErrorType = "resolved_ip_blocked"
 	ErrorTypeLimitExceeded     ErrorType = "limit_exceeded"
 )

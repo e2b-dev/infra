@@ -103,7 +103,7 @@ func TestSmokeAllFCVersions(t *testing.T) { //nolint:paralleltest // subtests sh
 
 			token := "smoke-test"
 			t0 := time.Now()
-			sbxConfig, err := sandbox.NewConfig(sandbox.Config{
+			sbxConfig := sandbox.NewConfig(sandbox.Config{
 				BaseTemplateID: "smoke-" + fcMajor,
 				Vcpu:           2,
 				RamMB:          512,
@@ -118,7 +118,6 @@ func TestSmokeAllFCVersions(t *testing.T) { //nolint:paralleltest // subtests sh
 					FirecrackerVersion: meta.Template.FirecrackerVersion,
 				},
 			})
-			require.NoError(t, err)
 
 			sbx, err := infra.factory.ResumeSandbox(
 				ctx,

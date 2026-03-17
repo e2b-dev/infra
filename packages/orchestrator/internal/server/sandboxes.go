@@ -30,7 +30,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
-	sandboxnetwork "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
+	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -152,7 +152,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		if network.GetEgress() == nil {
 			network.Egress = &orchestrator.SandboxNetworkEgressConfig{}
 		}
-		network.Egress.Denied = []string{sandboxnetwork.AllInternetTrafficCIDR}
+		network.Egress.DeniedCidrs = []string{sandbox_network.AllInternetTrafficCIDR}
 	}
 
 	resolvedFCVersion := featureflags.ResolveFirecrackerVersion(ctx, s.featureFlags, req.GetSandbox().GetFirecrackerVersion())
@@ -162,7 +162,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		return nil, fmt.Errorf("failed to convert volume mounts: %w", err)
 	}
 
-	sbxConfig, err := sandbox.NewConfig(sandbox.Config{
+	sbxConfig := sandbox.NewConfig(sandbox.Config{
 		BaseTemplateID: req.GetSandbox().GetBaseTemplateId(),
 
 		Vcpu:            req.GetSandbox().GetVcpu(),
@@ -185,9 +185,6 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 
 		VolumeMounts: volumeMounts,
 	})
-	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid network config: %s", err)
-	}
 
 	sbx, err := s.sandboxFactory.ResumeSandbox(
 		ctx,
@@ -305,35 +302,22 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 
 	if req.GetEgress() != nil {
 		updates = append(updates, func(ctx context.Context) (func(context.Context), error) {
-			oldACL := sbx.Config.GetParsedEgress()
 			oldEgress := sbx.Config.GetNetworkEgress()
 
-			egress := req.GetEgress()
-			if len(egress.GetAllowed()) == 0 && len(egress.GetDenied()) == 0 {
-				egress = nil
-			}
-
-			// Parse and store new config.
-			if err := sbx.Config.SetNetworkEgress(egress); err != nil {
-				return nil, fmt.Errorf("invalid egress config: %w", err)
-			}
-
-			// Apply parsed rules to nftables.
-			if err := sbx.Slot.UpdateInternet(ctx, sbx.Config.GetParsedEgress()); err != nil {
-				// Rollback config on nftables failure.
-				sbx.Config.RestoreNetworkEgress(oldEgress, oldACL)
-
+			if err := sbx.Slot.UpdateInternet(ctx, req.GetEgress()); err != nil {
 				return nil, fmt.Errorf("failed to update sandbox network: %w", err)
 			}
 
-			eventData["network_egress"] = map[string]any{
-				"allowed": egress.GetAllowed(),
-				"denied":  egress.GetDenied(),
+			egress := req.GetEgress()
+			if len(egress.GetAllowedCidrs()) == 0 && len(egress.GetDeniedCidrs()) == 0 && len(egress.GetAllowedDomains()) == 0 {
+				sbx.Config.SetNetworkEgress(nil)
+			} else {
+				sbx.Config.SetNetworkEgress(egress)
 			}
 
 			return func(ctx context.Context) {
-				sbx.Config.RestoreNetworkEgress(oldEgress, oldACL)
-				_ = sbx.Slot.UpdateInternet(ctx, oldACL)
+				_ = sbx.Slot.UpdateInternet(ctx, oldEgress)
+				sbx.Config.SetNetworkEgress(oldEgress)
 			}, nil
 		})
 	}
@@ -341,19 +325,10 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 	if req.GetIngress() != nil {
 		updates = append(updates, func(_ context.Context) (func(context.Context), error) {
 			oldIngress := sbx.Config.GetNetworkIngress()
-			oldACL := sbx.Config.GetParsedIngress()
 
-			if err := sbx.Config.SetNetworkIngress(req.GetIngress()); err != nil {
-				return nil, fmt.Errorf("invalid ingress config: %w", err)
-			}
+			sbx.Config.SetNetworkIngress(req.GetIngress())
 
-			ingress := req.GetIngress()
-			eventData["network_ingress"] = map[string]any{
-				"allowed": ingress.GetAllowed(),
-				"denied":  ingress.GetDenied(),
-			}
-
-			return func(_ context.Context) { sbx.Config.RestoreNetworkIngress(oldIngress, oldACL) }, nil
+			return func(_ context.Context) { sbx.Config.SetNetworkIngress(oldIngress) }, nil
 		})
 	}
 

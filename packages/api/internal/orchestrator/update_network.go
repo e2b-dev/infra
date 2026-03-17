@@ -31,8 +31,8 @@ func (o *Orchestrator) UpdateSandboxNetworkConfig(
 
 	ingress := &orchestratorgrpc.SandboxNetworkIngressConfig{
 		MaskRequestHost: ingressUpdate.MaskRequestHost,
-		Allowed:         ingressUpdate.AllowedAddresses,
-		Denied:          ingressUpdate.DeniedAddresses,
+		Allowed:         parseIngressRules(ingressUpdate.AllowedAddresses),
+		Denied:          parseIngressRules(ingressUpdate.DeniedAddresses),
 	}
 
 	updateFunc := func(sbx sandbox.Sandbox) (sandbox.Sandbox, error) {

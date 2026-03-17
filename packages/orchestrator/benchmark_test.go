@@ -14,7 +14,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
@@ -86,7 +85,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		b.Cleanup(func() {
 			ctx := context.WithoutCancel(b.Context())
 			err := spanExporter.Shutdown(ctx)
-			assert.NoError(b, err)
+			require.NoError(b, err)
 		})
 
 		require.NoError(b, err)
@@ -140,7 +139,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	b.Cleanup(func() {
 		ctx := context.WithoutCancel(b.Context())
 		err := networkPool.Close(ctx)
-		assert.NoError(b, err)
+		require.NoError(b, err)
 	})
 
 	devicePool, err := nbd.NewDevicePool()
@@ -152,7 +151,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	b.Cleanup(func() {
 		ctx := context.WithoutCancel(b.Context())
 		err := devicePool.Close(ctx)
-		assert.NoError(b, err)
+		require.NoError(b, err)
 	})
 
 	featureFlags, err := featureflags.NewClient()
@@ -160,7 +159,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	b.Cleanup(func() {
 		ctx := context.WithoutCancel(b.Context())
 		err := featureFlags.Close(ctx)
-		assert.NoError(b, err)
+		require.NoError(b, err)
 	})
 
 	limiter, err := limit.New(b.Context(), featureFlags)
@@ -189,11 +188,11 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	require.NoError(b, err)
 	b.Cleanup(func() {
 		err := dockerhubRepository.Close()
-		assert.NoError(b, err)
+		require.NoError(b, err)
 	})
 
 	accessToken := "access-token"
-	sandboxConfig, err := sandbox.NewConfig(sandbox.Config{
+	sandboxConfig := sandbox.NewConfig(sandbox.Config{
 		BaseTemplateID:  templateID,
 		Vcpu:            2,
 		RamMB:           512,
@@ -209,7 +208,6 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 			FirecrackerVersion: fcVersion,
 		},
 	})
-	require.NoError(b, err)
 
 	runtime := sandbox.RuntimeMetadata{
 		TemplateID:  templateID,
@@ -238,24 +236,24 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	)
 	go func() {
 		err := tcpFirewall.Start(b.Context())
-		assert.NoError(b, err)
+		require.NoError(b, err)
 	}()
 	b.Cleanup(func() {
 		ctx := context.WithoutCancel(b.Context())
 		err := tcpFirewall.Close(ctx)
-		assert.NoError(b, err)
+		require.NoError(b, err)
 	})
 
 	sandboxProxy, err := proxy.NewSandboxProxy(noop.MeterProvider{}, proxyPort, sandboxes, featureFlags)
 	require.NoError(b, err)
 	go func() {
 		err := sandboxProxy.Start(b.Context())
-		assert.ErrorIs(b, http.ErrServerClosed, err)
+		require.ErrorIs(b, http.ErrServerClosed, err)
 	}()
 	b.Cleanup(func() {
 		ctx := context.WithoutCancel(b.Context())
 		err := sandboxProxy.Close(ctx)
-		assert.NoError(b, err)
+		require.NoError(b, err)
 	})
 
 	buildMetrics, err := metrics.NewBuildMetrics(noop.MeterProvider{})

@@ -12,7 +12,7 @@ import (
 	"github.com/ngrok/firewall_toolkit/pkg/set"
 	"golang.org/x/sys/unix"
 
-	sandboxnetwork "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
+	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 )
 
 const tableName = "slot-firewall"
@@ -23,11 +23,6 @@ type Firewall struct {
 
 	// Filter chain in PREROUTING
 	filterChain *nftables.Chain
-
-	// userDirectChain is a regular chain (no hook) used for user allow/deny
-	// rules on non-TCP traffic. It is flushed and rebuilt on each
-	// ReplaceUserRules call to support dynamic port-specific rules.
-	userDirectChain *nftables.Chain
 
 	predefinedDenySet  set.Set
 	predefinedAllowSet set.Set
@@ -63,14 +58,6 @@ func NewFirewall(tapIf string, orchestratorInternalIP string) (*Firewall, error)
 		Policy:   &policy,
 	})
 
-	// User non-TCP chain — regular chain (no hook), entered via jump from filterChain.
-	// Contains user allow/deny rules for non-TCP traffic, flushed and rebuilt
-	// on each ReplaceUserRules call.
-	userDirectChain := conn.AddChain(&nftables.Chain{
-		Name:  "USER_DIRECT_RULES",
-		Table: table,
-	})
-
 	// Create deny-set and allow-set
 	alwaysDenySet, err := set.New(conn, table, "filtered_always_denylist", nftables.TypeIPAddr)
 	if err != nil {
@@ -100,7 +87,6 @@ func NewFirewall(tapIf string, orchestratorInternalIP string) (*Firewall, error)
 		tapInterface:       tapIf,
 		allowedRanges:      []string{fmt.Sprintf("%s/32", orchestratorInternalIP)},
 		filterChain:        filterChain,
-		userDirectChain:    userDirectChain,
 	}
 
 	// Add firewall rules to the chain
@@ -109,7 +95,7 @@ func NewFirewall(tapIf string, orchestratorInternalIP string) (*Firewall, error)
 	}
 
 	// Populate the sets with initial data
-	err = fw.ReplaceUserRules(nil)
+	err = fw.ReplaceUserRules(nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error while configuring initial data: %w", err)
 	}
@@ -162,6 +148,36 @@ func (fw *Firewall) addSetFilterRule(ipSet *nftables.Set, drop bool) {
 	})
 }
 
+// addNonTCPSetFilterRule adds a filter rule that matches ONLY non-TCP traffic to destinations in a set.
+// If drop is true, packets are dropped. Otherwise, they are accepted.
+// TCP traffic is NOT affected by this rule (iptables REDIRECT handles TCP traffic).
+func (fw *Firewall) addNonTCPSetFilterRule(ipSet *nftables.Set, drop bool) {
+	var verdict []expr.Any
+	if drop {
+		verdict = []expr.Any{&expr.Verdict{Kind: expr.VerdictDrop}}
+	} else {
+		verdict = accept()
+	}
+
+	fw.conn.AddRule(&nftables.Rule{
+		Table: fw.table,
+		Chain: fw.filterChain,
+		Exprs: append(append(fw.tapIfaceMatch(),
+			// Match non-TCP protocol (protocol != TCP)
+			&expr.Meta{Key: expr.MetaKeyL4PROTO, Register: 1},
+			&expr.Cmp{
+				Op:       expr.CmpOpNeq,
+				Register: 1,
+				Data:     []byte{unix.IPPROTO_TCP},
+			},
+			// Check dest in set
+			expressions.IPv4DestinationAddress(1),
+			expressions.IPSetLookUp(ipSet, 1)),
+			verdict...,
+		),
+	})
+}
+
 func (fw *Firewall) installRules() error {
 	// ============================================================
 	// FILTER CHAIN (PREROUTING, priority -150)
@@ -169,15 +185,10 @@ func (fw *Firewall) installRules() error {
 	//   1. ESTABLISHED/RELATED → accept (allow responses even from denied ranges)
 	//   2. predefinedAllowSet → accept (all protocols)
 	//   3. predefinedDenySet → DROP (all protocols, hard block)
-	//   4. Non-TCP from tap → jump to USER_DIRECT_RULES chain
-	//   5. Default: ACCEPT (TCP handled by iptables REDIRECT)
+	//   4. Non-TCP: userAllowSet → accept
+	//   5. Non-TCP: userDenySet → DROP
+	//   6. Default: ACCEPT (TCP handled by iptables REDIRECT)
 	//
-	// USER_DIRECT_RULES chain (populated by ReplaceUserRules):
-	//   1. userAllowSet → accept (all-ports entries)
-	//   2. Port-specific allow rules → accept
-	//   3. userDenySet → DROP (all-ports entries)
-	//   4. Port-specific deny rules → DROP
-	//   5. Implicit return → parent chain default ACCEPT
 	// ============================================================
 
 	// Rule 1: Allow ESTABLISHED/RELATED connections - all protocols
@@ -211,24 +222,16 @@ func (fw *Firewall) installRules() error {
 	// Rule 3: predefinedDenySet → DROP (all protocols, hard block)
 	fw.addSetFilterRule(fw.predefinedDenySet.Set(), true)
 
-	// Rule 4: Non-TCP traffic from tap → jump to user rules chain
-	fw.conn.AddRule(&nftables.Rule{
-		Table: fw.table,
-		Chain: fw.filterChain,
-		Exprs: append(fw.tapIfaceMatch(),
-			// Match non-TCP protocol (protocol != TCP)
-			&expr.Meta{Key: expr.MetaKeyL4PROTO, Register: 1},
-			&expr.Cmp{
-				Op:       expr.CmpOpNeq,
-				Register: 1,
-				Data:     []byte{unix.IPPROTO_TCP},
-			},
-			&expr.Verdict{Kind: expr.VerdictJump, Chain: fw.userDirectChain.Name},
-		),
-	})
+	// Rule 4: Non-TCP + userAllowSet → accept
+	// Only non-TCP traffic is affected; TCP goes to proxy
+	fw.addNonTCPSetFilterRule(fw.userAllowSet.Set(), false)
+
+	// Rule 5: Non-TCP + userDenySet → DROP
+	// Only non-TCP traffic is affected; TCP goes to proxy
+	fw.addNonTCPSetFilterRule(fw.userDenySet.Set(), true)
 
 	// Default policy: ACCEPT
-	// - Non-TCP returning from user chain: allowed (default policy)
+	// - Non-TCP not in user sets: allowed (default policy)
 	// - TCP: iptables REDIRECT handles TCP traffic to proxy
 
 	if err := fw.conn.Flush(); err != nil {
@@ -238,41 +241,11 @@ func (fw *Firewall) installRules() error {
 	return nil
 }
 
-// ReplaceUserRules atomically replaces all user firewall rules.
-// Rules are pre-parsed by the caller. All-ports entries use IP set matching
-// (fast path). Port-specific entries are added as individual nftables rules
-// matching destination ports.
-func (fw *Firewall) ReplaceUserRules(acl *sandboxnetwork.ACL) error {
-	// Separate all-ports CIDRs (for IP set fast path) from port-specific rules.
-	// Domain entries are skipped — they are only enforced by the TCP proxy.
-	var allowedAllPorts []string
-	var allowedSomePorts []sandboxnetwork.Rule
-	for _, r := range acl.GetAllowed() {
-		if r.IsDomain {
-			continue
-		}
-		if r.AllPorts() {
-			allowedAllPorts = append(allowedAllPorts, sandboxnetwork.AddressStringToCIDR(r.Host))
-		} else {
-			allowedSomePorts = append(allowedSomePorts, r)
-		}
-	}
-
-	var deniedAllPorts []string
-	var deniedSomePorts []sandboxnetwork.Rule
-	for _, r := range acl.GetDenied() {
-		if r.IsDomain {
-			continue
-		}
-		if r.AllPorts() {
-			deniedAllPorts = append(deniedAllPorts, sandboxnetwork.AddressStringToCIDR(r.Host))
-		} else {
-			deniedSomePorts = append(deniedSomePorts, r)
-		}
-	}
-
+// ReplaceUserRules atomically replaces all firewall sets in a single flush.
+// This avoids any window where rules are partially applied.
+func (fw *Firewall) ReplaceUserRules(allowedCIDRs, deniedCIDRs []string) error {
 	// 1. Reset predefined deny set to default blocked ranges (buffered, no flush).
-	if err := fw.predefinedDenySet.ClearAndAddElements(fw.conn, sandboxnetwork.DeniedSandboxSetData); err != nil {
+	if err := fw.predefinedDenySet.ClearAndAddElements(fw.conn, sandbox_network.DeniedSandboxSetData); err != nil {
 		return fmt.Errorf("reset predefined deny set: %w", err)
 	}
 
@@ -285,134 +258,20 @@ func (fw *Firewall) ReplaceUserRules(acl *sandboxnetwork.ACL) error {
 		return fmt.Errorf("reset predefined allow set: %w", err)
 	}
 
-	// 3. Replace user deny set with all-ports denied CIDRs (buffered, no flush).
-	if err := clearAndReplaceCIDRs(fw.conn, fw.userDenySet, deniedAllPorts); err != nil {
+	// 3. Replace user deny set with new denied CIDRs (buffered, no flush).
+	if err := clearAndReplaceCIDRs(fw.conn, fw.userDenySet, deniedCIDRs); err != nil {
 		return fmt.Errorf("replace user deny set: %w", err)
 	}
 
-	// 4. Replace user allow set with all-ports allowed CIDRs (buffered, no flush).
-	if err := clearAndReplaceCIDRs(fw.conn, fw.userAllowSet, allowedAllPorts); err != nil {
+	// 4. Replace user allow set with new allowed CIDRs (buffered, no flush).
+	if err := clearAndReplaceCIDRs(fw.conn, fw.userAllowSet, allowedCIDRs); err != nil {
 		return fmt.Errorf("replace user allow set: %w", err)
 	}
 
-	// 5. Flush and rebuild user non-TCP chain.
-	fw.conn.FlushChain(fw.userDirectChain)
-
-	// All-ports allow (IP set lookup)
-	fw.addUserChainSetRule(fw.userAllowSet.Set(), false)
-
-	// Port-specific allow rules
-	for _, r := range allowedSomePorts {
-		if err := fw.addPortRule(r, false); err != nil {
-			return fmt.Errorf("add port-specific allow rule for %q: %w", r.Host, err)
-		}
-	}
-
-	// All-ports deny (IP set lookup)
-	fw.addUserChainSetRule(fw.userDenySet.Set(), true)
-
-	// Port-specific deny rules
-	for _, r := range deniedSomePorts {
-		if err := fw.addPortRule(r, true); err != nil {
-			return fmt.Errorf("add port-specific deny rule for %q: %w", r.Host, err)
-		}
-	}
-
-	// 6. Single atomic flush.
+	// 5. Single atomic flush.
 	if err := fw.conn.Flush(); err != nil {
 		return fmt.Errorf("flush atomic rule replacement: %w", err)
 	}
-
-	return nil
-}
-
-// addUserChainSetRule adds a rule to the user non-TCP chain that matches
-// destination IPs in the given set. No tap/protocol checks are needed since
-// the parent chain already filters for non-TCP traffic from the tap interface.
-func (fw *Firewall) addUserChainSetRule(ipSet *nftables.Set, drop bool) {
-	var verdict []expr.Any
-	if drop {
-		verdict = []expr.Any{&expr.Verdict{Kind: expr.VerdictDrop}}
-	} else {
-		verdict = accept()
-	}
-
-	fw.conn.AddRule(&nftables.Rule{
-		Table: fw.table,
-		Chain: fw.userDirectChain,
-		Exprs: append(
-			[]expr.Any{
-				expressions.IPv4DestinationAddress(1),
-				expressions.IPSetLookUp(ipSet, 1),
-			},
-			verdict...,
-		),
-	})
-}
-
-// addPortRule adds a rule to the user non-TCP chain that matches non-TCP traffic
-// to a specific destination IP/CIDR and port range. Works for any transport
-// protocol with standard port layout (UDP, SCTP, DCCP, UDPLite). ICMP packets
-// may technically match if their header bytes at the port offset fall in range,
-// but this is harmless — ICMP is not a data channel.
-func (fw *Firewall) addPortRule(rule sandboxnetwork.Rule, drop bool) error {
-	if rule.IPNet == nil {
-		return fmt.Errorf("rule for %q has no parsed IPNet", rule.Host)
-	}
-
-	ipNet := rule.IPNet
-
-	var verdict expr.VerdictKind
-	if drop {
-		verdict = expr.VerdictDrop
-	} else {
-		verdict = expr.VerdictAccept
-	}
-
-	exprs := []expr.Any{
-		// Match destination IP/CIDR
-		expressions.IPv4DestinationAddress(1),
-		&expr.Bitwise{
-			SourceRegister: 1,
-			DestRegister:   1,
-			Len:            4,
-			Mask:           []byte(ipNet.Mask),
-			Xor:            []byte{0, 0, 0, 0},
-		},
-		&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: ipNet.IP.To4()},
-
-		// Load destination port (offset 2 in transport header — same for UDP, SCTP, DCCP)
-		&expr.Payload{
-			DestRegister: 1,
-			Base:         expr.PayloadBaseTransportHeader,
-			Offset:       2, // destination port offset in transport header
-			Len:          2,
-		},
-	}
-
-	// Match port range
-	if rule.PortStart == rule.PortEnd {
-		exprs = append(exprs, &expr.Cmp{
-			Op:       expr.CmpOpEq,
-			Register: 1,
-			Data:     binaryutil.BigEndian.PutUint16(rule.PortStart),
-		})
-	} else {
-		exprs = append(exprs, &expr.Range{
-			Op:       expr.CmpOpEq,
-			Register: 1,
-			FromData: binaryutil.BigEndian.PutUint16(rule.PortStart),
-			ToData:   binaryutil.BigEndian.PutUint16(rule.PortEnd),
-		})
-	}
-
-	exprs = append(exprs, &expr.Verdict{Kind: verdict})
-
-	fw.conn.AddRule(&nftables.Rule{
-		Table: fw.table,
-		Chain: fw.userDirectChain,
-		Exprs: exprs,
-	})
 
 	return nil
 }
@@ -434,7 +293,7 @@ func clearAndReplaceCIDRs(conn *nftables.Conn, s set.Set, cidrs []string) error 
 	// 0.0.0.0/0 must be handled specially: the firewall_toolkit's
 	// ValidateAddress rejects 0.0.0.0 as "unspecified", so we bypass
 	// the toolkit and create raw nftables interval elements directly.
-	if slices.Contains(cidrs, sandboxnetwork.AllInternetTrafficCIDR) {
+	if slices.Contains(cidrs, sandbox_network.AllInternetTrafficCIDR) {
 		conn.FlushSet(s.Set())
 
 		elems := []nftables.SetElement{

@@ -74,9 +74,9 @@ func (a *APIStore) PutSandboxesSandboxIDNetwork(
 }
 
 // validateEgressRules validates egress allow/deny rules:
-// - entries must be valid host[:port] strings
-// - denyOut hosts must be valid IPs or CIDRs (not domains)
-// - allowOut hosts can be IPs, CIDRs, or domain names
+// - entries must be valid CIDRs or domain names (no bare IPs, no port syntax)
+// - denyOut entries must be valid CIDRs (not domains)
+// - allowOut entries can be CIDRs or domain names
 // - when allowOut contains domains, denyOut must include 0.0.0.0/0
 func validateEgressRules(allowOut, denyOut []string) *api.APIError {
 	denyRules, err := sandboxnetwork.ParseRules(denyOut)
@@ -92,8 +92,16 @@ func validateEgressRules(allowOut, denyOut []string) *api.APIError {
 		if rule.IsDomain {
 			return &api.APIError{
 				Code:      http.StatusBadRequest,
-				Err:       fmt.Errorf("invalid deny out entry %s: domains are not supported for egress rules", rule.Host),
-				ClientMsg: fmt.Sprintf("invalid deny out entry %s: domains are not supported for egress rules", rule.Host),
+				Err:       fmt.Errorf("invalid deny out entry %q: domains are not supported in deny rules", rule.Host),
+				ClientMsg: fmt.Sprintf("invalid deny out entry %q: domains are not supported in deny rules", rule.Host),
+			}
+		}
+
+		if !rule.IsDomain && !sandboxnetwork.IsCIDR(rule.Host) {
+			return &api.APIError{
+				Code:      http.StatusBadRequest,
+				Err:       fmt.Errorf("invalid deny out entry %q: must be a CIDR (e.g. 10.0.0.0/8), not a bare IP", rule.Host),
+				ClientMsg: fmt.Sprintf("invalid deny out entry %q: must be a CIDR (e.g. 10.0.0.0/8), not a bare IP", rule.Host),
 			}
 		}
 	}
@@ -111,6 +119,12 @@ func validateEgressRules(allowOut, denyOut []string) *api.APIError {
 	for _, rule := range allowRules {
 		if rule.IsDomain {
 			hasDomains = true
+		} else if !sandboxnetwork.IsCIDR(rule.Host) {
+			return &api.APIError{
+				Code:      http.StatusBadRequest,
+				Err:       fmt.Errorf("invalid allow out entry %q: must be a CIDR (e.g. 10.0.0.0/8) or domain, not a bare IP", rule.Host),
+				ClientMsg: fmt.Sprintf("invalid allow out entry %q: must be a CIDR (e.g. 10.0.0.0/8) or domain, not a bare IP", rule.Host),
+			}
 		}
 	}
 
@@ -148,8 +162,16 @@ func validateIngressRules(allowIn, denyIn []string) *api.APIError {
 		if rule.IsDomain {
 			return &api.APIError{
 				Code:      http.StatusBadRequest,
-				Err:       fmt.Errorf("invalid deny in entry %s: domains are not supported for ingress rules", rule.Host),
-				ClientMsg: fmt.Sprintf("invalid deny in entry %s: domains are not supported for ingress rules", rule.Host),
+				Err:       fmt.Errorf("invalid deny in entry %q: domains are not supported for ingress rules", rule.Host),
+				ClientMsg: fmt.Sprintf("invalid deny in entry %q: domains are not supported for ingress rules", rule.Host),
+			}
+		}
+
+		if !sandboxnetwork.IsCIDR(rule.Host) {
+			return &api.APIError{
+				Code:      http.StatusBadRequest,
+				Err:       fmt.Errorf("invalid deny in entry %q: must be a CIDR (e.g. 10.0.0.0/8), not a bare IP", rule.Host),
+				ClientMsg: fmt.Sprintf("invalid deny in entry %q: must be a CIDR (e.g. 10.0.0.0/8), not a bare IP", rule.Host),
 			}
 		}
 	}
@@ -167,8 +189,16 @@ func validateIngressRules(allowIn, denyIn []string) *api.APIError {
 		if rule.IsDomain {
 			return &api.APIError{
 				Code:      http.StatusBadRequest,
-				Err:       fmt.Errorf("invalid allow in entry %s: domains are not supported for ingress rules", rule.Host),
-				ClientMsg: fmt.Sprintf("invalid allow in entry %s: domains are not supported for ingress rules", rule.Host),
+				Err:       fmt.Errorf("invalid allow in entry %q: domains are not supported for ingress rules", rule.Host),
+				ClientMsg: fmt.Sprintf("invalid allow in entry %q: domains are not supported for ingress rules", rule.Host),
+			}
+		}
+
+		if !sandboxnetwork.IsCIDR(rule.Host) {
+			return &api.APIError{
+				Code:      http.StatusBadRequest,
+				Err:       fmt.Errorf("invalid allow in entry %q: must be a CIDR (e.g. 10.0.0.0/8), not a bare IP", rule.Host),
+				ClientMsg: fmt.Sprintf("invalid allow in entry %q: must be a CIDR (e.g. 10.0.0.0/8), not a bare IP", rule.Host),
 			}
 		}
 	}

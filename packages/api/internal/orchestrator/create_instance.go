@@ -31,34 +31,64 @@ import (
 )
 
 // buildEgressConfig constructs the orchestrator egress configuration from
-// allow/deny entry lists. Entries may include IPs, CIDRs, domains, and
-// optional port ranges (e.g. "8.8.8.8:53", "example.com:443"). Raw entry
-// strings are passed through to the orchestrator, which re-parses them for
-// nftables and TCP proxy enforcement.
-//
+// allow/deny entry lists. The API has already validated these entries.
+// CIDRs and domains are split into their respective proto fields.
 // When any allowed entry is a domain, the default nameserver is injected so
 // the sandbox can resolve domain names.
 func buildEgressConfig(allowedEntries, deniedEntries []string) *orchestrator.SandboxNetworkEgressConfig {
-	allowed := allowedEntries
+	var allowedCIDRs []string
+	var allowedDomains []string
 
-	hasDomains := false
 	for _, entry := range allowedEntries {
 		rule, err := sandboxnetwork.ParseRule(entry)
 		if err == nil && rule.IsDomain {
-			hasDomains = true
-
-			break
+			allowedDomains = append(allowedDomains, entry)
+		} else {
+			allowedCIDRs = append(allowedCIDRs, sandboxnetwork.AddressStringToCIDR(entry))
 		}
 	}
 
-	if hasDomains {
-		allowed = append(append([]string{}, allowedEntries...), sandboxnetwork.DefaultNameserver)
+	// Inject default nameserver when domains are configured
+	if len(allowedDomains) > 0 {
+		allowedCIDRs = append(allowedCIDRs, sandboxnetwork.DefaultNameserver)
+	}
+
+	// Normalize denied entries to CIDRs
+	deniedCIDRs := make([]string, 0, len(deniedEntries))
+	for _, entry := range deniedEntries {
+		deniedCIDRs = append(deniedCIDRs, sandboxnetwork.AddressStringToCIDR(entry))
 	}
 
 	return &orchestrator.SandboxNetworkEgressConfig{
-		Allowed: allowed,
-		Denied:  deniedEntries,
+		AllowedCidrs:   allowedCIDRs,
+		DeniedCidrs:    deniedCIDRs,
+		AllowedDomains: allowedDomains,
 	}
+}
+
+// parseIngressRules converts pre-validated ingress rule strings (CIDR[:port[-port]])
+// into structured IngressRule protos. The API has already validated these entries
+// as valid CIDRs with optional port ranges, so parsing errors are silently skipped.
+func parseIngressRules(entries []string) []*orchestrator.IngressRule {
+	if len(entries) == 0 {
+		return nil
+	}
+
+	rules := make([]*orchestrator.IngressRule, 0, len(entries))
+	for _, entry := range entries {
+		rule, err := sandboxnetwork.ParseRule(entry)
+		if err != nil {
+			continue // pre-validated by API handler
+		}
+
+		rules = append(rules, &orchestrator.IngressRule{
+			Cidr:     sandboxnetwork.AddressStringToCIDR(rule.Host),
+			PortLow:  uint32(rule.PortStart),
+			PortHigh: uint32(rule.PortEnd),
+		})
+	}
+
+	return rules
 }
 
 // buildNetworkConfig constructs the orchestrator network configuration from the input parameters
@@ -76,15 +106,15 @@ func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess
 
 	if network != nil && network.Ingress != nil {
 		orchNetwork.Ingress.MaskRequestHost = network.Ingress.MaskRequestHost
-		orchNetwork.Ingress.Allowed = network.Ingress.AllowedAddresses
-		orchNetwork.Ingress.Denied = network.Ingress.DeniedAddresses
+		orchNetwork.Ingress.Allowed = parseIngressRules(network.Ingress.AllowedAddresses)
+		orchNetwork.Ingress.Denied = parseIngressRules(network.Ingress.DeniedAddresses)
 	}
 
 	// Handle the case where internet access is explicitly disabled
 	// This should be applied after copying the network config to preserve allowed addresses
 	if allowInternetAccess != nil && !*allowInternetAccess {
 		// Block all internet access - this overrides any other blocked addresses
-		orchNetwork.Egress.Denied = []string{sandboxnetwork.AllInternetTrafficCIDR}
+		orchNetwork.Egress.DeniedCidrs = []string{sandboxnetwork.AllInternetTrafficCIDR}
 	}
 
 	return orchNetwork

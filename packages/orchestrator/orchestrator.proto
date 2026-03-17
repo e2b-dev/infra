@@ -71,15 +71,22 @@ message SandboxNetworkConfig {
 }
 
 message SandboxNetworkEgressConfig {
-  repeated string allowed = 1;
-  repeated string denied = 2;
+  repeated string allowed_cidrs = 1;
+  repeated string denied_cidrs = 2;
+  repeated string allowed_domains = 3;
+}
+
+message IngressRule {
+  string cidr = 1;
+  uint32 port_low = 2;   // 0 = all ports
+  uint32 port_high = 3;  // 0 = all ports
 }
 
 message SandboxNetworkIngressConfig {
   optional string traffic_access_token = 1;
   optional string mask_request_host = 2;
-  repeated string allowed = 3;
-  repeated string denied = 4;
+  repeated IngressRule allowed = 3;
+  repeated IngressRule denied = 4;
 }
 
 message SandboxCreateRequest {
