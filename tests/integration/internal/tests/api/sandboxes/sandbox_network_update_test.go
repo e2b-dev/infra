@@ -730,6 +730,11 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 			checks: []ingressCheck{{testPort, "203.0.113.42", false}, {testPort, "203.0.113.99", true}},
 		},
 		{
+			name: "garbage_xff_fails_closed", ciOnly: true,
+			denyIn: []string{"198.51.100.0/24"},
+			checks: []ingressCheck{{testPort, "not-an-ip", true}},
+		},
+		{
 			name:   "envd_exempt_from_ingress_restrictions",
 			denyIn: []string{"0.0.0.0/0"},
 			checks: []ingressCheck{{envdPort, "", false}},

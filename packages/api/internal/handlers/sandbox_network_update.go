@@ -92,8 +92,8 @@ func validateEgressRules(allowOut, denyOut []string) *api.APIError {
 		if rule.IsDomain {
 			return &api.APIError{
 				Code:      http.StatusBadRequest,
-				Err:       fmt.Errorf("invalid denied CIDR %s", rule.Host),
-				ClientMsg: fmt.Sprintf("invalid denied CIDR %s", rule.Host),
+				Err:       fmt.Errorf("invalid deny out entry %s: domains are not supported", rule.Host),
+				ClientMsg: fmt.Sprintf("invalid deny out entry %s: domains are not supported", rule.Host),
 			}
 		}
 	}

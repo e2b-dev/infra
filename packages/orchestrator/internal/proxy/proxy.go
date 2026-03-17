@@ -91,10 +91,14 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 
 			if isNonEnvdTraffic && sbx.Config.HasIngressRules() {
 				clientIP := reverseproxy.ExtractClientIP(r)
-				if ip := net.ParseIP(clientIP); ip != nil {
-					if !sbx.Config.IsIngressAllowed(ip, uint16(port)) {
-						return nil, reverseproxy.NewErrClientIPNotAllowed(sandboxId, clientIP)
-					}
+				ip := net.ParseIP(clientIP)
+				if ip == nil {
+					// Fail closed: unparseable client IP is denied when ingress rules are active.
+					return nil, reverseproxy.NewErrClientIPNotAllowed(sandboxId, clientIP)
+				}
+
+				if !sbx.Config.IsIngressAllowed(ip, uint16(port)) {
+					return nil, reverseproxy.NewErrClientIPNotAllowed(sandboxId, clientIP)
 				}
 			}
 
