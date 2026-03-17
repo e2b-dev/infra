@@ -287,18 +287,12 @@ func (o *gcpObject) ReadAt(ctx context.Context, buff []byte, off int64) (n int, 
 
 	defer reader.Close()
 
-	for reader.Remain() > 0 {
-		nr, err := reader.Read(buff[n:])
-		n += nr
+	n, err = io.ReadFull(reader, buff)
+	if errors.Is(err, io.ErrUnexpectedEOF) {
+		err = io.EOF
+	}
 
-		if err == nil {
-			continue
-		}
-
-		if errors.Is(err, io.EOF) {
-			break
-		}
-
+	if ignoreEOF(err) != nil {
 		timer.Failure(ctx, int64(n))
 
 		return n, fmt.Errorf("failed to read %q: %w", o.path, err)
@@ -306,7 +300,7 @@ func (o *gcpObject) ReadAt(ctx context.Context, buff []byte, off int64) (n int, 
 
 	timer.Success(ctx, int64(n))
 
-	return n, nil
+	return n, err
 }
 
 func (o *gcpObject) Put(ctx context.Context, data []byte) (e error) {
