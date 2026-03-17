@@ -89,10 +89,10 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 				}
 			}
 
-			if isNonEnvdTraffic && sbx.HasIngressRules() {
+			if isNonEnvdTraffic && sbx.Config.HasIngressRules() {
 				clientIP := reverseproxy.ExtractClientIP(r)
 				if ip := net.ParseIP(clientIP); ip != nil {
-					if !sbx.IsIngressAllowed(ip, uint16(port)) {
+					if !sbx.Config.IsIngressAllowed(ip, uint16(port)) {
 						return nil, reverseproxy.NewErrClientIPNotAllowed(sandboxId, clientIP)
 					}
 				}

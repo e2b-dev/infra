@@ -27,9 +27,9 @@ func (o *Orchestrator) UpdateSandboxNetworkConfig(
 	egressUpdate *types.SandboxNetworkEgressConfig,
 	ingressUpdate *types.SandboxNetworkIngressConfig,
 ) *api.APIError {
-	egressProto := buildEgressConfig(egressUpdate.AllowedAddresses, egressUpdate.DeniedAddresses)
+	egress := buildEgressConfig(egressUpdate.AllowedAddresses, egressUpdate.DeniedAddresses)
 
-	ingressProto := &orchestratorgrpc.SandboxNetworkIngressConfig{
+	ingress := &orchestratorgrpc.SandboxNetworkIngressConfig{
 		MaskRequestHost: ingressUpdate.MaskRequestHost,
 		Allowed:         ingressUpdate.AllowedAddresses,
 		Denied:          ingressUpdate.DeniedAddresses,
@@ -47,7 +47,7 @@ func (o *Orchestrator) UpdateSandboxNetworkConfig(
 		sbx.Network.Egress = egressUpdate
 		sbx.Network.Ingress = ingressUpdate
 
-		ingressProto.TrafficAccessToken = sbx.TrafficAccessToken
+		ingress.TrafficAccessToken = sbx.TrafficAccessToken
 
 		return sbx, nil
 	}
@@ -67,7 +67,7 @@ func (o *Orchestrator) UpdateSandboxNetworkConfig(
 	}
 
 	// Apply the network update on the orchestrator node.
-	return o.updateSandboxNetworkOnNode(ctx, sbx, egressProto, ingressProto)
+	return o.updateSandboxNetworkOnNode(ctx, sbx, egress, ingress)
 }
 
 func (o *Orchestrator) updateSandboxNetworkOnNode(

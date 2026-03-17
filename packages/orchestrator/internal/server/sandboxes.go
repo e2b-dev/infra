@@ -341,7 +341,10 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 	if req.GetIngress() != nil {
 		updates = append(updates, func(_ context.Context) (func(context.Context), error) {
 			oldIngress := sbx.Config.GetNetworkIngress()
-			sbx.SetNetworkIngress(req.GetIngress())
+
+			if err := sbx.Config.SetNetworkIngress(req.GetIngress()); err != nil {
+				return nil, fmt.Errorf("invalid ingress config: %w", err)
+			}
 
 			ingress := req.GetIngress()
 			eventData["network_ingress"] = map[string]any{
@@ -349,7 +352,7 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 				"denied":  ingress.GetDenied(),
 			}
 
-			return func(_ context.Context) { sbx.SetNetworkIngress(oldIngress) }, nil
+			return func(_ context.Context) { _ = sbx.Config.SetNetworkIngress(oldIngress) }, nil
 		})
 	}
 

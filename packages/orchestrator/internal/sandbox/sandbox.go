@@ -84,11 +84,12 @@ type Config struct {
 	// The Network pointer itself is set once at construction and never replaced.
 	mu                  *sync.RWMutex
 	Network             *orchestrator.SandboxNetworkConfig
-	networkParsedEgress *sandbox_network.ACL // pre-parsed egress rules, nil when no egress config
+	networkParsedEgress  *sandbox_network.ACL // pre-parsed egress rules, nil when no egress config
+	networkParsedIngress *sandbox_network.ACL // pre-parsed ingress rules, nil when no ingress config
 }
 
 // NewConfig creates a Config, normalizing a nil Network to an empty config
-// so that Network is never nil. Pre-parses egress rules.
+// so that Network is never nil. Pre-parses egress and ingress rules.
 func NewConfig(c Config) (*Config, error) {
 	if c.Network == nil {
 		c.Network = &orchestrator.SandboxNetworkConfig{}
@@ -97,12 +98,20 @@ func NewConfig(c Config) (*Config, error) {
 	c.mu = &sync.RWMutex{}
 
 	egress := c.Network.GetEgress()
-	acl, err := sandbox_network.NewEgressACL(egress.GetAllowed(), egress.GetDenied())
+	egressACL, err := sandbox_network.NewEgressACL(egress.GetAllowed(), egress.GetDenied())
 	if err != nil {
 		return nil, fmt.Errorf("invalid egress rules: %w", err)
 	}
 
-	c.networkParsedEgress = acl
+	c.networkParsedEgress = egressACL
+
+	ingress := c.Network.GetIngress()
+	ingressACL, err := sandbox_network.NewIngressACL(ingress.GetAllowed(), ingress.GetDenied())
+	if err != nil {
+		return nil, fmt.Errorf("invalid ingress rules: %w", err)
+	}
+
+	c.networkParsedIngress = ingressACL
 
 	return &c, nil
 }
@@ -150,12 +159,41 @@ func (c *Config) RestoreNetworkEgress(egress *orchestrator.SandboxNetworkEgressC
 	c.networkParsedEgress = acl
 }
 
-// SetNetworkIngress updates the sandbox network ingress config in a thread-safe manner.
-func (c *Config) SetNetworkIngress(ingress *orchestrator.SandboxNetworkIngressConfig) {
+// SetNetworkIngress parses and stores ingress rules atomically.
+func (c *Config) SetNetworkIngress(ingress *orchestrator.SandboxNetworkIngressConfig) error {
+	var acl *sandbox_network.ACL
+	if ingress != nil {
+		var err error
+		acl, err = sandbox_network.NewIngressACL(ingress.GetAllowed(), ingress.GetDenied())
+		if err != nil {
+			return err
+		}
+	}
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	c.Network.Ingress = ingress
+	c.networkParsedIngress = acl
+
+	return nil
+}
+
+// IsIngressAllowed checks if a client IP + destination port is allowed by ingress rules.
+// Priority: allow wins → deny → default allow.
+func (c *Config) IsIngressAllowed(clientIP net.IP, port uint16) bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	return c.networkParsedIngress.IsAllowed(clientIP, port)
+}
+
+// HasIngressRules returns true if any ingress rules are configured.
+func (c *Config) HasIngressRules() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	return c.networkParsedIngress.HasRules()
 }
 
 // GetNetworkIngress returns the ingress config in a thread-safe manner.
@@ -226,12 +264,9 @@ type Metadata struct {
 	Config         *Config
 	Runtime        RuntimeMetadata
 
-	rwmu      sync.RWMutex // protects startedAt, endAt, ingress ACL
+	rwmu      sync.RWMutex // protects startedAt, endAt
 	startedAt time.Time
 	endAt     time.Time
-
-	// Pre-parsed ingress ACL for fast matching on the proxy hot path.
-	ingressACL *sandbox_network.ACL
 }
 
 // GetEndAt returns the sandbox end time in a thread-safe manner.
@@ -248,61 +283,6 @@ func (m *Metadata) SetEndAt(t time.Time) {
 	defer m.rwmu.Unlock()
 
 	m.endAt = t
-}
-
-// SetNetworkIngress updates the sandbox network ingress config in a thread-safe manner.
-// It updates the Config and pre-parses rules into an ACL for fast matching on the proxy hot path.
-func (m *Metadata) SetNetworkIngress(ingress *orchestrator.SandboxNetworkIngressConfig) {
-	if m.Config != nil {
-		m.Config.SetNetworkIngress(ingress)
-	}
-
-	var acl *sandbox_network.ACL
-	if ingress != nil {
-		// Errors are silently ignored here because validation happens at the API layer.
-		acl, _ = sandbox_network.NewIngressACL(ingress.GetAllowed(), ingress.GetDenied())
-	}
-
-	m.rwmu.Lock()
-	defer m.rwmu.Unlock()
-
-	m.ingressACL = acl
-}
-
-// buildParsedIngressRules reads the current ingress config from Config and parses rules.
-// Must be called with rwmu held.
-func (m *Metadata) buildParsedIngressRules() {
-	if m.Config == nil {
-		m.ingressACL = nil
-
-		return
-	}
-
-	ingress := m.Config.GetNetworkIngress()
-	if ingress == nil {
-		m.ingressACL = nil
-
-		return
-	}
-
-	m.ingressACL, _ = sandbox_network.NewIngressACL(ingress.GetAllowed(), ingress.GetDenied())
-}
-
-// IsIngressAllowed checks if a client IP + destination port is allowed by ingress rules.
-// Priority: allow wins → deny → default allow.
-func (m *Metadata) IsIngressAllowed(clientIP net.IP, port uint16) bool {
-	m.rwmu.RLock()
-	defer m.rwmu.RUnlock()
-
-	return m.ingressACL.IsAllowed(clientIP, port)
-}
-
-// HasIngressRules returns true if any ingress rules are configured.
-func (m *Metadata) HasIngressRules() bool {
-	m.rwmu.RLock()
-	defer m.rwmu.RUnlock()
-
-	return m.ingressACL.HasRules()
 }
 
 type Sandbox struct {
@@ -522,7 +502,6 @@ func (f *Factory) CreateSandbox(
 		startedAt: time.Now(),
 		endAt:     time.Now().Add(sandboxTimeout),
 	}
-	metadata.buildParsedIngressRules()
 
 	sbx := &Sandbox{
 		LifecycleID: uuid.NewString(),
@@ -843,7 +822,6 @@ func (f *Factory) ResumeSandbox(
 		startedAt: startedAt,
 		endAt:     endAt,
 	}
-	metadata.buildParsedIngressRules()
 
 	sbx := &Sandbox{
 		LifecycleID: uuid.NewString(),
