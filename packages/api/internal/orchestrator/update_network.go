@@ -47,6 +47,8 @@ func (o *Orchestrator) UpdateSandboxNetworkConfig(
 		sbx.Network.Egress = egressUpdate
 		sbx.Network.Ingress = ingressUpdate
 
+		// Preserve the existing traffic access token — it is set at sandbox creation,
+		// not part of the network update request, but must be forwarded to the orchestrator.
 		ingress.TrafficAccessToken = sbx.TrafficAccessToken
 
 		return sbx, nil

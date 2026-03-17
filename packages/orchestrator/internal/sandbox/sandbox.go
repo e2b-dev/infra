@@ -80,12 +80,14 @@ type Config struct {
 
 	VolumeMounts []VolumeMountConfig
 
-	// mu protects mutable sub-fields of Network and networkParsedEgress.
-	// The Network pointer itself is set once at construction and never replaced.
-	mu                   *sync.RWMutex
-	Network              *orchestrator.SandboxNetworkConfig
-	networkParsedEgress  *sandboxnetwork.ACL // pre-parsed egress rules, nil when no egress config
-	networkParsedIngress *sandboxnetwork.ACL // pre-parsed ingress rules, nil when no ingress config
+	// mu protects reads/writes to Network sub-fields (proto config).
+	mu      *sync.RWMutex
+	Network *orchestrator.SandboxNetworkConfig
+
+	// Parsed ACLs are immutable once created and swapped atomically.
+	// Readers load lock-free; writers store after building the new ACL.
+	networkParsedEgress  atomic.Pointer[sandboxnetwork.ACL]
+	networkParsedIngress atomic.Pointer[sandboxnetwork.ACL]
 }
 
 // NewConfig creates a Config, normalizing a nil Network to an empty config
@@ -103,7 +105,7 @@ func NewConfig(c Config) (*Config, error) {
 		return nil, fmt.Errorf("invalid egress rules: %w", err)
 	}
 
-	c.networkParsedEgress = egressACL
+	c.networkParsedEgress.Store(egressACL)
 
 	ingress := c.Network.GetIngress()
 	ingressACL, err := sandboxnetwork.NewIngressACL(ingress.GetAllowed(), ingress.GetDenied())
@@ -111,30 +113,22 @@ func NewConfig(c Config) (*Config, error) {
 		return nil, fmt.Errorf("invalid ingress rules: %w", err)
 	}
 
-	c.networkParsedIngress = ingressACL
+	c.networkParsedIngress.Store(ingressACL)
 
 	return &c, nil
 }
 
-// GetParsedEgress returns the pre-parsed egress ACL in a thread-safe manner.
-// Returns nil when no egress configuration is set.
+// GetParsedEgress returns the pre-parsed egress ACL (lock-free).
 func (c *Config) GetParsedEgress() *sandboxnetwork.ACL {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	return c.networkParsedEgress
+	return c.networkParsedEgress.Load()
 }
 
-// GetParsedIngress returns the pre-parsed ingress ACL in a thread-safe manner.
-// Returns nil when no ingress configuration is set.
+// GetParsedIngress returns the pre-parsed ingress ACL (lock-free).
 func (c *Config) GetParsedIngress() *sandboxnetwork.ACL {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	return c.networkParsedIngress
+	return c.networkParsedIngress.Load()
 }
 
-// GetNetworkEgress returns the raw egress protobuf config in a thread-safe manner.
+// GetNetworkEgress returns the raw egress protobuf config.
 func (c *Config) GetNetworkEgress() *orchestrator.SandboxNetworkEgressConfig {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -142,7 +136,8 @@ func (c *Config) GetNetworkEgress() *orchestrator.SandboxNetworkEgressConfig {
 	return c.Network.GetEgress()
 }
 
-// SetNetworkEgress parses and stores egress rules atomically.
+// SetNetworkEgress parses the new rules, then stores both the proto config
+// and the parsed ACL. Parsing happens outside the lock.
 func (c *Config) SetNetworkEgress(egress *orchestrator.SandboxNetworkEgressConfig) error {
 	acl, err := sandboxnetwork.NewEgressACL(egress.GetAllowed(), egress.GetDenied())
 	if err != nil {
@@ -150,25 +145,25 @@ func (c *Config) SetNetworkEgress(egress *orchestrator.SandboxNetworkEgressConfi
 	}
 
 	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	c.Network.Egress = egress
-	c.networkParsedEgress = acl
+	c.mu.Unlock()
+
+	c.networkParsedEgress.Store(acl)
 
 	return nil
 }
 
 // RestoreNetworkEgress restores a previously saved egress config and ACL without re-parsing.
-// Used for rollback only.
 func (c *Config) RestoreNetworkEgress(egress *orchestrator.SandboxNetworkEgressConfig, acl *sandboxnetwork.ACL) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	c.Network.Egress = egress
-	c.networkParsedEgress = acl
+	c.mu.Unlock()
+
+	c.networkParsedEgress.Store(acl)
 }
 
-// SetNetworkIngress parses and stores ingress rules atomically.
+// SetNetworkIngress parses the new rules, then stores both the proto config
+// and the parsed ACL. Parsing happens outside the lock.
 func (c *Config) SetNetworkIngress(ingress *orchestrator.SandboxNetworkIngressConfig) error {
 	var acl *sandboxnetwork.ACL
 	if ingress != nil {
@@ -180,42 +175,35 @@ func (c *Config) SetNetworkIngress(ingress *orchestrator.SandboxNetworkIngressCo
 	}
 
 	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	c.Network.Ingress = ingress
-	c.networkParsedIngress = acl
+	c.mu.Unlock()
+
+	c.networkParsedIngress.Store(acl)
 
 	return nil
 }
 
 // RestoreNetworkIngress restores a previously saved ingress config and ACL without re-parsing.
-// Used for rollback only.
 func (c *Config) RestoreNetworkIngress(ingress *orchestrator.SandboxNetworkIngressConfig, acl *sandboxnetwork.ACL) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	c.Network.Ingress = ingress
-	c.networkParsedIngress = acl
+	c.mu.Unlock()
+
+	c.networkParsedIngress.Store(acl)
 }
 
 // IsIngressAllowed checks if a client IP + destination port is allowed by ingress rules.
-// Priority: allow wins → deny → default allow.
+// Lock-free: loads the atomically-swapped immutable ACL.
 func (c *Config) IsIngressAllowed(clientIP net.IP, port uint16) bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	return c.networkParsedIngress.IsAllowed(clientIP, port)
+	return c.networkParsedIngress.Load().IsAllowed(clientIP, port)
 }
 
 // HasIngressRules returns true if any ingress rules are configured.
 func (c *Config) HasIngressRules() bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	return c.networkParsedIngress.HasRules()
+	return c.networkParsedIngress.Load().HasRules()
 }
 
-// GetNetworkIngress returns the ingress config in a thread-safe manner.
+// GetNetworkIngress returns the ingress config.
 func (c *Config) GetNetworkIngress() *orchestrator.SandboxNetworkIngressConfig {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
