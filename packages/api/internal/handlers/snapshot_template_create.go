@@ -18,6 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 func (a *APIStore) PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID api.SandboxID) {
@@ -93,6 +94,24 @@ func (a *APIStore) PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID api
 
 		opts.Alias = &alias
 		opts.Namespace = &teamInfo.Slug
+	}
+
+	sbx, err := a.orchestrator.GetSandbox(ctx, teamID, sandboxID)
+	if err != nil {
+		if errors.Is(err, sandbox.ErrNotFound) {
+			a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(sandboxID))
+		} else {
+			telemetry.ReportError(ctx, "error getting sandbox for snapshot", err)
+			a.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to get sandbox")
+		}
+
+		return
+	}
+
+	if err := sharedUtils.CheckEnvdVersionForSnapshot(sbx.EnvdVersion); err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, err.Error())
+
+		return
 	}
 
 	telemetry.ReportEvent(ctx, "Creating snapshot template")
