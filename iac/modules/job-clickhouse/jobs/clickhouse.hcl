@@ -56,6 +56,20 @@ job "clickhouse" {
       }
     }
 
+    service {
+      name = "clickhouse-http"
+      port = "clickhouse-http"
+      tags = ["server-${i + 1}"]
+
+      check {
+        type     = "http"
+        path     = "/ping"
+        port     = "clickhouse-http"
+        interval = "10s"
+        timeout  = "5s"
+      }
+    }
+
     task "clickhouse-server" {
       driver = "docker"
 
