@@ -315,6 +315,12 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 				sbx.Config.SetNetworkEgress(egress)
 			}
 
+			eventData["network_egress"] = map[string]any{
+				"allowed_cidrs":   egress.GetAllowedCidrs(),
+				"denied_cidrs":    egress.GetDeniedCidrs(),
+				"allowed_domains": egress.GetAllowedDomains(),
+			}
+
 			return func(ctx context.Context) {
 				_ = sbx.Slot.UpdateInternet(ctx, oldEgress)
 				sbx.Config.SetNetworkEgress(oldEgress)
@@ -327,6 +333,13 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 			oldIngress := sbx.Config.GetNetworkIngress()
 
 			sbx.Config.SetNetworkIngress(req.GetIngress())
+
+			ingress := req.GetIngress()
+			eventData["network_ingress"] = map[string]any{
+				"allowed":           ingressRuleStrings(ingress.GetAllowed()),
+				"denied":            ingressRuleStrings(ingress.GetDenied()),
+				"mask_request_host": ingress.GetMaskRequestHost(),
+			}
 
 			return func(_ context.Context) { sbx.Config.SetNetworkIngress(oldIngress) }, nil
 		})
@@ -859,4 +872,22 @@ func (s *Server) publishSandboxEvent(ctx context.Context, sbx *sandbox.Sandbox, 
 			SandboxTeamID:      teamID,
 		},
 	)
+}
+
+func ingressRuleStrings(rules []*orchestrator.IngressRule) []string {
+	out := make([]string, 0, len(rules))
+	for _, r := range rules {
+		s := r.GetCidr()
+		if lo, hi := r.GetPortLow(), r.GetPortHigh(); lo != 0 {
+			if lo == hi {
+				s = fmt.Sprintf("%s:%d", s, lo)
+			} else {
+				s = fmt.Sprintf("%s:%d-%d", s, lo, hi)
+			}
+		}
+
+		out = append(out, s)
+	}
+
+	return out
 }
