@@ -26,9 +26,11 @@ const (
 type ServiceInfoStatus int32
 
 const (
-	ServiceInfoStatus_Healthy     ServiceInfoStatus = 0
-	ServiceInfoStatus_Draining    ServiceInfoStatus = 1
-	ServiceInfoStatus_Unhealthy   ServiceInfoStatus = 2
+	ServiceInfoStatus_Healthy ServiceInfoStatus = 0
+	// Draining means the node is bound to be shut down. It will not accept new sandboxes and will stop once all existing sandboxes are done.
+	ServiceInfoStatus_Draining  ServiceInfoStatus = 1
+	ServiceInfoStatus_Unhealthy ServiceInfoStatus = 2
+	// ScalingDown means the node is a candidate for removal but can be interrupted. If interrupted, it returns to Healthy and continues serving traffic.
 	ServiceInfoStatus_ScalingDown ServiceInfoStatus = 3
 )
 

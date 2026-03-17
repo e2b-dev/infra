@@ -1294,7 +1294,10 @@ components:
 
     NodeStatus:
       type: string
-      description: Status of the node
+      description: |
+        Status of the node.
+        - draining: the node is bound to be shut down. It will not accept new sandboxes and will stop once all existing sandboxes are done.
+        - scaling_down: the node is a candidate for removal but can be interrupted. If interrupted, it returns to ready and continues serving traffic.
       enum:
         - ready
         - draining
