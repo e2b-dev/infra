@@ -146,7 +146,7 @@ type GetFilesParams struct {
 	// Username User for setting file ownership and resolving relative paths. Defaults to the sandbox's default user.
 	Username *User `form:"username,omitempty" json:"username,omitempty"`
 
-	// Signature HMAC signature for access verification. Required when no X-Access-Token header is provided. Format is "v1_<sha256hash>".
+	// Signature Signature used for file access permission verification.
 	Signature *Signature `form:"signature,omitempty" json:"signature,omitempty"`
 
 	// SignatureExpiration Unix timestamp (seconds) after which the signature expires. Only used with the signature parameter.
@@ -166,7 +166,7 @@ type PostFilesParams struct {
 	// Username User for setting file ownership and resolving relative paths. Defaults to the sandbox's default user.
 	Username *User `form:"username,omitempty" json:"username,omitempty"`
 
-	// Signature HMAC signature for access verification. Required when no X-Access-Token header is provided. Format is "v1_<sha256hash>".
+	// Signature Signature used for file access permission verification.
 	Signature *Signature `form:"signature,omitempty" json:"signature,omitempty"`
 
 	// SignatureExpiration Unix timestamp (seconds) after which the signature expires. Only used with the signature parameter.
