@@ -86,8 +86,8 @@ type Config struct {
 
 	// Parsed ACLs are immutable once created and swapped atomically.
 	// Readers load lock-free; writers store after building the new ACL.
-	networkParsedEgress  atomic.Pointer[sandboxnetwork.ACL]
-	networkParsedIngress atomic.Pointer[sandboxnetwork.ACL]
+	networkParsedEgress  *atomic.Pointer[sandboxnetwork.ACL]
+	networkParsedIngress *atomic.Pointer[sandboxnetwork.ACL]
 }
 
 // NewConfig creates a Config, normalizing a nil Network to an empty config
@@ -98,6 +98,8 @@ func NewConfig(c Config) (*Config, error) {
 	}
 
 	c.mu = &sync.RWMutex{}
+	c.networkParsedEgress = &atomic.Pointer[sandboxnetwork.ACL]{}
+	c.networkParsedIngress = &atomic.Pointer[sandboxnetwork.ACL]{}
 
 	egress := c.Network.GetEgress()
 	egressACL, err := sandboxnetwork.NewEgressACL(egress.GetAllowed(), egress.GetDenied())
