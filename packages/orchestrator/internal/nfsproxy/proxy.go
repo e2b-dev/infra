@@ -24,6 +24,7 @@ type Config struct {
 }
 
 type Proxy struct {
+	config Config
 	server *nfs.Server
 }
 
@@ -49,7 +50,15 @@ func NewProxy(ctx context.Context, builder *chrooted.Builder, sandboxes *sandbox
 		Context: ctx,
 	}
 
-	return &Proxy{server: s}, nil
+	if config.Tracing {
+		s.OnConnect = tracing.OnConnect
+		s.OnDisconnect = tracing.OnDisconnect
+	}
+
+	return &Proxy{
+		config: config,
+		server: s,
+	}, nil
 }
 
 func (p *Proxy) Serve(lis net.Listener) error {

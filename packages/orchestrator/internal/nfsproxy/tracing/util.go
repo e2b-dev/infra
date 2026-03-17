@@ -12,9 +12,9 @@ import (
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy/tracing")
 
 func startSpan(ctx context.Context, name string, attrs ...attribute.KeyValue) (context.Context, func(error, ...attribute.KeyValue)) {
-	ctx, span := tracer.Start(ctx, name, trace.WithAttributes(attrs...))
+	ctx, span := tracer.Start(ctx, name, trace.WithAttributes(attrs...)) //nolint:spancheck // span.End called by returned function
 
-	return ctx, func(err error, endAttrs ...attribute.KeyValue) {
+	return ctx, func(err error, endAttrs ...attribute.KeyValue) { //nolint:spancheck // must be called by caller
 		if len(endAttrs) > 0 {
 			span.SetAttributes(endAttrs...)
 		}

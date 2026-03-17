@@ -54,6 +54,7 @@ func (e *tracingHandler) Change(filesystem billy.Filesystem) billy.Change {
 	defer finish(nil)
 
 	change := e.inner.Change(filesystem)
+
 	return newChange(ctx, change)
 }
 
@@ -87,6 +88,7 @@ func (e *tracingHandler) FromHandle(fh []byte) (fs billy.Filesystem, paths []str
 	if fs != nil {
 		fs = newFS(ctx, fs)
 	}
+
 	return
 }
 
@@ -96,7 +98,7 @@ func (e *tracingHandler) InvalidateHandle(filesystem billy.Filesystem, bytes []b
 		ctx = tfs.ctx
 	}
 
-	ctx, finish := startSpan(ctx, "NFS.InvalidateHandle")
+	_, finish := startSpan(ctx, "NFS.InvalidateHandle")
 	defer func() { finish(err) }()
 
 	return e.inner.InvalidateHandle(filesystem, bytes)
