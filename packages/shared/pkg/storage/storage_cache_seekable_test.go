@@ -131,6 +131,41 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 		assert.Equal(t, 3, read)
 	})
 
+	t.Run("truncated cache file falls back to remote", func(t *testing.T) {
+		t.Parallel()
+
+		tempDir := t.TempDir()
+		fullData := []byte{1, 2, 3, 4, 5}
+
+		mockSeeker := storagemocks.NewMockSeekable(t)
+		mockSeeker.EXPECT().
+			ReadAt(mock.Anything, mock.Anything, mock.Anything).
+			RunAndReturn(func(_ context.Context, buff []byte, _ int64) (int, error) {
+				copy(buff, fullData)
+
+				return len(fullData), nil
+			})
+
+		c := cachedSeekable{
+			path:      tempDir,
+			chunkSize: 5,
+			inner:     mockSeeker,
+			tracer:    noopTracer,
+		}
+
+		// Plant a truncated cache file (2 of 5 bytes).
+		chunkPath := c.makeChunkFilename(0)
+		require.NoError(t, os.MkdirAll(filepath.Dir(chunkPath), 0o755))
+		require.NoError(t, os.WriteFile(chunkPath, []byte{0xAA, 0xBB}, 0o600))
+
+		// ReadAt should detect the short cache read and fall back to remote.
+		buffer := make([]byte, 5)
+		read, err := c.ReadAt(t.Context(), buffer, 0)
+		require.NoError(t, err)
+		assert.Equal(t, 5, read)
+		assert.Equal(t, fullData, buffer)
+	})
+
 	t.Run("consecutive ReadAt calls should cache", func(t *testing.T) {
 		t.Parallel()
 

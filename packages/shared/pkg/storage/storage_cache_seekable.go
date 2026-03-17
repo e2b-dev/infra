@@ -92,10 +92,14 @@ func (c *cachedSeekable) ReadAt(ctx context.Context, buff []byte, offset int64) 
 	readTimer := cacheSlabReadTimerFactory.Begin(attribute.String(nfsCacheOperationAttr, nfsCacheOperationAttrReadAt))
 	count, err := c.readAtFromCache(ctx, chunkPath, buff)
 	if ignoreEOF(err) == nil {
-		recordCacheRead(ctx, true, int64(count), cacheTypeSeekable, cacheOpReadAt)
-		readTimer.Success(ctx, int64(count))
+		if isCompleteRead(count, len(buff), err) {
+			recordCacheRead(ctx, true, int64(count), cacheTypeSeekable, cacheOpReadAt)
+			readTimer.Success(ctx, int64(count))
 
-		return count, err // return `err` in case it's io.EOF
+			return count, err // return `err` in case it's io.EOF
+		}
+
+		err = fmt.Errorf("cached chunk is truncated: got %d bytes, expected %d", count, len(buff))
 	}
 	readTimer.Failure(ctx, int64(count))
 
