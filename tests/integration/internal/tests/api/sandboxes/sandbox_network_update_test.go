@@ -15,7 +15,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
-	sandboxnetwork "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
+	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	sharedutils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
@@ -31,7 +31,7 @@ var (
 	networkTestTemplateOnce sync.Once
 )
 
-const blockAll = sandboxnetwork.AllInternetTrafficCIDR
+const blockAll = sandbox_network.AllInternetTrafficCIDR
 
 func stringSlicePtr(s ...string) *[]string { return &s }
 
@@ -86,39 +86,39 @@ func putNetwork(
 	return resp
 }
 
-// requireTCPAllowed asserts that an HTTP/HTTPS request succeeds.
-func requireTCPAllowed(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, url, msg string) {
+// requireHTTPOutAllowed asserts that an outbound HTTP/HTTPS request succeeds.
+func requireHTTPOutAllowed(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, url, msg string) {
 	t.Helper()
 	err := utils.ExecCommand(t, ctx, sbx, envdClient, "curl", "--connect-timeout", "5", "--max-time", "10", "-Iks", url)
 	require.NoError(t, err, msg)
 }
 
-// requireTCPBlocked asserts that an HTTP/HTTPS request is blocked.
+// requireHTTPOutBlocked asserts that an outbound HTTP/HTTPS request is blocked.
 // RES_OPTIONS caps glibc DNS timeout so blocked-domain curls fail in ~2 s
 // instead of curl's default ~20 s DNS retry cycle.
-func requireTCPBlocked(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, url, msg string) {
+func requireHTTPOutBlocked(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, url, msg string) {
 	t.Helper()
 	err := utils.ExecCommand(t, ctx, sbx, envdClient,
 		"sh", "-c", `RES_OPTIONS="timeout:1 attempts:1" curl --connect-timeout 0.3 --max-time 0.5 -Iks `+url)
 	require.Error(t, err, msg)
 }
 
-// requireDNSAllowed asserts that a UDP DNS query to 8.8.8.8 succeeds.
-func requireDNSAllowed(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, msg string) {
+// requireDNSOutAllowed asserts that an outbound UDP DNS query to 8.8.8.8 succeeds.
+func requireDNSOutAllowed(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, msg string) {
 	t.Helper()
 	err := utils.ExecCommand(t, ctx, sbx, envdClient, "dig", "+short", "@8.8.8.8", "google.com")
 	require.NoError(t, err, msg)
 }
 
-// requireDNSBlocked asserts that a UDP DNS query to the given server is blocked.
-func requireDNSBlocked(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, server, msg string) {
+// requireDNSOutBlocked asserts that an outbound UDP DNS query to the given server is blocked.
+func requireDNSOutBlocked(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, server, msg string) {
 	t.Helper()
 	err := utils.ExecCommand(t, ctx, sbx, envdClient, "dig", "+short", "+timeout=1", "+retry=0", fmt.Sprintf("@%s", server), "google.com")
 	require.Error(t, err, msg)
 }
 
-// assertHTTPResponseFromServer asserts that an HTTPS request returns a response from the expected server.
-func assertHTTPResponseFromServer(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, url, expectedServerHeader, msg string) {
+// requireHTTPResponseFromServer asserts that an outbound HTTPS request returns a response from the expected server.
+func requireHTTPResponseFromServer(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, url, expectedServerHeader, msg string) {
 	t.Helper()
 	output, err := utils.ExecCommandWithOutput(t, ctx, sbx, envdClient, nil, "user", "curl", "--connect-timeout", "5", "--max-time", "10", "-Iks", url)
 	require.NoError(t, err, msg)
@@ -131,13 +131,13 @@ type connectivityCheck struct {
 	allowed bool
 }
 
-func verifyConnectivity(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, checks []connectivityCheck) {
+func verifyHTTPOut(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, checks []connectivityCheck) {
 	t.Helper()
 	for _, c := range checks {
 		if c.allowed {
-			requireTCPAllowed(t, ctx, sbx, envdClient, c.url, c.url+" should be reachable")
+			requireHTTPOutAllowed(t, ctx, sbx, envdClient, c.url, c.url+" should be reachable")
 		} else {
-			requireTCPBlocked(t, ctx, sbx, envdClient, c.url, c.url+" should be blocked")
+			requireHTTPOutBlocked(t, ctx, sbx, envdClient, c.url, c.url+" should be blocked")
 		}
 	}
 }
@@ -349,55 +349,55 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 
 	t.Run("egress/ip/allow_specific", func(t *testing.T) { //nolint:paralleltest // sequential
 		updateEgress([]string{"8.8.8.8/32"}, []string{blockAll})
-		requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "allowed IP reachable")
-		requireTCPBlocked(t, ctx, sbx, envdClient, "https://1.1.1.1", "non-allowed IP blocked")
+		requireHTTPOutAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "allowed IP reachable")
+		requireHTTPOutBlocked(t, ctx, sbx, envdClient, "https://1.1.1.1", "non-allowed IP blocked")
 	})
 
 	t.Run("egress/ip/block_specific", func(t *testing.T) { //nolint:paralleltest // sequential
 		updateEgress(nil, []string{"8.8.8.8/32"})
-		requireTCPBlocked(t, ctx, sbx, envdClient, "https://8.8.8.8", "denied IP blocked")
-		requireTCPAllowed(t, ctx, sbx, envdClient, "https://1.1.1.1", "non-denied IP allowed")
+		requireHTTPOutBlocked(t, ctx, sbx, envdClient, "https://8.8.8.8", "denied IP blocked")
+		requireHTTPOutAllowed(t, ctx, sbx, envdClient, "https://1.1.1.1", "non-denied IP allowed")
 	})
 
 	t.Run("egress/ip/allow_cidr", func(t *testing.T) { //nolint:paralleltest // sequential
 		updateEgress([]string{"8.8.8.0/24"}, []string{blockAll})
-		requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "IP in allowed CIDR")
-		requireTCPBlocked(t, ctx, sbx, envdClient, "https://1.1.1.1", "IP outside CIDR blocked")
+		requireHTTPOutAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "IP in allowed CIDR")
+		requireHTTPOutBlocked(t, ctx, sbx, envdClient, "https://1.1.1.1", "IP outside CIDR blocked")
 	})
 
 	t.Run("egress/ip/block_cidr", func(t *testing.T) { //nolint:paralleltest // sequential
 		updateEgress(nil, []string{"8.8.8.0/24"})
-		requireTCPBlocked(t, ctx, sbx, envdClient, "https://8.8.8.8", "IP in denied CIDR blocked")
-		requireTCPAllowed(t, ctx, sbx, envdClient, "https://1.1.1.1", "IP outside CIDR allowed")
+		requireHTTPOutBlocked(t, ctx, sbx, envdClient, "https://8.8.8.8", "IP in denied CIDR blocked")
+		requireHTTPOutAllowed(t, ctx, sbx, envdClient, "https://1.1.1.1", "IP outside CIDR allowed")
 	})
 
 	t.Run("egress/ip/allow_overrides_block", func(t *testing.T) { //nolint:paralleltest // sequential
 		updateEgress([]string{"8.8.8.8/32"}, []string{"8.8.8.0/24"})
-		requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "allow takes precedence")
+		requireHTTPOutAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "allow takes precedence")
 	})
 
 	t.Run("egress/ip/partial_allow_deny_default_allow", func(t *testing.T) { //nolint:paralleltest // sequential
 		updateEgress([]string{"8.8.8.8/32"}, []string{"1.1.1.1/32"})
-		requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "explicitly allowed")
-		requireTCPBlocked(t, ctx, sbx, envdClient, "https://1.1.1.1", "explicitly denied")
-		requireTCPAllowed(t, ctx, sbx, envdClient, "https://1.0.0.1", "default allow for unmatched")
+		requireHTTPOutAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "explicitly allowed")
+		requireHTTPOutBlocked(t, ctx, sbx, envdClient, "https://1.1.1.1", "explicitly denied")
+		requireHTTPOutAllowed(t, ctx, sbx, envdClient, "https://1.0.0.1", "default allow for unmatched")
 	})
 
 	t.Run("egress/ip/multiple_allowed", func(t *testing.T) { //nolint:paralleltest // sequential
 		updateEgress([]string{"8.8.8.8/32", "1.1.1.1/32"}, []string{blockAll})
-		requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "first allowed IP")
-		requireTCPAllowed(t, ctx, sbx, envdClient, "https://1.1.1.1", "second allowed IP")
+		requireHTTPOutAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "first allowed IP")
+		requireHTTPOutAllowed(t, ctx, sbx, envdClient, "https://1.1.1.1", "second allowed IP")
 	})
 
 	t.Run("egress/ip/allow_all_cidr", func(t *testing.T) { //nolint:paralleltest // sequential
 		updateEgress([]string{blockAll}, []string{blockAll})
-		requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "0.0.0.0/0 allow overrides deny")
+		requireHTTPOutAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "0.0.0.0/0 allow overrides deny")
 	})
 
 	t.Run("egress/ip/empty_config_allows_all", func(t *testing.T) { //nolint:paralleltest // sequential
 		resetRules()
-		requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "reachable with no rules")
-		requireTCPAllowed(t, ctx, sbx, envdClient, "https://1.1.1.1", "reachable with no rules")
+		requireHTTPOutAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "reachable with no rules")
+		requireHTTPOutAllowed(t, ctx, sbx, envdClient, "https://1.1.1.1", "reachable with no rules")
 	})
 
 	t.Run("egress/ip/private_ranges_always_blocked", func(t *testing.T) { //nolint:paralleltest // sequential
@@ -408,7 +408,7 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 			{"169.254.0.0/16", "169.254.0.1", "169.254/16 (link-local)"},
 		} {
 			updateEgress([]string{pr.cidr}, nil)
-			requireTCPBlocked(t, ctx, sbx, envdClient, pr.ip, fmt.Sprintf("private IP %s always blocked", pr.desc))
+			requireHTTPOutBlocked(t, ctx, sbx, envdClient, pr.ip, fmt.Sprintf("private IP %s always blocked", pr.desc))
 		}
 	})
 
@@ -416,65 +416,65 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 
 	t.Run("egress/domain/allow_through_blocked_internet", func(t *testing.T) { //nolint:paralleltest // sequential
 		updateEgress([]string{"google.com"}, []string{blockAll})
-		requireTCPAllowed(t, ctx, sbx, envdClient, "https://google.com", "allowed domain reachable")
-		requireTCPBlocked(t, ctx, sbx, envdClient, "https://cloudflare.com", "non-allowed domain blocked")
+		requireHTTPOutAllowed(t, ctx, sbx, envdClient, "https://google.com", "allowed domain reachable")
+		requireHTTPOutBlocked(t, ctx, sbx, envdClient, "https://cloudflare.com", "non-allowed domain blocked")
 	})
 
 	t.Run("egress/domain/wildcard", func(t *testing.T) { //nolint:paralleltest // sequential
 		updateEgress([]string{"*.google.com"}, []string{blockAll})
-		requireTCPAllowed(t, ctx, sbx, envdClient, "https://www.google.com", "subdomain matches wildcard")
-		requireTCPBlocked(t, ctx, sbx, envdClient, "https://cloudflare.com", "non-matching blocked")
+		requireHTTPOutAllowed(t, ctx, sbx, envdClient, "https://www.google.com", "subdomain matches wildcard")
+		requireHTTPOutBlocked(t, ctx, sbx, envdClient, "https://cloudflare.com", "non-matching blocked")
 	})
 
 	t.Run("egress/domain/exact_vs_subdomain", func(t *testing.T) { //nolint:paralleltest // sequential
 		updateEgress([]string{"google.com"}, []string{blockAll})
-		requireTCPAllowed(t, ctx, sbx, envdClient, "https://google.com", "exact match")
-		requireTCPBlocked(t, ctx, sbx, envdClient, "https://mail.google.com", "subdomain not matched by exact rule")
+		requireHTTPOutAllowed(t, ctx, sbx, envdClient, "https://google.com", "exact match")
+		requireHTTPOutBlocked(t, ctx, sbx, envdClient, "https://mail.google.com", "subdomain not matched by exact rule")
 	})
 
 	t.Run("egress/domain/wildcard_star", func(t *testing.T) { //nolint:paralleltest // sequential
 		updateEgress([]string{"*"}, []string{blockAll})
-		requireTCPAllowed(t, ctx, sbx, envdClient, "https://google.com", "* matches any domain")
-		requireTCPAllowed(t, ctx, sbx, envdClient, "https://github.com", "* matches any domain")
+		requireHTTPOutAllowed(t, ctx, sbx, envdClient, "https://google.com", "* matches any domain")
+		requireHTTPOutAllowed(t, ctx, sbx, envdClient, "https://github.com", "* matches any domain")
 	})
 
 	t.Run("egress/domain/case_insensitive", func(t *testing.T) { //nolint:paralleltest // sequential
 		updateEgress([]string{"Google.Com"}, []string{blockAll})
-		requireTCPAllowed(t, ctx, sbx, envdClient, "https://google.com", "case insensitive")
-		requireTCPBlocked(t, ctx, sbx, envdClient, "https://cloudflare.com", "non-matching blocked")
+		requireHTTPOutAllowed(t, ctx, sbx, envdClient, "https://google.com", "case insensitive")
+		requireHTTPOutBlocked(t, ctx, sbx, envdClient, "https://cloudflare.com", "non-matching blocked")
 	})
 
 	t.Run("egress/domain/and_ip_combined", func(t *testing.T) { //nolint:paralleltest // sequential
 		updateEgress([]string{"google.com", "1.1.1.1/32"}, []string{blockAll})
-		requireTCPAllowed(t, ctx, sbx, envdClient, "https://google.com", "domain allowed")
-		requireTCPAllowed(t, ctx, sbx, envdClient, "https://1.1.1.1", "IP allowed")
-		requireTCPBlocked(t, ctx, sbx, envdClient, "https://cloudflare.com", "non-allowed domain blocked")
+		requireHTTPOutAllowed(t, ctx, sbx, envdClient, "https://google.com", "domain allowed")
+		requireHTTPOutAllowed(t, ctx, sbx, envdClient, "https://1.1.1.1", "IP allowed")
+		requireHTTPOutBlocked(t, ctx, sbx, envdClient, "https://cloudflare.com", "non-allowed domain blocked")
 	})
 
 	t.Run("egress/domain/https_by_ip_no_hostname", func(t *testing.T) { //nolint:paralleltest // sequential
 		updateEgress([]string{"8.8.8.8/32"}, []string{blockAll})
-		requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "HTTPS by IP uses CIDR rule")
-		requireTCPBlocked(t, ctx, sbx, envdClient, "https://1.1.1.1", "non-allowed IP blocked")
+		requireHTTPOutAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "HTTPS by IP uses CIDR rule")
+		requireHTTPOutBlocked(t, ctx, sbx, envdClient, "https://1.1.1.1", "non-allowed IP blocked")
 	})
 
 	t.Run("egress/domain/http_host_header", func(t *testing.T) { //nolint:paralleltest // sequential
 		updateEgress([]string{"google.com"}, []string{blockAll})
-		requireTCPAllowed(t, ctx, sbx, envdClient, "http://google.com", "HTTP domain via Host header")
-		requireTCPBlocked(t, ctx, sbx, envdClient, "http://cloudflare.com", "non-allowed HTTP domain blocked")
+		requireHTTPOutAllowed(t, ctx, sbx, envdClient, "http://google.com", "HTTP domain via Host header")
+		requireHTTPOutBlocked(t, ctx, sbx, envdClient, "http://cloudflare.com", "non-allowed HTTP domain blocked")
 	})
 
 	// ── Egress: UDP (DNS) ───────────────────────────────────────────────
 
 	t.Run("egress/udp/allowed_ip", func(t *testing.T) { //nolint:paralleltest // sequential
 		updateEgress([]string{"8.8.8.8/32"}, []string{blockAll})
-		requireDNSAllowed(t, ctx, sbx, envdClient, "DNS to allowed IP 8.8.8.8")
-		requireDNSBlocked(t, ctx, sbx, envdClient, "1.1.1.1", "DNS to non-allowed IP 1.1.1.1")
+		requireDNSOutAllowed(t, ctx, sbx, envdClient, "DNS to allowed IP 8.8.8.8")
+		requireDNSOutBlocked(t, ctx, sbx, envdClient, "1.1.1.1", "DNS to non-allowed IP 1.1.1.1")
 	})
 
 	t.Run("egress/udp/allowed_cidr", func(t *testing.T) { //nolint:paralleltest // sequential
 		updateEgress([]string{"8.8.8.0/24"}, []string{blockAll})
-		requireDNSAllowed(t, ctx, sbx, envdClient, "DNS to IP in allowed CIDR")
-		requireDNSBlocked(t, ctx, sbx, envdClient, "1.1.1.1", "DNS to IP outside CIDR")
+		requireDNSOutAllowed(t, ctx, sbx, envdClient, "DNS to IP in allowed CIDR")
+		requireDNSOutBlocked(t, ctx, sbx, envdClient, "1.1.1.1", "DNS to IP outside CIDR")
 	})
 
 	// ── Egress: sequential lifecycle ────────────────────────────────────
@@ -543,7 +543,7 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 				DenyOut:  s.denyOut,
 			})
 			require.Equal(t, http.StatusNoContent, resp.StatusCode())
-			verifyConnectivity(t, ctx, sbx, envdClient, s.checks)
+			verifyHTTPOut(t, ctx, sbx, envdClient, s.checks)
 		})
 	}
 
@@ -735,7 +735,7 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 		})
 
 		// Egress: all outbound blocked.
-		verifyConnectivity(t, ctx, sbx, envdClient, []connectivityCheck{
+		verifyHTTPOut(t, ctx, sbx, envdClient, []connectivityCheck{
 			{"https://8.8.8.8", false},
 			{"https://1.1.1.1", false},
 		})
@@ -746,7 +746,7 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 
 	t.Run("combined/clear_restores_both", func(t *testing.T) { //nolint:paralleltest // sequential
 		resetRules()
-		verifyConnectivity(t, ctx, sbx, envdClient, []connectivityCheck{
+		verifyHTTPOut(t, ctx, sbx, envdClient, []connectivityCheck{
 			{"https://8.8.8.8", true},
 			{"https://1.1.1.1", true},
 		})
@@ -762,7 +762,7 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 		})
 
 		// Egress: allowed IP and domain work, others blocked.
-		verifyConnectivity(t, ctx, sbx, envdClient, []connectivityCheck{
+		verifyHTTPOut(t, ctx, sbx, envdClient, []connectivityCheck{
 			{"https://8.8.8.8", true},
 			{"https://google.com", true},
 			{"https://1.1.1.1", false},
@@ -775,7 +775,7 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 
 	t.Run("combined/clear_again", func(t *testing.T) { //nolint:paralleltest // sequential
 		resetRules()
-		verifyConnectivity(t, ctx, sbx, envdClient, []connectivityCheck{
+		verifyHTTPOut(t, ctx, sbx, envdClient, []connectivityCheck{
 			{"https://8.8.8.8", true},
 			{"https://1.1.1.1", true},
 		})
@@ -798,7 +798,7 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 		})
 
 		// Verify before pause.
-		verifyConnectivity(t, ctx, sbx, envdClient, []connectivityCheck{
+		verifyHTTPOut(t, ctx, sbx, envdClient, []connectivityCheck{
 			{"https://8.8.8.8", true},
 			{"https://google.com", true},
 			{"https://1.1.1.1", false},
@@ -819,7 +819,7 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 		require.Equal(t, http.StatusCreated, resumeResp.StatusCode())
 
 		// Verify all survived: IP, domain, deny-all, and ingress port deny.
-		verifyConnectivity(t, ctx, sbx, envdClient, []connectivityCheck{
+		verifyHTTPOut(t, ctx, sbx, envdClient, []connectivityCheck{
 			{"https://8.8.8.8", true},
 			{"https://google.com", true},
 			{"https://1.1.1.1", false},
@@ -852,8 +852,8 @@ func TestNetworkEgressInternetAccessFalse(t *testing.T) {
 		}),
 	)
 
-	requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "allowed IP reachable despite AllowInternetAccess=false")
-	requireTCPBlocked(t, ctx, sbx, envdClient, "https://1.1.1.1", "blocked by AllowInternetAccess=false")
+	requireHTTPOutAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "allowed IP reachable despite AllowInternetAccess=false")
+	requireHTTPOutBlocked(t, ctx, sbx, envdClient, "https://1.1.1.1", "blocked by AllowInternetAccess=false")
 }
 
 // TestNetworkEgressDNSSpoofing tests that a sandbox user can't bypass domain-based
@@ -880,14 +880,14 @@ func TestNetworkEgressDNSSpoofing(t *testing.T) {
 		}),
 	)
 
-	assertHTTPResponseFromServer(t, ctx, sbx, envdClient,
+	requireHTTPResponseFromServer(t, ctx, sbx, envdClient,
 		"https://google.com", "server: gws",
 		"google.com returns Google server before spoofing")
 
 	err := utils.ExecCommandAsRoot(t, ctx, sbx, envdClient, "sh", "-c", "echo '1.1.1.1 google.com' >> /etc/hosts")
 	require.NoError(t, err, "modify /etc/hosts")
 
-	assertHTTPResponseFromServer(t, ctx, sbx, envdClient,
+	requireHTTPResponseFromServer(t, ctx, sbx, envdClient,
 		"https://google.com", "server: gws",
 		"DNS spoofing neutralized — still returns Google server")
 }
