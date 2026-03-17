@@ -19,6 +19,17 @@ variable "provider_aws_config" {
   }
 }
 
+variable "provider_gcp_config" {
+  type = object({
+    service_account_key           = optional(string, "")
+    gcs_grpc_connection_pool_size = optional(number, 0)
+  })
+  default = {
+    service_account_key           = ""
+    gcs_grpc_connection_pool_size = 0
+  }
+}
+
 variable "node_pool" {
   type = string
 }

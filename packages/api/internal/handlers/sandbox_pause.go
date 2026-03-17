@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"net/http"
@@ -13,11 +12,12 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	snapshotcache "github.com/e2b-dev/infra/packages/api/internal/cache/snapshots"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
+	"github.com/e2b-dev/infra/packages/api/internal/pause"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
-	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -40,37 +40,34 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 	traceID := span.SpanContext().TraceID().String()
 	c.Set("traceID", traceID)
 
-	sbx, err := a.orchestrator.GetSandbox(ctx, teamID, sandboxID)
-	if err != nil {
-		apiErr := pauseHandleNotRunningSandbox(ctx, a.sqlcDB, sandboxID, teamID)
-		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+	pause.LogInitiated(ctx, sandboxID, teamID.String(), pause.ReasonRequest)
 
-		return
-	}
-
-	if sbx.TeamID != teamID {
-		logger.L().Debug(ctx, "Sandbox team mismatch on pause", logger.WithSandboxID(sandboxID), logger.WithTeamID(teamID.String()))
-		a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(sandboxID))
-
-		return
-	}
-
-	err = a.orchestrator.RemoveSandbox(ctx, sbx, sandbox.StateActionPause)
-
+	err = a.orchestrator.RemoveSandbox(ctx, teamID, sandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
 	var transErr *sandbox.InvalidStateTransitionError
 
 	switch {
 	case err == nil:
+		pause.LogSuccess(ctx, sandboxID, teamID.String(), pause.ReasonRequest)
 	case errors.Is(err, orchestrator.ErrSandboxNotFound):
-		apiErr := pauseHandleNotRunningSandbox(ctx, a.sqlcDB, sandboxID, teamID)
+		apiErr := pauseHandleNotRunningSandbox(ctx, a.snapshotCache, sandboxID, teamID)
+		switch apiErr.Code {
+		case http.StatusConflict:
+			pause.LogSkipped(ctx, sandboxID, teamID.String(), pause.ReasonRequest, pause.SkipReasonAlreadyPaused)
+		case http.StatusNotFound:
+			pause.LogSkipped(ctx, sandboxID, teamID.String(), pause.ReasonRequest, pause.SkipReasonNotFound)
+		default:
+			pause.LogFailure(ctx, sandboxID, teamID.String(), pause.ReasonRequest, err)
+		}
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return
 	case errors.As(err, &transErr):
+		pause.LogFailure(ctx, sandboxID, teamID.String(), pause.ReasonRequest, err)
 		a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Sandbox '%s' cannot be paused while in '%s' state", sandboxID, transErr.CurrentState))
 
 		return
 	default:
+		pause.LogFailure(ctx, sandboxID, teamID.String(), pause.ReasonRequest, err)
 		telemetry.ReportError(ctx, "error pausing sandbox", err)
 
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error pausing sandbox")
@@ -81,9 +78,9 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 	c.Status(http.StatusNoContent)
 }
 
-func pauseHandleNotRunningSandbox(ctx context.Context, sqlcDB *sqlcdb.Client, sandboxID string, teamID uuid.UUID) api.APIError {
+func pauseHandleNotRunningSandbox(ctx context.Context, cache *snapshotcache.SnapshotCache, sandboxID string, teamID uuid.UUID) api.APIError {
 	// TODO: ENG-3544 scope GetLastSnapshot query by teamID to avoid post-fetch ownership check.
-	snap, err := sqlcDB.GetLastSnapshot(ctx, sandboxID)
+	snap, err := cache.Get(ctx, sandboxID)
 	if err == nil {
 		if snap.Snapshot.TeamID != teamID {
 			logger.L().Debug(ctx, "Snapshot team mismatch on pause", logger.WithSandboxID(sandboxID), logger.WithTeamID(teamID.String()))
@@ -102,7 +99,7 @@ func pauseHandleNotRunningSandbox(ctx context.Context, sqlcDB *sqlcdb.Client, sa
 		}
 	}
 
-	if errors.Is(err, sql.ErrNoRows) {
+	if errors.Is(err, snapshotcache.ErrSnapshotNotFound) {
 		logger.L().Debug(ctx, "Snapshot not found", logger.WithSandboxID(sandboxID))
 
 		return api.APIError{

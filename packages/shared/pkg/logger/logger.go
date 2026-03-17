@@ -12,6 +12,10 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
+type edgeTraceIDContextKey struct{}
+
+const edgeTraceIDField = "edge_trace_id"
+
 type LoggerConfig struct {
 	// ServiceName is the name of the service that the logger is being created for.
 	// The service name is added to every log entry.
@@ -170,6 +174,10 @@ func (t *TracedLogger) generateFields(ctx context.Context, fields ...zap.Field) 
 	if ctx != nil {
 		contextFields := make([]zap.Field, 0)
 
+		if edgeTraceID, ok := GetEdgeTraceID(ctx); ok {
+			contextFields = append(contextFields, zap.String(edgeTraceIDField, edgeTraceID))
+		}
+
 		span := trace.SpanFromContext(ctx)
 		spanContext := span.SpanContext()
 		if spanContext.HasTraceID() {
@@ -183,6 +191,19 @@ func (t *TracedLogger) generateFields(ctx context.Context, fields ...zap.Field) 
 	}
 
 	return fields
+}
+
+func ContextWithEdgeTraceID(ctx context.Context, edgeTraceID string) context.Context {
+	return context.WithValue(ctx, edgeTraceIDContextKey{}, edgeTraceID)
+}
+
+func GetEdgeTraceID(ctx context.Context) (string, bool) {
+	edgeTraceID, ok := ctx.Value(edgeTraceIDContextKey{}).(string)
+	if !ok || edgeTraceID == "" {
+		return "", false
+	}
+
+	return edgeTraceID, true
 }
 
 func ReplaceGlobals(ctx context.Context, logger Logger) func() {

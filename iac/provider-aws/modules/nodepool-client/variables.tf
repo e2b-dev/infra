@@ -3,8 +3,7 @@ variable "prefix" {
 }
 
 variable "name" {
-  type    = string
-  default = "client"
+  type = string
 }
 
 variable "aws_account_id" {
@@ -63,6 +62,11 @@ variable "machine_type" {
 variable "node_pool_name" {
   type        = string
   description = "Nomad node pool name for client nodes"
+}
+
+variable "node_labels" {
+  description = "Labels to assign to nodes for scheduling purposes"
+  type        = list(string)
 }
 
 variable "base_hugepages_percentage" {

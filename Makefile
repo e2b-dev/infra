@@ -108,8 +108,8 @@ copy-public-builds:
 ifeq ($(PROVIDER),aws)
 	mkdir -p ./.kernels
 	mkdir -p ./.firecrackers
-	gsutil -m cp -r gs://e2b-prod-public-builds/kernels/* ./.kernels/
-	gsutil -m cp -r gs://e2b-prod-public-builds/firecrackers/* ./.firecrackers/
+	aws s3 cp s3://e2b-prod-public-builds/kernels/ ./.kernels/ --recursive --no-sign-request --endpoint-url https://storage.googleapis.com
+	aws s3 cp s3://e2b-prod-public-builds/firecrackers/ ./.firecrackers/ --recursive --no-sign-request --endpoint-url https://storage.googleapis.com
 	aws s3 cp ./.kernels/ s3://${AWS_BUCKET_PREFIX}fc-kernels/ --recursive --profile ${AWS_PROFILE}
 	aws s3 cp ./.firecrackers/ s3://${AWS_BUCKET_PREFIX}fc-versions/ --recursive --profile ${AWS_PROFILE}
 	rm -rf ./.kernels
@@ -201,3 +201,10 @@ tidy:
 .PHONY: local-infra
 local-infra:
 	$(MAKE) -C packages/local-dev local-infra
+
+.PHONY: gcloud-ingress-dashboard
+gcloud-ingress-dashboard:
+ifndef INSTANCE
+	$(error usage: make gcloud-ingress-dashboard INSTANCE=<instance>)
+endif
+	gcloud compute ssh $(INSTANCE) -- -NL 8900:localhost:8900

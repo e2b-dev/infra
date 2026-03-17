@@ -74,7 +74,7 @@ func TestStartRemoving_BasicTransitions(t *testing.T) {
 			err := storage.Add(ctx, sbx)
 			require.NoError(t, err)
 
-			alreadyDone, callback, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, tt.stateAction)
+			_, alreadyDone, callback, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: tt.stateAction})
 
 			switch {
 			case tt.shouldError:
@@ -119,7 +119,7 @@ func TestStartRemoving_PauseThenKill(t *testing.T) {
 	require.NoError(t, err)
 
 	// Start pause operation
-	alreadyDone, callback, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.StateActionPause)
+	_, alreadyDone, callback, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
 	require.NoError(t, err)
 	assert.False(t, alreadyDone)
 	require.NotNil(t, callback)
@@ -145,7 +145,7 @@ func TestStartRemoving_PauseThenKill(t *testing.T) {
 
 	// Meanwhile, another request tries to kill the sandbox
 	start := time.Now()
-	alreadyDone2, callback2, err2 := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.StateActionKill)
+	_, alreadyDone2, callback2, err2 := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionKill})
 	elapsed := time.Since(start)
 
 	// Should have waited for the pause to complete
@@ -186,7 +186,7 @@ func TestStartRemoving_ConcurrentSameState(t *testing.T) {
 	// Three concurrent requests to pause the sandbox
 	for range 3 {
 		go func() {
-			alreadyDone, callback, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.StateActionPause)
+			_, alreadyDone, callback, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
 			if err != nil {
 				results <- struct {
 					alreadyDone bool
@@ -251,13 +251,12 @@ func TestStartRemoving_NotFound(t *testing.T) {
 	ctx := context.Background()
 
 	teamID := uuid.New()
-	alreadyDone, callback, err := storage.StartRemoving(ctx, teamID, "non-existent", sandbox.StateActionKill)
+	_, alreadyDone, callback, err := storage.StartRemoving(ctx, teamID, "non-existent", sandbox.RemoveOpts{Action: sandbox.StateActionKill})
 	require.Error(t, err)
 	assert.False(t, alreadyDone)
 	assert.Nil(t, callback)
 
-	var notFoundErr *sandbox.NotFoundError
-	assert.ErrorAs(t, err, &notFoundErr)
+	assert.ErrorIs(t, err, sandbox.ErrNotFound)
 }
 
 func TestStartRemoving_ContextCancellation(t *testing.T) {
@@ -270,7 +269,7 @@ func TestStartRemoving_ContextCancellation(t *testing.T) {
 	require.NoError(t, err)
 
 	// Start a transition
-	alreadyDone1, callback1, err := storage.StartRemoving(context.Background(), sbx.TeamID, sbx.SandboxID, sandbox.StateActionPause)
+	_, alreadyDone1, callback1, err := storage.StartRemoving(context.Background(), sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
 	require.NoError(t, err)
 	assert.False(t, alreadyDone1)
 	require.NotNil(t, callback1)
@@ -280,12 +279,13 @@ func TestStartRemoving_ContextCancellation(t *testing.T) {
 	defer cancel()
 
 	start := time.Now()
-	_, _, err2 := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.StateActionKill)
+	_, alreadyDone2, _, err2 := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionKill})
 	elapsed := time.Since(start)
 
 	// Should timeout
 	require.Error(t, err2)
 	require.ErrorIs(t, err2, context.DeadlineExceeded)
+	assert.False(t, alreadyDone2)
 	assert.Greater(t, elapsed, 20*time.Millisecond)
 	assert.Less(t, elapsed, 200*time.Millisecond)
 
@@ -319,7 +319,7 @@ func TestWaitForStateChange_WaitForCompletion(t *testing.T) {
 	require.NoError(t, err)
 
 	// Start a transition
-	alreadyDone, callback, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.StateActionPause)
+	_, alreadyDone, callback, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
 	require.NoError(t, err)
 	assert.False(t, alreadyDone)
 	require.NotNil(t, callback)
@@ -358,7 +358,7 @@ func TestWaitForStateChange_ContextCancellation(t *testing.T) {
 	require.NoError(t, err)
 
 	// Start a transition
-	alreadyDone, callback, err := storage.StartRemoving(context.Background(), sbx.TeamID, sbx.SandboxID, sandbox.StateActionPause)
+	_, alreadyDone, callback, err := storage.StartRemoving(context.Background(), sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
 	require.NoError(t, err)
 	assert.False(t, alreadyDone)
 	require.NotNil(t, callback)
@@ -399,7 +399,7 @@ func TestWaitForStateChange_MultipleWaiters(t *testing.T) {
 	require.NoError(t, err)
 
 	// Start a transition
-	alreadyDone, callback, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.StateActionPause)
+	_, alreadyDone, callback, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
 	require.NoError(t, err)
 	assert.False(t, alreadyDone)
 	require.NotNil(t, callback)
@@ -443,7 +443,7 @@ func TestStartRemoving_TransitionKeyTTL(t *testing.T) {
 	require.NoError(t, err)
 
 	// Start a transition but don't complete it
-	alreadyDone, _, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.StateActionPause)
+	_, alreadyDone, _, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
 	require.NoError(t, err)
 	assert.False(t, alreadyDone)
 
@@ -471,7 +471,7 @@ func TestStartRemoving_CallbackMarksTransitionCompleted(t *testing.T) {
 	require.NoError(t, err)
 
 	// Start a transition
-	alreadyDone, callback, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.StateActionPause)
+	_, alreadyDone, callback, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
 	require.NoError(t, err)
 	assert.False(t, alreadyDone)
 	require.NotNil(t, callback)
@@ -513,7 +513,7 @@ func TestStartRemoving_CallbackSetsErrorOnFailure(t *testing.T) {
 	require.NoError(t, err)
 
 	// Start a transition
-	alreadyDone, callback, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.StateActionPause)
+	_, alreadyDone, callback, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
 	require.NoError(t, err)
 	assert.False(t, alreadyDone)
 	require.NotNil(t, callback)
@@ -558,7 +558,7 @@ func TestStartRemoving_SetsEndTimeWhenNotExpired(t *testing.T) {
 	beforeTransition := time.Now()
 
 	// Start a transition
-	alreadyDone, callback, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.StateActionKill)
+	_, alreadyDone, callback, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionKill})
 	require.NoError(t, err)
 	assert.False(t, alreadyDone)
 	require.NotNil(t, callback)
@@ -585,7 +585,7 @@ func TestStartRemoving_WaiterCompletesOnCallbackSuccess(t *testing.T) {
 	require.NoError(t, err)
 
 	// Start a transition
-	alreadyDone, callback, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.StateActionPause)
+	_, alreadyDone, callback, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
 	require.NoError(t, err)
 	assert.False(t, alreadyDone)
 	require.NotNil(t, callback)
@@ -613,7 +613,7 @@ func TestStartRemoving_WaiterCompletesOnCallbackSuccess(t *testing.T) {
 	}
 
 	// Retry should work now - sandbox is already in pausing state
-	alreadyDone2, callback2, err2 := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.StateActionPause)
+	_, alreadyDone2, callback2, err2 := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
 	require.NoError(t, err2)
 	// Already in pausing state from first transition
 	assert.True(t, alreadyDone2)
@@ -631,7 +631,7 @@ func TestStartRemoving_WaiterReceivesErrorOnCallbackFailure(t *testing.T) {
 	require.NoError(t, err)
 
 	// Start a transition
-	alreadyDone, callback, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.StateActionPause)
+	_, alreadyDone, callback, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
 	require.NoError(t, err)
 	assert.False(t, alreadyDone)
 	require.NotNil(t, callback)
@@ -674,7 +674,7 @@ func TestStartRemoving_DifferentExecutionID(t *testing.T) {
 	require.NoError(t, err)
 
 	// Start a transition
-	alreadyDone, callback, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.StateActionPause)
+	_, alreadyDone, callback, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
 	require.NoError(t, err)
 	assert.False(t, alreadyDone)
 	require.NotNil(t, callback)
@@ -697,7 +697,7 @@ func TestStartRemoving_DifferentExecutionID(t *testing.T) {
 	require.NoError(t, err)
 
 	// Now start a new pause transition - should work since previous transition completed
-	alreadyDone2, callback2, err2 := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.StateActionPause)
+	_, alreadyDone2, callback2, err2 := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
 	require.NoError(t, err2)
 	assert.False(t, alreadyDone2, "Should not be alreadyDone since we have a new execution")
 	require.NotNil(t, callback2)
@@ -727,7 +727,7 @@ func TestStartRemoving_TransientTransition(t *testing.T) {
 		sbx := createTestSandbox("transient-restore")
 		require.NoError(t, storage.Add(ctx, sbx))
 
-		_, finish, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, transientAction)
+		_, _, finish, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: transientAction})
 		require.NoError(t, err)
 
 		finish(ctx, nil)
@@ -746,7 +746,7 @@ func TestStartRemoving_TransientTransition(t *testing.T) {
 		sbx := createTestSandbox("transient-fail-result")
 		require.NoError(t, storage.Add(ctx, sbx))
 
-		_, finish, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, transientAction)
+		_, _, finish, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: transientAction})
 		require.NoError(t, err)
 
 		transitionKey := getTransitionKey(sbx.TeamID.String(), sbx.SandboxID)
@@ -772,7 +772,7 @@ func TestStartRemoving_TransientTransition(t *testing.T) {
 		sbx := createTestSandbox("transient-restore-fail")
 		require.NoError(t, storage.Add(ctx, sbx))
 
-		_, finish, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, transientAction)
+		_, _, finish, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: transientAction})
 		require.NoError(t, err)
 
 		// Remove the sandbox key to force restoreToRunning to fail
@@ -791,6 +791,179 @@ func TestStartRemoving_TransientTransition(t *testing.T) {
 	})
 }
 
+// Eviction-specific tests: verify the Eviction flag in RemoveOpts
+// re-checks expiry and transition state under the distributed lock.
+func TestStartRemoving_Eviction(t *testing.T) {
+	t.Parallel()
+
+	t.Run("expired sandbox with no transition is evicted", func(t *testing.T) {
+		t.Parallel()
+
+		storage, _ := setupTestStorage(t)
+		ctx := context.Background()
+
+		sbx := createTestSandbox("evict-ok")
+		sbx.StartTime = time.Now().Add(-2 * time.Hour)
+		sbx.EndTime = time.Now().Add(-time.Second) // already expired
+
+		err := storage.Add(ctx, sbx)
+		require.NoError(t, err)
+
+		_, alreadyDone, callback, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionKill, Eviction: true})
+		require.NoError(t, err)
+		assert.False(t, alreadyDone)
+		require.NotNil(t, callback)
+
+		got, getErr := storage.Get(ctx, sbx.TeamID, sbx.SandboxID)
+		require.NoError(t, getErr)
+		assert.Equal(t, sandbox.StateKilling, got.State)
+
+		callback(ctx, nil)
+	})
+
+	t.Run("non-expired sandbox is not evictable", func(t *testing.T) {
+		t.Parallel()
+
+		storage, _ := setupTestStorage(t)
+		ctx := context.Background()
+
+		sbx := createTestSandbox("evict-not-expired")
+		// EndTime defaults to 1 hour from now (not expired)
+
+		err := storage.Add(ctx, sbx)
+		require.NoError(t, err)
+
+		_, alreadyDone, callback, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionKill, Eviction: true})
+		require.ErrorIs(t, err, sandbox.ErrNotEvictable)
+		assert.False(t, alreadyDone)
+		assert.Nil(t, callback)
+
+		// State must remain Running — sandbox was not touched.
+		got, getErr := storage.Get(ctx, sbx.TeamID, sbx.SandboxID)
+		require.NoError(t, getErr)
+		assert.Equal(t, sandbox.StateRunning, got.State)
+	})
+
+	t.Run("expired sandbox with active transition is not evictable", func(t *testing.T) {
+		t.Parallel()
+
+		storage, _ := setupTestStorage(t)
+		ctx := context.Background()
+
+		sbx := createTestSandbox("evict-in-transition")
+		sbx.StartTime = time.Now().Add(-2 * time.Hour)
+		sbx.EndTime = time.Now().Add(-time.Second) // expired
+
+		err := storage.Add(ctx, sbx)
+		require.NoError(t, err)
+
+		// Start a non-eviction pause transition to occupy the transition slot.
+		_, _, pauseCallback, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
+		require.NoError(t, err)
+		require.NotNil(t, pauseCallback)
+
+		// Eviction should be rejected immediately (not block waiting for the transition).
+		start := time.Now()
+		_, alreadyDone, callback, evictErr := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionKill, Eviction: true})
+		elapsed := time.Since(start)
+
+		require.ErrorIs(t, evictErr, sandbox.ErrNotEvictable)
+		assert.False(t, alreadyDone)
+		assert.Nil(t, callback)
+		assert.Less(t, elapsed, 500*time.Millisecond, "eviction should return immediately, not wait for the transition")
+
+		// Clean up
+		pauseCallback(ctx, nil)
+	})
+
+	t.Run("expired sandbox evicted with auto-pause action", func(t *testing.T) {
+		t.Parallel()
+
+		storage, _ := setupTestStorage(t)
+		ctx := context.Background()
+
+		sbx := createTestSandbox("evict-autopause")
+		sbx.StartTime = time.Now().Add(-2 * time.Hour)
+		sbx.EndTime = time.Now().Add(-time.Second) // expired
+		sbx.AutoPause = true
+
+		err := storage.Add(ctx, sbx)
+		require.NoError(t, err)
+
+		_, alreadyDone, callback, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause, Eviction: true})
+		require.NoError(t, err)
+		assert.False(t, alreadyDone)
+		require.NotNil(t, callback)
+
+		got, getErr := storage.Get(ctx, sbx.TeamID, sbx.SandboxID)
+		require.NoError(t, getErr)
+		assert.Equal(t, sandbox.StatePausing, got.State)
+
+		callback(ctx, nil)
+	})
+
+	t.Run("eviction flag is not propagated on retry after waiting", func(t *testing.T) {
+		t.Parallel()
+
+		// A non-eviction kill waits for an active pause, then retries.
+		// If EndTime is extended mid-flight (simulating KeepAliveFor),
+		// the retry must still proceed because it is not an eviction.
+		storage, _ := setupTestStorage(t)
+		ctx := context.Background()
+
+		sbx := createTestSandbox("evict-retry-no-flag")
+		sbx.StartTime = time.Now().Add(-2 * time.Hour)
+		sbx.EndTime = time.Now().Add(-time.Second) // expired
+
+		err := storage.Add(ctx, sbx)
+		require.NoError(t, err)
+
+		// Start a non-eviction pause.
+		_, _, pauseCallback, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
+		require.NoError(t, err)
+		require.NotNil(t, pauseCallback)
+
+		// A non-eviction kill will wait for the pause, then retry.
+		killDone := make(chan struct{})
+		var killErr error
+		var killAlreadyDone bool
+		var killCallback func(context.Context, error)
+
+		go func() {
+			defer close(killDone)
+			_, killAlreadyDone, killCallback, killErr = storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionKill})
+		}()
+
+		time.Sleep(50 * time.Millisecond)
+
+		// Extend the sandbox timeout while the pause is in progress
+		// (simulating KeepAliveFor extending EndTime).
+		_, updateErr := storage.Update(ctx, sbx.TeamID, sbx.SandboxID, func(s sandbox.Sandbox) (sandbox.Sandbox, error) {
+			s.EndTime = time.Now().Add(time.Hour)
+
+			return s, nil
+		})
+		require.NoError(t, updateErr)
+
+		// Complete the pause.
+		pauseCallback(ctx, nil)
+
+		<-killDone
+
+		// The kill should succeed because it's NOT an eviction — the
+		// non-expired EndTime doesn't block a regular kill.
+		require.NoError(t, killErr)
+		assert.False(t, killAlreadyDone)
+		require.NotNil(t, killCallback)
+
+		got, getErr := storage.Get(ctx, sbx.TeamID, sbx.SandboxID)
+		require.NoError(t, getErr)
+		assert.Equal(t, sandbox.StateKilling, got.State)
+
+		killCallback(ctx, nil)
+	})
+}
+
 // TestStartRemoving_CompletedTransitionAllowsNewTransition tests that a completed
 // transition doesn't block a new transition to a different state.
 func TestStartRemoving_CompletedTransitionAllowsNewTransition(t *testing.T) {
@@ -805,13 +978,13 @@ func TestStartRemoving_CompletedTransitionAllowsNewTransition(t *testing.T) {
 	require.NoError(t, err)
 
 	// Start and complete a pause transition
-	alreadyDone, callback, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.StateActionPause)
+	_, alreadyDone, callback, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
 	require.NoError(t, err)
 	assert.False(t, alreadyDone)
 	callback(ctx, nil)
 
 	// Immediately try to kill - should work since pause is completed
-	alreadyDone2, callback2, err2 := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.StateActionKill)
+	_, alreadyDone2, callback2, err2 := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionKill})
 	require.NoError(t, err2)
 	assert.False(t, alreadyDone2)
 	require.NotNil(t, callback2)

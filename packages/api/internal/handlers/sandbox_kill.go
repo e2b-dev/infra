@@ -21,7 +21,7 @@ import (
 )
 
 func (a *APIStore) deleteSnapshot(ctx context.Context, sandboxID string, teamID uuid.UUID) error {
-	snapshot, err := db.GetSnapshotBuilds(ctx, a.sqlcDB, teamID, sandboxID)
+	snapshot, err := a.throttledGetSnapshotBuilds(ctx, teamID, sandboxID)
 	if err != nil {
 		return err
 	}
@@ -36,6 +36,7 @@ func (a *APIStore) deleteSnapshot(ctx context.Context, sandboxID string, teamID 
 
 	a.templateCache.InvalidateAllTags(context.WithoutCancel(ctx), snapshot.TemplateID)
 	a.templateCache.InvalidateAliasesByTemplateID(context.WithoutCancel(ctx), snapshot.TemplateID, aliasKeys)
+	a.snapshotCache.Invalidate(context.WithoutCancel(ctx), sandboxID)
 
 	return nil
 }
@@ -66,33 +67,21 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 
 	killedOrRemoved := false
 
-	sbx, err := a.orchestrator.GetSandbox(ctx, teamID, sandboxID)
-	if err == nil {
-		if sbx.TeamID != teamID {
-			logger.L().Debug(ctx, "Sandbox team mismatch on kill", logger.WithSandboxID(sandboxID), logger.WithTeamID(teamID.String()))
-			a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(sandboxID))
+	err = a.orchestrator.RemoveSandbox(ctx, teamID, sandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionKill})
+	switch {
+	case err == nil:
+		killedOrRemoved = true
+	case errors.Is(err, orchestrator.ErrSandboxNotFound):
+		logger.L().Debug(ctx, "Running sandbox not found", logger.WithSandboxID(sandboxID))
+	case errors.Is(err, orchestrator.ErrSandboxOperationFailed):
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error killing sandbox: %s", err))
 
-			return
-		}
+		return
+	default:
+		telemetry.ReportError(ctx, "error killing sandbox", err)
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error killing sandbox: %s", err))
 
-		err = a.orchestrator.RemoveSandbox(ctx, sbx, sandbox.StateActionKill)
-		switch {
-		case err == nil:
-			killedOrRemoved = true
-		case errors.Is(err, orchestrator.ErrSandboxNotFound):
-			logger.L().Debug(ctx, "Sandbox not found", logger.WithSandboxID(sandboxID))
-		case errors.Is(err, orchestrator.ErrSandboxOperationFailed):
-			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error killing sandbox: %s", err))
-
-			return
-		default:
-			telemetry.ReportError(ctx, "error killing sandbox", err)
-			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error killing sandbox: %s", err))
-
-			return
-		}
-	} else {
-		logger.L().Debug(ctx, "Sandbox not found", logger.WithSandboxID(sandboxID))
+		return
 	}
 
 	// remove any snapshots when the sandbox is not running
@@ -115,4 +104,14 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 		logger.L().Debug(ctx, "Sandbox not found for deletion", logger.WithSandboxID(sandboxID))
 		a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(sandboxID))
 	}
+}
+
+// throttledGetSnapshotBuilds runs GetSnapshotBuilds gated by the snapshot build query semaphore.
+func (a *APIStore) throttledGetSnapshotBuilds(ctx context.Context, teamID uuid.UUID, sandboxID string) (db.SnapshotBuilds, error) {
+	if err := a.snapshotBuildQuerySem.Acquire(ctx, 1); err != nil {
+		return db.SnapshotBuilds{}, err
+	}
+	defer a.snapshotBuildQuerySem.Release(1)
+
+	return db.GetSnapshotBuilds(ctx, a.sqlcDB, teamID, sandboxID)
 }

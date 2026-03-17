@@ -27,16 +27,22 @@ import (
 	redisbackend "github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/redis"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const statusLogInterval = time.Second * 20
 
 var ErrNodeNotFound = errors.New("node not found")
+
+// SnapshotCacheInvalidator invalidates cached snapshot entries.
+type SnapshotCacheInvalidator interface {
+	Invalidate(ctx context.Context, sandboxID string)
+}
 
 type Orchestrator struct {
 	httpClient              *http.Client
@@ -57,6 +63,9 @@ type Orchestrator struct {
 	accessTokenGenerator    *sandbox.AccessTokenGenerator
 	sandboxCounter          metric.Int64UpDownCounter
 	createdCounter          metric.Int64Counter
+	snapshotCache           SnapshotCacheInvalidator
+
+	snapshotUpsertSem *utils.AdjustableSemaphore
 }
 
 func New(
@@ -70,6 +79,8 @@ func New(
 	clusters *clusters.Pool,
 	featureFlags *featureflags.Client,
 	accessTokenGenerator *sandbox.AccessTokenGenerator,
+	snapshotCache SnapshotCacheInvalidator,
+	snapshotUpsertSem *utils.AdjustableSemaphore,
 ) (*Orchestrator, error) {
 	analyticsInstance, err := analyticscollector.NewAnalytics(
 		ctx,
@@ -123,11 +134,14 @@ func New(
 		accessTokenGenerator: accessTokenGenerator,
 		routingCatalog:       routingCatalog,
 		sqlcDB:               sqlcDB,
+		snapshotCache:        snapshotCache,
 		tel:                  tel,
 		clusters:             clusters,
 
 		sandboxCounter: sandboxCounter,
 		createdCounter: createdCounter,
+
+		snapshotUpsertSem: snapshotUpsertSem,
 	}
 
 	var reservationStorage sandbox.ReservationStorage

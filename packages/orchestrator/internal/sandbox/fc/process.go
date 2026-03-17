@@ -1,6 +1,7 @@
 package fc
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -33,6 +35,46 @@ import (
 )
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc")
+
+// fcLogFilter wraps an io.Writer and suppresses Firecracker FlushMetrics
+// request/response log line pairs that fire every few seconds and create
+// excessive noise. The stateful flag is safe because Firecracker's API server
+// is single-threaded: request and response logs are always adjacent with no
+// interleaving from other actions.
+type fcLogFilter struct {
+	w            io.Writer
+	skipResponse atomic.Bool
+}
+
+func (f *fcLogFilter) Write(p []byte) (n int, err error) {
+	var filtered []byte
+
+	for _, line := range bytes.SplitAfter(p, []byte("\n")) {
+		if len(line) == 0 {
+			continue
+		}
+
+		if bytes.Contains(line, []byte("FlushMetrics")) {
+			f.skipResponse.Store(true)
+
+			continue
+		}
+
+		if f.skipResponse.Load() && bytes.Contains(line, []byte("The request was executed successfully")) {
+			f.skipResponse.Store(false)
+
+			continue
+		}
+
+		filtered = append(filtered, line...)
+	}
+
+	if len(filtered) > 0 {
+		_, err = f.w.Write(filtered)
+	}
+
+	return len(p), err
+}
 
 type ProcessOptions struct {
 	// IoEngine is the io engine to use for the rootfs drive.
@@ -174,7 +216,7 @@ func (p *Process) configure(
 	if stdoutExternal != nil {
 		stdoutWriters = append(stdoutWriters, stdoutExternal)
 	}
-	p.cmd.Stdout = io.MultiWriter(stdoutWriters...)
+	p.cmd.Stdout = &fcLogFilter{w: io.MultiWriter(stdoutWriters...)}
 
 	stderrWriter := &zapio.Writer{Log: sbxlogger.I(sbxMetadata).Logger.Detach(ctx), Level: zap.ErrorLevel}
 	stderrWriters := []io.Writer{stderrWriter}

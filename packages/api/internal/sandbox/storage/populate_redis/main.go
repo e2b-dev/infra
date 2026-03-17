@@ -79,8 +79,8 @@ func (m *PopulateRedisStorage) Update(ctx context.Context, teamID uuid.UUID, san
 	return sbx, nil
 }
 
-func (m *PopulateRedisStorage) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID string, stateAction sandbox.StateAction) (alreadyDone bool, callback func(context.Context, error), err error) {
-	return m.memoryBackend.StartRemoving(ctx, teamID, sandboxID, stateAction)
+func (m *PopulateRedisStorage) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID string, opts sandbox.RemoveOpts) (sandbox.Sandbox, bool, func(context.Context, error), error) {
+	return m.memoryBackend.StartRemoving(ctx, teamID, sandboxID, opts)
 }
 
 func (m *PopulateRedisStorage) WaitForStateChange(ctx context.Context, teamID uuid.UUID, sandboxID string) error {

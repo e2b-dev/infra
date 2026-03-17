@@ -55,12 +55,17 @@ const (
 	maxReadTimeout       = 10 * time.Second
 	maxWriteTimeout      = 75 * time.Second
 
+	// requestTimeout is the context deadline applied to each request.
+	// Must be less than maxWriteTimeout so the context cancels before the
+	// server's write deadline kills the connection (WriteTimeout does NOT
+	// cancel r.Context(); see https://github.com/golang/go/issues/59602).
+	requestTimeout = 60 * time.Second
+
 	// This timeout should be > 600 (GCP LB upstream idle timeout) to prevent race condition
 	// https://cloud.google.com/load-balancing/docs/https#timeouts_and_retries%23:~:text=The%20load%20balancer%27s%20backend%20keepalive,is%20greater%20than%20600%20seconds
 	idleTimeout = 620 * time.Second
 
-	defaultPort      = 80
-	defaultPprofPort = 6060
+	defaultPort = 80
 )
 
 var (
@@ -80,6 +85,8 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 	// Param values are still unescaped before reaching handlers (UnescapePathValues defaults to true).
 	r.UseRawPath = true
 
+	r.Use(gin.Recovery())
+
 	r.Use(
 		// We use custom otel gin middleware because we want to log 4xx errors in the otel
 		customMiddleware.ExcludeRoutes(
@@ -98,7 +105,31 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 			"/sandboxes/:sandboxID/resume",
 			"/sandboxes/:sandboxID/snapshots",
 		),
+		sharedmiddleware.LoggingMiddleware(l, sharedmiddleware.Config{
+			TimeFormat:   time.RFC3339Nano,
+			UTC:          true,
+			DefaultLevel: zap.InfoLevel,
+			Skipper: func(c *gin.Context) bool {
+				switch c.FullPath() {
+				case "/health",
+					"/sandboxes/:sandboxID/refreshes",
+					"/templates/:templateID/builds/:buildID/logs",
+					"/templates/:templateID/builds/:buildID/status":
+					return true
+				}
+
+				return false
+			},
+			Context: func(c *gin.Context) []zapcore.Field {
+				if teamInfo, ok := auth.GetTeamInfo(c); ok {
+					return []zapcore.Field{logger.WithTeamID(teamInfo.ID.String())}
+				}
+
+				return nil
+			},
+		}),
 		gin.Recovery(),
+		customMiddleware.RequestTimeout(requestTimeout), //nolint:contextcheck // Gin middleware sets context via c.Request.WithContext
 	)
 
 	corsConfig := cors.DefaultConfig()
@@ -164,32 +195,6 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 	)
 
 	r.Use(customMiddleware.InitLaunchDarklyContext)
-
-	// Request logging must be executed after authorization (if required) is done,
-	// so that we can log team ID.
-	r.Use(sharedmiddleware.LoggingMiddleware(l, sharedmiddleware.Config{
-		TimeFormat:   time.RFC3339Nano,
-		UTC:          true,
-		DefaultLevel: zap.InfoLevel,
-		Skipper: func(c *gin.Context) bool {
-			switch c.FullPath() {
-			case "/health",
-				"/sandboxes/:sandboxID/refreshes",
-				"/templates/:templateID/builds/:buildID/logs",
-				"/templates/:templateID/builds/:buildID/status":
-				return true
-			}
-
-			return false
-		},
-		Context: func(c *gin.Context) []zapcore.Field {
-			if teamInfo, ok := auth.GetTeamInfo(c); ok {
-				return []zapcore.Field{logger.WithTeamID(teamInfo.ID.String())}
-			}
-
-			return nil
-		},
-	}))
 
 	// We now register our store above as the handler for the interface
 	api.RegisterHandlersWithOptions(r, apiStore, api.GinServerOptions{
@@ -440,13 +445,10 @@ func run() int {
 		}
 	})
 
-	pprofServer := &http.Server{
-		Addr:    fmt.Sprintf("127.0.0.1:%d", defaultPprofPort),
-		Handler: telemetry.NewPprofMux(),
-	}
+	pprofServer := telemetry.NewPprofServer()
 
 	wg.Go(func() {
-		l.Info(ctx, "pprof server starting", zap.Int("port", defaultPprofPort))
+		l.Info(ctx, "pprof server starting", zap.Int("port", telemetry.DefaultPprofPort))
 
 		if err := pprofServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			l.Error(ctx, "pprof server encountered error", zap.Error(err))

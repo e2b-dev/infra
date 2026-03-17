@@ -43,12 +43,12 @@ func (s *Storage) get(sandboxID string) (*memorySandbox, error) {
 func (s *Storage) Get(_ context.Context, teamID uuid.UUID, sandboxID string) (sandbox.Sandbox, error) {
 	item, ok := s.items.Get(sandboxID)
 	if !ok {
-		return sandbox.Sandbox{}, &sandbox.NotFoundError{SandboxID: sandboxID}
+		return sandbox.Sandbox{}, fmt.Errorf("sandbox %q: %w", sandboxID, sandbox.ErrNotFound)
 	}
 
 	data := item.Data()
 	if data.TeamID != teamID {
-		return sandbox.Sandbox{}, &sandbox.NotFoundError{SandboxID: sandboxID}
+		return sandbox.Sandbox{}, fmt.Errorf("sandbox %q: %w", sandboxID, sandbox.ErrNotFound)
 	}
 
 	return data, nil
@@ -115,14 +115,14 @@ func (s *Storage) ExpiredItems(_ context.Context) ([]sandbox.Sandbox, error) {
 func (s *Storage) Update(_ context.Context, teamID uuid.UUID, sandboxID string, updateFunc func(sandbox.Sandbox) (sandbox.Sandbox, error)) (sandbox.Sandbox, error) {
 	item, ok := s.items.Get(sandboxID)
 	if !ok {
-		return sandbox.Sandbox{}, &sandbox.NotFoundError{SandboxID: sandboxID}
+		return sandbox.Sandbox{}, fmt.Errorf("sandbox %q: %w", sandboxID, sandbox.ErrNotFound)
 	}
 
 	item.mu.Lock()
 	defer item.mu.Unlock()
 
 	if item._data.TeamID != teamID {
-		return sandbox.Sandbox{}, &sandbox.NotFoundError{SandboxID: sandboxID}
+		return sandbox.Sandbox{}, fmt.Errorf("sandbox %q: %w", sandboxID, sandbox.ErrNotFound)
 	}
 
 	sbx, err := updateFunc(item._data)
@@ -135,20 +135,45 @@ func (s *Storage) Update(_ context.Context, teamID uuid.UUID, sandboxID string, 
 	return sbx, nil
 }
 
-func (s *Storage) StartRemoving(ctx context.Context, _ uuid.UUID, sandboxID string, stateAction sandbox.StateAction) (alreadyDone bool, callback func(context.Context, error), err error) {
+func (s *Storage) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID string, opts sandbox.RemoveOpts) (sandbox.Sandbox, bool, func(context.Context, error), error) {
 	sbx, err := s.get(sandboxID)
 	if err != nil {
-		return false, nil, err
+		return sandbox.Sandbox{}, false, nil, fmt.Errorf("sandbox %q: %w", sandboxID, sandbox.ErrNotFound)
 	}
 
-	return startRemoving(ctx, sbx, stateAction)
+	data := sbx.Data()
+	if data.TeamID != teamID {
+		return sandbox.Sandbox{}, false, nil, fmt.Errorf("sandbox %q: %w", sandboxID, sandbox.ErrNotFound)
+	}
+
+	alreadyDone, callback, err := startRemoving(ctx, sbx, opts)
+
+	return sbx.Data(), alreadyDone, callback, err
 }
 
-func startRemoving(ctx context.Context, sbx *memorySandbox, stateAction sandbox.StateAction) (alreadyDone bool, callback func(ctx context.Context, err error), err error) {
-	newState := stateAction.TargetState
-
+func startRemoving(ctx context.Context, sbx *memorySandbox, opts sandbox.RemoveOpts) (alreadyDone bool, callback func(ctx context.Context, err error), err error) {
 	sbx.mu.Lock()
 	transition := sbx.transition
+
+	// Resolve eviction under the lock + re-check expiry
+	if opts.Eviction {
+		// If there's a transition already in place, don't evict.
+		if transition != nil {
+			sbx.mu.Unlock()
+
+			return false, nil, sandbox.ErrNotEvictable
+		}
+
+		// If sandbox isn't expired (e.g. race condition with KeepAliveFor), skip.
+		if !sbx._data.IsExpired(time.Now()) {
+			sbx.mu.Unlock()
+
+			return false, nil, sandbox.ErrNotEvictable
+		}
+	}
+
+	newState := opts.Action.TargetState
+
 	if transition != nil {
 		currentState := sbx._data.State
 		sbx.mu.Unlock()
@@ -168,7 +193,7 @@ func startRemoving(ctx context.Context, sbx *memorySandbox, stateAction sandbox.
 		case currentState == newState:
 			return true, func(context.Context, error) {}, nil
 		case sandbox.AllowedTransitions[currentState][newState]:
-			return startRemoving(ctx, sbx, stateAction)
+			return startRemoving(ctx, sbx, sandbox.RemoveOpts{Action: opts.Action})
 		default:
 			return false, nil, fmt.Errorf("unexpected state transition")
 		}
@@ -185,7 +210,7 @@ func startRemoving(ctx context.Context, sbx *memorySandbox, stateAction sandbox.
 		return false, nil, &sandbox.InvalidStateTransitionError{CurrentState: sbx._data.State, TargetState: newState}
 	}
 
-	if stateAction.Effect == sandbox.TransitionExpires {
+	if opts.Action.Effect == sandbox.TransitionExpires {
 		sbx.setExpired()
 	}
 
@@ -197,7 +222,7 @@ func startRemoving(ctx context.Context, sbx *memorySandbox, stateAction sandbox.
 		sbx.mu.Lock()
 		defer sbx.mu.Unlock()
 
-		if stateAction.Effect == sandbox.TransitionTransient {
+		if opts.Action.Effect == sandbox.TransitionTransient {
 			if err == nil && sbx._data.State == newState {
 				sbx._data.State = sandbox.StateRunning
 			}

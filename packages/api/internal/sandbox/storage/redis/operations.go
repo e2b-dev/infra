@@ -59,7 +59,7 @@ func (s *Storage) Get(ctx context.Context, teamID uuid.UUID, sandboxID string) (
 	key := getSandboxKey(teamID.String(), sandboxID)
 	data, err := s.redisClient.Get(ctx, key).Bytes()
 	if errors.Is(err, redis.Nil) {
-		return sandbox.Sandbox{}, &sandbox.NotFoundError{SandboxID: sandboxID}
+		return sandbox.Sandbox{}, fmt.Errorf("sandbox %q: %w", sandboxID, sandbox.ErrNotFound)
 	}
 	if err != nil {
 		return sandbox.Sandbox{}, fmt.Errorf("failed to get sandbox from Redis: %w", err)
@@ -181,7 +181,7 @@ func (s *Storage) Update(ctx context.Context, teamID uuid.UUID, sandboxID string
 	// Get current value
 	data, err := s.redisClient.Get(ctx, key).Bytes()
 	if errors.Is(err, redis.Nil) {
-		return sandbox.Sandbox{}, &sandbox.NotFoundError{SandboxID: sandboxID}
+		return sandbox.Sandbox{}, fmt.Errorf("sandbox %q: %w", sandboxID, sandbox.ErrNotFound)
 	}
 	if err != nil {
 		return sandbox.Sandbox{}, err

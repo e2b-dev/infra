@@ -103,7 +103,7 @@ type EnvBuild struct {
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
 	FinishedAt         *time.Time
-	Status             string
+	Status             types.BuildStatus
 	Dockerfile         *string
 	StartCmd           *string
 	Vcpu               int64
@@ -116,14 +116,14 @@ type EnvBuild struct {
 	EnvdVersion        *string
 	ReadyCmd           *string
 	ClusterNodeID      *string
-	Reason             []byte
+	Reason             types.BuildReason
 	Version            *string
 	CpuArchitecture    *string
 	CpuFamily          *string
 	CpuModel           *string
 	CpuModelName       *string
 	CpuFlags           []string
-	StatusGroup        string
+	StatusGroup        types.BuildStatusGroup
 	TeamID             *uuid.UUID
 }
 
@@ -161,16 +161,17 @@ type SnapshotTemplate struct {
 }
 
 type Team struct {
-	ID            uuid.UUID
-	CreatedAt     time.Time
-	IsBlocked     bool
-	Name          string
-	Tier          string
-	Email         string
-	IsBanned      bool
-	BlockedReason *string
-	ClusterID     *uuid.UUID
-	Slug          string
+	ID                      uuid.UUID
+	CreatedAt               time.Time
+	IsBlocked               bool
+	Name                    string
+	Tier                    string
+	Email                   string
+	IsBanned                bool
+	BlockedReason           *string
+	ClusterID               *uuid.UUID
+	SandboxSchedulingLabels []string
+	Slug                    string
 }
 
 type TeamApiKey struct {
@@ -226,6 +227,7 @@ type UsersTeam struct {
 	IsDefault bool
 	AddedBy   *uuid.UUID
 	CreatedAt pgtype.Timestamp
+	UuidID    uuid.UUID
 }
 
 type Volume struct {

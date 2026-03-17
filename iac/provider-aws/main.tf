@@ -2,7 +2,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 6.33"
+      version = "~> 6.35.1"
     }
 
     cloudflare = {
@@ -71,6 +71,9 @@ locals {
   clickhouse_pool_name   = "clickhouse"
   clickhouse_jobs_prefix = "clickhouse"
 
+  # AMI name prefix must match what Packer produces: "${var.prefix}orch-<timestamp>"
+  ami_family_prefix = "${var.prefix}orch-"
+
   redis_cluster_url   = var.redis_managed ? "rediss://${module.redis[0].endpoint_address}:${local.redis_port}" : ""
   redis_tls_ca_base64 = var.redis_managed ? module.redis[0].endpoint_ca_pem_base64 : ""
   redis_url           = local.redis_cluster_url == "" ? "redis.service.consul:${local.redis_port}" : ""
@@ -105,7 +108,7 @@ module "cluster" {
   consul_gossip_encryption_key    = module.init.cluster.consul_gossip_encryption_key
 
   control_server_cluster_size        = var.control_server_cluster_size
-  control_server_image_family_prefix = var.control_server_image_family_prefix
+  control_server_image_family_prefix = var.control_server_image_family_prefix != "" ? var.control_server_image_family_prefix : local.ami_family_prefix
   control_server_machine_type        = var.control_server_machine_type
   control_server_target_group_arns   = [aws_lb_target_group.nomad.arn]
   control_server_security_group_ids  = [aws_security_group.cluster_node.id]
@@ -126,7 +129,7 @@ module "cluster" {
 
   api_node_pool_name      = local.api_pool_name
   api_cluster_size        = var.api_cluster_size
-  api_image_family_prefix = var.api_image_family_prefix
+  api_image_family_prefix = var.api_image_family_prefix != "" ? var.api_image_family_prefix : local.ami_family_prefix
   api_machine_type        = var.api_server_machine_type
   api_security_group_ids  = [aws_security_group.cluster_node.id]
   api_target_group_arns = [
@@ -136,20 +139,23 @@ module "cluster" {
 
   build_node_pool_name               = local.build_pool_name
   build_cluster_size                 = var.build_cluster_size
+  build_image_family_prefix          = local.ami_family_prefix
   build_machine_type                 = var.build_server_machine_type
   build_server_nested_virtualization = var.build_server_nested_virtualization
   build_security_group_ids           = [aws_security_group.cluster_node.id]
+  build_node_labels                  = var.build_node_labels
 
   client_node_pool_name               = local.client_pool_name
   client_cluster_size                 = var.client_cluster_size
-  client_image_family_prefix          = var.client_image_family_prefix
+  client_image_family_prefix          = var.client_image_family_prefix != "" ? var.client_image_family_prefix : local.ami_family_prefix
   client_machine_type                 = var.client_server_machine_type
   client_security_group_ids           = [aws_security_group.cluster_node.id]
   client_server_nested_virtualization = var.client_server_nested_virtualization
+  client_node_labels                  = var.client_node_labels
 
   clickhouse_az                    = "${data.aws_region.current.name}a"
   clickhouse_cluster_size          = var.clickhouse_cluster_size
-  clickhouse_image_family_prefix   = var.clickhouse_image_family_prefix
+  clickhouse_image_family_prefix   = var.clickhouse_image_family_prefix != "" ? var.clickhouse_image_family_prefix : local.ami_family_prefix
   clickhouse_machine_type          = var.clickhouse_server_machine_type
   clickhouse_node_pool_name        = local.clickhouse_pool_name
   clickhouse_security_group_ids    = [aws_security_group.cluster_node.id]
@@ -184,8 +190,9 @@ module "nomad" {
   admin_token                    = module.init.admin_token
   sandbox_access_token_hash_seed = module.init.sandbox_access_token_hash_seed
 
-  ingress_port  = local.ingress_port
-  ingress_count = var.ingress_count
+  ingress_port                 = local.ingress_port
+  ingress_count                = var.ingress_count
+  additional_traefik_arguments = var.additional_traefik_arguments
 
   client_proxy_count           = var.client_proxy_count
   client_proxy_repository_name = module.init.client_proxy_repository_name
@@ -220,6 +227,11 @@ module "nomad" {
   clickhouse_migrator_repository_name = module.init.clickhouse_migrator_repository_name
 
   launch_darkly_api_key = module.init.launch_darkly_api_key
+
+  db_max_open_connections      = var.db_max_open_connections
+  db_min_idle_connections      = var.db_min_idle_connections
+  auth_db_max_open_connections = var.auth_db_max_open_connections
+  auth_db_min_idle_connections = var.auth_db_min_idle_connections
 }
 
 resource "aws_security_group" "cluster_node" {

@@ -51,6 +51,12 @@ data "google_secret_manager_secret_version" "routing_domains" {
 
 locals {
   additional_domains = nonsensitive(jsondecode(data.google_secret_manager_secret_version.routing_domains.secret_data))
+  additional_api_services = (
+    length(var.additional_api_services) > 0 ? var.additional_api_services :
+    var.additional_api_services_json != "" ? jsondecode(var.additional_api_services_json) :
+    []
+  )
+
 
   // Check if all clusters has size greater than 1
   template_manages_clusters_size_gt_1 = alltrue([for c in var.build_clusters_config : (c.cluster_size > 1)])
@@ -137,10 +143,9 @@ module "cluster" {
   google_service_account_email = module.init.service_account_email
   domain_name                  = var.domain_name
 
-  additional_domains = local.additional_domains
-  additional_api_services = (var.additional_api_services_json != "" ?
-    jsondecode(var.additional_api_services_json) :
-  [])
+  additional_domains                      = local.additional_domains
+  additional_api_services                 = local.additional_api_services
+  additional_api_paths_handled_by_ingress = var.additional_api_paths_handled_by_ingress
 
   docker_contexts_bucket_name = module.init.envs_docker_context_bucket_name
   cluster_setup_bucket_name   = module.init.cluster_setup_bucket_name
@@ -196,8 +201,9 @@ module "nomad" {
   clickhouse_node_pool             = var.clickhouse_node_pool
 
   # Ingress
-  ingress_port  = var.ingress_port
-  ingress_count = var.ingress_count
+  ingress_port                 = var.ingress_port
+  ingress_count                = var.ingress_count
+  additional_traefik_arguments = var.additional_traefik_arguments
 
   # API
   api_server_count                                       = var.api_server_count
@@ -221,6 +227,10 @@ module "nomad" {
   redis_tls_ca_base64_secret_version                     = module.init.redis_tls_ca_base64_secret_version
   sandbox_access_token_hash_seed                         = random_password.sandbox_access_token_hash_seed.result
   sandbox_storage_backend                                = var.sandbox_storage_backend
+  db_max_open_connections                                = var.db_max_open_connections
+  db_min_idle_connections                                = var.db_min_idle_connections
+  auth_db_max_open_connections                           = var.auth_db_max_open_connections
+  auth_db_min_idle_connections                           = var.auth_db_min_idle_connections
 
   # Click Proxy
   client_proxy_count               = var.client_proxy_count
@@ -293,6 +303,8 @@ module "nomad" {
   volume_token_signing_key_name = local.volume_token_signature_name
   volume_token_signing_method   = local.volume_token_signature_method
   volume_token_duration         = var.volume_token_valid_for
+
+  gcs_grpc_connection_pool_size = var.gcs_grpc_connection_pool_size
 }
 
 

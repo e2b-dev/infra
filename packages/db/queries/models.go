@@ -161,16 +161,17 @@ type SnapshotTemplate struct {
 }
 
 type Team struct {
-	ID            uuid.UUID
-	CreatedAt     time.Time
-	IsBlocked     bool
-	Name          string
-	Tier          string
-	Email         string
-	IsBanned      bool
-	BlockedReason *string
-	ClusterID     *uuid.UUID
-	Slug          string
+	ID                      uuid.UUID
+	CreatedAt               time.Time
+	IsBlocked               bool
+	Name                    string
+	Tier                    string
+	Email                   string
+	IsBanned                bool
+	BlockedReason           *string
+	ClusterID               *uuid.UUID
+	SandboxSchedulingLabels []string
+	Slug                    string
 }
 
 type TeamApiKey struct {
@@ -226,6 +227,7 @@ type UsersTeam struct {
 	IsDefault bool
 	AddedBy   *uuid.UUID
 	CreatedAt pgtype.Timestamp
+	UuidID    uuid.UUID
 }
 
 type Volume struct {

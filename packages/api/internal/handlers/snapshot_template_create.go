@@ -18,6 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 func (a *APIStore) PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID api.SandboxID) {
@@ -97,21 +98,18 @@ func (a *APIStore) PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID api
 
 	sbx, err := a.orchestrator.GetSandbox(ctx, teamID, sandboxID)
 	if err != nil {
-		var notFoundErr *sandbox.NotFoundError
-		if errors.As(err, &notFoundErr) {
-			logger.L().Debug(ctx, "Sandbox not found for snapshot", logger.WithSandboxID(sandboxID))
+		if errors.Is(err, sandbox.ErrNotFound) {
 			a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(sandboxID))
-
-			return
+		} else {
+			telemetry.ReportError(ctx, "error getting sandbox for snapshot", err)
+			a.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to get sandbox")
 		}
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error getting sandbox")
 
 		return
 	}
 
-	if sbx.TeamID != teamID {
-		logger.L().Debug(ctx, "Sandbox team mismatch on snapshot", logger.WithSandboxID(sandboxID), logger.WithTeamID(teamID.String()))
-		a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(sandboxID))
+	if err := sharedUtils.CheckEnvdVersionForSnapshot(sbx.EnvdVersion); err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, err.Error())
 
 		return
 	}
@@ -120,6 +118,13 @@ func (a *APIStore) PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID api
 
 	result, err := a.orchestrator.CreateSnapshotTemplate(ctx, teamID, sandboxID, opts)
 	if err != nil {
+		if errors.Is(err, sandbox.ErrNotFound) {
+			logger.L().Debug(ctx, "Sandbox not found for snapshot", logger.WithSandboxID(sandboxID))
+			a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(sandboxID))
+
+			return
+		}
+
 		var transErr *sandbox.InvalidStateTransitionError
 		if errors.As(err, &transErr) {
 			a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Sandbox '%s' cannot be snapshotted while in '%s' state", sandboxID, transErr.CurrentState))

@@ -93,13 +93,19 @@ job "template-manager" {
       }
 
       env {
-        NODE_ID                       = "$${node.unique.name}"
+        NODE_ID     = "$${node.unique.name}"
+        NODE_LABELS = "$${meta.node_labels}"
+
         CONSUL_TOKEN                  = "${consul_acl_token}"
 %{ if provider == "gcp" }
         GOOGLE_SERVICE_ACCOUNT_BASE64 = "${provider_gcp_config.service_account_key}"
         GCP_PROJECT_ID                = "${provider_gcp_config.project_id}"
         GCP_REGION                    = "${provider_gcp_config.region}"
         GCP_DOCKER_REPOSITORY_NAME    = "${provider_gcp_config.docker_registry}"
+
+        %{ if provider_gcp_config.gcs_grpc_connection_pool_size != 0 }
+        GCS_GRPC_CONNECTION_POOL_SIZE = "${provider_gcp_config.gcs_grpc_connection_pool_size}"
+        %{ endif }
 %{ endif }
 %{ if provider == "aws" }
         ARTIFACTS_REGISTRY_PROVIDER   = "AWS_ECR"

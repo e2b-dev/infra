@@ -36,7 +36,7 @@ jobs:
       fail-fast: false
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ inputs.commit_sha }}
 
@@ -47,10 +47,6 @@ jobs:
             go.work
             ${{ matrix.package }}/go.mod
             ${{ matrix.package }}/go.sum
-
-      - name: Warm goose tool
-        working-directory: ${{ matrix.package }}
-        run: go tool goose --version
 
       - name: Setup envd tests
         run: |
@@ -95,7 +91,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Parse .tool-versions
         uses: wistia/parse-tool-versions@v2.1.1

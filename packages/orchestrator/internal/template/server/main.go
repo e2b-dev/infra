@@ -21,9 +21,8 @@ import (
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
-	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
@@ -58,10 +57,9 @@ func New(
 	buildLogger logger.Logger,
 	sandboxFactory *sandbox.Factory,
 	proxy *proxy.SandboxProxy,
-	sandboxes *sandbox.Map,
 	templateCache *sbxtemplate.Cache,
 	templatePersistence storage.StorageProvider,
-	limiter *limit.Limiter,
+	buildPersistence storage.StorageProvider,
 ) (s *ServerStore, e error) {
 	logger.Info(ctx, "Initializing template manager")
 
@@ -89,11 +87,6 @@ func New(
 	}
 	closers = append(closers, dockerhubRepository)
 
-	buildPersistence, err := storage.GetBuildCacheStorageProvider(ctx, limiter)
-	if err != nil {
-		return nil, fmt.Errorf("error getting build cache storage provider: %w", err)
-	}
-
 	buildCache := cache.NewBuildCache(ctx, meterProvider)
 	buildMetrics, err := metrics.NewBuildMetrics(meterProvider)
 	if err != nil {
@@ -110,7 +103,7 @@ func New(
 		artifactsRegistry,
 		dockerhubRepository,
 		proxy,
-		sandboxes,
+		sandboxFactory.Sandboxes,
 		templateCache,
 		buildMetrics,
 	)

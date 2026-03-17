@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"database/sql"
 	"errors"
 	"fmt"
 	"net/http"
@@ -12,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	snapshotcache "github.com/e2b-dev/infra/packages/api/internal/cache/snapshots"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
@@ -70,8 +70,7 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 		}
 
 		// Sandbox not in store at all → fall through to snapshot resume.
-		var notFoundErr *sandbox.NotFoundError
-		if errors.As(apiErr.Err, &notFoundErr) {
+		if errors.Is(apiErr.Err, sandbox.ErrNotFound) {
 			break
 		}
 
@@ -107,9 +106,9 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 	}
 
 	// TODO: ENG-3544 scope GetLastSnapshot query by teamID to avoid post-fetch ownership check.
-	lastSnapshot, err := a.sqlcDB.GetLastSnapshot(ctx, sandboxID)
+	lastSnapshot, err := a.snapshotCache.Get(ctx, sandboxID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, snapshotcache.ErrSnapshotNotFound) {
 			logger.L().Debug(ctx, "Snapshot not found", logger.WithSandboxID(sandboxID))
 			a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(sandboxID))
 

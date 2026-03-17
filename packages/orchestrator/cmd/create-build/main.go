@@ -34,7 +34,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/metrics"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -62,6 +62,7 @@ func main() {
 	startCmd := flag.String("start-cmd", "", "start command")
 	setupCmd := flag.String("setup-cmd", "", "setup command to run during build (e.g., install deps)")
 	readyCmd := flag.String("ready-cmd", "", "ready check command")
+	timeout := flag.Int("timeout", 5, "build timeout in minutes")
 	verbose := flag.Bool("v", false, "verbose output")
 	flag.Parse()
 
@@ -95,7 +96,7 @@ func main() {
 		log.Fatalf("network config: %v", err)
 	}
 
-	err = doBuild(ctx, *templateID, *toBuild, *fromBuild, *kernel, *fc, *vcpu, *memory, *disk, *hugePages, *startCmd, *setupCmd, *readyCmd, localMode, *verbose, builderConfig, networkConfig)
+	err = doBuild(ctx, *templateID, *toBuild, *fromBuild, *kernel, *fc, *vcpu, *memory, *disk, *hugePages, *startCmd, *setupCmd, *readyCmd, localMode, *verbose, *timeout, builderConfig, networkConfig)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -178,10 +179,11 @@ func doBuild(
 	hugePages bool,
 	startCmd, setupCmd, readyCmd string,
 	localMode, verbose bool,
+	timeout int,
 	builderConfig cfg.BuilderConfig,
 	networkConfig network.Config,
 ) error {
-	ctx, cancel := context.WithTimeout(parentCtx, 5*time.Minute)
+	ctx, cancel := context.WithTimeout(parentCtx, time.Duration(timeout)*time.Minute)
 	defer cancel()
 
 	var cores []zapcore.Core
@@ -237,11 +239,11 @@ func doBuild(
 	go tcpFirewall.Start(ctx)
 	defer tcpFirewall.Close(parentCtx)
 
-	persistenceTemplate, err := storage.GetTemplateStorageProvider(ctx, nil)
+	persistenceTemplate, err := storage.GetStorageProvider(ctx, storage.TemplateStorageConfig)
 	if err != nil {
 		return fmt.Errorf("template storage: %w", err)
 	}
-	persistenceBuild, err := storage.GetBuildCacheStorageProvider(ctx, nil)
+	persistenceBuild, err := storage.GetStorageProvider(ctx, storage.BuildCacheStorageConfig)
 	if err != nil {
 		return fmt.Errorf("build storage: %w", err)
 	}
@@ -291,7 +293,7 @@ func doBuild(
 	defer templateCache.Stop()
 
 	buildMetrics, _ := metrics.NewBuildMetrics(noop.MeterProvider{})
-	sandboxFactory := sandbox.NewFactory(c.BuilderConfig, networkPool, devicePool, featureFlags, nil, nil)
+	sandboxFactory := sandbox.NewFactory(c.BuilderConfig, networkPool, devicePool, featureFlags, nil, nil, sandboxes)
 
 	builder := build.NewBuilder(
 		builderConfig, l, featureFlags, sandboxFactory,

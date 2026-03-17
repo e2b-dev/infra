@@ -229,6 +229,12 @@ variable "set_orchestrator_version_metadata" {
   type        = bool
 }
 
+variable "node_labels" {
+  description = "Labels to assign to nodes in this cluster for scheduling purposes"
+  type        = list(string)
+  default     = []
+}
+
 variable "persistent_volume_types" {
   type = map(object({
     local_mount_path = string

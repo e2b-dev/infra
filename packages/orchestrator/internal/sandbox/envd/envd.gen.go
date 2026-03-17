@@ -18,6 +18,18 @@ const (
 	File EntryInfoType = "file"
 )
 
+// ComposeRequest defines model for ComposeRequest.
+type ComposeRequest struct {
+	// Destination Destination file path for the composed file
+	Destination string `json:"destination"`
+
+	// SourcePaths Ordered list of source file paths to concatenate
+	SourcePaths []string `json:"source_paths"`
+
+	// Username User for setting ownership and resolving relative paths
+	Username string `json:"username,omitempty"`
+}
+
 // EntryInfo defines model for EntryInfo.
 type EntryInfo struct {
 	// Name Name of the file
@@ -164,6 +176,9 @@ type PostInitJSONBody struct {
 
 // PostFilesMultipartRequestBody defines body for PostFiles for multipart/form-data ContentType.
 type PostFilesMultipartRequestBody PostFilesMultipartBody
+
+// PostFilesComposeJSONRequestBody defines body for PostFilesCompose for application/json ContentType.
+type PostFilesComposeJSONRequestBody = ComposeRequest
 
 // PostInitJSONRequestBody defines body for PostInit for application/json ContentType.
 type PostInitJSONRequestBody PostInitJSONBody

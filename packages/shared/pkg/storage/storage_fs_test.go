@@ -14,7 +14,9 @@ func newTempProvider(t *testing.T) *fsStorage {
 	t.Helper()
 
 	base := t.TempDir()
-	p := newFileSystemStorage(base)
+	p := newFileSystemStorage(StorageConfig{
+		GetLocalBasePath: func() string { return base },
+	})
 
 	return p
 }

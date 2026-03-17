@@ -201,13 +201,13 @@ echo $overcommitment_hugepages >/proc/sys/vm/nr_overcommit_hugepages
 
 # Give Consul a moment to start its DNS server on port 8600
 echo "- Waiting for Consul DNS to start on port 8600..."
-for i in {1..10}; do
+for i in {1..60}; do
   if nc -z 127.0.0.1 8600 2>/dev/null; then
-    echo "- Consul DNS is ready (attempt $i/10)"
+    echo "- Consul DNS is ready (attempt $i/60)"
     break
   fi
-  if [ $i -eq 10 ]; then
-    echo "- ERROR: Consul DNS not responding after 10 seconds, exiting..."
+  if [ $i -eq 60 ]; then
+    echo "- ERROR: Consul DNS not responding after 60 seconds, exiting..."
     exit 1
   fi
   sleep 1
@@ -224,13 +224,13 @@ echo "- Waiting for systemd-resolved to settle"
 
 # Give Consul a moment to start its DNS server on port 8600
 echo "- Waiting for Systemd-resolved to start..."
-for i in {1..10}; do
+for i in {1..60}; do
   if host google.com 2>/dev/null; then
-    echo "- DNS resolving is ready (attempt $i/10)"
+    echo "- DNS resolving is ready (attempt $i/60)"
     break
   fi
-  if [ $i -eq 10 ]; then
-    echo "- ERROR: Systemd-resolved not responding after 10 seconds, exiting..."
+  if [ $i -eq 60 ]; then
+    echo "- ERROR: Systemd-resolved not responding after 60 seconds, exiting..."
     exit 1
   fi
   sleep 1
@@ -238,7 +238,7 @@ done
 echo "- Flushing DNS caches"
 resolvectl flush-caches
 
-/opt/nomad/bin/run-nomad.sh --client --consul-token "${CONSUL_TOKEN}" --node-pool "${NODE_POOL}" &
+/opt/nomad/bin/run-nomad.sh --client --consul-token "${CONSUL_TOKEN}" --node-pool "${NODE_POOL}" --node-labels "${NODE_LABELS}" &
 
 # Add alias for ssh-ing to sbx
 echo '_sbx_ssh() {

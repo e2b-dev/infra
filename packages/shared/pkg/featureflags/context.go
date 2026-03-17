@@ -1,4 +1,4 @@
-package feature_flags
+package featureflags
 
 import (
 	"context"
@@ -162,4 +162,11 @@ func TemplateContext(templateID string) ldcontext.Context {
 
 func VolumeContext(volumeName string) ldcontext.Context {
 	return ldcontext.NewWithKind(VolumeKind, volumeName)
+}
+
+func VersionContext(orchestratorID, commit string) ldcontext.Context {
+	return ldcontext.NewBuilder(orchestratorID).
+		Kind(OrchestratorKind).
+		SetString(OrchestratorCommitAttribute, commit).
+		Build()
 }

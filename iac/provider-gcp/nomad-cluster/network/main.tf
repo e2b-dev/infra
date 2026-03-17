@@ -56,7 +56,7 @@ locals {
       protocol                        = "HTTP"
       port                            = var.api_port.port
       port_name                       = var.api_port.name
-      timeout_sec                     = 65
+      timeout_sec                     = 80
       connection_draining_timeout_sec = 1
       http_health_check = {
         request_path       = var.api_port.health_path
@@ -268,6 +268,15 @@ resource "google_compute_url_map" "orch_map" {
   path_matcher {
     name            = "api-paths"
     default_service = google_compute_backend_service.default["api"].self_link
+
+    dynamic "path_rule" {
+      for_each = length(var.additional_api_paths_handled_by_ingress) > 0 ? [{}] : []
+
+      content {
+        paths   = var.additional_api_paths_handled_by_ingress
+        service = google_compute_backend_service.ingress.self_link
+      }
+    }
 
     dynamic "path_rule" {
       for_each = var.additional_api_path_rules
