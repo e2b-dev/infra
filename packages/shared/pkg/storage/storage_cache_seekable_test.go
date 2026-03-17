@@ -455,13 +455,13 @@ func TestIsCompleteRead(t *testing.T) {
 		err         error
 		want        bool
 	}{
-		"full read, no error":     {n: 10, expected: 10, err: nil, want: true},
-		"full read, with EOF":     {n: 10, expected: 10, err: io.EOF, want: true},
-		"short read, with EOF":    {n: 3, expected: 10, err: io.EOF, want: true},
-		"short read, no error":    {n: 3, expected: 10, err: nil, want: false},
-		"short read, other error": {n: 3, expected: 10, err: errors.New("fail"), want: false},
-		"zero bytes, with EOF":    {n: 0, expected: 10, err: io.EOF, want: false},
-		"zero bytes, no error":    {n: 0, expected: 10, err: nil, want: false},
+		"full read, no error":      {n: 10, expected: 10, err: nil, want: true},
+		"full read, with EOF":      {n: 10, expected: 10, err: io.EOF, want: true},
+		"short read, with EOF":     {n: 3, expected: 10, err: io.EOF, want: true},
+		"short read, no error":     {n: 3, expected: 10, err: nil, want: false},
+		"short read, other error":  {n: 3, expected: 10, err: errors.New("fail"), want: false},
+		"zero bytes, with EOF":     {n: 0, expected: 10, err: io.EOF, want: false},
+		"zero bytes, no error":     {n: 0, expected: 10, err: nil, want: false},
 		"zero expected, zero read": {n: 0, expected: 0, err: nil, want: true},
 	}
 
