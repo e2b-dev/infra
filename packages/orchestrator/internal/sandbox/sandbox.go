@@ -82,8 +82,8 @@ type Config struct {
 
 	// mu protects mutable sub-fields of Network and networkParsedEgress.
 	// The Network pointer itself is set once at construction and never replaced.
-	mu                  *sync.RWMutex
-	Network             *orchestrator.SandboxNetworkConfig
+	mu                   *sync.RWMutex
+	Network              *orchestrator.SandboxNetworkConfig
 	networkParsedEgress  *sandbox_network.ACL // pre-parsed egress rules, nil when no egress config
 	networkParsedIngress *sandbox_network.ACL // pre-parsed ingress rules, nil when no ingress config
 }
