@@ -104,7 +104,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 			},
 			wantErr:    true,
 			wantCode:   http.StatusBadRequest,
-			wantErrMsg: "invalid deny out entry not-a-cidr: domains are not supported for egress rules",
+			wantErrMsg: `invalid deny out entry "not-a-cidr": domains are not supported in deny rules`,
 		},
 		// Domain validation tests
 		{
@@ -306,7 +306,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 			},
 			wantErr:    true,
 			wantCode:   http.StatusBadRequest,
-			wantErrMsg: "invalid allow in entry not-a-cidr: domains are not supported for ingress rules",
+			wantErrMsg: `invalid allow in entry "not-a-cidr": domains are not supported for ingress rules`,
 		},
 		{
 			name: "valid denyIn CIDR",
@@ -322,7 +322,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 			},
 			wantErr:    true,
 			wantCode:   http.StatusBadRequest,
-			wantErrMsg: "invalid deny in entry bad: domains are not supported for ingress rules",
+			wantErrMsg: `invalid deny in entry "bad": domains are not supported for ingress rules`,
 		},
 		// Mixed domain and CIDR tests
 		{
@@ -373,7 +373,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 			},
 			wantErr:    true,
 			wantCode:   http.StatusBadRequest,
-			wantErrMsg: "invalid deny out entry example.com: domains are not supported for egress rules",
+			wantErrMsg: `invalid deny out entry "example.com": domains are not supported in deny rules`,
 		},
 		{
 			name: "deny_out with invalid port is rejected",

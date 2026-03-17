@@ -11,7 +11,7 @@ SELECT sqlc.embed(e),
        COALESCE(ea.aliases, ARRAY[]::text[])::text[] AS aliases,
        COALESCE(ea.names, ARRAY[]::text[])::text[] AS names
 FROM public.envs AS e
-LEFT JOIN auth.users AS u ON u.id = e.created_by
+LEFT JOIN public.users AS u ON u.id = e.created_by
 LEFT JOIN LATERAL (
     SELECT 
         ARRAY_AGG(alias ORDER BY alias) AS aliases,

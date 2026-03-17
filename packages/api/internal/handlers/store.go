@@ -324,25 +324,25 @@ func (a *APIStore) GetHealth(c *gin.Context) {
 	c.String(http.StatusServiceUnavailable, "Service is unavailable")
 }
 
-func (a *APIStore) GetTeamFromAPIKey(ctx context.Context, _ *gin.Context, apiKey string) (*types.Team, *api.APIError) {
+func (a *APIStore) GetTeamFromAPIKey(ctx context.Context, ginCtx *gin.Context, apiKey string) (*types.Team, *api.APIError) {
 	ctx, span := tracer.Start(ctx, "get team from api key")
 	defer span.End()
 
-	return a.authService.ValidateAPIKey(ctx, apiKey)
+	return a.authService.ValidateAPIKey(ctx, ginCtx, apiKey)
 }
 
-func (a *APIStore) GetUserFromAccessToken(ctx context.Context, _ *gin.Context, accessToken string) (uuid.UUID, *api.APIError) {
+func (a *APIStore) GetUserFromAccessToken(ctx context.Context, ginCtx *gin.Context, accessToken string) (uuid.UUID, *api.APIError) {
 	ctx, span := tracer.Start(ctx, "get user from access token")
 	defer span.End()
 
-	return a.authService.ValidateAccessToken(ctx, accessToken)
+	return a.authService.ValidateAccessToken(ctx, ginCtx, accessToken)
 }
 
-func (a *APIStore) GetUserIDFromSupabaseToken(ctx context.Context, _ *gin.Context, supabaseToken string) (uuid.UUID, *api.APIError) {
+func (a *APIStore) GetUserIDFromSupabaseToken(ctx context.Context, ginCtx *gin.Context, supabaseToken string) (uuid.UUID, *api.APIError) {
 	ctx, span := tracer.Start(ctx, "get user id from supabase token")
 	defer span.End()
 
-	return a.authService.ValidateSupabaseToken(ctx, supabaseToken)
+	return a.authService.ValidateSupabaseToken(ctx, ginCtx, supabaseToken)
 }
 
 func (a *APIStore) GetTeamFromSupabaseToken(ctx context.Context, ginCtx *gin.Context, teamID string) (*types.Team, *api.APIError) {

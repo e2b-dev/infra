@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel/metric"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/connlimit"
@@ -119,16 +118,11 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 			}
 
 			logger := logger.L().With(
-				zap.String("origin_host", r.Host),
-				logger.WithSandboxID(sbx.Runtime.SandboxID),
-				logger.WithTeamID(sbx.Runtime.TeamID),
-				logger.WithSandboxIP(sbx.Slot.HostIPString()),
-				zap.Uint64("sandbox_req_port", port),
-				zap.String("sandbox_req_path", r.URL.Path),
-				zap.String("sandbox_req_method", r.Method),
-				zap.String("sandbox_req_user_agent", r.UserAgent()),
-				zap.String("remote_addr", r.RemoteAddr),
-				zap.Int64("content_length", r.ContentLength),
+				append(
+					logger.ProxyRequestFields(r, sbx.Runtime.SandboxID, port),
+					logger.WithTeamID(sbx.Runtime.TeamID),
+					logger.WithSandboxIP(sbx.Slot.HostIPString()),
+				)...,
 			)
 
 			return &pool.Destination{
