@@ -153,3 +153,7 @@ func (l *tracingFS) Chroot(path string) (fs billy.Filesystem, err error) {
 func (l *tracingFS) Root() string {
 	return l.inner.Root()
 }
+
+func (l *tracingFS) Unwrap() billy.Filesystem {
+	return l.inner
+}

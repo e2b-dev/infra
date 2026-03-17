@@ -2,6 +2,9 @@ package tracing
 
 import (
 	"context"
+	"errors"
+	"io/fs"
+	"os"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -20,8 +23,25 @@ func startSpan(ctx context.Context, name string, attrs ...attribute.KeyValue) (c
 		}
 		if err != nil {
 			span.RecordError(err)
-			span.SetStatus(codes.Error, err.Error())
+			if !isUserError(err) {
+				span.SetStatus(codes.Error, err.Error())
+			}
 		}
 		span.End()
 	}
+}
+
+func isUserError(err error) bool {
+	if errors.Is(err, fs.ErrNotExist) {
+	}
+
+	if errors.Is(err, os.ErrNotExist) {
+		return true
+	}
+
+	if errors.Is(err, os.ErrExist) {
+		return true
+	}
+
+	return false
 }

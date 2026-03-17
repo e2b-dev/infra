@@ -36,6 +36,8 @@ type NFSHandler struct {
 	chrootsBySandboxID map[string][]*chrooted.Chrooted
 }
 
+var _ nfs.Handler = (*NFSHandler)(nil)
+
 func (h *NFSHandler) OnInsert(_ *sandbox.Sandbox) {
 }
 
@@ -56,8 +58,6 @@ func (h *NFSHandler) OnRemove(sandboxID string) {
 		}
 	}
 }
-
-var _ nfs.Handler = (*NFSHandler)(nil)
 
 func NewNFSHandler(
 	builder *chrooted.Builder,
@@ -143,7 +143,7 @@ func (h *NFSHandler) getChroot(ctx context.Context, remoteAddr net.Addr, request
 	return fs, nil
 }
 
-func (h *NFSHandler) Change(filesystem billy.Filesystem) billy.Change {
+func (h *NFSHandler) Change(_ context.Context, filesystem billy.Filesystem) billy.Change {
 	for {
 		isolated, ok := filesystem.(*wrappedFS)
 		if ok {
@@ -163,15 +163,15 @@ func (h *NFSHandler) FSStat(_ context.Context, _ billy.Filesystem, _ *nfs.FSStat
 	return nil
 }
 
-func (h *NFSHandler) ToHandle(_ billy.Filesystem, _ []string) []byte {
+func (h *NFSHandler) ToHandle(_ context.Context, _ billy.Filesystem, _ []string) []byte {
 	panic("this should be intercepted by the caching handler")
 }
 
-func (h *NFSHandler) FromHandle(_ []byte) (billy.Filesystem, []string, error) {
+func (h *NFSHandler) FromHandle(_ context.Context, _ []byte) (billy.Filesystem, []string, error) {
 	panic("this should be intercepted by the caching handler")
 }
 
-func (h *NFSHandler) InvalidateHandle(_ billy.Filesystem, _ []byte) error {
+func (h *NFSHandler) InvalidateHandle(_ context.Context, _ billy.Filesystem, _ []byte) error {
 	panic("this should be intercepted by the caching handler")
 }
 

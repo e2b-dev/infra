@@ -41,19 +41,11 @@ func (e *tracingHandler) Mount(ctx context.Context, conn net.Conn, request nfs.M
 	return
 }
 
-func (e *tracingHandler) Change(filesystem billy.Filesystem) billy.Change {
-	// billy.Filesystem should already be wrapped by newFS, so it should be a tracingFS
-	// but we don't have a context here in the signature.
-	// We'll try to get it from the filesystem if it's our wrapper.
-	ctx := context.Background()
-	if tfs, ok := filesystem.(*tracingFS); ok {
-		ctx = tfs.ctx
-	}
-
-	_, finish := startSpan(ctx, "NFS.Change")
+func (e *tracingHandler) Change(ctx context.Context, filesystem billy.Filesystem) billy.Change {
+	ctx, finish := startSpan(ctx, "NFS.Change")
 	defer finish(nil)
 
-	change := e.inner.Change(filesystem)
+	change := e.inner.Change(ctx, filesystem)
 
 	return newChange(ctx, change)
 }
@@ -65,26 +57,18 @@ func (e *tracingHandler) FSStat(ctx context.Context, filesystem billy.Filesystem
 	return e.inner.FSStat(ctx, filesystem, stat)
 }
 
-func (e *tracingHandler) ToHandle(fs billy.Filesystem, path []string) (fh []byte) {
-	ctx := context.Background()
-	if tfs, ok := fs.(*tracingFS); ok {
-		ctx = tfs.ctx
-	}
-
+func (e *tracingHandler) ToHandle(ctx context.Context, fs billy.Filesystem, path []string) (fh []byte) {
 	_, finish := startSpan(ctx, "NFS.ToHandle", attribute.StringSlice("nfs.path", path))
 	defer finish(nil)
 
-	return e.inner.ToHandle(fs, path)
+	return e.inner.ToHandle(ctx, fs, path)
 }
 
-func (e *tracingHandler) FromHandle(fh []byte) (fs billy.Filesystem, paths []string, err error) {
-	// FromHandle doesn't take a context, and we don't have a filesystem yet.
-	// This is a bit tricky for tracing if we want to link it to a parent span.
-	// For now, we'll use Background.
-	ctx, finish := startSpan(context.Background(), "NFS.FromHandle")
+func (e *tracingHandler) FromHandle(ctx context.Context, fh []byte) (fs billy.Filesystem, paths []string, err error) {
+	ctx, finish := startSpan(ctx, "NFS.FromHandle")
 	defer func() { finish(err) }()
 
-	fs, paths, err = e.inner.FromHandle(fh)
+	fs, paths, err = e.inner.FromHandle(ctx, fh)
 	if fs != nil {
 		fs = newFS(ctx, fs)
 	}
@@ -92,16 +76,11 @@ func (e *tracingHandler) FromHandle(fh []byte) (fs billy.Filesystem, paths []str
 	return
 }
 
-func (e *tracingHandler) InvalidateHandle(filesystem billy.Filesystem, bytes []byte) (err error) {
-	ctx := context.Background()
-	if tfs, ok := filesystem.(*tracingFS); ok {
-		ctx = tfs.ctx
-	}
-
-	_, finish := startSpan(ctx, "NFS.InvalidateHandle")
+func (e *tracingHandler) InvalidateHandle(ctx context.Context, filesystem billy.Filesystem, bytes []byte) (err error) {
+	ctx, finish := startSpan(ctx, "NFS.InvalidateHandle")
 	defer func() { finish(err) }()
 
-	return e.inner.InvalidateHandle(filesystem, bytes)
+	return e.inner.InvalidateHandle(ctx, filesystem, bytes)
 }
 
 func (e *tracingHandler) HandleLimit() int {
