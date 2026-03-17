@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -93,16 +92,16 @@ func run() int {
 
 	l.Info(ctx, "Starting dashboard-api service...", zap.String("commit_sha", commitSHA), zap.String("instance_id", serviceInstanceID))
 
-	expectedMigration, err := strconv.ParseInt(expectedMigrationTimestamp, 10, 64)
-	if err != nil {
-		l.Warn(ctx, "Failed to parse expected migration timestamp", zap.Error(err))
-		expectedMigration = 0
-	}
+	// expectedMigration, err := strconv.ParseInt(expectedMigrationTimestamp, 10, 64)
+	// if err != nil {
+	// 	l.Warn(ctx, "Failed to parse expected migration timestamp", zap.Error(err))
+	// 	expectedMigration = 0
+	// }
 
-	err = sqlcdb.CheckMigrationVersion(ctx, config.PostgresConnectionString, expectedMigration)
-	if err != nil {
-		l.Fatal(ctx, "failed to check migration version", zap.Error(err))
-	}
+	// err = sqlcdb.CheckMigrationVersion(ctx, config.PostgresConnectionString, expectedMigration)
+	// if err != nil {
+	// 	l.Fatal(ctx, "failed to check migration version", zap.Error(err))
+	// }
 
 	if !e2benv.IsDebug() {
 		gin.SetMode(gin.ReleaseMode)

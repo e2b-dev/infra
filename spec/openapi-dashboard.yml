@@ -97,6 +97,13 @@ components:
       schema:
         type: string
         format: uuid
+    teamSlug:
+      name: slug
+      in: query
+      required: true
+      description: Team slug to resolve.
+      schema:
+        type: string
 
   responses:
     "400":
@@ -536,6 +543,18 @@ components:
           items:
             $ref: "#/components/schemas/DefaultTemplate"
 
+    TeamResolveResponse:
+      type: object
+      required:
+        - id
+        - slug
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+
 tags:
   - name: builds
   - name: sandboxes
@@ -674,6 +693,31 @@ paths:
                 $ref: "#/components/schemas/UserTeamsResponse"
         "401":
           $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /teams/resolve:
+    get:
+      summary: Resolve team identity
+      description: Resolves a team slug or UUID to the team's identity, validating the user is a member.
+      tags: [teams]
+      security:
+        - Supabase1TokenAuth: []
+      parameters:
+        - $ref: "#/components/parameters/teamSlug"
+      responses:
+        "200":
+          description: Successfully resolved team.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamResolveResponse"
+        "401":
+          $ref: "#/components/responses/401"
+        "403":
+          $ref: "#/components/responses/403"
+        "404":
+          $ref: "#/components/responses/404"
         "500":
           $ref: "#/components/responses/500"
 
