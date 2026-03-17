@@ -25,7 +25,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
+	sandboxnetwork "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	ut "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -43,7 +43,7 @@ func buildEgressConfig(allowedEntries, deniedEntries []string) *orchestrator.San
 
 	hasDomains := false
 	for _, entry := range allowedEntries {
-		rule, err := sandbox_network.ParseRule(entry)
+		rule, err := sandboxnetwork.ParseRule(entry)
 		if err == nil && rule.IsDomain {
 			hasDomains = true
 
@@ -52,7 +52,7 @@ func buildEgressConfig(allowedEntries, deniedEntries []string) *orchestrator.San
 	}
 
 	if hasDomains {
-		allowed = append(append([]string{}, allowedEntries...), sandbox_network.DefaultNameserver)
+		allowed = append(append([]string{}, allowedEntries...), sandboxnetwork.DefaultNameserver)
 	}
 
 	return &orchestrator.SandboxNetworkEgressConfig{
@@ -84,7 +84,7 @@ func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess
 	// This should be applied after copying the network config to preserve allowed addresses
 	if allowInternetAccess != nil && !*allowInternetAccess {
 		// Block all internet access - this overrides any other blocked addresses
-		orchNetwork.Egress.Denied = []string{sandbox_network.AllInternetTrafficCIDR}
+		orchNetwork.Egress.Denied = []string{sandboxnetwork.AllInternetTrafficCIDR}
 	}
 
 	return orchNetwork

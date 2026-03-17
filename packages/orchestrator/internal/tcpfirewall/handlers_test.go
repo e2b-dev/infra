@@ -8,7 +8,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
+	sandboxnetwork "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 )
 
 func TestMatchDomain(t *testing.T) {
@@ -279,7 +279,7 @@ func TestIsEgressAllowed(t *testing.T) {
 			network: &orchestrator.SandboxNetworkConfig{
 				Egress: &orchestrator.SandboxNetworkEgressConfig{
 					Allowed: []string{"example.com"},
-					Denied:  []string{sandbox_network.AllInternetTrafficCIDR},
+					Denied:  []string{sandboxnetwork.AllInternetTrafficCIDR},
 				},
 			},
 			hostname: "example.com",
@@ -291,7 +291,7 @@ func TestIsEgressAllowed(t *testing.T) {
 			network: &orchestrator.SandboxNetworkConfig{
 				Egress: &orchestrator.SandboxNetworkEgressConfig{
 					Allowed: []string{"allowed.com", "192.168.0.0/16"},
-					Denied:  []string{sandbox_network.AllInternetTrafficCIDR},
+					Denied:  []string{sandboxnetwork.AllInternetTrafficCIDR},
 				},
 			},
 			hostname: "other.com",
@@ -307,7 +307,7 @@ func TestIsEgressAllowed(t *testing.T) {
 			network: &orchestrator.SandboxNetworkConfig{
 				Egress: &orchestrator.SandboxNetworkEgressConfig{
 					Allowed: []string{"first.com", "second.com", "third.com"},
-					Denied:  []string{sandbox_network.AllInternetTrafficCIDR},
+					Denied:  []string{sandboxnetwork.AllInternetTrafficCIDR},
 				},
 			},
 			hostname: "second.com",
@@ -319,7 +319,7 @@ func TestIsEgressAllowed(t *testing.T) {
 			network: &orchestrator.SandboxNetworkConfig{
 				Egress: &orchestrator.SandboxNetworkEgressConfig{
 					Allowed: []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"},
-					Denied:  []string{sandbox_network.AllInternetTrafficCIDR},
+					Denied:  []string{sandboxnetwork.AllInternetTrafficCIDR},
 				},
 			},
 			hostname: "",

@@ -12,7 +12,7 @@ import (
 	"github.com/ngrok/firewall_toolkit/pkg/set"
 	"golang.org/x/sys/unix"
 
-	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
+	sandboxnetwork "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 )
 
 const tableName = "slot-firewall"
@@ -242,37 +242,37 @@ func (fw *Firewall) installRules() error {
 // Rules are pre-parsed by the caller. All-ports entries use IP set matching
 // (fast path). Port-specific entries are added as individual nftables rules
 // matching destination ports.
-func (fw *Firewall) ReplaceUserRules(acl *sandbox_network.ACL) error {
+func (fw *Firewall) ReplaceUserRules(acl *sandboxnetwork.ACL) error {
 	// Separate all-ports CIDRs (for IP set fast path) from port-specific rules.
 	// Domain entries are skipped — they are only enforced by the TCP proxy.
 	var allowedAllPorts []string
-	var allowedSomePorts []sandbox_network.Rule
+	var allowedSomePorts []sandboxnetwork.Rule
 	for _, r := range acl.GetAllowed() {
 		if r.IsDomain {
 			continue
 		}
 		if r.AllPorts() {
-			allowedAllPorts = append(allowedAllPorts, sandbox_network.AddressStringToCIDR(r.Host))
+			allowedAllPorts = append(allowedAllPorts, sandboxnetwork.AddressStringToCIDR(r.Host))
 		} else {
 			allowedSomePorts = append(allowedSomePorts, r)
 		}
 	}
 
 	var deniedAllPorts []string
-	var deniedSomePorts []sandbox_network.Rule
+	var deniedSomePorts []sandboxnetwork.Rule
 	for _, r := range acl.GetDenied() {
 		if r.IsDomain {
 			continue
 		}
 		if r.AllPorts() {
-			deniedAllPorts = append(deniedAllPorts, sandbox_network.AddressStringToCIDR(r.Host))
+			deniedAllPorts = append(deniedAllPorts, sandboxnetwork.AddressStringToCIDR(r.Host))
 		} else {
 			deniedSomePorts = append(deniedSomePorts, r)
 		}
 	}
 
 	// 1. Reset predefined deny set to default blocked ranges (buffered, no flush).
-	if err := fw.predefinedDenySet.ClearAndAddElements(fw.conn, sandbox_network.DeniedSandboxSetData); err != nil {
+	if err := fw.predefinedDenySet.ClearAndAddElements(fw.conn, sandboxnetwork.DeniedSandboxSetData); err != nil {
 		return fmt.Errorf("reset predefined deny set: %w", err)
 	}
 
@@ -355,7 +355,7 @@ func (fw *Firewall) addUserChainSetRule(ipSet *nftables.Set, drop bool) {
 // protocol with standard port layout (UDP, SCTP, DCCP, UDPLite). ICMP packets
 // may technically match if their header bytes at the port offset fall in range,
 // but this is harmless — ICMP is not a data channel.
-func (fw *Firewall) addPortRule(rule sandbox_network.Rule, drop bool) error {
+func (fw *Firewall) addPortRule(rule sandboxnetwork.Rule, drop bool) error {
 	if rule.IPNet == nil {
 		return fmt.Errorf("rule for %q has no parsed IPNet", rule.Host)
 	}
@@ -434,7 +434,7 @@ func clearAndReplaceCIDRs(conn *nftables.Conn, s set.Set, cidrs []string) error 
 	// 0.0.0.0/0 must be handled specially: the firewall_toolkit's
 	// ValidateAddress rejects 0.0.0.0 as "unspecified", so we bypass
 	// the toolkit and create raw nftables interval elements directly.
-	if slices.Contains(cidrs, sandbox_network.AllInternetTrafficCIDR) {
+	if slices.Contains(cidrs, sandboxnetwork.AllInternetTrafficCIDR) {
 		conn.FlushSet(s.Set())
 
 		elems := []nftables.SetElement{

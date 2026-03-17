@@ -105,39 +105,20 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 			return
 		}
 
-		var portNotAllowedErr *PortNotAllowedError
-		if errors.As(err, &portNotAllowedErr) {
-			logger.L().Warn(ctx, "port not allowed",
+		var ingressDeniedErr *IngressDeniedError
+		if errors.As(err, &ingressDeniedErr) {
+			logger.L().Warn(ctx, "ingress denied",
 				zap.String("host", r.Host),
-				logger.WithSandboxID(portNotAllowedErr.SandboxId),
-				zap.Uint64("port", portNotAllowedErr.Port))
+				logger.WithSandboxID(ingressDeniedErr.SandboxId),
+				zap.String("client_ip", ingressDeniedErr.ClientIP),
+				zap.Uint16("port", ingressDeniedErr.Port))
 
 			err = template.
-				NewPortNotAllowedError(portNotAllowedErr.SandboxId, r.Host, portNotAllowedErr.Port).
+				NewIngressDeniedError(ingressDeniedErr.SandboxId, r.Host, ingressDeniedErr.ClientIP, ingressDeniedErr.Port).
 				HandleError(w, r)
 			if err != nil {
-				logger.L().Error(ctx, "failed to handle port not allowed error", zap.Error(err), logger.WithSandboxID(portNotAllowedErr.SandboxId))
-				http.Error(w, "Failed to handle port not allowed error", http.StatusInternalServerError)
-
-				return
-			}
-
-			return
-		}
-
-		var clientIPNotAllowedErr *ClientIPNotAllowedError
-		if errors.As(err, &clientIPNotAllowedErr) {
-			logger.L().Warn(ctx, "client IP not allowed",
-				zap.String("host", r.Host),
-				logger.WithSandboxID(clientIPNotAllowedErr.SandboxId),
-				zap.String("client_ip", clientIPNotAllowedErr.ClientIP))
-
-			err = template.
-				NewClientIPNotAllowedError(clientIPNotAllowedErr.SandboxId, r.Host, clientIPNotAllowedErr.ClientIP).
-				HandleError(w, r)
-			if err != nil {
-				logger.L().Error(ctx, "failed to handle client IP not allowed error", zap.Error(err), logger.WithSandboxID(clientIPNotAllowedErr.SandboxId))
-				http.Error(w, "Failed to handle client IP not allowed error", http.StatusInternalServerError)
+				logger.L().Error(ctx, "failed to handle ingress denied error", zap.Error(err), logger.WithSandboxID(ingressDeniedErr.SandboxId))
+				http.Error(w, "Failed to handle ingress denied error", http.StatusInternalServerError)
 
 				return
 			}

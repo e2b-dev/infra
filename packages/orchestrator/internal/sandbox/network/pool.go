@@ -13,7 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
+	sandboxnetwork "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -142,7 +142,7 @@ func (p *Pool) Populate(ctx context.Context) {
 	}
 }
 
-func (p *Pool) Get(ctx context.Context, acl *sandbox_network.ACL) (*Slot, error) {
+func (p *Pool) Get(ctx context.Context, acl *sandboxnetwork.ACL) (*Slot, error) {
 	var slot *Slot
 
 	select {

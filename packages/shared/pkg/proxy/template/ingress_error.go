@@ -7,58 +7,31 @@ import (
 	"net/http"
 )
 
-//go:embed browser_port_not_allowed.html
-var portNotAllowedHtml string
-var portNotAllowedHtmlTemplate = template.Must(template.New("portNotAllowedHtml").Parse(portNotAllowedHtml))
+//go:embed browser_ingress_denied.html
+var ingressDeniedHtml string
+var ingressDeniedHtmlTemplate = template.Must(template.New("ingressDeniedHtml").Parse(ingressDeniedHtml))
 
-//go:embed browser_client_ip_not_allowed.html
-var clientIPNotAllowedHtml string
-var clientIPNotAllowedHtmlTemplate = template.Must(template.New("clientIPNotAllowedHtml").Parse(clientIPNotAllowedHtml))
-
-type portNotAllowedData struct {
-	SandboxId string `json:"sandboxId"`
-	Port      uint64 `json:"port"`
-	Message   string `json:"message"`
-	Code      int    `json:"code"`
-	Host      string `json:"-"`
-}
-
-func (e portNotAllowedData) StatusCode() int {
-	return e.Code
-}
-
-func NewPortNotAllowedError(sandboxId string, host string, port uint64) *TemplatedError[portNotAllowedData] {
-	return &TemplatedError[portNotAllowedData]{
-		template: portNotAllowedHtmlTemplate,
-		vars: portNotAllowedData{
-			SandboxId: sandboxId,
-			Port:      port,
-			Message:   fmt.Sprintf("Access to port %d is not allowed", port),
-			Host:      host,
-			Code:      http.StatusForbidden,
-		},
-	}
-}
-
-type clientIPNotAllowedData struct {
+type ingressDeniedData struct {
 	SandboxId string `json:"sandboxId"`
 	ClientIP  string `json:"clientIp"`
+	Port      uint16 `json:"port"`
 	Message   string `json:"message"`
 	Code      int    `json:"code"`
 	Host      string `json:"-"`
 }
 
-func (e clientIPNotAllowedData) StatusCode() int {
+func (e ingressDeniedData) StatusCode() int {
 	return e.Code
 }
 
-func NewClientIPNotAllowedError(sandboxId string, host string, clientIP string) *TemplatedError[clientIPNotAllowedData] {
-	return &TemplatedError[clientIPNotAllowedData]{
-		template: clientIPNotAllowedHtmlTemplate,
-		vars: clientIPNotAllowedData{
+func NewIngressDeniedError(sandboxId string, host string, clientIP string, port uint16) *TemplatedError[ingressDeniedData] {
+	return &TemplatedError[ingressDeniedData]{
+		template: ingressDeniedHtmlTemplate,
+		vars: ingressDeniedData{
 			SandboxId: sandboxId,
 			ClientIP:  clientIP,
-			Message:   "Your IP address is not allowed to access this sandbox",
+			Port:      port,
+			Message:   fmt.Sprintf("Access denied: client %s is not allowed to reach port %d on this sandbox", clientIP, port),
 			Host:      host,
 			Code:      http.StatusForbidden,
 		},

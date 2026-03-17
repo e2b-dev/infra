@@ -41,7 +41,8 @@ const (
 	minEnvdVersionForSecureFlag = "0.2.0" // Minimum version of envd that supports secure flag
 
 	// Network validation error messages
-	ErrMsgDomainsRequireBlockAll = "When specifying allowed domains in allow out, you must include 'ALL_TRAFFIC' in deny out to block all other traffic."
+	ErrMsgDomainsRequireBlockAll  = "When specifying allowed domains in allow out, you must include 'ALL_TRAFFIC' in deny out to block all other traffic."
+	ErrMsgAllowInRequiresBlockAll = "When specifying allowed sources in allow in, you must include 'ALL_TRAFFIC' (0.0.0.0/0) in deny in to block all other traffic."
 )
 
 func (a *APIStore) PostSandboxes(c *gin.Context) {

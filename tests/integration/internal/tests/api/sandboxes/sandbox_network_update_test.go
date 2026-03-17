@@ -15,7 +15,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
-	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
+	sandboxnetwork "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	sharedutils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
@@ -31,9 +31,9 @@ var (
 	networkTestTemplateOnce sync.Once
 )
 
-const blockAll = sandbox_network.AllInternetTrafficCIDR
+const blockAll = sandboxnetwork.AllInternetTrafficCIDR
 
-func ptrS(s ...string) *[]string { return &s }
+func stringSlicePtr(s ...string) *[]string { return &s }
 
 // ensureNetworkTestTemplate builds the custom template for network tests (called once).
 func ensureNetworkTestTemplate(t *testing.T) string {
@@ -276,7 +276,7 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 
 	t.Run("api/not_found", func(t *testing.T) { //nolint:paralleltest // sequential
 		resp := putNetwork(t, ctx, client, "ixxxxxxxxxxxxxxxxxx0",
-			api.PutSandboxesSandboxIDNetworkJSONRequestBody{AllowOut: ptrS("8.8.8.8")},
+			api.PutSandboxesSandboxIDNetworkJSONRequestBody{AllowOut: stringSlicePtr("8.8.8.8")},
 		)
 		require.Equal(t, http.StatusNotFound, resp.StatusCode())
 	})
@@ -296,14 +296,14 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 		allowOut *[]string
 		denyOut  *[]string
 	}{
-		{"domain_in_deny_out", nil, ptrS("example.com")},
-		{"garbage_in_deny_out", nil, ptrS("not-a-cidr")},
-		{"domain_in_deny_out_alongside_block_all", nil, ptrS(blockAll, "example.com")},
-		{"domain_allow_without_deny", ptrS("google.com"), nil},
-		{"domain_allow_with_partial_deny", ptrS("google.com"), ptrS("10.0.0.0/8")},
-		{"wildcard_domain_without_deny_all", ptrS("*.example.com"), nil},
-		{"wildcard_domain_with_partial_deny", ptrS("*.example.com"), ptrS("10.0.0.0/8")},
-		{"mixed_domain_ip_without_deny_all", ptrS("example.com", "8.8.8.8"), ptrS("10.0.0.0/8")},
+		{"domain_in_deny_out", nil, stringSlicePtr("example.com")},
+		{"garbage_in_deny_out", nil, stringSlicePtr("not-a-cidr")},
+		{"domain_in_deny_out_alongside_block_all", nil, stringSlicePtr(blockAll, "example.com")},
+		{"domain_allow_without_deny", stringSlicePtr("google.com"), nil},
+		{"domain_allow_with_partial_deny", stringSlicePtr("google.com"), stringSlicePtr("10.0.0.0/8")},
+		{"wildcard_domain_without_deny_all", stringSlicePtr("*.example.com"), nil},
+		{"wildcard_domain_with_partial_deny", stringSlicePtr("*.example.com"), stringSlicePtr("10.0.0.0/8")},
+		{"mixed_domain_ip_without_deny_all", stringSlicePtr("example.com", "8.8.8.8"), stringSlicePtr("10.0.0.0/8")},
 	}
 	for _, tc := range rejectedCases {
 		t.Run("api/reject/"+tc.name, func(t *testing.T) { //nolint:paralleltest // sequential
@@ -323,18 +323,18 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 		denyOut  *[]string
 	}{
 		{"empty_body", nil, nil},
-		{"ip_allow_without_deny", ptrS("8.8.8.8"), nil},
-		{"ip_allow_with_partial_deny", ptrS("8.8.8.8"), ptrS("10.0.0.0/8")},
-		{"cidr_allow_without_deny", ptrS("8.8.0.0/16"), nil},
-		{"deny_all_only", nil, ptrS(blockAll)},
-		{"ip_allow_with_deny_all", ptrS("8.8.8.8"), ptrS(blockAll)},
-		{"domain_with_deny_all", ptrS("google.com"), ptrS(blockAll)},
-		{"wildcard_domain_with_deny_all", ptrS("*.example.com"), ptrS(blockAll)},
-		{"mixed_domain_ip_with_deny_all", ptrS("example.com", "8.8.8.8"), ptrS(blockAll)},
-		{"multiple_cidrs_in_deny", nil, ptrS("10.0.0.0/8", "192.168.0.0/16")},
-		{"port_only_in_deny", nil, ptrS(":443")},
-		{"port_only_in_allow_with_deny_all", ptrS(":443"), ptrS(blockAll)},
-		{"port_range_only_in_deny", nil, ptrS(":80-443")},
+		{"ip_allow_without_deny", stringSlicePtr("8.8.8.8"), nil},
+		{"ip_allow_with_partial_deny", stringSlicePtr("8.8.8.8"), stringSlicePtr("10.0.0.0/8")},
+		{"cidr_allow_without_deny", stringSlicePtr("8.8.0.0/16"), nil},
+		{"deny_all_only", nil, stringSlicePtr(blockAll)},
+		{"ip_allow_with_deny_all", stringSlicePtr("8.8.8.8"), stringSlicePtr(blockAll)},
+		{"domain_with_deny_all", stringSlicePtr("google.com"), stringSlicePtr(blockAll)},
+		{"wildcard_domain_with_deny_all", stringSlicePtr("*.example.com"), stringSlicePtr(blockAll)},
+		{"mixed_domain_ip_with_deny_all", stringSlicePtr("example.com", "8.8.8.8"), stringSlicePtr(blockAll)},
+		{"multiple_cidrs_in_deny", nil, stringSlicePtr("10.0.0.0/8", "192.168.0.0/16")},
+		{"port_only_in_deny", nil, stringSlicePtr(":443")},
+		{"port_only_in_allow_with_deny_all", stringSlicePtr(":443"), stringSlicePtr(blockAll)},
+		{"port_range_only_in_deny", nil, stringSlicePtr(":80-443")},
 	}
 	for _, tc := range acceptedCases {
 		t.Run("api/accept/"+tc.name, func(t *testing.T) { //nolint:paralleltest // sequential
@@ -567,35 +567,35 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 
 	egressSteps := []egressStep{
 		{
-			name: "lifecycle/1_deny_all", denyOut: ptrS(blockAll),
+			name: "lifecycle/1_deny_all", denyOut: stringSlicePtr(blockAll),
 			checks: []connectivityCheck{{"https://8.8.8.8", false}, {"https://1.1.1.1", false}},
 		},
 		{
-			name: "lifecycle/2_allow_ip_through_deny", allowOut: ptrS("8.8.8.8"), denyOut: ptrS(blockAll),
+			name: "lifecycle/2_allow_ip_through_deny", allowOut: stringSlicePtr("8.8.8.8"), denyOut: stringSlicePtr(blockAll),
 			checks: []connectivityCheck{{"https://8.8.8.8", true}, {"https://1.1.1.1", false}},
 		},
 		{
-			name: "lifecycle/3_replace_allowed_ip", allowOut: ptrS("1.1.1.1"), denyOut: ptrS(blockAll),
+			name: "lifecycle/3_replace_allowed_ip", allowOut: stringSlicePtr("1.1.1.1"), denyOut: stringSlicePtr(blockAll),
 			checks: []connectivityCheck{{"https://1.1.1.1", true}, {"https://8.8.8.8", false}},
 		},
 		{
-			name: "lifecycle/4_allow_multiple", allowOut: ptrS("8.8.8.8", "1.1.1.1"), denyOut: ptrS(blockAll),
+			name: "lifecycle/4_allow_multiple", allowOut: stringSlicePtr("8.8.8.8", "1.1.1.1"), denyOut: stringSlicePtr(blockAll),
 			checks: []connectivityCheck{{"https://8.8.8.8", true}, {"https://1.1.1.1", true}},
 		},
 		{
-			name: "lifecycle/5_allow_cidr", allowOut: ptrS("8.8.8.0/24"), denyOut: ptrS(blockAll),
+			name: "lifecycle/5_allow_cidr", allowOut: stringSlicePtr("8.8.8.0/24"), denyOut: stringSlicePtr(blockAll),
 			checks: []connectivityCheck{{"https://8.8.8.8", true}, {"https://1.1.1.1", false}},
 		},
 		{
-			name: "lifecycle/6_allow_domain", allowOut: ptrS("google.com"), denyOut: ptrS(blockAll),
+			name: "lifecycle/6_allow_domain", allowOut: stringSlicePtr("google.com"), denyOut: stringSlicePtr(blockAll),
 			checks: []connectivityCheck{{"https://google.com", true}, {"https://cloudflare.com", false}},
 		},
 		{
-			name: "lifecycle/7_allow_domain_and_ip", allowOut: ptrS("google.com", "1.1.1.1"), denyOut: ptrS(blockAll),
+			name: "lifecycle/7_allow_domain_and_ip", allowOut: stringSlicePtr("google.com", "1.1.1.1"), denyOut: stringSlicePtr(blockAll),
 			checks: []connectivityCheck{{"https://google.com", true}, {"https://1.1.1.1", true}, {"https://cloudflare.com", false}},
 		},
 		{
-			name: "lifecycle/8_remove_allow_keep_deny", denyOut: ptrS(blockAll),
+			name: "lifecycle/8_remove_allow_keep_deny", denyOut: stringSlicePtr(blockAll),
 			checks: []connectivityCheck{{"https://google.com", false}, {"https://8.8.8.8", false}},
 		},
 		{
@@ -603,11 +603,11 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 			checks: []connectivityCheck{{"https://8.8.8.8", true}, {"https://1.1.1.1", true}},
 		},
 		{
-			name: "lifecycle/10_reapply_after_clear", allowOut: ptrS("1.1.1.1"), denyOut: ptrS(blockAll),
+			name: "lifecycle/10_reapply_after_clear", allowOut: stringSlicePtr("1.1.1.1"), denyOut: stringSlicePtr(blockAll),
 			checks: []connectivityCheck{{"https://1.1.1.1", true}, {"https://8.8.8.8", false}},
 		},
 		{
-			name: "lifecycle/11_allow_without_deny", allowOut: ptrS("8.8.8.8"),
+			name: "lifecycle/11_allow_without_deny", allowOut: stringSlicePtr("8.8.8.8"),
 			checks: []connectivityCheck{{"https://8.8.8.8", true}, {"https://1.1.1.1", true}},
 		},
 		{
@@ -809,8 +809,8 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 		denyInPortV4 := fmt.Sprintf("0.0.0.0/0:%d", testPort)
 		denyInPortV6 := fmt.Sprintf("[::/0]:%d", testPort)
 		updateAll(api.PutSandboxesSandboxIDNetworkJSONRequestBody{
-			DenyOut: ptrS(blockAll),
-			DenyIn:  ptrS(denyInPortV4, denyInPortV6),
+			DenyOut: stringSlicePtr(blockAll),
+			DenyIn:  stringSlicePtr(denyInPortV4, denyInPortV6),
 		})
 
 		// Egress: all outbound blocked.
@@ -835,9 +835,9 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 
 	t.Run("combined/egress_allow_with_ingress_deny", func(t *testing.T) { //nolint:paralleltest // sequential
 		updateAll(api.PutSandboxesSandboxIDNetworkJSONRequestBody{
-			AllowOut: ptrS("8.8.8.8", "google.com"),
-			DenyOut:  ptrS(blockAll),
-			DenyIn:   ptrS("0.0.0.0/0", "::/0"),
+			AllowOut: stringSlicePtr("8.8.8.8", "google.com"),
+			DenyOut:  stringSlicePtr(blockAll),
+			DenyIn:   stringSlicePtr("0.0.0.0/0", "::/0"),
 		})
 
 		// Egress: allowed IP and domain work, others blocked.
@@ -871,9 +871,9 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 		denyInPortV4 := fmt.Sprintf("0.0.0.0/0:%d", testPort)
 		denyInPortV6 := fmt.Sprintf("[::/0]:%d", testPort)
 		updateAll(api.PutSandboxesSandboxIDNetworkJSONRequestBody{
-			AllowOut: ptrS("8.8.8.8", "google.com"),
-			DenyOut:  ptrS(blockAll),
-			DenyIn:   ptrS(denyInPortV4, denyInPortV6),
+			AllowOut: stringSlicePtr("8.8.8.8", "google.com"),
+			DenyOut:  stringSlicePtr(blockAll),
+			DenyIn:   stringSlicePtr(denyInPortV4, denyInPortV6),
 		})
 
 		// Verify before pause.

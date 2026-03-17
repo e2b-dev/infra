@@ -16,7 +16,7 @@ import (
 	netutils "k8s.io/utils/net"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
+	sandboxnetwork "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 )
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network")
@@ -253,7 +253,7 @@ func (s *Slot) CloseFirewall() error {
 	return nil
 }
 
-func (s *Slot) ConfigureInternet(ctx context.Context, acl *sandbox_network.ACL) (e error) {
+func (s *Slot) ConfigureInternet(ctx context.Context, acl *sandboxnetwork.ACL) (e error) {
 	_, span := tracer.Start(ctx, "slot-internet-configure", trace.WithAttributes(
 		attribute.String("namespace_id", s.NamespaceID()),
 	))
@@ -283,7 +283,7 @@ func (s *Slot) ConfigureInternet(ctx context.Context, acl *sandbox_network.ACL) 
 }
 
 // UpdateInternet replaces all user firewall rules atomically in a single nftables flush.
-func (s *Slot) UpdateInternet(ctx context.Context, acl *sandbox_network.ACL) error {
+func (s *Slot) UpdateInternet(ctx context.Context, acl *sandboxnetwork.ACL) error {
 	_, span := tracer.Start(ctx, "slot-internet-update", trace.WithAttributes(
 		attribute.String("namespace_id", s.NamespaceID()),
 	))

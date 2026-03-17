@@ -10,13 +10,13 @@
     <img src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/Symbol%20Gradient-Kr5pnWlK3ZhzBcRGf6Am4cNbJvY1Ge.svg" alt="Logo" class="logo">
     <div class="error-header">
         <h1 class="error-title">Access Denied</h1>
-        <p class="error-message">Your IP address is not allowed to access sandbox <span class="highlight">{{.SandboxId}}</span>.</p>
+        <p class="error-message">{{.Message}}</p>
     </div>
     <div class="error-details">
         <span class="sandbox-url">{{.Host}}</span>
-        <div class="error-code">Client IP <span class="highlight">{{.ClientIP}}</span> is blocked by the sandbox network policy</div>
+        <div class="error-code">Blocked by the sandbox network policy for sandbox <span class="highlight">{{.SandboxId}}</span></div>
     </div>
-    <p class="help-text">The sandbox owner has restricted which IP addresses can connect. Contact them if you believe this is an error.</p>
+    <p class="help-text">The sandbox owner has restricted access to this sandbox. Contact them if you believe this is an error.</p>
 </main>
 </body>
 </html>

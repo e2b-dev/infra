@@ -4,7 +4,7 @@ import "context"
 
 // UpdateFunc performs an update and returns a rollback function to revert it.
 // The rollback receives a context that is guaranteed not to be canceled.
-type UpdateFunc = func(ctx context.Context) (rollback func(ctx context.Context), err error)
+type UpdateFunc func(ctx context.Context) (rollback func(ctx context.Context), err error)
 
 // ApplyAllOrNone applies updates sequentially. If any update fails,
 // already-applied updates are rolled back in reverse order. Rollbacks receive

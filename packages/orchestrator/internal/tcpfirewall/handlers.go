@@ -13,7 +13,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
+	sandboxnetwork "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 )
 
 const (
@@ -21,6 +21,16 @@ const (
 	// This prevents goroutine leaks from slow/unresponsive DNS or connections.
 	upstreamDialTimeout = 30 * time.Second
 )
+
+// deniedSandboxNets is DeniedSandboxCIDRs pre-parsed for fast IP containment checks.
+var deniedSandboxNets = func() []*net.IPNet {
+	nets := make([]*net.IPNet, 0, len(sandboxnetwork.DeniedSandboxCIDRs))
+	for _, cidr := range sandboxnetwork.DeniedSandboxCIDRs {
+		_, ipNet, _ := net.ParseCIDR(cidr) // CIDRs are compile-time constants; parse cannot fail.
+		nets = append(nets, ipNet)
+	}
+	return nets
+}()
 
 // domainHandler handles connections with hostname information (HTTP Host header or TLS SNI).
 func domainHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int, sbx *sandbox.Sandbox, logger logger.Logger, metrics *Metrics, protocol Protocol) {
@@ -145,7 +155,7 @@ func proxyWithIPVerification(ctx context.Context, conn net.Conn, upstreamAddr st
 
 // isEgressAllowed checks if egress is allowed based on domain, CIDR, and port rules.
 // Returns the allowed status and the match type for metrics.
-// Rules are pre-parsed at config load time (see sandbox_network.ACL), so this
+// Rules are pre-parsed at config load time (see sandboxnetwork.ACL), so this
 // function performs no string parsing or allocations on the hot path.
 // Priority order:
 //  1. Allow entries (if domain or CIDR matches host AND port → allow)
@@ -178,7 +188,7 @@ func isEgressAllowed(sbx *sandbox.Sandbox, hostname string, toIP net.IP, toPort 
 
 // matchRule checks if a pre-parsed rule matches the given hostname, IP, and port.
 // When checkDomains is true, domain entries are evaluated; otherwise they are skipped.
-func matchRule(rule *sandbox_network.Rule, hostname string, ip net.IP, port uint16, checkDomains bool) (bool, MatchType) {
+func matchRule(rule *sandboxnetwork.Rule, hostname string, ip net.IP, port uint16, checkDomains bool) (bool, MatchType) {
 	if rule.IsDomain {
 		if checkDomains && hostname != "" && matchDomain(hostname, rule.Host) && rule.PortInRange(port) {
 			return true, MatchTypeDomain
@@ -217,12 +227,7 @@ func matchDomain(hostname, pattern string) bool {
 
 // isIPInAlwaysDeniedCIDRs checks if an IP is within the denied sandbox CIDRs (internal/private ranges).
 func isIPInAlwaysDeniedCIDRs(ip net.IP) bool {
-	for _, cidr := range sandbox_network.DeniedSandboxCIDRs {
-		_, ipNet, err := net.ParseCIDR(cidr)
-		if err != nil {
-			continue
-		}
-
+	for _, ipNet := range deniedSandboxNets {
 		if ipNet.Contains(ip) {
 			return true
 		}

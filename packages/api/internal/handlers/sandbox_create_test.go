@@ -14,7 +14,7 @@ import (
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
+	sandboxnetwork "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 )
 
 func TestBuildAutoResumeConfig(t *testing.T) {
@@ -105,7 +105,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 			},
 			wantErr:    true,
 			wantCode:   http.StatusBadRequest,
-			wantErrMsg: "invalid denied CIDR not-a-cidr",
+			wantErrMsg: "invalid deny out entry not-a-cidr: domains are not supported for egress rules",
 		},
 		// Domain validation tests
 		{
@@ -121,7 +121,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 			name: "allow_out with domain and block-all deny_out is valid",
 			network: &api.SandboxNetworkConfig{
 				AllowOut: &[]string{"example.com"},
-				DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
+				DenyOut:  &[]string{sandboxnetwork.AllInternetTrafficCIDR},
 			},
 			wantErr: false,
 		},
@@ -148,7 +148,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 			name: "allow_out with wildcard domain and block-all deny_out is valid",
 			network: &api.SandboxNetworkConfig{
 				AllowOut: &[]string{"*.example.com"},
-				DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
+				DenyOut:  &[]string{sandboxnetwork.AllInternetTrafficCIDR},
 			},
 			wantErr: false,
 		},
@@ -164,7 +164,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 			name: "allow_out with CIDR and deny_out block-all is valid",
 			network: &api.SandboxNetworkConfig{
 				AllowOut: &[]string{"10.0.0.0/8"},
-				DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
+				DenyOut:  &[]string{sandboxnetwork.AllInternetTrafficCIDR},
 			},
 			wantErr: false,
 		},
@@ -179,7 +179,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 			name: "allow_out with IP and deny_out block-all is valid",
 			network: &api.SandboxNetworkConfig{
 				AllowOut: &[]string{"8.8.8.8"},
-				DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
+				DenyOut:  &[]string{sandboxnetwork.AllInternetTrafficCIDR},
 			},
 			wantErr: false,
 		},
@@ -282,19 +282,23 @@ func TestValidateNetworkConfig(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "allowIn without deny-all is accepted",
+			name: "allowIn without deny-all is rejected",
 			network: &api.SandboxNetworkConfig{
 				AllowIn: &[]string{"10.0.0.0/8"},
 			},
-			wantErr: false,
+			wantErr:    true,
+			wantCode:   http.StatusBadRequest,
+			wantErrMsg: ErrMsgAllowInRequiresBlockAll,
 		},
 		{
-			name: "allowIn with partial denyIn is accepted",
+			name: "allowIn with partial denyIn (no deny-all) is rejected",
 			network: &api.SandboxNetworkConfig{
 				AllowIn: &[]string{"10.0.0.0/8"},
 				DenyIn:  &[]string{"192.168.0.0/16"},
 			},
-			wantErr: false,
+			wantErr:    true,
+			wantCode:   http.StatusBadRequest,
+			wantErrMsg: ErrMsgAllowInRequiresBlockAll,
 		},
 		{
 			name: "invalid allowIn entry",
@@ -336,7 +340,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 			name: "allow_out with domain and CIDR with deny_out block-all is valid",
 			network: &api.SandboxNetworkConfig{
 				AllowOut: &[]string{"example.com", "8.8.8.8"},
-				DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
+				DenyOut:  &[]string{sandboxnetwork.AllInternetTrafficCIDR},
 			},
 			wantErr: false,
 		},
@@ -345,7 +349,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 			name: "allow_out with port is accepted",
 			network: &api.SandboxNetworkConfig{
 				AllowOut: &[]string{"8.8.8.8:80"},
-				DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
+				DenyOut:  &[]string{sandboxnetwork.AllInternetTrafficCIDR},
 			},
 			wantErr: false,
 		},
@@ -370,7 +374,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 			},
 			wantErr:    true,
 			wantCode:   http.StatusBadRequest,
-			wantErrMsg: "invalid denied CIDR example.com",
+			wantErrMsg: "invalid deny out entry example.com: domains are not supported for egress rules",
 		},
 		{
 			name: "deny_out with invalid port is rejected",

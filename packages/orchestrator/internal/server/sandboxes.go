@@ -30,7 +30,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
-	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
+	sandboxnetwork "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -152,7 +152,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		if network.GetEgress() == nil {
 			network.Egress = &orchestrator.SandboxNetworkEgressConfig{}
 		}
-		network.Egress.Denied = []string{sandbox_network.AllInternetTrafficCIDR}
+		network.Egress.Denied = []string{sandboxnetwork.AllInternetTrafficCIDR}
 	}
 
 	resolvedFCVersion := featureflags.ResolveFirecrackerVersion(ctx, s.featureFlags, req.GetSandbox().GetFirecrackerVersion())
@@ -341,6 +341,7 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 	if req.GetIngress() != nil {
 		updates = append(updates, func(_ context.Context) (func(context.Context), error) {
 			oldIngress := sbx.Config.GetNetworkIngress()
+			oldACL := sbx.Config.GetParsedIngress()
 
 			if err := sbx.Config.SetNetworkIngress(req.GetIngress()); err != nil {
 				return nil, fmt.Errorf("invalid ingress config: %w", err)
@@ -352,7 +353,7 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 				"denied":  ingress.GetDenied(),
 			}
 
-			return func(_ context.Context) { _ = sbx.Config.SetNetworkIngress(oldIngress) }, nil
+			return func(_ context.Context) { sbx.Config.RestoreNetworkIngress(oldIngress, oldACL) }, nil
 		})
 	}
 

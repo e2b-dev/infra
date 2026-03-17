@@ -109,3 +109,48 @@ func TestUpdate_EndTimeAndEgress_EgressFails_RevertsEndTime(t *testing.T) {
 	acl := sbx.Config.GetParsedEgress()
 	assert.Nil(t, acl)
 }
+
+func TestUpdate_EgressAndIngress_EgressFails_RevertsIngress(t *testing.T) {
+	t.Parallel()
+
+	slot, err := network.NewSlot("test", 1, network.Config{})
+	require.NoError(t, err)
+
+	sbxConfig, err := sandbox.NewConfig(sandbox.Config{})
+	require.NoError(t, err)
+	sbx := &sandbox.Sandbox{
+		Metadata: &sandbox.Metadata{
+			Config:  sbxConfig,
+			Runtime: sandbox.RuntimeMetadata{SandboxID: id.Generate()},
+		},
+		Resources: &sandbox.Resources{Slot: slot},
+	}
+	sbx.SetStartedAt(time.Now())
+	sbx.SetEndAt(time.Now().Add(time.Hour))
+
+	sandboxMap := sandbox.NewSandboxesMap()
+	sandboxMap.Insert(context.Background(), sbx)
+	sandboxMap.MarkRunning(sbx)
+
+	s := &Server{
+		sandboxFactory:   &sandbox.Factory{Sandboxes: sandboxMap},
+		info:             &service.ServiceInfo{},
+		sbxEventsService: internalevents.NewEventsService(nil),
+	}
+
+	_, err = s.Update(t.Context(), &orchestrator.SandboxUpdateRequest{
+		SandboxId: sbx.Runtime.SandboxID,
+		Egress: &orchestrator.SandboxNetworkEgressConfig{
+			Denied: []string{"0.0.0.0/0"},
+		},
+		Ingress: &orchestrator.SandboxNetworkIngressConfig{
+			Denied: []string{"10.0.0.0/8"},
+		},
+	})
+
+	require.Error(t, err)
+	assert.Equal(t, codes.Internal, status.Code(err))
+	// Ingress must not be applied when egress fails.
+	assert.False(t, sbx.Config.HasIngressRules())
+	assert.Nil(t, sbx.Config.GetParsedIngress())
+}

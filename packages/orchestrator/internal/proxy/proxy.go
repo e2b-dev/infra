@@ -94,11 +94,11 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 				ip := net.ParseIP(clientIP)
 				if ip == nil {
 					// Fail closed: unparseable client IP is denied when ingress rules are active.
-					return nil, reverseproxy.NewErrClientIPNotAllowed(sandboxId, clientIP)
+					return nil, reverseproxy.NewErrIngressDenied(sandboxId, clientIP, uint16(port))
 				}
 
 				if !sbx.Config.IsIngressAllowed(ip, uint16(port)) {
-					return nil, reverseproxy.NewErrClientIPNotAllowed(sandboxId, clientIP)
+					return nil, reverseproxy.NewErrIngressDenied(sandboxId, clientIP, uint16(port))
 				}
 			}
 
@@ -107,7 +107,7 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 			r.Header.Del(reverseproxy.ClientIPHeader)
 
 			// Handle request host masking only for non-envd traffic.
-			var maskRequestHost *string = nil
+			var maskRequestHost *string
 			if h := ingress.GetMaskRequestHost(); isNonEnvdTraffic && h != "" {
 				h = strings.ReplaceAll(h, pool.MaskRequestHostPortPlaceholder, strconv.FormatUint(port, 10))
 				maskRequestHost = &h

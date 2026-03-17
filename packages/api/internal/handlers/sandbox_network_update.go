@@ -11,9 +11,9 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
-	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
+	sandboxnetwork "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	sutils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
+	sharedutils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 func (a *APIStore) PutSandboxesSandboxIDNetwork(
@@ -41,14 +41,14 @@ func (a *APIStore) PutSandboxesSandboxIDNetwork(
 	}
 
 	egressUpdate := &types.SandboxNetworkEgressConfig{
-		AllowedAddresses: sutils.DerefOrDefault(body.AllowOut, nil),
-		DeniedAddresses:  sutils.DerefOrDefault(body.DenyOut, nil),
+		AllowedAddresses: sharedutils.DerefOrDefault(body.AllowOut, nil),
+		DeniedAddresses:  sharedutils.DerefOrDefault(body.DenyOut, nil),
 	}
 
 	ingressUpdate := &types.SandboxNetworkIngressConfig{
 		MaskRequestHost:  body.MaskRequestHost,
-		AllowedAddresses: sutils.DerefOrDefault(body.AllowIn, nil),
-		DeniedAddresses:  sutils.DerefOrDefault(body.DenyIn, nil),
+		AllowedAddresses: sharedutils.DerefOrDefault(body.AllowIn, nil),
+		DeniedAddresses:  sharedutils.DerefOrDefault(body.DenyIn, nil),
 	}
 
 	if apiErr := validateEgressRules(egressUpdate.AllowedAddresses, egressUpdate.DeniedAddresses); apiErr != nil {
@@ -79,7 +79,7 @@ func (a *APIStore) PutSandboxesSandboxIDNetwork(
 // - allowOut hosts can be IPs, CIDRs, or domain names
 // - when allowOut contains domains, denyOut must include 0.0.0.0/0
 func validateEgressRules(allowOut, denyOut []string) *api.APIError {
-	denyRules, err := sandbox_network.ParseRules(denyOut)
+	denyRules, err := sandboxnetwork.ParseRules(denyOut)
 	if err != nil {
 		return &api.APIError{
 			Code:      http.StatusBadRequest,
@@ -92,13 +92,13 @@ func validateEgressRules(allowOut, denyOut []string) *api.APIError {
 		if rule.IsDomain {
 			return &api.APIError{
 				Code:      http.StatusBadRequest,
-				Err:       fmt.Errorf("invalid deny out entry %s: domains are not supported", rule.Host),
-				ClientMsg: fmt.Sprintf("invalid deny out entry %s: domains are not supported", rule.Host),
+				Err:       fmt.Errorf("invalid deny out entry %s: domains are not supported for egress rules", rule.Host),
+				ClientMsg: fmt.Sprintf("invalid deny out entry %s: domains are not supported for egress rules", rule.Host),
 			}
 		}
 	}
 
-	allowRules, err := sandbox_network.ParseRules(allowOut)
+	allowRules, err := sandboxnetwork.ParseRules(allowOut)
 	if err != nil {
 		return &api.APIError{
 			Code:      http.StatusBadRequest,
@@ -115,8 +115,8 @@ func validateEgressRules(allowOut, denyOut []string) *api.APIError {
 	}
 
 	if hasDomains {
-		hasBlockAll := slices.ContainsFunc(denyRules, func(r sandbox_network.Rule) bool {
-			return r.Host == sandbox_network.AllInternetTrafficCIDR && r.AllPorts()
+		hasBlockAll := slices.ContainsFunc(denyRules, func(r sandboxnetwork.Rule) bool {
+			return r.Host == sandboxnetwork.AllInternetTrafficCIDR && r.AllPorts()
 		})
 
 		if !hasBlockAll {
@@ -135,7 +135,7 @@ func validateEgressRules(allowOut, denyOut []string) *api.APIError {
 // - entries must be valid CIDR[:port] strings (no domains)
 // - when allowIn is set, denyIn must include 0.0.0.0/0
 func validateIngressRules(allowIn, denyIn []string) *api.APIError {
-	denyRules, err := sandbox_network.ParseRules(denyIn)
+	denyRules, err := sandboxnetwork.ParseRules(denyIn)
 	if err != nil {
 		return &api.APIError{
 			Code:      http.StatusBadRequest,
@@ -148,13 +148,13 @@ func validateIngressRules(allowIn, denyIn []string) *api.APIError {
 		if rule.IsDomain {
 			return &api.APIError{
 				Code:      http.StatusBadRequest,
-				Err:       fmt.Errorf("invalid deny in entry %s: domains are not supported", rule.Host),
+				Err:       fmt.Errorf("invalid deny in entry %s: domains are not supported for ingress rules", rule.Host),
 				ClientMsg: fmt.Sprintf("invalid deny in entry %s: domains are not supported for ingress rules", rule.Host),
 			}
 		}
 	}
 
-	allowRules, err := sandbox_network.ParseRules(allowIn)
+	allowRules, err := sandboxnetwork.ParseRules(allowIn)
 	if err != nil {
 		return &api.APIError{
 			Code:      http.StatusBadRequest,
@@ -167,8 +167,22 @@ func validateIngressRules(allowIn, denyIn []string) *api.APIError {
 		if rule.IsDomain {
 			return &api.APIError{
 				Code:      http.StatusBadRequest,
-				Err:       fmt.Errorf("invalid allow in entry %s: domains are not supported", rule.Host),
+				Err:       fmt.Errorf("invalid allow in entry %s: domains are not supported for ingress rules", rule.Host),
 				ClientMsg: fmt.Sprintf("invalid allow in entry %s: domains are not supported for ingress rules", rule.Host),
+			}
+		}
+	}
+
+	if len(allowRules) > 0 {
+		hasBlockAll := slices.ContainsFunc(denyRules, func(r sandboxnetwork.Rule) bool {
+			return r.Host == sandboxnetwork.AllInternetTrafficCIDR && r.AllPorts()
+		})
+
+		if !hasBlockAll {
+			return &api.APIError{
+				Code:      http.StatusBadRequest,
+				Err:       fmt.Errorf("allow in requires deny in to include 0.0.0.0/0 (ALL_TRAFFIC)"),
+				ClientMsg: ErrMsgAllowInRequiresBlockAll,
 			}
 		}
 	}
