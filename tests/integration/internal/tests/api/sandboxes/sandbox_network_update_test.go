@@ -686,12 +686,12 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 	ingressSteps := []ingressStep{
 		{
 			name:   "port_deny_blocks_access",
-			denyIn: []string{fmt.Sprintf("0.0.0.0/0:%d", testPort)},
+			denyIn: []string{fmt.Sprintf("0.0.0.0/0:%d", testPort), fmt.Sprintf("[::/0]:%d", testPort)},
 			checks: []ingressCheck{{testPort, "", true}, {testPort + 1, "", false}},
 		},
 		{
 			name:    "port_allow_overrides_deny",
-			allowIn: []string{fmt.Sprintf("0.0.0.0/0:%d", testPort)}, denyIn: []string{"0.0.0.0/0"},
+			allowIn: []string{fmt.Sprintf("0.0.0.0/0:%d", testPort), fmt.Sprintf("[::/0]:%d", testPort)}, denyIn: []string{"0.0.0.0/0", "::/0"},
 			checks: []ingressCheck{{testPort, "", false}, {testPort + 1, "", true}},
 		},
 		{
@@ -801,10 +801,11 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 	// =====================================================================
 
 	t.Run("combined/egress_deny_and_ingress_port_deny", func(t *testing.T) { //nolint:paralleltest // sequential
-		denyInPort := fmt.Sprintf("0.0.0.0/0:%d", testPort)
+		denyInPortV4 := fmt.Sprintf("0.0.0.0/0:%d", testPort)
+		denyInPortV6 := fmt.Sprintf("[::/0]:%d", testPort)
 		updateAll(api.PutSandboxesSandboxIDNetworkJSONRequestBody{
 			DenyOut: ptrS(blockAll),
-			DenyIn:  ptrS(denyInPort),
+			DenyIn:  ptrS(denyInPortV4, denyInPortV6),
 		})
 
 		// Egress: all outbound blocked.
@@ -862,11 +863,12 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 
 	t.Run("persistence/pause_resume_preserves_all", func(t *testing.T) { //nolint:paralleltest // sequential
 		// Comprehensive rules: IP allow + domain allow + deny-all egress + ingress port deny.
-		denyInPort := fmt.Sprintf("0.0.0.0/0:%d", testPort)
+		denyInPortV4 := fmt.Sprintf("0.0.0.0/0:%d", testPort)
+		denyInPortV6 := fmt.Sprintf("[::/0]:%d", testPort)
 		updateAll(api.PutSandboxesSandboxIDNetworkJSONRequestBody{
 			AllowOut: ptrS("8.8.8.8", "google.com"),
 			DenyOut:  ptrS(blockAll),
-			DenyIn:   ptrS(denyInPort),
+			DenyIn:   ptrS(denyInPortV4, denyInPortV6),
 		})
 
 		// Verify before pause.
