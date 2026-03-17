@@ -96,14 +96,6 @@ func validateEgressRules(allowOut, denyOut []string) *api.APIError {
 				ClientMsg: fmt.Sprintf("invalid deny out entry %q: domains are not supported in deny rules", rule.Host),
 			}
 		}
-
-		if !rule.IsDomain && !sandboxnetwork.IsCIDR(rule.Host) {
-			return &api.APIError{
-				Code:      http.StatusBadRequest,
-				Err:       fmt.Errorf("invalid deny out entry %q: must be a CIDR (e.g. 10.0.0.0/8), not a bare IP", rule.Host),
-				ClientMsg: fmt.Sprintf("invalid deny out entry %q: must be a CIDR (e.g. 10.0.0.0/8), not a bare IP", rule.Host),
-			}
-		}
 	}
 
 	allowRules, err := sandboxnetwork.ParseRules(allowOut)
@@ -119,12 +111,6 @@ func validateEgressRules(allowOut, denyOut []string) *api.APIError {
 	for _, rule := range allowRules {
 		if rule.IsDomain {
 			hasDomains = true
-		} else if !sandboxnetwork.IsCIDR(rule.Host) {
-			return &api.APIError{
-				Code:      http.StatusBadRequest,
-				Err:       fmt.Errorf("invalid allow out entry %q: must be a CIDR (e.g. 10.0.0.0/8) or domain, not a bare IP", rule.Host),
-				ClientMsg: fmt.Sprintf("invalid allow out entry %q: must be a CIDR (e.g. 10.0.0.0/8) or domain, not a bare IP", rule.Host),
-			}
 		}
 	}
 
@@ -166,14 +152,6 @@ func validateIngressRules(allowIn, denyIn []string) *api.APIError {
 				ClientMsg: fmt.Sprintf("invalid deny in entry %q: domains are not supported for ingress rules", rule.Host),
 			}
 		}
-
-		if !sandboxnetwork.IsCIDR(rule.Host) {
-			return &api.APIError{
-				Code:      http.StatusBadRequest,
-				Err:       fmt.Errorf("invalid deny in entry %q: must be a CIDR (e.g. 10.0.0.0/8), not a bare IP", rule.Host),
-				ClientMsg: fmt.Sprintf("invalid deny in entry %q: must be a CIDR (e.g. 10.0.0.0/8), not a bare IP", rule.Host),
-			}
-		}
 	}
 
 	allowRules, err := sandboxnetwork.ParseRules(allowIn)
@@ -191,14 +169,6 @@ func validateIngressRules(allowIn, denyIn []string) *api.APIError {
 				Code:      http.StatusBadRequest,
 				Err:       fmt.Errorf("invalid allow in entry %q: domains are not supported for ingress rules", rule.Host),
 				ClientMsg: fmt.Sprintf("invalid allow in entry %q: domains are not supported for ingress rules", rule.Host),
-			}
-		}
-
-		if !sandboxnetwork.IsCIDR(rule.Host) {
-			return &api.APIError{
-				Code:      http.StatusBadRequest,
-				Err:       fmt.Errorf("invalid allow in entry %q: must be a CIDR (e.g. 10.0.0.0/8), not a bare IP", rule.Host),
-				ClientMsg: fmt.Sprintf("invalid allow in entry %q: must be a CIDR (e.g. 10.0.0.0/8), not a bare IP", rule.Host),
 			}
 		}
 	}

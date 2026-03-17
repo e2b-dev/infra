@@ -52,13 +52,6 @@ func AddressStringsToCIDRs(addressStrings []string) []string {
 	return data
 }
 
-// IsCIDR checks if a string is valid CIDR notation (contains a /).
-func IsCIDR(s string) bool {
-	_, _, err := net.ParseCIDR(s)
-
-	return err == nil
-}
-
 // IsIPOrCIDR checks if a string is a valid IP address or CIDR notation.
 func IsIPOrCIDR(s string) bool {
 	// Check if it's a valid IP address
