@@ -524,6 +524,8 @@ func TestCachedSeekable_ReadAt_PreservesEOF(t *testing.T) {
 		n, err := c.ReadAt(t.Context(), buff, 0)
 		assert.Equal(t, 3, n)
 		require.ErrorIs(t, err, io.EOF, "cachedSeekable must not swallow io.EOF")
+
+		c.wg.Wait()
 	})
 
 	t.Run("nil error from inner is returned to caller unchanged", func(t *testing.T) {
