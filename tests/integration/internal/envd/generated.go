@@ -87,9 +87,6 @@ type VolumeMount struct {
 // FilePath defines model for FilePath.
 type FilePath = string
 
-// Force defines model for Force.
-type Force = bool
-
 // Signature defines model for Signature.
 type Signature = string
 
@@ -150,9 +147,6 @@ type PostFilesParams struct {
 
 	// SignatureExpiration Signature expiration used for defining the expiration time of the signature.
 	SignatureExpiration *SignatureExpiration `form:"signature_expiration,omitempty" json:"signature_expiration,omitempty"`
-
-	// Force Force write, creating parent directories without checking if they exist. Use this when uploading files concurrently to avoid race conditions.
-	Force *Force `form:"force,omitempty" json:"force,omitempty"`
 }
 
 // PostInitJSONBody defines parameters for PostInit.
@@ -558,22 +552,6 @@ func NewPostFilesRequestWithBody(server string, params *PostFilesParams, content
 		if params.SignatureExpiration != nil {
 
 			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "signature_expiration", runtime.ParamLocationQuery, *params.SignatureExpiration); err != nil {
-				return nil, err
-			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-				return nil, err
-			} else {
-				for k, v := range parsed {
-					for _, v2 := range v {
-						queryValues.Add(k, v2)
-					}
-				}
-			}
-
-		}
-
-		if params.Force != nil {
-
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "force", runtime.ParamLocationQuery, *params.Force); err != nil {
 				return nil, err
 			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
 				return nil, err

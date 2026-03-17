@@ -36,7 +36,7 @@ func TestProcessFile(t *testing.T) {
 
 	t.Run("failed to ensure directories", func(t *testing.T) {
 		t.Parallel()
-		httpStatus, err := processFile(&emptyReq, "/proc/invalid/not-real", emptyPart, uid, gid, false, emptyLogger)
+		httpStatus, err := processFile(&emptyReq, "/proc/invalid/not-real", emptyPart, uid, gid, emptyLogger)
 		require.Error(t, err)
 		assert.Equal(t, http.StatusInternalServerError, httpStatus)
 		assert.ErrorContains(t, err, "error ensuring directories: ")
@@ -46,7 +46,7 @@ func TestProcessFile(t *testing.T) {
 		t.Parallel()
 		tempDir := t.TempDir()
 
-		httpStatus, err := processFile(&emptyReq, tempDir, emptyPart, uid, gid, false, emptyLogger)
+		httpStatus, err := processFile(&emptyReq, tempDir, emptyPart, uid, gid, emptyLogger)
 		require.Error(t, err)
 		assert.Equal(t, http.StatusBadRequest, httpStatus, err.Error())
 		assert.ErrorContains(t, err, "path is a directory: ")
@@ -54,7 +54,7 @@ func TestProcessFile(t *testing.T) {
 
 	t.Run("fail to create file", func(t *testing.T) {
 		t.Parallel()
-		httpStatus, err := processFile(&emptyReq, "/proc/invalid-filename", emptyPart, uid, gid, false, emptyLogger)
+		httpStatus, err := processFile(&emptyReq, "/proc/invalid-filename", emptyPart, uid, gid, emptyLogger)
 		require.Error(t, err)
 		assert.Equal(t, http.StatusInternalServerError, httpStatus)
 		assert.ErrorContains(t, err, "error opening file: ")
@@ -85,7 +85,7 @@ func TestProcessFile(t *testing.T) {
 		// try to replace it
 		request, buffer := newRequest(secondFileContents)
 		tempFile2 := filepath.Join(tempDir, "test-file-2")
-		httpStatus, err := processFile(request, tempFile2, buffer, uid, gid, false, emptyLogger)
+		httpStatus, err := processFile(request, tempFile2, buffer, uid, gid, emptyLogger)
 		require.Error(t, err)
 		assert.Equal(t, http.StatusInsufficientStorage, httpStatus)
 		assert.ErrorContains(t, err, "attempted to write 2048 bytes: not enough disk space")
@@ -99,7 +99,7 @@ func TestProcessFile(t *testing.T) {
 		content := []byte("test-file-contents")
 		request, buffer := newRequest(content)
 
-		httpStatus, err := processFile(request, tempFile, buffer, uid, gid, false, emptyLogger)
+		httpStatus, err := processFile(request, tempFile, buffer, uid, gid, emptyLogger)
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusNoContent, httpStatus)
 
@@ -125,7 +125,7 @@ func TestProcessFile(t *testing.T) {
 		// try to replace it
 		content := []byte("test-file-contents")
 		request, buffer := newRequest(content)
-		httpStatus, err := processFile(request, tempFile, buffer, uid, gid, false, emptyLogger)
+		httpStatus, err := processFile(request, tempFile, buffer, uid, gid, emptyLogger)
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusNoContent, httpStatus)
 	})
@@ -148,7 +148,7 @@ func TestProcessFile(t *testing.T) {
 		tempFile2 := filepath.Join(tempDir, "test-file-2")
 		content := []byte("test-file-contents")
 		request, buffer := newRequest(content)
-		httpStatus, err := processFile(request, tempFile2, buffer, uid, gid, false, emptyLogger)
+		httpStatus, err := processFile(request, tempFile2, buffer, uid, gid, emptyLogger)
 		require.ErrorContains(t, err, "not enough disk space available")
 		assert.Equal(t, http.StatusInsufficientStorage, httpStatus)
 	})
@@ -170,7 +170,7 @@ func TestProcessFile(t *testing.T) {
 		tempFile2 := filepath.Join(tempDir, "test-file-2")
 		content := []byte("test-file-contents")
 		request, buffer := newRequest(content)
-		httpStatus, err := processFile(request, tempFile2, buffer, uid, gid, false, emptyLogger)
+		httpStatus, err := processFile(request, tempFile2, buffer, uid, gid, emptyLogger)
 		require.ErrorContains(t, err, "not enough inodes available")
 		assert.Equal(t, http.StatusInsufficientStorage, httpStatus)
 	})
@@ -185,7 +185,7 @@ func TestProcessFile(t *testing.T) {
 		newContent := []byte("102\n")
 		request, buffer := newRequest(newContent)
 
-		httpStatus, err := processFile(request, filePath, buffer, uid, gid, false, emptyLogger)
+		httpStatus, err := processFile(request, filePath, buffer, uid, gid, emptyLogger)
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusNoContent, httpStatus)
 
@@ -205,7 +205,7 @@ func TestProcessFile(t *testing.T) {
 		newContent := []byte("new-file-contents")
 		request, buffer := newRequest(newContent)
 
-		httpStatus, err := processFile(request, tempFile, buffer, uid, gid, false, emptyLogger)
+		httpStatus, err := processFile(request, tempFile, buffer, uid, gid, emptyLogger)
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusNoContent, httpStatus)
 

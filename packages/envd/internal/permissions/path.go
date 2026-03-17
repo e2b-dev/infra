@@ -75,6 +75,11 @@ func EnsureDirs(path string, uid, gid int) error {
 
 		if err != nil && os.IsNotExist(err) {
 			err = os.Mkdir(subpath, 0o755)
+			if os.IsExist(err) {
+				// Another process created the directory between our Stat and Mkdir calls.
+				continue
+			}
+
 			if err != nil {
 				return fmt.Errorf("failed to create directory: %w", err)
 			}
@@ -89,38 +94,6 @@ func EnsureDirs(path string, uid, gid int) error {
 
 		if !info.IsDir() {
 			return fmt.Errorf("path is a file: %s", subpath)
-		}
-	}
-
-	return nil
-}
-
-func EnsureDirsForce(path string, uid, gid int) error {
-	subpaths := getSubpaths(path)
-	for _, subpath := range subpaths {
-		err := os.Mkdir(subpath, 0o755)
-		if err != nil {
-			if !os.IsExist(err) {
-				return fmt.Errorf("failed to create directory: %w", err)
-			}
-
-			// Path exists — verify it's a directory, not a file.
-			info, statErr := os.Stat(subpath)
-			if statErr != nil {
-				return fmt.Errorf("failed to stat existing path: %w", statErr)
-			}
-
-			if !info.IsDir() {
-				return fmt.Errorf("path is a file: %s", subpath)
-			}
-
-			continue
-		}
-
-		// Only chown directories we actually created.
-		err = os.Chown(subpath, uid, gid)
-		if err != nil {
-			return fmt.Errorf("failed to chown directory: %w", err)
 		}
 	}
 

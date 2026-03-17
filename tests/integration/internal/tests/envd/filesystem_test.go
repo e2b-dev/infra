@@ -374,7 +374,7 @@ func TestRelativePath(t *testing.T) {
 	assert.Equal(t, path.Join(userHome, relativeTestFolder, "test.txt"), folderListResp.Msg.GetEntries()[0].GetPath())
 }
 
-func TestConcurrentFileUploadForce(t *testing.T) {
+func TestConcurrentFileUpload(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -385,8 +385,9 @@ func TestConcurrentFileUploadForce(t *testing.T) {
 
 	baseDir := "/home/user/concurrent-test/nested/dir"
 
-	// Upload multiple files concurrently to the same nested directory using force mode.
-	// Without force, this would race on directory creation.
+	// Upload multiple files concurrently to the same nested directory.
+	// This exercises the race condition fix in EnsureDirs where concurrent
+	// Mkdir calls are tolerated via os.IsExist checks.
 	// Note: we avoid calling require/assert from goroutines since FailNow
 	// calls runtime.Goexit which cannot be caught by recover, causing deadlocks.
 	errs := make(chan error, 4)
@@ -396,12 +397,11 @@ func TestConcurrentFileUploadForce(t *testing.T) {
 			content := fmt.Sprintf("content of test_%d\n", i)
 
 			buffer, contentType := utils.CreateTextFile(t, filePath, content)
-			force := true
 			reqEditors := []envdAPI.RequestEditorFn{setup.WithSandbox(t, sbx.SandboxID)}
 
 			writeRes, err := envdClient.HTTPClient.PostFilesWithBodyWithResponse(
 				ctx,
-				&envdAPI.PostFilesParams{Path: &filePath, Username: sharedUtils.ToPtr("user"), Force: &force},
+				&envdAPI.PostFilesParams{Path: &filePath, Username: sharedUtils.ToPtr("user")},
 				contentType,
 				buffer,
 				reqEditors...,
