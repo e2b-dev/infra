@@ -17,9 +17,9 @@ import (
 )
 
 var OrchestratorToApiNodeStateMapper = map[orchestratorinfo.ServiceInfoStatus]api.NodeStatus{
-	orchestratorinfo.ServiceInfoStatus_Healthy:    api.NodeStatusReady,
-	orchestratorinfo.ServiceInfoStatus_Draining:   api.NodeStatusDraining,
-	orchestratorinfo.ServiceInfoStatus_Unhealthy:  api.NodeStatusUnhealthy,
+	orchestratorinfo.ServiceInfoStatus_Healthy:     api.NodeStatusReady,
+	orchestratorinfo.ServiceInfoStatus_Draining:    api.NodeStatusDraining,
+	orchestratorinfo.ServiceInfoStatus_Unhealthy:   api.NodeStatusUnhealthy,
 	orchestratorinfo.ServiceInfoStatus_ScalingDown: api.NodeStatusScalingDown,
 }
 
