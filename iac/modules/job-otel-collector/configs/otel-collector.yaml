@@ -41,23 +41,27 @@ receivers:
           system.cpu.utilization: # percentage utilized in the moment
             enabled: true
 
-      # entirely disabled, so we omit the module
-      #disk:
-      #  metrics:
-      #    system.disk.io:
-      #      enabled: false
-      #    system.disk.io_time:
-      #      enabled: false
-      #    system.disk.merged:
-      #      enabled: false
-      #    system.disk.operation_time:
-      #      enabled: false
-      #    system.disk.operations:
-      #      enabled: false
-      #    system.disk.pending_operations:
-      #      enabled: false
-      #    system.disk.weighted_io_time:
-      #      enabled: false
+      disk:
+        include:
+          devices:
+            - "^sd[a-z]$"
+            - "^nvme[0-9]+n[0-9]+$"
+          match_type: regexp
+        metrics:
+          system.disk.io:
+            enabled: true
+          system.disk.io_time:
+            enabled: true
+          system.disk.merged:
+            enabled: false
+          system.disk.operation_time:
+            enabled: false
+          system.disk.operations:
+            enabled: true
+          system.disk.pending_operations:
+            enabled: true
+          system.disk.weighted_io_time:
+            enabled: false
 
       load:
         metrics:
@@ -287,6 +291,25 @@ processors:
             new_value: blocked
             aggregation_type: sum
 
+  transform/aggregate_nvme:
+    metric_statements:
+      - context: datapoint
+        statements:
+          - replace_pattern(attributes["device"], "^nvme.*$$", "nvme")
+
+  metricstransform/aggregate_disks:
+    transforms:
+      - include: "system.disk.*"
+        match_type: regexp
+        action: update
+        operations:
+          - action: aggregate_labels
+            label_set:
+              - service.instance.id
+              - device
+              - direction
+              - deployment.environment
+            aggregation_type: sum
 
   resourcedetection:
     # https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/processor/resourcedetectionprocessor
@@ -476,6 +499,8 @@ service:
         - resourcedetection
         - transform/set-name
         - metricstransform/single_cpu
+        - transform/aggregate_nvme
+        - metricstransform/aggregate_disks
         - batch
       exporters:
         - otlp_http/grafana_cloud

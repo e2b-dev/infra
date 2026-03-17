@@ -10,24 +10,29 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
+type TeamItem interface {
+	TeamID() string
+}
+
 // AuthStore abstracts the DB operations needed for auth validation.
-type AuthStore[T any] interface {
+type AuthStore[T TeamItem] interface {
 	GetTeamByHashedAPIKey(ctx context.Context, hashedKey string) (T, error)
 	GetTeamByIDAndUserID(ctx context.Context, userID uuid.UUID, teamID string) (T, error)
 	GetUserIDByHashedAccessToken(ctx context.Context, hashedToken string) (uuid.UUID, error)
 }
 
 // AuthService encapsulates the cache, store, and JWT secrets for auth validation.
-type AuthService[T any] struct {
+type AuthService[T TeamItem] struct {
 	store      AuthStore[T]
 	teamCache  *AuthCache[T]
 	jwtSecrets []string
 }
 
 // NewAuthService creates an AuthService with the given store, cache, and JWT secrets.
-func NewAuthService[T any](store AuthStore[T], teamCache *AuthCache[T], jwtSecrets []string) *AuthService[T] {
+func NewAuthService[T TeamItem](store AuthStore[T], teamCache *AuthCache[T], jwtSecrets []string) *AuthService[T] {
 	return &AuthService[T]{
 		store:      store,
 		teamCache:  teamCache,
@@ -36,7 +41,7 @@ func NewAuthService[T any](store AuthStore[T], teamCache *AuthCache[T], jwtSecre
 }
 
 // ValidateAPIKey verifies the API key format and fetches the associated team via cache + store.
-func (s *AuthService[T]) ValidateAPIKey(ctx context.Context, apiKey string) (T, *APIError) {
+func (s *AuthService[T]) ValidateAPIKey(ctx context.Context, ginCtx *gin.Context, apiKey string) (T, *APIError) {
 	hashedKey, err := keys.VerifyKey(keys.ApiKeyPrefix, apiKey)
 	if err != nil {
 		var zero T
@@ -79,11 +84,17 @@ func (s *AuthService[T]) ValidateAPIKey(ctx context.Context, apiKey string) (T, 
 		}
 	}
 
+	//nolint:contextcheck // We use the gin request context to set attributes on the parent span.
+	telemetry.SetAttributes(ginCtx.Request.Context(),
+		telemetry.WithMaskedAPIKey(keys.MaskToken(keys.ApiKeyPrefix, apiKey)),
+		telemetry.WithTeamID(result.TeamID()),
+	)
+
 	return result, nil
 }
 
 // ValidateAccessToken verifies the access token format and fetches the associated user ID.
-func (s *AuthService[T]) ValidateAccessToken(ctx context.Context, accessToken string) (uuid.UUID, *APIError) {
+func (s *AuthService[T]) ValidateAccessToken(ctx context.Context, ginCtx *gin.Context, accessToken string) (uuid.UUID, *APIError) {
 	hashedToken, err := keys.VerifyKey(keys.AccessTokenPrefix, accessToken)
 	if err != nil {
 		return uuid.UUID{}, &APIError{
@@ -102,11 +113,17 @@ func (s *AuthService[T]) ValidateAccessToken(ctx context.Context, accessToken st
 		}
 	}
 
+	//nolint:contextcheck // We use the gin request context to set attributes on the parent span.
+	telemetry.SetAttributes(ginCtx.Request.Context(),
+		telemetry.WithMaskedAccessToken(keys.MaskToken(keys.AccessTokenPrefix, accessToken)),
+		telemetry.WithUserID(userID.String()),
+	)
+
 	return userID, nil
 }
 
 // ValidateSupabaseToken parses a Supabase JWT and extracts the user ID.
-func (s *AuthService[T]) ValidateSupabaseToken(ctx context.Context, supabaseToken string) (uuid.UUID, *APIError) {
+func (s *AuthService[T]) ValidateSupabaseToken(ctx context.Context, ginCtx *gin.Context, supabaseToken string) (uuid.UUID, *APIError) {
 	userID, err := ParseUserIDFromToken(ctx, s.jwtSecrets, supabaseToken)
 	if err != nil {
 		return uuid.UUID{}, &APIError{
@@ -115,6 +132,11 @@ func (s *AuthService[T]) ValidateSupabaseToken(ctx context.Context, supabaseToke
 			Code:      http.StatusUnauthorized,
 		}
 	}
+
+	//nolint:contextcheck // We use the gin request context to set attributes on the parent span.
+	telemetry.SetAttributes(ginCtx.Request.Context(),
+		telemetry.WithUserID(userID.String()),
+	)
 
 	return userID, nil
 }
@@ -164,6 +186,12 @@ func (s *AuthService[T]) ValidateSupabaseTeam(ctx context.Context, ginCtx *gin.C
 			Code:      http.StatusUnauthorized,
 		}
 	}
+
+	//nolint:contextcheck // We use the gin request context to set attributes on the parent span.
+	telemetry.SetAttributes(ginCtx.Request.Context(),
+		telemetry.WithUserID(userID.String()),
+		telemetry.WithTeamID(result.TeamID()),
+	)
 
 	return result, nil
 }

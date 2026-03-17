@@ -1,7 +1,9 @@
-package feature_flags
+package featureflags
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
@@ -24,6 +26,9 @@ const (
 	ServiceKind    ldcontext.Kind = "service"
 	TemplateKind   ldcontext.Kind = "template"
 	VolumeKind     ldcontext.Kind = "volume"
+
+	OrchestratorKind            ldcontext.Kind = "orchestrator"
+	OrchestratorCommitAttribute string         = "commit"
 )
 
 // All flags must be defined here: https://app.launchdarkly.com/projects/default/flags/
@@ -171,6 +176,16 @@ var (
 
 	// BuildBaseRootfsSizeLimitMB is the maximum size of the base rootfs filesystem created from the OCI image, in MB.
 	BuildBaseRootfsSizeLimitMB = newIntFlag("build-base-rootfs-size-limit-mb", 25000)
+
+	// MaxConcurrentSnapshotUpserts limits concurrent UpsertSnapshot calls (pause + snapshot template paths).
+	// 0 or negative disables throttling (unlimited concurrency).
+	MaxConcurrentSnapshotUpserts = newIntFlag("max-concurrent-snapshot-upserts", 0)
+	// MaxConcurrentSandboxListQueries limits concurrent GetSnapshotsWithCursor calls in the sandbox list path.
+	// 0 or negative disables throttling (unlimited concurrency).
+	MaxConcurrentSandboxListQueries = newIntFlag("max-concurrent-sandbox-list-queries", 0)
+	// MaxConcurrentSnapshotBuildQueries limits concurrent GetSnapshotBuilds calls (e.g. sandbox delete).
+	// 0 or negative disables throttling (unlimited concurrency).
+	MaxConcurrentSnapshotBuildQueries = newIntFlag("max-concurrent-snapshot-build-queries", 0)
 )
 
 type StringFlag struct {
@@ -224,6 +239,29 @@ var (
 	BuildNodeInfo               = newJSONFlag("preferred-build-node", ldvalue.Null())
 	FirecrackerVersions         = newJSONFlag("firecracker-versions", ldvalue.FromJSONMarshal(FirecrackerVersionMap))
 )
+
+// ResolveFirecrackerVersion resolves the firecracker version using the FirecrackerVersions feature flag.
+// The buildVersion format is "v1.12.1_a41d3fb" — we extract "v1.12" as the lookup key.
+func ResolveFirecrackerVersion(ctx context.Context, ff *Client, buildVersion string) string {
+	parts := strings.Split(buildVersion, "_")
+	if len(parts) < 2 {
+		return buildVersion
+	}
+
+	versionParts := strings.Split(strings.TrimPrefix(parts[0], "v"), ".")
+	if len(versionParts) < 2 {
+		return buildVersion
+	}
+
+	key := fmt.Sprintf("v%s.%s", versionParts[0], versionParts[1])
+	versions := ff.JSONFlag(ctx, FirecrackerVersions).AsValueMap()
+
+	if resolved, ok := versions.Get(key).AsOptionalString().Get(); ok {
+		return resolved
+	}
+
+	return buildVersion
+}
 
 // defaultTrackedTemplates is the default map of template aliases tracked for metrics.
 // This is used to reduce metric cardinality.

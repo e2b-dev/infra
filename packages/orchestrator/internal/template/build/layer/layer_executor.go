@@ -83,11 +83,7 @@ func (lb *LayerExecutor) BuildLayer(
 	}
 	defer sbx.Close(ctx)
 
-	// Add to proxy so we can call envd and route traffic from the sandbox
-	lb.sandboxes.Insert(sbx)
 	defer func() {
-		lb.sandboxes.Remove(sbx.Runtime.SandboxID)
-
 		closeErr := lb.proxy.RemoveFromPool(sbx.LifecycleID)
 		if closeErr != nil {
 			// Errors here will be from forcefully closing the connections, so we can ignore them—they will at worst timeout on their own.

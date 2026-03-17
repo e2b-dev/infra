@@ -81,7 +81,7 @@ Check if you can use config for terraform state management
       > Get Supabase JWT Secret: go to the [Supabase dashboard](https://supabase.com/dashboard) -> Select your Project -> Project Settings -> Data API -> JWT Settings
   - e2b-posthog-api-key (optional, for monitoring)
 9. Run `make plan-without-jobs` and then `make apply`
-10. Run `make plan` and then `make apply`. Note: This will work after the TLS certificates was issued. It can take some time; you can check the status in the Google Cloud Console
+10. Run `make plan` and then `make apply`. Note: This will work after the TLS certificates was issued. It can take some time; you can check the status in the Google Cloud Console. Database migrations run automatically via the API's db-migrator task.
 11. Setup data in the cluster by running `make prep-cluster` in `packages/shared` to create an initial user, team, and build a base template.
   - You can also run `make seed-db` in `packages/db` to create more users and teams.
 
@@ -140,16 +140,16 @@ Now, you should see the right quota options in `All Quotas` and be able to reque
     - `{prefix}supabase-jwt-secrets` - Supabase JWT secret (optional / required for the [E2B dashboard](https://github.com/e2b-dev/dashboard))
     - `{prefix}grafana` - JSON with `API_KEY`, `OTLP_URL`, `OTEL_COLLECTOR_TOKEN`, `USERNAME` keys (optional, for monitoring)
     - `{prefix}launch-darkly-api-key` - LaunchDarkly SDK key (optional, for feature flags)
-6. Build Packer AMIs for the cluster nodes:
+6. Build the Packer AMI for cluster nodes (a single shared AMI used by all node types):
     ```sh
-    cd iac/provider-aws/packer
-    # Build AMIs for control server, API, client, clickhouse, and build nodes
+    cd iac/provider-aws/nomad-cluster-disk-image
+    make init   # install Packer plugins
+    make build  # build the AMI (~5 min, launches a t3.large)
     ```
 7. Run `make build-and-upload` to build and push container images and binaries
 8. Run `make copy-public-builds` to copy Firecracker kernels and rootfs to your S3 buckets
-    > This requires `gsutil` to download from the public GCS bucket and `aws` CLI to upload to your S3 buckets
 9. Run `make plan-without-jobs` and then `make apply` to provision the cluster infrastructure
-10. Run `make plan` and then `make apply` to deploy all Nomad jobs
+10. Run `make plan` and then `make apply` to deploy all Nomad jobs (this also runs database migrations automatically via the API's db-migrator task)
 11. Setup data in the cluster by running `make prep-cluster` in `packages/shared` to create an initial user, team, and build a base template
 
 ### AWS Architecture

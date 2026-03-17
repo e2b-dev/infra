@@ -70,8 +70,7 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 		}
 
 		// Sandbox not in store at all → fall through to snapshot resume.
-		var notFoundErr *sandbox.NotFoundError
-		if errors.As(apiErr.Err, &notFoundErr) {
+		if errors.Is(apiErr.Err, sandbox.ErrNotFound) {
 			break
 		}
 

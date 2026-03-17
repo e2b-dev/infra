@@ -5,17 +5,18 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
+	"golang.org/x/sync/singleflight"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 // Chunker is the interface satisfied by both FullFetchChunker and StreamingChunker.
@@ -68,8 +69,7 @@ type FullFetchChunker struct {
 
 	size int64
 
-	// TODO: Optimize this so we don't need to keep the fetchers in memory.
-	fetchers *utils.WaitMap
+	fetchers singleflight.Group
 }
 
 func NewFullFetchChunker(
@@ -84,11 +84,10 @@ func NewFullFetchChunker(
 	}
 
 	chunker := &FullFetchChunker{
-		size:     size,
-		base:     base,
-		cache:    cache,
-		fetchers: utils.NewWaitMap(),
-		metrics:  metrics,
+		size:    size,
+		base:    base,
+		cache:   cache,
+		metrics: metrics,
 	}
 
 	return chunker, nil
@@ -185,17 +184,24 @@ func (c *FullFetchChunker) fetchToCache(ctx context.Context, off, length int64) 
 				}
 			}()
 
-			err = c.fetchers.Wait(fetchOff, func() error {
+			key := strconv.FormatInt(fetchOff, 10)
+
+			_, err, _ = c.fetchers.Do(key, func() (any, error) {
+				// Check early to prevent overwriting data, Slice requires thread safety
+				if c.cache.isCached(fetchOff, storage.MemoryChunkSize) {
+					return nil, nil
+				}
+
 				select {
 				case <-ctx.Done():
-					return fmt.Errorf("error fetching range %d-%d: %w", fetchOff, fetchOff+storage.MemoryChunkSize, ctx.Err())
+					return nil, fmt.Errorf("error fetching range %d-%d: %w", fetchOff, fetchOff+storage.MemoryChunkSize, ctx.Err())
 				default:
 				}
 
 				// The size of the buffer is adjusted if the last chunk is not a multiple of the block size.
 				b, releaseCacheCloseLock, err := c.cache.addressBytes(fetchOff, storage.MemoryChunkSize)
 				if err != nil {
-					return err
+					return nil, err
 				}
 
 				defer releaseCacheCloseLock()
@@ -208,7 +214,7 @@ func (c *FullFetchChunker) fetchToCache(ctx context.Context, off, length int64) 
 						attribute.String(failureReason, failureTypeRemoteRead),
 					)
 
-					return fmt.Errorf("failed to read chunk from base %d: %w", fetchOff, err)
+					return nil, fmt.Errorf("failed to read chunk from base %d: %w", fetchOff, err)
 				}
 
 				if readBytes != len(b) {
@@ -216,14 +222,14 @@ func (c *FullFetchChunker) fetchToCache(ctx context.Context, off, length int64) 
 						attribute.String(failureReason, failureTypeRemoteRead),
 					)
 
-					return fmt.Errorf("failed to read chunk from base %d: expected %d bytes, got %d bytes", fetchOff, len(b), readBytes)
+					return nil, fmt.Errorf("failed to read chunk from base %d: expected %d bytes, got %d bytes", fetchOff, len(b), readBytes)
 				}
 
 				c.cache.setIsCached(fetchOff, int64(readBytes))
 
 				fetchSW.Success(ctx, int64(readBytes))
 
-				return nil
+				return nil, nil
 			})
 
 			return err

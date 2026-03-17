@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"mime/multipart"
 	"net/http"
 	"os"
@@ -237,15 +238,6 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 	defer body.Close()
 	r.Body = body
 
-	f, err := r.MultipartReader()
-	if err != nil {
-		errMsg = fmt.Errorf("error parsing multipart form: %w", err)
-		errorCode = http.StatusInternalServerError
-		jsonError(w, errorCode, errMsg)
-
-		return
-	}
-
 	u, err := user.Lookup(username)
 	if err != nil {
 		errMsg = fmt.Errorf("error looking up user '%s': %w", username, err)
@@ -265,34 +257,26 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 		return
 	}
 
-	paths := UploadSuccess{}
+	// Use raw body upload only for application/octet-stream, default to multipart for backwards compatibility
+	contentType := r.Header.Get("Content-Type")
+	mediaType, _, _ := mime.ParseMediaType(contentType)
 
-	for {
-		part, partErr := f.NextPart()
+	var paths UploadSuccess
 
-		if partErr == io.EOF {
-			// We're done reading the parts.
-			break
-		} else if partErr != nil {
-			errMsg = fmt.Errorf("error reading form: %w", partErr)
-			errorCode = http.StatusInternalServerError
-			jsonError(w, errorCode, errMsg)
+	switch {
+	case mediaType == "application/octet-stream":
+		paths, errorCode, errMsg = a.handleRawUpload(r, u, uid, gid, operationID, params)
+	case strings.HasPrefix(mediaType, "multipart/"):
+		paths, errorCode, errMsg = a.handleMultipartUpload(r, u, uid, gid, operationID, params)
+	default:
+		errorCode = http.StatusBadRequest
+		errMsg = fmt.Errorf("unsupported content type: %s, expected multipart/form-data or application/octet-stream", contentType)
+	}
 
-			break
-		}
+	if errMsg != nil {
+		jsonError(w, errorCode, errMsg)
 
-		entry, status, err := a.handlePart(r, part, paths, u, uid, gid, operationID, params)
-		if err != nil {
-			errorCode = status
-			errMsg = err
-			jsonError(w, errorCode, errMsg)
-
-			return
-		}
-
-		if entry != nil {
-			paths = append(paths, *entry)
-		}
+		return
 	}
 
 	data, err := json.Marshal(paths)
@@ -306,4 +290,62 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(data)
+}
+
+func (a *API) handleMultipartUpload(r *http.Request, u *user.User, uid, gid int, operationID string, params PostFilesParams) (UploadSuccess, int, error) {
+	f, err := r.MultipartReader()
+	if err != nil {
+		return nil, http.StatusInternalServerError, fmt.Errorf("error parsing multipart form: %w", err)
+	}
+
+	paths := UploadSuccess{}
+
+	for {
+		part, partErr := f.NextPart()
+
+		if partErr == io.EOF {
+			break
+		} else if partErr != nil {
+			return nil, http.StatusInternalServerError, fmt.Errorf("error reading form: %w", partErr)
+		}
+
+		entry, status, err := a.handlePart(r, part, paths, u, uid, gid, operationID, params)
+		if err != nil {
+			return nil, status, err
+		}
+
+		if entry != nil {
+			paths = append(paths, *entry)
+		}
+	}
+
+	return paths, http.StatusOK, nil
+}
+
+func (a *API) handleRawUpload(r *http.Request, u *user.User, uid, gid int, operationID string, params PostFilesParams) (UploadSuccess, int, error) {
+	if params.Path == nil {
+		return nil, http.StatusBadRequest, fmt.Errorf("path query parameter is required for raw body upload")
+	}
+
+	filePath, err := permissions.ExpandAndResolve(*params.Path, u, a.defaults.Workdir)
+	if err != nil {
+		return nil, http.StatusBadRequest, fmt.Errorf("error resolving path: %w", err)
+	}
+
+	logger := a.logger.
+		With().
+		Str(string(logs.OperationIDKey), operationID).
+		Str("event_type", "file_processing").
+		Logger()
+
+	status, err := processFile(r, filePath, r.Body, uid, gid, logger)
+	if err != nil {
+		return nil, status, err
+	}
+
+	return UploadSuccess{{
+		Path: filePath,
+		Name: filepath.Base(filePath),
+		Type: File,
+	}}, http.StatusOK, nil
 }

@@ -14,7 +14,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
@@ -121,16 +121,7 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 				return nil, err
 			}
 
-			l := logger.L().With(
-				zap.String("origin_host", r.Host),
-				logger.WithSandboxID(sandboxId),
-				zap.Uint64("sandbox_req_port", port),
-				zap.String("sandbox_req_path", r.URL.Path),
-				zap.String("sandbox_req_method", r.Method),
-				zap.String("sandbox_req_user_agent", r.UserAgent()),
-				zap.String("remote_addr", r.RemoteAddr),
-				zap.Int64("content_length", r.ContentLength),
-			)
+			l := logger.L().With(logger.ProxyRequestFields(r, sandboxId, port)...)
 
 			trafficAccessToken := r.Header.Get(proxygrpc.MetadataTrafficAccessToken)
 			envdAccessToken := r.Header.Get(proxygrpc.MetadataEnvdHTTPAccessToken)
