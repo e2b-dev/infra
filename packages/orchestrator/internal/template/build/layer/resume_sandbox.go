@@ -15,14 +15,14 @@ import (
 
 // ResumeSandbox creates sandboxes for resuming existing templates
 type ResumeSandbox struct {
-	config         sandbox.Config
+	config         *sandbox.Config
 	sandboxFactory *sandbox.Factory
 	timeout        time.Duration
 }
 
 var _ SandboxCreator = (*ResumeSandbox)(nil)
 
-func NewResumeSandbox(config sandbox.Config, sandboxFactory *sandbox.Factory, timeout time.Duration) *ResumeSandbox {
+func NewResumeSandbox(config *sandbox.Config, sandboxFactory *sandbox.Factory, timeout time.Duration) *ResumeSandbox {
 	return &ResumeSandbox{config: config, sandboxFactory: sandboxFactory, timeout: timeout}
 }
 

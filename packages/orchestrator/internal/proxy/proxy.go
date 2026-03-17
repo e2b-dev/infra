@@ -71,27 +71,25 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 				return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)
 			}
 
-			var accessToken *string = nil
-			if net := sbx.Config.Network; net != nil && net.GetIngress() != nil {
-				accessToken = net.GetIngress().TrafficAccessToken
-			}
+			ingress := sbx.Config.GetNetworkIngress()
+			accessToken := ingress.GetTrafficAccessToken()
 
 			isNonEnvdTraffic := int64(port) != consts.DefaultEnvdServerPort
 
 			// Handle traffic access token validation.
 			// We are skipping envd port as it has its own access validation mechanism.
-			if accessToken != nil && isNonEnvdTraffic {
+			if accessToken != "" && isNonEnvdTraffic {
 				accessTokenRaw := r.Header.Get(trafficAccessTokenHeader)
 				if accessTokenRaw == "" {
 					return nil, reverseproxy.NewErrMissingTrafficAccessToken(sandboxId, trafficAccessTokenHeader)
-				} else if accessTokenRaw != *accessToken {
+				} else if accessTokenRaw != accessToken {
 					return nil, reverseproxy.NewErrInvalidTrafficAccessToken(sandboxId, trafficAccessTokenHeader)
 				}
 			}
 
 			// Handle request host masking only for non-envd traffic.
 			var maskRequestHost *string = nil
-			if h := sbx.Config.Network.GetIngress().GetMaskRequestHost(); isNonEnvdTraffic && h != "" {
+			if h := ingress.GetMaskRequestHost(); isNonEnvdTraffic && h != "" {
 				h = strings.ReplaceAll(h, pool.MaskRequestHostPortPlaceholder, strconv.FormatUint(port, 10))
 				maskRequestHost = &h
 			}

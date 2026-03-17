@@ -19,7 +19,7 @@ func initializeHostStatsCollector(
 	sbx *Sandbox,
 	fcHandle *fc.Process,
 	runtime RuntimeMetadata,
-	config Config,
+	config *Config,
 	hostStatsDelivery hoststats.Delivery,
 	samplingInterval time.Duration,
 ) {

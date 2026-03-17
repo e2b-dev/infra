@@ -32,7 +32,6 @@ import (
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -107,12 +106,11 @@ func TestSmokeAllFCVersions(t *testing.T) { //nolint:paralleltest // subtests sh
 			sbx, err := infra.factory.ResumeSandbox(
 				ctx,
 				tmpl,
-				sandbox.Config{
+				sandbox.NewConfig(sandbox.Config{
 					BaseTemplateID: "smoke-" + fcMajor,
 					Vcpu:           2,
 					RamMB:          512,
 					HugePages:      true,
-					Network:        &orchestrator.SandboxNetworkConfig{},
 					Envd: sandbox.EnvdMetadata{
 						Vars:        map[string]string{},
 						AccessToken: &token,
@@ -122,7 +120,7 @@ func TestSmokeAllFCVersions(t *testing.T) { //nolint:paralleltest // subtests sh
 						KernelVersion:      meta.Template.KernelVersion,
 						FirecrackerVersion: meta.Template.FirecrackerVersion,
 					},
-				},
+				}),
 				sandbox.RuntimeMetadata{
 					TemplateID:  "smoke-" + fcMajor,
 					TeamID:      "smoke",

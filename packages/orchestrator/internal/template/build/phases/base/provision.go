@@ -69,7 +69,7 @@ func getProvisionScript(
 func (bb *BaseBuilder) provisionSandbox(
 	ctx context.Context,
 	userLogger logger.Logger,
-	sandboxConfig sandbox.Config,
+	sandboxConfig *sandbox.Config,
 	sandboxRuntime sandbox.RuntimeMetadata,
 	localTemplate *sbxtemplate.LocalTemplate,
 	rootfsPath string,

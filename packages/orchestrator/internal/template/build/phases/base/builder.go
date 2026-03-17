@@ -31,7 +31,6 @@ import (
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -199,13 +198,11 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 	// Provision sandbox with systemd and other vital parts
 	userLogger.Info(ctx, "Provisioning sandbox template")
 
-	baseSbxConfig := sandbox.Config{
+	// Allow sandbox internet access during provisioning (nil network = no restrictions).
+	baseSbxConfig := sandbox.NewConfig(sandbox.Config{
 		Vcpu:      bb.Config.VCpuCount,
 		RamMB:     bb.Config.MemoryMB,
 		HugePages: bb.Config.HugePages,
-
-		// Allow sandbox internet access during provisioning
-		Network: &orchestrator.SandboxNetworkConfig{},
 
 		Envd: sandbox.EnvdMetadata{
 			Version: bb.EnvdVersion,
@@ -215,7 +212,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 			KernelVersion:      bb.Config.KernelVersion,
 			FirecrackerVersion: bb.Config.FirecrackerVersion,
 		},
-	}
+	})
 	err = bb.provisionSandbox(
 		ctx,
 		userLogger,
