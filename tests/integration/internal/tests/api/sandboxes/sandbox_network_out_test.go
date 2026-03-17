@@ -236,6 +236,9 @@ func TestNetworkEgress(t *testing.T) { //nolint:tparallel // subtests are sequen
 		{"wildcard_domain_with_deny_all", ptrS("*.example.com"), ptrS(blockAll)},
 		{"mixed_domain_ip_with_deny_all", ptrS("example.com", "8.8.8.8"), ptrS(blockAll)},
 		{"multiple_cidrs_in_deny", nil, ptrS("10.0.0.0/8", "192.168.0.0/16")},
+		{"port_only_in_deny", nil, ptrS(":443")},
+		{"port_only_in_allow_with_deny_all", ptrS(":443"), ptrS(blockAll)},
+		{"port_range_only_in_deny", nil, ptrS(":80-443")},
 	}
 	for _, tc := range acceptedCases {
 		t.Run("api/accept/"+tc.name, func(t *testing.T) { //nolint:paralleltest // sequential
@@ -419,6 +422,20 @@ func TestNetworkEgress(t *testing.T) { //nolint:tparallel // subtests are sequen
 		requireDNSAllowed(t, ctx, sbx, envdClient, "DNS 8.8.8.8 all ports")
 		requireTCPAllowed(t, ctx, sbx, envdClient, "https://1.1.1.1", "1.1.1.1:443 allowed")
 		requireDNSBlocked(t, ctx, sbx, envdClient, "1.1.1.1", "1.1.1.1:53 blocked (only :443)")
+	})
+
+	t.Run("port/deny_port_all_ips", func(t *testing.T) { //nolint:paralleltest // sequential
+		update(nil, []string{":443"})
+		requireTCPBlocked(t, ctx, sbx, envdClient, "https://8.8.8.8", "HTTPS blocked (port 443 denied on all IPs)")
+		requireTCPBlocked(t, ctx, sbx, envdClient, "https://1.1.1.1", "HTTPS blocked (port 443 denied on all IPs)")
+		requireDNSAllowed(t, ctx, sbx, envdClient, "DNS allowed (port 53 not denied)")
+	})
+
+	t.Run("port/allow_port_all_ips", func(t *testing.T) { //nolint:paralleltest // sequential
+		update([]string{":443"}, []string{blockAll})
+		requireTCPAllowed(t, ctx, sbx, envdClient, "https://8.8.8.8", "HTTPS allowed (port 443 on all IPs)")
+		requireTCPAllowed(t, ctx, sbx, envdClient, "https://1.1.1.1", "HTTPS allowed (port 443 on all IPs)")
+		requireDNSBlocked(t, ctx, sbx, envdClient, "8.8.8.8", "DNS blocked (port 53 not in allow)")
 	})
 
 	t.Run("port/allow_overrides_deny", func(t *testing.T) { //nolint:paralleltest // sequential

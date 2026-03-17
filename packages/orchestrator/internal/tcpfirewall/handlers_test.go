@@ -497,29 +497,8 @@ func TestIsEgressAllowed(t *testing.T) {
 			ip:       net.ParseIP("1.2.3.4"),
 			want:     true, // Treated as domain, no hostname match, default allow
 		},
-		{
-			name: "non-IP denied entry treated as domain and skipped",
-			network: &orchestrator.SandboxNetworkConfig{
-				Egress: &orchestrator.SandboxNetworkEgressConfig{
-					Denied: []string{"not-a-cidr"},
-				},
-			},
-			hostname: "",
-			ip:       net.ParseIP("1.2.3.4"),
-			want:     true, // Parsed as domain, skipped in deny (no domain matching), default allow
-		},
-		{
-			name: "allowed CIDR checked before invalid denied CIDR",
-			network: &orchestrator.SandboxNetworkConfig{
-				Egress: &orchestrator.SandboxNetworkEgressConfig{
-					Allowed: []string{"1.2.3.0/24"},
-					Denied:  []string{"invalid"},
-				},
-			},
-			hostname: "",
-			ip:       net.ParseIP("1.2.3.4"),
-			want:     true,
-		},
+		// Domain entries in deny are rejected at parse time (NewEgressACL).
+		// See TestNewEgressACL_RejectsDomainInDeny in rule_test.go.
 	}
 
 	const portNotRelevant uint16 = 6666

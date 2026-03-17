@@ -120,6 +120,12 @@ func NewEgressACL(allowed, denied []string) (*ACL, error) {
 		return nil, fmt.Errorf("denied rules: %w", err)
 	}
 
+	for _, rule := range deniedRules {
+		if rule.IsDomain {
+			return nil, fmt.Errorf("denied rules: domain entries are not supported: %q", rule.Host)
+		}
+	}
+
 	return &ACL{
 		Allowed: allowedRules,
 		Denied:  deniedRules,
@@ -169,6 +175,11 @@ func splitHostPort(s string) (host string, portStart, portEnd uint16, err error)
 
 	host = s[:idx]
 	portPart := s[idx+1:]
+
+	// Empty host means "all IPs" — e.g. ":443" means port 443 on 0.0.0.0/0.
+	if host == "" {
+		host = "0.0.0.0/0"
+	}
 
 	// Explicit "all ports" — trailing colon with nothing after it.
 	if portPart == "" {

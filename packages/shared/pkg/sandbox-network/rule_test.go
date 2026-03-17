@@ -104,6 +104,23 @@ func TestParseRule(t *testing.T) {
 			wantHost: "10.0.0.0/8", wantCIDR: "10.0.0.0/8",
 		},
 
+		// Empty host means all IPs (0.0.0.0/0)
+		{
+			name:     "port only",
+			input:    ":443",
+			wantHost: "0.0.0.0/0", wantPort: [2]uint16{443, 443}, wantCIDR: "0.0.0.0/0",
+		},
+		{
+			name:     "port range only",
+			input:    ":80-443",
+			wantHost: "0.0.0.0/0", wantPort: [2]uint16{80, 443}, wantCIDR: "0.0.0.0/0",
+		},
+		{
+			name:     "bare colon means all IPs all ports",
+			input:    ":",
+			wantHost: "0.0.0.0/0", wantCIDR: "0.0.0.0/0",
+		},
+
 		// Max port
 		{
 			name:     "max port",
@@ -203,6 +220,23 @@ func TestParseRules(t *testing.T) {
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "8.8.8.8:abc")
 	})
+}
+
+func TestNewEgressACL_RejectsDomainInDeny(t *testing.T) {
+	t.Parallel()
+
+	_, err := NewEgressACL(nil, []string{"example.com"})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "domain entries are not supported")
+
+	_, err = NewEgressACL(nil, []string{"0.0.0.0/0", "*.example.com:443"})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "domain entries are not supported")
+
+	// IPs and CIDRs in deny are fine.
+	acl, err := NewEgressACL([]string{"example.com:443"}, []string{"10.0.0.0/8", "192.168.1.1:80"})
+	require.NoError(t, err)
+	require.Len(t, acl.Denied, 2)
 }
 
 func TestRule_AllPorts(t *testing.T) {
