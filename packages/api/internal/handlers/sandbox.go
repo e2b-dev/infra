@@ -178,16 +178,19 @@ func (a *APIStore) startSandboxInternal(
 		attribute.String("instance.id", sbx.SandboxID),
 	)
 
-	sbxlogger.E(&sbxlogger.SandboxMetadata{
+	logMetadata := &sbxlogger.SandboxMetadata{
 		SandboxID:  sbx.SandboxID,
 		TemplateID: sbx.TemplateID,
 		TeamID:     team.ID.String(),
-	}).Info(
+	}
+	sbxlogger.E(logMetadata).Info(ctx, "Sandbox created", zap.String("end_time", endTime.Format("2006-01-02 15:04:05 -07:00")))
+	sbxlogger.I(logMetadata).Info(
 		ctx,
-		"Sandbox created",
+		"Sandbox created details",
 		zap.String("end_time", endTime.Format("2006-01-02 15:04:05 -07:00")),
-		zap.Bool("auto_pause", autoPause),
 		zap.String("auto_resume_policy", autoResumePolicy),
+		zap.Bool("auto_pause", autoPause),
+		zap.String("parent_template_id", baseTemplateID),
 	)
 
 	return sbx, nil
