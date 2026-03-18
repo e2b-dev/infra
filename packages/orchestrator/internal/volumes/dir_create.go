@@ -53,7 +53,7 @@ func (s *Service) CreateDir(ctx context.Context, request *orchestrator.VolumeDir
 			return nil, processError(ctx, "failed to create directory", err)
 		}
 
-		stat, _, statErr := fs.Stat(path)
+		stat, statErr := fs.Stat(path)
 		if statErr != nil {
 			return nil, fmt.Errorf("failed to verify existing path %q: %w", path, statErr)
 		}
@@ -75,12 +75,12 @@ func (s *Service) CreateDir(ctx context.Context, request *orchestrator.VolumeDir
 		}
 	}
 
-	stat, symlink, err := fs.Stat(path)
+	stat, err := fs.Stat(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to stat directory: %w", err)
 	}
 
-	entry := toEntry(path, symlink, stat)
+	entry := toEntry(path, stat)
 
 	return &orchestrator.VolumeDirCreateResponse{Entry: entry}, nil
 }

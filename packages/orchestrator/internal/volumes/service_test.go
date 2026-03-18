@@ -252,7 +252,7 @@ func TestEnsureParentDirs(t *testing.T) {
 func assertDir(t *testing.T, fs *chrooted.Chrooted, path string, uid, gid uint32, mode os.FileMode) {
 	t.Helper()
 
-	info, _, err := fs.Stat(path)
+	info, err := fs.Stat(path)
 	require.NoError(t, err)
 
 	assert.Equal(t, mode.Perm(), info.Mode().Perm())

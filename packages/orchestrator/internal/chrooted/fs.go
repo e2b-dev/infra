@@ -47,25 +47,9 @@ func (fs *Chrooted) EvalSymlinks(filename string) (p string, e error) {
 	return
 }
 
-func (fs *Chrooted) Stat(filename string) (info os.FileInfo, finalPath string, err error) {
+func (fs *Chrooted) Stat(filename string) (info os.FileInfo, err error) {
 	err = fs.act(func() error {
 		info, err = os.Lstat(filename)
-		if err != nil {
-			return err
-		}
-
-		if info.Mode()&os.ModeSymlink == os.ModeSymlink {
-			finalPath, err = filepath.EvalSymlinks(filename)
-			if err != nil {
-				return fmt.Errorf("failed to evaluate symlinks: %w", err)
-			}
-			info, err = os.Lstat(finalPath)
-			if err != nil {
-				return fmt.Errorf("failed to stat final path %q: %w", finalPath, err)
-			}
-		} else {
-			finalPath = filename
-		}
 
 		return err
 	})

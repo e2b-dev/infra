@@ -105,12 +105,12 @@ func (s *Service) CreateFile(server orchestrator.VolumeService_CreateFileServer)
 				return fmt.Errorf("failed to set file mode: %w", err)
 			}
 
-			fi, finalPath, err := fs.Stat(path)
+			fi, err := fs.Stat(path)
 			if err != nil {
 				return fmt.Errorf("failed to stat created file: %w", err)
 			}
 
-			entry := toEntry(path, finalPath, fi)
+			entry := toEntry(path, fi)
 
 			return server.SendAndClose(&orchestrator.VolumeFileCreateResponse{
 				Entry: entry,

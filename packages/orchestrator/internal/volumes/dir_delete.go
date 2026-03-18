@@ -39,7 +39,7 @@ func (s *Service) DeleteDir(ctx context.Context, request *orchestrator.VolumeDir
 		attribute.String("path", path),
 	))
 
-	if _, _, err := fs.Stat(path); err != nil {
+	if _, err := fs.Stat(path); err != nil {
 		if os.IsNotExist(err) {
 			return nil, newAPIError(ctx,
 				codes.NotFound,

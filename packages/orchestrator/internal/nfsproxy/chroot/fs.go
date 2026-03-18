@@ -31,9 +31,7 @@ func (f *wrappedFS) OpenFile(filename string, flag int, perm os.FileMode) (billy
 }
 
 func (f *wrappedFS) Stat(filename string) (os.FileInfo, error) {
-	info, _, err := f.chroot.Stat(filename)
-
-	return info, err
+	return f.chroot.Stat(filename)
 }
 
 func (f *wrappedFS) Rename(oldpath, newpath string) error {

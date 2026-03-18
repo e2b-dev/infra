@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"syscall"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -20,6 +19,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/chrooted"
+	"github.com/e2b-dev/infra/packages/shared/pkg/filesystem"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
@@ -131,32 +131,22 @@ func (s *Service) isRoot(path string) bool {
 	return path == "/"
 }
 
-func toEntry(fullVolumePath, symlinkDest string, fileInfo os.FileInfo) *orchestrator.EntryInfo {
-	entry := &orchestrator.EntryInfo{
-		Name: fileInfo.Name(),
-		Path: fullVolumePath,
-		Size: fileInfo.Size(),
-		Mode: uint32(fileInfo.Mode() & os.ModePerm),
-		Type: toType(fileInfo.Mode()),
-	}
+func toEntry(fullVolumePath string, fileInfo os.FileInfo) *orchestrator.EntryInfo {
+	entryInfo := filesystem.GetEntryInfo(fullVolumePath, fileInfo)
 
-	if symlinkDest != "" && symlinkDest != fullVolumePath {
-		entry.Name = filepath.Base(fullVolumePath)
-		entry.SymlinkTarget = &symlinkDest
+	return &orchestrator.EntryInfo{
+		Name:          entryInfo.Name,
+		Type:          toType(entryInfo.Mode),
+		Path:          fullVolumePath,
+		Size:          entryInfo.Size,
+		Mode:          uint32(entryInfo.Mode & os.ModePerm),
+		Uid:           entryInfo.UID,
+		Gid:           entryInfo.GID,
+		ModifiedTime:  toTimestampFromTime(entryInfo.ModifiedTime),
+		SymlinkTarget: entryInfo.SymlinkTarget,
+		CreatedTime:   toTimestampFromTime(entryInfo.CreatedTime),
+		AccessedTime:  toTimestampFromTime(entryInfo.AccessedTime),
 	}
-
-	// if we can figure out the base struct, we can get more useful information
-	if base, ok := fileInfo.Sys().(*syscall.Stat_t); ok {
-		entry.AccessedTime = toTimestampFromSpec(base.Atim)
-		entry.CreatedTime = toTimestampFromSpec(base.Ctim)
-		entry.ModifiedTime = toTimestampFromSpec(base.Mtim)
-		entry.Uid = base.Uid
-		entry.Gid = base.Gid
-	} else if !fileInfo.ModTime().IsZero() {
-		entry.ModifiedTime = toTimestampFromTime(fileInfo.ModTime())
-	}
-
-	return entry
 }
 
 func toType(fileType os.FileMode) orchestrator.FileType {
@@ -180,14 +170,6 @@ func toTimestampFromTime(t time.Time) *timestamppb.Timestamp {
 	return timestamppb.New(t)
 }
 
-func toTimestampFromSpec(spec syscall.Timespec) *timestamppb.Timestamp {
-	if spec.Sec == 0 && spec.Nsec == 0 {
-		return nil
-	}
-
-	return timestamppb.New(time.Unix(spec.Sec, spec.Nsec))
-}
-
 func setSpanStatus(span trace.Span, err error) {
 	if err != nil {
 		span.RecordError(err)
@@ -208,7 +190,7 @@ func ensureDirs(fs *chrooted.Chrooted, dirPath string, uid, gid uint32) error {
 	var needsUpdates []string
 	cur := dirPath
 	for {
-		if _, _, err := fs.Stat(cur); err == nil {
+		if _, err := fs.Stat(cur); err == nil {
 			if cur == dirPath {
 				// there's nothing for us to do here
 				return nil
