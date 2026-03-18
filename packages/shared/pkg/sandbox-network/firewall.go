@@ -73,10 +73,12 @@ func IsSpecifiedIPOrCIDR(s string) bool {
 		return false
 	}
 
+	// Allow the special all-traffic CIDR
 	if s == AllInternetTrafficCIDR {
 		return true
 	}
 
+	// Extract the IP portion
 	if ip := net.ParseIP(s); ip != nil {
 		return !ip.IsUnspecified()
 	}
