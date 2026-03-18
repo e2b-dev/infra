@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/assert"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -119,9 +119,9 @@ func TestGetSandboxExecutionData(t *testing.T) {
 	s := &Server{}
 	result := s.getSandboxExecutionData(sbx)
 
-	require.Equal(t, sbxStartedAt.UTC().Format(time.RFC3339), result["started_at"])
-	require.Equal(t, int64(2), result["vcpu_count"])
-	require.Equal(t, int64(512), result["memory_mb"])
-	require.IsType(t, int64(0), result["execution_time"])
-	require.Positive(t, result["execution_time"].(int64))
+	assert.Equal(t, sbxStartedAt.UTC().Format(time.RFC3339), result["started_at"])
+	assert.Equal(t, int64(2), result["vcpu_count"])
+	assert.Equal(t, int64(512), result["memory_mb"])
+	assert.IsType(t, int64(0), result["execution_time"])
+	assert.Positive(t, result["execution_time"].(int64))
 }

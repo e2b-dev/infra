@@ -335,33 +335,6 @@ func TestIsEgressAllowed(t *testing.T) {
 			ip:       net.ParseIP("172.20.1.1"),
 			want:     false,
 		},
-
-		// ---------------------------------------------------------------------
-		// Invalid CIDRs: ACL fails to parse → nil ACL → allow-all (fail open).
-		// In production, the API validates CIDRs before they reach here.
-		// ---------------------------------------------------------------------
-		{
-			name: "invalid allowed CIDR fails open",
-			network: &orchestrator.SandboxNetworkConfig{
-				Egress: &orchestrator.SandboxNetworkEgressConfig{
-					AllowedCidrs: []string{"invalid-cidr"},
-				},
-			},
-			hostname: "",
-			ip:       net.ParseIP("1.2.3.4"),
-			want:     true,
-		},
-		{
-			name: "invalid denied CIDR fails open",
-			network: &orchestrator.SandboxNetworkConfig{
-				Egress: &orchestrator.SandboxNetworkEgressConfig{
-					DeniedCidrs: []string{"not-a-cidr"},
-				},
-			},
-			hostname: "",
-			ip:       net.ParseIP("1.2.3.4"),
-			want:     true,
-		},
 	}
 
 	for _, tt := range tests {

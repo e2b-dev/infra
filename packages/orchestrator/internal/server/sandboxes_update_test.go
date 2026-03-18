@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -56,8 +57,8 @@ func TestUpdate_EgressOnly_FailsAndDoesNotChangeEndTime(t *testing.T) {
 	})
 
 	require.Error(t, err)
-	require.Equal(t, codes.Internal, status.Code(err))
-	require.Equal(t, originalEnd, sbx.GetEndAt())
+	assert.Equal(t, codes.Internal, status.Code(err))
+	assert.Equal(t, originalEnd, sbx.GetEndAt())
 }
 
 func TestUpdate_EndTimeAndEgress_EgressFails_RevertsEndTime(t *testing.T) {
@@ -97,11 +98,11 @@ func TestUpdate_EndTimeAndEgress_EgressFails_RevertsEndTime(t *testing.T) {
 	})
 
 	require.Error(t, err)
-	require.Equal(t, codes.Internal, status.Code(err))
+	assert.Equal(t, codes.Internal, status.Code(err))
 	// end_time must be reverted to original since egress failed.
-	require.Equal(t, originalEnd, sbx.GetEndAt())
+	assert.Equal(t, originalEnd, sbx.GetEndAt())
 	// Network egress should not have been set.
-	require.Nil(t, sbx.Config.GetNetworkEgress())
+	assert.Nil(t, sbx.Config.GetNetworkEgress())
 }
 
 func TestUpdate_EgressAndIngress_EgressFails_RevertsIngress(t *testing.T) {

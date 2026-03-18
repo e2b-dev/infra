@@ -162,34 +162,32 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		return nil, fmt.Errorf("failed to convert volume mounts: %w", err)
 	}
 
-	sbxConfig := sandbox.NewConfig(sandbox.Config{
-		BaseTemplateID: req.GetSandbox().GetBaseTemplateId(),
-
-		Vcpu:            req.GetSandbox().GetVcpu(),
-		RamMB:           req.GetSandbox().GetRamMb(),
-		TotalDiskSizeMB: req.GetSandbox().GetTotalDiskSizeMb(),
-		HugePages:       req.GetSandbox().GetHugePages(),
-
-		Network: network,
-
-		Envd: sandbox.EnvdMetadata{
-			Version:     req.GetSandbox().GetEnvdVersion(),
-			AccessToken: req.GetSandbox().EnvdAccessToken,
-			Vars:        req.GetSandbox().GetEnvVars(),
-		},
-
-		FirecrackerConfig: fc.Config{
-			KernelVersion:      req.GetSandbox().GetKernelVersion(),
-			FirecrackerVersion: resolvedFCVersion,
-		},
-
-		VolumeMounts: volumeMounts,
-	})
-
 	sbx, err := s.sandboxFactory.ResumeSandbox(
 		ctx,
 		template,
-		sbxConfig,
+		sandbox.NewConfig(sandbox.Config{
+			BaseTemplateID: req.GetSandbox().GetBaseTemplateId(),
+
+			Vcpu:            req.GetSandbox().GetVcpu(),
+			RamMB:           req.GetSandbox().GetRamMb(),
+			TotalDiskSizeMB: req.GetSandbox().GetTotalDiskSizeMb(),
+			HugePages:       req.GetSandbox().GetHugePages(),
+
+			Network: network,
+
+			Envd: sandbox.EnvdMetadata{
+				Version:     req.GetSandbox().GetEnvdVersion(),
+				AccessToken: req.GetSandbox().EnvdAccessToken,
+				Vars:        req.GetSandbox().GetEnvVars(),
+			},
+
+			FirecrackerConfig: fc.Config{
+				KernelVersion:      req.GetSandbox().GetKernelVersion(),
+				FirecrackerVersion: resolvedFCVersion,
+			},
+
+			VolumeMounts: volumeMounts,
+		}),
 		sandbox.RuntimeMetadata{
 			TemplateID:  req.GetSandbox().GetTemplateId(),
 			SandboxID:   req.GetSandbox().GetSandboxId(),
@@ -336,8 +334,8 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 
 			ingress := req.GetIngress()
 			eventData["network_ingress"] = map[string]any{
-				"allowed":           ingressRuleStrings(ingress.GetAllowed()),
-				"denied":            ingressRuleStrings(ingress.GetDenied()),
+				"allowed":           ingress.GetAllowed(),
+				"denied":            ingress.GetDenied(),
 				"mask_request_host": ingress.GetMaskRequestHost(),
 			}
 
@@ -872,22 +870,4 @@ func (s *Server) publishSandboxEvent(ctx context.Context, sbx *sandbox.Sandbox, 
 			SandboxTeamID:      teamID,
 		},
 	)
-}
-
-func ingressRuleStrings(rules []*orchestrator.IngressRule) []string {
-	out := make([]string, 0, len(rules))
-	for _, r := range rules {
-		s := r.GetCidr()
-		if lo, hi := r.GetPortLow(), r.GetPortHigh(); lo != 0 {
-			if lo == hi {
-				s = fmt.Sprintf("%s:%d", s, lo)
-			} else {
-				s = fmt.Sprintf("%s:%d-%d", s, lo, hi)
-			}
-		}
-
-		out = append(out, s)
-	}
-
-	return out
 }
