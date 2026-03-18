@@ -283,18 +283,15 @@ func TestStreamingChunker_FullChunkCachedAfterPartialRequest(t *testing.T) {
 	require.NoError(t, err)
 
 	// The background goroutine should continue fetching the remaining data.
-	// Wait for it to complete.
-	require.Eventually(t, func() bool {
-		// Try reading the LAST block — if the full chunk is cached this
-		// will succeed without opening another range reader.
-		lastOff := int64(storage.MemoryChunkSize) - testBlockSize
-		slice, err := chunker.Slice(t.Context(), lastOff, testBlockSize)
-		if err != nil {
-			return false
-		}
+	// Use a blocking Slice call (with timeout) instead of require.Eventually
+	// to avoid racing condition goroutines against defer chunker.Close().
+	lastOff := int64(storage.MemoryChunkSize) - testBlockSize
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
 
-		return bytes.Equal(data[lastOff:], slice)
-	}, 5*time.Second, 10*time.Millisecond)
+	slice, err := chunker.Slice(ctx, lastOff, testBlockSize)
+	require.NoError(t, err)
+	require.True(t, bytes.Equal(data[lastOff:], slice))
 
 	// Exactly one OpenRangeReader call should have been made for the entire
 	// chunk, not one per requested block.
