@@ -105,7 +105,7 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 			"/sandboxes/:sandboxID/resume",
 			"/sandboxes/:sandboxID/snapshots",
 		),
-		sharedmiddleware.LoggingMiddleware(l, sharedmiddleware.Config{
+		sharedmiddleware.LoggingMiddleware(l, sharedmiddleware.Config{ //nolint:contextcheck // ctx is captured before c.Next() intentionally to avoid seeing child context cancellations from inner middleware
 			TimeFormat:   time.RFC3339Nano,
 			UTC:          true,
 			DefaultLevel: zap.InfoLevel,
