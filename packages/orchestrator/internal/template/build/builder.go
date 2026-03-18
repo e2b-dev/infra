@@ -132,7 +132,7 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, cfg
 
 		if success {
 			b.metrics.RecordBuildResult(ctx, cfg.TeamID, metrics.BuildResultSuccess)
-			b.metrics.RecordRootfsSize(ctx, r.RootfsSizeMB<<constants.ToMBShift)
+			b.metrics.RecordRootfsSize(ctx, r.RootfsSizeMB<<constants.MBShift)
 		} else {
 			// Determine if the error is a user error or internal error
 			var resultType metrics.BuildResultType
@@ -375,7 +375,7 @@ func runBuild(
 
 	return &Result{
 		EnvdVersion:  bc.EnvdVersion,
-		RootfsSizeMB: int64(rootfsSize >> constants.ToMBShift),
+		RootfsSizeMB: int64(rootfsSize >> constants.MBShift),
 	}, nil
 }
 

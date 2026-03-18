@@ -66,7 +66,7 @@ func constructLayerFilesFromOCI(
 
 	// Create empty memfile
 	memfile, err := block.NewEmpty(
-		buildContext.Config.MemoryMB<<constants.ToMBShift,
+		buildContext.Config.MemoryMB<<constants.MBShift,
 		config.MemfilePageSize(buildContext.Config.HugePages),
 		buildIDParsed,
 	)

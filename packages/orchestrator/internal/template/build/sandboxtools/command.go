@@ -249,7 +249,7 @@ func SetReservedBlocksInGuest(
 		return nil
 	}
 
-	blocks := (reservedSpaceMB << constants.ToMBShift) / blockSize
+	blocks := (reservedSpaceMB << constants.MBShift) / blockSize
 	tuneCmd := fmt.Sprintf("tune2fs -r %d /dev/vda", blocks)
 
 	return RunCommandWithLogger(

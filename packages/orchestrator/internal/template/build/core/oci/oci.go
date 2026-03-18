@@ -23,6 +23,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/filesystem"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/oci/auth"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -33,7 +34,6 @@ import (
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/oci")
 
 const (
-	ToMBShift            = 20
 	tarballExportUpdates = 10
 )
 
@@ -193,7 +193,7 @@ func ToExt4(ctx context.Context, logger logger.Logger, img containerregistry.Ima
 	ctx, childSpan := tracer.Start(ctx, "oci-to-ext4")
 	defer childSpan.End()
 
-	err := filesystem.Make(ctx, rootfsPath, maxSize>>ToMBShift, blockSize)
+	err := filesystem.Make(ctx, rootfsPath, maxSize>>constants.MBShift, blockSize)
 	if err != nil {
 		return 0, fmt.Errorf("error creating ext4 file: %w", err)
 	}
