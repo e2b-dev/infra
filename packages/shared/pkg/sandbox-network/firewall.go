@@ -65,6 +65,32 @@ func IsIPOrCIDR(s string) bool {
 	return err == nil
 }
 
+// IsSpecifiedIPOrCIDR checks if a string is a valid IP address or CIDR notation
+// with a specified (non-zero) IP. It rejects unspecified addresses like 0.0.0.0
+// or :: (which cause errors in nftables), but allows 0.0.0.0/0 as a special case.
+func IsSpecifiedIPOrCIDR(s string) bool {
+	if !IsIPOrCIDR(s) {
+		return false
+	}
+
+	// Allow the special all-traffic CIDR
+	if s == AllInternetTrafficCIDR {
+		return true
+	}
+
+	// Extract the IP portion
+	if ip := net.ParseIP(s); ip != nil {
+		return !ip.IsUnspecified()
+	}
+
+	ip, _, err := net.ParseCIDR(s)
+	if err != nil {
+		return false
+	}
+
+	return !ip.IsUnspecified()
+}
+
 // ParseAddressesAndDomains separates a list of strings into IP addresses/CIDRs and domain names.
 func ParseAddressesAndDomains(entries []string) (addresses []string, domains []string) {
 	for _, entry := range entries {

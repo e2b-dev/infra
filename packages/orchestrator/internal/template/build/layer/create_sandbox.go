@@ -22,7 +22,7 @@ import (
 
 // CreateSandbox creates sandboxes for new templates
 type CreateSandbox struct {
-	config         sandbox.Config
+	config         *sandbox.Config
 	timeout        time.Duration
 	sandboxFactory *sandbox.Factory
 
@@ -56,7 +56,7 @@ func WithRootfsCachePath(rootfsCachePath string) CreateSandboxOption {
 	}
 }
 
-func NewCreateSandbox(config sandbox.Config, sandboxFactory *sandbox.Factory, timeout time.Duration, options ...CreateSandboxOption) *CreateSandbox {
+func NewCreateSandbox(config *sandbox.Config, sandboxFactory *sandbox.Factory, timeout time.Duration, options ...CreateSandboxOption) *CreateSandbox {
 	opts := &createSandboxOptions{
 		rootfsCachePath: "",
 		ioEngine:        utils.ToPtr(DefaultIoEngine),

@@ -23,6 +23,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	middleware "github.com/oapi-codegen/gin-middleware"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
@@ -32,10 +33,13 @@ import (
 	customMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware"
 	metricsMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics"
 	tracingMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware/otel/tracing"
+	"github.com/e2b-dev/infra/packages/api/internal/middleware/ratelimit"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	"github.com/e2b-dev/infra/packages/shared/pkg/factories"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -59,7 +63,7 @@ const (
 	// Must be less than maxWriteTimeout so the context cancels before the
 	// server's write deadline kills the connection (WriteTimeout does NOT
 	// cancel r.Context(); see https://github.com/golang/go/issues/59602).
-	requestTimeout = 60 * time.Second
+	// requestTimeout = 60 * time.Second
 
 	// This timeout should be > 600 (GCP LB upstream idle timeout) to prevent race condition
 	// https://cloud.google.com/load-balancing/docs/https#timeouts_and_retries%23:~:text=The%20load%20balancer%27s%20backend%20keepalive,is%20greater%20than%20600%20seconds
@@ -73,7 +77,7 @@ var (
 	expectedMigrationTimestamp string
 )
 
-func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client, l logger.Logger, apiStore *handlers.APIStore, swagger *openapi3.T, port int) *http.Server {
+func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client, l logger.Logger, apiStore *handlers.APIStore, redisClient redis.UniversalClient, ff *featureflags.Client, swagger *openapi3.T, port int) *http.Server {
 	// Clear out the servers array in the swagger spec, that skips validating
 	// that server names match. We don't know how this thing will be run.
 	swagger.Servers = nil
@@ -105,7 +109,7 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 			"/sandboxes/:sandboxID/resume",
 			"/sandboxes/:sandboxID/snapshots",
 		),
-		sharedmiddleware.LoggingMiddleware(l, sharedmiddleware.Config{
+		sharedmiddleware.LoggingMiddleware(l, sharedmiddleware.Config{ //nolint:contextcheck // ctx is captured before c.Next() intentionally to avoid seeing child context cancellations from inner middleware
 			TimeFormat:   time.RFC3339Nano,
 			UTC:          true,
 			DefaultLevel: zap.InfoLevel,
@@ -129,7 +133,7 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 			},
 		}),
 		gin.Recovery(),
-		customMiddleware.RequestTimeout(requestTimeout), //nolint:contextcheck // Gin middleware sets context via c.Request.WithContext
+		// customMiddleware.RequestTimeout(requestTimeout), //nolint:contextcheck // Gin middleware sets context via c.Request.WithContext
 	)
 
 	corsConfig := cors.DefaultConfig()
@@ -195,6 +199,11 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 	)
 
 	r.Use(customMiddleware.InitLaunchDarklyContext)
+
+	// Per-team rate limiting (after auth + LD context, before handlers).
+	// Only applied to connect and resume endpoints. Gated by feature flag.
+	limiter := ratelimit.NewLimiter(redisClient)
+	r.Use(ratelimit.Middleware(limiter, ratelimit.Config{FailOpen: true}, ff)) //nolint:contextcheck // Gin middleware sets context via c.Request.WithContext
 
 	// We now register our store above as the handler for the interface
 	api.RegisterHandlersWithOptions(r, apiStore, api.GinServerOptions{
@@ -373,10 +382,32 @@ func run() int {
 	cleanup := func() { cleanupOnce.Do(cleanupOp) }
 	defer cleanup()
 
+	redisClient, err := factories.NewRedisClient(ctx, factories.RedisConfig{
+		RedisURL:         config.RedisURL,
+		RedisClusterURL:  config.RedisClusterURL,
+		RedisTLSCABase64: config.RedisTLSCABase64,
+		PoolSize:         config.RedisPoolSize,
+	})
+	if err != nil {
+		logger.L().Fatal(ctx, "Initializing Redis client", zap.Error(err))
+	}
+	cleanupFns = append(cleanupFns, func(_ context.Context) error {
+		return redisClient.Close()
+	})
+
+	featureFlags, err := featureflags.NewClient()
+	if err != nil {
+		logger.L().Fatal(ctx, "failed to create feature flags client", zap.Error(err))
+	}
+	cleanupFns = append(cleanupFns, featureFlags.Close)
+
+	featureFlags.SetServiceName(serviceName)
+	featureFlags.SetDeploymentName(config.DomainName)
+
 	// Create an instance of our handler which satisfies the generated interface
 	//  (use the outer context rather than the signal handling
 	//   context so it doesn't exit first.)
-	apiStore := handlers.NewAPIStore(ctx, tel, config, serviceName)
+	apiStore := handlers.NewAPIStore(ctx, tel, redisClient, featureFlags, config)
 	cleanupFns = append(cleanupFns, apiStore.Close)
 
 	grpcAddr := fmt.Sprintf("0.0.0.0:%d", config.APIGrpcPort)
@@ -389,7 +420,7 @@ func run() int {
 	proxygrpc.RegisterSandboxServiceServer(grpcServer, handlers.NewSandboxService(apiStore))
 
 	// pass the signal context so that handlers know when shutdown is happening.
-	s := NewGinServer(ctx, config, tel, l, apiStore, swagger, port)
+	s := NewGinServer(ctx, config, tel, l, apiStore, redisClient, featureFlags, swagger, port)
 
 	// ////////////////////////
 	//

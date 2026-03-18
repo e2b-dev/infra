@@ -37,7 +37,6 @@ import (
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -64,8 +63,6 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		useHugePages    = false
 		templateVersion = "v2.0.0"
 	)
-
-	sbxNetwork := &orchestrator.SandboxNetworkConfig{}
 
 	// cache paths, to speed up test runs. these paths aren't wiped between tests
 	persistenceDir := getPersistenceDir()
@@ -196,13 +193,12 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	})
 
 	accessToken := "access-token"
-	sandboxConfig := sandbox.Config{
+	sandboxConfig := sandbox.NewConfig(sandbox.Config{
 		BaseTemplateID:  templateID,
 		Vcpu:            2,
 		RamMB:           512,
 		TotalDiskSizeMB: 2 * 1024,
 		HugePages:       useHugePages,
-		Network:         sbxNetwork,
 		Envd: sandbox.EnvdMetadata{
 			Vars:        map[string]string{"HELLO": "WORLD"},
 			AccessToken: &accessToken,
@@ -212,7 +208,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 			KernelVersion:      kernelVersion,
 			FirecrackerVersion: fcVersion,
 		},
-	}
+	})
 
 	runtime := sandbox.RuntimeMetadata{
 		TemplateID:  templateID,
@@ -347,7 +343,7 @@ type testContainer struct {
 	testType       testCycle
 	sandboxFactory *sandbox.Factory
 	tmpl           template.Template
-	sandboxConfig  sandbox.Config
+	sandboxConfig  *sandbox.Config
 	runtime        sandbox.RuntimeMetadata
 }
 

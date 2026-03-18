@@ -9,6 +9,7 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/e2b-dev/infra/packages/api/internal/pause"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
@@ -57,17 +58,35 @@ func (e *Evictor) Start(ctx context.Context) {
 					action := sandbox.StateActionKill
 					if item.AutoPause {
 						action = sandbox.StateActionPause
+						pause.LogInitiated(ctx, item.SandboxID, item.TeamID.String(), pause.ReasonTimeout)
 					}
 
 					if err := e.removeSandbox(context.WithoutCancel(ctx), item.TeamID, item.SandboxID, sandbox.RemoveOpts{Action: action, Eviction: true}); err != nil {
-						if !errors.Is(err, sandbox.ErrNotEvictable) && !errors.Is(err, sandbox.ErrNotFound) {
-							logger.L().Debug(ctx, "Evicting sandbox failed", zap.Error(err), logger.WithSandboxID(item.SandboxID))
+						if action == sandbox.StateActionPause {
+							switch {
+							case errors.Is(err, sandbox.ErrNotEvictable):
+								pause.LogSkipped(ctx, item.SandboxID, item.TeamID.String(), pause.ReasonTimeout, pause.SkipReasonNotEvictable)
+							case errors.Is(err, sandbox.ErrNotFound):
+								pause.LogSkipped(ctx, item.SandboxID, item.TeamID.String(), pause.ReasonTimeout, pause.SkipReasonNotFound)
+							default:
+								pause.LogFailure(ctx, item.SandboxID, item.TeamID.String(), pause.ReasonTimeout, err)
+							}
+						} else if !errors.Is(err, sandbox.ErrNotEvictable) && !errors.Is(err, sandbox.ErrNotFound) {
+							logger.L().Debug(ctx, "Evicting sandbox failed",
+								zap.Error(err),
+								logger.WithSandboxID(item.SandboxID),
+								logger.WithTeamID(item.TeamID.String()),
+							)
 						}
 
 						return nil
+					} else if action == sandbox.StateActionPause {
+						pause.LogSuccess(ctx, item.SandboxID, item.TeamID.String(), pause.ReasonTimeout)
 					}
 
-					logger.L().Debug(ctx, "Sandbox evicted", logger.WithSandboxID(item.SandboxID))
+					if action != sandbox.StateActionPause {
+						logger.L().Debug(ctx, "Sandbox evicted", logger.WithSandboxID(item.SandboxID))
+					}
 
 					return nil
 				})

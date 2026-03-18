@@ -18,9 +18,11 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
+	"google.golang.org/api/option/internaloption"
 	"google.golang.org/grpc"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -35,6 +37,8 @@ const (
 	googleMaxBackoff               = 10 * time.Second
 	googleBackoffMultiplier        = 2
 	googleMaxAttempts              = 10
+	defaultGRPCConnectionPoolSize  = 4
+	defaultGCSEnableDirectPath     = false
 	gcloudDefaultUploadConcurrency = 16
 
 	gcsOperationAttr                           = "operation"
@@ -85,11 +89,19 @@ var (
 )
 
 func NewGCP(ctx context.Context, bucketName string, limiter *limit.Limiter) (StorageProvider, error) {
-	client, err := storage.NewGRPCClient(ctx,
-		option.WithGRPCConnectionPool(4),
-		option.WithGRPCDialOption(grpc.WithInitialConnWindowSize(32*megabyte)),
-		option.WithGRPCDialOption(grpc.WithInitialWindowSize(4*megabyte)),
-	)
+	grpcPoolSize, err := env.GetEnvAsInt("GCS_GRPC_CONNECTION_POOL_SIZE", defaultGRPCConnectionPoolSize)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse GCS_GRPC_CONNECTION_POOL_SIZE: %w", err)
+	}
+
+	opts := []option.ClientOption{
+		option.WithGRPCConnectionPool(grpcPoolSize),
+		option.WithGRPCDialOption(grpc.WithInitialConnWindowSize(32 * megabyte)),
+		option.WithGRPCDialOption(grpc.WithInitialWindowSize(4 * megabyte)),
+		internaloption.EnableDirectPath(defaultGCSEnableDirectPath),
+	}
+
+	client, err := storage.NewGRPCClient(ctx, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GCS client: %w", err)
 	}
@@ -275,18 +287,12 @@ func (o *gcpObject) ReadAt(ctx context.Context, buff []byte, off int64) (n int, 
 
 	defer reader.Close()
 
-	for reader.Remain() > 0 {
-		nr, err := reader.Read(buff[n:])
-		n += nr
+	n, err = io.ReadFull(reader, buff)
+	if errors.Is(err, io.ErrUnexpectedEOF) {
+		err = io.EOF
+	}
 
-		if err == nil {
-			continue
-		}
-
-		if errors.Is(err, io.EOF) {
-			break
-		}
-
+	if ignoreEOF(err) != nil {
 		timer.Failure(ctx, int64(n))
 
 		return n, fmt.Errorf("failed to read %q: %w", o.path, err)
@@ -294,7 +300,7 @@ func (o *gcpObject) ReadAt(ctx context.Context, buff []byte, off int64) (n int, 
 
 	timer.Success(ctx, int64(n))
 
-	return n, nil
+	return n, err
 }
 
 func (o *gcpObject) Put(ctx context.Context, data []byte) (e error) {

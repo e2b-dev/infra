@@ -104,6 +104,10 @@ job "orchestrator-${latest_orchestrator_job_id}" {
         %{ if provider_gcp_config.service_account_key != "" }
         GOOGLE_SERVICE_ACCOUNT_BASE64 = "${provider_gcp_config.service_account_key}"
         %{ endif }
+
+        %{ if provider_gcp_config.gcs_grpc_connection_pool_size != 0 }
+        GCS_GRPC_CONNECTION_POOL_SIZE = "${provider_gcp_config.gcs_grpc_connection_pool_size}"
+        %{ endif }
 %{ endif }
 %{ if provider == "aws" }
         ARTIFACTS_REGISTRY_PROVIDER  = "AWS_ECR"
