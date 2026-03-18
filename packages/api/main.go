@@ -393,7 +393,7 @@ func run() int {
 	if err != nil {
 		logger.L().Fatal(ctx, "Initializing Redis client", zap.Error(err))
 	}
-	cleanupFns = append(cleanupFns, func(ctx context.Context) error {
+	cleanupFns = append(cleanupFns, func(_ context.Context) error {
 		return redisClient.Close()
 	})
 
