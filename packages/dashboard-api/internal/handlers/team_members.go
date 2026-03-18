@@ -172,4 +172,3 @@ func (s *APIStore) DeleteTeamsTeamIdMembersUserId(c *gin.Context, teamId api.Tea
 
 	c.Status(http.StatusNoContent)
 }
-
