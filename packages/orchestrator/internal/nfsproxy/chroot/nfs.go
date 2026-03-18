@@ -51,8 +51,8 @@ func (h *NFSHandler) OnRemove(sandboxID string) {
 		err := chroot.Close()
 		if err != nil {
 			logger.L().Warn(context.Background(), "failed to close chroot",
+				logger.WithSandboxID(sandboxID),
 				zap.String("path", chroot.Root()),
-				zap.String("sandboxID", sandboxID),
 				zap.Error(err),
 			)
 		}

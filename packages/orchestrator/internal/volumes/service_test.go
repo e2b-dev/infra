@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 
 	"github.com/google/uuid"
@@ -256,7 +257,8 @@ func assertDir(t *testing.T, fs *chrooted.Chrooted, path string, uid, gid uint32
 
 	assert.Equal(t, mode.Perm(), info.Mode().Perm())
 
-	osInfo := getBase(info.Sys())
+	osInfo, ok := info.Sys().(*syscall.Stat_t)
+	require.True(t, ok)
 	require.NotNil(t, osInfo)
 	assert.Equal(t, uid, osInfo.Uid)
 	assert.Equal(t, gid, osInfo.Gid)

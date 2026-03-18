@@ -86,10 +86,6 @@ func (s *Service) CreateDir(ctx context.Context, request *orchestrator.VolumeDir
 }
 
 func processError(ctx context.Context, s string, err error) error {
-	if err == nil {
-		return nil
-	}
-
 	if errors.Is(err, os.ErrExist) {
 		return newAPIError(ctx, codes.AlreadyExists, http.StatusConflict, orchestrator.UserErrorCode_PATH_ALREADY_EXISTS, "%s: %s", s, err.Error()).Err()
 	}

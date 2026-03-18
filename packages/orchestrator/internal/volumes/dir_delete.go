@@ -8,11 +8,9 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 func (s *Service) DeleteDir(ctx context.Context, request *orchestrator.VolumeDirDeleteRequest) (r *orchestrator.VolumeDirDeleteResponse, err error) {
@@ -51,8 +49,6 @@ func (s *Service) DeleteDir(ctx context.Context, request *orchestrator.VolumeDir
 				request.GetPath(),
 			).Err()
 		}
-
-		logger.L().Error(ctx, "failed to stat directory", zap.String("path", path), zap.Error(err))
 
 		return nil, newAPIError(ctx,
 			codes.Internal,

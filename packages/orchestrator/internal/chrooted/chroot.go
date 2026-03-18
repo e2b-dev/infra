@@ -37,11 +37,6 @@ func Chroot(ctx context.Context, source string, opts ...Option) (*Chrooted, erro
 		return nil, fmt.Errorf("failed to create temporary mount namespace: %w", err)
 	}
 
-	fs := &Chrooted{
-		ActualRoot: source,
-		ns:         mountNS,
-	}
-
 	if err = chroot(mountNS, source); err != nil {
 		err = fmt.Errorf("failed to chroot into %q: %w", source, err)
 		if err2 := mountNS.Close(); err2 != nil {
@@ -49,6 +44,11 @@ func Chroot(ctx context.Context, source string, opts ...Option) (*Chrooted, erro
 		}
 
 		return nil, err
+	}
+
+	fs := &Chrooted{
+		ActualRoot: source,
+		ns:         mountNS,
 	}
 
 	for _, opt := range opts {

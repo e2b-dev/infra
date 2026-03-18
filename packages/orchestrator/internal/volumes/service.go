@@ -145,7 +145,8 @@ func toEntry(fullVolumePath, symlinkDest string, fileInfo os.FileInfo) *orchestr
 		entry.SymlinkTarget = &symlinkDest
 	}
 
-	if base := getBase(fileInfo.Sys()); base != nil {
+	// if we can figure out the base struct, we can get more useful information
+	if base, ok := fileInfo.Sys().(*syscall.Stat_t); ok {
 		entry.AccessedTime = toTimestampFromSpec(base.Atim)
 		entry.CreatedTime = toTimestampFromSpec(base.Ctim)
 		entry.ModifiedTime = toTimestampFromSpec(base.Mtim)
@@ -156,12 +157,6 @@ func toEntry(fullVolumePath, symlinkDest string, fileInfo os.FileInfo) *orchestr
 	}
 
 	return entry
-}
-
-func getBase(sys any) *syscall.Stat_t {
-	st, _ := sys.(*syscall.Stat_t)
-
-	return st
 }
 
 func toType(fileType os.FileMode) orchestrator.FileType {
