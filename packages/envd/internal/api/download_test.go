@@ -317,6 +317,276 @@ func TestPostFiles_GzipUpload(t *testing.T) {
 	assert.Equal(t, originalContent, data)
 }
 
+func TestPostFiles_RawBodyUpload(t *testing.T) {
+	t.Parallel()
+
+	currentUser, err := user.Current()
+	require.NoError(t, err)
+
+	originalContent := []byte("raw body upload content")
+
+	tempDir := t.TempDir()
+	destPath := filepath.Join(tempDir, "raw-uploaded.txt")
+
+	logger := zerolog.Nop()
+	defaults := &execcontext.Defaults{
+		EnvVars: utils.NewMap[string, string](),
+		User:    currentUser.Username,
+	}
+	api := New(&logger, defaults, nil, false)
+
+	req := httptest.NewRequest(http.MethodPost, "/files?path="+url.QueryEscape(destPath), bytes.NewReader(originalContent))
+	req.Header.Set("Content-Type", "application/octet-stream")
+	w := httptest.NewRecorder()
+
+	params := PostFilesParams{
+		Path:     &destPath,
+		Username: &currentUser.Username,
+	}
+	api.PostFiles(w, req, params)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	data, err := os.ReadFile(destPath)
+	require.NoError(t, err)
+	assert.Equal(t, originalContent, data)
+}
+
+func TestPostFiles_RawBodyUploadCreatesDirectories(t *testing.T) {
+	t.Parallel()
+
+	currentUser, err := user.Current()
+	require.NoError(t, err)
+
+	originalContent := []byte("nested dir content")
+
+	tempDir := t.TempDir()
+	destPath := filepath.Join(tempDir, "a", "b", "c", "nested.txt")
+
+	logger := zerolog.Nop()
+	defaults := &execcontext.Defaults{
+		EnvVars: utils.NewMap[string, string](),
+		User:    currentUser.Username,
+	}
+	api := New(&logger, defaults, nil, false)
+
+	req := httptest.NewRequest(http.MethodPost, "/files?path="+url.QueryEscape(destPath), bytes.NewReader(originalContent))
+	req.Header.Set("Content-Type", "application/octet-stream")
+	w := httptest.NewRecorder()
+
+	params := PostFilesParams{
+		Path:     &destPath,
+		Username: &currentUser.Username,
+	}
+	api.PostFiles(w, req, params)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	data, err := os.ReadFile(destPath)
+	require.NoError(t, err)
+	assert.Equal(t, originalContent, data)
+}
+
+func TestPostFiles_RawBodyUploadRequiresPath(t *testing.T) {
+	t.Parallel()
+
+	currentUser, err := user.Current()
+	require.NoError(t, err)
+
+	logger := zerolog.Nop()
+	defaults := &execcontext.Defaults{
+		EnvVars: utils.NewMap[string, string](),
+		User:    currentUser.Username,
+	}
+	api := New(&logger, defaults, nil, false)
+
+	req := httptest.NewRequest(http.MethodPost, "/files", bytes.NewReader([]byte("some content")))
+	req.Header.Set("Content-Type", "application/octet-stream")
+	w := httptest.NewRecorder()
+
+	params := PostFilesParams{
+		Username: &currentUser.Username,
+	}
+	api.PostFiles(w, req, params)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+}
+
+func TestPostFiles_RawBodyUploadOverwritesExisting(t *testing.T) {
+	t.Parallel()
+
+	currentUser, err := user.Current()
+	require.NoError(t, err)
+
+	tempDir := t.TempDir()
+	destPath := filepath.Join(tempDir, "existing.txt")
+	err = os.WriteFile(destPath, []byte("old content"), 0o644)
+	require.NoError(t, err)
+
+	newContent := []byte("new content via raw upload")
+
+	logger := zerolog.Nop()
+	defaults := &execcontext.Defaults{
+		EnvVars: utils.NewMap[string, string](),
+		User:    currentUser.Username,
+	}
+	api := New(&logger, defaults, nil, false)
+
+	req := httptest.NewRequest(http.MethodPost, "/files?path="+url.QueryEscape(destPath), bytes.NewReader(newContent))
+	req.Header.Set("Content-Type", "application/octet-stream")
+	w := httptest.NewRecorder()
+
+	params := PostFilesParams{
+		Path:     &destPath,
+		Username: &currentUser.Username,
+	}
+	api.PostFiles(w, req, params)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	data, err := os.ReadFile(destPath)
+	require.NoError(t, err)
+	assert.Equal(t, newContent, data)
+}
+
+func TestPostFiles_RawBodyGzipUpload(t *testing.T) {
+	t.Parallel()
+
+	currentUser, err := user.Current()
+	require.NoError(t, err)
+
+	originalContent := []byte("raw body gzip upload content")
+
+	// Gzip-compress the content
+	var gzBuf bytes.Buffer
+	gzWriter := gzip.NewWriter(&gzBuf)
+	_, err = gzWriter.Write(originalContent)
+	require.NoError(t, err)
+	err = gzWriter.Close()
+	require.NoError(t, err)
+
+	tempDir := t.TempDir()
+	destPath := filepath.Join(tempDir, "raw-gzip.txt")
+
+	logger := zerolog.Nop()
+	defaults := &execcontext.Defaults{
+		EnvVars: utils.NewMap[string, string](),
+		User:    currentUser.Username,
+	}
+	api := New(&logger, defaults, nil, false)
+
+	req := httptest.NewRequest(http.MethodPost, "/files?path="+url.QueryEscape(destPath), &gzBuf)
+	req.Header.Set("Content-Type", "application/octet-stream")
+	req.Header.Set("Content-Encoding", "gzip")
+	w := httptest.NewRecorder()
+
+	params := PostFilesParams{
+		Path:     &destPath,
+		Username: &currentUser.Username,
+	}
+	api.PostFiles(w, req, params)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	data, err := os.ReadFile(destPath)
+	require.NoError(t, err)
+	assert.Equal(t, originalContent, data)
+}
+
+func TestPostFiles_UnsupportedContentType(t *testing.T) {
+	t.Parallel()
+
+	currentUser, err := user.Current()
+	require.NoError(t, err)
+
+	logger := zerolog.Nop()
+	defaults := &execcontext.Defaults{
+		EnvVars: utils.NewMap[string, string](),
+		User:    currentUser.Username,
+	}
+	api := New(&logger, defaults, nil, false)
+
+	tempDir := t.TempDir()
+	destPath := filepath.Join(tempDir, "test.txt")
+
+	req := httptest.NewRequest(http.MethodPost, "/files?path="+url.QueryEscape(destPath), bytes.NewReader([]byte(`{"key":"value"}`)))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	params := PostFilesParams{
+		Path:     &destPath,
+		Username: &currentUser.Username,
+	}
+	api.PostFiles(w, req, params)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+}
+
+func TestPostFiles_MultipartStillWorksWithoutContentType(t *testing.T) {
+	t.Parallel()
+
+	currentUser, err := user.Current()
+	require.NoError(t, err)
+
+	originalContent := []byte("multipart backwards compat test")
+
+	var multipartBuf bytes.Buffer
+	mpWriter := multipart.NewWriter(&multipartBuf)
+	part, err := mpWriter.CreateFormFile("file", "compat.txt")
+	require.NoError(t, err)
+	_, err = part.Write(originalContent)
+	require.NoError(t, err)
+	err = mpWriter.Close()
+	require.NoError(t, err)
+
+	tempDir := t.TempDir()
+	destPath := filepath.Join(tempDir, "compat.txt")
+
+	logger := zerolog.Nop()
+	defaults := &execcontext.Defaults{
+		EnvVars: utils.NewMap[string, string](),
+		User:    currentUser.Username,
+	}
+	api := New(&logger, defaults, nil, false)
+
+	req := httptest.NewRequest(http.MethodPost, "/files?path="+url.QueryEscape(destPath), &multipartBuf)
+	req.Header.Set("Content-Type", mpWriter.FormDataContentType())
+	w := httptest.NewRecorder()
+
+	params := PostFilesParams{
+		Path:     &destPath,
+		Username: &currentUser.Username,
+	}
+	api.PostFiles(w, req, params)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	data, err := os.ReadFile(destPath)
+	require.NoError(t, err)
+	assert.Equal(t, originalContent, data)
+}
+
 func TestGzipUploadThenGzipDownload(t *testing.T) {
 	t.Parallel()
 

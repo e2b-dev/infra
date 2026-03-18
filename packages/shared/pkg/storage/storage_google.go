@@ -38,8 +38,7 @@ const (
 	googleBackoffMultiplier        = 2
 	googleMaxAttempts              = 10
 	defaultGRPCConnectionPoolSize  = 4
-	defaultGCSEnableDirectPath     = "true"
-	defaultGCSDisableTelemetry     = "false"
+	defaultGCSEnableDirectPath     = false
 	gcloudDefaultUploadConcurrency = 16
 
 	gcsOperationAttr                           = "operation"
@@ -95,21 +94,11 @@ func NewGCP(ctx context.Context, bucketName string, limiter *limit.Limiter) (Sto
 		return nil, fmt.Errorf("failed to parse GCS_GRPC_CONNECTION_POOL_SIZE: %w", err)
 	}
 
-	enableDirectPath := env.GetEnv("GCS_ENABLE_DIRECT_PATH", defaultGCSEnableDirectPath) == "true"
-	disableTelemetry := env.GetEnv("GCS_DISABLE_TELEMETRY", defaultGCSDisableTelemetry) == "true"
-
 	opts := []option.ClientOption{
 		option.WithGRPCConnectionPool(grpcPoolSize),
 		option.WithGRPCDialOption(grpc.WithInitialConnWindowSize(32 * megabyte)),
 		option.WithGRPCDialOption(grpc.WithInitialWindowSize(4 * megabyte)),
-		internaloption.EnableDirectPath(enableDirectPath),
-	}
-
-	if disableTelemetry {
-		opts = append(opts,
-			option.WithTelemetryDisabled(),
-			storage.WithDisabledClientMetrics(),
-		)
+		internaloption.EnableDirectPath(defaultGCSEnableDirectPath),
 	}
 
 	client, err := storage.NewGRPCClient(ctx, opts...)
@@ -298,18 +287,12 @@ func (o *gcpObject) ReadAt(ctx context.Context, buff []byte, off int64) (n int, 
 
 	defer reader.Close()
 
-	for reader.Remain() > 0 {
-		nr, err := reader.Read(buff[n:])
-		n += nr
+	n, err = io.ReadFull(reader, buff)
+	if errors.Is(err, io.ErrUnexpectedEOF) {
+		err = io.EOF
+	}
 
-		if err == nil {
-			continue
-		}
-
-		if errors.Is(err, io.EOF) {
-			break
-		}
-
+	if ignoreEOF(err) != nil {
 		timer.Failure(ctx, int64(n))
 
 		return n, fmt.Errorf("failed to read %q: %w", o.path, err)
@@ -317,7 +300,7 @@ func (o *gcpObject) ReadAt(ctx context.Context, buff []byte, off int64) (n int, 
 
 	timer.Success(ctx, int64(n))
 
-	return n, nil
+	return n, err
 }
 
 func (o *gcpObject) Put(ctx context.Context, data []byte) (e error) {

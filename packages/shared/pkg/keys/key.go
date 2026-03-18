@@ -84,6 +84,18 @@ func GenerateKey(prefix string) (Key, error) {
 	}, nil
 }
 
+// MaskToken masks a prefixed token (e.g. API key or access token) for safe logging.
+// The raw token must never be passed to logging or telemetry libraries directly.
+func MaskToken(prefix, token string) string {
+	tokenWithoutPrefix := strings.TrimPrefix(token, prefix)
+	masked, err := MaskKey(prefix, tokenWithoutPrefix)
+	if err != nil {
+		return "invalid_token_format"
+	}
+
+	return fmt.Sprintf("%s%s...%s", masked.Prefix, masked.MaskedValuePrefix, masked.MaskedValueSuffix)
+}
+
 func VerifyKey(prefix string, key string) (string, error) {
 	if !strings.HasPrefix(key, prefix) {
 		return "", fmt.Errorf("invalid key prefix")

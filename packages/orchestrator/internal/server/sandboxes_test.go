@@ -105,10 +105,10 @@ func TestGetSandboxExecutionData(t *testing.T) {
 
 	sbx := &sandbox.Sandbox{
 		Metadata: &sandbox.Metadata{
-			Config: sandbox.Config{
+			Config: sandbox.NewConfig(sandbox.Config{
 				Vcpu:  2,
 				RamMB: 512,
-			},
+			}),
 			Runtime: sandbox.RuntimeMetadata{
 				SandboxID: id.Generate(),
 			},

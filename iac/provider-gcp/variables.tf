@@ -726,15 +726,3 @@ variable "gcs_grpc_connection_pool_size" {
     error_message = "gcs_grpc_connection_pool_size must be a positive integer or 0 for using default specified in code."
   }
 }
-
-variable "gcs_enable_direct_path" {
-  description = "Enable DirectPath for GCS gRPC client"
-  type        = bool
-  default     = true
-}
-
-variable "gcs_disable_telemetry" {
-  description = "Disable telemetry for GCS gRPC client"
-  type        = bool
-  default     = true
-}

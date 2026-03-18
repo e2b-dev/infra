@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"regexp"
@@ -100,9 +101,10 @@ func LoggingMiddleware(logger logger.Logger, conf Config) gin.HandlerFunc {
 			}
 
 			level := conf.DefaultLevel
-			if status >= http.StatusInternalServerError {
+			switch {
+			case status >= http.StatusInternalServerError && !errors.Is(ctx.Err(), context.Canceled):
 				level = zapcore.ErrorLevel
-			} else if status >= http.StatusBadRequest {
+			case status >= http.StatusBadRequest:
 				level = zapcore.WarnLevel
 			}
 
