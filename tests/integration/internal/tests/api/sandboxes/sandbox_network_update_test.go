@@ -161,7 +161,7 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 	waitResp = utils.WaitForStatus(t, httpClient, sbx, proxyURL, echoPort, nil, http.StatusOK)
 	waitResp.Body.Close()
 
-	getHost := func() string {
+	echoHost := func() string {
 		t.Helper()
 		req := utils.NewRequest(sbx, proxyURL, echoPort, nil)
 		resp, err := httpClient.Do(req)
@@ -560,7 +560,7 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 	// =====================================================================
 
 	t.Run("mask/baseline_no_mask", func(t *testing.T) { //nolint:paralleltest // sequential
-		host := getHost()
+		host := echoHost()
 		require.NotEmpty(t, host)
 		require.NotContains(t, host, "masked-host")
 	})
@@ -570,25 +570,25 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 
 	t.Run("mask/set_with_port_placeholder", func(t *testing.T) { //nolint:paralleltest // sequential
 		updateAll(api.PutSandboxesSandboxIDNetworkJSONRequestBody{MaskRequestHost: &maskedTemplate})
-		require.Equal(t, maskedExpected, getHost())
+		require.Equal(t, maskedExpected, echoHost())
 	})
 
 	t.Run("mask/update", func(t *testing.T) { //nolint:paralleltest // sequential
 		mask := "other-host:9999"
 		updateAll(api.PutSandboxesSandboxIDNetworkJSONRequestBody{MaskRequestHost: &mask})
-		require.Equal(t, "other-host:9999", getHost())
+		require.Equal(t, "other-host:9999", echoHost())
 	})
 
 	t.Run("mask/clear", func(t *testing.T) { //nolint:paralleltest // sequential
 		resetRules()
-		host := getHost()
+		host := echoHost()
 		require.NotEqual(t, "other-host:9999", host)
 		require.NotContains(t, host, "masked-host")
 	})
 
 	t.Run("mask/set_again", func(t *testing.T) { //nolint:paralleltest // sequential
 		updateAll(api.PutSandboxesSandboxIDNetworkJSONRequestBody{MaskRequestHost: &maskedTemplate})
-		require.Equal(t, maskedExpected, getHost())
+		require.Equal(t, maskedExpected, echoHost())
 	})
 
 	// Clear mask before combined section.
