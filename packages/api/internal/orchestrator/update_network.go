@@ -45,10 +45,17 @@ func (o *Orchestrator) UpdateSandboxNetworkConfig(
 		}
 
 		sbx.Network.Egress = egressUpdate
-		sbx.Network.Ingress = ingressUpdate
 
-		// Preserve the existing traffic access token — it is set at sandbox creation,
-		// not part of the network update request, but must be forwarded to the orchestrator.
+		// Preserve AllowPublicAccess from creation — it can't be changed via
+		// PUT because the traffic access token isn't returned to clients.
+		var previousAllowPublic *bool
+		if sbx.Network.Ingress != nil {
+			previousAllowPublic = sbx.Network.Ingress.AllowPublicAccess
+		}
+
+		sbx.Network.Ingress = ingressUpdate
+		sbx.Network.Ingress.AllowPublicAccess = previousAllowPublic
+
 		ingress.TrafficAccessToken = sbx.TrafficAccessToken
 
 		return sbx, nil
