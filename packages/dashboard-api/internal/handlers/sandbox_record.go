@@ -12,7 +12,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
-	"github.com/e2b-dev/infra/packages/db/queries"
+	dashboardqueries "github.com/e2b-dev/infra/packages/db/pkg/dashboard/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -30,7 +30,7 @@ func (s *APIStore) GetSandboxesSandboxIDRecord(c *gin.Context, sandboxID api.San
 	teamID := auth.MustGetTeamInfo(c).Team.ID
 	telemetry.SetAttributes(ctx, telemetry.WithTeamID(teamID.String()), telemetry.WithSandboxID(sandboxID))
 
-	row, err := s.db.GetSandboxRecordByTeamAndSandboxID(ctx, queries.GetSandboxRecordByTeamAndSandboxIDParams{
+	row, err := s.db.GetSandboxRecordByTeamAndSandboxID(ctx, dashboardqueries.GetSandboxRecordByTeamAndSandboxIDParams{
 		TeamID:       teamID,
 		SandboxID:    sandboxID,
 		CreatedAfter: time.Now().UTC().Add(-sandboxRecordRetention),

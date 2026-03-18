@@ -176,6 +176,8 @@ job "api" {
 
       env {
         POSTGRES_CONNECTION_STRING="${postgres_connection_string}"
+        MIGRATIONS_DIR="./migrations"
+        MIGRATIONS_TABLE="_migrations"
       }
 
       config {

@@ -14,8 +14,8 @@ import (
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
 	dashboardutils "github.com/e2b-dev/infra/packages/dashboard-api/internal/utils"
+	dashboardqueries "github.com/e2b-dev/infra/packages/db/pkg/dashboard/queries"
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
-	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -109,7 +109,7 @@ func (s *APIStore) listBuildRows(
 	statuses := buildStatusGroupsToStrings(statusGroups)
 
 	if buildIDOrTemplate == nil || strings.TrimSpace(*buildIDOrTemplate) == "" {
-		rows, err := s.db.GetTeamBuildsPage(ctx, queries.GetTeamBuildsPageParams{
+		rows, err := s.db.GetTeamBuildsPage(ctx, dashboardqueries.GetTeamBuildsPageParams{
 			TeamID:          teamID,
 			CursorCreatedAt: cursorTime,
 			CursorID:        cursorID,
@@ -126,7 +126,7 @@ func (s *APIStore) listBuildRows(
 	filter := strings.TrimSpace(*buildIDOrTemplate)
 	filterUUID, parseErr := uuid.Parse(filter)
 	if parseErr == nil {
-		byBuildIDRows, byBuildIDErr := s.db.GetTeamBuildsPageByBuildID(ctx, queries.GetTeamBuildsPageByBuildIDParams{
+		byBuildIDRows, byBuildIDErr := s.db.GetTeamBuildsPageByBuildID(ctx, dashboardqueries.GetTeamBuildsPageByBuildIDParams{
 			TeamID:          teamID,
 			BuildID:         filterUUID,
 			CursorCreatedAt: cursorTime,
@@ -144,7 +144,7 @@ func (s *APIStore) listBuildRows(
 
 	// templateIDs are not UUIDs
 	if parseErr != nil {
-		byTemplateIDRows, byTemplateIDErr := s.db.GetTeamBuildsPageByTemplateID(ctx, queries.GetTeamBuildsPageByTemplateIDParams{
+		byTemplateIDRows, byTemplateIDErr := s.db.GetTeamBuildsPageByTemplateID(ctx, dashboardqueries.GetTeamBuildsPageByTemplateIDParams{
 			TemplateID:      filter,
 			TeamID:          teamID,
 			CursorCreatedAt: cursorTime,
@@ -160,7 +160,7 @@ func (s *APIStore) listBuildRows(
 		}
 	}
 
-	byTemplateAliasRows, byTemplateAliasErr := s.db.GetTeamBuildsPageByTemplateAlias(ctx, queries.GetTeamBuildsPageByTemplateAliasParams{
+	byTemplateAliasRows, byTemplateAliasErr := s.db.GetTeamBuildsPageByTemplateAlias(ctx, dashboardqueries.GetTeamBuildsPageByTemplateAliasParams{
 		TemplateAlias:   filter,
 		TeamID:          teamID,
 		CursorCreatedAt: cursorTime,
@@ -233,7 +233,7 @@ func parseCursorTime(value string) (time.Time, error) {
 	return time.Parse(time.RFC3339, value)
 }
 
-func mapBuildRows(rows []queries.GetTeamBuildsPageRow) []listBuildRow {
+func mapBuildRows(rows []dashboardqueries.GetTeamBuildsPageRow) []listBuildRow {
 	out := make([]listBuildRow, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, listBuildRow{
@@ -250,7 +250,7 @@ func mapBuildRows(rows []queries.GetTeamBuildsPageRow) []listBuildRow {
 	return out
 }
 
-func mapBuildRowsByBuildID(rows []queries.GetTeamBuildsPageByBuildIDRow) []listBuildRow {
+func mapBuildRowsByBuildID(rows []dashboardqueries.GetTeamBuildsPageByBuildIDRow) []listBuildRow {
 	out := make([]listBuildRow, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, listBuildRow{
@@ -267,7 +267,7 @@ func mapBuildRowsByBuildID(rows []queries.GetTeamBuildsPageByBuildIDRow) []listB
 	return out
 }
 
-func mapBuildRowsByTemplateID(rows []queries.GetTeamBuildsPageByTemplateIDRow) []listBuildRow {
+func mapBuildRowsByTemplateID(rows []dashboardqueries.GetTeamBuildsPageByTemplateIDRow) []listBuildRow {
 	out := make([]listBuildRow, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, listBuildRow{
@@ -284,7 +284,7 @@ func mapBuildRowsByTemplateID(rows []queries.GetTeamBuildsPageByTemplateIDRow) [
 	return out
 }
 
-func mapBuildRowsByTemplateAlias(rows []queries.GetTeamBuildsPageByTemplateAliasRow) []listBuildRow {
+func mapBuildRowsByTemplateAlias(rows []dashboardqueries.GetTeamBuildsPageByTemplateAliasRow) []listBuildRow {
 	out := make([]listBuildRow, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, listBuildRow{

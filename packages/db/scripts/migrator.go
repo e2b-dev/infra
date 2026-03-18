@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
@@ -18,8 +19,8 @@ import (
 )
 
 const (
-	trackingTable        = "_migrations"
-	migrationsDir        = "./migrations"
+	defaultTrackingTable = "_migrations"
+	defaultMigrationsDir = "./migrations"
 	authMigrationVersion = 20000101000000
 
 	statementTimeout = 3 * time.Hour
@@ -28,8 +29,10 @@ const (
 func main() {
 	fmt.Printf("Starting migrations...\n")
 	ctx := context.Background()
+	trackingTable := env.GetEnv("MIGRATIONS_TABLE", defaultTrackingTable)
+	migrationsDir := env.GetEnv("MIGRATIONS_DIR", defaultMigrationsDir)
 
-	dbString := os.Getenv("POSTGRES_CONNECTION_STRING")
+	dbString := env.GetEnv("POSTGRES_CONNECTION_STRING", "")
 	if dbString == "" {
 		log.Fatal("Database connection string is required. Set POSTGRES_CONNECTION_STRING env var.")
 	}
@@ -69,9 +72,9 @@ func main() {
 	}
 
 	fmt.Printf("Current DB version: %d\n", version)
-	if version < authMigrationVersion {
+	if trackingTable == defaultTrackingTable && version < authMigrationVersion {
 		fmt.Println("Creating auth.users table...")
-		err = setupAuthSchema(ctx, db, version)
+		err = setupAuthSchema(ctx, db, version, trackingTable)
 		if err != nil {
 			log.Fatalf("failed to ensure auth.users table: %v", err)
 		}
@@ -107,7 +110,7 @@ func main() {
 	fmt.Println("Migrations applied successfully.")
 }
 
-func setupAuthSchema(ctx context.Context, db *sql.DB, version int64) error {
+func setupAuthSchema(ctx context.Context, db *sql.DB, version int64, trackingTable string) error {
 	rows, err := db.QueryContext(ctx, `SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'auth' AND table_name = 'users')`)
 	if err != nil {
 		return fmt.Errorf("failed to query: %w", err)

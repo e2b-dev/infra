@@ -9,7 +9,7 @@ import (
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
 	dashboardutils "github.com/e2b-dev/infra/packages/dashboard-api/internal/utils"
-	"github.com/e2b-dev/infra/packages/db/queries"
+	dashboardqueries "github.com/e2b-dev/infra/packages/db/pkg/dashboard/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -32,7 +32,7 @@ func (s *APIStore) GetBuildsStatuses(c *gin.Context, params api.GetBuildsStatuse
 		return
 	}
 
-	p := queries.GetBuildsStatusesByTeamParams{
+	p := dashboardqueries.GetBuildsStatusesByTeamParams{
 		TeamID:   teamID,
 		BuildIds: params.BuildIds,
 	}

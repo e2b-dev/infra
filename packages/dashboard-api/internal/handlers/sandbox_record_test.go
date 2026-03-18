@@ -15,9 +15,9 @@ import (
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	authtypes "github.com/e2b-dev/infra/packages/auth/pkg/types"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
-	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
-	"github.com/e2b-dev/infra/packages/db/queries"
+	dashboarddb "github.com/e2b-dev/infra/packages/db/pkg/dashboard"
+	dashboardqueries "github.com/e2b-dev/infra/packages/db/pkg/dashboard/queries"
 )
 
 type noRowsDB struct{}
@@ -56,8 +56,8 @@ func TestGetSandboxesSandboxIDRecordReturns404WhenRecordRetentionNotMet(t *testi
 	})
 
 	store := &APIStore{
-		db: &sqlcdb.Client{
-			Queries: queries.New(noRowsDB{}),
+		db: &dashboarddb.Client{
+			Queries: dashboardqueries.New(noRowsDB{}),
 		},
 	}
 
