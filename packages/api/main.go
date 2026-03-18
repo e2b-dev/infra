@@ -23,6 +23,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	middleware "github.com/oapi-codegen/gin-middleware"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
@@ -32,10 +33,13 @@ import (
 	customMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware"
 	metricsMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics"
 	tracingMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware/otel/tracing"
+	"github.com/e2b-dev/infra/packages/api/internal/middleware/ratelimit"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	"github.com/e2b-dev/infra/packages/shared/pkg/factories"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -73,7 +77,7 @@ var (
 	expectedMigrationTimestamp string
 )
 
-func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client, l logger.Logger, apiStore *handlers.APIStore, swagger *openapi3.T, port int) *http.Server {
+func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client, l logger.Logger, apiStore *handlers.APIStore, redisClient redis.UniversalClient, ff *featureflags.Client, swagger *openapi3.T, port int) *http.Server {
 	// Clear out the servers array in the swagger spec, that skips validating
 	// that server names match. We don't know how this thing will be run.
 	swagger.Servers = nil
@@ -195,6 +199,15 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 	)
 
 	r.Use(customMiddleware.InitLaunchDarklyContext)
+
+	// Per-team rate limiting (after auth + LD context, before handlers).
+	// Only applied to connect and resume endpoints. Gated by feature flag.
+	limiter := ratelimit.NewLimiter(redisClient)
+	r.Use(customMiddleware.IncludeRoutes(
+		ratelimit.Middleware(limiter, ratelimit.DefaultConfig(), ff),
+		"/sandboxes/:sandboxID/connect",
+		"/sandboxes/:sandboxID/resume",
+	))
 
 	// We now register our store above as the handler for the interface
 	api.RegisterHandlersWithOptions(r, apiStore, api.GinServerOptions{
@@ -373,10 +386,28 @@ func run() int {
 	cleanup := func() { cleanupOnce.Do(cleanupOp) }
 	defer cleanup()
 
+	redisClient, err := factories.NewRedisClient(ctx, factories.RedisConfig{
+		RedisURL:         config.RedisURL,
+		RedisClusterURL:  config.RedisClusterURL,
+		RedisTLSCABase64: config.RedisTLSCABase64,
+		PoolSize:         config.RedisPoolSize,
+	})
+	if err != nil {
+		logger.L().Fatal(ctx, "Initializing Redis client", zap.Error(err))
+	}
+
+	featureFlags, err := featureflags.NewClient()
+	if err != nil {
+		logger.L().Fatal(ctx, "failed to create feature flags client", zap.Error(err))
+	}
+
+	featureFlags.SetServiceName(serviceName)
+	featureFlags.SetDeploymentName(config.DomainName)
+
 	// Create an instance of our handler which satisfies the generated interface
 	//  (use the outer context rather than the signal handling
 	//   context so it doesn't exit first.)
-	apiStore := handlers.NewAPIStore(ctx, tel, config, serviceName)
+	apiStore := handlers.NewAPIStore(ctx, tel, redisClient, featureFlags, config)
 	cleanupFns = append(cleanupFns, apiStore.Close)
 
 	grpcAddr := fmt.Sprintf("0.0.0.0:%d", config.APIGrpcPort)
@@ -389,7 +420,7 @@ func run() int {
 	proxygrpc.RegisterSandboxServiceServer(grpcServer, handlers.NewSandboxService(apiStore))
 
 	// pass the signal context so that handlers know when shutdown is happening.
-	s := NewGinServer(ctx, config, tel, l, apiStore, swagger, port)
+	s := NewGinServer(ctx, config, tel, l, apiStore, redisClient, featureFlags, swagger, port)
 
 	// ////////////////////////
 	//
