@@ -116,11 +116,10 @@ func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess
 		orchNetwork.Ingress.Off = network.Ingress.Off
 	}
 
-	// Handle the case where internet access is explicitly disabled
-	// This should be applied after copying the network config to preserve allowed addresses
+	// Handle the case where internet access is explicitly disabled.
+	// Uses deny-all (not Off) so that explicit allow rules still take precedence.
 	if allowInternetAccess != nil && !*allowInternetAccess {
-		// TODO probably should turn off ingress too, but that'd be a breaking change.
-		orchNetwork.Egress.Off = true
+		orchNetwork.Egress.DeniedCidrs = []string{sandbox_network.AllInternetTrafficCIDR}
 	}
 
 	return orchNetwork
