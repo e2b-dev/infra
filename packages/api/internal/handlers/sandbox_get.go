@@ -71,6 +71,8 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		}
 
 		// Sandbox exists and belongs to the team - return running sandbox sbx
+		network := toSandboxDetailNetworkConfig(sbx.Network)
+		lifecycle := toSandboxDetailLifecycle(sbx.AutoResume, sbx.AutoPause)
 		sandbox := api.SandboxDetail{
 			ClientID:            sbx.ClientID,
 			TemplateID:          sbx.TemplateID,
@@ -86,8 +88,8 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 			EnvdAccessToken:     sbx.EnvdAccessToken,
 			AllowInternetAccess: sbx.AllowInternetAccess,
 			Domain:              sbxDomain,
-			Network:             toSandboxDetailNetworkConfig(sbx.Network),
-			Lifecycle:           toSandboxDetailLifecycle(sbx.AutoResume, sbx.AutoPause),
+			Network:             &network,
+			Lifecycle:           &lifecycle,
 			VolumeMounts:        convertFromDBMountsToAPIMounts(sbx.VolumeMounts),
 		}
 
@@ -164,6 +166,8 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		networkConfig = lastSnapshot.Snapshot.Config.Network
 	}
 
+	network := toSandboxDetailNetworkConfig(networkConfig)
+	lifecycle := toSandboxDetailLifecycle(autoResumeConfig, lastSnapshot.Snapshot.AutoPause)
 	sandbox := api.SandboxDetail{
 		ClientID:            consts.ClientID, // for backwards compatibility we need to return a client id
 		TemplateID:          lastSnapshot.Snapshot.EnvID,
@@ -178,8 +182,8 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		EnvdAccessToken:     sbxAccessToken,
 		AllowInternetAccess: lastSnapshot.Snapshot.AllowInternetAccess,
 		Domain:              nil,
-		Network:             toSandboxDetailNetworkConfig(networkConfig),
-		Lifecycle:           toSandboxDetailLifecycle(autoResumeConfig, lastSnapshot.Snapshot.AutoPause),
+		Network:             &network,
+		Lifecycle:           &lifecycle,
 	}
 
 	if lastSnapshot.Snapshot.Metadata != nil {

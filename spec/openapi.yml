@@ -484,8 +484,6 @@ components:
         - endAt
         - state
         - envdVersion
-        - network
-        - lifecycle
       properties:
         templateID:
           type: string
@@ -516,7 +514,7 @@ components:
         allowInternetAccess:
           type: boolean
           nullable: true
-          description: Whether internet access was explicitly enabled or disabled for the sandbox.
+          description: Whether internet access was explicitly enabled or disabled for the sandbox. Null means it was not explicitly set.
         domain:
           type: string
           nullable: true
