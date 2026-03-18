@@ -180,9 +180,9 @@ func TestIntegration_AllowedRequestSetsHeaders(t *testing.T) {
 	w := doRequest(r)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Equal(t, "20", w.Header().Get("X-RateLimit-Limit"))
-	assert.NotEmpty(t, w.Header().Get("X-RateLimit-Remaining"))
-	assert.NotEmpty(t, w.Header().Get("X-RateLimit-Reset"))
+	assert.Equal(t, "20", w.Header().Get("RateLimit-Limit"))
+	assert.NotEmpty(t, w.Header().Get("RateLimit-Remaining"))
+	assert.NotEmpty(t, w.Header().Get("RateLimit-Reset"))
 }
 
 func TestIntegration_BurstThenDeny(t *testing.T) {
