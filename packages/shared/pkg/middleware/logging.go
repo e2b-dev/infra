@@ -39,17 +39,14 @@ func LoggingMiddleware(logger logger.Logger, conf Config) gin.HandlerFunc {
 		skipPaths[path] = true
 	}
 
-	return func(c *gin.Context) {
+	return func(c *gin.Context) { //nolint:contextcheck // ctx is captured before c.Next() intentionally to avoid seeing child context cancellations from inner middleware
+		ctx := c.Request.Context()
 		start := time.Now()
 
 		// Preserve this if any middleware modifies these values
 		path := c.Request.URL.Path
 		query := c.Request.URL.RawQuery
 		c.Next()
-
-		// Use the context after the request has been processed
-		ctx := c.Request.Context()
-
 		track := true
 
 		if _, ok := skipPaths[path]; ok || (conf.Skipper != nil && conf.Skipper(c)) {

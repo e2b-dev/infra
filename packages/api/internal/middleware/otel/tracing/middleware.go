@@ -111,9 +111,6 @@ func Middleware(tracerProvider oteltrace.TracerProvider, service string) gin.Han
 		// serve the request to the next middleware
 		c.Next()
 
-		// Use the context after the request has been processed
-		ctx = c.Request.Context()
-
 		status := c.Writer.Status()
 		attrs := semconv.HTTPAttributesFromHTTPStatusCode(status)
 		span.SetAttributes(attrs...)
