@@ -8,16 +8,19 @@ import (
 	"github.com/go-git/go-billy/v5"
 	"github.com/willscott/go-nfs"
 	"go.opentelemetry.io/otel/attribute"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy/cfg"
 )
 
 type tracingHandler struct {
-	inner nfs.Handler
+	inner  nfs.Handler
+	config cfg.Config
 }
 
 var _ nfs.Handler = (*tracingHandler)(nil)
 
-func WrapWithTracing(handler nfs.Handler) nfs.Handler {
-	return &tracingHandler{inner: handler}
+func WrapWithTracing(handler nfs.Handler, config cfg.Config) nfs.Handler {
+	return &tracingHandler{inner: handler, config: config}
 }
 
 func (e *tracingHandler) Mount(ctx context.Context, conn net.Conn, request nfs.MountRequest) (s nfs.MountStatus, fs billy.Filesystem, auth []nfs.AuthFlavor) {
@@ -35,7 +38,7 @@ func (e *tracingHandler) Mount(ctx context.Context, conn net.Conn, request nfs.M
 
 	s, fs, auth = e.inner.Mount(ctx, conn, request)
 	if fs != nil {
-		fs = newFS(ctx, fs)
+		fs = wrapFS(ctx, fs, e.config)
 	}
 
 	return
@@ -58,6 +61,10 @@ func (e *tracingHandler) FSStat(ctx context.Context, filesystem billy.Filesystem
 }
 
 func (e *tracingHandler) ToHandle(ctx context.Context, fs billy.Filesystem, path []string) (fh []byte) {
+	if !e.config.RecordHandleCalls {
+		return e.inner.ToHandle(ctx, fs, path)
+	}
+
 	_, finish := startSpan(ctx, "NFS.ToHandle", attribute.StringSlice("nfs.path", path))
 	defer finish(nil)
 
@@ -65,18 +72,26 @@ func (e *tracingHandler) ToHandle(ctx context.Context, fs billy.Filesystem, path
 }
 
 func (e *tracingHandler) FromHandle(ctx context.Context, fh []byte) (fs billy.Filesystem, paths []string, err error) {
+	if !e.config.RecordHandleCalls {
+		return e.inner.FromHandle(ctx, fh)
+	}
+
 	ctx, finish := startSpan(ctx, "NFS.FromHandle")
 	defer func() { finish(err) }()
 
 	fs, paths, err = e.inner.FromHandle(ctx, fh)
 	if fs != nil {
-		fs = newFS(ctx, fs)
+		fs = wrapFS(ctx, fs, e.config)
 	}
 
 	return
 }
 
 func (e *tracingHandler) InvalidateHandle(ctx context.Context, filesystem billy.Filesystem, bytes []byte) (err error) {
+	if !e.config.RecordHandleCalls {
+		return e.inner.InvalidateHandle(ctx, filesystem, bytes)
+	}
+
 	ctx, finish := startSpan(ctx, "NFS.InvalidateHandle")
 	defer func() { finish(err) }()
 

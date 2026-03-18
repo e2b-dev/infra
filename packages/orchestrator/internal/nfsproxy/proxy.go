@@ -4,11 +4,13 @@ import (
 	"context"
 	"net"
 	"strings"
+	"sync"
 
 	"github.com/willscott/go-nfs"
 	"github.com/willscott/go-nfs/helpers"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/chrooted"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy/chroot"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy/logged"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy/recovery"
@@ -18,17 +20,18 @@ import (
 
 const cacheLimit = 1024
 
-type Config struct {
-	Logging bool
-	Tracing bool
-}
+var setLogLevelOnce sync.Once
 
 type Proxy struct {
-	config Config
+	config cfg.Config
 	server *nfs.Server
 }
 
-func NewProxy(ctx context.Context, builder *chrooted.Builder, sandboxes *sandbox.Map, config Config) (*Proxy, error) {
+func NewProxy(ctx context.Context, builder *chrooted.Builder, sandboxes *sandbox.Map, config cfg.Config) (*Proxy, error) {
+	setLogLevelOnce.Do(func() {
+		nfs.Log.SetLevel(config.NFSLogLevel)
+	})
+
 	// actual nfs handler
 	var handler nfs.Handler = chroot.NewNFSHandler(builder, sandboxes)
 
@@ -36,11 +39,11 @@ func NewProxy(ctx context.Context, builder *chrooted.Builder, sandboxes *sandbox
 	handler = helpers.NewCachingHandler(handler, cacheLimit)
 
 	if config.Tracing {
-		handler = tracing.WrapWithTracing(handler)
+		handler = tracing.WrapWithTracing(handler, config)
 	}
 
 	if config.Logging {
-		handler = logged.WrapWithLogging(ctx, handler)
+		handler = logged.WrapWithLogging(ctx, handler, config)
 	}
 
 	handler = recovery.WrapWithRecovery(ctx, handler)

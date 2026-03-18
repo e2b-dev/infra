@@ -21,6 +21,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/chrooted"
+	nfscfg "github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/portmap"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
@@ -105,7 +106,7 @@ func TestRoundTrip(t *testing.T) {
 		assert.NoError(t, err)
 	})
 
-	nfsProxy, err := NewProxy(t.Context(), builder, sandboxes, Config{})
+	nfsProxy, err := NewProxy(t.Context(), builder, sandboxes, nfscfg.Config{})
 	require.NoError(t, err)
 	go func() {
 		err := nfsProxy.Serve(nfsListener)

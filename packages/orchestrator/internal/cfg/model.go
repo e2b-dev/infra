@@ -4,9 +4,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strings"
 	"time"
 
 	"github.com/caarlos0/env/v11"
+	"github.com/willscott/go-nfs"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -78,6 +81,8 @@ type Config struct {
 	OrchestratorLockPath       string            `env:"ORCHESTRATOR_LOCK_PATH"       envDefault:"/orchestrator.lock"`
 	NFSProxyLogging            bool              `env:"NFS_PROXY_LOGGING"            envDefault:"false"`
 	NFSProxyTracing            bool              `env:"NFS_PROXY_TRACING"            envDefault:"true"`
+	NFSProxyRecordStatCalls    bool              `env:"NFS_PROXY_RECORD_STAT_CALLS"  envDefault:"false"`
+	NFSProxyLogLevel           nfs.LogLevel      `env:"NFS_PROXY_LOG_LEVEL"          envDefault:"info"`
 	ProxyPort                  uint16            `env:"PROXY_PORT"                   envDefault:"5007"`
 	RedisClusterURL            string            `env:"REDIS_CLUSTER_URL"`
 	RedisTLSCABase64           string            `env:"REDIS_TLS_CA_BASE64"`
@@ -98,7 +103,15 @@ func (c Config) NodeAddress() *string {
 }
 
 func Parse() (Config, error) {
-	config, err := env.ParseAs[Config]()
+	config, err := env.ParseAsWithOptions[Config](env.Options{
+		FuncMap: map[reflect.Type]env.ParserFunc{
+			reflect.TypeFor[nfs.LogLevel](): func(s string) (any, error) {
+				s = strings.ToLower(s)
+
+				return nfs.Log.ParseLevel(s)
+			},
+		},
+	})
 	if err != nil {
 		return config, err
 	}

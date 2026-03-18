@@ -36,6 +36,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/localupload"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy"
+	nfscfg "github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/portmap"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
@@ -746,9 +747,11 @@ func startNFSProxy(
 	}
 
 	// nfs proxy implementation
-	nfsServer, err := nfsproxy.NewProxy(ctx, builder, sandboxes, nfsproxy.Config{
-		Logging: config.NFSProxyLogging,
-		Tracing: config.NFSProxyTracing,
+	nfsServer, err := nfsproxy.NewProxy(ctx, builder, sandboxes, nfscfg.Config{
+		Logging:         config.NFSProxyLogging,
+		Tracing:         config.NFSProxyTracing,
+		RecordStatCalls: config.NFSProxyRecordStatCalls,
+		NFSLogLevel:     config.NFSProxyLogLevel,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create nfs proxy: %w", err)

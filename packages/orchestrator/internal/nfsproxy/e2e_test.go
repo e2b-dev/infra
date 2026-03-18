@@ -23,6 +23,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/chrooted"
+	nfscfg "github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/portmap"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
@@ -139,7 +140,7 @@ func TestIntegrationTest(t *testing.T) {
 
 	createVolumeDir(t, builder, volumeType, teamID, volumeID)
 
-	s, err := NewProxy(t.Context(), builder, sandboxes, Config{})
+	s, err := NewProxy(t.Context(), builder, sandboxes, nfscfg.Config{})
 	require.NoError(t, err)
 	go func() {
 		err := s.Serve(nfsListener)

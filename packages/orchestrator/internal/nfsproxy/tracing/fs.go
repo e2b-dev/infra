@@ -6,17 +6,21 @@ import (
 
 	"github.com/go-git/go-billy/v5"
 	"go.opentelemetry.io/otel/attribute"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy/cfg"
 )
 
 type tracingFS struct {
 	ctx   context.Context //nolint:containedctx
 	inner billy.Filesystem
+
+	config cfg.Config
 }
 
 var _ billy.Filesystem = (*tracingFS)(nil)
 
-func newFS(ctx context.Context, fs billy.Filesystem) billy.Filesystem {
-	return &tracingFS{ctx: ctx, inner: fs}
+func wrapFS(ctx context.Context, fs billy.Filesystem, config cfg.Config) billy.Filesystem {
+	return &tracingFS{ctx: ctx, inner: fs, config: config}
 }
 
 func (l *tracingFS) Create(filename string) (f billy.File, err error) {
@@ -68,6 +72,11 @@ func (l *tracingFS) OpenFile(filename string, flag int, perm os.FileMode) (f bil
 }
 
 func (l *tracingFS) Stat(filename string) (fi os.FileInfo, err error) {
+	// these are potentially very chatty and uninteresting
+	if !l.config.RecordStatCalls {
+		return l.inner.Stat(filename)
+	}
+
 	_, finish := startSpan(l.ctx, "FS.Stat", attribute.String("nfs.filename", filename))
 	defer func() { finish(err) }()
 
@@ -128,6 +137,11 @@ func (l *tracingFS) MkdirAll(filename string, perm os.FileMode) (err error) {
 }
 
 func (l *tracingFS) Lstat(filename string) (fi os.FileInfo, err error) {
+	// these are potentially very chatty and uninteresting
+	if !l.config.RecordStatCalls {
+		return l.inner.Lstat(filename)
+	}
+
 	_, finish := startSpan(l.ctx, "FS.Lstat", attribute.String("nfs.filename", filename))
 	defer func() { finish(err) }()
 
@@ -159,7 +173,7 @@ func (l *tracingFS) Chroot(path string) (fs billy.Filesystem, err error) {
 		return nil, err
 	}
 
-	return newFS(ctx, inner), nil
+	return wrapFS(ctx, inner, l.config), nil
 }
 
 func (l *tracingFS) Root() string {
