@@ -155,23 +155,24 @@ func isEgressAllowed(sbx *sandbox.Sandbox, hostname string, ip net.IP) (bool, Ma
 		return true, MatchTypeNone
 	}
 
-	// Check allowed domains first (not in ACL — domains are matched by name).
-	if hostname != noHostnameValue {
-		for _, domain := range egress.GetAllowedDomains() {
-			if matchDomain(hostname, domain) {
-				return true, MatchTypeDomain
-			}
-		}
-	}
-
 	// Check IP allow/deny via pre-parsed ACL (no per-connection ParseCIDR).
 	acl := sbx.Config.GetEgressACL()
 	if acl == nil {
 		return true, MatchTypeNone
 	}
 
+	// Off short-circuits before any rule evaluation, including domains.
 	if acl.Off {
 		return false, MatchTypeOff
+	}
+
+	// Check allowed domains (not in ACL — domains are matched by name).
+	if hostname != noHostnameValue {
+		for _, domain := range egress.GetAllowedDomains() {
+			if matchDomain(hostname, domain) {
+				return true, MatchTypeDomain
+			}
+		}
 	}
 
 	for i := range acl.Allowed {
