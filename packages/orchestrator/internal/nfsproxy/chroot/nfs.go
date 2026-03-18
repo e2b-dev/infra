@@ -159,6 +159,8 @@ func (h *NFSHandler) Change(_ context.Context, filesystem billy.Filesystem) bill
 	}
 }
 
+// FSStat describes the state of the exported file system. Things like total files, total bytes, available bytes, etc.
+// We offer volumes that are unlimited in size, so we leave all values to their defaults, which is 1 << 62.
 func (h *NFSHandler) FSStat(_ context.Context, _ billy.Filesystem, _ *nfs.FSStat) error {
 	return nil
 }
