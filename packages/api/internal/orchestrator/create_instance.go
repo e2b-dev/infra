@@ -25,7 +25,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	sandboxnetwork "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
+	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	ut "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -35,32 +35,25 @@ import (
 // CIDRs and domains are split into their respective proto fields.
 // When any allowed entry is a domain, the default nameserver is injected so
 // the sandbox can resolve domain names.
-func buildEgressConfig(allowedEntries, deniedEntries []string) *orchestrator.SandboxNetworkEgressConfig {
-	var allowedCIDRs []string
+func buildEgressConfig(egressUpdate *types.SandboxNetworkEgressConfig) *orchestrator.SandboxNetworkEgressConfig {
+	var allowedAddresses []string
 	var allowedDomains []string
 
-	for _, entry := range allowedEntries {
-		if sandboxnetwork.IsIPOrCIDR(entry) {
-			allowedCIDRs = append(allowedCIDRs, sandboxnetwork.AddressStringToCIDR(entry))
+	for _, entry := range egressUpdate.AllowedAddresses {
+		if sandbox_network.IsIPOrCIDR(entry) {
+			allowedAddresses = append(allowedAddresses, sandbox_network.AddressStringToCIDR(entry))
 		} else {
 			allowedDomains = append(allowedDomains, entry)
 		}
 	}
 
-	// Inject default nameserver when domains are configured
 	if len(allowedDomains) > 0 {
-		allowedCIDRs = append(allowedCIDRs, sandboxnetwork.DefaultNameserver)
-	}
-
-	// Normalize denied entries to CIDRs
-	deniedCIDRs := make([]string, 0, len(deniedEntries))
-	for _, entry := range deniedEntries {
-		deniedCIDRs = append(deniedCIDRs, sandboxnetwork.AddressStringToCIDR(entry))
+		allowedAddresses = append(allowedAddresses, sandbox_network.DefaultNameserver)
 	}
 
 	return &orchestrator.SandboxNetworkEgressConfig{
-		AllowedCidrs:   allowedCIDRs,
-		DeniedCidrs:    deniedCIDRs,
+		AllowedCidrs:   allowedAddresses,
+		DeniedCidrs:    sandbox_network.AddressStringsToCIDRs(egressUpdate.DeniedAddresses),
 		AllowedDomains: allowedDomains,
 	}
 }
@@ -75,16 +68,16 @@ func parseIngressRules(entries []string) []*orchestrator.IngressRule {
 
 	rules := make([]*orchestrator.IngressRule, 0, len(entries))
 	for _, entry := range entries {
-		host, portStr, err := sandboxnetwork.SplitHostPort(entry)
+		host, portStr, err := sandbox_network.SplitHostPort(entry)
 		if err != nil {
 			continue // pre-validated by API handler
 		}
 
-		cidr := sandboxnetwork.AddressStringToCIDR(host)
+		cidr := sandbox_network.AddressStringToCIDR(host)
 
 		var portLow, portHigh uint32
 		if portStr != "" {
-			lo, hi, err := sandboxnetwork.ParsePortRange(portStr)
+			lo, hi, err := sandbox_network.ParsePortRange(portStr)
 			if err != nil {
 				continue // pre-validated by API handler
 			}
@@ -112,7 +105,7 @@ func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess
 	}
 
 	if network != nil && network.Egress != nil {
-		orchNetwork.Egress = buildEgressConfig(network.Egress.AllowedAddresses, network.Egress.DeniedAddresses)
+		orchNetwork.Egress = buildEgressConfig(network.Egress)
 	}
 
 	if network != nil && network.Ingress != nil {
@@ -125,7 +118,7 @@ func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess
 	// This should be applied after copying the network config to preserve allowed addresses
 	if allowInternetAccess != nil && !*allowInternetAccess {
 		// Block all internet access - this overrides any other blocked addresses
-		orchNetwork.Egress.DeniedCidrs = []string{sandboxnetwork.AllInternetTrafficCIDR}
+		orchNetwork.Egress.DeniedCidrs = []string{sandbox_network.AllInternetTrafficCIDR}
 	}
 
 	return orchNetwork

@@ -61,7 +61,7 @@ func domainHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int
 }
 
 // cidrOnlyHandler handles connections without hostname information.
-func cidrOnlyHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int, sbx *sandbox.Sandbox, logger logger.Logger, metrics *Metrics, protocol Protocol) {
+func cidrOnlyHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int, sbx *sandbox.Sandbox, _ logger.Logger, metrics *Metrics, protocol Protocol) {
 	// No hostname available for CIDR-only handler
 	allowed, matchType := isEgressAllowed(sbx, noHostnameValue, dstIP)
 	if !allowed {

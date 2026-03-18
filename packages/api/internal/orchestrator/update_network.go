@@ -27,7 +27,7 @@ func (o *Orchestrator) UpdateSandboxNetworkConfig(
 	egressUpdate *types.SandboxNetworkEgressConfig,
 	ingressUpdate *types.SandboxNetworkIngressConfig,
 ) *api.APIError {
-	egress := buildEgressConfig(egressUpdate.AllowedAddresses, egressUpdate.DeniedAddresses)
+	egress := buildEgressConfig(egressUpdate)
 
 	ingress := &orchestratorgrpc.SandboxNetworkIngressConfig{
 		MaskRequestHost: ingressUpdate.MaskRequestHost,
