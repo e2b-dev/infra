@@ -19,6 +19,8 @@ const MetricPrefix = "metric."
 // (after body parsing) began. This allows metrics to exclude body upload/parsing time.
 const processingStartTimeKey = "metrics.processingStartTime"
 
+const HTTPStatusCodeGranularKey = attribute.Key("http.status_code_granular")
+
 // SetProcessingStartTime stores the current time as the processing start time in the gin context.
 func SetProcessingStartTime(c *gin.Context) {
 	c.Set(processingStartTimeKey, time.Now())
@@ -73,16 +75,15 @@ func Middleware(meterProvider metric.MeterProvider, service string, options ...O
 				reqAttributes...,
 			)
 
+			code := ginCtx.Writer.Status()
 			if errors.Is(ctx.Err(), context.Canceled) {
 				// 499 is the nginx convention for "client closed request before server responded"
-				resAttributes = append(resAttributes, semconv.HTTPStatusCodeKey.Int(499))
-				resAttributes = append(resAttributes, attribute.Bool("client.canceled", true))
-			} else if cfg.groupedStatus {
-				code := ginCtx.Writer.Status() / 100 * 100
-				resAttributes = append(resAttributes, semconv.HTTPStatusCodeKey.Int(code))
-			} else {
-				resAttributes = append(resAttributes, semconv.HTTPAttributesFromHTTPStatusCode(ginCtx.Writer.Status())...)
+				code = 499
 			}
+
+			groupedCode := code / 100 * 100
+			resAttributes = append(resAttributes, semconv.HTTPStatusCodeKey.Int(groupedCode))
+			resAttributes = append(resAttributes, HTTPStatusCodeGranularKey.Int(code))
 
 			// Append attributes from ginCtx
 			resAttributes = append(resAttributes, attributesFromGinContext(ginCtx, MetricPrefix)...)

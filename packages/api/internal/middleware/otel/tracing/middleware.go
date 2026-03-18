@@ -112,12 +112,13 @@ func Middleware(tracerProvider oteltrace.TracerProvider, service string) gin.Han
 		c.Next()
 
 		status := c.Writer.Status()
-		attrs := semconv.HTTPAttributesFromHTTPStatusCode(status)
-		span.SetAttributes(attrs...)
-
 		if errors.Is(ctx.Err(), context.Canceled) {
+			// 499 is the nginx convention for "client closed request before server responded"
+			span.SetAttributes(semconv.HTTPAttributesFromHTTPStatusCode(499)...)
 			span.SetAttributes(attribute.Bool("client.canceled", true))
 		} else {
+			attrs := semconv.HTTPAttributesFromHTTPStatusCode(status)
+			span.SetAttributes(attrs...)
 			spanStatus, spanMessage := semconv.SpanStatusFromHTTPStatusCode(status)
 			span.SetStatus(spanStatus, spanMessage)
 		}
