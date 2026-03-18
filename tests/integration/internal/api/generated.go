@@ -604,7 +604,7 @@ type SandboxDetail struct {
 	// Alias Alias of the template
 	Alias *string `json:"alias,omitempty"`
 
-	// AllowInternetAccess Whether internet access was explicitly enabled or disabled for the sandbox.
+	// AllowInternetAccess Whether internet access was explicitly enabled or disabled for the sandbox. Null means it was not explicitly set.
 	AllowInternetAccess *bool `json:"allowInternetAccess"`
 
 	// ClientID Identifier of the client
@@ -630,12 +630,12 @@ type SandboxDetail struct {
 	EnvdVersion EnvdVersion `json:"envdVersion"`
 
 	// Lifecycle Sandbox lifecycle policy returned by sandbox info.
-	Lifecycle SandboxLifecycle `json:"lifecycle"`
+	Lifecycle *SandboxLifecycle `json:"lifecycle,omitempty"`
 
 	// MemoryMB Memory for the sandbox in MiB
-	MemoryMB MemoryMB             `json:"memoryMB"`
-	Metadata *SandboxMetadata     `json:"metadata,omitempty"`
-	Network  SandboxNetworkConfig `json:"network"`
+	MemoryMB MemoryMB              `json:"memoryMB"`
+	Metadata *SandboxMetadata      `json:"metadata,omitempty"`
+	Network  *SandboxNetworkConfig `json:"network,omitempty"`
 
 	// SandboxID Identifier of the sandbox
 	SandboxID string `json:"sandboxID"`
