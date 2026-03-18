@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis_rate/v10"
 	"github.com/google/uuid"
+	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
 	"github.com/launchdarkly/go-server-sdk/v7/testhelpers/ldtestdata"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
@@ -30,11 +31,16 @@ func TestMain(m *testing.M) {
 }
 
 // newTestFF creates a feature flags client with rate limiting enabled or disabled.
-func newTestFF(t *testing.T, enabled bool) *featureflags.Client {
+// When routeConfigs is provided, the RateLimitConfigFlag is set with the given route overrides.
+func newTestFF(t *testing.T, enabled bool, routeConfigs ...map[string]map[string]int) *featureflags.Client {
 	t.Helper()
 
 	td := ldtestdata.DataSource()
 	td.Update(td.Flag(featureflags.RateLimitEnabledFlag.Key()).VariationForAll(enabled))
+
+	if len(routeConfigs) > 0 && routeConfigs[0] != nil {
+		td.Update(td.Flag(featureflags.RateLimitConfigFlag.Key()).ValueForAll(ldvalue.CopyArbitraryValue(routeConfigs[0])))
+	}
 
 	ff, err := featureflags.NewClientWithDatasource(td)
 	require.NoError(t, err)
@@ -44,6 +50,15 @@ func newTestFF(t *testing.T, enabled bool) *featureflags.Client {
 	})
 
 	return ff
+}
+
+const testRoute = "/sandboxes/:sandboxID/connect"
+
+// routeConfig returns a route config map for the test route with the given rate and burst.
+func routeConfig(rate, burst int) map[string]map[string]int {
+	return map[string]map[string]int{
+		testRoute: {"rate": rate, "burst": burst},
+	}
 }
 
 // doRequest performs a POST /sandboxes/test-sbx/connect.
@@ -83,7 +98,8 @@ func TestMiddleware_SkipsWhenFlagDisabled(t *testing.T) {
 	defer badClient.Close()
 
 	limiter := redis_rate.NewLimiter(badClient)
-	r := newRouterWithTeam(limiter, DefaultConfig(), ff, uuid.New())
+	cfg := Config{Period: time.Second, FailOpen: true}
+	r := newRouterWithTeam(limiter, cfg, ff, uuid.New())
 
 	w := doRequest(r)
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -103,7 +119,8 @@ func TestMiddleware_SkipsUnauthenticated(t *testing.T) {
 
 	r := gin.New()
 	// No team set — unauthenticated.
-	r.Use(Middleware(limiter, DefaultConfig(), ff))
+	cfg := Config{Period: time.Second, FailOpen: true}
+	r.Use(Middleware(limiter, cfg, ff))
 	r.POST("/sandboxes/:sandboxID/connect", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
@@ -115,7 +132,7 @@ func TestMiddleware_SkipsUnauthenticated(t *testing.T) {
 func TestMiddleware_FailOpen(t *testing.T) {
 	t.Parallel()
 
-	ff := newTestFF(t, true)
+	ff := newTestFF(t, true, routeConfig(10, 10))
 	// Unreachable Redis.
 	badClient := redis.NewClient(&redis.Options{
 		Addr:        "localhost:1",
@@ -125,8 +142,6 @@ func TestMiddleware_FailOpen(t *testing.T) {
 
 	limiter := redis_rate.NewLimiter(badClient)
 	r := newRouterWithTeam(limiter, Config{
-		Rate:     10,
-		Burst:    10,
 		Period:   time.Second,
 		FailOpen: true,
 	}, ff, uuid.New())
@@ -138,7 +153,7 @@ func TestMiddleware_FailOpen(t *testing.T) {
 func TestMiddleware_FailClosed(t *testing.T) {
 	t.Parallel()
 
-	ff := newTestFF(t, true)
+	ff := newTestFF(t, true, routeConfig(10, 10))
 	badClient := redis.NewClient(&redis.Options{
 		Addr:        "localhost:1",
 		DialTimeout: 10 * time.Millisecond,
@@ -147,14 +162,30 @@ func TestMiddleware_FailClosed(t *testing.T) {
 
 	limiter := redis_rate.NewLimiter(badClient)
 	r := newRouterWithTeam(limiter, Config{
-		Rate:     10,
-		Burst:    10,
 		Period:   time.Second,
 		FailOpen: false,
 	}, ff, uuid.New())
 
 	w := doRequest(r)
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
+func TestMiddleware_UnconfiguredRouteAllowsThrough(t *testing.T) {
+	t.Parallel()
+
+	// Rate limiting enabled, but no route config — all routes should pass through.
+	ff := newTestFF(t, true)
+	badClient := redis.NewClient(&redis.Options{Addr: "localhost:1"})
+	defer badClient.Close()
+
+	limiter := redis_rate.NewLimiter(badClient)
+	cfg := Config{Period: time.Second, FailOpen: true}
+	r := newRouterWithTeam(limiter, cfg, ff, uuid.New())
+
+	w := doRequest(r)
+	assert.Equal(t, http.StatusOK, w.Code)
+	// No rate limit headers should be set for unconfigured routes.
+	assert.Empty(t, w.Header().Get("RateLimit-Limit"))
 }
 
 // --- Integration tests (real Redis) ---
@@ -168,11 +199,9 @@ func TestIntegration_AllowedRequestSetsHeaders(t *testing.T) {
 
 	redisClient := redis_utils.SetupInstance(t)
 	limiter := redis_rate.NewLimiter(redisClient)
-	ff := newTestFF(t, true)
+	ff := newTestFF(t, true, routeConfig(10, 20))
 
 	r := newRouterWithTeam(limiter, Config{
-		Rate:     10,
-		Burst:    20,
 		Period:   time.Second,
 		FailOpen: true,
 	}, ff, uuid.New())
@@ -194,11 +223,9 @@ func TestIntegration_BurstThenDeny(t *testing.T) {
 
 	redisClient := redis_utils.SetupInstance(t)
 	limiter := redis_rate.NewLimiter(redisClient)
-	ff := newTestFF(t, true)
+	ff := newTestFF(t, true, routeConfig(1, 3))
 
 	r := newRouterWithTeam(limiter, Config{
-		Rate:     1,
-		Burst:    3,
 		Period:   time.Second,
 		FailOpen: true,
 	}, ff, uuid.New())
@@ -233,11 +260,9 @@ func TestIntegration_Refill(t *testing.T) {
 
 	redisClient := redis_utils.SetupInstance(t)
 	limiter := redis_rate.NewLimiter(redisClient)
-	ff := newTestFF(t, true)
+	ff := newTestFF(t, true, routeConfig(10, 2))
 
 	r := newRouterWithTeam(limiter, Config{
-		Rate:     10,
-		Burst:    2,
 		Period:   time.Second,
 		FailOpen: true,
 	}, ff, uuid.New())
@@ -266,11 +291,9 @@ func TestIntegration_IndependentTeams(t *testing.T) {
 
 	redisClient := redis_utils.SetupInstance(t)
 	limiter := redis_rate.NewLimiter(redisClient)
-	ff := newTestFF(t, true)
+	ff := newTestFF(t, true, routeConfig(1, 1))
 
 	cfg := Config{
-		Rate:     1,
-		Burst:    1,
 		Period:   time.Second,
 		FailOpen: true,
 	}
@@ -301,12 +324,10 @@ func TestIntegration_ConcurrentAccess(t *testing.T) {
 
 	redisClient := redis_utils.SetupInstance(t)
 	limiter := redis_rate.NewLimiter(redisClient)
-	ff := newTestFF(t, true)
+	ff := newTestFF(t, true, routeConfig(1, 10))
 
 	burst := 10
 	cfg := Config{
-		Rate:     1,
-		Burst:    burst,
 		Period:   time.Minute, // slow refill so burst is the effective limit
 		FailOpen: true,
 	}
