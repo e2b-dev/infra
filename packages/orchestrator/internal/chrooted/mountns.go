@@ -6,11 +6,25 @@ import (
 	"os"
 	"runtime"
 	"sync"
+	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
+)
+
+var (
+	meter = otel.GetMeterProvider().Meter("shared.pkg.storage")
+
+	requestLatency = utils.Must(meter.Int64Histogram(
+		"orchestrator.chroot.request.latency",
+		metric.WithDescription("Latency of chroot namespace request processing"),
+		metric.WithUnit("us"),
+	))
 )
 
 type NSPathNotExistError struct{ msg string }
@@ -52,7 +66,7 @@ func (ns *mountNS) Set() error {
 	}
 
 	if err := unix.Setns(int(ns.Fd()), unix.CLONE_NEWNS); err != nil {
-		return fmt.Errorf("Error switching to ns %v: %w", ns.file.Name(), err)
+		return fmt.Errorf("error switching to ns %v: %w", ns.file.Name(), err)
 	}
 
 	return nil
@@ -108,7 +122,7 @@ func (ns *mountNS) Do(toRun func() error) error {
 	done := make(chan error, 1)
 
 	select {
-	case reqCh <- nsRequest{fn: toRun, done: done}:
+	case reqCh <- nsRequest{fn: toRun, done: done, start: time.Now()}:
 		return <-done
 	case <-stopCh:
 		return fmt.Errorf("mount namespace %q is closed", ns.file.Name())
@@ -223,6 +237,9 @@ func tempMountNS(ctx context.Context) (*mountNS, error) {
 		for {
 			select {
 			case req := <-tempNS.reqCh:
+				delay := time.Since(req.start)
+				requestLatency.Record(ctx, delay.Microseconds())
+
 				req.done <- req.fn()
 			case <-tempNS.stopCh:
 				_ = threadNS.Set()
@@ -242,6 +259,7 @@ func tempMountNS(ctx context.Context) (*mountNS, error) {
 }
 
 type nsRequest struct {
-	fn   func() error
-	done chan error
+	fn    func() error
+	start time.Time
+	done  chan error
 }

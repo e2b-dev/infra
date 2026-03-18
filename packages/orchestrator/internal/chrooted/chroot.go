@@ -15,9 +15,8 @@ type Chrooted struct {
 	ActualRoot string
 	Metadata   map[string]string
 
-	mu  sync.RWMutex
-	ns  *mountNS
-	act func(func() error) error
+	mu sync.RWMutex
+	ns *mountNS
 }
 
 type Option func(*Chrooted)
@@ -43,16 +42,7 @@ func Chroot(ctx context.Context, source string, opts ...Option) (*Chrooted, erro
 		ns:         mountNS,
 	}
 
-	fs.act = func(f func() error) error {
-		fs.mu.RLock()
-		defer fs.mu.RUnlock()
-
-		return mountNS.Do(func() error {
-			return f()
-		})
-	}
-
-	if err = fs.chroot(source); err != nil {
+	if err = chroot(mountNS, source); err != nil {
 		err = fmt.Errorf("failed to chroot into %q: %w", source, err)
 		if err2 := mountNS.Close(); err2 != nil {
 			err = errors.Join(err, fmt.Errorf("failed to close mount namespace: %w", err2))
@@ -68,12 +58,21 @@ func Chroot(ctx context.Context, source string, opts ...Option) (*Chrooted, erro
 	return fs, nil
 }
 
+func (fs *Chrooted) act(fn func() error) error {
+	return fs.ns.Do(func() error {
+		fs.mu.RLock()
+		defer fs.mu.RUnlock()
+
+		return fn()
+	})
+}
+
 const maxMountAttempts = 10
 
 var ErrFailedToMount = errors.New("retries exhausted")
 
-func (fs *Chrooted) chroot(path string) error {
-	return fs.ns.Do(func() error {
+func chroot(ns *mountNS, path string) error {
+	return ns.Do(func() error {
 		var err error
 
 		if err = syscall.Mount("", "/", "", syscall.MS_SLAVE|syscall.MS_REC, ""); err != nil {
