@@ -15,10 +15,10 @@ func onConnect(ctx context.Context, conn net.Conn) (context.Context, net.Conn) {
 
 	conn = wrapConn(conn, span)
 
-	return ctx, conn
+	return ctx, conn //nolint:spancheck // called by OnDisconnect
 }
 
-func onDisconnect(ctx context.Context, conn net.Conn) {
+func onDisconnect(_ context.Context, conn net.Conn) {
 	cws, ok := conn.(*connWithSpan)
 	if ok {
 		cws.span.End()
@@ -27,6 +27,7 @@ func onDisconnect(ctx context.Context, conn net.Conn) {
 
 type connWithSpan struct {
 	net.Conn
+
 	span trace.Span
 }
 
