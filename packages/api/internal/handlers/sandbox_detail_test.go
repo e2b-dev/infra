@@ -17,7 +17,7 @@ func TestToSandboxDetailLifecycle(t *testing.T) {
 		t,
 		api.SandboxLifecycle{
 			AutoResume: false,
-			OnTimeout:  api.SandboxOnTimeout("kill"),
+			OnTimeout:  api.Kill,
 		},
 		toSandboxDetailLifecycle(nil, false),
 	)
@@ -25,7 +25,7 @@ func TestToSandboxDetailLifecycle(t *testing.T) {
 		t,
 		api.SandboxLifecycle{
 			AutoResume: false,
-			OnTimeout:  api.SandboxOnTimeout("pause"),
+			OnTimeout:  api.Pause,
 		},
 		toSandboxDetailLifecycle(&dbtypes.SandboxAutoResumeConfig{Policy: dbtypes.SandboxAutoResumeOff}, true),
 	)
@@ -33,7 +33,7 @@ func TestToSandboxDetailLifecycle(t *testing.T) {
 		t,
 		api.SandboxLifecycle{
 			AutoResume: true,
-			OnTimeout:  api.SandboxOnTimeout("kill"),
+			OnTimeout:  api.Kill,
 		},
 		toSandboxDetailLifecycle(&dbtypes.SandboxAutoResumeConfig{Policy: dbtypes.SandboxAutoResumeAny}, false),
 	)

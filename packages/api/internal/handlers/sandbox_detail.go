@@ -34,9 +34,9 @@ func toSandboxDetailNetworkConfig(network *dbtypes.SandboxNetworkConfig) api.San
 }
 
 func toSandboxDetailLifecycle(autoResume *dbtypes.SandboxAutoResumeConfig, autoPause bool) api.SandboxLifecycle {
-	onTimeout := api.SandboxOnTimeout("kill")
+	onTimeout := api.Kill
 	if autoPause {
-		onTimeout = api.SandboxOnTimeout("pause")
+		onTimeout = api.Pause
 	}
 
 	return api.SandboxLifecycle{
