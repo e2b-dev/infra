@@ -130,11 +130,11 @@ func TestMatchDomain(t *testing.T) {
 func TestIsEgressAllowed(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name      string
-		network   *orchestrator.SandboxNetworkConfig
-		hostname  string
-		ip        net.IP
-		want      bool
+		name     string
+		network  *orchestrator.SandboxNetworkConfig
+		hostname string
+		ip       net.IP
+		want     bool
 	}{
 		// ---------------------------------------------------------------------
 		// Default Allow Behavior
@@ -347,9 +347,9 @@ func TestIsEgressAllowed(t *testing.T) {
 					AllowedCidrs: []string{"invalid-cidr"},
 				},
 			},
-			hostname:  "",
-			ip:        net.ParseIP("1.2.3.4"),
-			want:      true,
+			hostname: "",
+			ip:       net.ParseIP("1.2.3.4"),
+			want:     true,
 		},
 		{
 			name: "invalid denied CIDR fails open",
@@ -358,9 +358,9 @@ func TestIsEgressAllowed(t *testing.T) {
 					DeniedCidrs: []string{"not-a-cidr"},
 				},
 			},
-			hostname:  "",
-			ip:        net.ParseIP("1.2.3.4"),
-			want:      true,
+			hostname: "",
+			ip:       net.ParseIP("1.2.3.4"),
+			want:     true,
 		},
 	}
 
