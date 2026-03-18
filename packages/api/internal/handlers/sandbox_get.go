@@ -12,6 +12,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
+	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -84,6 +85,8 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 			EnvdVersion:     sbx.EnvdVersion,
 			EnvdAccessToken: sbx.EnvdAccessToken,
 			Domain:          sbxDomain,
+			Network:         toSandboxDetailNetworkConfig(sbx.Network),
+			Lifecycle:       toSandboxDetailLifecycle(sbx.AutoResume, sbx.AutoPause),
 			VolumeMounts:    convertFromDBMountsToAPIMounts(sbx.VolumeMounts),
 		}
 
@@ -153,6 +156,13 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		sbxAccessToken = &key
 	}
 
+	var autoResumeConfig *dbtypes.SandboxAutoResumeConfig
+	var networkConfig *dbtypes.SandboxNetworkConfig
+	if lastSnapshot.Snapshot.Config != nil {
+		autoResumeConfig = lastSnapshot.Snapshot.Config.AutoResume
+		networkConfig = lastSnapshot.Snapshot.Config.Network
+	}
+
 	sandbox := api.SandboxDetail{
 		ClientID:        consts.ClientID, // for backwards compatibility we need to return a client id
 		TemplateID:      lastSnapshot.Snapshot.EnvID,
@@ -166,6 +176,8 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		EnvdVersion:     envdVersion,
 		EnvdAccessToken: sbxAccessToken,
 		Domain:          nil,
+		Network:         toSandboxDetailNetworkConfig(networkConfig),
+		Lifecycle:       toSandboxDetailLifecycle(autoResumeConfig, lastSnapshot.Snapshot.AutoPause),
 	}
 
 	if lastSnapshot.Snapshot.Metadata != nil {
