@@ -248,9 +248,31 @@ func (c *Cache) Slice(off, length int64) ([]byte, error) {
 	return nil, BytesNotAvailableError{}
 }
 
+<<<<<<< HEAD
 // isBlockCached reports whether a single block is marked as cached.
 func (c *Cache) isBlockCached(blockIdx int64) bool {
 	return c.dirty[blockIdx/64].Load()&(1<<uint(blockIdx%64)) != 0
+=======
+func (c *Cache) isCached(off, length int64) bool {
+	// Make sure the offset is within the cache size
+	if off >= c.size {
+		return false
+	}
+
+	// Cap if the length goes beyond the cache size, so we don't check for blocks that are out of bounds.
+	end := min(off+length, c.size)
+	// Recalculate the length based on the capped end, so we check for the correct blocks in case of capping.
+	length = end - off
+
+	for _, blockOff := range header.BlocksOffsets(length, c.blockSize) {
+		_, dirty := c.dirty.Load(off + blockOff)
+		if !dirty {
+			return false
+		}
+	}
+
+	return true
+>>>>>>> f0933bad7768f85e3541c68aa6f07632e159d7c0
 }
 
 // markBlockRangeCached marks all blocks in [off, off+length) as cached.

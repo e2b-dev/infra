@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -19,6 +20,7 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
@@ -199,10 +201,20 @@ func main() {
 	buildId := flag.String("build", "", "build id")
 	from := flag.String("from", "", "from destination")
 	to := flag.String("to", "", "to destination")
+	teamID := flag.String("team", "", "team UUID (if set, prints SQL to populate DB on stdout)")
+	envdVersion := flag.String("envd-version", "", "envd version (required if team provided) — must match the version present in the template")
+	vcpu := flag.Int("vcpu", 2, "vCPUs")
+	memory := flag.Int("memory", 1024, "memory MB")
+	disk := flag.Int("disk", 1024, "disk MB")
+	tag := flag.String("tag", "default", "build assignment tag")
 
 	flag.Parse()
 
-	fmt.Printf("Copying build '%s' from '%s' to '%s'\n", *buildId, *from, *to)
+	if *teamID != "" && *envdVersion == "" {
+		log.Fatal("-envd-version is required when -team is set")
+	}
+
+	fmt.Fprintf(os.Stderr, "Copying build '%s' from '%s' to '%s'\n", *buildId, *from, *to)
 
 	template := storage.TemplateFiles{
 		BuildID: *buildId,
@@ -280,7 +292,7 @@ func main() {
 		log.Fatalf("failed to create Google Storage client: %s", err)
 	}
 
-	fmt.Printf("Copying %d files\n", len(filesToCopy))
+	fmt.Fprintf(os.Stderr, "Copying %d files\n", len(filesToCopy))
 
 	var errgroup errgroup.Group
 
@@ -333,10 +345,10 @@ func main() {
 				}
 			}
 
-			fmt.Printf("+ copying '%s' to '%s'\n", fromDestination.Path, toDestination.Path)
+			fmt.Fprintf(os.Stderr, "+ copying '%s' to '%s'\n", fromDestination.Path, toDestination.Path)
 
 			if fromDestination.CRC == toDestination.CRC && fromDestination.CRC != 0 {
-				fmt.Printf("-> [%d/%d] '%s' already exists, skipping\n", done.Load(), len(filesToCopy), toDestination.Path)
+				fmt.Fprintf(os.Stderr, "-> [%d/%d] '%s' already exists, skipping\n", done.Load(), len(filesToCopy), toDestination.Path)
 
 				done.Add(1)
 
@@ -357,7 +369,7 @@ func main() {
 
 			done.Add(1)
 
-			fmt.Printf("-> [%d/%d] '%s' copied\n", done.Load(), len(filesToCopy), toDestination.Path)
+			fmt.Fprintf(os.Stderr, "-> [%d/%d] '%s' copied\n", done.Load(), len(filesToCopy), toDestination.Path)
 
 			return nil
 		})
@@ -367,5 +379,50 @@ func main() {
 		log.Fatalf("failed to copy files: %s", err)
 	}
 
-	fmt.Printf("Build '%s' copied to '%s'\n", *buildId, *to)
+	fmt.Fprintf(os.Stderr, "Build '%s' copied to '%s'\n", *buildId, *to)
+
+	if *teamID != "" {
+		// Read metadata.json from destination to get kernel and firecracker versions.
+		var metadataReader io.ReadCloser
+		if strings.HasPrefix(*to, "gs://") {
+			bucketName, _ := strings.CutPrefix(*to, "gs://")
+			obj := googleStorageClient.Bucket(bucketName).Object(metadataPath)
+			r, err := obj.NewReader(ctx)
+			if err != nil {
+				log.Fatalf("failed to read metadata from GCS: %s", err)
+			}
+			metadataReader = r
+		} else {
+			f, err := os.Open(path.Join(*to, "templates", metadataPath))
+			if err != nil {
+				log.Fatalf("failed to read metadata from local path: %s", err)
+			}
+			metadataReader = f
+		}
+
+		var meta struct {
+			Template struct {
+				KernelVersion      string `json:"kernel_version"`
+				FirecrackerVersion string `json:"firecracker_version"`
+			} `json:"template"`
+		}
+		if err := json.NewDecoder(metadataReader).Decode(&meta); err != nil {
+			metadataReader.Close()
+			log.Fatalf("failed to decode metadata.json: %s", err)
+		}
+		metadataReader.Close()
+
+		envID := id.Generate()
+		fmt.Fprintf(os.Stderr, "\n\nGenerated env ID: %s\n\n", envID)
+
+		fmt.Printf("BEGIN;\n")
+		fmt.Printf("INSERT INTO public.envs (id, team_id, updated_at, public, source)\n")
+		fmt.Printf("VALUES ('%s', '%s', NOW(), FALSE, 'template');\n\n", envID, *teamID)
+		fmt.Printf("INSERT INTO public.env_builds (id, env_id, updated_at, finished_at, status, ram_mb, vcpu, kernel_version, firecracker_version, envd_version, free_disk_size_mb, total_disk_size_mb)\n")
+		fmt.Printf("VALUES ('%s', '%s', NOW(), NOW(), 'uploaded', %d, %d, '%s', '%s', '%s', %d, %d);\n\n",
+			*buildId, envID, *memory, *vcpu, meta.Template.KernelVersion, meta.Template.FirecrackerVersion, *envdVersion, *disk, *disk)
+		fmt.Printf("INSERT INTO public.env_build_assignments (env_id, build_id, tag)\n")
+		fmt.Printf("VALUES ('%s', '%s', '%s');\n", envID, *buildId, *tag)
+		fmt.Printf("COMMIT;\n")
+	}
 }

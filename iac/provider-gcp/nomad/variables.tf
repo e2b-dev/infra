@@ -73,6 +73,10 @@ variable "ingress_port" {
   })
 }
 
+variable "additional_traefik_arguments" {
+  type = list(string)
+}
+
 variable "ingress_count" {
   type = number
 }
@@ -467,4 +471,9 @@ variable "volume_token_signing_method" {
 
 variable "volume_token_duration" {
   type = string
+}
+
+variable "gcs_grpc_connection_pool_size" {
+  description = "Number of gRPC connections in the GCS connection pool"
+  type        = number
 }

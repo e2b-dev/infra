@@ -98,6 +98,10 @@ job "ingress" {
           "--metrics.otlp.grpc.endpoint=${otel_collector_grpc_endpoint}",
           "--metrics.otlp.grpc.insecure=true",
 
+          %{ for arg in additional_args }
+          "${ arg }",
+          %{ endfor }
+
           # Traefik Nomad provider
           "--providers.nomad=true",
           "--providers.nomad.exposedByDefault=false",

@@ -1,7 +1,9 @@
-package feature_flags
+package featureflags
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
@@ -16,6 +18,7 @@ const (
 	SandboxKernelVersionAttribute      string         = "kernel-version"
 	SandboxFirecrackerVersionAttribute string         = "firecracker-version"
 
+<<<<<<< HEAD:packages/shared/pkg/feature-flags/flags.go
 	TeamKind             ldcontext.Kind = "team"
 	UserKind             ldcontext.Kind = "user"
 	ClusterKind          ldcontext.Kind = "cluster"
@@ -26,6 +29,19 @@ const (
 	VolumeKind           ldcontext.Kind = "volume"
 	CompressFileTypeKind ldcontext.Kind = "compress-file-type"
 	CompressUseCaseKind  ldcontext.Kind = "compress-use-case"
+=======
+	TeamKind       ldcontext.Kind = "team"
+	UserKind       ldcontext.Kind = "user"
+	ClusterKind    ldcontext.Kind = "cluster"
+	deploymentKind ldcontext.Kind = "deployment"
+	TierKind       ldcontext.Kind = "tier"
+	ServiceKind    ldcontext.Kind = "service"
+	TemplateKind   ldcontext.Kind = "template"
+	VolumeKind     ldcontext.Kind = "volume"
+
+	OrchestratorKind            ldcontext.Kind = "orchestrator"
+	OrchestratorCommitAttribute string         = "commit"
+>>>>>>> f0933bad7768f85e3541c68aa6f07632e159d7c0:packages/shared/pkg/featureflags/flags.go
 )
 
 // All flags must be defined here: https://app.launchdarkly.com/projects/default/flags/
@@ -56,6 +72,17 @@ func newJSONFlag(name string, fallback ldvalue.Value) JSONFlag {
 }
 
 var CleanNFSCache = newJSONFlag("clean-nfs-cache", ldvalue.Null())
+
+// RateLimitConfigFlag provides per-team rate limit overrides.
+// JSON format:
+//
+//	{
+//	  "/sandboxes/": {"rate": 50, "burst": 100},
+//	  "/sandboxes/:sandboxID/pause": {"rate": 10, "burst": 20}
+//	}
+//
+// When non-null, values override the code defaults. Target specific teams in LaunchDarkly.
+var RateLimitConfigFlag = newJSONFlag("rate-limit-config", ldvalue.Null())
 
 type BoolFlag struct {
 	name     string
@@ -171,6 +198,16 @@ var (
 
 	// BuildBaseRootfsSizeLimitMB is the maximum size of the base rootfs filesystem created from the OCI image, in MB.
 	BuildBaseRootfsSizeLimitMB = newIntFlag("build-base-rootfs-size-limit-mb", 25000)
+
+	// MaxConcurrentSnapshotUpserts limits concurrent UpsertSnapshot calls (pause + snapshot template paths).
+	// 0 or negative disables throttling (unlimited concurrency).
+	MaxConcurrentSnapshotUpserts = newIntFlag("max-concurrent-snapshot-upserts", 0)
+	// MaxConcurrentSandboxListQueries limits concurrent GetSnapshotsWithCursor calls in the sandbox list path.
+	// 0 or negative disables throttling (unlimited concurrency).
+	MaxConcurrentSandboxListQueries = newIntFlag("max-concurrent-sandbox-list-queries", 0)
+	// MaxConcurrentSnapshotBuildQueries limits concurrent GetSnapshotBuilds calls (e.g. sandbox delete).
+	// 0 or negative disables throttling (unlimited concurrency).
+	MaxConcurrentSnapshotBuildQueries = newIntFlag("max-concurrent-snapshot-build-queries", 0)
 )
 
 type StringFlag struct {
@@ -224,6 +261,29 @@ var (
 	BuildNodeInfo               = newJSONFlag("preferred-build-node", ldvalue.Null())
 	FirecrackerVersions         = newJSONFlag("firecracker-versions", ldvalue.FromJSONMarshal(FirecrackerVersionMap))
 )
+
+// ResolveFirecrackerVersion resolves the firecracker version using the FirecrackerVersions feature flag.
+// The buildVersion format is "v1.12.1_a41d3fb" — we extract "v1.12" as the lookup key.
+func ResolveFirecrackerVersion(ctx context.Context, ff *Client, buildVersion string) string {
+	parts := strings.Split(buildVersion, "_")
+	if len(parts) < 2 {
+		return buildVersion
+	}
+
+	versionParts := strings.Split(strings.TrimPrefix(parts[0], "v"), ".")
+	if len(versionParts) < 2 {
+		return buildVersion
+	}
+
+	key := fmt.Sprintf("v%s.%s", versionParts[0], versionParts[1])
+	versions := ff.JSONFlag(ctx, FirecrackerVersions).AsValueMap()
+
+	if resolved, ok := versions.Get(key).AsOptionalString().Get(); ok {
+		return resolved
+	}
+
+	return buildVersion
+}
 
 // defaultTrackedTemplates is the default map of template aliases tracked for metrics.
 // This is used to reduce metric cardinality.

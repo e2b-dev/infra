@@ -52,8 +52,9 @@ data "google_secret_manager_secret_version" "redis_tls_ca_base64" {
 module "ingress" {
   source = "../../modules/job-ingress"
 
-  ingress_count      = var.ingress_count
-  ingress_proxy_port = var.ingress_port.port
+  ingress_count                = var.ingress_count
+  ingress_proxy_port           = var.ingress_port.port
+  additional_traefik_arguments = var.additional_traefik_arguments
 
   node_pool     = var.api_node_pool
   update_stanza = var.api_machine_count > 1
@@ -406,6 +407,9 @@ module "orchestrator" {
   source = "../../modules/job-orchestrator"
 
   provider_name = "gcp"
+  provider_gcp_config = {
+    gcs_grpc_connection_pool_size = var.gcs_grpc_connection_pool_size
+  }
 
   node_pool  = var.orchestrator_node_pool
   port       = var.orchestrator_port
@@ -468,10 +472,11 @@ module "template_manager" {
 
   provider_name = "gcp"
   provider_gcp_config = {
-    service_account_key = var.google_service_account_key
-    project_id          = var.gcp_project_id
-    region              = var.gcp_region
-    docker_registry     = var.custom_envs_repository_name
+    service_account_key           = var.google_service_account_key
+    project_id                    = var.gcp_project_id
+    region                        = var.gcp_region
+    docker_registry               = var.custom_envs_repository_name
+    gcs_grpc_connection_pool_size = var.gcs_grpc_connection_pool_size
   }
 
   update_stanza = var.template_manages_clusters_size_gt_1

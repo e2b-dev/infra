@@ -27,11 +27,12 @@ import (
 	redisbackend "github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/redis"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const statusLogInterval = time.Second * 20
@@ -63,6 +64,8 @@ type Orchestrator struct {
 	sandboxCounter          metric.Int64UpDownCounter
 	createdCounter          metric.Int64Counter
 	snapshotCache           SnapshotCacheInvalidator
+
+	snapshotUpsertSem *utils.AdjustableSemaphore
 }
 
 func New(
@@ -77,6 +80,7 @@ func New(
 	featureFlags *featureflags.Client,
 	accessTokenGenerator *sandbox.AccessTokenGenerator,
 	snapshotCache SnapshotCacheInvalidator,
+	snapshotUpsertSem *utils.AdjustableSemaphore,
 ) (*Orchestrator, error) {
 	analyticsInstance, err := analyticscollector.NewAnalytics(
 		ctx,
@@ -136,6 +140,8 @@ func New(
 
 		sandboxCounter: sandboxCounter,
 		createdCounter: createdCounter,
+
+		snapshotUpsertSem: snapshotUpsertSem,
 	}
 
 	var reservationStorage sandbox.ReservationStorage

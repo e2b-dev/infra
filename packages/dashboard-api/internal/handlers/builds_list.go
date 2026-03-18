@@ -90,7 +90,7 @@ func (s *APIStore) GetBuilds(c *gin.Context, params api.GetBuildsParams) {
 type listBuildRow struct {
 	ID            uuid.UUID
 	StatusGroup   dbtypes.BuildStatusGroup
-	Reason        []byte
+	Reason        dbtypes.BuildReason
 	CreatedAt     time.Time
 	FinishedAt    *time.Time
 	TemplateID    string

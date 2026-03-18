@@ -131,6 +131,17 @@ variable "ingress_count" {
   default = 1
 }
 
+variable "additional_api_paths_handled_by_ingress" {
+  type        = list(string)
+  description = "Additional paths to forward to nomad's ingress"
+  default     = []
+}
+
+variable "additional_traefik_arguments" {
+  type    = list(string)
+  default = []
+}
+
 variable "client_proxy_resources_memory_mb" {
   type    = number
   default = 1024
@@ -309,6 +320,8 @@ variable "domain_name" {
 variable "additional_api_services_json" {
   type        = string
   description = <<EOT
+Deprecated. Use `additional_api_services` instead.
+
 Additional path rules to add to the API path matcher.
 Format: json string of an array of objects with 'path' and 'service' keys.
 Example:
@@ -322,6 +335,17 @@ Example:
 ]
 EOT
   default     = ""
+}
+
+variable "additional_api_services" {
+  type = list(object({
+    paths                    = list(string)
+    service_id               = string
+    api_node_group_port_name = string
+    api_node_group_port      = number
+  }))
+  description = "Additional path rules to add to the API path matcher."
+  default     = []
 }
 
 variable "prefix" {
@@ -690,4 +714,15 @@ variable "volume_token_signature" {
     method = string
   })
   default = null
+}
+
+variable "gcs_grpc_connection_pool_size" {
+  description = "Number of gRPC connections in the GCS connection pool for storage-heavy services"
+  type        = number
+  default     = 0
+
+  validation {
+    condition     = floor(var.gcs_grpc_connection_pool_size) == var.gcs_grpc_connection_pool_size && var.gcs_grpc_connection_pool_size >= 0
+    error_message = "gcs_grpc_connection_pool_size must be a positive integer or 0 for using default specified in code."
+  }
 }

@@ -19,7 +19,7 @@ FROM "public"."teams" t
 WHERE t.id = $1;
 
 -- name: GetTeamsWithUsersTeamsWithTier :many
-SELECT sqlc.embed(t), sqlc.embed(ut), sqlc.embed(tl)
+SELECT sqlc.embed(t), ut.is_default, sqlc.embed(tl)
 FROM "public"."teams" t
          JOIN "public"."users_teams" ut ON ut.team_id = t.id
          JOIN "public"."team_limits" tl on tl.id = t.id

@@ -47,8 +47,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -96,6 +95,7 @@ func BenchmarkBaseImage(b *testing.B) {
 		templateVersion = "v2.0.0"
 	)
 
+<<<<<<< HEAD
 	// Apply compression settings from env.
 	compType, compLevel := parseCompressEnv(os.Getenv("BENCH_COMPRESS"))
 	compressed := compType != ""
@@ -117,6 +117,8 @@ func BenchmarkBaseImage(b *testing.B) {
 
 	sbxNetwork := &orchestrator.SandboxNetworkConfig{}
 
+=======
+>>>>>>> f0933bad7768f85e3541c68aa6f07632e159d7c0
 	// cache paths, to speed up test runs. these paths aren't wiped between tests
 	persistenceDir := getPersistenceDir()
 	kernelsDir := filepath.Join(persistenceDir, "kernels")
@@ -234,7 +236,8 @@ func BenchmarkBaseImage(b *testing.B) {
 	templateCache.Start(b.Context())
 	b.Cleanup(templateCache.Stop)
 
-	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags, nil, nil)
+	sandboxes := sandbox.NewSandboxesMap()
+	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags, nil, nil, sandboxes)
 
 	dockerhubRepository, err := dockerhub.GetRemoteRepository(b.Context())
 	require.NoError(b, err)
@@ -244,13 +247,12 @@ func BenchmarkBaseImage(b *testing.B) {
 	})
 
 	accessToken := "access-token"
-	sandboxConfig := sandbox.Config{
+	sandboxConfig := sandbox.NewConfig(sandbox.Config{
 		BaseTemplateID:  templateID,
 		Vcpu:            2,
 		RamMB:           512,
 		TotalDiskSizeMB: 2 * 1024,
 		HugePages:       useHugePages,
-		Network:         sbxNetwork,
 		Envd: sandbox.EnvdMetadata{
 			Vars:        map[string]string{"HELLO": "WORLD"},
 			AccessToken: &accessToken,
@@ -260,7 +262,7 @@ func BenchmarkBaseImage(b *testing.B) {
 			KernelVersion:      kernelVersion,
 			FirecrackerVersion: fcVersion,
 		},
-	}
+	})
 
 	runtime := sandbox.RuntimeMetadata{
 		TemplateID:  templateID,
@@ -279,8 +281,6 @@ func BenchmarkBaseImage(b *testing.B) {
 	require.NoError(b, err)
 
 	var proxyPort uint16 = 5007
-
-	sandboxes := sandbox.NewSandboxesMap()
 
 	tcpFirewall := tcpfirewall.New(
 		l,
@@ -403,7 +403,7 @@ type testContainer struct {
 	testType       testCycle
 	sandboxFactory *sandbox.Factory
 	tmpl           template.Template
-	sandboxConfig  sandbox.Config
+	sandboxConfig  *sandbox.Config
 	runtime        sandbox.RuntimeMetadata
 }
 

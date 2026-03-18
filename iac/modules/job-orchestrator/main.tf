@@ -26,6 +26,7 @@ locals {
 
     provider            = var.provider_name
     provider_aws_config = var.provider_aws_config
+    provider_gcp_config = var.provider_gcp_config
 
     artifact_source = var.artifact_source
 

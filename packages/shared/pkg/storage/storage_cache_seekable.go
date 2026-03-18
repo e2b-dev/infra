@@ -18,7 +18,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/lock"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -335,6 +335,7 @@ func (c *cachedFramedFile) getFrameUncompressed(ctx context.Context, offsetU int
 		return Range{}, fmt.Errorf("cache GetFrame uncompressed: inner fetch at %#x: %w", offsetU, err)
 	}
 
+<<<<<<< HEAD
 	recordCacheRead(ctx, false, int64(r.Length), cacheTypeFramedFile, cacheOpGetFrame)
 	timer.Success(ctx, int64(r.Length))
 
@@ -342,6 +343,11 @@ func (c *cachedFramedFile) getFrameUncompressed(ctx context.Context, offsetU int
 	if !skipCacheWriteback(ctx) {
 		dataCopy := make([]byte, r.Length)
 		copy(dataCopy, buf[:r.Length])
+=======
+	if !skipCacheWriteback(ctx) && isCompleteRead(readCount, len(buff), err) {
+		shadowBuff := make([]byte, readCount)
+		copy(shadowBuff, buff[:readCount])
+>>>>>>> f0933bad7768f85e3541c68aa6f07632e159d7c0
 
 		c.goCtx(ctx, func(ctx context.Context) {
 			if err := c.writeToCache(ctx, offsetU, chunkPath, dataCopy); err != nil {
@@ -387,10 +393,42 @@ func (c *cachedFramedFile) writeToCache(ctx context.Context, offset int64, final
 		return fmt.Errorf("failed to write temp cache file: %w", err)
 	}
 
+<<<<<<< HEAD
 	if err := utils.RenameOrDeleteFile(ctx, tempPath, finalPath); err != nil {
 		writeTimer.Failure(ctx, int64(len(data)))
 
 		return fmt.Errorf("failed to rename temp file: %w", err)
+=======
+	// Wrap in a write-through reader that caches data on Close
+	return &cacheWriteThroughReader{
+		inner:       inner,
+		buf:         bytes.NewBuffer(make([]byte, 0, length)),
+		cache:       c,
+		ctx:         ctx,
+		off:         off,
+		expectedLen: length,
+		chunkPath:   chunkPath,
+	}, nil
+}
+
+// cacheWriteThroughReader wraps an inner reader, buffering all data read through it.
+// On Close, it asynchronously writes the buffered data to the NFS cache only
+// if the total bytes read match the expected length (to avoid caching truncated data).
+type cacheWriteThroughReader struct {
+	inner       io.ReadCloser
+	buf         *bytes.Buffer
+	cache       *cachedSeekable
+	ctx         context.Context //nolint:containedctx // needed for async cache write-back in Close
+	off         int64
+	expectedLen int64
+	chunkPath   string
+}
+
+func (r *cacheWriteThroughReader) Read(p []byte) (int, error) {
+	n, err := r.inner.Read(p)
+	if n > 0 {
+		r.buf.Write(p[:n])
+>>>>>>> f0933bad7768f85e3541c68aa6f07632e159d7c0
 	}
 
 	writeTimer.Success(ctx, int64(len(data)))
@@ -398,7 +436,36 @@ func (c *cachedFramedFile) writeToCache(ctx context.Context, offset int64, final
 	return nil
 }
 
+<<<<<<< HEAD
 func (c *cachedFramedFile) Size(ctx context.Context) (size int64, e error) {
+=======
+func (r *cacheWriteThroughReader) Close() error {
+	closeErr := r.inner.Close()
+
+	// Only cache when the total bytes read match the expected length.
+	// Unlike ReadAt where io.EOF can justify a short read (last chunk),
+	// a streaming reader always ends with EOF regardless of whether the
+	// data was truncated, so the byte count is the only reliable check.
+	if r.buf.Len() > 0 && int64(r.buf.Len()) == r.expectedLen {
+		data := make([]byte, r.buf.Len())
+		copy(data, r.buf.Bytes())
+
+		r.cache.goCtx(r.ctx, func(ctx context.Context) {
+			ctx, span := r.cache.tracer.Start(ctx, "write range reader chunk back to cache")
+			defer span.End()
+
+			if err := r.cache.writeChunkToCache(ctx, r.off, r.chunkPath, data); err != nil {
+				recordError(span, err)
+				recordCacheWriteError(ctx, cacheTypeSeekable, cacheOpOpenRangeReader, err)
+			}
+		})
+	}
+
+	return closeErr
+}
+
+func (c *cachedSeekable) Size(ctx context.Context) (n int64, e error) {
+>>>>>>> f0933bad7768f85e3541c68aa6f07632e159d7c0
 	ctx, span := c.tracer.Start(ctx, "get size of object")
 	defer func() {
 		recordError(span, e)
@@ -461,7 +528,43 @@ func (c *cachedFramedFile) makeChunkFilename(offset int64) string {
 	return fmt.Sprintf("%s/%012d-%d.bin", c.path, offset/c.chunkSize, c.chunkSize)
 }
 
+<<<<<<< HEAD
 func (c *cachedFramedFile) sizeFilename() string {
+=======
+func (c *cachedSeekable) makeTempChunkFilename(offset int64) string {
+	tempFilename := uuid.NewString()
+
+	return fmt.Sprintf("%s/.temp.%012d-%d.bin.%s", c.path, offset/c.chunkSize, c.chunkSize, tempFilename)
+}
+
+func (c *cachedSeekable) readAtFromCache(ctx context.Context, chunkPath string, buff []byte) (n int, e error) {
+	ctx, span := c.tracer.Start(ctx, "read chunk at offset from cache")
+	defer func() {
+		recordError(span, e)
+		span.End()
+	}()
+
+	fp, err := os.Open(chunkPath)
+	if err != nil {
+		return 0, fmt.Errorf("failed to open file: %w", err)
+	}
+
+	defer utils.Cleanup(ctx, "failed to close chunk", fp.Close)
+
+	// ReadAt (pread) is used instead of Read so that short reads from cache
+	// files (e.g. last chunk) return io.EOF per the io.ReaderAt contract.
+	// Plain Read on Linux returns (n, nil) for short reads and only
+	// signals EOF on a subsequent call, which would hide truncation.
+	count, err := fp.ReadAt(buff, 0)
+	if ignoreEOF(err) != nil {
+		return 0, fmt.Errorf("failed to read from chunk: %w", err)
+	}
+
+	return count, err // return `err` in case it's io.EOF
+}
+
+func (c *cachedSeekable) sizeFilename() string {
+>>>>>>> f0933bad7768f85e3541c68aa6f07632e159d7c0
 	return filepath.Join(c.path, "size.txt")
 }
 

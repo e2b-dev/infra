@@ -10,13 +10,12 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel/metric"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/connlimit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
@@ -72,27 +71,25 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 				return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)
 			}
 
-			var accessToken *string = nil
-			if net := sbx.Config.Network; net != nil && net.GetIngress() != nil {
-				accessToken = net.GetIngress().TrafficAccessToken
-			}
+			ingress := sbx.Config.GetNetworkIngress()
+			accessToken := ingress.GetTrafficAccessToken()
 
 			isNonEnvdTraffic := int64(port) != consts.DefaultEnvdServerPort
 
 			// Handle traffic access token validation.
 			// We are skipping envd port as it has its own access validation mechanism.
-			if accessToken != nil && isNonEnvdTraffic {
+			if accessToken != "" && isNonEnvdTraffic {
 				accessTokenRaw := r.Header.Get(trafficAccessTokenHeader)
 				if accessTokenRaw == "" {
 					return nil, reverseproxy.NewErrMissingTrafficAccessToken(sandboxId, trafficAccessTokenHeader)
-				} else if accessTokenRaw != *accessToken {
+				} else if accessTokenRaw != accessToken {
 					return nil, reverseproxy.NewErrInvalidTrafficAccessToken(sandboxId, trafficAccessTokenHeader)
 				}
 			}
 
 			// Handle request host masking only for non-envd traffic.
 			var maskRequestHost *string = nil
-			if h := sbx.Config.Network.GetIngress().GetMaskRequestHost(); isNonEnvdTraffic && h != "" {
+			if h := ingress.GetMaskRequestHost(); isNonEnvdTraffic && h != "" {
 				h = strings.ReplaceAll(h, pool.MaskRequestHostPortPlaceholder, strconv.FormatUint(port, 10))
 				maskRequestHost = &h
 			}
@@ -103,16 +100,11 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 			}
 
 			logger := logger.L().With(
-				zap.String("origin_host", r.Host),
-				logger.WithSandboxID(sbx.Runtime.SandboxID),
-				logger.WithTeamID(sbx.Runtime.TeamID),
-				zap.String("sandbox_ip", sbx.Slot.HostIPString()),
-				zap.Uint64("sandbox_req_port", port),
-				zap.String("sandbox_req_path", r.URL.Path),
-				zap.String("sandbox_req_method", r.Method),
-				zap.String("sandbox_req_user_agent", r.UserAgent()),
-				zap.String("remote_addr", r.RemoteAddr),
-				zap.Int64("content_length", r.ContentLength),
+				append(
+					logger.ProxyRequestFields(r, sbx.Runtime.SandboxID, port),
+					logger.WithTeamID(sbx.Runtime.TeamID),
+					logger.WithSandboxIP(sbx.Slot.HostIPString()),
+				)...,
 			)
 
 			return &pool.Destination{

@@ -60,7 +60,7 @@ runs:
         terraform_version: 1.5.7
 
     - name: Cache Terraform providers
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: ~/.terraform.d/plugin-cache
         key: terraform-providers-${{ hashFiles('iac/provider-gcp/.terraform.lock.hcl') }}

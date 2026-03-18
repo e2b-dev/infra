@@ -47,8 +47,8 @@ func (s *APIStore) GetHealth(c *gin.Context) {
 	})
 }
 
-func (s *APIStore) GetUserIDFromSupabaseToken(ctx context.Context, _ *gin.Context, supabaseToken string) (uuid.UUID, *sharedauth.APIError) {
-	return s.authService.ValidateSupabaseToken(ctx, supabaseToken)
+func (s *APIStore) GetUserIDFromSupabaseToken(ctx context.Context, ginCtx *gin.Context, supabaseToken string) (uuid.UUID, *sharedauth.APIError) {
+	return s.authService.ValidateSupabaseToken(ctx, ginCtx, supabaseToken)
 }
 
 func (s *APIStore) GetTeamFromSupabaseToken(ctx context.Context, ginCtx *gin.Context, teamID string) (*types.Team, *sharedauth.APIError) {

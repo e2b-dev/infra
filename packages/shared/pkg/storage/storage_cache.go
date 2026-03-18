@@ -13,7 +13,7 @@ import (
 	"go.opentelemetry.io/otel/trace/noop"
 	"go.uber.org/zap"
 
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -146,4 +146,11 @@ func ignoreEOF(err error) error {
 	}
 
 	return err
+}
+
+// isCompleteRead reports whether a read of n bytes into a buffer of expected
+// size represents a valid, cacheable result. A read is complete when either
+// the full buffer was filled or io.EOF explains a non-empty short read (last chunk).
+func isCompleteRead(n, expected int, err error) bool {
+	return n == expected || (n > 0 && errors.Is(err, io.EOF))
 }

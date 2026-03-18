@@ -27,6 +27,18 @@ const (
 	File EntryInfoType = "file"
 )
 
+// ComposeRequest defines model for ComposeRequest.
+type ComposeRequest struct {
+	// Destination Destination file path for the composed file
+	Destination string `json:"destination"`
+
+	// SourcePaths Ordered list of source file paths to concatenate
+	SourcePaths []string `json:"source_paths"`
+
+	// Username User for setting ownership and resolving relative paths
+	Username *string `json:"username,omitempty"`
+}
+
 // EntryInfo defines model for EntryInfo.
 type EntryInfo struct {
 	// Name Name of the file
@@ -71,17 +83,26 @@ type Metrics struct {
 	// MemTotal Total virtual memory in bytes
 	MemTotal *int `json:"mem_total,omitempty"`
 
+	// MemTotalMib Total virtual memory in MiB
+	MemTotalMib *int `json:"mem_total_mib,omitempty"`
+
 	// MemUsed Used virtual memory in bytes
 	MemUsed *int `json:"mem_used,omitempty"`
+
+	// MemUsedMib Used virtual memory in MiB
+	MemUsedMib *int `json:"mem_used_mib,omitempty"`
 
 	// Ts Unix timestamp in UTC for current sandbox time
 	Ts *int64 `json:"ts,omitempty"`
 }
 
-// VolumeMount Volume
+// VolumeMount Volume mount configuration
 type VolumeMount struct {
+	// NfsTarget Server target address
 	NfsTarget string `json:"nfs_target"`
-	Path      string `json:"path"`
+
+	// Path Mount path inside the sandbox
+	Path string `json:"path"`
 }
 
 // FilePath defines model for FilePath.
@@ -108,6 +129,9 @@ type InvalidPath = Error
 // InvalidUser defines model for InvalidUser.
 type InvalidUser = Error
 
+// NotAcceptable defines model for NotAcceptable.
+type NotAcceptable = Error
+
 // NotEnoughDiskSpace defines model for NotEnoughDiskSpace.
 type NotEnoughDiskSpace = Error
 
@@ -116,16 +140,16 @@ type UploadSuccess = []EntryInfo
 
 // GetFilesParams defines parameters for GetFiles.
 type GetFilesParams struct {
-	// Path Path to the file, URL encoded. Can be relative to user's home directory.
+	// Path Path to the file, URL encoded. Can be relative to the user's home directory (e.g. "file.txt" resolves to ~/file.txt).
 	Path *FilePath `form:"path,omitempty" json:"path,omitempty"`
 
-	// Username User used for setting the owner, or resolving relative paths.
+	// Username User for setting file ownership and resolving relative paths. Defaults to the sandbox's default user.
 	Username *User `form:"username,omitempty" json:"username,omitempty"`
 
 	// Signature Signature used for file access permission verification.
 	Signature *Signature `form:"signature,omitempty" json:"signature,omitempty"`
 
-	// SignatureExpiration Signature expiration used for defining the expiration time of the signature.
+	// SignatureExpiration Unix timestamp (seconds) after which the signature expires. Only used with the signature parameter.
 	SignatureExpiration *SignatureExpiration `form:"signature_expiration,omitempty" json:"signature_expiration,omitempty"`
 }
 
@@ -136,16 +160,16 @@ type PostFilesMultipartBody struct {
 
 // PostFilesParams defines parameters for PostFiles.
 type PostFilesParams struct {
-	// Path Path to the file, URL encoded. Can be relative to user's home directory.
+	// Path Path to the file, URL encoded. Can be relative to the user's home directory (e.g. "file.txt" resolves to ~/file.txt).
 	Path *FilePath `form:"path,omitempty" json:"path,omitempty"`
 
-	// Username User used for setting the owner, or resolving relative paths.
+	// Username User for setting file ownership and resolving relative paths. Defaults to the sandbox's default user.
 	Username *User `form:"username,omitempty" json:"username,omitempty"`
 
 	// Signature Signature used for file access permission verification.
 	Signature *Signature `form:"signature,omitempty" json:"signature,omitempty"`
 
-	// SignatureExpiration Signature expiration used for defining the expiration time of the signature.
+	// SignatureExpiration Unix timestamp (seconds) after which the signature expires. Only used with the signature parameter.
 	SignatureExpiration *SignatureExpiration `form:"signature_expiration,omitempty" json:"signature_expiration,omitempty"`
 }
 
@@ -173,6 +197,9 @@ type PostInitJSONBody struct {
 
 // PostFilesMultipartRequestBody defines body for PostFiles for multipart/form-data ContentType.
 type PostFilesMultipartRequestBody PostFilesMultipartBody
+
+// PostFilesComposeJSONRequestBody defines body for PostFilesCompose for application/json ContentType.
+type PostFilesComposeJSONRequestBody = ComposeRequest
 
 // PostInitJSONRequestBody defines body for PostInit for application/json ContentType.
 type PostInitJSONRequestBody PostInitJSONBody
@@ -259,6 +286,11 @@ type ClientInterface interface {
 	// PostFilesWithBody request with any body
 	PostFilesWithBody(ctx context.Context, params *PostFilesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// PostFilesComposeWithBody request with any body
+	PostFilesComposeWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PostFilesCompose(ctx context.Context, body PostFilesComposeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetHealth request
 	GetHealth(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -297,6 +329,30 @@ func (c *Client) GetFiles(ctx context.Context, params *GetFilesParams, reqEditor
 
 func (c *Client) PostFilesWithBody(ctx context.Context, params *PostFilesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPostFilesRequestWithBody(c.Server, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostFilesComposeWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostFilesComposeRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostFilesCompose(ctx context.Context, body PostFilesComposeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostFilesComposeRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -578,6 +634,46 @@ func NewPostFilesRequestWithBody(server string, params *PostFilesParams, content
 	return req, nil
 }
 
+// NewPostFilesComposeRequest calls the generic PostFilesCompose builder with application/json body
+func NewPostFilesComposeRequest(server string, body PostFilesComposeJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPostFilesComposeRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewPostFilesComposeRequestWithBody generates requests for PostFilesCompose with any type of body
+func NewPostFilesComposeRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/files/compose")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewGetHealthRequest generates requests for GetHealth
 func NewGetHealthRequest(server string) (*http.Request, error) {
 	var err error
@@ -724,6 +820,11 @@ type ClientWithResponsesInterface interface {
 	// PostFilesWithBodyWithResponse request with any body
 	PostFilesWithBodyWithResponse(ctx context.Context, params *PostFilesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostFilesResponse, error)
 
+	// PostFilesComposeWithBodyWithResponse request with any body
+	PostFilesComposeWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostFilesComposeResponse, error)
+
+	PostFilesComposeWithResponse(ctx context.Context, body PostFilesComposeJSONRequestBody, reqEditors ...RequestEditorFn) (*PostFilesComposeResponse, error)
+
 	// GetHealthWithResponse request
 	GetHealthWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetHealthResponse, error)
 
@@ -764,6 +865,7 @@ type GetFilesResponse struct {
 	JSON400      *InvalidPath
 	JSON401      *InvalidUser
 	JSON404      *FileNotFound
+	JSON406      *NotAcceptable
 	JSON500      *InternalServerError
 }
 
@@ -803,6 +905,33 @@ func (r PostFilesResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r PostFilesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PostFilesComposeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *EntryInfo
+	JSON400      *InvalidPath
+	JSON401      *InvalidUser
+	JSON404      *FileNotFound
+	JSON500      *InternalServerError
+	JSON507      *NotEnoughDiskSpace
+}
+
+// Status returns HTTPResponse.Status
+func (r PostFilesComposeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostFilesComposeResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -898,6 +1027,23 @@ func (c *ClientWithResponses) PostFilesWithBodyWithResponse(ctx context.Context,
 		return nil, err
 	}
 	return ParsePostFilesResponse(rsp)
+}
+
+// PostFilesComposeWithBodyWithResponse request with arbitrary body returning *PostFilesComposeResponse
+func (c *ClientWithResponses) PostFilesComposeWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostFilesComposeResponse, error) {
+	rsp, err := c.PostFilesComposeWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostFilesComposeResponse(rsp)
+}
+
+func (c *ClientWithResponses) PostFilesComposeWithResponse(ctx context.Context, body PostFilesComposeJSONRequestBody, reqEditors ...RequestEditorFn) (*PostFilesComposeResponse, error) {
+	rsp, err := c.PostFilesCompose(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostFilesComposeResponse(rsp)
 }
 
 // GetHealthWithResponse request returning *GetHealthResponse
@@ -996,6 +1142,13 @@ func ParseGetFilesResponse(rsp *http.Response) (*GetFilesResponse, error) {
 		}
 		response.JSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 406:
+		var dest NotAcceptable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON406 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest InternalServerError
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -1042,6 +1195,67 @@ func ParsePostFilesResponse(rsp *http.Response) (*PostFilesResponse, error) {
 			return nil, err
 		}
 		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalServerError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 507:
+		var dest NotEnoughDiskSpace
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON507 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePostFilesComposeResponse parses an HTTP response from a PostFilesComposeWithResponse call
+func ParsePostFilesComposeResponse(rsp *http.Response) (*PostFilesComposeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostFilesComposeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest EntryInfo
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest InvalidPath
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest InvalidUser
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest FileNotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest InternalServerError

@@ -13,6 +13,7 @@ import (
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
@@ -25,7 +26,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/events"
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -54,7 +55,7 @@ const (
 	executionEventDataKey = "execution"
 )
 
-func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequest) (*orchestrator.SandboxCreateResponse, error) {
+func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequest) (_ *orchestrator.SandboxCreateResponse, createErr error) {
 	// set max request timeout for this request
 	ctx, cancel := context.WithTimeoutCause(ctx, requestTimeout, fmt.Errorf("request timed out"))
 	defer cancel()
@@ -62,6 +63,20 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	// set up tracing
 	ctx, childSpan := tracer.Start(ctx, "sandbox-create")
 	defer childSpan.End()
+
+	isResume := req.GetSandbox().GetSnapshot()
+	createStart := time.Now()
+	defer func() {
+		if createErr != nil {
+			return
+		}
+
+		s.sandboxCreateDuration.Record(ctx, time.Since(createStart).Milliseconds(),
+			metric.WithAttributes(
+				attribute.Bool("sandbox.resume", isResume),
+			),
+		)
+	}()
 
 	childSpan.SetAttributes(
 		telemetry.WithTemplateID(req.GetSandbox().GetTemplateId()),
@@ -83,11 +98,12 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		ldcontext.NewBuilder(req.GetSandbox().GetTeamId()).
 			Kind(featureflags.TeamKind).
 			Build(),
+		featureflags.VersionContext(s.info.ClientId, s.info.SourceCommit),
 	)
 
 	maxRunningSandboxesPerNode := s.featureFlags.IntFlag(ctx, featureflags.MaxSandboxesPerNode)
 
-	runningSandboxes := s.sandboxes.Count()
+	runningSandboxes := s.sandboxFactory.Sandboxes.Count()
 	if runningSandboxes >= maxRunningSandboxesPerNode {
 		telemetry.ReportEvent(ctx, "max number of running sandboxes reached")
 
@@ -140,6 +156,8 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		network.Egress.DeniedCidrs = []string{sandbox_network.AllInternetTrafficCIDR}
 	}
 
+	resolvedFCVersion := featureflags.ResolveFirecrackerVersion(ctx, s.featureFlags, req.GetSandbox().GetFirecrackerVersion())
+
 	volumeMounts, err := createVolumeMountModelsFromAPI(req.GetSandbox().GetVolumeMounts())
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert volume mounts: %w", err)
@@ -148,7 +166,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	sbx, err := s.sandboxFactory.ResumeSandbox(
 		ctx,
 		template,
-		sandbox.Config{
+		sandbox.NewConfig(sandbox.Config{
 			BaseTemplateID: req.GetSandbox().GetBaseTemplateId(),
 
 			Vcpu:            req.GetSandbox().GetVcpu(),
@@ -166,11 +184,11 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 
 			FirecrackerConfig: fc.Config{
 				KernelVersion:      req.GetSandbox().GetKernelVersion(),
-				FirecrackerVersion: req.GetSandbox().GetFirecrackerVersion(),
+				FirecrackerVersion: resolvedFCVersion,
 			},
 
 			VolumeMounts: volumeMounts,
-		},
+		}),
 		sandbox.RuntimeMetadata{
 			TemplateID:  req.GetSandbox().GetTemplateId(),
 			SandboxID:   req.GetSandbox().GetSandboxId(),
@@ -261,36 +279,84 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 		attribute.String("client.id", s.info.ClientId),
 	)
 
-	sbx, ok := s.sandboxes.Get(req.GetSandboxId())
+	sbx, ok := s.sandboxFactory.Sandboxes.Get(req.GetSandboxId())
 	if !ok {
 		telemetry.ReportCriticalError(ctx, "sandbox not found", nil)
 
 		return nil, status.Error(codes.NotFound, "sandbox not found")
 	}
 
-	sbx.SetEndAt(req.GetEndTime().AsTime())
+	var updates []utils.UpdateFunc
 
-	teamID, buildId, eventData := s.prepareSandboxEventData(ctx, sbx)
-	eventData["set_timeout"] = req.GetEndTime().AsTime().Format(time.RFC3339)
-	eventType := events.SandboxUpdatedEventPair
+	if req.GetEndTime() != nil {
+		updates = append(updates, func(_ context.Context) (func(context.Context), error) {
+			old := sbx.GetEndAt()
+			sbx.SetEndAt(req.GetEndTime().AsTime())
 
-	go s.sbxEventsService.Publish(
-		context.WithoutCancel(ctx),
-		teamID,
-		events.SandboxEvent{
-			Version:   events.StructureVersionV2,
-			ID:        uuid.New(),
-			Type:      eventType.Type,
-			Timestamp: time.Now().UTC(),
+			return func(_ context.Context) { sbx.SetEndAt(old) }, nil
+		})
+	}
 
-			EventData:          eventData,
-			SandboxID:          sbx.Runtime.SandboxID,
-			SandboxExecutionID: sbx.Runtime.ExecutionID,
-			SandboxTemplateID:  sbx.Config.BaseTemplateID,
-			SandboxBuildID:     buildId,
-			SandboxTeamID:      teamID,
-		},
-	)
+	if req.GetEgress() != nil {
+		updates = append(updates, func(ctx context.Context) (func(context.Context), error) {
+			oldEgress := sbx.Config.GetNetworkEgress()
+
+			if err := sbx.Slot.UpdateInternet(ctx, req.GetEgress()); err != nil {
+				return nil, fmt.Errorf("failed to update sandbox network: %w", err)
+			}
+
+			egress := req.GetEgress()
+			if len(egress.GetAllowedCidrs()) == 0 && len(egress.GetDeniedCidrs()) == 0 && len(egress.GetAllowedDomains()) == 0 {
+				sbx.Config.SetNetworkEgress(nil)
+			} else {
+				sbx.Config.SetNetworkEgress(egress)
+			}
+
+			return func(ctx context.Context) {
+				_ = sbx.Slot.UpdateInternet(ctx, oldEgress)
+				sbx.Config.SetNetworkEgress(oldEgress)
+			}, nil
+		})
+	}
+
+	if err := utils.ApplyAllOrNone(ctx, updates); err != nil {
+		telemetry.ReportCriticalError(ctx, "failed to update sandbox", err)
+
+		return nil, status.Errorf(codes.Internal, "failed to update sandbox: %s", err)
+	}
+
+	// Publish event if any updates were applied.
+	if len(updates) > 0 {
+		teamID, buildId, eventData := s.prepareSandboxEventData(ctx, sbx)
+		if req.GetEndTime() != nil {
+			eventData["set_timeout"] = req.GetEndTime().AsTime().Format(time.RFC3339)
+		}
+		if egress := req.GetEgress(); egress != nil {
+			eventData["network_egress"] = map[string]any{
+				"allowed_cidrs":   egress.GetAllowedCidrs(),
+				"denied_cidrs":    egress.GetDeniedCidrs(),
+				"allowed_domains": egress.GetAllowedDomains(),
+			}
+		}
+
+		go s.sbxEventsService.Publish(
+			context.WithoutCancel(ctx),
+			teamID,
+			events.SandboxEvent{
+				Version:   events.StructureVersionV2,
+				ID:        uuid.New(),
+				Type:      events.SandboxUpdatedEventPair.Type,
+				Timestamp: time.Now().UTC(),
+
+				EventData:          eventData,
+				SandboxID:          sbx.Runtime.SandboxID,
+				SandboxExecutionID: sbx.Runtime.ExecutionID,
+				SandboxTemplateID:  sbx.Config.BaseTemplateID,
+				SandboxBuildID:     buildId,
+				SandboxTeamID:      teamID,
+			},
+		)
+	}
 
 	return &emptypb.Empty{}, nil
 }
@@ -299,7 +365,7 @@ func (s *Server) List(ctx context.Context, _ *emptypb.Empty) (*orchestrator.Sand
 	_, childSpan := tracer.Start(ctx, "sandbox-list")
 	defer childSpan.End()
 
-	items := s.sandboxes.Items()
+	items := s.sandboxFactory.Sandboxes.Items()
 
 	sandboxes := make([]*orchestrator.RunningSandbox, 0, len(items))
 
@@ -338,7 +404,7 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 		attribute.String("client.id", s.info.ClientId),
 	)
 
-	sbx, ok := s.sandboxes.Get(in.GetSandboxId())
+	sbx, ok := s.sandboxFactory.Sandboxes.Get(in.GetSandboxId())
 	if !ok {
 		telemetry.ReportCriticalError(ctx, "sandbox not found", nil, telemetry.WithSandboxID(in.GetSandboxId()))
 
@@ -352,7 +418,7 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	// 	Ensure the sandbox is removed from cache.
 	// 	Ideally we would rely only on the goroutine defer.
 	// Don't allow connecting to the sandbox anymore.
-	s.sandboxes.Remove(in.GetSandboxId())
+	s.sandboxFactory.Sandboxes.Remove(ctx, in.GetSandboxId())
 
 	// Check health metrics before stopping the sandbox
 	sbx.Checks.Healthcheck(ctx, true)
@@ -463,6 +529,13 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 			Build(),
 	)
 
+	// Check envd version before acquiring (which removes the sandbox from the map).
+	if preSbx, ok := s.sandboxFactory.Sandboxes.Get(in.GetSandboxId()); ok {
+		if err := utils.CheckEnvdVersionForSnapshot(preSbx.Config.Envd.Version); err != nil {
+			return nil, status.Errorf(codes.FailedPrecondition, "%s", err.Error())
+		}
+	}
+
 	sbx, err := s.acquireSandboxForSnapshot(ctx, in.GetSandboxId())
 	if err != nil {
 		return nil, err
@@ -559,7 +632,7 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		if err := res.uploadSnapshot(uploadCtx, s.persistence, s.config.CompressConfig, s.featureFlags); err != nil {
 			telemetry.ReportCriticalError(ctx, "error uploading snapshot for checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
 
-			s.sandboxes.Remove(resumedSbx.Runtime.SandboxID)
+			s.sandboxFactory.Sandboxes.Remove(ctx, resumedSbx.Runtime.SandboxID)
 			s.stopSandboxAsync(context.WithoutCancel(ctx), resumedSbx)
 
 			return nil, status.Errorf(codes.Internal, "error uploading snapshot for checkpoint '%s': %s", in.GetSandboxId(), err)
@@ -740,13 +813,8 @@ func (s *Server) uploadSnapshotAsync(ctx context.Context, sbx *sandbox.Sandbox, 
 	}()
 }
 
-// setupSandboxLifecycle adds the sandbox to the map and sets up the cleanup goroutine.
+// setupSandboxLifecycle sets up the cleanup goroutine for a sandbox.
 func (s *Server) setupSandboxLifecycle(ctx context.Context, sbx *sandbox.Sandbox) {
-	ctx, span := tracer.Start(ctx, "setup sandbox-lifecycle")
-	defer span.End()
-
-	s.sandboxes.Insert(sbx)
-
 	go func() {
 		ctx, childSpan := tracer.Start(context.WithoutCancel(ctx), "stop sandbox-lifecycle", trace.WithNewRoot())
 		defer childSpan.End()
@@ -760,8 +828,6 @@ func (s *Server) setupSandboxLifecycle(ctx context.Context, sbx *sandbox.Sandbox
 		if cleanupErr != nil {
 			sbxlogger.I(sbx).Error(ctx, "failed to cleanup sandbox, will remove from cache", zap.Error(cleanupErr))
 		}
-
-		s.sandboxes.RemoveByLifecycleID(sbx.Runtime.SandboxID, sbx.LifecycleID)
 
 		closeErr := s.proxy.RemoveFromPool(sbx.LifecycleID)
 		if closeErr != nil {
@@ -778,14 +844,14 @@ func (s *Server) acquireSandboxForSnapshot(ctx context.Context, sandboxID string
 	s.pauseMu.Lock()
 	defer s.pauseMu.Unlock()
 
-	sbx, ok := s.sandboxes.Get(sandboxID)
+	sbx, ok := s.sandboxFactory.Sandboxes.Get(sandboxID)
 	if !ok {
 		telemetry.ReportCriticalError(ctx, "sandbox not found", nil)
 
 		return nil, status.Error(codes.NotFound, "sandbox not found")
 	}
 
-	s.sandboxes.Remove(sandboxID)
+	s.sandboxFactory.Sandboxes.Remove(ctx, sandboxID)
 
 	return sbx, nil
 }

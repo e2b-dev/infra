@@ -43,8 +43,30 @@ const (
 	MetadataKeyUncompressedSize = "uncompressed-size"
 )
 
+<<<<<<< HEAD
 // RangeReadFunc is a callback for reading a byte range from storage.
 type RangeReadFunc func(ctx context.Context, offset int64, length int) (io.ReadCloser, error)
+=======
+// GetProviderType returns the configured storage provider type from the
+// STORAGE_PROVIDER environment variable, defaulting to GCPBucket.
+func GetProviderType() Provider {
+	return Provider(env.GetEnv(storageProviderEnv, string(DefaultStorageProvider)))
+}
+
+// IsLocal reports whether the configured storage provider is the local
+// filesystem backend.
+func IsLocal() bool {
+	return GetProviderType() == LocalStorageProvider
+}
+
+type SeekableObjectType int
+
+const (
+	UnknownSeekableObjectType SeekableObjectType = iota
+	MemfileObjectType
+	RootFSObjectType
+)
+>>>>>>> f0933bad7768f85e3541c68aa6f07632e159d7c0
 
 type ObjectType int
 
@@ -99,11 +121,23 @@ type StorageConfig struct {
 	GetLocalBasePath func() string
 	GetBucketName    func() string
 	limiter          *limit.Limiter
+	uploadBaseURL    string
+	hmacKey          []byte
 }
 
 // WithLimiter returns a copy of the config with the given limiter set.
 func (c StorageConfig) WithLimiter(limiter *limit.Limiter) StorageConfig {
 	c.limiter = limiter
+
+	return c
+}
+
+// WithLocalUpload returns a copy of the config with the given local upload
+// parameters set. These are only used when STORAGE_PROVIDER=Local to let the
+// filesystem storage provider generate signed URLs for file uploads.
+func (c StorageConfig) WithLocalUpload(uploadBaseURL string, hmacKey []byte) StorageConfig {
+	c.uploadBaseURL = uploadBaseURL
+	c.hmacKey = hmacKey
 
 	return c
 }
@@ -127,10 +161,10 @@ var BuildCacheStorageConfig = StorageConfig{
 }
 
 func GetStorageProvider(ctx context.Context, cfg StorageConfig) (StorageProvider, error) {
-	provider := Provider(env.GetEnv(storageProviderEnv, string(DefaultStorageProvider)))
+	provider := GetProviderType()
 
 	if provider == LocalStorageProvider {
-		return newFileSystemStorage(cfg.GetLocalBasePath()), nil
+		return newFileSystemStorage(cfg), nil
 	}
 
 	bucketName := cfg.GetBucketName()

@@ -19,9 +19,11 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
+	"google.golang.org/api/option/internaloption"
 	"google.golang.org/grpc"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -36,6 +38,8 @@ const (
 	googleMaxBackoff               = 10 * time.Second
 	googleBackoffMultiplier        = 2
 	googleMaxAttempts              = 10
+	defaultGRPCConnectionPoolSize  = 4
+	defaultGCSEnableDirectPath     = false
 	gcloudDefaultUploadConcurrency = 16
 
 	gcsOperationAttr                           = "operation"
@@ -85,11 +89,19 @@ var (
 )
 
 func NewGCP(ctx context.Context, bucketName string, limiter *limit.Limiter) (StorageProvider, error) {
-	client, err := storage.NewGRPCClient(ctx,
-		option.WithGRPCConnectionPool(4),
-		option.WithGRPCDialOption(grpc.WithInitialConnWindowSize(32*megabyte)),
-		option.WithGRPCDialOption(grpc.WithInitialWindowSize(4*megabyte)),
-	)
+	grpcPoolSize, err := env.GetEnvAsInt("GCS_GRPC_CONNECTION_POOL_SIZE", defaultGRPCConnectionPoolSize)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse GCS_GRPC_CONNECTION_POOL_SIZE: %w", err)
+	}
+
+	opts := []option.ClientOption{
+		option.WithGRPCConnectionPool(grpcPoolSize),
+		option.WithGRPCDialOption(grpc.WithInitialConnWindowSize(32 * megabyte)),
+		option.WithGRPCDialOption(grpc.WithInitialWindowSize(4 * megabyte)),
+		internaloption.EnableDirectPath(defaultGCSEnableDirectPath),
+	}
+
+	client, err := storage.NewGRPCClient(ctx, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GCS client: %w", err)
 	}
@@ -266,6 +278,41 @@ func (r *cancelOnCloseReader) Close() error {
 	return r.ReadCloser.Close()
 }
 
+<<<<<<< HEAD
+=======
+func (o *gcpObject) ReadAt(ctx context.Context, buff []byte, off int64) (n int, err error) {
+	timer := googleReadTimerFactory.Begin(attribute.String(gcsOperationAttr, gcsOperationAttrReadAt))
+
+	ctx, cancel := context.WithTimeout(ctx, googleReadTimeout)
+	defer cancel()
+
+	// The file should not be gzip compressed
+	reader, err := o.handle.NewRangeReader(ctx, off, int64(len(buff)))
+	if err != nil {
+		timer.Failure(ctx, int64(n))
+
+		return 0, fmt.Errorf("failed to create GCS reader for %q: %w", o.path, err)
+	}
+
+	defer reader.Close()
+
+	n, err = io.ReadFull(reader, buff)
+	if errors.Is(err, io.ErrUnexpectedEOF) {
+		err = io.EOF
+	}
+
+	if ignoreEOF(err) != nil {
+		timer.Failure(ctx, int64(n))
+
+		return n, fmt.Errorf("failed to read %q: %w", o.path, err)
+	}
+
+	timer.Success(ctx, int64(n))
+
+	return n, err
+}
+
+>>>>>>> f0933bad7768f85e3541c68aa6f07632e159d7c0
 func (o *gcpObject) Put(ctx context.Context, data []byte) (e error) {
 	timer := googleWriteTimerFactory.Begin(attribute.String(gcsOperationAttr, gcsOperationAttrWrite))
 
