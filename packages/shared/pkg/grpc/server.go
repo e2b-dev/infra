@@ -14,7 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-func NewGRPCServer(tel *telemetry.Client) *grpc.Server {
+func NewGRPCServer(tel *telemetry.Client, extraUnaryInterceptors ...grpc.UnaryServerInterceptor) *grpc.Server {
 	opts := []logging.Option{
 		logging.WithLogOnEvents(logging.StartCall, logging.PayloadReceived, logging.PayloadSent, logging.FinishCall),
 		logging.WithLevels(logging.DefaultServerCodeToLevel),
@@ -27,6 +27,14 @@ func NewGRPCServer(tel *telemetry.Client) *grpc.Server {
 		"/TemplateService/HealthStatus",
 		"/InfoService/ServiceInfo",
 	)
+
+	defaultInterceptors := []grpc.UnaryServerInterceptor{
+		recovery.UnaryServerInterceptor(),
+		selector.UnaryServerInterceptor(
+			logging.UnaryServerInterceptor(logger.GRPCLogger(logger.L()), opts...),
+			ignoredLoggingRoutes,
+		),
+	}
 
 	return grpc.NewServer(
 		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
@@ -44,11 +52,10 @@ func NewGRPCServer(tel *telemetry.Client) *grpc.Server {
 					otelgrpc.WithMeterProvider(tel.MeterProvider),
 				))),
 		grpc.ChainUnaryInterceptor(
-			recovery.UnaryServerInterceptor(),
-			selector.UnaryServerInterceptor(
-				logging.UnaryServerInterceptor(logger.GRPCLogger(logger.L()), opts...),
-				ignoredLoggingRoutes,
-			),
+			append(
+				defaultInterceptors,
+				extraUnaryInterceptors...,
+			)...,
 		),
 		grpc.ChainStreamInterceptor(
 			selector.StreamServerInterceptor(
