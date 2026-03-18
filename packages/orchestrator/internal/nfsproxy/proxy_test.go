@@ -67,15 +67,14 @@ func TestRoundTrip(t *testing.T) {
 	require.Equal(t, "127.0.0.1", slot.HostIP.String(), "required for the test to work")
 
 	sandboxes := sandbox.NewSandboxesMap()
-	sbxConfig := sandbox.NewConfig(sandbox.Config{
-		VolumeMounts: []sandbox.VolumeMountConfig{
-			{ID: volID1, Name: volName1, Path: "/mnt/vol1", Type: volType1},
-			{ID: volID2, Name: volName2, Path: "/mnt/vol2", Type: volType2},
-		},
-	})
 	sandboxes.Insert(t.Context(), &sandbox.Sandbox{
 		Metadata: &sandbox.Metadata{
-			Config: sbxConfig,
+			Config: sandbox.NewConfig(sandbox.Config{
+				VolumeMounts: []sandbox.VolumeMountConfig{
+					{ID: volID1, Name: volName1, Path: "/mnt/vol1", Type: volType1},
+					{ID: volID2, Name: volName2, Path: "/mnt/vol2", Type: volType2},
+				},
+			}),
 			Runtime: sandbox.RuntimeMetadata{
 				SandboxID: sandboxID,
 				TeamID:    teamID.String(),
@@ -296,14 +295,13 @@ func TestGetPrefixFromSandbox(t *testing.T) {
 	)
 
 	happySlot := &network.Slot{Key: "abc", HostIP: happyIP}
-	happyConfig := sandbox.NewConfig(sandbox.Config{
-		VolumeMounts: []sandbox.VolumeMountConfig{
-			{ID: happyVolumeID, Name: happyVolumeName, Path: "/volume", Type: happyVolumeType},
-		},
-	})
 	happySandbox := &sandbox.Sandbox{
 		Metadata: &sandbox.Metadata{
-			Config: happyConfig,
+			Config: sandbox.NewConfig(sandbox.Config{
+				VolumeMounts: []sandbox.VolumeMountConfig{
+					{ID: happyVolumeID, Name: happyVolumeName, Path: "/volume", Type: happyVolumeType},
+				},
+			}),
 			Runtime: sandbox.RuntimeMetadata{
 				TeamID: happyTeamID.String(),
 			},
