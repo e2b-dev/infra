@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -13,7 +14,7 @@ import (
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	sandboxnetwork "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
+	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 )
 
 func TestBuildAutoResumeConfig(t *testing.T) {
@@ -139,7 +140,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 			name: "allow_out with domain and block-all deny_out is valid",
 			network: &api.SandboxNetworkConfig{
 				AllowOut: &[]string{"example.com"},
-				DenyOut:  &[]string{sandboxnetwork.AllInternetTrafficCIDR},
+				DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
 			},
 			wantErr: false,
 		},
@@ -166,7 +167,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 			name: "allow_out with wildcard domain and block-all deny_out is valid",
 			network: &api.SandboxNetworkConfig{
 				AllowOut: &[]string{"*.example.com"},
-				DenyOut:  &[]string{sandboxnetwork.AllInternetTrafficCIDR},
+				DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
 			},
 			wantErr: false,
 		},
@@ -182,22 +183,22 @@ func TestValidateNetworkConfig(t *testing.T) {
 			name: "allow_out with CIDR and deny_out block-all is valid",
 			network: &api.SandboxNetworkConfig{
 				AllowOut: &[]string{"10.0.0.0/8"},
-				DenyOut:  &[]string{sandboxnetwork.AllInternetTrafficCIDR},
+				DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
 			},
 			wantErr: false,
 		},
 		{
 			name: "allow_out with IP without deny_out is valid",
 			network: &api.SandboxNetworkConfig{
-				AllowOut: &[]string{"8.8.8.8/32"},
+				AllowOut: &[]string{"8.8.8.8"},
 			},
 			wantErr: false,
 		},
 		{
 			name: "allow_out with IP and deny_out block-all is valid",
 			network: &api.SandboxNetworkConfig{
-				AllowOut: &[]string{"8.8.8.8/32"},
-				DenyOut:  &[]string{sandboxnetwork.AllInternetTrafficCIDR},
+				AllowOut: &[]string{"8.8.8.8"},
+				DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
 			},
 			wantErr: false,
 		},
@@ -229,7 +230,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 		{
 			name: "allow_out IP covered by deny_out CIDR is valid",
 			network: &api.SandboxNetworkConfig{
-				AllowOut: &[]string{"10.1.2.3/32"},
+				AllowOut: &[]string{"10.1.2.3"},
 				DenyOut:  &[]string{"10.0.0.0/8"},
 			},
 			wantErr: false,
@@ -237,7 +238,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 		{
 			name: "allow_out IP not covered by deny_out CIDR is valid (no intersection check)",
 			network: &api.SandboxNetworkConfig{
-				AllowOut: &[]string{"8.8.8.8/32"},
+				AllowOut: &[]string{"8.8.8.8"},
 				DenyOut:  &[]string{"10.0.0.0/8"},
 			},
 			wantErr: false,
@@ -347,7 +348,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 		{
 			name: "allow_out with domain and CIDR without deny_out block-all is invalid",
 			network: &api.SandboxNetworkConfig{
-				AllowOut: &[]string{"example.com", "8.8.8.8/32"},
+				AllowOut: &[]string{"example.com", "8.8.8.8"},
 				DenyOut:  &[]string{"10.0.0.0/8"},
 			},
 			wantErr:    true,
@@ -357,8 +358,8 @@ func TestValidateNetworkConfig(t *testing.T) {
 		{
 			name: "allow_out with domain and CIDR with deny_out block-all is valid",
 			network: &api.SandboxNetworkConfig{
-				AllowOut: &[]string{"example.com", "8.8.8.8/32"},
-				DenyOut:  &[]string{sandboxnetwork.AllInternetTrafficCIDR},
+				AllowOut: &[]string{"example.com", "8.8.8.8"},
+				DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
 			},
 			wantErr: false,
 		},
@@ -440,7 +441,7 @@ func TestOrchestrator_convertVolumeMounts(t *testing.T) {
 			{2, "reason2"},
 		}}
 		expected := "invalid mounts:\n\t- volume mount #0: reason1\n\t- volume mount #2: reason2"
-		require.Equal(t, expected, err.Error())
+		assert.Equal(t, expected, err.Error())
 	})
 
 	testCases := map[string]struct {
@@ -595,8 +596,8 @@ func TestOrchestrator_convertVolumeMounts(t *testing.T) {
 				t.Context(), db.SqlcClient, ffClient,
 				teamID, tc.input,
 			)
-			require.Equal(t, tc.err, err)
-			require.Equal(t, tc.expected, actual)
+			assert.Equal(t, tc.err, err)
+			assert.Equal(t, tc.expected, actual)
 		})
 	}
 
@@ -626,7 +627,7 @@ func TestOrchestrator_convertVolumeMounts(t *testing.T) {
 			},
 		)
 		require.NoError(t, err)
-		require.Equal(t, []*orchestrator.SandboxVolumeMount{
+		assert.Equal(t, []*orchestrator.SandboxVolumeMount{
 			{Id: dbVolume.ID.String(), Name: "vol1", Path: "/vol1", Type: "local"},
 		}, actual)
 	})
