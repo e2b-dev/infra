@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/netip"
 	"os/exec"
+	"sync"
 	"time"
 
 	"github.com/awnumar/memguard"
@@ -215,11 +216,16 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 	}
 
 	if data.VolumeMounts != nil {
+		var wg sync.WaitGroup
 		for _, volume := range *data.VolumeMounts {
 			logger.Debug().Msgf("Mounting %s at %q", volume.NfsTarget, volume.Path)
 
-			go a.setupNfs(context.WithoutCancel(ctx), volume.NfsTarget, volume.Path)
+			wg.Go(func() {
+				a.setupNfs(context.WithoutCancel(ctx), volume.NfsTarget, volume.Path)
+			})
 		}
+
+		wg.Wait()
 	}
 
 	return nil
