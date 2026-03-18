@@ -7,7 +7,6 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
-	"sync"
 	"syscall"
 )
 
@@ -15,7 +14,6 @@ type Chrooted struct {
 	ActualRoot string
 	Metadata   map[string]string
 
-	mu sync.RWMutex
 	ns *mountNS
 }
 
@@ -60,9 +58,6 @@ func Chroot(ctx context.Context, source string, opts ...Option) (*Chrooted, erro
 
 func (fs *Chrooted) act(fn func() error) error {
 	return fs.ns.Do(func() error {
-		fs.mu.RLock()
-		defer fs.mu.RUnlock()
-
 		return fn()
 	})
 }
@@ -124,8 +119,5 @@ func chroot(ns *mountNS, path string) error {
 }
 
 func (fs *Chrooted) Close() error {
-	fs.mu.Lock()
-	defer fs.mu.Unlock()
-
 	return fs.ns.Close()
 }
