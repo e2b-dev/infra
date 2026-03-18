@@ -29,7 +29,7 @@ func TestUpdate_EgressOnly_FailsAndDoesNotChangeEndTime(t *testing.T) {
 
 	sbx := &sandbox.Sandbox{
 		Metadata: &sandbox.Metadata{
-			Config: sandbox.NewConfig(sandbox.Config{}),
+			Config:  sandbox.NewConfig(sandbox.Config{}),
 			Runtime: sandbox.RuntimeMetadata{SandboxID: id.Generate()},
 		},
 		Resources: &sandbox.Resources{Slot: slot},
@@ -68,7 +68,7 @@ func TestUpdate_EndTimeAndEgress_EgressFails_RevertsEndTime(t *testing.T) {
 
 	sbx := &sandbox.Sandbox{
 		Metadata: &sandbox.Metadata{
-			Config: sandbox.NewConfig(sandbox.Config{}),
+			Config:  sandbox.NewConfig(sandbox.Config{}),
 			Runtime: sandbox.RuntimeMetadata{SandboxID: id.Generate()},
 		},
 		Resources: &sandbox.Resources{Slot: slot},
@@ -112,7 +112,7 @@ func TestUpdate_EgressAndIngress_EgressFails_RevertsIngress(t *testing.T) {
 
 	sbx := &sandbox.Sandbox{
 		Metadata: &sandbox.Metadata{
-			Config: sandbox.NewConfig(sandbox.Config{}),
+			Config:  sandbox.NewConfig(sandbox.Config{}),
 			Runtime: sandbox.RuntimeMetadata{SandboxID: id.Generate()},
 		},
 		Resources: &sandbox.Resources{Slot: slot},

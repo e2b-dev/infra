@@ -104,7 +104,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 			},
 			wantErr:    true,
 			wantCode:   http.StatusBadRequest,
-			wantErrMsg: `invalid deny out entry "not-a-cidr": domains are not supported in deny rules`,
+			wantErrMsg: `invalid denied CIDR not-a-cidr`,
 		},
 		// Port syntax rejected for egress
 		{
@@ -114,7 +114,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 			},
 			wantErr:    true,
 			wantCode:   http.StatusBadRequest,
-			wantErrMsg: `invalid deny out entry "10.0.0.0/8": port-specific rules are not supported for egress`,
+			wantErrMsg: `invalid deny out entry "10.0.0.0/8:22": port-specific rules are not supported for egress`,
 		},
 		{
 			name: "allow_out with port is rejected",
@@ -123,7 +123,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 			},
 			wantErr:    true,
 			wantCode:   http.StatusBadRequest,
-			wantErrMsg: `invalid allow out entry "8.8.8.8": port-specific rules are not supported for egress`,
+			wantErrMsg: `invalid allow out entry "8.8.8.8:80": port-specific rules are not supported for egress`,
 		},
 		// Domain validation tests
 		{
@@ -370,7 +370,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 			},
 			wantErr:    true,
 			wantCode:   http.StatusBadRequest,
-			wantErrMsg: `invalid allow out entry "8.8.8.8": port-specific rules are not supported for egress`,
+			wantErrMsg: `invalid allow out entry "8.8.8.8:80": port-specific rules are not supported for egress`,
 		},
 		{
 			name: "deny_out with port is rejected",
@@ -379,7 +379,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 			},
 			wantErr:    true,
 			wantCode:   http.StatusBadRequest,
-			wantErrMsg: `invalid deny out entry "10.0.0.0/8": port-specific rules are not supported for egress`,
+			wantErrMsg: `invalid deny out entry "10.0.0.0/8:22": port-specific rules are not supported for egress`,
 		},
 		{
 			name: "deny_out with domain is rejected",
@@ -388,7 +388,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 			},
 			wantErr:    true,
 			wantCode:   http.StatusBadRequest,
-			wantErrMsg: `invalid deny out entry "example.com": domains are not supported in deny rules`,
+			wantErrMsg: `invalid denied CIDR example.com`,
 		},
 		{
 			name: "deny_out with invalid port is rejected",
@@ -397,7 +397,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 			},
 			wantErr:    true,
 			wantCode:   http.StatusBadRequest,
-			wantErrMsg: `invalid deny out entry: invalid entry "10.0.0.0/8:abc": invalid port "abc": strconv.ParseUint: parsing "abc": invalid syntax`,
+			wantErrMsg: `invalid deny out entry "10.0.0.0/8:abc": port-specific rules are not supported for egress`,
 		},
 	}
 

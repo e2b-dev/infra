@@ -40,11 +40,10 @@ func buildEgressConfig(allowedEntries, deniedEntries []string) *orchestrator.San
 	var allowedDomains []string
 
 	for _, entry := range allowedEntries {
-		rule, err := sandboxnetwork.ParseRule(entry)
-		if err == nil && rule.IsDomain {
-			allowedDomains = append(allowedDomains, entry)
-		} else {
+		if sandboxnetwork.IsIPOrCIDR(entry) {
 			allowedCIDRs = append(allowedCIDRs, sandboxnetwork.AddressStringToCIDR(entry))
+		} else {
+			allowedDomains = append(allowedDomains, entry)
 		}
 	}
 
@@ -76,15 +75,27 @@ func parseIngressRules(entries []string) []*orchestrator.IngressRule {
 
 	rules := make([]*orchestrator.IngressRule, 0, len(entries))
 	for _, entry := range entries {
-		rule, err := sandboxnetwork.ParseRule(entry)
+		host, portStr, err := sandboxnetwork.SplitHostPort(entry)
 		if err != nil {
 			continue // pre-validated by API handler
 		}
 
+		cidr := sandboxnetwork.AddressStringToCIDR(host)
+
+		var portLow, portHigh uint32
+		if portStr != "" {
+			lo, hi, err := sandboxnetwork.ParsePortRange(portStr)
+			if err != nil {
+				continue // pre-validated by API handler
+			}
+
+			portLow, portHigh = uint32(lo), uint32(hi)
+		}
+
 		rules = append(rules, &orchestrator.IngressRule{
-			Cidr:     sandboxnetwork.AddressStringToCIDR(rule.Host),
-			PortLow:  uint32(rule.PortStart),
-			PortHigh: uint32(rule.PortEnd),
+			Cidr:     cidr,
+			PortLow:  portLow,
+			PortHigh: portHigh,
 		})
 	}
 

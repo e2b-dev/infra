@@ -157,15 +157,15 @@ func (c *Config) GetIngressACL() *sandboxnetwork.ACL {
 	return c.ingressACL
 }
 
-// newEgressACL parses proto egress config into a pre-parsed ACL.
+// newEgressACL parses proto egress config into a pre-parsed ACL (IPv4-only).
 // Rules are pre-validated by the API; invalid entries are silently skipped.
 func newEgressACL(egress *orchestrator.SandboxNetworkEgressConfig) *sandboxnetwork.ACL {
 	if egress == nil {
 		return nil
 	}
 
-	allowedRules, _ := sandboxnetwork.ParseRules(egress.GetAllowedCidrs())
-	deniedRules, _ := sandboxnetwork.ParseRules(egress.GetDeniedCidrs())
+	allowedRules := parseCIDRs(egress.GetAllowedCidrs())
+	deniedRules := parseCIDRs(egress.GetDeniedCidrs())
 
 	if len(allowedRules) == 0 && len(deniedRules) == 0 {
 		return nil
@@ -177,43 +177,59 @@ func newEgressACL(egress *orchestrator.SandboxNetworkEgressConfig) *sandboxnetwo
 	}
 }
 
-// newIngressACL builds a pre-parsed ACL directly from proto IngressRules.
+// newIngressACL parses proto ingress config into a pre-parsed ACL (IPv4+IPv6).
 // Rules are pre-validated by the API; invalid entries are silently skipped.
 func newIngressACL(ingress *orchestrator.SandboxNetworkIngressConfig) *sandboxnetwork.ACL {
 	if ingress == nil {
 		return nil
 	}
 
-	parse := func(rules []*orchestrator.IngressRule) []sandboxnetwork.Rule {
-		out := make([]sandboxnetwork.Rule, 0, len(rules))
-		for _, r := range rules {
-			_, ipNet, err := net.ParseCIDR(r.GetCidr())
-			if err != nil {
-				continue // pre-validated by API
-			}
+	allowedRules := parseIngressRules(ingress.GetAllowed())
+	deniedRules := parseIngressRules(ingress.GetDenied())
 
-			out = append(out, sandboxnetwork.Rule{
-				Host:      r.GetCidr(),
-				IPNet:     ipNet,
-				PortStart: uint16(r.GetPortLow()),
-				PortEnd:   uint16(r.GetPortHigh()),
-			})
-		}
-
-		return out
-	}
-
-	allowed := parse(ingress.GetAllowed())
-	denied := parse(ingress.GetDenied())
-
-	if len(allowed) == 0 && len(denied) == 0 {
+	if len(allowedRules) == 0 && len(deniedRules) == 0 {
 		return nil
 	}
 
 	return &sandboxnetwork.ACL{
-		Allowed: allowed,
-		Denied:  denied,
+		Allowed: allowedRules,
+		Denied:  deniedRules,
 	}
+}
+
+// parseCIDRs converts CIDR strings into Rules for ACL matching.
+func parseCIDRs(cidrs []string) []sandboxnetwork.Rule {
+	out := make([]sandboxnetwork.Rule, 0, len(cidrs))
+	for _, cidr := range cidrs {
+		_, ipNet, err := net.ParseCIDR(sandboxnetwork.AddressStringToCIDR(cidr))
+		if err != nil {
+			continue // pre-validated by API
+		}
+
+		out = append(out, sandboxnetwork.Rule{Host: cidr, IPNet: ipNet})
+	}
+
+	return out
+}
+
+// parseIngressRules converts proto IngressRules directly to parsed Rules.
+func parseIngressRules(rules []*orchestrator.IngressRule) []sandboxnetwork.Rule {
+	out := make([]sandboxnetwork.Rule, 0, len(rules))
+	for _, r := range rules {
+		_, ipNet, err := net.ParseCIDR(r.GetCidr())
+		if err != nil {
+			continue // pre-validated by API
+		}
+
+		out = append(out, sandboxnetwork.Rule{
+			Host:      r.GetCidr(),
+			IPNet:     ipNet,
+			PortStart: uint16(r.GetPortLow()),
+			PortEnd:   uint16(r.GetPortHigh()),
+		})
+	}
+
+	return out
 }
 
 type VolumeMountConfig struct {

@@ -483,13 +483,13 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 			checks: []ingressCheck{{testPort, "", false}},
 		},
 		{
-			name:   "client_ip_deny_both_halves_blocks",
-			denyIn: []string{"0.0.0.0/1", "128.0.0.0/1", "::/1", "8000::/1"},
+			name:   "client_ip_deny_all_v4_and_v6_blocks",
+			denyIn: []string{"0.0.0.0/0", "::/0"},
 			checks: []ingressCheck{{testPort, "", true}},
 		},
 		{
-			name:    "client_ip_allow_overrides_deny_all",
-			allowIn: []string{"0.0.0.0/1", "128.0.0.0/1", "::/1", "8000::/1"}, denyIn: []string{"0.0.0.0/0", "::/0"},
+			name:    "client_ip_allow_all_v4_and_v6_overrides_deny",
+			allowIn: []string{"0.0.0.0/0", "::/0"}, denyIn: []string{"0.0.0.0/0", "::/0"},
 			checks: []ingressCheck{{testPort, "", false}},
 		},
 		{
