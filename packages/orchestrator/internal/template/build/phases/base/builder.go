@@ -253,7 +253,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 	}
 
 	if reservedDiskSpaceMB := int64(bb.featureFlags.IntFlag(ctx, featureflags.BuildReservedDiskSpaceMB)); reservedDiskSpaceMB > 0 {
-		err = filesystem.SetReservedBlocks(ctx, rootfsPath, reservedDiskSpaceMB, bb.Config.RootfsBlockSize())
+		err = filesystem.SetReservedBlocksOnHost(ctx, rootfsPath, reservedDiskSpaceMB, bb.Config.RootfsBlockSize())
 		if err != nil {
 			return metadata.Template{}, fmt.Errorf("error setting reserved disk space: %w", err)
 		}

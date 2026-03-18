@@ -234,10 +234,10 @@ func logStream(ctx context.Context, logger logger.Logger, lvl zapcore.Level, id 
 	}
 }
 
-// SetReservedDiskSpace sets the reserved disk space on the guest filesystem inside the sandbox.
+// SetReservedBlocksInGuest sets the number of reserved filesystem blocks inside the sandbox.
 // Reserved blocks are only usable by root (uid 0), protecting the guest OS from disk-full conditions.
 // Requires e2fsprogs (tune2fs) installed in the guest image (standard on Debian-based images).
-func SetReservedDiskSpace(
+func SetReservedBlocksInGuest(
 	ctx context.Context,
 	proxy *proxy.SandboxProxy,
 	logger logger.Logger,

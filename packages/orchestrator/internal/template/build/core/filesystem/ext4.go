@@ -308,9 +308,9 @@ func MountOverlayFS(ctx context.Context, layers []string, mountPoint string) err
 	return nil
 }
 
-// SetReservedBlocks sets the number of reserved filesystem blocks based on the desired reserved space in MB.
+// SetReservedBlocksOnHost sets the number of reserved filesystem blocks based on the desired reserved space in MB.
 // Reserved blocks are only usable by root (uid 0).
-func SetReservedBlocks(ctx context.Context, rootfsPath string, reservedSpaceMB int64, blockSize int64) error {
+func SetReservedBlocksOnHost(ctx context.Context, rootfsPath string, reservedSpaceMB int64, blockSize int64) error {
 	if reservedSpaceMB <= 0 {
 		return nil
 	}
