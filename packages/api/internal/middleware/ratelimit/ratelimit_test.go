@@ -30,13 +30,11 @@ func TestMain(m *testing.M) {
 	m.Run()
 }
 
-// newTestFF creates a feature flags client with rate limiting enabled or disabled.
-// When routeConfigs is provided, the RateLimitConfigFlag is set with the given route overrides.
-func newTestFF(t *testing.T, enabled bool, routeConfigs ...map[string]map[string]int) *featureflags.Client {
+// newTestFF creates a feature flags client with optional route config overrides.
+func newTestFF(t *testing.T, routeConfigs ...map[string]map[string]int) *featureflags.Client {
 	t.Helper()
 
 	td := ldtestdata.DataSource()
-	td.Update(td.Flag(featureflags.RateLimitEnabledFlag.Key()).VariationForAll(enabled))
 
 	if len(routeConfigs) > 0 && routeConfigs[0] != nil {
 		td.Update(td.Flag(featureflags.RateLimitConfigFlag.Key()).ValueForAll(ldvalue.CopyArbitraryValue(routeConfigs[0])))
@@ -89,27 +87,10 @@ func newRouterWithTeam(limiter *redis_rate.Limiter, cfg Config, ff *featureflags
 
 // --- Unit tests ---
 
-func TestMiddleware_SkipsWhenFlagDisabled(t *testing.T) {
-	t.Parallel()
-
-	ff := newTestFF(t, false)
-	// Unreachable Redis — shouldn't matter since flag is off.
-	badClient := redis.NewClient(&redis.Options{Addr: "localhost:1"})
-	defer badClient.Close()
-
-	limiter := redis_rate.NewLimiter(badClient)
-	r := newRouterWithTeam(limiter, Config{FailOpen: true}, ff, uuid.New())
-
-	w := doRequest(r)
-	assert.Equal(t, http.StatusOK, w.Code)
-	// No rate limit headers should be set when flag is off.
-	assert.Empty(t, w.Header().Get("X-RateLimit-Limit"))
-}
-
 func TestMiddleware_SkipsUnauthenticated(t *testing.T) {
 	t.Parallel()
 
-	ff := newTestFF(t, true)
+	ff := newTestFF(t)
 	// Unreachable Redis — shouldn't matter since no team is set.
 	badClient := redis.NewClient(&redis.Options{Addr: "localhost:1"})
 	defer badClient.Close()
@@ -130,7 +111,7 @@ func TestMiddleware_SkipsUnauthenticated(t *testing.T) {
 func TestMiddleware_FailOpen(t *testing.T) {
 	t.Parallel()
 
-	ff := newTestFF(t, true, routeConfig(10, 10))
+	ff := newTestFF(t, routeConfig(10, 10))
 	// Unreachable Redis.
 	badClient := redis.NewClient(&redis.Options{
 		Addr:        "localhost:1",
@@ -148,7 +129,7 @@ func TestMiddleware_FailOpen(t *testing.T) {
 func TestMiddleware_FailClosed(t *testing.T) {
 	t.Parallel()
 
-	ff := newTestFF(t, true, routeConfig(10, 10))
+	ff := newTestFF(t, routeConfig(10, 10))
 	badClient := redis.NewClient(&redis.Options{
 		Addr:        "localhost:1",
 		DialTimeout: 10 * time.Millisecond,
@@ -166,7 +147,7 @@ func TestMiddleware_UnconfiguredRouteAllowsThrough(t *testing.T) {
 	t.Parallel()
 
 	// Rate limiting enabled, but no route config — all routes should pass through.
-	ff := newTestFF(t, true)
+	ff := newTestFF(t)
 	badClient := redis.NewClient(&redis.Options{Addr: "localhost:1"})
 	defer badClient.Close()
 
@@ -190,7 +171,7 @@ func TestIntegration_AllowedRequestSetsHeaders(t *testing.T) {
 
 	redisClient := redis_utils.SetupInstance(t)
 	limiter := redis_rate.NewLimiter(redisClient)
-	ff := newTestFF(t, true, routeConfig(10, 20))
+	ff := newTestFF(t, routeConfig(10, 20))
 
 	r := newRouterWithTeam(limiter, Config{FailOpen: true}, ff, uuid.New())
 
@@ -211,7 +192,7 @@ func TestIntegration_BurstThenDeny(t *testing.T) {
 
 	redisClient := redis_utils.SetupInstance(t)
 	limiter := redis_rate.NewLimiter(redisClient)
-	ff := newTestFF(t, true, routeConfig(1, 3))
+	ff := newTestFF(t, routeConfig(1, 3))
 
 	r := newRouterWithTeam(limiter, Config{FailOpen: true}, ff, uuid.New())
 
@@ -245,7 +226,7 @@ func TestIntegration_Refill(t *testing.T) {
 
 	redisClient := redis_utils.SetupInstance(t)
 	limiter := redis_rate.NewLimiter(redisClient)
-	ff := newTestFF(t, true, routeConfig(10, 2))
+	ff := newTestFF(t, routeConfig(10, 2))
 
 	r := newRouterWithTeam(limiter, Config{FailOpen: true}, ff, uuid.New())
 
@@ -273,7 +254,7 @@ func TestIntegration_IndependentTeams(t *testing.T) {
 
 	redisClient := redis_utils.SetupInstance(t)
 	limiter := redis_rate.NewLimiter(redisClient)
-	ff := newTestFF(t, true, routeConfig(1, 1))
+	ff := newTestFF(t, routeConfig(1, 1))
 
 	cfg := Config{FailOpen: true}
 
@@ -303,7 +284,7 @@ func TestIntegration_ConcurrentAccess(t *testing.T) {
 
 	redisClient := redis_utils.SetupInstance(t)
 	limiter := redis_rate.NewLimiter(redisClient)
-	ff := newTestFF(t, true, map[string]map[string]int{
+	ff := newTestFF(t, map[string]map[string]int{
 		testRoute: {"rate": 1, "burst": 10, "period_s": 600}, // slow refill so burst is the effective limit
 	})
 
@@ -354,7 +335,6 @@ func TestIntegration_DynamicPeriodUpdate(t *testing.T) {
 
 	// Set up LD data source directly so we can update it mid-test.
 	td := ldtestdata.DataSource()
-	td.Update(td.Flag(featureflags.RateLimitEnabledFlag.Key()).VariationForAll(true))
 	td.Update(td.Flag(featureflags.RateLimitConfigFlag.Key()).ValueForAll(
 		ldvalue.CopyArbitraryValue(map[string]map[string]int{
 			testRoute: {"rate": 100, "burst": 3, "period_s": 1},
