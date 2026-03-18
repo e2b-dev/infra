@@ -32,7 +32,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
-	sandboxnetwork "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
+	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -523,7 +523,7 @@ func validateNetworkConfig(network *api.SandboxNetworkConfig) *api.APIError {
 // - when allowOut contains domains, denyOut must include 0.0.0.0/0
 func validateEgressRules(allowOut, denyOut []string) *api.APIError {
 	for _, entry := range denyOut {
-		host, port, _ := sandboxnetwork.SplitHostPort(entry)
+		host, port, _ := sandbox_network.SplitHostPort(entry)
 		if port != "" {
 			return &api.APIError{
 				Code:      http.StatusBadRequest,
@@ -532,7 +532,7 @@ func validateEgressRules(allowOut, denyOut []string) *api.APIError {
 			}
 		}
 
-		if !sandboxnetwork.IsSpecifiedIPOrCIDR(host) {
+		if !sandbox_network.IsSpecifiedIPOrCIDR(host) {
 			return &api.APIError{
 				Code:      http.StatusBadRequest,
 				Err:       fmt.Errorf("invalid denied CIDR %s", host),
@@ -543,7 +543,7 @@ func validateEgressRules(allowOut, denyOut []string) *api.APIError {
 
 	hasDomains := false
 	for _, entry := range allowOut {
-		host, port, _ := sandboxnetwork.SplitHostPort(entry)
+		host, port, _ := sandbox_network.SplitHostPort(entry)
 		if port != "" {
 			return &api.APIError{
 				Code:      http.StatusBadRequest,
@@ -552,8 +552,8 @@ func validateEgressRules(allowOut, denyOut []string) *api.APIError {
 			}
 		}
 
-		if sandboxnetwork.IsIPOrCIDR(host) {
-			if !sandboxnetwork.IsSpecifiedIPOrCIDR(host) {
+		if sandbox_network.IsIPOrCIDR(host) {
+			if !sandbox_network.IsSpecifiedIPOrCIDR(host) {
 				return &api.APIError{
 					Code:      http.StatusBadRequest,
 					Err:       fmt.Errorf("invalid allowed address %s", host),
@@ -565,14 +565,12 @@ func validateEgressRules(allowOut, denyOut []string) *api.APIError {
 		}
 	}
 
-	if hasDomains {
-		hasBlockAll := slices.Contains(denyOut, sandboxnetwork.AllInternetTrafficCIDR)
-		if !hasBlockAll {
-			return &api.APIError{
-				Code:      http.StatusBadRequest,
-				Err:       fmt.Errorf("allow out contains domains but deny out is missing 0.0.0.0/0 (ALL_TRAFFIC)"),
-				ClientMsg: ErrMsgDomainsRequireBlockAll,
-			}
+	hasBlockAll := slices.Contains(denyOut, sandbox_network.AllInternetTrafficCIDR)
+	if hasDomains && !hasBlockAll {
+		return &api.APIError{
+			Code:      http.StatusBadRequest,
+			Err:       fmt.Errorf("allow out contains domains but deny out is missing 0.0.0.0/0 (ALL_TRAFFIC)"),
+			ClientMsg: ErrMsgDomainsRequireBlockAll,
 		}
 	}
 
@@ -604,14 +602,12 @@ func validateIngressRules(allowIn, denyIn []string) *api.APIError {
 		}
 	}
 
-	if len(allowIn) > 0 {
-		hasBlockAll := slices.Contains(denyIn, sandboxnetwork.AllInternetTrafficCIDR)
-		if !hasBlockAll {
-			return &api.APIError{
-				Code:      http.StatusBadRequest,
-				Err:       fmt.Errorf("allow in requires deny in to include 0.0.0.0/0 (ALL_TRAFFIC)"),
-				ClientMsg: ErrMsgAllowInRequiresBlockAll,
-			}
+	hasBlockAll := slices.Contains(denyIn, sandbox_network.AllInternetTrafficCIDR)
+	if len(allowIn) > 0 && !hasBlockAll {
+		return &api.APIError{
+			Code:      http.StatusBadRequest,
+			Err:       fmt.Errorf("allow in requires deny in to include 0.0.0.0/0 (ALL_TRAFFIC)"),
+			ClientMsg: ErrMsgAllowInRequiresBlockAll,
 		}
 	}
 
@@ -620,22 +616,22 @@ func validateIngressRules(allowIn, denyIn []string) *api.APIError {
 
 // validateIngressEntry validates a single ingress rule entry (CIDR[:port]).
 func validateIngressEntry(entry string) error {
-	host, portStr, err := sandboxnetwork.SplitHostPort(entry)
+	host, portStr, err := sandbox_network.SplitHostPort(entry)
 	if err != nil {
 		return err
 	}
 
-	if !sandboxnetwork.IsIPOrCIDR(host) {
+	if !sandbox_network.IsIPOrCIDR(host) {
 		return fmt.Errorf("domains are not supported for ingress rules")
 	}
 
 	// IsSpecifiedIPOrCIDR allows 0.0.0.0/0 but not ::/0; ingress needs both.
-	if !sandboxnetwork.IsSpecifiedIPOrCIDR(host) && host != "::/0" {
+	if !sandbox_network.IsSpecifiedIPOrCIDR(host) && host != "::/0" {
 		return fmt.Errorf("unspecified address")
 	}
 
 	if portStr != "" {
-		if _, _, err := sandboxnetwork.ParsePortRange(portStr); err != nil {
+		if _, _, err := sandbox_network.ParsePortRange(portStr); err != nil {
 			return err
 		}
 	}
