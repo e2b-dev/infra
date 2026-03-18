@@ -17,6 +17,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 )
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network")
@@ -260,7 +261,15 @@ func (s *Slot) ConfigureInternet(ctx context.Context, network *orchestrator.Sand
 	defer span.End()
 
 	egress := network.GetEgress()
-	if len(egress.GetAllowedCidrs()) == 0 && len(egress.GetDeniedCidrs()) == 0 && len(egress.GetAllowedDomains()) == 0 {
+
+	var allowedCIDRs []string
+	deniedCIDRs := []string{sandbox_network.AllInternetTrafficCIDR}
+	if !egress.GetOff() {
+		allowedCIDRs = egress.GetAllowedCidrs()
+		deniedCIDRs = egress.GetDeniedCidrs()
+	}
+
+	if len(allowedCIDRs) == 0 && len(deniedCIDRs) == 0 {
 		// Internet access is allowed by default.
 		return nil
 	}
@@ -274,7 +283,7 @@ func (s *Slot) ConfigureInternet(ctx context.Context, network *orchestrator.Sand
 	defer n.Close()
 
 	err = n.Do(func(_ ns.NetNS) error {
-		return s.Firewall.ReplaceUserRules(egress.GetAllowedCidrs(), egress.GetDeniedCidrs())
+		return s.Firewall.ReplaceUserRules(allowedCIDRs, deniedCIDRs)
 	})
 	if err != nil {
 		return fmt.Errorf("failed execution in network namespace '%s': %w", s.NamespaceID(), err)
@@ -290,8 +299,12 @@ func (s *Slot) UpdateInternet(ctx context.Context, egress *orchestrator.SandboxN
 	))
 	defer span.End()
 
-	allowedCIDRs := egress.GetAllowedCidrs()
-	deniedCIDRs := egress.GetDeniedCidrs()
+	var allowedCIDRs []string
+	deniedCIDRs := []string{sandbox_network.AllInternetTrafficCIDR}
+	if !egress.GetOff() {
+		allowedCIDRs = egress.GetAllowedCidrs()
+		deniedCIDRs = egress.GetDeniedCidrs()
+	}
 
 	n, err := ns.GetNS(filepath.Join(netNamespacesDir, s.NamespaceID()))
 	if err != nil {

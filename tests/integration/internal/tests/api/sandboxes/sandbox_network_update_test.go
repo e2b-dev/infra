@@ -15,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
+	sharedutils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
@@ -435,6 +436,47 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 			verifyConnectivity(t, ctx, sbx, envdClient, s.checks)
 		})
 	}
+
+	// ── Off switch: egress, ingress, both ────────────────────────────────
+
+	t.Run("off/egress", func(t *testing.T) { //nolint:paralleltest // sequential
+		resp := putNetwork(t, ctx, client, sbx.SandboxID, api.PutSandboxesSandboxIDNetworkJSONRequestBody{
+			EgressOff: sharedutils.ToPtr(true),
+		})
+		require.Equal(t, http.StatusNoContent, resp.StatusCode())
+		verifyConnectivity(t, ctx, sbx, envdClient, []connectivityCheck{
+			{"https://8.8.8.8", false},
+		})
+		resetRules()
+		verifyConnectivity(t, ctx, sbx, envdClient, []connectivityCheck{
+			{"https://8.8.8.8", true},
+		})
+	})
+
+	t.Run("off/ingress", func(t *testing.T) { //nolint:paralleltest // sequential
+		resp := putNetwork(t, ctx, client, sbx.SandboxID, api.PutSandboxesSandboxIDNetworkJSONRequestBody{
+			IngressOff: sharedutils.ToPtr(true),
+		})
+		require.Equal(t, http.StatusNoContent, resp.StatusCode())
+		require.Equal(t, http.StatusForbidden, request(testPort, ""))
+		require.NotEqual(t, http.StatusForbidden, request(envdPort, ""))
+		resetRules()
+		require.NotEqual(t, http.StatusForbidden, request(testPort, ""))
+	})
+
+	t.Run("off/both", func(t *testing.T) { //nolint:paralleltest // sequential
+		resp := putNetwork(t, ctx, client, sbx.SandboxID, api.PutSandboxesSandboxIDNetworkJSONRequestBody{
+			EgressOff:  sharedutils.ToPtr(true),
+			IngressOff: sharedutils.ToPtr(true),
+		})
+		require.Equal(t, http.StatusNoContent, resp.StatusCode())
+		verifyConnectivity(t, ctx, sbx, envdClient, []connectivityCheck{
+			{"https://8.8.8.8", false},
+		})
+		require.Equal(t, http.StatusForbidden, request(testPort, ""))
+		require.NotEqual(t, http.StatusForbidden, request(envdPort, ""))
+		resetRules()
+	})
 
 	// =====================================================================
 	// Ingress: port + client IP filtering

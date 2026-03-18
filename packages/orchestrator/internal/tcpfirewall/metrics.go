@@ -36,6 +36,7 @@ const (
 	MatchTypeDomain MatchType = "domain"
 	MatchTypeCIDR   MatchType = "cidr"
 	MatchTypeNone   MatchType = "none"
+	MatchTypeOff    MatchType = "off"
 )
 
 // ErrorType represents the type of error that occurred.

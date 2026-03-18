@@ -43,6 +43,7 @@ type BuildReason struct {
 const PausedSandboxConfigVersion = "v1"
 
 type SandboxNetworkEgressConfig struct {
+	Off              bool     `json:"off,omitempty"`
 	AllowedAddresses []string `json:"allowedAddresses,omitempty"`
 	DeniedAddresses  []string `json:"deniedAddresses,omitempty"`
 }
@@ -50,6 +51,7 @@ type SandboxNetworkEgressConfig struct {
 const AllowPublicAccessDefault = true
 
 type SandboxNetworkIngressConfig struct {
+	Off               bool     `json:"off,omitempty"`
 	AllowPublicAccess *bool    `json:"allowPublicAccess,omitempty"`
 	MaskRequestHost   *string  `json:"maskRequestHost,omitempty"`
 	AllowedAddresses  []string `json:"allowedAddresses,omitempty"`

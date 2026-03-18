@@ -166,12 +166,14 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 		network = &types.SandboxNetworkConfig{
 			Ingress: &types.SandboxNetworkIngressConfig{
+				Off:               sharedUtils.DerefOrDefault(n.IngressOff, false),
 				AllowPublicAccess: n.AllowPublicTraffic,
 				MaskRequestHost:   n.MaskRequestHost,
 				AllowedAddresses:  sharedUtils.DerefOrDefault(n.AllowIn, nil),
 				DeniedAddresses:   sharedUtils.DerefOrDefault(n.DenyIn, nil),
 			},
 			Egress: &types.SandboxNetworkEgressConfig{
+				Off:              sharedUtils.DerefOrDefault(n.EgressOff, false),
 				AllowedAddresses: sharedUtils.DerefOrDefault(n.AllowOut, nil),
 				DeniedAddresses:  sharedUtils.DerefOrDefault(n.DenyOut, nil),
 			},
@@ -506,13 +508,37 @@ func validateNetworkConfig(network *api.SandboxNetworkConfig) *api.APIError {
 
 	denyOut := sharedUtils.DerefOrDefault(network.DenyOut, nil)
 	allowOut := sharedUtils.DerefOrDefault(network.AllowOut, nil)
+	egressOff := sharedUtils.DerefOrDefault(network.EgressOff, false)
 
-	if apiErr := validateEgressRules(allowOut, denyOut); apiErr != nil {
-		return apiErr
+	if egressOff && (len(allowOut) > 0 || len(denyOut) > 0) {
+		return &api.APIError{
+			Code:      http.StatusBadRequest,
+			Err:       fmt.Errorf("egressOff is mutually exclusive with allowOut/denyOut"),
+			ClientMsg: "egressOff cannot be set together with allowOut or denyOut",
+		}
+	}
+
+	if !egressOff {
+		if apiErr := validateEgressRules(allowOut, denyOut); apiErr != nil {
+			return apiErr
+		}
 	}
 
 	denyIn := sharedUtils.DerefOrDefault(network.DenyIn, nil)
 	allowIn := sharedUtils.DerefOrDefault(network.AllowIn, nil)
+	ingressOff := sharedUtils.DerefOrDefault(network.IngressOff, false)
+
+	if ingressOff && (len(allowIn) > 0 || len(denyIn) > 0) {
+		return &api.APIError{
+			Code:      http.StatusBadRequest,
+			Err:       fmt.Errorf("ingressOff is mutually exclusive with allowIn/denyIn"),
+			ClientMsg: "ingressOff cannot be set together with allowIn or denyIn",
+		}
+	}
+
+	if ingressOff {
+		return nil
+	}
 
 	return validateIngressRules(allowIn, denyIn)
 }

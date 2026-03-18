@@ -30,6 +30,7 @@ func (o *Orchestrator) UpdateSandboxNetworkConfig(
 	egress := buildEgressConfig(egressUpdate)
 
 	ingress := &orchestratorgrpc.SandboxNetworkIngressConfig{
+		Off:             ingressUpdate.Off,
 		MaskRequestHost: ingressUpdate.MaskRequestHost,
 		Allowed:         parseIngressRules(ingressUpdate.AllowedAddresses),
 		Denied:          parseIngressRules(ingressUpdate.DeniedAddresses),

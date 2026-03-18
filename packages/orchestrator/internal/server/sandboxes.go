@@ -30,7 +30,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
-	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -152,7 +151,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		if network.GetEgress() == nil {
 			network.Egress = &orchestrator.SandboxNetworkEgressConfig{}
 		}
-		network.Egress.DeniedCidrs = []string{sandbox_network.AllInternetTrafficCIDR}
+		network.Egress.Off = true
 	}
 
 	resolvedFCVersion := featureflags.ResolveFirecrackerVersion(ctx, s.featureFlags, req.GetSandbox().GetFirecrackerVersion())
@@ -307,10 +306,10 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 			}
 
 			egress := req.GetEgress()
-			if len(egress.GetAllowedCidrs()) == 0 && len(egress.GetDeniedCidrs()) == 0 && len(egress.GetAllowedDomains()) == 0 {
-				sbx.Config.SetNetworkEgress(nil)
-			} else {
+			if egressHasRules(egress) {
 				sbx.Config.SetNetworkEgress(egress)
+			} else {
+				sbx.Config.SetNetworkEgress(nil)
 			}
 
 			eventData["network_egress"] = map[string]any{
@@ -371,6 +370,11 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 	}
 
 	return &emptypb.Empty{}, nil
+}
+
+// egressHasRules returns true if the egress config has any active rules or is switched off.
+func egressHasRules(e *orchestrator.SandboxNetworkEgressConfig) bool {
+	return e.GetOff() || len(e.GetAllowedCidrs()) > 0 || len(e.GetDeniedCidrs()) > 0 || len(e.GetAllowedDomains()) > 0
 }
 
 func (s *Server) List(ctx context.Context, _ *emptypb.Empty) (*orchestrator.SandboxListResponse, error) {

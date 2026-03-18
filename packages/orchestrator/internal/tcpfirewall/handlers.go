@@ -170,6 +170,10 @@ func isEgressAllowed(sbx *sandbox.Sandbox, hostname string, ip net.IP) (bool, Ma
 		return true, MatchTypeNone
 	}
 
+	if acl.Off {
+		return false, MatchTypeOff
+	}
+
 	for i := range acl.Allowed {
 		if acl.Allowed[i].ContainsIP(ip) {
 			return true, MatchTypeCIDR

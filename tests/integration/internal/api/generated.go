@@ -724,6 +724,12 @@ type SandboxNetworkConfig struct {
 	// DenyOut Denied egress destinations. Format: IP or CIDR (e.g. "8.8.8.8", "10.0.0.0/8"). Domains not supported. Use "0.0.0.0/0" to block all. Unmatched traffic is allowed by default.
 	DenyOut *[]string `json:"denyOut,omitempty"`
 
+	// EgressOff When true, all egress (outbound) traffic from the sandbox is blocked. Mutually exclusive with allowOut/denyOut rules.
+	EgressOff *bool `json:"egressOff,omitempty"`
+
+	// IngressOff When true, all non-envd ingress (inbound) traffic to the sandbox is blocked. Mutually exclusive with allowIn/denyIn rules.
+	IngressOff *bool `json:"ingressOff,omitempty"`
+
 	// MaskRequestHost Host mask applied to all sandbox requests.
 	MaskRequestHost *string `json:"maskRequestHost,omitempty"`
 }
@@ -1279,6 +1285,12 @@ type PutSandboxesSandboxIDNetworkJSONBody struct {
 
 	// DenyOut Denied egress destinations. See SandboxNetworkConfig.denyOut.
 	DenyOut *[]string `json:"denyOut,omitempty"`
+
+	// EgressOff When true, all egress (outbound) traffic is blocked. Mutually exclusive with allowOut/denyOut rules.
+	EgressOff *bool `json:"egressOff,omitempty"`
+
+	// IngressOff When true, all non-envd ingress (inbound) traffic is blocked. Mutually exclusive with allowIn/denyIn rules.
+	IngressOff *bool `json:"ingressOff,omitempty"`
 
 	// MaskRequestHost Host mask for all sandbox requests. Set to null to clear.
 	MaskRequestHost *string `json:"maskRequestHost"`

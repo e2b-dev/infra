@@ -305,6 +305,18 @@ components:
             Unmatched traffic is allowed by default.
           items:
             type: string
+        egressOff:
+          type: boolean
+          default: false
+          description: >
+            When true, all egress (outbound) traffic from the sandbox is
+            blocked. Mutually exclusive with allowOut/denyOut rules.
+        ingressOff:
+          type: boolean
+          default: false
+          description: >
+            When true, all non-envd ingress (inbound) traffic to the sandbox
+            is blocked. Mutually exclusive with allowIn/denyIn rules.
 
     SandboxAutoResumeEnabled:
       type: boolean
@@ -2394,6 +2406,16 @@ paths:
                   type: string
                   nullable: true
                   description: Host mask for all sandbox requests. Set to null to clear.
+                egressOff:
+                  type: boolean
+                  description: >
+                    When true, all egress (outbound) traffic is blocked.
+                    Mutually exclusive with allowOut/denyOut rules.
+                ingressOff:
+                  type: boolean
+                  description: >
+                    When true, all non-envd ingress (inbound) traffic is
+                    blocked. Mutually exclusive with allowIn/denyIn rules.
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       responses:

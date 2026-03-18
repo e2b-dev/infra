@@ -74,6 +74,7 @@ message SandboxNetworkEgressConfig {
   repeated string allowed_cidrs = 1;
   repeated string denied_cidrs = 2;
   repeated string allowed_domains = 3;
+  bool off = 4;
 }
 
 message IngressRule {
@@ -87,6 +88,7 @@ message SandboxNetworkIngressConfig {
   optional string mask_request_host = 2;
   repeated IngressRule allowed = 3;
   repeated IngressRule denied = 4;
+  bool off = 5;
 }
 
 message SandboxCreateRequest {
