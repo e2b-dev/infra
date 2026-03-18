@@ -28,7 +28,7 @@ type Config struct {
 	FailOpen bool
 }
 
-// DefaultConfig returns a sensible default: 20 req/s with burst of 40.
+// DefaultConfig returns a sensible default: 50 req/s with burst of 100.
 func DefaultConfig() Config {
 	return Config{
 		Rate:     50,
