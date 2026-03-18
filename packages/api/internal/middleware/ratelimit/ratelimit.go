@@ -22,24 +22,8 @@ const rateLimitPefix = "ratelimit"
 
 // Config defines the rate limit parameters.
 type Config struct {
-	// Rate is the number of requests allowed per Period.
-	Rate int
-	// Burst is the maximum number of requests allowed in a single burst.
-	Burst int
-	// Period is the time window for the rate.
-	Period time.Duration
 	// FailOpen allows requests through when Redis is unavailable.
 	FailOpen bool
-}
-
-// DefaultConfig returns a sensible default: 50 req/s with burst of 100.
-func DefaultConfig() Config {
-	return Config{
-		Rate:     50,
-		Burst:    100,
-		Period:   time.Second,
-		FailOpen: true,
-	}
 }
 
 // NewLimiter creates a redis_rate.Limiter from a Redis client.
@@ -47,58 +31,52 @@ func NewLimiter(redisClient redis.UniversalClient) *redis_rate.Limiter {
 	return redis_rate.NewLimiter(redisClient)
 }
 
-// Middleware returns a Gin middleware that enforces per-team rate limits
-// using the GCRA algorithm backed by Redis (go-redis/redis_rate).
-//
-// The middleware is gated by the RateLimitEnabledFlag feature flag for
-// gradual rollout. Unauthenticated requests are passed through.
 // resolveLimit returns the rate limit for the current request, checking the
-// RateLimitConfigFlag for per-team overrides. The flag JSON format is:
+// RateLimitConfigFlag. The flag JSON format is:
 //
 //	{
-//	  "/sandboxes/": {"rate": 50, "burst": 100},
-//	  "/sandboxes/:sandboxID/pause": {"rate": 10, "burst": 20}
+//	  "/sandboxes/": {"rate": 50, "burst": 100, "period_s": 1},
+//	  "/sandboxes/:sandboxID/pause": {"rate": 10, "burst": 20, "period_s": 60}
 //	}
 //
-// The route is the Gin route pattern (c.FullPath()). If no override exists
-// for the route (or the flag is null), code defaults are used.
-func resolveLimit(ctx context.Context, ff *featureflags.Client, cfg Config, route string) redis_rate.Limit {
-	rate := cfg.Rate
-	burst := cfg.Burst
-
+// period_s is optional and defaults to 1 (second).
+// The route is the Gin route pattern (c.FullPath()). If no config exists
+// for the route (or the flag is null), returns false (no limit applied).
+func resolveLimit(ctx context.Context, ff *featureflags.Client, route string) (redis_rate.Limit, bool) {
 	flagValue := ff.JSONFlag(ctx, featureflags.RateLimitConfigFlag)
-	if !flagValue.IsNull() {
-		override := flagValue.GetByKey(route)
-		if !override.IsNull() {
-			if v := override.GetByKey("rate"); v.IsInt() {
-				rate = v.IntValue()
-			}
+	if flagValue.IsNull() {
+		return redis_rate.Limit{}, false
+	}
 
-			if v := override.GetByKey("burst"); v.IsInt() {
-				burst = v.IntValue()
-			}
-		}
+	override := flagValue.GetByKey(route)
+	if override.IsNull() {
+		return redis_rate.Limit{}, false
+	}
+
+	rate := override.GetByKey("rate")
+	burst := override.GetByKey("burst")
+
+	if !rate.IsInt() || !burst.IsInt() {
+		return redis_rate.Limit{}, false
+	}
+
+	period := time.Second
+	if v := override.GetByKey("period_s"); v.IsInt() {
+		period = time.Duration(v.IntValue()) * time.Second
 	}
 
 	return redis_rate.Limit{
-		Rate:   rate,
-		Burst:  burst,
-		Period: cfg.Period,
-	}
+		Rate:   rate.IntValue(),
+		Burst:  burst.IntValue(),
+		Period: period,
+	}, true
 }
 
 func Middleware(limiter *redis_rate.Limiter, cfg Config, ff *featureflags.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 
-		// Check feature flag — skip if rate limiting is disabled.
-		if !ff.BoolFlag(ctx, featureflags.RateLimitEnabledFlag) {
-			c.Next()
-
-			return
-		}
-
-		// Skip unauthenticated requests (they'll be rejected by auth middleware).
+		// Skip unauthenticated requests
 		team, ok := auth.GetTeamInfo(c)
 		if !ok {
 			c.Next()
@@ -106,14 +84,19 @@ func Middleware(limiter *redis_rate.Limiter, cfg Config, ff *featureflags.Client
 			return
 		}
 
-		teamID := team.ID.String()
 		route := c.FullPath()
-		key := redis_utils.CreateKey(rateLimitPefix, teamID, route)
 
 		// Resolve per-team limit overrides from feature flag.
-		limit := resolveLimit(ctx, ff, cfg, route)
+		// If the route is not configured, allow the request through (no limit).
+		limit, ok := resolveLimit(ctx, ff, route)
+		if !ok {
+			c.Next()
+
+			return
+		}
 
 		// Build a logger with rate limit context for reuse.
+		teamID := team.ID.String()
 		l := logger.L().With(
 			logger.WithTeamID(teamID),
 			zap.String("route", route),
@@ -121,6 +104,7 @@ func Middleware(limiter *redis_rate.Limiter, cfg Config, ff *featureflags.Client
 			zap.Int("rate_limit_burst", limit.Burst),
 		)
 
+		key := redis_utils.CreateKey(rateLimitPefix, teamID, route)
 		res, err := limiter.Allow(ctx, key, limit)
 		if err != nil {
 			l.Warn(ctx, "rate limiter Redis error", zap.Error(err))
