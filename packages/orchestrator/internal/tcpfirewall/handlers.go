@@ -33,15 +33,7 @@ func domainHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int
 		hostname = tc.HostName
 	}
 
-	allowed, matchType, err := isEgressAllowed(sbx, hostname, dstIP)
-	if err != nil {
-		logger.Error(ctx, "Egress check failed", zap.Error(err))
-		metrics.RecordError(ctx, ErrorTypeEgressCheck, protocol)
-		conn.Close()
-
-		return
-	}
-
+	allowed, matchType := isEgressAllowed(sbx, hostname, dstIP)
 	if !allowed {
 		metrics.RecordDecision(ctx, DecisionBlocked, protocol, matchType)
 		conn.Close()
@@ -71,15 +63,7 @@ func domainHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int
 // cidrOnlyHandler handles connections without hostname information.
 func cidrOnlyHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int, sbx *sandbox.Sandbox, logger logger.Logger, metrics *Metrics, protocol Protocol) {
 	// No hostname available for CIDR-only handler
-	allowed, matchType, err := isEgressAllowed(sbx, noHostnameValue, dstIP)
-	if err != nil {
-		logger.Error(ctx, "Egress check failed", zap.Error(err))
-		metrics.RecordError(ctx, ErrorTypeEgressCheck, protocol)
-		conn.Close()
-
-		return
-	}
-
+	allowed, matchType := isEgressAllowed(sbx, noHostnameValue, dstIP)
 	if !allowed {
 		metrics.RecordDecision(ctx, DecisionBlocked, protocol, matchType)
 		conn.Close()
@@ -165,17 +149,17 @@ func proxyWithIPVerification(ctx context.Context, conn net.Conn, upstreamAddr st
 //  1. Allow domain / Allow CIDR (if either matches → allow)
 //  2. Deny domain / Deny CIDR (if either matches → deny)
 //  3. Default: allow
-func isEgressAllowed(sbx *sandbox.Sandbox, hostname string, ip net.IP) (bool, MatchType, error) {
+func isEgressAllowed(sbx *sandbox.Sandbox, hostname string, ip net.IP) (bool, MatchType) {
 	egress := sbx.Config.GetNetworkEgress()
 	if egress == nil {
-		return true, MatchTypeNone, nil
+		return true, MatchTypeNone
 	}
 
 	// Check allowed domains first (not in ACL — domains are matched by name).
 	if hostname != noHostnameValue {
 		for _, domain := range egress.GetAllowedDomains() {
 			if matchDomain(hostname, domain) {
-				return true, MatchTypeDomain, nil
+				return true, MatchTypeDomain
 			}
 		}
 	}
@@ -183,24 +167,22 @@ func isEgressAllowed(sbx *sandbox.Sandbox, hostname string, ip net.IP) (bool, Ma
 	// Check IP allow/deny via pre-parsed ACL (no per-connection ParseCIDR).
 	acl := sbx.Config.GetEgressACL()
 	if acl == nil {
-		return true, MatchTypeNone, nil
+		return true, MatchTypeNone
 	}
 
-	// Check allowed CIDRs.
 	for i := range acl.Allowed {
 		if acl.Allowed[i].ContainsIP(ip) {
-			return true, MatchTypeCIDR, nil
+			return true, MatchTypeCIDR
 		}
 	}
 
-	// Check denied CIDRs.
 	for i := range acl.Denied {
 		if acl.Denied[i].ContainsIP(ip) {
-			return false, MatchTypeCIDR, nil
+			return false, MatchTypeCIDR
 		}
 	}
 
-	return true, MatchTypeNone, nil
+	return true, MatchTypeNone
 }
 
 // matchDomain checks if a hostname matches a domain pattern.

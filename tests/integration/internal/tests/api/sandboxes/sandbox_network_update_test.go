@@ -493,13 +493,13 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 			checks: []ingressCheck{{testPort, "", false}},
 		},
 		{
-			name:   "bare_ip_deny_blocks",
-			denyIn: []string{"0.0.0.0/0"},
+			name:   "deny_all_ipv4_and_ipv6_blocks",
+			denyIn: []string{"0.0.0.0/0", "::/0"},
 			checks: []ingressCheck{{testPort, "", true}},
 		},
 		{
-			name:    "bare_ip_allow_overrides_deny",
-			allowIn: []string{"0.0.0.0/0"}, denyIn: []string{"0.0.0.0/0"},
+			name:    "allow_all_ipv4_and_ipv6_overrides_deny",
+			allowIn: []string{"0.0.0.0/0", "::/0"}, denyIn: []string{"0.0.0.0/0", "::/0"},
 			checks: []ingressCheck{{testPort, "", false}},
 		},
 		{

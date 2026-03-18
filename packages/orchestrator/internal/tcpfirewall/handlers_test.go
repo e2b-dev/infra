@@ -135,7 +135,6 @@ func TestIsEgressAllowed(t *testing.T) {
 		hostname  string
 		ip        net.IP
 		want      bool
-		wantError bool
 	}{
 		// ---------------------------------------------------------------------
 		// Default Allow Behavior
@@ -351,7 +350,6 @@ func TestIsEgressAllowed(t *testing.T) {
 			hostname:  "",
 			ip:        net.ParseIP("1.2.3.4"),
 			want:      true,
-			wantError: false,
 		},
 		{
 			name: "invalid denied CIDR fails open",
@@ -363,7 +361,6 @@ func TestIsEgressAllowed(t *testing.T) {
 			hostname:  "",
 			ip:        net.ParseIP("1.2.3.4"),
 			want:      true,
-			wantError: false,
 		},
 	}
 
@@ -376,22 +373,7 @@ func TestIsEgressAllowed(t *testing.T) {
 				},
 			}
 
-			got, _, err := isEgressAllowed(sbx, tt.hostname, tt.ip)
-
-			if tt.wantError {
-				if err == nil {
-					t.Errorf("isEgressAllowed() expected error, got nil")
-				}
-
-				return
-			}
-
-			if err != nil {
-				t.Errorf("isEgressAllowed() unexpected error: %v", err)
-
-				return
-			}
-
+			got, _ := isEgressAllowed(sbx, tt.hostname, tt.ip)
 			if got != tt.want {
 				t.Errorf("isEgressAllowed() = %v, want %v", got, tt.want)
 			}
