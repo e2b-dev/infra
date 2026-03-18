@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/docker/docker/api/types/container"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -140,7 +141,10 @@ func TestIntegrationTest(t *testing.T) {
 
 	createVolumeDir(t, builder, volumeType, teamID, volumeID)
 
-	s, err := NewProxy(t.Context(), builder, sandboxes, nfscfg.Config{})
+	ffClient, err := featureflags.NewClient()
+	require.NoError(t, err)
+
+	s, err := NewProxy(t.Context(), builder, sandboxes, ffClient, nfscfg.Config{})
 	require.NoError(t, err)
 	go func() {
 		err := s.Serve(nfsListener)
