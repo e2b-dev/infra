@@ -51,13 +51,13 @@ func (a *APIStore) PutSandboxesSandboxIDNetwork(
 		DeniedAddresses:  sharedutils.DerefOrDefault(body.DenyIn, nil),
 	}
 
-	if apiErr := validateEgress(egressUpdate.Off, egressUpdate.AllowedAddresses, egressUpdate.DeniedAddresses); apiErr != nil {
+	if apiErr := validateEgress(body.EgressOff, body.AllowOut, body.DenyOut); apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return
 	}
 
-	if apiErr := validateIngress(ingressUpdate.Off, ingressUpdate.AllowedAddresses, ingressUpdate.DeniedAddresses); apiErr != nil {
+	if apiErr := validateIngress(body.IngressOff, body.AllowIn, body.DenyIn); apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return

@@ -506,19 +506,11 @@ func validateNetworkConfig(network *api.SandboxNetworkConfig) *api.APIError {
 		}
 	}
 
-	if apiErr := validateEgress(
-		sharedUtils.DerefOrDefault(network.EgressOff, false),
-		sharedUtils.DerefOrDefault(network.AllowOut, nil),
-		sharedUtils.DerefOrDefault(network.DenyOut, nil),
-	); apiErr != nil {
+	if apiErr := validateEgress(network.EgressOff, network.AllowOut, network.DenyOut); apiErr != nil {
 		return apiErr
 	}
 
-	return validateIngress(
-		sharedUtils.DerefOrDefault(network.IngressOff, false),
-		sharedUtils.DerefOrDefault(network.AllowIn, nil),
-		sharedUtils.DerefOrDefault(network.DenyIn, nil),
-	)
+	return validateIngress(network.IngressOff, network.AllowIn, network.DenyIn)
 }
 
 // validateEgress validates egress configuration:
@@ -526,7 +518,11 @@ func validateNetworkConfig(network *api.SandboxNetworkConfig) *api.APIError {
 // - denyOut entries must be specified IPs or CIDRs (not domains, no ports)
 // - allowOut entries can be specified IPs, CIDRs, or domain names (no ports)
 // - when allowOut contains domains, denyOut must include 0.0.0.0/0
-func validateEgress(off bool, allowOut, denyOut []string) *api.APIError {
+func validateEgress(offPtr *bool, allowOutPtr, denyOutPtr *[]string) *api.APIError {
+	off := sharedUtils.DerefOrDefault(offPtr, false)
+	allowOut := sharedUtils.DerefOrDefault(allowOutPtr, nil)
+	denyOut := sharedUtils.DerefOrDefault(denyOutPtr, nil)
+
 	if off && (len(allowOut) > 0 || len(denyOut) > 0) {
 		return &api.APIError{
 			Code:      http.StatusBadRequest,
@@ -599,7 +595,11 @@ func validateEgress(off bool, allowOut, denyOut []string) *api.APIError {
 // - entries must be valid IP or CIDR with optional port/port-range (no domains)
 // - IPv6 is supported (including ::/0)
 // - when allowIn is set, denyIn must include 0.0.0.0/0
-func validateIngress(off bool, allowIn, denyIn []string) *api.APIError {
+func validateIngress(offPtr *bool, allowInPtr, denyInPtr *[]string) *api.APIError {
+	off := sharedUtils.DerefOrDefault(offPtr, false)
+	allowIn := sharedUtils.DerefOrDefault(allowInPtr, nil)
+	denyIn := sharedUtils.DerefOrDefault(denyInPtr, nil)
+
 	if off && (len(allowIn) > 0 || len(denyIn) > 0) {
 		return &api.APIError{
 			Code:      http.StatusBadRequest,
