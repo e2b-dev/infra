@@ -51,32 +51,16 @@ func (a *APIStore) PutSandboxesSandboxIDNetwork(
 		DeniedAddresses:  sharedutils.DerefOrDefault(body.DenyIn, nil),
 	}
 
-	if egressUpdate.Off && (len(egressUpdate.AllowedAddresses) > 0 || len(egressUpdate.DeniedAddresses) > 0) {
-		a.sendAPIStoreError(c, http.StatusBadRequest, "egressOff cannot be set together with allowOut or denyOut")
+	if apiErr := validateEgress(egressUpdate.Off, egressUpdate.AllowedAddresses, egressUpdate.DeniedAddresses); apiErr != nil {
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return
 	}
 
-	if !egressUpdate.Off {
-		if apiErr := validateEgressRules(egressUpdate.AllowedAddresses, egressUpdate.DeniedAddresses); apiErr != nil {
-			a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
-
-			return
-		}
-	}
-
-	if ingressUpdate.Off && (len(ingressUpdate.AllowedAddresses) > 0 || len(ingressUpdate.DeniedAddresses) > 0) {
-		a.sendAPIStoreError(c, http.StatusBadRequest, "ingressOff cannot be set together with allowIn or denyIn")
+	if apiErr := validateIngress(ingressUpdate.Off, ingressUpdate.AllowedAddresses, ingressUpdate.DeniedAddresses); apiErr != nil {
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return
-	}
-
-	if !ingressUpdate.Off {
-		if apiErr := validateIngressRules(ingressUpdate.AllowedAddresses, ingressUpdate.DeniedAddresses); apiErr != nil {
-			a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
-
-			return
-		}
 	}
 
 	if apiErr := a.orchestrator.UpdateSandboxNetworkConfig(ctx, team.ID, sandboxID, egressUpdate, ingressUpdate); apiErr != nil {

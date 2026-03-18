@@ -506,11 +506,28 @@ func validateNetworkConfig(network *api.SandboxNetworkConfig) *api.APIError {
 		}
 	}
 
-	denyOut := sharedUtils.DerefOrDefault(network.DenyOut, nil)
-	allowOut := sharedUtils.DerefOrDefault(network.AllowOut, nil)
-	egressOff := sharedUtils.DerefOrDefault(network.EgressOff, false)
+	if apiErr := validateEgress(
+		sharedUtils.DerefOrDefault(network.EgressOff, false),
+		sharedUtils.DerefOrDefault(network.AllowOut, nil),
+		sharedUtils.DerefOrDefault(network.DenyOut, nil),
+	); apiErr != nil {
+		return apiErr
+	}
 
-	if egressOff && (len(allowOut) > 0 || len(denyOut) > 0) {
+	return validateIngress(
+		sharedUtils.DerefOrDefault(network.IngressOff, false),
+		sharedUtils.DerefOrDefault(network.AllowIn, nil),
+		sharedUtils.DerefOrDefault(network.DenyIn, nil),
+	)
+}
+
+// validateEgress validates egress configuration:
+// - off is mutually exclusive with allow/deny rules
+// - denyOut entries must be specified IPs or CIDRs (not domains, no ports)
+// - allowOut entries can be specified IPs, CIDRs, or domain names (no ports)
+// - when allowOut contains domains, denyOut must include 0.0.0.0/0
+func validateEgress(off bool, allowOut, denyOut []string) *api.APIError {
+	if off && (len(allowOut) > 0 || len(denyOut) > 0) {
 		return &api.APIError{
 			Code:      http.StatusBadRequest,
 			Err:       fmt.Errorf("egressOff is mutually exclusive with allowOut/denyOut"),
@@ -518,36 +535,10 @@ func validateNetworkConfig(network *api.SandboxNetworkConfig) *api.APIError {
 		}
 	}
 
-	if !egressOff {
-		if apiErr := validateEgressRules(allowOut, denyOut); apiErr != nil {
-			return apiErr
-		}
-	}
-
-	denyIn := sharedUtils.DerefOrDefault(network.DenyIn, nil)
-	allowIn := sharedUtils.DerefOrDefault(network.AllowIn, nil)
-	ingressOff := sharedUtils.DerefOrDefault(network.IngressOff, false)
-
-	if ingressOff && (len(allowIn) > 0 || len(denyIn) > 0) {
-		return &api.APIError{
-			Code:      http.StatusBadRequest,
-			Err:       fmt.Errorf("ingressOff is mutually exclusive with allowIn/denyIn"),
-			ClientMsg: "ingressOff cannot be set together with allowIn or denyIn",
-		}
-	}
-
-	if ingressOff {
+	if off {
 		return nil
 	}
 
-	return validateIngressRules(allowIn, denyIn)
-}
-
-// validateEgressRules validates egress allow/deny rules:
-// - denyOut entries must be specified IPs or CIDRs (not domains, no ports)
-// - allowOut entries can be specified IPs, CIDRs, or domain names (no ports)
-// - when allowOut contains domains, denyOut must include 0.0.0.0/0
-func validateEgressRules(allowOut, denyOut []string) *api.APIError {
 	for _, entry := range denyOut {
 		host, port, _ := sandbox_network.SplitHostPort(entry)
 		if port != "" {
@@ -603,11 +594,24 @@ func validateEgressRules(allowOut, denyOut []string) *api.APIError {
 	return nil
 }
 
-// validateIngressRules validates ingress allow/deny rules:
+// validateIngress validates ingress configuration:
+// - off is mutually exclusive with allow/deny rules
 // - entries must be valid IP or CIDR with optional port/port-range (no domains)
 // - IPv6 is supported (including ::/0)
 // - when allowIn is set, denyIn must include 0.0.0.0/0
-func validateIngressRules(allowIn, denyIn []string) *api.APIError {
+func validateIngress(off bool, allowIn, denyIn []string) *api.APIError {
+	if off && (len(allowIn) > 0 || len(denyIn) > 0) {
+		return &api.APIError{
+			Code:      http.StatusBadRequest,
+			Err:       fmt.Errorf("ingressOff is mutually exclusive with allowIn/denyIn"),
+			ClientMsg: "ingressOff cannot be set together with allowIn or denyIn",
+		}
+	}
+
+	if off {
+		return nil
+	}
+
 	for _, entry := range denyIn {
 		if err := validateIngressEntry(entry); err != nil {
 			return &api.APIError{
