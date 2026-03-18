@@ -513,7 +513,7 @@ func validateNetworkConfig(network *api.SandboxNetworkConfig) *api.APIError {
 // - when allowOut contains domains, denyOut must include 0.0.0.0/0
 func validateEgressRules(allowOut, denyOut []string) *api.APIError {
 	for _, cidr := range denyOut {
-		if !sandbox_network.IsIPOrCIDR(cidr) {
+		if !sandbox_network.IsSpecifiedIPOrCIDR(cidr) {
 			return &api.APIError{
 				Code:      http.StatusBadRequest,
 				Err:       fmt.Errorf("invalid denied CIDR %s", cidr),
@@ -523,7 +523,17 @@ func validateEgressRules(allowOut, denyOut []string) *api.APIError {
 	}
 
 	if len(allowOut) > 0 {
-		_, allowedDomains := sandbox_network.ParseAddressesAndDomains(allowOut)
+		allowedAddresses, allowedDomains := sandbox_network.ParseAddressesAndDomains(allowOut)
+
+		for _, addr := range allowedAddresses {
+			if !sandbox_network.IsSpecifiedIPOrCIDR(addr) {
+				return &api.APIError{
+					Code:      http.StatusBadRequest,
+					Err:       fmt.Errorf("invalid allowed address %s", addr),
+					ClientMsg: fmt.Sprintf("invalid allowed address %s", addr),
+				}
+			}
+		}
 		hasBlockAll := slices.Contains(denyOut, sandbox_network.AllInternetTrafficCIDR)
 
 		if len(allowedDomains) > 0 && !hasBlockAll {

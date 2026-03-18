@@ -32,7 +32,6 @@ import (
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/pkg/pool"
 	"github.com/e2b-dev/infra/packages/shared/pkg/apierrors"
-	"github.com/e2b-dev/infra/packages/shared/pkg/factories"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs/loki"
@@ -66,7 +65,7 @@ type APIStore struct {
 	snapshotBuildQuerySem *sharedutils.AdjustableSemaphore
 }
 
-func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config, serviceName string) *APIStore {
+func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.UniversalClient, featureFlags *featureflags.Client, config cfg.Config) *APIStore {
 	logger.L().Info(ctx, "Initializing API store and services")
 
 	sqlcDB, err := sqlcdb.NewClient(ctx, config.PostgresConnectionString, pool.WithMaxConnections(config.DBMaxOpenConnections), pool.WithMinIdle(config.DBMinIdleConnections))
@@ -113,15 +112,6 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config, 
 	if err != nil {
 		logger.L().Fatal(ctx, "Initializing Nomad client", zap.Error(err))
 	}
-	redisClient, err := factories.NewRedisClient(ctx, factories.RedisConfig{
-		RedisURL:         config.RedisURL,
-		RedisClusterURL:  config.RedisClusterURL,
-		RedisTLSCABase64: config.RedisTLSCABase64,
-		PoolSize:         config.RedisPoolSize,
-	})
-	if err != nil {
-		logger.L().Fatal(ctx, "Initializing Redis client", zap.Error(err))
-	}
 
 	queryLogsProvider, err := loki.NewLokiQueryProvider(config.LokiURL, config.LokiUser, config.LokiPassword)
 	if err != nil {
@@ -132,14 +122,6 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, config cfg.Config, 
 	if err != nil {
 		logger.L().Fatal(ctx, "initializing edge clusters pool failed", zap.Error(err))
 	}
-
-	featureFlags, err := featureflags.NewClient()
-	if err != nil {
-		logger.L().Fatal(ctx, "failed to create feature flags client", zap.Error(err))
-	}
-
-	featureFlags.SetServiceName(serviceName)
-	featureFlags.SetDeploymentName(config.DomainName)
 
 	accessTokenGenerator, err := sandbox.NewAccessTokenGenerator(config.SandboxAccessTokenHashSeed)
 	if err != nil {
@@ -271,12 +253,6 @@ func (a *APIStore) Close(ctx context.Context) error {
 
 	if err := a.snapshotCache.Close(ctx); err != nil {
 		errs = append(errs, fmt.Errorf("closing snapshot cache: %w", err))
-	}
-
-	if a.redisClient != nil {
-		if err := a.redisClient.Close(); err != nil {
-			errs = append(errs, fmt.Errorf("closing redis client: %w", err))
-		}
 	}
 
 	return errors.Join(errs...)

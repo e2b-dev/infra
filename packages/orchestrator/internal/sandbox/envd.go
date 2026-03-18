@@ -74,12 +74,6 @@ func (s *Sandbox) doRequestWithInfiniteRetries(
 			return response, requestCount, nil
 		}
 
-		logger.L().Debug(ctx, "failed to do request to envd, retrying",
-			logger.WithSandboxID(s.Runtime.SandboxID),
-			logger.WithEnvdVersion(s.Config.Envd.Version),
-			zap.Int64("timeout_ms", s.internalConfig.EnvdInitRequestTimeout.Milliseconds()),
-			zap.Error(err))
-
 		select {
 		case <-ctx.Done():
 			return nil, requestCount, fmt.Errorf("%w with cause: %w", ctx.Err(), context.Cause(ctx))
@@ -119,6 +113,14 @@ func (s *Sandbox) initEnvd(ctx context.Context) (e error) {
 
 	response, count, err := s.doRequestWithInfiniteRetries(ctx, http.MethodPost, address)
 	if err != nil {
+		logger.L().Error(ctx, "failed to init envd after retries",
+			logger.WithSandboxID(s.Runtime.SandboxID),
+			logger.WithEnvdVersion(s.Config.Envd.Version),
+			zap.Int64("timeout_ms", s.internalConfig.EnvdInitRequestTimeout.Milliseconds()),
+			zap.Int64("attempts", count),
+			zap.Error(err),
+		)
+
 		envdInitCalls.Add(ctx, count, metric.WithAttributes(attributesFail...))
 
 		return fmt.Errorf("failed to init envd: %w", err)
@@ -148,6 +150,13 @@ func (s *Sandbox) initEnvd(ctx context.Context) (e error) {
 
 		return fmt.Errorf("unexpected status code: %d", response.StatusCode)
 	}
+
+	logger.L().Debug(ctx, "succeeded to init envd",
+		logger.WithSandboxID(s.Runtime.SandboxID),
+		logger.WithEnvdVersion(s.Config.Envd.Version),
+		zap.Int64("timeout_ms", s.internalConfig.EnvdInitRequestTimeout.Milliseconds()),
+		zap.Int64("attempts", count),
+	)
 
 	span.SetStatus(codes.Ok, fmt.Sprintf("envd init returned %d", response.StatusCode))
 
