@@ -25,7 +25,7 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/interna
 const (
 	// creates an inode for every bytes-per-inode byte of space on the disk
 	inodesRatio = int64(4096)
-	// Percentage of reserved blocks in the filesystem
+	// reservedBlocksPercentage is 0 because reserved blocks are set post-creation via tune2fs -r after the final resize.
 	reservedBlocksPercentage = int64(0)
 
 	ToMBShift = 20
