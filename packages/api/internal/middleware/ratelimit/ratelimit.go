@@ -14,7 +14,10 @@ import (
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
 )
+
+const rateLimitPefix = "ratelimit"
 
 // Config defines the rate limit parameters.
 type Config struct {
@@ -51,21 +54,28 @@ func NewLimiter(redisClient redis.UniversalClient) *redis_rate.Limiter {
 // resolveLimit returns the rate limit for the current request, checking the
 // RateLimitConfigFlag for per-team overrides. The flag JSON format is:
 //
-//	{"rate": 50, "burst": 100}
+//	{
+//	  "/sandboxes/": {"rate": 50, "burst": 100},
+//	  "/sandboxes/:sandboxID/pause": {"rate": 10, "burst": 20}
+//	}
 //
-// Any field not present falls back to the code default.
-func resolveLimit(ctx context.Context, ff *featureflags.Client, cfg Config) redis_rate.Limit {
+// The route is the Gin route pattern (c.FullPath()). If no override exists
+// for the route (or the flag is null), code defaults are used.
+func resolveLimit(ctx context.Context, ff *featureflags.Client, cfg Config, route string) redis_rate.Limit {
 	rate := cfg.Rate
 	burst := cfg.Burst
 
-	override := ff.JSONFlag(ctx, featureflags.RateLimitConfigFlag)
-	if !override.IsNull() {
-		if v := override.GetByKey("rate"); v.IsInt() {
-			rate = v.IntValue()
-		}
+	flagValue := ff.JSONFlag(ctx, featureflags.RateLimitConfigFlag)
+	if !flagValue.IsNull() {
+		override := flagValue.GetByKey(route)
+		if !override.IsNull() {
+			if v := override.GetByKey("rate"); v.IsInt() {
+				rate = v.IntValue()
+			}
 
-		if v := override.GetByKey("burst"); v.IsInt() {
-			burst = v.IntValue()
+			if v := override.GetByKey("burst"); v.IsInt() {
+				burst = v.IntValue()
+			}
 		}
 	}
 
@@ -96,10 +106,11 @@ func Middleware(limiter *redis_rate.Limiter, cfg Config, ff *featureflags.Client
 		}
 
 		teamID := team.ID.String()
-		key := "ratelimit:" + teamID
+		route := c.FullPath()
+		key := redis_utils.CreateKey(rateLimitPefix, teamID, route)
 
 		// Resolve per-team limit overrides from feature flag.
-		limit := resolveLimit(ctx, ff, cfg)
+		limit := resolveLimit(ctx, ff, cfg, route)
 
 		res, err := limiter.Allow(ctx, key, limit)
 		if err != nil {

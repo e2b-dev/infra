@@ -203,10 +203,8 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 	// Per-team rate limiting (after auth + LD context, before handlers).
 	// Only applied to connect and resume endpoints. Gated by feature flag.
 	limiter := ratelimit.NewLimiter(redisClient)
-	r.Use(customMiddleware.IncludeRoutes(
-		ratelimit.Middleware(limiter, ratelimit.DefaultConfig(), ff),
-		"/sandboxes/:sandboxID/connect",
-		"/sandboxes/:sandboxID/resume",
+	r.Use(customMiddleware.ExcludeRoutes(
+		ratelimit.Middleware(limiter, ratelimit.DefaultConfig(), ff), //nolint:contextcheck // Gin middleware sets context via c.Request.WithContext
 	))
 
 	// We now register our store above as the handler for the interface
