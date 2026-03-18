@@ -164,6 +164,10 @@ func newEgressACL(egress *orchestrator.SandboxNetworkEgressConfig) *sandboxnetwo
 		return nil
 	}
 
+	if egress.GetOff() {
+		return &sandboxnetwork.ACL{Off: true}
+	}
+
 	allowedRules := parseCIDRs(egress.GetAllowedCidrs())
 	deniedRules := parseCIDRs(egress.GetDeniedCidrs())
 
@@ -182,6 +186,10 @@ func newEgressACL(egress *orchestrator.SandboxNetworkEgressConfig) *sandboxnetwo
 func newIngressACL(ingress *orchestrator.SandboxNetworkIngressConfig) *sandboxnetwork.ACL {
 	if ingress == nil {
 		return nil
+	}
+
+	if ingress.GetOff() {
+		return &sandboxnetwork.ACL{Off: true}
 	}
 
 	allowedRules := parseIngressRules(ingress.GetAllowed())

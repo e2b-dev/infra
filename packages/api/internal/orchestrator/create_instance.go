@@ -52,6 +52,7 @@ func buildEgressConfig(egressUpdate *types.SandboxNetworkEgressConfig) *orchestr
 	}
 
 	return &orchestrator.SandboxNetworkEgressConfig{
+		Off:            egressUpdate.Off,
 		AllowedCidrs:   allowedAddresses,
 		DeniedCidrs:    sandbox_network.AddressStringsToCIDRs(egressUpdate.DeniedAddresses),
 		AllowedDomains: allowedDomains,
@@ -112,12 +113,12 @@ func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess
 		orchNetwork.Ingress.MaskRequestHost = network.Ingress.MaskRequestHost
 		orchNetwork.Ingress.Allowed = parseIngressRules(network.Ingress.AllowedAddresses)
 		orchNetwork.Ingress.Denied = parseIngressRules(network.Ingress.DeniedAddresses)
+		orchNetwork.Ingress.Off = network.Ingress.Off
 	}
 
-	// Handle the case where internet access is explicitly disabled
-	// This should be applied after copying the network config to preserve allowed addresses
+	// Handle the case where internet access is explicitly disabled.
+	// Uses deny-all (not Off) so that explicit allow rules still take precedence.
 	if allowInternetAccess != nil && !*allowInternetAccess {
-		// Block all internet access - this overrides any other blocked addresses
 		orchNetwork.Egress.DeniedCidrs = []string{sandbox_network.AllInternetTrafficCIDR}
 	}
 

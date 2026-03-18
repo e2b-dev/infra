@@ -39,23 +39,25 @@ func (a *APIStore) PutSandboxesSandboxIDNetwork(
 	}
 
 	egressUpdate := &types.SandboxNetworkEgressConfig{
+		Off:              sharedutils.DerefOrDefault(body.EgressOff, false),
 		AllowedAddresses: sharedutils.DerefOrDefault(body.AllowOut, nil),
 		DeniedAddresses:  sharedutils.DerefOrDefault(body.DenyOut, nil),
 	}
 
 	ingressUpdate := &types.SandboxNetworkIngressConfig{
+		Off:              sharedutils.DerefOrDefault(body.IngressOff, false),
 		MaskRequestHost:  body.MaskRequestHost,
 		AllowedAddresses: sharedutils.DerefOrDefault(body.AllowIn, nil),
 		DeniedAddresses:  sharedutils.DerefOrDefault(body.DenyIn, nil),
 	}
 
-	if apiErr := validateEgressRules(egressUpdate.AllowedAddresses, egressUpdate.DeniedAddresses); apiErr != nil {
+	if apiErr := validateEgress(body.EgressOff, body.AllowOut, body.DenyOut); apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return
 	}
 
-	if apiErr := validateIngressRules(ingressUpdate.AllowedAddresses, ingressUpdate.DeniedAddresses); apiErr != nil {
+	if apiErr := validateIngress(body.IngressOff, body.AllowIn, body.DenyIn); apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return

@@ -307,13 +307,14 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 			}
 
 			egress := req.GetEgress()
-			if len(egress.GetAllowedCidrs()) == 0 && len(egress.GetDeniedCidrs()) == 0 && len(egress.GetAllowedDomains()) == 0 {
-				sbx.Config.SetNetworkEgress(nil)
-			} else {
+			if egressHasRules(egress) {
 				sbx.Config.SetNetworkEgress(egress)
+			} else {
+				sbx.Config.SetNetworkEgress(nil)
 			}
 
 			eventData["network_egress"] = map[string]any{
+				"off":             egress.GetOff(),
 				"allowed_cidrs":   egress.GetAllowedCidrs(),
 				"denied_cidrs":    egress.GetDeniedCidrs(),
 				"allowed_domains": egress.GetAllowedDomains(),
@@ -334,6 +335,7 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 
 			ingress := req.GetIngress()
 			eventData["network_ingress"] = map[string]any{
+				"off":               ingress.GetOff(),
 				"allowed":           ingress.GetAllowed(),
 				"denied":            ingress.GetDenied(),
 				"mask_request_host": ingress.GetMaskRequestHost(),
@@ -371,6 +373,11 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 	}
 
 	return &emptypb.Empty{}, nil
+}
+
+// egressHasRules returns true if the egress config has any active rules or is switched off.
+func egressHasRules(e *orchestrator.SandboxNetworkEgressConfig) bool {
+	return e.GetOff() || len(e.GetAllowedCidrs()) > 0 || len(e.GetDeniedCidrs()) > 0 || len(e.GetAllowedDomains()) > 0
 }
 
 func (s *Server) List(ctx context.Context, _ *emptypb.Empty) (*orchestrator.SandboxListResponse, error) {

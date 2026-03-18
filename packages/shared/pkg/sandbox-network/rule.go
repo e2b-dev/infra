@@ -40,6 +40,11 @@ func (r Rule) PortInRange(port uint16) bool {
 // ACL holds pre-parsed network access control rules.
 // Computed once at config set time to avoid per-connection parsing.
 type ACL struct {
+	// Off short-circuits all rule evaluation: when true, all traffic is
+	// denied in O(1) without iterating Allowed/Denied rules.
+	// Mutually exclusive with Allowed/Denied — setting Off with rules
+	// is rejected at construction time.
+	Off     bool
 	Allowed []Rule
 	Denied  []Rule
 }
@@ -50,6 +55,10 @@ type ACL struct {
 func (a *ACL) IsAllowed(ip net.IP, port uint16) bool {
 	if a == nil {
 		return true
+	}
+
+	if a.Off {
+		return false
 	}
 
 	for i := range a.Allowed {
@@ -67,9 +76,9 @@ func (a *ACL) IsAllowed(ip net.IP, port uint16) bool {
 	return true
 }
 
-// HasRules returns true if any rules are configured.
+// HasRules returns true if any rules are configured or all traffic is blocked.
 func (a *ACL) HasRules() bool {
-	return a != nil && (len(a.Allowed) > 0 || len(a.Denied) > 0)
+	return a != nil && (a.Off || len(a.Allowed) > 0 || len(a.Denied) > 0)
 }
 
 // SplitHostPort splits a network rule string into host and port parts.
