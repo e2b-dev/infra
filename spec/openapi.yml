@@ -513,6 +513,10 @@ components:
         envdAccessToken:
           type: string
           description: Access token used for envd communication
+        allowInternetAccess:
+          type: boolean
+          nullable: true
+          description: Whether internet access was explicitly enabled or disabled for the sandbox.
         domain:
           type: string
           nullable: true

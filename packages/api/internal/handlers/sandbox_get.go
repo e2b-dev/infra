@@ -72,22 +72,23 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 
 		// Sandbox exists and belongs to the team - return running sandbox sbx
 		sandbox := api.SandboxDetail{
-			ClientID:        sbx.ClientID,
-			TemplateID:      sbx.TemplateID,
-			Alias:           sbx.Alias,
-			SandboxID:       sbx.SandboxID,
-			StartedAt:       sbx.StartTime,
-			CpuCount:        api.CPUCount(sbx.VCpu),
-			MemoryMB:        api.MemoryMB(sbx.RamMB),
-			DiskSizeMB:      api.DiskSizeMB(sbx.TotalDiskSizeMB),
-			EndAt:           sbx.EndTime,
-			State:           state,
-			EnvdVersion:     sbx.EnvdVersion,
-			EnvdAccessToken: sbx.EnvdAccessToken,
-			Domain:          sbxDomain,
-			Network:         toSandboxDetailNetworkConfig(sbx.Network),
-			Lifecycle:       toSandboxDetailLifecycle(sbx.AutoResume, sbx.AutoPause),
-			VolumeMounts:    convertFromDBMountsToAPIMounts(sbx.VolumeMounts),
+			ClientID:            sbx.ClientID,
+			TemplateID:          sbx.TemplateID,
+			Alias:               sbx.Alias,
+			SandboxID:           sbx.SandboxID,
+			StartedAt:           sbx.StartTime,
+			CpuCount:            api.CPUCount(sbx.VCpu),
+			MemoryMB:            api.MemoryMB(sbx.RamMB),
+			DiskSizeMB:          api.DiskSizeMB(sbx.TotalDiskSizeMB),
+			EndAt:               sbx.EndTime,
+			State:               state,
+			EnvdVersion:         sbx.EnvdVersion,
+			EnvdAccessToken:     sbx.EnvdAccessToken,
+			AllowInternetAccess: sbx.AllowInternetAccess,
+			Domain:              sbxDomain,
+			Network:             toSandboxDetailNetworkConfig(sbx.Network),
+			Lifecycle:           toSandboxDetailLifecycle(sbx.AutoResume, sbx.AutoPause),
+			VolumeMounts:        convertFromDBMountsToAPIMounts(sbx.VolumeMounts),
 		}
 
 		if sbx.Metadata != nil {
@@ -164,20 +165,21 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	}
 
 	sandbox := api.SandboxDetail{
-		ClientID:        consts.ClientID, // for backwards compatibility we need to return a client id
-		TemplateID:      lastSnapshot.Snapshot.EnvID,
-		SandboxID:       lastSnapshot.Snapshot.SandboxID,
-		StartedAt:       lastSnapshot.Snapshot.SandboxStartedAt.Time,
-		CpuCount:        cpuCount,
-		MemoryMB:        memoryMB,
-		DiskSizeMB:      diskSize,
-		EndAt:           lastSnapshot.EnvBuild.CreatedAt, // Latest build created_at represents last pause time
-		State:           api.Paused,
-		EnvdVersion:     envdVersion,
-		EnvdAccessToken: sbxAccessToken,
-		Domain:          nil,
-		Network:         toSandboxDetailNetworkConfig(networkConfig),
-		Lifecycle:       toSandboxDetailLifecycle(autoResumeConfig, lastSnapshot.Snapshot.AutoPause),
+		ClientID:            consts.ClientID, // for backwards compatibility we need to return a client id
+		TemplateID:          lastSnapshot.Snapshot.EnvID,
+		SandboxID:           lastSnapshot.Snapshot.SandboxID,
+		StartedAt:           lastSnapshot.Snapshot.SandboxStartedAt.Time,
+		CpuCount:            cpuCount,
+		MemoryMB:            memoryMB,
+		DiskSizeMB:          diskSize,
+		EndAt:               lastSnapshot.EnvBuild.CreatedAt, // Latest build created_at represents last pause time
+		State:               api.Paused,
+		EnvdVersion:         envdVersion,
+		EnvdAccessToken:     sbxAccessToken,
+		AllowInternetAccess: lastSnapshot.Snapshot.AllowInternetAccess,
+		Domain:              nil,
+		Network:             toSandboxDetailNetworkConfig(networkConfig),
+		Lifecycle:           toSandboxDetailLifecycle(autoResumeConfig, lastSnapshot.Snapshot.AutoPause),
 	}
 
 	if lastSnapshot.Snapshot.Metadata != nil {
