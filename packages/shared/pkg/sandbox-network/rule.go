@@ -49,11 +49,6 @@ type ACL struct {
 	Denied  []Rule
 }
 
-// IsOff returns true if all traffic should be blocked, nil-safe.
-func (a *ACL) IsOff() bool {
-	return a != nil && a.Off
-}
-
 // IsAllowed checks if an IP + port combination is allowed by the ACL.
 // Priority: allow wins → deny → default allow.
 // Returns true when the ACL is nil (no rules).

@@ -313,6 +313,7 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 			}
 
 			eventData["network_egress"] = map[string]any{
+				"off":             egress.GetOff(),
 				"allowed_cidrs":   egress.GetAllowedCidrs(),
 				"denied_cidrs":    egress.GetDeniedCidrs(),
 				"allowed_domains": egress.GetAllowedDomains(),
@@ -333,6 +334,7 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 
 			ingress := req.GetIngress()
 			eventData["network_ingress"] = map[string]any{
+				"off":               ingress.GetOff(),
 				"allowed":           ingress.GetAllowed(),
 				"denied":            ingress.GetDenied(),
 				"mask_request_host": ingress.GetMaskRequestHost(),
