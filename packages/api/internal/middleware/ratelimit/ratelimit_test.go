@@ -214,15 +214,14 @@ func TestIntegration_BurstThenDeny(t *testing.T) {
 	assert.Equal(t, http.StatusTooManyRequests, w.Code)
 	assert.NotEmpty(t, w.Header().Get("Retry-After"))
 
-	var body map[string]json.Number
-	dec := json.NewDecoder(w.Body)
-	dec.UseNumber()
-	err := dec.Decode(&body)
+	var body struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	}
+	err := json.NewDecoder(w.Body).Decode(&body)
 	require.NoError(t, err)
-
-	code, err := body["code"].Int64()
-	require.NoError(t, err)
-	assert.Equal(t, int64(http.StatusTooManyRequests), code)
+	assert.Equal(t, http.StatusTooManyRequests, body.Code)
+	assert.Equal(t, "Rate limit exceeded", body.Message)
 }
 
 func TestIntegration_Refill(t *testing.T) {
