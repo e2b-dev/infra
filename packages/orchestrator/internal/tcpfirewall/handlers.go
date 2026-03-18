@@ -168,44 +168,38 @@ func proxyWithIPVerification(ctx context.Context, conn net.Conn, upstreamAddr st
 func isEgressAllowed(sbx *sandbox.Sandbox, hostname string, ip net.IP) (bool, MatchType, error) {
 	egress := sbx.Config.GetNetworkEgress()
 	if egress == nil {
-		// No egress configuration, allow all traffic.
 		return true, MatchTypeNone, nil
 	}
 
-	// Priority 1: Check allowed domains
+	// Check allowed domains first (not in ACL — domains are matched by name).
 	if hostname != noHostnameValue {
 		for _, domain := range egress.GetAllowedDomains() {
 			if matchDomain(hostname, domain) {
-				return true, MatchTypeDomain, nil // Explicitly allowed by domain
+				return true, MatchTypeDomain, nil
 			}
 		}
 	}
 
-	// Priority 1: Check allowed CIDRs
-	for _, cidr := range egress.GetAllowedCidrs() {
-		_, ipNet, err := net.ParseCIDR(cidr)
-		if err != nil {
-			return false, MatchTypeNone, fmt.Errorf("invalid allowed CIDR %q: %w", cidr, err)
-		}
+	// Check IP allow/deny via pre-parsed ACL (no per-connection ParseCIDR).
+	acl := sbx.Config.GetEgressACL()
+	if acl == nil {
+		return true, MatchTypeNone, nil
+	}
 
-		if ipNet.Contains(ip) {
-			return true, MatchTypeCIDR, nil // Explicitly allowed by CIDR
+	// Check allowed CIDRs.
+	for i := range acl.Allowed {
+		if acl.Allowed[i].ContainsIP(ip) {
+			return true, MatchTypeCIDR, nil
 		}
 	}
 
-	// Priority 2: Check denied CIDRs
-	for _, cidr := range egress.GetDeniedCidrs() {
-		_, ipNet, err := net.ParseCIDR(cidr)
-		if err != nil {
-			return false, MatchTypeNone, fmt.Errorf("invalid denied CIDR %q: %w", cidr, err)
-		}
-
-		if ipNet.Contains(ip) {
-			return false, MatchTypeCIDR, nil // Blocked by CIDR
+	// Check denied CIDRs.
+	for i := range acl.Denied {
+		if acl.Denied[i].ContainsIP(ip) {
+			return false, MatchTypeCIDR, nil
 		}
 	}
 
-	// Default: allow all traffic.
 	return true, MatchTypeNone, nil
 }
 

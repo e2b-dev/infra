@@ -74,9 +74,8 @@ func (a *APIStore) PutSandboxesSandboxIDNetwork(
 }
 
 // validateEgressRules validates egress allow/deny rules:
-// - entries must be valid CIDRs or domain names (no bare IPs, no port syntax)
-// - denyOut entries must be valid CIDRs (not domains)
-// - allowOut entries can be CIDRs or domain names
+// - denyOut entries must be IPs or CIDRs (not domains, no ports)
+// - allowOut entries can be IPs, CIDRs, or domain names (no ports)
 // - when allowOut contains domains, denyOut must include 0.0.0.0/0
 func validateEgressRules(allowOut, denyOut []string) *api.APIError {
 	denyRules, err := sandboxnetwork.ParseRules(denyOut)
@@ -96,6 +95,14 @@ func validateEgressRules(allowOut, denyOut []string) *api.APIError {
 				ClientMsg: fmt.Sprintf("invalid deny out entry %q: domains are not supported in deny rules", rule.Host),
 			}
 		}
+
+		if rule.HasPort() {
+			return &api.APIError{
+				Code:      http.StatusBadRequest,
+				Err:       fmt.Errorf("invalid deny out entry %q: port-specific rules are not supported for egress", rule.Host),
+				ClientMsg: fmt.Sprintf("invalid deny out entry %q: port-specific rules are not supported for egress", rule.Host),
+			}
+		}
 	}
 
 	allowRules, err := sandboxnetwork.ParseRules(allowOut)
@@ -111,6 +118,12 @@ func validateEgressRules(allowOut, denyOut []string) *api.APIError {
 	for _, rule := range allowRules {
 		if rule.IsDomain {
 			hasDomains = true
+		} else if rule.HasPort() {
+			return &api.APIError{
+				Code:      http.StatusBadRequest,
+				Err:       fmt.Errorf("invalid allow out entry %q: port-specific rules are not supported for egress", rule.Host),
+				ClientMsg: fmt.Sprintf("invalid allow out entry %q: port-specific rules are not supported for egress", rule.Host),
+			}
 		}
 	}
 

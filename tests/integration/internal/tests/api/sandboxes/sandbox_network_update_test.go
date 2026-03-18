@@ -210,6 +210,10 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 		{"wildcard_domain_without_deny_all", ptrS("*.example.com"), nil},
 		{"wildcard_domain_with_partial_deny", ptrS("*.example.com"), ptrS("10.0.0.0/8")},
 		{"mixed_domain_ip_without_deny_all", ptrS("example.com", "8.8.8.8"), ptrS("10.0.0.0/8")},
+		// port syntax not supported for egress
+		{"port_in_deny_out", nil, ptrS("10.0.0.0/8:22")},
+		{"port_in_allow_out", ptrS("8.8.8.8:80"), nil},
+		{"port_range_in_allow_out", ptrS("8.8.8.8:80-443"), nil},
 	}
 	for _, tc := range rejectedCases {
 		t.Run("reject/"+tc.name, func(t *testing.T) {

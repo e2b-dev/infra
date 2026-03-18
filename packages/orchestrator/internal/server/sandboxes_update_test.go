@@ -148,6 +148,6 @@ func TestUpdate_EgressAndIngress_EgressFails_RevertsIngress(t *testing.T) {
 	require.Error(t, err)
 	require.Equal(t, codes.Internal, status.Code(err))
 	// Ingress must not be applied when egress fails.
-	require.False(t, sbx.Config.HasIngressRules())
+	require.False(t, sbx.Config.GetIngressACL().HasRules())
 	require.Nil(t, sbx.Config.GetNetworkIngress().GetAllowed())
 }

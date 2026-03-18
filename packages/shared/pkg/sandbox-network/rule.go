@@ -8,7 +8,6 @@ import (
 )
 
 // Rule represents a parsed allow/deny entry with an optional port range.
-// Used for both ingress and egress rules.
 type Rule struct {
 	Host      string     // IP, CIDR, or domain
 	IPNet     *net.IPNet // parsed CIDR; nil for domain rules
@@ -26,6 +25,11 @@ func (r Rule) ContainsIP(ip net.IP) bool {
 // AllPorts returns true if the rule matches all ports.
 func (r Rule) AllPorts() bool {
 	return r.PortStart == 0 && r.PortEnd == 0
+}
+
+// HasPort returns true if the rule specifies a port or port range.
+func (r Rule) HasPort() bool {
+	return !r.AllPorts()
 }
 
 // PortInRange returns true if the given port falls within the rule's port range,
@@ -83,29 +87,26 @@ func ParseRule(s string) (Rule, error) {
 	}, nil
 }
 
+// ParseRules parses a list of string entries into Rules.
+func ParseRules(entries []string) ([]Rule, error) {
+	rules := make([]Rule, 0, len(entries))
+	for _, entry := range entries {
+		rule, err := ParseRule(entry)
+		if err != nil {
+			return nil, fmt.Errorf("invalid entry %q: %w", entry, err)
+		}
+
+		rules = append(rules, rule)
+	}
+
+	return rules, nil
+}
+
 // ACL holds pre-parsed network access control rules.
 // Computed once at config set time to avoid per-connection parsing.
 type ACL struct {
 	Allowed []Rule
 	Denied  []Rule
-}
-
-// GetAllowed returns the allowed rules, nil-safe.
-func (a *ACL) GetAllowed() []Rule {
-	if a == nil {
-		return nil
-	}
-
-	return a.Allowed
-}
-
-// GetDenied returns the denied rules, nil-safe.
-func (a *ACL) GetDenied() []Rule {
-	if a == nil {
-		return nil
-	}
-
-	return a.Denied
 }
 
 // IsAllowed checks if an IP + port combination is allowed by the ACL.
@@ -136,208 +137,60 @@ func (a *ACL) HasRules() bool {
 	return a != nil && (len(a.Allowed) > 0 || len(a.Denied) > 0)
 }
 
-// isIPv6 returns true if a parsed rule contains an IPv6 address or CIDR.
-func (r Rule) isIPv6() bool {
-	if r.IPNet == nil {
-		return false
-	}
-
-	return r.IPNet.IP.To4() == nil
-}
-
-// NewEgressACL parses allowed and denied string entries into an ACL.
-// Returns nil for empty inputs (no rules).
-// Rejects IPv6 addresses (egress firewall rules are IPv4-only).
-func NewEgressACL(allowed, denied []string) (*ACL, error) {
-	if len(allowed) == 0 && len(denied) == 0 {
-		return nil, nil //nolint:nilnil // nil means no rules configured
-	}
-
-	allowedRules, err := ParseRules(allowed)
-	if err != nil {
-		return nil, fmt.Errorf("allowed rules: %w", err)
-	}
-
-	deniedRules, err := ParseRules(denied)
-	if err != nil {
-		return nil, fmt.Errorf("denied rules: %w", err)
-	}
-
-	for _, rule := range deniedRules {
-		if rule.IsDomain {
-			return nil, fmt.Errorf("denied rules: domain entries are not supported: %q", rule.Host)
-		}
-
-		if rule.isIPv6() {
-			return nil, fmt.Errorf("denied rules: IPv6 addresses are not supported for egress: %q", rule.Host)
-		}
-	}
-
-	for _, rule := range allowedRules {
-		if !rule.IsDomain && rule.isIPv6() {
-			return nil, fmt.Errorf("allowed rules: IPv6 addresses are not supported for egress: %q", rule.Host)
-		}
-	}
-
-	return &ACL{
-		Allowed: allowedRules,
-		Denied:  deniedRules,
-	}, nil
-}
-
-// NewIngressACL parses allowed and denied string entries into an ACL.
-// Returns nil for empty inputs (no rules).
-// Rejects domain entries (ingress rules are IP/CIDR-only).
-func NewIngressACL(allowed, denied []string) (*ACL, error) {
-	if len(allowed) == 0 && len(denied) == 0 {
-		return nil, nil //nolint:nilnil // nil means no rules configured
-	}
-
-	allowedRules, err := ParseRules(allowed)
-	if err != nil {
-		return nil, fmt.Errorf("allowed rules: %w", err)
-	}
-
-	deniedRules, err := ParseRules(denied)
-	if err != nil {
-		return nil, fmt.Errorf("denied rules: %w", err)
-	}
-
-	for _, rule := range allowedRules {
-		if rule.IsDomain {
-			return nil, fmt.Errorf("allowed rules: domain entries are not supported for ingress: %q", rule.Host)
-		}
-	}
-
-	for _, rule := range deniedRules {
-		if rule.IsDomain {
-			return nil, fmt.Errorf("denied rules: domain entries are not supported for ingress: %q", rule.Host)
-		}
-	}
-
-	return &ACL{
-		Allowed: allowedRules,
-		Denied:  deniedRules,
-	}, nil
-}
-
-// ParseRules parses a list of string entries into Rules.
-func ParseRules(entries []string) ([]Rule, error) {
-	rules := make([]Rule, 0, len(entries))
-	for _, entry := range entries {
-		rule, err := ParseRule(entry)
-		if err != nil {
-			return nil, fmt.Errorf("invalid entry %q: %w", entry, err)
-		}
-
-		rules = append(rules, rule)
-	}
-
-	return rules, nil
-}
-
-// splitHostPort splits a rule string into host and port range components.
-// Returns portStart=0, portEnd=0 for "all ports".
-//
-// IPv6 addresses use bracket notation for ports: "[::1]:80", "[::/0]:53-443".
-// Without brackets, IPv6 addresses/CIDRs are treated as host-only (all ports).
+// splitHostPort splits a rule string into host and optional port range.
+// Uses net.SplitHostPort for bracket/IPv6 handling, with fallback for bare hosts.
 func splitHostPort(s string) (host string, portStart, portEnd uint16, err error) {
-	// Handle bracket notation for IPv6: [host]:port
-	if strings.HasPrefix(s, "[") {
-		closeBracket := strings.Index(s, "]")
-		if closeBracket < 0 {
-			return "", 0, 0, fmt.Errorf("missing closing bracket in %q", s)
+	h, portStr, splitErr := net.SplitHostPort(s)
+	if splitErr != nil {
+		// Strip brackets for bare "[::1]" (no port).
+		if strings.HasPrefix(s, "[") && strings.HasSuffix(s, "]") {
+			return s[1 : len(s)-1], 0, 0, nil
 		}
 
-		host = s[1:closeBracket]
-		rest := s[closeBracket+1:]
-
-		if rest == "" {
-			return host, 0, 0, nil
-		}
-
-		if !strings.HasPrefix(rest, ":") {
-			return "", 0, 0, fmt.Errorf("expected ':' after ']' in %q", s)
-		}
-
-		portPart := rest[1:]
-		if portPart == "" {
-			return host, 0, 0, nil
-		}
-
-		portStart, portEnd, err = parsePortRange(portPart)
-		if err != nil {
-			return "", 0, 0, err
-		}
-
-		return host, portStart, portEnd, nil
-	}
-
-	// Count colons to detect IPv6.
-	colonCount := strings.Count(s, ":")
-	if colonCount > 1 {
-		// Multiple colons → IPv6 address or CIDR, no port separator possible
-		// without bracket notation.
+		// No port part — bare host (IP, CIDR, domain, or unbracketed IPv6).
 		return s, 0, 0, nil
 	}
 
-	idx := strings.LastIndex(s, ":")
-	if idx < 0 {
-		// No colon: bare host, all ports.
-		return s, 0, 0, nil
-	}
-
-	host = s[:idx]
-	portPart := s[idx+1:]
-
-	// Empty host means "all IPs" — e.g. ":443" means port 443 on 0.0.0.0/0.
+	host = h
 	if host == "" {
-		host = "0.0.0.0/0"
+		host = "0.0.0.0/0" // ":443" means all IPs, port 443
 	}
 
-	// Explicit "all ports" — trailing colon with nothing after it.
-	if portPart == "" {
-		return host, 0, 0, nil
+	if portStr == "" {
+		return host, 0, 0, nil // trailing colon = all ports
 	}
 
-	portStart, portEnd, err = parsePortRange(portPart)
-	if err != nil {
-		return "", 0, 0, err
-	}
+	portStart, portEnd, err = parsePortRange(portStr)
 
-	return host, portStart, portEnd, nil
+	return host, portStart, portEnd, err
 }
 
-// parsePortRange parses a port or port range string.
-// "80" → (80, 80, nil), "1-1024" → (1, 1024, nil).
-func parsePortRange(s string) (start, end uint16, err error) {
-	if startStr, endStr, ok := strings.Cut(s, "-"); ok {
-		start, err = parsePort(startStr)
-		if err != nil {
-			return 0, 0, fmt.Errorf("invalid port range start: %w", err)
-		}
+// parsePortRange parses "80" → (80, 80) or "80-443" → (80, 443).
+func parsePortRange(s string) (uint16, uint16, error) {
+	lo, hi, isRange := strings.Cut(s, "-")
 
-		end, err = parsePort(endStr)
-		if err != nil {
-			return 0, 0, fmt.Errorf("invalid port range end: %w", err)
-		}
-
-		if start > end {
-			return 0, 0, fmt.Errorf("port range start %d is greater than end %d", start, end)
-		}
-
-		return start, end, nil
-	}
-
-	port, err := parsePort(s)
+	start, err := parsePort(lo)
 	if err != nil {
 		return 0, 0, err
 	}
 
-	return port, port, nil
+	if !isRange {
+		return start, start, nil
+	}
+
+	end, err := parsePort(hi)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	if start > end {
+		return 0, 0, fmt.Errorf("port range %d-%d: start > end", start, end)
+	}
+
+	return start, end, nil
 }
 
-// parsePort parses and validates a single port number (1-65535).
+// parsePort validates a single port number (1-65535).
 func parsePort(s string) (uint16, error) {
 	n, err := strconv.ParseUint(s, 10, 16)
 	if err != nil {
@@ -345,7 +198,7 @@ func parsePort(s string) (uint16, error) {
 	}
 
 	if n == 0 {
-		return 0, fmt.Errorf("port must be between 1 and 65535, got 0")
+		return 0, fmt.Errorf("port 0 is not valid")
 	}
 
 	return uint16(n), nil

@@ -106,6 +106,25 @@ func TestValidateNetworkConfig(t *testing.T) {
 			wantCode:   http.StatusBadRequest,
 			wantErrMsg: `invalid deny out entry "not-a-cidr": domains are not supported in deny rules`,
 		},
+		// Port syntax rejected for egress
+		{
+			name: "deny_out with port is rejected",
+			network: &api.SandboxNetworkConfig{
+				DenyOut: &[]string{"10.0.0.0/8:22"},
+			},
+			wantErr:    true,
+			wantCode:   http.StatusBadRequest,
+			wantErrMsg: `invalid deny out entry "10.0.0.0/8": port-specific rules are not supported for egress`,
+		},
+		{
+			name: "allow_out with port is rejected",
+			network: &api.SandboxNetworkConfig{
+				AllowOut: &[]string{"8.8.8.8:80"},
+			},
+			wantErr:    true,
+			wantCode:   http.StatusBadRequest,
+			wantErrMsg: `invalid allow out entry "8.8.8.8": port-specific rules are not supported for egress`,
+		},
 		// Domain validation tests
 		{
 			name: "allow_out with domain requires deny_out block-all",
@@ -343,28 +362,24 @@ func TestValidateNetworkConfig(t *testing.T) {
 			},
 			wantErr: false,
 		},
-		// Port-specific rules
+		// Port-specific egress rules are rejected
 		{
-			name: "allow_out with port is accepted",
+			name: "allow_out with port is rejected",
 			network: &api.SandboxNetworkConfig{
-				AllowOut: &[]string{"8.8.8.8/32:80"},
-				DenyOut:  &[]string{sandboxnetwork.AllInternetTrafficCIDR},
+				AllowOut: &[]string{"8.8.8.8:80"},
 			},
-			wantErr: false,
+			wantErr:    true,
+			wantCode:   http.StatusBadRequest,
+			wantErrMsg: `invalid allow out entry "8.8.8.8": port-specific rules are not supported for egress`,
 		},
 		{
-			name: "deny_out with port is accepted",
+			name: "deny_out with port is rejected",
 			network: &api.SandboxNetworkConfig{
 				DenyOut: &[]string{"10.0.0.0/8:22"},
 			},
-			wantErr: false,
-		},
-		{
-			name: "allow_out with port range is accepted",
-			network: &api.SandboxNetworkConfig{
-				AllowOut: &[]string{"8.8.8.8/32:1-1024"},
-			},
-			wantErr: false,
+			wantErr:    true,
+			wantCode:   http.StatusBadRequest,
+			wantErrMsg: `invalid deny out entry "10.0.0.0/8": port-specific rules are not supported for egress`,
 		},
 		{
 			name: "deny_out with domain is rejected",

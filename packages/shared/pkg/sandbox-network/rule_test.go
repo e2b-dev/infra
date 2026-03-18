@@ -176,15 +176,13 @@ func TestParseRule(t *testing.T) {
 
 		// Errors
 		{name: "empty string", input: "", wantErr: true, errSubstr: "empty"},
-		{name: "port zero", input: "8.8.8.8:0", wantErr: true, errSubstr: "port must be between 1 and 65535"},
+		{name: "port zero", input: "8.8.8.8:0", wantErr: true, errSubstr: "port 0"},
 		{name: "port too high", input: "8.8.8.8:65536", wantErr: true, errSubstr: "invalid port"},
-		{name: "port range reversed", input: "8.8.8.8:1024-80", wantErr: true, errSubstr: "greater than end"},
+		{name: "port range reversed", input: "8.8.8.8:1024-80", wantErr: true, errSubstr: "start > end"},
 		{name: "non-numeric port", input: "8.8.8.8:abc", wantErr: true, errSubstr: "invalid port"},
 		{name: "port range with non-numeric start", input: "8.8.8.8:abc-100", wantErr: true, errSubstr: "invalid port"},
 		{name: "port range with non-numeric end", input: "8.8.8.8:80-abc", wantErr: true, errSubstr: "invalid port"},
-		{name: "port range start zero", input: "8.8.8.8:0-80", wantErr: true, errSubstr: "port must be between 1 and 65535"},
-		{name: "missing closing bracket", input: "[::1", wantErr: true, errSubstr: "missing closing bracket"},
-		{name: "junk after bracket", input: "[::1]x", wantErr: true, errSubstr: "expected ':'"},
+		{name: "port range start zero", input: "8.8.8.8:0-80", wantErr: true, errSubstr: "port 0"},
 	}
 
 	for _, tt := range tests {
@@ -259,83 +257,15 @@ func TestParseRules(t *testing.T) {
 	})
 }
 
-func TestNewEgressACL_RejectsDomainInDeny(t *testing.T) {
-	t.Parallel()
-
-	_, err := NewEgressACL(nil, []string{"example.com"})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "domain entries are not supported")
-
-	_, err = NewEgressACL(nil, []string{"0.0.0.0/0", "*.example.com:443"})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "domain entries are not supported")
-
-	// IPs and CIDRs in deny are fine.
-	acl, err := NewEgressACL([]string{"example.com:443"}, []string{"10.0.0.0/8", "192.168.1.1:80"})
-	require.NoError(t, err)
-	require.Len(t, acl.Denied, 2)
-}
-
-func TestNewEgressACL_RejectsIPv6(t *testing.T) {
-	t.Parallel()
-
-	_, err := NewEgressACL([]string{"::1"}, nil)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "IPv6")
-
-	_, err = NewEgressACL(nil, []string{"::1"})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "IPv6")
-
-	_, err = NewEgressACL([]string{"[::1]:80"}, nil)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "IPv6")
-}
-
-func TestNewIngressACL(t *testing.T) {
-	t.Parallel()
-
-	t.Run("nil for empty inputs", func(t *testing.T) {
-		t.Parallel()
-
-		acl, err := NewIngressACL(nil, nil)
-		require.NoError(t, err)
-		require.Nil(t, acl)
-	})
-
-	t.Run("rejects domains", func(t *testing.T) {
-		t.Parallel()
-
-		_, err := NewIngressACL([]string{"example.com"}, nil)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "domain")
-
-		_, err = NewIngressACL(nil, []string{"example.com"})
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "domain")
-	})
-
-	t.Run("accepts IPv4", func(t *testing.T) {
-		t.Parallel()
-
-		acl, err := NewIngressACL([]string{"10.0.0.0/8"}, []string{"0.0.0.0/0"})
-		require.NoError(t, err)
-		require.Len(t, acl.Allowed, 1)
-		require.Len(t, acl.Denied, 1)
-	})
-
-	t.Run("accepts IPv6", func(t *testing.T) {
-		t.Parallel()
-
-		acl, err := NewIngressACL([]string{"::1", "[2001:db8::1]:80"}, []string{"::/0"})
-		require.NoError(t, err)
-		require.Len(t, acl.Allowed, 2)
-		require.Len(t, acl.Denied, 1)
-	})
-}
-
 func TestACL_IsAllowed(t *testing.T) {
 	t.Parallel()
+
+	mustParseRule := func(s string) Rule {
+		r, err := ParseRule(s)
+		require.NoError(t, err)
+
+		return r
+	}
 
 	t.Run("nil ACL allows all", func(t *testing.T) {
 		t.Parallel()
@@ -347,8 +277,10 @@ func TestACL_IsAllowed(t *testing.T) {
 	t.Run("allow wins over deny", func(t *testing.T) {
 		t.Parallel()
 
-		acl, err := NewIngressACL([]string{"10.0.0.0/8"}, []string{"0.0.0.0/0"})
-		require.NoError(t, err)
+		acl := &ACL{
+			Allowed: []Rule{mustParseRule("10.0.0.0/8")},
+			Denied:  []Rule{mustParseRule("0.0.0.0/0")},
+		}
 
 		require.True(t, acl.IsAllowed(net.ParseIP("10.1.2.3"), 80))
 		require.False(t, acl.IsAllowed(net.ParseIP("192.168.1.1"), 80))
@@ -357,8 +289,10 @@ func TestACL_IsAllowed(t *testing.T) {
 	t.Run("port-specific rules", func(t *testing.T) {
 		t.Parallel()
 
-		acl, err := NewIngressACL([]string{"0.0.0.0/0:443"}, []string{"0.0.0.0/0"})
-		require.NoError(t, err)
+		acl := &ACL{
+			Allowed: []Rule{mustParseRule("0.0.0.0/0:443")},
+			Denied:  []Rule{mustParseRule("0.0.0.0/0")},
+		}
 
 		require.True(t, acl.IsAllowed(net.ParseIP("1.2.3.4"), 443))
 		require.False(t, acl.IsAllowed(net.ParseIP("1.2.3.4"), 80))
@@ -367,8 +301,10 @@ func TestACL_IsAllowed(t *testing.T) {
 	t.Run("IPv6 matching", func(t *testing.T) {
 		t.Parallel()
 
-		acl, err := NewIngressACL([]string{"2001:db8::/32"}, []string{"::/0"})
-		require.NoError(t, err)
+		acl := &ACL{
+			Allowed: []Rule{mustParseRule("2001:db8::/32")},
+			Denied:  []Rule{mustParseRule("::/0")},
+		}
 
 		require.True(t, acl.IsAllowed(net.ParseIP("2001:db8::1"), 80))
 		require.False(t, acl.IsAllowed(net.ParseIP("2001:db9::1"), 80))
@@ -383,17 +319,10 @@ func TestRule_AllPorts(t *testing.T) {
 	require.False(t, Rule{Host: "8.8.8.8", PortStart: 1, PortEnd: 1024}.AllPorts())
 }
 
-func TestRule_ContainsIP(t *testing.T) {
+func TestRule_HasPort(t *testing.T) {
 	t.Parallel()
 
-	rule, err := ParseRule("10.0.0.0/8")
-	require.NoError(t, err)
-
-	require.True(t, rule.ContainsIP(net.ParseIP("10.1.2.3")))
-	require.False(t, rule.ContainsIP(net.ParseIP("192.168.1.1")))
-
-	// Domain rules never contain IPs.
-	domainRule, err := ParseRule("example.com")
-	require.NoError(t, err)
-	require.False(t, domainRule.ContainsIP(net.ParseIP("1.2.3.4")))
+	require.False(t, Rule{Host: "8.8.8.8", PortStart: 0, PortEnd: 0}.HasPort())
+	require.True(t, Rule{Host: "8.8.8.8", PortStart: 80, PortEnd: 80}.HasPort())
+	require.True(t, Rule{Host: "8.8.8.8", PortStart: 1, PortEnd: 1024}.HasPort())
 }

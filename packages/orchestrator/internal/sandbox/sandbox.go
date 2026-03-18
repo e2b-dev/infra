@@ -36,6 +36,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+	sandboxnetwork "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -79,10 +80,14 @@ type Config struct {
 
 	VolumeMounts []VolumeMountConfig
 
-	// mu protects mutable sub-fields of Network (Egress, Ingress).
-	// The Network pointer itself is set once at construction and never replaced.
+	// mu protects mutable sub-fields: Network (Egress, Ingress) and ACL pointers.
+	// ACL values are immutable once created — only the pointer is swapped.
 	mu      *sync.RWMutex
 	Network *orchestrator.SandboxNetworkConfig
+
+	// Pre-parsed ACLs — each ACL is immutable; pointer swapped under mu on update.
+	egressACL  *sandboxnetwork.ACL
+	ingressACL *sandboxnetwork.ACL
 }
 
 // NewConfig creates a Config, normalizing a nil Network to an empty config
@@ -93,6 +98,9 @@ func NewConfig(c Config) *Config {
 	}
 
 	c.mu = &sync.RWMutex{}
+
+	c.egressACL = newEgressACL(c.Network.GetEgress())
+	c.ingressACL = newIngressACL(c.Network.GetIngress())
 
 	return &c
 }
@@ -105,12 +113,22 @@ func (c *Config) GetNetworkEgress() *orchestrator.SandboxNetworkEgressConfig {
 	return c.Network.GetEgress()
 }
 
-// SetNetworkEgress updates the egress config in a thread-safe manner.
+// SetNetworkEgress updates the egress config and swaps the pre-parsed ACL.
 func (c *Config) SetNetworkEgress(egress *orchestrator.SandboxNetworkEgressConfig) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	acl := newEgressACL(egress)
 
+	c.mu.Lock()
 	c.Network.Egress = egress
+	c.egressACL = acl
+	c.mu.Unlock()
+}
+
+// GetEgressACL returns the pre-parsed egress ACL.
+func (c *Config) GetEgressACL() *sandboxnetwork.ACL {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	return c.egressACL
 }
 
 // GetNetworkIngress returns the ingress config in a thread-safe manner.
@@ -121,77 +139,81 @@ func (c *Config) GetNetworkIngress() *orchestrator.SandboxNetworkIngressConfig {
 	return c.Network.GetIngress()
 }
 
-// SetNetworkIngress updates the ingress config in a thread-safe manner.
+// SetNetworkIngress updates the ingress config and swaps the pre-parsed ACL.
 func (c *Config) SetNetworkIngress(ingress *orchestrator.SandboxNetworkIngressConfig) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	acl := newIngressACL(ingress)
 
+	c.mu.Lock()
 	c.Network.Ingress = ingress
+	c.ingressACL = acl
+	c.mu.Unlock()
 }
 
-// IsIngressAllowed checks if a client IP + destination port is allowed by the
-// pre-validated ingress rules received from the API. The rules are already
-// parsed into IngressRule protos, so no string parsing happens here.
-func (c *Config) IsIngressAllowed(clientIP net.IP, port uint16) bool {
+// GetIngressACL returns the pre-parsed ingress ACL.
+func (c *Config) GetIngressACL() *sandboxnetwork.ACL {
 	c.mu.RLock()
-	ingress := c.Network.GetIngress()
-	c.mu.RUnlock()
+	defer c.mu.RUnlock()
 
-	allowed := ingress.GetAllowed()
-	denied := ingress.GetDenied()
+	return c.ingressACL
+}
+
+// newEgressACL parses proto egress config into a pre-parsed ACL.
+// Rules are pre-validated by the API; invalid entries are silently skipped.
+func newEgressACL(egress *orchestrator.SandboxNetworkEgressConfig) *sandboxnetwork.ACL {
+	if egress == nil {
+		return nil
+	}
+
+	allowedRules, _ := sandboxnetwork.ParseRules(egress.GetAllowedCidrs())
+	deniedRules, _ := sandboxnetwork.ParseRules(egress.GetDeniedCidrs())
+
+	if len(allowedRules) == 0 && len(deniedRules) == 0 {
+		return nil
+	}
+
+	return &sandboxnetwork.ACL{
+		Allowed: allowedRules,
+		Denied:  deniedRules,
+	}
+}
+
+// newIngressACL builds a pre-parsed ACL directly from proto IngressRules.
+// Rules are pre-validated by the API; invalid entries are silently skipped.
+func newIngressACL(ingress *orchestrator.SandboxNetworkIngressConfig) *sandboxnetwork.ACL {
+	if ingress == nil {
+		return nil
+	}
+
+	parse := func(rules []*orchestrator.IngressRule) []sandboxnetwork.Rule {
+		out := make([]sandboxnetwork.Rule, 0, len(rules))
+		for _, r := range rules {
+			_, ipNet, err := net.ParseCIDR(r.GetCidr())
+			if err != nil {
+				continue // pre-validated by API
+			}
+
+			out = append(out, sandboxnetwork.Rule{
+				Host:      r.GetCidr(),
+				IPNet:     ipNet,
+				PortStart: uint16(r.GetPortLow()),
+				PortEnd:   uint16(r.GetPortHigh()),
+			})
+		}
+
+		return out
+	}
+
+	allowed := parse(ingress.GetAllowed())
+	denied := parse(ingress.GetDenied())
 
 	if len(allowed) == 0 && len(denied) == 0 {
-		return true
+		return nil
 	}
 
-	// Check allowed rules first.
-	for _, rule := range allowed {
-		if ingressRuleMatches(rule, clientIP, port) {
-			return true
-		}
+	return &sandboxnetwork.ACL{
+		Allowed: allowed,
+		Denied:  denied,
 	}
-
-	// Check denied rules.
-	for _, rule := range denied {
-		if ingressRuleMatches(rule, clientIP, port) {
-			return false
-		}
-	}
-
-	// Default: allow.
-	return true
-}
-
-// HasIngressRules returns true if any ingress allow/deny rules are configured.
-func (c *Config) HasIngressRules() bool {
-	c.mu.RLock()
-	ingress := c.Network.GetIngress()
-	c.mu.RUnlock()
-
-	return len(ingress.GetAllowed()) > 0 || len(ingress.GetDenied()) > 0
-}
-
-// ingressRuleMatches checks if a pre-validated IngressRule matches a client IP and port.
-func ingressRuleMatches(rule *orchestrator.IngressRule, clientIP net.IP, port uint16) bool {
-	_, ipNet, err := net.ParseCIDR(rule.GetCidr())
-	if err != nil {
-		// Pre-validated by the API; should not happen.
-		return false
-	}
-
-	if !ipNet.Contains(clientIP) {
-		return false
-	}
-
-	low := uint16(rule.GetPortLow())
-	high := uint16(rule.GetPortHigh())
-
-	// 0/0 means all ports.
-	if low == 0 && high == 0 {
-		return true
-	}
-
-	return port >= low && port <= high
 }
 
 type VolumeMountConfig struct {
