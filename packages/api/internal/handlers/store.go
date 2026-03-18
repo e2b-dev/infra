@@ -230,12 +230,6 @@ func (a *APIStore) Close(ctx context.Context) error {
 		errs = append(errs, fmt.Errorf("closing snapshot cache: %w", err))
 	}
 
-	if a.redisClient != nil {
-		if err := a.redisClient.Close(); err != nil {
-			errs = append(errs, fmt.Errorf("closing redis client: %w", err))
-		}
-	}
-
 	return errors.Join(errs...)
 }
 

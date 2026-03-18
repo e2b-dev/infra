@@ -393,11 +393,15 @@ func run() int {
 	if err != nil {
 		logger.L().Fatal(ctx, "Initializing Redis client", zap.Error(err))
 	}
+	cleanupFns = append(cleanupFns, func(ctx context.Context) error {
+		return redisClient.Close()
+	})
 
 	featureFlags, err := featureflags.NewClient()
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create feature flags client", zap.Error(err))
 	}
+	cleanupFns = append(cleanupFns, featureFlags.Close)
 
 	featureFlags.SetServiceName(serviceName)
 	featureFlags.SetDeploymentName(config.DomainName)
