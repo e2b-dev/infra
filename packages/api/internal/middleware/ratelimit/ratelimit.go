@@ -2,6 +2,7 @@ package ratelimit
 
 import (
 	"context"
+	"math"
 	"net/http"
 	"strconv"
 	"time"
@@ -112,12 +113,17 @@ func Middleware(limiter *redis_rate.Limiter, cfg Config, ff *featureflags.Client
 		// Resolve per-team limit overrides from feature flag.
 		limit := resolveLimit(ctx, ff, cfg, route)
 
+		// Build a logger with rate limit context for reuse.
+		l := logger.L().With(
+			logger.WithTeamID(teamID),
+			zap.String("route", route),
+			zap.Int("rate_limit_rate", limit.Rate),
+			zap.Int("rate_limit_burst", limit.Burst),
+		)
+
 		res, err := limiter.Allow(ctx, key, limit)
 		if err != nil {
-			logger.L().Warn(ctx, "rate limiter Redis error",
-				zap.Error(err),
-				logger.WithTeamID(teamID),
-			)
+			l.Warn(ctx, "rate limiter Redis error", zap.Error(err))
 
 			if cfg.FailOpen {
 				c.Next()
@@ -133,10 +139,10 @@ func Middleware(limiter *redis_rate.Limiter, cfg Config, ff *featureflags.Client
 			return
 		}
 
-		// Set standard rate limit headers (use resolved burst, not default).
-		c.Header("X-RateLimit-Limit", strconv.Itoa(limit.Burst))
-		c.Header("X-RateLimit-Remaining", strconv.Itoa(res.Remaining))
-		c.Header("X-RateLimit-Reset", strconv.FormatInt(time.Now().Add(res.ResetAfter).Unix(), 10))
+		// Set standard rate limit headers
+		c.Header("RateLimit-Limit", strconv.Itoa(limit.Burst))
+		c.Header("RateLimit-Remaining", strconv.Itoa(res.Remaining))
+		c.Header("RateLimit-Reset", strconv.FormatInt(int64(math.Ceil(res.ResetAfter.Seconds())), 10))
 
 		if res.Allowed > 0 {
 			c.Next()
@@ -148,8 +154,8 @@ func Middleware(limiter *redis_rate.Limiter, cfg Config, ff *featureflags.Client
 		retryAfterSecs := max(int(res.RetryAfter.Seconds()), 1)
 		c.Header("Retry-After", strconv.Itoa(retryAfterSecs))
 
-		logger.L().Warn(ctx, "rate limit exceeded",
-			logger.WithTeamID(teamID),
+		l.Warn(ctx, "rate limit exceeded",
+			zap.Int("remaining", res.Remaining),
 			zap.Int("retry_after_s", retryAfterSecs),
 		)
 
