@@ -442,9 +442,7 @@ type SandboxNetworkEgressConfig struct {
 	AllowedCidrs   []string `protobuf:"bytes,1,rep,name=allowed_cidrs,json=allowedCidrs,proto3" json:"allowed_cidrs,omitempty"`
 	DeniedCidrs    []string `protobuf:"bytes,2,rep,name=denied_cidrs,json=deniedCidrs,proto3" json:"denied_cidrs,omitempty"`
 	AllowedDomains []string `protobuf:"bytes,3,rep,name=allowed_domains,json=allowedDomains,proto3" json:"allowed_domains,omitempty"`
-	// When true, all egress traffic is blocked. Mutually exclusive with
-	// allow/deny rules. Default false enables normal rule evaluation.
-	Off bool `protobuf:"varint,4,opt,name=off,proto3" json:"off,omitempty"`
+	Off            bool     `protobuf:"varint,4,opt,name=off,proto3" json:"off,omitempty"`
 }
 
 func (x *SandboxNetworkEgressConfig) Reset() {
@@ -579,9 +577,7 @@ type SandboxNetworkIngressConfig struct {
 	MaskRequestHost    *string        `protobuf:"bytes,2,opt,name=mask_request_host,json=maskRequestHost,proto3,oneof" json:"mask_request_host,omitempty"`
 	Allowed            []*IngressRule `protobuf:"bytes,3,rep,name=allowed,proto3" json:"allowed,omitempty"`
 	Denied             []*IngressRule `protobuf:"bytes,4,rep,name=denied,proto3" json:"denied,omitempty"`
-	// When true, all non-envd ingress traffic is blocked. Mutually exclusive
-	// with allow/deny rules. Default false enables normal rule evaluation.
-	Off bool `protobuf:"varint,5,opt,name=off,proto3" json:"off,omitempty"`
+	Off                bool           `protobuf:"varint,5,opt,name=off,proto3" json:"off,omitempty"`
 }
 
 func (x *SandboxNetworkIngressConfig) Reset() {
