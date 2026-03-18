@@ -699,7 +699,7 @@ paths:
   /teams/resolve:
     get:
       summary: Resolve team identity
-      description: Resolves a team slug or UUID to the team's identity, validating the user is a member.
+      description: Resolves a team slug to the team's identity, validating the user is a member.
       tags: [teams]
       security:
         - Supabase1TokenAuth: []
