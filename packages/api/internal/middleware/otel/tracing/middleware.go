@@ -18,6 +18,7 @@ package tracing // import "go.opentelemetry.io/contrib/instrumentation/github.co
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -112,9 +113,15 @@ func Middleware(tracerProvider oteltrace.TracerProvider, service string) gin.Han
 
 		status := c.Writer.Status()
 		attrs := semconv.HTTPAttributesFromHTTPStatusCode(status)
-		spanStatus, spanMessage := semconv.SpanStatusFromHTTPStatusCode(status)
 		span.SetAttributes(attrs...)
-		span.SetStatus(spanStatus, spanMessage)
+
+		if errors.Is(ctx.Err(), context.Canceled) {
+			span.SetAttributes(attribute.Bool("client.canceled", true))
+		} else {
+			spanStatus, spanMessage := semconv.SpanStatusFromHTTPStatusCode(status)
+			span.SetStatus(spanStatus, spanMessage)
+		}
+
 		if len(c.Errors) > 0 {
 			span.SetAttributes(attribute.String("gin.errors", strings.TrimSpace(c.Errors.String())))
 		}
