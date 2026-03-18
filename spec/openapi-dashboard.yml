@@ -380,6 +380,7 @@ components:
         - slug
         - tier
         - email
+        - profilePictureUrl
         - isDefault
         - limits
       properties:
@@ -394,6 +395,9 @@ components:
           type: string
         email:
           type: string
+        profilePictureUrl:
+          type: string
+          nullable: true
         isDefault:
           type: boolean
         limits:
@@ -445,13 +449,15 @@ components:
 
     UpdateTeamRequest:
       type: object
-      required:
-        - name
+      minProperties: 1
       properties:
         name:
           type: string
           minLength: 1
           maxLength: 255
+        profilePictureUrl:
+          type: string
+          nullable: true
 
     UpdateTeamResponse:
       type: object
@@ -464,6 +470,9 @@ components:
           format: uuid
         name:
           type: string
+        profilePictureUrl:
+          type: string
+          nullable: true
 
     AddTeamMemberRequest:
       type: object

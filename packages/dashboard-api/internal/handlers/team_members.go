@@ -16,7 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-func (s *APIStore) GetTeamsTeamIdMembers(c *gin.Context, teamId api.TeamId) {
+func (s *APIStore) GetTeamsTeamIdMembers(c *gin.Context, _ api.TeamId) {
 	ctx := c.Request.Context()
 	telemetry.ReportEvent(ctx, "list team members")
 
@@ -53,7 +53,7 @@ func (s *APIStore) GetTeamsTeamIdMembers(c *gin.Context, teamId api.TeamId) {
 	})
 }
 
-func (s *APIStore) PostTeamsTeamIdMembers(c *gin.Context, teamId api.TeamId) {
+func (s *APIStore) PostTeamsTeamIdMembers(c *gin.Context, _ api.TeamId) {
 	ctx := c.Request.Context()
 	telemetry.ReportEvent(ctx, "add team member")
 
@@ -114,7 +114,7 @@ func (s *APIStore) PostTeamsTeamIdMembers(c *gin.Context, teamId api.TeamId) {
 	c.Status(http.StatusCreated)
 }
 
-func (s *APIStore) DeleteTeamsTeamIdMembersUserId(c *gin.Context, teamId api.TeamId, userId api.UserId) {
+func (s *APIStore) DeleteTeamsTeamIdMembersUserId(c *gin.Context, _ api.TeamId, userId api.UserId) {
 	ctx := c.Request.Context()
 	telemetry.ReportEvent(ctx, "remove team member")
 
@@ -172,4 +172,3 @@ func (s *APIStore) DeleteTeamsTeamIdMembersUserId(c *gin.Context, teamId api.Tea
 
 	c.Status(http.StatusNoContent)
 }
-

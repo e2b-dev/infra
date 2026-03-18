@@ -11,26 +11,30 @@ import (
 	"github.com/google/uuid"
 )
 
-const updateTeamName = `-- name: UpdateTeamName :one
+const updateTeam = `-- name: UpdateTeam :one
 UPDATE public.teams
-SET name = $1::text
-WHERE id = $2::uuid
-RETURNING id, name
+SET
+    name = COALESCE($1::text, name),
+    profile_picture_url = COALESCE($2::text, profile_picture_url)
+WHERE id = $3::uuid
+RETURNING id, name, profile_picture_url
 `
 
-type UpdateTeamNameParams struct {
-	Name   string
-	TeamID uuid.UUID
+type UpdateTeamParams struct {
+	Name              *string
+	ProfilePictureUrl *string
+	TeamID            uuid.UUID
 }
 
-type UpdateTeamNameRow struct {
-	ID   uuid.UUID
-	Name string
+type UpdateTeamRow struct {
+	ID                uuid.UUID
+	Name              string
+	ProfilePictureUrl *string
 }
 
-func (q *Queries) UpdateTeamName(ctx context.Context, arg UpdateTeamNameParams) (UpdateTeamNameRow, error) {
-	row := q.db.QueryRow(ctx, updateTeamName, arg.Name, arg.TeamID)
-	var i UpdateTeamNameRow
-	err := row.Scan(&i.ID, &i.Name)
+func (q *Queries) UpdateTeam(ctx context.Context, arg UpdateTeamParams) (UpdateTeamRow, error) {
+	row := q.db.QueryRow(ctx, updateTeam, arg.Name, arg.ProfilePictureUrl, arg.TeamID)
+	var i UpdateTeamRow
+	err := row.Scan(&i.ID, &i.Name, &i.ProfilePictureUrl)
 	return i, err
 }
