@@ -2,6 +2,8 @@ package metrics
 
 import (
 	"context"
+	"errors"
+	"os"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -24,7 +26,13 @@ var (
 
 var (
 	operationKey = attribute.Key("operation")
-	successKey   = attribute.Key("success")
+	resultKey    = attribute.Key("result")
+)
+
+const (
+	resultSuccess     = "success"
+	resultClientError = "client_error"
+	resultOtherError  = "other_error"
 )
 
 type finishFunc func(error)
@@ -33,15 +41,39 @@ func recordCall(ctx context.Context, operation string) finishFunc {
 	start := time.Now()
 
 	return func(err error) {
-		success := err == nil
+		result := classifyResult(err)
 		durationMs := time.Since(start).Milliseconds()
 
 		attrs := metric.WithAttributes(
 			operationKey.String(operation),
-			successKey.Bool(success),
+			resultKey.String(result),
 		)
 
 		callsCounter.Add(ctx, 1, attrs)
 		durationRecorder.Record(ctx, durationMs, attrs)
 	}
+}
+
+func classifyResult(err error) string {
+	if err == nil {
+		return resultSuccess
+	}
+
+	if isClientError(err) {
+		return resultClientError
+	}
+
+	return resultOtherError
+}
+
+func isClientError(err error) bool {
+	if errors.Is(err, os.ErrNotExist) {
+		return true
+	}
+
+	if errors.Is(err, os.ErrExist) {
+		return true
+	}
+
+	return false
 }
