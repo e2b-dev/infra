@@ -8,7 +8,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
@@ -16,6 +15,8 @@ import (
 	"github.com/pressly/goose/v3"
 	"github.com/pressly/goose/v3/database"
 	"github.com/pressly/goose/v3/lock"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 )
 
 const (
