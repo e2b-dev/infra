@@ -81,29 +81,7 @@ func TestSandboxDetailReturnsLifecycleAndNetworkConfig(t *testing.T) {
 	assertDetail(t, api.Running)
 
 	pauseSandbox(t, c, sbx.SandboxID)
-
-	require.Eventually(t, func() bool {
-		response, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), sbx.SandboxID, setup.WithAPIKey())
-		require.NoError(t, err)
-		require.Equal(t, http.StatusOK, response.StatusCode())
-		require.NotNil(t, response.JSON200)
-
-		if response.JSON200.State != api.Paused {
-			return false
-		}
-
-		require.NotNil(t, response.JSON200.Lifecycle)
-		require.NotNil(t, response.JSON200.Network)
-		require.NotNil(t, response.JSON200.Network.AllowOut)
-		require.NotNil(t, response.JSON200.Network.DenyOut)
-		require.NotNil(t, response.JSON200.AllowInternetAccess)
-
-		return response.JSON200.Lifecycle.AutoResume &&
-			response.JSON200.Lifecycle.OnTimeout == api.Pause &&
-			(*response.JSON200.AllowInternetAccess) &&
-			assert.ObjectsAreEqual(allowOut, *response.JSON200.Network.AllowOut) &&
-			assert.ObjectsAreEqual(denyOut, *response.JSON200.Network.DenyOut)
-	}, 10*time.Second, 100*time.Millisecond, "Sandbox detail did not return paused lifecycle/network config in time")
+	assertDetail(t, api.Paused)
 }
 
 func TestSandboxDetailPaused(t *testing.T) {
@@ -145,9 +123,15 @@ func TestSandboxDetailPausingSandbox(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		detailResponse, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), sandboxID, setup.WithAPIKey())
-		require.NoError(t, err)
-		require.Equal(t, http.StatusOK, detailResponse.StatusCode())
-		require.NotNil(t, detailResponse.JSON200)
+		if err != nil {
+			return false
+		}
+		if detailResponse.StatusCode() != http.StatusOK {
+			return false
+		}
+		if detailResponse.JSON200 == nil {
+			return false
+		}
 
 		return detailResponse.JSON200.State == api.Paused
 	}, 10*time.Second, 100*time.Millisecond, "Sandbox did not reach paused state in time")
