@@ -24,6 +24,7 @@ const (
 const (
 	Draining  ClusterNodeStatus = "draining"
 	Healthy   ClusterNodeStatus = "healthy"
+	Standby   ClusterNodeStatus = "standby"
 	Unhealthy ClusterNodeStatus = "unhealthy"
 )
 
