@@ -50,6 +50,7 @@ func Test_server_List(t *testing.T) {
 						Runtime: sandbox.RuntimeMetadata{
 							SandboxID: id.Generate(),
 						},
+						Config: sandbox.NewConfig(sandbox.Config{}),
 					},
 					Resources: &sandbox.Resources{
 						Slot: &network.Slot{HostIP: net.IPv4(127, 0, 0, 1)},

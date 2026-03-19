@@ -112,15 +112,15 @@ func Middleware(tracerProvider oteltrace.TracerProvider, service string) gin.Han
 		c.Next()
 
 		status := c.Writer.Status()
+		if errors.Is(ctx.Err(), context.Canceled) {
+			status = 499
+			span.SetAttributes(attribute.Bool("client.canceled", true))
+		}
+
 		attrs := semconv.HTTPAttributesFromHTTPStatusCode(status)
 		span.SetAttributes(attrs...)
-
-		if errors.Is(ctx.Err(), context.Canceled) {
-			span.SetAttributes(attribute.Bool("client.canceled", true))
-		} else {
-			spanStatus, spanMessage := semconv.SpanStatusFromHTTPStatusCode(status)
-			span.SetStatus(spanStatus, spanMessage)
-		}
+		spanStatus, spanMessage := semconv.SpanStatusFromHTTPStatusCode(status)
+		span.SetStatus(spanStatus, spanMessage)
 
 		if len(c.Errors) > 0 {
 			span.SetAttributes(attribute.String("gin.errors", strings.TrimSpace(c.Errors.String())))
