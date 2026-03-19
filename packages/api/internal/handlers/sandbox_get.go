@@ -30,11 +30,12 @@ func sandboxLifecycleToAPI(autoPause bool, autoResumeConfig *dbtypes.SandboxAuto
 	}
 }
 
-func dbNetworkConfigToAPI(network *dbtypes.SandboxNetworkConfig) api.SandboxNetworkConfig {
-	result := api.SandboxNetworkConfig{}
+func dbNetworkConfigToAPI(network *dbtypes.SandboxNetworkConfig) *api.SandboxNetworkConfig {
 	if network == nil {
-		return result
+		return nil
 	}
+
+	result := &api.SandboxNetworkConfig{}
 
 	if ingress := network.Ingress; ingress != nil {
 		result.AllowPublicTraffic = ingress.AllowPublicAccess
@@ -106,8 +107,6 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		}
 
 		// Sandbox exists and belongs to the team - return running sandbox sbx
-		network := dbNetworkConfigToAPI(sbx.Network)
-
 		sandbox := api.SandboxDetail{
 			ClientID:            sbx.ClientID,
 			TemplateID:          sbx.TemplateID,
@@ -123,7 +122,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 			EnvdAccessToken:     sbx.EnvdAccessToken,
 			AllowInternetAccess: sbx.AllowInternetAccess,
 			Domain:              sbxDomain,
-			Network:             &network,
+			Network:             dbNetworkConfigToAPI(sbx.Network),
 			Lifecycle:           sandboxLifecycleToAPI(sbx.AutoPause, sbx.AutoResume),
 			VolumeMounts:        convertFromDBMountsToAPIMounts(sbx.VolumeMounts),
 		}
@@ -201,8 +200,6 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		networkConfig = lastSnapshot.Snapshot.Config.Network
 	}
 
-	network := dbNetworkConfigToAPI(networkConfig)
-
 	sandbox := api.SandboxDetail{
 		ClientID:            consts.ClientID, // for backwards compatibility we need to return a client id
 		TemplateID:          lastSnapshot.Snapshot.EnvID,
@@ -217,7 +214,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		EnvdAccessToken:     sbxAccessToken,
 		AllowInternetAccess: lastSnapshot.Snapshot.AllowInternetAccess,
 		Domain:              nil,
-		Network:             &network,
+		Network:             dbNetworkConfigToAPI(networkConfig),
 		Lifecycle:           sandboxLifecycleToAPI(lastSnapshot.Snapshot.AutoPause, autoResumeConfig),
 	}
 
