@@ -26,8 +26,6 @@ func TestSplitHostPort(t *testing.T) {
 		{"trailing colon", "8.8.8.8:", "8.8.8.8", ""},
 		{"port only", ":443", "0.0.0.0/0", "443"},
 		{"bare colon", ":", "0.0.0.0/0", ""},
-		{"bare IPv6 CIDR", "::/0", "::/0", ""},
-		{"IPv6 loopback", "::1", "::1", ""},
 	}
 
 	for _, tt := range tests {

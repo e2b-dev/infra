@@ -513,7 +513,7 @@ func validateNetworkConfig(network *api.SandboxNetworkConfig) *api.APIError {
 	return validateIngressRules(allowIn, denyIn)
 }
 
-func badRequest(err error, format string, args ...interface{}) *api.APIError {
+func badRequest(err error, format string, args ...any) *api.APIError {
 	s := fmt.Sprintf(format, args...)
 	if err != nil {
 		s = fmt.Sprintf("%s: %s", s, err.Error())

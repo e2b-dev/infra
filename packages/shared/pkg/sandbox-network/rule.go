@@ -75,7 +75,6 @@ func (a *ACL) HasRules() bool {
 // SplitHostPort splits a network rule string into host and port parts.
 // Uses net.SplitHostPort with fallback for bare hosts.
 // Returns empty port string when no port is specified.
-// IPv6 addresses are not supported.
 func SplitHostPort(s string) (string, string, error) {
 	h, p, err := net.SplitHostPort(s)
 	if err != nil {

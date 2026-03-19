@@ -177,8 +177,6 @@ func newEgressACL(egress *orchestrator.SandboxNetworkEgressConfig) *sandboxnetwo
 	}
 }
 
-// newIngressACL parses proto ingress config into a pre-parsed ACL (IPv4+IPv6).
-// Rules are pre-validated by the API; invalid entries are silently skipped.
 func newIngressACL(ingress *orchestrator.SandboxNetworkIngressConfig) *sandboxnetwork.ACL {
 	if ingress == nil {
 		return nil
