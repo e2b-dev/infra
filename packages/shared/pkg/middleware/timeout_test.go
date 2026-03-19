@@ -77,6 +77,60 @@ func TestRequestTimeout_ExcludedRouteHasNoDeadline(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 }
 
+func TestRequestTimeout_NormalRequestContextNotCanceled(t *testing.T) {
+	t.Parallel()
+
+	// Simulate an outer middleware that reads c.Request.Context() after c.Next().
+	// Before the fix, defer cancel() in RequestTimeout would cancel the context,
+	// making every request look like a client cancellation (499).
+	var outerCtxErr error
+	var outerCause error
+	outerMiddleware := func(c *gin.Context) {
+		c.Next()
+		outerCtxErr = c.Request.Context().Err()
+		outerCause = context.Cause(c.Request.Context())
+	}
+
+	r := gin.New()
+	r.Use(outerMiddleware)
+	r.Use(RequestTimeout(5 * time.Second))
+	r.GET("/test", func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, "/test", nil)
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.Nil(t, outerCtxErr, "outer middleware should not see a canceled context for normal requests")
+	assert.Nil(t, outerCause, "outer middleware should not see a cause for normal requests")
+}
+
+func TestRequestTimeout_TimeoutContextVisibleToOuterMiddleware(t *testing.T) {
+	t.Parallel()
+
+	var outerCause error
+	outerMiddleware := func(c *gin.Context) {
+		c.Next()
+		outerCause = context.Cause(c.Request.Context())
+	}
+
+	r := gin.New()
+	r.Use(outerMiddleware)
+	r.Use(RequestTimeout(50 * time.Millisecond))
+	r.GET("/slow", func(c *gin.Context) {
+		<-c.Request.Context().Done()
+	})
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, "/slow", nil)
+	r.ServeHTTP(w, req)
+
+	require.ErrorIs(t, outerCause, ErrRequestTimeout,
+		"outer middleware should see ErrRequestTimeout as the cause when the timeout fires")
+}
+
 func TestRequestTimeout_ExcludedRouteWithParam(t *testing.T) {
 	t.Parallel()
 

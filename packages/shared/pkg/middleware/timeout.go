@@ -43,11 +43,24 @@ func RequestTimeout(timeout time.Duration, excludedRoutes ...string) gin.Handler
 			return
 		}
 
-		ctx, cancel := context.WithTimeoutCause(c.Request.Context(), timeout, fmt.Errorf("%w after %s", ErrRequestTimeout, timeout))
-		defer cancel()
+		parentCtx := c.Request.Context()
+		ctx, cancel := context.WithTimeoutCause(parentCtx, timeout, fmt.Errorf("%w after %s", ErrRequestTimeout, timeout))
 
 		c.Request = c.Request.WithContext(ctx)
 		c.Next()
+
+		if ctx.Err() != nil {
+			// Timeout or client disconnect already happened — leave c.Request
+			// pointing at the canceled ctx so outer middleware can inspect
+			// context.Cause() to distinguish timeout vs client cancellation.
+			cancel()
+		} else {
+			// Normal completion — cancel to release timer resources, then
+			// restore the parent context so outer middleware doesn't see a
+			// spurious cancellation from our cleanup cancel().
+			cancel()
+			c.Request = c.Request.WithContext(parentCtx)
+		}
 	}
 }
 
