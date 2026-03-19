@@ -579,7 +579,7 @@ func run(config cfg.Config) (success bool) {
 	grpc_health_v1.RegisterHealthServer(grpcServer, grpcHealth)
 
 	// cmux server, allows us to reuse the same TCP port between grpc and HTTP requests
-	cmuxServer, err := factories.NewCMUXServer(ctx, config.GRPCPort)
+	cmuxServer, err := factories.NewCMUXServer(ctx, config.GRPCPort, tel.MeterProvider)
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create cmux server", zap.Error(err))
 	}
