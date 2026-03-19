@@ -518,8 +518,8 @@ func validateNetworkConfig(network *api.SandboxNetworkConfig) *api.APIError {
 }
 
 // validateEgressRules validates egress allow/deny rules:
-// - denyOut entries must be specified IPs or CIDRs (not domains, no ports)
-// - allowOut entries can be specified IPs, CIDRs, or domain names (no ports)
+// - denyOut entries must be specified IPs or CIDRs (not domains)
+// - allowOut entries can be specified IPs, CIDRs, or domain names
 // - when allowOut contains domains, denyOut must include 0.0.0.0/0
 func validateEgressRules(allowOut, denyOut []string) *api.APIError {
 	for _, entry := range denyOut {
