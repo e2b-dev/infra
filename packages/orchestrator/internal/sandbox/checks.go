@@ -10,6 +10,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 )
 
@@ -92,7 +93,7 @@ func (c *Checks) Healthcheck(ctx context.Context, alwaysReport bool) {
 
 	if !ok && c.healthy.CompareAndSwap(true, false) {
 		sbxlogger.E(c.sandbox).Healthcheck(ctx, sbxlogger.Fail)
-		sbxlogger.I(c.sandbox).Warn(ctx, "healthcheck failed", zap.Error(err))
+		sbxlogger.I(c.sandbox).Warn(ctx, "healthcheck failed", zap.Error(err), logger.WithEnvdVersion(c.sandbox.Config.Envd.Version))
 
 		return
 	}
@@ -108,7 +109,7 @@ func (c *Checks) Healthcheck(ctx context.Context, alwaysReport bool) {
 			sbxlogger.E(c.sandbox).Healthcheck(ctx, sbxlogger.ReportSuccess)
 		} else {
 			sbxlogger.E(c.sandbox).Healthcheck(ctx, sbxlogger.ReportFail)
-			sbxlogger.I(c.sandbox).Error(ctx, "control healthcheck failed", zap.Error(err))
+			sbxlogger.I(c.sandbox).Error(ctx, "control healthcheck failed", zap.Error(err), logger.WithEnvdVersion(c.sandbox.Config.Envd.Version))
 		}
 	}
 }
