@@ -43,7 +43,7 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 	limiter := connlimit.NewConnectionLimiter()
 	metrics := NewMetrics(meterProvider)
 
-	meter := meterProvider.Meter("orchestrator.proxy.sandbox")
+	meter := meterProvider.Meter("github.com/e2b-dev/infra/packages/orchestrator/internal/proxy")
 
 	connLimitConfig := &reverseproxy.ConnectionLimitConfig{
 		Limiter: limiter,

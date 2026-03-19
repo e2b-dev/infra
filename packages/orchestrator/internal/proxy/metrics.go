@@ -18,7 +18,7 @@ type Metrics struct {
 
 // NewMetrics creates a new Metrics instance.
 func NewMetrics(meterProvider metric.MeterProvider) *Metrics {
-	meter := meterProvider.Meter("orchestrator.proxy.sandbox")
+	meter := meterProvider.Meter("github.com/e2b-dev/infra/packages/orchestrator/internal/proxy")
 
 	return &Metrics{
 		connectionsPerSandbox: utils.Must(telemetry.GetHistogram(meter, telemetry.IngressProxyConnectionsPerSandboxHistogramName)),

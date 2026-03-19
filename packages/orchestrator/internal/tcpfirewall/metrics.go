@@ -65,7 +65,7 @@ type Metrics struct {
 
 // NewMetrics creates a new Metrics instance.
 func NewMetrics(meterProvider metric.MeterProvider) *Metrics {
-	meter := meterProvider.Meter("orchestrator.tcpfirewall")
+	meter := meterProvider.Meter("github.com/e2b-dev/infra/packages/orchestrator/internal/tcpfirewall")
 
 	m := &Metrics{
 		connectionsTotal:      utils.Must(telemetry.GetCounter(meter, telemetry.TCPFirewallConnectionsTotal)),
