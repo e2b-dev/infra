@@ -42,12 +42,12 @@ func TestToSandboxDetailLifecycle(t *testing.T) {
 func TestToSandboxDetailNetworkConfig(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, api.SandboxNetworkConfig{}, toSandboxDetailNetworkConfig(nil))
+	assert.Equal(t, api.SandboxNetworkConfig{}, dbNetworkConfigToAPI(nil))
 
 	allowPublicTraffic := false
 	maskRequestHost := "sandbox.internal"
 
-	got := toSandboxDetailNetworkConfig(&dbtypes.SandboxNetworkConfig{
+	got := dbNetworkConfigToAPI(&dbtypes.SandboxNetworkConfig{
 		Ingress: &dbtypes.SandboxNetworkIngressConfig{
 			AllowPublicAccess: &allowPublicTraffic,
 			MaskRequestHost:   &maskRequestHost,

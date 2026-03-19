@@ -71,7 +71,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		}
 
 		// Sandbox exists and belongs to the team - return running sandbox sbx
-		network := toSandboxDetailNetworkConfig(sbx.Network)
+		network := dbNetworkConfigToAPI(sbx.Network)
 		lifecycle := toSandboxDetailLifecycle(sbx.AutoResume, sbx.AutoPause)
 		sandbox := api.SandboxDetail{
 			ClientID:            sbx.ClientID,
@@ -166,7 +166,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		networkConfig = lastSnapshot.Snapshot.Config.Network
 	}
 
-	network := toSandboxDetailNetworkConfig(networkConfig)
+	network := dbNetworkConfigToAPI(networkConfig)
 	lifecycle := toSandboxDetailLifecycle(autoResumeConfig, lastSnapshot.Snapshot.AutoPause)
 	sandbox := api.SandboxDetail{
 		ClientID:            consts.ClientID, // for backwards compatibility we need to return a client id

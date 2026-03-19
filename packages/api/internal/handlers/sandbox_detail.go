@@ -5,7 +5,7 @@ import (
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 )
 
-func toSandboxDetailNetworkConfig(network *dbtypes.SandboxNetworkConfig) api.SandboxNetworkConfig {
+func dbNetworkConfigToAPI(network *dbtypes.SandboxNetworkConfig) api.SandboxNetworkConfig {
 	result := api.SandboxNetworkConfig{}
 	if network == nil {
 		return result
