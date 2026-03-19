@@ -15,15 +15,6 @@ import (
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 )
 
-func pauseSandboxForDetailTest(t *testing.T, c *api.ClientWithResponses, sandboxID string) {
-	t.Helper()
-
-	pauseSandboxResponse, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sandboxID, setup.WithAPIKey())
-
-	require.NoError(t, err)
-	assert.Equal(t, http.StatusNoContent, pauseSandboxResponse.StatusCode())
-}
-
 func TestSandboxDetailRunning(t *testing.T) {
 	t.Parallel()
 	c := setup.GetAPIClient()
@@ -89,7 +80,7 @@ func TestSandboxDetailReturnsLifecycleAndNetworkConfig(t *testing.T) {
 
 	assertDetail(t, api.Running)
 
-	pauseSandboxForDetailTest(t, c, sbx.SandboxID)
+	pauseSandbox(t, c, sbx.SandboxID)
 
 	require.Eventually(t, func() bool {
 		response, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), sbx.SandboxID, setup.WithAPIKey())
@@ -121,7 +112,7 @@ func TestSandboxDetailPaused(t *testing.T) {
 
 	sbx := utils.SetupSandboxWithCleanup(t, c)
 	sandboxID := sbx.SandboxID
-	pauseSandboxForDetailTest(t, c, sandboxID)
+	pauseSandbox(t, c, sandboxID)
 
 	response, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), sandboxID, setup.WithAPIKey())
 
