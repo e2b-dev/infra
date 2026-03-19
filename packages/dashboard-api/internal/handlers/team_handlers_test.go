@@ -16,6 +16,8 @@ import (
 )
 
 func TestMapAddTeamMemberError(t *testing.T) {
+	t.Parallel()
+
 	status, message, ok := mapAddTeamMemberError(&pgconn.PgError{Code: "23505"})
 	if !ok {
 		t.Fatalf("expected duplicate error to be handled")
@@ -29,6 +31,8 @@ func TestMapAddTeamMemberError(t *testing.T) {
 }
 
 func TestMapRemoveTeamMemberRows(t *testing.T) {
+	t.Parallel()
+
 	status, message, ok := mapRemoveTeamMemberRows(0)
 	if !ok {
 		t.Fatalf("expected zero rows to be handled")
@@ -42,6 +46,8 @@ func TestMapRemoveTeamMemberRows(t *testing.T) {
 }
 
 func TestParseUpdateTeamBody_ProfilePictureNullClearsValue(t *testing.T) {
+	t.Parallel()
+
 	body, err := parseUpdateTeamBody(strings.NewReader(`{"profilePictureUrl":null}`))
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -55,6 +61,8 @@ func TestParseUpdateTeamBody_ProfilePictureNullClearsValue(t *testing.T) {
 }
 
 func TestParseUpdateTeamBody_ProfilePictureOmittedIsNoop(t *testing.T) {
+	t.Parallel()
+
 	body, err := parseUpdateTeamBody(strings.NewReader(`{"name":"team-a"}`))
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -65,6 +73,8 @@ func TestParseUpdateTeamBody_ProfilePictureOmittedIsNoop(t *testing.T) {
 }
 
 func TestParseUpdateTeamBody_NameNullRejected(t *testing.T) {
+	t.Parallel()
+
 	_, err := parseUpdateTeamBody(strings.NewReader(`{"name":null}`))
 	if err == nil {
 		t.Fatalf("expected error for null name")
@@ -72,6 +82,8 @@ func TestParseUpdateTeamBody_NameNullRejected(t *testing.T) {
 }
 
 func TestRequireAuthedTeamMatchesPath_Success(t *testing.T) {
+	t.Parallel()
+
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
@@ -89,6 +101,8 @@ func TestRequireAuthedTeamMatchesPath_Success(t *testing.T) {
 }
 
 func TestRequireAuthedTeamMatchesPath_Mismatch(t *testing.T) {
+	t.Parallel()
+
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
