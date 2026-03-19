@@ -36,7 +36,7 @@ func TestSandboxDetailReturnsLifecycleAndNetworkConfig(t *testing.T) {
 	t.Parallel()
 	c := setup.GetAPIClient()
 
-	allowInternetAccess := false
+	allowInternetAccess := true
 	allowOut := []string{"8.8.8.8"}
 	denyOut := []string{"10.0.0.0/8"}
 
