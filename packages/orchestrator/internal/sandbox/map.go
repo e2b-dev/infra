@@ -122,14 +122,6 @@ func (m *Map) Remove(ctx context.Context, sandboxID string) {
 	if removed {
 		logger.L().Info(ctx, "removing sandbox from map", logger.WithSandboxID(sandboxID))
 
-		if removedSbx == nil {
-			logger.L().Warn(ctx, "sandbox removed, but callback had no sandbox",
-				logger.WithSandboxID(sandboxID),
-			)
-
-			return
-		}
-
 		go m.trigger(func(s MapSubscriber) {
 			s.OnRemove(removedSbx)
 		})
