@@ -9,7 +9,6 @@ module "persistent-volume-types" {
   location           = each.value.location
   network_name       = var.network_name
   nfs_version        = each.value.nfs_version
-  nfs_mount_options  = each.value.mount_options
   prefix             = var.prefix
   tier               = each.value.tier
   performance_config = each.value.performance_config
