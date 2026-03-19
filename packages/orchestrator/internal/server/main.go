@@ -38,20 +38,20 @@ type Server struct {
 	orchestrator.UnimplementedSandboxServiceServer
 	orchestrator.UnimplementedChunkServiceServer
 
-	config            cfg.Config
-	sandboxFactory    *sandbox.Factory
-	info              *service.ServiceInfo
-	sandboxes         *sandbox.Map
-	proxy             *proxy.SandboxProxy
-	networkPool       *network.Pool
-	templateCache     *template.Cache
-	pauseMu           sync.Mutex
-	devicePool        *nbd.DevicePool
-	persistence       storage.StorageProvider
-	featureFlags      *featureflags.Client
-	sbxEventsService  *events.EventsService
-	startingSandboxes *semaphore.Weighted
-	peerRegistry      peerclient.Registry
+	config                cfg.Config
+	sandboxFactory        *sandbox.Factory
+	info                  *service.ServiceInfo
+	sandboxes             *sandbox.Map
+	proxy                 *proxy.SandboxProxy
+	networkPool           *network.Pool
+	templateCache         *template.Cache
+	pauseMu               sync.Mutex
+	devicePool            *nbd.DevicePool
+	persistence           storage.StorageProvider
+	featureFlags          *featureflags.Client
+	sbxEventsService      *events.EventsService
+	startingSandboxes     *semaphore.Weighted
+	peerRegistry          peerclient.Registry
 	uploadedBuilds        *ttlcache.Cache[string, *uploadedBuildHeaders]
 	sandboxCreateDuration metric.Int64Histogram
 }

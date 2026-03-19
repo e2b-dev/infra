@@ -116,7 +116,6 @@ func BenchmarkBaseImage(b *testing.B) {
 
 	sbxNetwork := &orchestrator.SandboxNetworkConfig{}
 
-
 	// cache paths, to speed up test runs. these paths aren't wiped between tests
 	persistenceDir := getPersistenceDir()
 	kernelsDir := filepath.Join(persistenceDir, "kernels")

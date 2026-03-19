@@ -217,9 +217,9 @@ func ReadFrame(ctx context.Context, rangeRead RangeReadFunc, storageDetails stri
 	// Resolve fetch coordinates: for uncompressed data (nil frameTable) they
 	// map 1:1; for compressed data we translate U → C via the frame table.
 	var (
-		fetchOffset  int64
-		fetchSize    int
-		expectedOut  int // bytes the caller should receive on success
+		fetchOffset int64
+		fetchSize   int
+		expectedOut int // bytes the caller should receive on success
 	)
 
 	compressed := frameTable.IsCompressed()
