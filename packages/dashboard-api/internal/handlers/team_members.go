@@ -121,7 +121,18 @@ func (s *APIStore) DeleteTeamsTeamIdMembersUserId(c *gin.Context, _ api.TeamId, 
 	teamInfo := auth.MustGetTeamInfo(c)
 	telemetry.SetAttributes(ctx, telemetry.WithTeamID(teamInfo.Team.ID.String()))
 
-	relation, err := s.db.GetTeamMemberRelation(ctx, queries.GetTeamMemberRelationParams{
+	txDB, tx, err := s.db.WithTx(ctx)
+	if err != nil {
+		logger.L().Error(ctx, "failed to start transaction for removing team member", zap.Error(err))
+		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to remove team member")
+
+		return
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	relation, err := txDB.GetTeamMemberRelation(ctx, queries.GetTeamMemberRelationParams{
 		TeamID: teamInfo.Team.ID,
 		UserID: userId,
 	})
@@ -138,33 +149,39 @@ func (s *APIStore) DeleteTeamsTeamIdMembersUserId(c *gin.Context, _ api.TeamId, 
 		return
 	}
 
-	callerID := auth.MustGetUserID(c)
-	if relation.UserID != callerID && relation.IsDefault {
+	if relation.IsDefault {
 		s.sendAPIStoreError(c, http.StatusBadRequest, "Cannot remove a default team member")
 
 		return
 	}
 
-	count, err := s.db.CountTeamMembers(ctx, teamInfo.Team.ID)
+	lockedMembers, err := txDB.LockTeamMembersForUpdate(ctx, teamInfo.Team.ID)
 	if err != nil {
-		logger.L().Error(ctx, "failed to count team members", zap.Error(err))
+		logger.L().Error(ctx, "failed to lock team members", zap.Error(err))
 		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to check team members")
 
 		return
 	}
 
-	if count <= 1 {
+	if len(lockedMembers) <= 1 {
 		s.sendAPIStoreError(c, http.StatusBadRequest, "Cannot remove the last team member")
 
 		return
 	}
 
-	err = s.db.RemoveTeamMember(ctx, queries.RemoveTeamMemberParams{
+	err = txDB.RemoveTeamMember(ctx, queries.RemoveTeamMemberParams{
 		TeamID: teamInfo.Team.ID,
 		UserID: userId,
 	})
 	if err != nil {
 		logger.L().Error(ctx, "failed to remove team member", zap.Error(err), logger.WithTeamID(teamInfo.Team.ID.String()))
+		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to remove team member")
+
+		return
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		logger.L().Error(ctx, "failed to commit team member removal", zap.Error(err), logger.WithTeamID(teamInfo.Team.ID.String()))
 		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to remove team member")
 
 		return

@@ -137,6 +137,32 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (GetUserByEm
 	return i, err
 }
 
+const lockTeamMembersForUpdate = `-- name: LockTeamMembersForUpdate :many
+SELECT user_id FROM public.users_teams
+WHERE team_id = $1::uuid
+FOR UPDATE
+`
+
+func (q *Queries) LockTeamMembersForUpdate(ctx context.Context, teamID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, lockTeamMembersForUpdate, teamID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var user_id uuid.UUID
+		if err := rows.Scan(&user_id); err != nil {
+			return nil, err
+		}
+		items = append(items, user_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const removeTeamMember = `-- name: RemoveTeamMember :exec
 DELETE FROM public.users_teams
 WHERE team_id = $1::uuid

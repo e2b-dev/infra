@@ -19,6 +19,11 @@ WHERE team_id = sqlc.arg(team_id)::uuid
 SELECT COUNT(*) FROM public.users_teams
 WHERE team_id = sqlc.arg(team_id)::uuid;
 
+-- name: LockTeamMembersForUpdate :many
+SELECT user_id FROM public.users_teams
+WHERE team_id = sqlc.arg(team_id)::uuid
+FOR UPDATE;
+
 -- name: GetUserByEmail :one
 SELECT id, email FROM public.users
 WHERE email = sqlc.arg(email)::text;
