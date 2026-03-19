@@ -156,49 +156,52 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	}
 
 	resolvedFCVersion := featureflags.ResolveFirecrackerVersion(ctx, s.featureFlags, req.GetSandbox().GetFirecrackerVersion())
-	childSpan.SetAttributes(
-		telemetry.WithFirecrackerVersion(resolvedFCVersion),
-	)
-
 	volumeMounts, err := createVolumeMountModelsFromAPI(req.GetSandbox().GetVolumeMounts())
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert volume mounts: %w", err)
 	}
 
+	config := sandbox.NewConfig(sandbox.Config{
+		BaseTemplateID: req.GetSandbox().GetBaseTemplateId(),
+
+		Vcpu:            req.GetSandbox().GetVcpu(),
+		RamMB:           req.GetSandbox().GetRamMb(),
+		TotalDiskSizeMB: req.GetSandbox().GetTotalDiskSizeMb(),
+		HugePages:       req.GetSandbox().GetHugePages(),
+
+		Network: network,
+
+		Envd: sandbox.EnvdMetadata{
+			Version:     req.GetSandbox().GetEnvdVersion(),
+			AccessToken: req.GetSandbox().EnvdAccessToken,
+			Vars:        req.GetSandbox().GetEnvVars(),
+		},
+
+		FirecrackerConfig: fc.Config{
+			KernelVersion:      req.GetSandbox().GetKernelVersion(),
+			FirecrackerVersion: resolvedFCVersion,
+		},
+
+		VolumeMounts: volumeMounts,
+	})
+	childSpan.SetAttributes(
+		telemetry.WithFirecrackerVersion(config.FirecrackerConfig.FirecrackerVersion),
+	)
+
+	runtime := sandbox.RuntimeMetadata{
+		TemplateID:  req.GetSandbox().GetTemplateId(),
+		SandboxID:   req.GetSandbox().GetSandboxId(),
+		ExecutionID: req.GetSandbox().GetExecutionId(),
+		TeamID:      req.GetSandbox().GetTeamId(),
+		BuildID:     req.GetSandbox().GetBuildId(),
+		SandboxType: sandbox.SandboxTypeSandbox,
+	}
+
 	sbx, err := s.sandboxFactory.ResumeSandbox(
 		ctx,
 		template,
-		sandbox.NewConfig(sandbox.Config{
-			BaseTemplateID: req.GetSandbox().GetBaseTemplateId(),
-
-			Vcpu:            req.GetSandbox().GetVcpu(),
-			RamMB:           req.GetSandbox().GetRamMb(),
-			TotalDiskSizeMB: req.GetSandbox().GetTotalDiskSizeMb(),
-			HugePages:       req.GetSandbox().GetHugePages(),
-
-			Network: network,
-
-			Envd: sandbox.EnvdMetadata{
-				Version:     req.GetSandbox().GetEnvdVersion(),
-				AccessToken: req.GetSandbox().EnvdAccessToken,
-				Vars:        req.GetSandbox().GetEnvVars(),
-			},
-
-			FirecrackerConfig: fc.Config{
-				KernelVersion:      req.GetSandbox().GetKernelVersion(),
-				FirecrackerVersion: resolvedFCVersion,
-			},
-
-			VolumeMounts: volumeMounts,
-		}),
-		sandbox.RuntimeMetadata{
-			TemplateID:  req.GetSandbox().GetTemplateId(),
-			SandboxID:   req.GetSandbox().GetSandboxId(),
-			ExecutionID: req.GetSandbox().GetExecutionId(),
-			TeamID:      req.GetSandbox().GetTeamId(),
-			BuildID:     req.GetSandbox().GetBuildId(),
-			SandboxType: sandbox.SandboxTypeSandbox,
-		},
+		config,
+		runtime,
 		req.GetStartTime().AsTime(),
 		req.GetEndTime().AsTime(),
 		req.GetSandbox(),
@@ -214,12 +217,12 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		err = errors.Join(err, context.Cause(ctx))
 		telemetry.ReportCriticalError(ctx, "failed to create sandbox", err)
 		logger.L().Error(ctx, "failed to create sandbox", zap.Error(err),
-			logger.WithSandboxID(req.GetSandbox().GetSandboxId()),
-			logger.WithBuildID(req.GetSandbox().GetBuildId()),
-			logger.WithTemplateID(req.GetSandbox().GetTemplateId()),
-			logger.WithEnvdVersion(req.GetSandbox().GetEnvdVersion()),
-			logger.WithKernelVersion(req.GetSandbox().GetKernelVersion()),
-			logger.WithFirecrackerVersion(req.GetSandbox().GetFirecrackerVersion()),
+			logger.WithSandboxID(runtime.SandboxID),
+			logger.WithBuildID(runtime.BuildID),
+			logger.WithTemplateID(runtime.TemplateID),
+			logger.WithEnvdVersion(config.Envd.Version),
+			logger.WithKernelVersion(config.FirecrackerConfig.KernelVersion),
+			logger.WithFirecrackerVersion(config.FirecrackerConfig.FirecrackerVersion),
 		)
 
 		return nil, status.Errorf(codes.Internal, "failed to create sandbox: %s", err)
