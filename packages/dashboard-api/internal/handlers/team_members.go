@@ -17,11 +17,15 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-func (s *APIStore) GetTeamsTeamIdMembers(c *gin.Context, _ api.TeamId) {
+func (s *APIStore) GetTeamsTeamIDMembers(c *gin.Context, teamID api.TeamID) {
 	ctx := c.Request.Context()
 	telemetry.ReportEvent(ctx, "list team members")
 
-	teamInfo := auth.MustGetTeamInfo(c)
+	teamInfo, ok := s.requireAuthedTeamMatchesPath(c, teamID)
+	if !ok {
+		return
+	}
+
 	telemetry.SetAttributes(ctx, telemetry.WithTeamID(teamInfo.Team.ID.String()))
 
 	rows, err := s.db.GetTeamMembers(ctx, teamInfo.Team.ID)
@@ -54,11 +58,15 @@ func (s *APIStore) GetTeamsTeamIdMembers(c *gin.Context, _ api.TeamId) {
 	})
 }
 
-func (s *APIStore) PostTeamsTeamIdMembers(c *gin.Context, _ api.TeamId) {
+func (s *APIStore) PostTeamsTeamIDMembers(c *gin.Context, teamID api.TeamID) {
 	ctx := c.Request.Context()
 	telemetry.ReportEvent(ctx, "add team member")
 
-	teamInfo := auth.MustGetTeamInfo(c)
+	teamInfo, ok := s.requireAuthedTeamMatchesPath(c, teamID)
+	if !ok {
+		return
+	}
+
 	userID := auth.MustGetUserID(c)
 	telemetry.SetAttributes(ctx, telemetry.WithTeamID(teamInfo.Team.ID.String()))
 
@@ -121,11 +129,15 @@ func (s *APIStore) PostTeamsTeamIdMembers(c *gin.Context, _ api.TeamId) {
 	c.Status(http.StatusCreated)
 }
 
-func (s *APIStore) DeleteTeamsTeamIdMembersUserId(c *gin.Context, _ api.TeamId, userId api.UserId) {
+func (s *APIStore) DeleteTeamsTeamIDMembersUserId(c *gin.Context, teamID api.TeamID, userId api.UserId) {
 	ctx := c.Request.Context()
 	telemetry.ReportEvent(ctx, "remove team member")
 
-	teamInfo := auth.MustGetTeamInfo(c)
+	teamInfo, ok := s.requireAuthedTeamMatchesPath(c, teamID)
+	if !ok {
+		return
+	}
+
 	telemetry.SetAttributes(ctx, telemetry.WithTeamID(teamInfo.Team.ID.String()))
 
 	txDB, tx, err := s.db.WithTx(ctx)

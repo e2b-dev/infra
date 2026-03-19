@@ -81,8 +81,8 @@ components:
           format: uuid
         maxItems: 100
         uniqueItems: true
-    teamId:
-      name: teamId
+    teamID:
+      name: teamID
       in: path
       required: true
       description: Identifier of the team.
@@ -730,7 +730,7 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
-  /teams/{teamId}:
+  /teams/{teamID}:
     patch:
       summary: Update team
       tags: [teams]
@@ -738,7 +738,7 @@ paths:
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
       parameters:
-        - $ref: "#/components/parameters/teamId"
+        - $ref: "#/components/parameters/teamID"
       requestBody:
         required: true
         content:
@@ -761,7 +761,7 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
-  /teams/{teamId}/members:
+  /teams/{teamID}/members:
     get:
       summary: List team members
       tags: [teams]
@@ -769,7 +769,7 @@ paths:
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
       parameters:
-        - $ref: "#/components/parameters/teamId"
+        - $ref: "#/components/parameters/teamID"
       responses:
         "200":
           description: Successfully returned team members.
@@ -790,7 +790,7 @@ paths:
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
       parameters:
-        - $ref: "#/components/parameters/teamId"
+        - $ref: "#/components/parameters/teamID"
       requestBody:
         required: true
         content:
@@ -811,7 +811,7 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
-  /teams/{teamId}/members/{userId}:
+  /teams/{teamID}/members/{userId}:
     delete:
       summary: Remove team member
       tags: [teams]
@@ -819,7 +819,7 @@ paths:
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
       parameters:
-        - $ref: "#/components/parameters/teamId"
+        - $ref: "#/components/parameters/teamID"
         - $ref: "#/components/parameters/userId"
       responses:
         "204":

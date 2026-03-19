@@ -15,10 +15,6 @@ SELECT * FROM public.users_teams
 WHERE team_id = sqlc.arg(team_id)::uuid
   AND user_id = sqlc.arg(user_id)::uuid;
 
--- name: CountTeamMembers :one
-SELECT COUNT(*) FROM public.users_teams
-WHERE team_id = sqlc.arg(team_id)::uuid;
-
 -- name: LockTeamMembersForUpdate :many
 SELECT user_id FROM public.users_teams
 WHERE team_id = sqlc.arg(team_id)::uuid

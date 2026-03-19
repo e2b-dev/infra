@@ -1,10 +1,18 @@
 package handlers
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
+
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
+	authtypes "github.com/e2b-dev/infra/packages/auth/pkg/types"
+	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 )
 
 func TestMapAddTeamMemberError(t *testing.T) {
@@ -60,5 +68,41 @@ func TestParseUpdateTeamBody_NameNullRejected(t *testing.T) {
 	_, err := parseUpdateTeamBody(strings.NewReader(`{"name":null}`))
 	if err == nil {
 		t.Fatalf("expected error for null name")
+	}
+}
+
+func TestRequireAuthedTeamMatchesPath_Success(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+
+	teamID := uuid.New()
+	auth.SetTeamInfo(ctx, &authtypes.Team{
+		Team: &authqueries.Team{ID: teamID},
+	})
+
+	store := &APIStore{}
+	_, ok := store.requireAuthedTeamMatchesPath(ctx, teamID)
+	if !ok {
+		t.Fatalf("expected team parity check to pass")
+	}
+}
+
+func TestRequireAuthedTeamMatchesPath_Mismatch(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+
+	auth.SetTeamInfo(ctx, &authtypes.Team{
+		Team: &authqueries.Team{ID: uuid.New()},
+	})
+
+	store := &APIStore{}
+	_, ok := store.requireAuthedTeamMatchesPath(ctx, uuid.New())
+	if ok {
+		t.Fatalf("expected team parity check to fail")
+	}
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("expected status 403, got %d", recorder.Code)
 	}
 }

@@ -33,18 +33,6 @@ func (q *Queries) AddTeamMember(ctx context.Context, arg AddTeamMemberParams) er
 	return err
 }
 
-const countTeamMembers = `-- name: CountTeamMembers :one
-SELECT COUNT(*) FROM public.users_teams
-WHERE team_id = $1::uuid
-`
-
-func (q *Queries) CountTeamMembers(ctx context.Context, teamID uuid.UUID) (int64, error) {
-	row := q.db.QueryRow(ctx, countTeamMembers, teamID)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
 const getTeamMemberRelation = `-- name: GetTeamMemberRelation :one
 SELECT id, user_id, team_id, is_default, added_by, created_at, uuid_id FROM public.users_teams
 WHERE team_id = $1::uuid

@@ -11,18 +11,21 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-func (s *APIStore) PatchTeamsTeamId(c *gin.Context, _ api.TeamId) {
+func (s *APIStore) PatchTeamsTeamID(c *gin.Context, teamID api.TeamID) {
 	ctx := c.Request.Context()
 	telemetry.ReportEvent(ctx, "update team")
 
-	teamInfo := auth.MustGetTeamInfo(c)
+	teamInfo, ok := s.requireAuthedTeamMatchesPath(c, teamID)
+	if !ok {
+		return
+	}
+
 	telemetry.SetAttributes(ctx, telemetry.WithTeamID(teamInfo.Team.ID.String()))
 
 	body, err := parseUpdateTeamBody(c.Request.Body)
