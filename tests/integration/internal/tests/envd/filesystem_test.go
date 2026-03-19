@@ -3,6 +3,7 @@ package envd
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"path"
 	"strings"
 	"testing"
@@ -10,9 +11,12 @@ import (
 	"connectrpc.com/connect"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/filesystem"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process"
+	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
+	envdAPI "github.com/e2b-dev/infra/tests/integration/internal/envd"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 )
@@ -369,4 +373,60 @@ func TestRelativePath(t *testing.T) {
 	assert.Len(t, folderListResp.Msg.GetEntries(), 1)
 
 	assert.Equal(t, path.Join(userHome, relativeTestFolder, "test.txt"), folderListResp.Msg.GetEntries()[0].GetPath())
+}
+
+func TestConcurrentFileUpload(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	c := setup.GetAPIClient()
+	sbx := utils.SetupSandboxWithCleanup(t, c)
+	envdClient := setup.GetEnvdClient(t, ctx)
+
+	baseDir := "/home/user/concurrent-test/nested/dir"
+
+	// Upload multiple files concurrently to the same nested directory.
+	// This exercises the race condition fix in EnsureDirs where concurrent
+	// Mkdir calls are tolerated via os.IsExist checks.
+	g, gCtx := errgroup.WithContext(ctx)
+	for i := 1; i <= 4; i++ {
+		g.Go(func() error {
+			filePath := fmt.Sprintf("%s/test_%d.txt", baseDir, i)
+			content := fmt.Sprintf("content of test_%d\n", i)
+
+			buffer, contentType := utils.CreateTextFile(t, filePath, content)
+			reqEditors := []envdAPI.RequestEditorFn{setup.WithSandbox(t, sbx.SandboxID)}
+
+			writeRes, err := envdClient.HTTPClient.PostFilesWithBodyWithResponse(
+				gCtx,
+				&envdAPI.PostFilesParams{Path: &filePath, Username: sharedUtils.ToPtr("user")},
+				contentType,
+				buffer,
+				reqEditors...,
+			)
+			if err != nil {
+				return fmt.Errorf("test_%d.txt: %w", i, err)
+			}
+
+			if writeRes.StatusCode() != http.StatusOK {
+				return fmt.Errorf("test_%d.txt: unexpected status %d: %s", i, writeRes.StatusCode(), string(writeRes.Body))
+			}
+
+			return nil
+		})
+	}
+
+	require.NoError(t, g.Wait())
+
+	// Verify all files exist
+	req := connect.NewRequest(&filesystem.ListDirRequest{
+		Path:  baseDir,
+		Depth: 1,
+	})
+	setup.SetSandboxHeader(t, req.Header(), sbx.SandboxID)
+	setup.SetUserHeader(t, req.Header(), "user")
+	listResp, err := envdClient.FilesystemClient.ListDir(ctx, req)
+	require.NoError(t, err)
+	require.Len(t, listResp.Msg.GetEntries(), 4)
 }

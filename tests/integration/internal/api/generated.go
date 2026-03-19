@@ -67,6 +67,7 @@ const (
 	NodeStatusConnecting NodeStatus = "connecting"
 	NodeStatusDraining   NodeStatus = "draining"
 	NodeStatusReady      NodeStatus = "ready"
+	NodeStatusStandby    NodeStatus = "standby"
 	NodeStatusUnhealthy  NodeStatus = "unhealthy"
 )
 
@@ -472,7 +473,9 @@ type Node struct {
 	// ServiceInstanceID Service instance identifier of the node
 	ServiceInstanceID string `json:"serviceInstanceID"`
 
-	// Status Status of the node
+	// Status Status of the node.
+	// - draining: the node is bound to be shut down. It will not accept new sandboxes and will stop once all existing sandboxes are done.
+	// - standby: the node is not actively used, but it can return to ready and continue serving traffic.
 	Status NodeStatus `json:"status"`
 
 	// Version Version of the orchestrator
@@ -509,7 +512,9 @@ type NodeDetail struct {
 	// ServiceInstanceID Service instance identifier of the node
 	ServiceInstanceID string `json:"serviceInstanceID"`
 
-	// Status Status of the node
+	// Status Status of the node.
+	// - draining: the node is bound to be shut down. It will not accept new sandboxes and will stop once all existing sandboxes are done.
+	// - standby: the node is not actively used, but it can return to ready and continue serving traffic.
 	Status NodeStatus `json:"status"`
 
 	// Version Version of the orchestrator
@@ -540,7 +545,9 @@ type NodeMetrics struct {
 	MemoryUsedBytes uint64 `json:"memoryUsedBytes"`
 }
 
-// NodeStatus Status of the node
+// NodeStatus Status of the node.
+// - draining: the node is bound to be shut down. It will not accept new sandboxes and will stop once all existing sandboxes are done.
+// - standby: the node is not actively used, but it can return to ready and continue serving traffic.
 type NodeStatus string
 
 // NodeStatusChange defines model for NodeStatusChange.
@@ -548,7 +555,9 @@ type NodeStatusChange struct {
 	// ClusterID Identifier of the cluster
 	ClusterID *openapi_types.UUID `json:"clusterID,omitempty"`
 
-	// Status Status of the node
+	// Status Status of the node.
+	// - draining: the node is bound to be shut down. It will not accept new sandboxes and will stop once all existing sandboxes are done.
+	// - standby: the node is not actively used, but it can return to ready and continue serving traffic.
 	Status NodeStatus `json:"status"`
 }
 
