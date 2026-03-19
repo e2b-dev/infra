@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy")
@@ -26,6 +27,7 @@ func onDisconnect(ctx context.Context, conn net.Conn) {
 	if !ok {
 		logger.L().Warn(ctx, "failed to unwrap connWithSpan",
 			zap.String("conn_type", fmt.Sprintf("%T", conn)))
+
 		return
 	}
 

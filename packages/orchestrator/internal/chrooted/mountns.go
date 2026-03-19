@@ -222,7 +222,13 @@ func tempMountNS(ctx context.Context) (*mountNS, error) {
 		tempNS, err := getCurrentNSNoLock()
 		if err != nil {
 			if err2 := threadNS.Set(); err2 != nil {
-				logger.L().Error(ctx, "failed to restore original namespace", zap.Error(err2))
+				logger.L().Error(ctx, "failed to restore original namespace",
+					zap.Error(err2),
+					zap.Int("pid", os.Getpid()),
+					zap.Int("tid", unix.Gettid()),
+					zap.String("original_ns", threadNS.Path()),
+					zap.String("new_ns", tempNS.Path()),
+				)
 			}
 
 			resultCh <- result{err: fmt.Errorf("failed to open temporary mount namespace: %w", err)}
@@ -246,7 +252,13 @@ func tempMountNS(ctx context.Context) (*mountNS, error) {
 				req.done <- req.fn()
 			case <-tempNS.stopCh:
 				if err2 := threadNS.Set(); err2 != nil {
-					logger.L().Error(ctx, "failed to restore original namespace", zap.Error(err2))
+					logger.L().Error(ctx, "failed to restore original namespace",
+						zap.Error(err2),
+						zap.Int("pid", os.Getpid()),
+						zap.Int("tid", unix.Gettid()),
+						zap.String("original_ns", threadNS.Path()),
+						zap.String("new_ns", tempNS.Path()),
+					)
 				}
 
 				close(tempNS.doneCh)
