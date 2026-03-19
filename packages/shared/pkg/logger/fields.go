@@ -14,7 +14,7 @@ func WithSandboxID(sandboxID string) zap.Field {
 }
 
 func WithLifecycleID(lifecycleID string) zap.Field {
-	return zap.String("lifecycle.id", lifecycleID)
+	return zap.String("sandbox.lifecycle.id", lifecycleID)
 }
 
 func WithTemplateID(templateID string) zap.Field {
