@@ -19,7 +19,7 @@ import (
 
 var (
 	tracer = otel.Tracer("github.com/e2b-dev/infra/packages/shared/pkg/storage")
-	meter  = otel.GetMeterProvider().Meter("shared.pkg.storage")
+	meter  = otel.Meter("github.com/e2b-dev/infra/packages/shared/pkg/storage")
 )
 
 var ErrObjectNotExist = errors.New("object does not exist")

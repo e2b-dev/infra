@@ -29,7 +29,7 @@ const (
 )
 
 var (
-	fcMeter = otel.GetMeterProvider().Meter("orchestrator.internal.sandbox.fc")
+	fcMeter = otel.Meter("orchestrator.internal.sandbox.fc")
 
 	// direction attributes reused on every record call.
 	directionKey = attribute.Key("direction")

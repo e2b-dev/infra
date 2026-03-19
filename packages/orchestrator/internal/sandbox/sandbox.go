@@ -42,7 +42,7 @@ import (
 )
 
 var (
-	meter                        = otel.GetMeterProvider().Meter("orchestrator.internal.sandbox")
+	meter                        = otel.Meter("github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox")
 	envdInitCalls                = utils.Must(telemetry.GetCounter(meter, telemetry.EnvdInitCalls))
 	waitForEnvdDurationHistogram = utils.Must(telemetry.GetHistogram(meter, telemetry.WaitForEnvdDurationHistogramName))
 )

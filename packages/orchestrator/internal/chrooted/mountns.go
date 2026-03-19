@@ -18,7 +18,7 @@ import (
 )
 
 var (
-	meter = otel.GetMeterProvider().Meter("github.com/e2b-dev/infra/packages/orchestrator/internal/chrooted")
+	meter = otel.Meter("github.com/e2b-dev/infra/packages/orchestrator/internal/chrooted")
 
 	requestLatency = utils.Must(meter.Int64Histogram(
 		"orchestrator.chroot.request.latency",

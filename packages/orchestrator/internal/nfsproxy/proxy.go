@@ -2,6 +2,7 @@ package nfsproxy
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"strings"
 	"sync"
@@ -33,7 +34,14 @@ func NewProxy(ctx context.Context, builder *chrooted.Builder, sandboxes *sandbox
 	})
 
 	// actual nfs handler
-	var handler nfs.Handler = chroot.NewNFSHandler(builder, sandboxes)
+	var (
+		handler nfs.Handler
+		err     error
+	)
+	handler, err = chroot.NewNFSHandler(builder, sandboxes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create chroot NFS handler: %w", err)
+	}
 
 	// wrap the handler in middleware
 	handler = helpers.NewCachingHandler(handler, cacheLimit)
