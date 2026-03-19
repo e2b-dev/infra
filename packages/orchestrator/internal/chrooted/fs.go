@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/filesystem"
 )
 
 func (fs *Chrooted) Create(filename string) (f *os.File, err error) {
@@ -50,6 +52,16 @@ func (fs *Chrooted) EvalSymlinks(filename string) (p string, e error) {
 func (fs *Chrooted) Stat(filename string) (info os.FileInfo, err error) {
 	err = fs.act(func() error {
 		info, err = os.Lstat(filename)
+
+		return err
+	})
+
+	return
+}
+
+func (fs *Chrooted) GetEntry(filename string) (info filesystem.EntryInfo, err error) {
+	err = fs.act(func() error {
+		info, err = filesystem.GetEntryFromPath(filename)
 
 		return err
 	})

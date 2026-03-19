@@ -134,6 +134,10 @@ func (s *Service) isRoot(path string) bool {
 func toEntry(fullVolumePath string, fileInfo os.FileInfo) *orchestrator.EntryInfo {
 	entryInfo := filesystem.GetEntryInfo(fullVolumePath, fileInfo)
 
+	return fromEntryInfo(fullVolumePath, entryInfo)
+}
+
+func fromEntryInfo(fullVolumePath string, entryInfo filesystem.EntryInfo) *orchestrator.EntryInfo {
 	return &orchestrator.EntryInfo{
 		Name:          entryInfo.Name,
 		Type:          toType(entryInfo.Type),

@@ -30,7 +30,7 @@ func (s *Service) Stat(ctx context.Context, request *orchestrator.StatRequest) (
 		attribute.String("path", path),
 	))
 
-	info, err := fs.Stat(path)
+	info, err := fs.GetEntry(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, newAPIError(ctx,
@@ -44,7 +44,7 @@ func (s *Service) Stat(ctx context.Context, request *orchestrator.StatRequest) (
 		return nil, fmt.Errorf("failed to stat path: %w", err)
 	}
 
-	entry := toEntry(path, info)
+	entry := fromEntryInfo(path, info)
 
 	return &orchestrator.StatResponse{Entry: entry}, nil
 }
