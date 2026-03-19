@@ -96,6 +96,12 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 					return nil, reverseproxy.NewErrIngressDenied(sandboxId, clientIP, uint16(port))
 				}
 
+				// IPv6 clients are always denied — ingress rules only support IPv4.
+				// If/when the GCP LB gets an IPv6 frontend, this ensures fail-closed behavior.
+				if ip.To4() == nil {
+					return nil, reverseproxy.NewErrIngressDenied(sandboxId, clientIP, uint16(port))
+				}
+
 				if !ingressACL.IsAllowed(ip, uint16(port)) {
 					return nil, reverseproxy.NewErrIngressDenied(sandboxId, clientIP, uint16(port))
 				}

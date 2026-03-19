@@ -73,17 +73,13 @@ func (a *ACL) HasRules() bool {
 }
 
 // SplitHostPort splits a network rule string into host and port parts.
-// Uses net.SplitHostPort for bracket/IPv6 handling, with fallback for bare hosts.
+// Uses net.SplitHostPort with fallback for bare hosts.
 // Returns empty port string when no port is specified.
-func SplitHostPort(s string) (host, port string, err error) {
-	h, p, splitErr := net.SplitHostPort(s)
-	if splitErr != nil {
-		// Strip brackets for bare "[::1]" (no port).
-		if strings.HasPrefix(s, "[") && strings.HasSuffix(s, "]") {
-			return s[1 : len(s)-1], "", nil
-		}
-
-		return s, "", nil
+// IPv6 addresses are not supported.
+func SplitHostPort(s string) (string, string, error) {
+	h, p, err := net.SplitHostPort(s)
+	if err != nil {
+		return s, "", nil //nolint:nilerr // fallback: bare host without port is valid
 	}
 
 	if h == "" {

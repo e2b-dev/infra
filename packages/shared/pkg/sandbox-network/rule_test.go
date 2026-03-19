@@ -28,10 +28,6 @@ func TestSplitHostPort(t *testing.T) {
 		{"bare colon", ":", "0.0.0.0/0", ""},
 		{"bare IPv6 CIDR", "::/0", "::/0", ""},
 		{"IPv6 loopback", "::1", "::1", ""},
-		{"bracketed IPv6 with port", "[::1]:80", "::1", "80"},
-		{"bracketed IPv6 no port", "[::1]", "::1", ""},
-		{"bracketed IPv6 CIDR with port", "[::/0]:443", "::/0", "443"},
-		{"bracketed IPv6 with range", "[::1]:80-443", "::1", "80-443"},
 	}
 
 	for _, tt := range tests {
@@ -127,18 +123,6 @@ func TestACL_IsAllowed(t *testing.T) {
 
 		require.True(t, acl.IsAllowed(net.ParseIP("1.2.3.4"), 443))
 		require.False(t, acl.IsAllowed(net.ParseIP("1.2.3.4"), 80))
-	})
-
-	t.Run("IPv6 matching", func(t *testing.T) {
-		t.Parallel()
-
-		acl := &ACL{
-			Allowed: []Rule{{IPNet: mustParseCIDR("2001:db8::/32")}},
-			Denied:  []Rule{{IPNet: mustParseCIDR("::/0")}},
-		}
-
-		require.True(t, acl.IsAllowed(net.ParseIP("2001:db8::1"), 80))
-		require.False(t, acl.IsAllowed(net.ParseIP("2001:db9::1"), 80))
 	})
 }
 

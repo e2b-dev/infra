@@ -459,22 +459,22 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 	ingressSteps := []ingressStep{
 		{
 			name:   "port_deny_blocks_access",
-			denyIn: []string{fmt.Sprintf("0.0.0.0/0:%d", testPort), fmt.Sprintf("[::/0]:%d", testPort)},
+			denyIn: []string{fmt.Sprintf("0.0.0.0/0:%d", testPort)},
 			checks: []ingressCheck{{testPort, "", true}, {testPort + 1, "", false}},
 		},
 		{
 			name:    "port_allow_overrides_deny",
-			allowIn: []string{fmt.Sprintf("0.0.0.0/0:%d", testPort), fmt.Sprintf("[::/0]:%d", testPort)}, denyIn: []string{"0.0.0.0/0", "::/0"},
+			allowIn: []string{fmt.Sprintf("0.0.0.0/0:%d", testPort)}, denyIn: []string{"0.0.0.0/0"},
 			checks: []ingressCheck{{testPort, "", false}, {testPort + 1, "", true}},
 		},
 		{
 			name:   "client_ip_deny_all_blocks",
-			denyIn: []string{"0.0.0.0/0", "::/0"},
+			denyIn: []string{"0.0.0.0/0"},
 			checks: []ingressCheck{{testPort, "", true}},
 		},
 		{
 			name:    "client_ip_allow_all_overrides_deny_all",
-			allowIn: []string{"0.0.0.0/0", "::/0"}, denyIn: []string{"0.0.0.0/0", "::/0"},
+			allowIn: []string{"0.0.0.0/0"}, denyIn: []string{"0.0.0.0/0"},
 			checks: []ingressCheck{{testPort, "", false}},
 		},
 		{
@@ -483,33 +483,13 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 			checks: []ingressCheck{{testPort, "", false}},
 		},
 		{
-			name:   "client_ip_deny_all_v4_and_v6_blocks",
-			denyIn: []string{"0.0.0.0/0", "::/0"},
-			checks: []ingressCheck{{testPort, "", true}},
-		},
-		{
-			name:    "client_ip_allow_all_v4_and_v6_overrides_deny",
-			allowIn: []string{"0.0.0.0/0", "::/0"}, denyIn: []string{"0.0.0.0/0", "::/0"},
-			checks: []ingressCheck{{testPort, "", false}},
-		},
-		{
-			name:   "deny_all_ipv4_and_ipv6_blocks",
-			denyIn: []string{"0.0.0.0/0", "::/0"},
-			checks: []ingressCheck{{testPort, "", true}},
-		},
-		{
-			name:    "allow_all_ipv4_and_ipv6_overrides_deny",
-			allowIn: []string{"0.0.0.0/0", "::/0"}, denyIn: []string{"0.0.0.0/0", "::/0"},
-			checks: []ingressCheck{{testPort, "", false}},
-		},
-		{
 			name:   "port_range_deny_blocks_range",
-			denyIn: []string{fmt.Sprintf("0.0.0.0/0:%d-%d", testPort, testPort+1), fmt.Sprintf("[::/0]:%d-%d", testPort, testPort+1)},
+			denyIn: []string{fmt.Sprintf("0.0.0.0/0:%d-%d", testPort, testPort+1)},
 			checks: []ingressCheck{{testPort, "", true}, {testPort + 1, "", true}},
 		},
 		{
 			name:    "port_range_allow_overrides_deny",
-			allowIn: []string{fmt.Sprintf("0.0.0.0/0:%d-%d", testPort, testPort+1), fmt.Sprintf("[::/0]:%d-%d", testPort, testPort+1)}, denyIn: []string{"0.0.0.0/0", "::/0"},
+			allowIn: []string{fmt.Sprintf("0.0.0.0/0:%d-%d", testPort, testPort+1)}, denyIn: []string{"0.0.0.0/0"},
 			checks: []ingressCheck{{testPort, "", false}, {testPort + 1, "", false}},
 		},
 		{
@@ -599,11 +579,10 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 	// =====================================================================
 
 	t.Run("combined/egress_deny_and_ingress_port_deny", func(t *testing.T) { //nolint:paralleltest // sequential
-		denyInPortV4 := fmt.Sprintf("0.0.0.0/0:%d", testPort)
-		denyInPortV6 := fmt.Sprintf("[::/0]:%d", testPort)
+		denyInPort := fmt.Sprintf("0.0.0.0/0:%d", testPort)
 		updateAll(api.PutSandboxesSandboxIDNetworkJSONRequestBody{
 			DenyOut: ptrS(blockAll),
-			DenyIn:  ptrS(denyInPortV4, denyInPortV6),
+			DenyIn:  ptrS(denyInPort),
 		})
 
 		// Egress: all outbound blocked.
@@ -630,7 +609,7 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 		updateAll(api.PutSandboxesSandboxIDNetworkJSONRequestBody{
 			AllowOut: ptrS("8.8.8.8", "google.com"),
 			DenyOut:  ptrS(blockAll),
-			DenyIn:   ptrS("0.0.0.0/0", "::/0"),
+			DenyIn:   ptrS("0.0.0.0/0"),
 		})
 
 		// Egress: allowed IP and domain work, others blocked.
@@ -660,12 +639,11 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 	// =====================================================================
 
 	t.Run("pause_resume_preserves_all", func(t *testing.T) { //nolint:paralleltest // sequential
-		denyInPortV4 := fmt.Sprintf("0.0.0.0/0:%d", testPort)
-		denyInPortV6 := fmt.Sprintf("[::/0]:%d", testPort)
+		denyInPort := fmt.Sprintf("0.0.0.0/0:%d", testPort)
 		updateAll(api.PutSandboxesSandboxIDNetworkJSONRequestBody{
 			AllowOut: ptrS("8.8.8.8", "google.com"),
 			DenyOut:  ptrS(blockAll),
-			DenyIn:   ptrS(denyInPortV4, denyInPortV6),
+			DenyIn:   ptrS(denyInPort),
 		})
 
 		// Verify before pause.

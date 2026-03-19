@@ -625,8 +625,7 @@ func validateIngressEntry(entry string) error {
 		return fmt.Errorf("domains are not supported for ingress rules")
 	}
 
-	// IsSpecifiedIPOrCIDR allows 0.0.0.0/0 but not ::/0; ingress needs both.
-	if !sandbox_network.IsSpecifiedIPOrCIDR(host) && host != "::/0" {
+	if !sandbox_network.IsSpecifiedIPOrCIDR(host) {
 		return fmt.Errorf("unspecified address")
 	}
 
