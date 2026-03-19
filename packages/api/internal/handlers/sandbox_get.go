@@ -92,6 +92,11 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 			}
 		}
 
+		lifecycle := &api.SandboxLifecycle{
+			AutoResume: sbx.AutoResume != nil && sbx.AutoResume.Policy == dbtypes.SandboxAutoResumeAny,
+			OnTimeout:  onTimeout,
+		}
+
 		sandbox := api.SandboxDetail{
 			ClientID:            sbx.ClientID,
 			TemplateID:          sbx.TemplateID,
@@ -108,11 +113,8 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 			AllowInternetAccess: sbx.AllowInternetAccess,
 			Domain:              sbxDomain,
 			Network:             &network,
-			Lifecycle: &api.SandboxLifecycle{
-				AutoResume: sbx.AutoResume != nil && sbx.AutoResume.Policy == dbtypes.SandboxAutoResumeAny,
-				OnTimeout:  onTimeout,
-			},
-			VolumeMounts: convertFromDBMountsToAPIMounts(sbx.VolumeMounts),
+			Lifecycle:           lifecycle,
+			VolumeMounts:        convertFromDBMountsToAPIMounts(sbx.VolumeMounts),
 		}
 
 		if sbx.Metadata != nil {
@@ -209,6 +211,11 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		}
 	}
 
+	lifecycle := &api.SandboxLifecycle{
+		AutoResume: autoResumeConfig != nil && autoResumeConfig.Policy == dbtypes.SandboxAutoResumeAny,
+		OnTimeout:  onTimeout,
+	}
+
 	sandbox := api.SandboxDetail{
 		ClientID:            consts.ClientID, // for backwards compatibility we need to return a client id
 		TemplateID:          lastSnapshot.Snapshot.EnvID,
@@ -224,10 +231,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		AllowInternetAccess: lastSnapshot.Snapshot.AllowInternetAccess,
 		Domain:              nil,
 		Network:             &network,
-		Lifecycle: &api.SandboxLifecycle{
-			AutoResume: autoResumeConfig != nil && autoResumeConfig.Policy == dbtypes.SandboxAutoResumeAny,
-			OnTimeout:  onTimeout,
-		},
+		Lifecycle:           lifecycle,
 	}
 
 	if lastSnapshot.Snapshot.Metadata != nil {
