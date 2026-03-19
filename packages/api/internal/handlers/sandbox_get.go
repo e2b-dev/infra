@@ -71,8 +71,27 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		}
 
 		// Sandbox exists and belongs to the team - return running sandbox sbx
-		network := dbNetworkConfigToAPI(sbx.Network)
-		lifecycle := toSandboxDetailLifecycle(sbx.AutoResume, sbx.AutoPause)
+		onTimeout := api.Kill
+		if sbx.AutoPause {
+			onTimeout = api.Pause
+		}
+
+		network := api.SandboxNetworkConfig{}
+		if sbx.Network != nil {
+			if ingress := sbx.Network.Ingress; ingress != nil {
+				network.AllowPublicTraffic = ingress.AllowPublicAccess
+				network.MaskRequestHost = ingress.MaskRequestHost
+			}
+			if egress := sbx.Network.Egress; egress != nil {
+				if egress.AllowedAddresses != nil {
+					network.AllowOut = &egress.AllowedAddresses
+				}
+				if egress.DeniedAddresses != nil {
+					network.DenyOut = &egress.DeniedAddresses
+				}
+			}
+		}
+
 		sandbox := api.SandboxDetail{
 			ClientID:            sbx.ClientID,
 			TemplateID:          sbx.TemplateID,
@@ -89,8 +108,11 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 			AllowInternetAccess: sbx.AllowInternetAccess,
 			Domain:              sbxDomain,
 			Network:             &network,
-			Lifecycle:           &lifecycle,
-			VolumeMounts:        convertFromDBMountsToAPIMounts(sbx.VolumeMounts),
+			Lifecycle: &api.SandboxLifecycle{
+				AutoResume: sbx.AutoResume != nil && sbx.AutoResume.Policy == dbtypes.SandboxAutoResumeAny,
+				OnTimeout:  onTimeout,
+			},
+			VolumeMounts: convertFromDBMountsToAPIMounts(sbx.VolumeMounts),
 		}
 
 		if sbx.Metadata != nil {
@@ -166,8 +188,27 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		networkConfig = lastSnapshot.Snapshot.Config.Network
 	}
 
-	network := dbNetworkConfigToAPI(networkConfig)
-	lifecycle := toSandboxDetailLifecycle(autoResumeConfig, lastSnapshot.Snapshot.AutoPause)
+	onTimeout := api.Kill
+	if lastSnapshot.Snapshot.AutoPause {
+		onTimeout = api.Pause
+	}
+
+	network := api.SandboxNetworkConfig{}
+	if networkConfig != nil {
+		if ingress := networkConfig.Ingress; ingress != nil {
+			network.AllowPublicTraffic = ingress.AllowPublicAccess
+			network.MaskRequestHost = ingress.MaskRequestHost
+		}
+		if egress := networkConfig.Egress; egress != nil {
+			if egress.AllowedAddresses != nil {
+				network.AllowOut = &egress.AllowedAddresses
+			}
+			if egress.DeniedAddresses != nil {
+				network.DenyOut = &egress.DeniedAddresses
+			}
+		}
+	}
+
 	sandbox := api.SandboxDetail{
 		ClientID:            consts.ClientID, // for backwards compatibility we need to return a client id
 		TemplateID:          lastSnapshot.Snapshot.EnvID,
@@ -183,7 +224,10 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		AllowInternetAccess: lastSnapshot.Snapshot.AllowInternetAccess,
 		Domain:              nil,
 		Network:             &network,
-		Lifecycle:           &lifecycle,
+		Lifecycle: &api.SandboxLifecycle{
+			AutoResume: autoResumeConfig != nil && autoResumeConfig.Policy == dbtypes.SandboxAutoResumeAny,
+			OnTimeout:  onTimeout,
+		},
 	}
 
 	if lastSnapshot.Snapshot.Metadata != nil {

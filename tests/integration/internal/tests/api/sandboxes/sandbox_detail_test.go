@@ -15,6 +15,15 @@ import (
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 )
 
+func pauseSandboxForDetailTest(t *testing.T, c *api.ClientWithResponses, sandboxID string) {
+	t.Helper()
+
+	pauseSandboxResponse, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sandboxID, setup.WithAPIKey())
+
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusNoContent, pauseSandboxResponse.StatusCode())
+}
+
 func TestSandboxDetailRunning(t *testing.T) {
 	t.Parallel()
 	c := setup.GetAPIClient()
@@ -32,13 +41,87 @@ func TestSandboxDetailRunning(t *testing.T) {
 	assert.Equal(t, sbx.TemplateID, returnedSbx.TemplateID)
 }
 
+func TestSandboxDetailReturnsLifecycleAndNetworkConfig(t *testing.T) {
+	t.Parallel()
+	c := setup.GetAPIClient()
+
+	allowInternetAccess := false
+	allowOut := []string{"8.8.8.8"}
+	denyOut := []string{"10.0.0.0/8"}
+
+	sbx := utils.SetupSandboxWithCleanup(
+		t,
+		c,
+		utils.WithAutoPause(true),
+		utils.WithAutoResume(true),
+		utils.WithAllowInternetAccess(allowInternetAccess),
+		utils.WithNetwork(&api.SandboxNetworkConfig{
+			AllowOut: &allowOut,
+			DenyOut:  &denyOut,
+		}),
+	)
+
+	assertDetail := func(t *testing.T, expectedState api.SandboxState) {
+		t.Helper()
+
+		response, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), sbx.SandboxID, setup.WithAPIKey())
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, response.StatusCode())
+		require.NotNil(t, response.JSON200)
+
+		returnedSbx := response.JSON200
+		assert.Equal(t, sbx.SandboxID, returnedSbx.SandboxID)
+		assert.Equal(t, expectedState, returnedSbx.State)
+
+		require.NotNil(t, returnedSbx.AllowInternetAccess)
+		assert.False(t, *returnedSbx.AllowInternetAccess)
+
+		require.NotNil(t, returnedSbx.Lifecycle)
+		assert.True(t, returnedSbx.Lifecycle.AutoResume)
+		assert.Equal(t, api.Pause, returnedSbx.Lifecycle.OnTimeout)
+
+		require.NotNil(t, returnedSbx.Network)
+		require.NotNil(t, returnedSbx.Network.AllowOut)
+		assert.Equal(t, allowOut, *returnedSbx.Network.AllowOut)
+		require.NotNil(t, returnedSbx.Network.DenyOut)
+		assert.Equal(t, denyOut, *returnedSbx.Network.DenyOut)
+	}
+
+	assertDetail(t, api.Running)
+
+	pauseSandboxForDetailTest(t, c, sbx.SandboxID)
+
+	require.Eventually(t, func() bool {
+		response, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), sbx.SandboxID, setup.WithAPIKey())
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, response.StatusCode())
+		require.NotNil(t, response.JSON200)
+
+		if response.JSON200.State != api.Paused {
+			return false
+		}
+
+		require.NotNil(t, response.JSON200.Lifecycle)
+		require.NotNil(t, response.JSON200.Network)
+		require.NotNil(t, response.JSON200.Network.AllowOut)
+		require.NotNil(t, response.JSON200.Network.DenyOut)
+		require.NotNil(t, response.JSON200.AllowInternetAccess)
+
+		return response.JSON200.Lifecycle.AutoResume &&
+			response.JSON200.Lifecycle.OnTimeout == api.Pause &&
+			!(*response.JSON200.AllowInternetAccess) &&
+			assert.ObjectsAreEqual(allowOut, *response.JSON200.Network.AllowOut) &&
+			assert.ObjectsAreEqual(denyOut, *response.JSON200.Network.DenyOut)
+	}, 10*time.Second, 100*time.Millisecond, "Sandbox detail did not return paused lifecycle/network config in time")
+}
+
 func TestSandboxDetailPaused(t *testing.T) {
 	t.Parallel()
 	c := setup.GetAPIClient()
 
 	sbx := utils.SetupSandboxWithCleanup(t, c)
 	sandboxID := sbx.SandboxID
-	pauseSandbox(t, c, sandboxID)
+	pauseSandboxForDetailTest(t, c, sandboxID)
 
 	response, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), sandboxID, setup.WithAPIKey())
 
