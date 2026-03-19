@@ -163,7 +163,7 @@ func (q *Queries) LockTeamMembersForUpdate(ctx context.Context, teamID uuid.UUID
 	return items, nil
 }
 
-const removeTeamMember = `-- name: RemoveTeamMember :exec
+const removeTeamMember = `-- name: RemoveTeamMember :execrows
 DELETE FROM public.users_teams
 WHERE team_id = $1::uuid
   AND user_id = $2::uuid
@@ -174,7 +174,10 @@ type RemoveTeamMemberParams struct {
 	UserID uuid.UUID
 }
 
-func (q *Queries) RemoveTeamMember(ctx context.Context, arg RemoveTeamMemberParams) error {
-	_, err := q.db.Exec(ctx, removeTeamMember, arg.TeamID, arg.UserID)
-	return err
+func (q *Queries) RemoveTeamMember(ctx context.Context, arg RemoveTeamMemberParams) (int64, error) {
+	result, err := q.db.Exec(ctx, removeTeamMember, arg.TeamID, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

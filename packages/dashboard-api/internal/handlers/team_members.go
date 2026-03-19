@@ -11,6 +11,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
+	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -105,6 +106,12 @@ func (s *APIStore) PostTeamsTeamIdMembers(c *gin.Context, _ api.TeamId) {
 		AddedBy: userID,
 	})
 	if err != nil {
+		if status, message, ok := mapAddTeamMemberError(err); ok {
+			s.sendAPIStoreError(c, status, message)
+
+			return
+		}
+
 		logger.L().Error(ctx, "failed to add team member", zap.Error(err), logger.WithTeamID(teamInfo.Team.ID.String()))
 		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to add team member")
 
@@ -169,13 +176,18 @@ func (s *APIStore) DeleteTeamsTeamIdMembersUserId(c *gin.Context, _ api.TeamId, 
 		return
 	}
 
-	err = txDB.RemoveTeamMember(ctx, queries.RemoveTeamMemberParams{
+	removedRows, err := txDB.RemoveTeamMember(ctx, queries.RemoveTeamMemberParams{
 		TeamID: teamInfo.Team.ID,
 		UserID: userId,
 	})
 	if err != nil {
 		logger.L().Error(ctx, "failed to remove team member", zap.Error(err), logger.WithTeamID(teamInfo.Team.ID.String()))
 		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to remove team member")
+
+		return
+	}
+	if status, message, ok := mapRemoveTeamMemberRows(removedRows); ok {
+		s.sendAPIStoreError(c, status, message)
 
 		return
 	}
@@ -188,4 +200,20 @@ func (s *APIStore) DeleteTeamsTeamIdMembersUserId(c *gin.Context, _ api.TeamId, 
 	}
 
 	c.Status(http.StatusNoContent)
+}
+
+func mapAddTeamMemberError(err error) (int, string, bool) {
+	if dberrors.IsUniqueConstraintViolation(err) {
+		return http.StatusBadRequest, "User is already a member of this team", true
+	}
+
+	return 0, "", false
+}
+
+func mapRemoveTeamMemberRows(removedRows int64) (int, string, bool) {
+	if removedRows == 0 {
+		return http.StatusBadRequest, "User is not a member of this team", true
+	}
+
+	return 0, "", false
 }

@@ -14,16 +14,24 @@ import (
 const updateTeam = `-- name: UpdateTeam :one
 UPDATE public.teams
 SET
-    name = COALESCE($1::text, name),
-    profile_picture_url = COALESCE($2::text, profile_picture_url)
-WHERE id = $3::uuid
+    name = CASE
+        WHEN $1::bool THEN $2::text
+        ELSE name
+    END,
+    profile_picture_url = CASE
+        WHEN $3::bool THEN $4::text
+        ELSE profile_picture_url
+    END
+WHERE id = $5::uuid
 RETURNING id, name, profile_picture_url
 `
 
 type UpdateTeamParams struct {
-	Name              *string
-	ProfilePictureUrl *string
-	TeamID            uuid.UUID
+	NameSet              bool
+	Name                 *string
+	ProfilePictureUrlSet bool
+	ProfilePictureUrl    *string
+	TeamID               uuid.UUID
 }
 
 type UpdateTeamRow struct {
@@ -33,7 +41,13 @@ type UpdateTeamRow struct {
 }
 
 func (q *Queries) UpdateTeam(ctx context.Context, arg UpdateTeamParams) (UpdateTeamRow, error) {
-	row := q.db.QueryRow(ctx, updateTeam, arg.Name, arg.ProfilePictureUrl, arg.TeamID)
+	row := q.db.QueryRow(ctx, updateTeam,
+		arg.NameSet,
+		arg.Name,
+		arg.ProfilePictureUrlSet,
+		arg.ProfilePictureUrl,
+		arg.TeamID,
+	)
 	var i UpdateTeamRow
 	err := row.Scan(&i.ID, &i.Name, &i.ProfilePictureUrl)
 	return i, err

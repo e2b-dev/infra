@@ -37,7 +37,7 @@ VALUES (
     sqlc.arg(added_by)::uuid
 );
 
--- name: RemoveTeamMember :exec
+-- name: RemoveTeamMember :execrows
 DELETE FROM public.users_teams
 WHERE team_id = sqlc.arg(team_id)::uuid
   AND user_id = sqlc.arg(user_id)::uuid;
