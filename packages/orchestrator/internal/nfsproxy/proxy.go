@@ -14,6 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy/chroot"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy/logged"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy/recovery"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy/tracing"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
@@ -48,6 +49,10 @@ func NewProxy(ctx context.Context, builder *chrooted.Builder, sandboxes *sandbox
 
 	if config.Tracing {
 		handler = tracing.WrapWithTracing(handler, config)
+	}
+
+	if config.Metrics {
+		handler = metrics.WrapWithMetrics(handler, config)
 	}
 
 	if config.Logging {

@@ -80,8 +80,9 @@ type Config struct {
 	NodeLabels                 []string          `env:"NODE_LABELS"                  envSeparator:","`
 	OrchestratorLockPath       string            `env:"ORCHESTRATOR_LOCK_PATH"       envDefault:"/orchestrator.lock"`
 	NFSProxyLogging            bool              `env:"NFS_PROXY_LOGGING"            envDefault:"false"`
-	NFSProxyTracing            bool              `env:"NFS_PROXY_TRACING"            envDefault:"true"`
-	NFSProxyRecordStatCalls    bool              `env:"NFS_PROXY_RECORD_STAT_CALLS"  envDefault:"false"`
+	NFSProxyTracing            bool              `env:"NFS_PROXY_TRACING"            envDefault:"false"`
+	NFSProxyMetrics            bool              `env:"NFS_PROXY_METRICS"            envDefault:"true"`
+	NFSProxyRecordStatCalls    bool              `env:"NFS_PROXY_RECORD_STAT_CALLS"  envDefault:"true"`
 	NFSProxyLogLevel           nfs.LogLevel      `env:"NFS_PROXY_LOG_LEVEL"          envDefault:"info"`
 	ProxyPort                  uint16            `env:"PROXY_PORT"                   envDefault:"5007"`
 	RedisClusterURL            string            `env:"REDIS_CLUSTER_URL"`

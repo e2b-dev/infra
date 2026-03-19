@@ -750,6 +750,7 @@ func startNFSProxy(
 	nfsServer, err := nfsproxy.NewProxy(ctx, builder, sandboxes, nfscfg.Config{
 		Logging:         config.NFSProxyLogging,
 		Tracing:         config.NFSProxyTracing,
+		Metrics:         config.NFSProxyMetrics,
 		RecordStatCalls: config.NFSProxyRecordStatCalls,
 		NFSLogLevel:     config.NFSProxyLogLevel,
 	})
