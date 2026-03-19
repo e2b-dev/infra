@@ -16,7 +16,7 @@
         <span class="sandbox-url">{{.Host}}</span>
         <div class="error-code">Blocked by the sandbox network policy for sandbox <span class="highlight">{{.SandboxId}}</span></div>
     </div>
-    <p class="help-text">The sandbox owner has restricted access to this sandbox. Contact them if you believe this is an error.</p>
+    <p class="help-text">The sandbox has restricted access. It can not be reached {{ .IP }} on port {{.Port}}</p>
 </main>
 </body>
 </html>
