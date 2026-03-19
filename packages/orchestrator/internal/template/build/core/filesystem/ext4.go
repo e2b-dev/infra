@@ -42,8 +42,13 @@ func Make(ctx context.Context, rootfsPath string, sizeMb int64, blockSize int64)
 	cmd := exec.CommandContext(ctx,
 		"mkfs.ext4",
 		// Matches the final ext4 features used by tar2ext4 tool
-		// But enables resize_inode, sparse_super (default, required for resize_inode), has_journal (default), metadata_csum (default)
-		"-O", `^dir_index,^64bit,^dir_nlink,ext_attr,sparse_super2,filetype,extent,flex_bg,large_file,huge_file,extra_isize`,
+		// But enables resize_inode, sparse_super (default, required for resize_inode), has_journal (default), metadata_csum (default).
+		// orphan_file is disabled (added as default in e2fsprogs >= 1.47.0) to ensure guest e2fsprogs tools
+		// (tune2fs, resize2fs, e2fsck) from older images (e.g. Ubuntu 22.04, Debian 11) can write to
+		// the filesystem. Without this, any write operation from the guest fails with "unsupported
+		// read-only feature(s)" when the host e2fsprogs is newer than the guest's.
+		// See https://e2fsprogs.sourceforge.net/e2fsprogs-release.html#1.47.0
+		"-O", `^dir_index,^64bit,^dir_nlink,^orphan_file,ext_attr,sparse_super2,filetype,extent,flex_bg,large_file,huge_file,extra_isize`,
 		"-b", strconv.FormatInt(blockSize, 10),
 		"-m", strconv.FormatInt(reservedBlocksPercentage, 10),
 		"-i", strconv.FormatInt(inodesRatio, 10),
