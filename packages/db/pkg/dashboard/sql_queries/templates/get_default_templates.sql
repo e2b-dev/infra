@@ -22,11 +22,3 @@ JOIN LATERAL (
     LIMIT 1
 ) latest_assignment ON TRUE
 JOIN public.env_builds b ON b.id = latest_assignment.build_id;
-
--- name: GetDefaultTemplateAliases :many
-SELECT
-    ea.alias,
-    ea.namespace,
-    ea.env_id
-FROM public.env_aliases ea
-WHERE ea.env_id = ANY(sqlc.arg(env_ids)::text[]);

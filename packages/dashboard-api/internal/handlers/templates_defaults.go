@@ -36,7 +36,7 @@ func (s *APIStore) GetTemplatesDefaults(c *gin.Context) {
 		envIDs = append(envIDs, row.TemplateID)
 	}
 
-	aliasRows, err := s.db.GetDefaultTemplateAliases(ctx, envIDs)
+	aliasRows, err := s.db.GetTemplateAliases(ctx, envIDs)
 	if err != nil {
 		logger.L().Error(ctx, "failed to get default template aliases", zap.Error(err))
 		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to get default template aliases")

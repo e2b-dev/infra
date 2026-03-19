@@ -12,41 +12,6 @@ import (
 	"github.com/google/uuid"
 )
 
-const getDefaultTemplateAliases = `-- name: GetDefaultTemplateAliases :many
-SELECT
-    ea.alias,
-    ea.namespace,
-    ea.env_id
-FROM public.env_aliases ea
-WHERE ea.env_id = ANY($1::text[])
-`
-
-type GetDefaultTemplateAliasesRow struct {
-	Alias     string
-	Namespace *string
-	EnvID     string
-}
-
-func (q *Queries) GetDefaultTemplateAliases(ctx context.Context, envIds []string) ([]GetDefaultTemplateAliasesRow, error) {
-	rows, err := q.db.Query(ctx, getDefaultTemplateAliases, envIds)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []GetDefaultTemplateAliasesRow
-	for rows.Next() {
-		var i GetDefaultTemplateAliasesRow
-		if err := rows.Scan(&i.Alias, &i.Namespace, &i.EnvID); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const getDefaultTemplates = `-- name: GetDefaultTemplates :many
 SELECT
     e.id AS template_id,
