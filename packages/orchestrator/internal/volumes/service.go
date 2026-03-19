@@ -136,7 +136,7 @@ func toEntry(fullVolumePath string, fileInfo os.FileInfo) *orchestrator.EntryInf
 
 	return &orchestrator.EntryInfo{
 		Name:          entryInfo.Name,
-		Type:          toType(entryInfo.Mode),
+		Type:          toGRPCType(entryInfo.Type),
 		Path:          fullVolumePath,
 		Size:          entryInfo.Size,
 		Mode:          uint32(entryInfo.Mode & os.ModePerm),
@@ -146,6 +146,19 @@ func toEntry(fullVolumePath string, fileInfo os.FileInfo) *orchestrator.EntryInf
 		SymlinkTarget: entryInfo.SymlinkTarget,
 		CreatedTime:   toTimestampFromTime(entryInfo.CreatedTime),
 		AccessedTime:  toTimestampFromTime(entryInfo.AccessedTime),
+	}
+}
+
+func toGRPCType(fileType filesystem.FileType) orchestrator.FileType {
+	switch fileType {
+	case filesystem.DirectoryFileType:
+		return orchestrator.FileType_FILE_TYPE_DIRECTORY
+	case filesystem.FileFileType:
+		return orchestrator.FileType_FILE_TYPE_FILE
+	case filesystem.SymlinkFileType:
+		return orchestrator.FileType_FILE_TYPE_SYMLINK
+	default:
+		return orchestrator.FileType_FILE_TYPE_UNSPECIFIED
 	}
 }
 
