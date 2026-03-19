@@ -219,6 +219,16 @@ func (ppb *PostProcessingBuilder) postProcessingFn(userLogger logger.Logger) lay
 				return
 			}
 
+			// Set reserved disk space for the guest OS before syncing
+			if reservedDiskSpaceMB := int64(ppb.featureFlags.IntFlag(ctx, featureflags.BuildReservedDiskSpaceMB)); reservedDiskSpaceMB > 0 {
+				err := sandboxtools.SetReservedBlocksInGuest(ctx, ppb.proxy, userLogger, sbx.Runtime.SandboxID, reservedDiskSpaceMB, ppb.Config.RootfsBlockSize())
+				if err != nil {
+					e = fmt.Errorf("error setting reserved disk space: %w", err)
+
+					return
+				}
+			}
+
 			// Ensure all changes are synchronized to disk so the sandbox can be restarted
 			err := sandboxtools.SyncChangesToDisk(
 				ctx,
