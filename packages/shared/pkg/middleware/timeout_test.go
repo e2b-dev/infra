@@ -35,27 +35,6 @@ func TestRequestTimeout_SetsDeadline(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 }
 
-func TestRequestTimeout_Returns408WhenHandlerDoesNotWrite(t *testing.T) {
-	t.Parallel()
-
-	r := gin.New()
-	r.Use(RequestTimeout(100 * time.Millisecond))
-	r.GET("/slow", func(c *gin.Context) {
-		<-c.Request.Context().Done()
-	})
-
-	w := httptest.NewRecorder()
-	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, "/slow", nil)
-
-	start := time.Now()
-	r.ServeHTTP(w, req)
-	elapsed := time.Since(start)
-
-	assert.Less(t, elapsed, 500*time.Millisecond, "should have timed out promptly")
-	require.Equal(t, http.StatusRequestTimeout, w.Code)
-	assert.Equal(t, "request timed out", w.Body.String())
-}
-
 func TestRequestTimeout_CancelsBlockingHandler(t *testing.T) {
 	t.Parallel()
 

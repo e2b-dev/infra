@@ -40,7 +40,6 @@ func LoggingMiddleware(logger logger.Logger, conf Config) gin.HandlerFunc {
 	}
 
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
 		start := time.Now()
 
 		// Preserve this if any middleware modifies these values
@@ -72,13 +71,7 @@ func LoggingMiddleware(logger logger.Logger, conf Config) gin.HandlerFunc {
 				end = end.UTC()
 			}
 
-			status := c.Writer.Status()
-			if errors.Is(ctx.Err(), context.Canceled) {
-				status = 499
-			}
-
 			fields := []zapcore.Field{
-				zap.Int("status", status),
 				zap.String("method", c.Request.Method),
 				zap.String("path", path),
 				zap.String("query", query),
@@ -86,6 +79,18 @@ func LoggingMiddleware(logger logger.Logger, conf Config) gin.HandlerFunc {
 				zap.Duration("latency", latency),
 			}
 
+			status := c.Writer.Status()
+			reqCtx := c.Request.Context()
+			cause := context.Cause(reqCtx)
+			if errors.Is(cause, ErrRequestTimeout) {
+				status = http.StatusInternalServerError // 500
+				fields = append(fields, zap.Bool("request_timeout", true))
+			} else if reqCtx.Err() == context.Canceled {
+				status = StatusClientClosedRequest // 499
+				fields = append(fields, zap.Bool("client_canceled", true))
+			}
+
+			fields = append(fields, zap.Int("status", status))
 			if conf.TimeFormat != "" {
 				fields = append(fields, zap.String("time", end.Format(conf.TimeFormat)))
 			}
@@ -111,7 +116,7 @@ func LoggingMiddleware(logger logger.Logger, conf Config) gin.HandlerFunc {
 				level = zapcore.WarnLevel
 			}
 
-			logger.Log(ctx, level, path, fields...)
+			logger.Log(reqCtx, level, path, fields...)
 		}
 	}
 }
