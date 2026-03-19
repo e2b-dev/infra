@@ -53,6 +53,10 @@ func WithEnvdVersion(envdVersion string) zap.Field {
 	return zap.String("envd.version", envdVersion)
 }
 
+func WithKernelVersion(kernelVersion string) zap.Field {
+	return zap.String("kernel.version", kernelVersion)
+}
+
 func WithFirecrackerVersion(firecrackerVersion string) zap.Field {
 	return zap.String("firecracker.version", firecrackerVersion)
 }

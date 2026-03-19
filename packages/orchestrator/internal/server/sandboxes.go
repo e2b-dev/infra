@@ -78,10 +78,10 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	}()
 
 	childSpan.SetAttributes(
+		telemetry.WithBuildID(req.GetSandbox().GetBuildId()),
 		telemetry.WithTemplateID(req.GetSandbox().GetTemplateId()),
-		attribute.String("kernel.version", req.GetSandbox().GetKernelVersion()),
+		telemetry.WithKernelVersion(req.GetSandbox().GetKernelVersion()),
 		telemetry.WithSandboxID(req.GetSandbox().GetSandboxId()),
-		attribute.String("client.id", s.info.ClientId),
 		telemetry.WithEnvdVersion(req.GetSandbox().GetEnvdVersion()),
 	)
 
@@ -213,6 +213,14 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 
 		err = errors.Join(err, context.Cause(ctx))
 		telemetry.ReportCriticalError(ctx, "failed to create sandbox", err)
+		logger.L().Error(ctx, "failed to create sandbox", zap.Error(err),
+			logger.WithSandboxID(req.GetSandbox().GetSandboxId()),
+			logger.WithBuildID(req.GetSandbox().GetBuildId()),
+			logger.WithTemplateID(req.GetSandbox().GetTemplateId()),
+			logger.WithEnvdVersion(req.GetSandbox().GetEnvdVersion()),
+			logger.WithKernelVersion(req.GetSandbox().GetKernelVersion()),
+			logger.WithFirecrackerVersion(req.GetSandbox().GetFirecrackerVersion()),
+		)
 
 		return nil, status.Errorf(codes.Internal, "failed to create sandbox: %s", err)
 	}

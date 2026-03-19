@@ -48,6 +48,9 @@ func WithEnvdVersion(envdVersion string) attribute.KeyValue {
 	return zapFieldToOTELAttribute(logger.WithEnvdVersion(envdVersion))
 }
 
+func WithKernelVersion(kernelVersion string) attribute.KeyValue {
+	return zapFieldToOTELAttribute(logger.WithKernelVersion(kernelVersion))
+}
 func WithFirecrackerVersion(firecrackerVersion string) attribute.KeyValue {
 	return zapFieldToOTELAttribute(logger.WithFirecrackerVersion(firecrackerVersion))
 }
