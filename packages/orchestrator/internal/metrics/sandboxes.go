@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	maxAcceptableSandboxClockDriftSec = 2
+	maxAcceptableSandboxClockDriftSec = 5
 
 	sbxMemThresholdPct = 80
 	sbxCpuThresholdPct = 80
