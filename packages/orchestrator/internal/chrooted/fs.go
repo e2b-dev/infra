@@ -51,7 +51,7 @@ func (fs *Chrooted) EvalSymlinks(filename string) (p string, e error) {
 
 func (fs *Chrooted) Stat(filename string) (info os.FileInfo, err error) {
 	err = fs.act(func() error {
-		info, err = os.Lstat(filename)
+		info, err = os.Stat(filename)
 
 		return err
 	})
