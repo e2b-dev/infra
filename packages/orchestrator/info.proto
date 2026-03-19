@@ -11,8 +11,8 @@ enum ServiceInfoStatus {
   // Draining means the node is bound to be shut down. It will not accept new sandboxes and will stop once all existing sandboxes are done.
   Draining = 1;
   Unhealthy = 2;
-  // ScalingDown means the node is a candidate for removal but can be interrupted. If interrupted, it returns to Healthy and continues serving traffic.
-  ScalingDown = 3;
+  // Standby means the node is not actively used, but it can return to Healthy and continues serving traffic.
+  Standby = 3;
 }
 
 enum ServiceInfoRole {

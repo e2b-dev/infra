@@ -64,11 +64,11 @@ const (
 
 // Defines values for NodeStatus.
 const (
-	NodeStatusConnecting  NodeStatus = "connecting"
-	NodeStatusDraining    NodeStatus = "draining"
-	NodeStatusReady       NodeStatus = "ready"
-	NodeStatusScalingDown NodeStatus = "scaling_down"
-	NodeStatusUnhealthy   NodeStatus = "unhealthy"
+	NodeStatusConnecting NodeStatus = "connecting"
+	NodeStatusDraining   NodeStatus = "draining"
+	NodeStatusReady      NodeStatus = "ready"
+	NodeStatusStandby    NodeStatus = "standby"
+	NodeStatusUnhealthy  NodeStatus = "unhealthy"
 )
 
 // Defines values for SandboxState.
@@ -469,7 +469,7 @@ type Node struct {
 
 	// Status Status of the node.
 	// - draining: the node is bound to be shut down. It will not accept new sandboxes and will stop once all existing sandboxes are done.
-	// - scaling_down: the node is a candidate for removal but can be interrupted. If interrupted, it returns to ready and continues serving traffic.
+	// - standby: the node is not actively used, but it can return to ready and continue serving traffic.
 	Status NodeStatus `json:"status"`
 
 	// Version Version of the orchestrator
@@ -508,7 +508,7 @@ type NodeDetail struct {
 
 	// Status Status of the node.
 	// - draining: the node is bound to be shut down. It will not accept new sandboxes and will stop once all existing sandboxes are done.
-	// - scaling_down: the node is a candidate for removal but can be interrupted. If interrupted, it returns to ready and continues serving traffic.
+	// - standby: the node is not actively used, but it can return to ready and continue serving traffic.
 	Status NodeStatus `json:"status"`
 
 	// Version Version of the orchestrator
@@ -541,7 +541,7 @@ type NodeMetrics struct {
 
 // NodeStatus Status of the node.
 // - draining: the node is bound to be shut down. It will not accept new sandboxes and will stop once all existing sandboxes are done.
-// - scaling_down: the node is a candidate for removal but can be interrupted. If interrupted, it returns to ready and continues serving traffic.
+// - standby: the node is not actively used, but it can return to ready and continue serving traffic.
 type NodeStatus string
 
 // NodeStatusChange defines model for NodeStatusChange.
@@ -551,7 +551,7 @@ type NodeStatusChange struct {
 
 	// Status Status of the node.
 	// - draining: the node is bound to be shut down. It will not accept new sandboxes and will stop once all existing sandboxes are done.
-	// - scaling_down: the node is a candidate for removal but can be interrupted. If interrupted, it returns to ready and continues serving traffic.
+	// - standby: the node is not actively used, but it can return to ready and continue serving traffic.
 	Status NodeStatus `json:"status"`
 }
 
