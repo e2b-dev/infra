@@ -54,11 +54,11 @@ func WithEnvdVersion(envdVersion string) zap.Field {
 }
 
 func WithKernelVersion(kernelVersion string) zap.Field {
-	return zap.String("kernel.version", kernelVersion)
+	return zap.String("sandbox.kernel.version", kernelVersion)
 }
 
 func WithFirecrackerVersion(firecrackerVersion string) zap.Field {
-	return zap.String("firecracker.version", firecrackerVersion)
+	return zap.String("sandbox.firecracker.version", firecrackerVersion)
 }
 
 func WithClientIP(clientIP string) zap.Field {
