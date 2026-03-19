@@ -103,8 +103,8 @@ func TestRequestTimeout_NormalRequestContextNotCanceled(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	require.Equal(t, http.StatusOK, w.Code)
-	assert.Nil(t, outerCtxErr, "outer middleware should not see a canceled context for normal requests")
-	assert.Nil(t, outerCause, "outer middleware should not see a cause for normal requests")
+	assert.NoError(t, outerCtxErr, "outer middleware should not see a canceled context for normal requests")
+	assert.NoError(t, outerCause, "outer middleware should not see a cause for normal requests")
 }
 
 func TestRequestTimeout_TimeoutContextVisibleToOuterMiddleware(t *testing.T) {
