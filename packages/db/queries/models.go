@@ -176,8 +176,8 @@ type Team struct {
 	BlockedReason           *string
 	ClusterID               *uuid.UUID
 	SandboxSchedulingLabels []string
-	ProfilePictureUrl       *string
 	Slug                    string
+	ProfilePictureUrl       *string
 }
 
 type TeamApiKey struct {
