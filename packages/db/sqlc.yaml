@@ -158,9 +158,6 @@ sql:
 
   - engine: "postgresql"
     queries: "pkg/testutils/*.sql"
-    schema:
-      - "migrations"
-      - "schema"
     gen:
       go:
         package: "queries"
