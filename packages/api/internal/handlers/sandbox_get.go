@@ -76,21 +76,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 			onTimeout = api.Pause
 		}
 
-		network := api.SandboxNetworkConfig{}
-		if sbx.Network != nil {
-			if ingress := sbx.Network.Ingress; ingress != nil {
-				network.AllowPublicTraffic = ingress.AllowPublicAccess
-				network.MaskRequestHost = ingress.MaskRequestHost
-			}
-			if egress := sbx.Network.Egress; egress != nil {
-				if egress.AllowedAddresses != nil {
-					network.AllowOut = &egress.AllowedAddresses
-				}
-				if egress.DeniedAddresses != nil {
-					network.DenyOut = &egress.DeniedAddresses
-				}
-			}
-		}
+		network := dbNetworkConfigToAPI(sbx.Network)
 
 		lifecycle := &api.SandboxLifecycle{
 			AutoResume: sbx.AutoResume != nil && sbx.AutoResume.Policy == dbtypes.SandboxAutoResumeAny,
@@ -195,21 +181,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		onTimeout = api.Pause
 	}
 
-	network := api.SandboxNetworkConfig{}
-	if networkConfig != nil {
-		if ingress := networkConfig.Ingress; ingress != nil {
-			network.AllowPublicTraffic = ingress.AllowPublicAccess
-			network.MaskRequestHost = ingress.MaskRequestHost
-		}
-		if egress := networkConfig.Egress; egress != nil {
-			if egress.AllowedAddresses != nil {
-				network.AllowOut = &egress.AllowedAddresses
-			}
-			if egress.DeniedAddresses != nil {
-				network.DenyOut = &egress.DeniedAddresses
-			}
-		}
-	}
+	network := dbNetworkConfigToAPI(networkConfig)
 
 	lifecycle := &api.SandboxLifecycle{
 		AutoResume: autoResumeConfig != nil && autoResumeConfig.Policy == dbtypes.SandboxAutoResumeAny,
