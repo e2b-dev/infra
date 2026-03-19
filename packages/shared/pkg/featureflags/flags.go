@@ -18,7 +18,6 @@ const (
 	SandboxKernelVersionAttribute      string         = "kernel-version"
 	SandboxFirecrackerVersionAttribute string         = "firecracker-version"
 
-<<<<<<< HEAD:packages/shared/pkg/feature-flags/flags.go
 	TeamKind             ldcontext.Kind = "team"
 	UserKind             ldcontext.Kind = "user"
 	ClusterKind          ldcontext.Kind = "cluster"
@@ -29,19 +28,9 @@ const (
 	VolumeKind           ldcontext.Kind = "volume"
 	CompressFileTypeKind ldcontext.Kind = "compress-file-type"
 	CompressUseCaseKind  ldcontext.Kind = "compress-use-case"
-=======
-	TeamKind       ldcontext.Kind = "team"
-	UserKind       ldcontext.Kind = "user"
-	ClusterKind    ldcontext.Kind = "cluster"
-	deploymentKind ldcontext.Kind = "deployment"
-	TierKind       ldcontext.Kind = "tier"
-	ServiceKind    ldcontext.Kind = "service"
-	TemplateKind   ldcontext.Kind = "template"
-	VolumeKind     ldcontext.Kind = "volume"
 
 	OrchestratorKind            ldcontext.Kind = "orchestrator"
 	OrchestratorCommitAttribute string         = "commit"
->>>>>>> f0933bad7768f85e3541c68aa6f07632e159d7c0:packages/shared/pkg/featureflags/flags.go
 )
 
 // All flags must be defined here: https://app.launchdarkly.com/projects/default/flags/

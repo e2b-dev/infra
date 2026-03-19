@@ -12,10 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-<<<<<<< HEAD
 	"strings"
-=======
->>>>>>> f0933bad7768f85e3541c68aa6f07632e159d7c0
 	"time"
 )
 

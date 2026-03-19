@@ -6,10 +6,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
-<<<<<<< HEAD
-=======
-	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
->>>>>>> f0933bad7768f85e3541c68aa6f07632e159d7c0
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )

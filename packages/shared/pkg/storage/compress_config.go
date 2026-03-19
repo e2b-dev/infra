@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 )
 
 // CompressConfig is the base compression configuration, loaded from environment

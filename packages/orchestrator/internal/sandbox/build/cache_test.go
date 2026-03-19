@@ -26,13 +26,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
-<<<<<<< HEAD
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
-=======
-	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
->>>>>>> f0933bad7768f85e3541c68aa6f07632e159d7c0
 )
 
 const (

@@ -43,10 +43,9 @@ const (
 	MetadataKeyUncompressedSize = "uncompressed-size"
 )
 
-<<<<<<< HEAD
 // RangeReadFunc is a callback for reading a byte range from storage.
 type RangeReadFunc func(ctx context.Context, offset int64, length int) (io.ReadCloser, error)
-=======
+
 // GetProviderType returns the configured storage provider type from the
 // STORAGE_PROVIDER environment variable, defaulting to GCPBucket.
 func GetProviderType() Provider {
@@ -66,7 +65,6 @@ const (
 	MemfileObjectType
 	RootFSObjectType
 )
->>>>>>> f0933bad7768f85e3541c68aa6f07632e159d7c0
 
 type ObjectType int
 
@@ -215,29 +213,32 @@ func LoadBlob(ctx context.Context, s StorageProvider, path string) ([]byte, erro
 // Exported for use by CLI tools (inspect-build, compress-build) and tests that
 // need to read frames outside the normal StorageProvider stack.
 func ReadFrame(ctx context.Context, rangeRead RangeReadFunc, storageDetails string, offsetU int64, frameTable *FrameTable, decompress bool, buf []byte, readSize int64, onRead func(totalWritten int64)) (Range, error) {
+	fmt.Printf("[ReadFrame] offset=%#x buf=%d compressed=%v decompress=%v from=%s\n", offsetU, len(buf), frameTable.IsCompressed(), decompress, storageDetails)
 	// Resolve fetch coordinates: for uncompressed data (nil frameTable) they
 	// map 1:1; for compressed data we translate U → C via the frame table.
 	var (
-		fetchOffset int64
-		fetchSize   int
+		fetchOffset  int64
+		fetchSize    int
+		expectedOut  int // bytes the caller should receive on success
 	)
 
 	compressed := frameTable.IsCompressed()
 	if !compressed {
 		fetchOffset = offsetU
 		fetchSize = len(buf)
+		expectedOut = len(buf)
 	} else {
 		frameStart, frameSize, err := frameTable.FrameFor(offsetU)
 		if err != nil {
 			return Range{}, fmt.Errorf("get frame for offset %#x, %s: %w", offsetU, storageDetails, err)
 		}
 
-		expectedSize := int(frameSize.C)
+		expectedOut = int(frameSize.C)
 		if decompress {
-			expectedSize = int(frameSize.U)
+			expectedOut = int(frameSize.U)
 		}
-		if len(buf) < expectedSize {
-			return Range{}, fmt.Errorf("buffer too small: got %d bytes, need %d bytes for frame", len(buf), expectedSize)
+		if len(buf) < expectedOut {
+			return Range{}, fmt.Errorf("buffer too small: got %d bytes, need %d bytes for frame", len(buf), expectedOut)
 		}
 
 		fetchOffset = frameStart.C
@@ -250,18 +251,37 @@ func ReadFrame(ctx context.Context, rangeRead RangeReadFunc, storageDetails stri
 	}
 	defer respBody.Close()
 
+	var r Range
+
 	// No decompression needed: stream raw bytes (uncompressed or compressed passthrough).
 	if !compressed || !decompress {
-		return readInto(respBody, buf, fetchSize, fetchOffset, readSize, onRead)
+		r, err = readInto(respBody, buf, fetchSize, fetchOffset, readSize, onRead)
+	} else {
+		r, err = readFrameDecompress(respBody, frameTable, offsetU, fetchOffset, buf, readSize, onRead)
 	}
 
-	_, frameSize, _ := frameTable.FrameFor(offsetU) // already validated above
+	if err != nil {
+		return r, err
+	}
+
+	// All sizes are known upfront (from header/frame table), so a short read
+	// always indicates truncation or corruption — never a valid result.
+	if r.Length != expectedOut {
+		return r, fmt.Errorf("incomplete ReadFrame from %s: got %d bytes, expected %d (offset %#x)", storageDetails, r.Length, expectedOut, offsetU)
+	}
+
+	return r, nil
+}
+
+// readFrameDecompress handles the decompress=true path for compressed frames.
+func readFrameDecompress(respBody io.Reader, frameTable *FrameTable, offsetU, fetchOffset int64, buf []byte, readSize int64, onRead func(totalWritten int64)) (Range, error) {
+	_, frameSize, _ := frameTable.FrameFor(offsetU) // already validated by caller
 
 	switch frameTable.CompressionType() {
 	case CompressionLZ4:
 		cbuf := make([]byte, frameSize.C)
 
-		_, err = io.ReadFull(respBody, cbuf)
+		_, err := io.ReadFull(respBody, cbuf)
 		if err != nil {
 			return Range{}, fmt.Errorf("reading compressed lz4 frame: %w", err)
 		}
@@ -269,9 +289,6 @@ func ReadFrame(ctx context.Context, rangeRead RangeReadFunc, storageDetails stri
 		out, err := DecompressLZ4(cbuf, buf[:frameSize.U])
 		if err != nil {
 			return Range{}, err
-		}
-		if len(out) != int(frameSize.U) {
-			return Range{}, fmt.Errorf("lz4 frame decompress: expected %d bytes, got %d", frameSize.U, len(out))
 		}
 		if onRead != nil {
 			onRead(int64(len(out)))

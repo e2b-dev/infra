@@ -95,7 +95,6 @@ func BenchmarkBaseImage(b *testing.B) {
 		templateVersion = "v2.0.0"
 	)
 
-<<<<<<< HEAD
 	// Apply compression settings from env.
 	compType, compLevel := parseCompressEnv(os.Getenv("BENCH_COMPRESS"))
 	compressed := compType != ""
@@ -117,8 +116,7 @@ func BenchmarkBaseImage(b *testing.B) {
 
 	sbxNetwork := &orchestrator.SandboxNetworkConfig{}
 
-=======
->>>>>>> f0933bad7768f85e3541c68aa6f07632e159d7c0
+
 	// cache paths, to speed up test runs. these paths aren't wiped between tests
 	persistenceDir := getPersistenceDir()
 	kernelsDir := filepath.Join(persistenceDir, "kernels")

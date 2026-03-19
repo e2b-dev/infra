@@ -38,7 +38,6 @@ type Server struct {
 	orchestrator.UnimplementedSandboxServiceServer
 	orchestrator.UnimplementedChunkServiceServer
 
-<<<<<<< HEAD
 	config            cfg.Config
 	sandboxFactory    *sandbox.Factory
 	info              *service.ServiceInfo
@@ -53,24 +52,8 @@ type Server struct {
 	sbxEventsService  *events.EventsService
 	startingSandboxes *semaphore.Weighted
 	peerRegistry      peerclient.Registry
-	uploadedBuilds    *ttlcache.Cache[string, *uploadedBuildHeaders]
-=======
-	config                cfg.Config
-	sandboxFactory        *sandbox.Factory
-	info                  *service.ServiceInfo
-	proxy                 *proxy.SandboxProxy
-	networkPool           *network.Pool
-	templateCache         *template.Cache
-	pauseMu               sync.Mutex
-	devicePool            *nbd.DevicePool
-	persistence           storage.StorageProvider
-	featureFlags          *featureflags.Client
-	sbxEventsService      *events.EventsService
-	startingSandboxes     *semaphore.Weighted
-	peerRegistry          peerclient.Registry
-	uploadedBuilds        *ttlcache.Cache[string, struct{}]
+	uploadedBuilds        *ttlcache.Cache[string, *uploadedBuildHeaders]
 	sandboxCreateDuration metric.Int64Histogram
->>>>>>> f0933bad7768f85e3541c68aa6f07632e159d7c0
 }
 
 type ServiceConfig struct {
@@ -88,15 +71,9 @@ type ServiceConfig struct {
 	PeerRegistry     peerclient.Registry
 }
 
-<<<<<<< HEAD
-func New(ctx context.Context, cfg ServiceConfig) *Server {
+func New(ctx context.Context, cfg ServiceConfig) (*Server, error) {
 	uploadedBuilds := ttlcache.New(
 		ttlcache.WithTTL[string, *uploadedBuildHeaders](uploadedBuildsTTL),
-=======
-func New(cfg ServiceConfig) (*Server, error) {
-	uploadedBuilds := ttlcache.New[string, struct{}](
-		ttlcache.WithTTL[string, struct{}](uploadedBuildsTTL),
->>>>>>> f0933bad7768f85e3541c68aa6f07632e159d7c0
 	)
 	go uploadedBuilds.Start()
 

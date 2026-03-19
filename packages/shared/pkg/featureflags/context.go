@@ -164,18 +164,17 @@ func VolumeContext(volumeName string) ldcontext.Context {
 	return ldcontext.NewWithKind(VolumeKind, volumeName)
 }
 
-<<<<<<< HEAD:packages/shared/pkg/feature-flags/context.go
 func CompressFileTypeContext(fileType string) ldcontext.Context {
 	return ldcontext.NewWithKind(CompressFileTypeKind, fileType)
 }
 
 func CompressUseCaseContext(useCase string) ldcontext.Context {
 	return ldcontext.NewWithKind(CompressUseCaseKind, useCase)
-=======
+}
+
 func VersionContext(orchestratorID, commit string) ldcontext.Context {
 	return ldcontext.NewBuilder(orchestratorID).
 		Kind(OrchestratorKind).
 		SetString(OrchestratorCommitAttribute, commit).
 		Build()
->>>>>>> f0933bad7768f85e3541c68aa6f07632e159d7c0:packages/shared/pkg/featureflags/context.go
 }

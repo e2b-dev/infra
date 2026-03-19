@@ -278,41 +278,6 @@ func (r *cancelOnCloseReader) Close() error {
 	return r.ReadCloser.Close()
 }
 
-<<<<<<< HEAD
-=======
-func (o *gcpObject) ReadAt(ctx context.Context, buff []byte, off int64) (n int, err error) {
-	timer := googleReadTimerFactory.Begin(attribute.String(gcsOperationAttr, gcsOperationAttrReadAt))
-
-	ctx, cancel := context.WithTimeout(ctx, googleReadTimeout)
-	defer cancel()
-
-	// The file should not be gzip compressed
-	reader, err := o.handle.NewRangeReader(ctx, off, int64(len(buff)))
-	if err != nil {
-		timer.Failure(ctx, int64(n))
-
-		return 0, fmt.Errorf("failed to create GCS reader for %q: %w", o.path, err)
-	}
-
-	defer reader.Close()
-
-	n, err = io.ReadFull(reader, buff)
-	if errors.Is(err, io.ErrUnexpectedEOF) {
-		err = io.EOF
-	}
-
-	if ignoreEOF(err) != nil {
-		timer.Failure(ctx, int64(n))
-
-		return n, fmt.Errorf("failed to read %q: %w", o.path, err)
-	}
-
-	timer.Success(ctx, int64(n))
-
-	return n, err
-}
-
->>>>>>> f0933bad7768f85e3541c68aa6f07632e159d7c0
 func (o *gcpObject) Put(ctx context.Context, data []byte) (e error) {
 	timer := googleWriteTimerFactory.Begin(attribute.String(gcsOperationAttr, gcsOperationAttrWrite))
 

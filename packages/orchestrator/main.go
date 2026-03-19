@@ -473,7 +473,7 @@ func run(config cfg.Config) (success bool) {
 
 	volumeService := volumes.New(config)
 
-	orchestratorService, err := server.New(server.ServiceConfig{
+	orchestratorService, err := server.New(ctx, server.ServiceConfig{
 		Config:           config,
 		SandboxFactory:   sandboxFactory,
 		Tel:              tel,
