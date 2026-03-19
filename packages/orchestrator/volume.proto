@@ -150,6 +150,13 @@ message VolumeFileDeleteRequest {
 
 message VolumeFileDeleteResponse {}
 
+message DeletePathRequest {
+  VolumeInfo volume = 1;
+  string path = 2;
+}
+
+message DeletePathResponse {}
+
 message StatRequest {
   VolumeInfo volume = 1;
   string path = 2;
@@ -193,4 +200,5 @@ service VolumeService {
   rpc UpdateFileMetadata(VolumeFileUpdateRequest) returns (VolumeFileUpdateResponse);
 
   rpc Stat(StatRequest) returns (StatResponse);
+  rpc DeletePath(DeletePathRequest) returns (DeletePathResponse);
 }

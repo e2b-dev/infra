@@ -29,6 +29,7 @@ const (
 	VolumeService_DeleteFile_FullMethodName         = "/VolumeService/DeleteFile"
 	VolumeService_UpdateFileMetadata_FullMethodName = "/VolumeService/UpdateFileMetadata"
 	VolumeService_Stat_FullMethodName               = "/VolumeService/Stat"
+	VolumeService_DeletePath_FullMethodName         = "/VolumeService/DeletePath"
 )
 
 // VolumeServiceClient is the client API for VolumeService service.
@@ -45,6 +46,7 @@ type VolumeServiceClient interface {
 	DeleteFile(ctx context.Context, in *VolumeFileDeleteRequest, opts ...grpc.CallOption) (*VolumeFileDeleteResponse, error)
 	UpdateFileMetadata(ctx context.Context, in *VolumeFileUpdateRequest, opts ...grpc.CallOption) (*VolumeFileUpdateResponse, error)
 	Stat(ctx context.Context, in *StatRequest, opts ...grpc.CallOption) (*StatResponse, error)
+	DeletePath(ctx context.Context, in *DeletePathRequest, opts ...grpc.CallOption) (*DeletePathResponse, error)
 }
 
 type volumeServiceClient struct {
@@ -167,6 +169,16 @@ func (c *volumeServiceClient) Stat(ctx context.Context, in *StatRequest, opts ..
 	return out, nil
 }
 
+func (c *volumeServiceClient) DeletePath(ctx context.Context, in *DeletePathRequest, opts ...grpc.CallOption) (*DeletePathResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeletePathResponse)
+	err := c.cc.Invoke(ctx, VolumeService_DeletePath_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // VolumeServiceServer is the server API for VolumeService service.
 // All implementations must embed UnimplementedVolumeServiceServer
 // for forward compatibility.
@@ -181,6 +193,7 @@ type VolumeServiceServer interface {
 	DeleteFile(context.Context, *VolumeFileDeleteRequest) (*VolumeFileDeleteResponse, error)
 	UpdateFileMetadata(context.Context, *VolumeFileUpdateRequest) (*VolumeFileUpdateResponse, error)
 	Stat(context.Context, *StatRequest) (*StatResponse, error)
+	DeletePath(context.Context, *DeletePathRequest) (*DeletePathResponse, error)
 	mustEmbedUnimplementedVolumeServiceServer()
 }
 
@@ -220,6 +233,9 @@ func (UnimplementedVolumeServiceServer) UpdateFileMetadata(context.Context, *Vol
 }
 func (UnimplementedVolumeServiceServer) Stat(context.Context, *StatRequest) (*StatResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Stat not implemented")
+}
+func (UnimplementedVolumeServiceServer) DeletePath(context.Context, *DeletePathRequest) (*DeletePathResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeletePath not implemented")
 }
 func (UnimplementedVolumeServiceServer) mustEmbedUnimplementedVolumeServiceServer() {}
 func (UnimplementedVolumeServiceServer) testEmbeddedByValue()                       {}
@@ -404,6 +420,24 @@ func _VolumeService_Stat_Handler(srv interface{}, ctx context.Context, dec func(
 	return interceptor(ctx, in, info, handler)
 }
 
+func _VolumeService_DeletePath_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeletePathRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(VolumeServiceServer).DeletePath(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: VolumeService_DeletePath_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(VolumeServiceServer).DeletePath(ctx, req.(*DeletePathRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // VolumeService_ServiceDesc is the grpc.ServiceDesc for VolumeService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -442,6 +476,10 @@ var VolumeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Stat",
 			Handler:    _VolumeService_Stat_Handler,
+		},
+		{
+			MethodName: "DeletePath",
+			Handler:    _VolumeService_DeletePath_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
