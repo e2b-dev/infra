@@ -41,16 +41,16 @@ func (_m *MockHandler) EXPECT() *MockHandler_Expecter {
 }
 
 // Change provides a mock function for the type MockHandler
-func (_mock *MockHandler) Change(filesystem billy.Filesystem) billy.Change {
-	ret := _mock.Called(filesystem)
+func (_mock *MockHandler) Change(context1 context.Context, filesystem billy.Filesystem) billy.Change {
+	ret := _mock.Called(context1, filesystem)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Change")
 	}
 
 	var r0 billy.Change
-	if returnFunc, ok := ret.Get(0).(func(billy.Filesystem) billy.Change); ok {
-		r0 = returnFunc(filesystem)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, billy.Filesystem) billy.Change); ok {
+		r0 = returnFunc(context1, filesystem)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(billy.Change)
@@ -65,19 +65,25 @@ type MockHandler_Change_Call struct {
 }
 
 // Change is a helper method to define mock.On call
+//   - context1 context.Context
 //   - filesystem billy.Filesystem
-func (_e *MockHandler_Expecter) Change(filesystem interface{}) *MockHandler_Change_Call {
-	return &MockHandler_Change_Call{Call: _e.mock.On("Change", filesystem)}
+func (_e *MockHandler_Expecter) Change(context1 interface{}, filesystem interface{}) *MockHandler_Change_Call {
+	return &MockHandler_Change_Call{Call: _e.mock.On("Change", context1, filesystem)}
 }
 
-func (_c *MockHandler_Change_Call) Run(run func(filesystem billy.Filesystem)) *MockHandler_Change_Call {
+func (_c *MockHandler_Change_Call) Run(run func(context1 context.Context, filesystem billy.Filesystem)) *MockHandler_Change_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 billy.Filesystem
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].(billy.Filesystem)
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 billy.Filesystem
+		if args[1] != nil {
+			arg1 = args[1].(billy.Filesystem)
 		}
 		run(
 			arg0,
+			arg1,
 		)
 	})
 	return _c
@@ -88,7 +94,7 @@ func (_c *MockHandler_Change_Call) Return(change billy.Change) *MockHandler_Chan
 	return _c
 }
 
-func (_c *MockHandler_Change_Call) RunAndReturn(run func(filesystem billy.Filesystem) billy.Change) *MockHandler_Change_Call {
+func (_c *MockHandler_Change_Call) RunAndReturn(run func(context1 context.Context, filesystem billy.Filesystem) billy.Change) *MockHandler_Change_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -157,8 +163,8 @@ func (_c *MockHandler_FSStat_Call) RunAndReturn(run func(context1 context.Contex
 }
 
 // FromHandle provides a mock function for the type MockHandler
-func (_mock *MockHandler) FromHandle(fh []byte) (billy.Filesystem, []string, error) {
-	ret := _mock.Called(fh)
+func (_mock *MockHandler) FromHandle(ctx context.Context, fh []byte) (billy.Filesystem, []string, error) {
+	ret := _mock.Called(ctx, fh)
 
 	if len(ret) == 0 {
 		panic("no return value specified for FromHandle")
@@ -167,25 +173,25 @@ func (_mock *MockHandler) FromHandle(fh []byte) (billy.Filesystem, []string, err
 	var r0 billy.Filesystem
 	var r1 []string
 	var r2 error
-	if returnFunc, ok := ret.Get(0).(func([]byte) (billy.Filesystem, []string, error)); ok {
-		return returnFunc(fh)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []byte) (billy.Filesystem, []string, error)); ok {
+		return returnFunc(ctx, fh)
 	}
-	if returnFunc, ok := ret.Get(0).(func([]byte) billy.Filesystem); ok {
-		r0 = returnFunc(fh)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []byte) billy.Filesystem); ok {
+		r0 = returnFunc(ctx, fh)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(billy.Filesystem)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func([]byte) []string); ok {
-		r1 = returnFunc(fh)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, []byte) []string); ok {
+		r1 = returnFunc(ctx, fh)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).([]string)
 		}
 	}
-	if returnFunc, ok := ret.Get(2).(func([]byte) error); ok {
-		r2 = returnFunc(fh)
+	if returnFunc, ok := ret.Get(2).(func(context.Context, []byte) error); ok {
+		r2 = returnFunc(ctx, fh)
 	} else {
 		r2 = ret.Error(2)
 	}
@@ -198,19 +204,25 @@ type MockHandler_FromHandle_Call struct {
 }
 
 // FromHandle is a helper method to define mock.On call
+//   - ctx context.Context
 //   - fh []byte
-func (_e *MockHandler_Expecter) FromHandle(fh interface{}) *MockHandler_FromHandle_Call {
-	return &MockHandler_FromHandle_Call{Call: _e.mock.On("FromHandle", fh)}
+func (_e *MockHandler_Expecter) FromHandle(ctx interface{}, fh interface{}) *MockHandler_FromHandle_Call {
+	return &MockHandler_FromHandle_Call{Call: _e.mock.On("FromHandle", ctx, fh)}
 }
 
-func (_c *MockHandler_FromHandle_Call) Run(run func(fh []byte)) *MockHandler_FromHandle_Call {
+func (_c *MockHandler_FromHandle_Call) Run(run func(ctx context.Context, fh []byte)) *MockHandler_FromHandle_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 []byte
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].([]byte)
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 []byte
+		if args[1] != nil {
+			arg1 = args[1].([]byte)
 		}
 		run(
 			arg0,
+			arg1,
 		)
 	})
 	return _c
@@ -221,7 +233,7 @@ func (_c *MockHandler_FromHandle_Call) Return(filesystem billy.Filesystem, strin
 	return _c
 }
 
-func (_c *MockHandler_FromHandle_Call) RunAndReturn(run func(fh []byte) (billy.Filesystem, []string, error)) *MockHandler_FromHandle_Call {
+func (_c *MockHandler_FromHandle_Call) RunAndReturn(run func(ctx context.Context, fh []byte) (billy.Filesystem, []string, error)) *MockHandler_FromHandle_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -271,16 +283,16 @@ func (_c *MockHandler_HandleLimit_Call) RunAndReturn(run func() int) *MockHandle
 }
 
 // InvalidateHandle provides a mock function for the type MockHandler
-func (_mock *MockHandler) InvalidateHandle(filesystem billy.Filesystem, bytes []byte) error {
-	ret := _mock.Called(filesystem, bytes)
+func (_mock *MockHandler) InvalidateHandle(context1 context.Context, filesystem billy.Filesystem, bytes []byte) error {
+	ret := _mock.Called(context1, filesystem, bytes)
 
 	if len(ret) == 0 {
 		panic("no return value specified for InvalidateHandle")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(billy.Filesystem, []byte) error); ok {
-		r0 = returnFunc(filesystem, bytes)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, billy.Filesystem, []byte) error); ok {
+		r0 = returnFunc(context1, filesystem, bytes)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -293,25 +305,31 @@ type MockHandler_InvalidateHandle_Call struct {
 }
 
 // InvalidateHandle is a helper method to define mock.On call
+//   - context1 context.Context
 //   - filesystem billy.Filesystem
 //   - bytes []byte
-func (_e *MockHandler_Expecter) InvalidateHandle(filesystem interface{}, bytes interface{}) *MockHandler_InvalidateHandle_Call {
-	return &MockHandler_InvalidateHandle_Call{Call: _e.mock.On("InvalidateHandle", filesystem, bytes)}
+func (_e *MockHandler_Expecter) InvalidateHandle(context1 interface{}, filesystem interface{}, bytes interface{}) *MockHandler_InvalidateHandle_Call {
+	return &MockHandler_InvalidateHandle_Call{Call: _e.mock.On("InvalidateHandle", context1, filesystem, bytes)}
 }
 
-func (_c *MockHandler_InvalidateHandle_Call) Run(run func(filesystem billy.Filesystem, bytes []byte)) *MockHandler_InvalidateHandle_Call {
+func (_c *MockHandler_InvalidateHandle_Call) Run(run func(context1 context.Context, filesystem billy.Filesystem, bytes []byte)) *MockHandler_InvalidateHandle_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 billy.Filesystem
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].(billy.Filesystem)
+			arg0 = args[0].(context.Context)
 		}
-		var arg1 []byte
+		var arg1 billy.Filesystem
 		if args[1] != nil {
-			arg1 = args[1].([]byte)
+			arg1 = args[1].(billy.Filesystem)
+		}
+		var arg2 []byte
+		if args[2] != nil {
+			arg2 = args[2].([]byte)
 		}
 		run(
 			arg0,
 			arg1,
+			arg2,
 		)
 	})
 	return _c
@@ -322,7 +340,7 @@ func (_c *MockHandler_InvalidateHandle_Call) Return(err error) *MockHandler_Inva
 	return _c
 }
 
-func (_c *MockHandler_InvalidateHandle_Call) RunAndReturn(run func(filesystem billy.Filesystem, bytes []byte) error) *MockHandler_InvalidateHandle_Call {
+func (_c *MockHandler_InvalidateHandle_Call) RunAndReturn(run func(context1 context.Context, filesystem billy.Filesystem, bytes []byte) error) *MockHandler_InvalidateHandle_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -410,16 +428,16 @@ func (_c *MockHandler_Mount_Call) RunAndReturn(run func(context1 context.Context
 }
 
 // ToHandle provides a mock function for the type MockHandler
-func (_mock *MockHandler) ToHandle(fs billy.Filesystem, path []string) []byte {
-	ret := _mock.Called(fs, path)
+func (_mock *MockHandler) ToHandle(cxt context.Context, fs billy.Filesystem, path []string) []byte {
+	ret := _mock.Called(cxt, fs, path)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ToHandle")
 	}
 
 	var r0 []byte
-	if returnFunc, ok := ret.Get(0).(func(billy.Filesystem, []string) []byte); ok {
-		r0 = returnFunc(fs, path)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, billy.Filesystem, []string) []byte); ok {
+		r0 = returnFunc(cxt, fs, path)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]byte)
@@ -434,25 +452,31 @@ type MockHandler_ToHandle_Call struct {
 }
 
 // ToHandle is a helper method to define mock.On call
+//   - cxt context.Context
 //   - fs billy.Filesystem
 //   - path []string
-func (_e *MockHandler_Expecter) ToHandle(fs interface{}, path interface{}) *MockHandler_ToHandle_Call {
-	return &MockHandler_ToHandle_Call{Call: _e.mock.On("ToHandle", fs, path)}
+func (_e *MockHandler_Expecter) ToHandle(cxt interface{}, fs interface{}, path interface{}) *MockHandler_ToHandle_Call {
+	return &MockHandler_ToHandle_Call{Call: _e.mock.On("ToHandle", cxt, fs, path)}
 }
 
-func (_c *MockHandler_ToHandle_Call) Run(run func(fs billy.Filesystem, path []string)) *MockHandler_ToHandle_Call {
+func (_c *MockHandler_ToHandle_Call) Run(run func(cxt context.Context, fs billy.Filesystem, path []string)) *MockHandler_ToHandle_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 billy.Filesystem
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].(billy.Filesystem)
+			arg0 = args[0].(context.Context)
 		}
-		var arg1 []string
+		var arg1 billy.Filesystem
 		if args[1] != nil {
-			arg1 = args[1].([]string)
+			arg1 = args[1].(billy.Filesystem)
+		}
+		var arg2 []string
+		if args[2] != nil {
+			arg2 = args[2].([]string)
 		}
 		run(
 			arg0,
 			arg1,
+			arg2,
 		)
 	})
 	return _c
@@ -463,7 +487,7 @@ func (_c *MockHandler_ToHandle_Call) Return(bytes []byte) *MockHandler_ToHandle_
 	return _c
 }
 
-func (_c *MockHandler_ToHandle_Call) RunAndReturn(run func(fs billy.Filesystem, path []string) []byte) *MockHandler_ToHandle_Call {
+func (_c *MockHandler_ToHandle_Call) RunAndReturn(run func(cxt context.Context, fs billy.Filesystem, path []string) []byte) *MockHandler_ToHandle_Call {
 	_c.Call.Return(run)
 	return _c
 }

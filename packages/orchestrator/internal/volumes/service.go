@@ -2,33 +2,32 @@ package volumes
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
 	otelcodes "go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/chrooted"
 	"github.com/e2b-dev/infra/packages/shared/pkg/filesystem"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 const (
-	defaultDirMode  uint32 = 0o777
-	defaultFileMode uint32 = 0o666
-	defaultOwnerID  uint32 = 9090
-	defaultGroupID  uint32 = 9090
+	defaultDirMode  os.FileMode = 0o777
+	defaultFileMode os.FileMode = 0o666
+	defaultOwnerID  uint32      = 9090
+	defaultGroupID  uint32      = 9090
 )
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/volumes")
@@ -36,20 +35,14 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/interna
 type Service struct {
 	orchestrator.UnimplementedVolumeServiceServer
 
-	config cfg.Config
+	builder *chrooted.Builder
+	config  cfg.Config
 }
 
 var _ orchestrator.VolumeServiceServer = (*Service)(nil)
 
-func New(config cfg.Config) *Service {
-	return &Service{config: config}
-}
-
-func BuildVolumePathParts(teamID, volumeID uuid.UUID) []string {
-	return []string{
-		fmt.Sprintf("team-%s", teamID),
-		fmt.Sprintf("vol-%s", volumeID),
-	}
+func New(config cfg.Config, builder *chrooted.Builder) *Service {
+	return &Service{config: config, builder: builder}
 }
 
 type volumePathRequest interface {
@@ -57,148 +50,107 @@ type volumePathRequest interface {
 	GetPath() string
 }
 
-type volumeRequest struct {
-	request volumeOnly
-}
+func (s *Service) getVolumeRootPath(ctx context.Context, volume *orchestrator.VolumeInfo) (string, error) {
+	volumeType := volume.GetVolumeType()
 
-var _ volumePathRequest = (*volumeRequest)(nil)
-
-func (v volumeRequest) GetVolume() *orchestrator.VolumeInfo {
-	return v.request.GetVolume()
-}
-
-func (v volumeRequest) GetPath() string {
-	return ""
-}
-
-type volumeOnly interface {
-	GetVolume() *orchestrator.VolumeInfo
-}
-
-func pathlessRequest(request volumeOnly) volumePathRequest {
-	return &volumeRequest{request: request}
-}
-
-type volumePaths struct {
-	// HostVolumePath is the absolute path to the root of the volume on the host
-	HostVolumePath string
-
-	// ClientPath is the relative path to the file within the volume, prefixed with a "/"
-	ClientPath string
-
-	// HostFullPath is the absolute path on the host server to the file or directory
-	HostFullPath string
-}
-
-func (v volumePaths) isRoot() bool {
-	return filepath.Clean(v.HostVolumePath) == filepath.Clean(v.HostFullPath)
-}
-
-func (s *Service) buildPaths(request volumePathRequest) (volumePaths, error) {
-	volume := request.GetVolume()
-
-	// 1. Resolve Volume Type Path
-	volTypePath, ok := s.config.PersistentVolumeMounts[volume.GetVolumeType()]
-	if !ok {
-		st, _ := status.Newf(codes.NotFound, "volume type %q not found", volume.GetVolumeType()).
-			WithDetails(&orchestrator.UnknownVolumeTypeError{VolumeType: volume.GetVolumeType()})
-
-		return volumePaths{}, st.Err()
-	}
-
-	// 2. Parse UUIDs
 	teamID, ok := internal.TryParseUUID(volume.GetTeamId())
 	if !ok {
-		return volumePaths{}, status.Newf(codes.InvalidArgument, "invalid team ID %q", volume.GetTeamId()).Err()
+		return "", newAPIError(ctx, codes.InvalidArgument, http.StatusBadRequest, orchestrator.UserErrorCode_INVALID_REQUEST, "invalid team ID %q", volume.GetTeamId()).Err()
 	}
+
 	volumeID, ok := internal.TryParseUUID(volume.GetVolumeId())
 	if !ok {
-		return volumePaths{}, status.Newf(codes.InvalidArgument, "invalid volume ID %q", volume.GetVolumeId()).Err()
+		return "", newAPIError(ctx, codes.InvalidArgument, http.StatusBadRequest, orchestrator.UserErrorCode_INVALID_REQUEST, "invalid volume ID %q", volume.GetVolumeId()).Err()
 	}
 
-	// 3. Construct Base Path
-	basePath := filepath.Join(append([]string{volTypePath}, BuildVolumePathParts(teamID, volumeID)...)...)
-
-	// 4. Sanitize Subpath & Build Full Path
-	subPath := filepath.Clean("/" + request.GetPath()) // Forces absolute-style cleaning
-	fullPath := filepath.Join(basePath, subPath)
-
-	// 5. Security Check (Directory Traversal)
-	relPath, err := filepath.Rel(basePath, fullPath)
-	if err != nil || strings.HasPrefix(relPath, "..") {
-		return volumePaths{}, status.Errorf(codes.InvalidArgument, "invalid path: traversal detected")
-	}
-
-	return volumePaths{
-		HostVolumePath: basePath,
-		ClientPath:     filepath.Join("/", relPath), // Ensures leading slash
-		HostFullPath:   fullPath,
-	}, nil
-}
-
-func (s *Service) isVolumeRootHealthy(ctx context.Context, basePath string, volume *orchestrator.VolumeInfo) bool {
-	stat, err := os.Stat(basePath)
+	path, err := s.builder.BuildVolumePath(volumeType, teamID, volumeID)
 	if err != nil {
-		logger.L().Warn(ctx, "failed to stat volume root",
-			zap.Error(err),
-			zap.String("path", basePath),
-			zap.String("volume_type", volume.GetVolumeType()),
-			zap.String("volume_id", volume.GetVolumeId()),
-			zap.String("team_id", volume.GetTeamId()),
-		)
+		if errors.Is(err, chrooted.ErrVolumeTypeNotFound) {
+			return "", newAPIError(ctx, codes.Internal, http.StatusInternalServerError, orchestrator.UserErrorCode_NOT_SUPPORTED, "unknown volume type").Err()
+		}
 
-		return false
+		return "", newAPIError(ctx, codes.Internal, http.StatusInternalServerError, orchestrator.UserErrorCode_UNKNOWN_USER_ERROR_CODE, "failed to build volume path: %v", err).Err()
 	}
 
-	if !stat.IsDir() {
-		logger.L().Warn(ctx, "volume root is not a directory!",
-			zap.Error(err),
-			zap.String("path", basePath),
-			zap.String("volume_type", volume.GetVolumeType()),
-			zap.String("volume_id", volume.GetVolumeId()),
-			zap.String("team_id", volume.GetTeamId()),
-		)
+	return path, nil
+}
 
-		return false
+func (s *Service) getFilesystemAndPath(ctx context.Context, request volumePathRequest) (*chrooted.Chrooted, string, *status.Status) {
+	volume := request.GetVolume()
+	volumeType := volume.GetVolumeType()
+
+	teamID, ok := internal.TryParseUUID(volume.GetTeamId())
+	if !ok {
+		return nil, "", newAPIError(ctx,
+			codes.InvalidArgument,
+			http.StatusBadRequest,
+			orchestrator.UserErrorCode_INVALID_REQUEST,
+			"invalid team ID %q", volume.GetTeamId(),
+		)
 	}
 
-	return true
-}
+	volumeID, ok := internal.TryParseUUID(volume.GetVolumeId())
+	if !ok {
+		return nil, "", newAPIError(ctx,
+			codes.InvalidArgument,
+			http.StatusBadRequest,
+			orchestrator.UserErrorCode_INVALID_REQUEST,
+			"invalid volume ID %q", volume.GetVolumeId(),
+		)
+	}
 
-func toEntryFromOSInfoAndPaths(paths volumePaths, fileInfo os.FileInfo) *orchestrator.EntryInfo {
-	paths.ClientPath = filepath.Join(paths.ClientPath, fileInfo.Name())
-	paths.HostFullPath = filepath.Join(paths.HostFullPath, fileInfo.Name())
-
-	entry := filesystem.GetEntryInfo(paths.HostFullPath, fileInfo)
-
-	return toEntry(paths, entry)
-}
-
-func toEntryFromPaths(paths volumePaths) (*orchestrator.EntryInfo, error) {
-	entry, err := filesystem.GetEntryFromPath(paths.HostFullPath)
+	chroot, err := s.builder.Chroot(ctx, volumeType, teamID, volumeID)
 	if err != nil {
-		return nil, err
+		if errors.Is(err, chrooted.ErrVolumeTypeNotFound) {
+			return nil, "", newAPIError(ctx,
+				codes.Internal,
+				http.StatusInternalServerError,
+				orchestrator.UserErrorCode_NOT_SUPPORTED,
+				"volume type not found",
+			)
+		}
+
+		return nil, "", newAPIError(ctx,
+			codes.Internal,
+			http.StatusInternalServerError,
+			orchestrator.UserErrorCode_UNKNOWN_USER_ERROR_CODE,
+			"failed to get chroot: %v", err,
+		)
 	}
 
-	return toEntry(paths, entry), nil
+	path := request.GetPath()
+	if !filepath.IsAbs(path) {
+		path = "/" + path
+	}
+	path = filepath.Clean(path)
+
+	return chroot, path, nil
 }
 
-func toEntry(paths volumePaths, fileInfo filesystem.EntryInfo) *orchestrator.EntryInfo {
-	entry := &orchestrator.EntryInfo{
-		Name:          fileInfo.Name,
-		Path:          paths.ClientPath,
-		Size:          fileInfo.Size,
-		Mode:          uint32(fileInfo.Mode & os.ModePerm),
-		Uid:           fileInfo.UID,
-		Gid:           fileInfo.GID,
-		ModifiedTime:  toTimestamp(fileInfo.ModifiedTime),
-		SymlinkTarget: fileInfo.SymlinkTarget,
-		CreatedTime:   toTimestamp(fileInfo.CreatedTime),
-		AccessedTime:  toTimestamp(fileInfo.AccessedTime),
-		Type:          toType(fileInfo.Type),
-	}
+func (s *Service) isRoot(path string) bool {
+	return path == "/"
+}
 
-	return entry
+func toEntry(fullVolumePath string, fileInfo os.FileInfo) *orchestrator.EntryInfo {
+	entryInfo := filesystem.GetEntryInfo(fullVolumePath, fileInfo)
+
+	return fromEntryInfo(fullVolumePath, entryInfo)
+}
+
+func fromEntryInfo(fullVolumePath string, entryInfo filesystem.EntryInfo) *orchestrator.EntryInfo {
+	return &orchestrator.EntryInfo{
+		Name:          entryInfo.Name,
+		Type:          toType(entryInfo.Type),
+		Path:          fullVolumePath,
+		Size:          entryInfo.Size,
+		Mode:          uint32(entryInfo.Mode & os.ModePerm),
+		Uid:           entryInfo.UID,
+		Gid:           entryInfo.GID,
+		ModifiedTime:  toTimestampFromTime(entryInfo.ModifiedTime),
+		SymlinkTarget: entryInfo.SymlinkTarget,
+		CreatedTime:   toTimestampFromTime(entryInfo.CreatedTime),
+		AccessedTime:  toTimestampFromTime(entryInfo.AccessedTime),
+	}
 }
 
 func toType(fileType filesystem.FileType) orchestrator.FileType {
@@ -214,12 +166,12 @@ func toType(fileType filesystem.FileType) orchestrator.FileType {
 	}
 }
 
-func toTimestamp(spec time.Time) *timestamppb.Timestamp {
-	if spec.IsZero() {
+func toTimestampFromTime(t time.Time) *timestamppb.Timestamp {
+	if t.IsZero() {
 		return nil
 	}
 
-	return timestamppb.New(spec)
+	return timestamppb.New(t)
 }
 
 func setSpanStatus(span trace.Span, err error) {
@@ -231,4 +183,53 @@ func setSpanStatus(span trace.Span, err error) {
 	}
 
 	span.SetStatus(otelcodes.Ok, "")
+}
+
+func ensureDirs(fs *chrooted.Chrooted, dirPath string, uid, gid uint32) error {
+	if dirPath == "" {
+		return nil
+	}
+
+	// Determine which parent directories do not exist yet, up to the volume root.
+	var needsUpdates []string
+	cur := dirPath
+	for {
+		if _, err := fs.Stat(cur); err == nil {
+			if cur == dirPath {
+				// there's nothing for us to do here
+				return nil
+			}
+
+			break
+		} else if !os.IsNotExist(err) {
+			return fmt.Errorf("failed to stat parent directory %q: %w", cur, err)
+		}
+
+		needsUpdates = append(needsUpdates, cur)
+
+		next := filepath.Clean(filepath.Dir(cur))
+		if next == cur { // reached filesystem root just in case
+			break
+		}
+		cur = next
+	}
+
+	if err := fs.MkdirAll(dirPath, defaultDirMode); err != nil {
+		return fmt.Errorf("failed to create parent directories: %w", err)
+	}
+
+	// Only chmod the directories that were created by this call (precomputed above).
+	// Iterate from highest parent to deepest child for determinism.
+	for i := len(needsUpdates) - 1; i >= 0; i-- {
+		p := needsUpdates[i]
+		if err := fs.Chmod(p, defaultDirMode); err != nil {
+			return fmt.Errorf("failed chmod for created parent directory %q: %w", p, err)
+		}
+
+		if err := fs.Chown(p, int(uid), int(gid)); err != nil {
+			return fmt.Errorf("failed chown for created parent directory %q: %w", p, err)
+		}
+	}
+
+	return nil
 }

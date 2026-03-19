@@ -36,6 +36,7 @@ enum UserErrorCode {
   CANNOT_DELETE_ROOT = 3;
   NOT_SUPPORTED = 4;
   DEPTH_OUT_OF_RANGE = 5;
+  INVALID_REQUEST = 6;
 }
 
 message UserError {

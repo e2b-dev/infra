@@ -1,6 +1,7 @@
 package userfaultfd
 
 import (
+	"os"
 	"testing"
 	"unsafe"
 
@@ -28,6 +29,10 @@ import (
 // (src/vmm/src/utils/pagemap.rs) but skips the mincore check.
 func TestAsyncWriteProtection(t *testing.T) {
 	t.Parallel()
+
+	if os.Geteuid() != 0 {
+		t.Skip("this test requires root privileges")
+	}
 
 	tests := []struct {
 		name          string

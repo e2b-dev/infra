@@ -170,20 +170,20 @@ func TestHandler_Mount_WrapsFS(t *testing.T) {
 func TestHandler_FromHandle_PanicRecovered(t *testing.T) {
 	t.Parallel()
 	mh := nfsproxymocks.NewMockHandler(t)
-	mh.EXPECT().FromHandle(mock.Anything).
-		RunAndReturn(func([]byte) (billy.Filesystem, []string, error) { panic("Handler.FromHandle") })
+	mh.EXPECT().FromHandle(mock.Anything, mock.Anything).
+		RunAndReturn(func(context.Context, []byte) (billy.Filesystem, []string, error) { panic("Handler.FromHandle") })
 	h := WrapWithRecovery(context.Background(), mh)
-	_, _, err := h.FromHandle([]byte("x"))
+	_, _, err := h.FromHandle(t.Context(), []byte("x"))
 	require.ErrorIs(t, err, ErrPanic)
 }
 
 func TestHandler_InvalidateHandle_PanicRecovered(t *testing.T) {
 	t.Parallel()
 	mh := nfsproxymocks.NewMockHandler(t)
-	mh.EXPECT().InvalidateHandle(mock.Anything, mock.Anything).
-		RunAndReturn(func(billy.Filesystem, []byte) error { panic("Handler.InvalidateHandle") })
+	mh.EXPECT().InvalidateHandle(mock.Anything, mock.Anything, mock.Anything).
+		RunAndReturn(func(context.Context, billy.Filesystem, []byte) error { panic("Handler.InvalidateHandle") })
 	h := WrapWithRecovery(context.Background(), mh)
-	require.ErrorIs(t, h.InvalidateHandle(nil, []byte("x")), ErrPanic)
+	require.ErrorIs(t, h.InvalidateHandle(t.Context(), nil, []byte("x")), ErrPanic)
 }
 
 func TestHandler_Error_Propagation(t *testing.T) {
@@ -199,15 +199,15 @@ func TestHandler_Error_Propagation(t *testing.T) {
 
 	// FromHandle
 	mh2 := nfsproxymocks.NewMockHandler(t)
-	mh2.EXPECT().FromHandle(mock.Anything).Return(billy.Filesystem(nil), nil, boom)
+	mh2.EXPECT().FromHandle(mock.Anything, mock.Anything).Return(billy.Filesystem(nil), nil, boom)
 	h2 := WrapWithRecovery(context.Background(), mh2)
-	_, _, err = h2.FromHandle([]byte("x"))
+	_, _, err = h2.FromHandle(t.Context(), []byte("x"))
 	require.ErrorIs(t, err, boom)
 
 	// InvalidateHandle
 	mh3 := nfsproxymocks.NewMockHandler(t)
-	mh3.EXPECT().InvalidateHandle(mock.Anything, mock.Anything).Return(boom)
-	h3 := WrapWithRecovery(context.Background(), mh3)
-	err = h3.InvalidateHandle(nil, nil)
+	mh3.EXPECT().InvalidateHandle(mock.Anything, mock.Anything, mock.Anything).Return(boom)
+	h3 := WrapWithRecovery(t.Context(), mh3)
+	err = h3.InvalidateHandle(t.Context(), nil, nil)
 	require.ErrorIs(t, err, boom)
 }

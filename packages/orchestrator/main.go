@@ -28,6 +28,7 @@ import (
 	clickhouseevents "github.com/e2b-dev/infra/packages/clickhouse/pkg/events"
 	clickhousehoststats "github.com/e2b-dev/infra/packages/clickhouse/pkg/hoststats"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/chrooted"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/events"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/factories"
 	e2bhealthcheck "github.com/e2b-dev/infra/packages/orchestrator/internal/healthcheck"
@@ -35,6 +36,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/localupload"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy"
+	nfscfg "github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/portmap"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
@@ -469,7 +471,9 @@ func run(config cfg.Config) (success bool) {
 	// sandbox factory
 	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags, hostStatsDelivery, cgroupManager, sandboxes)
 
-	volumeService := volumes.New(config)
+	// isolated filesystems cache (for nfs proxy)
+	builder := chrooted.NewBuilder(config)
+	volumeService := volumes.New(config, builder)
 
 	orchestratorService, err := server.New(server.ServiceConfig{
 		Config:           config,
@@ -512,7 +516,7 @@ func run(config cfg.Config) (success bool) {
 
 	// nfs proxy server
 	if len(config.PersistentVolumeMounts) > 0 {
-		nfsClosers, err := startNFSProxy(ctx, config, startService, sandboxes)
+		nfsClosers, err := startNFSProxy(ctx, config, builder, startService, sandboxes)
 		if err != nil {
 			logger.L().Fatal(ctx, "failed to start nfs proxy", zap.Error(err))
 		}
@@ -714,6 +718,7 @@ func run(config cfg.Config) (success bool) {
 func startNFSProxy(
 	ctx context.Context,
 	config cfg.Config,
+	builder *chrooted.Builder,
 	startService func(name string, f func() error),
 	sandboxes *sandbox.Map,
 ) ([]closer, error) {
@@ -742,7 +747,15 @@ func startNFSProxy(
 	}
 
 	// nfs proxy implementation
-	nfsServer := nfsproxy.NewProxy(ctx, sandboxes, config)
+	nfsServer, err := nfsproxy.NewProxy(ctx, builder, sandboxes, nfscfg.Config{
+		Logging:         config.NFSProxyLogging,
+		Tracing:         config.NFSProxyTracing,
+		RecordStatCalls: config.NFSProxyRecordStatCalls,
+		NFSLogLevel:     config.NFSProxyLogLevel,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create nfs proxy: %w", err)
+	}
 	startService("nfs proxy", func() error {
 		return nfsServer.Serve(lis)
 	})

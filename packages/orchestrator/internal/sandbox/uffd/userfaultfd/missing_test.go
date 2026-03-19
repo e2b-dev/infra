@@ -1,6 +1,7 @@
 package userfaultfd
 
 import (
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -12,6 +13,10 @@ import (
 
 func TestMissing(t *testing.T) {
 	t.Parallel()
+
+	if os.Geteuid() != 0 {
+		t.Skip("skipping test as not running as root")
+	}
 
 	tests := []testConfig{
 		{

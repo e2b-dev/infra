@@ -20,20 +20,46 @@ func (s *Service) DeleteDir(ctx context.Context, request *orchestrator.VolumeDir
 		span.End()
 	}()
 
-	paths, err := s.buildPaths(request)
-	if err != nil {
-		return nil, err
+	fs, path, errResponse := s.getFilesystemAndPath(ctx, request)
+	if errResponse != nil {
+		return nil, errResponse.Err()
 	}
+	defer fs.Close()
 
-	if paths.isRoot() {
-		return nil, newAPIError(ctx, codes.InvalidArgument, http.StatusBadRequest, orchestrator.UserErrorCode_CANNOT_DELETE_ROOT, "cannot delete root directory")
+	if s.isRoot(path) {
+		return nil, newAPIError(ctx,
+			codes.InvalidArgument,
+			http.StatusBadRequest,
+			orchestrator.UserErrorCode_CANNOT_DELETE_ROOT,
+			"cannot delete root directory",
+		).Err()
 	}
 
 	span.AddEvent("removing directory", trace.WithAttributes(
-		attribute.String("path", paths.HostFullPath),
+		attribute.String("path", path),
 	))
 
-	if err := os.RemoveAll(paths.HostFullPath); err != nil {
+	if _, err := fs.Stat(path); err != nil {
+		if os.IsNotExist(err) {
+			return nil, newAPIError(ctx,
+				codes.NotFound,
+				http.StatusNotFound,
+				orchestrator.UserErrorCode_PATH_NOT_FOUND,
+				"failed to delete: %q not found.",
+				request.GetPath(),
+			).Err()
+		}
+
+		return nil, newAPIError(ctx,
+			codes.Internal,
+			http.StatusInternalServerError,
+			orchestrator.UserErrorCode_UNKNOWN_USER_ERROR_CODE,
+			"failed to stat directory",
+		).Err()
+	}
+
+	// we can skip the "is not exist" errors, b/c that's what we're trying to do anyway
+	if err := fs.RemoveAll(path); err != nil && !os.IsNotExist(err) {
 		return nil, fmt.Errorf("failed to delete directory: %w", err)
 	}
 

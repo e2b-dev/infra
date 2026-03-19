@@ -2,6 +2,7 @@ package volumes
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -16,77 +17,82 @@ import (
 )
 
 func (s *Service) CreateDir(ctx context.Context, request *orchestrator.VolumeDirCreateRequest) (r *orchestrator.VolumeDirCreateResponse, err error) {
-	_, span := tracer.Start(ctx, "create directory in volume")
+	ctx, span := tracer.Start(ctx, "create directory in volume")
 	defer func() {
 		setSpanStatus(span, err)
 		span.End()
 	}()
 
-	paths, err := s.buildPaths(request)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build volume path: %w", err)
+	fs, path, errResponse := s.getFilesystemAndPath(ctx, request)
+	if errResponse != nil {
+		return nil, errResponse.Err()
 	}
+	defer fs.Close()
 
-	uid := utils.DerefOrDefault(request.Uid, defaultOwnerID)   //nolint:protogetter
-	gid := utils.DerefOrDefault(request.Gid, defaultGroupID)   //nolint:protogetter
-	mode := utils.DerefOrDefault(request.Mode, defaultDirMode) //nolint:protogetter
+	uid := utils.DerefOrDefault(request.Uid, defaultOwnerID)                        //nolint:protogetter
+	gid := utils.DerefOrDefault(request.Gid, defaultGroupID)                        //nolint:protogetter
+	mode := os.FileMode(utils.DerefOrDefault(request.Mode, uint32(defaultDirMode))) //nolint:protogetter
 
 	span.AddEvent("creating directory", trace.WithAttributes(
-		attribute.String("path", paths.HostFullPath),
+		attribute.String("path", path),
 		attribute.Int64("uid", int64(uid)),
 		attribute.Int64("gid", int64(gid)),
 		attribute.Int64("mode", int64(mode)),
 	))
 
 	if request.GetCreateParents() {
-		// Create only parent directories with defaultDirMode and fix permissions against umask.
-		parent := filepath.Dir(paths.HostFullPath)
-		if err := ensureParentDirs(paths.HostVolumePath, parent, os.FileMode(defaultDirMode)); err != nil {
+		if err = ensureDirs(fs, filepath.Dir(path), uid, gid); err != nil {
 			return nil, fmt.Errorf("failed to prepare parent directories: %w", err)
 		}
 	}
 
-	if err := os.Mkdir(paths.HostFullPath, os.FileMode(mode)); err != nil {
-		if os.IsNotExist(err) {
-			if !s.isVolumeRootHealthy(ctx, paths.HostVolumePath, request.GetVolume()) {
-				return nil, fmt.Errorf("failed to create directory %q: %w", paths.ClientPath, err)
-			}
+	updateDir := true
 
-			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to mkdir: parent of %q not found.", request.GetPath())
+	if err = fs.Mkdir(path, mode); err != nil {
+		if !request.GetCreateParents() || !errors.Is(err, os.ErrExist) {
+			return nil, processError(ctx, "failed to create directory", err)
 		}
 
-		if os.IsExist(err) {
-			return nil, newAPIError(ctx, codes.AlreadyExists, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_ALREADY_EXISTS, "failed to mkdir: %q already exists.", request.GetPath())
+		stat, statErr := fs.Stat(path)
+		if statErr != nil {
+			return nil, fmt.Errorf("failed to verify existing path %q: %w", path, statErr)
+		}
+		if !stat.IsDir() {
+			return nil, processError(ctx, "failed to create directory", err)
 		}
 
-		return nil, fmt.Errorf("failed to create directory: %w", err)
+		updateDir = false
 	}
 
-	if err := os.Chown(paths.HostFullPath, int(uid), int(gid)); err != nil {
-		if os.IsNotExist(err) {
-			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to chown: %q not found.", request.GetPath())
+	if updateDir {
+		if err := fs.Chown(path, int(uid), int(gid)); err != nil {
+			return nil, processError(ctx, "failed to chown directory", err)
 		}
 
-		return nil, fmt.Errorf("failed to set directory ownership: %w", err)
-	}
-
-	// we do this again to avoid the process' umask from automatically 'fixing' our requests.
-	if err := os.Chmod(paths.HostFullPath, os.FileMode(mode)); err != nil {
-		if os.IsNotExist(err) {
-			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to chmod: %q not found.", request.GetPath())
+		// we do this again to avoid the process' umask from automatically 'fixing' our requests.
+		if err := fs.Chmod(path, mode); err != nil {
+			return nil, processError(ctx, "failed to chmod directory", err)
 		}
-
-		return nil, fmt.Errorf("failed to set directory mode: %w", err)
 	}
 
-	entry, err := toEntryFromPaths(paths)
+	stat, err := fs.Stat(path)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, newAPIError(ctx, codes.NotFound, http.StatusBadRequest, orchestrator.UserErrorCode_PATH_NOT_FOUND, "failed to stat: %q not found.", request.GetPath())
-		}
-
-		return nil, fmt.Errorf("failed to stat created directory: %w", err)
+		return nil, fmt.Errorf("failed to stat directory: %w", err)
 	}
+
+	entry := toEntry(path, stat)
 
 	return &orchestrator.VolumeDirCreateResponse{Entry: entry}, nil
+}
+
+func processError(ctx context.Context, s string, err error) error {
+	if errors.Is(err, os.ErrExist) {
+		return newAPIError(ctx, codes.AlreadyExists, http.StatusConflict, orchestrator.UserErrorCode_PATH_ALREADY_EXISTS, "%s: %s", s, err.Error()).Err()
+	}
+
+	if errors.Is(err, os.ErrNotExist) {
+		return newAPIError(ctx, codes.NotFound, http.StatusNotFound, orchestrator.UserErrorCode_PATH_NOT_FOUND, "%s: %s", s, err.Error()).Err()
+	}
+
+	return fmt.Errorf("%s: %w", s, err)
 }

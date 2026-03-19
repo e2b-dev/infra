@@ -31,6 +31,7 @@ locals {
     artifact_source = var.artifact_source
 
     use_local_namespace_storage = var.use_local_namespace_storage
+    job_env_vars                = var.job_env_vars
   }
 
   # Render with placeholder to detect changes in job definition

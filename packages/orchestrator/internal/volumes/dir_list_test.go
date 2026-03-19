@@ -1,31 +1,25 @@
 package volumes
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
 func TestListDir_Depth(t *testing.T) {
 	t.Parallel()
 
-	tmpDir := t.TempDir()
-
-	teamID := uuid.NewString()
-	volumeID := uuid.NewString()
+	s, basePath, volumeInfo := setupTestService(t)
 
 	// Prepare directory structure:
 	// /mnt/shared/team-<teamID>/vol-<volumeID>/dir/test.txt
 	// /mnt/shared/team-<teamID>/vol-<volumeID>/dir/deep/test.txt
 
-	basePath := filepath.Join(tmpDir, "team-"+teamID, "vol-"+volumeID)
 	err := os.MkdirAll(filepath.Join(basePath, "dir", "deep"), 0o755)
 	require.NoError(t, err)
 
@@ -41,20 +35,7 @@ func TestListDir_Depth(t *testing.T) {
 	err = os.WriteFile(filepath.Join(basePath, "dir", "deep", "deeper", "test.txt"), []byte("deeper test"), 0o644)
 	require.NoError(t, err)
 
-	s := &Service{
-		config: cfg.Config{
-			PersistentVolumeMounts: map[string]string{
-				"shared": tmpDir,
-			},
-		},
-	}
-
-	ctx := context.Background()
-	volumeInfo := &orchestrator.VolumeInfo{
-		VolumeType: "shared",
-		TeamId:     teamID,
-		VolumeId:   volumeID,
-	}
+	ctx := t.Context()
 
 	t.Run("depth 0", func(t *testing.T) {
 		t.Parallel()
@@ -104,20 +85,27 @@ func TestListDir_Depth(t *testing.T) {
 		require.ElementsMatch(t, []string{"/dir/test.txt", "/dir/deep", "/dir/deep/test.txt", "/dir/deep/deeper"}, paths)
 	})
 
-	t.Run("depth 3", func(t *testing.T) {
+	t.Run("list non-existent dir", func(t *testing.T) {
+		t.Parallel()
+
+		req := &orchestrator.VolumeDirListRequest{
+			Volume: volumeInfo,
+			Path:   "non-existent-dir",
+		}
+		_, err := s.ListDir(ctx, req)
+		requireGRPCError(t, err, codes.NotFound, orchestrator.UserErrorCode_PATH_NOT_FOUND)
+	})
+
+	t.Run("list depth out of range", func(t *testing.T) {
 		t.Parallel()
 
 		req := &orchestrator.VolumeDirListRequest{
 			Volume: volumeInfo,
 			Path:   "dir",
-			Depth:  3,
+			Depth:  11,
 		}
-		resp, err := s.ListDir(ctx, req)
-		require.NoError(t, err)
-		require.NotNil(t, resp)
-
-		paths := getPaths(t, resp.GetFiles())
-		require.ElementsMatch(t, []string{"/dir/test.txt", "/dir/deep", "/dir/deep/test.txt", "/dir/deep/deeper", "/dir/deep/deeper/test.txt"}, paths)
+		_, err := s.ListDir(ctx, req)
+		requireGRPCError(t, err, codes.InvalidArgument, orchestrator.UserErrorCode_DEPTH_OUT_OF_RANGE)
 	})
 }
 
