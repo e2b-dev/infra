@@ -158,7 +158,7 @@ func (sb *StepBuilder) Build(
 
 	step := sb.step
 
-	sbxConfig := sandbox.Config{
+	sbxConfig := sandbox.NewConfig(sandbox.Config{
 		Vcpu:      sb.Config.VCpuCount,
 		RamMB:     sb.Config.MemoryMB,
 		HugePages: sb.Config.HugePages,
@@ -171,7 +171,7 @@ func (sb *StepBuilder) Build(
 			KernelVersion:      sb.Config.KernelVersion,
 			FirecrackerVersion: sb.Config.FirecrackerVersion,
 		},
-	}
+	})
 
 	// First not cached layer is create (to change CPU, Memory, etc), subsequent are layers are resumes.
 	var sandboxCreator layer.SandboxCreator

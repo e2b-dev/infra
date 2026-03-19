@@ -49,14 +49,6 @@ func WithRecordSizeDisabled() Option {
 	})
 }
 
-// WithGroupedStatus determines whether to group the response status codes or not. If true 2xx, 3xx will be stored
-// By default the groupedStatus is true
-func WithGroupedStatusDisabled() Option {
-	return optionFunc(func(cfg *config) {
-		cfg.groupedStatus = false
-	})
-}
-
 // WithRecorder sets a recorder for recording requests
 // By default the open telemetry recorder is used
 func WithRecorder(recorder Recorder) Option {

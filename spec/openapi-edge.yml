@@ -78,6 +78,7 @@ components:
         - healthy
         - draining
         - unhealthy
+        - standby
 
     ClusterOrchestratorRole:
       type: string

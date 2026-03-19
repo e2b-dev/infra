@@ -8,8 +8,11 @@ option go_package = "https://github.com/e2b-dev/infra/orchestrator";
 // needs to be different from the enumeration in the template manager
 enum ServiceInfoStatus {
   Healthy = 0;
+  // Draining means the node is bound to be shut down. It will not accept new sandboxes and will stop once all existing sandboxes are done.
   Draining = 1;
   Unhealthy = 2;
+  // Standby means the node is not actively used, but it can return to Healthy and continues serving traffic.
+  Standby = 3;
 }
 
 enum ServiceInfoRole {

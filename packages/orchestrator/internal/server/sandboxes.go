@@ -78,11 +78,11 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	}()
 
 	childSpan.SetAttributes(
+		telemetry.WithBuildID(req.GetSandbox().GetBuildId()),
 		telemetry.WithTemplateID(req.GetSandbox().GetTemplateId()),
-		attribute.String("kernel.version", req.GetSandbox().GetKernelVersion()),
+		telemetry.WithKernelVersion(req.GetSandbox().GetKernelVersion()),
 		telemetry.WithSandboxID(req.GetSandbox().GetSandboxId()),
-		attribute.String("client.id", s.info.ClientId),
-		attribute.String("envd.version", req.GetSandbox().GetEnvdVersion()),
+		telemetry.WithEnvdVersion(req.GetSandbox().GetEnvdVersion()),
 	)
 
 	// setup launch darkly
@@ -156,46 +156,52 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	}
 
 	resolvedFCVersion := featureflags.ResolveFirecrackerVersion(ctx, s.featureFlags, req.GetSandbox().GetFirecrackerVersion())
-
 	volumeMounts, err := createVolumeMountModelsFromAPI(req.GetSandbox().GetVolumeMounts())
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert volume mounts: %w", err)
 	}
 
+	config := sandbox.NewConfig(sandbox.Config{
+		BaseTemplateID: req.GetSandbox().GetBaseTemplateId(),
+
+		Vcpu:            req.GetSandbox().GetVcpu(),
+		RamMB:           req.GetSandbox().GetRamMb(),
+		TotalDiskSizeMB: req.GetSandbox().GetTotalDiskSizeMb(),
+		HugePages:       req.GetSandbox().GetHugePages(),
+
+		Network: network,
+
+		Envd: sandbox.EnvdMetadata{
+			Version:     req.GetSandbox().GetEnvdVersion(),
+			AccessToken: req.GetSandbox().EnvdAccessToken,
+			Vars:        req.GetSandbox().GetEnvVars(),
+		},
+
+		FirecrackerConfig: fc.Config{
+			KernelVersion:      req.GetSandbox().GetKernelVersion(),
+			FirecrackerVersion: resolvedFCVersion,
+		},
+
+		VolumeMounts: volumeMounts,
+	})
+	childSpan.SetAttributes(
+		telemetry.WithFirecrackerVersion(config.FirecrackerConfig.FirecrackerVersion),
+	)
+
+	runtime := sandbox.RuntimeMetadata{
+		TemplateID:  req.GetSandbox().GetTemplateId(),
+		SandboxID:   req.GetSandbox().GetSandboxId(),
+		ExecutionID: req.GetSandbox().GetExecutionId(),
+		TeamID:      req.GetSandbox().GetTeamId(),
+		BuildID:     req.GetSandbox().GetBuildId(),
+		SandboxType: sandbox.SandboxTypeSandbox,
+	}
+
 	sbx, err := s.sandboxFactory.ResumeSandbox(
 		ctx,
 		template,
-		sandbox.Config{
-			BaseTemplateID: req.GetSandbox().GetBaseTemplateId(),
-
-			Vcpu:            req.GetSandbox().GetVcpu(),
-			RamMB:           req.GetSandbox().GetRamMb(),
-			TotalDiskSizeMB: req.GetSandbox().GetTotalDiskSizeMb(),
-			HugePages:       req.GetSandbox().GetHugePages(),
-
-			Network: network,
-
-			Envd: sandbox.EnvdMetadata{
-				Version:     req.GetSandbox().GetEnvdVersion(),
-				AccessToken: req.GetSandbox().EnvdAccessToken,
-				Vars:        req.GetSandbox().GetEnvVars(),
-			},
-
-			FirecrackerConfig: fc.Config{
-				KernelVersion:      req.GetSandbox().GetKernelVersion(),
-				FirecrackerVersion: resolvedFCVersion,
-			},
-
-			VolumeMounts: volumeMounts,
-		},
-		sandbox.RuntimeMetadata{
-			TemplateID:  req.GetSandbox().GetTemplateId(),
-			SandboxID:   req.GetSandbox().GetSandboxId(),
-			ExecutionID: req.GetSandbox().GetExecutionId(),
-			TeamID:      req.GetSandbox().GetTeamId(),
-			BuildID:     req.GetSandbox().GetBuildId(),
-			SandboxType: sandbox.SandboxTypeSandbox,
-		},
+		config,
+		runtime,
 		req.GetStartTime().AsTime(),
 		req.GetEndTime().AsTime(),
 		req.GetSandbox(),
@@ -210,6 +216,14 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 
 		err = errors.Join(err, context.Cause(ctx))
 		telemetry.ReportCriticalError(ctx, "failed to create sandbox", err)
+		logger.L().Error(ctx, "failed to create sandbox", zap.Error(err),
+			logger.WithSandboxID(runtime.SandboxID),
+			logger.WithBuildID(runtime.BuildID),
+			logger.WithTemplateID(runtime.TemplateID),
+			logger.WithEnvdVersion(config.Envd.Version),
+			logger.WithKernelVersion(config.FirecrackerConfig.KernelVersion),
+			logger.WithFirecrackerVersion(config.FirecrackerConfig.FirecrackerVersion),
+		)
 
 		return nil, status.Errorf(codes.Internal, "failed to create sandbox: %s", err)
 	}
@@ -285,29 +299,77 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 		return nil, status.Error(codes.NotFound, "sandbox not found")
 	}
 
-	sbx.SetEndAt(req.GetEndTime().AsTime())
+	var updates []utils.UpdateFunc
 
-	teamID, buildId, eventData := s.prepareSandboxEventData(ctx, sbx)
-	eventData["set_timeout"] = req.GetEndTime().AsTime().Format(time.RFC3339)
-	eventType := events.SandboxUpdatedEventPair
+	if req.GetEndTime() != nil {
+		updates = append(updates, func(_ context.Context) (func(context.Context), error) {
+			old := sbx.GetEndAt()
+			sbx.SetEndAt(req.GetEndTime().AsTime())
 
-	go s.sbxEventsService.Publish(
-		context.WithoutCancel(ctx),
-		teamID,
-		events.SandboxEvent{
-			Version:   events.StructureVersionV2,
-			ID:        uuid.New(),
-			Type:      eventType.Type,
-			Timestamp: time.Now().UTC(),
+			return func(_ context.Context) { sbx.SetEndAt(old) }, nil
+		})
+	}
 
-			EventData:          eventData,
-			SandboxID:          sbx.Runtime.SandboxID,
-			SandboxExecutionID: sbx.Runtime.ExecutionID,
-			SandboxTemplateID:  sbx.Config.BaseTemplateID,
-			SandboxBuildID:     buildId,
-			SandboxTeamID:      teamID,
-		},
-	)
+	if req.GetEgress() != nil {
+		updates = append(updates, func(ctx context.Context) (func(context.Context), error) {
+			oldEgress := sbx.Config.GetNetworkEgress()
+
+			if err := sbx.Slot.UpdateInternet(ctx, req.GetEgress()); err != nil {
+				return nil, fmt.Errorf("failed to update sandbox network: %w", err)
+			}
+
+			egress := req.GetEgress()
+			if len(egress.GetAllowedCidrs()) == 0 && len(egress.GetDeniedCidrs()) == 0 && len(egress.GetAllowedDomains()) == 0 {
+				sbx.Config.SetNetworkEgress(nil)
+			} else {
+				sbx.Config.SetNetworkEgress(egress)
+			}
+
+			return func(ctx context.Context) {
+				_ = sbx.Slot.UpdateInternet(ctx, oldEgress)
+				sbx.Config.SetNetworkEgress(oldEgress)
+			}, nil
+		})
+	}
+
+	if err := utils.ApplyAllOrNone(ctx, updates); err != nil {
+		telemetry.ReportCriticalError(ctx, "failed to update sandbox", err)
+
+		return nil, status.Errorf(codes.Internal, "failed to update sandbox: %s", err)
+	}
+
+	// Publish event if any updates were applied.
+	if len(updates) > 0 {
+		teamID, buildId, eventData := s.prepareSandboxEventData(ctx, sbx)
+		if req.GetEndTime() != nil {
+			eventData["set_timeout"] = req.GetEndTime().AsTime().Format(time.RFC3339)
+		}
+		if egress := req.GetEgress(); egress != nil {
+			eventData["network_egress"] = map[string]any{
+				"allowed_cidrs":   egress.GetAllowedCidrs(),
+				"denied_cidrs":    egress.GetDeniedCidrs(),
+				"allowed_domains": egress.GetAllowedDomains(),
+			}
+		}
+
+		go s.sbxEventsService.Publish(
+			context.WithoutCancel(ctx),
+			teamID,
+			events.SandboxEvent{
+				Version:   events.StructureVersionV2,
+				ID:        uuid.New(),
+				Type:      events.SandboxUpdatedEventPair.Type,
+				Timestamp: time.Now().UTC(),
+
+				EventData:          eventData,
+				SandboxID:          sbx.Runtime.SandboxID,
+				SandboxExecutionID: sbx.Runtime.ExecutionID,
+				SandboxTemplateID:  sbx.Config.BaseTemplateID,
+				SandboxBuildID:     buildId,
+				SandboxTeamID:      teamID,
+			},
+		)
+	}
 
 	return &emptypb.Empty{}, nil
 }

@@ -274,25 +274,39 @@ func (s *Slot) ConfigureInternet(ctx context.Context, network *orchestrator.Sand
 	defer n.Close()
 
 	err = n.Do(func(_ ns.NetNS) error {
-		for _, cidr := range network.GetEgress().GetAllowedCidrs() {
-			err := s.Firewall.AddAllowedCIDR(cidr)
-			if err != nil {
-				return fmt.Errorf("error setting firewall rules: %w", err)
-			}
-		}
-
-		for _, cidr := range network.GetEgress().GetDeniedCidrs() {
-			err := s.Firewall.AddDeniedCIDR(cidr)
-			if err != nil {
-				return fmt.Errorf("error setting firewall rules: %w", err)
-			}
-		}
-
-		return nil
+		return s.Firewall.ReplaceUserRules(egress.GetAllowedCidrs(), egress.GetDeniedCidrs())
 	})
 	if err != nil {
 		return fmt.Errorf("failed execution in network namespace '%s': %w", s.NamespaceID(), err)
 	}
+
+	return nil
+}
+
+// UpdateInternet replaces all user firewall rules atomically in a single nftables flush.
+func (s *Slot) UpdateInternet(ctx context.Context, egress *orchestrator.SandboxNetworkEgressConfig) error {
+	_, span := tracer.Start(ctx, "slot-internet-update", trace.WithAttributes(
+		attribute.String("namespace_id", s.NamespaceID()),
+	))
+	defer span.End()
+
+	allowedCIDRs := egress.GetAllowedCidrs()
+	deniedCIDRs := egress.GetDeniedCidrs()
+
+	n, err := ns.GetNS(filepath.Join(netNamespacesDir, s.NamespaceID()))
+	if err != nil {
+		return fmt.Errorf("failed to get slot network namespace '%s': %w", s.NamespaceID(), err)
+	}
+	defer n.Close()
+
+	err = n.Do(func(_ ns.NetNS) error {
+		return s.Firewall.ReplaceUserRules(allowedCIDRs, deniedCIDRs)
+	})
+	if err != nil {
+		return fmt.Errorf("failed execution in network namespace '%s': %w", s.NamespaceID(), err)
+	}
+
+	s.firewallCustomRules.Store(true)
 
 	return nil
 }
@@ -314,12 +328,7 @@ func (s *Slot) ResetInternet(ctx context.Context) error {
 	defer n.Close()
 
 	err = n.Do(func(_ ns.NetNS) error {
-		err := s.Firewall.Reset()
-		if err != nil {
-			return fmt.Errorf("error cleaning firewall rules: %w", err)
-		}
-
-		return nil
+		return s.Firewall.ReplaceUserRules(nil, nil)
 	})
 	if err != nil {
 		return fmt.Errorf("failed execution in network namespace '%s': %w", s.NamespaceID(), err)
