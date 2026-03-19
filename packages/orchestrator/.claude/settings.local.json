@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(sudo go test:*)",
-      "Bash(go build:*)"
-    ]
-  }
-}

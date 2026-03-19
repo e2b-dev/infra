@@ -57,9 +57,7 @@ func Chroot(ctx context.Context, source string, opts ...Option) (*Chrooted, erro
 }
 
 func (fs *Chrooted) act(fn func() error) error {
-	return fs.ns.Do(func() error {
-		return fn()
-	})
+	return fs.ns.Do(fn)
 }
 
 const maxMountAttempts = 10

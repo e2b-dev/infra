@@ -2,10 +2,13 @@ package nfsproxy
 
 import (
 	"context"
+	"fmt"
 	"net"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 )
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy")
@@ -18,11 +21,15 @@ func onConnect(ctx context.Context, conn net.Conn) (context.Context, net.Conn) {
 	return ctx, conn //nolint:spancheck // called by OnDisconnect
 }
 
-func onDisconnect(_ context.Context, conn net.Conn) {
+func onDisconnect(ctx context.Context, conn net.Conn) {
 	cws, ok := conn.(*connWithSpan)
-	if ok {
-		cws.span.End()
+	if !ok {
+		logger.L().Warn(ctx, "failed to unwrap connWithSpan",
+			zap.String("conn_type", fmt.Sprintf("%T", conn)))
+		return
 	}
+
+	cws.span.End()
 }
 
 type connWithSpan struct {
