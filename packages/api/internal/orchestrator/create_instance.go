@@ -36,23 +36,14 @@ import (
 // When any allowed entry is a domain, the default nameserver is injected so
 // the sandbox can resolve domain names.
 func buildEgressConfig(egressUpdate *types.SandboxNetworkEgressConfig) *orchestrator.SandboxNetworkEgressConfig {
-	var allowedAddresses []string
-	var allowedDomains []string
-
-	for _, entry := range egressUpdate.AllowedAddresses {
-		if sandbox_network.IsIPOrCIDR(entry) {
-			allowedAddresses = append(allowedAddresses, sandbox_network.AddressStringToCIDR(entry))
-		} else {
-			allowedDomains = append(allowedDomains, entry)
-		}
-	}
+	allowedAddresses, allowedDomains := sandbox_network.ParseAddressesAndDomains(egressUpdate.AllowedAddresses)
 
 	if len(allowedDomains) > 0 {
 		allowedAddresses = append(allowedAddresses, sandbox_network.DefaultNameserver)
 	}
 
 	return &orchestrator.SandboxNetworkEgressConfig{
-		AllowedCidrs:   allowedAddresses,
+		AllowedCidrs:   sandbox_network.AddressStringsToCIDRs(allowedAddresses),
 		DeniedCidrs:    sandbox_network.AddressStringsToCIDRs(egressUpdate.DeniedAddresses),
 		AllowedDomains: allowedDomains,
 	}

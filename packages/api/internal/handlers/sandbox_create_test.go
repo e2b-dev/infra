@@ -134,7 +134,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 			},
 			wantErr:    true,
 			wantCode:   http.StatusBadRequest,
-			wantErrMsg: ErrMsgDomainsRequireBlockAll,
+			wantErrMsg: "When specifying allowed domains in allow out, you must include 'ALL_TRAFFIC' in deny out to block all other traffic.",
 		},
 		{
 			name: "allow_out with domain and block-all deny_out is valid",
@@ -152,7 +152,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 			},
 			wantErr:    true,
 			wantCode:   http.StatusBadRequest,
-			wantErrMsg: ErrMsgDomainsRequireBlockAll,
+			wantErrMsg: "When specifying allowed domains in allow out, you must include 'ALL_TRAFFIC' in deny out to block all other traffic.",
 		},
 		{
 			name: "allow_out with wildcard domain requires deny_out block-all",
@@ -161,7 +161,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 			},
 			wantErr:    true,
 			wantCode:   http.StatusBadRequest,
-			wantErrMsg: ErrMsgDomainsRequireBlockAll,
+			wantErrMsg: "When specifying allowed domains in allow out, you must include 'ALL_TRAFFIC' in deny out to block all other traffic.",
 		},
 		{
 			name: "allow_out with wildcard domain and block-all deny_out is valid",
@@ -307,7 +307,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 			},
 			wantErr:    true,
 			wantCode:   http.StatusBadRequest,
-			wantErrMsg: ErrMsgAllowInRequiresBlockAll,
+			wantErrMsg: "When specifying allowed sources in allow in, you must include 'ALL_TRAFFIC' (0.0.0.0/0) in deny in to block all other traffic.",
 		},
 		{
 			name: "allowIn with partial denyIn (no deny-all) is rejected",
@@ -317,7 +317,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 			},
 			wantErr:    true,
 			wantCode:   http.StatusBadRequest,
-			wantErrMsg: ErrMsgAllowInRequiresBlockAll,
+			wantErrMsg: "When specifying allowed sources in allow in, you must include 'ALL_TRAFFIC' (0.0.0.0/0) in deny in to block all other traffic.",
 		},
 		{
 			name: "invalid allowIn entry",
@@ -353,7 +353,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 			},
 			wantErr:    true,
 			wantCode:   http.StatusBadRequest,
-			wantErrMsg: ErrMsgDomainsRequireBlockAll,
+			wantErrMsg: "When specifying allowed domains in allow out, you must include 'ALL_TRAFFIC' in deny out to block all other traffic.",
 		},
 		{
 			name: "allow_out with domain and CIDR with deny_out block-all is valid",
