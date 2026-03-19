@@ -18,6 +18,41 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
+func sandboxLifecycleToAPI(autoPause bool, autoResumeConfig *dbtypes.SandboxAutoResumeConfig) *api.SandboxLifecycle {
+	onTimeout := api.Kill
+	if autoPause {
+		onTimeout = api.Pause
+	}
+
+	return &api.SandboxLifecycle{
+		AutoResume: autoResumeConfig != nil && autoResumeConfig.Policy == dbtypes.SandboxAutoResumeAny,
+		OnTimeout:  onTimeout,
+	}
+}
+
+func dbNetworkConfigToAPI(network *dbtypes.SandboxNetworkConfig) api.SandboxNetworkConfig {
+	result := api.SandboxNetworkConfig{}
+	if network == nil {
+		return result
+	}
+
+	if ingress := network.Ingress; ingress != nil {
+		result.AllowPublicTraffic = ingress.AllowPublicAccess
+		result.MaskRequestHost = ingress.MaskRequestHost
+	}
+
+	if egress := network.Egress; egress != nil {
+		if egress.AllowedAddresses != nil {
+			result.AllowOut = &egress.AllowedAddresses
+		}
+		if egress.DeniedAddresses != nil {
+			result.DenyOut = &egress.DeniedAddresses
+		}
+	}
+
+	return result
+}
+
 func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	ctx := c.Request.Context()
 
@@ -71,17 +106,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		}
 
 		// Sandbox exists and belongs to the team - return running sandbox sbx
-		onTimeout := api.Kill
-		if sbx.AutoPause {
-			onTimeout = api.Pause
-		}
-
 		network := dbNetworkConfigToAPI(sbx.Network)
-
-		lifecycle := &api.SandboxLifecycle{
-			AutoResume: sbx.AutoResume != nil && sbx.AutoResume.Policy == dbtypes.SandboxAutoResumeAny,
-			OnTimeout:  onTimeout,
-		}
 
 		sandbox := api.SandboxDetail{
 			ClientID:            sbx.ClientID,
@@ -99,7 +124,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 			AllowInternetAccess: sbx.AllowInternetAccess,
 			Domain:              sbxDomain,
 			Network:             &network,
-			Lifecycle:           lifecycle,
+			Lifecycle:           sandboxLifecycleToAPI(sbx.AutoPause, sbx.AutoResume),
 			VolumeMounts:        convertFromDBMountsToAPIMounts(sbx.VolumeMounts),
 		}
 
@@ -176,17 +201,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		networkConfig = lastSnapshot.Snapshot.Config.Network
 	}
 
-	onTimeout := api.Kill
-	if lastSnapshot.Snapshot.AutoPause {
-		onTimeout = api.Pause
-	}
-
 	network := dbNetworkConfigToAPI(networkConfig)
-
-	lifecycle := &api.SandboxLifecycle{
-		AutoResume: autoResumeConfig != nil && autoResumeConfig.Policy == dbtypes.SandboxAutoResumeAny,
-		OnTimeout:  onTimeout,
-	}
 
 	sandbox := api.SandboxDetail{
 		ClientID:            consts.ClientID, // for backwards compatibility we need to return a client id
@@ -203,7 +218,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		AllowInternetAccess: lastSnapshot.Snapshot.AllowInternetAccess,
 		Domain:              nil,
 		Network:             &network,
-		Lifecycle:           lifecycle,
+		Lifecycle:           sandboxLifecycleToAPI(lastSnapshot.Snapshot.AutoPause, autoResumeConfig),
 	}
 
 	if lastSnapshot.Snapshot.Metadata != nil {
