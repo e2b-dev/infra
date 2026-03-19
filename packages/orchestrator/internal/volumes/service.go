@@ -136,7 +136,7 @@ func toEntry(fullVolumePath string, fileInfo os.FileInfo) *orchestrator.EntryInf
 
 	return &orchestrator.EntryInfo{
 		Name:          entryInfo.Name,
-		Type:          toGRPCType(entryInfo.Type),
+		Type:          toType(entryInfo.Type),
 		Path:          fullVolumePath,
 		Size:          entryInfo.Size,
 		Mode:          uint32(entryInfo.Mode & os.ModePerm),
@@ -149,26 +149,13 @@ func toEntry(fullVolumePath string, fileInfo os.FileInfo) *orchestrator.EntryInf
 	}
 }
 
-func toGRPCType(fileType filesystem.FileType) orchestrator.FileType {
+func toType(fileType filesystem.FileType) orchestrator.FileType {
 	switch fileType {
 	case filesystem.DirectoryFileType:
 		return orchestrator.FileType_FILE_TYPE_DIRECTORY
 	case filesystem.FileFileType:
 		return orchestrator.FileType_FILE_TYPE_FILE
 	case filesystem.SymlinkFileType:
-		return orchestrator.FileType_FILE_TYPE_SYMLINK
-	default:
-		return orchestrator.FileType_FILE_TYPE_UNSPECIFIED
-	}
-}
-
-func toType(fileType os.FileMode) orchestrator.FileType {
-	switch {
-	case fileType.IsDir():
-		return orchestrator.FileType_FILE_TYPE_DIRECTORY
-	case fileType.IsRegular():
-		return orchestrator.FileType_FILE_TYPE_FILE
-	case fileType&os.ModeSymlink == os.ModeSymlink:
 		return orchestrator.FileType_FILE_TYPE_SYMLINK
 	default:
 		return orchestrator.FileType_FILE_TYPE_UNSPECIFIED
