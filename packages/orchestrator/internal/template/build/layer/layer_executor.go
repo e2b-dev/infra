@@ -16,6 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
@@ -25,7 +26,8 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/interna
 type LayerExecutor struct {
 	buildcontext.BuildContext
 
-	logger logger.Logger
+	logger       logger.Logger
+	featureFlags *featureflags.Client
 
 	templateCache   *sbxtemplate.Cache
 	proxy           *proxy.SandboxProxy
@@ -39,6 +41,7 @@ type LayerExecutor struct {
 func NewLayerExecutor(
 	buildContext buildcontext.BuildContext,
 	logger logger.Logger,
+	featureFlags *featureflags.Client,
 	templateCache *sbxtemplate.Cache,
 	proxy *proxy.SandboxProxy,
 	sandboxes *sandbox.Map,
@@ -50,7 +53,8 @@ func NewLayerExecutor(
 	return &LayerExecutor{
 		BuildContext: buildContext,
 
-		logger: logger,
+		logger:       logger,
+		featureFlags: featureFlags,
 
 		templateCache:   templateCache,
 		proxy:           proxy,
@@ -111,6 +115,30 @@ func (lb *LayerExecutor) BuildLayer(
 			)
 
 			return metadata.Template{}, fmt.Errorf("update envd: %w", err)
+		}
+
+		// Apply guest-side reserved blocks on the resumed-template path so older
+		// cached templates get the reservation before subsequent build actions run.
+		if reservedDiskSpaceMB := int64(lb.featureFlags.IntFlag(ctx, featureflags.BuildReservedDiskSpaceMB)); reservedDiskSpaceMB > 0 {
+			err = sandboxtools.SetReservedBlocksInGuest(
+				ctx,
+				lb.proxy,
+				userLogger,
+				sbx.Runtime.SandboxID,
+				reservedDiskSpaceMB,
+				lb.Config.RootfsBlockSize(),
+			)
+			if err != nil {
+				lb.logger.Error(
+					ctx,
+					"error setting reserved disk space in guest",
+					logger.WithSandboxID(sbx.Runtime.SandboxID),
+					logger.WithExecutionID(sbx.Runtime.ExecutionID),
+					zap.Error(err),
+				)
+
+				return metadata.Template{}, fmt.Errorf("set reserved disk space in guest: %w", err)
+			}
 		}
 	}
 

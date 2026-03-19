@@ -262,6 +262,7 @@ func runBuild(
 	layerExecutor := layer.NewLayerExecutor(
 		bc,
 		builder.logger,
+		builder.featureFlags,
 		builder.templateCache,
 		builder.proxy,
 		builder.sandboxes,
