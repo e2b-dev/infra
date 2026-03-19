@@ -307,7 +307,13 @@ func (c *Cache) FileSize() (int64, error) {
 		return 0, fmt.Errorf("failed to get file stats: %w", err)
 	}
 
-	return stat.Blocks * 512, nil
+	var fsStat syscall.Statfs_t
+	err = syscall.Statfs(c.filePath, &fsStat)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get disk stats for path %s: %w", c.filePath, err)
+	}
+
+	return stat.Blocks * int64(fsStat.Bsize), nil
 }
 
 func (c *Cache) address(off int64) (*byte, error) {
