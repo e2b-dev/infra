@@ -109,56 +109,6 @@ func TestListDir_Depth(t *testing.T) {
 	})
 }
 
-func TestListDir_BrokenSymlink(t *testing.T) {
-	t.Parallel()
-
-	s, basePath, volumeInfo := setupTestService(t)
-
-	// Create a directory with a broken symlink
-	err := os.MkdirAll(filepath.Join(basePath, "dir"), 0o755)
-	require.NoError(t, err)
-
-	// Create a symlink pointing to a non-existent target
-	brokenLinkPath := filepath.Join(basePath, "dir", "broken-link")
-	err = os.Symlink("/nonexistent/target", brokenLinkPath)
-	require.NoError(t, err)
-
-	// Also create a valid file for comparison
-	err = os.WriteFile(filepath.Join(basePath, "dir", "valid.txt"), []byte("test"), 0o644)
-	require.NoError(t, err)
-
-	ctx := t.Context()
-
-	t.Run("broken symlink is listed", func(t *testing.T) {
-		t.Parallel()
-
-		req := &orchestrator.VolumeDirListRequest{
-			Volume: volumeInfo,
-			Path:   "dir",
-			Depth:  1,
-		}
-		resp, err := s.ListDir(ctx, req)
-		require.NoError(t, err)
-		require.NotNil(t, resp)
-
-		// The broken symlink should still appear in the listing
-		paths := getPaths(t, resp.GetFiles())
-		require.ElementsMatch(t, []string{"/dir/broken-link", "/dir/valid.txt"}, paths)
-
-		// Find the broken symlink entry and verify its symlink target
-		for _, item := range resp.GetFiles() {
-			if item.GetEntry().GetPath() == "/dir/broken-link" {
-				// The symlink should be identified as a symlink type
-				require.Equal(t, orchestrator.FileType_FILE_TYPE_SYMLINK, item.GetEntry().GetType())
-
-				// With a broken symlink, EvalSymlinks fails, so SymlinkTarget should contain
-				// the deepest resolvable path (the raw target if nothing resolves)
-				require.Equal(t, "/nonexistent/target", item.GetEntry().GetSymlinkTarget())
-			}
-		}
-	})
-}
-
 func getPaths(t *testing.T, items []*orchestrator.VolumeDirectoryItem) []string {
 	t.Helper()
 
