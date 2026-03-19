@@ -103,7 +103,7 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 
 			// Strip the internal client IP header so it never reaches the sandbox.
 			// Must happen after extractClientIP reads it, and before Rewrite clones r into r.Out.
-			r.Header.Del(reverseproxy.ClientIPHeader)
+			r.Header.Del(reverseproxy.E2BClientIPHeader)
 
 			// Handle request host masking only for non-envd traffic.
 			var maskRequestHost *string

@@ -109,10 +109,10 @@ func (p *Proxy) Serve(l net.Listener) error {
 	return p.Server.Serve(tracking.NewListener(l, &p.currentServerConnsCounter))
 }
 
-// ClientIPHeader is an internal header set by client-proxy to forward
+// E2BClientIPHeader is an internal header set by client-proxy to forward
 // the real client IP to the orchestrator proxy. It is always stripped
 // before the request is forwarded to the sandbox.
-const ClientIPHeader = "X-E2B-Client-IP"
+const E2BClientIPHeader = "X-E2B-Client-IP"
 
 // ExtractClientIP returns the real client IP from an HTTP request.
 // Priority: X-E2B-Client-IP (internal, set by client-proxy) → X-Forwarded-For → RemoteAddr.
@@ -125,7 +125,7 @@ const ClientIPHeader = "X-E2B-Client-IP"
 // the load balancer. Taking the first entry would be spoofable.
 
 func ExtractClientIP(r *http.Request) string {
-	if clientIP := r.Header.Get(ClientIPHeader); clientIP != "" {
+	if clientIP := r.Header.Get(E2BClientIPHeader); clientIP != "" {
 		return clientIP
 	}
 

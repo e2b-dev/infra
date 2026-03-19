@@ -61,7 +61,7 @@ func TestExtractClientIP(t *testing.T) {
 				RemoteAddr: tt.remoteAddr,
 			}
 			if tt.clientIP != "" {
-				r.Header.Set(reverseproxy.ClientIPHeader, tt.clientIP)
+				r.Header.Set(reverseproxy.E2BClientIPHeader, tt.clientIP)
 			}
 			if tt.xff != "" {
 				r.Header.Set("X-Forwarded-For", tt.xff)
