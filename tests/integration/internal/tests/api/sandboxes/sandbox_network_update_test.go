@@ -499,7 +499,7 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 		},
 		{
 			name: "spoofed_ip_allow_overrides_deny", ciOnly: true,
-			allowIn: []string{"203.0.113.42/32"}, denyIn: []string{"0.0.0.0/0", "203.0.113.0/24"},
+			allowIn: []string{"203.0.113.42"}, denyIn: []string{"0.0.0.0/0", "203.0.113.0/24"},
 			checks: []ingressCheck{{testPort, "203.0.113.42", false}, {testPort, "203.0.113.99", true}},
 		},
 		{

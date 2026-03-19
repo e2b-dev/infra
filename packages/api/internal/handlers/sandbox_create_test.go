@@ -283,6 +283,28 @@ func TestValidateNetworkConfig(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name: "valid denyIn port-only shorthand :80 means all IPs port 80",
+			network: &api.SandboxNetworkConfig{
+				DenyIn: &[]string{":80"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid denyIn port-range shorthand :80-90 means all IPs ports 80-90",
+			network: &api.SandboxNetworkConfig{
+				DenyIn: &[]string{":80-90"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid allowIn port-only shorthand :443 with deny-all",
+			network: &api.SandboxNetworkConfig{
+				AllowIn: &[]string{":443"},
+				DenyIn:  &[]string{"0.0.0.0/0"},
+			},
+			wantErr: false,
+		},
 		// Ingress CIDR validation tests
 		{
 			name: "valid allowIn CIDR with deny-all",
@@ -296,6 +318,22 @@ func TestValidateNetworkConfig(t *testing.T) {
 			name: "valid allowIn CIDR from IP with deny-all",
 			network: &api.SandboxNetworkConfig{
 				AllowIn: &[]string{"1.2.3.4/32"},
+				DenyIn:  &[]string{"0.0.0.0/0"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid allowIn bare IP with deny-all",
+			network: &api.SandboxNetworkConfig{
+				AllowIn: &[]string{"1.2.3.4"},
+				DenyIn:  &[]string{"0.0.0.0/0"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid allowIn bare IP with port and deny-all",
+			network: &api.SandboxNetworkConfig{
+				AllowIn: &[]string{"1.2.3.4:80"},
 				DenyIn:  &[]string{"0.0.0.0/0"},
 			},
 			wantErr: false,
