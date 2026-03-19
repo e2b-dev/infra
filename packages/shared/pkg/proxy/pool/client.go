@@ -12,6 +12,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/template"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/tracking"
@@ -135,7 +136,11 @@ func newProxyClient(
 			}
 
 			if err != nil {
-				t.RequestLogger.Error(ctx, "sandbox error handler called", zap.Error(err))
+				if t.SandboxPort == uint64(consts.DefaultEnvdServerPort) {
+					t.RequestLogger.Error(ctx, "sandbox error handler called", zap.Error(err))
+				} else {
+					t.RequestLogger.Warn(ctx, "sandbox error handler called", zap.Error(err))
+				}
 			}
 
 			if t.DefaultToPortError {

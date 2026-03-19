@@ -16,6 +16,7 @@ var ApiNodeToOrchestratorStateMapper = map[api.NodeStatus]orchestratorinfo.Servi
 	api.NodeStatusReady:     orchestratorinfo.ServiceInfoStatus_Healthy,
 	api.NodeStatusDraining:  orchestratorinfo.ServiceInfoStatus_Draining,
 	api.NodeStatusUnhealthy: orchestratorinfo.ServiceInfoStatus_Unhealthy,
+	api.NodeStatusStandby:   orchestratorinfo.ServiceInfoStatus_Standby,
 }
 
 func (n *Node) Status() api.NodeStatus {

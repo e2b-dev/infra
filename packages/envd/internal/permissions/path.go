@@ -75,10 +75,12 @@ func EnsureDirs(path string, uid, gid int) error {
 
 		if err != nil && os.IsNotExist(err) {
 			err = os.Mkdir(subpath, 0o755)
-			if err != nil {
+			if err != nil && !os.IsExist(err) {
 				return fmt.Errorf("failed to create directory: %w", err)
 			}
 
+			// Chown even if another process created the directory (os.IsExist),
+			// since it may not have called Chown yet. Chown is idempotent.
 			err = os.Chown(subpath, uid, gid)
 			if err != nil {
 				return fmt.Errorf("failed to chown directory: %w", err)

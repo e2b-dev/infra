@@ -73,6 +73,9 @@ func LoggingMiddleware(logger logger.Logger, conf Config) gin.HandlerFunc {
 			}
 
 			status := c.Writer.Status()
+			if errors.Is(ctx.Err(), context.Canceled) {
+				status = 499
+			}
 
 			fields := []zapcore.Field{
 				zap.Int("status", status),
@@ -102,7 +105,7 @@ func LoggingMiddleware(logger logger.Logger, conf Config) gin.HandlerFunc {
 
 			level := conf.DefaultLevel
 			switch {
-			case status >= http.StatusInternalServerError && !errors.Is(ctx.Err(), context.Canceled):
+			case status >= http.StatusInternalServerError:
 				level = zapcore.ErrorLevel
 			case status >= http.StatusBadRequest:
 				level = zapcore.WarnLevel

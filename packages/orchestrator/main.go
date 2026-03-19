@@ -583,7 +583,7 @@ func run(config cfg.Config) (success bool) {
 	grpc_health_v1.RegisterHealthServer(grpcServer, grpcHealth)
 
 	// cmux server, allows us to reuse the same TCP port between grpc and HTTP requests
-	cmuxServer, err := factories.NewCMUXServer(ctx, config.GRPCPort)
+	cmuxServer, err := factories.NewCMUXServer(ctx, config.GRPCPort, tel.MeterProvider)
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create cmux server", zap.Error(err))
 	}
@@ -677,7 +677,7 @@ func run(config cfg.Config) (success bool) {
 	// Mark service draining if not already.
 	// If service stats was previously changed via API, we don't want to override it.
 	logger.L().Info(ctx, "Starting drain phase", zap.Int("sandbox_count", sandboxes.Count()))
-	if serviceInfo.GetStatus() == orchestratorinfo.ServiceInfoStatus_Healthy {
+	if status := serviceInfo.GetStatus(); status == orchestratorinfo.ServiceInfoStatus_Healthy || status == orchestratorinfo.ServiceInfoStatus_Standby {
 		serviceInfo.SetStatus(ctx, orchestratorinfo.ServiceInfoStatus_Draining)
 
 		// Wait for draining state to propagate to all consumers

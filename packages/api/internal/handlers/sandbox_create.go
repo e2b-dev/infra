@@ -116,8 +116,8 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		attribute.String("env.team.id", teamInfo.Team.ID.String()),
 		telemetry.WithTemplateID(env.TemplateID),
 		attribute.String("env.alias", alias),
-		attribute.String("env.kernel.version", build.KernelVersion),
-		attribute.String("env.firecracker.version", build.FirecrackerVersion),
+		telemetry.WithKernelVersion(build.KernelVersion),
+		telemetry.WithFirecrackerVersion(build.FirecrackerVersion),
 	)
 
 	autoPause := sharedUtils.DerefOrDefault(body.AutoPause, sandbox.AutoPauseDefault)
