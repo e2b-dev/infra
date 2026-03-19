@@ -166,7 +166,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	if snap.EnvSecure {
 		accessToken, tokenErr := a.getEnvdAccessToken(build.EnvdVersion, sandboxID)
 		if tokenErr != nil {
-			telemetry.ReportCriticalError(ctx, "Secure envd access token error", tokenErr.Err,
+			telemetry.ReportErrorByCode(ctx, tokenErr.Code, "Secure envd access token error", tokenErr.Err,
 				telemetry.WithTemplateID(snap.EnvID),
 				telemetry.WithBuildID(build.ID.String()),
 				telemetry.WithSandboxID(sandboxID),

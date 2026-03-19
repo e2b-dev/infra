@@ -77,7 +77,7 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 		// Sandbox exists but isn't running → check which transitional state.
 		var notRunningErr *sandbox.NotRunningError
 		if !errors.As(apiErr.Err, &notRunningErr) {
-			telemetry.ReportCriticalError(ctx, "error keeping sandbox alive", apiErr.Err,
+			telemetry.ReportErrorByCode(ctx, apiErr.Code, "error keeping sandbox alive", apiErr.Err,
 				telemetry.WithSandboxID(sandboxID),
 				telemetry.WithTeamID(teamID.String()),
 			)
@@ -157,7 +157,7 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 	if snap.EnvSecure {
 		accessToken, tokenErr := a.getEnvdAccessToken(build.EnvdVersion, sandboxID)
 		if tokenErr != nil {
-			telemetry.ReportCriticalError(ctx, "Secure envd access token error", tokenErr.Err,
+			telemetry.ReportErrorByCode(ctx, tokenErr.Code, "Secure envd access token error", tokenErr.Err,
 				telemetry.WithTemplateID(snap.EnvID),
 				telemetry.WithBuildID(build.ID.String()),
 				telemetry.WithSandboxID(sandboxID),
