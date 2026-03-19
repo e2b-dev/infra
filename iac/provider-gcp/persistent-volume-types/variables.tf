@@ -44,8 +44,3 @@ variable "performance_config" {
   })
   default = null
 }
-
-variable "nfs_mount_options" {
-  type    = list(string)
-  default = []
-}
