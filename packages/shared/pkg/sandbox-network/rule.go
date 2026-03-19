@@ -52,14 +52,14 @@ func (a *ACL) IsAllowed(ip net.IP, port uint16) bool {
 		return true
 	}
 
-	for i := range a.Allowed {
-		if a.Allowed[i].ContainsIP(ip) && a.Allowed[i].PortInRange(port) {
+	for _, rule := range a.Allowed {
+		if rule.ContainsIP(ip) && rule.PortInRange(port) {
 			return true
 		}
 	}
 
-	for i := range a.Denied {
-		if a.Denied[i].ContainsIP(ip) && a.Denied[i].PortInRange(port) {
+	for _, rule := range a.Denied {
+		if rule.ContainsIP(ip) && rule.PortInRange(port) {
 			return false
 		}
 	}
