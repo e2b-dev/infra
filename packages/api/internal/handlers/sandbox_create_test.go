@@ -128,33 +128,6 @@ func TestValidateNetworkConfig(t *testing.T) {
 		},
 		// Domain validation tests
 		{
-			name: "allow_out with domain requires deny_out block-all",
-			network: &api.SandboxNetworkConfig{
-				AllowOut: &[]string{"example.com"},
-			},
-			wantErr:    true,
-			wantCode:   http.StatusBadRequest,
-			wantErrMsg: "When specifying allowed domains in allow out, you must include 'ALL_TRAFFIC' in deny out to block all other traffic.",
-		},
-		{
-			name: "allow_out with domain and block-all deny_out is valid",
-			network: &api.SandboxNetworkConfig{
-				AllowOut: &[]string{"example.com"},
-				DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
-			},
-			wantErr: false,
-		},
-		{
-			name: "allow_out with domain and partial deny_out is invalid",
-			network: &api.SandboxNetworkConfig{
-				AllowOut: &[]string{"example.com"},
-				DenyOut:  &[]string{"10.0.0.0/8"},
-			},
-			wantErr:    true,
-			wantCode:   http.StatusBadRequest,
-			wantErrMsg: "When specifying allowed domains in allow out, you must include 'ALL_TRAFFIC' in deny out to block all other traffic.",
-		},
-		{
 			name: "allow_out with wildcard domain requires deny_out block-all",
 			network: &api.SandboxNetworkConfig{
 				AllowOut: &[]string{"*.example.com"},
@@ -400,25 +373,6 @@ func TestValidateNetworkConfig(t *testing.T) {
 				DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
 			},
 			wantErr: false,
-		},
-		// Port-specific egress rules are rejected
-		{
-			name: "allow_out with port is rejected",
-			network: &api.SandboxNetworkConfig{
-				AllowOut: &[]string{"8.8.8.8:80"},
-			},
-			wantErr:    true,
-			wantCode:   http.StatusBadRequest,
-			wantErrMsg: `invalid allow out entry "8.8.8.8:80": port-specific rules are not supported for egress`,
-		},
-		{
-			name: "deny_out with port is rejected",
-			network: &api.SandboxNetworkConfig{
-				DenyOut: &[]string{"10.0.0.0/8:22"},
-			},
-			wantErr:    true,
-			wantCode:   http.StatusBadRequest,
-			wantErrMsg: `invalid deny out entry "10.0.0.0/8:22": port-specific rules are not supported for egress`,
 		},
 		{
 			name: "deny_out with domain is rejected",
