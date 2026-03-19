@@ -65,7 +65,7 @@ func TestSandboxDetailReturnsLifecycleAndNetworkConfig(t *testing.T) {
 		assert.Equal(t, expectedState, returnedSbx.State)
 
 		require.NotNil(t, returnedSbx.AllowInternetAccess)
-		assert.False(t, *returnedSbx.AllowInternetAccess)
+		assert.Equal(t, allowInternetAccess, *returnedSbx.AllowInternetAccess)
 
 		require.NotNil(t, returnedSbx.Lifecycle)
 		assert.True(t, returnedSbx.Lifecycle.AutoResume)
@@ -100,7 +100,7 @@ func TestSandboxDetailReturnsLifecycleAndNetworkConfig(t *testing.T) {
 
 		return response.JSON200.Lifecycle.AutoResume &&
 			response.JSON200.Lifecycle.OnTimeout == api.Pause &&
-			!(*response.JSON200.AllowInternetAccess) &&
+			(*response.JSON200.AllowInternetAccess) &&
 			assert.ObjectsAreEqual(allowOut, *response.JSON200.Network.AllowOut) &&
 			assert.ObjectsAreEqual(denyOut, *response.JSON200.Network.DenyOut)
 	}, 10*time.Second, 100*time.Millisecond, "Sandbox detail did not return paused lifecycle/network config in time")
