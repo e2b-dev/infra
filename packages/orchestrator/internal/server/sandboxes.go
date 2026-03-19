@@ -82,7 +82,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		attribute.String("kernel.version", req.GetSandbox().GetKernelVersion()),
 		telemetry.WithSandboxID(req.GetSandbox().GetSandboxId()),
 		attribute.String("client.id", s.info.ClientId),
-		attribute.String("envd.version", req.GetSandbox().GetEnvdVersion()),
+		telemetry.WithEnvdVersion(req.GetSandbox().GetEnvdVersion()),
 	)
 
 	// setup launch darkly
@@ -156,6 +156,9 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	}
 
 	resolvedFCVersion := featureflags.ResolveFirecrackerVersion(ctx, s.featureFlags, req.GetSandbox().GetFirecrackerVersion())
+	childSpan.SetAttributes(
+		telemetry.WithFirecrackerVersion(resolvedFCVersion),
+	)
 
 	volumeMounts, err := createVolumeMountModelsFromAPI(req.GetSandbox().GetVolumeMounts())
 	if err != nil {

@@ -53,6 +53,10 @@ func WithEnvdVersion(envdVersion string) zap.Field {
 	return zap.String("envd.version", envdVersion)
 }
 
+func WithFirecrackerVersion(firecrackerVersion string) zap.Field {
+	return zap.String("firecracker.version", firecrackerVersion)
+}
+
 func WithClientIP(clientIP string) zap.Field {
 	return zap.String("http.client_ip", clientIP)
 }

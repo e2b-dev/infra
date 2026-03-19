@@ -93,6 +93,8 @@ func (m *Map) Insert(ctx context.Context, sbx *Sandbox) {
 		logger.WithTemplateID(sbx.Runtime.TemplateID),
 		logger.WithBuildID(sbx.Runtime.BuildID),
 		logger.WithSandboxIP(sbx.Slot.HostIPString()),
+		logger.WithEnvdVersion(sbx.Config.Envd.Version),
+		logger.WithFirecrackerVersion(sbx.Config.FirecrackerConfig.FirecrackerVersion),
 	)
 
 	m.sandboxes.Insert(sbx.Runtime.SandboxID, sbx)

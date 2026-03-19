@@ -48,6 +48,10 @@ func WithEnvdVersion(envdVersion string) attribute.KeyValue {
 	return zapFieldToOTELAttribute(logger.WithEnvdVersion(envdVersion))
 }
 
+func WithFirecrackerVersion(firecrackerVersion string) attribute.KeyValue {
+	return zapFieldToOTELAttribute(logger.WithFirecrackerVersion(firecrackerVersion))
+}
+
 func WithMaskedAPIKey(maskedAPIKey string) attribute.KeyValue {
 	return zapFieldToOTELAttribute(logger.WithMaskedAPIKey(maskedAPIKey))
 }
