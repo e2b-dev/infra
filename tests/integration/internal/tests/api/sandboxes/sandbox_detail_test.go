@@ -123,15 +123,9 @@ func TestSandboxDetailPausingSandbox(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		detailResponse, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), sandboxID, setup.WithAPIKey())
-		if err != nil {
-			return false
-		}
-		if detailResponse.StatusCode() != http.StatusOK {
-			return false
-		}
-		if detailResponse.JSON200 == nil {
-			return false
-		}
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, detailResponse.StatusCode())
+		require.NotNil(t, detailResponse.JSON200)
 
 		return detailResponse.JSON200.State == api.Paused
 	}, 10*time.Second, 100*time.Millisecond, "Sandbox did not reach paused state in time")
