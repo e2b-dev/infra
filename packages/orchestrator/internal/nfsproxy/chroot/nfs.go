@@ -33,25 +33,27 @@ type NFSHandler struct {
 	builder   *chrooted.Builder
 	sandboxes *sandbox.Map
 
-	chrootsBySandboxID map[string][]*chrooted.Chrooted
+	chrootsByLifecycleID map[string][]*chrooted.Chrooted
 }
 
 var _ nfs.Handler = (*NFSHandler)(nil)
 
-func (h *NFSHandler) OnInsert(_ *sandbox.Sandbox) {
-}
+func (h *NFSHandler) OnInsert(_ *sandbox.Sandbox) {}
 
-func (h *NFSHandler) OnRemove(sandboxID string) {
+func (h *NFSHandler) OnRemove(sbx *sandbox.Sandbox) {
+	lifecycleID := sbx.LifecycleID
+
 	h.mu.Lock()
-	chroots := h.chrootsBySandboxID[sandboxID]
-	delete(h.chrootsBySandboxID, sandboxID)
+	chroots := h.chrootsByLifecycleID[lifecycleID]
+	delete(h.chrootsByLifecycleID, lifecycleID)
 	h.mu.Unlock()
 
 	for _, chroot := range chroots {
 		err := chroot.Close()
 		if err != nil {
 			logger.L().Warn(context.Background(), "failed to close chroot",
-				logger.WithSandboxID(sandboxID),
+				logger.WithSandboxID(sbx.Runtime.SandboxID),
+				logger.WithLifecycleID(lifecycleID),
 				zap.String("path", chroot.Root()),
 				zap.Error(err),
 			)
@@ -64,9 +66,9 @@ func NewNFSHandler(
 	sandboxes *sandbox.Map,
 ) *NFSHandler {
 	h := &NFSHandler{
-		builder:            builder,
-		sandboxes:          sandboxes,
-		chrootsBySandboxID: make(map[string][]*chrooted.Chrooted),
+		builder:              builder,
+		sandboxes:            sandboxes,
+		chrootsByLifecycleID: make(map[string][]*chrooted.Chrooted),
 	}
 
 	sandboxes.Subscribe(h)
@@ -135,9 +137,9 @@ func (h *NFSHandler) getChroot(ctx context.Context, remoteAddr net.Addr, request
 		return nil, fmt.Errorf("failed to mount %q: %w", volumeName, err)
 	}
 
-	sandboxID := sbx.Metadata.Runtime.SandboxID
+	lifecycleID := sbx.LifecycleID
 	h.mu.Lock()
-	h.chrootsBySandboxID[sandboxID] = append(h.chrootsBySandboxID[sandboxID], fs)
+	h.chrootsByLifecycleID[lifecycleID] = append(h.chrootsByLifecycleID[lifecycleID], fs)
 	h.mu.Unlock()
 
 	return fs, nil

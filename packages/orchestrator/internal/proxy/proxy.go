@@ -197,6 +197,6 @@ func (p *SandboxProxy) OnInsert(_ *sandbox.Sandbox) {}
 
 // OnRemove is called when a sandbox is removed from the map.
 // It cleans up the connection limiter entry for the sandbox.
-func (p *SandboxProxy) OnRemove(sandboxID string) {
-	p.limiter.Remove(sandboxID)
+func (p *SandboxProxy) OnRemove(sbx *sandbox.Sandbox) {
+	p.limiter.Remove(sbx.Runtime.SandboxID)
 }

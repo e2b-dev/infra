@@ -12,7 +12,7 @@ import (
 
 type MapSubscriber interface {
 	OnInsert(sandbox *Sandbox)
-	OnRemove(sandboxID string)
+	OnRemove(sandbox *Sandbox)
 }
 
 type Map struct {
@@ -112,15 +112,26 @@ func (m *Map) MarkRunning(sbx *Sandbox) {
 }
 
 func (m *Map) Remove(ctx context.Context, sandboxID string) {
-	removed := m.sandboxes.RemoveCb(sandboxID, func(_ string, _ *Sandbox, exists bool) bool {
+	var removedSbx *Sandbox
+	removed := m.sandboxes.RemoveCb(sandboxID, func(_ string, sbx *Sandbox, exists bool) bool {
+		removedSbx = sbx
+
 		return exists
 	})
 
 	if removed {
 		logger.L().Info(ctx, "removing sandbox from map", logger.WithSandboxID(sandboxID))
 
+		if removedSbx == nil {
+			logger.L().Warn(ctx, "sandbox removed, but callback had no sandbox",
+				logger.WithSandboxID(sandboxID),
+			)
+
+			return
+		}
+
 		go m.trigger(func(s MapSubscriber) {
-			s.OnRemove(sandboxID)
+			s.OnRemove(removedSbx)
 		})
 	}
 }
@@ -148,7 +159,7 @@ func (m *Map) RemoveByLifecycleID(ctx context.Context, sandboxID, lifecycleID st
 		)
 
 		go m.trigger(func(s MapSubscriber) {
-			s.OnRemove(sandboxID)
+			s.OnRemove(sbx)
 		})
 	}
 }
