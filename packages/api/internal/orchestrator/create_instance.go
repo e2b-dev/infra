@@ -53,10 +53,6 @@ func buildEgressConfig(egressUpdate *types.SandboxNetworkEgressConfig) *orchestr
 // into structured IngressRule protos. The API has already validated these entries
 // as valid CIDRs with optional port ranges, so parsing errors are silently skipped.
 func parseIngressRules(entries []string) []*orchestrator.IngressRule {
-	if len(entries) == 0 {
-		return nil
-	}
-
 	rules := make([]*orchestrator.IngressRule, 0, len(entries))
 	for _, entry := range entries {
 		host, portStr, err := sandbox_network.SplitHostPort(entry)

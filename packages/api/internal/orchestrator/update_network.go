@@ -53,8 +53,8 @@ func (o *Orchestrator) UpdateSandboxNetworkConfig(
 			previousAllowPublic = sbx.Network.Ingress.AllowPublicAccess
 		}
 
+		ingressUpdate.AllowPublicAccess = previousAllowPublic
 		sbx.Network.Ingress = ingressUpdate
-		sbx.Network.Ingress.AllowPublicAccess = previousAllowPublic
 
 		ingress.TrafficAccessToken = sbx.TrafficAccessToken
 
