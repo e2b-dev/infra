@@ -17,8 +17,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-const (
-	fallbackDiffSize = 100 << units.MBShift
+var (
+	fallbackDiffSize = units.MBToBytes(100)
 )
 
 type deleteDiff struct {
