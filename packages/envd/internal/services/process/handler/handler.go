@@ -28,8 +28,8 @@ const (
 	defaultNice      = 0
 	defaultOomScore  = 100
 	outputBufferSize = 64
-	stdChunkSize     = 32 << 10
-	ptyChunkSize     = 16 << 10
+	stdChunkSize     = 32 << 10 // 32 KiB
+	ptyChunkSize     = 16 << 10 // 16 KiB
 )
 
 type ProcessExit struct {

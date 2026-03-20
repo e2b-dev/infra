@@ -32,7 +32,7 @@ import (
 const (
 	googleReadTimeout              = 10 * time.Second
 	googleOperationTimeout         = 5 * time.Second
-	googleBufferSize               = 4 << 20
+	googleBufferSize               = 4 << 20 // 4 MiB
 	googleInitialBackoff           = 10 * time.Millisecond
 	googleMaxBackoff               = 10 * time.Second
 	googleBackoffMultiplier        = 2
