@@ -104,6 +104,34 @@ func (i Ingress) HasFilters() bool {
 	return len(i.Allowed) > 0 || len(i.Denied) > 0
 }
 
+// ParseValidRules converts CIDR[:port[-port]] strings into Rules.
+// Invalid entries are silently skipped.
+func ParseValidRules(entries []string) Rules {
+	out := make(Rules, 0, len(entries))
+	for _, entry := range entries {
+		host, portStr, _ := SplitHostPort(entry)
+
+		_, ipNet, err := net.ParseCIDR(AddressStringToCIDR(host))
+		if err != nil {
+			continue
+		}
+
+		r := Rule{IPNet: ipNet}
+		if portStr != "" {
+			lo, hi, err := ParsePortRange(portStr)
+			if err != nil {
+				continue
+			}
+
+			r.PortStart, r.PortEnd = lo, hi
+		}
+
+		out = append(out, r)
+	}
+
+	return out
+}
+
 // SplitHostPort splits a network rule string into host and port parts.
 // Uses net.SplitHostPort with fallback for bare hosts.
 // Returns empty port string when no port is specified.

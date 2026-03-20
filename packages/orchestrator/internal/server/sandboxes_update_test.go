@@ -137,9 +137,7 @@ func TestUpdate_EgressAndIngress_EgressFails_RevertsIngress(t *testing.T) {
 			DeniedCidrs: []string{"0.0.0.0/0"},
 		},
 		Ingress: &orchestrator.SandboxNetworkIngressConfig{
-			Denied: []*orchestrator.IngressRule{
-				{Cidr: "10.0.0.0/8"},
-			},
+			DeniedCidrs: []string{"10.0.0.0/8"},
 		},
 	})
 

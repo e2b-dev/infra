@@ -49,39 +49,6 @@ func buildEgressConfig(egressUpdate *types.SandboxNetworkEgressConfig) *orchestr
 	}
 }
 
-// parseIngressRules converts pre-validated ingress rule strings (CIDR[:port[-port]])
-// into structured IngressRule protos. The API has already validated these entries
-// as valid CIDRs with optional port ranges, so parsing errors are silently skipped.
-func parseIngressRules(entries []string) []*orchestrator.IngressRule {
-	rules := make([]*orchestrator.IngressRule, 0, len(entries))
-	for _, entry := range entries {
-		host, portStr, err := sandbox_network.SplitHostPort(entry)
-		if err != nil {
-			continue // pre-validated by API handler
-		}
-
-		cidr := sandbox_network.AddressStringToCIDR(host)
-
-		var portLow, portHigh uint32
-		if portStr != "" {
-			lo, hi, err := sandbox_network.ParsePortRange(portStr)
-			if err != nil {
-				continue // pre-validated by API handler
-			}
-
-			portLow, portHigh = uint32(lo), uint32(hi)
-		}
-
-		rules = append(rules, &orchestrator.IngressRule{
-			Cidr:     cidr,
-			PortLow:  portLow,
-			PortHigh: portHigh,
-		})
-	}
-
-	return rules
-}
-
 // buildNetworkConfig constructs the orchestrator network configuration from the input parameters
 func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess *bool, trafficAccessToken *string) *orchestrator.SandboxNetworkConfig {
 	orchNetwork := &orchestrator.SandboxNetworkConfig{
@@ -97,8 +64,8 @@ func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess
 
 	if network != nil && network.Ingress != nil {
 		orchNetwork.Ingress.MaskRequestHost = network.Ingress.MaskRequestHost
-		orchNetwork.Ingress.Allowed = parseIngressRules(network.Ingress.AllowedAddresses)
-		orchNetwork.Ingress.Denied = parseIngressRules(network.Ingress.DeniedAddresses)
+		orchNetwork.Ingress.AllowedCidrs = network.Ingress.AllowedAddresses
+		orchNetwork.Ingress.DeniedCidrs = network.Ingress.DeniedAddresses
 	}
 
 	// Handle the case where internet access is explicitly disabled
