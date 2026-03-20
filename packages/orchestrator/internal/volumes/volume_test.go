@@ -15,7 +15,7 @@ func TestVolume(t *testing.T) {
 	s, rootPath, volumeInfo := setupTestService(t)
 
 	// create volume
-	_, err := s.Create(t.Context(), &orchestrator.CreateVolumeRequest{
+	_, err := s.CreateVolume(t.Context(), &orchestrator.CreateVolumeRequest{
 		Volume: volumeInfo,
 	})
 	require.NoError(t, err)
@@ -24,7 +24,7 @@ func TestVolume(t *testing.T) {
 	require.NoError(t, err)
 
 	// delete volume
-	_, err = s.Delete(t.Context(), &orchestrator.DeleteVolumeRequest{
+	_, err = s.DeleteVolume(t.Context(), &orchestrator.DeleteVolumeRequest{
 		Volume: volumeInfo,
 	})
 	require.NoError(t, err)

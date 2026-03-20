@@ -11,7 +11,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
-func (s *Service) Delete(
+func (s *Service) DeleteVolume(
 	ctx context.Context,
 	request *orchestrator.DeleteVolumeRequest,
 ) (r *orchestrator.DeleteVolumeResponse, err error) {

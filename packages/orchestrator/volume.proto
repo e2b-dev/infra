@@ -174,8 +174,8 @@ message UpdatePathResponse {
 
 service VolumeService {
   // volume operations
-  rpc Create(CreateVolumeRequest) returns (CreateVolumeResponse);
-  rpc Delete(DeleteVolumeRequest) returns (DeleteVolumeResponse);
+  rpc CreateVolume(CreateVolumeRequest) returns (CreateVolumeResponse);
+  rpc DeleteVolume(DeleteVolumeRequest) returns (DeleteVolumeResponse);
 
   // directory operations
   rpc CreateDir(CreateDirRequest) returns (CreateDirResponse);

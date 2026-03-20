@@ -19,15 +19,15 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	VolumeService_Create_FullMethodName     = "/VolumeService/Create"
-	VolumeService_Delete_FullMethodName     = "/VolumeService/Delete"
-	VolumeService_CreateDir_FullMethodName  = "/VolumeService/CreateDir"
-	VolumeService_ListDir_FullMethodName    = "/VolumeService/ListDir"
-	VolumeService_CreateFile_FullMethodName = "/VolumeService/CreateFile"
-	VolumeService_GetFile_FullMethodName    = "/VolumeService/GetFile"
-	VolumeService_DeletePath_FullMethodName = "/VolumeService/DeletePath"
-	VolumeService_StatPath_FullMethodName   = "/VolumeService/StatPath"
-	VolumeService_UpdatePath_FullMethodName = "/VolumeService/UpdatePath"
+	VolumeService_CreateVolume_FullMethodName = "/VolumeService/CreateVolume"
+	VolumeService_DeleteVolume_FullMethodName = "/VolumeService/DeleteVolume"
+	VolumeService_CreateDir_FullMethodName    = "/VolumeService/CreateDir"
+	VolumeService_ListDir_FullMethodName      = "/VolumeService/ListDir"
+	VolumeService_CreateFile_FullMethodName   = "/VolumeService/CreateFile"
+	VolumeService_GetFile_FullMethodName      = "/VolumeService/GetFile"
+	VolumeService_DeletePath_FullMethodName   = "/VolumeService/DeletePath"
+	VolumeService_StatPath_FullMethodName     = "/VolumeService/StatPath"
+	VolumeService_UpdatePath_FullMethodName   = "/VolumeService/UpdatePath"
 )
 
 // VolumeServiceClient is the client API for VolumeService service.
@@ -35,8 +35,8 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type VolumeServiceClient interface {
 	// volume operations
-	Create(ctx context.Context, in *CreateVolumeRequest, opts ...grpc.CallOption) (*CreateVolumeResponse, error)
-	Delete(ctx context.Context, in *DeleteVolumeRequest, opts ...grpc.CallOption) (*DeleteVolumeResponse, error)
+	CreateVolume(ctx context.Context, in *CreateVolumeRequest, opts ...grpc.CallOption) (*CreateVolumeResponse, error)
+	DeleteVolume(ctx context.Context, in *DeleteVolumeRequest, opts ...grpc.CallOption) (*DeleteVolumeResponse, error)
 	// directory operations
 	CreateDir(ctx context.Context, in *CreateDirRequest, opts ...grpc.CallOption) (*CreateDirResponse, error)
 	ListDir(ctx context.Context, in *ListDirRequest, opts ...grpc.CallOption) (*ListDirResponse, error)
@@ -57,20 +57,20 @@ func NewVolumeServiceClient(cc grpc.ClientConnInterface) VolumeServiceClient {
 	return &volumeServiceClient{cc}
 }
 
-func (c *volumeServiceClient) Create(ctx context.Context, in *CreateVolumeRequest, opts ...grpc.CallOption) (*CreateVolumeResponse, error) {
+func (c *volumeServiceClient) CreateVolume(ctx context.Context, in *CreateVolumeRequest, opts ...grpc.CallOption) (*CreateVolumeResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CreateVolumeResponse)
-	err := c.cc.Invoke(ctx, VolumeService_Create_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, VolumeService_CreateVolume_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *volumeServiceClient) Delete(ctx context.Context, in *DeleteVolumeRequest, opts ...grpc.CallOption) (*DeleteVolumeResponse, error) {
+func (c *volumeServiceClient) DeleteVolume(ctx context.Context, in *DeleteVolumeRequest, opts ...grpc.CallOption) (*DeleteVolumeResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(DeleteVolumeResponse)
-	err := c.cc.Invoke(ctx, VolumeService_Delete_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, VolumeService_DeleteVolume_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -164,8 +164,8 @@ func (c *volumeServiceClient) UpdatePath(ctx context.Context, in *UpdatePathRequ
 // for forward compatibility.
 type VolumeServiceServer interface {
 	// volume operations
-	Create(context.Context, *CreateVolumeRequest) (*CreateVolumeResponse, error)
-	Delete(context.Context, *DeleteVolumeRequest) (*DeleteVolumeResponse, error)
+	CreateVolume(context.Context, *CreateVolumeRequest) (*CreateVolumeResponse, error)
+	DeleteVolume(context.Context, *DeleteVolumeRequest) (*DeleteVolumeResponse, error)
 	// directory operations
 	CreateDir(context.Context, *CreateDirRequest) (*CreateDirResponse, error)
 	ListDir(context.Context, *ListDirRequest) (*ListDirResponse, error)
@@ -186,11 +186,11 @@ type VolumeServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedVolumeServiceServer struct{}
 
-func (UnimplementedVolumeServiceServer) Create(context.Context, *CreateVolumeRequest) (*CreateVolumeResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method Create not implemented")
+func (UnimplementedVolumeServiceServer) CreateVolume(context.Context, *CreateVolumeRequest) (*CreateVolumeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateVolume not implemented")
 }
-func (UnimplementedVolumeServiceServer) Delete(context.Context, *DeleteVolumeRequest) (*DeleteVolumeResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method Delete not implemented")
+func (UnimplementedVolumeServiceServer) DeleteVolume(context.Context, *DeleteVolumeRequest) (*DeleteVolumeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteVolume not implemented")
 }
 func (UnimplementedVolumeServiceServer) CreateDir(context.Context, *CreateDirRequest) (*CreateDirResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateDir not implemented")
@@ -234,38 +234,38 @@ func RegisterVolumeServiceServer(s grpc.ServiceRegistrar, srv VolumeServiceServe
 	s.RegisterService(&VolumeService_ServiceDesc, srv)
 }
 
-func _VolumeService_Create_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _VolumeService_CreateVolume_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CreateVolumeRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(VolumeServiceServer).Create(ctx, in)
+		return srv.(VolumeServiceServer).CreateVolume(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: VolumeService_Create_FullMethodName,
+		FullMethod: VolumeService_CreateVolume_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(VolumeServiceServer).Create(ctx, req.(*CreateVolumeRequest))
+		return srv.(VolumeServiceServer).CreateVolume(ctx, req.(*CreateVolumeRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _VolumeService_Delete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _VolumeService_DeleteVolume_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(DeleteVolumeRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(VolumeServiceServer).Delete(ctx, in)
+		return srv.(VolumeServiceServer).DeleteVolume(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: VolumeService_Delete_FullMethodName,
+		FullMethod: VolumeService_DeleteVolume_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(VolumeServiceServer).Delete(ctx, req.(*DeleteVolumeRequest))
+		return srv.(VolumeServiceServer).DeleteVolume(ctx, req.(*DeleteVolumeRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -386,12 +386,12 @@ var VolumeService_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*VolumeServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "Create",
-			Handler:    _VolumeService_Create_Handler,
+			MethodName: "CreateVolume",
+			Handler:    _VolumeService_CreateVolume_Handler,
 		},
 		{
-			MethodName: "Delete",
-			Handler:    _VolumeService_Delete_Handler,
+			MethodName: "DeleteVolume",
+			Handler:    _VolumeService_DeleteVolume_Handler,
 		},
 		{
 			MethodName: "CreateDir",
