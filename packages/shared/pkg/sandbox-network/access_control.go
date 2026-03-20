@@ -62,6 +62,8 @@ func (e Egress) NoHTTPHostDomainRules() bool {
 	return len(e.AllowedHTTPHostDomains) == 0
 }
 
+// MatchDomain checks if a hostname matches any allowed domain pattern.
+// Patterns can be exact matches, wildcards (*), or suffix wildcards (*.example.com).
 func (e Egress) MatchDomain(hostname string) bool {
 	for _, pattern := range e.AllowedHTTPHostDomains {
 		switch {
