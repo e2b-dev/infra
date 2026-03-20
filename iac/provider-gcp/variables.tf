@@ -683,9 +683,9 @@ variable "persistent_volume_types" {
     protocol       = optional(string)
     nfs_version    = optional(string)
     mount_options  = optional(list(string))
-    performance_config = object({
+    performance_config = optional(object({
       max_iops = optional(number)
-    })
+    }))
   }))
 
   default = {}
