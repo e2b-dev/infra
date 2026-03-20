@@ -27,8 +27,8 @@ jobs:
       - name: Move packages back where the run scripts expect them to be
         run: |
           for f in api client-proxy envd orchestrator; do
-            mkdir -p ./packages/$f/bin
-            mv "$f" "./packages/$f/bin/$f
+            mkdir -p "./packages/$f/bin"
+            mv "$f" "./packages/$f/bin/$f"
           done
 
       - name: Initialize Host
