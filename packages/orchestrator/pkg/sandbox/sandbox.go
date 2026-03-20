@@ -473,10 +473,8 @@ func (f *Factory) CreateSandbox(
 	// Stop the sandbox first if it is still running, otherwise do nothing
 	cleanup.AddPriority(ctx, sbx.Stop)
 
-	if f.featureFlags.BoolFlag(execCtx, featureflags.HostStatsEnabled) {
-		samplingInterval := time.Duration(f.featureFlags.IntFlag(execCtx, featureflags.HostStatsSamplingInterval)) * time.Millisecond
-		initializeHostStatsCollector(execCtx, sbx, fcHandle, runtime, config, f.hostStatsDelivery, samplingInterval)
-	}
+	samplingInterval := time.Duration(f.featureFlags.IntFlag(execCtx, featureflags.HostStatsSamplingInterval)) * time.Millisecond
+	initializeHostStatsCollector(execCtx, sbx, fcHandle, runtime, config, f.hostStatsDelivery, samplingInterval)
 
 	go func() {
 		defer execSpan.End()
@@ -824,10 +822,8 @@ func (f *Factory) ResumeSandbox(
 
 	telemetry.ReportEvent(execCtx, "envd initialized")
 
-	if f.featureFlags.BoolFlag(execCtx, featureflags.HostStatsEnabled) {
-		samplingInterval := time.Duration(f.featureFlags.IntFlag(execCtx, featureflags.HostStatsSamplingInterval)) * time.Millisecond
-		initializeHostStatsCollector(execCtx, sbx, fcHandle, runtime, config, f.hostStatsDelivery, samplingInterval)
-	}
+	samplingInterval := time.Duration(f.featureFlags.IntFlag(execCtx, featureflags.HostStatsSamplingInterval)) * time.Millisecond
+	initializeHostStatsCollector(execCtx, sbx, fcHandle, runtime, config, f.hostStatsDelivery, samplingInterval)
 
 	go sbx.Checks.Start(execCtx)
 
