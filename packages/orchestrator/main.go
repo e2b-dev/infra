@@ -748,10 +748,12 @@ func startNFSProxy(
 
 	// nfs proxy implementation
 	nfsServer, err := nfsproxy.NewProxy(ctx, builder, sandboxes, nfscfg.Config{
-		Logging:         config.NFSProxyLogging,
-		Tracing:         config.NFSProxyTracing,
-		RecordStatCalls: config.NFSProxyRecordStatCalls,
-		NFSLogLevel:     config.NFSProxyLogLevel,
+		Logging:           config.NFSProxyLogging,
+		Tracing:           config.NFSProxyTracing,
+		Metrics:           config.NFSProxyMetrics,
+		RecordHandleCalls: config.NFSProxyRecordHandleCalls,
+		RecordStatCalls:   config.NFSProxyRecordStatCalls,
+		NFSLogLevel:       config.NFSProxyLogLevel,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create nfs proxy: %w", err)

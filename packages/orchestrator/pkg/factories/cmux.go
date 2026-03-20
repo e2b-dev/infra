@@ -23,7 +23,7 @@ func NewCMUXServer(ctx context.Context, port uint16, meterProvider metric.MeterP
 
 	m := cmux.New(lis)
 
-	meter := meterProvider.Meter("orchestrator.cmux")
+	meter := meterProvider.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/factories")
 	errCounter := utils.Must(telemetry.GetCounter(meter, telemetry.CmuxErrorsTotal))
 
 	m.HandleError(func(err error) bool {

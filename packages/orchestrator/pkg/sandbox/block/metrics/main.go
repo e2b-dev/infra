@@ -28,7 +28,7 @@ type Metrics struct {
 func NewMetrics(meterProvider metric.MeterProvider) (Metrics, error) {
 	var m Metrics
 
-	blocksMeter := meterProvider.Meter("internal.sandbox.block.metrics")
+	blocksMeter := meterProvider.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics")
 
 	var err error
 	if m.SlicesTimerFactory, err = telemetry.NewTimerFactory(

@@ -47,7 +47,7 @@ type BuildMetrics struct {
 
 // NewBuildMetrics creates a new BuildMetrics instance
 func NewBuildMetrics(meterProvider metric.MeterProvider) (*BuildMetrics, error) {
-	meter := meterProvider.Meter("template.build")
+	meter := meterProvider.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/metrics")
 
 	buildDurationHistogram, err := telemetry.GetHistogram(meter, telemetry.BuildDurationHistogramName)
 	if err != nil {

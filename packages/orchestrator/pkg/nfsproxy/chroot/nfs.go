@@ -11,6 +11,8 @@ import (
 	"github.com/go-git/go-billy/v5"
 	"github.com/google/uuid"
 	"github.com/willscott/go-nfs"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg"
@@ -20,6 +22,8 @@ import (
 )
 
 var (
+	meter = otel.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/nfsproxy/chroot")
+
 	ErrVolumeNotFound   = errors.New("volume not found")
 	ErrInvalidTeamID    = errors.New("invalid team ID")
 	ErrVolumeID         = errors.New("invalid volume ID")
@@ -33,45 +37,79 @@ type NFSHandler struct {
 	builder   *chrooted.Builder
 	sandboxes *sandbox.Map
 
-	chrootsBySandboxID map[string][]*chrooted.Chrooted
+	chrootsByLifecycleID  map[string][]*chrooted.Chrooted
+	chrootMountsCounter   metric.Int64Counter
+	chrootUnmountsCounter metric.Int64Counter
 }
 
 var _ nfs.Handler = (*NFSHandler)(nil)
 
-func (h *NFSHandler) OnInsert(_ *sandbox.Sandbox) {
+func NewNFSHandler(
+	builder *chrooted.Builder,
+	sandboxes *sandbox.Map,
+) (*NFSHandler, error) {
+	chrootMountsCounter, err := meter.Int64Counter("nfs.chroot.mounts")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create chroot mounts counter: %w", err)
+	}
+
+	chrootUnmountsCounter, err := meter.Int64Counter("nfs.chroot.unmounts")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create chroot unmounts counter: %w", err)
+	}
+
+	h := &NFSHandler{
+		builder:               builder,
+		sandboxes:             sandboxes,
+		chrootsByLifecycleID:  make(map[string][]*chrooted.Chrooted),
+		chrootMountsCounter:   chrootMountsCounter,
+		chrootUnmountsCounter: chrootUnmountsCounter,
+	}
+
+	sandboxes.Subscribe(h)
+
+	// don't need to keep a reference around, just create it
+	if _, err = meter.Int64ObservableGauge("nfs.chroots.gauge", metric.WithInt64Callback(func(_ context.Context, observer metric.Int64Observer) error {
+		var count int
+
+		h.mu.Lock()
+		for _, chroots := range h.chrootsByLifecycleID {
+			count += len(chroots)
+		}
+		h.mu.Unlock()
+
+		observer.Observe(int64(count))
+
+		return nil
+	})); err != nil {
+		return nil, fmt.Errorf("failed to create chroots gauge: %w", err)
+	}
+
+	return h, nil
 }
 
-func (h *NFSHandler) OnRemove(sandboxID string) {
+func (h *NFSHandler) OnInsert(_ context.Context, _ *sandbox.Sandbox) {}
+
+func (h *NFSHandler) OnRemove(ctx context.Context, sbx *sandbox.Sandbox) {
+	lifecycleID := sbx.LifecycleID
+
 	h.mu.Lock()
-	chroots := h.chrootsBySandboxID[sandboxID]
-	delete(h.chrootsBySandboxID, sandboxID)
+	chroots := h.chrootsByLifecycleID[lifecycleID]
+	delete(h.chrootsByLifecycleID, lifecycleID)
 	h.mu.Unlock()
 
 	for _, chroot := range chroots {
 		err := chroot.Close()
 		if err != nil {
-			logger.L().Warn(context.Background(), "failed to close chroot",
-				logger.WithSandboxID(sandboxID),
+			logger.L().Warn(ctx, "failed to close chroot",
+				logger.WithSandboxID(sbx.Runtime.SandboxID),
+				logger.WithLifecycleID(lifecycleID),
 				zap.String("path", chroot.Root()),
 				zap.Error(err),
 			)
 		}
+		h.chrootUnmountsCounter.Add(ctx, 1)
 	}
-}
-
-func NewNFSHandler(
-	builder *chrooted.Builder,
-	sandboxes *sandbox.Map,
-) *NFSHandler {
-	h := &NFSHandler{
-		builder:            builder,
-		sandboxes:          sandboxes,
-		chrootsBySandboxID: make(map[string][]*chrooted.Chrooted),
-	}
-
-	sandboxes.Subscribe(h)
-
-	return h
 }
 
 func (h *NFSHandler) Mount(
@@ -135,10 +173,12 @@ func (h *NFSHandler) getChroot(ctx context.Context, remoteAddr net.Addr, request
 		return nil, fmt.Errorf("failed to mount %q: %w", volumeName, err)
 	}
 
-	sandboxID := sbx.Metadata.Runtime.SandboxID
+	lifecycleID := sbx.LifecycleID
 	h.mu.Lock()
-	h.chrootsBySandboxID[sandboxID] = append(h.chrootsBySandboxID[sandboxID], fs)
+	h.chrootsByLifecycleID[lifecycleID] = append(h.chrootsByLifecycleID[lifecycleID], fs)
 	h.mu.Unlock()
+
+	h.chrootMountsCounter.Add(ctx, 1)
 
 	return fs, nil
 }
