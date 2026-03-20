@@ -55,12 +55,6 @@ func Make(ctx context.Context, rootfsPath string, sizeMb int64, blockSize int64)
 			"huge_file",
 			"large_file",
 			"sparse_super2",
-
-			// Disabled for compatibility with older guest e2fsprogs (Ubuntu 22.04, Debian 11).
-			// orphan_file was added as default in e2fsprogs >= 1.47.0; without disabling it,
-			// guest tools fail with "unsupported read-only feature(s)".
-			// See https://e2fsprogs.sourceforge.net/e2fsprogs-release.html#1.47.0
-			"^orphan_file",
 		}, ","),
 		"-b", strconv.FormatInt(blockSize, 10),
 		"-m", strconv.FormatInt(reservedBlocksPercentage, 10),
