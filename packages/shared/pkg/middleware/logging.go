@@ -72,13 +72,7 @@ func LoggingMiddleware(logger logger.Logger, conf Config) gin.HandlerFunc {
 				end = end.UTC()
 			}
 
-			status := c.Writer.Status()
-			if errors.Is(ctx.Err(), context.Canceled) {
-				status = 499
-			}
-
 			fields := []zapcore.Field{
-				zap.Int("status", status),
 				zap.String("method", c.Request.Method),
 				zap.String("path", path),
 				zap.String("query", query),
@@ -86,6 +80,16 @@ func LoggingMiddleware(logger logger.Logger, conf Config) gin.HandlerFunc {
 				zap.Duration("latency", latency),
 			}
 
+			status := c.Writer.Status()
+			cause := CancelCause(c)
+			if errors.Is(cause, ErrRequestTimeout) {
+				fields = append(fields, zap.Bool("request_timeout", true))
+			} else if errors.Is(cause, context.Canceled) {
+				status = StatusClientClosedRequest // 499
+				fields = append(fields, zap.Bool("client_canceled", true))
+			}
+
+			fields = append(fields, zap.Int("status", status))
 			if conf.TimeFormat != "" {
 				fields = append(fields, zap.String("time", end.Format(conf.TimeFormat)))
 			}

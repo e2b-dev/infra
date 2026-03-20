@@ -15,7 +15,7 @@ import (
 
 const (
 	oldMemfileHugePageSize = 2 << 20 // 2 MiB
-	oldRootfsBlockSize     = 2 << 11 // 4 KiB
+	oldRootfsBlockSize     = 4 << 10 // 4 KiB
 )
 
 type Storage struct {

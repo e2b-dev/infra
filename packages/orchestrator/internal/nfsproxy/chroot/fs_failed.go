@@ -1,11 +1,14 @@
-package jailed
+package chroot
 
 import (
+	"errors"
 	"os"
 	"strings"
 
 	"github.com/go-git/go-billy/v5"
 )
+
+var ErrInvalidSandbox = errors.New("invalid sandbox")
 
 type mountFailedFS struct{}
 

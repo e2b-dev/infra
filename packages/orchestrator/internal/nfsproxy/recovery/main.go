@@ -31,11 +31,11 @@ func (h Handler) Mount(ctx context.Context, conn net.Conn, request nfs.MountRequ
 	return s, fs, auth
 }
 
-func (h Handler) Change(filesystem billy.Filesystem) billy.Change {
-	defer h.tryRecovery(h.ctx, "Change")
-	c := h.inner.Change(filesystem)
+func (h Handler) Change(ctx context.Context, filesystem billy.Filesystem) billy.Change {
+	defer h.tryRecovery(ctx, "Change")
+	c := h.inner.Change(ctx, filesystem)
 
-	return wrapChange(h.ctx, c)
+	return wrapChange(ctx, c)
 }
 
 func (h Handler) FSStat(ctx context.Context, filesystem billy.Filesystem, stat *nfs.FSStat) (e error) {
@@ -44,22 +44,22 @@ func (h Handler) FSStat(ctx context.Context, filesystem billy.Filesystem, stat *
 	return h.inner.FSStat(ctx, filesystem, stat)
 }
 
-func (h Handler) ToHandle(fs billy.Filesystem, path []string) []byte {
-	defer h.tryRecovery(h.ctx, "ToHandle")
+func (h Handler) ToHandle(ctx context.Context, fs billy.Filesystem, path []string) []byte {
+	defer h.tryRecovery(ctx, "ToHandle")
 
-	return h.inner.ToHandle(fs, path)
+	return h.inner.ToHandle(ctx, fs, path)
 }
 
-func (h Handler) FromHandle(fh []byte) (fs billy.Filesystem, path []string, e error) {
-	defer deferErrRecovery(h.ctx, "Handler.FromHandle", &e)
+func (h Handler) FromHandle(ctx context.Context, fh []byte) (fs billy.Filesystem, path []string, e error) {
+	defer deferErrRecovery(ctx, "Handler.FromHandle", &e)
 
-	return h.inner.FromHandle(fh)
+	return h.inner.FromHandle(ctx, fh)
 }
 
-func (h Handler) InvalidateHandle(filesystem billy.Filesystem, bytes []byte) (e error) {
-	defer deferErrRecovery(h.ctx, "Handler.InvalidateHandle", &e)
+func (h Handler) InvalidateHandle(ctx context.Context, filesystem billy.Filesystem, bytes []byte) (e error) {
+	defer deferErrRecovery(ctx, "Handler.InvalidateHandle", &e)
 
-	return h.inner.InvalidateHandle(filesystem, bytes)
+	return h.inner.InvalidateHandle(ctx, filesystem, bytes)
 }
 
 func (h Handler) HandleLimit() int {

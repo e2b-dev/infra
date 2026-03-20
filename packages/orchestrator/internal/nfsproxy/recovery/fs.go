@@ -119,3 +119,7 @@ func (fs *filesystem) Root() string {
 
 	return fs.inner.Root()
 }
+
+func (fs *filesystem) Unwrap() billy.Filesystem {
+	return fs.inner
+}

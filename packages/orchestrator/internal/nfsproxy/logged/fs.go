@@ -5,17 +5,20 @@ import (
 	"os"
 
 	"github.com/go-git/go-billy/v5"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy/cfg"
 )
 
 type loggedFS struct {
-	ctx   context.Context //nolint:containedctx // can't change the API, still need it
-	inner billy.Filesystem
+	ctx    context.Context //nolint:containedctx // can't change the API, still need it
+	inner  billy.Filesystem
+	config cfg.Config
 }
 
 var _ billy.Filesystem = (*loggedFS)(nil)
 
-func newFS(ctx context.Context, fs billy.Filesystem) loggedFS {
-	return loggedFS{ctx: ctx, inner: fs}
+func wrapFS(ctx context.Context, fs billy.Filesystem, config cfg.Config) loggedFS {
+	return loggedFS{ctx: ctx, inner: fs, config: config}
 }
 
 func (l loggedFS) Create(filename string) (f billy.File, err error) {
@@ -49,6 +52,10 @@ func (l loggedFS) OpenFile(filename string, flag int, perm os.FileMode) (f billy
 }
 
 func (l loggedFS) Stat(filename string) (fi os.FileInfo, err error) {
+	if !l.config.RecordStatCalls {
+		return l.inner.Stat(filename)
+	}
+
 	finish := logStart(l.ctx, "FS.Stat", filename)
 	defer func() { finish(l.ctx, err, fi) }()
 
@@ -101,6 +108,10 @@ func (l loggedFS) MkdirAll(filename string, perm os.FileMode) (err error) {
 }
 
 func (l loggedFS) Lstat(filename string) (fi os.FileInfo, err error) {
+	if !l.config.RecordStatCalls {
+		return l.inner.Lstat(filename)
+	}
+
 	finish := logStart(l.ctx, "FS.Lstat", filename)
 	defer func() { finish(l.ctx, err, fi) }()
 
@@ -130,9 +141,13 @@ func (l loggedFS) Chroot(path string) (fs billy.Filesystem, err error) {
 		return nil, err
 	}
 
-	return newFS(l.ctx, inner), nil
+	return wrapFS(l.ctx, inner, l.config), nil
 }
 
 func (l loggedFS) Root() string {
 	return l.inner.Root()
+}
+
+func (l loggedFS) Unwrap() billy.Filesystem {
+	return l.inner
 }

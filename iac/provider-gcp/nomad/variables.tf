@@ -477,3 +477,8 @@ variable "gcs_grpc_connection_pool_size" {
   description = "Number of gRPC connections in the GCS connection pool"
   type        = number
 }
+
+variable "orchestrator_env_vars" {
+  type    = map(string)
+  default = {}
+}

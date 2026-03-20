@@ -1,3 +1,4 @@
+//nolint:paralleltest // many tests set env, which may cause issues
 package cfg
 
 import (
@@ -8,7 +9,7 @@ import (
 )
 
 func TestParse(t *testing.T) {
-	t.Run("embedded structs get defaults", func(t *testing.T) { //nolint:paralleltest // siblings set env, which may cause issues
+	t.Run("embedded structs get defaults", func(t *testing.T) {
 		config, err := Parse()
 		require.NoError(t, err)
 
@@ -24,7 +25,7 @@ func TestParse(t *testing.T) {
 		assert.Equal(t, "/fc-vm2", config.SandboxDir)
 	})
 
-	t.Run("network config local flag defaults to false", func(t *testing.T) { //nolint:paralleltest // siblings set env, which may cause issues
+	t.Run("network config local flag defaults to false", func(t *testing.T) {
 		config, err := Parse()
 		require.NoError(t, err)
 
@@ -49,7 +50,7 @@ func TestParse(t *testing.T) {
 		assert.Equal(t, []string{"service1", "service2"}, config.Services)
 	})
 
-	t.Run("env defaults get defaults before expansion", func(t *testing.T) { //nolint:paralleltest // siblings set env, which may cause issues
+	t.Run("env defaults get defaults before expansion", func(t *testing.T) {
 		config, err := Parse()
 		require.NoError(t, err)
 		assert.Equal(t, "/orchestrator/build", config.DefaultCacheDir)
@@ -61,5 +62,19 @@ func TestParse(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "/a/b/c/build", config.DefaultCacheDir)
 		assert.Equal(t, "/a/b/c/sandbox", config.StorageConfig.SandboxCacheDir)
+	})
+
+	t.Run("nfs proxy tracing is enabled by default", func(t *testing.T) {
+		config, err := Parse()
+		require.NoError(t, err)
+		assert.True(t, config.NFSProxyTracing)
+	})
+
+	t.Run("nfs proxy tracing can be disabled", func(t *testing.T) {
+		t.Setenv("NFS_PROXY_TRACING", "false")
+
+		config, err := Parse()
+		require.NoError(t, err)
+		assert.False(t, config.NFSProxyTracing)
 	})
 }

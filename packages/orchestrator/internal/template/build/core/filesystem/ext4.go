@@ -25,7 +25,7 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/interna
 const (
 	// creates an inode for every bytes-per-inode byte of space on the disk
 	inodesRatio = int64(4096)
-	// Percentage of reserved blocks in the filesystem
+	// reservedBlocksPercentage is 0 because reserved blocks are set post-creation via tune2fs -r after the final resize.
 	reservedBlocksPercentage = int64(0)
 
 	ToMBShift = 20
@@ -41,9 +41,28 @@ func Make(ctx context.Context, rootfsPath string, sizeMb int64, blockSize int64)
 
 	cmd := exec.CommandContext(ctx,
 		"mkfs.ext4",
-		// Matches the final ext4 features used by tar2ext4 tool
-		// But enables resize_inode, sparse_super (default, required for resize_inode), has_journal (default), metadata_csum (default)
-		"-O", `^dir_index,^64bit,^dir_nlink,ext_attr,sparse_super2,filetype,extent,flex_bg,large_file,huge_file,extra_isize`,
+		"-O", strings.Join([]string{
+			// Matches the final ext4 features used by tar2ext4 tool.
+			// But enables resize_inode, sparse_super (required for resize_inode),
+			// has_journal, and metadata_csum are kept as defaults.
+			"^64bit",
+			"^dir_index",
+			"^dir_nlink",
+			"ext_attr",
+			"extent",
+			"extra_isize",
+			"filetype",
+			"flex_bg",
+			"huge_file",
+			"large_file",
+			"sparse_super2",
+
+			// Disabled for compatibility with older guest e2fsprogs (Ubuntu 22.04, Debian 11).
+			// orphan_file was added as default in e2fsprogs >= 1.47.0; without disabling it,
+			// guest tools fail with "unsupported read-only feature(s)".
+			// See https://e2fsprogs.sourceforge.net/e2fsprogs-release.html#1.47.0
+			"^orphan_file",
+		}, ","),
 		"-b", strconv.FormatInt(blockSize, 10),
 		"-m", strconv.FormatInt(reservedBlocksPercentage, 10),
 		"-i", strconv.FormatInt(inodesRatio, 10),
@@ -303,6 +322,33 @@ func MountOverlayFS(ctx context.Context, layers []string, mountPoint string) err
 	// Mount to target
 	if err := unix.MoveMount(mfd, "", -1, mountPoint, unix.MOVE_MOUNT_F_EMPTY_PATH); err != nil {
 		return fmt.Errorf("move mount failed: %w", err)
+	}
+
+	return nil
+}
+
+// SetReservedBlocksOnHost sets the number of reserved filesystem blocks based on the desired reserved space in MB.
+// Reserved blocks are only usable by root (uid 0).
+func SetReservedBlocksOnHost(ctx context.Context, rootfsPath string, reservedSpaceMB int64, blockSize int64) error {
+	if reservedSpaceMB <= 0 {
+		return nil
+	}
+
+	ctx, span := tracer.Start(ctx, "set-reserved-blocks")
+	defer span.End()
+
+	blocks := (reservedSpaceMB << ToMBShift) / blockSize
+
+	cmd := exec.CommandContext(ctx, "tune2fs", "-r", strconv.FormatInt(blocks, 10), rootfsPath)
+
+	stdoutWriter := telemetry.NewEventWriter(ctx, "stdout")
+	cmd.Stdout = stdoutWriter
+
+	stderrWriter := telemetry.NewEventWriter(ctx, "stderr")
+	cmd.Stderr = stderrWriter
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("error setting reserved blocks: %w", err)
 	}
 
 	return nil

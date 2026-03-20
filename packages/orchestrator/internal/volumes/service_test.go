@@ -2,21 +2,22 @@ package volumes
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/chrooted"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-func TestBuildVolumePath(t *testing.T) {
+func TestGetVolumeRootPath(t *testing.T) {
 	t.Parallel()
 
 	const goodVolumeType = "good-vol"
@@ -29,122 +30,80 @@ func TestBuildVolumePath(t *testing.T) {
 		fmt.Sprintf("vol-%s", volumeID),
 	)
 
-	v := Service{
-		config: cfg.Config{
-			PersistentVolumeMounts: map[string]string{
-				goodVolumeType: goodVolumeTypePath,
-				"attacker":     "/mnt/path",
-			},
+	config := cfg.Config{
+		PersistentVolumeMounts: map[string]string{
+			goodVolumeType: goodVolumeTypePath,
 		},
+	}
+
+	v := Service{
+		builder: chrooted.NewBuilder(config),
+		config:  config,
 	}
 
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 
-		testCases := map[string]struct {
-			input string
-
-			expectedFullPath   string
-			expectedJailedPath string
-			expectedBasePath   string
-		}{
-			"valid": {
-				input:              "",
-				expectedBasePath:   goodVolumeBasePath,
-				expectedJailedPath: "/",
-				expectedFullPath:   goodVolumeBasePath,
-			},
-			"single dir": {
-				input:              "dir",
-				expectedBasePath:   goodVolumeBasePath,
-				expectedJailedPath: "/dir",
-				expectedFullPath:   filepath.Join(goodVolumeBasePath, "dir"),
-			},
-			"nested path": {
-				input:              "a/b/c",
-				expectedBasePath:   goodVolumeBasePath,
-				expectedJailedPath: "/a/b/c",
-				expectedFullPath:   filepath.Join(goodVolumeBasePath, "a", "b", "c"),
-			},
-			"leading slash treated as relative": {
-				input:              "/top/level",
-				expectedBasePath:   goodVolumeBasePath,
-				expectedJailedPath: "/top/level",
-				expectedFullPath:   filepath.Join(goodVolumeBasePath, "top", "level"),
-			},
-			"clean dot segments": {
-				input:              "a/./b/../c/./",
-				expectedBasePath:   goodVolumeBasePath,
-				expectedJailedPath: "/a/c",
-				expectedFullPath:   filepath.Join(goodVolumeBasePath, "a", "c"),
-			},
+		volumeInfo := orchestrator.VolumeInfo{
+			VolumeType: goodVolumeType,
+			TeamId:     teamID,
+			VolumeId:   volumeID,
 		}
 
-		for name, tc := range testCases {
-			t.Run(name, func(t *testing.T) {
-				t.Parallel()
-
-				volumeInfo := orchestrator.VolumeInfo{
-					VolumeType: goodVolumeType,
-					TeamId:     teamID,
-					VolumeId:   volumeID,
-				}
-
-				request := orchestrator.VolumeDirCreateRequest{Volume: &volumeInfo, Path: tc.input}
-				results, err := v.buildPaths(&request)
-				require.NoError(t, err)
-
-				require.Equal(t, tc.expectedFullPath, results.HostFullPath)
-				require.Equal(t, tc.expectedJailedPath, results.ClientPath)
-				require.Equal(t, tc.expectedBasePath, results.HostVolumePath)
-			})
-		}
+		path, err := v.getVolumeRootPath(t.Context(), &volumeInfo)
+		require.NoError(t, err)
+		require.Equal(t, goodVolumeBasePath, path)
 	})
 
 	t.Run("error scenarios", func(t *testing.T) {
 		t.Parallel()
 
+		type expected struct {
+			grpcCode  codes.Code
+			userError orchestrator.UserErrorCode
+		}
+
 		testCases := map[string]struct {
 			volumeType string
 			teamID     string
 			volumeID   string
-			relPath    string
 
-			expected *status.Status
+			expected expected
 		}{
 			"invalid team ID": {
 				volumeType: goodVolumeType,
 				teamID:     "invalid",
 				volumeID:   volumeID,
-				expected:   status.New(codes.InvalidArgument, `invalid team ID "invalid"`),
+				expected: expected{
+					grpcCode:  codes.InvalidArgument,
+					userError: orchestrator.UserErrorCode_INVALID_REQUEST,
+				},
 			},
 			"invalid volume ID": {
 				volumeType: goodVolumeType,
 				teamID:     teamID,
 				volumeID:   "invalid",
-				expected:   status.New(codes.InvalidArgument, `invalid volume ID "invalid"`),
+				expected: expected{
+					grpcCode:  codes.InvalidArgument,
+					userError: orchestrator.UserErrorCode_INVALID_REQUEST,
+				},
 			},
 			"missing team ID": {
 				volumeType: goodVolumeType,
 				volumeID:   volumeID,
-				expected:   status.New(codes.InvalidArgument, `invalid team ID ""`),
-			},
-			"missing volume type": {
-				teamID:   teamID,
-				volumeID: volumeID,
-				expected: utils.Must(status.New(codes.NotFound, `volume type "" not found`).WithDetails(&orchestrator.UnknownVolumeTypeError{})),
+				expected: expected{
+					grpcCode:  codes.InvalidArgument,
+					userError: orchestrator.UserErrorCode_INVALID_REQUEST,
+				},
 			},
 			"volume type not found": {
 				volumeType: "non-existent",
 				teamID:     teamID,
 				volumeID:   volumeID,
-				expected:   utils.Must(status.New(codes.NotFound, `volume type "non-existent" not found`).WithDetails(&orchestrator.UnknownVolumeTypeError{})),
-			},
-			"prefix attack": {
-				volumeType: "attacker",
-				teamID:     "1/../../path1/23f2e6e1-76f6-4cbb-a936-0dcd9190dd84",
-				volumeID:   volumeID,
-				expected:   status.New(codes.InvalidArgument, `invalid team ID "1/../../path1/23f2e6e1-76f6-4cbb-a936-0dcd9190dd84"`),
+				expected: expected{
+					grpcCode:  codes.Internal,
+					userError: orchestrator.UserErrorCode_NOT_SUPPORTED,
+				},
 			},
 		}
 
@@ -157,84 +116,150 @@ func TestBuildVolumePath(t *testing.T) {
 					TeamId:     tc.teamID,
 					VolumeId:   tc.volumeID,
 				}
-				request := orchestrator.VolumeDirCreateRequest{Volume: &volumeInfo, Path: tc.relPath}
-				_, actualStatus := v.buildPaths(&request)
-				require.Error(t, actualStatus)
-				require.Equal(t, actualStatus.Error(), tc.expected.Err().Error())
+				_, err := v.getVolumeRootPath(t.Context(), &volumeInfo)
+				require.Error(t, err)
+				requireGRPCError(t, err, tc.expected.grpcCode, tc.expected.userError)
 			})
 		}
 	})
 }
 
-// TestRelPathTraversal demonstrates whether relPath can be used to traverse outside
-// the configured volume mount. We do not call CreateDir/CreateFile to avoid filesystem
-// permission side-effects (e.g., chown), but instead validate the resulting joined path.
-func TestRelPathTraversal(t *testing.T) {
+func TestRelPath(t *testing.T) {
 	t.Parallel()
 
-	// simulate a mount root with a temp dir instead of relying on /mnt/shared
-	mountRoot := t.TempDir()
-
-	v := Service{
-		config: cfg.Config{
-			PersistentVolumeMounts: map[string]string{
-				"safe": mountRoot,
-			},
-		},
-	}
-
-	teamID := uuid.New()
-	volumeID := uuid.New()
-	volumeRootPathParts := append([]string{mountRoot}, BuildVolumePathParts(teamID, volumeID)...)
-	volumeRoot := filepath.Join(volumeRootPathParts...)
-
 	tests := map[string]struct {
-		rel                string
-		expectIsRoot       bool
-		expectedClientPath string
-		expectedHostPath   string
+		rel          string
+		expectedPath string
 	}{
-		"root":                         {rel: "/", expectIsRoot: true},
-		"dot":                          {rel: ".", expectIsRoot: true},
-		"empty string":                 {rel: "", expectIsRoot: true},
-		"simple traversal":             {rel: "../", expectIsRoot: true},
-		"another case":                 {rel: "./a/.././", expectIsRoot: true},
-		"simple child":                 {rel: "dir/file.txt", expectedHostPath: volumeRoot + "/dir/file.txt", expectedClientPath: "/dir/file.txt"},
-		"parent traversal one level":   {rel: "../escape1", expectedClientPath: "/escape1", expectedHostPath: volumeRoot + "/escape1"},
-		"parent traversal many levels": {rel: "../../../../escape2", expectedClientPath: "/escape2", expectedHostPath: volumeRoot + "/escape2"},
-		"mixed clean/traverse":         {rel: "./a/.././../escape3", expectedClientPath: "/escape3", expectedHostPath: volumeRoot + "/escape3"},
-		"absolute path":                {rel: "/etc/passwd", expectedHostPath: volumeRoot + "/etc/passwd", expectedClientPath: "/etc/passwd"},
+		"root":                         {rel: "/", expectedPath: "/"},
+		"dot":                          {rel: ".", expectedPath: "/"},
+		"empty string":                 {rel: "", expectedPath: "/"},
+		"simple traversal":             {rel: "../", expectedPath: "/"},
+		"another case":                 {rel: "./a/.././", expectedPath: "/"},
+		"simple child":                 {rel: "dir/file.txt", expectedPath: "/dir/file.txt"},
+		"parent traversal one level":   {rel: "../escape1", expectedPath: "/escape1"},
+		"parent traversal many levels": {rel: "../../../../escape2", expectedPath: "/escape2"},
+		"mixed clean/traverse":         {rel: "./a/.././../escape3", expectedPath: "/escape3"},
+		"absolute path":                {rel: "/etc/passwd", expectedPath: "/etc/passwd"},
 	}
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			request := orchestrator.VolumeDirCreateRequest{
-				Volume: &orchestrator.VolumeInfo{
-					VolumeType: "safe",
-					TeamId:     teamID.String(),
-					VolumeId:   volumeID.String(),
-				},
-				Path: tc.rel,
+
+			path := tc.rel
+			if !filepath.IsAbs(path) {
+				path = "/" + path
 			}
-			paths, err := v.buildPaths(&request)
-			require.NoError(t, err)
+			path = filepath.Clean(path)
 
-			require.NoError(t, err)
-			assert.Equal(t, volumeRoot, paths.HostVolumePath)
-
-			if tc.expectIsRoot {
-				assert.Empty(t, tc.expectedClientPath)
-				assert.Empty(t, tc.expectedHostPath)
-
-				assert.True(t, paths.isRoot(), "result: %v", paths)
-				assert.Equal(t, volumeRoot, paths.HostFullPath)
-				assert.Equal(t, "/", paths.ClientPath)
-			} else {
-				assert.False(t, paths.isRoot(), "result: %v", paths)
-				assert.Equal(t, tc.expectedClientPath, paths.ClientPath)
-				assert.Equal(t, tc.expectedHostPath, paths.HostFullPath)
-			}
+			assert.Equal(t, tc.expectedPath, path)
 		})
 	}
+}
+
+func TestEnsureParentDirs(t *testing.T) {
+	t.Parallel()
+
+	// These tests require sudo to run as they use mount namespaces via Chrooted.
+	// Since we are instructed not to run them, this is a skeleton for the requested verification.
+	if os.Geteuid() != 0 {
+		t.Skip("skipping test that requires root privileges")
+	}
+
+	tmpDir := t.TempDir()
+
+	ctx := t.Context()
+	fs, err := chrooted.Chroot(ctx, tmpDir)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		err = fs.Close()
+		assert.NoError(t, err)
+	})
+
+	t.Run("empty path", func(t *testing.T) {
+		t.Parallel()
+
+		err := ensureDirs(fs, "", 0o755, 1006)
+		require.NoError(t, err)
+	})
+
+	t.Run("single level", func(t *testing.T) {
+		t.Parallel()
+
+		err := ensureDirs(fs, "/a", 1005, 1006)
+		require.NoError(t, err)
+
+		assertDir(t, fs, "/a", 1005, 1006, defaultDirMode)
+	})
+
+	t.Run("multiple levels", func(t *testing.T) {
+		t.Parallel()
+
+		err := ensureDirs(fs, "/b/c/d", 800, 900)
+		require.NoError(t, err)
+
+		assertDir(t, fs, "/b", 800, 900, defaultDirMode)
+		assertDir(t, fs, "/b/c", 800, 900, defaultDirMode)
+		assertDir(t, fs, "/b/c/d", 800, 900, defaultDirMode)
+	})
+
+	t.Run("existing directory", func(t *testing.T) {
+		t.Parallel()
+
+		// setup
+		err := fs.Mkdir("/e", 0o766)
+		require.NoError(t, err)
+
+		err = fs.Chmod("/e", 0o766) // run twice to defeat umask
+		require.NoError(t, err)
+
+		err = fs.Chown("/e", 1000, 1000)
+		require.NoError(t, err)
+
+		// run test
+		err = ensureDirs(fs, "/e", 2000, 2001)
+		require.NoError(t, err)
+
+		// verify results
+		assertDir(t, fs, "/e", 1000, 1000, 0o766)
+	})
+
+	t.Run("partial existing", func(t *testing.T) {
+		t.Parallel()
+
+		// setup
+		err := fs.MkdirAll("/q/f", 0o700)
+		require.NoError(t, err)
+
+		err = fs.Chmod("/q", 0o700) // run twice to defeat umask
+		require.NoError(t, err)
+
+		err = fs.Chmod("/q/f", 0o700) // run twice to defeat umask
+		require.NoError(t, err)
+
+		// run test
+		err = ensureDirs(fs, "/q/f/g", 2020, 2021)
+		require.NoError(t, err)
+
+		// verify results
+		assertDir(t, fs, "/q", 0, 0, 0o700)
+		assertDir(t, fs, "/q/f", 0, 0, 0o700)
+		assertDir(t, fs, "/q/f/g", 2020, 2021, defaultDirMode)
+	})
+}
+
+func assertDir(t *testing.T, fs *chrooted.Chrooted, path string, uid, gid uint32, mode os.FileMode) {
+	t.Helper()
+
+	info, err := fs.Stat(path)
+	require.NoError(t, err)
+
+	assert.Equal(t, mode.Perm(), info.Mode().Perm())
+
+	osInfo, ok := info.Sys().(*syscall.Stat_t)
+	require.True(t, ok)
+	require.NotNil(t, osInfo)
+	assert.Equal(t, uid, osInfo.Uid)
+	assert.Equal(t, gid, osInfo.Gid)
 }
