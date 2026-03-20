@@ -13,7 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-var meter = otel.Meter("github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy/metrics")
+var meter = otel.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/nfsproxy/metrics")
 
 var (
 	callsCounter = utils.Must(meter.Int64Counter("orchestrator.nfsproxy.calls.total",

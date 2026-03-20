@@ -8,7 +8,7 @@ import (
 	"github.com/go-git/go-billy/v5"
 	"github.com/willscott/go-nfs"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/nfsproxy/cfg"
 )
 
 type metricsHandler struct {

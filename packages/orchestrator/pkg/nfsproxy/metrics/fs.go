@@ -6,7 +6,7 @@ import (
 
 	"github.com/go-git/go-billy/v5"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/nfsproxy/cfg"
 )
 
 type metricsFS struct {
