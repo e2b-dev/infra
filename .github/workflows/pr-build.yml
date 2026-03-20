@@ -3,6 +3,9 @@ name: Build all packages
 on:
   workflow_call:
 
+permissions:
+  contents: read
+
 jobs:
   build-package:
     runs-on: ubuntu-24.04
@@ -36,4 +39,4 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.package.path }}-build
-          path: ${{ matrix.package.path }}/{{ matrix.package.output }}
+          path: ${{ matrix.package.path }}/${{ matrix.package.output }}
