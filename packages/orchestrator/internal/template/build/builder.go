@@ -31,7 +31,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases/user"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/units"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
@@ -132,7 +132,7 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, cfg
 
 		if success {
 			b.metrics.RecordBuildResult(ctx, cfg.TeamID, metrics.BuildResultSuccess)
-			b.metrics.RecordRootfsSize(ctx, r.RootfsSizeMB<<constants.MBShift)
+			b.metrics.RecordRootfsSize(ctx, units.MBToBytes(r.RootfsSizeMB))
 		} else {
 			// Determine if the error is a user error or internal error
 			var resultType metrics.BuildResultType
@@ -375,7 +375,7 @@ func runBuild(
 
 	return &Result{
 		EnvdVersion:  bc.EnvdVersion,
-		RootfsSizeMB: int64(rootfsSize >> constants.MBShift),
+		RootfsSizeMB: units.BytesToMB(int64(rootfsSize)),
 	}, nil
 }
 

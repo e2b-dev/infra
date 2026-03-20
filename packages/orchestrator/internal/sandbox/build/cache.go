@@ -12,13 +12,13 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/units"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 const (
-	fallbackDiffSize = 100 << constants.MBShift
+	fallbackDiffSize = 100 << units.MBShift
 )
 
 type deleteDiff struct {

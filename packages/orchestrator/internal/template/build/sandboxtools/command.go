@@ -19,8 +19,8 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/rootfs"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/units"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process/processconnect"
@@ -249,7 +249,7 @@ func SetReservedBlocksInGuest(
 		return nil
 	}
 
-	blocks := (reservedSpaceMB << constants.MBShift) / blockSize
+	blocks := units.MBToBytes(reservedSpaceMB) / blockSize
 	tuneCmd := fmt.Sprintf("tune2fs -r %d /dev/vda", blocks)
 
 	return RunCommandWithLogger(

@@ -27,7 +27,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/layer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/units"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -193,11 +193,11 @@ func (bb *BaseBuilder) enlargeDiskAfterProvisioning(
 	if err != nil {
 		return fmt.Errorf("error getting free space: %w", err)
 	}
-	sizeDiff := template.DiskSizeMB<<constants.MBShift - rootfsFreeSpace
+	sizeDiff := units.MBToBytes(template.DiskSizeMB) - rootfsFreeSpace
 	logger.L().Debug(ctx, "adding provision size diff to rootfs",
 		zap.Int64("size_add", sizeDiff),
 		zap.Int64("size_free", rootfsFreeSpace),
-		zap.Int64("size_target", template.DiskSizeMB<<constants.MBShift),
+		zap.Int64("size_target", units.MBToBytes(template.DiskSizeMB)),
 	)
 	if sizeDiff <= 0 {
 		logger.L().Debug(ctx, "no need to enlarge rootfs, skipping")

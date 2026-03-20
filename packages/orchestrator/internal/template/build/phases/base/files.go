@@ -13,7 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/units"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
@@ -66,7 +66,7 @@ func constructLayerFilesFromOCI(
 
 	// Create empty memfile
 	memfile, err := block.NewEmpty(
-		buildContext.Config.MemoryMB<<constants.MBShift,
+		units.MBToBytes(buildContext.Config.MemoryMB),
 		config.MemfilePageSize(buildContext.Config.HugePages),
 		buildIDParsed,
 	)

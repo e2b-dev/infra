@@ -20,7 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/oci"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/systeminit"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/phases"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/units"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
@@ -132,7 +132,7 @@ func (r *Rootfs) CreateExt4Filesystem(
 	telemetry.ReportEvent(childCtx, "set up filesystem")
 
 	l.Info(ctx, "Creating file system and pulling Docker image")
-	maxRootfsSize := int64(r.featureFlags.IntFlag(ctx, featureflags.BuildBaseRootfsSizeLimitMB)) << constants.MBShift
+	maxRootfsSize := units.MBToBytes(int64(r.featureFlags.IntFlag(ctx, featureflags.BuildBaseRootfsSizeLimitMB)))
 	ext4Size, err := oci.ToExt4(ctx, l, img, rootfsPath, maxRootfsSize, template.RootfsBlockSize())
 	if err != nil {
 		var imgErr *oci.ImageTooLargeError
@@ -159,7 +159,7 @@ func (r *Rootfs) CreateExt4Filesystem(
 	// We need to remove the remaining free space from the ext4 file size
 	// This is a residual space that could not be shrunk when creating the filesystem,
 	// but is still available for use
-	diskAdd := template.DiskSizeMB<<constants.MBShift - rootfsFreeSpace
+	diskAdd := units.MBToBytes(template.DiskSizeMB) - rootfsFreeSpace
 	logger.L().Debug(ctx, "adding disk size diff to rootfs",
 		zap.Int64("size_current", ext4Size),
 		zap.Int64("size_add", diskAdd),
