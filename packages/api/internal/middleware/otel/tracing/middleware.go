@@ -114,12 +114,11 @@ func Middleware(tracerProvider oteltrace.TracerProvider, service string) gin.Han
 		c.Next()
 
 		status := c.Writer.Status()
-		finalCtx := c.Request.Context()
-		cause := context.Cause(finalCtx)
+		cause := sharedmiddleware.CancelCause(c)
 		if errors.Is(cause, sharedmiddleware.ErrRequestTimeout) {
 			status = http.StatusInternalServerError
 			span.SetAttributes(attribute.Bool("request.timeout", true))
-		} else if finalCtx.Err() == context.Canceled {
+		} else if cause != nil {
 			status = sharedmiddleware.StatusClientClosedRequest
 			span.SetAttributes(attribute.Bool("client.canceled", true))
 		}

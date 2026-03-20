@@ -13,8 +13,24 @@ import (
 // ErrRequestTimeout is the cancel cause set when the per-request timeout fires.
 // Callers can distinguish this from a client disconnection by checking:
 //
-//	errors.Is(context.Cause(ctx), middleware.ErrRequestTimeout)
+//	errors.Is(CancelCause(c), middleware.ErrRequestTimeout)
 var ErrRequestTimeout = errors.New("request timeout exceeded")
+
+// cancelCauseKey is the gin context key where RequestTimeout snapshots the
+// cancel cause before defer-cancel runs.
+const cancelCauseKey = "middleware.cancelCause"
+
+// CancelCause returns the cancel cause captured by the timeout middleware.
+// It returns nil for normal (non-canceled/non-timed-out) requests.
+func CancelCause(c *gin.Context) error {
+	if val, exists := c.Get(cancelCauseKey); exists {
+		if err, ok := val.(error); ok {
+			return err
+		}
+	}
+
+	return nil
+}
 
 // StatusClientClosedRequest is the de-facto status code (used by nginx) for a
 // client that closed the connection before the server could send a response.
@@ -45,21 +61,16 @@ func RequestTimeout(timeout time.Duration, excludedRoutes ...string) gin.Handler
 
 		parentCtx := c.Request.Context()
 		ctx, cancel := context.WithTimeoutCause(parentCtx, timeout, fmt.Errorf("%w after %s", ErrRequestTimeout, timeout))
+		defer cancel()
 
 		c.Request = c.Request.WithContext(ctx)
 		c.Next()
 
+		// Snapshot the cause *before* defer-cancel fires so outer
+		// middlewares can distinguish timeout vs client-disconnect
+		// via CancelCause(c) without racing with the deferred cancel.
 		if ctx.Err() != nil {
-			// Timeout or client disconnect already happened — leave c.Request
-			// pointing at the canceled ctx so outer middleware can inspect
-			// context.Cause() to distinguish timeout vs client cancellation.
-			cancel()
-		} else {
-			// Normal completion — cancel to release timer resources, then
-			// restore the parent context so outer middleware doesn't see a
-			// spurious cancellation from our cleanup cancel().
-			cancel()
-			c.Request = c.Request.WithContext(parentCtx)
+			c.Set(cancelCauseKey, context.Cause(ctx))
 		}
 	}
 }

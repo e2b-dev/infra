@@ -1,7 +1,6 @@
 package metrics
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -77,12 +76,10 @@ func Middleware(meterProvider metric.MeterProvider, service string, options ...O
 			)
 
 			code := ginCtx.Writer.Status()
-			finalCtx := ginCtx.Request.Context()
-			cause := context.Cause(finalCtx)
+			cause := sharedmiddleware.CancelCause(ginCtx)
 			if errors.Is(cause, sharedmiddleware.ErrRequestTimeout) {
 				code = http.StatusInternalServerError
-			} else if finalCtx.Err() == context.Canceled {
-				// 499 is the nginx convention for "client closed request before server responded"
+			} else if cause != nil {
 				code = sharedmiddleware.StatusClientClosedRequest
 			}
 
@@ -100,7 +97,7 @@ func Middleware(meterProvider metric.MeterProvider, service string, options ...O
 			}
 
 			duration := time.Since(effectiveStart)
-			recorder.ObserveHTTPRequestDuration(finalCtx, duration, resAttributes)
+			recorder.ObserveHTTPRequestDuration(ginCtx, duration, resAttributes)
 		}()
 
 		ginCtx.Next()

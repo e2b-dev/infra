@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"context"
 	"errors"
 	"net/http"
 	"regexp"
@@ -80,12 +79,11 @@ func LoggingMiddleware(logger logger.Logger, conf Config) gin.HandlerFunc {
 			}
 
 			status := c.Writer.Status()
-			reqCtx := c.Request.Context()
-			cause := context.Cause(reqCtx)
+			cause := CancelCause(c)
 			if errors.Is(cause, ErrRequestTimeout) {
 				status = http.StatusInternalServerError // 500
 				fields = append(fields, zap.Bool("request_timeout", true))
-			} else if reqCtx.Err() == context.Canceled {
+			} else if cause != nil {
 				status = StatusClientClosedRequest // 499
 				fields = append(fields, zap.Bool("client_canceled", true))
 			}
@@ -116,7 +114,7 @@ func LoggingMiddleware(logger logger.Logger, conf Config) gin.HandlerFunc {
 				level = zapcore.WarnLevel
 			}
 
-			logger.Log(reqCtx, level, path, fields...)
+			logger.Log(c.Request.Context(), level, path, fields...)
 		}
 	}
 }
