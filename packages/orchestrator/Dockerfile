@@ -24,7 +24,7 @@ WORKDIR /build
 COPY ./shared/pkg ./shared/pkg
 COPY ./clickhouse/pkg ./clickhouse/pkg
 
-COPY ./orchestrator/internal ./orchestrator/internal
+COPY ./orchestrator/pkg ./orchestrator/pkg
 COPY ./orchestrator/cmd ./orchestrator/cmd
 COPY ./orchestrator/main.go ./orchestrator/main.go
 COPY ./orchestrator/Makefile ./orchestrator/Makefile

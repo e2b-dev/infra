@@ -1,38 +1,38 @@
 packages:
-  github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build:
+  github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build:
     interfaces:
       Diff:
         config:
-          dir: internal/sandbox/build/mocks
+          dir: pkg/sandbox/build/mocks
           filename: mockdiff.go
           pkgname: buildmocks
 
-  github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block:
+  github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block:
     interfaces:
       ReadonlyDevice:
         config:
-          dir: internal/sandbox/block/mocks
+          dir: pkg/sandbox/block/mocks
           filename: mockreadonlydevice.go
           pkgname: blockmocks
 
-  github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/peerserver:
+  github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template/peerserver:
     interfaces:
       Cache:
         config:
-          dir: internal/sandbox/template/peerserver/mocks
+          dir: pkg/sandbox/template/peerserver/mocks
           filename: mockcache.go
           pkgname: peerservermocks
 
-  github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template:
+  github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template:
     interfaces:
       Template:
         config:
-          dir: internal/sandbox/template/mocks
+          dir: pkg/sandbox/template/mocks
           filename: mocktemplate.go
           pkgname: templatemocks
       File:
         config:
-          dir: internal/sandbox/template/mocks
+          dir: pkg/sandbox/template/mocks
           filename: mockfile.go
           pkgname: templatemocks
 
@@ -40,7 +40,7 @@ packages:
     interfaces:
       Handler:
         config:
-          dir: internal/nfsproxy/mocks
+          dir: pkg/nfsproxy/mocks
           filename: nfshandler.go
           pkgname: nfsproxymocks
 
@@ -48,16 +48,16 @@ packages:
     interfaces:
       Change:
         config:
-          dir: internal/nfsproxy/mocks
+          dir: pkg/nfsproxy/mocks
           filename: billychange.go
           pkgname: nfsproxymocks
       File:
         config:
-          dir: internal/nfsproxy/mocks
+          dir: pkg/nfsproxy/mocks
           filename: billyfile.go
           pkgname: nfsproxymocks
       Filesystem:
         config:
-          dir: internal/nfsproxy/mocks
+          dir: pkg/nfsproxy/mocks
           filename: billyfs.go
           pkgname: nfsproxymocks
