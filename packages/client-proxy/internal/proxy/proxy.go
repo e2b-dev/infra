@@ -162,7 +162,7 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 			// Delete any client-supplied value first so ExtractClientIP derives
 			// the IP from trusted sources (XFF / RemoteAddr) only.
 			r.Header.Del(reverseproxy.E2BClientIPHeader)
-			r.Header.Set(reverseproxy.E2BClientIPHeader, reverseproxy.ExtractClientIP(r))
+			r.Header.Set(reverseproxy.E2BClientIPHeader, reverseproxy.ExtractExternalClientIP(r))
 
 			return &pool.Destination{
 				SandboxId:     sandboxId,

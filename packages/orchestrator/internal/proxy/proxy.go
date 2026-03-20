@@ -89,7 +89,7 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 			}
 
 			if isNonEnvdTraffic && ingress.HasFilters() {
-				clientIP := reverseproxy.ExtractClientIP(r)
+				clientIP := reverseproxy.ExtractE2BClientIP(r)
 				ip := net.ParseIP(clientIP)
 				if ip == nil {
 					// Fail closed: unparseable client IP is denied when ingress rules are active.

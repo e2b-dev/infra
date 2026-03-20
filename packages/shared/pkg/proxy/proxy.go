@@ -114,8 +114,9 @@ func (p *Proxy) Serve(l net.Listener) error {
 // before the request is forwarded to the sandbox.
 const E2BClientIPHeader = "X-E2B-Client-IP"
 
-// ExtractClientIP returns the real client IP from an HTTP request.
-// Priority: X-E2B-Client-IP (internal, set by client-proxy) → X-Forwarded-For → RemoteAddr.
+// ExtractExternalClientIP returns the real client IP from external sources
+// (X-Forwarded-For or RemoteAddr). Used by client-proxy at the edge to
+// extract the client IP before forwarding it via E2BClientIPHeader.
 //
 // GCP external HTTPS LB appends two entries to X-Forwarded-For:
 //
@@ -123,12 +124,7 @@ const E2BClientIPHeader = "X-E2B-Client-IP"
 //
 // We take the second-to-last entry, which is the real client IP added by
 // the load balancer. Taking the first entry would be spoofable.
-
-func ExtractClientIP(r *http.Request) string {
-	if clientIP := r.Header.Get(E2BClientIPHeader); clientIP != "" {
-		return clientIP
-	}
-
+func ExtractExternalClientIP(r *http.Request) string {
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 		parts := strings.Split(xff, ",")
 
@@ -141,4 +137,11 @@ func ExtractClientIP(r *http.Request) string {
 	}
 
 	return host
+}
+
+// ExtractE2BClientIP returns the client IP from the internal E2BClientIPHeader,
+// set by client-proxy. Returns empty string if the header is missing — callers
+// should treat this as a misconfiguration and fail closed.
+func ExtractE2BClientIP(r *http.Request) string {
+	return r.Header.Get(E2BClientIPHeader)
 }
