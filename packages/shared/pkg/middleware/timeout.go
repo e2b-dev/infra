@@ -50,14 +50,8 @@ const StatusClientClosedRequest = 499
 //
 // Routes matching any of the excludedRoutes patterns are skipped (useful for
 // health checks and long-polling endpoints).
-func RequestTimeout(timeout time.Duration, excludedRoutes ...string) gin.HandlerFunc {
+func RequestTimeout(timeout time.Duration) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if timeoutShouldSkip(c.Request.URL.Path, excludedRoutes) {
-			c.Next()
-
-			return
-		}
-
 		ctx, cancel := context.WithTimeoutCause(c.Request.Context(), timeout, ErrRequestTimeout)
 		defer cancel()
 
