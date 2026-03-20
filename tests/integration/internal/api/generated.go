@@ -721,7 +721,7 @@ type SandboxNetworkConfig struct {
 	// AllowIn Allowed ingress sources. Format: IP or CIDR with optional port (e.g. "203.0.113.1", "0.0.0.0/0:8080", "10.0.0.0/8:80-443"). Allow takes precedence over deny.
 	AllowIn *[]string `json:"allowIn,omitempty"`
 
-	// AllowOut Allowed egress destinations. Format: IP, CIDR, domain, or wildcard (e.g. "8.8.8.8", "10.0.0.0/8", "example.com", "*.example.com"). Allow takes precedence over deny. Domains require denyOut to include "0.0.0.0/0". Unmatched traffic is allowed by default.
+	// AllowOut List of allowed destinations for egress traffic. Each entry can be a CIDR block (e.g. "8.8.8.8/32"), a bare IP address (e.g. "8.8.8.8"), or a domain name (e.g. "example.com", "*.example.com"). Allowed entries always take precedence over denied entries.
 	AllowOut *[]string `json:"allowOut,omitempty"`
 
 	// AllowPublicTraffic Specify if the sandbox URLs should be accessible only with authentication.
@@ -730,10 +730,10 @@ type SandboxNetworkConfig struct {
 	// DenyIn Denied ingress sources. Format: IP or CIDR with optional port (e.g. "0.0.0.0/0", "10.0.0.0/8:22"). Use "0.0.0.0/0" to block all. Unmatched traffic is allowed by default.
 	DenyIn *[]string `json:"denyIn,omitempty"`
 
-	// DenyOut Denied egress destinations. Format: IP or CIDR (e.g. "8.8.8.8", "10.0.0.0/8"). Domains not supported. Use "0.0.0.0/0" to block all. Unmatched traffic is allowed by default.
+	// DenyOut List of denied CIDR blocks or IP addresses for egress traffic. Domain names are not supported for deny rules.
 	DenyOut *[]string `json:"denyOut,omitempty"`
 
-	// MaskRequestHost Host mask applied to all sandbox requests.
+	// MaskRequestHost Specify host mask which will be used for all sandbox requests
 	MaskRequestHost *string `json:"maskRequestHost,omitempty"`
 }
 
@@ -1277,19 +1277,19 @@ type GetSandboxesSandboxIDMetricsParams struct {
 
 // PutSandboxesSandboxIDNetworkJSONBody defines parameters for PutSandboxesSandboxIDNetwork.
 type PutSandboxesSandboxIDNetworkJSONBody struct {
-	// AllowIn Allowed ingress sources. See SandboxNetworkConfig.allowIn.
+	// AllowIn Allowed ingress sources. Format: IP or CIDR with optional port (e.g. "203.0.113.1", "0.0.0.0/0:8080", "10.0.0.0/8:80-443"). Allow takes precedence over deny.
 	AllowIn *[]string `json:"allowIn,omitempty"`
 
-	// AllowOut Allowed egress destinations. See SandboxNetworkConfig.allowOut.
+	// AllowOut List of allowed destinations for egress traffic. Each entry can be a CIDR block (e.g. "8.8.8.8/32"), a bare IP address (e.g. "8.8.8.8"), or a domain name (e.g. "example.com", "*.example.com"). Allowed entries always take precedence over denied entries.
 	AllowOut *[]string `json:"allowOut,omitempty"`
 
-	// DenyIn Denied ingress sources. See SandboxNetworkConfig.denyIn.
+	// DenyIn Denied ingress sources. Format: IP or CIDR with optional port (e.g. "0.0.0.0/0", "10.0.0.0/8:22"). Use "0.0.0.0/0" to block all. Unmatched traffic is allowed by default.
 	DenyIn *[]string `json:"denyIn,omitempty"`
 
-	// DenyOut Denied egress destinations. See SandboxNetworkConfig.denyOut.
+	// DenyOut List of denied CIDR blocks or IP addresses for egress traffic. Domain names are not supported for deny rules.
 	DenyOut *[]string `json:"denyOut,omitempty"`
 
-	// MaskRequestHost Host mask for all sandbox requests. Set to null to clear.
+	// MaskRequestHost Specify host mask which will be used for all sandbox requests. Set to null to clear.
 	MaskRequestHost *string `json:"maskRequestHost"`
 }
 
