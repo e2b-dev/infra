@@ -58,8 +58,7 @@ func RequestTimeout(timeout time.Duration, excludedRoutes ...string) gin.Handler
 			return
 		}
 
-		parentCtx := c.Request.Context()
-		ctx, cancel := context.WithTimeoutCause(parentCtx, timeout, ErrRequestTimeout)
+		ctx, cancel := context.WithTimeoutCause(c.Request.Context(), timeout, ErrRequestTimeout)
 		defer cancel()
 
 		c.Request = c.Request.WithContext(ctx)
@@ -69,11 +68,7 @@ func RequestTimeout(timeout time.Duration, excludedRoutes ...string) gin.Handler
 		// middlewares can distinguish timeout vs client-disconnect
 		// via CancelCause(c) without racing with the deferred cancel.
 		if err := context.Cause(ctx); err != nil {
-			if errors.Is(err, ErrRequestTimeout) {
-				c.Set(cancelCauseKey, ErrRequestTimeout)
-			} else {
-				c.Set(cancelCauseKey, err)
-			}
+			c.Set(cancelCauseKey, err)
 		}
 	}
 }
