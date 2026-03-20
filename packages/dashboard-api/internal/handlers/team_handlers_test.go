@@ -17,36 +17,6 @@ import (
 	"github.com/e2b-dev/infra/packages/db/queries"
 )
 
-func TestMapAddTeamMemberRows(t *testing.T) {
-	t.Parallel()
-
-	status, message, ok := mapAddTeamMemberRows(0)
-	if !ok {
-		t.Fatalf("expected zero rows to be handled")
-	}
-	if status != 400 {
-		t.Fatalf("expected status 400, got %d", status)
-	}
-	if message != "User is already a member of this team" {
-		t.Fatalf("unexpected message: %s", message)
-	}
-}
-
-func TestMapRemoveTeamMemberRows(t *testing.T) {
-	t.Parallel()
-
-	status, message, ok := mapRemoveTeamMemberRows(0)
-	if !ok {
-		t.Fatalf("expected zero rows to be handled")
-	}
-	if status != 400 {
-		t.Fatalf("expected status 400, got %d", status)
-	}
-	if message != "User is not a member of this team" {
-		t.Fatalf("unexpected message: %s", message)
-	}
-}
-
 func TestParseUpdateTeamBody_ProfilePictureNullClearsValue(t *testing.T) {
 	t.Parallel()
 
@@ -123,7 +93,70 @@ func TestRequireAuthedTeamMatchesPath_Mismatch(t *testing.T) {
 	}
 }
 
+func TestPostTeamsTeamIDMembers_DuplicateMemberReturnsBadRequest(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+
+	teamID := testutils.CreateTestTeam(t, testDB)
+	targetUserID := createHandlerTestUser(t, testDB)
+	addedByUserID := createHandlerTestUser(t, testDB)
+
+	insertHandlerTestTeamMember(t, testDB, targetUserID, teamID, false)
+
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+	body := `{"email":"` + handlerTestUserEmail(targetUserID) + `"}`
+	request := httptest.NewRequestWithContext(ctx, http.MethodPost, "/", strings.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	ginCtx.Request = request
+
+	auth.SetUserID(ginCtx, addedByUserID)
+	auth.SetTeamInfo(ginCtx, &authtypes.Team{
+		Team: &authqueries.Team{ID: teamID},
+	})
+
+	store := &APIStore{db: testDB.SqlcClient}
+	store.PostTeamsTeamIDMembers(ginCtx, teamID)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d", recorder.Code)
+	}
+	if !strings.Contains(recorder.Body.String(), "User is already a member of this team") {
+		t.Fatalf("unexpected response body: %s", recorder.Body.String())
+	}
+}
+
+func TestDeleteTeamsTeamIDMembersUserId_NonMemberReturnsBadRequest(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+
+	teamID := testutils.CreateTestTeam(t, testDB)
+
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodDelete, "/", nil)
+	auth.SetTeamInfo(ginCtx, &authtypes.Team{
+		Team: &authqueries.Team{ID: teamID},
+	})
+
+	store := &APIStore{db: testDB.SqlcClient}
+	store.DeleteTeamsTeamIDMembersUserId(ginCtx, teamID, uuid.New())
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d", recorder.Code)
+	}
+	if !strings.Contains(recorder.Body.String(), "User is not a member of this team") {
+		t.Fatalf("unexpected response body: %s", recorder.Body.String())
+	}
+}
+
 func TestDeleteTeamsTeamIDMembersUserId_RechecksDefaultAfterLock(t *testing.T) {
+	t.Parallel()
+
 	testDB := testutils.SetupDatabase(t)
 	ctx := t.Context()
 
@@ -158,7 +191,7 @@ func TestDeleteTeamsTeamIDMembersUserId_RechecksDefaultAfterLock(t *testing.T) {
 
 	recorder := httptest.NewRecorder()
 	ginCtx, _ := gin.CreateTestContext(recorder)
-	ginCtx.Request = httptest.NewRequest(http.MethodDelete, "/", nil)
+	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodDelete, "/", nil)
 	auth.SetTeamInfo(ginCtx, &authtypes.Team{
 		Team: &authqueries.Team{ID: teamID},
 	})
@@ -222,7 +255,7 @@ func createHandlerTestUser(t *testing.T, db *testutils.Database) uuid.UUID {
 	t.Helper()
 
 	userID := uuid.New()
-	email := "user-" + userID.String() + "@example.com"
+	email := handlerTestUserEmail(userID)
 
 	err := db.AuthDb.TestsRawSQL(t.Context(), `
 INSERT INTO auth.users (id, email)
@@ -233,6 +266,10 @@ VALUES ($1, $2)
 	}
 
 	return userID
+}
+
+func handlerTestUserEmail(userID uuid.UUID) string {
+	return "user-" + userID.String() + "@example.com"
 }
 
 func insertHandlerTestTeamMember(t *testing.T, db *testutils.Database, userID, teamID uuid.UUID, isDefault bool) {

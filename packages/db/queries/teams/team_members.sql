@@ -24,17 +24,16 @@ FOR UPDATE;
 SELECT id, email FROM public.users
 WHERE email = sqlc.arg(email)::text;
 
--- name: AddTeamMember :execrows
+-- name: AddTeamMember :exec
 INSERT INTO public.users_teams (user_id, team_id, is_default, added_by)
 VALUES (
     sqlc.arg(user_id)::uuid,
     sqlc.arg(team_id)::uuid,
     false,
     sqlc.arg(added_by)::uuid
-)
-ON CONFLICT (team_id, user_id) DO NOTHING;
+);
 
--- name: RemoveTeamMember :execrows
+-- name: RemoveTeamMember :exec
 DELETE FROM public.users_teams
 WHERE team_id = sqlc.arg(team_id)::uuid
   AND user_id = sqlc.arg(user_id)::uuid;

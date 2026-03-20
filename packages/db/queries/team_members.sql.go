@@ -12,7 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const addTeamMember = `-- name: AddTeamMember :execrows
+const addTeamMember = `-- name: AddTeamMember :exec
 INSERT INTO public.users_teams (user_id, team_id, is_default, added_by)
 VALUES (
     $1::uuid,
@@ -20,7 +20,6 @@ VALUES (
     false,
     $3::uuid
 )
-ON CONFLICT (team_id, user_id) DO NOTHING
 `
 
 type AddTeamMemberParams struct {
@@ -29,12 +28,9 @@ type AddTeamMemberParams struct {
 	AddedBy uuid.UUID
 }
 
-func (q *Queries) AddTeamMember(ctx context.Context, arg AddTeamMemberParams) (int64, error) {
-	result, err := q.db.Exec(ctx, addTeamMember, arg.UserID, arg.TeamID, arg.AddedBy)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
+func (q *Queries) AddTeamMember(ctx context.Context, arg AddTeamMemberParams) error {
+	_, err := q.db.Exec(ctx, addTeamMember, arg.UserID, arg.TeamID, arg.AddedBy)
+	return err
 }
 
 const getTeamMemberRelation = `-- name: GetTeamMemberRelation :one
@@ -155,7 +151,7 @@ func (q *Queries) LockTeamMembersForUpdate(ctx context.Context, teamID uuid.UUID
 	return items, nil
 }
 
-const removeTeamMember = `-- name: RemoveTeamMember :execrows
+const removeTeamMember = `-- name: RemoveTeamMember :exec
 DELETE FROM public.users_teams
 WHERE team_id = $1::uuid
   AND user_id = $2::uuid
@@ -166,10 +162,7 @@ type RemoveTeamMemberParams struct {
 	UserID uuid.UUID
 }
 
-func (q *Queries) RemoveTeamMember(ctx context.Context, arg RemoveTeamMemberParams) (int64, error) {
-	result, err := q.db.Exec(ctx, removeTeamMember, arg.TeamID, arg.UserID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
+func (q *Queries) RemoveTeamMember(ctx context.Context, arg RemoveTeamMemberParams) error {
+	_, err := q.db.Exec(ctx, removeTeamMember, arg.TeamID, arg.UserID)
+	return err
 }

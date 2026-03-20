@@ -89,19 +89,20 @@ func (s *APIStore) PostTeamsTeamIDMembers(c *gin.Context, teamID api.TeamID) {
 		return
 	}
 
-	addedRows, err := s.db.AddTeamMember(ctx, queries.AddTeamMemberParams{
+	err = s.db.AddTeamMember(ctx, queries.AddTeamMemberParams{
 		UserID:  user.ID,
 		TeamID:  teamInfo.Team.ID,
 		AddedBy: userID,
 	})
 	if err != nil {
+		if dberrors.IsUniqueConstraintViolation(err) {
+			s.sendAPIStoreError(c, http.StatusBadRequest, "User is already a member of this team")
+
+			return
+		}
+
 		logger.L().Error(ctx, "failed to add team member", zap.Error(err), logger.WithTeamID(teamInfo.Team.ID.String()))
 		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to add team member")
-
-		return
-	}
-	if status, message, ok := mapAddTeamMemberRows(addedRows); ok {
-		s.sendAPIStoreError(c, status, message)
 
 		return
 	}
@@ -168,18 +169,13 @@ func (s *APIStore) DeleteTeamsTeamIDMembersUserId(c *gin.Context, teamID api.Tea
 		return
 	}
 
-	removedRows, err := txDB.RemoveTeamMember(ctx, queries.RemoveTeamMemberParams{
+	err = txDB.RemoveTeamMember(ctx, queries.RemoveTeamMemberParams{
 		TeamID: teamInfo.Team.ID,
 		UserID: userId,
 	})
 	if err != nil {
 		logger.L().Error(ctx, "failed to remove team member", zap.Error(err), logger.WithTeamID(teamInfo.Team.ID.String()))
 		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to remove team member")
-
-		return
-	}
-	if status, message, ok := mapRemoveTeamMemberRows(removedRows); ok {
-		s.sendAPIStoreError(c, status, message)
 
 		return
 	}
@@ -192,20 +188,4 @@ func (s *APIStore) DeleteTeamsTeamIDMembersUserId(c *gin.Context, teamID api.Tea
 	}
 
 	c.Status(http.StatusNoContent)
-}
-
-func mapAddTeamMemberRows(addedRows int64) (int, string, bool) {
-	if addedRows == 0 {
-		return http.StatusBadRequest, "User is already a member of this team", true
-	}
-
-	return 0, "", false
-}
-
-func mapRemoveTeamMemberRows(removedRows int64) (int, string, bool) {
-	if removedRows == 0 {
-		return http.StatusBadRequest, "User is not a member of this team", true
-	}
-
-	return 0, "", false
 }
