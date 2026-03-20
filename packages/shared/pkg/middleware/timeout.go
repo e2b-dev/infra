@@ -3,7 +3,6 @@ package middleware
 import (
 	"context"
 	"errors"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -65,31 +64,4 @@ func RequestTimeout(timeout time.Duration) gin.HandlerFunc {
 			c.Set(cancelCauseKey, err)
 		}
 	}
-}
-
-func timeoutShouldSkip(path string, patterns []string) bool {
-	for _, pattern := range patterns {
-		if timeoutMatchPattern(path, pattern) {
-			return true
-		}
-	}
-
-	return false
-}
-
-func timeoutMatchPattern(path, pattern string) bool {
-	pathSegments := strings.Split(path, "/")
-	patternSegments := strings.Split(pattern, "/")
-
-	if len(pathSegments) != len(patternSegments) {
-		return false
-	}
-
-	for i := range pathSegments {
-		if patternSegments[i] != pathSegments[i] && !strings.HasPrefix(patternSegments[i], ":") {
-			return false
-		}
-	}
-
-	return true
 }
