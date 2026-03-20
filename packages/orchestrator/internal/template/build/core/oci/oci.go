@@ -33,10 +33,6 @@ import (
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/core/oci")
 
-const (
-	tarballExportUpdates = 10
-)
-
 // ImageTooLargeError is returned when the uncompressed Docker image exceeds the maximum filesystem size.
 type ImageTooLargeError struct {
 	ImageSize int64 // actual uncompressed size in bytes, 0 if unknown
