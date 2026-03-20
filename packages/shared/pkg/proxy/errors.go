@@ -88,7 +88,7 @@ type IngressDeniedError struct {
 	Port      uint16
 }
 
-func NewErrIngressDenied(sandboxId string, clientIP string, port uint16) *IngressDeniedError {
+func NewErrIngressDenied(sandboxID string, clientIP string, port uint16) *IngressDeniedError {
 	return &IngressDeniedError{
 		SandboxId: sandboxId,
 		ClientIP:  clientIP,
