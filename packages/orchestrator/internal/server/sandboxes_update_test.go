@@ -17,6 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
+	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 )
 
 // These tests exercise the rollback path of Update: when egress application
@@ -52,7 +53,7 @@ func TestUpdate_EgressOnly_FailsAndDoesNotChangeEndTime(t *testing.T) {
 	_, err = s.Update(t.Context(), &orchestrator.SandboxUpdateRequest{
 		SandboxId: sbx.Runtime.SandboxID,
 		Egress: &orchestrator.SandboxNetworkEgressConfig{
-			DeniedCidrs: []string{"0.0.0.0/0"},
+			DeniedCidrs: []string{sandbox_network.AllTraffic},
 		},
 	})
 
@@ -93,7 +94,7 @@ func TestUpdate_EndTimeAndEgress_EgressFails_RevertsEndTime(t *testing.T) {
 		SandboxId: sbx.Runtime.SandboxID,
 		EndTime:   timestamppb.New(newEnd),
 		Egress: &orchestrator.SandboxNetworkEgressConfig{
-			DeniedCidrs: []string{"0.0.0.0/0"},
+			DeniedCidrs: []string{sandbox_network.AllTraffic},
 		},
 	})
 
@@ -134,7 +135,7 @@ func TestUpdate_EgressAndIngress_EgressFails_RevertsIngress(t *testing.T) {
 	_, err = s.Update(t.Context(), &orchestrator.SandboxUpdateRequest{
 		SandboxId: sbx.Runtime.SandboxID,
 		Egress: &orchestrator.SandboxNetworkEgressConfig{
-			DeniedCidrs: []string{"0.0.0.0/0"},
+			DeniedCidrs: []string{sandbox_network.AllTraffic},
 		},
 		Ingress: &orchestrator.SandboxNetworkIngressConfig{
 			DeniedCidrs: []string{"10.0.0.0/8"},

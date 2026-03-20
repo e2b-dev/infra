@@ -139,7 +139,7 @@ func TestIsEgressAllowed(t *testing.T) {
 		return sandbox_network.Rule{IPNet: ipNet}
 	}
 
-	denyAll := sandbox_network.Rules{cidr("0.0.0.0/0")}
+	denyAll := sandbox_network.Rules{cidr(sandbox_network.AllTraffic)}
 
 	tests := []struct {
 		name     string

@@ -555,7 +555,7 @@ func validateEgressRules(allowOut, denyOut []string) *api.APIError {
 		}
 	}
 
-	hasBlockAll := slices.Contains(denyOut, sandbox_network.AllInternetTrafficCIDR)
+	hasBlockAll := slices.Contains(denyOut, sandbox_network.AllTraffic)
 	if hasDomains && !hasBlockAll {
 		return badRequest(nil, "When specifying allowed domains in allow out, you must include 'ALL_TRAFFIC' in deny out to block all other traffic.")
 	}
@@ -579,7 +579,7 @@ func validateIngressRules(allowIn, denyIn []string) *api.APIError {
 		}
 	}
 
-	hasBlockAll := slices.Contains(denyIn, sandbox_network.AllInternetTrafficCIDR)
+	hasBlockAll := slices.Contains(denyIn, sandbox_network.AllTraffic)
 	if len(allowIn) > 0 && !hasBlockAll {
 		return badRequest(nil, "When specifying allowed sources in allow in, you must include 'ALL_TRAFFIC' (0.0.0.0/0) in deny in to block all other traffic.")
 	}
