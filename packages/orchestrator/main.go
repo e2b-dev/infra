@@ -455,8 +455,15 @@ func run(config cfg.Config) (success bool) {
 	})
 	closers = append(closers, closer{"device pool", devicePool.Close})
 
+	slotLifecycle := []network.SlotLifecycleHandlers{
+		{
+			OnSlotCreate: tcpFirewall.OnSlotCreate,
+			OnSlotDelete: tcpFirewall.OnSlotDelete,
+		},
+	}
+
 	// network pool
-	slotStorage, err := newStorage(ctx, nodeID, config.NetworkConfig)
+	slotStorage, err := newStorage(ctx, nodeID, config.NetworkConfig, slotLifecycle)
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create network pool", zap.Error(err))
 	}
@@ -816,10 +823,10 @@ func setupBuildStorage(ctx context.Context, limiter *limit.Limiter, orchConfig c
 }
 
 // NewStorage creates a new slot storage based on the environment, we are ok with using a memory storage for local
-func newStorage(ctx context.Context, nodeID string, config network.Config) (network.Storage, error) {
+func newStorage(ctx context.Context, nodeID string, config network.Config, lifecycle []network.SlotLifecycleHandlers) (network.Storage, error) {
 	if env.IsDevelopment() || config.UseLocalNamespaceStorage {
-		return network.NewStorageLocal(ctx, config)
+		return network.NewStorageLocal(ctx, config, lifecycle)
 	}
 
-	return network.NewStorageKV(nodeID, config)
+	return network.NewStorageKV(nodeID, config, lifecycle)
 }

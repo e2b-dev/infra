@@ -2,14 +2,17 @@ package tcpfirewall
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
 
+	"github.com/coreos/go-iptables/iptables"
 	"github.com/inetaf/tcpproxy"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/egressproxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/connlimit"
@@ -18,6 +21,8 @@ import (
 )
 
 var _ sandbox.MapSubscriber = (*Proxy)(nil)
+
+var _ egressproxy.EgressProxy = (*Proxy)(nil)
 
 type Proxy struct {
 	logger       logger.Logger
@@ -32,7 +37,8 @@ type Proxy struct {
 	tlsPort   uint16 // For port 443 traffic - TLS SNI inspection
 	otherPort uint16 // For all other ports - CIDR-only, no protocol inspection
 
-	proxy *tcpproxy.Proxy
+	proxyRules []proxyRule
+	proxy      *tcpproxy.Proxy
 }
 
 func New(logger logger.Logger, networkConfig network.Config, sandboxes *sandbox.Map, meterProvider metric.MeterProvider, featureFlags *featureflags.Client) *Proxy {
@@ -45,6 +51,12 @@ func New(logger logger.Logger, networkConfig network.Config, sandboxes *sandbox.
 		metrics:      NewMetrics(meterProvider),
 		limiter:      connlimit.NewConnectionLimiter(),
 		featureFlags: featureFlags,
+	}
+
+	p.proxyRules = []proxyRule{
+		{dstPort: "80", proxyPort: fmt.Sprintf("%d", p.httpPort), desc: "HTTP"},
+		{dstPort: "443", proxyPort: fmt.Sprintf("%d", p.tlsPort), desc: "TLS"},
+		{dstPort: "", proxyPort: fmt.Sprintf("%d", p.otherPort), desc: "other TCP"},
 	}
 
 	sandboxes.Subscribe(p)
@@ -113,6 +125,47 @@ func (p *Proxy) Start(ctx context.Context) error {
 	}
 
 	return err
+}
+
+type proxyRule struct {
+	dstPort   string // destination port to match (empty = all ports)
+	proxyPort string // port to redirect to
+	desc      string // description for error messages
+}
+
+func (p *Proxy) ruleArgs(s *network.Slot, rule proxyRule) []string {
+	args := []string{"-i", s.VethName(), "-p", "tcp"}
+	if rule.dstPort != "" {
+		args = append(args, "--dport", rule.dstPort)
+	}
+	args = append(args,
+		"-j", "REDIRECT", "--to-port", rule.proxyPort,
+	)
+
+	return args
+}
+
+func (p *Proxy) OnSlotCreate(s *network.Slot, tables *iptables.IPTables) error {
+	for _, rule := range p.proxyRules {
+		err := tables.Append("nat", "PREROUTING", p.ruleArgs(s, rule)...)
+		if err != nil {
+			return fmt.Errorf("error creating redirect rule for %s traffic: %w", rule.desc, err)
+		}
+	}
+
+	return nil
+}
+
+func (p *Proxy) OnSlotDelete(s *network.Slot, tables *iptables.IPTables) error {
+	var errs []error
+	for _, rule := range p.proxyRules {
+		err := tables.Delete("nat", "PREROUTING", p.ruleArgs(s, rule)...)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("error deleting %s egress proxy redirect rule: %w", rule.desc, err))
+		}
+	}
+
+	return errors.Join(errs...)
 }
 
 func (p *Proxy) Close(_ context.Context) error {

@@ -12,14 +12,16 @@ type StorageMemory struct {
 	slotsSize   int
 	freeSlots   []bool
 	freeSlotsMu sync.Mutex
+	lifecycle   []SlotLifecycleHandlers
 }
 
-func NewStorageMemory(slotsSize int, config Config) (*StorageMemory, error) {
+func NewStorageMemory(slotsSize int, config Config, lifecycle []SlotLifecycleHandlers) (*StorageMemory, error) {
 	return &StorageMemory{
 		config:      config,
 		slotsSize:   slotsSize,
 		freeSlots:   make([]bool, slotsSize),
 		freeSlotsMu: sync.Mutex{},
+		lifecycle:   lifecycle,
 	}, nil
 }
 
@@ -34,7 +36,7 @@ func (s *StorageMemory) Acquire(_ context.Context) (*Slot, error) {
 		if !s.freeSlots[slotIdx] {
 			s.freeSlots[slotIdx] = true
 
-			return NewSlot(key, slotIdx, s.config)
+			return NewSlot(key, slotIdx, s.config, s.lifecycle)
 		}
 	}
 

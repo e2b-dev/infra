@@ -248,11 +248,12 @@ func (s *Slot) CreateNetwork(ctx context.Context) error {
 		return fmt.Errorf("error creating NFS redirect rule to sandbox NFS proxy server: %w", err)
 	}
 
-	// Redirect TCP traffic to appropriate egress proxy ports based on destination port.
-	// This preserves the original destination IP for SO_ORIGINAL_DST.
-	err = s.tcpProxyConfig().append(tables)
-	if err != nil {
-		return err
+	// Create rules needed by lifecycle handlers
+	for _, handler := range s.lifecycleHandlers {
+		err = handler.OnSlotCreate(s, tables)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -297,8 +298,10 @@ func (s *Slot) RemoveNetwork() error {
 			errs = append(errs, fmt.Errorf("error deleting sandbox hyperloop proxy redirect rule: %w", err))
 		}
 
-		// Delete egress proxy redirect rules
-		errs = append(errs, s.tcpProxyConfig().delete(tables)...)
+		// Delete changes made by lifecycle handlers
+		for _, handler := range s.lifecycleHandlers {
+			errs = append(errs, handler.OnSlotDelete(s, tables))
+		}
 	}
 
 	// Delete routing from host to FC namespace
