@@ -10,8 +10,14 @@ runs:
         KERNEL_VERSION: "vmlinux-6.1.158"
         FIRECRACKER_VERSION: "v1.12.1_a41d3fb"
       run: |
+        echo "--- which go:"
         which go
+        echo "--- go version:"
         go version
+        echo "--- go env:"
+        go env
+        echo "--- env:"
+        env
         
         # Generate an unique build ID for the template for this run
         export BUILD_ID=$(uuidgen)
