@@ -22,7 +22,7 @@ func TestDirCreate(t *testing.T) {
 		t.Parallel()
 
 		dirname := "test-dir"
-		_, err := s.CreateDir(t.Context(), &orchestrator.VolumeDirCreateRequest{
+		_, err := s.CreateDir(t.Context(), &orchestrator.CreateDirRequest{
 			Volume: volumeInfo,
 			Path:   dirname,
 		})
@@ -37,7 +37,7 @@ func TestDirCreate(t *testing.T) {
 		t.Parallel()
 
 		dirname := "parent/child"
-		_, err := s.CreateDir(t.Context(), &orchestrator.VolumeDirCreateRequest{
+		_, err := s.CreateDir(t.Context(), &orchestrator.CreateDirRequest{
 			Volume:        volumeInfo,
 			Path:          dirname,
 			CreateParents: true,
@@ -53,7 +53,7 @@ func TestDirCreate(t *testing.T) {
 		t.Parallel()
 
 		dirname := "another-parent/child"
-		_, err := s.CreateDir(t.Context(), &orchestrator.VolumeDirCreateRequest{
+		_, err := s.CreateDir(t.Context(), &orchestrator.CreateDirRequest{
 			Volume:        volumeInfo,
 			Path:          dirname,
 			CreateParents: false,
@@ -69,7 +69,7 @@ func TestDirCreate(t *testing.T) {
 		uid := uint32(1000)
 		gid := uint32(1000)
 
-		_, err := s.CreateDir(t.Context(), &orchestrator.VolumeDirCreateRequest{
+		_, err := s.CreateDir(t.Context(), &orchestrator.CreateDirRequest{
 			Volume: volumeInfo,
 			Path:   dirname,
 			Mode:   utils.ToPtr(mode),
@@ -90,7 +90,7 @@ func TestDirCreate(t *testing.T) {
 		err := os.Mkdir(filepath.Join(tmpdir, dirname), 0o755)
 		require.NoError(t, err)
 
-		_, err = s.CreateDir(t.Context(), &orchestrator.VolumeDirCreateRequest{
+		_, err = s.CreateDir(t.Context(), &orchestrator.CreateDirRequest{
 			Volume: volumeInfo,
 			Path:   dirname,
 		})
@@ -105,7 +105,7 @@ func TestDirCreate(t *testing.T) {
 		err := os.WriteFile(fullPath, []byte("test"), 0o644)
 		require.NoError(t, err)
 
-		_, err = s.CreateDir(t.Context(), &orchestrator.VolumeDirCreateRequest{
+		_, err = s.CreateDir(t.Context(), &orchestrator.CreateDirRequest{
 			Volume:        volumeInfo,
 			Path:          filename,
 			CreateParents: true,
@@ -133,7 +133,7 @@ func TestDirCreate(t *testing.T) {
 
 		// Now call CreateDir with CreateParents=true and a different mode
 		newMode := uint32(0o777)
-		request := &orchestrator.VolumeDirCreateRequest{
+		request := &orchestrator.CreateDirRequest{
 			Volume:        volumeInfo,
 			Path:          dirname,
 			CreateParents: true,

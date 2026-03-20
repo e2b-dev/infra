@@ -19,16 +19,16 @@ type mockCreateFileServer struct {
 	mock.Mock
 }
 
-func (m *mockCreateFileServer) Recv() (*orchestrator.VolumeFileCreateRequest, error) {
+func (m *mockCreateFileServer) Recv() (*orchestrator.CreateFileRequest, error) {
 	args := m.Called()
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 
-	return args.Get(0).(*orchestrator.VolumeFileCreateRequest), args.Error(1)
+	return args.Get(0).(*orchestrator.CreateFileRequest), args.Error(1)
 }
 
-func (m *mockCreateFileServer) SendAndClose(resp *orchestrator.VolumeFileCreateResponse) error {
+func (m *mockCreateFileServer) SendAndClose(resp *orchestrator.CreateFileResponse) error {
 	args := m.Called(resp)
 
 	return args.Error(0)
@@ -53,8 +53,8 @@ func TestFileCreate(t *testing.T) {
 		mockServer.On("Context").Return(t.Context())
 
 		// 1. Send Start
-		mockServer.On("Recv").Return(&orchestrator.VolumeFileCreateRequest{
-			Message: &orchestrator.VolumeFileCreateRequest_Start{
+		mockServer.On("Recv").Return(&orchestrator.CreateFileRequest{
+			Message: &orchestrator.CreateFileRequest_Start{
 				Start: &orchestrator.VolumeFileCreateStart{
 					Volume: volumeInfo,
 					Path:   filename,
@@ -63,8 +63,8 @@ func TestFileCreate(t *testing.T) {
 		}, nil).Once()
 
 		// 2. Send Content
-		mockServer.On("Recv").Return(&orchestrator.VolumeFileCreateRequest{
-			Message: &orchestrator.VolumeFileCreateRequest_Content{
+		mockServer.On("Recv").Return(&orchestrator.CreateFileRequest{
+			Message: &orchestrator.CreateFileRequest_Content{
 				Content: &orchestrator.VolumeFileCreateContent{
 					Content: []byte("hello world"),
 				},
@@ -72,8 +72,8 @@ func TestFileCreate(t *testing.T) {
 		}, nil).Once()
 
 		// 3. Send Finish
-		mockServer.On("Recv").Return(&orchestrator.VolumeFileCreateRequest{
-			Message: &orchestrator.VolumeFileCreateRequest_Finish{
+		mockServer.On("Recv").Return(&orchestrator.CreateFileRequest{
+			Message: &orchestrator.CreateFileRequest_Finish{
 				Finish: &orchestrator.VolumeFileCreateFinish{},
 			},
 		}, nil).Once()
@@ -96,8 +96,8 @@ func TestFileCreate(t *testing.T) {
 		mockServer := &mockCreateFileServer{}
 		mockServer.On("Context").Return(t.Context())
 
-		mockServer.On("Recv").Return(&orchestrator.VolumeFileCreateRequest{
-			Message: &orchestrator.VolumeFileCreateRequest_Start{
+		mockServer.On("Recv").Return(&orchestrator.CreateFileRequest{
+			Message: &orchestrator.CreateFileRequest_Start{
 				Start: &orchestrator.VolumeFileCreateStart{
 					Volume: volumeInfo,
 					Path:   filename,
@@ -106,8 +106,8 @@ func TestFileCreate(t *testing.T) {
 			},
 		}, nil).Once()
 
-		mockServer.On("Recv").Return(&orchestrator.VolumeFileCreateRequest{
-			Message: &orchestrator.VolumeFileCreateRequest_Finish{
+		mockServer.On("Recv").Return(&orchestrator.CreateFileRequest{
+			Message: &orchestrator.CreateFileRequest_Finish{
 				Finish: &orchestrator.VolumeFileCreateFinish{},
 			},
 		}, nil).Once()

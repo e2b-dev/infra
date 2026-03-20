@@ -40,7 +40,7 @@ func TestListDir_Depth(t *testing.T) {
 	t.Run("depth 0", func(t *testing.T) {
 		t.Parallel()
 
-		req := &orchestrator.VolumeDirListRequest{
+		req := &orchestrator.ListDirRequest{
 			Volume: volumeInfo,
 			Path:   "dir",
 			Depth:  0,
@@ -56,7 +56,7 @@ func TestListDir_Depth(t *testing.T) {
 	t.Run("depth 1", func(t *testing.T) {
 		t.Parallel()
 
-		req := &orchestrator.VolumeDirListRequest{
+		req := &orchestrator.ListDirRequest{
 			Volume: volumeInfo,
 			Path:   "dir",
 			Depth:  1,
@@ -72,7 +72,7 @@ func TestListDir_Depth(t *testing.T) {
 	t.Run("depth 2", func(t *testing.T) {
 		t.Parallel()
 
-		req := &orchestrator.VolumeDirListRequest{
+		req := &orchestrator.ListDirRequest{
 			Volume: volumeInfo,
 			Path:   "dir",
 			Depth:  2,
@@ -88,7 +88,7 @@ func TestListDir_Depth(t *testing.T) {
 	t.Run("list non-existent dir", func(t *testing.T) {
 		t.Parallel()
 
-		req := &orchestrator.VolumeDirListRequest{
+		req := &orchestrator.ListDirRequest{
 			Volume: volumeInfo,
 			Path:   "non-existent-dir",
 		}
@@ -99,7 +99,7 @@ func TestListDir_Depth(t *testing.T) {
 	t.Run("list depth out of range", func(t *testing.T) {
 		t.Parallel()
 
-		req := &orchestrator.VolumeDirListRequest{
+		req := &orchestrator.ListDirRequest{
 			Volume: volumeInfo,
 			Path:   "dir",
 			Depth:  11,

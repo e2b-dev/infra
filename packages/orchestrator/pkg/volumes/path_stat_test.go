@@ -23,7 +23,7 @@ func TestStat(t *testing.T) {
 		err := os.WriteFile(filepath.Join(tmpdir, filename), []byte("test"), 0o644)
 		require.NoError(t, err)
 
-		resp, err := s.Stat(t.Context(), &orchestrator.StatRequest{
+		resp, err := s.StatPath(t.Context(), &orchestrator.StatPathRequest{
 			Volume: volumeInfo,
 			Path:   filename,
 		})
@@ -39,7 +39,7 @@ func TestStat(t *testing.T) {
 		err := os.Mkdir(filepath.Join(tmpdir, dirname), 0o755)
 		require.NoError(t, err)
 
-		resp, err := s.Stat(t.Context(), &orchestrator.StatRequest{
+		resp, err := s.StatPath(t.Context(), &orchestrator.StatPathRequest{
 			Volume: volumeInfo,
 			Path:   dirname,
 		})
@@ -50,7 +50,7 @@ func TestStat(t *testing.T) {
 	t.Run("stat non-existent", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := s.Stat(t.Context(), &orchestrator.StatRequest{
+		_, err := s.StatPath(t.Context(), &orchestrator.StatPathRequest{
 			Volume: volumeInfo,
 			Path:   "non-existent",
 		})
@@ -67,7 +67,7 @@ func TestStat(t *testing.T) {
 		err = os.Symlink(target, filepath.Join(tmpdir, link))
 		require.NoError(t, err)
 
-		resp, err := s.Stat(t.Context(), &orchestrator.StatRequest{
+		resp, err := s.StatPath(t.Context(), &orchestrator.StatPathRequest{
 			Volume: volumeInfo,
 			Path:   link,
 		})
