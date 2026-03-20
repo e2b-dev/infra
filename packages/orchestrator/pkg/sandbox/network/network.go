@@ -249,9 +249,11 @@ func (s *Slot) CreateNetwork(ctx context.Context) error {
 	}
 
 	// Create rules needed by lifecycle handler
-	err = s.lifecycleHandler.OnSlotCreate(s, tables)
-	if err != nil {
-		return err
+	if s.lifecycleHandler != nil {
+		err = s.lifecycleHandler.OnSlotCreate(s, tables)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -297,9 +299,11 @@ func (s *Slot) RemoveNetwork() error {
 		}
 
 		// Delete changes made by lifecycle handler
-		err = s.lifecycleHandler.OnSlotDelete(s, tables)
-		if err != nil {
-			errs = append(errs, err)
+		if s.lifecycleHandler != nil {
+			err = s.lifecycleHandler.OnSlotDelete(s, tables)
+			if err != nil {
+				errs = append(errs, err)
+			}
 		}
 	}
 
