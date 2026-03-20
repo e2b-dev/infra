@@ -35,6 +35,9 @@ func (s *APIStore) GetTeams(c *gin.Context) {
 			Tier:              row.Team.Tier,
 			Email:             row.Team.Email,
 			ProfilePictureUrl: row.Team.ProfilePictureUrl,
+			IsBlocked:         row.Team.IsBlocked,
+			IsBanned:          row.Team.IsBanned,
+			BlockedReason:     row.Team.BlockedReason,
 			IsDefault:         row.IsDefault,
 			Limits: api.UserTeamLimits{
 				MaxLengthHours:           row.TeamLimit.MaxLengthHours,

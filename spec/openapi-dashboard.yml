@@ -381,6 +381,9 @@ components:
         - tier
         - email
         - profilePictureUrl
+        - isBlocked
+        - isBanned
+        - blockedReason
         - isDefault
         - limits
       properties:
@@ -396,6 +399,13 @@ components:
         email:
           type: string
         profilePictureUrl:
+          type: string
+          nullable: true
+        isBlocked:
+          type: boolean
+        isBanned:
+          type: boolean
+        blockedReason:
           type: string
           nullable: true
         isDefault:
