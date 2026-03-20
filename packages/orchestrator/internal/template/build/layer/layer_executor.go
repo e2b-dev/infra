@@ -316,12 +316,12 @@ func (lb *LayerExecutor) PauseAndUpload(
 			if !errors.Is(err, storage.ErrObjectRateLimited) {
 				return fmt.Errorf("error saving UUID to hash mapping: %w", err)
 			}
+
 			logger.L().Warn(ctx, "rate limited writing layer metadata to object, skipping",
 				logger.WithBuildID(meta.Template.BuildID),
 				zap.String("hash", hash),
 				zap.Error(err),
 			)
-
 		}
 
 		userLogger.Debug(ctx, fmt.Sprintf("Saved: %s", meta.Template.BuildID))
