@@ -22,7 +22,14 @@ jobs:
       - name: Download packages
         uses: actions/download-artifact@v8
         with:
-          merge-multiple: true
+          merge-multiple: 'true'
+
+      - name: Move packages back where the run scripts expect them to be
+        run: |
+          for f in api client-proxy envd orchestrator; do
+            mkdir -p ./packages/$f/bin
+            mv "$f" "./packages/$f/bin/$f
+          done
 
       - name: Initialize Host
         uses: ./.github/actions/host-init

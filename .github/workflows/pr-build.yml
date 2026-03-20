@@ -13,17 +13,9 @@ jobs:
       matrix:
         package:
           - name: orchestrator
-            path: packages/orchestrator
-            output: bin/orchestrator
           - name: api
-            path: packages/api
-            output: bin/api
           - name: envd
-            path: packages/envd
-            output: bin/envd
           - name: client-proxy
-            path: packages/client-proxy
-            output: bin/client-proxy
 
     steps:
       - uses: actions/checkout@v3
@@ -39,8 +31,7 @@ jobs:
       - name: Build package
         run: make -C ${{ matrix.package.path }} build-debug
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.package.name }}-build
-          path: ${{ matrix.package.path }}/${{ matrix.package.output }}
+          path: packages/${{ matrix.package.name }}/bin/${{ matrix.package.name }}
