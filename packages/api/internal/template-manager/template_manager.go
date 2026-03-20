@@ -148,7 +148,7 @@ func (tm *TemplateManager) GetClusterResources(clusterID uuid.UUID) (clusters.Cl
 	return cluster.GetResources(), nil
 }
 
-func (tm *TemplateManager) GetClusterBuildClient(clusterID uuid.UUID, nodeID string) (*clusters.GRPCClient, error) {
+func (tm *TemplateManager) GetClusterBuildClient(ctx context.Context, clusterID uuid.UUID, nodeID string) (*clusters.GRPCClient, error) {
 	cluster, ok := tm.clusters.GetClusterById(clusterID)
 	if !ok {
 		return nil, errors.New("cluster not found")
@@ -156,7 +156,18 @@ func (tm *TemplateManager) GetClusterBuildClient(clusterID uuid.UUID, nodeID str
 
 	instance, err := cluster.GetTemplateBuilderByNodeID(nodeID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get builder by id '%s': %w", nodeID, err)
+		// The builder may have joined after this API instance's last sync cycle
+		// but another instance already routed a build there (same race as for
+		// orchestrator nodes). Force a fresh service-discovery query and retry.
+		if syncErr := cluster.SyncInstances(ctx); syncErr != nil {
+			logger.L().Error(ctx, "Error syncing cluster instances when looking up builder",
+				zap.Error(syncErr), logger.WithNodeID(nodeID))
+		}
+
+		instance, err = cluster.GetTemplateBuilderByNodeID(nodeID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get builder by id '%s': %w", nodeID, err)
+		}
 	}
 
 	return instance.GetClient(), nil
@@ -170,7 +181,7 @@ func (tm *TemplateManager) DeleteBuild(ctx context.Context, buildID uuid.UUID, t
 	)
 	defer span.End()
 
-	client, err := tm.GetClusterBuildClient(clusterID, nodeID)
+	client, err := tm.GetClusterBuildClient(ctx, clusterID, nodeID)
 	if err != nil {
 		// nodeID can be an orchestrator ID, if the build corresponds to a snapshot.
 		// We may want to improve this later by adding the Delete method to Orchestrator as well.
@@ -182,7 +193,7 @@ func (tm *TemplateManager) DeleteBuild(ctx context.Context, buildID uuid.UUID, t
 		nodeID = node.NodeID
 
 		logger.L().Info(ctx, "Fallback to available node", zap.String("nodeID", nodeID), zap.String("clusterID", clusterID.String()))
-		client, err = tm.GetClusterBuildClient(clusterID, nodeID)
+		client, err = tm.GetClusterBuildClient(ctx, clusterID, nodeID)
 		if err != nil {
 			return fmt.Errorf("failed to get builder client: %w", err)
 		}
@@ -215,7 +226,7 @@ func (tm *TemplateManager) DeleteBuilds(ctx context.Context, builds []DeleteBuil
 }
 
 func (tm *TemplateManager) GetStatus(ctx context.Context, buildID uuid.UUID, templateID string, clusterID uuid.UUID, nodeID string) (*templatemanagergrpc.TemplateBuildStatusResponse, error) {
-	client, err := tm.GetClusterBuildClient(clusterID, nodeID)
+	client, err := tm.GetClusterBuildClient(ctx, clusterID, nodeID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get builder client: %w", err)
 	}

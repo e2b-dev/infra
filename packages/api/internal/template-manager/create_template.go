@@ -90,7 +90,7 @@ func (tm *TemplateManager) CreateTemplate(
 		return fmt.Errorf("failed to get features for firecracker version '%s': %w", firecrackerVersion, err)
 	}
 
-	client, err := tm.GetClusterBuildClient(clusterID, nodeID)
+	client, err := tm.GetClusterBuildClient(ctx, clusterID, nodeID)
 	if err != nil {
 		return fmt.Errorf("failed to get builder: %w", err)
 	}
