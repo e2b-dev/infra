@@ -85,7 +85,9 @@ type Config struct {
 }
 
 func NewConfig(c Config) *Config {
-	return NewConfigWithNetwork(c, nil, nil)
+	initNetworkPointers(&c)
+
+	return &c
 }
 
 type VolumeMountConfig struct {

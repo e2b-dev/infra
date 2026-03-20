@@ -18,7 +18,6 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -135,8 +134,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		return nil, fmt.Errorf("failed to get template snapshot data: %w", err)
 	}
 
-	// Clone the network config to avoid modifying the original request
-	network := proto.CloneOf(req.GetSandbox().GetNetwork())
+	network := req.GetSandbox().GetNetwork()
 
 	// TODO: Temporarily set this based on global config, should be removed later
 	// https://linear.app/e2b/issue/ENG-3291
@@ -145,15 +143,13 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	if req.GetSandbox().AllowInternetAccess != nil {
 		allowInternet = req.GetSandbox().GetAllowInternetAccess()
 	}
+
+	// Build egress/ingress from proto, injecting deny-all if internet is disabled.
+	egress := sandbox.EgressFromProto(network.GetEgress())
 	if !allowInternet {
-		if network == nil {
-			network = &orchestrator.SandboxNetworkConfig{}
-		}
-		if network.GetEgress() == nil {
-			network.Egress = &orchestrator.SandboxNetworkEgressConfig{}
-		}
-		network.Egress.DeniedCidrs = []string{sandbox_network.AllTraffic}
+		egress.Denied = sandbox_network.ParseValidRules([]string{sandbox_network.AllTraffic})
 	}
+	ingress := sandbox.IngressFromProto(network.GetIngress())
 
 	resolvedFCVersion := featureflags.ResolveFirecrackerVersion(ctx, s.featureFlags, req.GetSandbox().GetFirecrackerVersion())
 	volumeMounts, err := createVolumeMountModelsFromAPI(req.GetSandbox().GetVolumeMounts())
@@ -161,31 +157,29 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		return nil, fmt.Errorf("failed to convert volume mounts: %w", err)
 	}
 
-	config := sandbox.NewConfigWithNetwork(
-		sandbox.Config{
-			BaseTemplateID: req.GetSandbox().GetBaseTemplateId(),
+	config := sandbox.NewConfig(sandbox.Config{
+		BaseTemplateID: req.GetSandbox().GetBaseTemplateId(),
 
-			Vcpu:            req.GetSandbox().GetVcpu(),
-			RamMB:           req.GetSandbox().GetRamMb(),
-			TotalDiskSizeMB: req.GetSandbox().GetTotalDiskSizeMb(),
-			HugePages:       req.GetSandbox().GetHugePages(),
+		Vcpu:            req.GetSandbox().GetVcpu(),
+		RamMB:           req.GetSandbox().GetRamMb(),
+		TotalDiskSizeMB: req.GetSandbox().GetTotalDiskSizeMb(),
+		HugePages:       req.GetSandbox().GetHugePages(),
 
-			Envd: sandbox.EnvdMetadata{
-				Version:     req.GetSandbox().GetEnvdVersion(),
-				AccessToken: req.GetSandbox().EnvdAccessToken,
-				Vars:        req.GetSandbox().GetEnvVars(),
-			},
-
-			FirecrackerConfig: fc.Config{
-				KernelVersion:      req.GetSandbox().GetKernelVersion(),
-				FirecrackerVersion: resolvedFCVersion,
-			},
-
-			VolumeMounts: volumeMounts,
+		Envd: sandbox.EnvdMetadata{
+			Version:     req.GetSandbox().GetEnvdVersion(),
+			AccessToken: req.GetSandbox().EnvdAccessToken,
+			Vars:        req.GetSandbox().GetEnvVars(),
 		},
-		network.GetEgress(),
-		network.GetIngress(),
-	)
+
+		FirecrackerConfig: fc.Config{
+			KernelVersion:      req.GetSandbox().GetKernelVersion(),
+			FirecrackerVersion: resolvedFCVersion,
+		},
+
+		VolumeMounts: volumeMounts,
+	})
+	config.SetNetworkEgress(egress)
+	config.SetNetworkIngress(ingress)
 	childSpan.SetAttributes(
 		telemetry.WithFirecrackerVersion(config.FirecrackerConfig.FirecrackerVersion),
 	)

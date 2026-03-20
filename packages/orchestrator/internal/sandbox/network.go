@@ -14,18 +14,15 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-// NewConfigWithNetwork creates a Config with network egress/ingress parsed from proto configs.
-func NewConfigWithNetwork(c Config, egress *orchestrator.SandboxNetworkEgressConfig, ingress *orchestrator.SandboxNetworkIngressConfig) *Config {
+func initNetworkPointers(c *Config) {
 	c.egress = &atomic.Pointer[sandbox_network.Egress]{}
 	c.ingress = &atomic.Pointer[sandbox_network.Ingress]{}
 
-	e := EgressFromProto(egress)
+	e := sandbox_network.Egress{}
 	c.egress.Store(&e)
 
-	i := IngressFromProto(ingress)
+	i := sandbox_network.Ingress{}
 	c.ingress.Store(&i)
-
-	return &c
 }
 
 func (c *Config) GetNetworkEgress() sandbox_network.Egress {
