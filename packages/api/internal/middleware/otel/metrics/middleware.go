@@ -55,6 +55,8 @@ func Middleware(meterProvider metric.MeterProvider, service string, options ...O
 	}
 
 	return func(ginCtx *gin.Context) {
+		ctx := ginCtx.Request.Context()
+
 		route := ginCtx.FullPath()
 		if len(route) == 0 {
 			route = "nonconfigured"
@@ -97,7 +99,7 @@ func Middleware(meterProvider metric.MeterProvider, service string, options ...O
 			}
 
 			duration := time.Since(effectiveStart)
-			recorder.ObserveHTTPRequestDuration(ginCtx, duration, resAttributes)
+			recorder.ObserveHTTPRequestDuration(ctx, duration, resAttributes)
 		}()
 
 		ginCtx.Next()

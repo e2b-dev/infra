@@ -39,6 +39,8 @@ func LoggingMiddleware(logger logger.Logger, conf Config) gin.HandlerFunc {
 	}
 
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+
 		start := time.Now()
 
 		// Preserve this if any middleware modifies these values
@@ -114,7 +116,7 @@ func LoggingMiddleware(logger logger.Logger, conf Config) gin.HandlerFunc {
 				level = zapcore.WarnLevel
 			}
 
-			logger.Log(c.Request.Context(), level, path, fields...)
+			logger.Log(ctx, level, path, fields...)
 		}
 	}
 }
