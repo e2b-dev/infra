@@ -123,8 +123,8 @@ func TestUpdate_EgressAndIngress_EgressFails_RevertsIngress(t *testing.T) {
 	sbx.SetEndAt(time.Now().Add(time.Hour))
 
 	sandboxMap := sandbox.NewSandboxesMap()
-	sandboxMap.Insert(context.Background(), sbx)
-	sandboxMap.MarkRunning(sbx)
+	sandboxMap.Insert(t.Context(), sbx)
+	sandboxMap.MarkRunning(t.Context(), sbx)
 
 	s := &Server{
 		sandboxFactory:   &sandbox.Factory{Sandboxes: sandboxMap},
