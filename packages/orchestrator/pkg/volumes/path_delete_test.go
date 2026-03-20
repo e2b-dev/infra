@@ -133,4 +133,25 @@ func TestDeletePath(t *testing.T) {
 		_, err = os.Stat(targetPath)
 		require.NoError(t, err)
 	})
+
+	t.Run("delete broken symlink", func(t *testing.T) {
+		t.Parallel()
+
+		target := "symlink-target.txt"
+		link := "symlink-to-delete"
+		linkPath := filepath.Join(tmpdir, link)
+
+		err := os.Symlink(target, linkPath)
+		require.NoError(t, err)
+
+		_, err = s.DeletePath(t.Context(), &orchestrator.DeletePathRequest{
+			Volume: volumeInfo,
+			Path:   link,
+		})
+		require.NoError(t, err)
+
+		// Symlink should be deleted
+		_, err = os.Lstat(linkPath)
+		require.ErrorIs(t, err, os.ErrNotExist)
+	})
 }
