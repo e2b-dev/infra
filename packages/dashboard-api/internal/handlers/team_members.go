@@ -1,17 +1,16 @@
 package handlers
 
 import (
-	"encoding/json"
-	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
+	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/ginutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -69,8 +68,8 @@ func (s *APIStore) PostTeamsTeamIDMembers(c *gin.Context, teamID api.TeamID) {
 	userID := auth.MustGetUserID(c)
 	telemetry.SetAttributes(ctx, telemetry.WithTeamID(teamInfo.Team.ID.String()))
 
-	var body api.AddTeamMemberRequest
-	if err := json.NewDecoder(c.Request.Body).Decode(&body); err != nil {
+	body, err := ginutils.ParseBody[api.AddTeamMemberRequest](ctx, c)
+	if err != nil {
 		s.sendAPIStoreError(c, http.StatusBadRequest, "Invalid request body")
 
 		return
@@ -78,7 +77,7 @@ func (s *APIStore) PostTeamsTeamIDMembers(c *gin.Context, teamID api.TeamID) {
 
 	user, err := s.db.GetUserByEmail(ctx, string(body.Email))
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if dberrors.IsNotFoundError(err) {
 			s.sendAPIStoreError(c, http.StatusNotFound, "User with this email does not exist. Please ask them to sign up first.")
 
 			return
@@ -132,12 +131,20 @@ func (s *APIStore) DeleteTeamsTeamIDMembersUserId(c *gin.Context, teamID api.Tea
 		_ = tx.Rollback(ctx)
 	}()
 
+	lockedMembers, err := txDB.LockTeamMembersForUpdate(ctx, teamInfo.Team.ID)
+	if err != nil {
+		logger.L().Error(ctx, "failed to lock team members", zap.Error(err))
+		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to check team members")
+
+		return
+	}
+
 	relation, err := txDB.GetTeamMemberRelation(ctx, queries.GetTeamMemberRelationParams{
 		TeamID: teamInfo.Team.ID,
 		UserID: userId,
 	})
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if dberrors.IsNotFoundError(err) {
 			s.sendAPIStoreError(c, http.StatusBadRequest, "User is not a member of this team")
 
 			return
@@ -151,14 +158,6 @@ func (s *APIStore) DeleteTeamsTeamIDMembersUserId(c *gin.Context, teamID api.Tea
 
 	if relation.IsDefault {
 		s.sendAPIStoreError(c, http.StatusBadRequest, "Cannot remove a default team member")
-
-		return
-	}
-
-	lockedMembers, err := txDB.LockTeamMembersForUpdate(ctx, teamInfo.Team.ID)
-	if err != nil {
-		logger.L().Error(ctx, "failed to lock team members", zap.Error(err))
-		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to check team members")
 
 		return
 	}

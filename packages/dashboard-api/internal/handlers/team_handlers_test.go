@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -12,6 +13,8 @@ import (
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	authtypes "github.com/e2b-dev/infra/packages/auth/pkg/types"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
+	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
+	"github.com/e2b-dev/infra/packages/db/queries"
 )
 
 func TestMapAddTeamMemberRows(t *testing.T) {
@@ -117,5 +120,129 @@ func TestRequireAuthedTeamMatchesPath_Mismatch(t *testing.T) {
 	}
 	if recorder.Code != http.StatusForbidden {
 		t.Fatalf("expected status 403, got %d", recorder.Code)
+	}
+}
+
+func TestDeleteTeamsTeamIDMembersUserId_RechecksDefaultAfterLock(t *testing.T) {
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+
+	teamID := testutils.CreateTestTeam(t, testDB)
+	targetUserID := createHandlerTestUser(t, testDB)
+	otherUserID := createHandlerTestUser(t, testDB)
+
+	insertHandlerTestTeamMember(t, testDB, targetUserID, teamID, false)
+	insertHandlerTestTeamMember(t, testDB, otherUserID, teamID, true)
+
+	_, tx, err := testDB.SqlcClient.WithTx(ctx)
+	if err != nil {
+		t.Fatalf("failed to start locking transaction: %v", err)
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	var lockedUserID uuid.UUID
+	err = tx.QueryRow(
+		ctx,
+		`SELECT user_id
+		FROM public.users_teams
+		WHERE team_id = $1 AND user_id = $2
+		FOR UPDATE`,
+		teamID,
+		targetUserID,
+	).Scan(&lockedUserID)
+	if err != nil {
+		t.Fatalf("failed to lock target team member: %v", err)
+	}
+
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+	ginCtx.Request = httptest.NewRequest(http.MethodDelete, "/", nil)
+	auth.SetTeamInfo(ginCtx, &authtypes.Team{
+		Team: &authqueries.Team{ID: teamID},
+	})
+
+	store := &APIStore{db: testDB.SqlcClient}
+	done := make(chan struct{})
+
+	go func() {
+		store.DeleteTeamsTeamIDMembersUserId(ginCtx, teamID, targetUserID)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		t.Fatalf("expected delete handler to wait for the locked member row")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	_, err = tx.Exec(
+		ctx,
+		`UPDATE public.users_teams
+		SET is_default = true
+		WHERE team_id = $1 AND user_id = $2`,
+		teamID,
+		targetUserID,
+	)
+	if err != nil {
+		t.Fatalf("failed to promote target team member to default: %v", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("failed to commit locking transaction: %v", err)
+	}
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("delete handler did not finish after releasing the lock")
+	}
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d", recorder.Code)
+	}
+	if !strings.Contains(recorder.Body.String(), "Cannot remove a default team member") {
+		t.Fatalf("unexpected response body: %s", recorder.Body.String())
+	}
+
+	relation, err := testDB.SqlcClient.GetTeamMemberRelation(ctx, queries.GetTeamMemberRelationParams{
+		TeamID: teamID,
+		UserID: targetUserID,
+	})
+	if err != nil {
+		t.Fatalf("expected target team member relation to remain, got %v", err)
+	}
+	if !relation.IsDefault {
+		t.Fatal("expected target team member to remain marked as default")
+	}
+}
+
+func createHandlerTestUser(t *testing.T, db *testutils.Database) uuid.UUID {
+	t.Helper()
+
+	userID := uuid.New()
+	email := "user-" + userID.String() + "@example.com"
+
+	err := db.AuthDb.TestsRawSQL(t.Context(), `
+INSERT INTO auth.users (id, email)
+VALUES ($1, $2)
+`, userID, email)
+	if err != nil {
+		t.Fatalf("failed to create test user: %v", err)
+	}
+
+	return userID
+}
+
+func insertHandlerTestTeamMember(t *testing.T, db *testutils.Database, userID, teamID uuid.UUID, isDefault bool) {
+	t.Helper()
+
+	err := db.AuthDb.TestsRawSQL(t.Context(), `
+INSERT INTO public.users_teams (user_id, team_id, is_default)
+VALUES ($1, $2, $3)
+`, userID, teamID, isDefault)
+	if err != nil {
+		t.Fatalf("failed to create team member relation: %v", err)
 	}
 }
