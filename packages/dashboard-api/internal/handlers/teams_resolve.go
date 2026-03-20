@@ -1,11 +1,9 @@
 package handlers
 
 import (
-	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
@@ -13,6 +11,8 @@ import (
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+
+	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 )
 
 func (s *APIStore) GetTeamsResolve(c *gin.Context, params api.GetTeamsResolveParams) {
@@ -26,7 +26,7 @@ func (s *APIStore) GetTeamsResolve(c *gin.Context, params api.GetTeamsResolvePar
 		Slug:   params.Slug,
 	})
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if dberrors.IsNotFoundError(err) {
 			s.sendAPIStoreError(c, http.StatusNotFound, "Team not found")
 
 			return

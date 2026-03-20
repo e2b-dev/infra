@@ -11,12 +11,12 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/template"
-	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/ginutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
@@ -28,7 +28,7 @@ func (a *APIStore) PostTemplates(c *gin.Context) {
 
 	userID := auth.MustGetUserID(c)
 
-	body, err := utils.ParseBody[api.TemplateBuildRequest](ctx, c)
+	body, err := ginutils.ParseBody[api.TemplateBuildRequest](ctx, c)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid request body: %s", err))
 		telemetry.ReportCriticalError(ctx, "invalid request body", err)
@@ -80,7 +80,7 @@ func (a *APIStore) PostTemplatesTemplateID(c *gin.Context, rawTemplateID api.Tem
 
 	userID := auth.MustGetUserID(c)
 
-	body, err := utils.ParseBody[api.TemplateBuildRequest](ctx, c)
+	body, err := ginutils.ParseBody[api.TemplateBuildRequest](ctx, c)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid request body: %s", err))
 		telemetry.ReportCriticalError(ctx, "invalid request body", err)

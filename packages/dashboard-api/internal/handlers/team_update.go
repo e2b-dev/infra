@@ -13,6 +13,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	ginutils "github.com/e2b-dev/infra/packages/shared/pkg/ginutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -28,7 +29,7 @@ func (s *APIStore) PatchTeamsTeamID(c *gin.Context, teamID api.TeamID) {
 
 	telemetry.SetAttributes(ctx, telemetry.WithTeamID(teamInfo.Team.ID.String()))
 
-	body, err := parseUpdateTeamBody(c.Request.Body)
+	body, err := ginutils.ParseBodyWith(ctx, c, parseUpdateTeamBody)
 	if err != nil {
 		s.sendAPIStoreError(c, http.StatusBadRequest, "Invalid request body")
 
