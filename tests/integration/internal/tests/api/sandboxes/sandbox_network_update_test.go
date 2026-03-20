@@ -119,12 +119,17 @@ func TestUpdateNetworkConfig(t *testing.T) { //nolint:tparallel // subtests are 
 	require.NoError(t, err)
 	httpClient := &http.Client{Timeout: 10 * time.Second}
 
+	// defaultClientIP is the IPv4 address used when no specific fromIP is
+	// provided. Ingress rules only support IPv4; without this, CI runners
+	// that connect via IPv6 would be unconditionally denied.
+	const defaultClientIP = "198.51.100.99"
+
 	request := func(port int, fromIP string) int {
 		t.Helper()
-		var headers *http.Header
-		if fromIP != "" {
-			headers = &http.Header{"X-Forwarded-For": []string{fromIP + ", 0.0.0.0"}}
+		if fromIP == "" {
+			fromIP = defaultClientIP
 		}
+		headers := &http.Header{"X-Forwarded-For": []string{fromIP + ", 0.0.0.0"}}
 		req := utils.NewRequest(sbx, proxyURL, port, headers)
 		resp, err := httpClient.Do(req)
 		require.NoError(t, err)
