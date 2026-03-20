@@ -76,7 +76,7 @@ func (o *Orchestrator) updateSandboxNetworkOnNode(
 	)
 	defer span.End()
 
-	node := o.GetNode(sbx.ClusterID, sbx.NodeID)
+	node := o.getOrConnectNode(ctx, sbx.ClusterID, sbx.NodeID)
 	if node == nil {
 		return &api.APIError{
 			Code:      http.StatusInternalServerError,
