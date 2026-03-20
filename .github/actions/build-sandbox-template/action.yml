@@ -11,6 +11,7 @@ runs:
         FIRECRACKER_VERSION: "v1.12.1_a41d3fb"
       run: |
         go env
+        env
         
         # Generate an unique build ID for the template for this run
         export BUILD_ID=$(uuidgen)

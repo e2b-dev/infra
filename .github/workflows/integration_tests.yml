@@ -45,7 +45,9 @@ jobs:
             tests/integration/go.sum
 
       - name: Debug
-        run: go env
+        run: |
+          go env
+          env
 
       - name: Build Template
         uses: ./.github/actions/build-sandbox-template
