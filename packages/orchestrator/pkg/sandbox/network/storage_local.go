@@ -20,12 +20,12 @@ type StorageLocal struct {
 	foreignNs    map[string]struct{}
 	acquiredNs   map[string]struct{}
 	acquiredNsMu sync.Mutex
-	lifecycle    []SlotLifecycleHandlers
+	lifecycle    SlotEventLifecycle
 }
 
 const netNamespacesDir = "/var/run/netns"
 
-func NewStorageLocal(ctx context.Context, config Config, lifecycle []SlotLifecycleHandlers) (*StorageLocal, error) {
+func NewStorageLocal(ctx context.Context, config Config, lifecycle SlotEventLifecycle) (*StorageLocal, error) {
 	// get namespaces that we want to always skip
 	foreignNs, err := getForeignNamespaces()
 	if err != nil {

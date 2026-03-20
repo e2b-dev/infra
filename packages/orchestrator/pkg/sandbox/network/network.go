@@ -248,12 +248,10 @@ func (s *Slot) CreateNetwork(ctx context.Context) error {
 		return fmt.Errorf("error creating NFS redirect rule to sandbox NFS proxy server: %w", err)
 	}
 
-	// Create rules needed by lifecycle handlers
-	for _, handler := range s.lifecycleHandlers {
-		err = handler.OnSlotCreate(s, tables)
-		if err != nil {
-			return err
-		}
+	// Create rules needed by lifecycle handler
+	err = s.lifecycleHandler.OnSlotCreate(s, tables)
+	if err != nil {
+		return err
 	}
 
 	return nil
@@ -298,9 +296,10 @@ func (s *Slot) RemoveNetwork() error {
 			errs = append(errs, fmt.Errorf("error deleting sandbox hyperloop proxy redirect rule: %w", err))
 		}
 
-		// Delete changes made by lifecycle handlers
-		for _, handler := range s.lifecycleHandlers {
-			errs = append(errs, handler.OnSlotDelete(s, tables))
+		// Delete changes made by lifecycle handler
+		err = s.lifecycleHandler.OnSlotDelete(s, tables)
+		if err != nil {
+			errs = append(errs, err)
 		}
 	}
 

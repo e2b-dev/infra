@@ -16,14 +16,14 @@ type StorageKV struct {
 	slotsSize    int
 	consulClient *consulApi.Client
 	nodeID       string
-	lifecycle    []SlotLifecycleHandlers
+	lifecycle    SlotEventLifecycle
 }
 
 func (s *StorageKV) getKVKey(slotIdx int) string {
 	return fmt.Sprintf("%s/%d", s.nodeID, slotIdx)
 }
 
-func NewStorageKV(nodeID string, config Config, lifecycle []SlotLifecycleHandlers) (*StorageKV, error) {
+func NewStorageKV(nodeID string, config Config, lifecycle SlotEventLifecycle) (*StorageKV, error) {
 	consulToken := utils.RequiredEnv("CONSUL_TOKEN", "Consul token for authenticating requests to the Consul API")
 
 	consulClient, err := newConsulClient(consulToken)

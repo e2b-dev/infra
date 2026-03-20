@@ -12,10 +12,10 @@ type StorageMemory struct {
 	slotsSize   int
 	freeSlots   []bool
 	freeSlotsMu sync.Mutex
-	lifecycle   []SlotLifecycleHandlers
+	lifecycle   SlotEventLifecycle
 }
 
-func NewStorageMemory(slotsSize int, config Config, lifecycle []SlotLifecycleHandlers) (*StorageMemory, error) {
+func NewStorageMemory(slotsSize int, config Config, lifecycle SlotEventLifecycle) (*StorageMemory, error) {
 	return &StorageMemory{
 		config:      config,
 		slotsSize:   slotsSize,

@@ -80,16 +80,16 @@ type Slot struct {
 
 	hyperloopPort string
 
-	lifecycleHandlers []SlotLifecycleHandlers
-	config            Config
+	lifecycleHandler SlotEventLifecycle
+	config           Config
 }
 
-type SlotLifecycleHandlers struct {
-	OnSlotCreate func(s *Slot, tables *iptables.IPTables) error
-	OnSlotDelete func(s *Slot, tables *iptables.IPTables) error
+type SlotEventLifecycle interface {
+	OnSlotCreate(s *Slot, tables *iptables.IPTables) error
+	OnSlotDelete(s *Slot, tables *iptables.IPTables) error
 }
 
-func NewSlot(key string, idx int, config Config, lifecycle []SlotLifecycleHandlers) (*Slot, error) {
+func NewSlot(key string, idx int, config Config, lifecycle SlotEventLifecycle) (*Slot, error) {
 	if idx < 1 || idx > vrtSlotsSize {
 		return nil, fmt.Errorf("slot index %d is out of range [1, %d)", idx, vrtSlotsSize)
 	}
@@ -144,8 +144,8 @@ func NewSlot(key string, idx int, config Config, lifecycle []SlotLifecycleHandle
 
 		hyperloopPort: strconv.FormatUint(uint64(config.HyperloopProxyPort), 10),
 
-		config:            config,
-		lifecycleHandlers: lifecycle,
+		config:           config,
+		lifecycleHandler: lifecycle,
 	}
 
 	return slot, nil
