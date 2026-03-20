@@ -98,7 +98,7 @@ func TestSynchronize_InsertAndRemove(t *testing.T) {
 	s := newTestStore([]string{"a", "b"}, nil)
 	syncer := newSynchronizer(ctx, s)
 
-	if err := syncer.sync(ctx); err != nil {
+	if err := syncer.Sync(ctx); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -112,7 +112,7 @@ func TestSynchronize_InsertAndRemove(t *testing.T) {
 
 	// Now remove "b" from the source – should trigger exactly one removal.
 	s.source = []string{"a"}
-	if err := syncer.sync(ctx); err != nil {
+	if err := syncer.Sync(ctx); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
