@@ -19,10 +19,14 @@ import (
 
 var (
 	tracer = otel.Tracer("github.com/e2b-dev/infra/packages/shared/pkg/storage")
-	meter  = otel.GetMeterProvider().Meter("shared.pkg.storage")
+	meter  = otel.Meter("github.com/e2b-dev/infra/packages/shared/pkg/storage")
 )
 
 var ErrObjectNotExist = errors.New("object does not exist")
+
+// ErrObjectRateLimited means per-object mutation rate limiting —
+// multiple concurrent writers racing to write the same content-addressed object.
+var ErrObjectRateLimited = errors.New("object access rate limited")
 
 type Provider string
 

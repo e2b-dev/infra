@@ -166,8 +166,6 @@ module "orchestrator" {
   domain_name             = var.domain_name
   build_cache_bucket_name = var.build_cache_bucket_name
   launch_darkly_api_key   = var.launch_darkly_api_key
-
-  gcs_grpc_connection_pool_size = var.gcs_grpc_connection_pool_size
 }
 
 data "aws_s3_object" "template_manager" {

@@ -54,8 +54,10 @@ jobs:
       - name: Run integrity check
         run: make tidy
 
-      - name: Fix tracers
-        run: ./scripts/fix-tracers.sh
+      - name: Fix meters and tracers
+        run: |
+          ./scripts/fix-tracers.sh
+          ./scripts/fix-meters.sh
 
       - uses: jdx/mise-action@v3
         with:

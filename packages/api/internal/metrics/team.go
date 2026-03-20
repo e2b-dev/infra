@@ -45,7 +45,7 @@ func NewTeamObserver(ctx context.Context, sandboxStore *sandbox.Store) (*TeamObs
 	}
 
 	// Setup team sandbox metrics
-	meter := meterProvider.Meter("api.team.metrics")
+	meter := meterProvider.Meter("github.com/e2b-dev/infra/packages/api/internal/metrics")
 
 	teamSandboxMaxGauge, err := telemetry.GetGaugeInt(meter, telemetry.TeamSandboxRunningGaugeName)
 	if err != nil {

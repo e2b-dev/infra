@@ -13,6 +13,10 @@ func WithSandboxID(sandboxID string) zap.Field {
 	return zap.String("sandbox.id", sandboxID)
 }
 
+func WithLifecycleID(lifecycleID string) zap.Field {
+	return zap.String("sandbox.lifecycle.id", lifecycleID)
+}
+
 func WithTemplateID(templateID string) zap.Field {
 	return zap.String("template.id", templateID)
 }
@@ -51,6 +55,14 @@ func WithSandboxIP(sandboxIP string) zap.Field {
 
 func WithEnvdVersion(envdVersion string) zap.Field {
 	return zap.String("envd.version", envdVersion)
+}
+
+func WithKernelVersion(kernelVersion string) zap.Field {
+	return zap.String("sandbox.kernel.version", kernelVersion)
+}
+
+func WithFirecrackerVersion(firecrackerVersion string) zap.Field {
+	return zap.String("sandbox.firecracker.version", firecrackerVersion)
 }
 
 func WithClientIP(clientIP string) zap.Field {

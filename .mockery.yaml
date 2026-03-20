@@ -59,43 +59,6 @@ packages:
           filename: mockstorageprovider.go
           pkgname: providermocks
 
-  github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build:
-    interfaces:
-      Diff:
-        config:
-          dir: packages/orchestrator/internal/sandbox/build/mocks
-          filename: mockdiff.go
-          pkgname: buildmocks
-
-  github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block:
-    interfaces:
-      ReadonlyDevice:
-        config:
-          dir: packages/orchestrator/internal/sandbox/block/mocks
-          filename: mockreadonlydevice.go
-          pkgname: blockmocks
-
-  github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/peerserver:
-    interfaces:
-      Cache:
-        config:
-          dir: packages/orchestrator/internal/sandbox/template/peerserver/mocks
-          filename: mockcache.go
-          pkgname: peerservermocks
-
-  github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template:
-    interfaces:
-      Template:
-        config:
-          dir: packages/orchestrator/internal/sandbox/template/mocks
-          filename: mocktemplate.go
-          pkgname: templatemocks
-      File:
-        config:
-          dir: packages/orchestrator/internal/sandbox/template/mocks
-          filename: mockfile.go
-          pkgname: templatemocks
-
 
   io:
     interfaces:
@@ -121,29 +84,3 @@ packages:
           filename: mockfeatureflagsclient.go
           pkgname: handlersmocks
           structname: MockFeatureFlagsClient
-
-  github.com/willscott/go-nfs:
-    interfaces:
-      Handler:
-        config:
-          dir: packages/orchestrator/internal/nfsproxy/mocks
-          filename: nfshandler.go
-          pkgname: nfsproxymocks
-
-  github.com/go-git/go-billy/v5:
-    interfaces:
-      Change:
-        config:
-          dir: packages/orchestrator/internal/nfsproxy/mocks
-          filename: billychange.go
-          pkgname: nfsproxymocks
-      File:
-        config:
-          dir: packages/orchestrator/internal/nfsproxy/mocks
-          filename: billyfile.go
-          pkgname: nfsproxymocks
-      Filesystem:
-        config:
-          dir: packages/orchestrator/internal/nfsproxy/mocks
-          filename: billyfs.go
-          pkgname: nfsproxymocks

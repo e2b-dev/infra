@@ -61,25 +61,39 @@ locals {
   // Check if all clusters has size greater than 1
   template_manages_clusters_size_gt_1 = alltrue([for c in var.build_clusters_config : (c.cluster_size > 1)])
 
+  // for more docs, see https://linux.die.net/man/5/nfs
+  default_persistent_volume_type_nfs_mount_options = [
+    // network
+    "hard",       // retry nfs requests indefinitely until they succeed, never fail
+    "async",      // write eventually
+    "nconnect=7", // use multiple connections
+    "noresvport", // use a non-privileged source port
+    "retrans=3",  // retry two times before performing recovery actions
+    "timeo=600",  // wait 60 seconds (measured in deci-seconds) before retrying a failed request
+
+    // resiliency
+    "fg",              // wait for mounts to finish before exiting
+    "cto",             // enable "close-to-open" attribute checks
+    "lock",            // enable network locking
+    "local_lock=none", // all locks are network locks
+
+    // caching
+    "noac",             // disable attribute caching. slower, but more reliable
+    "lookupcache=none", // disable lookup caching
+
+    // security
+    "noacl",   // do not use an acl
+    "sec=sys", // use AUTH_SYS for all requests
+  ]
+
   persistent_volume_types = {
     for key, config in var.persistent_volume_types : key => {
       local_mount_path = "/mnt/persistent-volume-types/${key}"
       nfs_location     = module.persistent-volume-types[key].nfs_location
-      nfs_mount_opts = join(",", [ // for more docs, see https://linux.die.net/man/5/nfs
-        format("nfsvers=%s", module.persistent-volume-types[key].nfs_version),
-        "sync",             // write immediately
-        "hard",             // retry nfs requests indefinitely until they succeed, never fail
-        "lookupcache=none", // disable the lookup cache
-        "nconnect=7",       // use multiple connections
-        "noac",             // disable attribute cache
-        "noacl",            // do not use an acl
-        "cto",              // enable "close-to-open" attribute checks
-        "nolock",           // do not use locking
-        "noresvport",       // use a non-privileged source port
-        "retrans=2",        // retry two times before performing recovery actions
-        "sec=sys",          // use AUTH_SYS for all requests
-        "timeo=600",        // wait 60 seconds (measured in deci-seconds) before retrying a failed request
-      ])
+      nfs_mount_opts = join(",", concat(
+        [format("nfsvers=%s", module.persistent-volume-types[key].nfs_version)],
+        config.mount_options != null ? config.mount_options : local.default_persistent_volume_type_nfs_mount_options,
+      ))
     }
   }
 }
@@ -272,6 +286,7 @@ module "nomad" {
   envd_timeout                   = var.envd_timeout
   persistent_volume_mounts       = { for key, config in local.persistent_volume_types : key => config["local_mount_path"] }
   default_persistent_volume_type = var.default_persistent_volume_type
+  orchestrator_env_vars          = var.orchestrator_env_vars
 
   # Template manager
   builder_node_pool                   = var.build_node_pool

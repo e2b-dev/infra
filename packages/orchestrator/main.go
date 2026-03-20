@@ -27,30 +27,32 @@ import (
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	clickhouseevents "github.com/e2b-dev/infra/packages/clickhouse/pkg/events"
 	clickhousehoststats "github.com/e2b-dev/infra/packages/clickhouse/pkg/hoststats"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/events"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/factories"
-	e2bhealthcheck "github.com/e2b-dev/infra/packages/orchestrator/internal/healthcheck"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/hyperloopserver"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/localupload"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/metrics"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/portmap"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
-	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/cgroup"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/peerclient"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/server"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/service/machineinfo"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/tcpfirewall"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
-	tmplserver "github.com/e2b-dev/infra/packages/orchestrator/internal/template/server"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/volumes"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/chrooted"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/events"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/factories"
+	e2bhealthcheck "github.com/e2b-dev/infra/packages/orchestrator/pkg/healthcheck"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/hyperloopserver"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/localupload"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/metrics"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/nfsproxy"
+	nfscfg "github.com/e2b-dev/infra/packages/orchestrator/pkg/nfsproxy/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/portmap"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/proxy"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
+	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/cgroup"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/nbd"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template/peerclient"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/server"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/service"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/service/machineinfo"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/tcpfirewall"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/constants"
+	tmplserver "github.com/e2b-dev/infra/packages/orchestrator/pkg/template/server"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/volumes"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	event "github.com/e2b-dev/infra/packages/shared/pkg/events"
 	sharedFactories "github.com/e2b-dev/infra/packages/shared/pkg/factories"
@@ -469,7 +471,9 @@ func run(config cfg.Config) (success bool) {
 	// sandbox factory
 	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags, hostStatsDelivery, cgroupManager, sandboxes)
 
-	volumeService := volumes.New(config)
+	// isolated filesystems cache (for nfs proxy)
+	builder := chrooted.NewBuilder(config)
+	volumeService := volumes.New(config, builder)
 
 	orchestratorService, err := server.New(server.ServiceConfig{
 		Config:           config,
@@ -512,7 +516,7 @@ func run(config cfg.Config) (success bool) {
 
 	// nfs proxy server
 	if len(config.PersistentVolumeMounts) > 0 {
-		nfsClosers, err := startNFSProxy(ctx, config, startService, sandboxes)
+		nfsClosers, err := startNFSProxy(ctx, config, builder, startService, sandboxes)
 		if err != nil {
 			logger.L().Fatal(ctx, "failed to start nfs proxy", zap.Error(err))
 		}
@@ -579,7 +583,7 @@ func run(config cfg.Config) (success bool) {
 	grpc_health_v1.RegisterHealthServer(grpcServer, grpcHealth)
 
 	// cmux server, allows us to reuse the same TCP port between grpc and HTTP requests
-	cmuxServer, err := factories.NewCMUXServer(ctx, config.GRPCPort)
+	cmuxServer, err := factories.NewCMUXServer(ctx, config.GRPCPort, tel.MeterProvider)
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create cmux server", zap.Error(err))
 	}
@@ -673,7 +677,7 @@ func run(config cfg.Config) (success bool) {
 	// Mark service draining if not already.
 	// If service stats was previously changed via API, we don't want to override it.
 	logger.L().Info(ctx, "Starting drain phase", zap.Int("sandbox_count", sandboxes.Count()))
-	if serviceInfo.GetStatus() == orchestratorinfo.ServiceInfoStatus_Healthy {
+	if status := serviceInfo.GetStatus(); status == orchestratorinfo.ServiceInfoStatus_Healthy || status == orchestratorinfo.ServiceInfoStatus_Standby {
 		serviceInfo.SetStatus(ctx, orchestratorinfo.ServiceInfoStatus_Draining)
 
 		// Wait for draining state to propagate to all consumers
@@ -714,6 +718,7 @@ func run(config cfg.Config) (success bool) {
 func startNFSProxy(
 	ctx context.Context,
 	config cfg.Config,
+	builder *chrooted.Builder,
 	startService func(name string, f func() error),
 	sandboxes *sandbox.Map,
 ) ([]closer, error) {
@@ -742,7 +747,17 @@ func startNFSProxy(
 	}
 
 	// nfs proxy implementation
-	nfsServer := nfsproxy.NewProxy(ctx, sandboxes, config)
+	nfsServer, err := nfsproxy.NewProxy(ctx, builder, sandboxes, nfscfg.Config{
+		Logging:           config.NFSProxyLogging,
+		Tracing:           config.NFSProxyTracing,
+		Metrics:           config.NFSProxyMetrics,
+		RecordHandleCalls: config.NFSProxyRecordHandleCalls,
+		RecordStatCalls:   config.NFSProxyRecordStatCalls,
+		NFSLogLevel:       config.NFSProxyLogLevel,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create nfs proxy: %w", err)
+	}
 	startService("nfs proxy", func() error {
 		return nfsServer.Serve(lis)
 	})

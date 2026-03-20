@@ -1,0 +1,72 @@
+package volumes
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+)
+
+func TestDirDelete(t *testing.T) {
+	t.Parallel()
+
+	s, tmpdir, volumeInfo := setupTestService(t)
+
+	dirname := "test-dir"
+
+	t.Run("delete dir", func(t *testing.T) {
+		t.Parallel()
+
+		// create directory
+		err := os.Mkdir(filepath.Join(tmpdir, dirname), 0o755)
+		require.NoError(t, err)
+
+		// delete directory
+		_, err = s.DeleteDir(t.Context(), &orchestrator.VolumeDirDeleteRequest{
+			Volume: volumeInfo,
+			Path:   dirname,
+		})
+		require.NoError(t, err)
+
+		// verify the directory is gone
+		_, err = os.Stat(filepath.Join(tmpdir, dirname))
+		require.ErrorIs(t, err, os.ErrNotExist)
+	})
+
+	t.Run("delete non-existent dir", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := s.DeleteDir(t.Context(), &orchestrator.VolumeDirDeleteRequest{
+			Volume: volumeInfo,
+			Path:   "non-existent-dir",
+		})
+
+		requireGRPCError(t, err, codes.NotFound, orchestrator.UserErrorCode_PATH_NOT_FOUND)
+	})
+}
+
+func requireGRPCError(t *testing.T, err error, expectedGRPCCode codes.Code, expectedUserErrorCode orchestrator.UserErrorCode) {
+	t.Helper()
+
+	require.Error(t, err)
+
+	status, ok := status.FromError(err)
+	require.Truef(t, ok, "expected error to be a gRPC status error, got %T: %s", err, err.Error())
+
+	require.Equalf(t, expectedGRPCCode, status.Code(), "expected %s, got %s", expectedGRPCCode, status.Code())
+
+	for _, detail := range status.Details() {
+		if userError, ok := detail.(*orchestrator.UserError); ok {
+			require.Equalf(t, expectedUserErrorCode, userError.GetCode(), "expected %s, got %s", expectedUserErrorCode, userError.GetCode())
+
+			return
+		}
+	}
+
+	require.Fail(t, "expected UserError detail not found")
+}
