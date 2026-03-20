@@ -1,5 +1,5 @@
 packages:
-  github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build:
+  github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build:
     interfaces:
       Diff:
         config:
@@ -7,7 +7,7 @@ packages:
           filename: mockdiff.go
           pkgname: buildmocks
 
-  github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block:
+  github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block:
     interfaces:
       ReadonlyDevice:
         config:
@@ -15,7 +15,7 @@ packages:
           filename: mockreadonlydevice.go
           pkgname: blockmocks
 
-  github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/peerserver:
+  github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template/peerserver:
     interfaces:
       Cache:
         config:
@@ -23,7 +23,7 @@ packages:
           filename: mockcache.go
           pkgname: peerservermocks
 
-  github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template:
+  github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template:
     interfaces:
       Template:
         config:
