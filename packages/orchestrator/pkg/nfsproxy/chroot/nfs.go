@@ -121,7 +121,7 @@ func (h *NFSHandler) getChroot(ctx context.Context, remoteAddr net.Addr, request
 		return nil, fmt.Errorf("failed to mount %q: %w", volumeName, ErrVolumeNotFound)
 	}
 
-	teamID, ok := internal.TryParseUUID(sbx.Metadata.Runtime.TeamID)
+	teamID, ok := pkg.TryParseUUID(sbx.Metadata.Runtime.TeamID)
 	if !ok {
 		return nil, ErrInvalidTeamID
 	}

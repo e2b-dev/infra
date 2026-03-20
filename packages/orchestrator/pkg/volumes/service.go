@@ -16,7 +16,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	internal "github.com/e2b-dev/infra/packages/orchestrator/pkg"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/chrooted"
 	"github.com/e2b-dev/infra/packages/shared/pkg/filesystem"
@@ -53,12 +53,12 @@ type volumePathRequest interface {
 func (s *Service) getVolumeRootPath(ctx context.Context, volume *orchestrator.VolumeInfo) (string, error) {
 	volumeType := volume.GetVolumeType()
 
-	teamID, ok := internal.TryParseUUID(volume.GetTeamId())
+	teamID, ok := pkg.TryParseUUID(volume.GetTeamId())
 	if !ok {
 		return "", newAPIError(ctx, codes.InvalidArgument, http.StatusBadRequest, orchestrator.UserErrorCode_INVALID_REQUEST, "invalid team ID %q", volume.GetTeamId()).Err()
 	}
 
-	volumeID, ok := internal.TryParseUUID(volume.GetVolumeId())
+	volumeID, ok := pkg.TryParseUUID(volume.GetVolumeId())
 	if !ok {
 		return "", newAPIError(ctx, codes.InvalidArgument, http.StatusBadRequest, orchestrator.UserErrorCode_INVALID_REQUEST, "invalid volume ID %q", volume.GetVolumeId()).Err()
 	}
@@ -79,7 +79,7 @@ func (s *Service) getFilesystemAndPath(ctx context.Context, request volumePathRe
 	volume := request.GetVolume()
 	volumeType := volume.GetVolumeType()
 
-	teamID, ok := internal.TryParseUUID(volume.GetTeamId())
+	teamID, ok := pkg.TryParseUUID(volume.GetTeamId())
 	if !ok {
 		return nil, "", newAPIError(ctx,
 			codes.InvalidArgument,
@@ -89,7 +89,7 @@ func (s *Service) getFilesystemAndPath(ctx context.Context, request volumePathRe
 		)
 	}
 
-	volumeID, ok := internal.TryParseUUID(volume.GetVolumeId())
+	volumeID, ok := pkg.TryParseUUID(volume.GetVolumeId())
 	if !ok {
 		return nil, "", newAPIError(ctx,
 			codes.InvalidArgument,
