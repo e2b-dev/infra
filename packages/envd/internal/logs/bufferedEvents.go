@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	defaultMaxBufferSize = 2 << 15
+	defaultMaxBufferSize = 64 << 10 // 64 KiB
 	defaultTimeout       = 2 * time.Second
 )
 

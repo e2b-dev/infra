@@ -30,6 +30,7 @@ import (
 	oteltrace "go.opentelemetry.io/otel/trace"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	sharedmiddleware "github.com/e2b-dev/infra/packages/shared/pkg/middleware"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -112,8 +113,11 @@ func Middleware(tracerProvider oteltrace.TracerProvider, service string) gin.Han
 		c.Next()
 
 		status := c.Writer.Status()
-		if errors.Is(ctx.Err(), context.Canceled) {
-			status = 499
+		cause := sharedmiddleware.CancelCause(c)
+		if errors.Is(cause, sharedmiddleware.ErrRequestTimeout) {
+			span.SetAttributes(attribute.Bool("request.timeout", true))
+		} else if errors.Is(cause, context.Canceled) {
+			status = sharedmiddleware.StatusClientClosedRequest
 			span.SetAttributes(attribute.Bool("client.canceled", true))
 		}
 
