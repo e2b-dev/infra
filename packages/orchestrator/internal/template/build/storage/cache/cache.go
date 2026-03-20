@@ -9,8 +9,6 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/paths"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
@@ -106,10 +104,8 @@ func (h *HashIndex) SaveLayerMeta(ctx context.Context, hash string, template Lay
 
 	err = obj.Put(ctx, marshaled)
 	if err != nil {
-		// ResourceExhausted from GCS means per-object mutation rate limiting —
-		// multiple concurrent writers racing to write the same content-addressed object.
 		// Since the data should be basically identical, this is safe to skip.
-		if isResourceExhausted(err) {
+		if errors.Is(storage.ErrObjectRateLimited, err) {
 			logger.L().Warn(ctx, "rate limited writing layer metadata to object, skipping",
 				zap.String("hash", hash),
 				zap.Error(err),
@@ -122,19 +118,6 @@ func (h *HashIndex) SaveLayerMeta(ctx context.Context, hash string, template Lay
 	}
 
 	return nil
-}
-
-func isResourceExhausted(err error) bool {
-	type grpcStatusProvider interface {
-		GRPCStatus() *status.Status
-	}
-
-	var se grpcStatusProvider
-	if errors.As(err, &se) {
-		return se.GRPCStatus().Code() == codes.ResourceExhausted
-	}
-
-	return false
 }
 
 func HashKeys(baseKey string, keys ...string) string {

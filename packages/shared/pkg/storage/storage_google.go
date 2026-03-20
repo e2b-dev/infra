@@ -13,12 +13,14 @@ import (
 	"time"
 
 	"cloud.google.com/go/storage"
+	"github.com/gogo/status"
 	"github.com/googleapis/gax-go/v2"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
@@ -311,6 +313,12 @@ func (o *gcpObject) Put(ctx context.Context, data []byte) (e error) {
 	if err != nil && !errors.Is(err, io.EOF) {
 		timer.Failure(ctx, c)
 
+		// ResourceExhausted from GCS means per-object mutation rate limiting —
+		// multiple concurrent writers racing to write the same content-addressed object.
+		if isResourceExhausted(err) {
+			return storage.ErrBucketNotExist
+		}
+
 		return fmt.Errorf("failed to write to %q: %w", o.path, err)
 	}
 
@@ -463,4 +471,17 @@ func parseServiceAccountBase64(serviceAccount string) (*gcpServiceToken, error) 
 	}
 
 	return &sa, nil
+}
+
+func isResourceExhausted(err error) bool {
+	type grpcStatusProvider interface {
+		GRPCStatus() *status.Status
+	}
+
+	var se grpcStatusProvider
+	if errors.As(err, &se) {
+		return se.GRPCStatus().Code() == codes.ResourceExhausted
+	}
+
+	return false
 }
