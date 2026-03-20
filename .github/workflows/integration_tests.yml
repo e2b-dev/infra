@@ -46,8 +46,8 @@ jobs:
 
       - name: Debug
         run: |
-          go env
-          env
+          which go
+          go version
 
       - name: Build Template
         uses: ./.github/actions/build-sandbox-template

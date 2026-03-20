@@ -18,7 +18,7 @@ jobs:
           - name: client-proxy
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
 
       - name: Setup Go
         uses: ./.github/actions/go-setup-cache
