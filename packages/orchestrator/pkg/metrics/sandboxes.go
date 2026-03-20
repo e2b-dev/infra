@@ -87,7 +87,7 @@ func NewSandboxObserver(ctx context.Context, nodeID, serviceName, serviceCommit,
 		return nil, fmt.Errorf("failed to create external metric provider: %w", err)
 	}
 
-	meter := meterProvider.Meter("orchestrator.sandbox.metrics")
+	meter := meterProvider.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/metrics")
 	cpuTotal, err := telemetry.GetGaugeInt(meter, telemetry.SandboxCpuTotalGaugeName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create CPU total gauge: %w", err)

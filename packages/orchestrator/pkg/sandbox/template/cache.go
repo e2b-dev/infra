@@ -37,7 +37,7 @@ const (
 
 var (
 	tracer     = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template")
-	meter      = otel.GetMeterProvider().Meter("orchestrator.internal.sandbox.template")
+	meter      = otel.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template")
 	hitsMetric = utils.Must(meter.Int64Counter("orchestrator.templates.cache.hits",
 		metric.WithDescription("Requests for templates that were already cached")))
 	missesMetric = utils.Must(meter.Int64Counter("orchestrator.templates.cache.misses",

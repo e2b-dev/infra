@@ -44,7 +44,7 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 	limiter := connlimit.NewConnectionLimiter()
 	metrics := NewMetrics(meterProvider)
 
-	meter := meterProvider.Meter("orchestrator.proxy.sandbox")
+	meter := meterProvider.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/proxy")
 
 	connLimitConfig := &reverseproxy.ConnectionLimitConfig{
 		Limiter: limiter,
@@ -217,10 +217,10 @@ func (p *SandboxProxy) GetAddr() string {
 }
 
 // OnInsert is called when a sandbox is inserted into the map.
-func (p *SandboxProxy) OnInsert(_ *sandbox.Sandbox) {}
+func (p *SandboxProxy) OnInsert(_ context.Context, _ *sandbox.Sandbox) {}
 
 // OnRemove is called when a sandbox is removed from the map.
 // It cleans up the connection limiter entry for the sandbox.
-func (p *SandboxProxy) OnRemove(sandboxID string) {
-	p.limiter.Remove(sandboxID)
+func (p *SandboxProxy) OnRemove(_ context.Context, sbx *sandbox.Sandbox) {
+	p.limiter.Remove(sbx.Runtime.SandboxID)
 }

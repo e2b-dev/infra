@@ -13,6 +13,10 @@ func WithSandboxID(sandboxID string) zap.Field {
 	return zap.String("sandbox.id", sandboxID)
 }
 
+func WithLifecycleID(lifecycleID string) zap.Field {
+	return zap.String("sandbox.lifecycle.id", lifecycleID)
+}
+
 func WithTemplateID(templateID string) zap.Field {
 	return zap.String("template.id", templateID)
 }

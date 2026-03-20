@@ -87,7 +87,7 @@ func New(cfg ServiceConfig) (*Server, error) {
 		uploadedBuilds:    uploadedBuilds,
 	}
 
-	meter := cfg.Tel.MeterProvider.Meter("orchestrator.sandbox")
+	meter := cfg.Tel.MeterProvider.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/server")
 
 	sandboxCreateDuration, err := telemetry.GetHistogram(meter, telemetry.OrchestratorSandboxCreateDurationName)
 	if err != nil {

@@ -11,7 +11,7 @@ processed=0
 skipped=0
 
 readonly prefix="github.com/e2b-dev/infra/packages"
-readonly search_pattern='\.Tracer(".*'
+readonly search_pattern='\.Meter(".*'
 
 echo "Starting tracer replacement in directory: $SEARCH_DIR"
 echo "----------------------------------------"
@@ -27,7 +27,7 @@ while IFS= read -r -d '' file; do
 
         # Perform the replacement
         # Using sed with proper escaping
-        full_replace='s/'"${search_pattern}"'/\.Tracer("'"${relative_path//\//\\/}"'")/'
+        full_replace='s/'"${search_pattern}"'/\.Meter("'"${relative_path//\//\\/}"'")/'
         sed -i "$full_replace" "$file"
 
         # Check if replacement was successful
@@ -38,7 +38,7 @@ while IFS= read -r -d '' file; do
     else
         ((skipped++))
     fi
-done < <(find "$SEARCH_DIR" -type f \( -name "*.go" -o -name "*.js" -o -name "*.ts" -o -name "*.java" -o -name "*.py" \) -print0 2>/dev/null)
+done < <(find "$SEARCH_DIR" -type f -name "*.go" -print0 2>/dev/null)
 
 echo "----------------------------------------"
 echo "Summary:"

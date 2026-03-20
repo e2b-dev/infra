@@ -84,7 +84,7 @@ func Test_server_List(t *testing.T) {
 				sbx.SetStartedAt(startTime)
 				sbx.SetEndAt(tt.endAt)
 				sandboxes.Insert(t.Context(), sbx)
-				sandboxes.MarkRunning(sbx)
+				sandboxes.MarkRunning(t.Context(), sbx)
 			}
 			got, err := s.List(t.Context(), tt.args.in1)
 			if (err != nil) != tt.wantErr {

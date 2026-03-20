@@ -22,7 +22,7 @@ import (
 
 var (
 	tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template/peerclient")
-	meter  = otel.GetMeterProvider().Meter("orchestrator.internal.sandbox.template.peerclient")
+	meter  = otel.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template/peerclient")
 
 	peerReadTimerFactory = utils.Must(telemetry.NewTimerFactory(meter,
 		"orchestrator.storage.peer.read",
