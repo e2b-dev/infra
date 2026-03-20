@@ -117,7 +117,7 @@ func NewTracedLogger(innerLogger *zap.Logger) Logger {
 }
 
 func L() *TracedLogger {
-	return &TracedLogger{innerLogger: withTraceLoggerOptions(zap.L())} //nolint:forbidigo // zap.L is used to get the global logger
+	return &TracedLogger{innerLogger: zap.L()} //nolint:forbidigo // zap.L is used to get the global logger
 }
 
 func NewNopLogger() *TracedLogger {
