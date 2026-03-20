@@ -8,7 +8,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/clickhouse/pkg/hoststats"
-	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -17,7 +16,6 @@ import (
 func initializeHostStatsCollector(
 	ctx context.Context,
 	sbx *Sandbox,
-	fcHandle *fc.Process,
 	runtime RuntimeMetadata,
 	config *Config,
 	hostStatsDelivery hoststats.Delivery,
@@ -27,11 +25,9 @@ func initializeHostStatsCollector(
 		return
 	}
 
-	firecrackerPID, err := fcHandle.Pid()
-	if err != nil {
-		logger.L().Error(ctx, "failed to get firecracker PID for host stats",
-			logger.WithSandboxID(runtime.SandboxID),
-			zap.Error(err))
+	if sbx.cgroupHandle == nil {
+		logger.L().Warn(ctx, "cgroup handle not available, skipping host stats collection",
+			logger.WithSandboxID(runtime.SandboxID))
 
 		return
 	}
@@ -41,12 +37,7 @@ func initializeHostStatsCollector(
 		logger.L().Error(ctx, "error parsing team ID", logger.WithTeamID(runtime.TeamID), zap.Error(err))
 	}
 
-	var cgroupStats CgroupStatsFunc
-	if sbx.cgroupHandle != nil {
-		cgroupStats = sbx.cgroupHandle.GetStats
-	}
-
-	collector, err := NewHostStatsCollector(
+	collector := NewHostStatsCollector(
 		HostStatsMetadata{
 			SandboxID:   runtime.SandboxID,
 			ExecutionID: runtime.ExecutionID,
@@ -57,18 +48,10 @@ func initializeHostStatsCollector(
 			MemoryMB:    config.RamMB,
 			SandboxType: runtime.SandboxType,
 		},
-		int32(firecrackerPID),
 		hostStatsDelivery,
 		samplingInterval,
-		cgroupStats,
+		sbx.cgroupHandle.GetStats,
 	)
-	if err != nil {
-		logger.L().Error(ctx, "failed to create host stats collector",
-			logger.WithSandboxID(runtime.SandboxID),
-			zap.Error(err))
-
-		return
-	}
 
 	sbx.hostStatsCollector = collector
 
