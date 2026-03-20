@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"regexp"
@@ -40,7 +41,6 @@ func LoggingMiddleware(logger logger.Logger, conf Config) gin.HandlerFunc {
 
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-
 		start := time.Now()
 
 		// Preserve this if any middleware modifies these values
@@ -83,9 +83,8 @@ func LoggingMiddleware(logger logger.Logger, conf Config) gin.HandlerFunc {
 			status := c.Writer.Status()
 			cause := CancelCause(c)
 			if errors.Is(cause, ErrRequestTimeout) {
-				status = http.StatusInternalServerError // 500
 				fields = append(fields, zap.Bool("request_timeout", true))
-			} else if cause != nil {
+			} else if errors.Is(cause, context.Canceled) {
 				status = StatusClientClosedRequest // 499
 				fields = append(fields, zap.Bool("client_canceled", true))
 			}

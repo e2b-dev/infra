@@ -20,7 +20,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"strings"
 	"time"
 
@@ -116,9 +115,8 @@ func Middleware(tracerProvider oteltrace.TracerProvider, service string) gin.Han
 		status := c.Writer.Status()
 		cause := sharedmiddleware.CancelCause(c)
 		if errors.Is(cause, sharedmiddleware.ErrRequestTimeout) {
-			status = http.StatusInternalServerError
 			span.SetAttributes(attribute.Bool("request.timeout", true))
-		} else if cause != nil {
+		} else if errors.Is(cause, context.Canceled) {
 			status = sharedmiddleware.StatusClientClosedRequest
 			span.SetAttributes(attribute.Bool("client.canceled", true))
 		}
