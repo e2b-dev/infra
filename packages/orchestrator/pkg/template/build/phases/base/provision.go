@@ -27,7 +27,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/layer"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/phases"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/writer"
-	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/constants"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/units"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
