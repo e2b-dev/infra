@@ -33,7 +33,7 @@ jobs:
         run: make -C ${{ matrix.package.path }} build-debug
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.package.path }}-build
           path: ${{ matrix.package.path }}/{{ matrix.package.output }}
