@@ -2,7 +2,6 @@ package redis
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/bsm/redislock"
@@ -63,40 +62,82 @@ func (s *Storage) Close() {
 
 // Sync is here only for legacy reasons, redis backend doesn't need any sync
 func (s *Storage) Sync(ctx context.Context, sbxs []sandbox.Sandbox, nodeID string) []sandbox.Sandbox {
-	now := time.Now()
-	var orphans []sandbox.Sandbox
+	if len(sbxs) == 0 {
+		return nil
+	}
 
+	now := time.Now()
+
+	// Filter out sandboxes that are too young to be considered orphans.
+	type candidate struct {
+		sbx sandbox.Sandbox
+		key string
+	}
+
+	// Group candidates by team for per-team MGET (Redis Cluster slot compatibility).
+	teamCandidates := make(map[string][]candidate)
 	for _, sbx := range sbxs {
-		// Skip sandboxes that were started recently — they may still be in the
-		// process of being fully registered in the store.
 		if now.Sub(sbx.StartTime) < orphanGracePeriod {
 			continue
 		}
 
-		_, err := s.Get(ctx, sbx.TeamID, sbx.SandboxID)
-		if err == nil {
-			// Sandbox exists in store, not an orphan.
-			continue
+		team := sbx.TeamID.String()
+		teamCandidates[team] = append(teamCandidates[team], candidate{
+			sbx: sbx,
+			key: getSandboxKey(team, sbx.SandboxID),
+		})
+	}
+	if len(teamCandidates) == 0 {
+		return nil
+	}
+
+	// Pipeline per-team MGET calls.
+	pipe := s.redisClient.Pipeline()
+
+	type batchInfo struct {
+		cmd        *redis.SliceCmd
+		candidates []candidate
+	}
+
+	var batches []batchInfo
+	for _, candidates := range teamCandidates {
+		keys := make([]string, len(candidates))
+		for i, c := range candidates {
+			keys[i] = c.key
 		}
 
-		if !errors.Is(err, sandbox.ErrNotFound) {
-			// Store error (e.g. Redis connection issue) — skip to avoid mass kills.
-			logger.L().Warn(ctx, "Error checking sandbox in store during orphan cleanup, skipping",
-				zap.Error(err),
+		cmd := pipe.MGet(ctx, keys...)
+		batches = append(batches, batchInfo{cmd: cmd, candidates: candidates})
+	}
+
+	_, err := pipe.Exec(ctx)
+	if err != nil {
+		// Pipeline error — skip entirely to avoid mass kills.
+		logger.L().Error(ctx, "Redis pipeline error during orphan sync, skipping",
+			zap.Error(err),
+			logger.WithNodeID(nodeID),
+		)
+
+		return nil
+	}
+
+	var orphans []sandbox.Sandbox
+	for _, batch := range batches {
+		results := batch.cmd.Val()
+		for i, raw := range results {
+			if raw != nil {
+				// Sandbox exists in store, not an orphan.
+				continue
+			}
+
+			sbx := batch.candidates[i].sbx
+			logger.L().Warn(ctx, "Killing orphaned sandbox not found in store",
 				logger.WithSandboxID(sbx.SandboxID),
 				logger.WithNodeID(nodeID),
 			)
 
-			continue
+			orphans = append(orphans, sbx)
 		}
-
-		// Sandbox is an orphan — kill it on the node.
-		logger.L().Error(ctx, "Killing orphaned sandbox not found in store",
-			logger.WithSandboxID(sbx.SandboxID),
-			logger.WithNodeID(nodeID),
-		)
-
-		orphans = append(orphans, sbx)
 	}
 
 	return orphans
