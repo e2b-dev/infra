@@ -16,10 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-const (
-	ToMBShift        = 20
-	fallbackDiffSize = 100 << ToMBShift
-)
+var fallbackDiffSize = units.MBToBytes(100)
 
 type deleteDiff struct {
 	size      int64

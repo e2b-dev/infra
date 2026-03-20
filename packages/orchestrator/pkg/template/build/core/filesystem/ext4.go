@@ -16,6 +16,7 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sys/unix"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/units"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -27,8 +28,6 @@ const (
 	inodesRatio = int64(4096)
 	// reservedBlocksPercentage is 0 because reserved blocks are set post-creation via tune2fs -r after the final resize.
 	reservedBlocksPercentage = int64(0)
-
-	ToMBShift = 20
 )
 
 func Make(ctx context.Context, rootfsPath string, sizeMb int64, blockSize int64) error {
@@ -147,7 +146,7 @@ func Resize(ctx context.Context, rootfsPath string, targetSize int64) (int64, er
 
 	// Resize the ext4 filesystem
 	// The underlying file must be synced to the filesystem
-	cmd := exec.CommandContext(ctx, "resize2fs", rootfsPath, strconv.FormatInt(targetSize>>ToMBShift, 10)+"M")
+	cmd := exec.CommandContext(ctx, "resize2fs", rootfsPath, strconv.FormatInt(units.BytesToMB(targetSize), 10)+"M")
 	resizeStdoutWriter := telemetry.NewEventWriter(ctx, "stdout")
 	cmd.Stdout = resizeStdoutWriter
 	resizeStderrWriter := telemetry.NewEventWriter(ctx, "stderr")
@@ -337,7 +336,7 @@ func SetReservedBlocksOnHost(ctx context.Context, rootfsPath string, reservedSpa
 	ctx, span := tracer.Start(ctx, "set-reserved-blocks")
 	defer span.End()
 
-	blocks := (reservedSpaceMB << ToMBShift) / blockSize
+	blocks := units.MBToBytes(reservedSpaceMB) / blockSize
 
 	cmd := exec.CommandContext(ctx, "tune2fs", "-r", strconv.FormatInt(blocks, 10), rootfsPath)
 

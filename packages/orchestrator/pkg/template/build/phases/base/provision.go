@@ -193,11 +193,11 @@ func (bb *BaseBuilder) enlargeDiskAfterProvisioning(
 	if err != nil {
 		return fmt.Errorf("error getting free space: %w", err)
 	}
-	sizeDiff := template.DiskSizeMB<<constants.ToMBShift - rootfsFreeSpace
+	sizeDiff := units.MBToBytes(template.DiskSizeMB) - rootfsFreeSpace
 	logger.L().Debug(ctx, "adding provision size diff to rootfs",
 		zap.Int64("size_add", sizeDiff),
 		zap.Int64("size_free", rootfsFreeSpace),
-		zap.Int64("size_target", template.DiskSizeMB<<constants.ToMBShift),
+		zap.Int64("size_target", units.MBToBytes(template.DiskSizeMB)),
 	)
 	if sizeDiff <= 0 {
 		logger.L().Debug(ctx, "no need to enlarge rootfs, skipping")
