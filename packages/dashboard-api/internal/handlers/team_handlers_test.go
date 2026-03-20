@@ -8,19 +8,18 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	authtypes "github.com/e2b-dev/infra/packages/auth/pkg/types"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 )
 
-func TestMapAddTeamMemberError(t *testing.T) {
+func TestMapAddTeamMemberRows(t *testing.T) {
 	t.Parallel()
 
-	status, message, ok := mapAddTeamMemberError(&pgconn.PgError{Code: "23505"})
+	status, message, ok := mapAddTeamMemberRows(0)
 	if !ok {
-		t.Fatalf("expected duplicate error to be handled")
+		t.Fatalf("expected zero rows to be handled")
 	}
 	if status != 400 {
 		t.Fatalf("expected status 400, got %d", status)

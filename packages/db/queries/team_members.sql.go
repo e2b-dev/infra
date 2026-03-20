@@ -12,7 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const addTeamMember = `-- name: AddTeamMember :exec
+const addTeamMember = `-- name: AddTeamMember :execrows
 INSERT INTO public.users_teams (user_id, team_id, is_default, added_by)
 VALUES (
     $1::uuid,
@@ -20,6 +20,7 @@ VALUES (
     false,
     $3::uuid
 )
+ON CONFLICT (team_id, user_id) DO NOTHING
 `
 
 type AddTeamMemberParams struct {
@@ -28,9 +29,12 @@ type AddTeamMemberParams struct {
 	AddedBy uuid.UUID
 }
 
-func (q *Queries) AddTeamMember(ctx context.Context, arg AddTeamMemberParams) error {
-	_, err := q.db.Exec(ctx, addTeamMember, arg.UserID, arg.TeamID, arg.AddedBy)
-	return err
+func (q *Queries) AddTeamMember(ctx context.Context, arg AddTeamMemberParams) (int64, error) {
+	result, err := q.db.Exec(ctx, addTeamMember, arg.UserID, arg.TeamID, arg.AddedBy)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const getTeamMemberRelation = `-- name: GetTeamMemberRelation :one

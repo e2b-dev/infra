@@ -11,7 +11,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
-	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -91,37 +90,19 @@ func (s *APIStore) PostTeamsTeamIDMembers(c *gin.Context, teamID api.TeamID) {
 		return
 	}
 
-	_, err = s.db.GetTeamMemberRelation(ctx, queries.GetTeamMemberRelationParams{
-		TeamID: teamInfo.Team.ID,
-		UserID: user.ID,
-	})
-	if err == nil {
-		s.sendAPIStoreError(c, http.StatusBadRequest, "User is already a member of this team")
-
-		return
-	}
-
-	if !errors.Is(err, pgx.ErrNoRows) {
-		logger.L().Error(ctx, "failed to check team membership", zap.Error(err))
-		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to check team membership")
-
-		return
-	}
-
-	err = s.db.AddTeamMember(ctx, queries.AddTeamMemberParams{
+	addedRows, err := s.db.AddTeamMember(ctx, queries.AddTeamMemberParams{
 		UserID:  user.ID,
 		TeamID:  teamInfo.Team.ID,
 		AddedBy: userID,
 	})
 	if err != nil {
-		if status, message, ok := mapAddTeamMemberError(err); ok {
-			s.sendAPIStoreError(c, status, message)
-
-			return
-		}
-
 		logger.L().Error(ctx, "failed to add team member", zap.Error(err), logger.WithTeamID(teamInfo.Team.ID.String()))
 		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to add team member")
+
+		return
+	}
+	if status, message, ok := mapAddTeamMemberRows(addedRows); ok {
+		s.sendAPIStoreError(c, status, message)
 
 		return
 	}
@@ -214,8 +195,8 @@ func (s *APIStore) DeleteTeamsTeamIDMembersUserId(c *gin.Context, teamID api.Tea
 	c.Status(http.StatusNoContent)
 }
 
-func mapAddTeamMemberError(err error) (int, string, bool) {
-	if dberrors.IsUniqueConstraintViolation(err) {
+func mapAddTeamMemberRows(addedRows int64) (int, string, bool) {
+	if addedRows == 0 {
 		return http.StatusBadRequest, "User is already a member of this team", true
 	}
 

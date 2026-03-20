@@ -8,11 +8,10 @@ import (
 
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
+	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-
-	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 )
 
 func (s *APIStore) GetTeamsResolve(c *gin.Context, params api.GetTeamsResolveParams) {
