@@ -34,6 +34,16 @@ jobs:
       - name: Initialize Host
         uses: ./.github/actions/host-init
 
+      - name: Setup Go
+        uses: ./.github/actions/go-setup-cache
+        with:
+          cache-dependency-paths: |
+            go.work
+            packages/orchestrator/go.mod
+            packages/orchestrator/go.sum
+            tests/integration/go.mod
+            tests/integration/go.sum
+
       - name: Build Template
         uses: ./.github/actions/build-sandbox-template
 
