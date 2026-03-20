@@ -106,6 +106,9 @@ func (h *HashIndex) SaveLayerMeta(ctx context.Context, hash string, template Lay
 
 	err = obj.Put(ctx, marshaled)
 	if err != nil {
+		// ResourceExhausted from GCS means per-object mutation rate limiting —
+		// multiple concurrent writers racing to write the same content-addressed object.
+		// Since the data should be basically identical, this is safe to skip.
 		if isResourceExhausted(err) {
 			logger.L().Warn(ctx, "rate limited writing layer metadata to object, skipping",
 				zap.String("hash", hash),
