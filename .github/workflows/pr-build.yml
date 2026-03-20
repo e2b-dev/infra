@@ -25,8 +25,8 @@ jobs:
         with:
           cache-dependency-paths: |
             go.work
-            ${{ matrix.package.path }}/go.mod
-            ${{ matrix.package.path }}/go.sum
+            packages/${{ matrix.package.name }}/go.mod
+            packages/${{ matrix.package.name }}/go.sum
 
       - name: Build package
         run: make -C packages/${{ matrix.package.name }} build-debug
