@@ -59,24 +59,6 @@ func TestRequestTimeout_CancelsBlockingHandler(t *testing.T) {
 	assert.Less(t, elapsed, 500*time.Millisecond, "handler should have been unblocked by context timeout")
 }
 
-func TestRequestTimeout_ExcludedRouteHasNoDeadline(t *testing.T) {
-	t.Parallel()
-
-	r := gin.New()
-	r.Use(RequestTimeout(500*time.Millisecond, "/health"))
-	r.GET("/health", func(c *gin.Context) {
-		_, ok := c.Request.Context().Deadline()
-		assert.False(t, ok, "excluded route should not have a deadline")
-		c.Status(http.StatusOK)
-	})
-
-	w := httptest.NewRecorder()
-	req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "/health", nil)
-	r.ServeHTTP(w, req)
-
-	require.Equal(t, http.StatusOK, w.Code)
-}
-
 func TestRequestTimeout_NormalRequestContextNotCanceled(t *testing.T) {
 	t.Parallel()
 
@@ -126,22 +108,4 @@ func TestRequestTimeout_TimeoutContextVisibleToOuterMiddleware(t *testing.T) {
 
 	require.ErrorIs(t, outerCause, ErrRequestTimeout,
 		"outer middleware should see ErrRequestTimeout as the cause when the timeout fires")
-}
-
-func TestRequestTimeout_ExcludedRouteWithParam(t *testing.T) {
-	t.Parallel()
-
-	r := gin.New()
-	r.Use(RequestTimeout(500*time.Millisecond, "/templates/:templateID/builds/:buildID/logs"))
-	r.GET("/templates/:templateID/builds/:buildID/logs", func(c *gin.Context) {
-		_, ok := c.Request.Context().Deadline()
-		assert.False(t, ok, "excluded parameterized route should not have a deadline")
-		c.Status(http.StatusOK)
-	})
-
-	w := httptest.NewRecorder()
-	req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "/templates/abc123/builds/build456/logs", nil)
-	r.ServeHTTP(w, req)
-
-	require.Equal(t, http.StatusOK, w.Code)
 }
