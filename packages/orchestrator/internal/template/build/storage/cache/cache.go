@@ -4,15 +4,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
-	"errors"
 	"fmt"
 
 	"go.opentelemetry.io/otel"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/paths"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
@@ -104,16 +101,6 @@ func (h *HashIndex) SaveLayerMeta(ctx context.Context, hash string, template Lay
 
 	err = obj.Put(ctx, marshaled)
 	if err != nil {
-		// Since the data should be basically identical, this is safe to skip.
-		if errors.Is(err, storage.ErrObjectRateLimited) {
-			logger.L().Warn(ctx, "rate limited writing layer metadata to object, skipping",
-				zap.String("hash", hash),
-				zap.Error(err),
-			)
-
-			return nil
-		}
-
 		return fmt.Errorf("error writing layer metadata to object: %w", err)
 	}
 
