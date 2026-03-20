@@ -63,14 +63,14 @@ func ensureNetworkTestTemplate(t *testing.T) string {
 // assertSuccessfulHTTPRequest asserts that an HTTP/HTTPS request to the given URL succeeds
 func assertSuccessfulHTTPRequest(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, url string, msg string) {
 	t.Helper()
-	err := utils.ExecCommand(t, ctx, sbx, envdClient, "curl", "--connect-timeout", "5", "--max-time", "10", "-Iks", url)
+	err := utils.ExecCommand(t, ctx, sbx, envdClient, "curl", "--connect-timeout", "1", "--max-time", "2", "-Iks", url)
 	require.NoError(t, err, msg)
 }
 
 // assertBlockedHTTPRequest asserts that an HTTP/HTTPS request to the given URL is blocked
 func assertBlockedHTTPRequest(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, url string, msg string) {
 	t.Helper()
-	err := utils.ExecCommand(t, ctx, sbx, envdClient, "curl", "--connect-timeout", "3", "--max-time", "5", "-Iks", url)
+	err := utils.ExecCommand(t, ctx, sbx, envdClient, "curl", "--connect-timeout", "1", "--max-time", "2", "-Iks", url)
 	require.Error(t, err, msg)
 	require.Contains(t, err.Error(), "failed with exit code", "Expected connection failure message")
 }

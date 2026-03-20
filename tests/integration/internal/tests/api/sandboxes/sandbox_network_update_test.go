@@ -393,8 +393,8 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 			name:    "8_remove_allow_keep_deny",
 			denyOut: ptrS(blockAll),
 			checks: []connectivityCheck{
-				{"https://google.com", false},
 				{"https://8.8.8.8", false},
+				{"https://1.1.1.1", false},
 			},
 		},
 		{
