@@ -4,12 +4,17 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"go.opentelemetry.io/otel"
+	"go.uber.org/zap"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/storage/paths"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
@@ -101,10 +106,12 @@ func (h *HashIndex) SaveLayerMeta(ctx context.Context, hash string, template Lay
 
 	err = obj.Put(ctx, marshaled)
 	if err != nil {
-		// Content-addressed: if Put fails (e.g. GCS per-object rate limit)
-		// but the object already exists, another concurrent writer succeeded
-		// with the same data, so the error is harmless.
-		if exists, _ := obj.Exists(ctx); exists {
+		if isResourceExhausted(err) {
+			logger.L().Warn(ctx, "rate limited writing layer metadata to object, skipping",
+				zap.String("hash", hash),
+				zap.Error(err),
+			)
+
 			return nil
 		}
 
@@ -112,6 +119,19 @@ func (h *HashIndex) SaveLayerMeta(ctx context.Context, hash string, template Lay
 	}
 
 	return nil
+}
+
+func isResourceExhausted(err error) bool {
+	type grpcStatusProvider interface {
+		GRPCStatus() *status.Status
+	}
+
+	var se grpcStatusProvider
+	if errors.As(err, &se) {
+		return se.GRPCStatus().Code() == codes.ResourceExhausted
+	}
+
+	return false
 }
 
 func HashKeys(baseKey string, keys ...string) string {
