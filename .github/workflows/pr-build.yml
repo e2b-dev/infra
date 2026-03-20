@@ -12,13 +12,17 @@ jobs:
     strategy:
       matrix:
         package:
-          - path: packages/orchestrator
+          - name: orchestrator
+            path: packages/orchestrator
             output: bin/orchestrator
-          - path: packages/api
+          - name: api
+            path: packages/api
             output: bin/api
-          - path: packages/envd
-            output: bin/debug/envd
-          - path: packages/client-proxy
+          - name: envd
+            path: packages/envd
+            output: bin/envd
+          - name: client-proxy
+            path: packages/client-proxy
             output: bin/client-proxy
 
     steps:
@@ -38,5 +42,5 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.package.path }}-build
+          name: ${{ matrix.package.name }}-build
           path: ${{ matrix.package.path }}/${{ matrix.package.output }}
