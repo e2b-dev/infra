@@ -73,7 +73,7 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 			}
 
 			ingress := sbx.Config.GetNetworkIngress()
-			accessToken := ingress.GetTrafficAccessToken()
+			accessToken := ingress.TrafficAccessToken
 
 			isNonEnvdTraffic := int64(port) != consts.DefaultEnvdServerPort
 
@@ -88,7 +88,7 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 				}
 			}
 
-			if ingressACL := sbx.Config.GetIngressACL(); isNonEnvdTraffic && ingressACL.HasRules() {
+			if isNonEnvdTraffic && ingress.HasFilters() {
 				clientIP := reverseproxy.ExtractClientIP(r)
 				ip := net.ParseIP(clientIP)
 				if ip == nil {
@@ -102,7 +102,7 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 					return nil, reverseproxy.NewErrIngressDenied(sandboxId, clientIP, uint16(port))
 				}
 
-				if !ingressACL.IsAllowed(ip, uint16(port)) {
+				if !ingress.IsAllowed(ip, uint16(port)) {
 					return nil, reverseproxy.NewErrIngressDenied(sandboxId, clientIP, uint16(port))
 				}
 			}
@@ -113,7 +113,7 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 
 			// Handle request host masking only for non-envd traffic.
 			var maskRequestHost *string
-			if h := ingress.GetMaskRequestHost(); isNonEnvdTraffic && h != "" {
+			if h := ingress.MaskRequestHost; isNonEnvdTraffic && h != "" {
 				h = strings.ReplaceAll(h, pool.MaskRequestHostPortPlaceholder, strconv.FormatUint(port, 10))
 				maskRequestHost = &h
 			}

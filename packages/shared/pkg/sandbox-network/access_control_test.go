@@ -82,7 +82,7 @@ func TestParsePortRange(t *testing.T) {
 	}
 }
 
-func TestACL_IsAllowed(t *testing.T) {
+func TestIngressIsAllowed(t *testing.T) {
 	t.Parallel()
 
 	mustParseCIDR := func(s string) *net.IPNet {
@@ -92,48 +92,62 @@ func TestACL_IsAllowed(t *testing.T) {
 		return ipNet
 	}
 
-	t.Run("nil ACL allows all", func(t *testing.T) {
+	t.Run("no rules allows all", func(t *testing.T) {
 		t.Parallel()
 
-		var acl *ACL
-		require.True(t, acl.IsAllowed(net.ParseIP("1.2.3.4"), 80))
+		ingress := &Ingress{}
+		require.True(t, ingress.IsAllowed(net.ParseIP("1.2.3.4"), 80))
 	})
 
-	t.Run("allow wins over deny", func(t *testing.T) {
+	t.Run("allow takes precedence over deny", func(t *testing.T) {
 		t.Parallel()
 
-		acl := &ACL{
-			Allowed: []Rule{{IPNet: mustParseCIDR("10.0.0.0/8")}},
-			Denied:  []Rule{{IPNet: mustParseCIDR("0.0.0.0/0")}},
+		ingress := &Ingress{
+			Allowed: Rules{{IPNet: mustParseCIDR("10.0.0.0/8")}},
+			Denied:  Rules{{IPNet: mustParseCIDR("0.0.0.0/0")}},
 		}
 
-		require.True(t, acl.IsAllowed(net.ParseIP("10.1.2.3"), 80))
-		require.False(t, acl.IsAllowed(net.ParseIP("192.168.1.1"), 80))
+		require.True(t, ingress.IsAllowed(net.ParseIP("10.1.2.3"), 80))
+		require.False(t, ingress.IsAllowed(net.ParseIP("192.168.1.1"), 80))
 	})
 
-	t.Run("port-specific rules", func(t *testing.T) {
+	t.Run("port-scoped allow with deny-all", func(t *testing.T) {
 		t.Parallel()
 
-		acl := &ACL{
-			Allowed: []Rule{{IPNet: mustParseCIDR("0.0.0.0/0"), PortStart: 443, PortEnd: 443}},
-			Denied:  []Rule{{IPNet: mustParseCIDR("0.0.0.0/0")}},
+		ingress := &Ingress{
+			Allowed: Rules{{IPNet: mustParseCIDR("0.0.0.0/0"), PortStart: 443, PortEnd: 443}},
+			Denied:  Rules{{IPNet: mustParseCIDR("0.0.0.0/0")}},
 		}
 
-		require.True(t, acl.IsAllowed(net.ParseIP("1.2.3.4"), 443))
-		require.False(t, acl.IsAllowed(net.ParseIP("1.2.3.4"), 80))
+		require.True(t, ingress.IsAllowed(net.ParseIP("1.2.3.4"), 443))
+		require.False(t, ingress.IsAllowed(net.ParseIP("1.2.3.4"), 80))
 	})
 }
 
-func TestRule_AllPorts(t *testing.T) {
+func TestEgressMatchDomain(t *testing.T) {
 	t.Parallel()
 
-	require.True(t, Rule{PortStart: 0, PortEnd: 0}.AllPorts())
-	require.False(t, Rule{PortStart: 80, PortEnd: 80}.AllPorts())
+	egress := Egress{
+		AllowedHTTPHostDomains: []string{"example.com", "*.test.com"},
+	}
+
+	require.True(t, egress.MatchDomain("example.com"))
+	require.True(t, egress.MatchDomain("foo.test.com"))
+	require.False(t, egress.MatchDomain("other.com"))
 }
 
-func TestRule_HasPort(t *testing.T) {
+func TestRulePortInRange(t *testing.T) {
 	t.Parallel()
 
-	require.False(t, Rule{PortStart: 0, PortEnd: 0}.HasPort())
-	require.True(t, Rule{PortStart: 80, PortEnd: 80}.HasPort())
+	// No port constraint matches any port.
+	require.True(t, Rule{}.PortInRange(80))
+	require.True(t, Rule{}.PortInRange(443))
+
+	// Specific port.
+	require.True(t, Rule{PortStart: 80, PortEnd: 80}.PortInRange(80))
+	require.False(t, Rule{PortStart: 80, PortEnd: 80}.PortInRange(443))
+
+	// Port range.
+	require.True(t, Rule{PortStart: 80, PortEnd: 443}.PortInRange(200))
+	require.False(t, Rule{PortStart: 80, PortEnd: 443}.PortInRange(8080))
 }

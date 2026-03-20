@@ -102,7 +102,7 @@ func TestUpdate_EndTimeAndEgress_EgressFails_RevertsEndTime(t *testing.T) {
 	// end_time must be reverted to original since egress failed.
 	assert.Equal(t, originalEnd, sbx.GetEndAt())
 	// Network egress should not have been set.
-	assert.Nil(t, sbx.Config.GetNetworkEgress())
+	assert.True(t, sbx.Config.GetNetworkEgress().NoFirewallRules())
 }
 
 func TestUpdate_EgressAndIngress_EgressFails_RevertsIngress(t *testing.T) {
@@ -146,6 +146,6 @@ func TestUpdate_EgressAndIngress_EgressFails_RevertsIngress(t *testing.T) {
 	require.Error(t, err)
 	require.Equal(t, codes.Internal, status.Code(err))
 	// Ingress must not be applied when egress fails.
-	require.False(t, sbx.Config.GetIngressACL().HasRules())
-	require.Nil(t, sbx.Config.GetNetworkIngress().GetAllowed())
+	require.False(t, sbx.Config.GetNetworkIngress().HasFilters())
+	require.Empty(t, sbx.Config.GetNetworkIngress().Allowed)
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"strings"
 	"syscall"
 	"time"
 
@@ -151,32 +150,22 @@ func proxyWithIPVerification(ctx context.Context, conn net.Conn, upstreamAddr st
 //  3. Default: allow
 func isEgressAllowed(sbx *sandbox.Sandbox, hostname string, ip net.IP) (bool, MatchType) {
 	egress := sbx.Config.GetNetworkEgress()
-	if egress == nil {
+	if egress.NoFirewallRules() && egress.NoHTTPHostDomainRules() {
 		return true, MatchTypeNone
 	}
 
-	// Check allowed domains first (not in ACL — domains are matched by name).
-	if hostname != noHostnameValue {
-		for _, domain := range egress.GetAllowedDomains() {
-			if matchDomain(hostname, domain) {
-				return true, MatchTypeDomain
-			}
-		}
+	// Check allowed domains first (matched by HTTP Host / TLS SNI name).
+	if hostname != noHostnameValue && egress.MatchDomain(hostname) {
+		return true, MatchTypeDomain
 	}
 
-	// Check IP allow/deny via pre-parsed ACL (no per-connection ParseCIDR).
-	acl := sbx.Config.GetEgressACL()
-	if acl == nil {
-		return true, MatchTypeNone
-	}
-
-	for _, rule := range acl.Allowed {
+	for _, rule := range egress.Allowed {
 		if rule.ContainsIP(ip) {
 			return true, MatchTypeCIDR
 		}
 	}
 
-	for _, rule := range acl.Denied {
+	for _, rule := range egress.Denied {
 		if rule.ContainsIP(ip) {
 			return false, MatchTypeCIDR
 		}
@@ -187,25 +176,6 @@ func isEgressAllowed(sbx *sandbox.Sandbox, hostname string, ip net.IP) (bool, Ma
 
 // matchDomain checks if a hostname matches a domain pattern.
 // Patterns can be exact matches, wildcards (*), or suffix wildcards (*.example.com).
-func matchDomain(hostname, pattern string) bool {
-	switch {
-	case pattern == "":
-		// Empty pattern should never match
-		return false
-	case strings.EqualFold(pattern, hostname):
-		return true
-	case strings.EqualFold(pattern, "*"):
-		return true
-	case strings.HasPrefix(pattern, "*."):
-		suffix := pattern[1:]
-		if strings.HasSuffix(strings.ToLower(hostname), strings.ToLower(suffix)) {
-			return true
-		}
-	}
-
-	return false
-}
-
 // isIPInAlwaysDeniedCIDRs checks if an IP is within the denied sandbox CIDRs (internal/private ranges).
 func isIPInAlwaysDeniedCIDRs(ip net.IP) bool {
 	for _, cidr := range sandbox_network.DeniedSandboxCIDRs {

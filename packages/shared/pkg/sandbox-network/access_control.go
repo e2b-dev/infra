@@ -7,58 +7,91 @@ import (
 	"strings"
 )
 
-// Rule represents a pre-parsed network rule with an optional port range.
+type Egress struct {
+	Allowed                Rules
+	Denied                 Rules
+	AllowedHTTPHostDomains []string
+}
+
+type Ingress struct {
+	Allowed            Rules
+	Denied             Rules
+	TrafficAccessToken string
+	MaskRequestHost    string
+}
+
+type Rules []Rule
+
+func (r Rules) CIDRs() []string {
+	if len(r) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(r))
+	for _, rule := range r {
+		if rule.IPNet != nil {
+			out = append(out, rule.IPNet.String())
+		}
+	}
+
+	return out
+}
+
 type Rule struct {
-	Host      string
 	IPNet     *net.IPNet
 	PortStart uint16 // 0 means all ports
 	PortEnd   uint16 // 0 means all ports
-	IsDomain  bool
 }
 
-// ContainsIP returns true if the rule's CIDR contains the given IP.
 func (r Rule) ContainsIP(ip net.IP) bool {
 	return r.IPNet != nil && r.IPNet.Contains(ip)
 }
 
-// AllPorts returns true if the rule matches all ports.
-func (r Rule) AllPorts() bool {
-	return r.PortStart == 0 && r.PortEnd == 0
-}
-
-// HasPort returns true if the rule specifies a port or port range.
-func (r Rule) HasPort() bool {
-	return !r.AllPorts()
-}
-
-// PortInRange returns true if the given port falls within the rule's port range,
-// or if the rule matches all ports.
 func (r Rule) PortInRange(port uint16) bool {
-	return r.AllPorts() || (port >= r.PortStart && port <= r.PortEnd)
-}
-
-// ACL holds pre-parsed network access control rules.
-// Computed once at config set time to avoid per-connection parsing.
-type ACL struct {
-	Allowed []Rule
-	Denied  []Rule
-}
-
-// IsAllowed checks if an IP + port combination is allowed by the ACL.
-// Priority: allow wins → deny → default allow.
-// Returns true when the ACL is nil (no rules).
-func (a *ACL) IsAllowed(ip net.IP, port uint16) bool {
-	if a == nil {
+	if r.PortStart == 0 && r.PortEnd == 0 {
 		return true
 	}
 
-	for _, rule := range a.Allowed {
+	return port >= r.PortStart && port <= r.PortEnd
+}
+
+func (e Egress) NoFirewallRules() bool {
+	return len(e.Allowed) == 0 && len(e.Denied) == 0
+}
+
+func (e Egress) NoHTTPHostDomainRules() bool {
+	return len(e.AllowedHTTPHostDomains) == 0
+}
+
+func (e Egress) MatchDomain(hostname string) bool {
+	for _, pattern := range e.AllowedHTTPHostDomains {
+		switch {
+		case pattern == "":
+			continue
+		case strings.EqualFold(pattern, hostname):
+			return true
+		case strings.EqualFold(pattern, "*"):
+			return true
+		case strings.HasPrefix(pattern, "*."):
+			suffix := pattern[1:]
+			if strings.HasSuffix(strings.ToLower(hostname), strings.ToLower(suffix)) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// IsAllowed checks if an IP + port combination is allowed by ingress rules.
+// Priority: allow wins -> deny -> default allow.
+func (i Ingress) IsAllowed(ip net.IP, port uint16) bool {
+	for _, rule := range i.Allowed {
 		if rule.ContainsIP(ip) && rule.PortInRange(port) {
 			return true
 		}
 	}
 
-	for _, rule := range a.Denied {
+	for _, rule := range i.Denied {
 		if rule.ContainsIP(ip) && rule.PortInRange(port) {
 			return false
 		}
@@ -67,9 +100,8 @@ func (a *ACL) IsAllowed(ip net.IP, port uint16) bool {
 	return true
 }
 
-// HasRules returns true if any rules are configured.
-func (a *ACL) HasRules() bool {
-	return a != nil && (len(a.Allowed) > 0 || len(a.Denied) > 0)
+func (i Ingress) HasFilters() bool {
+	return len(i.Allowed) > 0 || len(i.Denied) > 0
 }
 
 // SplitHostPort splits a network rule string into host and port parts.

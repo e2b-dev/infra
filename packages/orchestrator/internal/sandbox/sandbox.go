@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
 	"sync"
 	"sync/atomic"
@@ -80,154 +79,13 @@ type Config struct {
 
 	VolumeMounts []VolumeMountConfig
 
-	// mu protects mutable sub-fields: Network (Egress, Ingress) and ACL pointers.
-	// ACL values are immutable once created — only the pointer is swapped.
-	mu      *sync.RWMutex
-	Network *orchestrator.SandboxNetworkConfig
-
-	// Pre-parsed ACLs — each ACL is immutable; pointer swapped under mu on update.
-	egressACL  *sandboxnetwork.ACL
-	ingressACL *sandboxnetwork.ACL
+	// Egress and ingress are immutable snapshots, swapped atomically on updates.
+	egress  *atomic.Pointer[sandboxnetwork.Egress]
+	ingress *atomic.Pointer[sandboxnetwork.Ingress]
 }
 
-// NewConfig creates a Config, normalizing a nil Network to an empty config
-// so that Network is never nil.
 func NewConfig(c Config) *Config {
-	if c.Network == nil {
-		c.Network = &orchestrator.SandboxNetworkConfig{}
-	}
-
-	c.mu = &sync.RWMutex{}
-
-	c.egressACL = newEgressACL(c.Network.GetEgress())
-	c.ingressACL = newIngressACL(c.Network.GetIngress())
-
-	return &c
-}
-
-// GetNetworkEgress returns the egress config in a thread-safe manner.
-func (c *Config) GetNetworkEgress() *orchestrator.SandboxNetworkEgressConfig {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	return c.Network.GetEgress()
-}
-
-// SetNetworkEgress updates the egress config and swaps the pre-parsed ACL.
-func (c *Config) SetNetworkEgress(egress *orchestrator.SandboxNetworkEgressConfig) {
-	acl := newEgressACL(egress)
-
-	c.mu.Lock()
-	c.Network.Egress = egress
-	c.egressACL = acl
-	c.mu.Unlock()
-}
-
-// GetEgressACL returns the pre-parsed egress ACL.
-func (c *Config) GetEgressACL() *sandboxnetwork.ACL {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	return c.egressACL
-}
-
-// GetNetworkIngress returns the ingress config in a thread-safe manner.
-func (c *Config) GetNetworkIngress() *orchestrator.SandboxNetworkIngressConfig {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	return c.Network.GetIngress()
-}
-
-// SetNetworkIngress updates the ingress config and swaps the pre-parsed ACL.
-func (c *Config) SetNetworkIngress(ingress *orchestrator.SandboxNetworkIngressConfig) {
-	acl := newIngressACL(ingress)
-
-	c.mu.Lock()
-	c.Network.Ingress = ingress
-	c.ingressACL = acl
-	c.mu.Unlock()
-}
-
-// GetIngressACL returns the pre-parsed ingress ACL.
-func (c *Config) GetIngressACL() *sandboxnetwork.ACL {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	return c.ingressACL
-}
-
-// newEgressACL parses proto egress config into a pre-parsed ACL (IPv4-only).
-// Rules are pre-validated by the API; invalid entries are silently skipped.
-func newEgressACL(egress *orchestrator.SandboxNetworkEgressConfig) *sandboxnetwork.ACL {
-	if egress == nil {
-		return nil
-	}
-
-	allowedRules := parseCIDRs(egress.GetAllowedCidrs())
-	deniedRules := parseCIDRs(egress.GetDeniedCidrs())
-
-	if len(allowedRules) == 0 && len(deniedRules) == 0 {
-		return nil
-	}
-
-	return &sandboxnetwork.ACL{
-		Allowed: allowedRules,
-		Denied:  deniedRules,
-	}
-}
-
-func newIngressACL(ingress *orchestrator.SandboxNetworkIngressConfig) *sandboxnetwork.ACL {
-	if ingress == nil {
-		return nil
-	}
-
-	allowedRules := parseIngressRules(ingress.GetAllowed())
-	deniedRules := parseIngressRules(ingress.GetDenied())
-
-	if len(allowedRules) == 0 && len(deniedRules) == 0 {
-		return nil
-	}
-
-	return &sandboxnetwork.ACL{
-		Allowed: allowedRules,
-		Denied:  deniedRules,
-	}
-}
-
-// parseCIDRs converts CIDR strings into Rules for ACL matching.
-func parseCIDRs(cidrs []string) []sandboxnetwork.Rule {
-	out := make([]sandboxnetwork.Rule, 0, len(cidrs))
-	for _, cidr := range cidrs {
-		_, ipNet, err := net.ParseCIDR(sandboxnetwork.AddressStringToCIDR(cidr))
-		if err != nil {
-			continue // pre-validated by API
-		}
-
-		out = append(out, sandboxnetwork.Rule{Host: cidr, IPNet: ipNet})
-	}
-
-	return out
-}
-
-// parseIngressRules converts proto IngressRules directly to parsed Rules.
-func parseIngressRules(rules []*orchestrator.IngressRule) []sandboxnetwork.Rule {
-	out := make([]sandboxnetwork.Rule, 0, len(rules))
-	for _, r := range rules {
-		_, ipNet, err := net.ParseCIDR(r.GetCidr())
-		if err != nil {
-			continue // pre-validated by API
-		}
-
-		out = append(out, sandboxnetwork.Rule{
-			Host:      r.GetCidr(),
-			IPNet:     ipNet,
-			PortStart: uint16(r.GetPortLow()),
-			PortEnd:   uint16(r.GetPortHigh()),
-		})
-	}
-
-	return out
+	return NewConfigWithNetwork(c, nil, nil)
 }
 
 type VolumeMountConfig struct {
@@ -435,7 +293,7 @@ func (f *Factory) CreateSandbox(
 		}
 	}()
 
-	ipsPromise := getNetworkSlot(ctx, f.networkPool, cleanup, config.Network)
+	ipsPromise := getNetworkSlot(ctx, f.networkPool, cleanup, config.GetNetworkEgress())
 
 	sandboxFiles := template.Files().NewSandboxFiles(runtime.SandboxID)
 	cleanup.Add(ctx, cleanupFiles(f.config, sandboxFiles))
@@ -704,7 +562,7 @@ func (f *Factory) ResumeSandbox(
 	}()
 
 	// Slot initialization
-	ipsPromise := getNetworkSlot(ctx, f.networkPool, cleanup, config.Network)
+	ipsPromise := getNetworkSlot(ctx, f.networkPool, cleanup, config.GetNetworkEgress())
 
 	// Rootfs initialization
 	overlayPromise := utils.NewPromise(func() (rootfs.Provider, error) {
@@ -1316,40 +1174,6 @@ func createCgroup(ctx context.Context, cgroupManager cgroup.Manager, cgroupName 
 	})
 
 	return handle, handle.GetFD()
-}
-
-func getNetworkSlot(
-	ctx context.Context,
-	networkPool *network.Pool,
-	cleanup *Cleanup,
-	networkConfig *orchestrator.SandboxNetworkConfig,
-) *utils.Promise[*network.Slot] {
-	return utils.NewPromise(func() (*network.Slot, error) {
-		ctx, span := tracer.Start(ctx, "get network-slot")
-		defer span.End()
-
-		slot, err := networkPool.Get(ctx, networkConfig)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get network slot: %w", err)
-		}
-
-		cleanup.Add(ctx, func(ctx context.Context) error {
-			ctx, span := tracer.Start(ctx, "clean network-slot")
-			defer span.End()
-
-			// We can run this cleanup asynchronously, as it is not important for the sandbox lifecycle
-			go func(ctx context.Context) {
-				returnErr := networkPool.Return(ctx, slot)
-				if returnErr != nil {
-					logger.L().Error(ctx, "failed to return network slot", zap.Error(returnErr))
-				}
-			}(context.WithoutCancel(ctx))
-
-			return nil
-		})
-
-		return slot, nil
-	})
 }
 
 func serveMemory(

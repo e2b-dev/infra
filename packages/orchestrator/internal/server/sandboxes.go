@@ -161,29 +161,31 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		return nil, fmt.Errorf("failed to convert volume mounts: %w", err)
 	}
 
-	config := sandbox.NewConfig(sandbox.Config{
-		BaseTemplateID: req.GetSandbox().GetBaseTemplateId(),
+	config := sandbox.NewConfigWithNetwork(
+		sandbox.Config{
+			BaseTemplateID: req.GetSandbox().GetBaseTemplateId(),
 
-		Vcpu:            req.GetSandbox().GetVcpu(),
-		RamMB:           req.GetSandbox().GetRamMb(),
-		TotalDiskSizeMB: req.GetSandbox().GetTotalDiskSizeMb(),
-		HugePages:       req.GetSandbox().GetHugePages(),
+			Vcpu:            req.GetSandbox().GetVcpu(),
+			RamMB:           req.GetSandbox().GetRamMb(),
+			TotalDiskSizeMB: req.GetSandbox().GetTotalDiskSizeMb(),
+			HugePages:       req.GetSandbox().GetHugePages(),
 
-		Network: network,
+			Envd: sandbox.EnvdMetadata{
+				Version:     req.GetSandbox().GetEnvdVersion(),
+				AccessToken: req.GetSandbox().EnvdAccessToken,
+				Vars:        req.GetSandbox().GetEnvVars(),
+			},
 
-		Envd: sandbox.EnvdMetadata{
-			Version:     req.GetSandbox().GetEnvdVersion(),
-			AccessToken: req.GetSandbox().EnvdAccessToken,
-			Vars:        req.GetSandbox().GetEnvVars(),
+			FirecrackerConfig: fc.Config{
+				KernelVersion:      req.GetSandbox().GetKernelVersion(),
+				FirecrackerVersion: resolvedFCVersion,
+			},
+
+			VolumeMounts: volumeMounts,
 		},
-
-		FirecrackerConfig: fc.Config{
-			KernelVersion:      req.GetSandbox().GetKernelVersion(),
-			FirecrackerVersion: resolvedFCVersion,
-		},
-
-		VolumeMounts: volumeMounts,
-	})
+		network.GetEgress(),
+		network.GetIngress(),
+	)
 	childSpan.SetAttributes(
 		telemetry.WithFirecrackerVersion(config.FirecrackerConfig.FirecrackerVersion),
 	)
@@ -314,23 +316,18 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 
 	if req.GetEgress() != nil {
 		updates = append(updates, func(ctx context.Context) (func(context.Context), error) {
-			oldEgress := sbx.Config.GetNetworkEgress()
+			egress := sandbox.EgressFromProto(req.GetEgress())
 
-			if err := sbx.Slot.UpdateInternet(ctx, req.GetEgress()); err != nil {
+			if err := sbx.Slot.UpdateInternet(ctx, egress); err != nil {
 				return nil, fmt.Errorf("failed to update sandbox network: %w", err)
 			}
 
-			egress := req.GetEgress()
-			if len(egress.GetAllowedCidrs()) == 0 && len(egress.GetDeniedCidrs()) == 0 && len(egress.GetAllowedDomains()) == 0 {
-				sbx.Config.SetNetworkEgress(nil)
-			} else {
-				sbx.Config.SetNetworkEgress(egress)
-			}
+			oldEgress := sbx.Config.SetNetworkEgress(egress)
 
 			eventData["network_egress"] = map[string]any{
-				"allowed_cidrs":   egress.GetAllowedCidrs(),
-				"denied_cidrs":    egress.GetDeniedCidrs(),
-				"allowed_domains": egress.GetAllowedDomains(),
+				"allowed_cidrs":   egress.Allowed.CIDRs(),
+				"denied_cidrs":    egress.Denied.CIDRs(),
+				"allowed_domains": egress.AllowedHTTPHostDomains,
 			}
 
 			return func(ctx context.Context) {
@@ -342,18 +339,18 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 
 	if req.GetIngress() != nil {
 		updates = append(updates, func(_ context.Context) (func(context.Context), error) {
-			oldIngress := sbx.Config.GetNetworkIngress()
+			ingress := sandbox.IngressFromProto(req.GetIngress())
+			oldIngress := sbx.Config.SetNetworkIngress(ingress)
 
-			sbx.Config.SetNetworkIngress(req.GetIngress())
-
-			ingress := req.GetIngress()
 			eventData["network_ingress"] = map[string]any{
-				"allowed":           ingress.GetAllowed(),
-				"denied":            ingress.GetDenied(),
-				"mask_request_host": ingress.GetMaskRequestHost(),
+				"allowed":           ingress.Allowed.CIDRs(),
+				"denied":            ingress.Denied.CIDRs(),
+				"mask_request_host": ingress.MaskRequestHost,
 			}
 
-			return func(_ context.Context) { sbx.Config.SetNetworkIngress(oldIngress) }, nil
+			return func(_ context.Context) {
+				sbx.Config.SetNetworkIngress(oldIngress)
+			}, nil
 		})
 	}
 
