@@ -299,22 +299,39 @@ func (o *gcpObject) ReadAt(ctx context.Context, buff []byte, off int64) (n int, 
 	return n, nil
 }
 
-func (o *gcpObject) Put(ctx context.Context, data []byte) (e error) {
+func (o *gcpObject) Put(ctx context.Context, data []byte) error {
 	timer := googleWriteTimerFactory.Begin(attribute.String(gcsOperationAttr, gcsOperationAttrWrite))
 
 	w := o.handle.NewWriter(ctx)
-	defer func() {
-		if err := w.Close(); err != nil {
-			e = errors.Join(e, fmt.Errorf("failed to write to %q: %w", o.path, err))
-		}
-	}()
 
 	c, err := io.Copy(w, bytes.NewReader(data))
 	if err != nil && !errors.Is(err, io.EOF) {
+		closeErr := w.Close()
+		if closeErr != nil {
+			logger.L().Warn(ctx, "failed to close GCS writer after copy error",
+				zap.String("object", o.path),
+				zap.NamedError("error_copy", err),
+				zap.Error(closeErr),
+			)
+		}
+
 		timer.Failure(ctx, c)
 
 		// ResourceExhausted from GCS means per-object mutation rate limiting —
 		// multiple concurrent writers racing to write the same content-addressed object.
+		if isResourceExhausted(err) {
+			return ErrObjectRateLimited
+		}
+
+		return fmt.Errorf("failed to write to %q: %w", o.path, err)
+	}
+
+	// For small objects the GCS Writer buffers data in memory during Write()
+	// and performs the actual upload during Close(). ResourceExhausted errors
+	// from per-object mutation rate limiting will surface here.
+	if err := w.Close(); err != nil {
+		timer.Failure(ctx, c)
+
 		if isResourceExhausted(err) {
 			return ErrObjectRateLimited
 		}
