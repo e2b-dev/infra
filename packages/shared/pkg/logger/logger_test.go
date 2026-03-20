@@ -12,7 +12,7 @@ func TestTracedLoggerCallerSkipsWrapper(t *testing.T) {
 	t.Parallel()
 
 	core, logs := observer.New(zap.InfoLevel)
-	logger := NewTracedLogger(zap.New(core))
+	logger := NewTracedLogger(zap.New(core)) //nolint:forbidigo // test needs a raw zap.Logger with observable core
 
 	logger.Warn(t.Context(), "wrapper skip test")
 
@@ -34,7 +34,7 @@ func TestLAfterReplaceGlobalsCallerIsCorrect(t *testing.T) {
 	t.Parallel()
 
 	core, logs := observer.New(zap.InfoLevel)
-	logger := NewTracedLogger(zap.New(core))
+	logger := NewTracedLogger(zap.New(core)) //nolint:forbidigo // test needs a raw zap.Logger with observable core
 
 	undo := ReplaceGlobals(t.Context(), logger)
 	defer undo()
