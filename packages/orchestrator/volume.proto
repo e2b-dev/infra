@@ -45,34 +45,34 @@ message UserError {
   uint32 http_status = 3;
 }
 
-message VolumeCreateRequest {
+message CreateVolumeRequest {
   VolumeInfo volume = 1;
 }
 
-message VolumeCreateResponse {
+message CreateVolumeResponse {
 }
 
-message VolumeDeleteRequest {
+message DeleteVolumeRequest {
   VolumeInfo volume = 1;
 }
 
-message VolumeDeleteResponse {}
+message DeleteVolumeResponse {}
 
 message VolumeDirectoryItem {
   EntryInfo entry = 1;
 }
 
-message VolumeDirListRequest {
+message ListDirRequest {
   VolumeInfo volume = 1;
   string path = 2;
   uint32 depth = 3;
 }
 
-message VolumeDirListResponse {
+message ListDirResponse {
   repeated VolumeDirectoryItem files = 1;
 }
 
-message VolumeDirCreateRequest {
+message CreateDirRequest {
   VolumeInfo volume = 1;
   string path = 2;
   optional uint32 mode = 3;
@@ -81,18 +81,18 @@ message VolumeDirCreateRequest {
   bool create_parents = 6;
 }
 
-message VolumeDirCreateResponse {
+message CreateDirResponse {
   EntryInfo entry = 1;
 }
 
-message VolumeDirDeleteRequest {
+message DeletePathRequest {
   VolumeInfo volume = 1;
   string path = 2;
 }
 
-message VolumeDirDeleteResponse {}
+message DeletePathResponse {}
 
-message VolumeFileGetRequest {
+message GetFileRequest {
   VolumeInfo volume = 1;
   string path = 2;
 }
@@ -107,7 +107,7 @@ message VolumeFileGetResponseContent {
 
 message VolumeFileGetResponseFinish {}
 
-message VolumeFileGetResponse {
+message GetFileResponse {
   oneof message {
     VolumeFileGetResponseStart start = 1;
     VolumeFileGetResponseContent content = 2;
@@ -131,7 +131,7 @@ message VolumeFileCreateContent {
 message VolumeFileCreateFinish {
 }
 
-message VolumeFileCreateRequest {
+message CreateFileRequest {
   oneof message {
     VolumeFileCreateStart start = 1;
     VolumeFileCreateContent content = 2;
@@ -139,31 +139,17 @@ message VolumeFileCreateRequest {
   }
 }
 
-message VolumeFileCreateResponse {
+message CreateFileResponse {
   EntryInfo entry = 1;
 }
 
-message VolumeFileDeleteRequest {
-  VolumeInfo volume = 1;
-  string path = 2;
-}
-
-message VolumeFileDeleteResponse {}
-
-message DeletePathRequest {
-  VolumeInfo volume = 1;
-  string path = 2;
-}
-
-message DeletePathResponse {}
-
-message StatRequest {
+message StatPathRequest {
   VolumeInfo volume = 1;
   string path = 2;
   bool follow_symlinks = 3;
 }
 
-message StatResponse {
+message StatPathResponse {
   EntryInfo entry = 1;
 }
 
@@ -174,7 +160,7 @@ enum FileType {
   FILE_TYPE_SYMLINK = 3;
 }
 
-message VolumeFileUpdateRequest {
+message UpdatePathRequest {
   VolumeInfo volume = 1;
   string path = 2;
   optional uint32 mode = 3;
@@ -182,23 +168,25 @@ message VolumeFileUpdateRequest {
   optional uint32 gid = 5;
 }
 
-message VolumeFileUpdateResponse {
+message UpdatePathResponse {
   EntryInfo entry = 1;
 }
 
 service VolumeService {
-  rpc Create(VolumeCreateRequest) returns (VolumeCreateResponse);
-  rpc Delete(VolumeDeleteRequest) returns (VolumeDeleteResponse);
+  // volume operations
+  rpc Create(CreateVolumeRequest) returns (CreateVolumeResponse);
+  rpc Delete(DeleteVolumeRequest) returns (DeleteVolumeResponse);
 
-  rpc ListDir(VolumeDirListRequest) returns (VolumeDirListResponse);
-  rpc CreateDir(VolumeDirCreateRequest) returns (VolumeDirCreateResponse);
-  rpc DeleteDir(VolumeDirDeleteRequest) returns (VolumeDirDeleteResponse);
+  // directory operations
+  rpc CreateDir(CreateDirRequest) returns (CreateDirResponse);
+  rpc ListDir(ListDirRequest) returns (ListDirResponse);
 
-  rpc GetFile(VolumeFileGetRequest) returns (stream VolumeFileGetResponse);
-  rpc CreateFile(stream VolumeFileCreateRequest) returns (VolumeFileCreateResponse);
-  rpc DeleteFile(VolumeFileDeleteRequest) returns (VolumeFileDeleteResponse);
-  rpc UpdateFileMetadata(VolumeFileUpdateRequest) returns (VolumeFileUpdateResponse);
+  // file operations
+  rpc CreateFile(stream CreateFileRequest) returns (CreateFileResponse);
+  rpc GetFile(GetFileRequest) returns (stream GetFileResponse);
 
-  rpc Stat(StatRequest) returns (StatResponse);
+  // path operations (file, dir, other?)
   rpc DeletePath(DeletePathRequest) returns (DeletePathResponse);
+  rpc StatPath(StatPathRequest) returns (StatPathResponse);
+  rpc UpdatePath(UpdatePathRequest) returns (UpdatePathResponse);
 }

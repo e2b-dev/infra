@@ -25,8 +25,8 @@ const (
 
 func (s *Service) ListDir(
 	ctx context.Context,
-	request *orchestrator.VolumeDirListRequest,
-) (r *orchestrator.VolumeDirListResponse, err error) {
+	request *orchestrator.ListDirRequest,
+) (r *orchestrator.ListDirResponse, err error) {
 	ctx, span := tracer.Start(ctx, "list directory in volume")
 	defer func() {
 		setSpanStatus(span, err)
@@ -70,7 +70,7 @@ func (s *Service) ListDir(
 		return nil, fmt.Errorf("failed to read directory %q: %w", path, err)
 	}
 
-	return &orchestrator.VolumeDirListResponse{Files: results}, nil
+	return &orchestrator.ListDirResponse{Files: results}, nil
 }
 
 func (s *Service) listRecursive(

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"syscall"
 	"testing"
 
 	"github.com/google/uuid"
@@ -247,19 +246,4 @@ func TestEnsureParentDirs(t *testing.T) {
 		assertDir(t, fs, "/q/f", 0, 0, 0o700)
 		assertDir(t, fs, "/q/f/g", 2020, 2021, defaultDirMode)
 	})
-}
-
-func assertDir(t *testing.T, fs *chrooted.Chrooted, path string, uid, gid uint32, mode os.FileMode) {
-	t.Helper()
-
-	info, err := fs.Stat(path)
-	require.NoError(t, err)
-
-	assert.Equal(t, mode.Perm(), info.Mode().Perm())
-
-	osInfo, ok := info.Sys().(*syscall.Stat_t)
-	require.True(t, ok)
-	require.NotNil(t, osInfo)
-	assert.Equal(t, uid, osInfo.Uid)
-	assert.Equal(t, gid, osInfo.Gid)
 }

@@ -39,7 +39,8 @@ func (s *Service) DeletePath(ctx context.Context, request *orchestrator.DeletePa
 		attribute.String("path", path),
 	))
 
-	if err = fs.RemoveAll(path); err != nil {
+	// Check if path exists before deletion since RemoveAll doesn't error on missing paths
+	if _, err = fs.Stat(path); err != nil {
 		if os.IsNotExist(err) {
 			return nil, newAPIError(ctx,
 				codes.NotFound,
@@ -49,6 +50,10 @@ func (s *Service) DeletePath(ctx context.Context, request *orchestrator.DeletePa
 			).Err()
 		}
 
+		return nil, fmt.Errorf("failed to stat path: %w", err)
+	}
+
+	if err = fs.RemoveAll(path); err != nil {
 		return nil, fmt.Errorf("failed to delete path: %w", err)
 	}
 

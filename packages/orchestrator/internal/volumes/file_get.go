@@ -13,7 +13,7 @@ import (
 
 const fileStreamChunkSize = 1024 * 1024 // 1MB
 
-func (s *Service) GetFile(request *orchestrator.VolumeFileGetRequest, server orchestrator.VolumeService_GetFileServer) (err error) {
+func (s *Service) GetFile(request *orchestrator.GetFileRequest, server orchestrator.VolumeService_GetFileServer) (err error) {
 	ctx, span := tracer.Start(server.Context(), "get file from volume")
 	defer func() {
 		setSpanStatus(span, err)
@@ -45,8 +45,8 @@ func (s *Service) GetFile(request *orchestrator.VolumeFileGetRequest, server orc
 	span.AddEvent("sending file start", trace.WithAttributes(
 		attribute.Int64("size", info.Size()),
 	))
-	if err := server.Send(&orchestrator.VolumeFileGetResponse{
-		Message: &orchestrator.VolumeFileGetResponse_Start{
+	if err := server.Send(&orchestrator.GetFileResponse{
+		Message: &orchestrator.GetFileResponse_Start{
 			Start: &orchestrator.VolumeFileGetResponseStart{
 				Size: info.Size(),
 			},
@@ -63,8 +63,8 @@ func (s *Service) GetFile(request *orchestrator.VolumeFileGetRequest, server orc
 			span.AddEvent("send file chunk", trace.WithAttributes(
 				attribute.Int("size", n),
 			))
-			if err := server.Send(&orchestrator.VolumeFileGetResponse{
-				Message: &orchestrator.VolumeFileGetResponse_Content{
+			if err := server.Send(&orchestrator.GetFileResponse{
+				Message: &orchestrator.GetFileResponse_Content{
 					Content: &orchestrator.VolumeFileGetResponseContent{
 						Content: buf[:n],
 					},
@@ -87,8 +87,8 @@ func (s *Service) GetFile(request *orchestrator.VolumeFileGetRequest, server orc
 		break
 	}
 
-	if err := server.Send(&orchestrator.VolumeFileGetResponse{
-		Message: &orchestrator.VolumeFileGetResponse_Finish{
+	if err := server.Send(&orchestrator.GetFileResponse{
+		Message: &orchestrator.GetFileResponse_Finish{
 			Finish: &orchestrator.VolumeFileGetResponseFinish{},
 		},
 	}); err != nil {

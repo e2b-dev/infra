@@ -86,12 +86,12 @@ func (s *Service) CreateFile(server orchestrator.VolumeService_CreateFileServer)
 		}
 
 		switch m := req.GetMessage().(type) {
-		case *orchestrator.VolumeFileCreateRequest_Content:
+		case *orchestrator.CreateFileRequest_Content:
 			if _, err := file.Write(m.Content.GetContent()); err != nil {
 				return fmt.Errorf("failed to write file content: %w", err)
 			}
 
-		case *orchestrator.VolumeFileCreateRequest_Finish:
+		case *orchestrator.CreateFileRequest_Finish:
 			if err = file.Sync(); err != nil {
 				return fmt.Errorf("failed to sync file to disk: %w", err)
 			}
@@ -112,7 +112,7 @@ func (s *Service) CreateFile(server orchestrator.VolumeService_CreateFileServer)
 
 			entry := toEntry(path, fi)
 
-			return server.SendAndClose(&orchestrator.VolumeFileCreateResponse{
+			return server.SendAndClose(&orchestrator.CreateFileResponse{
 				Entry: entry,
 			})
 

@@ -13,8 +13,8 @@ import (
 
 func (s *Service) Delete(
 	ctx context.Context,
-	request *orchestrator.VolumeDeleteRequest,
-) (r *orchestrator.VolumeDeleteResponse, err error) {
+	request *orchestrator.DeleteVolumeRequest,
+) (r *orchestrator.DeleteVolumeResponse, err error) {
 	_, span := tracer.Start(ctx, "delete volume")
 	defer func() {
 		setSpanStatus(span, err)
@@ -34,5 +34,5 @@ func (s *Service) Delete(
 		return nil, fmt.Errorf("failed to delete volume: %w", err)
 	}
 
-	return &orchestrator.VolumeDeleteResponse{}, nil
+	return &orchestrator.DeleteVolumeResponse{}, nil
 }
