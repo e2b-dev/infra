@@ -161,7 +161,7 @@ func (o *Orchestrator) getOrConnectNode(ctx context.Context, clusterID uuid.UUID
 
 	scopedKey := o.scopedNodeID(clusterID, nodeID)
 
-	_, _, _ = o.discoveryGroup.Do(scopedKey, func() (any, error) {
+	o.discoveryGroup.Do(scopedKey, func() (any, error) { //nolint:errcheck
 		connectCtx, cancel := context.WithTimeout(ctx, nodeConnectTimeout)
 		defer cancel()
 
