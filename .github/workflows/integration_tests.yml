@@ -21,6 +21,8 @@ jobs:
 
       - name: Download packages
         uses: actions/download-artifact@v8
+        with:
+          merge-multiple: true
 
       - name: Initialize Host
         uses: ./.github/actions/host-init
