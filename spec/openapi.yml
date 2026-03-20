@@ -271,24 +271,17 @@ components:
           description: Specify if the sandbox URLs should be accessible only with authentication.
         allowOut:
           type: array
-          description: >
-            Allowed egress destinations. Format: IP, CIDR, domain, or wildcard
-            (e.g. "8.8.8.8", "10.0.0.0/8", "example.com", "*.example.com").
-            Allow takes precedence over deny. Domains require denyOut to include "0.0.0.0/0".
-            Unmatched traffic is allowed by default.
+          description: List of allowed destinations for egress traffic. Each entry can be a CIDR block (e.g. "8.8.8.8/32"), a bare IP address (e.g. "8.8.8.8"), or a domain name (e.g. "example.com", "*.example.com"). Allowed entries always take precedence over denied entries.
           items:
             type: string
         denyOut:
           type: array
-          description: >
-            Denied egress destinations. Format: IP or CIDR
-            (e.g. "8.8.8.8", "10.0.0.0/8"). Domains not supported. Use "0.0.0.0/0" to block all.
-            Unmatched traffic is allowed by default.
+          description: List of denied CIDR blocks or IP addresses for egress traffic. Domain names are not supported for deny rules.
           items:
             type: string
         maskRequestHost:
           type: string
-          description: Host mask applied to all sandbox requests.
+          description: Specify host mask which will be used for all sandbox requests
         allowIn:
           type: array
           description: >
@@ -2377,28 +2370,34 @@ paths:
               properties:
                 allowOut:
                   type: array
-                  description: Allowed egress destinations. See SandboxNetworkConfig.allowOut.
+                  description: List of allowed destinations for egress traffic. Each entry can be a CIDR block (e.g. "8.8.8.8/32"), a bare IP address (e.g. "8.8.8.8"), or a domain name (e.g. "example.com", "*.example.com"). Allowed entries always take precedence over denied entries.
                   items:
                     type: string
                 denyOut:
                   type: array
-                  description: Denied egress destinations. See SandboxNetworkConfig.denyOut.
+                  description: List of denied CIDR blocks or IP addresses for egress traffic. Domain names are not supported for deny rules.
                   items:
                     type: string
                 allowIn:
                   type: array
-                  description: Allowed ingress sources. See SandboxNetworkConfig.allowIn.
+                  description: >
+                    Allowed ingress sources. Format: IP or CIDR with optional port
+                    (e.g. "203.0.113.1", "0.0.0.0/0:8080", "10.0.0.0/8:80-443").
+                    Allow takes precedence over deny.
                   items:
                     type: string
                 denyIn:
                   type: array
-                  description: Denied ingress sources. See SandboxNetworkConfig.denyIn.
+                  description: >
+                    Denied ingress sources. Format: IP or CIDR with optional port
+                    (e.g. "0.0.0.0/0", "10.0.0.0/8:22"). Use "0.0.0.0/0" to block all.
+                    Unmatched traffic is allowed by default.
                   items:
                     type: string
                 maskRequestHost:
                   type: string
                   nullable: true
-                  description: Host mask for all sandbox requests. Set to null to clear.
+                  description: Specify host mask which will be used for all sandbox requests. Set to null to clear.
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       responses:
