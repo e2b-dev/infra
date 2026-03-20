@@ -11,8 +11,8 @@ import (
 )
 
 type MapSubscriber interface {
-	OnInsert(sandbox *Sandbox)
-	OnRemove(sandbox *Sandbox)
+	OnInsert(ctx context.Context, sandbox *Sandbox)
+	OnRemove(ctx context.Context, sandbox *Sandbox)
 }
 
 type Map struct {
@@ -29,12 +29,12 @@ func (m *Map) Subscribe(subscriber MapSubscriber) {
 	m.subs = append(m.subs, subscriber)
 }
 
-func (m *Map) trigger(fn func(MapSubscriber)) {
+func (m *Map) trigger(ctx context.Context, fn func(context.Context, MapSubscriber)) {
 	m.subsLock.RLock()
 	defer m.subsLock.RUnlock()
 
 	for _, subscriber := range m.subs {
-		fn(subscriber)
+		fn(ctx, subscriber)
 	}
 }
 
@@ -103,11 +103,11 @@ func (m *Map) Insert(ctx context.Context, sbx *Sandbox) {
 
 // MarkRunning transitions a sandbox from starting to running and notifies
 // OnInsert subscribers.
-func (m *Map) MarkRunning(sbx *Sandbox) {
+func (m *Map) MarkRunning(ctx context.Context, sbx *Sandbox) {
 	sbx.started.Store(true)
 
-	go m.trigger(func(s MapSubscriber) {
-		s.OnInsert(sbx)
+	go m.trigger(ctx, func(ctx context.Context, s MapSubscriber) {
+		s.OnInsert(ctx, sbx)
 	})
 }
 
@@ -122,8 +122,8 @@ func (m *Map) Remove(ctx context.Context, sandboxID string) {
 	if removed {
 		logger.L().Info(ctx, "removing sandbox from map", logger.WithSandboxID(sandboxID))
 
-		go m.trigger(func(s MapSubscriber) {
-			s.OnRemove(removedSbx)
+		go m.trigger(ctx, func(ctx context.Context, s MapSubscriber) {
+			s.OnRemove(ctx, removedSbx)
 		})
 	}
 }
@@ -150,8 +150,8 @@ func (m *Map) RemoveByLifecycleID(ctx context.Context, sandboxID, lifecycleID st
 			logger.WithSandboxIP(sbx.Slot.HostIPString()),
 		)
 
-		go m.trigger(func(s MapSubscriber) {
-			s.OnRemove(sbx)
+		go m.trigger(ctx, func(ctx context.Context, s MapSubscriber) {
+			s.OnRemove(ctx, sbx)
 		})
 	}
 }

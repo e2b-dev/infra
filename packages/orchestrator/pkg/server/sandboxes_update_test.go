@@ -41,7 +41,7 @@ func TestUpdate_EgressOnly_FailsAndDoesNotChangeEndTime(t *testing.T) {
 
 	sandboxMap := sandbox.NewSandboxesMap()
 	sandboxMap.Insert(context.Background(), sbx)
-	sandboxMap.MarkRunning(sbx)
+	sandboxMap.MarkRunning(t.Context(), sbx)
 
 	s := &Server{
 		sandboxFactory:   &sandbox.Factory{Sandboxes: sandboxMap},
@@ -80,7 +80,7 @@ func TestUpdate_EndTimeAndEgress_EgressFails_RevertsEndTime(t *testing.T) {
 
 	sandboxMap := sandbox.NewSandboxesMap()
 	sandboxMap.Insert(context.Background(), sbx)
-	sandboxMap.MarkRunning(sbx)
+	sandboxMap.MarkRunning(t.Context(), sbx)
 
 	s := &Server{
 		sandboxFactory:   &sandbox.Factory{Sandboxes: sandboxMap},

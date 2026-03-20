@@ -88,9 +88,9 @@ func NewNFSHandler(
 	return h, nil
 }
 
-func (h *NFSHandler) OnInsert(_ *sandbox.Sandbox) {}
+func (h *NFSHandler) OnInsert(_ context.Context, _ *sandbox.Sandbox) {}
 
-func (h *NFSHandler) OnRemove(sbx *sandbox.Sandbox) {
+func (h *NFSHandler) OnRemove(ctx context.Context, sbx *sandbox.Sandbox) {
 	lifecycleID := sbx.LifecycleID
 
 	h.mu.Lock()
@@ -101,14 +101,14 @@ func (h *NFSHandler) OnRemove(sbx *sandbox.Sandbox) {
 	for _, chroot := range chroots {
 		err := chroot.Close()
 		if err != nil {
-			logger.L().Warn(context.Background(), "failed to close chroot",
+			logger.L().Warn(ctx, "failed to close chroot",
 				logger.WithSandboxID(sbx.Runtime.SandboxID),
 				logger.WithLifecycleID(lifecycleID),
 				zap.String("path", chroot.Root()),
 				zap.Error(err),
 			)
 		}
-		h.chrootUnmountsCounter.Add(context.Background(), 1)
+		h.chrootUnmountsCounter.Add(ctx, 1)
 	}
 }
 
