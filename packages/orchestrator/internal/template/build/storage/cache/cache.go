@@ -105,7 +105,7 @@ func (h *HashIndex) SaveLayerMeta(ctx context.Context, hash string, template Lay
 	err = obj.Put(ctx, marshaled)
 	if err != nil {
 		// Since the data should be basically identical, this is safe to skip.
-		if errors.Is(storage.ErrObjectRateLimited, err) {
+		if errors.Is(err, storage.ErrObjectRateLimited) {
 			logger.L().Warn(ctx, "rate limited writing layer metadata to object, skipping",
 				zap.String("hash", hash),
 				zap.Error(err),
