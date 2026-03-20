@@ -137,8 +137,8 @@ func TestDeletePath(t *testing.T) {
 	t.Run("delete broken symlink", func(t *testing.T) {
 		t.Parallel()
 
-		target := "symlink-target.txt"
-		link := "symlink-to-delete"
+		target := "broken-symlink-target.txt"
+		link := "broken-symlink-to-delete"
 		linkPath := filepath.Join(tmpdir, link)
 
 		err := os.Symlink(target, linkPath)
