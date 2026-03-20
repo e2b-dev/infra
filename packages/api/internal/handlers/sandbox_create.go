@@ -41,6 +41,9 @@ const (
 	InstanceIDPrefix            = "i"
 	metricTemplateAlias         = metrics.MetricPrefix + "template.alias"
 	minEnvdVersionForSecureFlag = "0.2.0" // Minimum version of envd that supports secure flag
+
+	ErrMsgDomainsRequireBlockAll  = "When specifying allowed domains in allow out, you must include 'ALL_TRAFFIC' in deny out to block all other traffic."
+	ErrMsgAllowInRequiresBlockAll = "When specifying allowed sources in allow in, you must include 'ALL_TRAFFIC' (0.0.0.0/0) in deny in to block all other traffic."
 )
 
 func (a *APIStore) PostSandboxes(c *gin.Context) {
@@ -555,9 +558,9 @@ func validateEgressRules(allowOut, denyOut []string) *api.APIError {
 		}
 	}
 
-	hasBlockAll := slices.Contains(denyOut, sandbox_network.AllTraffic)
+	hasBlockAll := slices.Contains(denyOut, sandbox_network.AllInternetTrafficCIDR)
 	if hasDomains && !hasBlockAll {
-		return badRequest(nil, "When specifying allowed domains in allow out, you must include 'ALL_TRAFFIC' in deny out to block all other traffic.")
+		return badRequest(nil, ErrMsgDomainsRequireBlockAll)
 	}
 
 	return nil
@@ -579,9 +582,9 @@ func validateIngressRules(allowIn, denyIn []string) *api.APIError {
 		}
 	}
 
-	hasBlockAll := slices.Contains(denyIn, sandbox_network.AllTraffic)
+	hasBlockAll := slices.Contains(denyIn, sandbox_network.AllInternetTrafficCIDR)
 	if len(allowIn) > 0 && !hasBlockAll {
-		return badRequest(nil, "When specifying allowed sources in allow in, you must include 'ALL_TRAFFIC' (0.0.0.0/0) in deny in to block all other traffic.")
+		return badRequest(nil, ErrMsgAllowInRequiresBlockAll)
 	}
 
 	return nil

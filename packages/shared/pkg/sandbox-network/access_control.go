@@ -144,7 +144,7 @@ func SplitHostPort(s string) (string, string, error) {
 	}
 
 	if h == "" {
-		h = "0.0.0.0/0" // ":443" means all IPs, port 443
+		h = AllInternetTrafficCIDR // ":port" means all IPs, specified port
 	}
 
 	return h, p, nil

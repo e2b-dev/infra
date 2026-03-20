@@ -81,6 +81,26 @@ func TestValidateNetworkConfig(t *testing.T) {
 		wantCode   int
 		wantErrMsg string
 	}{
+		// Port syntax rejected for egress
+		{
+			name: "deny_out with port is rejected",
+			network: &api.SandboxNetworkConfig{
+				DenyOut: &[]string{"10.0.0.0/8:22"},
+			},
+			wantErr:    true,
+			wantCode:   http.StatusBadRequest,
+			wantErrMsg: `invalid deny out entry "10.0.0.0/8:22": port-specific rules are not supported for egress`,
+		},
+		{
+			name: "allow_out with port is rejected",
+			network: &api.SandboxNetworkConfig{
+				AllowOut: &[]string{"8.8.8.8:80"},
+			},
+			wantErr:    true,
+			wantCode:   http.StatusBadRequest,
+			wantErrMsg: `invalid allow out entry "8.8.8.8:80": port-specific rules are not supported for egress`,
+		},
+		// Valid configurations
 		{
 			name:    "nil network config is valid",
 			network: nil,
@@ -105,26 +125,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 			},
 			wantErr:    true,
 			wantCode:   http.StatusBadRequest,
-			wantErrMsg: `invalid denied CIDR not-a-cidr`,
-		},
-		// Port syntax rejected for egress
-		{
-			name: "deny_out with port is rejected",
-			network: &api.SandboxNetworkConfig{
-				DenyOut: &[]string{"10.0.0.0/8:22"},
-			},
-			wantErr:    true,
-			wantCode:   http.StatusBadRequest,
-			wantErrMsg: `invalid deny out entry "10.0.0.0/8:22": port-specific rules are not supported for egress`,
-		},
-		{
-			name: "allow_out with port is rejected",
-			network: &api.SandboxNetworkConfig{
-				AllowOut: &[]string{"8.8.8.8:80"},
-			},
-			wantErr:    true,
-			wantCode:   http.StatusBadRequest,
-			wantErrMsg: `invalid allow out entry "8.8.8.8:80": port-specific rules are not supported for egress`,
+			wantErrMsg: "invalid denied CIDR not-a-cidr",
 		},
 		// Domain validation tests
 		{
@@ -134,13 +135,13 @@ func TestValidateNetworkConfig(t *testing.T) {
 			},
 			wantErr:    true,
 			wantCode:   http.StatusBadRequest,
-			wantErrMsg: "When specifying allowed domains in allow out, you must include 'ALL_TRAFFIC' in deny out to block all other traffic.",
+			wantErrMsg: ErrMsgDomainsRequireBlockAll,
 		},
 		{
 			name: "allow_out with wildcard domain and block-all deny_out is valid",
 			network: &api.SandboxNetworkConfig{
 				AllowOut: &[]string{"*.example.com"},
-				DenyOut:  &[]string{sandbox_network.AllTraffic},
+				DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
 			},
 			wantErr: false,
 		},
@@ -156,7 +157,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 			name: "allow_out with CIDR and deny_out block-all is valid",
 			network: &api.SandboxNetworkConfig{
 				AllowOut: &[]string{"10.0.0.0/8"},
-				DenyOut:  &[]string{sandbox_network.AllTraffic},
+				DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
 			},
 			wantErr: false,
 		},
@@ -171,7 +172,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 			name: "allow_out with IP and deny_out block-all is valid",
 			network: &api.SandboxNetworkConfig{
 				AllowOut: &[]string{"8.8.8.8"},
-				DenyOut:  &[]string{sandbox_network.AllTraffic},
+				DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
 			},
 			wantErr: false,
 		},
@@ -237,7 +238,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 			name: "valid allowIn with port",
 			network: &api.SandboxNetworkConfig{
 				AllowIn: &[]string{"0.0.0.0/0:80", "0.0.0.0/0:443"},
-				DenyIn:  &[]string{sandbox_network.AllTraffic},
+				DenyIn:  &[]string{sandbox_network.AllInternetTrafficCIDR},
 			},
 			wantErr: false,
 		},
@@ -245,7 +246,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 			name: "valid allowIn with port range",
 			network: &api.SandboxNetworkConfig{
 				AllowIn: &[]string{"10.0.0.0/8:80-443"},
-				DenyIn:  &[]string{sandbox_network.AllTraffic},
+				DenyIn:  &[]string{sandbox_network.AllInternetTrafficCIDR},
 			},
 			wantErr: false,
 		},
@@ -274,7 +275,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 			name: "valid allowIn port-only shorthand :443 with deny-all",
 			network: &api.SandboxNetworkConfig{
 				AllowIn: &[]string{":443"},
-				DenyIn:  &[]string{sandbox_network.AllTraffic},
+				DenyIn:  &[]string{sandbox_network.AllInternetTrafficCIDR},
 			},
 			wantErr: false,
 		},
@@ -283,7 +284,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 			name: "valid allowIn CIDR with deny-all",
 			network: &api.SandboxNetworkConfig{
 				AllowIn: &[]string{"10.0.0.0/8"},
-				DenyIn:  &[]string{sandbox_network.AllTraffic},
+				DenyIn:  &[]string{sandbox_network.AllInternetTrafficCIDR},
 			},
 			wantErr: false,
 		},
@@ -291,7 +292,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 			name: "valid allowIn CIDR from IP with deny-all",
 			network: &api.SandboxNetworkConfig{
 				AllowIn: &[]string{"1.2.3.4/32"},
-				DenyIn:  &[]string{sandbox_network.AllTraffic},
+				DenyIn:  &[]string{sandbox_network.AllInternetTrafficCIDR},
 			},
 			wantErr: false,
 		},
@@ -299,7 +300,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 			name: "valid allowIn bare IP with deny-all",
 			network: &api.SandboxNetworkConfig{
 				AllowIn: &[]string{"1.2.3.4"},
-				DenyIn:  &[]string{sandbox_network.AllTraffic},
+				DenyIn:  &[]string{sandbox_network.AllInternetTrafficCIDR},
 			},
 			wantErr: false,
 		},
@@ -307,7 +308,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 			name: "valid allowIn bare IP with port and deny-all",
 			network: &api.SandboxNetworkConfig{
 				AllowIn: &[]string{"1.2.3.4:80"},
-				DenyIn:  &[]string{sandbox_network.AllTraffic},
+				DenyIn:  &[]string{sandbox_network.AllInternetTrafficCIDR},
 			},
 			wantErr: false,
 		},
@@ -318,7 +319,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 			},
 			wantErr:    true,
 			wantCode:   http.StatusBadRequest,
-			wantErrMsg: "When specifying allowed sources in allow in, you must include 'ALL_TRAFFIC' (0.0.0.0/0) in deny in to block all other traffic.",
+			wantErrMsg: ErrMsgAllowInRequiresBlockAll,
 		},
 		{
 			name: "allowIn with partial denyIn (no deny-all) is rejected",
@@ -328,7 +329,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 			},
 			wantErr:    true,
 			wantCode:   http.StatusBadRequest,
-			wantErrMsg: "When specifying allowed sources in allow in, you must include 'ALL_TRAFFIC' (0.0.0.0/0) in deny in to block all other traffic.",
+			wantErrMsg: ErrMsgAllowInRequiresBlockAll,
 		},
 		{
 			name: "invalid allowIn entry",
@@ -364,13 +365,13 @@ func TestValidateNetworkConfig(t *testing.T) {
 			},
 			wantErr:    true,
 			wantCode:   http.StatusBadRequest,
-			wantErrMsg: "When specifying allowed domains in allow out, you must include 'ALL_TRAFFIC' in deny out to block all other traffic.",
+			wantErrMsg: ErrMsgDomainsRequireBlockAll,
 		},
 		{
 			name: "allow_out with domain and CIDR with deny_out block-all is valid",
 			network: &api.SandboxNetworkConfig{
 				AllowOut: &[]string{"example.com", "8.8.8.8"},
-				DenyOut:  &[]string{sandbox_network.AllTraffic},
+				DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
 			},
 			wantErr: false,
 		},

@@ -147,7 +147,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	// Build egress/ingress from proto, injecting deny-all if internet is disabled.
 	egress := sandbox.EgressFromProto(network.GetEgress())
 	if !allowInternet {
-		egress.Denied = sandbox_network.ParseValidRules([]string{sandbox_network.AllTraffic})
+		egress.Denied = sandbox_network.ParseValidRules([]string{sandbox_network.AllInternetTrafficCIDR})
 	}
 	ingress := sandbox.IngressFromProto(network.GetIngress())
 

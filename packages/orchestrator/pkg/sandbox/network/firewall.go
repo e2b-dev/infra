@@ -293,7 +293,7 @@ func clearAndReplaceCIDRs(conn *nftables.Conn, s set.Set, cidrs []string) error 
 	// 0.0.0.0/0 must be handled specially: the firewall_toolkit's
 	// ValidateAddress rejects 0.0.0.0 as "unspecified", so we bypass
 	// the toolkit and create raw nftables interval elements directly.
-	if slices.Contains(cidrs, sandbox_network.AllTraffic) {
+	if slices.Contains(cidrs, sandbox_network.AllInternetTrafficCIDR) {
 		conn.FlushSet(s.Set())
 
 		elems := []nftables.SetElement{

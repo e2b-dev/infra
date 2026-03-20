@@ -53,7 +53,7 @@ func TestUpdate_EgressOnly_FailsAndDoesNotChangeEndTime(t *testing.T) {
 	_, err = s.Update(t.Context(), &orchestrator.SandboxUpdateRequest{
 		SandboxId: sbx.Runtime.SandboxID,
 		Egress: &orchestrator.SandboxNetworkEgressConfig{
-			DeniedCidrs: []string{sandbox_network.AllTraffic},
+			DeniedCidrs: []string{sandbox_network.AllInternetTrafficCIDR},
 		},
 	})
 
@@ -94,7 +94,7 @@ func TestUpdate_EndTimeAndEgress_EgressFails_RevertsEndTime(t *testing.T) {
 		SandboxId: sbx.Runtime.SandboxID,
 		EndTime:   timestamppb.New(newEnd),
 		Egress: &orchestrator.SandboxNetworkEgressConfig{
-			DeniedCidrs: []string{sandbox_network.AllTraffic},
+			DeniedCidrs: []string{sandbox_network.AllInternetTrafficCIDR},
 		},
 	})
 
@@ -135,7 +135,7 @@ func TestUpdate_EgressAndIngress_EgressFails_RevertsIngress(t *testing.T) {
 	_, err = s.Update(t.Context(), &orchestrator.SandboxUpdateRequest{
 		SandboxId: sbx.Runtime.SandboxID,
 		Egress: &orchestrator.SandboxNetworkEgressConfig{
-			DeniedCidrs: []string{sandbox_network.AllTraffic},
+			DeniedCidrs: []string{sandbox_network.AllInternetTrafficCIDR},
 		},
 		Ingress: &orchestrator.SandboxNetworkIngressConfig{
 			DeniedCidrs: []string{"10.0.0.0/8"},

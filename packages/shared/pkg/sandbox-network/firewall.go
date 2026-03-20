@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	AllTraffic = "0.0.0.0/0"
+	AllInternetTrafficCIDR = "0.0.0.0/0"
 
 	DefaultNameserver = "8.8.8.8"
 )
@@ -74,7 +74,7 @@ func IsSpecifiedIPOrCIDR(s string) bool {
 	}
 
 	// Allow the special all-traffic CIDR
-	if s == AllTraffic {
+	if s == AllInternetTrafficCIDR {
 		return true
 	}
 

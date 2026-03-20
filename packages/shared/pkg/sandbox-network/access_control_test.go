@@ -24,8 +24,8 @@ func TestSplitHostPort(t *testing.T) {
 		{"domain with port", "example.com:443", "example.com", "443"},
 		{"IP with port range", "8.8.8.8:80-443", "8.8.8.8", "80-443"},
 		{"trailing colon", "8.8.8.8:", "8.8.8.8", ""},
-		{"port only", ":443", "0.0.0.0/0", "443"},
-		{"bare colon", ":", "0.0.0.0/0", ""},
+		{"port only", ":443", AllInternetTrafficCIDR, "443"},
+		{"bare colon", ":", AllInternetTrafficCIDR, ""},
 	}
 
 	for _, tt := range tests {
@@ -104,7 +104,7 @@ func TestIngressIsAllowed(t *testing.T) {
 
 		ingress := &Ingress{
 			Allowed: Rules{{IPNet: mustParseCIDR("10.0.0.0/8")}},
-			Denied:  Rules{{IPNet: mustParseCIDR("0.0.0.0/0")}},
+			Denied:  Rules{{IPNet: mustParseCIDR(AllInternetTrafficCIDR)}},
 		}
 
 		require.True(t, ingress.IsAllowed(net.ParseIP("10.1.2.3"), 80))
@@ -115,8 +115,8 @@ func TestIngressIsAllowed(t *testing.T) {
 		t.Parallel()
 
 		ingress := &Ingress{
-			Allowed: Rules{{IPNet: mustParseCIDR("0.0.0.0/0"), PortStart: 443, PortEnd: 443}},
-			Denied:  Rules{{IPNet: mustParseCIDR("0.0.0.0/0")}},
+			Allowed: Rules{{IPNet: mustParseCIDR(AllInternetTrafficCIDR), PortStart: 443, PortEnd: 443}},
+			Denied:  Rules{{IPNet: mustParseCIDR(AllInternetTrafficCIDR)}},
 		}
 
 		require.True(t, ingress.IsAllowed(net.ParseIP("1.2.3.4"), 443))

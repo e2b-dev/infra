@@ -24,7 +24,7 @@ import (
 // PUT /sandboxes/{sandboxID}/network — Dynamic network config update tests
 // =============================================================================
 
-const blockAll = sandbox_network.AllTraffic
+const blockAll = sandbox_network.AllInternetTrafficCIDR
 
 func ptrS(s ...string) *[]string { return &s }
 
@@ -469,17 +469,17 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 		},
 		{
 			name:    "port_allow_overrides_deny",
-			allowIn: []string{fmt.Sprintf("0.0.0.0/0:%d", testPort)}, denyIn: []string{sandbox_network.AllTraffic},
+			allowIn: []string{fmt.Sprintf("0.0.0.0/0:%d", testPort)}, denyIn: []string{sandbox_network.AllInternetTrafficCIDR},
 			checks: []ingressCheck{{testPort, "", false}, {testPort + 1, "", true}},
 		},
 		{
 			name:   "client_ip_deny_all_blocks",
-			denyIn: []string{sandbox_network.AllTraffic},
+			denyIn: []string{blockAll},
 			checks: []ingressCheck{{testPort, "", true}},
 		},
 		{
 			name:    "client_ip_allow_all_overrides_deny_all",
-			allowIn: []string{sandbox_network.AllTraffic}, denyIn: []string{sandbox_network.AllTraffic},
+			allowIn: []string{blockAll}, denyIn: []string{blockAll},
 			checks: []ingressCheck{{testPort, "", false}},
 		},
 		{
@@ -494,7 +494,7 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 		},
 		{
 			name:    "port_range_allow_overrides_deny",
-			allowIn: []string{fmt.Sprintf("0.0.0.0/0:%d-%d", testPort, testPort+1)}, denyIn: []string{sandbox_network.AllTraffic},
+			allowIn: []string{fmt.Sprintf("0.0.0.0/0:%d-%d", testPort, testPort+1)}, denyIn: []string{blockAll},
 			checks: []ingressCheck{{testPort, "", false}, {testPort + 1, "", false}},
 		},
 		{
@@ -504,7 +504,7 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 		},
 		{
 			name: "spoofed_ip_allow_overrides_deny", ciOnly: true,
-			allowIn: []string{"203.0.113.42"}, denyIn: []string{sandbox_network.AllTraffic, "203.0.113.0/24"},
+			allowIn: []string{"203.0.113.42"}, denyIn: []string{blockAll, "203.0.113.0/24"},
 			checks: []ingressCheck{{testPort, "203.0.113.42", false}, {testPort, "203.0.113.99", true}},
 		},
 		{
@@ -514,7 +514,7 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 		},
 		{
 			name:   "envd_exempt_from_ingress_restrictions",
-			denyIn: []string{sandbox_network.AllTraffic},
+			denyIn: []string{blockAll},
 			checks: []ingressCheck{{envdPort, "", false}},
 		},
 		{
@@ -614,7 +614,7 @@ socketserver.TCPServer(("", %d), H).serve_forever()
 		updateAll(api.PutSandboxesSandboxIDNetworkJSONRequestBody{
 			AllowOut: ptrS("8.8.8.8", "google.com"),
 			DenyOut:  ptrS(blockAll),
-			DenyIn:   ptrS(sandbox_network.AllTraffic),
+			DenyIn:   ptrS(blockAll),
 		})
 
 		// Egress: allowed IP and domain work, others blocked.

@@ -119,7 +119,7 @@ func TestEgressFirewallAllowSpecificIP(t *testing.T) {
 		utils.WithTimeout(60),
 		utils.WithNetwork(&api.SandboxNetworkConfig{
 			AllowOut: &allowedIPs,
-			DenyOut:  &[]string{sandbox_network.AllTraffic},
+			DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
 		}),
 	)
 
@@ -170,7 +170,7 @@ func TestEgressFirewallAllowCIDRRange(t *testing.T) {
 		utils.WithTimeout(60),
 		utils.WithNetwork(&api.SandboxNetworkConfig{
 			AllowOut: &allowedRanges,
-			DenyOut:  &[]string{sandbox_network.AllTraffic},
+			DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
 		}),
 	)
 
@@ -214,7 +214,7 @@ func TestEgressFirewallAllowAndBlockCombination(t *testing.T) {
 
 	// Block all internet but explicitly allow one IP - allowOut should take precedence
 	allowedIPs := []string{"8.8.8.8"}
-	blockAll := []string{sandbox_network.AllTraffic}
+	blockAll := []string{sandbox_network.AllInternetTrafficCIDR}
 
 	sbx := utils.SetupSandboxWithCleanup(t, client,
 		utils.WithTemplateID(templateID),
@@ -247,7 +247,7 @@ func TestEgressFirewallPersistsAfterResume(t *testing.T) {
 		utils.WithTimeout(60),
 		utils.WithNetwork(&api.SandboxNetworkConfig{
 			AllowOut: &allowedIPs,
-			DenyOut:  &[]string{sandbox_network.AllTraffic},
+			DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
 		}),
 	)
 
@@ -305,14 +305,14 @@ func TestEgressFirewallAllowAll(t *testing.T) {
 	client := setup.GetAPIClient()
 
 	// Allow all IPs using 0.0.0.0/0
-	allowAll := []string{sandbox_network.AllTraffic}
+	allowAll := []string{sandbox_network.AllInternetTrafficCIDR}
 
 	sbx := utils.SetupSandboxWithCleanup(t, client,
 		utils.WithTemplateID(templateID),
 		utils.WithTimeout(60),
 		utils.WithNetwork(&api.SandboxNetworkConfig{
 			AllowOut: &allowAll,
-			DenyOut:  &[]string{sandbox_network.AllTraffic},
+			DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
 		}),
 	)
 
@@ -363,7 +363,7 @@ func TestEgressFirewallMultipleAllowedIPs(t *testing.T) {
 		utils.WithTimeout(60),
 		utils.WithNetwork(&api.SandboxNetworkConfig{
 			AllowOut: &allowedIPs,
-			DenyOut:  &[]string{sandbox_network.AllTraffic},
+			DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
 		}),
 	)
 
@@ -473,14 +473,14 @@ func TestEgressFirewallAllowAllDuplicate(t *testing.T) {
 	client := setup.GetAPIClient()
 
 	// Add 0.0.0.0/0 twice in the allowOut list
-	allowAll := []string{sandbox_network.AllTraffic, sandbox_network.AllTraffic}
+	allowAll := []string{sandbox_network.AllInternetTrafficCIDR, sandbox_network.AllInternetTrafficCIDR}
 
 	sbx := utils.SetupSandboxWithCleanup(t, client,
 		utils.WithTemplateID(templateID),
 		utils.WithTimeout(60),
 		utils.WithNetwork(&api.SandboxNetworkConfig{
 			AllowOut: &allowAll,
-			DenyOut:  &[]string{sandbox_network.AllTraffic},
+			DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
 		}),
 	)
 
@@ -498,14 +498,14 @@ func TestEgressFirewallRegularIPThenAllowAll(t *testing.T) {
 	client := setup.GetAPIClient()
 
 	// Add a specific IP followed by 0.0.0.0/0
-	allowList := []string{"8.8.8.8", sandbox_network.AllTraffic}
+	allowList := []string{"8.8.8.8", sandbox_network.AllInternetTrafficCIDR}
 
 	sbx := utils.SetupSandboxWithCleanup(t, client,
 		utils.WithTemplateID(templateID),
 		utils.WithTimeout(60),
 		utils.WithNetwork(&api.SandboxNetworkConfig{
 			AllowOut: &allowList,
-			DenyOut:  &[]string{sandbox_network.AllTraffic},
+			DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
 		}),
 	)
 
@@ -525,7 +525,7 @@ func TestEgressFirewallAllowDomainThroughBlockedInternet(t *testing.T) {
 
 	// Block all internet but allow google.com domain
 	allowList := []string{"google.com"}
-	blockAll := []string{sandbox_network.AllTraffic}
+	blockAll := []string{sandbox_network.AllInternetTrafficCIDR}
 
 	sbx := utils.SetupSandboxWithCleanup(t, client,
 		utils.WithTemplateID(templateID),
@@ -551,7 +551,7 @@ func TestEgressFirewallAllowWildcardDomainThroughBlockedInternet(t *testing.T) {
 
 	// Block all internet but allow *.google.com wildcard domain
 	allowList := []string{"*.google.com"}
-	blockAll := []string{sandbox_network.AllTraffic}
+	blockAll := []string{sandbox_network.AllInternetTrafficCIDR}
 
 	sbx := utils.SetupSandboxWithCleanup(t, client,
 		utils.WithTemplateID(templateID),
@@ -578,7 +578,7 @@ func TestEgressFirewallExactDomainMatchVsSubdomain(t *testing.T) {
 
 	// Block all internet but allow only exact "google.com" (not subdomains)
 	allowList := []string{"google.com"}
-	blockAll := []string{sandbox_network.AllTraffic}
+	blockAll := []string{sandbox_network.AllInternetTrafficCIDR}
 
 	sbx := utils.SetupSandboxWithCleanup(t, client,
 		utils.WithTemplateID(templateID),
@@ -604,7 +604,7 @@ func TestEgressFirewallAllowAllDomainsWildcard(t *testing.T) {
 
 	// Block all internet but allow all domains with "*" wildcard
 	allowList := []string{"*"}
-	blockAll := []string{sandbox_network.AllTraffic}
+	blockAll := []string{sandbox_network.AllInternetTrafficCIDR}
 
 	sbx := utils.SetupSandboxWithCleanup(t, client,
 		utils.WithTemplateID(templateID),
@@ -631,7 +631,7 @@ func TestEgressFirewallDomainCaseInsensitive(t *testing.T) {
 
 	// Block all internet but allow domain with mixed case
 	allowList := []string{"Google.COM"}
-	blockAll := []string{sandbox_network.AllTraffic}
+	blockAll := []string{sandbox_network.AllInternetTrafficCIDR}
 
 	sbx := utils.SetupSandboxWithCleanup(t, client,
 		utils.WithTemplateID(templateID),
@@ -657,7 +657,7 @@ func TestEgressFirewallAllowDomainAndIP(t *testing.T) {
 
 	// Block all internet but allow both a domain and an IP
 	allowList := []string{"google.com", "1.1.1.1"}
-	blockAll := []string{sandbox_network.AllTraffic}
+	blockAll := []string{sandbox_network.AllInternetTrafficCIDR}
 
 	sbx := utils.SetupSandboxWithCleanup(t, client,
 		utils.WithTemplateID(templateID),
@@ -686,7 +686,7 @@ func TestEgressFirewallHTTPSByIPNoHostname(t *testing.T) {
 
 	// Block all internet but allow only a domain (not an IP)
 	allowList := []string{"cloudflare.com"}
-	blockAll := []string{sandbox_network.AllTraffic}
+	blockAll := []string{sandbox_network.AllInternetTrafficCIDR}
 
 	sbx := utils.SetupSandboxWithCleanup(t, client,
 		utils.WithTemplateID(templateID),
@@ -714,7 +714,7 @@ func TestEgressFirewallDomainPersistsAfterResume(t *testing.T) {
 
 	// Block all internet but allow specific domain
 	allowList := []string{"google.com"}
-	blockAll := []string{sandbox_network.AllTraffic}
+	blockAll := []string{sandbox_network.AllInternetTrafficCIDR}
 
 	sbx := utils.SetupSandboxWithCleanup(t, client,
 		utils.WithTemplateID(templateID),
@@ -761,7 +761,7 @@ func TestEgressFirewallHTTPDomainFiltering(t *testing.T) {
 
 	// Block all internet but allow postman-echo.com domain (supports HTTP)
 	allowList := []string{"postman-echo.com"}
-	blockAll := []string{sandbox_network.AllTraffic}
+	blockAll := []string{sandbox_network.AllInternetTrafficCIDR}
 
 	sbx := utils.SetupSandboxWithCleanup(t, client,
 		utils.WithTemplateID(templateID),
@@ -791,7 +791,7 @@ func TestEgressFirewallUDPAllowedIP(t *testing.T) {
 
 	// Block all internet but allow Google DNS IP
 	allowList := []string{"8.8.8.8"}
-	blockAll := []string{sandbox_network.AllTraffic}
+	blockAll := []string{sandbox_network.AllInternetTrafficCIDR}
 
 	sbx := utils.SetupSandboxWithCleanup(t, client,
 		utils.WithTemplateID(templateID),
@@ -817,7 +817,7 @@ func TestEgressFirewallUDPAllowedCIDR(t *testing.T) {
 
 	// Block all internet but allow Google DNS CIDR range
 	allowList := []string{"8.8.8.0/24"}
-	blockAll := []string{sandbox_network.AllTraffic}
+	blockAll := []string{sandbox_network.AllInternetTrafficCIDR}
 
 	sbx := utils.SetupSandboxWithCleanup(t, client,
 		utils.WithTemplateID(templateID),
@@ -853,7 +853,7 @@ func TestEgressFirewallDNSSpoofingNeutralized(t *testing.T) {
 		utils.WithNetwork(&api.SandboxNetworkConfig{
 			// Block all internet but allow google.com domain
 			AllowOut: &[]string{"google.com"},
-			DenyOut:  &[]string{sandbox_network.AllTraffic},
+			DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
 		}),
 	)
 
@@ -945,8 +945,8 @@ func TestWithNetworkConfig_SSHWorks(t *testing.T) {
 		utils.WithTemplateID(templateID),
 		utils.WithTimeout(60),
 		utils.WithNetwork(&api.SandboxNetworkConfig{
-			AllowOut: &[]string{sandbox_network.AllTraffic}, // Allow all IPs
-			DenyOut:  &[]string{sandbox_network.AllTraffic}, // Would block all, but allowOut takes precedence
+			AllowOut: &[]string{sandbox_network.AllInternetTrafficCIDR}, // Allow all IPs
+			DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR}, // Would block all, but allowOut takes precedence
 		}),
 	)
 
@@ -1015,8 +1015,8 @@ func TestGPGKeyserverWorks(t *testing.T) {
 			utils.WithTemplateID(templateID),
 			utils.WithTimeout(60),
 			utils.WithNetwork(&api.SandboxNetworkConfig{
-				AllowOut: &[]string{sandbox_network.AllTraffic}, // Allow all IPs
-				DenyOut:  &[]string{sandbox_network.AllTraffic}, // Would block all, but allowOut takes precedence
+				AllowOut: &[]string{sandbox_network.AllInternetTrafficCIDR}, // Allow all IPs
+				DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR}, // Would block all, but allowOut takes precedence
 			}),
 		)
 
