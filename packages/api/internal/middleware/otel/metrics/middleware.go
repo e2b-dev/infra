@@ -11,6 +11,8 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	semconv "go.opentelemetry.io/otel/semconv/v1.7.0"
+
+	sharedmiddleware "github.com/e2b-dev/infra/packages/shared/pkg/middleware"
 )
 
 const MetricPrefix = "metric."
@@ -76,9 +78,9 @@ func Middleware(meterProvider metric.MeterProvider, service string, options ...O
 			)
 
 			code := ginCtx.Writer.Status()
-			if errors.Is(ctx.Err(), context.Canceled) {
+			if errors.Is(sharedmiddleware.CancelCause(ginCtx), context.Canceled) {
 				// 499 is the nginx convention for "client closed request before server responded"
-				code = 499
+				code = sharedmiddleware.StatusClientClosedRequest
 			}
 
 			groupedCode := code / 100 * 100

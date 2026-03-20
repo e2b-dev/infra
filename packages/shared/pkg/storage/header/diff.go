@@ -8,9 +8,9 @@ import (
 )
 
 const (
-	PageSize        = 2 << 11
-	HugepageSize    = 2 << 20
-	RootfsBlockSize = 2 << 11
+	PageSize        = 4 << 10 // 4 KiB
+	HugepageSize    = 2 << 20 // 2 MiB
+	RootfsBlockSize = 4 << 10 // 4 KiB
 )
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/shared/pkg/storage/header")

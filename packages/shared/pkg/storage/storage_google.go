@@ -20,6 +20,8 @@ import (
 	"google.golang.org/api/option"
 	"google.golang.org/api/option/internaloption"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
@@ -32,7 +34,7 @@ import (
 const (
 	googleReadTimeout              = 10 * time.Second
 	googleOperationTimeout         = 5 * time.Second
-	googleBufferSize               = 2 << 21
+	googleBufferSize               = 4 << 20 // 4 MiB
 	googleInitialBackoff           = 10 * time.Millisecond
 	googleMaxBackoff               = 10 * time.Second
 	googleBackoffMultiplier        = 2
@@ -303,19 +305,42 @@ func (o *gcpObject) ReadAt(ctx context.Context, buff []byte, off int64) (n int, 
 	return n, err
 }
 
-func (o *gcpObject) Put(ctx context.Context, data []byte) (e error) {
+func (o *gcpObject) Put(ctx context.Context, data []byte) error {
 	timer := googleWriteTimerFactory.Begin(attribute.String(gcsOperationAttr, gcsOperationAttrWrite))
 
 	w := o.handle.NewWriter(ctx)
-	defer func() {
-		if err := w.Close(); err != nil {
-			e = errors.Join(e, fmt.Errorf("failed to write to %q: %w", o.path, err))
-		}
-	}()
 
 	c, err := io.Copy(w, bytes.NewReader(data))
 	if err != nil && !errors.Is(err, io.EOF) {
+		closeErr := w.Close()
+		if closeErr != nil {
+			logger.L().Warn(ctx, "failed to close GCS writer after copy error",
+				zap.String("object", o.path),
+				zap.NamedError("error_copy", err),
+				zap.Error(closeErr),
+			)
+		}
+
 		timer.Failure(ctx, c)
+
+		// ResourceExhausted from GCS means per-object mutation rate limiting —
+		// multiple concurrent writers racing to write the same content-addressed object.
+		if isResourceExhausted(err) {
+			return ErrObjectRateLimited
+		}
+
+		return fmt.Errorf("failed to write to %q: %w", o.path, err)
+	}
+
+	// For small objects the GCS Writer buffers data in memory during Write()
+	// and performs the actual upload during Close(). ResourceExhausted errors
+	// from per-object mutation rate limiting will surface here.
+	if err := w.Close(); err != nil {
+		timer.Failure(ctx, c)
+
+		if isResourceExhausted(err) {
+			return ErrObjectRateLimited
+		}
 
 		return fmt.Errorf("failed to write to %q: %w", o.path, err)
 	}
@@ -469,4 +494,17 @@ func parseServiceAccountBase64(serviceAccount string) (*gcpServiceToken, error) 
 	}
 
 	return &sa, nil
+}
+
+func isResourceExhausted(err error) bool {
+	type grpcStatusProvider interface {
+		GRPCStatus() *status.Status
+	}
+
+	var se grpcStatusProvider
+	if errors.As(err, &se) {
+		return se.GRPCStatus().Code() == codes.ResourceExhausted
+	}
+
+	return false
 }

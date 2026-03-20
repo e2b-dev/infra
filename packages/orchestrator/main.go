@@ -27,32 +27,32 @@ import (
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	clickhouseevents "github.com/e2b-dev/infra/packages/clickhouse/pkg/events"
 	clickhousehoststats "github.com/e2b-dev/infra/packages/clickhouse/pkg/hoststats"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/chrooted"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/events"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/factories"
-	e2bhealthcheck "github.com/e2b-dev/infra/packages/orchestrator/internal/healthcheck"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/hyperloopserver"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/localupload"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/metrics"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy"
-	nfscfg "github.com/e2b-dev/infra/packages/orchestrator/internal/nfsproxy/cfg"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/portmap"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
-	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/cgroup"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template/peerclient"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/server"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/service/machineinfo"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/tcpfirewall"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
-	tmplserver "github.com/e2b-dev/infra/packages/orchestrator/internal/template/server"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/volumes"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/chrooted"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/events"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/factories"
+	e2bhealthcheck "github.com/e2b-dev/infra/packages/orchestrator/pkg/healthcheck"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/hyperloopserver"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/localupload"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/metrics"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/nfsproxy"
+	nfscfg "github.com/e2b-dev/infra/packages/orchestrator/pkg/nfsproxy/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/portmap"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/proxy"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
+	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/cgroup"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/nbd"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template/peerclient"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/server"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/service"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/service/machineinfo"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/tcpfirewall"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/constants"
+	tmplserver "github.com/e2b-dev/infra/packages/orchestrator/pkg/template/server"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/volumes"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	event "github.com/e2b-dev/infra/packages/shared/pkg/events"
 	sharedFactories "github.com/e2b-dev/infra/packages/shared/pkg/factories"
@@ -748,10 +748,12 @@ func startNFSProxy(
 
 	// nfs proxy implementation
 	nfsServer, err := nfsproxy.NewProxy(ctx, builder, sandboxes, nfscfg.Config{
-		Logging:         config.NFSProxyLogging,
-		Tracing:         config.NFSProxyTracing,
-		RecordStatCalls: config.NFSProxyRecordStatCalls,
-		NFSLogLevel:     config.NFSProxyLogLevel,
+		Logging:           config.NFSProxyLogging,
+		Tracing:           config.NFSProxyTracing,
+		Metrics:           config.NFSProxyMetrics,
+		RecordHandleCalls: config.NFSProxyRecordHandleCalls,
+		RecordStatCalls:   config.NFSProxyRecordStatCalls,
+		NFSLogLevel:       config.NFSProxyLogLevel,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create nfs proxy: %w", err)

@@ -1,5 +1,7 @@
 ENV := $(shell cat ../../.last_used_env || echo "not-set")
 -include ../../.env.${ENV}
+
+LOCAL_BUILD_TARGET ?= build-debug
 PREFIX := $(strip $(subst ",,$(PREFIX)))
 HOSTNAME := $(shell hostname 2> /dev/null || hostnamectl hostname 2> /dev/null)
 $(if $(HOSTNAME),,$(error Failed to determine hostname: both 'hostname' and 'hostnamectl' failed))
@@ -54,8 +56,7 @@ define setup_local_env
 endef
 
 .PHONY: run-local
-run-local:
-	make build-debug
+run-local: $(LOCAL_BUILD_TARGET)
 	$(call setup_local_env)
 	NODE_ID=$(HOSTNAME) ./bin/api --port 3000
 

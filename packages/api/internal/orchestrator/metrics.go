@@ -11,7 +11,7 @@ import (
 )
 
 func (o *Orchestrator) setupMetrics(meterProvider metric.MeterProvider) error {
-	meter := meterProvider.Meter("api.orchestrator")
+	meter := meterProvider.Meter("github.com/e2b-dev/infra/packages/api/internal/orchestrator")
 	gauge, err := telemetry.GetGaugeInt(meter, telemetry.ApiOrchestratorCountMeterName)
 	if err != nil {
 		return fmt.Errorf("failed to create orchestrators gauge: %w", err)
