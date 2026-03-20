@@ -17,9 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-var (
-	fallbackDiffSize = units.MBToBytes(100)
-)
+var fallbackDiffSize = units.MBToBytes(100)
 
 type deleteDiff struct {
 	size      int64
