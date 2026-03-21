@@ -17,6 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/buildcontext"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/core/filesystem"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/layer"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/phases"
@@ -174,12 +175,22 @@ func (ppb *PostProcessingBuilder) Build(
 	span.SetAttributes(attribute.String("io_engine", ioEngine))
 	ppb.logger.Debug(ctx, "using io engine", zap.String("io_engine", ioEngine))
 
+	// Build the pre-boot hook that sets reserved blocks on the host rootfs before the guest boots.
+	var preBootFn sandbox.PreBootFn
+	if reservedDiskSpaceMB := int64(ppb.featureFlags.IntFlag(ctx, featureflags.BuildReservedDiskSpaceMB)); reservedDiskSpaceMB > 0 {
+		blockSize := ppb.Config.RootfsBlockSize()
+		preBootFn = func(ctx context.Context, rootfsPath string) error {
+			return filesystem.SetReservedBlocksOnHost(ctx, rootfsPath, reservedDiskSpaceMB, blockSize)
+		}
+	}
+
 	// Always restart the sandbox for the final layer to properly wire the rootfs path for the final template
 	sandboxCreator := layer.NewCreateSandbox(
 		sbxConfig,
 		ppb.sandboxFactory,
 		finalizeTimeout,
 		layer.WithIoEngine(ioEngine),
+		layer.WithPreBootFn(preBootFn),
 	)
 
 	actionExecutor := layer.NewFunctionAction(ppb.postProcessingFn(userLogger))
@@ -217,16 +228,6 @@ func (ppb *PostProcessingBuilder) postProcessingFn(userLogger logger.Logger) lay
 		defer func() {
 			if e != nil {
 				return
-			}
-
-			// Set reserved disk space for the guest OS before syncing
-			if reservedDiskSpaceMB := int64(ppb.featureFlags.IntFlag(ctx, featureflags.BuildReservedDiskSpaceMB)); reservedDiskSpaceMB > 0 {
-				err := sandboxtools.SetReservedBlocksInGuest(ctx, ppb.proxy, userLogger, sbx.Runtime.SandboxID, reservedDiskSpaceMB, ppb.Config.RootfsBlockSize())
-				if err != nil {
-					e = fmt.Errorf("error setting reserved disk space: %w", err)
-
-					return
-				}
 			}
 
 			// Ensure all changes are synchronized to disk so the sandbox can be restarted
