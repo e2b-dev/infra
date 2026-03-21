@@ -29,6 +29,7 @@ type CreateSandbox struct {
 
 	rootfsCachePath string
 	ioEngine        *string
+	preBootFn       sandbox.PreBootFn
 }
 
 const (
@@ -41,6 +42,7 @@ var _ SandboxCreator = (*CreateSandbox)(nil)
 type createSandboxOptions struct {
 	rootfsCachePath string
 	ioEngine        *string
+	preBootFn       sandbox.PreBootFn
 }
 
 type CreateSandboxOption func(*createSandboxOptions)
@@ -54,6 +56,15 @@ func WithIoEngine(ioEngine string) CreateSandboxOption {
 func WithRootfsCachePath(rootfsCachePath string) CreateSandboxOption {
 	return func(opts *createSandboxOptions) {
 		opts.rootfsCachePath = rootfsCachePath
+	}
+}
+
+// WithPreBootFn sets a callback that runs after the rootfs is ready but before
+// Firecracker boots. The callback receives the rootfs device path and can
+// modify filesystem on the host side.
+func WithPreBootFn(fn sandbox.PreBootFn) CreateSandboxOption {
+	return func(opts *createSandboxOptions) {
+		opts.preBootFn = fn
 	}
 }
 
@@ -72,6 +83,7 @@ func NewCreateSandbox(config *sandbox.Config, sandboxFactory *sandbox.Factory, t
 		rootfsCachePath: opts.rootfsCachePath,
 		sandboxFactory:  sandboxFactory,
 		ioEngine:        opts.ioEngine,
+		preBootFn:       opts.preBootFn,
 	}
 }
 
@@ -121,6 +133,7 @@ func (cs *CreateSandbox) Sandbox(
 			IoEngine:            cs.ioEngine,
 		},
 		nil,
+		cs.preBootFn,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create sandbox: %w", err)
