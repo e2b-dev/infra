@@ -143,6 +143,85 @@ func (m *MockStorage) Add(ctx context.Context, sbx sandbox.Sandbox) error {
 	return m.Storage.Add(ctx, sbx)
 }
 
+type reserveResponse struct {
+	finishStart  func(sandbox.Sandbox, error)
+	waitForStart func(context.Context) (sandbox.Sandbox, error)
+	err          error
+}
+
+type ScriptedReservationStorage struct {
+	mu        sync.Mutex
+	responses []reserveResponse
+	calls     int
+}
+
+func (s *ScriptedReservationStorage) Reserve(_ context.Context, _ uuid.UUID, _ string, _ int) (func(sandbox.Sandbox, error), func(context.Context) (sandbox.Sandbox, error), error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.calls >= len(s.responses) {
+		return nil, nil, fmt.Errorf("unexpected Reserve call %d", s.calls+1)
+	}
+
+	resp := s.responses[s.calls]
+	s.calls++
+
+	return resp.finishStart, resp.waitForStart, resp.err
+}
+
+func (s *ScriptedReservationStorage) Release(_ context.Context, _ uuid.UUID, _ string) error {
+	return nil
+}
+
+type StatefulStorage struct {
+	sandbox.Storage
+
+	mu        sync.Mutex
+	current   *sandbox.Sandbox
+	waitCalls int
+	waitErr   error
+	onWait    func()
+}
+
+func NewStatefulStorage(current *sandbox.Sandbox) *StatefulStorage {
+	return &StatefulStorage{
+		Storage: memory.NewStorage(),
+		current: current,
+	}
+}
+
+func (s *StatefulStorage) Get(_ context.Context, teamID uuid.UUID, sandboxID string) (sandbox.Sandbox, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.current == nil || s.current.TeamID != teamID || s.current.SandboxID != sandboxID {
+		return sandbox.Sandbox{}, fmt.Errorf("sandbox %q: %w", sandboxID, sandbox.ErrNotFound)
+	}
+
+	return *s.current, nil
+}
+
+func (s *StatefulStorage) WaitForStateChange(_ context.Context, _ uuid.UUID, _ string) error {
+	s.mu.Lock()
+	s.waitCalls++
+	onWait := s.onWait
+	waitErr := s.waitErr
+	s.mu.Unlock()
+
+	if onWait != nil {
+		onWait()
+	}
+
+	return waitErr
+}
+
+func (s *StatefulStorage) WaitCalls() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.waitCalls
+}
+
 // createTestSandbox creates a test sandbox with default values
 func createTestSandbox() sandbox.Sandbox {
 	return sandbox.NewSandbox(
@@ -532,5 +611,67 @@ func TestAdd_ConcurrentCalls(t *testing.T) {
 		stored, err := storage.Get(ctx, sbx.TeamID, sbx.SandboxID)
 		require.NoError(t, err)
 		assert.Equal(t, sbx.SandboxID, stored.SandboxID)
+	})
+}
+
+func TestReserve_ExistingSandbox(t *testing.T) {
+	t.Parallel()
+
+	t.Run("running sandbox is returned immediately", func(t *testing.T) {
+		t.Parallel()
+		ctx := t.Context()
+
+		sbx := createTestSandbox()
+		storage := NewStatefulStorage(&sbx)
+		reservations := &ScriptedReservationStorage{
+			responses: []reserveResponse{
+				{err: sandbox.ErrAlreadyExists},
+			},
+		}
+		store := sandbox.NewStore(storage, reservations, sandbox.Callbacks{})
+
+		finishStart, waitForStart, err := store.Reserve(ctx, sbx.TeamID, sbx.SandboxID, 1)
+		require.NoError(t, err)
+		assert.Nil(t, finishStart)
+		require.NotNil(t, waitForStart)
+
+		got, err := waitForStart(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, sbx.SandboxID, got.SandboxID)
+		assert.Equal(t, sandbox.StateRunning, got.State)
+		assert.Equal(t, 0, storage.WaitCalls())
+		assert.Equal(t, 1, reservations.calls)
+	})
+
+	t.Run("pausing sandbox waits for state change and then disappears", func(t *testing.T) {
+		t.Parallel()
+		ctx := t.Context()
+
+		sbx := createTestSandbox()
+		sbx.State = sandbox.StatePausing
+
+		storage := NewStatefulStorage(&sbx)
+		storage.onWait = func() {
+			storage.mu.Lock()
+			defer storage.mu.Unlock()
+			storage.current = nil
+		}
+
+		reservations := &ScriptedReservationStorage{
+			responses: []reserveResponse{
+				{err: sandbox.ErrAlreadyExists},
+			},
+		}
+		store := sandbox.NewStore(storage, reservations, sandbox.Callbacks{})
+
+		_, waitForStart, err := store.Reserve(ctx, sbx.TeamID, sbx.SandboxID, 1)
+		require.NoError(t, err)
+		require.NotNil(t, waitForStart)
+
+		_, err = waitForStart(ctx)
+		require.Error(t, err)
+		require.ErrorIs(t, err, sandbox.ErrNotFound)
+		assert.Equal(t, 1, storage.WaitCalls())
+		assert.Equal(t, 1, reservations.calls)
 	})
 }

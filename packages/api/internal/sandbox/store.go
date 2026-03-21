@@ -168,13 +168,37 @@ func (s *Store) Sync(ctx context.Context, sandboxes []Sandbox, nodeID string) {
 	}
 }
 
+func (s *Store) waitForExistingSandbox(ctx context.Context, teamID uuid.UUID, sandboxID string) (Sandbox, error) {
+	for {
+		sbx, err := s.storage.Get(ctx, teamID, sandboxID)
+		if err != nil {
+			return Sandbox{}, err
+		}
+
+		if sbx.State == StateRunning {
+			return sbx, nil
+		}
+
+		logger.L().Info(ctx, "Sandbox exists but is not ready, waiting for state change",
+			logger.WithSandboxID(sandboxID),
+			zap.String("state", string(sbx.State)),
+		)
+
+		err = s.storage.WaitForStateChange(ctx, teamID, sandboxID)
+		if err != nil {
+			return Sandbox{}, err
+		}
+	}
+}
+
 func (s *Store) Reserve(ctx context.Context, teamID uuid.UUID, sandboxID string, limit int) (finishStart func(Sandbox, error), waitForStart func(ctx context.Context) (Sandbox, error), err error) {
 	finishStart, waitForStart, err = s.reservations.Reserve(ctx, teamID, sandboxID, limit)
 	if err != nil {
 		if errors.Is(err, ErrAlreadyExists) {
-			// Try to get the sandbox from the storage if already exists
+			// Sandbox exists in storage already. Wait for it to become runnable or disappear,
+			// then let the caller decide whether to retry the reservation path.
 			return nil, func(ctx context.Context) (Sandbox, error) {
-				return s.storage.Get(ctx, teamID, sandboxID)
+				return s.waitForExistingSandbox(ctx, teamID, sandboxID)
 			}, nil
 		}
 
