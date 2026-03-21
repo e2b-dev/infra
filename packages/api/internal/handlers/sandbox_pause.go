@@ -37,6 +37,8 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 	}
 
 	span := trace.SpanFromContext(ctx)
+	span.SetAttributes(telemetry.WithSandboxID(sandboxID))
+
 	traceID := span.SpanContext().TraceID().String()
 	c.Set("traceID", traceID)
 

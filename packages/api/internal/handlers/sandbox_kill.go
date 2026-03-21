@@ -8,7 +8,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/e2b-dev/infra/packages/api/internal/db"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
@@ -59,7 +58,7 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 	teamID := team.ID
 
 	telemetry.SetAttributes(ctx,
-		attribute.String("instance.id", sandboxID),
+		telemetry.WithSandboxID(sandboxID),
 		telemetry.WithTeamID(teamID.String()),
 	)
 
