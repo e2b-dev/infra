@@ -9,8 +9,8 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
-	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
+	"github.com/e2b-dev/infra/packages/shared/pkg/ginutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -48,7 +48,7 @@ func (a *APIStore) GetNodesNodeID(c *gin.Context, nodeID api.NodeID, params api.
 func (a *APIStore) PostNodesNodeID(c *gin.Context, nodeId api.NodeID) {
 	ctx := c.Request.Context()
 
-	body, err := utils.ParseBody[api.PostNodesNodeIDJSONRequestBody](ctx, c)
+	body, err := ginutils.ParseBody[api.PostNodesNodeIDJSONRequestBody](ctx, c)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err))
 

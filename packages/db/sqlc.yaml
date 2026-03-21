@@ -1,10 +1,13 @@
 version: "2"
 sql:
   - engine: "postgresql"
-    queries: "queries/**"
+    queries: 
+      - "queries/**"
+      - "pkg/dashboard/sql_queries/**"
     schema:
       - "migrations"
       - "schema"
+      - "pkg/dashboard/migrations"
     gen:
       go:
         emit_pointers_for_null_types: true
