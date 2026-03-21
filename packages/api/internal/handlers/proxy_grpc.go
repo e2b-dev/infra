@@ -15,6 +15,7 @@ import (
 
 	snapshotcache "github.com/e2b-dev/infra/packages/api/internal/cache/snapshots"
 	dbapi "github.com/e2b-dev/infra/packages/api/internal/db"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
@@ -84,6 +85,42 @@ func denyResumePermission() error {
 	return status.Error(codes.PermissionDenied, "permission denied")
 }
 
+func handleExistingSandboxAutoResume(
+	ctx context.Context,
+	sandboxID string,
+	sbx sandbox.Sandbox,
+	waitForStateChange func(context.Context) error,
+	getNodeIP func() (string, error),
+) (string, bool, error) {
+	switch sbx.State {
+	case sandbox.StatePausing:
+		logger.L().Debug(ctx, "Waiting for sandbox to pause before auto-resume", logger.WithSandboxID(sandboxID))
+		err := waitForStateChange(ctx)
+		if err != nil {
+			return "", false, status.Error(codes.Internal, "Error waiting for sandbox to pause")
+		}
+
+		return "", false, nil
+	case sandbox.StateKilling:
+		logger.L().Debug(ctx, "Sandbox is being killed, cannot auto-resume", logger.WithSandboxID(sandboxID))
+
+		return "", false, status.Error(codes.NotFound, "sandbox not found")
+	case sandbox.StateSnapshotting:
+		return "", false, status.Error(codes.FailedPrecondition, "sandbox snapshot is currently being created")
+	case sandbox.StateRunning:
+		nodeIP, err := getNodeIP()
+		if err != nil {
+			return "", false, err
+		}
+
+		return nodeIP, true, nil
+	default:
+		logger.L().Error(ctx, "Sandbox is in an unknown state during auto-resume", logger.WithSandboxID(sandboxID), zap.String("state", string(sbx.State)))
+
+		return "", false, status.Error(codes.Internal, "sandbox is in an unknown state")
+	}
+}
+
 func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.SandboxResumeRequest) (*proxygrpc.SandboxResumeResponse, error) {
 	sandboxID, err := utils.ShortID(req.GetSandboxId())
 	if err != nil {
@@ -111,6 +148,32 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 	}
 	if autoResume == nil || autoResume.Policy != dbtypes.SandboxAutoResumeAny {
 		return nil, status.Error(codes.NotFound, "sandbox auto-resume disabled")
+	}
+
+	sandboxData, sandboxErr := s.api.orchestrator.GetSandbox(ctx, teamID, sandboxID)
+	if sandboxErr == nil {
+		nodeIP, handled, existingErr := handleExistingSandboxAutoResume(
+			ctx,
+			sandboxID,
+			sandboxData,
+			func(ctx context.Context) error {
+				return s.api.orchestrator.WaitForStateChange(ctx, teamID, sandboxID)
+			},
+			func() (string, error) {
+				node := s.api.orchestrator.GetNode(sandboxData.ClusterID, sandboxData.NodeID)
+				if node == nil {
+					return "", status.Error(codes.Internal, "sandbox is running but routing info is not available yet")
+				}
+
+				return node.IPAddress, nil
+			},
+		)
+		if existingErr != nil {
+			return nil, existingErr
+		}
+		if handled {
+			return &proxygrpc.SandboxResumeResponse{OrchestratorIp: nodeIP}, nil
+		}
 	}
 
 	team, err := dbapi.GetTeamByID(ctx, s.api.authDB, teamID)

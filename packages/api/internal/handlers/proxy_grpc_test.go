@@ -2,11 +2,16 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 )
@@ -165,4 +170,145 @@ func TestTokensMatch(t *testing.T) {
 			assert.Equal(t, tt.match, result)
 		})
 	}
+}
+
+func testSandboxForAutoResume(state sandbox.State) sandbox.Sandbox {
+	return sandbox.Sandbox{
+		SandboxID: "test-sandbox",
+		State:     state,
+		NodeID:    "node-1",
+		ClusterID: uuid.New(),
+	}
+}
+
+func TestHandleExistingSandboxAutoResume(t *testing.T) {
+	t.Parallel()
+
+	t.Run("running sandbox returns node ip immediately", func(t *testing.T) {
+		t.Parallel()
+
+		waitCalled := false
+		nodeCalls := 0
+		nodeIP, handled, err := handleExistingSandboxAutoResume(
+			t.Context(),
+			"test-sandbox",
+			testSandboxForAutoResume(sandbox.StateRunning),
+			func(context.Context) error {
+				waitCalled = true
+
+				return nil
+			},
+			func() (string, error) {
+				nodeCalls++
+
+				return "10.0.0.1", nil
+			},
+		)
+		require.NoError(t, err)
+		assert.True(t, handled)
+		assert.Equal(t, "10.0.0.1", nodeIP)
+		assert.False(t, waitCalled)
+		assert.Equal(t, 1, nodeCalls)
+	})
+
+	t.Run("pausing sandbox waits and continues to resume flow", func(t *testing.T) {
+		t.Parallel()
+
+		waitCalls := 0
+		nodeCalled := false
+		nodeIP, handled, err := handleExistingSandboxAutoResume(
+			t.Context(),
+			"test-sandbox",
+			testSandboxForAutoResume(sandbox.StatePausing),
+			func(context.Context) error {
+				waitCalls++
+
+				return nil
+			},
+			func() (string, error) {
+				nodeCalled = true
+
+				return "10.0.0.1", nil
+			},
+		)
+		require.NoError(t, err)
+		assert.False(t, handled)
+		assert.Empty(t, nodeIP)
+		assert.Equal(t, 1, waitCalls)
+		assert.False(t, nodeCalled)
+	})
+
+	t.Run("pausing sandbox wait failure returns internal error", func(t *testing.T) {
+		t.Parallel()
+
+		waitErr := errors.New("boom")
+		_, handled, err := handleExistingSandboxAutoResume(
+			t.Context(),
+			"test-sandbox",
+			testSandboxForAutoResume(sandbox.StatePausing),
+			func(context.Context) error {
+				return waitErr
+			},
+			func() (string, error) {
+				t.Fatal("getNodeIP should not be called when wait fails")
+
+				return "", nil
+			},
+		)
+		require.Error(t, err)
+		assert.False(t, handled)
+		st, ok := status.FromError(err)
+		require.True(t, ok)
+		assert.Equal(t, "Error waiting for sandbox to pause", st.Message())
+	})
+
+	t.Run("killing sandbox returns not found", func(t *testing.T) {
+		t.Parallel()
+
+		_, handled, err := handleExistingSandboxAutoResume(
+			t.Context(),
+			"test-sandbox",
+			testSandboxForAutoResume(sandbox.StateKilling),
+			func(context.Context) error {
+				t.Fatal("waitForStateChange should not be called for killing sandbox")
+
+				return nil
+			},
+			func() (string, error) {
+				t.Fatal("getNodeIP should not be called for killing sandbox")
+
+				return "", nil
+			},
+		)
+		require.Error(t, err)
+		assert.False(t, handled)
+		st, ok := status.FromError(err)
+		require.True(t, ok)
+		assert.Equal(t, "sandbox not found", st.Message())
+	})
+
+	t.Run("snapshotting sandbox returns failed precondition", func(t *testing.T) {
+		t.Parallel()
+
+		_, handled, err := handleExistingSandboxAutoResume(
+			t.Context(),
+			"test-sandbox",
+			testSandboxForAutoResume(sandbox.StateSnapshotting),
+			func(context.Context) error {
+				t.Fatal("waitForStateChange should not be called for snapshotting sandbox")
+
+				return nil
+			},
+			func() (string, error) {
+				t.Fatal("getNodeIP should not be called for snapshotting sandbox")
+
+				return "", nil
+			},
+		)
+		require.Error(t, err)
+		assert.False(t, handled)
+		st, ok := status.FromError(err)
+		require.True(t, ok)
+		assert.Equal(t, "sandbox snapshot is currently being created", st.Message())
+	})
 }
