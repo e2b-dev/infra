@@ -171,6 +171,15 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 			func(sbx sandbox.Sandbox) (string, error) {
 				node := s.api.orchestrator.GetNode(sbx.ClusterID, sbx.NodeID)
 				if node == nil {
+					logger.L().Error(
+						ctx,
+						"Sandbox is running but routing info is not available during auto-resume",
+						logger.WithSandboxID(sandboxID),
+						logger.WithTeamID(teamID.String()),
+						logger.WithNodeID(sbx.NodeID),
+						zap.Stringer("cluster_id", sbx.ClusterID),
+					)
+
 					return "", status.Error(codes.Internal, "sandbox is running but routing info is not available yet")
 				}
 
