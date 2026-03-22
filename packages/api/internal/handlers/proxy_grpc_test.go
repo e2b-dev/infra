@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
@@ -216,7 +217,41 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 		assert.Equal(t, 1, nodeCalls)
 	})
 
-	t.Run("pausing sandbox waits and continues to resume flow", func(t *testing.T) {
+	t.Run("pausing sandbox waits and routes when refreshed sandbox is running", func(t *testing.T) {
+		t.Parallel()
+
+		waitCalls := 0
+		refreshedSandbox := testSandboxForAutoResume(sandbox.StateRunning)
+		refreshedSandbox.NodeID = "node-2"
+		nodeCalls := 0
+		nodeIP, handled, err := handleExistingSandboxAutoResume(
+			t.Context(),
+			"test-sandbox",
+			testSandboxForAutoResume(sandbox.StatePausing),
+			func(context.Context) error {
+				waitCalls++
+
+				return nil
+			},
+			func(context.Context) (sandbox.Sandbox, error) {
+				return refreshedSandbox, nil
+			},
+			func(sbx sandbox.Sandbox) (string, error) {
+				nodeCalls++
+				assert.Equal(t, refreshedSandbox.ClusterID, sbx.ClusterID)
+				assert.Equal(t, refreshedSandbox.NodeID, sbx.NodeID)
+
+				return "10.0.0.1", nil
+			},
+		)
+		require.NoError(t, err)
+		assert.True(t, handled)
+		assert.Equal(t, "10.0.0.1", nodeIP)
+		assert.Equal(t, 1, waitCalls)
+		assert.Equal(t, 1, nodeCalls)
+	})
+
+	t.Run("pausing sandbox falls back to resume flow when refreshed sandbox lookup fails", func(t *testing.T) {
 		t.Parallel()
 
 		waitCalls := 0
@@ -333,5 +368,34 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 		st, ok := status.FromError(err)
 		require.True(t, ok)
 		assert.Equal(t, "sandbox snapshot is currently being created", st.Message())
+	})
+
+	t.Run("running sandbox returns routing error when node ip lookup fails", func(t *testing.T) {
+		t.Parallel()
+
+		_, handled, err := handleExistingSandboxAutoResume(
+			t.Context(),
+			"test-sandbox",
+			testSandboxForAutoResume(sandbox.StateRunning),
+			func(context.Context) error {
+				t.Fatal("waitForStateChange should not be called for running sandbox")
+
+				return nil
+			},
+			func(context.Context) (sandbox.Sandbox, error) {
+				t.Fatal("getSandbox should not be called for running sandbox")
+
+				return sandbox.Sandbox{}, nil
+			},
+			func(sandbox.Sandbox) (string, error) {
+				return "", status.Error(codes.Internal, "sandbox is running but routing info is not available yet")
+			},
+		)
+		require.Error(t, err)
+		assert.False(t, handled)
+		st, ok := status.FromError(err)
+		require.True(t, ok)
+		assert.Equal(t, codes.Internal, st.Code())
+		assert.Equal(t, "sandbox is running but routing info is not available yet", st.Message())
 	})
 }
