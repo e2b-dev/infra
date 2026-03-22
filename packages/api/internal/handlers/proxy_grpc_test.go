@@ -341,25 +341,58 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 		assert.Equal(t, "sandbox not found", st.Message())
 	})
 
-	t.Run("snapshotting sandbox returns failed precondition", func(t *testing.T) {
+	t.Run("snapshotting sandbox waits and routes when refreshed sandbox is running", func(t *testing.T) {
 		t.Parallel()
 
+		waitCalls := 0
+		refreshedSandbox := testSandboxForAutoResume(sandbox.StateRunning)
+		refreshedSandbox.NodeID = "node-3"
+		nodeCalls := 0
+		nodeIP, handled, err := handleExistingSandboxAutoResume(
+			t.Context(),
+			"test-sandbox",
+			testSandboxForAutoResume(sandbox.StateSnapshotting),
+			func(context.Context) error {
+				waitCalls++
+
+				return nil
+			},
+			func(context.Context) (sandbox.Sandbox, error) {
+				return refreshedSandbox, nil
+			},
+			func(sbx sandbox.Sandbox) (string, error) {
+				nodeCalls++
+				assert.Equal(t, refreshedSandbox.ClusterID, sbx.ClusterID)
+				assert.Equal(t, refreshedSandbox.NodeID, sbx.NodeID)
+
+				return "10.0.0.2", nil
+			},
+		)
+		require.NoError(t, err)
+		assert.True(t, handled)
+		assert.Equal(t, "10.0.0.2", nodeIP)
+		assert.Equal(t, 1, waitCalls)
+		assert.Equal(t, 1, nodeCalls)
+	})
+
+	t.Run("snapshotting sandbox wait failure returns internal error", func(t *testing.T) {
+		t.Parallel()
+
+		waitErr := errors.New("boom")
 		_, handled, err := handleExistingSandboxAutoResume(
 			t.Context(),
 			"test-sandbox",
 			testSandboxForAutoResume(sandbox.StateSnapshotting),
 			func(context.Context) error {
-				t.Fatal("waitForStateChange should not be called for snapshotting sandbox")
-
-				return nil
+				return waitErr
 			},
 			func(context.Context) (sandbox.Sandbox, error) {
-				t.Fatal("getSandbox should not be called for snapshotting sandbox")
+				t.Fatal("getSandbox should not be called when snapshot wait fails")
 
 				return sandbox.Sandbox{}, nil
 			},
 			func(sandbox.Sandbox) (string, error) {
-				t.Fatal("getNodeIP should not be called for snapshotting sandbox")
+				t.Fatal("getNodeIP should not be called when snapshot wait fails")
 
 				return "", nil
 			},
@@ -368,7 +401,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 		assert.False(t, handled)
 		st, ok := status.FromError(err)
 		require.True(t, ok)
-		assert.Equal(t, "sandbox snapshot is currently being created", st.Message())
+		assert.Equal(t, "error waiting for sandbox snapshot to finish", st.Message())
 	})
 
 	t.Run("pausing sandbox returns internal error when refreshed sandbox lookup fails unexpectedly", func(t *testing.T) {

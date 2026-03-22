@@ -85,6 +85,27 @@ func denyResumePermission() error {
 	return status.Error(codes.PermissionDenied, "permission denied")
 }
 
+func (s *SandboxService) getAutoResumeSnapshot(ctx context.Context, sandboxID string) (*snapshotcache.SnapshotInfo, *dbtypes.SandboxAutoResumeConfig, error) {
+	snap, err := s.api.snapshotCache.Get(ctx, sandboxID)
+	if err != nil {
+		if errors.Is(err, snapshotcache.ErrSnapshotNotFound) {
+			return nil, nil, status.Error(codes.NotFound, "snapshot not found")
+		}
+
+		return nil, nil, status.Errorf(codes.Internal, "failed to get snapshot: %v", err)
+	}
+
+	var autoResume *dbtypes.SandboxAutoResumeConfig
+	if snap.Snapshot.Config != nil {
+		autoResume = snap.Snapshot.Config.AutoResume
+	}
+	if autoResume == nil || autoResume.Policy != dbtypes.SandboxAutoResumeAny {
+		return nil, nil, status.Error(codes.NotFound, "sandbox auto-resume disabled")
+	}
+
+	return snap, autoResume, nil
+}
+
 func handleExistingSandboxAutoResume(
 	ctx context.Context,
 	sandboxID string,
@@ -95,11 +116,20 @@ func handleExistingSandboxAutoResume(
 ) (string, bool, error) {
 	for {
 		switch sbx.State {
-		case sandbox.StatePausing:
-			logger.L().Debug(ctx, "Waiting for sandbox to pause before auto-resume", logger.WithSandboxID(sandboxID))
+		case sandbox.StatePausing, sandbox.StateSnapshotting:
+			if sbx.State == sandbox.StatePausing {
+				logger.L().Debug(ctx, "Waiting for sandbox to pause before auto-resume", logger.WithSandboxID(sandboxID))
+			} else {
+				logger.L().Debug(ctx, "Waiting for sandbox snapshot to finish before auto-resume", logger.WithSandboxID(sandboxID))
+			}
+
 			err := waitForStateChange(ctx)
 			if err != nil {
-				return "", false, status.Error(codes.Internal, "error waiting for sandbox to pause")
+				if sbx.State == sandbox.StatePausing {
+					return "", false, status.Error(codes.Internal, "error waiting for sandbox to pause")
+				}
+
+				return "", false, status.Error(codes.Internal, "error waiting for sandbox snapshot to finish")
 			}
 
 			updatedSandbox, getSandboxErr := getSandbox(ctx)
@@ -109,7 +139,7 @@ func handleExistingSandboxAutoResume(
 				continue
 			}
 			if errors.Is(getSandboxErr, sandbox.ErrNotFound) {
-				// Sandbox finished pausing and disappeared from orchestrator state, so continue with normal resume.
+				// Sandbox is no longer present in orchestrator state, so continue with normal resume.
 				return "", false, nil
 			}
 
@@ -118,8 +148,6 @@ func handleExistingSandboxAutoResume(
 			logger.L().Debug(ctx, "Sandbox is being killed, cannot auto-resume", logger.WithSandboxID(sandboxID))
 
 			return "", false, status.Error(codes.NotFound, "sandbox not found")
-		case sandbox.StateSnapshotting:
-			return "", false, status.Error(codes.FailedPrecondition, "sandbox snapshot is currently being created")
 		case sandbox.StateRunning:
 			nodeIP, err := getNodeIP(sbx)
 			if err != nil {
@@ -141,13 +169,9 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		return nil, status.Error(codes.InvalidArgument, "invalid sandbox ID")
 	}
 
-	snap, err := s.api.snapshotCache.Get(ctx, sandboxID)
+	snap, autoResume, err := s.getAutoResumeSnapshot(ctx, sandboxID)
 	if err != nil {
-		if errors.Is(err, snapshotcache.ErrSnapshotNotFound) {
-			return nil, status.Error(codes.NotFound, "snapshot not found")
-		}
-
-		return nil, status.Errorf(codes.Internal, "failed to get snapshot: %v", err)
+		return nil, err
 	}
 
 	teamID := snap.Snapshot.TeamID
@@ -155,14 +179,6 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 	// Fixed 5 minutes for client-proxy initiated resume.
 	// This intentionally does not allow callers to override timeouts via gRPC.
 	timeout := 300 * time.Second
-
-	var autoResume *dbtypes.SandboxAutoResumeConfig
-	if snap.Snapshot.Config != nil {
-		autoResume = snap.Snapshot.Config.AutoResume
-	}
-	if autoResume == nil || autoResume.Policy != dbtypes.SandboxAutoResumeAny {
-		return nil, status.Error(codes.NotFound, "sandbox auto-resume disabled")
-	}
 
 	sandboxData, sandboxErr := s.api.orchestrator.GetSandbox(ctx, teamID, sandboxID)
 	if sandboxErr == nil {
@@ -200,6 +216,15 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		if handled {
 			return &proxygrpc.SandboxResumeResponse{OrchestratorIp: nodeIP}, nil
 		}
+
+		// Reload snapshot metadata after waiting through orchestrator transitions so we do not
+		// resume from stale pre-pause snapshot data.
+		snap, autoResume, err = s.getAutoResumeSnapshot(ctx, sandboxID)
+		if err != nil {
+			return nil, err
+		}
+
+		teamID = snap.Snapshot.TeamID
 	}
 
 	team, err := dbapi.GetTeamByID(ctx, s.api.authDB, teamID)
