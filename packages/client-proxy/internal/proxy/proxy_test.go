@@ -100,16 +100,6 @@ func TestCatalogResolution_CatalogMiss(t *testing.T) {
 	require.ErrorIs(t, err, ErrNodeNotFound)
 }
 
-func TestMapCatalogResolutionError_SnapshotInProgress(t *testing.T) {
-	t.Parallel()
-
-	err := mapCatalogResolutionError(t.Context(), logger.NewNopLogger(), "sbx", reverseproxy.NewErrSandboxSnapshotInProgress("sbx", "sandbox snapshot is currently being created"))
-	var snapshotInProgressErr *reverseproxy.SandboxSnapshotInProgressError
-	require.ErrorAs(t, err, &snapshotInProgressErr)
-	require.Equal(t, "sbx", snapshotInProgressErr.SandboxId)
-	require.Equal(t, "sandbox snapshot is currently being created", snapshotInProgressErr.Message)
-}
-
 func TestMapCatalogResolutionError_UnexpectedErrorPreserved(t *testing.T) {
 	t.Parallel()
 
@@ -193,20 +183,6 @@ func TestHandlePausedSandbox_SnapshotNotFound(t *testing.T) {
 	_, res, err := handlePausedSandbox(t.Context(), "sbx", 8000, "token", "", stubResumer{err: status.Error(codes.NotFound, "snapshot not found")}, ff)
 	require.NoError(t, err)
 	require.Equal(t, autoResumeNotAllowed, res)
-}
-
-func TestHandlePausedSandbox_SnapshotInProgress(t *testing.T) {
-	t.Parallel()
-
-	ff := newFF(t, true)
-
-	_, res, err := handlePausedSandbox(t.Context(), "sbx", 8000, "token", "", stubResumer{err: status.Error(codes.FailedPrecondition, "sandbox snapshot is currently being created")}, ff)
-	require.Error(t, err)
-	var snapshotInProgressErr *reverseproxy.SandboxSnapshotInProgressError
-	require.ErrorAs(t, err, &snapshotInProgressErr)
-	require.Equal(t, "sbx", snapshotInProgressErr.SandboxId)
-	require.Equal(t, "sandbox snapshot is currently being created", snapshotInProgressErr.Message)
-	require.Equal(t, autoResumeSnapshotInProgress, res)
 }
 
 func TestHandlePausedSandbox_Error(t *testing.T) {

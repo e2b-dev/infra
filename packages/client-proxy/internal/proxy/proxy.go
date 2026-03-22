@@ -41,7 +41,6 @@ const (
 	autoResumeNotAllowed
 	autoResumePermissionDenied
 	autoResumeResourceExhausted
-	autoResumeSnapshotInProgress
 	autoResumeErrored
 )
 
@@ -100,9 +99,6 @@ func handlePausedSandbox(
 			if st.Code() == codes.ResourceExhausted {
 				return "", autoResumeResourceExhausted, reverseproxy.NewErrSandboxResourceExhausted(sandboxId, st.Message())
 			}
-			if st.Code() == codes.FailedPrecondition {
-				return "", autoResumeSnapshotInProgress, reverseproxy.NewErrSandboxSnapshotInProgress(sandboxId, st.Message())
-			}
 		}
 
 		return "", autoResumeErrored, err
@@ -124,13 +120,6 @@ func mapCatalogResolutionError(ctx context.Context, l logger.Logger, sandboxId s
 		l.Warn(ctx, "sandbox resource exhausted", zap.Error(err))
 
 		return resourceExhaustedErr
-	}
-
-	var snapshotInProgressErr *reverseproxy.SandboxSnapshotInProgressError
-	if errors.As(err, &snapshotInProgressErr) {
-		l.Warn(ctx, "sandbox snapshot in progress", zap.Error(err))
-
-		return snapshotInProgressErr
 	}
 
 	if !errors.Is(err, ErrNodeNotFound) {
