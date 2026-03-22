@@ -87,7 +87,7 @@ func denyResumePermission() error {
 
 const (
 	maxAutoResumeTransitionRetries = 3
-	autoResumeTransitionWaitBudget = 55 * time.Second
+	autoResumeTransitionWaitBudget = time.Minute
 )
 
 func (s *SandboxService) getAutoResumeSnapshot(ctx context.Context, sandboxID string) (*snapshotcache.SnapshotInfo, *dbtypes.SandboxAutoResumeConfig, error) {
