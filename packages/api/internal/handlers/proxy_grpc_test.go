@@ -203,46 +203,6 @@ func TestHandleInitialSandboxAutoResumeLookupError(t *testing.T) {
 	})
 }
 
-func TestShouldReloadAutoResumeSnapshot(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name             string
-		sandboxLookupErr error
-		handled          bool
-		expected         bool
-	}{
-		{
-			name:             "initial not found reloads snapshot",
-			sandboxLookupErr: fmt.Errorf("lookup failed: %w", sandbox.ErrNotFound),
-			expected:         true,
-		},
-		{
-			name:     "post-wait fallback reloads snapshot",
-			handled:  false,
-			expected: true,
-		},
-		{
-			name:     "handled running sandbox does not reload snapshot",
-			handled:  true,
-			expected: false,
-		},
-		{
-			name:             "unexpected lookup errors do not decide reload directly",
-			sandboxLookupErr: errors.New("redis unavailable"),
-			expected:         false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			assert.Equal(t, tt.expected, shouldReloadAutoResumeSnapshot(tt.sandboxLookupErr, tt.handled))
-		})
-	}
-}
-
 func testSandboxForAutoResume(state sandbox.State) sandbox.Sandbox {
 	return sandbox.Sandbox{
 		SandboxID: "test-sandbox",

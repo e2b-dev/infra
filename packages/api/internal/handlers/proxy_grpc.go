@@ -116,10 +116,6 @@ func handleInitialSandboxAutoResumeLookupError(err error) error {
 	return status.Errorf(codes.Internal, "failed to get sandbox state: %v", err)
 }
 
-func shouldReloadAutoResumeSnapshot(sandboxLookupErr error, handled bool) bool {
-	return errors.Is(sandboxLookupErr, sandbox.ErrNotFound) || (sandboxLookupErr == nil && !handled)
-}
-
 func handleExistingSandboxAutoResume(
 	ctx context.Context,
 	sandboxID string,
@@ -193,7 +189,8 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		return nil, status.Error(codes.InvalidArgument, "invalid sandbox ID")
 	}
 
-	snap, autoResume, err := s.getAutoResumeSnapshot(ctx, sandboxID)
+	var autoResume *dbtypes.SandboxAutoResumeConfig
+	snap, _, err := s.getAutoResumeSnapshot(ctx, sandboxID)
 	if err != nil {
 		return nil, err
 	}
@@ -204,7 +201,6 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 	// This intentionally does not allow callers to override timeouts via gRPC.
 	timeout := 300 * time.Second
 
-	var shouldReloadSnapshot bool
 	sandboxData, sandboxErr := s.api.orchestrator.GetSandbox(ctx, teamID, sandboxID)
 	if sandboxErr != nil {
 		existingErr := handleInitialSandboxAutoResumeLookupError(sandboxErr)
@@ -212,7 +208,14 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 			return nil, existingErr
 		}
 
-		shouldReloadSnapshot = shouldReloadAutoResumeSnapshot(sandboxErr, false)
+		// Reload snapshot metadata after orchestrator checks so we do not resume from stale
+		// pre-pause snapshot data.
+		snap, autoResume, err = s.getAutoResumeSnapshot(ctx, sandboxID)
+		if err != nil {
+			return nil, err
+		}
+
+		teamID = snap.Snapshot.TeamID
 	} else {
 		nodeIP, handled, existingErr := handleExistingSandboxAutoResume(
 			ctx,
@@ -249,10 +252,6 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 			return &proxygrpc.SandboxResumeResponse{OrchestratorIp: nodeIP}, nil
 		}
 
-		shouldReloadSnapshot = shouldReloadAutoResumeSnapshot(nil, handled)
-	}
-
-	if shouldReloadSnapshot {
 		// Reload snapshot metadata after orchestrator checks so we do not resume from stale
 		// pre-pause snapshot data.
 		snap, autoResume, err = s.getAutoResumeSnapshot(ctx, sandboxID)
