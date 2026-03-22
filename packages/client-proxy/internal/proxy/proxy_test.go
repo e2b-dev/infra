@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	catalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 )
@@ -99,6 +100,25 @@ func TestCatalogResolution_CatalogMiss(t *testing.T) {
 	require.ErrorIs(t, err, ErrNodeNotFound)
 }
 
+func TestMapCatalogResolutionError_SnapshotInProgress(t *testing.T) {
+	t.Parallel()
+
+	err := mapCatalogResolutionError(t.Context(), logger.NewNopLogger(), "sbx", reverseproxy.NewErrSandboxSnapshotInProgress("sbx", "sandbox snapshot is currently being created"))
+	var snapshotInProgressErr *reverseproxy.SandboxSnapshotInProgressError
+	require.ErrorAs(t, err, &snapshotInProgressErr)
+	require.Equal(t, "sbx", snapshotInProgressErr.SandboxId)
+	require.Equal(t, "sandbox snapshot is currently being created", snapshotInProgressErr.Message)
+}
+
+func TestMapCatalogResolutionError_UnexpectedErrorPreserved(t *testing.T) {
+	t.Parallel()
+
+	originalErr := status.Error(codes.AlreadyExists, "sandbox is already running")
+
+	err := mapCatalogResolutionError(t.Context(), logger.NewNopLogger(), "sbx", originalErr)
+	require.ErrorIs(t, err, originalErr)
+}
+
 func TestHandlePausedSandbox_NoResumer_MissingTrafficAccessToken(t *testing.T) {
 	t.Parallel()
 
@@ -173,6 +193,20 @@ func TestHandlePausedSandbox_SnapshotNotFound(t *testing.T) {
 	_, res, err := handlePausedSandbox(t.Context(), "sbx", 8000, "token", "", stubResumer{err: status.Error(codes.NotFound, "snapshot not found")}, ff)
 	require.NoError(t, err)
 	require.Equal(t, autoResumeNotAllowed, res)
+}
+
+func TestHandlePausedSandbox_SnapshotInProgress(t *testing.T) {
+	t.Parallel()
+
+	ff := newFF(t, true)
+
+	_, res, err := handlePausedSandbox(t.Context(), "sbx", 8000, "token", "", stubResumer{err: status.Error(codes.FailedPrecondition, "sandbox snapshot is currently being created")}, ff)
+	require.Error(t, err)
+	var snapshotInProgressErr *reverseproxy.SandboxSnapshotInProgressError
+	require.ErrorAs(t, err, &snapshotInProgressErr)
+	require.Equal(t, "sbx", snapshotInProgressErr.SandboxId)
+	require.Equal(t, "sandbox snapshot is currently being created", snapshotInProgressErr.Message)
+	require.Equal(t, autoResumeSnapshotInProgress, res)
 }
 
 func TestHandlePausedSandbox_Error(t *testing.T) {

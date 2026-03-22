@@ -97,3 +97,23 @@ func NewErrSandboxResourceExhausted(sandboxId string, message string) *SandboxRe
 func (e SandboxResourceExhaustedError) Error() string {
 	return "sandbox resource exhausted"
 }
+
+type SandboxSnapshotInProgressError struct {
+	SandboxId string
+	Message   string
+}
+
+func NewErrSandboxSnapshotInProgress(sandboxId string, message string) *SandboxSnapshotInProgressError {
+	if message == "" {
+		message = "Sandbox snapshot is currently being created"
+	}
+
+	return &SandboxSnapshotInProgressError{
+		SandboxId: sandboxId,
+		Message:   message,
+	}
+}
+
+func (e SandboxSnapshotInProgressError) Error() string {
+	return "sandbox snapshot in progress"
+}

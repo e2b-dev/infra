@@ -41,6 +41,7 @@ const (
 	autoResumeNotAllowed
 	autoResumePermissionDenied
 	autoResumeResourceExhausted
+	autoResumeSnapshotInProgress
 	autoResumeErrored
 )
 
@@ -99,12 +100,46 @@ func handlePausedSandbox(
 			if st.Code() == codes.ResourceExhausted {
 				return "", autoResumeResourceExhausted, reverseproxy.NewErrSandboxResourceExhausted(sandboxId, st.Message())
 			}
+			if st.Code() == codes.FailedPrecondition {
+				return "", autoResumeSnapshotInProgress, reverseproxy.NewErrSandboxSnapshotInProgress(sandboxId, st.Message())
+			}
 		}
 
 		return "", autoResumeErrored, err
 	}
 
 	return nodeIP, autoResumeSucceeded, nil
+}
+
+func mapCatalogResolutionError(ctx context.Context, l logger.Logger, sandboxId string, err error) error {
+	var resumeDeniedErr *reverseproxy.SandboxResumePermissionDeniedError
+	if errors.As(err, &resumeDeniedErr) {
+		l.Warn(ctx, "sandbox resume denied", zap.Error(err))
+
+		return resumeDeniedErr
+	}
+
+	var resourceExhaustedErr *reverseproxy.SandboxResourceExhaustedError
+	if errors.As(err, &resourceExhaustedErr) {
+		l.Warn(ctx, "sandbox resource exhausted", zap.Error(err))
+
+		return resourceExhaustedErr
+	}
+
+	var snapshotInProgressErr *reverseproxy.SandboxSnapshotInProgressError
+	if errors.As(err, &snapshotInProgressErr) {
+		l.Warn(ctx, "sandbox snapshot in progress", zap.Error(err))
+
+		return snapshotInProgressErr
+	}
+
+	if !errors.Is(err, ErrNodeNotFound) {
+		l.Warn(ctx, "failed to resolve node ip with Redis resolution", zap.Error(err))
+
+		return err
+	}
+
+	return reverseproxy.NewErrSandboxNotFound(sandboxId)
 }
 
 func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog catalog.SandboxesCatalog, pausedSandboxResumer PausedSandboxResumer, featureFlagsClient *featureflags.Client) (*reverseproxy.Proxy, error) {
@@ -127,25 +162,7 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 			envdAccessToken := r.Header.Get(proxygrpc.MetadataEnvdHTTPAccessToken)
 			nodeIP, err := catalogResolution(ctx, sandboxId, port, trafficAccessToken, envdAccessToken, catalog, pausedSandboxResumer, featureFlagsClient)
 			if err != nil {
-				var resumeDeniedErr *reverseproxy.SandboxResumePermissionDeniedError
-				if errors.As(err, &resumeDeniedErr) {
-					l.Warn(ctx, "sandbox resume denied", zap.Error(err))
-
-					return nil, resumeDeniedErr
-				}
-
-				var resourceExhaustedErr *reverseproxy.SandboxResourceExhaustedError
-				if errors.As(err, &resourceExhaustedErr) {
-					l.Warn(ctx, "sandbox resource exhausted", zap.Error(err))
-
-					return nil, resourceExhaustedErr
-				}
-
-				if !errors.Is(err, ErrNodeNotFound) {
-					l.Warn(ctx, "failed to resolve node ip with Redis resolution", zap.Error(err))
-				}
-
-				return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)
+				return nil, mapCatalogResolutionError(ctx, l, sandboxId, err)
 			}
 
 			url := &url.URL{

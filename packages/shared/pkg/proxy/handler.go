@@ -105,6 +105,25 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 			return
 		}
 
+		var snapshotInProgressErr *SandboxSnapshotInProgressError
+		if errors.As(err, &snapshotInProgressErr) {
+			logger.L().Warn(ctx, "sandbox snapshot in progress",
+				zap.String("host", r.Host),
+				logger.WithSandboxID(snapshotInProgressErr.SandboxId))
+
+			err := template.
+				NewSandboxSnapshotInProgressError(snapshotInProgressErr.SandboxId, r.Host, snapshotInProgressErr.Message).
+				HandleError(w, r)
+			if err != nil {
+				logger.L().Error(ctx, "failed to handle sandbox snapshot in progress error", zap.Error(err), logger.WithSandboxID(snapshotInProgressErr.SandboxId))
+				http.Error(w, "Failed to handle sandbox snapshot in progress error", http.StatusInternalServerError)
+
+				return
+			}
+
+			return
+		}
+
 		var trafficMissingTokenErr *MissingTrafficAccessTokenError
 		if errors.As(err, &trafficMissingTokenErr) {
 			logger.L().Warn(ctx, "traffic access token is missing", zap.String("host", r.Host))
