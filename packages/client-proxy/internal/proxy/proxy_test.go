@@ -11,7 +11,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	catalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 )
@@ -98,15 +97,6 @@ func TestCatalogResolution_CatalogMiss(t *testing.T) {
 
 	_, err := catalogResolution(t.Context(), "sbx", 8000, "", "", c, nil, ff)
 	require.ErrorIs(t, err, ErrNodeNotFound)
-}
-
-func TestMapCatalogResolutionError_UnexpectedErrorPreserved(t *testing.T) {
-	t.Parallel()
-
-	originalErr := status.Error(codes.AlreadyExists, "sandbox is already running")
-
-	err := mapCatalogResolutionError(t.Context(), logger.NewNopLogger(), "sbx", originalErr)
-	require.ErrorIs(t, err, originalErr)
 }
 
 func TestHandlePausedSandbox_NoResumer_MissingTrafficAccessToken(t *testing.T) {

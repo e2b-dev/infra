@@ -107,30 +107,6 @@ func handlePausedSandbox(
 	return nodeIP, autoResumeSucceeded, nil
 }
 
-func mapCatalogResolutionError(ctx context.Context, l logger.Logger, sandboxId string, err error) error {
-	var resumeDeniedErr *reverseproxy.SandboxResumePermissionDeniedError
-	if errors.As(err, &resumeDeniedErr) {
-		l.Warn(ctx, "sandbox resume denied", zap.Error(err))
-
-		return resumeDeniedErr
-	}
-
-	var resourceExhaustedErr *reverseproxy.SandboxResourceExhaustedError
-	if errors.As(err, &resourceExhaustedErr) {
-		l.Warn(ctx, "sandbox resource exhausted", zap.Error(err))
-
-		return resourceExhaustedErr
-	}
-
-	if !errors.Is(err, ErrNodeNotFound) {
-		l.Warn(ctx, "failed to resolve node ip with Redis resolution", zap.Error(err))
-
-		return err
-	}
-
-	return reverseproxy.NewErrSandboxNotFound(sandboxId)
-}
-
 func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog catalog.SandboxesCatalog, pausedSandboxResumer PausedSandboxResumer, featureFlagsClient *featureflags.Client) (*reverseproxy.Proxy, error) {
 	getTargetFromRequest := reverseproxy.GetTargetFromRequest(env.IsLocal())
 	proxy := reverseproxy.New(
@@ -151,7 +127,25 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 			envdAccessToken := r.Header.Get(proxygrpc.MetadataEnvdHTTPAccessToken)
 			nodeIP, err := catalogResolution(ctx, sandboxId, port, trafficAccessToken, envdAccessToken, catalog, pausedSandboxResumer, featureFlagsClient)
 			if err != nil {
-				return nil, mapCatalogResolutionError(ctx, l, sandboxId, err)
+				var resumeDeniedErr *reverseproxy.SandboxResumePermissionDeniedError
+				if errors.As(err, &resumeDeniedErr) {
+					l.Warn(ctx, "sandbox resume denied", zap.Error(err))
+
+					return nil, resumeDeniedErr
+				}
+
+				var resourceExhaustedErr *reverseproxy.SandboxResourceExhaustedError
+				if errors.As(err, &resourceExhaustedErr) {
+					l.Warn(ctx, "sandbox resource exhausted", zap.Error(err))
+
+					return nil, resourceExhaustedErr
+				}
+
+				if !errors.Is(err, ErrNodeNotFound) {
+					l.Warn(ctx, "failed to resolve node ip with Redis resolution", zap.Error(err))
+				}
+
+				return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)
 			}
 
 			url := &url.URL{
