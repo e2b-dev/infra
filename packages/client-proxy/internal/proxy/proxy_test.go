@@ -165,6 +165,19 @@ func TestHandlePausedSandbox_ResourceExhausted(t *testing.T) {
 	require.Equal(t, autoResumeResourceExhausted, res)
 }
 
+func TestHandlePausedSandbox_FailedPrecondition(t *testing.T) {
+	t.Parallel()
+
+	ff := newFF(t, true)
+
+	_, res, err := handlePausedSandbox(t.Context(), "sbx", 8000, "token", "", stubResumer{err: status.Error(codes.FailedPrecondition, "sandbox is still transitioning")}, ff)
+	require.Error(t, err)
+	var transitioningErr *reverseproxy.SandboxStillTransitioningError
+	require.ErrorAs(t, err, &transitioningErr)
+	require.Equal(t, "sbx", transitioningErr.SandboxId)
+	require.Equal(t, autoResumeErrored, res)
+}
+
 func TestHandlePausedSandbox_SnapshotNotFound(t *testing.T) {
 	t.Parallel()
 

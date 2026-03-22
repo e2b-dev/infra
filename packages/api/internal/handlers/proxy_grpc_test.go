@@ -491,7 +491,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 		assert.Equal(t, "sandbox is in an unknown state", st.Message())
 	})
 
-	t.Run("sandbox still transitioning after max retries returns internal error", func(t *testing.T) {
+	t.Run("sandbox still transitioning after max retries returns failed precondition", func(t *testing.T) {
 		t.Parallel()
 
 		waitCalls := 0
@@ -523,7 +523,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 
 		st, ok := status.FromError(err)
 		require.True(t, ok)
-		assert.Equal(t, codes.Internal, st.Code())
+		assert.Equal(t, codes.FailedPrecondition, st.Code())
 		assert.Equal(t, "sandbox is still transitioning", st.Message())
 	})
 }

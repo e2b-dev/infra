@@ -172,7 +172,7 @@ func handleExistingSandboxAutoResume(
 		zap.Int("attempts", maxAutoResumeTransitionRetries),
 	)
 
-	return "", false, status.Error(codes.Internal, "sandbox is still transitioning")
+	return "", false, status.Error(codes.FailedPrecondition, "sandbox is still transitioning")
 }
 
 func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.SandboxResumeRequest) (*proxygrpc.SandboxResumeResponse, error) {
