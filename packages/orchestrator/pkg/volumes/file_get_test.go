@@ -18,7 +18,7 @@ type mockGetFileServer struct {
 	mock.Mock
 }
 
-func (m *mockGetFileServer) Send(resp *orchestrator.VolumeFileGetResponse) error {
+func (m *mockGetFileServer) Send(resp *orchestrator.GetFileResponse) error {
 	args := m.Called(resp)
 
 	return args.Error(0)
@@ -47,15 +47,15 @@ func TestFileGet(t *testing.T) {
 		mockServer.On("Context").Return(t.Context())
 
 		// Expect Start message
-		mockServer.On("Send", mock.MatchedBy(func(resp *orchestrator.VolumeFileGetResponse) bool {
-			_, ok := resp.GetMessage().(*orchestrator.VolumeFileGetResponse_Start)
+		mockServer.On("Send", mock.MatchedBy(func(resp *orchestrator.GetFileResponse) bool {
+			_, ok := resp.GetMessage().(*orchestrator.GetFileResponse_Start)
 
 			return ok
 		})).Return(nil).Once()
 
 		// Expect Content message(s)
-		mockServer.On("Send", mock.MatchedBy(func(resp *orchestrator.VolumeFileGetResponse) bool {
-			c, ok := resp.GetMessage().(*orchestrator.VolumeFileGetResponse_Content)
+		mockServer.On("Send", mock.MatchedBy(func(resp *orchestrator.GetFileResponse) bool {
+			c, ok := resp.GetMessage().(*orchestrator.GetFileResponse_Content)
 			if !ok {
 				return false
 			}
@@ -64,13 +64,13 @@ func TestFileGet(t *testing.T) {
 		})).Return(nil).Once()
 
 		// Expect Finish message
-		mockServer.On("Send", mock.MatchedBy(func(resp *orchestrator.VolumeFileGetResponse) bool {
-			_, ok := resp.GetMessage().(*orchestrator.VolumeFileGetResponse_Finish)
+		mockServer.On("Send", mock.MatchedBy(func(resp *orchestrator.GetFileResponse) bool {
+			_, ok := resp.GetMessage().(*orchestrator.GetFileResponse_Finish)
 
 			return ok
 		})).Return(nil).Once()
 
-		err = s.GetFile(&orchestrator.VolumeFileGetRequest{
+		err = s.GetFile(&orchestrator.GetFileRequest{
 			Volume: volumeInfo,
 			Path:   filename,
 		}, mockServer)
@@ -85,7 +85,7 @@ func TestFileGet(t *testing.T) {
 		mockServer := &mockGetFileServer{}
 		mockServer.On("Context").Return(t.Context())
 
-		err := s.GetFile(&orchestrator.VolumeFileGetRequest{
+		err := s.GetFile(&orchestrator.GetFileRequest{
 			Volume: volumeInfo,
 			Path:   "non-existent",
 		}, mockServer)

@@ -46,7 +46,7 @@ func TestGetSandboxesSandboxIDRecordReturns404WhenRecordRetentionNotMet(t *testi
 
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Request = httptest.NewRequest(http.MethodGet, "/sandboxes/sbx_1/record", nil)
+	ctx.Request = httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/sandboxes/sbx_1/record", nil)
 
 	teamID := uuid.New()
 	auth.SetTeamInfo(ctx, &authtypes.Team{

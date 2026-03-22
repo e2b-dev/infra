@@ -13,7 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
-func (s *Service) DeleteFile(ctx context.Context, request *orchestrator.VolumeFileDeleteRequest) (r *orchestrator.VolumeFileDeleteResponse, err error) {
+func (s *Service) DeletePath(ctx context.Context, request *orchestrator.DeletePathRequest) (r *orchestrator.DeletePathResponse, err error) {
 	ctx, span := tracer.Start(ctx, "delete file in volume")
 	defer func() {
 		setSpanStatus(span, err)
@@ -39,7 +39,8 @@ func (s *Service) DeleteFile(ctx context.Context, request *orchestrator.VolumeFi
 		attribute.String("path", path),
 	))
 
-	if err = fs.Remove(path); err != nil {
+	// Check if path exists before deletion since RemoveAll doesn't error on missing paths
+	if _, err = fs.Lstat(path); err != nil {
 		if os.IsNotExist(err) {
 			return nil, newAPIError(ctx,
 				codes.NotFound,
@@ -49,8 +50,12 @@ func (s *Service) DeleteFile(ctx context.Context, request *orchestrator.VolumeFi
 			).Err()
 		}
 
-		return nil, fmt.Errorf("failed to delete file: %w", err)
+		return nil, fmt.Errorf("failed to stat path: %w", err)
 	}
 
-	return &orchestrator.VolumeFileDeleteResponse{}, nil
+	if err = fs.RemoveAll(path); err != nil {
+		return nil, fmt.Errorf("failed to delete path: %w", err)
+	}
+
+	return &orchestrator.DeletePathResponse{}, nil
 }

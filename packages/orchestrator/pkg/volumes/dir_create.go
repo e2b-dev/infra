@@ -16,7 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-func (s *Service) CreateDir(ctx context.Context, request *orchestrator.VolumeDirCreateRequest) (r *orchestrator.VolumeDirCreateResponse, err error) {
+func (s *Service) CreateDir(ctx context.Context, request *orchestrator.CreateDirRequest) (r *orchestrator.CreateDirResponse, err error) {
 	ctx, span := tracer.Start(ctx, "create directory in volume")
 	defer func() {
 		setSpanStatus(span, err)
@@ -82,7 +82,7 @@ func (s *Service) CreateDir(ctx context.Context, request *orchestrator.VolumeDir
 
 	entry := toEntry(path, stat)
 
-	return &orchestrator.VolumeDirCreateResponse{Entry: entry}, nil
+	return &orchestrator.CreateDirResponse{Entry: entry}, nil
 }
 
 func processError(ctx context.Context, s string, err error) error {

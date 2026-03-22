@@ -13,7 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
-func (s *Service) Stat(ctx context.Context, request *orchestrator.StatRequest) (r *orchestrator.StatResponse, err error) {
+func (s *Service) StatPath(ctx context.Context, request *orchestrator.StatPathRequest) (r *orchestrator.StatPathResponse, err error) {
 	ctx, span := tracer.Start(ctx, "stat path in volume")
 	defer func() {
 		setSpanStatus(span, err)
@@ -46,5 +46,5 @@ func (s *Service) Stat(ctx context.Context, request *orchestrator.StatRequest) (
 
 	entry := fromEntryInfo(path, info)
 
-	return &orchestrator.StatResponse{Entry: entry}, nil
+	return &orchestrator.StatPathResponse{Entry: entry}, nil
 }

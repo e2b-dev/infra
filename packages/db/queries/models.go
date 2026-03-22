@@ -136,6 +136,11 @@ type EnvBuildAssignment struct {
 	CreatedAt pgtype.Timestamptz
 }
 
+type EnvDefault struct {
+	EnvID       string
+	Description *string
+}
+
 type Snapshot struct {
 	CreatedAt           pgtype.Timestamptz
 	EnvID               string
@@ -172,6 +177,7 @@ type Team struct {
 	ClusterID               *uuid.UUID
 	SandboxSchedulingLabels []string
 	Slug                    string
+	ProfilePictureUrl       *string
 }
 
 type TeamApiKey struct {

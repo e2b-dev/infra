@@ -10,6 +10,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
+	"github.com/e2b-dev/infra/packages/shared/pkg/ginutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -31,7 +32,7 @@ func (a *APIStore) PostSandboxesSandboxIDTimeout(
 
 	var duration time.Duration
 
-	body, err := utils.ParseBody[api.PostSandboxesSandboxIDTimeoutJSONBody](ctx, c)
+	body, err := ginutils.ParseBody[api.PostSandboxesSandboxIDTimeoutJSONBody](ctx, c)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err))
 

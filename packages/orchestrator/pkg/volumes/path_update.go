@@ -13,7 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
-func (s *Service) UpdateFileMetadata(ctx context.Context, request *orchestrator.VolumeFileUpdateRequest) (r *orchestrator.VolumeFileUpdateResponse, err error) {
+func (s *Service) UpdatePath(ctx context.Context, request *orchestrator.UpdatePathRequest) (r *orchestrator.UpdatePathResponse, err error) {
 	ctx, span := tracer.Start(ctx, "update file metadata in volume")
 	defer func() {
 		setSpanStatus(span, err)
@@ -87,5 +87,5 @@ func (s *Service) UpdateFileMetadata(ctx context.Context, request *orchestrator.
 
 	entry := toEntry(path, fi)
 
-	return &orchestrator.VolumeFileUpdateResponse{Entry: entry}, nil
+	return &orchestrator.UpdatePathResponse{Entry: entry}, nil
 }

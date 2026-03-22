@@ -10,6 +10,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
+	"github.com/e2b-dev/infra/packages/shared/pkg/ginutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	sharedutils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -30,7 +31,7 @@ func (a *APIStore) PutSandboxesSandboxIDNetwork(
 
 	team := auth.MustGetTeamInfo(c)
 
-	body, err := utils.ParseBody[api.PutSandboxesSandboxIDNetworkJSONBody](ctx, c)
+	body, err := ginutils.ParseBody[api.PutSandboxesSandboxIDNetworkJSONBody](ctx, c)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err))
 		telemetry.ReportCriticalError(ctx, "error when parsing request", err)
