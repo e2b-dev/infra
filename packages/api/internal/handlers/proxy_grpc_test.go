@@ -174,6 +174,75 @@ func TestTokensMatch(t *testing.T) {
 	}
 }
 
+func TestHandleInitialSandboxAutoResumeLookupError(t *testing.T) {
+	t.Parallel()
+
+	t.Run("nil error is ignored", func(t *testing.T) {
+		t.Parallel()
+
+		require.NoError(t, handleInitialSandboxAutoResumeLookupError(nil))
+	})
+
+	t.Run("not found error falls through to normal resume", func(t *testing.T) {
+		t.Parallel()
+
+		err := handleInitialSandboxAutoResumeLookupError(fmt.Errorf("sandbox lookup failed: %w", sandbox.ErrNotFound))
+		require.NoError(t, err)
+	})
+
+	t.Run("unexpected lookup error returns internal", func(t *testing.T) {
+		t.Parallel()
+
+		err := handleInitialSandboxAutoResumeLookupError(errors.New("redis unavailable"))
+		require.Error(t, err)
+
+		st, ok := status.FromError(err)
+		require.True(t, ok)
+		assert.Equal(t, codes.Internal, st.Code())
+		assert.Equal(t, "failed to get sandbox state: redis unavailable", st.Message())
+	})
+}
+
+func TestShouldReloadAutoResumeSnapshot(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name             string
+		sandboxLookupErr error
+		handled          bool
+		expected         bool
+	}{
+		{
+			name:             "initial not found reloads snapshot",
+			sandboxLookupErr: fmt.Errorf("lookup failed: %w", sandbox.ErrNotFound),
+			expected:         true,
+		},
+		{
+			name:     "post-wait fallback reloads snapshot",
+			handled:  false,
+			expected: true,
+		},
+		{
+			name:     "handled running sandbox does not reload snapshot",
+			handled:  true,
+			expected: false,
+		},
+		{
+			name:             "unexpected lookup errors do not decide reload directly",
+			sandboxLookupErr: errors.New("redis unavailable"),
+			expected:         false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tt.expected, shouldReloadAutoResumeSnapshot(tt.sandboxLookupErr, tt.handled))
+		})
+	}
+}
+
 func testSandboxForAutoResume(state sandbox.State) sandbox.Sandbox {
 	return sandbox.Sandbox{
 		SandboxID: "test-sandbox",
@@ -489,5 +558,41 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 		require.True(t, ok)
 		assert.Equal(t, codes.Internal, st.Code())
 		assert.Equal(t, "sandbox is in an unknown state", st.Message())
+	})
+
+	t.Run("sandbox still transitioning after max retries returns internal error", func(t *testing.T) {
+		t.Parallel()
+
+		waitCalls := 0
+		getSandboxCalls := 0
+		_, handled, err := handleExistingSandboxAutoResume(
+			t.Context(),
+			"test-sandbox",
+			testSandboxForAutoResume(sandbox.StatePausing),
+			func(context.Context) error {
+				waitCalls++
+
+				return nil
+			},
+			func(context.Context) (sandbox.Sandbox, error) {
+				getSandboxCalls++
+
+				return testSandboxForAutoResume(sandbox.StatePausing), nil
+			},
+			func(sandbox.Sandbox) (string, error) {
+				t.Fatal("getNodeIP should not be called while sandbox is still transitioning")
+
+				return "", nil
+			},
+		)
+		require.Error(t, err)
+		assert.False(t, handled)
+		assert.Equal(t, maxAutoResumeTransitionRetries, waitCalls)
+		assert.Equal(t, maxAutoResumeTransitionRetries, getSandboxCalls)
+
+		st, ok := status.FromError(err)
+		require.True(t, ok)
+		assert.Equal(t, codes.Internal, st.Code())
+		assert.Equal(t, "sandbox is still transitioning", st.Message())
 	})
 }

@@ -85,6 +85,8 @@ func denyResumePermission() error {
 	return status.Error(codes.PermissionDenied, "permission denied")
 }
 
+const maxAutoResumeTransitionRetries = 3
+
 func (s *SandboxService) getAutoResumeSnapshot(ctx context.Context, sandboxID string) (*snapshotcache.SnapshotInfo, *dbtypes.SandboxAutoResumeConfig, error) {
 	snap, err := s.api.snapshotCache.Get(ctx, sandboxID)
 	if err != nil {
@@ -106,6 +108,18 @@ func (s *SandboxService) getAutoResumeSnapshot(ctx context.Context, sandboxID st
 	return snap, autoResume, nil
 }
 
+func handleInitialSandboxAutoResumeLookupError(err error) error {
+	if err == nil || errors.Is(err, sandbox.ErrNotFound) {
+		return nil
+	}
+
+	return status.Errorf(codes.Internal, "failed to get sandbox state: %v", err)
+}
+
+func shouldReloadAutoResumeSnapshot(sandboxLookupErr error, handled bool) bool {
+	return errors.Is(sandboxLookupErr, sandbox.ErrNotFound) || (sandboxLookupErr == nil && !handled)
+}
+
 func handleExistingSandboxAutoResume(
 	ctx context.Context,
 	sandboxID string,
@@ -114,13 +128,13 @@ func handleExistingSandboxAutoResume(
 	getSandbox func(context.Context) (sandbox.Sandbox, error),
 	getNodeIP func(sandbox.Sandbox) (string, error),
 ) (string, bool, error) {
-	for {
+	for attempt := range maxAutoResumeTransitionRetries {
 		switch sbx.State {
 		case sandbox.StatePausing, sandbox.StateSnapshotting:
 			if sbx.State == sandbox.StatePausing {
-				logger.L().Debug(ctx, "Waiting for sandbox to pause before auto-resume", logger.WithSandboxID(sandboxID))
+				logger.L().Debug(ctx, "Waiting for sandbox to pause before auto-resume", logger.WithSandboxID(sandboxID), zap.Int("attempt", attempt+1))
 			} else {
-				logger.L().Debug(ctx, "Waiting for sandbox snapshot to finish before auto-resume", logger.WithSandboxID(sandboxID))
+				logger.L().Debug(ctx, "Waiting for sandbox snapshot to finish before auto-resume", logger.WithSandboxID(sandboxID), zap.Int("attempt", attempt+1))
 			}
 
 			err := waitForStateChange(ctx)
@@ -161,6 +175,16 @@ func handleExistingSandboxAutoResume(
 			return "", false, status.Error(codes.Internal, "sandbox is in an unknown state")
 		}
 	}
+
+	logger.L().Warn(
+		ctx,
+		"Sandbox is still transitioning after auto-resume retries",
+		logger.WithSandboxID(sandboxID),
+		zap.String("state", string(sbx.State)),
+		zap.Int("attempts", maxAutoResumeTransitionRetries),
+	)
+
+	return "", false, status.Error(codes.Internal, "sandbox is still transitioning")
 }
 
 func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.SandboxResumeRequest) (*proxygrpc.SandboxResumeResponse, error) {
@@ -180,8 +204,16 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 	// This intentionally does not allow callers to override timeouts via gRPC.
 	timeout := 300 * time.Second
 
+	var shouldReloadSnapshot bool
 	sandboxData, sandboxErr := s.api.orchestrator.GetSandbox(ctx, teamID, sandboxID)
-	if sandboxErr == nil {
+	if sandboxErr != nil {
+		existingErr := handleInitialSandboxAutoResumeLookupError(sandboxErr)
+		if existingErr != nil {
+			return nil, existingErr
+		}
+
+		shouldReloadSnapshot = shouldReloadAutoResumeSnapshot(sandboxErr, false)
+	} else {
 		nodeIP, handled, existingErr := handleExistingSandboxAutoResume(
 			ctx,
 			sandboxID,
@@ -217,8 +249,12 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 			return &proxygrpc.SandboxResumeResponse{OrchestratorIp: nodeIP}, nil
 		}
 
-		// Reload snapshot metadata after waiting through orchestrator transitions so we do not
-		// resume from stale pre-pause snapshot data.
+		shouldReloadSnapshot = shouldReloadAutoResumeSnapshot(nil, handled)
+	}
+
+	if shouldReloadSnapshot {
+		// Reload snapshot metadata after orchestrator checks so we do not resume from stale
+		// pre-pause snapshot data.
 		snap, autoResume, err = s.getAutoResumeSnapshot(ctx, sandboxID)
 		if err != nil {
 			return nil, err
