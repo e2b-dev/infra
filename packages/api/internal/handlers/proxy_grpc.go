@@ -124,6 +124,12 @@ func handleExistingSandboxAutoResume(
 	defer cancel()
 
 	attempts := 0
+
+	// Existing sandbox auto-resume state handling:
+	// - running: return the current node IP immediately
+	// - pausing/snapshotting: wait for the transition, refresh state, and retry
+	// - killing: treat as not found
+	// - anything else: return internal error
 	for {
 		switch sbx.State {
 		case sandbox.StatePausing, sandbox.StateSnapshotting:
