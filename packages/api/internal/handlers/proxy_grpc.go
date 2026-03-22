@@ -90,7 +90,8 @@ func handleExistingSandboxAutoResume(
 	sandboxID string,
 	sbx sandbox.Sandbox,
 	waitForStateChange func(context.Context) error,
-	getNodeIP func() (string, error),
+	getSandbox func(context.Context) (sandbox.Sandbox, error),
+	getNodeIP func(sandbox.Sandbox) (string, error),
 ) (string, bool, error) {
 	switch sbx.State {
 	case sandbox.StatePausing:
@@ -100,7 +101,12 @@ func handleExistingSandboxAutoResume(
 			return "", false, status.Error(codes.Internal, "Error waiting for sandbox to pause")
 		}
 
-		return "", false, nil
+		updatedSandbox, err := getSandbox(ctx)
+		if err != nil {
+			return "", false, nil
+		}
+
+		return handleExistingSandboxAutoResume(ctx, sandboxID, updatedSandbox, waitForStateChange, getSandbox, getNodeIP)
 	case sandbox.StateKilling:
 		logger.L().Debug(ctx, "Sandbox is being killed, cannot auto-resume", logger.WithSandboxID(sandboxID))
 
@@ -108,7 +114,7 @@ func handleExistingSandboxAutoResume(
 	case sandbox.StateSnapshotting:
 		return "", false, status.Error(codes.FailedPrecondition, "sandbox snapshot is currently being created")
 	case sandbox.StateRunning:
-		nodeIP, err := getNodeIP()
+		nodeIP, err := getNodeIP(sbx)
 		if err != nil {
 			return "", false, err
 		}
@@ -159,8 +165,11 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 			func(ctx context.Context) error {
 				return s.api.orchestrator.WaitForStateChange(ctx, teamID, sandboxID)
 			},
-			func() (string, error) {
-				node := s.api.orchestrator.GetNode(sandboxData.ClusterID, sandboxData.NodeID)
+			func(ctx context.Context) (sandbox.Sandbox, error) {
+				return s.api.orchestrator.GetSandbox(ctx, teamID, sandboxID)
+			},
+			func(sbx sandbox.Sandbox) (string, error) {
+				node := s.api.orchestrator.GetNode(sbx.ClusterID, sbx.NodeID)
 				if node == nil {
 					return "", status.Error(codes.Internal, "sandbox is running but routing info is not available yet")
 				}

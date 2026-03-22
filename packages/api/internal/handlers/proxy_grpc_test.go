@@ -198,7 +198,12 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 
 				return nil
 			},
-			func() (string, error) {
+			func(context.Context) (sandbox.Sandbox, error) {
+				t.Fatal("getSandbox should not be called for running sandbox")
+
+				return sandbox.Sandbox{}, nil
+			},
+			func(sandbox.Sandbox) (string, error) {
 				nodeCalls++
 
 				return "10.0.0.1", nil
@@ -225,7 +230,10 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 
 				return nil
 			},
-			func() (string, error) {
+			func(context.Context) (sandbox.Sandbox, error) {
+				return sandbox.Sandbox{}, errors.New("sandbox not found")
+			},
+			func(sandbox.Sandbox) (string, error) {
 				nodeCalled = true
 
 				return "10.0.0.1", nil
@@ -249,7 +257,12 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 			func(context.Context) error {
 				return waitErr
 			},
-			func() (string, error) {
+			func(context.Context) (sandbox.Sandbox, error) {
+				t.Fatal("getSandbox should not be called when wait fails")
+
+				return sandbox.Sandbox{}, nil
+			},
+			func(sandbox.Sandbox) (string, error) {
 				t.Fatal("getNodeIP should not be called when wait fails")
 
 				return "", nil
@@ -274,7 +287,12 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 
 				return nil
 			},
-			func() (string, error) {
+			func(context.Context) (sandbox.Sandbox, error) {
+				t.Fatal("getSandbox should not be called for killing sandbox")
+
+				return sandbox.Sandbox{}, nil
+			},
+			func(sandbox.Sandbox) (string, error) {
 				t.Fatal("getNodeIP should not be called for killing sandbox")
 
 				return "", nil
@@ -299,7 +317,12 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 
 				return nil
 			},
-			func() (string, error) {
+			func(context.Context) (sandbox.Sandbox, error) {
+				t.Fatal("getSandbox should not be called for snapshotting sandbox")
+
+				return sandbox.Sandbox{}, nil
+			},
+			func(sandbox.Sandbox) (string, error) {
 				t.Fatal("getNodeIP should not be called for snapshotting sandbox")
 
 				return "", nil
