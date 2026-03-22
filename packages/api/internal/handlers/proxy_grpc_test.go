@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -195,6 +196,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 			t.Context(),
 			"test-sandbox",
 			testSandboxForAutoResume(sandbox.StateRunning),
+			time.Minute,
 			func(context.Context) error {
 				waitCalled = true
 
@@ -229,6 +231,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 			t.Context(),
 			"test-sandbox",
 			testSandboxForAutoResume(sandbox.StatePausing),
+			time.Minute,
 			func(context.Context) error {
 				waitCalls++
 
@@ -261,6 +264,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 			t.Context(),
 			"test-sandbox",
 			testSandboxForAutoResume(sandbox.StatePausing),
+			time.Minute,
 			func(context.Context) error {
 				waitCalls++
 
@@ -290,6 +294,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 			t.Context(),
 			"test-sandbox",
 			testSandboxForAutoResume(sandbox.StatePausing),
+			time.Minute,
 			func(context.Context) error {
 				return waitErr
 			},
@@ -318,6 +323,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 			t.Context(),
 			"test-sandbox",
 			testSandboxForAutoResume(sandbox.StateKilling),
+			time.Minute,
 			func(context.Context) error {
 				t.Fatal("waitForStateChange should not be called for killing sandbox")
 
@@ -352,6 +358,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 			t.Context(),
 			"test-sandbox",
 			testSandboxForAutoResume(sandbox.StateSnapshotting),
+			time.Minute,
 			func(context.Context) error {
 				waitCalls++
 
@@ -383,6 +390,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 			t.Context(),
 			"test-sandbox",
 			testSandboxForAutoResume(sandbox.StateSnapshotting),
+			time.Minute,
 			func(context.Context) error {
 				return waitErr
 			},
@@ -411,6 +419,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 			t.Context(),
 			"test-sandbox",
 			testSandboxForAutoResume(sandbox.StatePausing),
+			time.Minute,
 			func(context.Context) error {
 				return nil
 			},
@@ -438,6 +447,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 			t.Context(),
 			"test-sandbox",
 			testSandboxForAutoResume(sandbox.StateRunning),
+			time.Minute,
 			func(context.Context) error {
 				t.Fatal("waitForStateChange should not be called for running sandbox")
 
@@ -467,6 +477,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 			t.Context(),
 			"test-sandbox",
 			testSandboxForAutoResume(sandbox.State("mystery")),
+			time.Minute,
 			func(context.Context) error {
 				t.Fatal("waitForStateChange should not be called for unknown sandbox state")
 
@@ -500,6 +511,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 			t.Context(),
 			"test-sandbox",
 			testSandboxForAutoResume(sandbox.StatePausing),
+			time.Minute,
 			func(context.Context) error {
 				waitCalls++
 
@@ -525,5 +537,81 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 		require.True(t, ok)
 		assert.Equal(t, codes.FailedPrecondition, st.Code())
 		assert.Equal(t, "sandbox is still transitioning", st.Message())
+	})
+
+	t.Run("pausing sandbox wait timeout returns failed precondition", func(t *testing.T) {
+		t.Parallel()
+
+		_, handled, err := handleExistingSandboxAutoResume(
+			t.Context(),
+			"test-sandbox",
+			testSandboxForAutoResume(sandbox.StatePausing),
+			5*time.Millisecond,
+			func(ctx context.Context) error {
+				<-ctx.Done()
+
+				return ctx.Err()
+			},
+			func(context.Context) (sandbox.Sandbox, error) {
+				t.Fatal("getSandbox should not be called when wait times out")
+
+				return sandbox.Sandbox{}, nil
+			},
+			func(sandbox.Sandbox) (string, error) {
+				t.Fatal("getNodeIP should not be called when wait times out")
+
+				return "", nil
+			},
+		)
+		require.Error(t, err)
+		assert.False(t, handled)
+
+		st, ok := status.FromError(err)
+		require.True(t, ok)
+		assert.Equal(t, codes.FailedPrecondition, st.Code())
+		assert.Equal(t, "sandbox is still transitioning", st.Message())
+	})
+
+	t.Run("sandbox becoming running on final refresh still routes", func(t *testing.T) {
+		t.Parallel()
+
+		waitCalls := 0
+		getSandboxCalls := 0
+		nodeCalls := 0
+		finalSandbox := testSandboxForAutoResume(sandbox.StateRunning)
+		finalSandbox.NodeID = "node-final"
+
+		nodeIP, handled, err := handleExistingSandboxAutoResume(
+			t.Context(),
+			"test-sandbox",
+			testSandboxForAutoResume(sandbox.StatePausing),
+			time.Minute,
+			func(context.Context) error {
+				waitCalls++
+
+				return nil
+			},
+			func(context.Context) (sandbox.Sandbox, error) {
+				getSandboxCalls++
+				if getSandboxCalls < maxAutoResumeTransitionRetries {
+					return testSandboxForAutoResume(sandbox.StatePausing), nil
+				}
+
+				return finalSandbox, nil
+			},
+			func(sbx sandbox.Sandbox) (string, error) {
+				nodeCalls++
+				assert.Equal(t, finalSandbox.ClusterID, sbx.ClusterID)
+				assert.Equal(t, finalSandbox.NodeID, sbx.NodeID)
+
+				return "10.0.0.9", nil
+			},
+		)
+		require.NoError(t, err)
+		assert.True(t, handled)
+		assert.Equal(t, "10.0.0.9", nodeIP)
+		assert.Equal(t, maxAutoResumeTransitionRetries, waitCalls)
+		assert.Equal(t, maxAutoResumeTransitionRetries, getSandboxCalls)
+		assert.Equal(t, 1, nodeCalls)
 	})
 }

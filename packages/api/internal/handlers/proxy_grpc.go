@@ -85,7 +85,10 @@ func denyResumePermission() error {
 	return status.Error(codes.PermissionDenied, "permission denied")
 }
 
-const maxAutoResumeTransitionRetries = 3
+const (
+	maxAutoResumeTransitionRetries = 3
+	autoResumeTransitionWaitBudget = 55 * time.Second
+)
 
 func (s *SandboxService) getAutoResumeSnapshot(ctx context.Context, sandboxID string) (*snapshotcache.SnapshotInfo, *dbtypes.SandboxAutoResumeConfig, error) {
 	snap, err := s.api.snapshotCache.Get(ctx, sandboxID)
@@ -112,26 +115,59 @@ func handleExistingSandboxAutoResume(
 	ctx context.Context,
 	sandboxID string,
 	sbx sandbox.Sandbox,
+	transitionWaitBudget time.Duration,
 	waitForStateChange func(context.Context) error,
 	getSandbox func(context.Context) (sandbox.Sandbox, error),
 	getNodeIP func(sandbox.Sandbox) (string, error),
 ) (string, bool, error) {
-	for attempt := range maxAutoResumeTransitionRetries {
+	transitionCtx, cancel := context.WithTimeout(ctx, transitionWaitBudget)
+	defer cancel()
+
+	attempts := 0
+	for {
 		switch sbx.State {
 		case sandbox.StatePausing, sandbox.StateSnapshotting:
-			if sbx.State == sandbox.StatePausing {
-				logger.L().Debug(ctx, "Waiting for sandbox to pause before auto-resume", logger.WithSandboxID(sandboxID), zap.Int("attempt", attempt+1))
-			} else {
-				logger.L().Debug(ctx, "Waiting for sandbox snapshot to finish before auto-resume", logger.WithSandboxID(sandboxID), zap.Int("attempt", attempt+1))
+			if attempts >= maxAutoResumeTransitionRetries {
+				logger.L().Warn(
+					ctx,
+					"Sandbox is still transitioning after auto-resume retries",
+					logger.WithSandboxID(sandboxID),
+					zap.String("state", string(sbx.State)),
+					zap.Int("attempts", attempts),
+				)
+
+				return "", false, status.Error(codes.FailedPrecondition, "sandbox is still transitioning")
 			}
 
-			err := waitForStateChange(ctx)
+			attempts++
+			waitErrMsg := "error waiting for sandbox to pause"
+			if sbx.State == sandbox.StatePausing {
+				logger.L().Debug(ctx, "Waiting for sandbox to pause before auto-resume", logger.WithSandboxID(sandboxID), zap.Int("attempt", attempts))
+			} else {
+				waitErrMsg = "error waiting for sandbox snapshot to finish"
+				logger.L().Debug(ctx, "Waiting for sandbox snapshot to finish before auto-resume", logger.WithSandboxID(sandboxID), zap.Int("attempt", attempts))
+			}
+
+			err := waitForStateChange(transitionCtx)
 			if err != nil {
-				if sbx.State == sandbox.StatePausing {
-					return "", false, status.Error(codes.Internal, "error waiting for sandbox to pause")
+				if errors.Is(transitionCtx.Err(), context.DeadlineExceeded) && ctx.Err() == nil {
+					logger.L().Warn(
+						ctx,
+						"Sandbox transition wait timed out during auto-resume",
+						logger.WithSandboxID(sandboxID),
+						zap.String("state", string(sbx.State)),
+						zap.Int("attempt", attempts),
+						zap.Duration("budget", transitionWaitBudget),
+					)
+
+					return "", false, status.Error(codes.FailedPrecondition, "sandbox is still transitioning")
 				}
 
-				return "", false, status.Error(codes.Internal, "error waiting for sandbox snapshot to finish")
+				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+					return "", false, status.FromContextError(err).Err()
+				}
+
+				return "", false, status.Error(codes.Internal, waitErrMsg)
 			}
 
 			updatedSandbox, getSandboxErr := getSandbox(ctx)
@@ -163,16 +199,6 @@ func handleExistingSandboxAutoResume(
 			return "", false, status.Error(codes.Internal, "sandbox is in an unknown state")
 		}
 	}
-
-	logger.L().Warn(
-		ctx,
-		"Sandbox is still transitioning after auto-resume retries",
-		logger.WithSandboxID(sandboxID),
-		zap.String("state", string(sbx.State)),
-		zap.Int("attempts", maxAutoResumeTransitionRetries),
-	)
-
-	return "", false, status.Error(codes.FailedPrecondition, "sandbox is still transitioning")
 }
 
 func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.SandboxResumeRequest) (*proxygrpc.SandboxResumeResponse, error) {
@@ -212,6 +238,7 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 			ctx,
 			sandboxID,
 			sandboxData,
+			autoResumeTransitionWaitBudget,
 			func(ctx context.Context) error {
 				return s.api.orchestrator.WaitForStateChange(ctx, teamID, sandboxID)
 			},
