@@ -93,37 +93,45 @@ func handleExistingSandboxAutoResume(
 	getSandbox func(context.Context) (sandbox.Sandbox, error),
 	getNodeIP func(sandbox.Sandbox) (string, error),
 ) (string, bool, error) {
-	switch sbx.State {
-	case sandbox.StatePausing:
-		logger.L().Debug(ctx, "Waiting for sandbox to pause before auto-resume", logger.WithSandboxID(sandboxID))
-		err := waitForStateChange(ctx)
-		if err != nil {
-			return "", false, status.Error(codes.Internal, "Error waiting for sandbox to pause")
+	for {
+		switch sbx.State {
+		case sandbox.StatePausing:
+			logger.L().Debug(ctx, "Waiting for sandbox to pause before auto-resume", logger.WithSandboxID(sandboxID))
+			err := waitForStateChange(ctx)
+			if err != nil {
+				return "", false, status.Error(codes.Internal, "error waiting for sandbox to pause")
+			}
+
+			updatedSandbox, getSandboxErr := getSandbox(ctx)
+			if getSandboxErr == nil {
+				sbx = updatedSandbox
+
+				continue
+			}
+			if errors.Is(getSandboxErr, sandbox.ErrNotFound) {
+				// Sandbox finished pausing and disappeared from orchestrator state, so continue with normal resume.
+				return "", false, nil
+			}
+
+			return "", false, status.Errorf(codes.Internal, "failed to refresh sandbox state: %v", getSandboxErr)
+		case sandbox.StateKilling:
+			logger.L().Debug(ctx, "Sandbox is being killed, cannot auto-resume", logger.WithSandboxID(sandboxID))
+
+			return "", false, status.Error(codes.NotFound, "sandbox not found")
+		case sandbox.StateSnapshotting:
+			return "", false, status.Error(codes.FailedPrecondition, "sandbox snapshot is currently being created")
+		case sandbox.StateRunning:
+			nodeIP, err := getNodeIP(sbx)
+			if err != nil {
+				return "", false, err
+			}
+
+			return nodeIP, true, nil
+		default:
+			logger.L().Error(ctx, "Sandbox is in an unknown state during auto-resume", logger.WithSandboxID(sandboxID), zap.String("state", string(sbx.State)))
+
+			return "", false, status.Error(codes.Internal, "sandbox is in an unknown state")
 		}
-
-		updatedSandbox, getSandboxErr := getSandbox(ctx)
-		if getSandboxErr == nil {
-			return handleExistingSandboxAutoResume(ctx, sandboxID, updatedSandbox, waitForStateChange, getSandbox, getNodeIP)
-		}
-
-		return "", false, nil
-	case sandbox.StateKilling:
-		logger.L().Debug(ctx, "Sandbox is being killed, cannot auto-resume", logger.WithSandboxID(sandboxID))
-
-		return "", false, status.Error(codes.NotFound, "sandbox not found")
-	case sandbox.StateSnapshotting:
-		return "", false, status.Error(codes.FailedPrecondition, "sandbox snapshot is currently being created")
-	case sandbox.StateRunning:
-		nodeIP, err := getNodeIP(sbx)
-		if err != nil {
-			return "", false, err
-		}
-
-		return nodeIP, true, nil
-	default:
-		logger.L().Error(ctx, "Sandbox is in an unknown state during auto-resume", logger.WithSandboxID(sandboxID), zap.String("state", string(sbx.State)))
-
-		return "", false, status.Error(codes.Internal, "sandbox is in an unknown state")
 	}
 }
 

@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/google/uuid"
@@ -266,7 +267,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 				return nil
 			},
 			func(context.Context) (sandbox.Sandbox, error) {
-				return sandbox.Sandbox{}, errors.New("sandbox not found")
+				return sandbox.Sandbox{}, fmt.Errorf("sandbox %q: %w", "test-sandbox", sandbox.ErrNotFound)
 			},
 			func(sandbox.Sandbox) (string, error) {
 				nodeCalled = true
@@ -307,7 +308,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 		assert.False(t, handled)
 		st, ok := status.FromError(err)
 		require.True(t, ok)
-		assert.Equal(t, "Error waiting for sandbox to pause", st.Message())
+		assert.Equal(t, "error waiting for sandbox to pause", st.Message())
 	})
 
 	t.Run("killing sandbox returns not found", func(t *testing.T) {
@@ -370,6 +371,33 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 		assert.Equal(t, "sandbox snapshot is currently being created", st.Message())
 	})
 
+	t.Run("pausing sandbox returns internal error when refreshed sandbox lookup fails unexpectedly", func(t *testing.T) {
+		t.Parallel()
+
+		_, handled, err := handleExistingSandboxAutoResume(
+			t.Context(),
+			"test-sandbox",
+			testSandboxForAutoResume(sandbox.StatePausing),
+			func(context.Context) error {
+				return nil
+			},
+			func(context.Context) (sandbox.Sandbox, error) {
+				return sandbox.Sandbox{}, errors.New("redis unavailable")
+			},
+			func(sandbox.Sandbox) (string, error) {
+				t.Fatal("getNodeIP should not be called when refresh fails")
+
+				return "", nil
+			},
+		)
+		require.Error(t, err)
+		assert.False(t, handled)
+		st, ok := status.FromError(err)
+		require.True(t, ok)
+		assert.Equal(t, codes.Internal, st.Code())
+		assert.Equal(t, "failed to refresh sandbox state: redis unavailable", st.Message())
+	})
+
 	t.Run("running sandbox returns routing error when node ip lookup fails", func(t *testing.T) {
 		t.Parallel()
 
@@ -397,5 +425,36 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 		require.True(t, ok)
 		assert.Equal(t, codes.Internal, st.Code())
 		assert.Equal(t, "sandbox is running but routing info is not available yet", st.Message())
+	})
+
+	t.Run("unknown sandbox state returns internal error", func(t *testing.T) {
+		t.Parallel()
+
+		_, handled, err := handleExistingSandboxAutoResume(
+			t.Context(),
+			"test-sandbox",
+			testSandboxForAutoResume(sandbox.State("mystery")),
+			func(context.Context) error {
+				t.Fatal("waitForStateChange should not be called for unknown sandbox state")
+
+				return nil
+			},
+			func(context.Context) (sandbox.Sandbox, error) {
+				t.Fatal("getSandbox should not be called for unknown sandbox state")
+
+				return sandbox.Sandbox{}, nil
+			},
+			func(sandbox.Sandbox) (string, error) {
+				t.Fatal("getNodeIP should not be called for unknown sandbox state")
+
+				return "", nil
+			},
+		)
+		require.Error(t, err)
+		assert.False(t, handled)
+		st, ok := status.FromError(err)
+		require.True(t, ok)
+		assert.Equal(t, codes.Internal, st.Code())
+		assert.Equal(t, "sandbox is in an unknown state", st.Message())
 	})
 }
