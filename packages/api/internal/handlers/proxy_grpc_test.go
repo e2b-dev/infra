@@ -174,35 +174,6 @@ func TestTokensMatch(t *testing.T) {
 	}
 }
 
-func TestHandleInitialSandboxAutoResumeLookupError(t *testing.T) {
-	t.Parallel()
-
-	t.Run("nil error is ignored", func(t *testing.T) {
-		t.Parallel()
-
-		require.NoError(t, handleInitialSandboxAutoResumeLookupError(nil))
-	})
-
-	t.Run("not found error falls through to normal resume", func(t *testing.T) {
-		t.Parallel()
-
-		err := handleInitialSandboxAutoResumeLookupError(fmt.Errorf("sandbox lookup failed: %w", sandbox.ErrNotFound))
-		require.NoError(t, err)
-	})
-
-	t.Run("unexpected lookup error returns internal", func(t *testing.T) {
-		t.Parallel()
-
-		err := handleInitialSandboxAutoResumeLookupError(errors.New("redis unavailable"))
-		require.Error(t, err)
-
-		st, ok := status.FromError(err)
-		require.True(t, ok)
-		assert.Equal(t, codes.Internal, st.Code())
-		assert.Equal(t, "failed to get sandbox state: redis unavailable", st.Message())
-	})
-}
-
 func testSandboxForAutoResume(state sandbox.State) sandbox.Sandbox {
 	return sandbox.Sandbox{
 		SandboxID: "test-sandbox",

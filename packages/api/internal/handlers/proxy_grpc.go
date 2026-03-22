@@ -108,14 +108,6 @@ func (s *SandboxService) getAutoResumeSnapshot(ctx context.Context, sandboxID st
 	return snap, autoResume, nil
 }
 
-func handleInitialSandboxAutoResumeLookupError(err error) error {
-	if err == nil || errors.Is(err, sandbox.ErrNotFound) {
-		return nil
-	}
-
-	return status.Errorf(codes.Internal, "failed to get sandbox state: %v", err)
-}
-
 func handleExistingSandboxAutoResume(
 	ctx context.Context,
 	sandboxID string,
@@ -203,9 +195,8 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 
 	sandboxData, sandboxErr := s.api.orchestrator.GetSandbox(ctx, teamID, sandboxID)
 	if sandboxErr != nil {
-		existingErr := handleInitialSandboxAutoResumeLookupError(sandboxErr)
-		if existingErr != nil {
-			return nil, existingErr
+		if !errors.Is(sandboxErr, sandbox.ErrNotFound) {
+			return nil, status.Errorf(codes.Internal, "failed to get sandbox state: %v", sandboxErr)
 		}
 
 		// Reload snapshot metadata after orchestrator checks so we do not resume from stale
