@@ -24,6 +24,8 @@ import (
 	sharedutils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
+const snapshottingStateRetryDelay = 100 * time.Millisecond
+
 type SandboxService struct {
 	proxygrpc.UnimplementedSandboxServiceServer
 
@@ -134,6 +136,14 @@ func handleExistingSandboxAutoResume(
 
 			updatedSandbox, getSandboxErr := getSandbox(ctx)
 			if getSandboxErr == nil {
+				if sbx.State == sandbox.StateSnapshotting && updatedSandbox.State == sandbox.StateSnapshotting {
+					select {
+					case <-time.After(snapshottingStateRetryDelay):
+					case <-ctx.Done():
+						return "", false, status.Error(codes.Internal, "error waiting for sandbox snapshot to finish")
+					}
+				}
+
 				sbx = updatedSandbox
 
 				continue

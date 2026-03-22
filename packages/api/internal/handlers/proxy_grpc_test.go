@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -402,6 +403,45 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 		st, ok := status.FromError(err)
 		require.True(t, ok)
 		assert.Equal(t, "error waiting for sandbox snapshot to finish", st.Message())
+	})
+
+	t.Run("snapshotting sandbox with no active transition does not spin", func(t *testing.T) {
+		t.Parallel()
+
+		ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
+		defer cancel()
+
+		waitCalls := 0
+		getCalls := 0
+
+		_, handled, err := handleExistingSandboxAutoResume(
+			ctx,
+			"test-sandbox",
+			testSandboxForAutoResume(sandbox.StateSnapshotting),
+			func(context.Context) error {
+				waitCalls++
+
+				return nil
+			},
+			func(context.Context) (sandbox.Sandbox, error) {
+				getCalls++
+
+				return testSandboxForAutoResume(sandbox.StateSnapshotting), nil
+			},
+			func(sandbox.Sandbox) (string, error) {
+				t.Fatal("getNodeIP should not be called while sandbox remains snapshotting")
+
+				return "", nil
+			},
+		)
+		require.Error(t, err)
+		assert.False(t, handled)
+		st, ok := status.FromError(err)
+		require.True(t, ok)
+		assert.Equal(t, codes.Internal, st.Code())
+		assert.Equal(t, "error waiting for sandbox snapshot to finish", st.Message())
+		assert.Equal(t, 1, waitCalls)
+		assert.Equal(t, 1, getCalls)
 	})
 
 	t.Run("pausing sandbox returns internal error when refreshed sandbox lookup fails unexpectedly", func(t *testing.T) {
