@@ -175,13 +175,17 @@ func (ppb *PostProcessingBuilder) Build(
 	span.SetAttributes(attribute.String("io_engine", ioEngine))
 	ppb.logger.Debug(ctx, "using io engine", zap.String("io_engine", ioEngine))
 
-	// Build the pre-boot hook that sets reserved blocks on the host rootfs before the guest boots.
-	var preBootFn sandbox.PreBootFn
+	// Collect sandbox creation options
+	sandboxOptions := []layer.CreateSandboxOption{
+		layer.WithIoEngine(ioEngine),
+	}
+
+	// Set reserved blocks on the host rootfs before the guest boots.
 	if reservedDiskSpaceMB := int64(ppb.featureFlags.IntFlag(ctx, featureflags.BuildReservedDiskSpaceMB)); reservedDiskSpaceMB > 0 {
 		blockSize := ppb.Config.RootfsBlockSize()
-		preBootFn = func(ctx context.Context, rootfsPath string) error {
+		sandboxOptions = append(sandboxOptions, layer.WithPreBootFn(func(ctx context.Context, rootfsPath string) error {
 			return filesystem.SetReservedBlocksOnHost(ctx, rootfsPath, reservedDiskSpaceMB, blockSize)
-		}
+		}))
 	}
 
 	// Always restart the sandbox for the final layer to properly wire the rootfs path for the final template
@@ -189,8 +193,7 @@ func (ppb *PostProcessingBuilder) Build(
 		sbxConfig,
 		ppb.sandboxFactory,
 		finalizeTimeout,
-		layer.WithIoEngine(ioEngine),
-		layer.WithPreBootFn(preBootFn),
+		sandboxOptions...,
 	)
 
 	actionExecutor := layer.NewFunctionAction(ppb.postProcessingFn(userLogger))
