@@ -15,7 +15,7 @@ import (
 	"go.opentelemetry.io/otel/trace/noop"
 )
 
-var noopTracer = noop.TracerProvider{}.Tracer("")
+var noopTracer = noop.TracerProvider{}.Tracer("github.com/e2b-dev/infra/packages/shared/pkg/storage")
 
 func TestCachedObjectProvider_Put(t *testing.T) {
 	t.Parallel()

@@ -81,6 +81,29 @@ components:
           format: uuid
         maxItems: 100
         uniqueItems: true
+    teamID:
+      name: teamID
+      in: path
+      required: true
+      description: Identifier of the team.
+      schema:
+        type: string
+        format: uuid
+    userId:
+      name: userId
+      in: path
+      required: true
+      description: Identifier of the user.
+      schema:
+        type: string
+        format: uuid
+    teamSlug:
+      name: slug
+      in: query
+      required: true
+      description: Team slug to resolve.
+      schema:
+        type: string
 
   responses:
     "400":
@@ -320,9 +343,242 @@ components:
           type: string
           description: Human-readable health check result.
 
+    UserTeamLimits:
+      type: object
+      required:
+        - maxLengthHours
+        - concurrentSandboxes
+        - concurrentTemplateBuilds
+        - maxVcpu
+        - maxRamMb
+        - diskMb
+      properties:
+        maxLengthHours:
+          type: integer
+          format: int64
+        concurrentSandboxes:
+          type: integer
+          format: int32
+        concurrentTemplateBuilds:
+          type: integer
+          format: int32
+        maxVcpu:
+          type: integer
+          format: int32
+        maxRamMb:
+          type: integer
+          format: int32
+        diskMb:
+          type: integer
+          format: int32
+
+    UserTeam:
+      type: object
+      required:
+        - id
+        - name
+        - slug
+        - tier
+        - email
+        - profilePictureUrl
+        - isBlocked
+        - isBanned
+        - blockedReason
+        - isDefault
+        - limits
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        tier:
+          type: string
+        email:
+          type: string
+        profilePictureUrl:
+          type: string
+          nullable: true
+        isBlocked:
+          type: boolean
+        isBanned:
+          type: boolean
+        blockedReason:
+          type: string
+          nullable: true
+        isDefault:
+          type: boolean
+        limits:
+          $ref: "#/components/schemas/UserTeamLimits"
+
+    UserTeamsResponse:
+      type: object
+      required:
+        - teams
+      properties:
+        teams:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserTeam"
+
+    TeamMember:
+      type: object
+      required:
+        - id
+        - email
+        - isDefault
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        isDefault:
+          type: boolean
+        addedBy:
+          type: string
+          format: uuid
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    TeamMembersResponse:
+      type: object
+      required:
+        - members
+      properties:
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/TeamMember"
+
+    UpdateTeamRequest:
+      type: object
+      minProperties: 1
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        profilePictureUrl:
+          type: string
+          nullable: true
+
+    UpdateTeamResponse:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        profilePictureUrl:
+          type: string
+          nullable: true
+
+    AddTeamMemberRequest:
+      type: object
+      required:
+        - email
+      properties:
+        email:
+          type: string
+          format: email
+
+    DefaultTemplateAlias:
+      type: object
+      required:
+        - alias
+      properties:
+        alias:
+          type: string
+        namespace:
+          type: string
+          nullable: true
+
+    DefaultTemplate:
+      type: object
+      required:
+        - id
+        - aliases
+        - buildId
+        - ramMb
+        - vcpu
+        - totalDiskSizeMb
+        - createdAt
+        - public
+        - buildCount
+        - spawnCount
+      properties:
+        id:
+          type: string
+        aliases:
+          type: array
+          items:
+            $ref: "#/components/schemas/DefaultTemplateAlias"
+        buildId:
+          type: string
+          format: uuid
+        ramMb:
+          type: integer
+          format: int64
+        vcpu:
+          type: integer
+          format: int64
+        totalDiskSizeMb:
+          type: integer
+          format: int64
+          nullable: true
+        envdVersion:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        public:
+          type: boolean
+        buildCount:
+          type: integer
+          format: int32
+        spawnCount:
+          type: integer
+          format: int64
+
+    DefaultTemplatesResponse:
+      type: object
+      required:
+        - templates
+      properties:
+        templates:
+          type: array
+          items:
+            $ref: "#/components/schemas/DefaultTemplate"
+
+    TeamResolveResponse:
+      type: object
+      required:
+        - id
+        - slug
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+
 tags:
   - name: builds
   - name: sandboxes
+  - name: teams
+  - name: templates
 
 paths:
   /health:
@@ -437,5 +693,171 @@ paths:
           $ref: "#/components/responses/403"
         "404":
           $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /teams:
+    get:
+      summary: List user teams
+      description: Returns all teams the authenticated user belongs to, with limits and default flag.
+      tags: [teams]
+      security:
+        - Supabase1TokenAuth: []
+      responses:
+        "200":
+          description: Successfully returned user teams.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserTeamsResponse"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /teams/resolve:
+    get:
+      summary: Resolve team identity
+      description: Resolves a team slug to the team's identity, validating the user is a member.
+      tags: [teams]
+      security:
+        - Supabase1TokenAuth: []
+      parameters:
+        - $ref: "#/components/parameters/teamSlug"
+      responses:
+        "200":
+          description: Successfully resolved team.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamResolveResponse"
+        "401":
+          $ref: "#/components/responses/401"
+        "403":
+          $ref: "#/components/responses/403"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /teams/{teamID}:
+    patch:
+      summary: Update team
+      tags: [teams]
+      security:
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/teamID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTeamRequest"
+      responses:
+        "200":
+          description: Successfully updated team.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpdateTeamResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "403":
+          $ref: "#/components/responses/403"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /teams/{teamID}/members:
+    get:
+      summary: List team members
+      tags: [teams]
+      security:
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/teamID"
+      responses:
+        "200":
+          description: Successfully returned team members.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamMembersResponse"
+        "401":
+          $ref: "#/components/responses/401"
+        "403":
+          $ref: "#/components/responses/403"
+        "500":
+          $ref: "#/components/responses/500"
+    post:
+      summary: Add team member
+      tags: [teams]
+      security:
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/teamID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddTeamMemberRequest"
+      responses:
+        "201":
+          description: Successfully added team member.
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "403":
+          $ref: "#/components/responses/403"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /teams/{teamID}/members/{userId}:
+    delete:
+      summary: Remove team member
+      tags: [teams]
+      security:
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/teamID"
+        - $ref: "#/components/parameters/userId"
+      responses:
+        "204":
+          description: Successfully removed team member.
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "403":
+          $ref: "#/components/responses/403"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /templates/defaults:
+    get:
+      summary: List default templates
+      description: Returns the list of default templates with their latest build info and aliases.
+      tags: [templates]
+      security:
+        - Supabase1TokenAuth: []
+      responses:
+        "200":
+          description: Successfully returned default templates.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DefaultTemplatesResponse"
+        "401":
+          $ref: "#/components/responses/401"
         "500":
           $ref: "#/components/responses/500"

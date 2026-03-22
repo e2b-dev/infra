@@ -119,6 +119,13 @@ job "orchestrator-${latest_orchestrator_job_id}" {
 %{ if persistent_volume_mounts != "" }
         PERSISTENT_VOLUME_MOUNTS     = "${persistent_volume_mounts}"
 %{ endif }
+
+%{ for key, value in job_env_vars }
+  %{ if value != "" }
+        ${ key } = "${ value }"
+  %{ endif }
+%{ endfor }
+
       }
 
       config {

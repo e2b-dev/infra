@@ -101,7 +101,6 @@ func newBoolFlag(name string, fallback bool) BoolFlag {
 var (
 	MetricsWriteFlag                    = newBoolFlag("sandbox-metrics-write", env.IsDevelopment())
 	MetricsReadFlag                     = newBoolFlag("sandbox-metrics-read", env.IsDevelopment())
-	HostStatsEnabled                    = newBoolFlag("host-stats-enabled", env.IsDevelopment())
 	SnapshotFeatureFlag                 = newBoolFlag("use-nfs-for-snapshots", env.IsDevelopment())
 	TemplateFeatureFlag                 = newBoolFlag("use-nfs-for-templates", env.IsDevelopment())
 	EnableWriteThroughCacheFlag         = newBoolFlag("write-to-cache-on-writes", false)
@@ -187,6 +186,10 @@ var (
 
 	// BuildBaseRootfsSizeLimitMB is the maximum size of the base rootfs filesystem created from the OCI image, in MB.
 	BuildBaseRootfsSizeLimitMB = newIntFlag("build-base-rootfs-size-limit-mb", 25000)
+
+	// BuildReservedDiskSpaceMB is the amount of disk space in MB reserved for root on the guest filesystem.
+	// Reserved blocks are only usable by root (uid 0), protecting the guest OS from disk-full conditions.
+	BuildReservedDiskSpaceMB = newIntFlag("build-reserved-disk-space-mb", 0)
 
 	// MaxConcurrentSnapshotUpserts limits concurrent UpsertSnapshot calls (pause + snapshot template paths).
 	// 0 or negative disables throttling (unlimited concurrency).

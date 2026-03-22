@@ -21,4 +21,13 @@ resource "google_filestore_instance" "persistent-volumes" {
     modes   = ["MODE_IPV4"]
     network = var.network_name
   }
+
+  dynamic "performance_config" {
+    for_each = var.performance_config == null ? [] : [var.performance_config]
+    content {
+      fixed_iops {
+        max_iops = performance_config.value.max_iops
+      }
+    }
+  }
 }

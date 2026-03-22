@@ -32,6 +32,11 @@ const (
 	Success  BuildStatus = "success"
 )
 
+// AddTeamMemberRequest defines model for AddTeamMemberRequest.
+type AddTeamMemberRequest struct {
+	Email openapi_types.Email `json:"email"`
+}
+
 // BuildInfo defines model for BuildInfo.
 type BuildInfo struct {
 	// CreatedAt Build creation timestamp in RFC3339 format.
@@ -84,6 +89,32 @@ type BuildsStatusesResponse struct {
 
 // CPUCount CPU cores for the sandbox
 type CPUCount = int64
+
+// DefaultTemplate defines model for DefaultTemplate.
+type DefaultTemplate struct {
+	Aliases         []DefaultTemplateAlias `json:"aliases"`
+	BuildCount      int32                  `json:"buildCount"`
+	BuildId         openapi_types.UUID     `json:"buildId"`
+	CreatedAt       time.Time              `json:"createdAt"`
+	EnvdVersion     *string                `json:"envdVersion"`
+	Id              string                 `json:"id"`
+	Public          bool                   `json:"public"`
+	RamMb           int64                  `json:"ramMb"`
+	SpawnCount      int64                  `json:"spawnCount"`
+	TotalDiskSizeMb *int64                 `json:"totalDiskSizeMb"`
+	Vcpu            int64                  `json:"vcpu"`
+}
+
+// DefaultTemplateAlias defines model for DefaultTemplateAlias.
+type DefaultTemplateAlias struct {
+	Alias     string  `json:"alias"`
+	Namespace *string `json:"namespace"`
+}
+
+// DefaultTemplatesResponse defines model for DefaultTemplatesResponse.
+type DefaultTemplatesResponse struct {
+	Templates []DefaultTemplate `json:"templates"`
+}
 
 // DiskSizeMB Disk size for the sandbox in MiB
 type DiskSizeMB = int64
@@ -160,6 +191,69 @@ type SandboxRecord struct {
 	TemplateID string `json:"templateID"`
 }
 
+// TeamMember defines model for TeamMember.
+type TeamMember struct {
+	AddedBy   *openapi_types.UUID `json:"addedBy"`
+	CreatedAt *time.Time          `json:"createdAt"`
+	Email     string              `json:"email"`
+	Id        openapi_types.UUID  `json:"id"`
+	IsDefault bool                `json:"isDefault"`
+}
+
+// TeamMembersResponse defines model for TeamMembersResponse.
+type TeamMembersResponse struct {
+	Members []TeamMember `json:"members"`
+}
+
+// TeamResolveResponse defines model for TeamResolveResponse.
+type TeamResolveResponse struct {
+	Id   openapi_types.UUID `json:"id"`
+	Slug string             `json:"slug"`
+}
+
+// UpdateTeamRequest defines model for UpdateTeamRequest.
+type UpdateTeamRequest struct {
+	Name              *string `json:"name,omitempty"`
+	ProfilePictureUrl *string `json:"profilePictureUrl"`
+}
+
+// UpdateTeamResponse defines model for UpdateTeamResponse.
+type UpdateTeamResponse struct {
+	Id                openapi_types.UUID `json:"id"`
+	Name              string             `json:"name"`
+	ProfilePictureUrl *string            `json:"profilePictureUrl"`
+}
+
+// UserTeam defines model for UserTeam.
+type UserTeam struct {
+	BlockedReason     *string            `json:"blockedReason"`
+	Email             string             `json:"email"`
+	Id                openapi_types.UUID `json:"id"`
+	IsBanned          bool               `json:"isBanned"`
+	IsBlocked         bool               `json:"isBlocked"`
+	IsDefault         bool               `json:"isDefault"`
+	Limits            UserTeamLimits     `json:"limits"`
+	Name              string             `json:"name"`
+	ProfilePictureUrl *string            `json:"profilePictureUrl"`
+	Slug              string             `json:"slug"`
+	Tier              string             `json:"tier"`
+}
+
+// UserTeamLimits defines model for UserTeamLimits.
+type UserTeamLimits struct {
+	ConcurrentSandboxes      int32 `json:"concurrentSandboxes"`
+	ConcurrentTemplateBuilds int32 `json:"concurrentTemplateBuilds"`
+	DiskMb                   int32 `json:"diskMb"`
+	MaxLengthHours           int64 `json:"maxLengthHours"`
+	MaxRamMb                 int32 `json:"maxRamMb"`
+	MaxVcpu                  int32 `json:"maxVcpu"`
+}
+
+// UserTeamsResponse defines model for UserTeamsResponse.
+type UserTeamsResponse struct {
+	Teams []UserTeam `json:"teams"`
+}
+
 // BuildId defines model for build_id.
 type BuildId = openapi_types.UUID
 
@@ -180,6 +274,15 @@ type BuildsLimit = int32
 
 // SandboxID defines model for sandboxID.
 type SandboxID = string
+
+// TeamID defines model for teamID.
+type TeamID = openapi_types.UUID
+
+// TeamSlug defines model for teamSlug.
+type TeamSlug = string
+
+// UserId defines model for userId.
+type UserId = openapi_types.UUID
 
 // N400 defines model for 400.
 type N400 = Error
@@ -217,6 +320,18 @@ type GetBuildsStatusesParams struct {
 	BuildIds BuildIds `form:"build_ids" json:"build_ids"`
 }
 
+// GetTeamsResolveParams defines parameters for GetTeamsResolve.
+type GetTeamsResolveParams struct {
+	// Slug Team slug to resolve.
+	Slug TeamSlug `form:"slug" json:"slug"`
+}
+
+// PatchTeamsTeamIDJSONRequestBody defines body for PatchTeamsTeamID for application/json ContentType.
+type PatchTeamsTeamIDJSONRequestBody = UpdateTeamRequest
+
+// PostTeamsTeamIDMembersJSONRequestBody defines body for PostTeamsTeamIDMembers for application/json ContentType.
+type PostTeamsTeamIDMembersJSONRequestBody = AddTeamMemberRequest
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// List team builds
@@ -234,6 +349,27 @@ type ServerInterface interface {
 	// Get sandbox record
 	// (GET /sandboxes/{sandboxID}/record)
 	GetSandboxesSandboxIDRecord(c *gin.Context, sandboxID SandboxID)
+	// List user teams
+	// (GET /teams)
+	GetTeams(c *gin.Context)
+	// Resolve team identity
+	// (GET /teams/resolve)
+	GetTeamsResolve(c *gin.Context, params GetTeamsResolveParams)
+	// Update team
+	// (PATCH /teams/{teamID})
+	PatchTeamsTeamID(c *gin.Context, teamID TeamID)
+	// List team members
+	// (GET /teams/{teamID}/members)
+	GetTeamsTeamIDMembers(c *gin.Context, teamID TeamID)
+	// Add team member
+	// (POST /teams/{teamID}/members)
+	PostTeamsTeamIDMembers(c *gin.Context, teamID TeamID)
+	// Remove team member
+	// (DELETE /teams/{teamID}/members/{userId})
+	DeleteTeamsTeamIDMembersUserId(c *gin.Context, teamID TeamID, userId UserId)
+	// List default templates
+	// (GET /templates/defaults)
+	GetTemplatesDefaults(c *gin.Context)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -405,6 +541,192 @@ func (siw *ServerInterfaceWrapper) GetSandboxesSandboxIDRecord(c *gin.Context) {
 	siw.Handler.GetSandboxesSandboxIDRecord(c, sandboxID)
 }
 
+// GetTeams operation middleware
+func (siw *ServerInterfaceWrapper) GetTeams(c *gin.Context) {
+
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetTeams(c)
+}
+
+// GetTeamsResolve operation middleware
+func (siw *ServerInterfaceWrapper) GetTeamsResolve(c *gin.Context) {
+
+	var err error
+
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetTeamsResolveParams
+
+	// ------------- Required query parameter "slug" -------------
+
+	if paramValue := c.Query("slug"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Query argument slug is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "slug", c.Request.URL.Query(), &params.Slug)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter slug: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetTeamsResolve(c, params)
+}
+
+// PatchTeamsTeamID operation middleware
+func (siw *ServerInterfaceWrapper) PatchTeamsTeamID(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "teamID" -------------
+	var teamID TeamID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "teamID", c.Param("teamID"), &teamID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter teamID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.PatchTeamsTeamID(c, teamID)
+}
+
+// GetTeamsTeamIDMembers operation middleware
+func (siw *ServerInterfaceWrapper) GetTeamsTeamIDMembers(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "teamID" -------------
+	var teamID TeamID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "teamID", c.Param("teamID"), &teamID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter teamID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetTeamsTeamIDMembers(c, teamID)
+}
+
+// PostTeamsTeamIDMembers operation middleware
+func (siw *ServerInterfaceWrapper) PostTeamsTeamIDMembers(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "teamID" -------------
+	var teamID TeamID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "teamID", c.Param("teamID"), &teamID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter teamID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.PostTeamsTeamIDMembers(c, teamID)
+}
+
+// DeleteTeamsTeamIDMembersUserId operation middleware
+func (siw *ServerInterfaceWrapper) DeleteTeamsTeamIDMembersUserId(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "teamID" -------------
+	var teamID TeamID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "teamID", c.Param("teamID"), &teamID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter teamID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "userId" -------------
+	var userId UserId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "userId", c.Param("userId"), &userId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter userId: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.DeleteTeamsTeamIDMembersUserId(c, teamID, userId)
+}
+
+// GetTemplatesDefaults operation middleware
+func (siw *ServerInterfaceWrapper) GetTemplatesDefaults(c *gin.Context) {
+
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetTemplatesDefaults(c)
+}
+
 // GinServerOptions provides options for the Gin server.
 type GinServerOptions struct {
 	BaseURL      string
@@ -437,42 +759,66 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/builds/:build_id", wrapper.GetBuildsBuildId)
 	router.GET(options.BaseURL+"/health", wrapper.GetHealth)
 	router.GET(options.BaseURL+"/sandboxes/:sandboxID/record", wrapper.GetSandboxesSandboxIDRecord)
+	router.GET(options.BaseURL+"/teams", wrapper.GetTeams)
+	router.GET(options.BaseURL+"/teams/resolve", wrapper.GetTeamsResolve)
+	router.PATCH(options.BaseURL+"/teams/:teamID", wrapper.PatchTeamsTeamID)
+	router.GET(options.BaseURL+"/teams/:teamID/members", wrapper.GetTeamsTeamIDMembers)
+	router.POST(options.BaseURL+"/teams/:teamID/members", wrapper.PostTeamsTeamIDMembers)
+	router.DELETE(options.BaseURL+"/teams/:teamID/members/:userId", wrapper.DeleteTeamsTeamIDMembersUserId)
+	router.GET(options.BaseURL+"/templates/defaults", wrapper.GetTemplatesDefaults)
 }
 
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
-	"IwAA",
+	"H4sIAAAAAAAC/+xc62/cuBH/Vwi1QL8ou+tHitbf/Li7GI1bw3YOBQLD5kqzu7xIpI6k/Dh3//eCT0kr",
+	"6rGOnbp3+RSvRHJevxnODKk8RQnLC0aBShEdPEUF5jgHCVz/mpckS29Iqv5OQSScFJIwGh1EpylQSRYE",
+	"OGILJFeA9NhJFEdEvS+wXEVxRHEO0UG1Thxx+LUkHNLoQPIS4kgkK8ixIrBgPMcyOojKUo+Uj4WaKyQn",
+	"dBmt17Ff5obxGwl5kWEJbdb+pf/AGVqQTAJH80fDGyKe5xi56Y2HjFfPcUaw8OL8WgJ/bMvTYKQuSzfv",
+	"os3wMctz/E6A0r2EFGVESKVVw/XpiUCSoSVIJCSWpQCBFowr1uChyFgK0cECZwL6WRW9uicScjHCCHGU",
+	"44dTM3hnNvPvMedYES0p+bUEO0ARWceRkI+ZGqOWjrwmnCzbqsPrQDJEaJKVKYxVhScZlPzPHBbRQfSn",
+	"aeUQUzNMTI8U6Us9XUnQELpLQnGTlFwwHhBQP0ccZMkppAqgyoEKDneElcIIzEEUjApAhKLbhINSxQ2W",
+	"/3H2vEXGVF0QtcRHgFLcZCQnss3nGX4geZkjWuZz4+daWUrzhndUAEcFXkIXE2bhOg8pLHCZyejg/Syu",
+	"wEao3NuNNLgURYutnFD7y6ucUAlL4Jp5gWk6Zw+nJ2Oikx3cEZ+qpfqcpK0/CTgfR1+N7CBuF/m60KgW",
+	"uczKZZuXK8A5Elm5NHYTLLvrtJcatqUKSgH8dNQGoUZ2qMAu8jUqWKvJxmW0O+/PZuqfhFEJVIMbF0VG",
+	"Eqz4m/4iFJNPtfX73P8Hzhk3NJpCHuEUKZZBSOX3+7Od16d5WMqVUq1ZFYEZp4jvvT7xHxmfkzQFaiju",
+	"vz7FfzKJFqykqaL4/lsY9RL4HXCn2LUDoUbVYZoqfzoDFREvrOVV2sRZAVwSgz3IMckaoDVPQo5bIf6z",
+	"HXXth7H5L5BoZOkN6JQuWJuY3RsOAwFcz0J6gIKKJDkIifNC7SkXPx7v7e39vbaLeGZTLOGdGhza/xeE",
+	"ErHqpcfyIoMhijEiC+QW6yRPyyzDc7W5mnjQYkcFEBEKejaN0+8Rh0ynEpIhuSLCpBKaA3yHiaagI5PL",
+	"BdpkwnzUMgCdG2yXRphJZyAEXgby2B8xyUoOKDcD0P0KqE1/EBHodoFJBultjJhcAb8nAtCt4vN2Mqy4",
+	"DeBVGGoY2Mu1yWsnRC+9HkLIsMznuCggVThAKRarOcM8RUlGlK50LkfVpv/ZZCeK3Tgysio+yiQBIWoc",
+	"VEaqcaAy0LarvDHsbllXDabm/+cg1EJ5wAVgOIg+8ZEIeWGzgLb5UyzHp/xqKUj1sqGUn8KDPO7P7yVD",
+	"BRbCBB1AaoZL7fW+oetNoyyFJ6U/UDqlzIx1ifV2WtRCNvjrVtelLYi6VTavwBIKsx+DpVk9ko5EovbX",
+	"lpo3RGsyExLr+PzTMStpwL2Pzz+hhHFTO9crgqhZhvx1P+ovPOLoxJQwV7UGRFNpunVg/hylh40FD9X0",
+	"EOa0/F6+VvHU5lRPMMn5YPBopBHjUgGgd+nPwAUxadfIeNd6XJTzjCS1V3PGMsA6xeQ4P5tvSqtt1JZW",
+	"FPieBtXTMUEyibMTIr5ckt+gg0yHULVV7pKiHEUwFO4cVCpbOZntwm0u48ZubZXXAEdDFSE3CQIuDONw",
+	"NqSSqgInMMLsG1KbRUcw1ROUXMft2R42GGkqCkFOnTGO2nFGvUOC/AabcUZlEWfkqDfczEL4MnVKO+3X",
+	"3a5N8nowUu8mUTwmRORdG79Zyb6eDJYump1quZDaPgDO5KrbrJ2sfChzTN9xwKnCGVrpdVCyguQL4iDK",
+	"TA7z18dYfav/Xl59T1EbHHefM1w1jgoM2YKDACrrtPyJwunJJOohMK6J5kYPI94YoDqcqNHprOvirkow",
+	"5DZnkDP+GAqC5s1zIuDO7t9CUerSrHABCeNpz0610SnTdtlQXDD3KUqfN/Th0qeX6zhKG5tA7+ZTjVTz",
+	"WI4JDTg3FoDMSwUlDg3VSY4XC5IoPGNdABOF2RHwzWtG6mPSG/OZjfUOZ+cdofOK5NZR61LeY4HspNEB",
+	"U0hWFNsT0ZOeHRa9L51s47NowVmO7lckWSlD1pmybjfo1DXCcePUotJ1Dc418zcAG/Lmqq0Z8K80hfTo",
+	"MVRHDKpquK4YXMK3Uzu2p8Fdh4gTd+zULjJCYdO1a6uJdUH61Sf6Mhw9YHTaWrPJUMbqlu7i7cIc/HTz",
+	"NlKVwp4xjWnlqKEhfj4VyvyGK99Bzwk9rzG0E2/wZ06KnqIcP3wEupSr6GD3/Xu9dbjfOwF+C84WJINz",
+	"ksiSwyeejStZenn+ShU6SV6K15biNYGg4gVwJUKgz5Ox5AukF4DFyGL+BZzyCFMKabjwJ+LIsNT1usej",
+	"Y3PuPOheTh0fzeiXNk2ns8SRJCbMjjVm7E5m9cQqPrXZqmuupuN4w8LN0GbV1QeZj16jm2UoTUrOgUqb",
+	"o4EY2ZyqZrpE2jQlR05X21m7Z9NV5bqg8YGVXIxsD+X44SLUfuqm8XOgFRQcvRm8m+zFQa32aKwiXuPa",
+	"q6jPrL1dFpyP36p8aBlurahl2zwpd4Gk5EQ+Xqo1DROXZYHnWMDOFfsC9LBUYf7J3CBYAU61M9g7BP9+",
+	"5wa/04MrteOC/AN0B9WN2FWsjl5NidVaTDFM7IGsJFLf//lh9wid+BOtw/PTKI7uXIM0mk12JjPFBSuA",
+	"4oJEB9HeZDaZKT/GcqXlnc69DyxBBzdlEt1fUPVh9BNIb/P6Vb3PYetUQ6bBK2vreOQ839ofO8NdKho/",
+	"3l5YWl9vXOTYfcEz/8ApUegCgDljXJRZ9ljd0irwklB9imwYnpgrELMuml6IqRpU3Q4ZGrtTu8wxNHav",
+	"dimif6waVPcxDZmQd32+DrrJ52tlGFHmOeaP7uRH+bLVhnIQvBT+mEZE14qcNe60ftuvH9iX1SHS8wAu",
+	"vgWEWidno2G0cVT2R8bQTyDbJ4d9KHpyNl4P4+jIn6c8D0bfAEX6Ps+WwElBYpK54PM6YLD3uobG7r8B",
+	"4Fh1dOHGHBX0gcUcSkSvaOqNY4+AvT/UDzSEN75RmRe6Pkq/mgqXG06ffCtoPeW+Sdols88pL90s21jd",
+	"1leqBtSrOkuz+zvaYVxv7bvLWJdxCuHO2s5nPJCs2/jU3yKoqe0LrWCBcJbpDMB0MnF1LRVSfdcXzSFj",
+	"dCmQZDG6J3KFTJ2JMFWOq4tPtMjwchLFbZDq6uQ1/bJdAo1GlpZOi741qF7a+IGsrOKuZmJbdlXmndqr",
+	"4D1m1u8FwibPc1fI3W32vwj77Yx8jNEdzkiKJaFLf9Vbn1Ug05fstrClsnXo8ffdXzXyhDqnwyjR41N7",
+	"5f93GnSauLM6MkBxqOhF35P56mFtvjmTyaq9U52rxxokV+4Lie0x4vcm3Wg+YunjywWQVht73Wx22O+f",
+	"Xi+CtXvSQ+As9ZQGNv+gxYdRnlbEKKBOa4c3XYlVDaz2LOjrMPuKUW3zrGr03qdd3Opi8jtua+TegJvY",
+	"iKOCiQAAzpl4cQS8fNQKfsEyKnDttHOEBkT0KXFdeW8mwLz57PwwbShuq4A0fTJfz62NeTIwd5Wa2DzR",
+	"z9vo/OQ+vHseRoebu/bLvkA82x+AE4ec3b1RQP1PQHKhFTIKJ/b26tRWWcO1nEra3XfWrjTzy5jiTa6A",
+	"cKQfuO4LoQumqzl7jbkjzbfLnDhmXnFr67xEPHp/a0n/Fku8FpMNJPi7y1po+/yp8R8CmIOc5tfP0Hho",
+	"ANV44NZdX6//GwAA//86rG96N0IAAA==",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

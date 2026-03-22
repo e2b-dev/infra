@@ -682,6 +682,10 @@ variable "persistent_volume_types" {
     capacity_gb    = number
     protocol       = optional(string)
     nfs_version    = optional(string)
+    mount_options  = optional(list(string))
+    performance_config = optional(object({
+      max_iops = optional(number)
+    }))
   }))
 
   default = {}
@@ -725,4 +729,9 @@ variable "gcs_grpc_connection_pool_size" {
     condition     = floor(var.gcs_grpc_connection_pool_size) == var.gcs_grpc_connection_pool_size && var.gcs_grpc_connection_pool_size >= 0
     error_message = "gcs_grpc_connection_pool_size must be a positive integer or 0 for using default specified in code."
   }
+}
+
+variable "orchestrator_env_vars" {
+  type    = map(string)
+  default = {}
 }

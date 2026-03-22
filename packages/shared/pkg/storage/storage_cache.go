@@ -147,10 +147,3 @@ func ignoreEOF(err error) error {
 
 	return err
 }
-
-// isCompleteRead reports whether a read of n bytes into a buffer of expected
-// size represents a valid, cacheable result. A read is complete when either
-// the full buffer was filled or io.EOF explains a non-empty short read (last chunk).
-func isCompleteRead(n, expected int, err error) bool {
-	return n == expected || (n > 0 && errors.Is(err, io.EOF))
-}

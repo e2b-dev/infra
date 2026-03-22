@@ -67,7 +67,14 @@ const (
 	NodeStatusConnecting NodeStatus = "connecting"
 	NodeStatusDraining   NodeStatus = "draining"
 	NodeStatusReady      NodeStatus = "ready"
+	NodeStatusStandby    NodeStatus = "standby"
 	NodeStatusUnhealthy  NodeStatus = "unhealthy"
+)
+
+// Defines values for SandboxOnTimeout.
+const (
+	Kill  SandboxOnTimeout = "kill"
+	Pause SandboxOnTimeout = "pause"
 )
 
 // Defines values for SandboxState.
@@ -466,7 +473,9 @@ type Node struct {
 	// ServiceInstanceID Service instance identifier of the node
 	ServiceInstanceID string `json:"serviceInstanceID"`
 
-	// Status Status of the node
+	// Status Status of the node.
+	// - draining: the node is bound to be shut down. It will not accept new sandboxes and will stop once all existing sandboxes are done.
+	// - standby: the node is not actively used, but it can return to ready and continue serving traffic.
 	Status NodeStatus `json:"status"`
 
 	// Version Version of the orchestrator
@@ -503,7 +512,9 @@ type NodeDetail struct {
 	// ServiceInstanceID Service instance identifier of the node
 	ServiceInstanceID string `json:"serviceInstanceID"`
 
-	// Status Status of the node
+	// Status Status of the node.
+	// - draining: the node is bound to be shut down. It will not accept new sandboxes and will stop once all existing sandboxes are done.
+	// - standby: the node is not actively used, but it can return to ready and continue serving traffic.
 	Status NodeStatus `json:"status"`
 
 	// Version Version of the orchestrator
@@ -534,7 +545,9 @@ type NodeMetrics struct {
 	MemoryUsedBytes uint64 `json:"memoryUsedBytes"`
 }
 
-// NodeStatus Status of the node
+// NodeStatus Status of the node.
+// - draining: the node is bound to be shut down. It will not accept new sandboxes and will stop once all existing sandboxes are done.
+// - standby: the node is not actively used, but it can return to ready and continue serving traffic.
 type NodeStatus string
 
 // NodeStatusChange defines model for NodeStatusChange.
@@ -542,7 +555,9 @@ type NodeStatusChange struct {
 	// ClusterID Identifier of the cluster
 	ClusterID *openapi_types.UUID `json:"clusterID,omitempty"`
 
-	// Status Status of the node
+	// Status Status of the node.
+	// - draining: the node is bound to be shut down. It will not accept new sandboxes and will stop once all existing sandboxes are done.
+	// - standby: the node is not actively used, but it can return to ready and continue serving traffic.
 	Status NodeStatus `json:"status"`
 }
 
@@ -598,6 +613,9 @@ type SandboxDetail struct {
 	// Alias Alias of the template
 	Alias *string `json:"alias,omitempty"`
 
+	// AllowInternetAccess Whether internet access was explicitly enabled or disabled for the sandbox. Null means it was not explicitly set.
+	AllowInternetAccess *bool `json:"allowInternetAccess"`
+
 	// ClientID Identifier of the client
 	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	ClientID string `json:"clientID"`
@@ -620,9 +638,13 @@ type SandboxDetail struct {
 	// EnvdVersion Version of the envd running in the sandbox
 	EnvdVersion EnvdVersion `json:"envdVersion"`
 
+	// Lifecycle Sandbox lifecycle policy returned by sandbox info.
+	Lifecycle *SandboxLifecycle `json:"lifecycle,omitempty"`
+
 	// MemoryMB Memory for the sandbox in MiB
-	MemoryMB MemoryMB         `json:"memoryMB"`
-	Metadata *SandboxMetadata `json:"metadata,omitempty"`
+	MemoryMB MemoryMB              `json:"memoryMB"`
+	Metadata *SandboxMetadata      `json:"metadata,omitempty"`
+	Network  *SandboxNetworkConfig `json:"network,omitempty"`
 
 	// SandboxID Identifier of the sandbox
 	SandboxID string `json:"sandboxID"`
@@ -636,6 +658,15 @@ type SandboxDetail struct {
 	// TemplateID Identifier of the template from which is the sandbox created
 	TemplateID   string                `json:"templateID"`
 	VolumeMounts *[]SandboxVolumeMount `json:"volumeMounts,omitempty"`
+}
+
+// SandboxLifecycle Sandbox lifecycle policy returned by sandbox info.
+type SandboxLifecycle struct {
+	// AutoResume Whether the sandbox can auto-resume.
+	AutoResume bool `json:"autoResume"`
+
+	// OnTimeout Action taken when the sandbox times out.
+	OnTimeout SandboxOnTimeout `json:"onTimeout"`
 }
 
 // SandboxLog Log entry with timestamp and line
@@ -721,6 +752,9 @@ type SandboxNetworkConfig struct {
 	// MaskRequestHost Specify host mask which will be used for all sandbox requests
 	MaskRequestHost *string `json:"maskRequestHost,omitempty"`
 }
+
+// SandboxOnTimeout Action taken when the sandbox times out.
+type SandboxOnTimeout string
 
 // SandboxState State of the sandbox
 type SandboxState string

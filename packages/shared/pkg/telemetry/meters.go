@@ -89,6 +89,9 @@ const (
 	// Ingress proxy counters
 	IngressProxyConnectionsBlockedTotal CounterType = "orchestrator.proxy.connections.blocked.total"
 
+	// cmux counters
+	CmuxErrorsTotal CounterType = "orchestrator.cmux.errors.total"
+
 	// Firecracker net counters — global totals, no sandbox_id (low cardinality).
 	// All carry a direction=tx/rx attribute. Per-sandbox distributions are histograms below.
 	SandboxFCNetFails         CounterType = "orchestrator.sandbox.fc.net.fails"
@@ -138,6 +141,7 @@ var counterDesc = map[CounterType]string{
 	TCPFirewallDecisionsTotal:       "Total number of TCP firewall allow/block decisions",
 
 	IngressProxyConnectionsBlockedTotal: "Total number of ingress proxy connections blocked by connection limit",
+	CmuxErrorsTotal:                     "Total number of cmux connection multiplexer errors",
 
 	SandboxFCNetFails:         "Total Firecracker VMM errors transmitting or receiving data (direction=tx/rx)",
 	SandboxFCNetNoAvailBuffer: "Total Firecracker VMM events where no virtqueue buffer was available (direction=tx/rx)",
@@ -156,6 +160,7 @@ var counterUnits = map[CounterType]string{
 	TCPFirewallDecisionsTotal:       "{decision}",
 
 	IngressProxyConnectionsBlockedTotal: "{connection}",
+	CmuxErrorsTotal:                     "{error}",
 
 	SandboxFCNetFails:         "{error}",
 	SandboxFCNetNoAvailBuffer: "{event}",

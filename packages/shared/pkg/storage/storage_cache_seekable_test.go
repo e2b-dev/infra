@@ -251,6 +251,7 @@ func TestCachedFramedFile_GetFrame_Uncompressed_Truncation(t *testing.T) {
 			RunAndReturn(func(_ context.Context, _ int64, _ *FrameTable, _ bool, buf []byte, _ int64, _ func(int64)) (Range, error) {
 				// Simulate truncated upstream: only fill 2 of 10 bytes, no error.
 				copy(buf[:2], []byte{0xAA, 0xBB})
+
 				return Range{Start: 0, Length: 2}, nil
 			})
 
@@ -284,6 +285,7 @@ func TestCachedFramedFile_GetFrame_Uncompressed_Truncation(t *testing.T) {
 			GetFrame(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			RunAndReturn(func(_ context.Context, _ int64, _ *FrameTable, _ bool, buf []byte, _ int64, _ func(int64)) (Range, error) {
 				n := copy(buf, data)
+
 				return Range{Start: 0, Length: n}, nil
 			})
 
@@ -319,6 +321,7 @@ func TestCachedFramedFile_GetFrame_Uncompressed_Truncation(t *testing.T) {
 			GetFrame(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			RunAndReturn(func(_ context.Context, _ int64, _ *FrameTable, _ bool, buf []byte, _ int64, _ func(int64)) (Range, error) {
 				n := copy(buf, data)
+
 				return Range{Start: 0, Length: n}, nil
 			})
 

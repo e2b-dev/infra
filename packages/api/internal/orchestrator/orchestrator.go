@@ -102,7 +102,7 @@ func New(
 
 	// We will need to either use Redis or Consul's KV for storing active sandboxes to keep everything in sync,
 	// right now we load them from Orchestrator
-	meter := tel.MeterProvider.Meter("api.cache.sandbox")
+	meter := tel.MeterProvider.Meter("github.com/e2b-dev/infra/packages/api/internal/orchestrator")
 	sandboxCounter, err := telemetry.GetUpDownCounter(meter, telemetry.SandboxCountMeterName)
 	if err != nil {
 		logger.L().Error(ctx, "error getting counter", zap.Error(err))
