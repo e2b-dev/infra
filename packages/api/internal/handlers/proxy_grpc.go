@@ -101,12 +101,12 @@ func handleExistingSandboxAutoResume(
 			return "", false, status.Error(codes.Internal, "Error waiting for sandbox to pause")
 		}
 
-		updatedSandbox, err := getSandbox(ctx)
-		if err != nil {
-			return "", false, nil
+		updatedSandbox, getSandboxErr := getSandbox(ctx)
+		if getSandboxErr == nil {
+			return handleExistingSandboxAutoResume(ctx, sandboxID, updatedSandbox, waitForStateChange, getSandbox, getNodeIP)
 		}
 
-		return handleExistingSandboxAutoResume(ctx, sandboxID, updatedSandbox, waitForStateChange, getSandbox, getNodeIP)
+		return "", false, nil
 	case sandbox.StateKilling:
 		logger.L().Debug(ctx, "Sandbox is being killed, cannot auto-resume", logger.WithSandboxID(sandboxID))
 
