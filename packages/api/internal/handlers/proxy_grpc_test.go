@@ -14,6 +14,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
+	apiorchestrator "github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
@@ -192,7 +193,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 
 		waitCalled := false
 		nodeCalls := 0
-		nodeIP, handled, err := handleExistingSandboxAutoResume(
+		nodeIP, handled, err := apiorchestrator.HandleExistingSandboxAutoResume(
 			t.Context(),
 			"test-sandbox",
 			testSandboxForAutoResume(sandbox.StateRunning),
@@ -227,7 +228,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 		refreshedSandbox := testSandboxForAutoResume(sandbox.StateRunning)
 		refreshedSandbox.NodeID = "node-2"
 		nodeCalls := 0
-		nodeIP, handled, err := handleExistingSandboxAutoResume(
+		nodeIP, handled, err := apiorchestrator.HandleExistingSandboxAutoResume(
 			t.Context(),
 			"test-sandbox",
 			testSandboxForAutoResume(sandbox.StatePausing),
@@ -260,7 +261,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 
 		waitCalls := 0
 		nodeCalled := false
-		nodeIP, handled, err := handleExistingSandboxAutoResume(
+		nodeIP, handled, err := apiorchestrator.HandleExistingSandboxAutoResume(
 			t.Context(),
 			"test-sandbox",
 			testSandboxForAutoResume(sandbox.StatePausing),
@@ -290,7 +291,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 		t.Parallel()
 
 		waitErr := errors.New("boom")
-		_, handled, err := handleExistingSandboxAutoResume(
+		_, handled, err := apiorchestrator.HandleExistingSandboxAutoResume(
 			t.Context(),
 			"test-sandbox",
 			testSandboxForAutoResume(sandbox.StatePausing),
@@ -319,7 +320,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 	t.Run("killing sandbox returns not found", func(t *testing.T) {
 		t.Parallel()
 
-		_, handled, err := handleExistingSandboxAutoResume(
+		_, handled, err := apiorchestrator.HandleExistingSandboxAutoResume(
 			t.Context(),
 			"test-sandbox",
 			testSandboxForAutoResume(sandbox.StateKilling),
@@ -354,7 +355,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 		refreshedSandbox := testSandboxForAutoResume(sandbox.StateRunning)
 		refreshedSandbox.NodeID = "node-3"
 		nodeCalls := 0
-		nodeIP, handled, err := handleExistingSandboxAutoResume(
+		nodeIP, handled, err := apiorchestrator.HandleExistingSandboxAutoResume(
 			t.Context(),
 			"test-sandbox",
 			testSandboxForAutoResume(sandbox.StateSnapshotting),
@@ -386,7 +387,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 		t.Parallel()
 
 		waitErr := errors.New("boom")
-		_, handled, err := handleExistingSandboxAutoResume(
+		_, handled, err := apiorchestrator.HandleExistingSandboxAutoResume(
 			t.Context(),
 			"test-sandbox",
 			testSandboxForAutoResume(sandbox.StateSnapshotting),
@@ -415,7 +416,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 	t.Run("pausing sandbox returns internal error when refreshed sandbox lookup fails unexpectedly", func(t *testing.T) {
 		t.Parallel()
 
-		_, handled, err := handleExistingSandboxAutoResume(
+		_, handled, err := apiorchestrator.HandleExistingSandboxAutoResume(
 			t.Context(),
 			"test-sandbox",
 			testSandboxForAutoResume(sandbox.StatePausing),
@@ -443,7 +444,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 	t.Run("running sandbox returns routing error when node ip lookup fails", func(t *testing.T) {
 		t.Parallel()
 
-		_, handled, err := handleExistingSandboxAutoResume(
+		_, handled, err := apiorchestrator.HandleExistingSandboxAutoResume(
 			t.Context(),
 			"test-sandbox",
 			testSandboxForAutoResume(sandbox.StateRunning),
@@ -473,7 +474,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 	t.Run("unknown sandbox state returns internal error", func(t *testing.T) {
 		t.Parallel()
 
-		_, handled, err := handleExistingSandboxAutoResume(
+		_, handled, err := apiorchestrator.HandleExistingSandboxAutoResume(
 			t.Context(),
 			"test-sandbox",
 			testSandboxForAutoResume(sandbox.State("mystery")),
@@ -507,7 +508,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 
 		waitCalls := 0
 		getSandboxCalls := 0
-		_, handled, err := handleExistingSandboxAutoResume(
+		_, handled, err := apiorchestrator.HandleExistingSandboxAutoResume(
 			t.Context(),
 			"test-sandbox",
 			testSandboxForAutoResume(sandbox.StatePausing),
@@ -530,8 +531,8 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 		)
 		require.Error(t, err)
 		assert.False(t, handled)
-		assert.Equal(t, maxAutoResumeTransitionRetries, waitCalls)
-		assert.Equal(t, maxAutoResumeTransitionRetries, getSandboxCalls)
+		assert.Equal(t, apiorchestrator.MaxAutoResumeTransitionRetries, waitCalls)
+		assert.Equal(t, apiorchestrator.MaxAutoResumeTransitionRetries, getSandboxCalls)
 
 		st, ok := status.FromError(err)
 		require.True(t, ok)
@@ -542,7 +543,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 	t.Run("pausing sandbox wait timeout returns failed precondition", func(t *testing.T) {
 		t.Parallel()
 
-		_, handled, err := handleExistingSandboxAutoResume(
+		_, handled, err := apiorchestrator.HandleExistingSandboxAutoResume(
 			t.Context(),
 			"test-sandbox",
 			testSandboxForAutoResume(sandbox.StatePausing),
@@ -581,7 +582,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 		finalSandbox := testSandboxForAutoResume(sandbox.StateRunning)
 		finalSandbox.NodeID = "node-final"
 
-		nodeIP, handled, err := handleExistingSandboxAutoResume(
+		nodeIP, handled, err := apiorchestrator.HandleExistingSandboxAutoResume(
 			t.Context(),
 			"test-sandbox",
 			testSandboxForAutoResume(sandbox.StatePausing),
@@ -593,7 +594,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 			},
 			func(context.Context) (sandbox.Sandbox, error) {
 				getSandboxCalls++
-				if getSandboxCalls < maxAutoResumeTransitionRetries {
+				if getSandboxCalls < apiorchestrator.MaxAutoResumeTransitionRetries {
 					return testSandboxForAutoResume(sandbox.StatePausing), nil
 				}
 
@@ -610,8 +611,8 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, handled)
 		assert.Equal(t, "10.0.0.9", nodeIP)
-		assert.Equal(t, maxAutoResumeTransitionRetries, waitCalls)
-		assert.Equal(t, maxAutoResumeTransitionRetries, getSandboxCalls)
+		assert.Equal(t, apiorchestrator.MaxAutoResumeTransitionRetries, waitCalls)
+		assert.Equal(t, apiorchestrator.MaxAutoResumeTransitionRetries, getSandboxCalls)
 		assert.Equal(t, 1, nodeCalls)
 	})
 }
