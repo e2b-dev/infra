@@ -1,4 +1,4 @@
-import { Sandbox } from "@e2b/code-interpreter";
+import Sandbox from "e2b";
 
 export const DEBUG_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 
