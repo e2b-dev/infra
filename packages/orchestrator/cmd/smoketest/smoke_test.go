@@ -189,8 +189,15 @@ func newTestInfra(t *testing.T, ctx context.Context) *testInfra {
 	go devicePool.Populate(ctx)
 	ti.closers = append(ti.closers, func(ctx context.Context) { devicePool.Close(ctx) })
 
+	// Sandbox proxy + TCP firewall
+	sandboxes := sandbox.NewSandboxesMap()
+
+	tcpFw := tcpfirewall.New(l, networkConfig, sandboxes, noop.NewMeterProvider(), flags)
+	go tcpFw.Start(ctx)
+	ti.closers = append(ti.closers, func(ctx context.Context) { tcpFw.Close(ctx) })
+
 	// Network
-	slotStorage, err := network.NewStorageLocal(ctx, networkConfig, network.NoopEgressProxy{})
+	slotStorage, err := network.NewStorageLocal(ctx, networkConfig, tcpFw)
 	require.NoError(t, err)
 	networkPool := network.NewPool(8, 8, slotStorage, networkConfig)
 	go networkPool.Populate(ctx)
@@ -212,17 +219,10 @@ func newTestInfra(t *testing.T, ctx context.Context) *testInfra {
 	ti.closers = append(ti.closers, func(_ context.Context) { templateCache.Stop() })
 	ti.templateCache = templateCache
 
-	// Sandbox proxy + TCP firewall
-	sandboxes := sandbox.NewSandboxesMap()
-
 	sandboxProxy, err := proxy.NewSandboxProxy(noop.MeterProvider{}, proxyPort, sandboxes, flags)
 	require.NoError(t, err)
 	go sandboxProxy.Start(ctx)
 	ti.closers = append(ti.closers, func(ctx context.Context) { sandboxProxy.Close(ctx) })
-
-	tcpFw := tcpfirewall.New(l, networkConfig, sandboxes, noop.NewMeterProvider(), flags)
-	go tcpFw.Start(ctx)
-	ti.closers = append(ti.closers, func(ctx context.Context) { tcpFw.Close(ctx) })
 
 	// Factory + Builder
 	factory := sandbox.NewFactory(orcConfig.BuilderConfig, networkPool, devicePool, flags, nil, nil, sandboxes)
