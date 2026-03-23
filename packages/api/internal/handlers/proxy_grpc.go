@@ -156,14 +156,24 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 						zap.Stringer("cluster_id", sbx.ClusterID),
 					)
 
-					return "", status.Error(codes.Internal, "sandbox is running but routing info is not available yet")
+					return "", errors.New("sandbox is running but routing info is not available yet")
 				}
 
 				return node.IPAddress, nil
 			},
 		)
 		if existingErr != nil {
-			return nil, existingErr
+			if errors.Is(existingErr, apiorchestrator.ErrSandboxStillTransitioning) {
+				return nil, status.Error(codes.FailedPrecondition, proxygrpc.SandboxStillTransitioningMessage)
+			}
+			if errors.Is(existingErr, sandbox.ErrNotFound) {
+				return nil, status.Error(codes.NotFound, "sandbox not found")
+			}
+			if errors.Is(existingErr, context.Canceled) || errors.Is(existingErr, context.DeadlineExceeded) {
+				return nil, status.FromContextError(existingErr).Err()
+			}
+
+			return nil, status.Error(codes.Internal, existingErr.Error())
 		}
 		if handled {
 			return &proxygrpc.SandboxResumeResponse{OrchestratorIp: nodeIP}, nil

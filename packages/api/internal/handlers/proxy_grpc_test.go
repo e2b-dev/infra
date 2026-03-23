@@ -10,9 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
-	"google.golang.org/grpc/status"
 
 	apiorchestrator "github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
@@ -312,9 +310,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 		)
 		require.Error(t, err)
 		assert.False(t, handled)
-		st, ok := status.FromError(err)
-		require.True(t, ok)
-		assert.Equal(t, "error waiting for sandbox to pause", st.Message())
+		assert.EqualError(t, err, "error waiting for sandbox to pause")
 	})
 
 	t.Run("killing sandbox returns not found", func(t *testing.T) {
@@ -343,9 +339,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 		)
 		require.Error(t, err)
 		assert.False(t, handled)
-		st, ok := status.FromError(err)
-		require.True(t, ok)
-		assert.Equal(t, "sandbox not found", st.Message())
+		assert.ErrorIs(t, err, sandbox.ErrNotFound)
 	})
 
 	t.Run("snapshotting sandbox waits and routes when refreshed sandbox is running", func(t *testing.T) {
@@ -408,9 +402,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 		)
 		require.Error(t, err)
 		assert.False(t, handled)
-		st, ok := status.FromError(err)
-		require.True(t, ok)
-		assert.Equal(t, "error waiting for sandbox snapshot to finish", st.Message())
+		assert.EqualError(t, err, "error waiting for sandbox snapshot to finish")
 	})
 
 	t.Run("pausing sandbox returns internal error when refreshed sandbox lookup fails unexpectedly", func(t *testing.T) {
@@ -435,10 +427,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 		)
 		require.Error(t, err)
 		assert.False(t, handled)
-		st, ok := status.FromError(err)
-		require.True(t, ok)
-		assert.Equal(t, codes.Internal, st.Code())
-		assert.Equal(t, "failed to refresh sandbox state: redis unavailable", st.Message())
+		assert.EqualError(t, err, "failed to refresh sandbox state: redis unavailable")
 	})
 
 	t.Run("running sandbox returns routing error when node ip lookup fails", func(t *testing.T) {
@@ -460,15 +449,12 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 				return sandbox.Sandbox{}, nil
 			},
 			func(sandbox.Sandbox) (string, error) {
-				return "", status.Error(codes.Internal, "sandbox is running but routing info is not available yet")
+				return "", errors.New("sandbox is running but routing info is not available yet")
 			},
 		)
 		require.Error(t, err)
 		assert.False(t, handled)
-		st, ok := status.FromError(err)
-		require.True(t, ok)
-		assert.Equal(t, codes.Internal, st.Code())
-		assert.Equal(t, "sandbox is running but routing info is not available yet", st.Message())
+		assert.EqualError(t, err, "sandbox is running but routing info is not available yet")
 	})
 
 	t.Run("unknown sandbox state returns internal error", func(t *testing.T) {
@@ -497,10 +483,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 		)
 		require.Error(t, err)
 		assert.False(t, handled)
-		st, ok := status.FromError(err)
-		require.True(t, ok)
-		assert.Equal(t, codes.Internal, st.Code())
-		assert.Equal(t, "sandbox is in an unknown state", st.Message())
+		assert.EqualError(t, err, "sandbox is in an unknown state")
 	})
 
 	t.Run("sandbox still transitioning after max retries returns failed precondition", func(t *testing.T) {
@@ -533,11 +516,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 		assert.False(t, handled)
 		assert.Equal(t, apiorchestrator.MaxAutoResumeTransitionRetries, waitCalls)
 		assert.Equal(t, apiorchestrator.MaxAutoResumeTransitionRetries, getSandboxCalls)
-
-		st, ok := status.FromError(err)
-		require.True(t, ok)
-		assert.Equal(t, codes.FailedPrecondition, st.Code())
-		assert.Equal(t, "sandbox is still transitioning", st.Message())
+		assert.ErrorIs(t, err, apiorchestrator.ErrSandboxStillTransitioning)
 	})
 
 	t.Run("pausing sandbox wait timeout returns failed precondition", func(t *testing.T) {
@@ -566,11 +545,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 		)
 		require.Error(t, err)
 		assert.False(t, handled)
-
-		st, ok := status.FromError(err)
-		require.True(t, ok)
-		assert.Equal(t, codes.FailedPrecondition, st.Code())
-		assert.Equal(t, "sandbox is still transitioning", st.Message())
+		assert.ErrorIs(t, err, apiorchestrator.ErrSandboxStillTransitioning)
 	})
 
 	t.Run("sandbox becoming running on final refresh still routes", func(t *testing.T) {

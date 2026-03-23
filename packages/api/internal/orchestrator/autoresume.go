@@ -3,11 +3,10 @@ package orchestrator
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"go.uber.org/zap"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	apisandbox "github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	sharedproxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
@@ -15,6 +14,8 @@ import (
 )
 
 const MaxAutoResumeTransitionRetries = 3
+
+var ErrSandboxStillTransitioning = errors.New(sharedproxygrpc.SandboxStillTransitioningMessage)
 
 func HandleExistingSandboxAutoResume(
 	ctx context.Context,
@@ -49,7 +50,7 @@ func HandleExistingSandboxAutoResume(
 					zap.Int("attempts", attempts),
 				)
 
-				return "", false, status.Error(codes.FailedPrecondition, sharedproxygrpc.SandboxStillTransitioningMessage)
+				return "", false, ErrSandboxStillTransitioning
 			}
 
 			attempts++
@@ -73,14 +74,14 @@ func HandleExistingSandboxAutoResume(
 						zap.Duration("budget", transitionWaitBudget),
 					)
 
-					return "", false, status.Error(codes.FailedPrecondition, sharedproxygrpc.SandboxStillTransitioningMessage)
+					return "", false, ErrSandboxStillTransitioning
 				}
 
 				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-					return "", false, status.FromContextError(err).Err()
+					return "", false, err
 				}
 
-				return "", false, status.Error(codes.Internal, waitErrMsg)
+				return "", false, errors.New(waitErrMsg)
 			}
 
 			updatedSandbox, getSandboxErr := getSandbox(ctx)
@@ -93,11 +94,11 @@ func HandleExistingSandboxAutoResume(
 				return "", false, nil
 			}
 
-			return "", false, status.Errorf(codes.Internal, "failed to refresh sandbox state: %v", getSandboxErr)
+			return "", false, fmt.Errorf("failed to refresh sandbox state: %w", getSandboxErr)
 		case apisandbox.StateKilling:
 			logger.L().Debug(ctx, "Sandbox is being killed, cannot auto-resume", logger.WithSandboxID(sandboxID))
 
-			return "", false, status.Error(codes.NotFound, "sandbox not found")
+			return "", false, apisandbox.ErrNotFound
 		case apisandbox.StateRunning:
 			nodeIP, err := getNodeIP(sbx)
 			if err != nil {
@@ -108,7 +109,7 @@ func HandleExistingSandboxAutoResume(
 		default:
 			logger.L().Error(ctx, "Sandbox is in an unknown state during auto-resume", logger.WithSandboxID(sandboxID), zap.String("state", string(sbx.State)))
 
-			return "", false, status.Error(codes.Internal, "sandbox is in an unknown state")
+			return "", false, errors.New("sandbox is in an unknown state")
 		}
 	}
 }
