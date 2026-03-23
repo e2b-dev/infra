@@ -1,12 +1,15 @@
 package server
 
 import (
+	"context"
 	"net"
 	"reflect"
 	"testing"
 	"time"
 
+	"github.com/jellydator/ttlcache/v3"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -125,4 +128,45 @@ func TestGetSandboxExecutionData(t *testing.T) {
 	assert.Equal(t, int64(512), result["memory_mb"])
 	assert.IsType(t, int64(0), result["execution_time"])
 	assert.Positive(t, result["execution_time"].(int64))
+}
+
+func TestServerClose_EmptyOrNonRunningSandboxes(t *testing.T) {
+	t.Parallel()
+
+	t.Run("empty sandboxes map", func(t *testing.T) {
+		t.Parallel()
+
+		s := &Server{
+			sandboxFactory: &sandbox.Factory{Sandboxes: sandbox.NewSandboxesMap()},
+			uploadedBuilds: ttlcache.New[string, struct{}](),
+		}
+
+		require.NoError(t, s.Close(t.Context()))
+	})
+
+	t.Run("contains only non-running sandboxes", func(t *testing.T) {
+		t.Parallel()
+
+		sandboxes := sandbox.NewSandboxesMap()
+		sbx := &sandbox.Sandbox{
+			Metadata: &sandbox.Metadata{
+				Config: sandbox.NewConfig(sandbox.Config{}),
+				Runtime: sandbox.RuntimeMetadata{
+					SandboxID: id.Generate(),
+				},
+			},
+			Resources: &sandbox.Resources{
+				Slot: &network.Slot{HostIP: net.IPv4(127, 0, 0, 1)},
+			},
+		}
+
+		sandboxes.Insert(context.Background(), sbx)
+
+		s := &Server{
+			sandboxFactory: &sandbox.Factory{Sandboxes: sandboxes},
+			uploadedBuilds: ttlcache.New[string, struct{}](),
+		}
+
+		require.NoError(t, s.Close(t.Context()))
+	})
 }

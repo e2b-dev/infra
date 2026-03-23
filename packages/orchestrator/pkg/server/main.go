@@ -2,12 +2,15 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
 	"go.opentelemetry.io/otel/metric"
+	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/semaphore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
@@ -21,6 +24,8 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/service"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -105,4 +110,45 @@ func New(cfg ServiceConfig) (*Server, error) {
 	}
 
 	return server, nil
+}
+
+func (s *Server) Close(ctx context.Context) error {
+	s.uploadedBuilds.Stop()
+
+	sandboxes := s.sandboxFactory.Sandboxes.Items()
+	if len(sandboxes) == 0 {
+		return nil
+	}
+
+	logger.L().Info(ctx, "stopping remaining sandboxes on shutdown", zap.Int("sandbox_count", len(sandboxes)))
+
+	var g errgroup.Group
+	for sandboxID, sbx := range sandboxes {
+		if sbx == nil {
+			continue
+		}
+
+		sandboxID := sandboxID
+		sbx := sbx
+		g.Go(func() error {
+			sbxlogger.E(sbx).Info(ctx, "stopping sandbox during orchestrator shutdown")
+			s.sandboxFactory.Sandboxes.RemoveByLifecycleID(ctx, sandboxID, sbx.LifecycleID)
+
+			if err := sbx.Stop(ctx); err != nil {
+				return fmt.Errorf("failed to stop sandbox %s: %w", sandboxID, err)
+			}
+
+			if err := sbx.Close(ctx); err != nil {
+				return fmt.Errorf("failed to cleanup sandbox %s: %w", sandboxID, err)
+			}
+
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return errors.Join(err, ctx.Err())
+	}
+
+	return nil
 }

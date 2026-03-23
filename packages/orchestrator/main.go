@@ -492,6 +492,7 @@ func run(config cfg.Config) (success bool) {
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create orchestrator server", zap.Error(err))
 	}
+	closers = append(closers, closer{"orchestrator service", orchestratorService.Close})
 
 	// template manager sandbox logger
 	tmplSbxLoggerExternal := sbxlogger.NewLogger(
