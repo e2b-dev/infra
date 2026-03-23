@@ -13,10 +13,12 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/fc"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/config"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/core/filesystem"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/constants"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/units"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/models"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -65,6 +67,22 @@ func WithRootfsCachePath(rootfsCachePath string) CreateSandboxOption {
 func WithPreBootFn(fn sandbox.PreBootFn) CreateSandboxOption {
 	return func(opts *createSandboxOptions) {
 		opts.preBootFn = fn
+	}
+}
+
+// ReservedBlocksOptions returns CreateSandboxOption(s) that set reserved blocks
+// on the rootfs before the guest boots, if the BuildReservedDiskSpaceMB feature
+// flag is greater than zero. Returns nil otherwise.
+func ReservedBlocksOptions(ctx context.Context, featureFlags *featureflags.Client, blockSize int64) []CreateSandboxOption {
+	reservedDiskSpaceMB := int64(featureFlags.IntFlag(ctx, featureflags.BuildReservedDiskSpaceMB))
+	if reservedDiskSpaceMB <= 0 {
+		return nil
+	}
+
+	return []CreateSandboxOption{
+		WithPreBootFn(func(ctx context.Context, rootfsPath string) error {
+			return filesystem.SetReservedBlocksOnHost(ctx, rootfsPath, reservedDiskSpaceMB, blockSize)
+		}),
 	}
 }
 

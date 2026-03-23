@@ -17,7 +17,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/buildcontext"
-	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/core/filesystem"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/layer"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/phases"
@@ -179,14 +178,7 @@ func (ppb *PostProcessingBuilder) Build(
 	sandboxOptions := []layer.CreateSandboxOption{
 		layer.WithIoEngine(ioEngine),
 	}
-
-	// Set reserved blocks on the host rootfs before the guest boots.
-	if reservedDiskSpaceMB := int64(ppb.featureFlags.IntFlag(ctx, featureflags.BuildReservedDiskSpaceMB)); reservedDiskSpaceMB > 0 {
-		blockSize := ppb.Config.RootfsBlockSize()
-		sandboxOptions = append(sandboxOptions, layer.WithPreBootFn(func(ctx context.Context, rootfsPath string) error {
-			return filesystem.SetReservedBlocksOnHost(ctx, rootfsPath, reservedDiskSpaceMB, blockSize)
-		}))
-	}
+	sandboxOptions = append(sandboxOptions, layer.ReservedBlocksOptions(ctx, ppb.featureFlags, ppb.Config.RootfsBlockSize())...)
 
 	// Always restart the sandbox for the final layer to properly wire the rootfs path for the final template
 	sandboxCreator := layer.NewCreateSandbox(

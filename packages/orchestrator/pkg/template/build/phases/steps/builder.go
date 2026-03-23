@@ -18,7 +18,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/buildcontext"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/commands"
-	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/core/filesystem"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/layer"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/phases"
@@ -181,21 +180,11 @@ func (sb *StepBuilder) Build(
 	// First not cached layer is create (to change CPU, Memory, etc), subsequent are layers are resumes.
 	var sandboxCreator layer.SandboxCreator
 	if sourceLayer.Cached {
-		sandboxOptions := []layer.CreateSandboxOption{}
-
-		// Set reserved blocks on the host rootfs before the guest boots.
-		if reservedDiskSpaceMB := int64(sb.featureFlags.IntFlag(ctx, featureflags.BuildReservedDiskSpaceMB)); reservedDiskSpaceMB > 0 {
-			blockSize := sb.Config.RootfsBlockSize()
-			sandboxOptions = append(sandboxOptions, layer.WithPreBootFn(func(ctx context.Context, rootfsPath string) error {
-				return filesystem.SetReservedBlocksOnHost(ctx, rootfsPath, reservedDiskSpaceMB, blockSize)
-			}))
-		}
-
 		sandboxCreator = layer.NewCreateSandbox(
 			sbxConfig,
 			sb.sandboxFactory,
 			layerTimeout,
-			sandboxOptions...,
+			layer.ReservedBlocksOptions(ctx, sb.featureFlags, sb.Config.RootfsBlockSize())...,
 		)
 	} else {
 		sandboxCreator = layer.NewResumeSandbox(sbxConfig, sb.sandboxFactory, layerTimeout)

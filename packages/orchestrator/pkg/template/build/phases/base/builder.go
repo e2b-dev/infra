@@ -258,14 +258,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 	sandboxOptions := []layer.CreateSandboxOption{
 		layer.WithRootfsCachePath(rootfsPath),
 	}
-
-	// Set reserved blocks on the host rootfs before the guest boots.
-	if reservedDiskSpaceMB := int64(bb.featureFlags.IntFlag(ctx, featureflags.BuildReservedDiskSpaceMB)); reservedDiskSpaceMB > 0 {
-		blockSize := bb.Config.RootfsBlockSize()
-		sandboxOptions = append(sandboxOptions, layer.WithPreBootFn(func(ctx context.Context, rootfsPath string) error {
-			return filesystem.SetReservedBlocksOnHost(ctx, rootfsPath, reservedDiskSpaceMB, blockSize)
-		}))
-	}
+	sandboxOptions = append(sandboxOptions, layer.ReservedBlocksOptions(ctx, bb.featureFlags, bb.Config.RootfsBlockSize())...)
 
 	sandboxCreator := layer.NewCreateSandbox(
 		baseSbxConfig,
