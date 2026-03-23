@@ -149,7 +149,7 @@ func (o *Orchestrator) getOrConnectNode(ctx context.Context, clusterID uuid.UUID
 
 	scopedKey := o.scopedNodeID(clusterID, nodeID)
 
-	_, err, _ := o.discoveryGroup.Do(scopedKey, func() (any, error) { //nolint:errcheck
+	o.discoveryGroup.Do(scopedKey, func() (any, error) { //nolint:errcheck
 		// Re-check inside the singleflight
 		if node := o.GetNode(clusterID, nodeID); node != nil {
 			return nil, nil
@@ -159,60 +159,57 @@ func (o *Orchestrator) getOrConnectNode(ctx context.Context, clusterID uuid.UUID
 		defer cancel()
 
 		if clusterID == consts.LocalClusterID {
-			return nil, o.discoverNomadNode(connectCtx)
+			o.discoverNomadNode(connectCtx)
+		} else {
+			o.discoverClusterNode(connectCtx, clusterID)
 		}
 
-		return nil, o.discoverClusterNode(connectCtx, clusterID, nodeID)
+		return nil, nil
 	})
-	if err != nil {
-		logger.L().Error(ctx, "Error during on-demand node discovery", zap.Error(err), logger.WithNodeID(nodeID), logger.WithClusterID(clusterID))
-
-		return nil
-	}
 
 	return o.GetNode(clusterID, nodeID)
 }
 
 // discoverNomadNode lists all ready Nomad nodes and connects any that are not yet in the pool.
 // Once a new node is connected its orchestrator ID becomes the map key, making subsequent GetNode calls succeed.
-func (o *Orchestrator) discoverNomadNode(ctx context.Context) error {
+func (o *Orchestrator) discoverNomadNode(ctx context.Context) {
 	nomadNodes, err := o.listNomadNodes(ctx)
 	if err != nil {
-		return err
+		logger.L().Error(ctx, "Error listing Nomad nodes during on-demand discovery", zap.Error(err))
+
+		return
 	}
 
 	for _, n := range nomadNodes {
 		if o.GetNodeByNomadShortID(n.NomadNodeShortID) == nil {
 			if err := o.connectToNode(ctx, n); err != nil {
-				return err
+				logger.L().Error(ctx, "Error connecting to Nomad node on demand",
+					zap.Error(err), zap.String("nomad_short_id", n.NomadNodeShortID))
 			}
 		}
 	}
-
-	return nil
 }
 
 // discoverClusterNode forces a fresh service discovery query so that nodes which joined after the
-// last periodic sync are pulled into cluster.instances, then connects the target node into o.nodes.
-func (o *Orchestrator) discoverClusterNode(ctx context.Context, clusterID uuid.UUID, nodeID string) error {
+// last periodic sync are pulled into cluster.instances, then opportunistically connects all
+// unknown nodes into o.nodes (not just the target), avoiding repeated on-demand discoveries.
+func (o *Orchestrator) discoverClusterNode(ctx context.Context, clusterID uuid.UUID) {
 	cluster, found := o.clusters.GetClusterById(clusterID)
 	if !found {
-		return fmt.Errorf("cluster not found")
+		logger.L().Error(ctx, "Cluster not found during on-demand node discovery", logger.WithClusterID(clusterID))
+
+		return
 	}
 
 	if err := cluster.SyncInstances(ctx); err != nil {
-		return err
+		logger.L().Error(ctx, "Error syncing cluster instances during on-demand node discovery", zap.Error(err), logger.WithClusterID(clusterID))
+
+		return
 	}
 
 	for _, instance := range cluster.GetOrchestrators() {
-		if instance.NodeID == nodeID {
-			o.connectToClusterNode(ctx, cluster, instance)
-
-			break
-		}
+		o.connectToClusterNode(ctx, cluster, instance)
 	}
-
-	return nil
 }
 
 func (o *Orchestrator) GetClusterNodes(clusterID uuid.UUID) []*nodemanager.Node {
