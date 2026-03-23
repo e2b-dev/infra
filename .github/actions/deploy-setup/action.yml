@@ -16,7 +16,7 @@ runs:
   using: "composite"
   steps:
     - name: Pull infisical secrets into temporary file
-      uses: Infisical/secrets-action@v1.0.9
+      uses: Infisical/secrets-action@v1.0.15
       with:
         method: "oidc"
         identity-id: ${{ inputs.infisical_machine_identity_id }}
