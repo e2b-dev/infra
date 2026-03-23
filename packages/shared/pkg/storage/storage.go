@@ -214,10 +214,9 @@ func LoadBlob(ctx context.Context, s StorageProvider, path string) ([]byte, erro
 
 // ReadFrame is the shared implementation for reading a single frame from storage.
 // Each backend (GCP, AWS, FS) calls this with their own rangeRead callback.
-// Exported for use by CLI tools (inspect-build, compress-build) and tests that
+// Exported for use by CLI tools (inspect-build) and tests that
 // need to read frames outside the normal StorageProvider stack.
 func ReadFrame(ctx context.Context, rangeRead RangeReadFunc, storageDetails string, offsetU int64, frameTable *FrameTable, decompress bool, buf []byte, readSize int64, onRead func(totalWritten int64)) (Range, error) {
-	fmt.Printf("[ReadFrame] offset=%#x buf=%d compressed=%v decompress=%v from=%s\n", offsetU, len(buf), frameTable.IsCompressed(), decompress, storageDetails)
 	// Resolve fetch coordinates: for uncompressed data (nil frameTable) they
 	// map 1:1; for compressed data we translate U → C via the frame table.
 	var (

@@ -3,15 +3,11 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
 	"log"
-	"net/http"
 	"os"
 	"runtime/pprof"
-	"slices"
 	"strings"
 	"time"
 
@@ -42,8 +38,10 @@ func main() {
 	cpuProfile := flag.String("cpuprofile", "", "write CPU profile to file")
 	encWorkers := flag.Int("encworkers", 1, "encode workers for framed compression")
 	encConcurrency := flag.Int("encconcurrency", 1, "per-encoder concurrency (zstd only)")
+	colorMode := cmdutil.ColorFlag()
 
 	flag.Parse()
+	cmdutil.InitColor(*colorMode)
 
 	if *cpuProfile != "" {
 		f, err := os.Create(*cpuProfile)
@@ -62,12 +60,11 @@ func main() {
 
 	cmdutil.SuppressNoisyLogsKeepStdLog()
 
-	// Resolve build ID
 	if *template != "" && *build != "" {
 		log.Fatal("specify either -build or -template, not both") //nolint:gocritic // pre-existing: cpu profile defer above
 	}
 	if *template != "" {
-		resolvedBuild, err := resolveTemplateID(*template)
+		resolvedBuild, err := cmdutil.ResolveTemplateID(*template)
 		if err != nil {
 			log.Fatalf("failed to resolve template: %s", err)
 		}
@@ -82,14 +79,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Determine which artifacts to benchmark
 	type artifact struct {
 		name string
 		file string
 	}
 	var artifacts []artifact
 	if !*doMemfile && !*doRootfs {
-		// Default: both
 		artifacts = []artifact{
 			{"memfile", storage.MemfileName},
 			{"rootfs", storage.RootfsName},
@@ -105,11 +100,16 @@ func main() {
 
 	ctx := context.Background()
 
+	provider, err := cmdutil.GetProvider(ctx, *storagePath)
+	if err != nil {
+		log.Fatalf("failed to create storage provider: %s", err)
+	}
+
 	fmt.Printf("Settings: encWorkers=%d, encConcurrency=%d, frameSize=%d, iterations=%d\n",
 		*encWorkers, *encConcurrency, storage.DefaultCompressFrameSize, *iterations)
 
 	for _, a := range artifacts {
-		data, err := loadArtifact(ctx, *storagePath, *build, a.file)
+		data, err := loadArtifact(ctx, provider, *build, a.file)
 		if err != nil {
 			log.Fatalf("failed to load %s: %s", a.name, err)
 		}
@@ -122,21 +122,16 @@ func main() {
 	}
 }
 
-func loadArtifact(ctx context.Context, storagePath, buildID, file string) ([]byte, error) {
-	reader, dataSize, source, err := cmdutil.OpenDataFile(ctx, storagePath, buildID, file)
-	if err != nil {
-		return nil, fmt.Errorf("open %s: %w", file, err)
-	}
-	defer reader.Close()
+func loadArtifact(ctx context.Context, provider storage.StorageProvider, buildID, file string) ([]byte, error) {
+	path := storage.TemplateFiles{BuildID: buildID}.DataPath(file)
+	fmt.Printf("Loading %s from %s...\n", file, path)
 
-	fmt.Printf("Loading %s from %s (%d bytes, %.1f MiB)...\n",
-		file, source, dataSize, float64(dataSize)/1024/1024)
-
-	data := make([]byte, dataSize)
-	_, err = io.ReadFull(io.NewSectionReader(reader, 0, dataSize), data)
+	data, err := storage.LoadBlob(ctx, provider, path)
 	if err != nil {
-		return nil, fmt.Errorf("read %s: %w", file, err)
+		return nil, fmt.Errorf("load %s: %w", file, err)
 	}
+
+	fmt.Printf("Loaded %d bytes (%.1f MiB)\n", len(data), float64(len(data))/1024/1024)
 
 	return data, nil
 }
@@ -265,26 +260,17 @@ func framedDecode(compressed []byte, ft *storage.FrameTable) time.Duration {
 	return time.Since(start)
 }
 
-// ANSI colors.
-const (
-	colorReset  = "\033[0m"
-	colorGreen  = "\033[32m"
-	colorYellow = "\033[33m"
-	colorRed    = "\033[91m"
-)
-
 func overheadColor(pct float64) string {
 	switch {
 	case pct < 5:
-		return colorGreen
+		return cmdutil.ColorGreen
 	case pct < 15:
-		return colorYellow
+		return cmdutil.ColorYellow
 	default:
-		return colorRed
+		return cmdutil.ColorRed
 	}
 }
 
-// pad right-pads s with spaces to exactly width visible characters.
 func pad(s string, width int) string {
 	if len(s) >= width {
 		return s
@@ -293,7 +279,6 @@ func pad(s string, width int) string {
 	return s + strings.Repeat(" ", width-len(s))
 }
 
-// rpad right-aligns s within width visible characters.
 func rpad(s string, width int) string {
 	if len(s) >= width {
 		return s
@@ -302,11 +287,10 @@ func rpad(s string, width int) string {
 	return strings.Repeat(" ", width-len(s)) + s
 }
 
-// colorWrap wraps text with ANSI color, pre-padded to width so alignment is correct.
 func colorWrap(color, text string, width int) string {
 	padded := pad(text, width)
 
-	return color + padded + colorReset
+	return color + padded + cmdutil.ColorReset
 }
 
 func fmtSpeed(dataSize int64, d time.Duration) string {
@@ -393,83 +377,4 @@ func printRow(r benchResult) {
 		r.numFrames,
 		decPerFrame,
 	)
-}
-
-// --- Template resolution (copied from compress-build) ---
-
-type templateInfo struct {
-	TemplateID string   `json:"templateID"`
-	BuildID    string   `json:"buildID"`
-	Aliases    []string `json:"aliases"`
-	Names      []string `json:"names"`
-}
-
-func resolveTemplateID(input string) (string, error) {
-	apiKey := os.Getenv("E2B_API_KEY")
-	if apiKey == "" {
-		return "", fmt.Errorf("E2B_API_KEY environment variable required for -template flag")
-	}
-
-	apiURL := "https://api.e2b.dev/templates"
-	if domain := os.Getenv("E2B_DOMAIN"); domain != "" {
-		apiURL = fmt.Sprintf("https://api.%s/templates", domain)
-	}
-
-	ctx := context.Background()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
-	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Set("X-API-Key", apiKey)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to fetch templates: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-
-		return "", fmt.Errorf("API returned %d: %s", resp.StatusCode, string(body))
-	}
-
-	var templates []templateInfo
-	if err := json.NewDecoder(resp.Body).Decode(&templates); err != nil {
-		return "", fmt.Errorf("failed to parse API response: %w", err)
-	}
-
-	var match *templateInfo
-	var availableAliases []string
-
-	for i := range templates {
-		t := &templates[i]
-		availableAliases = append(availableAliases, t.Aliases...)
-
-		if t.TemplateID == input {
-			match = t
-
-			break
-		}
-		if slices.Contains(t.Aliases, input) {
-			match = t
-
-			break
-		}
-		if slices.Contains(t.Names, input) {
-			match = t
-
-			break
-		}
-	}
-
-	if match == nil {
-		return "", fmt.Errorf("template %q not found. Available aliases: %s", input, strings.Join(availableAliases, ", "))
-	}
-
-	if match.BuildID == "" || match.BuildID == cmdutil.NilUUID {
-		return "", fmt.Errorf("template %q has no successful build", input)
-	}
-
-	return match.BuildID, nil
 }

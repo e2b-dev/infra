@@ -75,8 +75,8 @@ type PartUploader interface {
 }
 
 // OnFrameCompressed is an optional progress callback invoked for each compressed frame
-// during CompressStream. Used by tools (e.g. compress-build) for progress reporting.
-// Not part of the StoreFile interface — only available when calling CompressStream directly.
+// during CompressStream. Not part of the StoreFile interface — only available when
+// calling CompressStream directly.
 type OnFrameCompressed = func(frameIndex int, offset FrameOffset, size FrameSize)
 
 // ValidateCompressConfig checks that compression config is valid for use.

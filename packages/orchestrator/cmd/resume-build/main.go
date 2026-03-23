@@ -62,8 +62,10 @@ func main() {
 	cmdPause := flag.String("cmd-pause", "", "execute command in sandbox, then pause on success")
 	cmdSignalPause := flag.String("cmd-signal-pause", "", "execute command in sandbox, then wait for SIGUSR1 before pausing")
 	optimize := flag.Bool("optimize", false, "collect fresh prefetch mapping after pause (resumes snapshot to record page faults)")
+	colorMode := cmdutil.ColorFlag()
 
 	flag.Parse()
+	cmdutil.InitColor(*colorMode)
 
 	if *fromBuild == "" {
 		log.Fatal("-from-build required")
@@ -469,8 +471,8 @@ func printCmdResults(results []cmdTimings) {
 		fmt.Printf("   [%2d] %s / %s / %s  (resume: %s%+.1f%%%s, cmd: %s%+.1f%%%s)\n",
 			i+1,
 			fmtDur(t.resume), fmtDur(t.command), fmtDur(t.total),
-			colorForDiff(resumeDiff), resumeDiff, colorReset,
-			colorForDiff(cmdDiff), cmdDiff, colorReset)
+			colorForDiff(resumeDiff), resumeDiff, cmdutil.ColorReset,
+			colorForDiff(cmdDiff), cmdDiff, cmdutil.ColorReset)
 	}
 
 	// Print summary
@@ -505,11 +507,11 @@ func printCmdResults(results []cmdTimings) {
 func colorForDiff(diff float64) string {
 	switch {
 	case diff < -5:
-		return colorGreen
+		return cmdutil.ColorGreen
 	case diff > 5:
-		return colorRed
+		return cmdutil.ColorRed
 	default:
-		return colorYellow
+		return cmdutil.ColorYellow
 	}
 }
 
@@ -756,8 +758,8 @@ func printPauseResults(results []pauseTimings) {
 		fmt.Printf("   [%2d] %s / %s / %s  (resume: %s%+.1f%%%s, pause: %s%+.1f%%%s)\n",
 			i+1,
 			fmtDur(t.resume), fmtDur(t.pause), fmtDur(t.total),
-			colorForDiff(resumeDiff), resumeDiff, colorReset,
-			colorForDiff(pauseDiff), pauseDiff, colorReset)
+			colorForDiff(resumeDiff), resumeDiff, cmdutil.ColorReset,
+			colorForDiff(pauseDiff), pauseDiff, cmdutil.ColorReset)
 	}
 
 	// Print summary
@@ -1311,13 +1313,6 @@ func printArtifactSizes(_, buildID string) {
 
 // Benchmark output formatting
 
-const (
-	colorReset  = "\033[0m"
-	colorRed    = "\033[31m"
-	colorGreen  = "\033[32m"
-	colorYellow = "\033[33m"
-)
-
 type benchResult struct {
 	dur time.Duration
 	err error
@@ -1378,14 +1373,14 @@ func printResults(results []benchResult) {
 		var color string
 		switch {
 		case diff < 0:
-			color = colorGreen
+			color = cmdutil.ColorGreen
 		case diff > 0:
-			color = colorRed
+			color = cmdutil.ColorRed
 		default:
-			color = colorYellow
+			color = cmdutil.ColorYellow
 		}
 
-		fmt.Printf("   [%2d] %s  %s%+.1f%%%s\n", i+1, fmtDur(r.dur), color, pct, colorReset)
+		fmt.Printf("   [%2d] %s  %s%+.1f%%%s\n", i+1, fmtDur(r.dur), color, pct, cmdutil.ColorReset)
 	}
 
 	// Print summary stats

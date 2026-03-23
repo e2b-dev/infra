@@ -20,6 +20,7 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/cmd/internal/cmdutil"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -77,82 +78,51 @@ func NewDestinationFromPath(prefix, file string) (*Destination, error) {
 	}, nil
 }
 
-func NewHeaderFromObject(ctx context.Context, bucketName string, headerPath string) (*header.Header, error) {
-	b, err := storage.NewGCP(ctx, bucketName, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create GCS bucket storage provider: %w", err)
+func getReferencedFiles(h *header.Header, artifactName string) []string {
+	type buildInfo struct {
+		hasCompressed   bool
+		hasUncompressed bool
+		compressionType storage.CompressionType
 	}
-
-	obj, err := b.OpenBlob(ctx, headerPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open object: %w", err)
-	}
-
-	h, err := header.FromBlob(ctx, obj)
-	if err != nil {
-		return nil, fmt.Errorf("failed to deserialize header: %w", err)
-	}
-
-	return h, nil
-}
-
-type osFileBlob struct {
-	f *os.File
-}
-
-func (o *osFileBlob) WriteTo(_ context.Context, w io.Writer) (int64, error) {
-	return io.Copy(w, o.f)
-}
-
-func (o *osFileBlob) Exists(_ context.Context) (bool, error) {
-	return true, nil
-}
-
-func (o *osFileBlob) Put(_ context.Context, _ []byte) error {
-	return fmt.Errorf("not implemented")
-}
-
-func NewHeaderFromPath(ctx context.Context, from, headerPath string) (*header.Header, error) {
-	// Local storage uses templates subdirectory
-	f, err := os.Open(path.Join(from, "templates", headerPath))
-	if err != nil {
-		return nil, fmt.Errorf("failed to open file: %w", err)
-	}
-	defer f.Close()
-
-	h, err := header.FromBlob(ctx, &osFileBlob{f: f})
-	if err != nil {
-		return nil, fmt.Errorf("failed to deserialize header: %w", err)
-	}
-
-	return h, nil
-}
-
-func getReferencedData(h *header.Header, objectType storage.ObjectType) []string {
-	builds := make(map[string]struct{})
+	builds := make(map[string]*buildInfo)
 
 	for _, mapping := range h.Mapping {
-		builds[mapping.BuildId.String()] = struct{}{}
-	}
+		if mapping.BuildId == uuid.Nil {
+			continue
+		}
+		bid := mapping.BuildId.String()
 
-	delete(builds, uuid.Nil.String())
-
-	var dataReferences []string
-
-	for build := range builds {
-		template := storage.TemplateFiles{
-			BuildID: build,
+		info, ok := builds[bid]
+		if !ok {
+			info = &buildInfo{}
+			builds[bid] = info
 		}
 
-		switch objectType {
-		case storage.MemfileHeaderObjectType:
-			dataReferences = append(dataReferences, template.StorageMemfilePath())
-		case storage.RootFSHeaderObjectType:
-			dataReferences = append(dataReferences, template.StorageRootfsPath())
+		if mapping.FrameTable.IsCompressed() {
+			info.hasCompressed = true
+			info.compressionType = mapping.FrameTable.CompressionType()
+		} else {
+			info.hasUncompressed = true
 		}
 	}
 
-	return dataReferences
+	var refs []string
+
+	for bid, info := range builds {
+		tf := storage.TemplateFiles{BuildID: bid}
+
+		// Always include the header for referenced builds
+		refs = append(refs, tf.HeaderPath(artifactName))
+
+		if info.hasCompressed {
+			refs = append(refs, tf.CompressedDataPath(artifactName, info.compressionType))
+		}
+		if info.hasUncompressed {
+			refs = append(refs, tf.DataPath(artifactName))
+		}
+	}
+
+	return refs
 }
 
 func localCopy(ctx context.Context, from, to *Destination) error {
@@ -221,61 +191,28 @@ func main() {
 	}
 
 	ctx := context.Background()
-
 	var filesToCopy []string
 
-	// Extract all files referenced by the build memfile header
-	buildMemfileHeaderPath := template.StorageMemfileHeaderPath()
-
-	var memfileHeader *header.Header
-	if strings.HasPrefix(*from, "gs://") {
-		bucketName, _ := strings.CutPrefix(*from, "gs://")
-
-		h, err := NewHeaderFromObject(ctx, bucketName, buildMemfileHeaderPath)
-		if err != nil {
-			log.Fatalf("failed to create header from object: %s", err)
-		}
-
-		memfileHeader = h
-	} else {
-		h, err := NewHeaderFromPath(ctx, *from, buildMemfileHeaderPath)
-		if err != nil {
-			log.Fatalf("failed to create header from path: %s", err)
-		}
-
-		memfileHeader = h
+	provider, err := cmdutil.GetProvider(ctx, *from)
+	if err != nil {
+		log.Fatalf("failed to create storage provider: %s", err)
 	}
 
-	dataReferences := getReferencedData(memfileHeader, storage.MemfileHeaderObjectType)
+	// Extract all files referenced by the build memfile header
+	memfileHeader, err := header.LoadHeader(ctx, provider, template.StorageMemfileHeaderPath())
+	if err != nil {
+		log.Fatalf("failed to load memfile header: %s", err)
+	}
 
-	filesToCopy = append(filesToCopy, buildMemfileHeaderPath)
-	filesToCopy = append(filesToCopy, dataReferences...)
+	filesToCopy = append(filesToCopy, getReferencedFiles(memfileHeader, storage.MemfileName)...)
 
 	// Extract all files referenced by the build rootfs header
-	buildRootfsHeaderPath := template.StorageRootfsHeaderPath()
-
-	var rootfsHeader *header.Header
-	if strings.HasPrefix(*from, "gs://") {
-		bucketName, _ := strings.CutPrefix(*from, "gs://")
-		h, err := NewHeaderFromObject(ctx, bucketName, buildRootfsHeaderPath)
-		if err != nil {
-			log.Fatalf("failed to create header from object: %s", err)
-		}
-
-		rootfsHeader = h
-	} else {
-		h, err := NewHeaderFromPath(ctx, *from, buildRootfsHeaderPath)
-		if err != nil {
-			log.Fatalf("failed to create header from path: %s", err)
-		}
-
-		rootfsHeader = h
+	rootfsHeader, err := header.LoadHeader(ctx, provider, template.StorageRootfsHeaderPath())
+	if err != nil {
+		log.Fatalf("failed to load rootfs header: %s", err)
 	}
 
-	dataReferences = getReferencedData(rootfsHeader, storage.RootFSHeaderObjectType)
-
-	filesToCopy = append(filesToCopy, buildRootfsHeaderPath)
-	filesToCopy = append(filesToCopy, dataReferences...)
+	filesToCopy = append(filesToCopy, getReferencedFiles(rootfsHeader, storage.RootfsName)...)
 
 	// Add the snapfile to the list of files to copy
 	snapfilePath := template.StorageSnapfilePath()

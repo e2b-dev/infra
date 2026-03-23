@@ -40,9 +40,7 @@ func main() {
 	}
 
 	// Set up storage env vars based on -storage flag
-	if err := cmdutil.SetupStorage(*storagePath); err != nil {
-		log.Fatal(err)
-	}
+	cmdutil.SetupStorage(*storagePath)
 
 	// Suppress noisy output unless logging enabled
 	if !*logging {

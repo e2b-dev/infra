@@ -14,21 +14,15 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
-// SuppressNoisyLogs disables verbose output from OTEL tracing, LaunchDarkly, and standard log.
-// Only ERROR level and above will be logged.
 func SuppressNoisyLogs() {
-	// Silence standard log package
 	log.SetOutput(io.Discard)
-	// Replace global zap logger with error-only logger
 	setErrorOnlyLogger()
 }
 
-// SuppressNoisyLogsKeepStdLog disables verbose output but keeps standard log enabled.
 func SuppressNoisyLogsKeepStdLog() {
 	setErrorOnlyLogger()
 }
 
-// setErrorOnlyLogger replaces the global zap logger with one that only logs errors.
 func setErrorOnlyLogger() {
 	cfg := zap.NewProductionConfig()
 	cfg.Level = zap.NewAtomicLevelAt(zapcore.ErrorLevel)
@@ -39,7 +33,6 @@ func setErrorOnlyLogger() {
 	}
 }
 
-// GetHeaderInfo reads a header file and returns total size and block size.
 func GetHeaderInfo(headerPath string) (totalSize, blockSize uint64) {
 	data, err := os.ReadFile(headerPath)
 	if err != nil {
@@ -53,7 +46,6 @@ func GetHeaderInfo(headerPath string) (totalSize, blockSize uint64) {
 	return h.Metadata.Size, h.Metadata.BlockSize
 }
 
-// GetFileSizes returns the logical size and actual on-disk size of a file.
 func GetFileSizes(path string) (logical, actual int64, err error) {
 	var stat syscall.Stat_t
 	if err := syscall.Stat(path, &stat); err != nil {
@@ -63,21 +55,18 @@ func GetFileSizes(path string) (logical, actual int64, err error) {
 	return stat.Size, stat.Blocks * 512, nil
 }
 
-// GetActualFileSize returns only the actual on-disk size of a file.
 func GetActualFileSize(path string) (int64, error) {
 	_, actual, err := GetFileSizes(path)
 
 	return actual, err
 }
 
-// ArtifactInfo contains information about a build artifact.
 type ArtifactInfo struct {
 	Name       string
 	File       string
 	HeaderFile string
 }
 
-// MainArtifacts returns the list of main artifacts (rootfs, memfile).
 func MainArtifacts() []ArtifactInfo {
 	return []ArtifactInfo{
 		{"Rootfs", storage.RootfsName, storage.RootfsName + storage.HeaderSuffix},
@@ -85,7 +74,6 @@ func MainArtifacts() []ArtifactInfo {
 	}
 }
 
-// SmallArtifacts returns the list of small artifacts (headers, snapfile, metadata).
 func SmallArtifacts() []struct{ Name, File string } {
 	return []struct{ Name, File string }{
 		{"Rootfs header", storage.RootfsName + storage.HeaderSuffix},

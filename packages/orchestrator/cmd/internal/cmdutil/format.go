@@ -1,7 +1,11 @@
 package cmdutil
 
 import (
+	"flag"
 	"fmt"
+	"os"
+
+	"golang.org/x/term"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -9,45 +13,68 @@ import (
 
 const NilUUID = "00000000-0000-0000-0000-000000000000"
 
-// ANSI color codes for compression ratio visualization.
-const (
-	colorReset  = "\033[0m"
-	colorRed    = "\033[91m" // bright red — incompressible
-	colorYellow = "\033[33m" // yellow — poor
-	colorGreen  = "\033[32m" // green — good
-	colorCyan   = "\033[36m" // cyan — very sparse
-	colorBlue   = "\033[34m" // blue — nearly empty
+// Color codes are set to empty strings when color is disabled (non-TTY or -color=never).
+var (
+	ColorReset  = "\033[0m"
+	ColorRed    = "\033[91m"
+	ColorYellow = "\033[33m"
+	ColorGreen  = "\033[32m"
+	ColorCyan   = "\033[36m"
+	ColorBlue   = "\033[34m"
 )
 
-// RatioColor returns an ANSI color code for a compression ratio value.
+func ColorFlag() *string {
+	return flag.String("color", "auto", "color output: auto, always, never")
+}
+
+func InitColor(mode string) {
+	switch mode {
+	case "always":
+		// keep colors
+	case "never":
+		disableColors()
+	default: // "auto"
+		if !term.IsTerminal(int(os.Stdout.Fd())) {
+			disableColors()
+		}
+	}
+}
+
+func disableColors() {
+	ColorReset = ""
+	ColorRed = ""
+	ColorYellow = ""
+	ColorGreen = ""
+	ColorCyan = ""
+	ColorBlue = ""
+}
+
 func RatioColor(ratio float64) string {
 	switch {
 	case ratio < 1.5:
-		return colorRed
+		return ColorRed
 	case ratio < 2.5:
-		return colorYellow
+		return ColorYellow
 	case ratio < 4:
-		return colorReset
+		return ColorReset
 	case ratio < 8:
-		return colorGreen
+		return ColorGreen
 	case ratio < 50:
-		return colorCyan
+		return ColorCyan
 	default:
-		return colorBlue
+		return ColorBlue
 	}
 }
 
-// FormatRatio returns a color-coded ratio string (4 chars wide).
 func FormatRatio(ratio float64) string {
 	color := RatioColor(ratio)
 	if ratio >= 100 {
-		return fmt.Sprintf("%s%4.0f%s", color, ratio, colorReset)
+		return fmt.Sprintf("%s%4.0f%s", color, ratio, ColorReset)
 	}
 
-	return fmt.Sprintf("%s%4.1f%s", color, ratio, colorReset)
+	return fmt.Sprintf("%s%4.1f%s", color, ratio, ColorReset)
 }
 
-// FormatMappingWithCompression returns mapping info with compression details.
 func FormatMappingWithCompression(mapping *header.BuildMap, blockSize uint64) string {
 	base := mapping.Format(blockSize)
 
@@ -68,7 +95,6 @@ func FormatMappingWithCompression(mapping *header.BuildMap, blockSize uint64) st
 		base, ft.CompressionType().String(), len(ft.Frames), totalU, totalC, FormatRatio(ratio))
 }
 
-// PrintCompressionSummary prints compression statistics for a header.
 func PrintCompressionSummary(h *header.Header) {
 	var compressedMappings, uncompressedMappings int
 	var totalUncompressedBytes, totalCompressedBytes int64
@@ -81,8 +107,7 @@ func PrintCompressionSummary(h *header.Header) {
 		compressed        bool
 		compressionType   storage.CompressionType
 	}
-	buildCompressionStats := make(map[string]*buildStats)
-
+	perBuild := make(map[string]*buildStats)
 	compressionTypes := make(map[storage.CompressionType]bool)
 
 	for _, mapping := range h.Mapping {
@@ -91,10 +116,10 @@ func PrintCompressionSummary(h *header.Header) {
 			continue
 		}
 
-		if _, ok := buildCompressionStats[buildID]; !ok {
-			buildCompressionStats[buildID] = &buildStats{}
+		if _, ok := perBuild[buildID]; !ok {
+			perBuild[buildID] = &buildStats{}
 		}
-		stats := buildCompressionStats[buildID]
+		stats := perBuild[buildID]
 
 		if mapping.FrameTable.IsCompressed() {
 			compressedMappings++
@@ -151,7 +176,7 @@ func PrintCompressionSummary(h *header.Header) {
 	}
 
 	hasCompressedBuilds := false
-	for _, stats := range buildCompressionStats {
+	for _, stats := range perBuild {
 		if stats.compressed {
 			hasCompressedBuilds = true
 
@@ -161,7 +186,7 @@ func PrintCompressionSummary(h *header.Header) {
 
 	if hasCompressedBuilds {
 		fmt.Printf("\nPer-build compression:\n")
-		for buildID, stats := range buildCompressionStats {
+		for buildID, stats := range perBuild {
 			label := buildID[:8] + "..."
 			if buildID == h.Metadata.BuildId.String() {
 				label += " (current)"
@@ -179,7 +204,6 @@ func PrintCompressionSummary(h *header.Header) {
 			fmt.Printf("  %s: %s, %d frames, U=%#x C=%#x (%s)\n",
 				label, stats.compressionType, len(stats.frames), stats.uncompressedBytes, stats.compressedBytes, FormatRatio(ratio))
 
-			// Frame stats
 			if len(stats.frames) > 0 {
 				minC, maxC := stats.frames[0].C, stats.frames[0].C
 				for _, f := range stats.frames[1:] {
@@ -191,7 +215,6 @@ func PrintCompressionSummary(h *header.Header) {
 					avgC/1024, minC/1024, maxC/1024)
 			}
 
-			// Ratio matrix: 16 frames per row
 			if len(stats.frames) > 1 {
 				const cols = 16
 				fmt.Printf("\n    Ratio matrix (%d per row):\n", cols)

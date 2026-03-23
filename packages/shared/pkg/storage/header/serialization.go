@@ -16,7 +16,7 @@ import (
 const (
 	// metadataVersion is used by template-manager for uncompressed builds (V3 headers).
 	metadataVersion = 3
-	// MetadataVersionCompressed is used by compress-build for compressed builds (V4 headers with FrameTables).
+	// MetadataVersionCompressed is used for compressed builds (V4 headers with FrameTables).
 	MetadataVersionCompressed = 4
 )
 
