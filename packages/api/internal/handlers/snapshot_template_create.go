@@ -45,6 +45,8 @@ func (a *APIStore) PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID api
 		return
 	}
 
+	span.SetAttributes(telemetry.WithSandboxID(sandboxID))
+
 	body, err := ginutils.ParseBody[api.PostSandboxesSandboxIDSnapshotsJSONRequestBody](ctx, c)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err))

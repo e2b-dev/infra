@@ -113,8 +113,9 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 	alias := firstAlias(env.Aliases)
 	telemetry.SetAttributes(ctx,
-		attribute.String("env.team.id", teamInfo.Team.ID.String()),
+		telemetry.WithSandboxID(sandboxID),
 		telemetry.WithTemplateID(env.TemplateID),
+		telemetry.WithBuildID(build.ID.String()),
 		attribute.String("env.alias", alias),
 		telemetry.WithKernelVersion(build.KernelVersion),
 		telemetry.WithFirecrackerVersion(build.FirecrackerVersion),

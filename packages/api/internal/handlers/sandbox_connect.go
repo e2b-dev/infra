@@ -59,6 +59,8 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 		return
 	}
 
+	span.SetAttributes(telemetry.WithSandboxID(sandboxID))
+
 	// It could happen that after sandbox transition, it'll be again transitioning, retry up to maxConnectRetries times.
 	const maxConnectRetries = 3
 
