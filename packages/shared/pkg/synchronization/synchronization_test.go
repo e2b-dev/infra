@@ -6,6 +6,8 @@ import (
 	"sync"
 	"testing"
 
+	"golang.org/x/sync/semaphore"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -87,6 +89,7 @@ func newSynchronizer(ctx context.Context, store Store[string, string]) *Synchron
 		store:            store,
 		tracerSpanPrefix: "test synchronization",
 		logsPrefix:       "test synchronization",
+		syncSem:          semaphore.NewWeighted(1),
 	}
 }
 

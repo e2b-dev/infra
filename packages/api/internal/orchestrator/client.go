@@ -129,21 +129,11 @@ func (o *Orchestrator) GetNode(clusterID uuid.UUID, nodeID string) *nodemanager.
 // sync cycle but another API instance already routed a sandbox there.
 //
 // There are two distinct gaps that must be covered:
-//
 //   - Gap 1 (0–5 s for clusters, 0–20 s for Nomad): the node exists in the upstream
 //     source (Nomad / remote service discovery) but has not yet been pulled into the
 //     local instance map by the background sync loop.
 //   - Gap 2 (0–20 s): the node is in the local instance map but has not yet been
 //     promoted into o.nodes by keepInSync.
-//
-// For Nomad-managed nodes both gaps are closed by querying Nomad directly and
-// connecting any nodes not yet in the pool. The orchestrator's self-reported node ID
-// (stored in the sandbox record) cannot be mapped back to a specific Nomad node
-// without first connecting, so all unknown Nomad nodes are opportunistically connected.
-//
-// For cluster nodes Gap 1 is closed by calling SyncInstances, which queries the
-// remote service discovery and populates cluster.instances. Gap 2 is then closed by
-// iterating the freshly-updated instance map and calling connectToClusterNode.
 //
 // discoveryGroup ensures that concurrent requests targeting the same missing
 // node share a single discovery attempt rather than fanning out.
