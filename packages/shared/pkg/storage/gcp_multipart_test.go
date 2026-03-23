@@ -654,6 +654,7 @@ func TestMultipartUploader_BoundaryConditions_ExactChunkSize(t *testing.T) {
 	err := os.WriteFile(testFile, []byte(testContent), 0o644)
 	require.NoError(t, err)
 
+	var mu sync.Mutex
 	var partSizes []int
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -670,7 +671,9 @@ func TestMultipartUploader_BoundaryConditions_ExactChunkSize(t *testing.T) {
 
 		case strings.Contains(r.URL.RawQuery, "partNumber"):
 			body, _ := io.ReadAll(r.Body)
+			mu.Lock()
 			partSizes = append(partSizes, len(body))
+			mu.Unlock()
 
 			partNum := strings.Split(strings.Split(r.URL.RawQuery, "partNumber=")[1], "&")[0]
 			w.Header().Set("ETag", fmt.Sprintf(`"boundary-etag-%s"`, partNum))
