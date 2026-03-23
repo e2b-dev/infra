@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -180,12 +181,17 @@ func (o *Orchestrator) discoverNomadNode(ctx context.Context) {
 		return
 	}
 
+	var wg sync.WaitGroup
+	defer wg.Wait()
+
 	for _, n := range nomadNodes {
 		if o.GetNodeByNomadShortID(n.NomadNodeShortID) == nil {
-			if err := o.connectToNode(ctx, n); err != nil {
-				logger.L().Error(ctx, "Error connecting to Nomad node on demand",
-					zap.Error(err), zap.String("nomad_short_id", n.NomadNodeShortID))
-			}
+			wg.Go(func() {
+				if err := o.connectToNode(ctx, n); err != nil {
+					logger.L().Error(ctx, "Error connecting to Nomad node on demand",
+						zap.Error(err), zap.String("nomad_short_id", n.NomadNodeShortID))
+				}
+			})
 		}
 	}
 }
@@ -207,8 +213,13 @@ func (o *Orchestrator) discoverClusterNode(ctx context.Context, clusterID uuid.U
 		return
 	}
 
+	var wg sync.WaitGroup
+	defer wg.Wait()
+
 	for _, instance := range cluster.GetOrchestrators() {
-		o.connectToClusterNode(ctx, cluster, instance)
+		wg.Go(func() {
+			o.connectToClusterNode(ctx, cluster, instance)
+		})
 	}
 }
 
