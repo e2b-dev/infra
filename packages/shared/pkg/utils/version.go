@@ -6,8 +6,10 @@ import (
 	"golang.org/x/mod/semver"
 )
 
-const MinEnvdVersionForSnapshot = "0.5.0"
-const MinEnvdVersionForVolumes = "0.5.8"
+const (
+	MinEnvdVersionForSnapshot = "0.5.0"
+	MinEnvdVersionForVolumes  = "0.5.8"
+)
 
 func sanitizeVersion(version string) string {
 	if len(version) > 0 && version[0] != 'v' {
