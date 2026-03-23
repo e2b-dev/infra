@@ -197,7 +197,7 @@ func (s *Storage) createCallback(teamID uuid.UUID, sandboxID, transitionKey, res
 		// goroutines wake up immediately rather than waiting for the next poll tick.
 		// The routing key is published as the payload so the single global channel
 		// can serve all sandboxes across all teams.
-		routingKey := getTransitionRoutingKey(teamID.String(), sandboxID)
+		routingKey := getTransitionRoutingKey(teamID.String(), sandboxID, transitionID)
 		pubErr := s.redisClient.Publish(cbCtx, getGlobalTransitionNotifyChannel(), routingKey).Err()
 		if pubErr != nil {
 			logger.L().Warn(cbCtx, "Failed to publish transition notification",
@@ -247,11 +247,12 @@ func (s *Storage) waitForTransition(
 	sandboxID,
 	transitionID string,
 ) error {
-	routingKey := getTransitionRoutingKey(teamID.String(), sandboxID)
+	routingKey := getTransitionRoutingKey(teamID.String(), sandboxID, transitionID)
 	transitionKey := getTransitionKey(teamID.String(), sandboxID)
 	resultKey := getTransitionResultKey(teamID.String(), sandboxID, transitionID)
 
-	// Register to pubsub
+	// Subscribe to this specific transition's routing key so notifications
+	// from other transitions for the same sandbox cannot wake us.
 	ch, cleanup := s.subManager.subscribe(routingKey)
 	defer cleanup()
 
@@ -273,7 +274,6 @@ func (s *Storage) waitForTransition(
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ch:
-			// Signalled by the central subscription manager — check the result.
 			return s.checkTransitionResult(ctx, resultKey)
 		case <-ticker.C:
 			// Fallback poll: check whether the transition key is still present.

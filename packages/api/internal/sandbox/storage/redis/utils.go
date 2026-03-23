@@ -58,9 +58,10 @@ func getTransitionResultKey(teamID, sandboxID, transitionID string) string {
 	return redis_utils.CreateKey(getTransitionKey(teamID, sandboxID), transitionID)
 }
 
-// getTransitionRoutingKey returns the per-sandbox routing key embedded in the
-// payload of messages published to globalTransitionNotifyChannel. The
-// subscriptionManager uses it to fan out signals to the correct in-process waiters.
-func getTransitionRoutingKey(teamID, sandboxID string) string {
-	return redis_utils.CreateKey(GetTeamPrefix(teamID), transitionKeyPrefix, sandboxID, notifySuffix)
+// getTransitionRoutingKey returns the per-transition routing key embedded in the
+// payload of messages published to globalTransitionNotifyChannel. Including
+// transitionID ensures that notifications for one transition can never wake
+// waiters subscribed to a different transition for the same sandbox.
+func getTransitionRoutingKey(teamID, sandboxID, transitionID string) string {
+	return redis_utils.CreateKey(GetTeamPrefix(teamID), transitionKeyPrefix, sandboxID, transitionID, notifySuffix)
 }
