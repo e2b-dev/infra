@@ -11,20 +11,20 @@ import (
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
 )
 
-func setupTestManager(t *testing.T) (*subscriptionManager, *Storage) {
+func setupTestManager(t *testing.T) *subscriptionManager {
 	t.Helper()
 
 	client := redis_utils.SetupInstance(t)
 	storage := NewStorage(t.Context(), client)
 	t.Cleanup(storage.Close)
 
-	return storage.subManager, storage
+	return storage.subManager
 }
 
 func TestSubscriptionManager_SubscribeAndDispatch(t *testing.T) {
 	t.Parallel()
 
-	m, _ := setupTestManager(t)
+	m := setupTestManager(t)
 
 	ch, cleanup := m.subscribe("key1")
 	defer cleanup()
@@ -42,7 +42,7 @@ func TestSubscriptionManager_SubscribeAndDispatch(t *testing.T) {
 func TestSubscriptionManager_DispatchOnlyMatchingKey(t *testing.T) {
 	t.Parallel()
 
-	m, _ := setupTestManager(t)
+	m := setupTestManager(t)
 
 	ch1, cleanup1 := m.subscribe("key1")
 	defer cleanup1()
@@ -71,14 +71,14 @@ func TestSubscriptionManager_DispatchOnlyMatchingKey(t *testing.T) {
 func TestSubscriptionManager_MultipleWaitersForSameKey(t *testing.T) {
 	t.Parallel()
 
-	m, _ := setupTestManager(t)
+	m := setupTestManager(t)
 
 	const numWaiters = 5
 	channels := make([]<-chan struct{}, numWaiters)
-	cleanups := make([]func(), numWaiters)
 	for i := range numWaiters {
-		channels[i], cleanups[i] = m.subscribe("shared-key")
-		defer cleanups[i]()
+		ch, cleanup := m.subscribe("shared-key")
+		t.Cleanup(cleanup)
+		channels[i] = ch
 	}
 
 	m.dispatch("shared-key")
@@ -96,7 +96,7 @@ func TestSubscriptionManager_MultipleWaitersForSameKey(t *testing.T) {
 func TestSubscriptionManager_CleanupRemovesWaiter(t *testing.T) {
 	t.Parallel()
 
-	m, _ := setupTestManager(t)
+	m := setupTestManager(t)
 
 	ch, cleanup := m.subscribe("key-cleanup")
 	cleanup()
@@ -121,7 +121,7 @@ func TestSubscriptionManager_CleanupRemovesWaiter(t *testing.T) {
 func TestSubscriptionManager_CleanupPartialRemoval(t *testing.T) {
 	t.Parallel()
 
-	m, _ := setupTestManager(t)
+	m := setupTestManager(t)
 
 	ch1, cleanup1 := m.subscribe("key-partial")
 	ch2, cleanup2 := m.subscribe("key-partial")
@@ -158,7 +158,7 @@ func TestSubscriptionManager_CleanupPartialRemoval(t *testing.T) {
 func TestSubscriptionManager_DoubleDispatchDoesNotBlock(t *testing.T) {
 	t.Parallel()
 
-	m, _ := setupTestManager(t)
+	m := setupTestManager(t)
 
 	ch, cleanup := m.subscribe("key-double")
 	defer cleanup()
@@ -187,16 +187,13 @@ func TestSubscriptionManager_DoubleDispatchDoesNotBlock(t *testing.T) {
 func TestSubscriptionManager_ConcurrentSubscribeDispatchCleanup(t *testing.T) {
 	t.Parallel()
 
-	m, _ := setupTestManager(t)
+	m := setupTestManager(t)
 
 	const goroutines = 20
 	var wg sync.WaitGroup
 
-	for i := range goroutines {
-		wg.Add(1)
-		go func(idx int) {
-			defer wg.Done()
-
+	for range goroutines {
+		wg.Go(func() {
 			ch, cleanup := m.subscribe("concurrent-key")
 			defer cleanup()
 
@@ -208,7 +205,7 @@ func TestSubscriptionManager_ConcurrentSubscribeDispatchCleanup(t *testing.T) {
 			case <-ch:
 			case <-time.After(100 * time.Millisecond):
 			}
-		}(i)
+		})
 	}
 
 	wg.Wait()

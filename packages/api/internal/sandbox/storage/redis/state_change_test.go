@@ -1184,6 +1184,7 @@ func TestWaitForTransition_StalePubSubNotification(t *testing.T) {
 	// Restore to Running so we can start a new transition.
 	_, err = storage.Update(t.Context(), sbx.TeamID, sbx.SandboxID, func(s sandbox.Sandbox) (sandbox.Sandbox, error) {
 		s.State = sandbox.StateRunning
+
 		return s, nil
 	})
 	require.NoError(t, err)
