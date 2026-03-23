@@ -8,6 +8,7 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
+	"golang.org/x/sync/semaphore"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
@@ -36,11 +37,8 @@ type Synchronize[SourceItem any, PoolItem any] struct {
 	cancel     chan struct{} // channel for cancellation of synchronization
 	cancelOnce sync.Once
 
-	// syncMu serializes concurrent sync rounds. syncDiscovered performs a
-	// non-atomic PoolExists → PoolInsert check-then-act: without serialization
-	// two concurrent rounds can both observe a new item as absent and call
-	// PoolInsert twice, opening duplicate connections and leaking the first one.
-	syncMu sync.Mutex
+	// syncSem prevents concurrent PoolInsert calls
+	syncSem *semaphore.Weighted
 }
 
 func NewSynchronize[SourceItem any, PoolItem any](spanPrefix string, logsPrefix string, store Store[SourceItem, PoolItem]) *Synchronize[SourceItem, PoolItem] {
@@ -49,6 +47,7 @@ func NewSynchronize[SourceItem any, PoolItem any](spanPrefix string, logsPrefix 
 		logsPrefix:       logsPrefix,
 		store:            store,
 		cancel:           make(chan struct{}),
+		syncSem:          semaphore.NewWeighted(1),
 	}
 
 	return s
@@ -90,10 +89,12 @@ func (s *Synchronize[SourceItem, PoolItem]) Close() {
 	)
 }
 
-// Sync performs period sync or it can be done as an on-demand synchronization round against the source.
+// Sync performs periodic sync or it can be done as an on-demand synchronization round against the source.
 func (s *Synchronize[SourceItem, PoolItem]) Sync(ctx context.Context) error {
-	s.syncMu.Lock()
-	defer s.syncMu.Unlock()
+	if err := s.syncSem.Acquire(ctx, 1); err != nil {
+		return fmt.Errorf("failed to acquire sync lock: %w", err)
+	}
+	defer s.syncSem.Release(1)
 
 	ctx, span := tracer.Start(ctx, s.getSpanName("sync-items"))
 	defer span.End()
