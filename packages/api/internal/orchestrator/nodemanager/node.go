@@ -178,3 +178,12 @@ func (n *Node) GetClient(ctx context.Context) (*clusters.GRPCClient, context.Con
 func (n *Node) IsNomadManaged() bool {
 	return n.NomadNodeShortID != UnknownNomadNodeShortID
 }
+
+func (n *Node) OptimisticAdd(res SandboxResources) {
+    n.metricsMu.Lock()
+    defer n.metricsMu.Unlock()
+    
+    // Directly accumulate to the current metrics view
+    n.metrics.CpuAllocated += uint32(res.CPUs)
+    n.metrics.MemoryAllocatedBytes += uint64(res.MiBMemory) * 1024 * 1024 // Note: CpuPercent is difficult to estimate, usually just updating Allocated is sufficient for the scheduling algorithm
+}
