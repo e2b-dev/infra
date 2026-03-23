@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
+	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	catalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 )
