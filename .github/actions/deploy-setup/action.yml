@@ -15,6 +15,33 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: Pull infisical secrets into temporary file
+      uses: Infisical/secrets-action@v1.0.9
+      with:
+        method: "oidc"
+        identity-id: ${{ inputs.infisical_machine_identity_id }}
+        project-slug: "infra-deployment"
+        env-slug: ${{ inputs.environment }}
+        export-type: "file"
+        file-output-path: "/.env.infisical"
+
+    - name: Transform infisical secrets into make include file, load a few as environment variables
+      id: load-env
+      run: |
+        echo ${{ inputs.environment }} > .last_used_env
+        cat .env.infisical | sed "s/='\(.*\)'$/=\1/g" > .env.${{ inputs.environment }}
+
+        # Load environment variables from .env
+        set -a
+        . .env.${{ inputs.environment }}
+        set +a
+
+        echo "GCP_REGION=${GCP_REGION}" >> $GITHUB_ENV
+        echo "GCP_PROJECT_ID=${GCP_PROJECT_ID}" >> $GITHUB_ENV
+        echo "TERRAFORM_STATE_BUCKET=${TERRAFORM_STATE_BUCKET}" >> $GITHUB_ENV
+        echo "GH_WORKLOAD_IDENTITY_PROVIDER=${GH_WORKLOAD_IDENTITY_PROVIDER}" >> $GITHUB_ENV
+      shell: bash
+
     - name: Load environment variables from Infisical
       uses: Infisical/secrets-action@v1.0.15
       with:
