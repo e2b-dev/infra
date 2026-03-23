@@ -49,9 +49,6 @@ variable "otel_collector_grpc_port" {
   default = 4317
 }
 
-variable "logs_proxy_port" {
-  type = object({
-    name = string
-    port = number
-  })
+variable "logs_collector_address" {
+  type = string
 }

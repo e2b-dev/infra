@@ -30,6 +30,7 @@ tf_vars := AWS_PROFILE=$(AWS_PROFILE) AWS_REGION=$(AWS_REGION) \
 	$(call tfvar, API_SERVER_MACHINE_TYPE) \
 	$(call tfvar, CLIENT_PROXY_COUNT) \
 	$(call tfvar, INGRESS_COUNT) \
+	$(call tfvar, DASHBOARD_API_COUNT) \
 	$(call tfvar, BUILD_CLUSTER_SIZE) \
 	$(call tfvar, BUILD_SERVER_MACHINE_TYPE) \
 	$(call tfvar, BUILD_SERVER_NESTED_VIRTUALIZATION) \

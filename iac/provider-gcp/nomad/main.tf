@@ -137,7 +137,7 @@ module "dashboard_api" {
   supabase_jwt_secrets                   = trimspace(data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data)
 
   otel_collector_grpc_port = var.otel_collector_grpc_port
-  logs_proxy_port          = var.logs_proxy_port
+  logs_collector_address   = "http://localhost:${var.logs_proxy_port.port}"
 }
 
 module "redis" {

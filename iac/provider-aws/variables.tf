@@ -156,6 +156,11 @@ variable "control_server_cluster_size" {
   default = 3
 }
 
+variable "dashboard_api_count" {
+  type    = number
+  default = 0
+}
+
 variable "additional_traefik_arguments" {
   type    = list(string)
   default = []

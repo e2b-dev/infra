@@ -130,6 +130,27 @@ module "api" {
   }
 }
 
+module "dashboard_api" {
+  source = "../../modules/job-dashboard-api"
+  count  = var.dashboard_api_count > 0 ? 1 : 0
+
+  count_instances = var.dashboard_api_count
+  node_pool       = var.api_node_pool
+  update_stanza   = var.dashboard_api_count > 1
+  environment     = var.environment
+
+  image = "${var.aws_account_id}.dkr.ecr.${var.aws_region}.amazonaws.com/${var.dashboard_api_repository_name}:latest"
+
+  postgres_connection_string             = var.postgres_connection_string
+  auth_db_connection_string              = var.postgres_connection_string
+  auth_db_read_replica_connection_string = ""
+  clickhouse_connection_string           = local.clickhouse_connection_string
+  supabase_jwt_secrets                   = var.supabase_jwt_secrets
+
+  otel_collector_grpc_port = var.otel_collector_grpc_port
+  logs_collector_address   = "http://localhost:${var.logs_proxy_port}"
+}
+
 data "aws_s3_object" "orchestrator" {
   bucket = var.fc_env_pipeline_bucket_name
   key    = "orchestrator"

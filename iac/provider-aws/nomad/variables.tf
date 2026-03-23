@@ -302,6 +302,17 @@ variable "additional_traefik_arguments" {
   default = []
 }
 
+# Dashboard API
+variable "dashboard_api_count" {
+  type    = number
+  default = 0
+}
+
+variable "dashboard_api_repository_name" {
+  type    = string
+  default = ""
+}
+
 variable "db_max_open_connections" {
   type = number
 }

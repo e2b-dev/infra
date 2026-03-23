@@ -19,6 +19,6 @@ resource "nomad_job" "dashboard_api" {
     subdomain = "dashboard-api"
 
     otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
-    logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
+    logs_collector_address       = var.logs_collector_address
   })
 }

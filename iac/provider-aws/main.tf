@@ -197,6 +197,9 @@ module "nomad" {
   client_proxy_count           = var.client_proxy_count
   client_proxy_repository_name = module.init.client_proxy_repository_name
 
+  dashboard_api_count           = var.dashboard_api_count
+  dashboard_api_repository_name = module.init.dashboard_api_repository_name
+
   orchestrator_node_pool              = local.client_pool_name
   allow_sandbox_internet              = var.allow_sandbox_internet
   orchestrator_port                   = var.orchestrator_port

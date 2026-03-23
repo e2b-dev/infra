@@ -60,6 +60,10 @@ output "db_migrator_repository_name" {
   value = aws_ecr_repository.db_migrator.name
 }
 
+output "dashboard_api_repository_name" {
+  value = aws_ecr_repository.dashboard_api.name
+}
+
 // ---
 // Cloudflare
 // ---
