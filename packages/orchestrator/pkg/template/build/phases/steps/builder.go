@@ -24,6 +24,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/storage/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/metadata"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
@@ -47,6 +48,7 @@ type StepBuilder struct {
 	commandExecutor *commands.CommandExecutor
 	index           cache.Index
 	metrics         *metrics.BuildMetrics
+	featureFlags    *featureflags.Client
 }
 
 func New(
@@ -58,6 +60,7 @@ func New(
 	commandExecutor *commands.CommandExecutor,
 	index cache.Index,
 	metrics *metrics.BuildMetrics,
+	featureFlags *featureflags.Client,
 	step *templatemanager.TemplateStep,
 	stepNumber int,
 	defaultLoggingLevel zapcore.Level,
@@ -77,6 +80,7 @@ func New(
 		commandExecutor: commandExecutor,
 		index:           index,
 		metrics:         metrics,
+		featureFlags:    featureFlags,
 	}
 }
 
@@ -180,6 +184,7 @@ func (sb *StepBuilder) Build(
 			sbxConfig,
 			sb.sandboxFactory,
 			layerTimeout,
+			layer.ReservedBlocksOptions(ctx, sb.featureFlags, sb.Config.RootfsBlockSize())...,
 		)
 	} else {
 		sandboxCreator = layer.NewResumeSandbox(sbxConfig, sb.sandboxFactory, layerTimeout)

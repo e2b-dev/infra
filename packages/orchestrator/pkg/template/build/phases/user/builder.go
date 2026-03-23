@@ -15,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/phases"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/phases/steps"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/storage/cache"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
@@ -34,6 +35,7 @@ func New(
 	commandExecutor *commands.CommandExecutor,
 	index cache.Index,
 	metrics *metrics.BuildMetrics,
+	featureFlags *featureflags.Client,
 	user string,
 	force *bool,
 ) *UserBuilder {
@@ -47,6 +49,7 @@ func New(
 			commandExecutor,
 			index,
 			metrics,
+			featureFlags,
 			&template_manager.TemplateStep{
 				Type:  "USER",
 				Args:  []string{user, "true"},

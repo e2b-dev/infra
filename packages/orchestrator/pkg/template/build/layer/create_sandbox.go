@@ -13,10 +13,12 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/fc"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/config"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/core/filesystem"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/constants"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/units"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/models"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -29,6 +31,7 @@ type CreateSandbox struct {
 
 	rootfsCachePath string
 	ioEngine        *string
+	preBootFn       sandbox.PreBootFn
 }
 
 const (
@@ -41,6 +44,7 @@ var _ SandboxCreator = (*CreateSandbox)(nil)
 type createSandboxOptions struct {
 	rootfsCachePath string
 	ioEngine        *string
+	preBootFn       sandbox.PreBootFn
 }
 
 type CreateSandboxOption func(*createSandboxOptions)
@@ -54,6 +58,31 @@ func WithIoEngine(ioEngine string) CreateSandboxOption {
 func WithRootfsCachePath(rootfsCachePath string) CreateSandboxOption {
 	return func(opts *createSandboxOptions) {
 		opts.rootfsCachePath = rootfsCachePath
+	}
+}
+
+// WithPreBootFn sets a callback that runs after the rootfs is ready but before
+// Firecracker boots. The callback receives the rootfs device path and can
+// modify filesystem on the host side.
+func WithPreBootFn(fn sandbox.PreBootFn) CreateSandboxOption {
+	return func(opts *createSandboxOptions) {
+		opts.preBootFn = fn
+	}
+}
+
+// ReservedBlocksOptions returns CreateSandboxOption(s) that set reserved blocks
+// on the rootfs before the guest boots, if the BuildReservedDiskSpaceMB feature
+// flag is greater than zero. Returns nil otherwise.
+func ReservedBlocksOptions(ctx context.Context, featureFlags *featureflags.Client, blockSize int64) []CreateSandboxOption {
+	reservedDiskSpaceMB := int64(featureFlags.IntFlag(ctx, featureflags.BuildReservedDiskSpaceMB))
+	if reservedDiskSpaceMB <= 0 {
+		return nil
+	}
+
+	return []CreateSandboxOption{
+		WithPreBootFn(func(ctx context.Context, rootfsPath string) error {
+			return filesystem.SetReservedBlocksOnHost(ctx, rootfsPath, reservedDiskSpaceMB, blockSize)
+		}),
 	}
 }
 
@@ -72,6 +101,7 @@ func NewCreateSandbox(config *sandbox.Config, sandboxFactory *sandbox.Factory, t
 		rootfsCachePath: opts.rootfsCachePath,
 		sandboxFactory:  sandboxFactory,
 		ioEngine:        opts.ioEngine,
+		preBootFn:       opts.preBootFn,
 	}
 }
 
@@ -121,6 +151,7 @@ func (cs *CreateSandbox) Sandbox(
 			IoEngine:            cs.ioEngine,
 		},
 		nil,
+		cs.preBootFn,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create sandbox: %w", err)
