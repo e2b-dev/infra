@@ -178,7 +178,9 @@ func (ppb *PostProcessingBuilder) Build(
 	sandboxOptions := []layer.CreateSandboxOption{
 		layer.WithIoEngine(ioEngine),
 	}
-	sandboxOptions = append(sandboxOptions, layer.ReservedBlocksOptions(ctx, ppb.featureFlags, ppb.Config.RootfsBlockSize())...)
+	if sourceLayer.Cached {
+		sandboxOptions = append(sandboxOptions, layer.ReservedBlocksOptions(ctx, ppb.featureFlags, ppb.Config.RootfsBlockSize())...)
+	}
 
 	// Always restart the sandbox for the final layer to properly wire the rootfs path for the final template
 	sandboxCreator := layer.NewCreateSandbox(
