@@ -21,16 +21,8 @@ func (o *Orchestrator) connectToNode(ctx context.Context, discovered nodemanager
 	ctx, childSpan := tracer.Start(ctx, "connect-to-node")
 	defer childSpan.End()
 
-	// connectGroup is keyed by NomadNodeShortID so that any concurrent caller
-	// (background sync goroutine or on-demand getOrConnectNode) that races to
-	// connect the same Nomad node shares a single dial attempt. The second
-	// caller simply waits and gets the same nil result; registerNode is never
-	// called twice for the same node.
 	_, err, _ := o.connectGroup.Do(discovered.NomadNodeShortID, func() (any, error) {
-		// Re-check inside the singleflight. The caller verified absence before
-		// calling us, but a previous completed Do for this key (or a concurrent
-		// path that bypasses the singleflight) may have already registered the
-		// node in the meantime. Avoid a redundant dial.
+		// Re-check inside the singleflight to prevent race issues due to overwriting existing nodes in the map
 		if o.GetNodeByNomadShortID(discovered.NomadNodeShortID) != nil {
 			return nil, nil
 		}
@@ -57,13 +49,13 @@ func (o *Orchestrator) connectToClusterNode(ctx context.Context, cluster *cluste
 	scopedKey := o.scopedNodeID(cluster.ID, i.NodeID)
 
 	o.connectGroup.Do(scopedKey, func() (any, error) { //nolint:errcheck
-		connectCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), nodeConnectTimeout)
-		defer cancel()
-
 		// Re-check inside the singleflight for the same reason as connectToNode.
 		if o.GetNode(cluster.ID, i.NodeID) != nil {
 			return nil, nil
 		}
+
+		connectCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), nodeConnectTimeout)
+		defer cancel()
 
 		orchestratorNode, err := nodemanager.NewClusterNode(connectCtx, i.GetClient(), cluster.ID, cluster.SandboxDomain, i)
 		if err != nil {
@@ -167,54 +159,70 @@ func (o *Orchestrator) getOrConnectNode(ctx context.Context, clusterID uuid.UUID
 
 	scopedKey := o.scopedNodeID(clusterID, nodeID)
 
-	o.discoveryGroup.Do(scopedKey, func() (any, error) { //nolint:errcheck
-		connectCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), nodeConnectTimeout)
+	_, err, _ := o.discoveryGroup.Do(scopedKey, func() (any, error) { //nolint:errcheck
+		// Re-check inside the singleflight
+		if node := o.GetNode(clusterID, nodeID); node != nil {
+			return nil, nil
+		}
+
+		connectCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), cacheSyncTime)
 		defer cancel()
 
 		if clusterID == consts.LocalClusterID {
-			// Nomad-managed node: list all ready Nomad nodes and connect any that are
-			// not yet in the pool. Once the new node is connected its orchestrator ID
-			// becomes the map key, making the subsequent GetNode call succeed.
-			nomadNodes, err := o.listNomadNodes(connectCtx)
-			if err != nil {
-				logger.L().Error(connectCtx, "Error listing Nomad nodes during on-demand connect",
-					zap.Error(err), logger.WithNodeID(nodeID))
-
-				return nil, nil
-			}
-
-			for _, n := range nomadNodes {
-				if o.GetNodeByNomadShortID(n.NomadNodeShortID) == nil {
-					if err := o.connectToNode(connectCtx, n); err != nil {
-						logger.L().Error(connectCtx, "Error connecting to Nomad node on demand",
-							zap.Error(err), zap.String("nomad_short_id", n.NomadNodeShortID))
-					}
-				}
-			}
-		} else {
-			// Cluster node: first force a fresh service discovery query so that nodes
-			// which joined after the last periodic sync are pulled into cluster.instances
-			// Then load them into orchestrator nodes map.
-			if cluster, found := o.clusters.GetClusterById(clusterID); found {
-				if err := cluster.SyncInstances(connectCtx); err != nil {
-					logger.L().Error(connectCtx, "Error syncing cluster instances during on-demand connect",
-						zap.Error(err), logger.WithNodeID(nodeID))
-				}
-
-				for _, instance := range cluster.GetOrchestrators() {
-					if instance.NodeID == nodeID {
-						o.connectToClusterNode(connectCtx, cluster, instance)
-
-						break
-					}
-				}
-			}
+			return nil, o.discoverNomadNode(connectCtx)
 		}
 
-		return nil, nil
+		return nil, o.discoverClusterNode(connectCtx, clusterID, nodeID)
 	})
+	if err != nil {
+		logger.L().Error(ctx, "Error during on-demand node discovery", zap.Error(err), logger.WithNodeID(nodeID), logger.WithClusterID(clusterID))
+
+		return nil
+	}
 
 	return o.GetNode(clusterID, nodeID)
+}
+
+// discoverNomadNode lists all ready Nomad nodes and connects any that are not yet in the pool.
+// Once a new node is connected its orchestrator ID becomes the map key, making subsequent GetNode calls succeed.
+func (o *Orchestrator) discoverNomadNode(ctx context.Context) error {
+	nomadNodes, err := o.listNomadNodes(ctx)
+	if err != nil {
+		return err
+	}
+
+	for _, n := range nomadNodes {
+		if o.GetNodeByNomadShortID(n.NomadNodeShortID) == nil {
+			if err := o.connectToNode(ctx, n); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// discoverClusterNode forces a fresh service discovery query so that nodes which joined after the
+// last periodic sync are pulled into cluster.instances, then connects the target node into o.nodes.
+func (o *Orchestrator) discoverClusterNode(ctx context.Context, clusterID uuid.UUID, nodeID string) error {
+	cluster, found := o.clusters.GetClusterById(clusterID)
+	if !found {
+		return fmt.Errorf("cluster not found")
+	}
+
+	if err := cluster.SyncInstances(ctx); err != nil {
+		return err
+	}
+
+	for _, instance := range cluster.GetOrchestrators() {
+		if instance.NodeID == nodeID {
+			o.connectToClusterNode(ctx, cluster, instance)
+
+			break
+		}
+	}
+
+	return nil
 }
 
 func (o *Orchestrator) GetClusterNodes(clusterID uuid.UUID) []*nodemanager.Node {
