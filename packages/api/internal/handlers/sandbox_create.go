@@ -185,7 +185,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	}
 
 	sbxVolumeMounts, err := convertAPIVolumesToOrchestratorVolumes(
-		ctx, a.sqlcDB, a.featureFlags, teamInfo.ID, apiVolumeMounts,
+		ctx, a.sqlcDB, a.featureFlags, teamInfo.ID, apiVolumeMounts, env,
 	)
 	if err != nil {
 		if errors.Is(err, ErrVolumeMountsDisabled) {
@@ -292,12 +292,15 @@ func (im InvalidVolumeMountsError) Error() string {
 	return fmt.Sprintf("invalid mounts:\n%s", strings.Join(errs, "\n"))
 }
 
+var ErrVolumesNotSupported = errors.New("volumes are not supported")
+
 func convertAPIVolumesToOrchestratorVolumes(
 	ctx context.Context,
 	sqlClient *sqlcdb.Client,
 	featureFlags featureFlagsClient,
 	teamID uuid.UUID,
 	volumeMounts []api.SandboxVolumeMount,
+	env *api.Template,
 ) ([]*orchestrator.SandboxVolumeMount, error) {
 	if len(volumeMounts) == 0 {
 		return []*orchestrator.SandboxVolumeMount{}, nil // only b/c you should never return (nil, nil)
@@ -305,6 +308,12 @@ func convertAPIVolumesToOrchestratorVolumes(
 
 	if !featureFlags.BoolFlag(ctx, featureflags.PersistentVolumesFlag) {
 		return nil, ErrVolumeMountsDisabled
+	}
+
+	if ok, err := sharedUtils.DoesEnvdSupportVolumes(env.EnvdVersion); err != nil {
+		return nil, fmt.Errorf("failed to validate envd version: %w", err)
+	} else if !ok {
+		return nil, fmt.Errorf("envd does not support volumes: %w", ErrVolumesNotSupported)
 	}
 
 	// get volumes from the database

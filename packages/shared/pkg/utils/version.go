@@ -7,6 +7,7 @@ import (
 )
 
 const MinEnvdVersionForSnapshot = "0.5.0"
+const MinEnvdVersionForVolumes = "0.5.8"
 
 func sanitizeVersion(version string) string {
 	if len(version) > 0 && version[0] != 'v' {
@@ -14,6 +15,15 @@ func sanitizeVersion(version string) string {
 	}
 
 	return version
+}
+
+func DoesEnvdSupportVolumes(envdVersion string) (bool, error) {
+	ok, err := IsGTEVersion(envdVersion, MinEnvdVersionForVolumes)
+	if err != nil {
+		return false, fmt.Errorf("invalid envd version %q: %w", envdVersion, err)
+	}
+
+	return ok, nil
 }
 
 func CheckEnvdVersionForSnapshot(envdVersion string) error {
