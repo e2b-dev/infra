@@ -35,7 +35,10 @@ func (o *Orchestrator) connectToNode(ctx context.Context, discovered nodemanager
 			return nil, nil
 		}
 
-		orchestratorNode, err := nodemanager.New(ctx, o.tel.TracerProvider, o.tel.MeterProvider, discovered)
+		connectCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), nodeConnectTimeout)
+		defer cancel()
+
+		orchestratorNode, err := nodemanager.New(connectCtx, o.tel.TracerProvider, o.tel.MeterProvider, discovered)
 		if err != nil {
 			return nil, err
 		}
@@ -54,12 +57,15 @@ func (o *Orchestrator) connectToClusterNode(ctx context.Context, cluster *cluste
 	scopedKey := o.scopedNodeID(cluster.ID, i.NodeID)
 
 	o.connectGroup.Do(scopedKey, func() (any, error) { //nolint:errcheck
+		connectCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), nodeConnectTimeout)
+		defer cancel()
+
 		// Re-check inside the singleflight for the same reason as connectToNode.
 		if o.GetNode(cluster.ID, i.NodeID) != nil {
 			return nil, nil
 		}
 
-		orchestratorNode, err := nodemanager.NewClusterNode(ctx, i.GetClient(), cluster.ID, cluster.SandboxDomain, i)
+		orchestratorNode, err := nodemanager.NewClusterNode(connectCtx, i.GetClient(), cluster.ID, cluster.SandboxDomain, i)
 		if err != nil {
 			logger.L().Error(ctx, "Failed to create node", zap.Error(err))
 
@@ -162,7 +168,7 @@ func (o *Orchestrator) getOrConnectNode(ctx context.Context, clusterID uuid.UUID
 	scopedKey := o.scopedNodeID(clusterID, nodeID)
 
 	o.discoveryGroup.Do(scopedKey, func() (any, error) { //nolint:errcheck
-		connectCtx, cancel := context.WithTimeout(ctx, nodeConnectTimeout)
+		connectCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), nodeConnectTimeout)
 		defer cancel()
 
 		if clusterID == consts.LocalClusterID {
