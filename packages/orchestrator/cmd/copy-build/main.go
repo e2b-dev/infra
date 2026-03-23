@@ -78,46 +78,30 @@ func NewDestinationFromPath(prefix, file string) (*Destination, error) {
 	}, nil
 }
 
-func getReferencedFiles(h *header.Header, artifactName string) []string {
-	type buildInfo struct {
-		hasCompressed   bool
-		hasUncompressed bool
-		compressionType storage.CompressionType
-	}
-	builds := make(map[string]*buildInfo)
+func getReferencedData(h *header.Header, artifactName string) []string {
+	builds := make(map[string]storage.CompressionType)
 
 	for _, mapping := range h.Mapping {
 		if mapping.BuildId == uuid.Nil {
 			continue
 		}
+
 		bid := mapping.BuildId.String()
-
-		info, ok := builds[bid]
-		if !ok {
-			info = &buildInfo{}
-			builds[bid] = info
-		}
-
-		if mapping.FrameTable.IsCompressed() {
-			info.hasCompressed = true
-			info.compressionType = mapping.FrameTable.CompressionType()
-		} else {
-			info.hasUncompressed = true
+		if _, ok := builds[bid]; !ok {
+			builds[bid] = mapping.FrameTable.CompressionType()
 		}
 	}
 
 	var refs []string
 
-	for bid, info := range builds {
+	for bid, ct := range builds {
 		tf := storage.TemplateFiles{BuildID: bid}
 
-		// Always include the header for referenced builds
 		refs = append(refs, tf.HeaderPath(artifactName))
 
-		if info.hasCompressed {
-			refs = append(refs, tf.CompressedDataPath(artifactName, info.compressionType))
-		}
-		if info.hasUncompressed {
+		if ct != storage.CompressionNone {
+			refs = append(refs, tf.CompressedDataPath(artifactName, ct))
+		} else {
 			refs = append(refs, tf.DataPath(artifactName))
 		}
 	}
@@ -204,7 +188,7 @@ func main() {
 		log.Fatalf("failed to load memfile header: %s", err)
 	}
 
-	filesToCopy = append(filesToCopy, getReferencedFiles(memfileHeader, storage.MemfileName)...)
+	filesToCopy = append(filesToCopy, getReferencedData(memfileHeader, storage.MemfileName)...)
 
 	// Extract all files referenced by the build rootfs header
 	rootfsHeader, err := header.LoadHeader(ctx, provider, template.StorageRootfsHeaderPath())
@@ -212,7 +196,7 @@ func main() {
 		log.Fatalf("failed to load rootfs header: %s", err)
 	}
 
-	filesToCopy = append(filesToCopy, getReferencedFiles(rootfsHeader, storage.RootfsName)...)
+	filesToCopy = append(filesToCopy, getReferencedData(rootfsHeader, storage.RootfsName)...)
 
 	// Add the snapfile to the list of files to copy
 	snapfilePath := template.StorageSnapfilePath()
