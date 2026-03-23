@@ -240,10 +240,7 @@ func (s *Storage) WaitForStateChange(ctx context.Context, teamID uuid.UUID, sand
 }
 
 // waitForTransition waits for a specific transition to complete.
-// It registers with the central subscriptionManager to receive an immediate
-// signal via the fan-out PubSub channel when the transition completes.
-// A 1-second ticker acts as a safety-net fallback in case a PubSub message
-// is missed (e.g. during a Redis failover or transient connection drop).
+// It should receive a signal via the fan-out PubSub channel or fallback to a 1-second ticker
 func (s *Storage) waitForTransition(
 	ctx context.Context,
 	teamID uuid.UUID,
@@ -254,9 +251,7 @@ func (s *Storage) waitForTransition(
 	transitionKey := getTransitionKey(teamID.String(), sandboxID)
 	resultKey := getTransitionResultKey(teamID.String(), sandboxID, transitionID)
 
-	// Register with the central subscription manager before checking the
-	// transition key so we cannot miss a publish that fires between the
-	// check and the select below.
+	// Register to pubsub
 	ch, cleanup := s.subManager.subscribe(routingKey)
 	defer cleanup()
 

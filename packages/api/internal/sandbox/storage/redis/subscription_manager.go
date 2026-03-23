@@ -7,14 +7,8 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// subscriptionManager maintains a single Redis PubSub connection subscribed to
-// globalTransitionNotifyChannel and fans out transition-complete signals to
-// registered in-process waiters.
-//
-// One connection per API pod is sufficient regardless of how many sandboxes are
-// concurrently transitioning. Each published message carries the per-sandbox
-// routing key as its payload; the manager uses that to wake only the goroutines
-// waiting on that specific sandbox.
+// subscriptionManager maintains a Redis PubSub connection and
+// fans out transition-complete signals to registered in-process waiters.
 type subscriptionManager struct {
 	mu      sync.RWMutex
 	waiters map[string]map[chan struct{}]struct{} // routingKey → registered waiters

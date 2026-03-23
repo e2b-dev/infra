@@ -124,6 +124,8 @@ func New(
 
 	bestOfKAlgorithm := placement.NewBestOfK(getBestOfKConfig(ctx, featureFlags)).(*placement.BestOfK)
 
+	redisStorage := redisbackend.NewStorage(ctx, redisClient)
+
 	o := Orchestrator{
 		httpClient:           httpClient,
 		analytics:            analyticsInstance,
@@ -138,6 +140,7 @@ func New(
 		snapshotCache:        snapshotCache,
 		tel:                  tel,
 		clusters:             clusters,
+		redisStorage:         redisStorage,
 
 		sandboxCounter: sandboxCounter,
 		createdCounter: createdCounter,
@@ -147,8 +150,6 @@ func New(
 
 	var reservationStorage sandbox.ReservationStorage
 	var sandboxStorage sandbox.Storage
-	redisStorage := redisbackend.NewStorage(ctx, redisClient)
-	o.redisStorage = redisStorage
 
 	switch config.SandboxStorageBackend {
 	case cfg.SandboxStorageBackendMemory:
