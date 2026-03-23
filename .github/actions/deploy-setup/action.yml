@@ -4,45 +4,25 @@ inputs:
   environment:
     description: "Target environment for deployment, e.g. staging"
     required: true
-  infisical_client_id:
-    description: "Infisical client ID for accessing secrets"
-    required: true
-  infisical_client_secret:
-    description: "Infisical client secret for accessing secrets"
-    required: true
   install_gcloud:
     description: "Whether to install the gcloud CLI (needed for gsutil/docker auth)"
     required: false
     default: "false"
+  infisical_machine_identity_id:
+    description: "Infisical machine identity ID for accessing secrets"
+    required: true
 
 runs:
   using: "composite"
   steps:
-    - uses: Infisical/secrets-action@v1.0.9
+    - name: Load environment variables from Infisical
+      uses: Infisical/secrets-action@v1.0.15
       with:
-        client-id: ${{ inputs.infisical_client_id }}
-        client-secret: ${{ inputs.infisical_client_secret }}
+        method: "oidc"
+        identity-id: ${{ inputs.infisical_machine_identity_id }}
+        project-slug: "infra-deployment-env"
         env-slug: ${{ inputs.environment }}
-        project-slug: "infra-deployment"
-        export-type: "file"
-        file-output-path: "/.env.infisical"
-
-    - name: Load Environment Variables
-      id: load-env
-      run: |
-        echo ${{ inputs.environment }} > .last_used_env
-        cat .env.infisical | sed "s/='\(.*\)'$/=\1/g" > .env.${{ inputs.environment }}
-
-        # Load environment variables from .env
-        set -a
-        . .env.${{ inputs.environment }}
-        set +a
-
-        echo "GCP_REGION=${GCP_REGION}" >> $GITHUB_ENV
-        echo "GCP_PROJECT_ID=${GCP_PROJECT_ID}" >> $GITHUB_ENV
-        echo "TERRAFORM_STATE_BUCKET=${TERRAFORM_STATE_BUCKET}" >> $GITHUB_ENV
-        echo "GH_WORKLOAD_IDENTITY_PROVIDER=${GH_WORKLOAD_IDENTITY_PROVIDER}" >> $GITHUB_ENV
-      shell: bash
+        export-type: "env"
 
     - name: Setup Service Account
       uses: google-github-actions/auth@v2
