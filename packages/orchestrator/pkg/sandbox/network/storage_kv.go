@@ -16,14 +16,14 @@ type StorageKV struct {
 	slotsSize    int
 	consulClient *consulApi.Client
 	nodeID       string
-	lifecycle    SlotEventLifecycle
+	egressProxy  EgressProxy
 }
 
 func (s *StorageKV) getKVKey(slotIdx int) string {
 	return fmt.Sprintf("%s/%d", s.nodeID, slotIdx)
 }
 
-func NewStorageKV(nodeID string, config Config, lifecycle SlotEventLifecycle) (*StorageKV, error) {
+func NewStorageKV(nodeID string, config Config, egressProxy EgressProxy) (*StorageKV, error) {
 	consulToken := utils.RequiredEnv("CONSUL_TOKEN", "Consul token for authenticating requests to the Consul API")
 
 	consulClient, err := newConsulClient(consulToken)
@@ -36,7 +36,7 @@ func NewStorageKV(nodeID string, config Config, lifecycle SlotEventLifecycle) (*
 		slotsSize:    vrtSlotsSize,
 		consulClient: consulClient,
 		nodeID:       nodeID,
-		lifecycle:    lifecycle,
+		egressProxy:  egressProxy,
 	}, nil
 }
 
@@ -67,7 +67,7 @@ func (s *StorageKV) Acquire(_ context.Context) (*Slot, error) {
 		}
 
 		if status {
-			return NewSlot(key, slotIdx, s.config, s.lifecycle)
+			return NewSlot(key, slotIdx, s.config, s.egressProxy)
 		}
 
 		return nil, nil

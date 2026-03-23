@@ -20,12 +20,12 @@ type StorageLocal struct {
 	foreignNs    map[string]struct{}
 	acquiredNs   map[string]struct{}
 	acquiredNsMu sync.Mutex
-	lifecycle    SlotEventLifecycle
+	egressProxy  EgressProxy
 }
 
 const netNamespacesDir = "/var/run/netns"
 
-func NewStorageLocal(ctx context.Context, config Config, lifecycle SlotEventLifecycle) (*StorageLocal, error) {
+func NewStorageLocal(ctx context.Context, config Config, egressProxy EgressProxy) (*StorageLocal, error) {
 	// get namespaces that we want to always skip
 	foreignNs, err := getForeignNamespaces()
 	if err != nil {
@@ -44,7 +44,7 @@ func NewStorageLocal(ctx context.Context, config Config, lifecycle SlotEventLife
 		slotsSize:    vrtSlotsSize,
 		acquiredNs:   make(map[string]struct{}, vrtSlotsSize),
 		acquiredNsMu: sync.Mutex{},
-		lifecycle:    lifecycle,
+		egressProxy:  egressProxy,
 	}, nil
 }
 
@@ -99,7 +99,7 @@ func (s *StorageLocal) Acquire(ctx context.Context) (*Slot, error) {
 			s.acquiredNs[slotName] = struct{}{}
 			slotKey := getLocalKey(slotIdx)
 
-			return NewSlot(slotKey, slotIdx, s.config, s.lifecycle)
+			return NewSlot(slotKey, slotIdx, s.config, s.egressProxy)
 		}
 	}
 }

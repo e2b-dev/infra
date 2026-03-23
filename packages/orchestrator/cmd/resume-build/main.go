@@ -974,7 +974,7 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	if verbose {
 		fmt.Println("🔧 Creating network storage...")
 	}
-	slotStorage, err := network.NewStorageLocal(ctx, config.NetworkConfig, nil)
+	slotStorage, err := network.NewStorageLocal(ctx, config.NetworkConfig, network.NoopEgressProxy{})
 	if err != nil {
 		return fmt.Errorf("network storage: %w", err)
 	}

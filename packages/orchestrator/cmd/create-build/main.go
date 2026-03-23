@@ -255,7 +255,7 @@ func doBuild(
 	go devicePool.Populate(ctx)
 	defer devicePool.Close(parentCtx)
 
-	slotStorage, err := network.NewStorageLocal(ctx, networkConfig, nil)
+	slotStorage, err := network.NewStorageLocal(ctx, networkConfig, network.NoopEgressProxy{})
 	if err != nil {
 		return fmt.Errorf("network storage: %w", err)
 	}

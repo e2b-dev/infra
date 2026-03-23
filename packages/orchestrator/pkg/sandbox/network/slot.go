@@ -10,7 +10,6 @@ import (
 	"sync/atomic"
 
 	"github.com/containernetworking/plugins/pkg/ns"
-	"github.com/coreos/go-iptables/iptables"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -80,16 +79,11 @@ type Slot struct {
 
 	hyperloopPort string
 
-	lifecycleHandler SlotEventLifecycle
-	config           Config
+	egressProxy EgressProxy
+	config      Config
 }
 
-type SlotEventLifecycle interface {
-	OnSlotCreate(s *Slot, tables *iptables.IPTables) error
-	OnSlotDelete(s *Slot, tables *iptables.IPTables) error
-}
-
-func NewSlot(key string, idx int, config Config, lifecycle SlotEventLifecycle) (*Slot, error) {
+func NewSlot(key string, idx int, config Config, egressProxy EgressProxy) (*Slot, error) {
 	if idx < 1 || idx > vrtSlotsSize {
 		return nil, fmt.Errorf("slot index %d is out of range [1, %d)", idx, vrtSlotsSize)
 	}
@@ -144,8 +138,8 @@ func NewSlot(key string, idx int, config Config, lifecycle SlotEventLifecycle) (
 
 		hyperloopPort: strconv.FormatUint(uint64(config.HyperloopProxyPort), 10),
 
-		config:           config,
-		lifecycleHandler: lifecycle,
+		config:      config,
+		egressProxy: egressProxy,
 	}
 
 	return slot, nil

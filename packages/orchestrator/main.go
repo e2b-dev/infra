@@ -816,10 +816,10 @@ func setupBuildStorage(ctx context.Context, limiter *limit.Limiter, orchConfig c
 }
 
 // NewStorage creates a new slot storage based on the environment, we are ok with using a memory storage for local
-func newStorage(ctx context.Context, nodeID string, config network.Config, lifecycle network.SlotEventLifecycle) (network.Storage, error) {
+func newStorage(ctx context.Context, nodeID string, config network.Config, egressProxy network.EgressProxy) (network.Storage, error) {
 	if env.IsDevelopment() || config.UseLocalNamespaceStorage {
-		return network.NewStorageLocal(ctx, config, lifecycle)
+		return network.NewStorageLocal(ctx, config, egressProxy)
 	}
 
-	return network.NewStorageKV(nodeID, config, lifecycle)
+	return network.NewStorageKV(nodeID, config, egressProxy)
 }

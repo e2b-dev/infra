@@ -12,7 +12,6 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/pkg/egressproxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/connlimit"
@@ -22,7 +21,7 @@ import (
 
 var _ sandbox.MapSubscriber = (*Proxy)(nil)
 
-var _ egressproxy.EgressProxy = (*Proxy)(nil)
+var _ network.EgressProxy = (*Proxy)(nil)
 
 type Proxy struct {
 	logger       logger.Logger

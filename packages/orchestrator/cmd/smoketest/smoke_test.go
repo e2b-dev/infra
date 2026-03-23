@@ -190,7 +190,7 @@ func newTestInfra(t *testing.T, ctx context.Context) *testInfra {
 	ti.closers = append(ti.closers, func(ctx context.Context) { devicePool.Close(ctx) })
 
 	// Network
-	slotStorage, err := network.NewStorageLocal(ctx, networkConfig, nil)
+	slotStorage, err := network.NewStorageLocal(ctx, networkConfig, network.NoopEgressProxy{})
 	require.NoError(t, err)
 	networkPool := network.NewPool(8, 8, slotStorage, networkConfig)
 	go networkPool.Populate(ctx)
