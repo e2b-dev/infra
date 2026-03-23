@@ -230,15 +230,6 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		if !errors.Is(sandboxErr, sandbox.ErrNotFound) {
 			return nil, status.Errorf(codes.Internal, "failed to get sandbox state: %v", sandboxErr)
 		}
-
-		// Reload snapshot metadata after orchestrator checks so we do not resume from stale
-		// pre-pause snapshot data.
-		snap, autoResume, err = s.getAutoResumeSnapshot(ctx, sandboxID)
-		if err != nil {
-			return nil, err
-		}
-
-		teamID = snap.Snapshot.TeamID
 	} else {
 		nodeIP, handled, existingErr := handleExistingSandboxAutoResume(
 			ctx,
@@ -275,16 +266,16 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		if handled {
 			return &proxygrpc.SandboxResumeResponse{OrchestratorIp: nodeIP}, nil
 		}
-
-		// Reload snapshot metadata after orchestrator checks so we do not resume from stale
-		// pre-pause snapshot data.
-		snap, autoResume, err = s.getAutoResumeSnapshot(ctx, sandboxID)
-		if err != nil {
-			return nil, err
-		}
-
-		teamID = snap.Snapshot.TeamID
 	}
+
+	// Reload snapshot metadata after orchestrator checks so we do not resume from stale
+	// pre-pause snapshot data.
+	snap, autoResume, err = s.getAutoResumeSnapshot(ctx, sandboxID)
+	if err != nil {
+		return nil, err
+	}
+
+	teamID = snap.Snapshot.TeamID
 
 	team, err := dbapi.GetTeamByID(ctx, s.api.authDB, teamID)
 	if err != nil {
