@@ -142,7 +142,7 @@ func handleExistingSandboxAutoResume(
 					zap.Int("attempts", attempts),
 				)
 
-				return "", false, status.Error(codes.FailedPrecondition, "sandbox is still transitioning")
+				return "", false, status.Error(codes.FailedPrecondition, proxygrpc.SandboxStillTransitioningMessage)
 			}
 
 			attempts++
@@ -166,7 +166,7 @@ func handleExistingSandboxAutoResume(
 						zap.Duration("budget", transitionWaitBudget),
 					)
 
-					return "", false, status.Error(codes.FailedPrecondition, "sandbox is still transitioning")
+					return "", false, status.Error(codes.FailedPrecondition, proxygrpc.SandboxStillTransitioningMessage)
 				}
 
 				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {

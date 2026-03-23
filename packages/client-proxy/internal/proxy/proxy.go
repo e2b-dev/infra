@@ -96,7 +96,7 @@ func handlePausedSandbox(
 			if st.Code() == codes.NotFound {
 				return "", autoResumeNotAllowed, nil
 			}
-			if st.Code() == codes.FailedPrecondition {
+			if st.Code() == codes.FailedPrecondition && st.Message() == proxygrpc.SandboxStillTransitioningMessage {
 				return "", autoResumeErrored, reverseproxy.NewErrSandboxStillTransitioning(sandboxId)
 			}
 			if st.Code() == codes.ResourceExhausted {

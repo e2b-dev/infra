@@ -170,11 +170,23 @@ func TestHandlePausedSandbox_FailedPrecondition(t *testing.T) {
 
 	ff := newFF(t, true)
 
-	_, res, err := handlePausedSandbox(t.Context(), "sbx", 8000, "token", "", stubResumer{err: status.Error(codes.FailedPrecondition, "sandbox is still transitioning")}, ff)
+	_, res, err := handlePausedSandbox(t.Context(), "sbx", 8000, "token", "", stubResumer{err: status.Error(codes.FailedPrecondition, proxygrpc.SandboxStillTransitioningMessage)}, ff)
 	require.Error(t, err)
 	var transitioningErr *reverseproxy.SandboxStillTransitioningError
 	require.ErrorAs(t, err, &transitioningErr)
 	require.Equal(t, "sbx", transitioningErr.SandboxId)
+	require.Equal(t, autoResumeErrored, res)
+}
+
+func TestHandlePausedSandbox_FailedPrecondition_OtherMessage(t *testing.T) {
+	t.Parallel()
+
+	ff := newFF(t, true)
+
+	_, res, err := handlePausedSandbox(t.Context(), "sbx", 8000, "token", "", stubResumer{err: status.Error(codes.FailedPrecondition, "sandbox resume precondition failed")}, ff)
+	require.Error(t, err)
+	var transitioningErr *reverseproxy.SandboxStillTransitioningError
+	require.NotErrorAs(t, err, &transitioningErr)
 	require.Equal(t, autoResumeErrored, res)
 }
 
