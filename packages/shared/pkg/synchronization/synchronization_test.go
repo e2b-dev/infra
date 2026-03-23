@@ -101,6 +101,7 @@ func newSynchronizer(ctx context.Context, store Store[string, string]) *Synchron
 // the semaphore.
 type slowTestStore struct {
 	*testStore
+
 	unblock chan struct{}
 }
 
@@ -142,7 +143,7 @@ func TestSynchronize_SyncRespectsContextCancellation(t *testing.T) {
 
 	err := syncer.Sync(shortCtx)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, context.DeadlineExceeded)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
 
 	// Unblock the first sync and verify it completes successfully.
 	close(slow.unblock)

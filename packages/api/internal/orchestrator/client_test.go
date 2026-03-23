@@ -63,6 +63,7 @@ func newNomadMock(t *testing.T, handler http.HandlerFunc) *nomadapi.Client {
 // the given nodeID and Healthy status.
 type fakeInfoServer struct {
 	infogrpc.UnimplementedInfoServiceServer
+
 	nodeID string
 }
 
@@ -86,7 +87,7 @@ func startFakeOrchestratorGRPC(t *testing.T, nodeID string, addr string) string 
 		addr = "127.0.0.1:0"
 	}
 
-	lis, err := net.Listen("tcp", addr)
+	lis, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", addr)
 	require.NoError(t, err)
 
 	srv := grpc.NewServer(grpc.Creds(insecure.NewCredentials()))
@@ -173,7 +174,7 @@ func TestGetOrConnectNode_CacheMiss_TriggersNomadDiscovery(t *testing.T) {
 
 	// The node won't be found because connectToNode fails at the gRPC level,
 	// but discovery MUST have been attempted.
-	assert.Greater(t, discoveryAttempts.Load(), int32(0), "expected on-demand Nomad discovery to be triggered")
+	assert.Positive(t, discoveryAttempts.Load(), "expected on-demand Nomad discovery to be triggered")
 }
 
 // TestGetOrConnectNode_ConcurrentCacheMiss_SharesDiscovery verifies that
