@@ -166,9 +166,9 @@ module "cluster" {
 module "nomad" {
   source = "./nomad"
 
-  domain_name    = var.domain_name
-  environment    = var.environment
-  aws_region     = data.aws_region.current.name
+  domain_name = var.domain_name
+  environment = var.environment
+  aws_region  = data.aws_region.current.name
 
   nomad_acl_token  = module.init.cluster.nomad_acl_token
   consul_acl_token = module.init.cluster.consul_acl_token
