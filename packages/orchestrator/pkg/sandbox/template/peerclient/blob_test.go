@@ -12,10 +12,10 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	peerclientmocks "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template/peerclient/mocks"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	orchestratormocks "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator/mocks"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
-	storagemocks "github.com/e2b-dev/infra/packages/shared/pkg/storage/mocks"
 )
 
 func TestPeerBlob_WriteTo_PeerSucceeds(t *testing.T) {
@@ -54,13 +54,13 @@ func TestPeerBlob_WriteTo_PeerNotAvailable_FallsBackToBase(t *testing.T) {
 	client := orchestratormocks.NewMockChunkServiceClient(t)
 	client.EXPECT().GetBuildBlob(mock.Anything, mock.Anything).Return(stream, nil)
 
-	baseBlob := storagemocks.NewMockBlob(t)
+	baseBlob := peerclientmocks.NewMockBlob(t)
 	baseBlob.EXPECT().WriteTo(mock.Anything, mock.Anything).RunAndReturn(func(_ context.Context, dst io.Writer) (int64, error) {
 		n, err := dst.Write([]byte("from gcs"))
 
 		return int64(n), err
 	})
-	base := storagemocks.NewMockStorageProvider(t)
+	base := peerclientmocks.NewMockStorageProvider(t)
 	base.EXPECT().OpenBlob(mock.Anything, "build-1/snapfile").Return(baseBlob, nil)
 
 	blob := &peerBlob{peerHandle: peerHandle[storage.Blob]{
@@ -86,13 +86,13 @@ func TestPeerBlob_WriteTo_PeerError_FallsBackToBase(t *testing.T) {
 	client := orchestratormocks.NewMockChunkServiceClient(t)
 	client.EXPECT().GetBuildBlob(mock.Anything, mock.Anything).Return(nil, errors.New("connection refused"))
 
-	baseBlob := storagemocks.NewMockBlob(t)
+	baseBlob := peerclientmocks.NewMockBlob(t)
 	baseBlob.EXPECT().WriteTo(mock.Anything, mock.Anything).RunAndReturn(func(_ context.Context, dst io.Writer) (int64, error) {
 		n, err := dst.Write([]byte("from gcs"))
 
 		return int64(n), err
 	})
-	base := storagemocks.NewMockStorageProvider(t)
+	base := peerclientmocks.NewMockStorageProvider(t)
 	base.EXPECT().OpenBlob(mock.Anything, "build-1/snapfile").Return(baseBlob, nil)
 
 	blob := &peerBlob{peerHandle: peerHandle[storage.Blob]{
@@ -129,13 +129,13 @@ func TestPeerBlob_WriteTo_UploadedSetMidStream_CompletesFromPeerThenFallsBack(t 
 	client := orchestratormocks.NewMockChunkServiceClient(t)
 	client.EXPECT().GetBuildBlob(mock.Anything, mock.Anything).Return(stream, nil).Once()
 
-	baseBlob := storagemocks.NewMockBlob(t)
+	baseBlob := peerclientmocks.NewMockBlob(t)
 	baseBlob.EXPECT().WriteTo(mock.Anything, mock.Anything).RunAndReturn(func(_ context.Context, dst io.Writer) (int64, error) {
 		n, err := dst.Write([]byte("from storage"))
 
 		return int64(n), err
 	})
-	base := storagemocks.NewMockStorageProvider(t)
+	base := peerclientmocks.NewMockStorageProvider(t)
 	base.EXPECT().OpenBlob(mock.Anything, "build-1/snapfile").Return(baseBlob, nil)
 
 	blob := &peerBlob{peerHandle: peerHandle[storage.Blob]{
@@ -184,9 +184,9 @@ func TestPeerBlob_Exists_PeerNotAvailable_FallsBackToBase(t *testing.T) {
 	client := orchestratormocks.NewMockChunkServiceClient(t)
 	client.EXPECT().GetBuildFileExists(mock.Anything, mock.Anything).Return(&orchestrator.GetBuildFileExistsResponse{Availability: &orchestrator.PeerAvailability{NotAvailable: true}}, nil)
 
-	baseBlob := storagemocks.NewMockBlob(t)
+	baseBlob := peerclientmocks.NewMockBlob(t)
 	baseBlob.EXPECT().Exists(mock.Anything).Return(true, nil)
-	base := storagemocks.NewMockStorageProvider(t)
+	base := peerclientmocks.NewMockStorageProvider(t)
 	base.EXPECT().OpenBlob(mock.Anything, "build-1/snapfile").Return(baseBlob, nil)
 
 	blob := &peerBlob{peerHandle: peerHandle[storage.Blob]{
@@ -210,9 +210,9 @@ func TestPeerBlob_Exists_UseStorage_FallsBackToBase(t *testing.T) {
 	client := orchestratormocks.NewMockChunkServiceClient(t)
 	client.EXPECT().GetBuildFileExists(mock.Anything, mock.Anything).Return(&orchestrator.GetBuildFileExistsResponse{Availability: &orchestrator.PeerAvailability{UseStorage: true}}, nil)
 
-	baseBlob := storagemocks.NewMockBlob(t)
+	baseBlob := peerclientmocks.NewMockBlob(t)
 	baseBlob.EXPECT().Exists(mock.Anything).Return(true, nil)
-	base := storagemocks.NewMockStorageProvider(t)
+	base := peerclientmocks.NewMockStorageProvider(t)
 	base.EXPECT().OpenBlob(mock.Anything, "build-1/snapfile").Return(baseBlob, nil)
 
 	uploaded := &atomic.Bool{}
