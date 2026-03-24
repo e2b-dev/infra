@@ -99,7 +99,7 @@ func (o *Orchestrator) HandleExistingSandboxAutoResume(
 
 			return "", false, apisandbox.ErrNotFound
 		case apisandbox.StateRunning:
-			node := o.GetNode(sbx.ClusterID, sbx.NodeID)
+			node := o.getOrConnectNode(ctx, sbx.ClusterID, sbx.NodeID)
 			if node == nil {
 				logger.L().Error(
 					ctx,
