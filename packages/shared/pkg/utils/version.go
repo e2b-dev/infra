@@ -1,8 +1,11 @@
 package utils
 
 import (
+	"context"
 	"fmt"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"go.uber.org/zap"
 	"golang.org/x/mod/semver"
 )
 
@@ -19,13 +22,14 @@ func sanitizeVersion(version string) string {
 	return version
 }
 
-func DoesEnvdSupportVolumes(envdVersion string) (bool, error) {
+func DoesEnvdSupportVolumes(ctx context.Context, envdVersion string) bool {
 	ok, err := IsGTEVersion(envdVersion, MinEnvdVersionForVolumes)
 	if err != nil {
-		return false, fmt.Errorf("invalid envd version %q: %w", envdVersion, err)
+		logger.L().Warn(ctx, "failed to check envd version", zap.Error(err), zap.String("envd_version", envdVersion))
+		return false
 	}
 
-	return ok, nil
+	return ok
 }
 
 func CheckEnvdVersionForSnapshot(envdVersion string) error {
