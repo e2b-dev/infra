@@ -4,9 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"go.uber.org/zap"
 	"golang.org/x/mod/semver"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 const (
