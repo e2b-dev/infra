@@ -46,25 +46,25 @@ type SnapshotCacheInvalidator interface {
 }
 
 type Orchestrator struct {
-	httpClient              *http.Client
-	nomadClient             *nomadapi.Client
-	sandboxStore            *sandbox.Store
-	nodes                   *smap.Map[*nodemanager.Node]
-	placementAlgorithm      *placement.BestOfK
-	featureFlagsClient      *featureflags.Client
-	analytics               *analyticscollector.Analytics
-	posthogClient           *analyticscollector.PosthogClient
-	routingCatalog          e2bcatalog.SandboxesCatalog
-	sqlcDB                  *sqlcdb.Client
-	tel                     *telemetry.Client
-	clusters                *clusters.Pool
-	metricsRegistration          metric.Registration
+	httpClient                    *http.Client
+	nomadClient                   *nomadapi.Client
+	sandboxStore                  *sandbox.Store
+	nodes                         *smap.Map[*nodemanager.Node]
+	placementAlgorithm            *placement.BestOfK
+	featureFlagsClient            *featureflags.Client
+	analytics                     *analyticscollector.Analytics
+	posthogClient                 *analyticscollector.PosthogClient
+	routingCatalog                e2bcatalog.SandboxesCatalog
+	sqlcDB                        *sqlcdb.Client
+	tel                           *telemetry.Client
+	clusters                      *clusters.Pool
+	metricsRegistration           metric.Registration
 	sandboxCountGaugeRegistration metric.Registration
-	createdSandboxesCounter      metric.Int64Counter
-	teamMetricsObserver     *metrics.TeamObserver
-	accessTokenGenerator    *sandbox.AccessTokenGenerator
-	createdCounter          metric.Int64Counter
-	snapshotCache           SnapshotCacheInvalidator
+	createdSandboxesCounter       metric.Int64Counter
+	teamMetricsObserver           *metrics.TeamObserver
+	accessTokenGenerator          *sandbox.AccessTokenGenerator
+	createdCounter                metric.Int64Counter
+	snapshotCache                 SnapshotCacheInvalidator
 
 	snapshotUpsertSem *utils.AdjustableSemaphore
 
