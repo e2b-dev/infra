@@ -27,6 +27,7 @@ import (
 	processRpc "github.com/e2b-dev/infra/packages/envd/internal/services/process"
 	processSpec "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process"
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
+	"github.com/e2b-dev/infra/packages/envd/pkg"
 )
 
 const (
@@ -47,8 +48,6 @@ const (
 )
 
 var (
-	Version = "0.5.8"
-
 	commitSHA string
 
 	isNotFC bool
@@ -134,7 +133,7 @@ func main() {
 	parseFlags()
 
 	if versionFlag {
-		fmt.Printf("%s\n", Version)
+		fmt.Printf("%s\n", pkg.Version)
 
 		return
 	}
