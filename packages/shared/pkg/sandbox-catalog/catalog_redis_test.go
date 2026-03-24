@@ -12,39 +12,7 @@ import (
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
 )
 
-func TestRedisCatalog_LocalCacheDisabled(t *testing.T) {
-	t.Parallel()
-
-	ctx := t.Context()
-	redisClient := redis_utils.SetupInstance(t)
-
-	sbxID := "sbx-service-context"
-	expected := &SandboxInfo{
-		OrchestratorID:   "orch-1",
-		OrchestratorIP:   "10.0.0.1",
-		ExecutionID:      "exec-1",
-		StartedAt:        time.Now().UTC().Truncate(time.Second),
-		MaxLengthInHours: 2,
-	}
-
-	data, err := json.Marshal(expected)
-	require.NoError(t, err)
-	require.NoError(t, redisClient.Set(ctx, "sandbox:catalog:"+sbxID, data, time.Minute).Err())
-
-	catalog := NewRedisSandboxesCatalog(redisClient, false)
-	t.Cleanup(func() {
-		assert.NoError(t, catalog.Close(context.Background()))
-	})
-
-	got, err := catalog.GetSandbox(ctx, sbxID)
-	require.NoError(t, err)
-	require.Equal(t, expected.OrchestratorID, got.OrchestratorID)
-	require.Equal(t, expected.ExecutionID, got.ExecutionID)
-
-	assert.Nil(t, catalog.cache, "local cache should not be created when disabled")
-}
-
-func TestRedisCatalog_LocalCacheEnabled(t *testing.T) {
+func TestRedisCatalog_LocalCache(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
@@ -63,16 +31,29 @@ func TestRedisCatalog_LocalCacheEnabled(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, redisClient.Set(ctx, "sandbox:catalog:"+sbxID, data, time.Minute).Err())
 
-	catalog := NewRedisSandboxesCatalog(redisClient, true)
+	// Without local cache — reads from Redis, no cache created.
+	noCacheCatalog := NewRedisSandboxesCatalog(redisClient, false)
 	t.Cleanup(func() {
-		assert.NoError(t, catalog.Close(context.Background()))
+		assert.NoError(t, noCacheCatalog.Close(context.Background()))
 	})
 
-	got, err := catalog.GetSandbox(ctx, sbxID)
+	got, err := noCacheCatalog.GetSandbox(ctx, sbxID)
+	require.NoError(t, err)
+	require.Equal(t, expected.OrchestratorID, got.OrchestratorID)
+	require.Equal(t, expected.ExecutionID, got.ExecutionID)
+	assert.Nil(t, noCacheCatalog.cache, "local cache should not be created when disabled")
+
+	// With local cache — reads from Redis, populates cache.
+	cachedCatalog := NewRedisSandboxesCatalog(redisClient, true)
+	t.Cleanup(func() {
+		assert.NoError(t, cachedCatalog.Close(context.Background()))
+	})
+
+	got, err = cachedCatalog.GetSandbox(ctx, sbxID)
 	require.NoError(t, err)
 	require.Equal(t, expected.OrchestratorIP, got.OrchestratorIP)
 
-	item := catalog.cache.Get(sbxID)
+	item := cachedCatalog.cache.Get(sbxID)
 	require.NotNil(t, item, "local cache should be populated when enabled")
 	require.Equal(t, expected.ExecutionID, item.Value().ExecutionID)
 }
