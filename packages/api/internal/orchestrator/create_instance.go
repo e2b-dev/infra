@@ -174,7 +174,6 @@ func (o *Orchestrator) CreateSandbox(
 	}
 
 	hasHugePages := fcSemver.HasHugePages()
-	firecrackerVersion := featureflags.ResolveFirecrackerVersion(ctx, o.featureFlagsClient, build.FirecrackerVersion)
 	telemetry.ReportEvent(ctx, "Got FC info")
 
 	var sbxDomain *string
@@ -225,7 +224,7 @@ func (o *Orchestrator) CreateSandbox(
 			SandboxId:           sandboxID,
 			ExecutionId:         executionID,
 			KernelVersion:       build.KernelVersion,
-			FirecrackerVersion:  firecrackerVersion,
+			FirecrackerVersion:  build.FirecrackerVersion,
 			EnvdVersion:         *build.EnvdVersion,
 			Metadata:            metadata,
 			EnvVars:             envVars,
@@ -304,7 +303,7 @@ func (o *Orchestrator) CreateSandbox(
 		*build.TotalDiskSizeMb,
 		build.RamMb,
 		build.KernelVersion,
-		firecrackerVersion,
+		build.FirecrackerVersion,
 		*build.EnvdVersion,
 		node.ID,
 		node.ClusterID,
