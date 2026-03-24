@@ -190,7 +190,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		ctx, a.sqlcDB, a.featureFlags, teamInfo.ID, apiVolumeMounts, build,
 	)
 	if err != nil {
-		if errors.Is(err, ErrVolumesNotSupported) {
+		if errors.Is(err, errVolumesNotSupported) {
 			a.sendAPIStoreError(c, http.StatusBadRequest, err.Error())
 
 			return
@@ -300,9 +300,9 @@ func (im InvalidVolumeMountsError) Error() string {
 	return fmt.Sprintf("invalid mounts:\n%s", strings.Join(errs, "\n"))
 }
 
-var ErrVolumesNotSupported = errors.New("volumes are not supported")
+var errVolumesNotSupported = errors.New("volumes are not supported")
 
-var ErrNoEnvdVersion = errors.New("no envd version provided")
+var errNoEnvdVersion = errors.New("no envd version provided")
 
 const minEnvdVersionForVolumes = "0.5.8"
 
@@ -321,13 +321,13 @@ func convertAPIVolumesToOrchestratorVolumes(ctx context.Context, sqlClient *sqlc
 	if envdVersion := sharedUtils.DerefOrDefault(env.EnvdVersion, ""); envdVersion == "" {
 		logger.L().Warn(ctx, "envd version is unset")
 
-		return nil, ErrNoEnvdVersion
+		return nil, errNoEnvdVersion
 	} else if ok, err := sharedUtils.IsGTEVersion(envdVersion, minEnvdVersionForVolumes); err != nil {
 		logger.L().Warn(ctx, "failed to check envd version", zap.Error(err), zap.String("envd_version", envdVersion))
 
 		return nil, fmt.Errorf("invalid envd version %q: %w", envdVersion, err)
 	} else if !ok {
-		return nil, fmt.Errorf("%w; template must be rebuilt. Template envd version is %s, must be at least %s to support volumes", ErrVolumesNotSupported, envdVersion, minEnvdVersionForVolumes)
+		return nil, fmt.Errorf("%w; template must be rebuilt. Template envd version is %s, must be at least %s to support volumes", errVolumesNotSupported, envdVersion, minEnvdVersionForVolumes)
 	}
 
 	// get volumes from the database
