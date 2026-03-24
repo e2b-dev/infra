@@ -4,10 +4,17 @@ ENV_FILE := ../../.env.${ENV}
 -include ${ENV_FILE}
 
 TF := $(shell which terraform)
+TF_VAR_FILE := ./.terraform.${ENV}.tfvars
+TF_VAR_FILE_ARG := $(if $(wildcard $(TF_VAR_FILE)),-var-file=$(TF_VAR_FILE))
 TERRAFORM_STATE_BUCKET ?= $(AWS_ACCOUNT_ID)-terraform-state
 TEMPLATE_BUCKET_LOCATION ?= $(AWS_REGION)
 
 BUCKET_PREFIX ?= $(PREFIX)$(AWS_ACCOUNT_ID)-
+
+SKIP_FMT ?= false
+define tf_fmt
+$(if $(filter true,$(SKIP_FMT)),,$(TF) fmt -recursive)
+endef
 
 # Set the terraform environment variable only if the environment variable is set
 # Strip the passed variable name (it's space sensitive) and check if the variable is set, if yes return TF_VAR_<variable_name>=<value> with the variable name in lower case
