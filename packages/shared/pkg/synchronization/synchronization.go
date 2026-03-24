@@ -91,13 +91,13 @@ func (s *Synchronize[SourceItem, PoolItem]) Close() {
 
 // Sync performs periodic sync or it can be done as an on-demand synchronization round against the source.
 func (s *Synchronize[SourceItem, PoolItem]) Sync(ctx context.Context) error {
+	ctx, span := tracer.Start(ctx, s.getSpanName("sync-items"))
+	defer span.End()
+
 	if err := s.syncSem.Acquire(ctx, 1); err != nil {
 		return fmt.Errorf("failed to acquire sync lock: %w", err)
 	}
 	defer s.syncSem.Release(1)
-
-	ctx, span := tracer.Start(ctx, s.getSpanName("sync-items"))
-	defer span.End()
 
 	sourceItems, err := s.store.SourceList(ctx)
 	if err != nil {
