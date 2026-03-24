@@ -133,34 +133,12 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 			return nil, status.Errorf(codes.Internal, "failed to get sandbox state: %v", sandboxErr)
 		}
 	} else {
-		nodeIP, handled, existingErr := apiorchestrator.HandleExistingSandboxAutoResume(
+		nodeIP, handled, existingErr := s.api.orchestrator.HandleExistingSandboxAutoResume(
 			ctx,
+			teamID,
 			sandboxID,
 			sandboxData,
 			autoResumeTransitionWaitBudget,
-			func(ctx context.Context) error {
-				return s.api.orchestrator.WaitForStateChange(ctx, teamID, sandboxID)
-			},
-			func(ctx context.Context) (sandbox.Sandbox, error) {
-				return s.api.orchestrator.GetSandbox(ctx, teamID, sandboxID)
-			},
-			func(sbx sandbox.Sandbox) (string, error) {
-				node := s.api.orchestrator.GetNode(sbx.ClusterID, sbx.NodeID)
-				if node == nil {
-					logger.L().Error(
-						ctx,
-						"Sandbox is running but routing info is not available during auto-resume",
-						logger.WithSandboxID(sandboxID),
-						logger.WithTeamID(teamID.String()),
-						logger.WithNodeID(sbx.NodeID),
-						zap.Stringer("cluster_id", sbx.ClusterID),
-					)
-
-					return "", errors.New("sandbox is running but routing info is not available yet")
-				}
-
-				return node.IPAddress, nil
-			},
 		)
 		if existingErr != nil {
 			if errors.Is(existingErr, apiorchestrator.ErrSandboxStillTransitioning) {

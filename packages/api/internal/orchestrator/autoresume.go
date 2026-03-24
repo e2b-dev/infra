@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 
 	apisandbox "github.com/e2b-dev/infra/packages/api/internal/sandbox"
@@ -17,14 +18,12 @@ const MaxAutoResumeTransitionRetries = 3
 
 var ErrSandboxStillTransitioning = errors.New(sharedproxygrpc.SandboxStillTransitioningMessage)
 
-func HandleExistingSandboxAutoResume(
+func (o *Orchestrator) HandleExistingSandboxAutoResume(
 	ctx context.Context,
+	teamID uuid.UUID,
 	sandboxID string,
 	sbx apisandbox.Sandbox,
 	transitionWaitBudget time.Duration,
-	waitForStateChange func(context.Context) error,
-	getSandbox func(context.Context) (apisandbox.Sandbox, error),
-	getNodeIP func(apisandbox.Sandbox) (string, error),
 ) (string, bool, error) {
 	transitionCtx, cancel := context.WithTimeout(ctx, transitionWaitBudget)
 	defer cancel()
@@ -62,7 +61,7 @@ func HandleExistingSandboxAutoResume(
 				logger.L().Debug(ctx, "Waiting for sandbox snapshot to finish before auto-resume", logger.WithSandboxID(sandboxID), zap.Int("attempt", attempts))
 			}
 
-			err := waitForStateChange(transitionCtx)
+			err := o.WaitForStateChange(transitionCtx, teamID, sandboxID)
 			if err != nil {
 				if errors.Is(transitionCtx.Err(), context.DeadlineExceeded) && ctx.Err() == nil {
 					logger.L().Warn(
@@ -84,7 +83,7 @@ func HandleExistingSandboxAutoResume(
 				return "", false, errors.New(waitErrMsg)
 			}
 
-			updatedSandbox, getSandboxErr := getSandbox(ctx)
+			updatedSandbox, getSandboxErr := o.GetSandbox(ctx, teamID, sandboxID)
 			if getSandboxErr == nil {
 				sbx = updatedSandbox
 
@@ -100,12 +99,21 @@ func HandleExistingSandboxAutoResume(
 
 			return "", false, apisandbox.ErrNotFound
 		case apisandbox.StateRunning:
-			nodeIP, err := getNodeIP(sbx)
-			if err != nil {
-				return "", false, err
+			node := o.GetNode(sbx.ClusterID, sbx.NodeID)
+			if node == nil {
+				logger.L().Error(
+					ctx,
+					"Sandbox is running but routing info is not available during auto-resume",
+					logger.WithSandboxID(sandboxID),
+					logger.WithTeamID(teamID.String()),
+					logger.WithNodeID(sbx.NodeID),
+					zap.Stringer("cluster_id", sbx.ClusterID),
+				)
+
+				return "", false, errors.New("sandbox is running but routing info is not available yet")
 			}
 
-			return nodeIP, true, nil
+			return node.IPAddress, true, nil
 		default:
 			logger.L().Error(ctx, "Sandbox is in an unknown state during auto-resume", logger.WithSandboxID(sandboxID), zap.String("state", string(sbx.State)))
 
