@@ -273,6 +273,70 @@ output "sandbox_access_token_hash_seed" {
 }
 
 // ---
+// PostHog
+// ---
+resource "aws_secretsmanager_secret" "posthog_api_key" {
+  name = "${var.prefix}posthog-api-key"
+}
+
+resource "aws_secretsmanager_secret_version" "posthog_api_key" {
+  secret_id     = aws_secretsmanager_secret.posthog_api_key.id
+  secret_string = " "
+
+  lifecycle {
+    ignore_changes = [secret_string]
+  }
+}
+
+data "aws_secretsmanager_secret_version" "posthog_api_key" {
+  secret_id     = aws_secretsmanager_secret.posthog_api_key.id
+  version_stage = "AWSCURRENT"
+  depends_on    = [aws_secretsmanager_secret_version.posthog_api_key]
+}
+
+output "posthog_api_key" {
+  value     = data.aws_secretsmanager_secret_version.posthog_api_key.secret_string
+  sensitive = true
+}
+
+// ---
+// Analytics Collector
+// ---
+resource "aws_secretsmanager_secret" "analytics_collector" {
+  name = "${var.prefix}analytics-collector"
+}
+
+resource "aws_secretsmanager_secret_version" "analytics_collector" {
+  secret_id = aws_secretsmanager_secret.analytics_collector.id
+  secret_string = jsonencode({
+    "HOST"      = " ",
+    "API_TOKEN" = " ",
+  })
+
+  lifecycle {
+    ignore_changes = [secret_string]
+  }
+}
+
+data "aws_secretsmanager_secret_version" "analytics_collector" {
+  secret_id     = aws_secretsmanager_secret.analytics_collector.id
+  version_stage = "AWSCURRENT"
+  depends_on    = [aws_secretsmanager_secret_version.analytics_collector]
+}
+
+locals {
+  analytics_collector_raw = jsondecode(data.aws_secretsmanager_secret_version.analytics_collector.secret_string)
+}
+
+output "analytics_collector" {
+  value = {
+    host      = local.analytics_collector_raw["HOST"]
+    api_token = local.analytics_collector_raw["API_TOKEN"]
+  }
+  sensitive = true
+}
+
+// ---
 // Redis
 // ---
 resource "aws_secretsmanager_secret" "redis_cluster_url" {

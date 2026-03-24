@@ -228,6 +228,10 @@ module "nomad" {
 
   launch_darkly_api_key = module.init.launch_darkly_api_key
 
+  posthog_api_key               = module.init.posthog_api_key
+  analytics_collector_host      = module.init.analytics_collector.host
+  analytics_collector_api_token = module.init.analytics_collector.api_token
+
   db_max_open_connections      = var.db_max_open_connections
   db_min_idle_connections      = var.db_min_idle_connections
   auth_db_max_open_connections = var.auth_db_max_open_connections

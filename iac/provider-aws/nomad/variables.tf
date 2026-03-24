@@ -158,6 +158,24 @@ variable "grafana_username" {
   sensitive = true
 }
 
+# PostHog / Analytics
+variable "posthog_api_key" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+
+variable "analytics_collector_host" {
+  type    = string
+  default = ""
+}
+
+variable "analytics_collector_api_token" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+
 # API
 variable "api_port" {
   type    = number
