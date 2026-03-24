@@ -67,8 +67,6 @@ type fakeInfoServer struct {
 	nodeID string
 }
 
-var fixedPortFakeOrchestratorGRPCMu sync.Mutex
-
 func (s *fakeInfoServer) ServiceInfo(context.Context, *emptypb.Empty) (*infogrpc.ServiceInfoResponse, error) {
 	return &infogrpc.ServiceInfoResponse{
 		NodeId:         s.nodeID,
@@ -83,11 +81,6 @@ func (s *fakeInfoServer) ServiceInfo(context.Context, *emptypb.Empty) (*infogrpc
 // binds to the given address (e.g. "127.0.0.1:5008").
 func startFakeOrchestratorGRPC(t *testing.T, nodeID string, addr string) {
 	t.Helper()
-
-	if addr != "" {
-		fixedPortFakeOrchestratorGRPCMu.Lock()
-		t.Cleanup(fixedPortFakeOrchestratorGRPCMu.Unlock)
-	}
 
 	if addr == "" {
 		addr = "127.0.0.1:0"
