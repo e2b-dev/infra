@@ -12,6 +12,26 @@ locals {
   orchestrator_artifact_source = "s3::https://${var.fc_env_pipeline_bucket_name}.s3.${var.aws_region}.amazonaws.com/orchestrator?etag=${data.aws_s3_object.orchestrator.etag}"
 }
 
+data "aws_ecr_image" "api" {
+  repository_name = var.api_repository_name
+  image_tag       = "latest"
+}
+
+data "aws_ecr_image" "db_migrator" {
+  repository_name = var.db_migrator_repository_name
+  image_tag       = "latest"
+}
+
+data "aws_ecr_image" "client_proxy" {
+  repository_name = var.client_proxy_repository_name
+  image_tag       = "latest"
+}
+
+data "aws_ecr_image" "clickhouse_migrator" {
+  repository_name = var.clickhouse_migrator_repository_name
+  image_tag       = "latest"
+}
+
 module "otel_collector" {
   source = "../../modules/job-otel-collector"
 
@@ -78,7 +98,7 @@ module "client_proxy" {
   redis_url           = var.redis_url
   redis_cluster_url   = var.redis_cluster_url
   redis_tls_ca_base64 = var.redis_tls_ca_base64
-  image               = "${var.aws_account_id}.dkr.ecr.${var.aws_region}.amazonaws.com/${var.client_proxy_repository_name}:latest"
+  image               = data.aws_ecr_image.client_proxy.image_uri
 
   otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
   logs_collector_address       = "http://localhost:${var.logs_proxy_port}"
@@ -103,7 +123,7 @@ module "api" {
   port_name                      = "api"
   port_number                    = var.api_port
   environment                    = var.environment
-  api_docker_image               = "${var.aws_account_id}.dkr.ecr.${var.aws_region}.amazonaws.com/${var.api_repository_name}:latest"
+  api_docker_image               = data.aws_ecr_image.api.image_uri
   postgres_connection_string     = var.postgres_connection_string
   supabase_jwt_secrets           = var.supabase_jwt_secrets
   nomad_acl_token                = var.nomad_acl_token
@@ -113,7 +133,7 @@ module "api" {
   redis_tls_ca_base64            = var.redis_tls_ca_base64
   clickhouse_connection_string   = local.clickhouse_connection_string
   sandbox_access_token_hash_seed = var.sandbox_access_token_hash_seed
-  db_migrator_docker_image       = "${var.aws_account_id}.dkr.ecr.${var.aws_region}.amazonaws.com/${var.db_migrator_repository_name}:latest"
+  db_migrator_docker_image       = data.aws_ecr_image.db_migrator.image_uri
   loki_url                       = "http://loki.service.consul:${var.loki_port}"
   launch_darkly_api_key          = var.launch_darkly_api_key
   db_max_open_connections        = var.db_max_open_connections
@@ -275,5 +295,5 @@ module "clickhouse" {
   aws_region    = var.aws_region
   backup_bucket = var.clickhouse_backups_bucket_name
 
-  clickhouse_migrator_image = "${var.aws_account_id}.dkr.ecr.${var.aws_region}.amazonaws.com/${var.clickhouse_migrator_repository_name}:latest"
+  clickhouse_migrator_image = data.aws_ecr_image.clickhouse_migrator.image_uri
 }
