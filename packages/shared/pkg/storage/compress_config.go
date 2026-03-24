@@ -38,6 +38,15 @@ func (c *CompressConfig) FrameSize() int {
 	return c.FrameSizeKB * 1024
 }
 
+// TargetPartSize returns the target part size in bytes.
+func (c *CompressConfig) TargetPartSize() int64 {
+	if c == nil || c.TargetPartSizeMB <= 0 {
+		return int64(gcpMultipartUploadChunkSize) * (1 << 20)
+	}
+
+	return int64(c.TargetPartSizeMB) * (1 << 20)
+}
+
 // IsEnabled reports whether compression is configured and active.
 func (c *CompressConfig) IsEnabled() bool {
 	return c != nil && c.Enabled && c.CompressionType() != CompressionNone

@@ -169,18 +169,17 @@ func (f *failAfterReader) Read(p []byte) (int, error) {
 func makeCompressedTestData(tb testing.TB, data []byte, ttfb time.Duration) (*storage.FrameTable, *slowFrameGetter) {
 	tb.Helper()
 
-	up := &storage.MemPartUploader{}
-	ft, _, err := storage.CompressStream(context.Background(), bytes.NewReader(data), &storage.CompressConfig{
+	ft, compressed, _, err := storage.CompressBytes(context.Background(), data, &storage.CompressConfig{
 		Enabled:            true,
 		Type:               "lz4",
 		EncoderConcurrency: 1,
 		FrameEncodeWorkers: 1,
 		FrameSizeKB:        testFrameSize / 1024,
 		TargetPartSizeMB:   50,
-	}, up)
+	})
 	require.NoError(tb, err)
 
-	return ft, &slowFrameGetter{data: up.Assemble(), ttfb: ttfb}
+	return ft, &slowFrameGetter{data: compressed, ttfb: ttfb}
 }
 
 // ---------------------------------------------------------------------------

@@ -141,12 +141,26 @@ func putZstdDecoder(dec *zstd.Decoder) {
 	zstdDecoderPool.Put(dec)
 }
 
-// DecompressLZ4 decompresses LZ4-block-compressed src into dst and returns
-// the decompressed slice (dst[:n]). dst must be large enough for the output.
 func DecompressLZ4(src, dst []byte) ([]byte, error) {
 	n, err := lz4.UncompressBlock(src, dst)
 	if err != nil {
 		return nil, fmt.Errorf("lz4 block decompress: %w", err)
+	}
+
+	return dst[:n], nil
+}
+
+func CompressLZ4(data []byte) ([]byte, error) {
+	bound := lz4.CompressBlockBound(len(data))
+	dst := make([]byte, bound)
+
+	n, err := lz4.CompressBlock(data, dst, nil)
+	if err != nil {
+		return nil, fmt.Errorf("lz4 compress: %w", err)
+	}
+
+	if n == 0 {
+		return nil, fmt.Errorf("lz4 compress: data is incompressible (%d bytes)", len(data))
 	}
 
 	return dst[:n], nil

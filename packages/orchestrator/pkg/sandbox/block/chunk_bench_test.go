@@ -1,7 +1,6 @@
 package block
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"math/rand/v2"
@@ -294,8 +293,7 @@ func BenchmarkColdConcurrent(b *testing.B) {
 	bundles := make([]compressedBundle, len(benchCodecs))
 
 	for ci, codec := range benchCodecs {
-		up := &storage.MemPartUploader{}
-		ft, _, err := storage.CompressStream(context.Background(), bytes.NewReader(data), &storage.CompressConfig{
+		ft, compressed, _, err := storage.CompressBytes(context.Background(), data, &storage.CompressConfig{
 			Enabled:            true,
 			Type:               codec.compressionType.String(),
 			Level:              codec.level,
@@ -303,9 +301,9 @@ func BenchmarkColdConcurrent(b *testing.B) {
 			FrameEncodeWorkers: 1,
 			FrameSizeKB:        codec.frameSize / 1024,
 			TargetPartSizeMB:   50,
-		}, up)
+		})
 		require.NoError(b, err)
-		bundles[ci] = compressedBundle{ft, up.Assemble()}
+		bundles[ci] = compressedBundle{ft, compressed}
 	}
 
 	for _, profile := range profiles {

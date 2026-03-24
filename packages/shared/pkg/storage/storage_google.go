@@ -391,8 +391,21 @@ func (o *gcpObject) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
 }
 
 func (o *gcpObject) StoreFile(ctx context.Context, path string, cfg *CompressConfig) (_ *FrameTable, _ [32]byte, e error) {
+	maxConcurrency := gcloudDefaultUploadConcurrency
+	if o.limiter != nil {
+		uploadLimiter := o.limiter.GCloudUploadLimiter()
+		if uploadLimiter != nil {
+			if err := uploadLimiter.Acquire(ctx, 1); err != nil {
+				return nil, [32]byte{}, fmt.Errorf("failed to acquire upload semaphore: %w", err)
+			}
+			defer uploadLimiter.Release(1)
+		}
+
+		maxConcurrency = o.limiter.GCloudMaxTasks(ctx)
+	}
+
 	if cfg.IsEnabled() {
-		return o.storeFileCompressed(ctx, path, cfg)
+		return o.storeFileCompressed(ctx, path, cfg, maxConcurrency)
 	}
 
 	ctx, span := tracer.Start(ctx, "write to gcp from file system")
@@ -443,23 +456,6 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, cfg *CompressCon
 		attribute.String(gcsOperationAttr, gcsOperationAttrWriteFromFileSystem),
 	)
 
-	maxConcurrency := gcloudDefaultUploadConcurrency
-	if o.limiter != nil {
-		uploadLimiter := o.limiter.GCloudUploadLimiter()
-		if uploadLimiter != nil {
-			semaphoreErr := uploadLimiter.Acquire(ctx, 1)
-			if semaphoreErr != nil {
-				timer.Failure(ctx, 0)
-				e = fmt.Errorf("failed to acquire semaphore: %w", semaphoreErr)
-
-				return nil, [32]byte{}, e
-			}
-			defer uploadLimiter.Release(1)
-		}
-
-		maxConcurrency = o.limiter.GCloudMaxTasks(ctx)
-	}
-
 	uploader, err := NewMultipartUploaderWithRetryConfig(
 		ctx,
 		bucketName,
@@ -497,7 +493,7 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, cfg *CompressCon
 	return nil, [32]byte{}, e
 }
 
-func (o *gcpObject) storeFileCompressed(ctx context.Context, localPath string, cfg *CompressConfig) (*FrameTable, [32]byte, error) {
+func (o *gcpObject) storeFileCompressed(ctx context.Context, localPath string, cfg *CompressConfig, maxConcurrency int) (*FrameTable, [32]byte, error) {
 	file, err := os.Open(localPath)
 	if err != nil {
 		return nil, [32]byte{}, fmt.Errorf("failed to open local file %s: %w", localPath, err)
@@ -522,7 +518,7 @@ func (o *gcpObject) storeFileCompressed(ctx context.Context, localPath string, c
 		return nil, [32]byte{}, fmt.Errorf("failed to create multipart uploader: %w", err)
 	}
 
-	return CompressStream(ctx, file, cfg, uploader)
+	return compressStream(ctx, file, cfg, uploader, maxConcurrency)
 }
 
 type gcpServiceToken struct {

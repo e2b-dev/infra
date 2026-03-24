@@ -170,7 +170,7 @@ func (o *fsObject) storeFileCompressed(ctx context.Context, localPath string, cf
 
 	uploader := &fsPartUploader{fullPath: o.path}
 
-	return CompressStream(ctx, file, cfg, uploader)
+	return compressStream(ctx, file, cfg, uploader, 4)
 }
 
 func (o *fsObject) openRangeReader(_ context.Context, off int64, length int) (io.ReadCloser, error) {
@@ -266,11 +266,11 @@ func (o *fsObject) getHandle(checkExistence bool) (*os.File, error) {
 	return handle, nil
 }
 
-// fsPartUploader implements PartUploader for local filesystem.
-// Embeds MemPartUploader for concurrent-safe part collection,
+// fsPartUploader implements partUploader for local filesystem.
+// Embeds memPartUploader for concurrent-safe part collection,
 // then writes atomically on Complete.
 type fsPartUploader struct {
-	MemPartUploader
+	memPartUploader
 
 	fullPath string
 }

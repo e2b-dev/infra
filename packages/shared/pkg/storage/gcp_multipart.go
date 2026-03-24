@@ -141,13 +141,13 @@ type MultipartUploader struct {
 	baseURL     string // Allow overriding for testing
 	metadata    map[string]string
 
-	// Fields for PartUploader interface
+	// Fields for partUploader interface
 	uploadID string
 	mu       sync.Mutex
 	parts    []Part
 }
 
-var _ PartUploader = (*MultipartUploader)(nil)
+var _ partUploader = (*MultipartUploader)(nil)
 
 // Start initiates the GCS multipart upload.
 func (m *MultipartUploader) Start(ctx context.Context) error {

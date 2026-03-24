@@ -44,9 +44,9 @@ func generateSemiRandomData(size int) []byte {
 	return data
 }
 
-// ThrottledPartUploader wraps MemPartUploader with simulated upload bandwidth.
+// ThrottledPartUploader wraps memPartUploader with simulated upload bandwidth.
 type ThrottledPartUploader struct {
-	MemPartUploader
+	memPartUploader
 
 	bandwidth int64 // bytes/sec; 0 = unlimited
 }
@@ -60,7 +60,7 @@ func (t *ThrottledPartUploader) UploadPart(ctx context.Context, partIndex int, d
 		time.Sleep(time.Duration(float64(total) / float64(t.bandwidth) * float64(time.Second)))
 	}
 
-	return t.MemPartUploader.UploadPart(ctx, partIndex, data...)
+	return t.memPartUploader.UploadPart(ctx, partIndex, data...)
 }
 
 // decompressAll walks the FrameTable and decompresses each frame from the
@@ -153,14 +153,15 @@ func TestCompressStreamRoundTrip(t *testing.T) {
 				original = generateSemiRandomData(tc.dataSize)
 			}
 
-			up := &MemPartUploader{}
+			up := &memPartUploader{}
 			cfg := defaultCfg(tc.codec, tc.workers, tc.frameSize)
 
-			ft, checksum, err := CompressStream(
+			ft, checksum, err := compressStream(
 				context.Background(),
 				bytes.NewReader(original),
 				cfg,
 				up,
+				4,
 			)
 			require.NoError(t, err)
 
@@ -202,10 +203,10 @@ func TestCompressStreamContextCancel(t *testing.T) {
 		cancel()
 	}()
 
-	up := &MemPartUploader{}
+	up := &memPartUploader{}
 	cfg := defaultCfg(CompressionZstd, 4, 2*megabyte)
 
-	_, _, err := CompressStream(ctx, bytes.NewReader(data), cfg, up)
+	_, _, err := compressStream(ctx, bytes.NewReader(data), cfg, up, 4)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, context.Canceled)
 }
@@ -233,11 +234,11 @@ func TestCompressStreamPartSizeMinimum(t *testing.T) {
 			t.Parallel()
 
 			data := generateSemiRandomData(tc.dataSize)
-			up := &MemPartUploader{}
+			up := &memPartUploader{}
 			cfg := defaultCfg(CompressionZstd, 4, tc.frameSize)
 			cfg.TargetPartSizeMB = tc.targetPartSizeMB
 
-			_, _, err := CompressStream(context.Background(), bytes.NewReader(data), cfg, up)
+			_, _, err := compressStream(context.Background(), bytes.NewReader(data), cfg, up, 4)
 			require.NoError(t, err)
 
 			// Verify: no non-final part is under 5 MiB.
@@ -265,7 +266,7 @@ func TestCompressStreamPartSizeMinimum(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // TestCompressStreamRace runs many concurrent CompressStream calls with high
-// worker counts to shake out data races in the compressor pool, MemPartUploader,
+// worker counts to shake out data races in the compressor pool, memPartUploader,
 // and errgroup coordination. Run with -race.
 func TestCompressStreamRace(t *testing.T) {
 	t.Parallel()
@@ -290,14 +291,14 @@ func TestCompressStreamRace(t *testing.T) {
 		}
 
 		eg.Go(func() error {
-			up := &MemPartUploader{}
+			up := &memPartUploader{}
 			cfg := defaultCfg(codec, workers, frameSize)
 			cfg.TargetPartSizeMB = targetPartSizeMB
 			if codec == CompressionZstd {
 				cfg.EncoderConcurrency = 4 // multi-threaded zstd encoders for more contention
 			}
 
-			ft, checksum, err := CompressStream(ctx, bytes.NewReader(data), cfg, up)
+			ft, checksum, err := compressStream(ctx, bytes.NewReader(data), cfg, up, 4)
 			if err != nil {
 				return fmt.Errorf("stream %d: compress: %w", i, err)
 			}
@@ -326,7 +327,7 @@ func TestCompressStreamRace(t *testing.T) {
 // BenchmarkCompressStream
 // ---------------------------------------------------------------------------
 
-func BenchmarkCompressStream(b *testing.B) {
+func BenchmarkCompress(b *testing.B) {
 	const dataSize = 256 * megabyte
 	data := generateSemiRandomData(dataSize)
 
@@ -363,11 +364,11 @@ func BenchmarkCompressStream(b *testing.B) {
 			for range b.N {
 				up := &ThrottledPartUploader{bandwidth: bcfg.bandwidth}
 
-				ft, _, err := CompressStream(
+				ft, _, err := compressStream(
 					context.Background(),
 					bytes.NewReader(data),
 					compCfg,
-					up,
+					up, 4,
 				)
 				if err != nil {
 					b.Fatal(err)
