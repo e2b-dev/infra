@@ -327,7 +327,7 @@ func convertAPIVolumesToOrchestratorVolumes(ctx context.Context, sqlClient *sqlc
 
 		return nil, fmt.Errorf("invalid envd version %q: %w", envdVersion, err)
 	} else if !ok {
-		return nil, fmt.Errorf("%w must be at least %s to support volumes, current version: %s", ErrVolumesNotSupported, minEnvdVersionForVolumes, envdVersion)
+		return nil, fmt.Errorf("%w; template must be rebuilt. Template envd version is %s, must be at least %s to support volumes", ErrVolumesNotSupported, envdVersion, minEnvdVersionForVolumes)
 	}
 
 	// get volumes from the database
