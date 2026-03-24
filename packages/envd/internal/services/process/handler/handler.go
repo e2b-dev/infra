@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"connectrpc.com/connect"
 	"github.com/creack/pty"
@@ -42,7 +43,8 @@ type ProcessExit struct {
 type Handler struct {
 	Config *rpc.ProcessConfig
 
-	logger *zerolog.Logger
+	logger         *zerolog.Logger
+	requestTimeout time.Duration
 
 	Tag *string
 	cmd *exec.Cmd
@@ -90,6 +92,7 @@ func New(
 	defaults *execcontext.Defaults,
 	cgroupManager cgroups.Manager,
 	cancel context.CancelFunc,
+	requestTimeout time.Duration,
 ) (*Handler, error) {
 	// User command string for logging (without the internal wrapper details).
 	userCmd := strings.Join(append([]string{req.GetProcess().GetCmd()}, req.GetProcess().GetArgs()...), " ")
@@ -177,15 +180,16 @@ func New(
 	outCtx, outCancel := context.WithCancel(ctx)
 
 	h := &Handler{
-		Config:    req.GetProcess(),
-		cmd:       cmd,
-		Tag:       req.Tag,
-		DataEvent: outMultiplex,
-		cancel:    cancel,
-		outCtx:    outCtx,
-		outCancel: outCancel,
-		EndEvent:  NewMultiplexedChannel[rpc.ProcessEvent_End](0),
-		logger:    logger,
+		Config:         req.GetProcess(),
+		cmd:            cmd,
+		Tag:            req.Tag,
+		DataEvent:      outMultiplex,
+		cancel:         cancel,
+		outCtx:         outCtx,
+		outCancel:      outCancel,
+		EndEvent:       NewMultiplexedChannel[rpc.ProcessEvent_End](0),
+		logger:         logger,
+		requestTimeout: requestTimeout,
 	}
 
 	if req.GetPty() != nil {
@@ -433,6 +437,7 @@ func (p *Handler) Start() (uint32, error) {
 		Str("event_type", "process_start").
 		Int("pid", p.cmd.Process.Pid).
 		Str("command", p.userCommand()).
+		Dur("request_timeout_ms", p.requestTimeout).
 		Msg(fmt.Sprintf("Process with pid %d started", p.cmd.Process.Pid))
 
 	return uint32(p.cmd.Process.Pid), nil

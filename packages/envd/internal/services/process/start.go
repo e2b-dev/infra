@@ -31,7 +31,7 @@ func (s *Service) InitializeStartProcess(ctx context.Context, user *user.User, r
 	handlerL := s.logger.With().Str(string(logs.OperationIDKey), ctx.Value(logs.OperationIDKey).(string)).Logger()
 
 	startProcCtx, startProcCancel := context.WithCancel(ctx)
-	proc, err := handler.New(startProcCtx, user, req, &handlerL, s.defaults, s.cgroupManager, startProcCancel)
+	proc, err := handler.New(startProcCtx, user, req, &handlerL, s.defaults, s.cgroupManager, startProcCancel, 0)
 	if err != nil {
 		return err
 	}
@@ -67,7 +67,7 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 		return err
 	}
 
-	timeout, err := determineTimeoutFromHeader(stream.Conn().RequestHeader())
+	requestTimeout, err := determineTimeoutFromHeader(stream.Conn().RequestHeader())
 	if err != nil {
 		return connect.NewError(connect.CodeInvalidArgument, err)
 	}
@@ -75,8 +75,8 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 	// Create a new context with a timeout if provided.
 	// We do not want the command to be killed if the request context is cancelled
 	procCtx, cancelProc := context.Background(), func() {}
-	if timeout > 0 { // zero timeout means no timeout
-		procCtx, cancelProc = context.WithTimeout(procCtx, timeout)
+	if requestTimeout > 0 { // zero timeout means no timeout
+		procCtx, cancelProc = context.WithTimeout(procCtx, requestTimeout)
 	}
 
 	proc, err := handler.New( //nolint:contextcheck // TODO: fix this later
@@ -87,6 +87,7 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 		s.defaults,
 		s.cgroupManager,
 		cancelProc,
+		requestTimeout,
 	)
 	if err != nil {
 		// Ensure the process cancel is called to cleanup resources.
