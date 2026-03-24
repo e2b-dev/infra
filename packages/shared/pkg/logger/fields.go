@@ -87,7 +87,7 @@ type timeFields struct {
 
 func (t timeFields) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	enc.AddString(t.key, t.val.Format(time.RFC3339Nano))
-	enc.AddInt64(t.key+"_unix", t.val.Unix())
+	enc.AddInt64(t.key+"_unix", t.val.UnixNano())
 
 	return nil
 }
