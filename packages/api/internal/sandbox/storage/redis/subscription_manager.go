@@ -13,22 +13,50 @@ type subscriptionManager struct {
 	mu      sync.RWMutex
 	waiters map[string]map[chan struct{}]struct{} // routingKey → registered waiters
 
-	ps     *redis.PubSub
-	cancel context.CancelFunc
+	redisClient redis.UniversalClient
+	stop        chan struct{}
+	once        sync.Once
 }
 
-func newSubscriptionManager(ctx context.Context, redisClient redis.UniversalClient) *subscriptionManager {
-	ctx, cancel := context.WithCancel(ctx)
-
-	m := &subscriptionManager{
-		waiters: make(map[string]map[chan struct{}]struct{}),
-		ps:      redisClient.Subscribe(ctx, globalTransitionNotifyChannel),
-		cancel:  cancel,
+func newSubscriptionManager(redisClient redis.UniversalClient) *subscriptionManager {
+	return &subscriptionManager{
+		waiters:     make(map[string]map[chan struct{}]struct{}),
+		redisClient: redisClient,
+		stop:        make(chan struct{}),
 	}
+}
 
-	go m.run(ctx)
+// start subscribes to the global PubSub channel and dispatches signals
+// to registered waiters. It blocks until the context is cancelled or
+// close is called. It is intended to be called in a goroutine.
+func (m *subscriptionManager) start(ctx context.Context) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
-	return m
+	// Cancel the context when close is called.
+	go func() {
+		select {
+		case <-m.stop:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+
+	ps := m.redisClient.Subscribe(ctx, globalTransitionNotifyChannel)
+	defer ps.Close()
+
+	ch := ps.Channel()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case msg, ok := <-ch:
+			if !ok {
+				return
+			}
+			m.dispatch(msg.Payload)
+		}
+	}
 }
 
 // subscribe registers a waiter for the given routingKey (per-transition).
@@ -58,22 +86,6 @@ func (m *subscriptionManager) subscribe(routingKey string) (<-chan struct{}, fun
 	return channel, cleanup
 }
 
-// run reads from the PubSub channel and dispatches signals to matching waiters.
-func (m *subscriptionManager) run(ctx context.Context) {
-	ch := m.ps.Channel()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case msg, ok := <-ch:
-			if !ok {
-				return
-			}
-			m.dispatch(msg.Payload)
-		}
-	}
-}
-
 // dispatch signals all waiters registered for the given routing key.
 func (m *subscriptionManager) dispatch(routingKey string) {
 	m.mu.RLock()
@@ -90,6 +102,7 @@ func (m *subscriptionManager) dispatch(routingKey string) {
 
 // close shuts down the subscription manager and its Redis PubSub connection.
 func (m *subscriptionManager) close() {
-	m.cancel()
-	_ = m.ps.Close()
+	m.once.Do(func() {
+		close(m.stop)
+	})
 }

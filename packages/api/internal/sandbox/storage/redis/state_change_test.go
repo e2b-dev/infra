@@ -20,7 +20,8 @@ func setupTestStorage(t *testing.T) (*Storage, redis.UniversalClient) {
 	t.Helper()
 
 	client := redis_utils.SetupInstance(t)
-	storage := NewStorage(t.Context(), client)
+	storage := NewStorage(client)
+	go storage.Start(t.Context())
 	t.Cleanup(storage.Close)
 
 	return storage, client

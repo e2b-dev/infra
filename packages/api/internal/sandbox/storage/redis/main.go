@@ -30,7 +30,6 @@ type Storage struct {
 func (s *Storage) Name() string { return sandbox.StorageNameRedis }
 
 func NewStorage(
-	ctx context.Context,
 	redisClient redis.UniversalClient,
 ) *Storage {
 	return &Storage{
@@ -39,8 +38,14 @@ func NewStorage(
 		lockOption: &redislock.Options{
 			RetryStrategy: newConstantBackoff(lockRetryInterval),
 		},
-		subManager: newSubscriptionManager(ctx, redisClient),
+		subManager: newSubscriptionManager(redisClient),
 	}
+}
+
+// Start subscribes to the global PubSub channel and blocks until the context
+// is cancelled or Close is called. It is intended to be called in a goroutine.
+func (s *Storage) Start(ctx context.Context) {
+	s.subManager.start(ctx)
 }
 
 // Close shuts down the subscription manager and its background goroutine.

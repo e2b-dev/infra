@@ -124,7 +124,8 @@ func New(
 
 	bestOfKAlgorithm := placement.NewBestOfK(getBestOfKConfig(ctx, featureFlags)).(*placement.BestOfK)
 
-	redisStorage := redisbackend.NewStorage(ctx, redisClient)
+	redisStorage := redisbackend.NewStorage(redisClient)
+	go redisStorage.Start(ctx)
 
 	o := Orchestrator{
 		httpClient:           httpClient,
