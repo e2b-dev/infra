@@ -65,6 +65,36 @@ func TestBestOfK_Score_PreferBiggerNode(t *testing.T) {
 	assert.Greater(t, score, score2)
 }
 
+func TestBestOfK_Score_WithPendingResources(t *testing.T) {
+	t.Parallel()
+	config := DefaultBestOfKConfig()
+	algo := NewBestOfK(config).(*BestOfK)
+
+	// Create two nodes with identical base loads
+	nodeNormal := nodemanager.NewTestNode("node-normal", api.NodeStatusReady, 0, 4)
+	nodeWithPending := nodemanager.NewTestNode("node-pending", api.NodeStatusReady, 0, 4)
+
+	// Inject InProgress resources into nodeWithPending using StartPlacing
+	// This simulates a Sandbox that is currently being placed but hasn't fully started
+	pendingRes := nodemanager.SandboxResources{
+		CPUs:      2,
+		MiBMemory: 1024,
+	}
+	nodeWithPending.PlacementMetrics.StartPlacing("pending-sbx-1", pendingRes)
+
+	reqResources := nodemanager.SandboxResources{
+		CPUs:      1,
+		MiBMemory: 512,
+	}
+
+	scoreNormal := algo.Score(nodeNormal, reqResources, config)
+	scorePending := algo.Score(nodeWithPending, reqResources, config)
+
+	// A node with pending resources has a higher 'reserved' CPU count, 
+	// so its calculated Score should be greater (meaning worse/lower priority)
+	assert.Greater(t, scorePending, scoreNormal, "Node with pending resources should receive a higher (worse) score")
+}
+
 func TestBestOfK_CanFit(t *testing.T) {
 	t.Parallel()
 	config := DefaultBestOfKConfig()

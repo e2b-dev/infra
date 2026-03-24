@@ -213,3 +213,37 @@ func TestPlaceSandbox_ResourceExhausted(t *testing.T) {
 	// Verify node1 was NOT excluded (ResourceExhausted nodes should be retried)
 	algorithm.AssertNumberOfCalls(t, "chooseNode", 2)
 }
+
+func TestPlaceSandbox_TriggersOptimisticUpdate(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	// Create a node and record the initial allocated CPU
+	node1 := nodemanager.NewTestNode("node1", api.NodeStatusReady, 0, 4)
+	initialCpuAllocated := node1.Metrics().CpuAllocated
+
+	nodes := []*nodemanager.Node{node1}
+	
+	// Mock algorithm directly returns node1
+	algorithm := &mockAlgorithm{}
+	algorithm.On("chooseNode", mock.Anything, nodes, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(node1, nil)
+
+	// Request 2 vCPUs
+	sbxRequest := &orchestrator.SandboxCreateRequest{
+		Sandbox: &orchestrator.SandboxConfig{
+			SandboxId: "test-optimistic-sandbox",
+			Vcpu:      2,
+			RamMb:     1024,
+		},
+	}
+
+	resultNode, err := PlaceSandbox(ctx, algorithm, nodes, nil, sbxRequest, machineinfo.MachineInfo{}, false, nil)
+
+	require.NoError(t, err)
+	assert.NotNil(t, resultNode)
+	
+	// Verify: After successful placement, the node's CpuAllocated should be increased by 2 from the base
+	updatedCpuAllocated := resultNode.Metrics().CpuAllocated
+	assert.Equal(t, initialCpuAllocated+2, updatedCpuAllocated, "Node metrics should be optimistically updated after placement")
+}
