@@ -124,7 +124,7 @@ func TestSandboxAutoResumeWithoutExplicitTimeoutUsesMinimumTimeout(t *testing.T)
 	ctx := t.Context()
 
 	autoPause := true
-	autoResume := api.SandboxAutoResumeConfig{Policy: api.Any}
+	autoResume := api.SandboxAutoResumeConfig{Enabled: true}
 
 	// Create sandbox without passing timeout so API default is used.
 	createResp, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
@@ -172,7 +172,7 @@ func TestSandboxAutoResumeUsesInitialTimeoutNotUpdatedTimeout(t *testing.T) {
 	ctx := t.Context()
 
 	// Create sandbox with explicit starting timeout.
-	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithTimeout(120), utils.WithAutoPause(true), utils.WithAutoResume(api.Any))
+	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithTimeout(120), utils.WithAutoPause(true), utils.WithAutoResume(true))
 	envdClient := setup.GetEnvdClient(t, ctx)
 
 	// Capture initial end time and update current timeout to a larger value.
