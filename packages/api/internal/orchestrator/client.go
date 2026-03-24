@@ -173,7 +173,7 @@ func (o *Orchestrator) getOrConnectNode(ctx context.Context, clusterID uuid.UUID
 
 // discoverNomadNode lists all ready Nomad nodes and connects any that are not yet in the pool.
 // Once a new node is connected its orchestrator ID becomes the map key, making subsequent GetNode calls succeed.
-func (o *Orchestrator) discoverNomadNode(ctx context.Context) {
+func (o *Orchestrator) discoverNomadNodes(ctx context.Context) {
 	nomadNodes, err := o.listNomadNodes(ctx)
 	if err != nil {
 		logger.L().Error(ctx, "Error listing Nomad nodes during on-demand discovery", zap.Error(err))
