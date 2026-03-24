@@ -171,8 +171,8 @@ func TestSandboxAutoResumeUsesInitialTimeoutNotUpdatedTimeout(t *testing.T) {
 	c := setup.GetAPIClient()
 	ctx := t.Context()
 
-	// Create sandbox with explicit starting timeout.
-	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithTimeout(120), utils.WithAutoPause(true), utils.WithAutoResume(true))
+	// Create sandbox with explicit starting timeout above the (now) 300s floor.
+	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithTimeout(420), utils.WithAutoPause(true), utils.WithAutoResume(true))
 	envdClient := setup.GetEnvdClient(t, ctx)
 
 	// Capture initial end time and update current timeout to a larger value.
@@ -183,7 +183,7 @@ func TestSandboxAutoResumeUsesInitialTimeoutNotUpdatedTimeout(t *testing.T) {
 	initialEndAt := res.JSON200.EndAt
 
 	timeoutResp, err := c.PostSandboxesSandboxIDTimeoutWithResponse(ctx, sbx.SandboxID, api.PostSandboxesSandboxIDTimeoutJSONRequestBody{
-		Timeout: 300,
+		Timeout: 600,
 	}, setup.WithAPIKey())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusNoContent, timeoutResp.StatusCode())
@@ -207,14 +207,14 @@ func TestSandboxAutoResumeUsesInitialTimeoutNotUpdatedTimeout(t *testing.T) {
 	err = utils.ExecCommand(t, ctx, sbx, envdClient, "ls")
 	require.NoError(t, err)
 
-	// Verify auto-resume uses original starting timeout (120s), not updated timeout (300s).
+	// Verify auto-resume uses original starting timeout (420s), not updated timeout (600s).
 	res, err = c.GetSandboxesSandboxIDWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
 	require.NoError(t, err)
 	require.NotNil(t, res.JSON200, "expected 200 response, got status %d", res.StatusCode())
 	require.Equal(t, api.Running, res.JSON200.State, "sandbox should be running after auto-resume")
 	resumedDuration := res.JSON200.EndAt.Sub(res.JSON200.StartedAt)
-	require.InDelta(t, 120, resumedDuration.Seconds(), 30, "expected timeout ~120s (starting timeout), got %s", resumedDuration)
-	require.Less(t, resumedDuration.Seconds(), 220.0, "resumed timeout should not follow updated 300s timeout")
+	require.InDelta(t, 420, resumedDuration.Seconds(), 45, "expected timeout ~420s (starting timeout), got %s", resumedDuration)
+	require.Less(t, resumedDuration.Seconds(), 540.0, "resumed timeout should not follow updated 600s timeout")
 }
 
 func TestSandboxNoAutoResumeWithoutFlag(t *testing.T) {
