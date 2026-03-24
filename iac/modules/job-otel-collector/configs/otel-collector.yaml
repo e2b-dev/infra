@@ -41,23 +41,27 @@ receivers:
           system.cpu.utilization: # percentage utilized in the moment
             enabled: true
 
-      # entirely disabled, so we omit the module
-      #disk:
-      #  metrics:
-      #    system.disk.io:
-      #      enabled: false
-      #    system.disk.io_time:
-      #      enabled: false
-      #    system.disk.merged:
-      #      enabled: false
-      #    system.disk.operation_time:
-      #      enabled: false
-      #    system.disk.operations:
-      #      enabled: false
-      #    system.disk.pending_operations:
-      #      enabled: false
-      #    system.disk.weighted_io_time:
-      #      enabled: false
+      disk:
+        include:
+          devices:
+            - "^sd[a-z]$"
+            - "^nvme[0-9]+n[0-9]+$"
+          match_type: regexp
+        metrics:
+          system.disk.io:
+            enabled: true
+          system.disk.io_time:
+            enabled: true
+          system.disk.merged:
+            enabled: false
+          system.disk.operation_time:
+            enabled: false
+          system.disk.operations:
+            enabled: true
+          system.disk.pending_operations:
+            enabled: true
+          system.disk.weighted_io_time:
+            enabled: false
 
       load:
         metrics:
@@ -214,6 +218,7 @@ processors:
           - "template.*"
           - "api.*"
           - "db.sql.connection.*"
+          - "db.client.*"
           - "vault.*"
           - "client_proxy.*"
           - "Click*"
@@ -223,6 +228,8 @@ processors:
           - "otelcol.exporter.sent.*"
           - "otelcol.receiver.refused.*"
           - "pgxpool.*"
+          - "go\\..*"
+          - "traefik.*"
 
   filter/only_client_allocs:
     metrics:
@@ -284,6 +291,25 @@ processors:
             new_value: blocked
             aggregation_type: sum
 
+  transform/aggregate_nvme:
+    metric_statements:
+      - context: datapoint
+        statements:
+          - replace_pattern(attributes["device"], "^nvme.*$$", "nvme")
+
+  metricstransform/aggregate_disks:
+    transforms:
+      - include: "system.disk.*"
+        match_type: regexp
+        action: update
+        operations:
+          - action: aggregate_labels
+            label_set:
+              - service.instance.id
+              - device
+              - direction
+              - deployment.environment
+            aggregation_type: sum
 
   resourcedetection:
     # https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/processor/resourcedetectionprocessor
@@ -309,7 +335,7 @@ processors:
         host.name:
           enabled: true
         gcp.gce.instance.name:
-          enabled: true
+          enabled: false
         gcp.gce.instance_group_manager.region:
           enabled: false
         gcp.gce.instance_group_manager.zone:
@@ -322,8 +348,16 @@ processors:
     override: true
     ec2:
       resource_attributes:
+        cloud.provider:
+          enabled: false
+        cloud.platform:
+          enabled: false
         cloud.account.id:
           enabled: true
+        cloud.region:
+          enabled: false
+        cloud.availability_zone:
+          enabled: false
         host.name:
           enabled: true
         host.id:
@@ -335,12 +369,7 @@ processors:
   transform/set-name:
     metric_statements:
       # We have to set the service instance here as it's necessary to set it as a datapoint attribute
-%{ if provider_name == "gcp" }
-      - set(datapoint.attributes["service.instance.id"], resource.attributes["gcp.gce.instance.name"])
-%{ endif }
-%{ if provider_name == "aws" }
       - set(datapoint.attributes["service.instance.id"], resource.attributes["host.name"])
-%{ endif }
       - set(datapoint.attributes["deployment.environment"], resource.attributes["cloud.account.id"])
       - delete_key(datapoint.attributes, "datacenter")
       - delete_key(datapoint.attributes, "instance")
@@ -470,6 +499,8 @@ service:
         - resourcedetection
         - transform/set-name
         - metricstransform/single_cpu
+        - transform/aggregate_nvme
+        - metricstransform/aggregate_disks
         - batch
       exporters:
         - otlp_http/grafana_cloud

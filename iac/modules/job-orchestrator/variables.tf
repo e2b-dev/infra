@@ -19,6 +19,17 @@ variable "provider_aws_config" {
   }
 }
 
+variable "provider_gcp_config" {
+  type = object({
+    service_account_key           = optional(string, "")
+    gcs_grpc_connection_pool_size = optional(number, 0)
+  })
+  default = {
+    service_account_key           = ""
+    gcs_grpc_connection_pool_size = 0
+  }
+}
+
 variable "node_pool" {
   type = string
 }
@@ -88,6 +99,11 @@ variable "redis_tls_ca_base64" {
   sensitive = true
 }
 
+variable "redis_pool_size" {
+  type    = number
+  default = 10
+}
+
 variable "consul_token" {
   type      = string
   sensitive = true
@@ -121,4 +137,14 @@ variable "build_cache_bucket_name" {
 variable "use_local_namespace_storage" {
   type    = bool
   default = false
+}
+
+variable "persistent_volume_mounts" {
+  type    = map(string)
+  default = {}
+}
+
+variable "job_env_vars" {
+  type    = map(string)
+  default = {}
 }

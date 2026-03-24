@@ -8,8 +8,11 @@ option go_package = "https://github.com/e2b-dev/infra/orchestrator";
 // needs to be different from the enumeration in the template manager
 enum ServiceInfoStatus {
   Healthy = 0;
+  // Draining means the node is bound to be shut down. It will not accept new sandboxes and will stop once all existing sandboxes are done.
   Draining = 1;
   Unhealthy = 2;
+  // Standby means the node is not actively used, but it can return to Healthy and continues serving traffic.
+  Standby = 3;
 }
 
 enum ServiceInfoRole {
@@ -44,12 +47,13 @@ message ServiceInfoResponse {
   repeated ServiceInfoRole service_roles = 52;
   google.protobuf.Timestamp service_startup = 53;
   MachineInfo machine_info = 54;
+  repeated string labels = 55;
 
   int64 metric_vcpu_used = 101 [deprecated = true];
   int64 metric_memory_used_mb = 102 [deprecated = true];
   int64 metric_disk_mb = 103 [deprecated = true];
   uint32 metric_sandboxes_running = 104;
-  
+
   // Host system usage metrics
   uint32 metric_cpu_percent = 105;
   uint64 metric_memory_used_bytes = 106;
@@ -62,7 +66,7 @@ message ServiceInfoResponse {
   uint32 metric_cpu_allocated = 110;
   uint64 metric_memory_allocated_bytes = 111;
   uint64 metric_disk_allocated_bytes = 112;
-  
+
   // Detailed disk metrics for each mount point
   repeated DiskMetrics metric_disks = 113;
 }

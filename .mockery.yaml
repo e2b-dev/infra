@@ -7,6 +7,34 @@ packages:
           filename: mocks.go
           pkgname: filesystemconnectmocks
 
+  github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator:
+    interfaces:
+      ChunkServiceClient:
+        config:
+          dir: packages/shared/pkg/grpc/orchestrator/mocks
+          filename: mockchunkserviceclient.go
+          pkgname: orchestratormocks
+      ChunkService_ReadAtBuildSeekableClient:
+        config:
+          dir: packages/shared/pkg/grpc/orchestrator/mocks
+          filename: mockchunkservicereadatbuildseekableclient.go
+          pkgname: orchestratormocks
+      ChunkService_ReadAtBuildSeekableServer:
+        config:
+          dir: packages/shared/pkg/grpc/orchestrator/mocks
+          filename: mockchunkservicereadatbuildseekableserver.go
+          pkgname: orchestratormocks
+      ChunkService_GetBuildBlobClient:
+        config:
+          dir: packages/shared/pkg/grpc/orchestrator/mocks
+          filename: mockchunkservicegetbuildblobclient.go
+          pkgname: orchestratormocks
+      ChunkService_GetBuildBlobServer:
+        config:
+          dir: packages/shared/pkg/grpc/orchestrator/mocks
+          filename: mockchunkservicegetbuildblobserver.go
+          pkgname: orchestratormocks
+
   github.com/e2b-dev/infra/packages/shared/pkg/storage:
     interfaces:
       featureFlagsClient:
@@ -25,6 +53,12 @@ packages:
           dir: packages/shared/pkg/storage/mocks
           filename: mockseekableobjectprovider.go
           pkgname: storagemocks
+      StorageProvider:
+        config:
+          dir: packages/shared/pkg/storage/mocks/provider
+          filename: mockstorageprovider.go
+          pkgname: providermocks
+
 
   io:
     interfaces:
@@ -50,29 +84,3 @@ packages:
           filename: mockfeatureflagsclient.go
           pkgname: handlersmocks
           structname: MockFeatureFlagsClient
-
-  github.com/willscott/go-nfs:
-    interfaces:
-      Handler:
-        config:
-          dir: packages/orchestrator/internal/nfsproxy/mocks
-          filename: nfshandler.go
-          pkgname: nfsproxymocks
-
-  github.com/go-git/go-billy/v5:
-    interfaces:
-      Change:
-        config:
-          dir: packages/orchestrator/internal/nfsproxy/mocks
-          filename: billychange.go
-          pkgname: nfsproxymocks
-      File:
-        config:
-          dir: packages/orchestrator/internal/nfsproxy/mocks
-          filename: billyfile.go
-          pkgname: nfsproxymocks
-      Filesystem:
-        config:
-          dir: packages/orchestrator/internal/nfsproxy/mocks
-          filename: billyfs.go
-          pkgname: nfsproxymocks

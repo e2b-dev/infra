@@ -25,6 +25,14 @@ type AccessToken struct {
 	AccessTokenMaskSuffix string
 }
 
+type ActiveTemplateBuild struct {
+	BuildID    uuid.UUID
+	TeamID     uuid.UUID
+	TemplateID string
+	Tags       []string
+	CreatedAt  time.Time
+}
+
 type Addon struct {
 	ID                            uuid.UUID
 	TeamID                        uuid.UUID
@@ -44,6 +52,18 @@ type Addon struct {
 type AuthUser struct {
 	ID    uuid.UUID
 	Email string
+}
+
+type BillingSandboxLog struct {
+	SandboxID       string
+	EnvID           string
+	Vcpu            int64
+	RamMb           int64
+	TotalDiskSizeMb int64
+	StartedAt       time.Time
+	StoppedAt       *time.Time
+	CreatedAt       time.Time
+	TeamID          uuid.UUID
 }
 
 type Cluster struct {
@@ -116,6 +136,11 @@ type EnvBuildAssignment struct {
 	CreatedAt pgtype.Timestamptz
 }
 
+type EnvDefault struct {
+	EnvID       string
+	Description *string
+}
+
 type Snapshot struct {
 	CreatedAt           pgtype.Timestamptz
 	EnvID               string
@@ -133,22 +158,26 @@ type Snapshot struct {
 }
 
 type SnapshotTemplate struct {
-	EnvID     string
-	SandboxID string
-	CreatedAt pgtype.Timestamptz
+	EnvID        string
+	SandboxID    string
+	CreatedAt    pgtype.Timestamptz
+	OriginNodeID *string
+	BuildID      *uuid.UUID
 }
 
 type Team struct {
-	ID            uuid.UUID
-	CreatedAt     time.Time
-	IsBlocked     bool
-	Name          string
-	Tier          string
-	Email         string
-	IsBanned      bool
-	BlockedReason *string
-	ClusterID     *uuid.UUID
-	Slug          string
+	ID                      uuid.UUID
+	CreatedAt               time.Time
+	IsBlocked               bool
+	Name                    string
+	Tier                    string
+	Email                   string
+	IsBanned                bool
+	BlockedReason           *string
+	ClusterID               *uuid.UUID
+	SandboxSchedulingLabels []string
+	Slug                    string
+	ProfilePictureUrl       *string
 }
 
 type TeamApiKey struct {
@@ -204,6 +233,7 @@ type UsersTeam struct {
 	IsDefault bool
 	AddedBy   *uuid.UUID
 	CreatedAt pgtype.Timestamp
+	UuidID    uuid.UUID
 }
 
 type Volume struct {

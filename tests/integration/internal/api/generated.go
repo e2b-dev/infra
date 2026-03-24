@@ -67,13 +67,14 @@ const (
 	NodeStatusConnecting NodeStatus = "connecting"
 	NodeStatusDraining   NodeStatus = "draining"
 	NodeStatusReady      NodeStatus = "ready"
+	NodeStatusStandby    NodeStatus = "standby"
 	NodeStatusUnhealthy  NodeStatus = "unhealthy"
 )
 
-// Defines values for SandboxAutoResumePolicy.
+// Defines values for SandboxOnTimeout.
 const (
-	Any SandboxAutoResumePolicy = "any"
-	Off SandboxAutoResumePolicy = "off"
+	Kill  SandboxOnTimeout = "kill"
+	Pause SandboxOnTimeout = "pause"
 )
 
 // Defines values for SandboxState.
@@ -349,8 +350,8 @@ type ListedSandbox struct {
 	State SandboxState `json:"state"`
 
 	// TemplateID Identifier of the template from which is the sandbox created
-	TemplateID   string               `json:"templateID"`
-	VolumeMounts []SandboxVolumeMount `json:"volumeMounts"`
+	TemplateID   string                `json:"templateID"`
+	VolumeMounts *[]SandboxVolumeMount `json:"volumeMounts,omitempty"`
 }
 
 // LogLevel State of the sandbox
@@ -410,7 +411,7 @@ type NewSandbox struct {
 	// AutoPause Automatically pauses the sandbox after the timeout
 	AutoPause *bool `json:"autoPause,omitempty"`
 
-	// AutoResume Auto-resume configuration for paused sandboxes. Default is off.
+	// AutoResume Auto-resume configuration for paused sandboxes.
 	AutoResume *SandboxAutoResumeConfig `json:"autoResume,omitempty"`
 	EnvVars    *EnvVars                 `json:"envVars,omitempty"`
 
@@ -472,7 +473,9 @@ type Node struct {
 	// ServiceInstanceID Service instance identifier of the node
 	ServiceInstanceID string `json:"serviceInstanceID"`
 
-	// Status Status of the node
+	// Status Status of the node.
+	// - draining: the node is bound to be shut down. It will not accept new sandboxes and will stop once all existing sandboxes are done.
+	// - standby: the node is not actively used, but it can return to ready and continue serving traffic.
 	Status NodeStatus `json:"status"`
 
 	// Version Version of the orchestrator
@@ -509,7 +512,9 @@ type NodeDetail struct {
 	// ServiceInstanceID Service instance identifier of the node
 	ServiceInstanceID string `json:"serviceInstanceID"`
 
-	// Status Status of the node
+	// Status Status of the node.
+	// - draining: the node is bound to be shut down. It will not accept new sandboxes and will stop once all existing sandboxes are done.
+	// - standby: the node is not actively used, but it can return to ready and continue serving traffic.
 	Status NodeStatus `json:"status"`
 
 	// Version Version of the orchestrator
@@ -540,7 +545,9 @@ type NodeMetrics struct {
 	MemoryUsedBytes uint64 `json:"memoryUsedBytes"`
 }
 
-// NodeStatus Status of the node
+// NodeStatus Status of the node.
+// - draining: the node is bound to be shut down. It will not accept new sandboxes and will stop once all existing sandboxes are done.
+// - standby: the node is not actively used, but it can return to ready and continue serving traffic.
 type NodeStatus string
 
 // NodeStatusChange defines model for NodeStatusChange.
@@ -548,7 +555,9 @@ type NodeStatusChange struct {
 	// ClusterID Identifier of the cluster
 	ClusterID *openapi_types.UUID `json:"clusterID,omitempty"`
 
-	// Status Status of the node
+	// Status Status of the node.
+	// - draining: the node is bound to be shut down. It will not accept new sandboxes and will stop once all existing sandboxes are done.
+	// - standby: the node is not actively used, but it can return to ready and continue serving traffic.
 	Status NodeStatus `json:"status"`
 }
 
@@ -590,19 +599,22 @@ type Sandbox struct {
 	TrafficAccessToken *string `json:"trafficAccessToken"`
 }
 
-// SandboxAutoResumeConfig Auto-resume configuration for paused sandboxes. Default is off.
+// SandboxAutoResumeConfig Auto-resume configuration for paused sandboxes.
 type SandboxAutoResumeConfig struct {
-	// Policy Auto-resume policy for paused sandboxes. Default is off.
-	Policy SandboxAutoResumePolicy `json:"policy"`
+	// Enabled Auto-resume enabled flag for paused sandboxes. Default false.
+	Enabled SandboxAutoResumeEnabled `json:"enabled"`
 }
 
-// SandboxAutoResumePolicy Auto-resume policy for paused sandboxes. Default is off.
-type SandboxAutoResumePolicy string
+// SandboxAutoResumeEnabled Auto-resume enabled flag for paused sandboxes. Default false.
+type SandboxAutoResumeEnabled = bool
 
 // SandboxDetail defines model for SandboxDetail.
 type SandboxDetail struct {
 	// Alias Alias of the template
 	Alias *string `json:"alias,omitempty"`
+
+	// AllowInternetAccess Whether internet access was explicitly enabled or disabled for the sandbox. Null means it was not explicitly set.
+	AllowInternetAccess *bool `json:"allowInternetAccess"`
 
 	// ClientID Identifier of the client
 	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
@@ -626,9 +638,13 @@ type SandboxDetail struct {
 	// EnvdVersion Version of the envd running in the sandbox
 	EnvdVersion EnvdVersion `json:"envdVersion"`
 
+	// Lifecycle Sandbox lifecycle policy returned by sandbox info.
+	Lifecycle *SandboxLifecycle `json:"lifecycle,omitempty"`
+
 	// MemoryMB Memory for the sandbox in MiB
-	MemoryMB MemoryMB         `json:"memoryMB"`
-	Metadata *SandboxMetadata `json:"metadata,omitempty"`
+	MemoryMB MemoryMB              `json:"memoryMB"`
+	Metadata *SandboxMetadata      `json:"metadata,omitempty"`
+	Network  *SandboxNetworkConfig `json:"network,omitempty"`
 
 	// SandboxID Identifier of the sandbox
 	SandboxID string `json:"sandboxID"`
@@ -640,8 +656,17 @@ type SandboxDetail struct {
 	State SandboxState `json:"state"`
 
 	// TemplateID Identifier of the template from which is the sandbox created
-	TemplateID   string               `json:"templateID"`
-	VolumeMounts []SandboxVolumeMount `json:"volumeMounts"`
+	TemplateID   string                `json:"templateID"`
+	VolumeMounts *[]SandboxVolumeMount `json:"volumeMounts,omitempty"`
+}
+
+// SandboxLifecycle Sandbox lifecycle policy returned by sandbox info.
+type SandboxLifecycle struct {
+	// AutoResume Whether the sandbox can auto-resume.
+	AutoResume bool `json:"autoResume"`
+
+	// OnTimeout Action taken when the sandbox times out.
+	OnTimeout SandboxOnTimeout `json:"onTimeout"`
 }
 
 // SandboxLog Log entry with timestamp and line
@@ -715,18 +740,21 @@ type SandboxMetric struct {
 
 // SandboxNetworkConfig defines model for SandboxNetworkConfig.
 type SandboxNetworkConfig struct {
-	// AllowOut List of allowed CIDR blocks or IP addresses for egress traffic. Allowed addresses always take precedence over blocked addresses.
+	// AllowOut List of allowed destinations for egress traffic. Each entry can be a CIDR block (e.g. "8.8.8.8/32"), a bare IP address (e.g. "8.8.8.8"), or a domain name (e.g. "example.com", "*.example.com"). Allowed entries always take precedence over denied entries.
 	AllowOut *[]string `json:"allowOut,omitempty"`
 
 	// AllowPublicTraffic Specify if the sandbox URLs should be accessible only with authentication.
 	AllowPublicTraffic *bool `json:"allowPublicTraffic,omitempty"`
 
-	// DenyOut List of denied CIDR blocks or IP addresses for egress traffic
+	// DenyOut List of denied CIDR blocks or IP addresses for egress traffic. Domain names are not supported for deny rules.
 	DenyOut *[]string `json:"denyOut,omitempty"`
 
 	// MaskRequestHost Specify host mask which will be used for all sandbox requests
 	MaskRequestHost *string `json:"maskRequestHost,omitempty"`
 }
+
+// SandboxOnTimeout Action taken when the sandbox times out.
+type SandboxOnTimeout string
 
 // SandboxState State of the sandbox
 type SandboxState string
@@ -1172,6 +1200,18 @@ type Volume struct {
 	VolumeID string `json:"volumeID"`
 }
 
+// VolumeAndToken defines model for VolumeAndToken.
+type VolumeAndToken struct {
+	// Name Name of the volume
+	Name string `json:"name"`
+
+	// Token Auth token to use for interacting with volume content
+	Token string `json:"token"`
+
+	// VolumeID ID of the volume
+	VolumeID string `json:"volumeID"`
+}
+
 // AccessTokenID defines model for accessTokenID.
 type AccessTokenID = string
 
@@ -1252,6 +1292,15 @@ type GetSandboxesSandboxIDMetricsParams struct {
 	// Start Unix timestamp for the start of the interval, in seconds, for which the metrics
 	Start *int64 `form:"start,omitempty" json:"start,omitempty"`
 	End   *int64 `form:"end,omitempty" json:"end,omitempty"`
+}
+
+// PutSandboxesSandboxIDNetworkJSONBody defines parameters for PutSandboxesSandboxIDNetwork.
+type PutSandboxesSandboxIDNetworkJSONBody struct {
+	// AllowOut List of allowed destinations for egress traffic. Each entry can be a CIDR block (e.g. "8.8.8.8/32"), a bare IP address (e.g. "8.8.8.8"), or a domain name (e.g. "example.com", "*.example.com"). Allowed entries always take precedence over denied entries.
+	AllowOut *[]string `json:"allowOut,omitempty"`
+
+	// DenyOut List of denied CIDR blocks or IP addresses for egress traffic. Domain names are not supported for deny rules.
+	DenyOut *[]string `json:"denyOut,omitempty"`
 }
 
 // PostSandboxesSandboxIDRefreshesJSONBody defines parameters for PostSandboxesSandboxIDRefreshes.
@@ -1366,6 +1415,12 @@ type GetV2SandboxesSandboxIDLogsParams struct {
 
 	// Direction Direction of the logs that should be returned
 	Direction *LogsDirection `form:"direction,omitempty" json:"direction,omitempty"`
+
+	// Level Minimum log level to return. Logs below this level are excluded
+	Level *LogLevel `form:"level,omitempty" json:"level,omitempty"`
+
+	// Search Case-sensitive substring match on log message content
+	Search *string `form:"search,omitempty" json:"search,omitempty"`
 }
 
 // PostAccessTokensJSONRequestBody defines body for PostAccessTokens for application/json ContentType.
@@ -1385,6 +1440,9 @@ type PostSandboxesJSONRequestBody = NewSandbox
 
 // PostSandboxesSandboxIDConnectJSONRequestBody defines body for PostSandboxesSandboxIDConnect for application/json ContentType.
 type PostSandboxesSandboxIDConnectJSONRequestBody = ConnectSandbox
+
+// PutSandboxesSandboxIDNetworkJSONRequestBody defines body for PutSandboxesSandboxIDNetwork for application/json ContentType.
+type PutSandboxesSandboxIDNetworkJSONRequestBody PutSandboxesSandboxIDNetworkJSONBody
 
 // PostSandboxesSandboxIDRefreshesJSONRequestBody defines body for PostSandboxesSandboxIDRefreshes for application/json ContentType.
 type PostSandboxesSandboxIDRefreshesJSONRequestBody PostSandboxesSandboxIDRefreshesJSONBody
@@ -1691,6 +1749,11 @@ type ClientInterface interface {
 
 	// GetSandboxesSandboxIDMetrics request
 	GetSandboxesSandboxIDMetrics(ctx context.Context, sandboxID SandboxID, params *GetSandboxesSandboxIDMetricsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PutSandboxesSandboxIDNetworkWithBody request with any body
+	PutSandboxesSandboxIDNetworkWithBody(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PutSandboxesSandboxIDNetwork(ctx context.Context, sandboxID SandboxID, body PutSandboxesSandboxIDNetworkJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PostSandboxesSandboxIDPause request
 	PostSandboxesSandboxIDPause(ctx context.Context, sandboxID SandboxID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -2122,6 +2185,30 @@ func (c *Client) GetSandboxesSandboxIDLogs(ctx context.Context, sandboxID Sandbo
 
 func (c *Client) GetSandboxesSandboxIDMetrics(ctx context.Context, sandboxID SandboxID, params *GetSandboxesSandboxIDMetricsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetSandboxesSandboxIDMetricsRequest(c.Server, sandboxID, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PutSandboxesSandboxIDNetworkWithBody(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutSandboxesSandboxIDNetworkRequestWithBody(c.Server, sandboxID, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PutSandboxesSandboxIDNetwork(ctx context.Context, sandboxID SandboxID, body PutSandboxesSandboxIDNetworkJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutSandboxesSandboxIDNetworkRequest(c.Server, sandboxID, body)
 	if err != nil {
 		return nil, err
 	}
@@ -3536,6 +3623,53 @@ func NewGetSandboxesSandboxIDMetricsRequest(server string, sandboxID SandboxID, 
 	return req, nil
 }
 
+// NewPutSandboxesSandboxIDNetworkRequest calls the generic PutSandboxesSandboxIDNetwork builder with application/json body
+func NewPutSandboxesSandboxIDNetworkRequest(server string, sandboxID SandboxID, body PutSandboxesSandboxIDNetworkJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPutSandboxesSandboxIDNetworkRequestWithBody(server, sandboxID, "application/json", bodyReader)
+}
+
+// NewPutSandboxesSandboxIDNetworkRequestWithBody generates requests for PutSandboxesSandboxIDNetwork with any type of body
+func NewPutSandboxesSandboxIDNetworkRequestWithBody(server string, sandboxID SandboxID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "sandboxID", runtime.ParamLocationPath, sandboxID)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/sandboxes/%s/network", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewPostSandboxesSandboxIDPauseRequest generates requests for PostSandboxesSandboxIDPause
 func NewPostSandboxesSandboxIDPauseRequest(server string, sandboxID SandboxID) (*http.Request, error) {
 	var err error
@@ -4937,6 +5071,38 @@ func NewGetV2SandboxesSandboxIDLogsRequest(server string, sandboxID SandboxID, p
 
 		}
 
+		if params.Level != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "level", runtime.ParamLocationQuery, *params.Level); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Search != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "search", runtime.ParamLocationQuery, *params.Search); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
 		queryURL.RawQuery = queryValues.Encode()
 	}
 
@@ -5378,6 +5544,11 @@ type ClientWithResponsesInterface interface {
 
 	// GetSandboxesSandboxIDMetricsWithResponse request
 	GetSandboxesSandboxIDMetricsWithResponse(ctx context.Context, sandboxID SandboxID, params *GetSandboxesSandboxIDMetricsParams, reqEditors ...RequestEditorFn) (*GetSandboxesSandboxIDMetricsResponse, error)
+
+	// PutSandboxesSandboxIDNetworkWithBodyWithResponse request with any body
+	PutSandboxesSandboxIDNetworkWithBodyWithResponse(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutSandboxesSandboxIDNetworkResponse, error)
+
+	PutSandboxesSandboxIDNetworkWithResponse(ctx context.Context, sandboxID SandboxID, body PutSandboxesSandboxIDNetworkJSONRequestBody, reqEditors ...RequestEditorFn) (*PutSandboxesSandboxIDNetworkResponse, error)
 
 	// PostSandboxesSandboxIDPauseWithResponse request
 	PostSandboxesSandboxIDPauseWithResponse(ctx context.Context, sandboxID SandboxID, reqEditors ...RequestEditorFn) (*PostSandboxesSandboxIDPauseResponse, error)
@@ -5992,6 +6163,31 @@ func (r GetSandboxesSandboxIDMetricsResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r GetSandboxesSandboxIDMetricsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PutSandboxesSandboxIDNetworkResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON401      *N401
+	JSON404      *N404
+	JSON409      *N409
+	JSON500      *N500
+}
+
+// Status returns HTTPResponse.Status
+func (r PutSandboxesSandboxIDNetworkResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PutSandboxesSandboxIDNetworkResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -6743,7 +6939,7 @@ func (r GetVolumesResponse) StatusCode() int {
 type PostVolumesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON201      *Volume
+	JSON201      *VolumeAndToken
 	JSON400      *N400
 	JSON401      *N401
 	JSON500      *N500
@@ -6792,7 +6988,7 @@ func (r DeleteVolumesVolumeIDResponse) StatusCode() int {
 type GetVolumesVolumeIDResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON200      *Volume
+	JSON200      *VolumeAndToken
 	JSON401      *N401
 	JSON404      *N404
 	JSON500      *N500
@@ -7040,6 +7236,23 @@ func (c *ClientWithResponses) GetSandboxesSandboxIDMetricsWithResponse(ctx conte
 		return nil, err
 	}
 	return ParseGetSandboxesSandboxIDMetricsResponse(rsp)
+}
+
+// PutSandboxesSandboxIDNetworkWithBodyWithResponse request with arbitrary body returning *PutSandboxesSandboxIDNetworkResponse
+func (c *ClientWithResponses) PutSandboxesSandboxIDNetworkWithBodyWithResponse(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutSandboxesSandboxIDNetworkResponse, error) {
+	rsp, err := c.PutSandboxesSandboxIDNetworkWithBody(ctx, sandboxID, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutSandboxesSandboxIDNetworkResponse(rsp)
+}
+
+func (c *ClientWithResponses) PutSandboxesSandboxIDNetworkWithResponse(ctx context.Context, sandboxID SandboxID, body PutSandboxesSandboxIDNetworkJSONRequestBody, reqEditors ...RequestEditorFn) (*PutSandboxesSandboxIDNetworkResponse, error) {
+	rsp, err := c.PutSandboxesSandboxIDNetwork(ctx, sandboxID, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutSandboxesSandboxIDNetworkResponse(rsp)
 }
 
 // PostSandboxesSandboxIDPauseWithResponse request returning *PostSandboxesSandboxIDPauseResponse
@@ -8315,6 +8528,53 @@ func ParseGetSandboxesSandboxIDMetricsResponse(rsp *http.Response) (*GetSandboxe
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePutSandboxesSandboxIDNetworkResponse parses an HTTP response from a PutSandboxesSandboxIDNetworkWithResponse call
+func ParsePutSandboxesSandboxIDNetworkResponse(rsp *http.Response) (*PutSandboxesSandboxIDNetworkResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PutSandboxesSandboxIDNetworkResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest N409
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest N500
@@ -9697,7 +9957,7 @@ func ParsePostVolumesResponse(rsp *http.Response) (*PostVolumesResponse, error) 
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
-		var dest Volume
+		var dest VolumeAndToken
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -9784,7 +10044,7 @@ func ParseGetVolumesVolumeIDResponse(rsp *http.Response) (*GetVolumesVolumeIDRes
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest Volume
+		var dest VolumeAndToken
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

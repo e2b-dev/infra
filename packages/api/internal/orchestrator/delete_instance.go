@@ -5,24 +5,37 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 )
 
-func (o *Orchestrator) RemoveSandbox(ctx context.Context, sbx sandbox.Sandbox, stateAction sandbox.StateAction) error {
+func (o *Orchestrator) RemoveSandbox(ctx context.Context, teamID uuid.UUID, sandboxID string, opts sandbox.RemoveOpts) error {
 	ctx, span := tracer.Start(ctx, "remove-sandbox")
 	defer span.End()
 
-	sandboxID := sbx.SandboxID
-	alreadyDone, finish, err := o.sandboxStore.StartRemoving(ctx, sbx.TeamID, sandboxID, stateAction)
+	sbx, alreadyDone, finish, err := o.sandboxStore.StartRemoving(ctx, teamID, sandboxID, opts)
 	if err != nil {
-		switch stateAction {
+		// For eviction, propagate all errors to the evictor.
+		if opts.Eviction {
+			return err
+		}
+
+		switch opts.Action {
 		case sandbox.StateActionKill:
+			if errors.Is(err, sandbox.ErrNotFound) {
+				logger.L().Info(ctx, "Sandbox not found, already removed", logger.WithSandboxID(sandboxID))
+
+				return ErrSandboxNotFound
+			}
+
 			switch sbx.State {
 			case sandbox.StateKilling:
 				logger.L().Info(ctx, "Sandbox is already killed", logger.WithSandboxID(sandboxID))
@@ -34,6 +47,12 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, sbx sandbox.Sandbox, s
 				return ErrSandboxOperationFailed
 			}
 		case sandbox.StateActionPause:
+			if errors.Is(err, sandbox.ErrNotFound) {
+				logger.L().Info(ctx, "Sandbox not found for pause", logger.WithSandboxID(sandboxID))
+
+				return ErrSandboxNotFound
+			}
+
 			var transErr *sandbox.InvalidStateTransitionError
 			if errors.As(err, &transErr) {
 				if transErr.CurrentState == sandbox.StateKilling {
@@ -49,7 +68,7 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, sbx sandbox.Sandbox, s
 
 			return ErrSandboxOperationFailed
 		default:
-			logger.L().Error(ctx, "Invalid state action", logger.WithSandboxID(sandboxID), zap.String("state_action", stateAction.Name))
+			logger.L().Error(ctx, "Invalid state action", logger.WithSandboxID(sandboxID), zap.String("state_action", opts.Action.Name))
 
 			return ErrSandboxOperationFailed
 		}
@@ -64,10 +83,10 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, sbx sandbox.Sandbox, s
 		return nil
 	}
 
-	defer func() { go o.countersRemove(context.WithoutCancel(ctx), sbx, stateAction) }()
-	defer func() { go o.analyticsRemove(context.WithoutCancel(ctx), sbx, stateAction) }()
-	defer o.sandboxStore.Remove(ctx, sbx.TeamID, sbx.SandboxID)
-	err = o.removeSandboxFromNode(ctx, sbx, stateAction)
+	defer func() { go o.countersRemove(context.WithoutCancel(ctx), teamID, opts.Action) }()
+	defer func() { go o.analyticsRemove(context.WithoutCancel(ctx), sbx, opts.Action) }()
+	defer o.sandboxStore.Remove(ctx, teamID, sandboxID)
+	err = o.removeSandboxFromNode(ctx, sbx, opts.Action)
 	if err != nil {
 		logger.L().Error(ctx, "Error pausing sandbox", zap.Error(err), logger.WithSandboxID(sbx.SandboxID))
 
@@ -81,7 +100,7 @@ func (o *Orchestrator) removeSandboxFromNode(ctx context.Context, sbx sandbox.Sa
 	ctx, span := tracer.Start(ctx, "remove-sandbox-from-node")
 	defer span.End()
 
-	node := o.GetNode(sbx.ClusterID, sbx.NodeID)
+	node := o.getOrConnectNode(ctx, sbx.ClusterID, sbx.NodeID)
 	if node == nil {
 		logger.L().Error(ctx, "failed to get node", logger.WithNodeID(sbx.NodeID))
 
@@ -107,20 +126,36 @@ func (o *Orchestrator) removeSandboxFromNode(ctx context.Context, sbx sandbox.Sa
 	case sandbox.StateActionPause:
 		err := o.pauseSandbox(ctx, node, sbx)
 		if err != nil {
-			logger.L().Debug(ctx, "failed to create snapshot", logger.WithSandboxID(sbx.SandboxID), zap.String("base_template_id", sbx.BaseTemplateID))
+			if dberrors.IsForeignKeyViolation(err) {
+				killErr := o.killSandboxOnNode(ctx, node, sbx)
+				logger.L().Error(ctx, "Pause failed due to missing base template, killed sandbox as fallback",
+					logger.WithSandboxID(sbx.SandboxID),
+					zap.String("base_template_id", sbx.BaseTemplateID),
+					zap.NamedError("pause_error", err),
+					zap.NamedError("kill_error", killErr),
+				)
+
+				return fmt.Errorf("failed to pause sandbox '%s': base template no longer exists: %w", sbx.SandboxID, err)
+			}
 
 			return fmt.Errorf("failed to auto pause sandbox '%s': %w", sbx.SandboxID, err)
 		}
 
 		return nil
 	case sandbox.StateActionKill:
-		req := &orchestrator.SandboxDeleteRequest{SandboxId: sbx.SandboxID}
+		return o.killSandboxOnNode(ctx, node, sbx)
+	}
 
-		client, ctx := node.GetSandboxDeleteCtx(ctx, sbx.SandboxID, sbx.ExecutionID)
-		_, err := client.Sandbox.Delete(ctx, req)
-		if err != nil {
-			return fmt.Errorf("failed to delete sandbox '%s': %w", sbx.SandboxID, err)
-		}
+	return nil
+}
+
+func (o *Orchestrator) killSandboxOnNode(ctx context.Context, node *nodemanager.Node, sbx sandbox.Sandbox) error {
+	req := &orchestrator.SandboxDeleteRequest{SandboxId: sbx.SandboxID}
+
+	client, ctx := node.GetSandboxDeleteCtx(ctx, sbx.SandboxID, sbx.ExecutionID)
+	_, err := client.Sandbox.Delete(ctx, req)
+	if err != nil {
+		return fmt.Errorf("failed to delete sandbox '%s': %w", sbx.SandboxID, err)
 	}
 
 	return nil

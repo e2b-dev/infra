@@ -12,11 +12,10 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/e2b-dev/infra/packages/auth/pkg/types"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -33,7 +32,16 @@ func (a *APIStore) getSandboxesMetrics(
 	defer span.End()
 
 	for i, id := range sandboxIDs {
-		sandboxIDs[i] = utils.ShortID(id)
+		short, err := utils.ShortID(id)
+		if err != nil {
+			return nil, &api.APIError{
+				Code:      http.StatusBadRequest,
+				ClientMsg: "Invalid sandbox ID",
+				Err:       err,
+			}
+		}
+
+		sandboxIDs[i] = short
 	}
 
 	telemetry.SetAttributes(ctx,
@@ -71,7 +79,7 @@ func (a *APIStore) GetSandboxesMetrics(c *gin.Context, params api.GetSandboxesMe
 	ctx := c.Request.Context()
 	telemetry.ReportEvent(ctx, "list running instances with metrics")
 
-	team := c.Value(auth.TeamContextKey).(*types.Team)
+	team := auth.MustGetTeamInfo(c)
 
 	if len(params.SandboxIds) > maxSandboxMetricsCount {
 		logger.L().Error(ctx, "Too many sandboxes requested", zap.Int("requested_count", len(params.SandboxIds)), zap.Int("max_count", maxSandboxMetricsCount), logger.WithTeamID(team.ID.String()))

@@ -52,67 +52,101 @@ data "google_secret_manager_secret_version" "redis_tls_ca_base64" {
 module "ingress" {
   source = "../../modules/job-ingress"
 
-  ingress_count      = var.ingress_count
-  ingress_proxy_port = var.ingress_port.port
+  ingress_count                = var.ingress_count
+  ingress_proxy_port           = var.ingress_port.port
+  additional_traefik_arguments = var.additional_traefik_arguments
 
   node_pool     = var.api_node_pool
   update_stanza = var.api_machine_count > 1
 
   nomad_token  = var.nomad_acl_token_secret
   consul_token = var.consul_acl_token_secret
+
+  otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
 }
 
-resource "nomad_job" "api" {
-  jobspec = templatefile("${path.module}/jobs/api.hcl", {
-    update_stanza = var.api_machine_count > 1
-    node_pool     = var.api_node_pool
-    // We use colocation 2 here to ensure that there are at least 2 nodes for API to do rolling updates.
-    // It might be possible there could be problems if we are rolling updates for both API and Loki at the same time., so maybe increasing this to > 3 makes sense.
-    prevent_colocation = var.api_machine_count > 2
+module "api" {
+  source = "../../modules/job-api"
 
+  update_stanza = var.api_machine_count > 1
+  node_pool     = var.api_node_pool
+  // We use colocation 2 here to ensure that there are at least 2 nodes for API to do rolling updates.
+  // It might be possible there could be problems if we are rolling updates for both API and Loki at the same time., so maybe increasing this to > 3 makes sense.
+  prevent_colocation = var.api_machine_count > 2
+  count_instances    = var.api_server_count
 
-    memory_mb = var.api_resources_memory_mb
-    cpu_count = var.api_resources_cpu_count
+  memory_mb = var.api_resources_memory_mb
+  cpu_count = var.api_resources_cpu_count
 
-    orchestrator_port                       = var.orchestrator_port
-    otel_collector_grpc_endpoint            = "localhost:${var.otel_collector_grpc_port}"
-    logs_collector_address                  = "http://localhost:${var.logs_proxy_port.port}"
-    gcp_zone                                = var.gcp_zone
-    port_name                               = var.api_port.name
-    port_number                             = var.api_port.port
-    api_grpc_port                           = var.api_grpc_port
-    api_docker_image                        = data.google_artifact_registry_docker_image.api_image.self_link
-    postgres_connection_string              = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
-    postgres_read_replica_connection_string = trimspace(data.google_secret_manager_secret_version.postgres_read_replica_connection_string.secret_data)
-    supabase_jwt_secrets                    = trimspace(data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data)
-    posthog_api_key                         = trimspace(data.google_secret_manager_secret_version.posthog_api_key.secret_data)
-    environment                             = var.environment
-    analytics_collector_host                = trimspace(data.google_secret_manager_secret_version.analytics_collector_host.secret_data)
-    analytics_collector_api_token           = trimspace(data.google_secret_manager_secret_version.analytics_collector_api_token.secret_data)
-    nomad_acl_token                         = var.nomad_acl_token_secret
-    admin_token                             = var.api_admin_token
-    redis_url                               = local.redis_url
-    redis_cluster_url                       = local.redis_cluster_url
-    redis_tls_ca_base64                     = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
-    clickhouse_connection_string            = local.clickhouse_connection_string
-    loki_url                                = local.loki_url
-    sandbox_access_token_hash_seed          = var.sandbox_access_token_hash_seed
-    db_migrator_docker_image                = data.google_artifact_registry_docker_image.db_migrator_image.self_link
-    launch_darkly_api_key                   = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
-  })
+  domain_name                             = var.domain_name
+  orchestrator_port                       = var.orchestrator_port
+  otel_collector_grpc_endpoint            = "localhost:${var.otel_collector_grpc_port}"
+  logs_collector_address                  = "http://localhost:${var.logs_proxy_port.port}"
+  port_name                               = var.api_port.name
+  port_number                             = var.api_port.port
+  api_grpc_port                           = var.api_grpc_port
+  api_docker_image                        = data.google_artifact_registry_docker_image.api_image.self_link
+  postgres_connection_string              = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
+  postgres_read_replica_connection_string = trimspace(data.google_secret_manager_secret_version.postgres_read_replica_connection_string.secret_data)
+  supabase_jwt_secrets                    = trimspace(data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data)
+  posthog_api_key                         = trimspace(data.google_secret_manager_secret_version.posthog_api_key.secret_data)
+  environment                             = var.environment
+  analytics_collector_host                = trimspace(data.google_secret_manager_secret_version.analytics_collector_host.secret_data)
+  analytics_collector_api_token           = trimspace(data.google_secret_manager_secret_version.analytics_collector_api_token.secret_data)
+  nomad_acl_token                         = var.nomad_acl_token_secret
+  admin_token                             = var.api_admin_token
+  redis_url                               = local.redis_url
+  redis_cluster_url                       = local.redis_cluster_url
+  redis_tls_ca_base64                     = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
+  clickhouse_connection_string            = local.clickhouse_connection_string
+  loki_url                                = local.loki_url
+  sandbox_access_token_hash_seed          = var.sandbox_access_token_hash_seed
+  sandbox_storage_backend                 = var.sandbox_storage_backend
+  db_max_open_connections                 = var.db_max_open_connections
+  db_min_idle_connections                 = var.db_min_idle_connections
+  auth_db_max_open_connections            = var.auth_db_max_open_connections
+  auth_db_min_idle_connections            = var.auth_db_min_idle_connections
+  db_migrator_docker_image                = data.google_artifact_registry_docker_image.db_migrator_image.self_link
+  launch_darkly_api_key                   = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
+  default_persistent_volume_type          = var.default_persistent_volume_type
+
+  job_env_vars = {
+    VOLUME_TOKEN_ISSUER           = var.volume_token_issuer
+    VOLUME_TOKEN_SIGNING_KEY      = var.volume_token_signing_key
+    VOLUME_TOKEN_SIGNING_KEY_NAME = var.volume_token_signing_key_name
+    VOLUME_TOKEN_DURATION         = var.volume_token_duration
+    VOLUME_TOKEN_SIGNING_METHOD   = var.volume_token_signing_method
+  }
 }
 
-resource "nomad_job" "redis" {
-  count = var.redis_managed ? 0 : 1
+module "dashboard_api" {
+  source = "../../modules/job-dashboard-api"
+  count  = var.dashboard_api_count > 0 ? 1 : 0
 
-  jobspec = templatefile("${path.module}/jobs/redis.hcl",
-    {
-      node_pool   = var.api_node_pool
-      gcp_zone    = var.gcp_zone
-      port_number = var.redis_port.port
-      port_name   = var.redis_port.name
-    }
-  )
+  count_instances = var.dashboard_api_count
+  node_pool       = var.api_node_pool
+  update_stanza   = var.dashboard_api_count > 1
+  environment     = var.environment
+
+  image = data.google_artifact_registry_docker_image.dashboard_api_image[0].self_link
+
+  postgres_connection_string             = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
+  auth_db_connection_string              = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
+  auth_db_read_replica_connection_string = trimspace(data.google_secret_manager_secret_version.postgres_read_replica_connection_string.secret_data)
+  clickhouse_connection_string           = local.clickhouse_connection_string
+  supabase_jwt_secrets                   = trimspace(data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data)
+
+  otel_collector_grpc_port = var.otel_collector_grpc_port
+  logs_proxy_port          = var.logs_proxy_port
+}
+
+module "redis" {
+  source = "../../modules/job-redis"
+  count  = var.redis_managed ? 0 : 1
+
+  node_pool   = var.api_node_pool
+  port_number = var.redis_port.port
+  port_name   = var.redis_port.name
 }
 
 resource "nomad_job" "docker_reverse_proxy" {
@@ -152,9 +186,8 @@ module "client_proxy" {
   redis_url           = local.redis_url
   redis_cluster_url   = local.redis_cluster_url
   redis_tls_ca_base64 = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
-
-  image            = data.google_artifact_registry_docker_image.client_proxy_image.self_link
-  api_grpc_address = "api-grpc.service.consul:${var.api_grpc_port}"
+  image               = data.google_artifact_registry_docker_image.client_proxy_image.self_link
+  api_grpc_address    = "api-grpc.service.consul:${var.api_grpc_port}"
 
   otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
   logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
@@ -374,6 +407,9 @@ module "orchestrator" {
   source = "../../modules/job-orchestrator"
 
   provider_name = "gcp"
+  provider_gcp_config = {
+    gcs_grpc_connection_pool_size = var.gcs_grpc_connection_pool_size
+  }
 
   node_pool  = var.orchestrator_node_pool
   port       = var.orchestrator_port
@@ -392,11 +428,14 @@ module "orchestrator" {
   redis_url                    = local.redis_url
   redis_cluster_url            = local.redis_cluster_url
   redis_tls_ca_base64          = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
+  persistent_volume_mounts     = var.persistent_volume_mounts
 
   consul_token            = var.consul_acl_token_secret
   domain_name             = var.domain_name
   shared_chunk_cache_path = var.shared_chunk_cache_path
   launch_darkly_api_key   = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
+
+  job_env_vars = var.orchestrator_env_vars
 }
 
 data "google_storage_bucket_object" "template_manager" {
@@ -411,51 +450,6 @@ data "external" "template_manager" {
   query = {
     base64 = data.google_storage_bucket_object.template_manager.md5hash
   }
-}
-
-# Get current template-manager count from Nomad to preserve autoscaler-managed value
-# This prevents Terraform from resetting count on job updates
-# Default depends on whether scaling is enabled (min=2) or not (min=1)
-data "external" "template_manager_count" {
-  program = ["bash", "${path.module}/scripts/get-nomad-job-count.sh"]
-
-  query = {
-    nomad_addr  = "https://nomad.${var.domain_name}"
-    nomad_token = var.nomad_acl_token_secret
-    job_name    = "template-manager"
-    min_count   = var.template_manages_clusters_size_gt_1 ? "2" : "1"
-  }
-}
-
-resource "nomad_job" "template_manager" {
-  jobspec = templatefile("${path.module}/jobs/template-manager.hcl", {
-    update_stanza = var.template_manages_clusters_size_gt_1
-    node_pool     = var.builder_node_pool
-    current_count = tonumber(data.external.template_manager_count.result.count)
-
-    gcp_project      = var.gcp_project_id
-    gcp_region       = var.gcp_region
-    gcp_zone         = var.gcp_zone
-    port             = var.template_manager_port
-    environment      = var.environment
-    consul_acl_token = var.consul_acl_token_secret
-    domain_name      = var.domain_name
-
-    api_secret                      = var.api_secret
-    bucket_name                     = var.fc_env_pipeline_bucket_name
-    docker_registry                 = var.custom_envs_repository_name
-    google_service_account_key      = var.google_service_account_key
-    template_manager_checksum       = data.external.template_manager.result.hex
-    template_bucket_name            = var.template_bucket_name
-    build_cache_bucket_name         = var.build_cache_bucket_name
-    otel_collector_grpc_endpoint    = "localhost:${var.otel_collector_grpc_port}"
-    logs_collector_address          = "http://localhost:${var.logs_proxy_port.port}"
-    orchestrator_services           = "template-manager"
-    clickhouse_connection_string    = local.clickhouse_connection_string
-    dockerhub_remote_repository_url = var.dockerhub_remote_repository_url
-    launch_darkly_api_key           = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
-    shared_chunk_cache_path         = var.shared_chunk_cache_path
-  })
 }
 
 data "google_storage_bucket_object" "nomad_nodepool_apm" {
@@ -475,17 +469,51 @@ data "external" "nomad_nodepool_apm_checksum" {
   }
 }
 
-# Nomad Autoscaler - required for template-manager dynamic scaling
-resource "nomad_job" "nomad_nodepool_apm" {
-  count = var.template_manages_clusters_size_gt_1 ? 1 : 0
+module "template_manager" {
+  source = "../../modules/job-template-manager"
 
-  jobspec = templatefile("${path.module}/jobs/nomad-autoscaler.hcl", {
-    node_pool                   = var.api_node_pool
-    autoscaler_version          = var.nomad_autoscaler_version
-    bucket_name                 = var.fc_env_pipeline_bucket_name
-    nomad_token                 = var.nomad_acl_token_secret
-    nomad_nodepool_apm_checksum = data.external.nomad_nodepool_apm_checksum[0].result.hex
-  })
+  provider_name = "gcp"
+  provider_gcp_config = {
+    service_account_key           = var.google_service_account_key
+    project_id                    = var.gcp_project_id
+    region                        = var.gcp_region
+    docker_registry               = var.custom_envs_repository_name
+    gcs_grpc_connection_pool_size = var.gcs_grpc_connection_pool_size
+  }
+
+  update_stanza = var.template_manages_clusters_size_gt_1
+  node_pool     = var.builder_node_pool
+
+  port             = var.template_manager_port
+  environment      = var.environment
+  consul_acl_token = var.consul_acl_token_secret
+  domain_name      = var.domain_name
+
+  api_secret                      = var.api_secret
+  artifact_source                 = "gcs::https://www.googleapis.com/storage/v1/${var.fc_env_pipeline_bucket_name}/template-manager"
+  template_manager_checksum       = data.external.template_manager.result.hex
+  template_bucket_name            = var.template_bucket_name
+  build_cache_bucket_name         = var.build_cache_bucket_name
+  otel_collector_grpc_endpoint    = "localhost:${var.otel_collector_grpc_port}"
+  logs_collector_address          = "http://localhost:${var.logs_proxy_port.port}"
+  clickhouse_connection_string    = local.clickhouse_connection_string
+  dockerhub_remote_repository_url = var.dockerhub_remote_repository_url
+  launch_darkly_api_key           = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
+  shared_chunk_cache_path         = var.shared_chunk_cache_path
+
+  nomad_addr  = "https://nomad.${var.domain_name}"
+  nomad_token = var.nomad_acl_token_secret
+}
+
+module "template_manager_autoscaler" {
+  source = "../../modules/job-template-manager-autoscaler"
+  count  = var.template_manages_clusters_size_gt_1 ? 1 : 0
+
+  node_pool                  = var.api_node_pool
+  autoscaler_version         = var.nomad_autoscaler_version
+  nomad_token                = var.nomad_acl_token_secret
+  apm_plugin_artifact_source = "gcs::https://www.googleapis.com/storage/v1/${var.fc_env_pipeline_bucket_name}/nomad-nodepool-apm"
+  apm_plugin_checksum        = data.external.nomad_nodepool_apm_checksum[0].result.hex
 }
 
 module "loki" {

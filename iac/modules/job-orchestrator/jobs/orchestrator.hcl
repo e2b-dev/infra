@@ -61,7 +61,10 @@ job "orchestrator-${latest_orchestrator_job_id}" {
       }
 
       env {
-        NODE_ID                      = "$${node.unique.name}"
+        NODE_ID     = "$${node.unique.name}"
+        NODE_IP     = "$${attr.unique.network.ip-address}"
+        NODE_LABELS = "$${meta.node_labels}"
+
         LOGS_COLLECTOR_ADDRESS       = "${logs_collector_address}"
         ENVIRONMENT                  = "${environment}"
         ENVD_TIMEOUT                 = "${envd_timeout}"
@@ -69,9 +72,10 @@ job "orchestrator-${latest_orchestrator_job_id}" {
         OTEL_COLLECTOR_GRPC_ENDPOINT = "${otel_collector_grpc_endpoint}"
         ALLOW_SANDBOX_INTERNET       = "${allow_sandbox_internet}"
         CLICKHOUSE_CONNECTION_STRING = "${clickhouse_connection_string}"
-        REDIS_URL                    = "${redis_url}"
+        REDIS_POOL_SIZE              = "${redis_pool_size}"
         REDIS_CLUSTER_URL            = "${redis_cluster_url}"
         REDIS_TLS_CA_BASE64          = "${redis_tls_ca_base64}"
+        REDIS_URL                    = "${redis_url}"
         GRPC_PORT                    = "${port}"
         PROXY_PORT                   = "${proxy_port}"
         GIN_MODE                     = "release"
@@ -96,6 +100,14 @@ job "orchestrator-${latest_orchestrator_job_id}" {
 %{ if provider == "gcp" }
         ARTIFACTS_REGISTRY_PROVIDER  = "GCP_ARTIFACTS"
         STORAGE_PROVIDER             = "GCPBucket"
+
+        %{ if provider_gcp_config.service_account_key != "" }
+        GOOGLE_SERVICE_ACCOUNT_BASE64 = "${provider_gcp_config.service_account_key}"
+        %{ endif }
+
+        %{ if provider_gcp_config.gcs_grpc_connection_pool_size != 0 }
+        GCS_GRPC_CONNECTION_POOL_SIZE = "${provider_gcp_config.gcs_grpc_connection_pool_size}"
+        %{ endif }
 %{ endif }
 %{ if provider == "aws" }
         ARTIFACTS_REGISTRY_PROVIDER  = "AWS_ECR"
@@ -104,6 +116,16 @@ job "orchestrator-${latest_orchestrator_job_id}" {
         AWS_REGION                   = "${provider_aws_config.region}"
         AWS_DOCKER_REPOSITORY_NAME   = "${provider_aws_config.docker_repository_name}"
 %{ endif }
+%{ if persistent_volume_mounts != "" }
+        PERSISTENT_VOLUME_MOUNTS     = "${persistent_volume_mounts}"
+%{ endif }
+
+%{ for key, value in job_env_vars }
+  %{ if value != "" }
+        ${ key } = "${ value }"
+  %{ endif }
+%{ endfor }
+
       }
 
       config {

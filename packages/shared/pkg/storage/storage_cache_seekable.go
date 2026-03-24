@@ -17,7 +17,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/lock"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -114,18 +114,20 @@ func (c *cachedSeekable) ReadAt(ctx context.Context, buff []byte, offset int64) 
 		return readCount, fmt.Errorf("failed to perform uncached read: %w", err)
 	}
 
-	shadowBuff := make([]byte, readCount)
-	copy(shadowBuff, buff[:readCount])
+	if !skipCacheWriteback(ctx) && isCompleteRead(readCount, len(buff), err) {
+		shadowBuff := make([]byte, readCount)
+		copy(shadowBuff, buff[:readCount])
 
-	c.goCtx(ctx, func(ctx context.Context) {
-		ctx, span := c.tracer.Start(ctx, "write chunk at offset back to cache")
-		defer span.End()
+		c.goCtx(ctx, func(ctx context.Context) {
+			ctx, span := c.tracer.Start(ctx, "write chunk at offset back to cache")
+			defer span.End()
 
-		if err := c.writeChunkToCache(ctx, offset, chunkPath, shadowBuff); err != nil {
-			recordError(span, err)
-			recordCacheWriteError(ctx, cacheTypeSeekable, cacheOpReadAt, err)
-		}
-	})
+			if err := c.writeChunkToCache(ctx, offset, chunkPath, shadowBuff); err != nil {
+				recordError(span, err)
+				recordCacheWriteError(ctx, cacheTypeSeekable, cacheOpReadAt, err)
+			}
+		})
+	}
 
 	recordCacheRead(ctx, false, int64(readCount), cacheTypeSeekable, cacheOpReadAt)
 
@@ -158,26 +160,34 @@ func (c *cachedSeekable) OpenRangeReader(ctx context.Context, off, length int64)
 
 	recordCacheRead(ctx, false, length, cacheTypeSeekable, cacheOpOpenRangeReader)
 
+	// Skip write-through when the caller has opted out of cache writeback.
+	if skipCacheWriteback(ctx) {
+		return inner, nil
+	}
+
 	// Wrap in a write-through reader that caches data on Close
 	return &cacheWriteThroughReader{
-		inner:     inner,
-		buf:       bytes.NewBuffer(make([]byte, 0, length)),
-		cache:     c,
-		ctx:       ctx,
-		off:       off,
-		chunkPath: chunkPath,
+		inner:       inner,
+		buf:         bytes.NewBuffer(make([]byte, 0, length)),
+		cache:       c,
+		ctx:         ctx,
+		off:         off,
+		expectedLen: length,
+		chunkPath:   chunkPath,
 	}, nil
 }
 
 // cacheWriteThroughReader wraps an inner reader, buffering all data read through it.
-// On Close, it asynchronously writes the buffered data to the NFS cache.
+// On Close, it asynchronously writes the buffered data to the NFS cache only
+// if the total bytes read match the expected length (to avoid caching truncated data).
 type cacheWriteThroughReader struct {
-	inner     io.ReadCloser
-	buf       *bytes.Buffer
-	cache     *cachedSeekable
-	ctx       context.Context //nolint:containedctx // needed for async cache write-back in Close
-	off       int64
-	chunkPath string
+	inner       io.ReadCloser
+	buf         *bytes.Buffer
+	cache       *cachedSeekable
+	ctx         context.Context //nolint:containedctx // needed for async cache write-back in Close
+	off         int64
+	expectedLen int64
+	chunkPath   string
 }
 
 func (r *cacheWriteThroughReader) Read(p []byte) (int, error) {
@@ -192,7 +202,11 @@ func (r *cacheWriteThroughReader) Read(p []byte) (int, error) {
 func (r *cacheWriteThroughReader) Close() error {
 	closeErr := r.inner.Close()
 
-	if r.buf.Len() > 0 {
+	// Only cache when the total bytes read match the expected length.
+	// Unlike ReadAt where io.EOF can justify a short read (last chunk),
+	// a streaming reader always ends with EOF regardless of whether the
+	// data was truncated, so the byte count is the only reliable check.
+	if r.buf.Len() > 0 && int64(r.buf.Len()) == r.expectedLen {
 		data := make([]byte, r.buf.Len())
 		copy(data, r.buf.Bytes())
 
@@ -235,15 +249,17 @@ func (c *cachedSeekable) Size(ctx context.Context) (n int64, e error) {
 		return size, err
 	}
 
-	c.goCtx(ctx, func(ctx context.Context) {
-		ctx, span := c.tracer.Start(ctx, "write size of object to cache")
-		defer span.End()
+	if !skipCacheWriteback(ctx) {
+		c.goCtx(ctx, func(ctx context.Context) {
+			ctx, span := c.tracer.Start(ctx, "write size of object to cache")
+			defer span.End()
 
-		if err := c.writeLocalSize(ctx, size); err != nil {
-			recordError(span, err)
-			recordCacheWriteError(ctx, cacheTypeSeekable, cacheOpSize, err)
-		}
-	})
+			if err := c.writeLocalSize(ctx, size); err != nil {
+				recordError(span, err)
+				recordCacheWriteError(ctx, cacheTypeSeekable, cacheOpSize, err)
+			}
+		})
+	}
 
 	recordCacheRead(ctx, false, 0, cacheTypeSeekable, cacheOpSize)
 
@@ -318,7 +334,11 @@ func (c *cachedSeekable) readAtFromCache(ctx context.Context, chunkPath string, 
 
 	defer utils.Cleanup(ctx, "failed to close chunk", fp.Close)
 
-	count, err := fp.Read(buff)
+	// ReadAt (pread) is used instead of Read so that short reads from cache
+	// files (e.g. last chunk) return io.EOF per the io.ReaderAt contract.
+	// Plain Read on Linux returns (n, nil) for short reads and only
+	// signals EOF on a subsequent call, which would hide truncation.
+	count, err := fp.ReadAt(buff, 0)
 	if ignoreEOF(err) != nil {
 		return 0, fmt.Errorf("failed to read from chunk: %w", err)
 	}

@@ -39,12 +39,7 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 	ctx, span := tracer.Start(ctx, "create-snapshot-template")
 	defer span.End()
 
-	sbx, err := o.sandboxStore.Get(ctx, teamID, sandboxID)
-	if err != nil {
-		return SnapshotTemplateResult{}, fmt.Errorf("failed to get sandbox: %w", err)
-	}
-
-	alreadyDone, finishSnapshotting, err := o.sandboxStore.StartRemoving(ctx, teamID, sandboxID, sandbox.StateActionSnapshot)
+	sbx, alreadyDone, finishSnapshotting, err := o.sandboxStore.StartRemoving(ctx, teamID, sandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionSnapshot})
 	if err != nil {
 		return SnapshotTemplateResult{}, fmt.Errorf("failed to start snapshotting: %w", err)
 	}
@@ -68,17 +63,17 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 	}
 	defer finish(nil)
 
-	node := o.GetNode(sbx.ClusterID, sbx.NodeID)
+	node := o.getOrConnectNode(ctx, sbx.ClusterID, sbx.NodeID)
 	if node == nil {
 		return SnapshotTemplateResult{}, fmt.Errorf("node '%s' not found", sbx.NodeID)
 	}
 
-	upsertResult, err := o.sqlcDB.UpsertSnapshot(ctx, buildUpsertSnapshotParams(sbx, node))
+	upsertResult, err := o.throttledUpsertSnapshot(ctx, buildUpsertSnapshotParams(sbx, node))
 	if err != nil {
 		return SnapshotTemplateResult{}, fmt.Errorf("error upserting snapshot: %w", err)
 	}
 
-	snapshotTemplateEnvID, err := o.resolveOrCreateSnapshotTemplate(ctx, sandboxID, teamID, upsertResult.BuildID, opts)
+	snapshotTemplateEnvID, err := o.resolveOrCreateSnapshotTemplate(ctx, sandboxID, teamID, upsertResult.BuildID, sbx.NodeID, opts)
 	if err != nil {
 		o.failSnapshotBuild(ctx, upsertResult.BuildID, err)
 
@@ -102,7 +97,7 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 		// so RemoveSandbox can proceed without deadlock.
 		finish(err)
 
-		if killErr := o.RemoveSandbox(ctx, sbx, sandbox.StateActionKill); killErr != nil {
+		if killErr := o.RemoveSandbox(ctx, teamID, sandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionKill}); killErr != nil {
 			telemetry.ReportError(ctx, "error killing sandbox after failed checkpoint", killErr)
 		}
 
@@ -119,6 +114,8 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 	if err != nil {
 		return SnapshotTemplateResult{}, fmt.Errorf("error updating build status: %w", err)
 	}
+
+	o.snapshotCache.Invalidate(context.WithoutCancel(ctx), sandboxID)
 
 	telemetry.ReportEvent(ctx, "Snapshot template completed")
 
@@ -145,6 +142,7 @@ func (o *Orchestrator) resolveOrCreateSnapshotTemplate(
 	sandboxID string,
 	teamID uuid.UUID,
 	buildID uuid.UUID,
+	originNodeID string,
 	opts SnapshotTemplateOpts,
 ) (string, error) {
 	// Existing template — just assign the build
@@ -163,11 +161,12 @@ func (o *Orchestrator) resolveOrCreateSnapshotTemplate(
 
 	// Create new snapshot template env
 	envID, err := o.sqlcDB.CreateSnapshotTemplateEnv(ctx, queries.CreateSnapshotTemplateEnvParams{
-		SnapshotID: id.Generate(),
-		TeamID:     teamID,
-		SandboxID:  sandboxID,
-		BuildID:    buildID,
-		Tag:        opts.Tag,
+		SnapshotID:   id.Generate(),
+		TeamID:       teamID,
+		SandboxID:    sandboxID,
+		OriginNodeID: &originNodeID,
+		BuildID:      &buildID,
+		Tag:          opts.Tag,
 	})
 	if err != nil {
 		return "", fmt.Errorf("error creating snapshot template env: %w", err)

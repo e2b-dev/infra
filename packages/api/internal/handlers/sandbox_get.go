@@ -1,30 +1,73 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/auth"
+	snapshotcache "github.com/e2b-dev/infra/packages/api/internal/cache/snapshots"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/e2b-dev/infra/packages/auth/pkg/types"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
+	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
+func sandboxLifecycleToAPI(autoPause bool, autoResumeConfig *dbtypes.SandboxAutoResumeConfig) *api.SandboxLifecycle {
+	onTimeout := api.Kill
+	if autoPause {
+		onTimeout = api.Pause
+	}
+
+	return &api.SandboxLifecycle{
+		AutoResume: autoResumeConfig != nil && autoResumeConfig.Policy == dbtypes.SandboxAutoResumeAny,
+		OnTimeout:  onTimeout,
+	}
+}
+
+func dbNetworkConfigToAPI(network *dbtypes.SandboxNetworkConfig) *api.SandboxNetworkConfig {
+	if network == nil {
+		return nil
+	}
+
+	result := &api.SandboxNetworkConfig{}
+
+	if ingress := network.Ingress; ingress != nil {
+		result.AllowPublicTraffic = ingress.AllowPublicAccess
+		result.MaskRequestHost = ingress.MaskRequestHost
+	}
+
+	if egress := network.Egress; egress != nil {
+		if egress.AllowedAddresses != nil {
+			result.AllowOut = &egress.AllowedAddresses
+		}
+		if egress.DeniedAddresses != nil {
+			result.DenyOut = &egress.DeniedAddresses
+		}
+	}
+
+	return result
+}
+
 func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	ctx := c.Request.Context()
 
-	teamInfo := c.Value(auth.TeamContextKey).(*types.Team)
+	teamInfo := auth.MustGetTeamInfo(c)
 	team := teamInfo.Team
 
 	telemetry.ReportEvent(ctx, "get sandbox")
 
-	sandboxId := utils.ShortID(id)
+	sandboxId, err := utils.ShortID(id)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid sandbox ID")
+
+		return
+	}
 
 	var sbxDomain *string
 	if team.ClusterID != nil {
@@ -45,7 +88,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		// Check if sandbox belongs to the team
 		if sbx.TeamID != team.ID {
 			telemetry.ReportCriticalError(ctx, fmt.Sprintf("sandbox '%s' doesn't belong to team '%s'", sandboxId, team.ID.String()), nil)
-			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("sandbox \"%s\" doesn't exist or you don't have access to it", id))
+			a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(id))
 
 			return
 		}
@@ -57,27 +100,31 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 			state = api.Paused
 		// Sandbox is being stopped or already is stopped, user can't work with it anymore
 		case sandbox.StateKilling:
-			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("sandbox \"%s\" doesn't exist or you don't have access to it", id))
+			logger.L().Debug(ctx, "Sandbox is being killed", logger.WithSandboxID(sandboxId))
+			a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(id))
 
 			return
 		}
 
 		// Sandbox exists and belongs to the team - return running sandbox sbx
 		sandbox := api.SandboxDetail{
-			ClientID:        sbx.ClientID,
-			TemplateID:      sbx.TemplateID,
-			Alias:           sbx.Alias,
-			SandboxID:       sbx.SandboxID,
-			StartedAt:       sbx.StartTime,
-			CpuCount:        api.CPUCount(sbx.VCpu),
-			MemoryMB:        api.MemoryMB(sbx.RamMB),
-			DiskSizeMB:      api.DiskSizeMB(sbx.TotalDiskSizeMB),
-			EndAt:           sbx.EndTime,
-			State:           state,
-			EnvdVersion:     sbx.EnvdVersion,
-			EnvdAccessToken: sbx.EnvdAccessToken,
-			Domain:          sbxDomain,
-			VolumeMounts:    convertFromDBMountsToAPIMounts(sbx.VolumeMounts),
+			ClientID:            sbx.ClientID,
+			TemplateID:          sbx.TemplateID,
+			Alias:               sbx.Alias,
+			SandboxID:           sbx.SandboxID,
+			StartedAt:           sbx.StartTime,
+			CpuCount:            api.CPUCount(sbx.VCpu),
+			MemoryMB:            api.MemoryMB(sbx.RamMB),
+			DiskSizeMB:          api.DiskSizeMB(sbx.TotalDiskSizeMB),
+			EndAt:               sbx.EndTime,
+			State:               state,
+			EnvdVersion:         sbx.EnvdVersion,
+			EnvdAccessToken:     sbx.EnvdAccessToken,
+			AllowInternetAccess: sbx.AllowInternetAccess,
+			Domain:              sbxDomain,
+			Network:             dbNetworkConfigToAPI(sbx.Network),
+			Lifecycle:           sandboxLifecycleToAPI(sbx.AutoPause, sbx.AutoResume),
+			VolumeMounts:        convertFromDBMountsToAPIMounts(sbx.VolumeMounts),
 		}
 
 		if sbx.Metadata != nil {
@@ -91,17 +138,25 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	}
 
 	// If sandbox not found try to get the latest snapshot
-	lastSnapshot, err := a.sqlcDB.GetLastSnapshot(ctx, sandboxId)
+	// TODO: ENG-3544 scope GetLastSnapshot query by teamID to avoid post-fetch ownership check.
+	lastSnapshot, err := a.snapshotCache.Get(ctx, sandboxId)
 	if err != nil {
-		telemetry.ReportError(ctx, "error getting last snapshot", err)
-		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("sandbox \"%s\" doesn't exist", id))
+		if errors.Is(err, snapshotcache.ErrSnapshotNotFound) {
+			telemetry.ReportError(ctx, "snapshot not found", err, telemetry.WithSandboxID(sandboxId))
+			a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(id))
+
+			return
+		}
+
+		telemetry.ReportCriticalError(ctx, "error getting last snapshot", err)
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error getting sandbox")
 
 		return
 	}
 
 	if lastSnapshot.Snapshot.TeamID != team.ID {
 		telemetry.ReportError(ctx, fmt.Sprintf("snapshot for sandbox '%s' doesn't belong to team '%s'", sandboxId, team.ID.String()), nil)
-		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox \"%s\"", id))
+		a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(id))
 
 		return
 	}
@@ -138,19 +193,29 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		sbxAccessToken = &key
 	}
 
+	var autoResumeConfig *dbtypes.SandboxAutoResumeConfig
+	var networkConfig *dbtypes.SandboxNetworkConfig
+	if lastSnapshot.Snapshot.Config != nil {
+		autoResumeConfig = lastSnapshot.Snapshot.Config.AutoResume
+		networkConfig = lastSnapshot.Snapshot.Config.Network
+	}
+
 	sandbox := api.SandboxDetail{
-		ClientID:        consts.ClientID, // for backwards compatibility we need to return a client id
-		TemplateID:      lastSnapshot.Snapshot.EnvID,
-		SandboxID:       lastSnapshot.Snapshot.SandboxID,
-		StartedAt:       lastSnapshot.Snapshot.SandboxStartedAt.Time,
-		CpuCount:        cpuCount,
-		MemoryMB:        memoryMB,
-		DiskSizeMB:      diskSize,
-		EndAt:           lastSnapshot.Snapshot.CreatedAt.Time, // Snapshot is created when sandbox is paused
-		State:           api.Paused,
-		EnvdVersion:     envdVersion,
-		EnvdAccessToken: sbxAccessToken,
-		Domain:          nil,
+		ClientID:            consts.ClientID, // for backwards compatibility we need to return a client id
+		TemplateID:          lastSnapshot.Snapshot.EnvID,
+		SandboxID:           lastSnapshot.Snapshot.SandboxID,
+		StartedAt:           lastSnapshot.Snapshot.SandboxStartedAt.Time,
+		CpuCount:            cpuCount,
+		MemoryMB:            memoryMB,
+		DiskSizeMB:          diskSize,
+		EndAt:               lastSnapshot.EnvBuild.CreatedAt, // Latest build created_at represents last pause time
+		State:               api.Paused,
+		EnvdVersion:         envdVersion,
+		EnvdAccessToken:     sbxAccessToken,
+		AllowInternetAccess: lastSnapshot.Snapshot.AllowInternetAccess,
+		Domain:              nil,
+		Network:             dbNetworkConfigToAPI(networkConfig),
+		Lifecycle:           sandboxLifecycleToAPI(lastSnapshot.Snapshot.AutoPause, autoResumeConfig),
 	}
 
 	if lastSnapshot.Snapshot.Metadata != nil {

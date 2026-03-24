@@ -1,6 +1,36 @@
 package types
 
+import "encoding/json"
+
 type JSONBStringMap map[string]string
+
+// MarshalJSON ensures a nil map serializes as "{}" instead of "null",
+// preventing SQL NULL when pgx encodes the value for jsonb columns.
+func (m JSONBStringMap) MarshalJSON() ([]byte, error) {
+	if m == nil {
+		return []byte("{}"), nil
+	}
+
+	return json.Marshal(map[string]string(m))
+}
+
+// UnmarshalJSON ensures JSON null deserializes as an empty map instead of nil.
+func (m *JSONBStringMap) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		*m = JSONBStringMap{}
+
+		return nil
+	}
+
+	var raw map[string]string
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	*m = JSONBStringMap(raw)
+
+	return nil
+}
 
 type BuildReason struct {
 	// Message with the status reason, currently reporting only for error status
@@ -79,3 +109,7 @@ const (
 	BuildStatusGroupReady      BuildStatusGroup = "ready"
 	BuildStatusGroupFailed     BuildStatusGroup = "failed"
 )
+
+func (g BuildStatusGroup) IsTerminal() bool {
+	return g == BuildStatusGroupReady || g == BuildStatusGroupFailed
+}

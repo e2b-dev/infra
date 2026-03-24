@@ -20,23 +20,23 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/metric/noop"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/cfg"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
-	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block/metrics"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/tcpfirewall"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build"
-	buildconfig "github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/config"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/metrics"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/metadata"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/proxy"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
+	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/fc"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/nbd"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template/peerclient"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/tcpfirewall"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build"
+	buildconfig "github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/config"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/metrics"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/metadata"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -63,8 +63,6 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		useHugePages    = false
 		templateVersion = "v2.0.0"
 	)
-
-	sbxNetwork := &orchestrator.SandboxNetworkConfig{}
 
 	// cache paths, to speed up test runs. these paths aren't wiped between tests
 	persistenceDir := getPersistenceDir()
@@ -132,7 +130,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	sbxlogger.SetSandboxLoggerInternal(l)
 	// sbxlogger.SetSandboxLoggerExternal(logger)
 
-	slotStorage, err := network.NewStorageLocal(b.Context(), config.NetworkConfig)
+	slotStorage, err := network.NewStorageLocal(b.Context(), config.NetworkConfig, network.NoopEgressProxy{})
 	require.NoError(b, err)
 	networkPool := network.NewPool(8, 8, slotStorage, config.NetworkConfig)
 	go func() {
@@ -168,7 +166,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	limiter, err := limit.New(b.Context(), featureFlags)
 	require.NoError(b, err)
 
-	persistence, err := storage.GetTemplateStorageProvider(b.Context(), limiter)
+	persistence, err := storage.GetStorageProvider(b.Context(), storage.TemplateStorageConfig.WithLimiter(limiter))
 	require.NoError(b, err)
 
 	blockMetrics, err := blockmetrics.NewMetrics(&noop.MeterProvider{})
@@ -179,12 +177,13 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		b.Fatalf("error parsing config: %v", err)
 	}
 
-	templateCache, err := template.NewCache(c, featureFlags, persistence, blockMetrics)
+	templateCache, err := template.NewCache(c, featureFlags, persistence, blockMetrics, peerclient.NopResolver())
 	require.NoError(b, err)
 	templateCache.Start(b.Context())
 	b.Cleanup(templateCache.Stop)
 
-	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags, nil, nil)
+	sandboxes := sandbox.NewSandboxesMap()
+	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags, nil, nil, sandboxes)
 
 	dockerhubRepository, err := dockerhub.GetRemoteRepository(b.Context())
 	require.NoError(b, err)
@@ -194,13 +193,12 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	})
 
 	accessToken := "access-token"
-	sandboxConfig := sandbox.Config{
+	sandboxConfig := sandbox.NewConfig(sandbox.Config{
 		BaseTemplateID:  templateID,
 		Vcpu:            2,
 		RamMB:           512,
 		TotalDiskSizeMB: 2 * 1024,
 		HugePages:       useHugePages,
-		Network:         sbxNetwork,
 		Envd: sandbox.EnvdMetadata{
 			Vars:        map[string]string{"HELLO": "WORLD"},
 			AccessToken: &accessToken,
@@ -210,7 +208,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 			KernelVersion:      kernelVersion,
 			FirecrackerVersion: fcVersion,
 		},
-	}
+	})
 
 	runtime := sandbox.RuntimeMetadata{
 		TemplateID:  templateID,
@@ -222,15 +220,13 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	artifactRegistry, err := artifactsregistry.GetArtifactsRegistryProvider(b.Context())
 	require.NoError(b, err)
 
-	persistenceTemplate, err := storage.GetTemplateStorageProvider(b.Context(), nil)
+	persistenceTemplate, err := storage.GetStorageProvider(b.Context(), storage.TemplateStorageConfig)
 	require.NoError(b, err)
 
-	persistenceBuild, err := storage.GetBuildCacheStorageProvider(b.Context(), nil)
+	persistenceBuild, err := storage.GetStorageProvider(b.Context(), storage.BuildCacheStorageConfig)
 	require.NoError(b, err)
 
 	var proxyPort uint16 = 5007
-
-	sandboxes := sandbox.NewSandboxesMap()
 
 	tcpFirewall := tcpfirewall.New(
 		l,
@@ -347,7 +343,7 @@ type testContainer struct {
 	testType       testCycle
 	sandboxFactory *sandbox.Factory
 	tmpl           template.Template
-	sandboxConfig  sandbox.Config
+	sandboxConfig  *sandbox.Config
 	runtime        sandbox.RuntimeMetadata
 }
 

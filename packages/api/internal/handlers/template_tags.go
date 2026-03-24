@@ -11,9 +11,9 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
-	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/ginutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -24,7 +24,7 @@ import (
 func (a *APIStore) PostTemplatesTags(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	body, err := utils.ParseBody[api.AssignTemplateTagsRequest](ctx, c)
+	body, err := ginutils.ParseBody[api.AssignTemplateTagsRequest](ctx, c)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid request body: %s", err))
 
@@ -179,7 +179,7 @@ func (a *APIStore) PostTemplatesTags(c *gin.Context) {
 func (a *APIStore) DeleteTemplatesTags(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	body, err := utils.ParseBody[api.DeleteTemplateTagsRequest](ctx, c)
+	body, err := ginutils.ParseBody[api.DeleteTemplateTagsRequest](ctx, c)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid request body: %s", err))
 

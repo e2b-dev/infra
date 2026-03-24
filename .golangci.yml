@@ -17,7 +17,6 @@ linters:
     # todo: determine if we want this
     - canonicalheader
     - cyclop
-    - depguard
     - dupl
     - dupword
     - errcheck
@@ -88,12 +87,31 @@ linters:
         - pattern: 'zap\.NewNop$'
           pkg: '^go\.uber\.org/zap$'
           msg: "Use github.com/e2b-dev/infra/packages/shared/pkg/logger.NewNopLogger() instead of zap.NewNop()"
+        - pattern: 'zap\.Time$'
+          pkg: '^go\.uber\.org/zap$'
+          msg: "Use github.com/e2b-dev/infra/packages/shared/pkg/logger.Time() instead of zap.Time()"
 
         # prefer methods that take a context to those that don't
         - pattern: '^retryablehttp\.NewRequest$'
           pkg: ^github\.com/hashicorp/go-retryablehttp$
           msg: "Use github.com/hashicorp/go-retryablehttp.NewRequestWithContext instead of retryablehttp.NewRequest"
       analyze-types: true
+
+    depguard:
+      rules:
+        no-pprof-default-mux:
+          files:
+            - $all
+            - "!**/packages/shared/pkg/telemetry/**"
+          deny:
+            - pkg: "net/http/pprof"
+              desc: "Importing net/http/pprof registers on DefaultServeMux via init(). Use telemetry.NewPprofMux() instead."
+
+    nolintlint:
+      # We are temporarily allowing unused nolints due to apparently
+      # false failures in CI. See
+      # https://github.com/golangci/golangci-lint/issues/3228
+      allow-unused: true
 
     gocritic:
       disabled-checks:

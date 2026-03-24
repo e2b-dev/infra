@@ -1,13 +1,17 @@
 package types
 
 import (
-	"github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
+	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 )
 
 type Team struct {
 	*authqueries.Team
 
 	Limits *TeamLimits
+}
+
+func (t *Team) TeamID() string {
+	return t.Team.ID.String()
 }
 
 func newTeamLimits(

@@ -12,7 +12,7 @@ import (
 )
 
 const getTeamsWithUsersTeams = `-- name: GetTeamsWithUsersTeams :many
-SELECT t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t.blocked_reason, t.cluster_id, t.slug, ut.id, ut.user_id, ut.team_id, ut.is_default, ut.added_by, ut.created_at
+SELECT t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t.blocked_reason, t.cluster_id, t.sandbox_scheduling_labels, t.slug, ut.is_default
 FROM "public"."teams" t
 JOIN "public"."users_teams" ut ON ut.team_id = t.id
 WHERE ut.user_id = $1
@@ -20,7 +20,7 @@ WHERE ut.user_id = $1
 
 type GetTeamsWithUsersTeamsRow struct {
 	Team      Team
-	UsersTeam UsersTeam
+	IsDefault bool
 }
 
 func (q *Queries) GetTeamsWithUsersTeams(ctx context.Context, userID uuid.UUID) ([]GetTeamsWithUsersTeamsRow, error) {
@@ -42,13 +42,9 @@ func (q *Queries) GetTeamsWithUsersTeams(ctx context.Context, userID uuid.UUID) 
 			&i.Team.IsBanned,
 			&i.Team.BlockedReason,
 			&i.Team.ClusterID,
+			&i.Team.SandboxSchedulingLabels,
 			&i.Team.Slug,
-			&i.UsersTeam.ID,
-			&i.UsersTeam.UserID,
-			&i.UsersTeam.TeamID,
-			&i.UsersTeam.IsDefault,
-			&i.UsersTeam.AddedBy,
-			&i.UsersTeam.CreatedAt,
+			&i.IsDefault,
 		); err != nil {
 			return nil, err
 		}

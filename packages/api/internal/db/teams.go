@@ -29,7 +29,7 @@ func GetTeamsByUser(ctx context.Context, db *authdb.Client, userID uuid.UUID) ([
 	for _, team := range teams {
 		teamsWithLimits = append(teamsWithLimits, &types.TeamWithDefault{
 			Team:      types.NewTeam(&team.Team, &team.TeamLimit),
-			IsDefault: team.UsersTeam.IsDefault,
+			IsDefault: team.IsDefault,
 		})
 	}
 

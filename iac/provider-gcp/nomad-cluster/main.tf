@@ -7,9 +7,9 @@ locals {
   nfs_mount_path   = "/orchestrator/shared-store"
   nfs_mount_subdir = "chunks-cache"
   nfs_mount_opts = join(",", [ // for more docs, see https://linux.die.net/man/5/nfs
-    format("nfsvers=%s", var.filestore_cache_enabled ? module.filestore[0].nfs_version == "NFS_V3" ? "3" : "4" : ""),
+    format("nfsvers=%s", var.filestore_cache_enabled ? module.filestore[0].nfs_version : ""),
 
-    "actimeo=600",          // cache attributes for 60 seconds
+    "actimeo=600",          // cache attributes for 600 seconds
     "async",                // delay writes until certain conditions are met
     "hard",                 // retry nfs requests indefinitely until they succeed, never fail
     "lookupcache=positive", // cache successful file handle lookups
@@ -110,12 +110,13 @@ module "network" {
   api_nat_ips              = var.api_nat_ips
   api_nat_min_ports_per_vm = var.api_nat_min_ports_per_vm
 
-  ingress_port              = var.ingress_port
-  api_port                  = var.api_port
-  docker_reverse_proxy_port = var.docker_reverse_proxy_port
-  network_name              = var.network_name
-  domain_name               = var.domain_name
-  additional_domains        = var.additional_domains
+  ingress_port                            = var.ingress_port
+  api_port                                = var.api_port
+  docker_reverse_proxy_port               = var.docker_reverse_proxy_port
+  network_name                            = var.network_name
+  domain_name                             = var.domain_name
+  additional_domains                      = var.additional_domains
+  additional_api_paths_handled_by_ingress = var.additional_api_paths_handled_by_ingress
 
   client_proxy_port        = var.client_proxy_port
   client_proxy_health_port = var.client_proxy_health_port
@@ -150,6 +151,7 @@ module "filestore" {
 
   tier        = var.filestore_cache_tier
   capacity_gb = var.filestore_cache_capacity_gb
+  nfs_version = var.filestore_nfs_version
 }
 
 
@@ -174,6 +176,7 @@ module "build_cluster" {
   network_name              = var.network_name
   base_hugepages_percentage = coalesce((each.value.hugepages_percentage), local.build_base_hugepages_percentage)
   network_interface_type    = each.value.network_interface_type
+  node_labels               = each.value.node_labels
 
   cluster_tag_name                         = var.cluster_tag_name
   node_pool                                = var.build_node_pool
@@ -182,7 +185,6 @@ module "build_cluster" {
   nomad_acl_token_secret                   = var.nomad_acl_token_secret
   consul_gossip_encryption_key_secret_data = google_secret_manager_secret_version.consul_gossip_encryption_key.secret_data
   consul_dns_request_token_secret_data     = google_secret_manager_secret_version.consul_dns_request_token.secret_data
-
 
   docker_contexts_bucket_name = var.docker_contexts_bucket_name
   cluster_setup_bucket_name   = var.cluster_setup_bucket_name
@@ -195,6 +197,7 @@ module "build_cluster" {
   nfs_mount_path          = local.nfs_mount_path
   nfs_mount_subdir        = local.nfs_mount_subdir
   nfs_mount_opts          = local.nfs_mount_opts
+  persistent_volume_types = {} // don't need to access persistent volumes when building templates
 
   environment = var.environment
   labels      = var.labels
@@ -231,6 +234,7 @@ module "client_cluster" {
   network_name              = var.network_name
   base_hugepages_percentage = coalesce((each.value.hugepages_percentage), local.client_base_hugepages_percentage)
   network_interface_type    = each.value.network_interface_type
+  node_labels               = each.value.node_labels
 
   cluster_tag_name                         = var.cluster_tag_name
   node_pool                                = var.orchestrator_node_pool
@@ -239,7 +243,6 @@ module "client_cluster" {
   nomad_acl_token_secret                   = var.nomad_acl_token_secret
   consul_gossip_encryption_key_secret_data = google_secret_manager_secret_version.consul_gossip_encryption_key.secret_data
   consul_dns_request_token_secret_data     = google_secret_manager_secret_version.consul_dns_request_token.secret_data
-
 
   docker_contexts_bucket_name = var.docker_contexts_bucket_name
   cluster_setup_bucket_name   = var.cluster_setup_bucket_name
@@ -252,6 +255,7 @@ module "client_cluster" {
   nfs_mount_path          = local.nfs_mount_path
   nfs_mount_subdir        = local.nfs_mount_subdir
   nfs_mount_opts          = local.nfs_mount_opts
+  persistent_volume_types = var.persistent_volume_types
 
   environment = var.environment
   labels      = var.labels

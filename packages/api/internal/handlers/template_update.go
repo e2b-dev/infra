@@ -11,10 +11,10 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
-	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/ginutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -67,7 +67,7 @@ func (a *APIStore) PatchV2TemplatesTemplateID(c *gin.Context, aliasOrTemplateID 
 // updateTemplate contains the shared logic for updating a template.
 // Returns the resolved team and aliasInfo on success, or an APIError on failure.
 func (a *APIStore) updateTemplate(ctx context.Context, c *gin.Context, aliasOrTemplateID api.TemplateID, createBackwardCompatAlias bool) (*types.Team, *templatecache.AliasInfo, *api.APIError) {
-	body, err := utils.ParseBody[api.TemplateUpdateRequest](ctx, c)
+	body, err := ginutils.ParseBody[api.TemplateUpdateRequest](ctx, c)
 	if err != nil {
 		return nil, nil, &api.APIError{
 			Code:      http.StatusBadRequest,

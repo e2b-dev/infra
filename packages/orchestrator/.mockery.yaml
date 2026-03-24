@@ -1,0 +1,63 @@
+packages:
+  github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build:
+    interfaces:
+      Diff:
+        config:
+          dir: pkg/sandbox/build/mocks
+          filename: mockdiff.go
+          pkgname: buildmocks
+
+  github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block:
+    interfaces:
+      ReadonlyDevice:
+        config:
+          dir: pkg/sandbox/block/mocks
+          filename: mockreadonlydevice.go
+          pkgname: blockmocks
+
+  github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template/peerserver:
+    interfaces:
+      Cache:
+        config:
+          dir: pkg/sandbox/template/peerserver/mocks
+          filename: mockcache.go
+          pkgname: peerservermocks
+
+  github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template:
+    interfaces:
+      Template:
+        config:
+          dir: pkg/sandbox/template/mocks
+          filename: mocktemplate.go
+          pkgname: templatemocks
+      File:
+        config:
+          dir: pkg/sandbox/template/mocks
+          filename: mockfile.go
+          pkgname: templatemocks
+
+  github.com/willscott/go-nfs:
+    interfaces:
+      Handler:
+        config:
+          dir: pkg/nfsproxy/mocks
+          filename: nfshandler.go
+          pkgname: nfsproxymocks
+
+  github.com/go-git/go-billy/v5:
+    interfaces:
+      Change:
+        config:
+          dir: pkg/nfsproxy/mocks
+          filename: billychange.go
+          pkgname: nfsproxymocks
+      File:
+        config:
+          dir: pkg/nfsproxy/mocks
+          filename: billyfile.go
+          pkgname: nfsproxymocks
+      Filesystem:
+        config:
+          dir: pkg/nfsproxy/mocks
+          filename: billyfs.go
+          pkgname: nfsproxymocks

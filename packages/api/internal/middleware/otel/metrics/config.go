@@ -11,7 +11,6 @@ type config struct {
 	recordInFlight bool
 	recordSize     bool
 	recordDuration bool
-	groupedStatus  bool
 	recorder       Recorder
 	attributes     func(serverName, route string, request *http.Request) []attribute.KeyValue
 	shouldRecord   func(serverName, route string, request *http.Request) bool
@@ -22,7 +21,6 @@ func defaultConfig() *config {
 		recordInFlight: true,
 		recordDuration: true,
 		recordSize:     true,
-		groupedStatus:  true,
 		attributes:     DefaultAttributes,
 		shouldRecord: func(_, _ string, _ *http.Request) bool {
 			return true

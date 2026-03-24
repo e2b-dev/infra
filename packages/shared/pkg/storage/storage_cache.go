@@ -13,7 +13,7 @@ import (
 	"go.opentelemetry.io/otel/trace/noop"
 	"go.uber.org/zap"
 
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -21,6 +21,23 @@ const (
 	cacheFilePermissions = 0o600
 	cacheDirPermissions  = 0o700
 )
+
+// skipCacheWritebackKeyType is the context key type for skipping NFS cache writeback.
+type skipCacheWritebackKeyType struct{}
+
+// WithSkipCacheWriteback returns a context that signals the NFS cache layer to
+// skip writing fetched data back to the local cache. This is used by the
+// prefetcher to avoid polluting the shared NFS cache with prefetch-specific reads.
+func WithSkipCacheWriteback(ctx context.Context) context.Context {
+	return context.WithValue(ctx, skipCacheWritebackKeyType{}, true)
+}
+
+// skipCacheWriteback reports whether the context has the skip-cache-writeback flag set.
+func skipCacheWriteback(ctx context.Context) bool {
+	v, _ := ctx.Value(skipCacheWritebackKeyType{}).(bool)
+
+	return v
+}
 
 type cache struct {
 	rootPath  string
@@ -129,4 +146,11 @@ func ignoreEOF(err error) error {
 	}
 
 	return err
+}
+
+// isCompleteRead reports whether a read of n bytes into a buffer of expected
+// size represents a valid, cacheable result. A read is complete when either
+// the full buffer was filled or io.EOF explains a non-empty short read (last chunk).
+func isCompleteRead(n, expected int, err error) bool {
+	return n == expected || (n > 0 && errors.Is(err, io.EOF))
 }

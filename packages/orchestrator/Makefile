@@ -4,7 +4,8 @@ ENV := $(shell cat ../../.last_used_env || echo "not-set")
 AWS_BUCKET_PREFIX ?= $(PREFIX)$(AWS_ACCOUNT_ID)-
 GCP_BUCKET_PREFIX ?= $(GCP_PROJECT_ID)-
 
-HOSTNAME := $(shell hostname || hostnamectl hostname)
+HOSTNAME := $(shell hostname 2> /dev/null || hostnamectl hostname 2> /dev/null)
+$(if $(HOSTNAME),,$(error Failed to determine hostname: both 'hostname' and 'hostnamectl' failed))
 
 .PHONY: init
 init:
@@ -53,6 +54,7 @@ endef
 .PHONY: run-local
 run-local:
 	$(call setup_local_env)
+	mkdir -p ./.data/test-volume
 	NODE_ID=$(HOSTNAME) ./bin/orchestrator
 
 .PHONY: upload/clean-nfs-cache

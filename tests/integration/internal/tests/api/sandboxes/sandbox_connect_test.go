@@ -111,7 +111,7 @@ func TestSandboxConnect(t *testing.T) {
 	t.Run("connect to not existing sandbox", func(t *testing.T) {
 		t.Parallel()
 		// Try to connect the sandbox
-		sbxConnect, err := c.PostSandboxesSandboxIDConnectWithResponse(t.Context(), "it-isnt-there", api.PostSandboxesSandboxIDConnectJSONRequestBody{
+		sbxConnect, err := c.PostSandboxesSandboxIDConnectWithResponse(t.Context(), "itisntthere0000", api.PostSandboxesSandboxIDConnectJSONRequestBody{
 			Timeout: 30,
 		}, setup.WithAPIKey())
 		require.NoError(t, err)
@@ -121,7 +121,7 @@ func TestSandboxConnect(t *testing.T) {
 	t.Run("connect with too big timeout", func(t *testing.T) {
 		t.Parallel()
 		// Try to connect the sandbox
-		sbxConnect, err := c.PostSandboxesSandboxIDConnectWithResponse(t.Context(), "it-isnt-there", api.PostSandboxesSandboxIDConnectJSONRequestBody{
+		sbxConnect, err := c.PostSandboxesSandboxIDConnectWithResponse(t.Context(), "itisntthere0000", api.PostSandboxesSandboxIDConnectJSONRequestBody{
 			Timeout: 60 * 60 * 72, // 3 days
 		}, setup.WithAPIKey())
 		require.NoError(t, err)
@@ -200,7 +200,7 @@ func TestSandboxConnect_CrossTeamAccess_Paused(t *testing.T) {
 		Timeout: 30,
 	}, setup.WithAPIKey(foreignAPIKey))
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusForbidden, connectResp.StatusCode(), "Should return 403 Forbidden when trying to connect to a sandbox owned by a different team")
+	assert.Equal(t, http.StatusNotFound, connectResp.StatusCode(), "Should return 404 Not Found when trying to connect to a paused sandbox owned by a different team")
 }
 
 func TestSandboxConnect_CrossTeamAccess_Running(t *testing.T) {
@@ -221,5 +221,5 @@ func TestSandboxConnect_CrossTeamAccess_Running(t *testing.T) {
 		Timeout: 30,
 	}, setup.WithAPIKey(foreignAPIKey))
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusForbidden, connectResp.StatusCode(), "Should return 403 Forbidden when trying to connect to a sandbox owned by a different team")
+	assert.Equal(t, http.StatusNotFound, connectResp.StatusCode(), "Should return 404 Not Found when trying to connect to a sandbox owned by a different team")
 }

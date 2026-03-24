@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/Masterminds/semver/v3"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
@@ -23,13 +22,31 @@ import (
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
-	feature_flags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	ut "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
+
+// buildEgressConfig constructs the orchestrator egress configuration from
+// allow/deny entry lists. It splits allowed entries into CIDRs and domains,
+// and adds the default nameserver when domains are present so the sandbox can
+// resolve them.
+func buildEgressConfig(allowedEntries, deniedEntries []string) *orchestrator.SandboxNetworkEgressConfig {
+	allowedAddresses, allowedDomains := sandbox_network.ParseAddressesAndDomains(allowedEntries)
+
+	if len(allowedDomains) > 0 {
+		allowedAddresses = append(allowedAddresses, sandbox_network.DefaultNameserver)
+	}
+
+	return &orchestrator.SandboxNetworkEgressConfig{
+		AllowedCidrs:   sandbox_network.AddressStringsToCIDRs(allowedAddresses),
+		DeniedCidrs:    sandbox_network.AddressStringsToCIDRs(deniedEntries),
+		AllowedDomains: allowedDomains,
+	}
+}
 
 // buildNetworkConfig constructs the orchestrator network configuration from the input parameters
 func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess *bool, trafficAccessToken *string) *orchestrator.SandboxNetworkConfig {
@@ -40,21 +57,8 @@ func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess
 		},
 	}
 
-	// Copy network configuration if provided
 	if network != nil && network.Egress != nil {
-		// Split allowed addresses into CIDRs/IPs and domains for the orchestrator
-		allowedAddresses, allowedDomains := sandbox_network.ParseAddressesAndDomains(network.Egress.AllowedAddresses)
-
-		// If allowed domain is provided, add the default nameserver to the allowed addresses
-		// This is to ensure that the sandbox can resolve the domain name to the IP address
-		if len(allowedDomains) > 0 {
-			allowedAddresses = append(allowedAddresses, sandbox_network.DefaultNameserver)
-		}
-
-		orchNetwork.Egress.AllowedCidrs = sandbox_network.AddressStringsToCIDRs(allowedAddresses)
-		orchNetwork.Egress.AllowedDomains = allowedDomains
-
-		orchNetwork.Egress.DeniedCidrs = sandbox_network.AddressStringsToCIDRs(network.Egress.DeniedAddresses)
+		orchNetwork.Egress = buildEgressConfig(network.Egress.AllowedAddresses, network.Egress.DeniedAddresses)
 	}
 
 	if network != nil && network.Ingress != nil {
@@ -69,16 +73,6 @@ func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess
 	}
 
 	return orchNetwork
-}
-
-func getFirecrackerVersion(ctx context.Context, featureFlags *feature_flags.Client, version semver.Version, fallback string) string {
-	firecrackerVersions := featureFlags.JSONFlag(ctx, feature_flags.FirecrackerVersions).AsValueMap()
-	fcVersion, ok := firecrackerVersions.Get(fmt.Sprintf("v%d.%d", version.Major(), version.Minor())).AsOptionalString().Get()
-	if !ok {
-		return fallback
-	}
-
-	return fcVersion
 }
 
 func (o *Orchestrator) CreateSandbox(
@@ -180,7 +174,6 @@ func (o *Orchestrator) CreateSandbox(
 	}
 
 	hasHugePages := fcSemver.HasHugePages()
-	firecrackerVersion := getFirecrackerVersion(ctx, o.featureFlagsClient, fcSemver.Version(), build.FirecrackerVersion)
 	telemetry.ReportEvent(ctx, "Got FC info")
 
 	var sbxDomain *string
@@ -231,7 +224,7 @@ func (o *Orchestrator) CreateSandbox(
 			SandboxId:           sandboxID,
 			ExecutionId:         executionID,
 			KernelVersion:       build.KernelVersion,
-			FirecrackerVersion:  firecrackerVersion,
+			FirecrackerVersion:  build.FirecrackerVersion,
 			EnvdVersion:         *build.EnvdVersion,
 			Metadata:            metadata,
 			EnvVars:             envVars,
@@ -267,7 +260,9 @@ func (o *Orchestrator) CreateSandbox(
 	nodeClusterID := clusters.WithClusterFallback(team.ClusterID)
 	clusterNodes := o.GetClusterNodes(nodeClusterID)
 
-	node, err = placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, builds.ToMachineInfo(build))
+	labelFilteringEnabled := o.featureFlagsClient.BoolFlag(ctx, featureflags.SandboxLabelBasedSchedulingFlag, featureflags.TeamContext(team.ID.String()), featureflags.SandboxContext(sandboxID))
+
+	node, err = placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, builds.ToMachineInfo(build), labelFilteringEnabled, team.SandboxSchedulingLabels)
 	if err != nil {
 		return sandbox.Sandbox{}, &api.APIError{
 			Code:      http.StatusInternalServerError,
@@ -283,9 +278,6 @@ func (o *Orchestrator) CreateSandbox(
 		attribute.Bool("node_affinity_success", nodeID != nil && node.ID == *nodeID),
 	}
 	o.createdSandboxesCounter.Add(ctx, 1, metric.WithAttributes(attributes...))
-
-	// The build should be cached on the node now
-	node.InsertBuild(build.ID.String())
 
 	telemetry.SetAttributes(ctx, attribute.String("node.id", node.ID))
 	telemetry.ReportEvent(ctx, "Created sandbox")
@@ -311,7 +303,7 @@ func (o *Orchestrator) CreateSandbox(
 		*build.TotalDiskSizeMb,
 		build.RamMb,
 		build.KernelVersion,
-		firecrackerVersion,
+		build.FirecrackerVersion,
 		*build.EnvdVersion,
 		node.ID,
 		node.ClusterID,
@@ -336,7 +328,7 @@ func (o *Orchestrator) CreateSandbox(
 		go func() {
 			killErr := o.removeSandboxFromNode(context.WithoutCancel(ctx), sbxToRemove, sandbox.StateActionKill)
 			if killErr != nil {
-				logger.L().Error(ctx, "Error pausing sandbox", zap.Error(killErr), logger.WithSandboxID(sbxToRemove.SandboxID))
+				logger.L().Error(ctx, "Error removing sandbox", zap.Error(killErr), logger.WithSandboxID(sbxToRemove.SandboxID))
 			}
 		}()
 

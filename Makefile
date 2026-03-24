@@ -1,5 +1,5 @@
 ENV := $(shell cat .last_used_env || echo "not-set")
-ENV_FILE := $(PWD)/.env.${ENV}
+ENV_FILE := .env.${ENV}
 PROVIDER ?= gcp
 
 -include ${ENV_FILE}
@@ -43,6 +43,10 @@ plan-only-jobs/%:
 plan-without-jobs:
 	$(MAKE) -C iac/provider-$(PROVIDER) plan-without-jobs
 
+.PHONY: state-migrate
+state-migrate:
+	$(MAKE) -C iac/provider-$(PROVIDER) state-migrate
+
 .PHONY: apply-init
 apply-init:
 	$(MAKE) -C iac/provider-$(PROVIDER) apply-init
@@ -58,6 +62,12 @@ import:
 	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	$(MAKE) -C iac/provider-$(PROVIDER) import
 
+# Shortcut to moving resources in Terraform state
+.PHONY: move
+move:
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
+	$(MAKE) -C iac/provider-$(PROVIDER) move
+
 .PHONY: version
 version:
 	./scripts/increment-version.sh
@@ -69,6 +79,7 @@ build/%:
 .PHONY: build-and-upload
 build-and-upload:build-and-upload/api
 build-and-upload:build-and-upload/client-proxy
+build-and-upload:build-and-upload/dashboard-api
 build-and-upload:build-and-upload/docker-reverse-proxy
 build-and-upload:build-and-upload/clean-nfs-cache
 build-and-upload:build-and-upload/orchestrator
@@ -85,10 +96,6 @@ build-and-upload/template-manager:
 build-and-upload/orchestrator:
 	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/orchestrator build-and-upload/orchestrator
-build-and-upload/api:
-	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
-	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/api build-and-upload
-	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/db build-and-upload
 build-and-upload/clickhouse-migrator:
 	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/clickhouse build-and-upload
@@ -101,8 +108,8 @@ copy-public-builds:
 ifeq ($(PROVIDER),aws)
 	mkdir -p ./.kernels
 	mkdir -p ./.firecrackers
-	gsutil -m cp -r gs://e2b-prod-public-builds/kernels/* ./.kernels/
-	gsutil -m cp -r gs://e2b-prod-public-builds/firecrackers/* ./.firecrackers/
+	aws s3 cp s3://e2b-prod-public-builds/kernels/ ./.kernels/ --recursive --no-sign-request --endpoint-url https://storage.googleapis.com
+	aws s3 cp s3://e2b-prod-public-builds/firecrackers/ ./.firecrackers/ --recursive --no-sign-request --endpoint-url https://storage.googleapis.com
 	aws s3 cp ./.kernels/ s3://${AWS_BUCKET_PREFIX}fc-kernels/ --recursive --profile ${AWS_PROFILE}
 	aws s3 cp ./.firecrackers/ s3://${AWS_BUCKET_PREFIX}fc-versions/ --recursive --profile ${AWS_PROFILE}
 	rm -rf ./.kernels
@@ -145,7 +152,7 @@ migrate:
 set-env:
 	@ touch .last_used_env
 	@ echo $(ENV) > .last_used_env
-	@ . ${ENV_FILE}
+	@ . ./${ENV_FILE}
 
 .PHONY: switch-env
 switch-env:
@@ -194,3 +201,10 @@ tidy:
 .PHONY: local-infra
 local-infra:
 	$(MAKE) -C packages/local-dev local-infra
+
+.PHONY: gcloud-ingress-dashboard
+gcloud-ingress-dashboard:
+ifndef INSTANCE
+	$(error usage: make gcloud-ingress-dashboard INSTANCE=<instance>)
+endif
+	gcloud compute ssh $(INSTANCE) -- -NL 8900:localhost:8900

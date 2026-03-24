@@ -27,6 +27,7 @@ import (
 	processRpc "github.com/e2b-dev/infra/packages/envd/internal/services/process"
 	processSpec "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process"
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
+	"github.com/e2b-dev/infra/packages/envd/pkg"
 )
 
 const (
@@ -47,8 +48,6 @@ const (
 )
 
 var (
-	Version = "0.5.3"
-
 	commitSHA string
 
 	isNotFC bool
@@ -134,7 +133,7 @@ func main() {
 	parseFlags()
 
 	if versionFlag {
-		fmt.Printf("%s\n", Version)
+		fmt.Printf("%s\n", pkg.Version)
 
 		return
 	}
@@ -258,12 +257,15 @@ func createCgroupManager() (m cgroups.Manager) {
 	}
 
 	// try to keep 1/8 of the memory free, but no more than 128 MB
-	maxMemoryReserved := uint64(float64(metrics.MemTotal) * .125)
-	maxMemoryReserved = min(maxMemoryReserved, uint64(128)*megabyte)
+	maxMemoryReserved := min(metrics.MemTotal/8, uint64(128)*megabyte)
+	memoryMax := metrics.MemTotal - maxMemoryReserved
+	memoryHigh := memoryMax // same as memory.max — OOM-kill immediately when throttling can't reclaim enough
 
 	opts := []cgroups.Cgroup2ManagerOption{
 		cgroups.WithCgroup2ProcessType(cgroups.ProcessTypePTY, "ptys", map[string]string{
-			"cpu.weight": "200", // gets much preferred cpu access, to help keep these real time
+			"cpu.weight":  "200", // gets much preferred cpu access, to help keep these real time
+			"memory.high": fmt.Sprintf("%d", memoryHigh),
+			"memory.max":  fmt.Sprintf("%d", memoryMax),
 		}),
 		cgroups.WithCgroup2ProcessType(cgroups.ProcessTypeSocat, "socats", map[string]string{
 			"cpu.weight": "150", // gets slightly preferred cpu access
@@ -271,7 +273,8 @@ func createCgroupManager() (m cgroups.Manager) {
 			"memory.low": fmt.Sprintf("%d", 8*megabyte),
 		}),
 		cgroups.WithCgroup2ProcessType(cgroups.ProcessTypeUser, "user", map[string]string{
-			"memory.high": fmt.Sprintf("%d", metrics.MemTotal-maxMemoryReserved),
+			"memory.high": fmt.Sprintf("%d", memoryHigh),
+			"memory.max":  fmt.Sprintf("%d", memoryMax),
 			"cpu.weight":  "50", // less than envd, and less than core processes that default to 100
 		}),
 	}

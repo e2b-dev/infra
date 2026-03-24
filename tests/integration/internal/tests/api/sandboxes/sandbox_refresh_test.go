@@ -76,7 +76,7 @@ func TestSandboxRefresh_NotFound(t *testing.T) {
 	t.Parallel()
 	c := setup.GetAPIClient()
 
-	timeoutResp, err := c.PostSandboxesSandboxIDRefreshesWithResponse(t.Context(), "nonexistent-sandbox-id", api.PostSandboxesSandboxIDRefreshesJSONRequestBody{}, setup.WithAPIKey())
+	timeoutResp, err := c.PostSandboxesSandboxIDRefreshesWithResponse(t.Context(), "nonexistentsandboxid", api.PostSandboxesSandboxIDRefreshesJSONRequestBody{}, setup.WithAPIKey())
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusNotFound, timeoutResp.StatusCode())
 }
@@ -100,5 +100,5 @@ func TestSandboxRefresh_CrossTeamAccess(t *testing.T) {
 		Duration: &duration,
 	}, setup.WithAPIKey(foreignAPIKey))
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusForbidden, refreshResp.StatusCode(), "Should return 403 Forbidden when trying to refresh a sandbox owned by a different team")
+	assert.Equal(t, http.StatusNotFound, refreshResp.StatusCode(), "Should return 404 Not Found when trying to refresh a sandbox owned by a different team")
 }

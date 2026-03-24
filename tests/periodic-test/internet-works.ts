@@ -1,4 +1,4 @@
-import { Sandbox } from "@e2b/code-interpreter";
+import Sandbox from "e2b";
 import { DEBUG_TIMEOUT_MS, log, runTestWithSandbox } from "./utils.ts";
 
 log("Starting sandbox logs test");

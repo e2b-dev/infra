@@ -18,9 +18,13 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
+	"google.golang.org/api/option/internaloption"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -30,11 +34,13 @@ import (
 const (
 	googleReadTimeout              = 10 * time.Second
 	googleOperationTimeout         = 5 * time.Second
-	googleBufferSize               = 2 << 21
+	googleBufferSize               = 4 << 20 // 4 MiB
 	googleInitialBackoff           = 10 * time.Millisecond
 	googleMaxBackoff               = 10 * time.Second
 	googleBackoffMultiplier        = 2
 	googleMaxAttempts              = 10
+	defaultGRPCConnectionPoolSize  = 4
+	defaultGCSEnableDirectPath     = false
 	gcloudDefaultUploadConcurrency = 16
 
 	gcsOperationAttr                           = "operation"
@@ -85,11 +91,19 @@ var (
 )
 
 func NewGCP(ctx context.Context, bucketName string, limiter *limit.Limiter) (StorageProvider, error) {
-	client, err := storage.NewGRPCClient(ctx,
-		option.WithGRPCConnectionPool(4),
-		option.WithGRPCDialOption(grpc.WithInitialConnWindowSize(32*megabyte)),
-		option.WithGRPCDialOption(grpc.WithInitialWindowSize(4*megabyte)),
-	)
+	grpcPoolSize, err := env.GetEnvAsInt("GCS_GRPC_CONNECTION_POOL_SIZE", defaultGRPCConnectionPoolSize)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse GCS_GRPC_CONNECTION_POOL_SIZE: %w", err)
+	}
+
+	opts := []option.ClientOption{
+		option.WithGRPCConnectionPool(grpcPoolSize),
+		option.WithGRPCDialOption(grpc.WithInitialConnWindowSize(32 * megabyte)),
+		option.WithGRPCDialOption(grpc.WithInitialWindowSize(4 * megabyte)),
+		internaloption.EnableDirectPath(defaultGCSEnableDirectPath),
+	}
+
+	client, err := storage.NewGRPCClient(ctx, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GCS client: %w", err)
 	}
@@ -275,18 +289,12 @@ func (o *gcpObject) ReadAt(ctx context.Context, buff []byte, off int64) (n int, 
 
 	defer reader.Close()
 
-	for reader.Remain() > 0 {
-		nr, err := reader.Read(buff[n:])
-		n += nr
+	n, err = io.ReadFull(reader, buff)
+	if errors.Is(err, io.ErrUnexpectedEOF) {
+		err = io.EOF
+	}
 
-		if err == nil {
-			continue
-		}
-
-		if errors.Is(err, io.EOF) {
-			break
-		}
-
+	if ignoreEOF(err) != nil {
 		timer.Failure(ctx, int64(n))
 
 		return n, fmt.Errorf("failed to read %q: %w", o.path, err)
@@ -294,22 +302,45 @@ func (o *gcpObject) ReadAt(ctx context.Context, buff []byte, off int64) (n int, 
 
 	timer.Success(ctx, int64(n))
 
-	return n, nil
+	return n, err
 }
 
-func (o *gcpObject) Put(ctx context.Context, data []byte) (e error) {
+func (o *gcpObject) Put(ctx context.Context, data []byte) error {
 	timer := googleWriteTimerFactory.Begin(attribute.String(gcsOperationAttr, gcsOperationAttrWrite))
 
 	w := o.handle.NewWriter(ctx)
-	defer func() {
-		if err := w.Close(); err != nil {
-			e = errors.Join(e, fmt.Errorf("failed to write to %q: %w", o.path, err))
-		}
-	}()
 
 	c, err := io.Copy(w, bytes.NewReader(data))
 	if err != nil && !errors.Is(err, io.EOF) {
+		closeErr := w.Close()
+		if closeErr != nil {
+			logger.L().Warn(ctx, "failed to close GCS writer after copy error",
+				zap.String("object", o.path),
+				zap.NamedError("error_copy", err),
+				zap.Error(closeErr),
+			)
+		}
+
 		timer.Failure(ctx, c)
+
+		// ResourceExhausted from GCS means per-object mutation rate limiting —
+		// multiple concurrent writers racing to write the same content-addressed object.
+		if isResourceExhausted(err) {
+			return ErrObjectRateLimited
+		}
+
+		return fmt.Errorf("failed to write to %q: %w", o.path, err)
+	}
+
+	// For small objects the GCS Writer buffers data in memory during Write()
+	// and performs the actual upload during Close(). ResourceExhausted errors
+	// from per-object mutation rate limiting will surface here.
+	if err := w.Close(); err != nil {
+		timer.Failure(ctx, c)
+
+		if isResourceExhausted(err) {
+			return ErrObjectRateLimited
+		}
 
 		return fmt.Errorf("failed to write to %q: %w", o.path, err)
 	}
@@ -463,4 +494,17 @@ func parseServiceAccountBase64(serviceAccount string) (*gcpServiceToken, error) 
 	}
 
 	return &sa, nil
+}
+
+func isResourceExhausted(err error) bool {
+	type grpcStatusProvider interface {
+		GRPCStatus() *status.Status
+	}
+
+	var se grpcStatusProvider
+	if errors.As(err, &se) {
+		return se.GRPCStatus().Code() == codes.ResourceExhausted
+	}
+
+	return false
 }

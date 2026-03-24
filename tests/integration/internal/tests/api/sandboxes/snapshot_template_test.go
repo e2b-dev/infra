@@ -107,7 +107,7 @@ func TestSnapshotTemplateCreate(t *testing.T) {
 
 	t.Run("create snapshot for non-existent sandbox", func(t *testing.T) {
 		t.Parallel()
-		resp := createSnapshotTemplate(t, c, "non-existent-sandbox", nil)
+		resp := createSnapshotTemplate(t, c, "nonexistentsandbox0", nil)
 		require.Equal(t, http.StatusNotFound, resp.StatusCode())
 	})
 }

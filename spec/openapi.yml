@@ -271,34 +271,51 @@ components:
           description: Specify if the sandbox URLs should be accessible only with authentication.
         allowOut:
           type: array
-          description: List of allowed CIDR blocks or IP addresses for egress traffic. Allowed addresses always take precedence over blocked addresses.
+          description: List of allowed destinations for egress traffic. Each entry can be a CIDR block (e.g. "8.8.8.8/32"), a bare IP address (e.g. "8.8.8.8"), or a domain name (e.g. "example.com", "*.example.com"). Allowed entries always take precedence over denied entries.
           items:
             type: string
         denyOut:
           type: array
-          description: List of denied CIDR blocks or IP addresses for egress traffic
+          description: List of denied CIDR blocks or IP addresses for egress traffic. Domain names are not supported for deny rules.
           items:
             type: string
         maskRequestHost:
           type: string
           description: Specify host mask which will be used for all sandbox requests
 
-    SandboxAutoResumePolicy:
-      type: string
-      description: Auto-resume policy for paused sandboxes. Default is off.
-      default: "off"
-      enum:
-        - any
-        - "off"
+    SandboxAutoResumeEnabled:
+      type: boolean
+      description: Auto-resume enabled flag for paused sandboxes. Default false.
+      default: false
 
     SandboxAutoResumeConfig:
       type: object
-      description: Auto-resume configuration for paused sandboxes. Default is off.
+      description: Auto-resume configuration for paused sandboxes.
       required:
-        - policy
+        - enabled
       properties:
-        policy:
-          $ref: "#/components/schemas/SandboxAutoResumePolicy"
+        enabled:
+          $ref: "#/components/schemas/SandboxAutoResumeEnabled"
+
+    SandboxOnTimeout:
+      type: string
+      description: Action taken when the sandbox times out.
+      enum:
+        - kill
+        - pause
+
+    SandboxLifecycle:
+      type: object
+      description: Sandbox lifecycle policy returned by sandbox info.
+      required:
+        - autoResume
+        - onTimeout
+      properties:
+        autoResume:
+          type: boolean
+          description: Whether the sandbox can auto-resume.
+        onTimeout:
+          $ref: "#/components/schemas/SandboxOnTimeout"
 
     SandboxLog:
       description: Log entry with timestamp and line
@@ -467,7 +484,6 @@ components:
         - endAt
         - state
         - envdVersion
-        - volumeMounts
       properties:
         templateID:
           type: string
@@ -495,6 +511,10 @@ components:
         envdAccessToken:
           type: string
           description: Access token used for envd communication
+        allowInternetAccess:
+          type: boolean
+          nullable: true
+          description: Whether internet access was explicitly enabled or disabled for the sandbox. Null means it was not explicitly set.
         domain:
           type: string
           nullable: true
@@ -509,6 +529,10 @@ components:
           $ref: "#/components/schemas/SandboxMetadata"
         state:
           $ref: "#/components/schemas/SandboxState"
+        network:
+          $ref: "#/components/schemas/SandboxNetworkConfig"
+        lifecycle:
+          $ref: "#/components/schemas/SandboxLifecycle"
         volumeMounts:
           type: array
           items:
@@ -526,7 +550,6 @@ components:
         - endAt
         - state
         - envdVersion
-        - volumeMounts
       properties:
         templateID:
           type: string
@@ -707,6 +730,14 @@ components:
         failedCount:
           type: integer
           description: Number of builds that failed to cancel
+
+    VolumeToken:
+      type: object
+      properties:
+        token:
+          type: string
+      required:
+        - token
 
     Template:
       required:
@@ -1291,17 +1322,22 @@ components:
 
     NodeStatus:
       type: string
-      description: Status of the node
+      description: |
+        Status of the node.
+        - draining: the node is bound to be shut down. It will not accept new sandboxes and will stop once all existing sandboxes are done.
+        - standby: the node is not actively used, but it can return to ready and continue serving traffic.
       enum:
         - ready
         - draining
         - connecting
         - unhealthy
+        - standby
       x-enum-varnames:
         - NodeStatusReady
         - NodeStatusDraining
         - NodeStatusConnecting
         - NodeStatusUnhealthy
+        - NodeStatusStandby
 
     NodeStatusChange:
       required:
@@ -1727,6 +1763,23 @@ components:
         - volumeID
         - name
 
+    VolumeAndToken:
+      type: object
+      properties:
+        volumeID:
+          type: string
+          description: ID of the volume
+        name:
+          type: string
+          description: Name of the volume
+        token:
+          type: string
+          description: Auth token to use for interacting with volume content
+      required:
+        - volumeID
+        - name
+        - token
+
     NewVolume:
       type: object
       properties:
@@ -1751,8 +1804,8 @@ paths:
     get:
       description: Health check
       responses:
-        "200":
-          description: Request was successful
+        "204":
+          description: The service is healthy
         "401":
           $ref: "#/components/responses/401"
 
@@ -2074,6 +2127,17 @@ paths:
           schema:
             $ref: "#/components/schemas/LogsDirection"
           description: Direction of the logs that should be returned
+        - in: query
+          name: level
+          schema:
+            $ref: "#/components/schemas/LogLevel"
+          description: Minimum log level to return. Logs below this level are excluded
+        - in: query
+          name: search
+          schema:
+            type: string
+            maxLength: 256
+          description: Case-sensitive substring match on log message content
       responses:
         "200":
           description: Successfully returned the sandbox logs
@@ -2298,6 +2362,45 @@ paths:
           $ref: "#/components/responses/401"
         "404":
           $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /sandboxes/{sandboxID}/network:
+    put:
+      description: Update the network configuration for a running sandbox. Replaces the current egress rules with the provided configuration. Omitting both fields clears all egress rules.
+      security:
+        - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+      tags: [sandboxes]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                allowOut:
+                  type: array
+                  description: List of allowed destinations for egress traffic. Each entry can be a CIDR block (e.g. "8.8.8.8/32"), a bare IP address (e.g. "8.8.8.8"), or a domain name (e.g. "example.com", "*.example.com"). Allowed entries always take precedence over denied entries.
+                  items:
+                    type: string
+                denyOut:
+                  type: array
+                  description: List of denied CIDR blocks or IP addresses for egress traffic. Domain names are not supported for deny rules.
+                  items:
+                    type: string
+      parameters:
+        - $ref: "#/components/parameters/sandboxID"
+      responses:
+        "204":
+          description: Successfully updated the sandbox network configuration
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "409":
+          $ref: "#/components/responses/409"
         "500":
           $ref: "#/components/responses/500"
 
@@ -3197,7 +3300,6 @@ paths:
       description: List all team volumes
       tags: [volumes]
       security:
-        - AccessTokenAuth: []
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
@@ -3219,7 +3321,6 @@ paths:
       description: Create a new team volume
       tags: [volumes]
       security:
-        - AccessTokenAuth: []
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
@@ -3235,7 +3336,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Volume"
+                $ref: "#/components/schemas/VolumeAndToken"
         "400":
           $ref: "#/components/responses/400"
         "401":
@@ -3248,7 +3349,6 @@ paths:
       description: Get team volume info
       tags: [volumes]
       security:
-        - AccessTokenAuth: []
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
@@ -3260,7 +3360,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Volume"
+                $ref: "#/components/schemas/VolumeAndToken"
         "401":
           $ref: "#/components/responses/401"
         "404":
@@ -3272,7 +3372,6 @@ paths:
       description: Delete a team volume
       tags: [volumes]
       security:
-        - AccessTokenAuth: []
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []

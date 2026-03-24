@@ -11,6 +11,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
+	"golang.org/x/sync/singleflight"
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
@@ -21,21 +22,28 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox/reservations"
+	redisreservations "github.com/e2b-dev/infra/packages/api/internal/sandbox/reservations/redis"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/memory"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/populate_redis"
 	redisbackend "github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/redis"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const statusLogInterval = time.Second * 20
 
 var ErrNodeNotFound = errors.New("node not found")
+
+// SnapshotCacheInvalidator invalidates cached snapshot entries.
+type SnapshotCacheInvalidator interface {
+	Invalidate(ctx context.Context, sandboxID string)
+}
 
 type Orchestrator struct {
 	httpClient              *http.Client
@@ -56,6 +64,25 @@ type Orchestrator struct {
 	accessTokenGenerator    *sandbox.AccessTokenGenerator
 	sandboxCounter          metric.Int64UpDownCounter
 	createdCounter          metric.Int64Counter
+	snapshotCache           SnapshotCacheInvalidator
+
+	snapshotUpsertSem *utils.AdjustableSemaphore
+	redisStorage      *redisbackend.Storage
+
+	// connectGroup deduplicates concurrent dial+register attempts for the same
+	// physical node. It is keyed by NomadNodeShortID (Nomad-managed nodes) or
+	// scopedNodeID(clusterID, instanceNodeID) (cluster nodes) and is held inside
+	// connectToNode / connectToClusterNode, so it guards every connection path
+	// regardless of what triggered the attempt.
+	connectGroup singleflight.Group
+
+	// discoveryGroup deduplicates concurrent on-demand discovery attempts in
+	// getOrConnectNode that target the same missing orchestrator node. It is
+	// intentionally separate from connectGroup to avoid a deadlock: for cluster
+	// nodes the outer discoveryGroup key and the inner connectGroup key are the
+	// same string, and nesting Do calls for the same key on the same Group would
+	// block forever.
+	discoveryGroup singleflight.Group
 }
 
 func New(
@@ -69,6 +96,8 @@ func New(
 	clusters *clusters.Pool,
 	featureFlags *featureflags.Client,
 	accessTokenGenerator *sandbox.AccessTokenGenerator,
+	snapshotCache SnapshotCacheInvalidator,
+	snapshotUpsertSem *utils.AdjustableSemaphore,
 ) (*Orchestrator, error) {
 	analyticsInstance, err := analyticscollector.NewAnalytics(
 		ctx,
@@ -83,14 +112,14 @@ func New(
 
 	var routingCatalog e2bcatalog.SandboxesCatalog
 	if redisClient != nil {
-		routingCatalog = e2bcatalog.NewRedisSandboxesCatalog(redisClient)
+		routingCatalog = e2bcatalog.NewRedisSandboxesCatalog(redisClient, featureFlags)
 	} else {
 		routingCatalog = e2bcatalog.NewMemorySandboxesCatalog()
 	}
 
 	// We will need to either use Redis or Consul's KV for storing active sandboxes to keep everything in sync,
 	// right now we load them from Orchestrator
-	meter := tel.MeterProvider.Meter("api.cache.sandbox")
+	meter := tel.MeterProvider.Meter("github.com/e2b-dev/infra/packages/api/internal/orchestrator")
 	sandboxCounter, err := telemetry.GetUpDownCounter(meter, telemetry.SandboxCountMeterName)
 	if err != nil {
 		logger.L().Error(ctx, "error getting counter", zap.Error(err))
@@ -111,6 +140,9 @@ func New(
 
 	bestOfKAlgorithm := placement.NewBestOfK(getBestOfKConfig(ctx, featureFlags)).(*placement.BestOfK)
 
+	redisStorage := redisbackend.NewStorage(redisClient)
+	go redisStorage.Start(ctx)
+
 	o := Orchestrator{
 		httpClient:           httpClient,
 		analytics:            analyticsInstance,
@@ -122,24 +154,32 @@ func New(
 		accessTokenGenerator: accessTokenGenerator,
 		routingCatalog:       routingCatalog,
 		sqlcDB:               sqlcDB,
+		snapshotCache:        snapshotCache,
 		tel:                  tel,
 		clusters:             clusters,
+		redisStorage:         redisStorage,
 
 		sandboxCounter: sandboxCounter,
 		createdCounter: createdCounter,
+
+		snapshotUpsertSem: snapshotUpsertSem,
 	}
 
+	var reservationStorage sandbox.ReservationStorage
 	var sandboxStorage sandbox.Storage
-	memoryStorage := memory.NewStorage()
 
-	if redisClient != nil {
-		redisStorage := redisbackend.NewStorage(redisClient)
-		sandboxStorage = populate_redis.NewStorage(memoryStorage, redisStorage)
-	} else {
-		sandboxStorage = memoryStorage
+	switch config.SandboxStorageBackend {
+	case cfg.SandboxStorageBackendMemory:
+		reservationStorage = reservations.NewReservationStorage()
+		sandboxStorage = populate_redis.NewStorage(memory.NewStorage(), redisStorage)
+		logger.L().Info(ctx, "Using populate_redis sandbox storage backend")
+	case cfg.SandboxStorageBackendRedis:
+		reservationStorage = redisreservations.NewReservationStorage(redisClient)
+		sandboxStorage = redisStorage
+		logger.L().Info(ctx, "Using redis sandbox storage backend")
+	default:
+		return nil, fmt.Errorf("invalid sandbox storage backend: %s", config.SandboxStorageBackend)
 	}
-
-	reservationStorage := reservations.NewReservationStorage()
 
 	o.sandboxStore = sandbox.NewStore(
 		sandboxStorage,
@@ -247,6 +287,8 @@ func (o *Orchestrator) Close(ctx context.Context) error {
 	if err := o.routingCatalog.Close(ctx); err != nil {
 		errs = append(errs, err)
 	}
+
+	o.redisStorage.Close()
 
 	return errors.Join(errs...)
 }

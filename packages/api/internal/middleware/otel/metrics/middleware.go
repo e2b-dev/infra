@@ -1,6 +1,8 @@
 package metrics
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -9,6 +11,8 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	semconv "go.opentelemetry.io/otel/semconv/v1.7.0"
+
+	sharedmiddleware "github.com/e2b-dev/infra/packages/shared/pkg/middleware"
 )
 
 const MetricPrefix = "metric."
@@ -16,6 +20,8 @@ const MetricPrefix = "metric."
 // processingStartTimeKey is the gin context key for storing when request processing
 // (after body parsing) began. This allows metrics to exclude body upload/parsing time.
 const processingStartTimeKey = "metrics.processingStartTime"
+
+const HTTPStatusCodeGranularKey = attribute.Key("http.status_code_granular")
 
 // SetProcessingStartTime stores the current time as the processing start time in the gin context.
 func SetProcessingStartTime(c *gin.Context) {
@@ -71,12 +77,15 @@ func Middleware(meterProvider metric.MeterProvider, service string, options ...O
 				reqAttributes...,
 			)
 
-			if cfg.groupedStatus {
-				code := ginCtx.Writer.Status() / 100 * 100
-				resAttributes = append(resAttributes, semconv.HTTPStatusCodeKey.Int(code))
-			} else {
-				resAttributes = append(resAttributes, semconv.HTTPAttributesFromHTTPStatusCode(ginCtx.Writer.Status())...)
+			code := ginCtx.Writer.Status()
+			if errors.Is(sharedmiddleware.CancelCause(ginCtx), context.Canceled) {
+				// 499 is the nginx convention for "client closed request before server responded"
+				code = sharedmiddleware.StatusClientClosedRequest
 			}
+
+			groupedCode := code / 100 * 100
+			resAttributes = append(resAttributes, semconv.HTTPStatusCodeKey.Int(groupedCode))
+			resAttributes = append(resAttributes, HTTPStatusCodeGranularKey.Int(code))
 
 			// Append attributes from ginCtx
 			resAttributes = append(resAttributes, attributesFromGinContext(ginCtx, MetricPrefix)...)

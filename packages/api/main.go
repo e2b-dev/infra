@@ -23,24 +23,28 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	middleware "github.com/oapi-codegen/gin-middleware"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/api/internal/handlers"
 	customMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware"
 	metricsMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics"
 	tracingMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware/otel/tracing"
+	"github.com/e2b-dev/infra/packages/api/internal/middleware/ratelimit"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	sharedauth "github.com/e2b-dev/infra/packages/auth/pkg/auth"
-	"github.com/e2b-dev/infra/packages/auth/pkg/types"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
+	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	"github.com/e2b-dev/infra/packages/shared/pkg/factories"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+	sharedmiddleware "github.com/e2b-dev/infra/packages/shared/pkg/middleware"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	sharedutils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -55,6 +59,12 @@ const (
 	maxReadTimeout       = 10 * time.Second
 	maxWriteTimeout      = 75 * time.Second
 
+	// requestTimeout is the context deadline applied to each request.
+	// Must be less than maxWriteTimeout so the context cancels before the
+	// server's write deadline kills the connection (WriteTimeout does NOT
+	// cancel r.Context(); see https://github.com/golang/go/issues/59602).
+	requestTimeout = 70 * time.Second
+
 	// This timeout should be > 600 (GCP LB upstream idle timeout) to prevent race condition
 	// https://cloud.google.com/load-balancing/docs/https#timeouts_and_retries%23:~:text=The%20load%20balancer%27s%20backend%20keepalive,is%20greater%20than%20600%20seconds
 	idleTimeout = 620 * time.Second
@@ -67,7 +77,7 @@ var (
 	expectedMigrationTimestamp string
 )
 
-func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client, l logger.Logger, apiStore *handlers.APIStore, swagger *openapi3.T, port int) *http.Server {
+func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client, l logger.Logger, apiStore *handlers.APIStore, redisClient redis.UniversalClient, ff *featureflags.Client, swagger *openapi3.T, port int) *http.Server {
 	// Clear out the servers array in the swagger spec, that skips validating
 	// that server names match. We don't know how this thing will be run.
 	swagger.Servers = nil
@@ -78,6 +88,8 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 	// This is needed for template IDs that contain namespace/alias (e.g. "team-slug/my-template").
 	// Param values are still unescaped before reaching handlers (UnescapePathValues defaults to true).
 	r.UseRawPath = true
+
+	r.Use(gin.Recovery())
 
 	r.Use(
 		// We use custom otel gin middleware because we want to log 4xx errors in the otel
@@ -95,8 +107,33 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 			"/sandboxes/:sandboxID/pause",
 			"/sandboxes/:sandboxID/connect",
 			"/sandboxes/:sandboxID/resume",
+			"/sandboxes/:sandboxID/snapshots",
 		),
+		sharedmiddleware.LoggingMiddleware(l, sharedmiddleware.Config{ //nolint:contextcheck // ctx is captured before c.Next() intentionally to avoid seeing child context cancellations from inner middleware
+			TimeFormat:   time.RFC3339Nano,
+			UTC:          true,
+			DefaultLevel: zap.InfoLevel,
+			Skipper: func(c *gin.Context) bool {
+				switch c.FullPath() {
+				case "/health",
+					"/sandboxes/:sandboxID/refreshes",
+					"/templates/:templateID/builds/:buildID/logs",
+					"/templates/:templateID/builds/:buildID/status":
+					return true
+				}
+
+				return false
+			},
+			Context: func(c *gin.Context) []zapcore.Field {
+				if teamInfo, ok := auth.GetTeamInfo(c); ok {
+					return []zapcore.Field{logger.WithTeamID(teamInfo.ID.String())}
+				}
+
+				return nil
+			},
+		}),
 		gin.Recovery(),
+		sharedmiddleware.RequestTimeout(requestTimeout), //nolint:contextcheck // Gin middleware sets context via c.Request.WithContext
 	)
 
 	corsConfig := cors.DefaultConfig()
@@ -112,8 +149,8 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 		"Authorization",
 		"X-API-Key",
 		// Supabase headers
-		"X-Supabase-Token",
-		"X-Supabase-Team",
+		auth.HeaderSupabaseToken,
+		auth.HeaderSupabaseTeam,
 		// Custom headers sent from SDK
 		"browser",
 		"lang",
@@ -130,13 +167,15 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 	r.Use(cors.New(corsConfig))
 
 	// Create a team API Key auth validator
-	AuthenticationFunc := sharedauth.CreateAuthenticationFunc(
-		config.AdminToken,
+	AuthenticationFunc := auth.CreateAuthenticationFunc(
+		[]auth.Authenticator{
+			auth.NewApiKeyAuthenticator(apiStore.GetTeamFromAPIKey),
+			auth.NewAccessTokenAuthenticator(apiStore.GetUserFromAccessToken),
+			auth.NewSupabaseTokenAuthenticator(apiStore.GetUserIDFromSupabaseToken),
+			auth.NewSupabaseTeamAuthenticator(apiStore.GetTeamFromSupabaseToken),
+			auth.NewAdminTokenAuthenticator(config.AdminToken),
+		},
 		metricsMiddleware.SetProcessingStartTime,
-		apiStore.GetTeamFromAPIKey,
-		apiStore.GetUserFromAccessToken,
-		apiStore.GetUserIDFromSupabaseToken,
-		apiStore.GetTeamFromSupabaseToken,
 	)
 
 	// Use our validation middleware to check all requests against the
@@ -161,36 +200,10 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 
 	r.Use(customMiddleware.InitLaunchDarklyContext)
 
-	r.Use(
-		// Request logging must be executed after authorization (if required) is done,
-		// so that we can log team ID.
-		customMiddleware.ExcludeRoutes(
-			func(c *gin.Context) {
-				teamID := ""
-
-				// Get team from context, use TeamContextKey
-				teamInfo := c.Value(auth.TeamContextKey)
-				if teamInfo != nil {
-					teamID = teamInfo.(*types.Team).ID.String()
-				}
-
-				reqLogger := l
-				if teamID != "" {
-					reqLogger = l.With(logger.WithTeamID(teamID))
-				}
-
-				customMiddleware.LoggingMiddleware(reqLogger, customMiddleware.Config{
-					TimeFormat:   time.RFC3339Nano,
-					UTC:          true,
-					DefaultLevel: zap.InfoLevel,
-				})(c)
-			},
-			"/health",
-			"/sandboxes/:sandboxID/refreshes",
-			"/templates/:templateID/builds/:buildID/logs",
-			"/templates/:templateID/builds/:buildID/status",
-		),
-	)
+	// Per-team rate limiting (after auth + LD context, before handlers).
+	// Only applied to connect and resume endpoints. Gated by feature flag.
+	limiter := ratelimit.NewLimiter(redisClient)
+	r.Use(ratelimit.Middleware(limiter, ratelimit.Config{FailOpen: true}, ff)) //nolint:contextcheck // Gin middleware sets context via c.Request.WithContext
 
 	// We now register our store above as the handler for the interface
 	api.RegisterHandlersWithOptions(r, apiStore, api.GinServerOptions{
@@ -253,7 +266,7 @@ func run() int {
 		}
 	}()
 
-	l := sharedutils.Must(logger.NewLogger(ctx, logger.LoggerConfig{
+	l := sharedutils.Must(logger.NewLogger(logger.LoggerConfig{
 		ServiceName:   serviceName,
 		IsInternal:    true,
 		IsDebug:       env.IsDebug(),
@@ -287,6 +300,11 @@ func run() int {
 	defer sbxLoggerInternal.Sync()
 	sbxlogger.SetSandboxLoggerInternal(sbxLoggerInternal)
 
+	// Register Go runtime metric callbacks (goroutines, heap, GC, etc.)
+	if err := tel.StartRuntimeInstrumentation(); err != nil {
+		l.Warn(ctx, "failed to start runtime instrumentation", zap.Error(err))
+	}
+
 	// Convert the string expectedMigrationTimestamp  to a int64
 	expectedMigration, err := strconv.ParseInt(expectedMigrationTimestamp, 10, 64)
 	if err != nil {
@@ -300,7 +318,7 @@ func run() int {
 		logger.L().Fatal(ctx, "Error parsing config", zap.Error(err))
 	}
 
-	err = utils.CheckMigrationVersion(ctx, config.PostgresConnectionString, expectedMigration)
+	err = sqlcdb.CheckMigrationVersion(ctx, config.PostgresConnectionString, expectedMigration)
 	if err != nil {
 		l.Fatal(ctx, "failed to check migration version", zap.Error(err))
 	}
@@ -364,10 +382,32 @@ func run() int {
 	cleanup := func() { cleanupOnce.Do(cleanupOp) }
 	defer cleanup()
 
+	redisClient, err := factories.NewRedisClient(ctx, factories.RedisConfig{
+		RedisURL:         config.RedisURL,
+		RedisClusterURL:  config.RedisClusterURL,
+		RedisTLSCABase64: config.RedisTLSCABase64,
+		PoolSize:         config.RedisPoolSize,
+	})
+	if err != nil {
+		logger.L().Fatal(ctx, "Initializing Redis client", zap.Error(err))
+	}
+	cleanupFns = append(cleanupFns, func(_ context.Context) error {
+		return redisClient.Close()
+	})
+
+	featureFlags, err := featureflags.NewClient()
+	if err != nil {
+		logger.L().Fatal(ctx, "failed to create feature flags client", zap.Error(err))
+	}
+	cleanupFns = append(cleanupFns, featureFlags.Close)
+
+	featureFlags.SetServiceName(serviceName)
+	featureFlags.SetDeploymentName(config.DomainName)
+
 	// Create an instance of our handler which satisfies the generated interface
 	//  (use the outer context rather than the signal handling
 	//   context so it doesn't exit first.)
-	apiStore := handlers.NewAPIStore(ctx, tel, config)
+	apiStore := handlers.NewAPIStore(ctx, tel, redisClient, featureFlags, config)
 	cleanupFns = append(cleanupFns, apiStore.Close)
 
 	grpcAddr := fmt.Sprintf("0.0.0.0:%d", config.APIGrpcPort)
@@ -380,7 +420,7 @@ func run() int {
 	proxygrpc.RegisterSandboxServiceServer(grpcServer, handlers.NewSandboxService(apiStore))
 
 	// pass the signal context so that handlers know when shutdown is happening.
-	s := NewGinServer(ctx, config, tel, l, apiStore, swagger, port)
+	s := NewGinServer(ctx, config, tel, l, apiStore, redisClient, featureFlags, swagger, port)
 
 	// ////////////////////////
 	//
@@ -436,6 +476,16 @@ func run() int {
 		}
 	})
 
+	pprofServer := telemetry.NewPprofServer()
+
+	wg.Go(func() {
+		l.Info(ctx, "pprof server starting", zap.Int("port", telemetry.DefaultPprofPort))
+
+		if err := pprofServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			l.Error(ctx, "pprof server encountered error", zap.Error(err))
+		}
+	})
+
 	wg.Go(func() {
 		<-signalCtx.Done()
 
@@ -457,10 +507,13 @@ func run() int {
 		// panic and defers start running, _probably_ won't
 		// even have a chance to return before the program
 		// returns.
-
 		if err := s.Shutdown(ctx); err != nil {
 			exitCode.Add(1)
 			l.Error(ctx, "Http service shutdown error", zap.Int("port", port), zap.Error(err))
+		}
+
+		if err := pprofServer.Shutdown(ctx); err != nil {
+			l.Error(ctx, "pprof server shutdown error", zap.Error(err))
 		}
 
 		grpcServer.GracefulStop()

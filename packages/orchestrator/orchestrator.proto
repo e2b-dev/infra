@@ -98,7 +98,9 @@ message SandboxCreateResponse {
 message SandboxUpdateRequest {
   string sandbox_id = 1;
 
-  google.protobuf.Timestamp end_time = 2;
+  // All fields are optional — only set fields are applied.
+  optional google.protobuf.Timestamp end_time = 2;
+  optional SandboxNetworkEgressConfig egress = 3;
 }
 
 message SandboxDeleteRequest {
@@ -149,25 +151,4 @@ service SandboxService {
   rpc Checkpoint(SandboxCheckpointRequest) returns (SandboxCheckpointResponse);
 
   rpc ListCachedBuilds(google.protobuf.Empty) returns (SandboxListCachedBuildsResponse);
-}
-
-message VolumeCreateRequest {
-  string volume_id = 1;
-  string volume_type = 2;
-  string team_id = 3;
-}
-
-message VolumeCreateResponse {}
-
-message VolumeDeleteRequest {
-  string volume_id = 1;
-  string volume_type = 2;
-  string team_id = 3;
-}
-
-message VolumeDeleteResponse {}
-
-service VolumeService {
-  rpc Create(VolumeCreateRequest) returns (VolumeCreateResponse);
-  rpc Delete(VolumeDeleteRequest) returns (VolumeDeleteResponse);
 }

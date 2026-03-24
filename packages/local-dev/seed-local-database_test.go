@@ -2,15 +2,19 @@ package main
 
 import (
 	"context"
-	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 
+	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 )
+
+func init() {
+	goose.SetTableName("_migrations")
+}
 
 func TestRun(t *testing.T) {
 	postgresContainer, err := postgres.Run(t.Context(),
@@ -30,15 +34,22 @@ func TestRun(t *testing.T) {
 	require.NoError(t, err)
 	t.Setenv("POSTGRES_CONNECTION_STRING", connectionString)
 
+	db, err := goose.OpenDBWithDriver("pgx", connectionString)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		err := db.Close()
+		assert.NoError(t, err)
+	})
+
 	// run the db migration
-	cmd := exec.CommandContext(t.Context(), "go", "tool", "goose", "-table", "_migrations", "-dir", "migrations", "postgres", "up")
-	cmd.Env = append(
-		os.Environ(),
-		"GOOSE_DBSTRING="+connectionString,
+	err = goose.RunWithOptionsContext(
+		t.Context(),
+		"up",
+		db,
+		filepath.Join("..", "db", "migrations"),
+		nil,
 	)
-	cmd.Dir = filepath.Join("..", "db")
-	result, err := cmd.CombinedOutput()
-	require.NoError(t, err, string(result))
+	require.NoError(t, err)
 
 	// run the seed script
 	err = run(t.Context())

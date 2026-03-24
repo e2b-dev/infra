@@ -17,9 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/api/internal/clusters/discovery"
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
-	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -151,7 +149,7 @@ func newRemoteCluster(
 		sandboxDomain,
 		instances,
 		synchronization.NewSynchronize("cluster-instances", "Cluster instances", store),
-		newRemoteClusterResourceProvider(instances, httpClient),
+		newRemoteClusterResourceProvider(clusterID, instances, httpClient),
 	)
 
 	// Periodically sync cluster instances
@@ -266,43 +264,9 @@ func (c *Cluster) GetResources() ClusterResource {
 	return c.resources
 }
 
-var ErrNoOrchestratorFound = errors.New("no orchestrator found")
-
-func (c *Cluster) DeleteVolume(ctx context.Context, volume queries.Volume) error {
-	instance, ok := c.getRandomInstance(func(instance InstanceInfo, _ machineinfo.MachineInfo) bool {
-		return instance.IsOrchestrator
-	})
-
-	if !ok {
-		return ErrNoOrchestratorFound
-	}
-
-	if _, err := instance.client.Volumes.Delete(ctx, &orchestrator.VolumeDeleteRequest{
-		VolumeId:   volume.ID.String(),
-		VolumeType: volume.VolumeType,
-		TeamId:     volume.TeamID.String(),
-	}); err != nil {
-		return fmt.Errorf("failed to delete volume: %w", err)
-	}
-
-	return nil
-}
-
-func (c *Cluster) CreateVolume(ctx context.Context, volume queries.Volume) error {
-	instance, ok := c.getRandomInstance(func(instance InstanceInfo, _ machineinfo.MachineInfo) bool {
-		return instance.IsOrchestrator
-	})
-	if !ok {
-		return ErrNoOrchestratorFound
-	}
-
-	if _, err := instance.client.Volumes.Create(ctx, &orchestrator.VolumeCreateRequest{
-		VolumeId:   volume.ID.String(),
-		VolumeType: volume.VolumeType,
-		TeamId:     volume.TeamID.String(),
-	}); err != nil {
-		return fmt.Errorf("failed to create volume: %w", err)
-	}
-
-	return nil
+// SyncInstances performs an immediate synchronization of cluster instances from
+// the service discovery source. It is called on-demand when a node lookup fails,
+// to handle newly joined orchestrators that may not yet be in the in-memory pool.
+func (c *Cluster) SyncInstances(ctx context.Context) error {
+	return c.synchronization.Sync(ctx)
 }

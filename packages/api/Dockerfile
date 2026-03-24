@@ -5,26 +5,20 @@ FROM golang:${GOLANG_VERSION}-alpine${ALPINE_VERSION} AS builder
 
 RUN apk add --no-cache make
 
-# Cached golang dependencies
-WORKDIR /build/shared
-COPY ./shared/go.mod ./shared/go.sum ./
-RUN go mod download
+# Copy all module dependency files at once for better Docker layer caching
+WORKDIR /build
+COPY ./shared/go.mod ./shared/go.sum ./shared/
+COPY ./clickhouse/go.mod ./clickhouse/go.sum ./clickhouse/
+COPY ./db/go.mod ./db/go.sum ./db/
+COPY ./auth/go.mod ./auth/go.sum ./auth/
+COPY ./api/go.mod ./api/go.sum ./api/
 
-WORKDIR /build/clickhouse
-COPY ./clickhouse/go.mod ./clickhouse/go.sum ./
-RUN go mod download
-
-WORKDIR /build/db
-COPY ./db/go.mod ./db/go.sum ./
-RUN go mod download
-
-WORKDIR /build/auth
-COPY ./auth/go.mod ./auth/go.sum ./
-RUN go mod download
-
-WORKDIR /build/api
-COPY ./api/go.mod ./api/go.sum ./
-RUN go mod download
+# Download all module dependencies
+RUN cd /build/shared && go mod download && \
+    cd /build/clickhouse && go mod download && \
+    cd /build/db && go mod download && \
+    cd /build/auth && go mod download && \
+    cd /build/api && go mod download
 
 # Copy source code
 WORKDIR /build
