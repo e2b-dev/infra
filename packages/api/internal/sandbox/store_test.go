@@ -222,7 +222,7 @@ func TestAdd_NewSandbox(t *testing.T) {
 
 func TestAdd_AlreadyInCache(t *testing.T) {
 	t.Parallel()
-	t.Run("newlyCreated=true - callbacks NOT called when already in cache", func(t *testing.T) {
+	t.Run("newlyCreated=true - only AsyncNewlyCreatedSandbox called when already in cache", func(t *testing.T) {
 		t.Parallel()
 		ctx := t.Context()
 
