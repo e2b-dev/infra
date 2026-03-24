@@ -9,9 +9,11 @@ import (
 
 var commitSHA string
 
+const version = "0.1.0"
+
 func main() {
 	factories.Run(factories.Options{
-		Version:       "0.1.0",
+		Version:       version,
 		CommitSHA:     commitSHA,
 		EgressFactory: defaultEgressFactory,
 	})
