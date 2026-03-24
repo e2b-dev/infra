@@ -169,7 +169,6 @@ module "nomad" {
   domain_name    = var.domain_name
   environment    = var.environment
   aws_region     = data.aws_region.current.name
-  aws_account_id = data.aws_caller_identity.current.account_id
 
   nomad_acl_token  = module.init.cluster.nomad_acl_token
   consul_acl_token = module.init.cluster.consul_acl_token
