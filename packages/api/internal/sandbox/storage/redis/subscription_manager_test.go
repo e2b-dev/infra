@@ -27,7 +27,7 @@ func TestSubscriptionManager_SubscribeAndDispatch(t *testing.T) {
 	m := setupTestManager(t)
 
 	ch, cleanup := m.subscribe("key1")
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	m.dispatch("key1")
 
@@ -45,9 +45,9 @@ func TestSubscriptionManager_DispatchOnlyMatchingKey(t *testing.T) {
 	m := setupTestManager(t)
 
 	ch1, cleanup1 := m.subscribe("key1")
-	defer cleanup1()
+	t.Cleanup(cleanup1)
 	ch2, cleanup2 := m.subscribe("key2")
-	defer cleanup2()
+	t.Cleanup(cleanup2)
 
 	// Dispatch only to key2
 	m.dispatch("key2")
@@ -125,7 +125,7 @@ func TestSubscriptionManager_CleanupPartialRemoval(t *testing.T) {
 
 	ch1, cleanup1 := m.subscribe("key-partial")
 	ch2, cleanup2 := m.subscribe("key-partial")
-	defer cleanup2()
+	t.Cleanup(cleanup2)
 
 	// Remove only the first subscriber
 	cleanup1()
@@ -161,7 +161,7 @@ func TestSubscriptionManager_DoubleDispatchDoesNotBlock(t *testing.T) {
 	m := setupTestManager(t)
 
 	ch, cleanup := m.subscribe("key-double")
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	// Dispatch twice — the channel is buffered(1), so the second dispatch
 	// should be silently dropped (not block).
@@ -226,13 +226,13 @@ func TestSubscriptionManager_PubSubEndToEnd(t *testing.T) {
 
 	routingKey := "test:routing:key"
 	ch, cleanup := storage.subManager.subscribe(routingKey)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	// Allow time for the PubSub subscription to be established
 	time.Sleep(50 * time.Millisecond)
 
 	// Publish via Redis (simulating what the callback does)
-	err := client.Publish(t.Context(), getGlobalTransitionNotifyChannel(), routingKey).Err()
+	err := client.Publish(t.Context(), globalTransitionNotifyChannel, routingKey).Err()
 	require.NoError(t, err)
 
 	select {
@@ -251,12 +251,12 @@ func TestSubscriptionManager_PubSubIgnoresUnrelatedKeys(t *testing.T) {
 	t.Cleanup(storage.Close)
 
 	ch, cleanup := storage.subManager.subscribe("my:sandbox:key")
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	time.Sleep(50 * time.Millisecond)
 
 	// Publish a message with a different routing key
-	err := client.Publish(t.Context(), getGlobalTransitionNotifyChannel(), "other:sandbox:key").Err()
+	err := client.Publish(t.Context(), globalTransitionNotifyChannel, "other:sandbox:key").Err()
 	require.NoError(t, err)
 
 	select {

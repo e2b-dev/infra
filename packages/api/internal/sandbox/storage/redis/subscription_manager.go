@@ -22,7 +22,7 @@ func newSubscriptionManager(ctx context.Context, redisClient redis.UniversalClie
 
 	m := &subscriptionManager{
 		waiters: make(map[string]map[chan struct{}]struct{}),
-		ps:      redisClient.Subscribe(ctx, getGlobalTransitionNotifyChannel()),
+		ps:      redisClient.Subscribe(ctx, globalTransitionNotifyChannel),
 		cancel:  cancel,
 	}
 
@@ -31,10 +31,10 @@ func newSubscriptionManager(ctx context.Context, redisClient redis.UniversalClie
 	return m
 }
 
-// subscribe registers a waiter for the given routingKey (per-sandbox).
+// subscribe registers a waiter for the given routingKey (per-transition).
 // The returned channel receives a signal when a transition-complete message
-// arrives for that sandbox. The caller MUST invoke the returned cleanup function
-// when done to avoid a memory leak.
+// arrives for that transition. The caller MUST invoke the returned cleanup
+// function when done to avoid a memory leak.
 func (m *subscriptionManager) subscribe(routingKey string) (<-chan struct{}, func()) {
 	channel := make(chan struct{}, 1) // buffered so dispatch never blocks
 
@@ -58,9 +58,7 @@ func (m *subscriptionManager) subscribe(routingKey string) (<-chan struct{}, fun
 	return channel, cleanup
 }
 
-// run reads from the single global PubSub channel and dispatches signals to
-// all waiters whose routing key matches the message payload.
-// Runs for the lifetime of the subscriptionManager.
+// run reads from the PubSub channel and dispatches signals to matching waiters.
 func (m *subscriptionManager) run(ctx context.Context) {
 	ch := m.ps.Channel()
 	for {

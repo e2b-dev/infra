@@ -1086,7 +1086,7 @@ func TestCallback_PublishesNotification(t *testing.T) {
 	require.NoError(t, err)
 
 	// Subscribe to the global notification channel directly
-	pubsub := client.Subscribe(ctx, getGlobalTransitionNotifyChannel())
+	pubsub := client.Subscribe(ctx, globalTransitionNotifyChannel)
 	defer pubsub.Close()
 
 	// Wait for the subscription to be ready
@@ -1205,7 +1205,7 @@ func TestWaitForTransition_StalePubSubNotification(t *testing.T) {
 
 	// Publish a notification using transition A's routing key (stale).
 	staleRoutingKey := getTransitionRoutingKey(sbx.TeamID.String(), sbx.SandboxID, transitionIDA)
-	require.NoError(t, client.Publish(t.Context(), getGlobalTransitionNotifyChannel(), staleRoutingKey).Err())
+	require.NoError(t, client.Publish(t.Context(), globalTransitionNotifyChannel, staleRoutingKey).Err())
 
 	// Give time for the stale notification to be (not) delivered.
 	time.Sleep(200 * time.Millisecond)

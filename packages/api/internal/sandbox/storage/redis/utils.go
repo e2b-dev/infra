@@ -14,14 +14,12 @@ const (
 	indexKey            = "index"
 )
 
-// getGlobalTransitionNotifyChannel is the single Redis PubSub channel used by
-// all sandboxes across all teams. The per-sandbox routing key is embedded in
-// the message payload so one connection per API pod is sufficient.
-func getGlobalTransitionNotifyChannel() string {
-	return redis_utils.CreateKey(sandboxKeyPrefix, transitionKeyPrefix, notifySuffix)
-}
-
 var (
+	// globalTransitionNotifyChannel is the single Redis PubSub channel used by
+	// all transitions. The per-transition routing key is embedded in the message
+	// payload so one connection per API pod is sufficient.
+	globalTransitionNotifyChannel = redis_utils.CreateKey(sandboxKeyPrefix, transitionKeyPrefix, notifySuffix)
+
 	globalTeamsSet      = redis_utils.CreateKey(sandboxKeyPrefix, "global:teams")
 	globalExpirationSet = redis_utils.CreateKey(sandboxKeyPrefix, "global:expiration")
 )

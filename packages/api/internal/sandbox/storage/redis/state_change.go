@@ -198,7 +198,7 @@ func (s *Storage) createCallback(teamID uuid.UUID, sandboxID, transitionKey, res
 		// The routing key is published as the payload so the single global channel
 		// can serve all sandboxes across all teams.
 		routingKey := getTransitionRoutingKey(teamID.String(), sandboxID, transitionID)
-		pubErr := s.redisClient.Publish(cbCtx, getGlobalTransitionNotifyChannel(), routingKey).Err()
+		pubErr := s.redisClient.Publish(cbCtx, globalTransitionNotifyChannel, routingKey).Err()
 		if pubErr != nil {
 			logger.L().Warn(cbCtx, "Failed to publish transition notification",
 				logger.WithSandboxID(sandboxID),
