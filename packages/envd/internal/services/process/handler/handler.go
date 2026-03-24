@@ -43,8 +43,7 @@ type ProcessExit struct {
 type Handler struct {
 	Config *rpc.ProcessConfig
 
-	logger         *zerolog.Logger
-	requestTimeout time.Duration
+	logger *zerolog.Logger
 
 	Tag *string
 	cmd *exec.Cmd
@@ -92,7 +91,6 @@ func New(
 	defaults *execcontext.Defaults,
 	cgroupManager cgroups.Manager,
 	cancel context.CancelFunc,
-	requestTimeout time.Duration,
 ) (*Handler, error) {
 	// User command string for logging (without the internal wrapper details).
 	userCmd := strings.Join(append([]string{req.GetProcess().GetCmd()}, req.GetProcess().GetArgs()...), " ")
@@ -180,16 +178,15 @@ func New(
 	outCtx, outCancel := context.WithCancel(ctx)
 
 	h := &Handler{
-		Config:         req.GetProcess(),
-		cmd:            cmd,
-		Tag:            req.Tag,
-		DataEvent:      outMultiplex,
-		cancel:         cancel,
-		outCtx:         outCtx,
-		outCancel:      outCancel,
-		EndEvent:       NewMultiplexedChannel[rpc.ProcessEvent_End](0),
-		logger:         logger,
-		requestTimeout: requestTimeout,
+		Config:    req.GetProcess(),
+		cmd:       cmd,
+		Tag:       req.Tag,
+		DataEvent: outMultiplex,
+		cancel:    cancel,
+		outCtx:    outCtx,
+		outCancel: outCancel,
+		EndEvent:  NewMultiplexedChannel[rpc.ProcessEvent_End](0),
+		logger:    logger,
 	}
 
 	if req.GetPty() != nil {
@@ -423,7 +420,7 @@ func (p *Handler) WriteTty(data []byte) error {
 	return nil
 }
 
-func (p *Handler) Start() (uint32, error) {
+func (p *Handler) Start(requestTimeout time.Duration) (uint32, error) {
 	// Pty is already started in the New method
 	if p.tty == nil {
 		err := p.cmd.Start()
@@ -437,7 +434,7 @@ func (p *Handler) Start() (uint32, error) {
 		Str("event_type", "process_start").
 		Int("pid", p.cmd.Process.Pid).
 		Str("command", p.userCommand()).
-		Dur("request_timeout_ms", p.requestTimeout).
+		Dur("request_timeout_ms", requestTimeout).
 		Msg(fmt.Sprintf("Process with pid %d started", p.cmd.Process.Pid))
 
 	return uint32(p.cmd.Process.Pid), nil

@@ -31,12 +31,12 @@ func (s *Service) InitializeStartProcess(ctx context.Context, user *user.User, r
 	handlerL := s.logger.With().Str(string(logs.OperationIDKey), ctx.Value(logs.OperationIDKey).(string)).Logger()
 
 	startProcCtx, startProcCancel := context.WithCancel(ctx)
-	proc, err := handler.New(startProcCtx, user, req, &handlerL, s.defaults, s.cgroupManager, startProcCancel, 0)
+	proc, err := handler.New(startProcCtx, user, req, &handlerL, s.defaults, s.cgroupManager, startProcCancel)
 	if err != nil {
 		return err
 	}
 
-	pid, err := proc.Start()
+	pid, err := proc.Start(0)
 	if err != nil {
 		return err
 	}
@@ -87,7 +87,6 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 		s.defaults,
 		s.cgroupManager,
 		cancelProc,
-		requestTimeout,
 	)
 	if err != nil {
 		// Ensure the process cancel is called to cleanup resources.
@@ -205,7 +204,7 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 		}
 	}()
 
-	pid, err := proc.Start()
+	pid, err := proc.Start(requestTimeout)
 	if err != nil {
 		return connect.NewError(connect.CodeInvalidArgument, err)
 	}
