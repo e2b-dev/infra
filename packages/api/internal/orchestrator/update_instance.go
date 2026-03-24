@@ -31,7 +31,12 @@ func (o *Orchestrator) UpdateSandbox(
 	)
 	defer span.End()
 
-	client, ctx := o.GetNode(clusterID, nodeID).GetClient(ctx)
+	node := o.getOrConnectNode(ctx, clusterID, nodeID)
+	if node == nil {
+		return fmt.Errorf("node '%s' not found", nodeID)
+	}
+
+	client, ctx := node.GetClient(ctx)
 	_, err := client.Sandbox.Update(
 		ctx, &orchestrator.SandboxUpdateRequest{
 			SandboxId: sandboxID,

@@ -100,7 +100,7 @@ func (o *Orchestrator) removeSandboxFromNode(ctx context.Context, sbx sandbox.Sa
 	ctx, span := tracer.Start(ctx, "remove-sandbox-from-node")
 	defer span.End()
 
-	node := o.GetNode(sbx.ClusterID, sbx.NodeID)
+	node := o.getOrConnectNode(ctx, sbx.ClusterID, sbx.NodeID)
 	if node == nil {
 		logger.L().Error(ctx, "failed to get node", logger.WithNodeID(sbx.NodeID))
 

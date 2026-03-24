@@ -11,6 +11,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
+	"golang.org/x/sync/singleflight"
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
@@ -67,6 +68,21 @@ type Orchestrator struct {
 
 	snapshotUpsertSem *utils.AdjustableSemaphore
 	redisStorage      *redisbackend.Storage
+
+	// connectGroup deduplicates concurrent dial+register attempts for the same
+	// physical node. It is keyed by NomadNodeShortID (Nomad-managed nodes) or
+	// scopedNodeID(clusterID, instanceNodeID) (cluster nodes) and is held inside
+	// connectToNode / connectToClusterNode, so it guards every connection path
+	// regardless of what triggered the attempt.
+	connectGroup singleflight.Group
+
+	// discoveryGroup deduplicates concurrent on-demand discovery attempts in
+	// getOrConnectNode that target the same missing orchestrator node. It is
+	// intentionally separate from connectGroup to avoid a deadlock: for cluster
+	// nodes the outer discoveryGroup key and the inner connectGroup key are the
+	// same string, and nesting Do calls for the same key on the same Group would
+	// block forever.
+	discoveryGroup singleflight.Group
 }
 
 func New(
