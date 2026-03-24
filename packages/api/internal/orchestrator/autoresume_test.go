@@ -2,11 +2,15 @@ package orchestrator
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"net/http"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	nomadapi "github.com/hashicorp/nomad/api"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -14,22 +18,25 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox/reservations"
 	sandboxmemory "github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/memory"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
-func newTestAutoResumeOrchestrator() *Orchestrator {
-	return &Orchestrator{
-		sandboxStore: sandbox.NewStore(
-			sandboxmemory.NewStorage(),
-			reservations.NewReservationStorage(),
-			sandbox.Callbacks{
-				AddSandboxToRoutingTable: func(context.Context, sandbox.Sandbox) {},
-				AsyncSandboxCounter:      func(context.Context, sandbox.Sandbox) {},
-				AsyncNewlyCreatedSandbox: func(context.Context, sandbox.Sandbox) {},
-			},
-		),
-		nodes: smap.New[*nodemanager.Node](),
-	}
+func newTestAutoResumeOrchestrator(t *testing.T, nomad *nomadapi.Client) *Orchestrator {
+	t.Helper()
+
+	o := newTestOrchestrator(t, nomad)
+	o.sandboxStore = sandbox.NewStore(
+		sandboxmemory.NewStorage(),
+		reservations.NewReservationStorage(),
+		sandbox.Callbacks{
+			AddSandboxToRoutingTable: func(context.Context, sandbox.Sandbox) {},
+			AsyncNewlyCreatedSandbox: func(context.Context, sandbox.Sandbox) {},
+		},
+	)
+	o.nodes = smap.New[*nodemanager.Node]()
+
+	return o
 }
 
 func testSandboxForAutoResume(state sandbox.State) sandbox.Sandbox {
@@ -65,7 +72,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 	t.Run("running sandbox returns node ip immediately", func(t *testing.T) {
 		t.Parallel()
 
-		o := newTestAutoResumeOrchestrator()
+		o := newTestAutoResumeOrchestrator(t, nil)
 		sbx := testSandboxForAutoResume(sandbox.StateRunning)
 		registerNode(o, sbx, "10.0.0.1")
 
@@ -78,7 +85,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 	t.Run("snapshotting sandbox waits and routes when transition finishes", func(t *testing.T) {
 		t.Parallel()
 
-		o := newTestAutoResumeOrchestrator()
+		o := newTestAutoResumeOrchestrator(t, nil)
 		sbx := testSandboxForAutoResume(sandbox.StateRunning)
 		addSandbox(t, o, sbx)
 		registerNode(o, sbx, "10.0.0.2")
@@ -106,7 +113,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 	t.Run("pausing sandbox returns still transitioning after retries", func(t *testing.T) {
 		t.Parallel()
 
-		o := newTestAutoResumeOrchestrator()
+		o := newTestAutoResumeOrchestrator(t, nil)
 		sbx := testSandboxForAutoResume(sandbox.StateRunning)
 		addSandbox(t, o, sbx)
 
@@ -129,7 +136,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 	t.Run("pausing sandbox wait failure returns internal error", func(t *testing.T) {
 		t.Parallel()
 
-		o := newTestAutoResumeOrchestrator()
+		o := newTestAutoResumeOrchestrator(t, nil)
 		sbx := testSandboxForAutoResume(sandbox.StateRunning)
 		addSandbox(t, o, sbx)
 
@@ -151,7 +158,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 	t.Run("pausing sandbox wait timeout returns failed precondition", func(t *testing.T) {
 		t.Parallel()
 
-		o := newTestAutoResumeOrchestrator()
+		o := newTestAutoResumeOrchestrator(t, nil)
 		sbx := testSandboxForAutoResume(sandbox.StateRunning)
 		addSandbox(t, o, sbx)
 
@@ -171,7 +178,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 	t.Run("killing sandbox returns not found", func(t *testing.T) {
 		t.Parallel()
 
-		o := newTestAutoResumeOrchestrator()
+		o := newTestAutoResumeOrchestrator(t, nil)
 		sbx := testSandboxForAutoResume(sandbox.StateKilling)
 
 		_, handled, err := o.HandleExistingSandboxAutoResume(t.Context(), sbx.TeamID, sbx.SandboxID, sbx, time.Minute)
@@ -180,11 +187,63 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 		assert.ErrorIs(t, err, sandbox.ErrNotFound)
 	})
 
-	t.Run("running sandbox returns routing error when node is missing", func(t *testing.T) {
+	t.Run("running sandbox discovers missing node on demand", func(t *testing.T) {
 		t.Parallel()
 
-		o := newTestAutoResumeOrchestrator()
+		orchestratorNodeID := "orch-node-42"
+		nomadFullID := "aabbccdd11223344aabbccdd11223344aabbccdd"
+		listenAddr := fmt.Sprintf("127.0.0.1:%d", consts.OrchestratorAPIPort)
+		startFakeOrchestratorGRPC(t, orchestratorNodeID, listenAddr)
+
+		nomadClient := newNomadMock(t, func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/v1/nodes" {
+				resp := []*nomadapi.NodeListStub{
+					{
+						ID:       nomadFullID,
+						Address:  "127.0.0.1",
+						Status:   "ready",
+						NodePool: "default",
+					},
+				}
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(resp)
+
+				return
+			}
+
+			http.NotFound(w, r)
+		})
+
+		o := newTestAutoResumeOrchestrator(t, nomadClient)
 		sbx := testSandboxForAutoResume(sandbox.StateRunning)
+		sbx.ClusterID = consts.LocalClusterID
+		sbx.NodeID = orchestratorNodeID
+
+		assert.Nil(t, o.GetNode(consts.LocalClusterID, orchestratorNodeID))
+
+		nodeIP, handled, err := o.HandleExistingSandboxAutoResume(t.Context(), sbx.TeamID, sbx.SandboxID, sbx, time.Minute)
+		require.NoError(t, err)
+		assert.True(t, handled)
+		assert.Equal(t, "127.0.0.1", nodeIP)
+	})
+
+	t.Run("running sandbox returns routing error when node is still missing after discovery", func(t *testing.T) {
+		t.Parallel()
+
+		nomadClient := newNomadMock(t, func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/v1/nodes" {
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode([]*nomadapi.NodeListStub{})
+
+				return
+			}
+
+			http.NotFound(w, r)
+		})
+
+		o := newTestAutoResumeOrchestrator(t, nomadClient)
+		sbx := testSandboxForAutoResume(sandbox.StateRunning)
+		sbx.ClusterID = consts.LocalClusterID
 
 		_, handled, err := o.HandleExistingSandboxAutoResume(t.Context(), sbx.TeamID, sbx.SandboxID, sbx, time.Minute)
 		require.Error(t, err)
@@ -195,7 +254,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 	t.Run("unknown sandbox state returns internal error", func(t *testing.T) {
 		t.Parallel()
 
-		o := newTestAutoResumeOrchestrator()
+		o := newTestAutoResumeOrchestrator(t, nil)
 		sbx := testSandboxForAutoResume(sandbox.State("mystery"))
 
 		_, handled, err := o.HandleExistingSandboxAutoResume(t.Context(), sbx.TeamID, sbx.SandboxID, sbx, time.Minute)
