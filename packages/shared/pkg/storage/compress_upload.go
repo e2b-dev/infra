@@ -74,11 +74,6 @@ type PartUploader interface {
 	Close() error
 }
 
-// OnFrameCompressed is an optional progress callback invoked for each compressed frame
-// during CompressStream. Not part of the StoreFile interface — only available when
-// calling CompressStream directly.
-type OnFrameCompressed = func(frameIndex int, offset FrameOffset, size FrameSize)
-
 // ValidateCompressConfig checks that compression config is valid for use.
 func ValidateCompressConfig(cfg *CompressConfig) error {
 	if cfg == nil || !cfg.IsEnabled() {
@@ -244,7 +239,7 @@ func newCompressorPool(cfg *CompressConfig) (borrow func() (frameCompressor, err
 //
 // Part emission is chained: part K+1 waits for part K's emission to complete,
 // ensuring frameTable and offset are updated in order.
-func CompressStream(ctx context.Context, in io.Reader, cfg *CompressConfig, onFrame OnFrameCompressed, uploader PartUploader) (*FrameTable, [32]byte, error) {
+func CompressStream(ctx context.Context, in io.Reader, cfg *CompressConfig, uploader PartUploader) (*FrameTable, [32]byte, error) {
 	workers := cfg.FrameEncodeWorkers
 	if workers <= 0 {
 		workers = defaultFrameEncodeWorkers
@@ -330,11 +325,6 @@ func CompressStream(ctx context.Context, in io.Reader, cfg *CompressConfig, onFr
 			for i, f := range frames {
 				fs := FrameSize{U: int32(f.uncompressedSize), C: int32(len(f.compressed))}
 				frameTable.Frames = append(frameTable.Frames, fs)
-
-				if onFrame != nil {
-					onFrame(frameIndex, offset, fs)
-				}
-
 				frameIndex++
 				offset.Add(fs)
 				partData[i] = f.compressed
@@ -431,6 +421,7 @@ func CompressStream(ctx context.Context, in io.Reader, cfg *CompressConfig, onFr
 func newZstdEncoder(concurrency int, windowSize int, compressionLevel zstd.EncoderLevel) (*zstd.Encoder, error) {
 	zstdOpts := []zstd.EOption{
 		zstd.WithEncoderLevel(compressionLevel),
+		zstd.WithEncoderCRC(true), // per-frame xxHash64 checksum (default true, explicit for clarity)
 	}
 	if windowSize > 0 {
 		zstdOpts = append(zstdOpts, zstd.WithWindowSize(windowSize))

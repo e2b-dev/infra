@@ -170,7 +170,7 @@ func (o *fsObject) storeFileCompressed(ctx context.Context, localPath string, cf
 
 	uploader := &fsPartUploader{fullPath: o.path}
 
-	return CompressStream(ctx, file, cfg, nil, uploader)
+	return CompressStream(ctx, file, cfg, uploader)
 }
 
 func (o *fsObject) openRangeReader(_ context.Context, off int64, length int) (io.ReadCloser, error) {

@@ -303,7 +303,7 @@ func BenchmarkColdConcurrent(b *testing.B) {
 			FrameEncodeWorkers: 1,
 			FrameSizeKB:        codec.frameSize / 1024,
 			TargetPartSizeMB:   50,
-		}, nil, up)
+		}, up)
 		require.NoError(b, err)
 		bundles[ci] = compressedBundle{ft, up.Assemble()}
 	}

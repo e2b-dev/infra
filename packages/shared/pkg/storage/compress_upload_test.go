@@ -144,7 +144,6 @@ func TestCompressStreamRoundTrip(t *testing.T) {
 				context.Background(),
 				bytes.NewReader(original),
 				cfg,
-				nil,
 				up,
 			)
 			require.NoError(t, err)
@@ -173,43 +172,6 @@ func TestCompressStreamRoundTrip(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// TestCompressStreamOnFrameCompressed
-// ---------------------------------------------------------------------------
-
-func TestCompressStreamOnFrameCompressed(t *testing.T) {
-	t.Parallel()
-
-	data := generateSemiRandomData(10 * megabyte)
-
-	type record struct {
-		index  int
-		offset FrameOffset
-		size   FrameSize
-	}
-
-	var records []record
-	cfg := defaultCfg(CompressionZstd, 4, 2*megabyte)
-	onFrame := func(frameIndex int, offset FrameOffset, size FrameSize) {
-		records = append(records, record{index: frameIndex, offset: offset, size: size})
-	}
-
-	up := &MemPartUploader{}
-	ft, _, err := CompressStream(context.Background(), bytes.NewReader(data), cfg, onFrame, up)
-	require.NoError(t, err)
-
-	require.Len(t, records, len(ft.Frames))
-
-	var expectU, expectC int64
-	for i, r := range records {
-		assert.Equal(t, i, r.index, "frame %d: index", i)
-		assert.Equal(t, expectU, r.offset.U, "frame %d: U offset", i)
-		assert.Equal(t, expectC, r.offset.C, "frame %d: C offset", i)
-		expectU += int64(r.size.U)
-		expectC += int64(r.size.C)
-	}
-}
-
-// ---------------------------------------------------------------------------
 // TestCompressStreamContextCancel
 // ---------------------------------------------------------------------------
 
@@ -227,7 +189,7 @@ func TestCompressStreamContextCancel(t *testing.T) {
 	up := &MemPartUploader{}
 	cfg := defaultCfg(CompressionZstd, 4, 2*megabyte)
 
-	_, _, err := CompressStream(ctx, bytes.NewReader(data), cfg, nil, up)
+	_, _, err := CompressStream(ctx, bytes.NewReader(data), cfg, up)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, context.Canceled)
 }
@@ -259,7 +221,7 @@ func TestCompressStreamPartSizeMinimum(t *testing.T) {
 			cfg := defaultCfg(CompressionZstd, 4, tc.frameSize)
 			cfg.TargetPartSizeMB = tc.targetPartSizeMB
 
-			_, _, err := CompressStream(context.Background(), bytes.NewReader(data), cfg, nil, up)
+			_, _, err := CompressStream(context.Background(), bytes.NewReader(data), cfg, up)
 			require.NoError(t, err)
 
 			// Verify: no non-final part is under 5 MiB.
@@ -319,7 +281,7 @@ func TestCompressStreamRace(t *testing.T) {
 				cfg.EncoderConcurrency = 4 // multi-threaded zstd encoders for more contention
 			}
 
-			ft, checksum, err := CompressStream(ctx, bytes.NewReader(data), cfg, nil, up)
+			ft, checksum, err := CompressStream(ctx, bytes.NewReader(data), cfg, up)
 			if err != nil {
 				return fmt.Errorf("stream %d: compress: %w", i, err)
 			}
@@ -389,7 +351,6 @@ func BenchmarkCompressStream(b *testing.B) {
 					context.Background(),
 					bytes.NewReader(data),
 					compCfg,
-					nil,
 					up,
 				)
 				if err != nil {

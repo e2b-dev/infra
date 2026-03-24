@@ -221,7 +221,7 @@ func framedEncode(data []byte, ct storage.CompressionType, level, encWorkers, en
 	reader := bytes.NewReader(data)
 
 	start := time.Now()
-	ft, _, err := storage.CompressStream(ctx, reader, cfg, nil, uploader)
+	ft, _, err := storage.CompressStream(ctx, reader, cfg, uploader)
 	elapsed := time.Since(start)
 
 	if err != nil {

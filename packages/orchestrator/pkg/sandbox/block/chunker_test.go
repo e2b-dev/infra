@@ -177,7 +177,7 @@ func makeCompressedTestData(tb testing.TB, data []byte, ttfb time.Duration) (*st
 		FrameEncodeWorkers: 1,
 		FrameSizeKB:        testFrameSize / 1024,
 		TargetPartSizeMB:   50,
-	}, nil, up)
+	}, up)
 	require.NoError(tb, err)
 
 	return ft, &slowFrameGetter{data: up.Assemble(), ttfb: ttfb}
