@@ -156,13 +156,13 @@ func TestSandboxAutoResumeWithoutExplicitTimeoutUsesMinimumTimeout(t *testing.T)
 	err = utils.ExecCommand(t, ctx, sbx, envdClient, "ls")
 	require.NoError(t, err)
 
-	// Verify auto-resume applies a minimum timeout (~60s) instead of 15s API default.
+	// Verify auto-resume applies a minimum timeout (~300s) instead of 15s API default.
 	res, err := c.GetSandboxesSandboxIDWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
 	require.NoError(t, err)
 	require.NotNil(t, res.JSON200, "expected 200 response, got status %d", res.StatusCode())
 	require.Equal(t, api.Running, res.JSON200.State, "sandbox should be running after auto-resume")
 	resumedDuration := res.JSON200.EndAt.Sub(res.JSON200.StartedAt)
-	require.InDelta(t, 60, resumedDuration.Seconds(), 15, "expected resumed timeout near 60s minimum, got %s", resumedDuration)
+	require.InDelta(t, 300, resumedDuration.Seconds(), 30, "expected resumed timeout near 300s minimum, got %s", resumedDuration)
 }
 
 func TestSandboxAutoResumeUsesInitialTimeoutNotUpdatedTimeout(t *testing.T) {

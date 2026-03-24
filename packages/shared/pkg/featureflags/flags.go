@@ -189,7 +189,7 @@ var (
 
 	// MinAutoResumeTimeoutSeconds is the minimum auto-resume timeout in seconds.
 	// This prevents thrashing from very short timeouts.
-	MinAutoResumeTimeoutSeconds = newIntFlag("minimum-autoresume-timeout", 60)
+	MinAutoResumeTimeoutSeconds = newIntFlag("minimum-autoresume-timeout", 300)
 
 	// BuildReservedDiskSpaceMB is the amount of disk space in MB reserved for root on the guest filesystem.
 	// Reserved blocks are only usable by root (uid 0), protecting the guest OS from disk-full conditions.
