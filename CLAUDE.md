@@ -209,9 +209,14 @@ go test -race -v -run TestCreateSandbox ./internal/handlers
 - After editing proto files, run `make generate/orchestrator` and `make generate/shared`
 
 ### Database Migrations
-- Migrations: `packages/db/migrations/`
+- **Main migrations**: `packages/db/migrations/` — run via `make migrate` (requires POSTGRES_CONNECTION_STRING)
+- **Dashboard migrations**: `packages/db/pkg/dashboard/migrations/` — run separately:
+  ```
+  GOOSE_DRIVER=postgres GOOSE_DBSTRING="$POSTGRES_CONNECTION_STRING" \
+    go tool goose -table "_dashboard_migrations" -dir "pkg/dashboard/migrations" up
+  ```
+  These are required when `DASHBOARD_API_COUNT > 0`. They use a separate goose table (`_dashboard_migrations`).
 - Create: Add new `XXXXXX_name.sql` file
-- Apply: `make migrate` (requires POSTGRES_CONNECTION_STRING)
 - Code generation: `make generate/db` (regenerates sqlc code)
 
 ### Environment Variables

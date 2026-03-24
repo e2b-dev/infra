@@ -80,7 +80,13 @@ Check if you can use config for terraform state management
   - e2b-supabase-jwt-secrets (optional / required to self-host the [E2B dashboard](https://github.com/e2b-dev/dashboard))
       > Get Supabase JWT Secret: go to the [Supabase dashboard](https://supabase.com/dashboard) -> Select your Project -> Project Settings -> Data API -> JWT Settings
   - e2b-posthog-api-key (optional, for monitoring)
-9. (Optional) To enable the [E2B dashboard](https://github.com/e2b-dev/dashboard), set `DASHBOARD_API_COUNT=1` in your `.env` file and ensure `e2b-supabase-jwt-secrets` is populated. The dashboard API will be accessible at `dashboard-api.<your-domain>`.
+9. (Optional) To enable the [E2B dashboard](https://github.com/e2b-dev/dashboard), set `DASHBOARD_API_COUNT=1` in your `.env` file and ensure `e2b-supabase-jwt-secrets` is populated. You also need to run the dashboard-specific database migrations:
+    ```sh
+    cd packages/db
+    GOOSE_DRIVER=postgres GOOSE_DBSTRING="$POSTGRES_CONNECTION_STRING" \
+      go tool goose -table "_dashboard_migrations" -dir "pkg/dashboard/migrations" up
+    ```
+    The dashboard API will be accessible at `dashboard-api.<your-domain>`.
 10. Run `make plan-without-jobs` and then `make apply`
 11. Run `make plan` and then `make apply`. Note: This will work after the TLS certificates was issued. It can take some time; you can check the status in the Google Cloud Console. Database migrations run automatically via the API's db-migrator task.
 12. Setup data in the cluster by running `make prep-cluster` in `packages/shared` to create an initial user, team, and build a base template.
@@ -150,7 +156,13 @@ Now, you should see the right quota options in `All Quotas` and be able to reque
 7. Run `make build-and-upload` to build and push container images and binaries
 8. Run `make copy-public-builds` to copy Firecracker kernels and rootfs to your S3 buckets
 9. Run `make plan-without-jobs` and then `make apply` to provision the cluster infrastructure
-10. (Optional) To enable the [E2B dashboard](https://github.com/e2b-dev/dashboard), set `DASHBOARD_API_COUNT=1` in your `.env` file and ensure `{prefix}supabase-jwt-secrets` is populated. The dashboard API will be accessible at `dashboard-api.<your-domain>`.
+10. (Optional) To enable the [E2B dashboard](https://github.com/e2b-dev/dashboard), set `DASHBOARD_API_COUNT=1` in your `.env` file and ensure `{prefix}supabase-jwt-secrets` is populated. You also need to run the dashboard-specific database migrations:
+    ```sh
+    cd packages/db
+    GOOSE_DRIVER=postgres GOOSE_DBSTRING="$POSTGRES_CONNECTION_STRING" \
+      go tool goose -table "_dashboard_migrations" -dir "pkg/dashboard/migrations" up
+    ```
+    The dashboard API will be accessible at `dashboard-api.<your-domain>`.
 11. Run `make plan` and then `make apply` to deploy all Nomad jobs (this also runs database migrations automatically via the API's db-migrator task)
 12. Setup data in the cluster by running `make prep-cluster` in `packages/shared` to create an initial user, team, and build a base template
 
