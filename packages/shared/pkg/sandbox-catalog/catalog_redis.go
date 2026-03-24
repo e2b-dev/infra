@@ -49,6 +49,7 @@ func NewRedisSandboxesCatalog(redisClient redis.UniversalClient, opts ...RedisSa
 	for _, opt := range opts {
 		opt(c)
 	}
+
 	return c
 }
 
