@@ -188,6 +188,12 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		ctx, a.sqlcDB, a.featureFlags, teamInfo.ID, apiVolumeMounts, env,
 	)
 	if err != nil {
+		if errors.Is(err, ErrVolumesNotSupported) {
+			a.sendAPIStoreError(c, http.StatusBadRequest, "Volumes are not supported by envd. Rebuild your template and try again.")
+
+			return
+		}
+
 		if errors.Is(err, ErrVolumeMountsDisabled) {
 			a.sendAPIStoreError(c, http.StatusBadRequest, "Volume mounts are not enabled.")
 
