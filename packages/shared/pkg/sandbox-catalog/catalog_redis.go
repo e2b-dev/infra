@@ -11,7 +11,6 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -24,21 +23,25 @@ const (
 )
 
 type RedisSandboxCatalog struct {
-	redisClient  redis.UniversalClient
-	cache        *ttlcache.Cache[string, *SandboxInfo]
-	featureFlags *featureflags.Client
+	redisClient redis.UniversalClient
+	cache       *ttlcache.Cache[string, *SandboxInfo]
 }
 
 var _ SandboxesCatalog = (*RedisSandboxCatalog)(nil)
 
-func NewRedisSandboxesCatalog(redisClient redis.UniversalClient, featureFlags *featureflags.Client) *RedisSandboxCatalog {
-	cache := ttlcache.New(ttlcache.WithTTL[string, *SandboxInfo](catalogRedisLocalCacheTtl), ttlcache.WithDisableTouchOnHit[string, *SandboxInfo]())
-	go cache.Start()
+func NewRedisSandboxesCatalog(redisClient redis.UniversalClient, useLocalCache bool) *RedisSandboxCatalog {
+	var cache *ttlcache.Cache[string, *SandboxInfo]
+	if useLocalCache {
+		cache = ttlcache.New(
+			ttlcache.WithTTL[string, *SandboxInfo](catalogRedisLocalCacheTtl),
+			ttlcache.WithDisableTouchOnHit[string, *SandboxInfo](),
+		)
+		go cache.Start()
+	}
 
 	return &RedisSandboxCatalog{
-		redisClient:  redisClient,
-		cache:        cache,
-		featureFlags: featureFlags,
+		redisClient: redisClient,
+		cache:       cache,
 	}
 }
 
@@ -48,9 +51,7 @@ func (c *RedisSandboxCatalog) GetSandbox(ctx context.Context, sandboxID string) 
 	spanCtx, span := tracer.Start(ctx, "sandbox-catalog-get")
 	defer span.End()
 
-	useLocalCache := c.featureFlags.BoolFlag(spanCtx, featureflags.SandboxCatalogLocalCacheFlag)
-
-	if useLocalCache {
+	if c.cache != nil {
 		sandboxInfo := c.cache.Get(sandboxID)
 		if sandboxInfo != nil {
 			return sandboxInfo.Value(), nil
@@ -75,7 +76,7 @@ func (c *RedisSandboxCatalog) GetSandbox(ctx context.Context, sandboxID string) 
 		return nil, fmt.Errorf("failed to unmarshal sandbox info: %w", err)
 	}
 
-	if useLocalCache {
+	if c.cache != nil {
 		c.cache.Set(sandboxID, info, catalogRedisLocalCacheTtl)
 	}
 
@@ -101,7 +102,7 @@ func (c *RedisSandboxCatalog) StoreSandbox(ctx context.Context, sandboxID string
 		return fmt.Errorf("failed to store sandbox info in redis: %w", status.Err())
 	}
 
-	if c.featureFlags.BoolFlag(spanCtx, featureflags.SandboxCatalogLocalCacheFlag) {
+	if c.cache != nil {
 		c.cache.Set(sandboxID, sandboxInfo, catalogRedisLocalCacheTtl)
 	}
 
@@ -133,7 +134,9 @@ func (c *RedisSandboxCatalog) DeleteSandbox(ctx context.Context, sandboxID strin
 	}
 
 	c.redisClient.Del(ctx, c.getCatalogKey(sandboxID))
-	c.cache.Delete(sandboxID)
+	if c.cache != nil {
+		c.cache.Delete(sandboxID)
+	}
 
 	return nil
 }
@@ -143,7 +146,9 @@ func (c *RedisSandboxCatalog) getCatalogKey(sandboxID string) string {
 }
 
 func (c *RedisSandboxCatalog) Close(_ context.Context) error {
-	c.cache.Stop()
+	if c.cache != nil {
+		c.cache.Stop()
+	}
 
 	return nil
 }
