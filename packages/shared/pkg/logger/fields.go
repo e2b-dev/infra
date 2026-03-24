@@ -4,6 +4,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -75,6 +76,11 @@ func WithMaskedAPIKey(maskedAPIKey string) zap.Field {
 
 func WithMaskedAccessToken(maskedAccessToken string) zap.Field {
 	return zap.String("auth.access_token", maskedAccessToken)
+}
+
+// Time returns a zap.Field that logs the given time as an RFC3339Nano string.
+func Time(key string, val time.Time) zap.Field {
+	return zap.String(key, val.Format(time.RFC3339Nano))
 }
 
 // ProxyRequestFields returns the common logger fields for a proxied HTTP request.
