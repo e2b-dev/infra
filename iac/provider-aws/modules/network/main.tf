@@ -5,7 +5,7 @@ module "vpc" {
   name = "${var.prefix}vpc"
   cidr = var.vpc_cidr
 
-  azs                 = var.vcp_availability_zones
+  azs                 = var.vpc_availability_zones
   public_subnets      = var.vpc_public_subnets
   private_subnets     = var.vpc_private_subnets
   elasticache_subnets = var.vpc_elasticache_subnets
@@ -105,7 +105,7 @@ module "vpc_endpoints" {
 
     secrets_manager = {
       service      = "secretsmanager"
-      service_type = "Interface" // gateway endpoint nots supported
+      service_type = "Interface" // gateway endpoint not supported
       subnet_ids = [
         local.default_private_subnet_ids[0],
         local.default_private_subnet_ids[1],

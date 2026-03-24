@@ -177,6 +177,10 @@ module "nomad" {
   grafana_otlp_url             = module.init.grafana.otlp_url
   grafana_username             = module.init.grafana.username
 
+  grafana_logs_user     = module.init.grafana.logs_user
+  grafana_logs_endpoint = module.init.grafana.logs_url
+  grafana_logs_api_key  = module.init.grafana.logs_collector_api_token
+
   api_node_pool          = local.api_pool_name
   clickhouse_node_pool   = local.clickhouse_pool_name
   clickhouse_jobs_prefix = local.clickhouse_jobs_prefix
