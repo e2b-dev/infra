@@ -44,8 +44,6 @@ type Storage interface { //nolint: interfacebloat
 type Callbacks struct {
 	// AddSandboxToRoutingTable should be called sync to prevent race conditions where we would know where to route the sandbox
 	AddSandboxToRoutingTable InsertCallback
-	// AsyncSandboxCounter should be called async to prevent blocking the main goroutine
-	AsyncSandboxCounter InsertCallback
 	// AsyncNewlyCreatedSandbox should be called async to prevent blocking the main goroutine
 	AsyncNewlyCreatedSandbox InsertCallback
 }
@@ -86,7 +84,6 @@ func (s *Store) Add(ctx context.Context, sandbox Sandbox, newlyCreated bool) err
 	if err == nil {
 		// Count only newly added sandboxes to the store
 		s.callbacks.AddSandboxToRoutingTable(ctx, sandbox)
-		go s.callbacks.AsyncSandboxCounter(context.WithoutCancel(ctx), sandbox)
 	} else {
 		// TODO [ENG-3514]: Remove once migrated to Redis
 		// There's a race condition when the sandbox is added from node sync

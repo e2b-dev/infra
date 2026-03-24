@@ -58,11 +58,11 @@ type Orchestrator struct {
 	sqlcDB                  *sqlcdb.Client
 	tel                     *telemetry.Client
 	clusters                *clusters.Pool
-	metricsRegistration     metric.Registration
-	createdSandboxesCounter metric.Int64Counter
+	metricsRegistration          metric.Registration
+	sandboxCountGaugeRegistration metric.Registration
+	createdSandboxesCounter      metric.Int64Counter
 	teamMetricsObserver     *metrics.TeamObserver
 	accessTokenGenerator    *sandbox.AccessTokenGenerator
-	sandboxCounter          metric.Int64UpDownCounter
 	createdCounter          metric.Int64Counter
 	snapshotCache           SnapshotCacheInvalidator
 
@@ -119,12 +119,6 @@ func New(
 	// We will need to either use Redis or Consul's KV for storing active sandboxes to keep everything in sync,
 	// right now we load them from Orchestrator
 	meter := tel.MeterProvider.Meter("github.com/e2b-dev/infra/packages/api/internal/orchestrator")
-	sandboxCounter, err := telemetry.GetUpDownCounter(meter, telemetry.SandboxCountMeterName)
-	if err != nil {
-		logger.L().Error(ctx, "error getting counter", zap.Error(err))
-
-		return nil, err
-	}
 
 	createdCounter, err := telemetry.GetCounter(meter, telemetry.SandboxCreateMeterName)
 	if err != nil {
@@ -154,7 +148,6 @@ func New(
 		tel:                  tel,
 		clusters:             clusters,
 
-		sandboxCounter: sandboxCounter,
 		createdCounter: createdCounter,
 
 		snapshotUpsertSem: snapshotUpsertSem,
@@ -182,7 +175,6 @@ func New(
 		reservationStorage,
 		sandbox.Callbacks{
 			AddSandboxToRoutingTable: o.addSandboxToRoutingTable,
-			AsyncSandboxCounter:      o.sandboxCounterInsert,
 			AsyncNewlyCreatedSandbox: o.handleNewlyCreatedSandbox,
 		},
 	)
@@ -267,6 +259,12 @@ func (o *Orchestrator) Close(ctx context.Context) error {
 	if o.metricsRegistration != nil {
 		if err := o.metricsRegistration.Unregister(); err != nil {
 			errs = append(errs, fmt.Errorf("failed to unregister metrics: %w", err))
+		}
+	}
+
+	if o.sandboxCountGaugeRegistration != nil {
+		if err := o.sandboxCountGaugeRegistration.Unregister(); err != nil {
+			errs = append(errs, fmt.Errorf("failed to unregister sandbox count gauge: %w", err))
 		}
 	}
 
