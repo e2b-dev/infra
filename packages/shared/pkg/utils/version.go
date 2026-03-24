@@ -1,20 +1,12 @@
 package utils
 
 import (
-	"context"
-	"errors"
 	"fmt"
 
-	"go.uber.org/zap"
 	"golang.org/x/mod/semver"
-
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-const (
-	MinEnvdVersionForSnapshot = "0.5.0"
-	MinEnvdVersionForVolumes  = "0.5.8"
-)
+const MinEnvdVersionForSnapshot = "0.5.0"
 
 func sanitizeVersion(version string) string {
 	if len(version) > 0 && version[0] != 'v' {
@@ -22,26 +14,6 @@ func sanitizeVersion(version string) string {
 	}
 
 	return version
-}
-
-var ErrNoEnvdVersion = errors.New("no envd version provided")
-
-func DoesEnvdSupportVolumes(ctx context.Context, envdVersion *string) error {
-	if envdVersion == nil {
-		logger.L().Warn(ctx, "envd version is nil")
-
-		return ErrNoEnvdVersion
-	}
-
-	if ok, err := IsGTEVersion(*envdVersion, MinEnvdVersionForVolumes); err != nil {
-		logger.L().Warn(ctx, "failed to check envd version", zap.Error(err), zap.String("envd_version", *envdVersion))
-
-		return fmt.Errorf("invalid envd version %q: %w", *envdVersion, err)
-	} else if !ok {
-		return fmt.Errorf("sandbox envd version must be at least %s to support volumes, current version: %s", MinEnvdVersionForVolumes, *envdVersion)
-	}
-
-	return nil
 }
 
 func CheckEnvdVersionForSnapshot(envdVersion string) error {

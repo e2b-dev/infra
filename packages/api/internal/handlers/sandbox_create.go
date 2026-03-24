@@ -16,6 +16,7 @@ import (
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 	"golang.org/x/net/idna"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -31,6 +32,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/ginutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -300,17 +302,32 @@ func (im InvalidVolumeMountsError) Error() string {
 
 var ErrVolumesNotSupported = errors.New("volumes are not supported")
 
+var ErrNoEnvdVersion = errors.New("no envd version provided")
+
+const minEnvdVersionForVolumes = "0.5.8"
+
 func convertAPIVolumesToOrchestratorVolumes(ctx context.Context, sqlClient *sqlcdb.Client, featureFlags featureFlagsClient, teamID uuid.UUID, volumeMounts []api.SandboxVolumeMount, env *queries.EnvBuild) ([]*orchestrator.SandboxVolumeMount, error) {
+	// are any volumes configured?
 	if len(volumeMounts) == 0 {
 		return []*orchestrator.SandboxVolumeMount{}, nil // only b/c you should never return (nil, nil)
 	}
 
+	// are volumes enabled?
 	if !featureFlags.BoolFlag(ctx, featureflags.PersistentVolumesFlag) {
 		return nil, ErrVolumeMountsDisabled
 	}
 
-	if err := sharedUtils.DoesEnvdSupportVolumes(ctx, env.EnvdVersion); err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrVolumesNotSupported, err)
+	// does your envd version support volumes?
+	if envdVersion := sharedUtils.DerefOrDefault(env.EnvdVersion, ""); envdVersion == "" {
+		logger.L().Warn(ctx, "envd version is unset")
+
+		return nil, ErrNoEnvdVersion
+	} else if ok, err := sharedUtils.IsGTEVersion(envdVersion, minEnvdVersionForVolumes); err != nil {
+		logger.L().Warn(ctx, "failed to check envd version", zap.Error(err), zap.String("envd_version", envdVersion))
+
+		return nil, fmt.Errorf("invalid envd version %q: %w", envdVersion, err)
+	} else if !ok {
+		return nil, fmt.Errorf("%w must be at least %s to support volumes, current version: %s", ErrVolumesNotSupported, minEnvdVersionForVolumes, envdVersion)
 	}
 
 	// get volumes from the database
