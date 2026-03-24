@@ -93,7 +93,7 @@ func (t timeFields) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 }
 
 // Time returns a zap.Field that logs the given time as both an RFC3339Nano
-// string (key) and a unix epoch in seconds (key_unix).
+// string (key) and a unix epoch in nanoseconds (key_unix).
 func Time(key string, val time.Time) zap.Field {
 	return zap.Inline(timeFields{key: key, val: val})
 }
