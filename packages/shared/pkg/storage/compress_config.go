@@ -18,7 +18,6 @@ type CompressConfig struct {
 	TargetPartSizeMB   int    `env:"COMPRESS_TARGET_PART_SIZE_MB"  envDefault:"50"`
 	FrameEncodeWorkers int    `env:"COMPRESS_FRAME_ENCODE_WORKERS" envDefault:"4"`
 	EncoderConcurrency int    `env:"COMPRESS_ENCODER_CONCURRENCY"  envDefault:"1"`
-	DecoderConcurrency int    `env:"COMPRESS_DECODER_CONCURRENCY"  envDefault:"1"`
 }
 
 // CompressionType returns the parsed CompressionType.
@@ -97,7 +96,6 @@ func CompressConfigFromLDValue(ff *featureflags.Client, ctx context.Context) *Co
 		TargetPartSizeMB:   v.Get("targetPartSizeMB").IntValue(),
 		FrameEncodeWorkers: v.Get("frameEncodeWorkers").IntValue(),
 		EncoderConcurrency: v.Get("encoderConcurrency").IntValue(),
-		DecoderConcurrency: v.Get("decoderConcurrency").IntValue(),
 	}
 }
 

@@ -11,7 +11,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/klauspost/compress/zstd"
 	lz4 "github.com/pierrec/lz4/v4"
 	"golang.org/x/sync/errgroup"
 )
@@ -74,19 +73,6 @@ type PartUploader interface {
 	Close() error
 }
 
-// ValidateCompressConfig checks that compression config is valid for use.
-func ValidateCompressConfig(cfg *CompressConfig) error {
-	if cfg == nil || !cfg.IsEnabled() {
-		return nil
-	}
-
-	if cfg.FrameSize() <= 0 {
-		return fmt.Errorf("frame size must be set, got %d KB", cfg.FrameSizeKB)
-	}
-
-	return nil
-}
-
 // MemPartUploader collects compressed parts in memory. Thread-safe.
 // Useful for tests and benchmarks that need CompressStream output as bytes.
 type MemPartUploader struct {
@@ -131,99 +117,9 @@ func (m *MemPartUploader) Assemble() []byte {
 	return buf.Bytes()
 }
 
-// frameCompressor compresses individual frames. Implementations are pooled
-// and reused across frames within a single CompressStream call.
-type frameCompressor interface {
-	// Compress compresses src and returns the compressed bytes.
-	Compress(src []byte) ([]byte, error)
-}
-
-// zstdFrameCompressor wraps a pooled zstd.Encoder using EncodeAll.
-type zstdFrameCompressor struct {
-	enc  *zstd.Encoder
-	pool *sync.Pool
-}
-
-func (z *zstdFrameCompressor) Compress(src []byte) ([]byte, error) {
-	// EncodeAll is stateless on the encoder — safe to reuse without reset.
-	return z.enc.EncodeAll(src, make([]byte, 0, len(src))), nil
-}
-
-func (z *zstdFrameCompressor) release() {
-	z.pool.Put(z)
-}
-
-// lz4FrameCompressor uses raw LZ4 block compression (no frame headers/checksums).
-type lz4FrameCompressor struct {
-	pool *sync.Pool
-}
-
-func (l *lz4FrameCompressor) Compress(src []byte) ([]byte, error) {
-	// CompressBlockBound guarantees enough space — n == 0 cannot happen.
-	dst := make([]byte, lz4.CompressBlockBound(len(src)))
-
-	n, err := lz4.CompressBlock(src, dst, nil)
-	if err != nil {
-		return nil, fmt.Errorf("lz4 block compress: %w", err)
-	}
-
-	return dst[:n], nil
-}
-
-func (l *lz4FrameCompressor) release() {
-	l.pool.Put(l)
-}
-
-// newCompressorPool returns a function that borrows a frameCompressor from a pool
-// and a release function to return it. All compressors in the pool share the same
-// settings from cfg. For zstd, encoders are created once and reused via EncodeAll.
-func newCompressorPool(cfg *CompressConfig) (borrow func() (frameCompressor, error), release func(frameCompressor)) {
-	switch cfg.CompressionType() {
-	case CompressionZstd:
-		pool := &sync.Pool{}
-		pool.New = func() any {
-			enc, err := newZstdEncoder(cfg.EncoderConcurrency, cfg.FrameSize(), zstd.EncoderLevel(cfg.Level))
-			if err != nil {
-				// Pool.New cannot return errors; store nil and check on borrow.
-				return err
-			}
-
-			return &zstdFrameCompressor{enc: enc, pool: pool}
-		}
-
-		return func() (frameCompressor, error) {
-				v := pool.Get()
-				if err, ok := v.(error); ok {
-					return nil, fmt.Errorf("zstd encoder pool: %w", err)
-				}
-
-				return v.(*zstdFrameCompressor), nil
-			}, func(c frameCompressor) {
-				if z, ok := c.(*zstdFrameCompressor); ok {
-					z.release()
-				}
-			}
-	default:
-		// LZ4: CompressBlock uses internal hash tables, not goroutine-safe — pool them.
-		pool := &sync.Pool{}
-		pool.New = func() any {
-			return &lz4FrameCompressor{pool: pool}
-		}
-
-		return func() (frameCompressor, error) {
-				return pool.Get().(*lz4FrameCompressor), nil
-			}, func(c frameCompressor) {
-				if l, ok := c.(*lz4FrameCompressor); ok {
-					l.release()
-				}
-			}
-	}
-}
-
-// CompressStream reads from in, compresses using cfg, and writes parts through uploader.
-// Returns the resulting FrameTable describing the compressed frames.
-//
-// Design: frame-at-a-time with target part size accumulation.
+// CompressStream reads from in, compresses using cfg, and writes parts through
+// uploader. Returns the resulting FrameTable describing the compressed frames
+// and the SHA256 checksum of the uncompressed data.
 //
 // The main goroutine reads frames one at a time from in, submits each to a
 // concurrency-limited compress worker pool (errgroup with SetLimit). When a
@@ -231,11 +127,11 @@ func newCompressorPool(cfg *CompressConfig) (borrow func() (frameCompressor, err
 // errgroup.Go() blocks when all workers are busy, so the main goroutine
 // naturally checks the counter after each completion.
 //
-// When the accumulated compressed size reaches targetPartSize, the current
-// part is "closed": a background goroutine waits for the part's remaining
-// in-flight workers, then emits frames and uploads. The main goroutine
-// immediately starts a new part and continues reading, borrowing compressors
-// from the shared pool as they become available.
+// When the accumulated compressed size reaches targetPartSize, the current part
+// is "closed": a background goroutine waits for the part's remaining in-flight
+// workers, then emits frames and uploads. The main goroutine immediately starts
+// a new part and continues reading, borrowing compressors from the shared pool
+// as they become available.
 //
 // Part emission is chained: part K+1 waits for part K's emission to complete,
 // ensuring frameTable and offset are updated in order.
@@ -414,50 +310,4 @@ func CompressStream(ctx context.Context, in io.Reader, cfg *CompressConfig, uplo
 	copy(checksum[:], hasher.Sum(nil))
 
 	return frameTable, checksum, nil
-}
-
-// newZstdEncoder creates a zstd encoder for use with EncodeAll.
-// The encoder is created with a nil writer since EncodeAll doesn't use streaming output.
-func newZstdEncoder(concurrency int, windowSize int, compressionLevel zstd.EncoderLevel) (*zstd.Encoder, error) {
-	zstdOpts := []zstd.EOption{
-		zstd.WithEncoderLevel(compressionLevel),
-		zstd.WithEncoderCRC(true), // per-frame xxHash64 checksum (default true, explicit for clarity)
-	}
-	if windowSize > 0 {
-		zstdOpts = append(zstdOpts, zstd.WithWindowSize(windowSize))
-	}
-	if concurrency > 0 {
-		zstdOpts = append(zstdOpts, zstd.WithEncoderConcurrency(concurrency))
-	}
-
-	return zstd.NewWriter(nil, zstdOpts...)
-}
-
-// CompressRawNoFrames compresses data as a single stream (no framing) using the given
-// codec and level. Uses the same encoder settings as CompressStream (window
-// size, concurrency) so raw vs framed comparisons are fair. It is used only in
-// benchmarks.
-func CompressRawNoFrames(ct CompressionType, level int, data []byte) ([]byte, error) {
-	switch ct {
-	case CompressionLZ4:
-		dst := make([]byte, lz4.CompressBlockBound(len(data)))
-		n, err := lz4.CompressBlock(data, dst, nil)
-		if err != nil {
-			return nil, fmt.Errorf("lz4 block compress: %w", err)
-		}
-
-		return dst[:n], nil
-
-	case CompressionZstd:
-		enc, err := newZstdEncoder(0, DefaultCompressFrameSize, zstd.EncoderLevel(level))
-		if err != nil {
-			return nil, fmt.Errorf("zstd encoder: %w", err)
-		}
-		defer enc.Close()
-
-		return enc.EncodeAll(data, make([]byte, 0, len(data))), nil
-
-	default:
-		return nil, fmt.Errorf("unsupported compression type: %s", ct)
-	}
 }

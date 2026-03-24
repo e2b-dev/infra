@@ -74,7 +74,23 @@ func decompressAll(ft *FrameTable, compressed []byte) ([]byte, error) {
 			return nil, fmt.Errorf("frame %d: compressed data truncated (need %d, have %d)", i, cOff+int64(fs.C), len(compressed))
 		}
 
-		frame, err := DecompressFrame(ft.CompressionType(), compressed[cOff:cOff+int64(fs.C)], fs.U)
+		frameData := compressed[cOff : cOff+int64(fs.C)]
+		var frame []byte
+		var err error
+
+		switch ft.CompressionType() {
+		case CompressionLZ4:
+			frame, err = DecompressLZ4(frameData, make([]byte, fs.U))
+		case CompressionZstd:
+			dec, derr := getZstdDecoder(bytes.NewReader(frameData))
+			if derr != nil {
+				return nil, fmt.Errorf("frame %d: zstd reader: %w", i, derr)
+			}
+			frame = make([]byte, fs.U)
+			_, err = io.ReadFull(dec, frame)
+			putZstdDecoder(dec)
+		}
+
 		if err != nil {
 			return nil, fmt.Errorf("frame %d: %w", i, err)
 		}
