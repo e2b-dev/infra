@@ -29,23 +29,28 @@ type RedisSandboxCatalog struct {
 
 var _ SandboxesCatalog = (*RedisSandboxCatalog)(nil)
 
-func NewRedisSandboxesCatalog(redisClient redis.UniversalClient, useLocalCache bool) *RedisSandboxCatalog {
-	var cache *ttlcache.Cache[string, *SandboxInfo]
-	if useLocalCache {
-		cache = ttlcache.New(
+type RedisSandboxCatalogOption func(*RedisSandboxCatalog)
+
+func ReadThroughCache() RedisSandboxCatalogOption {
+	return func(c *RedisSandboxCatalog) {
+		cache := ttlcache.New(
 			ttlcache.WithTTL[string, *SandboxInfo](catalogRedisLocalCacheTtl),
 			ttlcache.WithDisableTouchOnHit[string, *SandboxInfo](),
 		)
 		go cache.Start()
-	}
-
-	return &RedisSandboxCatalog{
-		redisClient: redisClient,
-		cache:       cache,
+		c.cache = cache
 	}
 }
 
-var _ SandboxesCatalog = (*RedisSandboxCatalog)(nil)
+func NewRedisSandboxesCatalog(redisClient redis.UniversalClient, opts ...RedisSandboxCatalogOption) *RedisSandboxCatalog {
+	c := &RedisSandboxCatalog{
+		redisClient: redisClient,
+	}
+	for _, opt := range opts {
+		opt(c)
+	}
+	return c
+}
 
 func (c *RedisSandboxCatalog) GetSandbox(ctx context.Context, sandboxID string) (*SandboxInfo, error) {
 	spanCtx, span := tracer.Start(ctx, "sandbox-catalog-get")

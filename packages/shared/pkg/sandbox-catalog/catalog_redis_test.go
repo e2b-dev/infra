@@ -32,7 +32,7 @@ func TestRedisCatalog_LocalCache(t *testing.T) {
 	require.NoError(t, redisClient.Set(ctx, "sandbox:catalog:"+sbxID, data, time.Minute).Err())
 
 	// Without local cache — reads from Redis, no cache created.
-	noCacheCatalog := NewRedisSandboxesCatalog(redisClient, false)
+	noCacheCatalog := NewRedisSandboxesCatalog(redisClient)
 	t.Cleanup(func() {
 		assert.NoError(t, noCacheCatalog.Close(context.Background()))
 	})
@@ -44,7 +44,7 @@ func TestRedisCatalog_LocalCache(t *testing.T) {
 	assert.Nil(t, noCacheCatalog.cache, "local cache should not be created when disabled")
 
 	// With local cache — reads from Redis, populates cache.
-	cachedCatalog := NewRedisSandboxesCatalog(redisClient, true)
+	cachedCatalog := NewRedisSandboxesCatalog(redisClient, ReadThroughCache())
 	t.Cleanup(func() {
 		assert.NoError(t, cachedCatalog.Close(context.Background()))
 	})
