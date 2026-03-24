@@ -72,8 +72,8 @@ func NewStore(
 func (s *Store) Add(ctx context.Context, sandbox Sandbox, newlyCreated bool) error {
 	sbxlogger.I(sandbox).Debug(ctx, "Adding sandbox to cache",
 		zap.Bool("newly_created", newlyCreated),
-		zap.Time("start_time", sandbox.StartTime),
-		zap.Time("end_time", sandbox.EndTime),
+		logger.Time("start_time", sandbox.StartTime),
+		logger.Time("end_time", sandbox.EndTime),
 	)
 
 	endTime := sandbox.EndTime

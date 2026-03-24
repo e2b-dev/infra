@@ -97,8 +97,8 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 
 			logger.L().Debug(ctx, "Sandbox is already running",
 				logger.WithSandboxID(sandboxID),
-				zap.Time("end_time", sandboxData.EndTime),
-				zap.Time("start_time", sandboxData.StartTime),
+				logger.Time("end_time", sandboxData.EndTime),
+				logger.Time("start_time", sandboxData.StartTime),
 				zap.String("node_id", sandboxData.NodeID),
 			)
 
