@@ -129,6 +129,10 @@ func Run(opts Options) bool {
 		log.Fatalf("failed to create dirs: %v", err)
 	}
 
+	if opts.EgressFactory == nil {
+		log.Fatalf("EgressFactory must be set in Options")
+	}
+
 	success := run(config, opts)
 
 	log.Println("Stopping orchestrator, success:", success)
@@ -489,6 +493,9 @@ func run(config cfg.Config, opts Options) (success bool) {
 	egressSetup, err := opts.EgressFactory(ctx, deps)
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create egress proxy", zap.Error(err))
+	}
+	if egressSetup == nil {
+		logger.L().Fatal(ctx, "EgressFactory returned nil EgressSetup without error")
 	}
 	if egressSetup.Start != nil {
 		startService("egress proxy", func() error {
