@@ -9,6 +9,4 @@ const (
 	MetadataEnvdAccessToken = "e2b-envd-access-token"
 	// MetadataEnvdHTTPAccessToken is the HTTP header used by envd for access token authentication.
 	MetadataEnvdHTTPAccessToken = "X-Access-Token"
-	// SandboxStillTransitioningMessage identifies the explicit transient autoresume wait failure.
-	SandboxStillTransitioningMessage = "sandbox is still transitioning"
 )
