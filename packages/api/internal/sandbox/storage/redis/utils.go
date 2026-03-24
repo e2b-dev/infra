@@ -8,12 +8,18 @@ import (
 
 const (
 	sandboxKeyPrefix    = "sandbox:storage"
-	transitionKeyPrefix = "transition:"
+	transitionKeyPrefix = "transition"
+	notifySuffix        = "notify"
 	sandboxesKey        = "sandboxes"
 	indexKey            = "index"
 )
 
 var (
+	// globalTransitionNotifyChannel is the single Redis PubSub channel used by
+	// all transitions. The per-transition routing key is embedded in the message
+	// payload so one connection per API pod is sufficient.
+	globalTransitionNotifyChannel = redis_utils.CreateKey(sandboxKeyPrefix, transitionKeyPrefix, notifySuffix)
+
 	globalTeamsSet      = redis_utils.CreateKey(sandboxKeyPrefix, "global:teams")
 	globalExpirationSet = redis_utils.CreateKey(sandboxKeyPrefix, "global:expiration")
 )
@@ -48,4 +54,12 @@ func getTransitionKey(teamID, sandboxID string) string {
 
 func getTransitionResultKey(teamID, sandboxID, transitionID string) string {
 	return redis_utils.CreateKey(getTransitionKey(teamID, sandboxID), transitionID)
+}
+
+// getTransitionRoutingKey returns the per-transition routing key embedded in the
+// payload of messages published to globalTransitionNotifyChannel. Including
+// transitionID ensures that notifications for one transition can never wake
+// waiters subscribed to a different transition for the same sandbox.
+func getTransitionRoutingKey(teamID, sandboxID, transitionID string) string {
+	return redis_utils.CreateKey(GetTeamPrefix(teamID), transitionKeyPrefix, sandboxID, transitionID, notifySuffix)
 }

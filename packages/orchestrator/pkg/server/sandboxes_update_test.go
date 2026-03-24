@@ -25,7 +25,7 @@ import (
 func TestUpdate_EgressOnly_FailsAndDoesNotChangeEndTime(t *testing.T) {
 	t.Parallel()
 
-	slot, err := network.NewSlot("test", 1, network.Config{})
+	slot, err := network.NewSlot("test", 1, network.Config{}, network.NoopEgressProxy{})
 	require.NoError(t, err)
 
 	sbx := &sandbox.Sandbox{
@@ -64,7 +64,7 @@ func TestUpdate_EgressOnly_FailsAndDoesNotChangeEndTime(t *testing.T) {
 func TestUpdate_EndTimeAndEgress_EgressFails_RevertsEndTime(t *testing.T) {
 	t.Parallel()
 
-	slot, err := network.NewSlot("test", 1, network.Config{})
+	slot, err := network.NewSlot("test", 1, network.Config{}, network.NoopEgressProxy{})
 	require.NoError(t, err)
 
 	sbx := &sandbox.Sandbox{

@@ -252,21 +252,19 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 		return metadata.Template{}, fmt.Errorf("error enlarging disk after provisioning: %w", err)
 	}
 
-	if reservedDiskSpaceMB := int64(bb.featureFlags.IntFlag(ctx, featureflags.BuildReservedDiskSpaceMB)); reservedDiskSpaceMB > 0 {
-		err = filesystem.SetReservedBlocksOnHost(ctx, rootfsPath, reservedDiskSpaceMB, bb.Config.RootfsBlockSize())
-		if err != nil {
-			return metadata.Template{}, fmt.Errorf("error setting reserved disk space: %w", err)
-		}
-	}
-
 	// Create sandbox for building template
 	userLogger.Debug(ctx, "Creating base sandbox template layer")
+
+	sandboxOptions := []layer.CreateSandboxOption{
+		layer.WithRootfsCachePath(rootfsPath),
+	}
+	sandboxOptions = append(sandboxOptions, layer.ReservedBlocksOptions(ctx, bb.featureFlags, bb.Config.RootfsBlockSize())...)
 
 	sandboxCreator := layer.NewCreateSandbox(
 		baseSbxConfig,
 		bb.sandboxFactory,
 		baseLayerTimeout,
-		layer.WithRootfsCachePath(rootfsPath),
+		sandboxOptions...,
 	)
 
 	actionExecutor := layer.NewFunctionAction(func(ctx context.Context, sbx *sandbox.Sandbox, meta metadata.Template) (metadata.Template, error) {

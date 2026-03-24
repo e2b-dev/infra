@@ -33,7 +33,14 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	traceID := span.SpanContext().TraceID().String()
 	c.Set("traceID", traceID)
 
-	telemetry.ReportEvent(ctx, "Parsed body")
+	sandboxID, err := utils.ShortID(sandboxID)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid sandbox ID")
+
+		return
+	}
+
+	span.SetAttributes(telemetry.WithSandboxID(sandboxID))
 
 	body, err := ginutils.ParseBody[api.PostSandboxesSandboxIDResumeJSONRequestBody](ctx, c)
 	if err != nil {
@@ -43,6 +50,8 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 
 		return
 	}
+
+	telemetry.ReportEvent(ctx, "Parsed body")
 
 	timeout := sandbox.SandboxTimeoutDefault
 	if body.Timeout != nil {
@@ -56,14 +65,6 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	}
 
 	teamID := teamInfo.Team.ID
-
-	sandboxID, err = utils.ShortID(sandboxID)
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid sandbox ID")
-
-		return
-	}
-
 	sandboxData, err := a.orchestrator.GetSandbox(ctx, teamID, sandboxID)
 	if err == nil {
 		if sandboxData.TeamID != teamID {
@@ -96,8 +97,8 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 
 			logger.L().Debug(ctx, "Sandbox is already running",
 				logger.WithSandboxID(sandboxID),
-				zap.Time("end_time", sandboxData.EndTime),
-				zap.Time("start_time", sandboxData.StartTime),
+				logger.Time("end_time", sandboxData.EndTime),
+				logger.Time("start_time", sandboxData.StartTime),
 				zap.String("node_id", sandboxData.NodeID),
 			)
 

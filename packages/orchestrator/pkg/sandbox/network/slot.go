@@ -79,15 +79,11 @@ type Slot struct {
 
 	hyperloopPort string
 
-	// TCP firewall ports for different traffic types
-	tcpFirewallHTTPPort  string // Port 80 traffic
-	tcpFirewallTLSPort   string // Port 443 traffic
-	tcpFirewallOtherPort string // All other traffic
-
-	config Config
+	egressProxy EgressProxy
+	config      Config
 }
 
-func NewSlot(key string, idx int, config Config) (*Slot, error) {
+func NewSlot(key string, idx int, config Config, egressProxy EgressProxy) (*Slot, error) {
 	if idx < 1 || idx > vrtSlotsSize {
 		return nil, fmt.Errorf("slot index %d is out of range [1, %d)", idx, vrtSlotsSize)
 	}
@@ -142,11 +138,8 @@ func NewSlot(key string, idx int, config Config) (*Slot, error) {
 
 		hyperloopPort: strconv.FormatUint(uint64(config.HyperloopProxyPort), 10),
 
-		tcpFirewallHTTPPort:  strconv.FormatUint(uint64(config.SandboxTCPFirewallHTTPPort), 10),
-		tcpFirewallTLSPort:   strconv.FormatUint(uint64(config.SandboxTCPFirewallTLSPort), 10),
-		tcpFirewallOtherPort: strconv.FormatUint(uint64(config.SandboxTCPFirewallOtherPort), 10),
-
-		config: config,
+		config:      config,
+		egressProxy: egressProxy,
 	}
 
 	return slot, nil
