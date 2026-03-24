@@ -169,7 +169,7 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		return nil, status.Errorf(codes.Internal, "failed to get team: %v", err)
 	}
 	minAutoResumeTimeout := time.Duration(s.api.featureFlags.IntFlag(ctx, featureflags.MinAutoResumeTimeoutSeconds)) * time.Second
-	// Proxy-initiated resumes use the persisted auto-resume timeout with a 5-minute default.
+
 	timeout := calculateAutoResumeTimeout(autoResume, minAutoResumeTimeout, team)
 
 	autoPause := snap.Snapshot.AutoPause

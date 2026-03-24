@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/posthog/posthog-go"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
@@ -84,12 +83,4 @@ func (o *Orchestrator) handleNewlyCreatedSandbox(ctx context.Context, sandbox sa
 
 	// Increment created counter
 	o.createdCounter.Add(ctx, 1, metric.WithAttributes(telemetry.WithTeamID(sandbox.TeamID.String())))
-}
-
-func (o *Orchestrator) sandboxCounterInsert(ctx context.Context, sandbox sandbox.Sandbox) {
-	o.sandboxCounter.Add(ctx, 1, metric.WithAttributes(telemetry.WithTeamID(sandbox.TeamID.String())))
-}
-
-func (o *Orchestrator) countersRemove(ctx context.Context, teamID uuid.UUID, _ sandbox.StateAction) {
-	o.sandboxCounter.Add(ctx, -1, metric.WithAttributes(telemetry.WithTeamID(teamID.String())))
 }
