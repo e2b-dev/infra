@@ -23,10 +23,17 @@ func sanitizeVersion(version string) string {
 	return version
 }
 
-func DoesEnvdSupportVolumes(ctx context.Context, envdVersion string) bool {
-	ok, err := IsGTEVersion(envdVersion, MinEnvdVersionForVolumes)
+func DoesEnvdSupportVolumes(ctx context.Context, envdVersion *string) bool {
+	if envdVersion == nil {
+		logger.L().Warn(ctx, "envd version is nil")
+
+		return false
+	}
+
+	ok, err := IsGTEVersion(*envdVersion, MinEnvdVersionForVolumes)
 	if err != nil {
-		logger.L().Warn(ctx, "failed to check envd version", zap.Error(err), zap.String("envd_version", envdVersion))
+		logger.L().Warn(ctx, "failed to check envd version", zap.Error(err), zap.String("envd_version", *envdVersion))
+
 		return false
 	}
 

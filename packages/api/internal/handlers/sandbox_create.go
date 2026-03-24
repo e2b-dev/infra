@@ -185,7 +185,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	}
 
 	sbxVolumeMounts, err := convertAPIVolumesToOrchestratorVolumes(
-		ctx, a.sqlcDB, a.featureFlags, teamInfo.ID, apiVolumeMounts, env,
+		ctx, a.sqlcDB, a.featureFlags, teamInfo.ID, apiVolumeMounts, build,
 	)
 	if err != nil {
 		if errors.Is(err, ErrVolumesNotSupported) {
@@ -300,14 +300,7 @@ func (im InvalidVolumeMountsError) Error() string {
 
 var ErrVolumesNotSupported = errors.New("volumes are not supported")
 
-func convertAPIVolumesToOrchestratorVolumes(
-	ctx context.Context,
-	sqlClient *sqlcdb.Client,
-	featureFlags featureFlagsClient,
-	teamID uuid.UUID,
-	volumeMounts []api.SandboxVolumeMount,
-	env *api.Template,
-) ([]*orchestrator.SandboxVolumeMount, error) {
+func convertAPIVolumesToOrchestratorVolumes(ctx context.Context, sqlClient *sqlcdb.Client, featureFlags featureFlagsClient, teamID uuid.UUID, volumeMounts []api.SandboxVolumeMount, env *queries.EnvBuild) ([]*orchestrator.SandboxVolumeMount, error) {
 	if len(volumeMounts) == 0 {
 		return []*orchestrator.SandboxVolumeMount{}, nil // only b/c you should never return (nil, nil)
 	}

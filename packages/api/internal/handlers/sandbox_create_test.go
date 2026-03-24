@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/stackitcloud/stackit-sdk-go/core/utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -453,7 +454,7 @@ func TestOrchestrator_convertVolumeMounts(t *testing.T) {
 
 			actual, err := convertAPIVolumesToOrchestratorVolumes(
 				t.Context(), db.SqlcClient, ffClient,
-				teamID, tc.input, &api.Template{EnvdVersion: "0.5.8"},
+				teamID, tc.input, &queries.EnvBuild{EnvdVersion: utils.Ptr("0.5.8")},
 			)
 			assert.Equal(t, tc.err, err)
 			assert.Equal(t, tc.expected, actual)
@@ -483,7 +484,7 @@ func TestOrchestrator_convertVolumeMounts(t *testing.T) {
 			t.Context(), db.SqlcClient, ffClient,
 			teamID, []api.SandboxVolumeMount{
 				{Name: "vol1", Path: "/vol1"},
-			}, &api.Template{EnvdVersion: "0.5.8"},
+			}, &queries.EnvBuild{EnvdVersion: utils.Ptr("0.5.8")},
 		)
 		require.NoError(t, err)
 		assert.Equal(t, []*orchestrator.SandboxVolumeMount{
