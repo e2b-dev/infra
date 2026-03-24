@@ -67,6 +67,7 @@ type Orchestrator struct {
 	snapshotCache           SnapshotCacheInvalidator
 
 	snapshotUpsertSem *utils.AdjustableSemaphore
+	redisStorage      *redisbackend.Storage
 
 	// connectGroup deduplicates concurrent dial+register attempts for the same
 	// physical node. It is keyed by NomadNodeShortID (Nomad-managed nodes) or
@@ -139,6 +140,9 @@ func New(
 
 	bestOfKAlgorithm := placement.NewBestOfK(getBestOfKConfig(ctx, featureFlags)).(*placement.BestOfK)
 
+	redisStorage := redisbackend.NewStorage(redisClient)
+	go redisStorage.Start(ctx)
+
 	o := Orchestrator{
 		httpClient:           httpClient,
 		analytics:            analyticsInstance,
@@ -153,6 +157,7 @@ func New(
 		snapshotCache:        snapshotCache,
 		tel:                  tel,
 		clusters:             clusters,
+		redisStorage:         redisStorage,
 
 		sandboxCounter: sandboxCounter,
 		createdCounter: createdCounter,
@@ -162,7 +167,6 @@ func New(
 
 	var reservationStorage sandbox.ReservationStorage
 	var sandboxStorage sandbox.Storage
-	redisStorage := redisbackend.NewStorage(redisClient)
 
 	switch config.SandboxStorageBackend {
 	case cfg.SandboxStorageBackendMemory:
@@ -283,6 +287,8 @@ func (o *Orchestrator) Close(ctx context.Context) error {
 	if err := o.routingCatalog.Close(ctx); err != nil {
 		errs = append(errs, err)
 	}
+
+	o.redisStorage.Close()
 
 	return errors.Join(errs...)
 }
