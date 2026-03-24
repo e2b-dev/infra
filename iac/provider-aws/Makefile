@@ -66,7 +66,6 @@ plan:
 
 plan-only-jobs:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	$(call tf_fmt)
 	@ $(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -input=false -compact-warnings -target=module.nomad
 
 .PHONY: plan-without-jobs
