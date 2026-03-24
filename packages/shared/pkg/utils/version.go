@@ -2,6 +2,7 @@ package utils
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"go.uber.org/zap"
@@ -23,21 +24,24 @@ func sanitizeVersion(version string) string {
 	return version
 }
 
-func DoesEnvdSupportVolumes(ctx context.Context, envdVersion *string) bool {
+var ErrNoEnvdVersion = errors.New("no envd version provided")
+
+func DoesEnvdSupportVolumes(ctx context.Context, envdVersion *string) error {
 	if envdVersion == nil {
 		logger.L().Warn(ctx, "envd version is nil")
 
-		return false
+		return ErrNoEnvdVersion
 	}
 
-	ok, err := IsGTEVersion(*envdVersion, MinEnvdVersionForVolumes)
-	if err != nil {
+	if ok, err := IsGTEVersion(*envdVersion, MinEnvdVersionForVolumes); err != nil {
 		logger.L().Warn(ctx, "failed to check envd version", zap.Error(err), zap.String("envd_version", *envdVersion))
 
-		return false
+		return fmt.Errorf("invalid envd version %q: %w", *envdVersion, err)
+	} else if !ok {
+		return fmt.Errorf("sandbox envd version must be at least %s to support volumes, current version: %s", MinEnvdVersionForVolumes, *envdVersion)
 	}
 
-	return ok
+	return nil
 }
 
 func CheckEnvdVersionForSnapshot(envdVersion string) error {

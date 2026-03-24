@@ -189,7 +189,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	)
 	if err != nil {
 		if errors.Is(err, ErrVolumesNotSupported) {
-			a.sendAPIStoreError(c, http.StatusBadRequest, "Your template does not support volumes. Please rebuild your template and try again.")
+			a.sendAPIStoreError(c, http.StatusBadRequest, err.Error())
 
 			return
 		}
@@ -309,8 +309,8 @@ func convertAPIVolumesToOrchestratorVolumes(ctx context.Context, sqlClient *sqlc
 		return nil, ErrVolumeMountsDisabled
 	}
 
-	if !sharedUtils.DoesEnvdSupportVolumes(ctx, env.EnvdVersion) {
-		return nil, fmt.Errorf("envd does not support volumes: %w", ErrVolumesNotSupported)
+	if err := sharedUtils.DoesEnvdSupportVolumes(ctx, env.EnvdVersion); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrVolumesNotSupported, err)
 	}
 
 	// get volumes from the database
