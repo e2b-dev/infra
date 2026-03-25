@@ -2,6 +2,7 @@ package userfaultfd
 
 import (
 	"os"
+	"runtime"
 	"testing"
 	"unsafe"
 
@@ -32,6 +33,9 @@ func TestAsyncWriteProtection(t *testing.T) {
 
 	if os.Geteuid() != 0 {
 		t.Skip("this test requires root privileges")
+	}
+	if runtime.GOARCH == "arm64" {
+		t.Skip("ARM64 kernels do not support UFFD write protection")
 	}
 
 	tests := []struct {

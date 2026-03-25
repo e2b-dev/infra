@@ -3,6 +3,7 @@ package utils
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -49,23 +50,31 @@ func TestErrorCollector(t *testing.T) {
 
 		ec := NewErrorCollector(1)
 
-		// Block the collector's only slot
+		// Block the collector's only slot.
+		// ctx1 and ctx2 must be distinct variables: the closure passed to ec.Go
+		// captures the context variable by reference. If we reused a single "ctx"
+		// variable, the first closure's <-ctx.Done() would race with the main
+		// goroutine's reassignment of ctx on the second WithCancel call.
 		started := make(chan struct{})
-		ctx, cancel1 := context.WithCancel(t.Context())
-		ec.Go(ctx, func() error {
+		ctx1, cancel1 := context.WithCancel(t.Context())
+		ec.Go(ctx1, func() error {
 			close(started)
-			<-ctx.Done()
+			<-ctx1.Done()
 
 			return nil
 		})
 
 		<-started
 
-		// This Go call should block on the semaphore
-		var wasCalled bool
-		ctx, cancel2 := context.WithCancel(t.Context())
-		ec.Go(ctx, func() error {
-			wasCalled = true
+		// This Go call should block on the semaphore.
+		// wasCalled must be atomic: the goroutine spawned by ec.Go may write it
+		// concurrently with the main goroutine's read in assert.False below.
+		// A plain bool causes a data race that the -race detector catches on ARM64
+		// (weaker memory model) even though it appears safe on x86.
+		var wasCalled atomic.Bool
+		ctx2, cancel2 := context.WithCancel(t.Context())
+		ec.Go(ctx2, func() error {
+			wasCalled.Store(true)
 
 			return nil
 		})
@@ -78,6 +87,6 @@ func TestErrorCollector(t *testing.T) {
 
 		err := ec.Wait()
 		require.ErrorIs(t, err, context.Canceled)
-		assert.False(t, wasCalled)
+		assert.False(t, wasCalled.Load())
 	})
 }
