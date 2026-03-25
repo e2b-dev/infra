@@ -1022,6 +1022,10 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 		return fmt.Errorf("storage provider is nil")
 	}
 
+	if os.Getenv("NODE_IP") == "" {
+		os.Setenv("NODE_IP", "127.0.0.1")
+	}
+
 	if verbose {
 		fmt.Println("🔧 Creating block metrics...")
 	}

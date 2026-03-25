@@ -448,7 +448,7 @@ func (c *Cache) copyProcessMemory(
 	ranges := splitOversizedRanges(rs, alignedRwCount)
 
 	var offset int64
-	var ri int64
+	var rangeIdx int64
 
 	for {
 		var remote []unix.RemoteIovec
@@ -457,8 +457,8 @@ func (c *Cache) copyProcessMemory(
 
 		// We iterate over the range of all ranges until we have reached the limit of the IOV_MAX,
 		// or until the next range would overflow the MAX_RW_COUNT.
-		for ; ri < int64(len(ranges)); ri++ {
-			r := ranges[ri]
+		for ; rangeIdx < int64(len(ranges)); rangeIdx++ {
+			r := ranges[rangeIdx]
 
 			if len(remote) == IOV_MAX {
 				break
