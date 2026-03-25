@@ -81,9 +81,13 @@ func main() {
 	// Only run setupEnv when -storage is explicitly passed (for local development)
 	// Otherwise, use existing environment variables (like the original code did)
 	localMode := false
+	if *sandboxDir != "" {
+		os.Setenv("SANDBOX_DIR", *sandboxDir)
+	}
+
 	if *storagePath != "" {
 		localMode = !strings.HasPrefix(*storagePath, "gs://")
-		if err := setupEnv(ctx, *storagePath, *sandboxDir, *kernel, *fc, localMode); err != nil {
+		if err := setupEnv(ctx, *storagePath, *kernel, *fc, localMode); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -103,12 +107,8 @@ func main() {
 	}
 }
 
-func setupEnv(ctx context.Context, storagePath, sandboxDir, kernel, fc string, localMode bool) error {
+func setupEnv(ctx context.Context, storagePath, kernel, fc string, localMode bool) error {
 	abs := func(s string) string { return utils.Must(filepath.Abs(s)) }
-
-	if sandboxDir != "" {
-		os.Setenv("SANDBOX_DIR", sandboxDir)
-	}
 
 	if localMode {
 		if os.Geteuid() != 0 {
