@@ -700,13 +700,16 @@ type snapshotResult struct {
 	completeUpload func(ctx context.Context)
 }
 
-// uploadSnapshot uploads snapshot files to GCS using TemplateBuild.
+// uploadSnapshot uploads snapshot files to GCS.
 func (r *snapshotResult) uploadSnapshot(ctx context.Context, persistence storage.StorageProvider, baseCompressCfg storage.CompressConfig, flags *featureflags.Client) error {
-	memfileCfg := storage.ResolveCompressConfig(ctx, baseCompressCfg, flags, storage.FileTypeMemfile, storage.UseCasePause)
-	rootfsCfg := storage.ResolveCompressConfig(ctx, baseCompressCfg, flags, storage.FileTypeRootfs, storage.UseCasePause)
-	tb := sandbox.NewTemplateBuild(r.snapshot, persistence, r.templateFiles, nil)
+	cfg := storage.ResolveCompressConfig(ctx, baseCompressCfg, flags, storage.FileTypeMemfile, storage.UseCasePause)
+	uploader := sandbox.NewBuildUploader(r.snapshot, persistence, r.templateFiles, cfg, nil)
 
-	return tb.UploadAtOnce(ctx, memfileCfg, rootfsCfg)
+	if err := uploader.UploadData(ctx); err != nil {
+		return err
+	}
+
+	return uploader.FinalizeHeaders(ctx)
 }
 
 // snapshotAndCacheSandbox creates a snapshot of a sandbox and adds it to the local

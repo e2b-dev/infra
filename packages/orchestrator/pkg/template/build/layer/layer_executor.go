@@ -284,16 +284,15 @@ func (lb *LayerExecutor) PauseAndUpload(
 	userLogger.Debug(ctx, fmt.Sprintf("Saving: %s", meta.Template.BuildID))
 
 	// Pipeline per layer:
-	//  1. Upload all files (uncompressed + compressed, except the V4 headers) — parallel across layers
-	//  2. Wait for previous layers to complete (data + headers)
-	//  3. Finalize compressed headers — all upstream FTs now available
+	//  1. Upload data files — parallel across layers
+	//  2. Wait for previous layers to complete
+	//  3. Finalize headers (V4 compressed headers if applicable, no-op for uncompressed)
 	//  4. Signal complete, save cache index
 	completeUpload, waitForPreviousUploads := lb.uploadTracker.StartUpload()
 	buildID := meta.Template.BuildID
 
-	memfileCfg := storage.ResolveCompressConfig(ctx, lb.compressConfig, lb.featureFlags, storage.FileTypeMemfile, storage.UseCaseBuild)
-	rootfsCfg := storage.ResolveCompressConfig(ctx, lb.compressConfig, lb.featureFlags, storage.FileTypeRootfs, storage.UseCaseBuild)
-	tb := sandbox.NewTemplateBuild(snapshot, lb.templateStorage, storage.TemplateFiles{BuildID: buildID}, lb.uploadTracker.Pending())
+	cfg := storage.ResolveCompressConfig(ctx, lb.compressConfig, lb.featureFlags, storage.FileTypeMemfile, storage.UseCaseBuild)
+	uploader := sandbox.NewBuildUploader(snapshot, lb.templateStorage, storage.TemplateFiles{BuildID: buildID}, cfg, lb.uploadTracker.Pending())
 
 	lb.UploadErrGroup.Go(func() error {
 		ctx := context.WithoutCancel(ctx)
@@ -305,9 +304,8 @@ func (lb *LayerExecutor) PauseAndUpload(
 		// still unblock and the errgroup can properly collect all errors.
 		defer completeUpload()
 
-		// Step 1: Upload everything except V4 headers (parallel across layers)
-		hasCompressed, err := tb.UploadExceptV4Headers(ctx, memfileCfg, rootfsCfg)
-		if err != nil {
+		// Step 1: Upload data files (parallel across layers)
+		if err := uploader.UploadData(ctx); err != nil {
 			return fmt.Errorf("error uploading data files: %w", err)
 		}
 
@@ -315,16 +313,14 @@ func (lb *LayerExecutor) PauseAndUpload(
 		// This prevents race conditions where another build hits this cache entry
 		// before its dependencies (previous layers) are available in storage.
 		// It also ensures all upstream frame tables are in pending, so that
-		// V4 headers can cross-pollinate mappings from ancestor layers.
+		// headers can cross-pollinate mappings from ancestor layers.
 		if err := waitForPreviousUploads(ctx); err != nil {
 			return fmt.Errorf("error waiting for previous uploads: %w", err)
 		}
 
-		// Step 3: Finalize V4 compressed headers — all upstream FTs are now in pending
-		if hasCompressed {
-			if err := tb.UploadV4Header(ctx); err != nil {
-				return fmt.Errorf("error uploading compressed headers: %w", err)
-			}
+		// Step 3: Finalize headers
+		if err := uploader.FinalizeHeaders(ctx); err != nil {
+			return fmt.Errorf("error finalizing headers: %w", err)
 		}
 
 		// Step 4: Save cache index
