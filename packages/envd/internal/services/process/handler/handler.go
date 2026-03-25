@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"connectrpc.com/connect"
 	"github.com/creack/pty"
@@ -419,7 +420,7 @@ func (p *Handler) WriteTty(data []byte) error {
 	return nil
 }
 
-func (p *Handler) Start() (uint32, error) {
+func (p *Handler) Start(requestTimeout time.Duration) (uint32, error) {
 	// Pty is already started in the New method
 	if p.tty == nil {
 		err := p.cmd.Start()
@@ -433,6 +434,7 @@ func (p *Handler) Start() (uint32, error) {
 		Str("event_type", "process_start").
 		Int("pid", p.cmd.Process.Pid).
 		Str("command", p.userCommand()).
+		Dur("request_timeout_ms", requestTimeout).
 		Msg(fmt.Sprintf("Process with pid %d started", p.cmd.Process.Pid))
 
 	return uint32(p.cmd.Process.Pid), nil

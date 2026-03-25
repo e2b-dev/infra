@@ -187,6 +187,10 @@ var (
 	// BuildBaseRootfsSizeLimitMB is the maximum size of the base rootfs filesystem created from the OCI image, in MB.
 	BuildBaseRootfsSizeLimitMB = newIntFlag("build-base-rootfs-size-limit-mb", 25000)
 
+	// MinAutoResumeTimeoutSeconds is the minimum auto-resume timeout in seconds.
+	// This prevents thrashing from very short timeouts.
+	MinAutoResumeTimeoutSeconds = newIntFlag("minimum-autoresume-timeout", 300)
+
 	// BuildReservedDiskSpaceMB is the amount of disk space in MB reserved for root on the guest filesystem.
 	// Reserved blocks are only usable by root (uid 0), protecting the guest OS from disk-full conditions.
 	BuildReservedDiskSpaceMB = newIntFlag("build-reserved-disk-space-mb", 0)

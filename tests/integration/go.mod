@@ -10,6 +10,8 @@ replace github.com/e2b-dev/infra/packages/db => ../../packages/db
 
 replace github.com/e2b-dev/infra/packages/clickhouse => ../../packages/clickhouse
 
+replace github.com/e2b-dev/infra/packages/envd => ../../packages/envd
+
 tool (
 	github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
 	gotest.tools/gotestsum
@@ -20,6 +22,7 @@ require (
 	github.com/e2b-dev/infra/packages/auth v0.0.0
 	github.com/e2b-dev/infra/packages/clickhouse v0.0.0
 	github.com/e2b-dev/infra/packages/db v0.0.0
+	github.com/e2b-dev/infra/packages/envd v0.0.0-00010101000000-000000000000
 	github.com/e2b-dev/infra/packages/shared v0.0.0
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.7.5
@@ -124,8 +127,6 @@ require (
 	github.com/oapi-codegen/oapi-codegen/v2 v2.5.1 // indirect
 	github.com/oasdiff/yaml v0.0.0-20250309154309-f31be36b4037 // indirect
 	github.com/oasdiff/yaml3 v0.0.0-20250309153720-d2182401db90 // indirect
-	github.com/onsi/ginkgo v1.16.5 // indirect
-	github.com/onsi/gomega v1.38.1 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/orcaman/concurrent-map/v2 v2.0.1 // indirect

@@ -4,10 +4,17 @@ ENV_FILE := ../../.env.${ENV}
 -include ${ENV_FILE}
 
 TF := $(shell which terraform)
+TF_VAR_FILE := ./.terraform.${ENV}.tfvars
+TF_VAR_FILE_ARG := $(if $(wildcard $(TF_VAR_FILE)),-var-file=$(TF_VAR_FILE))
 TERRAFORM_STATE_BUCKET ?= $(AWS_ACCOUNT_ID)-terraform-state
 TEMPLATE_BUCKET_LOCATION ?= $(AWS_REGION)
 
 BUCKET_PREFIX ?= $(PREFIX)$(AWS_ACCOUNT_ID)-
+
+SKIP_FMT ?= false
+define tf_fmt
+$(if $(filter true,$(SKIP_FMT)),,$(TF) fmt -recursive)
+endef
 
 # Set the terraform environment variable only if the environment variable is set
 # Strip the passed variable name (it's space sensitive) and check if the variable is set, if yes return TF_VAR_<variable_name>=<value> with the variable name in lower case
@@ -63,17 +70,26 @@ init:
 
 .PHONY: plan
 plan:
-	$(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -input=false -compact-warnings -parallelism=20
+	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	@ $(call tf_fmt)
+	@ $(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -input=false -compact-warnings -parallelism=20
+
+.PHONY: plan-only-jobs
+plan-only-jobs:
+	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	$(call tf_fmt)
+	@ $(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -input=false -compact-warnings -parallelism=20 -target=module.nomad
 
 .PHONY: plan-without-jobs
 plan-without-jobs:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(eval TARGET := $(shell cat main.tf | grep "^module" | awk '{print $$2}' | tr ' ' '\n' | grep -v -e "nomad" | awk '{print "-target=module." $$0 ""}' | xargs))
-	$(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -input=false -compact-warnings -parallelism=20 $(TARGET)
+	@ $(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -input=false -compact-warnings -parallelism=20 $(TARGET)
 
 .PHONY: apply
 apply:
-	$(tf_vars) $(TF) apply -auto-approve -input=false -compact-warnings -parallelism=20 .tfplan.$(ENV)
+	@ printf "Applying Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	@ $(tf_vars) $(TF) apply -auto-approve -input=false -compact-warnings -parallelism=20 .tfplan.$(ENV)
 
 .PHONY: state-migrate
 state-migrate:
@@ -81,7 +97,7 @@ state-migrate:
 
 .PHONY: apply-init
 apply-init:
-	$(tf_vars) $(TF) apply -target=module.init -auto-approve -input=false -compact-warnings
+	@ $(tf_vars) $(TF) apply $(TF_VAR_FILE_ARG) -target=module.init -auto-approve -input=false -compact-warnings
 
 .PHONY: move
 move:
@@ -90,4 +106,5 @@ move:
 
 .PHONY: destroy
 destroy:
-	$(tf_vars) $(TF) destroy
+	@ printf "Destroying Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	@ $(tf_vars) $(TF) destroy $(TF_VAR_FILE_ARG)

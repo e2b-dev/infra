@@ -79,6 +79,10 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 			logger.L().Debug(ctx, "Waiting for sandbox to pause", logger.WithSandboxID(sandboxID))
 			err = a.orchestrator.WaitForStateChange(ctx, teamID, sandboxID)
 			if err != nil {
+				telemetry.ReportCriticalError(ctx, "error waiting for sandbox to pause", err,
+					telemetry.WithSandboxID(sandboxID),
+					telemetry.WithTeamID(teamID.String()),
+				)
 				a.sendAPIStoreError(c, http.StatusInternalServerError, "Error waiting for sandbox to pause")
 
 				return
@@ -97,14 +101,17 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 
 			logger.L().Debug(ctx, "Sandbox is already running",
 				logger.WithSandboxID(sandboxID),
-				zap.Time("end_time", sandboxData.EndTime),
-				zap.Time("start_time", sandboxData.StartTime),
+				logger.Time("end_time", sandboxData.EndTime),
+				logger.Time("start_time", sandboxData.StartTime),
 				zap.String("node_id", sandboxData.NodeID),
 			)
 
 			return
 		default:
-			logger.L().Error(ctx, "Sandbox is in an unknown state", logger.WithSandboxID(sandboxID), zap.String("state", string(sandboxData.State)))
+			telemetry.ReportCriticalError(ctx, "Sandbox is in an unknown state", fmt.Errorf("state: %s", sandboxData.State),
+				telemetry.WithSandboxID(sandboxID),
+				telemetry.WithTeamID(teamID.String()),
+			)
 			a.sendAPIStoreError(c, http.StatusInternalServerError, "Sandbox is in an unknown state")
 
 			return
@@ -121,7 +128,10 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 			return
 		}
 
-		logger.L().Error(ctx, "Error getting last snapshot", logger.WithSandboxID(sandboxID), zap.Error(err))
+		telemetry.ReportCriticalError(ctx, "Error getting last snapshot", err,
+			telemetry.WithSandboxID(sandboxID),
+			telemetry.WithTeamID(teamID.String()),
+		)
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting snapshot")
 
 		return
@@ -158,7 +168,12 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	if snap.EnvSecure {
 		accessToken, tokenErr := a.getEnvdAccessToken(build.EnvdVersion, sandboxID)
 		if tokenErr != nil {
-			logger.L().Error(ctx, "Secure envd access token error", zap.Error(tokenErr.Err), logger.WithTemplateID(snap.EnvID), logger.WithBuildID(build.ID.String()), logger.WithSandboxID(sandboxID))
+			telemetry.ReportErrorByCode(ctx, tokenErr.Code, "Secure envd access token error", tokenErr.Err,
+				telemetry.WithTemplateID(snap.EnvID),
+				telemetry.WithBuildID(build.ID.String()),
+				telemetry.WithSandboxID(sandboxID),
+				telemetry.WithTeamID(teamID.String()),
+			)
 			a.sendAPIStoreError(c, tokenErr.Code, tokenErr.ClientMsg)
 
 			return
