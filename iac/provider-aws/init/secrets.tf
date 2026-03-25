@@ -56,10 +56,13 @@ resource "aws_secretsmanager_secret" "grafana" {
 resource "aws_secretsmanager_secret_version" "grafana" {
   secret_id = aws_secretsmanager_secret.grafana.id
   secret_string = jsonencode({
-    "API_KEY"              = " ",
-    "OTLP_URL"             = " ",
-    "OTEL_COLLECTOR_TOKEN" = " ",
-    "USERNAME"             = " ",
+    "API_KEY"                  = " ",
+    "OTLP_URL"                 = " ",
+    "OTEL_COLLECTOR_TOKEN"     = " ",
+    "USERNAME"                 = " ",
+    "LOGS_USER"                = " ",
+    "LOGS_URL"                 = " ",
+    "LOGS_COLLECTOR_API_TOKEN" = " ",
   })
 
   lifecycle {
@@ -79,10 +82,13 @@ locals {
 
 output "grafana" {
   value = {
-    api_key              = local.grafana_raw["API_KEY"]
-    otlp_url             = local.grafana_raw["OTLP_URL"]
-    otel_collector_token = local.grafana_raw["OTEL_COLLECTOR_TOKEN"]
-    username             = local.grafana_raw["USERNAME"]
+    api_key                  = local.grafana_raw["API_KEY"]
+    otlp_url                 = local.grafana_raw["OTLP_URL"]
+    otel_collector_token     = local.grafana_raw["OTEL_COLLECTOR_TOKEN"]
+    username                 = local.grafana_raw["USERNAME"]
+    logs_user                = local.grafana_raw["LOGS_USER"]
+    logs_url                 = local.grafana_raw["LOGS_URL"]
+    logs_collector_api_token = local.grafana_raw["LOGS_COLLECTOR_API_TOKEN"]
   }
   sensitive = true
 }

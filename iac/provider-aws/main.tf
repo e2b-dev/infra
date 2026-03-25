@@ -166,10 +166,9 @@ module "cluster" {
 module "nomad" {
   source = "./nomad"
 
-  domain_name    = var.domain_name
-  environment    = var.environment
-  aws_region     = data.aws_region.current.name
-  aws_account_id = data.aws_caller_identity.current.account_id
+  domain_name = var.domain_name
+  environment = var.environment
+  aws_region  = data.aws_region.current.name
 
   nomad_acl_token  = module.init.cluster.nomad_acl_token
   consul_acl_token = module.init.cluster.consul_acl_token
@@ -177,6 +176,10 @@ module "nomad" {
   grafana_otel_collector_token = module.init.grafana.otel_collector_token
   grafana_otlp_url             = module.init.grafana.otlp_url
   grafana_username             = module.init.grafana.username
+
+  grafana_logs_user     = module.init.grafana.logs_user
+  grafana_logs_endpoint = module.init.grafana.logs_url
+  grafana_logs_api_key  = module.init.grafana.logs_collector_api_token
 
   api_node_pool          = local.api_pool_name
   clickhouse_node_pool   = local.clickhouse_pool_name

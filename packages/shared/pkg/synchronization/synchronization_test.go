@@ -5,6 +5,11 @@ import (
 	"slices"
 	"sync"
 	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/semaphore"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
@@ -87,7 +92,62 @@ func newSynchronizer(ctx context.Context, store Store[string, string]) *Synchron
 		store:            store,
 		tracerSpanPrefix: "test synchronization",
 		logsPrefix:       "test synchronization",
+		syncSem:          semaphore.NewWeighted(1),
 	}
+}
+
+// slowTestStore embeds testStore but overrides SourceList to block until
+// the unblock channel is closed. This simulates a long-running sync holding
+// the semaphore.
+type slowTestStore struct {
+	*testStore
+
+	unblock chan struct{}
+}
+
+func (s *slowTestStore) SourceList(ctx context.Context) ([]string, error) {
+	select {
+	case <-s.unblock:
+		return s.testStore.SourceList(ctx)
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+// TestSynchronize_SyncRespectsContextCancellation verifies that a second
+// Sync call returns promptly when its context expires while the first Sync
+// holds the semaphore. With the old sync.Mutex this would block indefinitely;
+// the semaphore.Weighted implementation respects context cancellation.
+func TestSynchronize_SyncRespectsContextCancellation(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	slow := &slowTestStore{
+		testStore: newTestStore([]string{"a"}, nil),
+		unblock:   make(chan struct{}),
+	}
+	syncer := newSynchronizer(ctx, slow)
+
+	// First sync: acquires the semaphore and blocks inside SourceList.
+	firstDone := make(chan error, 1)
+	go func() {
+		firstDone <- syncer.Sync(ctx)
+	}()
+
+	// Give the first goroutine time to acquire the semaphore.
+	time.Sleep(20 * time.Millisecond)
+
+	// Second sync: should fail fast when its context deadline expires.
+	shortCtx, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
+	defer cancel()
+
+	err := syncer.Sync(shortCtx)
+	require.Error(t, err)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+
+	// Unblock the first sync and verify it completes successfully.
+	close(slow.unblock)
+	require.NoError(t, <-firstDone)
 }
 
 func TestSynchronize_InsertAndRemove(t *testing.T) {
@@ -98,29 +158,15 @@ func TestSynchronize_InsertAndRemove(t *testing.T) {
 	s := newTestStore([]string{"a", "b"}, nil)
 	syncer := newSynchronizer(ctx, s)
 
-	if err := syncer.sync(ctx); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if want, got := 2, s.inserts; want != got {
-		t.Fatalf("insert count mismatch: want %d got %d", want, got)
-	}
-
-	if len(s.pool) != 2 {
-		t.Fatalf("pool size want 2 got %d", len(s.pool))
-	}
+	require.NoError(t, syncer.Sync(ctx))
+	assert.Equal(t, 2, s.inserts)
+	assert.Len(t, s.pool, 2)
 
 	// Now remove "b" from the source – should trigger exactly one removal.
 	s.source = []string{"a"}
-	if err := syncer.sync(ctx); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, syncer.Sync(ctx))
 
-	if want, got := 1, s.removes; want != got {
-		t.Fatalf("remove count mismatch: want %d got %d", want, got)
-	}
-
-	if len(s.pool) != 1 || !s.PoolExists(ctx, "a") {
-		t.Fatalf("pool contents after removal are incorrect: %#v", s.pool)
-	}
+	assert.Equal(t, 1, s.removes)
+	assert.Len(t, s.pool, 1)
+	assert.True(t, s.PoolExists(ctx, "a"))
 }

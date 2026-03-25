@@ -62,5 +62,33 @@ func (o *Orchestrator) setupMetrics(meterProvider metric.MeterProvider) error {
 		return fmt.Errorf("failed to create sandboxes counter: %w", err)
 	}
 
+	// Observable gauge that reads sandbox counts from Redis on each collection interval.
+	// This replaces the old UpDownCounter which drifted across multiple API instances.
+	sandboxCountGauge, err := telemetry.GetGaugeInt(meter, telemetry.SandboxCountGaugeName)
+	if err != nil {
+		return fmt.Errorf("failed to create sandbox count gauge: %w", err)
+	}
+
+	o.sandboxCountGaugeRegistration, err = meter.RegisterCallback(
+		func(ctx context.Context, obs metric.Observer) error {
+			teams, err := o.sandboxStore.TeamsWithSandboxes(ctx)
+			if err != nil {
+				return fmt.Errorf("failed to get teams with sandboxes: %w", err)
+			}
+
+			for teamID, count := range teams {
+				obs.ObserveInt64(sandboxCountGauge, count, metric.WithAttributes(
+					telemetry.WithTeamID(teamID.String()),
+				))
+			}
+
+			return nil
+		},
+		sandboxCountGauge,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to register sandbox count gauge: %w", err)
+	}
+
 	return nil
 }

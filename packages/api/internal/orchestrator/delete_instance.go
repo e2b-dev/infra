@@ -83,7 +83,6 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, teamID uuid.UUID, sand
 		return nil
 	}
 
-	defer func() { go o.countersRemove(context.WithoutCancel(ctx), teamID, opts.Action) }()
 	defer func() { go o.analyticsRemove(context.WithoutCancel(ctx), sbx, opts.Action) }()
 	defer o.sandboxStore.Remove(ctx, teamID, sandboxID)
 	err = o.removeSandboxFromNode(ctx, sbx, opts.Action)
@@ -100,7 +99,7 @@ func (o *Orchestrator) removeSandboxFromNode(ctx context.Context, sbx sandbox.Sa
 	ctx, span := tracer.Start(ctx, "remove-sandbox-from-node")
 	defer span.End()
 
-	node := o.GetNode(sbx.ClusterID, sbx.NodeID)
+	node := o.getOrConnectNode(ctx, sbx.ClusterID, sbx.NodeID)
 	if node == nil {
 		logger.L().Error(ctx, "failed to get node", logger.WithNodeID(sbx.NodeID))
 

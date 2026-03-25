@@ -76,7 +76,8 @@ const (
 )
 
 type SandboxAutoResumeConfig struct {
-	Policy SandboxAutoResumePolicy `json:"policy"`
+	Policy  SandboxAutoResumePolicy `json:"policy"`
+	Timeout uint64                  `json:"timeout,omitempty"`
 }
 
 type PausedSandboxConfig struct {
