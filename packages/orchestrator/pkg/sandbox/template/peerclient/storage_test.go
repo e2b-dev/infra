@@ -29,7 +29,7 @@ func TestPeerStorageProvider_OpenBlob_ExtractsFileName(t *testing.T) {
 
 	base := providermocks.NewMockStorageProvider(t)
 
-	p := newPeerStorageProvider(base, client, &atomic.Bool{}, nil)
+	p := newPeerStorageProvider(base, client, &atomic.Pointer[UploadedHeaders]{})
 	blob, err := p.OpenBlob(t.Context(), "build-1/snapfile")
 	require.NoError(t, err)
 
@@ -49,7 +49,7 @@ func TestPeerStorageProvider_OpenFramedFile_ExtractsFileName(t *testing.T) {
 
 	base := providermocks.NewMockStorageProvider(t)
 
-	p := newPeerStorageProvider(base, client, &atomic.Bool{}, nil)
+	p := newPeerStorageProvider(base, client, &atomic.Pointer[UploadedHeaders]{})
 	ff, err := p.OpenFramedFile(t.Context(), "build-1/memfile")
 	require.NoError(t, err)
 

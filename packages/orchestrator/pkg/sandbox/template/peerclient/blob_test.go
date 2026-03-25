@@ -36,7 +36,7 @@ func TestPeerBlob_WriteTo_PeerSucceeds(t *testing.T) {
 		client:   client,
 		buildID:  "build-1",
 		fileName: "snapfile",
-		uploaded: &atomic.Bool{},
+		uploaded: &atomic.Pointer[UploadedHeaders]{},
 	}}
 
 	var buf bytes.Buffer
@@ -68,7 +68,7 @@ func TestPeerBlob_WriteTo_PeerNotAvailable_FallsBackToBase(t *testing.T) {
 		client:   client,
 		buildID:  "build-1",
 		fileName: "snapfile",
-		uploaded: &atomic.Bool{},
+		uploaded: &atomic.Pointer[UploadedHeaders]{},
 		openFn: func(ctx context.Context) (storage.Blob, error) {
 			return base.OpenBlob(ctx, "build-1/snapfile")
 		},
@@ -100,7 +100,7 @@ func TestPeerBlob_WriteTo_PeerError_FallsBackToBase(t *testing.T) {
 		client:   client,
 		buildID:  "build-1",
 		fileName: "snapfile",
-		uploaded: &atomic.Bool{},
+		uploaded: &atomic.Pointer[UploadedHeaders]{},
 		openFn: func(ctx context.Context) (storage.Blob, error) {
 			return base.OpenBlob(ctx, "build-1/snapfile")
 		},
@@ -115,14 +115,14 @@ func TestPeerBlob_WriteTo_PeerError_FallsBackToBase(t *testing.T) {
 func TestPeerBlob_WriteTo_UploadedSetMidStream_CompletesFromPeerThenFallsBack(t *testing.T) {
 	t.Parallel()
 
-	uploaded := &atomic.Bool{}
+	uploaded := &atomic.Pointer[UploadedHeaders]{}
 
 	// Peer streams three chunks; the second Recv sets uploaded=true
 	// (simulating a concurrent operation receiving UseStorage).
 	stream := orchestratormocks.NewMockChunkService_GetBuildBlobClient(t)
 	stream.EXPECT().Recv().Return(&orchestrator.GetBuildBlobResponse{Data: []byte("aaa")}, nil).Once()
 	stream.EXPECT().Recv().RunAndReturn(func() (*orchestrator.GetBuildBlobResponse, error) {
-		uploaded.Store(true)
+		uploaded.Store(&UploadedHeaders{})
 
 		return &orchestrator.GetBuildBlobResponse{Data: []byte("bbb")}, nil
 	}).Once()
@@ -157,7 +157,7 @@ func TestPeerBlob_WriteTo_UploadedSetMidStream_CompletesFromPeerThenFallsBack(t 
 	require.NoError(t, err)
 	assert.Equal(t, int64(9), n1)
 	assert.Equal(t, "aaabbbccc", buf1.String())
-	assert.True(t, uploaded.Load())
+	assert.NotNil(t, uploaded.Load())
 
 	// Second download: uploaded is now true, skips peer and goes to base storage.
 	var buf2 bytes.Buffer
@@ -175,7 +175,7 @@ func TestPeerBlob_Exists_PeerHasFile(t *testing.T) {
 		return req.GetBuildId() == "build-1" && req.GetFileName() == "snapfile"
 	})).Return(&orchestrator.GetBuildFileExistsResponse{}, nil)
 
-	blob := &peerBlob{peerHandle: peerHandle[storage.Blob]{client: client, buildID: "build-1", fileName: "snapfile", uploaded: &atomic.Bool{}}}
+	blob := &peerBlob{peerHandle: peerHandle[storage.Blob]{client: client, buildID: "build-1", fileName: "snapfile", uploaded: &atomic.Pointer[UploadedHeaders]{}}}
 	ok, err := blob.Exists(t.Context())
 	require.NoError(t, err)
 	assert.True(t, ok)
@@ -196,7 +196,7 @@ func TestPeerBlob_Exists_PeerNotAvailable_FallsBackToBase(t *testing.T) {
 		client:   client,
 		buildID:  "build-1",
 		fileName: "snapfile",
-		uploaded: &atomic.Bool{},
+		uploaded: &atomic.Pointer[UploadedHeaders]{},
 		openFn: func(ctx context.Context) (storage.Blob, error) {
 			return base.OpenBlob(ctx, "build-1/snapfile")
 		},
@@ -218,7 +218,7 @@ func TestPeerBlob_Exists_UseStorage_FallsBackToBase(t *testing.T) {
 	base := providermocks.NewMockStorageProvider(t)
 	base.EXPECT().OpenBlob(mock.Anything, "build-1/snapfile").Return(baseBlob, nil)
 
-	uploaded := &atomic.Bool{}
+	uploaded := &atomic.Pointer[UploadedHeaders]{}
 	blob := &peerBlob{peerHandle: peerHandle[storage.Blob]{
 		client:   client,
 		buildID:  "build-1",
@@ -232,5 +232,5 @@ func TestPeerBlob_Exists_UseStorage_FallsBackToBase(t *testing.T) {
 	ok, err := blob.Exists(t.Context())
 	require.NoError(t, err)
 	assert.True(t, ok)
-	assert.True(t, uploaded.Load(), "uploaded flag should be set after UseStorage response")
+	assert.NotNil(t, uploaded.Load(), "uploaded flag should be set after UseStorage response")
 }

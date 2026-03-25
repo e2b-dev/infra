@@ -77,7 +77,7 @@ func (p *routingProvider) resolveProvider(ctx context.Context, buildID string) s
 
 	span.SetAttributes(attribute.String("peer_address", res.addr))
 
-	return newPeerStorageProvider(p.base, res.client, res.uploaded, res.transitionHeaders)
+	return newPeerStorageProvider(p.base, res.client, res.uploaded)
 }
 
 func (p *routingProvider) OpenBlob(ctx context.Context, path string) (storage.Blob, error) {
@@ -107,26 +107,24 @@ func (p *routingProvider) GetDetails() string {
 var _ storage.StorageProvider = (*peerStorageProvider)(nil)
 
 // peerStorageProvider tries the peer first for reads. Writes are always delegated to base.
+// uploaded doubles as the "uploaded" flag: when non-nil, the build is in GCS
+// and all reads skip the peer. The UploadedHeaders value contains serialized V4
+// headers for compressed builds (empty for uncompressed).
 type peerStorageProvider struct {
 	base       storage.StorageProvider
 	peerClient orchestrator.ChunkServiceClient
-	// uploaded is set to true when the peer signals that GCS upload is complete
-	// (use_storage=true). Once set, all subsequent reads skip the peer and go to base.
-	uploaded          *atomic.Bool
-	transitionHeaders *atomic.Pointer[TransitionHeaders]
+	uploaded   *atomic.Pointer[UploadedHeaders]
 }
 
 func newPeerStorageProvider(
 	base storage.StorageProvider,
 	peerClient orchestrator.ChunkServiceClient,
-	uploaded *atomic.Bool,
-	transitionHeaders *atomic.Pointer[TransitionHeaders],
+	uploaded *atomic.Pointer[UploadedHeaders],
 ) storage.StorageProvider {
 	return &peerStorageProvider{
-		base:              base,
-		peerClient:        peerClient,
-		uploaded:          uploaded,
-		transitionHeaders: transitionHeaders,
+		base:       base,
+		peerClient: peerClient,
+		uploaded:   uploaded,
 	}
 }
 
@@ -134,11 +132,10 @@ func (p *peerStorageProvider) OpenBlob(_ context.Context, path string) (storage.
 	buildID, fileName := storage.ParseStoragePath(path)
 
 	return &peerBlob{peerHandle: peerHandle[storage.Blob]{
-		client:            p.peerClient,
-		buildID:           buildID,
-		fileName:          fileName,
-		uploaded:          p.uploaded,
-		transitionHeaders: nil, // blobs don't participate in header transitions
+		client:   p.peerClient,
+		buildID:  buildID,
+		fileName: fileName,
+		uploaded: p.uploaded,
 		openFn: func(ctx context.Context) (storage.Blob, error) {
 			return p.base.OpenBlob(ctx, path)
 		},
@@ -152,11 +149,10 @@ func (p *peerStorageProvider) OpenFramedFile(_ context.Context, path string) (st
 	peerFileName := storage.BaseFileName(fileName)
 
 	return &peerFramedFile{peerHandle: peerHandle[storage.FramedFile]{
-		client:            p.peerClient,
-		buildID:           buildID,
-		fileName:          peerFileName,
-		uploaded:          p.uploaded,
-		transitionHeaders: p.transitionHeaders,
+		client:   p.peerClient,
+		buildID:  buildID,
+		fileName: peerFileName,
+		uploaded: p.uploaded,
 		openFn: func(ctx context.Context) (storage.FramedFile, error) {
 			return p.base.OpenFramedFile(ctx, path)
 		},
@@ -175,27 +171,20 @@ func (p *peerStorageProvider) GetDetails() string {
 	return p.base.GetDetails()
 }
 
-// checkPeerAvailability also marks the uploaded flag when UseStorage is set.
-// When transitionHeaders is non-nil and the response includes serialized V4
-// headers, they are stored for later retrieval by peerFramedFile.
-func checkPeerAvailability(avail *orchestrator.PeerAvailability, uploaded *atomic.Bool, transitionHeaders *atomic.Pointer[TransitionHeaders]) bool {
+// checkPeerAvailability marks the build as uploaded when UseStorage is set.
+// A single atomic store on uploaded serves as both the "uploaded" flag
+// and the V4 header carrier — no ordering concern between separate atomics.
+func checkPeerAvailability(avail *orchestrator.PeerAvailability, uploaded *atomic.Pointer[UploadedHeaders]) bool {
 	if avail.GetNotAvailable() {
 		return false
 	}
 
 	if avail.GetUseStorage() {
-		if transitionHeaders != nil {
-			memH := avail.GetMemfileHeader()
-			rootH := avail.GetRootfsHeader()
-			if len(memH) > 0 || len(rootH) > 0 {
-				transitionHeaders.Store(&TransitionHeaders{
-					MemfileHeader: memH,
-					RootfsHeader:  rootH,
-				})
-			}
+		hdrs := &UploadedHeaders{
+			MemfileHeader: avail.GetMemfileHeader(),
+			RootfsHeader:  avail.GetRootfsHeader(),
 		}
-
-		uploaded.Store(true)
+		uploaded.Store(hdrs)
 
 		return false
 	}
@@ -204,11 +193,10 @@ func checkPeerAvailability(avail *orchestrator.PeerAvailability, uploaded *atomi
 }
 
 type peerHandle[Base any] struct {
-	client            orchestrator.ChunkServiceClient
-	buildID           string
-	fileName          string
-	uploaded          *atomic.Bool
-	transitionHeaders *atomic.Pointer[TransitionHeaders]
+	client   orchestrator.ChunkServiceClient
+	buildID  string
+	fileName string
+	uploaded *atomic.Pointer[UploadedHeaders]
 
 	mu     sync.Mutex
 	base   Base
@@ -259,7 +247,7 @@ func withPeerFallback[Base, T any](
 	))
 	defer span.End()
 
-	if !h.uploaded.Load() {
+	if h.uploaded.Load() == nil {
 		timer := peerReadTimerFactory.Begin(opAttr)
 
 		res, err := peerFn(ctx)

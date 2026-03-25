@@ -31,7 +31,7 @@ func (f *peerFramedFile) Size(ctx context.Context) (int64, error) {
 				BuildId:  f.buildID,
 				FileName: f.fileName,
 			})
-			if err == nil && checkPeerAvailability(resp.GetAvailability(), f.uploaded, f.transitionHeaders) {
+			if err == nil && checkPeerAvailability(resp.GetAvailability(), f.uploaded) {
 				return peerAttempt[int64]{value: resp.GetTotalSize(), hit: true}, nil
 			}
 
@@ -57,7 +57,7 @@ func (f *peerFramedFile) GetFrame(ctx context.Context, offsetU int64, frameTable
 				FileName: f.fileName,
 				Offset:   offsetU,
 				Length:   readSize,
-			}, f.uploaded, f.transitionHeaders)
+			}, f.uploaded)
 			if err != nil {
 				logger.L().Warn(ctx, "failed to read build file from peer", logger.WithBuildID(f.buildID), zap.Int64("off", offsetU), zap.Int64("read_size", readSize), zap.Error(err))
 
@@ -95,11 +95,11 @@ func (f *peerFramedFile) GetFrame(ctx context.Context, offsetU int64, frameTable
 			}, nil
 		},
 		func(ctx context.Context, base storage.FramedFile) (storage.Range, error) {
-			// If the upload completed and we still have ft==nil (old header without
-			// FrameTables), check for transition headers. Returning PeerTransitionedError
-			// tells build.File to swap its header atomically and retry the read.
-			if frameTable == nil && f.transitionHeaders != nil {
-				if hdrs := f.transitionHeaders.Load(); hdrs != nil {
+			// If the upload completed and V4 headers are available, signal the
+			// caller to swap its header and retry. When headers are empty
+			// (uncompressed builds), fall through to base — no swap needed.
+			if f.uploaded != nil {
+				if hdrs := f.uploaded.Load(); hdrs != nil && (len(hdrs.MemfileHeader) > 0 || len(hdrs.RootfsHeader) > 0) {
 					return storage.Range{}, &storage.PeerTransitionedError{
 						MemfileHeader: hdrs.MemfileHeader,
 						RootfsHeader:  hdrs.RootfsHeader,
@@ -128,8 +128,7 @@ func openPeerFramedStream(
 	ctx context.Context,
 	client orchestrator.ChunkServiceClient,
 	req *orchestrator.GetBuildFrameRequest,
-	uploaded *atomic.Bool,
-	transitionHeaders *atomic.Pointer[TransitionHeaders],
+	uploaded *atomic.Pointer[UploadedHeaders],
 ) (func() ([]byte, error), error) {
 	stream, err := client.GetBuildFrame(ctx, req)
 	if err != nil {
@@ -141,7 +140,7 @@ func openPeerFramedStream(
 		return nil, fmt.Errorf("recv first framed message: %w", err)
 	}
 
-	if !checkPeerAvailability(msg.GetAvailability(), uploaded, transitionHeaders) {
+	if !checkPeerAvailability(msg.GetAvailability(), uploaded) {
 		return nil, fmt.Errorf("peer not available for framed stream")
 	}
 
@@ -163,7 +162,7 @@ func openPeerFramedStream(
 		// Flip the uploaded flag if the peer signals use_storage; the current
 		// stream keeps reading from the peer, but subsequent operations will
 		// go directly to GCS.
-		checkPeerAvailability(m.GetAvailability(), uploaded, transitionHeaders)
+		checkPeerAvailability(m.GetAvailability(), uploaded)
 
 		return m.GetData(), nil
 	}, nil

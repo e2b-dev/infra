@@ -17,6 +17,7 @@ import (
 
 type File struct {
 	header      atomic.Pointer[header.Header]
+	swapFailed  atomic.Bool // set if header deserialization fails during P2P transition
 	store       *DiffStore
 	fileType    DiffType
 	persistence storage.StorageProvider
@@ -100,7 +101,7 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 		)
 		if err != nil {
 			var transErr *storage.PeerTransitionedError
-			if errors.As(err, &transErr) {
+			if errors.As(err, &transErr) && !b.swapFailed.Load() {
 				b.swapHeader(transErr)
 
 				continue // retry with the new header
@@ -139,7 +140,7 @@ func (b *File) Slice(ctx context.Context, off, _ int64) ([]byte, error) {
 		result, err := diff.SliceBlock(ctx, int64(mappedBuild.Offset), int64(h.Metadata.BlockSize), mappedBuild.FrameTable)
 		if err != nil {
 			var transErr *storage.PeerTransitionedError
-			if errors.As(err, &transErr) {
+			if errors.As(err, &transErr) && !b.swapFailed.Load() {
 				b.swapHeader(transErr)
 
 				continue // retry with the new header
@@ -154,7 +155,8 @@ func (b *File) Slice(ctx context.Context, off, _ int64) ([]byte, error) {
 
 // swapHeader atomically replaces the header when the peer signals upload
 // completion. Only the first goroutine to CAS succeeds; others just retry
-// with the already-swapped header.
+// with the already-swapped header. On deserialization failure, marks the
+// swap as failed so the ReadAt/Slice loop doesn't retry indefinitely.
 func (b *File) swapHeader(transErr *storage.PeerTransitionedError) {
 	var headerBytes []byte
 
@@ -171,6 +173,8 @@ func (b *File) swapHeader(transErr *storage.PeerTransitionedError) {
 
 	newH, err := header.Deserialize(headerBytes)
 	if err != nil {
+		b.swapFailed.Store(true)
+
 		return
 	}
 

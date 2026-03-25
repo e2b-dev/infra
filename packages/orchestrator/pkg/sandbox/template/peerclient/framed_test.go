@@ -30,7 +30,7 @@ func TestPeerFramedFile_Size_PeerSucceeds(t *testing.T) {
 		client:   client,
 		buildID:  "build-1",
 		fileName: storage.MemfileName,
-		uploaded: &atomic.Bool{},
+		uploaded: &atomic.Pointer[UploadedHeaders]{},
 	}}
 	size, err := f.Size(t.Context())
 	require.NoError(t, err)
@@ -54,7 +54,7 @@ func TestPeerFramedFile_Size_PeerNotAvailable_FallsBackToBase(t *testing.T) {
 		client:   client,
 		buildID:  "build-1",
 		fileName: storage.MemfileName,
-		uploaded: &atomic.Bool{},
+		uploaded: &atomic.Pointer[UploadedHeaders]{},
 		openFn: func(ctx context.Context) (storage.FramedFile, error) {
 			return base.OpenFramedFile(ctx, "build-1/memfile")
 		},
@@ -80,7 +80,7 @@ func TestPeerFramedFile_GetFrame_PeerSucceeds(t *testing.T) {
 		client:   client,
 		buildID:  "build-1",
 		fileName: storage.MemfileName,
-		uploaded: &atomic.Bool{},
+		uploaded: &atomic.Pointer[UploadedHeaders]{},
 	}}
 	buf := make([]byte, len(data))
 	r, err := f.GetFrame(t.Context(), 0, nil, false, buf, int64(len(data)), nil)
@@ -118,7 +118,7 @@ func TestPeerFramedFile_GetFrame_PeerNotAvailable_FallsBackToBase(t *testing.T) 
 		client:   client,
 		buildID:  "build-1",
 		fileName: storage.MemfileName,
-		uploaded: &atomic.Bool{},
+		uploaded: &atomic.Pointer[UploadedHeaders]{},
 		openFn: func(ctx context.Context) (storage.FramedFile, error) {
 			return base.OpenFramedFile(ctx, "build-1/memfile")
 		},
@@ -155,7 +155,7 @@ func TestPeerFramedFile_GetFrame_PeerError_FallsBackToBase(t *testing.T) {
 		client:   client,
 		buildID:  "build-1",
 		fileName: storage.MemfileName,
-		uploaded: &atomic.Bool{},
+		uploaded: &atomic.Pointer[UploadedHeaders]{},
 		openFn: func(ctx context.Context) (storage.FramedFile, error) {
 			return base.OpenFramedFile(ctx, "build-1/memfile")
 		},
@@ -181,7 +181,7 @@ func TestPeerFramedFile_GetFrame_OnReadCallback(t *testing.T) {
 		client:   client,
 		buildID:  "build-1",
 		fileName: storage.MemfileName,
-		uploaded: &atomic.Bool{},
+		uploaded: &atomic.Pointer[UploadedHeaders]{},
 	}}
 
 	var reported int64
@@ -206,7 +206,7 @@ func TestPeerFramedFile_GetFrame_PartialStreamError(t *testing.T) {
 		client:   client,
 		buildID:  "build-1",
 		fileName: storage.MemfileName,
-		uploaded: &atomic.Bool{},
+		uploaded: &atomic.Pointer[UploadedHeaders]{},
 	}}
 	buf := make([]byte, 100)
 	r, err := f.GetFrame(t.Context(), 0, nil, false, buf, 100, nil)
@@ -215,7 +215,7 @@ func TestPeerFramedFile_GetFrame_PartialStreamError(t *testing.T) {
 	assert.Equal(t, 4, r.Length)
 }
 
-func TestPeerFramedFile_Size_UseStorage_SetsUploadedAndStoresTransitionHeaders(t *testing.T) {
+func TestPeerFramedFile_Size_UseStorage_SetsUploadedAndStoresUploadedHeaders(t *testing.T) {
 	t.Parallel()
 
 	memHeader := []byte("mem-header-v4")
@@ -237,15 +237,13 @@ func TestPeerFramedFile_Size_UseStorage_SetsUploadedAndStoresTransitionHeaders(t
 	base := providermocks.NewMockStorageProvider(t)
 	base.EXPECT().OpenFramedFile(mock.Anything, "build-1/memfile").Return(baseFF, nil)
 
-	uploaded := &atomic.Bool{}
-	transHdrs := &atomic.Pointer[TransitionHeaders]{}
+	uploaded := &atomic.Pointer[UploadedHeaders]{}
 
 	f := &peerFramedFile{peerHandle: peerHandle[storage.FramedFile]{
-		client:            client,
-		buildID:           "build-1",
-		fileName:          storage.MemfileName,
-		uploaded:          uploaded,
-		transitionHeaders: transHdrs,
+		client:   client,
+		buildID:  "build-1",
+		fileName: storage.MemfileName,
+		uploaded: uploaded,
 		openFn: func(ctx context.Context) (storage.FramedFile, error) {
 			return base.OpenFramedFile(ctx, "build-1/memfile")
 		},
@@ -254,15 +252,15 @@ func TestPeerFramedFile_Size_UseStorage_SetsUploadedAndStoresTransitionHeaders(t
 	size, err := f.Size(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, int64(4096), size)
-	assert.True(t, uploaded.Load(), "uploaded flag should be set")
+	assert.NotNil(t, uploaded.Load(), "uploaded flag should be set")
 
-	hdrs := transHdrs.Load()
+	hdrs := uploaded.Load()
 	require.NotNil(t, hdrs, "transition headers should be stored")
 	assert.Equal(t, memHeader, hdrs.MemfileHeader)
 	assert.Equal(t, rootHeader, hdrs.RootfsHeader)
 }
 
-func TestPeerFramedFile_GetFrame_TransitionHeaders_ReturnsPeerTransitionedError(t *testing.T) {
+func TestPeerFramedFile_GetFrame_UploadedHeaders_ReturnsPeerTransitionedError(t *testing.T) {
 	t.Parallel()
 
 	memHeader := []byte("mem-header-v4")
@@ -270,11 +268,10 @@ func TestPeerFramedFile_GetFrame_TransitionHeaders_ReturnsPeerTransitionedError(
 
 	client := orchestratormocks.NewMockChunkServiceClient(t)
 
-	uploaded := &atomic.Bool{}
-	uploaded.Store(true)
+	uploaded := &atomic.Pointer[UploadedHeaders]{}
+	uploaded.Store(&UploadedHeaders{})
 
-	transHdrs := &atomic.Pointer[TransitionHeaders]{}
-	transHdrs.Store(&TransitionHeaders{
+	uploaded.Store(&UploadedHeaders{
 		MemfileHeader: memHeader,
 		RootfsHeader:  rootHeader,
 	})
@@ -284,11 +281,10 @@ func TestPeerFramedFile_GetFrame_TransitionHeaders_ReturnsPeerTransitionedError(
 	base.EXPECT().OpenFramedFile(mock.Anything, "build-1/memfile").Return(baseFF, nil)
 
 	f := &peerFramedFile{peerHandle: peerHandle[storage.FramedFile]{
-		client:            client,
-		buildID:           "build-1",
-		fileName:          storage.MemfileName,
-		uploaded:          uploaded,
-		transitionHeaders: transHdrs,
+		client:   client,
+		buildID:  "build-1",
+		fileName: storage.MemfileName,
+		uploaded: uploaded,
 		openFn: func(ctx context.Context) (storage.FramedFile, error) {
 			return base.OpenFramedFile(ctx, "build-1/memfile")
 		},
@@ -305,55 +301,40 @@ func TestPeerFramedFile_GetFrame_TransitionHeaders_ReturnsPeerTransitionedError(
 	assert.Equal(t, rootHeader, transErr.RootfsHeader)
 }
 
-func TestPeerFramedFile_GetFrame_WithFrameTable_NoTransitionError(t *testing.T) {
+func TestPeerFramedFile_GetFrame_WithFrameTable_StillTransitions(t *testing.T) {
 	t.Parallel()
 
-	// When frameTable is non-nil, the fallback should call base.GetFrame
-	// directly without checking transition headers.
+	// Even with ft!=nil, if uploaded headers are set, the transition error
+	// should fire — the caller always gets a chance to swap headers.
 	client := orchestratormocks.NewMockChunkServiceClient(t)
 
-	uploaded := &atomic.Bool{}
-	uploaded.Store(true)
-
-	transHdrs := &atomic.Pointer[TransitionHeaders]{}
-	transHdrs.Store(&TransitionHeaders{
+	uploaded := &atomic.Pointer[UploadedHeaders]{}
+	uploaded.Store(&UploadedHeaders{
 		MemfileHeader: []byte("mem"),
 		RootfsHeader:  []byte("root"),
 	})
 
 	ft := &storage.FrameTable{}
-	baseData := []byte("compressed data")
 
 	baseFF := storagemocks.NewMockFramedFile(t)
-	baseFF.EXPECT().GetFrame(mock.Anything, int64(0), ft, true, mock.Anything, int64(len(baseData)), mock.Anything).
-		RunAndReturn(func(_ context.Context, _ int64, _ *storage.FrameTable, _ bool, buf []byte, _ int64, onRead func(int64)) (storage.Range, error) {
-			n := copy(buf, baseData)
-			if onRead != nil {
-				onRead(int64(n))
-			}
-
-			return storage.Range{Start: 0, Length: n}, nil
-		})
-
-	base := providermocks.NewMockStorageProvider(t)
-	base.EXPECT().OpenFramedFile(mock.Anything, "build-1/memfile").Return(baseFF, nil)
+	// base.GetFrame should NOT be called — transition fires first
 
 	f := &peerFramedFile{peerHandle: peerHandle[storage.FramedFile]{
-		client:            client,
-		buildID:           "build-1",
-		fileName:          storage.MemfileName,
-		uploaded:          uploaded,
-		transitionHeaders: transHdrs,
-		openFn: func(ctx context.Context) (storage.FramedFile, error) {
-			return base.OpenFramedFile(ctx, "build-1/memfile")
+		client:   client,
+		buildID:  "build-1",
+		fileName: storage.MemfileName,
+		uploaded: uploaded,
+		openFn: func(_ context.Context) (storage.FramedFile, error) {
+			return baseFF, nil
 		},
 	}}
 
-	buf := make([]byte, len(baseData))
-	r, err := f.GetFrame(t.Context(), 0, ft, true, buf, int64(len(baseData)), nil)
-	require.NoError(t, err)
-	assert.Equal(t, len(baseData), r.Length)
-	assert.Equal(t, baseData, buf[:r.Length])
+	buf := make([]byte, 64)
+	_, err := f.GetFrame(t.Context(), 0, ft, true, buf, 64, nil)
+	var transErr *storage.PeerTransitionedError
+	require.ErrorAs(t, err, &transErr)
+	assert.Equal(t, []byte("mem"), transErr.MemfileHeader)
+	assert.Equal(t, []byte("root"), transErr.RootfsHeader)
 }
 
 func TestPeerFramedFile_GetFrame_UploadedSkipsPeer(t *testing.T) {
@@ -363,8 +344,8 @@ func TestPeerFramedFile_GetFrame_UploadedSkipsPeer(t *testing.T) {
 	client := orchestratormocks.NewMockChunkServiceClient(t)
 	// No expectations on client — it should not be called.
 
-	uploaded := &atomic.Bool{}
-	uploaded.Store(true)
+	uploaded := &atomic.Pointer[UploadedHeaders]{}
+	uploaded.Store(&UploadedHeaders{})
 
 	baseData := []byte("from gcs")
 	baseFF := storagemocks.NewMockFramedFile(t)

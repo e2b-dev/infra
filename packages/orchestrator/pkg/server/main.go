@@ -25,8 +25,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-// uploadedBuildHeaders stores serialized V4 headers for a completed upload,
-// so that peers can transition from P2P reads to storage reads.
+// Matches the template cache TTL so entries live as long as the
+// templates they refer to and are cleaned up automatically.
 const uploadedBuildsTTL = 1 * time.Hour
 
 type uploadedBuildHeaders struct {
