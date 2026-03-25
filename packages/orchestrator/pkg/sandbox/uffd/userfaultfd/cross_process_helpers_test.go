@@ -257,10 +257,15 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 		}
 
 		var result handlerPageStates
+		sentinelOffsetUint := uint(sentinelOffset)
 
 		for i := 0; i < len(data); i += entrySize {
 			state := pageState(data[i])
 			offset := uint(binary.LittleEndian.Uint64(data[i+1 : i+entrySize]))
+			if offset == sentinelOffsetUint {
+				// The sentinel page is touched only to fence REMOVE processing.
+				continue
+			}
 
 			switch state {
 			case faulted:
