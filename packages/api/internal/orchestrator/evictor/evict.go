@@ -64,14 +64,14 @@ func (e *Evictor) Start(ctx context.Context) {
 					if err := e.removeSandbox(context.WithoutCancel(ctx), item.TeamID, item.SandboxID, sandbox.RemoveOpts{Action: action, Eviction: true}); err != nil {
 						if action == sandbox.StateActionPause {
 							switch {
-							case errors.Is(err, sandbox.ErrNotEvictable):
+							case isNotEvictableError(err):
 								pause.LogSkipped(ctx, item.SandboxID, item.TeamID.String(), pause.ReasonTimeout, pause.SkipReasonNotEvictable)
 							case errors.Is(err, sandbox.ErrNotFound):
 								pause.LogSkipped(ctx, item.SandboxID, item.TeamID.String(), pause.ReasonTimeout, pause.SkipReasonNotFound)
 							default:
 								pause.LogFailure(ctx, item.SandboxID, item.TeamID.String(), pause.ReasonTimeout, err)
 							}
-						} else if !errors.Is(err, sandbox.ErrNotEvictable) && !errors.Is(err, sandbox.ErrNotFound) {
+						} else if !isKnownEvictionError(err) {
 							logger.L().Debug(ctx, "Evicting sandbox failed",
 								zap.Error(err),
 								logger.WithSandboxID(item.SandboxID),
@@ -93,4 +93,12 @@ func (e *Evictor) Start(ctx context.Context) {
 			}
 		}
 	}
+}
+
+func isNotEvictableError(err error) bool {
+	return errors.Is(err, sandbox.ErrEvictionInProgress) || errors.Is(err, sandbox.ErrEvictionNotNeeded)
+}
+
+func isKnownEvictionError(err error) bool {
+	return isNotEvictableError(err) || errors.Is(err, sandbox.ErrNotFound)
 }
