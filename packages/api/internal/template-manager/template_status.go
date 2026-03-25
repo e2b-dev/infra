@@ -47,8 +47,11 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 			err = tm.SetStatus(ctx, buildID, types.BuildStatusGroupFailed, &templatemanagergrpc.TemplateBuildStatusReason{
 				Message: "build is in waiting state for too long",
 			})
+			if err != nil {
+				logger.L().Error(ctx, "error when setting build status to failed after waiting for too long", zap.Error(err), logger.WithBuildID(buildID.String()), logger.WithTemplateID(templateID))
+			}
 
-			return fmt.Errorf("build is in waiting state for too long, failing it: %w", err)
+			return fmt.Errorf("build is in waiting state for too long, failing it")
 		}
 
 		// just wait for next sync
