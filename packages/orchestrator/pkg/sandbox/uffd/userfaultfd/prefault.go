@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 )
 
 // Prefault proactively copies a page to guest memory at the given offset.
