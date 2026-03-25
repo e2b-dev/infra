@@ -129,7 +129,6 @@ func setupEnv(ctx context.Context, storagePath, kernel, fc string, localMode boo
 			"HOST_KERNELS_DIR":                 abs(filepath.Join(dataDir, "kernels")),
 			"LOCAL_TEMPLATE_STORAGE_BASE_PATH": abs(filepath.Join(dataDir, "templates")),
 			"ORCHESTRATOR_BASE_PATH":           abs(filepath.Join(dataDir, "orchestrator")),
-			"SANDBOX_DIR":                      abs(filepath.Join(dataDir, "sandbox")),
 			"SNAPSHOT_CACHE_DIR":               abs(filepath.Join(dataDir, "snapshot-cache")),
 			"STORAGE_PROVIDER":                 "Local",
 			"USE_LOCAL_NAMESPACE_STORAGE":      "true",

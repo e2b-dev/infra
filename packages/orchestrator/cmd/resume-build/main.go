@@ -233,7 +233,6 @@ func setupEnv(from string) error {
 		"HOST_ENVD_PATH":              abs(filepath.Join(dataDir, "envd", "envd")),
 		"HOST_KERNELS_DIR":            abs(filepath.Join(dataDir, "kernels")),
 		"ORCHESTRATOR_BASE_PATH":      abs(filepath.Join(dataDir, "orchestrator")),
-		"SANDBOX_DIR":                 abs(filepath.Join(dataDir, "sandbox")),
 		"SNAPSHOT_CACHE_DIR":          abs(filepath.Join(dataDir, "snapshot-cache")),
 		"USE_LOCAL_NAMESPACE_STORAGE": "true",
 	}
