@@ -49,6 +49,7 @@ func main() {
 	fromBuild := flag.String("from-build", "", "build ID (UUID) to resume from (required)")
 	toBuild := flag.String("to-build", "", "output build ID (UUID) for pause snapshot (auto-generated if not specified)")
 	storagePath := flag.String("storage", ".local-build", "storage: local path or gs://bucket")
+	sandboxDir := flag.String("sandbox-dir", "", "override SANDBOX_DIR (the rootfs path baked into the snapshot)")
 	iterations := flag.Int("iterations", 0, "run N iterations (0 = interactive)")
 	coldStart := flag.Bool("cold", false, "clear cache between iterations (cold start each time)")
 	noPrefetch := flag.Bool("no-prefetch", false, "disable memory prefetching")
@@ -123,7 +124,7 @@ func main() {
 		outputBuildID = uuid.New().String()
 	}
 
-	if err := setupEnv(*storagePath); err != nil {
+	if err := setupEnv(*storagePath, *sandboxDir); err != nil {
 		log.Fatal(err)
 	}
 
@@ -204,8 +205,12 @@ type cmdTimings struct {
 	err     error
 }
 
-func setupEnv(from string) error {
+func setupEnv(from string, sandboxDir string) error {
 	abs := func(s string) string { return utils.Must(filepath.Abs(s)) }
+
+	if sandboxDir != "" {
+		os.Setenv("SANDBOX_DIR", sandboxDir)
+	}
 
 	// Derive dataDir from 'from' when it's a local path
 	var dataDir string

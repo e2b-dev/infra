@@ -53,6 +53,7 @@ func main() {
 	fromBuild := flag.String("from-build", "", "base build ID to build from (incremental build)")
 	toBuild := flag.String("to-build", "", "output build ID (UUID, required)")
 	storagePath := flag.String("storage", "", "storage: local path or gs://bucket (default: gs://$TEMPLATE_BUCKET_NAME or .local-build)")
+	sandboxDir := flag.String("sandbox-dir", "", "override SANDBOX_DIR (the rootfs path baked into the snapshot)")
 	kernel := flag.String("kernel", featureflags.DefaultKernelVersion, "kernel version")
 	fc := flag.String("firecracker", featureflags.DefaultFirecrackerVersion, "firecracker version")
 	vcpu := flag.Int("vcpu", 2, "vCPUs")
@@ -82,7 +83,7 @@ func main() {
 	localMode := false
 	if *storagePath != "" {
 		localMode = !strings.HasPrefix(*storagePath, "gs://")
-		if err := setupEnv(ctx, *storagePath, *kernel, *fc, localMode); err != nil {
+		if err := setupEnv(ctx, *storagePath, *sandboxDir, *kernel, *fc, localMode); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -102,8 +103,12 @@ func main() {
 	}
 }
 
-func setupEnv(ctx context.Context, storagePath, kernel, fc string, localMode bool) error {
+func setupEnv(ctx context.Context, storagePath, sandboxDir, kernel, fc string, localMode bool) error {
 	abs := func(s string) string { return utils.Must(filepath.Abs(s)) }
+
+	if sandboxDir != "" {
+		os.Setenv("SANDBOX_DIR", sandboxDir)
+	}
 
 	if localMode {
 		if os.Geteuid() != 0 {
