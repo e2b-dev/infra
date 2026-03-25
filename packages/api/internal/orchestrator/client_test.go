@@ -78,9 +78,8 @@ func (s *fakeInfoServer) ServiceInfo(context.Context, *emptypb.Empty) (*infogrpc
 
 // startFakeOrchestratorGRPC starts a gRPC server that responds to ServiceInfo
 // requests. When addr is empty it listens on an ephemeral port; otherwise it
-// binds to the given address (e.g. "127.0.0.1:5008"). Returns the listener
-// address.
-func startFakeOrchestratorGRPC(t *testing.T, nodeID string, addr string) string {
+// binds to the given address (e.g. "127.0.0.1:5008").
+func startFakeOrchestratorGRPC(t *testing.T, nodeID string, addr string) {
 	t.Helper()
 
 	if addr == "" {
@@ -95,8 +94,6 @@ func startFakeOrchestratorGRPC(t *testing.T, nodeID string, addr string) string 
 
 	go srv.Serve(lis)
 	t.Cleanup(srv.GracefulStop)
-
-	return lis.Addr().String()
 }
 
 // TestGetOrConnectNode_CacheHit verifies that when a node is already in the

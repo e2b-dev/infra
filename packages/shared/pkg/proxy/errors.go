@@ -50,6 +50,20 @@ func (e SandboxResumePermissionDeniedError) Error() string {
 	return "sandbox resume permission denied"
 }
 
+type SandboxStillTransitioningError struct {
+	SandboxId string
+}
+
+func NewErrSandboxStillTransitioning(sandboxId string) *SandboxStillTransitioningError {
+	return &SandboxStillTransitioningError{
+		SandboxId: sandboxId,
+	}
+}
+
+func (e SandboxStillTransitioningError) Error() string {
+	return "sandbox is still transitioning"
+}
+
 type MissingTrafficAccessTokenError struct {
 	SandboxId string
 	Header    string
