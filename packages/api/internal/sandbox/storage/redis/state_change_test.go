@@ -823,7 +823,7 @@ func TestStartRemoving_Eviction(t *testing.T) {
 		callback(ctx, nil)
 	})
 
-	t.Run("non-expired sandbox is not evictable", func(t *testing.T) {
+	t.Run("non-expired sandbox returns eviction not needed", func(t *testing.T) {
 		t.Parallel()
 
 		storage, _ := setupTestStorage(t)
@@ -836,7 +836,7 @@ func TestStartRemoving_Eviction(t *testing.T) {
 		require.NoError(t, err)
 
 		_, alreadyDone, callback, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionKill, Eviction: true})
-		require.ErrorIs(t, err, sandbox.ErrNotEvictable)
+		require.ErrorIs(t, err, sandbox.ErrEvictionNotNeeded)
 		assert.False(t, alreadyDone)
 		assert.Nil(t, callback)
 
@@ -846,7 +846,7 @@ func TestStartRemoving_Eviction(t *testing.T) {
 		assert.Equal(t, sandbox.StateRunning, got.State)
 	})
 
-	t.Run("expired sandbox with active transition is not evictable", func(t *testing.T) {
+	t.Run("expired sandbox with active transition returns eviction in progress", func(t *testing.T) {
 		t.Parallel()
 
 		storage, _ := setupTestStorage(t)
@@ -869,7 +869,7 @@ func TestStartRemoving_Eviction(t *testing.T) {
 		_, alreadyDone, callback, evictErr := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionKill, Eviction: true})
 		elapsed := time.Since(start)
 
-		require.ErrorIs(t, evictErr, sandbox.ErrNotEvictable)
+		require.ErrorIs(t, evictErr, sandbox.ErrEvictionInProgress)
 		assert.False(t, alreadyDone)
 		assert.Nil(t, callback)
 		assert.Less(t, elapsed, 500*time.Millisecond, "eviction should return immediately, not wait for the transition")
