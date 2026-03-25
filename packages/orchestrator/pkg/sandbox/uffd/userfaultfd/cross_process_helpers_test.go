@@ -7,6 +7,7 @@ package userfaultfd
 // 2. Does not use garbage collection
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/binary"
@@ -81,7 +82,7 @@ func RandomPages(pagesize, numberOfPages uint64) *MemorySlicer {
 func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error) {
 	t.Helper()
 
-	data := RandomPages(tt.pagesize, tt.numberOfPages)
+	data := RandomPages(tt.pagesize, tt.numberOfPages+1)
 
 	size, err := data.Size()
 	require.NoError(t, err)
@@ -219,6 +220,27 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	})
 
 	pageStatesOnce := func() (handlerPageStates, error) {
+		// Fence: touch the sentinel page to ensure all pending REMOVE events have
+		// been settled in pageTracker before we query it.
+		//
+		// madvise(MADV_DONTNEED) unblocks as soon as readEvents() consumes the
+		// UFFD_EVENT_REMOVE from the fd, but pageTracker.setState(..., removed) is
+		// not called until later in that same serve loop iteration. By forcing a
+		// MISSING pagefault on the sentinel page (which is always unfaulted), we
+		// guarantee the serve loop has fully processed all removes: removes are
+		// applied before pagefaults within an iteration, and the sentinel pagefault
+		// can only arrive in a subsequent iteration (we touch the sentinel only
+		// after madvise returns), so by the time the sentinel read unblocks,
+		// setState has been called for all prior removes.
+		sentinelOffset := int64(tt.numberOfPages) * int64(tt.pagesize)
+		sentinelData, sentinelErr := data.Slice(context.Background(), sentinelOffset, int64(tt.pagesize))
+		if sentinelErr != nil {
+			return handlerPageStates{}, fmt.Errorf("sentinel slice: %w", sentinelErr)
+		}
+		if !bytes.Equal(memoryArea[sentinelOffset:sentinelOffset+int64(tt.pagesize)], sentinelData) {
+			return handlerPageStates{}, fmt.Errorf("sentinel content mismatch")
+		}
+
 		err := cmd.Process.Signal(syscall.SIGUSR2)
 		if err != nil {
 			return handlerPageStates{}, err
