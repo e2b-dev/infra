@@ -30,6 +30,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template/peerclient"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/tcpfirewall"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/core/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/metadata"
@@ -62,10 +63,8 @@ func main() {
 	cmdPause := flag.String("cmd-pause", "", "execute command in sandbox, then pause on success")
 	cmdSignalPause := flag.String("cmd-signal-pause", "", "execute command in sandbox, then wait for SIGUSR1 before pausing")
 	optimize := flag.Bool("optimize", false, "collect fresh prefetch mapping after pause (resumes snapshot to record page faults)")
-	colorMode := cmdutil.ColorFlag()
 
 	flag.Parse()
-	cmdutil.InitColor(*colorMode)
 
 	if *fromBuild == "" {
 		log.Fatal("-from-build required")
@@ -471,8 +470,8 @@ func printCmdResults(results []cmdTimings) {
 		fmt.Printf("   [%2d] %s / %s / %s  (resume: %s%+.1f%%%s, cmd: %s%+.1f%%%s)\n",
 			i+1,
 			fmtDur(t.resume), fmtDur(t.command), fmtDur(t.total),
-			colorForDiff(resumeDiff), resumeDiff, cmdutil.ColorReset,
-			colorForDiff(cmdDiff), cmdDiff, cmdutil.ColorReset)
+			colorForDiff(resumeDiff), resumeDiff, colorReset,
+			colorForDiff(cmdDiff), cmdDiff, colorReset)
 	}
 
 	// Print summary
@@ -507,11 +506,11 @@ func printCmdResults(results []cmdTimings) {
 func colorForDiff(diff float64) string {
 	switch {
 	case diff < -5:
-		return cmdutil.ColorGreen
+		return colorGreen
 	case diff > 5:
-		return cmdutil.ColorRed
+		return colorRed
 	default:
-		return cmdutil.ColorYellow
+		return colorYellow
 	}
 }
 
@@ -764,8 +763,8 @@ func printPauseResults(results []pauseTimings) {
 		fmt.Printf("   [%2d] %s / %s / %s  (resume: %s%+.1f%%%s, pause: %s%+.1f%%%s)\n",
 			i+1,
 			fmtDur(t.resume), fmtDur(t.pause), fmtDur(t.total),
-			colorForDiff(resumeDiff), resumeDiff, cmdutil.ColorReset,
-			colorForDiff(pauseDiff), pauseDiff, cmdutil.ColorReset)
+			colorForDiff(resumeDiff), resumeDiff, colorReset,
+			colorForDiff(pauseDiff), pauseDiff, colorReset)
 	}
 
 	// Print summary
@@ -1031,7 +1030,7 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	if verbose {
 		fmt.Println("🔧 Creating template cache...")
 	}
-	cache, err := template.NewCache(config, flags, persistence, blockMetrics, nil)
+	cache, err := template.NewCache(config, flags, persistence, blockMetrics, peerclient.NopResolver())
 	if err != nil {
 		return fmt.Errorf("template cache: %w", err)
 	}
@@ -1319,6 +1318,13 @@ func printArtifactSizes(_, buildID string) {
 
 // Benchmark output formatting
 
+const (
+	colorReset  = "\033[0m"
+	colorRed    = "\033[31m"
+	colorGreen  = "\033[32m"
+	colorYellow = "\033[33m"
+)
+
 type benchResult struct {
 	dur time.Duration
 	err error
@@ -1379,14 +1385,14 @@ func printResults(results []benchResult) {
 		var color string
 		switch {
 		case diff < 0:
-			color = cmdutil.ColorGreen
+			color = colorGreen
 		case diff > 0:
-			color = cmdutil.ColorRed
+			color = colorRed
 		default:
-			color = cmdutil.ColorYellow
+			color = colorYellow
 		}
 
-		fmt.Printf("   [%2d] %s  %s%+.1f%%%s\n", i+1, fmtDur(r.dur), color, pct, cmdutil.ColorReset)
+		fmt.Printf("   [%2d] %s  %s%+.1f%%%s\n", i+1, fmtDur(r.dur), color, pct, colorReset)
 	}
 
 	// Print summary stats

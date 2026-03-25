@@ -28,6 +28,9 @@ func extractBucketName(path string) string {
 	return strings.TrimPrefix(normalizeGCSPath(path), "gs://")
 }
 
+// SetupStorage configures storage environment variables based on the storage path.
+// If path starts with "gs://" or "gs:", configures GCS storage.
+// Otherwise, configures local storage.
 func SetupStorage(storagePath string) {
 	absPath := func(p string) string {
 		abs, err := filepath.Abs(p)

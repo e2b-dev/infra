@@ -108,8 +108,10 @@ var _ storage.StorageProvider = (*peerStorageProvider)(nil)
 
 // peerStorageProvider tries the peer first for reads. Writes are always delegated to base.
 type peerStorageProvider struct {
-	base              storage.StorageProvider
-	peerClient        orchestrator.ChunkServiceClient
+	base       storage.StorageProvider
+	peerClient orchestrator.ChunkServiceClient
+	// uploaded is set to true when the peer signals that GCS upload is complete
+	// (use_storage=true). Once set, all subsequent reads skip the peer and go to base.
 	uploaded          *atomic.Bool
 	transitionHeaders *atomic.Pointer[TransitionHeaders]
 }

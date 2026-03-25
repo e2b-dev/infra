@@ -116,6 +116,8 @@ func TestPeerBlob_WriteTo_UploadedSetMidStream_CompletesFromPeerThenFallsBack(t 
 
 	uploaded := &atomic.Bool{}
 
+	// Peer streams three chunks; the second Recv sets uploaded=true
+	// (simulating a concurrent operation receiving UseStorage).
 	stream := orchestratormocks.NewMockChunkService_GetBuildBlobClient(t)
 	stream.EXPECT().Recv().Return(&orchestrator.GetBuildBlobResponse{Data: []byte("aaa")}, nil).Once()
 	stream.EXPECT().Recv().RunAndReturn(func() (*orchestrator.GetBuildBlobResponse, error) {
