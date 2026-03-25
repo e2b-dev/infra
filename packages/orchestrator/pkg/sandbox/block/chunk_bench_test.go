@@ -149,7 +149,7 @@ func newColdSetup(data []byte, dataSize int64, ft *storage.FrameTable, compresse
 			}
 		}
 
-		c, err := NewChunker(getter, dataSize, blockSize, tb.TempDir()+"/cache", newTestMetrics(tb))
+		c, err := NewChunker("bench-build", "memfile", &fakeProvider{file: getter}, dataSize, blockSize, tb.TempDir()+"/cache", newTestMetrics(tb))
 		require.NoError(tb, err)
 
 		return coldSetup{
@@ -260,7 +260,7 @@ func BenchmarkCacheHit(b *testing.B) {
 			name: "Uncompressed",
 			read: func(b *testing.B, blockSize int64) (benchReadF, func()) {
 				b.Helper()
-				c, err := NewChunker(&slowFrameGetter{data: data}, dataSize, blockSize, b.TempDir()+"/cache", newTestMetrics(b))
+				c, err := NewChunker("bench-build", "memfile", &fakeProvider{file: &slowFrameGetter{data: data}}, dataSize, blockSize, b.TempDir()+"/cache", newTestMetrics(b))
 				require.NoError(b, err)
 
 				return func(ctx context.Context, off, length int64) ([]byte, error) {

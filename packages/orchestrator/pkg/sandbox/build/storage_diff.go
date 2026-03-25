@@ -10,21 +10,22 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-func storagePath(buildId string, diffType DiffType) string {
+// StoragePath returns the GCS path for a build's data file (without compression suffix).
+func StoragePath(buildId string, diffType DiffType) string {
 	return fmt.Sprintf("%s/%s", buildId, diffType)
 }
 
 type StorageDiff struct {
-	chunker     *utils.SetOnce[*block.Chunker]
-	cachePath   string
-	cacheKey    DiffStoreKey
-	storagePath string
+	chunker   *utils.SetOnce[*block.Chunker]
+	cachePath string
+	cacheKey  DiffStoreKey
+	buildID   string
+	diffType  DiffType
 
 	blockSize   int64
 	metrics     blockmetrics.Metrics
 	persistence storage.StorageProvider
-	sizeU       int64               // uncompressed; 0 means unknown (fall back to Size() call)
-	ft          *storage.FrameTable // nil for uncompressed builds
+	sizeU       int64 // uncompressed; 0 means unknown (fall back to Size() call)
 }
 
 var _ Diff = (*StorageDiff)(nil)
@@ -45,24 +46,20 @@ func newStorageDiff(
 	metrics blockmetrics.Metrics,
 	persistence storage.StorageProvider,
 	sizeU int64,
-	ft *storage.FrameTable,
 ) (*StorageDiff, error) {
-	storagePath := storagePath(buildId, diffType)
 	if !isKnownDiffType(diffType) {
 		return nil, UnknownDiffTypeError{diffType}
 	}
 
-	cachePath := GenerateDiffCachePath(basePath, buildId, diffType)
-
 	return &StorageDiff{
-		storagePath: storagePath,
-		cachePath:   cachePath,
+		buildID:     buildId,
+		diffType:    diffType,
+		cachePath:   GenerateDiffCachePath(basePath, buildId, diffType),
 		chunker:     utils.NewSetOnce[*block.Chunker](),
 		blockSize:   blockSize,
 		metrics:     metrics,
 		persistence: persistence,
 		sizeU:       sizeU,
-		ft:          ft,
 		cacheKey:    GetDiffStoreKey(buildId, diffType),
 	}, nil
 }
@@ -87,46 +84,29 @@ func (b *StorageDiff) Init(ctx context.Context) error {
 	return b.chunker.SetValue(chunker)
 }
 
-// createChunker opens the single data file and creates a Chunker.
+// createChunker resolves the uncompressed file size and creates a Chunker.
+// For V3 builds (sizeU == 0), falls back to a Size() network call on the
+// base (uncompressed) path — V3 builds are always uncompressed.
 func (b *StorageDiff) createChunker(ctx context.Context) (*block.Chunker, error) {
-	file, size, err := b.openDataFile(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open data file for %s: %w", b.storagePath, err)
-	}
-
-	if size == 0 {
-		return nil, fmt.Errorf("no asset found for %s (size is 0)", b.storagePath)
-	}
-
-	return block.NewChunker(file, size, b.blockSize, b.cachePath, b.metrics)
-}
-
-// openDataFile opens the single data file, using the FrameTable to determine
-// the compression suffix. Returns the uncompressed file size.
-//
-// If fileSize was provided at construction (V4 header), it is used directly.
-// Otherwise (V3/legacy), falls back to obj.Size(ctx) which makes a network call.
-func (b *StorageDiff) openDataFile(ctx context.Context) (storage.FramedFile, int64, error) {
-	path := b.storagePath
-	if b.ft.IsCompressed() {
-		path = storage.CompressedPath(path, b.ft.CompressionType())
-	}
-
-	obj, err := b.persistence.OpenFramedFile(ctx, path)
-	if err != nil {
-		return nil, 0, fmt.Errorf("open asset %s: %w", path, err)
-	}
-
 	size := b.sizeU
 	if size == 0 {
-		// V3/legacy: fall back to network call.
+		basePath := StoragePath(b.buildID, b.diffType)
+		obj, err := b.persistence.OpenFramedFile(ctx, basePath)
+		if err != nil {
+			return nil, fmt.Errorf("open asset %s: %w", basePath, err)
+		}
+
 		size, err = obj.Size(ctx)
 		if err != nil {
-			return nil, 0, fmt.Errorf("get size of asset %s: %w", path, err)
+			return nil, fmt.Errorf("get size of asset %s: %w", basePath, err)
 		}
 	}
 
-	return obj, size, nil
+	if size == 0 {
+		return nil, fmt.Errorf("no asset found for %s/%s (size is 0)", b.buildID, b.diffType)
+	}
+
+	return block.NewChunker(b.buildID, string(b.diffType), b.persistence, size, b.blockSize, b.cachePath, b.metrics)
 }
 
 func (b *StorageDiff) Close() error {

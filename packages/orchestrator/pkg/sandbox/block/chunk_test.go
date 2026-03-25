@@ -68,6 +68,26 @@ type slowFrameGetter struct {
 
 var _ storage.FramedFile = (*slowFrameGetter)(nil)
 
+// fakeProvider wraps a FramedFile so it can be passed as a StorageProvider to NewChunker.
+// OpenFramedFile always returns the wrapped file regardless of path.
+type fakeProvider struct {
+	storage.StorageProvider
+
+	file storage.FramedFile
+}
+
+func (p *fakeProvider) OpenFramedFile(_ context.Context, _ string) (storage.FramedFile, error) {
+	return p.file, nil
+}
+
+func newTestChunker(t *testing.T, file storage.FramedFile, size int64) *Chunker {
+	t.Helper()
+	c, err := NewChunker("test-build", "memfile", &fakeProvider{file: file}, size, testBlockSize, t.TempDir()+"/cache", newTestMetrics(t))
+	require.NoError(t, err)
+
+	return c
+}
+
 func (s *slowFrameGetter) Size(_ context.Context) (int64, error) {
 	return int64(len(s.data)), nil
 }
@@ -197,10 +217,8 @@ var allChunkerTestCases = []chunkerTestCase{
 		newChunker: func(t *testing.T, data []byte, delay time.Duration) (*Chunker, *storage.FrameTable) {
 			t.Helper()
 			ft, getter := makeCompressedTestData(t, data, delay)
-			c, err := NewChunker(getter, int64(len(data)), testBlockSize, t.TempDir()+"/cache", newTestMetrics(t))
-			require.NoError(t, err)
 
-			return c, ft
+			return newTestChunker(t, getter, int64(len(data))), ft
 		},
 	},
 	{
@@ -208,10 +226,8 @@ var allChunkerTestCases = []chunkerTestCase{
 		newChunker: func(t *testing.T, data []byte, delay time.Duration) (*Chunker, *storage.FrameTable) {
 			t.Helper()
 			getter := &slowFrameGetter{data: data, ttfb: delay}
-			c, err := NewChunker(getter, int64(len(data)), testBlockSize, t.TempDir()+"/cache", newTestMetrics(t))
-			require.NoError(t, err)
 
-			return c, nil
+			return newTestChunker(t, getter, int64(len(data))), nil
 		},
 	},
 }
@@ -270,8 +286,7 @@ func TestChunker_FetchDedup(t *testing.T) {
 
 	ft, getter := makeCompressedTestData(t, data, 10*time.Millisecond)
 
-	chunker, err := NewChunker(getter, int64(len(data)), testBlockSize, t.TempDir()+"/cache", newTestMetrics(t))
-	require.NoError(t, err)
+	chunker := newTestChunker(t, getter, int64(len(data)))
 	defer chunker.Close()
 
 	const numGoroutines = 10
@@ -341,8 +356,7 @@ func TestChunker_EarlyReturn(t *testing.T) {
 		gate:      gate,
 	}
 
-	chunker, err := NewChunker(getter, int64(len(data)), testBlockSize, t.TempDir()+"/cache", newTestMetrics(t))
-	require.NoError(t, err)
+	chunker := newTestChunker(t, getter, int64(len(data)))
 	defer chunker.Close()
 
 	var mu sync.Mutex
@@ -393,13 +407,12 @@ func TestChunker_ErrorKeepsPartialData(t *testing.T) {
 		failAfter: int64(testFileSize / 2),
 	}
 
-	chunker, err := NewChunker(getter, int64(len(data)), testBlockSize, t.TempDir()+"/cache", newTestMetrics(t))
-	require.NoError(t, err)
+	chunker := newTestChunker(t, getter, int64(len(data)))
 	defer chunker.Close()
 
 	// Request the last block — should fail because upstream dies at midpoint.
 	lastOff := int64(testFileSize) - testBlockSize
-	_, err = chunker.SliceBlock(t.Context(), lastOff, testBlockSize, nil)
+	_, err := chunker.SliceBlock(t.Context(), lastOff, testBlockSize, nil)
 	require.Error(t, err)
 
 	// First block (within the first half) should still be cached and servable.
@@ -420,8 +433,7 @@ func TestChunker_ContextCancellation(t *testing.T) {
 		bandwidth: 50 * 1024 * 1024, // 50 MB/s — total fetch takes ~20ms
 	}
 
-	chunker, err := NewChunker(getter, int64(len(data)), testBlockSize, t.TempDir()+"/cache", newTestMetrics(t))
-	require.NoError(t, err)
+	chunker := newTestChunker(t, getter, int64(len(data)))
 	defer chunker.Close()
 
 	// Request with a short-lived context — should fail.
@@ -429,7 +441,7 @@ func TestChunker_ContextCancellation(t *testing.T) {
 	defer cancel()
 
 	lastOff := int64(testFileSize) - testBlockSize
-	_, err = chunker.SliceBlock(ctx, lastOff, testBlockSize, nil)
+	_, err := chunker.SliceBlock(ctx, lastOff, testBlockSize, nil)
 	require.Error(t, err)
 
 	// Wait for the background fetch to complete.

@@ -101,8 +101,10 @@ func precomputedGetFrameAttrs(compressed bool) precomputedAttrs {
 }
 
 type Chunker struct {
-	file storage.FramedFile // single data file (compressed or uncompressed)
-	size int64              // uncompressed size
+	buildID     string
+	fileType    string // e.g. "memfile", "rootfs.ext4"
+	persistence storage.StorageProvider
+	size        int64 // uncompressed size
 
 	cache   *Cache
 	metrics metrics.Metrics
@@ -114,11 +116,13 @@ type Chunker struct {
 var _ FramedBlockReader = (*Chunker)(nil)
 
 // NewChunker creates a Chunker backed by a new mmap cache at cachePath.
-// file is the single data file (compressed or uncompressed), size is the
-// uncompressed size. Whether decompression is needed is determined per-call
-// from the FrameTable passed to GetBlock/ReadBlock.
+// The storage path is derived per-fetch from the FrameTable passed to
+// SliceBlock/ReadBlock, so the Chunker survives header swaps (P2P → GCS
+// transition) without holding a stale path.
 func NewChunker(
-	file storage.FramedFile,
+	buildID string,
+	fileType string,
+	persistence storage.StorageProvider,
 	size int64,
 	blockSize int64,
 	cachePath string,
@@ -130,10 +134,12 @@ func NewChunker(
 	}
 
 	return &Chunker{
-		file:    file,
-		size:    size,
-		cache:   cache,
-		metrics: m,
+		buildID:     buildID,
+		fileType:    fileType,
+		persistence: persistence,
+		size:        size,
+		cache:       cache,
+		metrics:     m,
 	}, nil
 }
 
@@ -270,7 +276,22 @@ func (c *Chunker) runFetch(ctx context.Context, session *fetchSession, offsetU i
 		prevTotal = totalWritten
 	}
 
-	_, err = c.file.GetFrame(ctx, offsetU, ft, compressed, mmapSlice[:session.chunkLen], readSize, onRead)
+	// Derive the storage path from the FrameTable at fetch time. This ensures
+	// the correct path is used even after a header swap (P2P → GCS transition).
+	path := fmt.Sprintf("%s/%s", c.buildID, c.fileType)
+	if compressed {
+		path = storage.CompressedPath(path, ft.CompressionType())
+	}
+
+	file, err := c.persistence.OpenFramedFile(ctx, path)
+	if err != nil {
+		timer.Record(ctx, session.chunkLen, attrs.remoteFailure)
+		session.setError(fmt.Errorf("failed to open data file %s: %w", path, err), false)
+
+		return
+	}
+
+	_, err = file.GetFrame(ctx, offsetU, ft, compressed, mmapSlice[:session.chunkLen], readSize, onRead)
 	if err != nil {
 		timer.Record(ctx, session.chunkLen, attrs.remoteFailure)
 		session.setError(fmt.Errorf("failed to fetch data at %#x: %w", offsetU, err), false)

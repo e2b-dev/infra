@@ -88,7 +88,7 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 		}
 
 		size := b.buildFileSize(h, mappedToBuild.BuildId)
-		mappedBuild, err := b.getBuild(ctx, h, mappedToBuild.BuildId, size, mappedToBuild.FrameTable)
+		mappedBuild, err := b.getBuild(ctx, h, mappedToBuild.BuildId, size)
 		if err != nil {
 			return 0, fmt.Errorf("failed to get build: %w", err)
 		}
@@ -131,7 +131,7 @@ func (b *File) Slice(ctx context.Context, off, _ int64) ([]byte, error) {
 		}
 
 		size := b.buildFileSize(h, mappedBuild.BuildId)
-		diff, err := b.getBuild(ctx, h, mappedBuild.BuildId, size, mappedBuild.FrameTable)
+		diff, err := b.getBuild(ctx, h, mappedBuild.BuildId, size)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get build: %w", err)
 		}
@@ -193,7 +193,7 @@ func (b *File) buildFileSize(h *header.Header, buildID uuid.UUID) int64 {
 	return info.Size
 }
 
-func (b *File) getBuild(ctx context.Context, h *header.Header, buildID uuid.UUID, sizeU int64, ft *storage.FrameTable) (Diff, error) {
+func (b *File) getBuild(ctx context.Context, h *header.Header, buildID uuid.UUID, sizeU int64) (Diff, error) {
 	storageDiff, err := newStorageDiff(
 		b.store.cachePath,
 		buildID.String(),
@@ -202,7 +202,6 @@ func (b *File) getBuild(ctx context.Context, h *header.Header, buildID uuid.UUID
 		b.metrics,
 		b.persistence,
 		sizeU,
-		ft,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create storage diff: %w", err)
