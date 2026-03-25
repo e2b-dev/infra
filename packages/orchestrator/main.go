@@ -10,6 +10,7 @@ import (
 const version = "0.1.0"
 
 var commitSHA string
+
 func main() {
 	factories.Run(factories.Options{
 		Version:       version,
