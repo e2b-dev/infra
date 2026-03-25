@@ -10,6 +10,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -64,8 +65,37 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		}
 	}
 
+	// Use a transaction to atomically check for snapshots and delete the template.
+	// This prevents a TOCTOU race where a snapshot could be created between the
+	// ExistsTemplateSnapshots check and the DeleteTemplate call.
+	txClient, tx, err := a.sqlcDB.WithTx(ctx)
+	if err != nil {
+		telemetry.ReportCriticalError(ctx, "error when beginning transaction", err)
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when beginning transaction")
+
+		return
+	}
+	defer tx.Rollback(ctx)
+
+	// Lock the env row to prevent concurrent snapshot creation (UpsertSnapshot)
+	// from inserting a snapshot with base_env_id referencing this env while we
+	// are checking and deleting it.
+	_, err = txClient.LockEnvForUpdate(ctx, templateID)
+	if err != nil {
+		if dberrors.IsNotFoundError(err) {
+			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Template '%s' not found", templateID))
+
+			return
+		}
+
+		telemetry.ReportCriticalError(ctx, "error when locking env for deletion", err)
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when deleting template")
+
+		return
+	}
+
 	// check if base template has snapshots
-	hasSnapshots, err := a.sqlcDB.ExistsTemplateSnapshots(ctx, templateID)
+	hasSnapshots, err := txClient.ExistsTemplateSnapshots(ctx, templateID)
 	if err != nil {
 		telemetry.ReportError(ctx, "error when checking if base template has snapshots", err)
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when checking if template has snapshots")
@@ -85,12 +115,20 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 	// Build artifacts are intentionally NOT deleted from storage here because builds are layered diffs
 	// that may be referenced by other builds' header mappings.
 	// [ENG-3477] a future GC mechanism will handle orphaned storage.
-	aliasKeys, err := a.sqlcDB.DeleteTemplate(ctx, queries.DeleteTemplateParams{
+	aliasKeys, err := txClient.DeleteTemplate(ctx, queries.DeleteTemplateParams{
 		TemplateID: templateID,
 		TeamID:     team.ID,
 	})
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when deleting template from db", err)
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when deleting template")
+
+		return
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		telemetry.ReportCriticalError(ctx, "error when committing template deletion", err)
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when deleting template")
 
 		return

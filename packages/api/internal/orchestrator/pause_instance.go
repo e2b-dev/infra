@@ -13,6 +13,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -27,12 +28,31 @@ func (PauseQueueExhaustedError) Error() string {
 	return "The pause queue is exhausted"
 }
 
+// BaseTemplateDeletedError is returned when a snapshot cannot be created because
+// the base template was deleted between sandbox creation and pause.
+type BaseTemplateDeletedError struct {
+	BaseTemplateID string
+}
+
+func (e BaseTemplateDeletedError) Error() string {
+	return fmt.Sprintf("base template '%s' was deleted, cannot create snapshot", e.BaseTemplateID)
+}
+
 func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node, sbx sandbox.Sandbox) error {
 	ctx, span := tracer.Start(ctx, "pause-sandbox")
 	defer span.End()
 
 	result, err := o.throttledUpsertSnapshot(ctx, buildUpsertSnapshotParams(sbx, node))
 	if err != nil {
+		// Check if the error is an FK violation on base_env_id, which means
+		// the base template was deleted between sandbox creation and pause.
+		if dberrors.IsForeignKeyViolation(err) {
+			telemetry.ReportError(ctx, "base template was deleted, cannot create snapshot",
+				err, telemetry.WithTemplateID(sbx.BaseTemplateID))
+
+			return BaseTemplateDeletedError{BaseTemplateID: sbx.BaseTemplateID}
+		}
+
 		telemetry.ReportCriticalError(ctx, "error inserting snapshot for env", err)
 
 		return err
