@@ -7,7 +7,14 @@ RESULT_PATH="{{ .ResultPath }}"
 echo "Starting provisioning script"
 
 echo "Making configuration immutable"
-$BUSYBOX chattr +i /etc/resolv.conf
+if $BUSYBOX chattr +i /etc/resolv.conf 2>/dev/null; then
+    CHATTR_AVAILABLE=1
+elif command -v chattr >/dev/null 2>&1 && chattr +i /etc/resolv.conf 2>/dev/null; then
+    CHATTR_AVAILABLE=1
+else
+    echo "Warning: chattr not available, skipping immutable flag on resolv.conf"
+    CHATTR_AVAILABLE=0
+fi
 
 # Helper function to check if a package is installed
 is_package_installed() {
@@ -28,8 +35,11 @@ done
 
 if [ -n "$MISSING" ]; then
     echo "Missing packages detected, installing:$MISSING"
-    apt-get -q update
-    DEBIAN_FRONTEND=noninteractive DEBCONF_NOWARNINGS=yes apt-get -qq -o=Dpkg::Use-Pty=0 install -y --no-install-recommends $MISSING
+    # Firecracker VM clock starts at epoch (no PTP/chrony yet), so APT rejects
+    # release files as "not valid yet".  Disable all date validation.
+    APT_DATE_OPTS='-o Acquire::Check-Valid-Until=false -o Acquire::Check-Date=false'
+    apt-get -q $APT_DATE_OPTS update
+    DEBIAN_FRONTEND=noninteractive DEBCONF_NOWARNINGS=yes apt-get -qq -o=Dpkg::Use-Pty=0 $APT_DATE_OPTS install -y --no-install-recommends $MISSING
 else
     echo "All required packages are already installed."
 fi
@@ -85,7 +95,9 @@ echo "Linking systemd to init"
 ln -sf /lib/systemd/systemd /usr/sbin/init
 
 echo "Unlocking immutable configuration"
-$BUSYBOX chattr -i /etc/resolv.conf
+if [ "${CHATTR_AVAILABLE:-0}" = "1" ]; then
+    $BUSYBOX chattr -i /etc/resolv.conf 2>/dev/null || chattr -i /etc/resolv.conf 2>/dev/null || true
+fi
 
 echo "Finished provisioning script"
 
