@@ -354,6 +354,12 @@ variable "prefix" {
   default     = "e2b-"
 }
 
+variable "allowed_source_ip" {
+  type        = string
+  description = "The local IP address allowed to connect via SSH"
+  default     = "0.0.0.0/0"
+}
+
 variable "bucket_prefix" {
   type = string
 }

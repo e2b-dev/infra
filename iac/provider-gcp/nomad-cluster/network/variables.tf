@@ -2,6 +2,12 @@ variable "prefix" {
   type = string
 }
 
+variable "allowed_source_ip" {
+  type        = string
+  description = "The local IP address allowed to connect via SSH"
+  default     = "0.0.0.0/0"
+}
+
 variable "environment" {
   description = "The environment (e.g. staging, prod)."
   type        = string
@@ -41,10 +47,6 @@ variable "api_nat_ips" {
 
 variable "api_nat_min_ports_per_vm" {
   type = number
-}
-
-variable "cloudflare_api_token_secret_name" {
-  type = string
 }
 
 variable "api_port" {

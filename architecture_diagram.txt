@@ -1,0 +1,34 @@
+E2B Infrastructure (GCP Native, Single-Node/Scalable)
+
++-----------------------------------------------------------------------------------+
+| VPC: e2b-vpc                                                                      |
+|                                                                                   |
+|  +---------------------------+              +-----------------------------------+ |
+|  | GCP Global Load Balancer  |              | GCP Cloud DNS                     | |
+|  | (Managed SSL, Cert Map)   |              | (A-Star, A-Root, DNS-Auth)        | |
+|  +-------------+-------------+              +-----------------------------------+ |
+|                |                                                                   |
+|                | (Inbound: 443, 80)                                                |
+|                v                                                                   |
+|  +---------------------------+              +-----------------------------------+ |
+|  | API / Ingress Instance    |              | Cloud NAT (Reserved Static IP)    | |
+|  | Group (Tag: orch)         |------------->| (Outbound: 80, 443, 22, 53)       | |
+|  +---------------------------+              +-----------------------------------+ |
+|                |                                              |                    |
+|                | (Internal VPC: 5008, 4646, 8500)             |                    |
+|                v                                              v                    |
+|  +---------------------------+              +-----------------------------------+ |
+|  | Orchestrator Node         |              | Internet (External Services,      | |
+|  | (Firecracker MicroVMs)    |              | Package Managers, GitHub, etc.)   | |
+|  +---------------------------+              +-----------------------------------+ |
+|                |                                                                   |
+|                | (Internal VPC: 9000, 3100, 6379)                                  |
+|                v                                                                   |
+|  +---------------------------+                                                     |
+|  | ClickHouse / Loki / Redis |                                                     |
+|  +---------------------------+                                                     |
+|                                                                                   |
++-----------------------------------------------------------------------------------+
+
+Note: Single-node MVP runs all components on one or two instances.
+Scalable architecture allows each pool to grow independently.

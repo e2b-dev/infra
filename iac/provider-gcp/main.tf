@@ -16,11 +16,6 @@ terraform {
       version = "6.50.0"
     }
 
-    cloudflare = {
-      source  = "cloudflare/cloudflare"
-      version = "4.52.5"
-    }
-
     nomad = {
       source  = "hashicorp/nomad"
       version = "2.1.0"
@@ -117,7 +112,6 @@ module "cluster" {
 
   environment = var.environment
 
-  cloudflare_api_token_secret_name = module.init.cloudflare_api_token_secret_name
   gcp_project_id                   = var.gcp_project_id
   gcp_region                       = var.gcp_region
   gcp_zone                         = var.gcp_zone
@@ -166,6 +160,8 @@ module "cluster" {
   fc_env_pipeline_bucket_name = module.init.fc_env_pipeline_bucket_name
   fc_kernels_bucket_name      = module.init.fc_kernels_bucket_name
   fc_versions_bucket_name     = module.init.fc_versions_bucket_name
+
+  allowed_source_ip = var.allowed_source_ip
 
   clickhouse_job_constraint_prefix = var.clickhouse_job_constraint_prefix
   clickhouse_health_port           = var.clickhouse_health_port

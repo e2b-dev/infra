@@ -126,6 +126,8 @@ module "network" {
 
   nomad_port = var.nomad_port
 
+  allowed_source_ip = var.allowed_source_ip
+
   cluster_tag_name = var.cluster_tag_name
 
   labels = var.labels
