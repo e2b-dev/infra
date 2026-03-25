@@ -38,12 +38,15 @@ func (z *zstdFrameCompressor) release() {
 type lz4FrameCompressor struct{}
 
 func (l *lz4FrameCompressor) Compress(src []byte) ([]byte, error) {
-	// CompressBlockBound guarantees enough space — n == 0 cannot happen.
 	dst := make([]byte, lz4.CompressBlockBound(len(src)))
 
 	n, err := lz4.CompressBlock(src, dst, nil)
 	if err != nil {
 		return nil, fmt.Errorf("lz4 block compress: %w", err)
+	}
+
+	if n == 0 {
+		return nil, fmt.Errorf("lz4 block compress: incompressible data (%d bytes)", len(src))
 	}
 
 	return dst[:n], nil

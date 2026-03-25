@@ -281,7 +281,24 @@ func (lb *LayerExecutor) PauseAndUpload(
 	}
 
 	// Upload snapshot async, it's added to the template cache immediately
-	userLogger.Debug(ctx, fmt.Sprintf("Saving: %s", meta.Template.BuildID))
+	cfg := storage.ResolveCompressConfig(ctx, lb.compressConfig, lb.featureFlags, storage.FileTypeMemfile, storage.UseCaseBuild)
+	if cfg != nil {
+		userLogger.Debug(ctx, fmt.Sprintf("Saving: %s (compress=%s level=%d)", meta.Template.BuildID, cfg.Type, cfg.Level))
+	} else {
+		userLogger.Debug(ctx, fmt.Sprintf("Saving: %s (uncompressed)", meta.Template.BuildID))
+	}
+	if cfg != nil {
+		lb.logger.Info(ctx, "uploading layer",
+			logger.WithBuildID(meta.Template.BuildID),
+			zap.String("compress_type", cfg.Type),
+			zap.Int("compress_level", cfg.Level),
+		)
+	} else {
+		lb.logger.Info(ctx, "uploading layer",
+			logger.WithBuildID(meta.Template.BuildID),
+			zap.String("compress_type", "none"),
+		)
+	}
 
 	// Pipeline per layer:
 	//  1. Upload data files — parallel across layers
@@ -290,8 +307,6 @@ func (lb *LayerExecutor) PauseAndUpload(
 	//  4. Signal complete, save cache index
 	completeUpload, waitForPreviousUploads := lb.uploadTracker.StartUpload()
 	buildID := meta.Template.BuildID
-
-	cfg := storage.ResolveCompressConfig(ctx, lb.compressConfig, lb.featureFlags, storage.FileTypeMemfile, storage.UseCaseBuild)
 	uploader := sandbox.NewBuildUploader(snapshot, lb.templateStorage, storage.TemplateFiles{BuildID: buildID}, cfg, lb.uploadTracker.Pending())
 
 	lb.UploadErrGroup.Go(func() error {
