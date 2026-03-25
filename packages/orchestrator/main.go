@@ -7,10 +7,9 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/tcpfirewall"
 )
 
-var commitSHA string
-
 const version = "0.1.0"
 
+var commitSHA string
 func main() {
 	factories.Run(factories.Options{
 		Version:       version,
