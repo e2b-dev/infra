@@ -59,6 +59,8 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 		return
 	}
 
+	span.SetAttributes(telemetry.WithSandboxID(sandboxID))
+
 	// It could happen that after sandbox transition, it'll be again transitioning, retry up to maxConnectRetries times.
 	const maxConnectRetries = 3
 
@@ -78,6 +80,10 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 		// Sandbox exists but isn't running → check which transitional state.
 		var notRunningErr *sandbox.NotRunningError
 		if !errors.As(apiErr.Err, &notRunningErr) {
+			telemetry.ReportErrorByCode(ctx, apiErr.Code, "error keeping sandbox alive", apiErr.Err,
+				telemetry.WithSandboxID(sandboxID),
+				telemetry.WithTeamID(teamID.String()),
+			)
 			a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 			return
@@ -97,6 +103,10 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 
 		err = a.orchestrator.WaitForStateChange(ctx, teamID, sandboxID)
 		if err != nil {
+			telemetry.ReportCriticalError(ctx, "error waiting for sandbox state change", err,
+				telemetry.WithSandboxID(sandboxID),
+				telemetry.WithTeamID(teamID.String()),
+			)
 			a.sendAPIStoreError(c, http.StatusInternalServerError,
 				"Error waiting for sandbox state change")
 
@@ -116,7 +126,7 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 			return
 		}
 
-		logger.L().Error(ctx, "Error getting last snapshot", logger.WithSandboxID(sandboxID), zap.Error(err))
+		telemetry.ReportCriticalError(ctx, "Error getting last snapshot", err, telemetry.WithSandboxID(sandboxID), telemetry.WithTeamID(teamID.String()))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting snapshot")
 
 		return
@@ -150,7 +160,12 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 	if snap.EnvSecure {
 		accessToken, tokenErr := a.getEnvdAccessToken(build.EnvdVersion, sandboxID)
 		if tokenErr != nil {
-			logger.L().Error(ctx, "Secure envd access token error", zap.Error(tokenErr.Err), logger.WithTemplateID(snap.EnvID), logger.WithBuildID(build.ID.String()), logger.WithSandboxID(sandboxID))
+			telemetry.ReportErrorByCode(ctx, tokenErr.Code, "Secure envd access token error", tokenErr.Err,
+				telemetry.WithTemplateID(snap.EnvID),
+				telemetry.WithBuildID(build.ID.String()),
+				telemetry.WithSandboxID(sandboxID),
+				telemetry.WithTeamID(teamID.String()),
+			)
 			a.sendAPIStoreError(c, tokenErr.Code, tokenErr.ClientMsg)
 
 			return

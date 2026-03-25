@@ -11,10 +11,6 @@ variable "aws_region" {
   type = string
 }
 
-variable "aws_account_id" {
-  type = string
-}
-
 # Auth
 variable "nomad_acl_token" {
   type      = string
@@ -155,6 +151,22 @@ variable "grafana_otlp_url" {
 
 variable "grafana_username" {
   type      = string
+  sensitive = true
+}
+
+variable "grafana_logs_user" {
+  type    = string
+  default = ""
+}
+
+variable "grafana_logs_endpoint" {
+  type    = string
+  default = ""
+}
+
+variable "grafana_logs_api_key" {
+  type      = string
+  default   = ""
   sensitive = true
 }
 

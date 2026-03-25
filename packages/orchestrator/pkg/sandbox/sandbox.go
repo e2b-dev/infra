@@ -295,6 +295,12 @@ func NewFactory(
 	}
 }
 
+// PreBootFn is an optional callback invoked after the rootfs is ready but before
+// Firecracker boots. It receives the rootfs device path (e.g., a file path for
+// DirectProvider or /dev/nbdX for NBDProvider) and may modify the filesystem
+// on the host side.
+type PreBootFn func(ctx context.Context, rootfsPath string) error
+
 // CreateSandbox creates the sandbox.
 // IMPORTANT: You must Close() the sandbox after you are done with it.
 func (f *Factory) CreateSandbox(
@@ -306,6 +312,7 @@ func (f *Factory) CreateSandbox(
 	rootfsCachePath string,
 	processOptions fc.ProcessOptions,
 	apiConfigToStore *orchestrator.SandboxConfig,
+	preBootFn PreBootFn,
 ) (s *Sandbox, e error) {
 	ctx, span := tracer.Start(ctx, "create sandbox")
 	defer span.End()
@@ -378,6 +385,19 @@ func (f *Factory) CreateSandbox(
 	ips, err := ipsPromise.Wait(ctx)
 	if err != nil {
 		return nil, err
+	}
+
+	// Run the optional pre-boot hook before Firecracker starts.
+	// This allows host-side filesystem changes before the guest kernel takes charge.
+	if preBootFn != nil {
+		rootfsPath, pathErr := rootfsProvider.Path()
+		if pathErr != nil {
+			return nil, fmt.Errorf("failed to get rootfs path for pre-boot hook: %w", pathErr)
+		}
+
+		if hookErr := preBootFn(ctx, rootfsPath); hookErr != nil {
+			return nil, fmt.Errorf("pre-boot hook failed: %w", hookErr)
+		}
 	}
 
 	cgroupHandle, cgroupFD := createCgroup(ctx, f.cgroupManager, sandboxFiles.SandboxCgroupName(), cleanup)

@@ -174,12 +174,20 @@ func (ppb *PostProcessingBuilder) Build(
 	span.SetAttributes(attribute.String("io_engine", ioEngine))
 	ppb.logger.Debug(ctx, "using io engine", zap.String("io_engine", ioEngine))
 
+	// Collect sandbox creation options
+	sandboxOptions := []layer.CreateSandboxOption{
+		layer.WithIoEngine(ioEngine),
+	}
+	if sourceLayer.Cached {
+		sandboxOptions = append(sandboxOptions, layer.ReservedBlocksOptions(ctx, ppb.featureFlags, ppb.Config.RootfsBlockSize())...)
+	}
+
 	// Always restart the sandbox for the final layer to properly wire the rootfs path for the final template
 	sandboxCreator := layer.NewCreateSandbox(
 		sbxConfig,
 		ppb.sandboxFactory,
 		finalizeTimeout,
-		layer.WithIoEngine(ioEngine),
+		sandboxOptions...,
 	)
 
 	actionExecutor := layer.NewFunctionAction(ppb.postProcessingFn(userLogger))
@@ -217,16 +225,6 @@ func (ppb *PostProcessingBuilder) postProcessingFn(userLogger logger.Logger) lay
 		defer func() {
 			if e != nil {
 				return
-			}
-
-			// Set reserved disk space for the guest OS before syncing
-			if reservedDiskSpaceMB := int64(ppb.featureFlags.IntFlag(ctx, featureflags.BuildReservedDiskSpaceMB)); reservedDiskSpaceMB > 0 {
-				err := sandboxtools.SetReservedBlocksInGuest(ctx, ppb.proxy, userLogger, sbx.Runtime.SandboxID, reservedDiskSpaceMB, ppb.Config.RootfsBlockSize())
-				if err != nil {
-					e = fmt.Errorf("error setting reserved disk space: %w", err)
-
-					return
-				}
 			}
 
 			// Ensure all changes are synchronized to disk so the sandbox can be restarted

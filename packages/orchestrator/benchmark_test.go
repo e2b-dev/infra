@@ -179,7 +179,7 @@ func BenchmarkBaseImage(b *testing.B) {
 
 	sbxlogger.SetSandboxLoggerInternal(l)
 
-	slotStorage, err := network.NewStorageLocal(b.Context(), config.NetworkConfig)
+	slotStorage, err := network.NewStorageLocal(b.Context(), config.NetworkConfig, network.NoopEgressProxy{})
 	require.NoError(b, err)
 	networkPool := network.NewPool(8, 8, slotStorage, config.NetworkConfig)
 	go func() {

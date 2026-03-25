@@ -118,7 +118,8 @@ processors:
 
   transform/set-name:
     metric_statements:
-      - set(datapoint.attributes["service.instance.id"], resource.attributes["host.name"])
+      # We don't want to set host name here as we want to report the nomad server, not the otel collector's host
+      # - set(datapoint.attributes["service.instance.id"], resource.attributes["host.name"])
       - set(datapoint.attributes["deployment.environment"], resource.attributes["cloud.account.id"])
       - delete_key(resource.attributes, "service.name")
 

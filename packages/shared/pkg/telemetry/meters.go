@@ -34,10 +34,6 @@ const (
 )
 
 const (
-	SandboxCountMeterName UpDownCounterType = "api.env.instance.running"
-)
-
-const (
 	OrchestratorSandboxCountMeterName ObservableUpDownCounterType = "orchestrator.env.sandbox.running"
 
 	ClientProxyServerConnectionsMeterCounterName ObservableUpDownCounterType = "client_proxy.proxy.server.connections.open"
@@ -125,6 +121,8 @@ const (
 	// Team metrics
 	TeamSandboxRunningGaugeName GaugeIntType = "e2b.team.sandbox.running"
 
+	SandboxCountGaugeName GaugeIntType = "api.env.instance.running"
+
 	// Build resource metrics
 	BuildRootfsSizeHistogramName HistogramType = "template.build.rootfs.size"
 )
@@ -177,13 +175,9 @@ var observableCounterUnits = map[ObservableCounterType]string{
 	ApiOrchestratorSbxCreateFailure: "{sandbox}",
 }
 
-var upDownCounterDesc = map[UpDownCounterType]string{
-	SandboxCountMeterName: "Counter of started instances.",
-}
+var upDownCounterDesc = map[UpDownCounterType]string{}
 
-var upDownCounterUnits = map[UpDownCounterType]string{
-	SandboxCountMeterName: "{sandbox}",
-}
+var upDownCounterUnits = map[UpDownCounterType]string{}
 
 var observableUpDownCounterDesc = map[ObservableUpDownCounterType]string{
 	OrchestratorSandboxCountMeterName:                  "Counter of running sandboxes on the orchestrator.",
@@ -227,6 +221,7 @@ var gaugeIntDesc = map[GaugeIntType]string{
 	SandboxDiskUsedGaugeName:      "Amount of disk space used by the sandbox.",
 	SandboxDiskTotalGaugeName:     "Amount of disk space available to the sandbox.",
 	TeamSandboxRunningGaugeName:   "The number of sandboxes running for the team in the interval.",
+	SandboxCountGaugeName:         "Number of running sandbox instances per team.",
 }
 
 var gaugeIntUnits = map[GaugeIntType]string{
@@ -237,6 +232,7 @@ var gaugeIntUnits = map[GaugeIntType]string{
 	SandboxDiskUsedGaugeName:      "{By}",
 	SandboxDiskTotalGaugeName:     "{By}",
 	TeamSandboxRunningGaugeName:   "{sandbox}",
+	SandboxCountGaugeName:         "{sandbox}",
 }
 
 func GetCounter(meter metric.Meter, name CounterType) (metric.Int64Counter, error) {

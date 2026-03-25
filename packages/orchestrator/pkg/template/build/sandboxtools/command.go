@@ -13,14 +13,12 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/core/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/metadata"
-	"github.com/e2b-dev/infra/packages/orchestrator/pkg/units"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process/processconnect"
@@ -232,38 +230,6 @@ func logStream(ctx context.Context, logger logger.Logger, lvl zapcore.Level, id 
 		msg := fmt.Sprintf("[%s] [%s]: %s", id, name, line)
 		logger.Log(ctx, lvl, msg)
 	}
-}
-
-// SetReservedBlocksInGuest sets the number of reserved filesystem blocks inside the sandbox.
-// Reserved blocks are only usable by root (uid 0), protecting the guest OS from disk-full conditions.
-// Requires e2fsprogs (tune2fs) installed in the guest image (standard on Debian-based images).
-func SetReservedBlocksInGuest(
-	ctx context.Context,
-	proxy *proxy.SandboxProxy,
-	logger logger.Logger,
-	sandboxID string,
-	reservedSpaceMB int64,
-	blockSize int64,
-) error {
-	if reservedSpaceMB <= 0 {
-		return nil
-	}
-
-	blocks := units.MBToBytes(reservedSpaceMB) / blockSize
-	tuneCmd := fmt.Sprintf("tune2fs -r %d /dev/vda", blocks)
-
-	return RunCommandWithLogger(
-		ctx,
-		proxy,
-		logger,
-		zap.DebugLevel,
-		"set-reserved-disk-space",
-		sandboxID,
-		tuneCmd,
-		metadata.Context{
-			User: "root",
-		},
-	)
 }
 
 // syncChangesToDisk synchronizes filesystem changes to the filesystem

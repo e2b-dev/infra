@@ -21,6 +21,8 @@ func setupTestStorage(t *testing.T) (*Storage, redis.UniversalClient) {
 
 	client := redis_utils.SetupInstance(t)
 	storage := NewStorage(client)
+	go storage.Start(t.Context())
+	t.Cleanup(storage.Close)
 
 	return storage, client
 }
@@ -962,6 +964,270 @@ func TestStartRemoving_Eviction(t *testing.T) {
 
 		killCallback(ctx, nil)
 	})
+}
+
+// TestWaitForStateChange_PubSubWakesWaiterFast verifies that the PubSub notification
+// path (rather than the fallback 1-second ticker) wakes up the waiter promptly.
+func TestWaitForStateChange_PubSubWakesWaiterFast(t *testing.T) {
+	t.Parallel()
+
+	storage, _ := setupTestStorage(t)
+	ctx := context.Background()
+
+	sbx := createTestSandbox("pubsub-fast-wake")
+	err := storage.Add(ctx, sbx)
+	require.NoError(t, err)
+
+	// Start a transition
+	_, alreadyDone, callback, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
+	require.NoError(t, err)
+	assert.False(t, alreadyDone)
+	require.NotNil(t, callback)
+
+	// Start a waiter
+	var waitErr error
+	waitDone := make(chan struct{})
+	waitStarted := make(chan struct{})
+	go func() {
+		close(waitStarted)
+		waitErr = storage.WaitForStateChange(ctx, sbx.TeamID, sbx.SandboxID)
+		close(waitDone)
+	}()
+
+	// Ensure the waiter is subscribed before completing the transition
+	<-waitStarted
+	time.Sleep(50 * time.Millisecond)
+
+	// Complete the transition — this publishes a PubSub notification
+	start := time.Now()
+	callback(ctx, nil)
+
+	// The waiter should complete well before the 1-second poll interval
+	select {
+	case <-waitDone:
+		elapsed := time.Since(start)
+		require.NoError(t, waitErr)
+		assert.Less(t, elapsed, 500*time.Millisecond,
+			"waiter should be woken by PubSub much faster than the 1s poll interval")
+	case <-time.After(2 * time.Second):
+		require.FailNow(t, "WaitForStateChange did not complete in time")
+	}
+}
+
+// TestWaitForStateChange_MultipleWaitersPubSub verifies that multiple concurrent
+// waiters are all woken promptly via the PubSub notification path.
+func TestWaitForStateChange_MultipleWaitersPubSub(t *testing.T) {
+	t.Parallel()
+
+	storage, _ := setupTestStorage(t)
+	ctx := context.Background()
+
+	sbx := createTestSandbox("pubsub-multi-waiters")
+	err := storage.Add(ctx, sbx)
+	require.NoError(t, err)
+
+	// Start a transition
+	_, alreadyDone, callback, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
+	require.NoError(t, err)
+	assert.False(t, alreadyDone)
+	require.NotNil(t, callback)
+
+	// Start multiple waiters
+	numWaiters := 5
+	errs := make([]error, numWaiters)
+	completionTimes := make([]time.Duration, numWaiters)
+	var wg sync.WaitGroup
+
+	for i := range numWaiters {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			errs[idx] = storage.WaitForStateChange(ctx, sbx.TeamID, sbx.SandboxID)
+		}(i)
+	}
+
+	// Let all waiters subscribe
+	time.Sleep(100 * time.Millisecond)
+
+	// Complete the transition
+	callbackTime := time.Now()
+	callback(ctx, nil)
+
+	// Wait for all
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		elapsed := time.Since(callbackTime)
+		for i := range numWaiters {
+			require.NoError(t, errs[i], "waiter %d should complete without error", i)
+		}
+		_ = completionTimes // used for timing assertion via elapsed
+		assert.Less(t, elapsed, 500*time.Millisecond,
+			"all waiters should be woken by PubSub much faster than the 1s poll interval")
+	case <-time.After(3 * time.Second):
+		require.FailNow(t, "not all waiters completed in time")
+	}
+}
+
+// TestCallback_PublishesNotification verifies that the transition callback publishes
+// a notification to the global PubSub channel with the correct routing key.
+func TestCallback_PublishesNotification(t *testing.T) {
+	t.Parallel()
+
+	storage, client := setupTestStorage(t)
+	ctx := context.Background()
+
+	sbx := createTestSandbox("callback-publishes")
+	err := storage.Add(ctx, sbx)
+	require.NoError(t, err)
+
+	// Subscribe to the global notification channel directly
+	pubsub := client.Subscribe(ctx, globalTransitionNotifyChannel)
+	defer pubsub.Close()
+
+	// Wait for the subscription to be ready
+	time.Sleep(100 * time.Millisecond)
+
+	// Start a transition
+	_, _, callback, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
+	require.NoError(t, err)
+	require.NotNil(t, callback)
+
+	// Read the transitionID so we can build the expected routing key
+	transitionKey := getTransitionKey(sbx.TeamID.String(), sbx.SandboxID)
+	transitionID, err := client.Get(ctx, transitionKey).Result()
+	require.NoError(t, err)
+
+	// Complete the transition
+	callback(ctx, nil)
+
+	// Read the published message
+	msg, err := pubsub.ReceiveMessage(ctx)
+	require.NoError(t, err)
+
+	expectedRoutingKey := getTransitionRoutingKey(sbx.TeamID.String(), sbx.SandboxID, transitionID)
+	assert.Equal(t, expectedRoutingKey, msg.Payload, "published payload should be the per-transition routing key")
+}
+
+// TestStartRemoving_PauseThenKill_PubSubFastWake verifies that the PubSub path
+// makes the waiting kill complete faster than it would with only polling.
+func TestStartRemoving_PauseThenKill_PubSubFastWake(t *testing.T) {
+	t.Parallel()
+
+	storage, _ := setupTestStorage(t)
+	ctx := context.Background()
+
+	sbx := createTestSandbox("pubsub-pause-kill")
+	err := storage.Add(ctx, sbx)
+	require.NoError(t, err)
+
+	// Start pause
+	_, _, pauseCallback, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
+	require.NoError(t, err)
+
+	// Concurrently start a kill (will wait for pause to finish)
+	killDone := make(chan struct{})
+	var killErr error
+	var killCallback func(context.Context, error)
+	go func() {
+		_, _, killCallback, killErr = storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionKill})
+		close(killDone)
+	}()
+
+	// Let the kill request start waiting
+	time.Sleep(50 * time.Millisecond)
+
+	// Complete the pause — PubSub should wake the kill waiter immediately
+	start := time.Now()
+	pauseCallback(ctx, nil)
+
+	select {
+	case <-killDone:
+		elapsed := time.Since(start)
+		require.NoError(t, killErr)
+		require.NotNil(t, killCallback)
+		assert.Less(t, elapsed, 500*time.Millisecond,
+			"kill should be woken by PubSub notification, not 1s poll")
+		killCallback(ctx, nil)
+	case <-time.After(3 * time.Second):
+		require.FailNow(t, "kill did not complete in time")
+	}
+}
+
+// TestWaitForTransition_StalePubSubNotification verifies that a PubSub notification
+// from a previous transition does not wake a waiter for the current transition.
+func TestWaitForTransition_StalePubSubNotification(t *testing.T) {
+	t.Parallel()
+
+	storage, client := setupTestStorage(t)
+
+	sbx := createTestSandbox("stale-pubsub")
+	require.NoError(t, storage.Add(t.Context(), sbx))
+
+	// --- Transition A: pause ---
+	_, _, callbackA, err := storage.StartRemoving(t.Context(), sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
+	require.NoError(t, err)
+	require.NotNil(t, callbackA)
+
+	// Get transition A's ID so we can craft its routing key later.
+	transitionKey := getTransitionKey(sbx.TeamID.String(), sbx.SandboxID)
+	transitionIDA, err := client.Get(t.Context(), transitionKey).Result()
+	require.NoError(t, err)
+
+	// Complete transition A.
+	callbackA(t.Context(), nil)
+
+	// Restore to Running so we can start a new transition.
+	_, err = storage.Update(t.Context(), sbx.TeamID, sbx.SandboxID, func(s sandbox.Sandbox) (sandbox.Sandbox, error) {
+		s.State = sandbox.StateRunning
+
+		return s, nil
+	})
+	require.NoError(t, err)
+
+	// --- Transition B: pause again ---
+	_, _, callbackB, err := storage.StartRemoving(t.Context(), sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
+	require.NoError(t, err)
+	require.NotNil(t, callbackB)
+
+	// Start a waiter for transition B.
+	waiterDone := make(chan error, 1)
+	go func() {
+		waiterDone <- storage.WaitForStateChange(t.Context(), sbx.TeamID, sbx.SandboxID)
+	}()
+
+	// Let the waiter subscribe.
+	time.Sleep(100 * time.Millisecond)
+
+	// Publish a notification using transition A's routing key (stale).
+	staleRoutingKey := getTransitionRoutingKey(sbx.TeamID.String(), sbx.SandboxID, transitionIDA)
+	require.NoError(t, client.Publish(t.Context(), globalTransitionNotifyChannel, staleRoutingKey).Err())
+
+	// Give time for the stale notification to be (not) delivered.
+	time.Sleep(200 * time.Millisecond)
+
+	// The waiter should still be blocking — stale key doesn't match.
+	select {
+	case err := <-waiterDone:
+		require.FailNow(t, "waiter returned prematurely on stale PubSub notification", "err: %v", err)
+	default:
+		// OK — still waiting
+	}
+
+	// Now complete transition B.
+	callbackB(t.Context(), nil)
+
+	select {
+	case err := <-waiterDone:
+		require.NoError(t, err)
+	case <-time.After(3 * time.Second):
+		require.FailNow(t, "waiter did not complete after transition B finished")
+	}
 }
 
 // TestStartRemoving_CompletedTransitionAllowsNewTransition tests that a completed

@@ -975,9 +975,27 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	}
 
 	if verbose {
+		fmt.Println("🔧 Creating feature flags client...")
+	}
+	logLevel := ldlog.Error
+	if verbose {
+		logLevel = ldlog.Info
+	}
+	flags, _ := featureflags.NewClientWithLogLevel(logLevel)
+
+	sandboxes := sandbox.NewSandboxesMap()
+
+	if verbose {
+		fmt.Println("🔧 Starting TCP firewall...")
+	}
+	tcpFw := tcpfirewall.New(l, config.NetworkConfig, sandboxes, noop.NewMeterProvider(), flags)
+	go tcpFw.Start(ctx)
+	defer tcpFw.Close(context.WithoutCancel(ctx))
+
+	if verbose {
 		fmt.Println("🔧 Creating network storage...")
 	}
-	slotStorage, err := network.NewStorageLocal(ctx, config.NetworkConfig)
+	slotStorage, err := network.NewStorageLocal(ctx, config.NetworkConfig, network.NoopEgressProxy{})
 	if err != nil {
 		return fmt.Errorf("network storage: %w", err)
 	}
@@ -998,15 +1016,6 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	}
 	go devicePool.Populate(ctx)
 	defer devicePool.Close(context.WithoutCancel(ctx))
-
-	if verbose {
-		fmt.Println("🔧 Creating feature flags client...")
-	}
-	logLevel := ldlog.Error
-	if verbose {
-		logLevel = ldlog.Info
-	}
-	flags, _ := featureflags.NewClientWithLogLevel(logLevel)
 
 	if verbose {
 		fmt.Println("🔧 Creating storage provider...")
@@ -1044,15 +1053,7 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	if verbose {
 		fmt.Println("🔧 Creating sandbox factory...")
 	}
-	sandboxes := sandbox.NewSandboxesMap()
 	factory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, flags, nil, nil, sandboxes)
-
-	if verbose {
-		fmt.Println("🔧 Starting TCP firewall...")
-	}
-	tcpFw := tcpfirewall.New(l, config.NetworkConfig, sandboxes, noop.NewMeterProvider(), flags)
-	go tcpFw.Start(ctx)
-	defer tcpFw.Close(context.WithoutCancel(ctx))
 
 	fmt.Printf("📦 Loading %s...\n", buildID)
 	tmpl, err := cache.GetTemplate(ctx, buildID, false, false)

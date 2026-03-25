@@ -8,6 +8,7 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
+	"golang.org/x/sync/semaphore"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
@@ -35,6 +36,9 @@ type Synchronize[SourceItem any, PoolItem any] struct {
 
 	cancel     chan struct{} // channel for cancellation of synchronization
 	cancelOnce sync.Once
+
+	// syncSem prevents concurrent PoolInsert calls
+	syncSem *semaphore.Weighted
 }
 
 func NewSynchronize[SourceItem any, PoolItem any](spanPrefix string, logsPrefix string, store Store[SourceItem, PoolItem]) *Synchronize[SourceItem, PoolItem] {
@@ -43,6 +47,7 @@ func NewSynchronize[SourceItem any, PoolItem any](spanPrefix string, logsPrefix 
 		logsPrefix:       logsPrefix,
 		store:            store,
 		cancel:           make(chan struct{}),
+		syncSem:          semaphore.NewWeighted(1),
 	}
 
 	return s
@@ -51,7 +56,7 @@ func NewSynchronize[SourceItem any, PoolItem any](spanPrefix string, logsPrefix 
 func (s *Synchronize[SourceItem, PoolItem]) Start(ctx context.Context, syncInterval time.Duration, syncRoundTimeout time.Duration, runInitialSync bool) {
 	if runInitialSync {
 		initialSyncTimeout, initialSyncCancel := context.WithTimeout(context.WithoutCancel(ctx), syncRoundTimeout)
-		err := s.sync(initialSyncTimeout)
+		err := s.Sync(initialSyncTimeout)
 		initialSyncCancel()
 		if err != nil {
 			logger.L().Error(ctx, s.getLog("Initial sync failed"), zap.Error(err))
@@ -69,7 +74,7 @@ func (s *Synchronize[SourceItem, PoolItem]) Start(ctx context.Context, syncInter
 			return
 		case <-timer.C:
 			syncTimeout, syncCancel := context.WithTimeout(context.WithoutCancel(ctx), syncRoundTimeout)
-			err := s.sync(syncTimeout)
+			err := s.Sync(syncTimeout)
 			syncCancel()
 			if err != nil {
 				logger.L().Error(ctx, s.getLog("Failed to synchronize"), zap.Error(err))
@@ -84,9 +89,15 @@ func (s *Synchronize[SourceItem, PoolItem]) Close() {
 	)
 }
 
-func (s *Synchronize[SourceItem, PoolItem]) sync(ctx context.Context) error {
+// Sync performs periodic sync or it can be done as an on-demand synchronization round against the source.
+func (s *Synchronize[SourceItem, PoolItem]) Sync(ctx context.Context) error {
 	ctx, span := tracer.Start(ctx, s.getSpanName("sync-items"))
 	defer span.End()
+
+	if err := s.syncSem.Acquire(ctx, 1); err != nil {
+		return fmt.Errorf("failed to acquire sync lock: %w", err)
+	}
+	defer s.syncSem.Release(1)
 
 	sourceItems, err := s.store.SourceList(ctx)
 	if err != nil {

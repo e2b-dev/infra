@@ -303,6 +303,7 @@ func runBuild(
 		commandExecutor,
 		index,
 		builder.metrics,
+		builder.featureFlags,
 		config.TemplateDefaultUser,
 		bc.Config.Force,
 	)
@@ -316,6 +317,7 @@ func runBuild(
 		commandExecutor,
 		index,
 		builder.metrics,
+		builder.featureFlags,
 	)
 
 	postProcessingBuilder := finalize.New(

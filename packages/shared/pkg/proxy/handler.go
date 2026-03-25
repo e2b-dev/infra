@@ -86,6 +86,25 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 			return
 		}
 
+		var stillTransitioningErr *SandboxStillTransitioningError
+		if errors.As(err, &stillTransitioningErr) {
+			logger.L().Warn(ctx, "sandbox still transitioning",
+				zap.String("host", r.Host),
+				logger.WithSandboxID(stillTransitioningErr.SandboxId))
+
+			err := template.
+				NewSandboxStillTransitioningError(stillTransitioningErr.SandboxId, r.Host).
+				HandleError(w, r)
+			if err != nil {
+				logger.L().Error(ctx, "failed to handle sandbox still transitioning error", zap.Error(err), logger.WithSandboxID(stillTransitioningErr.SandboxId))
+				http.Error(w, "Failed to handle sandbox still transitioning error", http.StatusInternalServerError)
+
+				return
+			}
+
+			return
+		}
+
 		var resourceExhaustedErr *SandboxResourceExhaustedError
 		if errors.As(err, &resourceExhaustedErr) {
 			logger.L().Warn(ctx, "team sandbox limit reached",

@@ -11,6 +11,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/phases"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/storage/cache"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -25,6 +26,7 @@ func CreateStepPhases(
 	commandExecutor *commands.CommandExecutor,
 	index cache.Index,
 	metrics *metrics.BuildMetrics,
+	featureFlags *featureflags.Client,
 ) []phases.BuilderPhase {
 	steps := make([]phases.BuilderPhase, 0, len(bc.Config.Steps))
 
@@ -39,6 +41,7 @@ func CreateStepPhases(
 				commandExecutor,
 				index,
 				metrics,
+				featureFlags,
 				step,
 				i+1, // stepNumber starts from 1
 				defaultLoggingLevel,
