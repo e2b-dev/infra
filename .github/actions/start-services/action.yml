@@ -108,8 +108,8 @@ runs:
         DEFAULT_PERSISTENT_VOLUME_TYPE: "test-volume-type"
         SANDBOX_STORAGE_BACKEND: "redis"
         COMPRESS_ENABLED: "true"
-        COMPRESS_TYPE: "zstd"
-        COMPRESS_LEVEL: "2"
+        COMPRESS_TYPE: "lz4"
+        COMPRESS_LEVEL: "0"
       run: |
         mkdir -p $SHARED_CHUNK_CACHE_PATH
         mkdir -p ~/logs
