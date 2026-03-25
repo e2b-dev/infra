@@ -150,14 +150,14 @@ func (t *Header) IsNormalizeFixApplied() bool {
 	return t.Metadata.Version >= NormalizeFixVersion
 }
 
-func (t *Header) GetShiftedMapping(ctx context.Context, offset int64) (mappedToBuild *BuildMap, err error) {
+func (t *Header) GetShiftedMapping(ctx context.Context, offset int64) (BuildMap, error) {
 	mapping, shift, err := t.getMapping(ctx, offset)
 	if err != nil {
-		return nil, err
+		return BuildMap{}, err
 	}
 	lengthInBuild := int64(mapping.Length) - shift
 
-	b := &BuildMap{
+	b := BuildMap{
 		Offset:     mapping.BuildStorageOffset + uint64(shift),
 		Length:     uint64(lengthInBuild),
 		BuildId:    mapping.BuildId,
@@ -166,7 +166,7 @@ func (t *Header) GetShiftedMapping(ctx context.Context, offset int64) (mappedToB
 
 	if lengthInBuild < 0 {
 		if t.IsNormalizeFixApplied() {
-			return nil, fmt.Errorf("mapped length for offset %d is negative: %d", offset, lengthInBuild)
+			return BuildMap{}, fmt.Errorf("mapped length for offset %d is negative: %d", offset, lengthInBuild)
 		}
 
 		b.Length = 0
