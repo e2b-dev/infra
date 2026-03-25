@@ -39,8 +39,8 @@ func NewBuildUploader(snapshot *Snapshot, persistence storage.StorageProvider, f
 
 		return &compressedUploader{
 			buildUploader: base,
-			pending:           pending,
-			cfg:               cfg,
+			pending:       pending,
+			cfg:           cfg,
 		}
 	}
 
@@ -224,6 +224,7 @@ func (u *uncompressedUploader) FinalizeHeaders(context.Context) error {
 
 type compressedUploader struct {
 	buildUploader
+
 	pending *PendingBuildInfo
 	cfg     *storage.CompressConfig
 }
