@@ -282,6 +282,10 @@ func (c *Cache) isCached(off, length int64) bool {
 // markRangeCached marks all blocks in [off, off+length) as cached.
 // Uses atomic OR so concurrent callers for disjoint ranges are safe.
 func (c *Cache) markRangeCached(off, length int64) {
+	if length <= 0 {
+		return
+	}
+
 	start := off / c.blockSize
 	n := (off + length + c.blockSize - 1) / c.blockSize
 

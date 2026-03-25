@@ -64,8 +64,9 @@ func (s *fetchSession) registerAndWait(ctx context.Context, blockOff int64) erro
 			return nil
 		}
 
-		// Terminal but block not covered — only happens on error
-		// (setDone sets bytesReady=chunkLen). Check cache for prior session data.
+		// Terminal but block not covered — only happens on error.
+		// setDone sets bytesReady=chunkLen, so terminated() with bytesReady < endByte
+		// means fetchErr != nil. Check cache in case a prior session already fetched this block.
 		if s.terminated() {
 			fetchErr := s.fetchErr
 			s.mu.Unlock()
@@ -74,11 +75,12 @@ func (s *fetchSession) registerAndWait(ctx context.Context, blockOff int64) erro
 				return nil
 			}
 
-			if fetchErr != nil {
-				return fmt.Errorf("fetch failed: %w", fetchErr)
+			if fetchErr == nil {
+				return fmt.Errorf("fetch session terminated without error but block %d not cached (bytesReady=%d, endByte=%d)",
+					blockOff/blockSize, s.bytesReady.Load(), endByte)
 			}
 
-			return nil
+			return fmt.Errorf("fetch failed: %w", fetchErr)
 		}
 
 		ch := s.signal

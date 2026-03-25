@@ -222,20 +222,26 @@ func (c *Chunker) fetch(ctx context.Context, off int64, ft *storage.FrameTable) 
 }
 
 // runFetch fetches data from storage into the mmap cache. Runs in a background goroutine.
-// Works for both compressed (c.compressed=true, ft!=nil) and uncompressed paths.
+// Works for both compressed and uncompressed paths (determined by ft.IsCompressed()).
 func (c *Chunker) runFetch(ctx context.Context, session *fetchSession, offsetU int64, ft *storage.FrameTable) {
-	defer func() {
-		if r := recover(); r != nil {
-			logger.L().Error(ctx, "recovered from panic in the fetch handler", zap.Any("error", r))
-			session.setError(fmt.Errorf("recovered from panic in the fetch handler: %v", r), false)
-		}
-	}()
-
 	ctx, cancel := context.WithTimeout(ctx, decompressFetchTimeout)
 	defer cancel()
 
 	// Remove session from active list after completion.
 	defer c.releaseFetchSession(session)
+
+	// Panic recovery: ensure waiters are notified even if the fetch panics.
+	// Must run before releaseFetchSession (LIFO) so the session is still in
+	// the active list when setError is called, preventing a concurrent
+	// getOrCreateFetchSession from spawning a redundant fetch for the same range.
+	// onlyIfRunning=true avoids overwriting a successful setDone if a deferred
+	// cleanup panics after the fetch already succeeded.
+	defer func() {
+		if r := recover(); r != nil {
+			logger.L().Error(ctx, "recovered from panic in the fetch handler", zap.Any("error", r))
+			session.setError(fmt.Errorf("recovered from panic in the fetch handler: %v", r), true)
+		}
+	}()
 
 	// Get mmap region for the fetch target.
 	mmapSlice, releaseLock, err := c.cache.addressBytes(session.chunkOff, session.chunkLen)
@@ -255,6 +261,7 @@ func (c *Chunker) runFetch(ctx context.Context, session *fetchSession, offsetU i
 	// tiny I/O for small block sizes (e.g. 4 KB rootfs).
 	readSize := c.cache.BlockSize()
 
+	// onRead is called sequentially by GetFrame — prevTotal is not safe for concurrent access.
 	var prevTotal int64
 	onRead := func(totalWritten int64) {
 		newBytes := totalWritten - prevTotal
