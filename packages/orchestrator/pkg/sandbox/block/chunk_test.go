@@ -241,7 +241,7 @@ func TestChunker_ConcurrentStress(t *testing.T) {
 				eg.Go(func() error {
 					for j := range opsPerGoroutine {
 						off := int64(((i*opsPerGoroutine)+j)%(len(data)/int(readLen))) * readLen
-						slice, err := chunker.GetBlock(t.Context(), off, readLen, ft)
+						slice, err := chunker.SliceBlock(t.Context(), off, readLen, ft)
 						if err != nil {
 							return fmt.Errorf("goroutine %d op %d: %w", i, j, err)
 						}
@@ -279,7 +279,7 @@ func TestChunker_FetchDedup(t *testing.T) {
 	var eg errgroup.Group
 	for range numGoroutines {
 		eg.Go(func() error {
-			_, err := chunker.GetBlock(t.Context(), 0, testBlockSize, ft)
+			_, err := chunker.SliceBlock(t.Context(), 0, testBlockSize, ft)
 
 			return err
 		})
@@ -309,14 +309,14 @@ func TestChunker_FullChunkCachedAfterPartialRequest(t *testing.T) {
 			defer chunker.Close()
 
 			// Request only the FIRST block (triggers fetch of entire frame/chunk).
-			_, err := chunker.GetBlock(t.Context(), 0, testBlockSize, ft)
+			_, err := chunker.SliceBlock(t.Context(), 0, testBlockSize, ft)
 			require.NoError(t, err)
 
 			// The entire frame/chunk should now be cached.
 			// The last block should be available without additional fetches.
 			lastOff := int64(testFileSize) - testBlockSize
 			require.Eventually(t, func() bool {
-				slice, sliceErr := chunker.GetBlock(t.Context(), lastOff, testBlockSize, ft)
+				slice, sliceErr := chunker.SliceBlock(t.Context(), lastOff, testBlockSize, ft)
 				if sliceErr != nil {
 					return false
 				}
@@ -357,7 +357,7 @@ func TestChunker_EarlyReturn(t *testing.T) {
 	var eg errgroup.Group
 	for _, off := range offsets {
 		eg.Go(func() error {
-			_, err := chunker.GetBlock(t.Context(), off, testBlockSize, nil)
+			_, err := chunker.SliceBlock(t.Context(), off, testBlockSize, nil)
 			if err != nil {
 				return err
 			}
@@ -399,11 +399,11 @@ func TestChunker_ErrorKeepsPartialData(t *testing.T) {
 
 	// Request the last block — should fail because upstream dies at midpoint.
 	lastOff := int64(testFileSize) - testBlockSize
-	_, err = chunker.GetBlock(t.Context(), lastOff, testBlockSize, nil)
+	_, err = chunker.SliceBlock(t.Context(), lastOff, testBlockSize, nil)
 	require.Error(t, err)
 
 	// First block (within the first half) should still be cached and servable.
-	slice, err := chunker.GetBlock(t.Context(), 0, testBlockSize, nil)
+	slice, err := chunker.SliceBlock(t.Context(), 0, testBlockSize, nil)
 	require.NoError(t, err)
 	require.Equal(t, data[:testBlockSize], slice)
 }
@@ -429,14 +429,14 @@ func TestChunker_ContextCancellation(t *testing.T) {
 	defer cancel()
 
 	lastOff := int64(testFileSize) - testBlockSize
-	_, err = chunker.GetBlock(ctx, lastOff, testBlockSize, nil)
+	_, err = chunker.SliceBlock(ctx, lastOff, testBlockSize, nil)
 	require.Error(t, err)
 
 	// Wait for the background fetch to complete.
 	time.Sleep(200 * time.Millisecond)
 
 	// Another caller with a valid context should still get the data.
-	slice, err := chunker.GetBlock(t.Context(), 0, testBlockSize, nil)
+	slice, err := chunker.SliceBlock(t.Context(), 0, testBlockSize, nil)
 	require.NoError(t, err)
 	require.Equal(t, data[:testBlockSize], slice)
 }
@@ -462,7 +462,7 @@ func TestChunker_LastBlockPartial(t *testing.T) {
 			lastBlockOff := (int64(size) / testBlockSize) * testBlockSize
 			remaining := int64(size) - lastBlockOff
 
-			slice, err := chunker.GetBlock(t.Context(), lastBlockOff, remaining, ft)
+			slice, err := chunker.SliceBlock(t.Context(), lastBlockOff, remaining, ft)
 			require.NoError(t, err)
 			require.Equal(t, localData[lastBlockOff:], slice)
 		})

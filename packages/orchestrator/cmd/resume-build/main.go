@@ -966,6 +966,10 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	}
 	sbxlogger.SetSandboxLoggerInternal(logger.NewNopLogger())
 
+	if os.Getenv("NODE_IP") == "" {
+		os.Setenv("NODE_IP", "127.0.0.1")
+	}
+
 	if verbose {
 		fmt.Println("🔧 Parsing config...")
 	}
@@ -1029,10 +1033,6 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	}
 	if persistence == nil {
 		return fmt.Errorf("storage provider is nil")
-	}
-
-	if os.Getenv("NODE_IP") == "" {
-		os.Setenv("NODE_IP", "127.0.0.1")
 	}
 
 	if verbose {

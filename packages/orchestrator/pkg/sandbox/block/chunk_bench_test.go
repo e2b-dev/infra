@@ -153,7 +153,9 @@ func newColdSetup(data []byte, dataSize int64, ft *storage.FrameTable, compresse
 		require.NoError(tb, err)
 
 		return coldSetup{
-			read:       func(ctx context.Context, off, length int64) ([]byte, error) { return c.GetBlock(ctx, off, length, ft) },
+			read: func(ctx context.Context, off, length int64) ([]byte, error) {
+				return c.SliceBlock(ctx, off, length, ft)
+			},
 			close:      func() { c.Close() },
 			fetchCount: func() int64 { return getter.fetchCount.Load() },
 			storeBytes: storeBytes,
@@ -261,7 +263,9 @@ func BenchmarkCacheHit(b *testing.B) {
 				c, err := NewChunker(&slowFrameGetter{data: data}, dataSize, blockSize, b.TempDir()+"/cache", newTestMetrics(b))
 				require.NoError(b, err)
 
-				return func(ctx context.Context, off, length int64) ([]byte, error) { return c.GetBlock(ctx, off, length, nil) }, func() { c.Close() }
+				return func(ctx context.Context, off, length int64) ([]byte, error) {
+					return c.SliceBlock(ctx, off, length, nil)
+				}, func() { c.Close() }
 			},
 		},
 	}

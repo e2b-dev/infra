@@ -26,7 +26,7 @@ const (
 
 type Diff interface {
 	io.Closer
-	block.Reader
+	block.FramedBlockReader
 	CacheKey() DiffStoreKey
 	CachePath() (string, error)
 	FileSize() (int64, error)
@@ -42,7 +42,7 @@ func (n *NoDiff) CachePath() (string, error) {
 	return "", NoDiffError{}
 }
 
-func (n *NoDiff) GetBlock(_ context.Context, _, _ int64, _ *storage.FrameTable) ([]byte, error) {
+func (n *NoDiff) SliceBlock(_ context.Context, _, _ int64, _ *storage.FrameTable) ([]byte, error) {
 	return nil, NoDiffError{}
 }
 

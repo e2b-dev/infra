@@ -86,6 +86,14 @@ packages:
           filename: mocks_test.go
           pkgname: utils
 
+  github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build:
+    interfaces:
+      Diff:
+        config:
+          dir: packages/orchestrator/pkg/sandbox/build/mocks
+          filename: mockdiff.go
+          pkgname: buildmocks
+
   github.com/e2b-dev/infra/packages/api/internal/handlers:
     interfaces:
       featureFlagsClient:

@@ -147,13 +147,13 @@ func (b *StorageDiff) ReadBlock(ctx context.Context, p []byte, off int64, ft *st
 	return chunker.ReadBlock(ctx, p, off, ft)
 }
 
-func (b *StorageDiff) GetBlock(ctx context.Context, off, length int64, ft *storage.FrameTable) ([]byte, error) {
+func (b *StorageDiff) SliceBlock(ctx context.Context, off, length int64, ft *storage.FrameTable) ([]byte, error) {
 	chunker, err := b.chunker.Wait()
 	if err != nil {
 		return nil, err
 	}
 
-	return chunker.GetBlock(ctx, off, length, ft)
+	return chunker.SliceBlock(ctx, off, length, ft)
 }
 
 // The local file might not be synced.

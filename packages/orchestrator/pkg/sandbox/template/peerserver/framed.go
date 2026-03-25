@@ -34,7 +34,7 @@ func (f *framedSource) Stream(ctx context.Context, offset, length int64, sender 
 	defer span.End()
 
 	// P2P always serves uncompressed bytes — pass nil FrameTable.
-	data, err := f.diff.GetBlock(ctx, offset, length, nil)
+	data, err := f.diff.SliceBlock(ctx, offset, length, nil)
 	if err != nil {
 		span.RecordError(err)
 

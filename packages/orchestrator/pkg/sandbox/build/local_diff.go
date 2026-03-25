@@ -119,7 +119,7 @@ func (b *localDiff) ReadBlock(_ context.Context, p []byte, off int64, _ *storage
 	return b.cache.ReadAt(p, off)
 }
 
-func (b *localDiff) GetBlock(_ context.Context, off, length int64, _ *storage.FrameTable) ([]byte, error) {
+func (b *localDiff) SliceBlock(_ context.Context, off, length int64, _ *storage.FrameTable) ([]byte, error) {
 	return b.cache.Slice(off, length)
 }
 

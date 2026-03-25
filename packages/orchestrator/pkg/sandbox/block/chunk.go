@@ -112,30 +112,45 @@ func (c *fullFetchChunker) fetchToCache(ctx context.Context, off, length int64) 
 			key := strconv.FormatInt(fetchOff, 10)
 
 			_, err, _ = c.fetchers.Do(key, func() (any, error) {
+				// Check early to prevent overwriting data, Slice requires thread safety
+				if c.cache.isCached(fetchOff, storage.MemoryChunkSize) {
+					return nil, nil
+				}
+
 				select {
 				case <-ctx.Done():
 					return nil, fmt.Errorf("error fetching range %d-%d: %w", fetchOff, fetchOff+storage.MemoryChunkSize, ctx.Err())
 				default:
 				}
 
-				b, releaseLock, err := c.cache.addressBytes(fetchOff, storage.MemoryChunkSize)
+				b, releaseCacheCloseLock, err := c.cache.addressBytes(fetchOff, storage.MemoryChunkSize)
 				if err != nil {
 					return nil, err
 				}
-				defer releaseLock()
+				defer releaseCacheCloseLock()
 
 				fetchSW := c.metrics.RemoteReadsTimerFactory.Begin()
 
-				_, err = c.upstream.GetFrame(ctx, fetchOff, nil, false, b, 0, nil)
+				got, err := c.upstream.GetFrame(ctx, fetchOff, nil, false, b, 0, nil)
+				readBytes := got.Length
 				if err != nil {
-					fetchSW.Failure(ctx, int64(len(b)),
+					fetchSW.Failure(ctx, int64(readBytes),
 						attribute.String(failureReason, failureTypeRemoteRead))
 
 					return nil, fmt.Errorf("failed to read chunk from upstream at %d: %w", fetchOff, err)
 				}
 
-				c.cache.markRangeCached(fetchOff, int64(len(b)))
-				fetchSW.Success(ctx, int64(len(b)))
+				if readBytes != len(b) {
+					fetchSW.Failure(ctx, int64(readBytes),
+						attribute.String(failureReason, failureTypeRemoteRead),
+					)
+
+					return nil, fmt.Errorf("failed to read chunk from base %d: expected %d bytes, got %d bytes", fetchOff, len(b), readBytes)
+				}
+
+				c.cache.markRangeCached(fetchOff, int64(readBytes))
+
+				fetchSW.Success(ctx, int64(readBytes))
 
 				return nil, nil
 			})
@@ -144,7 +159,8 @@ func (c *fullFetchChunker) fetchToCache(ctx context.Context, off, length int64) 
 		})
 	}
 
-	if err := eg.Wait(); err != nil {
+	err := eg.Wait()
+	if err != nil {
 		return fmt.Errorf("failed to ensure data at %d-%d: %w", off, off+length, err)
 	}
 

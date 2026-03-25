@@ -136,7 +136,7 @@ func (b *File) Slice(ctx context.Context, off, _ int64) ([]byte, error) {
 			return nil, fmt.Errorf("failed to get build: %w", err)
 		}
 
-		result, err := diff.GetBlock(ctx, int64(mappedBuild.Offset), int64(h.Metadata.BlockSize), mappedBuild.FrameTable)
+		result, err := diff.SliceBlock(ctx, int64(mappedBuild.Offset), int64(h.Metadata.BlockSize), mappedBuild.FrameTable)
 		if err != nil {
 			var transErr *storage.PeerTransitionedError
 			if errors.As(err, &transErr) {

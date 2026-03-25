@@ -111,7 +111,7 @@ type Chunker struct {
 	sessions   []*fetchSession
 }
 
-var _ Reader = (*Chunker)(nil)
+var _ FramedBlockReader = (*Chunker)(nil)
 
 // NewChunker creates a Chunker backed by a new mmap cache at cachePath.
 // file is the single data file (compressed or uncompressed), size is the
@@ -138,7 +138,7 @@ func NewChunker(
 }
 
 func (c *Chunker) ReadBlock(ctx context.Context, b []byte, off int64, ft *storage.FrameTable) (int, error) {
-	block, err := c.GetBlock(ctx, off, int64(len(b)), ft)
+	block, err := c.SliceBlock(ctx, off, int64(len(b)), ft)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get block at %d-%d: %w", off, off+int64(len(b)), err)
 	}
@@ -146,9 +146,9 @@ func (c *Chunker) ReadBlock(ctx context.Context, b []byte, off int64, ft *storag
 	return copy(b, block), nil
 }
 
-// GetBlock returns a reference to the mmap cache at the given uncompressed
+// SliceBlock returns a reference to the mmap cache at the given uncompressed
 // offset. On cache miss, fetches from storage into the cache first.
-func (c *Chunker) GetBlock(ctx context.Context, off, length int64, ft *storage.FrameTable) ([]byte, error) {
+func (c *Chunker) SliceBlock(ctx context.Context, off, length int64, ft *storage.FrameTable) ([]byte, error) {
 	compressed := ft.IsCompressed()
 	attrs := precomputedGetFrameAttrs(compressed)
 	timer := c.metrics.BlocksTimerFactory.Begin(attrs.begin)

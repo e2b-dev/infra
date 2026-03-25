@@ -527,7 +527,7 @@ func (d *concurrentTestDiff) ReadBlock(_ context.Context, p []byte, off int64, _
 	return copy(p, data[off:]), nil
 }
 
-func (d *concurrentTestDiff) GetBlock(_ context.Context, off, length int64, _ *storage.FrameTable) ([]byte, error) {
+func (d *concurrentTestDiff) SliceBlock(_ context.Context, off, length int64, _ *storage.FrameTable) ([]byte, error) {
 	data, err := d.data.Wait()
 	if err != nil {
 		return nil, err
