@@ -1,0 +1,33 @@
+{
+  "inbound": [
+    { "port": 443, "protocol": "TCP", "purpose": "HTTPS API (Global Load Balancer)" },
+    { "port": 80, "protocol": "TCP", "purpose": "Nomad UI (via Load Balancer)" },
+    { "port": 3002, "protocol": "TCP", "purpose": "Sandbox Session Proxy" },
+    { "port": 5000, "protocol": "TCP", "purpose": "Docker Reverse Proxy" },
+    { "port": 8800, "protocol": "TCP", "purpose": "Traefik Ingress" },
+    { "port": 22, "protocol": "TCP", "purpose": "SSH (via IAP)" }
+  ],
+  "outbound": [
+    { "port": 443, "protocol": "TCP", "purpose": "General internet access (API, Package Managers, GCS)" },
+    { "port": 80, "protocol": "TCP", "purpose": "General internet access (HTTP)" },
+    { "port": 53, "protocol": "UDP", "purpose": "DNS" },
+    { "port": 53, "protocol": "TCP", "purpose": "DNS" },
+    { "port": 22, "protocol": "TCP", "purpose": "Git SSH access" }
+  ],
+  "internal": [
+    { "port": 4646, "protocol": "TCP", "purpose": "Nomad HTTP" },
+    { "port": 4647, "protocol": "TCP", "purpose": "Nomad RPC" },
+    { "port": 4648, "protocol": "TCP", "purpose": "Nomad Serf" },
+    { "port": 8500, "protocol": "TCP", "purpose": "Consul HTTP" },
+    { "port": 8300, "protocol": "TCP", "purpose": "Consul RPC" },
+    { "port": 8301, "protocol": "TCP", "purpose": "Consul Serf LAN" },
+    { "port": 8302, "protocol": "TCP", "purpose": "Consul Serf WAN" },
+    { "port": 8600, "protocol": "UDP", "purpose": "Consul DNS" },
+    { "port": 9000, "protocol": "TCP", "purpose": "ClickHouse Native" },
+    { "port": 8123, "protocol": "TCP", "purpose": "ClickHouse HTTP" },
+    { "port": 3100, "protocol": "TCP", "purpose": "Loki" },
+    { "port": 5008, "protocol": "TCP", "purpose": "Orchestrator/Template Manager API" },
+    { "port": 5007, "protocol": "TCP", "purpose": "Orchestrator Proxy" },
+    { "port": 6379, "protocol": "TCP", "purpose": "Redis" }
+  ]
+}

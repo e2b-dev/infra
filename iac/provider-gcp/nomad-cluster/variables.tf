@@ -2,6 +2,12 @@ variable "prefix" {
   type = string
 }
 
+variable "allowed_source_ip" {
+  type        = string
+  description = "The local IP address allowed to connect via SSH"
+  default     = "0.0.0.0/0"
+}
+
 variable "environment" {
   description = "The environment (e.g. staging, prod)."
   type        = string
@@ -284,10 +290,6 @@ variable "additional_api_services" {
 variable "filestore_cache_enabled" {
   type    = bool
   default = false
-}
-
-variable "cloudflare_api_token_secret_name" {
-  type = string
 }
 
 variable "filestore_cache_tier" {

@@ -122,7 +122,7 @@ resource "google_compute_instance_template" "server" {
     # Create access config dynamically. If a public ip is requested, we just need the empty `access_config` block
     # to automatically assign an external IP address.
     dynamic "access_config" {
-      for_each = ["public_ip"]
+      for_each = var.environment == "dev" ? ["public_ip"] : []
       content {}
     }
   }
