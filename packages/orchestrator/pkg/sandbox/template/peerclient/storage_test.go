@@ -10,9 +10,9 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	peerclientmocks "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template/peerclient/mocks"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	orchestratormocks "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator/mocks"
+	providermocks "github.com/e2b-dev/infra/packages/shared/pkg/storage/mocks/provider"
 )
 
 func TestPeerStorageProvider_OpenBlob_ExtractsFileName(t *testing.T) {
@@ -27,7 +27,7 @@ func TestPeerStorageProvider_OpenBlob_ExtractsFileName(t *testing.T) {
 		return req.GetBuildId() == "build-1" && req.GetFileName() == "snapfile"
 	})).Return(stream, nil)
 
-	base := peerclientmocks.NewMockStorageProvider(t)
+	base := providermocks.NewMockStorageProvider(t)
 
 	p := newPeerStorageProvider(base, client, &atomic.Bool{}, nil)
 	blob, err := p.OpenBlob(t.Context(), "build-1/snapfile")
@@ -47,7 +47,7 @@ func TestPeerStorageProvider_OpenFramedFile_ExtractsFileName(t *testing.T) {
 		return req.GetBuildId() == "build-1" && req.GetFileName() == "memfile"
 	})).Return(&orchestrator.GetBuildFileSizeResponse{TotalSize: 512}, nil)
 
-	base := peerclientmocks.NewMockStorageProvider(t)
+	base := providermocks.NewMockStorageProvider(t)
 
 	p := newPeerStorageProvider(base, client, &atomic.Bool{}, nil)
 	ff, err := p.OpenFramedFile(t.Context(), "build-1/memfile")

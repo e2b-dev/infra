@@ -50,23 +50,23 @@ packages:
             filename: mock_blob_test.go
             pkgname: storage
             inpackage: true
-          - dir: packages/orchestrator/pkg/sandbox/template/peerclient/mocks
+          - dir: packages/shared/pkg/storage/mocks
             filename: mockblob.go
-            pkgname: peerclientmocks
+            pkgname: storagemocks
       FramedFile:
         configs:
           - dir: packages/shared/pkg/storage
             filename: mock_framedfile_test.go
             pkgname: storage
             inpackage: true
-          - dir: packages/orchestrator/pkg/sandbox/template/peerclient/mocks
+          - dir: packages/shared/pkg/storage/mocks
             filename: mockframedfile.go
-            pkgname: peerclientmocks
+            pkgname: storagemocks
       StorageProvider:
         config:
-          dir: packages/orchestrator/pkg/sandbox/template/peerclient/mocks
+          dir: packages/shared/pkg/storage/mocks/provider
           filename: mockstorageprovider.go
-          pkgname: peerclientmocks
+          pkgname: providermocks
 
 
   io:
