@@ -33,7 +33,7 @@ func TestMarkBlockRangeCached_SingleBlock(t *testing.T) {
 	require.False(t, c.isBlockCached(0))
 
 	// Mark block 0 cached.
-	c.markBlockRangeCached(0, blockSize)
+	c.markRangeCached(0, blockSize)
 	require.True(t, c.isBlockCached(0))
 
 	// Other blocks should still be uncached.
@@ -48,7 +48,7 @@ func TestMarkBlockRangeCached_MultipleBlocks(t *testing.T) {
 	c := newTestCache(t, 128, blockSize)
 
 	// Mark blocks 2..5 (4 blocks) cached.
-	c.markBlockRangeCached(2*blockSize, 4*blockSize)
+	c.markRangeCached(2*blockSize, 4*blockSize)
 
 	// Blocks 2..5 should all be cached.
 	for i := int64(2); i < 6; i++ {
@@ -70,7 +70,7 @@ func TestMarkBlockRangeCached_BoundaryCrossing(t *testing.T) {
 	c := newTestCache(t, 256, blockSize)
 
 	// Mark blocks 60..67 (crosses the 64-block word boundary).
-	c.markBlockRangeCached(60*blockSize, 8*blockSize)
+	c.markRangeCached(60*blockSize, 8*blockSize)
 
 	for i := int64(60); i < 68; i++ {
 		require.True(t, c.isBlockCached(i), "block %d should be cached", i)
@@ -89,7 +89,7 @@ func TestMarkBlockRangeCached_LargeRange(t *testing.T) {
 	c := newTestCache(t, numBlocks, blockSize)
 
 	// Mark 200 blocks starting at block 50.
-	c.markBlockRangeCached(50*blockSize, 200*blockSize)
+	c.markRangeCached(50*blockSize, 200*blockSize)
 
 	for i := int64(50); i < 250; i++ {
 		require.True(t, c.isBlockCached(i), "block %d should be cached", i)
@@ -105,7 +105,7 @@ func TestMarkBlockRangeCached_FirstBlock(t *testing.T) {
 	const blockSize int64 = 4096
 	c := newTestCache(t, 128, blockSize)
 
-	c.markBlockRangeCached(0, blockSize)
+	c.markRangeCached(0, blockSize)
 	require.True(t, c.isBlockCached(0))
 	require.False(t, c.isBlockCached(1))
 }
@@ -117,7 +117,7 @@ func TestMarkBlockRangeCached_LastBlock(t *testing.T) {
 	const numBlocks int64 = 128
 	c := newTestCache(t, numBlocks, blockSize)
 
-	c.markBlockRangeCached((numBlocks-1)*blockSize, blockSize)
+	c.markRangeCached((numBlocks-1)*blockSize, blockSize)
 	require.True(t, c.isBlockCached(numBlocks-1))
 	require.False(t, c.isBlockCached(numBlocks-2))
 }
@@ -129,7 +129,7 @@ func TestMarkBlockRangeCached_EntireCache(t *testing.T) {
 	const numBlocks int64 = 256
 	c := newTestCache(t, numBlocks, blockSize)
 
-	c.markBlockRangeCached(0, numBlocks*blockSize)
+	c.markRangeCached(0, numBlocks*blockSize)
 
 	for i := range numBlocks {
 		require.True(t, c.isBlockCached(i), "block %d should be cached", i)
@@ -153,11 +153,11 @@ func TestDirtySortedKeys_Sorted(t *testing.T) {
 	c := newTestCache(t, 256, blockSize)
 
 	// Mark blocks in non-sequential order.
-	c.markBlockRangeCached(100*blockSize, blockSize)
-	c.markBlockRangeCached(5*blockSize, blockSize)
-	c.markBlockRangeCached(200*blockSize, blockSize)
-	c.markBlockRangeCached(63*blockSize, blockSize)
-	c.markBlockRangeCached(64*blockSize, blockSize)
+	c.markRangeCached(100*blockSize, blockSize)
+	c.markRangeCached(5*blockSize, blockSize)
+	c.markRangeCached(200*blockSize, blockSize)
+	c.markRangeCached(63*blockSize, blockSize)
+	c.markRangeCached(64*blockSize, blockSize)
 
 	keys := c.dirtySortedKeys()
 
@@ -180,7 +180,7 @@ func TestDirtySortedKeys_Range(t *testing.T) {
 	c := newTestCache(t, 128, blockSize)
 
 	// Mark blocks 10..14.
-	c.markBlockRangeCached(10*blockSize, 5*blockSize)
+	c.markRangeCached(10*blockSize, 5*blockSize)
 
 	keys := c.dirtySortedKeys()
 
@@ -202,8 +202,8 @@ func TestMarkBlockRangeCached_Idempotent(t *testing.T) {
 	c := newTestCache(t, 128, blockSize)
 
 	// Mark same block twice.
-	c.markBlockRangeCached(5*blockSize, blockSize)
-	c.markBlockRangeCached(5*blockSize, blockSize)
+	c.markRangeCached(5*blockSize, blockSize)
+	c.markRangeCached(5*blockSize, blockSize)
 
 	require.True(t, c.isBlockCached(5))
 
@@ -218,8 +218,8 @@ func TestMarkBlockRangeCached_OverlappingRanges(t *testing.T) {
 	c := newTestCache(t, 128, blockSize)
 
 	// Two overlapping ranges.
-	c.markBlockRangeCached(5*blockSize, 5*blockSize) // blocks 5..9
-	c.markBlockRangeCached(8*blockSize, 5*blockSize) // blocks 8..12
+	c.markRangeCached(5*blockSize, 5*blockSize) // blocks 5..9
+	c.markRangeCached(8*blockSize, 5*blockSize) // blocks 8..12
 
 	// Union should be blocks 5..12.
 	for i := int64(5); i <= 12; i++ {

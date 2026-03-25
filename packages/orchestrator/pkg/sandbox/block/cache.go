@@ -251,12 +251,12 @@ func (c *Cache) Slice(off, length int64) ([]byte, error) {
 // isBlockCached reports whether a single block is marked as cached.
 // Bounds-checks blockIdx against the dirty bitmap to prevent out-of-bounds
 // access when the offset is at or beyond the file size.
-func (c *Cache) isBlockCached(blockIdx int64) bool {
-	if blockIdx < 0 || blockIdx >= int64(len(c.dirty))*64 {
+func (c *Cache) isBlockCached(i int64) bool {
+	if i < 0 || i >= int64(len(c.dirty))*64 {
 		return false
 	}
 
-	return c.dirty[blockIdx/64].Load()&(1<<uint(blockIdx%64)) != 0
+	return c.dirty[i/64].Load()&(1<<uint(i%64)) != 0
 }
 
 // isCached reports whether all blocks overlapping [off, off+length) are cached.
@@ -267,11 +267,11 @@ func (c *Cache) isCached(off, length int64) bool {
 	}
 
 	end := min(off+length, c.size)
-	startIdx := off / c.blockSize
-	endIdx := (end + c.blockSize - 1) / c.blockSize
+	start := off / c.blockSize
+	n := (end + c.blockSize - 1) / c.blockSize
 
-	for idx := startIdx; idx < endIdx; idx++ {
-		if !c.isBlockCached(idx) {
+	for i := start; i < n; i++ {
+		if !c.isBlockCached(i) {
 			return false
 		}
 	}
@@ -279,16 +279,16 @@ func (c *Cache) isCached(off, length int64) bool {
 	return true
 }
 
-// markBlockRangeCached marks all blocks in [off, off+length) as cached.
+// markRangeCached marks all blocks in [off, off+length) as cached.
 // Uses atomic OR so concurrent callers for disjoint ranges are safe.
-func (c *Cache) markBlockRangeCached(off, length int64) {
-	startIdx := off / c.blockSize
-	endIdx := (off + length + c.blockSize - 1) / c.blockSize
+func (c *Cache) markRangeCached(off, length int64) {
+	start := off / c.blockSize
+	n := (off + length + c.blockSize - 1) / c.blockSize
 
-	for idx := startIdx; idx < endIdx; {
-		wordIdx := idx / 64
-		lo := idx % 64
-		hi := min(endIdx-wordIdx*64, 64)
+	for i := start; i < n; {
+		w := i / 64
+		lo := i % 64
+		hi := min(n-w*64, 64)
 
 		var mask uint64
 		if hi-lo == 64 {
@@ -297,9 +297,9 @@ func (c *Cache) markBlockRangeCached(off, length int64) {
 			mask = ((1 << uint(hi-lo)) - 1) << uint(lo)
 		}
 
-		c.dirty[wordIdx].Or(mask)
+		c.dirty[w].Or(mask)
 
-		idx = (wordIdx + 1) * 64
+		i = (w + 1) * 64
 	}
 }
 
@@ -317,7 +317,7 @@ func (c *Cache) WriteAtWithoutLock(b []byte, off int64) (int, error) {
 
 	n := copy((*c.mmap)[off:end], b)
 
-	c.markBlockRangeCached(off, end-off)
+	c.markRangeCached(off, end-off)
 
 	return n, nil
 }
@@ -448,7 +448,7 @@ func (c *Cache) copyProcessMemory(
 	ranges := splitOversizedRanges(rs, alignedRwCount)
 
 	var offset int64
-	var rangeIdx int64
+	var ri int64
 
 	for {
 		var remote []unix.RemoteIovec
@@ -457,8 +457,8 @@ func (c *Cache) copyProcessMemory(
 
 		// We iterate over the range of all ranges until we have reached the limit of the IOV_MAX,
 		// or until the next range would overflow the MAX_RW_COUNT.
-		for ; rangeIdx < int64(len(ranges)); rangeIdx++ {
-			r := ranges[rangeIdx]
+		for ; ri < int64(len(ranges)); ri++ {
+			r := ranges[ri]
 
 			if len(remote) == IOV_MAX {
 				break
@@ -526,7 +526,7 @@ func (c *Cache) copyProcessMemory(
 				return fmt.Errorf("failed to read memory: expected %d bytes, got %d", segmentSize, n)
 			}
 
-			c.markBlockRangeCached(offset, segmentSize)
+			c.markRangeCached(offset, segmentSize)
 
 			offset += segmentSize
 
