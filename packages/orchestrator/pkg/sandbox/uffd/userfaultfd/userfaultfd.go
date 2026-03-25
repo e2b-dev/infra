@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"runtime"
 	"sync"
 	"syscall"
 	"unsafe"
@@ -352,8 +351,7 @@ func (u *Userfaultfd) faultPage(
 	// Performing copy() on UFFD clears the WP bit unless we explicitly tell
 	// it not to. We do that for faults caused by a read access. Write accesses
 	// would anyways cause clear the write-protection bit.
-	// ARM64 kernels do not support UFFD write protection, so skip the WP flag.
-	if accessType != block.Write && runtime.GOARCH != "arm64" {
+	if accessType != block.Write {
 		copyMode |= UFFDIO_COPY_MODE_WP
 	}
 
