@@ -1,9 +1,11 @@
 package header
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"maps"
+	"slices"
 
 	"github.com/bits-and-blooms/bitset"
 	"github.com/google/uuid"
@@ -263,13 +265,9 @@ func ValidateHeader(h *Header) error {
 	// Sort mappings by offset to check for gaps/overlaps
 	sortedMappings := make([]*BuildMap, len(h.Mapping))
 	copy(sortedMappings, h.Mapping)
-	for i := range len(sortedMappings) - 1 {
-		for j := i + 1; j < len(sortedMappings); j++ {
-			if sortedMappings[j].Offset < sortedMappings[i].Offset {
-				sortedMappings[i], sortedMappings[j] = sortedMappings[j], sortedMappings[i]
-			}
-		}
-	}
+	slices.SortFunc(sortedMappings, func(a, b *BuildMap) int {
+		return cmp.Compare(a.Offset, b.Offset)
+	})
 
 	// Check that first mapping starts at 0
 	if sortedMappings[0].Offset != 0 {
