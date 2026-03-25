@@ -270,17 +270,6 @@ variable "clickhouse_health_port" {
   })
 }
 
-variable "additional_api_services" {
-  description = "Additional path rules to add to the load balancer routing."
-  type = list(object({
-    paths      = list(string)
-    service_id = string
-
-    api_node_group_port_name = string
-    api_node_group_port      = number
-  }))
-}
-
 variable "filestore_cache_enabled" {
   type    = bool
   default = false

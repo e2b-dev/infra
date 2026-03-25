@@ -130,15 +130,6 @@ module "network" {
 
   labels = var.labels
   prefix = var.prefix
-
-  additional_api_path_rules = [
-    for service in var.additional_api_services : {
-      paths      = service.paths
-      service_id = service.service_id
-    }
-  ]
-
-  additional_ports = [for service in var.additional_api_services : service.api_node_group_port]
 }
 
 module "filestore" {
