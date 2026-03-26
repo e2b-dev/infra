@@ -21,7 +21,6 @@ to ping the issue.
 - **Documentation fixes** — typos, outdated instructions, missing steps
 - **Test coverage** — especially integration tests for edge cases
 - **Performance improvements** — with benchmarks to back them up
-- **Security fixes** — please follow responsible disclosure (see below)
 
 ## Things Unlikely to Be Merged
 
