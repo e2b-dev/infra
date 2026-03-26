@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/singleflight"
@@ -17,7 +18,66 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
+
+const (
+	pullType       = "pull-type"
+	pullTypeLocal  = "local"
+	pullTypeRemote = "remote"
+
+	failureReason = "failure-reason"
+
+	failureTypeLocalRead      = "local-read"
+	failureTypeLocalReadAgain = "local-read-again"
+	failureTypeRemoteRead     = "remote-read"
+	failureTypeCacheFetch     = "cache-fetch"
+)
+
+type precomputedAttrs struct {
+	successFromCache  metric.MeasurementOption
+	successFromRemote metric.MeasurementOption
+
+	failCacheRead      metric.MeasurementOption
+	failRemoteFetch    metric.MeasurementOption
+	failLocalReadAgain metric.MeasurementOption
+
+	// RemoteReads timer (runFetch)
+	remoteSuccess metric.MeasurementOption
+	remoteFailure metric.MeasurementOption
+}
+
+var chunkerAttrs = precomputedAttrs{
+	successFromCache: telemetry.PrecomputeAttrs(
+		telemetry.Success,
+		attribute.String(pullType, pullTypeLocal)),
+
+	successFromRemote: telemetry.PrecomputeAttrs(
+		telemetry.Success,
+		attribute.String(pullType, pullTypeRemote)),
+
+	failCacheRead: telemetry.PrecomputeAttrs(
+		telemetry.Failure,
+		attribute.String(pullType, pullTypeLocal),
+		attribute.String(failureReason, failureTypeLocalRead)),
+
+	failRemoteFetch: telemetry.PrecomputeAttrs(
+		telemetry.Failure,
+		attribute.String(pullType, pullTypeRemote),
+		attribute.String(failureReason, failureTypeCacheFetch)),
+
+	failLocalReadAgain: telemetry.PrecomputeAttrs(
+		telemetry.Failure,
+		attribute.String(pullType, pullTypeLocal),
+		attribute.String(failureReason, failureTypeLocalReadAgain)),
+
+	remoteSuccess: telemetry.PrecomputeAttrs(
+		telemetry.Success),
+
+	remoteFailure: telemetry.PrecomputeAttrs(
+		telemetry.Failure,
+		attribute.String(failureReason, failureTypeRemoteRead)),
+}
 
 // Chunker is the interface satisfied by both FullFetchChunker and StreamingChunker.
 type Chunker interface {
@@ -122,43 +182,36 @@ func (c *FullFetchChunker) WriteTo(ctx context.Context, w io.Writer) (int64, err
 
 func (c *FullFetchChunker) Slice(ctx context.Context, off, length int64) ([]byte, error) {
 	timer := c.metrics.SlicesTimerFactory.Begin()
+	a := chunkerAttrs
 
 	b, err := c.cache.Slice(off, length)
 	if err == nil {
-		timer.Success(ctx, length,
-			attribute.String(pullType, pullTypeLocal))
+		timer.Record(ctx, length, a.successFromCache)
 
 		return b, nil
 	}
 
 	if !errors.As(err, &BytesNotAvailableError{}) {
-		timer.Failure(ctx, length,
-			attribute.String(pullType, pullTypeLocal),
-			attribute.String(failureReason, failureTypeLocalRead))
+		timer.Record(ctx, length, a.failCacheRead)
 
 		return nil, fmt.Errorf("failed read from cache at offset %d: %w", off, err)
 	}
 
 	chunkErr := c.fetchToCache(ctx, off, length)
 	if chunkErr != nil {
-		timer.Failure(ctx, length,
-			attribute.String(pullType, pullTypeRemote),
-			attribute.String(failureReason, failureTypeCacheFetch))
+		timer.Record(ctx, length, a.failRemoteFetch)
 
 		return nil, fmt.Errorf("failed to ensure data at %d-%d: %w", off, off+length, chunkErr)
 	}
 
 	b, cacheErr := c.cache.Slice(off, length)
 	if cacheErr != nil {
-		timer.Failure(ctx, length,
-			attribute.String(pullType, pullTypeLocal),
-			attribute.String(failureReason, failureTypeLocalReadAgain))
+		timer.Record(ctx, length, a.failLocalReadAgain)
 
 		return nil, fmt.Errorf("failed to read from cache after ensuring data at %d-%d: %w", off, off+length, cacheErr)
 	}
 
-	timer.Success(ctx, length,
-		attribute.String(pullType, pullTypeRemote))
+	timer.Record(ctx, length, a.successFromRemote)
 
 	return b, nil
 }
@@ -206,28 +259,25 @@ func (c *FullFetchChunker) fetchToCache(ctx context.Context, off, length int64) 
 
 				defer releaseCacheCloseLock()
 
+				a := chunkerAttrs
 				fetchSW := c.metrics.RemoteReadsTimerFactory.Begin()
 
 				readBytes, err := c.base.ReadAt(ctx, b, fetchOff)
 				if err != nil {
-					fetchSW.Failure(ctx, int64(readBytes),
-						attribute.String(failureReason, failureTypeRemoteRead),
-					)
+					fetchSW.Record(ctx, int64(readBytes), a.remoteFailure)
 
 					return nil, fmt.Errorf("failed to read chunk from base %d: %w", fetchOff, err)
 				}
 
 				if readBytes != len(b) {
-					fetchSW.Failure(ctx, int64(readBytes),
-						attribute.String(failureReason, failureTypeRemoteRead),
-					)
+					fetchSW.Record(ctx, int64(readBytes), a.remoteFailure)
 
 					return nil, fmt.Errorf("failed to read chunk from base %d: expected %d bytes, got %d bytes", fetchOff, len(b), readBytes)
 				}
 
 				c.cache.setIsCached(fetchOff, int64(readBytes))
 
-				fetchSW.Success(ctx, int64(readBytes))
+				fetchSW.Record(ctx, int64(readBytes), a.remoteSuccess)
 
 				return nil, nil
 			})
@@ -251,16 +301,3 @@ func (c *FullFetchChunker) Close() error {
 func (c *FullFetchChunker) FileSize() (int64, error) {
 	return c.cache.FileSize()
 }
-
-const (
-	pullType       = "pull-type"
-	pullTypeLocal  = "local"
-	pullTypeRemote = "remote"
-
-	failureReason = "failure-reason"
-
-	failureTypeLocalRead      = "local-read"
-	failureTypeLocalReadAgain = "local-read-again"
-	failureTypeRemoteRead     = "remote-read"
-	failureTypeCacheFetch     = "cache-fetch"
-)
