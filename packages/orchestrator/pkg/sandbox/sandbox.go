@@ -347,6 +347,14 @@ func (f *Factory) CreateSandbox(
 		}
 	}()
 
+	lifecycleID := uuid.NewString()
+	// We want to remove from the map as late as possible
+	cleanup.Add(ctx, func(ctx context.Context) error {
+		f.Sandboxes.Remove(ctx, runtime.SandboxID, lifecycleID)
+
+		return nil
+	})
+
 	ipsPromise := getNetworkSlot(ctx, f.networkPool, cleanup, config.Network)
 
 	sandboxFiles := template.Files().NewSandboxFiles(runtime.SandboxID)
@@ -455,7 +463,7 @@ func (f *Factory) CreateSandbox(
 	}
 
 	sbx := &Sandbox{
-		LifecycleID: uuid.NewString(),
+		LifecycleID: lifecycleID,
 
 		Resources:    resources,
 		Metadata:     metadata,
@@ -568,7 +576,7 @@ func (f *Factory) ResumeSandbox(
 	}()
 
 	lifecycleID := uuid.NewString()
-	// We want to remove from the ma
+	// We want to remove from the map as late as possible
 	cleanup.Add(ctx, func(ctx context.Context) error {
 		f.Sandboxes.Remove(ctx, runtime.SandboxID, lifecycleID)
 
