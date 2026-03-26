@@ -11,7 +11,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go.opentelemetry.io/otel/attribute"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
@@ -223,20 +222,18 @@ func (c *StreamingChunker) WriteTo(ctx context.Context, w io.Writer) (int64, err
 
 func (c *StreamingChunker) Slice(ctx context.Context, off, length int64) ([]byte, error) {
 	timer := c.metrics.SlicesTimerFactory.Begin()
+	a := chunkerAttrs
 
 	// Fast path: already cached
 	b, err := c.cache.Slice(off, length)
 	if err == nil {
-		timer.Success(ctx, length,
-			attribute.String(pullType, pullTypeLocal))
+		timer.Record(ctx, length, a.successFromCache)
 
 		return b, nil
 	}
 
 	if !errors.As(err, &BytesNotAvailableError{}) {
-		timer.Failure(ctx, length,
-			attribute.String(pullType, pullTypeLocal),
-			attribute.String(failureReason, failureTypeLocalRead))
+		timer.Record(ctx, length, a.failCacheRead)
 
 		return nil, fmt.Errorf("failed read from cache at offset %d: %w", off, err)
 	}
@@ -269,24 +266,19 @@ func (c *StreamingChunker) Slice(ctx context.Context, off, length int64) ([]byte
 	}
 
 	if err := eg.Wait(); err != nil {
-		timer.Failure(ctx, length,
-			attribute.String(pullType, pullTypeRemote),
-			attribute.String(failureReason, failureTypeCacheFetch))
+		timer.Record(ctx, length, a.failRemoteFetch)
 
 		return nil, fmt.Errorf("failed to ensure data at %d-%d: %w", off, off+length, err)
 	}
 
 	b, cacheErr := c.cache.Slice(off, length)
 	if cacheErr != nil {
-		timer.Failure(ctx, length,
-			attribute.String(pullType, pullTypeLocal),
-			attribute.String(failureReason, failureTypeLocalReadAgain))
+		timer.Record(ctx, length, a.failLocalReadAgain)
 
 		return nil, fmt.Errorf("failed to read from cache after ensuring data at %d-%d: %w", off, off+length, cacheErr)
 	}
 
-	timer.Success(ctx, length,
-		attribute.String(pullType, pullTypeRemote))
+	timer.Record(ctx, length, a.successFromRemote)
 
 	return b, nil
 }
@@ -382,19 +374,19 @@ func (c *StreamingChunker) runFetch(ctx context.Context, s *fetchSession) {
 	}
 	defer releaseLock()
 
+	a := chunkerAttrs
 	fetchTimer := c.metrics.RemoteReadsTimerFactory.Begin()
 
 	err = c.progressiveRead(ctx, s, mmapSlice)
 	if err != nil {
-		fetchTimer.Failure(ctx, s.chunkLen,
-			attribute.String(failureReason, failureTypeRemoteRead))
+		fetchTimer.Record(ctx, s.chunkLen, a.remoteFailure)
 
 		s.setError(err, false)
 
 		return
 	}
 
-	fetchTimer.Success(ctx, s.chunkLen)
+	fetchTimer.Record(ctx, s.chunkLen, a.remoteSuccess)
 	s.setDone()
 }
 
