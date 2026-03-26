@@ -28,7 +28,7 @@ func (mapping *BuildMap) Copy() *BuildMap {
 		Length:             mapping.Length,
 		BuildId:            mapping.BuildId,
 		BuildStorageOffset: mapping.BuildStorageOffset,
-		FrameTable:         mapping.FrameTable, // Preserve FrameTable for compressed data
+		FrameTable:         mapping.FrameTable,
 	}
 }
 

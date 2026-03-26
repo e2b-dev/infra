@@ -372,7 +372,7 @@ func Deserialize(data []byte) (*Header, error) {
 			return nil, err
 		}
 
-		h, err := newValidatedHeader(metadata, mappings)
+		h, err := NewHeader(metadata, mappings)
 		if err != nil {
 			return nil, err
 		}
@@ -386,18 +386,5 @@ func Deserialize(data []byte) (*Header, error) {
 		return nil, err
 	}
 
-	return newValidatedHeader(metadata, mappings)
-}
-
-func newValidatedHeader(metadata *Metadata, mappings []*BuildMap) (*Header, error) {
-	header, err := NewHeader(metadata, mappings)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := ValidateHeader(header); err != nil {
-		return nil, fmt.Errorf("header validation failed: %w", err)
-	}
-
-	return header, nil
+	return NewHeader(metadata, mappings)
 }

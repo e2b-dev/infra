@@ -14,7 +14,6 @@ import (
 // frameCompressor compresses individual frames. Implementations are pooled
 // and reused across frames within a single CompressStream call.
 type frameCompressor interface {
-	// Compress compresses src and returns the compressed bytes.
 	Compress(src []byte) ([]byte, error)
 }
 

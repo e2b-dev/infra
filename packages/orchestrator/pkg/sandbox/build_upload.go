@@ -70,7 +70,6 @@ func diffPath(d build.Diff) (*string, error) {
 	return &p, nil
 }
 
-// uploadUncompressedFile uploads a single data file without compression.
 func (b *buildUploader) uploadUncompressedFile(ctx context.Context, localPath, fileName string) error {
 	object, err := b.persistence.OpenFramedFile(ctx, b.files.DataPath(fileName))
 	if err != nil {
@@ -132,7 +131,6 @@ func uploadFileAsBlob(ctx context.Context, b storage.Blob, path string) error {
 	return nil
 }
 
-// uploadCompressedFile compresses and uploads a file to the compressed data path.
 func (b *buildUploader) uploadCompressedFile(ctx context.Context, localPath, fileName string, cfg *storage.CompressConfig) (*storage.FrameTable, [32]byte, error) {
 	objectPath := b.files.CompressedDataPath(fileName, cfg.CompressionType())
 
@@ -149,7 +147,6 @@ func (b *buildUploader) uploadCompressedFile(ctx context.Context, localPath, fil
 	return ft, checksum, nil
 }
 
-// scheduleAlwaysUploads adds snapfile and metadata uploads to the errgroup.
 func (b *buildUploader) scheduleAlwaysUploads(eg *errgroup.Group, ctx context.Context) {
 	eg.Go(func() error {
 		return b.uploadSnapfile(ctx, b.snapshot.Snapfile.Path())

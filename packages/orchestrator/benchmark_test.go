@@ -95,7 +95,6 @@ func BenchmarkBaseImage(b *testing.B) {
 		templateVersion = "v2.0.0"
 	)
 
-	// Apply compression settings from env.
 	compType, compLevel := parseCompressEnv(os.Getenv("BENCH_COMPRESS"))
 	compressed := compType != ""
 	if compressed {

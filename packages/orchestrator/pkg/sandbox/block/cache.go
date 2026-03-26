@@ -248,9 +248,6 @@ func (c *Cache) Slice(off, length int64) ([]byte, error) {
 	return nil, BytesNotAvailableError{}
 }
 
-// isBlockCached reports whether a single block is marked as cached.
-// Bounds-checks blockIdx against the dirty bitmap to prevent out-of-bounds
-// access when the offset is at or beyond the file size.
 func (c *Cache) isBlockCached(i int64) bool {
 	if i < 0 || i >= int64(len(c.dirty))*64 {
 		return false
@@ -259,8 +256,6 @@ func (c *Cache) isBlockCached(i int64) bool {
 	return c.dirty[i/64].Load()&(1<<uint(i%64)) != 0
 }
 
-// isCached reports whether all blocks overlapping [off, off+length) are cached.
-// Caps the range to c.size to prevent out-of-bounds checks.
 func (c *Cache) isCached(off, length int64) bool {
 	if off >= c.size {
 		return false
@@ -326,7 +321,6 @@ func (c *Cache) WriteAtWithoutLock(b []byte, off int64) (int, error) {
 	return n, nil
 }
 
-// dirtySortedKeys returns a sorted list of dirty block offsets.
 func (c *Cache) dirtySortedKeys() []int64 {
 	var keys []int64
 

@@ -18,7 +18,6 @@ import (
 )
 
 const (
-	// decompressFetchTimeout is the maximum time a single frame/chunk fetch may take.
 	decompressFetchTimeout = 60 * time.Second
 
 	compressedAttr = "compressed"
@@ -233,7 +232,6 @@ func (c *Chunker) runFetch(ctx context.Context, session *fetchSession, offsetU i
 	ctx, cancel := context.WithTimeout(ctx, decompressFetchTimeout)
 	defer cancel()
 
-	// Remove session from active list after completion.
 	defer c.releaseFetchSession(session)
 
 	// Panic recovery: ensure waiters are notified even if the fetch panics.
@@ -249,7 +247,6 @@ func (c *Chunker) runFetch(ctx context.Context, session *fetchSession, offsetU i
 		}
 	}()
 
-	// Get mmap region for the fetch target.
 	mmapSlice, releaseLock, err := c.cache.addressBytes(session.chunkOff, session.chunkLen)
 	if err != nil {
 		session.setError(err, false)

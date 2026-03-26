@@ -30,7 +30,6 @@ func ColorFlag() *string {
 func InitColor(mode string) {
 	switch mode {
 	case "always":
-		// keep colors
 	case "never":
 		disableColors()
 	default: // "auto"
