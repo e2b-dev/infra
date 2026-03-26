@@ -11,10 +11,10 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
-// deadEvictionGracePeriod is how long a dead sandbox stays in the map so that
-// IP-based lookups (logs, NFS, TCP firewall) still resolve while the
+// stoppingEvictionGracePeriod is how long a stopping sandbox stays in the map
+// so that IP-based lookups (logs, NFS, TCP firewall) still resolve while the
 // Firecracker process finishes shutting down.
-const deadEvictionGracePeriod = 30 * time.Second
+const stoppingEvictionGracePeriod = 30 * time.Second
 
 type MapSubscriber interface {
 	OnInsert(ctx context.Context, sandbox *Sandbox)
@@ -77,7 +77,7 @@ func (m *Map) Get(sandboxID string) (*Sandbox, bool) {
 }
 
 // GetByHostPort looks up a sandbox by its host IP address parsed from hostPort.
-// It matches any sandbox in the map (starting, running, or dead).
+// It matches any sandbox in the map (starting, running, or stopping).
 func (m *Map) GetByHostPort(hostPort string) (*Sandbox, error) {
 	reqIP, _, err := net.SplitHostPort(hostPort)
 	if err != nil {
@@ -105,7 +105,7 @@ func (m *Map) Insert(ctx context.Context, sbx *Sandbox) {
 	)
 
 	// Evict any stale entry that holds the same IP but a different sandbox ID.
-	// This handles the edge case where a dead sandbox's eviction timer hasn't
+	// This handles the edge case where a stopping sandbox's eviction timer hasn't
 	// fired yet when the network slot is recycled for a new sandbox.
 	newIP := sbx.Slot.HostIPString()
 	for id, existing := range m.sandboxes.Items() {
@@ -134,25 +134,24 @@ func (m *Map) MarkRunning(ctx context.Context, sbx *Sandbox) {
 	})
 }
 
-// MarkDead transitions a sandbox to the dead state. OnRemove subscribers are
+// MarkStopping transitions a sandbox to the stopping state. OnRemove subscribers are
 // notified immediately (so the proxy / firewall limiter can clean up), but the
-// entry stays in the map for deadEvictionGracePeriod so that IP-based lookups
+// entry stays in the map for stoppingEvictionGracePeriod so that IP-based lookups
 // still resolve while the Firecracker process finishes shutting down.
-func (m *Map) MarkDead(ctx context.Context, sandboxID string) {
+func (m *Map) MarkStopping(ctx context.Context, sandboxID string) {
 	sbx, ok := m.sandboxes.Get(sandboxID)
 	if !ok {
 		return
 	}
 
-	// CAS ensures idempotency: if two goroutines race (e.g. concurrent
-	// Delete RPCs for the same sandbox), only the winner fires OnRemove
-	// and schedules the eviction timer.
-	if !sbx.status.CompareAndSwap(int32(StatusRunning), int32(StatusDead)) {
+	// ensures idempotency
+	if !sbx.status.CompareAndSwap(int32(StatusRunning), int32(StatusStopping)) {
 		return
 	}
 
-	logger.L().Info(ctx, "marking sandbox as dead",
+	logger.L().Info(ctx, "marking sandbox as stopping",
 		logger.WithSandboxID(sandboxID),
+		logger.WithLifecycleID(sbx.Runtime.ExecutionID),
 		logger.WithSandboxIP(sbx.Slot.HostIPString()),
 	)
 
@@ -160,58 +159,50 @@ func (m *Map) MarkDead(ctx context.Context, sandboxID string) {
 		s.OnRemove(ctx, sbx)
 	})
 
-	// Schedule eviction after the grace period. evictDead uses a pointer
+	// Schedule eviction after the grace period. evictStopping uses a pointer
 	// check so it won't remove a replacement sandbox inserted under the
 	// same ID (e.g. checkpoint/resume).
-	time.AfterFunc(deadEvictionGracePeriod, func() {
-		m.evictDead(sandboxID, sbx)
+	time.AfterFunc(stoppingEvictionGracePeriod, func() {
+		m.evictStopping(sandboxID, sbx)
 	})
 }
 
-// evictDead removes a dead sandbox from the map after the grace period.
+// evictStopping removes a stopping sandbox from the map after the grace period.
 // It uses pointer equality to avoid removing a replacement sandbox that was
 // inserted under the same ID (e.g. after checkpoint/resume).
-func (m *Map) evictDead(sandboxID string, expected *Sandbox) {
+func (m *Map) evictStopping(sandboxID string, expected *Sandbox) {
 	m.sandboxes.RemoveCb(sandboxID, func(_ string, v *Sandbox, exists bool) bool {
 		return exists && v == expected
 	})
 }
 
 func (m *Map) RemoveByLifecycleID(ctx context.Context, sandboxID, lifecycleID string) {
-	var sbx *Sandbox
-	alreadyDead := false
-	removed := m.sandboxes.RemoveCb(sandboxID, func(_ string, v *Sandbox, exists bool) bool {
-		if !exists {
-			return false
-		}
+	sbx, ok := m.sandboxes.Get(sandboxID)
+	if !ok {
+		return
+	}
 
-		if v == nil {
-			return false
-		}
+	// ensures idempotency
+	if !sbx.status.CompareAndSwap(int32(StatusRunning), int32(StatusStopping)) {
+		return
+	}
 
-		if SandboxStatus(v.status.Load()) == StatusDead {
-			alreadyDead = true
-		}
+	logger.L().Info(ctx, "marking sandbox as stopping by lifecycle ID",
+		logger.WithSandboxID(sandboxID),
+		logger.WithLifecycleID(lifecycleID),
+		logger.WithSandboxIP(sbx.Slot.HostIPString()),
+	)
 
-		sbx = v
-
-		return v.LifecycleID == lifecycleID
+	go m.trigger(ctx, func(ctx context.Context, s MapSubscriber) {
+		s.OnRemove(ctx, sbx)
 	})
 
-	if removed {
-		logger.L().Info(ctx, "removing sandbox from map by lifecycle ID",
-			logger.WithSandboxID(sandboxID),
-			logger.WithSandboxIP(sbx.Slot.HostIPString()),
-		)
-
-		// Only fire OnRemove if it wasn't already notified subscribers.
-		// MarkDead sets StatusDead and fires OnRemove
-		if !alreadyDead {
-			go m.trigger(ctx, func(ctx context.Context, s MapSubscriber) {
-				s.OnRemove(ctx, sbx)
-			})
-		}
-	}
+	// Schedule eviction after the grace period. evictStopping uses a pointer
+	// check so it won't remove a replacement sandbox inserted under the
+	// same ID (e.g. checkpoint/resume).
+	time.AfterFunc(stoppingEvictionGracePeriod, func() {
+		m.evictStopping(sandboxID, sbx)
+	})
 }
 
 func NewSandboxesMap() *Map {

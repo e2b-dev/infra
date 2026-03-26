@@ -144,10 +144,10 @@ const (
 	StatusStarting SandboxStatus = 0
 	// StatusRunning means the sandbox is fully initialised and healthy.
 	StatusRunning SandboxStatus = 1
-	// StatusDead means the sandbox has been killed or paused. It remains in
+	// StatusStopping means the sandbox has been killed or paused. It remains in
 	// the map briefly so that IP-based lookups (logs, NFS, TCP firewall)
 	// still resolve, but it is excluded from all "live" queries.
-	StatusDead SandboxStatus = 2
+	StatusStopping SandboxStatus = 2
 )
 
 // SandboxType distinguishes build sandboxes from regular sandboxes.

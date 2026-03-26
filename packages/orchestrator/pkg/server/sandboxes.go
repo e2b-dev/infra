@@ -426,11 +426,11 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 
 	sbxlogger.E(sbx).Info(ctx, "Killing sandbox")
 
-	// Mark the sandbox as dead so it is excluded from live queries (Get, Items,
+	// Mark the sandbox as stopping so it is excluded from live queries (Get, Items,
 	// Count) but remains findable by IP (GetByHostPort) while the Firecracker
 	// process finishes shutting down.
 	// This prevents the sandbox to be synced to API again
-	s.sandboxFactory.Sandboxes.MarkDead(ctx, in.GetSandboxId())
+	s.sandboxFactory.Sandboxes.MarkStopping(ctx, in.GetSandboxId())
 
 	// Check health metrics before stopping the sandbox
 	sbx.Checks.Healthcheck(ctx, true)
@@ -644,7 +644,7 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		if err := res.snapshot.Upload(uploadCtx, s.persistence, res.templateFiles); err != nil {
 			telemetry.ReportCriticalError(ctx, "error uploading snapshot for checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
 
-			s.sandboxFactory.Sandboxes.MarkDead(ctx, resumedSbx.Runtime.SandboxID)
+			s.sandboxFactory.Sandboxes.MarkStopping(ctx, resumedSbx.Runtime.SandboxID)
 			s.stopSandboxAsync(context.WithoutCancel(ctx), resumedSbx)
 
 			return nil, status.Errorf(codes.Internal, "error uploading snapshot for checkpoint '%s': %s", in.GetSandboxId(), err)
@@ -831,7 +831,7 @@ func (s *Server) acquireSandboxForSnapshot(ctx context.Context, sandboxID string
 		return nil, status.Error(codes.NotFound, "sandbox not found")
 	}
 
-	s.sandboxFactory.Sandboxes.MarkDead(ctx, sandboxID)
+	s.sandboxFactory.Sandboxes.MarkStopping(ctx, sandboxID)
 
 	return sbx, nil
 }
