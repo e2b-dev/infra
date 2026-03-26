@@ -583,7 +583,7 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 
 	// Resume the sandbox keeping the same ExecutionID (stable identity for
 	// the API, routing catalog, and analytics) but with a fresh LifecycleID
-	// so the old sandbox's cleanup goroutine (RemoveByLifecycleID) won't
+	// so the old sandbox's cleanup goroutine won't
 	// accidentally evict the resumed sandbox from the map.
 	resumedSbx, err := s.sandboxFactory.ResumeSandbox(
 		ctx,
