@@ -15,7 +15,8 @@ import (
 )
 
 // MaxCompressedHeaderSize is the maximum allowed decompressed header size (64 MiB).
-// Headers are typically a few hundred KiB; this is a safety bound.
+// Headers are typically a few hundred KiB (e.g., 100 layers × 256 frames × 32 bytes/frame ≈ 800 KB).
+// This is a safety bound to prevent unbounded allocation from corrupt data.
 const MaxCompressedHeaderSize = 64 << 20
 
 const (

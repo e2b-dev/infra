@@ -279,9 +279,11 @@ func deserializeV4Block(reader *bytes.Reader) (map[uuid.UUID]BuildFileInfo, []*B
 }
 
 // Serialize serializes a header with optional LZ4 compression for V4.
-// For V3 (Version <= 3), returns the raw binary unchanged (BuildFiles ignored).
-// For V4 (Version == 4), keeps Metadata prefix raw, LZ4-compresses
-// the rest (build info + mappings with frame tables), and concatenates.
+//
+// V3 (Version <= 3): [Metadata (raw binary)] [v3 mappings (raw binary)]
+//
+// V4 (Version >= 4):  [Metadata (raw binary)] [uint32 uncompressed block size] [LZ4-compressed block]
+//   where the LZ4 block contains: BuildFiles + v4 mappings with FrameTables.
 func Serialize(h *Header) ([]byte, error) {
 	raw, err := serialize(h.Metadata, h.BuildFiles, h.Mapping)
 	if err != nil {
@@ -292,15 +294,17 @@ func Serialize(h *Header) ([]byte, error) {
 		return raw, nil
 	}
 
-	// V4: keep Metadata prefix raw, LZ4-compress the rest.
-	compressed, err := storage.CompressLZ4(raw[metadataSize:])
+	// V4: keep Metadata prefix raw, then [uint32 uncompressed size] + [LZ4 block].
+	block := raw[metadataSize:]
+	compressed, err := storage.CompressLZ4(block)
 	if err != nil {
 		return nil, fmt.Errorf("failed to LZ4-compress v4 header mappings: %w", err)
 	}
 
-	result := make([]byte, metadataSize+len(compressed))
+	result := make([]byte, metadataSize+4+len(compressed))
 	copy(result, raw[:metadataSize])
-	copy(result[metadataSize:], compressed)
+	binary.LittleEndian.PutUint32(result[metadataSize:], uint32(len(block)))
+	copy(result[metadataSize+4:], compressed)
 
 	return result, nil
 }
@@ -333,9 +337,9 @@ func StoreHeader(ctx context.Context, s storage.StorageProvider, path string, h 
 }
 
 // Deserialize auto-detects the header version and deserializes accordingly.
-// For V3 (Version <= 3), deserializes the raw binary directly.
-// For V4 (Version == 4), reads the Metadata prefix, then LZ4-decompresses
-// the remaining bytes (build info + mappings with frame tables) and deserializes them.
+// See Serialize for the binary layout.
+// The uint32 size prefix in V4 allows exact-size allocation for decompression
+// instead of a fixed upper-bound buffer.
 func Deserialize(data []byte) (*Header, error) {
 	if len(data) < metadataSize {
 		return nil, fmt.Errorf("header too short: %d bytes", len(data))
@@ -349,7 +353,16 @@ func Deserialize(data []byte) (*Header, error) {
 	blockData := data[metadataSize:]
 
 	if metadata.Version >= 4 {
-		blockData, err = storage.DecompressLZ4(blockData, make([]byte, storage.MaxCompressedHeaderSize))
+		if len(blockData) < 4 {
+			return nil, fmt.Errorf("v4 header block too short for size prefix: %d bytes", len(blockData))
+		}
+
+		uncompressedSize := binary.LittleEndian.Uint32(blockData[:4])
+		if uncompressedSize > storage.MaxCompressedHeaderSize {
+			return nil, fmt.Errorf("v4 header uncompressed size %d exceeds maximum %d", uncompressedSize, storage.MaxCompressedHeaderSize)
+		}
+
+		blockData, err = storage.DecompressLZ4(blockData[4:], make([]byte, uncompressedSize))
 		if err != nil {
 			return nil, fmt.Errorf("failed to LZ4-decompress v4 header block: %w", err)
 		}

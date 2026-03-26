@@ -25,7 +25,7 @@ Templates are stored in GCS as build artifacts. Each build produces two data fil
 
 - Data is broken into **frames** of fixed uncompressed size (default **2 MiB**, configurable via `frameSizeKB` FF, min 128 KiB), each independently decompressible (LZ4 or Zstd). Compressed size varies per frame depending on data entropy.
 - Frames are aligned to `DefaultCompressFrameSize` in uncompressed space. The last frame in a file may be shorter.
-- The **V4 header** embeds a `FrameTable` per mapping: `CompressionType + StartAt + []FrameSize`. The header itself is always LZ4-block-compressed, regardless of data compression type.
+- The **V4 header** embeds a `FrameTable` per mapping: `CompressionType + StartAt + []FrameSize`. The header body is LZ4-block-compressed with a `uint32` uncompressed size prefix for exact-size allocation on deserialization. Binary layout: `[Metadata (raw binary)] [uint32 uncompressed block size] [LZ4-compressed block]`.
 - The `FrameTable` is subset per mapping so each mapping carries only the frames it references.
 - V4 headers also include a `BuildFileInfo` per build: uncompressed file size (`int64`) and a SHA-256 checksum of the **uncompressed** data (`[32]byte`; zero value means unknown). This enables end-to-end integrity verification at read time regardless of whether the data was stored compressed or uncompressed.
 
