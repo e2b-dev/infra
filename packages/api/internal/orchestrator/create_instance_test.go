@@ -54,7 +54,7 @@ func newCreateSandboxTestOrchestrator(t *testing.T) (*Orchestrator, *nodemanager
 		},
 	)
 
-	meter := noop.NewMeterProvider().Meter("test")
+	meter := noop.NewMeterProvider().Meter("github.com/e2b-dev/infra/packages/api/internal/orchestrator")
 	counter, _ := meter.Int64Counter("test-created-sandboxes")
 
 	ffClient, err := featureflags.NewClientWithDatasource(ldtestdata.DataSource())
