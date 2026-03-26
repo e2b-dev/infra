@@ -98,24 +98,6 @@ func (m *Map) Insert(ctx context.Context, sbx *Sandbox) {
 		logger.WithFirecrackerVersion(sbx.Config.FirecrackerConfig.FirecrackerVersion),
 	)
 
-	// Evict any stale entry that holds the same IP but a different sandbox ID.
-	// This handles the edge case where a stopping sandbox's eviction timer hasn't
-	// fired yet when the network slot is recycled for a new sandbox.
-	newIP := sbx.Slot.HostIPString()
-	for id, existing := range m.sandboxes.Items() {
-		if id == sbx.Runtime.SandboxID {
-			continue
-		}
-
-		if existing.Slot.HostIPString() == newIP {
-			logger.L().Info(ctx, "evicting stale sandbox with same IP on insert",
-				logger.WithSandboxID(id),
-				logger.WithSandboxIP(newIP),
-			)
-			m.sandboxes.Remove(id)
-		}
-	}
-
 	m.sandboxes.Insert(sbx.Runtime.SandboxID, sbx)
 }
 
