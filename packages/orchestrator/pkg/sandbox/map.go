@@ -152,7 +152,7 @@ func (m *Map) Remove(ctx context.Context, sandboxID, lifecycleID string) {
 			return false
 		}
 
-		if v.Runtime.ExecutionID != lifecycleID {
+		if v.LifecycleID != lifecycleID {
 			return false
 		}
 
