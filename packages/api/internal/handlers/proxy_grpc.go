@@ -116,8 +116,7 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		return nil, status.Error(codes.InvalidArgument, "invalid sandbox ID")
 	}
 
-	var autoResume *dbtypes.SandboxAutoResumeConfig
-	snap, _, err := s.getAutoResumeSnapshot(ctx, sandboxID)
+	snap, autoResume, err := s.getAutoResumeSnapshot(ctx, sandboxID)
 	if err != nil {
 		return nil, err
 	}
