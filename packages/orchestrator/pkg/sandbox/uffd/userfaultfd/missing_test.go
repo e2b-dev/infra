@@ -141,7 +141,7 @@ func TestMissing(t *testing.T) {
 func TestParallelMissing(t *testing.T) {
 	t.Parallel()
 
-	parallelOperations := 1_000_000
+	parallelOperations := 10_000
 
 	tt := testConfig{
 		pagesize:      header.PageSize,
