@@ -488,10 +488,12 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		return nil, err
 	}
 
+	ctx = context.WithoutCancel(ctx)
+
 	sbxlogger.E(sbx).Info(ctx, "Pausing sandbox")
 
 	// Stop the old sandbox in background after we're done
-	defer s.stopSandboxAsync(context.WithoutCancel(ctx), sbx)
+	defer s.stopSandboxAsync(ctx, sbx)
 
 	// Fire and forget - upload completes in the background
 	res, err := s.snapshotAndCacheSandbox(ctx, sbx, in.GetBuildId())
@@ -510,7 +512,7 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 
 	eventType := events.SandboxPausedEventPair
 	go s.sbxEventsService.Publish(
-		context.WithoutCancel(ctx),
+		ctx,
 		teamID,
 		events.SandboxEvent{
 			Version:   events.StructureVersionV2,
