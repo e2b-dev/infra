@@ -147,10 +147,11 @@ func Run(opts Options) bool {
 func ensureDirs(c cfg.Config) error {
 	for _, dir := range []string{
 		c.DefaultCacheDir,
+		c.NFSPProfOutputDir,
 		c.OrchestratorBaseDir,
-		c.StorageConfig.SandboxCacheDir,
 		c.SandboxDir,
 		c.SharedChunkCacheDir,
+		c.StorageConfig.SandboxCacheDir,
 		c.StorageConfig.SnapshotCacheDir,
 		c.StorageConfig.TemplateCacheDir,
 		c.TemplatesDir,
