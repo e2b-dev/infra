@@ -83,14 +83,15 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, teamID uuid.UUID, sand
 		return nil
 	}
 
-	defer func() { go o.analyticsRemove(context.WithoutCancel(ctx), sbx, opts.Action) }()
-	defer o.sandboxStore.Remove(ctx, teamID, sandboxID)
 	err = o.removeSandboxFromNode(ctx, sbx, opts.Action)
 	if err != nil {
 		logger.L().Error(ctx, "Error pausing sandbox", zap.Error(err), logger.WithSandboxID(sbx.SandboxID))
 
 		return ErrSandboxOperationFailed
 	}
+
+	o.sandboxStore.Remove(context.WithoutCancel(ctx), teamID, sandboxID)
+	func() { go o.analyticsRemove(context.WithoutCancel(ctx), sbx, opts.Action) }()
 
 	return nil
 }
