@@ -137,10 +137,6 @@ func (h *NFSHandler) getChroot(ctx context.Context, remoteAddr net.Addr, request
 		return nil, fmt.Errorf("%w: %w", ErrUnknownSandbox, err)
 	}
 
-	if !sbx.IsRunning() {
-		return nil, fmt.Errorf("%w: sandbox is not running", ErrUnknownSandbox)
-	}
-
 	// normalize the mount path
 	requestedPath := string(request.Dirpath)
 	regexpMatch := mountPath.MatchString(requestedPath)
