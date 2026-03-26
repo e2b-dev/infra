@@ -102,7 +102,9 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 		if err != nil {
 			var transErr *storage.PeerTransitionedError
 			if errors.As(err, &transErr) && !b.swapFailed.Load() {
-				b.swapHeader(transErr)
+				if swapErr := b.swapHeader(transErr); swapErr != nil {
+					return 0, fmt.Errorf("failed to swap header: %w", swapErr)
+				}
 
 				continue // retry with the new header
 			}
@@ -141,7 +143,9 @@ func (b *File) Slice(ctx context.Context, off, _ int64) ([]byte, error) {
 		if err != nil {
 			var transErr *storage.PeerTransitionedError
 			if errors.As(err, &transErr) && !b.swapFailed.Load() {
-				b.swapHeader(transErr)
+				if swapErr := b.swapHeader(transErr); swapErr != nil {
+					return nil, fmt.Errorf("failed to swap header: %w", swapErr)
+				}
 
 				continue // retry with the new header
 			}
@@ -157,7 +161,7 @@ func (b *File) Slice(ctx context.Context, off, _ int64) ([]byte, error) {
 // completion. Only the first goroutine to CAS succeeds; others just retry
 // with the already-swapped header. On deserialization failure, marks the
 // swap as failed so the ReadAt/Slice loop doesn't retry indefinitely.
-func (b *File) swapHeader(transErr *storage.PeerTransitionedError) {
+func (b *File) swapHeader(transErr *storage.PeerTransitionedError) error {
 	var headerBytes []byte
 
 	switch b.fileType {
@@ -168,18 +172,20 @@ func (b *File) swapHeader(transErr *storage.PeerTransitionedError) {
 	}
 
 	if len(headerBytes) == 0 {
-		return
+		return fmt.Errorf("no header bytes available")
 	}
 
 	newH, err := header.Deserialize(headerBytes)
 	if err != nil {
 		b.swapFailed.Store(true)
 
-		return
+		return fmt.Errorf("failed to swap header: %w", err)
 	}
 
 	old := b.header.Load()
 	b.header.CompareAndSwap(old, newH)
+
+	return nil
 }
 
 // buildFileSize returns the uncompressed file size for buildID from the header's
@@ -197,7 +203,7 @@ func (b *File) buildFileSize(h *header.Header, buildID uuid.UUID) int64 {
 	return info.Size
 }
 
-func (b *File) getBuild(ctx context.Context, buildID uuid.UUID, sizeU int64) (Diff, error) {
+func (b *File) getBuild(ctx context.Context, buildID uuid.UUID, uncompressedSize int64) (Diff, error) {
 	storageDiff, err := newStorageDiff(
 		b.store.cachePath,
 		buildID.String(),
@@ -205,7 +211,7 @@ func (b *File) getBuild(ctx context.Context, buildID uuid.UUID, sizeU int64) (Di
 		int64(b.Header().Metadata.BlockSize),
 		b.metrics,
 		b.persistence,
-		sizeU,
+		uncompressedSize,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create storage diff: %w", err)

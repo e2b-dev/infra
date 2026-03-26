@@ -347,7 +347,10 @@ func (p *PendingBuildInfo) get(key string) *pendingBuildInfo {
 		return nil
 	}
 
-	info := v.(pendingBuildInfo)
+	info, ok := v.(pendingBuildInfo)
+	if !ok {
+		return nil
+	}
 
 	return &info
 }

@@ -22,10 +22,10 @@ type StorageDiff struct {
 	buildID   string
 	diffType  DiffType
 
-	blockSize   int64
-	metrics     blockmetrics.Metrics
-	persistence storage.StorageProvider
-	sizeU       int64 // uncompressed; 0 means unknown (fall back to Size() call)
+	blockSize        int64
+	metrics          blockmetrics.Metrics
+	persistence      storage.StorageProvider
+	uncompressedSize int64 // 0 means unknown (fall back to Size() call)
 }
 
 var _ Diff = (*StorageDiff)(nil)
@@ -45,22 +45,22 @@ func newStorageDiff(
 	blockSize int64,
 	metrics blockmetrics.Metrics,
 	persistence storage.StorageProvider,
-	sizeU int64,
+	uncompressedSize int64,
 ) (*StorageDiff, error) {
 	if !isKnownDiffType(diffType) {
 		return nil, UnknownDiffTypeError{diffType}
 	}
 
 	return &StorageDiff{
-		buildID:     buildId,
-		diffType:    diffType,
-		cachePath:   GenerateDiffCachePath(basePath, buildId, diffType),
-		chunker:     utils.NewSetOnce[*block.Chunker](),
-		blockSize:   blockSize,
-		metrics:     metrics,
-		persistence: persistence,
-		sizeU:       sizeU,
-		cacheKey:    GetDiffStoreKey(buildId, diffType),
+		buildID:          buildId,
+		diffType:         diffType,
+		cachePath:        GenerateDiffCachePath(basePath, buildId, diffType),
+		chunker:          utils.NewSetOnce[*block.Chunker](),
+		blockSize:        blockSize,
+		metrics:          metrics,
+		persistence:      persistence,
+		uncompressedSize: uncompressedSize,
+		cacheKey:         GetDiffStoreKey(buildId, diffType),
 	}, nil
 }
 
@@ -85,10 +85,10 @@ func (b *StorageDiff) Init(ctx context.Context) error {
 }
 
 // createChunker resolves the uncompressed file size and creates a Chunker.
-// For V3 builds (sizeU == 0), falls back to a Size() network call on the
+// For V3 builds (uncompressedSize == 0), falls back to a Size() network call on the
 // base (uncompressed) path — V3 builds are always uncompressed.
 func (b *StorageDiff) createChunker(ctx context.Context) (*block.Chunker, error) {
-	size := b.sizeU
+	size := b.uncompressedSize
 	if size == 0 {
 		basePath := StoragePath(b.buildID, b.diffType)
 		obj, err := b.persistence.OpenFramedFile(ctx, basePath)

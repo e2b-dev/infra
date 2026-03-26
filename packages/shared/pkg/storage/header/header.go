@@ -76,11 +76,11 @@ func NewHeader(metadata *Metadata, mapping []*BuildMap) (*Header, error) {
 	intervals := bitset.New(uint(blocks))
 	startMap := make(map[int64]*BuildMap, len(mapping))
 
-	for _, mapping := range mapping {
-		block := BlockIdx(int64(mapping.Offset), int64(metadata.BlockSize))
+	for _, m := range mapping {
+		block := BlockIdx(int64(m.Offset), int64(metadata.BlockSize))
 
 		intervals.Set(uint(block))
-		startMap[block] = mapping
+		startMap[block] = m
 	}
 
 	h := &Header{

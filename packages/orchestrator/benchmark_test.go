@@ -1,30 +1,19 @@
-// Run with:
+// run with something like:
 //
-//	sudo modprobe nbd
-//	sudo BENCH_COMPRESS=zstd:2 `which go` test ./packages/orchestrator/ -bench=BenchmarkBaseImage -timeout=60m
-//
-// Or use bench.sh to run multiple modes:
-//
-//	sudo ./packages/orchestrator/bench.sh "*" -timeout=60m
-//
-// BENCH_COMPRESS values: "lz4:0", "zstd:1", "zstd:2", "zstd:3", or "" (uncompressed).
-// Zstd levels map to zstd.EncoderLevel constants:
-// 1=SpeedFastest, 2=SpeedDefault, 3=SpeedBetterCompression, 4=SpeedBestCompression.
+// sudo `which go` test -benchtime=15s -bench=. -v
+// sudo modprobe nbd
+// echo 1024 | sudo tee /proc/sys/vm/nr_hugepages
 package main
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
-	"strconv"
-	"strings"
 	"testing"
 	"time"
 
-	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
@@ -58,27 +47,7 @@ import (
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator")
 
-// parseCompressEnv parses BENCH_COMPRESS (e.g. "zstd:2", "lz4:0", or "" for uncompressed).
-func parseCompressEnv(s string) (compType string, level int) {
-	s = strings.TrimSpace(s)
-	if s == "" || s == "uncompressed" {
-		return "", 0
-	}
-
-	parts := strings.SplitN(s, ":", 2)
-	if len(parts) != 2 {
-		panic(fmt.Sprintf("invalid BENCH_COMPRESS %q: expected type:level (e.g. zstd:2)", s))
-	}
-
-	level, err := strconv.Atoi(parts[1])
-	if err != nil {
-		panic(fmt.Sprintf("invalid BENCH_COMPRESS level %q: %v", parts[1], err))
-	}
-
-	return parts[0], level
-}
-
-func BenchmarkBaseImage(b *testing.B) {
+func BenchmarkBaseImageLaunch(b *testing.B) {
 	if os.Geteuid() != 0 {
 		b.Skip("skipping benchmark because not running as root")
 	}
@@ -94,24 +63,6 @@ func BenchmarkBaseImage(b *testing.B) {
 		useHugePages    = false
 		templateVersion = "v2.0.0"
 	)
-
-	compType, compLevel := parseCompressEnv(os.Getenv("BENCH_COMPRESS"))
-	compressed := compType != ""
-	if compressed {
-		featureflags.OverrideJSONFlag(featureflags.CompressConfigFlag, ldvalue.FromJSONMarshal(map[string]any{
-			"compressBuilds":     true,
-			"compressionType":    compType,
-			"compressionLevel":   compLevel,
-			"frameSizeKB":        2048,
-			"targetPartSizeMB":   50,
-			"frameEncodeWorkers": 4,
-			"encoderConcurrency": 1,
-			"decoderConcurrency": 1,
-		}))
-		b.Logf("compression: %s level %d", compType, compLevel)
-	} else {
-		b.Log("compression: off")
-	}
 
 	// cache paths, to speed up test runs. these paths aren't wiped between tests
 	persistenceDir := getPersistenceDir()
@@ -177,6 +128,7 @@ func BenchmarkBaseImage(b *testing.B) {
 	require.NoError(b, err)
 
 	sbxlogger.SetSandboxLoggerInternal(l)
+	// sbxlogger.SetSandboxLoggerExternal(logger)
 
 	slotStorage, err := network.NewStorageLocal(b.Context(), config.NetworkConfig, network.NoopEgressProxy{})
 	require.NoError(b, err)
@@ -323,15 +275,13 @@ func BenchmarkBaseImage(b *testing.B) {
 		buildMetrics,
 	)
 
-	buildPath := filepath.Join(os.Getenv("LOCAL_TEMPLATE_STORAGE_BASE_PATH"), buildID, "snapfile")
-	var buildDuration time.Duration
+	buildPath := filepath.Join(os.Getenv("LOCAL_TEMPLATE_STORAGE_BASE_PATH"), buildID, "rootfs.ext4")
 	if _, err := os.Stat(buildPath); os.IsNotExist(err) {
 		// build template
 		force := true
 		templateConfig := buildconfig.TemplateConfig{
 			Version:            templateVersion,
 			TemplateID:         templateID,
-			TeamID:             "benchmark-team", // must be non-empty or LD context is invalid and flag overrides are ignored
 			FromImage:          baseImage,
 			Force:              &force,
 			VCpuCount:          sandboxConfig.Vcpu,
@@ -346,10 +296,8 @@ func BenchmarkBaseImage(b *testing.B) {
 		metadata := storage.TemplateFiles{
 			BuildID: buildID,
 		}
-		buildStart := time.Now()
 		_, err = builder.Build(b.Context(), metadata, templateConfig, l.Detach(b.Context()).Core())
 		require.NoError(b, err)
-		buildDuration = time.Since(buildStart)
 	}
 
 	// retrieve template
@@ -372,8 +320,6 @@ func BenchmarkBaseImage(b *testing.B) {
 	for b.Loop() {
 		tc.testOneItem(b, buildID, kernelVersion, fcVersion)
 	}
-
-	b.ReportMetric(buildDuration.Seconds(), "build-s")
 }
 
 func getPersistenceDir() string {
