@@ -282,6 +282,22 @@ components:
         maskRequestHost:
           type: string
           description: Specify host mask which will be used for all sandbox requests
+        allowIn:
+          type: array
+          description: >
+            Allowed ingress sources. Format: IP or CIDR with optional port
+            (e.g. "203.0.113.1", "0.0.0.0/0:8080", "10.0.0.0/8:80-443").
+            Allow takes precedence over deny.
+          items:
+            type: string
+        denyIn:
+          type: array
+          description: >
+            Denied ingress sources. Format: IP or CIDR with optional port
+            (e.g. "0.0.0.0/0", "10.0.0.0/8:22"). Use "0.0.0.0/0" to block all.
+            Unmatched traffic is allowed by default.
+          items:
+            type: string
 
     SandboxAutoResumeEnabled:
       type: boolean
@@ -2367,7 +2383,7 @@ paths:
 
   /sandboxes/{sandboxID}/network:
     put:
-      description: Update the network configuration for a running sandbox. Replaces the current egress rules with the provided configuration. Omitting both fields clears all egress rules.
+      description: Update the network configuration for a running sandbox. Replaces the current network rules with the provided configuration. Omitting fields clears those rules.
       security:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
@@ -2390,6 +2406,26 @@ paths:
                   description: List of denied CIDR blocks or IP addresses for egress traffic. Domain names are not supported for deny rules.
                   items:
                     type: string
+                allowIn:
+                  type: array
+                  description: >
+                    Allowed ingress sources. Format: IP or CIDR with optional port
+                    (e.g. "203.0.113.1", "0.0.0.0/0:8080", "10.0.0.0/8:80-443").
+                    Allow takes precedence over deny.
+                  items:
+                    type: string
+                denyIn:
+                  type: array
+                  description: >
+                    Denied ingress sources. Format: IP or CIDR with optional port
+                    (e.g. "0.0.0.0/0", "10.0.0.0/8:22"). Use "0.0.0.0/0" to block all.
+                    Unmatched traffic is allowed by default.
+                  items:
+                    type: string
+                maskRequestHost:
+                  type: string
+                  nullable: true
+                  description: Specify host mask which will be used for all sandbox requests. Set to null to clear.
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       responses:

@@ -9,8 +9,10 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
+	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/ginutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	sharedutils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 func (a *APIStore) PutSandboxesSandboxIDNetwork(
@@ -37,23 +39,30 @@ func (a *APIStore) PutSandboxesSandboxIDNetwork(
 		return
 	}
 
-	var allowedEntries []string
-	if body.AllowOut != nil {
-		allowedEntries = *body.AllowOut
+	egressUpdate := &types.SandboxNetworkEgressConfig{
+		AllowedAddresses: sharedutils.DerefOrDefault(body.AllowOut, nil),
+		DeniedAddresses:  sharedutils.DerefOrDefault(body.DenyOut, nil),
 	}
 
-	var deniedEntries []string
-	if body.DenyOut != nil {
-		deniedEntries = *body.DenyOut
+	ingressUpdate := &types.SandboxNetworkIngressConfig{
+		MaskRequestHost:  body.MaskRequestHost,
+		AllowedAddresses: sharedutils.DerefOrDefault(body.AllowIn, nil),
+		DeniedAddresses:  sharedutils.DerefOrDefault(body.DenyIn, nil),
 	}
 
-	if apiErr := validateEgressRules(allowedEntries, deniedEntries); apiErr != nil {
+	if apiErr := validateEgressRules(egressUpdate.AllowedAddresses, egressUpdate.DeniedAddresses); apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return
 	}
 
-	if apiErr := a.orchestrator.UpdateSandboxNetworkConfig(ctx, team.ID, sandboxID, allowedEntries, deniedEntries); apiErr != nil {
+	if apiErr := validateIngressRules(ingressUpdate.AllowedAddresses, ingressUpdate.DeniedAddresses); apiErr != nil {
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+
+		return
+	}
+
+	if apiErr := a.orchestrator.UpdateSandboxNetworkConfig(ctx, team.ID, sandboxID, egressUpdate, ingressUpdate); apiErr != nil {
 		telemetry.ReportErrorByCode(ctx, apiErr.Code, "error updating sandbox network config", apiErr.Err)
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 

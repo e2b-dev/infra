@@ -124,6 +124,27 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 			return
 		}
 
+		var ingressDeniedErr *IngressDeniedError
+		if errors.As(err, &ingressDeniedErr) {
+			logger.L().Warn(ctx, "ingress denied",
+				zap.String("host", r.Host),
+				logger.WithSandboxID(ingressDeniedErr.SandboxId),
+				zap.String("client_ip", ingressDeniedErr.ClientIP),
+				zap.Uint16("port", ingressDeniedErr.Port))
+
+			err = template.
+				NewIngressDeniedError(ingressDeniedErr.SandboxId, r.Host, ingressDeniedErr.ClientIP, ingressDeniedErr.Port).
+				HandleError(w, r)
+			if err != nil {
+				logger.L().Error(ctx, "failed to handle ingress denied error", zap.Error(err), logger.WithSandboxID(ingressDeniedErr.SandboxId))
+				http.Error(w, "Failed to handle ingress denied error", http.StatusInternalServerError)
+
+				return
+			}
+
+			return
+		}
+
 		var trafficMissingTokenErr *MissingTrafficAccessTokenError
 		if errors.As(err, &trafficMissingTokenErr) {
 			logger.L().Warn(ctx, "traffic access token is missing", zap.String("host", r.Host))

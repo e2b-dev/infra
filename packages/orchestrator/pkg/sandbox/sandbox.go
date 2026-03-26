@@ -35,6 +35,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+	sandboxnetwork "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -78,46 +79,15 @@ type Config struct {
 
 	VolumeMounts []VolumeMountConfig
 
-	// mu protects mutable sub-fields of Network (Egress, Ingress).
-	// The Network pointer itself is set once at construction and never replaced.
-	mu      *sync.RWMutex
-	Network *orchestrator.SandboxNetworkConfig
+	// Egress and ingress are immutable snapshots, swapped atomically on updates.
+	egress  *atomic.Pointer[sandboxnetwork.Egress]
+	ingress *atomic.Pointer[sandboxnetwork.Ingress]
 }
 
-// NewConfig creates a Config, normalizing a nil Network to an empty config
-// so that Network is never nil.
 func NewConfig(c Config) *Config {
-	if c.Network == nil {
-		c.Network = &orchestrator.SandboxNetworkConfig{}
-	}
-
-	c.mu = &sync.RWMutex{}
+	initNetworkPointers(&c)
 
 	return &c
-}
-
-// GetNetworkEgress returns the egress config in a thread-safe manner.
-func (c *Config) GetNetworkEgress() *orchestrator.SandboxNetworkEgressConfig {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	return c.Network.GetEgress()
-}
-
-// SetNetworkEgress updates the egress config in a thread-safe manner.
-func (c *Config) SetNetworkEgress(egress *orchestrator.SandboxNetworkEgressConfig) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	c.Network.Egress = egress
-}
-
-// GetNetworkIngress returns the ingress config in a thread-safe manner.
-func (c *Config) GetNetworkIngress() *orchestrator.SandboxNetworkIngressConfig {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	return c.Network.GetIngress()
 }
 
 type VolumeMountConfig struct {
@@ -332,7 +302,7 @@ func (f *Factory) CreateSandbox(
 		}
 	}()
 
-	ipsPromise := getNetworkSlot(ctx, f.networkPool, cleanup, config.Network)
+	ipsPromise := getNetworkSlot(ctx, f.networkPool, cleanup, config.GetNetworkEgress())
 
 	sandboxFiles := template.Files().NewSandboxFiles(runtime.SandboxID)
 	cleanup.Add(ctx, cleanupFiles(f.config, sandboxFiles))
@@ -612,7 +582,7 @@ func (f *Factory) ResumeSandbox(
 	}()
 
 	// Slot initialization
-	ipsPromise := getNetworkSlot(ctx, f.networkPool, cleanup, config.Network)
+	ipsPromise := getNetworkSlot(ctx, f.networkPool, cleanup, config.GetNetworkEgress())
 
 	// Rootfs initialization
 	overlayPromise := utils.NewPromise(func() (rootfs.Provider, error) {
@@ -1222,40 +1192,6 @@ func createCgroup(ctx context.Context, cgroupManager cgroup.Manager, cgroupName 
 	})
 
 	return handle, handle.GetFD()
-}
-
-func getNetworkSlot(
-	ctx context.Context,
-	networkPool *network.Pool,
-	cleanup *Cleanup,
-	networkConfig *orchestrator.SandboxNetworkConfig,
-) *utils.Promise[*network.Slot] {
-	return utils.NewPromise(func() (*network.Slot, error) {
-		ctx, span := tracer.Start(ctx, "get network-slot")
-		defer span.End()
-
-		slot, err := networkPool.Get(ctx, networkConfig)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get network slot: %w", err)
-		}
-
-		cleanup.Add(ctx, func(ctx context.Context) error {
-			ctx, span := tracer.Start(ctx, "clean network-slot")
-			defer span.End()
-
-			// We can run this cleanup asynchronously, as it is not important for the sandbox lifecycle
-			go func(ctx context.Context) {
-				returnErr := networkPool.Return(ctx, slot)
-				if returnErr != nil {
-					logger.L().Error(ctx, "failed to return network slot", zap.Error(returnErr))
-				}
-			}(context.WithoutCancel(ctx))
-
-			return nil
-		})
-
-		return slot, nil
-	})
 }
 
 func serveMemory(

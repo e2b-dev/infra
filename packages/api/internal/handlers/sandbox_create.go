@@ -44,8 +44,8 @@ const (
 	metricTemplateAlias         = metrics.MetricPrefix + "template.alias"
 	minEnvdVersionForSecureFlag = "0.2.0" // Minimum version of envd that supports secure flag
 
-	// Network validation error messages
-	ErrMsgDomainsRequireBlockAll = "When specifying allowed domains in allow out, you must include 'ALL_TRAFFIC' in deny out to block all other traffic."
+	ErrMsgDomainsRequireBlockAll  = "When specifying allowed domains in allow out, you must include 'ALL_TRAFFIC' in deny out to block all other traffic."
+	ErrMsgAllowInRequiresBlockAll = "When specifying allowed sources in allow in, you must include 'ALL_TRAFFIC' (0.0.0.0/0) in deny in to block all other traffic."
 )
 
 func (a *APIStore) PostSandboxes(c *gin.Context) {
@@ -174,6 +174,8 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 			Ingress: &types.SandboxNetworkIngressConfig{
 				AllowPublicAccess: n.AllowPublicTraffic,
 				MaskRequestHost:   n.MaskRequestHost,
+				AllowedAddresses:  sharedUtils.DerefOrDefault(n.AllowIn, nil),
+				DeniedAddresses:   sharedUtils.DerefOrDefault(n.DenyIn, nil),
 			},
 			Egress: &types.SandboxNetworkEgressConfig{
 				AllowedAddresses: sharedUtils.DerefOrDefault(n.AllowOut, nil),
@@ -532,44 +534,108 @@ func validateNetworkConfig(network *api.SandboxNetworkConfig) *api.APIError {
 	denyOut := sharedUtils.DerefOrDefault(network.DenyOut, nil)
 	allowOut := sharedUtils.DerefOrDefault(network.AllowOut, nil)
 
-	return validateEgressRules(allowOut, denyOut)
+	if apiErr := validateEgressRules(allowOut, denyOut); apiErr != nil {
+		return apiErr
+	}
+
+	denyIn := sharedUtils.DerefOrDefault(network.DenyIn, nil)
+	allowIn := sharedUtils.DerefOrDefault(network.AllowIn, nil)
+
+	return validateIngressRules(allowIn, denyIn)
+}
+
+func badRequest(err error, format string, args ...any) *api.APIError {
+	s := fmt.Sprintf(format, args...)
+	if err != nil {
+		s = fmt.Sprintf("%s: %s", s, err.Error())
+		err = fmt.Errorf("%s: %w", s, err)
+	}
+
+	return &api.APIError{Code: http.StatusBadRequest, Err: err, ClientMsg: s}
 }
 
 // validateEgressRules validates egress allow/deny rules:
-// - denyOut entries must be valid IPs or CIDRs (not domains)
-// - allowOut entries must be valid IPs, CIDRs, or domain names
+// - denyOut entries must be specified IPs or CIDRs (not domains)
+// - allowOut entries can be specified IPs, CIDRs, or domain names
 // - when allowOut contains domains, denyOut must include 0.0.0.0/0
 func validateEgressRules(allowOut, denyOut []string) *api.APIError {
-	for _, cidr := range denyOut {
-		if !sandbox_network.IsSpecifiedIPOrCIDR(cidr) {
-			return &api.APIError{
-				Code:      http.StatusBadRequest,
-				Err:       fmt.Errorf("invalid denied CIDR %s", cidr),
-				ClientMsg: fmt.Sprintf("invalid denied CIDR %s", cidr),
-			}
+	for _, entry := range denyOut {
+		host, port, _ := sandbox_network.SplitHostPort(entry)
+		if port != "" {
+			return badRequest(nil, "invalid deny out entry %q: port-specific rules are not supported for egress", entry)
+		}
+
+		if !sandbox_network.IsSpecifiedIPOrCIDR(host) {
+			return badRequest(nil, "invalid denied CIDR %s", host)
 		}
 	}
 
-	if len(allowOut) > 0 {
-		allowedAddresses, allowedDomains := sandbox_network.ParseAddressesAndDomains(allowOut)
-
-		for _, addr := range allowedAddresses {
-			if !sandbox_network.IsSpecifiedIPOrCIDR(addr) {
-				return &api.APIError{
-					Code:      http.StatusBadRequest,
-					Err:       fmt.Errorf("invalid allowed address %s", addr),
-					ClientMsg: fmt.Sprintf("invalid allowed address %s", addr),
-				}
-			}
+	hasDomains := false
+	for _, entry := range allowOut {
+		host, port, _ := sandbox_network.SplitHostPort(entry)
+		if port != "" {
+			return badRequest(nil, "invalid allow out entry %q: port-specific rules are not supported for egress", entry)
 		}
-		hasBlockAll := slices.Contains(denyOut, sandbox_network.AllInternetTrafficCIDR)
 
-		if len(allowedDomains) > 0 && !hasBlockAll {
-			return &api.APIError{
-				Code:      http.StatusBadRequest,
-				Err:       fmt.Errorf("allow out contains domains but deny out is missing 0.0.0.0/0 (ALL_TRAFFIC)"),
-				ClientMsg: ErrMsgDomainsRequireBlockAll,
+		if sandbox_network.IsIPOrCIDR(host) {
+			if !sandbox_network.IsSpecifiedIPOrCIDR(host) {
+				return badRequest(nil, "invalid allowed address %s", host)
 			}
+		} else {
+			hasDomains = true
+		}
+	}
+
+	hasBlockAll := slices.Contains(denyOut, sandbox_network.AllInternetTrafficCIDR)
+	if hasDomains && !hasBlockAll {
+		return badRequest(nil, ErrMsgDomainsRequireBlockAll)
+	}
+
+	return nil
+}
+
+// validateIngressRules validates ingress allow/deny rules:
+// - entries must be valid IPv4 or CIDR with optional port/port-range (no domains)
+// - when allowIn is set, denyIn must include 0.0.0.0/0
+func validateIngressRules(allowIn, denyIn []string) *api.APIError {
+	for _, entry := range denyIn {
+		if err := validateIngressEntry(entry); err != nil {
+			return badRequest(err, "invalid deny in entry %q", entry)
+		}
+	}
+
+	for _, entry := range allowIn {
+		if err := validateIngressEntry(entry); err != nil {
+			return badRequest(err, "invalid allow in entry %q", entry)
+		}
+	}
+
+	hasBlockAll := slices.Contains(denyIn, sandbox_network.AllInternetTrafficCIDR)
+	if len(allowIn) > 0 && !hasBlockAll {
+		return badRequest(nil, ErrMsgAllowInRequiresBlockAll)
+	}
+
+	return nil
+}
+
+// validateIngressEntry validates a single ingress rule entry (CIDR[:port]).
+func validateIngressEntry(entry string) error {
+	host, portStr, err := sandbox_network.SplitHostPort(entry)
+	if err != nil {
+		return err
+	}
+
+	if !sandbox_network.IsIPOrCIDR(host) {
+		return fmt.Errorf("domains are not supported for ingress rules")
+	}
+
+	if !sandbox_network.IsSpecifiedIPOrCIDR(host) {
+		return fmt.Errorf("unspecified address")
+	}
+
+	if portStr != "" {
+		if _, _, err := sandbox_network.ParsePortRange(portStr); err != nil {
+			return err
 		}
 	}
 

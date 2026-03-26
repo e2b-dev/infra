@@ -63,14 +63,14 @@ func ensureNetworkTestTemplate(t *testing.T) string {
 // assertSuccessfulHTTPRequest asserts that an HTTP/HTTPS request to the given URL succeeds
 func assertSuccessfulHTTPRequest(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, url string, msg string) {
 	t.Helper()
-	err := utils.ExecCommand(t, ctx, sbx, envdClient, "curl", "--connect-timeout", "5", "--max-time", "10", "-Iks", url)
+	err := utils.ExecCommand(t, ctx, sbx, envdClient, "curl", "--connect-timeout", "1", "--max-time", "2", "-Iks", url)
 	require.NoError(t, err, msg)
 }
 
 // assertBlockedHTTPRequest asserts that an HTTP/HTTPS request to the given URL is blocked
 func assertBlockedHTTPRequest(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, url string, msg string) {
 	t.Helper()
-	err := utils.ExecCommand(t, ctx, sbx, envdClient, "curl", "--connect-timeout", "3", "--max-time", "5", "-Iks", url)
+	err := utils.ExecCommand(t, ctx, sbx, envdClient, "curl", "--connect-timeout", "1", "--max-time", "2", "-Iks", url)
 	require.Error(t, err, msg)
 	require.Contains(t, err.Error(), "failed with exit code", "Expected connection failure message")
 }
@@ -305,7 +305,7 @@ func TestEgressFirewallAllowAll(t *testing.T) {
 	client := setup.GetAPIClient()
 
 	// Allow all IPs using 0.0.0.0/0
-	allowAll := []string{"0.0.0.0/0"}
+	allowAll := []string{sandbox_network.AllInternetTrafficCIDR}
 
 	sbx := utils.SetupSandboxWithCleanup(t, client,
 		utils.WithTemplateID(templateID),
@@ -473,7 +473,7 @@ func TestEgressFirewallAllowAllDuplicate(t *testing.T) {
 	client := setup.GetAPIClient()
 
 	// Add 0.0.0.0/0 twice in the allowOut list
-	allowAll := []string{"0.0.0.0/0", "0.0.0.0/0"}
+	allowAll := []string{sandbox_network.AllInternetTrafficCIDR, sandbox_network.AllInternetTrafficCIDR}
 
 	sbx := utils.SetupSandboxWithCleanup(t, client,
 		utils.WithTemplateID(templateID),
@@ -498,7 +498,7 @@ func TestEgressFirewallRegularIPThenAllowAll(t *testing.T) {
 	client := setup.GetAPIClient()
 
 	// Add a specific IP followed by 0.0.0.0/0
-	allowList := []string{"8.8.8.8", "0.0.0.0/0"}
+	allowList := []string{"8.8.8.8", sandbox_network.AllInternetTrafficCIDR}
 
 	sbx := utils.SetupSandboxWithCleanup(t, client,
 		utils.WithTemplateID(templateID),

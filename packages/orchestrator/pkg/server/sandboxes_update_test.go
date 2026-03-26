@@ -17,6 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/service"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
+	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 )
 
 // These tests exercise the rollback path of Update: when egress application
@@ -52,7 +53,7 @@ func TestUpdate_EgressOnly_FailsAndDoesNotChangeEndTime(t *testing.T) {
 	_, err = s.Update(t.Context(), &orchestrator.SandboxUpdateRequest{
 		SandboxId: sbx.Runtime.SandboxID,
 		Egress: &orchestrator.SandboxNetworkEgressConfig{
-			DeniedCidrs: []string{"0.0.0.0/0"},
+			DeniedCidrs: []string{sandbox_network.AllInternetTrafficCIDR},
 		},
 	})
 
@@ -93,7 +94,7 @@ func TestUpdate_EndTimeAndEgress_EgressFails_RevertsEndTime(t *testing.T) {
 		SandboxId: sbx.Runtime.SandboxID,
 		EndTime:   timestamppb.New(newEnd),
 		Egress: &orchestrator.SandboxNetworkEgressConfig{
-			DeniedCidrs: []string{"0.0.0.0/0"},
+			DeniedCidrs: []string{sandbox_network.AllInternetTrafficCIDR},
 		},
 	})
 
@@ -102,8 +103,48 @@ func TestUpdate_EndTimeAndEgress_EgressFails_RevertsEndTime(t *testing.T) {
 	// end_time must be reverted to original since egress failed.
 	assert.Equal(t, originalEnd, sbx.GetEndAt())
 	// Network egress should not have been set.
-	egress := sbx.Config.GetNetworkEgress()
-	assert.Empty(t, egress.GetAllowedCidrs())
-	assert.Empty(t, egress.GetDeniedCidrs())
-	assert.Empty(t, egress.GetAllowedDomains())
+	assert.True(t, sbx.Config.GetNetworkEgress().NoFirewallRules())
+}
+
+func TestUpdate_EgressAndIngress_EgressFails_RevertsIngress(t *testing.T) {
+	t.Parallel()
+
+	slot, err := network.NewSlot("test", 1, network.Config{}, network.NoopEgressProxy{})
+	require.NoError(t, err)
+
+	sbx := &sandbox.Sandbox{
+		Metadata: &sandbox.Metadata{
+			Config:  sandbox.NewConfig(sandbox.Config{}),
+			Runtime: sandbox.RuntimeMetadata{SandboxID: id.Generate()},
+		},
+		Resources: &sandbox.Resources{Slot: slot},
+	}
+	sbx.SetStartedAt(time.Now())
+	sbx.SetEndAt(time.Now().Add(time.Hour))
+
+	sandboxMap := sandbox.NewSandboxesMap()
+	sandboxMap.Insert(t.Context(), sbx)
+	sandboxMap.MarkRunning(t.Context(), sbx)
+
+	s := &Server{
+		sandboxFactory:   &sandbox.Factory{Sandboxes: sandboxMap},
+		info:             &service.ServiceInfo{},
+		sbxEventsService: internalevents.NewEventsService(nil),
+	}
+
+	_, err = s.Update(t.Context(), &orchestrator.SandboxUpdateRequest{
+		SandboxId: sbx.Runtime.SandboxID,
+		Egress: &orchestrator.SandboxNetworkEgressConfig{
+			DeniedCidrs: []string{sandbox_network.AllInternetTrafficCIDR},
+		},
+		Ingress: &orchestrator.SandboxNetworkIngressConfig{
+			DeniedCidrs: []string{"10.0.0.0/8"},
+		},
+	})
+
+	require.Error(t, err)
+	require.Equal(t, codes.Internal, status.Code(err))
+	// Ingress must not be applied when egress fails.
+	require.False(t, sbx.Config.GetNetworkIngress().HasFilters())
+	require.Empty(t, sbx.Config.GetNetworkIngress().Allowed)
 }

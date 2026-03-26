@@ -168,6 +168,12 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 				zap.String("target_port", url.Port()),
 			)
 
+			// Forward the real client IP to the orchestrator via an internal header.
+			// Delete any client-supplied value first so ExtractClientIP derives
+			// the IP from trusted sources (XFF / RemoteAddr) only.
+			r.Header.Del(reverseproxy.E2BClientIPHeader)
+			r.Header.Set(reverseproxy.E2BClientIPHeader, reverseproxy.ExtractExternalClientIP(r))
+
 			return &pool.Destination{
 				SandboxId:     sandboxId,
 				RequestLogger: l,

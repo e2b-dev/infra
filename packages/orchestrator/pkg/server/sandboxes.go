@@ -18,7 +18,6 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -135,8 +134,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		return nil, fmt.Errorf("failed to get template snapshot data: %w", err)
 	}
 
-	// Clone the network config to avoid modifying the original request
-	network := proto.CloneOf(req.GetSandbox().GetNetwork())
+	network := req.GetSandbox().GetNetwork()
 
 	// TODO: Temporarily set this based on global config, should be removed later
 	// https://linear.app/e2b/issue/ENG-3291
@@ -145,15 +143,13 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	if req.GetSandbox().AllowInternetAccess != nil {
 		allowInternet = req.GetSandbox().GetAllowInternetAccess()
 	}
+
+	// Build egress/ingress from proto, injecting deny-all if internet is disabled.
+	egress := sandbox.EgressFromProto(network.GetEgress())
 	if !allowInternet {
-		if network == nil {
-			network = &orchestrator.SandboxNetworkConfig{}
-		}
-		if network.GetEgress() == nil {
-			network.Egress = &orchestrator.SandboxNetworkEgressConfig{}
-		}
-		network.Egress.DeniedCidrs = []string{sandbox_network.AllInternetTrafficCIDR}
+		egress.Denied = sandbox_network.ParseValidRules([]string{sandbox_network.AllInternetTrafficCIDR})
 	}
+	ingress := sandbox.IngressFromProto(network.GetIngress())
 
 	resolvedFCVersion := featureflags.ResolveFirecrackerVersion(ctx, s.featureFlags, req.GetSandbox().GetFirecrackerVersion())
 	volumeMounts, err := createVolumeMountModelsFromAPI(req.GetSandbox().GetVolumeMounts())
@@ -169,8 +165,6 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		TotalDiskSizeMB: req.GetSandbox().GetTotalDiskSizeMb(),
 		HugePages:       req.GetSandbox().GetHugePages(),
 
-		Network: network,
-
 		Envd: sandbox.EnvdMetadata{
 			Version:     req.GetSandbox().GetEnvdVersion(),
 			AccessToken: req.GetSandbox().EnvdAccessToken,
@@ -184,6 +178,8 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 
 		VolumeMounts: volumeMounts,
 	})
+	config.SetNetworkEgress(egress)
+	config.SetNetworkIngress(ingress)
 	childSpan.SetAttributes(
 		telemetry.WithFirecrackerVersion(config.FirecrackerConfig.FirecrackerVersion),
 	)
@@ -299,12 +295,14 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 		return nil, status.Error(codes.NotFound, "sandbox not found")
 	}
 
+	teamID, buildId, eventData := s.prepareSandboxEventData(ctx, sbx)
 	var updates []utils.UpdateFunc
 
 	if req.GetEndTime() != nil {
 		updates = append(updates, func(_ context.Context) (func(context.Context), error) {
 			old := sbx.GetEndAt()
 			sbx.SetEndAt(req.GetEndTime().AsTime())
+			eventData["set_timeout"] = req.GetEndTime().AsTime().Format(time.RFC3339)
 
 			return func(_ context.Context) { sbx.SetEndAt(old) }, nil
 		})
@@ -312,22 +310,40 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 
 	if req.GetEgress() != nil {
 		updates = append(updates, func(ctx context.Context) (func(context.Context), error) {
-			oldEgress := sbx.Config.GetNetworkEgress()
+			egress := sandbox.EgressFromProto(req.GetEgress())
 
-			if err := sbx.Slot.UpdateInternet(ctx, req.GetEgress()); err != nil {
+			if err := sbx.Slot.UpdateInternet(ctx, egress); err != nil {
 				return nil, fmt.Errorf("failed to update sandbox network: %w", err)
 			}
 
-			egress := req.GetEgress()
-			if len(egress.GetAllowedCidrs()) == 0 && len(egress.GetDeniedCidrs()) == 0 && len(egress.GetAllowedDomains()) == 0 {
-				sbx.Config.SetNetworkEgress(nil)
-			} else {
-				sbx.Config.SetNetworkEgress(egress)
+			oldEgress := sbx.Config.SetNetworkEgress(egress)
+
+			eventData["network_egress"] = map[string]any{
+				"allowed_cidrs":   egress.Allowed.CIDRs(),
+				"denied_cidrs":    egress.Denied.CIDRs(),
+				"allowed_domains": egress.AllowedHTTPHostDomains,
 			}
 
 			return func(ctx context.Context) {
 				_ = sbx.Slot.UpdateInternet(ctx, oldEgress)
 				sbx.Config.SetNetworkEgress(oldEgress)
+			}, nil
+		})
+	}
+
+	if req.GetIngress() != nil {
+		updates = append(updates, func(_ context.Context) (func(context.Context), error) {
+			ingress := sandbox.IngressFromProto(req.GetIngress())
+			oldIngress := sbx.Config.SetNetworkIngress(ingress)
+
+			eventData["network_ingress"] = map[string]any{
+				"allowed":           ingress.Allowed.CIDRs(),
+				"denied":            ingress.Denied.CIDRs(),
+				"mask_request_host": ingress.MaskRequestHost,
+			}
+
+			return func(_ context.Context) {
+				sbx.Config.SetNetworkIngress(oldIngress)
 			}, nil
 		})
 	}
@@ -340,18 +356,6 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 
 	// Publish event if any updates were applied.
 	if len(updates) > 0 {
-		teamID, buildId, eventData := s.prepareSandboxEventData(ctx, sbx)
-		if req.GetEndTime() != nil {
-			eventData["set_timeout"] = req.GetEndTime().AsTime().Format(time.RFC3339)
-		}
-		if egress := req.GetEgress(); egress != nil {
-			eventData["network_egress"] = map[string]any{
-				"allowed_cidrs":   egress.GetAllowedCidrs(),
-				"denied_cidrs":    egress.GetDeniedCidrs(),
-				"allowed_domains": egress.GetAllowedDomains(),
-			}
-		}
-
 		go s.sbxEventsService.Publish(
 			context.WithoutCancel(ctx),
 			teamID,

@@ -3,6 +3,7 @@ package proxy
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -72,7 +73,7 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 			}
 
 			ingress := sbx.Config.GetNetworkIngress()
-			accessToken := ingress.GetTrafficAccessToken()
+			accessToken := ingress.TrafficAccessToken
 
 			isNonEnvdTraffic := int64(port) != consts.DefaultEnvdServerPort
 
@@ -87,9 +88,32 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 				}
 			}
 
+			if isNonEnvdTraffic && ingress.HasFilters() {
+				clientIP := reverseproxy.ExtractE2BClientIP(r)
+				ip := net.ParseIP(clientIP)
+				if ip == nil {
+					// Fail closed: unparseable client IP is denied when ingress rules are active.
+					return nil, reverseproxy.NewErrIngressDenied(sandboxId, clientIP, uint16(port))
+				}
+
+				// IPv6 clients are always denied — ingress rules only support IPv4.
+				// If/when the GCP LB gets an IPv6 frontend, this ensures fail-closed behavior.
+				if ip.To4() == nil {
+					return nil, reverseproxy.NewErrIngressDenied(sandboxId, clientIP, uint16(port))
+				}
+
+				if !ingress.IsAllowed(ip, uint16(port)) {
+					return nil, reverseproxy.NewErrIngressDenied(sandboxId, clientIP, uint16(port))
+				}
+			}
+
+			// Strip the internal client IP header so it never reaches the sandbox.
+			// Must happen after extractClientIP reads it, and before Rewrite clones r into r.Out.
+			r.Header.Del(reverseproxy.E2BClientIPHeader)
+
 			// Handle request host masking only for non-envd traffic.
-			var maskRequestHost *string = nil
-			if h := ingress.GetMaskRequestHost(); isNonEnvdTraffic && h != "" {
+			var maskRequestHost *string
+			if h := ingress.MaskRequestHost; isNonEnvdTraffic && h != "" {
 				h = strings.ReplaceAll(h, pool.MaskRequestHostPortPlaceholder, strconv.FormatUint(port, 10))
 				maskRequestHost = &h
 			}

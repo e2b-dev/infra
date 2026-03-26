@@ -75,13 +75,14 @@ message SandboxNetworkConfig {
 message SandboxNetworkEgressConfig {
   repeated string allowed_cidrs = 1;
   repeated string denied_cidrs = 2;
-
   repeated string allowed_domains = 3;
 }
 
 message SandboxNetworkIngressConfig {
   optional string traffic_access_token = 1;
   optional string mask_request_host = 2;
+  repeated string allowed_cidrs = 3;  // CIDR[:port[-port]] format, e.g. "10.0.0.0/8:80-443"
+  repeated string denied_cidrs = 4;   // CIDR[:port[-port]] format
 }
 
 message SandboxCreateRequest {
@@ -101,6 +102,7 @@ message SandboxUpdateRequest {
   // All fields are optional — only set fields are applied.
   optional google.protobuf.Timestamp end_time = 2;
   optional SandboxNetworkEgressConfig egress = 3;
+  optional SandboxNetworkIngressConfig ingress = 4;
 }
 
 message SandboxDeleteRequest {

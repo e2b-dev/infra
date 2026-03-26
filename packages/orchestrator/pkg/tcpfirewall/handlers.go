@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"strings"
 	"syscall"
 	"time"
 
@@ -33,15 +32,7 @@ func domainHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int
 		hostname = tc.HostName
 	}
 
-	allowed, matchType, err := isEgressAllowed(sbx, hostname, dstIP)
-	if err != nil {
-		logger.Error(ctx, "Egress check failed", zap.Error(err))
-		metrics.RecordError(ctx, ErrorTypeEgressCheck, protocol)
-		conn.Close()
-
-		return
-	}
-
+	allowed, matchType := isEgressAllowed(sbx, hostname, dstIP)
 	if !allowed {
 		metrics.RecordDecision(ctx, DecisionBlocked, protocol, matchType)
 		conn.Close()
@@ -69,17 +60,9 @@ func domainHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int
 }
 
 // cidrOnlyHandler handles connections without hostname information.
-func cidrOnlyHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int, sbx *sandbox.Sandbox, logger logger.Logger, metrics *Metrics, protocol Protocol) {
+func cidrOnlyHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int, sbx *sandbox.Sandbox, _ logger.Logger, metrics *Metrics, protocol Protocol) {
 	// No hostname available for CIDR-only handler
-	allowed, matchType, err := isEgressAllowed(sbx, noHostnameValue, dstIP)
-	if err != nil {
-		logger.Error(ctx, "Egress check failed", zap.Error(err))
-		metrics.RecordError(ctx, ErrorTypeEgressCheck, protocol)
-		conn.Close()
-
-		return
-	}
-
+	allowed, matchType := isEgressAllowed(sbx, noHostnameValue, dstIP)
 	if !allowed {
 		metrics.RecordDecision(ctx, DecisionBlocked, protocol, matchType)
 		conn.Close()
@@ -165,71 +148,34 @@ func proxyWithIPVerification(ctx context.Context, conn net.Conn, upstreamAddr st
 //  1. Allow domain / Allow CIDR (if either matches → allow)
 //  2. Deny domain / Deny CIDR (if either matches → deny)
 //  3. Default: allow
-func isEgressAllowed(sbx *sandbox.Sandbox, hostname string, ip net.IP) (bool, MatchType, error) {
+func isEgressAllowed(sbx *sandbox.Sandbox, hostname string, ip net.IP) (bool, MatchType) {
 	egress := sbx.Config.GetNetworkEgress()
-	if egress == nil {
-		// No egress configuration, allow all traffic.
-		return true, MatchTypeNone, nil
+	if egress.NoFirewallRules() && egress.NoHTTPHostDomainRules() {
+		return true, MatchTypeNone
 	}
 
-	// Priority 1: Check allowed domains
-	if hostname != noHostnameValue {
-		for _, domain := range egress.GetAllowedDomains() {
-			if matchDomain(hostname, domain) {
-				return true, MatchTypeDomain, nil // Explicitly allowed by domain
-			}
-		}
+	// Check allowed domains first (matched by HTTP Host / TLS SNI name).
+	if hostname != noHostnameValue && egress.MatchDomain(hostname) {
+		return true, MatchTypeDomain
 	}
 
-	// Priority 1: Check allowed CIDRs
-	for _, cidr := range egress.GetAllowedCidrs() {
-		_, ipNet, err := net.ParseCIDR(cidr)
-		if err != nil {
-			return false, MatchTypeNone, fmt.Errorf("invalid allowed CIDR %q: %w", cidr, err)
-		}
-
-		if ipNet.Contains(ip) {
-			return true, MatchTypeCIDR, nil // Explicitly allowed by CIDR
+	for _, rule := range egress.Allowed {
+		if rule.ContainsIP(ip) {
+			return true, MatchTypeCIDR
 		}
 	}
 
-	// Priority 2: Check denied CIDRs
-	for _, cidr := range egress.GetDeniedCidrs() {
-		_, ipNet, err := net.ParseCIDR(cidr)
-		if err != nil {
-			return false, MatchTypeNone, fmt.Errorf("invalid denied CIDR %q: %w", cidr, err)
-		}
-
-		if ipNet.Contains(ip) {
-			return false, MatchTypeCIDR, nil // Blocked by CIDR
+	for _, rule := range egress.Denied {
+		if rule.ContainsIP(ip) {
+			return false, MatchTypeCIDR
 		}
 	}
 
-	// Default: allow all traffic.
-	return true, MatchTypeNone, nil
+	return true, MatchTypeNone
 }
 
 // matchDomain checks if a hostname matches a domain pattern.
 // Patterns can be exact matches, wildcards (*), or suffix wildcards (*.example.com).
-func matchDomain(hostname, pattern string) bool {
-	switch {
-	case pattern == "":
-		// Empty pattern should never match
-		return false
-	case strings.EqualFold(pattern, hostname):
-		return true
-	case strings.EqualFold(pattern, "*"):
-		return true
-	case strings.HasPrefix(pattern, "*."):
-		suffix := pattern[1:]
-		if strings.HasSuffix(strings.ToLower(hostname), strings.ToLower(suffix)) {
-			return true
-		}
-	}
-
-	return false
-}
-
 // isIPInAlwaysDeniedCIDRs checks if an IP is within the denied sandbox CIDRs (internal/private ranges).
 func isIPInAlwaysDeniedCIDRs(ip net.IP) bool {
 	for _, cidr := range sandbox_network.DeniedSandboxCIDRs {

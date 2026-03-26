@@ -82,6 +82,26 @@ func TestValidateNetworkConfig(t *testing.T) {
 		wantCode   int
 		wantErrMsg string
 	}{
+		// Port syntax rejected for egress
+		{
+			name: "deny_out with port is rejected",
+			network: &api.SandboxNetworkConfig{
+				DenyOut: &[]string{"10.0.0.0/8:22"},
+			},
+			wantErr:    true,
+			wantCode:   http.StatusBadRequest,
+			wantErrMsg: `invalid deny out entry "10.0.0.0/8:22": port-specific rules are not supported for egress`,
+		},
+		{
+			name: "allow_out with port is rejected",
+			network: &api.SandboxNetworkConfig{
+				AllowOut: &[]string{"8.8.8.8:80"},
+			},
+			wantErr:    true,
+			wantCode:   http.StatusBadRequest,
+			wantErrMsg: `invalid allow out entry "8.8.8.8:80": port-specific rules are not supported for egress`,
+		},
+		// Valid configurations
 		{
 			name:    "nil network config is valid",
 			network: nil,
@@ -109,33 +129,6 @@ func TestValidateNetworkConfig(t *testing.T) {
 			wantErrMsg: "invalid denied CIDR not-a-cidr",
 		},
 		// Domain validation tests
-		{
-			name: "allow_out with domain requires deny_out block-all",
-			network: &api.SandboxNetworkConfig{
-				AllowOut: &[]string{"example.com"},
-			},
-			wantErr:    true,
-			wantCode:   http.StatusBadRequest,
-			wantErrMsg: ErrMsgDomainsRequireBlockAll,
-		},
-		{
-			name: "allow_out with domain and block-all deny_out is valid",
-			network: &api.SandboxNetworkConfig{
-				AllowOut: &[]string{"example.com"},
-				DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
-			},
-			wantErr: false,
-		},
-		{
-			name: "allow_out with domain and partial deny_out is invalid",
-			network: &api.SandboxNetworkConfig{
-				AllowOut: &[]string{"example.com"},
-				DenyOut:  &[]string{"10.0.0.0/8"},
-			},
-			wantErr:    true,
-			wantCode:   http.StatusBadRequest,
-			wantErrMsg: ErrMsgDomainsRequireBlockAll,
-		},
 		{
 			name: "allow_out with wildcard domain requires deny_out block-all",
 			network: &api.SandboxNetworkConfig{
@@ -241,6 +234,129 @@ func TestValidateNetworkConfig(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		// Ingress port validation tests (unified CIDR:port format)
+		{
+			name: "valid allowIn with port",
+			network: &api.SandboxNetworkConfig{
+				AllowIn: &[]string{"0.0.0.0/0:80", "0.0.0.0/0:443"},
+				DenyIn:  &[]string{sandbox_network.AllInternetTrafficCIDR},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid allowIn with port range",
+			network: &api.SandboxNetworkConfig{
+				AllowIn: &[]string{"10.0.0.0/8:80-443"},
+				DenyIn:  &[]string{sandbox_network.AllInternetTrafficCIDR},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid denyIn with port",
+			network: &api.SandboxNetworkConfig{
+				DenyIn: &[]string{"0.0.0.0/0:22", "0.0.0.0/0:3306"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid denyIn port-only shorthand :80 means all IPs port 80",
+			network: &api.SandboxNetworkConfig{
+				DenyIn: &[]string{":80"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid denyIn port-range shorthand :80-90 means all IPs ports 80-90",
+			network: &api.SandboxNetworkConfig{
+				DenyIn: &[]string{":80-90"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid allowIn port-only shorthand :443 with deny-all",
+			network: &api.SandboxNetworkConfig{
+				AllowIn: &[]string{":443"},
+				DenyIn:  &[]string{sandbox_network.AllInternetTrafficCIDR},
+			},
+			wantErr: false,
+		},
+		// Ingress CIDR validation tests
+		{
+			name: "valid allowIn CIDR with deny-all",
+			network: &api.SandboxNetworkConfig{
+				AllowIn: &[]string{"10.0.0.0/8"},
+				DenyIn:  &[]string{sandbox_network.AllInternetTrafficCIDR},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid allowIn CIDR from IP with deny-all",
+			network: &api.SandboxNetworkConfig{
+				AllowIn: &[]string{"1.2.3.4/32"},
+				DenyIn:  &[]string{sandbox_network.AllInternetTrafficCIDR},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid allowIn bare IP with deny-all",
+			network: &api.SandboxNetworkConfig{
+				AllowIn: &[]string{"1.2.3.4"},
+				DenyIn:  &[]string{sandbox_network.AllInternetTrafficCIDR},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid allowIn bare IP with port and deny-all",
+			network: &api.SandboxNetworkConfig{
+				AllowIn: &[]string{"1.2.3.4:80"},
+				DenyIn:  &[]string{sandbox_network.AllInternetTrafficCIDR},
+			},
+			wantErr: false,
+		},
+		{
+			name: "allowIn without deny-all is rejected",
+			network: &api.SandboxNetworkConfig{
+				AllowIn: &[]string{"10.0.0.0/8"},
+			},
+			wantErr:    true,
+			wantCode:   http.StatusBadRequest,
+			wantErrMsg: ErrMsgAllowInRequiresBlockAll,
+		},
+		{
+			name: "allowIn with partial denyIn (no deny-all) is rejected",
+			network: &api.SandboxNetworkConfig{
+				AllowIn: &[]string{"10.0.0.0/8"},
+				DenyIn:  &[]string{"192.168.0.0/16"},
+			},
+			wantErr:    true,
+			wantCode:   http.StatusBadRequest,
+			wantErrMsg: ErrMsgAllowInRequiresBlockAll,
+		},
+		{
+			name: "invalid allowIn entry",
+			network: &api.SandboxNetworkConfig{
+				AllowIn: &[]string{"not-a-cidr"},
+			},
+			wantErr:    true,
+			wantCode:   http.StatusBadRequest,
+			wantErrMsg: `invalid allow in entry "not-a-cidr": domains are not supported for ingress rules`,
+		},
+		{
+			name: "valid denyIn CIDR",
+			network: &api.SandboxNetworkConfig{
+				DenyIn: &[]string{"192.168.0.0/16"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid denyIn entry",
+			network: &api.SandboxNetworkConfig{
+				DenyIn: &[]string{"bad"},
+			},
+			wantErr:    true,
+			wantCode:   http.StatusBadRequest,
+			wantErrMsg: `invalid deny in entry "bad": domains are not supported for ingress rules`,
+		},
 		// Mixed domain and CIDR tests
 		{
 			name: "allow_out with domain and CIDR without deny_out block-all is invalid",
@@ -259,6 +375,24 @@ func TestValidateNetworkConfig(t *testing.T) {
 				DenyOut:  &[]string{sandbox_network.AllInternetTrafficCIDR},
 			},
 			wantErr: false,
+		},
+		{
+			name: "deny_out with domain is rejected",
+			network: &api.SandboxNetworkConfig{
+				DenyOut: &[]string{"example.com"},
+			},
+			wantErr:    true,
+			wantCode:   http.StatusBadRequest,
+			wantErrMsg: `invalid denied CIDR example.com`,
+		},
+		{
+			name: "deny_out with invalid port is rejected",
+			network: &api.SandboxNetworkConfig{
+				DenyOut: &[]string{"10.0.0.0/8:abc"},
+			},
+			wantErr:    true,
+			wantCode:   http.StatusBadRequest,
+			wantErrMsg: `invalid deny out entry "10.0.0.0/8:abc": port-specific rules are not supported for egress`,
 		},
 	}
 

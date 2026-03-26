@@ -31,11 +31,12 @@ import (
 )
 
 // buildEgressConfig constructs the orchestrator egress configuration from
-// allow/deny entry lists. It splits allowed entries into CIDRs and domains,
-// and adds the default nameserver when domains are present so the sandbox can
-// resolve them.
-func buildEgressConfig(allowedEntries, deniedEntries []string) *orchestrator.SandboxNetworkEgressConfig {
-	allowedAddresses, allowedDomains := sandbox_network.ParseAddressesAndDomains(allowedEntries)
+// allow/deny entry lists. The API has already validated these entries.
+// CIDRs and domains are split into their respective proto fields.
+// When any allowed entry is a domain, the default nameserver is injected so
+// the sandbox can resolve domain names.
+func buildEgressConfig(egressUpdate *types.SandboxNetworkEgressConfig) *orchestrator.SandboxNetworkEgressConfig {
+	allowedAddresses, allowedDomains := sandbox_network.ParseAddressesAndDomains(egressUpdate.AllowedAddresses)
 
 	if len(allowedDomains) > 0 {
 		allowedAddresses = append(allowedAddresses, sandbox_network.DefaultNameserver)
@@ -43,7 +44,7 @@ func buildEgressConfig(allowedEntries, deniedEntries []string) *orchestrator.San
 
 	return &orchestrator.SandboxNetworkEgressConfig{
 		AllowedCidrs:   sandbox_network.AddressStringsToCIDRs(allowedAddresses),
-		DeniedCidrs:    sandbox_network.AddressStringsToCIDRs(deniedEntries),
+		DeniedCidrs:    sandbox_network.AddressStringsToCIDRs(egressUpdate.DeniedAddresses),
 		AllowedDomains: allowedDomains,
 	}
 }
@@ -58,11 +59,13 @@ func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess
 	}
 
 	if network != nil && network.Egress != nil {
-		orchNetwork.Egress = buildEgressConfig(network.Egress.AllowedAddresses, network.Egress.DeniedAddresses)
+		orchNetwork.Egress = buildEgressConfig(network.Egress)
 	}
 
 	if network != nil && network.Ingress != nil {
 		orchNetwork.Ingress.MaskRequestHost = network.Ingress.MaskRequestHost
+		orchNetwork.Ingress.AllowedCidrs = network.Ingress.AllowedAddresses
+		orchNetwork.Ingress.DeniedCidrs = network.Ingress.DeniedAddresses
 	}
 
 	// Handle the case where internet access is explicitly disabled

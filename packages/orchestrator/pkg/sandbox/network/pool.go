@@ -12,8 +12,8 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -142,7 +142,7 @@ func (p *Pool) Populate(ctx context.Context) {
 	}
 }
 
-func (p *Pool) Get(ctx context.Context, network *orchestrator.SandboxNetworkConfig) (*Slot, error) {
+func (p *Pool) Get(ctx context.Context, egress sandbox_network.Egress) (*Slot, error) {
 	var slot *Slot
 
 	select {
@@ -169,7 +169,7 @@ func (p *Pool) Get(ctx context.Context, network *orchestrator.SandboxNetworkConf
 		}
 	}
 
-	err := slot.ConfigureInternet(ctx, network)
+	err := slot.ConfigureInternet(ctx, egress)
 	if err != nil {
 		// Return the slot to the pool if configuring internet fails
 		go func() {

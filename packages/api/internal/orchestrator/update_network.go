@@ -24,10 +24,16 @@ func (o *Orchestrator) UpdateSandboxNetworkConfig(
 	ctx context.Context,
 	teamID uuid.UUID,
 	sandboxID string,
-	allowedEntries []string,
-	deniedEntries []string,
+	egressUpdate *types.SandboxNetworkEgressConfig,
+	ingressUpdate *types.SandboxNetworkIngressConfig,
 ) *api.APIError {
-	egress := buildEgressConfig(allowedEntries, deniedEntries)
+	egress := buildEgressConfig(egressUpdate)
+
+	ingress := &orchestratorgrpc.SandboxNetworkIngressConfig{
+		MaskRequestHost: ingressUpdate.MaskRequestHost,
+		AllowedCidrs:    ingressUpdate.AllowedAddresses,
+		DeniedCidrs:     ingressUpdate.DeniedAddresses,
+	}
 
 	updateFunc := func(sbx sandbox.Sandbox) (sandbox.Sandbox, error) {
 		if sbx.State != sandbox.StateRunning {
@@ -38,10 +44,19 @@ func (o *Orchestrator) UpdateSandboxNetworkConfig(
 			sbx.Network = &types.SandboxNetworkConfig{}
 		}
 
-		sbx.Network.Egress = &types.SandboxNetworkEgressConfig{
-			AllowedAddresses: allowedEntries,
-			DeniedAddresses:  deniedEntries,
+		sbx.Network.Egress = egressUpdate
+
+		// Preserve AllowPublicAccess from creation — it can't be changed via
+		// PUT because the traffic access token isn't returned to clients.
+		var previousAllowPublic *bool
+		if sbx.Network.Ingress != nil {
+			previousAllowPublic = sbx.Network.Ingress.AllowPublicAccess
 		}
+
+		ingressUpdate.AllowPublicAccess = previousAllowPublic
+		sbx.Network.Ingress = ingressUpdate
+
+		ingress.TrafficAccessToken = sbx.TrafficAccessToken
 
 		return sbx, nil
 	}
@@ -61,13 +76,14 @@ func (o *Orchestrator) UpdateSandboxNetworkConfig(
 	}
 
 	// Apply the network update on the orchestrator node.
-	return o.updateSandboxNetworkOnNode(ctx, sbx, egress)
+	return o.updateSandboxNetworkOnNode(ctx, sbx, egress, ingress)
 }
 
 func (o *Orchestrator) updateSandboxNetworkOnNode(
 	ctx context.Context,
 	sbx sandbox.Sandbox,
 	egress *orchestratorgrpc.SandboxNetworkEgressConfig,
+	ingress *orchestratorgrpc.SandboxNetworkIngressConfig,
 ) *api.APIError {
 	ctx, span := tracer.Start(ctx, "update-sandbox-network-on-node",
 		trace.WithAttributes(
@@ -89,6 +105,7 @@ func (o *Orchestrator) updateSandboxNetworkOnNode(
 	_, err := client.Sandbox.Update(ctx, &orchestratorgrpc.SandboxUpdateRequest{
 		SandboxId: sbx.SandboxID,
 		Egress:    egress,
+		Ingress:   ingress,
 	})
 	if err != nil {
 		grpcErr, ok := status.FromError(err)

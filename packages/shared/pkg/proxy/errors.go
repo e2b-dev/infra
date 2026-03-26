@@ -96,6 +96,24 @@ func NewErrInvalidTrafficAccessToken(sandboxId string, header string) *InvalidTr
 	}
 }
 
+type IngressDeniedError struct {
+	SandboxId string
+	ClientIP  string
+	Port      uint16
+}
+
+func NewErrIngressDenied(sandboxId string, clientIP string, port uint16) *IngressDeniedError {
+	return &IngressDeniedError{
+		SandboxId: sandboxId,
+		ClientIP:  clientIP,
+		Port:      port,
+	}
+}
+
+func (e IngressDeniedError) Error() string {
+	return "ingress denied"
+}
+
 type SandboxResourceExhaustedError struct {
 	SandboxId string
 	Message   string
