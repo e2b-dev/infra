@@ -283,7 +283,8 @@ func deserializeV4Block(reader *bytes.Reader) (map[uuid.UUID]BuildFileInfo, []*B
 // V3 (Version <= 3): [Metadata (raw binary)] [v3 mappings (raw binary)]
 //
 // V4 (Version >= 4):  [Metadata (raw binary)] [uint32 uncompressed block size] [LZ4-compressed block]
-//   where the LZ4 block contains: BuildFiles + v4 mappings with FrameTables.
+//
+//	where the LZ4 block contains: BuildFiles + v4 mappings with FrameTables.
 func Serialize(h *Header) ([]byte, error) {
 	raw, err := serialize(h.Metadata, h.BuildFiles, h.Mapping)
 	if err != nil {

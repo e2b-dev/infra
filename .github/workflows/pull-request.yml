@@ -34,10 +34,17 @@ jobs:
     with:
       # Only publish the results for same-repo PRs
       publish: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+  integration-tests-compressed:
+    needs: [out-of-order-migrations]
+    uses: ./.github/workflows/integration_tests.yml
+    with:
+      publish: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+      compression: true
   publish-test-results:
     needs:
       - unit-tests
       - integration-tests
+      - integration-tests-compressed
     runs-on: ubuntu-latest
     permissions:
       checks: write

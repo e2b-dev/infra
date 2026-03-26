@@ -177,6 +177,10 @@ test:
 test-integration:
 	$(MAKE) -C tests/integration test
 
+.PHONY: test-integration-compression
+test-integration-compression:
+	$(MAKE) -C tests/integration test-compressed
+
 .PHONY: connect-orchestrator
 connect-orchestrator:
 	$(MAKE) -C tests/integration connect-orchestrator

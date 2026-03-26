@@ -19,3 +19,4 @@ go.work.sum
 /packages/fc-versions
 /compress-build
 /inspect-build
+.claude
