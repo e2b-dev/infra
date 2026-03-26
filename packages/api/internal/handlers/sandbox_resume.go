@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -12,12 +13,13 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	snapshotcache "github.com/e2b-dev/infra/packages/api/internal/cache/snapshots"
+	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/ginutils"
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	orchestratorgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -144,80 +146,21 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		return
 	}
 
-	autoPause := lastSnapshot.Snapshot.AutoPause
-	if body.AutoPause != nil {
-		autoPause = *body.AutoPause
-	}
-	snap := lastSnapshot.Snapshot
-	build := lastSnapshot.EnvBuild
-
-	nodeID := &snap.OriginNodeID
-
-	alias := ""
-	if len(lastSnapshot.Aliases) > 0 {
-		alias = lastSnapshot.Aliases[0]
-	}
-
 	sbxlogger.E(&sbxlogger.SandboxMetadata{
 		SandboxID:  sandboxID,
-		TemplateID: snap.EnvID,
+		TemplateID: lastSnapshot.Snapshot.EnvID,
 		TeamID:     teamID.String(),
 	}).Debug(ctx, "Started resuming sandbox")
 
-	var envdAccessToken *string = nil
-	if snap.EnvSecure {
-		accessToken, tokenErr := a.getEnvdAccessToken(build.EnvdVersion, sandboxID)
-		if tokenErr != nil {
-			telemetry.ReportErrorByCode(ctx, tokenErr.Code, "Secure envd access token error", tokenErr.Err,
-				telemetry.WithTemplateID(snap.EnvID),
-				telemetry.WithBuildID(build.ID.String()),
-				telemetry.WithSandboxID(sandboxID),
-				telemetry.WithTeamID(teamID.String()),
-			)
-			a.sendAPIStoreError(c, tokenErr.Code, tokenErr.ClientMsg)
-
-			return
-		}
-
-		envdAccessToken = &accessToken
-	}
-
-	var network *types.SandboxNetworkConfig
-	if snap.Config != nil {
-		network = snap.Config.Network
-	}
-
-	var autoResume *types.SandboxAutoResumeConfig
-	if snap.Config != nil {
-		autoResume = snap.Config.AutoResume
-	}
-
-	var volumes []*types.SandboxVolumeMountConfig
-	if snap.Config != nil {
-		volumes = snap.Config.VolumeMounts
-	}
-
 	sbx, createErr := a.startSandbox(
 		ctx,
-		snap.SandboxID,
+		sandboxID,
 		timeout,
-		nil,
-		snap.Metadata,
-		alias,
 		teamInfo,
-		build,
+		a.buildResumeSandboxData(sandboxID, body.AutoPause),
 		&c.Request.Header,
 		true,
-		nodeID,
-		snap.EnvID,
-		snap.BaseEnvID,
-		autoPause,
-		autoResume,
-		envdAccessToken,
-		snap.AllowInternetAccess,
-		network,
 		nil, // mcp
-		convertDatabaseMountsToOrchestratorMounts(volumes),
 	)
 	if createErr != nil {
 		a.sendAPIStoreError(c, createErr.Code, createErr.ClientMsg)
@@ -228,11 +171,11 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	c.JSON(http.StatusCreated, &sbx)
 }
 
-func convertDatabaseMountsToOrchestratorMounts(volumes []*types.SandboxVolumeMountConfig) []*orchestrator.SandboxVolumeMount {
-	results := make([]*orchestrator.SandboxVolumeMount, 0, len(volumes))
+func convertDatabaseMountsToOrchestratorMounts(volumes []*types.SandboxVolumeMountConfig) []*orchestratorgrpc.SandboxVolumeMount {
+	results := make([]*orchestratorgrpc.SandboxVolumeMount, 0, len(volumes))
 
 	for _, item := range volumes {
-		results = append(results, &orchestrator.SandboxVolumeMount{
+		results = append(results, &orchestratorgrpc.SandboxVolumeMount{
 			Id:   item.ID,
 			Type: item.Type,
 			Name: item.Name,
@@ -241,4 +184,64 @@ func convertDatabaseMountsToOrchestratorMounts(volumes []*types.SandboxVolumeMou
 	}
 
 	return results
+}
+
+// buildResumeSandboxData returns a SandboxDataFetcher that fetches snapshot data
+// from the cache and builds SandboxMetadata for resume operations.
+// The returned callback is called inside the sandbox lock to prevent race conditions.
+func (a *APIStore) buildResumeSandboxData(sandboxID string, autoPauseOverride *bool) orchestrator.SandboxDataFetcher {
+	return func(ctx context.Context) (orchestrator.SandboxMetadata, error) {
+		lastSnapshot, err := a.snapshotCache.Get(ctx, sandboxID)
+		if err != nil {
+			return orchestrator.SandboxMetadata{}, fmt.Errorf("failed to get snapshot: %w", err)
+		}
+
+		snap := lastSnapshot.Snapshot
+		build := lastSnapshot.EnvBuild
+
+		nodeID := snap.OriginNodeID
+
+		alias := ""
+		if len(lastSnapshot.Aliases) > 0 {
+			alias = lastSnapshot.Aliases[0]
+		}
+
+		var envdAccessToken *string
+		if snap.EnvSecure {
+			accessToken, tokenErr := a.getEnvdAccessToken(build.EnvdVersion, sandboxID)
+			if tokenErr != nil {
+				return orchestrator.SandboxMetadata{}, tokenErr.Err
+			}
+			envdAccessToken = &accessToken
+		}
+
+		autoPause := snap.AutoPause
+		if autoPauseOverride != nil {
+			autoPause = *autoPauseOverride
+		}
+
+		var network *types.SandboxNetworkConfig
+		var autoResume *types.SandboxAutoResumeConfig
+		var volumes []*types.SandboxVolumeMountConfig
+		if snap.Config != nil {
+			network = snap.Config.Network
+			autoResume = snap.Config.AutoResume
+			volumes = snap.Config.VolumeMounts
+		}
+
+		return orchestrator.SandboxMetadata{
+			Metadata:            snap.Metadata,
+			Build:               build,
+			AllowInternetAccess: snap.AllowInternetAccess,
+			Network:             network,
+			Alias:               alias,
+			TemplateID:          snap.EnvID,
+			BaseTemplateID:      snap.BaseEnvID,
+			AutoPause:           autoPause,
+			AutoResume:          autoResume,
+			VolumeMounts:        convertDatabaseMountsToOrchestratorMounts(volumes),
+			EnvdAccessToken:     envdAccessToken,
+			NodeID:              &nodeID,
+		}, nil
+	}
 }
