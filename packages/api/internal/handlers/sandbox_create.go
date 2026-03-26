@@ -221,6 +221,8 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	}
 
 	getSandboxData := func(ctx context.Context) (apiorch.SandboxMetadata, error) {
+		// The data can't be influenced by action on the same sandbox as other operations,
+		// so it's safe to reuse the data
 		return apiorch.SandboxMetadata{
 			Metadata:            metadata,
 			EnvVars:             envVars,
