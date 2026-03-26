@@ -26,7 +26,9 @@ const (
 )
 
 type MapSubscriber interface {
+	// OnInsert is triggered when a sandbox transitions to the running state
 	OnInsert(ctx context.Context, sandbox *Sandbox)
+	// OnRemove is triggered when a sandbox transitions from running to the stopping state
 	OnRemove(ctx context.Context, sandbox *Sandbox)
 }
 
