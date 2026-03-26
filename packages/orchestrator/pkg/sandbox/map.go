@@ -121,7 +121,7 @@ func (m *Map) MarkStopping(ctx context.Context, sandboxID, lifecycleID string) {
 			return false
 		}
 
-		if sbx.Runtime.ExecutionID != lifecycleID {
+		if sbx.LifecycleID != lifecycleID {
 			return false
 		}
 
