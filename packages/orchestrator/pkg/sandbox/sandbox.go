@@ -135,21 +135,6 @@ type EnvdMetadata struct {
 	Version        string
 }
 
-// SandboxStatus represents the lifecycle state of a sandbox.
-type SandboxStatus int32
-
-const (
-	// StatusStarting is the initial state: the sandbox is being created but
-	// is not yet ready to serve traffic.
-	StatusStarting SandboxStatus = 0
-	// StatusRunning means the sandbox is fully initialised and healthy.
-	StatusRunning SandboxStatus = 1
-	// StatusStopping means the sandbox has been killed or paused. It remains in
-	// the map briefly so that IP-based lookups (logs, NFS, TCP firewall)
-	// still resolve, but it is excluded from all "live" queries.
-	StatusStopping SandboxStatus = 2
-)
-
 // SandboxType distinguishes build sandboxes from regular sandboxes.
 type SandboxType string
 
