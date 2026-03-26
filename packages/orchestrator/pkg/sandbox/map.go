@@ -28,7 +28,7 @@ const (
 type MapSubscriber interface {
 	// OnInsert is triggered when a sandbox transitions to the running state
 	OnInsert(ctx context.Context, sandbox *Sandbox)
-	// OnRemove is triggered when a sandbox transitions from running to the stopping state
+	// OnRemove is triggered when a sandbox is completely stopped and remove from the map
 	OnRemove(ctx context.Context, sandbox *Sandbox)
 }
 
@@ -129,10 +129,8 @@ func (m *Map) MarkRunning(ctx context.Context, sbx *Sandbox) {
 	})
 }
 
-// MarkStopping transitions a sandbox to the stopping state. OnRemove subscribers are
-// notified immediately (so the proxy / firewall limiter can clean up), but the
-// entry stays in the map for stoppingEvictionGracePeriod so that IP-based lookups
-// still resolve while the Firecracker process finishes shutting down.
+// MarkStopping transitions a sandbox to the stopping state. It stays in in the map
+// so that IP-based lookups still resolve while the Firecracker process finishes shutting down.
 func (m *Map) MarkStopping(ctx context.Context, sandboxID, lifecycleID string) {
 	// Use RemoveCb to update the sandbox atomically
 	m.sandboxes.RemoveCb(sandboxID, func(_ string, sbx *Sandbox, exists bool) bool {
@@ -144,7 +142,7 @@ func (m *Map) MarkStopping(ctx context.Context, sandboxID, lifecycleID string) {
 			return false
 		}
 
-		// It was already marked as stopping, so no need to trigger OnRemove again
+		// It was already marked as stopping, no need to log again
 		if !sbx.status.CompareAndSwap(int32(StatusRunning), int32(StatusStopping)) {
 			return false
 		}
@@ -155,18 +153,14 @@ func (m *Map) MarkStopping(ctx context.Context, sandboxID, lifecycleID string) {
 			logger.WithSandboxIP(sbx.Slot.HostIPString()),
 		)
 
-		go m.trigger(ctx, func(ctx context.Context, s MapSubscriber) {
-			s.OnRemove(ctx, sbx)
-		})
-
 		return false
 	})
 }
 
 func (m *Map) Remove(ctx context.Context, sandboxID, lifecycleID string) {
 	var sbx *Sandbox
-	wasRunning := false
-	m.sandboxes.RemoveCb(sandboxID, func(_ string, v *Sandbox, exists bool) bool {
+
+	removed := m.sandboxes.RemoveCb(sandboxID, func(_ string, v *Sandbox, exists bool) bool {
 		if !exists {
 			return false
 		}
@@ -177,11 +171,6 @@ func (m *Map) Remove(ctx context.Context, sandboxID, lifecycleID string) {
 
 		sbx = v
 
-		// ensures we trigger OnRemove only if the sandbox was running (anf triggered onInsert) and not already marked as stopping
-		if sbx.status.CompareAndSwap(int32(StatusRunning), int32(StatusStopping)) {
-			wasRunning = true
-		}
-
 		logger.L().Info(ctx, "removing sandbox by lifecycle ID",
 			logger.WithSandboxID(sandboxID),
 			logger.WithLifecycleID(lifecycleID),
@@ -191,7 +180,7 @@ func (m *Map) Remove(ctx context.Context, sandboxID, lifecycleID string) {
 		return true
 	})
 
-	if wasRunning {
+	if removed {
 		go m.trigger(ctx, func(ctx context.Context, s MapSubscriber) {
 			s.OnRemove(ctx, sbx)
 		})
