@@ -2,7 +2,7 @@ package block
 
 import (
 	"path/filepath"
-	"sort"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -11,7 +11,7 @@ import (
 // newTestCache creates a minimal Cache for testing dirty-bit operations.
 // It uses a small blockSize and does NOT create a real mmap — only the dirty
 // array and blockSize are initialized.
-func newTestCache(t *testing.T, numBlocks int64, blockSize int64) *Cache { //nolint:unparam // blockSize kept as param for test flexibility
+func newTestCache(t *testing.T, numBlocks int64, blockSize int64) *Cache {
 	t.Helper()
 
 	size := numBlocks * blockSize
@@ -66,8 +66,8 @@ func TestMarkBlockRangeCached_MultipleBlocks(t *testing.T) {
 func TestMarkBlockRangeCached_BoundaryCrossing(t *testing.T) {
 	t.Parallel()
 
-	const blockSize int64 = 4096
-	// Use 256 blocks to ensure we span word boundaries (word = 64 blocks).
+	const blockSize int64 = 2 * 1024 * 1024 // 2 MiB hugepage block size
+	// Use 256 blocks at 2 MiB to exercise a different block size and span word boundaries (word = 64 blocks).
 	c := newTestCache(t, 256, blockSize)
 
 	// Mark blocks 60..67 (crosses the 64-block word boundary).
@@ -171,7 +171,6 @@ func TestDirtySortedKeys_Sorted(t *testing.T) {
 	}
 
 	require.Equal(t, expected, keys)
-	require.True(t, sort.SliceIsSorted(keys, func(i, j int) bool { return keys[i] < keys[j] }))
 }
 
 func TestDirtySortedKeys_Range(t *testing.T) {
@@ -231,14 +230,62 @@ func TestMarkBlockRangeCached_OverlappingRanges(t *testing.T) {
 	require.False(t, c.isBlockCached(13))
 }
 
+func TestSetIsCached_PastCacheSize(t *testing.T) {
+	t.Parallel()
+
+	const blockSize int64 = 4096
+	const numBlocks int64 = 128
+	c := newTestCache(t, numBlocks, blockSize)
+
+	// Pass a range that extends past cache size — should not panic.
+	c.setIsCached((numBlocks-2)*blockSize, 10*blockSize)
+
+	// Last two blocks should be cached.
+	require.True(t, c.isBlockCached(numBlocks-2))
+	require.True(t, c.isBlockCached(numBlocks-1))
+}
+
+func TestSetIsCached_ConcurrentOverlapping(t *testing.T) {
+	t.Parallel()
+
+	const blockSize int64 = 4096
+	const numBlocks int64 = 512
+	c := newTestCache(t, numBlocks, blockSize)
+
+	// 8 goroutines each mark an overlapping 128-block range.
+	// Ranges: [0,128), [32,160), [64,192), ... [224,352)
+	const goroutines = 8
+	const rangeBlocks int64 = 128
+	const strideBlocks int64 = 32
+
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	for g := range goroutines {
+		go func() {
+			defer wg.Done()
+			off := int64(g) * strideBlocks * blockSize
+			c.setIsCached(off, rangeBlocks*blockSize)
+		}()
+	}
+	wg.Wait()
+
+	// Union covers blocks 0..(goroutines-1)*stride+rangeBlocks-1.
+	lastBlock := int64(goroutines-1)*strideBlocks + rangeBlocks
+	for i := range lastBlock {
+		require.True(t, c.isBlockCached(i), "block %d should be cached", i)
+	}
+
+	require.False(t, c.isBlockCached(lastBlock))
+}
+
 // --- Benchmarks ---
 
 const (
 	benchBlockSize  int64 = 4096
-	benchNumBlocks  int64 = 16384 // 64 MiB at 4K blocks — realistic memfile size
-	benchCacheSize        = benchNumBlocks * benchBlockSize
-	benchChunkSize  int64 = 4 * 1024 * 1024 // 4 MiB — MemoryChunkSize
-	benchChunkCount       = benchCacheSize / benchChunkSize
+	benchNumBlocks  int64 = 16384             // 64 MiB at 4K blocks — realistic memfile size
+	benchCacheSize  int64 = benchNumBlocks * benchBlockSize
+	benchChunkSize  int64 = 4 * 1024 * 1024   // 4 MiB — MemoryChunkSize
+	benchChunkCount int64 = benchCacheSize / benchChunkSize
 )
 
 func newBenchCache(b *testing.B) *Cache {

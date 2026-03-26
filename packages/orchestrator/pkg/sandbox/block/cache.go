@@ -284,6 +284,12 @@ func (c *Cache) setIsCached(off, length int64) {
 	start := off / c.blockSize
 	n := (off + length + c.blockSize - 1) / c.blockSize
 
+	// Cap to the actual bitmap size so callers that pass a range extending
+	// past c.size (e.g. a partial last segment) don't panic on index OOB.
+	if maxBlock := int64(len(c.dirty)) * 64; n > maxBlock {
+		n = maxBlock
+	}
+
 	for i := start; i < n; {
 		w := i / 64
 		lo := i % 64
