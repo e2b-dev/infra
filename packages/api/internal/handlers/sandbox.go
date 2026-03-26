@@ -102,6 +102,11 @@ func (a *APIStore) startSandboxInternal(
 	startTime := time.Now()
 	endTime := startTime.Add(timeout)
 
+	autoResumePolicy := "unset"
+	if autoResume != nil {
+		autoResumePolicy = string(autoResume.Policy)
+	}
+
 	// Unique ID for the execution (from start/resume to stop/pause)
 	executionID := uuid.New().String()
 	sbx, instanceErr := a.orchestrator.CreateSandbox(
@@ -173,11 +178,20 @@ func (a *APIStore) startSandboxInternal(
 		attribute.String("instance.id", sbx.SandboxID),
 	)
 
-	sbxlogger.E(&sbxlogger.SandboxMetadata{
+	logMetadata := &sbxlogger.SandboxMetadata{
 		SandboxID:  sbx.SandboxID,
 		TemplateID: sbx.TemplateID,
 		TeamID:     team.ID.String(),
-	}).Info(ctx, "Sandbox created", zap.String("end_time", endTime.Format("2006-01-02 15:04:05 -07:00")))
+	}
+	sbxlogger.E(logMetadata).Info(ctx, "Sandbox created", zap.String("end_time", endTime.Format("2006-01-02 15:04:05 -07:00")))
+	sbxlogger.I(logMetadata).Info(
+		ctx,
+		"Sandbox created details",
+		zap.String("end_time", endTime.Format("2006-01-02 15:04:05 -07:00")),
+		zap.String("auto_resume_policy", autoResumePolicy),
+		zap.Bool("auto_pause", autoPause),
+		zap.String("parent_template_id", baseTemplateID),
+	)
 
 	return sbx, nil
 }

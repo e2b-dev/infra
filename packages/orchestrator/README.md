@@ -35,6 +35,7 @@ Flags:
 - `-from-build <uuid>` - Base build ID for incremental builds
 - `-template <id>` - Template ID (default: `local-template`)
 - `-storage <path>` - Local path or `gs://bucket` (enables local mode with auto-download of kernel/FC)
+- `-sandbox-dir <path>` - Override `SANDBOX_DIR` (the rootfs path baked into the snapshot)
 - `-kernel <version>` - Kernel version (default: `vmlinux-6.1.102`)
 - `-firecracker <version>` - Firecracker version (default: `v1.12.1_a41d3fb`)
 - `-vcpu <n>` - vCPUs (default: `1`)
@@ -74,6 +75,7 @@ Flags:
 - `-from-build <uuid>` - Build ID (UUID) to resume from (required)
 - `-to-build <uuid>` - Output build ID (UUID) for pause snapshot (auto-generated if not specified)
 - `-storage <path>` - Local path or `gs://bucket` (default: `.local-build`)
+- `-sandbox-dir <path>` - Override `SANDBOX_DIR` (the rootfs path baked into the snapshot)
 - `-iterations <n>` - Number of iterations, 0 = interactive (default: `0`)
 - `-cold` - Clear cache between iterations (cold start each time)
 - `-no-prefetch` - Disable memory prefetching
@@ -226,4 +228,4 @@ Automatically set in local mode. Set before running to override:
 - `FIRECRACKER_VERSIONS_DIR` - Firecracker versions dir (local: `{storage}/fc-versions`, prod: `/fc-versions`)
 - `ORCHESTRATOR_BASE_PATH` - Base orchestrator data (local: `{storage}/orchestrator`, prod: `/orchestrator`)
 - `SNAPSHOT_CACHE_DIR` - Snapshot cache, ideally on NVMe (local: `{storage}/snapshot-cache`, prod: `/mnt/snapshot-cache`)
-- `SANDBOX_DIR` - Sandbox working dir (local: `{storage}/sandbox`, prod: `/fc-vm`)
+- `SANDBOX_DIR` - Sandbox working dir (default: `/fc-vm`)

@@ -52,8 +52,8 @@ func (c *counterReporter) log(ctx context.Context, closing bool) {
 	if total > 0 {
 		fields := []zap.Field{
 			zap.Uint64("count", total),
-			zap.Time("start", c.startTime),
-			zap.Time("end", c.endTime),
+			logger.Time("start", c.startTime),
+			logger.Time("end", c.endTime),
 			zap.Bool("closing", closing),
 		}
 

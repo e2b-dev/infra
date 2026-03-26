@@ -276,6 +276,66 @@ func TestProxyResumePermissionDeniedErrorTemplate(t *testing.T) {
 	})
 }
 
+func TestProxySandboxStillTransitioningErrorTemplate(t *testing.T) {
+	t.Parallel()
+
+	getDestination := func(*http.Request) (*pool.Destination, error) {
+		return nil, NewErrSandboxStillTransitioning("test-sandbox")
+	}
+
+	proxy, port, err := newTestProxy(t, getDestination)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		proxy.Close()
+	})
+
+	t.Run("json for non-browser", func(t *testing.T) {
+		t.Parallel()
+		proxyURL := fmt.Sprintf("http://127.0.0.1:%d/hello", port)
+		resp, err := httpGet(t, proxyURL)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			_ = resp.Body.Close()
+		})
+
+		require.Equal(t, http.StatusConflict, resp.StatusCode)
+		require.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
+
+		var response struct {
+			SandboxID string `json:"sandboxId"`
+			Message   string `json:"message"`
+			Code      int    `json:"code"`
+		}
+		err = json.NewDecoder(resp.Body).Decode(&response)
+		require.NoError(t, err)
+		require.Equal(t, "test-sandbox", response.SandboxID)
+		require.Equal(t, "The sandbox is still transitioning. Try again in a moment.", response.Message)
+		require.Equal(t, http.StatusConflict, response.Code)
+	})
+
+	t.Run("html for browser", func(t *testing.T) {
+		t.Parallel()
+		proxyURL := fmt.Sprintf("http://127.0.0.1:%d/hello", port)
+		headers := http.Header{
+			"User-Agent": {"Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
+		}
+
+		resp, err := httpGetWithHeaders(t, proxyURL, headers)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			_ = resp.Body.Close()
+		})
+
+		require.Equal(t, http.StatusConflict, resp.StatusCode)
+		require.Equal(t, "text/html; charset=utf-8", resp.Header.Get("Content-Type"))
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		assert.Contains(t, string(body), "Sandbox Still Transitioning")
+		assert.Contains(t, string(body), "test-sandbox")
+	})
+}
+
 func TestProxyTeamSandboxLimitError(t *testing.T) {
 	t.Parallel()
 

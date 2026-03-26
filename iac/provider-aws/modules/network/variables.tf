@@ -25,7 +25,7 @@ variable "vpc_elasticache_subnets" {
   default = ["10.0.21.0/24", "10.0.22.0/24", "10.0.23.0/24"]
 }
 
-variable "vcp_availability_zones" {
+variable "vpc_availability_zones" {
   type        = list(string)
   description = "List of availability zones to use for the VPC subnets"
 }

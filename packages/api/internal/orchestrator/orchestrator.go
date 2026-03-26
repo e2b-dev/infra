@@ -46,27 +46,28 @@ type SnapshotCacheInvalidator interface {
 }
 
 type Orchestrator struct {
-	httpClient              *http.Client
-	nomadClient             *nomadapi.Client
-	sandboxStore            *sandbox.Store
-	nodes                   *smap.Map[*nodemanager.Node]
-	placementAlgorithm      *placement.BestOfK
-	featureFlagsClient      *featureflags.Client
-	analytics               *analyticscollector.Analytics
-	posthogClient           *analyticscollector.PosthogClient
-	routingCatalog          e2bcatalog.SandboxesCatalog
-	sqlcDB                  *sqlcdb.Client
-	tel                     *telemetry.Client
-	clusters                *clusters.Pool
-	metricsRegistration     metric.Registration
-	createdSandboxesCounter metric.Int64Counter
-	teamMetricsObserver     *metrics.TeamObserver
-	accessTokenGenerator    *sandbox.AccessTokenGenerator
-	sandboxCounter          metric.Int64UpDownCounter
-	createdCounter          metric.Int64Counter
-	snapshotCache           SnapshotCacheInvalidator
+	httpClient                    *http.Client
+	nomadClient                   *nomadapi.Client
+	sandboxStore                  *sandbox.Store
+	nodes                         *smap.Map[*nodemanager.Node]
+	placementAlgorithm            *placement.BestOfK
+	featureFlagsClient            *featureflags.Client
+	analytics                     *analyticscollector.Analytics
+	posthogClient                 *analyticscollector.PosthogClient
+	routingCatalog                e2bcatalog.SandboxesCatalog
+	sqlcDB                        *sqlcdb.Client
+	tel                           *telemetry.Client
+	clusters                      *clusters.Pool
+	metricsRegistration           metric.Registration
+	sandboxCountGaugeRegistration metric.Registration
+	createdSandboxesCounter       metric.Int64Counter
+	teamMetricsObserver           *metrics.TeamObserver
+	accessTokenGenerator          *sandbox.AccessTokenGenerator
+	createdCounter                metric.Int64Counter
+	snapshotCache                 SnapshotCacheInvalidator
 
 	snapshotUpsertSem *utils.AdjustableSemaphore
+	redisStorage      *redisbackend.Storage
 
 	// connectGroup deduplicates concurrent dial+register attempts for the same
 	// physical node. It is keyed by NomadNodeShortID (Nomad-managed nodes) or
@@ -119,12 +120,6 @@ func New(
 	// We will need to either use Redis or Consul's KV for storing active sandboxes to keep everything in sync,
 	// right now we load them from Orchestrator
 	meter := tel.MeterProvider.Meter("github.com/e2b-dev/infra/packages/api/internal/orchestrator")
-	sandboxCounter, err := telemetry.GetUpDownCounter(meter, telemetry.SandboxCountMeterName)
-	if err != nil {
-		logger.L().Error(ctx, "error getting counter", zap.Error(err))
-
-		return nil, err
-	}
 
 	createdCounter, err := telemetry.GetCounter(meter, telemetry.SandboxCreateMeterName)
 	if err != nil {
@@ -138,6 +133,9 @@ func New(
 	}
 
 	bestOfKAlgorithm := placement.NewBestOfK(getBestOfKConfig(ctx, featureFlags)).(*placement.BestOfK)
+
+	redisStorage := redisbackend.NewStorage(redisClient)
+	go redisStorage.Start(ctx)
 
 	o := Orchestrator{
 		httpClient:           httpClient,
@@ -153,8 +151,8 @@ func New(
 		snapshotCache:        snapshotCache,
 		tel:                  tel,
 		clusters:             clusters,
+		redisStorage:         redisStorage,
 
-		sandboxCounter: sandboxCounter,
 		createdCounter: createdCounter,
 
 		snapshotUpsertSem: snapshotUpsertSem,
@@ -162,7 +160,6 @@ func New(
 
 	var reservationStorage sandbox.ReservationStorage
 	var sandboxStorage sandbox.Storage
-	redisStorage := redisbackend.NewStorage(redisClient)
 
 	switch config.SandboxStorageBackend {
 	case cfg.SandboxStorageBackendMemory:
@@ -182,7 +179,6 @@ func New(
 		reservationStorage,
 		sandbox.Callbacks{
 			AddSandboxToRoutingTable: o.addSandboxToRoutingTable,
-			AsyncSandboxCounter:      o.sandboxCounterInsert,
 			AsyncNewlyCreatedSandbox: o.handleNewlyCreatedSandbox,
 		},
 	)
@@ -270,6 +266,12 @@ func (o *Orchestrator) Close(ctx context.Context) error {
 		}
 	}
 
+	if o.sandboxCountGaugeRegistration != nil {
+		if err := o.sandboxCountGaugeRegistration.Unregister(); err != nil {
+			errs = append(errs, fmt.Errorf("failed to unregister sandbox count gauge: %w", err))
+		}
+	}
+
 	if o.teamMetricsObserver != nil {
 		if err := o.teamMetricsObserver.Close(ctx); err != nil {
 			errs = append(errs, fmt.Errorf("failed to close team metrics observer: %w", err))
@@ -283,6 +285,8 @@ func (o *Orchestrator) Close(ctx context.Context) error {
 	if err := o.routingCatalog.Close(ctx); err != nil {
 		errs = append(errs, err)
 	}
+
+	o.redisStorage.Close()
 
 	return errors.Join(errs...)
 }

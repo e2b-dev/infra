@@ -4,9 +4,11 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 func WithSandboxID(sandboxID string) zap.Field {
@@ -75,6 +77,25 @@ func WithMaskedAPIKey(maskedAPIKey string) zap.Field {
 
 func WithMaskedAccessToken(maskedAccessToken string) zap.Field {
 	return zap.String("auth.access_token", maskedAccessToken)
+}
+
+// timeFields emits both a human-readable RFC3339Nano string and a unix timestamp.
+type timeFields struct {
+	key string
+	val time.Time
+}
+
+func (t timeFields) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	enc.AddString(t.key, t.val.Format(time.RFC3339Nano))
+	enc.AddInt64(t.key+"_unix", t.val.UnixNano())
+
+	return nil
+}
+
+// Time returns a zap.Field that logs the given time as both an RFC3339Nano
+// string (key) and a unix epoch in nanoseconds (key_unix).
+func Time(key string, val time.Time) zap.Field {
+	return zap.Inline(timeFields{key: key, val: val})
 }
 
 // ProxyRequestFields returns the common logger fields for a proxied HTTP request.

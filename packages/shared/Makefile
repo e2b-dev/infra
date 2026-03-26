@@ -26,3 +26,7 @@ prep-cluster:
 .PHONY: test
 test:
 	go test -v ./pkg/...
+
+.PHONY: lint
+lint:
+	golangci-lint run --fix ./...

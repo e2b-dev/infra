@@ -8,7 +8,7 @@ tool github.com/pressly/goose/v3/cmd/goose
 
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.40.1
-	github.com/e2b-dev/infra/packages/shared v0.0.0-20250811171846-d1cdc9527dec
+	github.com/e2b-dev/infra/packages/shared v0.0.0
 	github.com/google/uuid v1.6.0
 	go.uber.org/zap v1.27.1
 )

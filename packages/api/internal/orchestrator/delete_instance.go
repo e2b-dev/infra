@@ -83,7 +83,6 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, teamID uuid.UUID, sand
 		return nil
 	}
 
-	defer func() { go o.countersRemove(context.WithoutCancel(ctx), teamID, opts.Action) }()
 	defer func() { go o.analyticsRemove(context.WithoutCancel(ctx), sbx, opts.Action) }()
 	defer o.sandboxStore.Remove(ctx, teamID, sandboxID)
 	err = o.removeSandboxFromNode(ctx, sbx, opts.Action)

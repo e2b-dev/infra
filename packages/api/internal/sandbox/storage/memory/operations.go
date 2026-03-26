@@ -161,14 +161,14 @@ func startRemoving(ctx context.Context, sbx *memorySandbox, opts sandbox.RemoveO
 		if transition != nil {
 			sbx.mu.Unlock()
 
-			return false, nil, sandbox.ErrNotEvictable
+			return false, nil, sandbox.ErrEvictionInProgress
 		}
 
 		// If sandbox isn't expired (e.g. race condition with KeepAliveFor), skip.
 		if !sbx._data.IsExpired(time.Now()) {
 			sbx.mu.Unlock()
 
-			return false, nil, sandbox.ErrNotEvictable
+			return false, nil, sandbox.ErrEvictionNotNeeded
 		}
 	}
 

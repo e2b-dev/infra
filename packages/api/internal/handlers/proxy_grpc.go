@@ -15,9 +15,12 @@ import (
 
 	snapshotcache "github.com/e2b-dev/infra/packages/api/internal/cache/snapshots"
 	dbapi "github.com/e2b-dev/infra/packages/api/internal/db"
+	apiorchestrator "github.com/e2b-dev/infra/packages/api/internal/orchestrator"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sharedutils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -84,39 +87,90 @@ func denyResumePermission() error {
 	return status.Error(codes.PermissionDenied, "permission denied")
 }
 
-func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.SandboxResumeRequest) (*proxygrpc.SandboxResumeResponse, error) {
-	sandboxID, err := utils.ShortID(req.GetSandboxId())
-	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, "invalid sandbox ID")
-	}
+const autoResumeTransitionWaitBudget = time.Minute
 
+func (s *SandboxService) getAutoResumeSnapshot(ctx context.Context, sandboxID string) (*snapshotcache.SnapshotInfo, *dbtypes.SandboxAutoResumeConfig, error) {
 	snap, err := s.api.snapshotCache.Get(ctx, sandboxID)
 	if err != nil {
 		if errors.Is(err, snapshotcache.ErrSnapshotNotFound) {
-			return nil, status.Error(codes.NotFound, "snapshot not found")
+			return nil, nil, status.Error(codes.NotFound, "snapshot not found")
 		}
 
-		return nil, status.Errorf(codes.Internal, "failed to get snapshot: %v", err)
+		return nil, nil, status.Errorf(codes.Internal, "failed to get snapshot: %v", err)
 	}
-
-	teamID := snap.Snapshot.TeamID
-
-	// Fixed 5 minutes for client-proxy initiated resume.
-	// This intentionally does not allow callers to override timeouts via gRPC.
-	timeout := 300 * time.Second
 
 	var autoResume *dbtypes.SandboxAutoResumeConfig
 	if snap.Snapshot.Config != nil {
 		autoResume = snap.Snapshot.Config.AutoResume
 	}
 	if autoResume == nil || autoResume.Policy != dbtypes.SandboxAutoResumeAny {
-		return nil, status.Error(codes.NotFound, "sandbox auto-resume disabled")
+		return nil, nil, status.Error(codes.NotFound, "sandbox auto-resume disabled")
 	}
+
+	return snap, autoResume, nil
+}
+
+func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.SandboxResumeRequest) (*proxygrpc.SandboxResumeResponse, error) {
+	sandboxID, err := utils.ShortID(req.GetSandboxId())
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "invalid sandbox ID")
+	}
+
+	var autoResume *dbtypes.SandboxAutoResumeConfig
+	snap, _, err := s.getAutoResumeSnapshot(ctx, sandboxID)
+	if err != nil {
+		return nil, err
+	}
+
+	teamID := snap.Snapshot.TeamID
+
+	sandboxData, sandboxErr := s.api.orchestrator.GetSandbox(ctx, teamID, sandboxID)
+	if sandboxErr != nil {
+		if !errors.Is(sandboxErr, sandbox.ErrNotFound) {
+			return nil, status.Errorf(codes.Internal, "failed to get sandbox state: %v", sandboxErr)
+		}
+	} else {
+		nodeIP, handled, existingErr := s.api.orchestrator.HandleExistingSandboxAutoResume(
+			ctx,
+			teamID,
+			sandboxID,
+			sandboxData,
+			autoResumeTransitionWaitBudget,
+		)
+		if existingErr != nil {
+			if errors.Is(existingErr, apiorchestrator.ErrSandboxStillTransitioning) {
+				return nil, status.Error(codes.FailedPrecondition, proxygrpc.SandboxStillTransitioningMessage)
+			}
+			if errors.Is(existingErr, sandbox.ErrNotFound) {
+				return nil, status.Error(codes.NotFound, "sandbox not found")
+			}
+			if errors.Is(existingErr, context.Canceled) || errors.Is(existingErr, context.DeadlineExceeded) {
+				return nil, status.FromContextError(existingErr).Err()
+			}
+
+			return nil, status.Error(codes.Internal, existingErr.Error())
+		}
+		if handled {
+			return &proxygrpc.SandboxResumeResponse{OrchestratorIp: nodeIP}, nil
+		}
+	}
+
+	// Reload snapshot metadata after orchestrator checks so we do not resume from stale
+	// pre-pause snapshot data.
+	snap, autoResume, err = s.getAutoResumeSnapshot(ctx, sandboxID)
+	if err != nil {
+		return nil, err
+	}
+
+	teamID = snap.Snapshot.TeamID
 
 	team, err := dbapi.GetTeamByID(ctx, s.api.authDB, teamID)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get team: %v", err)
 	}
+	minAutoResumeTimeout := time.Duration(s.api.featureFlags.IntFlag(ctx, featureflags.MinAutoResumeTimeoutSeconds)) * time.Second
+
+	timeout := calculateAutoResumeTimeout(autoResume, minAutoResumeTimeout, team)
 
 	autoPause := snap.Snapshot.AutoPause
 	nodeID := &snap.Snapshot.OriginNodeID
