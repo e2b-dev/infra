@@ -118,9 +118,9 @@ func CreateMapping(
 func MergeMappings(
 	baseMapping []*BuildMap,
 	diffMapping []*BuildMap,
-) []*BuildMap {
+) ([]*BuildMap, error) {
 	if len(diffMapping) == 0 {
-		return baseMapping
+		return baseMapping, nil
 	}
 
 	baseMappingCopy := make([]*BuildMap, len(baseMapping))
@@ -131,6 +131,7 @@ func MergeMappings(
 
 	mappings := make([]*BuildMap, 0)
 
+	var err error
 	var baseIdx int
 	var diffIdx int
 
@@ -194,7 +195,10 @@ func MergeMappings(
 					// the build storage offset is the same as the base mapping
 					BuildStorageOffset: base.BuildStorageOffset,
 				}
-				leftBase.FrameTable, _ = base.FrameTable.Subset(storage.Range{Start: int64(leftBase.BuildStorageOffset), Length: int(leftBase.Length)})
+				leftBase.FrameTable, err = base.FrameTable.Subset(storage.Range{Start: int64(leftBase.BuildStorageOffset), Length: int(leftBase.Length)})
+				if err != nil {
+					return nil, fmt.Errorf("subset frame table for left split at offset %#x: %w", leftBase.Offset, err)
+				}
 
 				mappings = append(mappings, leftBase)
 			}
@@ -213,7 +217,10 @@ func MergeMappings(
 					BuildId:            base.BuildId,
 					BuildStorageOffset: base.BuildStorageOffset + uint64(rightBaseShift),
 				}
-				rightBase.FrameTable, _ = base.FrameTable.Subset(storage.Range{Start: int64(rightBase.BuildStorageOffset), Length: int(rightBase.Length)})
+				rightBase.FrameTable, err = base.FrameTable.Subset(storage.Range{Start: int64(rightBase.BuildStorageOffset), Length: int(rightBase.Length)})
+				if err != nil {
+					return nil, fmt.Errorf("subset frame table for right split at offset %#x: %w", rightBase.Offset, err)
+				}
 
 				baseMapping[baseIdx] = rightBase
 			} else {
@@ -241,7 +248,10 @@ func MergeMappings(
 					BuildId:            base.BuildId,
 					BuildStorageOffset: base.BuildStorageOffset + uint64(rightBaseShift),
 				}
-				rightBase.FrameTable, _ = base.FrameTable.Subset(storage.Range{Start: int64(rightBase.BuildStorageOffset), Length: int(rightBase.Length)})
+				rightBase.FrameTable, err = base.FrameTable.Subset(storage.Range{Start: int64(rightBase.BuildStorageOffset), Length: int(rightBase.Length)})
+				if err != nil {
+					return nil, fmt.Errorf("subset frame table for right split at offset %#x: %w", rightBase.Offset, err)
+				}
 
 				baseMapping[baseIdx] = rightBase
 			} else {
@@ -263,7 +273,10 @@ func MergeMappings(
 					BuildId:            base.BuildId,
 					BuildStorageOffset: base.BuildStorageOffset,
 				}
-				leftBase.FrameTable, _ = base.FrameTable.Subset(storage.Range{Start: int64(leftBase.BuildStorageOffset), Length: int(leftBase.Length)})
+				leftBase.FrameTable, err = base.FrameTable.Subset(storage.Range{Start: int64(leftBase.BuildStorageOffset), Length: int(leftBase.Length)})
+				if err != nil {
+					return nil, fmt.Errorf("subset frame table for left split at offset %#x: %w", leftBase.Offset, err)
+				}
 
 				mappings = append(mappings, leftBase)
 			}
@@ -279,7 +292,7 @@ func MergeMappings(
 	mappings = append(mappings, baseMapping[baseIdx:]...)
 	mappings = append(mappings, diffMapping[diffIdx:]...)
 
-	return mappings
+	return mappings, nil
 }
 
 // NormalizeMappings joins adjacent mappings that have the same buildId.

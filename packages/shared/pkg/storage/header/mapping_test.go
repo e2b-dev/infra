@@ -46,7 +46,7 @@ func TestMergeMappingsRemoveEmpty(t *testing.T) {
 		},
 	}
 
-	m := MergeMappings(simpleBase, diff)
+	m, _ := MergeMappings(simpleBase, diff)
 
 	require.True(t, Equal(m, simpleBase))
 
@@ -65,7 +65,7 @@ func TestMergeMappingsBaseBeforeDiffNoOverlap(t *testing.T) {
 		},
 	}
 
-	m := MergeMappings(simpleBase, diff)
+	m, _ := MergeMappings(simpleBase, diff)
 
 	require.True(t, Equal(m, []*BuildMap{
 		{
@@ -105,7 +105,7 @@ func TestMergeMappingsDiffBeforeBaseNoOverlap(t *testing.T) {
 		},
 	}
 
-	m := MergeMappings(simpleBase, diff)
+	m, _ := MergeMappings(simpleBase, diff)
 
 	require.True(t, Equal(m, []*BuildMap{
 		{
@@ -145,7 +145,7 @@ func TestMergeMappingsBaseInsideDiff(t *testing.T) {
 		},
 	}
 
-	m := MergeMappings(simpleBase, diff)
+	m, _ := MergeMappings(simpleBase, diff)
 
 	require.True(t, Equal(m, []*BuildMap{
 		{
@@ -180,7 +180,7 @@ func TestMergeMappingsDiffInsideBase(t *testing.T) {
 		},
 	}
 
-	m := MergeMappings(simpleBase, diff)
+	m, _ := MergeMappings(simpleBase, diff)
 
 	require.True(t, Equal(m, []*BuildMap{
 		{
@@ -225,7 +225,7 @@ func TestMergeMappingsBaseAfterDiffWithOverlap(t *testing.T) {
 		},
 	}
 
-	m := MergeMappings(simpleBase, diff)
+	m, _ := MergeMappings(simpleBase, diff)
 
 	require.True(t, Equal(m, []*BuildMap{
 		{
@@ -265,7 +265,7 @@ func TestMergeMappingsDiffAfterBaseWithOverlap(t *testing.T) {
 		},
 	}
 
-	m := MergeMappings(simpleBase, diff)
+	m, _ := MergeMappings(simpleBase, diff)
 
 	require.True(t, Equal(m, []*BuildMap{
 		{
