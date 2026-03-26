@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -83,7 +84,8 @@ func Test_server_List(t *testing.T) {
 			for _, sbx := range tt.data {
 				sbx.SetStartedAt(startTime)
 				sbx.SetEndAt(tt.endAt)
-				sandboxes.Insert(t.Context(), sbx)
+				err := sandboxes.Insert(t.Context(), sbx)
+				require.NoError(t, err)
 				sandboxes.MarkRunning(t.Context(), sbx)
 			}
 			got, err := s.List(t.Context(), tt.args.in1)

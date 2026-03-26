@@ -79,7 +79,7 @@ func TestRoundTrip(t *testing.T) {
 	require.Equal(t, "127.0.0.1", slot.HostIP.String(), "required for the test to work")
 
 	sandboxes := sandbox.NewSandboxesMap()
-	sandboxes.Insert(t.Context(), &sandbox.Sandbox{
+	err = sandboxes.Insert(t.Context(), &sandbox.Sandbox{
 		Metadata: &sandbox.Metadata{
 			Config: sandbox.NewConfig(sandbox.Config{
 				VolumeMounts: []sandbox.VolumeMountConfig{
@@ -96,6 +96,7 @@ func TestRoundTrip(t *testing.T) {
 			Slot: slot,
 		},
 	})
+	require.NoError(t, err)
 
 	// setup nfs proxy server
 	nfsConfig := net.ListenConfig{}

@@ -108,7 +108,7 @@ func TestIntegrationTest(t *testing.T) {
 	volumeName := "test-volume-1"
 	volumeID := uuid.New()
 	sandboxes := sandbox.NewSandboxesMap()
-	sandboxes.Insert(t.Context(), &sandbox.Sandbox{
+	err = sandboxes.Insert(t.Context(), &sandbox.Sandbox{
 		Metadata: &sandbox.Metadata{
 			Runtime: sandbox.RuntimeMetadata{
 				SandboxID: sandboxID,
@@ -124,6 +124,7 @@ func TestIntegrationTest(t *testing.T) {
 			Slot: slot,
 		},
 	})
+	require.NoError(t, err)
 
 	// launch nfs proxy server
 	nfsListener := getListener(t, 0)

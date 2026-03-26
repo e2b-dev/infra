@@ -430,7 +430,7 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	// Count) but remains findable by IP (GetByHostPort) while the Firecracker
 	// process finishes shutting down.
 	// This prevents the sandbox to be synced to API again
-	s.sandboxFactory.Sandboxes.MarkStopping(ctx, in.GetSandboxId())
+	s.sandboxFactory.Sandboxes.MarkStopping(ctx, sbx.Runtime.SandboxID, sbx.LifecycleID)
 
 	// Check health metrics before stopping the sandbox
 	sbx.Checks.Healthcheck(ctx, true)
@@ -644,7 +644,7 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		if err := res.snapshot.Upload(uploadCtx, s.persistence, res.templateFiles); err != nil {
 			telemetry.ReportCriticalError(ctx, "error uploading snapshot for checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
 
-			s.sandboxFactory.Sandboxes.MarkStopping(ctx, resumedSbx.Runtime.SandboxID)
+			s.sandboxFactory.Sandboxes.MarkStopping(ctx, resumedSbx.Runtime.SandboxID, resumedSbx.LifecycleID)
 			s.stopSandboxAsync(context.WithoutCancel(ctx), resumedSbx)
 
 			return nil, status.Errorf(codes.Internal, "error uploading snapshot for checkpoint '%s': %s", in.GetSandboxId(), err)
@@ -831,7 +831,7 @@ func (s *Server) acquireSandboxForSnapshot(ctx context.Context, sandboxID string
 		return nil, status.Error(codes.NotFound, "sandbox not found")
 	}
 
-	s.sandboxFactory.Sandboxes.MarkStopping(ctx, sandboxID)
+	s.sandboxFactory.Sandboxes.MarkStopping(ctx, sbx.Runtime.SandboxID, sbx.LifecycleID)
 
 	return sbx, nil
 }

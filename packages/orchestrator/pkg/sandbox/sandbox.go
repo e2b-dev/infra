@@ -475,7 +475,7 @@ func (f *Factory) CreateSandbox(
 
 	f.Sandboxes.Insert(ctx, sbx)
 	cleanup.Add(ctx, func(ctx context.Context) error {
-		f.Sandboxes.RemoveByLifecycleID(ctx, runtime.SandboxID, sbx.LifecycleID)
+		f.Sandboxes.MarkStopping(ctx, runtime.SandboxID, sbx.LifecycleID)
 
 		return nil
 	})
@@ -566,6 +566,14 @@ func (f *Factory) ResumeSandbox(
 			execSpan.End()
 		}
 	}()
+
+	lifecycleID := uuid.NewString()
+	// We want to remove from the ma
+	cleanup.Add(ctx, func(ctx context.Context) error {
+		f.Sandboxes.Remove(ctx, runtime.SandboxID, lifecycleID)
+
+		return nil
+	})
 
 	sandboxFiles := t.Files().NewSandboxFiles(runtime.SandboxID)
 	cleanup.Add(ctx, cleanupFiles(f.config, sandboxFiles))
@@ -773,7 +781,7 @@ func (f *Factory) ResumeSandbox(
 	}
 
 	sbx := &Sandbox{
-		LifecycleID: uuid.NewString(),
+		LifecycleID: lifecycleID,
 
 		Resources:    resources,
 		Metadata:     metadata,
@@ -807,7 +815,7 @@ func (f *Factory) ResumeSandbox(
 	// will remove it.
 	f.Sandboxes.Insert(ctx, sbx)
 	cleanup.Add(ctx, func(ctx context.Context) error {
-		f.Sandboxes.RemoveByLifecycleID(ctx, runtime.SandboxID, sbx.LifecycleID)
+		f.Sandboxes.MarkStopping(ctx, runtime.SandboxID, sbx.LifecycleID)
 
 		return nil
 	})
