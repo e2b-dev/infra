@@ -282,9 +282,9 @@ func TestSetIsCached_ConcurrentOverlapping(t *testing.T) {
 
 const (
 	benchBlockSize  int64 = 4096
-	benchNumBlocks  int64 = 16384             // 64 MiB at 4K blocks — realistic memfile size
+	benchNumBlocks  int64 = 16384 // 64 MiB at 4K blocks — realistic memfile size
 	benchCacheSize  int64 = benchNumBlocks * benchBlockSize
-	benchChunkSize  int64 = 4 * 1024 * 1024   // 4 MiB — MemoryChunkSize
+	benchChunkSize  int64 = 4 * 1024 * 1024 // 4 MiB — MemoryChunkSize
 	benchChunkCount int64 = benchCacheSize / benchChunkSize
 )
 
