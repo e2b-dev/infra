@@ -20,7 +20,7 @@ import (
 // as the untagged tests, but against an orchestrator with compression enabled.
 
 func TestCompressPauseResume(t *testing.T)    { TestSandboxPause(t) }
-func TestCompressSnapshotCreate(t *testing.T)  { TestSnapshotTemplateCreate(t) }
+func TestCompressSnapshotCreate(t *testing.T) { TestSnapshotTemplateCreate(t) }
 
 // TestCompressLargeMemoryPauseResume fills ~200MB with 4x-compressible data,
 // pauses, resumes, and verifies SHA-256 hash integrity.
