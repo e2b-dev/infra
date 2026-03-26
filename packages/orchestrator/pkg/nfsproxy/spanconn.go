@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/willscott/go-nfs"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -14,32 +15,31 @@ import (
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/pkg/nfsproxy")
 
-func onConnect(ctx context.Context, conn net.Conn) (context.Context, net.Conn) {
-	ctx, span := tracer.Start(ctx, "start nfs proxy server connection") //nolint:spancheck // called by OnDisconnect
+func newSpanHook() nfs.Hook {
+	return nfs.Hook{
+		OnConnect: func(ctx context.Context, conn net.Conn) (context.Context, net.Conn) {
+			ctx, span := tracer.Start(ctx, "start nfs proxy server connection") //nolint:spancheck // called by OnDisconnect
 
-	conn = wrapConn(conn, span)
+			conn = &connWithSpan{Conn: conn, span: span}
 
-	return ctx, conn //nolint:spancheck // called by OnDisconnect
-}
+			return ctx, conn //nolint:spancheck // called by OnDisconnect
+		},
+		OnDisconnect: func(ctx context.Context, conn net.Conn) {
+			cws, ok := conn.(*connWithSpan)
+			if !ok {
+				logger.L().Warn(ctx, "failed to unwrap connWithSpan",
+					zap.String("conn_type", fmt.Sprintf("%T", conn)))
 
-func onDisconnect(ctx context.Context, conn net.Conn) {
-	cws, ok := conn.(*connWithSpan)
-	if !ok {
-		logger.L().Warn(ctx, "failed to unwrap connWithSpan",
-			zap.String("conn_type", fmt.Sprintf("%T", conn)))
+				return
+			}
 
-		return
+			cws.span.End()
+		},
 	}
-
-	cws.span.End()
 }
 
 type connWithSpan struct {
 	net.Conn
 
 	span trace.Span
-}
-
-func wrapConn(conn net.Conn, span trace.Span) net.Conn {
-	return &connWithSpan{Conn: conn, span: span}
 }

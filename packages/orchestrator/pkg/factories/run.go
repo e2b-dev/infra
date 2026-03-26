@@ -817,6 +817,8 @@ func startNFSProxy(
 		RecordHandleCalls: config.NFSProxyRecordHandleCalls,
 		RecordStatCalls:   config.NFSProxyRecordStatCalls,
 		NFSLogLevel:       config.NFSProxyLogLevel,
+		PProf:             config.NFSProxyPProf,
+		PProfOutputDir:    config.NFSPProfOutputDir,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create nfs proxy: %w", err)

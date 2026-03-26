@@ -85,6 +85,8 @@ type Config struct {
 	NFSProxyRecordHandleCalls  bool              `env:"NFS_PROXY_RECORD_HANDLE_CALLS" envDefault:"false"`
 	NFSProxyRecordStatCalls    bool              `env:"NFS_PROXY_RECORD_STAT_CALLS"   envDefault:"false"`
 	NFSProxyLogLevel           nfs.LogLevel      `env:"NFS_PROXY_LOG_LEVEL"           envDefault:"info"`
+	NFSProxyPProf              bool              `env:"NFS_PROXY_PPROF"               envDefault:"false"`
+	NFSPProfOutputDir          string            `env:"NFS_PROXY_PPROF_OUTPUT_DIR"    envDefault:"/tmp/pprof"`
 	ProxyPort                  uint16            `env:"PROXY_PORT"                    envDefault:"5007"`
 	RedisClusterURL            string            `env:"REDIS_CLUSTER_URL"`
 	RedisTLSCABase64           string            `env:"REDIS_TLS_CA_BASE64"`

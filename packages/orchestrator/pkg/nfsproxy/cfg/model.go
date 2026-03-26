@@ -6,6 +6,8 @@ type Config struct {
 	Logging           bool
 	Tracing           bool
 	Metrics           bool
+	PProf             bool
+	PProfOutputDir    string
 	RecordStatCalls   bool
 	RecordHandleCalls bool
 	NFSLogLevel       nfs.LogLevel

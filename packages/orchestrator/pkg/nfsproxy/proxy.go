@@ -61,11 +61,20 @@ func NewProxy(ctx context.Context, builder *chrooted.Builder, sandboxes *sandbox
 
 	handler = recovery.WrapWithRecovery(ctx, handler)
 
+	var hooks []nfs.Hook
+
+	if config.Tracing {
+		hooks = append(hooks, newSpanHook())
+	}
+
+	if config.PProf {
+		hooks = append(hooks, newPprofHook(config.PProfOutputDir))
+	}
+
 	s := &nfs.Server{
-		Handler:      handler,
-		Context:      ctx,
-		OnConnect:    onConnect,
-		OnDisconnect: onDisconnect,
+		Handler: handler,
+		Context: ctx,
+		Hooks:   hooks,
 	}
 
 	return &Proxy{
