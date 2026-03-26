@@ -91,7 +91,7 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, teamID uuid.UUID, sand
 	}
 
 	o.sandboxStore.Remove(context.WithoutCancel(ctx), teamID, sandboxID)
-	func() { go o.analyticsRemove(context.WithoutCancel(ctx), sbx, opts.Action) }()
+	go o.analyticsRemove(context.WithoutCancel(ctx), sbx, opts.Action)
 
 	return nil
 }
