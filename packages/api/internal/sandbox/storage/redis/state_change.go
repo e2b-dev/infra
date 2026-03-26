@@ -77,12 +77,12 @@ func (s *Storage) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID
 	if opts.Eviction {
 		// if there's a transition already in place, don't do anything
 		if transactionID != "" {
-			return sbx, false, nil, sandbox.ErrNotEvictable
+			return sbx, false, nil, sandbox.ErrEvictionInProgress
 		}
 
 		// if sandbox isn't expired (e.g. race condition with SetTimeout)
 		if !sbx.IsExpired(time.Now()) {
-			return sbx, false, nil, sandbox.ErrNotEvictable
+			return sbx, false, nil, sandbox.ErrEvictionNotNeeded
 		}
 	}
 
