@@ -43,8 +43,9 @@ func (t *Header) CloneForUpload() *Header {
 		mappings[i] = m.Copy()
 	}
 
+	metaCopy := *t.Metadata
 	clone := &Header{
-		Metadata: t.Metadata,
+		Metadata: &metaCopy,
 		Mapping:  mappings,
 	}
 
