@@ -24,40 +24,46 @@ const (
 
 type RedisSandboxCatalog struct {
 	redisClient redis.UniversalClient
+	cacheMode   CacheMode
 	cache       *ttlcache.Cache[string, *SandboxInfo]
 }
 
 var _ SandboxesCatalog = (*RedisSandboxCatalog)(nil)
 
-type RedisSandboxCatalogOption func(*RedisSandboxCatalog)
+type CacheMode int
 
-func ReadThroughCache() RedisSandboxCatalogOption {
-	return func(c *RedisSandboxCatalog) {
+const (
+	CacheDisabled CacheMode = iota
+	ReadThroughCache
+)
+
+func newRedisSandboxCatalogCache(mode CacheMode) *ttlcache.Cache[string, *SandboxInfo] {
+	switch mode {
+	case ReadThroughCache:
 		cache := ttlcache.New(
 			ttlcache.WithTTL[string, *SandboxInfo](catalogRedisLocalCacheTtl),
 			ttlcache.WithDisableTouchOnHit[string, *SandboxInfo](),
 		)
 		go cache.Start()
-		c.cache = cache
+		return cache
+	default:
+		return nil
 	}
 }
 
-func NewRedisSandboxesCatalog(redisClient redis.UniversalClient, opts ...RedisSandboxCatalogOption) *RedisSandboxCatalog {
-	c := &RedisSandboxCatalog{
+func NewRedisSandboxesCatalog(redisClient redis.UniversalClient, cacheMode CacheMode) *RedisSandboxCatalog {
+	return &RedisSandboxCatalog{
 		redisClient: redisClient,
+		cacheMode:   cacheMode,
+		cache:       newRedisSandboxCatalogCache(cacheMode),
 	}
-	for _, opt := range opts {
-		opt(c)
-	}
-
-	return c
 }
 
 func (c *RedisSandboxCatalog) GetSandbox(ctx context.Context, sandboxID string) (*SandboxInfo, error) {
 	spanCtx, span := tracer.Start(ctx, "sandbox-catalog-get")
 	defer span.End()
 
-	if c.cache != nil {
+	if c.cacheMode == ReadThroughCache {
 		sandboxInfo := c.cache.Get(sandboxID)
 		if sandboxInfo != nil {
 			return sandboxInfo.Value(), nil
@@ -82,7 +88,7 @@ func (c *RedisSandboxCatalog) GetSandbox(ctx context.Context, sandboxID string) 
 		return nil, fmt.Errorf("failed to unmarshal sandbox info: %w", err)
 	}
 
-	if c.cache != nil {
+	if c.cacheMode == ReadThroughCache {
 		c.cache.Set(sandboxID, info, catalogRedisLocalCacheTtl)
 	}
 
@@ -108,7 +114,7 @@ func (c *RedisSandboxCatalog) StoreSandbox(ctx context.Context, sandboxID string
 		return fmt.Errorf("failed to store sandbox info in redis: %w", status.Err())
 	}
 
-	if c.cache != nil {
+	if c.cacheMode == ReadThroughCache {
 		c.cache.Set(sandboxID, sandboxInfo, catalogRedisLocalCacheTtl)
 	}
 
@@ -140,7 +146,7 @@ func (c *RedisSandboxCatalog) DeleteSandbox(ctx context.Context, sandboxID strin
 	}
 
 	c.redisClient.Del(ctx, c.getCatalogKey(sandboxID))
-	if c.cache != nil {
+	if c.cacheMode == ReadThroughCache {
 		c.cache.Delete(sandboxID)
 	}
 
@@ -152,7 +158,7 @@ func (c *RedisSandboxCatalog) getCatalogKey(sandboxID string) string {
 }
 
 func (c *RedisSandboxCatalog) Close(_ context.Context) error {
-	if c.cache != nil {
+	if c.cacheMode == ReadThroughCache {
 		c.cache.Stop()
 	}
 
