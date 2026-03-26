@@ -115,28 +115,32 @@ func (m *Map) MarkRunning(ctx context.Context, sbx *Sandbox) {
 // entry stays in the map for stoppingEvictionGracePeriod so that IP-based lookups
 // still resolve while the Firecracker process finishes shutting down.
 func (m *Map) MarkStopping(ctx context.Context, sandboxID, lifecycleID string) {
-	sbx, ok := m.sandboxes.Get(sandboxID)
-	if !ok {
-		return
-	}
+	// Use RemoveCb to update the sandbox atomically
+	m.sandboxes.RemoveCb(sandboxID, func(_ string, sbx *Sandbox, exists bool) bool {
+		if !exists {
+			return false
+		}
 
-	if sbx.Runtime.ExecutionID != lifecycleID {
-		return
-	}
+		if sbx.Runtime.ExecutionID != lifecycleID {
+			return false
+		}
 
-	// ensures idempotency
-	if !sbx.status.CompareAndSwap(int32(StatusRunning), int32(StatusStopping)) {
-		return
-	}
+		// It was already marked as stopping, so no need to trigger OnRemove again
+		if !sbx.status.CompareAndSwap(int32(StatusRunning), int32(StatusStopping)) {
+			return false
+		}
 
-	logger.L().Info(ctx, "marking sandbox as stopping by lifecycle ID",
-		logger.WithSandboxID(sandboxID),
-		logger.WithLifecycleID(lifecycleID),
-		logger.WithSandboxIP(sbx.Slot.HostIPString()),
-	)
+		logger.L().Info(ctx, "marking sandbox as stopping by lifecycle ID",
+			logger.WithSandboxID(sandboxID),
+			logger.WithLifecycleID(lifecycleID),
+			logger.WithSandboxIP(sbx.Slot.HostIPString()),
+		)
 
-	go m.trigger(ctx, func(ctx context.Context, s MapSubscriber) {
-		s.OnRemove(ctx, sbx)
+		go m.trigger(ctx, func(ctx context.Context, s MapSubscriber) {
+			s.OnRemove(ctx, sbx)
+		})
+
+		return false
 	})
 }
 
@@ -154,7 +158,7 @@ func (m *Map) Remove(ctx context.Context, sandboxID, lifecycleID string) {
 
 		sbx = v
 
-		// ensures idempotency
+		// ensures we trigger OnRemove only if the sandbox was running (anf triggered onInsert) and not already marked as stopping
 		if sbx.status.CompareAndSwap(int32(StatusRunning), int32(StatusStopping)) {
 			wasRunning = true
 		}
