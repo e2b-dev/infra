@@ -32,7 +32,7 @@ import (
 
 // SandboxDataFetcher is a callback that fetches sandbox metadata.
 // It is called after the concurrency lock is acquired to ensure fresh data.
-type SandboxDataFetcher func(ctx context.Context) (SandboxMetadata, error)
+type SandboxDataFetcher func(ctx context.Context) (SandboxMetadata, *api.APIError)
 
 type SandboxMetadata struct {
 	Metadata            map[string]string
@@ -170,15 +170,9 @@ func (o *Orchestrator) CreateSandbox(
 		}
 	}()
 
-	sbxData, err := getSandboxData(ctx)
-	if err != nil {
-		errMsg := fmt.Errorf("failed to get sandbox data '%s': %w", sandboxID, err)
-
-		return sandbox.Sandbox{}, &api.APIError{
-			Code:      http.StatusInternalServerError,
-			ClientMsg: "Failed to get sandbox data",
-			Err:       errMsg,
-		}
+	sbxData, fetchErr := getSandboxData(ctx)
+	if fetchErr != nil {
+		return sandbox.Sandbox{}, fetchErr
 	}
 
 	fcSemver, err := sandbox.NewVersionInfo(sbxData.Build.FirecrackerVersion)

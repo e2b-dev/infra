@@ -190,10 +190,14 @@ func convertDatabaseMountsToOrchestratorMounts(volumes []*types.SandboxVolumeMou
 // from the cache and builds SandboxMetadata for resume operations.
 // The returned callback is called inside the sandbox lock to prevent race conditions.
 func (a *APIStore) buildResumeSandboxData(sandboxID string, autoPauseOverride *bool) orchestrator.SandboxDataFetcher {
-	return func(ctx context.Context) (orchestrator.SandboxMetadata, error) {
+	return func(ctx context.Context) (orchestrator.SandboxMetadata, *api.APIError) {
 		lastSnapshot, err := a.snapshotCache.Get(ctx, sandboxID)
 		if err != nil {
-			return orchestrator.SandboxMetadata{}, fmt.Errorf("failed to get snapshot: %w", err)
+			return orchestrator.SandboxMetadata{}, &api.APIError{
+				Code:      http.StatusInternalServerError,
+				ClientMsg: "Error when getting snapshot",
+				Err:       fmt.Errorf("error getting last snapshot for sandbox '%s': %w", sandboxID, err),
+			}
 		}
 
 		snap := lastSnapshot.Snapshot
@@ -210,7 +214,7 @@ func (a *APIStore) buildResumeSandboxData(sandboxID string, autoPauseOverride *b
 		if snap.EnvSecure {
 			accessToken, tokenErr := a.getEnvdAccessToken(build.EnvdVersion, sandboxID)
 			if tokenErr != nil {
-				return orchestrator.SandboxMetadata{}, tokenErr.Err
+				return orchestrator.SandboxMetadata{}, tokenErr
 			}
 			envdAccessToken = &accessToken
 		}

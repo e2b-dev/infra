@@ -123,7 +123,7 @@ func TestCreateSandbox_StaleDataAfterConcurrentPause(t *testing.T) {
 		// The fetcher closure captures the mutable snap pointer and reads
 		// current values at call time (after Reserve() acquires the lock).
 		makeFetcher := func() SandboxDataFetcher {
-			return func(_ context.Context) (SandboxMetadata, error) {
+			return func(_ context.Context) (SandboxMetadata, *api.APIError) {
 				return SandboxMetadata{
 					TemplateID:     snap.templateID,
 					BaseTemplateID: "base-tpl",
