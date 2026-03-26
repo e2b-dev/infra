@@ -233,7 +233,7 @@ type Sandbox struct {
 
 	stop utils.Lazy[error]
 
-	started atomic.Bool
+	status atomic.Int32
 }
 
 func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
@@ -246,7 +246,7 @@ func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
 
 // IsRunning returns whether the sandbox has finished starting and is running.
 func (s *Sandbox) IsRunning() bool {
-	return s.started.Load()
+	return SandboxStatus(s.status.Load()) == StatusRunning
 }
 
 // GetStartedAt returns the sandbox start time in a thread-safe manner.
@@ -331,6 +331,14 @@ func (f *Factory) CreateSandbox(
 			execSpan.End()
 		}
 	}()
+
+	lifecycleID := uuid.NewString()
+	// We want to remove from the map as late as possible
+	cleanup.Add(ctx, func(ctx context.Context) error {
+		f.Sandboxes.Remove(ctx, runtime.SandboxID, lifecycleID)
+
+		return nil
+	})
 
 	ipsPromise := getNetworkSlot(ctx, f.networkPool, cleanup, config.Network)
 
@@ -440,7 +448,7 @@ func (f *Factory) CreateSandbox(
 	}
 
 	sbx := &Sandbox{
-		LifecycleID: uuid.NewString(),
+		LifecycleID: lifecycleID,
 
 		Resources:    resources,
 		Metadata:     metadata,
@@ -460,7 +468,7 @@ func (f *Factory) CreateSandbox(
 
 	f.Sandboxes.Insert(ctx, sbx)
 	cleanup.Add(ctx, func(ctx context.Context) error {
-		f.Sandboxes.RemoveByLifecycleID(ctx, runtime.SandboxID, sbx.LifecycleID)
+		f.Sandboxes.MarkStopping(ctx, runtime.SandboxID, sbx.LifecycleID)
 
 		return nil
 	})
@@ -551,6 +559,14 @@ func (f *Factory) ResumeSandbox(
 			execSpan.End()
 		}
 	}()
+
+	lifecycleID := uuid.NewString()
+	// We want to remove from the map as late as possible
+	cleanup.Add(ctx, func(ctx context.Context) error {
+		f.Sandboxes.Remove(ctx, runtime.SandboxID, lifecycleID)
+
+		return nil
+	})
 
 	sandboxFiles := t.Files().NewSandboxFiles(runtime.SandboxID)
 	cleanup.Add(ctx, cleanupFiles(f.config, sandboxFiles))
@@ -758,7 +774,7 @@ func (f *Factory) ResumeSandbox(
 	}
 
 	sbx := &Sandbox{
-		LifecycleID: uuid.NewString(),
+		LifecycleID: lifecycleID,
 
 		Resources:    resources,
 		Metadata:     metadata,
@@ -792,7 +808,7 @@ func (f *Factory) ResumeSandbox(
 	// will remove it.
 	f.Sandboxes.Insert(ctx, sbx)
 	cleanup.Add(ctx, func(ctx context.Context) error {
-		f.Sandboxes.RemoveByLifecycleID(ctx, runtime.SandboxID, sbx.LifecycleID)
+		f.Sandboxes.MarkStopping(ctx, runtime.SandboxID, sbx.LifecycleID)
 
 		return nil
 	})
