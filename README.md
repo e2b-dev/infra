@@ -7,6 +7,10 @@
 
 This repository contains the infrastructure that powers the E2B platform.
 
+## Contributing
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for ways you can contribute to E2B Infrastructure.
+
 ## Self-hosting
 
 Read the [self-hosting guide](./self-host.md) to learn how to set up the infrastructure on your own. The infrastructure is deployed using Terraform.
