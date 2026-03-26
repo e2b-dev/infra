@@ -448,6 +448,7 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string) (e error) {
 		bucketName,
 		objectName,
 		DefaultRetryConfig(),
+		nil,
 	)
 	if err != nil {
 		timer.Failure(ctx, 0)

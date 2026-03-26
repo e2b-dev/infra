@@ -18,14 +18,16 @@ const (
 	SandboxKernelVersionAttribute      string         = "kernel-version"
 	SandboxFirecrackerVersionAttribute string         = "firecracker-version"
 
-	TeamKind       ldcontext.Kind = "team"
-	UserKind       ldcontext.Kind = "user"
-	ClusterKind    ldcontext.Kind = "cluster"
-	deploymentKind ldcontext.Kind = "deployment"
-	TierKind       ldcontext.Kind = "tier"
-	ServiceKind    ldcontext.Kind = "service"
-	TemplateKind   ldcontext.Kind = "template"
-	VolumeKind     ldcontext.Kind = "volume"
+	TeamKind             ldcontext.Kind = "team"
+	UserKind             ldcontext.Kind = "user"
+	ClusterKind          ldcontext.Kind = "cluster"
+	deploymentKind       ldcontext.Kind = "deployment"
+	TierKind             ldcontext.Kind = "tier"
+	ServiceKind          ldcontext.Kind = "service"
+	TemplateKind         ldcontext.Kind = "template"
+	VolumeKind           ldcontext.Kind = "volume"
+	CompressFileTypeKind ldcontext.Kind = "compress-file-type"
+	CompressUseCaseKind  ldcontext.Kind = "compress-use-case"
 
 	OrchestratorKind            ldcontext.Kind = "orchestrator"
 	OrchestratorCommitAttribute string         = "commit"
@@ -324,6 +326,27 @@ func GetTrackedTemplatesSet(ctx context.Context, ff *Client) map[string]struct{}
 var ChunkerConfigFlag = newJSONFlag("chunker-config", ldvalue.FromJSONMarshal(map[string]any{
 	"useStreaming":       false,
 	"minReadBatchSizeKB": 16,
+}))
+
+// OverrideJSONFlag updates a JSON flag value in the offline store.
+// Intended for benchmarks and tests.
+func OverrideJSONFlag(flag JSONFlag, value ldvalue.Value) {
+	builder := launchDarklyOfflineStore.Flag(flag.Key()).ValueForAll(value)
+	launchDarklyOfflineStore.Update(builder)
+}
+
+// CompressConfigFlag controls compression during template builds.
+// When compressBuilds is true, builds upload exclusively compressed data
+// (no uncompressed fallback). When false, exclusively uncompressed with V3 headers.
+var CompressConfigFlag = newJSONFlag("compress-config", ldvalue.FromJSONMarshal(map[string]any{
+	"compressBuilds":     false,
+	"compressionType":    "zstd",
+	"compressionLevel":   2,
+	"frameSizeKB":        2048,
+	"targetPartSizeMB":   50,
+	"frameEncodeWorkers": 4,
+	"encoderConcurrency": 1,
+	"decoderConcurrency": 1,
 }))
 
 // TCPFirewallEgressThrottleConfig controls per-sandbox egress throttling via Firecracker's
