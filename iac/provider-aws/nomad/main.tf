@@ -116,9 +116,9 @@ module "api" {
   db_migrator_docker_image       = "${var.aws_account_id}.dkr.ecr.${var.aws_region}.amazonaws.com/${var.db_migrator_repository_name}:latest"
   loki_url                       = "http://loki.service.consul:${var.loki_port}"
   launch_darkly_api_key          = var.launch_darkly_api_key
-  posthog_api_key                = var.posthog_api_key
-  analytics_collector_host       = var.analytics_collector_host
-  analytics_collector_api_token  = var.analytics_collector_api_token
+  posthog_api_key                = trimspace(var.posthog_api_key)
+  analytics_collector_host       = trimspace(var.analytics_collector_host)
+  analytics_collector_api_token  = trimspace(var.analytics_collector_api_token)
   db_max_open_connections        = var.db_max_open_connections
   db_min_idle_connections        = var.db_min_idle_connections
   auth_db_max_open_connections   = var.auth_db_max_open_connections
