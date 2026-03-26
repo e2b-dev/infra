@@ -177,33 +177,6 @@ func (m *Map) evictDead(sandboxID string, expected *Sandbox) {
 	})
 }
 
-func (m *Map) Remove(ctx context.Context, sandboxID string) {
-	var removedSbx *Sandbox
-	alreadyDead := false
-
-	removed := m.sandboxes.RemoveCb(sandboxID, func(_ string, sbx *Sandbox, exists bool) bool {
-		removedSbx = sbx
-
-		if SandboxStatus(v.status.Load()) == StatusDead {
-			alreadyDead = true
-		}
-
-		return exists
-	})
-
-	if removed {
-		logger.L().Info(ctx, "removing sandbox from map", logger.WithSandboxID(sandboxID))
-
-		// Only fire OnRemove if it wasn't already notified subscribers.
-		// MarkDead sets StatusDead and fires OnRemove
-		if !alreadyDead {
-			go m.trigger(ctx, func(ctx context.Context, s MapSubscriber) {
-				s.OnRemove(ctx, removedSbx)
-			})
-		}
-	}
-}
-
 func (m *Map) RemoveByLifecycleID(ctx context.Context, sandboxID, lifecycleID string) {
 	var sbx *Sandbox
 	alreadyDead := false
