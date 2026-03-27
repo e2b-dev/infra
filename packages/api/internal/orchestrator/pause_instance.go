@@ -23,6 +23,8 @@ import (
 
 type PauseQueueExhaustedError struct{}
 
+const pauseCompletionTimeout = 15 * time.Minute
+
 func (PauseQueueExhaustedError) Error() string {
 	return "The pause queue is exhausted"
 }
@@ -37,6 +39,9 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 
 		return err
 	}
+
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), pauseCompletionTimeout)
+	defer cancel()
 
 	err = snapshotInstance(ctx, node, sbx, result.TemplateID, result.BuildID.String())
 	if errors.Is(err, PauseQueueExhaustedError{}) {
@@ -64,18 +69,18 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 		return fmt.Errorf("error pausing sandbox: %w", err)
 	}
 
-	o.snapshotCache.Invalidate(context.WithoutCancel(ctx), sbx.SandboxID)
+	o.snapshotCache.Invalidate(ctx, sbx.SandboxID)
 
 	return nil
 }
 
 func snapshotInstance(ctx context.Context, node *nodemanager.Node, sbx sandbox.Sandbox, templateID, buildID string) error {
-	childCtx, childSpan := tracer.Start(ctx, "snapshot-instance")
+	ctx, childSpan := tracer.Start(ctx, "snapshot-instance")
 	defer childSpan.End()
 
-	client, childCtx := node.GetSandboxDeleteCtx(childCtx, sbx.SandboxID, sbx.ExecutionID)
+	client, ctx := node.GetSandboxDeleteCtx(ctx, sbx.SandboxID, sbx.ExecutionID)
 	_, err := client.Sandbox.Pause(
-		childCtx, &orchestrator.SandboxPauseRequest{
+		ctx, &orchestrator.SandboxPauseRequest{
 			SandboxId:  sbx.SandboxID,
 			TemplateId: templateID,
 			BuildId:    buildID,
