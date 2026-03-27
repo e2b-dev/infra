@@ -74,7 +74,7 @@ func (h *APIStore) Logs(c *gin.Context) {
 
 // validatePayloadSandboxID checks if the payload contains correct instanceID
 func (h *APIStore) validatePayloadSandboxID(payload map[string]any, sbxID string) error {
-	if payload["instanceID"] != nil {
+	if payload["instanceID"] == nil {
 		return fmt.Errorf("missing sandboxID in logs payload")
 	}
 
