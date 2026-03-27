@@ -248,16 +248,22 @@ func (c *Cache) Slice(off, length int64) ([]byte, error) {
 	return nil, BytesNotAvailableError{}
 }
 
+func (c *Cache) startBlock(off int64) uint {
+	return uint(off / c.blockSize)
+}
+
+func (c *Cache) endBlock(off int64) uint {
+	return uint((off + c.blockSize - 1) / c.blockSize)
+}
+
 func (c *Cache) isCached(off, length int64) bool {
 	if off >= c.size {
 		return false
 	}
 
 	end := min(off+length, c.size)
-	start := uint(off / c.blockSize)
-	endBlock := uint((end + c.blockSize - 1) / c.blockSize)
 
-	return c.dirty.HasRange(start, endBlock)
+	return c.dirty.HasRange(c.startBlock(off), c.endBlock(end))
 }
 
 func (c *Cache) setIsCached(off, length int64) {
@@ -265,10 +271,7 @@ func (c *Cache) setIsCached(off, length int64) {
 		return
 	}
 
-	start := uint(off / c.blockSize)
-	endBlock := uint((off + length + c.blockSize - 1) / c.blockSize)
-
-	c.dirty.SetRange(start, endBlock)
+	c.dirty.SetRange(c.startBlock(off), c.endBlock(off+length))
 }
 
 // When using WriteAtWithoutLock you must ensure thread safety, ideally by only writing to the same block once and the exposing the slice.
