@@ -43,7 +43,7 @@ func TestRedisCatalog_LocalCache(t *testing.T) {
 	require.Equal(t, expected.ExecutionID, got.ExecutionID)
 
 	// With local cache — reads from Redis, populates cache.
-	cache := NewTTLSandboxCache()
+	cache := NewReadThroughSandboxCache()
 	cachedCatalog := NewRedisSandboxCatalog(redisClient, cache)
 	t.Cleanup(func() {
 		assert.NoError(t, cachedCatalog.Close(context.Background()))

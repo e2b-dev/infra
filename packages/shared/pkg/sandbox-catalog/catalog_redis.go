@@ -36,7 +36,7 @@ type RedisSandboxCatalog struct {
 
 var _ SandboxesCatalog = (*RedisSandboxCatalog)(nil)
 
-func NewTTLSandboxCache() *ttlcache.Cache[string, *SandboxInfo] {
+func NewReadThroughSandboxCache() *ttlcache.Cache[string, *SandboxInfo] {
 	cache := ttlcache.New(
 		ttlcache.WithTTL[string, *SandboxInfo](catalogRedisLocalCacheTtl),
 		ttlcache.WithDisableTouchOnHit[string, *SandboxInfo](),
