@@ -40,7 +40,7 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 		return err
 	}
 
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), pauseCompletionTimeout)
+	ctx, cancel := context.WithTimeout(ctx, pauseCompletionTimeout)
 	defer cancel()
 
 	err = snapshotInstance(ctx, node, sbx, result.TemplateID, result.BuildID.String())
