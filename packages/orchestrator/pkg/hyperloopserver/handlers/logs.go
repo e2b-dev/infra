@@ -3,6 +3,7 @@ package handlers
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 
@@ -33,21 +34,12 @@ func (h *APIStore) Logs(c *gin.Context) {
 		return
 	}
 
-	if payload["instanceID"] != nil {
-		payloadSandboxID, ok := payload["instanceID"].(string)
-		if !ok {
-			h.sendAPIStoreError(c, http.StatusBadRequest, "sandboxID in logs payload must be a string")
-			h.logger.Warn(ctx, "sandboxID in logs payload must be a string", logger.WithSandboxID(sbxID))
+	err = h.validatePayloadSandboxID(payload, sbxID)
+	if err != nil {
+		h.sendAPIStoreError(c, http.StatusBadRequest, "Invalid sandbox ID in logs payload")
+		h.logger.Error(ctx, "invalid sandbox ID in logs payload", zap.Error(err), logger.WithSandboxID(sbxID))
 
-			return
-		}
-
-		if payloadSandboxID != sbxID {
-			h.sendAPIStoreError(c, http.StatusBadRequest, "instanceID in logs payload does not match source sandbox")
-			h.logger.Warn(ctx, "instanceID in logs payload does not match source sandbox", logger.WithSandboxID(sbxID), zap.String("payloadInstanceID", payload["instanceID"].(string)))
-
-			return
-		}
+		return
 	}
 
 	// Overwrite instanceID and teamID to avoid spoofing
@@ -81,4 +73,22 @@ func (h *APIStore) Logs(c *gin.Context) {
 	defer response.Body.Close()
 
 	c.Status(http.StatusOK)
+}
+
+// validatePayloadSandboxID checks if the payload contains correct instanceID
+func (h *APIStore) validatePayloadSandboxID(payload map[string]any, sbxID string) error {
+	if payload["instanceID"] != nil {
+		return fmt.Errorf("missing sandboxID in logs payload")
+	}
+
+	payloadSandboxID, ok := payload["instanceID"].(string)
+	if !ok {
+		return fmt.Errorf("instanceID in logs payload is not a string: %v", payload["instanceID"])
+	}
+
+	if payloadSandboxID != sbxID {
+		return fmt.Errorf("sandboxID in logs payload does not match the sandboxID of the source sandbox (%s != %s)", payloadSandboxID, sbxID)
+	}
+
+	return nil
 }
