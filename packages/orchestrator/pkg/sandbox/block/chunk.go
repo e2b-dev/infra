@@ -182,36 +182,35 @@ func (c *FullFetchChunker) WriteTo(ctx context.Context, w io.Writer) (int64, err
 
 func (c *FullFetchChunker) Slice(ctx context.Context, off, length int64) ([]byte, error) {
 	timer := c.metrics.SlicesTimerFactory.Begin()
-	a := chunkerAttrs
 
 	b, err := c.cache.Slice(off, length)
 	if err == nil {
-		timer.Record(ctx, length, a.successFromCache)
+		timer.RecordRaw(ctx, length, chunkerAttrs.successFromCache)
 
 		return b, nil
 	}
 
 	if !errors.As(err, &BytesNotAvailableError{}) {
-		timer.Record(ctx, length, a.failCacheRead)
+		timer.RecordRaw(ctx, length, chunkerAttrs.failCacheRead)
 
 		return nil, fmt.Errorf("failed read from cache at offset %d: %w", off, err)
 	}
 
 	chunkErr := c.fetchToCache(ctx, off, length)
 	if chunkErr != nil {
-		timer.Record(ctx, length, a.failRemoteFetch)
+		timer.RecordRaw(ctx, length, chunkerAttrs.failRemoteFetch)
 
 		return nil, fmt.Errorf("failed to ensure data at %d-%d: %w", off, off+length, chunkErr)
 	}
 
 	b, cacheErr := c.cache.Slice(off, length)
 	if cacheErr != nil {
-		timer.Record(ctx, length, a.failLocalReadAgain)
+		timer.RecordRaw(ctx, length, chunkerAttrs.failLocalReadAgain)
 
 		return nil, fmt.Errorf("failed to read from cache after ensuring data at %d-%d: %w", off, off+length, cacheErr)
 	}
 
-	timer.Record(ctx, length, a.successFromRemote)
+	timer.RecordRaw(ctx, length, chunkerAttrs.successFromRemote)
 
 	return b, nil
 }
@@ -259,25 +258,24 @@ func (c *FullFetchChunker) fetchToCache(ctx context.Context, off, length int64) 
 
 				defer releaseCacheCloseLock()
 
-				a := chunkerAttrs
 				fetchSW := c.metrics.RemoteReadsTimerFactory.Begin()
 
 				readBytes, err := c.base.ReadAt(ctx, b, fetchOff)
 				if err != nil {
-					fetchSW.Record(ctx, int64(readBytes), a.remoteFailure)
+					fetchSW.RecordRaw(ctx, int64(readBytes), chunkerAttrs.remoteFailure)
 
 					return nil, fmt.Errorf("failed to read chunk from base %d: %w", fetchOff, err)
 				}
 
 				if readBytes != len(b) {
-					fetchSW.Record(ctx, int64(readBytes), a.remoteFailure)
+					fetchSW.RecordRaw(ctx, int64(readBytes), chunkerAttrs.remoteFailure)
 
 					return nil, fmt.Errorf("failed to read chunk from base %d: expected %d bytes, got %d bytes", fetchOff, len(b), readBytes)
 				}
 
 				c.cache.setIsCached(fetchOff, int64(readBytes))
 
-				fetchSW.Record(ctx, int64(readBytes), a.remoteSuccess)
+				fetchSW.RecordRaw(ctx, int64(readBytes), chunkerAttrs.remoteSuccess)
 
 				return nil, nil
 			})
