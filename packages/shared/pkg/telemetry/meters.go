@@ -411,6 +411,12 @@ const (
 	resultTypeFailure = "failure"
 )
 
+var (
+	// Pre-allocated result attributes for use with PrecomputeAttrs.
+	Success = attribute.String(resultAttr, resultTypeSuccess)
+	Failure = attribute.String(resultAttr, resultTypeFailure)
+)
+
 func (t Stopwatch) Success(ctx context.Context, total int64, kv ...attribute.KeyValue) {
 	t.end(ctx, resultTypeSuccess, total, kv...)
 }
@@ -422,9 +428,23 @@ func (t Stopwatch) Failure(ctx context.Context, total int64, kv ...attribute.Key
 func (t Stopwatch) end(ctx context.Context, result string, total int64, kv ...attribute.KeyValue) {
 	kv = append(kv, attribute.KeyValue{Key: resultAttr, Value: attribute.StringValue(result)})
 	kv = append(t.kv, kv...)
+	opt := metric.WithAttributeSet(attribute.NewSet(kv...))
+	t.RecordRaw(ctx, total, opt)
+}
 
+// PrecomputeAttrs builds a reusable MeasurementOption from the given attribute
+// key-values. The option must include all attributes (including "result").
+// Use with Stopwatch.Record to avoid per-call attribute allocation.
+func PrecomputeAttrs(kv ...attribute.KeyValue) metric.MeasurementOption {
+	return metric.WithAttributeSet(attribute.NewSet(kv...))
+}
+
+// RecordRaw records an operation using a precomputed attribute option, it does
+// not include any previous attributes passed at Begin(). Zero-allocation
+// alternative to Success/Failure for hot paths.
+func (t Stopwatch) RecordRaw(ctx context.Context, total int64, precomputedAttrs metric.MeasurementOption) {
 	amount := time.Since(t.start).Milliseconds()
-	t.histogram.Record(ctx, amount, metric.WithAttributes(kv...))
-	t.sum.Add(ctx, total, metric.WithAttributes(kv...))
-	t.count.Add(ctx, 1, metric.WithAttributes(kv...))
+	t.histogram.Record(ctx, amount, precomputedAttrs)
+	t.sum.Add(ctx, total, precomputedAttrs)
+	t.count.Add(ctx, 1, precomputedAttrs)
 }
