@@ -45,6 +45,12 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 		return PauseQueueExhaustedError{}
 	}
 
+	if errors.Is(err, ErrSandboxNotFound) {
+		telemetry.ReportCriticalError(ctx, "sandbox not found when pausing", err)
+
+		return ErrSandboxNotFound
+	}
+
 	if err != nil && !errors.Is(err, PauseQueueExhaustedError{}) {
 		telemetry.ReportCriticalError(ctx, "error pausing sandbox", err)
 
@@ -95,6 +101,10 @@ func snapshotInstance(ctx context.Context, node *nodemanager.Node, sbx sandbox.S
 
 	if st.Code() == codes.ResourceExhausted {
 		return PauseQueueExhaustedError{}
+	}
+
+	if st.Code() == codes.NotFound {
+		return ErrSandboxNotFound
 	}
 
 	return fmt.Errorf("failed to pause sandbox '%s': %w", sbx.SandboxID, err)
