@@ -33,11 +33,21 @@ func (h *APIStore) Logs(c *gin.Context) {
 		return
 	}
 
-	if payload["instanceID"] != nil && payload["instanceID"] != sbxID {
-		h.sendAPIStoreError(c, http.StatusBadRequest, "instanceID in logs payload does not match source sandbox")
-		h.logger.Warn(ctx, "instanceID in logs payload does not match source sandbox", logger.WithSandboxID(sbxID), zap.String("payloadInstanceID", payload["instanceID"].(string)))
+	if payload["sandboxID"] != nil {
+		payloadSandboxID, ok := payload["sandboxID"].(string)
+		if !ok {
+			h.sendAPIStoreError(c, http.StatusBadRequest, "sandboxID in logs payload must be a string")
+			h.logger.Warn(ctx, "sandboxID in logs payload must be a string", logger.WithSandboxID(sbxID))
 
-		return
+			return
+		}
+
+		if payloadSandboxID != sbxID {
+			h.sendAPIStoreError(c, http.StatusBadRequest, "instanceID in logs payload does not match source sandbox")
+			h.logger.Warn(ctx, "instanceID in logs payload does not match source sandbox", logger.WithSandboxID(sbxID), zap.String("payloadInstanceID", payload["instanceID"].(string)))
+
+			return
+		}
 	}
 
 	// Overwrite instanceID and teamID to avoid spoofing
