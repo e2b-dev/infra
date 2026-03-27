@@ -408,8 +408,14 @@ func (f *Factory) CreateSandbox(
 		}
 	}
 
-	cgroupHandle, cgroupFD := createCgroup(ctx, f.cgroupManager, sandboxFiles.SandboxCgroupName(), cleanup)
+	cgroupHandle, cgroupFD := createCgroup(ctx, f.cgroupManager, sandboxFiles.SandboxCgroupName())
 	defer releaseCgroupFD(ctx, cgroupHandle, runtime.SandboxID)
+
+	if cgroupHandle != nil {
+		cleanup.Add(ctx, func(ctx context.Context) error {
+			return cgroupHandle.Remove(ctx)
+		})
+	}
 
 	fcHandle, err := fc.NewProcess(
 		ctx,
@@ -475,6 +481,15 @@ func (f *Factory) CreateSandbox(
 
 	samplingInterval := time.Duration(f.featureFlags.IntFlag(execCtx, featureflags.HostStatsSamplingInterval)) * time.Millisecond
 	initializeHostStatsCollector(execCtx, sbx, runtime, config, f.hostStatsDelivery, samplingInterval)
+
+	// Collect a final stats sample on cleanup while the cgroup is still alive.
+	cleanup.Add(ctx, func(ctx context.Context) error {
+		if sbx.hostStatsCollector != nil {
+			sbx.hostStatsCollector.Stop(ctx)
+		}
+
+		return nil
+	})
 
 	err = fcHandle.Create(
 		ctx,
@@ -716,8 +731,14 @@ func (f *Factory) ResumeSandbox(
 	}
 
 	// Create cgroup for sandbox resource accounting
-	cgroupHandle, cgroupFD := createCgroup(ctx, f.cgroupManager, sandboxFiles.SandboxCgroupName(), cleanup)
+	cgroupHandle, cgroupFD := createCgroup(ctx, f.cgroupManager, sandboxFiles.SandboxCgroupName())
 	defer releaseCgroupFD(ctx, cgroupHandle, runtime.SandboxID)
+
+	if cgroupHandle != nil {
+		cleanup.Add(ctx, func(ctx context.Context) error {
+			return cgroupHandle.Remove(ctx)
+		})
+	}
 
 	fcHandle, fcErr := fc.NewProcess(
 		ctx,
@@ -815,6 +836,15 @@ func (f *Factory) ResumeSandbox(
 
 	samplingInterval := time.Duration(f.featureFlags.IntFlag(execCtx, featureflags.HostStatsSamplingInterval)) * time.Millisecond
 	initializeHostStatsCollector(execCtx, sbx, runtime, config, f.hostStatsDelivery, samplingInterval)
+
+	// Collect a final stats sample on cleanup while the cgroup is still alive.
+	cleanup.Add(ctx, func(ctx context.Context) error {
+		if sbx.hostStatsCollector != nil {
+			sbx.hostStatsCollector.Stop(ctx)
+		}
+
+		return nil
+	})
 
 	uffdStartCtx, cancelUffdStartCtx := context.WithCancelCause(ctx)
 	defer cancelUffdStartCtx(fmt.Errorf("uffd finished starting"))
@@ -937,21 +967,6 @@ func (s *Sandbox) doStop(ctx context.Context) error {
 	// The process exited, we can continue with the rest of the cleanup.
 	// We could use select with ctx.Done() to wait for cancellation, but if the process is not exited the whole cleanup will be in a bad state and will result in unexpected behavior.
 	<-s.process.Exit.Done()
-
-	// Stop host stats collector and collect final sample right before cgroup removal.
-	// This captures resource usage up to the very end of the sandbox's lifetime.
-	if s.hostStatsCollector != nil {
-		s.hostStatsCollector.Stop(ctx)
-	}
-
-	// Remove cgroup after process has exited
-	if s.cgroupHandle != nil {
-		if cgroupErr := s.cgroupHandle.Remove(ctx); cgroupErr != nil {
-			logger.L().Warn(ctx, "failed to remove cgroup during cleanup",
-				logger.WithSandboxID(s.Runtime.SandboxID),
-				zap.Error(cgroupErr))
-		}
-	}
 
 	uffdStopErr := s.Resources.memory.Stop()
 	if uffdStopErr != nil {
@@ -1208,12 +1223,11 @@ func pauseProcessRootfs(
 }
 
 // createCgroup creates a cgroup for sandbox resource accounting if cgroup
-// accounting is enabled (cgroupManager is non-nil). It registers cleanup with
-// the provided Cleanup so the cgroup is removed on error paths.
+// accounting is enabled (cgroupManager is non-nil).
 //
 // Returns the CgroupHandle and the cgroup directory FD to pass to the
 // Firecracker process. If cgroup accounting is disabled, returns (nil, cgroup.NoCgroupFD).
-func createCgroup(ctx context.Context, cgroupManager cgroup.Manager, cgroupName string, cleanup *Cleanup) (*cgroup.CgroupHandle, int) {
+func createCgroup(ctx context.Context, cgroupManager cgroup.Manager, cgroupName string) (*cgroup.CgroupHandle, int) {
 	ctx, span := tracer.Start(ctx, "sandbox-create-cgroup", trace.WithAttributes(
 		attribute.String("cgroup_name", cgroupName),
 	))
@@ -1233,10 +1247,6 @@ func createCgroup(ctx context.Context, cgroupManager cgroup.Manager, cgroupName 
 
 		return nil, cgroup.NoCgroupFD
 	}
-
-	cleanup.Add(ctx, func(ctx context.Context) error {
-		return handle.Remove(ctx)
-	})
 
 	return handle, handle.GetFD()
 }
