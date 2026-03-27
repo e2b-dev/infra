@@ -150,6 +150,123 @@ func TestPathDirect_LargeWrite(t *testing.T) {
 	require.NoError(t, err, "failed to execute dd command")
 }
 
+// TestPathDirect_ShutdownDuringLargeRead starts a 1GB dd read against the NBD
+// device, then triggers Close() while reads are in-flight. Before the drain-
+// before-close fix, this would produce "use of closed network connection" errors
+// in the async performRead goroutines.
+func TestPathDirect_ShutdownDuringLargeRead(t *testing.T) {
+	t.Parallel()
+
+	if os.Geteuid() != 0 {
+		t.Skip("the nbd requires root privileges to run")
+	}
+
+	featureFlags, err := featureflags.NewClient()
+	require.NoError(t, err)
+
+	const blockSize = header.RootfsBlockSize
+	size := int64(1200 * 1024 * 1024)
+
+	emptyDevice, err := testutils.NewZeroDevice(size, blockSize)
+	require.NoError(t, err, "failed to create zero device")
+
+	cowCachePath := filepath.Join(os.TempDir(), fmt.Sprintf("test-rootfs.ext4.cow.cache-%s", uuid.New().String()))
+	t.Cleanup(func() {
+		os.RemoveAll(cowCachePath)
+	})
+
+	cache, err := block.NewCache(size, blockSize, cowCachePath, false)
+	require.NoError(t, err, "failed to create cache")
+
+	overlay := block.NewOverlay(emptyDevice, cache)
+	t.Cleanup(func() {
+		overlay.Close()
+	})
+
+	nbdCtx := context.Background()
+	devicePath, deviceCleanup, err := testutils.GetNBDDevice(nbdCtx, overlay, featureFlags)
+	require.NoError(t, err, "failed to get nbd device")
+
+	t.Logf("NBD device path: %s", devicePath)
+
+	// Start a large read via dd — this keeps many NBD read requests in-flight.
+	cmd := exec.Command("dd", "if="+string(devicePath), "of=/dev/null", "bs=1M", "count=1024")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	err = cmd.Start()
+	require.NoError(t, err, "failed to start dd")
+
+	// Let dd get going and build up in-flight reads.
+	time.Sleep(200 * time.Millisecond)
+
+	// Trigger shutdown while dd is actively reading — this exercises the
+	// cancel → drain → close socket sequence.
+	t.Log("triggering NBD shutdown while dd is reading...")
+	cleanupErr := deviceCleanup.Run(t.Context(), 30*time.Second)
+
+	// dd will fail because the device disappeared — that's expected.
+	_ = cmd.Wait()
+
+	// The important thing: cleanup should complete without errors.
+	// Before the fix, writeResponse would fail on the closed socket and
+	// Drain() could hang or the error would propagate.
+	require.NoError(t, cleanupErr, "NBD cleanup should succeed without closed-connection errors")
+}
+
+// TestPathDirect_ShutdownDuringLargeWrite starts a 512MB dd write against the
+// NBD device, then triggers Close() while writes are in-flight.
+func TestPathDirect_ShutdownDuringLargeWrite(t *testing.T) {
+	t.Parallel()
+
+	if os.Geteuid() != 0 {
+		t.Skip("the nbd requires root privileges to run")
+	}
+
+	featureFlags, err := featureflags.NewClient()
+	require.NoError(t, err)
+
+	const blockSize = header.RootfsBlockSize
+	size := int64(1200 * 1024 * 1024)
+
+	emptyDevice, err := testutils.NewZeroDevice(size, blockSize)
+	require.NoError(t, err, "failed to create zero device")
+
+	cowCachePath := filepath.Join(os.TempDir(), fmt.Sprintf("test-rootfs.ext4.cow.cache-%s", uuid.New().String()))
+	t.Cleanup(func() {
+		os.RemoveAll(cowCachePath)
+	})
+
+	cache, err := block.NewCache(size, blockSize, cowCachePath, false)
+	require.NoError(t, err, "failed to create cache")
+
+	overlay := block.NewOverlay(emptyDevice, cache)
+	t.Cleanup(func() {
+		overlay.Close()
+	})
+
+	nbdCtx := context.Background()
+	devicePath, deviceCleanup, err := testutils.GetNBDDevice(nbdCtx, overlay, featureFlags)
+	require.NoError(t, err, "failed to get nbd device")
+
+	t.Logf("NBD device path: %s", devicePath)
+
+	// Start a large write via dd — keeps NBD write requests in-flight.
+	cmd := exec.Command("dd", "if=/dev/zero", "of="+string(devicePath), "bs=1M", "count=512")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	err = cmd.Start()
+	require.NoError(t, err, "failed to start dd")
+
+	time.Sleep(200 * time.Millisecond)
+
+	t.Log("triggering NBD shutdown while dd is writing...")
+	cleanupErr := deviceCleanup.Run(t.Context(), 30*time.Second)
+
+	_ = cmd.Wait()
+
+	require.NoError(t, cleanupErr, "NBD cleanup should succeed without closed-connection errors")
+}
+
 func TestPathLargeRead(t *testing.T) {
 	t.Parallel()
 
