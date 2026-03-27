@@ -20,6 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/cgroup"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network"
@@ -225,7 +226,7 @@ func newTestInfra(t *testing.T, ctx context.Context) *testInfra {
 	ti.closers = append(ti.closers, func(ctx context.Context) { sandboxProxy.Close(ctx) })
 
 	// Factory + Builder
-	factory := sandbox.NewFactory(orcConfig.BuilderConfig, networkPool, devicePool, flags, nil, nil, sandboxes)
+	factory := sandbox.NewFactory(orcConfig.BuilderConfig, networkPool, devicePool, flags, nil, cgroup.NewNoopManager(), sandboxes)
 	ti.factory = factory
 
 	buildMetrics, _ := metrics.NewBuildMetrics(noop.MeterProvider{})

@@ -411,11 +411,9 @@ func (f *Factory) CreateSandbox(
 	cgroupHandle, cgroupFD := createCgroup(ctx, f.cgroupManager, sandboxFiles.SandboxCgroupName())
 	defer releaseCgroupFD(ctx, cgroupHandle, runtime.SandboxID)
 
-	if cgroupHandle != nil {
-		cleanup.Add(ctx, func(ctx context.Context) error {
-			return cgroupHandle.Remove(ctx)
-		})
-	}
+	cleanup.Add(ctx, func(ctx context.Context) error {
+		return cgroupHandle.Remove(ctx)
+	})
 
 	fcHandle, err := fc.NewProcess(
 		ctx,
@@ -734,11 +732,9 @@ func (f *Factory) ResumeSandbox(
 	cgroupHandle, cgroupFD := createCgroup(ctx, f.cgroupManager, sandboxFiles.SandboxCgroupName())
 	defer releaseCgroupFD(ctx, cgroupHandle, runtime.SandboxID)
 
-	if cgroupHandle != nil {
-		cleanup.Add(ctx, func(ctx context.Context) error {
-			return cgroupHandle.Remove(ctx)
-		})
-	}
+	cleanup.Add(ctx, func(ctx context.Context) error {
+		return cgroupHandle.Remove(ctx)
+	})
 
 	fcHandle, fcErr := fc.NewProcess(
 		ctx,
@@ -1222,20 +1218,16 @@ func pauseProcessRootfs(
 	return rootfsDiff, rootfsHeader, nil
 }
 
-// createCgroup creates a cgroup for sandbox resource accounting if cgroup
-// accounting is enabled (cgroupManager is non-nil).
+// createCgroup creates a cgroup for sandbox resource accounting.
+// The caller is responsible for registering cleanup to remove the cgroup.
 //
 // Returns the CgroupHandle and the cgroup directory FD to pass to the
-// Firecracker process. If cgroup accounting is disabled, returns (nil, cgroup.NoCgroupFD).
+// Firecracker process or (nil, cgroup.NoCgroupFD) on error.
 func createCgroup(ctx context.Context, cgroupManager cgroup.Manager, cgroupName string) (*cgroup.CgroupHandle, int) {
 	ctx, span := tracer.Start(ctx, "sandbox-create-cgroup", trace.WithAttributes(
 		attribute.String("cgroup_name", cgroupName),
 	))
 	defer span.End()
-
-	if cgroupManager == nil {
-		return nil, cgroup.NoCgroupFD
-	}
 
 	handle, err := cgroupManager.Create(ctx, cgroupName)
 	if err != nil {
@@ -1384,12 +1376,10 @@ func (s *Sandbox) WaitForEnvd(
 }
 
 func releaseCgroupFD(ctx context.Context, cgroupHandle *cgroup.CgroupHandle, sandboxID string) {
-	if cgroupHandle != nil {
-		if releaseErr := cgroupHandle.ReleaseCgroupFD(); releaseErr != nil {
-			logger.L().Warn(ctx, "failed to release cgroup directory FD",
-				logger.WithSandboxID(sandboxID),
-				zap.Error(releaseErr))
-		}
+	if releaseErr := cgroupHandle.ReleaseCgroupFD(); releaseErr != nil {
+		logger.L().Warn(ctx, "failed to release cgroup directory FD",
+			logger.WithSandboxID(sandboxID),
+			zap.Error(releaseErr))
 	}
 }
 

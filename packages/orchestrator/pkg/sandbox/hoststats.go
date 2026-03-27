@@ -25,13 +25,6 @@ func initializeHostStatsCollector(
 		return
 	}
 
-	if sbx.cgroupHandle == nil {
-		logger.L().Warn(ctx, "cgroup handle not available, skipping host stats collection",
-			logger.WithSandboxID(runtime.SandboxID))
-
-		return
-	}
-
 	teamID, err := uuid.Parse(runtime.TeamID)
 	if err != nil {
 		logger.L().Error(ctx, "error parsing team ID", logger.WithTeamID(runtime.TeamID), zap.Error(err))
