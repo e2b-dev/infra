@@ -161,32 +161,32 @@ func (c *Chunker) SliceBlock(ctx context.Context, off, length int64, ft *storage
 	// Fast path: already in mmap cache.
 	b, err := c.cache.Slice(off, length)
 	if err == nil {
-		timer.Record(ctx, length, attrs.successFromCache)
+		timer.RecordRaw(ctx, length, attrs.successFromCache)
 
 		return b, nil
 	}
 
 	var bytesNotAvailableError BytesNotAvailableError
 	if !errors.As(err, &bytesNotAvailableError) {
-		timer.Record(ctx, length, attrs.failCacheRead)
+		timer.RecordRaw(ctx, length, attrs.failCacheRead)
 
 		return nil, fmt.Errorf("failed read from cache at offset %d: %w", off, err)
 	}
 
 	if err := c.fetch(ctx, off, ft); err != nil {
-		timer.Record(ctx, length, attrs.failRemoteFetch)
+		timer.RecordRaw(ctx, length, attrs.failRemoteFetch)
 
 		return nil, err
 	}
 
 	b, cacheErr := c.cache.Slice(off, length)
 	if cacheErr != nil {
-		timer.Record(ctx, length, attrs.failLocalReadAgain)
+		timer.RecordRaw(ctx, length, attrs.failLocalReadAgain)
 
 		return nil, fmt.Errorf("failed to read from cache after fetch at %d-%d: %w", off, off+length, cacheErr)
 	}
 
-	timer.Record(ctx, length, attrs.successFromRemote)
+	timer.RecordRaw(ctx, length, attrs.successFromRemote)
 
 	return b, nil
 }
@@ -282,7 +282,7 @@ func (c *Chunker) runFetch(ctx context.Context, session *fetchSession, offsetU i
 
 	file, err := c.persistence.OpenFramedFile(ctx, path)
 	if err != nil {
-		timer.Record(ctx, session.chunkLen, attrs.remoteFailure)
+		timer.RecordRaw(ctx, session.chunkLen, attrs.remoteFailure)
 		session.setError(fmt.Errorf("failed to open data file %s: %w", path, err), false)
 
 		return
@@ -290,13 +290,13 @@ func (c *Chunker) runFetch(ctx context.Context, session *fetchSession, offsetU i
 
 	_, err = file.GetFrame(ctx, offsetU, ft, compressed, mmapSlice[:session.chunkLen], readSize, onRead)
 	if err != nil {
-		timer.Record(ctx, session.chunkLen, attrs.remoteFailure)
+		timer.RecordRaw(ctx, session.chunkLen, attrs.remoteFailure)
 		session.setError(fmt.Errorf("failed to fetch data at %#x: %w", offsetU, err), false)
 
 		return
 	}
 
-	timer.Record(ctx, session.chunkLen, attrs.remoteSuccess)
+	timer.RecordRaw(ctx, session.chunkLen, attrs.remoteSuccess)
 	session.setDone()
 }
 

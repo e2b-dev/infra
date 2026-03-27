@@ -14,11 +14,9 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/middleware/otel/tracing"
+	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	typesteam "github.com/e2b-dev/infra/packages/auth/pkg/types"
-	"github.com/e2b-dev/infra/packages/db/pkg/types"
-	"github.com/e2b-dev/infra/packages/db/queries"
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -29,45 +27,21 @@ func (a *APIStore) startSandbox(
 	ctx context.Context,
 	sandboxID string,
 	timeout time.Duration,
-	envVars map[string]string,
-	metadata map[string]string,
-	alias string,
 	team *typesteam.Team,
-	build queries.EnvBuild,
+	getSandboxData orchestrator.SandboxDataFetcher,
 	requestHeader *http.Header,
 	isResume bool,
-	nodeID *string,
-	templateID string,
-	baseTemplateID string,
-	autoPause bool,
-	autoResume *types.SandboxAutoResumeConfig,
-	envdAccessToken *string,
-	allowInternetAccess *bool,
-	network *types.SandboxNetworkConfig,
 	mcp api.Mcp,
-	volumeMounts []*orchestrator.SandboxVolumeMount,
 ) (*api.Sandbox, *api.APIError) {
 	sbx, apiErr := a.startSandboxInternal(
 		ctx,
 		sandboxID,
 		timeout,
-		envVars,
-		metadata,
-		alias,
 		team,
-		build,
+		getSandboxData,
 		requestHeader,
 		isResume,
-		nodeID,
-		templateID,
-		baseTemplateID,
-		autoPause,
-		autoResume,
-		envdAccessToken,
-		allowInternetAccess,
-		network,
 		mcp,
-		volumeMounts,
 	)
 	if apiErr != nil {
 		return nil, apiErr
@@ -81,31 +55,14 @@ func (a *APIStore) startSandboxInternal(
 	ctx context.Context,
 	sandboxID string,
 	timeout time.Duration,
-	envVars map[string]string,
-	metadata map[string]string,
-	alias string,
 	team *typesteam.Team,
-	build queries.EnvBuild,
+	getSandboxData orchestrator.SandboxDataFetcher,
 	requestHeader *http.Header,
 	isResume bool,
-	nodeID *string,
-	templateID string,
-	baseTemplateID string,
-	autoPause bool,
-	autoResume *types.SandboxAutoResumeConfig,
-	envdAccessToken *string,
-	allowInternetAccess *bool,
-	network *types.SandboxNetworkConfig,
 	mcp api.Mcp,
-	volumeMounts []*orchestrator.SandboxVolumeMount,
 ) (sandbox.Sandbox, *api.APIError) {
 	startTime := time.Now()
 	endTime := startTime.Add(timeout)
-
-	autoResumePolicy := "unset"
-	if autoResume != nil {
-		autoResumePolicy = string(autoResume.Policy)
-	}
 
 	// Unique ID for the execution (from start/resume to stop/pause)
 	executionID := uuid.New().String()
@@ -113,24 +70,12 @@ func (a *APIStore) startSandboxInternal(
 		ctx,
 		sandboxID,
 		executionID,
-		alias,
 		team,
-		build,
-		metadata,
-		envVars,
+		getSandboxData,
 		startTime,
 		endTime,
 		timeout,
 		isResume,
-		nodeID,
-		templateID,
-		baseTemplateID,
-		autoPause,
-		autoResume,
-		envdAccessToken,
-		allowInternetAccess,
-		network,
-		volumeMounts,
 	)
 	if instanceErr != nil {
 		telemetry.ReportError(ctx, "error when creating instance", instanceErr.Err)
@@ -146,15 +91,15 @@ func (a *APIStore) startSandboxInternal(
 	props := properties.
 		Set("environment", sbx.TemplateID).
 		Set("instance_id", sbx.SandboxID).
-		Set("alias", alias).
+		Set("alias", sbx.Alias).
 		Set("resume", isResume).
 		Set("build_id", sbx.BuildID).
-		Set("envd_version", build.EnvdVersion).
+		Set("envd_version", sbx.EnvdVersion).
 		Set("node_id", sbx.NodeID).
 		Set("vcpu", sbx.VCpu).
 		Set("ram_mb", sbx.RamMB).
 		Set("total_disk_size_mb", sbx.TotalDiskSizeMB).
-		Set("auto_pause", autoPause)
+		Set("auto_pause", sbx.AutoPause)
 
 	// Calculate the time it took for the sandbox to start from request receipt
 	if requestStartTime, ok := tracing.GetRequestStartTime(ctx); ok {
@@ -171,7 +116,7 @@ func (a *APIStore) startSandboxInternal(
 	telemetry.ReportEvent(ctx, "Created analytics event")
 
 	go func() {
-		a.templateSpawnCounter.IncreaseTemplateSpawnCount(baseTemplateID, time.Now())
+		a.templateSpawnCounter.IncreaseTemplateSpawnCount(sbx.BaseTemplateID, time.Now())
 	}()
 
 	telemetry.SetAttributes(ctx,
@@ -184,13 +129,19 @@ func (a *APIStore) startSandboxInternal(
 		TeamID:     team.ID.String(),
 	}
 	sbxlogger.E(logMetadata).Info(ctx, "Sandbox created", zap.String("end_time", endTime.Format("2006-01-02 15:04:05 -07:00")))
+
+	autoResumePolicy := "unset"
+	if sbx.AutoResume != nil {
+		autoResumePolicy = string(sbx.AutoResume.Policy)
+	}
+
 	sbxlogger.I(logMetadata).Info(
 		ctx,
 		"Sandbox created details",
 		zap.String("end_time", endTime.Format("2006-01-02 15:04:05 -07:00")),
 		zap.String("auto_resume_policy", autoResumePolicy),
-		zap.Bool("auto_pause", autoPause),
-		zap.String("parent_template_id", baseTemplateID),
+		zap.Bool("auto_pause", sbx.AutoPause),
+		zap.String("parent_template_id", sbx.BaseTemplateID),
 	)
 
 	return sbx, nil
