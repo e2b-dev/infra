@@ -65,6 +65,8 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 	resultCh := make(chan pauseRequestResult, 1)
 
 	go func() {
+		// TODO: Track async pause work during shutdown once API deploys can safely
+		// wait for in-flight background work to finish. See main.go shutdown TODO.
 		pauseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), pauseRequestTimeout)
 		defer cancel()
 
