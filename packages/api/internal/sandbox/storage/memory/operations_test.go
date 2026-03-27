@@ -229,19 +229,21 @@ func TestStartRemoving_Error(t *testing.T) {
 	assert.False(t, alreadyDone2)
 	assert.Nil(t, finish2)
 
-	// From Failed state, no transitions are allowed
+	// Failed transition should be cleared so subsequent transitions can proceed.
 	alreadyDone3, finish3, err3 := startRemoving(ctx, sbx, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
-	require.Error(t, err3)
-	require.ErrorIs(t, err3, failureErr)
+	require.NoError(t, err3)
 	assert.False(t, alreadyDone3)
-	assert.Nil(t, finish3)
+	require.NotNil(t, finish3)
+	finish3(ctx, nil)
+	assert.Equal(t, sandbox.StatePausing, sbx.State())
 
-	// Trying to transition to Killed should also fail
+	// Follow-up transition should also work.
 	alreadyDone4, finish4, err4 := startRemoving(ctx, sbx, sandbox.RemoveOpts{Action: sandbox.StateActionKill})
-	require.Error(t, err4)
-	require.ErrorIs(t, err4, failureErr)
+	require.NoError(t, err4)
 	assert.False(t, alreadyDone4)
-	assert.Nil(t, finish4)
+	require.NotNil(t, finish4)
+	finish4(ctx, nil)
+	assert.Equal(t, sandbox.StateKilling, sbx.State())
 }
 
 // Test context timeout during wait

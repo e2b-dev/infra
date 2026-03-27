@@ -172,14 +172,14 @@ func startRemoving(ctx context.Context, sbx *memorySandbox, opts sandbox.RemoveO
 		}
 	}
 
+	originalState := sbx._data.State
 	newState := opts.Action.TargetState
 
 	if transition != nil {
-		currentState := sbx._data.State
 		sbx.mu.Unlock()
 
-		if currentState != newState && !sandbox.AllowedTransitions[currentState][newState] {
-			return false, nil, &sandbox.InvalidStateTransitionError{CurrentState: currentState, TargetState: newState}
+		if originalState != newState && !sandbox.AllowedTransitions[originalState][newState] {
+			return false, nil, &sandbox.InvalidStateTransitionError{CurrentState: originalState, TargetState: newState}
 		}
 
 		logger.L().Debug(ctx, "State transition already in progress to the same state, waiting", logger.WithSandboxID(sbx.SandboxID()), zap.String("state", string(newState)))
@@ -190,9 +190,9 @@ func startRemoving(ctx context.Context, sbx *memorySandbox, opts sandbox.RemoveO
 
 		// If the transition is to the same state just wait
 		switch {
-		case currentState == newState:
+		case originalState == newState:
 			return true, func(context.Context, error) {}, nil
-		case sandbox.AllowedTransitions[currentState][newState]:
+		case sandbox.AllowedTransitions[originalState][newState]:
 			return startRemoving(ctx, sbx, sandbox.RemoveOpts{Action: opts.Action})
 		default:
 			return false, nil, fmt.Errorf("unexpected state transition")
@@ -238,11 +238,11 @@ func startRemoving(ctx context.Context, sbx *memorySandbox, opts sandbox.RemoveO
 		}
 
 		if err != nil {
-			// Keep the transition in place so the error stays
-			return
+			// Revert the state change if the transition failed and it's not a transient transition
+			sbx._data.State = originalState
 		}
 
-		// The transition is completed and the next transition can be started
+		// Remove the transition so the next transition can be started
 		sbx.transition = nil
 	}
 
