@@ -328,13 +328,6 @@ var ChunkerConfigFlag = newJSONFlag("chunker-config", ldvalue.FromJSONMarshal(ma
 	"minReadBatchSizeKB": 16,
 }))
 
-// OverrideJSONFlag updates a JSON flag value in the offline store.
-// Intended for benchmarks and tests.
-func OverrideJSONFlag(flag JSONFlag, value ldvalue.Value) {
-	builder := launchDarklyOfflineStore.Flag(flag.Key()).ValueForAll(value)
-	launchDarklyOfflineStore.Update(builder)
-}
-
 // CompressConfigFlag controls compression during template builds.
 // When compressBuilds is true, builds upload exclusively compressed data
 // (no uncompressed fallback). When false, exclusively uncompressed with V3 headers.

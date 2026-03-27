@@ -168,7 +168,7 @@ func compressStream(ctx context.Context, in io.Reader, cfg *CompressConfig, uplo
 	}
 	defer uploader.Close()
 
-	borrow, release := newCompressorPool(cfg.CompressionType(), cfg.EncoderConcurrency, cfg.FrameSize(), cfg.Level)
+	borrow, release := newCompressorPool(cfg)
 	hasher := sha256.New()
 
 	ft = &FrameTable{compressionType: cfg.CompressionType()}

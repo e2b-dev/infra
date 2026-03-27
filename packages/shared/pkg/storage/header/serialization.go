@@ -346,11 +346,6 @@ func Deserialize(ctx context.Context, in storage.Blob) (*Header, error) {
 	return DeserializeBytes(data)
 }
 
-// FromBlob is an alias for Deserialize (blob-based).
-func FromBlob(ctx context.Context, in storage.Blob) (*Header, error) {
-	return Deserialize(ctx, in)
-}
-
 // DeserializeBytes auto-detects the header version and deserializes accordingly.
 // See SerializeHeader for the binary layout.
 // The uint32 size prefix in V4 allows exact-size allocation for decompression

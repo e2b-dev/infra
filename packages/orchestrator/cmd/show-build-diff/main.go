@@ -142,7 +142,10 @@ func main() {
 		)
 	}
 
-	mergedHeader := header.MergeMappings(baseHeader.Mapping, onlyDiffMappings)
+	mergedHeader, err := header.MergeMappings(baseHeader.Mapping, onlyDiffMappings)
+	if err != nil {
+		log.Fatalf("merge mappings: %v", err)
+	}
 
 	fmt.Printf("\n\nMERGED METADATA\n")
 	fmt.Printf("========\n")

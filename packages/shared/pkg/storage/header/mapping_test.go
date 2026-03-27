@@ -46,11 +46,12 @@ func TestMergeMappingsRemoveEmpty(t *testing.T) {
 		},
 	}
 
-	m := MergeMappings(simpleBase, diff)
+	m, err := MergeMappings(simpleBase, diff)
+	require.NoError(t, err)
 
 	require.True(t, Equal(m, simpleBase))
 
-	err := ValidateMappings(m, size, blockSize)
+	err = ValidateMappings(m, size, blockSize)
 
 	require.NoError(t, err)
 }
@@ -65,7 +66,8 @@ func TestMergeMappingsBaseBeforeDiffNoOverlap(t *testing.T) {
 		},
 	}
 
-	m := MergeMappings(simpleBase, diff)
+	m, err := MergeMappings(simpleBase, diff)
+	require.NoError(t, err)
 
 	require.True(t, Equal(m, []*BuildMap{
 		{
@@ -90,7 +92,7 @@ func TestMergeMappingsBaseBeforeDiffNoOverlap(t *testing.T) {
 		},
 	}))
 
-	err := ValidateMappings(m, size, blockSize)
+	err = ValidateMappings(m, size, blockSize)
 
 	require.NoError(t, err)
 }
@@ -105,7 +107,8 @@ func TestMergeMappingsDiffBeforeBaseNoOverlap(t *testing.T) {
 		},
 	}
 
-	m := MergeMappings(simpleBase, diff)
+	m, err := MergeMappings(simpleBase, diff)
+	require.NoError(t, err)
 
 	require.True(t, Equal(m, []*BuildMap{
 		{
@@ -130,7 +133,7 @@ func TestMergeMappingsDiffBeforeBaseNoOverlap(t *testing.T) {
 		},
 	}))
 
-	err := ValidateMappings(m, size, blockSize)
+	err = ValidateMappings(m, size, blockSize)
 
 	require.NoError(t, err)
 }
@@ -145,7 +148,8 @@ func TestMergeMappingsBaseInsideDiff(t *testing.T) {
 		},
 	}
 
-	m := MergeMappings(simpleBase, diff)
+	m, err := MergeMappings(simpleBase, diff)
+	require.NoError(t, err)
 
 	require.True(t, Equal(m, []*BuildMap{
 		{
@@ -165,7 +169,7 @@ func TestMergeMappingsBaseInsideDiff(t *testing.T) {
 		},
 	}))
 
-	err := ValidateMappings(m, size, blockSize)
+	err = ValidateMappings(m, size, blockSize)
 
 	require.NoError(t, err)
 }
@@ -180,7 +184,8 @@ func TestMergeMappingsDiffInsideBase(t *testing.T) {
 		},
 	}
 
-	m := MergeMappings(simpleBase, diff)
+	m, err := MergeMappings(simpleBase, diff)
+	require.NoError(t, err)
 
 	require.True(t, Equal(m, []*BuildMap{
 		{
@@ -210,7 +215,7 @@ func TestMergeMappingsDiffInsideBase(t *testing.T) {
 		},
 	}))
 
-	err := ValidateMappings(m, size, blockSize)
+	err = ValidateMappings(m, size, blockSize)
 
 	require.NoError(t, err)
 }
@@ -225,7 +230,8 @@ func TestMergeMappingsBaseAfterDiffWithOverlap(t *testing.T) {
 		},
 	}
 
-	m := MergeMappings(simpleBase, diff)
+	m, err := MergeMappings(simpleBase, diff)
+	require.NoError(t, err)
 
 	require.True(t, Equal(m, []*BuildMap{
 		{
@@ -250,7 +256,7 @@ func TestMergeMappingsBaseAfterDiffWithOverlap(t *testing.T) {
 		},
 	}))
 
-	err := ValidateMappings(m, size, blockSize)
+	err = ValidateMappings(m, size, blockSize)
 
 	require.NoError(t, err)
 }
@@ -265,7 +271,8 @@ func TestMergeMappingsDiffAfterBaseWithOverlap(t *testing.T) {
 		},
 	}
 
-	m := MergeMappings(simpleBase, diff)
+	m, err := MergeMappings(simpleBase, diff)
+	require.NoError(t, err)
 
 	require.True(t, Equal(m, []*BuildMap{
 		{
@@ -290,7 +297,7 @@ func TestMergeMappingsDiffAfterBaseWithOverlap(t *testing.T) {
 		},
 	}))
 
-	err := ValidateMappings(m, size, blockSize)
+	err = ValidateMappings(m, size, blockSize)
 
 	require.NoError(t, err)
 }

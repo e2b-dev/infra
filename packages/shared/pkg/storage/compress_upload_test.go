@@ -12,14 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 )
-
-// ---------------------------------------------------------------------------
-// Test helpers
-// ---------------------------------------------------------------------------
 
 // generateSemiRandomData produces deterministic, compressible data.
 // Random byte repeated 1-16 times — gives ~0.5-0.7 compression ratio.
@@ -117,10 +112,6 @@ func defaultCfg(ct CompressionType, workers, frameSize int) *CompressConfig {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// TestCompressStreamRoundTrip
-// ---------------------------------------------------------------------------
-
 func TestCompressStreamRoundTrip(t *testing.T) {
 	t.Parallel()
 
@@ -164,18 +155,18 @@ func TestCompressStreamRoundTrip(t *testing.T) {
 			require.NoError(t, err)
 
 			if tc.dataSize == 0 {
-				assert.Empty(t, ft.Frames)
-				assert.Equal(t, sha256.Sum256(nil), checksum)
+				require.Empty(t, ft.Frames)
+				require.Equal(t, sha256.Sum256(nil), checksum)
 
 				return
 			}
 
 			// Verify frame count.
 			expectedFrames := (tc.dataSize + tc.frameSize - 1) / tc.frameSize
-			assert.Len(t, ft.Frames, expectedFrames)
+			require.Len(t, ft.Frames, expectedFrames)
 
 			// Verify checksum.
-			assert.Equal(t, sha256.Sum256(original), checksum)
+			require.Equal(t, sha256.Sum256(original), checksum)
 
 			// Round-trip: decompress and compare.
 			compressed := up.Assemble()
@@ -186,14 +177,10 @@ func TestCompressStreamRoundTrip(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// TestCompressStreamContextCancel
-// ---------------------------------------------------------------------------
-
 func TestCompressStreamContextCancel(t *testing.T) {
 	t.Parallel()
 
-	data := generateSemiRandomData(100 * megabyte)
+	data := generateSemiRandomData(10 * megabyte)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
@@ -206,15 +193,14 @@ func TestCompressStreamContextCancel(t *testing.T) {
 
 	_, _, err := compressStream(ctx, bytes.NewReader(data), cfg, up, 4)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, context.Canceled)
+	require.ErrorIs(t, err, context.Canceled)
 }
-
-// ---------------------------------------------------------------------------
-// TestCompressStreamPartCount
-// ---------------------------------------------------------------------------
 
 func TestCompressStreamPartSizeMinimum(t *testing.T) {
 	t.Parallel()
+
+	// Generate once; subtests slice to their needed size.
+	sharedData := generateSemiRandomData(100 * megabyte)
 
 	tests := []struct {
 		name             string
@@ -231,7 +217,7 @@ func TestCompressStreamPartSizeMinimum(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			data := generateSemiRandomData(tc.dataSize)
+			data := sharedData[:tc.dataSize]
 			up := &memPartUploader{}
 			cfg := defaultCfg(CompressionZstd, 4, tc.frameSize)
 			cfg.TargetPartSizeMB = tc.targetPartSizeMB
@@ -249,19 +235,15 @@ func TestCompressStreamPartSizeMinimum(t *testing.T) {
 			for i, k := range keys {
 				isFinal := i == len(keys)-1
 				if !isFinal {
-					assert.GreaterOrEqual(t, len(up.parts[k]), 5*1024*1024,
+					require.GreaterOrEqual(t, len(up.parts[k]), 5*1024*1024,
 						"non-final part %d is under 5 MiB (%d bytes)", k, len(up.parts[k]))
 				}
 			}
 
-			assert.NotEmpty(t, up.parts, "should have at least one part")
+			require.NotEmpty(t, up.parts, "should have at least one part")
 		})
 	}
 }
-
-// ---------------------------------------------------------------------------
-// TestCompressStreamRace
-// ---------------------------------------------------------------------------
 
 // TestCompressStreamRace runs many concurrent CompressStream calls with high
 // worker counts to shake out data races in the compressor pool, memPartUploader,
@@ -321,10 +303,6 @@ func TestCompressStreamRace(t *testing.T) {
 	require.NoError(t, eg.Wait())
 }
 
-// ---------------------------------------------------------------------------
-// BenchmarkCompressStream
-// ---------------------------------------------------------------------------
-
 func BenchmarkCompress(b *testing.B) {
 	const dataSize = 256 * megabyte
 	data := generateSemiRandomData(dataSize)
@@ -362,7 +340,7 @@ func BenchmarkCompress(b *testing.B) {
 			for range b.N {
 				up := &ThrottledPartUploader{bandwidth: bcfg.bandwidth}
 
-				ft, _, err := compressStream(
+				_, _, err := compressStream(
 					context.Background(),
 					bytes.NewReader(data),
 					compCfg,
@@ -372,11 +350,7 @@ func BenchmarkCompress(b *testing.B) {
 					b.Fatal(err)
 				}
 
-				uSize, cSize := ft.Size()
 				lastParts.Store(int32(len(up.parts)))
-
-				_ = uSize
-				_ = cSize
 			}
 
 			// Report after all iterations using last run's values.

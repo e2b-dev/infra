@@ -53,13 +53,13 @@ func (l *lz4FrameCompressor) Compress(src []byte) ([]byte, error) {
 
 // newCompressorPool returns a function that borrows a frameCompressor from a pool
 // and a release function to return it. All compressors in the pool share the same
-// settings. For zstd, encoders are created once and reused via EncodeAll.
-func newCompressorPool(ct CompressionType, encoderConcurrency, frameSize, level int) (borrow func() (frameCompressor, error), release func(frameCompressor)) {
-	switch ct {
+// settings from cfg. For zstd, encoders are created once and reused via EncodeAll.
+func newCompressorPool(cfg *CompressConfig) (borrow func() (frameCompressor, error), release func(frameCompressor)) {
+	switch cfg.CompressionType() {
 	case CompressionZstd:
 		pool := &sync.Pool{}
 		pool.New = func() any {
-			enc, err := newZstdEncoder(encoderConcurrency, frameSize, zstd.EncoderLevel(level))
+			enc, err := newZstdEncoder(cfg.EncoderConcurrency, cfg.FrameSize(), zstd.EncoderLevel(cfg.Level))
 			if err != nil {
 				// Pool.New cannot return errors; store nil and check on borrow.
 				return err
