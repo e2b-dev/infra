@@ -19,7 +19,7 @@ import (
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 )
 
-func (o *Orchestrator) RemoveSandbox(ctx context.Context, teamID uuid.UUID, sandboxID string, opts sandbox.RemoveOpts) error {
+func (o *Orchestrator) RemoveSandbox(ctx context.Context, teamID uuid.UUID, sandboxID string, opts sandbox.RemoveOpts) (err error) {
 	ctx, span := tracer.Start(ctx, "remove-sandbox")
 	defer span.End()
 
