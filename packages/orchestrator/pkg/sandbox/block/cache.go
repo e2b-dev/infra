@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"math/bits"
 	"math/rand"
 	"os"
 	"sync"
@@ -19,6 +18,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"golang.org/x/sys/unix"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/atomicbitset"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
@@ -49,7 +49,7 @@ type Cache struct {
 	blockSize int64
 	mmap      *mmap.MMap
 	mu        sync.RWMutex
-	dirty     []atomic.Uint64 // bitset indexed by off/blockSize — bit is set when block is present
+	dirty     atomicbitset.Bitset
 	dirtyFile bool
 	closed    atomic.Bool
 }
@@ -95,7 +95,7 @@ func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (*Cache, e
 		size:      size,
 		blockSize: blockSize,
 		dirtyFile: dirtyFile,
-		dirty:     make([]atomic.Uint64, (numBlocks+63)/64),
+		dirty:     atomicbitset.New(uint(numBlocks)),
 	}, nil
 }
 
@@ -248,66 +248,27 @@ func (c *Cache) Slice(off, length int64) ([]byte, error) {
 	return nil, BytesNotAvailableError{}
 }
 
-func (c *Cache) isBlockCached(blockIdx int64) bool {
-	if blockIdx < 0 || blockIdx >= int64(len(c.dirty))*64 {
-		return false
-	}
-
-	return c.dirty[blockIdx/64].Load()&(1<<uint(blockIdx%64)) != 0
-}
-
 func (c *Cache) isCached(off, length int64) bool {
-	// Make sure the offset is within the cache size
 	if off >= c.size {
 		return false
 	}
 
-	// Cap if the length goes beyond the cache size, so we don't check for blocks that are out of bounds.
 	end := min(off+length, c.size)
-	start := off / c.blockSize
-	n := (end + c.blockSize - 1) / c.blockSize
+	start := uint(off / c.blockSize)
+	endBlock := uint((end + c.blockSize - 1) / c.blockSize)
 
-	for i := start; i < n; i++ {
-		if !c.isBlockCached(i) {
-			return false
-		}
-	}
-
-	return true
+	return c.dirty.HasRange(start, endBlock)
 }
 
-// setIsCached marks all blocks in [off, off+length) as cached.
-// Uses atomic OR so concurrent callers for disjoint ranges are safe.
 func (c *Cache) setIsCached(off, length int64) {
 	if length <= 0 {
 		return
 	}
 
-	start := off / c.blockSize
-	n := (off + length + c.blockSize - 1) / c.blockSize
+	start := uint(off / c.blockSize)
+	endBlock := uint((off + length + c.blockSize - 1) / c.blockSize)
 
-	// Cap to the actual bitmap size so callers that pass a range extending
-	// past c.size (e.g. a partial last segment) don't panic on index OOB.
-	if maxBlock := int64(len(c.dirty)) * 64; n > maxBlock {
-		n = maxBlock
-	}
-
-	for i := start; i < n; {
-		w := i / 64
-		lo := i % 64
-		hi := min(n-w*64, 64)
-
-		var mask uint64
-		if hi-lo == 64 {
-			mask = math.MaxUint64
-		} else {
-			mask = ((1 << uint(hi-lo)) - 1) << uint(lo)
-		}
-
-		c.dirty[w].Or(mask)
-
-		i = (w + 1) * 64
-	}
+	c.dirty.SetRange(start, endBlock)
 }
 
 // When using WriteAtWithoutLock you must ensure thread safety, ideally by only writing to the same block once and the exposing the slice.
@@ -329,20 +290,12 @@ func (c *Cache) WriteAtWithoutLock(b []byte, off int64) (int, error) {
 	return n, nil
 }
 
-// dirtySortedKeys returns a sorted list of dirty keys.
-// Key represents a block offset.
+// dirtySortedKeys returns a sorted list of dirty block offsets.
 func (c *Cache) dirtySortedKeys() []int64 {
 	var keys []int64
 
-	for wi := range c.dirty {
-		word := c.dirty[wi].Load()
-		base := int64(wi) * 64
-
-		for word != 0 {
-			bit := bits.TrailingZeros64(word)
-			keys = append(keys, (base+int64(bit))*c.blockSize)
-			word &= word - 1
-		}
+	for i := range c.dirty.Iterator() {
+		keys = append(keys, int64(i)*c.blockSize)
 	}
 
 	return keys
