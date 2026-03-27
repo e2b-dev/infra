@@ -72,9 +72,10 @@ func NewProxy(ctx context.Context, builder *chrooted.Builder, sandboxes *sandbox
 	}
 
 	s := &nfs.Server{
-		Handler: handler,
-		Context: ctx,
-		Hooks:   hooks,
+		Handler:         handler,
+		Context:         ctx,
+		Hooks:           hooks,
+		SkipPostOpAttrs: true,
 	}
 
 	return &Proxy{
