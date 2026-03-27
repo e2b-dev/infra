@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -47,7 +48,7 @@ func writeNBDRequest(w io.Writer, cmdType uint32, handle uint64, from uint64, le
 	return err
 }
 
-// readNBDResponse reads a raw NBD response packet from r.
+// readNBDResponse reads a raw NBD response header from r.
 func readNBDResponse(r io.Reader) (magic uint32, respErr uint32, handle uint64, err error) {
 	header := make([]byte, 16)
 	_, err = io.ReadFull(r, header)
@@ -58,6 +59,40 @@ func readNBDResponse(r io.Reader) (magic uint32, respErr uint32, handle uint64, 
 	respErr = binary.BigEndian.Uint32(header[4:8])
 	handle = binary.BigEndian.Uint64(header[8:16])
 	return magic, respErr, handle, nil
+}
+
+// drainReadResponses reads NBD responses (with variable-length data payloads
+// for successful reads) from r until it gets an error. It must run concurrently
+// with the dispatch to avoid deadlocking on net.Pipe()'s synchronous writes.
+func drainReadResponses(r io.Reader, readSize int, count *atomic.Int32, fatalErr *atomic.Value) {
+	for {
+		_, respErr, _, err := readNBDResponse(r)
+		if err != nil {
+			return
+		}
+		count.Add(1)
+
+		// Successful read responses (error==0) include a data payload.
+		if respErr == 0 {
+			dataBuf := make([]byte, readSize)
+			if _, err := io.ReadFull(r, dataBuf); err != nil {
+				fatalErr.Store(err)
+				return
+			}
+		}
+	}
+}
+
+// drainWriteResponses reads NBD write responses (header only, no data) from r
+// until it gets an error.
+func drainWriteResponses(r io.Reader, count *atomic.Int32) {
+	for {
+		_, _, _, err := readNBDResponse(r)
+		if err != nil {
+			return
+		}
+		count.Add(1)
+	}
 }
 
 // TestDispatch_ShutdownDuringReads verifies that cancelling the context while
@@ -72,7 +107,8 @@ func TestDispatch_ShutdownDuringReads(t *testing.T) {
 
 	prov := &slowProvider{readDelay: 200 * time.Millisecond, size: 10 * 1024 * 1024}
 
-	// Create a socketpair — client writes requests, server is the Dispatch side.
+	// net.Pipe() is synchronous — writes block until the other end reads.
+	// We must consume responses concurrently to avoid deadlocking.
 	clientConn, serverConn := net.Pipe()
 	t.Cleanup(func() { clientConn.Close() })
 
@@ -80,7 +116,7 @@ func TestDispatch_ShutdownDuringReads(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// Start Handle() in a goroutine — it reads NBD requests from the socket.
+	// Start Handle() — reads NBD requests from the socket and dispatches them.
 	var handleErr error
 	var handleWg sync.WaitGroup
 	handleWg.Add(1)
@@ -88,6 +124,12 @@ func TestDispatch_ShutdownDuringReads(t *testing.T) {
 		defer handleWg.Done()
 		handleErr = dispatch.Handle(ctx)
 	}()
+
+	// Start consuming responses concurrently so writeResponse doesn't block
+	// on the synchronous pipe.
+	var responseCount atomic.Int32
+	var readErr atomic.Value
+	go drainReadResponses(clientConn, readSize, &responseCount, &readErr)
 
 	// Send many read requests to build up in-flight async operations.
 	for i := range numReads {
@@ -112,30 +154,19 @@ func TestDispatch_ShutdownDuringReads(t *testing.T) {
 	// 4. Wait for Handle() to return
 	handleWg.Wait()
 
-	// Read all responses from the client side. Each in-flight read should have
-	// produced a response (either success or error code 1 from ctx.Done()).
-	// The key assertion: we get responses without writeResponse failing.
-	var responses []uint64
-	for {
-		clientConn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
-		magic, _, handle, err := readNBDResponse(clientConn)
-		if err != nil {
-			break // No more responses
-		}
-		assert.Equal(t, uint32(NBDResponseMagic), magic, "bad response magic")
-		responses = append(responses, handle)
+	// Close client side to unblock the response reader goroutine.
+	clientConn.Close()
 
-		// Read requests also send data payload back — read and discard it.
-		// Error responses (code 1) have no data, successful ones have readSize bytes.
-		// Since we cancelled quickly, most will be error responses with no data,
-		// but some may have completed — try to read the data payload.
-		dataBuf := make([]byte, readSize)
-		clientConn.SetReadDeadline(time.Now().Add(50 * time.Millisecond))
-		io.ReadFull(clientConn, dataBuf) //nolint:errcheck // best-effort drain
+	// Give the reader goroutine a moment to finish.
+	time.Sleep(50 * time.Millisecond)
+
+	got := int(responseCount.Load())
+	t.Logf("received %d/%d responses", got, numReads)
+	assert.Equal(t, numReads, got, "should receive a response for every request")
+
+	if v := readErr.Load(); v != nil {
+		t.Errorf("unexpected error reading response data: %v", v)
 	}
-
-	t.Logf("received %d/%d responses", len(responses), numReads)
-	assert.NotEmpty(t, responses, "should have received at least some responses")
 
 	// Handle() should have returned due to the closed socket (io.EOF or similar),
 	// not due to a fatal writeResponse error.
@@ -169,6 +200,10 @@ func TestDispatch_ShutdownDuringWrites(t *testing.T) {
 		handleErr = dispatch.Handle(ctx)
 	}()
 
+	// Consume responses concurrently.
+	var responseCount atomic.Int32
+	go drainWriteResponses(clientConn, &responseCount)
+
 	// Send write requests (header + data payload).
 	payload := make([]byte, writeSize)
 	for i := range numWrites {
@@ -185,21 +220,13 @@ func TestDispatch_ShutdownDuringWrites(t *testing.T) {
 	dispatch.Drain()
 	serverConn.Close()
 	handleWg.Wait()
+	clientConn.Close()
 
-	// Read responses
-	var responses []uint64
-	for {
-		clientConn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
-		magic, _, handle, err := readNBDResponse(clientConn)
-		if err != nil {
-			break
-		}
-		assert.Equal(t, uint32(NBDResponseMagic), magic, "bad response magic")
-		responses = append(responses, handle)
-	}
+	time.Sleep(50 * time.Millisecond)
 
-	t.Logf("received %d/%d responses", len(responses), numWrites)
-	assert.NotEmpty(t, responses, "should have received at least some responses")
+	got := int(responseCount.Load())
+	t.Logf("received %d/%d responses", got, numWrites)
+	assert.Equal(t, numWrites, got, "should receive a response for every request")
 
 	if handleErr != nil {
 		assert.NotContains(t, handleErr.Error(), "use of closed network connection",
