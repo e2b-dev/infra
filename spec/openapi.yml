@@ -1730,6 +1730,19 @@ components:
           type: string
           description: Error
 
+    InProgress:
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: Response code
+        message:
+          type: string
+          description: Status message
+
     IdentifierMaskingDetails:
       required:
         - prefix
@@ -2250,6 +2263,12 @@ paths:
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       responses:
+        "202":
+          description: The pause request is still in progress; check sandbox info for the latest state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InProgress"
         "204":
           description: The sandbox was paused successfully and can be resumed
         "409":

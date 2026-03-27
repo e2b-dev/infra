@@ -315,6 +315,15 @@ type IdentifierMaskingDetails struct {
 	ValueLength int `json:"valueLength"`
 }
 
+// InProgress defines model for InProgress.
+type InProgress struct {
+	// Code Response code
+	Code int32 `json:"code"`
+
+	// Message Status message
+	Message string `json:"message"`
+}
+
 // ListedSandbox defines model for ListedSandbox.
 type ListedSandbox struct {
 	// Alias Alias of the template
@@ -6197,6 +6206,7 @@ func (r PutSandboxesSandboxIDNetworkResponse) StatusCode() int {
 type PostSandboxesSandboxIDPauseResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
+	JSON202      *InProgress
 	JSON401      *N401
 	JSON404      *N404
 	JSON409      *N409
@@ -8602,6 +8612,13 @@ func ParsePostSandboxesSandboxIDPauseResponse(rsp *http.Response) (*PostSandboxe
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest InProgress
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest N401
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
