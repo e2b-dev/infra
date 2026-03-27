@@ -363,7 +363,7 @@ func downloadKernel(t *testing.T, dataDir string) {
 func downloadFC(t *testing.T, dataDir, version string) {
 	t.Helper()
 	dst := filepath.Join(dataDir, "fc-versions", version, "firecracker")
-	url := fmt.Sprintf("https://github.com/e2b-dev/fc-versions/releases/download/%s/firecracker", version)
+	url := fmt.Sprintf("https://github.com/e2b-dev/fc-versions/releases/download/%s/firecracker-amd64", version)
 	downloadFile(t, url, dst, 0o755)
 }
 

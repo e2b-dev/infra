@@ -240,7 +240,7 @@ const (
 // TODO: The short tag here has only 7 characters — the one from our build pipeline will likely have exactly 8 so this will break.
 const (
 	DefaultFirecackerV1_10Version = "v1.10.1_30cbb07"
-	DefaultFirecackerV1_12Version = "v1.12.1_a41d3fb"
+	DefaultFirecackerV1_12Version = "v1.12.1_210cbac"
 	DefaultFirecrackerVersion     = DefaultFirecackerV1_12Version
 )
 
@@ -259,7 +259,7 @@ var (
 )
 
 // ResolveFirecrackerVersion resolves the firecracker version using the FirecrackerVersions feature flag.
-// The buildVersion format is "v1.12.1_a41d3fb" — we extract "v1.12" as the lookup key.
+// The buildVersion format is "v1.12.1_210cbac" — we extract "v1.12" as the lookup key.
 func ResolveFirecrackerVersion(ctx context.Context, ff *Client, buildVersion string) string {
 	parts := strings.Split(buildVersion, "_")
 	if len(parts) < 2 {
