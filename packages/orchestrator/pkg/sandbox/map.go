@@ -10,8 +10,25 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
+// SandboxStatus represents the lifecycle state of a sandbox.
+type SandboxStatus int32
+
+const (
+	// StatusStarting is the initial state: the sandbox is being created but
+	// is not yet ready to serve traffic.
+	StatusStarting SandboxStatus = 0
+	// StatusRunning means the sandbox is fully initialised and healthy.
+	StatusRunning SandboxStatus = 1
+	// StatusStopping means the sandbox has been killed or paused. It remains in
+	// the map briefly so that IP-based lookups (logs, NFS, TCP firewall)
+	// still resolve, but it is excluded from all "live" queries.
+	StatusStopping SandboxStatus = 2
+)
+
 type MapSubscriber interface {
+	// OnInsert is triggered when a sandbox transitions to the running state
 	OnInsert(ctx context.Context, sandbox *Sandbox)
+	// OnRemove is triggered when a sandbox is completely stopped and remove from the map
 	OnRemove(ctx context.Context, sandbox *Sandbox)
 }
 
@@ -71,7 +88,7 @@ func (m *Map) Get(sandboxID string) (*Sandbox, bool) {
 }
 
 // GetByHostPort looks up a sandbox by its host IP address parsed from hostPort.
-// It matches any sandbox in the map (starting or running).
+// It matches any sandbox in the map (starting, running, or stopping).
 func (m *Map) GetByHostPort(hostPort string) (*Sandbox, error) {
 	reqIP, _, err := net.SplitHostPort(hostPort)
 	if err != nil {
@@ -101,55 +118,69 @@ func (m *Map) Insert(ctx context.Context, sbx *Sandbox) {
 	m.sandboxes.Insert(sbx.Runtime.SandboxID, sbx)
 }
 
-// MarkRunning transitions a sandbox from starting to running and notifies
-// OnInsert subscribers.
+// MarkRunning transitions a sandbox from starting to running and notifies OnInsert subscribers.
 func (m *Map) MarkRunning(ctx context.Context, sbx *Sandbox) {
-	sbx.started.Store(true)
+	if !sbx.status.CompareAndSwap(int32(StatusStarting), int32(StatusRunning)) {
+		return
+	}
 
 	go m.trigger(ctx, func(ctx context.Context, s MapSubscriber) {
 		s.OnInsert(ctx, sbx)
 	})
 }
 
-func (m *Map) Remove(ctx context.Context, sandboxID string) {
-	var removedSbx *Sandbox
-	removed := m.sandboxes.RemoveCb(sandboxID, func(_ string, sbx *Sandbox, exists bool) bool {
-		removedSbx = sbx
+// MarkStopping transitions a sandbox to the stopping state. It stays in in the map
+// so that IP-based lookups still resolve while the Firecracker process finishes shutting down.
+func (m *Map) MarkStopping(ctx context.Context, sandboxID, lifecycleID string) {
+	// Use RemoveCb to update the sandbox atomically
+	m.sandboxes.RemoveCb(sandboxID, func(_ string, sbx *Sandbox, exists bool) bool {
+		if !exists {
+			return false
+		}
 
-		return exists
+		if sbx.LifecycleID != lifecycleID {
+			return false
+		}
+
+		// It was already marked as stopping, no need to log again
+		if !sbx.status.CompareAndSwap(int32(StatusRunning), int32(StatusStopping)) {
+			return false
+		}
+
+		logger.L().Info(ctx, "marking sandbox as stopping by lifecycle ID",
+			logger.WithSandboxID(sandboxID),
+			logger.WithLifecycleID(lifecycleID),
+			logger.WithSandboxIP(sbx.Slot.HostIPString()),
+		)
+
+		return false
 	})
-
-	if removed {
-		logger.L().Info(ctx, "removing sandbox from map", logger.WithSandboxID(sandboxID))
-
-		go m.trigger(ctx, func(ctx context.Context, s MapSubscriber) {
-			s.OnRemove(ctx, removedSbx)
-		})
-	}
 }
 
-func (m *Map) RemoveByLifecycleID(ctx context.Context, sandboxID, lifecycleID string) {
+func (m *Map) Remove(ctx context.Context, sandboxID, lifecycleID string) {
 	var sbx *Sandbox
+
 	removed := m.sandboxes.RemoveCb(sandboxID, func(_ string, v *Sandbox, exists bool) bool {
 		if !exists {
 			return false
 		}
 
-		if v == nil {
+		if v.LifecycleID != lifecycleID {
 			return false
 		}
 
 		sbx = v
 
-		return v.LifecycleID == lifecycleID
-	})
-
-	if removed {
-		logger.L().Info(ctx, "removing sandbox from map by lifecycle ID",
+		logger.L().Info(ctx, "removing sandbox by lifecycle ID",
 			logger.WithSandboxID(sandboxID),
+			logger.WithLifecycleID(lifecycleID),
 			logger.WithSandboxIP(sbx.Slot.HostIPString()),
 		)
 
+		return true
+	})
+
+	if removed {
 		go m.trigger(ctx, func(ctx context.Context, s MapSubscriber) {
 			s.OnRemove(ctx, sbx)
 		})

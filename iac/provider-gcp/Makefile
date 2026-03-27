@@ -39,7 +39,6 @@ tf_vars := \
 	$(call tfvar, GCP_REGION) \
 	$(call tfvar, GCP_ZONE) \
 	$(call tfvar, DOMAIN_NAME) \
-	$(call tfvar, ADDITIONAL_API_SERVICES_JSON) \
 	$(call tfvar, PREFIX) \
 	$(call tfvar, SANDBOX_STORAGE_BACKEND) \
 	$(call tfvar, ALLOW_SANDBOX_INTERNET) \

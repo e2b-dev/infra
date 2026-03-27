@@ -96,6 +96,9 @@ func handlePausedSandbox(
 			if st.Code() == codes.NotFound {
 				return "", autoResumeNotAllowed, nil
 			}
+			if st.Code() == codes.FailedPrecondition && st.Message() == proxygrpc.SandboxStillTransitioningMessage {
+				return "", autoResumeErrored, reverseproxy.NewErrSandboxStillTransitioning(sandboxId)
+			}
 			if st.Code() == codes.ResourceExhausted {
 				return "", autoResumeResourceExhausted, reverseproxy.NewErrSandboxResourceExhausted(sandboxId, st.Message())
 			}
@@ -139,6 +142,13 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 					l.Warn(ctx, "sandbox resource exhausted", zap.Error(err))
 
 					return nil, resourceExhaustedErr
+				}
+
+				var stillTransitioningErr *reverseproxy.SandboxStillTransitioningError
+				if errors.As(err, &stillTransitioningErr) {
+					l.Warn(ctx, "sandbox still transitioning", zap.Error(err))
+
+					return nil, stillTransitioningErr
 				}
 
 				if !errors.Is(err, ErrNodeNotFound) {

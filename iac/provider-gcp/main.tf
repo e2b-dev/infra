@@ -51,12 +51,6 @@ data "google_secret_manager_secret_version" "routing_domains" {
 
 locals {
   additional_domains = nonsensitive(jsondecode(data.google_secret_manager_secret_version.routing_domains.secret_data))
-  additional_api_services = (
-    length(var.additional_api_services) > 0 ? var.additional_api_services :
-    var.additional_api_services_json != "" ? jsondecode(var.additional_api_services_json) :
-    []
-  )
-
 
   // Check if all clusters has size greater than 1
   template_manages_clusters_size_gt_1 = alltrue([for c in var.build_clusters_config : (c.cluster_size > 1)])
@@ -158,7 +152,6 @@ module "cluster" {
   domain_name                  = var.domain_name
 
   additional_domains                      = local.additional_domains
-  additional_api_services                 = local.additional_api_services
   additional_api_paths_handled_by_ingress = var.additional_api_paths_handled_by_ingress
 
   docker_contexts_bucket_name = module.init.envs_docker_context_bucket_name

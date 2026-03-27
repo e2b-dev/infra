@@ -1,11 +1,5 @@
 locals {
   api_pool_name = "${var.prefix}orch-api"
-  api_additional_ports = [
-    for service in var.additional_api_services : {
-      name = service.api_node_group_port_name
-      port = service.api_node_group_port
-    }
-  ]
 
   api_startup_script = templatefile("${path.module}/scripts/start-api.sh", {
     CLUSTER_TAG_NAME             = var.cluster_tag_name
@@ -74,14 +68,6 @@ resource "google_compute_instance_group_manager" "api_pool" {
   named_port {
     name = var.ingress_port.name
     port = var.ingress_port.port
-  }
-
-  dynamic "named_port" {
-    for_each = local.api_additional_ports
-    content {
-      name = "${var.prefix}${named_port.value.name}"
-      port = named_port.value.port
-    }
   }
 
   auto_healing_policies {

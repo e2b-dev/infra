@@ -106,16 +106,3 @@ variable "labels" {
 variable "additional_api_paths_handled_by_ingress" {
   type = list(string)
 }
-
-variable "additional_api_path_rules" {
-  description = "Additional path rules to add to the load balancer routing."
-  type = list(object({
-    paths      = list(string)
-    service_id = string
-  }))
-}
-
-variable "additional_ports" {
-  description = "Additional ports to expose on the load balancer."
-  type        = list(number)
-}
