@@ -45,6 +45,7 @@ func newRedisSandboxCatalogCache(mode CacheMode) *ttlcache.Cache[string, *Sandbo
 			ttlcache.WithDisableTouchOnHit[string, *SandboxInfo](),
 		)
 		go cache.Start()
+
 		return cache
 	default:
 		return nil
