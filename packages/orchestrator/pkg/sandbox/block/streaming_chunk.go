@@ -222,18 +222,17 @@ func (c *StreamingChunker) WriteTo(ctx context.Context, w io.Writer) (int64, err
 
 func (c *StreamingChunker) Slice(ctx context.Context, off, length int64) ([]byte, error) {
 	timer := c.metrics.SlicesTimerFactory.Begin()
-	a := chunkerAttrs
 
 	// Fast path: already cached
 	b, err := c.cache.Slice(off, length)
 	if err == nil {
-		timer.Record(ctx, length, a.successFromCache)
+		timer.RecordRaw(ctx, length, chunkerAttrs.successFromCache)
 
 		return b, nil
 	}
 
 	if !errors.As(err, &BytesNotAvailableError{}) {
-		timer.Record(ctx, length, a.failCacheRead)
+		timer.RecordRaw(ctx, length, chunkerAttrs.failCacheRead)
 
 		return nil, fmt.Errorf("failed read from cache at offset %d: %w", off, err)
 	}
@@ -266,19 +265,19 @@ func (c *StreamingChunker) Slice(ctx context.Context, off, length int64) ([]byte
 	}
 
 	if err := eg.Wait(); err != nil {
-		timer.Record(ctx, length, a.failRemoteFetch)
+		timer.RecordRaw(ctx, length, chunkerAttrs.failRemoteFetch)
 
 		return nil, fmt.Errorf("failed to ensure data at %d-%d: %w", off, off+length, err)
 	}
 
 	b, cacheErr := c.cache.Slice(off, length)
 	if cacheErr != nil {
-		timer.Record(ctx, length, a.failLocalReadAgain)
+		timer.RecordRaw(ctx, length, chunkerAttrs.failLocalReadAgain)
 
 		return nil, fmt.Errorf("failed to read from cache after ensuring data at %d-%d: %w", off, off+length, cacheErr)
 	}
 
-	timer.Record(ctx, length, a.successFromRemote)
+	timer.RecordRaw(ctx, length, chunkerAttrs.successFromRemote)
 
 	return b, nil
 }
@@ -374,19 +373,18 @@ func (c *StreamingChunker) runFetch(ctx context.Context, s *fetchSession) {
 	}
 	defer releaseLock()
 
-	a := chunkerAttrs
 	fetchTimer := c.metrics.RemoteReadsTimerFactory.Begin()
 
 	err = c.progressiveRead(ctx, s, mmapSlice)
 	if err != nil {
-		fetchTimer.Record(ctx, s.chunkLen, a.remoteFailure)
+		fetchTimer.RecordRaw(ctx, s.chunkLen, chunkerAttrs.remoteFailure)
 
 		s.setError(err, false)
 
 		return
 	}
 
-	fetchTimer.Record(ctx, s.chunkLen, a.remoteSuccess)
+	fetchTimer.RecordRaw(ctx, s.chunkLen, chunkerAttrs.remoteSuccess)
 	s.setDone()
 }
 
