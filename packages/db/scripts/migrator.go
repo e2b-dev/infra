@@ -45,6 +45,7 @@ func main() {
 
 		return err
 	}
+	poolConfig.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeExec
 
 	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {

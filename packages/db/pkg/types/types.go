@@ -1,7 +1,20 @@
 package types
 
-import "encoding/json"
+import (
+	"database/sql/driver"
+	"encoding/json"
+)
 
+func jsonbValue(v any) (driver.Value, error) {
+	buf, err := json.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+
+	return string(buf), nil
+}
+
+//nolint:recvcheck // JSONBStringMap needs pointer receiver for unmarshal allocation and value receivers for marshal/driver.Valuer.
 type JSONBStringMap map[string]string
 
 // MarshalJSON ensures a nil map serializes as "{}" instead of "null",
@@ -12,6 +25,10 @@ func (m JSONBStringMap) MarshalJSON() ([]byte, error) {
 	}
 
 	return json.Marshal(map[string]string(m))
+}
+
+func (m JSONBStringMap) Value() (driver.Value, error) {
+	return jsonbValue(m)
 }
 
 // UnmarshalJSON ensures JSON null deserializes as an empty map instead of nil.
@@ -38,6 +55,10 @@ type BuildReason struct {
 
 	// Step that failed
 	Step *string `json:"step,omitempty"`
+}
+
+func (r BuildReason) Value() (driver.Value, error) {
+	return jsonbValue(r)
 }
 
 const PausedSandboxConfigVersion = "v1"
@@ -83,6 +104,10 @@ type PausedSandboxConfig struct {
 	Network      *SandboxNetworkConfig       `json:"network,omitempty"`
 	AutoResume   *SandboxAutoResumeConfig    `json:"autoResume,omitempty"`
 	VolumeMounts []*SandboxVolumeMountConfig `json:"volumeMounts,omitempty"`
+}
+
+func (c PausedSandboxConfig) Value() (driver.Value, error) {
+	return jsonbValue(c)
 }
 
 // BuildStatus represents the raw status value written to the env_builds table.
