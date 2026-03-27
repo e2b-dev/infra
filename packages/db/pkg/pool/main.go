@@ -13,13 +13,6 @@ import (
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 )
 
-func registerDefaultJSONBType[T any](conn *pgx.Conn) {
-	var value T
-
-	conn.TypeMap().RegisterDefaultPgType(value, "jsonb")
-	conn.TypeMap().RegisterDefaultPgType(&value, "jsonb")
-}
-
 func New(ctx context.Context, databaseURL string, poolName string, options ...Option) (types.DBTX, *pgxpool.Pool, error) {
 	// Parse the connection pool configuration
 	config, err := pgxpool.ParseConfig(databaseURL)
@@ -35,15 +28,6 @@ func New(ctx context.Context, databaseURL string, poolName string, options ...Op
 
 	// expose otel traces
 	config.ConnConfig.Tracer = otelpgx.NewTracer()
-
-	// QueryExecModeExec relies on Go type mappings when the PostgreSQL parameter type is unknown.
-	config.AfterConnect = func(_ context.Context, conn *pgx.Conn) error {
-		registerDefaultJSONBType[types.BuildReason](conn)
-		registerDefaultJSONBType[types.JSONBStringMap](conn)
-		registerDefaultJSONBType[types.PausedSandboxConfig](conn)
-
-		return nil
-	}
 
 	// Disable statement caching to avoid issues with prepared statements in transactions
 	config.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeExec
