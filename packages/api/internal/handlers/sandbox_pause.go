@@ -27,6 +27,7 @@ import (
 const (
 	pauseRequestTimeout     = 15 * time.Minute
 	pauseRequestWaitTimeout = 70 * time.Second
+	pauseInProgressMessage  = "Pause is still in progress. Check the sandbox info endpoint for the latest status."
 )
 
 type pauseRequestResult struct {
@@ -79,12 +80,18 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 
 		return
 	case <-waitTimer.C:
-		a.sendAPIStoreError(c, http.StatusAccepted, "Pause is still in progress. Check the sandbox info endpoint for the latest status.")
+		c.JSON(http.StatusAccepted, gin.H{
+			"code":    int32(http.StatusAccepted),
+			"message": pauseInProgressMessage,
+		})
 
 		return
 	case <-ctx.Done():
 		if errors.Is(context.Cause(ctx), sharedmiddleware.ErrRequestTimeout) {
-			a.sendAPIStoreError(c, http.StatusAccepted, "Pause is still in progress. Check the sandbox info endpoint for the latest status.")
+			c.JSON(http.StatusAccepted, gin.H{
+				"code":    int32(http.StatusAccepted),
+				"message": pauseInProgressMessage,
+			})
 		}
 
 		return
