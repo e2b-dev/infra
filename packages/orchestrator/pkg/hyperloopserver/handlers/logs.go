@@ -33,8 +33,8 @@ func (h *APIStore) Logs(c *gin.Context) {
 		return
 	}
 
-	if payload["sandboxID"] != nil {
-		payloadSandboxID, ok := payload["sandboxID"].(string)
+	if payload["instanceID"] != nil {
+		payloadSandboxID, ok := payload["instanceID"].(string)
 		if !ok {
 			h.sendAPIStoreError(c, http.StatusBadRequest, "sandboxID in logs payload must be a string")
 			h.logger.Warn(ctx, "sandboxID in logs payload must be a string", logger.WithSandboxID(sbxID))
