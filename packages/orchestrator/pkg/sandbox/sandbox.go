@@ -473,6 +473,9 @@ func (f *Factory) CreateSandbox(
 		return nil
 	})
 
+	samplingInterval := time.Duration(f.featureFlags.IntFlag(execCtx, featureflags.HostStatsSamplingInterval)) * time.Millisecond
+	initializeHostStatsCollector(execCtx, sbx, runtime, config, f.hostStatsDelivery, samplingInterval)
+
 	err = fcHandle.Create(
 		ctx,
 		sbxlogger.SandboxMetadata{
@@ -500,9 +503,6 @@ func (f *Factory) CreateSandbox(
 
 	// Stop the sandbox first if it is still running, otherwise do nothing
 	cleanup.AddPriority(ctx, sbx.Stop)
-
-	samplingInterval := time.Duration(f.featureFlags.IntFlag(execCtx, featureflags.HostStatsSamplingInterval)) * time.Millisecond
-	initializeHostStatsCollector(execCtx, sbx, runtime, config, f.hostStatsDelivery, samplingInterval)
 
 	go func() {
 		defer execSpan.End()
@@ -813,6 +813,9 @@ func (f *Factory) ResumeSandbox(
 		return nil
 	})
 
+	samplingInterval := time.Duration(f.featureFlags.IntFlag(execCtx, featureflags.HostStatsSamplingInterval)) * time.Millisecond
+	initializeHostStatsCollector(execCtx, sbx, runtime, config, f.hostStatsDelivery, samplingInterval)
+
 	uffdStartCtx, cancelUffdStartCtx := context.WithCancelCause(ctx)
 	defer cancelUffdStartCtx(fmt.Errorf("uffd finished starting"))
 	go func() {
@@ -857,9 +860,6 @@ func (f *Factory) ResumeSandbox(
 	f.Sandboxes.MarkRunning(ctx, sbx)
 
 	telemetry.ReportEvent(execCtx, "envd initialized")
-
-	samplingInterval := time.Duration(f.featureFlags.IntFlag(execCtx, featureflags.HostStatsSamplingInterval)) * time.Millisecond
-	initializeHostStatsCollector(execCtx, sbx, runtime, config, f.hostStatsDelivery, samplingInterval)
 
 	go sbx.Checks.Start(execCtx)
 
@@ -926,11 +926,6 @@ func (s *Sandbox) doStop(ctx context.Context) error {
 
 	var errs []error
 
-	// Stop host stats collector and collect final sample
-	if s.hostStatsCollector != nil {
-		s.hostStatsCollector.Stop(ctx)
-	}
-
 	// Stop the health checks before stopping the sandbox
 	s.Checks.Stop()
 
@@ -942,6 +937,12 @@ func (s *Sandbox) doStop(ctx context.Context) error {
 	// The process exited, we can continue with the rest of the cleanup.
 	// We could use select with ctx.Done() to wait for cancellation, but if the process is not exited the whole cleanup will be in a bad state and will result in unexpected behavior.
 	<-s.process.Exit.Done()
+
+	// Stop host stats collector and collect final sample right before cgroup removal.
+	// This captures resource usage up to the very end of the sandbox's lifetime.
+	if s.hostStatsCollector != nil {
+		s.hostStatsCollector.Stop(ctx)
+	}
 
 	// Remove cgroup after process has exited
 	if s.cgroupHandle != nil {
