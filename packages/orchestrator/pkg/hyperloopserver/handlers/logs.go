@@ -36,6 +36,9 @@ func (h *APIStore) Logs(c *gin.Context) {
 
 	err = h.validatePayloadSandboxID(payload, sbxID)
 	if err != nil {
+		h.sendAPIStoreError(c, http.StatusBadRequest, "Invalid sandboxID in logs payload")
+		h.logger.Error(ctx, "error when parsing sandbox logs request", zap.Error(err), logger.WithSandboxID(sbxID))
+
 		return
 	}
 
@@ -72,7 +75,7 @@ func (h *APIStore) Logs(c *gin.Context) {
 	c.Status(http.StatusOK)
 }
 
-// validatePayloadSandboxID checks if the payload contains correct instanceID
+// validatePayloadSandboxID checks if the payload contains correct instanceID to prevent slow requests to contaminating the logs of other sandboxes.
 func (h *APIStore) validatePayloadSandboxID(payload map[string]any, sbxID string) error {
 	if payload["instanceID"] == nil {
 		return fmt.Errorf("missing sandboxID in logs payload")
