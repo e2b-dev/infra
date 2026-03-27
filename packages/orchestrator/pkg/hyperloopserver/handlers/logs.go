@@ -37,7 +37,7 @@ func (h *APIStore) Logs(c *gin.Context) {
 	err = h.validatePayloadSandboxID(payload, sbxID)
 	if err != nil {
 		h.sendAPIStoreError(c, http.StatusBadRequest, "Invalid sandbox ID in logs payload")
-		h.logger.Error(ctx, "invalid sandbox ID in logs payload", zap.Error(err), logger.WithSandboxID(sbxID))
+		h.logger.Error(ctx, "invalid sandbox ID in logs payload", zap.Error(err))
 
 		return
 	}
@@ -56,9 +56,6 @@ func (h *APIStore) Logs(c *gin.Context) {
 
 	request, err := http.NewRequestWithContext(c, http.MethodPost, h.collectorAddr, bytes.NewBuffer(logs))
 	if err != nil {
-		h.sendAPIStoreError(c, http.StatusInternalServerError, "Error when creating request to forwarding sandbox logs")
-		h.logger.Error(ctx, "error when creating request to forwarding sandbox logs", zap.Error(err), logger.WithSandboxID(sbxID))
-
 		return
 	}
 
