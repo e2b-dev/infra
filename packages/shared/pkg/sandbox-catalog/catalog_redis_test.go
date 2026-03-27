@@ -14,6 +14,8 @@ import (
 )
 
 func seedRedisCatalogEntry(t *testing.T) (context.Context, redis.UniversalClient, string, *SandboxInfo) {
+	t.Helper()
+
 	ctx := t.Context()
 	redisClient := redis_utils.SetupInstance(t)
 
