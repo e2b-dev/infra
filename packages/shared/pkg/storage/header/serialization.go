@@ -2,11 +2,12 @@ package header
 
 import (
 	"bytes"
-	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
+
+	"context"
 
 	"github.com/google/uuid"
 
@@ -158,17 +159,6 @@ func serialize(metadata *Metadata, buildFiles map[uuid.UUID]BuildFileInfo, mappi
 	}
 
 	return buf.Bytes(), nil
-}
-
-// FromBlob reads all bytes from a storage.Blob and auto-detects
-// the header version (V3/V4) for deserialization.
-func FromBlob(ctx context.Context, in storage.Blob) (*Header, error) {
-	data, err := storage.GetBlob(ctx, in)
-	if err != nil {
-		return nil, fmt.Errorf("failed to write to buffer: %w", err)
-	}
-
-	return Deserialize(data)
 }
 
 // metadataSize is the binary size of the Metadata struct, computed from the struct layout.
