@@ -441,7 +441,15 @@ func setupFC(ctx context.Context, dir, version string) error {
 		return nil
 	}
 
-	fcURL := fmt.Sprintf("https://github.com/e2b-dev/fc-versions/releases/download/%s/firecracker", version)
+	// Old releases in https://github.com/e2b-dev/fc-versions/releases don't build
+	// x86_64 and aarch64 binaries. They just build the former and the asset's name
+	// is just 'firecracker'
+	// TODO: Drop this work-around once we remove support for Firecracker v1.10
+	assetName := "firecracker-amd64"
+	if strings.HasPrefix(version, "v1.10") {
+		assetName = "firecracker"
+	}
+	fcURL := fmt.Sprintf("https://github.com/e2b-dev/fc-versions/releases/download/%s/%s", version, assetName)
 	fmt.Printf("⬇ Downloading Firecracker %s...\n", version)
 
 	return download(ctx, fcURL, dstPath, 0o755)
