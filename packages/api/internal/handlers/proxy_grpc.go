@@ -116,8 +116,7 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		return nil, status.Error(codes.InvalidArgument, "invalid sandbox ID")
 	}
 
-	var autoResume *dbtypes.SandboxAutoResumeConfig
-	snap, _, err := s.getAutoResumeSnapshot(ctx, sandboxID)
+	snap, autoResume, err := s.getAutoResumeSnapshot(ctx, sandboxID)
 	if err != nil {
 		return nil, err
 	}
@@ -155,15 +154,6 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		}
 	}
 
-	// Reload snapshot metadata after orchestrator checks so we do not resume from stale
-	// pre-pause snapshot data.
-	snap, autoResume, err = s.getAutoResumeSnapshot(ctx, sandboxID)
-	if err != nil {
-		return nil, err
-	}
-
-	teamID = snap.Snapshot.TeamID
-
 	team, err := dbapi.GetTeamByID(ctx, s.api.authDB, teamID)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get team: %v", err)
@@ -172,15 +162,7 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 
 	timeout := calculateAutoResumeTimeout(autoResume, minAutoResumeTimeout, team)
 
-	autoPause := snap.Snapshot.AutoPause
-	nodeID := &snap.Snapshot.OriginNodeID
-
-	alias := ""
-	if len(snap.Aliases) > 0 {
-		alias = snap.Aliases[0]
-	}
-
-	var envdAccessToken *string = nil
+	var envdAccessToken *string
 	if snap.Snapshot.EnvSecure {
 		accessToken, tokenErr := s.api.getEnvdAccessToken(snap.EnvBuild.EnvdVersion, sandboxID)
 		if tokenErr != nil {
@@ -228,25 +210,13 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 	headers := http.Header{}
 	sbx, apiErr := s.api.startSandboxInternal(
 		ctx,
-		snap.Snapshot.SandboxID,
+		sandboxID,
 		timeout,
-		nil,
-		snap.Snapshot.Metadata,
-		alias,
 		team,
-		snap.EnvBuild,
+		s.api.buildResumeSandboxData(sandboxID, nil),
 		&headers,
 		true,
-		nodeID,
-		snap.Snapshot.EnvID,
-		snap.Snapshot.BaseEnvID,
-		autoPause,
-		autoResume,
-		envdAccessToken,
-		snap.Snapshot.AllowInternetAccess,
-		network,
 		nil, // mcp
-		nil, // volumeMounts
 	)
 	if apiErr != nil {
 		return nil, status.Error(sharedutils.GRPCCodeFromHTTPStatus(apiErr.Code), apiErr.ClientMsg)

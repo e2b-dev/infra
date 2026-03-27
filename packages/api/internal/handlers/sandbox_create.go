@@ -22,6 +22,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics"
+	apiorch "github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
@@ -219,27 +220,34 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		return
 	}
 
+	getSandboxData := func(_ context.Context) (apiorch.SandboxMetadata, *api.APIError) {
+		// The data can't be influenced by action on the same sandbox as other operations,
+		// so it's safe to reuse the data
+		return apiorch.SandboxMetadata{
+			Metadata:            metadata,
+			EnvVars:             envVars,
+			Build:               *build,
+			AllowInternetAccess: allowInternetAccess,
+			Network:             network,
+			Alias:               alias,
+			TemplateID:          env.TemplateID,
+			BaseTemplateID:      env.TemplateID,
+			AutoPause:           autoPause,
+			AutoResume:          autoResume,
+			VolumeMounts:        sbxVolumeMounts,
+			EnvdAccessToken:     envdAccessToken,
+		}, nil
+	}
+
 	sbx, createErr := a.startSandbox(
 		ctx,
 		sandboxID,
 		timeout,
-		envVars,
-		metadata,
-		alias,
 		teamInfo,
-		*build,
+		getSandboxData,
 		&c.Request.Header,
 		false,
-		nil,
-		env.TemplateID,
-		env.TemplateID,
-		autoPause,
-		autoResume,
-		envdAccessToken,
-		allowInternetAccess,
-		network,
 		mcp,
-		sbxVolumeMounts,
 	)
 	if createErr != nil {
 		a.sendAPIStoreError(c, createErr.Code, createErr.ClientMsg)
