@@ -248,19 +248,21 @@ func (c *Cache) Slice(off, length int64) ([]byte, error) {
 	return nil, BytesNotAvailableError{}
 }
 
-func (c *Cache) isBlockCached(i int64) bool {
-	if i < 0 || i >= int64(len(c.dirty))*64 {
+func (c *Cache) isBlockCached(blockIdx int64) bool {
+	if blockIdx < 0 || blockIdx >= int64(len(c.dirty))*64 {
 		return false
 	}
 
-	return c.dirty[i/64].Load()&(1<<uint(i%64)) != 0
+	return c.dirty[blockIdx/64].Load()&(1<<uint(blockIdx%64)) != 0
 }
 
 func (c *Cache) isCached(off, length int64) bool {
+	// Make sure the offset is within the cache size
 	if off >= c.size {
 		return false
 	}
 
+	// Cap if the length goes beyond the cache size, so we don't check for blocks that are out of bounds.
 	end := min(off+length, c.size)
 	start := off / c.blockSize
 	n := (end + c.blockSize - 1) / c.blockSize
@@ -327,6 +329,8 @@ func (c *Cache) WriteAtWithoutLock(b []byte, off int64) (int, error) {
 	return n, nil
 }
 
+// dirtySortedKeys returns a sorted list of dirty keys.
+// Key represents a block offset.
 func (c *Cache) dirtySortedKeys() []int64 {
 	var keys []int64
 
