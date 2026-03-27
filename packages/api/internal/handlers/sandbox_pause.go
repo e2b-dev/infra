@@ -20,18 +20,24 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	sharedmiddleware "github.com/e2b-dev/infra/packages/shared/pkg/middleware"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const (
 	pauseRequestTimeout     = 15 * time.Minute
-	pauseRequestWaitTimeout = 70 * time.Second
+	pauseRequestWaitTimeout = 60 * time.Second
 )
 
 type pauseRequestResult struct {
 	statusCode int
 	clientMsg  string
+}
+
+func sendPauseInProgressResponse(c *gin.Context) {
+	c.JSON(http.StatusAccepted, gin.H{
+		"code":    int32(http.StatusAccepted),
+		"message": "Pause is still in progress. Check the sandbox info endpoint for the latest status.",
+	})
 }
 
 func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.SandboxID) {
@@ -57,15 +63,14 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 	pause.LogInitiated(ctx, sandboxID, teamID.String(), pause.ReasonRequest)
 
 	resultCh := make(chan pauseRequestResult, 1)
+
 	go func() {
 		pauseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), pauseRequestTimeout)
 		defer cancel()
 
 		resultCh <- a.pauseSandboxRequest(pauseCtx, sandboxID, teamID)
+		close(resultCh)
 	}()
-
-	waitTimer := time.NewTimer(pauseRequestWaitTimeout)
-	defer waitTimer.Stop()
 
 	select {
 	case result := <-resultCh:
@@ -78,14 +83,12 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 		a.sendAPIStoreError(c, result.statusCode, result.clientMsg)
 
 		return
-	case <-waitTimer.C:
-		a.sendAPIStoreError(c, http.StatusAccepted, "Pause is still in progress. Check the sandbox info endpoint for the latest status.")
+	case <-time.After(pauseRequestWaitTimeout):
+		sendPauseInProgressResponse(c)
 
 		return
 	case <-ctx.Done():
-		if errors.Is(context.Cause(ctx), sharedmiddleware.ErrRequestTimeout) {
-			a.sendAPIStoreError(c, http.StatusAccepted, "Pause is still in progress. Check the sandbox info endpoint for the latest status.")
-		}
+		sendPauseInProgressResponse(c)
 
 		return
 	}
