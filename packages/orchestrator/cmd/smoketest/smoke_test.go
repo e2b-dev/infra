@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -362,8 +363,18 @@ func downloadKernel(t *testing.T, dataDir string) {
 
 func downloadFC(t *testing.T, dataDir, version string) {
 	t.Helper()
+
+	// Old releases in https://github.com/e2b-dev/fc-versions/releases don't build
+	// x86_64 and aarch64 binaries. They just build the former and the asset's name
+	// is just 'firecracker'
+	// TODO: Drop this work-around once we remove support for Firecracker v1.10
+	assetName := "firecracker-amd64"
+	if strings.HasPrefix(version, "v1.10") {
+		assetName = "firecracker"
+	}
+
 	dst := filepath.Join(dataDir, "fc-versions", version, "firecracker")
-	url := fmt.Sprintf("https://github.com/e2b-dev/fc-versions/releases/download/%s/firecracker-amd64", version)
+	url := fmt.Sprintf("https://github.com/e2b-dev/fc-versions/releases/download/%s/%s", version, assetName)
 	downloadFile(t, url, dst, 0o755)
 }
 
