@@ -31,8 +31,8 @@ func TestRedisCatalog_LocalCache(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, redisClient.Set(ctx, "sandbox:catalog:"+sbxID, data, time.Minute).Err())
 
-	// Without local cache — reads from Redis, no cache created.
-	noCacheCatalog := NewRedisSandboxesCatalog(redisClient, CacheDisabled)
+	// Without local cache (noop) — reads from Redis every time.
+	noCacheCatalog := NewRedisSandboxCatalog(redisClient, NewNoopSandboxCache())
 	t.Cleanup(func() {
 		assert.NoError(t, noCacheCatalog.Close(context.Background()))
 	})
@@ -41,10 +41,10 @@ func TestRedisCatalog_LocalCache(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, expected.OrchestratorID, got.OrchestratorID)
 	require.Equal(t, expected.ExecutionID, got.ExecutionID)
-	assert.Nil(t, noCacheCatalog.cache, "local cache should not be created when disabled")
 
 	// With local cache — reads from Redis, populates cache.
-	cachedCatalog := NewRedisSandboxesCatalog(redisClient, ReadThroughCache)
+	cache := NewTTLSandboxCache()
+	cachedCatalog := NewRedisSandboxCatalog(redisClient, cache)
 	t.Cleanup(func() {
 		assert.NoError(t, cachedCatalog.Close(context.Background()))
 	})
@@ -53,7 +53,7 @@ func TestRedisCatalog_LocalCache(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, expected.OrchestratorIP, got.OrchestratorIP)
 
-	item := cachedCatalog.cache.Get(sbxID)
+	item := cache.Get(sbxID)
 	require.NotNil(t, item, "local cache should be populated when enabled")
 	require.Equal(t, expected.ExecutionID, item.Value().ExecutionID)
 }
