@@ -1,9 +1,11 @@
 package memory
 
 import (
+	"context"
 	"time"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 // TODO: this should be removed once we have a better way to handle node sync
@@ -37,6 +39,13 @@ func (s *Storage) Sync(sandboxes []sandbox.Sandbox, nodeID string) []sandbox.San
 
 		_, found := sandboxMap[data.SandboxID]
 		if !found {
+			logger.L().Info(
+				context.Background(),
+				"sync expiring sandbox missing from node report",
+				logger.WithSandboxID(data.SandboxID),
+				logger.WithTeamID(data.TeamID.String()),
+				logger.WithNodeID(nodeID),
+			)
 			item.SetExpired()
 		}
 	})
@@ -48,6 +57,13 @@ func (s *Storage) Sync(sandboxes []sandbox.Sandbox, nodeID string) []sandbox.San
 			continue
 		}
 
+		logger.L().Info(
+			context.Background(),
+			"sync discovered sandbox missing from cache",
+			logger.WithSandboxID(sandbox.SandboxID),
+			logger.WithTeamID(sandbox.TeamID.String()),
+			logger.WithNodeID(nodeID),
+		)
 		toBeAdded = append(toBeAdded, sandbox)
 	}
 

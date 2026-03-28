@@ -158,6 +158,13 @@ func (s *Store) WaitForStateChange(ctx context.Context, teamID uuid.UUID, sandbo
 func (s *Store) Sync(ctx context.Context, sandboxes []Sandbox, nodeID string) {
 	sbxs := s.storage.Sync(sandboxes, nodeID)
 	for _, sbx := range sbxs {
+		logger.L().Info(
+			ctx,
+			"re-adding sandbox during sync",
+			logger.WithSandboxID(sbx.SandboxID),
+			logger.WithTeamID(sbx.TeamID.String()),
+			logger.WithNodeID(nodeID),
+		)
 		err := s.Add(ctx, sbx, false)
 		if err != nil {
 			logger.L().Error(ctx, "Failed to re-add sandbox during sync", zap.Error(err), logger.WithSandboxID(sbx.SandboxID))
