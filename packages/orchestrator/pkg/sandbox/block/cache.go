@@ -251,13 +251,17 @@ func (c *Cache) isCached(off, length int64) bool {
 		return false
 	}
 
-	// Cap if the length goes beyond the cache size, so we don't check for blocks that are out of bounds.
+	// Clamp to cache size so we don't check blocks that are out of bounds.
 	end := min(off+length, c.size)
-	// Recalculate the length based on the capped end, so we check for the correct blocks in case of capping.
-	length = end - off
+	if end <= off {
+		return true
+	}
 
-	for _, blockOff := range header.BlocksOffsets(length, c.blockSize) {
-		_, dirty := c.dirty.Load(off + blockOff)
+	startBlock := header.BlockIdx(off, c.blockSize)
+	endBlock := header.BlockIdx(end-1, c.blockSize)
+
+	for blockIdx := startBlock; blockIdx <= endBlock; blockIdx++ {
+		_, dirty := c.dirty.Load(header.BlockOffset(blockIdx, c.blockSize))
 		if !dirty {
 			return false
 		}
@@ -267,8 +271,15 @@ func (c *Cache) isCached(off, length int64) bool {
 }
 
 func (c *Cache) setIsCached(off, length int64) {
-	for _, blockOff := range header.BlocksOffsets(length, c.blockSize) {
-		c.dirty.Store(off+blockOff, struct{}{})
+	if length <= 0 {
+		return
+	}
+
+	startBlock := header.BlockIdx(off, c.blockSize)
+	endBlock := header.BlockIdx(off+length-1, c.blockSize)
+
+	for blockIdx := startBlock; blockIdx <= endBlock; blockIdx++ {
+		c.dirty.Store(header.BlockOffset(blockIdx, c.blockSize), struct{}{})
 	}
 }
 
