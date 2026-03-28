@@ -168,9 +168,11 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 	src := int(f.Fd())
 	dst := int(out.Fd())
 	var writeOffset int64
+	var totalRanges int64
 
 	copyStart := time.Now()
 	for r := range BitsetRanges(diffMetadata.Dirty, diffMetadata.BlockSize) {
+		totalRanges++
 		remaining := int(r.Size)
 		readOffset := r.Start
 
@@ -202,6 +204,7 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 		attribute.Int64("copy_ms", time.Since(copyStart).Milliseconds()),
 		attribute.Int64("total_size_bytes", c.size),
 		attribute.Int64("dirty_size_bytes", int64(diffMetadata.Dirty.Count())*c.blockSize),
+		attribute.Int64("total_ranges", totalRanges),
 	)
 
 	return diffMetadata, nil
