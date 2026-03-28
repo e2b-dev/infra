@@ -159,6 +159,8 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 	}
 	defer f.Close()
 
+	src := int(f.Fd())
+	dst := int(out.Fd())
 	var writeOffset int64
 
 	for r := range BitsetRanges(diffMetadata.Dirty, diffMetadata.BlockSize) {
@@ -170,9 +172,9 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 		for remaining > 0 {
 			// On XFS this uses reflink automatically.
 			n, err := unix.CopyFileRange(
-				int(f.Fd()),
+				src,
 				&readOffset,
-				int(out.Fd()),
+				dst,
 				&writeOffset,
 				remaining,
 				0,
