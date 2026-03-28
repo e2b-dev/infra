@@ -51,7 +51,7 @@ func (c *MemorySandboxCatalog) StoreSandbox(ctx context.Context, sandboxID strin
 	defer c.mtx.Unlock()
 
 	c.cache.Set(sandboxID, sandboxInfo, expiration)
-	logger.L().Info(ctx, "stored sandbox in memory catalog", logger.WithSandboxID(sandboxID))
+	logger.L().Debug(ctx, "stored sandbox in memory catalog", logger.WithSandboxID(sandboxID))
 
 	return nil
 }
@@ -79,7 +79,7 @@ func (c *MemorySandboxCatalog) DeleteSandbox(ctx context.Context, sandboxID stri
 	}
 
 	c.cache.Delete(sandboxID)
-	logger.L().Info(ctx, "deleted sandbox from memory catalog", logger.WithSandboxID(sandboxID))
+	logger.L().Debug(ctx, "deleted sandbox from memory catalog", logger.WithSandboxID(sandboxID))
 
 	return nil
 }

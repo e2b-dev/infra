@@ -158,7 +158,7 @@ func (s *Store) WaitForStateChange(ctx context.Context, teamID uuid.UUID, sandbo
 func (s *Store) Sync(ctx context.Context, sandboxes []Sandbox, nodeID string) {
 	sbxs := s.storage.Sync(sandboxes, nodeID)
 	for _, sbx := range sbxs {
-		logger.L().Info(
+		logger.L().Debug(
 			ctx,
 			"re-adding sandbox during sync",
 			logger.WithSandboxID(sbx.SandboxID),

@@ -39,7 +39,7 @@ func (s *Storage) Sync(sandboxes []sandbox.Sandbox, nodeID string) []sandbox.San
 
 		_, found := sandboxMap[data.SandboxID]
 		if !found {
-			logger.L().Info(
+			logger.L().Debug(
 				context.Background(),
 				"sync expiring sandbox missing from node report",
 				logger.WithSandboxID(data.SandboxID),
@@ -57,7 +57,7 @@ func (s *Storage) Sync(sandboxes []sandbox.Sandbox, nodeID string) []sandbox.San
 			continue
 		}
 
-		logger.L().Info(
+		logger.L().Debug(
 			context.Background(),
 			"sync discovered sandbox missing from cache",
 			logger.WithSandboxID(sandbox.SandboxID),
