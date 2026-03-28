@@ -15,9 +15,11 @@ import (
 	"github.com/bits-and-blooms/bitset"
 	"github.com/edsrzf/mmap-go"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const (
@@ -119,7 +121,7 @@ func (c *Cache) Sync() error {
 }
 
 func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMetadata, error) {
-	_, childSpan := tracer.Start(ctx, "export-to-diff")
+	ctx, childSpan := tracer.Start(ctx, "export-to-diff")
 	defer childSpan.End()
 
 	c.mu.Lock()
@@ -137,11 +139,14 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 		}, nil
 	}
 
+	flushStart := time.Now()
 	err := c.mmap.Flush()
 	if err != nil {
 		return nil, fmt.Errorf("error flushing mmap: %w", err)
 	}
+	telemetry.SetAttributes(ctx, attribute.Int64("flush_ms", time.Since(flushStart).Milliseconds()))
 
+	buildStart := time.Now()
 	builder := header.NewDiffMetadataBuilder(c.size, c.blockSize)
 
 	// We don't need to sort the keys as the bitset handles the ordering.
@@ -152,6 +157,7 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 	})
 
 	diffMetadata := builder.Build()
+	telemetry.SetAttributes(ctx, attribute.Int64("build_metadata_ms", time.Since(buildStart).Milliseconds()))
 
 	f, err := os.Open(c.filePath)
 	if err != nil {
@@ -163,12 +169,13 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 	dst := int(out.Fd())
 	var writeOffset int64
 
+	copyStart := time.Now()
 	for r := range BitsetRanges(diffMetadata.Dirty, diffMetadata.BlockSize) {
 		remaining := int(r.Size)
 		readOffset := r.Start
 
 		// The kernel may return short writes (e.g. capped at MAX_RW_COUNT on non-reflink filesystems),
-		// so we loop until the full range is copied. The offset pointers  are advanced by the kernel.
+		// so we loop until the full range is copied. The offset pointers are advanced by the kernel.
 		for remaining > 0 {
 			// On XFS this uses reflink automatically.
 			n, err := unix.CopyFileRange(
@@ -190,6 +197,12 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 			remaining -= n
 		}
 	}
+
+	telemetry.SetAttributes(ctx,
+		attribute.Int64("copy_ms", time.Since(copyStart).Milliseconds()),
+		attribute.Int64("total_size_bytes", c.size),
+		attribute.Int64("dirty_size_bytes", int64(diffMetadata.Dirty.Count())*c.blockSize),
+	)
 
 	return diffMetadata, nil
 }
