@@ -47,11 +47,12 @@ func (c *MemorySandboxCatalog) StoreSandbox(ctx context.Context, sandboxID strin
 	_, span := tracer.Start(ctx, "sandbox-catalog-store")
 	defer span.End()
 
+	logger.L().Debug(ctx, "storing sandbox in memory catalog", logger.WithSandboxID(sandboxID))
+
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
 	c.cache.Set(sandboxID, sandboxInfo, expiration)
-	logger.L().Debug(ctx, "stored sandbox in memory catalog", logger.WithSandboxID(sandboxID))
 
 	return nil
 }
@@ -78,8 +79,8 @@ func (c *MemorySandboxCatalog) DeleteSandbox(ctx context.Context, sandboxID stri
 		return nil
 	}
 
+	logger.L().Debug(ctx, "deleting sandbox from memory catalog", logger.WithSandboxID(sandboxID))
 	c.cache.Delete(sandboxID)
-	logger.L().Debug(ctx, "deleted sandbox from memory catalog", logger.WithSandboxID(sandboxID))
 
 	return nil
 }
