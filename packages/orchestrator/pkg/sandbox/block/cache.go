@@ -4,11 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"math"
 	"math/rand"
 	"os"
-	"slices"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -120,8 +118,8 @@ func (c *Cache) Sync() error {
 	return nil
 }
 
-func (c *Cache) ExportToDiff(ctx context.Context, out io.Writer) (*header.DiffMetadata, error) {
-	ctx, childSpan := tracer.Start(ctx, "export-to-diff")
+func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMetadata, error) {
+	_, childSpan := tracer.Start(ctx, "export-to-diff")
 	defer childSpan.End()
 
 	c.mu.Lock()
@@ -146,16 +144,52 @@ func (c *Cache) ExportToDiff(ctx context.Context, out io.Writer) (*header.DiffMe
 
 	builder := header.NewDiffMetadataBuilder(c.size, c.blockSize)
 
-	for _, offset := range c.dirtySortedKeys() {
-		block := (*c.mmap)[offset : offset+c.blockSize]
+	// We don't need to sort the keys as the bitset handles the ordering.
+	c.dirty.Range(func(key, _ any) bool {
+		builder.AddDirtyOffset(key.(int64))
 
-		err := builder.Process(ctx, block, out, offset)
-		if err != nil {
-			return nil, fmt.Errorf("error processing block %d: %w", offset, err)
+		return true
+	})
+
+	diffMetadata := builder.Build()
+
+	f, err := os.Open(c.filePath)
+	if err != nil {
+		return nil, fmt.Errorf("error opening file: %w", err)
+	}
+	defer f.Close()
+
+	var writeOffset int64
+
+	for r := range BitsetRanges(diffMetadata.Dirty, diffMetadata.BlockSize) {
+		remaining := int(r.Size)
+		readOffset := r.Start
+
+		// The kernel may return short writes (e.g. capped at MAX_RW_COUNT on non-reflink filesystems),
+		// so we loop until the full range is copied. The offset pointers  are advanced by the kernel.
+		for remaining > 0 {
+			// On XFS this uses reflink automatically.
+			n, err := unix.CopyFileRange(
+				int(f.Fd()),
+				&readOffset,
+				int(out.Fd()),
+				&writeOffset,
+				remaining,
+				0,
+			)
+			if err != nil {
+				return nil, fmt.Errorf("error copying file range: %w", err)
+			}
+
+			if n == 0 {
+				return nil, fmt.Errorf("copy_file_range returned 0 with %d bytes remaining", remaining)
+			}
+
+			remaining -= n
 		}
 	}
 
-	return builder.Build(), nil
+	return diffMetadata, nil
 }
 
 func (c *Cache) ReadAt(b []byte, off int64) (int, error) {
@@ -289,20 +323,6 @@ func (c *Cache) WriteAtWithoutLock(b []byte, off int64) (int, error) {
 	c.setIsCached(off, end-off)
 
 	return n, nil
-}
-
-// dirtySortedKeys returns a sorted list of dirty keys.
-// Key represents a block offset.
-func (c *Cache) dirtySortedKeys() []int64 {
-	var keys []int64
-	c.dirty.Range(func(key, _ any) bool {
-		keys = append(keys, key.(int64))
-
-		return true
-	})
-	slices.Sort(keys)
-
-	return keys
 }
 
 // FileSize returns the size of the cache on disk.

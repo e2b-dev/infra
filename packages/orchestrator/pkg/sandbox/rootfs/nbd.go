@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 
 	"go.uber.org/zap"
@@ -71,7 +70,7 @@ func (o *NBDProvider) Start(ctx context.Context) error {
 
 func (o *NBDProvider) ExportDiff(
 	ctx context.Context,
-	out io.Writer,
+	out *os.File,
 	closeSandbox func(ctx context.Context) error,
 ) (*header.DiffMetadata, error) {
 	ctx, span := tracer.Start(ctx, "cow-export")

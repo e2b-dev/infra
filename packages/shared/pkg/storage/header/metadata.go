@@ -114,11 +114,16 @@ type DiffMetadataBuilder struct {
 
 func NewDiffMetadataBuilder(size, blockSize int64) *DiffMetadataBuilder {
 	return &DiffMetadataBuilder{
+		// TODO: We might be able to start with 0 as preallocating here actually takes space.
 		dirty: bitset.New(uint(TotalBlocks(size, blockSize))),
 		empty: bitset.New(0),
 
 		blockSize: blockSize,
 	}
+}
+
+func (b *DiffMetadataBuilder) AddDirtyOffset(offset int64) {
+	b.dirty.Set(uint(BlockIdx(offset, b.blockSize)))
 }
 
 func (b *DiffMetadataBuilder) Process(ctx context.Context, block []byte, out io.Writer, offset int64) error {
