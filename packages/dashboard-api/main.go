@@ -30,6 +30,7 @@ import (
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/handlers"
+	"github.com/e2b-dev/infra/packages/dashboard-api/internal/supabaseauthusersync"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/pkg/pool"
@@ -228,6 +229,30 @@ func run() int {
 	defer sigCancel()
 
 	wg := sync.WaitGroup{}
+
+	if config.SupabaseAuthUserSyncEnabled {
+		workerLogger := l.With(zap.String("worker", "supabase_auth_user_sync"))
+		syncStore := supabaseauthusersync.NewStore(db.Queries)
+		syncRunner := supabaseauthusersync.NewRunner(
+			supabaseauthusersync.Config{
+				Enabled:      true,
+				BatchSize:    config.SupabaseAuthUserSyncBatchSize,
+				PollInterval: config.SupabaseAuthUserSyncPollInterval,
+				LockTimeout:  config.SupabaseAuthUserSyncLockTimeout,
+				MaxAttempts:  config.SupabaseAuthUserSyncMaxAttempts,
+			},
+			syncStore,
+			serviceInstanceID,
+			workerLogger,
+		)
+
+		wg.Go(func() {
+			if err := syncRunner.Run(signalCtx); err != nil && !errors.Is(err, context.Canceled) {
+				l.Error(ctx, "supabase auth user sync worker error", zap.Error(err))
+				errorCode.Add(1)
+			}
+		})
+	}
 
 	wg.Go(func() {
 		<-signalCtx.Done()
