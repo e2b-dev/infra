@@ -218,6 +218,31 @@ func TestEmptyRanges(t *testing.T) {
 	})
 }
 
+func TestCacheWriteAtMarksAllTouchedBlocksDirty(t *testing.T) {
+	t.Parallel()
+
+	blockSize := int64(header.RootfsBlockSize)
+	cache, err := NewCache(blockSize*8, blockSize, t.TempDir()+"/cache", false)
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		require.NoError(t, cache.Close())
+	})
+
+	_, err = cache.WriteAt([]byte{0x01, 0x02}, 3*blockSize-1)
+	require.NoError(t, err)
+
+	require.True(t, cache.isCached(2*blockSize, 2*blockSize))
+
+	var dirtyOffsets []int64
+	cache.dirty.Range(func(key, _ any) bool {
+		dirtyOffsets = append(dirtyOffsets, key.(int64))
+		return true
+	})
+
+	require.ElementsMatch(t, []int64{2 * blockSize, 3 * blockSize}, dirtyOffsets)
+}
+
 func compareData(readBytes []byte, expectedBytes []byte) error {
 	// The bytes.Equal is the first place in this flow that actually touches the uffd managed memory and triggers the pagefault, so any deadlocks will manifest here.
 	if !bytes.Equal(readBytes, expectedBytes) {
