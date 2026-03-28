@@ -105,6 +105,8 @@ func (c *RedisSandboxCatalog) StoreSandbox(ctx context.Context, sandboxID string
 		c.cache.Set(sandboxID, sandboxInfo, catalogRedisLocalCacheTtl)
 	}
 
+	logger.L().Info(ctx, "stored sandbox in redis catalog", logger.WithSandboxID(sandboxID))
+
 	return nil
 }
 
@@ -134,6 +136,7 @@ func (c *RedisSandboxCatalog) DeleteSandbox(ctx context.Context, sandboxID strin
 
 	c.redisClient.Del(ctx, c.getCatalogKey(sandboxID))
 	c.cache.Delete(sandboxID)
+	logger.L().Info(ctx, "deleted sandbox from redis catalog", logger.WithSandboxID(sandboxID))
 
 	return nil
 }
