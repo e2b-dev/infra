@@ -19,6 +19,7 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
+	"github.com/e2b-dev/infra/packages/clickhouse/pkg/hoststats"
 	"github.com/e2b-dev/infra/packages/orchestrator/cmd/internal/cmdutil"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/proxy"
@@ -298,7 +299,7 @@ func doBuild(
 	defer templateCache.Stop()
 
 	buildMetrics, _ := metrics.NewBuildMetrics(noop.MeterProvider{})
-	sandboxFactory := sandbox.NewFactory(c.BuilderConfig, networkPool, devicePool, featureFlags, nil, cgroup.NewNoopManager(), sandboxes)
+	sandboxFactory := sandbox.NewFactory(c.BuilderConfig, networkPool, devicePool, featureFlags, hoststats.NewNoopDelivery(), cgroup.NewNoopManager(), sandboxes)
 
 	builder := build.NewBuilder(
 		builderConfig, l, featureFlags, sandboxFactory,

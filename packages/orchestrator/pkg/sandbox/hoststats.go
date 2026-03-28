@@ -21,13 +21,10 @@ func initializeHostStatsCollector(
 	hostStatsDelivery hoststats.Delivery,
 	samplingInterval time.Duration,
 ) {
-	if hostStatsDelivery == nil {
-		return
-	}
-
 	teamID, err := uuid.Parse(runtime.TeamID)
 	if err != nil {
-		logger.L().Error(ctx, "error parsing team ID", logger.WithTeamID(runtime.TeamID), zap.Error(err))
+		logger.L().Warn(ctx, "invalid team ID for host stats, using zero UUID",
+			logger.WithTeamID(runtime.TeamID), zap.Error(err))
 	}
 
 	collector := NewHostStatsCollector(

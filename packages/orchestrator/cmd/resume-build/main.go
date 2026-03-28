@@ -21,6 +21,7 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 	"golang.org/x/sys/unix"
 
+	"github.com/e2b-dev/infra/packages/clickhouse/pkg/hoststats"
 	"github.com/e2b-dev/infra/packages/orchestrator/cmd/internal/cmdutil"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
@@ -1051,7 +1052,7 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	if verbose {
 		fmt.Println("🔧 Creating sandbox factory...")
 	}
-	factory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, flags, nil, cgroup.NewNoopManager(), sandboxes)
+	factory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, flags, hoststats.NewNoopDelivery(), cgroup.NewNoopManager(), sandboxes)
 
 	fmt.Printf("📦 Loading %s...\n", buildID)
 	tmpl, err := cache.GetTemplate(ctx, buildID, false, false)

@@ -36,3 +36,15 @@ type Delivery interface {
 	Push(stat SandboxHostStat) error
 	Close(ctx context.Context) error
 }
+
+// noopDelivery is a Delivery that discards all stats.
+// Used in environments where host stats collection is not needed (CLI tools, tests).
+type noopDelivery struct{}
+
+// NewNoopDelivery returns a Delivery that silently discards all stats.
+func NewNoopDelivery() Delivery {
+	return &noopDelivery{}
+}
+
+func (d *noopDelivery) Push(_ SandboxHostStat) error  { return nil }
+func (d *noopDelivery) Close(_ context.Context) error { return nil }
