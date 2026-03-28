@@ -41,6 +41,8 @@ type Delivery interface {
 // Used in environments where host stats collection is not needed (CLI tools, tests).
 type noopDelivery struct{}
 
+var _ Delivery = (*noopDelivery)(nil)
+
 // NewNoopDelivery returns a Delivery that silently discards all stats.
 func NewNoopDelivery() Delivery {
 	return &noopDelivery{}

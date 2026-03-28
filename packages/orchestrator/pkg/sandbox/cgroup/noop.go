@@ -6,6 +6,8 @@ import "context"
 // Used in environments where cgroup accounting is not needed (CLI tools, tests).
 type noopManager struct{}
 
+var _ Manager = (*noopManager)(nil)
+
 // NewNoopManager returns a Manager that creates noop cgroup handles.
 // The handles are safe to use but do not perform any actual cgroup operations.
 func NewNoopManager() Manager {
