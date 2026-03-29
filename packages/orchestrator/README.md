@@ -236,8 +236,8 @@ Binary paths follow the `{version}/{arch}/` layout:
 
 ```
 # Firecracker (GCS bucket or FIRECRACKER_VERSIONS_DIR)
-fc-versions/v1.12.1_717921c/amd64/firecracker
-fc-versions/v1.12.1_717921c/arm64/firecracker
+fc-versions/v1.12.1_a41d3fb/amd64/firecracker
+fc-versions/v1.12.1_a41d3fb/arm64/firecracker
 
 # Kernels (GCS bucket or HOST_KERNELS_DIR)
 kernels/vmlinux-6.1.102/amd64/vmlinux.bin
