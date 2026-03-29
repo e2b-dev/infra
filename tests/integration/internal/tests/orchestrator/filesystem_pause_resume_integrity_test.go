@@ -26,53 +26,33 @@ const (
 func TestSandboxFilesystemPauseResumeIntegrity(t *testing.T) {
 	t.Parallel()
 
-	parallelismGate := make(chan struct{}, 2)
-	withLimitedParallelism := func(t *testing.T, fn func(t *testing.T)) {
-		t.Helper()
-		t.Parallel()
-		parallelismGate <- struct{}{}
-		t.Cleanup(func() {
-			<-parallelismGate
-		})
-		fn(t)
-	}
-
 	t.Run("contiguous write hash survives pause", func(t *testing.T) {
 		t.Parallel()
-		t.Helper()
-		withLimitedParallelism(t, func(t *testing.T) {
-			runFilesystemPauseResumeIntegrityCase(t, filesystemPauseResumeCase{
-				name:       "contiguous",
-				filePath:   "/home/user/fs-integrity-contiguous.bin",
-				writeGiB:   0,
-				writeBytes: 64 * 1024 * 1024,
-				cycles:     1,
-				pattern:    fsWriteContiguous,
-			})
+		runFilesystemPauseResumeIntegrityCase(t, filesystemPauseResumeCase{
+			name:       "contiguous",
+			filePath:   "/home/user/fs-integrity-contiguous.bin",
+			writeGiB:   0,
+			writeBytes: 64 * 1024 * 1024,
+			cycles:     1,
+			pattern:    fsWriteContiguous,
 		})
 	})
 
 	t.Run("scattered write hash survives pause", func(t *testing.T) {
 		t.Parallel()
-		t.Helper()
-		withLimitedParallelism(t, func(t *testing.T) {
-			runFilesystemPauseResumeIntegrityCase(t, filesystemPauseResumeCase{
-				name:       "scattered",
-				filePath:   "/home/user/fs-integrity-scattered.bin",
-				writeGiB:   0,
-				writeBytes: 32 * 1024 * 1024,
-				cycles:     1,
-				pattern:    fsWriteScattered,
-			})
+		runFilesystemPauseResumeIntegrityCase(t, filesystemPauseResumeCase{
+			name:       "scattered",
+			filePath:   "/home/user/fs-integrity-scattered.bin",
+			writeGiB:   0,
+			writeBytes: 32 * 1024 * 1024,
+			cycles:     1,
+			pattern:    fsWriteScattered,
 		})
 	})
 
 	t.Run("zeroed ranges and truncate survive pause", func(t *testing.T) {
 		t.Parallel()
-		t.Helper()
-		withLimitedParallelism(t, func(t *testing.T) {
-			runFilesystemPauseResumeTruncateCase(t)
-		})
+		runFilesystemPauseResumeTruncateCase(t)
 	})
 }
 
@@ -152,7 +132,7 @@ func runFilesystemPauseResumeIntegrityCase(t *testing.T, tc filesystemPauseResum
 	expectedHash := exec(`sha256sum "` + tc.filePath + `" | awk '{print $1}'`)
 	expectedSize := exec(`stat -c %s "` + tc.filePath + `"`)
 
-	for i := 0; i < tc.cycles; i++ {
+	for i := range tc.cycles {
 		pause()
 		resume()
 
