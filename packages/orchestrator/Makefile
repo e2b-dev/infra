@@ -28,14 +28,14 @@ build:
 	@docker build --platform $(BUILD_PLATFORM) --output=bin --build-arg COMMIT_SHA="$(COMMIT_SHA)" -f ./Dockerfile ..
 
 .PHONY: build-local
-build-local:
+build-local: fetch-busybox
 	# Allow for passing commit sha directly for docker builds
 	$(eval COMMIT_SHA ?= $(shell git rev-parse --short HEAD))
 	CGO_ENABLED=1 GOOS=linux GOARCH=$(BUILD_ARCH) go build -o bin/orchestrator -ldflags "-X=main.commitSHA=$(COMMIT_SHA)" .
 	CGO_ENABLED=1 GOOS=linux GOARCH=$(BUILD_ARCH) go build -o bin/clean-nfs-cache -ldflags "-X=main.commitSHA=$(COMMIT_SHA)" ./cmd/clean-nfs-cache
 
 .PHONY: build-debug
-build-debug:
+build-debug: fetch-busybox
 	CGO_ENABLED=1 GOOS=linux GOARCH=$(BUILD_ARCH) go build -race -gcflags=all="-N -l" -o bin/orchestrator .
 
 .PHONY: run-debug
@@ -131,6 +131,34 @@ build-template:
 	-to-build $(BUILD_ID) \
 	-kernel $(KERNEL_VERSION) \
 	-firecracker $(FIRECRACKER_VERSION)
+
+.PHONY: fetch-busybox
+fetch-busybox:
+	@ARCH=$$(go env GOARCH); \
+	BUSYBOX_TARGET=./pkg/template/build/core/systeminit/busybox_1.36.1-2; \
+	if [ "$$ARCH" != "arm64" ]; then \
+		echo "✓ Using bundled amd64 busybox"; \
+	elif file "$$BUSYBOX_TARGET" 2>/dev/null | grep -q 'aarch64\|ARM aarch64'; then \
+		echo "✓ Busybox is already arm64"; \
+	elif command -v busybox >/dev/null 2>&1 && file "$$(command -v busybox)" 2>/dev/null | grep -q 'aarch64\|ARM aarch64' && file "$$(command -v busybox)" 2>/dev/null | grep -q 'statically linked'; then \
+		cp "$$(command -v busybox)" "$$BUSYBOX_TARGET" && \
+		echo "✓ Copied host busybox (arm64, static) to embedded path"; \
+	elif command -v apt-get >/dev/null 2>&1 && command -v dpkg-deb >/dev/null 2>&1; then \
+		echo "Fetching arm64 busybox via apt..."; \
+		TMPDIR=$$(mktemp -d); \
+		apt-get download busybox-static 2>/dev/null && \
+			dpkg-deb -x busybox-static_*.deb "$$TMPDIR" && \
+			cp "$$TMPDIR/bin/busybox" "$$BUSYBOX_TARGET" && \
+			rm -rf "$$TMPDIR" busybox-static_*.deb && \
+			echo "✓ Replaced embedded busybox with arm64 binary (from busybox-static package)" || \
+			{ rm -rf "$$TMPDIR" busybox-static_*.deb; echo "⚠ apt-get download failed"; exit 1; }; \
+	else \
+		echo "⚠ ARM64 busybox required but no method available to fetch it."; \
+		echo "  Options:"; \
+		echo "    1. Install busybox-static: apt install busybox-static, then re-run"; \
+		echo "    2. Manually place an arm64 busybox binary at: $$BUSYBOX_TARGET"; \
+		exit 1; \
+	fi
 
 .PHONY: migrate
 migrate:
