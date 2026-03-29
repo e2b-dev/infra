@@ -10,8 +10,8 @@ $(if $(HOSTNAME),,$(error Failed to determine hostname: both 'hostname' and 'hos
 # Architecture for builds. Defaults to local arch; override for cross-compilation
 # (e.g., BUILD_ARCH=amd64 make build from an ARM64 host).
 BUILD_ARCH ?= $(shell go env GOARCH)
-# Docker platform string. Override for multi-arch builds:
-#   BUILD_PLATFORM=linux/amd64,linux/arm64 make build
+# Docker platform string. Override for cross-platform builds:
+#   BUILD_PLATFORM=linux/arm64 make build
 BUILD_PLATFORM ?= linux/$(BUILD_ARCH)
 
 .PHONY: init

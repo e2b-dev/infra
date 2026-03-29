@@ -10,8 +10,8 @@ GCP_BUCKET_PREFIX ?= $(GCP_PROJECT_ID)-
 # Architecture for builds. Defaults to local arch; override for cross-compilation
 # (e.g., BUILD_ARCH=amd64 make build from an ARM64 host).
 BUILD_ARCH ?= $(shell go env GOARCH)
-# Docker platform string. Override for multi-arch builds:
-#   BUILD_PLATFORM=linux/amd64,linux/arm64 make start-docker
+# Docker platform string. Override for cross-platform builds:
+#   BUILD_PLATFORM=linux/arm64 make start-docker
 BUILD_PLATFORM ?= linux/$(BUILD_ARCH)
 
 .PHONY: init
