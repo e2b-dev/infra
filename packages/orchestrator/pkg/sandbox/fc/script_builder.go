@@ -87,13 +87,20 @@ func (sb *StartScriptBuilder) buildArgs(
 	rootfsPaths RootfsPaths,
 	namespaceID string,
 ) startScriptArgs {
-	// On ARM64, disable seccomp to allow userfaultfd syscall for snapshot restore.
-	// The upstream Firecracker seccomp filter for aarch64 does not include the
-	// userfaultfd syscall (nr 282), causing snapshot loading to fail with
-	// "Failed to UFFD object: System error".
+	// On ARM64, we need to handle seccomp specially because the upstream Firecracker
+	// seccomp filter for aarch64 does not include the userfaultfd syscall (nr 282),
+	// which is required for UFFD-based snapshot restore.
+	//
+	// If a custom seccomp filter is available (seccomp-filter.bpf), use it via
+	// --seccomp-filter. This custom filter should be the default aarch64 filter
+	// with userfaultfd added. If no custom filter exists, fall back to --no-seccomp.
 	var extraArgs string
 	if runtime.GOARCH == "arm64" {
-		extraArgs = " --no-seccomp"
+		if filterPath := versions.SeccompFilterPath(sb.builderConfig); filterPath != "" {
+			extraArgs = " --seccomp-filter " + filterPath
+		} else {
+			extraArgs = " --no-seccomp"
+		}
 	}
 
 	return startScriptArgs{

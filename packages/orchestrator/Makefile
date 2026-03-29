@@ -146,12 +146,17 @@ fetch-busybox:
 	elif command -v apt-get >/dev/null 2>&1 && command -v dpkg-deb >/dev/null 2>&1; then \
 		echo "Fetching arm64 busybox via apt..."; \
 		TMPDIR=$$(mktemp -d); \
-		apt-get download busybox-static 2>/dev/null && \
-			dpkg-deb -x busybox-static_*.deb "$$TMPDIR" && \
+		apt-get download busybox-static:arm64 2>/dev/null && \
+			dpkg-deb -x busybox-static_*_arm64.deb "$$TMPDIR" && \
+			if ! file "$$TMPDIR/bin/busybox" 2>/dev/null | grep -q 'aarch64\|ARM aarch64'; then \
+				rm -rf "$$TMPDIR" busybox-static_*.deb; \
+				echo "⚠ Downloaded busybox is not arm64 architecture"; \
+				exit 1; \
+			fi && \
 			cp "$$TMPDIR/bin/busybox" "$$BUSYBOX_TARGET" && \
 			rm -rf "$$TMPDIR" busybox-static_*.deb && \
 			echo "✓ Replaced embedded busybox with arm64 binary (from busybox-static package)" || \
-			{ rm -rf "$$TMPDIR" busybox-static_*.deb; echo "⚠ apt-get download failed"; exit 1; }; \
+			{ rm -rf "$$TMPDIR" busybox-static_*.deb; echo "⚠ apt-get download failed (arm64 architecture may not be configured)"; exit 1; }; \
 	else \
 		echo "⚠ ARM64 busybox required but no method available to fetch it."; \
 		echo "  Options:"; \

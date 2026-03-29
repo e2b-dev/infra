@@ -111,3 +111,69 @@ func TestHostKernelPath_PrefersArchOverLegacy(t *testing.T) {
 	// Should prefer the arch-prefixed path
 	assert.Equal(t, filepath.Join(dir, "vmlinux-6.1.102", arch, "vmlinux.bin"), result)
 }
+
+func TestSeccompFilterPath_ArchPrefixed(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	arch := utils.TargetArch()
+
+	// Create the arch-prefixed seccomp filter
+	archDir := filepath.Join(dir, "v1.12.0", arch)
+	require.NoError(t, os.MkdirAll(archDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(archDir, "seccomp-filter.bpf"), []byte("bpf"), 0o644))
+
+	config := cfg.BuilderConfig{FirecrackerVersionsDir: dir}
+	fc := Config{FirecrackerVersion: "v1.12.0"}
+
+	result := fc.SeccompFilterPath(config)
+
+	assert.Equal(t, filepath.Join(dir, "v1.12.0", arch, "seccomp-filter.bpf"), result)
+}
+
+func TestSeccompFilterPath_LegacyFallback(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	// Only create the legacy flat seccomp filter
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "v1.12.0"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "v1.12.0", "seccomp-filter.bpf"), []byte("bpf"), 0o644))
+
+	config := cfg.BuilderConfig{FirecrackerVersionsDir: dir}
+	fc := Config{FirecrackerVersion: "v1.12.0"}
+
+	result := fc.SeccompFilterPath(config)
+
+	assert.Equal(t, filepath.Join(dir, "v1.12.0", "seccomp-filter.bpf"), result)
+}
+
+func TestSeccompFilterPath_NoneExists(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	// No seccomp filter — should return empty string
+	config := cfg.BuilderConfig{FirecrackerVersionsDir: dir}
+	fc := Config{FirecrackerVersion: "v1.12.0"}
+
+	result := fc.SeccompFilterPath(config)
+
+	assert.Equal(t, "", result)
+}
+
+func TestSeccompFilterPath_PrefersArchOverLegacy(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	arch := utils.TargetArch()
+
+	// Create BOTH arch-prefixed and legacy flat seccomp filters
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "v1.12.0", arch), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "v1.12.0", arch, "seccomp-filter.bpf"), []byte("arch-bpf"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "v1.12.0", "seccomp-filter.bpf"), []byte("legacy-bpf"), 0o644))
+
+	config := cfg.BuilderConfig{FirecrackerVersionsDir: dir}
+	fc := Config{FirecrackerVersion: "v1.12.0"}
+
+	result := fc.SeccompFilterPath(config)
+
+	// Should prefer the arch-prefixed path
+	assert.Equal(t, filepath.Join(dir, "v1.12.0", arch, "seccomp-filter.bpf"), result)
+}
