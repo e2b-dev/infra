@@ -107,7 +107,7 @@ test:
 
 .PHONY: test-docker
 test-docker:
-	@echo "Running orchestrator tests in Docker (AMD64 Linux)..."
+	@echo "Running orchestrator tests in Docker ($(BUILD_PLATFORM))..."
 	@rm -rf .shared/
 	@cp -r ../shared .shared/
 	@rm -rf .clickhouse/
