@@ -328,7 +328,10 @@ func TestCacheExportToDiff_MixedDirtyBlocksKeepsZeroBlockInDiff(t *testing.T) {
 	require.NoError(t, err)
 	exported, err := io.ReadAll(out)
 	require.NoError(t, err)
-	require.Equal(t, append(zeroBlock, nonZeroBlock...), exported)
+	expected := make([]byte, 0, len(zeroBlock)+len(nonZeroBlock))
+	expected = append(expected, zeroBlock...)
+	expected = append(expected, nonZeroBlock...)
+	require.Equal(t, expected, exported)
 
 	baseBuildID := uuid.New()
 	originalHeader, err := header.NewHeader(
