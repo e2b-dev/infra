@@ -191,10 +191,10 @@ func runFilesystemPauseResumeTruncateCase(t *testing.T) {
 
 	const filePath = "/home/user/fs-integrity-zero-truncate.bin"
 
-	exec(`
+	exec(fmt.Sprintf(`
 python3 - <<'PY'
 import os
-path = "/home/user/fs-integrity-zero-truncate.bin"
+path = %q
 chunk = 1024 * 1024
 with open(path, "wb", buffering=0) as f:
     f.write(b"\x07" * (16 * chunk))
@@ -208,7 +208,7 @@ with open(path, "r+b", buffering=0) as f:
     f.truncate(12 * chunk)
     f.flush()
     os.fsync(f.fileno())
-PY`)
+PY`, filePath))
 	expectedHash := exec(`sha256sum "` + filePath + `" | awk '{print $1}'`)
 	expectedSize := exec(`stat -c %s "` + filePath + `"`)
 
