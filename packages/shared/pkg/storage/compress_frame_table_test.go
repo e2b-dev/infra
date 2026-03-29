@@ -244,4 +244,3 @@ func TestGetFetchRange(t *testing.T) {
 		require.Equal(t, input, r)
 	})
 }
-

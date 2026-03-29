@@ -339,7 +339,6 @@ var CompressConfigFlag = newJSONFlag("compress-config", ldvalue.FromJSONMarshal(
 	"targetPartSizeMB":   50,
 	"frameEncodeWorkers": 4,
 	"encoderConcurrency": 1,
-	"decoderConcurrency": 1,
 }))
 
 // TCPFirewallEgressThrottleConfig controls per-sandbox egress throttling via Firecracker's

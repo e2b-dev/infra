@@ -81,7 +81,7 @@ func (c *CompressConfig) Resolve() *CompressConfig {
 
 // CompressConfigFromLDValue parses the LaunchDarkly CompressConfigFlag JSON
 // into a CompressConfig. Returns nil if the flag disables compression.
-func CompressConfigFromLDValue(ff *featureflags.Client, ctx context.Context) *CompressConfig {
+func CompressConfigFromLDValue(ctx context.Context, ff *featureflags.Client) *CompressConfig {
 	if ff == nil {
 		return nil
 	}
@@ -122,7 +122,7 @@ func ResolveCompressConfig(ctx context.Context, base CompressConfig, ff *feature
 			featureflags.CompressUseCaseContext(useCase),
 		)
 
-		if override := CompressConfigFromLDValue(ff, ctx); override != nil {
+		if override := CompressConfigFromLDValue(ctx, ff); override != nil {
 			return override
 		}
 	}

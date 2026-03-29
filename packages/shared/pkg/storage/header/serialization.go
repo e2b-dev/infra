@@ -2,13 +2,16 @@ package header
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 
 	"github.com/google/uuid"
+	lz4 "github.com/pierrec/lz4/v4"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
@@ -91,7 +94,18 @@ func serialize(metadata *Metadata, buildFiles map[uuid.UUID]BuildFileInfo, mappi
 		if err := binary.Write(&buf, binary.LittleEndian, uint32(len(buildFiles))); err != nil {
 			return nil, fmt.Errorf("failed to write build files count: %w", err)
 		}
-		for id, info := range buildFiles {
+
+		// Sort by UUID for deterministic serialization.
+		buildIDs := make([]uuid.UUID, 0, len(buildFiles))
+		for id := range buildFiles {
+			buildIDs = append(buildIDs, id)
+		}
+		slices.SortFunc(buildIDs, func(a, b uuid.UUID) int {
+			return cmp.Compare(a.String(), b.String())
+		})
+
+		for _, id := range buildIDs {
+			info := buildFiles[id]
 			entry := v4SerializableBuildFileInfo{
 				BuildId:  id,
 				Size:     info.Size,
@@ -289,9 +303,9 @@ func SerializeHeader(h *Header) ([]byte, error) {
 		return raw, nil
 	}
 
-	// V4: keep Metadata prefix raw, then [uint32 uncompressed size] + [LZ4 block].
+	// V4: keep Metadata prefix raw, then [uint32 uncompressed size] + [LZ4 frame].
 	block := raw[metadataSize:]
-	compressed, err := storage.CompressLZ4(block)
+	compressed, err := compressLZ4(block)
 	if err != nil {
 		return nil, fmt.Errorf("failed to LZ4-compress v4 header mappings: %w", err)
 	}
@@ -372,7 +386,7 @@ func DeserializeBytes(data []byte) (*Header, error) {
 			return nil, fmt.Errorf("v4 header uncompressed size %d exceeds maximum %d", uncompressedSize, storage.MaxCompressedHeaderSize)
 		}
 
-		blockData, err = storage.DecompressLZ4(blockData[4:], make([]byte, uncompressedSize))
+		blockData, err = decompressLZ4(blockData[4:])
 		if err != nil {
 			return nil, fmt.Errorf("failed to LZ4-decompress v4 header block: %w", err)
 		}
@@ -397,4 +411,41 @@ func DeserializeBytes(data []byte) (*Header, error) {
 	}
 
 	return NewHeader(metadata, mappings)
+}
+
+// compressLZ4 compresses data for V4 header serialization using the LZ4
+// streaming API. Settings are fixed for the V4 wire format.
+func compressLZ4(data []byte) ([]byte, error) {
+	var buf bytes.Buffer
+	buf.Grow(len(data))
+
+	w := lz4.NewWriter(&buf)
+	w.Apply(
+		lz4.BlockSizeOption(lz4.Block4Mb),
+		lz4.BlockChecksumOption(true),
+		lz4.ChecksumOption(true),
+		lz4.CompressionLevelOption(lz4.Fast),
+	)
+
+	if _, err := w.Write(data); err != nil {
+		return nil, fmt.Errorf("lz4 compress: %w", err)
+	}
+
+	if err := w.Close(); err != nil {
+		return nil, fmt.Errorf("lz4 compress close: %w", err)
+	}
+
+	return buf.Bytes(), nil
+}
+
+// decompressLZ4 decompresses an LZ4 frame from V4 header data.
+func decompressLZ4(src []byte) ([]byte, error) {
+	r := lz4.NewReader(bytes.NewReader(src))
+
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return nil, fmt.Errorf("lz4 decompress: %w", err)
+	}
+
+	return data, nil
 }
