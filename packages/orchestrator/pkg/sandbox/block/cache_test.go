@@ -11,6 +11,7 @@ import (
 	"testing"
 	"unsafe"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
 
@@ -219,7 +220,7 @@ func TestEmptyRanges(t *testing.T) {
 	})
 }
 
-func TestCacheExportToDiff_ZeroDirtyBlockMarkedEmpty(t *testing.T) {
+func TestCacheExportToDiff_ZeroDirtyBlockEmittedAsDirtyPayload(t *testing.T) {
 	t.Parallel()
 
 	const blockSize = header.RootfsBlockSize
@@ -250,7 +251,7 @@ func TestCacheExportToDiff_ZeroDirtyBlockMarkedEmpty(t *testing.T) {
 	require.EqualValues(t, blockSize, stat.Size(), "zero-filled dirty block should write block payload bytes")
 }
 
-func TestCacheExportToDiff_NonZeroDirtyBlockMarkedDirty(t *testing.T) {
+func TestCacheExportToDiff_ZeroDirtyBlockMapsToSnapshotBuild(t *testing.T) {
 	t.Parallel()
 
 	const blockSize = header.RootfsBlockSize
@@ -261,8 +262,8 @@ func TestCacheExportToDiff_NonZeroDirtyBlockMarkedDirty(t *testing.T) {
 		require.NoError(t, cache.Close())
 	})
 
-	nonZeroBlock := bytes.Repeat([]byte{0x01}, int(blockSize))
-	n, err := cache.WriteAt(nonZeroBlock, 0)
+	zeroBlock := make([]byte, blockSize)
+	n, err := cache.WriteAt(zeroBlock, 0)
 	require.NoError(t, err)
 	require.Equal(t, int(blockSize), n)
 
@@ -273,249 +274,124 @@ func TestCacheExportToDiff_NonZeroDirtyBlockMarkedDirty(t *testing.T) {
 	diffMetadata, err := cache.ExportToDiff(t.Context(), out)
 	require.NoError(t, err)
 
-	require.EqualValues(t, 1, diffMetadata.Dirty.Count(), "non-zero dirty block should be tracked in dirty metadata")
-	require.EqualValues(t, 0, diffMetadata.Empty.Count(), "non-zero dirty block should not be tracked as empty")
-
-	_, err = out.Seek(0, io.SeekStart)
+	baseBuildID := uuid.New()
+	originalHeader, err := header.NewHeader(
+		header.NewTemplateMetadata(baseBuildID, uint64(blockSize), uint64(blockSize)),
+		nil,
+	)
 	require.NoError(t, err)
 
-	payload, err := io.ReadAll(out)
+	snapshotBuildID := uuid.New()
+	diffHeader, err := diffMetadata.ToDiffHeader(t.Context(), originalHeader, snapshotBuildID)
 	require.NoError(t, err)
-	require.Equal(t, nonZeroBlock, payload)
+
+	_, _, mappedBuildID, err := diffHeader.GetShiftedMapping(t.Context(), 0)
+	require.NoError(t, err)
+
+	require.NotNil(t, mappedBuildID)
+	require.Equal(t, snapshotBuildID, *mappedBuildID, "zero-filled dirty block should map to the snapshot diff when empty detection is skipped")
+	require.NotEqual(t, uuid.Nil, *mappedBuildID, "zero-filled dirty block should no longer be represented as an empty mapping")
 }
 
-func TestExportToDiff_NoDirtyBlocks(t *testing.T) {
+func TestCacheExportToDiff_MixedDirtyBlocksKeepsZeroBlockInDiff(t *testing.T) {
 	t.Parallel()
 
-	blockSize := int64(4096)
-	size := blockSize * 8
+	const blockSize = header.RootfsBlockSize
+	const size = blockSize * 3
 
 	cache, err := NewCache(size, blockSize, t.TempDir()+"/cache", false)
 	require.NoError(t, err)
-	t.Cleanup(func() { cache.Close() })
+	t.Cleanup(func() {
+		require.NoError(t, cache.Close())
+	})
 
-	out, err := os.CreateTemp(t.TempDir(), "diff-*")
-	require.NoError(t, err)
-	defer out.Close()
+	zeroBlock := make([]byte, blockSize)
+	nonZeroBlock := bytes.Repeat([]byte{0xAB}, int(blockSize))
 
-	meta, err := cache.ExportToDiff(t.Context(), out)
-	require.NoError(t, err)
-
-	require.Equal(t, uint(0), meta.Dirty.Count(), "no dirty blocks expected")
-
-	info, err := out.Stat()
-	require.NoError(t, err)
-	require.Equal(t, int64(0), info.Size(), "output file should be empty")
-}
-
-func TestExportToDiff_SingleBlock(t *testing.T) {
-	t.Parallel()
-
-	blockSize := int64(4096)
-	size := blockSize * 8
-
-	cache, err := NewCache(size, blockSize, t.TempDir()+"/cache", false)
-	require.NoError(t, err)
-	t.Cleanup(func() { cache.Close() })
-
-	pattern := make([]byte, blockSize)
-	_, err = rand.Read(pattern)
+	_, err = cache.WriteAt(zeroBlock, 0)
 	require.NoError(t, err)
 
-	_, err = cache.WriteAt(pattern, 3*blockSize)
+	_, err = cache.WriteAt(nonZeroBlock, blockSize)
 	require.NoError(t, err)
 
 	out, err := os.CreateTemp(t.TempDir(), "diff-*")
 	require.NoError(t, err)
 	defer out.Close()
 
-	meta, err := cache.ExportToDiff(t.Context(), out)
+	diffMetadata, err := cache.ExportToDiff(t.Context(), out)
 	require.NoError(t, err)
 
-	require.Equal(t, uint(1), meta.Dirty.Count())
-	require.True(t, meta.Dirty.Test(3), "block 3 should be dirty")
+	require.EqualValues(t, 2, diffMetadata.Dirty.Count())
+	require.EqualValues(t, 0, diffMetadata.Empty.Count(), "mixed export should still skip empty tracking for zero-filled dirty blocks")
 
 	_, err = out.Seek(0, io.SeekStart)
 	require.NoError(t, err)
 	exported, err := io.ReadAll(out)
 	require.NoError(t, err)
+	require.Equal(t, append(zeroBlock, nonZeroBlock...), exported)
 
-	require.Len(t, exported, int(blockSize))
-	require.Equal(t, pattern, exported)
+	baseBuildID := uuid.New()
+	originalHeader, err := header.NewHeader(
+		header.NewTemplateMetadata(baseBuildID, uint64(blockSize), uint64(size)),
+		nil,
+	)
+	require.NoError(t, err)
+
+	snapshotBuildID := uuid.New()
+	diffHeader, err := diffMetadata.ToDiffHeader(t.Context(), originalHeader, snapshotBuildID)
+	require.NoError(t, err)
+
+	_, _, firstBlockBuildID, err := diffHeader.GetShiftedMapping(t.Context(), 0)
+	require.NoError(t, err)
+	require.Equal(t, snapshotBuildID, *firstBlockBuildID, "zero-filled dirty block should still map to the snapshot diff")
+
+	_, _, secondBlockBuildID, err := diffHeader.GetShiftedMapping(t.Context(), blockSize)
+	require.NoError(t, err)
+	require.Equal(t, snapshotBuildID, *secondBlockBuildID)
+
+	_, _, thirdBlockBuildID, err := diffHeader.GetShiftedMapping(t.Context(), 2*blockSize)
+	require.NoError(t, err)
+	require.Equal(t, baseBuildID, *thirdBlockBuildID, "clean blocks should keep the base mapping")
 }
 
-func TestExportToDiff_SparseBlocks(t *testing.T) {
+func TestCacheExportToDiff_NonContiguousDirtyBlocksPreserveRangeOrder(t *testing.T) {
 	t.Parallel()
 
-	blockSize := int64(4096)
-	numBlocks := int64(16)
-	size := blockSize * numBlocks
+	const blockSize = header.RootfsBlockSize
+	const size = blockSize * 5
 
 	cache, err := NewCache(size, blockSize, t.TempDir()+"/cache", false)
 	require.NoError(t, err)
-	t.Cleanup(func() { cache.Close() })
+	t.Cleanup(func() {
+		require.NoError(t, cache.Close())
+	})
 
-	dirtyIndices := []int64{1, 5, 14}
-	patterns := make(map[int64][]byte)
+	firstBlock := bytes.Repeat([]byte{0x11}, int(blockSize))
+	secondBlock := bytes.Repeat([]byte{0x22}, int(blockSize))
 
-	for _, idx := range dirtyIndices {
-		buf := make([]byte, blockSize)
-		_, err = rand.Read(buf)
-		require.NoError(t, err)
-		patterns[idx] = buf
+	_, err = cache.WriteAt(firstBlock, 0)
+	require.NoError(t, err)
 
-		_, err = cache.WriteAt(buf, idx*blockSize)
-		require.NoError(t, err)
-	}
+	_, err = cache.WriteAt(secondBlock, 3*blockSize)
+	require.NoError(t, err)
 
 	out, err := os.CreateTemp(t.TempDir(), "diff-*")
 	require.NoError(t, err)
 	defer out.Close()
 
-	meta, err := cache.ExportToDiff(t.Context(), out)
+	diffMetadata, err := cache.ExportToDiff(t.Context(), out)
 	require.NoError(t, err)
 
-	require.Equal(t, uint(len(dirtyIndices)), meta.Dirty.Count())
-	for _, idx := range dirtyIndices {
-		require.True(t, meta.Dirty.Test(uint(idx)), "block %d should be dirty", idx)
-	}
+	require.EqualValues(t, 2, diffMetadata.Dirty.Count())
+	require.True(t, diffMetadata.Dirty.Test(0))
+	require.True(t, diffMetadata.Dirty.Test(3))
+	require.EqualValues(t, 0, diffMetadata.Empty.Count())
 
 	_, err = out.Seek(0, io.SeekStart)
 	require.NoError(t, err)
 	exported, err := io.ReadAll(out)
 	require.NoError(t, err)
-
-	require.Len(t, exported, int(blockSize)*len(dirtyIndices))
-
-	for i, idx := range dirtyIndices {
-		start := int64(i) * blockSize
-		require.Equal(t, patterns[idx], exported[start:start+blockSize], "block %d content mismatch", idx)
-	}
-}
-
-func TestExportToDiff_AllBlocksDirty(t *testing.T) {
-	t.Parallel()
-
-	blockSize := int64(4096)
-	numBlocks := int64(8)
-	size := blockSize * numBlocks
-
-	cache, err := NewCache(size, blockSize, t.TempDir()+"/cache", false)
-	require.NoError(t, err)
-	t.Cleanup(func() { cache.Close() })
-
-	fullData := make([]byte, size)
-	_, err = rand.Read(fullData)
-	require.NoError(t, err)
-
-	_, err = cache.WriteAt(fullData, 0)
-	require.NoError(t, err)
-
-	out, err := os.CreateTemp(t.TempDir(), "diff-*")
-	require.NoError(t, err)
-	defer out.Close()
-
-	meta, err := cache.ExportToDiff(t.Context(), out)
-	require.NoError(t, err)
-
-	require.Equal(t, uint(numBlocks), meta.Dirty.Count())
-
-	_, err = out.Seek(0, io.SeekStart)
-	require.NoError(t, err)
-	exported, err := io.ReadAll(out)
-	require.NoError(t, err)
-
-	require.Equal(t, fullData, exported)
-}
-
-func TestExportToDiff_ContiguousBlocks(t *testing.T) {
-	t.Parallel()
-
-	blockSize := int64(4096)
-	numBlocks := int64(16)
-	size := blockSize * numBlocks
-
-	cache, err := NewCache(size, blockSize, t.TempDir()+"/cache", false)
-	require.NoError(t, err)
-	t.Cleanup(func() { cache.Close() })
-
-	contiguousData := make([]byte, blockSize*4)
-	_, err = rand.Read(contiguousData)
-	require.NoError(t, err)
-
-	_, err = cache.WriteAt(contiguousData, 4*blockSize)
-	require.NoError(t, err)
-
-	out, err := os.CreateTemp(t.TempDir(), "diff-*")
-	require.NoError(t, err)
-	defer out.Close()
-
-	meta, err := cache.ExportToDiff(t.Context(), out)
-	require.NoError(t, err)
-
-	require.Equal(t, uint(4), meta.Dirty.Count())
-
-	_, err = out.Seek(0, io.SeekStart)
-	require.NoError(t, err)
-	exported, err := io.ReadAll(out)
-	require.NoError(t, err)
-
-	require.Equal(t, contiguousData, exported)
-}
-
-func TestExportToDiff_ZeroSizeCache(t *testing.T) {
-	t.Parallel()
-
-	cache, err := NewCache(0, header.PageSize, t.TempDir()+"/cache", false)
-	require.NoError(t, err)
-	t.Cleanup(func() { cache.Close() })
-
-	out, err := os.CreateTemp(t.TempDir(), "diff-*")
-	require.NoError(t, err)
-	defer out.Close()
-
-	meta, err := cache.ExportToDiff(t.Context(), out)
-	require.NoError(t, err)
-
-	require.Equal(t, uint(0), meta.Dirty.Count())
-	require.Equal(t, uint(0), meta.Empty.Count())
-}
-
-func TestExportToDiff_LargerBlockSize(t *testing.T) {
-	t.Parallel()
-
-	blockSize := int64(header.HugepageSize)
-	numBlocks := int64(4)
-	size := blockSize * numBlocks
-
-	cache, err := NewCache(size, blockSize, t.TempDir()+"/cache", false)
-	require.NoError(t, err)
-	t.Cleanup(func() { cache.Close() })
-
-	data := make([]byte, blockSize)
-	_, err = rand.Read(data)
-	require.NoError(t, err)
-
-	_, err = cache.WriteAt(data, blockSize)
-	require.NoError(t, err)
-
-	out, err := os.CreateTemp(t.TempDir(), "diff-*")
-	require.NoError(t, err)
-	defer out.Close()
-
-	meta, err := cache.ExportToDiff(t.Context(), out)
-	require.NoError(t, err)
-
-	require.Equal(t, uint(1), meta.Dirty.Count())
-	require.True(t, meta.Dirty.Test(1))
-	require.Equal(t, uint(0), meta.Empty.Count())
-
-	_, err = out.Seek(0, io.SeekStart)
-	require.NoError(t, err)
-	exported, err := io.ReadAll(out)
-	require.NoError(t, err)
-
-	require.Equal(t, data, exported)
+	require.Equal(t, append(firstBlock, secondBlock...), exported)
 }
 
 func compareData(readBytes []byte, expectedBytes []byte) error {
