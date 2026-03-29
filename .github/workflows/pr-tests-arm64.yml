@@ -9,9 +9,10 @@ jobs:
   cross-compile:
     name: Cross-compile all packages for ARM64
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Go
         uses: ./.github/actions/go-setup-cache
@@ -67,7 +68,7 @@ jobs:
       fail-fast: false
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Go
         uses: ./.github/actions/go-setup-cache
