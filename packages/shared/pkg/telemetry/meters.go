@@ -422,9 +422,10 @@ func (t Stopwatch) Failure(ctx context.Context, total int64, kv ...attribute.Key
 func (t Stopwatch) end(ctx context.Context, result string, total int64, kv ...attribute.KeyValue) {
 	kv = append(kv, attribute.KeyValue{Key: resultAttr, Value: attribute.StringValue(result)})
 	kv = append(t.kv, kv...)
+	opt := metric.WithAttributeSet(attribute.NewSet(kv...))
 
 	amount := time.Since(t.start).Milliseconds()
-	t.histogram.Record(ctx, amount, metric.WithAttributes(kv...))
-	t.sum.Add(ctx, total, metric.WithAttributes(kv...))
-	t.count.Add(ctx, 1, metric.WithAttributes(kv...))
+	t.histogram.Record(ctx, amount, opt)
+	t.sum.Add(ctx, total, opt)
+	t.count.Add(ctx, 1, opt)
 }
