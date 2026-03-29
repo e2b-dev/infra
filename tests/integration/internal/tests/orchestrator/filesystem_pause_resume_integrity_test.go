@@ -38,6 +38,8 @@ func TestSandboxFilesystemPauseResumeIntegrity(t *testing.T) {
 	}
 
 	t.Run("contiguous write hash survives pause", func(t *testing.T) {
+		t.Parallel()
+		t.Helper()
 		withLimitedParallelism(t, func(t *testing.T) {
 			runFilesystemPauseResumeIntegrityCase(t, filesystemPauseResumeCase{
 				name:       "contiguous",
@@ -51,6 +53,8 @@ func TestSandboxFilesystemPauseResumeIntegrity(t *testing.T) {
 	})
 
 	t.Run("scattered write hash survives pause", func(t *testing.T) {
+		t.Parallel()
+		t.Helper()
 		withLimitedParallelism(t, func(t *testing.T) {
 			runFilesystemPauseResumeIntegrityCase(t, filesystemPauseResumeCase{
 				name:       "scattered",
@@ -64,6 +68,8 @@ func TestSandboxFilesystemPauseResumeIntegrity(t *testing.T) {
 	})
 
 	t.Run("zeroed ranges and truncate survive pause", func(t *testing.T) {
+		t.Parallel()
+		t.Helper()
 		withLimitedParallelism(t, func(t *testing.T) {
 			runFilesystemPauseResumeTruncateCase(t)
 		})
@@ -71,6 +77,8 @@ func TestSandboxFilesystemPauseResumeIntegrity(t *testing.T) {
 }
 
 func TestSandboxFilesystemPauseResumeIntegrityStress(t *testing.T) {
+	t.Parallel()
+
 	if os.Getenv("TESTS_FS_INTEGRITY_STRESS") != "1" {
 		t.Skip("set TESTS_FS_INTEGRITY_STRESS=1 to run the large pause/resume filesystem stress test")
 	}
@@ -79,6 +87,7 @@ func TestSandboxFilesystemPauseResumeIntegrityStress(t *testing.T) {
 	cycles := getenvInt(t, "TESTS_FS_INTEGRITY_CYCLES", 10)
 
 	t.Run("contiguous", func(t *testing.T) {
+		t.Parallel()
 		runFilesystemPauseResumeIntegrityCase(t, filesystemPauseResumeCase{
 			name:       fmt.Sprintf("stress-contiguous-%dGiB", writeGiB),
 			filePath:   fmt.Sprintf("/home/user/fs-integrity-stress-contiguous-%dGiB.bin", writeGiB),
@@ -90,6 +99,7 @@ func TestSandboxFilesystemPauseResumeIntegrityStress(t *testing.T) {
 	})
 
 	t.Run("scattered", func(t *testing.T) {
+		t.Parallel()
 		runFilesystemPauseResumeIntegrityCase(t, filesystemPauseResumeCase{
 			name:       fmt.Sprintf("stress-scattered-%dGiB", writeGiB),
 			filePath:   fmt.Sprintf("/home/user/fs-integrity-stress-scattered-%dGiB.bin", writeGiB),
@@ -204,7 +214,7 @@ PY`)
 
 	cycles := getenvInt(t, "TESTS_FS_INTEGRITY_TRUNCATE_CYCLES", 1)
 
-	for i := 0; i < cycles; i++ {
+	for i := range cycles {
 		pause()
 		resume()
 
