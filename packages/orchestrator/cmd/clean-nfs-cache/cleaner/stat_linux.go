@@ -4,7 +4,7 @@ package cleaner
 
 import (
 	"fmt"
-	"os"
+	"path/filepath"
 
 	"golang.org/x/sys/unix"
 )
@@ -30,11 +30,11 @@ func (c *Cleaner) stat(fullPath string) (*Candidate, error) {
 	}, nil
 }
 
-func (c *Cleaner) statInDir(df *os.File, filename string) (*File, error) {
+func (c *Cleaner) statInDir(dirPath string, filename string) (*File, error) {
 	c.StatxC.Add(1)
 	c.StatxInDirC.Add(1)
 	var statx unix.Statx_t
-	err := unix.Statx(int(df.Fd()), filename,
+	err := unix.Statx(unix.AT_FDCWD, filepath.Join(dirPath, filename),
 		unix.AT_STATX_DONT_SYNC|unix.AT_SYMLINK_NOFOLLOW|unix.AT_NO_AUTOMOUNT,
 		unix.STATX_ATIME|unix.STATX_SIZE,
 		&statx,
