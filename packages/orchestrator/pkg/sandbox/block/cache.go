@@ -100,26 +100,6 @@ func (c *Cache) isClosed() bool {
 	return c.closed.Load()
 }
 
-func (c *Cache) Sync() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if c.isClosed() {
-		return NewErrCacheClosed(c.filePath)
-	}
-
-	if c.mmap == nil {
-		return nil
-	}
-
-	err := c.mmap.Flush()
-	if err != nil {
-		return fmt.Errorf("error syncing cache: %w", err)
-	}
-
-	return nil
-}
-
 func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMetadata, error) {
 	ctx, childSpan := tracer.Start(ctx, "export-to-diff")
 	defer childSpan.End()
@@ -139,12 +119,20 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 		}, nil
 	}
 
-	flushStart := time.Now()
-	err := c.mmap.Flush()
+	f, err := os.Open(c.filePath)
 	if err != nil {
-		return nil, fmt.Errorf("error flushing mmap: %w", err)
+		return nil, fmt.Errorf("error opening file: %w", err)
 	}
-	telemetry.SetAttributes(ctx, attribute.Int64("flush_ms", time.Since(flushStart).Milliseconds()))
+	defer f.Close()
+
+	src := int(f.Fd())
+
+	// Explicit mmap flush is not necessary, because the kernel will handle that as part of the copy_file_range syscall.
+	// Calling sync_file_range marks the range for writeback and starts it early.
+	err = unix.SyncFileRange(src, 0, c.size, unix.SYNC_FILE_RANGE_WRITE)
+	if err != nil {
+		return nil, fmt.Errorf("error syncing file: %w", err)
+	}
 
 	buildStart := time.Now()
 	builder := header.NewDiffMetadataBuilder(c.size, c.blockSize)
@@ -159,13 +147,6 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 	diffMetadata := builder.Build()
 	telemetry.SetAttributes(ctx, attribute.Int64("build_metadata_ms", time.Since(buildStart).Milliseconds()))
 
-	f, err := os.Open(c.filePath)
-	if err != nil {
-		return nil, fmt.Errorf("error opening file: %w", err)
-	}
-	defer f.Close()
-
-	src := int(f.Fd())
 	dst := int(out.Fd())
 	var writeOffset int64
 	var totalRanges int64
