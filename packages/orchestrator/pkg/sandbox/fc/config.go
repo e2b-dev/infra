@@ -1,6 +1,7 @@
 package fc
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 
@@ -38,6 +39,10 @@ func (t Config) HostKernelPath(config cfg.BuilderConfig) string {
 	archPath := filepath.Join(config.HostKernelsDir, t.KernelVersion, utils.TargetArch(), SandboxKernelFile)
 	if _, err := os.Stat(archPath); err == nil {
 		return archPath
+	} else if !errors.Is(err, os.ErrNotExist) {
+		// Non-existence errors (e.g. permission denied) should not silently fall back
+		// to the legacy path, as that could use the wrong binary.
+		return archPath
 	}
 
 	return filepath.Join(config.HostKernelsDir, t.KernelVersion, SandboxKernelFile)
@@ -49,6 +54,10 @@ func (t Config) FirecrackerPath(config cfg.BuilderConfig) string {
 	// that haven't migrated to the arch-prefixed layout yet.
 	archPath := filepath.Join(config.FirecrackerVersionsDir, t.FirecrackerVersion, utils.TargetArch(), FirecrackerBinaryName)
 	if _, err := os.Stat(archPath); err == nil {
+		return archPath
+	} else if !errors.Is(err, os.ErrNotExist) {
+		// Non-existence errors (e.g. permission denied) should not silently fall back
+		// to the legacy path, as that could use the wrong binary.
 		return archPath
 	}
 

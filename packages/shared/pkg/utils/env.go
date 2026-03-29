@@ -5,6 +5,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"sync"
 )
 
 // archAliases normalizes common architecture names to Go convention.
@@ -15,6 +16,8 @@ var archAliases = map[string]string{
 	"aarch64": "arm64",
 }
 
+var archWarningOnce sync.Once
+
 // TargetArch returns the target architecture for binary paths and OCI platform.
 // If TARGET_ARCH is set, it is normalized to Go convention ("amd64" or "arm64");
 // otherwise defaults to the host architecture (runtime.GOARCH).
@@ -24,7 +27,9 @@ func TargetArch() string {
 			return normalized
 		}
 
-		fmt.Fprintf(os.Stderr, "WARNING: unrecognized TARGET_ARCH=%q, falling back to %s\n", arch, runtime.GOARCH)
+		archWarningOnce.Do(func() {
+			fmt.Fprintf(os.Stderr, "WARNING: unrecognized TARGET_ARCH=%q, falling back to %s\n", arch, runtime.GOARCH)
+		})
 
 		return runtime.GOARCH
 	}
