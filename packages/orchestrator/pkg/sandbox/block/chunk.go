@@ -44,64 +44,74 @@ type precomputedAttrs struct {
 	// RemoteReads timer (runFetch)
 	remoteSuccess metric.MeasurementOption
 	remoteFailure metric.MeasurementOption
-
-	begin attribute.KeyValue
 }
 
-func precomputeAttributes(isCompressed bool) precomputedAttrs {
-	compressed := attribute.Bool(compressedAttr, isCompressed)
+var chunkerAttrs = precomputedAttrs{
+	successFromCache: telemetry.PrecomputeAttrs(
+		telemetry.Success,
+		attribute.String(pullType, pullTypeLocal)),
 
-	return precomputedAttrs{
-		successFromCache: telemetry.PrecomputeAttrs(
-			telemetry.Success, compressed,
-			attribute.String(pullType, pullTypeLocal)),
+	successFromRemote: telemetry.PrecomputeAttrs(
+		telemetry.Success,
+		attribute.String(pullType, pullTypeRemote)),
 
-		successFromRemote: telemetry.PrecomputeAttrs(
-			telemetry.Success, compressed,
-			attribute.String(pullType, pullTypeRemote)),
+	failCacheRead: telemetry.PrecomputeAttrs(
+		telemetry.Failure,
+		attribute.String(pullType, pullTypeLocal),
+		attribute.String(failureReason, failureTypeLocalRead)),
 
-		failCacheRead: telemetry.PrecomputeAttrs(
-			telemetry.Failure, compressed,
-			attribute.String(pullType, pullTypeLocal),
-			attribute.String(failureReason, failureTypeLocalRead)),
+	failRemoteFetch: telemetry.PrecomputeAttrs(
+		telemetry.Failure,
+		attribute.String(pullType, pullTypeRemote),
+		attribute.String(failureReason, failureTypeCacheFetch)),
 
-		failRemoteFetch: telemetry.PrecomputeAttrs(
-			telemetry.Failure, compressed,
-			attribute.String(pullType, pullTypeRemote),
-			attribute.String(failureReason, failureTypeCacheFetch)),
+	failLocalReadAgain: telemetry.PrecomputeAttrs(
+		telemetry.Failure,
+		attribute.String(pullType, pullTypeLocal),
+		attribute.String(failureReason, failureTypeLocalReadAgain)),
 
-		failLocalReadAgain: telemetry.PrecomputeAttrs(
-			telemetry.Failure, compressed,
-			attribute.String(pullType, pullTypeLocal),
-			attribute.String(failureReason, failureTypeLocalReadAgain)),
+	remoteSuccess: telemetry.PrecomputeAttrs(
+		telemetry.Success),
 
-		remoteSuccess: telemetry.PrecomputeAttrs(
-			telemetry.Success, compressed),
-
-		remoteFailure: telemetry.PrecomputeAttrs(
-			telemetry.Failure, compressed,
-			attribute.String(failureReason, failureTypeRemoteRead)),
-
-		begin: compressed,
-	}
+	remoteFailure: telemetry.PrecomputeAttrs(
+		telemetry.Failure,
+		attribute.String(failureReason, failureTypeRemoteRead)),
 }
 
-var (
-	precomputedGetFrameCompressed   = precomputeAttributes(true)
-	precomputedGetFrameUncompressed = precomputeAttributes(false)
-)
+var chunkerAttrsCompressed = precomputedAttrs{
+	successFromCache: telemetry.PrecomputeAttrs(
+		telemetry.Success, attribute.Bool(compressedAttr, true),
+		attribute.String(pullType, pullTypeLocal)),
 
-func precomputedGetFrameAttrs(compressed bool) precomputedAttrs {
-	if compressed {
-		return precomputedGetFrameCompressed
-	}
+	successFromRemote: telemetry.PrecomputeAttrs(
+		telemetry.Success, attribute.Bool(compressedAttr, true),
+		attribute.String(pullType, pullTypeRemote)),
 
-	return precomputedGetFrameUncompressed
+	failCacheRead: telemetry.PrecomputeAttrs(
+		telemetry.Failure, attribute.Bool(compressedAttr, true),
+		attribute.String(pullType, pullTypeLocal),
+		attribute.String(failureReason, failureTypeLocalRead)),
+
+	failRemoteFetch: telemetry.PrecomputeAttrs(
+		telemetry.Failure, attribute.Bool(compressedAttr, true),
+		attribute.String(pullType, pullTypeRemote),
+		attribute.String(failureReason, failureTypeCacheFetch)),
+
+	failLocalReadAgain: telemetry.PrecomputeAttrs(
+		telemetry.Failure, attribute.Bool(compressedAttr, true),
+		attribute.String(pullType, pullTypeLocal),
+		attribute.String(failureReason, failureTypeLocalReadAgain)),
+
+	remoteSuccess: telemetry.PrecomputeAttrs(
+		telemetry.Success, attribute.Bool(compressedAttr, true)),
+
+	remoteFailure: telemetry.PrecomputeAttrs(
+		telemetry.Failure, attribute.Bool(compressedAttr, true),
+		attribute.String(failureReason, failureTypeRemoteRead)),
 }
 
 type Chunker struct {
-	buildID     string
-	fileType    string // e.g. "memfile", "rootfs.ext4"
+	storagePath string // e.g. "buildID/memfile"
 	persistence storage.StorageProvider
 	size        int64 // uncompressed size
 
@@ -115,12 +125,10 @@ type Chunker struct {
 var _ FramedBlockReader = (*Chunker)(nil)
 
 // NewChunker creates a Chunker backed by a new mmap cache at cachePath.
-// The storage path is derived per-fetch from the FrameTable passed to
-// SliceBlock/ReadBlock, so the Chunker survives header swaps (P2P → GCS
-// transition) without holding a stale path.
+// storagePath is the base GCS path (e.g. "buildID/memfile"); for compressed
+// reads the compression suffix is appended per-fetch from the FrameTable.
 func NewChunker(
-	buildID string,
-	fileType string,
+	storagePath string,
 	persistence storage.StorageProvider,
 	size int64,
 	blockSize int64,
@@ -133,8 +141,7 @@ func NewChunker(
 	}
 
 	return &Chunker{
-		buildID:     buildID,
-		fileType:    fileType,
+		storagePath: storagePath,
 		persistence: persistence,
 		size:        size,
 		cache:       cache,
@@ -155,8 +162,11 @@ func (c *Chunker) ReadBlock(ctx context.Context, b []byte, off int64, ft *storag
 // offset. On cache miss, fetches from storage into the cache first.
 func (c *Chunker) SliceBlock(ctx context.Context, off, length int64, ft *storage.FrameTable) ([]byte, error) {
 	compressed := ft.IsCompressed()
-	attrs := precomputedGetFrameAttrs(compressed)
-	timer := c.metrics.BlocksTimerFactory.Begin(attrs.begin)
+	attrs := chunkerAttrs
+	if compressed {
+		attrs = chunkerAttrsCompressed
+	}
+	timer := c.metrics.BlocksTimerFactory.Begin()
 
 	// Fast path: already in mmap cache.
 	b, err := c.cache.Slice(off, length)
@@ -256,8 +266,11 @@ func (c *Chunker) runFetch(ctx context.Context, session *fetchSession, offsetU i
 	defer releaseLock()
 
 	compressed := ft.IsCompressed()
-	attrs := precomputedGetFrameAttrs(compressed)
-	timer := c.metrics.RemoteReadsTimerFactory.Begin(attrs.begin)
+	attrs := chunkerAttrs
+	if compressed {
+		attrs = chunkerAttrsCompressed
+	}
+	timer := c.metrics.RemoteReadsTimerFactory.Begin()
 
 	// Pass blockSize as readSize so each progressive onRead covers at least
 	// one complete block. readInto applies a floor internally to avoid
@@ -273,9 +286,7 @@ func (c *Chunker) runFetch(ctx context.Context, session *fetchSession, offsetU i
 		prevTotal = totalWritten
 	}
 
-	// Derive the storage path from the FrameTable at fetch time. This ensures
-	// the correct path is used even after a header swap (P2P → GCS transition).
-	path := fmt.Sprintf("%s/%s", c.buildID, c.fileType)
+	path := c.storagePath
 	if compressed {
 		path = storage.CompressedPath(path, ft.CompressionType())
 	}

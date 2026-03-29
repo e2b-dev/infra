@@ -2,13 +2,12 @@
 // github.com/vektra/mockery
 // template: testify
 
-package providermocks
+package storage
 
 import (
 	"context"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -141,27 +140,27 @@ func (_c *MockStorageProvider_GetDetails_Call) RunAndReturn(run func() string) *
 }
 
 // OpenBlob provides a mock function for the type MockStorageProvider
-func (_mock *MockStorageProvider) OpenBlob(ctx context.Context, path string) (storage.Blob, error) {
-	ret := _mock.Called(ctx, path)
+func (_mock *MockStorageProvider) OpenBlob(ctx context.Context, path string, objectType ObjectType) (Blob, error) {
+	ret := _mock.Called(ctx, path, objectType)
 
 	if len(ret) == 0 {
 		panic("no return value specified for OpenBlob")
 	}
 
-	var r0 storage.Blob
+	var r0 Blob
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (storage.Blob, error)); ok {
-		return returnFunc(ctx, path)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, ObjectType) (Blob, error)); ok {
+		return returnFunc(ctx, path, objectType)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) storage.Blob); ok {
-		r0 = returnFunc(ctx, path)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, ObjectType) Blob); ok {
+		r0 = returnFunc(ctx, path, objectType)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(storage.Blob)
+			r0 = ret.Get(0).(Blob)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
-		r1 = returnFunc(ctx, path)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, ObjectType) error); ok {
+		r1 = returnFunc(ctx, path, objectType)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -176,11 +175,12 @@ type MockStorageProvider_OpenBlob_Call struct {
 // OpenBlob is a helper method to define mock.On call
 //   - ctx context.Context
 //   - path string
-func (_e *MockStorageProvider_Expecter) OpenBlob(ctx interface{}, path interface{}) *MockStorageProvider_OpenBlob_Call {
-	return &MockStorageProvider_OpenBlob_Call{Call: _e.mock.On("OpenBlob", ctx, path)}
+//   - objectType ObjectType
+func (_e *MockStorageProvider_Expecter) OpenBlob(ctx interface{}, path interface{}, objectType interface{}) *MockStorageProvider_OpenBlob_Call {
+	return &MockStorageProvider_OpenBlob_Call{Call: _e.mock.On("OpenBlob", ctx, path, objectType)}
 }
 
-func (_c *MockStorageProvider_OpenBlob_Call) Run(run func(ctx context.Context, path string)) *MockStorageProvider_OpenBlob_Call {
+func (_c *MockStorageProvider_OpenBlob_Call) Run(run func(ctx context.Context, path string, objectType ObjectType)) *MockStorageProvider_OpenBlob_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -190,42 +190,47 @@ func (_c *MockStorageProvider_OpenBlob_Call) Run(run func(ctx context.Context, p
 		if args[1] != nil {
 			arg1 = args[1].(string)
 		}
+		var arg2 ObjectType
+		if args[2] != nil {
+			arg2 = args[2].(ObjectType)
+		}
 		run(
 			arg0,
 			arg1,
+			arg2,
 		)
 	})
 	return _c
 }
 
-func (_c *MockStorageProvider_OpenBlob_Call) Return(blob storage.Blob, err error) *MockStorageProvider_OpenBlob_Call {
+func (_c *MockStorageProvider_OpenBlob_Call) Return(blob Blob, err error) *MockStorageProvider_OpenBlob_Call {
 	_c.Call.Return(blob, err)
 	return _c
 }
 
-func (_c *MockStorageProvider_OpenBlob_Call) RunAndReturn(run func(ctx context.Context, path string) (storage.Blob, error)) *MockStorageProvider_OpenBlob_Call {
+func (_c *MockStorageProvider_OpenBlob_Call) RunAndReturn(run func(ctx context.Context, path string, objectType ObjectType) (Blob, error)) *MockStorageProvider_OpenBlob_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // OpenFramedFile provides a mock function for the type MockStorageProvider
-func (_mock *MockStorageProvider) OpenFramedFile(ctx context.Context, path string) (storage.FramedFile, error) {
+func (_mock *MockStorageProvider) OpenFramedFile(ctx context.Context, path string) (FramedFile, error) {
 	ret := _mock.Called(ctx, path)
 
 	if len(ret) == 0 {
 		panic("no return value specified for OpenFramedFile")
 	}
 
-	var r0 storage.FramedFile
+	var r0 FramedFile
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (storage.FramedFile, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (FramedFile, error)); ok {
 		return returnFunc(ctx, path)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) storage.FramedFile); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) FramedFile); ok {
 		r0 = returnFunc(ctx, path)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(storage.FramedFile)
+			r0 = ret.Get(0).(FramedFile)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
@@ -266,12 +271,12 @@ func (_c *MockStorageProvider_OpenFramedFile_Call) Run(run func(ctx context.Cont
 	return _c
 }
 
-func (_c *MockStorageProvider_OpenFramedFile_Call) Return(framedFile storage.FramedFile, err error) *MockStorageProvider_OpenFramedFile_Call {
+func (_c *MockStorageProvider_OpenFramedFile_Call) Return(framedFile FramedFile, err error) *MockStorageProvider_OpenFramedFile_Call {
 	_c.Call.Return(framedFile, err)
 	return _c
 }
 
-func (_c *MockStorageProvider_OpenFramedFile_Call) RunAndReturn(run func(ctx context.Context, path string) (storage.FramedFile, error)) *MockStorageProvider_OpenFramedFile_Call {
+func (_c *MockStorageProvider_OpenFramedFile_Call) RunAndReturn(run func(ctx context.Context, path string) (FramedFile, error)) *MockStorageProvider_OpenFramedFile_Call {
 	_c.Call.Return(run)
 	return _c
 }

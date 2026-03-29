@@ -158,24 +158,24 @@ func (t *Header) GetShiftedMapping(ctx context.Context, offset int64) (BuildMap,
 	if err != nil {
 		return BuildMap{}, err
 	}
-	lengthInBuild := int64(mapping.Length) - shift
+	mappedLength := int64(mapping.Length) - shift
 
 	b := BuildMap{
 		Offset:     mapping.BuildStorageOffset + uint64(shift),
-		Length:     uint64(lengthInBuild),
+		Length:     uint64(mappedLength),
 		BuildId:    mapping.BuildId,
 		FrameTable: mapping.FrameTable,
 	}
 
-	if lengthInBuild < 0 {
+	if mappedLength < 0 {
 		if t.IsNormalizeFixApplied() {
-			return BuildMap{}, fmt.Errorf("mapped length for offset %d is negative: %d", offset, lengthInBuild)
+			return BuildMap{}, fmt.Errorf("mapped length for offset %d is negative: %d", offset, mappedLength)
 		}
 
 		b.Length = 0
 		logger.L().Warn(ctx, "mapped length is negative, but normalize fix is not applied",
 			zap.Int64("offset", offset),
-			zap.Int64("mappedLength", lengthInBuild),
+			zap.Int64("mappedLength", mappedLength),
 			logger.WithBuildID(mapping.BuildId.String()),
 		)
 	}

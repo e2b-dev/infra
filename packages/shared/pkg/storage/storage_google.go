@@ -185,7 +185,7 @@ func (s *gcpStorage) OpenFramedFile(_ context.Context, path string) (FramedFile,
 	}, nil
 }
 
-func (s *gcpStorage) OpenBlob(_ context.Context, path string) (Blob, error) {
+func (s *gcpStorage) OpenBlob(_ context.Context, path string, _ ObjectType) (Blob, error) {
 	handle := s.bucket.Object(path).Retryer(
 		storage.WithMaxAttempts(googleMaxAttempts),
 		storage.WithPolicy(storage.RetryAlways),

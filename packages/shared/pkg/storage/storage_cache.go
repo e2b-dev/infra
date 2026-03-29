@@ -85,8 +85,8 @@ func (c cache) UploadSignedURL(ctx context.Context, path string, ttl time.Durati
 	return c.inner.UploadSignedURL(ctx, path, ttl)
 }
 
-func (c cache) OpenBlob(ctx context.Context, path string) (Blob, error) {
-	innerObject, err := c.inner.OpenBlob(ctx, path)
+func (c cache) OpenBlob(ctx context.Context, path string, objectType ObjectType) (Blob, error) {
+	innerObject, err := c.inner.OpenBlob(ctx, path, objectType)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open object: %w", err)
 	}

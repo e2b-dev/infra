@@ -17,7 +17,7 @@ var ErrUnknownFile = fmt.Errorf("unknown file")
 // Returns ErrNotAvailable when the build is not in the local cache.
 // Returns ErrUnknownFile for unrecognised file names.
 func ResolveFramed(cache Cache, buildID, fileName string) (FramedSource, error) {
-	switch fileName {
+	switch storage.BaseFileName(fileName) {
 	case storage.MemfileName, storage.RootfsName:
 		diff, ok := cache.LookupDiff(buildID, build.DiffType(fileName))
 		if !ok {

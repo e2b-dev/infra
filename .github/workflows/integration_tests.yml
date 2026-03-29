@@ -7,10 +7,6 @@ on:
         type: boolean
         description: "Whether to publish the results"
         required: true
-      compression:
-        type: boolean
-        description: "Run with compression enabled (tagged tests only)"
-        default: false
 jobs:
   integration_tests:
     runs-on: infra-tests
@@ -35,9 +31,10 @@ jobs:
       - name: Start Services
         uses: ./.github/actions/start-services
         with:
-          compress_enabled: ${{ inputs.compression && 'true' || 'false' }}
-          compress_type: "zstd"
-          compress_level: "2"
+          compress_enabled: "true"
+          compress_type: "lz4"
+          compress_level: "0"
+          compress_workers: "8"
 
       - name: Run Integration Tests
         env:
@@ -46,12 +43,7 @@ jobs:
           TESTS_ORCHESTRATOR_HOST: "localhost:5008"
           TESTS_ENVD_PROXY: "http://localhost:3002"
           TESTS_CLIENT_PROXY: "http://localhost:3002"
-        run: |
-          if [ "${{ inputs.compression }}" = "true" ]; then
-            make test-integration-compression
-          else
-            make test-integration
-          fi
+        run: make test-integration
 
       - name: Check for Data Races in Service Logs
         if: always()

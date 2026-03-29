@@ -14,8 +14,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	orchestratormocks "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator/mocks"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
-	storagemocks "github.com/e2b-dev/infra/packages/shared/pkg/storage/mocks"
-	providermocks "github.com/e2b-dev/infra/packages/shared/pkg/storage/mocks/provider"
 )
 
 func TestPeerFramedFile_Size_PeerSucceeds(t *testing.T) {
@@ -44,10 +42,10 @@ func TestPeerFramedFile_Size_PeerNotAvailable_FallsBackToBase(t *testing.T) {
 	client.EXPECT().GetBuildFileSize(mock.Anything, mock.Anything).Return(
 		&orchestrator.GetBuildFileSizeResponse{Availability: &orchestrator.PeerAvailability{NotAvailable: true}}, nil)
 
-	baseFF := storagemocks.NewMockFramedFile(t)
+	baseFF := storage.NewMockFramedFile(t)
 	baseFF.EXPECT().Size(mock.Anything).Return(int64(8192), nil)
 
-	base := providermocks.NewMockStorageProvider(t)
+	base := storage.NewMockStorageProvider(t)
 	base.EXPECT().OpenFramedFile(mock.Anything, "build-1/memfile").Return(baseFF, nil)
 
 	f := &peerFramedFile{peerHandle: peerHandle[storage.FramedFile]{
@@ -100,7 +98,7 @@ func TestPeerFramedFile_GetFrame_PeerNotAvailable_FallsBackToBase(t *testing.T) 
 	client := orchestratormocks.NewMockChunkServiceClient(t)
 	client.EXPECT().GetBuildFrame(mock.Anything, mock.Anything).Return(stream, nil)
 
-	baseFF := storagemocks.NewMockFramedFile(t)
+	baseFF := storage.NewMockFramedFile(t)
 	baseFF.EXPECT().GetFrame(mock.Anything, int64(0), (*storage.FrameTable)(nil), false, mock.Anything, int64(len(baseData)), mock.Anything).
 		RunAndReturn(func(_ context.Context, _ int64, _ *storage.FrameTable, _ bool, buf []byte, _ int64, onRead func(int64)) (storage.Range, error) {
 			n := copy(buf, baseData)
@@ -111,7 +109,7 @@ func TestPeerFramedFile_GetFrame_PeerNotAvailable_FallsBackToBase(t *testing.T) 
 			return storage.Range{Start: 0, Length: n}, nil
 		})
 
-	base := providermocks.NewMockStorageProvider(t)
+	base := storage.NewMockStorageProvider(t)
 	base.EXPECT().OpenFramedFile(mock.Anything, "build-1/memfile").Return(baseFF, nil)
 
 	f := &peerFramedFile{peerHandle: peerHandle[storage.FramedFile]{
@@ -137,7 +135,7 @@ func TestPeerFramedFile_GetFrame_PeerError_FallsBackToBase(t *testing.T) {
 	client := orchestratormocks.NewMockChunkServiceClient(t)
 	client.EXPECT().GetBuildFrame(mock.Anything, mock.Anything).Return(nil, errors.New("peer unavailable"))
 
-	baseFF := storagemocks.NewMockFramedFile(t)
+	baseFF := storage.NewMockFramedFile(t)
 	baseFF.EXPECT().GetFrame(mock.Anything, int64(0), (*storage.FrameTable)(nil), false, mock.Anything, int64(len(baseData)), mock.Anything).
 		RunAndReturn(func(_ context.Context, _ int64, _ *storage.FrameTable, _ bool, buf []byte, _ int64, onRead func(int64)) (storage.Range, error) {
 			n := copy(buf, baseData)
@@ -148,7 +146,7 @@ func TestPeerFramedFile_GetFrame_PeerError_FallsBackToBase(t *testing.T) {
 			return storage.Range{Start: 0, Length: n}, nil
 		})
 
-	base := providermocks.NewMockStorageProvider(t)
+	base := storage.NewMockStorageProvider(t)
 	base.EXPECT().OpenFramedFile(mock.Anything, "build-1/memfile").Return(baseFF, nil)
 
 	f := &peerFramedFile{peerHandle: peerHandle[storage.FramedFile]{
@@ -231,10 +229,10 @@ func TestPeerFramedFile_Size_UseStorage_SetsUploadedAndStoresUploadedHeaders(t *
 			},
 		}, nil)
 
-	baseFF := storagemocks.NewMockFramedFile(t)
+	baseFF := storage.NewMockFramedFile(t)
 	baseFF.EXPECT().Size(mock.Anything).Return(int64(4096), nil)
 
-	base := providermocks.NewMockStorageProvider(t)
+	base := storage.NewMockStorageProvider(t)
 	base.EXPECT().OpenFramedFile(mock.Anything, "build-1/memfile").Return(baseFF, nil)
 
 	uploaded := &atomic.Pointer[UploadedHeaders]{}
@@ -276,8 +274,8 @@ func TestPeerFramedFile_GetFrame_UploadedHeaders_ReturnsPeerTransitionedError(t 
 		RootfsHeader:  rootHeader,
 	})
 
-	baseFF := storagemocks.NewMockFramedFile(t)
-	base := providermocks.NewMockStorageProvider(t)
+	baseFF := storage.NewMockFramedFile(t)
+	base := storage.NewMockStorageProvider(t)
 	base.EXPECT().OpenFramedFile(mock.Anything, "build-1/memfile").Return(baseFF, nil)
 
 	f := &peerFramedFile{peerHandle: peerHandle[storage.FramedFile]{
@@ -316,7 +314,7 @@ func TestPeerFramedFile_GetFrame_WithFrameTable_StillTransitions(t *testing.T) {
 
 	ft := &storage.FrameTable{}
 
-	baseFF := storagemocks.NewMockFramedFile(t)
+	baseFF := storage.NewMockFramedFile(t)
 	// base.GetFrame should NOT be called — transition fires first
 
 	f := &peerFramedFile{peerHandle: peerHandle[storage.FramedFile]{
@@ -348,7 +346,7 @@ func TestPeerFramedFile_GetFrame_UploadedSkipsPeer(t *testing.T) {
 	uploaded.Store(&UploadedHeaders{})
 
 	baseData := []byte("from gcs")
-	baseFF := storagemocks.NewMockFramedFile(t)
+	baseFF := storage.NewMockFramedFile(t)
 	baseFF.EXPECT().GetFrame(mock.Anything, int64(0), (*storage.FrameTable)(nil), false, mock.Anything, int64(len(baseData)), mock.Anything).
 		RunAndReturn(func(_ context.Context, _ int64, _ *storage.FrameTable, _ bool, buf []byte, _ int64, onRead func(int64)) (storage.Range, error) {
 			n := copy(buf, baseData)
@@ -359,7 +357,7 @@ func TestPeerFramedFile_GetFrame_UploadedSkipsPeer(t *testing.T) {
 			return storage.Range{Start: 0, Length: n}, nil
 		})
 
-	base := providermocks.NewMockStorageProvider(t)
+	base := storage.NewMockStorageProvider(t)
 	base.EXPECT().OpenFramedFile(mock.Anything, "build-1/memfile").Return(baseFF, nil)
 
 	f := &peerFramedFile{peerHandle: peerHandle[storage.FramedFile]{

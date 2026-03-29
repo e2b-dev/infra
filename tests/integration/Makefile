@@ -45,25 +45,6 @@ test/%:
 		*) go tool gotestsum --rerun-fails=1 --packages="$$TEST_PATH/..." --format standard-verbose --junitfile=test-results.xml -- -count=1 -parallel=4 -timeout=20m ;; \
 	esac
 
-.PHONY: test-compressed
-test-compressed:
-	@export POSTGRES_CONNECTION_STRING=$(POSTGRES_CONNECTION_STRING); \
-	export TESTS_API_SERVER_URL=$(TESTS_API_SERVER_URL); \
-	export TESTS_ORCHESTRATOR_HOST=$(TESTS_ORCHESTRATOR_HOST); \
-	export TESTS_ENVD_PROXY=$(TESTS_ENVD_PROXY); \
-	export TESTS_SANDBOX_TEMPLATE_ID=$(TESTS_SANDBOX_TEMPLATE_ID); \
-	export TESTS_E2B_API_KEY=$(TESTS_E2B_API_KEY); \
-	export TESTS_E2B_ACCESS_TOKEN=$(TESTS_E2B_ACCESS_TOKEN); \
-	export TESTS_SUPABASE_JWT_SECRET=$(TESTS_SUPABASE_JWT_SECRET); \
-	export TESTS_SANDBOX_TEAM_ID=$(TESTS_SANDBOX_TEAM_ID); \
-	export TESTS_SANDBOX_USER_ID=$(TESTS_SANDBOX_USER_ID); \
-	go test -v ./internal/main_test.go -count=1 && \
-	go tool gotestsum --rerun-fails=1 \
-		--packages="./internal/tests/api/templates/... ./internal/tests/api/sandboxes/..." \
-		--format standard-verbose \
-		--junitfile=test-results-compressed.xml \
-		-- -tags compression -run TestCompress -count=1 -parallel=2 -timeout=20m
-
 .PHONY: connect-orchestrator
 connect-orchestrator:
 	CLIENT_IG=$$(gcloud compute instance-groups list \

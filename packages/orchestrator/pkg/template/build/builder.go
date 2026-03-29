@@ -259,6 +259,8 @@ func runBuild(
 
 	uploadTracker := layer.NewUploadTracker()
 
+	compressCfg := storage.ResolveCompressConfig(ctx, builder.config.CompressConfig, builder.featureFlags, storage.FileTypeMemfile, storage.UseCaseBuild)
+
 	layerExecutor := layer.NewLayerExecutor(
 		bc,
 		builder.logger,
@@ -269,8 +271,7 @@ func runBuild(
 		builder.buildStorage,
 		index,
 		uploadTracker,
-		builder.featureFlags,
-		builder.config.CompressConfig,
+		compressCfg,
 	)
 
 	baseBuilder := base.New(
@@ -408,7 +409,7 @@ func getRootfsSize(
 	s storage.StorageProvider,
 	metadata storage.TemplateFiles,
 ) (uint64, error) {
-	obj, err := s.OpenBlob(ctx, metadata.StorageRootfsHeaderPath())
+	obj, err := s.OpenBlob(ctx, metadata.StorageRootfsHeaderPath(), storage.RootFSHeaderObjectType)
 	if err != nil {
 		return 0, fmt.Errorf("error opening rootfs header object: %w", err)
 	}

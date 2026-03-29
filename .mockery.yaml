@@ -40,41 +40,35 @@ packages:
       featureFlagsClient:
         config:
           dir: packages/shared/pkg/storage
-          filename: mock_featureflagsclient_test.go
+          filename: mock_featureflagsclient.go
           pkgname: storage
           inpackage: true
           structname: MockFeatureFlagsClient
       Blob:
-        configs:
-          - dir: packages/shared/pkg/storage
-            filename: mock_blob_test.go
-            pkgname: storage
-            inpackage: true
-          - dir: packages/shared/pkg/storage/mocks
-            filename: mockblob.go
-            pkgname: storagemocks
+        config:
+          dir: packages/shared/pkg/storage
+          filename: mock_blob.go
+          pkgname: storage
+          inpackage: true
       FramedFile:
-        configs:
-          - dir: packages/shared/pkg/storage
-            filename: mock_framedfile_test.go
-            pkgname: storage
-            inpackage: true
-          - dir: packages/shared/pkg/storage/mocks
-            filename: mockframedfile.go
-            pkgname: storagemocks
+        config:
+          dir: packages/shared/pkg/storage
+          filename: mock_framedfile.go
+          pkgname: storage
+          inpackage: true
       StorageProvider:
         config:
-          dir: packages/shared/pkg/storage/mocks/provider
-          filename: mockstorageprovider.go
-          pkgname: providermocks
-
+          dir: packages/shared/pkg/storage
+          filename: mock_storageprovider.go
+          pkgname: storage
+          inpackage: true
 
   io:
     interfaces:
       Reader:
         config:
           dir: packages/shared/pkg/storage
-          filename: mock_ioreader_test.go
+          filename: mock_ioreader.go
           pkgname: storage
           inpackage: true
 

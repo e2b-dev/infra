@@ -85,7 +85,7 @@ const (
 type StorageProvider interface {
 	DeleteObjectsWithPrefix(ctx context.Context, prefix string) error
 	UploadSignedURL(ctx context.Context, path string, ttl time.Duration) (string, error)
-	OpenBlob(ctx context.Context, path string) (Blob, error)
+	OpenBlob(ctx context.Context, path string, objectType ObjectType) (Blob, error)
 	OpenFramedFile(ctx context.Context, path string) (FramedFile, error)
 	GetDetails() string
 }
@@ -113,6 +113,17 @@ type FramedFile interface {
 	// StoreFile uploads a local file. When cfg is non-nil, compresses and
 	// returns the FrameTable + SHA-256 checksum of compressed data.
 	StoreFile(ctx context.Context, path string, cfg *CompressConfig) (*FrameTable, [32]byte, error)
+}
+
+// PeerTransitionedError is returned by the peer FramedFile when the GCS upload
+// has completed and serialized V4 headers are available.
+type PeerTransitionedError struct {
+	MemfileHeader []byte
+	RootfsHeader  []byte
+}
+
+func (e *PeerTransitionedError) Error() string {
+	return "peer upload completed, headers available"
 }
 
 // StorageConfig holds the configuration for creating a storage provider.
@@ -203,8 +214,8 @@ func GetBlob(ctx context.Context, b Blob) ([]byte, error) {
 }
 
 // LoadBlob opens a blob by path and reads its contents.
-func LoadBlob(ctx context.Context, s StorageProvider, path string) ([]byte, error) {
-	blob, err := s.OpenBlob(ctx, path)
+func LoadBlob(ctx context.Context, s StorageProvider, path string, objectType ObjectType) ([]byte, error) {
+	blob, err := s.OpenBlob(ctx, path, objectType)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open blob %s: %w", path, err)
 	}
@@ -280,39 +291,26 @@ func ReadFrame(ctx context.Context, rangeRead RangeReadFunc, storageDetails stri
 func readFrameDecompress(respBody io.Reader, frameTable *FrameTable, offsetU, fetchOffset int64, buf []byte, readSize int64, onRead func(totalWritten int64)) (Range, error) {
 	_, frameSize, _ := frameTable.FrameFor(offsetU) // already validated by caller
 
+	var dec io.Reader
 	switch frameTable.CompressionType() {
 	case CompressionLZ4:
-		cbuf := make([]byte, frameSize.C)
-
-		_, err := io.ReadFull(respBody, cbuf)
-		if err != nil {
-			return Range{}, fmt.Errorf("reading compressed lz4 frame: %w", err)
-		}
-
-		dec := getLZ4Decoder(bytes.NewReader(cbuf))
-		n, err := io.ReadFull(dec, buf[:frameSize.U])
-		putLZ4Decoder(dec)
-		if err != nil {
-			return Range{}, fmt.Errorf("lz4 decompress: %w", err)
-		}
-		if onRead != nil {
-			onRead(int64(n))
-		}
-
-		return Range{Start: fetchOffset, Length: n}, nil
+		lz4dec := getLZ4Decoder(respBody)
+		defer putLZ4Decoder(lz4dec)
+		dec = lz4dec
 
 	case CompressionZstd:
-		dec, err := getZstdDecoder(respBody)
+		zstddec, err := getZstdDecoder(respBody)
 		if err != nil {
 			return Range{}, fmt.Errorf("failed to create zstd decoder: %w", err)
 		}
-		defer putZstdDecoder(dec)
-
-		return readInto(dec, buf, int(frameSize.U), fetchOffset, readSize, onRead)
+		defer putZstdDecoder(zstddec)
+		dec = zstddec
 
 	default:
 		return Range{}, fmt.Errorf("unsupported compression type: %s", frameTable.CompressionType())
 	}
+
+	return readInto(dec, buf, int(frameSize.U), fetchOffset, readSize, onRead)
 }
 
 // minProgressiveReadSize is the floor for progressive reads to avoid

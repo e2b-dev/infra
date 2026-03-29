@@ -77,13 +77,13 @@ func NewDestinationFromPath(prefix, file string) (*Destination, error) {
 	}, nil
 }
 
-func NewHeaderFromObject(ctx context.Context, bucketName string, headerPath string, _ storage.ObjectType) (*header.Header, error) {
+func NewHeaderFromObject(ctx context.Context, bucketName string, headerPath string, objectType storage.ObjectType) (*header.Header, error) {
 	b, err := storage.NewGCP(ctx, bucketName, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GCS bucket storage provider: %w", err)
 	}
 
-	obj, err := b.OpenBlob(ctx, headerPath) // TODO: restore objectType param
+	obj, err := b.OpenBlob(ctx, headerPath, objectType)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open object: %w", err)
 	}

@@ -20,8 +20,8 @@ type BuildUploader interface {
 	// UploadData uploads data files, snapfile, and metadata.
 	UploadData(ctx context.Context) error
 	// FinalizeHeaders uploads final headers after all upstream layers are done.
-	// No-op for uncompressed builds.
-	FinalizeHeaders(ctx context.Context) error
+	// Returns serialized V4 header bytes for peer transition (nil for uncompressed).
+	FinalizeHeaders(ctx context.Context) (memfileHeader, rootfsHeader []byte, err error)
 }
 
 // NewBuildUploader creates a BuildUploader for the given snapshot.
@@ -85,7 +85,7 @@ func (b *buildUploader) uploadUncompressedFile(ctx context.Context, localPath, f
 
 // Snap-file is small enough so we don't use composite upload.
 func (b *buildUploader) uploadSnapfile(ctx context.Context, path string) error {
-	object, err := b.persistence.OpenBlob(ctx, b.files.StorageSnapfilePath())
+	object, err := b.persistence.OpenBlob(ctx, b.files.StorageSnapfilePath(), storage.SnapfileObjectType)
 	if err != nil {
 		return err
 	}
@@ -99,7 +99,7 @@ func (b *buildUploader) uploadSnapfile(ctx context.Context, path string) error {
 
 // Metadata is small enough so we don't use composite upload.
 func (b *buildUploader) uploadMetadata(ctx context.Context, path string) error {
-	object, err := b.persistence.OpenBlob(ctx, b.files.StorageMetadataPath())
+	object, err := b.persistence.OpenBlob(ctx, b.files.StorageMetadataPath(), storage.MetadataObjectType)
 	if err != nil {
 		return err
 	}
@@ -182,7 +182,9 @@ func (u *uncompressedUploader) UploadData(ctx context.Context) error {
 			return nil
 		}
 
-		return headers.StoreHeader(ctx, u.persistence, u.files.HeaderPath(storage.MemfileName), u.snapshot.MemfileDiffHeader)
+		_, err := headers.StoreHeader(ctx, u.persistence, u.files.HeaderPath(storage.MemfileName), u.snapshot.MemfileDiffHeader)
+
+		return err
 	})
 
 	eg.Go(func() error {
@@ -190,7 +192,9 @@ func (u *uncompressedUploader) UploadData(ctx context.Context) error {
 			return nil
 		}
 
-		return headers.StoreHeader(ctx, u.persistence, u.files.HeaderPath(storage.RootfsName), u.snapshot.RootfsDiffHeader)
+		_, err := headers.StoreHeader(ctx, u.persistence, u.files.HeaderPath(storage.RootfsName), u.snapshot.RootfsDiffHeader)
+
+		return err
 	})
 
 	// Uncompressed data
@@ -215,8 +219,8 @@ func (u *uncompressedUploader) UploadData(ctx context.Context) error {
 	return eg.Wait()
 }
 
-func (u *uncompressedUploader) FinalizeHeaders(context.Context) error {
-	return nil
+func (u *uncompressedUploader) FinalizeHeaders(context.Context) ([]byte, []byte, error) {
+	return nil, nil, nil
 }
 
 // --- Compressed (V4) implementation ---
@@ -281,7 +285,7 @@ func (c *compressedUploader) UploadData(ctx context.Context) error {
 // The snapshot headers are cloned before mutation because the originals may be
 // concurrently read by sandboxes resumed from the template cache (e.g. the
 // optimize phase's UFFD handlers).
-func (c *compressedUploader) FinalizeHeaders(ctx context.Context) error {
+func (c *compressedUploader) FinalizeHeaders(ctx context.Context) (memfileHeader, rootfsHeader []byte, err error) {
 	eg, ctx := errgroup.WithContext(ctx)
 
 	if c.snapshot.MemfileDiffHeader != nil {
@@ -294,7 +298,14 @@ func (c *compressedUploader) FinalizeHeaders(ctx context.Context) error {
 
 			h.Metadata.Version = headers.MetadataVersionCompressed
 
-			return headers.StoreHeader(ctx, c.persistence, c.files.HeaderPath(storage.MemfileName), h)
+			data, err := headers.StoreHeader(ctx, c.persistence, c.files.HeaderPath(storage.MemfileName), h)
+			if err != nil {
+				return err
+			}
+
+			memfileHeader = data
+
+			return nil
 		})
 	}
 
@@ -308,11 +319,22 @@ func (c *compressedUploader) FinalizeHeaders(ctx context.Context) error {
 
 			h.Metadata.Version = headers.MetadataVersionCompressed
 
-			return headers.StoreHeader(ctx, c.persistence, c.files.HeaderPath(storage.RootfsName), h)
+			data, err := headers.StoreHeader(ctx, c.persistence, c.files.HeaderPath(storage.RootfsName), h)
+			if err != nil {
+				return err
+			}
+
+			rootfsHeader = data
+
+			return nil
 		})
 	}
 
-	return eg.Wait()
+	if err = eg.Wait(); err != nil {
+		return nil, nil, err
+	}
+
+	return memfileHeader, rootfsHeader, nil
 }
 
 // pendingBuildInfo pairs a FrameTable with the uncompressed file size and

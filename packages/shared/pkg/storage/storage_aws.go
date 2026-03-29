@@ -136,7 +136,7 @@ func (s *awsStorage) OpenFramedFile(_ context.Context, path string) (FramedFile,
 	}, nil
 }
 
-func (s *awsStorage) OpenBlob(_ context.Context, path string) (Blob, error) {
+func (s *awsStorage) OpenBlob(_ context.Context, path string, _ ObjectType) (Blob, error) {
 	return &awsObject{
 		client:     s.client,
 		bucketName: s.bucketName,
