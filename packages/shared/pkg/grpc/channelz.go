@@ -326,11 +326,8 @@ func sampleChannelzConnections(ctx context.Context, client channelzpb.ChannelzCl
 				for _, subRef := range subRefs {
 					subResp, err := client.GetSubchannel(ctx, &channelzpb.GetSubchannelRequest{SubchannelId: subRef.GetSubchannelId()})
 					if err != nil {
-						logger.L().Warn(ctx, "failed to get channelz subchannel, it may have been deregistered",
-							zap.Int64("subchannel_id", subRef.GetSubchannelId()),
-							zap.Error(err),
-						)
-
+						// Subchannel was likely deregistered between GetTopChannels
+						// and this call. Skip it; self-corrects on next poll cycle.
 						continue
 					}
 
