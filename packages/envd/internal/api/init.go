@@ -282,7 +282,7 @@ func (a *API) installCACerts(ctx context.Context, certs []CACertificate) {
 		if err := os.WriteFile(certPath, []byte(c.Cert), 0o644); err != nil {
 			a.logger.Error().Err(err).Str("name", c.Name).Msg("failed to write CA certificate")
 
-			return
+			continue
 		}
 	}
 

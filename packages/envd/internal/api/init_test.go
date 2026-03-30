@@ -695,6 +695,24 @@ func TestInstallCACerts(t *testing.T) {
 		require.NoError(t, err, "expected parseable X.509 certificate")
 	})
 
+	t.Run("skips failing cert and writes remaining certs", func(t *testing.T) {
+		t.Parallel()
+		api, certDir := newAPIWithTempCertDir(t)
+		certPEM := generateTestCACert(t)
+
+		// Pre-create a directory at the path where "bad-ca.crt" would be written.
+		// WriteFile will fail because the path is a directory, not a regular file.
+		require.NoError(t, os.Mkdir(filepath.Join(certDir, "bad-ca.crt"), 0o755))
+
+		api.installCACerts(ctx, []CACertificate{
+			{Name: "bad-ca", Cert: certPEM},  // will fail — path is a directory
+			{Name: "good-ca", Cert: certPEM}, // must still be written
+		})
+
+		_, err := os.ReadFile(filepath.Join(certDir, "good-ca.crt"))
+		require.NoError(t, err, "good-ca.crt should be written even though bad-ca failed")
+	})
+
 	t.Run("re-init with one cert updates its content and leaves other cert untouched", func(t *testing.T) {
 		t.Parallel()
 		api, certDir := newAPIWithTempCertDir(t)
