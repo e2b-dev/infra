@@ -37,7 +37,7 @@ Flags:
 - `-storage <path>` - Local path or `gs://bucket` (enables local mode with auto-download of kernel/FC)
 - `-sandbox-dir <path>` - Override `SANDBOX_DIR` (the rootfs path baked into the snapshot)
 - `-kernel <version>` - Kernel version (default: `vmlinux-6.1.102`)
-- `-firecracker <version>` - Firecracker version (default: `v1.12.1_a41d3fb`)
+- `-firecracker <version>` - Firecracker version (default: `v1.12.1_210cbac`)
 - `-vcpu <n>` - vCPUs (default: `1`)
 - `-memory <mb>` - Memory in MB (default: `512`)
 - `-disk <mb>` - Disk in MB (default: `1000`)
@@ -236,8 +236,8 @@ Binary paths follow the `{version}/{arch}/` layout:
 
 ```
 # Firecracker (GCS bucket or FIRECRACKER_VERSIONS_DIR)
-fc-versions/v1.12.1_a41d3fb/amd64/firecracker
-fc-versions/v1.12.1_a41d3fb/arm64/firecracker
+fc-versions/v1.12.1_210cbac/amd64/firecracker
+fc-versions/v1.12.1_210cbac/arm64/firecracker
 
 # Kernels (GCS bucket or HOST_KERNELS_DIR)
 kernels/vmlinux-6.1.102/amd64/vmlinux.bin
@@ -251,7 +251,7 @@ kernels/vmlinux-6.1.102/arm64/vmlinux.bin
 - **SMT** is disabled (ARM processors don't support simultaneous multi-threading)
 - **CPU detection** uses fallback values since `gopsutil` doesn't populate Family/Model on ARM64
 - **OCI platform** is set to the target architecture instead of hardcoded `amd64`
-- **Busybox binary** must be swapped before building: `make fetch-busybox`
+- **Busybox binaries** are committed for both architectures and selected automatically via Go build tags
 
 ### Cross-architecture deployment
 
@@ -270,7 +270,7 @@ echo "TARGET_ARCH=amd64" >> .env.local
 - OCI image platform for container pulls
 
 It does **not** affect:
-- Makefile compilation — use `GOARCH` directly for cross-compilation: `GOARCH=amd64 make build-local`
+- Makefile compilation — use `BUILD_ARCH` for cross-compilation: `BUILD_ARCH=amd64 make build-local`
 - Hardware-dependent runtime behavior (SMT detection, CPU info) which always uses the actual host architecture
 
 ---
