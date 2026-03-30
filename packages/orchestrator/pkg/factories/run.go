@@ -410,7 +410,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 
 	sbxEventsDeliveryTargets := make([]event.Delivery[event.SandboxEvent], 0)
 
-	var hostStatsDelivery clickhousehoststats.Delivery
+	hostStatsDelivery := clickhousehoststats.NewNoopDelivery()
 
 	// Clickhouse sandbox events and host stats delivery
 	if config.ClickhouseConnectionString != "" {
