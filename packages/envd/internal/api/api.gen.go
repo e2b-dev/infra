@@ -23,6 +23,15 @@ const (
 	File EntryInfoType = "file"
 )
 
+// CACertificate A CA certificate to install into the system trust store
+type CACertificate struct {
+	// Cert PEM-encoded CA certificate
+	Cert string `json:"cert"`
+
+	// Name Filename (without extension) for the certificate
+	Name string `json:"name"`
+}
+
 // ComposeRequest defines model for ComposeRequest.
 type ComposeRequest struct {
 	// Destination Destination file path for the composed file
@@ -173,6 +182,9 @@ type PostFilesParams struct {
 type PostInitJSONBody struct {
 	// AccessToken Access token for secure access to envd service
 	AccessToken *SecureToken `json:"accessToken,omitempty"`
+
+	// CaCertificates CA certificates to install into the system trust store
+	CaCertificates *[]CACertificate `json:"caCertificates,omitempty"`
 
 	// DefaultUser The default user to use for operations
 	DefaultUser *string `json:"defaultUser,omitempty"`

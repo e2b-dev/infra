@@ -8,7 +8,9 @@ import (
 	"io"
 	"net/http"
 	"net/netip"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -215,6 +217,10 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 		a.defaults.Workdir = data.DefaultWorkdir
 	}
 
+	if data.CaCertificates != nil && len(*data.CaCertificates) > 0 {
+		go a.installCACerts(context.WithoutCancel(ctx), *data.CaCertificates)
+	}
+
 	if data.VolumeMounts != nil {
 		var wg sync.WaitGroup
 		for _, volume := range *data.VolumeMounts {
@@ -251,6 +257,33 @@ func (a *API) setupNfs(ctx context.Context, nfsTarget, path string) {
 			return
 		}
 	}
+}
+
+// installCACerts writes PEM-encoded CA certificates to the system trust store
+// and runs update-ca-certificates once to make them trusted by all TLS clients.
+func (a *API) installCACerts(ctx context.Context, certs []CACertificate) {
+	certDir := a.certDir
+
+	if err := os.MkdirAll(certDir, 0o755); err != nil {
+		a.logger.Error().Err(err).Msg("failed to create ca-certificates directory")
+
+		return
+	}
+
+	for _, c := range certs {
+		// Use filepath.Base to strip any directory components from the name.
+		certPath := certDir + "/" + filepath.Base(c.Name) + ".crt"
+		if err := os.WriteFile(certPath, []byte(c.Cert), 0o644); err != nil {
+			a.logger.Error().Err(err).Str("name", c.Name).Msg("failed to write CA certificate")
+
+			return
+		}
+	}
+
+	data, err := exec.CommandContext(ctx, "update-ca-certificates").CombinedOutput()
+
+	logFn := a.getLogger(err)
+	logFn.Str("output", string(data)).Msg("update-ca-certificates")
 }
 
 func (a *API) SetupHyperloop(address string) {

@@ -64,6 +64,11 @@ paths:
                 defaultWorkdir:
                   type: string
                   description: The default working directory to use for operations
+                caCertificates:
+                  type: array
+                  description: CA certificates to install into the system trust store
+                  items:
+                    $ref: "#/components/schemas/CACertificate"
       responses:
         "204":
           description: Env vars set, the time and metadata is synced with the host
@@ -378,6 +383,20 @@ components:
         username:
           type: string
           description: User for setting ownership and resolving relative paths
+    CACertificate:
+      type: object
+      description: A CA certificate to install into the system trust store
+      additionalProperties: false
+      required:
+        - name
+        - cert
+      properties:
+        name:
+          type: string
+          description: Filename (without extension) for the certificate
+        cert:
+          type: string
+          description: PEM-encoded CA certificate
     VolumeMount:
       type: object
       description: Volume mount configuration

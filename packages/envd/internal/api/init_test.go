@@ -2,6 +2,13 @@ package api
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
+	"math/big"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,6 +24,29 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	utilsShared "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
+
+// generateTestCACert creates a minimal self-signed CA certificate and returns
+// it as a PEM-encoded string. The cert is not written to disk.
+func generateTestCACert(t *testing.T) string {
+	t.Helper()
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+
+	template := &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "Test CA"},
+		NotBefore:             time.Now().Add(-time.Minute),
+		NotAfter:              time.Now().Add(time.Hour),
+		IsCA:                  true,
+		BasicConstraintsValid: true,
+	}
+
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	require.NoError(t, err)
+
+	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}))
+}
 
 func TestSimpleCases(t *testing.T) {
 	t.Parallel()
@@ -583,5 +613,84 @@ func TestSetData(t *testing.T) {
 		val, ok := api.defaults.EnvVars.Load("KEY")
 		assert.True(t, ok)
 		assert.Equal(t, "value", val)
+	})
+}
+
+func TestInstallCACerts(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	newAPIWithTempCertDir := func(t *testing.T) (*API, string) {
+		t.Helper()
+		api := newTestAPI(nil, &mockMMDSClient{})
+		api.certDir = t.TempDir()
+		return api, api.certDir
+	}
+
+	t.Run("writes single cert file with .crt extension", func(t *testing.T) {
+		t.Parallel()
+		api, certDir := newAPIWithTempCertDir(t)
+		certPEM := generateTestCACert(t)
+
+		api.installCACerts(ctx, []CACertificate{{Name: "my-proxy-ca", Cert: certPEM}})
+
+		content, err := os.ReadFile(filepath.Join(certDir, "my-proxy-ca.crt"))
+		require.NoError(t, err)
+		assert.Equal(t, certPEM, string(content))
+	})
+
+	t.Run("writes multiple cert files", func(t *testing.T) {
+		t.Parallel()
+		api, certDir := newAPIWithTempCertDir(t)
+		cert1 := generateTestCACert(t)
+		cert2 := generateTestCACert(t)
+
+		api.installCACerts(ctx, []CACertificate{
+			{Name: "ca-one", Cert: cert1},
+			{Name: "ca-two", Cert: cert2},
+		})
+
+		content, err := os.ReadFile(filepath.Join(certDir, "ca-one.crt"))
+		require.NoError(t, err)
+		assert.Equal(t, cert1, string(content))
+
+		content, err = os.ReadFile(filepath.Join(certDir, "ca-two.crt"))
+		require.NoError(t, err)
+		assert.Equal(t, cert2, string(content))
+	})
+
+	t.Run("strips directory traversal from name", func(t *testing.T) {
+		t.Parallel()
+		api, certDir := newAPIWithTempCertDir(t)
+		certPEM := generateTestCACert(t)
+
+		api.installCACerts(ctx, []CACertificate{{Name: "../../../etc/evil", Cert: certPEM}})
+
+		// filepath.Base("../../../etc/evil") == "evil", so the file lands inside certDir
+		content, err := os.ReadFile(filepath.Join(certDir, "evil.crt"))
+		require.NoError(t, err)
+		assert.Equal(t, certPEM, string(content))
+
+		// Nothing should have escaped the temp dir
+		_, err = os.ReadFile("/etc/evil.crt")
+		assert.True(t, os.IsNotExist(err))
+	})
+
+	t.Run("cert content is valid PEM", func(t *testing.T) {
+		t.Parallel()
+		api, certDir := newAPIWithTempCertDir(t)
+		certPEM := generateTestCACert(t)
+
+		api.installCACerts(ctx, []CACertificate{{Name: "valid-ca", Cert: certPEM}})
+
+		raw, err := os.ReadFile(filepath.Join(certDir, "valid-ca.crt"))
+		require.NoError(t, err)
+
+		block, _ := pem.Decode(raw)
+		require.NotNil(t, block, "expected valid PEM block in written file")
+		assert.Equal(t, "CERTIFICATE", block.Type)
+
+		_, err = x509.ParseCertificate(block.Bytes)
+		require.NoError(t, err, "expected parseable X.509 certificate")
 	})
 }

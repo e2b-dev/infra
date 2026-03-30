@@ -37,7 +37,13 @@ type API struct {
 
 	lastSetTime *utils.AtomicMax
 	initLock    sync.Mutex
+
+	// certDir is the directory where CA certificates are written before
+	// update-ca-certificates is run. Overridable in tests.
+	certDir string
 }
+
+const systemCertDir = "/usr/local/share/ca-certificates"
 
 func New(l *zerolog.Logger, defaults *execcontext.Defaults, mmdsChan chan *host.MMDSOpts, isNotFC bool) *API {
 	return &API{
@@ -48,6 +54,7 @@ func New(l *zerolog.Logger, defaults *execcontext.Defaults, mmdsChan chan *host.
 		mmdsClient:  &DefaultMMDSClient{},
 		lastSetTime: utils.NewAtomicMax(),
 		accessToken: &SecureToken{},
+		certDir:     systemCertDir,
 	}
 }
 
