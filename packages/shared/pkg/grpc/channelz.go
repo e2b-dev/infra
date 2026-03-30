@@ -172,7 +172,7 @@ func StartChannelzSampler(ctx context.Context) {
 			return
 		}
 
-		_, err = meter.RegisterCallback(func(_ context.Context, observer metric.Observer) error {
+		reg, err := meter.RegisterCallback(func(_ context.Context, observer metric.Observer) error {
 			channelzState.mu.RLock()
 			defer channelzState.mu.RUnlock()
 
@@ -222,6 +222,12 @@ func StartChannelzSampler(ctx context.Context) {
 			ticker := time.NewTicker(channelzPollInterval)
 			defer ticker.Stop()
 			defer closeFn()
+			defer func() {
+				err := reg.Unregister()
+				if err != nil {
+					logger.L().Warn(ctx, "failed to unregister gRPC channelz metric callback", zap.Error(err))
+				}
+			}()
 
 			for {
 				sampleChannelzConnections(ctx, client, channelzState)
