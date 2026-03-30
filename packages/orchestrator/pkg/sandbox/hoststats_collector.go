@@ -23,6 +23,8 @@ type HostStatsCollector struct {
 	samplingInterval time.Duration
 	cgroupStats      CgroupStatsFunc
 
+	prev hoststats.SandboxHostStat // previous sample; seeded with zero counters at construction
+
 	stopCh    chan struct{}
 	stoppedCh chan struct{}
 	stopOnce  sync.Once
@@ -55,12 +57,28 @@ func NewHostStatsCollector(
 		delivery:         delivery,
 		samplingInterval: samplingInterval,
 		cgroupStats:      cgroupStats,
-		stopCh:           make(chan struct{}),
-		stoppedCh:        make(chan struct{}),
+		// Zero baseline so the first sample produces real deltas and interval.
+		prev: hoststats.SandboxHostStat{
+			Timestamp: time.Now(),
+		},
+		stopCh:    make(chan struct{}),
+		stoppedCh: make(chan struct{}),
 	}
 }
 
-// CollectSample collects a single cgroup statistics sample for the sandbox.
+// saturatingSub returns a - b, or 0 if b > a.
+// This prevents uint64 underflow wrapping when cgroup counters reset
+// (e.g. after sandbox resume from snapshot or cgroup migration).
+func saturatingSub(a, b uint64) uint64 {
+	if a < b {
+		return 0
+	}
+
+	return a - b
+}
+
+// CollectSample collects a single cgroup statistics sample for the sandbox,
+// computes deltas from the previous sample, and delivers the row.
 func (h *HostStatsCollector) CollectSample(ctx context.Context) error {
 	cgroupStats, err := h.cgroupStats(ctx)
 	if err != nil {
@@ -71,26 +89,34 @@ func (h *HostStatsCollector) CollectSample(ctx context.Context) error {
 		return nil
 	}
 
+	now := time.Now()
+
 	stat := hoststats.SandboxHostStat{
-		Timestamp:           time.Now(),
-		SandboxID:           h.metadata.SandboxID,
-		SandboxExecutionID:  h.metadata.ExecutionID,
-		SandboxTemplateID:   h.metadata.TemplateID,
-		SandboxBuildID:      h.metadata.BuildID,
-		SandboxTeamID:       h.metadata.TeamID,
-		SandboxVCPUCount:    h.metadata.VCPUCount,
-		SandboxMemoryMB:     h.metadata.MemoryMB,
-		CgroupCPUUsageUsec:  cgroupStats.CPUUsageUsec,
-		CgroupCPUUserUsec:   cgroupStats.CPUUserUsec,
-		CgroupCPUSystemUsec: cgroupStats.CPUSystemUsec,
-		CgroupMemoryUsage:   cgroupStats.MemoryUsageBytes,
-		CgroupMemoryPeak:    cgroupStats.MemoryPeakBytes,
-		SandboxType:         h.metadata.SandboxType.String(),
+		Timestamp:                now,
+		SandboxID:                h.metadata.SandboxID,
+		SandboxExecutionID:       h.metadata.ExecutionID,
+		SandboxTemplateID:        h.metadata.TemplateID,
+		SandboxBuildID:           h.metadata.BuildID,
+		SandboxTeamID:            h.metadata.TeamID,
+		SandboxVCPUCount:         h.metadata.VCPUCount,
+		SandboxMemoryMB:          h.metadata.MemoryMB,
+		CgroupCPUUsageUsec:       cgroupStats.CPUUsageUsec,
+		CgroupCPUUserUsec:        cgroupStats.CPUUserUsec,
+		CgroupCPUSystemUsec:      cgroupStats.CPUSystemUsec,
+		CgroupMemoryUsage:        cgroupStats.MemoryUsageBytes,
+		CgroupMemoryPeak:         cgroupStats.MemoryPeakBytes,
+		DeltaCgroupCPUUsageUsec:  saturatingSub(cgroupStats.CPUUsageUsec, h.prev.CgroupCPUUsageUsec),
+		DeltaCgroupCPUUserUsec:   saturatingSub(cgroupStats.CPUUserUsec, h.prev.CgroupCPUUserUsec),
+		DeltaCgroupCPUSystemUsec: saturatingSub(cgroupStats.CPUSystemUsec, h.prev.CgroupCPUSystemUsec),
+		IntervalUs:               uint64(now.Sub(h.prev.Timestamp).Microseconds()),
+		SandboxType:              h.metadata.SandboxType.String(),
 	}
 
 	if err := h.delivery.Push(stat); err != nil {
 		return fmt.Errorf("failed to push stat to delivery: %w", err)
 	}
+
+	h.prev = stat
 
 	return nil
 }
