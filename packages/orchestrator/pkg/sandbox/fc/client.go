@@ -19,6 +19,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
+const archARM64 = "arm64"
+
 type apiClient struct {
 	client *client.Firecracker
 }
@@ -334,7 +336,6 @@ func (c *apiClient) setMachineConfig(
 	// See: https://github.com/firecracker-microvm/firecracker/blob/main/docs/cpu_templates/cpu-features.md
 	// We use runtime.GOARCH (not TARGET_ARCH) because the orchestrator binary
 	// always runs on the same architecture as Firecracker.
-	const archARM64 = "arm64"
 	smt := runtime.GOARCH != archARM64
 	trackDirtyPages := false
 	machineConfig := &models.MachineConfiguration{

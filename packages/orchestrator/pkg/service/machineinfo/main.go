@@ -27,6 +27,10 @@ func Detect() (MachineInfo, error) {
 
 		// On ARM64, gopsutil doesn't populate Family/Model from /proc/cpuinfo.
 		// Provide fallback values so callers don't get an error.
+		// NOTE: Using a generic "arm64" family treats all ARM64 CPUs as compatible.
+		// This works for same-host snapshot restore but cross-host restore between
+		// different ARM CPU implementations (e.g. Graviton2 vs Graviton3) may fail.
+		// For finer granularity, consider using MIDR_EL1 register values.
 		if runtime.GOARCH == "arm64" {
 			if family == "" {
 				family = "arm64"
