@@ -693,4 +693,35 @@ func TestInstallCACerts(t *testing.T) {
 		_, err = x509.ParseCertificate(block.Bytes)
 		require.NoError(t, err, "expected parseable X.509 certificate")
 	})
+
+	t.Run("re-init with one cert updates its content and leaves other cert untouched", func(t *testing.T) {
+		t.Parallel()
+		api, certDir := newAPIWithTempCertDir(t)
+
+		certAv1 := generateTestCACert(t)
+		certB := generateTestCACert(t)
+
+		// First init: two certs.
+		api.installCACerts(ctx, []CACertificate{
+			{Name: "ca-a", Cert: certAv1},
+			{Name: "ca-b", Cert: certB},
+		})
+
+		// Second init: only cert-a with new content — cert-b is not mentioned.
+		certAv2 := generateTestCACert(t)
+		api.installCACerts(ctx, []CACertificate{
+			{Name: "ca-a", Cert: certAv2},
+		})
+
+		// cert-a must hold the new content.
+		contentA, err := os.ReadFile(filepath.Join(certDir, "ca-a.crt"))
+		require.NoError(t, err)
+		assert.Equal(t, certAv2, string(contentA), "ca-a should have updated content after second init")
+		assert.NotEqual(t, certAv1, string(contentA), "ca-a should no longer hold first-round content")
+
+		// cert-b must still be present and unchanged.
+		contentB, err := os.ReadFile(filepath.Join(certDir, "ca-b.crt"))
+		require.NoError(t, err)
+		assert.Equal(t, certB, string(contentB), "ca-b should be unchanged after second init")
+	})
 }
