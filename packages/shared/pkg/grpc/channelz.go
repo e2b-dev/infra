@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -28,6 +29,8 @@ const (
 	channelzMaxResults = 200
 
 	channelzClientTypeGCS           = "gcs"
+	channelzClientTypeGCSControl    = "gcs-control-plane"
+	channelzClientTypeArtifactReg   = "artifact-registry"
 	channelzClientTypeOTELCollector = "otel-collector"
 	channelzClientTypeUnknown       = "unknown"
 
@@ -55,6 +58,7 @@ type channelzSamplerState struct {
 	mu                sync.RWMutex
 	counts            map[string]stateCounts
 	targetClientTypes sync.Map
+	unknownTargets    sync.Map
 }
 
 func newChannelzState() *channelzSamplerState {
@@ -115,6 +119,19 @@ func (s *channelzSamplerState) registeredClientTypes() []string {
 	}
 
 	return clientTypes
+}
+
+func (s *channelzSamplerState) logUnknownTargetOnce(ctx context.Context, target string) {
+	normalizedTarget := normalizeChannelzTarget(target)
+	if normalizedTarget == "" {
+		return
+	}
+
+	if _, loaded := s.unknownTargets.LoadOrStore(normalizedTarget, struct{}{}); loaded {
+		return
+	}
+
+	logger.L().Info(ctx, "unknown gRPC channelz target", zap.String("target", normalizedTarget))
 }
 
 func RegisterChannelzTarget(conn *grpc.ClientConn, clientType string) {
@@ -272,11 +289,15 @@ func sampleChannelzConnections(ctx context.Context, client channelzpb.ChannelzCl
 			}
 
 			target := ch.GetData().GetTarget()
-			if isInProcessChannelzTarget(target) {
+			if shouldSkipChannelzTarget(target) {
 				continue
 			}
 
 			clientType := detectChannelzClientType(state, target)
+			if clientType == channelzClientTypeUnknown {
+				state.logUnknownTargetOnce(ctx, target)
+			}
+
 			if _, ok := countsByType[clientType]; !ok {
 				countsByType[clientType] = map[channelzpb.ChannelConnectivityState_State]int64{}
 			}
@@ -344,6 +365,18 @@ func isInProcessChannelzTarget(target string) bool {
 	return target == "bufnet"
 }
 
+func shouldSkipChannelzTarget(target string) bool {
+	if isInProcessChannelzTarget(target) {
+		return true
+	}
+
+	host := channelzTargetHost(target)
+
+	// Skip Cloud Monitoring exporter channels: they are telemetry side traffic
+	// and not relevant for application/client pool analysis.
+	return host == "monitoring.googleapis.com"
+}
+
 func detectChannelzClientType(state *channelzSamplerState, target string) string {
 	normalizedTarget := normalizeChannelzTarget(target)
 
@@ -352,9 +385,17 @@ func detectChannelzClientType(state *channelzSamplerState, target string) string
 		return clientType
 	}
 
-	// For clients not controlled by us we match based on target url patterns
-	if isGCSRelatedTarget(normalizedTarget) {
+	// For clients not controlled by us we match based on target url patterns.
+	if isGCSDataTarget(normalizedTarget) {
 		return channelzClientTypeGCS
+	}
+
+	if isGCSControlPlaneTarget(normalizedTarget) {
+		return channelzClientTypeGCSControl
+	}
+
+	if isArtifactRegistryTarget(normalizedTarget) {
+		return channelzClientTypeArtifactReg
 	}
 
 	if isOTELCollectorTarget(normalizedTarget) {
@@ -364,18 +405,72 @@ func detectChannelzClientType(state *channelzSamplerState, target string) string
 	return channelzClientTypeUnknown
 }
 
-func isGCSRelatedTarget(target string) bool {
-	if target == "" {
+func isGCSDataTarget(target string) bool {
+	host := channelzTargetHost(target)
+	if host == "" {
 		return false
 	}
 
-	// Match only GCS data-plane and known GCS helper/control-plane targets.
-	return strings.Contains(target, "storage.googleapis.com") ||
-		strings.Contains(target, "storage.mtls.googleapis.com") ||
-		strings.Contains(target, "rls.googleapis.com") ||
-		strings.Contains(target, "trafficdirector.googleapis.com") ||
-		(strings.Contains(target, "traffic-director") && strings.Contains(target, "googleapis.com")) ||
-		(strings.Contains(target, "google-c2p") && strings.Contains(target, "googleapis.com"))
+	switch host {
+	case "storage.googleapis.com",
+		"storage.mtls.googleapis.com":
+		return true
+	}
+
+	return false
+}
+
+func isGCSControlPlaneTarget(target string) bool {
+	host := channelzTargetHost(target)
+	if host == "" {
+		return false
+	}
+
+	switch host {
+	case "rls.googleapis.com", "trafficdirector.googleapis.com":
+		return true
+	}
+
+	// Traffic Director xDS control-plane hosts.
+	return strings.HasSuffix(host, ".xds.googleapis.com")
+}
+
+func isArtifactRegistryTarget(target string) bool {
+	host := channelzTargetHost(target)
+	if host == "" {
+		return false
+	}
+
+	return host == "artifactregistry.googleapis.com" ||
+		host == "artifactregistry.mtls.googleapis.com"
+}
+
+func channelzTargetHost(target string) string {
+	target = normalizeChannelzTarget(target)
+	if target == "" {
+		return ""
+	}
+
+	if idx := strings.Index(target, "/"); idx != -1 {
+		target = target[:idx]
+	}
+
+	if host, port, err := net.SplitHostPort(target); err == nil {
+		if _, err := strconv.Atoi(port); err == nil {
+			return strings.Trim(host, "[]")
+		}
+	}
+
+	if strings.Count(target, ":") == 1 {
+		host, port, ok := strings.Cut(target, ":")
+		if ok {
+			if _, err := strconv.Atoi(port); err == nil {
+				return strings.Trim(host, "[]")
+			}
+		}
+	}
+
+	return strings.Trim(target, "[]")
 }
 
 func isOTELCollectorTarget(target string) bool {

@@ -27,7 +27,6 @@ var (
 
 func initConnectionMetrics() error {
 	connectionMetricsOnce.Do(func() {
-
 		connectionStateDuration, errConnectionMetrics = meter.Int64Histogram(
 			"grpc.client.connection.state.duration",
 			metric.WithDescription("Time spent in each gRPC client connectivity state before transitioning"),
