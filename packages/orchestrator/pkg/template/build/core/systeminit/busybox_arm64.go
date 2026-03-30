@@ -1,6 +1,8 @@
+//go:build arm64
+
 package systeminit
 
 import _ "embed"
 
-//go:embed busybox_1.36.1-2
+//go:embed busybox_arm64
 var BusyboxBinary []byte
