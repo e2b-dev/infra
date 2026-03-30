@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/shirou/gopsutil/v4/process"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/clickhouse/pkg/hoststats"
@@ -16,13 +15,11 @@ import (
 )
 
 // CgroupStatsFunc is a function that returns current cgroup resource usage statistics.
-// Returns (nil, nil) if cgroup accounting is not available.
 type CgroupStatsFunc func(ctx context.Context) (*cgroup.Stats, error)
 
 type HostStatsCollector struct {
 	metadata         HostStatsMetadata
 	delivery         hoststats.Delivery
-	proc             *process.Process
 	samplingInterval time.Duration
 	cgroupStats      CgroupStatsFunc
 
@@ -44,75 +41,51 @@ type HostStatsMetadata struct {
 
 func NewHostStatsCollector(
 	metadata HostStatsMetadata,
-	firecrackerPID int32,
 	delivery hoststats.Delivery,
 	samplingInterval time.Duration,
 	cgroupStats CgroupStatsFunc,
-) (*HostStatsCollector, error) {
+) *HostStatsCollector {
 	// Validate and enforce minimum interval
 	if samplingInterval < 100*time.Millisecond {
 		samplingInterval = 100 * time.Millisecond
 	}
 
-	proc, err := process.NewProcess(firecrackerPID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create process handle: %w", err)
-	}
-
 	return &HostStatsCollector{
 		metadata:         metadata,
 		delivery:         delivery,
-		proc:             proc,
 		samplingInterval: samplingInterval,
 		cgroupStats:      cgroupStats,
 		stopCh:           make(chan struct{}),
 		stoppedCh:        make(chan struct{}),
-	}, nil
+	}
 }
 
-// CollectSample collects a single host statistics sample for the Firecracker process
+// CollectSample collects a single cgroup statistics sample for the sandbox.
 func (h *HostStatsCollector) CollectSample(ctx context.Context) error {
-	// Get CPU times (user and system)
-	times, err := h.proc.TimesWithContext(ctx)
+	cgroupStats, err := h.cgroupStats(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get CPU times: %w", err)
+		return fmt.Errorf("failed to get cgroup stats: %w", err)
 	}
 
-	// Get memory info (RSS and VMS)
-	memInfo, err := h.proc.MemoryInfoWithContext(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get memory info: %w", err)
+	if cgroupStats == nil {
+		return nil
 	}
 
 	stat := hoststats.SandboxHostStat{
-		Timestamp:                time.Now(),
-		SandboxID:                h.metadata.SandboxID,
-		SandboxExecutionID:       h.metadata.ExecutionID,
-		SandboxTemplateID:        h.metadata.TemplateID,
-		SandboxBuildID:           h.metadata.BuildID,
-		SandboxTeamID:            h.metadata.TeamID,
-		SandboxVCPUCount:         h.metadata.VCPUCount,
-		SandboxMemoryMB:          h.metadata.MemoryMB,
-		FirecrackerCPUUserTime:   times.User,   // seconds
-		FirecrackerCPUSystemTime: times.System, // seconds
-		FirecrackerMemoryRSS:     memInfo.RSS,  // bytes
-		FirecrackerMemoryVMS:     memInfo.VMS,  // bytes
-		SandboxType:              h.metadata.SandboxType.String(),
-	}
-
-	if h.cgroupStats != nil {
-		cgroupStats, err := h.cgroupStats(ctx)
-		if err != nil {
-			logger.L().Debug(ctx, "could not collect cgroup stats",
-				logger.WithSandboxID(h.metadata.SandboxID),
-				zap.Error(err))
-		} else if cgroupStats != nil {
-			stat.CgroupCPUUsageUsec = cgroupStats.CPUUsageUsec
-			stat.CgroupCPUUserUsec = cgroupStats.CPUUserUsec
-			stat.CgroupCPUSystemUsec = cgroupStats.CPUSystemUsec
-			stat.CgroupMemoryUsage = cgroupStats.MemoryUsageBytes
-			stat.CgroupMemoryPeak = cgroupStats.MemoryPeakBytes
-		}
+		Timestamp:           time.Now(),
+		SandboxID:           h.metadata.SandboxID,
+		SandboxExecutionID:  h.metadata.ExecutionID,
+		SandboxTemplateID:   h.metadata.TemplateID,
+		SandboxBuildID:      h.metadata.BuildID,
+		SandboxTeamID:       h.metadata.TeamID,
+		SandboxVCPUCount:    h.metadata.VCPUCount,
+		SandboxMemoryMB:     h.metadata.MemoryMB,
+		CgroupCPUUsageUsec:  cgroupStats.CPUUsageUsec,
+		CgroupCPUUserUsec:   cgroupStats.CPUUserUsec,
+		CgroupCPUSystemUsec: cgroupStats.CPUSystemUsec,
+		CgroupMemoryUsage:   cgroupStats.MemoryUsageBytes,
+		CgroupMemoryPeak:    cgroupStats.MemoryPeakBytes,
+		SandboxType:         h.metadata.SandboxType.String(),
 	}
 
 	if err := h.delivery.Push(stat); err != nil {

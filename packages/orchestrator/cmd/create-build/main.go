@@ -19,11 +19,13 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
+	"github.com/e2b-dev/infra/packages/clickhouse/pkg/hoststats"
 	"github.com/e2b-dev/infra/packages/orchestrator/cmd/internal/cmdutil"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/cgroup"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
@@ -297,7 +299,7 @@ func doBuild(
 	defer templateCache.Stop()
 
 	buildMetrics, _ := metrics.NewBuildMetrics(noop.MeterProvider{})
-	sandboxFactory := sandbox.NewFactory(c.BuilderConfig, networkPool, devicePool, featureFlags, nil, nil, sandboxes)
+	sandboxFactory := sandbox.NewFactory(c.BuilderConfig, networkPool, devicePool, featureFlags, hoststats.NewNoopDelivery(), cgroup.NewNoopManager(), sandboxes)
 
 	builder := build.NewBuilder(
 		builderConfig, l, featureFlags, sandboxFactory,
