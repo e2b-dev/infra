@@ -6,10 +6,12 @@ import (
 	"strconv"
 	"strings"
 
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 
+	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 )
 
@@ -18,16 +20,22 @@ type grpcPausedSandboxResumer struct {
 	client proxygrpc.SandboxServiceClient
 }
 
-func NewGrpcPausedSandboxResumer(address string) (PausedSandboxResumer, error) {
+func NewGrpcPausedSandboxResumer(ctx context.Context, address string) (PausedSandboxResumer, error) {
 	// Client-proxy uses this gRPC client to trigger ResumeSandbox when needed.
 	if strings.TrimSpace(address) == "" {
 		return nil, fmt.Errorf("api grpc address is required")
 	}
 
-	conn, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(
+		address,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("create grpc client: %w", err)
 	}
+
+	e2bgrpc.ObserveConnection(ctx, conn, "api-resumer")
 
 	return &grpcPausedSandboxResumer{
 		conn:   conn,

@@ -59,7 +59,7 @@ func New(
 	meterProvider metric.MeterProvider,
 	discoveredNode NomadServiceDiscovery,
 ) (*Node, error) {
-	client, err := NewClient(tracerProvider, meterProvider, discoveredNode.OrchestratorAddress)
+	client, err := NewClient(ctx, tracerProvider, meterProvider, discoveredNode.OrchestratorAddress)
 	if err != nil {
 		return nil, err
 	}

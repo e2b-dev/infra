@@ -6,10 +6,12 @@ import (
 	"crypto/x509"
 	"fmt"
 
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -39,6 +41,7 @@ func NewAnalytics(ctx context.Context, host, grpcAPIKey string) (*Analytics, err
 
 		conn, err := grpc.NewClient(
 			fmt.Sprintf("%s:443", host),
+			grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
 			grpc.WithPerRPCCredentials(newGRPCAPIKey(grpcAPIKey)),
 			grpc.WithAuthority(host),
 			grpc.WithTransportCredentials(cred),
@@ -46,6 +49,8 @@ func NewAnalytics(ctx context.Context, host, grpcAPIKey string) (*Analytics, err
 		if err != nil {
 			return nil, fmt.Errorf("failed to create GRPC client: %w", err)
 		}
+
+		e2bgrpc.ObserveConnection(ctx, conn, "analytics-collector")
 
 		connection = conn
 		client = NewAnalyticsCollectorClient(connection)

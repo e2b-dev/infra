@@ -70,7 +70,7 @@ func newInstance(
 	connAddr string,
 	connTls bool,
 ) (*Instance, error) {
-	client, err := createClient(tel, clusterAuth, connAddr, connTls)
+	client, err := createClient(ctx, tel, clusterAuth, connAddr, connTls)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cluster instance client client: %w", err)
 	}

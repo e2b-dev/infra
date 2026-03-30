@@ -13,6 +13,7 @@ import (
 	"google.golang.org/grpc/keepalive"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -30,7 +31,7 @@ func (a instanceAuthorization) RequireTransportSecurity() bool {
 	return a.tls
 }
 
-func createClient(tel *telemetry.Client, auth *instanceAuthorization, endpoint string, endpointTLS bool) (*GRPCClient, error) {
+func createClient(ctx context.Context, tel *telemetry.Client, auth *instanceAuthorization, endpoint string, endpointTLS bool) (*GRPCClient, error) {
 	grpcOptions := []grpc.DialOption{
 		grpc.WithStatsHandler(
 			otelgrpc.NewClientHandler(
@@ -63,6 +64,8 @@ func createClient(tel *telemetry.Client, auth *instanceAuthorization, endpoint s
 	if err != nil {
 		return nil, fmt.Errorf("failed to create client client: %w", err)
 	}
+
+	e2bgrpc.ObserveConnection(ctx, conn, "cluster-orchestrator")
 
 	return NewGRPCClient(conn), nil
 }
