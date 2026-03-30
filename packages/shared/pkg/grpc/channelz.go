@@ -67,6 +67,12 @@ func newChannelzState() *channelzSamplerState {
 	}
 }
 
+// registerTargetClientType stores a single clientType per normalised target.
+// If different logical clients dial the same address (e.g. "orchestrator" and
+// "cluster-orchestrator" sharing an endpoint), the last registration wins and
+// earlier ones are lost. This doesn't happen today because each client type
+// connects to distinct addresses, but if that changes the mapping would need to
+// support multiple client types per target.
 func (s *channelzSamplerState) registerTargetClientType(target, clientType string) {
 	s.targetClientTypes.Store(target, clientType)
 }
