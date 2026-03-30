@@ -247,7 +247,7 @@ func run() int {
 		)
 
 		wg.Go(func() {
-			if err := syncRunner.Run(signalCtx); err != nil && !errors.Is(err, context.Canceled) {
+			if err := syncRunner.RunWithRestart(signalCtx); err != nil && !errors.Is(err, context.Canceled) {
 				l.Error(ctx, "supabase auth user sync worker error", zap.Error(err))
 				errorCode.Add(1)
 			}

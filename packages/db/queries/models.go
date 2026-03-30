@@ -54,19 +54,6 @@ type AuthUser struct {
 	Email string
 }
 
-type AuthUserSyncQueue struct {
-	ID             int64
-	UserID         uuid.UUID
-	Operation      string
-	CreatedAt      time.Time
-	NextAttemptAt  time.Time
-	LockedAt       *time.Time
-	LockOwner      *string
-	AttemptCount   int32
-	LastError      *string
-	DeadLetteredAt *time.Time
-}
-
 type BillingSandboxLog struct {
 	SandboxID       string
 	EnvID           string
@@ -237,6 +224,19 @@ type User struct {
 	UpdatedAt time.Time
 	ID        uuid.UUID
 	Email     string
+}
+
+type UserSyncQueue struct {
+	ID             int64
+	UserID         uuid.UUID
+	Operation      string
+	CreatedAt      time.Time
+	NextAttemptAt  time.Time
+	LockedAt       *time.Time
+	LockOwner      *string
+	AttemptCount   int32
+	LastError      *string
+	DeadLetteredAt *time.Time
 }
 
 type UsersTeam struct {

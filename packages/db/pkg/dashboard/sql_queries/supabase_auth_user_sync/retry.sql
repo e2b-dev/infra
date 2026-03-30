@@ -1,5 +1,5 @@
 -- name: RetryUserSyncQueueItem :exec
-UPDATE auth.user_sync_queue
+UPDATE public.user_sync_queue
 SET
     locked_at = NULL,
     lock_owner = NULL,

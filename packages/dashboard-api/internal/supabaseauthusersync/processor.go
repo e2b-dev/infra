@@ -4,21 +4,32 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime/debug"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
+type processorStore interface {
+	Ack(ctx context.Context, id int64) error
+	Retry(ctx context.Context, id int64, backoff time.Duration, lastError string) error
+	DeadLetter(ctx context.Context, id int64, lastError string) error
+	GetAuthUser(ctx context.Context, userID uuid.UUID) (*AuthUser, error)
+	UpsertPublicUser(ctx context.Context, id uuid.UUID, email string) error
+	DeletePublicUser(ctx context.Context, id uuid.UUID) error
+}
+
 type Processor struct {
-	store       *Store
+	store       processorStore
 	maxAttempts int32
 	l           logger.Logger
 }
 
-func NewProcessor(store *Store, maxAttempts int32, l logger.Logger) *Processor {
+func NewProcessor(store processorStore, maxAttempts int32, l logger.Logger) *Processor {
 	return &Processor{
 		store:       store,
 		maxAttempts: maxAttempts,
@@ -27,7 +38,7 @@ func NewProcessor(store *Store, maxAttempts int32, l logger.Logger) *Processor {
 }
 
 func (p *Processor) Process(ctx context.Context, item QueueItem) {
-	err := p.reconcile(ctx, item)
+	err := p.processOnce(ctx, item)
 
 	if err == nil {
 		if ackErr := p.store.Ack(ctx, item.ID); ackErr != nil {
@@ -67,6 +78,23 @@ func (p *Processor) Process(ctx context.Context, item QueueItem) {
 			zap.Error(retryErr),
 		)
 	}
+}
+
+func (p *Processor) processOnce(ctx context.Context, item QueueItem) (err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			p.l.Error(ctx, "panic while processing queue item",
+				zap.Int64("queue_item_id", item.ID),
+				zap.String("user_id", item.UserID.String()),
+				zap.String("panic", fmt.Sprint(recovered)),
+				zap.String("stack", string(debug.Stack())),
+			)
+
+			err = fmt.Errorf("panic while processing queue item: %v", recovered)
+		}
+	}()
+
+	return p.reconcile(ctx, item)
 }
 
 func (p *Processor) reconcile(ctx context.Context, item QueueItem) error {

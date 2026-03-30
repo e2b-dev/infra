@@ -115,7 +115,7 @@ func queueDepth(t *testing.T, db *testutils.Database) int {
 	var count int
 
 	err := db.AuthDb.TestsRawSQLQuery(t.Context(),
-		"SELECT count(*) FROM auth.user_sync_queue WHERE dead_lettered_at IS NULL",
+		"SELECT count(*) FROM public.user_sync_queue WHERE dead_lettered_at IS NULL",
 		func(rows pgx.Rows) error {
 			if rows.Next() {
 				return rows.Scan(&count)
@@ -242,7 +242,7 @@ func TestDuplicateQueueRowsConverge(t *testing.T) {
 	insertAuthUser(t, db, userID, "dup@example.com")
 
 	err := db.AuthDb.TestsRawSQL(t.Context(),
-		"INSERT INTO auth.user_sync_queue (user_id, operation) VALUES ($1, 'upsert')",
+		"INSERT INTO public.user_sync_queue (user_id, operation) VALUES ($1, 'upsert')",
 		userID)
 	require.NoError(t, err)
 

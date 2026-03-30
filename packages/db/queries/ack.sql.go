@@ -10,7 +10,7 @@ import (
 )
 
 const ackUserSyncQueueItem = `-- name: AckUserSyncQueueItem :exec
-DELETE FROM auth.user_sync_queue
+DELETE FROM public.user_sync_queue
 WHERE id = $1::bigint
 `
 
