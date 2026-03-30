@@ -65,6 +65,12 @@ func ObserveConnection(ctx context.Context, conn *grpc.ClientConn, target string
 
 func observeConnection(ctx context.Context, conn *grpc.ClientConn, target string) {
 	state := conn.GetState()
+	// Guard against a race where the connection is already shut down between the go-launch and the first GetState() call.
+	// Shutdown is a terminal state — WaitForStateChange would block forever on an uncancellable context.
+	if state == connectivity.Shutdown {
+		return
+	}
+
 	stateStart := time.Now()
 
 	for {
