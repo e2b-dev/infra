@@ -461,15 +461,6 @@ func channelzTargetHost(target string) string {
 		}
 	}
 
-	if strings.Count(target, ":") == 1 {
-		host, port, ok := strings.Cut(target, ":")
-		if ok {
-			if _, err := strconv.Atoi(port); err == nil {
-				return strings.Trim(host, "[]")
-			}
-		}
-	}
-
 	return strings.Trim(target, "[]")
 }
 
