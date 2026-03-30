@@ -16,6 +16,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/envd"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -42,6 +43,7 @@ func (s *Sandbox) doRequestWithInfiniteRetries(
 		DefaultUser:    utils.DerefOrDefault(s.Config.Envd.DefaultUser, ""),
 		DefaultWorkdir: utils.DerefOrDefault(s.Config.Envd.DefaultWorkdir, ""),
 		VolumeMounts:   s.convertMounts(s.Config.VolumeMounts),
+		CaCertificates: s.convertCACertificates(s.CACertificates),
 	}
 
 	for {
@@ -90,6 +92,16 @@ func (s *Sandbox) convertMounts(mounts []VolumeMountConfig) []envd.VolumeMount {
 			NfsTarget: fmt.Sprintf("%s:/%s", s.config.NetworkConfig.OrchestratorInSandboxIPAddress, mount.Name),
 			Path:      mount.Path,
 		})
+	}
+
+	return results
+}
+
+func (s *Sandbox) convertCACertificates(certs []network.CACertificate) []envd.CACertificate {
+	results := make([]envd.CACertificate, 0, len(certs))
+
+	for _, cert := range certs {
+		results = append(results, envd.CACertificate{Name: cert.Name, Cert: cert.Cert})
 	}
 
 	return results
