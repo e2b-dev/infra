@@ -218,7 +218,7 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 	}
 
 	if data.CaCertificates != nil && len(*data.CaCertificates) > 0 {
-		go a.installCACerts(context.WithoutCancel(ctx), *data.CaCertificates)
+		a.installCACerts(ctx, *data.CaCertificates)
 	}
 
 	if data.VolumeMounts != nil {
@@ -260,7 +260,10 @@ func (a *API) setupNfs(ctx context.Context, nfsTarget, path string) {
 }
 
 // installCACerts writes PEM-encoded CA certificates to the system trust store
-// and runs update-ca-certificates once to make them trusted by all TLS clients.
+// and runs update-ca-certificates to register them with the OS.
+//
+// This call is intentionally synchronous: certs must be fully installed before
+// user processes start or TLS connections through the proxy will fail.
 func (a *API) installCACerts(ctx context.Context, certs []CACertificate) {
 	certDir := a.certDir
 
@@ -280,10 +283,9 @@ func (a *API) installCACerts(ctx context.Context, certs []CACertificate) {
 		}
 	}
 
-	data, err := exec.CommandContext(ctx, "update-ca-certificates").CombinedOutput()
-
+	out, err := exec.CommandContext(ctx, "update-ca-certificates").CombinedOutput()
 	logFn := a.getLogger(err)
-	logFn.Str("output", string(data)).Msg("update-ca-certificates")
+	logFn.Str("output", string(out)).Msg("update-ca-certificates")
 }
 
 func (a *API) SetupHyperloop(address string) {
