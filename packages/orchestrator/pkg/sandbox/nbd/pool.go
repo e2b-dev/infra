@@ -81,6 +81,10 @@ type DevicePool struct {
 }
 
 func NewDevicePool(maxSlotsReady int) (*DevicePool, error) {
+	if maxSlotsReady <= 0 {
+		return nil, fmt.Errorf("maxSlotsReady must be > 0, got %d", maxSlotsReady)
+	}
+
 	maxDevices, err := getMaxDevices()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get max devices: %w", err)
